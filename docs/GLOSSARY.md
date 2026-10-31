@@ -59,7 +59,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Gewinnstufen | `levels` | Spitzen + 1 + Hand + Schneider + … |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
-| Schneider | `schneider` | Gegner unter 31 bzw. Alleinspieler ab 90 Augen |
+| Schneider | `schneider` | Eine Seite mit höchstens 30 Augen (`SCHNEIDER_LIMIT`). Gemessen an der verlierenden Seite, damit es auch bei veränderten Blättern gilt. Schwarz schließt Schneider immer ein. |
 | Schwarz | `schwarz` | Alle Stiche |
 | angesagt | `_declared` | `schneider_declared`, `schwarz_declared` |
 | Ouvert | `ouvert` | Offen spielen |

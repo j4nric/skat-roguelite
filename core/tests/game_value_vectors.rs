@@ -4,13 +4,16 @@
 //! skat), because matadors are counted over all twelve. The expected values
 //! were worked out by hand from the Skatordnung.
 //!
-//! Status: the vectors are checked for internal consistency only. Milestone
-//! M1 replaces `expected_from_vector` with a call into `skat_core::rules` and
-//! these vectors become the acceptance test for the formula.
+//! These vectors are the acceptance test for `skat_core::rules::matadors`
+//! and `skat_core::rules::game_value`. Each vector is turned into a
+//! declaration and an outcome that reaches exactly the listed levels.
 
 use skat_core::cards::Suit;
 use skat_core::cards::parse_cards;
-use skat_core::rules::{GameType, null_value};
+use skat_core::rules::{
+    Declaration, GameType, Matadors, Outcome, RiskLevel, SCHNEIDER_THRESHOLD, TOTAL_CARD_POINTS,
+    WIN_THRESHOLD, game_value, matadors, null_game_value,
+};
 
 struct Vector {
     name: &'static str,
@@ -137,6 +140,66 @@ const VECTORS: &[Vector] = &[
         value: 22,
     },
     Vector {
+        name: "kreuz mit 4, Spiel 5, Hand 6, Schneider 7, Schneider angesagt 8",
+        game: GameType::Suit(Suit::Clubs),
+        cards: "CJ SJ HJ DJ CT CK CQ C9 SA ST HA DA",
+        hand: true,
+        schneider: true,
+        schneider_declared: true,
+        schwarz: false,
+        schwarz_declared: false,
+        ouvert: false,
+        with: true,
+        matadors: 4,
+        levels: 8,
+        value: 96,
+    },
+    Vector {
+        name: "herz ohne 1, Spiel 2, Hand 3, Schneider 4, angesagt 5, Schwarz 6, angesagt 7",
+        game: GameType::Suit(Suit::Hearts),
+        cards: "SJ HJ HA HT HK HQ H9 SA ST CA CT DA",
+        hand: true,
+        schneider: true,
+        schneider_declared: true,
+        schwarz: true,
+        schwarz_declared: true,
+        ouvert: false,
+        with: false,
+        matadors: 1,
+        levels: 7,
+        value: 70,
+    },
+    Vector {
+        name: "grand hand mit 4, Spiel 5, Hand 6, Schneider 7, Schwarz 8 (unangesagt)",
+        game: GameType::Grand,
+        cards: "CJ SJ HJ DJ CA CT SA ST HA HT DA DT",
+        hand: true,
+        schneider: true,
+        schneider_declared: false,
+        schwarz: true,
+        schwarz_declared: false,
+        ouvert: false,
+        with: true,
+        matadors: 4,
+        levels: 8,
+        value: 192,
+    },
+    Vector {
+        name: "pik ouvert mit 11: Spitzen 11 plus sieben Stufen",
+        game: GameType::Suit(Suit::Spades),
+        cards: "CJ SJ HJ DJ SA ST SK SQ S9 S8 S7 HA",
+        hand: true,
+        schneider: true,
+        schneider_declared: true,
+        schwarz: true,
+        schwarz_declared: true,
+        ouvert: true,
+        with: true,
+        matadors: 11,
+        levels: 18,
+        value: 198,
+    },
+    Vector {
         name: "null",
         game: GameType::Null,
         cards: "D7 D8 D9 H7 H8 H9 S7 S8 S9 C7 C8 C9",
@@ -198,41 +261,44 @@ const VECTORS: &[Vector] = &[
     },
 ];
 
-/// Reference computation straight from the formula, using the matador count
-/// stated in the vector. M1 swaps this for the real implementation that
-/// derives the matadors from the cards.
-fn expected_from_vector(v: &Vector) -> u32 {
-    match v.game.base_value() {
-        None => null_value(v.hand, v.ouvert),
-        Some(base) => {
-            let levels = v.matadors
-                + 1
-                + u32::from(v.hand)
-                + u32::from(v.schneider)
-                + u32::from(v.schneider_declared)
-                + u32::from(v.schwarz)
-                + u32::from(v.schwarz_declared)
-                + u32::from(v.ouvert);
-            base * levels
-        }
+/// Risk level that produces exactly the declared flags of the vector.
+/// Null Ouvert without Hand (46) has no `RiskLevel` yet (see the open
+/// question in the M1 report); those vectors go through `null_game_value`.
+fn risk_from_vector(v: &Vector) -> Option<RiskLevel> {
+    match (v.hand, v.schneider_declared, v.schwarz_declared, v.ouvert) {
+        (false, false, false, false) => Some(RiskLevel::Normal),
+        (true, false, false, false) => Some(RiskLevel::Hand),
+        (true, true, false, false) => Some(RiskLevel::SchneiderDeclared),
+        (true, true, true, false) => Some(RiskLevel::SchwarzDeclared),
+        (true, true, true, true) => Some(RiskLevel::Ouvert),
+        _ => None,
     }
 }
 
-/// Count matadors from the cards, mirroring the Skatordnung: starting at the
-/// strongest trump, count how many consecutive trumps are held ("mit") or
-/// missing ("ohne").
-fn matadors_from_cards(game: GameType, cards: &str) -> (bool, u32) {
-    let held = parse_cards(cards).expect("vector cards parse");
-    let order = game.trump_order();
-    let Some(top) = order.first() else {
-        return (false, 0);
+/// An outcome in which the declarer wins and reaches exactly the Schneider
+/// and Schwarz flags of the vector. Null vectors are won: no trick.
+fn outcome_from_vector(v: &Vector) -> Outcome {
+    if v.game == GameType::Null {
+        return Outcome {
+            declarer_card_points: 0,
+            defender_card_points: TOTAL_CARD_POINTS,
+            declarer_tricks: 0,
+            defender_tricks: 10,
+        };
+    }
+    let (declarer_card_points, declarer_tricks) = if v.schwarz {
+        (TOTAL_CARD_POINTS, 10)
+    } else if v.schneider {
+        (SCHNEIDER_THRESHOLD, 9)
+    } else {
+        (WIN_THRESHOLD, 6)
     };
-    let with = held.contains(top);
-    let count = order
-        .iter()
-        .take_while(|c| held.contains(c) == with)
-        .count();
-    (with, u32::try_from(count).expect("fits"))
+    Outcome {
+        declarer_card_points,
+        defender_card_points: TOTAL_CARD_POINTS - declarer_card_points,
+        declarer_tricks,
+        defender_tricks: 10 - declarer_tricks,
+    }
 }
 
 #[test]
@@ -249,22 +315,334 @@ fn vectors_have_twelve_distinct_cards() {
 #[test]
 fn vectors_matadors_match_their_cards() {
     for v in VECTORS {
-        let (with, count) = matadors_from_cards(v.game, v.cards);
-        assert_eq!((with, count), (v.with, v.matadors), "{}", v.name);
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let m = matadors(v.game, &cards);
+        assert_eq!((m.with, m.count), (v.with, v.matadors), "{}", v.name);
     }
 }
 
 #[test]
-fn vectors_are_internally_consistent() {
+fn vectors_match_game_value() {
     for v in VECTORS {
-        assert_eq!(expected_from_vector(v), v.value, "{}", v.name);
-        if v.game.base_value().is_some() {
-            assert_eq!(
-                v.value % v.levels,
-                0,
-                "{}: value must be base × levels",
-                v.name
-            );
-        }
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let outcome = outcome_from_vector(v);
+        let value = match risk_from_vector(v) {
+            Some(risk) => game_value(
+                Declaration::new(v.game, risk),
+                matadors(v.game, &cards),
+                &outcome,
+            ),
+            None => {
+                assert_eq!(
+                    v.game,
+                    GameType::Null,
+                    "{}: unrepresentable risk level",
+                    v.name
+                );
+                null_game_value(v.hand, v.ouvert, &outcome)
+            }
+        };
+        assert!(value.won, "{}", v.name);
+        assert_eq!(value.levels, v.levels, "{}: levels", v.name);
+        assert_eq!(value.value, v.value, "{}: value", v.name);
+        assert_eq!(
+            value.score,
+            i32::try_from(v.value).expect("fits"),
+            "{}: score",
+            v.name
+        );
+        assert_eq!(value.schneider, v.schneider, "{}: schneider", v.name);
+        assert_eq!(value.schwarz, v.schwarz, "{}: schwarz", v.name);
     }
+}
+
+#[test]
+fn vectors_lost_score_double_negative() {
+    for v in VECTORS {
+        let Some(risk) = risk_from_vector(v) else {
+            continue;
+        };
+        if v.schneider != v.schneider_declared || v.schwarz != v.schwarz_declared {
+            // Reached-but-undeclared levels disappear in a loss; those
+            // vectors are covered by the won case only.
+            continue;
+        }
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        // One trick with 60 Augen for the declarer: lost without being Schneider.
+        let lost = Outcome {
+            declarer_card_points: 60,
+            defender_card_points: 60,
+            declarer_tricks: 1,
+            defender_tricks: 9,
+        };
+        let value = game_value(
+            Declaration::new(v.game, risk),
+            matadors(v.game, &cards),
+            &lost,
+        );
+        assert!(!value.won, "{}", v.name);
+        assert_eq!(value.value, v.value, "{}: lost value", v.name);
+        assert_eq!(
+            value.score,
+            -2 * i32::try_from(v.value).expect("fits"),
+            "{}: lost score",
+            v.name
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lost games and boundary cases (Skatordnung, Spielwert / verlorene Spiele)
+// ---------------------------------------------------------------------------
+
+struct LostOrBoundary {
+    name: &'static str,
+    game: GameType,
+    risk: RiskLevel,
+    matadors: Matadors,
+    outcome: Outcome,
+    won: bool,
+    schneider: bool,
+    schwarz: bool,
+    levels: u32,
+    score: i32,
+}
+
+const MIT_2: Matadors = Matadors {
+    with: true,
+    count: 2,
+};
+
+const OHNE_3: Matadors = Matadors {
+    with: false,
+    count: 3,
+};
+
+/// Outcome with all 120 Augen distributed, defenders get the rest.
+const fn split(declarer_card_points: u32, declarer_tricks: u32) -> Outcome {
+    Outcome {
+        declarer_card_points,
+        defender_card_points: TOTAL_CARD_POINTS - declarer_card_points,
+        declarer_tricks,
+        defender_tricks: 10 - declarer_tricks,
+    }
+}
+
+const BOUNDARY: &[LostOrBoundary] = &[
+    LostOrBoundary {
+        name: "Schneider: Gegner genau 30 Augen",
+        game: GameType::Suit(Suit::Hearts),
+        risk: RiskLevel::Normal,
+        matadors: MIT_2,
+        outcome: split(90, 7),
+        won: true,
+        schneider: true,
+        schwarz: false,
+        levels: 4,
+        score: 40,
+    },
+    LostOrBoundary {
+        name: "kein Schneider: Gegner 31 Augen",
+        game: GameType::Suit(Suit::Hearts),
+        risk: RiskLevel::Normal,
+        matadors: MIT_2,
+        outcome: split(89, 9),
+        won: true,
+        schneider: false,
+        schwarz: false,
+        levels: 3,
+        score: 30,
+    },
+    LostOrBoundary {
+        name: "kein Schwarz: Gegner haben einen Stich mit 0 Augen",
+        game: GameType::Grand,
+        risk: RiskLevel::Normal,
+        matadors: MIT_2,
+        outcome: split(120, 9),
+        won: true,
+        schneider: true,
+        schwarz: false,
+        levels: 4,
+        score: 96,
+    },
+    LostOrBoundary {
+        name: "Schwarz angesagt, Gegner haben Stich mit 0 Augen: verloren",
+        game: GameType::Grand,
+        risk: RiskLevel::SchwarzDeclared,
+        matadors: MIT_2,
+        outcome: split(120, 9),
+        won: false,
+        schneider: true,
+        schwarz: false,
+        // mit 2, Spiel 3, Hand 4, Schneider 5, angesagt 6, Schwarz 7, angesagt 8
+        levels: 8,
+        score: -384,
+    },
+    LostOrBoundary {
+        name: "Ouvert (Schwarz angesagt), Gegner haben Stich mit 0 Augen: verloren",
+        game: GameType::Suit(Suit::Clubs),
+        risk: RiskLevel::Ouvert,
+        matadors: MIT_2,
+        outcome: split(120, 9),
+        won: false,
+        schneider: true,
+        schwarz: false,
+        levels: 9,
+        score: -216,
+    },
+    LostOrBoundary {
+        name: "Schneider angesagt, unangesagter Schwarz erreicht",
+        game: GameType::Suit(Suit::Diamonds),
+        risk: RiskLevel::SchneiderDeclared,
+        matadors: MIT_2,
+        outcome: split(120, 10),
+        won: true,
+        schneider: true,
+        schwarz: true,
+        // mit 2, Spiel 3, Hand 4, Schneider 5, angesagt 6, Schwarz 7
+        levels: 7,
+        score: 63,
+    },
+    LostOrBoundary {
+        name: "Hand verloren: Hand zählt mit",
+        game: GameType::Suit(Suit::Spades),
+        risk: RiskLevel::Hand,
+        matadors: MIT_2,
+        outcome: split(60, 4),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        levels: 4,
+        score: -88,
+    },
+    LostOrBoundary {
+        name: "ohne 3 verloren: Spitzen zählen auch im verlorenen Spiel",
+        game: GameType::Grand,
+        risk: RiskLevel::Normal,
+        matadors: OHNE_3,
+        outcome: split(55, 4),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        levels: 4,
+        score: -192,
+    },
+    LostOrBoundary {
+        name: "Alleinspieler Schneider: genau 30 Augen",
+        game: GameType::Suit(Suit::Hearts),
+        risk: RiskLevel::Hand,
+        matadors: MIT_2,
+        outcome: split(30, 3),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        // mit 2, Spiel 3, Hand 4, Schneider 5
+        levels: 5,
+        score: -100,
+    },
+    LostOrBoundary {
+        name: "Alleinspieler Schneider: 0 Augen, aber ein Stich (nicht schwarz)",
+        game: GameType::Suit(Suit::Hearts),
+        risk: RiskLevel::Normal,
+        matadors: MIT_2,
+        outcome: split(0, 1),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        levels: 4,
+        score: -80,
+    },
+    LostOrBoundary {
+        name: "Alleinspieler schwarz trotz Augen im Skat (Skat ist kein Stich)",
+        game: GameType::Suit(Suit::Hearts),
+        risk: RiskLevel::Normal,
+        matadors: MIT_2,
+        outcome: split(21, 0),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        // mit 2, Spiel 3, Schneider 4, Schwarz 5
+        levels: 5,
+        score: -100,
+    },
+    LostOrBoundary {
+        name: "Schneider angesagt, Alleinspieler selbst Schneider: Stufe nicht doppelt",
+        game: GameType::Grand,
+        risk: RiskLevel::SchneiderDeclared,
+        matadors: MIT_2,
+        outcome: split(25, 2),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        // mit 2, Spiel 3, Hand 4, Schneider 5, angesagt 6
+        levels: 6,
+        score: -288,
+    },
+    LostOrBoundary {
+        name: "Schwarz angesagt, Alleinspieler selbst schwarz: Stufen nicht doppelt",
+        game: GameType::Grand,
+        risk: RiskLevel::SchwarzDeclared,
+        matadors: MIT_2,
+        outcome: split(0, 0),
+        won: false,
+        schneider: false,
+        schwarz: false,
+        levels: 8,
+        score: -384,
+    },
+];
+
+#[test]
+fn boundary_and_lost_vectors_match_game_value() {
+    for v in BOUNDARY {
+        let value = game_value(Declaration::new(v.game, v.risk), v.matadors, &v.outcome);
+        assert_eq!(value.won, v.won, "{}: won", v.name);
+        assert_eq!(value.schneider, v.schneider, "{}: schneider", v.name);
+        assert_eq!(value.schwarz, v.schwarz, "{}: schwarz", v.name);
+        assert_eq!(value.levels, v.levels, "{}: levels", v.name);
+        let base = v.game.base_value().expect("suit or grand");
+        assert_eq!(value.value, base * v.levels, "{}: value", v.name);
+        assert_eq!(value.score, v.score, "{}: score", v.name);
+    }
+}
+
+// Skatordnung: Schwarz always includes Schneider. If the defenders took no
+// trick they have 0 Augen and are Schneider, whatever the deck total is.
+// With the standard deck (120 Augen) this case cannot occur, but the
+// roguelike deck can lose Augen (Blanko-Karten, DESIGN 7.1), and `Outcome`
+// already admits it. `game_value` decides Schneider by
+// `declarer_card_points >= 90` and ignores `defender_card_points`.
+#[test]
+fn schwarz_implies_schneider_with_reduced_deck() {
+    let outcome = Outcome {
+        declarer_card_points: 85,
+        defender_card_points: 0,
+        declarer_tricks: 10,
+        defender_tricks: 0,
+    };
+    let decl = Declaration::new(GameType::Grand, RiskLevel::Normal);
+    let value = game_value(decl, MIT_2, &outcome);
+    assert!(value.won);
+    assert!(value.schwarz);
+    assert!(value.schneider, "Schwarz schließt Schneider ein");
+    // mit 2, Spiel 3, Schneider 4, Schwarz 5
+    assert_eq!(value.levels, 5);
+}
+
+// Skatordnung: a declarer without a trick is Schwarz and therefore also
+// Schneider. With card mods (e.g. "Fett", DESIGN 7.2) the skat can hold
+// more than 30 Augen; the Schneider level must still count.
+#[test]
+fn declarer_schwarz_implies_declarer_schneider() {
+    let outcome = Outcome {
+        declarer_card_points: 31,
+        defender_card_points: 97,
+        declarer_tricks: 0,
+        defender_tricks: 10,
+    };
+    let decl = Declaration::new(GameType::Grand, RiskLevel::Normal);
+    let value = game_value(decl, MIT_2, &outcome);
+    assert!(!value.won);
+    // mit 2, Spiel 3, Schneider 4, Schwarz 5
+    assert_eq!(value.levels, 5);
 }

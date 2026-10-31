@@ -9,18 +9,14 @@
 //!
 //! Term mapping German ↔ English: `docs/GLOSSARY.md`.
 
+pub mod ai;
 pub mod cards;
+pub mod game;
+pub mod rng;
 pub mod rules;
-
-/// Game state machine for a single Skat game (deal → declare → tricks → score).
-/// Filled in during milestone M1.
-pub mod game {}
 
 /// Run structure: series, sections, shop, relics, events. Milestone M2.
 pub mod run {}
-
-/// Opponent AI. Heuristic first (M1), perfect-information Monte Carlo later (M5).
-pub mod ai {}
 
 /// Data-driven content loading (RON) and the effect hook API. Milestone M2.
 pub mod content {}
