@@ -91,8 +91,10 @@ pub const fn null_value(hand: bool, ouvert: bool) -> u32 {
 
 /// Augen the declarer needs to win a suit or grand game.
 pub const WIN_THRESHOLD: u32 = 61;
-/// Augen from which the opponents are Schneider.
+/// Augen from which the opponents are Schneider in a standard 120-Augen deck.
 pub const SCHNEIDER_THRESHOLD: u32 = 90;
+/// A side with at most this many Augen is Schneider (Skatordnung).
+pub const SCHNEIDER_LIMIT: u32 = 30;
 /// Augen in the whole deck.
 pub const TOTAL_CARD_POINTS: u32 = 120;
 
@@ -400,8 +402,10 @@ pub fn null_game_value(hand: bool, ouvert: bool, outcome: &Outcome) -> GameValue
 /// Compute the Spielwert from the declaration, the matadors (over hand plus
 /// skat) and the outcome of the tricks.
 ///
-/// Suit and grand games: won from 61 Augen; Schneider from 90 Augen;
-/// Schwarz when the defenders took no trick. A declared level that was not
+/// Suit and grand games: won from 61 Augen; the defenders are Schneider
+/// with at most 30 Augen and Schwarz when they took no trick. Schwarz always
+/// implies Schneider, also when card modifications change the deck's total
+/// Augen (Skatordnung: Schneider is measured on the losing side). A declared level that was not
 /// reached loses the game. Each declared level still counts in the levels,
 /// as does Hand. A lost game scores `-2 × value`. If the declarer loses and
 /// is Schneider (at most 30 Augen) or Schwarz (no trick) himself, those
@@ -416,15 +420,15 @@ pub fn game_value(declaration: Declaration, matadors: Matadors, outcome: &Outcom
     let schwarz_declared = declaration.schwarz_declared();
     let ouvert = declaration.ouvert();
 
-    let schneider = outcome.declarer_card_points >= SCHNEIDER_THRESHOLD;
     let schwarz = outcome.defender_tricks == 0;
+    let schneider = schwarz || outcome.defender_card_points <= SCHNEIDER_LIMIT;
     let won = outcome.declarer_card_points >= WIN_THRESHOLD
         && (!schneider_declared || schneider)
         && (!schwarz_declared || schwarz);
 
-    let declarer_schneider =
-        !won && outcome.declarer_card_points <= TOTAL_CARD_POINTS - SCHNEIDER_THRESHOLD;
     let declarer_schwarz = !won && outcome.declarer_tricks == 0;
+    let declarer_schneider =
+        declarer_schwarz || (!won && outcome.declarer_card_points <= SCHNEIDER_LIMIT);
 
     let schneider_level = schneider || schneider_declared || declarer_schneider;
     let schwarz_level = schwarz || schwarz_declared || declarer_schwarz;
