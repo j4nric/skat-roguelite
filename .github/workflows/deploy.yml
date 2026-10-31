@@ -92,4 +92,8 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
           DEST: ${{ secrets.DEPLOY_PATH }}
-        run: ssh -i ~/.ssh/deploy_key "$USER@$HOST" "cd '$DEST' && docker compose up -d --remove-orphans && docker compose ps"
+        run: |
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "
+            docker network inspect stammtisch-proxy >/dev/null 2>&1 || docker network create stammtisch-proxy
+            cd '$DEST' && docker compose up -d --remove-orphans && docker compose ps
+          "
