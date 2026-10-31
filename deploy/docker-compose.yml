@@ -1,23 +1,27 @@
-# Runs on the vServer. The GitHub Actions deploy job syncs ./site and this
-# file to $DEPLOY_PATH on the server and runs `docker compose up -d`.
+# Runs on the vServer in $DEPLOY_PATH (default /opt/skat). The GitHub Actions
+# deploy job syncs ./site, this file and the Caddyfile there and runs
+# `docker compose up -d`.
+#
+# Ports 80/443 on the server belong to the Caddy of the household app
+# (repo j4nric/haushalt-app, infra/production). That Caddy terminates HTTPS
+# for stammtisch-62-83-23-90.sslip.io and forwards to this container through
+# the shared network `stammtisch-proxy` under the alias `stammtisch-web`.
+# This container publishes no ports. See ADR 0008.
+
+name: stammtisch
+
 services:
   web:
     image: caddy:2.8-alpine
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      # Set SITE_ADDRESS on the server (in deploy/.env) to a domain for
-      # automatic HTTPS, e.g. SITE_ADDRESS=skat.example.de. Default: plain
-      # HTTP on port 80 for every host.
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     volumes:
       - ./site:/srv:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    networks:
+      proxy:
+        aliases: [stammtisch-web]
 
-volumes:
-  caddy_data:
-  caddy_config:
+networks:
+  proxy:
+    name: stammtisch-proxy
+    external: true

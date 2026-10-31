@@ -375,10 +375,9 @@ Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblat
 | Gegner-Persönlichkeit | Standardgegner bleiben anonym. Nur Bosse haben Namen und Gesichter. Neu bewerten in M4. |
 | Vorhand-Rotation | Rotation bleibt fest. Beeinflussbar nur über Relikte (z. B. „Ewige Vorhand“, teuer). |
 | Name des Spiels | **Stammtisch**. Repo-Name bleibt vorerst `skat-roguelite`. |
-| Server-Zielplattform | Godot-Web-Export im Browser, siehe ADR 0007. |
+| Server-Zielplattform | Godot-Web-Export im Browser, siehe ADR 0007. Erreichbar unter https://stammtisch-62-83-23-90.sslip.io hinter dem Caddy der Haushalt-App, siehe ADR 0008. |
 
 ## 17. Offen
 
 - **Null-Formel**: Der Vorschlag in 9.2 ist ein erster Wurf und braucht den Simulator.
 - **Meta-Progression**: Freischaltungen über Runs hinweg (Charaktere, Relikte, Blätter)? Für v1 nur der Nullspieler als Freischaltung.
-- **Server-Anbindung**: Auf dem vServer laufen bereits drei Anwendungen. Ob unser Caddy selbst auf 80/443 hört oder hinter einen bestehenden Proxy geht, hängt von der Antwort im Cockpit ab.

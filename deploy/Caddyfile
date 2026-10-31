@@ -1,11 +1,14 @@
-{$SITE_ADDRESS}
+# Internal static file server. HTTPS is handled by the household app's Caddy
+# in front of this container, so this one only speaks plain HTTP on :80.
+:80 {
+	root * /srv
+	encode zstd gzip
+	file_server
 
-root * /srv
-encode gzip
-file_server
-
-# Godot web exports need cross-origin isolation for threads (SharedArrayBuffer).
-header {
-    Cross-Origin-Opener-Policy "same-origin"
-    Cross-Origin-Embedder-Policy "require-corp"
+	# Godot web exports with threads need cross-origin isolation
+	# (SharedArrayBuffer). The front proxy passes these headers through.
+	header {
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
+	}
 }
