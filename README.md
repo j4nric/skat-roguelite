@@ -1,6 +1,6 @@
-# Skat Roguelike
+# Stammtisch
 
-Skat als Roguelike-Deckbuilder. Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
+Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md)
 - Begriffe: [`docs/GLOSSARY.md`](docs/GLOSSARY.md)
