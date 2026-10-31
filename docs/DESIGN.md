@@ -8,7 +8,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 ## 1. Pitch
 
-**Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen. Die Spielwertformel des echten Skats (Grundwert × Gewinnstufen) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
+**Stammtisch: Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen. Die Spielwertformel des echten Skats (Grundwert × Gewinnstufen) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
@@ -367,11 +367,18 @@ Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblat
 
 ---
 
-## 16. Offen
+## 16. Entschieden am 31.10.2026 (über das Cockpit)
 
-- **Stiche unter 10**: Soll das Blatt wirklich unter 32 Karten schrumpfen dürfen, oder bleibt es bei Blankos?
-- **Gegner-Persönlichkeit**: Bekommen die zwei Standardgegner Namen und Gesichter, oder bleiben sie anonym bis zu den Bossen?
-- **Vorhand-Rotation**: Soll der Spieler die Rotation beeinflussen dürfen (z. B. Relikt „Ewige Vorhand“)?
+| Frage | Entscheidung |
+|---|---|
+| Stiche unter 10 | Nein. Entfernte Karten werden durch Blankos ersetzt, es bleibt bei 10 Stichen. Siehe ADR 0005. |
+| Gegner-Persönlichkeit | Standardgegner bleiben anonym. Nur Bosse haben Namen und Gesichter. Neu bewerten in M4. |
+| Vorhand-Rotation | Rotation bleibt fest. Beeinflussbar nur über Relikte (z. B. „Ewige Vorhand“, teuer). |
+| Name des Spiels | **Stammtisch**. Repo-Name bleibt vorerst `skat-roguelite`. |
+| Server-Zielplattform | Godot-Web-Export im Browser, siehe ADR 0007. |
+
+## 17. Offen
+
 - **Null-Formel**: Der Vorschlag in 9.2 ist ein erster Wurf und braucht den Simulator.
 - **Meta-Progression**: Freischaltungen über Runs hinweg (Charaktere, Relikte, Blätter)? Für v1 nur der Nullspieler als Freischaltung.
-- **Name des Spiels**: Arbeitstitel „Skat Roguelite“. Kandidaten: *Bockrunde*, *Hand ohne Vier*, *Stammtisch*, *Schneider*.
+- **Server-Anbindung**: Auf dem vServer laufen bereits drei Anwendungen. Ob unser Caddy selbst auf 80/443 hört oder hinter einen bestehenden Proxy geht, hängt von der Antwort im Cockpit ab.
