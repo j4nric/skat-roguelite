@@ -1,0 +1,23 @@
+# Runs on the vServer. The GitHub Actions deploy job syncs ./site and this
+# file to $DEPLOY_PATH on the server and runs `docker compose up -d`.
+services:
+  web:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Set SITE_ADDRESS on the server (in deploy/.env) to a domain for
+      # automatic HTTPS, e.g. SITE_ADDRESS=skat.example.de. Default: plain
+      # HTTP on port 80 for every host.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./site:/srv:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,95 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+      - name: Simulator baseline
+        run: cargo run --release -p skat_sim -- --seed 42 --games 10000 | tee sim-baseline.txt
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r web/. site/
+          cp sim-baseline.txt site/
+          BUILD_INFO="${GITHUB_SHA::7} · $(date -u +%Y-%m-%dT%H:%MZ)"
+          sed -i "s|__BUILD_INFO__|${BUILD_INFO}|" site/index.html
+      # M3: Godot web export goes here, e.g.
+      #   - uses: chickensoft-games/setup-godot@v2 ; godot --headless --export-release "Web" ../site/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+
+  deploy:
+    name: deploy to vServer
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+      - name: Check secrets
+        id: secrets
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEST: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ] || [ -z "$DEST" ]; then
+            echo "::warning::Deploy secrets missing (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH). Skipping server step. See deploy/README.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up SSH
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Sync files
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DEST: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "mkdir -p '$DEST/site'"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" site/ "$USER@$HOST:$DEST/site/"
+          rsync -az -e "ssh -i ~/.ssh/deploy_key" deploy/docker-compose.yml deploy/Caddyfile "$USER@$HOST:$DEST/"
+      - name: Start or update containers
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DEST: ${{ secrets.DEPLOY_PATH }}
+        run: ssh -i ~/.ssh/deploy_key "$USER@$HOST" "cd '$DEST' && docker compose up -d --remove-orphans && docker compose ps"
