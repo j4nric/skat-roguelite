@@ -1,0 +1,17 @@
+[package]
+name = "skat_sim"
+description = "Headless simulator and balancing CLI for the Skat roguelike."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "sim"
+path = "src/main.rs"
+
+[dependencies]
+skat_core = { path = "../core" }
+
+[lints]
+workspace = true
