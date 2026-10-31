@@ -114,7 +114,8 @@ mod tests {
             assert!((3..10).contains(&v));
         }
         assert_eq!(rng.gen_range(5..5), 5);
-        assert_eq!(rng.gen_range(9..2), 9);
+        let reversed = std::ops::Range { start: 9, end: 2 };
+        assert_eq!(rng.gen_range(reversed), 9);
     }
 
     #[test]

@@ -4,13 +4,16 @@
 //! skat), because matadors are counted over all twelve. The expected values
 //! were worked out by hand from the Skatordnung.
 //!
-//! Status: the vectors are checked for internal consistency only. Milestone
-//! M1 replaces `expected_from_vector` with a call into `skat_core::rules` and
-//! these vectors become the acceptance test for the formula.
+//! These vectors are the acceptance test for `skat_core::rules::matadors`
+//! and `skat_core::rules::game_value`. Each vector is turned into a
+//! declaration and an outcome that reaches exactly the listed levels.
 
 use skat_core::cards::Suit;
 use skat_core::cards::parse_cards;
-use skat_core::rules::{GameType, null_value};
+use skat_core::rules::{
+    Declaration, GameType, Outcome, RiskLevel, SCHNEIDER_THRESHOLD, TOTAL_CARD_POINTS,
+    WIN_THRESHOLD, game_value, matadors, null_game_value,
+};
 
 struct Vector {
     name: &'static str,
@@ -198,41 +201,44 @@ const VECTORS: &[Vector] = &[
     },
 ];
 
-/// Reference computation straight from the formula, using the matador count
-/// stated in the vector. M1 swaps this for the real implementation that
-/// derives the matadors from the cards.
-fn expected_from_vector(v: &Vector) -> u32 {
-    match v.game.base_value() {
-        None => null_value(v.hand, v.ouvert),
-        Some(base) => {
-            let levels = v.matadors
-                + 1
-                + u32::from(v.hand)
-                + u32::from(v.schneider)
-                + u32::from(v.schneider_declared)
-                + u32::from(v.schwarz)
-                + u32::from(v.schwarz_declared)
-                + u32::from(v.ouvert);
-            base * levels
-        }
+/// Risk level that produces exactly the declared flags of the vector.
+/// Null Ouvert without Hand (46) has no `RiskLevel` yet (see the open
+/// question in the M1 report); those vectors go through `null_game_value`.
+fn risk_from_vector(v: &Vector) -> Option<RiskLevel> {
+    match (v.hand, v.schneider_declared, v.schwarz_declared, v.ouvert) {
+        (false, false, false, false) => Some(RiskLevel::Normal),
+        (true, false, false, false) => Some(RiskLevel::Hand),
+        (true, true, false, false) => Some(RiskLevel::SchneiderDeclared),
+        (true, true, true, false) => Some(RiskLevel::SchwarzDeclared),
+        (true, true, true, true) => Some(RiskLevel::Ouvert),
+        _ => None,
     }
 }
 
-/// Count matadors from the cards, mirroring the Skatordnung: starting at the
-/// strongest trump, count how many consecutive trumps are held ("mit") or
-/// missing ("ohne").
-fn matadors_from_cards(game: GameType, cards: &str) -> (bool, u32) {
-    let held = parse_cards(cards).expect("vector cards parse");
-    let order = game.trump_order();
-    let Some(top) = order.first() else {
-        return (false, 0);
+/// An outcome in which the declarer wins and reaches exactly the Schneider
+/// and Schwarz flags of the vector. Null vectors are won: no trick.
+fn outcome_from_vector(v: &Vector) -> Outcome {
+    if v.game == GameType::Null {
+        return Outcome {
+            declarer_card_points: 0,
+            defender_card_points: TOTAL_CARD_POINTS,
+            declarer_tricks: 0,
+            defender_tricks: 10,
+        };
+    }
+    let (declarer_card_points, declarer_tricks) = if v.schwarz {
+        (TOTAL_CARD_POINTS, 10)
+    } else if v.schneider {
+        (SCHNEIDER_THRESHOLD, 9)
+    } else {
+        (WIN_THRESHOLD, 6)
     };
-    let with = held.contains(top);
-    let count = order
-        .iter()
-        .take_while(|c| held.contains(c) == with)
-        .count();
-    (with, u32::try_from(count).expect("fits"))
+    Outcome {
+        declarer_card_points,
+        defender_card_points: TOTAL_CARD_POINTS - declarer_card_points,
+        declarer_tricks,
+        defender_tricks: 10 - declarer_tricks,
+    }
 }
 
 #[test]
@@ -249,22 +255,78 @@ fn vectors_have_twelve_distinct_cards() {
 #[test]
 fn vectors_matadors_match_their_cards() {
     for v in VECTORS {
-        let (with, count) = matadors_from_cards(v.game, v.cards);
-        assert_eq!((with, count), (v.with, v.matadors), "{}", v.name);
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let m = matadors(v.game, &cards);
+        assert_eq!((m.with, m.count), (v.with, v.matadors), "{}", v.name);
     }
 }
 
 #[test]
-fn vectors_are_internally_consistent() {
+fn vectors_match_game_value() {
     for v in VECTORS {
-        assert_eq!(expected_from_vector(v), v.value, "{}", v.name);
-        if v.game.base_value().is_some() {
-            assert_eq!(
-                v.value % v.levels,
-                0,
-                "{}: value must be base × levels",
-                v.name
-            );
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let outcome = outcome_from_vector(v);
+        let value = match risk_from_vector(v) {
+            Some(risk) => game_value(
+                Declaration::new(v.game, risk),
+                matadors(v.game, &cards),
+                &outcome,
+            ),
+            None => {
+                assert_eq!(
+                    v.game,
+                    GameType::Null,
+                    "{}: unrepresentable risk level",
+                    v.name
+                );
+                null_game_value(v.hand, v.ouvert, &outcome)
+            }
+        };
+        assert!(value.won, "{}", v.name);
+        assert_eq!(value.levels, v.levels, "{}: levels", v.name);
+        assert_eq!(value.value, v.value, "{}: value", v.name);
+        assert_eq!(
+            value.score,
+            i32::try_from(v.value).expect("fits"),
+            "{}: score",
+            v.name
+        );
+        assert_eq!(value.schneider, v.schneider, "{}: schneider", v.name);
+        assert_eq!(value.schwarz, v.schwarz, "{}: schwarz", v.name);
+    }
+}
+
+#[test]
+fn vectors_lost_score_double_negative() {
+    for v in VECTORS {
+        let Some(risk) = risk_from_vector(v) else {
+            continue;
+        };
+        if v.schneider != v.schneider_declared || v.schwarz != v.schwarz_declared {
+            // Reached-but-undeclared levels disappear in a loss; those
+            // vectors are covered by the won case only.
+            continue;
         }
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        // One trick with 60 Augen for the declarer: lost without being Schneider.
+        let lost = Outcome {
+            declarer_card_points: 60,
+            defender_card_points: 60,
+            declarer_tricks: 1,
+            defender_tricks: 9,
+        };
+        let value = game_value(
+            Declaration::new(v.game, risk),
+            matadors(v.game, &cards),
+            &lost,
+        );
+        assert!(!value.won, "{}", v.name);
+        assert_eq!(value.value, v.value, "{}: lost value", v.name);
+        assert_eq!(
+            value.score,
+            -2 * i32::try_from(v.value).expect("fits"),
+            "{}: lost score",
+            v.name
+        );
     }
 }
