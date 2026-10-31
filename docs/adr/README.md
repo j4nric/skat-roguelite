@@ -12,3 +12,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0004 | Rust-Kern, Godot-Frontend | Angenommen |
 | 0005 | Ein geteiltes Blatt für alle drei Spieler | Angenommen |
 | 0006 | Reizen wird durch die Ansage ersetzt | Angenommen |
+| 0007 | Web-Export auf dem vServer, Auto-Deploy über GitHub Actions | Angenommen |

@@ -1,0 +1,11 @@
+{$SITE_ADDRESS}
+
+root * /srv
+encode gzip
+file_server
+
+# Godot web exports need cross-origin isolation for threads (SharedArrayBuffer).
+header {
+    Cross-Origin-Opener-Policy "same-origin"
+    Cross-Origin-Embedder-Policy "require-corp"
+}
