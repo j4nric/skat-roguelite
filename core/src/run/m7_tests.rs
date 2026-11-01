@@ -422,6 +422,7 @@ fn a_short_evening_ends_with_the_final_boss() {
     assert!(events.contains(&RunEvent::RunWon {
         character: Character::Declarer,
         length: RunLength::Short,
+        stake: 0,
     }));
     // In a full run the third section's boss is drawn, not the final boss.
     let start = RunStart {
@@ -486,6 +487,7 @@ fn a_short_evening_counts_for_unlocks_and_its_own_statistics() {
         RunEvent::RunWon {
             character: Character::Declarer,
             length: RunLength::Short,
+            stake: 0,
         },
     ];
     let earned = meta.observe(&content, &events);
@@ -504,6 +506,7 @@ fn a_short_evening_counts_for_unlocks_and_its_own_statistics() {
         index: 2,
         character: Character::Declarer,
         length: RunLength::Full,
+        stake: 0,
     }];
     meta.observe(&content, &events);
     assert_eq!(meta.stats.runs_finished, 2);
@@ -539,6 +542,7 @@ fn saves_and_events_from_before_the_short_evening_are_full() {
         RunEvent::RunWon {
             character: Character::Declarer,
             length: RunLength::Full,
+            stake: 0,
         }
     );
 }

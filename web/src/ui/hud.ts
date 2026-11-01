@@ -71,7 +71,9 @@ export function renderHud(view: RunView): string {
   <div class="hud-top">
     <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
       <span class="hud-where-main">${esc(where)}</span>
-      <span class="hud-where-sub">${esc(de.header.tourHint)} · ${esc(t(de.header.section, { section: s.section + 1, sections: view.sections }))}</span>
+      <span class="hud-where-sub">${esc(de.header.tourHint)} · ${esc(t(de.header.section, { section: s.section + 1, sections: view.sections }))}${
+        view.stake > 0 ? `<span data-testid="hud-stake" ${attrs({ title: t(de.header.stakeTitle, { stake: view.stake, augen: view.win_threshold }) })}> · ${esc(t(de.header.stake, { augen: view.win_threshold }))}</span>` : ''
+      }</span>
     </button>
     ${boss}
     <span class="hud-coins" aria-label="${esc(de.header.coins)}">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b></span>

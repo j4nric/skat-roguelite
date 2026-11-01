@@ -26,6 +26,8 @@
 //!   state; prints after how many runs each unlock is earned.
 //! - `--short`: kurzer Abend, the sections of `run.ron`'s `short_sections`
 //!   (DESIGN 5.3) instead of all.
+//! - `--stake N`: Einsatz-Leiter (DESIGN 9.3), suit games and Grand are
+//!   won from `61 + N` Augen (also in `--unlocks`, whatever is unlocked).
 //!
 //! Opponents and bot (DESIGN 10.2, stage 2), in both modes:
 //!
@@ -153,6 +155,10 @@ fn parse_args() -> Result<Args, String> {
                     "--without" => args.options.without.push(RelicId::new(&value)),
                     _ => args.options.boss = Some(BossId::new(&value)),
                 }
+            }
+            "--stake" => {
+                let value = it.next().ok_or("missing value for --stake")?;
+                args.options.stake = value.parse().map_err(|e| format!("--stake: {e}"))?;
             }
             "--seed" | "--games" | "--runs" => {
                 let value = it
@@ -545,7 +551,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null] [--null-scoring fixed|formula] [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null] [--null-scoring fixed|formula] [--short] [--stake N] [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

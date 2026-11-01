@@ -117,7 +117,7 @@
         id: "horseshoe",
         focus: Trump,
         name: "Hufeisen",
-        text: "Ist die Farbe dieser Karte Trumpf, gewinnst du schon mit 56 Augen.",
+        text: "Ist die Farbe dieser Karte Trumpf, gewinnst du schon mit 5 Augen weniger (56 statt 61).",
         rarity: Uncommon,
         price: 4,
         hooks: [

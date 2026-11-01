@@ -60,6 +60,12 @@ pub struct RunView {
     pub sections: u32,
     /// Ganzer or kurzer Abend (DESIGN 5.3).
     pub length: RunLength,
+    /// Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game.
+    pub stake: u32,
+    /// Augen a suit game or Grand needs to win in this run before relics
+    /// lower it: `61 + stake`. The game in progress has its own
+    /// [`GameView::win_threshold`] with relics applied.
+    pub win_threshold: u32,
     /// Groschen.
     pub coins: u32,
     /// Owned relics in purchase order.
@@ -530,7 +536,9 @@ pub struct GameView {
     pub awaiting_kontra_answer: bool,
     /// Whether the defenders may say Kontra in this game.
     pub kontra_possible: bool,
-    /// Augen needed to win.
+    /// Augen a suit game or Grand needs to win: `61 + stake`, lowered by
+    /// relics in force (once declared, also by declaration hooks such as
+    /// Hufeisen).
     pub win_threshold: u32,
     /// Ansage options while declaring, before and after the skat.
     pub declare: Option<DeclareOptions>,
@@ -848,6 +856,8 @@ impl Run {
             deal_odds: self.deck.deal_odds(),
             sections: self.sections(content),
             length: self.length,
+            stake: self.stake,
+            win_threshold: crate::rules::WIN_THRESHOLD.saturating_add(self.stake),
             coins: self.coins,
             relics,
             relic_slots: content.run.relic_slots,

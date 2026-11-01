@@ -891,22 +891,61 @@ impl GameValue {
 /// for a game the declarer wins on points. This keeps the rule meaningful
 /// when card modifications change the deck's total Augen, and Schwarz
 /// always implies Schneider.
+///
+/// The stake (Einsatz-Leiter, DESIGN 9.3) raises the win threshold of a
+/// run by one Auge per step (61, 62, 63 …); Schneider does not move with
+/// it. Relics that lower the threshold lower the raised one by the same
+/// amount ([`Thresholds::lower_win`]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Thresholds {
-    /// Augen the declarer needs to win (61).
+    /// Augen the declarer needs to win (61, plus the stake).
     pub win: u32,
     /// The defenders are Schneider with at most this many Augen (30).
     pub schneider_limit: u32,
     /// Inclusive ranges of declarer Augen that also count as Schneider.
     pub declarer_schneider: Vec<(u32, u32)>,
+    /// Stake of the run: Augen added to [`WIN_THRESHOLD`] before relics.
+    #[serde(default)]
+    pub stake: u32,
 }
 
 impl Default for Thresholds {
     fn default() -> Thresholds {
+        Thresholds::with_stake(0)
+    }
+}
+
+impl Thresholds {
+    /// The Skatordnung thresholds with the win threshold raised by
+    /// `stake` Augen (`61 + stake`). Schneider stays where it is.
+    #[must_use]
+    pub const fn with_stake(stake: u32) -> Thresholds {
         Thresholds {
-            win: WIN_THRESHOLD,
+            win: WIN_THRESHOLD.saturating_add(stake),
             schneider_limit: SCHNEIDER_LIMIT,
             declarer_schneider: Vec::new(),
+            stake,
+        }
+    }
+
+    /// Augen needed to win before any relic lowers it: `61 + stake`.
+    #[must_use]
+    pub const fn unlowered_win(&self) -> u32 {
+        WIN_THRESHOLD.saturating_add(self.stake)
+    }
+
+    /// Apply a relic that lets the declarer win "from `relic_win` Augen".
+    /// Content speaks of the unstaked game, so the relic lowers the
+    /// staked threshold by the same amount: `relic_win + stake` (Hufeisen
+    /// 56 at stake 2 wins from 58). The lowest threshold counts. Returns
+    /// whether the threshold went down.
+    pub fn lower_win(&mut self, relic_win: u32) -> bool {
+        let win = relic_win.saturating_add(self.stake);
+        if win < self.win {
+            self.win = win;
+            true
+        } else {
+            false
         }
     }
 }
@@ -1060,7 +1099,7 @@ pub fn game_value_parts(
         schneider,
         schneider_by_declarer_points: declarer_range_schneider && !losing_side_schneider,
         schwarz,
-        won_by_lowered_threshold: won && points < WIN_THRESHOLD,
+        won_by_lowered_threshold: won && points < thresholds.unlowered_win(),
         value: GameValue::from_value(total, base * total, won, schneider, schwarz),
     }
 }
@@ -1638,6 +1677,7 @@ mod tests {
             win: 58,
             schneider_limit: SCHNEIDER_LIMIT,
             declarer_schneider: vec![(85, u32::MAX)],
+            stake: 0,
         };
         let parts = game_value_parts(decl, MIT_2, &outcome(59, 5), &thresholds);
         assert!(parts.won && parts.won_by_lowered_threshold);
@@ -1658,6 +1698,52 @@ mod tests {
                 game_value(decl, MIT_2, &o)
             );
         }
+    }
+
+    #[test]
+    fn the_stake_raises_the_win_threshold_but_not_schneider() {
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
+        let staked = Thresholds::with_stake(2);
+        assert_eq!(staked.win, 63);
+        assert_eq!(staked.unlowered_win(), 63);
+        assert!(!game_value_parts(decl, MIT_2, &outcome(62, 5), &staked).won);
+        let parts = game_value_parts(decl, MIT_2, &outcome(63, 5), &staked);
+        assert!(parts.won && !parts.won_by_lowered_threshold && !parts.schneider);
+        // Schneider stays at 90 (defenders at most 30).
+        assert!(!game_value_parts(decl, MIT_2, &outcome(89, 7), &staked).schneider);
+        assert!(game_value_parts(decl, MIT_2, &outcome(90, 8), &staked).schneider);
+        // A lost game is still Schneider for the declarer at 30 or less.
+        let lost = game_value_parts(decl, MIT_2, &outcome(30, 2), &staked);
+        assert!(!lost.won && lost.levels.schneider == 1);
+        // Grand alike.
+        let grand = Declaration::grand(RiskLevel::Normal);
+        assert!(!game_value_parts(grand, MIT_2, &outcome(62, 5), &staked).won);
+        assert!(game_value_parts(grand, MIT_2, &outcome(63, 5), &staked).won);
+    }
+
+    #[test]
+    fn relics_lower_the_staked_threshold_by_their_own_amount() {
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
+        // Hufeisen (56, five below 61) at stake 2: 58.
+        let mut staked = Thresholds::with_stake(2);
+        assert!(staked.lower_win(56));
+        assert_eq!(staked.win, 58);
+        // A weaker relic (58) does not raise it again.
+        assert!(!staked.lower_win(58));
+        assert_eq!(staked.win, 58);
+        let parts = game_value_parts(decl, MIT_2, &outcome(60, 5), &staked);
+        assert!(parts.won && parts.won_by_lowered_threshold);
+        assert!(!game_value_parts(decl, MIT_2, &outcome(57, 5), &staked).won);
+        // Without a stake the relic is what it says.
+        let mut plain = Thresholds::default();
+        assert!(plain.lower_win(56));
+        assert_eq!(plain.win, 56);
+        // A save from before the stake reads as stake 0.
+        let old = "(win:61,schneider_limit:30,declarer_schneider:[])";
+        assert_eq!(
+            ron::from_str::<Thresholds>(old).expect("old"),
+            Thresholds::default()
+        );
     }
 
     // -----------------------------------------------------------------------

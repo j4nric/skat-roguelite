@@ -58,11 +58,12 @@ export class CoreRun {
   }
 
   /**
-   * Start a new run with a character and length from the meta state. Returns the run
-   * and the events of its start as JSON (feed them to the meta state).
+   * Start a new run with a character, length and stake (Einsatz-Leiter) from the
+   * meta state. Returns the run and the events of its start as JSON (feed them to
+   * the meta state). A stake above the unlocked one throws `StakeLocked`.
    */
-  static createWith(seed: string, character: Character, length: RunLength, meta: CoreMeta): { run: CoreRun; startEvents: string } {
-    const run = WasmRun.newRunWith(seed, character, length, meta.meta);
+  static createWith(seed: string, character: Character, length: RunLength, stake: number, meta: CoreMeta): { run: CoreRun; startEvents: string } {
+    const run = WasmRun.newRunWith(seed, character, length, stake, meta.meta);
     return { run: new CoreRun(run), startEvents: run.startEvents() };
   }
 

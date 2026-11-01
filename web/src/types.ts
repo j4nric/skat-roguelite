@@ -490,6 +490,10 @@ export interface RunView {
   sections: number;
   /** Ganzer or kurzer Abend (DESIGN 5.3). */
   length: RunLength;
+  /** Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game. */
+  stake: number;
+  /** Augen a suit game or Grand needs in this run before relics: 61 + stake. */
+  win_threshold: number;
   coins: number;
   relics: OwnedRelic[];
   relic_slots: number;
@@ -548,7 +552,7 @@ export type RunEvent =
   | 'Redealt'
   | 'RamschDealt'
   | 'EveningRulesEnded'
-  | { RunWon: { character: Character; length?: RunLength } }
+  | { RunWon: { character: Character; length?: RunLength; stake?: number } }
   | { BossAnnounced: { section: number; boss: string } }
   | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; passes: number; boss: string | null } }
   | { GameDealt: { number: number; forehand: Seat } }
@@ -576,7 +580,7 @@ export type RunEvent =
   | { EveningRuleAdded: string }
   | { RelicSwapped: { old: string; new: string } }
   | { NextGameDoubled: { factor: number } }
-  | { RunLost: { section: number; index: number; character: Character; length?: RunLength } };
+  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } };
 
 export type RunAction =
   | 'Pass'
@@ -633,6 +637,8 @@ export interface CharacterEntry {
   unlocked: boolean;
   /** The unlock that frees it, if it is locked at the start. */
   unlocked_by: string | null;
+  /** Highest stake unlocked per run length (Einsatz-Leiter); absent in an older core. */
+  max_stakes?: Partial<Record<RunLength, number>>;
 }
 
 export type Reward = { Relic: string } | { Character: Character } | { CardMod: string };

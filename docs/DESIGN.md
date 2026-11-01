@@ -206,6 +206,22 @@ cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3 --short
 
 Freischaltungen im kurzen Abend (`skat_sim --seed 42 --runs 300 --unlocks --short`, Heuristik-Bot, 20 Folgen mit frischem Meta-Zustand): alle erreichbar bis auf `fourth_evening`. `tour_won` (Nullspieler) kommt nach 24,9 Runs im Mittel (2 bis 61), im ganzen Abend nach rund 1700 (9.3). Siehe 17.
 
+### 5.4 Einsatz-Leiter (M7)
+
+Entschieden über das Cockpit (16, „Schwierigkeit“): Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Die Leiter ist endlos. Umgesetzt von Claude am 01.11.2026, die Einzelheiten im Rahmen der Autonomie-Regel:
+
+- **Regel**: Bei Einsatz n gewinnt der Alleinspieler ein Farbspiel oder einen Grand ab `61 + n` Augen. Schneider bleibt, wo er ist: Die Gegner sind mit höchstens 30 Augen Schneider (90 für den Alleinspieler), ein verlorenes Spiel ist für den Alleinspieler mit höchstens 30 Augen Schneider. Ab Einsatz 30 ist damit jedes gewonnene Farbspiel Schneider, ab Einsatz 60 reichen ohne zusätzliche Augen (Kartenmodifikationen wie „Fett“, Hausregeln wie „Kleinvieh“) auch alle 120 nicht mehr. Das ist gewollt: Die Leiter ist endlos, oben ist das Farbspiel kaum noch zu gewinnen.
+- **Null und Ramsch** kennen keine Augengrenze und bleiben gleich. Je höher der Einsatz, desto stärker wird Null im Vergleich, für den Nullspieler wie für den Alleinspieler (ADR 0012). Vorerst so gelassen; bei Bedarf misst es der Simulator (`--stake`).
+- **Relikte, die die Gewinnschwelle senken** („Ein Auge zudrücken“ 58, „Hufeisen“ 56), sprechen vom Spiel ohne Einsatz und senken die erhöhte Grenze um denselben Betrag: Gewinn ab `Wert + n` (Hufeisen bei Einsatz 2: ab 58). Es zählt weiter die niedrigste Schwelle. Bereiche für Schneider aus Sicht des Alleinspielers („Jungfrau“ 61 bis 70) bleiben, wie sie sind, und gelten nur für gewonnene Spiele; bei Einsatz 5 also 66 bis 70. Im Code: `Thresholds::stake`, `Thresholds::with_stake`, `Thresholds::lower_win`; `won_by_lowered_threshold` misst gegen `61 + n`.
+- **Freischaltung**: Der Meta-Zustand merkt sich den höchsten freigeschalteten Einsatz je Charakter und je Länge (`MetaState::stakes`, `max_stake`). Ein gewonnener Run mit Einsatz n schaltet n + 1 frei; ein Sieg weiter unten oder ein verlorener Run nimmt nichts zurück. Ganzer und kurzer Abend steigen getrennt, weil ein kurzer Abend leichter zu gewinnen ist (5.3); sonst wäre der ganze Abend über den kurzen hochzuziehen. Ältere Meta-Stände laden mit Einsatz 0 überall.
+- **Start**: Der Spieler wählt vor dem Run den Einsatz zwischen 0 und dem höchsten freigeschalteten, voreingestellt ist der höchste. `RunStart::stake`, `Run::stake` (ältere Spielstände: 0); `MetaState::run_start_staked` lehnt einen höheren ab (`MetaError::StakeLocked`). `RunWon` und `RunLost` tragen den Einsatz (ältere Ereignisse: 0).
+- **Sicht**: `RunView::stake` und `RunView::win_threshold` (`61 + n` vor Relikten), im Spiel `GameView::win_threshold` mit den Relikten. Die Wertvorschau rechnet den knappsten Sieg mit dieser Schwelle. In der Sicht des Meta-Zustands nennt jeder Charakter `max_stakes` je Länge.
+- **Web-App**: Auf dem Startbildschirm unter „Ganzer/Kurzer Abend“ eine Zeile mit Pfeilen, „Einsatz 3 · Gewinn ab 64 Augen“. Sie erscheint erst, wenn irgendein Charakter einen Run gewonnen hat; bis dahin ist alles Einsatz 0. Ein Wechsel von Charakter oder Länge stellt wieder den höchsten ein. Die Kopfzeile zeigt bei Einsatz > 0 „ab 64“, die Spielzeile bei Farbspiel und Grand die Schwelle des Spiels („ab 64“), sobald sie von 61 abweicht (auch durch Relikte). Die Regelkarte erklärt die Leiter.
+- **Seeds teilen**: Ein Link mit Einsatz endet auf `-einsatz<n>` (`#seed-4343-alleinspieler-kurz-einsatz2`), Links ohne sind Einsatz 0. Wer den Einsatz noch nicht erreicht hat, spielt den Seed mit seinem höchsten (wie ein gesperrter Charakter als Alleinspieler gespielt wird); das Angebot sagt es. Der Tages-Seed gilt für den gewählten Einsatz, die Liste der letzten Runs merkt ihn sich, „Nochmal“ spielt ihn wieder (höchstens mit dem freigeschalteten).
+- **Simulator**: `--stake N`, auch mit `--unlocks` (dann ohne Prüfung der Freischaltung).
+
+Nicht gemessen: Wie stark ein Auge die Siegquote senkt, ist noch nicht kalibriert (siehe 17).
+
 ---
 
 ## 6. Ein Spiel im Detail
@@ -761,7 +777,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 |---|---|
 | Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü. Skat selbst wird nicht von Grund auf gelehrt. |
 | Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). Umgesetzt: 5.3, Abschnitt 1 bis 3 mit dem Alten am Ende. |
-| Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). |
+| Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). Umgesetzt: 5.4, je Charakter und Länge getrennt. |
 | Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). |
 | Flüche | Nur angekündigt (z. B. bei Ereignissen) und mit Groschen bezahlt, nie aus Zufallsziehungen (M7). Umgesetzt: 7.2 und 13, Umgekipptes Bier und Der Falschspieler. |
 | Normale Gegner | Wechselnde Stammgäste mit Namen und Pixelgesicht, ohne eigene Regeln. Regeln bleiben den Bossen (M6). |
@@ -795,3 +811,4 @@ Entschieden am 01.11.2026 im Chat (Problemliste):
 - **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.
 - **Nullspieler über den kurzen Abend** (M7, 5.3): „Run gewinnen“ zählt auch im kurzen Abend, der Nullspieler ist damit nach rund 25 statt rund 1700 Runs (Heuristik-Bot) frei. Entschieden ist „Freischaltungen in beiden“; soll der Nullspieler ein Ziel des ganzen Abends bleiben, bekäme die Bedingung `WinRun` eine Länge (Daten in `unlocks.ron`). Ebenso „Abschnitt 4 erreichen“: nur im ganzen Abend möglich.
 - **Fluchbeträge** (M7, 7.2): alle Flüche zahlen 3 Groschen, die gewählte Karte kostet bei Bier und Falschspieler 4. Platzhalter für `balance`. Die Option „Zufällige Karte“ zeigt in der Web-App „gratis“, die 3 Groschen stehen nur im Text des Fluchs.
+- **Einsatz-Leiter messen** (M7, 5.4): Die Wirkung je Auge ist nicht kalibriert (`skat_sim --runs 3000 --bot pimc:12:3 --stake N` für einige N). Offen auch, ob Null bei hohem Einsatz zu stark wird. Die Texte von „Ein Auge zudrücken“ und „Hufeisen“ sagen seit der Einsatz-Leiter „drei/fünf Augen weniger“.
