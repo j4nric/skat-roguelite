@@ -1,0 +1,48 @@
+// Kartenmodifikationen (gezinkte Karten). Sie hängen an einer Karte und
+// gelten, egal wer sie spielt (ADR 0005). Preise sind Platzhalter.
+[
+    (
+        id: "fat",
+        name: "Fett",
+        text: "Diese Karte zählt 4 Augen mehr.",
+        rarity: Common,
+        price: 3,
+        passive: [AddCardPoints(4)],
+    ),
+    (
+        id: "marked",
+        name: "Gezinkt",
+        text: "Diese Karte zählt eine Stufe höher.",
+        rarity: Common,
+        price: 3,
+        passive: [RankBonus(1)],
+    ),
+    (
+        id: "stamp",
+        name: "Stempel",
+        text: "Ist die Farbe dieser Karte Trumpf, steigt der Grundwert um 3.",
+        rarity: Uncommon,
+        price: 4,
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(3)]),
+        ],
+    ),
+    (
+        id: "last_trick",
+        name: "Spitze",
+        text: "Gewinnt diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr. Egal, wer sie spielt.",
+        rarity: Uncommon,
+        price: 4,
+        hooks: [
+            OnScore(when: ThisCardWinsLastTrick, then: [AddLevels(1)]),
+        ],
+    ),
+    (
+        id: "transparent",
+        name: "Durchsichtig",
+        text: "Du siehst, wer diese Karte hält.",
+        rarity: Common,
+        price: 2,
+        passive: [RevealHolder],
+    ),
+]

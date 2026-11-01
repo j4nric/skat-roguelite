@@ -1,10 +1,17 @@
-//! Headless simulator. Plays many games with the heuristic AI on all three
-//! seats and prints a baseline statistic.
+//! Headless simulator.
 //!
-//! Usage: `cargo run --release -p skat_sim -- --seed 42 --games 10000 [--json]`
+//! Games mode (milestone M1): plays many games with the heuristic AI on all
+//! three seats and prints a baseline statistic.
+//! `cargo run --release -p skat_sim -- --seed 42 --games 10000 [--json]`
 //!
-//! Everything but the runtime lines is a pure function of seed and game
-//! count, so two runs with the same arguments print identical statistics.
+//! Runs mode (milestone M2): plays complete runs with the simple run policy
+//! ([`skat_core::run::bot::RunBot`]) and prints how far runs get.
+//! `cargo run --release -p skat_sim -- --seed 42 --runs 1000`
+//!
+//! Everything but the runtime lines is a pure function of the arguments,
+//! so two runs with the same arguments print identical statistics.
+
+mod runs;
 
 use std::fmt::Write as _;
 use std::process::ExitCode;
@@ -19,6 +26,7 @@ use skat_core::rules::{GameType, Matadors, RiskLevel};
 struct Args {
     seed: u64,
     games: u32,
+    runs: Option<u32>,
     json: bool,
 }
 
@@ -26,18 +34,21 @@ fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: 42,
         games: 1000,
+        runs: None,
         json: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
         match flag.as_str() {
             "--json" => args.json = true,
-            "--seed" | "--games" => {
+            "--seed" | "--games" | "--runs" => {
                 let value = it
                     .next()
                     .ok_or_else(|| format!("missing value for {flag}"))?;
                 if flag == "--seed" {
                     args.seed = value.parse().map_err(|e| format!("--seed: {e}"))?;
+                } else if flag == "--runs" {
+                    args.runs = Some(value.parse().map_err(|e| format!("--runs: {e}"))?);
                 } else {
                     args.games = value.parse().map_err(|e| format!("--games: {e}"))?;
                 }
@@ -332,10 +343,13 @@ fn main() -> ExitCode {
         Ok(a) => a,
         Err(e) => {
             eprintln!("error: {e}");
-            eprintln!("usage: sim [--seed N] [--games N] [--json]");
+            eprintln!("usage: sim [--seed N] [--games N | --runs N] [--json]");
             return ExitCode::FAILURE;
         }
     };
+    if let Some(runs) = args.runs {
+        return runs::main(args.seed, runs);
+    }
     let start = Instant::now();
     let stats = match run(args.seed, args.games) {
         Ok(s) => s,
