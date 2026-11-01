@@ -15,6 +15,12 @@ export interface DealtCard {
   card_points: number;
   rank_bonus: number;
   revealed: boolean;
+  /** "Unsichtbar": never takes a trick. */
+  never_wins?: boolean;
+  /** "Unter ehrenhalber": a trump below the Schellen-Unter in suit games. */
+  honorary_jack?: boolean;
+  /** "Ramponiert": must not be discarded. */
+  no_discard?: boolean;
 }
 
 export interface CardView extends DealtCard {
@@ -112,6 +118,15 @@ export interface RelicInfo {
   price: number;
 }
 
+export interface CardModInfo {
+  id: string;
+  name: string;
+  text: string;
+  rarity: Rarity;
+  /** A curse (Fluch). */
+  curse: boolean;
+}
+
 export interface ConsumableInfo {
   id: string;
   name: string;
@@ -202,13 +217,14 @@ export interface DeclareOptions {
   hand_required: boolean;
 }
 
-/**
- * A card the player sees in another seat: "Durchsichtig" (the card's
- * `revealed` flag is set) or shown by "Der Kiebitz" (flag not set).
- */
+/** Why the player knows where a card is: a modification (by id) or "Der Kiebitz". */
+export type RevealSource = { CardMod: string } | 'Kibitz';
+
+/** A card the player sees in another seat, and why. */
 export interface RevealedCard {
   card: CardView;
   holder: Seat | null;
+  source: RevealSource;
 }
 
 /** The count of "Der Zähler". */
@@ -216,6 +232,8 @@ export interface CountView {
   declarer: number;
   defenders: number;
   unseen: number;
+  /** Augen per seat (index = seat): who has the most in a Ramsch. */
+  seats: [number, number, number];
 }
 
 export interface GameView {
@@ -243,8 +261,12 @@ export interface GameView {
   /** The boss rule of this game (for "Der Alte" the rule laid on this game). */
   boss_rule: BossInfo | null;
   count: CountView | null;
-  /** "Die Oma" lets the player take a card from the skat now. */
+  /** "Die Oma" (or "Der Opa") lets the player take a card from the skat now. */
   can_take_from_skat: boolean;
+  /** Skat cards a skat swap may take now; the first is taken by default. */
+  skat_swap_cards: CardView[];
+  /** Tricks per seat so far (index = seat). */
+  seat_tricks: [number, number, number];
 }
 
 export type Source =
@@ -308,6 +330,14 @@ export interface ScoreBreakdown {
   multiplier: number;
   value: number;
   score: number;
+  /** Augen and tricks per seat, set by the run (who has the most in a Ramsch). */
+  seats?: SeatTotals | null;
+}
+
+/** Augen and tricks per seat (index = seat). */
+export interface SeatTotals {
+  card_points: [number, number, number];
+  tricks: [number, number, number];
 }
 
 export type ScoreTerm =
@@ -359,7 +389,7 @@ export type EncounterChoice =
   | { TakeRule: string }
   | 'MarkRandomCard'
   | 'MarkChosenCard'
-  | { SwapRelic: { index: number; relic: string } }
+  | { SwapRelic: { index: number; relic: string; new?: string | null } }
   | { DoubleNextGame: number }
   | 'Leave';
 
@@ -368,6 +398,12 @@ export interface EncounterOptionView {
   choice: EncounterChoice;
   cost: number;
   relic: RelicInfo | null;
+  /** The relic received by a swap, known before the choice. */
+  new_relic: RelicInfo | null;
+  /** The modification a card gets, known before the choice. */
+  card_mod: CardModInfo | null;
+  /** What the option gives is only drawn when it is chosen. */
+  random_gain: boolean;
   can_choose: boolean;
   needs_target: boolean;
   targets: number[];
@@ -458,6 +494,7 @@ export type RunEvent =
   | { FlagSet: string }
   | { FlagCleared: string }
   | { CounterRaised: { counter: string; value: number } }
+  | { CoinsGained: { source: Source; amount: number; coins: number } }
   | { GameScored: { breakdown: ScoreBreakdown; series_score: number } }
   | { SeriesWon: { section: number; index: number; payout: Payout; coins: number; boss: string | null; passes_used: number; games_left: number } }
   | { ShopOpened: unknown }
@@ -491,7 +528,7 @@ export type RunAction =
   | { BuyConsumable: number }
   | { SellRelic: number }
   | { SellConsumable: number }
-  | { TakeFromSkat: { give: number } }
+  | { TakeFromSkat: { give: number; take: number | null } }
   | { ChooseEncounter: { option: number; target: number | null } };
 
 export interface Step {
@@ -504,9 +541,15 @@ export interface CatalogEntry {
   text: string;
 }
 
+/** A card modification in the catalog, with rarity and curse flag. */
+export interface CardModEntry extends CatalogEntry {
+  rarity: Rarity;
+  curse: boolean;
+}
+
 export interface Catalog {
   relics: Record<string, CatalogEntry>;
-  card_mods: Record<string, CatalogEntry>;
+  card_mods: Record<string, CardModEntry>;
   bosses: Record<string, CatalogEntry>;
   consumables: Record<string, CatalogEntry>;
   characters: Record<string, CatalogEntry>;
@@ -527,7 +570,19 @@ export interface CharacterEntry {
   unlocked_by: string | null;
 }
 
-export type Reward = { Relic: string } | { Character: Character };
+export type Reward = { Relic: string } | { Character: Character } | { CardMod: string };
+
+export type RewardKind = 'HouseRule' | 'Regular' | 'CardMod' | 'Character';
+
+/** A reward with kind, name, text and rarity, from the core. */
+export interface RewardInfo {
+  reward: Reward;
+  kind: RewardKind;
+  name: string;
+  text: string;
+  /** None for a character. */
+  rarity: Rarity | null;
+}
 
 export interface UnlockEntry {
   id: string;
@@ -535,6 +590,8 @@ export interface UnlockEntry {
   text: string;
   unlocked: boolean;
   rewards: Reward[];
+  /** The rewards with kind, name and rarity, in the same order. */
+  reward_info: RewardInfo[];
 }
 
 export interface CharacterStats {
@@ -557,6 +614,8 @@ export interface MetaView {
   characters: CharacterEntry[];
   unlocks: UnlockEntry[];
   locked_relics: string[];
+  /** Card modifications still locked (not drawn at random until unlocked). */
+  locked_card_mods: string[];
   stats: MetaStats;
 }
 
