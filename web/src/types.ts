@@ -34,7 +34,17 @@ export interface CardView extends DealtCard {
   discardable: boolean;
   /** "Kreide": the printed suit of a card repainted for this game; `kind` is the suit it has now. */
   chalked?: Suit | null;
+  /**
+   * Once the game is declared: whether each conditional modification on
+   * this card works in this game (core `CardModStatus`). Empty before the
+   * declaration; modifications without a condition are left out. Optional
+   * for views from an older core.
+   */
+  mod_status?: Partial<Record<string, CardModStatus>>;
 }
+
+/** Whether a card modification works in the game in progress: yes, no, or it depends on how the game goes. */
+export type CardModStatus = 'Active' | 'Inactive' | 'Open';
 
 export interface DeckCard {
   id: number;

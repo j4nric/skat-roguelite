@@ -20,9 +20,9 @@ use super::{
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardModId, Character, ConsumableAction, ConsumableCategory, ConsumableId, Content,
-    EncounterId, Factor, NextGameEffect, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
-    ScoreStep,
+    BossId, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
+    ConsumableId, Content, EncounterId, Factor, HookContext, NextGameEffect, Rarity, RelicId,
+    RelicKind, RunLength, ScoreBreakdown, ScoreStep, card_mod_status,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
@@ -409,6 +409,11 @@ pub struct CardView {
     /// ("Ramponiert") only when fewer than two other cards are left
     /// ([`crate::rules::discardable`]).
     pub discardable: bool,
+    /// Once the game is declared: whether each conditional modification
+    /// on this card works in this game ([`card_mod_status`]). Empty before
+    /// the declaration; modifications without a condition ("Fett") are
+    /// left out.
+    pub mod_status: BTreeMap<CardModId, CardModStatus>,
 }
 
 /// A card on the table and who played it.
@@ -695,25 +700,55 @@ impl Run {
         probe.dispatch(content, action, &mut Vec::new()).is_ok()
     }
 
-    fn card_view(&self, card: DealtCard) -> CardView {
+    fn card_view(&self, content: &Content, card: DealtCard) -> CardView {
         let chalked = self.game.as_ref().and_then(|a| {
             a.chalked
                 .iter()
                 .find(|(id, _)| *id == card.id)
                 .map(|&(_, suit)| suit)
         });
+        let mods: Vec<CardModId> = self
+            .deck
+            .get(card.id)
+            .map(|d| d.mods.clone())
+            .unwrap_or_default();
+        let mod_status = self.mod_status(content, card, &mods);
         CardView {
             chalked,
             card,
-            mods: self
-                .deck
-                .get(card.id)
-                .map(|d| d.mods.clone())
-                .unwrap_or_default(),
+            mods,
             legal: false,
             from_skat: false,
             discardable: false,
+            mod_status,
         }
+    }
+
+    /// Whether the conditional modifications on `card` work in the game in
+    /// progress, from what the player knows ([`card_mod_status`]).
+    fn mod_status(
+        &self,
+        content: &Content,
+        card: DealtCard,
+        mods: &[CardModId],
+    ) -> BTreeMap<CardModId, CardModStatus> {
+        let Some(active) = &self.game else {
+            return BTreeMap::new();
+        };
+        let ctx = HookContext {
+            flags: &self.flags,
+            counters: &self.counters,
+            game: Some(&active.game),
+            played: None,
+            result: None,
+            games_left: self.series.games_left(),
+        };
+        mods.iter()
+            .filter_map(|id| {
+                let def = content.card_mod(id)?;
+                card_mod_status(def, &ctx, card).map(|status| (id.clone(), status))
+            })
+            .collect()
     }
 
     fn relic_info(content: &Content, id: &RelicId) -> RelicInfo {
@@ -1258,7 +1293,7 @@ impl Run {
                 legal: legal.contains(&card),
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 discardable: discarding && discardable(held, card),
-                ..self.card_view(card)
+                ..self.card_view(content, card)
             })
             .collect();
         let trick = game
@@ -1267,7 +1302,7 @@ impl Run {
             .enumerate()
             .map(|(i, &card)| PlayedCard {
                 seat: seat_at(game.trick_lead(), i),
-                card: self.card_view(card),
+                card: self.card_view(content, card),
             })
             .collect();
         let last_trick = game.tricks().last().map(|t| TrickView {
@@ -1277,7 +1312,7 @@ impl Run {
                 .enumerate()
                 .map(|(i, &card)| PlayedCard {
                     seat: t.seat_of(i),
-                    card: self.card_view(card),
+                    card: self.card_view(content, card),
                 })
                 .collect(),
             winner: t.winner,
@@ -1288,20 +1323,20 @@ impl Run {
             .filter(|t| t.winner.is_declarer())
             .count();
         let known_skat = (game.skat_picked_up() && phase != TablePhase::Discarding)
-            .then(|| skat.iter().map(|&c| self.card_view(c)).collect());
+            .then(|| skat.iter().map(|&c| self.card_view(content, c)).collect());
         let mut revealed: Vec<RevealedCard> = self
             .revealed_holders()
             .into_iter()
             .map(|(card, holder)| RevealedCard {
                 source: RevealSource::CardMod(self.reveal_mod(content, card.id)),
-                card: self.card_view(card),
+                card: self.card_view(content, card),
                 holder,
             })
             .collect();
         for &(card, _) in &active.peeked {
             if !revealed.iter().any(|r| r.card.card.id == card.id) {
                 revealed.push(RevealedCard {
-                    card: self.card_view(card),
+                    card: self.card_view(content, card),
                     holder: game.holder_of(card),
                     source: RevealSource::Kibitz,
                 });
@@ -1310,7 +1345,7 @@ impl Run {
         let skat_swap_cards: Vec<CardView> = self
             .skat_swap_cards()
             .into_iter()
-            .map(|c| self.card_view(c))
+            .map(|c| self.card_view(content, c))
             .collect();
         let can_take_from_skat = !skat_swap_cards.is_empty()
             && game.hand(Seat::DECLARER).iter().any(|c| {
@@ -1361,7 +1396,7 @@ impl Run {
             can_take_from_skat,
             skat_swap_cards,
             skat_peek: (active.skat_peeked && !game.skat_picked_up())
-                .then(|| skat.iter().map(|&c| self.card_view(c)).collect()),
+                .then(|| skat.iter().map(|&c| self.card_view(content, c)).collect()),
             seat_tricks: game.seat_tricks(),
             value_preview: self.value_preview(content),
         })

@@ -5,8 +5,8 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, cardName, contentName, contentText, isCurse, relicCounters, t } from '../i18n';
-import type { CardKind, CardView, ConsumableInfo, DeckCard, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
+import { de, cardName, contentName, contentText, gameName, isCurse, relicCounters, t } from '../i18n';
+import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
 import { cardSvg } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -61,6 +61,14 @@ function lastGameStatus(lines: ScoreLine[]): InfoStatus[] {
   return lines.map((l) => ({ text: t(de.info.lastGame, { effect: changeText(l.lever, l.change) }), on: true }));
 }
 
+/** "Trumpf ist Rot: wirkt": the core's status of a modification in the declared game. */
+function modStatusLine(status: CardModStatus | undefined, declaration: Declaration | null | undefined): InfoStatus[] {
+  if (!status || !declaration) return [];
+  const g = declaration.game;
+  const game = typeof g === 'object' ? t(de.info.modGameSuit, { suit: de.suits[g.Suit] }) : gameName(g);
+  return [{ text: t(de.info.modStatus[status], { game }), on: status === 'Active' ? true : status === 'Inactive' ? false : null }];
+}
+
 /** A card of the game or the deck by id, as complete as the view has it. */
 function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mods: string[]; card: CardView | null; holder: Seat | null } | null {
   const game = view.game;
@@ -100,7 +108,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
       tag: curse ? de.info.kinds.curse : de.info.kinds.cardMod,
       curse,
       text: contentText('card_mods', m) || de.info.unknownMod,
-      status: lastGameStatus(lines),
+      status: [...modStatusLine(card?.mod_status?.[m], view.game?.declaration), ...lastGameStatus(lines)],
     };
   });
   return {

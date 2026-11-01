@@ -463,7 +463,7 @@ fn the_bot_plays_short_evenings_to_the_end() {
 }
 
 #[test]
-fn a_short_evening_counts_for_unlocks_and_its_own_statistics() {
+fn a_short_evening_counts_for_unlocks_but_not_run_wins_and_its_own_statistics() {
     let content = content();
     let mut meta = MetaState::new();
     let start = meta
@@ -492,8 +492,10 @@ fn a_short_evening_counts_for_unlocks_and_its_own_statistics() {
         },
     ];
     let earned = meta.observe(&content, &events);
-    // A won short evening unlocks like a won run, reaching section 3 too.
-    assert!(earned.contains(&UnlockId::new("tour_won")), "{earned:?}");
+    // A won short evening counts for every unlock except winning a run
+    // (DESIGN 9.3): reaching section 3 does, `tour_won` does not.
+    assert!(!earned.contains(&UnlockId::new("tour_won")), "{earned:?}");
+    assert!(!meta.character_unlocked(&content, Character::NullPlayer));
     assert!(
         earned.contains(&UnlockId::new("third_evening")),
         "{earned:?}"
