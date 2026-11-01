@@ -34,7 +34,9 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use skat_core::content::{Character, Content, Rarity, RunLength, UnlockId};
+use skat_core::content::{
+    Change, Character, Content, Effect, Hook, Lever, Rarity, RunLength, UnlockId,
+};
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
 use skat_core::run::player::{PlayerEvent, player_events};
@@ -128,6 +130,67 @@ struct CardModEntry<'a> {
     rarity: Rarity,
     /// A curse (Fluch, DESIGN 7.2).
     curse: bool,
+    /// The number printed on the card face, if the modification has one.
+    figure: Option<Figure>,
+}
+
+/// Name and text of a relic, plus the run counters it reads or raises, so
+/// the web app can show their values next to it.
+#[derive(Serialize)]
+struct RelicEntry<'a> {
+    name: &'a str,
+    text: &'a str,
+    counters: Vec<&'a str>,
+}
+
+/// The headline number of a card modification as written in the content:
+/// the lever and change of its first effect that has a number (Augen,
+/// Grundwert, Gewinnstufen, Spielwert, Gewinnschwelle, Schneider). Copied
+/// from the content data, nothing is evaluated.
+#[derive(Serialize)]
+struct Figure {
+    lever: Lever,
+    change: Change,
+}
+
+/// The figure of one effect, if it carries a number.
+fn effect_figure(effect: &Effect) -> Option<Figure> {
+    let (lever, change) = match effect {
+        Effect::AddCardPoints(n) => (Lever::CardPoints, Change::Add(i64::from(*n))),
+        Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
+        Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
+        Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
+        Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
+        Effect::WinThreshold(n) => (Lever::WinThreshold, Change::Set(i64::from(*n))),
+        Effect::SchneiderFromDeclarerPoints { min, .. } => {
+            (Lever::Schneider, Change::Set(i64::from(*min)))
+        }
+        _ => return None,
+    };
+    Some(Figure { lever, change })
+}
+
+/// The first figure among the passive effects, then the hooks.
+fn first_figure(passive: &[Effect], hooks: &[Hook]) -> Option<Figure> {
+    passive
+        .iter()
+        .chain(hooks.iter().flat_map(Hook::then))
+        .find_map(effect_figure)
+}
+
+/// The run counters named by a relic's effects, in order, without repeats.
+fn relic_counters<'a>(passive: &'a [Effect], hooks: &'a [Hook]) -> Vec<&'a str> {
+    let mut out: Vec<&'a str> = Vec::new();
+    for effect in passive.iter().chain(hooks.iter().flat_map(Hook::then)) {
+        let name = match effect {
+            Effect::AddBaseValueFromCounter(c) | Effect::IncrementCounter(c) => c.as_str(),
+            _ => continue,
+        };
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
 }
 
 /// Names and texts of all content by id, so the web app can label every
@@ -135,7 +198,7 @@ struct CardModEntry<'a> {
 /// modifications also carry their rarity and whether they are a curse.
 #[derive(Serialize)]
 struct Catalog<'a> {
-    relics: BTreeMap<&'a str, Entry<'a>>,
+    relics: BTreeMap<&'a str, RelicEntry<'a>>,
     card_mods: BTreeMap<&'a str, CardModEntry<'a>>,
     bosses: BTreeMap<&'a str, Entry<'a>>,
     consumables: BTreeMap<&'a str, Entry<'a>>,
@@ -173,9 +236,10 @@ pub fn catalog_json() -> Result<String, String> {
             .map(|d| {
                 (
                     d.id.as_str(),
-                    Entry {
+                    RelicEntry {
                         name: &d.name,
                         text: &d.text,
+                        counters: relic_counters(&d.passive, &d.hooks),
                     },
                 )
             })
@@ -191,6 +255,7 @@ pub fn catalog_json() -> Result<String, String> {
                         text: &d.text,
                         rarity: d.rarity,
                         curse: d.curse,
+                        figure: first_figure(&d.passive, &d.hooks),
                     },
                 )
             })
@@ -843,6 +908,29 @@ mod tests {
         assert_eq!(catalog["card_mods"]["fat"]["curse"], false);
         assert_eq!(catalog["card_mods"]["battered"]["curse"], true);
         assert_eq!(catalog["card_mods"]["honorary_jack"]["rarity"], "Rare");
+        // The number on the card face, straight from the content.
+        assert_eq!(
+            catalog["card_mods"]["fat"]["figure"],
+            serde_json::json!({"lever": "CardPoints", "change": {"Add": 4}})
+        );
+        assert_eq!(
+            catalog["card_mods"]["crown"]["figure"],
+            serde_json::json!({"lever": "BaseValue", "change": {"Multiply": 2}})
+        );
+        assert_eq!(
+            catalog["card_mods"]["black_cat"]["figure"],
+            serde_json::json!({"lever": "BaseValue", "change": {"Add": -3}})
+        );
+        assert!(catalog["card_mods"]["marked"]["figure"].is_null());
+        // Counters a relic reads or raises.
+        assert_eq!(
+            catalog["relics"]["tally_stick"]["counters"],
+            serde_json::json!(["tally"])
+        );
+        assert_eq!(
+            catalog["relics"]["old_lady"]["counters"],
+            serde_json::json!([])
+        );
         assert!(catalog["bosses"]["grandma"]["name"].is_string());
         assert!(catalog["consumables"]["beer"]["name"].is_string());
     }

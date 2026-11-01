@@ -4715,3 +4715,428 @@ button.card {
   height: 12px;
   clip-path: polygon(0 100%, 0 60%, 33% 60%, 33% 0, 67% 0, 67% 60%, 100% 60%, 100% 100%);
 }
+
+/* ------------------------------------------------ card modifications */
+
+/* The Augen frame (Fett, Goldrand, Bleigewicht) lies outside the card,
+   around its dark edge, so it never covers the index or the numbers. */
+:has(> .card-svg[data-frame]) {
+  outline: 3px solid;
+  outline-offset: 0;
+}
+
+.mini-card:has(> .card-svg[data-frame]),
+.deck-card:has(> .card-svg[data-frame]),
+.icon-card:has(> .card-svg[data-frame]) {
+  outline-width: 2px;
+}
+
+:has(> .card-svg[data-frame='fat']) {
+  outline-color: #d98e0b;
+}
+
+:has(> .card-svg[data-frame='gold_rim']) {
+  outline-color: #b8901c;
+}
+
+:has(> .card-svg[data-frame='lead_weight']) {
+  outline-color: #4a4f57;
+}
+
+.card:focus-visible:has(> .card-svg[data-frame]) {
+  outline-color: var(--cool);
+}
+
+/* ---------------------------------------------------------- info card */
+
+/* Everything with an info card: no text selection or callout on a long
+   touch, a focus ring for the keyboard. */
+[data-info] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-info]:focus-visible {
+  outline: 2px solid var(--cool);
+  outline-offset: 2px;
+}
+
+/* The ring that fills while a finger rests on a thing (400 ms). Above the
+   finger, so it stays visible; only after a short moment, so a quick tap
+   shows nothing. */
+.press-ring {
+  position: fixed;
+  z-index: 50;
+  width: 40px;
+  height: 40px;
+  margin: -68px 0 0 -20px;
+  pointer-events: none;
+  opacity: 0;
+  animation: press-show 1ms linear 110ms forwards;
+}
+
+.press-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.press-ring circle {
+  fill: rgba(8, 9, 11, 0.6);
+  stroke: var(--accent);
+  stroke-width: 5;
+  stroke-dasharray: 94.25;
+  stroke-dashoffset: 94.25;
+  animation: press-fill var(--press-ms, 400ms) linear forwards;
+}
+
+@keyframes press-show {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes press-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.info-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+}
+
+.info-layer:empty {
+  display: none;
+}
+
+/* As a bottom sheet (touch, keyboard, a tap on a relic). */
+.info-layer.is-sheet {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: calc(8px + var(--safe-top)) calc(8px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(8px + var(--safe-left));
+  pointer-events: auto;
+}
+
+.info-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 9, 11, 0.6);
+}
+
+.info-card {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  max-height: min(80dvh, 640px);
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 14px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 6px 0 var(--line), 0 0 0 1px #3a4148 inset;
+  color: var(--text);
+  animation: sheet-in 180ms steps(4);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.info-layer.is-static .info-card {
+  animation: none;
+}
+
+/* As a popover next to the thing the mouse rests on. */
+.info-card.is-popover {
+  position: fixed;
+  width: min(320px, calc(100vw - 16px));
+  max-height: 60vh;
+  padding: 10px 12px;
+  pointer-events: none;
+  animation: none;
+}
+
+.info-grab {
+  flex: none;
+  align-self: center;
+  width: 64px;
+  height: 18px;
+  background: linear-gradient(#4a525a, #4a525a) center / 44px 6px no-repeat;
+  touch-action: none;
+  cursor: grab;
+}
+
+.info-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  touch-action: none;
+}
+
+.info-art {
+  flex: none;
+  line-height: 0;
+}
+
+.info-card-face {
+  width: 64px;
+}
+
+.is-popover .info-card-face {
+  width: 48px;
+}
+
+.info-emblem {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border: var(--edge) solid var(--line);
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.info-emblem .coaster-emblem {
+  width: 36px;
+  height: 36px;
+}
+
+.info-good img,
+.info-good svg {
+  width: 56px;
+  height: 56px;
+}
+
+.info-title {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-kind {
+  font-size: var(--fs-s);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-light);
+}
+
+.info-title h2 {
+  font-size: var(--fs-h);
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.info-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-m);
+  color: var(--muted);
+}
+
+.info-sec {
+  padding-top: 8px;
+  border-top: 2px dashed #3a4148;
+}
+
+.info-sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.info-sec-head b {
+  font-size: var(--fs-l);
+  font-weight: 400;
+}
+
+.info-tag {
+  padding: 0 4px;
+  border: 2px solid var(--cool-dark);
+  font-size: var(--fs-xs);
+  color: var(--cool);
+}
+
+.info-tag.is-curse {
+  border-color: var(--rot);
+  color: var(--rot-light);
+}
+
+.info-text {
+  font-size: var(--fs-body);
+  line-height: 1;
+}
+
+/* A glossary term: tap for its line. The hit area is taller than the word. */
+.kw-wrap {
+  white-space: nowrap;
+}
+
+.kw {
+  display: inline;
+  margin: -8px 0;
+  padding: 8px 1px;
+  border: 0;
+  background: none;
+  color: var(--accent-light);
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.kw.is-open {
+  background: var(--accent-dark);
+  background-clip: content-box;
+  color: var(--text);
+}
+
+.kw-def {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 4px solid var(--accent);
+  background: var(--panel2);
+  font-size: var(--fs-m);
+  line-height: 1;
+}
+
+.kw-def b {
+  font-weight: 400;
+  color: var(--accent-light);
+}
+
+.info-states {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-m);
+  color: var(--muted);
+}
+
+.info-status::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: #5b636b;
+  vertical-align: 1px;
+}
+
+.info-status.is-on {
+  color: var(--cool);
+}
+
+.info-status.is-on::before {
+  background: var(--cool);
+}
+
+.info-status.is-off::before {
+  background: var(--rot);
+}
+
+.info-card .odds {
+  font-size: var(--fs-m);
+  color: var(--muted);
+}
+
+.info-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.info-actions .btn {
+  flex: 1;
+}
+
+/* ---------------------------------------------------- trigger feedback */
+
+/* A relic or a card modification fired: it wiggles, a line says what it did. */
+.trigger-layer {
+  position: fixed;
+  top: 30%;
+  left: 0;
+  right: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.trigger-line {
+  max-width: min(92vw, 420px);
+  padding: 3px 10px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--cool-dark);
+  color: var(--text);
+  font-size: var(--fs-m);
+  animation: trigger-in 160ms steps(3);
+}
+
+.trigger-line.is-more {
+  color: var(--muted);
+}
+
+@keyframes trigger-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.is-firing {
+  animation: fire-wiggle var(--fire-ms, 520ms) steps(8);
+}
+
+@keyframes fire-wiggle {
+  15% {
+    transform: rotate(-7deg) scale(1.1);
+  }
+  35% {
+    transform: rotate(6deg) scale(1.1);
+  }
+  55% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger-line,
+  .info-card {
+    animation: none;
+  }
+
+  .is-firing {
+    animation: none;
+    outline: 3px solid var(--accent);
+  }
+
+  .press-ring circle {
+    animation-timing-function: steps(4);
+  }
+}

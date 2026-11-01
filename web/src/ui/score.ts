@@ -62,7 +62,8 @@ function levelText(n: number): string {
   return t(de.score.minusLevels, { n: signed(n) });
 }
 
-function changeText(lever: Lever, change: Change): string {
+/** What a score line does, e.g. "+1 Stufe", "Grundwert ×2". */
+export function changeText(lever: Lever, change: Change): string {
   if ('Multiply' in change) {
     return lever === 'BaseValue'
       ? t(de.score.baseMul, { n: change.Multiply })

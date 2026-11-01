@@ -635,14 +635,26 @@ export interface CatalogEntry {
   text: string;
 }
 
-/** A card modification in the catalog, with rarity and curse flag. */
+/** The number a card modification prints on its card (from the content, copied by skat_wasm). */
+export interface ModFigure {
+  lever: Lever;
+  change: Change;
+}
+
+/** A card modification in the catalog, with rarity, curse flag and its printed number. */
 export interface CardModEntry extends CatalogEntry {
   rarity: Rarity;
   curse: boolean;
+  figure?: ModFigure | null;
+}
+
+/** A relic in the catalog, with the run counters it reads or raises. */
+export interface RelicEntry extends CatalogEntry {
+  counters?: string[];
 }
 
 export interface Catalog {
-  relics: Record<string, CatalogEntry>;
+  relics: Record<string, RelicEntry>;
   card_mods: Record<string, CardModEntry>;
   bosses: Record<string, CatalogEntry>;
   consumables: Record<string, CatalogEntry>;

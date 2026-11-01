@@ -107,18 +107,27 @@ export function pixels(rows: string[], x: number, y: number, u: number, fill: st
 
 // --------------------------------------------------------------- the faces
 
-/** Corner index: the rank, big, top left; the small glyph top right. */
+/** Centre line of the corner index. */
+const INDEX_X = 23;
+
+/**
+ * Corner index: the rank, big, centred above the small glyph, both in the
+ * left column, so the top middle and the top right stay free for the
+ * marks of card modifications (./cards.ts).
+ */
 function index(suit: Suit, rank: Rank): string {
-  // VT323 is narrow: the 10 fits at the same size as a single letter.
-  return `<text x="9" y="42" font-family="${PIXEL_FONT}" font-size="54" fill="${INDEX_INK[suit]}" class="idx">${de.rankShort[rank]}</text>
-${glyph(suit, 82, 11, 28)}`;
+  // VT323 is narrow (0.4 em per letter): the 10 fits at the same size as a single letter.
+  return `<text x="${INDEX_X}" y="40" text-anchor="middle" font-family="${PIXEL_FONT}" font-size="50" fill="${INDEX_INK[suit]}" class="idx">${de.rankShort[rank]}</text>
+${glyph(suit, INDEX_X - 12, 46, 24)}`;
 }
 
-/** A pixel frame around the middle of a court card. */
+/**
+ * A pixel frame around the middle of a court card: below the corner index,
+ * above the bottom strip where card modifications print their number.
+ */
 function courtFrame(suit: Suit): string {
   const ink = PALETTE[suit].ink;
-  return `<path d="M16 56h88v4h-88zM16 164h88v4h-88zM16 60h4v104h-4zM100 60h4v104h-4z" fill="${ink}"/>
-<path d="M24 64h72v2h-72zM24 158h72v2h-72z" fill="${ink}" opacity=".45"/>`;
+  return `<path d="M16 76h88v4h-88zM16 146h88v4h-88zM16 80h4v66h-4zM100 80h4v66h-4z" fill="${ink}"/>`;
 }
 
 /** A small pixel crown for the König. */
@@ -132,19 +141,19 @@ function courtFace(suit: Suit, rank: 'K' | 'Q' | 'J'): string {
   const ink = PALETTE[suit].ink;
   const frame = courtFrame(suit);
   if (rank === 'K') {
-    return `${frame}${pixels(CROWN, 39, 72, 6, '#c9962a')}${glyph(suit, 36, 104, 48)}`;
+    return `${frame}${pixels(CROWN, 43, 84, 5, '#c9962a')}${glyph(suit, 40, 104, 40)}`;
   }
   if (rank === 'Q') {
     // Ober: the glyph high in the frame, an arm holding it up.
-    return `${frame}${glyph(suit, 36, 70, 48)}${pixels(ARM_UP, 42, 128, 6, ink)}`;
+    return `${frame}${glyph(suit, 40, 84, 40)}${pixels(ARM_UP, 45, 126, 5, ink)}`;
   }
   // Unter: the glyph low in the frame, a hand resting on it.
-  return `${frame}${pixels(ARM_DOWN, 42, 78, 6, ink)}${glyph(suit, 36, 104, 48)}`;
+  return `${frame}${pixels(ARM_DOWN, 45, 85, 5, ink)}${glyph(suit, 40, 102, 40)}`;
 }
 
 /** The Daus: a big glyph on a copper ribbon. */
 function aceFace(suit: Suit): string {
-  return `${glyph(suit, 28, 58, 64)}
+  return `${glyph(suit, 28, 64, 64)}
 <path d="M20 132h80v16h-80z" fill="${COPPER}"/><path d="M12 136h8v12h-8zM100 136h8v12h-8z" fill="#9c5228"/>
 <path d="M28 138h64v4h-64z" fill="${PAPER}" opacity=".55"/>`;
 }
@@ -153,16 +162,16 @@ function numberFace(suit: Suit): string {
   return glyph(suit, 32, 78, 56);
 }
 
-function paper(): string {
-  return `<rect width="120" height="180" fill="${PAPER}"/><path d="M4 4h112v2h-112zM4 174h112v2h-112zM4 6h2v168h-2zM114 6h2v168h-2z" fill="${PAPER_LINE}"/>`;
+/** The paper of a card face, optionally tinted (card modifications). */
+export function paper(fill: string = PAPER): string {
+  return `<rect width="120" height="180" fill="${fill}"/><path d="M4 4h112v2h-112zM4 174h112v2h-112zM4 6h2v168h-2zM114 6h2v168h-2z" fill="${PAPER_LINE}"/>`;
 }
 
-function faceBody(suit: Suit, rank: Rank): string {
-  let center: string;
-  if (rank === 'A') center = aceFace(suit);
-  else if (rank === 'K' || rank === 'Q' || rank === 'J') center = courtFace(suit, rank);
-  else center = numberFace(suit);
-  return `${paper()}${center}${index(suit, rank)}`;
+/** The picture in the middle of a face, without paper and index. */
+function faceArt(suit: Suit, rank: Rank): string {
+  if (rank === 'A') return aceFace(suit);
+  if (rank === 'K' || rank === 'Q' || rank === 'J') return courtFace(suit, rank);
+  return numberFace(suit);
 }
 
 // ------------------------------------------------------------- other faces
@@ -243,6 +252,12 @@ const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> =
   tail_light: { fill: '#b3202a', glyph: '<circle cx="12" cy="12" r="3.6" fill="#fff"/><path d="M12 4.8 V6.6 M12 17.4 V19.2 M4.8 12 H6.6 M17.4 12 H19.2 M6.9 6.9 L8.1 8.1 M15.9 15.9 L17.1 17.1 M17.1 6.9 L15.9 8.1 M8.1 15.9 L6.9 17.1" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>' },
   // Aufgebrezelt: a bow tie.
   dressed_up: { fill: '#b0336e', glyph: '<path d="M4.5 8 L11 11 V13 L4.5 16 Z M19.5 8 L13 11 V13 L19.5 16 Z" fill="#fff"/><rect x="10.6" y="10.4" width="2.8" height="3.2" rx=".8" fill="#fff"/>' },
+  // Wandelkarte: four squares, one per suit.
+  wandelkarte: { fill: '#2e7d4f', glyph: '<path d="M6 6h5v5h-5zM13 6h5v5h-5zM6 13h5v5h-5zM13 13h5v5h-5z" fill="#fff"/>' },
+  // Glasdaus: a pane of glass with a glint.
+  glasdaus: { fill: '#2f86c0', glyph: '<rect x="6" y="5" width="12" height="14" fill="#cfe8fd"/><path d="M8.5 15.5 L14.5 8.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>' },
+  // Heimweh: a little house.
+  heimweh: { fill: '#8e2430', glyph: '<path d="M12 5 L19 11 H17 V18.5 H7 V11 H5 Z" fill="#fff"/><rect x="10.5" y="13.5" width="3" height="5" fill="#8e2430"/>' },
   // Attrappe: a dummy, a card with a question mark.
   dummy: { fill: '#7d6a50', glyph: '<rect x="7.5" y="5.5" width="9" height="13" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.4 10 C10.4 8.4 13.6 8.4 13.6 10 C13.6 11.4 12 11.4 12 13" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.4" r=".9" fill="#fff"/>' },
 };
@@ -266,8 +281,14 @@ function modSymbols(): string {
 /** The hidden SVG sprite with every symbol of the deck. */
 export function spriteSvg(): string {
   const suits = SUITS.map((s) => `<symbol id="s-${CODE[s]}" viewBox="0 0 8 8" shape-rendering="crispEdges">${glyphPaths(s)}</symbol>`).join('');
+  // A face is paper (drawn by ./cards.ts, so modifications can tint it),
+  // its picture (f-…) and its corner index (x-…), with the marks of card
+  // modifications layered in between.
   const faces = SUITS.flatMap((s) =>
-    RANKS.map((r) => `<symbol id="f-${CODE[s]}${r}" viewBox="0 0 120 180" shape-rendering="crispEdges">${faceBody(s, r)}</symbol>`),
+    RANKS.map(
+      (r) =>
+        `<symbol id="f-${CODE[s]}${r}" viewBox="0 0 120 180" shape-rendering="crispEdges">${faceArt(s, r)}</symbol><symbol id="x-${CODE[s]}${r}" viewBox="0 0 120 180" shape-rendering="crispEdges">${index(s, r)}</symbol>`,
+    ),
   ).join('');
   return `<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
 <defs>
@@ -284,9 +305,14 @@ ${peopleSymbols()}
 </svg>`;
 }
 
-/** Symbol id of a face. */
+/** Symbol id of a face's picture. */
 export function faceId(suit: Suit, rank: Rank): string {
   return `f-${CODE[suit]}${rank}`;
+}
+
+/** Symbol id of a face's corner index. */
+export function indexId(suit: Suit, rank: Rank): string {
+  return `x-${CODE[suit]}${rank}`;
 }
 
 export function suitId(suit: Suit): string {

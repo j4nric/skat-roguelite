@@ -29,13 +29,13 @@ export function relicChips(view: RunView): string {
   const relics = view.relics
     .map(
       (r) =>
-        `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id })}><span>${esc(contentName('relics', r.relic.id))}</span></button>`,
+        `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}><span>${esc(contentName('relics', r.relic.id))}</span></button>`,
     )
     .join('');
   const evening = view.evening_relics
     .map(
       (r, i) =>
-        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id })}><span>${esc(contentName('relics', r.id))}</span><small>${esc(de.evening.tag)}</small></button>`,
+        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}` })}><span>${esc(contentName('relics', r.id))}</span><small>${esc(de.evening.tag)}</small></button>`,
     )
     .join('');
   const pending = view.pending_factor
@@ -47,7 +47,7 @@ export function relicChips(view: RunView): string {
   const items = view.consumables
     .map(
       (c) =>
-        `<button class="item-chip" ${attrs({ 'data-action': 'info-item', 'data-slot': c.slot, 'aria-label': contentName('consumables', c.consumable.id) })}>${goodSvg(c.consumable.id, 30)}</button>`,
+        `<button class="item-chip" ${attrs({ 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}`, 'aria-label': contentName('consumables', c.consumable.id) })}>${goodSvg(c.consumable.id, 30)}</button>`,
     )
     .join('');
   const flags = view.flags
@@ -76,7 +76,7 @@ export function renderHud(view: RunView): string {
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const boss =
     s.is_boss && s.boss
-      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${portrait(bossPortraitId(s.boss.id), 'portrait-xs')}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
+      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${s.boss.id}`, 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${portrait(bossPortraitId(s.boss.id), 'portrait-xs')}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
       : '';
   const fill = meterPercent(s.score, s.target);
   const chips = relicChips(view);
