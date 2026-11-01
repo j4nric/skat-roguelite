@@ -442,6 +442,8 @@ pub enum RevealSource {
     CardMod(CardModId),
     /// "Der Kiebitz" showed it before the declaration.
     Kibitz,
+    /// "Der Zaungast" sees the whole hand of this defender.
+    Onlooker,
 }
 
 /// A card whose holder the player knows, and why.
@@ -859,7 +861,7 @@ impl Run {
             is_boss,
             target,
             game_limit: content.run.game_limit,
-            passes: content.run.passes,
+            passes: content.passes(self.character),
             boss: boss.map(|id| self.boss_info(content, id)),
         })
     }
@@ -932,7 +934,7 @@ impl Run {
             win_threshold: crate::rules::WIN_THRESHOLD.saturating_add(self.stake),
             coins: self.coins,
             relics,
-            relic_slots: content.run.relic_slots,
+            relic_slots: content.relic_slots(self.character),
             consumables,
             consumable_slots: content.run.consumable_slots,
             flags: self.flags.iter().cloned().collect(),
@@ -1333,12 +1335,25 @@ impl Run {
                 holder,
             })
             .collect();
-        for &(card, _) in &active.peeked {
+        // The hand "Der Zaungast" sees in display order, like the player's.
+        let mut peeked = active.peeked.clone();
+        peeked.sort_by_key(|(card, seat)| {
+            if active.shown_hand == Some(*seat) {
+                display_key(order_game, card)
+            } else {
+                (0, 0, 0)
+            }
+        });
+        for &(card, seat) in &peeked {
             if !revealed.iter().any(|r| r.card.card.id == card.id) {
                 revealed.push(RevealedCard {
                     card: self.card_view(content, card),
                     holder: game.holder_of(card),
-                    source: RevealSource::Kibitz,
+                    source: if active.shown_hand == Some(seat) {
+                        RevealSource::Onlooker
+                    } else {
+                        RevealSource::Kibitz
+                    },
                 });
             }
         }

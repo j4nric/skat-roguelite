@@ -363,7 +363,9 @@ impl Deck {
 
     /// Build a character's start deck from this one: remove one instance
     /// of every card in `spec.remove` (the first by id), then add every
-    /// card of `spec.add` (filling the blanks the removals left).
+    /// card of `spec.add` (filling the blanks the removals left), then
+    /// attach every modification of `spec.mods` to the first instance (by
+    /// id) of its card.
     pub fn apply_spec(&mut self, spec: &DeckSpec) -> Result<Vec<DeckChange>, DeckError> {
         let mut changes = Vec::new();
         for &card in &spec.remove {
@@ -377,6 +379,16 @@ impl Deck {
         }
         for &card in &spec.add {
             changes.push(self.add(CardKind::Normal(card), Vec::new()));
+        }
+        for (card, card_mod) in &spec.mods {
+            let id = self
+                .cards
+                .iter()
+                .filter(|c| c.kind == CardKind::Normal(*card))
+                .map(|c| c.id)
+                .min()
+                .ok_or(DeckError::MissingCard(*card))?;
+            changes.push(self.add_mod(id, card_mod.clone())?);
         }
         Ok(changes)
     }

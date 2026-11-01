@@ -53,7 +53,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, ScoreLine, Seat, Source, Step, Suit } from './types';
+import { CHARACTERS, type CardView, type Character, type DealtCard, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -65,7 +65,7 @@ import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
-import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, sharedStake } from './ui/screens';
+import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
@@ -105,7 +105,7 @@ function runLine(view: RunView): string {
 }
 
 function isCharacter(value: string | null): value is Character {
-  return value === 'Declarer' || value === 'NullPlayer';
+  return CHARACTERS.includes(value as Character);
 }
 
 /** How long a Stammgast's bubble stays at tempo "Normal" (reading time, not motion). */
@@ -845,6 +845,9 @@ export class App {
       }
       if ('CardPeeked' in ev) {
         const { card, seat } = ev.CardPeeked;
+        // "Der Zaungast" sees the whole left hand at the table every game:
+        // no whisper per card.
+        if (after.game?.revealed.some((r) => r.card.id === card.id && r.source === 'Onlooker')) continue;
         this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
         continue;
       }
@@ -1542,6 +1545,9 @@ export class App {
         }
         return;
       }
+      case 'char-scroll':
+        scrollCharacterPicker(this.screenEl, num('dir'), !reducedMotion());
+        return;
       case 'pick-character': {
         const c = el.dataset.character ?? null;
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
@@ -1782,13 +1788,15 @@ export class App {
         break;
       }
     }
-    // Keep the typed seed across re-renders of the start screen.
+    // Keep the typed seed and the picker row across re-renders of the start screen.
     const seed = this.root.querySelector<HTMLInputElement>('#seed')?.value;
+    const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
     this.screenEl.innerHTML = body;
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
       if (input) input.value = seed;
     }
+    if (ui.screen === 'start') settleCharacterPicker(this.screenEl, charScroll);
     this.renderLayer();
     // The score board and the boss take the screen: no info card, no trigger lines over them.
     const big = ui.overlay?.kind === 'score' || ui.overlay?.kind === 'boss';

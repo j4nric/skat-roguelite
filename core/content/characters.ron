@@ -12,6 +12,14 @@
 // Ereignisse Relikte und Modifikationen für Farbspiel und Grand (trump) und
 // für Null (null) anbieten, gemessen an der Seltenheit. Relikte für jedes
 // Spiel zählen immer 100. Ohne Angabe 100 und 100.
+// start_consumables: Verbrauchsgegenstände ab Start (z. B. ein Schnaps).
+// deck.mods: Kartenmodifikationen im Startblatt, je auf der ersten Karte
+// mit diesem Aufdruck; „beim Erhalt“ feuert dabei nicht.
+// rule: die eine eigene Regel (DESIGN 9). passive und hooks wirken wie ein
+// Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
+// der Wertung). passes und relic_slots ändern run.ron (nie unter 0),
+// payout_factor vervielfacht die Groschen einer gewonnenen Serie. Ohne
+// Angabe keine Änderung.
 [
     (
         character: Declarer,
@@ -65,5 +73,73 @@
         // ADR 0012: Null-Relikte doppelt so oft, Relikte für Farbe und Grand
         // halb so oft (sein Blatt hat keine Unter).
         focus_weights: (trump: 50, null: 200),
+    ),
+    // Neue Charaktere vom 01.11.2026 (DESIGN 9.4 bis 9.6). Zielwerte des
+    // Alleinspielers (targets: None), noch nicht im Simulator kalibriert
+    // (DESIGN 17).
+    (
+        character: GrandPlayer,
+        name: "Der Grandspieler",
+        text: "Lebt für den Grand: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger. Sein Eichel-Daus hat einen Goldrand (+8 Augen).",
+        start_relics: [],
+        deck: (
+            mods: [("CA", "gold_rim")],
+        ),
+        // Wirkt auf gewonnene und verlorene Spiele. Die Stufen fallen nie
+        // unter 1 (Stufen = max(1, Regel + Zuschläge), DESIGN 4.2).
+        rule: (
+            hooks: [
+                OnDeclare(when: GameIs(Grand), then: [AddLevels(1)]),
+                OnDeclare(when: SuitGame, then: [AddLevels(-1)]),
+            ],
+        ),
+        null_scoring: Some(Formula((
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        ))),
+        focus_weights: (trump: 120, null: 50),
+    ),
+    (
+        character: Onlooker,
+        name: "Der Zaungast",
+        text: "Schaut dem linken Gegner immer ins Blatt, hat dafür zwei Pässe weniger pro Serie. Der Kiebitz-Mörder nimmt ihm die Sicht.",
+        start_relics: [],
+        // Eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder
+        // schaltet sie ab.
+        rule: (
+            passive: [RevealDefenderHand(1)],
+            passes: -2,
+        ),
+        null_scoring: Some(Formula((
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        ))),
+    ),
+    (
+        character: Landlady,
+        name: "Die Wirtin",
+        text: "Rechnet gut: Jede gewonnene Serie bringt doppelt so viele Groschen, aber sie hat nur vier Plätze für Relikte. Startet mit einem Kräuter.",
+        start_relics: [],
+        start_consumables: ["herbal"],
+        rule: (
+            relic_slots: -1,
+            payout_factor: 2,
+        ),
+        null_scoring: Some(Formula((
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        ))),
     ),
 ]

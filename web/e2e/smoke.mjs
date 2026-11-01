@@ -1447,7 +1447,7 @@ async function run() {
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
-    const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
+    const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-GrandPlayer', 'p-char-Onlooker', 'p-char-Landlady', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
     // Every Stammgast of the core content has a face drawn in ui/people.ts.
     const looks = guestLooks();

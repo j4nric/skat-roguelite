@@ -117,4 +117,27 @@
         condition: WinGame(game: Some(Suit(Hearts)), schneider: true),
         rewards: [Relic("tailor")],
     ),
+    // Neue Charaktere vom 01.11.2026 (DESIGN 9.3): zählen in beiden
+    // Run-Längen.
+    (
+        id: "grand_master",
+        name: "Großer Grand",
+        text: "Gewinne einen Grand Schneider, der mindestens 96 Punkte zählt.",
+        condition: WinGame(game: Some(Grand), schneider: true, min_value: 96),
+        rewards: [Character(GrandPlayer)],
+    ),
+    (
+        id: "beat_kibitz_killer",
+        name: "Blinde Kuh",
+        text: "Schlage den Boss Der Kiebitz-Mörder.",
+        condition: BeatBoss(boss: Some("kibitz_killer")),
+        rewards: [Character(Onlooker)],
+    ),
+    (
+        id: "full_till",
+        name: "Volle Kasse",
+        text: "Habe nach einer gewonnenen Serie mindestens 20 Groschen.",
+        condition: SeriesWonWithCoins(20),
+        rewards: [Character(Landlady)],
+    ),
 ]

@@ -15,7 +15,7 @@ import { attrs, esc } from './dom';
 import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon, meterPercent } from './hud';
-import { encounterFaces, portrait } from './people';
+import { characterPortraitId, encounterFaces, portrait } from './people';
 import type { ScoreOverlay } from './state';
 
 /** "+3" / "−3" with a real minus sign. */
@@ -37,6 +37,7 @@ export function sourceName(source: Source, deck: DeckCard[]): string {
   if ('Boss' in source) return contentName('bosses', source.Boss);
   if ('Encounter' in source) return contentName('encounters', source.Encounter);
   if ('Consumable' in source) return contentName('consumables', source.Consumable);
+  if ('Character' in source) return contentName('characters', source.Character);
   const card = deck.find((c) => c.id === source.CardMod.card);
   return t(de.score.cardMod, {
     mod: contentName('card_mods', source.CardMod.card_mod),
@@ -50,6 +51,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if ('Boss' in source) return `<span class="step-icon">${bossCoaster(source.Boss, { size: 22 })}</span>`;
   if ('Encounter' in source) return `<span class="step-icon">${portrait(encounterFaces(source.Encounter)[0] ?? 'p-wirt', 'portrait-xs')}</span>`;
   if ('Consumable' in source) return `<span class="step-icon">${consumableCoaster(consumableLook(source.Consumable), { size: 22 })}</span>`;
+  if ('Character' in source) return `<span class="step-icon">${portrait(characterPortraitId(source.Character), 'portrait-xs')}</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods)}</span>`
@@ -168,6 +170,7 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
           <dt>${esc(de.score.payoutBase)}</dt><dd>${esc(signed(o.payout.payout.base))}</dd>
           <dt>${esc(de.score.payoutGames)}</dt><dd>${esc(signed(o.payout.payout.games_left))}</dd>
           <dt>${esc(de.score.payoutInterest)}</dt><dd>${esc(signed(o.payout.payout.interest))}</dd>
+          ${o.payout.payout.bonus ? `<dt>${esc(de.score.payoutBonus)}</dt><dd>${esc(signed(o.payout.payout.bonus))}</dd>` : ''}
           <dt>${esc(de.header.coins)}</dt><dd><b>${coinIcon(16)} ${esc(o.payout.coins)}</b></dd>
         </dl>
       </div>`

@@ -131,11 +131,26 @@ pub enum Character {
     /// Der Nullspieler: the unlockable Null specialist (ADR 0012, which
     /// replaces ADR 0003). He may declare every game too.
     NullPlayer,
+    /// Der Grandspieler: a Grand counts one Gewinnstufe more, a suit game
+    /// one less (DESIGN 9.4).
+    GrandPlayer,
+    /// Der Zaungast: sees the hand of the left defender, but has two
+    /// passes fewer per series (DESIGN 9.5). Not the figure "Der Kiebitz".
+    Onlooker,
+    /// Die Wirtin: twice the Groschen for a won series, but one relic slot
+    /// fewer (DESIGN 9.6). Not the figure "Der Wirt".
+    Landlady,
 }
 
 impl Character {
     /// All characters in display order.
-    pub const ALL: [Character; 2] = [Character::Declarer, Character::NullPlayer];
+    pub const ALL: [Character; 5] = [
+        Character::Declarer,
+        Character::NullPlayer,
+        Character::GrandPlayer,
+        Character::Onlooker,
+        Character::Landlady,
+    ];
 
     /// The id as text, equal to its serialized form.
     #[must_use]
@@ -143,6 +158,9 @@ impl Character {
         match self {
             Character::Declarer => "Declarer",
             Character::NullPlayer => "NullPlayer",
+            Character::GrandPlayer => "GrandPlayer",
+            Character::Onlooker => "Onlooker",
+            Character::Landlady => "Landlady",
         }
     }
 }
@@ -248,7 +266,7 @@ pub fn in_pool(pool: &[Character], character: Character) -> bool {
 
 /// How a character's start deck differs from the standard 32 cards:
 /// `remove` takes printed cards out (each leaves a blank), `add` puts new
-/// cards in (filling blanks first).
+/// cards in (filling blanks first), `mods` attaches card modifications.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeckSpec {
@@ -256,6 +274,43 @@ pub struct DeckSpec {
     pub remove: Vec<Card>,
     /// Printed cards to add.
     pub add: Vec<Card>,
+    /// Card modifications on the start deck, after removing and adding:
+    /// each goes on the first instance (by id) of its printed card. Their
+    /// "beim Erhalt" hooks do not fire (the card comes modified).
+    pub mods: Vec<(Card, CardModId)>,
+}
+
+/// The one own rule of a character (DESIGN 9): effects that act like a
+/// relic the character always owns, without a slot (source
+/// [`Source::Character`]), and changes to the run structure of
+/// `run.ron`. Everything defaults to "no change".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CharacterRule {
+    /// Always-on effects, like a relic's.
+    pub passive: Vec<Effect>,
+    /// Triggered effects, like a relic's.
+    pub hooks: Vec<Hook>,
+    /// Passes per series added to `run.ron` (negative: fewer, never
+    /// below 0).
+    pub passes: i32,
+    /// Relic slots added to `run.ron` (negative: fewer, never below 0).
+    pub relic_slots: i32,
+    /// The Groschen of a won series (Grundbetrag, übrige Spiele, Zinsen)
+    /// count this many times; the extra is [`crate::run::Payout::bonus`].
+    pub payout_factor: u32,
+}
+
+impl Default for CharacterRule {
+    fn default() -> CharacterRule {
+        CharacterRule {
+            passive: Vec::new(),
+            hooks: Vec::new(),
+            passes: 0,
+            relic_slots: 0,
+            payout_factor: 1,
+        }
+    }
 }
 
 /// A character as data (DESIGN 9): start deck, start relics, Zielwerte,
@@ -271,6 +326,12 @@ pub struct CharacterDef {
     /// Relics owned from the start (Startrelikt), in this order.
     #[serde(default)]
     pub start_relics: Vec<RelicId>,
+    /// Consumables owned from the start (e.g. a Schnaps), in this order.
+    #[serde(default)]
+    pub start_consumables: Vec<ConsumableId>,
+    /// The character's own rule.
+    #[serde(default)]
+    pub rule: CharacterRule,
     /// Start deck.
     #[serde(default)]
     pub deck: DeckSpec,
@@ -386,6 +447,8 @@ pub enum UnlockCondition {
     },
     /// Win a series with at least this many games left.
     WinSeriesWithGamesLeft(u32),
+    /// Win a series and hold at least this many Groschen after its payout.
+    SeriesWonWithCoins(u32),
     /// Win a run. Only a won ganzer Abend counts by default, because a
     /// kurzer Abend is much easier to win (DESIGN 9.3).
     WinRun {
@@ -950,6 +1013,16 @@ fn validate_effects(
         }
         Ok(())
     };
+    let check = |stage: Stage, effect: &Effect| {
+        if let Effect::RevealDefenderHand(seat) = effect {
+            if !(1..=2).contains(seat) {
+                return Err(ContentError(format!(
+                    "{what}: RevealDefenderHand needs seat 1 or 2, not {seat}"
+                )));
+            }
+        }
+        check(stage, effect)
+    };
     for effect in passive {
         check(Stage::Passive, effect)?;
     }
@@ -1149,9 +1222,37 @@ impl Content {
                     return Err(ContentError(format!("{what}: unknown start relic {relic}")));
                 }
             }
-            if def.start_relics.len() > usize::try_from(self.run.relic_slots).unwrap_or(0) {
+            if def.start_relics.len()
+                > usize::try_from(self.relic_slots(def.character)).unwrap_or(0)
+            {
                 return Err(ContentError(format!(
                     "{what}: more start relics than slots"
+                )));
+            }
+            for consumable in &def.start_consumables {
+                if !self.consumables.contains_key(consumable) {
+                    return Err(ContentError(format!(
+                        "{what}: unknown start consumable {consumable}"
+                    )));
+                }
+            }
+            if def.start_consumables.len() > usize::try_from(self.run.consumable_slots).unwrap_or(0)
+            {
+                return Err(ContentError(format!(
+                    "{what}: more start consumables than slots"
+                )));
+            }
+            for (card, card_mod) in &def.deck.mods {
+                if !self.card_mods.contains_key(card_mod) {
+                    return Err(ContentError(format!(
+                        "{what}: unknown card mod {card_mod} on {card}"
+                    )));
+                }
+            }
+            validate_effects(&what, &def.rule.passive, &def.rule.hooks, false)?;
+            if def.rule.payout_factor == 0 {
+                return Err(ContentError(format!(
+                    "{what}: payout_factor must be at least 1"
                 )));
             }
             if let Some(targets) = &def.targets {
@@ -1248,6 +1349,31 @@ impl Content {
     #[must_use]
     pub fn character(&self, character: Character) -> Option<&CharacterDef> {
         self.characters.get(&character)
+    }
+
+    /// Relic slots of a run with `character`: `run.ron` plus the
+    /// character's rule, never below 0.
+    #[must_use]
+    pub fn relic_slots(&self, character: Character) -> u32 {
+        let delta = self.character(character).map_or(0, |c| c.rule.relic_slots);
+        self.run.relic_slots.saturating_add_signed(delta)
+    }
+
+    /// Passes per series of a run with `character`: `run.ron` plus the
+    /// character's rule, never below 0.
+    #[must_use]
+    pub fn passes(&self, character: Character) -> u32 {
+        let delta = self.character(character).map_or(0, |c| c.rule.passes);
+        self.run.passes.saturating_add_signed(delta)
+    }
+
+    /// How many times the Groschen of a won series count for `character`
+    /// (at least 1).
+    #[must_use]
+    pub fn payout_factor(&self, character: Character) -> u32 {
+        self.character(character)
+            .map_or(1, |c| c.rule.payout_factor)
+            .max(1)
     }
 
     /// An encounter by id.

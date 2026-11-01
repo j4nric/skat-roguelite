@@ -35,6 +35,8 @@ pub enum Source {
         /// The card instance id.
         card: u32,
     },
+    /// The own rule of the character who plays the run.
+    Character(super::Character),
     /// The boss of the current series.
     Boss(BossId),
     /// The defenders said Kontra.

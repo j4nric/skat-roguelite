@@ -995,6 +995,22 @@ button.card {
   border-color: var(--cool);
 }
 
+/* "Der Zaungast": the left hand, overlapping in one row. */
+.opp-open-hand {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+
+.opp-open-hand .mini-card {
+  border-color: var(--cool);
+}
+
+.opp-open-hand .mini-card + .mini-card {
+  margin-left: -7px;
+}
+
 .mini-card.is-revealed {
   position: relative;
   overflow: visible;
@@ -2678,25 +2694,62 @@ button.card {
   color: var(--muted);
 }
 
+/* Five characters in one row: swipe, or the arrows when the row does not fit. */
+.char-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.char-nav {
+  display: none;
+  flex: none;
+  width: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.char-row.has-overflow .char-nav {
+  display: flex;
+}
+
 .char-cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  /* Room for the badges above the cards and the focus ring. */
+  padding: 12px 2px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.char-cards::-webkit-scrollbar {
+  display: none;
 }
 
 .char-card {
   position: relative;
   display: flex;
+  flex: 1 0 88px;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 14px 8px 10px;
+  gap: 3px;
+  padding: 12px 4px 8px;
   border: var(--edge) solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
   color: var(--text);
   text-align: center;
   cursor: pointer;
+  scroll-snap-align: start;
 }
 
 .char-card.is-picked {
@@ -2717,8 +2770,8 @@ button.card {
 }
 
 .portrait-char {
-  width: 72px;
-  height: 72px;
+  width: 48px;
+  height: 48px;
 }
 
 .char-check,
@@ -2750,27 +2803,35 @@ button.card {
 }
 
 .char-name {
-  font-size: var(--fs-body);
+  font-size: var(--fs-s);
   font-weight: 400;
+  line-height: 1;
 }
 
 .char-role {
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
-  letter-spacing: 1px;
+  line-height: 1.1;
   color: var(--cool);
-  text-transform: uppercase;
-}
-
-.char-text,
-.char-cond {
-  font-size: var(--fs-s);
-  line-height: 1.08;
-  color: var(--muted);
 }
 
 .char-cond {
+  font-size: var(--fs-2xs);
+  line-height: 1.05;
   color: var(--accent-light);
+}
+
+.char-detail {
+  margin: 0;
+  font-size: var(--fs-s);
+  line-height: 1.1;
+  color: var(--muted);
+  text-align: center;
+}
+
+.char-detail b {
+  font-weight: 400;
+  color: var(--text);
 }
 
 /* Ganzer or kurzer Abend (DESIGN 5.3), between the characters and the start. */

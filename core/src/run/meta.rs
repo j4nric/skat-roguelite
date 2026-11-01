@@ -480,6 +480,9 @@ impl MetaState {
                 UnlockCondition::WinSeriesWithGamesLeft(n),
                 RunEvent::SeriesWon { games_left, .. },
             ) => games_left >= n,
+            (UnlockCondition::SeriesWonWithCoins(n), RunEvent::SeriesWon { coins, .. }) => {
+                coins >= n
+            }
             (
                 UnlockCondition::WinRun {
                     character: who,
