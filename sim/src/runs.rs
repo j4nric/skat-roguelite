@@ -466,9 +466,10 @@ pub fn curve(
 ) -> Result<Curve, String> {
     let mut content = content.clone();
     let unreachable = u64::MAX / 4;
-    for t in &mut content.run.targets {
-        *t = (unreachable, unreachable, unreachable);
-    }
+    content
+        .run
+        .targets
+        .fill((unreachable, unreachable, unreachable));
     let start = RunStart {
         relics: options.relics.clone(),
         section: 0,
