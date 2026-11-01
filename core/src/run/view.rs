@@ -21,7 +21,7 @@ use super::{
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
     BossId, CardModId, Character, ConsumableAction, ConsumableId, Content, EncounterId, Factor,
-    Rarity, RelicId, RelicKind, ScoreBreakdown, ScoreStep,
+    Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
@@ -56,8 +56,10 @@ pub struct RunView {
     /// current deck (DESIGN 7.4). For a deck after a change use
     /// [`crate::deck::deal_odds`] with the new size.
     pub deal_odds: DealOdds,
-    /// Sections (Abschnitte) in a run.
+    /// Sections (Abschnitte) in this run: 5, or 3 for a short evening.
     pub sections: u32,
+    /// Ganzer or kurzer Abend (DESIGN 5.3).
+    pub length: RunLength,
     /// Groschen.
     pub coins: u32,
     /// Owned relics in purchase order.
@@ -763,7 +765,8 @@ impl Run {
         } else {
             None
         };
-        let target = series_target(content, self.character, section, index, boss)?;
+        let row = content.run.curve_row(self.length, section)?;
+        let target = series_target(content, self.character, row, index, boss)?;
         Some(NextSeriesView {
             section,
             index,
@@ -837,7 +840,8 @@ impl Run {
             upcoming_boss,
             next_series: self.next_series_view(content),
             deal_odds: self.deck.deal_odds(),
-            sections: u32::try_from(content.run.targets.len()).unwrap_or(0),
+            sections: self.sections(content),
+            length: self.length,
             coins: self.coins,
             relics,
             relic_slots: content.run.relic_slots,

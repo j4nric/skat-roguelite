@@ -168,6 +168,44 @@ Zur Form: Abschnitt 1 (Heuristik-Gegner) verlangt etwa zwei gewonnene Spiele. Ab
 
 Vorher (M2, Spiellimit 5, Pässe 3, Kurve 18 bis 180, `main` 3eb9884): gegen den PIMC-Spieler 38,7 / 14,3 / 4,1 / 0,6 % erreicht, Run gewonnen 0,07 % (6 von 9000), Nullspieler 27,7 / 7,7 / 2,3 / 0,7 %, 0,10 %. Die M2-Messung mit dem Heuristik-Bot steht in `docs/balance/2026-11-01-m2-zielwerte.md`.
 
+### 5.3 Kurzer Abend (M7)
+
+Entschieden über das Cockpit (16, „Run-Länge“): 5 Abschnitte als Standard, dazu ein kurzer Abend mit 3 Abschnitten für unterwegs, Freischaltungen in beiden. Der Spieler wählt auf dem Startbildschirm zwischen Charakter und Startknopf „Ganzer Abend (5 Abschnitte)“ oder „Kurzer Abend (3 Abschnitte)“; die Wahl bleibt im Browser (`stammtisch.length`, nur Anzeige). Die Kopfzeile zeigt „Abschnitt x/3“, die Kreidetafel drei Zeilen.
+
+- **Daten**: `run.ron` nennt mit `short_sections` die Zeilen der Kurve (Zielwerte, Gegner, beim Nullspieler seine eigenen Zielwerte aus `characters.ron`), die ein kurzer Abend spielt. Gewählt ist `[0, 1, 2]`: Abschnitt 1 bis 3 mit Zielwerten und Gegnern wie im ganzen Abend, in der Boss-Serie des dritten sitzt statt eines gezogenen Bosses der Endboss „Der Alte“. Im Kern: `RunLength::Full | Short` in `RunStart` und `Run` (ältere Spielstände laden als `Full`), `RunConfig::sections`, `RunConfig::curve_row`, in der Sicht `sections` und `length`.
+- **Freischaltungen und Statistik** zählen in beiden. „Abschnitt 4 erreichen“ (Der Stammgast) geht nur im ganzen Abend, „Run gewinnen“ (Nullspieler) auch mit einem gewonnenen kurzen Abend. `RunWon` und `RunLost` tragen die Länge; der Meta-Zustand zählt Runs, Siege und den weitesten Abschnitt je Länge (`MetaStats::lengths`), damit das Vereinsbuch sie später getrennt zeigen kann. Ältere Meta-Stände laden; ihre Runs stehen nur in den Summen.
+- **Seeds teilen**: Der Link eines kurzen Abends endet auf `-kurz` (`#seed-4343-alleinspieler-kurz`), Links ohne Zusatz sind wie bisher ganze Abende. Der Tages-Seed gilt für die gewählte Länge. Die Liste der letzten Runs merkt sich die Länge, „Nochmal“ spielt sie wieder so.
+- **Simulator**: `--short`.
+
+Gewählt mit dem Simulator. Kandidaten (je 3 × 1000 Runs, Seeds 42 bis 44, `--bot pimc:12:3 --short`, `short_sections` jeweils gesetzt):
+
+| Kandidat | Charakter | Abschnitt 2 erreicht | Abschnitt 3 erreicht | Run gewonnen | gehalten je Abschnitt |
+|---|---|---|---|---|---|
+| Zeilen 1, 3, 5 (`[0, 2, 4]`) | Alleinspieler | 37,1 % | 12,3 % | 4,8 % | 37 / 33 / 39 % |
+| Zeilen 1, 3, 5 (`[0, 2, 4]`) | Nullspieler | 35,8 % | 13,1 % | 3,6 % | 36 / 37 / 27 % |
+| Zeilen 1, 2, 3 (`[0, 1, 2]`) | Alleinspieler | 37,1 % | 14,5 % | 6,5 % | 37 / 39 / 45 % |
+
+Mit den Zeilen 1, 3, 5 kommen die Zielwerte und die PIMC-Stärke der späten Abschnitte schon nach ein oder zwei Tresen; ab dem zweiten Abschnitt ist jeder härter als im ganzen Abend (33 bis 39 % gehalten statt 40 bis 46 %, der Nullspieler im letzten nur 27 %). Mit 1 bis 3 hält jeder Abschnitt so viel wie im ganzen Abend, und der Endboss im dritten ist so schwer wie ein gezogener Boss dort. Der kurze Abend ist damit pro Abschnitt gleich schwer und als Ganzes leichter, weil zwei Abschnitte fehlen. Das ist gewollt: Er ist für unterwegs, etwa drei Fünftel eines Runs (rund 17 Spiele, 30 Minuten).
+
+Ergebnis (3 × 3000 Runs, Seeds 42 bis 44, mit den Flüchen aus 7.2):
+
+| Länge | Charakter | Abschnitt 2 | 3 | 4 | 5 | Run gewonnen | gehalten je Abschnitt |
+|---|---|---|---|---|---|---|---|
+| ganzer Abend | Alleinspieler | 36,5 % | 14,8 % | 6,9 % | 3,2 % | 1,54 % | 36 / 41 / 46 / 47 / 48 % |
+| kurzer Abend | Alleinspieler | 36,5 % | 14,8 % | – | – | 6,84 % | 36 / 41 / 46 % |
+| ganzer Abend | Nullspieler | 36,8 % | 16,6 % | 7,9 % | 3,9 % | 1,71 % | 37 / 45 / 48 / 49 / 44 % |
+| kurzer Abend | Nullspieler | 36,8 % | 16,6 % | – | – | 7,21 % | 37 / 45 / 43 % |
+
+Bis Abschnitt 3 sind die Runs gleich (gleiche Seeds, gleiche Karten, gleiche Kurve); im dritten Abschnitt gewinnt der Alleinspieler die Boss-Serie gegen den Alten zu 71 % wie gegen einen gezogenen Boss, der Nullspieler zu 67 % statt 74 %.
+
+```sh
+cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3 --short
+cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3 --short --character null
+# dasselbe mit --seed 43 und --seed 44; ohne --short der ganze Abend
+```
+
+Freischaltungen im kurzen Abend (`skat_sim --seed 42 --runs 300 --unlocks --short`, Heuristik-Bot, 20 Folgen mit frischem Meta-Zustand): alle erreichbar bis auf `fourth_evening`. `tour_won` (Nullspieler) kommt nach 24,9 Runs im Mittel (2 bis 61), im ganzen Abend nach rund 1700 (9.3). Siehe 17.
+
 ---
 
 ## 6. Ein Spiel im Detail
@@ -206,7 +244,7 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Information | „Durchsichtig“: Der Spieler sieht, wer diese Karte hält | Zählen |
 | Negativ | „Ramponiert“: Diese Karte darf nicht gedrückt werden | Fluch, gibt Geld |
 
-**Umgesetzt in M4: 20 Modifikationen, in M5: 22** (`card_mods.ron`, Preise Platzhalter für `balance`). Zufällige Modifikationen (Stempelkissen, Kartengeber) ziehen gleichverteilt aus dem Pool des Charakters, Flüche eingeschlossen, gesperrte nicht (Belohnung `CardMod` einer Freischaltung, 9.3). Ereignisse können eine bestimmte Modifikation vergeben (13).
+**Umgesetzt in M4: 20 Modifikationen, in M5: 22** (`card_mods.ron`, Preise Platzhalter für `balance`). Zufällige Modifikationen (Stempelkissen, Kartengeber) ziehen gleichverteilt aus dem Pool des Charakters, seit M7 ohne Flüche, gesperrte nicht (Belohnung `CardMod` einer Freischaltung, 9.3). Ereignisse können eine bestimmte Modifikation vergeben (13).
 
 | Modifikation | Effekt | Hebel | Seltenheit | Pool |
 |---|---|---|---|---|
@@ -222,7 +260,7 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Spitze | Gewinnt sie den letzten Stich: +1 Gewinnstufe | Gewinnstufen | Uncommon | Alleinspieler |
 | Glückspfennig | Gewonnenes Spiel, dessen letzten Stich sie macht: Spielwert ×2 | Spielwert (multiplikativ) | Rare | Alleinspieler |
 | Durchsichtig | Du siehst, wer sie hält | Zählen | Common | alle |
-| Bierfleck (Fluch) | −5 Augen, dafür siehst du, wer sie hält | Augen (Fluch), Zählen | Common | alle |
+| Bierfleck (Fluch) | −5 Augen, dafür siehst du, wer sie hält; seit M7 beim Erhalt 3 Groschen | Augen (Fluch), Zählen, Groschen | Common | alle |
 | Angeknackst (Fluch) | gewinnt nie; beim Erhalt 3 Groschen | Stichgewinn (Fluch), Groschen | Common | Alleinspieler |
 | Schwarze Katze (Fluch) | Ist ihre Farbe Trumpf: Grundwert −3; beim Erhalt 3 Groschen | Grundwert (Fluch), Groschen | Common | Alleinspieler |
 | Ramponiert (Fluch, M5) | darf nicht gedrückt werden; beim Erhalt 3 Groschen | Drücken (Fluch), Groschen | Common | alle |
@@ -234,6 +272,19 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Aufgebrezelt | zwei Stufen höher: beim Gegner gut, bei dir gefährlich | Stichgewinn | Uncommon | Nullspieler |
 
 Flüche, entschieden von Claude am 01.11.2026: Flüche sind Modifikationen mit einem klaren Nachteil, markiert mit `curse: true` (in der Sicht `CardModInfo.curse`, im Katalog `card_mods.<id>.curse`). Sie kommen über Zufallsziehungen und das Ereignis „Umgekipptes Bier“ ins Blatt. Seit M5 zahlen sie beim Erhalt Groschen (Auslöser `OnAttach`, Effekt `GainCoins`) statt eines Nebenvorteils, weil das klarer ist: Angeknackst und Schwarze Katze verloren ihren Ausgleich (+5 Augen, eine Stufe höher) und geben 3 Groschen, Ramponiert ist neu. Der Bierfleck behält den Fleck, an dem man die Karte erkennt, und zahlt nichts; er kommt über ein Ereignis, bei dem man für 1 Groschen die Karte wählt, Geld beim Erhalt wäre dort ein Gewinn. Auf einer Lusche kostet er nichts (Augen fallen nie unter 0). Die Beträge sind Platzhalter für `balance`.
+
+**M7: Flüche nur angekündigt** (entschieden über das Cockpit, 16). Zufallsziehungen ziehen nie einen Fluch: Stempelkissen, Kartengeber und alte Spielstände, deren Kartengeber die Modifikation erst bei der Wahl zieht, nehmen nur Modifikationen ohne `curse` (`Run::card_mod_pool`). Ein Fluch kommt nur über ein Ereignis, das ihn ankündigt: Der Ereignistext muss „Fluch“ sagen (beim Laden geprüft, sonst `ContentError`), und die Optionen nennen den Fluch, bevor der Spieler wählt. Jeder Fluch zahlt beim Erhalt Groschen, auch der Bierfleck jetzt 3 (vorher nichts; damit die Wahl „Fleck auf eine Lusche“ kein Gewinn wird, kostet sie beim Umgekippten Bier 4 statt 1 Groschen, netto wie vorher −1). Quellen sind „Umgekipptes Bier“ (Bierfleck) und das neue Ereignis „Der Falschspieler“ (13), das einen zufälligen Fluch aus dem Pool des Charakters zieht (`MarkCard { curse: true }`); so bleiben Angeknackst, Schwarze Katze und Ramponiert im Spiel. Tests: `core/src/run/m7_tests.rs` (300 Seeds je Charakter für Stempelkissen und Kartengeber, 80 ganze Bot-Runs mit einem Ereignis nach jeder Serie: jeder Fluch im Blatt kam von einem Ereignis mit „Fluch“ im Text und zahlte).
+
+Wirkung im Run (3 × 3000 Runs, `--bot pimc:12:3`, Seeds 42 bis 44, Befehle wie in 5.2), vorher `main` be6aff5:
+
+| Abschnitt erreicht | 2 | 3 | 4 | 5 | Run gewonnen |
+|---|---|---|---|---|---|
+| Alleinspieler vorher | 36,3 % | 14,5 % | 6,5 % | 3,0 % | 1,32 % |
+| Alleinspieler M7 | 36,5 % | 14,8 % | 6,9 % | 3,2 % | 1,54 % |
+| Nullspieler vorher | 37,0 % | 16,9 % | 8,1 % | 3,9 % | 1,61 % |
+| Nullspieler M7 | 36,8 % | 16,6 % | 7,9 % | 3,9 % | 1,71 % |
+
+Alles im Rauschen (bei 9000 Runs etwa ±0,5 Prozentpunkte auf Abschnitt 2, ±0,15 auf den Sieg). Der Bot nimmt jede Gratis-Karte, also jeden angekündigten Fluch, und kassiert dafür; dass er keine zufälligen Flüche mehr zieht, gleicht das in etwa aus. Ein Run trifft im Mittel 0,06 Falschspieler.
 
 ### 7.3 Karten hinzufügen und entfernen
 
@@ -583,7 +634,7 @@ Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 **Umgesetzt in M4** (`core/content/encounters.ron`, Begriff im Code `Encounter`, weil `Event` die Zustandsereignisse sind). Nach einer gewonnenen Serie (nicht nach der letzten) kommt mit der Wahrscheinlichkeit `encounter_chance` aus `run.ron` (Platzhalter 0,2 für `balance`) ein Ereignis statt des Tresens, gezogen nach `weight`. Es bietet Optionen an (`EncounterOption`, immer zuletzt „Weitergehen“), der Spieler wählt mit `RunAction::ChooseEncounter`, danach beginnt sofort die nächste Serie.
 
 - **Stammtisch-Streit**: drei Hausregeln zur Wahl (freigeschaltet, nicht im Besitz, für den Charakter). Die gewählte gilt bis zum Ende des Abschnitts („Abend“) ohne Platz zu belegen.
-- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
+- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters, seit M7 nie ein Fluch. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
 - **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein anderes getauscht. Seit M5 wird das neue Relikt gezogen, wenn das Ereignis aufgeht, und jede Option nennt es (`SwapRelic.new`, in der Sicht `new_relic`). Bei Spielständen von vorher ist es weiter zufällig, und die Option sagt das (`random_gain`).
 - **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einpassen verschenkt es nicht.
 
@@ -591,13 +642,18 @@ Gemessen (3 × 1000 Runs): etwa 0,45 Ereignisse pro Run; der Bot nimmt Hausregel
 
 **Erweitert in M4 um fünf Ereignisse** mit denselben vier Formen (entschieden von Claude am 01.11.2026):
 
-- **Umgekipptes Bier** (`spilled_beer`, alle): Eine zufällige Karte bekommt den Fluch „Bierfleck“ (−5 Augen, dafür siehst du, wer sie hält), für 1 Groschen eine gewählte. Wer weitergeht, bleibt sauber; wer wählt, legt den Fleck auf eine Lusche und hat nur den Ausgleich.
+- **Umgekipptes Bier** (`spilled_beer`, alle): Eine zufällige Karte bekommt den Fluch „Bierfleck“ (−5 Augen, dafür siehst du, wer sie hält), für 1 Groschen eine gewählte. Wer weitergeht, bleibt sauber; wer wählt, legt den Fleck auf eine Lusche und hat nur den Ausgleich. Seit M7 zahlt der Bierfleck beim Erhalt 3 Groschen, die gewählte Karte kostet 4 (siehe unten).
 - **Gasthof zur Krone** (`crown_inn`, Alleinspieler): „Krone“ auf eine zufällige Karte, für 4 Groschen auf eine gewählte.
 - **Der Taschenspieler** (`conjurer`, Nullspieler): „Attrappe“ auf eine zufällige Karte, für 3 Groschen auf eine gewählte.
 - **Preisskat** (`prize_skat`, alle): Das nächste Spiel zählt dreifach, gewonnen wie verloren.
 - **Gast aus Altenburg** (`guest_from_altenburg`, alle): wie der Stammtisch-Streit, aber nur zwei Hausregeln zur Wahl.
 
-Damit trifft jeder Charakter acht Ereignisse. Der Bot nimmt jede Gratis-Karte, also auch den Bierfleck; den Preisskat lehnt er wie die Letzte Runde ab.
+Damit trifft jeder Charakter acht Ereignisse (seit M7 neun, siehe unten). Der Bot nimmt jede Gratis-Karte, also auch den Bierfleck; den Preisskat lehnt er wie die Letzte Runde ab.
+
+**M7: Flüche nur angekündigt** (7.2). Ein Ereignis, das einen Fluch geben kann, sagt „Fluch“ im Text (beim Laden geprüft), nennt den Fluch in beiden Optionen und zahlt: Jeder Fluch gibt beim Erhalt 3 Groschen (`OnAttach`, `GainCoins`). Der Kartengeber zieht nie einen Fluch.
+
+- **Umgekipptes Bier** (`spilled_beer`, alle): „Eine zufällige Karte kriegt einen Bierfleck, einen Fluch … Du kassierst 3 Groschen dafür. Für 4 Groschen wischst du ihn auf eine Karte deiner Wahl.“
+- **Der Falschspieler** (`card_sharp`, alle, neu): zahlt 3 Groschen, wenn er eine zufällige Karte „präparieren“ darf; der Fluch wird beim Aufgehen zufällig aus dem Pool des Charakters gezogen (Alleinspieler: Bierfleck, Angeknackst, Schwarze Katze, Ramponiert; Nullspieler: Bierfleck, Ramponiert) und in beiden Optionen genannt. Die Karte selbst wählen kostet 4 Groschen. Daten: `MarkCard(price: 4, curse: true)`.
 
 ---
 
@@ -648,7 +704,7 @@ skat-roguelite/
 | **M4 Content** | Nullspieler, restliche Bosse, Ereignisse, 30 Hausregeln, 20 Modifikationen, Endboss, freischaltbare Relikte | Inhaltlich vollständige v1 |
 | **M5 Balance** | Simulator-gestützte Kalibrierung der Zielwertkurve, PIMC-KI, Seeds teilen, Statistik | Spielbare v1 |
 | **M6 Feinschliff** | Oberfläche Stil A4 ohne Scrollen, große Abrechnung am Spielende, Null für alle (ADR 0012), geführter erster Abend, Stammgäste mit Namen und Pixelgesicht, leise Chiptune-Musik, Spielstand-Export | v1 zum Teilen |
-| **M7 Langzeit** | Kurzer Abend (3 Abschnitte), Endlos-Modus nach dem Endboss, Einsatz-Leiter (jeder Run-Sieg hebt die Gewinngrenze um ein Auge), angekündigte Flüche statt zufälliger | Grund, wiederzukommen |
+| **M7 Langzeit** | Kurzer Abend (3 Abschnitte, umgesetzt 5.3), Endlos-Modus nach dem Endboss, Einsatz-Leiter (jeder Run-Sieg hebt die Gewinngrenze um ein Auge), angekündigte Flüche statt zufälliger (umgesetzt 7.2, 13) | Grund, wiederzukommen |
 
 Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblatt, Zettel für Relikte, zwei menschliche Gegner. Was auf Papier keinen Spaß macht, wird nicht gebaut.
 
@@ -692,10 +748,10 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 | Frage | Entscheidung |
 |---|---|
 | Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü. Skat selbst wird nicht von Grund auf gelehrt. |
-| Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). |
+| Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). Umgesetzt: 5.3, Abschnitt 1 bis 3 mit dem Alten am Ende. |
 | Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). |
 | Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). |
-| Flüche | Nur angekündigt (z. B. bei Ereignissen) und mit Groschen bezahlt, nie aus Zufallsziehungen (M7). |
+| Flüche | Nur angekündigt (z. B. bei Ereignissen) und mit Groschen bezahlt, nie aus Zufallsziehungen (M7). Umgesetzt: 7.2 und 13, Umgekipptes Bier und Der Falschspieler. |
 | Normale Gegner | Wechselnde Stammgäste mit Namen und Pixelgesicht, ohne eigene Regeln. Regeln bleiben den Bossen (M6). |
 | Relikte nur für Menschen | Behalten, selten und günstig (Mit Vieren, Der Opa, Saubere Weste, Bierdeckel, Glashaus, Ouvert-Bonus). |
 | Musik | Leise Chiptune-Schleifen für Tisch, Tresen und Boss, getrennt von den Klängen abschaltbar (M6). |
@@ -712,3 +768,5 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 - **M5-Kurve mit Menschen prüfen**: Die Kurve (5.2) ist gegen den PIMC-Spieler gesetzt. Ein Mensch nutzt Hand, Ouvert und Informations-Relikte, die der Bot kaum spielt, und dürfte stärker sein. Testspiele und die Statistik der Web-App (Abschnitt erreicht) gegen die Bot-Zahlen halten.
 - **Relikte ohne Bot-Wirkung**: Spitze, Mit Vieren, Schiedsrichter, Bierdeckel, Ouvert-Bonus, Oma, Opa, Glashaus, Blindflug, Saubere Weste und Zähler bewegen beim Bot „Abschnitt 3 erreicht“ um weniger als 5 % (relativ). Sie sind für Menschen gedacht; ob sie die 5-%-Regel erfüllen, zeigt erst die Statistik echter Runs.
 - **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.
+- **Nullspieler über den kurzen Abend** (M7, 5.3): „Run gewinnen“ zählt auch im kurzen Abend, der Nullspieler ist damit nach rund 25 statt rund 1700 Runs (Heuristik-Bot) frei. Entschieden ist „Freischaltungen in beiden“; soll der Nullspieler ein Ziel des ganzen Abends bleiben, bekäme die Bedingung `WinRun` eine Länge (Daten in `unlocks.ron`). Ebenso „Abschnitt 4 erreichen“: nur im ganzen Abend möglich.
+- **Fluchbeträge** (M7, 7.2): alle Flüche zahlen 3 Groschen, die gewählte Karte kostet bei Bier und Falschspieler 4. Platzhalter für `balance`. Die Option „Zufällige Karte“ zeigt in der Web-App „gratis“, die 3 Groschen stehen nur im Text des Fluchs.

@@ -99,6 +99,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 |---|---|---|
 | Run / Tournee | `Run` | |
 | Abschnitt / Skatabend | `Section` | Ein Ante |
+| Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Beim Start gewählt (`RunStart::length`, `Run::length`); kurzer Abend: 3 Abschnitte, Zeilen der Kurve in `short_sections` (`run.ron`), Zeile eines Abschnitts `curve_row`. Statistik je Länge `MetaStats::lengths` (`LengthStats`). Im Link `-kurz` |
 | Serie | `Series` | Ein Blind: Zielwert plus Spiellimit |
 | Zielwert | `target` | |
 | Zielwert-Faktor (Boss) | `target_factor` | Typ `Factor`, in RON und JSON als Dezimalzahl, intern Tausendstel |
@@ -129,7 +130,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Groschen | `coins` | Währung |
 | Groschen erhalten (Effekt) | `GainCoins` | Ereignis `CoinsGained { source, amount, coins }`; negativ zieht ab, nie unter 0 |
 | Beim Erhalt (Kartenmodifikation angebracht) | `OnAttach` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnAttach` |
-| Fluch (negative Kartenmodifikation) | `curse` | Feld `CardModDef::curse`; Text beginnt mit „Fluch:“ |
+| Fluch (negative Kartenmodifikation) | `curse` | Feld `CardModDef::curse`; Text beginnt mit „Fluch:“. Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
 | Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler); Daten `CharacterDef` |

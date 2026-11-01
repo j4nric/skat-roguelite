@@ -71,6 +71,7 @@ export const de = {
     settings: 'Einstellungen',
     sharedTitle: 'Geteilter Seed',
     sharedText: 'Dir wurde ein Run geschickt: Seed {seed} als {character}.',
+    sharedTextShort: 'Dir wurde ein kurzer Abend geschickt: Seed {seed} als {character}, 3 Abschnitte.',
     sharedLocked: 'Der {character} ist bei dir noch gesperrt. Du spielst den Seed als {fallback}.',
     sharedKeep: 'Dein laufender Run bleibt gespeichert, bis du dich entscheidest.',
     sharedPlay: 'Diesen Seed spielen',
@@ -80,6 +81,11 @@ export const de = {
     dailyText: 'Heute spielen alle denselben Run.',
     dailyPlay: 'Tages-Run als {name}',
     dailyDone: 'Heute schon gespielt: {result}',
+    howLong: 'Wie lange?',
+    lengths: {
+      Full: { name: 'Ganzer Abend', sections: '5 Abschnitte', aria: 'Ganzer Abend (5 Abschnitte)' },
+      Short: { name: 'Kurzer Abend', sections: '3 Abschnitte', aria: 'Kurzer Abend (3 Abschnitte)' },
+    } as Record<'Full' | 'Short', { name: string; sections: string; aria: string }>,
   },
 
   confirm: {
@@ -92,6 +98,7 @@ export const de = {
   share: {
     title: 'Seed teilen',
     line: 'Seed {seed} · {character}',
+    lineShort: 'Seed {seed} · {character} · kurzer Abend',
     hint: 'Wer den Link öffnet, spielt denselben Run: dieselben Karten, dieselben Gegner, derselbe Tresen.',
     copy: 'Link kopieren',
     copyShort: 'Kopieren',
@@ -99,6 +106,7 @@ export const de = {
     copyFailed: 'Kopieren ging nicht. Halte den Link gedrückt oder markiere ihn:',
     native: 'Teilen …',
     nativeText: 'Spiel diesen Stammtisch-Run nach: Seed {seed} als {character}.',
+    nativeTextShort: 'Spiel diesen Stammtisch-Run nach: Seed {seed} als {character}, kurzer Abend.',
     link: 'Link zum Seed',
   },
 
@@ -519,6 +527,7 @@ export const de = {
     replay: 'Nochmal',
     replayAria: 'Seed {seed} als {character} nochmal spielen',
     daily: 'Tages-Seed',
+    short: 'Kurz',
   },
 
   rewardKinds: {

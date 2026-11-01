@@ -6,6 +6,7 @@
 const RUN_KEY = 'stammtisch.run';
 const META_KEY = 'stammtisch.meta';
 const CHARACTER_KEY = 'stammtisch.character';
+const LENGTH_KEY = 'stammtisch.length';
 
 function read(key: string): string | null {
   try {
@@ -67,6 +68,15 @@ export function saveCharacter(character: string): void {
   write(CHARACTER_KEY, character);
 }
 
+/** The run length picked last on the start screen (presentation only). */
+export function loadLength(): string | null {
+  return read(LENGTH_KEY);
+}
+
+export function saveLength(length: string): void {
+  write(LENGTH_KEY, length);
+}
+
 // ---------------------------------------------------------------------------
 // Recent runs (presentation only). The core's meta state keeps totals but no
 // list of runs, so the app remembers the last finished runs itself: who
@@ -82,6 +92,8 @@ export const HISTORY_SIZE = 20;
 export interface RunRecord {
   character: 'Declarer' | 'NullPlayer';
   seed: string;
+  /** Kurzer Abend; absent (entries from before) means ganzer Abend. */
+  short?: boolean;
   /** Section reached, from 1. */
   section: number;
   /** Series reached in that section, from 1. */
@@ -106,7 +118,8 @@ function isRecord(value: unknown): value is RunRecord {
     typeof r.won === 'boolean' &&
     typeof r.bestGame === 'number' &&
     typeof r.date === 'string' &&
-    typeof r.daily === 'boolean'
+    typeof r.daily === 'boolean' &&
+    (r.short === undefined || typeof r.short === 'boolean')
   );
 }
 

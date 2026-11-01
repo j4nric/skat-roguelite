@@ -24,6 +24,8 @@
 //!   scoring (DESIGN 9.2).
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
 //!   state; prints after how many runs each unlock is earned.
+//! - `--short`: kurzer Abend, the sections of `run.ron`'s `short_sections`
+//!   (DESIGN 5.3) instead of all.
 //!
 //! Opponents and bot (DESIGN 10.2, stage 2), in both modes:
 //!
@@ -47,7 +49,7 @@ use std::time::Instant;
 use skat_core::ai::pimc::{Opponents, PimcConfig, PimcPolicy};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
-use skat_core::content::{BossId, Character, RelicId};
+use skat_core::content::{BossId, Character, RelicId, RunLength};
 use skat_core::game::{Game, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{GameType, Matadors, NullScoring};
@@ -112,6 +114,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-shop" => args.options.no_shop = true,
             "--curve" => args.options.curve = true,
             "--unlocks" => args.options.unlocks = true,
+            "--short" => args.options.length = RunLength::Short,
             "--character" => {
                 let value = it.next().ok_or("missing value for --character")?;
                 args.options.character = match value.as_str() {

@@ -110,6 +110,15 @@
 // 390 × 844 and 375 × 667, and the bubble covers neither the hand nor the
 // buttons (score, boss, Tresen, encounter, end).
 //
+// M7 "Kurzer Abend" (shortEvening): the start screen offers "Ganzer Abend"
+// and "Kurzer Abend" between the characters and the start button, both
+// visible without scrolling at 390 × 844 and 375 × 667; the full evening is
+// picked for a new player, the pick is stored. A short evening with seed
+// 4343 shows "Abschnitt 1/3" in the HUD, its link ends in
+// `#seed-4343-alleinspieler-kurz`, and that link opened in a fresh browser
+// offers and starts a short evening again. An old link without `-kurz`
+// stays a full evening ("Abschnitt 1/5").
+//
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
@@ -1309,6 +1318,106 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/** The link of the running run, from the menu (clipboard or the field to copy by hand). */
+async function menuLink(page) {
+  await page.click('.hud [data-action="menu"]');
+  await page.waitForSelector('.sheet [data-action="copy-link"]');
+  await page.click('.sheet [data-action="copy-link"]');
+  await page.waitForSelector('[data-testid="share-copied"], [data-testid="share-fallback"]');
+  const link = (await page.locator('[data-testid="share-copied"]').count())
+    ? await page.evaluate(() => navigator.clipboard.readText())
+    : await page.locator('[data-testid="share-fallback"]').inputValue();
+  await closeSheet(page);
+  return link;
+}
+
+/** The "Abschnitt x/y" line of the HUD. */
+async function hudSection(page) {
+  return ((await page.locator('.hud .hud-where-sub').first().textContent()) ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** M7: the short evening (kurzer Abend) from the start screen and from a link. */
+async function shortEvening(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-testid="run-length"]');
+  const picked = await page.locator('[data-action="pick-length"][aria-pressed="true"]').getAttribute('data-length');
+  if (picked !== 'Full') fail(`a new player starts with ${picked} picked, expected the full evening`);
+  const labels = ((await page.locator('[data-testid="run-length"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!labels.includes('Ganzer Abend') || !labels.includes('Kurzer Abend') || !labels.includes('3 Abschnitte')) fail(`length choice reads "${labels}"`);
+  // The choice and the start button are visible without scrolling.
+  for (const size of [PHONE, { width: 375, height: 667 }]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(100);
+    const r = await page.evaluate(() => {
+      const bottom = (sel) => document.querySelector(sel)?.getBoundingClientRect().bottom ?? Infinity;
+      const screen = document.querySelector('.screen');
+      return {
+        inner: window.innerHeight,
+        scrolled: (screen?.scrollTop ?? 0) + (document.scrollingElement?.scrollTop ?? 0),
+        choice: bottom('[data-testid="run-length"]'),
+        start: bottom('[data-action="new-run"]'),
+      };
+    });
+    const where = `start screen at ${size.width}x${size.height}`;
+    if (r.scrolled) fail(`${where}: scrolled by ${r.scrolled}px on load`);
+    if (r.choice > r.inner) fail(`${where}: the length choice ends at ${Math.round(r.choice)}, below ${r.inner}`);
+    if (r.start > r.inner) fail(`${where}: the start button ends at ${Math.round(r.start)}, below ${r.inner}`);
+  }
+  await page.setViewportSize(PHONE);
+  log('start screen: length choice and start button fit 390x844 and 375x667');
+  await page.click('[data-action="pick-length"][data-length="Short"]');
+  await page.waitForSelector('[data-action="pick-length"][data-length="Short"][aria-pressed="true"]');
+  const stored = await page.evaluate(() => localStorage.getItem('stammtisch.length'));
+  if (stored !== 'Short') fail(`length pick not stored: ${stored}`);
+  await shoot(page, 'start-short');
+
+  // A short evening: three sections in the HUD, the link carries it.
+  await page.fill('#seed', '4343');
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('.declare');
+  const hud = await hudSection(page);
+  if (!hud.includes('Abschnitt 1/3')) fail(`HUD of a short evening reads "${hud}"`);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.length);
+  if (saved !== 'Short') fail(`saved run has length ${saved}`);
+  await shoot(page, 'short-table');
+  const link = await menuLink(page);
+  if (!link.endsWith('#seed-4343-alleinspieler-kurz')) fail(`link of a short evening is ${link}`);
+  log(`short evening: HUD "${hud}", link ${link}`);
+  await context.close();
+
+  // The link in a fresh browser: offered and played as a short evening.
+  const other = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page2 = await other.newPage();
+  watch(page2, errors);
+  await page2.goto(`${base}#seed-4343-alleinspieler-kurz`);
+  await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4343"][data-length="Short"]');
+  const offer = ((await page2.locator('[data-testid="shared-seed"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!offer.includes('kurzer Abend')) fail(`the offer of a short link does not say so: ${offer}`);
+  await shoot(page2, 'shared-short');
+  await page2.click('[data-action="play-shared"]');
+  await page2.waitForSelector('.declare');
+  const hud2 = await hudSection(page2);
+  if (!hud2.includes('Abschnitt 1/3')) fail(`HUD of the shared short evening reads "${hud2}"`);
+  if ((await menuSeed(page2)) !== '4343') fail('the shared short evening has another seed');
+  await page2.click('.sheet [data-action="to-start"]');
+  await page2.waitForSelector('[data-action="resume"]');
+  // An old link without the length is a full evening, whatever is picked.
+  await page2.evaluate(() => localStorage.setItem('stammtisch.length', 'Short'));
+  await page2.goto(`${base}#seed-4242-alleinspieler`);
+  await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4242"][data-length="Full"]');
+  await page2.click('[data-action="play-shared"]');
+  await page2.click('.sheet-confirm [data-action="confirm-new"]');
+  await page2.waitForSelector('.declare');
+  const hud3 = await hudSection(page2);
+  if (!hud3.includes('Abschnitt 1/5')) fail(`HUD of an old link reads "${hud3}"`);
+  log('shared short link replays as a short evening, an old link as a full one');
+  await other.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -1518,6 +1627,7 @@ async function run() {
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
+    await shortEvening(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
     await hintsAndRules(browser, errors, reducedMotion);

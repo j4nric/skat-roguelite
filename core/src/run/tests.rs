@@ -130,6 +130,7 @@ fn reaching_the_limit_below_target_loses_the_run() {
         section: 0,
         index: 0,
         character: Character::Declarer,
+        length: RunLength::Full,
     }));
     assert_eq!(
         run.apply(&content, RunAction::Pass),

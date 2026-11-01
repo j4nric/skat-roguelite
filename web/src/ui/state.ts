@@ -5,7 +5,7 @@ import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
 import type { RunRecord } from '../storage';
-import type { BossInfo, CardView, Character, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunView, ScoreView, Seat } from '../types';
+import type { BossInfo, CardView, Character, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunLength, RunView, ScoreView, Seat } from '../types';
 
 /** What the table shows while events are being animated. */
 export interface AnimState {
@@ -35,6 +35,8 @@ export interface ScoreOverlay {
 export interface PendingStart {
   seed: string;
   character: Character;
+  /** Ganzer or kurzer Abend. */
+  length: RunLength;
   daily: boolean;
 }
 
@@ -95,6 +97,8 @@ export interface UiState {
   history: RunRecord[];
   /** Character picked on the start screen. */
   pickCharacter: Character;
+  /** Run length picked on the start screen (ganzer or kurzer Abend). */
+  pickLength: RunLength;
   overlay: Overlay | null;
   message: string | null;
   saveInfo: string | null;

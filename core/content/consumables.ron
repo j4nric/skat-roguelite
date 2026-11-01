@@ -12,7 +12,7 @@
     (
         id: "ink_pad",
         name: "Stempelkissen",
-        text: "Verpasse einer Karte eine zufällige Modifikation.",
+        text: "Verpasse einer Karte eine zufällige Modifikation, nie einen Fluch.",
         rarity: Common,
         price: 3,
         action: AddCardMod(None),

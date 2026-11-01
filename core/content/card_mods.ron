@@ -62,8 +62,9 @@
     ),
     // ---------------------------------------------------------------------
     // M4: 14 more modifications. Each names its lever. Random draws
-    // (Stempelkissen, Kartengeber) pick uniformly from the character's pool,
-    // curses included.
+    // (Stempelkissen, Kartengeber) pick uniformly from the character's pool.
+    // M7: never a curse (`curse: true`); curses only come where an
+    // encounter announces them (DESIGN 7.2).
     // ---------------------------------------------------------------------
     // Lever Augen.
     (
@@ -145,16 +146,20 @@
             OnScore(when: All([Won, ThisCardWinsLastTrick]), then: [MultiplyGameValue(2)]),
         ],
     ),
-    // Curses: a clear downside, paid back on another lever.
-    // Curse on Augen (−5, never below 0), paid back with Zählen.
+    // Curses: a clear downside, paid in Groschen when attached. Since M7
+    // they only come where an encounter announces them.
+    // Curse on Augen (−5, never below 0), with Zählen on top.
     (
         id: "beer_stain",
         name: "Bierfleck",
-        text: "Fluch: Der Fleck kostet die Karte 5 Augen. Dafür erkennst du sie wieder: Du siehst, wer sie hält.",
+        text: "Fluch: Der Fleck kostet die Karte 5 Augen. Du erkennst sie wieder: Du siehst, wer sie hält. Dafür gibt es beim Erhalt 3 Groschen.",
         rarity: Common,
         price: 1,
         curse: true,
         passive: [AddCardPoints(-5), RevealHolder],
+        hooks: [
+            OnAttach(then: [GainCoins(3)]),
+        ],
     ),
     // Curse on Stichgewinn (the card never wins), paid in Groschen when
     // attached.
