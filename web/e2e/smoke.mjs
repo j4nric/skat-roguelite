@@ -16,7 +16,14 @@
 //   ("Neu am Stammtisch") and the meta state counting the game,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series.
-// The card sprite (German deck) and the shipped fonts must be present.
+// The card sprite (German deck) and the shipped pixel fonts (Kenney, CC0)
+// must be present. The table must fit the visible height without scrolling
+// (DESIGN 16): while choosing Skat oder Hand, in the hand Ansage, while
+// discarding with twelve cards, in the Ansage after the skat and while
+// playing, at 390 × 844, 375 × 667, 360 × 740, 412 × 915, 1280 × 800 and
+// as an installed app (390 × 844 and 375 × 812 with safe areas) the page
+// does not scroll, the Ansage is not cut off and the last hand card ends
+// inside the viewport.
 // Screenshots of table, score and Tresen at 390 × 844 and 1280 × 800 go to
 // $SMOKE_SCREENS (default: web/e2e/screens). Any console error fails the test.
 // Runs with reduced motion for speed; SMOKE_FULL_MOTION=1 plays every
@@ -141,6 +148,69 @@ async function shoot(page, name) {
   log(`screenshot ${name}`);
 }
 
+/**
+ * Viewports the table must fit without scrolling (DESIGN 16). The last one
+ * is an installed app (PWA) on a phone without browser bars: the full
+ * 390 × 844 with the notch and home bar as safe areas, simulated through
+ * the CSS variables that carry env(safe-area-inset-*) (style.css).
+ */
+const FIT_SIZES = [
+  PHONE,
+  { width: 375, height: 667 },
+  { width: 360, height: 740 },
+  { width: 412, height: 915 },
+  DESKTOP,
+  { ...PHONE, insets: { top: 59, bottom: 34 } },
+  { width: 375, height: 812, insets: { top: 50, bottom: 34 } },
+];
+
+/**
+ * The table fits the visible height: nothing scrolls (neither the page nor
+ * the Ansage panel), and the bottom of the last hand card is inside the
+ * viewport (above a bottom safe area), at every size in FIT_SIZES.
+ */
+async function assertFits(page, label, sizes = FIT_SIZES) {
+  for (const size of sizes) {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    const insets = size.insets ?? { top: 0, bottom: 0 };
+    await page.evaluate((i) => {
+      const root = document.documentElement.style;
+      if (i.top) root.setProperty('--safe-top', `${i.top}px`);
+      else root.removeProperty('--safe-top');
+      if (i.bottom) root.setProperty('--safe-bottom', `${i.bottom}px`);
+      else root.removeProperty('--safe-bottom');
+    }, insets);
+    await page.waitForTimeout(120);
+    const r = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('.hand-card')];
+      const last = cards[cards.length - 1];
+      const screen = document.querySelector('.screen');
+      const declare = document.querySelector('.declare');
+      return {
+        scroll: document.scrollingElement.scrollHeight,
+        inner: window.innerHeight,
+        screen: screen ? screen.scrollHeight - screen.clientHeight : 0,
+        declare: declare ? declare.scrollHeight - declare.clientHeight : 0,
+        cards: cards.length,
+        bottom: last ? last.getBoundingClientRect().bottom : null,
+      };
+    });
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty('--safe-top');
+      document.documentElement.style.removeProperty('--safe-bottom');
+    });
+    const where = `${label} at ${size.width}x${size.height}${size.insets ? ' (PWA, safe areas)' : ''}`;
+    if (r.scroll > r.inner) fail(`${where}: the page scrolls (${r.scroll} > ${r.inner})`);
+    if (r.screen > 0) fail(`${where}: the table scrolls by ${r.screen}px`);
+    if (r.declare > 1) fail(`${where}: the Ansage is cut off by ${r.declare}px`);
+    if (!r.cards || r.bottom === null) fail(`${where}: no hand cards`);
+    if (r.bottom > r.inner - insets.bottom) fail(`${where}: the last hand card ends at ${Math.round(r.bottom)}, below ${r.inner - insets.bottom}`);
+  }
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(80);
+  log(`${label}: table fits ${sizes.map((s) => `${s.width}x${s.height}${s.insets ? ' PWA' : ''}`).join(', ')}`);
+}
+
 function fixture(name) {
   return readFileSync(join(here, 'fixtures', name), 'utf8');
 }
@@ -205,7 +275,10 @@ async function pickUpAndDiscard(page, label, shot = null) {
   if (await page.locator('.declare').count()) fail(`${label}: an Ansage while discarding`);
   await page.locator('[data-action="select"]').nth(0).click();
   await page.locator('[data-action="select"]').nth(1).click();
-  if (shot) await shoot(page, shot);
+  if (shot) {
+    await shoot(page, shot);
+    await assertFits(page, `${label}, discarding (12 cards)`);
+  }
   await page.click('[data-action="discard"]');
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
   const pressed = await page.locator('[data-testid="pressed"] .mini-card').count();
@@ -260,6 +333,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
   await shoot(page, 'table-boss');
+  await assertFits(page, 'boss at the table');
 
   // The Kontra-Hans says Kontra: answer without Re, the game goes on.
   await resumeFixture(page, 'kontra.json');
@@ -274,6 +348,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   if (!(await page.locator('.badge-kontra').count())) fail('no Kontra mark at the table after the answer');
   log('Kontra answered, game goes on');
   await shoot(page, 'table-kontra');
+  await assertFits(page, 'after Kontra');
   await context.close();
 }
 
@@ -310,6 +385,7 @@ async function m4(browser, errors, reducedMotion) {
   const handLevels = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
   if (handLevels !== 'Hand,OuvertHand') fail(`Null hand Ansage offers ${handLevels}`);
   await shoot(page, 'null-declare-hand');
+  await assertFits(page, 'Null hand Ansage');
   await page.click('[data-action="hand-back"]');
   // With the skat: Null and Null Ouvert.
   await pickUpAndDiscard(page, 'Null');
@@ -320,6 +396,7 @@ async function m4(browser, errors, reducedMotion) {
   if (!/Wert \d+/.test(values)) fail(`Null levels without values: ${values}`);
   log(`Null Ansage: hand ${handLevels}; after the skat ${values.trim()}; Kiebitz card shown`);
   await shoot(page, 'null-declare');
+  await assertFits(page, 'Null Ansage with the Kiebitz');
   await page.click('[data-action="pick-null-risk"][data-risk="Normal"]');
   await page.click('[data-action="declare-null"]');
   await page.waitForSelector('.badge-null');
@@ -357,6 +434,7 @@ async function m4(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="ramsch"]');
   if (await page.locator('.declare').count()) fail('Ramsch offers an Ansage');
   await shoot(page, 'ramsch');
+  await assertFits(page, 'Ramsch');
   await playOut(page, 'Ramsch');
   const ramschDecl = await page.locator('.score-decl').textContent();
   if (!ramschDecl?.includes('Ramsch')) fail(`score board of the Ramsch says: ${ramschDecl}`);
@@ -374,6 +452,7 @@ async function m4(browser, errors, reducedMotion) {
   await page.click('[data-action="oma"]');
   await page.waitForSelector('.hand.is-oma [data-action="oma-give"]');
   await shoot(page, 'oma');
+  await assertFits(page, 'Die Oma');
   const handBefore = await page.locator('.hand-card').count();
   await page.locator('[data-action="oma-give"]').last().click();
   await page.waitForSelector('[data-action="oma"]', { state: 'detached' });
@@ -389,6 +468,7 @@ async function m4(browser, errors, reducedMotion) {
   if (!rule.includes('Der Alte')) fail(`the final boss's rule strip does not name him: ${rule}`);
   log(`Der Alte: ${rule}`);
   await shoot(page, 'old-man');
+  await assertFits(page, 'Der Alte');
   await context.close();
 }
 
@@ -574,6 +654,7 @@ async function m5(browser, errors, reducedMotion) {
   await lockedCards.first().click();
   if (await page.locator('[data-action="select"][aria-pressed="true"]').count()) fail('tapping the Ramponiert card picked something');
   await shoot(page, 'discard-locked');
+  await assertFits(page, 'Ramponiert while discarding');
   await page.locator('[data-action="select"]').nth(0).click();
   await page.locator('[data-action="select"]').nth(1).click();
   await page.click('[data-action="discard"]');
@@ -613,7 +694,10 @@ async function run() {
     if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;
-      return ['Grenze Gotisch', 'Alegreya Sans'].filter((f) => !document.fonts.check(`16px "${f}"`, 'Skat'));
+      const families = ['Kenney Mini', 'Kenney Mini Square'];
+      await Promise.all(families.map((f) => document.fonts.load(`16px "${f}"`, 'Skat')));
+      const loaded = [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, ''));
+      return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
     const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
@@ -644,6 +728,7 @@ async function run() {
     await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
     await shoot(page, 'table-declare');
+    await assertFits(page, 'Skat oder Hand');
 
     // Pass once.
     const passes = Number(await text(page, 'passes-left'));
@@ -671,6 +756,7 @@ async function run() {
     const handRisks = await page.locator('[data-action="pick-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
     if (handRisks !== 'Hand,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`hand Ansage offers ${handRisks}`);
     await shoot(page, 'table-declare-hand');
+    await assertFits(page, 'hand Ansage');
     await page.click('[data-action="hand-back"]');
     log(`hand Ansage: ${handRisks}`);
 
@@ -679,6 +765,7 @@ async function run() {
     if (await page.locator('[data-action="pick-risk"]').count()) fail('hand levels after the skat');
     await page.click('[data-action="pick-game"][data-index="4"]');
     await shoot(page, 'table-declare-after');
+    await assertFits(page, 'Ansage after the skat');
     await page.click('[data-action="declare"]');
     await page.waitForSelector('.declare', { state: 'detached' });
     log('skat picked up, two cards pressed, Grand declared');
@@ -689,7 +776,10 @@ async function run() {
       await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
       if (await page.locator('.score-sheet').count()) break;
       const dimmed = await page.locator('.hand-card.is-dim').count();
-      if (played === 0) await shoot(page, 'table-play');
+      if (played === 0) {
+        await shoot(page, 'table-play');
+        await assertFits(page, 'playing');
+      }
       if (played === 3 && dimmed > 0) await shoot(page, 'table-follow');
       await page.locator('[data-action="play"]').first().click();
       played += 1;

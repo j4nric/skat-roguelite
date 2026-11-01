@@ -1,20 +1,18 @@
 # Lizenzen und Quellen der Web-App
 
-Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16), für Schriften zusätzlich die SIL Open Font License. Jede fremde Quelle steht hier und später im Abspann.
+Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16, CLAUDE.md). Jede fremde Quelle steht hier und im Abspann.
 
 ## Grafik, Schrift, Klang
 
 | Was | Datei | Autor | Lizenz |
 |---|---|---|---|
-| Kartenbilder des deutschen Blatts (Farbzeichen, Zahlkarten, Daus, König, Ober, Unter, Kartenrücken, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
-| Figuren (Stammgäste, Wirt, Bosse), Gegenstände am Tresen, Regal | `src/ui/people.ts`, `src/ui/goods.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
-| Holz-, Filz- und Kreide-Texturen | `src/style.css` (SVG-Rauschfilter) | selbst erstellt | Teil dieses Projekts |
+| Kartenbilder des deutschen Blatts im Pixelstil (Farbzeichen als 8 × 8 Pixel, Zahlkarten, Daus, König, Ober, Unter, Kartenrücken, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt nach der Stilprobe `docs/design/stil-a4-mockup.dc.html` | Teil dieses Projekts |
+| Figuren (Stammgäste, Wirt, Bosse), Gegenstände am Tresen; beim Start zu Pixelbildern verkleinert (`src/ui/pixelate.ts`) | `src/ui/people.ts`, `src/ui/goods.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
 | Favicon | `public/favicon.svg` | selbst gezeichnet | Teil dieses Projekts |
-| Schrift „Grenze Gotisch“ (Anzeige-Schrift), auf Latin-1 reduziert, WOFF2 | `src/assets/fonts/grenze-gotisch.woff2` | Omnibus-Type, The Grenze Gotisch Project Authors (https://github.com/Omnibus-Type/Grenze-Gotisch), bezogen über github.com/google/fonts | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-GrenzeGotisch.txt` |
-| Schrift „Alegreya Sans“ (Textschrift, Regular und Bold), auf Latin-1 reduziert, WOFF2 | `src/assets/fonts/alegreya-sans-*.woff2` | Juan Pablo del Peral, HT Fonts (Huerta Tipográfica), The Alegreya Sans Project Authors (https://github.com/huertatipografica/Alegreya-Sans), bezogen über github.com/google/fonts | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-AlegreyaSans.txt` |
+| Pixelschriften „Kenney Mini“ (Text) und „Kenney Mini Square“ (Beschriftungen, Kartenecken), auf Latin-1 reduziert, WOFF2; Kleinbuchstaben ä, ö, ü und l nachgebessert, Minus und Halbgeviertstrich ergänzt | `src/assets/fonts/kenney-mini.woff2`, `src/assets/fonts/kenney-mini-square.woff2` | Kenney (www.kenney.nl), Paket „Kenney Fonts“ (https://kenney.nl/assets/kenney-fonts), bezogen über den Spiegel github.com/ereborstudios/kenney-fonts | CC0 1.0, Text in `src/assets/fonts/Kenney-License.txt` |
 | Klänge: Karte legen, Stich, Kreide-Tick, Gläserklirren (Relikt), Groschen, Klopfen (Ergebnis), Sieg und Niederlage (Akkordeon) | `src/assets/sounds/*.mp3` | selbst synthetisiert mit `scripts/make-sounds.mjs` (Rauschen, Sinus-Teiltöne, kleine Akkordeon-Synthese), keine fremden Aufnahmen | Teil dieses Projekts |
 
-Die Schriften wurden mit `pyftsubset` (fontTools) auf die Zeichen für deutsche Texte reduziert. Das ist nach OFL erlaubt. Beide Schriften haben keinen reservierten Schriftnamen (Reserved Font Name), die reduzierten Fassungen dürfen ihren Namen also behalten. Die Lizenztexte liegen neben den Schriftdateien. Die Klänge lassen sich mit `node scripts/make-sounds.mjs` (braucht ffmpeg) jederzeit neu erzeugen.
+Die Schriften baut `scripts/make-fonts.py` (braucht fontTools und brotli) aus den TTF-Dateien des Kenney-Pakets: Sie werden auf die Zeichen für deutsche Texte reduziert, die Kleinbuchstaben ä, ö und ü bekommen eigene Punkte (im Paket sind es die Großbuchstaben), das kleine l bekommt einen vollen Strich, Minus und Halbgeviertstrich werden ergänzt. CC0 erlaubt jede Änderung; die Namensnennung ist freiwillig und steht trotzdem hier und im Abspann. Die Klänge lassen sich mit `node scripts/make-sounds.mjs` (braucht ffmpeg) jederzeit neu erzeugen.
 
 Dieselben Quellen nennt der Abspann im Spiel (Startseite und Menü, Texte in `src/i18n/de.ts`).
 

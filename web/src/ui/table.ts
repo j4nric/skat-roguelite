@@ -71,13 +71,12 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
   const size = ui.anim ? (ui.anim.handSizes[seat] ?? 0) : (game.hand_sizes[seat] ?? 0);
   const turn = ui.anim ? ui.anim.turn === seat : view.ai_to_move === seat;
   const thinking = ui.thinking === seat;
-  const backs = Array.from({ length: Math.min(size, 12) }, () => cardBack('fan')).join('');
   const seen = game.revealed.filter((r) => r.holder === seat);
   const open = seen.filter((r) => r.source !== 'Kibitz').map(revealedCard).join('');
   const peeked = seen.filter((r) => r.source === 'Kibitz').map(revealedCard).join('');
   const revealed =
-    (open ? `<span>${esc(de.table.holds)}</span>${open}` : '') +
-    (peeked ? `<span class="kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
+    (open ? `<span class="opp-tag">${esc(de.table.holds)}</span>${open}` : '') +
+    (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
   const position = game.positions[seat];
   // Bosses sit in the left chair with their own figure and name.
   const boss = seat === 1 && view.series.is_boss && view.series.boss ? view.series.boss : null;
@@ -89,21 +88,25 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
       ? ''
       : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" data-seat="${seat}">
-    ${portrait(face, 'portrait-opp')}${thinking ? thinkBubble() : ''}
-    <div class="opp-info">
-      <div class="opp-head"><b class="opp-name">${esc(name)}</b></div>
-      <div class="opp-pos">${esc(position ? de.positions[position] : '')}${trickTag}${kontraBadge(game, seat)}</div>
-      <div class="opp-hand">${backs}<span class="opp-count" aria-label="${esc(t(de.table.cards, { count: size }))}">${esc(size)}</span></div>
+    <div class="opp-main">
+      ${portrait(face, 'portrait-opp')}${thinking ? thinkBubble() : ''}
+      <div class="opp-info">
+        <b class="opp-name">${esc(name)}</b>
+        <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
+        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
+      </div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}
   </div>`;
 }
 
-function trickSlot(cards: PlayedCard[], seat: Seat): string {
+function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false): string {
   const played = cards.find((c) => c.seat === seat);
   const inner = played
     ? `<div class="card trick-card" data-trick-seat="${seat}">${cardSvg(played.card.kind, played.card.mods)}</div>`
-    : `<div class="card-slot"></div>`;
+    : yourTurn
+      ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
+      : `<div class="card-slot"></div>`;
   return `<div class="slot slot-${seat}">${inner}</div>`;
 }
 
@@ -354,6 +357,10 @@ function statusLine(game: GameView, ui: UiState): string {
   }
 }
 
+/**
+ * The small line above the trick: what is played, Kontra, the tricks so far
+ * and the pressed skat. The score of the game only comes big at the end.
+ */
 function gameLine(game: GameView): string {
   if (!game.declaration) return '';
   const d = game.declaration;
@@ -366,14 +373,10 @@ function gameLine(game: GameView): string {
   const skat = game.skat
     ? `<span class="skat"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</span>`
     : '';
-  const special =
-    d.game === 'Null'
-      ? `<span class="badge badge-null">${esc(de.table.noTrick)}</span>`
-      : '';
+  const special = d.game === 'Null' ? `<span class="badge badge-null">${esc(de.table.noTrick)}</span>` : '';
   return `<div class="gameline">
-    <span class="decl">${gameIcon(d.game, 20)}<span>${esc(declarationName(d))}</span></span>
-    ${special}
-    ${kontra}
+    <span class="decl">${gameIcon(d.game, 14)}<span>${esc(declarationName(d))}</span></span>
+    ${special}${kontra}
     <span class="tricks" data-tricks>${esc(
       d.game === 'Ramsch'
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
@@ -403,7 +406,7 @@ function ruleStrip(view: RunView, game: GameView): string {
   </button>`;
 }
 
-/** The count of "Der Zähler", as chalk on a little slate. */
+/** The count of "Der Zähler": one small row under the trick. */
 function countPanel(game: GameView): string {
   const c = game.count;
   if (!c || !game.declaration) return '';
@@ -436,17 +439,17 @@ export function renderTable(view: RunView, ui: UiState): string {
   if (!game) return '';
   const declaring = (game.phase === 'Declaring' || game.phase === 'DeclaringAfterSkat') && !ui.anim && game.declare;
   const trick = ui.anim ? ui.anim.trick : game.trick;
-  const center = declaring && game.declare
-    ? declarePanel(game.declare, game, ui, view.series.passes_left)
-    : `<div class="trick" data-action="fast">${trickSlot(trick, 1)}${trickSlot(trick, 2)}${trickSlot(trick, 0)}</div>`;
+  const center =
+    declaring && game.declare
+      ? declarePanel(game.declare, game, ui, view.series.passes_left)
+      : `${gameLine(game)}<div class="trick" data-action="fast">${trickSlot(trick, 1)}${trickSlot(trick, 0, !ui.anim && !ui.busy && game.your_turn)}${trickSlot(trick, 2)}</div>${countPanel(game)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
-  return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''}">
+  const cols = Math.max(5, Math.ceil((ui.anim ? ui.anim.hand : game.hand).length / 2));
+  return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''}" style="--cols:${cols}">
     <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
     ${ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
     <div class="center"><div class="deck-spot" aria-hidden="true"></div>${center}</div>
-    ${gameLine(game)}
-    ${countPanel(game)}
-    ${statusLine(game, ui)}
     ${handCards(game, ui)}
+    ${statusLine(game, ui)}
   </div>`;
 }

@@ -1,6 +1,8 @@
-// Things on the Tresen, drawn as SVG: the consumables as objects, the
-// relics as Bierdeckel, and the shelf behind the Wirt. Picked by content
-// id for looks only; unknown items get a plain parcel.
+// Things on the Tresen, drawn as SVG: the consumables as objects. Picked
+// by content id for looks only; unknown items get a plain parcel. At start they are
+// turned into pixel images (./pixelate.ts).
+
+import { pixelUrl, type PixelJob } from './pixelate';
 
 const OUT = '#2b1a0e';
 
@@ -35,26 +37,14 @@ const GOODS: Record<string, string> = {
 const PARCEL = `<rect x="22" y="34" width="56" height="48" rx="4" fill="#b98a55" stroke="${OUT}" stroke-width="2.5"/>
 <path d="M22 50 L78 50 M50 34 L50 82" stroke="#6b4529" stroke-width="3"/>`;
 
-/** An item on the counter as inline SVG (100 × 100). */
-export function goodSvg(id: string, size = 64): string {
-  return `<svg class="good-svg" viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">${GOODS[id] ?? PARCEL}</svg>`;
+/** Jobs for ./pixelate.ts: every item as a small pixel image. */
+export function goodJobs(): PixelJob[] {
+  return [...Object.entries(GOODS), ['parcel', PARCEL] as const].map(([id, markup]) => ({ key: `good-${id}`, markup, size: 26 }));
 }
 
-/** The shelf behind the Wirt: bottles and glasses, as a wide strip. */
-export function shelfSvg(): string {
-  const bottles = [
-    [14, '#2f6b3a', 34], [30, '#7a3b1c', 40], [46, '#c9a24a', 30], [62, '#2f4f7a', 38], [78, '#6b1f2b', 34],
-    [176, '#7a3b1c', 36], [192, '#2f6b3a', 42], [208, '#d98e0b', 30], [224, '#6b1f2b', 38], [240, '#3a5a2a', 34],
-  ] as const;
-  const b = bottles
-    .map(
-      ([x, c, h]) =>
-        `<path d="M${x} 58 L${x} ${58 - h + 14} C${x} ${58 - h + 8} ${x + 3} ${58 - h + 6} ${x + 3} ${58 - h} L${x + 7} ${58 - h} C${x + 7} ${58 - h + 6} ${x + 10} ${58 - h + 8} ${x + 10} ${58 - h + 14} L${x + 10} 58 Z" fill="${c}" stroke="#1a0f08" stroke-width="1.2"/><rect x="${x + 1.5}" y="${58 - h / 2}" width="7" height="8" fill="#f3e9d2" opacity=".75"/>`,
-    )
-    .join('');
-  const glasses = [100, 112, 124, 136, 148]
-    .map((x) => `<path d="M${x} 40 L${x + 9} 40 L${x + 8} 58 L${x + 1} 58 Z" fill="#cfe6ef" fill-opacity=".35" stroke="#e9f3f6" stroke-width="1" opacity=".8"/>`)
-    .join('');
-  return `<svg class="shelf-svg" viewBox="0 0 260 64" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-<rect x="0" y="58" width="260" height="6" fill="#5a3a22"/><rect x="0" y="58" width="260" height="1.5" fill="#8a5a34"/>${b}${glasses}</svg>`;
+/** An item on the counter: the pixel image, else the SVG (100 × 100). */
+export function goodSvg(id: string, size = 64): string {
+  const url = pixelUrl(`good-${id in GOODS ? id : 'parcel'}`);
+  if (url) return `<img class="good-svg px" src="${url}" width="${size}" height="${size}" alt="" draggable="false">`;
+  return `<svg class="good-svg" viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">${GOODS[id] ?? PARCEL}</svg>`;
 }
