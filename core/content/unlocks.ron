@@ -1,0 +1,69 @@
+// Freischaltungen (DESIGN 9.3): eine Tat am Tisch und was sie freischaltet.
+// Jedes Relikt und jeder Charakter, der hier als Belohnung steht, ist bis
+// dahin gesperrt; der Tresen bietet nur Freigeschaltetes an. Der Simulator
+// prüft die Erreichbarkeit mit `--unlocks`.
+[
+    (
+        id: "second_evening",
+        name: "Zweiter Abend",
+        text: "Erreiche Abschnitt 2.",
+        condition: ReachSection(2),
+        rewards: [Relic("landlord")],
+    ),
+    (
+        id: "third_evening",
+        name: "Dritter Abend",
+        text: "Erreiche Abschnitt 3.",
+        condition: ReachSection(3),
+        rewards: [Relic("tour")],
+    ),
+    (
+        id: "hand_won",
+        name: "Aus der Hand",
+        text: "Gewinne ein Handspiel.",
+        condition: WinGame(min_risk: Some(Hand)),
+        rewards: [Relic("ouvert_bonus")],
+    ),
+    (
+        id: "big_game",
+        name: "Dickes Ding",
+        text: "Gewinne ein Spiel, das mindestens 96 Punkte zählt.",
+        condition: WinGame(min_value: 96),
+        rewards: [Relic("kontra")],
+    ),
+    (
+        id: "grand_schneider",
+        name: "Grand Schneider",
+        text: "Gewinne einen Grand Schneider.",
+        condition: WinGame(game: Some(Grand), schneider: true),
+        rewards: [Relic("march_through")],
+    ),
+    (
+        id: "early_finish",
+        name: "Früher Feierabend",
+        text: "Gewinne eine Serie mit drei Spielen übrig.",
+        condition: WinSeriesWithGamesLeft(3),
+        rewards: [Relic("virgin")],
+    ),
+    (
+        id: "boss_without_pass",
+        name: "Ohne zu passen",
+        text: "Schlage einen Boss, ohne in seiner Serie zu passen.",
+        condition: BeatBoss(without_pass: true),
+        rewards: [Relic("referee")],
+    ),
+    (
+        id: "beat_grandma",
+        name: "Omas Liebling",
+        text: "Schlage den Boss Die Oma.",
+        condition: BeatBoss(boss: Some("grandma")),
+        rewards: [Relic("granny")],
+    ),
+    (
+        id: "tour_won",
+        name: "Die Tournee gewonnen",
+        text: "Gewinne einen Run mit dem Alleinspieler.",
+        condition: WinRun(Some(Declarer)),
+        rewards: [Character(NullPlayer)],
+    ),
+]

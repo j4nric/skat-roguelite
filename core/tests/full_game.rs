@@ -17,7 +17,7 @@ fn play_seeded(seed: u64) -> Game {
     game.declare(declaration).expect("declare");
     if game.phase() == Phase::Discarding {
         let discard = declarer
-            .choose_discard(game.hand(Seat::DECLARER), declaration.game)
+            .choose_discard(game.hand(Seat::DECLARER), declaration.game())
             .expect("two discards");
         game.discard(discard).expect("discard");
     }

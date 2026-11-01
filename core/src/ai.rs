@@ -1,11 +1,15 @@
 //! Heuristic AI (design document, section 10.2, stage 1).
 //!
 //! Two policies: the two defenders play a coordinated priority list, the
-//! declarer heuristic exists for the simulator and for boss tests. Both see
-//! only what [`SeatView`] exposes: own hand, the cards on the table, the
-//! cards played so far and, in an Ouvert game, the declarer's open hand.
-//! Null games are not supported by either policy (ADR 0003: Null is a
-//! character of its own, later milestone).
+//! declarer heuristic exists for the simulator, the run bot and for boss
+//! tests. Both see only what [`SeatView`] exposes: own hand, the cards on
+//! the table, the cards played so far, in an Ouvert game the declarer's
+//! open hand and, against the boss "Die Zwillinge", the partner's hand.
+//!
+//! Both also play Null (Nullspieler, ADR 0003): the declarer ducks under
+//! the winning card and sheds his most exposed cards, the defenders lead
+//! low and keep the declarer on top. In a Ramsch (boss "Der Ramscher")
+//! every seat plays for itself and avoids Augen.
 //!
 //! Both policies are generic over the card type, so they play the plain
 //! 32-card deck as well as the roguelike deck with blanks and modified
@@ -105,7 +109,7 @@ fn non_trump_suits<C: PlayingCard>(game: GameType, hand: &[C]) -> Vec<(Suit, Vec
 /// Blanks may always be played, so playing one reveals nothing. If the
 /// declarer plays Ouvert, his voids are read directly from the open hand.
 fn known_voids<C: PlayingCard>(view: &SeatView<'_, C>, seat: Seat) -> Vec<Option<Suit>> {
-    let game = view.declaration.game;
+    let game = view.declaration.game();
     if let (true, Some(open)) = (seat.is_declarer(), view.declarer_hand) {
         let kinds = Suit::ALL
             .iter()
@@ -224,11 +228,14 @@ impl DefenderHeuristic {
                 !rules::is_trump(game, c) && (has_rank(c, Rank::Ace) || has_rank(c, Rank::Ten))
             })
             .count();
+        if game == GameType::Null {
+            return Self::says_null_kontra(hand);
+        }
         trumps >= 4 || (trumps >= 3 && high_cards >= 3)
     }
 
     fn lead<C: PlayingCard>(&self, view: &SeatView<'_, C>, unseen: &[C]) -> Option<C> {
-        let game = view.declaration.game;
+        let game = view.declaration.game();
         let legal = &view.legal_moves;
         let suits = non_trump_suits(game, legal);
         if suits.is_empty() {
@@ -254,7 +261,7 @@ impl DefenderHeuristic {
     }
 
     fn follow<C: PlayingCard>(&self, view: &SeatView<'_, C>, unseen: &[C]) -> Option<C> {
-        let game = view.declaration.game;
+        let game = view.declaration.game();
         let legal = &view.legal_moves;
         let trick = view.trick;
         let winner_idx = rules::winning_index(game, trick)?;
@@ -327,6 +334,14 @@ impl<C: PlayingCard> Policy<C> for DefenderHeuristic {
         if view.legal_moves.is_empty() {
             return None;
         }
+        if view.declaration.is_ramsch() {
+            return ramsch_play(view).or_else(|| view.legal_moves.first().copied());
+        }
+        if view.declaration.is_null() {
+            return self
+                .null_play(view)
+                .or_else(|| view.legal_moves.first().copied());
+        }
         let unseen = view.unseen_cards();
         let choice = if view.trick.is_empty() {
             self.lead(view, &unseen)
@@ -393,7 +408,8 @@ impl DeclarerHeuristic {
         } else {
             RiskLevel::Normal
         };
-        Declaration::new(game, risk)
+        // The candidates above are suit games and the grand only.
+        Declaration::new(game, risk).unwrap_or(Declaration::grand(risk))
     }
 
     /// Choose the two discards from the twelve cards. Blanks go first (they
@@ -438,7 +454,7 @@ impl DeclarerHeuristic {
     }
 
     fn lead<C: PlayingCard>(&self, view: &SeatView<'_, C>, unseen: &[C]) -> Option<C> {
-        let game = view.declaration.game;
+        let game = view.declaration.game();
         let legal = &view.legal_moves;
         let trumps: Vec<C> = legal
             .iter()
@@ -475,7 +491,7 @@ impl DeclarerHeuristic {
     }
 
     fn follow<C: PlayingCard>(&self, view: &SeatView<'_, C>, unseen: &[C]) -> Option<C> {
-        let game = view.declaration.game;
+        let game = view.declaration.game();
         let legal = &view.legal_moves;
         let trick = view.trick;
         if trick.is_empty() {
@@ -516,7 +532,15 @@ impl<C: PlayingCard> Policy<C> for DeclarerHeuristic {
         if view.legal_moves.is_empty() {
             return None;
         }
+        if view.declaration.is_ramsch() {
+            return ramsch_play(view).or_else(|| view.legal_moves.first().copied());
+        }
         let unseen = view.unseen_cards();
+        if view.declaration.is_null() {
+            return self
+                .null_play(view, &unseen)
+                .or_else(|| view.legal_moves.first().copied());
+        }
         let choice = if view.trick.is_empty() {
             self.lead(view, &unseen)
         } else {
@@ -524,6 +548,253 @@ impl<C: PlayingCard> Policy<C> for DeclarerHeuristic {
         };
         choice.or_else(|| view.legal_moves.first().copied())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Null (Nullspieler) and Ramsch (boss "Der Ramscher")
+// ---------------------------------------------------------------------------
+
+/// Strength of a card in a Null game for "who goes under whom": a blank or
+/// a card that never wins counts as the lowest of all.
+fn null_strength<C: PlayingCard>(card: C) -> u8 {
+    if card.is_blank() || card.never_wins() {
+        0
+    } else {
+        rules::suit_strength(GameType::Null, card)
+    }
+}
+
+/// How exposed a card of the Null declarer is: the unseen cards of its
+/// suit that are lower than it, minus the own cards of the suit that are
+/// lower (the classic Null rule: the k-th lowest card of a suit is safe if
+/// at most k-1 lower cards are out). Blanks and cards that never win are
+/// never exposed.
+#[must_use]
+pub fn null_exposure<C: PlayingCard>(card: C, own: &[C], unseen: &[C]) -> i32 {
+    let Some(face) = card.face() else {
+        return i32::MIN;
+    };
+    if card.never_wins() {
+        return i32::MIN;
+    }
+    let strength = null_strength(card);
+    let lower = |cards: &[C]| {
+        cards
+            .iter()
+            .filter(|c| {
+                c.face().is_some_and(|f| f.suit == face.suit)
+                    && !c.never_wins()
+                    && null_strength(**c) < strength
+            })
+            .count()
+    };
+    let out = i32::try_from(lower(unseen)).unwrap_or(i32::MAX);
+    let mine = i32::try_from(lower(own)).unwrap_or(i32::MAX);
+    out - mine
+}
+
+/// Unsafe cards of a Null hand against every other card of the deck:
+/// cards with a positive [`null_exposure`].
+#[must_use]
+pub fn null_unsafe_cards<C: PlayingCard>(hand: &[C], deck: &[C]) -> usize {
+    let unseen: Vec<C> = deck.iter().copied().filter(|c| !hand.contains(c)).collect();
+    hand.iter()
+        .filter(|&&c| null_exposure(c, hand, &unseen) > 0)
+        .count()
+}
+
+/// Card of `cards` that does not take the trick so far, highest first
+/// (a safe card to get rid of), if any.
+fn highest_under<C: PlayingCard>(game: GameType, trick: &[C], cards: &[C]) -> Option<C> {
+    let idx = rules::winning_index(game, trick)?;
+    let lead = rules::effective_lead(trick).unwrap_or(trick[0]);
+    let holder = trick[idx];
+    cards
+        .iter()
+        .copied()
+        .filter(|&c| !rules::beats(game, lead, holder, c))
+        .max_by_key(|&c| (null_strength(c), c.card_points()))
+}
+
+impl DeclarerHeuristic {
+    /// Null: discard the two most exposed cards of the twelve.
+    #[must_use]
+    pub fn choose_null_discard<C: PlayingCard>(&self, cards: &[C], deck: &[C]) -> Option<[C; 2]> {
+        let mut hand = cards.to_vec();
+        let mut chosen = Vec::new();
+        for _ in 0..2 {
+            let unseen: Vec<C> = deck
+                .iter()
+                .copied()
+                .filter(|c| !cards.contains(c))
+                .collect();
+            let worst = hand
+                .iter()
+                .copied()
+                .max_by_key(|&c| (null_exposure(c, &hand, &unseen), null_strength(c)))?;
+            hand.retain(|&c| c != worst);
+            chosen.push(worst);
+        }
+        match chosen[..] {
+            [a, b] => Some([a, b]),
+            _ => None,
+        }
+    }
+
+    fn null_play<C: PlayingCard>(&self, view: &SeatView<'_, C>, unseen: &[C]) -> Option<C> {
+        let game = GameType::Null;
+        let legal = &view.legal_moves;
+        let trick = view.trick;
+        if trick.is_empty() {
+            // Lead the card the defenders can least go under: few unseen
+            // cards of its suit at or below it, many above.
+            return legal.iter().copied().min_by_key(|&c| {
+                if c.is_blank() || c.never_wins() {
+                    return (i32::MIN, 0, 0);
+                }
+                let suit = c.face().map(|f| f.suit);
+                let same: Vec<&C> = unseen
+                    .iter()
+                    .filter(|u| u.face().map(|f| f.suit) == suit && !u.never_wins())
+                    .collect();
+                let under = same
+                    .iter()
+                    .filter(|u| null_strength(***u) <= null_strength(c))
+                    .count();
+                let over = same.len() - under;
+                (
+                    i32::try_from(under).unwrap_or(i32::MAX),
+                    -i32::try_from(over).unwrap_or(0),
+                    null_strength(c),
+                )
+            });
+        }
+        let lead = view.lead_card();
+        let can_follow =
+            lead.is_some_and(|lead| legal.iter().any(|&c| rules::follows_lead(game, lead, c)));
+        if can_follow {
+            if let Some(c) = highest_under(game, trick, legal) {
+                return Some(c);
+            }
+            // Every card takes the trick so far.
+            let last = trick.len() == 2;
+            return if last {
+                legal.iter().copied().max_by_key(|&c| null_strength(c))
+            } else {
+                legal.iter().copied().min_by_key(|&c| null_strength(c))
+            };
+        }
+        // Cannot follow: get rid of the most exposed card.
+        legal
+            .iter()
+            .copied()
+            .max_by_key(|&c| (null_exposure(c, view.hand, unseen), null_strength(c)))
+    }
+}
+
+impl DefenderHeuristic {
+    /// Null: a defender doubles with many low cards (sevens and eights),
+    /// the cards that force the declarer to take a trick.
+    fn says_null_kontra<C: PlayingCard>(hand: &[C]) -> bool {
+        let low = hand
+            .iter()
+            .filter(|&&c| has_rank(c, Rank::Seven) || has_rank(c, Rank::Eight))
+            .count();
+        low >= 5
+    }
+
+    /// Null defence: both defenders want the declarer to take a trick.
+    fn null_play<C: PlayingCard>(&self, view: &SeatView<'_, C>) -> Option<C> {
+        let game = GameType::Null;
+        let legal = &view.legal_moves;
+        let trick = view.trick;
+        if trick.is_empty() {
+            let voids = known_voids(view, Seat::DECLARER);
+            let candidates: Vec<C> = legal
+                .iter()
+                .copied()
+                .filter(|c| c.face().is_some_and(|f| !voids.contains(&Some(f.suit))))
+                .collect();
+            let pool = if candidates.is_empty() {
+                legal.clone()
+            } else {
+                candidates
+            };
+            // With the declarer's hand open: a suit where all his cards are
+            // above our lowest one forces him to take the trick.
+            if let Some(open) = view.declarer_hand {
+                let forcing = pool.iter().copied().filter(|&c| {
+                    let suit = c.face().map(|f| f.suit);
+                    let his: Vec<&C> = open
+                        .iter()
+                        .filter(|d| d.face().map(|f| f.suit) == suit)
+                        .collect();
+                    !his.is_empty()
+                        && his
+                            .iter()
+                            .all(|d| null_strength(**d) > null_strength(c) && !d.never_wins())
+                });
+                if let Some(c) = forcing.min_by_key(|&c| null_strength(c)) {
+                    return Some(c);
+                }
+            }
+            return pool.iter().copied().min_by_key(|&c| null_strength(c));
+        }
+        let lead = view.lead_card();
+        let can_follow =
+            lead.is_some_and(|lead| legal.iter().any(|&c| rules::follows_lead(game, lead, c)));
+        let declarer_played = (0..trick.len()).any(|i| seat_at(view.trick_lead, i).is_declarer());
+        let dump = || legal.iter().copied().max_by_key(|&c| null_strength(c));
+        if !can_follow {
+            return dump();
+        }
+        if declarer_played {
+            let idx = rules::winning_index(game, trick)?;
+            if seat_at(view.trick_lead, idx).is_declarer() {
+                // Keep him on top: our highest card below his.
+                return highest_under(game, trick, legal).or_else(dump);
+            }
+            return dump();
+        }
+        // The declarer plays after us: keep the bar low.
+        legal.iter().copied().min_by_key(|&c| null_strength(c))
+    }
+}
+
+/// Ramsch: every seat plays for itself and avoids Augen and tricks. Used
+/// for all three seats by both heuristics.
+fn ramsch_play<C: PlayingCard>(view: &SeatView<'_, C>) -> Option<C> {
+    let game = GameType::Grand;
+    let legal = &view.legal_moves;
+    let trick = view.trick;
+    let key = |c: C| (c.card_points(), strength(game, c));
+    if trick.is_empty() {
+        let non_trump: Vec<C> = legal
+            .iter()
+            .copied()
+            .filter(|&c| !rules::is_trump(game, c))
+            .collect();
+        let pool = if non_trump.is_empty() {
+            legal.clone()
+        } else {
+            non_trump
+        };
+        return pool.iter().copied().min_by_key(|&c| key(c));
+    }
+    let idx = rules::winning_index(game, trick)?;
+    let lead = rules::effective_lead(trick).unwrap_or(trick[0]);
+    let holder = trick[idx];
+    let under: Vec<C> = legal
+        .iter()
+        .copied()
+        .filter(|&c| !rules::beats(game, lead, holder, c))
+        .collect();
+    if !under.is_empty() {
+        // Safe: dump the most Augen (the trick goes to someone else).
+        return under.iter().copied().max_by_key(|&c| key(c));
+    }
+    // Every card takes the trick: as cheaply as possible.
+    legal.iter().copied().min_by_key(|&c| key(c))
 }
 
 #[cfg(test)]
@@ -541,20 +812,20 @@ mod tests {
     fn declaration_grand_with_two_jacks_and_two_aces() {
         let hand = parse_cards("CJ SJ CA SA HT HK D7 D8 S9 C7").expect("hand");
         let d = DeclarerHeuristic.choose_declaration(&hand);
-        assert_eq!(d.game, GameType::Grand);
-        assert_eq!(d.risk, RiskLevel::Normal);
+        assert_eq!(d.game(), GameType::Grand);
+        assert_eq!(d.risk(), Some(RiskLevel::Normal));
     }
 
     #[test]
     fn declaration_longest_suit_and_hand_with_eight_trumps() {
         let hand = parse_cards("CJ HJ HA HT HK HQ H9 H8 D7 S9").expect("hand");
         let d = DeclarerHeuristic.choose_declaration(&hand);
-        assert_eq!(d.game, GameType::Suit(Suit::Hearts));
-        assert_eq!(d.risk, RiskLevel::Hand);
+        assert_eq!(d.game(), GameType::Suit(Suit::Hearts));
+        assert_eq!(d.risk(), Some(RiskLevel::Hand));
         let hand = parse_cards("CJ HA HT HK HQ D7 D8 S9 C7 C8").expect("hand");
         let d = DeclarerHeuristic.choose_declaration(&hand);
-        assert_eq!(d.game, GameType::Suit(Suit::Hearts));
-        assert_eq!(d.risk, RiskLevel::Normal);
+        assert_eq!(d.game(), GameType::Suit(Suit::Hearts));
+        assert_eq!(d.risk(), Some(RiskLevel::Normal));
     }
 
     #[test]
@@ -563,7 +834,7 @@ mod tests {
         for _ in 0..200 {
             let game = Game::deal(&mut rng, Seat::DECLARER);
             let d = DeclarerHeuristic.choose_declaration(game.hand(Seat::DECLARER));
-            assert_ne!(d.game, GameType::Null);
+            assert_ne!(d.game(), GameType::Null);
         }
     }
 
@@ -592,7 +863,7 @@ mod tests {
         game.declare(decl).expect("declare");
         if game.phase() == crate::game::Phase::Discarding {
             let discard = declarer
-                .choose_discard(game.hand(Seat::DECLARER), decl.game)
+                .choose_discard(game.hand(Seat::DECLARER), decl.game())
                 .expect("discard");
             game.discard(discard).expect("discard");
         }
@@ -626,11 +897,8 @@ mod tests {
             parse_cards("HA HT HK HQ H9 H8 H7 DA DT DK").expect("hand"),
         ];
         let mut game = Game::with_cards(hands, [c("C7"), c("DQ")], Seat::ALL[1]).expect("deal");
-        game.declare(Declaration::new(
-            GameType::Suit(Suit::Clubs),
-            RiskLevel::Hand,
-        ))
-        .expect("declare");
+        game.declare(Declaration::suit(Suit::Clubs, RiskLevel::Hand))
+            .expect("declare");
         game.play(Seat::ALL[1], c("SA")).expect("lead");
         game.play(Seat::ALL[2], c("HT")).expect("smear");
         let view = game.view(Seat::DECLARER).expect("view");
@@ -646,11 +914,8 @@ mod tests {
             parse_cards("HA HT HK HQ H9 H8 H7 DA DT DK").expect("hand"),
         ];
         let mut game = Game::with_cards(hands, [c("C7"), c("DQ")], Seat::DECLARER).expect("deal");
-        game.declare(Declaration::new(
-            GameType::Suit(Suit::Clubs),
-            RiskLevel::Hand,
-        ))
-        .expect("declare");
+        game.declare(Declaration::suit(Suit::Clubs, RiskLevel::Hand))
+            .expect("declare");
         game.play(Seat::DECLARER, c("CJ")).expect("lead");
         let view = game.view(Seat::ALL[1]).expect("view");
         assert_eq!(DefenderHeuristic.choose(&view), Some(c("D7")));
@@ -689,12 +954,12 @@ mod tests {
             let declarer = DeclarerHeuristic;
             let mut decl = declarer.choose_declaration(game.hand(Seat::DECLARER));
             if seed % 4 == 0 {
-                decl.risk = RiskLevel::Ouvert;
+                decl = decl.with_risk(RiskLevel::Ouvert);
             }
             game.declare(decl).expect("declare");
             if game.phase() == crate::game::Phase::Discarding {
                 let discard = declarer
-                    .choose_discard(game.hand(Seat::DECLARER), decl.game)
+                    .choose_discard(game.hand(Seat::DECLARER), decl.game())
                     .expect("discard");
                 let blanks = game
                     .hand(Seat::DECLARER)

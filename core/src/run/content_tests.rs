@@ -8,7 +8,7 @@ use crate::cards::Suit;
 use crate::content::CardModId;
 use crate::rules::{GameType, Matadors, Outcome, RiskLevel};
 
-fn content() -> Content {
+pub(super) fn content() -> Content {
     Content::load().expect("embedded content is valid")
 }
 
@@ -40,7 +40,7 @@ const HEARTS_SEVEN: [&str; 3] = [
 ];
 const HEARTS_SEVEN_SKAT: &str = "H8 C7";
 
-fn relic_run(content: &Content, relics: &[&str]) -> Run {
+pub(super) fn relic_run(content: &Content, relics: &[&str]) -> Run {
     let (mut run, _) = Run::new(content, 11).expect("start");
     run.relics = relics.iter().map(|r| RelicId::new(r)).collect();
     run
@@ -48,7 +48,12 @@ fn relic_run(content: &Content, relics: &[&str]) -> Run {
 
 /// Replace the current game by a constructed deal (declarer is forehand),
 /// with all content effects of a normal deal.
-fn fixed_deal(run: &mut Run, content: &Content, hands: [&str; 3], skat: &str) -> Vec<RunEvent> {
+pub(super) fn fixed_deal(
+    run: &mut Run,
+    content: &Content,
+    hands: [&str; 3],
+    skat: &str,
+) -> Vec<RunEvent> {
     let global = run.sources(content, false);
     let resolved = resolve_deck(&run.deck, content, &global);
     let mut pool = resolved.cards.clone();
@@ -76,7 +81,7 @@ fn fixed_deal(run: &mut Run, content: &Content, hands: [&str; 3], skat: &str) ->
 }
 
 /// Declare and let the bot play until the game is scored.
-fn play(
+pub(super) fn play(
     run: &mut Run,
     content: &Content,
     declaration: Declaration,
@@ -97,7 +102,7 @@ fn play(
 }
 
 fn hand_game(game: GameType) -> Declaration {
-    Declaration::new(game, RiskLevel::Hand)
+    Declaration::new(game, RiskLevel::Hand).expect("suit or grand")
 }
 
 const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
@@ -298,7 +303,7 @@ fn ouvert_bonus_adds_a_second_ouvert_level() {
     let (_, b) = play(
         &mut run,
         &content,
-        Declaration::new(DIAMONDS, RiskLevel::Ouvert),
+        Declaration::new(DIAMONDS, RiskLevel::Ouvert).expect("suit or grand"),
     );
     assert!(b.won && b.schwarz);
     assert_eq!(b.rule_levels.ouvert, 1);
@@ -350,7 +355,7 @@ fn skat_redraw_deals_again_once_per_series() {
     assert_eq!(action, RunAction::Redeal);
     run.apply(
         &content,
-        RunAction::Declare(Declaration::new(CLUBS, RiskLevel::Hand)),
+        RunAction::Declare(Declaration::new(CLUBS, RiskLevel::Hand).expect("suit or grand")),
     )
     .expect("declare");
     assert_eq!(
@@ -371,7 +376,7 @@ fn virgin_counts_61_to_70_as_schneider() {
     run.deal(&content, true, &mut events).expect("deal");
     let rules = &run.game().expect("game").rules;
     assert_eq!(rules.thresholds.declarer_schneider, vec![(61, 70)]);
-    let decl = Declaration::new(CLUBS, RiskLevel::Normal);
+    let decl = Declaration::new(CLUBS, RiskLevel::Normal).expect("suit or grand");
     let mit_1 = Matadors {
         with: true,
         count: 1,
@@ -382,14 +387,14 @@ fn virgin_counts_61_to_70_as_schneider() {
         declarer_tricks: 5,
         defender_tricks: 5,
     };
-    let b = score_game(decl, mit_1, &outcome(63), &rules.thresholds, Vec::new());
+    let b = crate::content::score_game(decl, mit_1, &outcome(63), &rules.thresholds, Vec::new());
     assert!(b.won && b.schneider);
     assert_eq!(b.levels, 3);
-    let b = score_game(decl, mit_1, &outcome(70), &rules.thresholds, Vec::new());
+    let b = crate::content::score_game(decl, mit_1, &outcome(70), &rules.thresholds, Vec::new());
     assert!(b.won && b.schneider);
-    let b = score_game(decl, mit_1, &outcome(71), &rules.thresholds, Vec::new());
+    let b = crate::content::score_game(decl, mit_1, &outcome(71), &rules.thresholds, Vec::new());
     assert!(!b.schneider);
-    let b = score_game(decl, mit_1, &outcome(60), &rules.thresholds, Vec::new());
+    let b = crate::content::score_game(decl, mit_1, &outcome(60), &rules.thresholds, Vec::new());
     assert!(
         !b.won && !b.schneider,
         "a lost game is never made Schneider"
@@ -611,7 +616,9 @@ fn the_pusher_forces_hand_games() {
     assert_eq!(
         run.apply(
             &content,
-            RunAction::Declare(Declaration::new(DIAMONDS, RiskLevel::Normal))
+            RunAction::Declare(
+                Declaration::new(DIAMONDS, RiskLevel::Normal).expect("suit or grand")
+            )
         ),
         Err(RunError::HandRequired)
     );
@@ -660,9 +667,9 @@ fn grandma_turns_all_jacks_into_blanks() {
     );
     // Matadors start below the missing jacks: the declarer holding the
     // trump ace is "mit 1" at least.
-    let decl = Declaration::new(DIAMONDS, RiskLevel::Normal);
+    let decl = Declaration::new(DIAMONDS, RiskLevel::Normal).expect("suit or grand");
     let ace = in_play.iter().copied().find(|c| c.id == 7).expect("DA");
-    let m = crate::rules::matadors_in(decl.game, &[ace], in_play);
+    let m = crate::rules::matadors_in(decl.game(), &[ace], in_play);
     assert!(m.with && m.count >= 1);
     // The deck itself keeps its jacks.
     assert_eq!(run.deck().blanks(), 0);
@@ -670,14 +677,19 @@ fn grandma_turns_all_jacks_into_blanks() {
 
 #[test]
 fn content_validation_rejects_misplaced_effects() {
-    let [_, card_mods, bosses, consumables, run] = crate::content::SOURCES;
+    let load = |relics: &str| {
+        Content::from_sources(&crate::content::Sources {
+            relics,
+            ..crate::content::Sources::embedded()
+        })
+    };
     let bad = r#"[(id: "x", name: "X", text: "x", rarity: Common, price: 1,
         hooks: [OnScore(then: [WinThreshold(50)])])]"#;
-    assert!(Content::from_sources(bad, card_mods.1, bosses.1, consumables.1, run.1).is_err());
+    assert!(load(bad).is_err());
     let bad = r#"[(id: "x", name: "X", text: "x", rarity: Common, price: 1,
         passive: [AddCardPoints(4)])]"#;
-    assert!(Content::from_sources(bad, card_mods.1, bosses.1, consumables.1, run.1).is_err());
+    assert!(load(bad).is_err());
     let bad = r#"[(id: "x", name: "X", text: "x", rarity: Common, price: 1,
         hooks: [OnDeal(when: Won, then: [AddLevels(1)])])]"#;
-    assert!(Content::from_sources(bad, card_mods.1, bosses.1, consumables.1, run.1).is_err());
+    assert!(load(bad).is_err());
 }

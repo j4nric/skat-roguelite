@@ -1,8 +1,11 @@
 // Kartenmodifikationen (gezinkte Karten). Sie hängen an einer Karte und
 // gelten, egal wer sie spielt (ADR 0005). Preise sind Platzhalter.
+// characters: für welche Charaktere „Stempelkissen“ und Ereignisse die
+// Modifikation ziehen (leer: alle).
 [
     (
         id: "fat",
+        characters: [Declarer],
         name: "Fett",
         text: "Diese Karte zählt 4 Augen mehr.",
         rarity: Common,
@@ -11,6 +14,7 @@
     ),
     (
         id: "marked",
+        characters: [Declarer],
         name: "Gezinkt",
         text: "Diese Karte zählt eine Stufe höher.",
         rarity: Common,
@@ -19,6 +23,7 @@
     ),
     (
         id: "stamp",
+        characters: [Declarer],
         name: "Stempel",
         text: "Ist die Farbe dieser Karte Trumpf, steigt der Grundwert um 3.",
         rarity: Uncommon,
@@ -29,6 +34,7 @@
     ),
     (
         id: "last_trick",
+        characters: [Declarer],
         name: "Spitze",
         text: "Gewinnt diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr. Egal, wer sie spielt.",
         rarity: Uncommon,
@@ -44,5 +50,14 @@
         rarity: Common,
         price: 2,
         passive: [RevealHolder],
+    ),
+    (
+        id: "invisible",
+        name: "Unsichtbar",
+        text: "Diese Karte kann nie einen Stich gewinnen. Egal, wer sie spielt.",
+        rarity: Uncommon,
+        price: 4,
+        characters: [NullPlayer],
+        passive: [NeverWins],
     ),
 ]

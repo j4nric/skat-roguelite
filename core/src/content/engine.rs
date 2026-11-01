@@ -10,7 +10,7 @@ use super::{CardModId, Content};
 use crate::cards::{CardKind, PlayingCard};
 use crate::deck::{DealtCard, Deck};
 use crate::game::{Game, Seat, TRICKS_PER_GAME};
-use crate::rules::{GameType, ValueParts};
+use crate::rules::{Declaration, GameType, ValueParts};
 
 /// One active content item: where it comes from and what it does. Card
 /// modifications carry the card instance they sit on.
@@ -43,11 +43,15 @@ pub struct ResolvedDeck {
 /// into blanks (their modifications are inactive for this game); then
 /// `SetCardPoints` from bosses and relics in source order; then the card's
 /// own modifications in the order they were attached (`AddCardPoints`,
-/// `RankBonus`, `RevealHolder`). Augen never drop below zero.
+/// `RankBonus`, `RevealHolder`, `NeverWins`). Augen never drop below zero.
+/// `RevealHolder` is off while a global source has `DisableInformation`.
 #[must_use]
 pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>]) -> ResolvedDeck {
     let mut cards = Vec::with_capacity(deck.len());
     let mut point_changes = Vec::new();
+    let no_information = global
+        .iter()
+        .any(|s| s.passive.contains(&Effect::DisableInformation));
     for deck_card in deck.cards() {
         let blanked = deck_card.kind.face().is_some_and(|face| {
             global.iter().any(|s| {
@@ -107,7 +111,8 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
                     Effect::RankBonus(bonus) => {
                         dealt.rank_bonus = dealt.rank_bonus.saturating_add(*bonus);
                     }
-                    Effect::RevealHolder => dealt.revealed = true,
+                    Effect::RevealHolder => dealt.revealed = !no_information,
+                    Effect::NeverWins => dealt.never_wins = true,
                     _ => {}
                 }
             }
@@ -198,9 +203,13 @@ pub fn evaluate(
             g.outcome().defender_tricks == 0
                 && g.outcome().declarer_tricks == u32::try_from(TRICKS_PER_GAME).unwrap_or(10)
         }),
-        Condition::GameIs(game_type) => declaration.is_some_and(|d| d.game == *game_type),
-        Condition::SuitGame => declaration.is_some_and(|d| matches!(d.game, GameType::Suit(_))),
-        Condition::RiskAtLeast(risk) => declaration.is_some_and(|d| d.risk >= *risk),
+        Condition::GameIs(game_type) => {
+            declaration.is_some_and(|d| !d.is_ramsch() && d.game() == *game_type)
+        }
+        Condition::SuitGame => declaration.is_some_and(|d| matches!(d.game(), GameType::Suit(_))),
+        Condition::RiskAtLeast(risk) => {
+            declaration.is_some_and(|d| d.risk().is_some_and(|r| r >= *risk))
+        }
         Condition::LastTrickWonWith { card, by_declarer } => last_trick(game).is_some_and(|t| {
             t.winning_card().face() == Some(*card) && (!by_declarer || t.winner.is_declarer())
         }),
@@ -217,7 +226,7 @@ pub fn evaluate(
             _ => false,
         },
         Condition::ThisCardIsTrumpSuit => match (declaration, this_card.and_then(|c| c.face())) {
-            (Some(d), Some(face)) => d.game == GameType::Suit(face.suit),
+            (Some(d), Some(face)) => d.game() == GameType::Suit(face.suit),
             _ => false,
         },
         Condition::TricksPlayed(n) => {
@@ -232,6 +241,13 @@ pub fn evaluate(
             .is_some_and(|face| filter.matches(face)),
         Condition::PlayedByDeclarer => ctx.played.is_some_and(|(seat, _)| seat.is_declarer()),
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
+        Condition::NullGame => declaration.is_some_and(Declaration::is_null),
+        Condition::NullRiskAtLeast(risk) => {
+            declaration.is_some_and(|d| d.null_risk().is_some_and(|r| r >= *risk))
+        }
+        Condition::RamschGame => declaration.is_some_and(Declaration::is_ramsch),
+        Condition::HandGame => declaration.is_some_and(Declaration::hand),
+        Condition::NoTrickTaken => game.is_some_and(|g| g.seat_tricks()[0] == 0),
     }
 }
 

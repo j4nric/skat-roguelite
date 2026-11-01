@@ -305,6 +305,12 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         0
     }
 
+    /// Whether this card can never take a trick ("Unsichtbar"). It still
+    /// has its suit and follows suit. `false` for plain cards.
+    fn never_wins(self) -> bool {
+        false
+    }
+
     /// The printed card, `None` for a blank.
     fn face(self) -> Option<Card> {
         self.kind().face()

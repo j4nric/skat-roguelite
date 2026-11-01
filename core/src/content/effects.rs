@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cards::{Card, Rank, Suit};
-use crate::rules::{GameType, RiskLevel};
+use crate::rules::{GameType, NullRisk, RiskLevel};
 
 /// The moment at which content acts. `Passive` effects are always on while
 /// the content is active; they are applied when a game is set up.
@@ -231,6 +231,49 @@ pub enum Effect {
     ClearFlag(String),
     /// Run state: add one to a counter (e.g. "tournee").
     IncrementCounter(String),
+    /// Lever Stichgewinn (Null): this card can never take a trick, whoever
+    /// plays it ("Unsichtbar"). It keeps its suit and follows suit. Card
+    /// modifications only, passive only.
+    NeverWins,
+    /// Lever Zählen: before the declaration the player sees this many
+    /// random cards of the defenders and who holds them (figure "Der
+    /// Kiebitz"). An information effect. Passive or on deal.
+    PeekDefenderCards(u32),
+    /// Lever Zählen: the player sees the Augen taken so far by each side
+    /// and the Augen he has not seen yet (figure "Der Zähler"). An
+    /// information effect. Passive only.
+    ShowCount,
+    /// Lever Groschen: prices at the Tresen (and the Neuauslage) drop by
+    /// this many percent, rounded to the nearest Groschen, at least 1
+    /// (figure "Der Wirt"). Passive only; several add up to at most 90.
+    ShopDiscount(u32),
+    /// Lever Spitzen and Hand: once per series, in a hand game before the
+    /// first card, the player may take a card matching the filter from the
+    /// untouched skat into his hand and put one of his cards in its place.
+    /// The game stays a hand game (figure "Die Oma", jacks). Whether such a
+    /// card lies in the skat is what the figure tells. Passive only.
+    SeriesSkatSwap(CardFilter),
+    /// Boss rules marked as cheating ([`Effect::is_cheat`]) do not apply
+    /// (figure "Der Schiedsrichter"). Passive only.
+    NoCheating,
+    /// Lever Gewinnstufen (Ouvert): every game must be declared Ouvert
+    /// (figure "Der Angeber"). Passive or on deal.
+    RequireOuvert,
+    /// Lever Stichgewinn: the defenders see each other's hands and play
+    /// with that knowledge (boss "Die Zwillinge"). Cheating. Passive or on
+    /// deal.
+    DefendersSeeEachOther,
+    /// Lever Zählen: the two defenders swap their hands (boss "Der
+    /// Revolutionär", after the fifth trick). Cheating. On trick end only.
+    SwapDefenderHands,
+    /// Own scoring: the first game dealt in the series while this rule is
+    /// active is a Ramsch, declared by nobody and not to be passed (boss
+    /// "Der Ramscher"; see [`crate::rules::ramsch_value_parts`]). Passive
+    /// only.
+    RamschOnce,
+    /// Every information effect ([`Effect::is_information`]) is off,
+    /// also "Durchsichtig" (boss "Der Kiebitz-Mörder"). Passive only.
+    DisableInformation,
 }
 
 impl Effect {
@@ -258,7 +301,38 @@ impl Effect {
             Effect::SetFlag(_) | Effect::ClearFlag(_) | Effect::IncrementCounter(_) => {
                 stage != Stage::Passive
             }
+            Effect::NeverWins
+            | Effect::ShowCount
+            | Effect::ShopDiscount(_)
+            | Effect::SeriesSkatSwap(_)
+            | Effect::NoCheating
+            | Effect::RamschOnce
+            | Effect::DisableInformation => stage == Stage::Passive,
+            Effect::PeekDefenderCards(_)
+            | Effect::RequireOuvert
+            | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
+            Effect::SwapDefenderHands => stage == Stage::OnTrickEnd,
         }
+    }
+
+    /// Whether this effect gives the player information (switched off by
+    /// [`Effect::DisableInformation`]).
+    #[must_use]
+    pub const fn is_information(&self) -> bool {
+        matches!(
+            self,
+            Effect::RevealHolder | Effect::PeekDefenderCards(_) | Effect::ShowCount
+        )
+    }
+
+    /// Whether this effect is a boss rule that counts as cheating
+    /// (switched off by [`Effect::NoCheating`]).
+    #[must_use]
+    pub const fn is_cheat(&self) -> bool {
+        matches!(
+            self,
+            Effect::DefendersSeeEachOther | Effect::SwapDefenderHands
+        )
     }
 
     /// Whether this effect needs "this card" and so only works on card
@@ -267,7 +341,10 @@ impl Effect {
     pub const fn card_mod_only(&self) -> bool {
         matches!(
             self,
-            Effect::AddCardPoints(_) | Effect::RankBonus(_) | Effect::RevealHolder
+            Effect::AddCardPoints(_)
+                | Effect::RankBonus(_)
+                | Effect::RevealHolder
+                | Effect::NeverWins
         )
     }
 }
@@ -344,6 +421,19 @@ pub enum Condition {
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
+    /// A Null game. From the declaration on.
+    NullGame,
+    /// A Null game with at least this Null-Risikostufe (order Normal,
+    /// Hand, Ouvert, Ouvert Hand). From the declaration on.
+    NullRiskAtLeast(NullRisk),
+    /// A Ramsch. From the declaration on.
+    RamschGame,
+    /// The skat stays on the table: Hand and above, Null Hand, Null Ouvert
+    /// Hand, Ramsch. From the declaration on.
+    HandGame,
+    /// The declarer took no trick yet (in a won Null game: none at all).
+    /// During play and on score.
+    NoTrickTaken,
 }
 
 impl Condition {
@@ -375,6 +465,17 @@ impl Condition {
                 stage == Stage::OnCardPlayed
             }
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
+            Condition::NullGame
+            | Condition::NullRiskAtLeast(_)
+            | Condition::RamschGame
+            | Condition::HandGame => matches!(
+                stage,
+                Stage::OnDeclare | Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+            ),
+            Condition::NoTrickTaken => matches!(
+                stage,
+                Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+            ),
         }
     }
 

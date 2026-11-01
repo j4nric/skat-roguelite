@@ -1,0 +1,30 @@
+// Ereignisse (DESIGN 13): kommen zwischen zwei Serien statt des Tresens,
+// mit der Wahrscheinlichkeit encounter_chance aus run.ron. Jedes Ereignis
+// bietet Optionen an, eine davon ist immer „Weitergehen“.
+// weight: wie oft es gezogen wird (Standard 1). characters: leer = alle.
+[
+    (
+        id: "stammtisch_dispute",
+        name: "Stammtisch-Streit",
+        text: "Am Tisch wird gestritten, welche Hausregel gilt. Wähle eine: Sie gilt bis zum Ende des Abends, ohne einen Platz zu belegen.",
+        kind: EveningRule(offers: 3),
+    ),
+    (
+        id: "card_dealer",
+        name: "Der Kartengeber",
+        text: "Der Kartengeber zinkt dir eine zufällige Karte. Für 3 Groschen darfst du die Karte selbst wählen.",
+        kind: MarkCard(price: 3),
+    ),
+    (
+        id: "old_friend",
+        name: "Alter Bekannter",
+        text: "Ein alter Bekannter tauscht eines deiner Relikte gegen ein zufälliges anderes.",
+        kind: SwapRelic,
+    ),
+    (
+        id: "last_round",
+        name: "Letzte Runde",
+        text: "Der Wirt ruft die letzte Runde aus: Das nächste Spiel zählt doppelt, gewonnen wie verloren.",
+        kind: DoubleNextGame(factor: 2),
+    ),
+]

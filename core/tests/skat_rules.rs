@@ -206,7 +206,7 @@ const MIT_3: Matadors = Matadors {
 #[test]
 fn matadors_count_untouched_skat_in_hand_game() {
     let mut game = deal_with_top_jacks_in_skat();
-    let decl = Declaration::new(GameType::Grand, RiskLevel::Hand);
+    let decl = Declaration::grand(RiskLevel::Hand);
     game.declare(decl).expect("declare");
     play_out(&mut game);
     assert_eq!(finished_matadors(&game), MIT_3);
@@ -218,7 +218,7 @@ fn matadors_count_untouched_skat_in_hand_game() {
 #[test]
 fn matadors_count_discarded_jack() {
     let mut game = deal_with_top_jacks_in_skat();
-    let decl = Declaration::new(GameType::Suit(Suit::Hearts), RiskLevel::Normal);
+    let decl = Declaration::suit(Suit::Hearts, RiskLevel::Normal);
     game.declare(decl).expect("declare");
     // Discard the Kreuz-Bube: the declarer still plays "mit 3".
     game.discard([c("CJ"), c("CA")]).expect("discard");
@@ -230,7 +230,7 @@ fn matadors_count_discarded_jack() {
 #[test]
 fn discarded_card_points_count_for_declarer() {
     let mut game = deal_with_top_jacks_in_skat();
-    game.declare(Declaration::new(GameType::Grand, RiskLevel::Normal))
+    game.declare(Declaration::grand(RiskLevel::Normal))
         .expect("declare");
     game.discard([c("CA"), c("CT")]).expect("discard");
     // Before any trick the declarer already owns the 21 Augen in the skat.
@@ -251,7 +251,7 @@ fn discarded_card_points_count_for_declarer() {
 #[test]
 fn untouched_skat_counts_for_declarer_in_hand_game() {
     let mut game = deal_with_top_jacks_in_skat();
-    game.declare(Declaration::new(GameType::Grand, RiskLevel::Hand))
+    game.declare(Declaration::grand(RiskLevel::Hand))
         .expect("declare");
     // CJ + SJ in the skat: 4 Augen.
     assert_eq!(game.outcome().declarer_card_points, 4);
@@ -267,7 +267,7 @@ fn untouched_skat_counts_for_declarer_in_hand_game() {
 #[test]
 fn skat_is_not_a_trick_for_schwarz() {
     let mut game = deal_with_top_jacks_in_skat();
-    game.declare(Declaration::new(GameType::Grand, RiskLevel::Hand))
+    game.declare(Declaration::grand(RiskLevel::Hand))
         .expect("declare");
     assert_eq!(game.outcome().declarer_tricks, 0);
     assert!(game.outcome().declarer_card_points > 0);

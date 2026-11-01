@@ -187,13 +187,15 @@ pub fn follows_lead<C: PlayingCard>(game: GameType, lead: C, card: C) -> bool {
 /// Trump beats non-trump, higher trump beats lower trump, and among
 /// non-trumps only a card of the led suit can win, the higher rank taking
 /// it. In Null games the natural rank order applies. A blank never takes a
-/// trick, and every other card takes it from a blank.
+/// trick, and every other card takes it from a blank. The same holds for a
+/// card that can never win ("Unsichtbar", [`PlayingCard::never_wins`]),
+/// except that it still has its suit and follows suit.
 #[must_use]
 pub fn beats<C: PlayingCard>(game: GameType, lead: C, holder: C, challenger: C) -> bool {
-    if challenger.is_blank() {
+    if challenger.is_blank() || challenger.never_wins() {
         return false;
     }
-    if holder.is_blank() {
+    if holder.is_blank() || holder.never_wins() {
         return true;
     }
     match (
@@ -386,44 +388,331 @@ impl RiskLevel {
     }
 }
 
-/// Ansage: game type plus risk level, chosen before the skat is touched.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Declaration {
-    /// Spielart.
-    pub game: GameType,
-    /// Risikostufe.
-    pub risk: RiskLevel,
+/// Risikostufe of a Null game (Nullspieler, DESIGN 9.2). Null has its own
+/// levels: Schneider and Schwarz do not exist, and Ouvert does not imply
+/// Hand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum NullRisk {
+    /// Skat is picked up (Null, 23).
+    Normal,
+    /// Skat stays on the table (Null Hand, 35).
+    Hand,
+    /// Skat is picked up, cards face up (Null Ouvert, 46).
+    Ouvert,
+    /// Skat stays on the table, cards face up (Null Ouvert Hand, 59).
+    OuvertHand,
 }
 
-impl Declaration {
-    /// Create a declaration.
-    #[must_use]
-    pub const fn new(game: GameType, risk: RiskLevel) -> Declaration {
-        Declaration { game, risk }
-    }
+impl NullRisk {
+    /// All Null risk levels, lowest first.
+    pub const ALL: [NullRisk; 4] = [
+        NullRisk::Normal,
+        NullRisk::Hand,
+        NullRisk::Ouvert,
+        NullRisk::OuvertHand,
+    ];
 
     /// Whether the skat stays on the table.
     #[must_use]
-    pub fn hand(self) -> bool {
-        self.risk >= RiskLevel::Hand
-    }
-
-    /// Whether Schneider was announced.
-    #[must_use]
-    pub fn schneider_declared(self) -> bool {
-        self.risk >= RiskLevel::SchneiderDeclared
-    }
-
-    /// Whether Schwarz was announced.
-    #[must_use]
-    pub fn schwarz_declared(self) -> bool {
-        self.risk >= RiskLevel::SchwarzDeclared
+    pub const fn hand(self) -> bool {
+        matches!(self, NullRisk::Hand | NullRisk::OuvertHand)
     }
 
     /// Whether the declarer plays with open cards.
     #[must_use]
-    pub fn ouvert(self) -> bool {
-        self.risk >= RiskLevel::Ouvert
+    pub const fn ouvert(self) -> bool {
+        matches!(self, NullRisk::Ouvert | NullRisk::OuvertHand)
+    }
+
+    /// The Risikostufe as a number for the Null formula of DESIGN 9.2:
+    /// Normal 1, Hand 2, Ouvert 3, Ouvert Hand 4.
+    #[must_use]
+    pub const fn step(self) -> u32 {
+        match self {
+            NullRisk::Normal => 1,
+            NullRisk::Hand => 2,
+            NullRisk::Ouvert => 3,
+            NullRisk::OuvertHand => 4,
+        }
+    }
+
+    /// Human readable name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            NullRisk::Normal => "Normal",
+            NullRisk::Hand => "Hand",
+            NullRisk::Ouvert => "Ouvert",
+            NullRisk::OuvertHand => "OuvertHand",
+        }
+    }
+}
+
+/// Ansage: what the declarer announces before the skat is touched.
+///
+/// An enum, so that no invalid combination exists: suit and grand games
+/// carry a [`RiskLevel`], Null games a [`NullRisk`], and Ramsch (boss "Der
+/// Ramscher") carries nothing. In JSON and RON a declaration keeps the
+/// shape `{"game": …, "risk": …}`: `{"game": {"Suit": "Hearts"}, "risk":
+/// "Hand"}`, `{"game": "Null", "risk": "OuvertHand"}`, `{"game": "Ramsch",
+/// "risk": "Normal"}` (a missing risk reads as `Normal`).
+/// Combinations that do not exist (Null with Schneider angesagt, a suit
+/// game with `OuvertHand`) are rejected when reading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "DeclarationRepr", into = "DeclarationRepr")]
+pub enum Declaration {
+    /// Farbspiel.
+    Suit {
+        /// The trump suit.
+        suit: Suit,
+        /// Risikostufe.
+        risk: RiskLevel,
+    },
+    /// Grand.
+    Grand {
+        /// Risikostufe.
+        risk: RiskLevel,
+    },
+    /// Null (only the Nullspieler, ADR 0003).
+    Null {
+        /// Null-Risikostufe.
+        risk: NullRisk,
+    },
+    /// Ramsch (boss "Der Ramscher"): nobody declares, the jacks are trump
+    /// as in a grand, everyone plays for himself and the one with the most
+    /// Augen loses.
+    Ramsch,
+}
+
+impl Declaration {
+    /// A suit game.
+    #[must_use]
+    pub const fn suit(suit: Suit, risk: RiskLevel) -> Declaration {
+        Declaration::Suit { suit, risk }
+    }
+
+    /// A grand.
+    #[must_use]
+    pub const fn grand(risk: RiskLevel) -> Declaration {
+        Declaration::Grand { risk }
+    }
+
+    /// A Null game.
+    #[must_use]
+    pub const fn null(risk: NullRisk) -> Declaration {
+        Declaration::Null { risk }
+    }
+
+    /// A suit game or grand from its [`GameType`]. `None` for
+    /// [`GameType::Null`], which has its own risk levels
+    /// ([`Declaration::null`]).
+    #[must_use]
+    pub const fn new(game: GameType, risk: RiskLevel) -> Option<Declaration> {
+        match game {
+            GameType::Suit(suit) => Some(Declaration::Suit { suit, risk }),
+            GameType::Grand => Some(Declaration::Grand { risk }),
+            GameType::Null => None,
+        }
+    }
+
+    /// The Spielart that decides the trick rules. Ramsch plays like a grand.
+    #[must_use]
+    pub const fn game(self) -> GameType {
+        match self {
+            Declaration::Suit { suit, .. } => GameType::Suit(suit),
+            Declaration::Grand { .. } | Declaration::Ramsch => GameType::Grand,
+            Declaration::Null { .. } => GameType::Null,
+        }
+    }
+
+    /// The Risikostufe of a suit game or grand; `None` for Null and Ramsch.
+    #[must_use]
+    pub const fn risk(self) -> Option<RiskLevel> {
+        match self {
+            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => Some(risk),
+            Declaration::Null { .. } | Declaration::Ramsch => None,
+        }
+    }
+
+    /// The Null-Risikostufe; `None` unless this is a Null game.
+    #[must_use]
+    pub const fn null_risk(self) -> Option<NullRisk> {
+        match self {
+            Declaration::Null { risk } => Some(risk),
+            _ => None,
+        }
+    }
+
+    /// The same Spielart with another Risikostufe. Null and Ramsch stay
+    /// unchanged.
+    #[must_use]
+    pub const fn with_risk(self, risk: RiskLevel) -> Declaration {
+        match self {
+            Declaration::Suit { suit, .. } => Declaration::Suit { suit, risk },
+            Declaration::Grand { .. } => Declaration::Grand { risk },
+            other => other,
+        }
+    }
+
+    /// Whether this is a Null game.
+    #[must_use]
+    pub const fn is_null(self) -> bool {
+        matches!(self, Declaration::Null { .. })
+    }
+
+    /// Whether this is a Ramsch.
+    #[must_use]
+    pub const fn is_ramsch(self) -> bool {
+        matches!(self, Declaration::Ramsch)
+    }
+
+    /// Whether the skat stays on the table. A Ramsch never picks it up.
+    #[must_use]
+    pub const fn hand(self) -> bool {
+        match self {
+            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => {
+                risk as u8 >= RiskLevel::Hand as u8
+            }
+            Declaration::Null { risk } => risk.hand(),
+            Declaration::Ramsch => true,
+        }
+    }
+
+    /// Whether Schneider was announced.
+    #[must_use]
+    pub const fn schneider_declared(self) -> bool {
+        match self.risk() {
+            Some(risk) => risk as u8 >= RiskLevel::SchneiderDeclared as u8,
+            None => false,
+        }
+    }
+
+    /// Whether Schwarz was announced.
+    #[must_use]
+    pub const fn schwarz_declared(self) -> bool {
+        match self.risk() {
+            Some(risk) => risk as u8 >= RiskLevel::SchwarzDeclared as u8,
+            None => false,
+        }
+    }
+
+    /// Whether the declarer plays with open cards.
+    #[must_use]
+    pub const fn ouvert(self) -> bool {
+        match self {
+            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => {
+                risk as u8 >= RiskLevel::Ouvert as u8
+            }
+            Declaration::Null { risk } => risk.ouvert(),
+            Declaration::Ramsch => false,
+        }
+    }
+}
+
+/// Spielart as written in a declaration: [`GameType`] plus Ramsch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum GameName {
+    Suit(Suit),
+    Grand,
+    Null,
+    Ramsch,
+}
+
+/// Every risk name a declaration may carry: the [`RiskLevel`]s and the
+/// [`NullRisk`]s share their names except `OuvertHand`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+enum RiskName {
+    #[default]
+    Normal,
+    Hand,
+    SchneiderDeclared,
+    SchwarzDeclared,
+    Ouvert,
+    OuvertHand,
+}
+
+/// Serialized form of a [`Declaration`].
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct DeclarationRepr {
+    game: GameName,
+    #[serde(default)]
+    risk: RiskName,
+}
+
+impl From<Declaration> for DeclarationRepr {
+    fn from(d: Declaration) -> DeclarationRepr {
+        let trump = |risk: RiskLevel| match risk {
+            RiskLevel::Normal => RiskName::Normal,
+            RiskLevel::Hand => RiskName::Hand,
+            RiskLevel::SchneiderDeclared => RiskName::SchneiderDeclared,
+            RiskLevel::SchwarzDeclared => RiskName::SchwarzDeclared,
+            RiskLevel::Ouvert => RiskName::Ouvert,
+        };
+        match d {
+            Declaration::Suit { suit, risk } => DeclarationRepr {
+                game: GameName::Suit(suit),
+                risk: trump(risk),
+            },
+            Declaration::Grand { risk } => DeclarationRepr {
+                game: GameName::Grand,
+                risk: trump(risk),
+            },
+            Declaration::Null { risk } => DeclarationRepr {
+                game: GameName::Null,
+                risk: match risk {
+                    NullRisk::Normal => RiskName::Normal,
+                    NullRisk::Hand => RiskName::Hand,
+                    NullRisk::Ouvert => RiskName::Ouvert,
+                    NullRisk::OuvertHand => RiskName::OuvertHand,
+                },
+            },
+            Declaration::Ramsch => DeclarationRepr {
+                game: GameName::Ramsch,
+                risk: RiskName::Normal,
+            },
+        }
+    }
+}
+
+impl TryFrom<DeclarationRepr> for Declaration {
+    type Error = String;
+
+    fn try_from(repr: DeclarationRepr) -> Result<Declaration, String> {
+        let risk = repr.risk;
+        let trump = match risk {
+            RiskName::Normal => Some(RiskLevel::Normal),
+            RiskName::Hand => Some(RiskLevel::Hand),
+            RiskName::SchneiderDeclared => Some(RiskLevel::SchneiderDeclared),
+            RiskName::SchwarzDeclared => Some(RiskLevel::SchwarzDeclared),
+            RiskName::Ouvert => Some(RiskLevel::Ouvert),
+            RiskName::OuvertHand => None,
+        };
+        let invalid = || format!("{risk:?} is no risk level of {:?}", repr.game);
+        match repr.game {
+            GameName::Suit(suit) => Ok(Declaration::Suit {
+                suit,
+                risk: trump.ok_or_else(invalid)?,
+            }),
+            GameName::Grand => Ok(Declaration::Grand {
+                risk: trump.ok_or_else(invalid)?,
+            }),
+            GameName::Null => {
+                let risk = match risk {
+                    RiskName::Normal => NullRisk::Normal,
+                    RiskName::Hand => NullRisk::Hand,
+                    RiskName::Ouvert => NullRisk::Ouvert,
+                    RiskName::OuvertHand => NullRisk::OuvertHand,
+                    RiskName::SchneiderDeclared | RiskName::SchwarzDeclared => {
+                        return Err(invalid());
+                    }
+                };
+                Ok(Declaration::Null { risk })
+            }
+            GameName::Ramsch => match risk {
+                RiskName::Normal => Ok(Declaration::Ramsch),
+                _ => Err("a Ramsch has no risk level".into()),
+            },
+        }
     }
 }
 
@@ -526,8 +815,21 @@ pub struct LevelParts {
     pub schwarz: u32,
     /// +1 Schwarz angesagt.
     pub schwarz_declared: u32,
-    /// +1 Ouvert.
+    /// +1 Ouvert (Null formula: +2, see [`NullFormula`]).
     pub ouvert: u32,
+    /// Null formula: style bonus for tricks the declarer ducked with a
+    /// seven.
+    #[serde(default)]
+    pub sevens_ducked: u32,
+    /// Null formula: style bonus, the declarer never had to follow suit.
+    #[serde(default)]
+    pub never_followed: u32,
+    /// Null formula: style bonus "Kurzschluss".
+    #[serde(default)]
+    pub short_circuit: u32,
+    /// Ramsch: a seat took no trick (Jungfrau).
+    #[serde(default)]
+    pub virgin: u32,
 }
 
 impl LevelParts {
@@ -542,15 +844,22 @@ impl LevelParts {
             + self.schwarz
             + self.schwarz_declared
             + self.ouvert
+            + self.sevens_ducked
+            + self.never_followed
+            + self.short_circuit
+            + self.virgin
     }
 }
 
 /// Every intermediate result of the game value formula.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ValueParts {
-    /// Grundwert of the game type (0 for Null).
+    /// Grundwert of the game type. 0 for a Null game scored by the
+    /// Skatordnung ([`game_value_parts`]); the run scores Null with
+    /// [`null_value_parts`], which gives a Grundwert.
     pub base_value: u32,
-    /// Gewinnstufen term by term (all zero for Null).
+    /// Gewinnstufen term by term (all zero for a Null game by the
+    /// Skatordnung).
     pub levels: LevelParts,
     /// Whether the declarer won.
     pub won: bool,
@@ -578,7 +887,10 @@ pub fn game_value_parts(
     outcome: &Outcome,
     thresholds: &Thresholds,
 ) -> ValueParts {
-    let Some(base) = declaration.game.base_value() else {
+    if declaration.is_ramsch() {
+        return ramsch_from_outcome(outcome);
+    }
+    let Some(base) = declaration.game().base_value() else {
         let value = null_game_value(declaration.hand(), declaration.ouvert(), outcome);
         return ValueParts {
             base_value: 0,
@@ -624,6 +936,7 @@ pub fn game_value_parts(
         schwarz: u32::from(schwarz_level),
         schwarz_declared: u32::from(schwarz_declared),
         ouvert: u32::from(ouvert),
+        ..LevelParts::default()
     };
     let total = levels.total();
     ValueParts {
@@ -643,6 +956,172 @@ pub fn game_value_parts(
 pub fn null_game_value(hand: bool, ouvert: bool, outcome: &Outcome) -> GameValue {
     let won = outcome.declarer_tricks == 0;
     GameValue::from_value(0, null_value(hand, ouvert), won, false, false)
+}
+
+// ---------------------------------------------------------------------------
+// Null in the run (Nullspieler) and Ramsch (boss "Der Ramscher")
+// ---------------------------------------------------------------------------
+
+/// How the run scores a Null game of the Nullspieler (DESIGN 9.2). Chosen
+/// as data per character in `characters.ron`.
+///
+/// Both variants go through the same formula as suit games (Grundwert ×
+/// Gewinnstufen), so that relics on Grundwert, Gewinnstufen and Spielwert
+/// work for Null as well.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NullScoring {
+    /// The fixed values of the Skatordnung (23, 35, 46, 59) as Grundwert,
+    /// one Gewinnstufe ("Spiel").
+    Fixed,
+    /// Grundwert × (Risikostufe + Stilbonus), see [`NullFormula`].
+    Formula(NullFormula),
+}
+
+/// The Null formula of DESIGN 9.2: `Grundwert × (Risikostufe +
+/// Stilbonus)`. The Risikostufe ([`NullRisk::step`]) is split into the
+/// terms Spiel (1), Hand (+1) and Ouvert (+2). The style bonus only counts
+/// for a won game.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct NullFormula {
+    /// Grundwert (23).
+    pub base_value: u32,
+    /// Levels per trick in which the declarer played a seven and did not
+    /// take the trick ("mit einer 7 unterlaufen").
+    pub per_seven_ducked: u32,
+    /// Levels if the declarer never had to follow suit to another seat's
+    /// lead.
+    pub never_followed: u32,
+    /// Levels for a "Kurzschluss": the defenders hold at least
+    /// `short_circuit_points` Augen after `short_circuit_tricks` tricks.
+    pub short_circuit: u32,
+    /// Tricks after which the Kurzschluss is checked (5).
+    pub short_circuit_tricks: u32,
+    /// Augen the defenders need after those tricks (the majority of the
+    /// deck's Augen; "alle Augen" cannot fit into 15 cards).
+    pub short_circuit_points: u32,
+}
+
+/// Style of a Null game as counted by [`crate::game::Game::null_style`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct NullStyle {
+    /// Tricks the declarer did not take although he played a seven in
+    /// them.
+    pub sevens_ducked: u32,
+    /// Whether the declarer never followed suit to another seat's lead.
+    pub never_followed: bool,
+    /// Augen the defenders held after the Kurzschluss tricks (`None` if
+    /// fewer tricks were played).
+    pub defender_points_after: Option<u32>,
+}
+
+/// Value of a Null game in the run. Won if the declarer took no trick.
+/// A lost game scores `-2 × value` without any style bonus.
+#[must_use]
+pub fn null_value_parts(
+    risk: NullRisk,
+    scoring: &NullScoring,
+    outcome: &Outcome,
+    style: &NullStyle,
+) -> ValueParts {
+    let won = outcome.declarer_tricks == 0;
+    let (base, levels) = match scoring {
+        NullScoring::Fixed => (
+            null_value(risk.hand(), risk.ouvert()),
+            LevelParts {
+                game: 1,
+                ..LevelParts::default()
+            },
+        ),
+        NullScoring::Formula(f) => {
+            let short_circuit = style
+                .defender_points_after
+                .is_some_and(|p| p >= f.short_circuit_points);
+            let levels = LevelParts {
+                game: 1,
+                hand: u32::from(risk.hand()),
+                ouvert: if risk.ouvert() { 2 } else { 0 },
+                sevens_ducked: if won {
+                    style.sevens_ducked.saturating_mul(f.per_seven_ducked)
+                } else {
+                    0
+                },
+                never_followed: if won && style.never_followed {
+                    f.never_followed
+                } else {
+                    0
+                },
+                short_circuit: if won && short_circuit {
+                    f.short_circuit
+                } else {
+                    0
+                },
+                ..LevelParts::default()
+            };
+            (f.base_value.max(1), levels)
+        }
+    };
+    let total = levels.total();
+    ValueParts {
+        base_value: base,
+        levels,
+        won,
+        schneider: false,
+        schneider_by_declarer_points: false,
+        schwarz: false,
+        won_by_lowered_threshold: false,
+        value: GameValue::from_value(total, base.saturating_mul(total), won, false, false),
+    }
+}
+
+/// Value of a Ramsch for the player (seat 0), from the Augen and tricks of
+/// every seat (the skat already added to the seat that took the last
+/// trick).
+///
+/// The seat with the most Augen loses; the player loses also when he
+/// shares the most. Spielwert = Augen of the loser (Grundwert) × Gewinnstufen
+/// (Spiel 1, +1 Jungfrau if a seat took no trick). Not the loser: won,
+/// `+value`; the loser: `-2 × value`.
+#[must_use]
+pub fn ramsch_value_parts(points: [u32; 3], tricks: [u32; 3]) -> ValueParts {
+    let most = points.iter().copied().max().unwrap_or(0);
+    let won = points[0] < most;
+    let levels = LevelParts {
+        game: 1,
+        virgin: u32::from(tricks.contains(&0)),
+        ..LevelParts::default()
+    };
+    let base = most.max(1);
+    let total = levels.total();
+    ValueParts {
+        base_value: base,
+        levels,
+        won,
+        schneider: false,
+        schneider_by_declarer_points: false,
+        schwarz: false,
+        won_by_lowered_threshold: false,
+        value: GameValue::from_value(total, base.saturating_mul(total), won, false, false),
+    }
+}
+
+/// A Ramsch judged from an [`Outcome`] alone, which knows only the sum of
+/// both defenders: their Augen count as split evenly. The run and the game
+/// judge a Ramsch with every seat's Augen ([`ramsch_value_parts`]).
+fn ramsch_from_outcome(outcome: &Outcome) -> ValueParts {
+    let defenders = outcome.defender_card_points;
+    let tricks = [
+        outcome.declarer_tricks,
+        outcome.defender_tricks / 2,
+        outcome.defender_tricks - outcome.defender_tricks / 2,
+    ];
+    ramsch_value_parts(
+        [
+            outcome.declarer_card_points,
+            defenders / 2,
+            defenders - defenders / 2,
+        ],
+        tricks,
+    )
 }
 
 /// Compute the Spielwert from the declaration, the matadors (over hand plus
@@ -821,7 +1300,7 @@ mod tests {
 
     #[test]
     fn lost_game_scores_double_negative() {
-        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Normal);
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
         let lost = game_value(decl, MIT_2, &outcome(60, 5));
         assert!(!lost.won);
         assert_eq!(lost.levels, 3);
@@ -834,7 +1313,7 @@ mod tests {
 
     #[test]
     fn schneider_and_schwarz_add_levels_when_reached() {
-        let decl = Declaration::new(GameType::Suit(Suit::Hearts), RiskLevel::Normal);
+        let decl = Declaration::suit(Suit::Hearts, RiskLevel::Normal);
         let v = game_value(decl, MIT_2, &outcome(90, 8));
         assert!(v.won && v.schneider && !v.schwarz);
         assert_eq!(v.levels, 4);
@@ -852,7 +1331,7 @@ mod tests {
     // levels still count (doubled as a loss).
     #[test]
     fn declared_level_not_reached_is_lost() {
-        let decl = Declaration::new(GameType::Grand, RiskLevel::SchneiderDeclared);
+        let decl = Declaration::grand(RiskLevel::SchneiderDeclared);
         let v = game_value(decl, MIT_2, &outcome(85, 7));
         assert!(!v.won);
         // mit 2, Spiel 3, Hand 4, Schneider 5, Schneider angesagt 6.
@@ -863,7 +1342,7 @@ mod tests {
         assert!(v.won);
         assert_eq!(v.score, 144);
 
-        let decl = Declaration::new(GameType::Grand, RiskLevel::SchwarzDeclared);
+        let decl = Declaration::grand(RiskLevel::SchwarzDeclared);
         let v = game_value(decl, MIT_2, &outcome(110, 9));
         assert!(!v.won);
         // mit 2, Spiel 3, Hand 4, Schneider 5, Schneider angesagt 6,
@@ -873,7 +1352,7 @@ mod tests {
         assert!(v.won);
         assert_eq!(v.levels, 8);
 
-        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Ouvert);
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Ouvert);
         let v = game_value(decl, MIT_2, &outcome(120, 10));
         assert!(v.won);
         assert_eq!(v.levels, 9);
@@ -887,7 +1366,7 @@ mod tests {
     // levels too.
     #[test]
     fn declarer_losing_schneider_or_schwarz_pays_extra_levels() {
-        let decl = Declaration::new(GameType::Suit(Suit::Diamonds), RiskLevel::Normal);
+        let decl = Declaration::suit(Suit::Diamonds, RiskLevel::Normal);
         let v = game_value(decl, MIT_2, &outcome(30, 2));
         assert!(!v.won && !v.schneider);
         assert_eq!(v.levels, 4);
@@ -901,7 +1380,7 @@ mod tests {
 
     #[test]
     fn null_game_won_without_tricks() {
-        let decl = Declaration::new(GameType::Null, RiskLevel::Normal);
+        let decl = Declaration::null(NullRisk::Normal);
         let v = game_value(
             decl,
             matadors(GameType::Null, &[]),
@@ -914,7 +1393,7 @@ mod tests {
         assert!(v.won);
         assert_eq!((v.levels, v.value, v.score), (0, 23, 23));
         let v = game_value(
-            Declaration::new(GameType::Null, RiskLevel::Hand),
+            Declaration::null(NullRisk::Hand),
             matadors(GameType::Null, &[]),
             &Outcome {
                 declarer_tricks: 1,
@@ -929,7 +1408,7 @@ mod tests {
 
     #[test]
     fn risk_levels_are_cumulative() {
-        let d = |risk| Declaration::new(GameType::Grand, risk);
+        let d = |risk| Declaration::grand(risk);
         assert!(!d(RiskLevel::Normal).hand());
         assert!(d(RiskLevel::Hand).hand());
         assert!(!d(RiskLevel::Hand).schneider_declared());
@@ -1040,7 +1519,7 @@ mod tests {
 
     #[test]
     fn lowered_win_threshold_and_declarer_schneider_ranges() {
-        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Normal);
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
         let thresholds = Thresholds {
             win: 58,
             schneider_limit: SCHNEIDER_LIMIT,
@@ -1065,5 +1544,139 @@ mod tests {
                 game_value(decl, MIT_2, &o)
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // M4: Null risk levels, the Null formula, Ramsch
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn declarations_keep_their_shape_and_reject_invalid_combinations() {
+        let all = [
+            Declaration::suit(Suit::Hearts, RiskLevel::Hand),
+            Declaration::grand(RiskLevel::Ouvert),
+            Declaration::null(NullRisk::Ouvert),
+            Declaration::null(NullRisk::OuvertHand),
+            Declaration::Ramsch,
+        ];
+        for d in all {
+            let text = ron::to_string(&d).expect("ron");
+            assert_eq!(
+                ron::from_str::<Declaration>(&text).expect("back"),
+                d,
+                "{text}"
+            );
+        }
+        assert_eq!(
+            ron::to_string(&Declaration::grand(RiskLevel::Hand)).expect("ron"),
+            "(game:Grand,risk:Hand)"
+        );
+        assert_eq!(
+            ron::to_string(&Declaration::Ramsch).expect("ron"),
+            "(game:Ramsch,risk:Normal)"
+        );
+        for bad in [
+            "(game:Null,risk:SchneiderDeclared)",
+            "(game:Suit(Hearts),risk:OuvertHand)",
+            "(game:Ramsch,risk:Hand)",
+        ] {
+            assert!(ron::from_str::<Declaration>(bad).is_err(), "{bad}");
+        }
+        assert_eq!(Declaration::new(GameType::Null, RiskLevel::Normal), None);
+        // Null Ouvert is open without being a hand game.
+        let ouvert = Declaration::null(NullRisk::Ouvert);
+        assert!(ouvert.ouvert() && !ouvert.hand());
+        assert!(!ouvert.schneider_declared());
+        assert_eq!(ouvert.game(), GameType::Null);
+        assert_eq!(Declaration::Ramsch.game(), GameType::Grand);
+        assert!(Declaration::Ramsch.hand());
+        let steps: Vec<u32> = NullRisk::ALL.iter().map(|r| r.step()).collect();
+        assert_eq!(steps, vec![1, 2, 3, 4]);
+    }
+
+    fn formula() -> NullFormula {
+        NullFormula {
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        }
+    }
+
+    #[test]
+    fn null_values_by_the_skatordnung_and_by_the_formula() {
+        let won = Outcome {
+            declarer_tricks: 0,
+            defender_tricks: 10,
+            ..Outcome::default()
+        };
+        let lost = Outcome {
+            declarer_tricks: 1,
+            defender_tricks: 3,
+            ..Outcome::default()
+        };
+        let plain = NullStyle::default();
+        for (risk, value) in NullRisk::ALL.into_iter().zip([23, 35, 46, 59]) {
+            let p = null_value_parts(risk, &NullScoring::Fixed, &won, &plain);
+            assert_eq!(
+                (p.base_value, p.value.value, p.value.score),
+                (value, value, value as i32)
+            );
+            let p = null_value_parts(risk, &NullScoring::Formula(formula()), &won, &plain);
+            assert_eq!(p.levels.total(), risk.step());
+            assert_eq!(p.value.value, 23 * risk.step());
+        }
+        let style = NullStyle {
+            sevens_ducked: 3,
+            never_followed: true,
+            defender_points_after: Some(70),
+        };
+        let scoring = NullScoring::Formula(formula());
+        let p = null_value_parts(NullRisk::Normal, &scoring, &won, &style);
+        // Spiel 1 + 3 sevens + 2 never followed + 3 Kurzschluss.
+        assert_eq!(p.levels.total(), 9);
+        assert_eq!(p.value.value, 23 * 9);
+        // Lost: no style bonus, −2 × 23 × Risikostufe.
+        let p = null_value_parts(NullRisk::Hand, &scoring, &lost, &style);
+        assert!(!p.won);
+        assert_eq!(p.value.score, -2 * 23 * 2);
+        let short = NullStyle {
+            defender_points_after: Some(60),
+            ..NullStyle::default()
+        };
+        assert_eq!(
+            null_value_parts(NullRisk::Normal, &scoring, &won, &short)
+                .levels
+                .short_circuit,
+            0
+        );
+    }
+
+    #[test]
+    fn ramsch_is_lost_by_the_most_augen() {
+        let p = ramsch_value_parts([30, 50, 40], [3, 4, 3]);
+        assert!(p.won);
+        assert_eq!((p.base_value, p.levels.total(), p.value.score), (50, 1, 50));
+        let p = ramsch_value_parts([55, 50, 15], [5, 5, 0]);
+        assert!(!p.won);
+        // Jungfrau: a seat without a trick doubles.
+        assert_eq!(p.levels.virgin, 1);
+        assert_eq!(p.value.score, -2 * 55 * 2);
+        // A shared most counts as lost for the player.
+        assert!(!ramsch_value_parts([50, 50, 20], [4, 4, 2]).won);
+    }
+
+    #[test]
+    fn a_card_that_never_wins_follows_suit_but_loses() {
+        let game = GameType::Grand;
+        let mut ace = d(1, "SA");
+        ace.never_wins = true;
+        let seven = d(2, "S7");
+        assert!(follows_lead(game, seven, ace));
+        assert!(!beats(game, seven, seven, ace));
+        assert!(beats(game, ace, ace, seven));
+        assert_eq!(trick_winner(game, 0, [ace, seven, d(3, "S8")]), 2);
     }
 }

@@ -41,7 +41,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Alleinspieler | `declarer` | Immer der menschliche Spieler |
 | Gegenspieler | `defender` | Die zwei KI-Spieler |
 | Reizen | entfällt | Ersetzt durch Ansage, siehe ADR 0006 |
-| Ansage | `Declaration` | Spielart plus Risikostufe |
+| Ansage | `Declaration` | Enum: `Suit { suit, risk }`, `Grand { risk }`, `Null { risk: NullRisk }`, `Ramsch`. Ungültige Kombinationen gibt es nicht; JSON-Form `{game, risk}` |
+| Null-Risikostufe | `NullRisk` | `Normal` (23), `Hand` (35), `Ouvert` (46), `OuvertHand` (59); Stufe 1 bis 4 (`step`) |
+| Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
+| Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
 | Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null` |
 | Farbspiel | `GameType::Suit` | |
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
@@ -80,6 +83,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Spitzen im Spiel | `matadors_in` | Gezählt nur über Trümpfe, die im Spiel sind |
 | Verloren | `lost` | Zählt doppelt negativ |
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
+| Null-Wertung im Run | `NullScoring` | `Fixed` (Skatordnung) oder `Formula(NullFormula)`, Daten pro Charakter |
+| Stilbonus (Null) | `NullStyle` | `sevens_ducked` (mit einer Sieben unterlaufen), `never_followed` (nie bedienen müssen), `short_circuit` (Kurzschluss) |
+| Kann nie stechen (Unsichtbar) | `never_wins` | `PlayingCard::never_wins`, Effekt `NeverWins` |
 
 ## Roguelike
 
@@ -114,8 +120,20 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Relikt (Oberbegriff) | `Relic` | HouseRule und Regular, Definition `RelicDef` |
 | Tresen | `Shop` | |
 | Groschen | `coins` | Währung |
-| Ereignis / Rast | `Event` | |
-| Charakter | `Character` | Alleinspieler, Nullspieler |
+| Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
+| Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
+| Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler); Daten `CharacterDef` |
+| Startblatt (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add` |
+| Freischaltung | `Unlock` | Definition `UnlockDef`, Id `UnlockId`, Bedingung `UnlockCondition`, Belohnung `Reward` |
+| Meta-Zustand (über Runs) | `MetaState` | Freischaltungen und Statistik, getrennt vom Run gespeichert |
+| Gesperrt | `locked` | Relikte, die noch Belohnung einer Freischaltung sind |
+| Pool eines Charakters | `characters` | Feld an Relikten, Modifikationen, Verbrauchsgegenständen, Bossen und Ereignissen; leer = alle |
+| Endboss | `final_boss` | „Der Alte“, Regeln nacheinander: `rotation` |
+| Regel des Bosses in diesem Spiel | `boss_rule` | Beim Alten wechselt sie pro Spiel |
+| Schummeln (Boss-Regel) | `is_cheat` | Zwillinge, Revolutionär; abgeschaltet durch `NoCheating` |
+| Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler; abgeschaltet durch `DisableInformation` |
+| Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
+| Kiebitz-Blick | `peek`, `CardPeeked` | |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert |
 | Statistik eines Runs | `RunStats` | Gewonnene, verlorene, eingepasste Spiele, Serien, bestes Spiel |
 | Verkaufspreis | `sell_price` | Halber Preis |
@@ -169,6 +187,24 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Stempelkissen | `ink_pad` |
 | Ein Bier | `beer` |
 | Neues Blatt | `new_deal` |
+| Blindflug | `blind_flight` |
+| Der Kiebitz | `kibitzer` |
+| Der Wirt | `landlord` |
+| Die Oma (Figur) | `granny` (nicht verwechseln mit dem Boss `grandma`) |
+| Der Schiedsrichter | `referee` |
+| Der Angeber | `show_off` |
+| Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
+| Unsichtbar | `invisible` |
+| Die Zwillinge | `twins` |
+| Der Ramscher | `ramscher` |
+| Der Revolutionär | `revolutionary` |
+| Der Schwarze Peter | `black_peter` |
+| Der Kiebitz-Mörder | `kibitz_killer` |
+| Der Alte | `the_old_man` |
+| Stammtisch-Streit | `stammtisch_dispute` |
+| Der Kartengeber | `card_dealer` |
+| Alter Bekannter | `old_friend` |
+| Letzte Runde | `last_round` |
 
 ## Kartennotation
 

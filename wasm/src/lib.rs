@@ -15,18 +15,25 @@
 //! `code` is a stable [`RunErrorCode`] name or one of the shell's own
 //! codes ([`SHELL_ERROR_CODES`]); `message` is English, for logs only.
 //!
-//! The logic lives in [`Session`], which is plain Rust and tested natively;
-//! [`WasmRun`] only adapts it to `wasm-bindgen`.
+//! The meta state across runs (unlocks, statistics, DESIGN 9.3) is a
+//! separate object ([`MetaSession`], [`WasmMeta`]) with its own save: the
+//! web app feeds it the events of every step and starts new runs from it
+//! ([`WasmRun::new_run_with`]).
+//!
+//! The logic lives in [`Session`] and [`MetaSession`], which are plain
+//! Rust and tested natively; [`WasmRun`] and [`WasmMeta`] only adapt them
+//! to `wasm-bindgen`.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use skat_core::content::Content;
+use skat_core::content::{Character, Content, UnlockId};
 use skat_core::deck::deal_odds;
+use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
 use skat_core::run::player::{PlayerEvent, player_events};
 use skat_core::run::view::RunView;
-use skat_core::run::{Run, RunAction, RunError, RunErrorCode};
+use skat_core::run::{Run, RunAction, RunError, RunErrorCode, RunStart};
 use wasm_bindgen::prelude::*;
 
 /// Version of the save format. Saves with another version are rejected,
@@ -36,13 +43,24 @@ pub const SAVE_VERSION: u32 = 1;
 /// Error codes of the shell itself, next to the [`RunErrorCode`]s of the
 /// core: `InvalidSeed` (not a decimal u64), `InvalidAction` (not a
 /// `RunAction` in JSON), `InvalidSave` (not a save), `UnsupportedSave`
-/// (another save version), `Internal` (content or serialization failed).
-pub const SHELL_ERROR_CODES: [&str; 5] = [
+/// (another save version), `Internal` (content or serialization failed),
+/// `InvalidCharacter` (not `"Declarer"` or `"NullPlayer"`),
+/// `CharacterLocked` (the meta state has not unlocked it),
+/// `UnknownCharacter` (the content has no such character),
+/// `InvalidMeta` (not a meta save), `UnsupportedMeta` (another meta
+/// version), `InvalidEvents` (not a list of player events).
+pub const SHELL_ERROR_CODES: [&str; 11] = [
     "InvalidSeed",
     "InvalidAction",
     "InvalidSave",
     "UnsupportedSave",
     "Internal",
+    "InvalidCharacter",
+    "CharacterLocked",
+    "UnknownCharacter",
+    "InvalidMeta",
+    "UnsupportedMeta",
+    "InvalidEvents",
 ];
 
 /// An error as thrown to JavaScript.
@@ -100,6 +118,28 @@ struct Catalog<'a> {
     card_mods: BTreeMap<&'a str, Entry<'a>>,
     bosses: BTreeMap<&'a str, Entry<'a>>,
     consumables: BTreeMap<&'a str, Entry<'a>>,
+    characters: BTreeMap<&'a str, Entry<'a>>,
+    encounters: BTreeMap<&'a str, Entry<'a>>,
+    unlocks: BTreeMap<&'a str, Entry<'a>>,
+}
+
+fn entries<'a, T: 'a>(
+    items: impl Iterator<Item = &'a T>,
+    key: impl Fn(&'a T) -> &'a str,
+    name: impl Fn(&'a T) -> &'a str,
+    text: impl Fn(&'a T) -> &'a str,
+) -> BTreeMap<&'a str, Entry<'a>> {
+    items
+        .map(|item| {
+            (
+                key(item),
+                Entry {
+                    name: name(item),
+                    text: text(item),
+                },
+            )
+        })
+        .collect()
 }
 
 /// The content catalog as JSON.
@@ -158,6 +198,24 @@ pub fn catalog_json() -> Result<String, String> {
                 )
             })
             .collect(),
+        characters: entries(
+            content.characters.values(),
+            |d| d.character.as_str(),
+            |d| &d.name,
+            |d| &d.text,
+        ),
+        encounters: entries(
+            content.encounters.values(),
+            |d| d.id.as_str(),
+            |d| &d.name,
+            |d| &d.text,
+        ),
+        unlocks: entries(
+            content.unlocks.values(),
+            |d| d.id.as_str(),
+            |d| &d.name,
+            |d| &d.text,
+        ),
     };
     serde_json::to_string(&catalog).map_err(internal)
 }
@@ -187,16 +245,48 @@ pub struct Session {
     run: Run,
 }
 
+fn parse_seed(seed: &str) -> Result<u64, String> {
+    seed.trim()
+        .parse()
+        .map_err(|_| error_json("InvalidSeed", format!("invalid seed {seed:?}")))
+}
+
+fn parse_character(character: &str) -> Result<Character, String> {
+    serde_json::from_value(serde_json::Value::String(character.trim().to_string())).map_err(|_| {
+        error_json(
+            "InvalidCharacter",
+            format!("invalid character {character:?}"),
+        )
+    })
+}
+
 impl Session {
-    /// Start a new run. `seed` is a decimal u64.
+    /// Start a new run of the Alleinspieler with every relic unlocked (the
+    /// web app before it keeps a meta state). `seed` is a decimal u64.
     pub fn new(seed: &str) -> Result<Session, String> {
-        let seed: u64 = seed
-            .trim()
-            .parse()
-            .map_err(|_| error_json("InvalidSeed", format!("invalid seed {seed:?}")))?;
+        let seed = parse_seed(seed)?;
         let content = content()?;
         let (run, _events) = Run::new(content, seed).map_err(|e| run_error(&e))?;
         Ok(Session { content, run })
+    }
+
+    /// Start a new run with `character` (`"Declarer"` or `"NullPlayer"`)
+    /// from a meta state: the character must be unlocked, locked relics
+    /// stay off the Tresen. Returns the session and the events of the
+    /// start as player events (feed them to the meta state).
+    pub fn new_with(
+        seed: &str,
+        character: &str,
+        meta: &MetaState,
+    ) -> Result<(Session, Vec<PlayerEvent>), String> {
+        let seed = parse_seed(seed)?;
+        let character = parse_character(character)?;
+        let content = content()?;
+        let start: RunStart = meta
+            .run_start(content, character)
+            .map_err(|e| error_json(e.code(), &e))?;
+        let (run, events) = Run::new_with(content, seed, &start).map_err(|e| run_error(&e))?;
+        Ok((Session { content, run }, player_events(events)))
     }
 
     /// Load a run saved with [`Session::save`].
@@ -252,6 +342,89 @@ impl Session {
     }
 }
 
+/// A saved meta state.
+#[derive(Serialize, Deserialize)]
+struct MetaSave {
+    version: u32,
+    meta: MetaState,
+}
+
+/// Result of feeding events to the meta state: the unlocks just earned
+/// and the new meta view.
+#[derive(Serialize)]
+struct MetaStep {
+    earned: Vec<UnlockId>,
+    view: MetaView,
+}
+
+/// The meta state across runs plus the content. Plain Rust, usable
+/// natively.
+#[derive(Debug, Clone)]
+pub struct MetaSession {
+    content: &'static Content,
+    meta: MetaState,
+}
+
+impl MetaSession {
+    /// A new player: nothing unlocked.
+    pub fn fresh() -> Result<MetaSession, String> {
+        Ok(MetaSession {
+            content: content()?,
+            meta: MetaState::new(),
+        })
+    }
+
+    /// Load a meta state saved with [`MetaSession::save`].
+    pub fn load(state: &str) -> Result<MetaSession, String> {
+        let save: MetaSave =
+            serde_json::from_str(state).map_err(|e| error_json("InvalidMeta", e))?;
+        if save.version != META_VERSION {
+            return Err(error_json(
+                "UnsupportedMeta",
+                format!("unsupported meta version {}", save.version),
+            ));
+        }
+        Ok(MetaSession {
+            content: content()?,
+            meta: save.meta,
+        })
+    }
+
+    /// The meta state as JSON, for `localStorage` (apart from the run).
+    pub fn save(&self) -> Result<String, String> {
+        serde_json::to_string(&MetaSave {
+            version: META_VERSION,
+            meta: self.meta.clone(),
+        })
+        .map_err(internal)
+    }
+
+    /// The meta view as JSON.
+    pub fn view(&self) -> Result<String, String> {
+        serde_json::to_string(&self.meta.view(self.content)).map_err(internal)
+    }
+
+    /// Feed the player events of a step (the `events` array of
+    /// [`Session::apply`], or of the run start) as JSON. Returns
+    /// `{ earned, view }` as JSON.
+    pub fn observe(&mut self, events: &str) -> Result<String, String> {
+        let events: Vec<PlayerEvent> =
+            serde_json::from_str(events).map_err(|e| error_json("InvalidEvents", e))?;
+        let earned = self.meta.observe(self.content, &events);
+        serde_json::to_string(&MetaStep {
+            earned,
+            view: self.meta.view(self.content),
+        })
+        .map_err(internal)
+    }
+
+    /// The wrapped meta state.
+    #[must_use]
+    pub const fn meta(&self) -> &MetaState {
+        &self.meta
+    }
+}
+
 /// Names and texts of all content by id, as JSON.
 #[wasm_bindgen]
 pub fn catalog() -> Result<String, JsError> {
@@ -269,22 +442,91 @@ pub fn deal_odds_js(deck_size: u32) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub struct WasmRun {
     session: Session,
+    /// Player events of the start, until fetched.
+    start: Option<String>,
+}
+
+/// The meta state as seen from JavaScript.
+#[wasm_bindgen]
+pub struct WasmMeta {
+    session: MetaSession,
+}
+
+#[wasm_bindgen]
+impl WasmMeta {
+    /// A new player: nothing unlocked.
+    pub fn fresh() -> Result<WasmMeta, JsError> {
+        MetaSession::fresh()
+            .map(|session| WasmMeta { session })
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Load a saved meta state.
+    pub fn load(state: &str) -> Result<WasmMeta, JsError> {
+        MetaSession::load(state)
+            .map(|session| WasmMeta { session })
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Serialize the meta state.
+    pub fn save(&self) -> Result<String, JsError> {
+        self.session.save().map_err(|e| JsError::new(&e))
+    }
+
+    /// The meta view as JSON.
+    pub fn view(&self) -> Result<String, JsError> {
+        self.session.view().map_err(|e| JsError::new(&e))
+    }
+
+    /// Feed player events (JSON array); returns `{ earned, view }`.
+    pub fn observe(&mut self, events: &str) -> Result<String, JsError> {
+        self.session.observe(events).map_err(|e| JsError::new(&e))
+    }
 }
 
 #[wasm_bindgen]
 impl WasmRun {
-    /// Start a new run with a decimal seed.
+    /// Start a new run of the Alleinspieler with a decimal seed, every
+    /// relic unlocked.
     #[wasm_bindgen(js_name = newRun)]
     pub fn new_run(seed: &str) -> Result<WasmRun, JsError> {
         Session::new(seed)
-            .map(|session| WasmRun { session })
+            .map(|session| WasmRun {
+                session,
+                start: None,
+            })
             .map_err(|e| JsError::new(&e))
+    }
+
+    /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`)
+    /// from the meta state: locked relics stay off the Tresen, a locked
+    /// character is refused (`CharacterLocked`). Feed
+    /// [`WasmRun::start_events`] to the meta state once.
+    #[wasm_bindgen(js_name = newRunWith)]
+    pub fn new_run_with(seed: &str, character: &str, meta: &WasmMeta) -> Result<WasmRun, JsError> {
+        let (session, events) =
+            Session::new_with(seed, character, &meta.session.meta).map_err(|e| JsError::new(&e))?;
+        let start = serde_json::to_string(&events).map_err(|e| JsError::new(&internal(e)))?;
+        Ok(WasmRun {
+            session,
+            start: Some(start),
+        })
+    }
+
+    /// The player events of the run start as JSON (once after
+    /// [`WasmRun::new_run_with`], then `"[]"`).
+    #[wasm_bindgen(js_name = startEvents)]
+    pub fn start_events(&mut self) -> String {
+        self.start.take().unwrap_or_else(|| "[]".to_string())
     }
 
     /// Load a saved run.
     pub fn load(state: &str) -> Result<WasmRun, JsError> {
         Session::load(state)
-            .map(|session| WasmRun { session })
+            .map(|session| WasmRun {
+                session,
+                start: None,
+            })
             .map_err(|e| JsError::new(&e))
     }
 
@@ -454,6 +696,148 @@ mod tests {
         assert!(catalog["card_mods"]["fat"]["text"].is_string());
         assert!(catalog["bosses"]["grandma"]["name"].is_string());
         assert!(catalog["consumables"]["beer"]["name"].is_string());
+    }
+
+    #[test]
+    fn meta_state_starts_runs_and_learns_from_events() {
+        let mut meta = MetaSession::fresh().expect("meta");
+        let view: serde_json::Value =
+            serde_json::from_str(&meta.view().expect("view")).expect("json");
+        let null = view["characters"]
+            .as_array()
+            .expect("characters")
+            .iter()
+            .find(|c| c["character"] == "NullPlayer")
+            .expect("null player");
+        assert_eq!(null["unlocked"], false);
+        assert_eq!(null["unlocked_by"], "tour_won");
+        assert!(
+            view["locked_relics"]
+                .as_array()
+                .is_some_and(|l| !l.is_empty())
+        );
+        let code = |e: String| -> String {
+            let json: serde_json::Value = serde_json::from_str(&e).expect("error json");
+            json["code"].as_str().expect("code").to_string()
+        };
+        assert_eq!(
+            code(Session::new_with("1", "NullPlayer", meta.meta()).expect_err("locked")),
+            "CharacterLocked"
+        );
+        assert_eq!(
+            code(Session::new_with("1", "Nobody", meta.meta()).expect_err("bad")),
+            "InvalidCharacter"
+        );
+        let (mut session, start) = Session::new_with("5", "Declarer", meta.meta()).expect("run");
+        let start = serde_json::to_string(&start).expect("json");
+        meta.observe(&start).expect("observe");
+        let content = content().expect("content");
+        let mut earned = Vec::new();
+        for _ in 0..5_000 {
+            let Some(action) = RunBot.next_action(session.run(), content) else {
+                break;
+            };
+            let step = session
+                .apply(&serde_json::to_string(&action).expect("json"))
+                .expect("bot");
+            let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+            let events = serde_json::to_string(&step["events"]).expect("json");
+            let result: serde_json::Value =
+                serde_json::from_str(&meta.observe(&events).expect("observe")).expect("json");
+            earned.extend(result["earned"].as_array().cloned().unwrap_or_default());
+        }
+        let stats: serde_json::Value =
+            serde_json::from_str(&meta.view().expect("view")).expect("json");
+        assert_eq!(stats["stats"]["runs_finished"], 1);
+        let saved = meta.save().expect("save");
+        let loaded = MetaSession::load(&saved).expect("load");
+        assert_eq!(loaded.meta(), meta.meta());
+        assert_eq!(
+            code(
+                MetaSession::load(&saved.replace("\"version\":1", "\"version\":7")).expect_err("v")
+            ),
+            "UnsupportedMeta"
+        );
+        assert_eq!(
+            code(MetaSession::load("x").expect_err("bad")),
+            "InvalidMeta"
+        );
+        assert_eq!(
+            code(meta.observe("nope").expect_err("bad")),
+            "InvalidEvents"
+        );
+        // Everything unlocked: the Nullspieler plays Null through JSON.
+        let all = MetaState::all_unlocked(content);
+        let (mut null, _) = Session::new_with("8", "NullPlayer", &all).expect("null");
+        let view: serde_json::Value =
+            serde_json::from_str(&null.view().expect("view")).expect("json");
+        assert_eq!(view["character"]["character"], "NullPlayer");
+        let options = &view["game"]["declare"];
+        assert_eq!(options["games"][0]["game"], "Null");
+        assert_eq!(options["null_risks"].as_array().map(Vec::len), Some(4));
+        assert_eq!(options["null_risks"][3]["value"], 92);
+        assert!(
+            null.apply(r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#)
+                .is_err()
+        );
+        assert!(
+            null.apply(r#"{"Declare":{"game":"Null","risk":"SchneiderDeclared"}}"#)
+                .is_err()
+        );
+        let step = null
+            .apply(r#"{"Declare":{"game":"Null","risk":"OuvertHand"}}"#)
+            .expect("null ouvert hand");
+        let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+        assert_eq!(step["view"]["game"]["declaration"]["game"], "Null");
+        assert_eq!(step["view"]["game"]["declaration"]["risk"], "OuvertHand");
+        let catalog: serde_json::Value =
+            serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
+        assert!(catalog["characters"]["NullPlayer"]["name"].is_string());
+        assert!(catalog["encounters"]["last_round"]["name"].is_string());
+        assert!(catalog["unlocks"]["tour_won"]["text"].is_string());
+    }
+
+    #[test]
+    fn encounters_are_chosen_through_json() {
+        let content = content().expect("content");
+        // Find a seed whose first interlude is an encounter.
+        for seed in 0..400u64 {
+            let mut session = Session::new(&seed.to_string()).expect("run");
+            for _ in 0..400 {
+                let view: serde_json::Value =
+                    serde_json::from_str(&session.view().expect("view")).expect("json");
+                if view["phase"] == "Encounter" {
+                    let options = view["encounter"]["options"].as_array().expect("options");
+                    let leave = options.len() - 1;
+                    assert_eq!(options[leave]["choice"], "Leave");
+                    let step = session
+                        .apply(&format!(
+                            r#"{{"ChooseEncounter":{{"option":{leave},"target":null}}}}"#
+                        ))
+                        .expect("leave");
+                    let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+                    assert_eq!(step["view"]["phase"], "Game");
+                    assert!(
+                        step["events"]
+                            .as_array()
+                            .expect("events")
+                            .iter()
+                            .any(|e| e.get("EncounterResolved").is_some())
+                    );
+                    return;
+                }
+                if view["phase"] == "Shop" || view["phase"] == "Lost" {
+                    break;
+                }
+                let Some(action) = RunBot.next_action(session.run(), content) else {
+                    break;
+                };
+                session
+                    .apply(&serde_json::to_string(&action).expect("json"))
+                    .expect("bot");
+            }
+        }
+        panic!("no encounter in 400 seeds");
     }
 
     #[test]

@@ -1,0 +1,35 @@
+// Charaktere (DESIGN 9): Startblatt, Startrelikte, Zielwerte und für den
+// Nullspieler die Null-Wertung. Welche Spiele ein Charakter ansagen darf,
+// steht im Code (Alleinspieler: Farbe und Grand, Nullspieler: nur Null).
+//
+// deck: Abweichung vom normalen 32er-Blatt. remove nimmt Karten heraus
+// (je eine Blanko), add füllt die Blankos mit neuen Karten.
+// targets: None nimmt die Zielwerte aus run.ron.
+// null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
+// oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2).
+[
+    (
+        character: Declarer,
+        name: "Der Alleinspieler",
+        text: "Spielt Farbe und Grand mit dem normalen Blatt. Der Maßstab für alles. Startet mit dem Zähler.",
+        start_relics: ["card_counter"],
+    ),
+    (
+        character: NullPlayer,
+        name: "Der Nullspieler",
+        text: "Spielt nur Null: keinen einzigen Stich machen. Sein Blatt hat keine Unter, dafür vier Siebener mehr. Startet mit dem Kiebitz.",
+        start_relics: ["kibitzer"],
+        deck: (
+            remove: ["CJ", "SJ", "HJ", "DJ"],
+            add: ["C7", "S7", "H7", "D7"],
+        ),
+        null_scoring: Some(Formula((
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        ))),
+    ),
+]

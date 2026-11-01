@@ -1,7 +1,12 @@
-// Hausregeln (passive Relikte). Effekte über die Hook-API, siehe
-// core/src/content/effects.rs. Preise (DESIGN 12: 5 bis 8) nach der
-// M2-Messung in docs/balance/2026-11-01-m2-zielwerte.md: starke Hausregeln
-// teurer, Hausregeln ohne messbaren Effekt am unteren Rand.
+// Hausregeln und Stammtisch-Figuren (passive Relikte). Effekte über die
+// Hook-API, siehe core/src/content/effects.rs. Preise (DESIGN 12: Hausregeln
+// 5 bis 8, Figuren 6 bis 10) nach der M2-Messung in
+// docs/balance/2026-11-01-m2-zielwerte.md: starke Hausregeln teurer,
+// Hausregeln ohne messbaren Effekt am unteren Rand. Figurenpreise sind
+// Platzhalter für `balance`.
+//
+// characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
+// Gesperrte Relikte stehen als Belohnung in unlocks.ron.
 [
     (
         id: "bock_round",
@@ -25,6 +30,7 @@
     ),
     (
         id: "last_trick_seven",
+        characters: [Declarer],
         name: "Spitze",
         text: "Machst du den letzten Stich mit einer Sieben, gibt es eine Gewinnstufe mehr.",
         rarity: Uncommon,
@@ -35,6 +41,7 @@
     ),
     (
         id: "concede",
+        characters: [Declarer],
         name: "Schenken",
         text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider.",
         rarity: Uncommon,
@@ -46,11 +53,11 @@
     (
         id: "ouvert_bonus",
         name: "Ouvert-Bonus",
-        text: "Ouvert zählt zwei Gewinnstufen statt einer.",
+        text: "Ouvert zählt zwei Gewinnstufen statt einer. Auch Null Ouvert.",
         rarity: Uncommon,
         price: 5,
         hooks: [
-            OnScore(when: RiskAtLeast(Ouvert), then: [AddLevels(1)]),
+            OnScore(when: Any([RiskAtLeast(Ouvert), NullRiskAtLeast(Ouvert)]), then: [AddLevels(1)]),
         ],
     ),
     (
@@ -64,6 +71,7 @@
     ),
     (
         id: "virgin",
+        characters: [Declarer],
         name: "Jungfrau",
         text: "Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider.",
         rarity: Uncommon,
@@ -72,6 +80,7 @@
     ),
     (
         id: "old_lady",
+        characters: [Declarer],
         name: "Alte Dame",
         text: "Jede Dame zählt 5 Augen. Auch bei den Gegnern.",
         rarity: Common,
@@ -91,6 +100,7 @@
     ),
     (
         id: "march_through",
+        characters: [Declarer],
         name: "Durchmarsch",
         text: "Gewinnst du Schneider, zählt der Spielwert doppelt.",
         rarity: Rare,
@@ -98,5 +108,76 @@
         hooks: [
             OnScore(when: WonSchneider, then: [MultiplyGameValue(2)]),
         ],
+    ),
+    (
+        id: "blind_flight",
+        name: "Blindflug",
+        text: "Gewinnst du ein Null aus der Hand, gibt es eine Gewinnstufe mehr.",
+        rarity: Common,
+        price: 5,
+        characters: [NullPlayer],
+        hooks: [
+            OnScore(when: All([NullGame, HandGame, Won]), then: [AddLevels(1)]),
+        ],
+    ),
+    // Stammtisch-Figuren (DESIGN 8.2).
+    (
+        id: "kibitzer",
+        kind: Regular,
+        name: "Der Kiebitz",
+        text: "Schaut den Gegnern über die Schulter: Vor der Ansage zeigt er dir eine zufällige Karte eines Gegners und wer sie hält.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [PeekDefenderCards(1)],
+    ),
+    (
+        id: "landlord",
+        kind: Regular,
+        name: "Der Wirt",
+        text: "Alles am Tresen ist 20 % billiger, auch die Neuauslage.",
+        rarity: Uncommon,
+        price: 7,
+        passive: [ShopDiscount(20)],
+    ),
+    (
+        id: "granny",
+        kind: Regular,
+        name: "Die Oma",
+        text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich einen Unter aus dem Skat nehmen und dafür eine Karte drücken. Ob einer drin liegt, verrät sie dir.",
+        rarity: Rare,
+        price: 8,
+        characters: [Declarer],
+        passive: [SeriesSkatSwap((rank: Some(Jack)))],
+    ),
+    (
+        id: "referee",
+        kind: Regular,
+        name: "Der Schiedsrichter",
+        text: "Am Tisch wird nicht geschummelt: Die Zwillinge sehen sich nicht in die Karten, der Revolutionär darf nicht tauschen.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [NoCheating],
+    ),
+    (
+        id: "show_off",
+        kind: Regular,
+        name: "Der Angeber",
+        text: "Du musst immer offen spielen, dafür zählt Null Ouvert eine Gewinnstufe mehr.",
+        rarity: Rare,
+        price: 8,
+        characters: [NullPlayer],
+        passive: [RequireOuvert],
+        hooks: [
+            OnScore(when: NullRiskAtLeast(Ouvert), then: [AddLevels(1)]),
+        ],
+    ),
+    (
+        id: "card_counter",
+        kind: Regular,
+        name: "Der Zähler",
+        text: "Zählt mit: Er zeigt dir laufend die Augen beider Seiten und wie viele Augen du noch nicht gesehen hast.",
+        rarity: Common,
+        price: 6,
+        passive: [ShowCount],
     ),
 ]

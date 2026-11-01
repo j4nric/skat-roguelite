@@ -1,6 +1,9 @@
 // Bosse: Sonderregel für die ganze Boss-Serie (DESIGN 11).
 // target_factor: Faktor auf den Zielwert der Boss-Serie (Standard 1.0,
 // gesetzt von `balance`).
+// characters: für welche Charaktere der Boss gezogen wird (leer: alle).
+// rotation: Endboss, der die Regeln dieser Bosse nacheinander auflegt, eine
+// pro Spiel.
 [
     (
         id: "the_pusher",
@@ -21,6 +24,74 @@
         name: "Die Oma",
         text: "Die Oma hat alle Buben eingesteckt. In dieser Serie sind sie Blankos.",
         passive: [BlankOut((rank: Some(Jack)))],
+        // M4-Messung (--curve --boss grandma, 3000 Serien): ohne Buben gewinnt der
+        // Bot höchstens 35 % (Zielwert 1), bei 110 nur 0,7 % (normal 18,5 %).
+        // 0,5 holt Abschnitt 4 und 5 aus dem Unschlagbaren.
+        target_factor: 0.5,
+        characters: [Declarer],
+    ),
+    (
+        id: "twins",
+        name: "Die Zwillinge",
+        text: "Die Gegner sehen gegenseitig ihre Blätter und spielen danach.",
+        passive: [DefendersSeeEachOther],
         target_factor: 1.0,
+    ),
+    (
+        id: "ramscher",
+        name: "Der Ramscher",
+        text: "Das erste Spiel der Serie ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst doppelt gegen dich.",
+        passive: [RamschOnce],
+        // M4-Messung: Der Ramsch bringt gewonnen die Augen des Verlierers, der
+        // Bot gewinnt ihn oft. Bei 63 gewinnt er 59 % (normal 41 %), bei 110
+        // 37,5 % (18,5 %). 1,5 trifft die normale Kurve von 24 bis 110.
+        target_factor: 1.5,
+    ),
+    (
+        id: "revolutionary",
+        name: "Der Revolutionär",
+        text: "Nach dem fünften Stich tauschen die Gegner ihre Blätter.",
+        hooks: [
+            OnTrickEnd(when: TricksPlayed(5), then: [SwapDefenderHands]),
+        ],
+        target_factor: 1.0,
+    ),
+    (
+        id: "black_peter",
+        name: "Der Schwarze Peter",
+        text: "Ein gewonnenes Spiel zählt nur, wenn die Gegner Schneider sind. Verlorene zählen wie immer.",
+        hooks: [
+            OnScore(when: All([Won, Not(WonSchneider)]), then: [MultiplyGameValue(0)]),
+        ],
+        // M4-Messung: Obergrenze 41 % (Zielwert 1), bei 110 nur 6,6 % (normal
+        // 18,5 %). Mit 0,6 liegen 63 und 110 bei 31 % und 18 %.
+        target_factor: 0.6,
+        characters: [Declarer],
+    ),
+    (
+        id: "kibitz_killer",
+        name: "Der Kiebitz-Mörder",
+        text: "Keiner schaut in fremde Karten: Kiebitz, Zähler und durchsichtige Karten sind abgeschaltet.",
+        passive: [DisableInformation],
+        target_factor: 1.0,
+    ),
+    (
+        id: "the_old_man",
+        name: "Der Alte",
+        text: "Der Endboss legt jede Regel der anderen Bosse auf, eine pro Spiel, der Reihe nach.",
+        rotation: [
+            "the_pusher",
+            "twins",
+            "kontra_hans",
+            "revolutionary",
+            "ramscher",
+            "grandma",
+            "black_peter",
+            "kibitz_killer",
+        ],
+        // M4-Messung: Als Endboss (Zielwert 180) gewinnt der Bot 12,9 % (eine
+        // normale Serie 3,6 %), weil der Ramsch im fünften Spiel viel bringt.
+        // 1,4 entspricht bei 110 genau der normalen Kurve.
+        target_factor: 1.4,
     ),
 ]

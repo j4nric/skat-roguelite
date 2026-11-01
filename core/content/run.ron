@@ -27,5 +27,19 @@
         consumable_offers: 2,
         rarity_weights: (common: 6, uncommon: 3, rare: 1),
     ),
-    bosses: ["the_pusher", "kontra_hans", "grandma"],
+    bosses: [
+        "the_pusher",
+        "kontra_hans",
+        "grandma",
+        "twins",
+        "ramscher",
+        "revolutionary",
+        "black_peter",
+        "kibitz_killer",
+    ],
+    // Endboss der Boss-Serie im letzten Abschnitt (DESIGN 11).
+    final_boss: Some("the_old_man"),
+    // Wahrscheinlichkeit, dass zwischen zwei Serien statt des Tresens ein
+    // Ereignis kommt (DESIGN 13). Platzhalter für `balance`.
+    encounter_chance: 0.2,
 )

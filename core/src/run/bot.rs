@@ -23,19 +23,33 @@
 //! bought and Groschen are plenty, leave. Values come from
 //! [`relic_value`] and [`consumable_value`].
 //!
+//! Nullspieler ([`RunBot::null_declaration`]): a hand with more than
+//! [`NULL_MAX_EXPOSED`] exposed cards (classic Null rule, see
+//! [`crate::ai::null_exposure`]) is thrown in like a weak hand; a hand
+//! without exposed card is played Ouvert Hand, otherwise Null with the
+//! skat (the two most exposed cards go into it).
+//!
+//! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
+//! of a Stammtisch-Streit, the free card of the Kartengeber, a swap of the
+//! weakest relic when it is worth less than an average one, never the
+//! double stakes of "Letzte Runde".
+//!
+//! Figure "Die Oma": in a hand game the bot takes the jack from the skat
+//! whenever it may, giving away its cheapest side card.
+//!
 //! The bot never looks at the Zielwert or the series account. The
 //! simulator's success curve (`--curve`) relies on that.
 //!
 //! It lives in the core (not in `sim/`) so that core tests can drive whole
 //! runs with it; a frontend could use it for an "auto play" button.
 
-use super::{Run, RunAction, RunPhase};
-use crate::ai::{DeclarerHeuristic, Policy, trump_count};
+use super::{EncounterChoice, Run, RunAction, RunPhase};
+use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{ConsumableAction, ConsumableId, Content, RelicId};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
-use crate::rules::{Declaration, GameType, RiskLevel};
+use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
 
 /// How much the bot wants each relic, roughly by the measured effect of
 /// the relic alone (`docs/balance/2026-11-01-m2-zielwerte.md`, "Einzeln ab
@@ -55,7 +69,14 @@ use crate::rules::{Declaration, GameType, RiskLevel};
 /// | `kontra` | 3 | only helps against high Zielwerte, hurts early |
 /// | `last_trick_seven` | 2 | rare: last trick with a seven |
 /// | `ouvert_bonus` | 1 | the bot almost never plays Ouvert |
-pub const RELIC_VALUES: [(&str, u32); 10] = [
+/// | `landlord` | 5 | cheaper Tresen |
+/// | `blind_flight` | 4 | Null Hand +1 level |
+/// | `granny` | 4 | a jack from the skat in hand games |
+/// | `referee` | 2 | only against two bosses |
+/// | `show_off` | 2 | Ouvert forced: strong but risky |
+/// | `kibitzer` | 1 | information the bot does not use |
+/// | `card_counter` | 1 | information the bot does not use |
+pub const RELIC_VALUES: [(&str, u32); 17] = [
     ("bock_round", 10),
     ("old_lady", 9),
     ("concede", 8),
@@ -63,9 +84,16 @@ pub const RELIC_VALUES: [(&str, u32); 10] = [
     ("tour", 6),
     ("virgin", 6),
     ("skat_redraw", 6),
+    ("landlord", 5),
+    ("blind_flight", 4),
+    ("granny", 4),
     ("kontra", 3),
     ("last_trick_seven", 2),
+    ("referee", 2),
+    ("show_off", 2),
     ("ouvert_bonus", 1),
+    ("kibitzer", 1),
+    ("card_counter", 1),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
@@ -114,6 +142,13 @@ pub fn consumable_value(id: &ConsumableId) -> u32 {
         .map_or(0, |&(_, v)| v)
 }
 
+/// The Nullspieler plays a hand with at most this many exposed cards
+/// (before the skat). Measured with the Null formula (DESIGN 9.2, 3 × 1000
+/// runs): with 2 the bot reaches section 2 in 15 %, with 4 in 28 %, with 5
+/// in 35 %; 4 keeps the Nullspieler close to the Alleinspieler. Hands with
+/// 3 or 4 exposed cards win 60 % and 45 % of their games.
+pub const NULL_MAX_EXPOSED: usize = 4;
+
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RunBot;
@@ -159,7 +194,7 @@ impl RunBot {
     #[must_use]
     pub fn is_weak(hand: &[DealtCard], declaration: Declaration) -> bool {
         let aces = count_rank(hand, Rank::Ace);
-        match declaration.game {
+        match declaration.game() {
             GameType::Grand => count_rank(hand, Rank::Jack) < 2 || aces < 2,
             game => {
                 let trumps = trump_count(game, hand);
@@ -189,7 +224,7 @@ impl RunBot {
     ///   trumps).
     #[must_use]
     pub fn announcement(hand: &[DealtCard], declaration: Declaration) -> RiskLevel {
-        let game = declaration.game;
+        let game = declaration.game();
         let trumps = trump_count(game, hand);
         let top = top_trumps(hand, game);
         let losers = side_losers(hand, game);
@@ -210,7 +245,7 @@ impl RunBot {
         } else if schneider {
             RiskLevel::SchneiderDeclared
         } else {
-            declaration.risk
+            declaration.risk().unwrap_or(RiskLevel::Normal)
         }
     }
 
@@ -238,7 +273,53 @@ impl RunBot {
         match run.phase() {
             RunPhase::Won | RunPhase::Lost => None,
             RunPhase::Shop => Some(self.shop_action(run, content)),
+            RunPhase::Encounter => Some(self.encounter_action(run)),
             RunPhase::Game => self.game_action(run, content),
+        }
+    }
+
+    /// The encounter policy, see the module docs.
+    #[must_use]
+    pub fn encounter_action(&self, run: &Run) -> RunAction {
+        let Some(encounter) = run.encounter() else {
+            return RunAction::LeaveShop;
+        };
+        let leave = encounter.options.len().saturating_sub(1);
+        let choose = |option| RunAction::ChooseEncounter {
+            option,
+            target: None,
+        };
+        let mut best: Option<(u32, usize)> = None;
+        for (i, option) in encounter.options.iter().enumerate() {
+            if option.cost > run.coins() {
+                continue;
+            }
+            let value = match &option.choice {
+                EncounterChoice::TakeRule(id) => relic_value(id) + 1,
+                EncounterChoice::MarkRandomCard => 1,
+                EncounterChoice::SwapRelic { relic, .. }
+                    if relic_value(relic) < DEFAULT_RELIC_VALUE =>
+                {
+                    DEFAULT_RELIC_VALUE - relic_value(relic)
+                }
+                _ => 0,
+            };
+            if value > 0 && best.is_none_or(|(v, _)| value > v) {
+                best = Some((value, i));
+            }
+        }
+        choose(best.map_or(leave, |(_, i)| i))
+    }
+
+    /// The Null declaration of the Nullspieler for a ten-card hand, or
+    /// `None` if the hand is too weak (more than [`NULL_MAX_EXPOSED`]
+    /// exposed cards).
+    #[must_use]
+    pub fn null_declaration(hand: &[DealtCard], deck: &[DealtCard]) -> Option<NullRisk> {
+        match null_unsafe_cards(hand, deck) {
+            0 => Some(NullRisk::OuvertHand),
+            1..=NULL_MAX_EXPOSED => Some(NullRisk::Normal),
+            _ => None,
         }
     }
 
@@ -264,6 +345,7 @@ impl RunBot {
             return RunAction::LeaveShop;
         };
         let coins = run.coins();
+        let price = |p: u32| run.shop_price(content, p);
         // 1. Stempelkissen: on an ace, Kreuz first, the least modified one.
         for target in Self::ace_targets(run) {
             if let Some(action) = Self::usable(
@@ -285,7 +367,7 @@ impl RunBot {
             .filter_map(|(slot, id)| {
                 let id = id.as_ref()?;
                 let def = content.relic(id)?;
-                Some((relic_value(id), def.price, slot))
+                Some((relic_value(id), price(def.price), slot))
             })
             .filter(|&(value, _, _)| value > 0)
             .collect();
@@ -331,7 +413,8 @@ impl RunBot {
                     let id = id.as_ref()?;
                     let def = content.consumable(id)?;
                     let value = consumable_value(id);
-                    (value > 0 && def.price <= coins).then_some((value, def.price, slot))
+                    let cost = price(def.price);
+                    (value > 0 && cost <= coins).then_some((value, cost, slot))
                 })
                 .max_by_key(|&(value, price, slot)| (value, price, std::cmp::Reverse(slot)));
             if let Some((_, _, slot)) = best {
@@ -339,7 +422,7 @@ impl RunBot {
             }
         }
         // 5. Nothing sensible to buy: a new offer, if Groschen are plenty.
-        let cost = content.run.economy.reroll_cost;
+        let cost = price(content.run.economy.reroll_cost);
         if shop.rerolls < MAX_REROLLS && coins >= cost + REROLL_RESERVE {
             return RunAction::Reroll;
         }
@@ -369,10 +452,35 @@ impl RunBot {
         let declarer = DeclarerHeuristic;
         if active.awaiting_re {
             let declaration = game.declaration()?;
-            let re = RunBot::says_re(game.hand(Seat::DECLARER), declaration.game);
+            let re = RunBot::says_re(game.hand(Seat::DECLARER), declaration.game());
             return Some(RunAction::AnswerKontra { re });
         }
         match game.phase() {
+            Phase::Declaring if run.character().plays_null() => {
+                let hand = game.hand(Seat::DECLARER);
+                let risk = RunBot::null_declaration(hand, game.deck_cards());
+                if risk.is_none() {
+                    if let Some(action) = Self::throw_in(run, content) {
+                        return Some(action);
+                    }
+                }
+                let mut risk = risk.unwrap_or(NullRisk::Normal);
+                if active.rules.require_hand && !risk.hand() {
+                    risk = if risk.ouvert() {
+                        NullRisk::OuvertHand
+                    } else {
+                        NullRisk::Hand
+                    };
+                }
+                if active.rules.require_ouvert && !risk.ouvert() {
+                    risk = if risk.hand() {
+                        NullRisk::OuvertHand
+                    } else {
+                        NullRisk::Ouvert
+                    };
+                }
+                Some(RunAction::Declare(Declaration::null(risk)))
+            }
             Phase::Declaring => {
                 let hand = game.hand(Seat::DECLARER);
                 let mut declaration = declarer.choose_declaration(hand);
@@ -381,25 +489,49 @@ impl RunBot {
                         return Some(action);
                     }
                 }
-                declaration.risk = RunBot::announcement(hand, declaration);
-                if active.rules.require_hand && declaration.risk < RiskLevel::Hand {
-                    declaration.risk = RiskLevel::Hand;
+                declaration = declaration.with_risk(RunBot::announcement(hand, declaration));
+                if active.rules.require_hand && !declaration.hand() {
+                    declaration = declaration.with_risk(RiskLevel::Hand);
                 }
                 Some(RunAction::Declare(declaration))
             }
             Phase::Discarding => {
                 let declaration = game.declaration()?;
-                let [a, b] =
-                    declarer.choose_discard(game.hand(Seat::DECLARER), declaration.game)?;
+                let hand = game.hand(Seat::DECLARER);
+                let [a, b] = if declaration.is_null() {
+                    declarer.choose_null_discard(hand, game.deck_cards())?
+                } else {
+                    declarer.choose_discard(hand, declaration.game())?
+                };
                 Some(RunAction::Discard([a.id, b.id]))
             }
             Phase::Playing => {
+                if active.rules.skat_swap.is_some() {
+                    if let Some(action) = Self::take_jack(run, content) {
+                        return Some(action);
+                    }
+                }
                 let view = game.view(Seat::DECLARER)?;
                 let card = declarer.choose(&view)?;
                 Some(RunAction::Play(card.id))
             }
             Phase::Finished(_) => None,
         }
+    }
+
+    /// "Die Oma": give the cheapest side card for the skat's jack.
+    fn take_jack(run: &Run, content: &Content) -> Option<RunAction> {
+        let active = run.game()?;
+        let game = &active.game;
+        let trump = game.declaration()?.game();
+        let give = game
+            .hand(Seat::DECLARER)
+            .iter()
+            .copied()
+            .filter(|&c| !crate::rules::is_trump(trump, c))
+            .min_by_key(|c| (c.card_points(), c.face().map(|f| f.rank)))?;
+        let action = RunAction::TakeFromSkat { give: give.id };
+        run.accepts(content, action.clone()).then_some(action)
     }
 
     /// The cheapest way to throw a weak hand in, if any: redeal, "Neues
@@ -446,7 +578,7 @@ mod tests {
     }
 
     fn suit(s: Suit) -> Declaration {
-        Declaration::new(GameType::Suit(s), RiskLevel::Normal)
+        Declaration::suit(s, RiskLevel::Normal)
     }
 
     #[test]
@@ -458,7 +590,7 @@ mod tests {
         assert!(RunBot::is_weak(&five_one_ace, hearts));
         let six = hand("CJ SJ HT HK H9 H8 ST S9 D7 D8");
         assert!(!RunBot::is_weak(&six, hearts));
-        let grand = Declaration::new(GameType::Grand, RiskLevel::Normal);
+        let grand = Declaration::grand(RiskLevel::Normal);
         assert!(!RunBot::is_weak(
             &hand("CJ DJ CA SA S9 S8 H7 H8 D7 D8"),
             grand
@@ -490,7 +622,7 @@ mod tests {
             RunBot::announcement(&one_loser, clubs),
             RiskLevel::SchneiderDeclared
         );
-        let grand = Declaration::new(GameType::Grand, RiskLevel::Normal);
+        let grand = Declaration::grand(RiskLevel::Normal);
         let jacks = hand("CJ SJ HJ DJ CA CT SA ST HA DA");
         assert_eq!(RunBot::announcement(&jacks, grand), RiskLevel::Ouvert);
         let three = hand("CJ SJ HJ CA CT SA ST HA DA D7");
