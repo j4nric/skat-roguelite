@@ -18,6 +18,7 @@ export type HintId =
   | 'shop'
   | 'boss'
   | 'encounter'
+  | 'longPress'
   | 'runLost';
 
 /**
@@ -84,6 +85,8 @@ const HINTS: HintDef[] = [
     },
   },
   { id: 'value', anchor: 'hud', when: ({ ui }) => table(ui)?.phase === 'Playing' && Boolean(table(ui)?.value_preview) },
+  // The info card: once the player has seen a game being played.
+  { id: 'longPress', anchor: 'hud', when: ({ ui }) => table(ui)?.phase === 'Playing' && !ui.anim },
   { id: 'shop', anchor: 'shop', when: ({ ui }) => ui.screen === 'run' && ui.view?.phase === 'Shop' && !ui.anim },
   { id: 'encounter', anchor: 'hud', when: ({ ui }) => ui.screen === 'run' && ui.view?.phase === 'Encounter' && !ui.anim },
 ];

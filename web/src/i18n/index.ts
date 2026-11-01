@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { Catalog, CardKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
+import type { Catalog, CardKind, ModFigure, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -66,6 +66,16 @@ export function contentName(category: Category, id: string): string {
 /** Display text of a content item, German-deck override first. */
 export function contentText(category: Category, id: string): string {
   return de.content[category][id]?.text ?? catalog?.[category][id]?.text ?? '';
+}
+
+/** The number a card modification prints on its card, from the core's catalog. */
+export function modFigure(mod: string): ModFigure | null {
+  return catalog?.card_mods[mod]?.figure ?? null;
+}
+
+/** The run counters a relic reads or raises, from the core's catalog. */
+export function relicCounters(relic: string): string[] {
+  return catalog?.relics[relic]?.counters ?? [];
 }
 
 /** Whether a card modification is a curse (Fluch), from the core's catalog. */

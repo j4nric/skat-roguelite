@@ -53,7 +53,7 @@ function ownedCoaster(r: OwnedRelic, i: number): string {
   return `<div class="coaster-wrap" style="--i:${i}">${coaster(
     r.relic,
     `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-relic', 'data-index': r.index, disabled: !r.can_sell })}>${esc(t(de.shop.sell, { price: r.sell_price }))}</button>`,
-    { 'data-action': 'info-relic', 'data-index': r.index },
+    { 'data-action': 'info-relic', 'data-index': r.index, 'data-info': `relic:${r.relic.id}` },
     { extra: 'coaster-owned' },
   )}</div>`;
 }
@@ -79,7 +79,7 @@ function nextBoard(view: RunView): string {
   const where = t(next.is_boss ? de.shop.nextBoss : de.shop.nextSeries, { section: next.section + 1, series: next.index + 1 });
   const boss = next.boss ?? view.upcoming_boss;
   const bossBlock = boss
-    ? `<div class="next-boss">${portrait(bossPortraitId(boss.id), 'portrait-sm')}<div>
+    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}>${portrait(bossPortraitId(boss.id), 'portrait-sm')}<div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
         <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
         <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p></div></div>`
@@ -100,7 +100,7 @@ export function renderShop(view: RunView): string {
       return `<div class="coaster-wrap" style="--i:${i}">${coaster(
         o.relic,
         `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
-        { 'data-action': 'info-offer-relic', 'data-slot': o.slot },
+        { 'data-action': 'info-offer-relic', 'data-slot': o.slot, 'data-info': `offer-relic:${o.slot}` },
         { price: o.price },
       )}</div>`;
     })
@@ -110,7 +110,7 @@ export function renderShop(view: RunView): string {
       if (!o) return `<div class="good is-sold"><span>${esc(de.shop.soldOut)}</span></div>`;
       return good(
         o.consumable.id,
-        { 'data-action': 'info-offer-item', 'data-slot': o.slot },
+        { 'data-action': 'info-offer-item', 'data-slot': o.slot, 'data-info': `offer-item:${o.slot}` },
         `${price(o.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
         '',
         o.consumable.category,
@@ -122,7 +122,7 @@ export function renderShop(view: RunView): string {
     .map((c) =>
       good(
         c.consumable.id,
-        { 'data-action': 'info-item', 'data-slot': c.slot },
+        { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
         `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
          <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',

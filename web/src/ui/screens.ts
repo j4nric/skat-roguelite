@@ -10,7 +10,6 @@ import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
 import { cardSvg, modIcon, suitIcon } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
-import { goodSvg } from './goods';
 import { seatPerson } from './guests';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
@@ -421,20 +420,6 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         false,
         'sheet-boss',
       );
-    case 'info': {
-      const pic = overlay.good ? `<div class="info-pic">${goodSvg(overlay.good, 72)}</div>` : '';
-      const body = overlay.coaster
-        ? `<article class="coaster coaster-big rarity-${esc(overlay.coaster)}"><div class="coaster-kind">${esc(overlay.subtitle)}</div><h4 class="coaster-name">${esc(overlay.title)}</h4><p class="coaster-text">${esc(overlay.text)}</p></article>`
-        : `${pic}<p class="small">${esc(overlay.subtitle)}</p><h2>${esc(overlay.title)}</h2><p>${esc(overlay.text)}</p>${overlay.odds && view ? oddsLine(view.deal_odds) : ''}`;
-      return sheet(
-        `${body}
-         <div class="sheet-actions">
-           ${overlay.use !== undefined ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'use-item', 'data-slot': overlay.use })}>${esc(de.shop.use)}</button>` : ''}
-           ${overlay.buy ? `<button class="btn btn-primary" ${attrs({ 'data-action': overlay.buy.action, 'data-slot': overlay.buy.slot })}>${esc(t(de.shop.buy, { price: overlay.buy.price }))}</button>` : ''}
-           <button class="btn" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>
-         </div>`,
-      );
-    }
     case 'menu':
       return sheet(
         `<h2>${esc(de.header.menu)}</h2>
@@ -482,6 +467,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
           return `<button class="card target-card ${ok ? '' : 'is-dim'}" ${attrs({
             'data-action': 'target',
             'data-id': c.id,
+            'data-info': `card:${c.id}`,
             disabled: !ok,
             'aria-label': cardName(c.kind),
           })}>${cardSvg(c.kind, c.mods)}</button>`;
@@ -539,6 +525,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
           return `<button class="card target-card ${ok ? '' : 'is-dim'}" ${attrs({
             'data-action': 'encounter-target',
             'data-id': c.id,
+            'data-info': `card:${c.id}`,
             disabled: !ok,
             'aria-label': cardName(c.kind),
           })}>${cardSvg(c.kind, c.mods)}</button>`;

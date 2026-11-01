@@ -638,6 +638,7 @@ export const de = {
     shop: 'Für jede gewonnene Serie gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Gegenstände zinken oder ändern dein Blatt.',
     boss: 'Obacht, ein Boss! Der biegt für diese eine Serie eine Regel, also lies genau, was er vorhat.',
     encounter: 'Zwischen zwei Serien ist auch mal Rast statt Tresen. Nimm dir, was dir passt, oder geh einfach weiter.',
+    longPress: 'Halt eine Karte oder ein Relikt gedrückt, dann erklär ich’s dir.',
     runLost:
       'Das war’s für heute, Kopf hoch. Freischaltungen und Statistik bleiben im Vereinsbuch, der nächste Run fängt wieder bei null an.',
   },
@@ -788,6 +789,90 @@ export const de = {
       },
     ],
     thanks: 'Gut Blatt!',
+  },
+
+  /** The info card (long-press, hover or the info key on a card, relic, item, guest or boss). */
+  info: {
+    kinds: {
+      card: 'Karte',
+      cardMod: 'Kartenmodifikation',
+      curse: 'Fluch',
+      item: 'Schnaps',
+      guest: 'Stammgast',
+      boss: 'Boss',
+      bossRule: 'Boss-Regel dieses Spiels',
+      evening: 'Hausregel des Abends',
+    },
+    close: 'Schließen',
+    swipe: 'Nach unten wischen zum Schließen',
+    label: 'Erklärung: {name}',
+    points: 'Zählt {n} Augen',
+    pointsOne: 'Zählt {n} Auge',
+    rankBonus: 'Sticht {n} Stufe höher',
+    rankBonusMany: 'Sticht {n} Stufen höher',
+    neverWins: 'Gewinnt keinen Stich',
+    holder: 'Liegt bei {name}',
+    noMods: 'Keine Modifikation.',
+    lastGame: 'Im letzten Spiel: {effect}',
+    position: 'Sitzt in {position}',
+    tricks: '{n} Stiche in diesem Spiel',
+    trick: '{n} Stich in diesem Spiel',
+    handSize: 'Noch {n} Karten auf der Hand',
+    guestText: 'Spielt ohne eigene Regeln, nur mit dem Blatt, das alle teilen.',
+    targetFactor: 'Zielwert der Serie ×{factor}',
+    unknownMod: 'Noch nicht im Spiel.',
+  },
+
+  /**
+   * Glossary terms highlighted in every effect text; a tap shows the line
+   * inline. Keys are the base forms; `keywordForms` maps what the texts
+   * write to them.
+   */
+  keywords: {
+    Augen: 'Die Punkte der Karten im Stich: Daus 11, Zehn 10, König 4, Ober 3, Unter 2. Ab 61 von 120 hast du gewonnen.',
+    Stufe: 'Gewinnstufe: Spitzen, Spiel, Hand, Schneider und mehr. Spielwert ist Grundwert mal Stufen.',
+    Grundwert: 'Der Wert der Spielart: Schellen 9, Rot 10, Grün 11, Eichel 12, Grand 24. Er wird mit den Stufen malgenommen.',
+    Trumpf: 'Die Karten, die jede andere Farbe stechen: im Farbspiel die Unter und die angesagte Farbe, im Grand nur die Unter.',
+    Schneider: 'Die Gegner haben höchstens 30 Augen. Bringt eine Stufe mehr, angesagt noch eine.',
+    Schwarz: 'Die Gegner bekommen keinen Stich. Bringt eine Stufe mehr, angesagt noch eine.',
+    Hand: 'Gespielt, ohne den Skat aufzunehmen. Bringt eine Stufe mehr.',
+    Ouvert: 'Mit offenen Karten gespielt. Bringt eine Stufe mehr, beim Null den höheren Wert.',
+    Kurzschluss: 'Beim Null: Die Gegner haben nach fünf Stichen schon 61 Augen. Bringt dem Nullspieler Stilbonus.',
+    Spitzen: 'Die Trümpfe von oben ab dem Eichel-Unter ohne Lücke: mit oder ohne so viele, je Spitze eine Stufe.',
+    Null: 'Du darfst keinen Stich machen. Fester Wert: 23, Hand 35, Ouvert 46, Ouvert Hand 59.',
+    Fluch: 'Eine schlechte Kartenmodifikation mit rot gebrochenem Rahmen. Dafür gibt es beim Erhalt Groschen.',
+    Groschen: 'Das Geld am Stammtisch. Am Tresen kaufst du davon Hausregeln, Figuren und Gegenstände.',
+  } as Record<string, string>,
+
+  /** Word forms in the effect texts and the keyword they belong to. */
+  keywordForms: {
+    Augen: 'Augen',
+    Auge: 'Augen',
+    Stufe: 'Stufe',
+    Stufen: 'Stufe',
+    Gewinnstufe: 'Stufe',
+    Gewinnstufen: 'Stufe',
+    Grundwert: 'Grundwert',
+    Grundwerts: 'Grundwert',
+    Trumpf: 'Trumpf',
+    Trümpfe: 'Trumpf',
+    Schneider: 'Schneider',
+    Schwarz: 'Schwarz',
+    Hand: 'Hand',
+    Handspiel: 'Hand',
+    Ouvert: 'Ouvert',
+    Kurzschluss: 'Kurzschluss',
+    Spitze: 'Spitzen',
+    Spitzen: 'Spitzen',
+    Null: 'Null',
+    Fluch: 'Fluch',
+    Groschen: 'Groschen',
+  } as Record<string, string>,
+
+  /** Short lines when a relic or card modification fires (trigger feedback). */
+  trigger: {
+    line: '{source}: {effect}',
+    more: '… und {n} weitere',
   },
 
   flags: {

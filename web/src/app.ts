@@ -28,7 +28,7 @@
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
+import { de, cardName, contentName, relicCounters, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
@@ -53,14 +53,18 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, Seat, Source, Step, Suit } from './types';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, ScoreLine, Seat, Source, Step, Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
+import { infoModel } from './ui/info';
+import { InfoCard } from './ui/infocard';
+import { watchPresses } from './ui/press';
+import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
 import { coinIcon, renderHud } from './ui/hud';
-import { renderScore, ScoreBoard, sourceName } from './ui/score';
+import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
@@ -117,6 +121,8 @@ const DELAY = {
   trickFly: 360,
   toast: 1900,
   notice: 700,
+  /** Relics and modifications that fired, before the score board covers them. */
+  trigger: 650,
 };
 
 /** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
@@ -181,6 +187,10 @@ export class App {
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
   private readonly hintEl: HTMLElement;
+  /** The info card (long-press, hover, "i"): one for everything. */
+  private readonly info: InfoCard;
+  /** Lines and wiggles when a relic or modification fires. */
+  private readonly triggers: TriggerFeed;
   /** Hints of the Wirt already seen (stored). */
   private hintSeen = loadSeenHints();
   /** The hint on screen and where it sits. */
@@ -203,11 +213,29 @@ export class App {
   private playedFrom: DOMRect | null = null;
 
   constructor(private readonly root: HTMLElement) {
-    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
+    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
     this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
+    const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;
+    this.info = new InfoCard(infoEl, (key) => infoModel(key, this.ui.view, this.ui));
+    this.triggers = new TriggerFeed(root.querySelector<HTMLElement>('.trigger-layer') ?? root);
+    watchPresses(root, {
+      open: (key, el) => {
+        this.info.show(key, 'sheet', el);
+      },
+      hover: (key, el) => {
+        this.info.show(key, 'popover', el);
+      },
+      leave: () => this.info.closeHoverSoon(),
+      // Only where the run is on screen, and not behind the score board.
+      blocked: () => !this.ui.view || (this.ui.screen !== 'run' && this.ui.screen !== 'end') || this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss',
+    });
+    // A press anywhere else closes the popover of the mouse.
+    root.addEventListener('pointerdown', (e) => {
+      if (this.info.state?.mode === 'popover' && !infoEl.contains(e.target as Node | null)) this.info.close();
+    });
     // The layout may settle a little after a resize (a phone turning, the
     // address bar going away); follow it then once more.
     let settle: number | undefined;
@@ -917,7 +945,13 @@ export class App {
         sound.play('card');
         continue;
       }
+      if ('CounterRaised' in ev) {
+        this.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
+        continue;
+      }
       if ('GameScored' in ev) {
+        // What fired, on the chips and cards still on screen, before the board covers them.
+        if (this.fireTriggers(ev.GameScored.breakdown.lines, after)) await this.pause(DELAY.trigger);
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
         await this.showScore(
@@ -1056,6 +1090,7 @@ export class App {
    */
   private async coinsGained(source: Source, amount: number, coins: number, after: RunView): Promise<void> {
     const from = sourceName(source, after.deck);
+    this.wiggleSource(source);
     const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
     this.showToast(t(de.toast.coins, { amount: sign, source: from }));
     sound.play('coin');
@@ -1081,6 +1116,55 @@ export class App {
 
   private seatLabel(seat: Seat, view: RunView): string {
     return seatLabelOf(view, seat);
+  }
+
+  /** Tempo factor of the settings, for effects outside ./ui/fx.ts. */
+  private tempo(): number {
+    return TEMPO_FACTOR[this.ui.settings.tempo];
+  }
+
+  /** Wiggle what stands for a source on screen (its relic chip, its card). */
+  private wiggleSource(source: Source): void {
+    if (this.fastForward) return;
+    this.triggers.fire([{ source, text: '' }], this.screenEl, this.tempo(), false);
+  }
+
+  /**
+   * Relics and card modifications whose score lines are in the result: wiggle
+   * them and say what they did. Returns whether anything fired.
+   */
+  private fireTriggers(lines: ScoreLine[], after: RunView): boolean {
+    const fired: Trigger[] = lines
+      .filter((l) => typeof l.source === 'object' && ('Relic' in l.source || 'CardMod' in l.source))
+      .map((l) => ({
+        source: l.source,
+        text: t(de.trigger.line, { source: sourceName(l.source, after.deck), effect: changeText(l.lever, l.change) }),
+      }));
+    if (!fired.length || this.fastForward) return false;
+    this.positionTriggers();
+    this.triggers.fire(fired, this.screenEl, this.tempo());
+    return true;
+  }
+
+  /** A run counter went up: the relics that count it wiggle and say the new value. */
+  private counterRaised(counter: string, value: number, after: RunView): void {
+    const template = de.counters[counter];
+    if (!template || this.fastForward) return;
+    const owners = after.relics.filter((r) => relicCounters(r.relic.id).includes(counter));
+    if (!owners.length) return;
+    this.positionTriggers();
+    this.triggers.fire(
+      owners.map((r) => ({ source: { Relic: r.relic.id }, text: t(template, { value }) })),
+      this.screenEl,
+      this.tempo(),
+    );
+  }
+
+  /** The trigger lines sit on the felt above the trick, else right below the head of the run. */
+  private positionTriggers(): void {
+    const felt = this.screenEl.querySelector('.table .center')?.getBoundingClientRect();
+    const hud = this.screenEl.querySelector('.hud')?.getBoundingClientRect();
+    this.triggers.place(felt ? felt.top + 8 : hud ? hud.bottom + 6 : null);
   }
 
   /**
@@ -1469,26 +1553,16 @@ export class App {
         }
         return;
       }
-      case 'info-rule': {
-        const rule = view?.game?.boss_rule;
-        if (rule) {
-          this.ui.overlay = { kind: 'info', title: contentName('bosses', rule.id), subtitle: de.table.bossRule, text: contentText('bosses', rule.id) || rule.text };
-          this.render();
-        }
-        return;
-      }
-      case 'info-evening': {
-        const relic = view?.evening_relics[num('index')];
-        if (relic) {
-          this.ui.overlay = {
-            kind: 'info',
-            title: contentName('relics', relic.id),
-            subtitle: de.evening.subtitle,
-            text: contentText('relics', relic.id),
-            coaster: relic.rarity,
-          };
-          this.render();
-        }
+      case 'info-rule':
+      case 'info-evening':
+      case 'info-boss':
+      case 'info-relic':
+      case 'info-offer-relic':
+      case 'info-offer-item':
+      case 'info-item': {
+        // A tap on these opens their info card (the same as a long-press).
+        const key = el.dataset.info;
+        if (key) this.info.show(key, 'sheet', el);
         return;
       }
       case 'tempo':
@@ -1519,76 +1593,9 @@ export class App {
       case 'boss-go':
         if (overlay?.kind === 'boss') overlay.resolve();
         return;
-      case 'info-boss':
-        if (view?.series.boss) {
-          const boss = view.series.boss;
-          this.ui.overlay = { kind: 'info', title: contentName('bosses', boss.id), subtitle: de.boss.title, text: contentText('bosses', boss.id) || boss.text };
-          this.render();
-        }
-        return;
-      case 'info-relic': {
-        const relic = view?.relics.find((r) => r.index === num('index'));
-        if (relic) {
-          this.ui.overlay = {
-            kind: 'info',
-            title: contentName('relics', relic.relic.id),
-            subtitle: `${de.relicKind[relic.relic.kind]} · ${de.rarity[relic.relic.rarity]}`,
-            text: contentText('relics', relic.relic.id),
-            coaster: relic.relic.rarity,
-          };
-          this.render();
-        }
-        return;
-      }
-      case 'info-offer-relic': {
-        const offer = view?.shop?.relics.find((o) => o?.slot === num('slot'));
-        if (offer) {
-          this.ui.overlay = {
-            kind: 'info',
-            title: contentName('relics', offer.relic.id),
-            subtitle: `${de.relicKind[offer.relic.kind]} · ${de.rarity[offer.relic.rarity]}`,
-            text: contentText('relics', offer.relic.id),
-            coaster: offer.relic.rarity,
-            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-relic', slot: offer.slot, price: offer.price } } : {}),
-          };
-          this.render();
-        }
-        return;
-      }
-      case 'info-offer-item': {
-        const offer = view?.shop?.consumables.find((o) => o?.slot === num('slot'));
-        if (offer) {
-          this.ui.overlay = {
-            kind: 'info',
-            title: contentName('consumables', offer.consumable.id),
-            subtitle: offer.consumable.category === 'Schnapps' ? de.shop.schnaps : de.shop.consumables,
-            text: contentText('consumables', offer.consumable.id),
-            good: offer.consumable.id,
-            odds: offer.consumable.needs_target,
-            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-item', slot: offer.slot, price: offer.price } } : {}),
-          };
-          this.render();
-        }
-        return;
-      }
       case 'scroll-goods':
         this.root.querySelector('#shop-goods')?.scrollIntoView({ behavior: motionOn() ? 'smooth' : 'auto', block: 'start' });
         return;
-      case 'info-item': {
-        const item = view?.consumables.find((c) => c.slot === num('slot'));
-        if (item) {
-          this.ui.overlay = {
-            kind: 'info',
-            title: contentName('consumables', item.consumable.id),
-            subtitle: item.consumable.category === 'Schnapps' ? de.shop.schnaps : de.shop.consumables,
-            text: contentText('consumables', item.consumable.id),
-            good: item.consumable.id,
-            ...(item.can_use && !this.ui.busy ? { use: item.slot } : {}),
-          };
-          this.render();
-        }
-        return;
-      }
     }
     if (this.ui.busy || !view) return;
     switch (action) {
@@ -1783,6 +1790,14 @@ export class App {
       if (input) input.value = seed;
     }
     this.renderLayer();
+    // The score board and the boss take the screen: no info card, no trigger lines over them.
+    const big = ui.overlay?.kind === 'score' || ui.overlay?.kind === 'boss';
+    if (big) {
+      this.info.close();
+      this.triggers.clear();
+    } else {
+      this.info.refresh();
+    }
     this.updateHint();
     music.setScene(this.musicScene());
     watchShop(this.screenEl);

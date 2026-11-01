@@ -17,8 +17,13 @@ import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
 
+/** Marks a card for the info card (long-press, hover, "i"). */
+function infoAttrs(id: number, focusable = true): Record<string, string | number | null> {
+  return { 'data-info': `card:${id}`, tabindex: focusable ? 0 : null };
+}
+
 function miniCard(card: CardView): string {
-  return `<span class="mini-card" title="${esc(cardName(card.kind))}">${cardSvg(card.kind, card.mods)}</span>`;
+  return `<span class="mini-card" ${attrs({ title: cardName(card.kind), ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
 }
 
 /** An eye, for the Kiebitz. */
@@ -33,10 +38,10 @@ function eyeIcon(size = 14): string {
 function revealedCard(r: RevealedCard): string {
   const card = r.card;
   if (r.source === 'Kibitz') {
-    return `<span class="mini-card is-kiebitz" title="${esc(`${cardName(card.kind)} (${de.table.kiebitzHint})`)}" data-kiebitz="${esc(card.id)}">${cardSvg(card.kind, card.mods)}</span>`;
+    return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
   }
   const mod = r.source.CardMod;
-  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod })}>${cardSvg(card.kind, card.mods)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
+  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
 }
 
 /** A small thought bubble while the core computes this opponent's card. */
@@ -61,7 +66,8 @@ function chalkLabel(printed: Suit): string {
 /** Card name plus what its plaques say, for screen readers. */
 function cardLabel(c: CardView): string {
   const extra = [c.honorary_jack ? de.card.honoraryJack : '', c.no_discard ? de.card.noDiscard : '', c.chalked ? chalkLabel(c.chalked) : ''].filter(Boolean);
-  return extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
+  const name = extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
+  return c.mods.length ? `${name}, ${t(de.card.mods, { mods: c.mods.map((m) => contentName('card_mods', m)).join(', ') })}` : name;
 }
 
 function kontraBadge(game: GameView, seat: Seat): string {
@@ -94,7 +100,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
       ? ''
       : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" ${attrs({ 'data-seat': seat, 'data-guest': person.guest?.id ?? null, 'data-face': person.face })}>
-    <div class="opp-main">
+    <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: person.name }) })}>
       ${portrait(person.face, 'portrait-opp')}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
         <b class="opp-name" data-testid="opp-name">${esc(person.name)}</b>
@@ -109,7 +115,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
 function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false): string {
   const played = cards.find((c) => c.seat === seat);
   const inner = played
-    ? `<div class="card trick-card" data-trick-seat="${seat}">${cardSvg(played.card.kind, played.card.mods)}</div>`
+    ? `<div class="card trick-card" ${attrs({ 'data-trick-seat': seat, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}</div>`
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;
@@ -307,9 +313,10 @@ function handCards(game: GameView, ui: UiState): string {
           'data-no-discard': c.no_discard ? 'true' : null,
           'aria-pressed': action === 'select' ? (selected ? 'true' : 'false') : null,
           'aria-label': label,
+          ...infoAttrs(c.id, false),
         })}>${cardSvg(c.kind, c.mods)}${skatTag}</button>`;
       }
-      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img' })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
     })
     .join('');
   const open = isOpen(game);
@@ -352,6 +359,7 @@ function statusLine(game: GameView, ui: UiState): string {
                       'data-id': c.id,
                       'aria-pressed': c.id === take.id ? 'true' : 'false',
                       'aria-label': cardName(c.kind),
+                      ...infoAttrs(c.id, false),
                     })}>${cardSvg(c.kind, c.mods)}</button>`,
                 )
                 .join('')}</span>`
@@ -439,7 +447,7 @@ function ruleStrip(view: RunView, game: GameView): string {
   // The Ramsch has its own notice; only "Der Alte" needs the strip then.
   if (game.declaration?.game === 'Ramsch' && !laidOn) return '';
   const head = laidOn ? t(de.table.oldMan, { name: contentName('bosses', boss.id) }) : de.table.bossRule;
-  return `<button class="rule-strip ${laidOn ? 'is-laid-on' : ''}" ${attrs({ 'data-action': 'info-rule', 'data-testid': 'boss-rule' })}>
+  return `<button class="rule-strip ${laidOn ? 'is-laid-on' : ''}" ${attrs({ 'data-action': 'info-rule', 'data-testid': 'boss-rule', 'data-info': `rule:${rule.id}` })}>
     ${portrait(bossPortraitId(laidOn ? boss.id : rule.id), 'portrait-xs')}
     <span class="rule-head">${esc(head)}</span>
     <b class="rule-name">${esc(contentName('bosses', rule.id))}</b>
