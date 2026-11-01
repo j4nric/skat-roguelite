@@ -699,7 +699,7 @@ button.card {
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 124px;
+  width: 136px;
   padding: 3px 8px;
   border: var(--edge) solid var(--line);
   background: var(--panel);
@@ -723,12 +723,15 @@ button.card {
 .pips {
   display: flex;
   flex: 1;
+  min-width: 0;
   justify-content: flex-end;
   gap: 2px;
 }
 
+/* Up to 8 games: pips shrink before they overflow the panel. */
 .pips i {
-  width: 9px;
+  flex: 0 1 9px;
+  min-width: 5px;
   height: 9px;
   background: var(--dot);
 }
