@@ -284,6 +284,24 @@ export interface GameView {
   skat_swap_cards: CardView[];
   /** Tricks per seat so far (index = seat). */
   seat_tricks: [number, number, number];
+  /**
+   * What the game is worth if the player wins it, as far as it is certain
+   * now (core `ValuePreview`). Only while playing a suit game, grand or
+   * Null; `null` otherwise. Optional for views from an older core.
+   */
+  value_preview?: ValuePreview | null;
+}
+
+/** The table's score line while playing, computed by the core. */
+export interface ValuePreview {
+  /** Grundwert after the certain modifications. */
+  base_value: number;
+  /** Gewinnstufen known so far. */
+  levels: number;
+  /** Product of the certain Spielwert factors (Kontra, Re, …), 1 without. */
+  multiplier: number;
+  /** base_value × levels × multiplier. */
+  game_value: number;
 }
 
 export type Source =

@@ -672,6 +672,7 @@ mod tests {
         );
         let options = &step["view"]["game"]["declare"];
         assert_eq!(options["can_pick_up_skat"], false);
+        assert!(step["view"]["game"]["value_preview"].is_null());
         assert_eq!(options["risks"][0]["risk"], "Normal");
         assert_eq!(options["risks"].as_array().map(Vec::len), Some(1));
         assert!(
@@ -685,6 +686,15 @@ mod tests {
             .expect("declare");
         let step: serde_json::Value = serde_json::from_str(&step).expect("json");
         assert_eq!(step["view"]["game"]["declaration"]["game"], "Grand");
+        // While playing, the table's score line comes from the core.
+        let preview = &step["view"]["game"]["value_preview"];
+        assert_eq!(preview["base_value"], 24);
+        let levels = preview["levels"].as_u64().expect("levels");
+        assert!(levels >= 2, "Spitzen plus Spiel");
+        assert_eq!(
+            preview["game_value"].as_u64(),
+            Some(24 * levels * preview["multiplier"].as_u64().expect("multiplier"))
+        );
 
         let saved = session.save().expect("save");
         let loaded = Session::load(&saved).expect("load");
@@ -911,6 +921,10 @@ mod tests {
         let step: serde_json::Value = serde_json::from_str(&step).expect("json");
         assert_eq!(step["view"]["game"]["declaration"]["game"], "Null");
         assert_eq!(step["view"]["game"]["declaration"]["risk"], "OuvertHand");
+        // Null formula: 23 × Risikostufe 4, no style bonus yet.
+        let preview = &step["view"]["game"]["value_preview"];
+        assert_eq!(preview["base_value"], 23);
+        assert!(preview["levels"].as_u64().is_some_and(|l| l >= 4));
         let catalog: serde_json::Value =
             serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
         assert!(catalog["characters"]["NullPlayer"]["name"].is_string());

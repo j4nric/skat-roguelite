@@ -1211,6 +1211,15 @@ button.card {
   white-space: nowrap;
 }
 
+/* Grundwert × Gewinnstufen while playing: quieter than the tricks. */
+.gameline .worth {
+  padding: 2px 6px;
+  border: 2px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .gameline .skat {
   display: inline-flex;
   align-items: center;

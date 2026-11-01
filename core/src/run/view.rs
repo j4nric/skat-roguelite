@@ -541,6 +541,60 @@ pub struct GameView {
     pub skat_swap_cards: Vec<CardView>,
     /// Tricks per seat so far (index = seat), as they lie on the table.
     pub seat_tricks: [u32; 3],
+    /// What the game is worth if the player wins it, as far as it is
+    /// certain now: only while playing a suit game, grand or Null
+    /// ([`ValuePreview`]).
+    pub value_preview: Option<ValuePreview>,
+}
+
+/// The score line of the table while playing: what the game in progress
+/// is worth if the player wins it, as far as it is certain now. Computed
+/// with the scoring of a finished game ([`crate::content::score_parts`]),
+/// so `game_value = base_value × levels × multiplier` and the numbers are
+/// the ones the score screen would start from.
+///
+/// Included, for suit games and grand:
+/// - the Grundwert of the Spielart with every Grundwert line collected so
+///   far (relics, boss, Bock, counters such as "Tournee", card
+///   modifications whose card the player knows to be in play);
+/// - the Gewinnstufen of the Skatordnung known now: Spitzen, Spiel, Hand,
+///   declared Schneider and Schwarz (each with the level for reaching it,
+///   since winning requires it) and Ouvert. Spitzen are counted along the
+///   trumps in play (DESIGN 4.4) from what the player knows: his own
+///   cards, the skat once picked up, played and revealed cards. Where that
+///   leaves the count open (an untouched skat in a hand game, cards that
+///   may lie in the talon), the smallest possible count is taken, so the
+///   preview never tells more than the player knows;
+/// - Gewinnstufen lines collected so far (e.g. "Auf dem Trockenen" after
+///   the third trick) and Spielwert factors (Kontra, Re, "Letzte Runde");
+/// - `OnScore` hooks whose condition is already certain for a won game
+///   ([`crate::content::evaluate_if_won`]): e.g. "Ouvert-Bonus", "Mit
+///   Vieren" once the Spitzen are certain, "Durchmarsch" for declared
+///   Schneider. Flags and counters count as they are now.
+///
+/// Not included: everything that depends on how the game goes on:
+/// Schneider or Schwarz played but not declared, Augen ranges such as
+/// "Jungfrau", the last trick, hooks that are still to fire during play,
+/// and a boss rule that only pays for Schneider.
+///
+/// Null: the Null scoring of the character with the risk known (Formula:
+/// 23 × Risikostufe; Fixed: 23, 35, 46, 59) plus the certain relic lines,
+/// without any style bonus (sevens ducked, never followed, Kurzschluss),
+/// which only counts at the end.
+///
+/// Ramsch: no preview (`None`). Its value is the Augen of the loser,
+/// unknown until the last trick, and the player does not win a Ramsch by
+/// playing on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ValuePreview {
+    /// Grundwert after the certain modifications.
+    pub base_value: u64,
+    /// Gewinnstufen after the certain modifications.
+    pub levels: u64,
+    /// Product of the certain Spielwert factors (1 without any).
+    pub multiplier: u64,
+    /// `base_value × levels × multiplier`.
+    pub game_value: u64,
 }
 
 /// The last scored game.
@@ -1223,6 +1277,7 @@ impl Run {
             can_take_from_skat,
             skat_swap_cards,
             seat_tricks: game.seat_tricks(),
+            value_preview: self.value_preview(content),
         })
     }
 
@@ -1327,6 +1382,12 @@ mod tests {
                             run.accepts(&content, RunAction::Declare(grand))
                         );
                     }
+                }
+                let previewed = game.phase == TablePhase::Playing
+                    && game.declaration.is_some_and(|d| !d.is_ramsch());
+                assert_eq!(game.value_preview.is_some(), previewed);
+                if let Some(p) = game.value_preview {
+                    assert_eq!(p.game_value, p.base_value * p.levels * p.multiplier);
                 }
                 if game.your_turn {
                     saw_play = true;

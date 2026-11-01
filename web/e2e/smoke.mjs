@@ -995,6 +995,10 @@ async function run() {
       if (await page.locator('.score-sheet').count()) break;
       const dimmed = await page.locator('.hand-card.is-dim').count();
       if (played === 0) {
+        // The value at stake comes from the core: "Grundwert × Stufen".
+        const worth = await page.locator('[data-testid="value-preview"]').textContent();
+        if (!/^\d+ × \d+( × \d+)?$/.test((worth ?? '').trim())) fail(`value preview while playing: "${worth}"`);
+        log(`value preview: ${worth}`);
         await shoot(page, 'table-play');
         await assertFits(page, 'playing');
       }
