@@ -137,8 +137,6 @@ export interface SeriesView {
   /** Einmischen left now: this game's own plus the series' extras ("Ein Bier"). */
   redeals_left: number;
   redeals_used: number;
-  /** @deprecated Old name of `redeals_left`, always equal. */
-  passes_left: number;
   boss: BossInfo | null;
   /** The Stammgäste at the table: seat 1 (left) and seat 2 (right). In a boss series the boss takes the left seat. */
   guests: GuestInfo[];
@@ -285,8 +283,6 @@ export interface DeclareOptions {
   ouvert_required: boolean;
   /** Einmischen possible now (RunAction `Redeal`). */
   can_redeal: boolean;
-  /** @deprecated Old name of `can_redeal`, always equal. */
-  can_pass: boolean;
   redeals_left: number;
   hand_required: boolean;
 }

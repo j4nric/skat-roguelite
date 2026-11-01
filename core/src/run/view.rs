@@ -128,9 +128,6 @@ pub struct SeriesView {
     pub redeals_left: u32,
     /// Einmischen used in this series.
     pub redeals_used: u32,
-    /// Old name of `redeals_left`, kept while frontend code still reads
-    /// it (passes per series until 01.11.2026). Always equal.
-    pub passes_left: u32,
     /// The boss of a boss series.
     pub boss: Option<BossInfo>,
     /// The Stammgäste at the table, seat 1 (left) and seat 2 (right). In a
@@ -526,9 +523,6 @@ pub struct DeclareOptions {
     pub can_redeal: bool,
     /// Einmischen left now ([`Run::redeals_left`]).
     pub redeals_left: u32,
-    /// Old name of `can_redeal` (Einpassen until 01.11.2026), kept while
-    /// frontend code still reads it. Always equal.
-    pub can_pass: bool,
     /// Whether the boss demands a hand game.
     pub hand_required: bool,
 }
@@ -935,7 +929,6 @@ impl Run {
                 games_left: series.games_left(),
                 redeals_left: self.redeals_left(content),
                 redeals_used: series.redeals_used,
-                passes_left: self.redeals_left(content),
                 boss,
                 guests: self.guest_infos(content),
             },
@@ -1163,7 +1156,6 @@ impl Run {
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_redeal,
             redeals_left: self.redeals_left(content),
-            can_pass: can_redeal,
             hand_required: self.requires_hand(),
         }
     }

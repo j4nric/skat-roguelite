@@ -672,10 +672,21 @@ async function pickUpAndDiscard(page, label, shot = null) {
   if (pressed !== 2) fail(`${label}: the Ansage after the skat shows ${pressed} pressed cards`);
 }
 
-/** Skat aufnehmen, drücken, then declare a Grand without hand levels. */
+/**
+ * Skat aufnehmen, drücken, then declare a plain Grand. After the skat the
+ * Ansage offers Normal and, since ADR 0013, Schneider, Schwarz and Ouvert,
+ * but never Hand.
+ */
 async function skatThenGrand(page, label, shot = null) {
   await pickUpAndDiscard(page, label, shot);
-  if (await page.locator('[data-action="pick-risk"]').count()) fail(`${label}: hand levels after the skat`);
+  const risks = await page.locator('[data-action="pick-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+  if (risks !== 'Normal,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`${label}: the Ansage after the skat offers ${risks}`);
+  const picked = await page.locator('[data-action="pick-risk"][aria-pressed="true"]').getAttribute('data-risk');
+  if (picked !== 'Normal') fail(`${label}: after the skat ${picked} is picked, not Normal`);
+  if (shot) {
+    await shoot(page, `${shot}-ansage`);
+    await assertFits(page, `${label}, Ansage after the skat`);
+  }
   if (await page.locator('[data-action="hand-back"]').count()) fail(`${label}: back to the skat choice after the skat`);
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
@@ -1870,7 +1881,10 @@ async function run() {
 
     // Skat aufnehmen, drücken, then the Ansage: Grand.
     await pickUpAndDiscard(page, 'first game', 'table-discard');
-    if (await page.locator('[data-action="pick-risk"]').count()) fail('hand levels after the skat');
+    // ADR 0013: Schneider, Schwarz and Ouvert also after the skat, no Hand.
+    const afterRisks = await page.locator('[data-action="pick-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+    if (afterRisks !== 'Normal,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`the Ansage after the skat offers ${afterRisks}`);
+    log(`Ansage after the skat: ${afterRisks}`);
     // After the skat the Alleinspieler may declare Null and Null Ouvert
     // (ADR 0012), with the values of the Skatordnung.
     await page.click('[data-action="pick-game"][data-game="Null"]');
