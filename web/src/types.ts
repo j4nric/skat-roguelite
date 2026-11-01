@@ -141,8 +141,8 @@ export interface DeclareOptions {
   games: GameOption[];
   risks: RiskOption[];
   can_pass: boolean;
-  can_redraw: boolean;
-  redraws_left: number;
+  can_redeal: boolean;
+  redeals_left: number;
   hand_required: boolean;
 }
 
@@ -323,7 +323,7 @@ export type RunEvent =
 
 export type RunAction =
   | 'Pass'
-  | 'RedrawSkat'
+  | 'Redeal'
   | 'Reroll'
   | 'LeaveShop'
   | { Declare: Declaration }

@@ -16,14 +16,22 @@ cargo run --release -p skat_sim -- --seed 43 --runs 1000
 cargo run --release -p skat_sim -- --seed 44 --runs 1000
 ```
 
-Für alles, was der Simulator noch nicht kann (Bot ohne Einkauf, einzelne Hausregel ab Spielbeginn, Pool ohne eine Hausregel, Erfolgskurven einer Serie, Bosse nach Abschnitt), lief ein Messprogramm außerhalb des Repos, das `skat_core` als Bibliothek nutzt. Es ändert keine Regel- und keine Bot-Logik:
+Alle weiteren Messungen dieser Datei sind seit `feat/core-polish` mit `skat_sim` reproduzierbar. Sie liefen ursprünglich mit einem Messprogramm außerhalb des Repos; dessen Modi sind jetzt Optionen des Simulators (`sim/src/runs.rs`) und ändern keine Regel- und keine Bot-Logik:
 
-- **Bot ohne Einkauf** (`nobuy`): `RunBot` für alle Spielentscheidungen, am Tresen immer `LeaveShop`.
-- **Hausregel ab Spielbeginn** (`inject`): Der frisch gestartete Run wird serialisiert, die Hausregel und ein „Neues Blatt“ werden eingetragen, dann wird sofort neu gegeben, damit auch passive Effekte im ersten Spiel gelten. Die Vergleichsgruppe ohne Hausregel durchläuft dasselbe Protokoll.
-- **Pool ohne X**: Hausregel X wird vor dem Run aus dem Content entfernt, der Bot kauft normal.
-- **Erfolgskurve**: Eine einzelne Serie mit unerreichbarem Zielwert, der Bot spielt sie bis zum Spiellimit. Da der Bot den Zielwert nie berücksichtigt, ist P(Serie gewonnen bei Zielwert T) = P(höchster Zwischenstand ≥ T). So liefert ein Lauf die Kurve für alle Zielwerte.
+| Messung | Befehl |
+|---|---|
+| Bot ohne Einkauf (`nobuy`) | `cargo run --release -p skat_sim -- --seed 42 --runs 3000 --no-shop` |
+| Hausregel ab Spielbeginn (`inject`) | `cargo run --release -p skat_sim -- --seed 42 --runs 3000 --no-shop --relic old_lady` |
+| Pool ohne Hausregel X | `cargo run --release -p skat_sim -- --seed 42 --runs 3000 --without bock_round` |
+| Erfolgskurve einer Serie | `cargo run --release -p skat_sim -- --seed 42 --runs 3000 --curve --no-shop [--relic X]` |
+| Bosse | `cargo run --release -p skat_sim -- --seed 42 --runs 3000 --boss grandma` (Runs, Bosse nach Abschnitt 1 und 2+ getrennt) und `--curve --boss grandma` (Erfolgskurve einer Boss-Serie) |
 
-Diese Modi sollten als Optionen in `skat_sim` kommen (Auftrag an `core-dev`, siehe unten), damit die Messungen im Repo reproduzierbar sind. Bis dahin sind sie hier so beschrieben, dass sie nachgebaut werden können.
+- `--relic <id>` startet den Run mit der Hausregel (`RunStart`, `Run::new_with`), ihre passiven Effekte gelten schon im ersten Spiel. Die Karten hängen nur am Seed, die Vergleichsgruppe ohne Hausregel sieht also dieselben Blätter. Das ersetzt das Protokoll „serialisieren, eintragen, neu geben“.
+- `--without <id>` nimmt die Hausregel aus dem Content, sie wird nie angeboten.
+- `--curve` spielt `--runs N` einzelne Serien mit unerreichbarem Zielwert bis zum Spiellimit. Da der Bot den Zielwert nie berücksichtigt, ist P(Serie gewonnen bei Zielwert T) = P(höchster Zwischenstand ≥ T). Ausgegeben wird die Kurve für 1 und alle Zielwerte aus `run.ron`.
+- `--boss <id>` lässt Boss-Serien nur diesen Boss ziehen.
+
+Achtung: Die Zahlen unten sind mit dem `RunBot` vom 01.11.2026 gemessen. Seit `feat/core-polish` passt der Bot strenger, sagt in seltenen Fällen Schneider oder Ouvert an, kauft Verbrauchsgegenstände, legt neu aus und verkauft. Dieselben Befehle liefern mit dem neuen Bot andere Zahlen; die Tabellen hier bleiben als Stand der Kalibrierung stehen.
 
 Stichprobengröße: 3 × 1000 Runs für die Haupttabellen, 3 × 3000 Runs bzw. 3 × 3000 Serien für Hausregeln und Kurven. Standardfehler bei 3000 Runs: etwa 0,8 Prozentpunkte für „Abschnitt 2 erreicht“, bei 9000 Runs etwa 0,5.
 
@@ -126,7 +134,7 @@ Tests, die die alten Platzhalter festschrieben, lesen die Werte jetzt aus dem Co
 | Hausregeln beim Start von Abschnitt 2 / 3 | – | 3,1 / 5,0 | |
 | Geben je Serie (Spiele und Pässe) | 3,6 | 3,05 | |
 
-Bosse (Messprogramm, gleiche Seeds, gewonnene Boss-Serien):
+Bosse (`--runs 3000 --boss <id>`, gleiche Seeds, gewonnene Boss-Serien):
 
 | Boss | Abschnitt 1 vorher | Abschnitt 1 nachher | Abschnitt 2+ nachher |
 |---|---|---|---|
@@ -134,7 +142,7 @@ Bosse (Messprogramm, gleiche Seeds, gewonnene Boss-Serien):
 | Der Schieber | 14,9 % | **55,2 %** | 50,2 % |
 | Der Kontra-Hans | 14,8 % | **70,9 %** | 67,3 % |
 
-Bot mit und ohne Relikte (Messprogramm, 3 × 3000 Runs, nachher):
+Bot mit und ohne Relikte (`--runs 3000` mit und ohne `--no-shop`, 3 × 3000 Runs, nachher):
 
 | Kennzahl | Bot kauft | Bot kauft nie | Unterschied |
 |---|---|---|---|
@@ -153,7 +161,7 @@ Hypothetisch, nur zur Einordnung des Auftrags an `core-dev`: Mit einer strengere
 
 ## Hausregeln
 
-### Einzeln ab Spielbeginn (Bot kauft nie, 3 × 3000 Runs)
+### Einzeln ab Spielbeginn (`--runs 3000 --no-shop --relic <id>`, 3 × 3000 Runs)
 
 Vergleich gegen denselben Bot ohne Hausregel. Kriterium aus dem Agenten-Auftrag: mindestens 5 % Einfluss auf eine Kernmetrik.
 
@@ -171,7 +179,7 @@ Vergleich gegen denselben Bot ohne Hausregel. Kriterium aus dem Agenten-Auftrag:
 | Ouvert-Bonus | 20,90 | 0 % | 2,81 | 70,3 | 57,2 | −8,6 |
 | Kontra | 20,18 | −3 % | 3,01 | 69,2 | 57,2 | −19,1 |
 
-### Erfolgskurve einer Serie mit der Hausregel (3 × 3000 Serien)
+### Erfolgskurve einer Serie mit der Hausregel (`--runs 3000 --curve --no-shop --relic <id>`, 3 × 3000 Serien)
 
 Zeigt den Einfluss bei höheren Zielwerten (Spätspiel). Tournee wirkt erst nach gewonnenen Serien und fehlt hier.
 
@@ -188,7 +196,7 @@ Zeigt den Einfluss bei höheren Zielwerten (Spätspiel). Tournee wirkt erst nach
 | Schieben | 70,3 | 64,7 | 56,2 | 39,3 | 17,5 | 3,7 |
 | Ouvert-Bonus | 70,3 | 64,8 | 56,2 | 39,2 | 17,6 | 3,7 |
 
-### Im Kontext (Bot kauft, Pool ohne die Hausregel, 3 × 3000 Runs)
+### Im Kontext (Bot kauft, `--runs 3000 --without <id>`, 3 × 3000 Runs)
 
 Voller Pool: 26,92 % Abschnitt 2, 7,26 % Abschnitt 3. Ohne Bockrunde 25,28 / 5,80, ohne Alte Dame 25,72 / 6,43, ohne Schenken 26,63 / 6,83. Ohne jede andere Hausregel steigen die Werte leicht (27,0 bis 27,6 / 7,4 bis 7,8): Wirkungslose Hausregeln im Pool belegen Plätze und Groschen. Die Unterschiede liegen dort bei 1 bis 1,5 Standardfehlern.
 
@@ -232,6 +240,8 @@ Beide Seiten (ADR 0005): „Fett“ zählt für jeden, der die Karte nimmt, hilf
 5. Vier der zehn Hausregeln haben keinen messbaren Einfluss (Spitze, Ouvert-Bonus, Schieben, Durchmarsch), eine liegt an der Grenze (Jungfrau). Drei sind stark (Bockrunde, Alte Dame, Schenken).
 
 ## Aufträge an `core-dev`
+
+Stand `feat/core-polish`: 1, 3, 4, 6 und 7 umgesetzt (Pass-Regel, Tresen-Policy mit Wertetabelle in `core/src/run/bot.rs`, konservative Ansagen, `target_factor` in `bosses.ron` mit 1,0 für alle Bosse, Simulator-Optionen). 5 umgesetzt mit `content`: Schieben gibt jetzt einmal pro Serie neu (DESIGN 8.1). 2 bleibt für M5.
 
 1. **Pass-Regel von `RunBot`**: Farbspiele mit 5 Trümpfen und höchstens einem Ass haben einen negativen Erwartungswert (Tabelle oben). Vorschlag: Farbspiel ab 6 Trümpfen oder 5 Trümpfen mit 2 Assen, Grand ab 2 Buben mit 2 Assen oder ab 3 Buben. Dazu Pässe nicht verbrauchen, wenn das Restlimit sie nicht mehr erlaubt. Danach die Zielwerte neu messen.
 2. **Spielstärke**: Die eigentliche Decke ist die Abspielstärke (Farbspiel mit 5 Trümpfen nur 49,5 % gewonnen). Das gehört zu PIMC in M5. Bis dahin bleiben alle Zielwerte Bot-Werte.

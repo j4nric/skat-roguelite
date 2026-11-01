@@ -204,6 +204,14 @@ pub fn evaluate(
         Condition::LastTrickWonWith { card, by_declarer } => last_trick(game).is_some_and(|t| {
             t.winning_card().face() == Some(*card) && (!by_declarer || t.winner.is_declarer())
         }),
+        Condition::LastTrickWinnerMatches {
+            filter,
+            by_declarer,
+        } => last_trick(game).is_some_and(|t| {
+            t.winning_card().face().is_some_and(|f| filter.matches(f))
+                && (!by_declarer || t.winner.is_declarer())
+        }),
+        Condition::WonSchneider => ctx.result.is_some_and(|r| r.won && r.schneider),
         Condition::ThisCardWinsLastTrick => match (last_trick(game), this_card) {
             (Some(t), Some(this)) => t.winning_card().id == this.id,
             _ => false,

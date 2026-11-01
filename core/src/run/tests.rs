@@ -1,6 +1,6 @@
 use super::bot::RunBot;
 use super::*;
-use crate::cards::Card;
+use crate::cards::{Card, PlayingCard};
 use crate::rules::RiskLevel;
 
 fn content() -> Content {
@@ -74,16 +74,21 @@ fn run_starts_with_first_series_and_a_dealt_game() {
     assert_eq!(run.series().passes_left, content.run.passes);
     assert_eq!(run.coins(), content.run.economy.starting_coins);
     assert!(matches!(
-        events[0],
+        &events[0],
+        RunEvent::BossAnnounced { section: 0, boss } if content.run.bosses.contains(boss)
+    ));
+    assert!(matches!(
+        events[1],
         RunEvent::SeriesStarted {
             section: 0,
             index: 0,
             target,
+            boss: None,
             ..
         } if target == content.run.targets[0].0
     ));
     assert!(
-        matches!(events[1], RunEvent::GameDealt { number: 1, forehand } if forehand == Seat::DECLARER)
+        matches!(events[2], RunEvent::GameDealt { number: 1, forehand } if forehand == Seat::DECLARER)
     );
     let game = &run.game().expect("dealt").game;
     assert_eq!(game.hand(Seat::DECLARER).len(), 10);
@@ -153,8 +158,8 @@ fn failing_actions_leave_the_run_untouched() {
         Err(RunError::WrongPhase)
     );
     assert_eq!(
-        run.apply(&content, RunAction::RedrawSkat),
-        Err(RunError::NoRedrawLeft)
+        run.apply(&content, RunAction::Redeal),
+        Err(RunError::NoRedealLeft)
     );
     assert_eq!(run, before);
 }
@@ -335,19 +340,31 @@ fn leaving_the_shop_starts_the_next_series() {
     ));
     assert_eq!(run.phase(), RunPhase::Game);
     // After the boss series the next section begins.
+    // The boss series brings the boss drawn at the start of the section.
     let mut run = open_shop(&content, 9, 0);
+    let announced = run.section_boss().cloned().expect("drawn at the start");
     run.series.index = 1;
     let events = run.apply(&content, RunAction::LeaveShop).expect("leave");
     let boss = events.iter().find_map(|e| match e {
         RunEvent::SeriesStarted { index: 2, boss, .. } => boss.clone(),
         _ => None,
     });
-    assert!(boss.is_some_and(|b| content.run.bosses.contains(&b)));
+    assert_eq!(boss, Some(announced));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::BossAnnounced { .. }))
+    );
+    // A new section draws its boss first.
     let mut run = open_shop(&content, 9, 0);
     run.series.index = 2;
     let events = run.apply(&content, RunAction::LeaveShop).expect("leave");
     assert!(matches!(
-        events[1],
+        &events[1],
+        RunEvent::BossAnnounced { section: 1, boss } if Some(boss) == run.section_boss()
+    ));
+    assert!(matches!(
+        events[2],
         RunEvent::SeriesStarted {
             section: 1,
             index: 0,
@@ -463,4 +480,196 @@ fn a_removed_card_is_dealt_as_blank() {
             .any(|c| c.kind == CardKind::Normal(ace))
     );
     assert_eq!(game.cards_in_play().len(), 32);
+}
+
+#[test]
+fn the_boss_is_known_from_the_start_of_the_section() {
+    let content = content();
+    let (run, _) = Run::new(&content, 31).expect("start");
+    let boss = run.section_boss().cloned().expect("boss");
+    let view = run.view(&content);
+    assert_eq!(view.upcoming_boss.as_ref().map(|b| &b.id), Some(&boss));
+    let def = content.boss(&boss).expect("def");
+    let info = view.upcoming_boss.expect("boss");
+    assert_eq!(info.name, def.name);
+    assert_eq!(info.text, def.text);
+    // The next series is series 2 of section 1, without boss.
+    let next = view.next_series.expect("next");
+    assert_eq!((next.section, next.index, next.is_boss), (0, 1, false));
+    assert_eq!(next.target, content.run.targets[0].1);
+    assert_eq!(next.game_limit, content.run.game_limit);
+    assert!(next.boss.is_none());
+    // At the Tresen before the boss series the preview shows the boss.
+    let mut run = open_shop(&content, 31, 0);
+    run.series.index = 1;
+    let next = run.view(&content).next_series.expect("next");
+    assert!(next.is_boss);
+    assert_eq!(next.boss.map(|b| b.id), Some(boss));
+    assert_eq!(next.target, content.run.targets[0].2);
+    // After the boss series the boss is no longer ahead.
+    run.series.index = 2;
+    let view = run.view(&content);
+    assert!(view.upcoming_boss.is_none());
+    let next = view.next_series.expect("next");
+    assert_eq!((next.section, next.index), (1, 0));
+}
+
+#[test]
+fn the_boss_target_factor_scales_the_boss_series() {
+    let [relics, card_mods, _, consumables, run_ron] = crate::content::SOURCES;
+    let bosses = r#"[(id: "hard", name: "Hart", text: "x", target_factor: 1.4)]"#;
+    let run_ron = run_ron.1.replace(
+        r#"bosses: ["the_pusher", "kontra_hans", "grandma"]"#,
+        r#"bosses: ["hard"]"#,
+    );
+    let content = Content::from_sources(relics.1, card_mods.1, bosses, consumables.1, &run_ron)
+        .expect("content");
+    let hard = BossId::new("hard");
+    assert_eq!(
+        content.boss(&hard).map(|b| b.target_factor),
+        Some(crate::content::Factor::from_permille(1400))
+    );
+    let base = content.run.targets[0].2;
+    let expected = (base * 14 + 5) / 10;
+    assert_eq!(series_target(&content, 0, 2, Some(&hard)), Some(expected));
+    assert_eq!(
+        series_target(&content, 0, 1, None),
+        Some(content.run.targets[0].1)
+    );
+    let start = RunStart {
+        index: 2,
+        ..RunStart::default()
+    };
+    let (run, events) = Run::new_with(&content, 3, &start).expect("start");
+    assert_eq!(run.series().target, expected);
+    assert_eq!(run.series().boss, Some(hard));
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RunEvent::SeriesStarted { index: 2, target, .. } if *target == expected
+    )));
+    // The default factor is 1.0.
+    for def in Content::load().expect("content").bosses.values() {
+        assert_eq!(def.target_factor, crate::content::Factor::ONE);
+    }
+}
+
+#[test]
+fn a_run_can_start_with_relics_and_later() {
+    let content = content();
+    let start = RunStart {
+        relics: vec![RelicId::new("old_lady")],
+        ..RunStart::default()
+    };
+    let (with, _) = Run::new_with(&content, 12, &start).expect("start");
+    let (without, _) = Run::new(&content, 12).expect("start");
+    assert_eq!(with.relics(), &[RelicId::new("old_lady")]);
+    // Same cards, but the passive effect already counts in the first game.
+    let ids = |run: &Run| -> Vec<u32> {
+        run.game()
+            .expect("game")
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .map(|c| c.id)
+            .collect()
+    };
+    assert_eq!(ids(&with), ids(&without));
+    let queens = |run: &Run| -> Vec<u32> {
+        run.game()
+            .expect("game")
+            .game
+            .cards_in_play()
+            .iter()
+            .filter(|c| {
+                c.face()
+                    .is_some_and(|f| f.rank == crate::cards::Rank::Queen)
+            })
+            .map(|c| c.card_points)
+            .collect()
+    };
+    assert!(queens(&with).iter().all(|&p| p == 5));
+    assert!(queens(&without).iter().all(|&p| p == 3));
+    let bad = |start: RunStart| Run::new_with(&content, 1, &start).err();
+    assert_eq!(
+        bad(RunStart {
+            relics: vec![RelicId::new("nope")],
+            ..RunStart::default()
+        })
+        .map(|e| e.code()),
+        Some(RunErrorCode::UnknownContent)
+    );
+    assert_eq!(
+        bad(RunStart {
+            section: 99,
+            ..RunStart::default()
+        }),
+        Some(RunError::InvalidStart)
+    );
+    assert_eq!(
+        bad(RunStart {
+            relics: content.relics.keys().cloned().collect(),
+            ..RunStart::default()
+        }),
+        Some(RunError::NoFreeSlot)
+    );
+    let (later, _) = Run::new_with(
+        &content,
+        1,
+        &RunStart {
+            section: 1,
+            index: 1,
+            ..RunStart::default()
+        },
+    )
+    .expect("start");
+    assert_eq!((later.series().section, later.series().index), (1, 1));
+    assert_eq!(later.series().target, content.run.targets[1].1);
+    assert!(later.section_boss().is_some());
+}
+
+#[test]
+fn error_codes_are_stable_names() {
+    let cases = [
+        (RunError::WrongPhase, "WrongPhase"),
+        (RunError::NotEnoughCoins, "NotEnoughCoins"),
+        (RunError::UnknownCard(3), "UnknownCard"),
+        (RunError::NoRedealLeft, "NoRedealLeft"),
+        (
+            RunError::Game(GameError::WrongPhase {
+                phase: Phase::Declaring,
+            }),
+            "GameWrongPhase",
+        ),
+        (
+            RunError::Game(GameError::TrickInProgress),
+            "TrickInProgress",
+        ),
+        (
+            RunError::Deck(DeckError::WouldShrinkBelowMinimum),
+            "DeckAtMinimum",
+        ),
+        (RunError::InvalidStart, "InvalidStart"),
+    ];
+    for (error, name) in cases {
+        let code = error.code();
+        assert_eq!(code.as_str(), name);
+        assert_eq!(ron::to_string(&code).expect("ron"), name);
+        let text = error.to_string();
+        assert!(!text.is_empty() && !text.contains('{'), "{text}");
+    }
+}
+
+#[test]
+fn payout_serializes_its_total() {
+    let payout = Payout {
+        base: 3,
+        games_left: 2,
+        interest: 1,
+    };
+    let text = ron::to_string(&payout).expect("ron");
+    assert!(text.contains("total:6"), "{text}");
+    let back: Payout = ron::from_str(&text).expect("read");
+    assert_eq!(back, payout);
+    let old: Payout = ron::from_str("(base:3,games_left:2,interest:1)").expect("old");
+    assert_eq!(old.total(), 6);
 }

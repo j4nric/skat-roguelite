@@ -72,7 +72,7 @@ In der Sprache des Genres: **Grundwert sind die Chips, Gewinnstufen sind der Mul
 |---|---|
 | Grundwert erhöhen | Kreuz zählt 15 statt 12. Grand zählt 30. |
 | Spitzen manipulieren | Ein fünfter Bube im Blatt. Karo-Bube zählt als zweite Spitze. |
-| Gewinnstufen hinzufügen | Neue Stufen durch Hausregeln: „Spitze“ (letzter Stich mit Karo-7), „Kontra“, „Bock“. |
+| Gewinnstufen hinzufügen | Neue Stufen durch Hausregeln: „Spitze“ (letzter Stich mit einer Sieben), „Kontra“, „Bock“. |
 | Augen verändern | Pik-Ass zählt 15. Alle 10er zählen 11. Siebener zählen 1. |
 | Schwellen senken | Schneider ab 85 Augen. Gewinn ab 58 Augen. |
 
@@ -195,6 +195,8 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 
 Das UI zeigt bei jeder Blatt-Änderung die Wahrscheinlichkeit, dass die Karte in der eigenen Hand oder im Skat landet (12 von 32 Karten, also 37,5 % im Grundblatt). Spieler sollen dieses Risiko spüren, nicht nachrechnen müssen.
 
+Der Kern rechnet das aus (`DealOdds`, Feld `deal_odds` der Sicht, wasm-Funktion `dealOdds`). Gemischt wird immer das ganze Blatt einschließlich Blankos und Talon, gegeben werden die ersten 32 Karten. Deshalb hat jede Karte dieselbe Chance, und sie hängt nur an der Blattgröße: 12 von n Karten. Eine entfernte Karte wird zur Blanko und ändert nichts, jede Karte über 32 senkt die Chance aller (33 Karten: 36,4 %).
+
 ---
 
 ## 8. Relikte und Gegenstände
@@ -207,14 +209,23 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Fünf Plät
 |---|---|---|
 | **Bockrunde** | Nach jedem verlorenen Spiel: nächstes Spiel zählt doppelt | Grundwert ×2 |
 | **Kontra** | Gegner dürfen vor dem ersten Stich Kontra sagen (Spielwert ×2). Du darfst Re sagen (×4). KI sagt Kontra, wenn sie dein Blatt für schwach hält. | Mult, Risiko |
-| **Spitze** | Letzter Stich mit der Karo-7 gibt +1 Gewinnstufe | Gewinnstufen |
+| **Spitze** | Letzter Stich mit einer Sieben gibt +1 Gewinnstufe | Gewinnstufen |
 | **Schenken** | Haben die Gegner nach 5 Stichen unter 15 Augen, geben sie auf. Spiel gilt als Schneider. | Tempo, Schneider |
 | **Ouvert-Bonus** | Ouvert zählt +2 statt +1 | Gewinnstufen |
-| **Schieben** | Du darfst den Skat einmal neu ziehen | Konsistenz |
-| **Jungfrau** | Gewinnst du mit 61 bis 65 Augen, zählt das Spiel trotzdem als Schneider | Schwelle |
+| **Schieben** | Einmal pro Serie vor der Ansage neu geben lassen (alle Hände und Skat), ohne dass ein Spiel verbraucht wird | Spitzen, Risikostufe |
+| **Jungfrau** | Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider | Schwelle |
 | **Alte Dame** | Jede Dame zählt 5 Augen | Augen |
 | **Tournee** | Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs | Skalierung |
-| **Durchmarsch** | Gewinnst du alle Stiche, zählt der Grundwert dreifach | Schwarz |
+| **Durchmarsch** | Gewinnst du Schneider, zählt der Spielwert doppelt | Spielwert, Schneider |
+
+Geändert am 01.11.2026 nach der M2-Messung (`docs/balance/2026-11-01-m2-zielwerte.md`), weil vier Hausregeln keinen messbaren Einfluss hatten (Designsäule 1): Spitze verlangte die Karo-7 und kam praktisch nie vor, Jungfrau lag knapp unter 5 % Einfluss, Durchmarsch hing an Schwarz (0,8 % der Spiele), Schieben war erwartungsneutral. Nachmessung mit `skat_sim --runs 3000 --no-shop --relic <id>` (Seeds 42 bis 44, Abschnitt 2 erreicht, ohne Hausregel 24,4 %): Durchmarsch +11 %, Schieben +16 %, Jungfrau +6 %, Spitze weiter unter 1 %. Preise unverändert.
+
+**Schieben: Entscheidung für „neu geben lassen“.** Zur Wahl standen zwei Varianten:
+
+1. Nach dem Aufnehmen die zwei gedrückten Karten gegen zwei zufällige ungesehene Karten tauschen.
+2. Einmal pro Serie vor der Ansage alle Hände und den Skat neu geben lassen, ohne dass ein Spiel verbraucht wird.
+
+Variante 1 geht im geteilten Blatt nicht sauber: Ungesehen sind die Gegnerhände und der Talon. Der Talon ist im Grundblatt leer, also müssten die gedrückten Karten an die Gegner gehen, deren Blätter sich nach dem Geben ändern. Kommt eine Talonkarte ins Spiel, ändern sich die Karten im Spiel und damit die Spitzen-Zählung (4.4) und die aktiven Kartenmodifikationen. Offen bliebe auch, ob die neuen Karten zum Skat oder zur Hand gehören und welche zwölf Karten die Spitzen bestimmen, und im Handspiel gäbe es die Regel gar nicht. Variante 2 ist regelklar: Sie ist genau das Neugeben von „Neues Blatt“, nur einmal pro Serie und dauerhaft. Ihr Hebel sind Spitzen und Risikostufe: Der Spieler wirft ein Blatt ohne Spitzen und ohne genug Trümpfe weg und sucht eines, das ein Handspiel oder Schneider angesagt trägt, ohne wie beim Einpassen ein Spiel vom Limit zu verlieren. Anders als das alte Schieben ist das nicht erwartungsneutral, weil der Spieler sein Blatt kennt, bevor er entscheidet.
 
 ### 8.2 Stammtisch-Figuren (passive Relikte mit Persönlichkeit)
 
@@ -307,6 +318,8 @@ Schwierigkeit steigt **nicht** primär über klügere KI, sondern über die Ziel
 ## 11. Bosse
 
 Bosse sind Gegnerpaare mit einer Sonderregel, die für die ganze Boss-Serie gilt. Die Regel wird vor der Serie angezeigt, damit der Spieler sein Blatt und seine Ansagen anpassen kann.
+
+Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `BossAnnounced`) und ist ab dann in der Sicht lesbar (`upcoming_boss`, `next_series`). So kann der Spieler schon am Tresen vor Serie 2 auf den Boss hin einkaufen. Jeder Boss hat einen Zielwert-Faktor (`target_factor` in `bosses.ron`, Standard 1,0), der den Zielwert seiner Boss-Serie skaliert, weil die Bosse unterschiedlich schwer sind. Die Werte setzt `balance`; messen lässt sich das mit `skat_sim --curve --boss <id>`.
 
 | Boss | Regel |
 |---|---|

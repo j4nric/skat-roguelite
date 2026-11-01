@@ -81,8 +81,8 @@ function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number):
     })
     .join('');
   const hint = options.hand_required ? `<p class="declare-hint is-warning">${esc(de.table.handRequired)}</p>` : '';
-  const redraw = options.can_redraw
-    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redraws_left }))}</button>`
+  const redraw = options.can_redeal
+    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
     : '';
   return `<section class="declare" aria-label="${esc(de.table.declareTitle)}">
     <div class="declare-label">${esc(de.table.gameType)}</div>

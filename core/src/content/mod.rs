@@ -140,6 +140,69 @@ pub struct CardModDef {
     pub hooks: Vec<Hook>,
 }
 
+/// A factor, written as a decimal number in RON and JSON (`1.0`, `0.6`,
+/// `1.4`) and kept in thousandths, so that content stays `Eq` and every
+/// computation with it is integer arithmetic (deterministic on every
+/// platform, also in WebAssembly).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Factor {
+    permille: u32,
+}
+
+impl Factor {
+    /// The factor 1.0.
+    pub const ONE: Factor = Factor { permille: 1000 };
+
+    /// A factor from thousandths (1400 = 1.4).
+    #[must_use]
+    pub const fn from_permille(permille: u32) -> Factor {
+        Factor { permille }
+    }
+
+    /// The factor in thousandths.
+    #[must_use]
+    pub const fn permille(self) -> u32 {
+        self.permille
+    }
+
+    /// `value × factor`, rounded half up, at least 1 for a positive value.
+    /// Saturates instead of overflowing.
+    #[must_use]
+    pub fn apply(self, value: u64) -> u64 {
+        if value == 0 {
+            return 0;
+        }
+        let scaled = (u128::from(value) * u128::from(self.permille) + 500) / 1000;
+        u64::try_from(scaled).unwrap_or(u64::MAX).max(1)
+    }
+}
+
+impl Default for Factor {
+    fn default() -> Factor {
+        Factor::ONE
+    }
+}
+
+impl Serialize for Factor {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(f64::from(self.permille) / 1000.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Factor {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Factor, D::Error> {
+        let value = f64::deserialize(deserializer)?;
+        if !value.is_finite() || !(0.0..=1000.0).contains(&value) {
+            return Err(serde::de::Error::custom(format!(
+                "factor {value} must be between 0 and 1000"
+            )));
+        }
+        // In range by the check above, so the cast cannot truncate.
+        let permille = (value * 1000.0).round() as u32;
+        Ok(Factor { permille })
+    }
+}
+
 /// A boss: the special rule of a boss series.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BossDef {
@@ -149,6 +212,11 @@ pub struct BossDef {
     pub name: String,
     /// German description of the rule.
     pub text: String,
+    /// Zielwert factor of the boss series (default 1.0): bosses differ in
+    /// how hard they are, so each scales the Zielwert of its series. Set by
+    /// `balance`.
+    #[serde(default)]
+    pub target_factor: Factor,
     /// Always-on effects during the boss series.
     #[serde(default)]
     pub passive: Vec<Effect>,

@@ -2,6 +2,11 @@
 //!
 //! Statistics: section reached, win rate per series, Groschen, and for
 //! every relic how often it was bought and how runs with it went.
+//!
+//! Options (all reproducible with the same seed, see [`Options`]):
+//! `--no-shop`, `--relic <id>` (repeatable), `--without <id>`
+//! (repeatable), `--boss <id>` and `--curve` (success curve of a single
+//! series instead of whole runs, see [`curve`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -11,7 +16,81 @@ use std::time::Instant;
 use skat_core::content::{BossId, Content, RelicId};
 use skat_core::rng::Rng;
 use skat_core::run::bot::RunBot;
-use skat_core::run::{Run, RunEvent, RunPhase, SERIES_PER_SECTION};
+use skat_core::run::{Run, RunAction, RunEvent, RunPhase, RunStart, SERIES_PER_SECTION};
+
+/// Measurement options of the runs mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    /// The bot never buys anything: it leaves every Tresen at once.
+    pub no_shop: bool,
+    /// Relics owned from the start of every run, with their passive
+    /// effects already in the first game ([`RunStart::relics`]).
+    pub relics: Vec<RelicId>,
+    /// Relics taken out of the content: never offered, so never bought.
+    pub without: Vec<RelicId>,
+    /// The only boss a boss series may draw.
+    pub boss: Option<BossId>,
+    /// Measure the success curve of one series instead of whole runs.
+    pub curve: bool,
+}
+
+impl Options {
+    /// The content with `--without` and `--boss` applied. Fails on unknown
+    /// ids.
+    pub fn content(&self, base: &Content) -> Result<Content, String> {
+        let mut content = base.clone();
+        for id in &self.relics {
+            if content.relic(id).is_none() {
+                return Err(format!("--relic: unknown relic {id}"));
+            }
+        }
+        for id in &self.without {
+            if content.relics.remove(id).is_none() {
+                return Err(format!("--without: unknown relic {id}"));
+            }
+            if self.relics.contains(id) {
+                return Err(format!("--without {id} and --relic {id} contradict"));
+            }
+        }
+        if let Some(boss) = &self.boss {
+            if content.boss(boss).is_none() {
+                return Err(format!("--boss: unknown boss {boss}"));
+            }
+            content.run.bosses = vec![boss.clone()];
+        }
+        Ok(content)
+    }
+
+    /// The options as one line for the report header.
+    fn describe(&self) -> String {
+        let mut parts = Vec::new();
+        if self.no_shop {
+            parts.push("no-shop".to_string());
+        }
+        for id in &self.relics {
+            parts.push(format!("relic={id}"));
+        }
+        for id in &self.without {
+            parts.push(format!("without={id}"));
+        }
+        if let Some(boss) = &self.boss {
+            parts.push(format!("boss={boss}"));
+        }
+        if parts.is_empty() {
+            "standard".to_string()
+        } else {
+            parts.join(" ")
+        }
+    }
+
+    /// The bot's next action under these options.
+    fn next_action(&self, run: &Run, content: &Content) -> Option<RunAction> {
+        if self.no_shop && run.phase() == RunPhase::Shop {
+            return Some(RunAction::LeaveShop);
+        }
+        RunBot.next_action(run, content)
+    }
+}
 
 /// Upper bound of actions per run, a guard against a policy that loops.
 const MAX_ACTIONS: usize = 1_000_000;
@@ -42,12 +121,16 @@ pub struct RunStats {
     pub won: u64,
     /// Attempts and wins per (section, series).
     pub series: Vec<[(u64, u64); 3]>,
-    /// Attempts and wins per boss.
+    /// Attempts and wins per boss in section 1.
     pub bosses: BTreeMap<BossId, (u64, u64)>,
+    /// Attempts and wins per boss from section 2 on.
+    pub bosses_later: BTreeMap<BossId, (u64, u64)>,
     /// Games played (not passed).
     pub games: u64,
     /// Games won.
     pub games_won: u64,
+    /// Sum of the series account changes of all games.
+    pub points: i64,
     /// Passes.
     pub passes: u64,
     /// Groschen held at the end of each run, summed.
@@ -61,10 +144,19 @@ pub struct RunStats {
 }
 
 /// Play one run to the end and add it to the statistics.
-fn play_run(content: &Content, seed: u64, stats: &mut RunStats) -> Result<(), String> {
-    let (mut run, mut events) = Run::new(content, seed).map_err(|e| e.to_string())?;
+fn play_run(
+    content: &Content,
+    options: &Options,
+    seed: u64,
+    stats: &mut RunStats,
+) -> Result<(), String> {
+    let start = RunStart {
+        relics: options.relics.clone(),
+        ..RunStart::default()
+    };
+    let (mut run, mut events) = Run::new_with(content, seed, &start).map_err(|e| e.to_string())?;
     let mut actions = 0;
-    while let Some(action) = RunBot.next_action(&run, content) {
+    while let Some(action) = options.next_action(&run, content) {
         events.extend(run.apply(content, action).map_err(|e| e.to_string())?);
         actions += 1;
         if actions > MAX_ACTIONS {
@@ -73,7 +165,7 @@ fn play_run(content: &Content, seed: u64, stats: &mut RunStats) -> Result<(), St
     }
     let sections = content.run.targets.len();
     let mut bought: BTreeSet<RelicId> = BTreeSet::new();
-    let mut current_boss: Option<BossId> = None;
+    let mut current_boss: Option<(BossId, u32)> = None;
     for event in &events {
         match event {
             RunEvent::SeriesStarted {
@@ -89,9 +181,14 @@ fn play_run(content: &Content, seed: u64, stats: &mut RunStats) -> Result<(), St
                 {
                     entry.0 += 1;
                 }
-                current_boss = boss.clone();
+                current_boss = boss.clone().map(|b| (b, *section));
                 if let Some(boss) = boss {
-                    stats.bosses.entry(boss.clone()).or_default().0 += 1;
+                    let table = if *section == 0 {
+                        &mut stats.bosses
+                    } else {
+                        &mut stats.bosses_later
+                    };
+                    table.entry(boss.clone()).or_default().0 += 1;
                 }
             }
             RunEvent::SeriesWon {
@@ -107,13 +204,19 @@ fn play_run(content: &Content, seed: u64, stats: &mut RunStats) -> Result<(), St
                 {
                     entry.1 += 1;
                 }
-                if let Some(boss) = &current_boss {
-                    stats.bosses.entry(boss.clone()).or_default().1 += 1;
+                if let Some((boss, section)) = &current_boss {
+                    let table = if *section == 0 {
+                        &mut stats.bosses
+                    } else {
+                        &mut stats.bosses_later
+                    };
+                    table.entry(boss.clone()).or_default().1 += 1;
                 }
                 stats.coins_earned += u64::from(payout.total());
             }
             RunEvent::GameScored { breakdown, .. } => {
                 stats.games += 1;
+                stats.points += breakdown.score;
                 if breakdown.won {
                     stats.games_won += 1;
                 }
@@ -146,8 +249,14 @@ fn play_run(content: &Content, seed: u64, stats: &mut RunStats) -> Result<(), St
     Ok(())
 }
 
-/// Play `runs` runs. Run seeds come from one master generator.
-pub fn simulate(content: &Content, seed: u64, runs: u32) -> Result<RunStats, String> {
+/// Play `runs` runs. Run seeds come from one master generator, so the same
+/// seed gives the same runs with and without options (same deals).
+pub fn simulate(
+    content: &Content,
+    options: &Options,
+    seed: u64,
+    runs: u32,
+) -> Result<RunStats, String> {
     let sections = content.run.targets.len();
     let mut stats = RunStats {
         seed,
@@ -163,7 +272,7 @@ pub fn simulate(content: &Content, seed: u64, runs: u32) -> Result<RunStats, Str
     let mut master = Rng::from_seed(seed);
     for i in 0..runs {
         let run_seed = master.next_u64();
-        play_run(content, run_seed, &mut stats).map_err(|e| format!("run {i}: {e}"))?;
+        play_run(content, options, run_seed, &mut stats).map_err(|e| format!("run {i}: {e}"))?;
     }
     Ok(stats)
 }
@@ -180,16 +289,33 @@ fn mean(sum: u64, n: u64) -> f64 {
     if n == 0 { 0.0 } else { sum as f64 / n as f64 }
 }
 
+fn mean_signed(sum: i64, n: u64) -> f64 {
+    if n == 0 { 0.0 } else { sum as f64 / n as f64 }
+}
+
 /// Render the statistics as a text table.
-pub fn render(stats: &RunStats, content: &Content, runtime_us: u64) -> String {
+pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us: u64) -> String {
     let runs = u64::from(stats.runs);
     let mut out = String::new();
-    let _ = writeln!(out, "skat_sim seed={} runs={}", stats.seed, stats.runs);
+    let _ = writeln!(
+        out,
+        "skat_sim seed={} runs={} options: {}",
+        stats.seed,
+        stats.runs,
+        options.describe()
+    );
     let _ = write!(out, "section reached:");
     for (i, n) in stats.lost_in_section.iter().enumerate() {
         let _ = write!(out, " {}={}", i + 1, n);
     }
     let _ = writeln!(out, " won={}", stats.won);
+    // Share of runs that reached a section (lost there or later, or won).
+    let _ = write!(out, "reached at least:");
+    for section in 1..stats.lost_in_section.len() {
+        let later: u64 = stats.lost_in_section[section..].iter().sum::<u64>() + stats.won;
+        let _ = write!(out, " {}={:.1}%", section + 1, pct(later, runs));
+    }
+    out.push('\n');
     let _ = writeln!(
         out,
         "{:<8} {:>7} {:>9} {:>7}",
@@ -217,17 +343,27 @@ pub fn render(stats: &RunStats, content: &Content, runtime_us: u64) -> String {
             );
         }
     }
-    let _ = write!(out, "bosses:");
-    for (boss, (attempts, wins)) in &stats.bosses {
-        let _ = write!(out, " {boss}={wins}/{attempts}");
+    for (label, table) in [
+        ("bosses section 1:", &stats.bosses),
+        ("bosses section 2+:", &stats.bosses_later),
+    ] {
+        let _ = write!(out, "{label}");
+        for (boss, (attempts, wins)) in table {
+            let _ = write!(
+                out,
+                " {boss}={wins}/{attempts} ({:.1}%)",
+                pct(*wins, *attempts)
+            );
+        }
+        out.push('\n');
     }
-    out.push('\n');
     let _ = writeln!(
         out,
-        "games: {} won%={:.1} passes={}",
+        "games: {} won%={:.1} passes={} points per game={:.1}",
         stats.games,
         pct(stats.games_won, stats.games),
-        stats.passes
+        stats.passes,
+        mean_signed(stats.points, stats.games)
     );
     let _ = writeln!(
         out,
@@ -266,9 +402,172 @@ pub fn render(stats: &RunStats, content: &Content, runtime_us: u64) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------
+// Success curve of one series
+// ---------------------------------------------------------------------------
+
+/// Success curve of one series (`--curve`): how often the bot wins a
+/// series of the game limit and passes in `run.ron`, for every Zielwert.
+///
+/// Every sample is one series with an unreachable Zielwert, played to the
+/// game limit. The bot never looks at the Zielwert or the account, so it
+/// plays exactly as it would against any target, and a series with
+/// Zielwert T is won exactly when the highest account after a game reaches
+/// T. One sample thus gives the result for every T. With `--boss` the
+/// series is a boss series with that boss.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Curve {
+    /// Base seed.
+    pub seed: u64,
+    /// Number of series.
+    pub series: u32,
+    /// Highest account per series (`None`: never above 0 after a game).
+    pub best: Vec<Option<i64>>,
+    /// Games played (not passed).
+    pub games: u64,
+    /// Games won.
+    pub games_won: u64,
+    /// Sum of the account changes of all games.
+    pub points: i64,
+    /// Passes.
+    pub passes: u64,
+}
+
+impl Curve {
+    /// Share of series won at Zielwert `target`, in percent.
+    #[must_use]
+    pub fn win_pct(&self, target: u64) -> f64 {
+        let won = self
+            .best
+            .iter()
+            .flatten()
+            .filter(|&&best| i128::from(best) >= i128::from(target))
+            .count();
+        pct(u64::try_from(won).unwrap_or(0), u64::from(self.series))
+    }
+}
+
+/// Zielwerte the curve reports: 1 and every Zielwert of `run.ron`.
+fn curve_targets(content: &Content) -> Vec<u64> {
+    let mut targets: Vec<u64> = std::iter::once(1)
+        .chain(content.run.targets.iter().flat_map(|t| [t.0, t.1, t.2]))
+        .collect();
+    targets.sort_unstable();
+    targets.dedup();
+    targets
+}
+
+/// Measure the success curve over `series` series.
+pub fn curve(
+    content: &Content,
+    options: &Options,
+    seed: u64,
+    series: u32,
+) -> Result<Curve, String> {
+    let mut content = content.clone();
+    let unreachable = u64::MAX / 4;
+    for t in &mut content.run.targets {
+        *t = (unreachable, unreachable, unreachable);
+    }
+    let start = RunStart {
+        relics: options.relics.clone(),
+        section: 0,
+        index: if options.boss.is_some() {
+            SERIES_PER_SECTION - 1
+        } else {
+            0
+        },
+    };
+    let mut result = Curve {
+        seed,
+        series,
+        ..Curve::default()
+    };
+    let mut master = Rng::from_seed(seed);
+    for i in 0..series {
+        let run_seed = master.next_u64();
+        let (mut run, _) =
+            Run::new_with(&content, run_seed, &start).map_err(|e| format!("series {i}: {e}"))?;
+        let mut best: Option<i64> = None;
+        let mut actions = 0;
+        while run.phase() == RunPhase::Game {
+            let Some(action) = options.next_action(&run, &content) else {
+                break;
+            };
+            for event in run
+                .apply(&content, action)
+                .map_err(|e| format!("series {i}: {e}"))?
+            {
+                match event {
+                    RunEvent::GameScored {
+                        breakdown,
+                        series_score,
+                    } => {
+                        result.games += 1;
+                        result.points += breakdown.score;
+                        result.games_won += u64::from(breakdown.won);
+                        best = Some(best.map_or(series_score, |b| b.max(series_score)));
+                    }
+                    RunEvent::Passed { .. } => result.passes += 1,
+                    _ => {}
+                }
+            }
+            actions += 1;
+            if actions > MAX_ACTIONS {
+                return Err(format!("series {i} does not end"));
+            }
+        }
+        result.best.push(best);
+    }
+    Ok(result)
+}
+
+/// Render the success curve.
+pub fn render_curve(
+    curve: &Curve,
+    content: &Content,
+    options: &Options,
+    runtime_us: u64,
+) -> String {
+    let mut out = String::new();
+    let kind = if options.boss.is_some() {
+        "boss series"
+    } else {
+        "series"
+    };
+    let _ = writeln!(
+        out,
+        "skat_sim seed={} curve: {} {kind}, game limit {}, passes {}, options: {}",
+        curve.seed,
+        curve.series,
+        content.run.game_limit,
+        content.run.passes,
+        options.describe()
+    );
+    let _ = writeln!(out, "{:>7} {:>7}", "target", "win%");
+    for target in curve_targets(content) {
+        let _ = writeln!(out, "{:>7} {:>7.1}", target, curve.win_pct(target));
+    }
+    let n = u64::from(curve.series);
+    let _ = writeln!(
+        out,
+        "games: {} won%={:.1} passes={} points per game={:.1} games per series={:.2}",
+        curve.games,
+        pct(curve.games_won, curve.games),
+        curve.passes,
+        mean_signed(curve.points, curve.games),
+        mean(curve.games + curve.passes, n)
+    );
+    let _ = writeln!(out, "runtime: {:.1} ms total", runtime_us as f64 / 1000.0);
+    out
+}
+
 /// Entry point of the runs mode.
-pub fn main(seed: u64, runs: u32) -> ExitCode {
-    let content = match Content::load() {
+pub fn main(seed: u64, runs: u32, options: &Options) -> ExitCode {
+    let content = match Content::load()
+        .map_err(|e| e.to_string())
+        .and_then(|base| options.content(&base))
+    {
         Ok(c) => c,
         Err(e) => {
             eprintln!("error: {e}");
@@ -276,16 +575,27 @@ pub fn main(seed: u64, runs: u32) -> ExitCode {
         }
     };
     let start = Instant::now();
-    let stats = match simulate(&content, seed, runs) {
-        Ok(s) => s,
+    let output = if options.curve {
+        curve(&content, options, seed, runs).map(|c| {
+            let runtime_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
+            render_curve(&c, &content, options, runtime_us)
+        })
+    } else {
+        simulate(&content, options, seed, runs).map(|s| {
+            let runtime_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
+            render(&s, &content, options, runtime_us)
+        })
+    };
+    match output {
+        Ok(text) => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             eprintln!("error: {e}");
-            return ExitCode::FAILURE;
+            ExitCode::FAILURE
         }
-    };
-    let runtime_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
-    print!("{}", render(&stats, &content, runtime_us));
-    ExitCode::SUCCESS
+    }
 }
 
 #[cfg(test)]
@@ -295,19 +605,127 @@ mod tests {
     #[test]
     fn same_seed_gives_identical_run_statistics() {
         let content = Content::load().expect("content");
-        let a = simulate(&content, 42, 30).expect("runs");
-        let b = simulate(&content, 42, 30).expect("runs");
+        let options = Options::default();
+        let a = simulate(&content, &options, 42, 30).expect("runs");
+        let b = simulate(&content, &options, 42, 30).expect("runs");
         assert_eq!(a, b);
-        assert_eq!(render(&a, &content, 0), render(&b, &content, 0));
-        assert_ne!(simulate(&content, 43, 30).expect("runs"), a);
+        assert_eq!(
+            render(&a, &content, &options, 0),
+            render(&b, &content, &options, 0)
+        );
+        assert_ne!(simulate(&content, &options, 43, 30).expect("runs"), a);
     }
 
     #[test]
     fn every_run_ends_once() {
         let content = Content::load().expect("content");
-        let stats = simulate(&content, 7, 25).expect("runs");
+        let stats = simulate(&content, &Options::default(), 7, 25).expect("runs");
         let ended: u64 = stats.lost_in_section.iter().sum::<u64>() + stats.won;
         assert_eq!(ended, 25);
         assert_eq!(stats.series[0][0].0, 25, "every run starts with series 1-1");
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    fn content() -> Content {
+        Content::load().expect("content")
+    }
+
+    #[test]
+    fn no_shop_never_buys_and_without_never_offers() {
+        let base = content();
+        let options = Options {
+            no_shop: true,
+            ..Options::default()
+        };
+        let stats = simulate(&base, &options, 3, 40).expect("runs");
+        assert_eq!(stats.coins_spent, 0);
+        assert!(stats.relics.values().all(|r| r.bought == 0));
+        let options = Options {
+            without: vec![RelicId::new("bock_round")],
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let stats = simulate(&content, &options, 3, 40).expect("runs");
+        assert!(!stats.relics.contains_key(&RelicId::new("bock_round")));
+        let bad = Options {
+            without: vec![RelicId::new("nope")],
+            ..Options::default()
+        };
+        assert!(bad.content(&base).is_err());
+        let bad = Options {
+            relics: vec![RelicId::new("nope")],
+            ..Options::default()
+        };
+        assert!(bad.content(&base).is_err());
+    }
+
+    #[test]
+    fn boss_option_draws_only_that_boss() {
+        let base = content();
+        let options = Options {
+            boss: Some(BossId::new("grandma")),
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let stats = simulate(&content, &options, 5, 60).expect("runs");
+        assert!(!stats.bosses.is_empty());
+        assert!(
+            stats
+                .bosses
+                .keys()
+                .chain(stats.bosses_later.keys())
+                .all(|b| b.as_str() == "grandma")
+        );
+    }
+
+    #[test]
+    fn start_relics_keep_the_deals() {
+        let base = content();
+        let plain = simulate(&base, &Options::default(), 8, 20).expect("runs");
+        let options = Options {
+            relics: vec![RelicId::new("ouvert_bonus")],
+            no_shop: true,
+            ..Options::default()
+        };
+        let with = simulate(&base, &options, 8, 20).expect("runs");
+        assert_eq!(with.runs, plain.runs);
+        assert!(render(&with, &base, &options, 0).contains("relic=ouvert_bonus"));
+    }
+
+    #[test]
+    fn curve_falls_with_the_target_and_is_deterministic() {
+        let base = content();
+        let options = Options::default();
+        let a = curve(&base, &options, 42, 200).expect("curve");
+        assert_eq!(a, curve(&base, &options, 42, 200).expect("curve"));
+        assert_eq!(a.best.len(), 200);
+        let targets = curve_targets(&base);
+        assert_eq!(targets[0], 1);
+        let pcts: Vec<f64> = targets.iter().map(|&t| a.win_pct(t)).collect();
+        assert!(pcts.windows(2).all(|w| w[0] >= w[1]), "{pcts:?}");
+        assert!(pcts[0] > 0.0 && pcts[0] < 100.0);
+        // The same seed in the runs mode wins series 1-1 exactly when the
+        // curve reaches its Zielwert.
+        let runs = simulate(&base, &options, 42, 200).expect("runs");
+        let won_1_1 = runs.series[0][0].1;
+        let first = base.run.targets[0].0;
+        let from_curve = a
+            .best
+            .iter()
+            .flatten()
+            .filter(|&&b| b >= i64::try_from(first).unwrap_or(i64::MAX))
+            .count();
+        assert_eq!(u64::try_from(from_curve).unwrap_or(0), won_1_1);
+        let boss = Options {
+            boss: Some(BossId::new("the_pusher")),
+            ..Options::default()
+        };
+        let content = boss.content(&base).expect("content");
+        let b = curve(&content, &boss, 42, 50).expect("boss curve");
+        assert_eq!(b.best.len(), 50);
     }
 }

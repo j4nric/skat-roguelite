@@ -26,11 +26,11 @@
     (
         id: "last_trick_seven",
         name: "Spitze",
-        text: "Machst du den letzten Stich mit der Karo-7, gibt es eine Gewinnstufe mehr.",
+        text: "Machst du den letzten Stich mit einer Sieben, gibt es eine Gewinnstufe mehr.",
         rarity: Uncommon,
         price: 5,
         hooks: [
-            OnScore(when: LastTrickWonWith(card: "D7", by_declarer: true), then: [AddLevels(1)]),
+            OnScore(when: LastTrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true), then: [AddLevels(1)]),
         ],
     ),
     (
@@ -56,18 +56,19 @@
     (
         id: "skat_redraw",
         name: "Schieben",
-        text: "Einmal pro Spiel darfst du vor der Ansage den Skat neu ziehen. Die Gegner bekommen dabei neue Karten.",
+        text: "Einmal pro Serie darfst du vor der Ansage neu geben lassen: Alle Hände und der Skat werden neu gemischt, ohne dass ein Spiel verbraucht wird.",
         rarity: Common,
         price: 5,
-        passive: [SkatRedraw],
+        // DESIGN 8.1: neu geben statt Skat neu ziehen, Begründung dort.
+        passive: [SeriesRedeal],
     ),
     (
         id: "virgin",
         name: "Jungfrau",
-        text: "Gewinnst du mit 61 bis 65 Augen, zählt das Spiel trotzdem als Schneider.",
+        text: "Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider.",
         rarity: Uncommon,
         price: 5,
-        passive: [SchneiderFromDeclarerPoints(min: 61, max: 65)],
+        passive: [SchneiderFromDeclarerPoints(min: 61, max: 70)],
     ),
     (
         id: "old_lady",
@@ -91,11 +92,11 @@
     (
         id: "march_through",
         name: "Durchmarsch",
-        text: "Machst du alle Stiche, zählt der Grundwert dreifach.",
+        text: "Gewinnst du Schneider, zählt der Spielwert doppelt.",
         rarity: Rare,
         price: 5,
         hooks: [
-            OnScore(when: AllTricksWon, then: [MultiplyBaseValue(3)]),
+            OnScore(when: WonSchneider, then: [MultiplyGameValue(2)]),
         ],
     ),
 ]

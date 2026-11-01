@@ -8,6 +8,18 @@
 //! ([`skat_core::run::bot::RunBot`]) and prints how far runs get.
 //! `cargo run --release -p skat_sim -- --seed 42 --runs 1000`
 //!
+//! Measurement options of the runs mode:
+//!
+//! - `--no-shop`: the bot never buys anything.
+//! - `--relic <id>`: every run starts with this relic (repeatable); its
+//!   passive effects already count in the first game. The deals stay the
+//!   same as without, so the difference is the relic.
+//! - `--without <id>`: the relic is taken out of the pool (repeatable).
+//! - `--boss <id>`: boss series draw only this boss.
+//! - `--curve`: instead of whole runs, `--runs N` single series (with
+//!   `--boss` boss series); prints the share of series won for every
+//!   Zielwert of `run.ron`.
+//!
 //! Everything but the runtime lines is a pure function of the arguments,
 //! so two runs with the same arguments print identical statistics.
 
@@ -19,6 +31,7 @@ use std::time::Instant;
 
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
+use skat_core::content::{BossId, RelicId};
 use skat_core::game::{Game, Phase, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{GameType, Matadors, RiskLevel};
@@ -28,6 +41,7 @@ struct Args {
     games: u32,
     runs: Option<u32>,
     json: bool,
+    options: runs::Options,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -36,11 +50,24 @@ fn parse_args() -> Result<Args, String> {
         games: 1000,
         runs: None,
         json: false,
+        options: runs::Options::default(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
         match flag.as_str() {
             "--json" => args.json = true,
+            "--no-shop" => args.options.no_shop = true,
+            "--curve" => args.options.curve = true,
+            "--relic" | "--without" | "--boss" => {
+                let value = it
+                    .next()
+                    .ok_or_else(|| format!("missing value for {flag}"))?;
+                match flag.as_str() {
+                    "--relic" => args.options.relics.push(RelicId::new(&value)),
+                    "--without" => args.options.without.push(RelicId::new(&value)),
+                    _ => args.options.boss = Some(BossId::new(&value)),
+                }
+            }
             "--seed" | "--games" | "--runs" => {
                 let value = it
                     .next()
@@ -54,6 +81,13 @@ fn parse_args() -> Result<Args, String> {
                 }
             }
             other => return Err(format!("unknown flag {other}")),
+        }
+    }
+    if args.runs.is_none() && args.options != runs::Options::default() {
+        if args.options.curve {
+            args.runs = Some(1000);
+        } else {
+            return Err("run options need --runs N".into());
         }
     }
     Ok(args)
@@ -343,12 +377,14 @@ fn main() -> ExitCode {
         Ok(a) => a,
         Err(e) => {
             eprintln!("error: {e}");
-            eprintln!("usage: sim [--seed N] [--games N | --runs N] [--json]");
+            eprintln!(
+                "usage: sim [--seed N] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--curve]]"
+            );
             return ExitCode::FAILURE;
         }
     };
     if let Some(runs) = args.runs {
-        return runs::main(args.seed, runs);
+        return runs::main(args.seed, runs, &args.options);
     }
     let start = Instant::now();
     let stats = match run(args.seed, args.games) {

@@ -1,21 +1,26 @@
 // Bosse: Sonderregel für die ganze Boss-Serie (DESIGN 11).
+// target_factor: Faktor auf den Zielwert der Boss-Serie (Standard 1.0,
+// gesetzt von `balance`).
 [
     (
         id: "the_pusher",
         name: "Der Schieber",
         text: "Jedes Spiel ist ein Handspiel.",
         passive: [RequireHand],
+        target_factor: 1.0,
     ),
     (
         id: "kontra_hans",
         name: "Der Kontra-Hans",
         text: "Kontra ist immer erlaubt, auch ohne Hausregel.",
         passive: [EnableKontra],
+        target_factor: 1.0,
     ),
     (
         id: "grandma",
         name: "Die Oma",
         text: "Die Oma hat alle Buben eingesteckt. In dieser Serie sind sie Blankos.",
         passive: [BlankOut((rank: Some(Jack)))],
+        target_factor: 1.0,
     ),
 ]

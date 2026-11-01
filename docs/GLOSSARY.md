@@ -58,7 +58,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Kontra | `kontra` | Gegenspieler verdoppeln (Hausregel, Boss) |
 | Re | `re` | Antwort des Alleinspielers auf Kontra |
 | Schenken (Gegner geben auf) | `concede` | Rest der Stiche und Augen geht an den Alleinspieler |
-| Schieben (Skat neu ziehen) | `redraw_skat` | Gegner und Skat werden neu gegeben, eigene Hand bleibt |
+| Schieben (Hausregel: neu geben lassen) | `redeal` | `RunAction::Redeal`, einmal pro Serie vor der Ansage, alle Hände und Skat neu, kostet kein Spiel (DESIGN 8.1). Effekt `SeriesRedeal` |
+| Neu geben (Schieben, „Neues Blatt“) | `redeal` | Ereignis `Redealt` |
+| Skat neu ziehen (nur Spielebene) | `redraw_skat` | `Game::redraw_skat`: Gegner und Skat neu, eigene Hand bleibt. Von keinem Inhalt mehr genutzt |
 
 ## Wertung
 
@@ -87,6 +89,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Abschnitt / Skatabend | `Section` | Ein Ante |
 | Serie | `Series` | Ein Blind: Zielwert plus Spiellimit |
 | Zielwert | `target` | |
+| Zielwert-Faktor (Boss) | `target_factor` | Typ `Factor`, in RON und JSON als Dezimalzahl, intern Tausendstel |
+| Boss angekündigt (Start eines Abschnitts) | `BossAnnounced` | Run-Ereignis; Boss des Abschnitts `section_boss` |
+| Bevorstehender Boss | `upcoming_boss` | Feld der Sicht |
+| Nächste Serie (Vorschau) | `next_series` | Feld der Sicht, `NextSeriesView` |
 | Spiellimit | `game_limit` | |
 | Boss-Serie | `BossSeries` | |
 | Hausregel | `HouseRule` | Passives Relikt, Joker-Äquivalent |
@@ -114,6 +120,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Statistik eines Runs | `RunStats` | Gewonnene, verlorene, eingepasste Spiele, Serien, bestes Spiel |
 | Verkaufspreis | `sell_price` | Halber Preis |
 | Sicht (Lese-Sicht für die Oberfläche) | `RunView` | `Run::view`, alles fertig berechnet; dazu `GameView`, `ShopView`, `CardView` |
+| Spieler-Ereignis (ohne verdeckte Karten) | `PlayerEvent` | `RunEvent<PlayerGameEvent>`, aus `RunEvent::for_player`; nur das geht an den Browser |
+| Start eines Runs | `RunStart` | Start-Relikte, erste Serie; `Run::new_with` |
+| Fehlercode | `RunErrorCode` | Stabiler Name eines `RunError`, `RunError::code` |
+| Wahrscheinlichkeit beim Geben | `DealOdds` | Wo eine Karte des Blatts landet (DESIGN 7.4), `Odds` als Bruch und Promille |
 
 ## Hook-API und Wertung mit Relikten
 
@@ -139,7 +149,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 |---|---|
 | Bockrunde | `bock_round` |
 | Kontra | `kontra` |
-| Spitze (Hausregel, letzter Stich mit Karo-7) | `last_trick_seven` (nicht verwechseln mit Spitzen = `matadors`) |
+| Spitze (Hausregel, letzter Stich mit einer Sieben) | `last_trick_seven` (nicht verwechseln mit Spitzen = `matadors`) |
 | Schenken | `concede` |
 | Ouvert-Bonus | `ouvert_bonus` |
 | Schieben | `skat_redraw` |
