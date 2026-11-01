@@ -8,7 +8,7 @@ import type { MetaView, RunView } from '../types';
 import { cardSvg } from './cards';
 import { attrs, esc } from './dom';
 import { oddsDetail } from './odds';
-import { bossPortraitId, portrait } from './people';
+import { bossCoaster, relicCoaster } from './emblems';
 
 /** Tally marks in groups of five, drawn in chalk; large numbers as digits. */
 export function tally(n: number): string {
@@ -43,14 +43,14 @@ function grid(view: RunView, lost: boolean): string {
         }
         if (before) return `<div class="tour-cell is-done" aria-label="${esc(de.overview.done)}">${CHECK}</div>`;
         if (now) {
-          const boss = cur.is_boss && cur.boss ? portrait(bossPortraitId(cur.boss.id), 'portrait-xs') : '';
+          const boss = cur.is_boss && cur.boss ? bossCoaster(cur.boss.id, { size: 28 }) : '';
           return `<div class="tour-cell is-now ${lost ? 'is-lost' : ''}">${lost ? CROSS : ''}${boss}<b>${esc(t(de.overview.current, { score: cur.score, target: cur.target }))}</b></div>`;
         }
         const next = view.next_series;
         const isNext = next && next.section === a && next.index === s;
         // The boss of the running section is known from its start.
         const boss = isNext && next.boss ? next.boss : s === 2 && a === cur.section ? view.upcoming_boss : null;
-        const face = boss ? portrait(bossPortraitId(boss.id), 'portrait-xs') : '';
+        const face = boss ? bossCoaster(boss.id, { size: 28 }) : '';
         if (isNext) return `<div class="tour-cell is-later is-next">${face}<b>${esc(next.target)}</b></div>`;
         if (face) return `<div class="tour-cell is-later is-next">${face}</div>`;
         return `<div class="tour-cell is-later">${s === 2 ? `<span class="tour-q">${esc(de.boss.unknown)}</span>` : ''}</div>`;
@@ -85,8 +85,8 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${cardSvg(c.kind, c.mods)}</span>`)
     .join('');
   const relics =
-    view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${esc(contentName('relics', r.relic.id))}</span>`).join('') +
-    view.evening_relics.map((r) => `<span class="mini-coaster is-evening rarity-${esc(r.rarity)}">${esc(contentName('relics', r.id))}</span>`).join('');
+    view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${relicCoaster(r.relic, { size: 26 })}${esc(contentName('relics', r.relic.id))}</span>`).join('') +
+    view.evening_relics.map((r) => `<span class="mini-coaster is-evening rarity-${esc(r.rarity)}">${relicCoaster(r, { size: 26 })}${esc(contentName('relics', r.id))}</span>`).join('');
   return `<div class="tour">
     <h3 class="chalk-h">${esc(de.overview.tour)}</h3>
     ${grid(view, lost)}

@@ -6,15 +6,14 @@
 // Only lookups and labels: every fact comes from the view or the catalog.
 
 import { de, cardName, contentName, contentText, isCurse, relicCounters, t } from '../i18n';
-import type { CardKind, CardView, DeckCard, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
+import type { CardKind, CardView, ConsumableInfo, DeckCard, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
 import { cardSvg } from './cards';
 import { attrs, esc } from './dom';
-import { goodSvg } from './goods';
+import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
 import { oddsLine } from './odds';
 import { bossPortraitId, portrait } from './people';
 import { changeText } from './score';
-import { coasterEmblem } from './shop';
 import type { UiState } from './state';
 
 /** A line of state under an effect text: on (it fired), off, or just a fact. */
@@ -132,19 +131,20 @@ function relicModel(
     key,
     title: contentName('relics', id),
     kind: `${label} · ${de.rarity[relic.rarity]}`,
-    art: `<span class="info-emblem rarity-${esc(relic.rarity)}">${coasterEmblem(relic.kind)}</span>`,
+    art: `<span class="info-emblem">${relicCoaster(relic, { size: 72 })}</span>`,
     facts: [],
     sections: [{ text: contentText('relics', id), status }],
     ...(actions ? { actions } : {}),
   };
 }
 
-function itemModel(key: string, id: string, extra: string, actions: string, schnaps = false): InfoModel {
+function itemModel(key: string, item: ConsumableInfo, extra: string, actions: string): InfoModel {
+  const id = item.id;
   return {
     key,
     title: contentName('consumables', id),
-    kind: schnaps ? de.shop.schnaps : de.info.kinds.item,
-    art: `<span class="info-good">${goodSvg(id, 56)}</span>`,
+    kind: item.category === 'Schnapps' ? de.shop.schnaps : de.info.kinds.item,
+    art: `<span class="info-emblem">${consumableCoaster(item, { size: 72 })}</span>`,
     facts: [],
     sections: [{ text: contentText('consumables', id), status: [] }],
     ...(extra ? { extra } : {}),
@@ -152,14 +152,14 @@ function itemModel(key: string, id: string, extra: string, actions: string, schn
   };
 }
 
-function bossModel(key: string, view: RunView, id: string, kind: string): InfoModel {
+function bossModel(key: string, view: RunView, id: string, kind: string, face = false): InfoModel {
   const boss = [view.series.boss, view.upcoming_boss, view.next_series?.boss, view.game?.boss_rule].find((b) => b?.id === id) ?? null;
   const facts = boss && boss.target_factor !== 1 && kind === de.info.kinds.boss ? [t(de.info.targetFactor, { factor: boss.target_factor.toLocaleString('de-DE') })] : [];
   return {
     key,
     title: contentName('bosses', id),
     kind,
-    art: portrait(bossPortraitId(id), 'portrait-sm'),
+    art: face ? portrait(bossPortraitId(id), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`,
     facts,
     sections: [{ text: contentText('bosses', id) || boss?.text || '', status: [] }],
   };
@@ -180,7 +180,7 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
     if (size !== undefined) facts.push(t(de.info.handSize, { n: size }));
   }
   if (person.isBoss && view.series.boss) {
-    const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss);
+    const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss, true);
     return { ...m, facts: [...m.facts, ...facts] };
   }
   const greet = person.guest ? `„${person.guest.greet}“` : '';
@@ -218,13 +218,13 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       const c = view.consumables.find((x) => x.slot === n);
       if (!c) return null;
       const use = c.can_use && !ui.busy ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot })}>${esc(de.shop.use)}</button>` : '';
-      return itemModel(key, c.consumable.id, '', use, c.consumable.category === 'Schnapps');
+      return itemModel(key, c.consumable, '', use);
     }
     case 'offer-item': {
       const o = view.shop?.consumables.find((x) => x?.slot === n);
       if (!o) return null;
       const buy = o.can_buy && !ui.busy ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot })}>${esc(t(de.shop.buy, { price: o.price }))}</button>` : '';
-      return itemModel(key, o.consumable.id, o.consumable.needs_target ? oddsLine(view.deal_odds) : '', buy, o.consumable.category === 'Schnapps');
+      return itemModel(key, o.consumable, o.consumable.needs_target ? oddsLine(view.deal_odds) : '', buy);
     }
     case 'seat':
       return n === 1 || n === 2 ? seatModel(key, view, n) : null;

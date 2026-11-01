@@ -13,7 +13,8 @@ import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { quipBubble, seatPerson } from './guests';
 import { schnapsNotes } from './hud';
-import { bossPortraitId, portrait } from './people';
+import { bossCoaster } from './emblems';
+import { portrait } from './people';
 import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
 
@@ -448,7 +449,7 @@ function ruleStrip(view: RunView, game: GameView): string {
   if (game.declaration?.game === 'Ramsch' && !laidOn) return '';
   const head = laidOn ? t(de.table.oldMan, { name: contentName('bosses', boss.id) }) : de.table.bossRule;
   return `<button class="rule-strip ${laidOn ? 'is-laid-on' : ''}" ${attrs({ 'data-action': 'info-rule', 'data-testid': 'boss-rule', 'data-info': `rule:${rule.id}` })}>
-    ${portrait(bossPortraitId(laidOn ? boss.id : rule.id), 'portrait-xs')}
+    ${bossCoaster(laidOn ? boss.id : rule.id, { size: 34 })}
     <span class="rule-head">${esc(head)}</span>
     <b class="rule-name">${esc(contentName('bosses', rule.id))}</b>
     <span class="rule-text">${esc(contentText('bosses', rule.id) || rule.text)}</span>
@@ -474,7 +475,7 @@ function countPanel(game: GameView): string {
 /** The Ramsch: nobody declared, everyone plays for himself. */
 function ramschBanner(game: GameView): string {
   if (game.declaration?.game !== 'Ramsch' || game.phase === 'Finished') return '';
-  return `<div class="ramsch-banner" data-testid="ramsch">${portrait('p-boss-ramscher', 'portrait-xs')}<div><b>${esc(de.table.ramschTitle)}</b> <span>${esc(de.table.ramschText)}</span></div></div>`;
+  return `<div class="ramsch-banner" data-testid="ramsch">${bossCoaster('ramscher', { size: 34 })}<div><b>${esc(de.table.ramschTitle)}</b> <span>${esc(de.table.ramschText)}</span></div></div>`;
 }
 
 /** "Letzte Runde": this game counts more (shown while declaring). */

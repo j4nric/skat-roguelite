@@ -765,16 +765,16 @@ button.card {
   text-align: right;
 }
 
-/* Relics as little paper cards, items and flags next to them: one row,
-   swiped sideways when it gets long. */
+/* Relics and items as beer mats, flags next to them: one row, swiped
+   sideways when it gets long. */
 .chips {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
-  height: 46px;
+  gap: 6px;
+  height: 48px;
   margin: 0 -12px;
-  padding: 2px 12px 6px;
+  padding: 2px 12px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -787,59 +787,35 @@ button.card {
 .coaster-chip {
   display: inline-flex;
   flex: none;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1px;
-  height: 38px;
-  padding: 0 8px 0 18px;
-  position: relative;
-  border: var(--edge) solid var(--line);
-  background: var(--card);
-  color: var(--card-ink);
-  box-shadow: var(--shadow-sm);
+  gap: 3px;
+  height: 44px;
+  padding: 0 4px 0 0;
+  border: 0;
+  background: none;
+  color: var(--text);
   font-family: var(--font-label);
-  font-size: var(--fs-s);
-  line-height: 0.8;
+  font-size: var(--fs-xs);
+  line-height: 0.85;
+  text-align: left;
   text-transform: uppercase;
-  white-space: nowrap;
   cursor: pointer;
-  transform: rotate(-1.5deg);
 }
 
-.coaster-chip:nth-child(even) {
-  transform: rotate(1.5deg);
-}
-
-/* A pixel mark for the rarity. */
-.coaster-chip::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  margin-top: -4px;
-  background: #8f969c;
-  box-shadow: 0 0 0 1px var(--line);
-}
-
-.rarity-Uncommon::before {
-  background: var(--cool);
-}
-
-.rarity-Rare::before {
-  background: var(--accent);
+.chip-name {
+  display: -webkit-box;
+  max-width: 78px;
+  overflow: hidden;
+  hyphens: auto;
+  overflow-wrap: break-word;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .coaster-chip small {
+  display: block;
   font-size: var(--fs-2xs);
-  color: #6f7479;
-}
-
-.coaster-chip.is-evening {
-  border-style: dashed;
-  background: #dcd9cf;
+  color: var(--muted);
 }
 
 .item-chip {
@@ -847,18 +823,19 @@ button.card {
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
-  box-shadow: var(--shadow-sm);
+  border: 0;
+  background: none;
   cursor: pointer;
 }
 
-.item-chip .good-svg {
-  width: 28px;
-  height: 28px;
+/* A beer mat (./ui/emblems.ts): crisp pixels, the shadow is drawn in. */
+.deckel {
+  display: block;
+  flex: none;
+  overflow: visible;
 }
 
 .flag-chip {
@@ -1149,8 +1126,8 @@ button.card {
   cursor: pointer;
 }
 
-.rule-strip .portrait,
-.ramsch-banner .portrait {
+.rule-strip .deckel,
+.ramsch-banner .deckel {
   grid-row: span 2;
 }
 
@@ -1997,13 +1974,6 @@ button.card {
   justify-content: center;
 }
 
-.info-pic .good-svg {
-  width: 96px;
-  height: 96px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
-}
-
 .odds {
   font-size: var(--fs-s);
   color: var(--cool);
@@ -2246,8 +2216,9 @@ button.card {
 .mini-coaster {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   min-height: 26px;
-  padding: 2px 6px;
+  padding: 1px 6px 1px 1px;
   border: 2px solid var(--line);
   background: var(--card);
   color: var(--card-ink);
@@ -2408,10 +2379,6 @@ button.card {
   line-height: 0;
 }
 
-.icon-coaster {
-  border: 2px solid var(--line);
-  background: var(--accent);
-}
 
 .icon-kontra {
   border: 2px solid var(--line);
@@ -2428,6 +2395,7 @@ button.card {
   background: var(--card);
 }
 
+.step-icon .deckel,
 .step-icon .portrait-xs {
   width: 20px;
   height: 20px;
@@ -3484,6 +3452,11 @@ button.card {
   box-shadow: var(--shadow);
 }
 
+.unlock-deckel {
+  position: relative;
+  display: flex;
+}
+
 .unlock-pic .portrait {
   position: relative;
 }
@@ -3699,20 +3672,7 @@ button.card {
 
 .coaster-emblem-wrap {
   display: inline-flex;
-  color: #8f969c;
-}
-
-.rarity-Uncommon .coaster-emblem-wrap {
-  color: #3f8a64;
-}
-
-.rarity-Rare .coaster-emblem-wrap {
-  color: var(--accent);
-}
-
-.coaster-emblem {
-  width: 30px;
-  height: 30px;
+  margin-top: -4px;
 }
 
 .coaster-name {
@@ -3814,9 +3774,8 @@ button.card {
   transform: translateX(-50%);
 }
 
-.good-pic .good-svg {
-  width: 52px;
-  height: 52px;
+.good-pic .deckel {
+  margin: 0 auto;
 }
 
 .good h4 {
@@ -3990,18 +3949,6 @@ button.card {
 
 .enc-coaster {
   display: inline-flex;
-  padding: 4px;
-  border: 2px solid var(--line);
-  background: var(--card);
-  color: #8f969c;
-}
-
-.enc-coaster.rarity-Uncommon {
-  color: #3f8a64;
-}
-
-.enc-coaster.rarity-Rare {
-  color: var(--accent);
 }
 
 .enc-body {
@@ -4147,12 +4094,18 @@ button.card {
   }
 
   .chips {
-    height: 42px;
+    height: 44px;
   }
 
   .coaster-chip,
   .item-chip {
-    height: 34px;
+    height: 40px;
+  }
+
+  .coaster-chip .deckel,
+  .item-chip .deckel {
+    width: 36px;
+    height: 36px;
   }
 
   .portrait-opp {
@@ -4896,25 +4849,13 @@ button.card {
 
 .info-emblem {
   display: inline-flex;
-  width: 56px;
-  height: 56px;
   align-items: center;
   justify-content: center;
-  border: var(--edge) solid var(--line);
-  background: var(--card);
-  color: var(--card-ink);
-  box-shadow: var(--shadow-sm);
 }
 
-.info-emblem .coaster-emblem {
-  width: 36px;
-  height: 36px;
-}
-
-.info-good img,
-.info-good svg {
-  width: 56px;
-  height: 56px;
+.is-popover .info-emblem .deckel {
+  width: 52px;
+  height: 52px;
 }
 
 .info-title {
@@ -5139,4 +5080,20 @@ button.card {
   .press-ring circle {
     animation-timing-function: steps(4);
   }
+}
+
+/* The boss intro names the boss's beer mat next to the portrait. */
+.boss-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tour-cell .deckel {
+  margin: -2px 0;
+}
+
+.next-boss .deckel {
+  margin-top: 2px;
 }

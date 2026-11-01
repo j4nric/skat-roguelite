@@ -651,13 +651,22 @@ export interface CardModEntry extends CatalogEntry {
 /** A relic in the catalog, with the run counters it reads or raises. */
 export interface RelicEntry extends CatalogEntry {
   counters?: string[];
+  /** Absent in an older core. */
+  kind?: RelicKind;
+  rarity?: Rarity;
+}
+
+/** A consumable in the catalog, with rarity and group (absent in an older core). */
+export interface ConsumableEntry extends CatalogEntry {
+  rarity?: Rarity;
+  category?: ConsumableCategory;
 }
 
 export interface Catalog {
   relics: Record<string, RelicEntry>;
   card_mods: Record<string, CardModEntry>;
   bosses: Record<string, CatalogEntry>;
-  consumables: Record<string, CatalogEntry>;
+  consumables: Record<string, ConsumableEntry>;
   characters: Record<string, CatalogEntry>;
   encounters: Record<string, CatalogEntry>;
   unlocks: Record<string, CatalogEntry>;

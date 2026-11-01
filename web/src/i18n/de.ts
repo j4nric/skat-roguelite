@@ -797,7 +797,7 @@ export const de = {
       card: 'Karte',
       cardMod: 'Kartenmodifikation',
       curse: 'Fluch',
-      item: 'Schnaps',
+      item: 'Gegenstand',
       guest: 'Stammgast',
       boss: 'Boss',
       bossRule: 'Boss-Regel dieses Spiels',

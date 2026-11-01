@@ -3,26 +3,14 @@
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
 import { de, contentName, contentText, t } from '../i18n';
-import type { ConsumableCategory, OwnedRelic, RelicInfo, RunView } from '../types';
-import { pixels } from './art';
+import type { ConsumableInfo, OwnedRelic, RelicInfo, RunView } from '../types';
 import { attrs, esc } from './dom';
-import { goodSvg } from './goods';
+import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
-import { bossPortraitId, portrait } from './people';
+import { portrait } from './people';
 
 function price(n: number): string {
   return `<span class="price">${coinIcon(16)}${esc(t(de.shop.price, { price: n }))}</span>`;
-}
-
-/** A paragraph sign, for house rules (8 × 8 pixels). */
-const PARAGRAPH = ['..####..', '.#......', '..###...', '.#...#..', '..###...', '.....#..', '.####...', '........'];
-/** A figure, for regulars (8 × 8 pixels). */
-const FIGURE = ['...##...', '..####..', '...##...', '.######.', '#.####.#', '..####..', '..#..#..', '..#..#..'];
-
-/** The printed mark of a relic card: a paragraph for house rules, a figure for regulars. */
-export function coasterEmblem(kind: RelicInfo['kind']): string {
-  const glyph = pixels(kind === 'HouseRule' ? PARAGRAPH : FIGURE, 2, 2, 1, 'currentColor');
-  return `<svg class="coaster-emblem" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h12v1h-12zM0 11h12v1h-12zM0 1h1v10h-1zM11 1h1v10h-1z" fill="currentColor"/>${glyph}</svg>`;
 }
 
 /**
@@ -42,7 +30,7 @@ export function coaster(
   return `<article class="coaster rarity-${esc(relic.rarity)} ${opts.extra ?? ''}">
     <button class="coaster-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
     ${opts.price === undefined ? '' : `<span class="price-tag">${price(opts.price)}</span>`}
-    <span class="coaster-emblem-wrap" title="${esc(kind)}">${coasterEmblem(relic.kind)}<span class="sr-only">${esc(kind)}</span></span>
+    <span class="coaster-emblem-wrap" title="${esc(kind)}">${relicCoaster(relic, { size: 52 })}<span class="sr-only">${esc(kind)}</span></span>
     <h4 class="coaster-name">${esc(name)}</h4>
     <p class="coaster-text">${esc(contentText('relics', relic.id))}</p>
     ${footer ? `<div class="coaster-foot">${footer}</div>` : ''}
@@ -58,14 +46,15 @@ function ownedCoaster(r: OwnedRelic, i: number): string {
   )}</div>`;
 }
 
-/** An item as a thing on the counter; tap the picture or name for the full text. */
-function good(id: string, more: Record<string, string | number>, footer: string, extra = '', category?: ConsumableCategory): string {
+/** An item as a beer mat on the counter; tap the picture or name for the full text. */
+function good(item: ConsumableInfo, more: Record<string, string | number>, footer: string, extra = ''): string {
+  const id = item.id;
   const name = contentName('consumables', id);
   const label = t(de.shop.moreAbout, { name });
-  const schnaps = category === 'Schnapps';
+  const schnaps = item.category === 'Schnapps';
   return `<article class="good ${extra} ${schnaps ? 'is-schnaps' : ''}">
     <button class="good-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
-    <div class="good-pic">${goodSvg(id, 56)}${schnaps ? `<span class="good-tag">${esc(de.shop.schnaps)}</span>` : ''}</div>
+    <div class="good-pic">${consumableCoaster(item, { size: 52 })}${schnaps ? `<span class="good-tag">${esc(de.shop.schnaps)}</span>` : ''}</div>
     <h4>${esc(name)}</h4>
     <p class="good-text">${esc(contentText('consumables', id))}</p>
     <div class="good-foot">${footer}</div>
@@ -79,7 +68,7 @@ function nextBoard(view: RunView): string {
   const where = t(next.is_boss ? de.shop.nextBoss : de.shop.nextSeries, { section: next.section + 1, series: next.index + 1 });
   const boss = next.boss ?? view.upcoming_boss;
   const bossBlock = boss
-    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}>${portrait(bossPortraitId(boss.id), 'portrait-sm')}<div>
+    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}>${bossCoaster(boss.id, { size: 48 })}<div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
         <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
         <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p></div></div>`
@@ -109,11 +98,9 @@ export function renderShop(view: RunView): string {
     .map((o) => {
       if (!o) return `<div class="good is-sold"><span>${esc(de.shop.soldOut)}</span></div>`;
       return good(
-        o.consumable.id,
+        o.consumable,
         { 'data-action': 'info-offer-item', 'data-slot': o.slot, 'data-info': `offer-item:${o.slot}` },
         `${price(o.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
-        '',
-        o.consumable.category,
       );
     })
     .join('');
@@ -121,12 +108,11 @@ export function renderShop(view: RunView): string {
   const items = view.consumables
     .map((c) =>
       good(
-        c.consumable.id,
+        c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
         `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
          <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
-        c.consumable.category,
       ),
     )
     .join('');
