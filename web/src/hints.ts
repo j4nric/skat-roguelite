@@ -31,7 +31,7 @@ export type HintAnchor = 'hud' | 'top' | 'end' | 'shop';
 /** What a hint may look at. */
 export interface HintContext {
   ui: UiState;
-  /** The player passed a game during this visit (event `Passed`). */
+  /** The player redealt (eingemischt) during this visit (event `Redealt`). */
   passed: boolean;
 }
 

@@ -22,15 +22,15 @@
     (
         id: "beer",
         name: "Ein Bier",
-        text: "Ein Pass mehr in dieser Serie.",
+        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie.",
         rarity: Common,
         price: 2,
-        action: ExtraPasses(1),
+        action: ExtraRedeals(1),
     ),
     (
         id: "new_deal",
         name: "Neues Blatt",
-        text: "Mischen und neu geben, ohne dass ein Spiel verbraucht wird.",
+        text: "Sofort neu mischen und geben, ohne dass es ein Einmischen kostet.",
         rarity: Uncommon,
         price: 4,
         action: Redeal,
@@ -56,10 +56,10 @@
     (
         id: "herbal",
         name: "Kräuter",
-        text: "Ein Pass mehr in dieser Serie.",
+        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie.",
         rarity: Common,
         price: 2,
-        action: ExtraPasses(1),
+        action: ExtraRedeals(1),
         category: Schnapps,
     ),
     (
@@ -78,6 +78,17 @@
         rarity: Uncommon,
         price: 3,
         action: ChalkCard,
+        category: Schnapps,
+    ),
+    // Neu am 01.11.2026 mit dem Einmischen (DESIGN 8.3). Preis und
+    // Seltenheit Platzhalter für `balance`.
+    (
+        id: "regret",
+        name: "Reue",
+        text: "Gleich nach dem Einmischen: Nimm es zurück. Das Blatt davor liegt wieder auf dem Tisch, und du spielst es. Das Einmischen bleibt verbraucht.",
+        rarity: Common,
+        price: 2,
+        action: UndoRedeal,
         category: Schnapps,
     ),
 ]

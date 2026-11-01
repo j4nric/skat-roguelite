@@ -2,8 +2,10 @@
 //!
 //! A run is a tour through sections (Skatabende). Each section has three
 //! series: two normal ones and a boss series. A series has a target
-//! (Zielwert), a game limit and a number of passes. Won games add their
-//! value to the series account, lost games subtract twice their value
+//! (Zielwert) and a game limit. Before declaring, the player may have each
+//! game dealt again a few times (einmischen, [`RunAction::Redeal`]) without
+//! using up a game; then one of the hands must be played. Won games add
+//! their value to the series account, lost games subtract twice their value
 //! including all relic modifiers. A series is won the moment the account
 //! reaches the target; the run is lost when the game limit is reached
 //! below the target. Between series the Tresen (shop) opens.
@@ -98,20 +100,26 @@ pub struct Series {
     pub target: u64,
     /// Series account.
     pub score: i64,
-    /// Games played or passed.
+    /// Games played (until 01.11.2026 also games passed).
     pub games_played: u32,
-    /// Spiellimit.
+    /// Spiellimit. A save from before the Einmischen rule keeps the limit
+    /// of its series (8) until that series ends.
     pub game_limit: u32,
-    /// Passes left.
-    pub passes_left: u32,
     /// Boss of a boss series.
     pub boss: Option<BossId>,
-    /// Redeals ("Schieben") used in this series.
+    /// Einmischen in this series, every redeal of a game counted (in saves
+    /// from before: the redeals of "Schieben"). Drives the rule rotation of
+    /// "Der Alte" and "Boss ohne Einmischen".
     #[serde(default)]
     pub redeals_used: u32,
-    /// Passes used in this series.
+    /// Einmischen of the current game's own allowance used so far
+    /// ([`Run::redeals_left`]); back to 0 with every new game.
     #[serde(default)]
-    pub passes_used: u32,
+    pub redeals_in_game: u32,
+    /// Einmischen left for the rest of the series from consumables ("Ein
+    /// Bier", "Kräuter"), used once the game's own are gone.
+    #[serde(default)]
+    pub extra_redeals: u32,
     /// Skat swaps ("Die Oma") used in this series.
     #[serde(default)]
     pub skat_swaps_used: u32,
@@ -164,9 +172,12 @@ pub struct GameRules {
     pub require_hand: bool,
     /// Who allows Kontra in this game, if anyone.
     pub kontra_source: Option<Source>,
-    /// Redeals ("Schieben") the content grants per series. Whether one is
-    /// left is [`Series::redeals_used`] against this.
-    pub series_redeals: u32,
+    /// Einmischen the content adds to every game ("Schieben", one per
+    /// [`Effect::ExtraRedeal`]), on top of `run.ron` and the character
+    /// ([`Content::redeals`]). Also read under its old name
+    /// `series_redeals`.
+    #[serde(alias = "series_redeals")]
+    pub extra_redeals: u32,
     /// Every game must be declared Ouvert ("Der Angeber").
     pub require_ouvert: bool,
     /// Cards of the defenders the player sees before declaring ("Der
@@ -280,6 +291,11 @@ pub struct ActiveGame {
     /// his cards are in `peeked` with this seat.
     #[serde(default)]
     pub shown_hand: Option<Seat>,
+    /// The deal before the last Einmischen of this game, kept for "Reue"
+    /// ([`ConsumableAction::UndoRedeal`]); its own `previous` is always
+    /// empty. `None` before the first Einmischen and after an undo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<Box<ActiveGame>>,
 }
 
 /// One choice of an encounter.
@@ -414,8 +430,10 @@ pub struct RunStats {
     pub games_won: u32,
     /// Games lost.
     pub games_lost: u32,
-    /// Games passed (eingepasst).
-    pub games_passed: u32,
+    /// Einmischen (games dealt again before the declaration). Also read
+    /// under its old name `games_passed` (games passed until 01.11.2026).
+    #[serde(alias = "games_passed")]
+    pub redeals: u32,
     /// Series won.
     pub series_won: u32,
     /// Highest Spielwert of a won game.
@@ -431,23 +449,25 @@ pub const fn sell_price(price: u32) -> u32 {
 /// A decision of the player.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunAction {
-    /// Einpassen: skip the dealt game. Costs a game of the limit and a
-    /// pass, no points.
-    Pass,
-    /// Have all hands and the skat dealt again before declaring, without
-    /// using up a game (house rule "Schieben", once per series). Also read
-    /// under its old name `RedrawSkat`.
-    #[serde(alias = "RedrawSkat")]
+    /// Einmischen: throw the dealt game in and have all hands and the skat
+    /// dealt again before declaring, without using up a game. Each game
+    /// allows [`Content::redeals`] of them (plus "Schieben"), then the
+    /// series' extras ("Ein Bier"); see [`Run::redeals_left`]. Also read
+    /// under the old names `RedrawSkat` and `Pass` (Einpassen, which cost a
+    /// game until 01.11.2026).
+    #[serde(alias = "RedrawSkat", alias = "Pass")]
     Redeal,
     /// Pick up the skat instead of declaring a hand game (Skatordnung, ADR
     /// 0011). Then two cards are discarded ([`RunAction::Discard`]) and the
-    /// game is declared ([`RunAction::Declare`]). Einpassen and Schieben are
-    /// no longer possible after it.
+    /// game is declared ([`RunAction::Declare`]). Einmischen is no longer
+    /// possible after it.
     PickUpSkat,
     /// Announce the game. With ten cards, before the skat is touched, only a
     /// hand game (Hand, Schneider or Schwarz angesagt, Ouvert; Null Hand,
     /// Null Ouvert Hand). After picking up the skat and discarding, only a
-    /// game without hand levels (Risikostufe `Normal`; Null or Null Ouvert).
+    /// game without the Hand level: `Normal`, Schneider or Schwarz angesagt,
+    /// Ouvert (ADR 0013); Null or Null Ouvert. The phase decides whether an
+    /// announcement is played from the hand ([`Declaration::with_hand`]).
     Declare(Declaration),
     /// Answer a Kontra: `true` = Re.
     AnswerKontra {
@@ -536,8 +556,10 @@ pub enum RunEvent<G = Event<DealtCard>> {
         target: u64,
         /// Spiellimit.
         game_limit: u32,
-        /// Passes.
-        passes: u32,
+        /// Einmischen per game of the character, without relics. Also read
+        /// under its old name `passes` (passes per series).
+        #[serde(alias = "passes")]
+        redeals: u32,
         /// Boss of a boss series.
         boss: Option<BossId>,
     },
@@ -550,11 +572,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// An event of the game in progress.
     Game(G),
-    /// The player passed.
-    Passed {
-        /// Passes left.
-        passes_left: u32,
-    },
     /// A defender said Kontra.
     Kontra {
         /// Who said it.
@@ -602,9 +619,10 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The boss of a boss series.
         #[serde(default)]
         boss: Option<BossId>,
-        /// Passes used in the series.
-        #[serde(default)]
-        passes_used: u32,
+        /// Einmischen in the series. Also read under its old name
+        /// `passes_used`.
+        #[serde(default, alias = "passes_used")]
+        redeals_used: u32,
         /// Games left when the series was won.
         #[serde(default)]
         games_left: u32,
@@ -658,16 +676,23 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// The deck changed.
     DeckChanged(DeckChange),
-    /// Passes were added to the series.
-    PassesAdded {
-        /// Passes added.
-        passes: u32,
-        /// Passes left now.
-        passes_left: u32,
+    /// Einmischen were added to the series ("Ein Bier", "Kräuter"). Also
+    /// read under its old name `PassesAdded`.
+    #[serde(alias = "PassesAdded")]
+    RedealsAdded {
+        /// Einmischen added.
+        #[serde(alias = "passes")]
+        redeals: u32,
+        /// Einmischen left now ([`Run::redeals_left`]).
+        #[serde(alias = "passes_left")]
+        redeals_left: u32,
     },
-    /// The game was thrown in and dealt again (consumable "Neues Blatt" or
-    /// house rule "Schieben").
+    /// The game was thrown in and dealt again: Einmischen, or the
+    /// consumable "Neues Blatt".
     Redealt,
+    /// "Reue": the last Einmischen was taken back; the deal before it is
+    /// on the table again.
+    RedealUndone,
     /// "Der Kiebitz" showed the player a defender's card.
     CardPeeked {
         /// The card.
@@ -750,7 +775,9 @@ pub enum RunError {
     WrongPhase,
     /// The game rejected the action.
     Game(GameError<DealtCard>),
-    /// No passes left in this series.
+    /// No passes left in this series. Never returned since Einmischen
+    /// replaced passing (01.11.2026); kept so that the error codes stay
+    /// stable.
     NoPassesLeft,
     /// The boss demands a hand game.
     HandRequired,
@@ -758,7 +785,7 @@ pub enum RunError {
     /// character may declare Null); kept so that the error codes stay
     /// stable.
     NullNotAvailable,
-    /// No redeal ("Schieben") left in this series.
+    /// No Einmischen left in this game.
     NoRedealLeft,
     /// Kontra must be answered first.
     AwaitingKontraAnswer,
@@ -791,7 +818,7 @@ pub enum RunError {
     NoSkatSwapLeft,
     /// No matching card lies in the skat.
     NothingToTake,
-    /// The Ramsch of the series cannot be passed or dealt again.
+    /// The Ramsch of the series cannot be dealt again.
     RamschRequired,
     /// A defender is to move: advance the AI ([`Run::advance_ai`]) before
     /// the player acts again.
@@ -802,6 +829,8 @@ pub enum RunError {
     /// The rest of the game can still change its score
     /// ([`RunAction::SettleGame`]).
     NotDecided,
+    /// "Reue": there is no Einmischen of this game to take back.
+    NoRedealToUndo,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -812,13 +841,14 @@ pub enum RunError {
 pub enum RunErrorCode {
     /// The action does not fit the current phase of the run.
     WrongPhase,
-    /// No passes left in this series.
+    /// No passes left (never since Einmischen replaced passing, kept for
+    /// stable codes).
     NoPassesLeft,
     /// The boss demands a hand game.
     HandRequired,
     /// Null is not available (never since ADR 0012, kept for stable codes).
     NullNotAvailable,
-    /// No redeal ("Schieben") left.
+    /// No Einmischen left in this game.
     NoRedealLeft,
     /// Kontra must be answered first.
     AwaitingKontraAnswer,
@@ -877,7 +907,7 @@ pub enum RunErrorCode {
     NothingToTake,
     /// The skat cannot be swapped with now.
     InvalidSkatSwap,
-    /// The Ramsch cannot be passed or dealt again.
+    /// The Ramsch cannot be dealt again.
     RamschRequired,
     /// The card must not be discarded ("Ramponiert").
     DiscardForbidden,
@@ -888,6 +918,8 @@ pub enum RunErrorCode {
     /// The rest of the game can still change its score; it cannot be
     /// settled ([`RunAction::SettleGame`]).
     NotDecided,
+    /// "Reue": no Einmischen of this game to take back.
+    NoRedealToUndo,
 }
 
 impl RunErrorCode {
@@ -933,6 +965,7 @@ impl RunErrorCode {
             RunErrorCode::AiToMove => "AiToMove",
             RunErrorCode::CannotChalk => "CannotChalk",
             RunErrorCode::NotDecided => "NotDecided",
+            RunErrorCode::NoRedealToUndo => "NoRedealToUndo",
         }
     }
 }
@@ -984,6 +1017,7 @@ impl RunError {
             RunError::AiToMove => RunErrorCode::AiToMove,
             RunError::CannotChalk => RunErrorCode::CannotChalk,
             RunError::NotDecided => RunErrorCode::NotDecided,
+            RunError::NoRedealToUndo => RunErrorCode::NoRedealToUndo,
         }
     }
 }
@@ -996,7 +1030,7 @@ impl fmt::Display for RunError {
             RunError::NoPassesLeft => f.write_str("no passes left in this series"),
             RunError::HandRequired => f.write_str("the boss demands a hand game"),
             RunError::NullNotAvailable => f.write_str("the declarer does not play Null"),
-            RunError::NoRedealLeft => f.write_str("no redeal left in this series"),
+            RunError::NoRedealLeft => f.write_str("no Einmischen left in this game"),
             RunError::AwaitingKontraAnswer => f.write_str("Kontra must be answered first"),
             RunError::NoKontra => f.write_str("there is no Kontra to answer"),
             RunError::UnknownCard(id) => write!(f, "no card with id {id} in hand"),
@@ -1016,6 +1050,7 @@ impl fmt::Display for RunError {
             RunError::AiToMove => f.write_str("a defender is to move"),
             RunError::CannotChalk => f.write_str("this card cannot be repainted into this suit"),
             RunError::NotDecided => f.write_str("the rest of the game is not decided"),
+            RunError::NoRedealToUndo => f.write_str("no Einmischen to take back"),
         }
     }
 }
@@ -1196,10 +1231,10 @@ impl Run {
                 score: 0,
                 games_played: 0,
                 game_limit: 0,
-                passes_left: 0,
                 boss: None,
                 redeals_used: 0,
-                passes_used: 0,
+                redeals_in_game: 0,
+                extra_redeals: 0,
                 skat_swaps_used: 0,
                 skat_swaps_taken: Vec::new(),
                 ramsch_played: false,
@@ -1530,8 +1565,7 @@ impl Run {
             return Err(RunError::AiToMove);
         }
         match action {
-            RunAction::Pass => self.pass(content, events),
-            RunAction::Redeal => self.redeal_series(content, events),
+            RunAction::Redeal => self.redeal_action(content, events),
             RunAction::PickUpSkat => self.pick_up_skat(events),
             RunAction::Declare(declaration) => self.declare(content, declaration, events),
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
@@ -1572,41 +1606,55 @@ impl Run {
         Ok(active)
     }
 
-    fn pass(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        self.declaring()?;
-        if self.series.passes_left == 0 {
-            return Err(RunError::NoPassesLeft);
-        }
-        self.series.passes_left -= 1;
-        self.series.passes_used += 1;
-        self.series.games_played += 1;
-        self.stats.games_passed += 1;
-        events.push(RunEvent::Passed {
-            passes_left: self.series.passes_left,
-        });
-        self.after_game(content, events)
-    }
-
-    /// House rule "Schieben": deal the game again, once per series.
-    fn redeal_series(
+    /// Einmischen ([`RunAction::Redeal`]): one of the game's own first,
+    /// then one of the series' extras ("Ein Bier").
+    fn redeal_action(
         &mut self,
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         self.declaring()?;
-        if self.redeals_left() == 0 {
+        let own_left = self
+            .redeal_allowance(content)
+            .saturating_sub(self.series.redeals_in_game);
+        if own_left > 0 {
+            self.series.redeals_in_game += 1;
+        } else if self.series.extra_redeals > 0 {
+            self.series.extra_redeals -= 1;
+        } else {
             return Err(RunError::NoRedealLeft);
         }
-        self.series.redeals_used += 1;
         self.redeal(content, events)
     }
 
     /// Throw the dealt game in and deal it again before the declaration,
-    /// without using up a game. The forehand stays.
+    /// without using up a game (Einmischen, "Neues Blatt"). The forehand
+    /// stays. The deal thrown in is kept for "Reue"; every redeal counts
+    /// for the series (rule rotation of "Der Alte").
     fn redeal(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         self.declaring()?;
+        let previous = self.game.take().map(|mut active| {
+            active.previous = None;
+            Box::new(active)
+        });
+        self.series.redeals_used += 1;
+        self.stats.redeals += 1;
         events.push(RunEvent::Redealt);
-        self.deal(content, false, events)
+        self.deal(content, false, events)?;
+        if let Some(active) = self.game.as_mut() {
+            active.previous = previous;
+        }
+        Ok(())
+    }
+
+    /// "Reue": the deal before the last Einmischen comes back as it was
+    /// (hands, skat, what the player was shown). The Einmischen stays used.
+    fn undo_redeal(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let active = self.declaring()?;
+        let previous = active.previous.take().ok_or(RunError::NoRedealToUndo)?;
+        self.game = Some(*previous);
+        events.push(RunEvent::RedealUndone);
+        Ok(())
     }
 
     /// Pick up the skat (ADR 0011). Not if the boss demands a hand game.
@@ -1914,7 +1962,13 @@ impl Run {
             })
             .collect();
         let n = u32::try_from(rules.len()).ok().filter(|&n| n > 0)?;
-        let i = usize::try_from(self.series.games_played % n).unwrap_or(0);
+        // Every deal counts, also one dealt again (Einmischen), as passes
+        // did before.
+        let deals = self
+            .series
+            .games_played
+            .saturating_add(self.series.redeals_used);
+        let i = usize::try_from(deals % n).unwrap_or(0);
         rules.get(i).map(|id| (*id).clone())
     }
 
@@ -2069,8 +2123,8 @@ impl Run {
                     active.rules.kontra_source = Some(source.clone());
                 }
             }
-            Effect::SeriesRedeal => {
-                active.rules.series_redeals = active.rules.series_redeals.max(1)
+            Effect::ExtraRedeal => {
+                active.rules.extra_redeals = active.rules.extra_redeals.saturating_add(1);
             }
             Effect::Concede => {
                 if active.game.phase() == Phase::Playing && active.game.current_trick().is_empty() {
@@ -2196,10 +2250,10 @@ impl Run {
             score: 0,
             games_played: 0,
             game_limit: config.game_limit,
-            passes_left: content.passes(self.character),
             boss: boss.clone(),
             redeals_used: 0,
-            passes_used: 0,
+            redeals_in_game: 0,
+            extra_redeals: 0,
             skat_swaps_used: 0,
             skat_swaps_taken: Vec::new(),
             ramsch_played: false,
@@ -2213,7 +2267,7 @@ impl Run {
             index,
             target,
             game_limit: config.game_limit,
-            passes: content.passes(self.character),
+            redeals: content.redeals(self.character),
             boss,
         });
         self.deal(content, true, events)
@@ -2236,6 +2290,7 @@ impl Run {
             Seat::from_index(usize::try_from(rotation % 3).unwrap_or(0)).unwrap_or(Seat::DECLARER);
         if rotate {
             self.games_dealt += 1;
+            self.series.redeals_in_game = 0;
         }
         let global = self.sources(content, false);
         let resolved = resolve_deck(&self.deck, content, &global);
@@ -2322,6 +2377,7 @@ impl Run {
             chalked: Vec::new(),
             single_loss: None,
             shown_hand: None,
+            previous: None,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -2431,7 +2487,7 @@ impl Run {
         self.after_game(content, events)
     }
 
-    /// After a game was scored or passed: series won, run lost or next deal.
+    /// After a game was scored: series won, run lost or next deal.
     fn after_game(
         &mut self,
         content: &Content,
@@ -2486,7 +2542,7 @@ impl Run {
             payout,
             coins: self.coins,
             boss: self.series.boss.clone(),
-            passes_used: self.series.passes_used,
+            redeals_used: self.series.redeals_used,
             games_left,
         });
         self.fire(content, Stage::OnSeriesWon, None, None, events);
@@ -2816,17 +2872,18 @@ impl Run {
                 };
                 self.attach_mod(content, target, card_mod, events)?;
             }
-            ConsumableAction::ExtraPasses(n) => {
+            ConsumableAction::ExtraRedeals(n) => {
                 if self.phase != RunPhase::Game {
                     return Err(RunError::WrongPhase);
                 }
-                self.series.passes_left = self.series.passes_left.saturating_add(*n);
-                events.push(RunEvent::PassesAdded {
-                    passes: *n,
-                    passes_left: self.series.passes_left,
+                self.series.extra_redeals = self.series.extra_redeals.saturating_add(*n);
+                events.push(RunEvent::RedealsAdded {
+                    redeals: *n,
+                    redeals_left: self.redeals_left(content),
                 });
             }
             ConsumableAction::Redeal => self.redeal(content, events)?,
+            ConsumableAction::UndoRedeal => self.undo_redeal(events)?,
             ConsumableAction::PeekSkat => self.peek_skat(events)?,
             ConsumableAction::NextGame(effect) => {
                 let before_declaration = self.phase == RunPhase::Shop
@@ -3213,14 +3270,27 @@ impl Run {
         self.game.as_ref().is_some_and(|a| a.awaiting_re)
     }
 
-    /// Redeals ("Schieben") left in the current series.
+    /// Einmischen each game of the series allows, for the game in
+    /// progress: `run.ron` and the character ([`Content::redeals`]) plus
+    /// one per "Schieben" in force ([`GameRules::extra_redeals`]).
+    fn redeal_allowance(&self, content: &Content) -> u32 {
+        let extra = self.game.as_ref().map_or(0, |a| a.rules.extra_redeals);
+        content.redeals(self.character).saturating_add(extra)
+    }
+
+    /// Einmischen left now: what the game in progress still allows of its
+    /// own, plus the extras of the series ("Ein Bier", "Kräuter"). 0
+    /// without a game. Whether one may be used right now (only with ten
+    /// cards before the skat, never in the Ramsch) is
+    /// [`Run::accepts`]`(`[`RunAction::Redeal`]`)`.
     #[must_use]
-    pub fn redeals_left(&self) -> u32 {
-        self.game.as_ref().map_or(0, |a| {
-            a.rules
-                .series_redeals
-                .saturating_sub(self.series.redeals_used)
-        })
+    pub fn redeals_left(&self, content: &Content) -> u32 {
+        if self.game.is_none() {
+            return 0;
+        }
+        self.redeal_allowance(content)
+            .saturating_sub(self.series.redeals_in_game)
+            .saturating_add(self.series.extra_redeals)
     }
 }
 

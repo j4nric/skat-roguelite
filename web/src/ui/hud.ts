@@ -1,5 +1,5 @@
 // Head of the run screen: where we are in the tour, Groschen and the menu;
-// a slate panel with account and target, games and passes left as pips;
+// a slate panel with account and target, games and Einmischen left as pips;
 // the collected relics and items as beer mats (./emblems.ts) in one row.
 
 import { de, contentName, t } from '../i18n';
@@ -101,7 +101,7 @@ export function renderHud(view: RunView): string {
     </div>
     <div class="hud-counts">
       <div class="count-row" aria-label="${esc(t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }))}"><span class="count-label">${esc(de.header.games)}</span><span class="pips">${pips(s.games_left, s.game_limit, 'pip-game')}</span><b data-testid="games-left" class="sr-only">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>
-      <div class="count-row" aria-label="${esc(t(de.header.passesAria, { left: s.passes_left }))}"><span class="count-label">${esc(de.header.passes)}</span><span class="pips">${pips(s.passes_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num">${esc(s.passes_left)}</b></div>
+      <div class="count-row" aria-label="${esc(t(de.header.passesAria, { left: s.redeals_left }))}"><span class="count-label">${esc(de.header.passes)}</span><span class="pips">${pips(s.redeals_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num">${esc(s.redeals_left)}</b></div>
     </div>
   </div>
   ${chips ? `<div class="chips">${chips}</div>` : ''}

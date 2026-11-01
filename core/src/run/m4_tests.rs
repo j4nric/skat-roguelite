@@ -463,7 +463,7 @@ fn the_ramscher_makes_the_first_game_a_ramsch() {
     let game = &run.game().expect("game").game;
     assert_eq!(game.declaration(), Some(Declaration::Ramsch));
     assert_eq!(
-        run.apply(&content, RunAction::Pass),
+        run.apply(&content, RunAction::Redeal),
         Err(RunError::RamschRequired)
     );
     let mut scored = None;

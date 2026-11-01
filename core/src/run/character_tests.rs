@@ -168,11 +168,15 @@ fn grand_player_levels_never_drop_below_one() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn onlooker_sees_the_left_hand_and_has_two_passes_fewer() {
+fn onlooker_sees_the_left_hand_and_redeals_once_fewer_per_game() {
     let content = content();
     let run = character_run(&content, Character::Onlooker);
-    assert_eq!(content.passes(Character::Onlooker), content.run.passes - 2);
-    assert_eq!(run.series().passes_left, content.run.passes - 2);
+    assert_eq!(
+        content.redeals(Character::Onlooker),
+        content.run.redeals - 1
+    );
+    assert_eq!(content.redeals(Character::Onlooker), 1);
+    assert_eq!(run.redeals_left(&content), content.run.redeals - 1);
     let left = Seat::DEFENDERS[0];
     let active = run.game().expect("game");
     assert_eq!(active.shown_hand, Some(left));
@@ -191,19 +195,19 @@ fn onlooker_sees_the_left_hand_and_has_two_passes_fewer() {
     assert_eq!(shown, hand);
     assert!(game.revealed.iter().all(|r| r.holder == Some(left)));
     let next = view.next_series.expect("next series");
-    assert_eq!(next.passes, content.run.passes - 2);
-    // The other characters keep every pass and see nothing.
+    assert_eq!(next.redeals, content.run.redeals - 1);
+    // The other characters keep every Einmischen and see nothing.
     let plain = character_run(&content, Character::Declarer);
-    assert_eq!(plain.series().passes_left, content.run.passes);
+    assert_eq!(plain.redeals_left(&content), content.run.redeals);
     assert!(plain.game().expect("game").peeked.is_empty());
 }
 
 #[test]
-fn onlooker_passes_never_drop_below_zero() {
+fn onlooker_redeals_never_drop_below_zero() {
     let mut content = content();
-    content.run.passes = 1;
-    assert_eq!(content.passes(Character::Onlooker), 0);
-    assert_eq!(content.passes(Character::Declarer), 1);
+    content.run.redeals = 0;
+    assert_eq!(content.redeals(Character::Onlooker), 0);
+    assert_eq!(content.redeals(Character::Declarer), 0);
 }
 
 #[test]
@@ -332,7 +336,7 @@ fn series_won(coins: u32, boss: Option<&str>) -> RunEvent {
         },
         coins,
         boss: boss.map(BossId::new),
-        passes_used: 1,
+        redeals_used: 1,
         games_left: 0,
     }
 }
@@ -386,11 +390,11 @@ fn grand_player_unlocks_with_a_big_grand_schneider() {
         }
     };
     let mut meta = MetaState::new();
-    // mit 1, Spiel 2, Schneider 3: 72, too small.
-    meta.observe(&content, &[scored(1)]);
+    // mit 3, Spiel 4, Schneider 5: 120, too small.
+    meta.observe(&content, &[scored(3)]);
     assert!(!meta.character_unlocked(&content, Character::GrandPlayer));
-    // mit 2, Spiel 3, Schneider 4: 96.
-    meta.observe(&content, &[scored(2)]);
+    // mit 4, Spiel 5, Schneider 6: 144.
+    meta.observe(&content, &[scored(4)]);
     assert!(meta.character_unlocked(&content, Character::GrandPlayer));
 }
 

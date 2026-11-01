@@ -481,8 +481,8 @@ fn a_short_evening_counts_for_unlocks_but_not_run_wins_and_its_own_statistics() 
             section: 2,
             index: 0,
             target: 48,
-            game_limit: 8,
-            passes: 6,
+            game_limit: 3,
+            redeals: 2,
             boss: None,
         },
         RunEvent::RunWon {

@@ -469,13 +469,18 @@ impl MetaState {
                 section + 1 >= *n
             }
             (
-                UnlockCondition::BeatBoss { boss, without_pass },
+                UnlockCondition::BeatBoss {
+                    boss,
+                    without_redeal,
+                },
                 RunEvent::SeriesWon {
                     boss: Some(beaten),
-                    passes_used,
+                    redeals_used,
                     ..
                 },
-            ) => boss.as_ref().is_none_or(|b| b == beaten) && (!without_pass || *passes_used == 0),
+            ) => {
+                boss.as_ref().is_none_or(|b| b == beaten) && (!without_redeal || *redeals_used == 0)
+            }
             (
                 UnlockCondition::WinSeriesWithGamesLeft(n),
                 RunEvent::SeriesWon { games_left, .. },
@@ -612,7 +617,7 @@ fn won_game(
         && trump_game
         && game.is_none_or(|g| declaration.game() == g)
         && (!schneider || breakdown.schneider)
-        && min_risk.is_none_or(|m| declaration.risk().is_some_and(|r| r >= m))
+        && min_risk.is_none_or(|m| declaration.risk_at_least(m))
         && breakdown.value >= min_value
 }
 

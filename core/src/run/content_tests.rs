@@ -167,10 +167,10 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["fresh_deck", "ink_pad", "beer", "new_deal"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Calibrated in docs/balance/2026-11-01-m5-v1.md (v1, PIMC player).
-    assert_eq!(content.run.targets[0], (36, 44, 54));
-    assert_eq!(content.run.targets[4], (60, 66, 72));
-    assert_eq!((content.run.game_limit, content.run.passes), (8, 6));
+    // Provisional curve for series of 3 games (DESIGN 5.2, 01.11.2026).
+    assert_eq!(content.run.targets[0], (24, 30, 36));
+    assert_eq!(content.run.targets[4], (48, 54, 60));
+    assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
 // ---------------------------------------------------------------------------
@@ -340,14 +340,16 @@ fn ouvert_bonus_adds_a_second_ouvert_level() {
 }
 
 #[test]
-fn skat_redraw_deals_again_once_per_series() {
+fn skat_redraw_adds_one_einmischen_to_every_game() {
     let content = content();
+    let own = content.redeals(crate::content::Character::Declarer);
     let start = RunStart {
         relics: vec![RelicId::new("skat_redraw")],
         ..RunStart::default()
     };
     let (mut run, _) = Run::new_with(&content, 11, &start).expect("start");
-    assert_eq!(run.redeals_left(), 1);
+    assert_eq!(run.game().expect("game").rules.extra_redeals, 1);
+    assert_eq!(run.redeals_left(&content), own + 1);
     let before = run.game().expect("game").game.clone();
     let events = run.apply(&content, RunAction::Redeal).expect("redeal");
     assert_eq!(events[0], RunEvent::Redealt);
@@ -358,17 +360,18 @@ fn skat_redraw_deals_again_once_per_series() {
     let after = &run.game().expect("game").game;
     assert_ne!(after.hand(Seat::DECLARER), before.hand(Seat::DECLARER));
     assert_eq!(run.series().games_played, 0, "no game used up");
-    assert_eq!(run.series().passes_left, content.run.passes);
-    assert_eq!(run.redeals_left(), 0);
+    assert_eq!(run.redeals_left(&content), own);
+    for _ in 0..own {
+        run.apply(&content, RunAction::Redeal).expect("redeal");
+    }
+    assert_eq!(run.redeals_left(&content), 0);
     assert_eq!(
         run.apply(&content, RunAction::Redeal),
         Err(RunError::NoRedealLeft)
     );
-    // The next game of the same series has none left; a new series has one.
-    run.apply(&content, RunAction::Pass).expect("pass");
-    assert_eq!(run.redeals_left(), 0);
-    run.series.redeals_used = 0;
-    assert_eq!(run.redeals_left(), 1);
+    // A new game has all of them again.
+    run.series.redeals_in_game = 0;
+    assert_eq!(run.redeals_left(&content), own + 1);
     // Only before the declaration, and the old action name still works.
     let action: RunAction = ron::from_str("RedrawSkat").expect("old name");
     assert_eq!(action, RunAction::Redeal);
@@ -381,9 +384,12 @@ fn skat_redraw_deals_again_once_per_series() {
         run.apply(&content, RunAction::Redeal),
         Err(RunError::WrongPhase)
     );
-    // Without the house rule there is no redeal.
+    // Without the house rule the game has the Einmischen of run.ron.
     let run = relic_run(&content, &[]);
-    assert_eq!(run.redeals_left(), 0);
+    assert_eq!(run.redeals_left(&content), own);
+    // A save from before (`SeriesRedeal`, `series_redeals`) reads the same.
+    let effect: crate::content::Effect = ron::from_str("SeriesRedeal").expect("old effect");
+    assert_eq!(effect, crate::content::Effect::ExtraRedeal);
 }
 
 #[test]
@@ -933,6 +939,7 @@ fn lucky_streak_doubles_from_the_third_win_in_a_row_until_a_loss() {
     let content = content();
     let mut run = relic_run(&content, &["lucky_streak"]);
     run.series.target = 1_000_000;
+    run.series.game_limit = 100;
     let mut doubled = Vec::new();
     for _ in 0..3 {
         fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);

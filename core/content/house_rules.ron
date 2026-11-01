@@ -30,7 +30,7 @@
         price: 9,
         hooks: [
             OnScore(when: Lost, then: [SetFlag("bock")]),
-            // Erst beim Ansagen verbraucht, damit Einpassen den Bock nicht verschenkt.
+            // Erst beim Ansagen verbraucht, damit Einmischen den Bock nicht verschenkt.
             OnDeclare(when: Flag("bock"), then: [MultiplyBaseValue(2), ClearFlag("bock")]),
         ],
     ),
@@ -80,11 +80,12 @@
     (
         id: "skat_redraw",
         name: "Schieben",
-        text: "Einmal pro Serie darfst du vor der Ansage neu geben lassen: Alle Hände und der Skat werden neu gemischt, ohne dass ein Spiel verbraucht wird.",
+        text: "In jedem Spiel darfst du einmal mehr einmischen.",
         rarity: Common,
         price: 8,
         // DESIGN 8.1: neu geben statt Skat neu ziehen, Begründung dort.
-        passive: [SeriesRedeal],
+        // Seit dem Einmischen (01.11.2026) ein Einmischen mehr pro Spiel.
+        passive: [ExtraRedeal],
     ),
     (
         id: "virgin",
@@ -192,7 +193,7 @@
         focus: Null,
         kind: Regular,
         name: "Der Angeber",
-        text: "Du musst immer offen spielen: Farbe und Grand nur Ouvert Hand, sonst Null Ouvert. Dafür zählt Null Ouvert eine Gewinnstufe mehr.",
+        text: "Du musst immer offen spielen: Farbe und Grand nur Ouvert, sonst Null Ouvert. Dafür zählt Null Ouvert eine Gewinnstufe mehr.",
         rarity: Rare,
         price: 6,
         passive: [RequireOuvert],
@@ -294,8 +295,8 @@
         ],
     ),
     // Lever Spielwert ×2 (multiplicative): from the third won game in a
-    // row, every won game counts double until a game is lost. Passing does
-    // not break the streak. Hook order matters: the doubling looks at the
+    // row, every won game counts double until a game is lost. Einmischen
+    // does not break the streak. Hook order matters: the doubling looks at the
     // flags of the games before.
     (
         id: "lucky_streak",

@@ -893,7 +893,13 @@ export class App {
       if (typeof ev === 'string') {
         if (ev === 'Re') this.showToast(de.toast.re);
         if (ev === 'Redealt') {
-          this.showToast(de.toast.redealt);
+          this.passedOnce = true;
+          this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
+          reshuffle();
+          this.afterRender.push(() => this.dealEffect());
+        }
+        if (ev === 'RedealUndone') {
+          this.showToast(de.toast.redealUndone);
           reshuffle();
           this.afterRender.push(() => this.dealEffect());
         }
@@ -963,13 +969,8 @@ export class App {
         await this.pause(DELAY.notice);
         continue;
       }
-      if ('Passed' in ev) {
-        this.passedOnce = true;
-        this.showToast(t(de.toast.passed, { left: ev.Passed.passes_left }));
-        continue;
-      }
-      if ('PassesAdded' in ev) {
-        this.showToast(t(de.toast.passesAdded, { left: ev.PassesAdded.passes_left }));
+      if ('RedealsAdded' in ev) {
+        this.showToast(t(de.toast.passesAdded, { left: ev.RedealsAdded.redeals_left }));
         continue;
       }
       if ('ConsumableUsed' in ev) {
@@ -1775,10 +1776,8 @@ export class App {
         this.render();
         return;
       case 'pass':
+        // Einmischen (deck tap fallback; the button keeps its old action name).
         this.ui.mixArmed = false;
-        void this.act('Pass');
-        return;
-      case 'redraw':
         void this.act('Redeal');
         return;
       case 're':
@@ -1868,9 +1867,9 @@ export class App {
     const kind = el.dataset.drag;
     const where = zone?.dataset.drop;
     if (kind === 'deck') {
-      if (where === 'mix' && this.ui.view.game.declare?.can_pass) {
+      if (where === 'mix' && this.ui.view.game.declare?.can_redeal) {
         this.ui.mixArmed = false;
-        void this.act('Pass');
+        void this.act('Redeal');
       }
       return;
     }

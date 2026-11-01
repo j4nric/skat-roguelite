@@ -44,7 +44,9 @@ fn stepwise(
             assert_eq!(view.ai_to_move, Some(seat));
             assert!(view.game.is_some_and(|g| !g.your_turn));
             // Nothing the player does is accepted while the AI is to move.
-            let probe = RunBot.next_action(&run, content).unwrap_or(RunAction::Pass);
+            let probe = RunBot
+                .next_action(&run, content)
+                .unwrap_or(RunAction::Redeal);
             assert_eq!(
                 run.clone().apply_step(content, probe.clone()),
                 Err(RunError::AiToMove)
