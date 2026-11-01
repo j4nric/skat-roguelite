@@ -8,7 +8,7 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 |---|---|---|
 | 0001 | ADRs verwenden | Angenommen |
 | 0002 | Der Spieler ist immer Alleinspieler | Angenommen |
-| 0003 | Null ist ein eigener Charakter | Angenommen |
+| 0003 | Null ist ein eigener Charakter | Ersetzt durch 0012 |
 | 0004 | Rust-Kern, Godot-Frontend | Teilweise ersetzt durch 0009 |
 | 0005 | Ein geteiltes Blatt für alle drei Spieler | Angenommen |
 | 0006 | Reizen wird durch die Ansage ersetzt | Angenommen, Reihenfolge geändert durch 0011 |
@@ -17,3 +17,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0009 | Web-Frontend mit WebAssembly-Kern statt Godot | Angenommen |
 | 0010 | Deutsches Blatt in der Darstellung | Angenommen |
 | 0011 | Erst der Skat, dann die Ansage | Angenommen |
+| 0012 | Null für alle, Nullspieler als Spezialist | Angenommen |

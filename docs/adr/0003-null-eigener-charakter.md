@@ -1,6 +1,6 @@
 # 0003: Null ist ein eigener Charakter
 
-Datum: 2026-10-31 · Status: Angenommen
+Datum: 2026-10-31 · Status: Ersetzt durch 0012
 
 ## Kontext
 
