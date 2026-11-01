@@ -44,7 +44,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Alleinspieler | `declarer` | Immer der menschliche Spieler |
 | Gegenspieler | `defender` | Die zwei KI-Spieler |
 | Reizen | entfällt | Ersetzt durch Ansage, siehe ADR 0006 |
-| Ansage | `Declaration` | Enum: `Suit { suit, risk }`, `Grand { risk }`, `Null { risk: NullRisk }`, `Ramsch`. Ungültige Kombinationen gibt es nicht; JSON-Form `{game, risk}` |
+| Ansage | `Declaration` | Enum: `Suit { suit, risk, hand }`, `Grand { risk, hand }`, `Null { risk: NullRisk }`, `Ramsch`. Ungültige Kombinationen gibt es nicht; JSON-Form `{game, risk}`, nach dem Skat angesagt zusätzlich `after_skat: true` |
+| Angesagt nach dem Skat (ADR 0013) | `after_skat` | Schneider, Schwarz angesagt oder Ouvert ohne Hand: `Declaration::with_hand(false)`, `hand()` ist dann `false`. Stufe prüfen mit `Declaration::risk_at_least` (`Hand` nur aus der Hand), `RiskLevel::is_announcement` |
 | Null-Risikostufe | `NullRisk` | `Normal` (23), `Hand` (35), `Ouvert` (46), `OuvertHand` (59); Stufe 1 bis 4 (`step`) |
 | Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
 | Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
@@ -62,13 +63,15 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Schmieren | `smear` | Volle in den Stich des Partners geben |
 | Stich | `Trick` | |
 | Stichgewinner | `trick_winner` | |
-| Passen / Einpassen | `pass` | Im Roguelike: ein Spiel auslassen |
+| Passen / Einpassen | entfällt | Bis 01.11.2026: ein Spiel auslassen, kostete ein Spiel der Serie. Ersetzt durch Einmischen. Alte Namen werden noch gelesen (`Pass`, `passes`, `games_passed`, `passes_used`, `PassesAdded`, `ExtraPasses`, `without_pass`); Fehlercode `NoPassesLeft` bleibt stehen, kommt aber nicht mehr vor |
+| Einmischen (Blatt zurückgeben, neu geben) | `redeal` | `RunAction::Redeal`. Bis zu `RunConfig::redeals` (2) mal pro Spiel vor der Ansage, kostet kein Spiel; danach muss eines der Blätter gespielt werden. Pro Spiel: `Content::redeals` (mit `CharacterRule::redeals`) plus `GameRules::extra_redeals` (Effekt `ExtraRedeal`, Schieben); für die Serie: `Series::extra_redeals` (`ConsumableAction::ExtraRedeals`, Ein Bier, Kräuter). Zähler `Series::redeals_in_game`, `Series::redeals_used`, `RunStats::redeals`; übrig `Run::redeals_left`, Sicht `SeriesView::redeals_left`, `DeclareOptions::can_redeal`; Ereignis `Redealt`, `RedealsAdded`; Fehler `NoRedealLeft` |
+| Reue (Einmischen zurücknehmen) | `undo_redeal` | Schnaps `regret`, `ConsumableAction::UndoRedeal`: das Blatt vor dem letzten Einmischen kommt zurück (`ActiveGame::previous`), Ereignis `RedealUndone`, Fehler `NoRedealToUndo` |
 | Kontra | `kontra` | Gegenspieler verdoppeln (Hausregel, Boss) |
 | Re | `re` | Antwort des Alleinspielers auf Kontra |
 | Schenken (Gegner geben auf) | `concede` | Rest der Stiche und Augen geht an den Alleinspieler |
 | Rest abkürzen (entschiedenes Spiel beenden) | `settle` | `RunAction::SettleGame`, Sicht `can_settle`, `Run::can_settle`; Schranken der Reststiche in `endgame` (`Reach`, `Span`). Nicht verwechseln mit `Run::settle` (ein fertiges Spiel werten) |
-| Schieben (Hausregel: neu geben lassen) | `redeal` | `RunAction::Redeal`, einmal pro Serie vor der Ansage, alle Hände und Skat neu, kostet kein Spiel (DESIGN 8.1). Effekt `SeriesRedeal` |
-| Neu geben (Schieben, „Neues Blatt“) | `redeal` | Ereignis `Redealt` |
+| Schieben (Hausregel: einmal mehr einmischen) | `skat_redraw` | Effekt `ExtraRedeal` (liest auch `SeriesRedeal`): ein Einmischen mehr in jedem Spiel (DESIGN 8.1) |
+| Neu geben (Einmischen, „Neues Blatt“) | `redeal` | Ereignis `Redealt` |
 | Skat neu ziehen (nur Spielebene) | `redraw_skat` | `Game::redraw_skat`: Gegner und Skat neu, eigene Hand bleibt. Von keinem Inhalt mehr genutzt |
 
 ## Wertung
@@ -142,7 +145,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast, nicht die Figur „Der Kiebitz“ `kibitzer`), `Landlady` (Wirtin, nicht die Figur „Der Wirt“ `landlord`); Daten `CharacterDef` |
-| Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `passes` und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`. Werte eines Runs: `Content::passes`, `Content::relic_slots`, `Content::payout_factor` |
+| Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
 | Zuschlag der Auszahlung (Wirtin) | `Payout::bonus` | Was `payout_factor` über die einfache Auszahlung hinaus zahlt |
 | Blatt eines Gegners sehen (Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
 | Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
@@ -163,8 +166,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
 | Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig, Bierfleck, Attrappe) oder `Kibitz`; Feld `RevealedCard::source` |
-| Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert |
-| Statistik eines Runs | `RunStats` | Gewonnene, verlorene, eingepasste Spiele, Serien, bestes Spiel |
+| Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert; die drei Ansagen auch nach dem Skat (ADR 0013) |
+| Statistik eines Runs | `RunStats` | Gewonnene und verlorene Spiele, Einmischen (`redeals`), Serien, bestes Spiel |
 | Verkaufspreis | `sell_price` | Halber Preis |
 | Sicht (Lese-Sicht für die Oberfläche) | `RunView` | `Run::view`, alles fertig berechnet; dazu `GameView`, `ShopView`, `CardView` |
 | Spieler-Ereignis (ohne verdeckte Karten) | `PlayerEvent` | `RunEvent<PlayerGameEvent>`, aus `RunEvent::for_player`; nur das geht an den Browser |
@@ -229,6 +232,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Kräuter | `herbal` |
 | Magenbitter | `bitters` |
 | Kreide | `chalk` |
+| Reue | `regret` |
 | Blindflug | `blind_flight` |
 | Der Kiebitz | `kibitzer` |
 | Der Wirt | `landlord` |

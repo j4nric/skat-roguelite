@@ -204,7 +204,7 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
 
 /**
  * The choices before the first card (Skat oder Hand): what the skat, the
- * hand game, the deck (Einmischen) and Schieben do. The buttons on the
+ * hand game and the deck (Einmischen) do. The buttons on the
  * table stay short; this is their explanation.
  */
 function choiceModel(key: string, view: RunView, arg: string): InfoModel | null {
@@ -221,12 +221,10 @@ function choiceModel(key: string, view: RunView, arg: string): InfoModel | null 
     case 'pass':
       return {
         ...base,
-        title: t(de.table.pass, { left: view.series.passes_left }),
+        title: t(de.table.pass, { left: view.series.redeals_left }),
         art: art(3),
         sections: [{ text: de.table.mixHint, status: [{ text: de.table.mixHow, on: null }] }],
       };
-    case 'redeal':
-      return { ...base, title: t(de.table.redraw, { left: options.redeals_left }), art: art(3), sections: [{ text: de.table.redrawHint, status: [] }] };
     default:
       return null;
   }

@@ -1,6 +1,6 @@
 # 0011: Erst der Skat, dann die Ansage
 
-Datum: 2026-11-01 · Status: Angenommen · Ändert die Reihenfolge aus 0006
+Datum: 2026-11-01 · Status: Angenommen · Ändert die Reihenfolge aus 0006 · Ansagen nach dem Skat geändert durch 0013
 
 ## Kontext
 

@@ -153,23 +153,17 @@ function gameIcon(game: DeclaredGame, size = 30): string {
 
 /**
  * The buttons below an Ansage: back to the choice of skat or hand (when the
- * skat may still be picked up), else Einmischen; Schieben; Ansagen.
+ * skat may still be picked up), else Einmischen (with ten cards); Ansagen.
+ * `passesLeft` is the Einmischen left now (`series.redeals_left`).
  */
 function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string): string {
   const back = !afterSkat && options.can_pick_up_skat;
   const first = back
     ? `<button class="btn" ${attrs({ 'data-action': 'hand-back' })}>${esc(de.table.back)}</button>`
-    : !afterSkat || options.can_pass
-      ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_pass })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
+    : !afterSkat
+      ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_redeal })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
       : '';
-  return `<div class="declare-actions">${first}${redrawButton(options)}${declare}</div>`;
-}
-
-/** "Schieben": a new deal without losing a game, while the core allows it. */
-function redrawButton(options: DeclareOptions): string {
-  return options.can_redeal
-    ? `<button class="btn" ${attrs({ 'data-action': 'redraw', 'data-info': 'choice:redeal' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
-    : '';
+  return `<div class="declare-actions">${first}${declare}</div>`;
 }
 
 /** Warnings of the boss rules on the Ansage. */
@@ -230,7 +224,7 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
   const skatCards = (peeked && peek ? peek.map((c) => cardSvg(c.kind, c.mods)) : [cardBack(), cardBack()])
     .map((inner, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}">${inner}</span>`)
     .join('');
-  const canMix = options.can_pass;
+  const canMix = options.can_redeal;
   const armed = ui.mixArmed && canMix;
   const deck = `<div class="deck-col">
       <button class="deck-pile ${armed ? 'is-armed' : ''}" style="${tossStyle(2)}" ${attrs({
@@ -267,9 +261,25 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     ${declareWarnings(options, false)}
     <div class="declare-actions choice-actions">
       <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
-      ${redrawButton(options)}
+      ${regretButton(view)}
     </div>
   </section>`;
+}
+
+/**
+ * "Reue" right after an Einmischen: takes it back, the deal before is on
+ * the table again. Only while the core says it can be used; its info card
+ * carries the text from the content.
+ */
+function regretButton(view: RunView): string {
+  const item = view.consumables.find((c) => c.consumable.id === 'regret' && c.can_use);
+  if (!item) return '';
+  return `<button class="btn btn-regret" ${attrs({
+    'data-action': 'use-item',
+    'data-slot': item.slot,
+    'data-info': `item:${item.slot}`,
+    'data-testid': 'regret',
+  })}>${esc(t(de.table.regret, { name: item.consumable.name }))}</button>`;
 }
 
 /**
@@ -671,7 +681,7 @@ export function renderTable(view: RunView, ui: UiState): string {
   const peek = ui.peekTrick && !ui.anim && !ui.busy && game.phase === 'Playing' ? game.last_trick : null;
   const center =
     declaring && game.declare
-      ? declarePanel(game.declare, game, ui, view.series.passes_left)
+      ? declarePanel(game.declare, game, ui, view.series.redeals_left)
       : game.phase === 'Discarding'
         ? `${gameLine(view, game, null)}${skatZone(game, ui)}`
         : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;

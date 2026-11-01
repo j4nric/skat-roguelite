@@ -167,12 +167,12 @@ fn double_grain_doubles_the_next_declared_game_won_or_lost() {
     let mut plain = run_with(&content, &[]);
     fixed_deal(&mut plain, &content, STRONG, STRONG_SKAT);
     let (_, base) = play(&mut plain, &content, hand(DIAMONDS));
-    // Drunk before the deal is declared; a pass does not waste it.
+    // Drunk before the deal is declared; Einmischen does not waste it.
     let mut run = run_with(&content, &["double_grain"]);
     run.apply(&content, use_item(0)).expect("drink");
     assert_eq!(run.view(&content).pending_next_game.len(), 1);
-    run.apply(&content, RunAction::Pass).expect("pass");
-    assert_eq!(run.pending_next_game().len(), 1, "a pass keeps it");
+    run.apply(&content, RunAction::Redeal).expect("einmischen");
+    assert_eq!(run.pending_next_game().len(), 1, "Einmischen keeps it");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, won) = play(&mut run, &content, hand(DIAMONDS));
     assert!(won.won);
@@ -205,16 +205,39 @@ fn double_grain_doubles_the_next_declared_game_won_or_lost() {
 }
 
 #[test]
-fn herbal_adds_one_pass_in_the_series() {
+fn herbal_adds_one_einmischen_in_the_series() {
     let content = content();
     let mut run = run_with(&content, &["herbal"]);
-    let before = run.series().passes_left;
+    let before = run.redeals_left(&content);
     let events = run.apply(&content, use_item(0)).expect("drink");
-    assert_eq!(run.series().passes_left, before + 1);
-    assert!(events.contains(&RunEvent::PassesAdded {
-        passes: 1,
-        passes_left: before + 1
+    assert_eq!(run.redeals_left(&content), before + 1);
+    assert!(events.contains(&RunEvent::RedealsAdded {
+        redeals: 1,
+        redeals_left: before + 1
     }));
+    // The game's own Einmischen go first, the extra one stays for the
+    // series.
+    for _ in 0..before {
+        run.apply(&content, RunAction::Redeal).expect("einmischen");
+    }
+    assert_eq!(run.series().extra_redeals, 1);
+    run.apply(&content, RunAction::Redeal)
+        .expect("the extra one");
+    assert_eq!(run.series().extra_redeals, 0);
+    assert_eq!(run.redeals_left(&content), 0);
+    // Old saves and events: "PassesAdded" and "ExtraPasses" read as the
+    // new names.
+    let old: RunEvent = ron::from_str("PassesAdded(passes: 1, passes_left: 3)").expect("old event");
+    assert_eq!(
+        old,
+        RunEvent::RedealsAdded {
+            redeals: 1,
+            redeals_left: 3
+        }
+    );
+    let old: crate::content::ConsumableAction =
+        ron::from_str("ExtraPasses(1)").expect("old action");
+    assert_eq!(old, crate::content::ConsumableAction::ExtraRedeals(1));
 }
 
 #[test]
@@ -330,11 +353,11 @@ fn chalk_only_before_the_declaration() {
 fn the_bot_drinks_each_schnaps() {
     let content = content();
     // Kurzer right before picking up the skat (a weak hand is picked up
-    // when nothing can throw it in: last game of the series).
+    // when nothing can throw it in: no Einmischen left).
     let mut run = run_with(&content, &["shot"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
-    run.series.passes_left = 0;
-    run.series.games_played = run.series.game_limit - 1;
+    // No Einmischen left: the hand is played.
+    run.series.redeals_in_game = 99;
     assert_eq!(RunBot.next_action(&run, &content), Some(use_item(0)));
     run.apply(&content, use_item(0)).expect("peek");
     assert_eq!(
@@ -349,15 +372,15 @@ fn the_bot_drinks_each_schnaps() {
     // A weak game after the skat: Magenbitter.
     let mut run = run_with(&content, &["bitters"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
-    run.series.passes_left = 0;
-    run.series.games_played = run.series.game_limit - 1;
+    // No Einmischen left: the hand is played.
+    run.series.redeals_in_game = 99;
     assert_eq!(drunk_until_play(&mut run, &content), ["bitters"]);
     // Kreide paints a side card into trump; with it the same hand is no
     // longer weak (five trumps, four aces), so Doppelkorn follows.
     let mut run = run_with(&content, &["chalk", "double_grain"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
-    run.series.passes_left = 0;
-    run.series.games_played = run.series.game_limit - 1;
+    // No Einmischen left: the hand is played.
+    run.series.redeals_in_game = 99;
     assert_eq!(
         drunk_until_play(&mut run, &content),
         ["chalk", "double_grain"]
@@ -413,4 +436,94 @@ fn old_saves_without_the_schnaps_fields_still_load() {
     // An action without the suit still reads.
     let action: RunAction = ron::from_str("UseConsumable(slot:0,target:None)").expect("action");
     assert_eq!(action, use_item(0));
+}
+
+// ---------------------------------------------------------------------------
+// Reue (01.11.2026, with the Einmischen rule)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn regret_brings_back_the_deal_before_the_last_einmischen() {
+    let content = content();
+    let def = content
+        .consumable(&ConsumableId::new("regret"))
+        .expect("regret");
+    assert_eq!(def.category, ConsumableCategory::Schnapps);
+    let mut run = run_with(&content, &["regret"]);
+    // Nothing to take back before an Einmischen.
+    assert_eq!(
+        run.apply(&content, use_item(0)),
+        Err(RunError::NoRedealToUndo)
+    );
+    assert!(!run.view(&content).consumables[0].can_use);
+    let first = run.game().expect("game").clone();
+    let left = run.redeals_left(&content);
+    run.apply(&content, RunAction::Redeal).expect("einmischen");
+    let second = run.game().expect("game").game.clone();
+    assert_ne!(second.hand(Seat::DECLARER), first.game.hand(Seat::DECLARER));
+    assert!(run.view(&content).consumables[0].can_use);
+    // A save keeps the deal before.
+    let text = ron::to_string(&run).expect("ron");
+    let mut run: Run = ron::from_str(&text).expect("load");
+    let events = run.apply(&content, use_item(0)).expect("regret");
+    assert!(events.contains(&RunEvent::RedealUndone));
+    let back = run.game().expect("game");
+    assert_eq!(back.game, first.game, "the same deal as before");
+    assert_eq!(back.previous, None);
+    // The Einmischen stays used; no second undo.
+    assert_eq!(run.redeals_left(&content), left - 1);
+    run.consumables = vec![ConsumableId::new("regret")];
+    assert_eq!(
+        run.apply(&content, use_item(0)),
+        Err(RunError::NoRedealToUndo)
+    );
+    // Only with ten cards before the skat.
+    run.apply(&content, RunAction::Redeal).expect("einmischen");
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
+    // Deterministic: the same actions give the same run.
+    let replay = |content: &Content| {
+        let mut run = run_with(content, &["regret"]);
+        run.apply(content, RunAction::Redeal).expect("einmischen");
+        run.apply(content, use_item(0)).expect("regret");
+        run.apply(content, RunAction::Redeal).expect("einmischen");
+        run
+    };
+    assert_eq!(replay(&content), replay(&content));
+}
+
+#[test]
+fn saves_from_before_the_einmischen_rule_load() {
+    let content = content();
+    let (run, _) = Run::new(&content, 13).expect("run");
+    let mut text = ron::to_string(&run).expect("ron");
+    // An old series: 8 games, passes left and used, no Einmischen fields.
+    for (new, old) in [
+        ("game_limit:3,", "game_limit:8,passes_left:4,"),
+        ("redeals_used:0,", "redeals_used:0,passes_used:2,"),
+        (",redeals_in_game:0", ""),
+        (",extra_redeals:0", ""),
+        (",redeals:0,", ",games_passed:2,"),
+        ("extra_redeals:0", "series_redeals:0"),
+    ] {
+        assert!(text.contains(new), "{new}");
+        text = text.replacen(new, old, 1);
+    }
+    let back: Run = ron::from_str(&text).expect("old save loads");
+    // The series keeps its limit; Einmischen follows the new rule.
+    assert_eq!(back.series().game_limit, 8);
+    assert_eq!(back.redeals_left(&content), content.run.redeals);
+    assert_eq!(back.stats().redeals, 2);
+    // Old events read under the new names.
+    let won: RunEvent = ron::from_str(
+        "SeriesWon(section:0,index:2,payout:(base:3,games_left:0,interest:0),coins:5,boss:None,passes_used:1,games_left:0)",
+    )
+    .expect("old event");
+    assert!(matches!(
+        won,
+        RunEvent::SeriesWon {
+            redeals_used: 1,
+            ..
+        }
+    ));
 }

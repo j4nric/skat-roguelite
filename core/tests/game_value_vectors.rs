@@ -199,6 +199,38 @@ const VECTORS: &[Vector] = &[
         levels: 18,
         value: 198,
     },
+    // ADR 0013: Schneider, Schwarz angesagt and Ouvert after picking up the
+    // skat. Every level counts except Hand.
+    Vector {
+        name: "grand mit 1, Spiel 2, Schneider 3, angesagt 4 (nach dem Skat)",
+        game: GameType::Grand,
+        cards: "CJ HJ DJ CA CT SA ST HA HT DA D7 D8",
+        hand: false,
+        schneider: true,
+        schneider_declared: true,
+        schwarz: false,
+        schwarz_declared: false,
+        ouvert: false,
+        with: true,
+        matadors: 1,
+        levels: 4,
+        value: 96,
+    },
+    Vector {
+        name: "pik ohne 1, Spiel 2, Schneider 3, angesagt 4, Schwarz 5, angesagt 6, Ouvert 7 (nach dem Skat)",
+        game: GameType::Suit(Suit::Spades),
+        cards: "SJ HJ DJ SA ST SK SQ S9 S8 S7 HA DA",
+        hand: false,
+        schneider: true,
+        schneider_declared: true,
+        schwarz: true,
+        schwarz_declared: true,
+        ouvert: true,
+        with: false,
+        matadors: 1,
+        levels: 7,
+        value: 77,
+    },
     Vector {
         name: "null",
         game: GameType::Null,
@@ -277,18 +309,20 @@ fn declaration_from_vector(v: &Vector) -> Option<Declaration> {
         };
         return Some(Declaration::null(risk));
     }
-    Declaration::new(v.game, risk_from_vector(v)?)
+    let declaration = Declaration::new(v.game, risk_from_vector(v)?)?.with_hand(v.hand);
+    (declaration.hand() == v.hand).then_some(declaration)
 }
 
 /// Risk level that produces exactly the declared flags of a suit or grand
-/// vector.
+/// vector. The announcements may come from the hand or, since ADR 0013,
+/// after the skat ([`Declaration::with_hand`]).
 fn risk_from_vector(v: &Vector) -> Option<RiskLevel> {
     match (v.hand, v.schneider_declared, v.schwarz_declared, v.ouvert) {
         (false, false, false, false) => Some(RiskLevel::Normal),
         (true, false, false, false) => Some(RiskLevel::Hand),
-        (true, true, false, false) => Some(RiskLevel::SchneiderDeclared),
-        (true, true, true, false) => Some(RiskLevel::SchwarzDeclared),
-        (true, true, true, true) => Some(RiskLevel::Ouvert),
+        (_, true, false, false) => Some(RiskLevel::SchneiderDeclared),
+        (_, true, true, false) => Some(RiskLevel::SchwarzDeclared),
+        (_, true, true, true) => Some(RiskLevel::Ouvert),
         _ => None,
     }
 }

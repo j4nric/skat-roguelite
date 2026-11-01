@@ -859,11 +859,20 @@ impl<C: PlayingCard> Game<C> {
     /// Announce the game. Before the skat is touched ([`Phase::Declaring`])
     /// only a hand game (or the Ramsch) may be declared; after picking it up
     /// and discarding ([`Phase::DeclaringAfterSkat`]) only a game without
-    /// hand levels. Either way play begins.
+    /// the Hand level: `Normal`, and since ADR 0013 also Schneider angesagt,
+    /// Schwarz angesagt and Ouvert (Null: Null and Null Ouvert). The phase
+    /// decides whether an announcement is played from the hand
+    /// ([`Declaration::with_hand`]). Either way play begins.
     pub fn declare(&mut self, declaration: Declaration) -> Result<Vec<Event<C>>, GameError<C>> {
-        let fits = match self.phase {
-            Phase::Declaring => declaration.hand(),
-            Phase::DeclaringAfterSkat => !declaration.hand(),
+        let (declaration, fits) = match self.phase {
+            Phase::Declaring => {
+                let declaration = declaration.with_hand(true);
+                (declaration, declaration.hand())
+            }
+            Phase::DeclaringAfterSkat => {
+                let declaration = declaration.with_hand(false);
+                (declaration, !declaration.hand())
+            }
             phase => return Err(GameError::WrongPhase { phase }),
         };
         if !fits {
@@ -1290,18 +1299,32 @@ mod tests {
         assert_eq!(game.skat(), [c("D7"), c("DQ")]);
         assert_eq!(game.hand(Seat::DECLARER).len(), 10);
         assert!(game.hand(Seat::DECLARER).contains(&c("D9")));
-        // After the skat no hand levels: no Hand, no Schneider angesagt, no
-        // Ouvert; Null Ouvert is fine.
+        // After the skat no Hand level. Schneider angesagt, Schwarz angesagt
+        // and Ouvert are fine since ADR 0013, played without Hand; so is
+        // Null Ouvert.
+        let hand = Declaration::suit(Suit::Hearts, RiskLevel::Hand);
+        assert_eq!(
+            game.clone().declare(hand),
+            Err(GameError::InvalidDeclaration { declaration: hand })
+        );
         for risk in [
-            RiskLevel::Hand,
             RiskLevel::SchneiderDeclared,
+            RiskLevel::SchwarzDeclared,
             RiskLevel::Ouvert,
         ] {
-            let hand = Declaration::suit(Suit::Hearts, risk);
+            let mut probe = game.clone();
+            let events = probe
+                .declare(Declaration::suit(Suit::Hearts, risk))
+                .expect("announcement after the skat");
+            let declared = Declaration::suit(Suit::Hearts, risk).with_hand(false);
+            assert!(!declared.hand());
             assert_eq!(
-                game.clone().declare(hand),
-                Err(GameError::InvalidDeclaration { declaration: hand })
+                events,
+                vec![Event::Declared {
+                    declaration: declared
+                }]
             );
+            assert!(probe.skat_picked_up());
         }
         for null in [NullRisk::Hand, NullRisk::OuvertHand] {
             assert!(game.clone().declare(Declaration::null(null)).is_err());

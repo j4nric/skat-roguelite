@@ -81,9 +81,11 @@ In der Sprache des Genres: **Grundwert sind die Chips, Gewinnstufen sind der Mul
 **Reizen entfällt.** Stattdessen gibt es die **Ansage**. Die Reihenfolge folgt der Skatordnung (ADR 0011): Erst entscheidet der Spieler, ob er den Skat aufnimmt oder Hand spielt; nach dem Aufnehmen drückt er zwei Karten. Danach erklärt er:
 
 1. Spielart (Farbe oder Grand; beim Null-Charakter Null-Varianten).
-2. Risikostufe: *Normal*, *Hand* (Skat bleibt liegen), *Schneider angesagt*, *Schwarz angesagt*, *Ouvert* (offen spielen). Schneider, Schwarz und Ouvert ansagen geht nur beim Handspiel; nach dem Aufnehmen bleibt im Farbspiel und Grand nur *Normal*, beim Null *Normal* und *Ouvert*.
+2. Risikostufe: *Normal*, *Hand* (Skat bleibt liegen), *Schneider angesagt*, *Schwarz angesagt*, *Ouvert* (offen spielen). Seit ADR 0013 (Spieltest vom 01.11.2026, gegen die Skatordnung) gehen Schneider, Schwarz und Ouvert auch nach dem Aufnehmen: Im Farbspiel und Grand stehen dann *Normal*, *Schneider angesagt*, *Schwarz angesagt* und *Ouvert* zur Wahl, beim Null *Normal* und *Ouvert*. Die Stufe *Hand* zählt nur, wenn aus der Hand gespielt wird; eine Ansage nach dem Skat bringt ihre eigenen Stufen ohne Hand (Grand mit 1, Schneider angesagt und erreicht: 4 Stufen statt 5 aus der Hand). Im Kern: `Declaration::with_hand`, im JSON `after_skat: true`.
 
 Jede Stufe erhöht die Gewinnstufen, aber ein Fehlschlag auf einer angesagten Stufe gilt als verloren. Das ersetzt den Push-your-luck-Charakter des Reizens durch eine einzige, klare Entscheidung.
+
+**Einmischen statt Passen** (Spieltest vom 01.11.2026, Entscheidung des Nutzers): Gefällt dem Spieler sein Blatt nicht, mischt er es vor der Ansage ein: Alle Hände und der Skat werden neu gegeben, das kostet kein Spiel der Serie. Bis zu zweimal pro Spiel (`redeals` in `run.ron`), danach muss eines der Blätter gespielt werden. Nach dem Aufnehmen des Skats und im Ramsch geht es nicht mehr. Einpassen (ein Spiel auslassen, das ein Spiel vom Limit kostete) gibt es nicht mehr. Einzelheiten in 5.1.
 
 **Verlorene Spiele kosten das Doppelte.** Wie im echten Skat wird ein verlorenes Spiel mit dem doppelten Spielwert negativ gewertet. Das ist der wichtigste Risiko-Hebel des gesamten Spiels und bleibt.
 
@@ -100,7 +102,7 @@ Diese Regeln gibt es im echten Skat nicht, weil das Blatt dort nie verändert wi
 - **Gezinkte Karten** steigen eine Stufe. Bei gleicher Stärke behält die früher gespielte Karte den Stich.
 - **Schneider** wird immer an der verlierenden Seite gemessen (höchstens 30 Augen). Relikte wie „Jungfrau“ legen zusätzlich Bereiche der Alleinspieler-Augen fest, die ein gewonnenes Spiel zum Schneider machen.
 - **Kartenmodifikationen wirken für jeden, der die Karte spielt** (ADR 0005), auch die Modifikation „Spitze“. Die gleichnamige Hausregel verlangt dagegen den Alleinspieler.
-- **Bockrunde** wird bei der Ansage verbraucht, nicht beim Geben. So verschenkt ein Pass den Bock nicht.
+- **Bockrunde** wird bei der Ansage verbraucht, nicht beim Geben. So verschenkt Einmischen den Bock nicht.
 - **Schenken**: Die restlichen Stiche gehen an den Alleinspieler. Das Spiel ist damit Schneider, und Schwarz, falls die Gegner noch keinen Stich hatten.
 
 Ergänzt in M5 (entschieden von Claude am 01.11.2026):
@@ -123,7 +125,7 @@ Rest abkürzen (entschieden von Claude am 01.11.2026, auf Wunsch des Nutzers):
 ```
 Run (eine Tournee)
 └── Abschnitt (ein Skatabend in einer Kneipe), 3 bis 5 pro Run
-    ├── Runde 1: Serie      (Zielwert, bis zu N Spiele)
+    ├── Runde 1: Serie      (Zielwert, 3 Spiele, gleiche zwei Gäste)
     ├── Runde 2: Serie      (höherer Zielwert)
     ├── Runde 3: Boss-Serie (Gegner mit Sonderregel)
     └── dazwischen: Tresen (Shop), Ereignisse, Rast
@@ -132,19 +134,52 @@ Run (eine Tournee)
 | Ebene | Skat-Begriff | Genre-Gegenstück | Dauer |
 |---|---|---|---|
 | Ein Spiel | Skat, Ansage, 10 Stiche, Abrechnung | Eine Hand | ~90 Sekunden |
-| Eine Serie | bis zu 8 Spiele mit Punkteziel, meist 2 bis 3 gespielt | Ein Blind | 3 bis 5 Minuten |
+| Eine Serie | 3 Spiele mit Punkteziel gegen dieselben zwei Gäste, je Spiel bis zu zweimal einmischen | Ein Blind | 3 bis 5 Minuten |
 | Ein Abschnitt | Skatabend in einer Kneipe | Ein Ante | 15 bis 20 Minuten |
 | Der Run | Tournee durch 3 bis 5 Kneipen | Der Run | 45 bis 60 Minuten |
 
 ### 5.1 Die Serie
 
-- Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit** (seit M5: 8 Spiele, davon bis zu 6 Pässe; in M2: 5 und 3, Begründung in 5.2).
+- Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit**: seit dem 01.11.2026 **3 Spiele** gegen dieselben zwei Stammgäste („3 Spiele bilden eine Serie, 2 Serien münden in eine Boss-Serie“, Entscheidung des Nutzers nach dem Spieltest). Vorher: M5 8 Spiele mit bis zu 6 Pässen, M2 5 und 3 (5.2).
 - Gewonnene Spiele addieren ihren Spielwert. Verlorene Spiele ziehen den doppelten Spielwert ab.
-- Der Spieler darf ein Spiel **einpassen** (nicht spielen). Das kostet ein Spiel vom Limit, aber keine Punkte. Zahl der erlaubten Pässe ist begrenzt und durch Relikte erweiterbar.
+- **Einmischen** (`RunAction::Redeal`): Vor der Ansage, solange der Skat unberührt ist, gibt der Spieler das Blatt zurück und es wird neu gegeben. Das kostet kein Spiel und keine Punkte, die Vorhand bleibt. Jedes Spiel erlaubt zwei (`redeals` in `run.ron`), danach muss eines der Blätter gespielt werden. Der Zaungast hat eins weniger (9.5), die Hausregel Schieben gibt eins mehr pro Spiel (8.1), Ein Bier und Kräuter geben eins für den Rest der Serie, das nach denen des Spiels verbraucht wird (8.3), „Neues Blatt“ mischt einmal, ohne eins zu verbrauchen, und der Schnaps „Reue“ nimmt das letzte Einmischen zurück. Die Kopfzeile zeigt, wie oft der Spieler im laufenden Spiel noch einmischen darf (eigene plus die der Serie, `SeriesView::redeals_left`). Der Ramsch des Ramschers wird nie eingemischt. Das Einmischen ersetzt das Einpassen, das ein Spiel vom Limit kostete: Wer seine Pässe verbraucht hatte, musste schlechte Blätter spielen und verlor faktisch den Run.
 - Wer das Limit erreicht, ohne den Zielwert zu schaffen, verliert den Run.
-- Übrige Spiele am Ende einer gewonnenen Serie werden in Groschen umgewandelt (Zinsmechanik wie in Balatro).
+- Übrige Spiele am Ende einer gewonnenen Serie werden in Groschen umgewandelt (Zinsmechanik wie in Balatro). Mit 3 Spielen sind das 0 bis 2.
+- **Alte Spielstände** laden: Eine Serie, die mitten in den alten 8 Spielen gespeichert wurde, spielt mit ihrem gespeicherten Spiellimit zu Ende; ab der nächsten Serie gelten 3 Spiele. Übrige Pässe verfallen, Einmischen gilt sofort nach der neuen Regel (das laufende Spiel hat seine zwei). Gespeicherte Statistik zählt eingepasste Spiele als Einmischen. Alte Namen (`Pass`, `passes`, `passes_used`, `games_passed`, `PassesAdded`, `ExtraPasses`, `SeriesRedeal`, `series_redeals`, `without_pass`) werden weiter gelesen.
+- **Im Code**: `Series::redeals_in_game` (verbraucht im laufenden Spiel, mit jedem neuen Spiel 0), `Series::extra_redeals` (Ein Bier, Kräuter), `Series::redeals_used` (alle der Serie, auch „Neues Blatt“), `Run::redeals_left(content)`; Fehler `NoRedealLeft`.
 
-### 5.2 Zielwert-Progression (M5, kalibriert)
+### 5.2 Zielwert-Progression
+
+**Vorläufig seit 01.11.2026 (3 Spiele je Serie, zweimal einmischen je Spiel).** Mit drei Spielen statt acht war die M5-Kurve (36/44/54 …) viel zu hoch. Die Kurve unten ist eine **erste grobe Setzung** aus einer kurzen Messung; die volle Kalibrierung folgt in einer späteren Testrunde (`balance`). Ziel: Der PIMC-Spieler gewinnt normale Serien zu etwa 75 bis 85 %, Boss-Serien zu etwa 60 bis 70 %.
+
+| Abschnitt | Gegner | Alleinspieler (`run.ron`) | Nullspieler (`characters.ron`) |
+|---|---|---|---|
+| 1 | Heuristik | 24 / 30 / 36 | 24 / 30 / 36 |
+| 2 | PIMC 6:2 | 30 / 36 / 42 | 24 / 30 / 36 |
+| 3 | PIMC 8:3 | 36 / 42 / 48 | 30 / 36 / 42 |
+| 4 | PIMC 12:3 | 42 / 48 / 54 | 36 / 42 / 48 |
+| 5 | PIMC 16:3 | 48 / 54 / 60 | 42 / 48 / 54 |
+
+Die Charaktere ohne eigene Zielwerte (Grandspieler, Zaungast, Wirtin) nehmen die des Alleinspielers; der Nullspieler behält sein Muster (eine Zeile später) mit den neuen Werten. Boss-Faktoren (11) unverändert.
+
+Gewählt mit der Erfolgskurve einer Serie ohne Relikte (`--curve`, 1500 Serien, Seed 42, `--bot pimc:12:3`, P(Serie gewonnen) bei Zielwert 24 / 36 / 48 / 60): gegen Heuristik-Gegner 80 / 76 / 72 / 67 %, PIMC 6:2 78 / 73 / 69 / 64 %, PIMC 12:3 76 / 71 / 66 / 61 %, PIMC 16:3 75 / 70 / 66 / 60 %. Die Decke (Zielwert 1) liegt bei 80 bis 85 %; die Kurve ist flach, weil drei Spiele mit doppelt zählenden Niederlagen viel Zufall tragen. Relikte heben die Quoten im Run. Dann im ganzen Run (2 × 500 Runs, Seeds 42 und 43, `--bot pimc:12:3`, Alleinspieler):
+
+| Serie | 1 | 2 | Boss |
+|---|---|---|---|
+| Abschnitt 1 | 80,4 % | 79,0 % | 69,3 % |
+| Abschnitt 2 | 76,8 % | 79,3 % | 67,6 % |
+| Abschnitt 3 | 79,6 % | 77,1 % | 67,6 % |
+| Abschnitt 4 | 84,0 % | 77,8 % | 75,5 % |
+| Abschnitt 5 | 81,1 % | 93,3 % | 75,0 % |
+
+Abschnitt 2 / 3 / 4 / 5 erreicht 44,0 / 18,1 / 7,5 / 3,7 %, Run gewonnen 2,1 %. Ab Abschnitt 4 sind die Stichproben klein (26 bis 75 Serien). Zum Vergleich `main` 07141fd (8 Spiele, 6 Pässe, M5-Kurve, gleiche Messung): normale Serien 81 bis 94 %, Boss 67 bis 83 %, erreicht 50,7 / 27,5 / 16,1 / 10,1 %, Run gewonnen 6,4 %. Ein Run spielt jetzt im Mittel 7,4 Spiele und 5,6 Einmischen (0,75 je Spiel). Nullspieler (300 Runs, Seed 42): normale Serien in Abschnitt 1 und 2 71 bis 77 %, Boss 49 bis 65 %, Abschnitt 2 erreicht 35 %; für ihn ist die Kurve noch etwas zu hoch (17).
+
+```sh
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --bot pimc:12:3
+cargo run --release -p skat_sim -- --seed 42 --runs 1500 --bot pimc:12:3 --curve --defenders pimc:12:3
+```
+
+#### M5-Kurve (8 Spiele, 6 Pässe, bis 01.11.2026)
 
 Spiellimit 8, Pässe 6 pro Serie. Die Zielwerte des Alleinspielers sind Reizwerte (`run.ron`), der Nullspieler hat eigene (`characters.ron`, 9.2).
 
@@ -235,8 +270,8 @@ Nicht gemessen: Wie stark ein Auge die Siegquote senkt, ist noch nicht kalibrier
 
 1. **Geben.** Das aktuelle Blatt (32 Karten plus Modifikationen) wird gemischt. 10/10/10/2.
 2. **Blatt ansehen.** Der Spieler sieht seine 10 Karten. Relikte, die Informationen geben (Kiebitz), wirken jetzt.
-3. **Skat oder Hand.** Skat aufnehmen und 2 Karten drücken, oder Hand spielen. Gedrückte Karten zählen zu den Augen des Alleinspielers.
-4. **Ansage.** Spielart und Risikostufe wählen (ADR 0011).
+3. **Skat oder Hand.** Skat aufnehmen und 2 Karten drücken, oder Hand spielen. Gedrückte Karten zählen zu den Augen des Alleinspielers. Oder vorher einmischen: neu geben lassen, bis zu zweimal pro Spiel (5.1).
+4. **Ansage.** Spielart und Risikostufe wählen (ADR 0011, 0013).
 5. **10 Stiche.** Vorhand spielt aus. Die Gegner-KI spielt gemeinsam gegen den Spieler.
 6. **Abrechnung.** Augen zählen, Spitzen bestimmen, Gewinnstufen summieren, Spielwert berechnen, Serie-Konto aktualisieren.
 7. **Triggerphase.** Relikte mit Nachwirkung (z. B. „Bock“ läuft weiter) werden aktualisiert.
@@ -338,7 +373,7 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Fünf Plät
 | **Spitze** | Letzter Stich mit einer Sieben gibt +1 Gewinnstufe | Gewinnstufen |
 | **Schenken** | Haben die Gegner nach 5 Stichen unter 15 Augen, geben sie auf. Spiel gilt als Schneider. | Tempo, Schneider |
 | **Ouvert-Bonus** | Ouvert zählt +2 statt +1 | Gewinnstufen |
-| **Schieben** | Einmal pro Serie vor der Ansage neu geben lassen (alle Hände und Skat), ohne dass ein Spiel verbraucht wird | Spitzen, Risikostufe |
+| **Schieben** | In jedem Spiel einmal mehr einmischen (seit dem Einmischen, 01.11.2026; vorher einmal pro Serie neu geben lassen) | Spitzen, Risikostufe |
 | **Jungfrau** | Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider | Schwelle |
 | **Alte Dame** | Jede Dame zählt 5 Augen | Augen |
 | **Tournee** | Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs | Skalierung |
@@ -395,6 +430,8 @@ Gesperrt sind sieben der neuen (Stammgast, Lehrgeld, Glückssträhne, Schneiderb
 
 Variante 1 geht im geteilten Blatt nicht sauber: Ungesehen sind die Gegnerhände und der Talon. Der Talon ist im Grundblatt leer, also müssten die gedrückten Karten an die Gegner gehen, deren Blätter sich nach dem Geben ändern. Kommt eine Talonkarte ins Spiel, ändern sich die Karten im Spiel und damit die Spitzen-Zählung (4.4) und die aktiven Kartenmodifikationen. Offen bliebe auch, ob die neuen Karten zum Skat oder zur Hand gehören und welche zwölf Karten die Spitzen bestimmen, und im Handspiel gäbe es die Regel gar nicht. Variante 2 ist regelklar: Sie ist genau das Neugeben von „Neues Blatt“, nur einmal pro Serie und dauerhaft. Ihr Hebel sind Spitzen und Risikostufe: Der Spieler wirft ein Blatt ohne Spitzen und ohne genug Trümpfe weg und sucht eines, das ein Handspiel oder Schneider angesagt trägt, ohne wie beim Einpassen ein Spiel vom Limit zu verlieren. Anders als das alte Schieben ist das nicht erwartungsneutral, weil der Spieler sein Blatt kennt, bevor er entscheidet.
 
+**Seit dem Einmischen (01.11.2026)** ist Neugeben eine Grundregel (5.1, zweimal pro Spiel). Schieben bleibt als Hausregel und gibt in jedem Spiel ein Einmischen mehr (drei statt zwei; Effekt `ExtraRedeal`, jede Quelle eins, liest `SeriesRedeal` alter Stände). Gewählt statt „einmal pro Serie“, weil ein dauerhaftes Relikt mit derselben Einheit wie die Grundregel (pro Spiel) am klarsten ist. Damit ist Schieben deutlich stärker als vorher (bis zu drei zusätzliche Blätter pro Serie statt eines); Preis 8 bleibt, bis `balance` misst.
+
 ### 8.2 Stammtisch-Figuren (passive Relikte mit Persönlichkeit)
 
 | Figur | Effekt |
@@ -426,27 +463,31 @@ Einmal nutzbare Karten, maximal zwei auf der Hand.
 
 - **Frisches Deck**: Entferne eine Karte dauerhaft.
 - **Stempelkissen**: Verpasse einer Karte eine Modifikation.
-- **Ein Bier**: +1 Pass in dieser Serie.
+- **Ein Bier**: Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie (seit 01.11.2026; vorher +1 Pass).
 - **Runde Schnaps**: Beide Gegner spielen das nächste Spiel mit offenem Blatt.
-- **Neues Blatt**: Mischen und neu geben, ohne dass ein Spiel verbraucht wird.
+- **Neues Blatt**: Sofort neu mischen und geben, ohne dass es ein Einmischen kostet.
+
+Gewählt am 01.11.2026 mit dem Einmischen: Ein Bier und Kräuter wirken **für die Serie** (ein Vorrat, der erst nach den eigenen Einmischen des Spiels verbraucht wird und mit der Serie verfällt), wie vorher der Pass „in dieser Serie“; so bleibt der Text fast gleich und der Schnaps lässt sich früh trinken. Neues Blatt wirkt **sofort**, ohne ein Einmischen zu verbrauchen. Beide wirken damit fast gleich (ein Blatt mehr pro Kauf); Preise und Seltenheit (Bier 2, Kräuter 2, Neues Blatt 4) sind für `balance` neu zu prüfen.
 
 **Schnäpse** (entschieden über das Cockpit am 01.11.2026, umgesetzt von Claude am 01.11.2026). Fünf Verbrauchsgegenstände mit `category: Schnapps` in `consumables.ron`, damit Tresen und Oberfläche sie als „Schnaps“ beschriften. Sie belegen dieselben zwei Plätze, kommen am Tresen wie die anderen und sind dort auch zu verkaufen. Seltenheit und Preise sind **Platzhalter für `balance`**, nicht gemessen: Kurzer 2 (Common), Doppelkorn 3 (Uncommon), Kräuter 2 (Common), Magenbitter 2 (Common), Kreide 3 (Uncommon).
 
 | Schnaps | Id | Wirkung | Wann |
 |---|---|---|---|
 | **Kurzer** | `shot` | Zeigt die beiden Skatkarten. Die Wahl zwischen Skat und Hand bleibt offen. | Nur mit zehn Karten vor „Skat oder Hand“ (`Phase::Declaring`), einmal pro Spiel. Nicht gegen den Kiebitz-Mörder (Information ist aus). |
-| **Doppelkorn** | `double_grain` | Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren: Zeile `Spielwert ×2` mit der Herkunft `Source::Consumable`. | Am Tresen oder vor der Ansage des liegenden Spiels. Verbraucht bei der nächsten Ansage wie „Letzte Runde“ und die Bockrunde; ein Pass verschenkt ihn nicht. Zwei Doppelkorn stapeln (×4). |
-| **Kräuter** | `herbal` | Ein Pass mehr in dieser Serie (dieselbe Aktion wie „Ein Bier“). | Während einer Serie. |
+| **Doppelkorn** | `double_grain` | Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren: Zeile `Spielwert ×2` mit der Herkunft `Source::Consumable`. | Am Tresen oder vor der Ansage des liegenden Spiels. Verbraucht bei der nächsten Ansage wie „Letzte Runde“ und die Bockrunde; Einmischen verschenkt ihn nicht. Zwei Doppelkorn stapeln (×4). |
+| **Kräuter** | `herbal` | Einmal mehr einmischen in dieser Serie (dieselbe Aktion wie „Ein Bier“, `ExtraRedeals(1)`). | Während einer Serie. |
+| **Reue** | `regret` | Nimmt das letzte Einmischen zurück: Das Blatt davor liegt wieder auf dem Tisch, genau wie es war (Hände, Skat, Kiebitz, Kreide), und wird gespielt. Das Einmischen bleibt verbraucht. Neu am 01.11.2026, Common, 2 Groschen (Platzhalter). | Nur mit zehn Karten vor „Skat oder Hand“, gleich nach einem Einmischen (oder „Neues Blatt“) desselben Spiels; nur einmal zurück, nicht zweimal hintereinander (`NoRedealToUndo`). |
 | **Magenbitter** | `bitters` | Geht das nächste angesagte Spiel verloren, zählt es einfach statt doppelt: Zeile `LossFactor = 1` (neuer Hebel, nur bei verlorenen Spielen in der Abrechnung). | Wie Doppelkorn. Verbraucht vom nächsten angesagten Spiel, gewonnen wie verloren; gewonnen wirkt er nicht. Ein zweiter, solange einer wartet, wird abgelehnt. |
 | **Kreide** | `chalk` | Malt eine Karte der eigenen Hand bis zum Spielende in eine andere Farbe um. Die Karte ist für dieses Spiel diese Karte: Trumpf, Bedienen und Spitzen richten sich nach der neuen Farbe, Augen und Modifikationen bleiben. | Vor der Ansage (vor „Skat oder Hand“, beim Drücken oder bei der Ansage nach dem Skat). Nie ein Unter (er ist Trumpf durch seinen Rang) und keine Blanko. |
 
 Auslegungen, entschieden von Claude am 01.11.2026:
 
 - **Magenbitter wird vom nächsten angesagten Spiel verbraucht, nicht erst vom nächsten verlorenen.** So ist er eine Entscheidung vor einem riskanten Spiel (Grand Hand, Schneider angesagt) statt einer Versicherung, die man kauft und vergisst. Wer ihn trinkt und gewinnt, hat ihn umsonst getrunken.
-- **Kreide ist vorübergehend** (Entscheidung des Nutzers): Das Blatt des Runs behält die gedruckte Karte, mit dem nächsten Geben ist sie wieder, was gedruckt ist. Neu geben (Schieben, „Neues Blatt“) oder Einpassen beendet das Spiel und damit auch die Kreide. Im Kern ersetzt `Game::chalk` die Karte überall, wo das Spiel sie führt (Hand, die zwölf Karten des Alleinspielers, die Karten im Spiel, das Blatt), Ereignis `CardChalked`. Doppelte Karten (zwei Grün-Zehnen) sind wie beim veränderbaren Blatt erlaubt: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). Die Spitzen zählen über die umgemalte Karte, weil sie für dieses Spiel diese Karte ist; ein gemalter Trumpf-Daus kann damit eine Spitze mehr bringen.
+- **Kreide ist vorübergehend** (Entscheidung des Nutzers): Das Blatt des Runs behält die gedruckte Karte, mit dem nächsten Geben ist sie wieder, was gedruckt ist. Einmischen (auch „Neues Blatt“) beendet das Spiel und damit auch die Kreide; „Reue“ bringt das alte Blatt samt Kreide zurück. Im Kern ersetzt `Game::chalk` die Karte überall, wo das Spiel sie führt (Hand, die zwölf Karten des Alleinspielers, die Karten im Spiel, das Blatt), Ereignis `CardChalked`. Doppelte Karten (zwei Grün-Zehnen) sind wie beim veränderbaren Blatt erlaubt: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). Die Spitzen zählen über die umgemalte Karte, weil sie für dieses Spiel diese Karte ist; ein gemalter Trumpf-Daus kann damit eine Spitze mehr bringen.
 - **Doppelkorn und Magenbitter** wirken auf die nächste Ansage im Sinne von `after_declaration`, wie „Letzte Runde“: Auch der Ramsch des Ramschers zählt als angesagtes Spiel. Während des Spiels (nach der Ansage) sind sie nicht nutzbar, damit niemand glaubt, sie wirkten noch aufs laufende Spiel.
 - **Kurzer** gilt als Information: Gegen den Kiebitz-Mörder ist er nicht nutzbar. Die Wertvorschau zählt den gesehenen Skat als bekannt.
-- **Bot** (`run/bot.rs`, einfache Regeln, nicht kalibriert): Kurzer direkt vor dem Aufnehmen des Skats (der Bot nutzt das Gesehene nicht), nach dem Skat Kreide auf die billigste Beikarte in die Trumpffarbe eines Farbspiels, dann Doppelkorn vor einem nicht schwachen und Magenbitter vor einem schwachen Spiel, nie vor einem Null; Kräuter wie Ein Bier. Kaufwerte in `CONSUMABLE_VALUES` sind Platzhalter.
+- **Bot** (`run/bot.rs`, einfache Regeln, nicht kalibriert): Kurzer direkt vor dem Aufnehmen des Skats (der Bot nutzt das Gesehene nicht), nach dem Skat Kreide auf die billigste Beikarte in die Trumpffarbe eines Farbspiels, dann Doppelkorn vor einem nicht schwachen und Magenbitter vor einem schwachen Spiel, nie vor einem Null; Kräuter wie Ein Bier. Reue nutzt der Bot nie (Kaufwert 0).
+- **Reue** (Name „Reue“ gewählt: kurz und sagt, was er tut). Im Kern hält `ActiveGame::previous` das Spiel vor dem letzten Neugeben vollständig (es wird nicht neu gezogen, also deterministisch und auch nach Speichern und Laden gleich); `ConsumableAction::UndoRedeal` setzt es wieder ein, Ereignis `RedealUndone`. Was das Geben selbst ausgelöst hat (Zähler, Flaggen von `OnDeal`), bleibt; heute hat kein Inhalt so einen Hook. Der Zufallsstrom läuft weiter: Wer nach der Reue noch einmal einmischt, bekommt ein neues Blatt, nicht das zurückgenommene. Kaufwerte in `CONSUMABLE_VALUES` sind Platzhalter.
 
 ---
 
@@ -518,7 +559,7 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschaltet.
 
 - Ein neuer Spielstand kennt etwa die Hälfte der Hausregeln und Figuren. Die übrigen erscheinen erst nach einer Freischaltung im Tresen.
-- Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Pass schlagen.
+- Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Einmischen schlagen.
 - Jede Freischaltung ist an genau einer Stelle als Daten definiert (Bedingung und Belohnung) und wird im Simulator auf Erreichbarkeit geprüft.
 - Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Kein Konto, kein Server-Speicher.
 
@@ -563,13 +604,15 @@ Nach den M4-Inhalten (gleiche Messung, alle 16 Freischaltungen):
 | `grand_hand` | Grand Hand gewinnen | Bierdeckel | 35,3 |
 | `tour_won` | Run mit dem Alleinspieler gewinnen | Nullspieler | 1677 (8 von 20 Folgen in 3000 Runs) |
 
+Seit den Serien mit 3 Spielen (01.11.2026): `early_finish` verlangt eine Serie gleich im ersten Spiel (`WinSeriesWithGamesLeft(2)`, mit drei übrigen wäre sie unerreichbar), `boss_without_pass` heißt „Ohne Einmischen“ (`BeatBoss(without_redeal: true)`, Id unverändert). Beide nicht neu gemessen.
+
 Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der Bot sagt fast nie an) und „Serie mit vier Spielen übrig“ für Auf dem Trockenen (1,7 Runs, in Serie 1-1 reicht ein Spiel).
 
 **Freischaltungen der neuen Charaktere** (01.11.2026, zählen in beiden Run-Längen, noch nicht im Simulator gemessen):
 
 | Freischaltung | Bedingung | Belohnung |
 |---|---|---|
-| `grand_master` („Großer Grand“) | Grand Schneider gewinnen, der mindestens 96 Punkte zählt (`WinGame(game: Grand, schneider: true, min_value: 96)`: zum Beispiel mit 2, Spiel 3, Schneider 4) | Der Grandspieler |
+| `grand_master` („Großer Grand“) | Grand Schneider gewinnen, der mindestens 144 Punkte zählt (`WinGame(game: Grand, schneider: true, min_value: 144)`: zum Beispiel mit 4, Spiel 5, Schneider 6; bis 01.11.2026 96, im Testlauf nach rund drei Runs erreicht, zu leicht) | Der Grandspieler |
 | `beat_kibitz_killer` („Blinde Kuh“) | Boss Der Kiebitz-Mörder schlagen | Der Zaungast |
 | `full_till` („Volle Kasse“) | Nach einer gewonnenen Serie mindestens 20 Groschen haben (neue Bedingung `SeriesWonWithCoins(20)`, gemessen nach der Auszahlung) | Die Wirtin |
 
@@ -592,7 +635,7 @@ Entschieden vom Nutzer am 01.11.2026. Lebt für den Grand.
 
 Entschieden vom Nutzer am 01.11.2026 (als „Kiebitz“; der Name ist an die Figur „Der Kiebitz“ vergeben, deshalb Zaungast). Der Zaungast schaut mit.
 
-- **Regel**: Er sieht das ganze Blatt des linken Gegners (Platz 1, spielt nach ihm), jedes Spiel von der Ausgabe an, dafür hat er zwei Pässe weniger pro Serie (mit `run.ron` von heute 4 statt 6; nie unter 0). Daten: `passive: [RevealDefenderHand(1)]`, `passes: -2`. `RevealDefenderHand` ist eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder schaltet sie ab. Die Karten stehen wie die des Kiebitz in `ActiveGame::peeked` (die Sicht nennt sie `RevealSource::Onlooker`, in Anzeige-Reihenfolge), deshalb kennen sie auch Wertvorschau und Bot. Hat er zusätzlich den Kiebitz, zieht dieser nur Karten, die er noch nicht sieht.
+- **Regel**: Er sieht das ganze Blatt des linken Gegners (Platz 1, spielt nach ihm), jedes Spiel von der Ausgabe an, dafür darf er nur einmal pro Spiel einmischen statt zweimal (seit 01.11.2026; vorher zwei Pässe weniger pro Serie; nie unter 0). Daten: `passive: [RevealDefenderHand(1)]`, `redeals: -1`. `RevealDefenderHand` ist eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder schaltet sie ab. Die Karten stehen wie die des Kiebitz in `ActiveGame::peeked` (die Sicht nennt sie `RevealSource::Onlooker`, in Anzeige-Reihenfolge), deshalb kennen sie auch Wertvorschau und Bot. Hat er zusätzlich den Kiebitz, zieht dieser nur Karten, die er noch nicht sieht.
 - **Anzeige**: Am linken Gegner liegt sein Blatt als kleiner Fächer mit Auge; ausgespielte Karten verschwinden daraus. Kein Flüster-Hinweis pro Karte.
 - **Start**: Standardblatt, keine Startrelikte (die Regel ist die Information).
 - **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
@@ -602,7 +645,7 @@ Entschieden vom Nutzer am 01.11.2026 (als „Kiebitz“; der Name ist an die Fig
 Entschieden vom Nutzer am 01.11.2026 (als „Wirt“; der Name ist an die Figur „Der Wirt“ vergeben, deshalb Wirtin). Rechnet gut.
 
 - **Regel**: Jede gewonnene Serie zahlt doppelt so viele Groschen (Grundbetrag, übrige Spiele und Zinsen, die Verdopplung steht als eigene Zeile „Die Wirtin“ in der Auszahlung), dafür hat sie vier statt fünf Relikt-Plätze. Daten: `payout_factor: 2`, `relic_slots: -1`. Groschen aus Relikten nach der Serie (`OnSeriesWon`) verdoppeln sich nicht.
-- **Start**: Standardblatt, keine Startrelikte, ein Kräuter (ein Pass mehr) im Platz für Verbrauchsgegenstände (`start_consumables`).
+- **Start**: Standardblatt, keine Startrelikte, ein Kräuter (einmal mehr einmischen in einer Serie) im Platz für Verbrauchsgegenstände (`start_consumables`).
 - **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
 
 ### 9.7 Spätere Kandidaten (nicht vor v1)
@@ -673,7 +716,7 @@ Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander 
 - **Revolutionär** (`SwapDefenderHands` nach dem 5. Stich): Die Gegner tauschen die Hände. Gilt als Schummeln.
 - **Schwarzer Peter** (`MultiplyGameValue(0)`, wenn gewonnen ohne Schneider). Ein gewonnenes Null ist nie Schneider und zählt hier nichts. Bis ADR 0012 nur Alleinspieler, seitdem bei beiden Charakteren.
 - **Kiebitz-Mörder** (`DisableInformation`): Kiebitz, Zähler und „Durchsichtig“ sind aus.
-- **Der Alte** (`rotation` in `bosses.ron`): in Spiel n die Regel des n-ten Bosses der Liste (Schieber, Zwillinge, Kontra-Hans, Revolutionär, Ramscher, Oma, Schwarzer Peter, Kiebitz-Mörder), Pässe zählen mit. Bosse außerhalb des Charakter-Pools werden übersprungen. Er ist immer der Boss des letzten Abschnitts (`final_boss` in `run.ron`).
+- **Der Alte** (`rotation` in `bosses.ron`): beim n-ten Blatt der Serie die Regel des n-ten Bosses der Liste (Schieber, Zwillinge, Kontra-Hans, Revolutionär, Ramscher, Oma, Schwarzer Peter, Kiebitz-Mörder). Gezählt werden gespielte Spiele plus Einmischen (`games_played + redeals_used`), wie vorher die Pässe mitzählten; mit nur 3 Spielen kämen sonst nur die ersten drei Regeln vor. Einmischen bringt also die nächste Regel, „Reue“ die des alten Blatts zurück. Bosse außerhalb des Charakter-Pools werden übersprungen. Er ist immer der Boss des letzten Abschnitts (`final_boss` in `run.ron`).
 
 Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve --boss <id>`, P(Serie gewonnen) bei Zielwert 24 / 63 / 110, normale Serie 67 / 41 / 18,5):
 
@@ -715,6 +758,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 - **M5 (PIMC-Spieler, 8 Spiele)**: Grundbeträge unverändert. Relikte kosten 4 bis 9, gestaffelt nach der gemessenen Wirkung allein ab Spielbeginn ohne Tresen (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --relic <id>`, Seeds 42 bis 44, Veränderung von „Abschnitt 3 erreicht“, der stärkere Charakter zählt): ab +6,5 Prozentpunkten 9 (Bockrunde, Alte Dame, Kleinvieh; Stammgast wegen +6,6 auf Abschnitt 4), ab +4,5 8 (Schenken, Ein Auge zudrücken, Siebenschläfer, Schieben), ab +3 7, ab +1,5 6, darunter 5. Grenzfälle eine Stufe tiefer (Durchmarsch +4,5: 7; Kontra +1,6, beim Nullspieler −0,9: 5). Relikte, die vor allem Menschen nutzen (Hand, Ouvert, Information) oder nur gegen einzelne Bosse wirken, 4 bis 6. Hausregeln und Figuren folgen derselben Staffel. Tabelle in `docs/balance/2026-11-01-m5-v1.md`. Die Schnäpse (8.3) kosten 2 bis 3 als Platzhalter, ohne Messung.
 - **Seltenheit folgt der Stärke (M5)**: Vorher lagen die drei stärksten Relikte beider Charaktere in Common und kamen in 20 bis 21 % aller Angebote. Bockrunde, Alte Dame, Kleinvieh und Siebenschläfer sind jetzt Uncommon, Spitze, Mit Vieren, Schiedsrichter und Saubere Weste dafür Common; Anteil der drei stärksten am Angebot 11 % (Alleinspieler) und 14 % (Nullspieler). Wirkung im Run (2 × 1000 Runs): Abschnitt 2 / Run gewonnen 36,8 / 1,45 % → 35,9 / 1,0 % (Alleinspieler), Nullspieler 47,5 / 3,8 → 46,5 / 3,9 %, im Rahmen des Rauschens. Gewählt, weil ein seltener Fund stärker sein soll als ein häufiger, nicht wegen der Zahl.
 - Ein Run bringt dem Bot im Mittel 23 (Alleinspieler) bis 26 Groschen (Nullspieler), fast alles wird ausgegeben.
+- **Serien mit 3 Spielen (01.11.2026)**: Der Bonus pro übrigem Spiel (1 Groschen) bringt jetzt 0 bis 2 statt bis zu 6. Grundbetrag, Zinsen und Preise unverändert; sie misst `balance` mit der vollen Kalibrierung neu. Kaufwerte des Bots (`CONSUMABLE_VALUES`): Neues Blatt 2, Ein Bier und Kräuter 1 (vorher 4, 3, 3), weil sie nur helfen, wenn die zwei Einmischen eines Spiels verbraucht sind: Der Bot mischt etwa jedes zweite Blatt ein (0,75 Einmischen je Spiel, 5.2), drei schwache Blätter hintereinander kommen etwa in jedem achten Spiel. Die Testrunde (`docs/balance/2026-11-01-testrunde.md`) hatte gezeigt, dass er sie mit 6 Pässen kaufte und kaum brauchte.
+- **Spielwahl und Einsatz** (Bot, 01.11.2026): `suit_expected_score` rechnet mit der Gewinnschwelle des Spiels (Einsatz und Relikte): Über 61 schrumpft die gemessene Gewinnquote mit den übrigen Augen, `(120 − Schwelle) / 59` davon (grobes Modell, nicht gemessen). So wählt der Bot bei hohem Einsatz öfter Null, das keine Augen zählt.
 
 ---
 
@@ -732,7 +777,7 @@ Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 - **Stammtisch-Streit**: drei Hausregeln zur Wahl (freigeschaltet, nicht im Besitz, für den Charakter). Die gewählte gilt bis zum Ende des Abschnitts („Abend“) ohne Platz zu belegen.
 - **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters, seit M7 nie ein Fluch. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
 - **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein anderes getauscht. Seit M5 wird das neue Relikt gezogen, wenn das Ereignis aufgeht, und jede Option nennt es (`SwapRelic.new`, in der Sicht `new_relic`). Bei Spielständen von vorher ist es weiter zufällig, und die Option sagt das (`random_gain`).
-- **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einpassen verschenkt es nicht.
+- **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einmischen verschenkt es nicht.
 
 Gemessen (3 × 1000 Runs): etwa 0,45 Ereignisse pro Run; der Bot nimmt Hausregel und Gratis-Karte immer, tauscht schwache Relikte und lehnt die Letzte Runde ab.
 
@@ -866,11 +911,22 @@ Entschieden am 01.11.2026 im Chat (Problemliste):
 | Null-Wertung | Eine für alle: die Formel mit Stilbonus (9.2). |
 | Endlos-Modus | Zurückgestellt, bis es Relikte mit echtem Wachstum gibt. Die Einsatz-Leiter kommt zuerst. |
 | Charaktere | Zwei bis drei neue Charaktere als Startdecks mit je einer eigenen Regel (Konzepte im Cockpit unter Ideen). |
-| Passen | Im Spieltest prüfen, ob es zu oft vorkommt. |
+| Passen | Im Spieltest prüfen, ob es zu oft vorkommt. Ersetzt am 01.11.2026 durch Einmischen (siehe unten). |
 | Freischaltungen | Run-Sieg-Freischaltungen nur im ganzen Abend. |
 | Tempo | Simulator-Messungen und der große Browser-Test sind vorerst pausiert; danach eine große Testrunde. |
 
+Entschieden am 01.11.2026 nach dem Spieltest (Nutzer, umgesetzt von Claude):
+
+| Frage | Entscheidung |
+|---|---|
+| Passen | Ersetzt durch **Einmischen**: bis zu zweimal pro Spiel neu geben lassen, kostet kein Spiel; danach muss gespielt werden (5.1). Relikte und Schnäpse: Schieben +1 pro Spiel, Ein Bier und Kräuter +1 für die Serie, Neues Blatt sofort ohne Einmischen, Zaungast eins weniger pro Spiel, neuer Schnaps „Reue“ nimmt das letzte Einmischen zurück (8.1, 8.3, 9.5). |
+| Serie | 3 Spiele je Serie gegen dieselben zwei Gäste, 2 Serien und eine Boss-Serie je Abschnitt (5.1). Zielwerte vorläufig neu gesetzt (5.2). |
+| Ansagen nach dem Skat | Schneider, Schwarz angesagt und Ouvert auch nach dem Aufnehmen, ohne Hand-Stufe (ADR 0013, 4.3). Der Bot sagt nach dem Skat mit denselben Regeln an wie aus der Hand. |
+| Freischaltungen | `early_finish` heißt jetzt „Serie gleich im ersten Spiel gewinnen“, `boss_without_pass` „Boss ohne Einmischen“, `grand_master` verlangt 144 statt 96 Punkte (9.3). |
+
 ## 17. Offen
+
+- **Zielwerte für 3 Spiele kalibrieren** (01.11.2026, 5.2): Die Kurve ist eine grobe Setzung aus 2 × 500 Runs. Volle Messung mit 3 × 3000 Runs je Charakter, kurzer Abend, Boss-Faktoren (`--curve --boss`), Einsatz-Leiter. Der Nullspieler liegt darunter (Abschnitt 2: 35 % gegen 44 %). Ebenso Preise von Schieben, Ein Bier, Kräuter, Neues Blatt und Reue (8.1, 8.3), die Erreichbarkeit von `early_finish`, `boss_without_pass` und `grand_master` (`--unlocks`) und ob Einmischen beim Alten (Regel je Blatt) zu leicht macht.
 
 - **Neue Charaktere kalibrieren** (01.11.2026, 9.4 bis 9.6): Grandspieler, Zaungast und Wirtin spielen mit den Zielwerten des Alleinspielers, ohne Simulator-Messung (Nutzerentscheidung: erst bauen, später gesammelt messen). Zu messen: `skat_sim --runs 3000 --bot pimc:12:3 --character grand|onlooker|landlady`, Abschnitt erreicht gegen den Alleinspieler, dann `targets` oder die Regel anpassen. Der Bot nutzt die Regeln nur teilweise: Er sieht das Blatt des Zaungasts in den PIMC-Stichproben, wählt aber Grand nicht bewusst öfter. Ebenso die Erreichbarkeit der drei Freischaltungen (`--unlocks`) messen.
 

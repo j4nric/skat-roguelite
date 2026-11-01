@@ -1,25 +1,27 @@
-// Run-Struktur als Daten. Zielwerte (DESIGN 5.2), Spiellimit, Pässe und
-// Wirtschaft (DESIGN 12) kalibriert für v1 (M5) mit dem Simulator gegen den
+// Run-Struktur als Daten. Zielwerte (DESIGN 5.2), Spiellimit, Einmischen und
+// Wirtschaft (DESIGN 12). Wirtschaft kalibriert für v1 (M5) gegen den
 // PIMC-Spieler (`--bot pimc:12:3`), siehe docs/balance/2026-11-01-m5-v1.md.
-// Die Zielwerte sind Reizwerte.
+// Die Zielwerte sind seit den Serien mit 3 Spielen (01.11.2026) eine
+// vorläufige Kurve aus einer kurzen Messung (DESIGN 5.2); die volle
+// Kalibrierung folgt.
 (
-    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt. Ab Abschnitt 2 spielen
-    // die Gegner PIMC (opponents unten), deshalb steigt die Kurve danach nur
-    // flach.
+    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt, vorläufig. Gemessen
+    // (2 × 500 Runs, Seeds 42 und 43): normale Serien 76 bis 81 % in
+    // Abschnitt 1 bis 3, Boss-Serien 61 bis 75 %. M5-Kurve für 8 Spiele war
+    // 36/44/54 bis 60/66/72.
     targets: [
-        (36, 44, 54),
-        (44, 48, 54),
+        (24, 30, 36),
+        (30, 36, 42),
+        (36, 42, 48),
+        (42, 48, 54),
         (48, 54, 60),
-        (54, 60, 66),
-        (60, 66, 72),
     ],
-    // M5: 8 Spiele, davon bis zu 6 Pässe. Mit 5 und 3 gewinnt der
-    // PIMC-Spieler gegen PIMC-Gegner auch bei Zielwert 1 nur rund 75 % einer
-    // Serie; der Run hängt dann am Pech mit verlorenen Spielen (doppelt) und
-    // die Kurve wirkt kaum. Mit 8 und 6 liegt diese Decke bei 85 %, die
-    // Zielwerte beißen, und Abschnitt 1 braucht etwa zwei gewonnene Spiele.
-    game_limit: 8,
-    passes: 6,
+    // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
+    // Serie, und jedes Spiel darf bis zu zweimal eingemischt (neu gegeben)
+    // werden, ohne ein Spiel zu kosten; danach wird gespielt. Vorher 8
+    // Spiele und 6 Pässe je Serie (M5), davor 5 und 3 (M2).
+    game_limit: 3,
+    redeals: 2,
     relic_slots: 5,
     consumable_slots: 2,
     economy: (

@@ -407,19 +407,24 @@ pub fn matadors_in<C: PlayingCard>(
 // ---------------------------------------------------------------------------
 
 /// Risikostufe of a declaration. The levels are cumulative as in real Skat:
-/// every level above `Normal` is a hand game, `SchwarzDeclared` includes
-/// `SchneiderDeclared`, and `Ouvert` includes all of them.
+/// `SchwarzDeclared` includes `SchneiderDeclared`, and `Ouvert` includes
+/// both. From the hand every level above `Normal` is a hand game. Since ADR
+/// 0013 Schneider angesagt, Schwarz angesagt and Ouvert may also be
+/// announced after picking up the skat; then the game is no hand game and
+/// gets no Hand level ([`Declaration::hand`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RiskLevel {
     /// Skat is picked up, no announcement.
     Normal,
     /// Skat stays on the table.
     Hand,
-    /// Hand, Schneider announced.
+    /// Schneider announced (Hand, unless announced after the skat).
     SchneiderDeclared,
-    /// Hand, Schneider and Schwarz announced.
+    /// Schneider and Schwarz announced (Hand, unless announced after the
+    /// skat).
     SchwarzDeclared,
-    /// Hand, Schneider and Schwarz announced, cards face up.
+    /// Schneider and Schwarz announced, cards face up (Hand, unless
+    /// announced after the skat).
     Ouvert,
 }
 
@@ -432,6 +437,14 @@ impl RiskLevel {
         RiskLevel::SchwarzDeclared,
         RiskLevel::Ouvert,
     ];
+
+    /// Whether this level is an announcement (Schneider, Schwarz or
+    /// Ouvert), which may be made from the hand or after the skat (ADR
+    /// 0013). `Normal` and `Hand` are none.
+    #[must_use]
+    pub const fn is_announcement(self) -> bool {
+        self as u8 >= RiskLevel::SchneiderDeclared as u8
+    }
 
     /// Human readable name.
     #[must_use]
@@ -506,16 +519,21 @@ impl NullRisk {
     }
 }
 
-/// Ansage: what the declarer announces before the skat is touched.
+/// Ansage: Spielart and Risikostufe, from the hand or after the skat (ADR
+/// 0011, 0013).
 ///
 /// An enum, so that no invalid combination exists: suit and grand games
-/// carry a [`RiskLevel`], Null games a [`NullRisk`], and Ramsch (boss "Der
-/// Ramscher") carries nothing. In JSON and RON a declaration keeps the
-/// shape `{"game": …, "risk": …}`: `{"game": {"Suit": "Hearts"}, "risk":
-/// "Hand"}`, `{"game": "Null", "risk": "OuvertHand"}`, `{"game": "Ramsch",
-/// "risk": "Normal"}` (a missing risk reads as `Normal`).
+/// carry a [`RiskLevel`] and whether they are played from the hand, Null
+/// games a [`NullRisk`], and Ramsch (boss "Der Ramscher") carries nothing.
+/// In JSON and RON a declaration keeps the shape `{"game": …, "risk": …}`:
+/// `{"game": {"Suit": "Hearts"}, "risk": "Hand"}`, `{"game": "Null",
+/// "risk": "OuvertHand"}`, `{"game": "Ramsch", "risk": "Normal"}` (a
+/// missing risk reads as `Normal`). A suit game or grand announced after
+/// the skat (ADR 0013) carries `"after_skat": true`; without the field the
+/// Skatordnung's reading holds (every level above `Normal` from the hand).
 /// Combinations that do not exist (Null with Schneider angesagt, a suit
-/// game with `OuvertHand`) are rejected when reading.
+/// game with `OuvertHand`, `Hand` or Null Hand after the skat) are rejected
+/// when reading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "DeclarationRepr", into = "DeclarationRepr")]
 pub enum Declaration {
@@ -525,11 +543,17 @@ pub enum Declaration {
         suit: Suit,
         /// Risikostufe.
         risk: RiskLevel,
+        /// Played from the hand. Only an announcement level may be either
+        /// (ADR 0013); `Normal` is never and `Hand` always a hand game,
+        /// whatever this says ([`Declaration::hand`]).
+        hand: bool,
     },
     /// Grand.
     Grand {
         /// Risikostufe.
         risk: RiskLevel,
+        /// Played from the hand, as for [`Declaration::Suit`].
+        hand: bool,
     },
     /// Null (only the Nullspieler, ADR 0003).
     Null {
@@ -543,16 +567,26 @@ pub enum Declaration {
 }
 
 impl Declaration {
-    /// A suit game.
+    /// A suit game, from the hand for every level above `Normal` (the
+    /// Skatordnung). An announcement after the skat is
+    /// [`Declaration::with_hand`]`(false)`.
     #[must_use]
     pub const fn suit(suit: Suit, risk: RiskLevel) -> Declaration {
-        Declaration::Suit { suit, risk }
+        Declaration::Suit {
+            suit,
+            risk,
+            hand: risk as u8 >= RiskLevel::Hand as u8,
+        }
     }
 
-    /// A grand.
+    /// A grand, from the hand for every level above `Normal`, as
+    /// [`Declaration::suit`].
     #[must_use]
     pub const fn grand(risk: RiskLevel) -> Declaration {
-        Declaration::Grand { risk }
+        Declaration::Grand {
+            risk,
+            hand: risk as u8 >= RiskLevel::Hand as u8,
+        }
     }
 
     /// A Null game.
@@ -567,8 +601,8 @@ impl Declaration {
     #[must_use]
     pub const fn new(game: GameType, risk: RiskLevel) -> Option<Declaration> {
         match game {
-            GameType::Suit(suit) => Some(Declaration::Suit { suit, risk }),
-            GameType::Grand => Some(Declaration::Grand { risk }),
+            GameType::Suit(suit) => Some(Declaration::suit(suit, risk)),
+            GameType::Grand => Some(Declaration::grand(risk)),
             GameType::Null => None,
         }
     }
@@ -587,7 +621,7 @@ impl Declaration {
     #[must_use]
     pub const fn risk(self) -> Option<RiskLevel> {
         match self {
-            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => Some(risk),
+            Declaration::Suit { risk, .. } | Declaration::Grand { risk, .. } => Some(risk),
             Declaration::Null { .. } | Declaration::Ramsch => None,
         }
     }
@@ -601,14 +635,49 @@ impl Declaration {
         }
     }
 
-    /// The same Spielart with another Risikostufe. Null and Ramsch stay
-    /// unchanged.
+    /// The same Spielart with another Risikostufe, from the hand for every
+    /// level above `Normal` as in [`Declaration::suit`]. Null and Ramsch
+    /// stay unchanged.
     #[must_use]
     pub const fn with_risk(self, risk: RiskLevel) -> Declaration {
         match self {
-            Declaration::Suit { suit, .. } => Declaration::Suit { suit, risk },
-            Declaration::Grand { .. } => Declaration::Grand { risk },
+            Declaration::Suit { suit, .. } => Declaration::suit(suit, risk),
+            Declaration::Grand { .. } => Declaration::grand(risk),
             other => other,
+        }
+    }
+
+    /// The same declaration, played from the hand or after picking up the
+    /// skat. Changes only a suit game or grand with an announcement
+    /// (Schneider, Schwarz angesagt, Ouvert; ADR 0013): `Normal` and `Hand`
+    /// say it themselves, Null and Ramsch too. The game uses this to make
+    /// a declaration fit its phase.
+    #[must_use]
+    pub const fn with_hand(self, hand: bool) -> Declaration {
+        match self {
+            Declaration::Suit { suit, risk, .. } if risk.is_announcement() => {
+                Declaration::Suit { suit, risk, hand }
+            }
+            Declaration::Grand { risk, .. } if risk.is_announcement() => {
+                Declaration::Grand { risk, hand }
+            }
+            other => other,
+        }
+    }
+
+    /// Whether the Risikostufe is at least `level`. `Hand` asks for a hand
+    /// game ([`Declaration::hand`]); the announcements compare the level,
+    /// from the hand or after the skat alike (ADR 0013). `None`-risk
+    /// declarations (Null, Ramsch) never reach a level.
+    #[must_use]
+    pub const fn risk_at_least(self, level: RiskLevel) -> bool {
+        match self.risk() {
+            None => false,
+            Some(risk) => match level {
+                RiskLevel::Normal => true,
+                RiskLevel::Hand => self.hand(),
+                _ => risk as u8 >= level as u8,
+            },
         }
     }
 
@@ -624,12 +693,18 @@ impl Declaration {
         matches!(self, Declaration::Ramsch)
     }
 
-    /// Whether the skat stays on the table. A Ramsch never picks it up.
+    /// Whether the skat stays on the table. A Ramsch never picks it up. A
+    /// suit game or grand: `Normal` never, `Hand` always, an announcement
+    /// as declared (ADR 0013).
     #[must_use]
     pub const fn hand(self) -> bool {
         match self {
-            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => {
-                risk as u8 >= RiskLevel::Hand as u8
+            Declaration::Suit { risk, hand, .. } | Declaration::Grand { risk, hand } => {
+                match risk {
+                    RiskLevel::Normal => false,
+                    RiskLevel::Hand => true,
+                    _ => hand,
+                }
             }
             Declaration::Null { risk } => risk.hand(),
             Declaration::Ramsch => true,
@@ -658,7 +733,7 @@ impl Declaration {
     #[must_use]
     pub const fn ouvert(self) -> bool {
         match self {
-            Declaration::Suit { risk, .. } | Declaration::Grand { risk } => {
+            Declaration::Suit { risk, .. } | Declaration::Grand { risk, .. } => {
                 risk as u8 >= RiskLevel::Ouvert as u8
             }
             Declaration::Null { risk } => risk.ouvert(),
@@ -689,12 +764,21 @@ enum RiskName {
     OuvertHand,
 }
 
-/// Serialized form of a [`Declaration`].
+/// Serialized form of a [`Declaration`]. `after_skat` is written only for
+/// an announcement after the skat (ADR 0013); missing, the risk says
+/// whether the game is played from the hand, as in the Skatordnung.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct DeclarationRepr {
     game: GameName,
     #[serde(default)]
     risk: RiskName,
+    #[serde(default, skip_serializing_if = "is_false")]
+    after_skat: bool,
+}
+
+/// For `skip_serializing_if`.
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl From<Declaration> for DeclarationRepr {
@@ -706,14 +790,18 @@ impl From<Declaration> for DeclarationRepr {
             RiskLevel::SchwarzDeclared => RiskName::SchwarzDeclared,
             RiskLevel::Ouvert => RiskName::Ouvert,
         };
+        // Only an announcement after the skat deviates from the Skatordnung.
+        let after_skat = !d.hand() && d.risk().is_some_and(RiskLevel::is_announcement);
         match d {
-            Declaration::Suit { suit, risk } => DeclarationRepr {
+            Declaration::Suit { suit, risk, .. } => DeclarationRepr {
                 game: GameName::Suit(suit),
                 risk: trump(risk),
+                after_skat,
             },
-            Declaration::Grand { risk } => DeclarationRepr {
+            Declaration::Grand { risk, .. } => DeclarationRepr {
                 game: GameName::Grand,
                 risk: trump(risk),
+                after_skat,
             },
             Declaration::Null { risk } => DeclarationRepr {
                 game: GameName::Null,
@@ -723,10 +811,12 @@ impl From<Declaration> for DeclarationRepr {
                     NullRisk::Ouvert => RiskName::Ouvert,
                     NullRisk::OuvertHand => RiskName::OuvertHand,
                 },
+                after_skat: false,
             },
             Declaration::Ramsch => DeclarationRepr {
                 game: GameName::Ramsch,
                 risk: RiskName::Normal,
+                after_skat: false,
             },
         }
     }
@@ -746,14 +836,9 @@ impl TryFrom<DeclarationRepr> for Declaration {
             RiskName::OuvertHand => None,
         };
         let invalid = || format!("{risk:?} is no risk level of {:?}", repr.game);
-        match repr.game {
-            GameName::Suit(suit) => Ok(Declaration::Suit {
-                suit,
-                risk: trump.ok_or_else(invalid)?,
-            }),
-            GameName::Grand => Ok(Declaration::Grand {
-                risk: trump.ok_or_else(invalid)?,
-            }),
+        let declaration = match repr.game {
+            GameName::Suit(suit) => Declaration::suit(suit, trump.ok_or_else(invalid)?),
+            GameName::Grand => Declaration::grand(trump.ok_or_else(invalid)?),
             GameName::Null => {
                 let risk = match risk {
                     RiskName::Normal => NullRisk::Normal,
@@ -764,12 +849,24 @@ impl TryFrom<DeclarationRepr> for Declaration {
                         return Err(invalid());
                     }
                 };
-                Ok(Declaration::Null { risk })
+                Declaration::Null { risk }
             }
             GameName::Ramsch => match risk {
-                RiskName::Normal => Ok(Declaration::Ramsch),
-                _ => Err("a Ramsch has no risk level".into()),
+                RiskName::Normal => Declaration::Ramsch,
+                _ => return Err("a Ramsch has no risk level".into()),
             },
+        };
+        if !repr.after_skat {
+            return Ok(declaration);
+        }
+        let declaration = declaration.with_hand(false);
+        if declaration.hand() {
+            Err(format!(
+                "{risk:?} of {:?} is no game after the skat",
+                repr.game
+            ))
+        } else {
+            Ok(declaration)
         }
     }
 }
@@ -1745,6 +1842,77 @@ mod tests {
             ron::from_str::<Thresholds>(old).expect("old"),
             Thresholds::default()
         );
+    }
+
+    #[test]
+    fn announcements_after_the_skat_are_no_hand_games() {
+        // ADR 0013: Schneider, Schwarz angesagt and Ouvert also after the
+        // skat; only from the hand they bring the Hand level.
+        let hand = Declaration::grand(RiskLevel::SchneiderDeclared);
+        let skat = hand.with_hand(false);
+        assert!(hand.hand() && !skat.hand());
+        assert!(skat.schneider_declared() && !skat.schwarz_declared());
+        let won = outcome(95, 9);
+        let from_hand = game_value_parts(hand, MIT_2, &won, &Thresholds::default());
+        let after = game_value_parts(skat, MIT_2, &won, &Thresholds::default());
+        assert!(from_hand.won && after.won);
+        assert_eq!(from_hand.levels.hand, 1);
+        assert_eq!(after.levels.hand, 0);
+        assert_eq!(after.levels.schneider_declared, 1);
+        assert_eq!(after.value.levels, from_hand.value.levels - 1);
+        // Missed, it is lost like from the hand.
+        let missed = game_value_parts(skat, MIT_2, &outcome(80, 8), &Thresholds::default());
+        assert!(!missed.won);
+        // Normal and Hand say themselves whether they are hand games.
+        let normal = Declaration::grand(RiskLevel::Normal);
+        assert_eq!(normal.with_hand(true), normal);
+        let plain_hand = Declaration::grand(RiskLevel::Hand);
+        assert_eq!(plain_hand.with_hand(false), plain_hand);
+        assert!(
+            !Declaration::Grand {
+                risk: RiskLevel::Normal,
+                hand: true
+            }
+            .hand()
+        );
+        // `with_risk` reads every announcement from the hand again.
+        assert!(skat.with_risk(RiskLevel::Ouvert).hand());
+        // Risk conditions: `Hand` only from the hand, announcements both
+        // ways.
+        let ouvert = Declaration::suit(Suit::Hearts, RiskLevel::Ouvert).with_hand(false);
+        assert!(ouvert.ouvert() && ouvert.risk_at_least(RiskLevel::Ouvert));
+        assert!(!ouvert.risk_at_least(RiskLevel::Hand));
+        assert!(ouvert.risk_at_least(RiskLevel::SchneiderDeclared));
+        assert!(plain_hand.risk_at_least(RiskLevel::Hand));
+        assert!(!plain_hand.risk_at_least(RiskLevel::SchneiderDeclared));
+        assert!(!Declaration::null(NullRisk::OuvertHand).risk_at_least(RiskLevel::Normal));
+        // Written with `after_skat: true` only after the skat; old text
+        // without the field reads as the Skatordnung.
+        let text = ron::to_string(&skat).expect("ron");
+        assert!(text.contains("after_skat:true"), "{text}");
+        assert_eq!(ron::from_str::<Declaration>(&text).expect("back"), skat);
+        assert!(!ron::to_string(&hand).expect("ron").contains("after_skat"));
+        let old = "(game:Grand,risk:SchneiderDeclared)";
+        assert_eq!(ron::from_str::<Declaration>(old).expect("old"), hand);
+        for bad in [
+            "(game:Grand,risk:Hand,after_skat:true)",
+            "(game:Null,risk:Hand,after_skat:true)",
+            "(game:Ramsch,risk:Normal,after_skat:true)",
+        ] {
+            assert!(ron::from_str::<Declaration>(bad).is_err(), "{bad}");
+        }
+        for (fine, declaration) in [
+            (
+                "(game:Null,risk:Ouvert,after_skat:true)",
+                Declaration::null(NullRisk::Ouvert),
+            ),
+            ("(game:Grand,risk:Normal,after_skat:true)", normal),
+        ] {
+            assert_eq!(
+                ron::from_str::<Declaration>(fine).expect("fits"),
+                declaration
+            );
+        }
     }
 
     // -----------------------------------------------------------------------

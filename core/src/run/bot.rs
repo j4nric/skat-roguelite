@@ -16,15 +16,15 @@
 //!   the better expected score ([`suit_expected_score`],
 //!   [`null_expected_score`], win rates measured with the PIMC player). Null
 //!   is left out where a won Null counts nothing ("Der Schwarze Peter").
-//! - **Passing** ([`RunBot::is_weak`]): a suit game needs six trumps, or
-//!   five trumps and two aces; a grand needs two jacks and two aces; Null
-//!   at most [`NULL_MAX_EXPOSED`] exposed cards. A hand weak for both is
-//!   thrown in, cheapest first: a redeal ("Schieben"), the consumable
-//!   "Neues Blatt", a pass, and with no pass left "Ein Bier" for one more.
-//!   The last game of a series is never passed, because a pass there loses
-//!   the series for sure. The balancing measurement of 01.11.2026 showed
-//!   that the weaker hands lose points on average
-//!   (`docs/balance/2026-11-01-m2-zielwerte.md`).
+//! - **Einmischen** ([`RunBot::is_weak`]): a suit game needs six trumps,
+//!   or five trumps and two aces; a grand needs two jacks and two aces;
+//!   Null at most [`NULL_MAX_EXPOSED`] exposed cards. A hand weak for both
+//!   is thrown in, cheapest first: an Einmischen left in this game (or from
+//!   the series' extras), the consumable "Neues Blatt", and with none left
+//!   "Ein Bier" for one more. With nothing left it is played. The balancing
+//!   measurement of 01.11.2026 showed that the weaker hands lose points on
+//!   average (`docs/balance/2026-11-01-m2-zielwerte.md`). "Reue" is never
+//!   used.
 //! - **Forced hand** ("Der Schieber", `RunBot::forced_hand`): Null Hand
 //!   only with at most [`NULL_HAND_MAX_EXPOSED`] exposed cards, else the
 //!   suit game or grand with Hand; the better expected score if both fit.
@@ -32,8 +32,10 @@
 //!   an Ouvert hand, otherwise Null Ouvert (Hand without exposed card).
 //! - **Announcements** ([`RunBot::announcement`]): Schneider angesagt or
 //!   Ouvert only for hands that make it almost surely (conservative rules,
-//!   measured against the defender heuristic, see the function), Re on
-//!   Kontra only with a very strong hand ([`RunBot::says_re`]).
+//!   measured against the defender heuristic, see the function), from the
+//!   hand and, with the same rules for the ten cards kept, after the skat
+//!   (ADR 0013). Re on Kontra only with a very strong hand
+//!   ([`RunBot::says_re`]).
 //!
 //! Tresen ([`RunBot::shop_action`]): one action per call, in this order:
 //! use "Stempelkissen" on an ace, sell the weakest relic for a clearly
@@ -167,27 +169,35 @@ pub const SWAP_MARGIN: u32 = 3;
 ///
 /// | Consumable | Value | Use |
 /// |---|---|---|
-/// | `new_deal` | 4 | throws a weak hand in without using up a game |
-/// | `beer` | 3 | one more pass when the passes are used up |
+/// | `new_deal` | 2 | throws a weak hand in once the game's Einmischen are used up |
+/// | `beer` | 1 | one more Einmischen once those of the game are used up |
 /// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
 /// | `fresh_deck` | 0 | a blank helps defenders as much as the declarer (it may always be played), so the bot does not remove cards |
-/// | `herbal` | 3 | "Kräuter": like "Ein Bier" |
+/// | `herbal` | 1 | "Kräuter": like "Ein Bier" |
 /// | `double_grain` | 2 | "Doppelkorn": before a game that is not weak |
 /// | `bitters` | 2 | "Magenbitter": before a weak game |
 /// | `chalk` | 2 | "Kreide": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
+/// | `regret` | 0 | "Reue": the bot never takes an Einmischen back |
 ///
-/// The Schnäpse are placeholders, not measured.
-pub const CONSUMABLE_VALUES: [(&str, u32); 9] = [
-    ("new_deal", 4),
-    ("beer", 3),
-    ("herbal", 3),
+/// The Schnäpse are placeholders, not measured. "Neues Blatt", "Ein Bier"
+/// and "Kräuter" only help once the two Einmischen of a game are used up:
+/// the bot throws in about every second deal (0.75 Einmischen per game in
+/// the run measurement of 01.11.2026, DESIGN 5.2), so three weak deals in
+/// a row come in about one game of eight, once every three series. Before the
+/// Einmischen rule they were worth 4, 3 and 3 and were bought far more
+/// often than used.
+pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
+    ("new_deal", 2),
+    ("beer", 1),
+    ("herbal", 1),
     ("ink_pad", 2),
     ("double_grain", 2),
     ("bitters", 2),
     ("chalk", 2),
     ("shot", 1),
     ("fresh_deck", 0),
+    ("regret", 0),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -319,12 +329,20 @@ pub fn null_expected_score(
 /// of `all_cards` (the ten plus the skat, which counts for the Spitzen),
 /// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost twice.
 /// `deck` is every card of the game (for trumps missing from the deck).
+///
+/// `win_threshold` is the Augen the game needs (`61 + stake`, lowered by
+/// relics; [`crate::rules::Thresholds::win`]). The tables are measured at
+/// 61; above it the win chance shrinks with the Augen left over, `(120 −
+/// threshold) / 59` of it (a rough model, not measured), so that at high
+/// stakes Null, which counts no Augen, wins the comparison more often.
+/// Below 61 the tables are kept.
 #[must_use]
 pub fn suit_expected_score(
     hand: &[DealtCard],
     all_cards: &[DealtCard],
     deck: &[DealtCard],
     declaration: Declaration,
+    win_threshold: u32,
 ) -> i64 {
     let game = declaration.game();
     let Some(base) = game.base_value() else {
@@ -342,6 +360,10 @@ pub fn suit_expected_score(
                 .map_or(0, |row| percent(row, aces))
         }
     };
+    let total = i64::from(crate::rules::TOTAL_CARD_POINTS);
+    let normal = i64::from(crate::rules::WIN_THRESHOLD);
+    let needed = i64::from(win_threshold).max(normal);
+    let win = win * (total - needed).max(0) / (total - normal);
     let faces: Vec<Card> = all_cards.iter().filter_map(|c| c.face()).collect();
     let matadors = crate::rules::matadors(game, &faces).count;
     let levels = matadors + 1 + u32::from(declaration.hand());
@@ -776,7 +798,13 @@ impl RunBot {
             Declaration::null(NullRisk::Hand)
         };
         let null_ev = null_expected_score(hand, exposed, null, &scoring);
-        let suit_ev = suit_expected_score(hand, hand, game.deck_cards(), suit);
+        let suit_ev = suit_expected_score(
+            hand,
+            hand,
+            game.deck_cards(),
+            suit,
+            active.rules.thresholds.win,
+        );
         let null_fits = exposed <= NULL_HAND_MAX_EXPOSED && Self::null_counts(run, content, None);
         let suit_fits =
             !RunBot::is_weak(hand, suit) && (!active.rules.require_ouvert || suit.ouvert());
@@ -809,8 +837,10 @@ impl RunBot {
     /// - Null, discarding the two most exposed cards, as Null Ouvert if no
     ///   exposed card is left.
     ///
-    /// With "Der Angeber" only Null Ouvert can be played open after the
-    /// skat.
+    /// The suit game or grand carries the announcement the ten cards kept
+    /// allow ([`RunBot::announcement`], ADR 0013: also after the skat,
+    /// without Hand). With "Der Angeber" it is played only if that is
+    /// Ouvert, otherwise Null Ouvert.
     fn after_skat(run: &Run, content: &Content) -> Option<(Declaration, [DealtCard; 2])> {
         let active = run.game()?;
         let game = &active.game;
@@ -833,22 +863,29 @@ impl RunBot {
         } else {
             Declaration::null(NullRisk::Normal)
         };
-        if active.rules.require_ouvert {
-            return Some((null, null_discard));
-        }
         let suit = DeclarerHeuristic.choose_game_after_skat(cards);
         let suit_discard = Self::discard_for(cards, suit, deck)?;
-        if !Self::null_counts(run, content, Some(null_discard)) {
-            return Some((suit, suit_discard));
-        }
         let suit_hand: Vec<DealtCard> = cards
             .iter()
             .copied()
             .filter(|c| !suit_discard.contains(c))
             .collect();
+        let suit = suit
+            .with_risk(RunBot::announcement(&suit_hand, suit))
+            .with_hand(false);
+        if active.rules.require_ouvert {
+            if suit.ouvert() {
+                return Some((suit, suit_discard));
+            }
+            return Some((null, null_discard));
+        }
+        if !Self::null_counts(run, content, Some(null_discard)) {
+            return Some((suit, suit_discard));
+        }
         let scoring = run.null_scoring(content);
         let null_ev = null_expected_score(&null_hand, exposed, null, &scoring);
-        let suit_ev = suit_expected_score(&suit_hand, cards, deck, suit);
+        let suit_ev =
+            suit_expected_score(&suit_hand, cards, deck, suit, active.rules.thresholds.win);
         if null_ev > suit_ev {
             Some((null, null_discard))
         } else {
@@ -1028,10 +1065,11 @@ impl RunBot {
         )
     }
 
-    /// The cheapest way to throw a weak hand in, if any: redeal, "Neues
-    /// Blatt", pass, "Ein Bier" for one more pass. Never on the last game.
+    /// The cheapest way to throw a weak hand in, if any: an Einmischen
+    /// left, "Neues Blatt", "Ein Bier" for one more Einmischen. Einmischen
+    /// costs no game, so the last game of a series is no exception.
     fn throw_in(run: &Run, content: &Content) -> Option<RunAction> {
-        if run.redeals_left() > 0 {
+        if run.redeals_left(content) > 0 && run.accepts(content, RunAction::Redeal) {
             return Some(RunAction::Redeal);
         }
         if let Some(action) = Self::usable(
@@ -1042,17 +1080,10 @@ impl RunBot {
         ) {
             return Some(action);
         }
-        let series = run.series();
-        if series.games_left() <= 1 {
-            return None;
-        }
-        if series.passes_left > 0 {
-            return Some(RunAction::Pass);
-        }
         Self::usable(
             run,
             content,
-            |a| matches!(a, ConsumableAction::ExtraPasses(_)),
+            |a| matches!(a, ConsumableAction::ExtraRedeals(_)),
             None,
         )
     }
@@ -1178,28 +1209,28 @@ mod tests {
     fn shop_buys_consumables_and_puts_the_ink_pad_on_an_ace() {
         let content = Content::load().expect("content");
         let mut run = open_shop(&content, 10);
-        offer(&mut run, &[], &["ink_pad", "beer"]);
+        offer(&mut run, &[], &["beer", "ink_pad"]);
+        // Since the Einmischen rule the ink pad (2) comes before the beer (1).
         assert_eq!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(1)
         );
         run.apply(&content, RunAction::BuyConsumable(1))
-            .expect("beer");
+            .expect("ink");
+        let kreuz_ass = 31;
+        let ink = RunAction::UseConsumable {
+            slot: 0,
+            target: Some(kreuz_ass),
+            suit: None,
+        };
+        assert_eq!(RunBot.shop_action(&run, &content), ink);
+        run.apply(&content, ink).expect("ink on the ace");
         assert_eq!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(0)
         );
         run.apply(&content, RunAction::BuyConsumable(0))
-            .expect("ink");
-        let kreuz_ass = 31;
-        assert_eq!(
-            RunBot.shop_action(&run, &content),
-            RunAction::UseConsumable {
-                slot: 1,
-                target: Some(kreuz_ass),
-                suit: None
-            }
-        );
+            .expect("beer");
         // "Frisches Deck" is never bought.
         let mut run = open_shop(&content, 10);
         offer(&mut run, &[], &["fresh_deck"]);
@@ -1240,6 +1271,9 @@ mod tests {
         };
         run.consumables = vec![ConsumableId::new("beer"), ConsumableId::new("new_deal")];
         let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
+        // The game's own Einmischen first.
+        assert_eq!(next(&run), RunAction::Redeal);
+        run.series.redeals_in_game = 99;
         assert_eq!(
             next(&run),
             RunAction::UseConsumable {
@@ -1249,8 +1283,6 @@ mod tests {
             }
         );
         run.consumables.pop();
-        assert_eq!(next(&run), RunAction::Pass);
-        run.series.passes_left = 0;
         assert_eq!(
             next(&run),
             RunAction::UseConsumable {
@@ -1259,8 +1291,8 @@ mod tests {
                 suit: None
             }
         );
-        // The last game is played, whatever the hand: with the skat.
-        run.series.games_played = run.series.game_limit - 1;
+        // Nothing left to throw it in: the hand is played, with the skat.
+        run.consumables.clear();
         assert_eq!(next(&run), RunAction::PickUpSkat);
     }
 
@@ -1358,15 +1390,24 @@ mod tests {
         let five = hand("HJ HA HT H9 H8 SA S9 C8 D7 D8");
         let seven = hand("CJ HJ HA HT HK H9 H8 SA S9 C8");
         // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 60.
-        assert_eq!(suit_expected_score(&five, &five, &deck, hearts), -1320);
-        assert!(suit_expected_score(&seven, &seven, &deck, hearts) > 0);
+        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), -1320);
+        assert!(suit_expected_score(&seven, &seven, &deck, hearts, 61) > 0);
         assert!(
             null_expected_score(&sevens, 1, null, &formula)
-                > suit_expected_score(&five, &five, &deck, hearts)
+                > suit_expected_score(&five, &five, &deck, hearts, 61)
         );
         assert!(
-            suit_expected_score(&seven, &seven, &deck, hearts)
+            suit_expected_score(&seven, &seven, &deck, hearts, 61)
                 > null_expected_score(&sevens, 3, null, &formula)
+        );
+        // A high stake makes the suit game worse and Null the better
+        // choice; a lowered threshold keeps the measured table.
+        let staked = suit_expected_score(&seven, &seven, &deck, hearts, 61 + 30);
+        assert!(staked < suit_expected_score(&seven, &seven, &deck, hearts, 61));
+        assert!(staked < null_expected_score(&sevens, 3, null, &formula));
+        assert_eq!(
+            suit_expected_score(&five, &five, &deck, hearts, 58),
+            suit_expected_score(&five, &five, &deck, hearts, 61)
         );
     }
 

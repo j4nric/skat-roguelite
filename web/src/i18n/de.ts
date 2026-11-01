@@ -13,7 +13,8 @@ export const de = {
     errors: {
       WrongPhase: 'Das geht gerade nicht.',
       NotEnoughCoins: 'Dafür reichen die Groschen nicht.',
-      NoRedealLeft: 'In dieser Serie wurde schon geschoben.',
+      NoRedealLeft: 'In diesem Spiel kannst du nicht mehr einmischen.',
+      NoRedealToUndo: 'Da gibt es kein Einmischen zurückzunehmen.',
       MustFollowSuit: 'Du musst bedienen.',
       UnknownCard: 'Diese Karte gibt es nicht.',
       HandRequired: 'Der Boss verlangt ein Handspiel.',
@@ -29,7 +30,7 @@ export const de = {
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
-      NoPassesLeft: 'Du hast keine Pässe mehr.',
+      NoPassesLeft: 'Du kannst nicht mehr einmischen.',
       NoFreeSlot: 'Dafür ist kein Platz mehr frei.',
       NotYourTurn: 'Du bist gerade nicht dran.',
       AwaitingKontraAnswer: 'Antworte zuerst auf das Kontra.',
@@ -131,7 +132,7 @@ export const de = {
     target: 'Ziel {target}',
     games: 'Spiele',
     gamesLeft: '{left} von {limit}',
-    passes: 'Pässe',
+    passes: 'Einmischen',
     coins: 'Groschen',
     seed: 'Seed {seed}',
     menu: 'Menü',
@@ -142,7 +143,7 @@ export const de = {
     stake: 'ab {augen}',
     stakeTitle: 'Einsatz {stake}: Gewinn ab {augen} Augen',
     gamesAria: '{left} von {limit} Spielen übrig',
-    passesAria: '{left} Pässe übrig',
+    passesAria: 'Noch {left}× einmischen in diesem Spiel',
     pending: 'Letzte Runde: nächstes Spiel ×{factor}',
     pendingSchnapsMul: '{name} ×{factor}',
     pendingSchnapsLoss: '{name}: einfach',
@@ -245,10 +246,10 @@ export const de = {
   },
 
   riskHints: {
-    Normal: 'Mit Skat gespielt. Schneider und Schwarz zählen, ansagen kannst du sie nur beim Handspiel.',
+    Normal: 'Mit Skat gespielt, ohne Ansage. Schneider und Schwarz zählen, wenn du sie schaffst.',
     Hand: 'Skat bleibt liegen. Eine Stufe mehr.',
-    SchneiderDeclared: 'Hand, dazu Schneider angesagt. Schaffst du ihn nicht, ist das Spiel verloren.',
-    SchwarzDeclared: 'Hand, dazu Schwarz angesagt: alle Stiche oder verloren.',
+    SchneiderDeclared: 'Schneider angesagt. Schaffst du ihn nicht, ist das Spiel verloren. Aus der Hand gibt’s die Hand-Stufe dazu.',
+    SchwarzDeclared: 'Schwarz angesagt: alle Stiche oder verloren. Aus der Hand gibt’s die Hand-Stufe dazu.',
     Ouvert: 'Wie Schwarz angesagt, aber mit offenen Karten.',
   },
 
@@ -284,14 +285,14 @@ export const de = {
     /** Shown in the middle while the deck is dragged (or after one tap on it). */
     mixHere: 'Hier einmischen',
     mixArmed: 'Zieh den Stapel in die Mitte oder tippe auf „Einmischen“.',
-    mixHint: 'Du lässt dieses Blatt aus: Die Karten werden eingemischt und neu gegeben. Kostet ein Spiel der Serie, aber keine Punkte. Wie oft das geht, ist begrenzt.',
+    mixHint: 'Gefällt dir das Blatt nicht, mischst du es ein: Alle Karten werden neu gegeben. Das kostet kein Spiel der Serie. Zweimal pro Spiel (die Zahl auf dem Stapel), dann wird gespielt.',
     mixHow: 'Zieh den Stapel in die Mitte, oder tippe ihn an und bestätige.',
-    redrawHint: 'Neu geben, ohne ein Spiel der Serie zu verbrauchen. Du bekommst ein neues Blatt.',
     choiceKind: 'Skat oder Hand',
     skatZone: 'Skat zum Drücken',
     skatZoneCount: 'Skat · {n} von 2',
     backToHand: '{card}, zurück auf die Hand',
-    redraw: 'Schieben ({left})',
+    /** "Reue" right after an Einmischen: name of the Schnaps from the content. */
+    regret: '{name}: altes Blatt zurück',
     handRequired: 'Der Boss verlangt ein Handspiel.',
     ouvertRequired: 'Der Angeber verlangt Ouvert.',
     noTrick: 'Kein Stich!',
@@ -376,15 +377,15 @@ export const de = {
 
   toast: {
     bossAnnounced: 'Neuer Skatabend. Der Boss heute: {name}.',
-    passed: 'Eingemischt und neu gegeben. Noch {left} Pässe.',
-    redealt: 'Neu gemischt und gegeben.',
+    redealt: 'Eingemischt und neu gegeben. Noch {left}× einmischen.',
+    redealUndone: 'Reue: Das alte Blatt liegt wieder auf dem Tisch.',
     conceded: 'Die Gegner schenken dir den Rest.',
     kontra: '{name}: Kontra!',
     re: 'Re!',
     consumableUsed: '{name} benutzt.',
     schnapsWaiting: 'Prost! {name} wirkt im nächsten angesagten Spiel.',
     chalked: 'Mit Kreide umgemalt: {old} ist jetzt {new}.',
-    passesAdded: 'Ein Pass mehr: jetzt {left}.',
+    passesAdded: 'Einmal mehr einmischen: jetzt {left}.',
     bought: '{name} gekauft.',
     sold: '{name} verkauft (+{price} Gr.).',
     rerolled: 'Neue Auslage.',
@@ -495,7 +496,7 @@ export const de = {
     nextSeries: 'Abschnitt {section} · Serie {series}',
     nextBoss: 'Abschnitt {section} · Boss-Serie',
     nextTarget: 'Ziel {target}',
-    nextGames: '{games} Spiele · {passes} Pässe',
+    nextGames: '{games} Spiele · {redeals}× einmischen je Spiel',
     bossTonight: 'Boss dieses Abends',
     lastSeries: 'Das war die letzte Serie der Tournee.',
     wirtBroke: 'Anschreiben gibt’s hier nicht.',
@@ -659,12 +660,12 @@ export const de = {
     skatOrHand:
       'Gereizt wird hier nicht, du bist immer der Alleinspieler. Lässt du den Skat liegen und spielst Hand, gibt’s eine Stufe mehr.',
     afterSkat:
-      'Skat aufgenommen, also bleibt’s bei Normal. Schneider, Schwarz oder Ouvert ansagen geht nur aus der Hand, so will es die Skatordnung. Null und Null Ouvert gehen immer.',
+      'Skat aufgenommen. Schneider, Schwarz oder Ouvert darfst du hier trotzdem ansagen, nur die Hand-Stufe gibt’s nicht mehr. Null und Null Ouvert gehen immer.',
     afterSkatNull:
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
       'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, zahlst du das Doppelte.',
-    pass: 'Einmischen ist keine Schande. Kostet ein Spiel der Serie, aber keinen Punkt, nur sind die Pässe knapp.',
+    pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, dann wird gespielt.',
     score:
       'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht doppelt runter.',
     shop: 'Für jede gewonnene Serie gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Gegenstände zinken oder ändern dein Blatt.',
@@ -686,7 +687,7 @@ export const de = {
     flow: [
       ['Skat oder Hand', 'Skat aufnehmen oder Hand spielen. Gereizt wird nicht.'],
       ['Drücken', 'Nach dem Aufnehmen zwei Karten in den Skat. Ihre Augen zählen für dich.'],
-      ['Ansagen', 'Spielart und Risikostufe. Schneider, Schwarz und Ouvert nur aus der Hand.'],
+      ['Ansagen', 'Spielart und Risikostufe. Schneider, Schwarz und Ouvert auch nach dem Skat, die Hand-Stufe nur aus der Hand.'],
       ['10 Stiche', 'Bedienen wie gewohnt. Ab 61 Augen gewonnen, ab 90 Schneider, alle Stiche Schwarz.'],
       ['Abrechnung', 'Der Spielwert kommt aufs Konto der Serie.'],
     ] as [string, string][],
@@ -717,7 +718,8 @@ export const de = {
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
       'Kein Überreizen: Die Spitzen zählen nach dem Spiel, mit deinem Blatt samt Skat.',
-      'Einmischen kostet ein Spiel der Serie, aber keine Punkte. Die Pässe sind begrenzt.',
+      'Einmischen: Gefällt dir das Blatt nicht, gibst du es zurück und es wird neu gegeben. Zweimal pro Spiel, es kostet kein Spiel. Danach wird gespielt.',
+      'Schneider, Schwarz und Ouvert darfst du auch nach dem Skat ansagen. Die Hand-Stufe gibt’s nur aus der Hand.',
       'Hausregeln, Figuren und gezinkte Karten biegen die Regeln, auch Grundwert, Stufen und Augen.',
       'Ramsch, Kontra und Bock sind keine Grundregeln. Sie kommen über Hausregeln, Bosse oder Ereignisse.',
       'Alle drei spielen mit deinem Blatt. Was du daran änderst, gilt für jeden.',
@@ -725,7 +727,7 @@ export const de = {
     runTitle: 'Die Tournee',
     run: [
       ['Abschnitt', 'Ein Skatabend in einer Kneipe: zwei Serien, dann die Boss-Serie.'],
-      ['Serie', 'Erreiche den Zielwert, bevor die Spiele der Serie aufgebraucht sind. Sonst ist der Run vorbei.'],
+      ['Serie', 'Drei Spiele gegen dieselben zwei Gäste. Erreiche den Zielwert, bevor sie gespielt sind. Sonst ist der Run vorbei.'],
       ['Boss', 'Biegt für seine Serie eine Regel. Am Tresen davor siehst du schon, wer kommt.'],
       ['Tresen', 'Nach jeder gewonnenen Serie: Groschen ausgeben für Hausregeln, Figuren und Gegenstände.'],
       ['Rast', 'Manchmal statt des Tresens ein Ereignis mit einer Wahl.'],

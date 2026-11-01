@@ -75,7 +75,7 @@ function nextBoard(view: RunView): string {
     : '';
   return `<div class="next-board chalkboard" data-testid="next-series">
     <div class="next-head"><span class="chalk-small">${esc(de.shop.next)}</span><b>${esc(where)}</b></div>
-    <div class="next-facts"><span class="next-target">${esc(t(de.shop.nextTarget, { target: next.target }))}</span><span>${esc(t(de.shop.nextGames, { games: next.game_limit, passes: next.passes }))}</span></div>
+    <div class="next-facts"><span class="next-target">${esc(t(de.shop.nextTarget, { target: next.target }))}</span><span>${esc(t(de.shop.nextGames, { games: next.game_limit, redeals: next.redeals }))}</span></div>
     ${bossBlock}
   </div>`;
 }
