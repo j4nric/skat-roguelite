@@ -92,6 +92,15 @@
 // Persistent storage is asked for once, after the run started, not on load.
 // All passes above run with the Wirt's hints switched off (quietContext).
 //
+// M6 "Musik" (musicPass and checks in the passes above): the music loops
+// are mirrored in <html data-music>; an init script counts AudioContexts and
+// oscillators. No AudioContext and no music before the first interaction;
+// after starting a run the table loop plays (notes are made), the Tresen
+// and an encounter switch to the Tresen loop, a boss series to the boss
+// loop. In the menu "Klänge" and "Musik" are separate toggles: Klänge off
+// keeps the music, Musik off stops it (no new notes) and stays off after a
+// reload, Klänge on does not bring it back; the menu still fits.
+//
 // M6 "Geführter erster Abend" (hintsAndRules), with a fresh profile: the
 // Regelkarte opens from the menu and closes; the Wirt's hints come one at a
 // time (welcome, Skat oder Hand, pass, Ansage after the skat, value line,
@@ -323,6 +332,37 @@ function watch(page, errors) {
   page.on('requestfailed', (req) => errors.push(`request failed: ${req.url()}`));
 }
 
+/** Count AudioContexts and oscillators (every music note makes one or two). */
+async function spyAudio(context) {
+  await context.addInitScript(() => {
+    window.__audio = { contexts: 0, oscillators: 0 };
+    const Orig = window.AudioContext;
+    if (!Orig) return;
+    window.AudioContext = class extends Orig {
+      constructor(...args) {
+        super(...args);
+        window.__audio.contexts += 1;
+      }
+    };
+    const create = Orig.prototype.createOscillator;
+    Orig.prototype.createOscillator = function (...args) {
+      window.__audio.oscillators += 1;
+      return create.apply(this, args);
+    };
+  });
+}
+
+/** Wait until <html data-music> names the expected loop ("off" for none). */
+async function expectMusic(page, loop, label) {
+  try {
+    await page.waitForFunction((want) => document.documentElement.dataset.music === want, loop, { timeout: 5000 });
+  } catch {
+    const now = await page.evaluate(() => document.documentElement.dataset.music);
+    fail(`${label}: music should be "${loop}", is "${now}"`);
+  }
+  log(`${label}: music ${loop}`);
+}
+
 /** Play the first legal card until the score board shows (answering Kontra without Re), then close it. */
 async function playOut(page, label, shotAt = null) {
   let played = 0;
@@ -403,6 +443,78 @@ async function resumeFixture(page, name) {
   await resume.click();
 }
 
+/** The music: silent until the first interaction, loops per screen, its own switch. */
+async function musicPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  await spyAudio(context);
+  const page = await context.newPage();
+  watch(page, errors);
+  const audio = () => page.evaluate(() => ({ ...window.__audio }));
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+
+  // Before any interaction: no AudioContext, no music.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await expectMusic(page, 'off', 'before the first interaction');
+  if ((await audio()).contexts !== 0) fail('an AudioContext was made before the first interaction');
+
+  // Starting a run is the first interaction: the table loop plays notes.
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await expectMusic(page, 'table', 'run started');
+  await page.waitForFunction(() => window.__audio.oscillators > 0, null, { timeout: 5000 }).catch(() => fail('the table loop makes no notes'));
+
+  // Menu: "Klänge" and "Musik" side by side, the menu still fits.
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="toggle-music"]');
+  await assertMenuNoScroll(page, 'menu with Klänge and Musik');
+  for (const id of ['toggle-sound', 'toggle-music']) {
+    if ((await page.getAttribute(`[data-testid="${id}"]`, 'aria-pressed')) !== 'true') fail(`${id} is not on by default`);
+  }
+
+  // Klänge off: the music plays on.
+  await page.click('[data-testid="toggle-sound"]');
+  await page.waitForSelector('[data-testid="toggle-sound"][aria-pressed="false"]');
+  let settings = await stored();
+  if (settings.sound !== false || settings.music === false) fail(`Klänge off stored as ${JSON.stringify(settings)}`);
+  await expectMusic(page, 'table', 'Klänge off');
+  const playing = (await audio()).oscillators;
+  await page.waitForFunction((n) => window.__audio.oscillators > n, playing, { timeout: 5000 }).catch(() => fail('the music stopped with the Klänge'));
+
+  // Musik off: no more notes once the short fade is over.
+  await page.click('[data-testid="toggle-music"]');
+  await page.waitForSelector('[data-testid="toggle-music"][aria-pressed="false"]');
+  settings = await stored();
+  if (settings.music !== false || settings.sound !== false) fail(`Musik off stored as ${JSON.stringify(settings)}`);
+  await expectMusic(page, 'off', 'Musik off');
+  await page.waitForTimeout(1200);
+  const stopped = (await audio()).oscillators;
+  await page.waitForTimeout(800);
+  if ((await audio()).oscillators !== stopped) fail('notes are still made with the music off');
+
+  // Klänge on again: the music stays off.
+  await page.click('[data-testid="toggle-sound"]');
+  await page.waitForSelector('[data-testid="toggle-sound"][aria-pressed="true"]');
+  await expectMusic(page, 'off', 'Klänge on, Musik off');
+  await assertMenuNoScroll(page, 'menu with the music off');
+  await page.click('[data-testid="menu-close"]');
+
+  // After a reload the music is still off, also after an interaction.
+  await page.reload();
+  await page.waitForSelector('[data-action="resume"]');
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('.declare');
+  await expectMusic(page, 'off', 'Musik off after a reload');
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="toggle-music"][aria-pressed="false"]');
+  await page.click('[data-testid="toggle-music"]');
+  await expectMusic(page, 'table', 'Musik on again');
+  settings = await stored();
+  if (settings.music !== true || settings.sound !== true) fail(`Musik on stored as ${JSON.stringify(settings)}`);
+  await context.close();
+}
+
 /** Boss dialog and Kontra dialog, from saved runs. */
 async function bossAndKontra(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -415,8 +527,10 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   const next = await text(page, 'next-series');
   if (!next.includes('Kontra-Hans')) fail(`the Tresen does not announce the boss: ${next}`);
   await shoot(page, 'shop-boss');
+  await expectMusic(page, 'shop', 'Tresen before the boss');
   await page.click('[data-action="leave-shop"]');
   await page.waitForSelector('[data-action="boss-go"]');
+  await expectMusic(page, 'boss', 'boss dialog');
   const bossText = (await page.locator('.sheet-boss').textContent()) ?? '';
   if (!bossText.includes('Kontra-Hans')) fail(`boss dialog without the boss: ${bossText}`);
   log('boss dialog shown');
@@ -424,6 +538,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
+  await expectMusic(page, 'boss', 'boss series');
   await assertGuests(page, 'boss series', { boss: true });
   await shoot(page, 'table-boss');
   await assertFits(page, 'boss at the table');
@@ -504,6 +619,7 @@ async function m4(browser, errors, reducedMotion) {
   // Der Kartengeber: pick the card yourself.
   await resumeFixture(page, 'encounter.json');
   await page.waitForSelector('[data-testid="encounter"]');
+  await expectMusic(page, 'shop', 'encounter');
   await shoot(page, 'encounter');
   await page.click('[data-action="choose-encounter"][data-target="true"]');
   await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
@@ -1348,6 +1464,7 @@ async function run() {
 
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
+    await expectMusic(page, 'shop', 'Tresen');
     const coinsBefore = Number(await text(page, 'coins'));
     const next = await text(page, 'next-series');
     if (!next) fail('the Tresen shows no preview of the next series');
@@ -1383,6 +1500,7 @@ async function run() {
     await page.waitForSelector('.declare, [data-action="boss-go"]');
     log('next series started');
     if (await page.locator('.declare').count()) {
+      await expectMusic(page, 'table', 'second series');
       // New series, new Stammgäste: neither of the first two sits down again.
       const next = await assertGuests(page, 'second series');
       const before = seated.opps.map((o) => o.guest);
@@ -1396,6 +1514,7 @@ async function run() {
     log('saved after the Tresen');
     await context.close();
 
+    await musicPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);

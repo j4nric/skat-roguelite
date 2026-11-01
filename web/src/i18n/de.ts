@@ -565,6 +565,10 @@ export const de = {
     sound: 'Ton',
     soundOn: 'An',
     soundOff: 'Aus',
+    effects: 'Klänge',
+    music: 'Musik',
+    toggleOn: '{name}: An',
+    toggleOff: '{name}: Aus',
     overview: 'Kreidetafel',
     credits: 'Abspann',
     thinking: 'Bedenkzeit',
@@ -739,6 +743,11 @@ export const de = {
       {
         what: 'Klänge (Karten, Stich, Kreide, Gläser, Groschen, Klopfen, Akkordeon)',
         who: 'Selbst synthetisiert für dieses Projekt (scripts/make-sounds.mjs)',
+        license: 'Teil des Projekts',
+      },
+      {
+        what: 'Musik (Tisch, Tresen, Boss)',
+        who: 'Eigene Komposition, im Browser erzeugt (src/songs.ts, src/music.ts)',
         license: 'Teil des Projekts',
       },
     ],
