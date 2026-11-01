@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { Catalog, CardKind, GameType, Rank, Suit } from '../types';
+import type { Catalog, CardKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -34,11 +34,19 @@ export function cardName(kind: CardKind): string {
   return t(de.card.name, { suit: de.suits[f.suit], rank: de.ranks[f.rank] });
 }
 
-/** "Eichel", "Grand". */
-export function gameName(game: GameType): string {
+/** "Eichel", "Grand", "Ramsch". */
+export function gameName(game: DeclaredGame): string {
   if (game === 'Grand') return de.games.Grand;
   if (game === 'Null') return de.games.Null;
+  if (game === 'Ramsch') return de.games.Ramsch;
   return de.suits[game.Suit];
+}
+
+/** "Eichel · Hand", "Null Ouvert Hand", "Ramsch". */
+export function declarationName(d: Declaration): string {
+  if (d.game === 'Ramsch') return de.games.Ramsch;
+  if (d.game === 'Null') return de.nullRisks[d.risk as NullRisk] ?? de.games.Null;
+  return t(de.table.declaration, { game: gameName(d.game), risk: de.risks[d.risk as RiskLevel] ?? d.risk });
 }
 
 type Category = keyof Catalog;
@@ -58,4 +66,12 @@ export function contentName(category: Category, id: string): string {
 /** Display text of a content item, German-deck override first. */
 export function contentText(category: Category, id: string): string {
   return de.content[category][id]?.text ?? catalog?.[category][id]?.text ?? '';
+}
+
+/**
+ * Whether a card modification is a curse. The content has no type for it;
+ * by convention (GLOSSARY) its text starts with "Fluch:".
+ */
+export function isCurse(mod: string): boolean {
+  return contentText('card_mods', mod).startsWith(de.card.curseMark);
 }

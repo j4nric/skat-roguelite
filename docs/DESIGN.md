@@ -185,6 +185,33 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Information | „Durchsichtig“: Der Spieler sieht, wer diese Karte hält | Zählen |
 | Negativ | „Ramponiert“: Diese Karte darf nicht gedrückt werden | Fluch, gibt Geld |
 
+**Umgesetzt in M4: 20 Modifikationen** (`card_mods.ron`, Preise Platzhalter für `balance`). Zufällige Modifikationen (Stempelkissen, Kartengeber) ziehen gleichverteilt aus dem Pool des Charakters, Flüche eingeschlossen. Ereignisse können eine bestimmte Modifikation vergeben (13).
+
+| Modifikation | Effekt | Hebel | Seltenheit | Pool |
+|---|---|---|---|---|
+| Fett | +4 Augen | Augen | Common | Alleinspieler |
+| Goldrand | +8 Augen | Augen | Rare | Alleinspieler |
+| Gezinkt | eine Stufe höher | Stichgewinn | Common | Alleinspieler |
+| Doppelt gezinkt | zwei Stufen höher | Stichgewinn | Uncommon | Alleinspieler |
+| Stempel | Ist ihre Farbe Trumpf: Grundwert +3 | Grundwert | Uncommon | Alleinspieler |
+| Krone | Ist ihre Farbe Trumpf: Grundwert ×2 | Grundwert (multiplikativ) | Rare | Alleinspieler |
+| Siegel | Ist ihre Farbe Trumpf: +1 Gewinnstufe, gewonnen wie verloren | Gewinnstufen | Uncommon | Alleinspieler |
+| Hufeisen | Ist ihre Farbe Trumpf: Gewinn ab 56 Augen | Gewinnschwelle | Uncommon | Alleinspieler |
+| Maßband | Ist ihre Farbe Trumpf: 80 bis 89 Augen sind Schneider | Schneider | Uncommon | Alleinspieler |
+| Spitze | Gewinnt sie den letzten Stich: +1 Gewinnstufe | Gewinnstufen | Uncommon | Alleinspieler |
+| Glückspfennig | Gewonnenes Spiel, dessen letzten Stich sie macht: Spielwert ×2 | Spielwert (multiplikativ) | Rare | Alleinspieler |
+| Durchsichtig | Du siehst, wer sie hält | Zählen | Common | alle |
+| Bierfleck (Fluch) | −5 Augen, dafür siehst du, wer sie hält | Augen (Fluch), Zählen | Common | alle |
+| Angeknackst (Fluch) | gewinnt nie, dafür +5 Augen | Stichgewinn (Fluch), Augen | Common | Alleinspieler |
+| Schwarze Katze (Fluch) | Ist ihre Farbe Trumpf: Grundwert −3, dafür eine Stufe höher | Grundwert (Fluch), Stichgewinn | Common | Alleinspieler |
+| Unsichtbar | gewinnt nie, bedient aber | Stichgewinn | Uncommon | Nullspieler |
+| Attrappe | gewinnt nie, und du siehst, wer sie hält | Stichgewinn, Zählen | Rare | Nullspieler |
+| Bleigewicht | +10 Augen (Kurzschluss) | Augen | Common | Nullspieler |
+| Schlusslicht | Gewonnenes Null, dessen letzten Stich sie macht: +2 Gewinnstufen | Gewinnstufen | Uncommon | Nullspieler |
+| Aufgebrezelt | zwei Stufen höher: beim Gegner gut, bei dir gefährlich | Stichgewinn | Uncommon | Nullspieler |
+
+Flüche, entschieden von Claude am 01.11.2026: Einen Effekt, der Groschen gibt, und einen, der das Drücken verbietet („Ramponiert“), hat die Hook-API noch nicht (Auftrag an `core-dev`). Bis dahin sind Flüche Modifikationen mit einem klaren Nachteil auf einem Hebel und einem kleineren Ausgleich auf einem anderen. Sie kommen über Zufallsziehungen und das Ereignis „Umgekipptes Bier“ ins Blatt; der Bierfleck auf einer Lusche kostet nichts (Augen fallen nie unter 0), dort bleibt nur der Ausgleich.
+
 ### 7.3 Karten hinzufügen und entfernen
 
 - **Entfernen**: Luschen (7, 8, 9) rauswerfen ist der naheliegende Pfad. Jede entfernte Karte wird durch eine Blanko ersetzt (siehe 7.1). Blankos können später ebenfalls entfernt werden, dann wird das Blatt wirklich kleiner und es gibt weniger Stiche. *Offen: ob Stiche unter 10 sinnvoll sind.*
@@ -217,8 +244,44 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Fünf Plät
 | **Alte Dame** | Jede Dame zählt 5 Augen | Augen |
 | **Tournee** | Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs | Skalierung |
 | **Durchmarsch** | Gewinnst du Schneider, zählt der Spielwert doppelt | Spielwert, Schneider |
+| **Blindflug** (Null) | Gewonnenes Null aus der Hand: +1 Gewinnstufe | Gewinnstufen |
+| **Kleinvieh** | Jede Sieben und Acht zählt 1 Auge | Augen |
+| **Ein Auge zudrücken** | Gewinn ab 58 Augen | Schwelle |
+| **Lehrgeld** | Jedes verlorene Spiel: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
+| **Bierdeckel** | Jedes gewonnene Handspiel: +1 Grundwert für den Rest des Runs | Grundwert (Zähler) |
+| **Auf dem Trockenen** | Gegner nach drei Stichen ohne Auge: +1 Gewinnstufe | Gewinnstufen |
+| **Schneiderbock** | Nach einem gewonnenen Schneider zählt das nächste Spiel doppelt | Grundwert ×2 |
+| **Glückssträhne** | Ab dem dritten Sieg in Folge zählt jedes gewonnene Spiel doppelt, bis eines verloren geht | Spielwert ×2 |
+| **Nullachtfuffzehn** (Null) | Jedes Null: Grundwert +8, gewonnen wie verloren | Grundwert |
+| **Doppelter Boden** (Null) | Gewonnenes Null mit Skat: +1 Gewinnstufe | Gewinnstufen |
+| **Dicke Sau** (Null) | Jedes Daus zählt 16 Augen, die Gegner kommen schneller in den Kurzschluss | Augen |
+| **Glashaus** (Null) | Gewonnener Null Ouvert zählt doppelt | Spielwert ×2 |
+| **Kerbholz** (Null) | Jedes gewonnene Null: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
 
 Geändert am 01.11.2026 nach der M2-Messung (`docs/balance/2026-11-01-m2-zielwerte.md`), weil vier Hausregeln keinen messbaren Einfluss hatten (Designsäule 1): Spitze verlangte die Karo-7 und kam praktisch nie vor, Jungfrau lag knapp unter 5 % Einfluss, Durchmarsch hing an Schwarz (0,8 % der Spiele), Schieben war erwartungsneutral. Nachmessung mit `skat_sim --runs 3000 --no-shop --relic <id>` (Seeds 42 bis 44, Abschnitt 2 erreicht, ohne Hausregel 24,4 %): Durchmarsch +11 %, Schieben +16 %, Jungfrau +6 %, Spitze weiter unter 1 %. Preise unverändert.
+
+**Erweitert in M4 auf 31 Hausregeln und Figuren** (14 neu, entschieden von Claude am 01.11.2026). Vorgaben: jede an genau einem Hebel, fünf nur für den Nullspieler (Feld `characters`), vier multiplikativ fürs Spätspiel (Schneiderbock, Glückssträhne, Stammgast, Glashaus), drei Zähler, die über den Run wachsen (Lehrgeld, Bierdeckel, Kerbholz). Preise sind Platzhalter für `balance`. Einzeln gemessen (`skat_sim --seed 42 --runs 3000 --no-shop --relic <id>`, Abschnitt 2 / 3 / 4 erreicht; ohne Hausregel Alleinspieler 29,0 / 5,9 / 0,6 %, Nullspieler 27,0 / 7,3 / 1,6 %):
+
+| Hausregel | Alleinspieler | Nullspieler | Anmerkung |
+|---|---|---|---|
+| Kleinvieh | 36,6 / 9,8 / 1,0 | 27,5 / 7,6 / 1,8 | mit den Neunen (+12 Augen) doppelt so stark wie die Alte Dame, deshalb nur Sieben und Acht |
+| Ein Auge zudrücken | 33,7 / 8,3 / 1,2 | – | |
+| Lehrgeld | 30,1 / 6,8 / 0,9 | 28,0 / 8,1 / 2,2 | mit +1 je Spiel kaum messbar, deshalb +2 |
+| Bierdeckel | 29,0 / 5,8 / 0,6 | 27,1 / 7,3 / 1,7 | der Bot spielt fast nie Hand; für Menschen gedacht |
+| Auf dem Trockenen | 29,8 / 6,3 / 0,8 | – | nach vier Stichen zu selten, deshalb drei |
+| Schneiderbock | 29,1 / 6,6 / 1,1 | – | wirkt erst spät |
+| Glückssträhne | 30,2 / 8,6 / 2,1 | 27,0 / 7,3 / 1,7 | Abschnitt 4 dreimal so oft |
+| Der Schneider | 31,0 / 7,0 / 1,0 | – | |
+| Der Stammgast | 29,0 / 9,0 / 2,8 | 27,0 / 8,2 / 2,6 | wirkt erst ab der vierten Serie, dann am stärksten |
+| Nullachtfuffzehn | – | 28,2 / 8,0 / 2,0 | |
+| Doppelter Boden | – | 28,4 / 8,4 / 2,3 | |
+| Dicke Sau | – | 27,5 / 7,6 / 2,0 | |
+| Glashaus | – | 27,0 / 7,3 / 1,7 | der Bot spielt Null Ouvert nur ohne offene Karte; Partner des Angebers |
+| Kerbholz | – | 27,8 / 7,9 / 2,1 | mit +2 je Null |
+
+Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Multiplikatoren sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Multiplikatoren existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben.
+
+Gesperrt sind sieben der neuen (Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider), siehe 9.3. Die Null-Hausregeln sind frei, weil der Nullspieler selbst schon eine Freischaltung ist.
 
 **Schieben: Entscheidung für „neu geben lassen“.** Zur Wahl standen zwei Varianten:
 
@@ -237,6 +300,19 @@ Variante 1 geht im geteilten Blatt nicht sauber: Ungesehen sind die Gegnerhände
 | **Der Schiedsrichter** | Gegner dürfen nicht schummeln (hebt Boss-Mechaniken teilweise auf) |
 | **Der Angeber** | +1 Gewinnstufe bei Ouvert, aber du musst immer Ouvert spielen |
 | **Der Zähler** | Zeigt dir laufend die Augen, die noch im Spiel sind |
+| **Der Stammgast** | Zählt die Serien, die du mit ihm gewinnst. Ab der vierten zählt jedes gewonnene Spiel doppelt |
+| **Der Schneider** | Nimmt großzügig Maß: Gewinnst du mit 80 bis 89 Augen, sind die Gegner Schneider |
+
+Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhalter für `balance`). Auslegungen, entschieden von Claude am 01.11.2026:
+
+- **Kiebitz** (`kibitzer`, Effekt `PeekDefenderCards(1)`): eine zufällige Karte eines Gegners und wer sie hält, gezogen mit dem Zufall des Spiels (das Geben bleibt gleich). Sie steht in der Sicht unter `revealed` und kommt als Ereignis `CardPeeked`, sonst nichts.
+- **Wirt** (`landlord`, `ShopDiscount(20)`): gilt für Relikte, Verbrauchsgegenstände und die Neuauslage, gerundet, mindestens 1 Groschen. Verkauft wird weiter zum halben vollen Preis, also kein Gewinn durch Kaufen und Verkaufen.
+- **Oma** (`granny`, `SeriesSkatSwap`): Ein gedrückter Bube lässt sich im echten Skat nicht sinnvoll zurücknehmen, weil der Spieler beim Drücken alles sieht. Umgesetzt als: Einmal pro Serie darf der Spieler in einem Handspiel vor seiner ersten Karte einen Buben aus dem Skat nehmen und dafür eine Karte drücken; das Spiel bleibt Hand. Ob ein Bube im Skat liegt, verrät die Oma (`can_take_from_skat`). Hebel: Hand plus Trumpf. Nur Alleinspieler.
+- **Schiedsrichter** (`referee`, `NoCheating`): schaltet die Boss-Regeln ab, die als Schummeln markiert sind: Zwillinge und Revolutionär.
+- **Angeber** (`show_off`, `RequireOuvert` plus eine Stufe bei Ouvert): Für den Alleinspieler hieße „immer Ouvert“ immer Schwarz angesagt, das wäre Selbstmord. Deshalb nur im Pool des Nullspielers (Null Ouvert und Null Ouvert Hand).
+- **Stammgast** (`regular_guest`, Zähler `regular` plus `MultiplyGameValue(2)` ab 4): Hebel Spielwert. Der Multiplikator fürs Spätspiel, wer ihn früh kauft, wartet zwei Abende. Nur gewonnene Spiele zählen doppelt.
+- **Schneider** (`tailor`, `SchneiderFromDeclarerPoints(80, 89)`): Hebel Schneider, ein Wortspiel mit dem Handwerk. Nur Alleinspieler. Statt der zuerst geplanten Figur „Der Opa“ (wie die Oma, aber ein Daus aus dem Skat): Der Kern merkt sich nur einen `SeriesSkatSwap`-Filter, Oma und Opa zusammen würden sich gegenseitig aufheben (Auftrag an `core-dev`).
+- **Zähler** (`card_counter`, `ShowCount`): zeigt Augen beider Seiten aus den Stichen (plus den Skat, sobald der Spieler ihn kennt) und die Summe der Karten, die der Spieler noch nicht gesehen hat. Der Talon zählt dazu, weil niemand weiß, welche Karten dort liegen; so verrät der Zähler nie mehr als ein perfekter Mitzähler weiß.
 
 ### 8.3 Verbrauchsgegenstände
 
@@ -258,6 +334,8 @@ Jeder Charakter hat ein eigenes Startblatt, ein Startrelikt und eigene Zielwertk
 
 Normales 32er-Blatt. Spielt Farbe und Grand. Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
 
+Charaktere sind Daten in `core/content/characters.ron` (Startblatt als Abweichung vom 32er-Blatt, Startrelikte, optional eigene Zielwerte, Null-Wertung). Welche Spiele ein Charakter ansagen darf, steht im Code (`Character::Declarer`, `Character::NullPlayer`).
+
 ### 9.2 Der Nullspieler
 
 Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
@@ -277,6 +355,26 @@ Das Startblatt des Nullspielers hat keine Buben, dafür vier zusätzliche Sieben
 
 Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn ein Run mit dem Alleinspieler gewonnen wurde.
 
+**Umgesetzt in M4.** Die Ansage ist ein Enum (`Declaration`: Farbspiel, Grand, Null, Ramsch), Null hat eigene Risikostufen (`NullRisk`: Normal, Hand, Ouvert, Ouvert Hand). Ungültige Kombinationen wie Null mit Schneider angesagt gibt es nicht; im JSON bleibt die Form `{game, risk}`. Null Ouvert ohne Hand (46) ist damit erstmals darstellbar. Ein Null endet wie in der Skatordnung mit dem ersten Stich des Alleinspielers. Bei Null Ouvert sehen die Gegner die Hand ab dem ersten Ausspielen. Startrelikt: **Der Kiebitz**. Pool: Hausregeln, die für Null wirken (Bockrunde, Kontra, Ouvert-Bonus auch für Null Ouvert, Schieben, Tournee), die Null-Hausregel „Blindflug“, die Figuren außer der Oma, der Angeber nur hier, die Modifikation „Unsichtbar“ (`NeverWins`: kann nie stechen, bedient aber). Bosse ohne Wirkung auf Null (Oma, Schwarzer Peter) zieht der Nullspieler nicht.
+
+**Null-Wertung, entschieden am 01.11.2026 mit dem Simulator: die Formel.** Beide Varianten sind Daten (`null_scoring` in `characters.ron`) und laufen durch dieselbe Formel Grundwert × Gewinnstufen, damit Relikte auf Grundwert, Stufen und Spielwert auch für Null wirken:
+
+- `Fixed`: Grundwert 23, 35, 46 oder 59 (Skatordnung), eine Stufe.
+- `Formula`: Grundwert 23 × (Risikostufe + Stilbonus). Die Risikostufe zerfällt in Spiel 1, Hand +1, Ouvert +2. Stilbonus nur bei gewonnenem Spiel: +1 je Stich, in dem der Alleinspieler eine Sieben gespielt und den Stich nicht bekommen hat; +2, wenn er nie bedienen musste; +3 „Kurzschluss“, wenn die Gegner nach fünf Stichen mindestens 61 Augen haben. „Alle Augen“ aus dem Vorschlag passt nicht in 15 Karten, deshalb die Mehrheit. Verloren: −2 × 23 × Risikostufe, ohne Stilbonus.
+
+Messung mit dem Nullspieler-Bot (`skat_sim --runs 1000 --character null [--null-scoring fixed]`, Seeds 42 bis 44, alles freigeschaltet), Alleinspieler zum Vergleich:
+
+| Kennzahl | Alleinspieler | Null `Fixed` | Null `Formula` |
+|---|---|---|---|
+| Abschnitt 2 erreicht | 31,8 % | 7,0 % | 28,4 % |
+| Abschnitt 3 erreicht | 10,8 % | 0,1 % | 8,4 % |
+| Abschnitt 4 erreicht | 3,5 % | 0,0 % | 2,8 % |
+| Serie 1-1 | 70,1 % | 45,4 % | 67,5 % |
+| Gewonnene Spiele | 65,7 % | 42,1 % | 43,0 % |
+| Punkte je Spiel | +1,3 | −20,3 | +22,2 |
+
+Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Null bringt 23, ein verlorenes kostet 46, und im Null-Blatt mit acht Siebenern gewinnt der Bot nur 42 % seiner Nullspiele. Mit der Formel kommt er so weit wie der Alleinspieler, obwohl er seltener gewinnt: Der Stilbonus (vor allem unterlaufene Siebener, das Null-Blatt hat acht) hebt ein gewonnenes Null weit über 23, ein verlorenes kostet weiter nur 46 je Risikostufe. Dazu hat die Formel Raum zum Skalieren: Grundwert-Relikte (Tournee) wirken auf 23, Stufen-Relikte (Ouvert-Bonus, Blindflug, Angeber) auf eine Summe von 1 bis 4 plus Stil, statt wie bei `Fixed` mit einer einzigen Stufe jedes Mal den Spielwert zu verdoppeln. Der Nullspieler nutzt deshalb die Zielwerte des Alleinspielers (`targets: None`). Der Bot spielt ein Null, wenn höchstens vier Karten „offen“ sind (klassische Null-Regel: die k-te kleinste Karte einer Farbe ist sicher, wenn höchstens k−1 kleinere Karten draußen sind), ohne offene Karte Null Ouvert Hand.
+
 ### 9.3 Freischaltungen über Runs hinweg
 
 Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschaltet.
@@ -285,6 +383,47 @@ Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschal
 - Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Pass schlagen.
 - Jede Freischaltung ist an genau einer Stelle als Daten definiert (Bedingung und Belohnung) und wird im Simulator auf Erreichbarkeit geprüft.
 - Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Kein Konto, kein Server-Speicher.
+
+**Umgesetzt in M4.** Freischaltungen stehen in `core/content/unlocks.ron` (Bedingung und Belohnung). Jedes Relikt und jeder Charakter, der dort als Belohnung steht, ist bis dahin gesperrt. Der Meta-Zustand (`MetaState`: verdiente Freischaltungen, Statistik) ist ein eigenes, serialisierbares Objekt neben dem Run; er lernt aus den Ereignissen des Runs (auch aus den bereinigten Spieler-Ereignissen) und erzeugt den Start eines Runs mit den gesperrten Relikten. Anfangs gesperrt sind 15 von 31 Hausregeln und Figuren (Durchmarsch, Tournee, Jungfrau, Ouvert-Bonus, Kontra, Wirt, Oma, Schiedsrichter, dazu aus M4 Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider) und der Nullspieler. Die sieben Hausregeln und Figuren nur für den Nullspieler sind nicht gesperrt.
+
+Erreichbarkeit (`skat_sim --seed 42 --runs 3000 --unlocks`: 20 Folgen mit frischem Meta-Zustand, der Bot spielt Alleinspieler und nach der Freischaltung jeden zweiten Run Nullspieler):
+
+| Freischaltung | Bedingung | Belohnung | Runs bis dahin (Mittel) |
+|---|---|---|---|
+| `early_finish` | Serie mit drei Spielen übrig gewinnen | Jungfrau | 1,8 |
+| `second_evening` | Abschnitt 2 erreichen | Der Wirt | 3,9 |
+| `big_game` | Spiel mit mindestens 96 Punkten gewinnen | Kontra | 4,0 |
+| `grand_schneider` | Grand Schneider gewinnen | Durchmarsch | 4,0 |
+| `boss_without_pass` | Boss ohne Pass schlagen | Der Schiedsrichter | 6,7 |
+| `third_evening` | Abschnitt 3 erreichen | Tournee | 8,0 |
+| `hand_won` | Handspiel gewinnen | Ouvert-Bonus | 12,7 |
+| `beat_grandma` | Boss Die Oma schlagen | Die Oma | 25,4 |
+| `tour_won` | Run mit dem Alleinspieler gewinnen | Nullspieler | 1265 (nur 12 von 20 Folgen in 3000 Runs) |
+
+Nach den M4-Inhalten (gleiche Messung, alle 16 Freischaltungen):
+
+| Freischaltung | Bedingung | Belohnung | Runs bis dahin (Mittel) |
+|---|---|---|---|
+| `early_finish` | Serie mit drei Spielen übrig gewinnen | Jungfrau | 1,6 |
+| `grand_schneider` | Grand Schneider gewinnen | Durchmarsch | 2,0 |
+| `second_evening` | Abschnitt 2 erreichen | Der Wirt | 2,2 |
+| `big_game` | Spiel mit mindestens 96 Punkten gewinnen | Kontra | 2,5 |
+| `boss_without_pass` | Boss ohne Pass schlagen | Der Schiedsrichter | 4,0 |
+| `apprenticeship` | Fünf Runs zu Ende spielen | Lehrgeld | 5,0 |
+| `hearts_schneider` | Ein Spiel in Rot mit Schneider gewinnen | Der Schneider | 5,2 |
+| `third_evening` | Abschnitt 3 erreichen | Tournee | 6,0 |
+| `big_win` | Spiel mit mindestens 144 Punkten gewinnen | Glückssträhne | 6,8 |
+| `beat_kontra_hans` | Boss Der Kontra-Hans schlagen | Auf dem Trockenen | 9,1 |
+| `hand_won` | Handspiel gewinnen | Ouvert-Bonus | 15,9 |
+| `beat_grandma` | Boss Die Oma schlagen | Die Oma | 18,5 |
+| `beat_black_peter` | Boss Der Schwarze Peter schlagen | Schneiderbock | 25,3 |
+| `fourth_evening` | Abschnitt 4 erreichen | Der Stammgast | 34,0 |
+| `grand_hand` | Grand Hand gewinnen | Bierdeckel | 35,3 |
+| `tour_won` | Run mit dem Alleinspieler gewinnen | Nullspieler | 1677 (8 von 20 Folgen in 3000 Runs) |
+
+Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der Bot sagt fast nie an) und „Serie mit vier Spielen übrig“ für Auf dem Trockenen (1,7 Runs, in Serie 1-1 reicht ein Spiel).
+
+Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreichbar, weil er Abschnitt 5 kaum schafft; für Menschen ist sie das Ziel des ersten Runs, wie in 9.2 entschieden.
 
 ### 9.4 Spätere Kandidaten (nicht vor v1)
 
@@ -334,6 +473,28 @@ Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `Boss
 
 Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander auflegt, eine pro Spiel.
 
+**Umgesetzt in M4** (`bosses.ron`), Auslegungen von Claude am 01.11.2026:
+
+- **Zwillinge** (`DefendersSeeEachOther`): Die Gegner-KI kennt die Hand des Partners. Gilt als Schummeln.
+- **Ramscher** (`RamschOnce`): Das erste Spiel der Boss-Serie ist ein Ramsch: niemand sagt an, nicht passbar, Buben sind Trumpf wie im Grand, jeder spielt für sich, der Skat geht an den Gewinner des letzten Stichs. Eigene Wertung: Grundwert = Augen dessen mit den meisten Augen, eine Stufe, +1 „Jungfrau“, wenn ein Spieler keinen Stich hat. Hat der Spieler nicht die meisten Augen (bei Gleichstand verliert er), gewinnt er den Spielwert, sonst −2 × Spielwert.
+- **Revolutionär** (`SwapDefenderHands` nach dem 5. Stich): Die Gegner tauschen die Hände. Gilt als Schummeln.
+- **Schwarzer Peter** (`MultiplyGameValue(0)`, wenn gewonnen ohne Schneider). Nur Alleinspieler.
+- **Kiebitz-Mörder** (`DisableInformation`): Kiebitz, Zähler und „Durchsichtig“ sind aus.
+- **Der Alte** (`rotation` in `bosses.ron`): in Spiel n die Regel des n-ten Bosses der Liste (Schieber, Zwillinge, Kontra-Hans, Revolutionär, Ramscher, Oma, Schwarzer Peter, Kiebitz-Mörder), Pässe zählen mit. Bosse außerhalb des Charakter-Pools werden übersprungen. Er ist immer der Boss des letzten Abschnitts (`final_boss` in `run.ron`).
+
+Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve --boss <id>`, P(Serie gewonnen) bei Zielwert 24 / 63 / 110, normale Serie 67 / 41 / 18,5):
+
+| Boss | ohne Faktor | Faktor | Grund |
+|---|---|---|---|
+| Die Oma | 28 / 7,4 / 0,7 | **0,5** | ab Abschnitt 4 unschlagbar; ohne Buben gewinnt der Bot höchstens 35 % |
+| Der Schwarze Peter | 40 / 19,6 / 6,6 | **0,6** | Obergrenze 41 %, später kaum schlagbar |
+| Der Ramscher | 67 / 59 / 37,5 | **1,5** | der Ramsch bringt viel; 1,5 trifft die normale Kurve von 24 bis 110 |
+| Der Alte | 71 / 55 / 35 (bei 180: 12,9 gegen 3,6) | **1,4** | als Endboss viel leichter als eine normale Serie |
+| Kontra-Hans | 70 / 52 / 32,5 | 1,0 | unverändert (Wert von `balance`), im Spätspiel leichter: Vorschlag 1,4 an `balance` |
+| Schieber, Zwillinge, Revolutionär, Kiebitz-Mörder | wie normal oder schwerer | 1,0 | Zwillinge, Revolutionär und Kiebitz-Mörder wirken über Information, die der Bot kaum nutzt; für ihn sind sie so schwer wie eine normale Serie |
+
+Die Faktoren gelten für beide Charaktere. Für den Nullspieler ist der Schieber fast unschlagbar (21 % statt 67 % in Abschnitt 1, Null Hand ohne Skat), der Ramscher dagegen normal; Faktoren pro Charakter sind offen (17).
+
 ---
 
 ## 12. Wirtschaft
@@ -353,6 +514,25 @@ Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 - **Der Kartengeber**: Lass eine zufällige Karte zinken oder zahle 3 Groschen und wähle selbst.
 - **Alter Bekannter**: Tausche ein Relikt gegen ein zufälliges anderes.
 - **Letzte Runde**: Spiel ein einziges Spiel um den doppelten Einsatz.
+
+**Umgesetzt in M4** (`core/content/encounters.ron`, Begriff im Code `Encounter`, weil `Event` die Zustandsereignisse sind). Nach einer gewonnenen Serie (nicht nach der letzten) kommt mit der Wahrscheinlichkeit `encounter_chance` aus `run.ron` (Platzhalter 0,2 für `balance`) ein Ereignis statt des Tresens, gezogen nach `weight`. Es bietet Optionen an (`EncounterOption`, immer zuletzt „Weitergehen“), der Spieler wählt mit `RunAction::ChooseEncounter`, danach beginnt sofort die nächste Serie.
+
+- **Stammtisch-Streit**: drei Hausregeln zur Wahl (freigeschaltet, nicht im Besitz, für den Charakter). Die gewählte gilt bis zum Ende des Abschnitts („Abend“) ohne Platz zu belegen.
+- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters.
+- **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein zufälliges anderes getauscht.
+- **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einpassen verschenkt es nicht.
+
+Gemessen (3 × 1000 Runs): etwa 0,45 Ereignisse pro Run; der Bot nimmt Hausregel und Gratis-Karte immer, tauscht schwache Relikte und lehnt die Letzte Runde ab.
+
+**Erweitert in M4 um fünf Ereignisse** mit denselben vier Formen (entschieden von Claude am 01.11.2026):
+
+- **Umgekipptes Bier** (`spilled_beer`, alle): Eine zufällige Karte bekommt den Fluch „Bierfleck“ (−5 Augen, dafür siehst du, wer sie hält), für 1 Groschen eine gewählte. Wer weitergeht, bleibt sauber; wer wählt, legt den Fleck auf eine Lusche und hat nur den Ausgleich.
+- **Gasthof zur Krone** (`crown_inn`, Alleinspieler): „Krone“ auf eine zufällige Karte, für 4 Groschen auf eine gewählte.
+- **Der Taschenspieler** (`conjurer`, Nullspieler): „Attrappe“ auf eine zufällige Karte, für 3 Groschen auf eine gewählte.
+- **Preisskat** (`prize_skat`, alle): Das nächste Spiel zählt dreifach, gewonnen wie verloren.
+- **Gast aus Altenburg** (`guest_from_altenburg`, alle): wie der Stammtisch-Streit, aber nur zwei Hausregeln zur Wahl.
+
+Damit trifft jeder Charakter acht Ereignisse. Der Bot nimmt jede Gratis-Karte, also auch den Bierfleck; den Preisskat lehnt er wie die Letzte Runde ab.
 
 ---
 
@@ -428,8 +608,10 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Assets | CC0 und CC-BY mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |
 | Rückfragen | Nur bei Grundentscheidungen (ADRs). Alles andere entscheidet Claude und dokumentiert es. |
-| Null-Wertung | Wird in M4 mit dem Simulator entschieden (9.2). |
+| Null-Wertung | Wird in M4 mit dem Simulator entschieden (9.2). Entschieden: Formel, siehe 9.2. |
 
 ## 17. Offen
 
-- **Null-Formel**: Der Vorschlag in 9.2 ist ein erster Wurf und braucht den Simulator.
+- **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
+- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (Schieber, Ramscher, 11). Bis dahin gelten die Faktoren des Alleinspielers.
+- **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.

@@ -97,7 +97,7 @@ export function renderShop(view: RunView): string {
         o.relic,
         `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
         { 'data-action': 'info-offer-relic', 'data-slot': o.slot },
-        { price: o.relic.price },
+        { price: o.price },
       )}</div>`;
     })
     .join('');
@@ -107,7 +107,7 @@ export function renderShop(view: RunView): string {
       return good(
         o.consumable.id,
         { 'data-action': 'info-offer-item', 'data-slot': o.slot },
-        `${price(o.consumable.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        `${price(o.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
       );
     })
     .join('');

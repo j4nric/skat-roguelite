@@ -78,6 +78,20 @@ pub enum PlayerGameEvent {
         /// Augen still in the hands.
         card_points: u32,
     },
+    /// The defenders swapped their hands; the player sees only that.
+    DefenderHandsSwapped {
+        /// Cards per seat (index = seat).
+        hand_sizes: [usize; 3],
+    },
+    /// The player took a card from the untouched skat ("Die Oma"): he now
+    /// holds `took` and put `gave` into the skat. The other skat card stays
+    /// hidden.
+    SkatSwapped {
+        /// The card taken into the hand.
+        took: DealtCard,
+        /// The card put into the skat.
+        gave: DealtCard,
+    },
     /// The game is scored by the rules.
     GameFinished {
         /// Trick outcome.
@@ -119,6 +133,10 @@ impl PlayerGameEvent {
                 tricks,
                 card_points,
             },
+            Event::DefenderHandsSwapped { hands } => PlayerGameEvent::DefenderHandsSwapped {
+                hand_sizes: sizes(&hands),
+            },
+            Event::SkatSwapped { took, gave } => PlayerGameEvent::SkatSwapped { took, gave },
             Event::GameFinished {
                 outcome,
                 matadors,
@@ -176,11 +194,17 @@ impl RunEvent {
                 index,
                 payout,
                 coins,
+                boss,
+                passes_used,
+                games_left,
             } => RunEvent::SeriesWon {
                 section,
                 index,
                 payout,
                 coins,
+                boss,
+                passes_used,
+                games_left,
             },
             RunEvent::ShopOpened {
                 relics,
@@ -209,8 +233,29 @@ impl RunEvent {
                 passes_left,
             },
             RunEvent::Redealt => RunEvent::Redealt,
-            RunEvent::RunWon => RunEvent::RunWon,
-            RunEvent::RunLost { section, index } => RunEvent::RunLost { section, index },
+            // The Kiebitz shows this card to the player: allowed knowledge.
+            RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
+            RunEvent::RamschDealt => RunEvent::RamschDealt,
+            RunEvent::EncounterOpened { encounter, options } => {
+                RunEvent::EncounterOpened { encounter, options }
+            }
+            RunEvent::EncounterResolved { encounter, choice } => {
+                RunEvent::EncounterResolved { encounter, choice }
+            }
+            RunEvent::EveningRuleAdded(relic) => RunEvent::EveningRuleAdded(relic),
+            RunEvent::EveningRulesEnded => RunEvent::EveningRulesEnded,
+            RunEvent::RelicSwapped { old, new } => RunEvent::RelicSwapped { old, new },
+            RunEvent::NextGameDoubled { factor } => RunEvent::NextGameDoubled { factor },
+            RunEvent::RunWon { character } => RunEvent::RunWon { character },
+            RunEvent::RunLost {
+                section,
+                index,
+                character,
+            } => RunEvent::RunLost {
+                section,
+                index,
+                character,
+            },
         }
     }
 }
@@ -275,10 +320,13 @@ mod tests {
         let events = run
             .apply(
                 &content,
-                RunAction::Declare(Declaration::new(
-                    crate::rules::GameType::Grand,
-                    crate::rules::RiskLevel::Normal,
-                )),
+                RunAction::Declare(
+                    Declaration::new(
+                        crate::rules::GameType::Grand,
+                        crate::rules::RiskLevel::Normal,
+                    )
+                    .expect("suit or grand"),
+                ),
             )
             .expect("declare");
         let player = player_events(events);

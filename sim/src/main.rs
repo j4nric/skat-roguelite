@@ -19,6 +19,11 @@
 //! - `--curve`: instead of whole runs, `--runs N` single series (with
 //!   `--boss` boss series); prints the share of series won for every
 //!   Zielwert of `run.ron`.
+//! - `--character declarer|null`: who plays (default: the Alleinspieler).
+//! - `--null-scoring fixed|formula`: override the Nullspieler's Null
+//!   scoring (DESIGN 9.2).
+//! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
+//!   state; prints after how many runs each unlock is earned.
 //!
 //! Everything but the runtime lines is a pure function of the arguments,
 //! so two runs with the same arguments print identical statistics.
@@ -31,10 +36,10 @@ use std::time::Instant;
 
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
-use skat_core::content::{BossId, RelicId};
+use skat_core::content::{BossId, Character, RelicId};
 use skat_core::game::{Game, Phase, Seat};
 use skat_core::rng::Rng;
-use skat_core::rules::{GameType, Matadors, RiskLevel};
+use skat_core::rules::{GameType, Matadors, NullScoring};
 
 struct Args {
     seed: u64,
@@ -58,6 +63,23 @@ fn parse_args() -> Result<Args, String> {
             "--json" => args.json = true,
             "--no-shop" => args.options.no_shop = true,
             "--curve" => args.options.curve = true,
+            "--unlocks" => args.options.unlocks = true,
+            "--character" => {
+                let value = it.next().ok_or("missing value for --character")?;
+                args.options.character = match value.as_str() {
+                    "declarer" => Character::Declarer,
+                    "null" => Character::NullPlayer,
+                    other => return Err(format!("--character: unknown {other}")),
+                };
+            }
+            "--null-scoring" => {
+                let value = it.next().ok_or("missing value for --null-scoring")?;
+                args.options.null_scoring = Some(match value.as_str() {
+                    "fixed" => NullScoring::Fixed,
+                    "formula" => runs::formula_scoring(),
+                    other => return Err(format!("--null-scoring: unknown {other}")),
+                });
+            }
             "--relic" | "--without" | "--boss" => {
                 let value = it
                     .next()
@@ -84,7 +106,7 @@ fn parse_args() -> Result<Args, String> {
         }
     }
     if args.runs.is_none() && args.options != runs::Options::default() {
-        if args.options.curve {
+        if args.options.curve || args.options.unlocks {
             args.runs = Some(1000);
         } else {
             return Err("run options need --runs N".into());
@@ -222,7 +244,7 @@ fn play_game(rng: &mut Rng, forehand: Seat) -> Result<GameResult, String> {
     game.declare(declaration).map_err(|e| e.to_string())?;
     if game.phase() == Phase::Discarding {
         let discard = declarer
-            .choose_discard(game.hand(Seat::DECLARER), declaration.game)
+            .choose_discard(game.hand(Seat::DECLARER), declaration.game())
             .ok_or("no discard")?;
         game.discard(discard).map_err(|e| e.to_string())?;
     }
@@ -239,15 +261,15 @@ fn play_game(rng: &mut Rng, forehand: Seat) -> Result<GameResult, String> {
     let value = game.value().ok_or("game did not finish")?;
     let outcome = game.outcome();
     Ok(GameResult {
-        game: declaration.game,
-        hand: declaration.risk >= RiskLevel::Hand,
+        game: declaration.game(),
+        hand: declaration.hand(),
         won: value.won,
         schneider: value.schneider,
         schwarz: value.schwarz,
         value: value.value,
         score: value.score,
         declarer_card_points: outcome.declarer_card_points,
-        matadors: skat_core::rules::matadors(declaration.game, game.declarer_cards()),
+        matadors: skat_core::rules::matadors(declaration.game(), game.declarer_cards()),
     })
 }
 
@@ -378,7 +400,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--curve]]"
+                "usage: sim [--seed N] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null] [--null-scoring fixed|formula] [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

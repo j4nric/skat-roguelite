@@ -7,14 +7,19 @@
 // The DOM has three layers: the screen (re-rendered on every change), the
 // overlay (rendered only when the dialog changes, so the score board can
 // animate undisturbed) and the toast line.
+//
+// Next to the run the app keeps the meta state of the core (unlocks and
+// statistics across runs). It learns from the events of every step; what
+// it newly unlocks is announced at the end of the step.
 
 import { sound } from './audio';
-import { CoreRun, loadCatalog, loadCore } from './core';
-import { de, contentName, contentText, setCatalog, t } from './i18n';
+import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
+import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
-import { clearRun, loadRecord, loadRun, recordRun, saveRun } from './storage';
-import type { CardView, DealtCard, RiskLevel, RunAction, RunEvent, RunView, Seat } from './types';
+import { backupMeta, clearRun, loadCharacter, loadMeta, loadRun, saveCharacter, saveMeta, saveRun } from './storage';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat } from './types';
 import { esc, reducedMotion } from './ui/dom';
+import { renderEncounter } from './ui/encounter';
 import { deal, finishAll, flyAway, flyIn, motionOn, setTempo } from './ui/fx';
 import { renderHud } from './ui/hud';
 import { renderScore, ScoreBoard } from './ui/score';
@@ -23,17 +28,26 @@ import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
 
-/** Turn a core error (JSON `{code, message}` since the M2 polish) into a German text. */
-function errorText(err: unknown): string {
+/** The stable code of a core error (JSON `{code, message}`), if any. */
+function errorCode(err: unknown): string | null {
   const raw = err instanceof Error ? err.message : String(err);
   try {
     const parsed = JSON.parse(raw) as { code?: string };
-    const fallback = de.app.errors.default ?? '';
-    if (parsed.code) return de.app.errors[parsed.code] ?? fallback;
+    return parsed.code ?? null;
   } catch {
-    /* not JSON: fall through */
+    return null;
   }
-  return de.app.errors.default ?? '';
+}
+
+/** Turn a core error into a German text. */
+function errorText(err: unknown): string {
+  const code = errorCode(err);
+  const fallback = de.app.errors.default ?? '';
+  return code ? (de.app.errors[code] ?? fallback) : fallback;
+}
+
+function isCharacter(value: string | null): value is Character {
+  return value === 'Declarer' || value === 'NullPlayer';
 }
 
 /** Pauses in milliseconds at tempo "Normal"; reduced motion shortens them. */
@@ -46,10 +60,14 @@ const DELAY = {
   notice: 700,
 };
 
+/** Toasts waiting at most; older ones are dropped. */
+const TOAST_QUEUE = 3;
+
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
 export class App {
   private core: CoreRun | null = null;
+  private meta: CoreMeta | null = null;
   private ui: UiState = {
     screen: 'loading',
     view: null,
@@ -58,16 +76,23 @@ export class App {
     selected: [],
     pickGame: null,
     pickRisk: null,
+    pickNullRisk: null,
+    omaPick: false,
+    pickCharacter: (() => {
+      const stored = loadCharacter();
+      return isCharacter(stored) ? stored : 'Declarer';
+    })(),
     overlay: null,
     message: null,
     saveInfo: null,
-    record: loadRecord(),
+    meta: null,
     settings: loadSettings(),
     ended: null,
   };
   private fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
+  private toasts: string[] = [];
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
@@ -110,7 +135,54 @@ export class App {
       this.render();
       return;
     }
+    this.loadMetaState();
     this.toStart();
+  }
+
+  /** Load the meta state, or start a new one (keeping an unreadable save aside). */
+  private loadMetaState(): void {
+    const saved = loadMeta();
+    if (saved) {
+      try {
+        this.meta = CoreMeta.load(saved);
+      } catch (err) {
+        console.warn('meta state discarded', err);
+        backupMeta(saved);
+        this.ui.message = de.start.metaFailed;
+      }
+    }
+    try {
+      this.meta ??= CoreMeta.fresh();
+      if (!saved) saveMeta(this.meta.save());
+      this.ui.meta = this.meta.view();
+    } catch (err) {
+      console.warn('meta state unavailable', err);
+      this.meta = null;
+      this.ui.meta = null;
+    }
+    const picked = this.ui.meta?.characters.find((c) => c.character === this.ui.pickCharacter);
+    if (!picked?.unlocked) this.ui.pickCharacter = 'Declarer';
+  }
+
+  /** Feed the events of a step to the meta state; returns the unlocks just earned. */
+  private observe(events: RunEvent[] | string): string[] {
+    if (!this.meta) return [];
+    try {
+      const step = this.meta.observe(events);
+      this.ui.meta = step.view;
+      saveMeta(this.meta.save());
+      return step.earned;
+    } catch (err) {
+      console.warn('meta state did not take the events', err);
+      return [];
+    }
+  }
+
+  /** Announce unlocks just earned. */
+  private announceUnlocks(ids: string[]): void {
+    if (!ids.length || !this.ui.meta) return;
+    this.ui.overlay = { kind: 'unlock', ids };
+    sound.play('win', { delay: 150 });
   }
 
   private applySettings(): void {
@@ -129,19 +201,23 @@ export class App {
     this.ui.overlay = null;
     this.ui.ended = null;
     this.ui.saveInfo = null;
-    this.ui.record = loadRecord();
     const saved = loadRun();
     if (saved) {
       try {
         this.core = CoreRun.load(saved);
         const view = this.core.view();
         this.ui.view = view;
-        this.ui.saveInfo = t(de.start.resumeInfo, {
-          section: view.series.section + 1,
-          series: view.series.index + 1,
-          score: view.series.score,
-          target: view.series.target,
-        });
+        const character = contentName('characters', view.character.character);
+        this.ui.saveInfo =
+          view.phase === 'Encounter'
+            ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
+            : t(de.start.resumeInfo, {
+                character,
+                section: view.series.section + 1,
+                series: view.series.index + 1,
+                score: view.series.score,
+                target: view.series.target,
+              });
       } catch (err) {
         console.warn('saved run discarded', err);
         clearRun();
@@ -163,10 +239,18 @@ export class App {
       seed = String(random[0]);
     }
     let core: CoreRun;
+    let startEvents = '[]';
     try {
-      core = CoreRun.create(seed);
-    } catch {
-      this.ui.message = de.start.seedInvalid;
+      if (this.meta) {
+        const started = CoreRun.createWith(seed, this.ui.pickCharacter, this.meta);
+        core = started.run;
+        startEvents = started.startEvents;
+      } else {
+        core = CoreRun.create(seed);
+      }
+    } catch (err) {
+      console.warn('run not started', err);
+      this.ui.message = errorCode(err) === 'InvalidSeed' ? de.start.seedInvalid : errorText(err);
       this.render();
       return;
     }
@@ -175,7 +259,12 @@ export class App {
     this.ui.message = null;
     this.ui.ended = null;
     saveRun(core.save());
+    const earned = this.observe(startEvents);
     this.enterRun(core.view(), true);
+    if (earned.length) {
+      this.announceUnlocks(earned);
+      this.render();
+    }
   }
 
   private resume(): void {
@@ -198,6 +287,8 @@ export class App {
     this.ui.selected = [];
     this.ui.pickGame = null;
     this.ui.pickRisk = null;
+    this.ui.pickNullRisk = null;
+    this.ui.omaPick = false;
   }
 
   // -------------------------------------------------------------------------
@@ -219,10 +310,10 @@ export class App {
     const view = step.view;
     if (view.phase === 'Won' || view.phase === 'Lost') {
       clearRun();
-      this.ui.record = recordRun(view.phase === 'Won', view.series.section + 1);
     } else {
       saveRun(this.core.save());
     }
+    const earned = this.observe(step.events);
     this.ui.busy = true;
     this.fastForward = false;
     this.ui.overlay = null;
@@ -239,6 +330,7 @@ export class App {
         this.ui.screen = 'end';
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
       }
+      this.announceUnlocks(earned);
       this.render();
     }
   }
@@ -268,6 +360,39 @@ export class App {
         if (ev === 'Redealt') {
           this.showToast(de.toast.redealt);
           this.afterRender.push(() => this.dealEffect());
+        }
+        if (ev === 'RamschDealt') {
+          this.showToast(de.toast.ramsch);
+          sound.play('knock');
+        }
+        if (ev === 'EveningRulesEnded') this.showToast(de.toast.eveningEnded);
+        continue;
+      }
+      if ('CardPeeked' in ev) {
+        const { card, seat } = ev.CardPeeked;
+        this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
+        continue;
+      }
+      if ('EveningRuleAdded' in ev) {
+        this.showToast(t(de.toast.eveningRule, { name: contentName('relics', ev.EveningRuleAdded) }));
+        sound.play('clink');
+        continue;
+      }
+      if ('RelicSwapped' in ev) {
+        this.showToast(t(de.toast.relicSwapped, { old: contentName('relics', ev.RelicSwapped.old), new: contentName('relics', ev.RelicSwapped.new) }));
+        sound.play('clink');
+        continue;
+      }
+      if ('NextGameDoubled' in ev) {
+        this.showToast(t(de.toast.nextDoubled, { factor: ev.NextGameDoubled.factor }));
+        sound.play('clink');
+        continue;
+      }
+      if ('DeckChanged' in ev) {
+        const change = ev.DeckChanged;
+        if ('Modified' in change) {
+          const card = after.deck.find((c) => c.id === change.Modified.card);
+          if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));
         }
         continue;
       }
@@ -402,6 +527,30 @@ export class App {
       await this.pause(DELAY.notice);
       return;
     }
+    if ('DefenderHandsSwapped' in ev) {
+      if (anim) anim.handSizes = ev.DefenderHandsSwapped.hand_sizes.slice();
+      this.showToast(de.toast.handsSwapped);
+      sound.play('card');
+      this.render();
+      await this.pause(DELAY.notice);
+      return;
+    }
+    if ('SkatSwapped' in ev) {
+      const { took, gave } = ev.SkatSwapped;
+      const g = after.game;
+      if (anim && g) {
+        anim.hand = g.hand.map((c) => ({ ...c, legal: false }));
+        anim.handSizes[0] = anim.hand.length;
+      }
+      this.showToast(t(de.toast.skatSwapped, { took: cardName(took.kind), gave: cardName(gave.kind) }));
+      this.render();
+      const from = this.rectOf('.deck-spot');
+      const el = this.screenEl.querySelector(`.hand-card[data-id="${took.id}"]`);
+      if (from && el && !this.fastForward) flyIn(el, from, { ms: 320 });
+      sound.play('card');
+      await this.pause(DELAY.notice);
+      return;
+    }
     if ('Discarded' in ev && anim) {
       const gone = ev.Discarded.cards.map((c) => c.id);
       anim.hand = anim.hand.filter((c) => !gone.includes(c.id));
@@ -512,12 +661,22 @@ export class App {
     for (const wake of this.wakers.slice()) wake();
   }
 
+  /** Show a toast; while one is up, the next ones wait their turn. */
   private showToast(text: string): void {
+    if (this.toastTimer !== undefined) {
+      this.toasts.push(text);
+      if (this.toasts.length > TOAST_QUEUE) this.toasts.shift();
+      return;
+    }
     this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
-    window.clearTimeout(this.toastTimer);
+    // Shorter while others wait.
+    const ms = this.toasts.length ? DELAY.toast * 0.7 : DELAY.toast;
     this.toastTimer = window.setTimeout(() => {
+      this.toastTimer = undefined;
       this.toastEl.innerHTML = '';
-    }, DELAY.toast);
+      const next = this.toasts.shift();
+      if (next !== undefined) this.showToast(next);
+    }, ms);
   }
 
   private setSettings(change: Partial<UiState['settings']>): void {
@@ -573,6 +732,43 @@ export class App {
         this.ui.overlay = { kind: 'credits' };
         this.render();
         return;
+      case 'book':
+        if (this.ui.busy || !this.ui.meta) return;
+        this.ui.overlay = { kind: 'book' };
+        this.render();
+        return;
+      case 'pick-character': {
+        const c = el.dataset.character ?? null;
+        const entry = this.ui.meta?.characters.find((x) => x.character === c);
+        if (isCharacter(c) && entry?.unlocked) {
+          this.ui.pickCharacter = c;
+          saveCharacter(c);
+          this.render();
+        }
+        return;
+      }
+      case 'info-rule': {
+        const rule = view?.game?.boss_rule;
+        if (rule) {
+          this.ui.overlay = { kind: 'info', title: contentName('bosses', rule.id), subtitle: de.table.bossRule, text: contentText('bosses', rule.id) || rule.text };
+          this.render();
+        }
+        return;
+      }
+      case 'info-evening': {
+        const relic = view?.evening_relics[num('index')];
+        if (relic) {
+          this.ui.overlay = {
+            kind: 'info',
+            title: contentName('relics', relic.id),
+            subtitle: de.evening.subtitle,
+            text: contentText('relics', relic.id),
+            coaster: relic.rarity,
+          };
+          this.render();
+        }
+        return;
+      }
       case 'tempo':
         this.setSettings({ tempo: (el.dataset.tempo ?? 'normal') as Tempo });
         return;
@@ -628,7 +824,7 @@ export class App {
             subtitle: `${de.relicKind[offer.relic.kind]} · ${de.rarity[offer.relic.rarity]}`,
             text: contentText('relics', offer.relic.id),
             coaster: offer.relic.rarity,
-            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-relic', slot: offer.slot, price: offer.relic.price } } : {}),
+            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-relic', slot: offer.slot, price: offer.price } } : {}),
           };
           this.render();
         }
@@ -644,7 +840,7 @@ export class App {
             text: contentText('consumables', offer.consumable.id),
             good: offer.consumable.id,
             odds: offer.consumable.needs_target,
-            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-item', slot: offer.slot, price: offer.consumable.price } } : {}),
+            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-item', slot: offer.slot, price: offer.price } } : {}),
           };
           this.render();
         }
@@ -679,6 +875,40 @@ export class App {
         this.ui.pickRisk = (el.dataset.risk ?? 'Normal') as RiskLevel;
         this.render();
         return;
+      case 'pick-null-risk':
+        this.ui.pickNullRisk = (el.dataset.risk ?? 'Normal') as NullRisk;
+        this.render();
+        return;
+      case 'declare-null':
+        void this.act({ Declare: { game: 'Null', risk: (el.dataset.risk ?? 'Normal') as NullRisk } });
+        return;
+      case 'oma':
+        this.ui.omaPick = true;
+        this.render();
+        return;
+      case 'oma-cancel':
+        this.ui.omaPick = false;
+        this.render();
+        return;
+      case 'oma-give':
+        void this.act({ TakeFromSkat: { give: num('id') } });
+        return;
+      case 'choose-encounter': {
+        const option = view.encounter?.options.find((o) => o.index === num('option'));
+        if (!option) return;
+        if (option.needs_target) {
+          this.ui.overlay = { kind: 'encounter-target', option: option.index };
+          this.render();
+        } else {
+          void this.act({ ChooseEncounter: { option: option.index, target: null } });
+        }
+        return;
+      }
+      case 'encounter-target': {
+        const o = this.ui.overlay;
+        if (o?.kind === 'encounter-target') void this.act({ ChooseEncounter: { option: o.option, target: num('id') } });
+        return;
+      }
       case 'declare': {
         const options = view.game?.declare;
         const game = this.ui.pickGame === null ? undefined : options?.games[this.ui.pickGame];
@@ -776,8 +1006,10 @@ export class App {
         const view = ui.view;
         if (!view) break;
         const inShop = view.phase === 'Shop' && !ui.anim;
-        const main = inShop ? renderShop(view) : renderTable(view, ui);
-        body = `<div class="run ${inShop ? 'is-shop' : 'is-table'} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
+        const inEncounter = view.phase === 'Encounter' && !ui.anim;
+        const main = inShop ? renderShop(view) : inEncounter ? renderEncounter(view) : renderTable(view, ui);
+        const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : 'is-table';
+        body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
         if (kontra) body += renderKontra(view);
         break;

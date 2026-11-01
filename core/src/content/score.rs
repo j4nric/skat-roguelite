@@ -17,7 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{BossId, CardModId, RelicId};
+use super::{BossId, CardModId, EncounterId, RelicId};
 use crate::rules::{
     Declaration, GameType, LevelParts, Matadors, Outcome, Thresholds, ValueParts, game_value_parts,
 };
@@ -40,6 +40,8 @@ pub enum Source {
     Kontra,
     /// The declarer answered Re.
     Re,
+    /// An encounter (Ereignis), e.g. "Letzte Runde".
+    Encounter(EncounterId),
 }
 
 /// The lever of the game value formula a line turns.
@@ -157,7 +159,8 @@ impl ScoreBreakdown {
             push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
         }
         if self.rule_base_value == 0 {
-            // Null: fixed value, no levels and no Grundwert modifiers.
+            // Null by the Skatordnung: fixed value, no levels and no
+            // Grundwert modifiers.
             push(
                 ScoreTerm::NullValue(self.base_value),
                 self.base_value,
@@ -168,15 +171,15 @@ impl ScoreBreakdown {
             levels = self.levels;
         } else {
             base = u64::from(self.rule_base_value);
-            push(
+            let term = if self.declaration.is_ramsch() {
+                ScoreTerm::RamschLoser(self.rule_base_value)
+            } else {
                 ScoreTerm::BaseValue {
-                    game: self.declaration.game,
+                    game: self.declaration.game(),
                     value: self.rule_base_value,
-                },
-                base,
-                levels,
-                multiplier,
-            );
+                }
+            };
+            push(term, base, levels, multiplier);
             let mut base_sum = i64::from(self.rule_base_value);
             for line in self.lines.iter().filter(|l| l.lever == Lever::BaseValue) {
                 if let Change::Add(n) = line.change {
@@ -207,6 +210,13 @@ impl ScoreBreakdown {
                 (ScoreTerm::Schwarz, parts.schwarz),
                 (ScoreTerm::SchwarzDeclared, parts.schwarz_declared),
                 (ScoreTerm::Ouvert, parts.ouvert),
+                (
+                    ScoreTerm::SevensDucked(parts.sevens_ducked),
+                    parts.sevens_ducked,
+                ),
+                (ScoreTerm::NeverFollowed, parts.never_followed),
+                (ScoreTerm::ShortCircuit, parts.short_circuit),
+                (ScoreTerm::Virgin, parts.virgin),
             ];
             for (term, amount) in terms {
                 if amount > 0 {
@@ -264,9 +274,21 @@ pub enum ScoreTerm {
     Schwarz,
     /// +1 Schwarz angesagt.
     SchwarzDeclared,
-    /// +1 Ouvert.
+    /// +1 Ouvert (Null formula: +2).
     Ouvert,
-    /// A modification by a relic, card modification, boss, Kontra or Re.
+    /// Null formula: levels for tricks ducked with a seven (the number is
+    /// the levels added).
+    SevensDucked(u32),
+    /// Null formula: the declarer never had to follow suit.
+    NeverFollowed,
+    /// Null formula: "Kurzschluss".
+    ShortCircuit,
+    /// Ramsch: Grundwert = Augen of the loser.
+    RamschLoser(u32),
+    /// Ramsch: a seat took no trick (Jungfrau).
+    Virgin,
+    /// A modification by a relic, card modification, boss, Kontra, Re or
+    /// encounter.
     Line(ScoreLine),
 }
 
@@ -294,6 +316,23 @@ pub fn score_game(
     lines: Vec<ScoreLine>,
 ) -> ScoreBreakdown {
     let parts: ValueParts = game_value_parts(declaration, matadors, outcome, thresholds);
+    score_parts(declaration, matadors, outcome, thresholds, parts, lines)
+}
+
+/// Score a finished game whose result was already computed: by the rules
+/// ([`game_value_parts`]), or for the run's own games by
+/// [`crate::rules::null_value_parts`] (Nullspieler) and
+/// [`crate::rules::ramsch_value_parts`] (Ramsch). A `base_value` of 0 is a
+/// fixed Null value of the Skatordnung.
+#[must_use]
+pub fn score_parts(
+    declaration: Declaration,
+    matadors: Matadors,
+    outcome: &Outcome,
+    thresholds: &Thresholds,
+    parts: ValueParts,
+    lines: Vec<ScoreLine>,
+) -> ScoreBreakdown {
     let mut base_add: i64 = 0;
     let mut base_mul: u64 = 1;
     let mut level_add: i64 = 0;
@@ -372,7 +411,7 @@ mod tests {
     fn without_lines_equals_the_rules() {
         for risk in RiskLevel::ALL {
             for (points, tricks) in [(30, 2), (60, 4), (61, 5), (90, 8), (120, 10)] {
-                let decl = Declaration::new(GameType::Suit(Suit::Spades), risk);
+                let decl = Declaration::suit(Suit::Spades, risk);
                 let o = outcome(points, tricks);
                 let rules = game_value(decl, MIT_2, &o);
                 let b = score_game(decl, MIT_2, &o, &Thresholds::default(), Vec::new());
@@ -385,7 +424,7 @@ mod tests {
 
     #[test]
     fn steps_end_with_the_breakdown_totals() {
-        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Hand);
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Hand);
         let relic = Source::Relic(RelicId::new("x"));
         let line = |lever, change| ScoreLine {
             source: relic.clone(),
@@ -446,7 +485,7 @@ mod tests {
 
     #[test]
     fn additions_come_before_multiplications() {
-        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Normal);
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
         let relic = Source::Relic(RelicId::new("x"));
         let line = |lever, change| ScoreLine {
             source: relic.clone(),

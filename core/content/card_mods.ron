@@ -1,8 +1,11 @@
 // Kartenmodifikationen (gezinkte Karten). Sie hängen an einer Karte und
 // gelten, egal wer sie spielt (ADR 0005). Preise sind Platzhalter.
+// characters: für welche Charaktere „Stempelkissen“ und Ereignisse die
+// Modifikation ziehen (leer: alle).
 [
     (
         id: "fat",
+        characters: [Declarer],
         name: "Fett",
         text: "Diese Karte zählt 4 Augen mehr.",
         rarity: Common,
@@ -11,6 +14,7 @@
     ),
     (
         id: "marked",
+        characters: [Declarer],
         name: "Gezinkt",
         text: "Diese Karte zählt eine Stufe höher.",
         rarity: Common,
@@ -19,6 +23,7 @@
     ),
     (
         id: "stamp",
+        characters: [Declarer],
         name: "Stempel",
         text: "Ist die Farbe dieser Karte Trumpf, steigt der Grundwert um 3.",
         rarity: Uncommon,
@@ -29,6 +34,7 @@
     ),
     (
         id: "last_trick",
+        characters: [Declarer],
         name: "Spitze",
         text: "Gewinnt diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr. Egal, wer sie spielt.",
         rarity: Uncommon,
@@ -44,5 +50,177 @@
         rarity: Common,
         price: 2,
         passive: [RevealHolder],
+    ),
+    (
+        id: "invisible",
+        name: "Unsichtbar",
+        text: "Diese Karte kann nie einen Stich gewinnen. Egal, wer sie spielt.",
+        rarity: Uncommon,
+        price: 4,
+        characters: [NullPlayer],
+        passive: [NeverWins],
+    ),
+    // ---------------------------------------------------------------------
+    // M4: 14 more modifications. Each names its lever. Random draws
+    // (Stempelkissen, Kartengeber) pick uniformly from the character's pool,
+    // curses included.
+    // ---------------------------------------------------------------------
+    // Lever Augen.
+    (
+        id: "gold_rim",
+        characters: [Declarer],
+        name: "Goldrand",
+        text: "Diese Karte zählt 8 Augen mehr.",
+        rarity: Rare,
+        price: 5,
+        passive: [AddCardPoints(8)],
+    ),
+    // Lever Stichgewinn.
+    (
+        id: "double_marked",
+        characters: [Declarer],
+        name: "Doppelt gezinkt",
+        text: "Diese Karte zählt zwei Stufen höher.",
+        rarity: Uncommon,
+        price: 4,
+        passive: [RankBonus(2)],
+    ),
+    // Lever Grundwert ×2 (multiplicative).
+    (
+        id: "crown",
+        characters: [Declarer],
+        name: "Krone",
+        text: "Ist die Farbe dieser Karte Trumpf, zählt der Grundwert doppelt.",
+        rarity: Rare,
+        price: 6,
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [MultiplyBaseValue(2)]),
+        ],
+    ),
+    // Lever Gewinnstufen. Set at the declaration, so it counts won or lost.
+    (
+        id: "seal",
+        characters: [Declarer],
+        name: "Siegel",
+        text: "Ist die Farbe dieser Karte Trumpf, gibt es eine Gewinnstufe mehr, gewonnen wie verloren.",
+        rarity: Uncommon,
+        price: 5,
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddLevels(1)]),
+        ],
+    ),
+    // Lever Gewinnschwelle.
+    (
+        id: "horseshoe",
+        characters: [Declarer],
+        name: "Hufeisen",
+        text: "Ist die Farbe dieser Karte Trumpf, gewinnst du schon mit 56 Augen.",
+        rarity: Uncommon,
+        price: 4,
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [WinThreshold(56)]),
+        ],
+    ),
+    // Lever Schneider.
+    (
+        id: "tape_measure",
+        characters: [Declarer],
+        name: "Maßband",
+        text: "Ist die Farbe dieser Karte Trumpf, sind die Gegner schon Schneider, wenn du mit 80 bis 89 Augen gewinnst.",
+        rarity: Uncommon,
+        price: 4,
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [SchneiderFromDeclarerPoints(min: 80, max: 89)]),
+        ],
+    ),
+    // Lever Spielwert ×2 (multiplicative), only for a won game.
+    (
+        id: "lucky_penny",
+        characters: [Declarer],
+        name: "Glückspfennig",
+        text: "Gewinnst du ein Spiel, dessen letzten Stich diese Karte macht, zählt es doppelt. Egal, wer sie spielt.",
+        rarity: Rare,
+        price: 5,
+        hooks: [
+            OnScore(when: All([Won, ThisCardWinsLastTrick]), then: [MultiplyGameValue(2)]),
+        ],
+    ),
+    // Curses: a clear downside, paid back on another lever.
+    // Curse on Augen (−5, never below 0), paid back with Zählen.
+    (
+        id: "beer_stain",
+        name: "Bierfleck",
+        text: "Fluch: Der Fleck kostet die Karte 5 Augen. Dafür erkennst du sie wieder: Du siehst, wer sie hält.",
+        rarity: Common,
+        price: 1,
+        passive: [AddCardPoints(-5), RevealHolder],
+    ),
+    // Curse on Stichgewinn (the card never wins), paid back with Augen.
+    (
+        id: "cracked",
+        characters: [Declarer],
+        name: "Angeknackst",
+        text: "Fluch: Diese Karte gewinnt nie einen Stich, egal wer sie spielt. Dafür zählt sie 5 Augen mehr.",
+        rarity: Common,
+        price: 1,
+        passive: [NeverWins, AddCardPoints(5)],
+    ),
+    // Curse on Grundwert (−3 when its suit is trump), paid back with
+    // Stichgewinn.
+    (
+        id: "black_cat",
+        characters: [Declarer],
+        name: "Schwarze Katze",
+        text: "Fluch: Ist die Farbe dieser Karte Trumpf, sinkt der Grundwert um 3. Dafür zählt sie eine Stufe höher.",
+        rarity: Common,
+        price: 1,
+        passive: [RankBonus(1)],
+        hooks: [
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(-3)]),
+        ],
+    ),
+    // Nullspieler only from here.
+    // Lever Augen (Null formula: Kurzschluss).
+    (
+        id: "lead_weight",
+        characters: [NullPlayer],
+        name: "Bleigewicht",
+        text: "Diese Karte zählt 10 Augen mehr. Wer sie im Stich hat, ist schneller im Kurzschluss.",
+        rarity: Common,
+        price: 3,
+        passive: [AddCardPoints(10)],
+    ),
+    // Lever Gewinnstufen: in a won Null the last trick goes to a defender.
+    (
+        id: "tail_light",
+        characters: [NullPlayer],
+        name: "Schlusslicht",
+        text: "Gewinnst du ein Null und diese Karte macht den letzten Stich, gibt es zwei Gewinnstufen mehr.",
+        rarity: Uncommon,
+        price: 4,
+        hooks: [
+            OnScore(when: All([NullGame, Won, ThisCardWinsLastTrick]), then: [AddLevels(2)]),
+        ],
+    ),
+    // Lever Stichgewinn: stronger cards take tricks; in the hands of a
+    // defender that lets the Nullspieler duck, in his own it is a danger.
+    (
+        id: "dressed_up",
+        characters: [NullPlayer],
+        name: "Aufgebrezelt",
+        text: "Diese Karte zählt zwei Stufen höher. Beim Gegner sticht sie gern, bei dir ist sie eine Gefahr.",
+        rarity: Uncommon,
+        price: 3,
+        passive: [RankBonus(2)],
+    ),
+    // Lever Stichgewinn plus Zählen: "Unsichtbar" that also shows its holder.
+    (
+        id: "dummy",
+        characters: [NullPlayer],
+        name: "Attrappe",
+        text: "Diese Karte gewinnt nie einen Stich, egal wer sie spielt, und du siehst, wer sie hält.",
+        rarity: Rare,
+        price: 5,
+        passive: [NeverWins, RevealHolder],
     ),
 ]

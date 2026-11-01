@@ -17,11 +17,20 @@
 //! Content effects fire at fixed points ([`Stage`]): passive effects when a
 //! game is set up, then `OnDeal`, `OnDeclare`, `OnCardPlayed`,
 //! `OnTrickEnd`, `OnScore` and, after a won series, `OnSeriesWon`. Sources
-//! fire in a fixed order: boss, relics in purchase order, card
-//! modifications of the cards in play by card id. Conditions see the
-//! effects of earlier sources in the same stage.
+//! fire in a fixed order: boss, relics in purchase order, the house rules
+//! of the evening (encounter "Stammtisch-Streit"), card modifications of
+//! the cards in play by card id. Conditions see the effects of earlier
+//! sources in the same stage.
+//!
+//! A run is played by one [`Character`] (DESIGN 9): the Alleinspieler
+//! declares suit games and grand, the Nullspieler only Null. Between two
+//! series an encounter (Ereignis, DESIGN 13) may come instead of the
+//! Tresen. What is unlocked across runs lives outside the run, in
+//! [`meta::MetaState`]; a run only gets the relics that are still locked
+//! ([`RunStart::locked_relics`]).
 
 pub mod bot;
+pub mod meta;
 pub mod player;
 pub mod view;
 
@@ -31,15 +40,20 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::ai::DefenderHeuristic;
+use crate::cards::PlayingCard;
 use crate::content::{
-    ActiveSource, BossId, Change, ConsumableAction, ConsumableId, Content, Effect, HookContext,
-    Lever, Rarity, RelicId, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate,
-    resolve_deck, score_game,
+    ActiveSource, BossId, CardFilter, CardModId, Change, Character, ConsumableAction, ConsumableId,
+    Content, Effect, EncounterId, EncounterKind, HookContext, Lever, Rarity, RelicId, RelicKind,
+    ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool, resolve_deck,
+    score_parts,
 };
 use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
 use crate::game::{Event, Game, GameError, Phase, Seat};
 use crate::rng::Rng;
-use crate::rules::{Declaration, GameType, Thresholds, ValueParts, game_value_parts};
+use crate::rules::{
+    Declaration, NullScoring, Thresholds, ValueParts, game_value_parts, null_value_parts,
+    ramsch_value_parts,
+};
 
 /// Series per section: two normal ones and the boss series.
 pub const SERIES_PER_SECTION: u32 = 3;
@@ -51,6 +65,9 @@ pub enum RunPhase {
     Game,
     /// The Tresen is open between two series.
     Shop,
+    /// An encounter (Ereignis) came instead of the Tresen; see
+    /// [`ActiveEncounter`].
+    Encounter,
     /// The last boss series was won.
     Won,
     /// A series ended below its target.
@@ -79,6 +96,15 @@ pub struct Series {
     /// Redeals ("Schieben") used in this series.
     #[serde(default)]
     pub redeals_used: u32,
+    /// Passes used in this series.
+    #[serde(default)]
+    pub passes_used: u32,
+    /// Skat swaps ("Die Oma") used in this series.
+    #[serde(default)]
+    pub skat_swaps_used: u32,
+    /// Whether the Ramsch of this series ("Der Ramscher") was dealt.
+    #[serde(default)]
+    pub ramsch_played: bool,
 }
 
 impl Series {
@@ -123,6 +149,22 @@ pub struct GameRules {
     /// Redeals ("Schieben") the content grants per series. Whether one is
     /// left is [`Series::redeals_used`] against this.
     pub series_redeals: u32,
+    /// Every game must be declared Ouvert ("Der Angeber").
+    pub require_ouvert: bool,
+    /// Cards of the defenders the player sees before declaring ("Der
+    /// Kiebitz").
+    pub peek: u32,
+    /// The player sees the count of Augen ("Der Zähler").
+    pub show_count: bool,
+    /// Cards the player may take from the skat once per series ("Die
+    /// Oma"), with the source granting it.
+    pub skat_swap: Option<CardFilter>,
+    /// This game is the series' Ramsch ("Der Ramscher").
+    pub ramsch: bool,
+    /// Information effects are off ("Der Kiebitz-Mörder").
+    pub no_information: bool,
+    /// Boss rules that cheat are off ("Der Schiedsrichter").
+    pub no_cheating: bool,
 }
 
 /// The game in progress and everything content attached to it.
@@ -141,6 +183,57 @@ pub struct ActiveGame {
     /// Kontra was said and the declarer has to answer (Re or not) before
     /// the first card.
     pub awaiting_re: bool,
+    /// Defender cards the player was shown ("Der Kiebitz") and who held
+    /// them at the deal.
+    #[serde(default)]
+    pub peeked: Vec<(DealtCard, Seat)>,
+    /// The boss whose rule is on in this game: the series' boss, or for the
+    /// Endboss "Der Alte" the rule of this game.
+    #[serde(default)]
+    pub boss_rule: Option<BossId>,
+}
+
+/// One choice of an encounter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EncounterChoice {
+    /// Stammtisch-Streit: this house rule applies until the end of the
+    /// section.
+    TakeRule(RelicId),
+    /// Der Kartengeber: a random card gets a modification.
+    MarkRandomCard,
+    /// Der Kartengeber: the player chooses the card (target needed).
+    MarkChosenCard,
+    /// Alter Bekannter: the owned relic at `index` is swapped for a random
+    /// other one.
+    SwapRelic {
+        /// Index into the owned relics.
+        index: usize,
+        /// The relic given away.
+        relic: RelicId,
+    },
+    /// Letzte Runde: the next game declared counts this many times.
+    DoubleNextGame(u32),
+    /// Walk on without taking anything.
+    Leave,
+}
+
+/// An option of an open encounter: the choice and its price.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncounterOption {
+    /// What it does.
+    pub choice: EncounterChoice,
+    /// Groschen it costs.
+    pub cost: u32,
+}
+
+/// The encounter (Ereignis) between two series, while open.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveEncounter {
+    /// Which encounter.
+    pub id: EncounterId,
+    /// Its options, drawn when it opened; the last is always
+    /// [`EncounterChoice::Leave`].
+    pub options: Vec<EncounterOption>,
 }
 
 /// The Tresen between two series. Bought items leave an empty slot.
@@ -270,6 +363,20 @@ pub enum RunAction {
     Reroll,
     /// Leave the Tresen and start the next series.
     LeaveShop,
+    /// "Die Oma": in a hand game before the first card, take the matching
+    /// card from the skat and put this card (instance id) in its place.
+    TakeFromSkat {
+        /// The card from the hand that goes into the skat.
+        give: u32,
+    },
+    /// Choose an option of the open encounter, with a target card if the
+    /// option needs one; then the next series starts.
+    ChooseEncounter {
+        /// Index into [`ActiveEncounter::options`].
+        option: usize,
+        /// Deck card id for [`EncounterChoice::MarkChosenCard`].
+        target: Option<u32>,
+    },
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -351,6 +458,15 @@ pub enum RunEvent<G = Event<DealtCard>> {
         payout: Payout,
         /// Groschen after the payout.
         coins: u32,
+        /// The boss of a boss series.
+        #[serde(default)]
+        boss: Option<BossId>,
+        /// Passes used in the series.
+        #[serde(default)]
+        passes_used: u32,
+        /// Games left when the series was won.
+        #[serde(default)]
+        games_left: u32,
     },
     /// The Tresen opened.
     ShopOpened {
@@ -411,14 +527,61 @@ pub enum RunEvent<G = Event<DealtCard>> {
     /// The game was thrown in and dealt again (consumable "Neues Blatt" or
     /// house rule "Schieben").
     Redealt,
+    /// "Der Kiebitz" showed the player a defender's card.
+    CardPeeked {
+        /// The card.
+        card: DealtCard,
+        /// Who holds it.
+        seat: Seat,
+    },
+    /// The game is the Ramsch of the series ("Der Ramscher"); nobody
+    /// declares, it is played at once.
+    RamschDealt,
+    /// An encounter opened instead of the Tresen.
+    EncounterOpened {
+        /// Which encounter.
+        encounter: EncounterId,
+        /// Its options.
+        options: Vec<EncounterOption>,
+    },
+    /// The player chose an option of the encounter.
+    EncounterResolved {
+        /// Which encounter.
+        encounter: EncounterId,
+        /// The choice.
+        choice: EncounterChoice,
+    },
+    /// A house rule applies until the end of the section.
+    EveningRuleAdded(RelicId),
+    /// The house rules of the evening ended with the section.
+    EveningRulesEnded,
+    /// An owned relic was swapped for another.
+    RelicSwapped {
+        /// The relic given away.
+        old: RelicId,
+        /// The relic received.
+        new: RelicId,
+    },
+    /// The next game declared counts `factor` times ("Letzte Runde").
+    NextGameDoubled {
+        /// Factor on the Spielwert.
+        factor: u32,
+    },
     /// The run was won.
-    RunWon,
+    RunWon {
+        /// Who won it.
+        #[serde(default)]
+        character: Character,
+    },
     /// The run was lost.
     RunLost {
         /// Section of the lost series.
         section: u32,
         /// Series within the section.
         index: u32,
+        /// Who lost it.
+        #[serde(default)]
+        character: Character,
     },
 }
 
@@ -459,6 +622,17 @@ pub enum RunError {
     UnknownContent(String),
     /// A [`RunStart`] names a section or series that does not exist.
     InvalidStart,
+    /// The character cannot declare this game (the Nullspieler only Null,
+    /// nobody Ramsch).
+    GameNotAvailable,
+    /// "Der Angeber" demands an Ouvert game.
+    OuvertRequired,
+    /// No skat swap ("Die Oma") left in this series, or none granted.
+    NoSkatSwapLeft,
+    /// No matching card lies in the skat.
+    NothingToTake,
+    /// The Ramsch of the series cannot be passed or dealt again.
+    RamschRequired,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -519,6 +693,20 @@ pub enum RunErrorCode {
     BlankCannotBeModified,
     /// The card already carries this modification.
     AlreadyModified,
+    /// The card is not in the deck.
+    MissingCard,
+    /// The character cannot declare this game.
+    GameNotAvailable,
+    /// An Ouvert game is required.
+    OuvertRequired,
+    /// No skat swap left.
+    NoSkatSwapLeft,
+    /// No matching card in the skat.
+    NothingToTake,
+    /// The skat cannot be swapped with now.
+    InvalidSkatSwap,
+    /// The Ramsch cannot be passed or dealt again.
+    RamschRequired,
 }
 
 impl RunErrorCode {
@@ -552,6 +740,13 @@ impl RunErrorCode {
             RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
             RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
             RunErrorCode::AlreadyModified => "AlreadyModified",
+            RunErrorCode::MissingCard => "MissingCard",
+            RunErrorCode::GameNotAvailable => "GameNotAvailable",
+            RunErrorCode::OuvertRequired => "OuvertRequired",
+            RunErrorCode::NoSkatSwapLeft => "NoSkatSwapLeft",
+            RunErrorCode::NothingToTake => "NothingToTake",
+            RunErrorCode::InvalidSkatSwap => "InvalidSkatSwap",
+            RunErrorCode::RamschRequired => "RamschRequired",
         }
     }
 }
@@ -570,6 +765,7 @@ impl RunError {
                 GameError::InvalidDiscard { .. } => RunErrorCode::InvalidDiscard,
                 GameError::InvalidDeal => RunErrorCode::InvalidDeal,
                 GameError::TrickInProgress => RunErrorCode::TrickInProgress,
+                GameError::InvalidSkatSwap => RunErrorCode::InvalidSkatSwap,
             },
             RunError::NoPassesLeft => RunErrorCode::NoPassesLeft,
             RunError::HandRequired => RunErrorCode::HandRequired,
@@ -586,11 +782,17 @@ impl RunError {
                 DeckError::WouldShrinkBelowMinimum => RunErrorCode::DeckAtMinimum,
                 DeckError::BlankCannotBeModified => RunErrorCode::BlankCannotBeModified,
                 DeckError::AlreadyModified(_) => RunErrorCode::AlreadyModified,
+                DeckError::MissingCard(_) => RunErrorCode::MissingCard,
             },
             RunError::TargetRequired => RunErrorCode::TargetRequired,
             RunError::NoModAvailable => RunErrorCode::NoModAvailable,
             RunError::UnknownContent(_) => RunErrorCode::UnknownContent,
             RunError::InvalidStart => RunErrorCode::InvalidStart,
+            RunError::GameNotAvailable => RunErrorCode::GameNotAvailable,
+            RunError::OuvertRequired => RunErrorCode::OuvertRequired,
+            RunError::NoSkatSwapLeft => RunErrorCode::NoSkatSwapLeft,
+            RunError::NothingToTake => RunErrorCode::NothingToTake,
+            RunError::RamschRequired => RunErrorCode::RamschRequired,
         }
     }
 }
@@ -615,6 +817,11 @@ impl fmt::Display for RunError {
             RunError::NoModAvailable => f.write_str("no modification can be added to this card"),
             RunError::UnknownContent(id) => write!(f, "unknown content {id}"),
             RunError::InvalidStart => f.write_str("the run cannot start at this series"),
+            RunError::GameNotAvailable => f.write_str("this character cannot declare that game"),
+            RunError::OuvertRequired => f.write_str("an Ouvert game is required"),
+            RunError::NoSkatSwapLeft => f.write_str("no skat swap left in this series"),
+            RunError::NothingToTake => f.write_str("no matching card lies in the skat"),
+            RunError::RamschRequired => f.write_str("the Ramsch must be played"),
         }
     }
 }
@@ -633,18 +840,25 @@ impl From<DeckError> for RunError {
     }
 }
 
-/// How a run starts. The default is a fresh run: no relics, first series
-/// of the first section.
+/// How a run starts. The default is a fresh run of the Alleinspieler with
+/// nothing locked, first series of the first section.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct RunStart {
-    /// Relics owned from the start, in this order (a character's start
-    /// relic, the simulator's `--relic`). Their passive effects already
-    /// apply to the first game.
+    /// Relics owned from the start besides the character's start relics
+    /// (the simulator's `--relic`), in this order after them. Their passive
+    /// effects already apply to the first game.
     pub relics: Vec<RelicId>,
     /// Section of the first series, from 0.
     pub section: u32,
     /// Series of the first series within its section (2 = boss series).
     pub index: u32,
+    /// Who plays the run.
+    #[serde(default)]
+    pub character: Character,
+    /// Relics that are not unlocked yet ([`meta::MetaState`]): never on
+    /// offer, never drawn by an encounter.
+    #[serde(default)]
+    pub locked_relics: Vec<RelicId>,
 }
 
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
@@ -677,6 +891,25 @@ pub struct Run {
     /// in saves from before; then it is drawn at the next series start).
     #[serde(default)]
     section_boss: Option<BossId>,
+    /// Who plays the run.
+    #[serde(default)]
+    character: Character,
+    /// Relics that are not unlocked: never on offer.
+    #[serde(default)]
+    locked: BTreeSet<RelicId>,
+    /// Encounters and what they draw.
+    #[serde(default = "Run::default_encounter_rng")]
+    encounter_rng: Rng,
+    /// The open encounter.
+    #[serde(default)]
+    encounter: Option<ActiveEncounter>,
+    /// House rules of the evening (encounter "Stammtisch-Streit"): active
+    /// until the section ends, without a slot.
+    #[serde(default)]
+    evening_relics: Vec<RelicId>,
+    /// "Letzte Runde": the next game declared counts this many times.
+    #[serde(default)]
+    pending_factor: Option<(EncounterId, u32)>,
 }
 
 impl Run {
@@ -686,7 +919,9 @@ impl Run {
     }
 
     /// Start a run as `start` describes. The deals depend on the seed only,
-    /// so a run with start relics sees the same cards as one without.
+    /// so a run with start relics sees the same cards as one without. The
+    /// character's start relics come first, then `start.relics`; a relic
+    /// named twice is owned once.
     pub fn new_with(
         content: &Content,
         seed: u64,
@@ -696,17 +931,23 @@ impl Run {
         if start.section >= sections || start.index >= SERIES_PER_SECTION {
             return Err(RunError::InvalidStart);
         }
-        if start.relics.len() > usize::try_from(content.run.relic_slots).unwrap_or(0) {
-            return Err(RunError::NoFreeSlot);
-        }
-        for (i, relic) in start.relics.iter().enumerate() {
+        let character = content
+            .character(start.character)
+            .ok_or_else(|| RunError::UnknownContent(start.character.to_string()))?;
+        let mut relics: Vec<RelicId> = Vec::new();
+        for relic in character.start_relics.iter().chain(&start.relics) {
             if content.relic(relic).is_none() {
                 return Err(RunError::UnknownContent(relic.to_string()));
             }
-            if start.relics[..i].contains(relic) {
-                return Err(RunError::UnknownContent(format!("{relic} twice")));
+            if !relics.contains(relic) {
+                relics.push(relic.clone());
             }
         }
+        if relics.len() > usize::try_from(content.run.relic_slots).unwrap_or(0) {
+            return Err(RunError::NoFreeSlot);
+        }
+        let mut deck = Deck::standard();
+        deck.apply_spec(&character.deck)?;
         let mut master = Rng::from_seed(seed);
         let mut run = Run {
             seed,
@@ -724,10 +965,13 @@ impl Run {
                 passes_left: 0,
                 boss: None,
                 redeals_used: 0,
+                passes_used: 0,
+                skat_swaps_used: 0,
+                ramsch_played: false,
             },
             coins: content.run.economy.starting_coins,
-            deck: Deck::standard(),
-            relics: start.relics.clone(),
+            deck,
+            relics,
             consumables: Vec::new(),
             flags: BTreeSet::new(),
             counters: BTreeMap::new(),
@@ -737,15 +981,58 @@ impl Run {
             last_score: None,
             stats: RunStats::default(),
             section_boss: None,
+            character: start.character,
+            locked: start.locked_relics.iter().cloned().collect(),
+            encounter_rng: master.fork(),
+            encounter: None,
+            evening_relics: Vec::new(),
+            pending_factor: None,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
         Ok((run, events))
     }
 
+    /// Encounter generator of saves from before encounters existed:
+    /// derived from nothing but a constant, so loading stays
+    /// deterministic.
+    fn default_encounter_rng() -> Rng {
+        Rng::from_seed(0x5354_414D_4D54_4953)
+    }
+
     // -----------------------------------------------------------------------
     // Read access
     // -----------------------------------------------------------------------
+
+    /// Who plays the run.
+    #[must_use]
+    pub const fn character(&self) -> Character {
+        self.character
+    }
+
+    /// Relics that are not unlocked in this run.
+    #[must_use]
+    pub const fn locked_relics(&self) -> &BTreeSet<RelicId> {
+        &self.locked
+    }
+
+    /// The open encounter.
+    #[must_use]
+    pub const fn encounter(&self) -> Option<&ActiveEncounter> {
+        self.encounter.as_ref()
+    }
+
+    /// House rules of the evening: active until the section ends.
+    #[must_use]
+    pub fn evening_relics(&self) -> &[RelicId] {
+        &self.evening_relics
+    }
+
+    /// The factor waiting for the next declared game ("Letzte Runde").
+    #[must_use]
+    pub fn pending_factor(&self) -> Option<u32> {
+        self.pending_factor.as_ref().map(|(_, f)| *f)
+    }
 
     /// The run's seed.
     #[must_use]
@@ -887,6 +1174,10 @@ impl Run {
             RunAction::SellConsumable(index) => self.sell_consumable(content, index, events),
             RunAction::Reroll => self.reroll(content, events),
             RunAction::LeaveShop => self.leave_shop(content, events),
+            RunAction::TakeFromSkat { give } => self.take_from_skat(give, events),
+            RunAction::ChooseEncounter { option, target } => {
+                self.choose_encounter(content, option, target, events)
+            }
         }
     }
 
@@ -899,6 +1190,9 @@ impl Run {
 
     fn declaring(&mut self) -> Result<&mut ActiveGame, RunError> {
         let active = self.active_mut()?;
+        if active.rules.ramsch {
+            return Err(RunError::RamschRequired);
+        }
         if active.game.phase() != Phase::Declaring {
             return Err(RunError::WrongPhase);
         }
@@ -911,6 +1205,7 @@ impl Run {
             return Err(RunError::NoPassesLeft);
         }
         self.series.passes_left -= 1;
+        self.series.passes_used += 1;
         self.series.games_played += 1;
         self.stats.games_passed += 1;
         events.push(RunEvent::Passed {
@@ -947,20 +1242,29 @@ impl Run {
         declaration: Declaration,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        let character = self.character;
         let active = self.declaring()?;
-        if declaration.game == GameType::Null {
-            return Err(RunError::NullNotAvailable);
+        match (character.plays_null(), declaration) {
+            (_, Declaration::Ramsch) => return Err(RunError::GameNotAvailable),
+            (false, Declaration::Null { .. }) => return Err(RunError::NullNotAvailable),
+            (true, Declaration::Suit { .. } | Declaration::Grand { .. }) => {
+                return Err(RunError::GameNotAvailable);
+            }
+            _ => {}
         }
         if active.rules.require_hand && !declaration.hand() {
             return Err(RunError::HandRequired);
         }
+        if active.rules.require_ouvert && !declaration.ouvert() {
+            return Err(RunError::OuvertRequired);
+        }
         let game_events = active.game.declare(declaration)?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
-        self.fire(content, Stage::OnDeclare, None, None, events);
+        self.after_declaration(content, events);
         if let Some(active) = self.game.as_mut() {
             if active.rules.kontra_source.is_some() {
                 let kontra_seat = Seat::DEFENDERS.into_iter().find(|&seat| {
-                    DefenderHeuristic.says_kontra(active.game.hand(seat), declaration.game)
+                    DefenderHeuristic.says_kontra(active.game.hand(seat), declaration.game())
                 });
                 if let Some(seat) = kontra_seat {
                     active.kontra = Kontra::Kontra(seat);
@@ -970,6 +1274,54 @@ impl Run {
             }
         }
         self.advance(content, events)
+    }
+
+    /// After any declaration (also the Ramsch): fire `OnDeclare` and use
+    /// up the factor of "Letzte Runde".
+    fn after_declaration(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        self.fire(content, Stage::OnDeclare, None, None, events);
+        if let Some((encounter, factor)) = self.pending_factor.take() {
+            if let Some(active) = self.game.as_mut() {
+                active.lines.push(ScoreLine {
+                    source: Source::Encounter(encounter),
+                    lever: Lever::GameValue,
+                    change: Change::Multiply(factor),
+                });
+            }
+        }
+    }
+
+    /// "Die Oma": take the matching card from the untouched skat of a hand
+    /// game and put `give` in its place, once per series.
+    fn take_from_skat(&mut self, give: u32, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let used = self.series.skat_swaps_used;
+        let active = self.active_mut()?;
+        if active.awaiting_re {
+            return Err(RunError::AwaitingKontraAnswer);
+        }
+        let Some(filter) = active.rules.skat_swap else {
+            return Err(RunError::NoSkatSwapLeft);
+        };
+        if used > 0 {
+            return Err(RunError::NoSkatSwapLeft);
+        }
+        let gave = Run::declarer_card(active, give)?;
+        let took = active
+            .game
+            .skat()
+            .into_iter()
+            .filter(|c| c.face().is_some_and(|f| filter.matches(f)))
+            .max_by_key(|c| {
+                (
+                    crate::rules::trump_strength(crate::rules::GameType::Grand, *c),
+                    c.id,
+                )
+            })
+            .ok_or(RunError::NothingToTake)?;
+        let game_events = active.game.swap_with_skat(took, gave)?;
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.series.skat_swaps_used += 1;
+        Ok(())
     }
 
     fn answer_kontra(
@@ -1094,10 +1446,34 @@ impl Run {
     // Content hooks
     // -----------------------------------------------------------------------
 
-    /// Boss and relics, plus the card modifications in play if a game runs.
+    /// The boss whose rule is on in the current game: the series' boss, or
+    /// for a boss with a rotation (Endboss "Der Alte") the rule of this
+    /// game, by the number of games dealt in the series. Bosses not in the
+    /// character's pool are skipped.
+    fn boss_rule(&self, content: &Content) -> Option<BossId> {
+        let def = content.boss(self.series.boss.as_ref()?)?;
+        if def.rotation.is_empty() {
+            return Some(def.id.clone());
+        }
+        let rules: Vec<&BossId> = def
+            .rotation
+            .iter()
+            .filter(|id| {
+                content
+                    .boss(id)
+                    .is_some_and(|b| in_pool(&b.characters, self.character))
+            })
+            .collect();
+        let n = u32::try_from(rules.len()).ok().filter(|&n| n > 0)?;
+        let i = usize::try_from(self.series.games_played % n).unwrap_or(0);
+        rules.get(i).map(|id| (*id).clone())
+    }
+
+    /// Boss, relics and house rules of the evening, plus the card
+    /// modifications in play if a game runs.
     fn sources<'c>(&self, content: &'c Content, with_card_mods: bool) -> Vec<ActiveSource<'c>> {
         let mut sources = Vec::new();
-        if let Some(def) = self.series.boss.as_ref().and_then(|b| content.boss(b)) {
+        if let Some(def) = self.boss_rule(content).and_then(|b| content.boss(&b)) {
             sources.push(ActiveSource {
                 source: Source::Boss(def.id.clone()),
                 passive: &def.passive,
@@ -1105,7 +1481,8 @@ impl Run {
                 this_card: None,
             });
         }
-        for def in self.relics.iter().filter_map(|r| content.relic(r)) {
+        let relics = self.relics.iter().chain(&self.evening_relics);
+        for def in relics.filter_map(|r| content.relic(r)) {
             sources.push(ActiveSource {
                 source: Source::Relic(def.id.clone()),
                 passive: &def.passive,
@@ -1191,9 +1568,13 @@ impl Run {
             Effect::AddBaseValueFromCounter(name) => counter_value(name),
             _ => 0,
         };
+        let ramsch_played = self.series.ramsch_played;
         let Some(active) = self.game.as_mut() else {
             return;
         };
+        if effect.is_cheat() && matches!(source, Source::Boss(_)) && active.rules.no_cheating {
+            return;
+        }
         match effect {
             Effect::AddBaseValue(n) => active
                 .lines
@@ -1247,10 +1628,35 @@ impl Run {
                     }
                 }
             }
+            Effect::PeekDefenderCards(n) => {
+                if !active.rules.no_information {
+                    active.rules.peek = active.rules.peek.saturating_add(*n);
+                }
+            }
+            Effect::ShowCount => active.rules.show_count = !active.rules.no_information,
+            Effect::SeriesSkatSwap(filter) => active.rules.skat_swap = Some(*filter),
+            Effect::NoCheating => active.rules.no_cheating = true,
+            Effect::RequireOuvert => active.rules.require_ouvert = true,
+            Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
+            Effect::SwapDefenderHands => {
+                if active.game.phase() == Phase::Playing && active.game.current_trick().is_empty() {
+                    if let Ok(game_events) = active.game.swap_defender_hands() {
+                        events.extend(game_events.into_iter().map(RunEvent::Game));
+                    }
+                }
+            }
+            Effect::RamschOnce => active.rules.ramsch = !ramsch_played,
+            Effect::DisableInformation => {
+                active.rules.no_information = true;
+                active.rules.peek = 0;
+                active.rules.show_count = false;
+            }
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)
             | Effect::RevealHolder
+            | Effect::NeverWins
+            | Effect::ShopDiscount(_)
             | Effect::BlankOut(_)
             | Effect::SetFlag(_)
             | Effect::ClearFlag(_)
@@ -1273,14 +1679,31 @@ impl Run {
         if usize::try_from(section).unwrap_or(usize::MAX) >= config.targets.len() {
             return Err(RunError::WrongPhase);
         }
+        if index == 0 && !self.evening_relics.is_empty() {
+            self.evening_relics.clear();
+            events.push(RunEvent::EveningRulesEnded);
+        }
         if index == 0 || self.section_boss.is_none() {
-            let pick = self
-                .misc_rng
-                .gen_range(0..u64::try_from(config.bosses.len()).unwrap_or(1));
-            self.section_boss = config
-                .bosses
-                .get(usize::try_from(pick).unwrap_or(0))
-                .cloned();
+            let last = usize::try_from(section).unwrap_or(0) + 1 == config.targets.len();
+            self.section_boss = match (&config.final_boss, last) {
+                (Some(boss), true) => Some(boss.clone()),
+                _ => {
+                    let pool: Vec<&BossId> = config
+                        .bosses
+                        .iter()
+                        .filter(|id| {
+                            content
+                                .boss(id)
+                                .is_some_and(|b| in_pool(&b.characters, self.character))
+                        })
+                        .collect();
+                    let pick = self
+                        .misc_rng
+                        .gen_range(0..u64::try_from(pool.len()).unwrap_or(1));
+                    pool.get(usize::try_from(pick).unwrap_or(0))
+                        .map(|id| (*id).clone())
+                }
+            };
             if let Some(boss) = &self.section_boss {
                 events.push(RunEvent::BossAnnounced {
                     section,
@@ -1293,8 +1716,8 @@ impl Run {
         } else {
             None
         };
-        let target =
-            series_target(content, section, index, boss.as_ref()).ok_or(RunError::WrongPhase)?;
+        let target = series_target(content, self.character, section, index, boss.as_ref())
+            .ok_or(RunError::WrongPhase)?;
         self.series = Series {
             section,
             index,
@@ -1305,9 +1728,13 @@ impl Run {
             passes_left: config.passes,
             boss: boss.clone(),
             redeals_used: 0,
+            passes_used: 0,
+            skat_swaps_used: 0,
+            ramsch_played: false,
         };
         self.phase = RunPhase::Game;
         self.shop = None;
+        self.encounter = None;
         events.push(RunEvent::SeriesStarted {
             section,
             index,
@@ -1342,7 +1769,48 @@ impl Run {
         let mut rng = self.deal_rng.fork();
         let game = Game::deal_from(&mut rng, resolved.cards, forehand)?;
         self.set_up_game(content, game, resolved.point_changes, events);
+        self.peek(&mut rng, events);
+        if self.game.as_ref().is_some_and(|a| a.rules.ramsch) {
+            return self.start_ramsch(content, events);
+        }
         Ok(())
+    }
+
+    /// "Der Kiebitz": show the player random cards of the defenders, drawn
+    /// with the game's own generator (so the deal stays the same).
+    fn peek(&mut self, rng: &mut Rng, events: &mut Vec<RunEvent>) {
+        let Some(active) = self.game.as_mut() else {
+            return;
+        };
+        let mut pool: Vec<(DealtCard, Seat)> = Seat::DEFENDERS
+            .iter()
+            .flat_map(|&seat| active.game.hand(seat).iter().map(move |&c| (c, seat)))
+            .collect();
+        for _ in 0..active.rules.peek {
+            if pool.is_empty() {
+                break;
+            }
+            let pick = rng.gen_range(0..u64::try_from(pool.len()).unwrap_or(1));
+            let (card, seat) = pool.remove(usize::try_from(pick).unwrap_or(0));
+            active.peeked.push((card, seat));
+            events.push(RunEvent::CardPeeked { card, seat });
+        }
+    }
+
+    /// "Der Ramscher": the dealt game is the series' Ramsch. Nobody
+    /// declares; it is played at once.
+    fn start_ramsch(
+        &mut self,
+        content: &Content,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        self.series.ramsch_played = true;
+        let active = self.active_mut()?;
+        let game_events = active.game.declare(Declaration::Ramsch)?;
+        events.push(RunEvent::RamschDealt);
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.after_declaration(content, events);
+        self.advance(content, events)
     }
 
     /// Install a freshly dealt game, apply passive effects and fire
@@ -1356,13 +1824,23 @@ impl Run {
     ) {
         let forehand = game.forehand();
         let dealt_events: Vec<Event<DealtCard>> = game.log().to_vec();
+        let global = self.sources(content, false);
+        let has = |wanted: &Effect| global.iter().any(|s| s.passive.contains(wanted));
+        let rules = GameRules {
+            no_cheating: has(&Effect::NoCheating),
+            no_information: has(&Effect::DisableInformation),
+            ..GameRules::default()
+        };
+        let boss_rule = self.boss_rule(content);
         self.game = Some(ActiveGame {
             game,
-            rules: GameRules::default(),
+            rules,
             lines: Vec::new(),
             point_changes,
             kontra: Kontra::None,
             awaiting_re: false,
+            peeked: Vec::new(),
+            boss_rule,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -1392,7 +1870,20 @@ impl Run {
         let declaration = game.declaration().ok_or(RunError::WrongPhase)?;
         let outcome = game.outcome();
         let matadors = game.matadors().ok_or(RunError::WrongPhase)?;
-        let parts = game_value_parts(declaration, matadors, &outcome, &active.rules.thresholds);
+        let parts = match declaration {
+            Declaration::Null { risk } => {
+                let scoring = self.null_scoring(content);
+                let tricks = match &scoring {
+                    NullScoring::Formula(f) => usize::try_from(f.short_circuit_tricks).unwrap_or(0),
+                    NullScoring::Fixed => 0,
+                };
+                null_value_parts(risk, &scoring, &outcome, &game.null_style(tricks))
+            }
+            Declaration::Ramsch => ramsch_value_parts(game.seat_card_points(), game.seat_tricks()),
+            Declaration::Suit { .. } | Declaration::Grand { .. } => {
+                game_value_parts(declaration, matadors, &outcome, &active.rules.thresholds)
+            }
+        };
         self.fire(content, Stage::OnScore, None, Some(&parts), events);
 
         let Some(active) = self.game.as_ref() else {
@@ -1432,11 +1923,12 @@ impl Run {
                 lines.push(kontra_line(Source::Re));
             }
         }
-        let breakdown = score_game(
+        let breakdown = score_parts(
             declaration,
             matadors,
             &outcome,
             &active.rules.thresholds,
+            parts,
             lines,
         );
         self.series.score = self.series.score.saturating_add(breakdown.score);
@@ -1470,6 +1962,7 @@ impl Run {
             events.push(RunEvent::RunLost {
                 section: self.series.section,
                 index: self.series.index,
+                character: self.character,
             });
             return Ok(());
         }
@@ -1501,12 +1994,20 @@ impl Run {
             index: self.series.index,
             payout,
             coins: self.coins,
+            boss: self.series.boss.clone(),
+            passes_used: self.series.passes_used,
+            games_left,
         });
         self.fire(content, Stage::OnSeriesWon, None, None, events);
         let last_section = u32::try_from(content.run.targets.len()).unwrap_or(1) - 1;
         if self.series.index + 1 == SERIES_PER_SECTION && self.series.section >= last_section {
             self.phase = RunPhase::Won;
-            events.push(RunEvent::RunWon);
+            events.push(RunEvent::RunWon {
+                character: self.character,
+            });
+            return Ok(());
+        }
+        if self.open_encounter(content, events) {
             return Ok(());
         }
         self.phase = RunPhase::Shop;
@@ -1523,20 +2024,32 @@ impl Run {
     // Tresen
     // -----------------------------------------------------------------------
 
-    /// Draw a deterministic offer from the content pool. Relics the player
-    /// owns are not offered; no item twice in one offer. Rarer items are
-    /// drawn less often (weights in `run.ron`).
-    fn draw_offer(&mut self, content: &Content, rerolls: u32) -> Shop {
-        let weights = &content.run.shop.rarity_weights;
-        let relic_pool: Vec<(RelicId, Rarity)> = content
+    /// Relics that may be offered or drawn: for the character, unlocked,
+    /// neither owned nor on the table for the evening; only house rules if
+    /// `house_rules_only`. In id order.
+    fn relic_pool(&self, content: &Content, house_rules_only: bool) -> Vec<(RelicId, Rarity)> {
+        content
             .relics
             .values()
-            .filter(|r| !self.relics.contains(&r.id))
+            .filter(|r| in_pool(&r.characters, self.character))
+            .filter(|r| !self.locked.contains(&r.id))
+            .filter(|r| !self.relics.contains(&r.id) && !self.evening_relics.contains(&r.id))
+            .filter(|r| !house_rules_only || r.kind == RelicKind::HouseRule)
             .map(|r| (r.id.clone(), r.rarity))
-            .collect();
+            .collect()
+    }
+
+    /// Draw a deterministic offer from the content pool. Relics the player
+    /// owns, locked relics and items for other characters are not offered;
+    /// no item twice in one offer. Rarer items are drawn less often
+    /// (weights in `run.ron`).
+    fn draw_offer(&mut self, content: &Content, rerolls: u32) -> Shop {
+        let weights = &content.run.shop.rarity_weights;
+        let relic_pool = self.relic_pool(content, false);
         let consumable_pool: Vec<(ConsumableId, Rarity)> = content
             .consumables
             .values()
+            .filter(|c| in_pool(&c.characters, self.character))
             .map(|c| (c.id.clone(), c.rarity))
             .collect();
         let relics = draw_weighted(
@@ -1556,6 +2069,45 @@ impl Run {
             consumables: consumables.into_iter().map(Some).collect(),
             rerolls,
         }
+    }
+
+    /// Percent off at the Tresen from the owned relics ("Der Wirt"), at
+    /// most 90.
+    fn shop_discount(&self, content: &Content) -> u32 {
+        let total: u32 = self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .flat_map(|def| def.passive.iter())
+            .map(|e| match e {
+                Effect::ShopDiscount(p) => *p,
+                _ => 0,
+            })
+            .sum();
+        total.min(90)
+    }
+
+    /// What an item with this price costs the player now: the price minus
+    /// the Tresen discount, rounded to the nearest Groschen, at least 1
+    /// for a priced item. Selling always pays half the full price.
+    #[must_use]
+    pub fn shop_price(&self, content: &Content, price: u32) -> u32 {
+        let discount = self.shop_discount(content);
+        if price == 0 || discount == 0 {
+            return price;
+        }
+        let paid = (u64::from(price) * u64::from(100 - discount) + 50) / 100;
+        u32::try_from(paid).unwrap_or(price).max(1)
+    }
+
+    /// How the character's Null games are scored (Fixed if the data says
+    /// nothing).
+    fn null_scoring(&self, content: &Content) -> NullScoring {
+        content
+            .character(self.character)
+            .and_then(|c| c.null_scoring.clone())
+            .unwrap_or(NullScoring::Fixed)
     }
 
     fn shop_mut(&mut self) -> Result<&mut Shop, RunError> {
@@ -1583,21 +2135,19 @@ impl Run {
         let def = content
             .relic(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
-        if def.price > coins {
+        let price = self.shop_price(content, def.price);
+        if price > coins {
             return Err(RunError::NotEnoughCoins);
         }
         if owned >= usize::try_from(content.run.relic_slots).unwrap_or(0) {
             return Err(RunError::NoFreeSlot);
         }
-        if let Some(entry) = shop.relics.get_mut(slot) {
+        if let Some(entry) = self.shop_mut()?.relics.get_mut(slot) {
             *entry = None;
         }
-        self.coins -= def.price;
+        self.coins -= price;
         self.relics.push(id.clone());
-        events.push(RunEvent::RelicBought {
-            relic: id,
-            price: def.price,
-        });
+        events.push(RunEvent::RelicBought { relic: id, price });
         Ok(())
     }
 
@@ -1619,20 +2169,21 @@ impl Run {
         let def = content
             .consumable(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
-        if def.price > coins {
+        let price = self.shop_price(content, def.price);
+        if price > coins {
             return Err(RunError::NotEnoughCoins);
         }
         if owned >= usize::try_from(content.run.consumable_slots).unwrap_or(0) {
             return Err(RunError::NoFreeSlot);
         }
-        if let Some(entry) = shop.consumables.get_mut(slot) {
+        if let Some(entry) = self.shop_mut()?.consumables.get_mut(slot) {
             *entry = None;
         }
-        self.coins -= def.price;
+        self.coins -= price;
         self.consumables.push(id.clone());
         events.push(RunEvent::ConsumableBought {
             consumable: id,
-            price: def.price,
+            price,
         });
         Ok(())
     }
@@ -1680,7 +2231,7 @@ impl Run {
 
     fn reroll(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let rerolls = self.shop_mut()?.rerolls;
-        let cost = content.run.economy.reroll_cost;
+        let cost = self.shop_price(content, content.run.economy.reroll_cost);
         if cost > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
@@ -1702,11 +2253,7 @@ impl Run {
     ) -> Result<(), RunError> {
         self.shop_mut()?;
         events.push(RunEvent::ShopLeft);
-        let (section, index) = if self.series.index + 1 >= SERIES_PER_SECTION {
-            (self.series.section + 1, 0)
-        } else {
-            (self.series.section, self.series.index + 1)
-        };
+        let (section, index) = self.next_series_position();
         self.start_series(content, section, index, events)
     }
 
@@ -1753,12 +2300,7 @@ impl Run {
                 let card_mod = match card_mod {
                     Some(m) => m.clone(),
                     None => {
-                        let options: Vec<_> = content
-                            .card_mods
-                            .keys()
-                            .filter(|m| !card.mods.contains(m))
-                            .cloned()
-                            .collect();
+                        let options = self.card_mod_pool(content, &card.mods);
                         let pick = self
                             .misc_rng
                             .gen_range(0..u64::try_from(options.len()).unwrap_or(0));
@@ -1788,6 +2330,226 @@ impl Run {
         Ok(())
     }
 
+    /// Card modifications a random draw may give a card that already
+    /// carries `mods`: for the character, not on the card yet, in id
+    /// order.
+    fn card_mod_pool(&self, content: &Content, mods: &[CardModId]) -> Vec<CardModId> {
+        content
+            .card_mods
+            .values()
+            .filter(|m| in_pool(&m.characters, self.character) && !mods.contains(&m.id))
+            .map(|m| m.id.clone())
+            .collect()
+    }
+
+    // -----------------------------------------------------------------------
+    // Encounters (Ereignisse, DESIGN 13)
+    // -----------------------------------------------------------------------
+
+    /// Roll whether an encounter comes instead of the Tresen and open it.
+    /// Returns `false` (the Tresen opens) if none comes or the drawn one has
+    /// nothing to offer.
+    fn open_encounter(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> bool {
+        let chance = u64::from(content.run.encounter_chance.permille());
+        if chance == 0 || self.encounter_rng.gen_range(0..1000) >= chance {
+            return false;
+        }
+        let pool: Vec<(&EncounterId, u32)> = content
+            .encounters
+            .values()
+            .filter(|e| in_pool(&e.characters, self.character) && e.weight > 0)
+            .map(|e| (&e.id, e.weight))
+            .collect();
+        let total: u64 = pool.iter().map(|(_, w)| u64::from(*w)).sum();
+        if total == 0 {
+            return false;
+        }
+        let mut roll = self.encounter_rng.gen_range(0..total);
+        let mut chosen = None;
+        for (id, weight) in pool {
+            if roll < u64::from(weight) {
+                chosen = Some(id.clone());
+                break;
+            }
+            roll -= u64::from(weight);
+        }
+        let Some(def) = chosen.and_then(|id| content.encounter(&id)) else {
+            return false;
+        };
+        let mut options: Vec<EncounterOption> = Vec::new();
+        let free = |choice| EncounterOption { choice, cost: 0 };
+        match &def.kind {
+            EncounterKind::EveningRule { offers } => {
+                let pool = self.relic_pool(content, true);
+                let weights = &content.run.shop.rarity_weights;
+                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers, |r| {
+                    weights.weight(r)
+                });
+                options.extend(
+                    drawn
+                        .into_iter()
+                        .map(|id| free(EncounterChoice::TakeRule(id))),
+                );
+            }
+            EncounterKind::MarkCard { price, .. } => {
+                options.push(free(EncounterChoice::MarkRandomCard));
+                options.push(EncounterOption {
+                    choice: EncounterChoice::MarkChosenCard,
+                    cost: *price,
+                });
+            }
+            EncounterKind::SwapRelic => {
+                if !self.relic_pool(content, false).is_empty() {
+                    options.extend(self.relics.iter().enumerate().map(|(index, relic)| {
+                        free(EncounterChoice::SwapRelic {
+                            index,
+                            relic: relic.clone(),
+                        })
+                    }));
+                }
+            }
+            EncounterKind::DoubleNextGame { factor } => {
+                options.push(free(EncounterChoice::DoubleNextGame(*factor)));
+            }
+        }
+        if options.is_empty() {
+            return false;
+        }
+        options.push(free(EncounterChoice::Leave));
+        self.phase = RunPhase::Encounter;
+        events.push(RunEvent::EncounterOpened {
+            encounter: def.id.clone(),
+            options: options.clone(),
+        });
+        self.encounter = Some(ActiveEncounter {
+            id: def.id.clone(),
+            options,
+        });
+        true
+    }
+
+    /// The modification an encounter puts on `card`: the one it names, or
+    /// a random one from the character's pool.
+    fn encounter_mod(
+        &mut self,
+        content: &Content,
+        named: Option<&CardModId>,
+        card: u32,
+    ) -> Result<CardModId, RunError> {
+        let deck_card = self.deck.get(card).ok_or(DeckError::UnknownCard(card))?;
+        if deck_card.kind == CardKind::Blank {
+            return Err(DeckError::BlankCannotBeModified.into());
+        }
+        if let Some(id) = named {
+            return Ok(id.clone());
+        }
+        let options = self.card_mod_pool(content, &deck_card.mods);
+        let pick = self
+            .encounter_rng
+            .gen_range(0..u64::try_from(options.len()).unwrap_or(0));
+        options
+            .get(usize::try_from(pick).unwrap_or(usize::MAX))
+            .cloned()
+            .ok_or(RunError::NoModAvailable)
+    }
+
+    fn choose_encounter(
+        &mut self,
+        content: &Content,
+        option: usize,
+        target: Option<u32>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        if self.phase != RunPhase::Encounter {
+            return Err(RunError::WrongPhase);
+        }
+        let encounter = self.encounter.clone().ok_or(RunError::WrongPhase)?;
+        let def = content
+            .encounter(&encounter.id)
+            .ok_or_else(|| RunError::UnknownContent(encounter.id.to_string()))?;
+        let chosen = encounter
+            .options
+            .get(option)
+            .cloned()
+            .ok_or(RunError::InvalidSlot)?;
+        if chosen.cost > self.coins {
+            return Err(RunError::NotEnoughCoins);
+        }
+        let named = match &def.kind {
+            EncounterKind::MarkCard { card_mod, .. } => card_mod.as_ref(),
+            _ => None,
+        };
+        match &chosen.choice {
+            EncounterChoice::TakeRule(id) => {
+                self.evening_relics.push(id.clone());
+                events.push(RunEvent::EveningRuleAdded(id.clone()));
+            }
+            EncounterChoice::MarkRandomCard => {
+                let cards: Vec<u32> = self
+                    .deck
+                    .cards()
+                    .iter()
+                    .filter(|c| c.kind != CardKind::Blank)
+                    .filter(|c| named.is_none_or(|m| !c.mods.contains(m)))
+                    .filter(|c| named.is_some() || !self.card_mod_pool(content, &c.mods).is_empty())
+                    .map(|c| c.id)
+                    .collect();
+                let pick = self
+                    .encounter_rng
+                    .gen_range(0..u64::try_from(cards.len()).unwrap_or(0));
+                let card = *cards
+                    .get(usize::try_from(pick).unwrap_or(usize::MAX))
+                    .ok_or(RunError::NoModAvailable)?;
+                let card_mod = self.encounter_mod(content, named, card)?;
+                let change = self.deck.add_mod(card, card_mod)?;
+                events.push(RunEvent::DeckChanged(change));
+            }
+            EncounterChoice::MarkChosenCard => {
+                let card = target.ok_or(RunError::TargetRequired)?;
+                let card_mod = self.encounter_mod(content, named, card)?;
+                let change = self.deck.add_mod(card, card_mod)?;
+                events.push(RunEvent::DeckChanged(change));
+            }
+            EncounterChoice::SwapRelic { index, relic } => {
+                if self.relics.get(*index) != Some(relic) {
+                    return Err(RunError::InvalidSlot);
+                }
+                let weights = &content.run.shop.rarity_weights;
+                let pool = self.relic_pool(content, false);
+                let new = draw_weighted(&mut self.encounter_rng, pool, 1, |r| weights.weight(r))
+                    .pop()
+                    .ok_or(RunError::NoModAvailable)?;
+                self.relics[*index] = new.clone();
+                events.push(RunEvent::RelicSwapped {
+                    old: relic.clone(),
+                    new,
+                });
+            }
+            EncounterChoice::DoubleNextGame(factor) => {
+                self.pending_factor = Some((encounter.id.clone(), *factor));
+                events.push(RunEvent::NextGameDoubled { factor: *factor });
+            }
+            EncounterChoice::Leave => {}
+        }
+        self.coins -= chosen.cost;
+        events.push(RunEvent::EncounterResolved {
+            encounter: encounter.id.clone(),
+            choice: chosen.choice,
+        });
+        self.encounter = None;
+        let (section, index) = self.next_series_position();
+        self.start_series(content, section, index, events)
+    }
+
+    /// Section and index of the series after the current one.
+    fn next_series_position(&self) -> (u32, u32) {
+        if self.series.index + 1 >= SERIES_PER_SECTION {
+            (self.series.section + 1, 0)
+        } else {
+            (self.series.section, self.series.index + 1)
+        }
+    }
+
     /// Whether the declarer must declare a hand game in the current game.
     #[must_use]
     pub fn requires_hand(&self) -> bool {
@@ -1811,19 +2573,22 @@ impl Run {
     }
 }
 
-/// Zielwert of a series: the value from `run.ron`, for a boss series times
-/// the boss's target factor. `None` if the section does not exist.
+/// Zielwert of a series: the character's value (from `characters.ron`, or
+/// `run.ron` if the character has none), for a boss series times the
+/// boss's target factor. `None` if the section does not exist.
 #[must_use]
 pub fn series_target(
     content: &Content,
+    character: Character,
     section: u32,
     index: u32,
     boss: Option<&BossId>,
 ) -> Option<u64> {
-    let targets = content
-        .run
-        .targets
-        .get(usize::try_from(section).unwrap_or(usize::MAX))?;
+    let curve = content
+        .character(character)
+        .and_then(|c| c.targets.as_ref())
+        .unwrap_or(&content.run.targets);
+    let targets = curve.get(usize::try_from(section).unwrap_or(usize::MAX))?;
     let base = match index {
         0 => targets.0,
         1 => targets.1,
@@ -1908,5 +2673,7 @@ fn draw_weighted<T: Clone>(
 
 #[cfg(test)]
 mod content_tests;
+#[cfg(test)]
+mod m4_tests;
 #[cfg(test)]
 mod tests;

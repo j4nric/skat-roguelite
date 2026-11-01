@@ -18,8 +18,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cards::CardKind;
-use crate::cards::{PlayingCard, standard_deck};
-use crate::content::CardModId;
+use crate::cards::{Card, PlayingCard, standard_deck};
+use crate::content::{CardModId, DeckSpec};
 use crate::game::{CARDS_IN_PLAY, HAND_SIZE};
 
 /// One card instance of the run's deck.
@@ -50,6 +50,9 @@ pub struct DealtCard {
     pub rank_bonus: u8,
     /// Whether the player sees who holds this card ("Durchsichtig").
     pub revealed: bool,
+    /// Whether this card can never take a trick ("Unsichtbar").
+    #[serde(default)]
+    pub never_wins: bool,
 }
 
 impl DealtCard {
@@ -62,6 +65,7 @@ impl DealtCard {
             card_points: kind.face().map_or(0, |c| c.card_points()),
             rank_bonus: 0,
             revealed: false,
+            never_wins: false,
         }
     }
 }
@@ -77,6 +81,10 @@ impl PlayingCard for DealtCard {
 
     fn rank_bonus(self) -> u8 {
         self.rank_bonus
+    }
+
+    fn never_wins(self) -> bool {
+        self.never_wins
     }
 }
 
@@ -166,6 +174,8 @@ pub enum DeckError {
     BlankCannotBeModified,
     /// The card already carries this modification.
     AlreadyModified(CardModId),
+    /// The deck holds no instance of this printed card.
+    MissingCard(Card),
 }
 
 impl fmt::Display for DeckError {
@@ -175,6 +185,7 @@ impl fmt::Display for DeckError {
             DeckError::WouldShrinkBelowMinimum => f.write_str("the deck cannot shrink below 32"),
             DeckError::BlankCannotBeModified => f.write_str("blanks cannot be modified"),
             DeckError::AlreadyModified(m) => write!(f, "card already carries {m}"),
+            DeckError::MissingCard(c) => write!(f, "no {c} in the deck"),
         }
     }
 }
@@ -331,6 +342,26 @@ impl Deck {
             }
             None => DeckChange::Added { card },
         }
+    }
+
+    /// Build a character's start deck from this one: remove one instance
+    /// of every card in `spec.remove` (the first by id), then add every
+    /// card of `spec.add` (filling the blanks the removals left).
+    pub fn apply_spec(&mut self, spec: &DeckSpec) -> Result<Vec<DeckChange>, DeckError> {
+        let mut changes = Vec::new();
+        for &card in &spec.remove {
+            let id = self
+                .cards
+                .iter()
+                .find(|c| c.kind == CardKind::Normal(card))
+                .map(|c| c.id)
+                .ok_or(DeckError::MissingCard(card))?;
+            changes.push(self.remove(id)?);
+        }
+        for &card in &spec.add {
+            changes.push(self.add(CardKind::Normal(card), Vec::new()));
+        }
+        Ok(changes)
     }
 
     /// Where any one card of this deck lands when a game is dealt.

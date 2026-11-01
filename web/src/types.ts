@@ -31,16 +31,26 @@ export interface DeckCard {
 
 export type GameType = { Suit: Suit } | 'Grand' | 'Null';
 export type RiskLevel = 'Normal' | 'Hand' | 'SchneiderDeclared' | 'SchwarzDeclared' | 'Ouvert';
+/** Risikostufe of a Null game (Nullspieler). */
+export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
+/** Spielart in a declaration: a GameType, or Ramsch (forced by "Der Ramscher"). */
+export type DeclaredGame = GameType | 'Ramsch';
+/** Who plays the run. */
+export type Character = 'Declarer' | 'NullPlayer';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
-export type RunPhase = 'Game' | 'Shop' | 'Won' | 'Lost';
+export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Won' | 'Lost';
 export type TablePhase = 'Declaring' | 'Discarding' | 'Playing' | 'Finished';
 export type RelicKind = 'HouseRule' | 'Regular';
 export type Rarity = 'Common' | 'Uncommon' | 'Rare';
 export type Kontra = 'None' | { Kontra: Seat } | { Re: Seat };
 
+/**
+ * A declaration as the core writes it: `{game, risk}`. Null carries a
+ * NullRisk, Ramsch always `"Normal"`.
+ */
 export interface Declaration {
-  game: GameType;
-  risk: RiskLevel;
+  game: DeclaredGame;
+  risk: RiskLevel | NullRisk;
 }
 
 export interface BossInfo {
@@ -89,6 +99,7 @@ export interface SeriesView {
   game_limit: number;
   games_left: number;
   passes_left: number;
+  passes_used: number;
   boss: BossInfo | null;
 }
 
@@ -129,12 +140,16 @@ export interface OwnedConsumable {
 export interface RelicOffer {
   slot: number;
   relic: RelicInfo;
+  /** What it costs now (discounts applied by the core). */
+  price: number;
   can_buy: boolean;
 }
 
 export interface ConsumableOffer {
   slot: number;
   consumable: ConsumableInfo;
+  /** What it costs now (discounts applied by the core). */
+  price: number;
   can_buy: boolean;
 }
 
@@ -167,18 +182,40 @@ export interface RiskOption {
   allowed: boolean;
 }
 
+/** A Null-Risikostufe in the Ansage of the Nullspieler, with its value from the core. */
+export interface NullRiskOption {
+  risk: NullRisk;
+  allowed: boolean;
+  value: number;
+}
+
 export interface DeclareOptions {
   games: GameOption[];
   risks: RiskOption[];
+  /** Only for the Nullspieler. */
+  null_risks: NullRiskOption[];
+  /** "Der Angeber" demands Ouvert. */
+  ouvert_required: boolean;
   can_pass: boolean;
   can_redeal: boolean;
   redeals_left: number;
   hand_required: boolean;
 }
 
+/**
+ * A card the player sees in another seat: "Durchsichtig" (the card's
+ * `revealed` flag is set) or shown by "Der Kiebitz" (flag not set).
+ */
 export interface RevealedCard {
   card: CardView;
   holder: Seat | null;
+}
+
+/** The count of "Der Zähler". */
+export interface CountView {
+  declarer: number;
+  defenders: number;
+  unseen: number;
 }
 
 export interface GameView {
@@ -203,6 +240,11 @@ export interface GameView {
   win_threshold: number;
   declare: DeclareOptions | null;
   revealed: RevealedCard[];
+  /** The boss rule of this game (for "Der Alte" the rule laid on this game). */
+  boss_rule: BossInfo | null;
+  count: CountView | null;
+  /** "Die Oma" lets the player take a card from the skat now. */
+  can_take_from_skat: boolean;
 }
 
 export type Source =
@@ -210,7 +252,8 @@ export type Source =
   | { CardMod: { card_mod: string; card: number } }
   | { Boss: string }
   | 'Kontra'
-  | 'Re';
+  | 'Re'
+  | { Encounter: string };
 
 export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider';
 
@@ -234,6 +277,22 @@ export interface Matadors {
   count: number;
 }
 
+/** Gewinnstufen by the rules, term by term. */
+export interface LevelParts {
+  matadors: number;
+  game: number;
+  hand: number;
+  schneider: number;
+  schneider_declared: number;
+  schwarz: number;
+  schwarz_declared: number;
+  ouvert: number;
+  sevens_ducked: number;
+  never_followed: number;
+  short_circuit: number;
+  virgin: number;
+}
+
 export interface ScoreBreakdown {
   declaration: Declaration;
   outcome: Outcome;
@@ -242,6 +301,7 @@ export interface ScoreBreakdown {
   schneider: boolean;
   schwarz: boolean;
   rule_base_value: number;
+  rule_levels: LevelParts;
   lines: ScoreLine[];
   base_value: number;
   levels: number;
@@ -261,6 +321,11 @@ export type ScoreTerm =
   | 'Schwarz'
   | 'SchwarzDeclared'
   | 'Ouvert'
+  | { SevensDucked: number }
+  | 'NeverFollowed'
+  | 'ShortCircuit'
+  | { RamschLoser: number }
+  | 'Virgin'
   | { Line: ScoreLine };
 
 export interface ScoreStep {
@@ -283,8 +348,42 @@ export interface RunStats {
   best_game: number;
 }
 
+export interface CharacterInfo {
+  character: Character;
+  name: string;
+  text: string;
+}
+
+/** What an encounter option does. */
+export type EncounterChoice =
+  | { TakeRule: string }
+  | 'MarkRandomCard'
+  | 'MarkChosenCard'
+  | { SwapRelic: { index: number; relic: string } }
+  | { DoubleNextGame: number }
+  | 'Leave';
+
+export interface EncounterOptionView {
+  index: number;
+  choice: EncounterChoice;
+  cost: number;
+  relic: RelicInfo | null;
+  can_choose: boolean;
+  needs_target: boolean;
+  targets: number[];
+}
+
+/** The open encounter (Ereignis). */
+export interface EncounterView {
+  id: string;
+  name: string;
+  text: string;
+  options: EncounterOptionView[];
+}
+
 export interface RunView {
   seed: string;
+  character: CharacterInfo;
   phase: RunPhase;
   series: SeriesView;
   upcoming_boss: BossInfo | null;
@@ -300,6 +399,11 @@ export interface RunView {
   counters: Record<string, number>;
   game: GameView | null;
   shop: ShopView | null;
+  encounter: EncounterView | null;
+  /** House rules of the evening (Stammtisch-Streit), until the section ends. */
+  evening_relics: RelicInfo[];
+  /** Factor waiting for the next declared game ("Letzte Runde"). */
+  pending_factor: number | null;
   last_score: ScoreView | null;
   deck: DeckCard[];
   stats: RunStats;
@@ -327,13 +431,24 @@ export type GameEvent =
   | { CardPlayed: { seat: Seat; card: DealtCard } }
   | { TrickWon: { trick: CompletedTrick; card_points: number } }
   | { Conceded: { tricks: number; card_points: number } }
+  | { DefenderHandsSwapped: { hand_sizes: number[] } }
+  | { SkatSwapped: { took: DealtCard; gave: DealtCard } }
   | { GameFinished: unknown };
+
+export type DeckChange =
+  | { ReplacedByBlank: { removed: DeckCard; blank: number } }
+  | { Removed: { removed: DeckCard } }
+  | { FilledBlank: { card: number; blank: number } }
+  | { Added: { card: number } }
+  | { Modified: { card: number; card_mod: string } };
 
 export type RunEvent =
   | 'Re'
   | 'ShopLeft'
   | 'Redealt'
-  | 'RunWon'
+  | 'RamschDealt'
+  | 'EveningRulesEnded'
+  | { RunWon: { character: Character } }
   | { BossAnnounced: { section: number; boss: string } }
   | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; passes: number; boss: string | null } }
   | { GameDealt: { number: number; forehand: Seat } }
@@ -344,7 +459,7 @@ export type RunEvent =
   | { FlagCleared: string }
   | { CounterRaised: { counter: string; value: number } }
   | { GameScored: { breakdown: ScoreBreakdown; series_score: number } }
-  | { SeriesWon: { section: number; index: number; payout: Payout; coins: number } }
+  | { SeriesWon: { section: number; index: number; payout: Payout; coins: number; boss: string | null; passes_used: number; games_left: number } }
   | { ShopOpened: unknown }
   | { RelicBought: { relic: string; price: number } }
   | { ConsumableBought: { consumable: string; price: number } }
@@ -352,9 +467,15 @@ export type RunEvent =
   | { ConsumableSold: { consumable: string; price: number } }
   | { ShopRerolled: { cost: number } }
   | { ConsumableUsed: { consumable: string } }
-  | { DeckChanged: unknown }
+  | { DeckChanged: DeckChange }
   | { PassesAdded: { passes: number; passes_left: number } }
-  | { RunLost: { section: number; index: number } };
+  | { CardPeeked: { card: DealtCard; seat: Seat } }
+  | { EncounterOpened: { encounter: string; options: unknown[] } }
+  | { EncounterResolved: { encounter: string; choice: EncounterChoice } }
+  | { EveningRuleAdded: string }
+  | { RelicSwapped: { old: string; new: string } }
+  | { NextGameDoubled: { factor: number } }
+  | { RunLost: { section: number; index: number; character: Character } };
 
 export type RunAction =
   | 'Pass'
@@ -369,7 +490,9 @@ export type RunAction =
   | { BuyRelic: number }
   | { BuyConsumable: number }
   | { SellRelic: number }
-  | { SellConsumable: number };
+  | { SellConsumable: number }
+  | { TakeFromSkat: { give: number } }
+  | { ChooseEncounter: { option: number; target: number | null } };
 
 export interface Step {
   events: RunEvent[];
@@ -386,4 +509,59 @@ export interface Catalog {
   card_mods: Record<string, CatalogEntry>;
   bosses: Record<string, CatalogEntry>;
   consumables: Record<string, CatalogEntry>;
+  characters: Record<string, CatalogEntry>;
+  encounters: Record<string, CatalogEntry>;
+  unlocks: Record<string, CatalogEntry>;
+}
+
+// ---------------------------------------------------------------------------
+// Meta state across runs (unlocks and statistics, DESIGN 9.3)
+// ---------------------------------------------------------------------------
+
+export interface CharacterEntry {
+  character: Character;
+  name: string;
+  text: string;
+  unlocked: boolean;
+  /** The unlock that frees it, if it is locked at the start. */
+  unlocked_by: string | null;
+}
+
+export type Reward = { Relic: string } | { Character: Character };
+
+export interface UnlockEntry {
+  id: string;
+  name: string;
+  text: string;
+  unlocked: boolean;
+  rewards: Reward[];
+}
+
+export interface CharacterStats {
+  runs: number;
+  won: number;
+  best_section: number;
+}
+
+export interface MetaStats {
+  runs_finished: number;
+  runs_won: number;
+  best_section: number;
+  games_won: number;
+  games_lost: number;
+  best_game: number;
+  characters: Partial<Record<Character, CharacterStats>>;
+}
+
+export interface MetaView {
+  characters: CharacterEntry[];
+  unlocks: UnlockEntry[];
+  locked_relics: string[];
+  stats: MetaStats;
+}
+
+/** Result of feeding events to the meta state. */
+export interface MetaStep {
+  earned: string[];
+  view: MetaView;
 }

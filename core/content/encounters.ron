@@ -1,0 +1,63 @@
+// Ereignisse (DESIGN 13): kommen zwischen zwei Serien statt des Tresens,
+// mit der Wahrscheinlichkeit encounter_chance aus run.ron. Jedes Ereignis
+// bietet Optionen an, eine davon ist immer „Weitergehen“.
+// weight: wie oft es gezogen wird (Standard 1). characters: leer = alle.
+[
+    (
+        id: "stammtisch_dispute",
+        name: "Stammtisch-Streit",
+        text: "Am Tisch wird gestritten, welche Hausregel gilt. Wähle eine: Sie gilt bis zum Ende des Abends, ohne einen Platz zu belegen.",
+        kind: EveningRule(offers: 3),
+    ),
+    (
+        id: "card_dealer",
+        name: "Der Kartengeber",
+        text: "Der Kartengeber zinkt dir eine zufällige Karte. Für 3 Groschen darfst du die Karte selbst wählen.",
+        kind: MarkCard(price: 3),
+    ),
+    (
+        id: "old_friend",
+        name: "Alter Bekannter",
+        text: "Ein alter Bekannter tauscht eines deiner Relikte gegen ein zufälliges anderes.",
+        kind: SwapRelic,
+    ),
+    (
+        id: "last_round",
+        name: "Letzte Runde",
+        text: "Der Wirt ruft die letzte Runde aus: Das nächste Spiel zählt doppelt, gewonnen wie verloren.",
+        kind: DoubleNextGame(factor: 2),
+    ),
+    // M4: five more, with the same four kinds.
+    (
+        id: "spilled_beer",
+        name: "Umgekipptes Bier",
+        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte kriegt einen Bierfleck: 5 Augen weniger, dafür erkennst du sie. Für 1 Groschen wischst du ihn auf eine Karte deiner Wahl.",
+        kind: MarkCard(price: 1, card_mod: Some("beer_stain")),
+    ),
+    (
+        id: "crown_inn",
+        name: "Gasthof zur Krone",
+        text: "Der Kronenwirt stempelt einer zufälligen Karte seine Krone auf: Ist ihre Farbe Trumpf, zählt der Grundwert doppelt. Für 4 Groschen wählst du die Karte.",
+        kind: MarkCard(price: 4, card_mod: Some("crown")),
+        characters: [Declarer],
+    ),
+    (
+        id: "conjurer",
+        name: "Der Taschenspieler",
+        text: "Ein Taschenspieler macht eine zufällige Karte zur Attrappe: Sie gewinnt nie, und du siehst, wer sie hält. Für 3 Groschen wählst du die Karte.",
+        kind: MarkCard(price: 3, card_mod: Some("dummy")),
+        characters: [NullPlayer],
+    ),
+    (
+        id: "prize_skat",
+        name: "Preisskat",
+        text: "Im Nebenzimmer läuft ein Preisskat. Spielst du mit, zählt das nächste Spiel dreifach, gewonnen wie verloren.",
+        kind: DoubleNextGame(factor: 3),
+    ),
+    (
+        id: "guest_from_altenburg",
+        name: "Gast aus Altenburg",
+        text: "Ein Gast aus Altenburg bringt zwei Hausregeln mit. Wähle eine: Sie gilt bis zum Ende des Abends, ohne einen Platz zu belegen.",
+        kind: EveningRule(offers: 2),
+    ),
+]

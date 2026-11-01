@@ -11,8 +11,8 @@
 use skat_core::cards::Suit;
 use skat_core::cards::parse_cards;
 use skat_core::rules::{
-    Declaration, GameType, Matadors, Outcome, RiskLevel, SCHNEIDER_THRESHOLD, TOTAL_CARD_POINTS,
-    WIN_THRESHOLD, game_value, matadors, null_game_value,
+    Declaration, GameType, Matadors, NullRisk, Outcome, RiskLevel, SCHNEIDER_THRESHOLD,
+    TOTAL_CARD_POINTS, WIN_THRESHOLD, game_value, matadors, null_game_value,
 };
 
 struct Vector {
@@ -261,9 +261,27 @@ const VECTORS: &[Vector] = &[
     },
 ];
 
-/// Risk level that produces exactly the declared flags of the vector.
-/// Null Ouvert without Hand (46) has no `RiskLevel` yet (see the open
-/// question in the M1 report); those vectors go through `null_game_value`.
+/// The declaration that produces exactly the declared flags of the vector.
+/// Null vectors use the Null risk levels (`NullRisk`), which also cover
+/// Null Ouvert without Hand (46).
+fn declaration_from_vector(v: &Vector) -> Option<Declaration> {
+    if v.game == GameType::Null {
+        if v.schneider_declared || v.schwarz_declared {
+            return None;
+        }
+        let risk = match (v.hand, v.ouvert) {
+            (false, false) => NullRisk::Normal,
+            (true, false) => NullRisk::Hand,
+            (false, true) => NullRisk::Ouvert,
+            (true, true) => NullRisk::OuvertHand,
+        };
+        return Some(Declaration::null(risk));
+    }
+    Declaration::new(v.game, risk_from_vector(v)?)
+}
+
+/// Risk level that produces exactly the declared flags of a suit or grand
+/// vector.
 fn risk_from_vector(v: &Vector) -> Option<RiskLevel> {
     match (v.hand, v.schneider_declared, v.schwarz_declared, v.ouvert) {
         (false, false, false, false) => Some(RiskLevel::Normal),
@@ -326,22 +344,12 @@ fn vectors_match_game_value() {
     for v in VECTORS {
         let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
         let outcome = outcome_from_vector(v);
-        let value = match risk_from_vector(v) {
-            Some(risk) => game_value(
-                Declaration::new(v.game, risk),
-                matadors(v.game, &cards),
-                &outcome,
-            ),
-            None => {
-                assert_eq!(
-                    v.game,
-                    GameType::Null,
-                    "{}: unrepresentable risk level",
-                    v.name
-                );
-                null_game_value(v.hand, v.ouvert, &outcome)
-            }
-        };
+        let declaration = declaration_from_vector(v)
+            .unwrap_or_else(|| panic!("{}: unrepresentable declaration", v.name));
+        let value = game_value(declaration, matadors(v.game, &cards), &outcome);
+        if v.game == GameType::Null {
+            assert_eq!(value, null_game_value(v.hand, v.ouvert, &outcome));
+        }
         assert!(value.won, "{}", v.name);
         assert_eq!(value.levels, v.levels, "{}: levels", v.name);
         assert_eq!(value.value, v.value, "{}: value", v.name);
@@ -359,7 +367,7 @@ fn vectors_match_game_value() {
 #[test]
 fn vectors_lost_score_double_negative() {
     for v in VECTORS {
-        let Some(risk) = risk_from_vector(v) else {
+        let Some(declaration) = declaration_from_vector(v) else {
             continue;
         };
         if v.schneider != v.schneider_declared || v.schwarz != v.schwarz_declared {
@@ -375,11 +383,7 @@ fn vectors_lost_score_double_negative() {
             declarer_tricks: 1,
             defender_tricks: 9,
         };
-        let value = game_value(
-            Declaration::new(v.game, risk),
-            matadors(v.game, &cards),
-            &lost,
-        );
+        let value = game_value(declaration, matadors(v.game, &cards), &lost);
         assert!(!value.won, "{}", v.name);
         assert_eq!(value.value, v.value, "{}: lost value", v.name);
         assert_eq!(
@@ -595,7 +599,8 @@ const BOUNDARY: &[LostOrBoundary] = &[
 #[test]
 fn boundary_and_lost_vectors_match_game_value() {
     for v in BOUNDARY {
-        let value = game_value(Declaration::new(v.game, v.risk), v.matadors, &v.outcome);
+        let declaration = Declaration::new(v.game, v.risk).expect("suit or grand");
+        let value = game_value(declaration, v.matadors, &v.outcome);
         assert_eq!(value.won, v.won, "{}: won", v.name);
         assert_eq!(value.schneider, v.schneider, "{}: schneider", v.name);
         assert_eq!(value.schwarz, v.schwarz, "{}: schwarz", v.name);
@@ -620,7 +625,7 @@ fn schwarz_implies_schneider_with_reduced_deck() {
         declarer_tricks: 10,
         defender_tricks: 0,
     };
-    let decl = Declaration::new(GameType::Grand, RiskLevel::Normal);
+    let decl = Declaration::grand(RiskLevel::Normal);
     let value = game_value(decl, MIT_2, &outcome);
     assert!(value.won);
     assert!(value.schwarz);
@@ -640,7 +645,7 @@ fn declarer_schwarz_implies_declarer_schneider() {
         declarer_tricks: 0,
         defender_tricks: 10,
     };
-    let decl = Declaration::new(GameType::Grand, RiskLevel::Normal);
+    let decl = Declaration::grand(RiskLevel::Normal);
     let value = game_value(decl, MIT_2, &outcome);
     assert!(!value.won);
     // mit 2, Spiel 3, Schneider 4, Schwarz 5

@@ -14,22 +14,27 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use super::{
-    Kontra, Run, RunAction, RunPhase, RunStats, SERIES_PER_SECTION, sell_price, series_target,
+    EncounterChoice, Kontra, Run, RunAction, RunPhase, RunStats, SERIES_PER_SECTION, sell_price,
+    series_target,
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardModId, ConsumableAction, ConsumableId, Content, Factor, Rarity, RelicId, RelicKind,
-    ScoreBreakdown, ScoreStep,
+    BossId, CardModId, Character, ConsumableAction, ConsumableId, Content, EncounterId, Factor,
+    Rarity, RelicId, RelicKind, ScoreBreakdown, ScoreStep,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
-use crate::rules::{Declaration, GameType, RiskLevel, suit_strength, trump_strength};
+use crate::rules::{
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, suit_strength, trump_strength,
+};
 
 /// Everything a frontend shows of a run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RunView {
     /// The seed as decimal text (JavaScript numbers cannot hold every u64).
     pub seed: String,
+    /// Who plays the run.
+    pub character: CharacterInfo,
     /// What the run waits for.
     pub phase: RunPhase,
     /// The current series.
@@ -65,6 +70,13 @@ pub struct RunView {
     pub game: Option<GameView>,
     /// The Tresen, while open.
     pub shop: Option<ShopView>,
+    /// The encounter (Ereignis), while open.
+    pub encounter: Option<EncounterView>,
+    /// House rules of the evening (encounter "Stammtisch-Streit"), active
+    /// until the section ends.
+    pub evening_relics: Vec<RelicInfo>,
+    /// Factor waiting for the next declared game ("Letzte Runde").
+    pub pending_factor: Option<u32>,
     /// The last scored game.
     pub last_score: Option<ScoreView>,
     /// The shared deck, in id order.
@@ -94,8 +106,68 @@ pub struct SeriesView {
     pub games_left: u32,
     /// Passes left.
     pub passes_left: u32,
+    /// Passes used.
+    pub passes_used: u32,
     /// The boss of a boss series.
     pub boss: Option<BossInfo>,
+}
+
+/// The character of the run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CharacterInfo {
+    /// Which character.
+    pub character: Character,
+    /// German name from the content.
+    pub name: String,
+    /// German text from the content.
+    pub text: String,
+}
+
+/// An option of the open encounter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EncounterOptionView {
+    /// Index for [`RunAction::ChooseEncounter`].
+    pub index: usize,
+    /// What it does.
+    pub choice: EncounterChoice,
+    /// Groschen it costs.
+    pub cost: u32,
+    /// The relic it names (house rule on offer, relic given away).
+    pub relic: Option<RelicInfo>,
+    /// Whether it can be chosen now (with one of `targets` if it needs
+    /// one).
+    pub can_choose: bool,
+    /// Whether it needs a target card of the deck.
+    pub needs_target: bool,
+    /// Deck card ids it can be used on.
+    pub targets: Vec<u32>,
+}
+
+/// The open encounter (Ereignis).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EncounterView {
+    /// Id, also the key for the frontend's texts.
+    pub id: EncounterId,
+    /// German name from the content.
+    pub name: String,
+    /// German text from the content.
+    pub text: String,
+    /// Its options; the last one is always "Weitergehen".
+    pub options: Vec<EncounterOptionView>,
+}
+
+/// The count of Augen as "Der Zähler" shows it. Only what the player knows:
+/// the tricks of both sides, the skat once he knows it, and the Augen of
+/// every card he has not seen yet (the talon included, since nobody knows
+/// which cards lie there).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CountView {
+    /// Augen the player took in tricks, plus the skat once he knows it.
+    pub declarer: u32,
+    /// Augen the defenders took in tricks.
+    pub defenders: u32,
+    /// Augen of all cards of the deck the player has not seen.
+    pub unseen: u32,
 }
 
 /// A boss with its rule text.
@@ -216,6 +288,8 @@ pub struct RelicOffer {
     pub slot: usize,
     /// The relic.
     pub relic: RelicInfo,
+    /// What it costs now (the content price minus discounts).
+    pub price: u32,
     /// Whether it can be bought now (Groschen and free slot).
     pub can_buy: bool,
 }
@@ -227,6 +301,8 @@ pub struct ConsumableOffer {
     pub slot: usize,
     /// The consumable.
     pub consumable: ConsumableInfo,
+    /// What it costs now (the content price minus discounts).
+    pub price: u32,
     /// Whether it can be bought now.
     pub can_buy: bool,
 }
@@ -305,13 +381,29 @@ pub struct RiskOption {
     pub allowed: bool,
 }
 
+/// A Null-Risikostufe in the Ansage dialog of the Nullspieler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct NullRiskOption {
+    /// The Null-Risikostufe.
+    pub risk: NullRisk,
+    /// Whether it may be declared.
+    pub allowed: bool,
+    /// Grundwert × Gewinnstufen of a won game without style bonus and
+    /// relics: 23, 35, 46, 59 (Fixed) or 23 × Risikostufe (Formula).
+    pub value: u64,
+}
+
 /// What the player may do before the declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeclareOptions {
-    /// Spielarten.
+    /// Spielarten (the Nullspieler: only Null).
     pub games: Vec<GameOption>,
-    /// Risikostufen.
+    /// Risikostufen of suit games and grand (empty for the Nullspieler).
     pub risks: Vec<RiskOption>,
+    /// Null-Risikostufen (only the Nullspieler).
+    pub null_risks: Vec<NullRiskOption>,
+    /// Whether "Der Angeber" demands Ouvert.
+    pub ouvert_required: bool,
     /// Whether Einpassen is possible.
     pub can_pass: bool,
     /// Whether the game can be dealt again ("Schieben").
@@ -366,8 +458,17 @@ pub struct GameView {
     pub win_threshold: u32,
     /// Ansage options while declaring.
     pub declare: Option<DeclareOptions>,
-    /// "Durchsichtig" cards and their holders.
+    /// "Durchsichtig" cards and the cards "Der Kiebitz" showed, with their
+    /// holders.
     pub revealed: Vec<RevealedCard>,
+    /// The boss rule in force in this game: the series' boss, for the
+    /// Endboss "Der Alte" the rule of this game.
+    pub boss_rule: Option<BossInfo>,
+    /// The count of "Der Zähler", if a relic shows it.
+    pub count: Option<CountView>,
+    /// Whether "Die Oma" lets the player take a card from the skat now
+    /// (with [`RunAction::TakeFromSkat`]): only if one lies there.
+    pub can_take_from_skat: bool,
 }
 
 /// The last scored game.
@@ -500,18 +601,14 @@ impl Run {
         if matches!(self.phase, RunPhase::Won | RunPhase::Lost) {
             return None;
         }
-        let (section, index) = if self.series.index + 1 >= SERIES_PER_SECTION {
-            (self.series.section + 1, 0)
-        } else {
-            (self.series.section, self.series.index + 1)
-        };
+        let (section, index) = self.next_series_position();
         let is_boss = index + 1 == SERIES_PER_SECTION;
         let boss = if is_boss {
             self.section_boss.as_ref()
         } else {
             None
         };
-        let target = series_target(content, section, index, boss)?;
+        let target = series_target(content, self.character, section, index, boss)?;
         Some(NextSeriesView {
             section,
             index,
@@ -530,7 +627,7 @@ impl Run {
         let boss = series.boss.as_ref().map(|id| Run::boss_info(content, id));
         let boss_ahead = match self.phase {
             RunPhase::Game => true,
-            RunPhase::Shop => series.index + 1 < SERIES_PER_SECTION,
+            RunPhase::Shop | RunPhase::Encounter => series.index + 1 < SERIES_PER_SECTION,
             RunPhase::Won | RunPhase::Lost => false,
         };
         let upcoming_boss = self
@@ -558,8 +655,14 @@ impl Run {
             .enumerate()
             .map(|(slot, id)| self.owned_consumable(content, slot, id))
             .collect();
+        let character = content.character(self.character);
         RunView {
             seed: self.seed.to_string(),
+            character: CharacterInfo {
+                character: self.character,
+                name: character.map_or_else(|| self.character.to_string(), |c| c.name.clone()),
+                text: character.map_or_else(String::new, |c| c.text.clone()),
+            },
             phase: self.phase,
             series: SeriesView {
                 section: series.section,
@@ -571,6 +674,7 @@ impl Run {
                 game_limit: series.game_limit,
                 games_left: series.games_left(),
                 passes_left: series.passes_left,
+                passes_used: series.passes_used,
                 boss,
             },
             upcoming_boss,
@@ -586,6 +690,13 @@ impl Run {
             counters: self.counters.clone(),
             game: self.game_view(content),
             shop: self.shop_view(content),
+            encounter: self.encounter_view(content),
+            evening_relics: self
+                .evening_relics
+                .iter()
+                .map(|id| Run::relic_info(content, id))
+                .collect(),
+            pending_factor: self.pending_factor(),
             last_score: self.last_score.as_ref().map(|b| ScoreView {
                 breakdown: b.clone(),
                 steps: b.steps(),
@@ -641,10 +752,14 @@ impl Run {
                 .iter()
                 .enumerate()
                 .map(|(slot, id)| {
-                    id.as_ref().map(|id| RelicOffer {
-                        slot,
-                        relic: Run::relic_info(content, id),
-                        can_buy: self.accepts(content, RunAction::BuyRelic(slot)),
+                    id.as_ref().map(|id| {
+                        let relic = Run::relic_info(content, id);
+                        RelicOffer {
+                            slot,
+                            price: self.shop_price(content, relic.price),
+                            relic,
+                            can_buy: self.accepts(content, RunAction::BuyRelic(slot)),
+                        }
                     })
                 })
                 .collect(),
@@ -653,28 +768,32 @@ impl Run {
                 .iter()
                 .enumerate()
                 .map(|(slot, id)| {
-                    id.as_ref().map(|id| ConsumableOffer {
-                        slot,
-                        consumable: Run::consumable_info(content, id),
-                        can_buy: self.accepts(content, RunAction::BuyConsumable(slot)),
+                    id.as_ref().map(|id| {
+                        let consumable = Run::consumable_info(content, id);
+                        ConsumableOffer {
+                            slot,
+                            price: self.shop_price(content, consumable.price),
+                            consumable,
+                            can_buy: self.accepts(content, RunAction::BuyConsumable(slot)),
+                        }
                     })
                 })
                 .collect(),
-            reroll_cost: content.run.economy.reroll_cost,
+            reroll_cost: self.shop_price(content, content.run.economy.reroll_cost),
             can_reroll: self.accepts(content, RunAction::Reroll),
             rerolls: shop.rerolls,
         })
     }
 
     fn declare_options(&self, content: &Content) -> DeclareOptions {
+        if self.character.plays_null() {
+            return self.null_declare_options(content);
+        }
         let risks: Vec<RiskOption> = RiskLevel::ALL
             .into_iter()
             .map(|risk| RiskOption {
                 risk,
-                allowed: self.accepts(
-                    content,
-                    RunAction::Declare(Declaration::new(GameType::Grand, risk)),
-                ),
+                allowed: self.accepts(content, RunAction::Declare(Declaration::grand(risk))),
             })
             .collect();
         let lowest = risks
@@ -686,17 +805,151 @@ impl Run {
             .map(|game| GameOption {
                 game,
                 base_value: game.base_value().unwrap_or(0),
-                allowed: self.accepts(content, RunAction::Declare(Declaration::new(game, lowest))),
+                allowed: Declaration::new(game, lowest)
+                    .is_some_and(|d| self.accepts(content, RunAction::Declare(d))),
             })
             .collect();
         DeclareOptions {
             games,
             risks,
+            null_risks: Vec::new(),
+            ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_pass: self.accepts(content, RunAction::Pass),
             can_redeal: self.accepts(content, RunAction::Redeal),
             redeals_left: self.redeals_left(),
             hand_required: self.requires_hand(),
         }
+    }
+
+    /// The Ansage dialog of the Nullspieler: Null and its four levels.
+    fn null_declare_options(&self, content: &Content) -> DeclareOptions {
+        let scoring = self.null_scoring(content);
+        let null_risks: Vec<NullRiskOption> = NullRisk::ALL
+            .into_iter()
+            .map(|risk| NullRiskOption {
+                risk,
+                allowed: self.accepts(content, RunAction::Declare(Declaration::null(risk))),
+                value: match &scoring {
+                    NullScoring::Fixed => {
+                        u64::from(crate::rules::null_value(risk.hand(), risk.ouvert()))
+                    }
+                    NullScoring::Formula(f) => u64::from(f.base_value) * u64::from(risk.step()),
+                },
+            })
+            .collect();
+        let base_value = match &scoring {
+            NullScoring::Fixed => crate::rules::null_value(false, false),
+            NullScoring::Formula(f) => f.base_value,
+        };
+        DeclareOptions {
+            games: vec![GameOption {
+                game: GameType::Null,
+                base_value,
+                allowed: null_risks.iter().any(|r| r.allowed),
+            }],
+            risks: Vec::new(),
+            null_risks,
+            ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
+            can_pass: self.accepts(content, RunAction::Pass),
+            can_redeal: self.accepts(content, RunAction::Redeal),
+            redeals_left: self.redeals_left(),
+            hand_required: self.requires_hand(),
+        }
+    }
+
+    /// The count of "Der Zähler" from what the player knows.
+    fn count_view(&self) -> Option<CountView> {
+        let active = self.game.as_ref()?;
+        if !active.rules.show_count {
+            return None;
+        }
+        let game = &active.game;
+        let points = game.trick_card_points();
+        let known_skat = game
+            .declaration()
+            .is_some_and(|d| !d.hand() && game.phase() != Phase::Discarding);
+        let skat_points: u32 = game.skat().iter().map(|c| c.card_points()).sum();
+        let mut seen: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
+        seen.extend(game.tricks().iter().flat_map(|t| t.cards));
+        seen.extend(game.current_trick().iter().copied());
+        if known_skat {
+            seen.extend(game.skat());
+        }
+        let unseen: u32 = game
+            .deck_cards()
+            .iter()
+            .filter(|c| !seen.contains(c))
+            .map(|c| c.card_points())
+            .sum();
+        Some(CountView {
+            declarer: points[0] + if known_skat { skat_points } else { 0 },
+            defenders: points[1] + points[2],
+            unseen,
+        })
+    }
+
+    fn encounter_view(&self, content: &Content) -> Option<EncounterView> {
+        let encounter = self.encounter.as_ref()?;
+        let def = content.encounter(&encounter.id);
+        let options = encounter
+            .options
+            .iter()
+            .enumerate()
+            .map(|(index, option)| {
+                let needs_target = option.choice == EncounterChoice::MarkChosenCard;
+                let relic = match &option.choice {
+                    EncounterChoice::TakeRule(id)
+                    | EncounterChoice::SwapRelic { relic: id, .. } => {
+                        Some(Run::relic_info(content, id))
+                    }
+                    _ => None,
+                };
+                let targets: Vec<u32> = if needs_target {
+                    self.deck
+                        .cards()
+                        .iter()
+                        .map(|c| c.id)
+                        .filter(|&card| {
+                            self.accepts(
+                                content,
+                                RunAction::ChooseEncounter {
+                                    option: index,
+                                    target: Some(card),
+                                },
+                            )
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let can_choose = if needs_target {
+                    !targets.is_empty()
+                } else {
+                    self.accepts(
+                        content,
+                        RunAction::ChooseEncounter {
+                            option: index,
+                            target: None,
+                        },
+                    )
+                };
+                EncounterOptionView {
+                    index,
+                    choice: option.choice.clone(),
+                    cost: option.cost,
+                    relic,
+                    can_choose,
+                    needs_target,
+                    targets,
+                }
+            })
+            .collect();
+        Some(EncounterView {
+            id: encounter.id.clone(),
+            name: def.map_or_else(|| encounter.id.to_string(), |d| d.name.clone()),
+            text: def.map_or_else(String::new, |d| d.text.clone()),
+            options,
+        })
     }
 
     fn game_view(&self, content: &Content) -> Option<GameView> {
@@ -712,7 +965,7 @@ impl Run {
             Phase::Playing => TablePhase::Playing,
             Phase::Finished(_) => TablePhase::Finished,
         };
-        let order_game = declaration.map_or(GameType::Grand, |d| d.game);
+        let order_game = declaration.map_or(GameType::Grand, |d| d.game());
         let legal = if active.awaiting_re {
             Vec::new()
         } else {
@@ -761,7 +1014,7 @@ impl Run {
             }
             _ => None,
         };
-        let revealed = self
+        let mut revealed: Vec<RevealedCard> = self
             .revealed_holders()
             .into_iter()
             .map(|(card, holder)| RevealedCard {
@@ -769,6 +1022,19 @@ impl Run {
                 holder,
             })
             .collect();
+        for &(card, _) in &active.peeked {
+            if !revealed.iter().any(|r| r.card.card.id == card.id) {
+                revealed.push(RevealedCard {
+                    card: self.card_view(card),
+                    holder: game.holder_of(card),
+                });
+            }
+        }
+        let can_take_from_skat = active.rules.skat_swap.is_some()
+            && game
+                .hand(Seat::DECLARER)
+                .first()
+                .is_some_and(|c| self.accepts(content, RunAction::TakeFromSkat { give: c.id }));
         Some(GameView {
             number: self.series.games_played + 1,
             phase,
@@ -791,6 +1057,12 @@ impl Run {
             win_threshold: active.rules.thresholds.win,
             declare: (phase == TablePhase::Declaring).then(|| self.declare_options(content)),
             revealed,
+            boss_rule: active
+                .boss_rule
+                .as_ref()
+                .map(|id| Run::boss_info(content, id)),
+            count: self.count_view(),
+            can_take_from_skat,
         })
     }
 }

@@ -5,18 +5,28 @@
 //!
 //! Options (all reproducible with the same seed, see [`Options`]):
 //! `--no-shop`, `--relic <id>` (repeatable), `--without <id>`
-//! (repeatable), `--boss <id>` and `--curve` (success curve of a single
-//! series instead of whole runs, see [`curve`]).
+//! (repeatable), `--boss <id>`, `--character declarer|null`,
+//! `--null-scoring fixed|formula`, `--curve` (success curve of a single
+//! series instead of whole runs, see [`curve`]) and `--unlocks`
+//! (reachability of every unlock, see [`unlocks`]).
+//!
+//! Runs start with everything unlocked (no relic is locked), so that the
+//! measurement does not depend on a player's progress. `--unlocks` plays
+//! with a growing meta state instead.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use skat_core::content::{BossId, Content, RelicId};
+use skat_core::content::{BossId, Character, Content, EncounterId, RelicId, UnlockId};
 use skat_core::rng::Rng;
+use skat_core::rules::{NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
-use skat_core::run::{Run, RunAction, RunEvent, RunPhase, RunStart, SERIES_PER_SECTION};
+use skat_core::run::meta::MetaState;
+use skat_core::run::{
+    EncounterChoice, Run, RunAction, RunEvent, RunPhase, RunStart, SERIES_PER_SECTION,
+};
 
 /// Measurement options of the runs mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -32,6 +42,26 @@ pub struct Options {
     pub boss: Option<BossId>,
     /// Measure the success curve of one series instead of whole runs.
     pub curve: bool,
+    /// Who plays.
+    pub character: Character,
+    /// Override of the character's Null scoring.
+    pub null_scoring: Option<NullScoring>,
+    /// Measure how many runs it takes to earn every unlock.
+    pub unlocks: bool,
+}
+
+/// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
+/// `--null-scoring formula`.
+#[must_use]
+pub fn formula_scoring() -> NullScoring {
+    NullScoring::Formula(NullFormula {
+        base_value: 23,
+        per_seven_ducked: 1,
+        never_followed: 2,
+        short_circuit: 3,
+        short_circuit_tricks: 5,
+        short_circuit_points: 61,
+    })
 }
 
 impl Options {
@@ -57,8 +87,28 @@ impl Options {
                 return Err(format!("--boss: unknown boss {boss}"));
             }
             content.run.bosses = vec![boss.clone()];
+            content.run.final_boss = None;
+        }
+        if let Some(scoring) = &self.null_scoring {
+            let def = content
+                .characters
+                .get_mut(&Character::NullPlayer)
+                .ok_or("--null-scoring: no Nullspieler in the content")?;
+            def.null_scoring = Some(scoring.clone());
+        }
+        if content.character(self.character).is_none() {
+            return Err(format!("--character: unknown {}", self.character));
         }
         Ok(content)
+    }
+
+    /// How every measured run starts.
+    fn start(&self) -> RunStart {
+        RunStart {
+            relics: self.relics.clone(),
+            character: self.character,
+            ..RunStart::default()
+        }
     }
 
     /// The options as one line for the report header.
@@ -75,6 +125,14 @@ impl Options {
         }
         if let Some(boss) = &self.boss {
             parts.push(format!("boss={boss}"));
+        }
+        if self.character != Character::Declarer {
+            parts.push(format!("character={}", self.character));
+        }
+        match &self.null_scoring {
+            Some(NullScoring::Fixed) => parts.push("null-scoring=fixed".into()),
+            Some(NullScoring::Formula(_)) => parts.push("null-scoring=formula".into()),
+            None => {}
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -141,6 +199,11 @@ pub struct RunStats {
     pub coins_spent: u64,
     /// Per relic.
     pub relics: BTreeMap<RelicId, RelicStat>,
+    /// Encounters opened, by id: (opened, options other than leaving
+    /// taken).
+    pub encounters: BTreeMap<EncounterId, (u64, u64)>,
+    /// Highest Spielwert of a won game, summed over runs.
+    pub best_game: u64,
 }
 
 /// Play one run to the end and add it to the statistics.
@@ -150,10 +213,7 @@ fn play_run(
     seed: u64,
     stats: &mut RunStats,
 ) -> Result<(), String> {
-    let start = RunStart {
-        relics: options.relics.clone(),
-        ..RunStart::default()
-    };
+    let start = options.start();
     let (mut run, mut events) = Run::new_with(content, seed, &start).map_err(|e| e.to_string())?;
     let mut actions = 0;
     while let Some(action) = options.next_action(&run, content) {
@@ -228,6 +288,14 @@ fn play_run(
                 bought.insert(relic.clone());
             }
             RunEvent::ConsumableBought { price, .. } => stats.coins_spent += u64::from(*price),
+            RunEvent::EncounterOpened { encounter, .. } => {
+                stats.encounters.entry(encounter.clone()).or_default().0 += 1;
+            }
+            RunEvent::EncounterResolved { encounter, choice } => {
+                if *choice != EncounterChoice::Leave {
+                    stats.encounters.entry(encounter.clone()).or_default().1 += 1;
+                }
+            }
             RunEvent::ShopRerolled { cost } => stats.coins_spent += u64::from(*cost),
             _ => {}
         }
@@ -240,6 +308,7 @@ fn play_run(
         *n += 1;
     }
     stats.coins_end += u64::from(run.coins());
+    stats.best_game += run.stats().best_game;
     for relic in bought {
         let entry = stats.relics.entry(relic).or_default();
         entry.runs += 1;
@@ -365,6 +434,12 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         stats.passes,
         mean_signed(stats.points, stats.games)
     );
+    let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
+    let _ = write!(out, "encounters (opened/taken):");
+    for (id, (opened, taken)) in &stats.encounters {
+        let _ = write!(out, " {id}={opened}/{taken}");
+    }
+    out.push('\n');
     let _ = writeln!(
         out,
         "groschen per run: earned {:.2}, spent {:.2}, held at end {:.2}",
@@ -471,13 +546,12 @@ pub fn curve(
         .targets
         .fill((unreachable, unreachable, unreachable));
     let start = RunStart {
-        relics: options.relics.clone(),
-        section: 0,
         index: if options.boss.is_some() {
             SERIES_PER_SECTION - 1
         } else {
             0
         },
+        ..options.start()
     };
     let mut result = Curve {
         seed,
@@ -576,7 +650,9 @@ pub fn main(seed: u64, runs: u32, options: &Options) -> ExitCode {
         }
     };
     let start = Instant::now();
-    let output = if options.curve {
+    let output = if options.unlocks {
+        unlocks(&content, options, seed, runs).map(|u| render_unlocks(&u, &content))
+    } else if options.curve {
         curve(&content, options, seed, runs).map(|c| {
             let runtime_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
             render_curve(&c, &content, options, runtime_us)
@@ -597,6 +673,121 @@ pub fn main(seed: u64, runs: u32, options: &Options) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Reachability of the unlocks
+// ---------------------------------------------------------------------------
+
+/// Sequences of runs played by `--unlocks`, each with a fresh meta state.
+pub const UNLOCK_SEQUENCES: u32 = 20;
+
+/// How many runs a fresh player (the bot) needs for each unlock.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Unlocks {
+    /// Base seed.
+    pub seed: u64,
+    /// Sequences played.
+    pub sequences: u32,
+    /// Most runs per sequence.
+    pub max_runs: u32,
+    /// Per unlock: the run number (from 1) at which each sequence earned
+    /// it; sequences that never earned it are missing.
+    pub earned_at: BTreeMap<UnlockId, Vec<u32>>,
+}
+
+/// Play [`UNLOCK_SEQUENCES`] sequences of up to `max_runs` runs. Every
+/// sequence starts with a fresh [`MetaState`]; each run starts from it
+/// (locked relics stay off the Tresen) and its events feed it. The bot
+/// plays the Alleinspieler and, once unlocked, every other run the
+/// Nullspieler. A sequence stops when everything is unlocked.
+pub fn unlocks(
+    content: &Content,
+    options: &Options,
+    seed: u64,
+    max_runs: u32,
+) -> Result<Unlocks, String> {
+    let mut result = Unlocks {
+        seed,
+        sequences: UNLOCK_SEQUENCES,
+        max_runs,
+        ..Unlocks::default()
+    };
+    for id in content.unlocks.keys() {
+        result.earned_at.insert(id.clone(), Vec::new());
+    }
+    let mut master = Rng::from_seed(seed);
+    for sequence in 0..UNLOCK_SEQUENCES {
+        let mut meta = MetaState::new();
+        for n in 1..=max_runs {
+            if meta.unlocked.len() == content.unlocks.len() {
+                break;
+            }
+            let character = if n % 2 == 0 && meta.character_unlocked(content, Character::NullPlayer)
+            {
+                Character::NullPlayer
+            } else {
+                Character::Declarer
+            };
+            let mut start = meta
+                .run_start(content, character)
+                .map_err(|e| e.to_string())?;
+            start.relics.clone_from(&options.relics);
+            let run_seed = master.next_u64();
+            let (mut run, mut events) =
+                Run::new_with(content, run_seed, &start).map_err(|e| e.to_string())?;
+            let mut actions = 0;
+            while let Some(action) = options.next_action(&run, content) {
+                events.extend(run.apply(content, action).map_err(|e| e.to_string())?);
+                actions += 1;
+                if actions > MAX_ACTIONS {
+                    return Err(format!("sequence {sequence}: run does not end"));
+                }
+            }
+            for id in meta.observe(content, &events) {
+                result.earned_at.entry(id).or_default().push(n);
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Render the reachability table.
+pub fn render_unlocks(unlocks: &Unlocks, content: &Content) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "skat_sim seed={} unlocks: {} sequences of at most {} runs, fresh meta state each",
+        unlocks.seed, unlocks.sequences, unlocks.max_runs
+    );
+    let _ = writeln!(
+        out,
+        "{:<20} {:>8} {:>10} {:>8} {:>8}  reward",
+        "unlock", "reached", "mean runs", "min", "max"
+    );
+    for (id, at) in &unlocks.earned_at {
+        let reached = at.len();
+        let mean_runs = if reached == 0 {
+            0.0
+        } else {
+            at.iter().map(|&n| f64::from(n)).sum::<f64>() / reached as f64
+        };
+        let rewards = content
+            .unlock(id)
+            .map(|u| format!("{:?}", u.rewards))
+            .unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "{:<20} {:>5}/{:<2} {:>10.1} {:>8} {:>8}  {rewards}",
+            id.as_str(),
+            reached,
+            unlocks.sequences,
+            mean_runs,
+            at.iter().min().copied().unwrap_or(0),
+            at.iter().max().copied().unwrap_or(0),
+        );
+    }
+    out
 }
 
 #[cfg(test)]
@@ -728,5 +919,31 @@ mod option_tests {
         let content = boss.content(&base).expect("content");
         let b = curve(&content, &boss, 42, 50).expect("boss curve");
         assert_eq!(b.best.len(), 50);
+    }
+
+    #[test]
+    fn the_null_player_and_the_unlocks_can_be_measured() {
+        let base = content();
+        let options = Options {
+            character: Character::NullPlayer,
+            null_scoring: Some(NullScoring::Fixed),
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let stats = simulate(&content, &options, 2, 20).expect("runs");
+        assert_eq!(stats.lost_in_section.iter().sum::<u64>() + stats.won, 20);
+        assert!(render(&stats, &content, &options, 0).contains("character=NullPlayer"));
+        let options = Options {
+            unlocks: true,
+            ..Options::default()
+        };
+        let a = unlocks(&base, &options, 3, 15).expect("unlocks");
+        assert_eq!(a, unlocks(&base, &options, 3, 15).expect("unlocks"));
+        assert_eq!(a.earned_at.len(), base.unlocks.len());
+        assert!(
+            !a.earned_at[&UnlockId::new("second_evening")].is_empty(),
+            "section 2 is reached within 15 runs"
+        );
+        assert!(render_unlocks(&a, &base).contains("tour_won"));
     }
 }

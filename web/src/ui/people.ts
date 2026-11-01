@@ -130,6 +130,90 @@ ${eyes(46, OUT, 7.5)}
 <ellipse cx="50" cy="30" rx="25" ry="4" fill="#1a1a1a" stroke="${OUT}" stroke-width="2"/>`;
 }
 
+/** Der Alleinspieler: slick parting, waistcoat with a watch chain, sure smile. */
+function declarer(): string {
+  const skin = '#ecb98f';
+  return `${shoulders('#3a2a20', '<path d="M34 72 L50 96 L66 72 Z" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.5"/><path d="M30 74 L42 101 L58 101 L70 74 C64 80 58 84 50 86 C42 84 36 80 30 74 Z" fill="#8e2430" stroke="#2b1a0e" stroke-width="1.6"/><circle cx="46" cy="90" r="1.6" fill="#e2b04a"/><circle cx="46" cy="97" r="1.6" fill="#e2b04a"/><path d="M47 92 C52 96 58 95 61 90" fill="none" stroke="#e2b04a" stroke-width="1.4"/><path d="M45 74 L50 80 L55 74 L50 77 Z" fill="#1f3456" stroke="#2b1a0e" stroke-width="1"/>')}
+${headShape(skin, 18, 22)}
+<path d="M31 38 C29 20 42 16 52 16 C64 16 72 24 69 38 C66 30 60 27 54 27 L44 33 C40 30 34 33 31 38 Z" fill="#3b2414" stroke="${OUT}" stroke-width="2"/>
+<path d="M44 33 C48 24 58 22 64 26" fill="none" stroke="#5a3a22" stroke-width="1.5"/>
+${eyes(44, '#3b2414', 8)}${cheeks(53)}
+<path d="M42 56 C46 61 55 61 59 55" fill="#fff" stroke="${OUT}" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M43 52 C46 50 54 50 57 52" fill="none" stroke="#3b2414" stroke-width="2.4" stroke-linecap="round"/>`;
+}
+
+/** Der Nullspieler: thin, big round glasses, bow tie, pencil behind the ear. */
+function nullPlayer(): string {
+  const skin = '#f0c9a6';
+  return `${shoulders('#5b6470', '<path d="M38 72 L50 88 L62 72" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.5"/><path d="M41 76 L50 80 L59 76 L59 84 L50 80 L41 84 Z" fill="#2c5e3c" stroke="#2b1a0e" stroke-width="1.2"/><path d="M30 80 L36 101 M70 80 L64 101" stroke="#474f5a" stroke-width="1.4"/>')}
+${headShape(skin, 16, 23, 44)}
+<path d="M34 34 C34 26 38 24 40 24 M66 34 C66 26 62 24 60 24" fill="none" stroke="#8a7a66" stroke-width="4" stroke-linecap="round"/>
+<path d="M38 24 C44 20 56 20 62 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".3"/>
+<circle cx="42" cy="45" r="8" fill="#fff" fill-opacity=".3" stroke="#1d1a18" stroke-width="2.4"/><circle cx="58" cy="45" r="8" fill="#fff" fill-opacity=".3" stroke="#1d1a18" stroke-width="2.4"/>
+<path d="M50 44 L50 44" stroke="#1d1a18" stroke-width="2"/><path d="M48 44 C49 42.5 51 42.5 52 44" fill="none" stroke="#1d1a18" stroke-width="2"/>
+<circle cx="42" cy="45" r="2" fill="${OUT}"/><circle cx="58" cy="45" r="2" fill="${OUT}"/>
+<path d="M45 59 C48 58 52 58 55 59" fill="none" stroke="${OUT}" stroke-width="1.8" stroke-linecap="round"/>
+<path d="M64 28 L80 18" stroke="#e2b04a" stroke-width="4" stroke-linecap="round"/><path d="M80 18 L84 15.5" stroke="#f1caa8" stroke-width="4" stroke-linecap="round"/>`;
+}
+
+/** Der Kartengeber: green eyeshade, sleeve garters, curled moustache. */
+function dealer(): string {
+  const skin = '#e8b48c';
+  return `${shoulders('#f4efe4', '<path d="M38 72 L50 84 L62 72" fill="none" stroke="#2b1a0e" stroke-width="1.5"/><path d="M44 76 L50 81 L56 76" fill="#1d1a18"/><path d="M14 92 L26 88 M86 92 L74 88" stroke="#c0262f" stroke-width="4" stroke-linecap="round"/><path d="M30 101 L33 84 L67 84 L70 101" fill="#3b2a1e" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 18, 22, 46)}
+<path d="M32 40 C30 30 36 26 50 26 C64 26 70 30 68 40" fill="#2b1d10" stroke="${OUT}" stroke-width="1.8"/>
+${eyes(47, OUT, 7.5)}${cheeks(55)}
+<path d="M36 57 C40 52 46 54 50 56 C54 54 60 52 64 57 C61 55 58 58 55 58 C53 58 51 57 50 57 C49 57 47 58 45 58 C42 58 39 55 36 57 Z" fill="#2b1d10" stroke="${OUT}" stroke-width="1.2"/>
+<path d="M36 57 C34 55 34 53 36 52 M64 57 C66 55 66 53 64 52" fill="none" stroke="#2b1d10" stroke-width="1.6"/>
+<path d="M22 36 C34 26 66 26 78 36 L72 42 C60 35 40 35 28 42 Z" fill="#2f8a52" fill-opacity=".85" stroke="${OUT}" stroke-width="2"/>
+<path d="M30 30 C40 24 60 24 70 30" fill="none" stroke="#1d5e36" stroke-width="3"/>`;
+}
+
+/** Alter Bekannter: Tyrolean hat with a feather, full beard, loden jacket. */
+function oldFriend(): string {
+  const skin = '#e3ad84';
+  return `${shoulders('#4d5e3a', '<path d="M40 72 L50 82 L60 72" fill="#c9c3b8" stroke="#2b1a0e" stroke-width="1.4"/><path d="M36 74 L42 101 M64 74 L58 101" stroke="#2f3b22" stroke-width="3"/><circle cx="44" cy="88" r="2" fill="#c9a24a"/><circle cx="56" cy="88" r="2" fill="#c9a24a"/>')}
+${headShape(skin, 18, 21, 46)}
+${eyes(45, '#6d5a46', 8)}${cheeks(52)}
+<path d="M32 50 C32 66 40 72 50 72 C60 72 68 66 68 50 C64 56 58 58 50 58 C42 58 36 56 32 50 Z" fill="#8a7a66" stroke="${OUT}" stroke-width="1.6"/>
+<path d="M44 59 C47 62 53 62 56 59" fill="#c0505e" stroke="${OUT}" stroke-width="1.2"/>
+<path d="M28 33 C30 18 40 14 50 14 C62 14 70 18 72 33 Z" fill="#3e5230" stroke="${OUT}" stroke-width="2"/>
+<rect x="29" y="27" width="42" height="5" fill="#8e2430"/>
+<path d="M16 34 C30 29 70 29 84 34 C74 38 26 38 16 34 Z" fill="#3e5230" stroke="${OUT}" stroke-width="2"/>
+<path d="M66 28 C74 14 82 8 90 4 C84 12 78 20 70 28 Z" fill="#f4efe4" stroke="${OUT}" stroke-width="1.2"/><path d="M70 26 L86 8" stroke="#8a8170" stroke-width="1"/>`;
+}
+
+/** Der Alte: the final boss, long white beard, bushy brows, sailor's cap. */
+function oldMan(): string {
+  const skin = '#e9bf9c';
+  return `${shoulders('#1f2a44', '<path d="M30 80 L34 101 M70 80 L66 101" stroke="#141c30" stroke-width="2"/><circle cx="38" cy="90" r="2.2" fill="#e2b04a"/><circle cx="62" cy="90" r="2.2" fill="#e2b04a"/>')}
+${headShape(skin, 18, 21, 46)}
+<path d="M30 52 C30 74 40 90 50 92 C60 90 70 74 70 52 C64 60 58 62 50 62 C42 62 36 60 30 52 Z" fill="#f4f1ea" stroke="${OUT}" stroke-width="1.8"/>
+<path d="M40 70 C44 78 48 84 50 88 M60 70 C56 78 52 84 50 88 M50 66 L50 86" fill="none" stroke="#c9c3b8" stroke-width="1.2"/>
+<path d="M38 55 C42 52 47 54 50 56 C53 54 58 52 62 55 C58 58 54 58 50 58 C46 58 42 58 38 55 Z" fill="#e6e1d6" stroke="${OUT}" stroke-width="1.2"/>
+<circle cx="42" cy="46" r="2.2" fill="${OUT}"/><circle cx="58" cy="46" r="2.2" fill="${OUT}"/>
+<path d="M33 41 C37 36 44 37 47 40 M53 40 C56 37 63 36 67 41" fill="none" stroke="#f4f1ea" stroke-width="4.5" stroke-linecap="round"/>
+<path d="M33 41 C37 36 44 37 47 40 M53 40 C56 37 63 36 67 41" fill="none" stroke="${OUT}" stroke-width="1" stroke-linecap="round" opacity=".5"/>
+<path d="M30 32 C30 20 40 17 50 17 C60 17 70 20 70 32 Z" fill="#1f2a44" stroke="${OUT}" stroke-width="2"/>
+<path d="M26 33 C36 30 64 30 74 33 L72 37 C60 35 40 35 28 37 Z" fill="#111" stroke="${OUT}" stroke-width="1.6"/>
+<path d="M44 24 L50 21 L56 24 L50 27 Z" fill="#e2b04a" stroke="#8a6512" stroke-width="1"/>`;
+}
+
+/** Der Ramscher: stubble, wool cap, a cigarette behind the ear. */
+function ramscher(): string {
+  const skin = '#dfa982';
+  return `${shoulders('#5a3a2a', '<path d="M38 72 L50 82 L62 72" fill="#3a2a20" stroke="#2b1a0e" stroke-width="1.4"/><path d="M24 84 L76 84" stroke="#4a2e20" stroke-width="2" stroke-dasharray="4 3"/>')}
+${headShape(skin, 19, 21, 46)}
+<path d="M32 54 C34 66 42 70 50 70 C58 70 66 66 68 54" fill="none" stroke="#6d5a46" stroke-width="7" stroke-dasharray="0.8 2.2" opacity=".55"/>
+${eyes(46, OUT, 8)}
+<path d="M42 60 C46 57 54 58 58 61" fill="none" stroke="${OUT}" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M29 38 C28 20 40 14 50 14 C60 14 72 20 71 38 Z" fill="#c0262f" stroke="${OUT}" stroke-width="2"/>
+<path d="M28 34 L72 34 L72 40 L28 40 Z" fill="#9e1d26" stroke="${OUT}" stroke-width="1.6"/>
+<path d="M36 22 L36 34 M44 18 L44 34 M52 17 L52 34 M60 19 L60 34" stroke="#9e1d26" stroke-width="1.5"/>
+<circle cx="50" cy="12" r="5" fill="#f4efe4" stroke="${OUT}" stroke-width="1.4"/>
+<path d="M68 44 L82 36" stroke="#f4efe4" stroke-width="3.2" stroke-linecap="round"/><path d="M80 37 L83 35.5" stroke="#d98c3c" stroke-width="3.2" stroke-linecap="round"/>`;
+}
+
 const PORTRAITS: Record<string, () => string> = {
   'p-opp-1': regularCap,
   'p-opp-2': regularGlasses,
@@ -137,8 +221,38 @@ const PORTRAITS: Record<string, () => string> = {
   'p-boss-the_pusher': pusher,
   'p-boss-kontra_hans': kontraHans,
   'p-boss-grandma': grandma,
+  'p-boss-the_old_man': oldMan,
+  'p-boss-ramscher': ramscher,
   'p-boss': genericBoss,
+  'p-char-Declarer': declarer,
+  'p-char-NullPlayer': nullPlayer,
+  'p-dealer': dealer,
+  'p-friend': oldFriend,
 };
+
+/** Portrait of a character; unknown characters get the Alleinspieler. */
+export function characterPortraitId(character: string): string {
+  const id = `p-char-${character}`;
+  return id in PORTRAITS ? id : 'p-char-Declarer';
+}
+
+/** Who speaks in an encounter, by encounter id. */
+const ENCOUNTER_FACES: Record<string, string[]> = {
+  stammtisch_dispute: ['p-opp-1', 'p-opp-2'],
+  card_dealer: ['p-dealer'],
+  old_friend: ['p-friend'],
+  last_round: ['p-wirt'],
+  spilled_beer: ['p-opp-1'],
+  crown_inn: ['p-wirt'],
+  conjurer: ['p-dealer'],
+  prize_skat: ['p-opp-1', 'p-opp-2'],
+  guest_from_altenburg: ['p-friend'],
+};
+
+/** Portrait ids for an encounter; unknown ones get the Wirt. */
+export function encounterFaces(encounterId: string): string[] {
+  return ENCOUNTER_FACES[encounterId] ?? ['p-wirt'];
+}
 
 export function peopleSymbols(): string {
   return Object.entries(PORTRAITS)

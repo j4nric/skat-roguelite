@@ -16,6 +16,16 @@ export const de = {
       NoRedealLeft: 'In dieser Serie wurde schon geschoben.',
       MustFollowSuit: 'Du musst bedienen.',
       UnknownCard: 'Diese Karte gibt es nicht.',
+      HandRequired: 'Der Boss verlangt ein Handspiel.',
+      OuvertRequired: 'Der Angeber verlangt Ouvert.',
+      GameNotAvailable: 'Dieses Spiel darfst du nicht ansagen.',
+      NoSkatSwapLeft: 'Die Oma hat in dieser Serie schon geholfen.',
+      NothingToTake: 'Im Skat liegt nichts für dich.',
+      InvalidSkatSwap: 'Diese Karte kannst du nicht drücken.',
+      TargetRequired: 'Wähle zuerst eine Karte.',
+      CharacterLocked: 'Dieser Charakter ist noch nicht freigeschaltet.',
+      InvalidCharacter: 'Diesen Charakter gibt es nicht.',
+      UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       default: 'Unbekannter Fehler.',
     } as Record<string, string>,
     close: 'Schließen',
@@ -25,15 +35,27 @@ export const de = {
   start: {
     newRun: 'Neuer Run',
     resume: 'Fortsetzen',
-    resumeInfo: 'Abschnitt {section}, Serie {series} · Konto {score} / {target}',
+    resumeInfo: '{character} · Abschnitt {section}, Serie {series} · Konto {score} / {target}',
+    resumeEncounter: '{character} · Abschnitt {section} · ein Ereignis wartet',
     resumeFailed: 'Der gespeicherte Run passt nicht mehr zu dieser Version und wurde verworfen.',
     seedLabel: 'Seed (leer lassen für Zufall)',
     seedPlaceholder: 'zufällig',
     seedInvalid: 'Der Seed muss eine ganze Zahl sein.',
-    record: 'Runs: {runs} · gewonnen: {won} · weitester Abschnitt: {best}',
     noRecord: 'Noch kein Run gespielt.',
     howTo:
-      'Du bist immer Alleinspieler. Erreiche in jeder Serie den Zielwert, kaufe am Tresen Hausregeln und verändere das Blatt, mit dem alle drei spielen.',
+      'Erreiche in jeder Serie den Zielwert, kaufe am Tresen Hausregeln und Figuren und verändere das Blatt, mit dem alle drei spielen.',
+    whoPlays: 'Wer spielt heute?',
+    locked: 'Gesperrt',
+    lockedBy: 'Freischalten: {text}',
+    picked: 'Ausgewählt',
+    newRunAs: 'Neuer Run als {name}',
+    book: 'Vereinsbuch',
+    bookHint: '{done} von {total} Freischaltungen',
+    statRuns: 'Runs',
+    statWon: 'gewonnen',
+    statBest: 'weitester Abschnitt',
+    statGame: 'bestes Spiel',
+    metaFailed: 'Das Vereinsbuch passte nicht zu dieser Version. Es wurde aufgehoben und ein neues angelegt.',
     sign: 'Gaststätte',
     since: 'Skat seit 1813',
     credits: 'Abspann',
@@ -58,6 +80,7 @@ export const de = {
     tourHint: 'Kreidetafel',
     gamesAria: '{left} von {limit} Spielen übrig',
     passesAria: '{left} Pässe übrig',
+    pending: 'Letzte Runde: nächstes Spiel ×{factor}',
   },
 
   suits: {
@@ -96,6 +119,8 @@ export const de = {
     back: 'Verdeckte Karte',
     fromSkat: 'Skat',
     mods: 'Gezinkt: {mods}',
+    curseMark: 'Fluch:',
+    curse: 'Fluch',
   },
 
   /** Short badge per card modification id. */
@@ -110,6 +135,27 @@ export const de = {
   games: {
     Grand: 'Grand',
     Null: 'Null',
+    Ramsch: 'Ramsch',
+  },
+
+  /** Names of the Null-Risikostufen (Nullspieler). */
+  nullRisks: {
+    Normal: 'Null',
+    Hand: 'Null Hand',
+    Ouvert: 'Null Ouvert',
+    OuvertHand: 'Null Ouvert Hand',
+  },
+
+  nullRiskHints: {
+    Normal: 'Skat aufnehmen, zwei Karten drücken.',
+    Hand: 'Der Skat bleibt liegen.',
+    Ouvert: 'Skat aufnehmen, dann spielst du mit offenen Karten.',
+    OuvertHand: 'Ohne Skat und mit offenen Karten. Das höchste Null.',
+  },
+
+  characters: {
+    Declarer: { short: 'Alleinspieler', role: 'Farbe und Grand' },
+    NullPlayer: { short: 'Nullspieler', role: 'Nur Null' },
   },
 
   risks: {
@@ -153,6 +199,27 @@ export const de = {
     pass: 'Einpassen ({left})',
     redraw: 'Schieben ({left})',
     handRequired: 'Der Boss verlangt ein Handspiel.',
+    ouvertRequired: 'Der Angeber verlangt Ouvert.',
+    nullTitle: 'Ansage: Null',
+    noTrick: 'Kein Stich!',
+    nullHint: 'Du darfst keinen einzigen Stich machen.',
+    nullValue: 'Wert {value}',
+    nullStyle: 'Stilbonus bei Sieg: Siebener unterlaufen, nie bedienen, Kurzschluss.',
+    openHand: 'Offen gespielt: Die Gegner sehen deine Karten.',
+    ramschTitle: 'Ramsch!',
+    ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
+    kiebitz: 'Kiebitz',
+    kiebitzHint: 'vom Kiebitz',
+    countTitle: 'Der Zähler',
+    countYou: 'Du',
+    countThem: 'Gegner',
+    countUnseen: 'Ungesehen',
+    oma: 'Unter aus dem Skat',
+    omaHint: 'Die Oma gibt dir den Unter. Tippe die Karte an, die du dafür drückst.',
+    omaCancel: 'Abbrechen',
+    bossRule: 'Boss-Regel',
+    oldMan: '{name} legt auf:',
+    pendingFactor: 'Letzte Runde: Dieses Spiel zählt ×{factor}',
     discardHint: 'Tippe zwei Karten an. Gedrückte Augen zählen für dich.',
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
@@ -196,6 +263,15 @@ export const de = {
     bought: '{name} gekauft.',
     sold: '{name} verkauft (+{price} Gr.).',
     rerolled: 'Neue Auslage.',
+    peeked: 'Der Kiebitz flüstert: {name} hält {card}.',
+    ramsch: 'Ramsch! Der Ramscher lässt nicht ansagen.',
+    eveningRule: 'Heute Abend gilt: {name}.',
+    eveningEnded: 'Die Hausregeln des Abends sind vorbei.',
+    relicSwapped: '{old} gegen {new} getauscht.',
+    nextDoubled: 'Letzte Runde! Das nächste Spiel zählt ×{factor}.',
+    cardMarked: '{card} gezinkt: {mod}.',
+    handsSwapped: 'Die Gegner tauschen ihre Blätter!',
+    skatSwapped: 'Die Oma: {took} genommen, {gave} gedrückt.',
   },
 
   score: {
@@ -205,6 +281,15 @@ export const de = {
     tricks: 'Stiche {own} : {theirs}',
     baseOf: 'Grundwert {game}',
     nullValue: 'Nullspiel',
+    sevensDucked: 'Sieben unterlaufen',
+    neverFollowed: 'Nie bedienen müssen',
+    shortCircuit: 'Kurzschluss',
+    ramschLoser: 'Meiste Augen am Tisch',
+    virgin: 'Jungfrau',
+    ramschWon: 'Ein anderer hat die meisten Augen. Seine Augen zählen für dich.',
+    ramschLost: 'Du hast die meisten Augen. Das zählt doppelt gegen dich.',
+    nullWon: 'Keinen Stich gemacht.',
+    nullLost: 'Einen Stich bekommen.',
     with: 'mit {count}',
     without: 'ohne {count}',
     game: 'Spiel',
@@ -295,6 +380,59 @@ export const de = {
     Regular: 'Figur',
   },
 
+  evening: {
+    tag: 'heute Abend',
+    subtitle: 'Hausregel des Abends · gilt bis zum Ende des Abschnitts',
+  },
+
+  encounter: {
+    kicker: 'Ereignis',
+    takeRule: 'Gilt heute Abend',
+    markRandom: 'Zufällige Karte',
+    markRandomHint: 'Das Los entscheidet, welche Karte es trifft.',
+    markChosen: 'Karte selbst wählen',
+    markChosenHint: 'Du zeigst auf die Karte, die es treffen soll.',
+    swapRelic: '{name} eintauschen',
+    swapHint: 'Gegen ein zufälliges anderes Relikt.',
+    double: 'Anstoßen!',
+    doubleHint: 'Das nächste Spiel zählt ×{factor}, gewonnen wie verloren.',
+    leave: 'Weitergehen',
+    leaveHint: 'Nichts nehmen, die nächste Serie beginnt.',
+    cost: '{cost} Gr.',
+    free: 'gratis',
+    pickTarget: 'Welche Karte soll es treffen?',
+    sign: 'Zwischen zwei Serien',
+  },
+
+  book: {
+    title: 'Vereinsbuch',
+    subtitle: 'Skatclub „Gut Blatt“ · Stammtisch',
+    characters: 'Am Tisch',
+    unlocks: 'Freischaltungen',
+    stats: 'Statistik',
+    done: 'erledigt',
+    open: 'offen',
+    reward: 'Belohnung',
+    rewardCharacter: '{name} (Charakter)',
+    progress: '{done} von {total} erledigt',
+    runs: 'Runs gespielt',
+    runsWon: 'Runs gewonnen',
+    bestSection: 'Weitester Abschnitt',
+    gamesWon: 'Spiele gewonnen',
+    gamesLost: 'Spiele verloren',
+    bestGame: 'Bestes Spiel',
+    perCharacter: '{runs} Runs · {won} gewonnen · bis Abschnitt {best}',
+    lockedHint: 'Noch gesperrt: {text}',
+    lockedRelics: 'Noch {count} Hausregeln und Figuren warten auf ihre Freischaltung.',
+  },
+
+  unlock: {
+    title: 'Neu am Stammtisch!',
+    line: 'Neu am Stammtisch: {name}',
+    for: 'Für „{name}“: {text}',
+    go: 'Prost!',
+  },
+
   boss: {
     title: 'Boss-Serie',
     intro: 'Am Tisch sitzt jetzt:',
@@ -339,6 +477,7 @@ export const de = {
     done: 'geschafft',
     lost: 'ausgeschieden',
     thisRun: 'Diese Tournee',
+    character: 'Gespielt von: {name}',
     allRuns: 'Alle Runs',
     runs: 'Runs',
     runsWon: 'Gewonnen',
@@ -377,10 +516,17 @@ export const de = {
 
   flags: {
     bock: 'Bockrunde: das nächste Spiel zählt doppelt',
+    schneider_bock: 'Schneiderbock: das nächste Spiel zählt doppelt',
+    streak_start: 'Glückssträhne: zuletzt gewonnen',
+    streak: 'Glückssträhne: jeder Sieg zählt doppelt',
   } as Record<string, string>,
 
   counters: {
     tour: 'Tournee: +{value} Grundwert',
+    tuition: 'Lehrgeld: +{value} Grundwert',
+    beer_mat: 'Bierdeckel: +{value} Grundwert',
+    tally: 'Kerbholz: +{value} Grundwert',
+    regular: 'Stammgast: {value} von 4 Serien',
   } as Record<string, string>,
 
   /**
@@ -402,7 +548,13 @@ export const de = {
       },
     },
     consumables: {},
-  } as Record<'relics' | 'card_mods' | 'bosses' | 'consumables', Record<string, { name?: string; text?: string }>>,
+    characters: {},
+    encounters: {},
+    unlocks: {},
+  } as Record<
+    'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks',
+    Record<string, { name?: string; text?: string }>
+  >,
 } as const;
 
 export type Texts = typeof de;

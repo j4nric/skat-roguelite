@@ -1,7 +1,7 @@
 use super::bot::RunBot;
 use super::*;
 use crate::cards::{Card, PlayingCard};
-use crate::rules::RiskLevel;
+use crate::rules::NullRisk;
 
 fn content() -> Content {
     Content::load().expect("embedded content is valid")
@@ -128,7 +128,8 @@ fn reaching_the_limit_below_target_loses_the_run() {
     assert_eq!(run.phase(), RunPhase::Lost);
     assert!(events.contains(&RunEvent::RunLost {
         section: 0,
-        index: 0
+        index: 0,
+        character: Character::Declarer,
     }));
     assert_eq!(
         run.apply(&content, RunAction::Pass),
@@ -141,7 +142,7 @@ fn failing_actions_leave_the_run_untouched() {
     let content = content();
     let (mut run, _) = Run::new(&content, 3).expect("start");
     let before = run.clone();
-    let null = Declaration::new(GameType::Null, RiskLevel::Normal);
+    let null = Declaration::null(NullRisk::Normal);
     assert_eq!(
         run.apply(&content, RunAction::Declare(null)),
         Err(RunError::NullNotAvailable)
@@ -271,6 +272,8 @@ fn shop_offer_is_deterministic_and_never_repeats_owned_relics() {
 fn buy_sell_reroll_and_slots() {
     let content = content();
     let mut run = open_shop(&content, 9, 100);
+    // Without the Alleinspieler's start relic.
+    run.relics.clear();
     let id = run.shop().and_then(|s| s.relics[0].clone()).expect("offer");
     let price = content.relic(&id).expect("def").price;
     let events = run.apply(&content, RunAction::BuyRelic(0)).expect("buy");
@@ -504,8 +507,11 @@ fn the_boss_is_known_from_the_start_of_the_section() {
     run.series.index = 1;
     let next = run.view(&content).next_series.expect("next");
     assert!(next.is_boss);
+    assert_eq!(
+        next.target,
+        series_target(&content, Character::Declarer, 0, 2, Some(&boss)).expect("target")
+    );
     assert_eq!(next.boss.map(|b| b.id), Some(boss));
-    assert_eq!(next.target, content.run.targets[0].2);
     // After the boss series the boss is no longer ahead.
     run.series.index = 2;
     let view = run.view(&content);
@@ -516,24 +522,25 @@ fn the_boss_is_known_from_the_start_of_the_section() {
 
 #[test]
 fn the_boss_target_factor_scales_the_boss_series() {
-    let [relics, card_mods, _, consumables, run_ron] = crate::content::SOURCES;
     let bosses = r#"[(id: "hard", name: "Hart", text: "x", target_factor: 1.4)]"#;
-    let run_ron = run_ron.1.replace(
-        r#"bosses: ["the_pusher", "kontra_hans", "grandma"]"#,
-        r#"bosses: ["hard"]"#,
-    );
-    let content = Content::from_sources(relics.1, card_mods.1, bosses, consumables.1, &run_ron)
-        .expect("content");
+    let hard_def: Vec<crate::content::BossDef> = ron::from_str(bosses).expect("ron");
+    let mut content = Content::load().expect("content");
     let hard = BossId::new("hard");
+    content.bosses.insert(hard.clone(), hard_def[0].clone());
+    content.run.bosses = vec![hard.clone()];
+    content.run.final_boss = None;
     assert_eq!(
         content.boss(&hard).map(|b| b.target_factor),
         Some(crate::content::Factor::from_permille(1400))
     );
     let base = content.run.targets[0].2;
     let expected = (base * 14 + 5) / 10;
-    assert_eq!(series_target(&content, 0, 2, Some(&hard)), Some(expected));
     assert_eq!(
-        series_target(&content, 0, 1, None),
+        series_target(&content, Character::Declarer, 0, 2, Some(&hard)),
+        Some(expected)
+    );
+    assert_eq!(
+        series_target(&content, Character::Declarer, 0, 1, None),
         Some(content.run.targets[0].1)
     );
     let start = RunStart {
@@ -547,9 +554,14 @@ fn the_boss_target_factor_scales_the_boss_series() {
         e,
         RunEvent::SeriesStarted { index: 2, target, .. } if *target == expected
     )));
-    // The default factor is 1.0.
+    // Factors are positive and at most 2 (set from measurements, see
+    // bosses.ron).
     for def in Content::load().expect("content").bosses.values() {
-        assert_eq!(def.target_factor, crate::content::Factor::ONE);
+        assert!(
+            (1..=2000).contains(&def.target_factor.permille()),
+            "{}",
+            def.id
+        );
     }
 }
 
@@ -562,7 +574,11 @@ fn a_run_can_start_with_relics_and_later() {
     };
     let (with, _) = Run::new_with(&content, 12, &start).expect("start");
     let (without, _) = Run::new(&content, 12).expect("start");
-    assert_eq!(with.relics(), &[RelicId::new("old_lady")]);
+    // The character's start relic first, then the extra one.
+    assert_eq!(
+        with.relics(),
+        &[RelicId::new("card_counter"), RelicId::new("old_lady")]
+    );
     // Same cards, but the passive effect already counts in the first game.
     let ids = |run: &Run| -> Vec<u32> {
         run.game()

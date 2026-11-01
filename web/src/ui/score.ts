@@ -7,13 +7,13 @@
 // only labels, formats and animates them.
 
 import { sound } from '../audio';
-import { de, cardName, contentName, gameName, t } from '../i18n';
-import type { Change, DeckCard, Lever, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
+import { de, cardName, contentName, declarationName, gameName, t } from '../i18n';
+import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
 import { coinIcon, meterPercent } from './hud';
-import { bossPortraitId, portrait } from './people';
+import { bossPortraitId, encounterFaces, portrait } from './people';
 import type { ScoreOverlay } from './state';
 
 /** "+3" / "−3" with a real minus sign. */
@@ -32,6 +32,7 @@ function sourceName(source: Source, deck: DeckCard[]): string {
   if (source === 'Re') return de.score.re;
   if ('Relic' in source) return contentName('relics', source.Relic);
   if ('Boss' in source) return contentName('bosses', source.Boss);
+  if ('Encounter' in source) return contentName('encounters', source.Encounter);
   const card = deck.find((c) => c.id === source.CardMod.card);
   return t(de.score.cardMod, {
     mod: contentName('card_mods', source.CardMod.card_mod),
@@ -43,6 +44,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if (source === 'Kontra' || source === 'Re') return `<span class="step-icon icon-kontra">K</span>`;
   if ('Relic' in source) return `<span class="step-icon icon-coaster"></span>`;
   if ('Boss' in source) return `<span class="step-icon">${portrait(bossPortraitId(source.Boss), 'portrait-xs')}</span>`;
+  if ('Encounter' in source) return `<span class="step-icon">${portrait(encounterFaces(source.Encounter)[0] ?? 'p-wirt', 'portrait-xs')}</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods)}</span>`
@@ -98,25 +100,32 @@ function lineRow(line: ScoreLine, deck: DeckCard[]): Row {
   };
 }
 
-/** Label, effect and style of one step. */
-function termRow(term: ScoreTerm, deck: DeckCard[]): Row {
+/** Label, effect and style of one step. Level amounts come from the core's `rule_levels`. */
+function termRow(term: ScoreTerm, deck: DeckCard[], parts: LevelParts): Row {
   const row = (label: string, effect: string, cls: string): Row => ({ label, effect, cls, icon: '', relic: null });
   if (typeof term === 'string') {
-    const labels: Record<typeof term, string> = {
-      Game: de.score.game,
-      Hand: de.score.hand,
-      Schneider: de.score.schneider,
-      SchneiderDeclared: de.score.schneiderDeclared,
-      Schwarz: de.score.schwarz,
-      SchwarzDeclared: de.score.schwarzDeclared,
-      Ouvert: de.score.ouvert,
+    const labels: Record<typeof term, [string, number]> = {
+      Game: [de.score.game, parts.game],
+      Hand: [de.score.hand, parts.hand],
+      Schneider: [de.score.schneider, parts.schneider],
+      SchneiderDeclared: [de.score.schneiderDeclared, parts.schneider_declared],
+      Schwarz: [de.score.schwarz, parts.schwarz],
+      SchwarzDeclared: [de.score.schwarzDeclared, parts.schwarz_declared],
+      Ouvert: [de.score.ouvert, parts.ouvert],
+      NeverFollowed: [de.score.neverFollowed, parts.never_followed],
+      ShortCircuit: [de.score.shortCircuit, parts.short_circuit],
+      Virgin: [de.score.virgin, parts.virgin],
     };
-    return row(labels[term], levelText(1), 'is-level');
+    const [label, amount] = labels[term];
+    const style = term === 'NeverFollowed' || term === 'ShortCircuit' ? 'is-level is-style' : 'is-level';
+    return row(label, levelText(amount), style);
   }
   if ('BaseValue' in term) {
     return row(t(de.score.baseOf, { game: gameName(term.BaseValue.game) }), String(term.BaseValue.value), 'is-base');
   }
   if ('NullValue' in term) return row(de.score.nullValue, String(term.NullValue), 'is-base');
+  if ('RamschLoser' in term) return row(de.score.ramschLoser, String(term.RamschLoser), 'is-base');
+  if ('SevensDucked' in term) return row(de.score.sevensDucked, levelText(term.SevensDucked), 'is-level is-style');
   if ('Matadors' in term) {
     const m = term.Matadors;
     return row(t(m.with ? de.score.with : de.score.without, { count: m.count }), levelText(m.count), 'is-level');
@@ -137,11 +146,12 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
   const hasMul = steps.some((s) => s.multiplier !== 1);
   const rows = steps
     .map((step, i) => {
-      const r = termRow(step.term, deck);
+      const r = termRow(step.term, deck, b.rule_levels);
       return `<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
     })
     .join('');
-  const decl = t(de.table.declaration, { game: gameName(b.declaration.game), risk: de.risks[b.declaration.risk] });
+  const decl = declarationName(b.declaration);
+  const note = gameNote(b);
   const fill = meterPercent(o.previousScore, o.target);
   const payout = o.payout
     ? `<div class="payout" data-part="payout">
@@ -159,6 +169,7 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
       <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
       <div class="score-decl">${esc(decl)}</div>
       <div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>
+      ${note ? `<p class="score-note" data-testid="score-note">${esc(note)}</p>` : ''}
     </header>
     ${coasterStrip(o)}
     <div class="formula" aria-hidden="true">
@@ -182,6 +193,13 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
       <button class="btn btn-wide btn-ghost" ${attrs({ 'data-action': 'score-skip' })}>${esc(de.score.skip)}</button>
     </div>
   </div></div>`;
+}
+
+/** Why a Null or Ramsch was won or lost, from the core's `won` flag. */
+function gameNote(b: ScoreBreakdown): string {
+  if (b.declaration.game === 'Ramsch') return b.won ? de.score.ramschWon : de.score.ramschLost;
+  if (b.declaration.game === 'Null') return b.won ? de.score.nullWon : de.score.nullLost;
+  return '';
 }
 
 /** Flex gap between the parts of the score sheet (CSS `.score-sheet`). */
