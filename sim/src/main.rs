@@ -26,6 +26,9 @@
 //!   state; prints after how many runs each unlock is earned.
 //! - `--short`: kurzer Abend, the sections of `run.ron`'s `short_sections`
 //!   (DESIGN 5.3) instead of all.
+//! - `--consumable <id>`: a steady supply of one consumable: every run
+//!   starts with one, every Tresen offers only it, for free, and no
+//!   relics. Compare against `--no-shop` for its effect alone.
 //! - `--stake N`: Einsatz-Leiter (DESIGN 9.3), suit games and Grand are
 //!   won from `61 + N` Augen (also in `--unlocks`, whatever is unlocked).
 //!
@@ -51,7 +54,7 @@ use std::time::Instant;
 use skat_core::ai::pimc::{Opponents, PimcConfig, PimcPolicy};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
-use skat_core::content::{BossId, Character, RelicId, RunLength};
+use skat_core::content::{BossId, Character, ConsumableId, RelicId, RunLength};
 use skat_core::game::{Game, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{GameType, Matadors, NullScoring};
@@ -158,6 +161,10 @@ fn parse_args() -> Result<Args, String> {
                     "--without" => args.options.without.push(RelicId::new(&value)),
                     _ => args.options.boss = Some(BossId::new(&value)),
                 }
+            }
+            "--consumable" => {
+                let value = it.next().ok_or("missing value for --consumable")?;
+                args.options.consumable = Some(ConsumableId::new(&value));
             }
             "--stake" => {
                 let value = it.next().ok_or("missing value for --stake")?;
@@ -554,7 +561,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--consumable ID] [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }
