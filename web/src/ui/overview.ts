@@ -66,7 +66,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
   const stats: [string, string][] = [
     [de.end.gamesWon, tally(s.games_won)],
     [de.end.gamesLost, tally(s.games_lost)],
-    [de.end.gamesPassed, tally(s.games_passed)],
+    [de.end.gamesPassed, tally(s.redeals)],
     [de.end.seriesWon, tally(s.series_won)],
     [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
     [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],

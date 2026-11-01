@@ -145,19 +145,17 @@ function gameIcon(game: DeclaredGame, size = 30): string {
 
 /**
  * The buttons below an Ansage: back to the choice of skat or hand (when the
- * skat may still be picked up), else Einpassen; Schieben; Ansagen.
+ * skat may still be picked up), else Einmischen (with ten cards); Ansagen.
+ * `passesLeft` is the Einmischen left now (`series.redeals_left`).
  */
 function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string): string {
   const back = !afterSkat && options.can_pick_up_skat;
   const first = back
     ? `<button class="btn" ${attrs({ 'data-action': 'hand-back' })}>${esc(de.table.back)}</button>`
-    : !afterSkat || options.can_pass
-      ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_pass })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
+    : !afterSkat
+      ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_redeal })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
       : '';
-  const redraw = options.can_redeal
-    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
-    : '';
-  return `<div class="declare-actions">${first}${redraw}${declare}</div>`;
+  return `<div class="declare-actions">${first}${declare}</div>`;
 }
 
 /** Warnings of the boss rules on the Ansage. */
@@ -563,7 +561,7 @@ export function renderTable(view: RunView, ui: UiState): string {
   const peek = ui.peekTrick && !ui.anim && !ui.busy && game.phase === 'Playing' ? game.last_trick : null;
   const center =
     declaring && game.declare
-      ? declarePanel(game.declare, game, ui, view.series.passes_left)
+      ? declarePanel(game.declare, game, ui, view.series.redeals_left)
       : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
   const cols = Math.max(5, Math.ceil((ui.anim ? ui.anim.hand : game.hand).length / 2));

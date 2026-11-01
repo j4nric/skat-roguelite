@@ -78,11 +78,14 @@ export type Kontra = 'None' | { Kontra: Seat } | { Re: Seat };
 
 /**
  * A declaration as the core writes it: `{game, risk}`. Null carries a
- * NullRisk, Ramsch always `"Normal"`.
+ * NullRisk, Ramsch always `"Normal"`. Schneider, Schwarz or Ouvert announced
+ * after the skat (ADR 0013) carry `after_skat: true`; sent, the core takes
+ * it from the phase.
  */
 export interface Declaration {
   game: DeclaredGame;
   risk: RiskLevel | NullRisk;
+  after_skat?: boolean;
 }
 
 export interface BossInfo {
@@ -100,7 +103,8 @@ export interface NextSeriesView {
   is_boss: boolean;
   target: number;
   game_limit: number;
-  passes: number;
+  /** Einmischen per game of the character, without relics. */
+  redeals: number;
   boss: BossInfo | null;
 }
 
@@ -130,8 +134,11 @@ export interface SeriesView {
   games_played: number;
   game_limit: number;
   games_left: number;
+  /** Einmischen left now: this game's own plus the series' extras ("Ein Bier"). */
+  redeals_left: number;
+  redeals_used: number;
+  /** @deprecated Old name of `redeals_left`, always equal. */
   passes_left: number;
-  passes_used: number;
   boss: BossInfo | null;
   /** The Stammgäste at the table: seat 1 (left) and seat 2 (right). In a boss series the boss takes the left seat. */
   guests: GuestInfo[];
@@ -276,8 +283,10 @@ export interface DeclareOptions {
   can_pick_up_skat: boolean;
   /** "Der Angeber" demands Ouvert. */
   ouvert_required: boolean;
-  can_pass: boolean;
+  /** Einmischen possible now (RunAction `Redeal`). */
   can_redeal: boolean;
+  /** @deprecated Old name of `can_redeal`, always equal. */
+  can_pass: boolean;
   redeals_left: number;
   hand_required: boolean;
 }
@@ -472,7 +481,8 @@ export interface ScoreView {
 export interface RunStats {
   games_won: number;
   games_lost: number;
-  games_passed: number;
+  /** Einmischen in the run. */
+  redeals: number;
   series_won: number;
   best_game: number;
 }
@@ -599,21 +609,21 @@ export type RunEvent =
   | 'Re'
   | 'ShopLeft'
   | 'Redealt'
+  | 'RedealUndone'
   | 'RamschDealt'
   | 'EveningRulesEnded'
   | { RunWon: { character: Character; length?: RunLength; stake?: number } }
   | { BossAnnounced: { section: number; boss: string } }
-  | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; passes: number; boss: string | null } }
+  | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; redeals: number; boss: string | null } }
   | { GameDealt: { number: number; forehand: Seat } }
   | { Game: GameEvent }
-  | { Passed: { passes_left: number } }
   | { Kontra: { seat: Seat } }
   | { FlagSet: string }
   | { FlagCleared: string }
   | { CounterRaised: { counter: string; value: number } }
   | { CoinsGained: { source: Source; amount: number; coins: number } }
   | { GameScored: { breakdown: ScoreBreakdown; series_score: number } }
-  | { SeriesWon: { section: number; index: number; payout: Payout; coins: number; boss: string | null; passes_used: number; games_left: number } }
+  | { SeriesWon: { section: number; index: number; payout: Payout; coins: number; boss: string | null; redeals_used: number; games_left: number } }
   | { ShopOpened: unknown }
   | { RelicBought: { relic: string; price: number } }
   | { ConsumableBought: { consumable: string; price: number } }
@@ -622,7 +632,7 @@ export type RunEvent =
   | { ShopRerolled: { cost: number } }
   | { ConsumableUsed: { consumable: string } }
   | { DeckChanged: DeckChange }
-  | { PassesAdded: { passes: number; passes_left: number } }
+  | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
   | { EncounterResolved: { encounter: string; choice: EncounterChoice } }
@@ -633,7 +643,6 @@ export type RunEvent =
   | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } };
 
 export type RunAction =
-  | 'Pass'
   | 'Redeal'
   | 'Reroll'
   | 'LeaveShop'

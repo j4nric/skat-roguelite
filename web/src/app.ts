@@ -862,7 +862,12 @@ export class App {
       if (typeof ev === 'string') {
         if (ev === 'Re') this.showToast(de.toast.re);
         if (ev === 'Redealt') {
-          this.showToast(de.toast.redealt);
+          this.passedOnce = true;
+          this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
+          this.afterRender.push(() => this.dealEffect());
+        }
+        if (ev === 'RedealUndone') {
+          this.showToast(de.toast.redealUndone);
           this.afterRender.push(() => this.dealEffect());
         }
         if (ev === 'RamschDealt') {
@@ -930,13 +935,8 @@ export class App {
         await this.pause(DELAY.notice);
         continue;
       }
-      if ('Passed' in ev) {
-        this.passedOnce = true;
-        this.showToast(t(de.toast.passed, { left: ev.Passed.passes_left }));
-        continue;
-      }
-      if ('PassesAdded' in ev) {
-        this.showToast(t(de.toast.passesAdded, { left: ev.PassesAdded.passes_left }));
+      if ('RedealsAdded' in ev) {
+        this.showToast(t(de.toast.passesAdded, { left: ev.RedealsAdded.redeals_left }));
         continue;
       }
       if ('ConsumableUsed' in ev) {
@@ -1713,7 +1713,8 @@ export class App {
         return;
       }
       case 'pass':
-        void this.act('Pass');
+        // Einmischen (the button keeps its old action name).
+        void this.act('Redeal');
         return;
       case 'redraw':
         void this.act('Redeal');
