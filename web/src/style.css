@@ -4028,3 +4028,140 @@ button.card {
     transition-duration: 1ms !important;
   }
 }
+
+/* ------------------------------------------------------------- save code */
+
+.save-code {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px;
+  border: var(--edge) solid var(--line);
+  border-radius: 0;
+  background: var(--line);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font);
+  /* 16px keeps phones from zooming into the field. */
+  font-size: 16px;
+  line-height: 1.25;
+  word-break: break-all;
+  resize: vertical;
+}
+
+.save-code[readonly] {
+  max-height: 140px;
+  color: var(--cool);
+}
+
+.save-input {
+  min-height: 132px;
+  background: var(--panel2);
+}
+
+.save-input::placeholder {
+  color: #6f7980;
+}
+
+.save-code:focus {
+  outline: 2px solid var(--cool);
+  outline-offset: 0;
+}
+
+.save-length {
+  margin-top: -4px;
+  text-align: right;
+}
+
+.save-contains ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* ----------------------------------------------------------- menu (tight) */
+
+/* The menu fits a small phone without scrolling: settings as rows, the
+   seed as one row, the navigation in two columns. */
+.sheet-menu {
+  gap: 8px;
+}
+
+.menu-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.menu-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-row .seg {
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 13px;
+}
+
+.menu-note {
+  margin-left: 86px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.menu-seed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+}
+
+.menu-seed .menu-row {
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+}
+
+.menu-seed-num {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.menu-seed-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.menu-seed-actions .btn {
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.btn-icon,
+.menu-seed-actions .btn-icon {
+  width: var(--touch);
+  padding: 0;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+}
+
+.menu-grid .btn {
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 15px;
+}
+
+/* An odd number of buttons: "Schließen" takes the whole last row. */
+.menu-grid > .menu-close:nth-child(odd) {
+  grid-column: 1 / -1;
+}

@@ -15,11 +15,13 @@ function read(key: string): string | null {
   }
 }
 
-function write(key: string, value: string): void {
+function write(key: string, value: string): boolean {
   try {
     window.localStorage.setItem(key, value);
+    return true;
   } catch {
     // Storage full or blocked: the game goes on without saving.
+    return false;
   }
 }
 
@@ -36,7 +38,7 @@ export function loadRun(): string | null {
 }
 
 export function saveRun(state: string): void {
-  write(RUN_KEY, state);
+  if (write(RUN_KEY, state)) askPersistence();
 }
 
 export function clearRun(): void {
@@ -146,4 +148,91 @@ export function loadRunInfo(): RunInfo | null {
 
 export function saveRunInfo(info: RunInfo): void {
   write(RUN_INFO_KEY, JSON.stringify(info));
+}
+
+// ---------------------------------------------------------------------------
+// Keeping the data: ask the browser once to keep this site's storage
+// (otherwise Safari may clear it after a while without visits), and the
+// save code (./savecode.ts) that carries every key of ours to another
+// browser or address.
+// ---------------------------------------------------------------------------
+
+/** Every key of the app starts with this. */
+const PREFIX = 'stammtisch.';
+
+let persistenceAsked = false;
+
+/**
+ * Ask for persistent storage, once per visit, after the first real save
+ * (a run started or played on), never on page load. Failures and a "no"
+ * change nothing: the game keeps saving as before.
+ */
+export function askPersistence(): void {
+  if (persistenceAsked) return;
+  persistenceAsked = true;
+  try {
+    const storage = navigator.storage as StorageManager | undefined;
+    if (!storage || typeof storage.persist !== 'function') return;
+    const already = typeof storage.persisted === 'function' ? storage.persisted() : Promise.resolve(false);
+    already
+      .then((kept) => (kept ? true : storage.persist()))
+      .then(
+        (kept) => {
+          if (import.meta.env.DEV) console.info(`persistent storage: ${kept ? 'granted' : 'not granted'}`);
+        },
+        () => undefined,
+      );
+  } catch {
+    // Not available here.
+  }
+}
+
+/** All stored keys of the app with their values. */
+export function readAllKeys(): Record<string, string> {
+  const keys: Record<string, string> = {};
+  try {
+    const store = window.localStorage;
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key === null || !key.startsWith(PREFIX)) continue;
+      const value = store.getItem(key);
+      if (value !== null) keys[key] = value;
+    }
+  } catch {
+    // Storage blocked: nothing to read.
+  }
+  return keys;
+}
+
+/**
+ * Replace every stored key of the app by the given ones (keys of other
+ * apps are left alone, foreign keys in `keys` are skipped). Returns false
+ * if the storage refused.
+ */
+export function replaceAllKeys(keys: Record<string, string>): boolean {
+  try {
+    const store = window.localStorage;
+    const old: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key !== null && key.startsWith(PREFIX)) old.push(key);
+    }
+    // Write first, then drop what the code does not have: a full storage
+    // fails before anything of the current progress is removed.
+    for (const [key, value] of Object.entries(keys)) {
+      if (key.startsWith(PREFIX)) store.setItem(key, value);
+    }
+    for (const key of old) {
+      if (!(key in keys)) store.removeItem(key);
+    }
+    askPersistence();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The stored run and meta state inside a set of keys, for checking. */
+export function runAndMetaOf(keys: Record<string, string>): { run: string | null; meta: string | null } {
+  return { run: keys[RUN_KEY] ?? null, meta: keys[META_KEY] ?? null };
 }

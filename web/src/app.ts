@@ -24,6 +24,7 @@ import { sound } from './audio';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
 import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
+import { decodeSave, encodeSave } from './savecode';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
 import {
   addToHistory,
@@ -34,6 +35,9 @@ import {
   loadMeta,
   loadRun,
   loadRunInfo,
+  readAllKeys,
+  replaceAllKeys,
+  runAndMetaOf,
   saveCharacter,
   saveMeta,
   saveRun,
@@ -66,6 +70,20 @@ function errorText(err: unknown): string {
   const code = errorCode(err);
   const fallback = de.app.errors.default ?? '';
   return code ? (de.app.errors[code] ?? fallback) : fallback;
+}
+
+/** One line about a saved run: who plays, where, the account. */
+function runLine(view: RunView): string {
+  const character = contentName('characters', view.character.character);
+  return view.phase === 'Encounter'
+    ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
+    : t(de.start.resumeInfo, {
+        character,
+        section: view.series.section + 1,
+        series: view.series.index + 1,
+        score: view.series.score,
+        target: view.series.target,
+      });
 }
 
 function isCharacter(value: string | null): value is Character {
@@ -265,17 +283,7 @@ export class App {
         this.core = CoreRun.load(saved);
         const view = this.core.view();
         this.ui.view = view;
-        const character = contentName('characters', view.character.character);
-        this.ui.saveInfo =
-          view.phase === 'Encounter'
-            ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
-            : t(de.start.resumeInfo, {
-                character,
-                section: view.series.section + 1,
-                series: view.series.index + 1,
-                score: view.series.score,
-                target: view.series.target,
-              });
+        this.ui.saveInfo = runLine(view);
       } catch (err) {
         console.warn('saved run discarded', err);
         clearRun();
@@ -414,6 +422,171 @@ export class App {
     } catch {
       this.copyLink(url);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Save code: export and import of everything stored (./savecode.ts)
+  // -------------------------------------------------------------------------
+
+  /** Menu "Spielstand sichern": the code of everything stored, to copy or share. */
+  private async openSaveExport(): Promise<void> {
+    const from = this.ui.overlay;
+    let code: string;
+    try {
+      code = await encodeSave(readAllKeys());
+    } catch (err) {
+      console.warn('save code not made', err);
+      this.showToast(de.save.exportFailed);
+      return;
+    }
+    // The player closed the menu meanwhile.
+    if (this.ui.overlay !== from) return;
+    this.ui.overlay = { kind: 'save-export', code, copied: null };
+    this.render();
+  }
+
+  /** Mark the whole save code, for copying by hand. */
+  private selectSaveCode(): HTMLTextAreaElement | null {
+    const area = this.root.querySelector<HTMLTextAreaElement>('[data-testid="save-code"]');
+    if (!area) return null;
+    area.focus();
+    area.select();
+    area.setSelectionRange(0, area.value.length);
+    return area;
+  }
+
+  /** Copy the save code; without the Clipboard API mark it and try the old way. */
+  private copySave(): void {
+    const o = this.ui.overlay;
+    if (o?.kind !== 'save-export') return;
+    const done = (ok: boolean): void => {
+      if (this.ui.overlay !== o) return;
+      this.ui.overlay = { ...o, copied: ok };
+      this.render();
+      if (ok) sound.play('clink');
+      else this.selectSaveCode();
+    };
+    const fallback = (): void => {
+      let ok = false;
+      try {
+        ok = this.selectSaveCode() !== null && document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      done(ok);
+    };
+    try {
+      const clip = navigator.clipboard as Clipboard | undefined;
+      if (!clip) {
+        fallback();
+        return;
+      }
+      clip.writeText(o.code).then(
+        () => done(true),
+        (err: unknown) => {
+          console.warn('clipboard refused', err);
+          fallback();
+        },
+      );
+    } catch (err) {
+      console.warn('clipboard unavailable', err);
+      fallback();
+    }
+  }
+
+  /** The share sheet of the system with the save code as text. */
+  private shareSave(): void {
+    const o = this.ui.overlay;
+    if (o?.kind !== 'save-export') return;
+    try {
+      if (typeof navigator.share !== 'function') {
+        this.copySave();
+        return;
+      }
+      navigator.share({ title: de.save.shareTitle, text: o.code }).catch((err: unknown) => {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copySave();
+      });
+    } catch {
+      this.copySave();
+    }
+  }
+
+  /** "Prüfen": read the pasted code and let the core load what it carries. */
+  private async checkImport(): Promise<void> {
+    const o = this.ui.overlay;
+    if (o?.kind !== 'save-import' || o.checking) return;
+    const text = this.root.querySelector<HTMLTextAreaElement>('#save-input')?.value ?? '';
+    const pending: Overlay = { kind: 'save-import', text, error: null, checking: true };
+    this.ui.overlay = pending;
+    this.render();
+    const result = await this.readSaveCode(text);
+    if (this.ui.overlay !== pending) return;
+    this.ui.overlay =
+      'error' in result
+        ? { kind: 'save-import', text, error: result.error, checking: false }
+        : { kind: 'save-confirm', keys: result.keys, lines: result.lines };
+    this.render();
+  }
+
+  /**
+   * Decode a save code and check that the core loads its run and meta
+   * state. Returns the keys and what they hold, or the German reason.
+   */
+  private async readSaveCode(text: string): Promise<{ keys: Record<string, string>; lines: string[] } | { error: string }> {
+    let decoded;
+    try {
+      decoded = await decodeSave(text);
+    } catch (err) {
+      console.warn('save code unreadable', err);
+      return { error: de.save.errors.damaged ?? '' };
+    }
+    if (!decoded.ok) return { error: de.save.errors[decoded.error] ?? '' };
+    const { run, meta } = runAndMetaOf(decoded.keys);
+    if (!run && !meta) return { error: de.save.errors.nothing ?? '' };
+    const lines: string[] = [];
+    try {
+      if (run) {
+        const core = CoreRun.load(run);
+        try {
+          lines.push(t(de.save.containsRun, { line: runLine(core.view()) }));
+        } finally {
+          core.dispose();
+        }
+      } else {
+        lines.push(de.save.containsNoRun);
+      }
+      if (meta) {
+        const loaded = CoreMeta.load(meta);
+        try {
+          const view = loaded.view();
+          lines.push(
+            t(de.save.containsBook, {
+              runs: view.stats.runs_finished,
+              done: view.unlocks.filter((u) => u.unlocked).length,
+              total: view.unlocks.length,
+            }),
+          );
+        } finally {
+          loaded.meta.free();
+        }
+      }
+    } catch (err) {
+      console.warn('save code rejected by the core', err);
+      return { error: de.save.errors.rejected ?? '' };
+    }
+    return { keys: decoded.keys, lines };
+  }
+
+  /** Replace everything stored by the checked code and start over with it. */
+  private applyImport(): void {
+    const o = this.ui.overlay;
+    if (o?.kind !== 'save-confirm') return;
+    if (!replaceAllKeys(o.keys)) {
+      this.ui.overlay = { kind: 'save-import', text: '', error: de.save.errors.write ?? '', checking: false };
+      this.render();
+      return;
+    }
+    window.location.reload();
   }
 
   private resume(): void {
@@ -1010,6 +1183,35 @@ export class App {
         if (this.ui.busy || !view) return;
         this.ui.overlay = { kind: 'overview' };
         this.render();
+        return;
+      case 'save-menu':
+        if (this.ui.busy) return;
+        this.ui.overlay = { kind: 'save-menu' };
+        this.render();
+        return;
+      case 'save-export':
+        if (this.ui.busy || overlay?.kind !== 'save-menu') return;
+        void this.openSaveExport();
+        return;
+      case 'save-copy':
+        this.copySave();
+        return;
+      case 'save-share':
+        this.shareSave();
+        return;
+      case 'save-select':
+        this.selectSaveCode();
+        return;
+      case 'save-import':
+        if (this.ui.busy) return;
+        this.ui.overlay = { kind: 'save-import', text: '', error: null, checking: false };
+        this.render();
+        return;
+      case 'save-check':
+        void this.checkImport();
+        return;
+      case 'save-apply':
+        this.applyImport();
         return;
       case 'credits':
         this.ui.overlay = { kind: 'credits' };

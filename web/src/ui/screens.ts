@@ -1,6 +1,7 @@
 // Start and end screens and the dialogs: Kontra, boss, info, menu with
 // settings, Kreidetafel, Vereinsbuch with its statistics page, new unlocks,
-// Abspann, target picking, sharing a seed and giving up a running run.
+// Abspann, target picking, sharing a seed, giving up a running run and the
+// save code (./savegame.ts).
 
 import { de, cardName, contentName, contentText, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
@@ -13,6 +14,7 @@ import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
+import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import type { Overlay, UiState } from './state';
 
 export { lockIcon };
@@ -240,6 +242,15 @@ export function renderKontra(view: RunView): string {
   );
 }
 
+/** A segmented on/off switch for a setting. */
+function onOff(action: string, on: boolean): string {
+  return `<div class="segmented">
+      <button class="seg ${on ? 'is-picked' : ''}" ${attrs({ 'data-action': action, 'data-on': 'true', 'aria-pressed': on ? 'true' : 'false' })}>${esc(de.menu.soundOn)}</button>
+      <button class="seg ${!on ? 'is-picked' : ''}" ${attrs({ 'data-action': action, 'data-on': 'false', 'aria-pressed': !on ? 'true' : 'false' })}>${esc(de.menu.soundOff)}</button>
+    </div>`;
+}
+
+/** The settings as tight rows: label left, switch right. */
 function settingsBlock(ui: UiState): string {
   const tempos = (['slow', 'normal', 'fast'] as const)
     .map(
@@ -247,19 +258,48 @@ function settingsBlock(ui: UiState): string {
         `<button class="seg ${ui.settings.tempo === k ? 'is-picked' : ''}" ${attrs({ 'data-action': 'tempo', 'data-tempo': k, 'aria-pressed': ui.settings.tempo === k ? 'true' : 'false' })}>${esc(de.menu.tempos[k])}</button>`,
     )
     .join('');
-  const sound = ui.settings.sound;
-  const thinking = ui.settings.thinking;
-  return `<div class="setting"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
-    ${reducedMotion() ? `<p class="small">${esc(de.menu.reducedMotion)}</p>` : ''}
-    <div class="setting"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">
-      <button class="seg ${sound ? 'is-picked' : ''}" ${attrs({ 'data-action': 'sound', 'data-on': 'true', 'aria-pressed': sound ? 'true' : 'false' })}>${esc(de.menu.soundOn)}</button>
-      <button class="seg ${!sound ? 'is-picked' : ''}" ${attrs({ 'data-action': 'sound', 'data-on': 'false', 'aria-pressed': !sound ? 'true' : 'false' })}>${esc(de.menu.soundOff)}</button>
-    </div></div>
-    <div class="setting"><span class="setting-label">${esc(de.menu.thinking)}</span><div class="segmented">
-      <button class="seg ${thinking ? 'is-picked' : ''}" ${attrs({ 'data-action': 'thinking', 'data-on': 'true', 'aria-pressed': thinking ? 'true' : 'false' })}>${esc(de.menu.soundOn)}</button>
-      <button class="seg ${!thinking ? 'is-picked' : ''}" ${attrs({ 'data-action': 'thinking', 'data-on': 'false', 'aria-pressed': !thinking ? 'true' : 'false' })}>${esc(de.menu.soundOff)}</button>
-    </div></div>
-    <p class="small setting-hint">${esc(de.menu.thinkingHint)}</p>`;
+  return `<div class="menu-settings">
+    <div class="menu-row"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
+    ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
+    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span>${onOff('sound', ui.settings.sound)}</div>
+    <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
+  </div>`;
+}
+
+/** The seed of the running run as one row with "Link kopieren" (menu). */
+function seedRow(seed: string, character: Character, ui: UiState): string {
+  const url = shareUrl(seed, character);
+  const copy = ui.copy && ui.copy.url === url ? ui.copy : null;
+  const status = copy
+    ? copy.ok
+      ? `<p class="share-ok" role="status" data-testid="share-copied">${esc(de.share.copied)}</p>`
+      : `<p class="small" role="status">${esc(de.share.copyFailed)}</p><input class="share-fallback" data-testid="share-fallback" readonly ${attrs({ value: url, 'aria-label': de.share.link })}>`
+    : '';
+  let native = '';
+  try {
+    if (typeof navigator.share === 'function') {
+      native = `<button class="btn btn-icon" ${attrs({
+        'data-action': 'share-native',
+        'data-url': url,
+        'data-text': t(de.share.nativeText, { seed, character: shortName(character) }),
+        'aria-label': de.share.native,
+        title: de.share.native,
+      })}>${linkIcon(18)}</button>`;
+    }
+  } catch {
+    native = '';
+  }
+  return `<div class="menu-seed" data-testid="share">
+    <div class="menu-row">
+      <span class="setting-label">${esc(de.end.seed)}</span>
+      <span class="menu-seed-num"><span class="seed-num" data-testid="run-seed">${esc(seed)}</span></span>
+      <span class="menu-seed-actions">
+        <button class="btn" ${attrs({ 'data-action': 'copy-link', 'data-url': url, 'data-testid': 'copy-link', 'aria-label': de.share.copy, title: de.share.copy })}>${linkIcon(16)}<span>${esc(de.share.copyShort)}</span></button>
+        ${native}
+      </span>
+    </div>
+    ${status}
+  </div>`;
 }
 
 function credits(): string {
@@ -303,15 +343,26 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(
         `<h2>${esc(de.header.menu)}</h2>
          ${settingsBlock(ui)}
-         ${view && ui.screen === 'run' ? shareBlock(view.seed, view.character.character, ui) : ''}
-         <div class="menu-list">
-           ${view ? `<button class="btn btn-wide" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
-           ${ui.meta ? `<button class="btn btn-wide" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
-           <button class="btn btn-wide" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
-           ${view && ui.screen === 'run' ? `<button class="btn btn-wide" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
-           <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>
+         ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, ui) : ''}
+         <div class="menu-list menu-grid">
+           ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
+           ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
+           <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
+           <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
+           ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
+           <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
          </div>`,
+        true,
+        'sheet-menu',
       );
+    case 'save-menu':
+      return renderSaveMenu(sheet);
+    case 'save-export':
+      return renderSaveExport(sheet, overlay.code, overlay.copied);
+    case 'save-import':
+      return renderSaveImport(sheet, overlay.text, overlay.error, overlay.checking);
+    case 'save-confirm':
+      return renderSaveConfirm(sheet, overlay.lines);
     case 'overview':
       if (!view) return '';
       return sheet(
