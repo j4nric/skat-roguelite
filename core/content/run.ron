@@ -42,4 +42,17 @@
     // Wahrscheinlichkeit, dass zwischen zwei Serien statt des Tresens ein
     // Ereignis kommt (DESIGN 13). Platzhalter für `balance`.
     encounter_chance: 0.2,
+    // Kartenspiel der Gegenspieler je Abschnitt (DESIGN 10.3): Abschnitt 1
+    // Heuristik, danach PIMC mit steigender Zahl an Stichproben. `depth`:
+    // exakt durchsuchte Stiche je Stichprobe, dahinter eine schnelle
+    // Ausspiel-Schätzung (0 = bis zum Ende). Messung und Laufzeit:
+    // docs/balance/2026-11-01-m5-pimc.md. Spätere Abschnitte nehmen den
+    // letzten Eintrag.
+    opponents: [
+        Heuristic,
+        Pimc(samples: 6, depth: 2),
+        Pimc(samples: 8, depth: 3),
+        Pimc(samples: 12, depth: 3),
+        Pimc(samples: 16, depth: 3),
+    ],
 )

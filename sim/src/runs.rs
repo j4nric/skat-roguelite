@@ -19,6 +19,7 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use skat_core::ai::pimc::Opponents;
 use skat_core::content::{BossId, Character, Content, EncounterId, RelicId, UnlockId};
 use skat_core::rng::Rng;
 use skat_core::rules::{NullFormula, NullScoring};
@@ -48,6 +49,11 @@ pub struct Options {
     pub null_scoring: Option<NullScoring>,
     /// Measure how many runs it takes to earn every unlock.
     pub unlocks: bool,
+    /// The player's card play (`--bot`): heuristic or PIMC.
+    pub bot: Opponents,
+    /// The defenders' card play in every section (`--defenders`), instead
+    /// of the per-section list of `run.ron`.
+    pub defenders: Option<Opponents>,
 }
 
 /// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
@@ -99,6 +105,9 @@ impl Options {
         if content.character(self.character).is_none() {
             return Err(format!("--character: unknown {}", self.character));
         }
+        if let Some(defenders) = self.defenders {
+            content.run.opponents = vec![defenders];
+        }
         Ok(content)
     }
 
@@ -134,6 +143,16 @@ impl Options {
             Some(NullScoring::Formula(_)) => parts.push("null-scoring=formula".into()),
             None => {}
         }
+        if let Opponents::Pimc { samples, depth } = self.bot {
+            parts.push(format!("bot=pimc:{samples}:{depth}"));
+        }
+        match self.defenders {
+            Some(Opponents::Heuristic) => parts.push("defenders=heuristic".into()),
+            Some(Opponents::Pimc { samples, depth }) => {
+                parts.push(format!("defenders=pimc:{samples}:{depth}"));
+            }
+            None => {}
+        }
         if parts.is_empty() {
             "standard".to_string()
         } else {
@@ -146,7 +165,13 @@ impl Options {
         if self.no_shop && run.phase() == RunPhase::Shop {
             return Some(RunAction::LeaveShop);
         }
-        RunBot.next_action(run, content)
+        let action = RunBot.next_action(run, content)?;
+        if let (RunAction::Play(_), Some(config)) = (&action, self.bot.pimc()) {
+            if let Some(card) = skat_core::run::opponents::player_card(run, config) {
+                return Some(RunAction::Play(card.id));
+            }
+        }
+        Some(action)
     }
 }
 
@@ -790,13 +815,22 @@ pub fn render_unlocks(unlocks: &Unlocks, content: &Content) -> String {
     out
 }
 
+/// The content with heuristic defenders everywhere: the option tests
+/// check plumbing, and PIMC in an unoptimized test build is slow.
+#[cfg(test)]
+fn heuristic_content() -> Content {
+    let mut content = Content::load().expect("content");
+    content.run.opponents.clear();
+    content
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn same_seed_gives_identical_run_statistics() {
-        let content = Content::load().expect("content");
+        let content = heuristic_content();
         let options = Options::default();
         let a = simulate(&content, &options, 42, 30).expect("runs");
         let b = simulate(&content, &options, 42, 30).expect("runs");
@@ -810,7 +844,7 @@ mod tests {
 
     #[test]
     fn every_run_ends_once() {
-        let content = Content::load().expect("content");
+        let content = heuristic_content();
         let stats = simulate(&content, &Options::default(), 7, 25).expect("runs");
         let ended: u64 = stats.lost_in_section.iter().sum::<u64>() + stats.won;
         assert_eq!(ended, 25);
@@ -823,7 +857,30 @@ mod option_tests {
     use super::*;
 
     fn content() -> Content {
-        Content::load().expect("content")
+        heuristic_content()
+    }
+
+    #[test]
+    fn pimc_defenders_and_bot_play_whole_runs_deterministically() {
+        let base = Content::load().expect("content");
+        let options = Options {
+            bot: Opponents::Pimc {
+                samples: 2,
+                depth: 1,
+            },
+            defenders: Some(Opponents::Pimc {
+                samples: 2,
+                depth: 1,
+            }),
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        assert_eq!(content.run.opponents.len(), 1);
+        let a = simulate(&content, &options, 4, 3).expect("runs");
+        assert_eq!(a, simulate(&content, &options, 4, 3).expect("runs"));
+        assert_eq!(a.lost_in_section.iter().sum::<u64>() + a.won, 3);
+        let text = render(&a, &content, &options, 0);
+        assert!(text.contains("bot=pimc:2:1") && text.contains("defenders=pimc:2:1"));
     }
 
     #[test]

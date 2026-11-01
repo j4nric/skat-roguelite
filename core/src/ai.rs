@@ -15,6 +15,13 @@
 //! 32-card deck as well as the roguelike deck with blanks and modified
 //! cards. Blanks are worth nothing and never win, so they are the first
 //! cards to slough.
+//!
+//! Stage 2 (Perfect Information Monte Carlo) lives in [`pimc`], built on
+//! the double-dummy [`solver`] and the consistent deals of [`sample`].
+
+pub mod pimc;
+pub mod sample;
+pub mod solver;
 
 use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::game::{Seat, SeatView, seat_at};

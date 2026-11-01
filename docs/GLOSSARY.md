@@ -154,6 +154,13 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Start eines Runs | `RunStart` | Start-Relikte, erste Serie; `Run::new_with` |
 | Fehlercode | `RunErrorCode` | Stabiler Name eines `RunError`, `RunError::code` |
 | Wahrscheinlichkeit beim Geben | `DealOdds` | Wo eine Karte des Blatts landet (DESIGN 7.4), `Odds` als Bruch und Promille |
+| Gegenspieler-Stufe (KI je Abschnitt) | `Opponents` | `Heuristic` oder `Pimc { samples, depth }`, Liste `opponents` in `run.ron` (DESIGN 10.3) |
+| Perfect Information Monte Carlo | `PimcPolicy`, `PimcConfig` | KI-Stufe 2 (DESIGN 10.2), `ai::pimc` |
+| Stichprobe (eine zufällige, stimmige Verteilung der unbekannten Karten) | `Sample` | `Knowledge::sample`, `ai::sample` |
+| Wissen eines Sitzes über die Kartenverteilung | `Knowledge` | Fehlfarben, offene Hände, festgelegte Karten (`Hints::pinned`) |
+| Fehlfarbe (Farbe, die ein Sitz nicht mehr hat) | `void` | Aus Nicht-Bedienen erschlossen |
+| Double-Dummy-Suche (alle Karten offen) | `ai::solver`, `solve`, `probe_with` | Alpha-Beta mit Transpositionstabelle |
+| Suchtiefe in Stichen | `depth` | Dahinter eine Ausspiel-Schätzung (`estimate`) |
 
 ## Hook-API und Wertung mit Relikten
 

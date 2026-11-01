@@ -23,3 +23,9 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# The PIMC search (core/src/ai/) is far too slow unoptimized; tests that
+# play whole runs reach the PIMC sections. Optimize the core in dev and
+# test builds too (debug assertions and overflow checks stay on).
+[profile.dev.package.skat_core]
+opt-level = 2

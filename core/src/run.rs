@@ -9,7 +9,8 @@
 //! below the target. Between series the Tresen (shop) opens.
 //!
 //! The run is driven by [`RunAction`]s and answers with [`RunEvent`]s. The
-//! two defenders are played by the heuristic AI inside the run, so after
+//! two defenders are played by the AI inside the run (heuristic or PIMC by
+//! section, see [`opponents`]), so after
 //! every action the run waits for the next decision of the player. The
 //! whole state is serializable (serde), so a frontend can save and load a
 //! run at any point; equal seed and equal actions give equal results.
@@ -32,6 +33,7 @@
 
 pub mod bot;
 pub mod meta;
+pub mod opponents;
 pub mod player;
 pub mod view;
 
@@ -1597,7 +1599,7 @@ impl Run {
                         return Ok(());
                     }
                     let view = active.game.view(seat).ok_or(RunError::WrongPhase)?;
-                    let card = crate::ai::Policy::choose(&DefenderHeuristic, &view)
+                    let card = opponents::defender_card(self, content, active, &view)
                         .ok_or(RunError::WrongPhase)?;
                     self.play_card(content, seat, card, events)?;
                 }
