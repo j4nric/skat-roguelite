@@ -27,7 +27,8 @@ function plain(n: number): string {
   return n < 0 ? `−${Math.abs(n)}` : String(n);
 }
 
-function sourceName(source: Source, deck: DeckCard[]): string {
+/** Display name of where a score line (or Groschen) came from. */
+export function sourceName(source: Source, deck: DeckCard[]): string {
   if (source === 'Kontra') return de.score.kontra;
   if (source === 'Re') return de.score.re;
   if ('Relic' in source) return contentName('relics', source.Relic);
@@ -152,6 +153,7 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
     .join('');
   const decl = declarationName(b.declaration);
   const note = gameNote(b);
+  const seatsTable = ramschSeats(b, o.seatNames);
   const fill = meterPercent(o.previousScore, o.target);
   const payout = o.payout
     ? `<div class="payout" data-part="payout">
@@ -168,7 +170,11 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
     <header class="score-head">
       <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
       <div class="score-decl">${esc(decl)}</div>
-      <div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>
+      ${
+        seatsTable
+          ? seatsTable
+          : `<div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>`
+      }
       ${note ? `<p class="score-note" data-testid="score-note">${esc(note)}</p>` : ''}
     </header>
     ${coasterStrip(o)}
@@ -193,6 +199,29 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
       <button class="btn btn-wide btn-ghost" ${attrs({ 'data-action': 'score-skip' })}>${esc(de.score.skip)}</button>
     </div>
   </div></div>`;
+}
+
+/**
+ * Augen and tricks of every seat in a Ramsch, from the core's `seats`. The
+ * seat marked as having the most is the one whose Augen are the Grundwert
+ * the core scored (`rule_base_value`, the loser's Augen); a tie marks all.
+ */
+function ramschSeats(b: ScoreBreakdown, names: string[]): string {
+  const seats = b.seats;
+  if (b.declaration.game !== 'Ramsch' || !seats) return '';
+  const rows = ([0, 1, 2] as const)
+    .map((seat) => {
+      const points = seats.card_points[seat];
+      const most = points === b.rule_base_value;
+      const tricks = seats.tricks[seat];
+      return `<li class="seat-row ${seat === 0 ? 'is-you' : ''} ${most ? 'is-most' : ''}" ${attrs({ 'data-seat': seat })}>
+        <span class="seat-name"><span>${esc(names[seat] ?? '')}</span>${most ? `<span class="seat-most">${esc(de.score.most)}</span>` : ''}</span>
+        <b class="seat-points">${esc(t(de.score.seatPoints, { n: points }))}</b>
+        <span class="seat-tricks">${esc(t(tricks === 1 ? de.score.seatTrick : de.score.seatTricks, { n: tricks }))}</span>
+      </li>`;
+    })
+    .join('');
+  return `<ol class="ramsch-seats" data-testid="ramsch-seats" aria-label="${esc(de.score.ramschSeats)}">${rows}</ol>`;
 }
 
 /** Why a Null or Ramsch was won or lost, from the core's `won` flag. */

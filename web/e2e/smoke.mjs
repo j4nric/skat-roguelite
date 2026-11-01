@@ -46,6 +46,25 @@
 //   Unter from the skat; giving a card for it must use her up.
 // - meta-null.json: a meta state (not a run) with four unlocks, among them
 //   the Nullspieler. With it a Null game is declared and played.
+//
+// M5 (fixtures made with the M5 core, same way):
+// - seed links: `#seed-4242-alleinspieler` opened fresh offers that seed and
+//   starts it; the menu shows the seed and copies the link; a second link
+//   (a locked character) while a run is saved must not overwrite it unasked
+//   (confirm dialog, cancel keeps the run). The daily seed is JJJJMMTT.
+// - the thought bubble appears while the core computes the opponents'
+//   moves, the setting is stored.
+// - run-end.json: seed 13, the RunBot's run up to the last game of a series
+//   far below its target; playing it out ends the run. The end screen shares
+//   the seed, the Vereinsbuch's statistics page lists the run.
+// - coins-curse.json: seed 14 up to "Der Kartengeber" offering the curse
+//   "Ramponiert" on a random card: choosing it pays 3 Groschen (CoinsGained)
+//   with a coin animation naming the source.
+// - discard-battered.json: seed 14, that card in the hand at the Ansage;
+//   discarding it is refused by the core (DiscardForbidden) in German.
+// - honorary-jack.json: seed 116, a "Unter ehrenhalber" in the hand: plaque.
+// - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
+//   marks the most.
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
@@ -134,12 +153,17 @@ function watch(page, errors) {
   page.on('requestfailed', (req) => errors.push(`request failed: ${req.url()}`));
 }
 
-/** Play the first legal card until the score board shows, then close it. */
+/** Play the first legal card until the score board shows (answering Kontra without Re), then close it. */
 async function playOut(page, label, shotAt = null) {
   let played = 0;
   for (;;) {
-    await page.waitForSelector('[data-action="play"], [data-action="select"], .score-sheet', { timeout: 30000 });
+    await page.waitForSelector('[data-action="play"], [data-action="select"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
     if (await page.locator('.score-sheet').count()) break;
+    if (await page.locator('[data-action="re"][data-re="false"]').count()) {
+      await page.click('[data-action="re"][data-re="false"]');
+      await page.waitForSelector('[data-action="re"]', { state: 'detached' });
+      continue;
+    }
     if (await page.locator('[data-action="select"]').count()) {
       await page.locator('[data-action="select"]').nth(0).click();
       await page.locator('[data-action="select"]').nth(1).click();
@@ -291,6 +315,12 @@ async function m4(browser, errors, reducedMotion) {
   await playOut(page, 'Ramsch');
   const ramschDecl = await page.locator('.score-decl').textContent();
   if (!ramschDecl?.includes('Ramsch')) fail(`score board of the Ramsch says: ${ramschDecl}`);
+  const seatRows = await page.locator('[data-testid="ramsch-seats"] .seat-row').count();
+  if (seatRows !== 3) fail(`Ramsch score shows ${seatRows} seats, expected 3`);
+  if (!(await page.locator('[data-testid="ramsch-seats"] .seat-row.is-most').count())) fail('Ramsch score does not mark who has the most Augen');
+  const seatsText = ((await page.locator('[data-testid="ramsch-seats"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  if (!/\d+ Augen/.test(seatsText)) fail(`Ramsch seats without Augen: ${seatsText}`);
+  log(`Ramsch seats: ${seatsText}`);
   await shoot(page, 'ramsch-score');
 
   // Die Oma: a Unter from the skat for a card of the hand.
@@ -314,6 +344,200 @@ async function m4(browser, errors, reducedMotion) {
   if (!rule.includes('Der Alte')) fail(`the final boss's rule strip does not name him: ${rule}`);
   log(`Der Alte: ${rule}`);
   await shoot(page, 'old-man');
+  await context.close();
+}
+
+/** Today's daily seed as the app computes it: JJJJMMTT, local date. */
+function todaySeed() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** The seed of the running run, read from the menu. */
+async function menuSeed(page) {
+  await page.click('.hud [data-action="menu"]');
+  await page.waitForSelector('.sheet [data-testid="run-seed"]');
+  const seed = await text(page, 'run-seed');
+  return seed;
+}
+
+async function closeSheet(page) {
+  await page.click('.sheet .menu-list [data-action="close-overlay"], .sheet > .btn[data-action="close-overlay"]');
+  await page.waitForSelector('.layer .sheet', { state: 'detached' });
+}
+
+/** M5: seed links, daily seed, thought bubble, statistics, Groschen from a curse, plaques. */
+async function m5(browser, errors, reducedMotion) {
+  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  // A seed link, opened in a fresh browser: the start screen offers it.
+  await page.goto(`${base}#seed-4242-alleinspieler`);
+  await page.waitForSelector('[data-testid="shared-seed"]');
+  const offered = await page.locator('[data-testid="shared-seed"]').getAttribute('data-seed');
+  if (offered !== '4242') fail(`seed link offers seed ${offered}, expected 4242`);
+  await shoot(page, 'shared-seed');
+  await page.click('[data-action="play-shared"]');
+  await page.waitForSelector('.declare');
+  if (await page.evaluate(() => window.location.hash)) fail('the seed link stays in the address after starting it');
+  const linkSeed = await menuSeed(page);
+  if (linkSeed !== '4242') fail(`run from the link has seed ${linkSeed}`);
+  log('seed link opened and played: seed 4242');
+
+  // Copy the link from the menu (or show it to copy by hand).
+  await page.click('[data-action="copy-link"]');
+  await page.waitForSelector('[data-testid="share-copied"], [data-testid="share-fallback"]');
+  if (await page.locator('[data-testid="share-copied"]').count()) {
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    if (!copied.endsWith('#seed-4242-alleinspieler')) fail(`copied link is ${copied}`);
+    log(`link copied: ${copied}`);
+  } else {
+    const shown = await page.locator('[data-testid="share-fallback"]').inputValue();
+    if (!shown.endsWith('#seed-4242-alleinspieler')) fail(`link shown for copying is ${shown}`);
+    log(`clipboard refused, link shown: ${shown}`);
+  }
+  // Settings: the opponents' thinking time.
+  await page.click('[data-action="thinking"][data-on="false"]');
+  let thinking = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').thinking);
+  if (thinking !== false) fail(`thinking setting not stored: ${thinking}`);
+  await page.click('[data-action="thinking"][data-on="true"]');
+  thinking = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').thinking);
+  if (thinking !== true) fail(`thinking setting not stored: ${thinking}`);
+  await shoot(page, 'menu-share');
+  await closeSheet(page);
+
+  // The thought bubble shows while the core computes the opponents' moves.
+  await page.evaluate(() => {
+    window.__thinkSeen = 0;
+    new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n instanceof Element && (n.matches('.think-bubble') || n.querySelector('.think-bubble'))) window.__thinkSeen += 1;
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('[data-action="select"]');
+  await page.locator('[data-action="select"]').nth(0).click();
+  await page.locator('[data-action="select"]').nth(1).click();
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('[data-action="play"]');
+  await page.locator('[data-action="play"]').first().click();
+  await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+  const seen = await page.evaluate(() => window.__thinkSeen);
+  if (!seen) fail('no thought bubble while the opponents played');
+  log(`thought bubble shown ${seen} times`);
+
+  // A second link while this run is saved: offered, but nothing is overwritten unasked.
+  const runBefore = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+  await page.click('.hud [data-action="menu"]');
+  await page.click('.sheet [data-action="to-start"]');
+  await page.waitForSelector('[data-action="resume"]');
+  await page.goto(`${base}#seed-777-nullspieler`);
+  await page.waitForSelector('[data-testid="shared-seed"][data-seed="777"]');
+  const lockedNote = (await page.locator('[data-testid="shared-seed"]').textContent()) ?? '';
+  if (!lockedNote.includes('gesperrt')) fail(`a link with a locked character does not say so: ${lockedNote}`);
+  if (!(await page.locator('[data-action="resume"]').count())) fail('the running run is no longer offered after opening a link');
+  await page.click('[data-action="play-shared"]');
+  await page.waitForSelector('.sheet-confirm');
+  await shoot(page, 'confirm-new');
+  await page.click('.sheet-confirm [data-action="close-overlay"]');
+  await page.waitForSelector('.sheet-confirm', { state: 'detached' });
+  if ((await page.evaluate(() => localStorage.getItem('stammtisch.run'))) !== runBefore) fail('cancelling the new run changed the saved run');
+  await page.click('[data-action="play-shared"]');
+  await page.click('.sheet-confirm [data-action="confirm-new"]');
+  await page.waitForSelector('.declare');
+  const lockedSeed = await menuSeed(page);
+  if (lockedSeed !== '777') fail(`run from the second link has seed ${lockedSeed}`);
+  log('second link: confirm asked, cancel kept the run, confirm started seed 777');
+
+  // The daily seed: JJJJMMTT of today.
+  await page.click('.sheet [data-action="to-start"]');
+  await page.waitForSelector('[data-testid="daily"]');
+  const daily = await page.locator('[data-testid="daily"]').getAttribute('data-seed');
+  if (daily !== todaySeed()) fail(`daily seed is ${daily}, expected ${todaySeed()}`);
+  await shoot(page, 'start-daily');
+  await page.click('[data-action="play-daily"]');
+  await page.click('.sheet-confirm [data-action="confirm-new"]');
+  await page.waitForSelector('.declare');
+  const dailyRun = await menuSeed(page);
+  if (dailyRun !== daily) fail(`daily run has seed ${dailyRun}, expected ${daily}`);
+  await closeSheet(page);
+  log(`daily seed ${daily} played`);
+
+  // A run that ends: the end screen shares the seed, the statistics page lists the run.
+  await resumeFixture(page, 'run-end.json');
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await playOut(page, 'last game');
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"]');
+  if (await page.locator('.sheet-unlock').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  const endSeed = await text(page, 'run-seed');
+  if (endSeed !== '13') fail(`end screen shows seed ${endSeed}, expected 13`);
+  if (await page.evaluate(() => localStorage.getItem('stammtisch.run'))) fail('the finished run is still saved');
+  await shoot(page, 'end');
+  await page.click('[data-action="to-start"]');
+  await page.click('[data-action="book"]');
+  await page.click('[data-action="book-tab"][data-tab="stats"]');
+  await page.waitForSelector('[data-testid="recent-runs"]');
+  const recent = await page.locator('[data-testid="recent-runs"] .recent-row[data-seed="13"]').count();
+  if (recent !== 1) fail(`statistics page lists the finished run ${recent} times`);
+  const statsText = ((await page.locator('[data-testid="meta-stats"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!/Runs gespielt\s*1/.test(statsText)) fail(`meta statistics do not count the run: ${statsText}`);
+  log(`statistics page: ${statsText.trim()}`);
+  await shoot(page, 'book-stats');
+  await page.click('.ledger > .btn[data-action="close-overlay"]');
+
+  // Der Kartengeber with the curse "Ramponiert": 3 Groschen with their source.
+  await resumeFixture(page, 'coins-curse.json');
+  await page.waitForSelector('[data-testid="encounter"]');
+  const coinsBefore = Number(await text(page, 'coins'));
+  const curse = page.locator('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  if (!(await curse.count())) fail('the encounter does not name the curse it gives');
+  await shoot(page, 'encounter-curse');
+  await curse.click();
+  await page.waitForSelector('[data-testid="coin-pop"]');
+  const pop = ((await page.locator('[data-testid="coin-pop"]').textContent()) ?? '').trim();
+  if (!pop.includes('+3') || !pop.includes('Ramponiert')) fail(`Groschen animation says: ${pop}`);
+  await shoot(page, 'coins');
+  await page.waitForSelector('.declare, [data-action="boss-go"]');
+  const coinsAfter = Number(await text(page, 'coins'));
+  if (coinsAfter !== coinsBefore + 3) fail(`Groschen ${coinsBefore} -> ${coinsAfter}, expected +3`);
+  log(`curse paid: ${pop.replace(/\s+/g, ' ')}; ${coinsBefore} -> ${coinsAfter} Groschen`);
+
+  // A "Ramponiert" card in the hand: locked when discarding, the core refuses it.
+  await resumeFixture(page, 'discard-battered.json');
+  await page.waitForSelector('.declare');
+  if (!(await page.locator('.hand-card .plaque-lock').count())) fail('the Ramponiert card has no lock plaque');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('[data-action="select"][data-no-discard="true"]');
+  await page.locator('[data-action="select"][data-no-discard="true"]').first().click();
+  await page.locator('[data-action="select"]:not([data-no-discard])').first().click();
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('.toast');
+  const refused = (await page.locator('.toast').textContent()) ?? '';
+  if (!refused.includes('Ramponierte')) fail(`discarding a Ramponiert card: ${refused}`);
+  if (!(await page.locator('[data-action="select"]').count())) fail('the hand left the discard phase after a refused discard');
+  await shoot(page, 'discard-locked');
+  await page.locator('[data-action="select"][data-no-discard="true"]').first().click();
+  await page.locator('[data-action="select"]:not([data-no-discard])').nth(1).click();
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  log(`Ramponiert: ${refused.trim()}`);
+
+  // "Unter ehrenhalber": a plaque on the card.
+  await resumeFixture(page, 'honorary-jack.json');
+  await page.waitForSelector('.declare');
+  if (!(await page.locator('.hand-card .plaque-hj').count())) fail('the Unter ehrenhalber has no plaque');
+  await shoot(page, 'honorary-jack');
+  log('Unter ehrenhalber plaque shown');
   await context.close();
 }
 
@@ -430,6 +654,7 @@ async function run() {
     await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail('no unlock announced after winning the first series early'));
     const unlocked = ((await page.locator('[data-testid="unlock-new"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
     log(`unlock announced: ${unlocked}`);
+    if (!(await page.locator('[data-testid="unlock-kind"]').count())) fail('the unlock does not name the kind of its reward');
     await shoot(page, 'unlock');
     await page.click('.sheet-unlock [data-action="close-overlay"]');
     await page.waitForSelector('[data-testid="unlock-new"]', { state: 'detached' });
@@ -485,6 +710,7 @@ async function run() {
 
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
+    await m5(browser, errors, reducedMotion);
   } finally {
     await browser.close();
     preview.kill();

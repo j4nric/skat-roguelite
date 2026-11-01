@@ -1,15 +1,18 @@
-// Player settings of the web app (presentation only): animation tempo and
-// sound. Stored in localStorage, every access guarded.
+// Player settings of the web app (presentation only): animation tempo,
+// sound, and whether a thought bubble shows while the opponents think.
+// Stored in localStorage, every access guarded.
 
 export type Tempo = 'slow' | 'normal' | 'fast';
 
 export interface Settings {
   tempo: Tempo;
   sound: boolean;
+  /** Show a thought bubble over the opponents while the core computes their moves. */
+  thinking: boolean;
 }
 
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, thinking: true };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -24,7 +27,7 @@ export function loadSettings(): Settings {
     if (!text) return { ...DEFAULTS };
     const parsed = JSON.parse(text) as Partial<Settings>;
     const tempo = parsed.tempo === 'slow' || parsed.tempo === 'fast' ? parsed.tempo : 'normal';
-    return { tempo, sound: parsed.sound !== false };
+    return { tempo, sound: parsed.sound !== false, thinking: parsed.thinking !== false };
   } catch {
     return { ...DEFAULTS };
   }
