@@ -76,7 +76,21 @@ use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
 /// | `show_off` | 2 | Ouvert forced: strong but risky |
 /// | `kibitzer` | 1 | information the bot does not use |
 /// | `card_counter` | 1 | information the bot does not use |
-pub const RELIC_VALUES: [(&str, u32); 17] = [
+/// | `every_bit_counts` | 9 | +8 Augen in the deck, like the Alte Dame |
+/// | `blind_eye` | 7 | wins from 58 Augen |
+/// | `tailor` | 6 | 80 to 89 Augen count as Schneider |
+/// | `lucky_streak` | 8 | won games count double from the third in a row; alone: section 4 in 2.1 % instead of 0.6 % |
+/// | `regular_guest` | 7 | doubles won games after four series; alone: section 4 in 2.8 % instead of 0.6 % |
+/// | `tuition` | 4 | +2 Grundwert per lost game, small effect for the bot |
+/// | `high_and_dry` | 3 | +1 level when the defenders are dry after three tricks, rare |
+/// | `schneider_bock` | 4 | Bock after a won Schneider |
+/// | `beer_mat` | 2 | the bot rarely plays hand |
+/// | `null_eight_fifteen` | 7 | Null: +8 Grundwert on every Null |
+/// | `tally_stick` | 6 | Null: +2 Grundwert per won Null |
+/// | `safety_net` | 6 | Null: +1 level for a won Null with the skat, the bot's usual Null |
+/// | `fat_sow` | 4 | Null: aces 16 Augen, more Kurzschluss |
+/// | `glass_house` | 2 | Null: the bot rarely plays Null Ouvert |
+pub const RELIC_VALUES: [(&str, u32); 31] = [
     ("bock_round", 10),
     ("old_lady", 9),
     ("concede", 8),
@@ -94,6 +108,20 @@ pub const RELIC_VALUES: [(&str, u32); 17] = [
     ("ouvert_bonus", 1),
     ("kibitzer", 1),
     ("card_counter", 1),
+    ("every_bit_counts", 9),
+    ("blind_eye", 7),
+    ("tailor", 6),
+    ("lucky_streak", 8),
+    ("regular_guest", 7),
+    ("tuition", 4),
+    ("high_and_dry", 3),
+    ("schneider_bock", 4),
+    ("beer_mat", 2),
+    ("null_eight_fifteen", 7),
+    ("tally_stick", 6),
+    ("safety_net", 6),
+    ("fat_sow", 4),
+    ("glass_house", 2),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].

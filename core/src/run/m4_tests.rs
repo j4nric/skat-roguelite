@@ -820,3 +820,330 @@ fn the_bot_plays_whole_null_runs() {
     }
     assert!(won_games > 0);
 }
+
+// ---------------------------------------------------------------------------
+// M4 content: Null house rules and modifications, new encounters. One test
+// per item in a constructed situation.
+// ---------------------------------------------------------------------------
+
+fn null_line(b: &ScoreBreakdown, id: &str, lever: Lever, change: Change) -> bool {
+    b.lines.iter().any(|l| {
+        l.source == Source::Relic(RelicId::new(id)) && l.lever == lever && l.change == change
+    })
+}
+
+#[test]
+fn null_eight_fifteen_adds_eight_to_every_null() {
+    let content = content();
+    let mut run = null_run(&content, &["null_eight_fifteen"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.won);
+    assert!(null_line(
+        &b,
+        "null_eight_fifteen",
+        Lever::BaseValue,
+        Change::Add(8)
+    ));
+    assert_eq!(b.base_value, 31);
+    // Lost too: −2 × 31.
+    let mut run = null_run(&content, &["null_eight_fifteen"]);
+    fixed_deal(
+        &mut run,
+        &content,
+        [SAFE_NULL[1], SAFE_NULL[0], SAFE_NULL[2]],
+        SAFE_NULL_SKAT,
+    );
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Normal));
+    assert!(!b.won);
+    assert_eq!(b.score, -2 * 31);
+}
+
+#[test]
+fn safety_net_adds_a_level_to_a_won_null_with_the_skat() {
+    let content = content();
+    let mut run = null_run(&content, &["safety_net"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Normal));
+    assert!(b.won);
+    assert!(null_line(&b, "safety_net", Lever::Levels, Change::Add(1)));
+    // Hand: nothing (that is the Blindflug's).
+    let mut run = null_run(&content, &["safety_net"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.won && b.lines.is_empty());
+}
+
+#[test]
+fn fat_sow_makes_every_ace_worth_sixteen() {
+    let content = content();
+    let mut run = null_run(&content, &["fat_sow"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let in_play = run.game().expect("game").game.cards_in_play().to_vec();
+    let aces: Vec<u32> = in_play
+        .iter()
+        .filter(|c| c.face().is_some_and(|f| f.rank == crate::cards::Rank::Ace))
+        .map(|c| c.card_points)
+        .collect();
+    assert_eq!(aces, vec![16; 4]);
+    // The Alleinspieler never meets it.
+    let def = content.relic(&RelicId::new("fat_sow")).expect("fat_sow");
+    assert!(!crate::content::in_pool(
+        &def.characters,
+        Character::Declarer
+    ));
+}
+
+#[test]
+fn glass_house_doubles_a_won_null_ouvert() {
+    let content = content();
+    let mut run = null_run(&content, &["glass_house"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::OuvertHand));
+    assert!(b.won);
+    assert!(null_line(
+        &b,
+        "glass_house",
+        Lever::GameValue,
+        Change::Multiply(2)
+    ));
+    assert_eq!(b.value, b.base_value * b.levels * 2);
+    let mut run = null_run(&content, &["glass_house"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert_eq!(b.multiplier, 1);
+}
+
+#[test]
+fn tally_stick_adds_two_base_value_per_won_null() {
+    let content = content();
+    let mut run = null_run(&content, &["tally_stick"]);
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.won);
+    assert_eq!(run.counters().get("tally"), Some(&2));
+    let mut events = Vec::new();
+    run.deal(&content, true, &mut events).expect("deal");
+    assert!(run.game().expect("game").lines.contains(&ScoreLine {
+        source: Source::Relic(RelicId::new("tally_stick")),
+        lever: Lever::BaseValue,
+        change: Change::Add(2),
+    }));
+}
+
+/// Deck id of a printed card in the Nullspieler's deck.
+fn null_card(run: &Run, card: &str) -> u32 {
+    let kind: CardKind = card.parse().expect("card");
+    run.deck()
+        .cards()
+        .iter()
+        .find(|c| c.kind == kind)
+        .map(|c| c.id)
+        .expect("in deck")
+}
+
+fn resolved_card(run: &Run, content: &Content, id: u32) -> DealtCard {
+    let global = run.sources(content, false);
+    resolve_deck(&run.deck, content, &global)
+        .cards
+        .into_iter()
+        .find(|c| c.id == id)
+        .expect("card")
+}
+
+#[test]
+fn lead_weight_adds_ten_augen() {
+    let content = content();
+    let mut run = null_run(&content, &[]);
+    let ace = null_card(&run, "CA");
+    run.deck
+        .add_mod(ace, CardModId::new("lead_weight"))
+        .expect("mod");
+    assert_eq!(resolved_card(&run, &content, ace).card_points, 21);
+}
+
+#[test]
+fn tail_light_adds_two_levels_when_its_card_takes_the_last_trick_of_a_won_null() {
+    let content = content();
+    // Find the card that takes the tenth trick of the safe Null.
+    let mut probe = null_run(&content, &[]);
+    fixed_deal(&mut probe, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (events, b) = play(&mut probe, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.won);
+    let last = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            RunEvent::Game(Event::TrickWon { trick, .. }) => Some(trick.winning_card().id),
+            _ => None,
+        })
+        .expect("ten tricks");
+    let mut run = null_run(&content, &[]);
+    run.deck
+        .add_mod(last, CardModId::new("tail_light"))
+        .expect("mod");
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.lines.iter().any(|l| l.source
+        == Source::CardMod {
+            card_mod: CardModId::new("tail_light"),
+            card: last,
+        }
+        && l.change == Change::Add(2)));
+    // On the declarer's D7 it never takes the last trick of a won Null.
+    let mut run = null_run(&content, &[]);
+    let seven = null_card(&run, "D7");
+    run.deck
+        .add_mod(seven, CardModId::new("tail_light"))
+        .expect("mod");
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.lines.is_empty());
+}
+
+#[test]
+fn dressed_up_card_counts_two_ranks_higher_in_null() {
+    let content = content();
+    let mut run = null_run(&content, &[]);
+    let nine = null_card(&run, "C9");
+    run.deck
+        .add_mod(nine, CardModId::new("dressed_up"))
+        .expect("mod");
+    let nine = resolved_card(&run, &content, nine);
+    assert_eq!(nine.rank_bonus, 2);
+    // In Null the order is 7 8 9 10 Unter Ober König Daus: two steps up,
+    // the C9 ranks with the Unter (none in this deck) and beats the CT.
+    let ten = resolved_card(&run, &content, null_card(&run, "CT"));
+    assert!(crate::rules::beats(GameType::Null, ten, ten, nine));
+}
+
+#[test]
+fn a_dummy_never_wins_and_shows_its_holder() {
+    let content = content();
+    let mut run = null_run(&content, &[]);
+    // CK lies in the skat of the safe Null; take the HA (seat 1).
+    let ace = null_card(&run, "HA");
+    run.deck.add_mod(ace, CardModId::new("dummy")).expect("mod");
+    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
+    let card = resolved_card(&run, &content, ace);
+    assert!(card.never_wins && card.revealed);
+    let revealed = run.revealed_holders();
+    assert_eq!(revealed.len(), 1);
+    assert_eq!(revealed[0].0.id, ace);
+    assert_eq!(revealed[0].1, Some(Seat::DEFENDERS[0]));
+}
+
+#[test]
+fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
+    let content = content();
+    let choose = |option, target| RunAction::ChooseEncounter { option, target };
+    let has_mod = |run: &Run, id: u32, m: &str| {
+        run.deck()
+            .get(id)
+            .is_some_and(|c| c.mods.contains(&CardModId::new(m)))
+    };
+    let marked = |run: &Run, m: &str| {
+        run.deck()
+            .cards()
+            .iter()
+            .filter(|c| c.mods.contains(&CardModId::new(m)))
+            .count()
+    };
+    // Umgekipptes Bier: for 1 Groschen on a chosen card, else at random.
+    let mut run = relic_run(&content, &[]);
+    run.coins = 1;
+    encounter(
+        &mut run,
+        "spilled_beer",
+        vec![
+            option(EncounterChoice::MarkRandomCard, 0),
+            option(EncounterChoice::MarkChosenCard, 1),
+            option(EncounterChoice::Leave, 0),
+        ],
+    );
+    run.apply(&content, choose(1, Some(16))).expect("chosen");
+    assert_eq!(run.coins(), 0);
+    assert!(has_mod(&run, 16, "beer_stain"));
+    let mut run = relic_run(&content, &[]);
+    encounter(
+        &mut run,
+        "spilled_beer",
+        vec![
+            option(EncounterChoice::MarkRandomCard, 0),
+            option(EncounterChoice::Leave, 0),
+        ],
+    );
+    run.apply(&content, choose(0, None)).expect("random");
+    assert_eq!(marked(&run, "beer_stain"), 1);
+    // Gasthof zur Krone (Alleinspieler) and Der Taschenspieler (Nullspieler).
+    let mut run = relic_run(&content, &[]);
+    encounter(
+        &mut run,
+        "crown_inn",
+        vec![
+            option(EncounterChoice::MarkRandomCard, 0),
+            option(EncounterChoice::Leave, 0),
+        ],
+    );
+    run.apply(&content, choose(0, None)).expect("crown");
+    assert_eq!(marked(&run, "crown"), 1);
+    let mut run = null_run(&content, &[]);
+    encounter(
+        &mut run,
+        "conjurer",
+        vec![
+            option(EncounterChoice::MarkRandomCard, 0),
+            option(EncounterChoice::Leave, 0),
+        ],
+    );
+    run.apply(&content, choose(0, None)).expect("dummy");
+    assert_eq!(marked(&run, "dummy"), 1);
+    for (id, character) in [
+        ("crown_inn", Character::Declarer),
+        ("conjurer", Character::NullPlayer),
+    ] {
+        let def = content.encounter(&EncounterId::new(id)).expect(id);
+        assert_eq!(def.characters, vec![character]);
+    }
+    // Preisskat: the next game counts three times.
+    let mut run = relic_run(&content, &[]);
+    encounter(
+        &mut run,
+        "prize_skat",
+        vec![
+            option(EncounterChoice::DoubleNextGame(3), 0),
+            option(EncounterChoice::Leave, 0),
+        ],
+    );
+    run.apply(&content, choose(0, None)).expect("accept");
+    assert_eq!(run.pending_factor(), Some(3));
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(
+        &mut run,
+        &content,
+        Declaration::suit(Suit::Diamonds, RiskLevel::Hand),
+    );
+    assert!(b.lines.iter().any(
+        |l| l.source == Source::Encounter(EncounterId::new("prize_skat"))
+            && l.change == Change::Multiply(3)
+    ));
+    // Gast aus Altenburg: two house rules on offer, plus leaving.
+    let mut only_guest = content.clone();
+    only_guest
+        .encounters
+        .retain(|id, _| id.as_str() == "guest_from_altenburg");
+    only_guest.run.encounter_chance = Factor::ONE;
+    let mut run = relic_run(&only_guest, &[]);
+    run.game = None;
+    let mut events = Vec::new();
+    assert!(run.open_encounter(&only_guest, &mut events));
+    let options = &run.encounter().expect("open").options;
+    assert_eq!(options.len(), 3);
+    for o in &options[..2] {
+        let EncounterChoice::TakeRule(id) = &o.choice else {
+            panic!("{o:?}");
+        };
+        let def = content.relic(id).expect("relic");
+        assert_eq!(def.kind, crate::content::RelicKind::HouseRule);
+    }
+}

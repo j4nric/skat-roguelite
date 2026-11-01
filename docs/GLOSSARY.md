@@ -205,6 +205,40 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Kartengeber | `card_dealer` |
 | Alter Bekannter | `old_friend` |
 | Letzte Runde | `last_round` |
+| Kleinvieh | `every_bit_counts` |
+| Ein Auge zudrücken | `blind_eye` |
+| Lehrgeld | `tuition` (Zähler `tuition`) |
+| Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
+| Auf dem Trockenen | `high_and_dry` |
+| Schneiderbock | `schneider_bock` (Flagge `schneider_bock`) |
+| Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
+| Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |
+| Der Stammgast | `regular_guest` (Zähler `regular`) |
+| Nullachtfuffzehn | `null_eight_fifteen` |
+| Doppelter Boden | `safety_net` |
+| Dicke Sau | `fat_sow` |
+| Glashaus | `glass_house` |
+| Kerbholz | `tally_stick` (Zähler `tally`) |
+| Goldrand | `gold_rim` |
+| Doppelt gezinkt | `double_marked` |
+| Krone | `crown` |
+| Siegel | `seal` |
+| Hufeisen | `horseshoe` |
+| Maßband | `tape_measure` |
+| Glückspfennig | `lucky_penny` |
+| Bierfleck | `beer_stain` |
+| Angeknackst | `cracked` |
+| Schwarze Katze | `black_cat` |
+| Bleigewicht | `lead_weight` |
+| Schlusslicht | `tail_light` |
+| Aufgebrezelt | `dressed_up` |
+| Attrappe | `dummy` |
+| Umgekipptes Bier | `spilled_beer` |
+| Gasthof zur Krone | `crown_inn` |
+| Der Taschenspieler | `conjurer` |
+| Preisskat | `prize_skat` |
+| Gast aus Altenburg | `guest_from_altenburg` |
+| Fluch (negative Kartenmodifikation) | kein eigener Typ; Text beginnt mit „Fluch:“ |
 
 ## Kartennotation
 

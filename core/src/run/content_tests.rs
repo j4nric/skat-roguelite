@@ -693,3 +693,521 @@ fn content_validation_rejects_misplaced_effects() {
         hooks: [OnDeal(when: Won, then: [AddLevels(1)])])]"#;
     assert!(load(bad).is_err());
 }
+
+// ---------------------------------------------------------------------------
+// M4 content: house rules and figures (declarer side). The Null side is
+// tested in `m4_tests`.
+// ---------------------------------------------------------------------------
+
+/// Every item added in M4 loads with German texts, a price and the
+/// character pool it is meant for.
+#[test]
+fn m4_content_items_load_with_texts_prices_and_pools() {
+    let content = content();
+    let null_only = [
+        "null_eight_fifteen",
+        "safety_net",
+        "fat_sow",
+        "glass_house",
+        "tally_stick",
+    ];
+    let declarer_only = ["blind_eye", "high_and_dry", "schneider_bock", "tailor"];
+    for id in [
+        "every_bit_counts",
+        "blind_eye",
+        "tuition",
+        "beer_mat",
+        "high_and_dry",
+        "schneider_bock",
+        "lucky_streak",
+        "tailor",
+        "regular_guest",
+    ]
+    .iter()
+    .chain(&null_only)
+    {
+        let def = content.relic(&RelicId::new(id)).expect(id);
+        assert!(
+            !def.name.is_empty() && !def.text.is_empty() && def.price > 0,
+            "{id}"
+        );
+        if null_only.contains(id) {
+            assert_eq!(def.characters, vec![Character::NullPlayer], "{id}");
+        }
+        if declarer_only.contains(id) {
+            assert_eq!(def.characters, vec![Character::Declarer], "{id}");
+        }
+    }
+    assert!(content.relics.len() >= 30);
+    assert!(content.card_mods.len() >= 20);
+    assert!(content.encounters.len() >= 8);
+    let null_mods = content
+        .card_mods
+        .values()
+        .filter(|m| m.characters == vec![Character::NullPlayer])
+        .count();
+    assert!(null_mods >= 5, "{null_mods}");
+    let curses = content
+        .card_mods
+        .values()
+        .filter(|m| m.text.starts_with("Fluch"))
+        .count();
+    assert_eq!(curses, 3);
+    for def in content.card_mods.values() {
+        assert!(!def.name.is_empty() && !def.text.is_empty() && def.price > 0);
+    }
+}
+
+#[test]
+fn every_bit_counts_makes_sevens_and_eights_worth_one() {
+    let content = content();
+    let mut run = relic_run(&content, &["every_bit_counts"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    for card in run.game().expect("game").game.cards_in_play() {
+        let Some(face) = card.face() else { continue };
+        let expected = match face.rank {
+            crate::cards::Rank::Seven | crate::cards::Rank::Eight => 1,
+            _ => face.rank.card_points(),
+        };
+        assert_eq!(card.card_points, expected, "{face}");
+    }
+    // The declarer takes every trick and the skat: all eight cards.
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.outcome.declarer_card_points, 128);
+    assert!(has_line(
+        &b,
+        &relic("every_bit_counts"),
+        Lever::CardPoints,
+        Change::Add(8)
+    ));
+}
+
+/// Score a suit game with `declarer` Augen under the thresholds of the
+/// game in progress.
+fn score_with_run_thresholds(run: &Run, declarer: u32) -> ScoreBreakdown {
+    let thresholds = &run.game().expect("game").rules.thresholds;
+    let decl = Declaration::new(CLUBS, RiskLevel::Normal).expect("suit or grand");
+    let mit_1 = Matadors {
+        with: true,
+        count: 1,
+    };
+    let outcome = Outcome {
+        declarer_card_points: declarer,
+        defender_card_points: 120 - declarer,
+        declarer_tricks: 5,
+        defender_tricks: 5,
+    };
+    crate::content::score_game(decl, mit_1, &outcome, thresholds, Vec::new())
+}
+
+#[test]
+fn blind_eye_wins_from_58_augen() {
+    let content = content();
+    let mut run = relic_run(&content, &["blind_eye"]);
+    let mut events = Vec::new();
+    run.deal(&content, true, &mut events).expect("deal");
+    assert_eq!(run.game().expect("game").rules.thresholds.win, 58);
+    assert!(score_with_run_thresholds(&run, 58).won);
+    assert!(!score_with_run_thresholds(&run, 57).won);
+    // Without the house rule 58 Augen lose.
+    let mut plain = relic_run(&content, &[]);
+    plain.deal(&content, true, &mut events).expect("deal");
+    assert!(!score_with_run_thresholds(&plain, 58).won);
+}
+
+#[test]
+fn tuition_adds_two_base_value_for_every_lost_game() {
+    let content = content();
+    let mut run = relic_run(&content, &["tuition"]);
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (_, lost) = play(&mut run, &content, hand_game(CLUBS));
+    assert!(!lost.won);
+    assert_eq!(run.counters().get("tuition"), Some(&2));
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, won) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(has_line(
+        &won,
+        &relic("tuition"),
+        Lever::BaseValue,
+        Change::Add(2)
+    ));
+    assert_eq!(won.base_value, 11);
+    // A won game does not raise the counter.
+    assert_eq!(run.counters().get("tuition"), Some(&2));
+}
+
+#[test]
+fn beer_mat_counts_won_hand_games() {
+    let content = content();
+    let mut run = relic_run(&content, &["beer_mat"]);
+    // A lost hand game gives no stroke.
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    play(&mut run, &content, hand_game(CLUBS));
+    assert_eq!(run.counters().get("beer_mat"), None);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (events, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(b.won);
+    assert!(events.contains(&RunEvent::CounterRaised {
+        counter: "beer_mat".into(),
+        value: 1
+    }));
+    let mut events = Vec::new();
+    run.deal(&content, true, &mut events).expect("deal");
+    assert!(run.game().expect("game").lines.contains(&ScoreLine {
+        source: relic("beer_mat"),
+        lever: Lever::BaseValue,
+        change: Change::Add(1),
+    }));
+}
+
+#[test]
+fn high_and_dry_adds_a_level_when_the_defenders_are_dry_after_three_tricks() {
+    let content = content();
+    let mut run = relic_run(&content, &["high_and_dry"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.outcome.defender_card_points, 0);
+    assert!(has_line(
+        &b,
+        &relic("high_and_dry"),
+        Lever::Levels,
+        Change::Add(1)
+    ));
+    // The weak hand gives Augen away early: nothing.
+    let mut run = relic_run(&content, &["high_and_dry"]);
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(CLUBS));
+    assert!(b.lines_of(&relic("high_and_dry")).next().is_none());
+}
+
+#[test]
+fn schneider_bock_doubles_the_game_after_a_won_schneider() {
+    let content = content();
+    let mut run = relic_run(&content, &["schneider_bock"]);
+    run.series.target = 1_000_000;
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (events, first) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(first.won && first.schneider);
+    assert!(first.lines.is_empty());
+    assert!(events.contains(&RunEvent::FlagSet("schneider_bock".into())));
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (events, second) = play(&mut run, &content, hand_game(CLUBS));
+    assert!(events.contains(&RunEvent::FlagCleared("schneider_bock".into())));
+    assert!(has_line(
+        &second,
+        &relic("schneider_bock"),
+        Lever::BaseValue,
+        Change::Multiply(2)
+    ));
+    assert_eq!(second.base_value, 24);
+    // A lost game sets no Bock.
+    assert!(!run.flags().contains("schneider_bock"));
+}
+
+#[test]
+fn lucky_streak_doubles_from_the_third_win_in_a_row_until_a_loss() {
+    let content = content();
+    let mut run = relic_run(&content, &["lucky_streak"]);
+    run.series.target = 1_000_000;
+    let mut doubled = Vec::new();
+    for _ in 0..3 {
+        fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+        let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+        assert!(b.won);
+        doubled.push(has_line(
+            &b,
+            &relic("lucky_streak"),
+            Lever::GameValue,
+            Change::Multiply(2),
+        ));
+    }
+    assert_eq!(doubled, vec![false, false, true]);
+    // A loss counts normally and ends the streak.
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (_, lost) = play(&mut run, &content, hand_game(CLUBS));
+    assert!(!lost.won && lost.multiplier == 1);
+    assert!(!run.flags().contains("streak") && !run.flags().contains("streak_start"));
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.multiplier, 1);
+}
+
+#[test]
+fn the_tailor_counts_80_to_89_augen_as_schneider() {
+    let content = content();
+    let mut run = relic_run(&content, &["tailor"]);
+    let mut events = Vec::new();
+    run.deal(&content, true, &mut events).expect("deal");
+    let b = score_with_run_thresholds(&run, 85);
+    assert!(b.won && b.schneider);
+    assert!(!score_with_run_thresholds(&run, 79).schneider);
+    let mut plain = relic_run(&content, &[]);
+    plain.deal(&content, true, &mut events).expect("deal");
+    assert!(!score_with_run_thresholds(&plain, 85).schneider);
+}
+
+#[test]
+fn the_regular_guest_doubles_won_games_from_the_fourth_series() {
+    let content = content();
+    let mut run = relic_run(&content, &["regular_guest"]);
+    run.series.games_played = run.series.game_limit;
+    let mut events = Vec::new();
+    run.series_won(&content, &mut events).expect("won");
+    assert!(events.contains(&RunEvent::CounterRaised {
+        counter: "regular".into(),
+        value: 1
+    }));
+    // Three series: not yet a Stammgast.
+    let mut run = relic_run(&content, &["regular_guest"]);
+    run.counters.insert("regular".into(), 3);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.multiplier, 1);
+    // Four: won games count double, lost ones normally.
+    let mut run = relic_run(&content, &["regular_guest"]);
+    run.counters.insert("regular".into(), 4);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(has_line(
+        &b,
+        &relic("regular_guest"),
+        Lever::GameValue,
+        Change::Multiply(2)
+    ));
+    let mut run = relic_run(&content, &["regular_guest"]);
+    run.counters.insert("regular".into(), 4);
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(CLUBS));
+    assert_eq!(b.multiplier, 1);
+}
+
+// ---------------------------------------------------------------------------
+// M4 content: card modifications (declarer side)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gold_rim_adds_eight_augen() {
+    let content = content();
+    let mut run = card_mod_run(&content, 7, "gold_rim");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.outcome.declarer_card_points, 128);
+    assert!(has_line(
+        &b,
+        &mod_source("gold_rim", 7),
+        Lever::CardPoints,
+        Change::Add(8)
+    ));
+}
+
+#[test]
+fn double_marked_card_counts_two_ranks_higher() {
+    let content = content();
+    // SK (id 22) ties with the SA (id 23): the earlier card keeps it.
+    let run = card_mod_run(&content, 22, "double_marked");
+    let resolved = resolve_deck(&run.deck, &content, &[]);
+    let find = |id: u32| *resolved.cards.iter().find(|c| c.id == id).expect("card");
+    let (king, ten, ace) = (find(22), find(19), find(23));
+    assert_eq!(king.rank_bonus, 2);
+    assert!(!crate::rules::beats(GameType::Grand, king, king, ten));
+    assert!(!crate::rules::beats(GameType::Grand, king, king, ace));
+    assert!(!crate::rules::beats(GameType::Grand, ace, ace, king));
+}
+
+/// Play the STRONG deal as a diamonds hand game with `card_mod` on the DA.
+fn play_with_mod_on_trump_ace(content: &Content, card_mod: &str) -> ScoreBreakdown {
+    let mut run = card_mod_run(content, 7, card_mod);
+    fixed_deal(&mut run, content, STRONG, STRONG_SKAT);
+    play(&mut run, content, hand_game(DIAMONDS)).1
+}
+
+/// Declare the STRONG deal with `card_mod` on the DA and return the run.
+fn declared_with_mod_on_trump_ace(content: &Content, card_mod: &str, game: GameType) -> Run {
+    let mut run = card_mod_run(content, 7, card_mod);
+    fixed_deal(&mut run, content, STRONG, STRONG_SKAT);
+    run.apply(content, RunAction::Declare(hand_game(game)))
+        .expect("declare");
+    run
+}
+
+#[test]
+fn crown_doubles_the_base_value_when_its_suit_is_trump() {
+    let content = content();
+    let b = play_with_mod_on_trump_ace(&content, "crown");
+    assert!(has_line(
+        &b,
+        &mod_source("crown", 7),
+        Lever::BaseValue,
+        Change::Multiply(2)
+    ));
+    assert_eq!(b.base_value, 18);
+    let run = declared_with_mod_on_trump_ace(&content, "crown", GameType::Grand);
+    assert!(run.game().expect("game").lines.is_empty());
+}
+
+#[test]
+fn seal_adds_a_level_when_its_suit_is_trump() {
+    let content = content();
+    let b = play_with_mod_on_trump_ace(&content, "seal");
+    assert!(has_line(
+        &b,
+        &mod_source("seal", 7),
+        Lever::Levels,
+        Change::Add(1)
+    ));
+    assert_eq!(b.levels, u64::from(b.rule_levels.total()) + 1);
+    let run = declared_with_mod_on_trump_ace(&content, "seal", HEARTS);
+    assert!(run.game().expect("game").lines.is_empty());
+}
+
+#[test]
+fn horseshoe_lowers_the_win_threshold_when_its_suit_is_trump() {
+    let content = content();
+    let run = declared_with_mod_on_trump_ace(&content, "horseshoe", DIAMONDS);
+    let rules = &run.game().expect("game").rules;
+    assert_eq!(rules.thresholds.win, 56);
+    assert_eq!(rules.win_threshold_source, Some(mod_source("horseshoe", 7)));
+    let run = declared_with_mod_on_trump_ace(&content, "horseshoe", GameType::Grand);
+    assert_eq!(run.game().expect("game").rules.thresholds.win, 61);
+}
+
+#[test]
+fn tape_measure_makes_80_to_89_augen_schneider_when_its_suit_is_trump() {
+    let content = content();
+    let run = declared_with_mod_on_trump_ace(&content, "tape_measure", DIAMONDS);
+    assert_eq!(
+        run.game()
+            .expect("game")
+            .rules
+            .thresholds
+            .declarer_schneider,
+        vec![(80, 89)]
+    );
+    let run = declared_with_mod_on_trump_ace(&content, "tape_measure", CLUBS);
+    assert!(
+        run.game()
+            .expect("game")
+            .rules
+            .thresholds
+            .declarer_schneider
+            .is_empty()
+    );
+}
+
+#[test]
+fn lucky_penny_doubles_a_won_game_when_its_card_takes_the_last_trick() {
+    let content = content();
+    // D7 (id 0) wins the tenth trick.
+    let mut run = card_mod_run(&content, 0, "lucky_penny");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(has_line(
+        &b,
+        &mod_source("lucky_penny", 0),
+        Lever::GameValue,
+        Change::Multiply(2)
+    ));
+    // On the DA (id 7), which does not: nothing.
+    let b = play_with_mod_on_trump_ace(&content, "lucky_penny");
+    assert_eq!(b.multiplier, 1);
+}
+
+#[test]
+fn beer_stain_costs_five_augen_but_shows_the_holder() {
+    let content = content();
+    // HA (id 15) lies with seat 1.
+    let mut run = card_mod_run(&content, 15, "beer_stain");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let ace = run
+        .game()
+        .and_then(|a| a.game.cards_in_play().iter().find(|c| c.id == 15).copied())
+        .expect("HA");
+    assert_eq!(ace.card_points, 6);
+    let revealed = run.revealed_holders();
+    assert_eq!(revealed.len(), 1);
+    assert_eq!(revealed[0].1, Some(Seat::DEFENDERS[0]));
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(b.outcome.declarer_card_points, 115);
+    assert!(has_line(
+        &b,
+        &mod_source("beer_stain", 15),
+        Lever::CardPoints,
+        Change::Add(-5)
+    ));
+    // On a seven nothing is lost below zero.
+    let run = card_mod_run(&content, 0, "beer_stain");
+    let resolved = resolve_deck(&run.deck, &content, &[]);
+    assert_eq!(resolved.cards[0].card_points, 0);
+}
+
+#[test]
+fn a_cracked_card_never_wins_but_counts_five_more() {
+    let content = content();
+    let run = card_mod_run(&content, 22, "cracked");
+    let resolved = resolve_deck(&run.deck, &content, &[]);
+    let king = resolved.cards[22];
+    let seven = resolved.cards[16];
+    assert!(king.never_wins);
+    assert_eq!(king.card_points, 9);
+    // The SK cannot even take a led S7.
+    assert!(!crate::rules::beats(GameType::Grand, seven, seven, king));
+}
+
+#[test]
+fn black_cat_lowers_the_base_value_when_its_suit_is_trump() {
+    let content = content();
+    let b = play_with_mod_on_trump_ace(&content, "black_cat");
+    assert!(has_line(
+        &b,
+        &mod_source("black_cat", 7),
+        Lever::BaseValue,
+        Change::Add(-3)
+    ));
+    assert_eq!(b.base_value, 6);
+    let run = card_mod_run(&content, 7, "black_cat");
+    let resolved = resolve_deck(&run.deck, &content, &[]);
+    assert_eq!(resolved.cards[7].rank_bonus, 1);
+    let run = declared_with_mod_on_trump_ace(&content, "black_cat", GameType::Grand);
+    assert!(run.game().expect("game").lines.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// M4 content: unlocks of the new relics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
+    use super::meta::MetaState;
+    let content = content();
+    let locked = MetaState::new().locked_relics(&content);
+    for id in [
+        "regular_guest",
+        "tuition",
+        "lucky_streak",
+        "schneider_bock",
+        "high_and_dry",
+        "beer_mat",
+        "tailor",
+    ] {
+        assert!(locked.contains(&RelicId::new(id)), "{id}");
+    }
+    for id in ["every_bit_counts", "blind_eye", "tally_stick", "safety_net"] {
+        assert!(!locked.contains(&RelicId::new(id)), "{id}");
+    }
+    // Five finished runs earn the Lehrgeld.
+    let mut meta = MetaState::new();
+    let lost: Vec<RunEvent> = (0..5)
+        .map(|_| RunEvent::RunLost {
+            section: 0,
+            index: 0,
+            character: Character::Declarer,
+        })
+        .collect();
+    let earned = meta.observe(&content, &lost);
+    assert!(earned.contains(&crate::content::UnlockId::new("apprenticeship")));
+    assert!(
+        !meta
+            .locked_relics(&content)
+            .contains(&RelicId::new("tuition"))
+    );
+}

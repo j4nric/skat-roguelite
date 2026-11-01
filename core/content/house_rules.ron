@@ -180,4 +180,192 @@
         price: 6,
         passive: [ShowCount],
     ),
+    // ---------------------------------------------------------------------
+    // M4: 14 more house rules and figures. Each turns one lever of the
+    // formula (Designsäule 1), named in the comment. Prices are placeholders
+    // for `balance`. Texts speak of the German deck (Unter, Ober, Daus).
+    // ---------------------------------------------------------------------
+    // Lever Augen: every seven and eight counts 1 Auge, +8 Augen in the
+    // deck (as much as the Alte Dame; with the nines too, +12 Augen, it
+    // measured twice as strong). Like the Alte Dame it helps the declarer
+    // net, because the win threshold stays at 61. For the Nullspieler the
+    // Augen of his ducked sevens go to the defenders and make a Kurzschluss
+    // likelier.
+    (
+        id: "every_bit_counts",
+        name: "Kleinvieh",
+        text: "Kleinvieh macht auch Mist: Jede Sieben und jede Acht zählt 1 Auge. Auch bei den Gegnern.",
+        rarity: Common,
+        price: 7,
+        passive: [
+            SetCardPoints(filter: (rank: Some(Seven)), points: 1),
+            SetCardPoints(filter: (rank: Some(Eight)), points: 1),
+        ],
+    ),
+    // Lever Gewinnschwelle: 58 instead of 61.
+    (
+        id: "blind_eye",
+        characters: [Declarer],
+        name: "Ein Auge zudrücken",
+        text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 58 Augen.",
+        rarity: Common,
+        price: 6,
+        passive: [WinThreshold(58)],
+    ),
+    // Lever Grundwert (counter, grows over the run): +2 per lost game.
+    (
+        id: "tuition",
+        name: "Lehrgeld",
+        text: "Jedes verlorene Spiel ist Lehrgeld: +2 Grundwert für den Rest des Runs.",
+        rarity: Common,
+        price: 5,
+        passive: [AddBaseValueFromCounter("tuition")],
+        hooks: [
+            OnScore(when: Lost, then: [IncrementCounter("tuition"), IncrementCounter("tuition")]),
+        ],
+    ),
+    // Lever Grundwert (counter, grows over the run): +1 per won hand game.
+    (
+        id: "beer_mat",
+        name: "Bierdeckel",
+        text: "Jedes gewonnene Handspiel gibt einen Strich auf den Bierdeckel: +1 Grundwert für den Rest des Runs.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [AddBaseValueFromCounter("beer_mat")],
+        hooks: [
+            OnScore(when: All([Won, HandGame, Not(RamschGame)]), then: [IncrementCounter("beer_mat")]),
+        ],
+    ),
+    // Lever Gewinnstufen: +1 when the defenders have no Auge after three
+    // tricks. Fires during play, so it counts won or lost (a loss from
+    // there is rare).
+    (
+        id: "high_and_dry",
+        characters: [Declarer],
+        name: "Auf dem Trockenen",
+        text: "Haben die Gegner nach drei Stichen noch kein einziges Auge, gibt es eine Gewinnstufe mehr.",
+        rarity: Uncommon,
+        price: 5,
+        hooks: [
+            OnTrickEnd(when: All([TricksPlayed(3), DefenderPointsBelow(1), Not(RamschGame)]), then: [AddLevels(1)]),
+        ],
+    ),
+    // Lever Grundwert ×2 (multiplicative): a Bock after every won Schneider.
+    // Like the Bockrunde it is used up at the declaration.
+    (
+        id: "schneider_bock",
+        characters: [Declarer],
+        name: "Schneiderbock",
+        text: "Nach jedem gewonnenen Schneider zählt das nächste Spiel doppelt.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnScore(when: WonSchneider, then: [SetFlag("schneider_bock")]),
+            OnDeclare(when: Flag("schneider_bock"), then: [MultiplyBaseValue(2), ClearFlag("schneider_bock")]),
+        ],
+    ),
+    // Lever Spielwert ×2 (multiplicative): from the third won game in a
+    // row, every won game counts double until a game is lost. Passing does
+    // not break the streak. Hook order matters: the doubling looks at the
+    // flags of the games before.
+    (
+        id: "lucky_streak",
+        name: "Glückssträhne",
+        text: "Ab dem dritten gewonnenen Spiel in Folge zählt jedes gewonnene Spiel doppelt. Ein verlorenes beendet die Strähne.",
+        rarity: Rare,
+        price: 8,
+        hooks: [
+            OnScore(when: All([Won, Flag("streak")]), then: [MultiplyGameValue(2)]),
+            OnScore(when: All([Won, Flag("streak_start")]), then: [SetFlag("streak")]),
+            OnScore(when: Won, then: [SetFlag("streak_start")]),
+            OnScore(when: Lost, then: [ClearFlag("streak_start"), ClearFlag("streak")]),
+        ],
+    ),
+    // Figure. Lever Schneider: a won game with 80 to 89 Augen is Schneider.
+    (
+        id: "tailor",
+        kind: Regular,
+        characters: [Declarer],
+        name: "Der Schneider",
+        text: "Der Schneider vom Nebentisch nimmt großzügig Maß: Gewinnst du mit 80 bis 89 Augen, sind die Gegner trotzdem Schneider.",
+        rarity: Uncommon,
+        price: 7,
+        passive: [SchneiderFromDeclarerPoints(min: 80, max: 89)],
+    ),
+    // Figure. Lever Spielwert ×2 (multiplicative, late game): counts the
+    // series won with him; from the fourth on, every won game counts double.
+    (
+        id: "regular_guest",
+        kind: Regular,
+        name: "Der Stammgast",
+        text: "Er zählt jede Serie, die du mit ihm gewinnst. Ab der vierten bist du Stammgast: Jedes gewonnene Spiel zählt doppelt.",
+        rarity: Rare,
+        price: 9,
+        hooks: [
+            OnSeriesWon(then: [IncrementCounter("regular")]),
+            OnScore(when: All([Won, CounterAtLeast(counter: "regular", value: 4)]), then: [MultiplyGameValue(2)]),
+        ],
+    ),
+    // Nullspieler only from here.
+    // Lever Grundwert: +8 on every Null, won or lost.
+    (
+        id: "null_eight_fifteen",
+        characters: [NullPlayer],
+        name: "Nullachtfuffzehn",
+        text: "Ein ganz gewöhnliches Null: Grundwert +8, gewonnen wie verloren.",
+        rarity: Common,
+        price: 6,
+        hooks: [
+            OnDeclare(when: NullGame, then: [AddBaseValue(8)]),
+        ],
+    ),
+    // Lever Gewinnstufen: +1 for a won Null with the skat (the counterpart
+    // of Blindflug).
+    (
+        id: "safety_net",
+        characters: [NullPlayer],
+        name: "Doppelter Boden",
+        text: "Gewinnst du ein Null mit Skat, gibt es eine Gewinnstufe mehr.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnScore(when: All([NullGame, Won, Not(HandGame)]), then: [AddLevels(1)]),
+        ],
+    ),
+    // Lever Augen (for the Null formula: Kurzschluss, defenders with 61
+    // Augen after five tricks): every Daus counts 16.
+    (
+        id: "fat_sow",
+        characters: [NullPlayer],
+        name: "Dicke Sau",
+        text: "Jedes Daus zählt 16 Augen. Die Gegner kommen so schneller in den Kurzschluss.",
+        rarity: Common,
+        price: 5,
+        passive: [SetCardPoints(filter: (rank: Some(Ace)), points: 16)],
+    ),
+    // Lever Spielwert ×2 (multiplicative): a won Null Ouvert counts double.
+    (
+        id: "glass_house",
+        characters: [NullPlayer],
+        name: "Glashaus",
+        text: "Wer im Glashaus sitzt, spielt offen: Ein gewonnener Null Ouvert zählt doppelt.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(when: All([Won, NullRiskAtLeast(Ouvert)]), then: [MultiplyGameValue(2)]),
+        ],
+    ),
+    // Lever Grundwert (counter, grows over the run): +2 per won Null.
+    (
+        id: "tally_stick",
+        characters: [NullPlayer],
+        name: "Kerbholz",
+        text: "Jedes gewonnene Null ist eine Kerbe: +2 Grundwert für den Rest des Runs.",
+        rarity: Rare,
+        price: 8,
+        passive: [AddBaseValueFromCounter("tally")],
+        hooks: [
+            OnScore(when: All([NullGame, Won]), then: [IncrementCounter("tally"), IncrementCounter("tally")]),
+        ],
+    ),
 ]
