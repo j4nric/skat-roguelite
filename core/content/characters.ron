@@ -1,36 +1,47 @@
-// Charaktere (DESIGN 9): Startblatt, Startrelikte, Zielwerte und für den
-// Nullspieler die Null-Wertung. Welche Spiele ein Charakter ansagen darf,
-// steht im Code (Alleinspieler: Farbe und Grand, Nullspieler: nur Null).
+// Charaktere (DESIGN 9): Startblatt, Startrelikte, Zielwerte, Null-Wertung
+// und wie oft der Tresen Relikte für eine Spielart anbietet. Jeder Charakter
+// darf Farbspiel, Grand und Null ansagen (ADR 0012).
 //
 // deck: Abweichung vom normalen 32er-Blatt. remove nimmt Karten heraus
 // (je eine Blanko), add füllt die Blankos mit neuen Karten.
 // targets: None nimmt die Zielwerte aus run.ron.
 // null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
-// oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2).
+// oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2). Ohne
+// Angabe Fixed.
+// focus_weights: Gewicht in Prozent, mit dem Tresen, Stempelkissen und
+// Ereignisse Relikte und Modifikationen für Farbspiel und Grand (trump) und
+// für Null (null) anbieten, gemessen an der Seltenheit. Relikte für jedes
+// Spiel zählen immer 100. Ohne Angabe 100 und 100.
 [
     (
         character: Declarer,
         name: "Der Alleinspieler",
-        text: "Spielt Farbe und Grand mit dem normalen Blatt. Der Maßstab für alles. Startet mit dem Zähler.",
+        text: "Spielt Farbe, Grand und Null mit dem normalen Blatt. Der Maßstab für alles. Startet mit dem Zähler.",
         start_relics: ["card_counter"],
+        // Null zählt nach der Skatordnung (23, 35, 46, 59), die Formel mit
+        // Stilbonus hat nur der Nullspieler (DESIGN 9.2).
+        null_scoring: Some(Fixed),
+        // ADR 0012: Null-Relikte liegen auch bei ihm am Tresen, aber
+        // seltener als beim Nullspieler.
+        focus_weights: (trump: 100, null: 50),
     ),
     (
         character: NullPlayer,
         name: "Der Nullspieler",
-        text: "Spielt nur Null: keinen einzigen Stich machen. Sein Blatt hat keine Unter, dafür vier Siebener mehr. Startet mit dem Kiebitz.",
+        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Startet mit dem Kiebitz.",
         start_relics: ["kibitzer"],
-        // Eigene Zielwerte (M5, docs/balance/2026-11-01-m5-v1.md): Ein
-        // gewonnenes Null zählt 23 × (Risikostufe + Stilbonus), mit Relikten
-        // (Bockrunde, Siebenschläfer, Lehrgeld) schnell weit über 100. Mit
-        // Zielwerten nah an denen des Alleinspielers gewinnt der Bot jede
-        // Serie zu 76 bis 86 %. Null-Spielwerte kommen in Stufen von 23; was
-        // zwischen zwei Stufen liegt (etwa 72 bis 92), ist gleich schwer.
+        // Zielwerte des Alleinspielers (run.ron), seit ADR 0012 gemessen:
+        // Mit Farbe und Grand spielt der Bot nur noch rund 30 % seiner Spiele
+        // als Null. Mit den eigenen M5-Zielwerten (72/80/88 bis 198/240/264)
+        // erreichte er Abschnitt 2 nur in 23 % der Runs (Alleinspieler 36 %),
+        // mit denen des Alleinspielers wie dieser (DESIGN 9.2, 3 × 3000 Runs,
+        // --bot pimc:12:3).
         targets: Some([
-            (72, 80, 88),
-            (88, 99, 120),
-            (110, 132, 160),
-            (144, 176, 216),
-            (198, 240, 264),
+            (36, 44, 54),
+            (36, 44, 54),
+            (44, 48, 54),
+            (48, 54, 60),
+            (54, 60, 66),
         ]),
         deck: (
             remove: ["CJ", "SJ", "HJ", "DJ"],
@@ -44,5 +55,8 @@
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
+        // ADR 0012: Null-Relikte doppelt so oft, Relikte für Farbe und Grand
+        // halb so oft (sein Blatt hat keine Unter).
+        focus_weights: (trump: 50, null: 200),
     ),
 ]

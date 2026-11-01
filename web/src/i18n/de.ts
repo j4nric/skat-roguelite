@@ -249,7 +249,6 @@ export const de = {
     playHand: 'Hand spielen',
     playHandHint: 'Der Skat bleibt liegen. Das Spiel zählt eine Stufe mehr.',
     handTitle: 'Handspiel ansagen',
-    nullHandTitle: 'Null Hand ansagen',
     afterSkatTitle: 'Ansage nach dem Skat',
     afterSkatHint: 'Skat aufgenommen und gedrückt. Jetzt sagst du dein Spiel an.',
     back: 'Zurück',
@@ -261,11 +260,9 @@ export const de = {
     redraw: 'Schieben ({left})',
     handRequired: 'Der Boss verlangt ein Handspiel.',
     ouvertRequired: 'Der Angeber verlangt Ouvert.',
-    nullTitle: 'Ansage: Null',
     noTrick: 'Kein Stich!',
-    nullHint: 'Du darfst keinen einzigen Stich machen.',
     nullValue: 'Wert {value}',
-    nullStyle: 'Stilbonus bei Sieg: Siebener unterlaufen, nie bedienen, Kurzschluss.',
+    nullStyle: 'Stilbonus: Siebener unterlaufen, nie bedienen, Kurzschluss.',
     openHand: 'Offen gespielt: Die Gegner sehen deine Karten.',
     ramschTitle: 'Ramsch!',
     ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
@@ -601,7 +598,7 @@ export const de = {
     skatOrHand:
       'Gereizt wird hier nicht, du bist immer der Alleinspieler. Lässt du den Skat liegen und spielst Hand, gibt’s eine Stufe mehr.',
     afterSkat:
-      'Skat aufgenommen, also bleibt’s bei Normal. Schneider, Schwarz oder Ouvert ansagen geht nur aus der Hand, so will es die Skatordnung.',
+      'Skat aufgenommen, also bleibt’s bei Normal. Schneider, Schwarz oder Ouvert ansagen geht nur aus der Hand, so will es die Skatordnung. Null und Null Ouvert gehen immer.',
     afterSkatNull:
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
@@ -641,9 +638,9 @@ export const de = {
       ['Spades', '11'],
       ['Clubs', '12'],
       ['Grand', '24'],
-      ['Null', '23 × Stufe'],
+      ['Null', '23'],
     ] as [string, string][],
-    nullNote: 'Null sagt der Nullspieler an. Seine Stufen: Spiel 1, Hand +1, Ouvert +2, bei Sieg ein Stilbonus.',
+    nullNote: 'Null darf jeder ansagen: 23, Hand 35, Ouvert 46, Ouvert Hand 59. Der Nullspieler rechnet 23 × Stufe (Spiel 1, Hand +1, Ouvert +2), bei Sieg mit Stilbonus.',
     levelsTitle: 'Gewinnstufen',
     levels: [
       'Mit oder ohne: je Spitze eine Stufe, ab dem Eichel-Unter',

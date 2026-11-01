@@ -1,21 +1,35 @@
 //! A simple run policy for the simulator and for tests.
 //!
-//! Games: the declarer heuristic of M1 for the game choice, the discard and
-//! the play, plus run decisions on top:
+//! Games: the declarer heuristic of M1 for the card play and the suit game
+//! or grand, plus run decisions on top. Every character may declare every
+//! game (ADR 0012), so the bot chooses between suit game, grand and Null
+//! for both:
 //!
 //! - **Hand or skat** (Skatordnung, ADR 0011): with ten cards the bot
-//!   declares a hand game only for a very strong hand (eight trumps, or an
-//!   announcement below); otherwise it picks up the skat, chooses the game
-//!   for all twelve cards ([`DeclarerHeuristic::choose_declaration`]),
-//!   discards for that game and declares it.
+//!   declares a hand game only for a very strong hand: Null Ouvert Hand
+//!   without an exposed card (classic Null rule, see
+//!   [`crate::ai::null_exposure`]), a suit game or grand with eight trumps
+//!   or an announcement below. Otherwise it picks up the skat and chooses
+//!   with twelve cards (`RunBot::after_skat`): the suit game or grand of
+//!   [`DeclarerHeuristic::choose_game_after_skat`] or Null (the two most
+//!   exposed cards discarded, Null Ouvert if none is left), whichever has
+//!   the better expected score ([`suit_expected_score`],
+//!   [`null_expected_score`], win rates measured with the PIMC player). Null
+//!   is left out where a won Null counts nothing ("Der Schwarze Peter").
 //! - **Passing** ([`RunBot::is_weak`]): a suit game needs six trumps, or
-//!   five trumps and two aces; a grand needs two jacks and two aces. A
-//!   weaker hand is thrown in, cheapest first: a redeal ("Schieben"), the
-//!   consumable "Neues Blatt", a pass, and with no pass left "Ein Bier"
-//!   for one more. The last game of a series is never passed, because a
-//!   pass there loses the series for sure. The balancing measurement of
-//!   01.11.2026 showed that the weaker hands lose points on average
+//!   five trumps and two aces; a grand needs two jacks and two aces; Null
+//!   at most [`NULL_MAX_EXPOSED`] exposed cards. A hand weak for both is
+//!   thrown in, cheapest first: a redeal ("Schieben"), the consumable
+//!   "Neues Blatt", a pass, and with no pass left "Ein Bier" for one more.
+//!   The last game of a series is never passed, because a pass there loses
+//!   the series for sure. The balancing measurement of 01.11.2026 showed
+//!   that the weaker hands lose points on average
 //!   (`docs/balance/2026-11-01-m2-zielwerte.md`).
+//! - **Forced hand** ("Der Schieber", `RunBot::forced_hand`): Null Hand
+//!   only with at most [`NULL_HAND_MAX_EXPOSED`] exposed cards, else the
+//!   suit game or grand with Hand; the better expected score if both fit.
+//! - **Always open** ("Der Angeber"): an open suit game or grand only with
+//!   an Ouvert hand, otherwise Null Ouvert (Hand without exposed card).
 //! - **Announcements** ([`RunBot::announcement`]): Schneider angesagt or
 //!   Ouvert only for hands that make it almost surely (conservative rules,
 //!   measured against the defender heuristic, see the function), Re on
@@ -28,13 +42,6 @@
 //! bought and Groschen are plenty, leave. Values come from
 //! [`relic_value`] and [`consumable_value`].
 //!
-//! Nullspieler ([`RunBot::null_declaration`]): a hand with more than
-//! [`NULL_MAX_EXPOSED`] exposed cards (classic Null rule, see
-//! [`crate::ai::null_exposure`]) is thrown in like a weak hand; a hand
-//! without exposed card is played Ouvert Hand, otherwise the skat is picked
-//! up, the two most exposed cards go into it, and the game is Null Ouvert
-//! if no exposed card is left, else Null.
-//!
 //! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
 //! of a Stammtisch-Streit, the free card of the Kartengeber, a swap for a
 //! relic worth at least [`SWAP_MARGIN`] more (or, in saves where the new
@@ -42,8 +49,8 @@
 //! double stakes of "Letzte Runde".
 //!
 //! Figures "Die Oma" and "Der Opa": in a hand game the bot takes the card
-//! the run offers from the skat whenever it may, giving away its cheapest
-//! side card. It never discards a card that must not be discarded
+//! the run offers from the skat whenever it may (never in a Null), giving
+//! away its cheapest side card. It never discards a card that must not be discarded
 //! ("Ramponiert") while it has others.
 //!
 //! The bot never looks at the Zielwert or the series account. The
@@ -58,7 +65,7 @@ use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{ConsumableAction, ConsumableId, Content, RelicId};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
-use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
+use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 
 /// How much the bot wants each relic, by the measured effect of the relic
 /// alone (`docs/balance/2026-11-01-m5-v1.md`: PIMC card play, relic from the
@@ -198,6 +205,130 @@ pub fn consumable_value(id: &ConsumableId) -> u32 {
 /// 24.8 % with 6 (6 plays a third more games per run). 5 is the stronger
 /// policy, and the bot stands in for a good player.
 pub const NULL_MAX_EXPOSED: usize = 5;
+
+/// Under forced hand play ("Der Schieber") the bot declares Null Hand only
+/// with at most this many exposed cards: it cannot discard them. Null after
+/// the skat wins 74 % with one and 51 % with two exposed cards left, 28 %
+/// with three ([`NULL_WIN_PERCENT`]).
+pub const NULL_HAND_MAX_EXPOSED: usize = 2;
+
+/// Percent of Null games the bot wins by exposed cards in the ten cards it
+/// plays (index; 0 is played Ouvert). Measured with the PIMC player
+/// (`--bot pimc:12:3`, 01.11.2026), Null after the skat: the Nullspieler
+/// with eight sevens won 94, 74, 51, 28, 19 and 7 % for 0 to 5 (600 runs,
+/// seed 99, 5300 games), the Alleinspieler with the normal deck 99, 79, 58,
+/// 41, 33 and 21 % (300 runs, seed 42, 1100 games). The table is the mean.
+/// More than 7: 0.
+pub const NULL_WIN_PERCENT: [i64; 8] = [96, 76, 54, 34, 26, 14, 7, 3];
+
+/// Percent of suit games the bot wins, by trumps (index, up to 8) and aces
+/// (up to 3) of the ten cards it plays, in a deck with all eleven trumps
+/// (the Alleinspieler, 600 runs, seed 99, 2516 suit games); hands with
+/// fewer than five trumps are rare (the bot passes them) and rounded. A
+/// deck with fewer trumps counts each missing one as held (the
+/// Nullspieler's suits have eight: with four or five he won 92 %).
+pub const SUIT_WIN_PERCENT: [[i64; 4]; 9] = [
+    [0, 0, 5, 10],
+    [0, 0, 5, 10],
+    [0, 5, 10, 15],
+    [0, 5, 15, 20],
+    [5, 20, 44, 50],
+    [5, 23, 52, 85],
+    [55, 74, 81, 93],
+    [94, 94, 97, 98],
+    [98, 98, 98, 98],
+];
+
+/// Trumps of a suit game in the standard deck: four jacks and seven cards.
+const SUIT_TRUMPS: usize = 11;
+
+/// Percent of grands the bot wins by jacks (index) and aces (up to 3), same
+/// measurement (1650 grands, almost all with two jacks and two aces or
+/// more).
+pub const GRAND_WIN_PERCENT: [[i64; 4]; 5] = [
+    [0, 0, 2, 5],
+    [0, 2, 5, 10],
+    [5, 20, 67, 89],
+    [20, 60, 93, 98],
+    [90, 98, 98, 98],
+];
+
+/// Expected style bonus of a won Null in hundredths of a Gewinnstufe:
+/// a ducked seven per seven held, plus this for "nie bedient" and
+/// "Kurzschluss". Measured: a won Null with the skat counts on average
+/// 23 × (1.3 + sevens) (Nullspieler, same measurement).
+const NULL_STYLE_EXTRA: i64 = 30;
+
+fn percent(table: &[i64], index: usize) -> i64 {
+    table.get(index).copied().unwrap_or(0)
+}
+
+/// Expected score of a Null with these ten cards, in hundredths of a point
+/// (won: the value; lost: minus twice the value, as in the series
+/// account), without relics. `exposed` counts the exposed cards
+/// ([`null_unsafe_cards`]). The Null formula (DESIGN 9.2) counts the
+/// expected style bonus, each seven held as one ducked trick.
+#[must_use]
+pub fn null_expected_score(
+    hand: &[DealtCard],
+    exposed: usize,
+    declaration: Declaration,
+    scoring: &NullScoring,
+) -> i64 {
+    let Some(risk) = declaration.null_risk() else {
+        return 0;
+    };
+    let win = percent(&NULL_WIN_PERCENT, exposed);
+    let (won, lost) = match scoring {
+        NullScoring::Fixed => {
+            let value = i64::from(crate::rules::null_value(risk.hand(), risk.ouvert())) * 100;
+            (value, 2 * value)
+        }
+        NullScoring::Formula(f) => {
+            let base = i64::from(f.base_value);
+            let step = i64::from(risk.step()) * 100;
+            let sevens = i64::try_from(count_rank(hand, Rank::Seven)).unwrap_or(0);
+            let style = sevens * i64::from(f.per_seven_ducked) * 100 + NULL_STYLE_EXTRA;
+            (base * (step + style), 2 * base * step)
+        }
+    };
+    (win * won - (100 - win) * lost) / 100
+}
+
+/// Expected score of a suit game or grand with these ten cards, in
+/// hundredths of a point, without relics: the Spielwert with the Spitzen
+/// of `all_cards` (the ten plus the skat, which counts for the Spitzen),
+/// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost twice.
+/// `deck` is every card of the game (for trumps missing from the deck).
+#[must_use]
+pub fn suit_expected_score(
+    hand: &[DealtCard],
+    all_cards: &[DealtCard],
+    deck: &[DealtCard],
+    declaration: Declaration,
+) -> i64 {
+    let game = declaration.game();
+    let Some(base) = game.base_value() else {
+        return 0;
+    };
+    let aces = count_rank(hand, Rank::Ace).min(3);
+    let win = match game {
+        GameType::Grand => GRAND_WIN_PERCENT
+            .get(count_rank(hand, Rank::Jack).min(4))
+            .map_or(0, |row| percent(row, aces)),
+        _ => {
+            let missing = SUIT_TRUMPS.saturating_sub(trump_count(game, deck));
+            SUIT_WIN_PERCENT
+                .get((trump_count(game, hand) + missing).min(8))
+                .map_or(0, |row| percent(row, aces))
+        }
+    };
+    let faces: Vec<Card> = all_cards.iter().filter_map(|c| c.face()).collect();
+    let matadors = crate::rules::matadors(game, &faces).count;
+    let levels = matadors + 1 + u32::from(declaration.hand());
+    let value = i64::from(base) * i64::from(levels) * 100;
+    (win * value - (100 - win) * 2 * value) / 100
+}
 
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
@@ -369,18 +500,6 @@ impl RunBot {
         choose(best.map_or(leave, |(_, i)| i))
     }
 
-    /// The Null declaration of the Nullspieler for a ten-card hand, or
-    /// `None` if the hand is too weak (more than [`NULL_MAX_EXPOSED`]
-    /// exposed cards).
-    #[must_use]
-    pub fn null_declaration(hand: &[DealtCard], deck: &[DealtCard]) -> Option<NullRisk> {
-        match null_unsafe_cards(hand, deck) {
-            0 => Some(NullRisk::OuvertHand),
-            1..=NULL_MAX_EXPOSED => Some(NullRisk::Normal),
-            _ => None,
-        }
-    }
-
     /// Slot of an owned consumable with this action, if usable now.
     fn usable(
         run: &Run,
@@ -514,73 +633,22 @@ impl RunBot {
             return Some(RunAction::AnswerKontra { re });
         }
         match game.phase() {
-            Phase::Declaring if run.character().plays_null() => {
-                let hand = game.hand(Seat::DECLARER);
-                let risk = RunBot::null_declaration(hand, game.deck_cards());
-                if risk.is_none() {
-                    if let Some(action) = Self::throw_in(run, content) {
-                        return Some(action);
-                    }
-                }
-                let mut risk = risk.unwrap_or(NullRisk::Normal);
-                if active.rules.require_hand && !risk.hand() {
-                    risk = if risk.ouvert() {
-                        NullRisk::OuvertHand
-                    } else {
-                        NullRisk::Hand
-                    };
-                }
-                if risk.hand() {
-                    if active.rules.require_ouvert {
-                        risk = NullRisk::OuvertHand;
-                    }
-                    Some(RunAction::Declare(Declaration::null(risk)))
-                } else {
-                    Some(RunAction::PickUpSkat)
-                }
-            }
-            Phase::Declaring => {
-                let hand = game.hand(Seat::DECLARER);
-                let mut declaration = declarer.choose_declaration(hand);
-                if RunBot::is_weak(hand, declaration) {
-                    if let Some(action) = Self::throw_in(run, content) {
-                        return Some(action);
-                    }
-                }
-                declaration = declaration.with_risk(RunBot::announcement(hand, declaration));
-                if active.rules.require_hand && !declaration.hand() {
-                    declaration = declaration.with_risk(RiskLevel::Hand);
-                }
-                if declaration.hand() {
-                    Some(RunAction::Declare(declaration))
-                } else {
-                    Some(RunAction::PickUpSkat)
-                }
-            }
+            Phase::Declaring => Self::before_skat(run, content),
             Phase::Discarding => {
                 // Saves from before ADR 0011 declared before the skat.
-                let declaration = game
-                    .declaration()
-                    .unwrap_or_else(|| Self::game_after_skat(run));
-                let [a, b] =
-                    Self::discard_for(game.hand(Seat::DECLARER), declaration, game.deck_cards())?;
+                if let Some(declaration) = game.declaration() {
+                    let [a, b] = Self::discard_for(
+                        game.hand(Seat::DECLARER),
+                        declaration,
+                        game.deck_cards(),
+                    )?;
+                    return Some(RunAction::Discard([a.id, b.id]));
+                }
+                let (_, [a, b]) = Self::after_skat(run, content)?;
                 Some(RunAction::Discard([a.id, b.id]))
             }
             Phase::DeclaringAfterSkat => {
-                let mut declaration = Self::game_after_skat(run);
-                if declaration.is_null() {
-                    let hand = game.hand(Seat::DECLARER);
-                    let skat = game.skat();
-                    let rest: Vec<DealtCard> = game
-                        .deck_cards()
-                        .iter()
-                        .copied()
-                        .filter(|c| !skat.contains(c))
-                        .collect();
-                    if active.rules.require_ouvert || null_unsafe_cards(hand, &rest) == 0 {
-                        declaration = Declaration::null(NullRisk::Ouvert);
-                    }
-                }
+                let (declaration, _) = Self::after_skat(run, content)?;
                 Some(RunAction::Declare(declaration))
             }
             Phase::Playing => {
@@ -597,18 +665,201 @@ impl RunBot {
         }
     }
 
-    /// The game the bot plays after picking up the skat, without hand
-    /// levels: the Nullspieler Null, the Alleinspieler the game the declarer
-    /// heuristic picks for all twelve cards
-    /// ([`DeclarerHeuristic::choose_game_after_skat`] over the ten dealt
-    /// cards plus the skat, also once discarded, so that discard and
-    /// declaration agree).
-    fn game_after_skat(run: &Run) -> Declaration {
-        if run.character().plays_null() {
-            return Declaration::null(NullRisk::Normal);
+    /// The decision with ten cards (Skatordnung, ADR 0011), for every
+    /// character (ADR 0012):
+    ///
+    /// - Null Ouvert Hand without an exposed card.
+    /// - A hand game of the declarer heuristic (eight trumps, or an
+    ///   announcement from [`RunBot::announcement`]).
+    /// - Throw the hand in ([`RunBot::throw_in`]) if it is weak for a suit
+    ///   game or grand ([`RunBot::is_weak`]) and has more than
+    ///   [`NULL_MAX_EXPOSED`] exposed cards for Null.
+    /// - Otherwise pick up the skat; the game is chosen with twelve cards
+    ///   ([`RunBot::after_skat`]).
+    ///
+    /// "Der Schieber" (hand games only) and "Der Angeber" (always open)
+    /// narrow the choice, see [`RunBot::forced_hand`].
+    fn before_skat(run: &Run, content: &Content) -> Option<RunAction> {
+        let active = run.game()?;
+        let game = &active.game;
+        let hand = game.hand(Seat::DECLARER);
+        let deck = game.deck_cards();
+        let exposed = null_unsafe_cards(hand, deck);
+        let suit = DeclarerHeuristic.choose_declaration(hand);
+        let suit = suit.with_risk(RunBot::announcement(hand, suit));
+        let rules = &active.rules;
+        if rules.require_hand {
+            return Self::forced_hand(run, content);
         }
-        let cards = run.game().map_or(&[][..], |a| a.game.declarer_cards());
-        DeclarerHeuristic.choose_game_after_skat(cards)
+        let null_counts = Self::null_counts(run, content, None);
+        let exposed = if null_counts { exposed } else { usize::MAX };
+        if exposed == 0 {
+            return Some(RunAction::Declare(Declaration::null(NullRisk::OuvertHand)));
+        }
+        if rules.require_ouvert {
+            if suit.ouvert() {
+                return Some(RunAction::Declare(suit));
+            }
+        } else if suit.hand() {
+            return Some(RunAction::Declare(suit));
+        }
+        let weak = if rules.require_ouvert {
+            true
+        } else {
+            RunBot::is_weak(hand, suit)
+        };
+        if weak && exposed > NULL_MAX_EXPOSED {
+            if let Some(action) = Self::throw_in(run, content) {
+                return Some(action);
+            }
+        }
+        Some(RunAction::PickUpSkat)
+    }
+
+    /// A hand game is forced ("Der Schieber"): the declaration with the
+    /// better expected score of the heuristic's suit game or grand with Hand
+    /// and Null Hand (Null Ouvert Hand without an exposed card). Without the
+    /// skat the bot cannot discard its exposed cards, so it takes Null Hand
+    /// only with at most [`NULL_HAND_MAX_EXPOSED`] of them. A weak hand is
+    /// thrown in if it can be; "Der Angeber" leaves Null Ouvert Hand or an
+    /// open suit game.
+    fn forced_hand(run: &Run, content: &Content) -> Option<RunAction> {
+        let active = run.game()?;
+        let game = &active.game;
+        let hand = game.hand(Seat::DECLARER);
+        let exposed = null_unsafe_cards(hand, game.deck_cards());
+        let scoring = run.null_scoring(content);
+        let mut suit = DeclarerHeuristic.choose_declaration(hand);
+        suit = suit.with_risk(RunBot::announcement(hand, suit).max(RiskLevel::Hand));
+        let null = if exposed == 0 || active.rules.require_ouvert {
+            Declaration::null(NullRisk::OuvertHand)
+        } else {
+            Declaration::null(NullRisk::Hand)
+        };
+        let null_ev = null_expected_score(hand, exposed, null, &scoring);
+        let suit_ev = suit_expected_score(hand, hand, game.deck_cards(), suit);
+        let null_fits = exposed <= NULL_HAND_MAX_EXPOSED && Self::null_counts(run, content, None);
+        let suit_fits =
+            !RunBot::is_weak(hand, suit) && (!active.rules.require_ouvert || suit.ouvert());
+        if !null_fits && !suit_fits {
+            if let Some(action) = Self::throw_in(run, content) {
+                return Some(action);
+            }
+        }
+        let take_null = if active.rules.require_ouvert {
+            !suit.ouvert() || null_ev > suit_ev
+        } else {
+            match (null_fits, suit_fits) {
+                (true, false) => true,
+                (false, true) => false,
+                _ => null_ev > suit_ev,
+            }
+        };
+        Some(RunAction::Declare(if take_null { null } else { suit }))
+    }
+
+    /// The game the bot declares after picking up the skat, with the two
+    /// cards it discards for it, from the twelve cards (also once discarded,
+    /// so that discard and declaration agree). For every character (ADR
+    /// 0012) the better expected score of two candidates
+    /// ([`suit_expected_score`], [`null_expected_score`]):
+    ///
+    /// - the suit game or grand the declarer heuristic picks for the twelve
+    ///   cards ([`DeclarerHeuristic::choose_game_after_skat`]), discarding
+    ///   for it;
+    /// - Null, discarding the two most exposed cards, as Null Ouvert if no
+    ///   exposed card is left.
+    ///
+    /// With "Der Angeber" only Null Ouvert can be played open after the
+    /// skat.
+    fn after_skat(run: &Run, content: &Content) -> Option<(Declaration, [DealtCard; 2])> {
+        let active = run.game()?;
+        let game = &active.game;
+        let cards = game.declarer_cards();
+        let deck = game.deck_cards();
+        let null_discard = Self::discard_for(cards, Declaration::null(NullRisk::Normal), deck)?;
+        let null_hand: Vec<DealtCard> = cards
+            .iter()
+            .copied()
+            .filter(|c| !null_discard.contains(c))
+            .collect();
+        let rest: Vec<DealtCard> = deck
+            .iter()
+            .copied()
+            .filter(|c| !null_discard.contains(c))
+            .collect();
+        let exposed = null_unsafe_cards(&null_hand, &rest);
+        let null = if exposed == 0 || active.rules.require_ouvert {
+            Declaration::null(NullRisk::Ouvert)
+        } else {
+            Declaration::null(NullRisk::Normal)
+        };
+        if active.rules.require_ouvert {
+            return Some((null, null_discard));
+        }
+        let suit = DeclarerHeuristic.choose_game_after_skat(cards);
+        let suit_discard = Self::discard_for(cards, suit, deck)?;
+        if !Self::null_counts(run, content, Some(null_discard)) {
+            return Some((suit, suit_discard));
+        }
+        let suit_hand: Vec<DealtCard> = cards
+            .iter()
+            .copied()
+            .filter(|c| !suit_discard.contains(c))
+            .collect();
+        let scoring = run.null_scoring(content);
+        let null_ev = null_expected_score(&null_hand, exposed, null, &scoring);
+        let suit_ev = suit_expected_score(&suit_hand, cards, deck, suit);
+        if null_ev > suit_ev {
+            Some((null, null_discard))
+        } else {
+            Some((suit, suit_discard))
+        }
+    }
+
+    /// Whether a won Null would count anything here: declare Null on a copy
+    /// of the run (after `discard` while discarding) and read the value
+    /// preview, which holds every hook certain for a win. "Der Schwarze
+    /// Peter" (a won game counts only with Schneider) makes it 0. If the
+    /// probe cannot declare Null, it counts.
+    fn null_counts(run: &Run, content: &Content, discard: Option<[DealtCard; 2]>) -> bool {
+        let Some(active) = run.game() else {
+            return true;
+        };
+        let ouvert = active.rules.require_ouvert;
+        let mut probe = run.clone();
+        let risk = match active.game.phase() {
+            Phase::Declaring if ouvert => NullRisk::OuvertHand,
+            Phase::Declaring => NullRisk::Hand,
+            Phase::Discarding => {
+                let Some([a, b]) = discard else {
+                    return true;
+                };
+                if probe
+                    .apply(content, RunAction::Discard([a.id, b.id]))
+                    .is_err()
+                {
+                    return true;
+                }
+                if ouvert {
+                    NullRisk::Ouvert
+                } else {
+                    NullRisk::Normal
+                }
+            }
+            Phase::DeclaringAfterSkat if ouvert => NullRisk::Ouvert,
+            Phase::DeclaringAfterSkat => NullRisk::Normal,
+            Phase::Playing | Phase::Finished(_) => return true,
+        };
+        if probe
+            .apply(content, RunAction::Declare(Declaration::null(risk)))
+            .is_err()
+        {
+            return true;
+        }
+        probe
+            .value_preview(content)
+            .is_none_or(|p| p.game_value > 0)
     }
 
     /// The two discards for `declaration` from the twelve cards: the declarer
@@ -657,6 +908,10 @@ impl RunBot {
         let active = run.game()?;
         let game = &active.game;
         let trump = game.declaration()?.game();
+        // A jack or an ace from the skat only hurts a Null.
+        if trump == GameType::Null {
+            return None;
+        }
         let give = game
             .hand(Seat::DECLARER)
             .iter()
@@ -870,8 +1125,11 @@ mod tests {
         let mut seed = 0;
         let mut run = loop {
             let (run, _) = Run::new(&content, seed).expect("start");
-            let hand = run.game().expect("game").game.hand(Seat::DECLARER);
-            if RunBot::is_weak(hand, DeclarerHeuristic.choose_declaration(hand)) {
+            let game = &run.game().expect("game").game;
+            let hand = game.hand(Seat::DECLARER);
+            if RunBot::is_weak(hand, DeclarerHeuristic.choose_declaration(hand))
+                && null_unsafe_cards(hand, game.deck_cards()) > NULL_MAX_EXPOSED
+            {
                 break run;
             }
             seed += 1;
@@ -901,90 +1159,133 @@ mod tests {
     }
 
     /// Hand only for a very strong hand; otherwise pick up the skat, then
-    /// discard and declare the game chosen for all twelve cards.
+    /// discard and declare the game chosen for all twelve cards: the same
+    /// choice before and after the discard. Both characters play suit
+    /// games, grand and Null (ADR 0012); Null after the skat is Ouvert
+    /// exactly when no exposed card is left.
     #[test]
     fn the_bot_sees_the_skat_before_it_chooses_the_game() {
         let content = Content::load().expect("content");
-        let (mut hand_games, mut skat_games) = (0, 0);
-        for seed in 0..60 {
-            let (mut run, _) = Run::new(&content, seed).expect("start");
-            let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
-            match next(&run) {
-                RunAction::Declare(d) => {
-                    assert!(d.hand(), "seed {seed}: {d:?} before the skat");
-                    hand_games += 1;
+        for character in crate::content::Character::ALL {
+            let start = super::super::RunStart {
+                character,
+                ..super::super::RunStart::default()
+            };
+            let (mut hand_games, mut skat_games, mut nulls) = (0, 0, 0);
+            for seed in 0..80 {
+                let (mut run, _) = Run::new_with(&content, seed, &start).expect("start");
+                let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
+                match next(&run) {
+                    RunAction::Declare(d) => {
+                        assert!(d.hand(), "seed {seed}: {d:?} before the skat");
+                        hand_games += 1;
+                    }
+                    RunAction::PickUpSkat => {
+                        run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+                        let (planned, discard) =
+                            RunBot::after_skat(&run, &content).expect("choice");
+                        let ids = [discard[0].id, discard[1].id];
+                        assert_eq!(next(&run), RunAction::Discard(ids), "seed {seed}");
+                        run.apply(&content, RunAction::Discard(ids))
+                            .expect("discard");
+                        assert_eq!(next(&run), RunAction::Declare(planned), "seed {seed}");
+                        assert!(!planned.hand());
+                        if planned.is_null() {
+                            let game = &run.game().expect("game").game;
+                            let skat = game.skat();
+                            let rest: Vec<DealtCard> = game
+                                .deck_cards()
+                                .iter()
+                                .copied()
+                                .filter(|c| !skat.contains(c))
+                                .collect();
+                            let exposed = null_unsafe_cards(game.hand(Seat::DECLARER), &rest);
+                            assert_eq!(planned.ouvert(), exposed == 0, "seed {seed}");
+                            nulls += 1;
+                        }
+                        run.apply(&content, RunAction::Declare(planned))
+                            .expect("declare");
+                        skat_games += 1;
+                    }
+                    _ => {} // thrown in
                 }
-                RunAction::PickUpSkat => {
-                    let twelve = run.game().expect("game").game.declarer_cards().to_vec();
-                    let planned = DeclarerHeuristic.choose_game_after_skat(&twelve);
-                    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-                    let RunAction::Discard(ids) = next(&run) else {
-                        panic!("seed {seed}: no discard after picking up");
-                    };
-                    let hand = run.game().expect("game").game.hand(Seat::DECLARER);
-                    let expected = RunBot::discard_for(hand, planned, &[]).expect("discard");
-                    assert_eq!(ids, [expected[0].id, expected[1].id], "seed {seed}");
-                    run.apply(&content, RunAction::Discard(ids))
-                        .expect("discard");
-                    assert_eq!(next(&run), RunAction::Declare(planned), "seed {seed}");
-                    assert!(!planned.hand());
-                    run.apply(&content, RunAction::Declare(planned))
-                        .expect("declare");
-                    skat_games += 1;
-                }
-                _ => {} // thrown in
             }
+            assert!(
+                skat_games > 10 && hand_games < skat_games && nulls > 0 && nulls < skat_games,
+                "{character}: {hand_games} {skat_games} {nulls}"
+            );
         }
+    }
+
+    /// The expected scores behind the choice: Null with one exposed card
+    /// and three sevens beats a suit game with five trumps; a suit game
+    /// with seven trumps beats Null with three exposed cards.
+    #[test]
+    fn expected_scores_compare_null_with_suit_games() {
+        let formula = NullScoring::Formula(crate::rules::NullFormula {
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        });
+        let null = Declaration::null(NullRisk::Normal);
+        let sevens = hand("C7 S7 H7 C8 S8 H9 D8 D9 DT DQ");
+        // 76 % of 23 × 4.3, minus 24 % of 46.
+        assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6412);
+        assert!(null_expected_score(&sevens, 4, null, &formula) < 0);
+        // Fixed: 76 % of 23, minus 24 % of 46.
+        assert_eq!(
+            null_expected_score(&sevens, 1, null, &NullScoring::Fixed),
+            644
+        );
+        let hearts = suit(Suit::Hearts);
+        let deck: Vec<DealtCard> = crate::deck::Deck::standard()
+            .cards()
+            .iter()
+            .filter_map(|c| match c.kind {
+                CardKind::Normal(card) => Some(DealtCard::plain(c.id, CardKind::Normal(card))),
+                CardKind::Blank => None,
+            })
+            .collect();
+        let five = hand("HJ HA HT H9 H8 SA S9 C8 D7 D8");
+        let seven = hand("CJ HJ HA HT HK H9 H8 SA S9 C8");
+        // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 60.
+        assert_eq!(suit_expected_score(&five, &five, &deck, hearts), -1320);
+        assert!(suit_expected_score(&seven, &seven, &deck, hearts) > 0);
         assert!(
-            skat_games > 10 && hand_games < skat_games,
-            "{hand_games} {skat_games}"
+            null_expected_score(&sevens, 1, null, &formula)
+                > suit_expected_score(&five, &five, &deck, hearts)
+        );
+        assert!(
+            suit_expected_score(&seven, &seven, &deck, hearts)
+                > null_expected_score(&sevens, 3, null, &formula)
         );
     }
 
+    /// "Der Schieber": Null Hand only with at most two exposed cards.
     #[test]
-    fn the_null_bot_picks_up_and_plays_ouvert_when_nothing_is_exposed() {
+    fn forced_hand_takes_null_only_with_few_exposed_cards() {
         let content = Content::load().expect("content");
-        let start = super::super::RunStart {
-            character: crate::content::Character::NullPlayer,
-            ..super::super::RunStart::default()
-        };
-        let mut seen = [0; 4];
-        for seed in 0..80 {
-            let (mut run, _) = Run::new_with(&content, seed, &start).expect("start");
-            let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
-            match next(&run) {
-                RunAction::Declare(d) => {
-                    assert_eq!(d, Declaration::null(NullRisk::OuvertHand));
-                    seen[0] += 1;
+        for character in crate::content::Character::ALL {
+            let start = super::super::RunStart {
+                character,
+                ..super::super::RunStart::default()
+            };
+            for seed in 0..80 {
+                let (mut run, _) = Run::new_with(&content, seed, &start).expect("start");
+                run.game.as_mut().expect("game").rules.require_hand = true;
+                let game = &run.game().expect("game").game;
+                let exposed = null_unsafe_cards(game.hand(Seat::DECLARER), game.deck_cards());
+                if let Some(RunAction::Declare(d)) = RunBot.next_action(&run, &content) {
+                    assert!(d.hand(), "seed {seed}");
+                    if d.is_null() {
+                        assert!(exposed <= NULL_HAND_MAX_EXPOSED, "seed {seed}: {exposed}");
+                    }
                 }
-                RunAction::PickUpSkat => {
-                    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-                    let action = next(&run);
-                    run.apply(&content, action).expect("discard");
-                    let RunAction::Declare(d) = next(&run) else {
-                        panic!("seed {seed}: no declaration after the discard");
-                    };
-                    let game = &run.game().expect("game").game;
-                    let skat = game.skat();
-                    let rest: Vec<DealtCard> = game
-                        .deck_cards()
-                        .iter()
-                        .copied()
-                        .filter(|c| !skat.contains(c))
-                        .collect();
-                    let exposed = null_unsafe_cards(game.hand(Seat::DECLARER), &rest);
-                    let expected = if exposed == 0 {
-                        NullRisk::Ouvert
-                    } else {
-                        NullRisk::Normal
-                    };
-                    assert_eq!(d, Declaration::null(expected), "seed {seed}");
-                    seen[if exposed == 0 { 1 } else { 2 }] += 1;
-                }
-                _ => seen[3] += 1,
             }
         }
-        assert!(seen[2] > 0, "{seen:?}");
     }
 
     #[test]

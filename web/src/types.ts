@@ -238,8 +238,10 @@ export interface NullRiskOption {
 export interface DeclareOptions {
   games: GameOption[];
   risks: RiskOption[];
-  /** Only for the Nullspieler. */
+  /** Null levels of this phase; every character may declare Null (ADR 0012). */
   null_risks: NullRiskOption[];
+  /** Whether a won Null earns a style bonus (the Nullspieler's formula). */
+  null_style: boolean;
   /** Whether the skat may be picked up (RunAction `PickUpSkat`). */
   can_pick_up_skat: boolean;
   /** "Der Angeber" demands Ouvert. */

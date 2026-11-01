@@ -54,7 +54,7 @@ fn printed(run: &Run) -> Vec<Card> {
 }
 
 #[test]
-fn the_null_player_starts_with_his_deck_relic_and_null_only() {
+fn the_null_player_starts_with_his_deck_relic_and_plays_every_game() {
     let content = content();
     let (run, events) = Run::new_with(
         &content,
@@ -99,27 +99,29 @@ fn the_null_player_starts_with_his_deck_relic_and_null_only() {
             .iter()
             .any(|r| r.card.card.id == card.id && r.holder == Some(seat))
     );
-    // Only Null.
+    // Every game but the Ramsch (ADR 0012).
     let mut probe = run.clone();
-    assert_eq!(
-        probe.apply(
-            &content,
-            RunAction::Declare(Declaration::grand(RiskLevel::Normal))
-        ),
-        Err(RunError::GameNotAvailable)
-    );
     assert_eq!(
         probe.apply(&content, RunAction::Declare(Declaration::Ramsch)),
         Err(RunError::GameNotAvailable)
     );
-    // And the Alleinspieler never Null.
+    assert!(
+        probe
+            .apply(
+                &content,
+                RunAction::Declare(Declaration::grand(RiskLevel::Hand))
+            )
+            .is_ok()
+    );
+    // And the Alleinspieler Null.
     let (mut declarer, _) = Run::new(&content, 3).expect("start");
-    assert_eq!(
-        declarer.apply(
-            &content,
-            RunAction::Declare(Declaration::null(NullRisk::Normal))
-        ),
-        Err(RunError::NullNotAvailable)
+    assert!(
+        declarer
+            .apply(
+                &content,
+                RunAction::Declare(Declaration::null(NullRisk::Hand))
+            )
+            .is_ok()
     );
 }
 
@@ -764,12 +766,13 @@ fn encounter_choices_change_the_run() {
 }
 
 #[test]
-fn locked_relics_and_other_characters_items_are_never_offered() {
+fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
     let content = content();
     let start = RunStart {
         locked_relics: vec![RelicId::new("bock_round"), RelicId::new("old_lady")],
         ..RunStart::default()
     };
+    let mut null_offered = false;
     for seed in 0..60 {
         let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
         run.game = None;
@@ -778,27 +781,33 @@ fn locked_relics_and_other_characters_items_are_never_offered() {
             let shop = run.draw_offer(&content, rerolls);
             for id in shop.relics.iter().flatten() {
                 assert!(!start.locked_relics.contains(id));
-                assert!(id.as_str() != "blind_flight" && id.as_str() != "show_off");
+                null_offered |= id.as_str() == "blind_flight";
             }
         }
     }
-    // The Nullspieler never gets the Alte Dame or Fett.
-    let mut run = null_run(&content, &[]);
-    run.game = None;
-    run.phase = RunPhase::Shop;
-    for rerolls in 0..30 {
-        let shop = run.draw_offer(&content, rerolls);
-        for id in shop.relics.iter().flatten() {
-            let def = content.relic(id).expect("relic");
-            assert!(crate::content::in_pool(
-                &def.characters,
-                Character::NullPlayer
-            ));
-        }
-    }
-    let pool = run.card_mod_pool(&content, &[]);
-    assert!(pool.contains(&CardModId::new("invisible")));
-    assert!(!pool.contains(&CardModId::new("fat")));
+    // ADR 0012: the Alleinspieler meets Null relics too.
+    assert!(null_offered);
+    // Weights: rarity (Common 6, Uncommon 3) times the character's focus
+    // weight in percent (Alleinspieler Null 50; Nullspieler Trump 50, Null
+    // 200; every game 100).
+    let weight = |pool: &[(RelicId, u32)], id: &str| {
+        pool.iter().find(|(r, _)| r.as_str() == id).map(|&(_, w)| w)
+    };
+    let (declarer, _) = Run::new(&content, 1).expect("run");
+    let pool = declarer.relic_pool(&content, false);
+    assert_eq!(weight(&pool, "blind_flight"), Some(300));
+    assert_eq!(weight(&pool, "old_lady"), Some(300));
+    assert_eq!(weight(&pool, "bock_round"), Some(300));
+    let run = null_run(&content, &[]);
+    let pool = run.relic_pool(&content, false);
+    assert_eq!(weight(&pool, "blind_flight"), Some(1200));
+    assert_eq!(weight(&pool, "old_lady"), Some(150));
+    assert_eq!(weight(&pool, "bock_round"), Some(300));
+    let mods = run.card_mod_pool(&content, &[]);
+    let mod_weight = |id: &str| mods.iter().find(|(m, _)| m.as_str() == id).map(|&(_, w)| w);
+    assert_eq!(mod_weight("invisible"), Some(200));
+    assert_eq!(mod_weight("fat"), Some(50));
+    assert_eq!(mod_weight("transparent"), Some(100));
 }
 
 #[test]
@@ -827,7 +836,7 @@ fn the_bot_plays_whole_null_runs() {
         character: Character::NullPlayer,
         ..RunStart::default()
     };
-    let mut won_games = 0;
+    let (mut won_games, mut null_games) = (0, 0);
     for seed in 0..15 {
         let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
         for _ in 0..20_000 {
@@ -836,14 +845,14 @@ fn the_bot_plays_whole_null_runs() {
             };
             for event in run.apply(&content, action).expect("bot") {
                 if let RunEvent::GameScored { breakdown, .. } = event {
-                    assert!(breakdown.declaration.is_null() || breakdown.declaration.is_ramsch());
+                    null_games += u32::from(breakdown.declaration.is_null());
                     won_games += u32::from(breakdown.won);
                 }
             }
         }
         assert!(matches!(run.phase(), RunPhase::Won | RunPhase::Lost));
     }
-    assert!(won_games > 0);
+    assert!(won_games > 0 && null_games > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -911,9 +920,10 @@ fn fat_sow_makes_every_ace_worth_sixteen() {
         .map(|c| c.card_points)
         .collect();
     assert_eq!(aces, vec![16; 4]);
-    // The Alleinspieler never meets it.
+    // Made for Null, but every character meets it (ADR 0012).
     let def = content.relic(&RelicId::new("fat_sow")).expect("fat_sow");
-    assert!(!crate::content::in_pool(
+    assert_eq!(def.focus, crate::content::GameFocus::Null);
+    assert!(crate::content::in_pool(
         &def.characters,
         Character::Declarer
     ));

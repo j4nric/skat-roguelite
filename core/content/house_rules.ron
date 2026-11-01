@@ -13,6 +13,12 @@
 // Uncommon (Spitze, Mit Vieren, Schiedsrichter, Saubere Weste) dafür
 // Common. Vorher lagen die stärksten Relikte alle in der häufigsten Stufe.
 //
+// focus: für welche Spielart das Relikt gemacht ist (All, Trump für
+// Farbspiel und Grand, Null). Seit ADR 0012 liegt jedes Relikt bei jedem
+// Charakter am Tresen; wie oft, sagen die focus_weights in characters.ron.
+// Was ein Relikt tut, steht in seinen Effekten und Bedingungen; Relikte für
+// Farbspiel und Grand, die im Null etwas Unsinniges täten, schließen Null
+// aus (Not(NullGame)).
 // characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
 // Gesperrte Relikte stehen als Belohnung in unlocks.ron.
 [
@@ -38,24 +44,27 @@
     ),
     (
         id: "last_trick_seven",
-        characters: [Declarer],
+        focus: Trump,
         name: "Spitze",
         text: "Machst du den letzten Stich mit einer Sieben, gibt es eine Gewinnstufe mehr.",
         rarity: Common,
         price: 4,
         hooks: [
-            OnScore(when: LastTrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true), then: [AddLevels(1)]),
+            // Im Null wäre der Stich des Alleinspielers schon verloren.
+            OnScore(when: All([LastTrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true), Not(NullGame)]), then: [AddLevels(1)]),
         ],
     ),
     (
         id: "concede",
-        characters: [Declarer],
+        focus: Trump,
         name: "Schenken",
-        text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider.",
+        text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider. Nicht beim Null.",
         rarity: Uncommon,
         price: 8,
         hooks: [
-            OnTrickEnd(when: All([TricksPlayed(5), DefenderPointsBelow(15)]), then: [Concede]),
+            // Im Null hieße Aufgeben, dass der Alleinspieler die übrigen
+            // Stiche bekommt und verliert.
+            OnTrickEnd(when: All([TricksPlayed(5), DefenderPointsBelow(15), Not(NullGame)]), then: [Concede]),
         ],
     ),
     (
@@ -79,7 +88,7 @@
     ),
     (
         id: "virgin",
-        characters: [Declarer],
+        focus: Trump,
         name: "Jungfrau",
         text: "Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider.",
         rarity: Uncommon,
@@ -88,7 +97,7 @@
     ),
     (
         id: "old_lady",
-        characters: [Declarer],
+        focus: Trump,
         name: "Alte Dame",
         text: "Jede Dame zählt 5 Augen. Auch bei den Gegnern.",
         rarity: Uncommon,
@@ -108,7 +117,7 @@
     ),
     (
         id: "march_through",
-        characters: [Declarer],
+        focus: Trump,
         name: "Durchmarsch",
         text: "Gewinnst du Schneider, zählt der Spielwert doppelt.",
         rarity: Rare,
@@ -119,11 +128,11 @@
     ),
     (
         id: "blind_flight",
+        focus: Null,
         name: "Blindflug",
         text: "Gewinnst du ein Null aus der Hand, gibt es eine Gewinnstufe mehr.",
         rarity: Common,
         price: 5,
-        characters: [NullPlayer],
         hooks: [
             OnScore(when: All([NullGame, HandGame, Won]), then: [AddLevels(1)]),
         ],
@@ -149,24 +158,24 @@
     ),
     (
         id: "granny",
+        focus: Trump,
         kind: Regular,
         name: "Die Oma",
         text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich einen Unter aus dem Skat nehmen und dafür eine Karte drücken. Ob einer drin liegt, verrät sie dir.",
         rarity: Rare,
         price: 6,
-        characters: [Declarer],
         passive: [SeriesSkatSwap((rank: Some(Jack)))],
     ),
     // Lever Spitzen and Hand, like "Die Oma" but for the Daus. Both figures
     // together give two swaps per series, one per figure.
     (
         id: "grandpa",
+        focus: Trump,
         kind: Regular,
         name: "Der Opa",
         text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich ein Daus aus dem Skat nehmen und dafür eine Karte drücken. Ob eines drin liegt, verrät er dir.",
         rarity: Rare,
         price: 6,
-        characters: [Declarer],
         passive: [SeriesSkatSwap((rank: Some(Ace)))],
     ),
     (
@@ -180,12 +189,12 @@
     ),
     (
         id: "show_off",
+        focus: Null,
         kind: Regular,
         name: "Der Angeber",
-        text: "Du musst immer offen spielen, dafür zählt Null Ouvert eine Gewinnstufe mehr.",
+        text: "Du musst immer offen spielen: Farbe und Grand nur Ouvert Hand, sonst Null Ouvert. Dafür zählt Null Ouvert eine Gewinnstufe mehr.",
         rarity: Rare,
         price: 6,
-        characters: [NullPlayer],
         passive: [RequireOuvert],
         hooks: [
             OnScore(when: NullRiskAtLeast(Ouvert), then: [AddLevels(1)]),
@@ -225,7 +234,7 @@
     // Lever Gewinnschwelle: 58 instead of 61.
     (
         id: "blind_eye",
-        characters: [Declarer],
+        focus: Trump,
         name: "Ein Auge zudrücken",
         text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 58 Augen.",
         rarity: Common,
@@ -261,20 +270,20 @@
     // there is rare).
     (
         id: "high_and_dry",
-        characters: [Declarer],
+        focus: Trump,
         name: "Auf dem Trockenen",
-        text: "Haben die Gegner nach drei Stichen noch kein einziges Auge, gibt es eine Gewinnstufe mehr.",
+        text: "Haben die Gegner nach drei Stichen noch kein einziges Auge, gibt es eine Gewinnstufe mehr. Nicht beim Null.",
         rarity: Uncommon,
         price: 5,
         hooks: [
-            OnTrickEnd(when: All([TricksPlayed(3), DefenderPointsBelow(1), Not(RamschGame)]), then: [AddLevels(1)]),
+            OnTrickEnd(when: All([TricksPlayed(3), DefenderPointsBelow(1), Not(RamschGame), Not(NullGame)]), then: [AddLevels(1)]),
         ],
     ),
     // Lever Grundwert ×2 (multiplicative): a Bock after every won Schneider.
     // Like the Bockrunde it is used up at the declaration.
     (
         id: "schneider_bock",
-        characters: [Declarer],
+        focus: Trump,
         name: "Schneiderbock",
         text: "Nach jedem gewonnenen Schneider zählt das nächste Spiel doppelt.",
         rarity: Uncommon,
@@ -304,8 +313,8 @@
     // Figure. Lever Schneider: a won game with 80 to 89 Augen is Schneider.
     (
         id: "tailor",
+        focus: Trump,
         kind: Regular,
-        characters: [Declarer],
         name: "Der Schneider",
         text: "Der Schneider vom Nebentisch nimmt großzügig Maß: Gewinnst du mit 80 bis 89 Augen, sind die Gegner trotzdem Schneider.",
         rarity: Uncommon,
@@ -326,11 +335,11 @@
             OnScore(when: All([Won, CounterAtLeast(counter: "regular", value: 4)]), then: [MultiplyGameValue(2)]),
         ],
     ),
-    // Nullspieler only from here.
+    // Made for Null from here (before ADR 0012 only for the Nullspieler).
     // Lever Grundwert: +8 on every Null, won or lost.
     (
         id: "null_eight_fifteen",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Nullachtfuffzehn",
         text: "Ein ganz gewöhnliches Null: Grundwert +8, gewonnen wie verloren.",
         rarity: Common,
@@ -343,7 +352,7 @@
     // of Blindflug).
     (
         id: "safety_net",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Doppelter Boden",
         text: "Gewinnst du ein Null mit Skat, gibt es eine Gewinnstufe mehr.",
         rarity: Common,
@@ -356,9 +365,9 @@
     // Augen after five tricks): every Daus counts 16.
     (
         id: "fat_sow",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Dicke Sau",
-        text: "Jedes Daus zählt 16 Augen. Die Gegner kommen so schneller in den Kurzschluss.",
+        text: "Jedes Daus zählt 16 Augen, in jedem Spiel und bei allen. Beim Null kommen die Gegner so schneller in den Kurzschluss.",
         rarity: Common,
         price: 6,
         passive: [SetCardPoints(filter: (rank: Some(Ace)), points: 16)],
@@ -366,7 +375,7 @@
     // Lever Spielwert ×2 (multiplicative): a won Null Ouvert counts double.
     (
         id: "glass_house",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Glashaus",
         text: "Wer im Glashaus sitzt, spielt offen: Ein gewonnener Null Ouvert zählt doppelt.",
         rarity: Uncommon,
@@ -378,7 +387,7 @@
     // Lever Grundwert (counter, grows over the run): +2 per won Null.
     (
         id: "tally_stick",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Kerbholz",
         text: "Jedes gewonnene Null ist eine Kerbe: +2 Grundwert für den Rest des Runs.",
         rarity: Rare,
@@ -391,7 +400,7 @@
     // Lever Gewinnstufen (Spitzen): mit or ohne 4 and more, one level more.
     (
         id: "with_four",
-        characters: [Declarer],
+        focus: Trump,
         name: "Mit Vieren",
         text: "Spielst du mit oder ohne 4 Spitzen oder mehr, gibt es eine Gewinnstufe mehr.",
         rarity: Common,
@@ -409,7 +418,7 @@
     // Null style, lever Grundwert: a won Null with a seven ducked.
     (
         id: "seven_sleeper",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Siebenschläfer",
         text: "Gewinnst du ein Null, in dem du mit einer Sieben unterlaufen bist: Grundwert +5.",
         rarity: Uncommon,
@@ -422,7 +431,7 @@
     // suit.
     (
         id: "clean_slate",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Saubere Weste",
         text: "Gewinnst du ein Null, in dem du nie bedienen musstest, gibt es zwei Gewinnstufen mehr.",
         rarity: Common,

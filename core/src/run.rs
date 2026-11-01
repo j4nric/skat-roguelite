@@ -54,7 +54,7 @@ use crate::ai::DefenderHeuristic;
 use crate::cards::PlayingCard;
 use crate::content::{
     ActiveSource, BossId, CardFilter, CardModId, Change, Character, ConsumableAction, ConsumableId,
-    Content, Effect, EncounterId, EncounterKind, HookContext, Lever, Rarity, RelicId, RelicKind,
+    Content, Effect, EncounterId, EncounterKind, GameFocus, HookContext, Lever, RelicId, RelicKind,
     RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool,
     resolve_deck, score_parts,
 };
@@ -708,7 +708,9 @@ pub enum RunError {
     NoPassesLeft,
     /// The boss demands a hand game.
     HandRequired,
-    /// The Alleinspieler does not play Null (ADR 0003).
+    /// Null is not available. Never returned since ADR 0012 (every
+    /// character may declare Null); kept so that the error codes stay
+    /// stable.
     NullNotAvailable,
     /// No redeal ("Schieben") left in this series.
     NoRedealLeft,
@@ -762,7 +764,7 @@ pub enum RunErrorCode {
     NoPassesLeft,
     /// The boss demands a hand game.
     HandRequired,
-    /// The Alleinspieler does not play Null.
+    /// Null is not available (never since ADR 0012, kept for stable codes).
     NullNotAvailable,
     /// No redeal ("Schieben") left.
     NoRedealLeft,
@@ -1506,17 +1508,13 @@ impl Run {
         self.deal(content, false, events)
     }
 
-    /// Pick up the skat (ADR 0011). Not if the boss demands a hand game, and
-    /// not if no game declared after the skat could satisfy "Der Angeber"
-    /// (only Null Ouvert can be played open with the skat).
+    /// Pick up the skat (ADR 0011). Not if the boss demands a hand game.
+    /// "Der Angeber" allows it: Null Ouvert can be played open after the
+    /// skat (ADR 0012, every character may declare Null).
     fn pick_up_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        let plays_null = self.character.plays_null();
         let active = self.declaring()?;
         if active.rules.require_hand {
             return Err(RunError::HandRequired);
-        }
-        if active.rules.require_ouvert && !plays_null {
-            return Err(RunError::OuvertRequired);
         }
         let game_events = active.game.pick_up_skat()?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
@@ -1529,7 +1527,6 @@ impl Run {
         declaration: Declaration,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        let character = self.character;
         let active = self.active_mut()?;
         if active.rules.ramsch {
             return Err(RunError::RamschRequired);
@@ -1540,13 +1537,10 @@ impl Run {
         ) {
             return Err(RunError::WrongPhase);
         }
-        match (character.plays_null(), declaration) {
-            (_, Declaration::Ramsch) => return Err(RunError::GameNotAvailable),
-            (false, Declaration::Null { .. }) => return Err(RunError::NullNotAvailable),
-            (true, Declaration::Suit { .. } | Declaration::Grand { .. }) => {
-                return Err(RunError::GameNotAvailable);
-            }
-            _ => {}
+        // Every character may declare every game (ADR 0012); the Ramsch
+        // only comes from "Der Ramscher".
+        if declaration == Declaration::Ramsch {
+            return Err(RunError::GameNotAvailable);
         }
         if active.rules.require_hand && !declaration.hand() {
             return Err(RunError::HandRequired);
@@ -2360,10 +2354,13 @@ impl Run {
     // Tresen
     // -----------------------------------------------------------------------
 
-    /// Relics that may be offered or drawn: for the character, unlocked,
-    /// neither owned nor on the table for the evening; only house rules if
-    /// `house_rules_only`. In id order.
-    fn relic_pool(&self, content: &Content, house_rules_only: bool) -> Vec<(RelicId, Rarity)> {
+    /// Relics that may be offered or drawn, with their draw weight: for the
+    /// character, unlocked, neither owned nor on the table for the evening;
+    /// only house rules if `house_rules_only`. In id order. The weight is
+    /// the rarity weight of `run.ron` times the character's weight for the
+    /// relic's Spielart ([`Run::focus_weight`]).
+    fn relic_pool(&self, content: &Content, house_rules_only: bool) -> Vec<(RelicId, u32)> {
+        let weights = &content.run.shop.rarity_weights;
         content
             .relics
             .values()
@@ -2371,8 +2368,21 @@ impl Run {
             .filter(|r| !self.locked.contains(&r.id))
             .filter(|r| !self.relics.contains(&r.id) && !self.evening_relics.contains(&r.id))
             .filter(|r| !house_rules_only || r.kind == RelicKind::HouseRule)
-            .map(|r| (r.id.clone(), r.rarity))
+            .map(|r| {
+                let weight = weights
+                    .weight(r.rarity)
+                    .saturating_mul(self.focus_weight(content, r.focus));
+                (r.id.clone(), weight)
+            })
             .collect()
+    }
+
+    /// The character's Tresen weight for items made for this Spielart, in
+    /// percent (ADR 0012: the Nullspieler meets Null relics more often).
+    fn focus_weight(&self, content: &Content, focus: GameFocus) -> u32 {
+        content
+            .character(self.character)
+            .map_or(100, |c| c.focus_weights.percent(focus))
     }
 
     /// Draw a deterministic offer from the content pool. Relics the player
@@ -2382,23 +2392,21 @@ impl Run {
     fn draw_offer(&mut self, content: &Content, rerolls: u32) -> Shop {
         let weights = &content.run.shop.rarity_weights;
         let relic_pool = self.relic_pool(content, false);
-        let consumable_pool: Vec<(ConsumableId, Rarity)> = content
+        let consumable_pool: Vec<(ConsumableId, u32)> = content
             .consumables
             .values()
             .filter(|c| in_pool(&c.characters, self.character))
-            .map(|c| (c.id.clone(), c.rarity))
+            .map(|c| (c.id.clone(), weights.weight(c.rarity)))
             .collect();
         let relics = draw_weighted(
             &mut self.shop_rng,
             relic_pool,
             content.run.shop.relic_offers,
-            |r| weights.weight(r),
         );
         let consumables = draw_weighted(
             &mut self.shop_rng,
             consumable_pool,
             content.run.shop.consumable_offers,
-            |r| weights.weight(r),
         );
         Shop {
             relics: relics.into_iter().map(Some).collect(),
@@ -2637,12 +2645,8 @@ impl Run {
                     Some(m) => m.clone(),
                     None => {
                         let options = self.card_mod_pool(content, &card.mods);
-                        let pick = self
-                            .misc_rng
-                            .gen_range(0..u64::try_from(options.len()).unwrap_or(0));
-                        options
-                            .get(usize::try_from(pick).unwrap_or(usize::MAX))
-                            .cloned()
+                        draw_weighted(&mut self.misc_rng, options, 1)
+                            .pop()
                             .ok_or(RunError::NoModAvailable)?
                     }
                 };
@@ -2666,22 +2670,31 @@ impl Run {
     }
 
     /// Card modifications a random draw may give a card that already
-    /// carries `mods`: for the character, unlocked, not on the card yet, no
-    /// curse (DESIGN 7.2: curses only where announced), in id order.
-    fn card_mod_pool(&self, content: &Content, mods: &[CardModId]) -> Vec<CardModId> {
+    /// carries `mods`, with their draw weight: for the character, unlocked,
+    /// not on the card yet, no curse (DESIGN 7.2: curses only where
+    /// announced), in id order. Rarity does not count here; the weight is
+    /// the character's weight for the modification's Spielart
+    /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
+    fn card_mod_pool(&self, content: &Content, mods: &[CardModId]) -> Vec<(CardModId, u32)> {
         self.mod_pool(content, mods, false)
     }
 
     /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
     /// modifications without drawback.
-    fn mod_pool(&self, content: &Content, mods: &[CardModId], curse: bool) -> Vec<CardModId> {
+    fn mod_pool(
+        &self,
+        content: &Content,
+        mods: &[CardModId],
+        curse: bool,
+    ) -> Vec<(CardModId, u32)> {
         content
             .card_mods
             .values()
             .filter(|m| m.curse == curse)
             .filter(|m| in_pool(&m.characters, self.character) && !mods.contains(&m.id))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .map(|m| m.id.clone())
+            .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
+            .filter(|&(_, weight)| weight > 0)
             .collect()
     }
 
@@ -2764,10 +2777,7 @@ impl Run {
         match &def.kind {
             EncounterKind::EveningRule { offers } => {
                 let pool = self.relic_pool(content, true);
-                let weights = &content.run.shop.rarity_weights;
-                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers, |r| {
-                    weights.weight(r)
-                });
+                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers);
                 options.extend(
                     drawn
                         .into_iter()
@@ -2786,11 +2796,7 @@ impl Run {
                     Some(id) => Some(id.clone()),
                     None => {
                         let pool = self.mod_pool(content, &[], *curse);
-                        let pick = self
-                            .encounter_rng
-                            .gen_range(0..u64::try_from(pool.len()).unwrap_or(0));
-                        pool.get(usize::try_from(pick).unwrap_or(usize::MAX))
-                            .cloned()
+                        draw_weighted(&mut self.encounter_rng, pool, 1).pop()
                     }
                 };
                 if let Some(card_mod) = card_mod {
@@ -2808,10 +2814,8 @@ impl Run {
             }
             EncounterKind::SwapRelic => {
                 // The relic received is drawn now, so every option names it.
-                let weights = &content.run.shop.rarity_weights;
                 let pool = self.relic_pool(content, false);
-                let new =
-                    draw_weighted(&mut self.encounter_rng, pool, 1, |r| weights.weight(r)).pop();
+                let new = draw_weighted(&mut self.encounter_rng, pool, 1).pop();
                 if let Some(new) = new {
                     options.extend(self.relics.iter().enumerate().map(|(index, relic)| {
                         free(EncounterChoice::SwapRelic {
@@ -2859,12 +2863,8 @@ impl Run {
             return Ok(id.clone());
         }
         let options = self.card_mod_pool(content, &deck_card.mods);
-        let pick = self
-            .encounter_rng
-            .gen_range(0..u64::try_from(options.len()).unwrap_or(0));
-        options
-            .get(usize::try_from(pick).unwrap_or(usize::MAX))
-            .cloned()
+        draw_weighted(&mut self.encounter_rng, options, 1)
+            .pop()
             .ok_or(RunError::NoModAvailable)
     }
 
@@ -2932,9 +2932,8 @@ impl Run {
                 let new = match new {
                     Some(new) => new.clone(),
                     None => {
-                        let weights = &content.run.shop.rarity_weights;
                         let pool = self.relic_pool(content, false);
-                        draw_weighted(&mut self.encounter_rng, pool, 1, |r| weights.weight(r))
+                        draw_weighted(&mut self.encounter_rng, pool, 1)
                             .pop()
                             .ok_or(RunError::NoModAvailable)?
                     }
@@ -3018,7 +3017,9 @@ pub fn series_target(
     };
     let factor = boss
         .and_then(|b| content.boss(b))
-        .map_or(crate::content::Factor::ONE, |def| def.target_factor);
+        .map_or(crate::content::Factor::ONE, |def| {
+            def.target_factor_for(character)
+        });
     Some(factor.apply(base))
 }
 
@@ -3099,24 +3100,19 @@ fn declarer_point_lines(active: &ActiveGame) -> Vec<ScoreLine> {
         .collect()
 }
 
-/// Draw up to `count` distinct items, weighted by rarity, in a fixed pool
-/// order.
-fn draw_weighted<T: Clone>(
-    rng: &mut Rng,
-    mut pool: Vec<(T, Rarity)>,
-    count: u32,
-    weight: impl Fn(Rarity) -> u32,
-) -> Vec<T> {
+/// Draw up to `count` distinct items by their weight (items of weight 0
+/// never), in a fixed pool order.
+fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -> Vec<T> {
     let mut drawn = Vec::new();
     for _ in 0..count {
-        let total: u64 = pool.iter().map(|(_, r)| u64::from(weight(*r))).sum();
+        let total: u64 = pool.iter().map(|(_, w)| u64::from(*w)).sum();
         if total == 0 {
             break;
         }
         let mut roll = rng.gen_range(0..total);
         let mut chosen = None;
-        for (i, (_, rarity)) in pool.iter().enumerate() {
-            let w = u64::from(weight(*rarity));
+        for (i, (_, weight)) in pool.iter().enumerate() {
+            let w = u64::from(*weight);
             if roll < w {
                 chosen = Some(i);
                 break;

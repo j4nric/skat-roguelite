@@ -46,7 +46,7 @@ pub struct Options {
     pub curve: bool,
     /// Who plays.
     pub character: Character,
-    /// Override of the character's Null scoring.
+    /// Override of the Null scoring of the character that plays.
     pub null_scoring: Option<NullScoring>,
     /// Measure how many runs it takes to earn every unlock.
     pub unlocks: bool,
@@ -101,8 +101,8 @@ impl Options {
         if let Some(scoring) = &self.null_scoring {
             let def = content
                 .characters
-                .get_mut(&Character::NullPlayer)
-                .ok_or("--null-scoring: no Nullspieler in the content")?;
+                .get_mut(&self.character)
+                .ok_or("--null-scoring: unknown character")?;
             def.null_scoring = Some(scoring.clone());
         }
         if content.character(self.character).is_none() {
@@ -219,6 +219,10 @@ pub struct RunStats {
     pub games: u64,
     /// Games won.
     pub games_won: u64,
+    /// Games declared as Null (ADR 0012: every character may).
+    pub null_games: u64,
+    /// Null games won.
+    pub null_won: u64,
     /// Sum of the series account changes of all games.
     pub points: i64,
     /// Passes.
@@ -311,6 +315,10 @@ fn play_run(
                 stats.points += breakdown.score;
                 if breakdown.won {
                     stats.games_won += 1;
+                }
+                if breakdown.declaration.is_null() {
+                    stats.null_games += 1;
+                    stats.null_won += u64::from(breakdown.won);
                 }
             }
             RunEvent::Passed { .. } => stats.passes += 1,
@@ -470,6 +478,13 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         pct(stats.games_won, stats.games),
         stats.passes,
         mean_signed(stats.points, stats.games)
+    );
+    let _ = writeln!(
+        out,
+        "null games: {} ({:.1}% of games) won%={:.1}",
+        stats.null_games,
+        pct(stats.null_games, stats.games),
+        pct(stats.null_won, stats.null_games)
     );
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
     let _ = write!(out, "encounters (opened/taken):");

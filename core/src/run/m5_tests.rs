@@ -10,7 +10,7 @@ use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
-use crate::content::{Condition, EncounterId, Factor, Reward, UnlockId};
+use crate::content::{Condition, EncounterId, Factor, Rarity, Reward, UnlockId};
 use crate::game::GameError;
 use crate::rules::{NullRisk, RiskLevel};
 
@@ -765,7 +765,11 @@ fn rewards_show_kind_and_rarity_and_card_mods_can_be_locked() {
         .expect("start");
     assert_eq!(start.locked_card_mods, vec![honorary.clone()]);
     let (run, _) = Run::new_with(&content, 1, &start).expect("run");
-    assert!(!run.card_mod_pool(&content, &[]).contains(&honorary));
+    assert!(
+        !run.card_mod_pool(&content, &[])
+            .iter()
+            .any(|(m, _)| *m == honorary)
+    );
     assert!(
         MetaState::all_unlocked(&content)
             .locked_card_mods(&content)

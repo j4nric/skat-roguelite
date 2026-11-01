@@ -2,6 +2,8 @@
 // target_factor: Faktor auf den Zielwert der Boss-Serie (Standard 1.0,
 // gesetzt von `balance`).
 // characters: für welche Charaktere der Boss gezogen wird (leer: alle).
+// character_factors: Zielwert-Faktor für einzelne Charaktere statt
+// target_factor (ADR 0012: ein Boss trifft den Nullspieler anders).
 // rotation: Endboss, der die Regeln dieser Bosse nacheinander auflegt, eine
 // pro Spiel.
 [
@@ -11,11 +13,14 @@
         text: "Jedes Spiel ist ein Handspiel.",
         passive: [RequireHand],
         target_factor: 1.0,
-        // M5 (docs/balance/2026-11-01-m5-v1.md): Der Nullspieler gewinnt
-        // Null Hand ohne Skat höchstens in 24 % der Boss-Serien (Zielwert 1),
-        // gegen 76 bis 80 % bei den anderen Bossen. Ein Faktor hilft da
-        // nicht, deshalb nur noch für den Alleinspieler (auch im Alten).
-        characters: [Declarer],
+        // M5: Der Nullspieler gewann Null Hand ohne Skat höchstens 24 % der
+        // Boss-Serien und stand nicht im Pool. Seit ADR 0012 darf er auch
+        // Farbe und Grand, der Bot spielt Null Hand nur mit höchstens zwei
+        // offenen Karten: 52 % bei Zielwert 1, 38 % bei 48 (normale Serie
+        // 85 und 76 %, --curve --boss the_pusher --character null, 600
+        // Serien). Wie der Schwarze Peter beim Alleinspieler (Obergrenze
+        // 53 %) mit eigenem Faktor zurück.
+        character_factors: {NullPlayer: 0.4},
     ),
     (
         id: "kontra_hans",
@@ -39,6 +44,9 @@
         // bis 44 %. 0,3 legt jede Boss-Serie auf höchstens 20, nah an die
         // Obergrenze; schwerer als jede andere bleibt sie.
         target_factor: 0.3,
+        // Das Blatt des Nullspielers hat keine Unter: Die Oma nimmt ihm
+        // nichts und wäre mit 0,3 eine geschenkte Serie (--curve: wie eine
+        // normale Serie). Deshalb weiter nur für den Alleinspieler.
         characters: [Declarer],
     ),
     (
@@ -81,7 +89,11 @@
         // 18,5 %). M5 (PIMC-Spieler): Obergrenze 53 %, im Run 57 bis 60 %.
         // 0,5 hält sie bis 72 über 40 %.
         target_factor: 0.5,
-        characters: [Declarer],
+        // ADR 0012: Ein gewonnenes Null ist nie Schneider, der Nullspieler
+        // muss hier Farbe spielen (ohne Unter). Obergrenze 43,5 %, bei
+        // Zielwert 36 noch 34 % (--curve --boss black_peter --character
+        // null, 600 Serien), wie die Oma beim Alleinspieler (42 %, 0,3).
+        character_factors: {NullPlayer: 0.2},
     ),
     (
         id: "kibitz_killer",

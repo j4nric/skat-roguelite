@@ -20,8 +20,8 @@ export function hintText(id: HintId, ui: UiState): string {
       return t(de.hints.value, { base: p?.base_value ?? '', levels: p?.levels ?? '' });
     }
     case 'afterSkat':
-      // The Nullspieler's Ansage after the skat offers Null levels (from the core).
-      return game?.declare?.null_risks.length ? de.hints.afterSkatNull : de.hints.afterSkat;
+      // Every character may declare Null (ADR 0012); the Nullspieler hears about it first.
+      return ui.view?.character.character === 'NullPlayer' ? de.hints.afterSkatNull : de.hints.afterSkat;
     default:
       return de.hints[id];
   }

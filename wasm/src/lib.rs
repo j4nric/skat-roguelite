@@ -925,7 +925,10 @@ mod tests {
             serde_json::from_str(&null.view().expect("view")).expect("json");
         assert_eq!(view["character"]["character"], "NullPlayer");
         let options = &view["game"]["declare"];
-        assert_eq!(options["games"][0]["game"], "Null");
+        // Every Spielart (ADR 0012), Null last; his Null has the style bonus.
+        assert_eq!(options["games"].as_array().map(Vec::len), Some(6));
+        assert_eq!(options["games"][5]["game"], "Null");
+        assert_eq!(options["null_style"], true);
         // Before the skat only the hand levels: Null Hand, Null Ouvert Hand.
         assert_eq!(options["null_risks"].as_array().map(Vec::len), Some(2));
         assert_eq!(options["null_risks"][0]["risk"], "Hand");

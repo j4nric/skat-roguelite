@@ -255,7 +255,11 @@ fn announced_curses_name_the_curse_and_pay() {
             assert_eq!(run.coins(), 3, "seed {seed}");
         }
         // Every curse of the character's pool can come.
-        let pool = shop_run(&content, 0, character).mod_pool(&content, &[], true);
+        let pool: Vec<CardModId> = shop_run(&content, 0, character)
+            .mod_pool(&content, &[], true)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         assert_eq!(seen.into_iter().collect::<Vec<_>>(), pool, "{character}");
     }
     // Umgekipptes Bier: the Bierfleck on a random card pays 3 Groschen.
