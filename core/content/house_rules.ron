@@ -1,9 +1,17 @@
 // Hausregeln und Stammtisch-Figuren (passive Relikte). Effekte über die
-// Hook-API, siehe core/src/content/effects.rs. Preise (DESIGN 12: Hausregeln
-// 5 bis 8, Figuren 6 bis 10) nach der M2-Messung in
-// docs/balance/2026-11-01-m2-zielwerte.md: starke Hausregeln teurer,
-// Hausregeln ohne messbaren Effekt am unteren Rand. Figurenpreise sind
-// Platzhalter für `balance`.
+// Hook-API, siehe core/src/content/effects.rs. Preise 4 bis 9 nach der
+// M5-Messung (docs/balance/2026-11-01-m5-v1.md, PIMC-Spieler, Relikt ab
+// Spielbeginn ohne Tresen): Wirkung auf „Abschnitt 3 erreicht“ ab +6,5
+// Prozentpunkten 9, ab +4,5 8, ab +3 7, ab +1,5 6, darunter 5; Relikte,
+// die vor allem Menschen nutzen (Hand, Ouvert, Information) oder nur gegen
+// einzelne Bosse wirken, 4 bis 6. Hausregeln und Figuren folgen derselben
+// Staffel.
+//
+// Seltenheit folgt der Stärke (M5): Die drei stärksten Relikte des
+// Alleinspielers (Bockrunde, Alte Dame, Kleinvieh) und das stärkste des
+// Nullspielers (Siebenschläfer) sind Uncommon, die schwächsten bisherigen
+// Uncommon (Spitze, Mit Vieren, Schiedsrichter, Saubere Weste) dafür
+// Common. Vorher lagen die stärksten Relikte alle in der häufigsten Stufe.
 //
 // characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
 // Gesperrte Relikte stehen als Belohnung in unlocks.ron.
@@ -12,8 +20,8 @@
         id: "bock_round",
         name: "Bockrunde",
         text: "Nach jedem verlorenen Spiel zählt das nächste doppelt.",
-        rarity: Common,
-        price: 8,
+        rarity: Uncommon,
+        price: 9,
         hooks: [
             OnScore(when: Lost, then: [SetFlag("bock")]),
             // Erst beim Ansagen verbraucht, damit Einpassen den Bock nicht verschenkt.
@@ -33,8 +41,8 @@
         characters: [Declarer],
         name: "Spitze",
         text: "Machst du den letzten Stich mit einer Sieben, gibt es eine Gewinnstufe mehr.",
-        rarity: Uncommon,
-        price: 5,
+        rarity: Common,
+        price: 4,
         hooks: [
             OnScore(when: LastTrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true), then: [AddLevels(1)]),
         ],
@@ -45,7 +53,7 @@
         name: "Schenken",
         text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider.",
         rarity: Uncommon,
-        price: 7,
+        price: 8,
         hooks: [
             OnTrickEnd(when: All([TricksPlayed(5), DefenderPointsBelow(15)]), then: [Concede]),
         ],
@@ -55,7 +63,7 @@
         name: "Ouvert-Bonus",
         text: "Ouvert zählt zwei Gewinnstufen statt einer. Auch Null Ouvert.",
         rarity: Uncommon,
-        price: 5,
+        price: 4,
         hooks: [
             OnScore(when: Any([RiskAtLeast(Ouvert), NullRiskAtLeast(Ouvert)]), then: [AddLevels(1)]),
         ],
@@ -65,7 +73,7 @@
         name: "Schieben",
         text: "Einmal pro Serie darfst du vor der Ansage neu geben lassen: Alle Hände und der Skat werden neu gemischt, ohne dass ein Spiel verbraucht wird.",
         rarity: Common,
-        price: 5,
+        price: 8,
         // DESIGN 8.1: neu geben statt Skat neu ziehen, Begründung dort.
         passive: [SeriesRedeal],
     ),
@@ -75,7 +83,7 @@
         name: "Jungfrau",
         text: "Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider.",
         rarity: Uncommon,
-        price: 5,
+        price: 7,
         passive: [SchneiderFromDeclarerPoints(min: 61, max: 70)],
     ),
     (
@@ -83,8 +91,8 @@
         characters: [Declarer],
         name: "Alte Dame",
         text: "Jede Dame zählt 5 Augen. Auch bei den Gegnern.",
-        rarity: Common,
-        price: 7,
+        rarity: Uncommon,
+        price: 9,
         passive: [SetCardPoints(filter: (rank: Some(Queen)), points: 5)],
     ),
     (
@@ -92,7 +100,7 @@
         name: "Tournee",
         text: "Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs.",
         rarity: Rare,
-        price: 8,
+        price: 7,
         passive: [AddBaseValueFromCounter("tour")],
         hooks: [
             OnSeriesWon(when: GamesLeftAtLeast(1), then: [IncrementCounter("tour")]),
@@ -104,7 +112,7 @@
         name: "Durchmarsch",
         text: "Gewinnst du Schneider, zählt der Spielwert doppelt.",
         rarity: Rare,
-        price: 5,
+        price: 7,
         hooks: [
             OnScore(when: WonSchneider, then: [MultiplyGameValue(2)]),
         ],
@@ -127,7 +135,7 @@
         name: "Der Kiebitz",
         text: "Schaut den Gegnern über die Schulter: Vor der Ansage zeigt er dir eine zufällige Karte eines Gegners und wer sie hält.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         passive: [PeekDefenderCards(1)],
     ),
     (
@@ -145,7 +153,7 @@
         name: "Die Oma",
         text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich einen Unter aus dem Skat nehmen und dafür eine Karte drücken. Ob einer drin liegt, verrät sie dir.",
         rarity: Rare,
-        price: 8,
+        price: 6,
         characters: [Declarer],
         passive: [SeriesSkatSwap((rank: Some(Jack)))],
     ),
@@ -157,7 +165,7 @@
         name: "Der Opa",
         text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich ein Daus aus dem Skat nehmen und dafür eine Karte drücken. Ob eines drin liegt, verrät er dir.",
         rarity: Rare,
-        price: 8,
+        price: 6,
         characters: [Declarer],
         passive: [SeriesSkatSwap((rank: Some(Ace)))],
     ),
@@ -166,8 +174,8 @@
         kind: Regular,
         name: "Der Schiedsrichter",
         text: "Am Tisch wird nicht geschummelt: Die Zwillinge sehen sich nicht in die Karten, der Revolutionär darf nicht tauschen.",
-        rarity: Uncommon,
-        price: 6,
+        rarity: Common,
+        price: 4,
         passive: [NoCheating],
     ),
     (
@@ -176,7 +184,7 @@
         name: "Der Angeber",
         text: "Du musst immer offen spielen, dafür zählt Null Ouvert eine Gewinnstufe mehr.",
         rarity: Rare,
-        price: 8,
+        price: 6,
         characters: [NullPlayer],
         passive: [RequireOuvert],
         hooks: [
@@ -189,7 +197,7 @@
         name: "Der Zähler",
         text: "Zählt mit: Er zeigt dir laufend die Augen beider Seiten und wie viele Augen du noch nicht gesehen hast.",
         rarity: Common,
-        price: 6,
+        price: 4,
         passive: [ShowCount],
     ),
     // ---------------------------------------------------------------------
@@ -207,8 +215,8 @@
         id: "every_bit_counts",
         name: "Kleinvieh",
         text: "Kleinvieh macht auch Mist: Jede Sieben und jede Acht zählt 1 Auge. Auch bei den Gegnern.",
-        rarity: Common,
-        price: 7,
+        rarity: Uncommon,
+        price: 9,
         passive: [
             SetCardPoints(filter: (rank: Some(Seven)), points: 1),
             SetCardPoints(filter: (rank: Some(Eight)), points: 1),
@@ -221,7 +229,7 @@
         name: "Ein Auge zudrücken",
         text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 58 Augen.",
         rarity: Common,
-        price: 6,
+        price: 8,
         passive: [WinThreshold(58)],
     ),
     // Lever Grundwert (counter, grows over the run): +2 per lost game.
@@ -230,7 +238,7 @@
         name: "Lehrgeld",
         text: "Jedes verlorene Spiel ist Lehrgeld: +2 Grundwert für den Rest des Runs.",
         rarity: Common,
-        price: 5,
+        price: 7,
         passive: [AddBaseValueFromCounter("tuition")],
         hooks: [
             OnScore(when: Lost, then: [IncrementCounter("tuition"), IncrementCounter("tuition")]),
@@ -242,7 +250,7 @@
         name: "Bierdeckel",
         text: "Jedes gewonnene Handspiel gibt einen Strich auf den Bierdeckel: +1 Grundwert für den Rest des Runs.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         passive: [AddBaseValueFromCounter("beer_mat")],
         hooks: [
             OnScore(when: All([Won, HandGame, Not(RamschGame)]), then: [IncrementCounter("beer_mat")]),
@@ -270,7 +278,7 @@
         name: "Schneiderbock",
         text: "Nach jedem gewonnenen Schneider zählt das nächste Spiel doppelt.",
         rarity: Uncommon,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: WonSchneider, then: [SetFlag("schneider_bock")]),
             OnDeclare(when: Flag("schneider_bock"), then: [MultiplyBaseValue(2), ClearFlag("schneider_bock")]),
@@ -285,7 +293,7 @@
         name: "Glückssträhne",
         text: "Ab dem dritten gewonnenen Spiel in Folge zählt jedes gewonnene Spiel doppelt. Ein verlorenes beendet die Strähne.",
         rarity: Rare,
-        price: 8,
+        price: 7,
         hooks: [
             OnScore(when: All([Won, Flag("streak")]), then: [MultiplyGameValue(2)]),
             OnScore(when: All([Won, Flag("streak_start")]), then: [SetFlag("streak")]),
@@ -339,7 +347,7 @@
         name: "Doppelter Boden",
         text: "Gewinnst du ein Null mit Skat, gibt es eine Gewinnstufe mehr.",
         rarity: Common,
-        price: 5,
+        price: 7,
         hooks: [
             OnScore(when: All([NullGame, Won, Not(HandGame)]), then: [AddLevels(1)]),
         ],
@@ -352,7 +360,7 @@
         name: "Dicke Sau",
         text: "Jedes Daus zählt 16 Augen. Die Gegner kommen so schneller in den Kurzschluss.",
         rarity: Common,
-        price: 5,
+        price: 6,
         passive: [SetCardPoints(filter: (rank: Some(Ace)), points: 16)],
     ),
     // Lever Spielwert ×2 (multiplicative): a won Null Ouvert counts double.
@@ -362,7 +370,7 @@
         name: "Glashaus",
         text: "Wer im Glashaus sitzt, spielt offen: Ein gewonnener Null Ouvert zählt doppelt.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, NullRiskAtLeast(Ouvert)]), then: [MultiplyGameValue(2)]),
         ],
@@ -374,7 +382,7 @@
         name: "Kerbholz",
         text: "Jedes gewonnene Null ist eine Kerbe: +2 Grundwert für den Rest des Runs.",
         rarity: Rare,
-        price: 8,
+        price: 6,
         passive: [AddBaseValueFromCounter("tally")],
         hooks: [
             OnScore(when: All([NullGame, Won]), then: [IncrementCounter("tally"), IncrementCounter("tally")]),
@@ -386,8 +394,8 @@
         characters: [Declarer],
         name: "Mit Vieren",
         text: "Spielst du mit oder ohne 4 Spitzen oder mehr, gibt es eine Gewinnstufe mehr.",
-        rarity: Uncommon,
-        price: 6,
+        rarity: Common,
+        price: 4,
         hooks: [
             OnScore(
                 when: Any([
@@ -404,8 +412,8 @@
         characters: [NullPlayer],
         name: "Siebenschläfer",
         text: "Gewinnst du ein Null, in dem du mit einer Sieben unterlaufen bist: Grundwert +5.",
-        rarity: Common,
-        price: 5,
+        rarity: Uncommon,
+        price: 8,
         hooks: [
             OnScore(when: All([NullGame, Won, SevenDucked]), then: [AddBaseValue(5)]),
         ],
@@ -417,8 +425,8 @@
         characters: [NullPlayer],
         name: "Saubere Weste",
         text: "Gewinnst du ein Null, in dem du nie bedienen musstest, gibt es zwei Gewinnstufen mehr.",
-        rarity: Uncommon,
-        price: 6,
+        rarity: Common,
+        price: 5,
         hooks: [
             OnScore(when: All([NullGame, Won, NeverFollowedSuit]), then: [AddLevels(2)]),
         ],

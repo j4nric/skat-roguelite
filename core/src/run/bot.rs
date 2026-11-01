@@ -60,85 +60,87 @@ use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
 use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
 
-/// How much the bot wants each relic, roughly by the measured effect of
-/// the relic alone (`docs/balance/2026-11-01-m2-zielwerte.md`, "Einzeln ab
-/// Spielbeginn"). The bot buys the highest value it can afford and swaps a
-/// relic for one that is worth at least [`SWAP_MARGIN`] more. Relics not
-/// listed are worth [`DEFAULT_RELIC_VALUE`].
+/// How much the bot wants each relic, by the measured effect of the relic
+/// alone (`docs/balance/2026-11-01-m5-v1.md`: PIMC card play, relic from the
+/// start, no Tresen, 3 × 500 runs; change of "section 3 reached" in
+/// percentage points for the Alleinspieler unless noted). The bot buys the
+/// highest value it can afford and swaps a relic for one that is worth at
+/// least [`SWAP_MARGIN`] more; value 0 is never bought. One table serves
+/// both characters. Relics not listed are worth [`DEFAULT_RELIC_VALUE`].
 ///
-/// | Relic | Value | Why |
+/// | Relic | Value | Measured |
 /// |---|---|---|
-/// | `bock_round` | 10 | strongest early (+38 % section 2) |
-/// | `old_lady` | 9 | +33 % section 2 |
-/// | `concede` | 8 | +24 % section 2, Schneider for free |
-/// | `march_through` | 7 | Schneider counts double; pairs with `concede` |
-/// | `tour` | 6 | weak early, scales late (+29 % section 3) |
-/// | `virgin` | 6 | 61 to 70 Augen count as Schneider |
-/// | `skat_redraw` | 6 | one free redeal per series, a pass that costs no game |
-/// | `kontra` | 3 | only helps against high Zielwerte, hurts early |
-/// | `last_trick_seven` | 2 | rare: last trick with a seven |
-/// | `ouvert_bonus` | 1 | the bot almost never plays Ouvert |
-/// | `landlord` | 5 | cheaper Tresen |
-/// | `blind_flight` | 4 | Null Hand +1 level |
-/// | `granny` | 4 | a jack from the skat in hand games |
-/// | `referee` | 2 | only against two bosses |
-/// | `show_off` | 2 | Ouvert forced: strong but risky |
-/// | `kibitzer` | 1 | information the bot does not use |
-/// | `card_counter` | 1 | information the bot does not use |
-/// | `every_bit_counts` | 9 | +8 Augen in the deck, like the Alte Dame |
-/// | `blind_eye` | 7 | wins from 58 Augen |
-/// | `tailor` | 6 | 80 to 89 Augen count as Schneider |
-/// | `lucky_streak` | 8 | won games count double from the third in a row; alone: section 4 in 2.1 % instead of 0.6 % |
-/// | `regular_guest` | 7 | doubles won games after four series; alone: section 4 in 2.8 % instead of 0.6 % |
-/// | `tuition` | 4 | +2 Grundwert per lost game, small effect for the bot |
-/// | `high_and_dry` | 3 | +1 level when the defenders are dry after three tricks, rare |
-/// | `schneider_bock` | 4 | Bock after a won Schneider |
-/// | `beer_mat` | 2 | the bot rarely plays hand |
-/// | `null_eight_fifteen` | 7 | Null: +8 Grundwert on every Null |
-/// | `tally_stick` | 6 | Null: +2 Grundwert per won Null |
-/// | `safety_net` | 6 | Null: +1 level for a won Null with the skat, the bot's usual Null |
-/// | `fat_sow` | 4 | Null: aces 16 Augen, more Kurzschluss |
-/// | `glass_house` | 2 | Null: the bot rarely plays Null Ouvert |
-/// | `grandpa` | 4 | a Daus from the skat in hand games, like `granny` |
-/// | `with_four` | 3 | +1 level with mit or ohne 4, about one game in ten |
-/// | `seven_sleeper` | 6 | Null: +5 Grundwert, the Null deck has eight sevens |
-/// | `clean_slate` | 3 | Null: +2 levels when never following suit, rare |
+/// | `every_bit_counts` | 10 | +8.3 section 3 (Nullspieler +0.8) |
+/// | `bock_round` | 10 | +7.1 (Nullspieler +7.7) |
+/// | `old_lady` | 10 | +7.1 |
+/// | `regular_guest` | 8 | +5.6, section 4 +6.7: the late multiplier |
+/// | `concede` | 8 | +5.1 |
+/// | `blind_eye` | 8 | +4.9 |
+/// | `seven_sleeper` | 8 | Null: +5.5 |
+/// | `skat_redraw` | 7 | +3.5 (Nullspieler +4.7) |
+/// | `march_through` | 7 | +4.5 |
+/// | `safety_net` | 7 | Null: +4.3 |
+/// | `lucky_streak` | 6 | +4.0, section 4 +4.0 (Nullspieler +0.1) |
+/// | `tuition` | 6 | +2.3 (Nullspieler +4.2) |
+/// | `virgin` | 6 | +3.2 |
+/// | `tour` | 6 | +3.1, grows over the run |
+/// | `tailor` | 6 | +3.1 |
+/// | `landlord` | 5 | cheaper Tresen, measured in runs with the Tresen |
+/// | `null_eight_fifteen` | 5 | Null: +2.9 |
+/// | `tally_stick` | 5 | Null: +2.7 |
+/// | `fat_sow` | 4 | Null: +1.7 |
+/// | `kontra` | 3 | +1.6, variance: helps late, hurts the Nullspieler (-0.9) |
+/// | `kibitzer` | 3 | +1.3, PIMC samples use the peeked card |
+/// | `high_and_dry` | 3 | +1.2 |
+/// | `schneider_bock` | 3 | +1.1 |
+/// | `granny` | 2 | +0.5, the bot rarely plays hand |
+/// | `grandpa` | 2 | +0.3, the bot rarely plays hand |
+/// | `last_trick_seven` | 2 | +0.4 |
+/// | `with_four` | 2 | +0.1 |
+/// | `blind_flight` | 2 | Null: +0.3, the bot rarely plays Null Hand |
+/// | `referee` | 1 | +0.2, only against two bosses |
+/// | `beer_mat` | 1 | +0.4, the bot rarely plays hand |
+/// | `ouvert_bonus` | 1 | 0, the bot almost never plays Ouvert |
+/// | `glass_house` | 1 | Null: +0.3, the bot rarely plays Null Ouvert |
+/// | `clean_slate` | 1 | Null: +0.1, the bot almost never avoids following suit |
+/// | `card_counter` | 1 | information the PIMC bot already has |
+/// | `show_off` | 0 | Null: -15.9, forced Ouvert ruins the bot: never bought |
 pub const RELIC_VALUES: [(&str, u32); 35] = [
+    ("every_bit_counts", 10),
     ("bock_round", 10),
-    ("old_lady", 9),
+    ("old_lady", 10),
+    ("regular_guest", 8),
     ("concede", 8),
+    ("blind_eye", 8),
+    ("seven_sleeper", 8),
+    ("skat_redraw", 7),
     ("march_through", 7),
-    ("tour", 6),
+    ("safety_net", 7),
+    ("lucky_streak", 6),
+    ("tuition", 6),
     ("virgin", 6),
-    ("skat_redraw", 6),
-    ("landlord", 5),
-    ("blind_flight", 4),
-    ("granny", 4),
-    ("kontra", 3),
-    ("last_trick_seven", 2),
-    ("referee", 2),
-    ("show_off", 2),
-    ("ouvert_bonus", 1),
-    ("kibitzer", 1),
-    ("card_counter", 1),
-    ("every_bit_counts", 9),
-    ("blind_eye", 7),
+    ("tour", 6),
     ("tailor", 6),
-    ("lucky_streak", 8),
-    ("regular_guest", 7),
-    ("tuition", 4),
-    ("high_and_dry", 3),
-    ("schneider_bock", 4),
-    ("beer_mat", 2),
-    ("null_eight_fifteen", 7),
-    ("tally_stick", 6),
-    ("safety_net", 6),
+    ("landlord", 5),
+    ("null_eight_fifteen", 5),
+    ("tally_stick", 5),
     ("fat_sow", 4),
-    ("glass_house", 2),
-    ("grandpa", 4),
-    ("with_four", 3),
-    ("seven_sleeper", 6),
-    ("clean_slate", 3),
+    ("kontra", 3),
+    ("kibitzer", 3),
+    ("high_and_dry", 3),
+    ("schneider_bock", 3),
+    ("granny", 2),
+    ("grandpa", 2),
+    ("last_trick_seven", 2),
+    ("with_four", 2),
+    ("blind_flight", 2),
+    ("referee", 1),
+    ("beer_mat", 1),
+    ("ouvert_bonus", 1),
+    ("glass_house", 1),
+    ("clean_slate", 1),
+    ("card_counter", 1),
+    ("show_off", 0),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
@@ -190,9 +192,12 @@ pub fn consumable_value(id: &ConsumableId) -> u32 {
 /// The Nullspieler plays a hand with at most this many exposed cards
 /// (before the skat). Measured with the Null formula (DESIGN 9.2, 3 × 1000
 /// runs): with 2 the bot reaches section 2 in 15 %, with 4 in 28 %, with 5
-/// in 35 %; 4 keeps the Nullspieler close to the Alleinspieler. Hands with
-/// 3 or 4 exposed cards win 60 % and 45 % of their games.
-pub const NULL_MAX_EXPOSED: usize = 4;
+/// in 35 %. Hands with 3 or 4 exposed cards win 60 % and 45 % of their
+/// games. M5 (`docs/balance/2026-11-01-m5-v1.md`, PIMC card play, 8 games
+/// and 6 passes per series): section 3 in 20.1 % with 4, 25.1 % with 5 and
+/// 24.8 % with 6 (6 plays a third more games per run). 5 is the stronger
+/// policy, and the bot stands in for a good player.
+pub const NULL_MAX_EXPOSED: usize = 5;
 
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
@@ -788,15 +793,15 @@ mod tests {
     #[test]
     fn shop_swaps_the_weakest_relic_for_a_clearly_better_one() {
         let content = Content::load().expect("content");
-        let mut run = open_shop(&content, 5);
+        let mut run = open_shop(&content, 6);
         run.relics = ["kontra", "ouvert_bonus", "tour", "virgin", "concede"]
             .iter()
             .map(|r| RelicId::new(r))
             .collect();
         offer(&mut run, &["bock_round"], &[]);
-        // Bock costs 8; selling Ouvert-Bonus brings 2: 7 is not enough.
+        // Bock costs 9; selling Ouvert-Bonus brings 2: 8 is not enough.
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
-        run.coins = 6;
+        run.coins = 7;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::SellRelic(1));
         run.apply(&content, RunAction::SellRelic(1)).expect("sell");
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::BuyRelic(0));

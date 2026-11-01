@@ -611,10 +611,17 @@ mod tests {
         assert_eq!(back, meta);
         let view = meta.view(&content);
         assert_eq!(view.unlocks.len(), content.unlocks.len());
+        // The Nullspieler is unlocked by a won run. Since the v1 balancing
+        // (docs/balance/2026-11-01-m5-v1.md) the bot may win one of the 30
+        // runs, so the view must match whichever happened.
+        let tour_won = meta.is_unlocked(&UnlockId::new("tour_won"));
+        let expected = (!tour_won).then(|| UnlockId::new("tour_won"));
         assert!(
             view.characters
                 .iter()
-                .any(|c| !c.unlocked && c.unlocked_by == Some(UnlockId::new("tour_won")))
+                .any(|c| c.character == Character::NullPlayer
+                    && c.unlocked == tour_won
+                    && c.unlocked_by == expected)
         );
     }
 

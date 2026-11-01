@@ -167,9 +167,10 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["fresh_deck", "ink_pad", "beer", "new_deal"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Calibrated in docs/balance/2026-11-01-m2-zielwerte.md.
-    assert_eq!(content.run.targets[0], (18, 20, 24));
-    assert_eq!(content.run.targets[4], (132, 154, 180));
+    // Calibrated in docs/balance/2026-11-01-m5-v1.md (v1, PIMC player).
+    assert_eq!(content.run.targets[0], (36, 44, 54));
+    assert_eq!(content.run.targets[4], (60, 66, 72));
+    assert_eq!((content.run.game_limit, content.run.passes), (8, 6));
 }
 
 // ---------------------------------------------------------------------------

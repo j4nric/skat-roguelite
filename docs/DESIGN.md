@@ -125,33 +125,48 @@ Run (eine Tournee)
 | Ebene | Skat-Begriff | Genre-Gegenstück | Dauer |
 |---|---|---|---|
 | Ein Spiel | Skat, Ansage, 10 Stiche, Abrechnung | Eine Hand | ~90 Sekunden |
-| Eine Serie | 3 bis 5 Spiele mit Punkteziel | Ein Blind | 5 bis 8 Minuten |
+| Eine Serie | bis zu 8 Spiele mit Punkteziel, meist 2 bis 3 gespielt | Ein Blind | 3 bis 5 Minuten |
 | Ein Abschnitt | Skatabend in einer Kneipe | Ein Ante | 15 bis 20 Minuten |
 | Der Run | Tournee durch 3 bis 5 Kneipen | Der Run | 45 bis 60 Minuten |
 
 ### 5.1 Die Serie
 
-- Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit** (in M2: 5 Spiele, davon bis zu 3 Pässe).
+- Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit** (seit M5: 8 Spiele, davon bis zu 6 Pässe; in M2: 5 und 3, Begründung in 5.2).
 - Gewonnene Spiele addieren ihren Spielwert. Verlorene Spiele ziehen den doppelten Spielwert ab.
 - Der Spieler darf ein Spiel **einpassen** (nicht spielen). Das kostet ein Spiel vom Limit, aber keine Punkte. Zahl der erlaubten Pässe ist begrenzt und durch Relikte erweiterbar.
 - Wer das Limit erreicht, ohne den Zielwert zu schaffen, verliert den Run.
 - Übrige Spiele am Ende einer gewonnenen Serie werden in Groschen umgewandelt (Zinsmechanik wie in Balatro).
 
-### 5.2 Zielwert-Progression (M2, kalibriert)
+### 5.2 Zielwert-Progression (M5, kalibriert)
 
-Spiellimit 5, Pässe 3 pro Serie. Die Zielwerte sind Reizwerte.
+Spiellimit 8, Pässe 6 pro Serie. Die Zielwerte des Alleinspielers sind Reizwerte (`run.ron`), der Nullspieler hat eigene (`characters.ron`, 9.2).
 
-| Abschnitt | Serie 1 | Serie 2 | Boss |
+| Abschnitt | Gegner | Alleinspieler | Nullspieler |
 |---|---|---|---|
-| 1 | 18 | 20 | 24 |
-| 2 | 27 | 33 | 36 |
-| 3 | 44 | 54 | 63 |
-| 4 | 77 | 90 | 110 |
-| 5 | 132 | 154 | 180 |
+| 1 | Heuristik | 36 / 44 / 54 | 72 / 80 / 88 |
+| 2 | PIMC 6:2 | 44 / 48 / 54 | 88 / 99 / 120 |
+| 3 | PIMC 8:3 | 48 / 54 / 60 | 110 / 132 / 160 |
+| 4 | PIMC 12:3 | 54 / 60 / 66 | 144 / 176 / 216 |
+| 5 | PIMC 16:3 | 60 / 66 / 72 | 198 / 240 / 264 |
 
-Kalibriert am 01.11.2026 mit dem Simulator gegen den Run-Bot, Messung und Begründung in `docs/balance/2026-11-01-m2-zielwerte.md`. Mit diesen Werten gewinnt der Bot Serie 1-1 in 70 % der Runs, 26 % erreichen Abschnitt 2, 7 % Abschnitt 3, 1 % Abschnitt 4. Das liegt nah an der Decke des Bots: Selbst mit Zielwert 1 überall erreicht er nur 31 % Abschnitt 2.
+Kalibriert am 01.11.2026 gegen den PIMC-Spieler (`--bot pimc:12:3`, Kartenspiel per Double-Dummy-Stichproben, Ansage, Passen und Tresen vom `RunBot`), Messung in `docs/balance/2026-11-01-m5-v1.md`. Zielbild: Ein guter Spieler erreicht Abschnitt 2 in etwa einem Drittel der Runs und gewinnt selten, aber messbar; beide Charaktere liegen gleichauf. Ergebnis (3 × 3000 Runs, Seeds 42 bis 44):
 
-Zur Einordnung: 18 ist der kleinste Wert eines gewonnenen Spiels, Serie 1-1 heißt also „ein Spiel netto gewinnen“. Ein durchschnittlicher Grand ohne Upgrades liegt bei 48 bis 72 Punkten. Die Kurve wächst um den Faktor 1,6 bis 1,7 pro Abschnitt, weil keine M2-Hausregel multiplikativ skaliert. Der erste Entwurf (60 bis 20 000) setzte das voraus. Abschnitt 4 und 5 sind mit dem Bot kaum gemessen und gelten als Vorschlag. In M5 wird die Kurve mit PIMC-KI und Testspielen neu kalibriert. Für Menschen ist Abschnitt 1 bis dahin bewusst leicht.
+| Abschnitt erreicht | 2 | 3 | 4 | 5 | Run gewonnen |
+|---|---|---|---|---|---|
+| Alleinspieler | 36,3 % | 14,5 % | 6,5 % | 3,0 % | 1,3 % |
+| Nullspieler | 37,0 % | 16,9 % | 8,1 % | 3,9 % | 1,6 % |
+
+```sh
+cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3
+cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3 --character null
+# dasselbe mit --seed 43 und --seed 44
+```
+
+Warum 8 Spiele statt 5: Gegen PIMC-Gegner gewinnt der PIMC-Spieler mit 5 Spielen und 3 Pässen auch bei Zielwert 1 nur rund 75 % einer Serie, weil ein verlorenes Spiel doppelt zählt. Über 15 Serien ist der Run dann fast nur Pech, die Kurve wirkt kaum (zwei flache Kurven bis 72 und bis 60 lagen innerhalb des Rauschens, 38,1 und 36,5 % Abschnitt 2) und Relikte bewegen wenig. Mit 8 Spielen und 6 Pässen liegt die Decke bei 85 %, die Zielwerte beißen wieder, und die Schwierigkeit kommt wie vorgesehen aus Kurve und Bossen (10.3). Der Spieler wartet länger auf ein gutes Blatt, spielt je Serie aber nur rund zwei Spiele. Ein voller Run sind damit etwa 28 Spiele und 40 Pässe, grob 50 Minuten.
+
+Zur Form: Abschnitt 1 (Heuristik-Gegner) verlangt etwa zwei gewonnene Spiele. Ab Abschnitt 2 spielen die Gegner PIMC und werden je Abschnitt stärker, deshalb steigt die Kurve danach nur um 6 je Stufe. Jede normale Serie gewinnt der Bot zu 76 bis 82 %, jede Boss-Serie zu 63 bis 72 %; ein Abschnitt hält damit 40 bis 46 % der Runs, die ihn erreichen. Ohne multiplikative Relikte wächst ein gewonnenes Spiel kaum über 72; eine steilere Kurve wäre ab Abschnitt 4 unschlagbar. Null-Spielwerte kommen in Stufen von 23; für den Nullspieler ist alles zwischen zwei Stufen (etwa 72 bis 92) gleich schwer (9.2).
+
+Vorher (M2, Spiellimit 5, Pässe 3, Kurve 18 bis 180, `main` 3eb9884): gegen den PIMC-Spieler 38,7 / 14,3 / 4,1 / 0,6 % erreicht, Run gewonnen 0,07 % (6 von 9000), Nullspieler 27,7 / 7,7 / 2,3 / 0,7 %, 0,10 %. Die M2-Messung mit dem Heuristik-Bot steht in `docs/balance/2026-11-01-m2-zielwerte.md`.
 
 ---
 
@@ -293,7 +308,7 @@ Geändert am 01.11.2026 nach der M2-Messung (`docs/balance/2026-11-01-m2-zielwer
 
 M5-Werte gemessen mit `skat_sim --seed 42 --runs 3000 --no-shop --relic <id>` gegen 29,2 / 5,9 / 0,5 % (Alleinspieler) und 27,0 / 7,2 / 1,7 % (Nullspieler) ohne Hausregel.
 
-Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Multiplikatoren sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Multiplikatoren existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben.
+Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Multiplikatoren sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Multiplikatoren existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben. Umgesetzt in M5: Preise und Seltenheit nach Wirkung, siehe 12.
 
 Gesperrt sind sieben der neuen (Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider), siehe 9.3. Die Null-Hausregeln sind frei, weil der Nullspieler selbst schon eine Freischaltung ist.
 
@@ -389,6 +404,8 @@ Messung mit dem Nullspieler-Bot (`skat_sim --runs 1000 --character null [--null-
 | Punkte je Spiel | +1,3 | −20,3 | +22,2 |
 
 Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Null bringt 23, ein verlorenes kostet 46, und im Null-Blatt mit acht Siebenern gewinnt der Bot nur 42 % seiner Nullspiele. Mit der Formel kommt er so weit wie der Alleinspieler, obwohl er seltener gewinnt: Der Stilbonus (vor allem unterlaufene Siebener, das Null-Blatt hat acht) hebt ein gewonnenes Null weit über 23, ein verlorenes kostet weiter nur 46 je Risikostufe. Dazu hat die Formel Raum zum Skalieren: Grundwert-Relikte (Tournee) wirken auf 23, Stufen-Relikte (Ouvert-Bonus, Blindflug, Angeber) auf eine Summe von 1 bis 4 plus Stil, statt wie bei `Fixed` mit einer einzigen Stufe jedes Mal den Spielwert zu verdoppeln. Der Nullspieler nutzt deshalb die Zielwerte des Alleinspielers (`targets: None`). Der Bot spielt ein Null, wenn höchstens vier Karten „offen“ sind (klassische Null-Regel: die k-te kleinste Karte einer Farbe ist sicher, wenn höchstens k−1 kleinere Karten draußen sind), ohne offene Karte Null Ouvert Hand.
+
+**Seit M5 eigene Zielwerte** (5.2, `targets` in `characters.ron`): Mit 8 Spielen pro Serie und Relikten (Bockrunde, Siebenschläfer, Lehrgeld) bringt ein gewonnenes Null meist 92 bis über 200 Punkte; mit Zielwerten nah an denen des Alleinspielers (36 / 46 / 66 in Abschnitt 1, 99 bis 198 in Abschnitt 4 und 5) gewann der Bot jede Serie zu 76 bis 86 % und kam in 3,8 % der Runs durch (Alleinspieler 1,4 %, je 2 × 1000 Runs). Der Bot spielt seit M5 bis zu fünf offene Karten (`NULL_MAX_EXPOSED` in `core/src/run/bot.rs`): mit 4 erreichte er Abschnitt 3 in 20,1 %, mit 5 in 25,1 % (vorherige M5-Messung, 3 × 600 Runs); er steht für einen guten Spieler.
 
 ### 9.3 Freischaltungen über Runs hinweg
 
@@ -514,7 +531,21 @@ Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve -
 | Kontra-Hans | 70 / 52 / 32,5 | 1,0 | unverändert (Wert von `balance`), im Spätspiel leichter: Vorschlag 1,4 an `balance` |
 | Schieber, Zwillinge, Revolutionär, Kiebitz-Mörder | wie normal oder schwerer | 1,0 | Zwillinge, Revolutionär und Kiebitz-Mörder wirken über Information, die der Bot kaum nutzt; für ihn sind sie so schwer wie eine normale Serie |
 
-Die Faktoren gelten für beide Charaktere. Für den Nullspieler ist der Schieber fast unschlagbar (21 % statt 67 % in Abschnitt 1, Null Hand ohne Skat), der Ramscher dagegen normal; Faktoren pro Charakter sind offen (17).
+**M5-Stand** (8 Spiele, Kurve aus 5.2, PIMC-Spieler; Boss-Serie gewonnen im Run, 3 × 3000 Runs, Abschnitt 1 / ab Abschnitt 2, normale Serien 76 bis 82 %):
+
+| Boss | Faktor | Alleinspieler | Nullspieler | Grund |
+|---|---|---|---|---|
+| Die Oma | 0,5 → **0,3** | 44 / 50 | – | Obergrenze ohne Buben 42 % (Kurve, Zielwert 1); mit 0,4 im Run 37 bis 44 %. 0,3 legt sie an die Obergrenze |
+| Der Schwarze Peter | 0,6 → **0,5** | 52 / 59 | – | Obergrenze 53 %; 0,5 hält sie bis 72 über 40 % (Kurve) |
+| Der Schieber | 1,0 | 58 / 70 | nicht im Pool | siehe unten |
+| Der Kontra-Hans | 1,0 → **1,5** | 66 / 74 | 70 / 74 | im Run sonst leichter als eine normale Serie (89 bis 91 % gegen 85 %) |
+| Der Ramscher | 1,5 → **1,25** | 66 / 71 | 69 / 74 | flache Kurve (73 % bei 1, 65 % bei 72); mit 1,5 nur 60 bis 63 % |
+| Die Zwillinge | 1,0 | 71 / 69 | 76 / 70 | |
+| Der Revolutionär | 1,0 | 73 / 84 | 75 / 80 | wirkt über Information, die der Bot kaum nutzt |
+| Der Kiebitz-Mörder | 1,0 | 74 / 81 | 77 / 77 | dito; für Menschen schwerer |
+| Der Alte (Endboss) | 1,4 | – / 69 | – / 67 | als Endboss etwa so schwer wie eine Boss-Serie |
+
+**Der Schieber und der Nullspieler**: Null Hand ohne Skat gewinnt der Nullspieler-Bot höchstens in 24 % der Boss-Serien (Kurve mit Zielwert 1, gegen 76 bis 80 % bei den anderen Bossen); vorher waren es 21 % gegen 67 %. Ein Zielwert-Faktor hilft da nicht. Entscheidung M5: Der Schieber steht nur noch im Pool des Alleinspielers (`characters: [Declarer]`, auch im Alten übersprungen). Vorschlag für später, sobald der Bot es kann: Unter dem Schieber sollte der Nullspieler-Bot nur Blätter mit höchstens ein bis zwei offenen Karten spielen (heute bis fünf, die er ohne Skat nicht loswird); danach neu messen und den Schieber mit eigenem Faktor für den Nullspieler zurückholen. Faktoren pro Charakter brauchen ein neues Feld (`core-dev`).
 
 ---
 
@@ -524,6 +555,9 @@ Die Faktoren gelten für beide Charaktere. Für den Nullspieler ist der Schieber
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.
 - **Ausgaben am Tresen**: Hausregeln, Figuren, Verbrauchsgegenstände, Kartenmodifikationen, Neuauslage.
 - **Richtwerte (M2, kalibriert)**: Startkapital 4, Serie-Grundbetrag 3, Bonus pro übrigem Spiel 1, Zinsen 1 pro 5 Groschen bis maximal 5, Neuauslage 2. Hausregeln kosten 5 bis 8: starke 7 bis 8 (Bockrunde 8, Alte Dame 7, Schenken 7, Tournee 8), schwache und noch nicht wirksame 5. Figuren 6 bis 10, Verbrauchsgegenstände 2 bis 4. Messung und Begründung in `docs/balance/2026-11-01-m2-zielwerte.md`. Der Run-Bot hat damit beim Start von Abschnitt 2 im Mittel drei Hausregeln, ab Abschnitt 3 alle fünf Plätze belegt. Fürs Spätspiel fehlen noch Ausgaben (offen für M4 und M5).
+- **M5 (PIMC-Spieler, 8 Spiele)**: Grundbeträge unverändert. Relikte kosten 4 bis 9, gestaffelt nach der gemessenen Wirkung allein ab Spielbeginn ohne Tresen (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --relic <id>`, Seeds 42 bis 44, Veränderung von „Abschnitt 3 erreicht“, der stärkere Charakter zählt): ab +6,5 Prozentpunkten 9 (Bockrunde, Alte Dame, Kleinvieh; Stammgast wegen +6,6 auf Abschnitt 4), ab +4,5 8 (Schenken, Ein Auge zudrücken, Siebenschläfer, Schieben), ab +3 7, ab +1,5 6, darunter 5. Grenzfälle eine Stufe tiefer (Durchmarsch +4,5: 7; Kontra +1,6, beim Nullspieler −0,9: 5). Relikte, die vor allem Menschen nutzen (Hand, Ouvert, Information) oder nur gegen einzelne Bosse wirken, 4 bis 6. Hausregeln und Figuren folgen derselben Staffel. Tabelle in `docs/balance/2026-11-01-m5-v1.md`.
+- **Seltenheit folgt der Stärke (M5)**: Vorher lagen die drei stärksten Relikte beider Charaktere in Common und kamen in 20 bis 21 % aller Angebote. Bockrunde, Alte Dame, Kleinvieh und Siebenschläfer sind jetzt Uncommon, Spitze, Mit Vieren, Schiedsrichter und Saubere Weste dafür Common; Anteil der drei stärksten am Angebot 11 % (Alleinspieler) und 14 % (Nullspieler). Wirkung im Run (2 × 1000 Runs): Abschnitt 2 / Run gewonnen 36,8 / 1,45 % → 35,9 / 1,0 % (Alleinspieler), Nullspieler 47,5 / 3,8 → 46,5 / 3,9 %, im Rahmen des Rauschens. Gewählt, weil ein seltener Fund stärker sein soll als ein häufiger, nicht wegen der Zahl.
+- Ein Run bringt dem Bot im Mittel 23 (Alleinspieler) bis 26 Groschen (Nullspieler), fast alles wird ausgegeben.
 
 ---
 
@@ -663,5 +697,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 ## 17. Offen
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
-- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (Schieber, Ramscher, 11). Erledigt sich weitgehend mit ADR 0012, weil der Nullspieler dann auch Farbe und Grand spielen darf; nach dem Umbau nachmessen.
+- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (11). Der Schieber ist seit M5 nur im Pool des Alleinspielers; mit ADR 0012 (Null für alle, der Nullspieler darf auch Farbe und Grand) neu messen und ihn zurückholen.
+- **M5-Kurve mit Menschen prüfen**: Die Kurve (5.2) ist gegen den PIMC-Spieler gesetzt. Ein Mensch nutzt Hand, Ouvert und Informations-Relikte, die der Bot kaum spielt, und dürfte stärker sein. Testspiele und die Statistik der Web-App (Abschnitt erreicht) gegen die Bot-Zahlen halten.
+- **Relikte ohne Bot-Wirkung**: Spitze, Mit Vieren, Schiedsrichter, Bierdeckel, Ouvert-Bonus, Oma, Opa, Glashaus, Blindflug, Saubere Weste und Zähler bewegen beim Bot „Abschnitt 3 erreicht“ um weniger als 5 % (relativ). Sie sind für Menschen gedacht; ob sie die 5-%-Regel erfüllen, zeigt erst die Statistik echter Runs.
 - **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.

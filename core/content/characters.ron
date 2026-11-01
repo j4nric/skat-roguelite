@@ -19,6 +19,19 @@
         name: "Der Nullspieler",
         text: "Spielt nur Null: keinen einzigen Stich machen. Sein Blatt hat keine Unter, dafür vier Siebener mehr. Startet mit dem Kiebitz.",
         start_relics: ["kibitzer"],
+        // Eigene Zielwerte (M5, docs/balance/2026-11-01-m5-v1.md): Ein
+        // gewonnenes Null zählt 23 × (Risikostufe + Stilbonus), mit Relikten
+        // (Bockrunde, Siebenschläfer, Lehrgeld) schnell weit über 100. Mit
+        // Zielwerten nah an denen des Alleinspielers gewinnt der Bot jede
+        // Serie zu 76 bis 86 %. Null-Spielwerte kommen in Stufen von 23; was
+        // zwischen zwei Stufen liegt (etwa 72 bis 92), ist gleich schwer.
+        targets: Some([
+            (72, 80, 88),
+            (88, 99, 120),
+            (110, 132, 160),
+            (144, 176, 216),
+            (198, 240, 264),
+        ]),
         deck: (
             remove: ["CJ", "SJ", "HJ", "DJ"],
             add: ["C7", "S7", "H7", "D7"],

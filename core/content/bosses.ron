@@ -11,13 +11,21 @@
         text: "Jedes Spiel ist ein Handspiel.",
         passive: [RequireHand],
         target_factor: 1.0,
+        // M5 (docs/balance/2026-11-01-m5-v1.md): Der Nullspieler gewinnt
+        // Null Hand ohne Skat höchstens in 24 % der Boss-Serien (Zielwert 1),
+        // gegen 76 bis 80 % bei den anderen Bossen. Ein Faktor hilft da
+        // nicht, deshalb nur noch für den Alleinspieler (auch im Alten).
+        characters: [Declarer],
     ),
     (
         id: "kontra_hans",
         name: "Der Kontra-Hans",
         text: "Kontra ist immer erlaubt, auch ohne Hausregel.",
         passive: [EnableKontra],
-        target_factor: 1.0,
+        // M5: Im Run gewinnt der PIMC-Spieler 89 bis 91 % der Boss-Serien
+        // (normale Serie 85 %), bei 72 in der Kurve 68 % statt 56 %. Mit 1,5
+        // liegt er bei jedem Zielwert knapp unter einer normalen Serie.
+        target_factor: 1.5,
     ),
     (
         id: "grandma",
@@ -26,8 +34,11 @@
         passive: [BlankOut((rank: Some(Jack)))],
         // M4-Messung (--curve --boss grandma, 3000 Serien): ohne Buben gewinnt der
         // Bot höchstens 35 % (Zielwert 1), bei 110 nur 0,7 % (normal 18,5 %).
-        // 0,5 holt Abschnitt 4 und 5 aus dem Unschlagbaren.
-        target_factor: 0.5,
+        // M5 (PIMC-Spieler, 8 Spiele): Obergrenze 42 %, bei 24 noch 36 %.
+        // Im Run mit der v1-Kurve (Boss-Zielwerte 54 bis 66) und 0,4 nur 37
+        // bis 44 %. 0,3 legt jede Boss-Serie auf höchstens 20, nah an die
+        // Obergrenze; schwerer als jede andere bleibt sie.
+        target_factor: 0.3,
         characters: [Declarer],
     ),
     (
@@ -44,8 +55,11 @@
         passive: [RamschOnce],
         // M4-Messung: Der Ramsch bringt gewonnen die Augen des Verlierers, der
         // Bot gewinnt ihn oft. Bei 63 gewinnt er 59 % (normal 41 %), bei 110
-        // 37,5 % (18,5 %). 1,5 trifft die normale Kurve von 24 bis 110.
-        target_factor: 1.5,
+        // 37,5 % (18,5 %). M5 (8 Spiele, PIMC): Die Kurve ist flach (73 % bei
+        // 1, 65 % bei 72), verliert der Bot den Ramsch, ist die Serie meist
+        // weg. Mit 1,5 lag er im Run bei 60 bis 63 %, unter den anderen
+        // Bossen ohne Informationsregel; 1,25.
+        target_factor: 1.25,
     ),
     (
         id: "revolutionary",
@@ -64,8 +78,9 @@
             OnScore(when: All([Won, Not(WonSchneider)]), then: [MultiplyGameValue(0)]),
         ],
         // M4-Messung: Obergrenze 41 % (Zielwert 1), bei 110 nur 6,6 % (normal
-        // 18,5 %). Mit 0,6 liegen 63 und 110 bei 31 % und 18 %.
-        target_factor: 0.6,
+        // 18,5 %). M5 (PIMC-Spieler): Obergrenze 53 %, im Run 57 bis 60 %.
+        // 0,5 hält sie bis 72 über 40 %.
+        target_factor: 0.5,
         characters: [Declarer],
     ),
     (
