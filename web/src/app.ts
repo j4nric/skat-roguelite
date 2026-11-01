@@ -125,6 +125,9 @@ const DELAY = {
   trigger: 650,
 };
 
+/** How long the cards slide away before a settled game is scored. */
+const SETTLE_MS = 260;
+
 /** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
@@ -721,7 +724,12 @@ export class App {
   // -------------------------------------------------------------------------
 
   /** Send an action to the core, then play its events and the opponents' cards back. */
-  private async act(action: RunAction): Promise<void> {
+  /**
+   * Send an action to the core and play back what happened. `fast` skips
+   * the card animations and pauses ("Rest abkürzen"); the score board
+   * still comes.
+   */
+  private async act(action: RunAction, fast = false): Promise<void> {
     if (!this.core || this.ui.busy) return;
     const before = this.ui.view;
     this.ui.busy = true;
@@ -737,9 +745,26 @@ export class App {
       this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
       return;
     }
-    this.fastForward = false;
+    this.fastForward = fast;
     this.ui.overlay = null;
     await this.playSteps(before, step);
+  }
+
+  /**
+   * "Rest abkürzen": the cards still on the table and in the hand slide
+   * away (not with reduced motion), then the core plays the rest out and
+   * the score board follows.
+   */
+  private async settle(): Promise<void> {
+    if (this.ui.busy) return;
+    this.ui.busy = true;
+    const cards = Array.from(this.screenEl.querySelectorAll<HTMLElement>('.table .trick-card, .table .hand-card'));
+    if (motionOn() && cards.length) {
+      this.screenEl.querySelector('.table')?.classList.add('is-settling');
+      await new Promise((resolve) => window.setTimeout(resolve, SETTLE_MS));
+    }
+    this.ui.busy = false;
+    await this.act('SettleGame', true);
   }
 
   /** A run loaded while an opponent was to move: let the opponents play on. */
@@ -1648,6 +1673,9 @@ export class App {
       case 'oma':
         this.ui.omaPick = true;
         this.render();
+        return;
+      case 'settle':
+        void this.settle();
         return;
       case 'oma-cancel':
         this.ui.omaPick = false;

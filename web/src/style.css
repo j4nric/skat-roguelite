@@ -1685,6 +1685,28 @@ button.card {
   width: 20px;
 }
 
+/* "Rest abkürzen": a small button in a corner of the middle, over nothing
+   that moves; the cards slide away when it is tapped. */
+.btn-settle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: var(--fs-s);
+}
+
+.table.is-settling .trick-card,
+.table.is-settling .hand-card,
+.table.is-settling .btn-settle {
+  opacity: 0;
+  transform: translateY(-24px) scale(0.92);
+  transition:
+    opacity 240ms ease-in,
+    transform 240ms ease-in;
+}
+
 .swap-pick {
   display: inline-flex;
   align-items: center;

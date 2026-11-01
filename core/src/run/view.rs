@@ -596,6 +596,12 @@ pub struct GameView {
     /// certain now: only while playing a suit game, grand or Null
     /// ([`ValuePreview`]).
     pub value_preview: Option<ValuePreview>,
+    /// Whether the player may end the game now with
+    /// [`RunAction::SettleGame`] ("Rest abkürzen"): it is his turn and the
+    /// remaining cards can no longer change the score, however anyone
+    /// plays them ([`Run::can_settle`]). Says nothing about the
+    /// defenders' cards beyond that.
+    pub can_settle: bool,
 }
 
 /// The score line of the table while playing: what the game in progress
@@ -1414,6 +1420,7 @@ impl Run {
                 .then(|| skat.iter().map(|&c| self.card_view(content, c)).collect()),
             seat_tricks: game.seat_tricks(),
             value_preview: self.value_preview(content),
+            can_settle: self.can_settle(content),
         })
     }
 

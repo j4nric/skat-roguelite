@@ -888,6 +888,9 @@ mod tests {
         assert_eq!(code(err), "UnknownCard");
         let err = session.apply(r#""RedrawSkat""#).expect_err("no relic");
         assert_eq!(code(err), "NoRedealLeft");
+        // "Rest abkürzen" only in a decided game.
+        let err = session.apply(r#""SettleGame""#).expect_err("not decided");
+        assert_eq!(code(err), "NotDecided");
         assert_eq!(code(Session::new("x").expect_err("seed")), "InvalidSeed");
         assert_eq!(
             code(Session::load("garbage").expect_err("save")),

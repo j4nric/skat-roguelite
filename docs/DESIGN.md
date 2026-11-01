@@ -109,6 +109,13 @@ Ergänzt in M5 (entschieden von Claude am 01.11.2026):
 - **Ramponiert** (Fluch `battered`, Effekt `NoDiscard`): Die Karte darf nicht gedrückt werden, solange zwei andere Karten gedrückt werden können; sonst so wenige ramponierte wie möglich (`rules::valid_discard`, Fehler `DiscardForbidden`). Das gilt auch für die Karte, die beim Skattausch der Oma oder des Opas in den Skat geht.
 - **Mehrere Skattausch-Figuren**: Jede Figur mit `SeriesSkatSwap` gewährt ihren eigenen Tausch, einmal pro Serie (Oma: ein Unter, Opa: ein Daus). Sie können im selben Handspiel nacheinander genutzt werden. Die Sicht nennt die Karten, die herauskommen können (`skat_swap_cards`), die erste nimmt `TakeFromSkat` ohne `take`.
 
+Rest abkürzen (entschieden von Claude am 01.11.2026, auf Wunsch des Nutzers):
+
+- **Wann:** Der Spieler ist am Zug, und die restlichen Karten können an der Wertung nichts mehr ändern, egal wie alle drei sie spielen (auch er selbst, nicht nur bei bestem Spiel). Dann bietet der Tisch „Rest abkürzen“ an (`GameView::can_settle`, Aktion `RunAction::SettleGame`).
+- **Entschieden heißt:** (1) Kein Hook, der während des Spiels feuert (`OnCardPlayed`, `OnTrickEnd`, z. B. Schenken, Revolutionär, Auf dem Trockenen), kann noch feuern. (2) Das Ergebnis nach den Regeln (gewonnen, Schneider und Schwarz beider Seiten, Grundwert, Gewinnstufen, Spielwert) ist für jede Augen- und Stichzahl gleich, die die Reststiche noch bringen können, mit den geltenden Schwellen (Gewinnschwelle, „Jungfrau“). Null: Der Alleinspieler bekommt in keiner Fortsetzung einen Stich (gewonnen, mit gleichem Stilbonus: Siebenen, nie bedient, Kurzschluss) oder in jeder (verloren). (3) Jeder `OnScore`-Hook feuert in allen Fortsetzungen oder in keiner, auch die des letzten Stichs (Spitze, Glückspfennig, Schlusslicht). Ramsch wird nie abgekürzt.
+- **Wie gemessen:** Schranken (kleinster und größter Wert) der Reststiche aus drei Quellen, billig zuerst: aus den Karten allein; für Null ein Test auf den Händen (der Alleinspieler spielt nicht aus, kein Gegner hält eine Blanko, in jeder Farbe mit einer gewinnfähigen Karte des Alleinspielers ist jede Gegnerkarte höher); in den letzten vier Stichen eine vollständige Suche über alle legalen Karten aller Sitze mit offenen Händen (`core/src/endgame.rs`, höchstens 2000 Stichgrenzen, sonst nicht angeboten).
+- **Was passiert:** Der Kern spielt die Reststiche mit fester Regel (jeder Sitz seine erste legale Karte) über das normale Kartenspiel aus. Ereignisse, Hooks, Wertung, Groschen und Statistik sind dieselben wie beim Ausspielen. Die Oberfläche lässt die Karten kurz verschwinden und zeigt dann die Abrechnung.
+
 ---
 
 ## 5. Run-Struktur

@@ -534,6 +534,15 @@ function countPanel(game: GameView): string {
   </div>`;
 }
 
+/**
+ * "Rest abkürzen": the core says the rest can no longer change the score.
+ * Sits in a corner of the middle, so nothing moves when it comes.
+ */
+function settleButton(game: GameView, ui: UiState): string {
+  if (!game.can_settle || !game.your_turn || ui.anim || ui.busy) return '';
+  return `<button class="btn btn-settle" ${attrs({ 'data-action': 'settle', 'data-testid': 'settle', title: de.table.settleTitle })}>${esc(de.table.settle)}</button>`;
+}
+
 /** The Ramsch: nobody declared, everyone plays for himself. */
 function ramschBanner(game: GameView): string {
   if (game.declaration?.game !== 'Ramsch' || game.phase === 'Finished') return '';
@@ -555,7 +564,7 @@ export function renderTable(view: RunView, ui: UiState): string {
   const center =
     declaring && game.declare
       ? declarePanel(game.declare, game, ui, view.series.passes_left)
-      : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}`;
+      : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
   const cols = Math.max(5, Math.ceil((ui.anim ? ui.anim.hand : game.hand).length / 2));
   return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''}" style="--cols:${cols}">

@@ -343,6 +343,12 @@ export interface GameView {
    * Null; `null` otherwise. Optional for views from an older core.
    */
   value_preview?: ValuePreview | null;
+  /**
+   * The rest of the game can no longer change its score, however anyone
+   * plays: the player may end it with `SettleGame` ("Rest abkürzen").
+   * Optional for views from an older core.
+   */
+  can_settle?: boolean;
 }
 
 /** The table's score line while playing, computed by the core. */
@@ -642,6 +648,7 @@ export type RunAction =
   | { SellRelic: number }
   | { SellConsumable: number }
   | { TakeFromSkat: { give: number; take: number | null } }
+  | 'SettleGame'
   | { ChooseEncounter: { option: number; target: number | null } };
 
 export interface Step {
