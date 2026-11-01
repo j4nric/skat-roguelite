@@ -1,5 +1,6 @@
 // The table: the two regulars (or the boss) on top, the open trick on the
-// felt, the player's hand at the bottom in two rows. While declaring, the
+// felt between the pressed skat and the "Letzter Stich" button (which shows
+// the core's last trick instead), the player's hand at the bottom in two rows. While declaring, the
 // Ansage panel takes the middle (for the Nullspieler with the Null levels).
 // Around it: the boss rule of this game, the Ramsch notice, the count of
 // "Der Zähler", the Kiebitz card and the skat swap of "Die Oma" or "Der
@@ -7,11 +8,11 @@
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit } from '../types';
+import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
-import { quipBubble, seatPerson } from './guests';
+import { quipBubble, seatLabel, seatPerson } from './guests';
 import { schnapsNotes } from './hud';
 import { bossCoaster } from './emblems';
 import { portrait } from './people';
@@ -121,10 +122,13 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
   </div>`;
 }
 
-function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false): string {
+/** One seat's place in the trick; `winner` marks the card that took a finished trick. */
+function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null): string {
   const played = cards.find((c) => c.seat === seat);
+  const won = winner === seat;
+  const tag = won ? `<span class="trick-won-tag">${esc(de.table.lastTrickWon)}</span>` : '';
   const inner = played
-    ? `<div class="card trick-card" ${attrs({ 'data-trick-seat': seat, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}</div>`
+    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}${tag}</div>`
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;
@@ -416,10 +420,10 @@ function winFromChip(game: GameView): string {
 
 /**
  * The small line above the trick: what is played, Kontra, the tricks so far
- * with the value at stake, and the pressed skat. The score of the game only
- * comes big at the end.
+ * with the value at stake. The score of the game only comes big at the end.
+ * While the player looks at the last trick, its caption covers the line.
  */
-function gameLine(game: GameView): string {
+function gameLine(view: RunView, game: GameView, peek: TrickView | null): string {
   if (!game.declaration) return '';
   const d = game.declaration;
   const kontra =
@@ -428,11 +432,8 @@ function gameLine(game: GameView): string {
       : typeof game.kontra === 'object' && 'Re' in game.kontra
         ? `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span><span class="badge badge-kontra">${esc(de.table.reBadge)}</span>`
         : `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
-  const skat = game.skat
-    ? `<span class="skat"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</span>`
-    : '';
   const special = d.game === 'Null' ? `<span class="badge badge-null">${esc(de.table.noTrick)}</span>` : '';
-  return `<div class="gameline">
+  return `<div class="gameline ${peek ? 'is-peek' : ''}">
     <span class="decl">${gameIcon(d.game, 14)}<span>${esc(declarationName(d))}</span></span>
     ${special}${kontra}
     <span class="tricks" data-tricks>${esc(
@@ -440,8 +441,61 @@ function gameLine(game: GameView): string {
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
         : t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }),
     )}</span>${worthChip(game)}${winFromChip(game)}
-    ${skat}
+    ${peek ? `<span class="peek-caption" data-testid="last-trick-caption">${esc(peek.winner === 0 ? de.table.lastTrickToYou : t(de.table.lastTrickTo, { name: seatLabel(view, peek.winner) }))}</span>` : ''}
   </div>`;
+}
+
+/**
+ * The two pressed cards beside the trick, fanned so both corner indexes
+ * show, big enough to read on a phone. A tap opens the card large (the
+ * info card).
+ */
+function pressedStack(game: GameView): string {
+  const skat = game.skat;
+  if (!skat?.length) return '';
+  const cards = skat
+    .map(
+      (c) =>
+        `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods)}</button>`,
+    )
+    .join('');
+  const label = t(de.table.pressedAria, { cards: skat.map((c) => cardName(c.kind)).join(', ') });
+  return `<div class="pressed-stack" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'pressed-play' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.skat)}</span><span class="pressed-cards">${cards}</span></div>`;
+}
+
+/** Small stack of three cards: the sign of "Letzter Stich". */
+function lastTrickIcon(): string {
+  return `<svg class="last-trick-icon" viewBox="0 0 20 16" width="20" height="16" aria-hidden="true" shape-rendering="crispEdges"><path d="M1 3h7v11h-7z" fill="#5d666d"/><path d="M6 2h7v11h-7z" fill="#8b9399"/><path d="M11 1h7v11h-7z" fill="#ecebe4"/><path d="M11 1h7v1h-7zM11 11h7v1h-7zM11 1h1v11h-1zM17 1h1v11h-1z" fill="#0b0c0e"/></svg>`;
+}
+
+/**
+ * "Letzter Stich" beside the trick: shows the last finished trick (the
+ * core's `last_trick`) on the felt until tapped again. Off while cards fly.
+ */
+function lastTrickToggle(game: GameView, ui: UiState): string {
+  if (game.phase !== 'Playing' || !game.last_trick) return '';
+  const on = ui.peekTrick && !ui.anim && !ui.busy;
+  return `<button class="last-trick-btn ${on ? 'is-on' : ''}" ${attrs({
+    'data-action': 'last-trick',
+    'data-testid': 'last-trick-toggle',
+    'aria-pressed': on ? 'true' : 'false',
+    disabled: Boolean(ui.anim || ui.busy),
+  })}>${lastTrickIcon()}<span>${esc(de.table.lastTrick)}</span></button>`;
+}
+
+/**
+ * The felt: the pressed skat on the left, the trick in the middle (or the
+ * last trick while the player looks at it), the "Letzter Stich" button on
+ * the right. The sides take only the room the trick leaves.
+ */
+function trickRow(game: GameView, ui: UiState, peek: TrickView | null): string {
+  const trick = peek
+    ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${trickSlot(peek.cards, 1, false, peek.winner)}${trickSlot(peek.cards, 0, false, peek.winner)}${trickSlot(peek.cards, 2, false, peek.winner)}</div>`
+    : (() => {
+        const open = ui.anim ? ui.anim.trick : game.trick;
+        return `<div class="trick" data-action="fast">${trickSlot(open, 1)}${trickSlot(open, 0, !ui.anim && !ui.busy && game.your_turn)}${trickSlot(open, 2)}</div>`;
+      })();
+  return `<div class="trick-row"><div class="trick-side is-left">${pressedStack(game)}</div>${trick}<div class="trick-side is-right">${lastTrickToggle(game, ui)}</div></div>`;
 }
 
 /**
@@ -497,11 +551,11 @@ export function renderTable(view: RunView, ui: UiState): string {
   const game = view.game;
   if (!game) return '';
   const declaring = (game.phase === 'Declaring' || game.phase === 'DeclaringAfterSkat') && !ui.anim && game.declare;
-  const trick = ui.anim ? ui.anim.trick : game.trick;
+  const peek = ui.peekTrick && !ui.anim && !ui.busy && game.phase === 'Playing' ? game.last_trick : null;
   const center =
     declaring && game.declare
       ? declarePanel(game.declare, game, ui, view.series.passes_left)
-      : `${gameLine(game)}<div class="trick" data-action="fast">${trickSlot(trick, 1)}${trickSlot(trick, 0, !ui.anim && !ui.busy && game.your_turn)}${trickSlot(trick, 2)}</div>${countPanel(game)}`;
+      : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
   const cols = Math.max(5, Math.ceil((ui.anim ? ui.anim.hand : game.hand).length / 2));
   return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''}" style="--cols:${cols}">

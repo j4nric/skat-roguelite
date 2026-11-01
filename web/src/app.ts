@@ -161,6 +161,7 @@ export class App {
     pickNullRisk: null,
     omaPick: false,
     swapTake: null,
+    peekTrick: false,
     thinking: null,
     quip: null,
     shared: null,
@@ -712,6 +713,7 @@ export class App {
     this.ui.pickNullRisk = null;
     this.ui.omaPick = false;
     this.ui.swapTake = null;
+    this.ui.peekTrick = false;
   }
 
   // -------------------------------------------------------------------------
@@ -723,6 +725,8 @@ export class App {
     if (!this.core || this.ui.busy) return;
     const before = this.ui.view;
     this.ui.busy = true;
+    // Any move ends a look at the last trick.
+    this.ui.peekTrick = false;
     let step;
     try {
       step = this.core.apply(action);
@@ -1565,7 +1569,8 @@ export class App {
       case 'info-relic':
       case 'info-offer-relic':
       case 'info-offer-item':
-      case 'info-item': {
+      case 'info-item':
+      case 'info-card': {
         // A tap on these opens their info card (the same as a long-press).
         const key = el.dataset.info;
         if (key) this.info.show(key, 'sheet', el);
@@ -1589,6 +1594,12 @@ export class App {
         return;
       case 'fast':
         if (this.ui.busy) this.hurry();
+        return;
+      case 'last-trick':
+        // Show the last finished trick on the felt, or the open one again.
+        if (this.ui.anim || this.ui.busy || !view?.game?.last_trick) return;
+        this.ui.peekTrick = !this.ui.peekTrick;
+        this.render();
         return;
       case 'score-skip':
         if (overlay?.kind === 'score') this.scoreBoard?.skip();
@@ -1791,11 +1802,15 @@ export class App {
     // Keep the typed seed and the picker row across re-renders of the start screen.
     const seed = this.root.querySelector<HTMLInputElement>('#seed')?.value;
     const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
+    // The Tresen stays where it was scrolled to after buying or selling.
+    const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
     this.screenEl.innerHTML = body;
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
       if (input) input.value = seed;
     }
+    const shop = this.screenEl.querySelector<HTMLElement>('.run > .shop');
+    if (shop && shopScroll) shop.scrollTop = shopScroll;
     if (ui.screen === 'start') settleCharacterPicker(this.screenEl, charScroll);
     this.renderLayer();
     // The score board and the boss take the screen: no info card, no trigger lines over them.
