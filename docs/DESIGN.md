@@ -1,6 +1,6 @@
-# Skat Roguelike – Design-Dokument
+# Stammtisch – Design-Dokument
 
-Stand: 2026-10-31 · Status: Entwurf v0.1 · Sprache des Projekts: Deutsch (Code und Kommentare: Englisch)
+Stand: 2026-11-01 · Status: Entwurf v0.3 · Sprache des Projekts: Deutsch (Code und Kommentare: Englisch) · Arbeitstitel bis 31.10.2026: „Skat Roguelike“
 
 Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so weit, dass ein erster spielbarer Prototyp daraus gebaut werden kann. Alles unter „Offen“ ist noch nicht entschieden. Alles andere gilt, bis es hier geändert wird.
 
@@ -12,6 +12,8 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Ober, Daus), siehe ADR 0010. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
+
 ---
 
 ## 2. Feste Grundentscheidungen
@@ -20,7 +22,7 @@ Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als 
 |---|---|---|
 | 1 | **Der Spieler ist immer Alleinspieler.** Verteidigen gibt es nicht. | Hält den Kern einfach, jede Partie hat denselben Spannungsbogen. |
 | 2 | **Das Null-Spiel ist ein eigener Charakter**, nicht eine Option im Standard-Run. | Null ist mechanisch ein anderes Spiel. Als Charakter kann es eigene Karten, Relikte und Ziele bekommen. |
-| 3 | **Tech-Stack: Rust für den Spielkern, Godot 4 für Präsentation.** | Rust-Kern ist headless simulierbar und testbar. Godot über GDExtension angebunden. |
+| 3 | **Tech-Stack: Rust für den Spielkern, Web-App für die Präsentation.** | Rust-Kern ist headless simulierbar und testbar. Im Browser läuft er als WebAssembly (ADR 0009, ersetzt den ursprünglichen Godot-Plan). |
 | 4 | **Regeln dürfen gebogen werden, wenn es dem Spiel dient.** | Authentizität ist Geschmack, kein Dogma. Skatspieler sollen das Spiel wiedererkennen, nicht nachprüfen. |
 
 ---
@@ -248,7 +250,16 @@ Das Startblatt des Nullspielers hat keine Buben, dafür vier zusätzliche Sieben
 
 Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn ein Run mit dem Alleinspieler gewonnen wurde.
 
-### 9.3 Spätere Kandidaten (nicht vor v1)
+### 9.3 Freischaltungen über Runs hinweg
+
+Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschaltet.
+
+- Ein neuer Spielstand kennt etwa die Hälfte der Hausregeln und Figuren. Die übrigen erscheinen erst nach einer Freischaltung im Tresen.
+- Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Pass schlagen.
+- Jede Freischaltung ist an genau einer Stelle als Daten definiert (Bedingung und Belohnung) und wird im Simulator auf Erreichbarkeit geprüft.
+- Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Kein Konto, kein Server-Speicher.
+
+### 9.4 Spätere Kandidaten (nicht vor v1)
 
 - **Der Grandspieler**: Nur Grand, Grundwert 24, aber Spitzen zählen doppelt.
 - **Der Ramscher**: Spielt Ramsch, gewinnt mit den wenigsten Augen. Eigenes Scoring.
@@ -328,19 +339,19 @@ skat-roguelite/
 │   ├── game         Zustandsautomat für ein Spiel
 │   ├── run          Serie, Abschnitt, Tresen, Relikte, Ereignisse
 │   ├── ai           Heuristik, später PIMC
-│   └── content      Relikte, Bosse, Modifikationen als Daten (RON)
+│   └── content      Relikte, Bosse, Modifikationen als Daten (RON, eingebettet)
 ├── sim/             Rust-Binary: headless Simulator und Balancing-CLI
-├── godot/           Godot-4-Projekt, Präsentation, Input, Audio
-└── bridge/          GDExtension via gdext (godot-rust), exponiert skat_core
+├── wasm/            Crate „skat_wasm“: wasm-bindgen-Schicht, exponiert skat_core dem Browser
+└── web/             Web-App (TypeScript, Vite): Tisch, Hand, Tresen, Animation, Speichern
 ```
 
 ### 14.2 Grundsätze
 
-- **Der Kern kennt Godot nicht.** Alles im Kern ist reine Logik, ohne Rendering, ohne Zeit. Godot ist ein Client des Kerns.
+- **Der Kern kennt das Frontend nicht.** Alles im Kern ist reine Logik, ohne Rendering, ohne Zeit, ohne Threads und ohne Dateizugriff zur Laufzeit, damit er als WebAssembly läuft. Web-App und Simulator sind Clients des Kerns.
 - **Alles ist deterministisch.** Jeder Run hat einen Seed. Gleicher Seed, gleiche Eingaben, gleiches Ergebnis. Der Kern verwendet einen eigenen seeded RNG, nie den Systemzufall.
-- **Der Kern ist ereignisbasiert.** Jede Zustandsänderung erzeugt ein Ereignis (Karte gespielt, Stich beendet, Spielwert berechnet). Godot abonniert diese Ereignisse für Animation. Der Simulator ignoriert sie.
+- **Der Kern ist ereignisbasiert.** Jede Zustandsänderung erzeugt ein Ereignis (Karte gespielt, Stich beendet, Spielwert berechnet). Die Web-App nutzt diese Ereignisse für Animation. Der Simulator ignoriert sie.
 - **Content ist Daten.** Relikte, Modifikationen, Bosse und Ereignisse liegen in RON-Dateien und werden zur Laufzeit geladen. Effekte werden über eine kleine Menge von Hooks (`on_deal`, `on_declare`, `on_card_played`, `on_trick_end`, `on_score`) ausgedrückt.
-- **Der Simulator ist Pflicht, nicht Luxus.** Jede neue Mechanik wird im Simulator über mindestens 10 000 Spiele gegen die Basis gemessen, bevor sie ins Godot-Projekt kommt.
+- **Der Simulator ist Pflicht, nicht Luxus.** Jede neue Mechanik wird im Simulator über mindestens 10 000 Spiele gegen die Basis gemessen, bevor sie in die Oberfläche kommt.
 
 ### 14.3 Simulator-Metriken
 
@@ -356,12 +367,12 @@ skat-roguelite/
 
 | Meilenstein | Inhalt | Ergebnis |
 |---|---|---|
-| **M0** | Dieses Dokument | Entscheidungen festgehalten |
-| **M1 Kern** | Karten, Geben, Stichregeln, Farbspiel und Grand, Augen, Spitzen, Spielwert, Heuristik-KI, Simulator-CLI | `cargo run -p sim` spielt 10 000 Partien und gibt Baseline-Statistik aus |
-| **M2 Run-Loop** | Serie, Zielwerte, Pässe, Groschen, Tresen, 10 Hausregeln, 5 Modifikationen, 3 Bosse. Textbasiert spielbar im Terminal | Ein vollständiger Run ist im Terminal spielbar |
-| **M3 Godot** | Tisch, Hand, Stiche, Ansage-Dialog, Tresen, Run-Übersicht. Platzhaltergrafik | Ein Run ist in Godot spielbar |
-| **M4 Content** | Nullspieler, restliche Bosse, Ereignisse, 30 Hausregeln, 20 Modifikationen, Endboss | Inhaltlich vollständige v1 |
-| **M5 Balance** | Simulator-gestützte Kalibrierung der Zielwertkurve, PIMC-KI, Seeds, Statistik | Spielbare v1 |
+| **M0** ✔ | Dieses Dokument | Entscheidungen festgehalten |
+| **M1 Kern** ✔ | Karten, Geben, Stichregeln, Farbspiel und Grand, Augen, Spitzen, Spielwert, Heuristik-KI, Simulator-CLI | `cargo run -p sim` spielt 10 000 Partien und gibt Baseline-Statistik aus |
+| **M2 Run-Loop** | Serie, Zielwerte, Pässe, Groschen, Tresen, 10 Hausregeln, 5 Modifikationen, 3 Bosse. Kern als WebAssembly, einfache Web-Oberfläche mit Platzhaltergrafik | Ein vollständiger Run ist im Browser spielbar, auch am Handy |
+| **M3 Web-UI** | Deutsches Blatt als Vektorgrafik, Tisch, Hand, Stiche, Ansage-Dialog, Tresen, Run-Übersicht, Wertungs-Aufschlüsselung, Animation, Klänge, Speichern im Browser | Ein Run fühlt sich wie ein fertiges Spiel an |
+| **M4 Content** | Nullspieler, restliche Bosse, Ereignisse, 30 Hausregeln, 20 Modifikationen, Endboss, freischaltbare Relikte | Inhaltlich vollständige v1 |
+| **M5 Balance** | Simulator-gestützte Kalibrierung der Zielwertkurve, PIMC-KI, Seeds teilen, Statistik | Spielbare v1 |
 
 Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblatt, Zettel für Relikte, zwei menschliche Gegner. Was auf Papier keinen Spaß macht, wird nicht gebaut.
 
@@ -375,9 +386,21 @@ Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblat
 | Gegner-Persönlichkeit | Standardgegner bleiben anonym. Nur Bosse haben Namen und Gesichter. Neu bewerten in M4. |
 | Vorhand-Rotation | Rotation bleibt fest. Beeinflussbar nur über Relikte (z. B. „Ewige Vorhand“, teuer). |
 | Name des Spiels | **Stammtisch**. Repo-Name bleibt vorerst `skat-roguelite`. |
-| Server-Zielplattform | Godot-Web-Export im Browser, siehe ADR 0007. Erreichbar unter https://stammtisch-62-83-23-90.sslip.io hinter dem Caddy der Haushalt-App, siehe ADR 0008. |
+| Server-Zielplattform | Browser. Erreichbar unter https://stammtisch-62-83-23-90.sslip.io hinter dem Caddy der Haushalt-App, siehe ADR 0007 und 0008. |
+
+Entschieden am 01.11.2026 (über das Cockpit):
+
+| Frage | Entscheidung |
+|---|---|
+| Frontend | Web-App mit Rust-Kern als WebAssembly statt Godot, ADR 0009. |
+| Kartenbild | Deutsches Blatt, ADR 0010. |
+| Zielgerät | Handy hochkant zuerst. |
+| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. |
+| Assets | CC0 und CC-BY mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
+| Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |
+| Rückfragen | Nur bei Grundentscheidungen (ADRs). Alles andere entscheidet Claude und dokumentiert es. |
+| Null-Wertung | Wird in M4 mit dem Simulator entschieden (9.2). |
 
 ## 17. Offen
 
 - **Null-Formel**: Der Vorschlag in 9.2 ist ein erster Wurf und braucht den Simulator.
-- **Meta-Progression**: Freischaltungen über Runs hinweg (Charaktere, Relikte, Blätter)? Für v1 nur der Nullspieler als Freischaltung.

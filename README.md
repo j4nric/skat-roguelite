@@ -1,6 +1,6 @@
 # Stammtisch
 
-Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
+Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Läuft im Browser: https://stammtisch-62-83-23-90.sslip.io Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md)
 - Begriffe: [`docs/GLOSSARY.md`](docs/GLOSSARY.md)
@@ -14,9 +14,8 @@ Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Du bist immer
 |---|---|
 | `core/` | Rust-Crate `skat_core`: Regeln, Spielzustand, KI, Run-Logik. Keine Engine-Abhängigkeit. |
 | `sim/` | Headless-Simulator und Balancing-CLI (`cargo run -p skat_sim`). |
-| `bridge/` | GDExtension-Bridge zu Godot 4 (ab M3). |
-| `godot/` | Godot-4-Projekt (ab M3). |
-| `web/` | Platzhalter-Seite für den Server, bis der Web-Export kommt. |
+| `wasm/` | wasm-bindgen-Schicht, die den Kern im Browser verfügbar macht (ab M2). |
+| `web/` | Web-App: Oberfläche des Spiels (ab M2, bis dahin Platzhalter). |
 | `deploy/` | Docker Compose und Caddy für den vServer. |
 
 ## Befehle
