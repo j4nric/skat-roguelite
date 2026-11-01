@@ -60,6 +60,8 @@ export type Overlay =
   /** A checked save code, waiting for the player to replace the current progress. */
   | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[] }
   | { kind: 'overview' }
+  /** The Regelkarte: what is different here from the Skatordnung. */
+  | { kind: 'rules' }
   | { kind: 'credits' };
 
 export interface UiState {

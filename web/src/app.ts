@@ -19,11 +19,17 @@
 // view names who is to move (`ai_to_move`). Each such call runs after the
 // next frame, so the thought bubble at that opponent is painted before the
 // main thread is busy, and the run is saved after every card.
+//
+// Above the dialogs sits the Wirt's speech bubble (./hints.ts, "Geführter
+// erster Abend"): after every render the app asks which hint fits what is
+// on screen, shows it once and remembers it when it is dismissed or the
+// situation has passed.
 
 import { sound } from './audio';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
 import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
+import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
 import {
@@ -46,6 +52,7 @@ import {
 import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source, Step } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
+import { hintText, renderHint } from './ui/hint';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
 import { coinIcon, renderHud } from './ui/hud';
 import { renderScore, ScoreBoard, sourceName } from './ui/score';
@@ -158,6 +165,15 @@ export class App {
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
+  private readonly hintEl: HTMLElement;
+  /** Hints of the Wirt already seen (stored). */
+  private hintSeen = loadSeenHints();
+  /** The hint on screen and where it sits. */
+  private hint: { id: HintId; anchor: HintAnchor; html: string } | null = null;
+  /** Hints shown but not dismissed: seen once their situation has passed. */
+  private hintsShown = new Set<HintId>();
+  /** The player passed a game in this visit (for the hint about passing). */
+  private passedOnce = false;
   private renderedOverlay: Overlay | null = null;
   private overlayDirty = false;
   private scoreBoard: ScoreBoard | null = null;
@@ -167,10 +183,19 @@ export class App {
   private playedFrom: DOMRect | null = null;
 
   constructor(private readonly root: HTMLElement) {
-    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
+    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
+    this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
+    // The layout may settle a little after a resize (a phone turning, the
+    // address bar going away); follow it then once more.
+    let settle: number | undefined;
+    window.addEventListener('resize', () => {
+      this.positionHint();
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => this.positionHint(), 100);
+    });
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // Browsers allow audio only after a user gesture.
@@ -801,6 +826,7 @@ export class App {
         continue;
       }
       if ('Passed' in ev) {
+        this.passedOnce = true;
         this.showToast(t(de.toast.passed, { left: ev.Passed.passes_left }));
         continue;
       }
@@ -1101,6 +1127,76 @@ export class App {
   }
 
   // -------------------------------------------------------------------------
+  // Hints of the Wirt
+  // -------------------------------------------------------------------------
+
+  private markHintSeen(id: HintId): void {
+    if (this.hintSeen.has(id)) return;
+    this.hintSeen.add(id);
+    saveSeenHints(this.hintSeen);
+  }
+
+  /**
+   * Show the hint that fits the screen now, if any. A hint shown before
+   * whose situation has passed counts as seen; a dialog in front of it only
+   * hides it for the moment.
+   */
+  private updateHint(): void {
+    const ctx = { ui: this.ui, passed: this.passedOnce };
+    const on = this.ui.settings.hints;
+    if (on) {
+      for (const id of this.hintsShown) {
+        if (hintApplies(id, ctx)) continue;
+        this.markHintSeen(id);
+        this.hintsShown.delete(id);
+      }
+    }
+    const pick = on ? pickHint(ctx, this.hintSeen) : null;
+    if (!pick) {
+      if (this.hint) this.hintEl.innerHTML = '';
+      this.hint = null;
+      return;
+    }
+    const html = renderHint(pick.id, pick.anchor, hintText(pick.id, this.ui));
+    if (html !== this.hint?.html) {
+      // The same hint with a new number does not pop in again.
+      this.hintEl.classList.toggle('is-static', this.hint?.id === pick.id);
+      this.hintEl.innerHTML = html;
+    }
+    this.hint = { ...pick, html };
+    this.hintsShown.add(pick.id);
+    this.positionHint();
+  }
+
+  /** Put the bubble right below what it hangs from: the head of the run, the Wirt at the Tresen, the end title, or the top. */
+  private positionHint(): void {
+    const hint = this.hint;
+    if (!hint) return;
+    const selector = { hud: '.hud', end: '.end-board h1', shop: '.shop .backbar, .shop .backbar > *', top: null }[hint.anchor];
+    const bottoms = selector ? Array.from(this.screenEl.querySelectorAll(selector), (el) => el.getBoundingClientRect().bottom) : [];
+    this.hintEl.style.top = bottoms.length ? `${Math.round(Math.max(...bottoms) + 6)}px` : '';
+  }
+
+  private dismissHint(): void {
+    const id = this.hint?.id;
+    if (!id) return;
+    this.markHintSeen(id);
+    this.hintsShown.delete(id);
+    this.updateHint();
+  }
+
+  /** Menu "Hinweise zurücksetzen": every hint shows again. */
+  private resetHints(): void {
+    clearSeenHints();
+    this.hintSeen = new Set();
+    this.hintsShown.clear();
+    this.passedOnce = false;
+    this.showToast(de.menu.hintsResetDone);
+    sound.play('clink');
+    this.render();
+  }
+
+  // -------------------------------------------------------------------------
   // Input
   // -------------------------------------------------------------------------
 
@@ -1169,6 +1265,19 @@ export class App {
         return;
       case 'thinking':
         this.setSettings({ thinking: el.dataset.on === 'true' });
+        return;
+      case 'hints':
+        this.setSettings({ hints: el.dataset.on === 'true' });
+        return;
+      case 'hints-reset':
+        this.resetHints();
+        return;
+      case 'hint-dismiss':
+        this.dismissHint();
+        return;
+      case 'rules':
+        this.ui.overlay = { kind: 'rules' };
+        this.render();
         return;
       case 'to-start':
         this.toStart();
@@ -1526,6 +1635,7 @@ export class App {
       if (input) input.value = seed;
     }
     this.renderLayer();
+    this.updateHint();
     watchShop(this.screenEl);
     const effects = this.afterRender;
     this.afterRender = [];

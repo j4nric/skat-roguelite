@@ -85,6 +85,16 @@
 // code is imported after the confirmation, and the resumed run has the
 // same seed, account, passes and hand; every stored key is back as it was.
 // Persistent storage is asked for once, after the run started, not on load.
+// All passes above run with the Wirt's hints switched off (quietContext).
+//
+// M6 "Geführter erster Abend" (hintsAndRules), with a fresh profile: the
+// Regelkarte opens from the menu and closes; the Wirt's hints come one at a
+// time (welcome, Skat oder Hand, pass, Ansage after the skat, value line,
+// score, Tresen, boss, encounter, lost run), a dismissed hint stays away
+// after a reload, the menu switch "Hinweise des Wirts" hides them and the
+// reset brings them back. With a hint on screen the table still fits at
+// 390 × 844 and 375 × 667, and the bubble covers neither the hand nor the
+// buttons (score, boss, Tresen, encounter, end).
 //
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
@@ -220,6 +230,25 @@ async function assertFits(page, label, sizes = FIT_SIZES) {
   log(`${label}: table fits ${sizes.map((s) => `${s.width}x${s.height}${s.insets ? ' PWA' : ''}`).join(', ')}`);
 }
 
+/**
+ * A browser context in which the Wirt keeps quiet: before the app starts,
+ * the settings get `hints: false` unless the page already stored settings.
+ * The passes above test other things and click where a bubble might hang.
+ */
+async function quietContext(browser, options) {
+  const context = await browser.newContext(options);
+  await context.addInitScript(() => {
+    try {
+      if (!localStorage.getItem('stammtisch.settings')) {
+        localStorage.setItem('stammtisch.settings', JSON.stringify({ tempo: 'normal', sound: true, thinking: true, hints: false }));
+      }
+    } catch {
+      // Storage blocked: nothing to set.
+    }
+  });
+  return context;
+}
+
 function fixture(name) {
   return readFileSync(join(here, 'fixtures', name), 'utf8');
 }
@@ -322,7 +351,7 @@ async function resumeFixture(page, name) {
 
 /** Boss dialog and Kontra dialog, from saved runs. */
 async function bossAndKontra(browser, errors, reducedMotion) {
-  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
   watch(page, errors);
 
@@ -363,7 +392,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
 
 /** M4: the Nullspieler, encounters, the Ramsch and "Der Alte". */
 async function m4(browser, errors, reducedMotion) {
-  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
   watch(page, errors);
 
@@ -502,7 +531,7 @@ async function closeSheet(page) {
 
 /** M5: seed links, daily seed, thought bubble, statistics, Groschen from a curse, plaques. */
 async function m5(browser, errors, reducedMotion) {
-  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
   const page = await context.newPage();
   watch(page, errors);
@@ -766,7 +795,7 @@ async function assertMenuNoScroll(page, label) {
 /** Export the save code, clear the browser, import it again. */
 async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   const label = `save code ${viewport.width}x${viewport.height}`;
-  const context = await browser.newContext({ viewport, reducedMotion });
+  const context = await quietContext(browser, { viewport, reducedMotion });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
   // Count the requests for persistent storage.
   await context.addInitScript(() => {
@@ -891,13 +920,231 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await context.close();
 }
 
+/** The hint on screen (its id), or null. */
+async function hintId(page) {
+  const hint = page.locator('[data-testid="hint"]');
+  return (await hint.count()) ? hint.getAttribute('data-hint') : null;
+}
+
+/** Wait for a hint of the Wirt and return its text. */
+async function expectHint(page, id) {
+  await page.waitForSelector(`[data-testid="hint"][data-hint="${id}"]`, { timeout: 15000 }).catch(async () => {
+    fail(`hint "${id}" not shown (on screen: ${await hintId(page)})`);
+  });
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  return ((await page.locator('[data-testid="hint"] .hint-text').textContent()) ?? '').trim();
+}
+
+/** Tap the bubble; it must go and be stored as seen. */
+async function dismissHint(page, id) {
+  await page.click(`[data-testid="hint"][data-hint="${id}"]`);
+  await page.waitForSelector(`[data-testid="hint"][data-hint="${id}"]`, { state: 'detached' });
+  const seen = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.hints') ?? '[]'));
+  if (!seen.includes(id)) fail(`hint "${id}" dismissed but not stored as seen: ${JSON.stringify(seen)}`);
+}
+
+/** What a hint must never cover: the hand and the buttons of the table, the score, the boss, the Tresen, the encounter, the end. */
+const HINT_KEEP_CLEAR =
+  '.hand-card, .declare button, .status .btn, [data-action="score-continue"], [data-action="score-skip"].btn, [data-action="boss-go"], [data-action="leave-shop"], [data-action="buy-relic"], [data-action="buy-item"], [data-action="choose-encounter"], [data-action="copy-link"], .end-actions .btn';
+
+/**
+ * The bubble is inside the viewport, makes nothing scroll and covers none
+ * of HINT_KEEP_CLEAR, at 390 × 844 and 375 × 667 (or the given sizes).
+ */
+async function assertHintClear(page, label, sizes = [PHONE, { width: 375, height: 667 }]) {
+  const original = page.viewportSize();
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    // The app follows a resize once more after 100 ms.
+    await page.waitForTimeout(220);
+    const r = await page.evaluate((keep) => {
+      const hint = document.querySelector('[data-testid="hint"]')?.getBoundingClientRect();
+      if (!hint) return null;
+      const hits = [...document.querySelectorAll(keep)]
+        .filter((el) => {
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height) return false;
+          return b.left < hint.right && b.right > hint.left && b.top < hint.bottom && b.bottom > hint.top;
+        })
+        .map((el) => el.getAttribute('data-action') ?? el.className);
+      return { top: hint.top, bottom: hint.bottom, height: innerHeight, scroll: document.scrollingElement.scrollHeight - innerHeight, hits };
+    }, HINT_KEEP_CLEAR);
+    const where = `${label} at ${size.width}x${size.height}`;
+    if (!r) fail(`${where}: no hint on screen`);
+    if (r.top < 0 || r.bottom > r.height) fail(`${where}: the hint at ${r.top}..${r.bottom} leaves the viewport of ${r.height}`);
+    if (r.scroll > 0) fail(`${where}: the page scrolls by ${r.scroll}px with the hint`);
+    if (r.hits.length) fail(`${where}: the hint covers ${r.hits.join(', ')}`);
+  }
+  if (original) await page.setViewportSize(original);
+  log(`${label}: hint clear of hand and buttons at ${sizes.map((s) => `${s.width}x${s.height}`).join(', ')}`);
+}
+
+/**
+ * "Geführter erster Abend": a fresh profile sees the Wirt's hints one at a
+ * time, each once; dismissed hints stay away after a reload; the menu
+ * switches them off and resets them; the Regelkarte opens and closes. The
+ * table still fits with a hint on screen.
+ */
+async function hintsAndRules(browser, errors, reducedMotion) {
+  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  // The Regelkarte from the menu of the start screen.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if (await page.locator('[data-testid="hint"]').count()) fail('a hint on the start screen');
+  await page.click('[data-action="settings"]');
+  await assertMenuNoScroll(page, 'menu with the Wirt\'s hints (start screen)');
+  await page.click('[data-testid="rules-open"]');
+  await page.waitForSelector('[data-testid="rules"]');
+  const rules = ((await page.locator('[data-testid="rules"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  for (const must of ['Skat oder Hand', 'Drücken', 'Grundwert × Gewinnstufen', 'Schellen', 'Eichel', 'Grand', 'Null', 'Kein Reizen', 'Boss', 'Tresen']) {
+    if (!rules.includes(must)) fail(`the Regelkarte lacks "${must}"`);
+  }
+  await assertMenuFits(page, 'Regelkarte');
+  await shoot(page, 'rules');
+  await page.click('[data-testid="rules-close"]');
+  await page.waitForSelector('[data-testid="rules"]', { state: 'detached' });
+  log('Regelkarte opened and closed');
+
+  // First run: the welcome, then Skat oder Hand.
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  const welcome = await expectHint(page, 'welcome');
+  log(`hint welcome: ${welcome}`);
+  await shoot(page, 'hint-welcome');
+  await assertHintClear(page, 'hint welcome');
+  await assertFits(page, 'Skat oder Hand with a hint', [PHONE, { width: 375, height: 667 }]);
+  await dismissHint(page, 'welcome');
+  const skat = await expectHint(page, 'skatOrHand');
+  log(`hint skatOrHand: ${skat}`);
+
+  // Reload: the welcome stays away, the hint not yet dismissed comes back.
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await expectHint(page, 'skatOrHand');
+  if ((await hintId(page)) === 'welcome') fail('the dismissed welcome came back after a reload');
+  await shoot(page, 'hint-skat');
+  await assertHintClear(page, 'hint Skat oder Hand');
+  await dismissHint(page, 'skatOrHand');
+  log('after reload: welcome stays dismissed');
+
+  // A pass.
+  await page.click('[data-action="pass"]');
+  log(`hint pass: ${await expectHint(page, 'pass')}`);
+  await shoot(page, 'hint-pass');
+  await dismissHint(page, 'pass');
+
+  // The Ansage after the skat.
+  await pickUpAndDiscard(page, 'hints');
+  log(`hint afterSkat: ${await expectHint(page, 'afterSkat')}`);
+  await shoot(page, 'hint-after-skat');
+  await assertHintClear(page, 'hint after the skat');
+  await assertFits(page, 'Ansage after the skat with a hint', [PHONE, { width: 375, height: 667 }]);
+  await dismissHint(page, 'afterSkat');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+
+  // Playing: the value line. Left alone, it goes by itself at the end of the game.
+  const value = await expectHint(page, 'value');
+  if (!/\d+ × \d+/.test(value)) fail(`the value hint does not name the numbers of the table: ${value}`);
+  log(`hint value: ${value}`);
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  await shoot(page, 'hint-value');
+  await assertHintClear(page, 'hint value line');
+  await assertFits(page, 'playing with a hint', [PHONE, { width: 375, height: 667 }]);
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  // Play out (the bubble must not be in the way of a card), up to the score board.
+  for (let played = 0; ; played++) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    await page.locator('[data-action="play"]').first().click();
+    if (played > 10) fail('hints: played more than ten cards');
+  }
+  log(`hint score: ${await expectHint(page, 'score')}`);
+  await page.waitForSelector('[data-action="score-continue"]');
+  await shoot(page, 'hint-score');
+  await assertHintClear(page, 'hint score');
+  await dismissHint(page, 'score');
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('.score-sheet', { state: 'detached' });
+  // The unlock comes first; the Tresen hint waits for it.
+  await page.waitForSelector('[data-testid="unlock-new"]');
+  if (await page.locator('[data-testid="hint"]').count()) fail('a hint over the unlock dialog');
+  await page.click('.sheet-unlock [data-action="close-overlay"]');
+  log(`hint shop: ${await expectHint(page, 'shop')}`);
+  const seenValue = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.hints') ?? '[]'));
+  if (!seenValue.includes('value')) fail('the value hint, left alone, did not count as seen once the game was over');
+  await shoot(page, 'hint-shop');
+  await assertHintClear(page, 'hint Tresen');
+
+  // Menu: off hides it, on brings it back (it was not dismissed).
+  await page.click('.hud [data-action="menu"]');
+  if (await page.locator('[data-testid="hint"]').count()) fail('the hint shows over the menu');
+  await assertMenuNoScroll(page, 'menu with the Wirt\'s hints (run)');
+  await page.click('[data-action="hints"][data-on="false"]');
+  const off = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').hints);
+  if (off !== false) fail(`hints setting not stored: ${off}`);
+  await closeSheet(page);
+  await page.waitForTimeout(200);
+  if (await page.locator('[data-testid="hint"]').count()) fail('a hint shows although the hints are off');
+  log('hints off: no bubble');
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-action="hints"][data-on="true"]');
+  await closeSheet(page);
+  await expectHint(page, 'shop');
+  await dismissHint(page, 'shop');
+
+  // Reset: every hint comes back, here the one of the Tresen.
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="hints-reset"]');
+  await closeSheet(page);
+  await expectHint(page, 'shop');
+  const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.hints') ?? '[]'));
+  if (afterReset.length) fail(`hints still stored as seen after the reset: ${JSON.stringify(afterReset)}`);
+  log('hints reset: the Tresen hint is back');
+  await dismissHint(page, 'shop');
+
+  // The boss and the encounter, from saved runs, with a fresh profile.
+  await page.evaluate(() => localStorage.removeItem('stammtisch.hints'));
+  await resumeFixture(page, 'boss-tresen.json');
+  await dismissHint(page, 'shop');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  log(`hint boss: ${await expectHint(page, 'boss')}`);
+  await shoot(page, 'hint-boss');
+  await assertHintClear(page, 'hint boss');
+  await page.click('[data-action="boss-go"]');
+  await page.waitForSelector('.declare');
+  await resumeFixture(page, 'encounter.json');
+  log(`hint encounter: ${await expectHint(page, 'encounter')}`);
+  await shoot(page, 'hint-encounter');
+  await assertHintClear(page, 'hint encounter');
+
+  // A lost run: what stays.
+  await resumeFixture(page, 'run-end.json');
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, 'hints, last game');
+  await playOut(page, 'hints, last game');
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"]');
+  if (await page.locator('.sheet-unlock').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  log(`hint runLost: ${await expectHint(page, 'runLost')}`);
+  await shoot(page, 'hint-run-lost');
+  await assertHintClear(page, 'hint run lost');
+  await dismissHint(page, 'runLost');
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
   const errors = [];
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
-    const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
     const page = await context.newPage();
     watch(page, errors);
 
@@ -1083,6 +1330,7 @@ async function run() {
     await m5(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
+    await hintsAndRules(browser, errors, reducedMotion);
   } finally {
     await browser.close();
     preview.kill();
