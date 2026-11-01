@@ -67,14 +67,9 @@ fn the_skat_comes_before_the_declaration() {
     assert_eq!(view.hand.len(), 12);
     assert!(view.declare.is_none());
     assert!(view.skat.is_none());
-    // No way back: no pass, no redeal, no second pick-up, no declaration
-    // before the discard.
-    for action in [
-        RunAction::Pass,
-        RunAction::Redeal,
-        RunAction::PickUpSkat,
-        normal.clone(),
-    ] {
+    // No way back: no Einmischen, no second pick-up, no declaration before
+    // the discard.
+    for action in [RunAction::Redeal, RunAction::PickUpSkat, normal.clone()] {
         assert!(!run.accepts(&content, action.clone()), "{action:?}");
     }
 
@@ -88,25 +83,41 @@ fn the_skat_comes_before_the_declaration() {
     assert_eq!(view.hand.len(), 10);
     assert_eq!(view.skat.as_ref().map(Vec::len), Some(2), "the discards");
     let options = view.declare.expect("options");
+    // After the skat (ADR 0013): Normal and the announcements, no Hand.
     assert_eq!(
         options.risks.iter().map(|r| r.risk).collect::<Vec<_>>(),
-        vec![RiskLevel::Normal]
+        vec![
+            RiskLevel::Normal,
+            RiskLevel::SchneiderDeclared,
+            RiskLevel::SchwarzDeclared,
+            RiskLevel::Ouvert
+        ]
     );
-    assert!(options.risks[0].allowed);
+    assert!(options.risks.iter().all(|r| r.allowed));
     assert!(options.games.iter().all(|g| g.allowed));
-    assert!(!options.can_pick_up_skat && !options.can_pass && !options.can_redeal);
-    // After the skat: no hand levels.
+    assert!(!options.can_pick_up_skat && !options.can_redeal);
+    let err = run
+        .clone()
+        .apply(&content, RunAction::Declare(diamonds(RiskLevel::Hand)))
+        .expect_err("no Hand after the skat");
+    assert_eq!(err.code(), RunErrorCode::InvalidDeclaration);
     for risk in [
-        RiskLevel::Hand,
         RiskLevel::SchneiderDeclared,
         RiskLevel::SchwarzDeclared,
         RiskLevel::Ouvert,
     ] {
-        let err = run
-            .clone()
+        let mut probe = run.clone();
+        let events = probe
             .apply(&content, RunAction::Declare(diamonds(risk)))
-            .expect_err("no hand level after the skat");
-        assert_eq!(err.code(), RunErrorCode::InvalidDeclaration, "{risk:?}");
+            .expect("announcement after the skat");
+        let declared = diamonds(risk).with_hand(false);
+        assert!(
+            events.contains(&RunEvent::Game(Event::Declared {
+                declaration: declared
+            })),
+            "{risk:?}"
+        );
+        assert!(!declared.hand());
     }
     let events = run.apply(&content, normal).expect("declare");
     assert!(events.contains(&RunEvent::Game(Event::Declared {
@@ -128,7 +139,7 @@ fn before_the_skat_the_dialog_offers_hand_levels_and_the_skat() {
         .expect("game")
         .declare
         .expect("options");
-    assert!(options.can_pick_up_skat && options.can_pass);
+    assert!(options.can_pick_up_skat && options.can_redeal);
     assert_eq!(
         options.risks.iter().map(|r| r.risk).collect::<Vec<_>>(),
         vec![
@@ -330,4 +341,47 @@ fn a_save_from_before_the_skat_order_plays_on() {
         loaded.apply(&content, action).expect("bot action");
     }
     assert!(loaded.stats().games_won + loaded.stats().games_lost > 0);
+}
+
+/// ADR 0013: the bot announces Schneider after the skat when the ten cards
+/// it keeps allow it, without the Hand level.
+#[test]
+fn the_bot_announces_after_the_skat() {
+    use super::bot::RunBot;
+    let content = content();
+    let mut run = relic_run(&content, &[]);
+    // Six trumps with aces and tens: no hand game, no announcement from
+    // the hand. The skat brings D9 and D8; with eight trumps and no loser
+    // the bot announces after the skat.
+    fixed_deal(
+        &mut run,
+        &content,
+        [
+            "CJ DA DT DK DQ D7 HA HT SA ST",
+            "C7 C8 C9 CT CQ CK CA S7 S8 S9",
+            "SJ SQ SK H7 H8 H9 HJ HQ HK DJ",
+        ],
+        "D9 D8",
+    );
+    let mut declared = None;
+    for _ in 0..10 {
+        let action = RunBot.next_action(&run, &content).expect("action");
+        if let RunAction::Declare(d) = action {
+            declared = Some(d);
+            break;
+        }
+        run.apply(&content, action).expect("bot action");
+    }
+    let declared = declared.expect("declared");
+    assert!(
+        declared.risk().is_some_and(RiskLevel::is_announcement),
+        "{declared:?}"
+    );
+    assert!(!declared.hand());
+    let events = run
+        .apply(&content, RunAction::Declare(declared))
+        .expect("declare");
+    assert!(events.contains(&RunEvent::Game(Event::Declared {
+        declaration: declared
+    })));
 }

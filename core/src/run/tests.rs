@@ -7,6 +7,22 @@ fn content() -> Content {
     Content::load().expect("embedded content is valid")
 }
 
+/// Play the game in progress to its end with the bot (it may redeal
+/// first). Returns the events.
+fn play_out_game(run: &mut Run, content: &Content) -> Vec<RunEvent> {
+    let played = run.series().games_played;
+    let series = (run.series().section, run.series().index);
+    let mut events = Vec::new();
+    while run.phase() == RunPhase::Game
+        && run.series().games_played == played
+        && (run.series().section, run.series().index) == series
+    {
+        let action = RunBot.next_action(run, content).expect("action");
+        events.extend(run.apply(content, action).expect("bot actions are legal"));
+    }
+    events
+}
+
 /// Drive a run with the bot. Returns all events and the number of actions.
 fn play_to_end(run: &mut Run, content: &Content, max_actions: usize) -> Vec<RunEvent> {
     let mut events = Vec::new();
@@ -71,7 +87,9 @@ fn run_starts_with_first_series_and_a_dealt_game() {
     assert_eq!(run.phase(), RunPhase::Game);
     assert_eq!(run.series().target, content.run.targets[0].0);
     assert_eq!(run.series().game_limit, content.run.game_limit);
-    assert_eq!(run.series().passes_left, content.run.passes);
+    assert_eq!(run.series().game_limit, 3);
+    assert_eq!(run.redeals_left(&content), content.run.redeals);
+    assert_eq!(content.run.redeals, 2);
     assert_eq!(run.coins(), content.run.economy.starting_coins);
     assert!(matches!(
         &events[0],
@@ -96,26 +114,58 @@ fn run_starts_with_first_series_and_a_dealt_game() {
 }
 
 #[test]
-fn forehand_rotates_every_game_and_passes_cost_a_game() {
+fn einmischen_deals_again_without_using_a_game() {
+    let mut content = content();
+    // Two per game, independent of run.ron.
+    content.run.redeals = 2;
+    let (mut run, _) = Run::new(&content, 3).expect("start");
+    let first = run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec());
+    let events = run.apply(&content, RunAction::Redeal).expect("einmischen");
+    assert!(events.contains(&RunEvent::Redealt));
+    assert!(events.contains(&RunEvent::GameDealt {
+        number: 1,
+        forehand: Seat::DECLARER
+    }));
+    assert_ne!(
+        run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec()),
+        first
+    );
+    assert_eq!(run.series().games_played, 0, "Einmischen costs no game");
+    assert_eq!(run.redeals_left(&content), 1);
+    // The old action name "Pass" reads as Einmischen.
+    let old: RunAction = ron::from_str("Pass").expect("old action");
+    assert_eq!(old, RunAction::Redeal);
+    run.apply(&content, old).expect("einmischen");
+    assert_eq!(run.redeals_left(&content), 0);
+    assert_eq!(run.series().redeals_used, 2);
+    assert_eq!(run.stats().redeals, 2);
+    // Then one of the hands must be played.
+    assert!(!run.accepts(&content, RunAction::Redeal));
+    assert_eq!(
+        run.apply(&content, RunAction::Redeal),
+        Err(RunError::NoRedealLeft)
+    );
+    // The next game has its own Einmischen; the forehand rotates per game.
+    play_out_game(&mut run, &content);
+    assert_eq!(run.series().games_played, 1);
+    if run.phase() == RunPhase::Game && run.series().index == 0 {
+        assert_eq!(
+            run.game().map(|a| a.game.forehand()),
+            Some(Seat::DEFENDERS[0])
+        );
+        assert_eq!(run.redeals_left(&content), 2);
+        assert_eq!(run.series().redeals_in_game, 0);
+    }
+}
+
+#[test]
+fn no_einmischen_once_the_skat_is_picked_up() {
     let content = content();
     let (mut run, _) = Run::new(&content, 3).expect("start");
-    // Two passes, independent of the pass count in run.ron.
-    run.series.passes_left = 2;
-    let events = run.apply(&content, RunAction::Pass).expect("pass");
-    assert!(events.contains(&RunEvent::Passed { passes_left: 1 }));
-    assert!(events.contains(&RunEvent::GameDealt {
-        number: 2,
-        forehand: Seat::DEFENDERS[0]
-    }));
-    run.apply(&content, RunAction::Pass).expect("pass");
-    assert_eq!(run.series().games_played, 2);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
     assert_eq!(
-        run.game().map(|a| a.game.forehand()),
-        Some(Seat::DEFENDERS[1])
-    );
-    assert_eq!(
-        run.apply(&content, RunAction::Pass),
-        Err(RunError::NoPassesLeft)
+        run.apply(&content, RunAction::Redeal),
+        Err(RunError::WrongPhase)
     );
 }
 
@@ -124,7 +174,8 @@ fn reaching_the_limit_below_target_loses_the_run() {
     let content = content();
     let (mut run, _) = Run::new(&content, 3).expect("start");
     run.series.game_limit = 1;
-    let events = run.apply(&content, RunAction::Pass).expect("pass");
+    run.series.target = 100_000;
+    let events = play_out_game(&mut run, &content);
     assert_eq!(run.phase(), RunPhase::Lost);
     assert!(events.contains(&RunEvent::RunLost {
         section: 0,
@@ -134,7 +185,7 @@ fn reaching_the_limit_below_target_loses_the_run() {
         stake: 0,
     }));
     assert_eq!(
-        run.apply(&content, RunAction::Pass),
+        run.apply(&content, RunAction::Redeal),
         Err(RunError::WrongPhase)
     );
 }
@@ -164,6 +215,13 @@ fn failing_actions_leave_the_run_untouched() {
         run.apply(&content, RunAction::LeaveShop),
         Err(RunError::WrongPhase)
     );
+    assert_eq!(
+        run.apply(&content, RunAction::AnswerKontra { re: true }),
+        Err(RunError::NoKontra)
+    );
+    assert_eq!(run, before);
+    run.series.redeals_in_game = 99;
+    let before = run.clone();
     assert_eq!(
         run.apply(&content, RunAction::Redeal),
         Err(RunError::NoRedealLeft)
@@ -436,7 +494,12 @@ fn consumables_change_the_deck_and_the_series() {
         },
     )
     .expect("beer");
-    assert_eq!(run.series().passes_left, content.run.passes + 1);
+    // One Einmischen more for the series, on top of the game's own.
+    assert_eq!(run.series().extra_redeals, 1);
+    assert_eq!(
+        run.redeals_left(&content),
+        content.redeals(Character::Declarer) + 1
+    );
     let before = run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec());
     let events = run
         .apply(

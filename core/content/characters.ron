@@ -17,7 +17,8 @@
 // mit diesem Aufdruck; „beim Erhalt“ feuert dabei nicht.
 // rule: die eine eigene Regel (DESIGN 9). passive und hooks wirken wie ein
 // Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
-// der Wertung). passes und relic_slots ändern run.ron (nie unter 0),
+// der Wertung). redeals (Einmischen pro Spiel) und relic_slots ändern
+// run.ron (nie unter 0),
 // payout_factor vervielfacht die Groschen einer gewonnenen Serie. Ohne
 // Angabe keine Änderung.
 [
@@ -50,13 +51,15 @@
         // als Null. Mit den eigenen M5-Zielwerten (72/80/88 bis 198/240/264)
         // erreichte er Abschnitt 2 nur in 23 % der Runs (Alleinspieler 36 %),
         // mit denen des Alleinspielers wie dieser (DESIGN 9.2, 3 × 3000 Runs,
-        // --bot pimc:12:3).
+        // --bot pimc:12:3). Seit den Serien mit 3 Spielen (01.11.2026)
+        // dieselbe vorläufige Kurve wie run.ron, eine Zeile später (DESIGN
+        // 5.2); 300 Runs: Abschnitt 2 in 35 % (Alleinspieler 44 %).
         targets: Some([
-            (36, 44, 54),
-            (36, 44, 54),
-            (44, 48, 54),
-            (48, 54, 60),
-            (54, 60, 66),
+            (24, 30, 36),
+            (24, 30, 36),
+            (30, 36, 42),
+            (36, 42, 48),
+            (42, 48, 54),
         ]),
         deck: (
             remove: ["CJ", "SJ", "HJ", "DJ"],
@@ -106,13 +109,15 @@
     (
         character: Onlooker,
         name: "Der Zaungast",
-        text: "Schaut dem linken Gegner immer ins Blatt, hat dafür zwei Pässe weniger pro Serie. Der Kiebitz-Mörder nimmt ihm die Sicht.",
+        text: "Schaut dem linken Gegner immer ins Blatt, darf dafür nur einmal pro Spiel einmischen. Der Kiebitz-Mörder nimmt ihm die Sicht.",
         start_relics: [],
         // Eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder
         // schaltet sie ab.
         rule: (
             passive: [RevealDefenderHand(1)],
-            passes: -2,
+            // Einmal statt zweimal einmischen pro Spiel (bis 01.11.2026:
+            // zwei Pässe weniger pro Serie).
+            redeals: -1,
         ),
         null_scoring: Some(Formula((
             base_value: 23,

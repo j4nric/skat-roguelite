@@ -41,15 +41,17 @@
     (
         id: "early_finish",
         name: "Früher Feierabend",
-        text: "Gewinne eine Serie mit drei Spielen übrig.",
-        condition: WinSeriesWithGamesLeft(3),
+        // Seit den Serien mit drei Spielen (01.11.2026): gleich im ersten
+        // Spiel, vorher drei von acht Spielen übrig.
+        text: "Gewinne eine Serie gleich im ersten Spiel.",
+        condition: WinSeriesWithGamesLeft(2),
         rewards: [Relic("virgin")],
     ),
     (
         id: "boss_without_pass",
-        name: "Ohne zu passen",
-        text: "Schlage einen Boss, ohne in seiner Serie zu passen.",
-        condition: BeatBoss(without_pass: true),
+        name: "Ohne Einmischen",
+        text: "Schlage einen Boss, ohne in seiner Serie einzumischen.",
+        condition: BeatBoss(without_redeal: true),
         rewards: [Relic("referee")],
     ),
     (
@@ -122,8 +124,10 @@
     (
         id: "grand_master",
         name: "Großer Grand",
-        text: "Gewinne einen Grand Schneider, der mindestens 96 Punkte zählt.",
-        condition: WinGame(game: Some(Grand), schneider: true, min_value: 96),
+        // 01.11.2026: 96 war nach rund drei Runs erreicht, deshalb 144
+        // (etwa mit 4, Spiel 5, Schneider 6).
+        text: "Gewinne einen Grand Schneider, der mindestens 144 Punkte zählt.",
+        condition: WinGame(game: Some(Grand), schneider: true, min_value: 144),
         rewards: [Character(GrandPlayer)],
     ),
     (

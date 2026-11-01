@@ -232,11 +232,13 @@ pub enum Effect {
     /// declaration, the declarer may answer Re (×4). Passive or on deal.
     EnableKontra,
     /// Lever Spitzen and Risikostufe (hand quality, house rule
-    /// "Schieben"): once per series the declarer may have all hands and the
-    /// skat dealt again before declaring, without using up a game. He looks
-    /// for a hand with more Spitzen or enough trumps for Hand. Passive or
-    /// on deal.
-    SeriesRedeal,
+    /// "Schieben"): one Einmischen more in every game, so the declarer may
+    /// have all hands and the skat dealt again once more before declaring.
+    /// He looks for a hand with more Spitzen or enough trumps for Hand.
+    /// Each source adds one. Passive or on deal. Also read under its old
+    /// name `SeriesRedeal` (once per series).
+    #[serde(alias = "SeriesRedeal")]
+    ExtraRedeal,
     /// Lever Schneider: the defenders give up; the remaining tricks and
     /// Augen go to the declarer. On trick end only.
     Concede,
@@ -332,7 +334,7 @@ impl Effect {
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
             }
-            Effect::RequireHand | Effect::EnableKontra | Effect::SeriesRedeal => {
+            Effect::RequireHand | Effect::EnableKontra | Effect::ExtraRedeal => {
                 matches!(stage, Stage::Passive | Stage::OnDeal)
             }
             Effect::Concede => stage == Stage::OnTrickEnd,
@@ -428,7 +430,10 @@ pub enum Condition {
     GameIs(GameType),
     /// Any suit game. From the declaration on.
     SuitGame,
-    /// The risk level is at least this one. From the declaration on.
+    /// The risk level is at least this one: `Hand` only from the hand, an
+    /// announcement also after the skat (ADR 0013,
+    /// [`crate::rules::Declaration::risk_at_least`]). From the declaration
+    /// on.
     RiskAtLeast(RiskLevel),
     /// The tenth trick was won with this printed card, optionally only by
     /// the declarer. On score only.

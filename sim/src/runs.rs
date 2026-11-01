@@ -267,7 +267,7 @@ pub struct RunStats {
     pub bosses: BTreeMap<BossId, (u64, u64)>,
     /// Attempts and wins per boss from section 2 on.
     pub bosses_later: BTreeMap<BossId, (u64, u64)>,
-    /// Games played (not passed).
+    /// Games played.
     pub games: u64,
     /// Games won.
     pub games_won: u64,
@@ -277,8 +277,8 @@ pub struct RunStats {
     pub null_won: u64,
     /// Sum of the series account changes of all games.
     pub points: i64,
-    /// Passes.
-    pub passes: u64,
+    /// Einmischen (games dealt again, also by "Neues Blatt").
+    pub redeals: u64,
     /// Groschen held at the end of each run, summed.
     pub coins_end: u64,
     /// Groschen earned from series, summed.
@@ -375,7 +375,7 @@ fn play_run(
                     stats.null_won += u64::from(breakdown.won);
                 }
             }
-            RunEvent::Passed { .. } => stats.passes += 1,
+            RunEvent::Redealt => stats.redeals += 1,
             RunEvent::RelicBought { relic, price } => {
                 stats.relics.entry(relic.clone()).or_default().bought += 1;
                 stats.coins_spent += u64::from(*price);
@@ -540,10 +540,10 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     }
     let _ = writeln!(
         out,
-        "games: {} won%={:.1} passes={} points per game={:.1}",
+        "games: {} won%={:.1} redeals={} points per game={:.1}",
         stats.games,
         pct(stats.games_won, stats.games),
-        stats.passes,
+        stats.redeals,
         mean_signed(stats.points, stats.games)
     );
     let _ = writeln!(
@@ -606,7 +606,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
 // ---------------------------------------------------------------------------
 
 /// Success curve of one series (`--curve`): how often the bot wins a
-/// series of the game limit and passes in `run.ron`, for every Zielwert.
+/// series of the game limit and Einmischen in `run.ron`, for every Zielwert.
 ///
 /// Every sample is one series with an unreachable Zielwert, played to the
 /// game limit. The bot never looks at the Zielwert or the account, so it
@@ -622,14 +622,14 @@ pub struct Curve {
     pub series: u32,
     /// Highest account per series (`None`: never above 0 after a game).
     pub best: Vec<Option<i64>>,
-    /// Games played (not passed).
+    /// Games played.
     pub games: u64,
     /// Games won.
     pub games_won: u64,
     /// Sum of the account changes of all games.
     pub points: i64,
-    /// Passes.
-    pub passes: u64,
+    /// Einmischen (games dealt again).
+    pub redeals: u64,
 }
 
 impl Curve {
@@ -713,7 +713,7 @@ pub fn curve(
                         result.games_won += u64::from(breakdown.won);
                         best = Some(best.map_or(series_score, |b| b.max(series_score)));
                     }
-                    RunEvent::Passed { .. } => result.passes += 1,
+                    RunEvent::Redealt => result.redeals += 1,
                     _ => {}
                 }
             }
@@ -742,11 +742,11 @@ pub fn render_curve(
     };
     let _ = writeln!(
         out,
-        "skat_sim seed={} curve: {} {kind}, game limit {}, passes {}, options: {}",
+        "skat_sim seed={} curve: {} {kind}, game limit {}, redeals per game {}, options: {}",
         curve.seed,
         curve.series,
         content.run.game_limit,
-        content.run.passes,
+        content.run.redeals,
         options.describe()
     );
     let _ = writeln!(out, "{:>7} {:>7}", "target", "win%");
@@ -756,12 +756,12 @@ pub fn render_curve(
     let n = u64::from(curve.series);
     let _ = writeln!(
         out,
-        "games: {} won%={:.1} passes={} points per game={:.1} games per series={:.2}",
+        "games: {} won%={:.1} redeals={} points per game={:.1} games per series={:.2}",
         curve.games,
         pct(curve.games_won, curve.games),
-        curve.passes,
+        curve.redeals,
         mean_signed(curve.points, curve.games),
-        mean(curve.games + curve.passes, n)
+        mean(curve.games, n)
     );
     let _ = writeln!(out, "runtime: {:.1} ms total", runtime_us as f64 / 1000.0);
     out
@@ -1151,8 +1151,8 @@ mod option_tests {
         };
         let n = curve(&base, &null, 42, 100).expect("null curve");
         let limit = u64::from(base.run.game_limit);
-        assert_eq!(n.games + n.passes, 100 * limit);
-        assert_eq!(a.games + a.passes, 200 * limit);
+        assert_eq!(n.games, 100 * limit);
+        assert_eq!(a.games, 200 * limit);
     }
 
     #[test]

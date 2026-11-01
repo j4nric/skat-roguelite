@@ -211,9 +211,7 @@ pub fn evaluate(
             declaration.is_some_and(|d| !d.is_ramsch() && d.game() == *game_type)
         }
         Condition::SuitGame => declaration.is_some_and(|d| matches!(d.game(), GameType::Suit(_))),
-        Condition::RiskAtLeast(risk) => {
-            declaration.is_some_and(|d| d.risk().is_some_and(|r| r >= *risk))
-        }
+        Condition::RiskAtLeast(risk) => declaration.is_some_and(|d| d.risk_at_least(*risk)),
         Condition::LastTrickWonWith { card, by_declarer } => last_trick(game).is_some_and(|t| {
             t.winning_card().face() == Some(*card) && (!by_declarer || t.winner.is_declarer())
         }),

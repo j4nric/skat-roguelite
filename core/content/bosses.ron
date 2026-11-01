@@ -105,7 +105,7 @@
     (
         id: "the_old_man",
         name: "Der Alte",
-        text: "Der Endboss legt jede Regel der anderen Bosse auf, eine pro Spiel, der Reihe nach.",
+        text: "Der Endboss legt jede Regel der anderen Bosse auf, eine pro Blatt, der Reihe nach. Wer einmischt, bekommt die nächste.",
         rotation: [
             "the_pusher",
             "twins",

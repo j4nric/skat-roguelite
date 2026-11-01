@@ -176,18 +176,17 @@ impl RunEvent {
                 index,
                 target,
                 game_limit,
-                passes,
+                redeals,
                 boss,
             } => RunEvent::SeriesStarted {
                 section,
                 index,
                 target,
                 game_limit,
-                passes,
+                redeals,
                 boss,
             },
             RunEvent::GameDealt { number, forehand } => RunEvent::GameDealt { number, forehand },
-            RunEvent::Passed { passes_left } => RunEvent::Passed { passes_left },
             RunEvent::Kontra { seat } => RunEvent::Kontra { seat },
             RunEvent::Re => RunEvent::Re,
             RunEvent::FlagSet(flag) => RunEvent::FlagSet(flag),
@@ -217,7 +216,7 @@ impl RunEvent {
                 payout,
                 coins,
                 boss,
-                passes_used,
+                redeals_used,
                 games_left,
             } => RunEvent::SeriesWon {
                 section,
@@ -225,7 +224,7 @@ impl RunEvent {
                 payout,
                 coins,
                 boss,
-                passes_used,
+                redeals_used,
                 games_left,
             },
             RunEvent::ShopOpened {
@@ -247,14 +246,15 @@ impl RunEvent {
             RunEvent::ShopLeft => RunEvent::ShopLeft,
             RunEvent::ConsumableUsed { consumable } => RunEvent::ConsumableUsed { consumable },
             RunEvent::DeckChanged(change) => RunEvent::DeckChanged(change),
-            RunEvent::PassesAdded {
-                passes,
-                passes_left,
-            } => RunEvent::PassesAdded {
-                passes,
-                passes_left,
+            RunEvent::RedealsAdded {
+                redeals,
+                redeals_left,
+            } => RunEvent::RedealsAdded {
+                redeals,
+                redeals_left,
             },
             RunEvent::Redealt => RunEvent::Redealt,
+            RunEvent::RedealUndone => RunEvent::RedealUndone,
             // The Kiebitz shows this card to the player: allowed knowledge.
             RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
             RunEvent::RamschDealt => RunEvent::RamschDealt,

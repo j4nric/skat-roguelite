@@ -780,7 +780,15 @@ mod tests {
         assert_eq!(options["can_pick_up_skat"], false);
         assert!(step["view"]["game"]["value_preview"].is_null());
         assert_eq!(options["risks"][0]["risk"], "Normal");
-        assert_eq!(options["risks"].as_array().map(Vec::len), Some(1));
+        // ADR 0013: Schneider, Schwarz and Ouvert also after the skat.
+        assert_eq!(options["risks"].as_array().map(Vec::len), Some(4));
+        assert_eq!(options["risks"][1]["risk"], "SchneiderDeclared");
+        let mut probe = Session::load(&session.save().expect("save")).expect("load");
+        let announced = probe
+            .apply(r#"{"Declare":{"game":"Grand","risk":"SchneiderDeclared"}}"#)
+            .expect("Schneider angesagt after the skat");
+        let announced: serde_json::Value = serde_json::from_str(&announced).expect("json");
+        assert_eq!(announced["view"]["game"]["declaration"]["after_skat"], true);
         assert!(
             session
                 .apply(r#"{"Declare":{"game":"Grand","risk":"Hand"}}"#)
@@ -844,7 +852,7 @@ mod tests {
     #[test]
     fn the_player_json_holds_no_hidden_card_after_a_deal() {
         let mut session = Session::new("42").expect("new");
-        let step = session.apply(r#""Pass""#).expect("pass");
+        let step = session.apply(r#""Redeal""#).expect("einmischen");
         let hidden = hidden_ids(&session);
         assert_eq!(hidden.len(), 22);
         let json: serde_json::Value = serde_json::from_str(&step).expect("json");
@@ -886,7 +894,10 @@ mod tests {
         assert_eq!(code(err), "InvalidAction");
         let err = session.apply(r#"{"Play":999}"#).expect_err("not held");
         assert_eq!(code(err), "UnknownCard");
-        let err = session.apply(r#""RedrawSkat""#).expect_err("no relic");
+        // Einmischen twice per game, then the old names fail like the new.
+        session.apply(r#""Redeal""#).expect("first");
+        session.apply(r#""Pass""#).expect("second, old name");
+        let err = session.apply(r#""RedrawSkat""#).expect_err("none left");
         assert_eq!(code(err), "NoRedealLeft");
         // "Rest abkürzen" only in a decided game.
         let err = session.apply(r#""SettleGame""#).expect_err("not decided");
@@ -913,7 +924,8 @@ mod tests {
         assert_eq!(view["next_series"]["is_boss"], false);
         assert!(view["next_series"]["target"].is_u64());
         assert_eq!(view["deal_odds"]["hand_or_skat"]["permille"], 375);
-        assert_eq!(view["game"]["declare"]["can_redeal"], false);
+        assert_eq!(view["game"]["declare"]["can_redeal"], true);
+        assert_eq!(view["series"]["redeals_left"], 2);
         let odds: serde_json::Value =
             serde_json::from_str(&deal_odds_json(33).expect("odds")).expect("json");
         assert_eq!(odds["deck_size"], 33);

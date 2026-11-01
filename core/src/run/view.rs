@@ -116,16 +116,21 @@ pub struct SeriesView {
     pub target: u64,
     /// Series account.
     pub score: i64,
-    /// Games played or passed.
+    /// Games played.
     pub games_played: u32,
     /// Spiellimit.
     pub game_limit: u32,
     /// Games left before the limit.
     pub games_left: u32,
-    /// Passes left.
+    /// Einmischen left now: the game's own plus the series' extras ("Ein
+    /// Bier"), [`Run::redeals_left`]. Back to the full allowance with every
+    /// new game.
+    pub redeals_left: u32,
+    /// Einmischen used in this series.
+    pub redeals_used: u32,
+    /// Old name of `redeals_left`, kept while frontend code still reads
+    /// it (passes per series until 01.11.2026). Always equal.
     pub passes_left: u32,
-    /// Passes used.
-    pub passes_used: u32,
     /// The boss of a boss series.
     pub boss: Option<BossInfo>,
     /// The Stammgäste at the table, seat 1 (left) and seat 2 (right). In a
@@ -230,8 +235,8 @@ pub struct NextSeriesView {
     pub target: u64,
     /// Spiellimit.
     pub game_limit: u32,
-    /// Passes at the start of the series.
-    pub passes: u32,
+    /// Einmischen per game of the character, without relics.
+    pub redeals: u32,
     /// Its boss, if it is the boss series.
     pub boss: Option<BossInfo>,
 }
@@ -377,11 +382,11 @@ pub struct ConsumableOffer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TablePhase {
     /// Ten cards: declare a hand game, pick up the skat ([`DeclareOptions`]
-    /// says what is allowed), pass or redeal.
+    /// says what is allowed) or redeal (einmischen).
     Declaring,
     /// Twelve cards: two to discard.
     Discarding,
-    /// Skat picked up and discarded: the Ansage without hand levels.
+    /// Skat picked up and discarded: the Ansage without the Hand level.
     DeclaringAfterSkat,
     /// Tricks.
     Playing,
@@ -494,8 +499,8 @@ pub struct NullRiskOption {
 /// ([`TablePhase::Declaring`]) the lists hold the hand levels only, the
 /// other way is [`DeclareOptions::can_pick_up_skat`]; after picking up the
 /// skat and discarding ([`TablePhase::DeclaringAfterSkat`]) they hold the
-/// levels without Hand (suit and grand: `Normal`; Null: `Normal` and
-/// `Ouvert`).
+/// levels without Hand (suit and grand: `Normal`, Schneider and Schwarz
+/// angesagt, Ouvert since ADR 0013; Null: `Normal` and `Ouvert`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeclareOptions {
     /// Spielarten for every character (ADR 0012): Kreuz, Pik, Herz, Karo,
@@ -516,12 +521,14 @@ pub struct DeclareOptions {
     pub can_pick_up_skat: bool,
     /// Whether "Der Angeber" demands Ouvert.
     pub ouvert_required: bool,
-    /// Whether Einpassen is possible.
-    pub can_pass: bool,
-    /// Whether the game can be dealt again ("Schieben").
+    /// Whether the game can be dealt again now (Einmischen,
+    /// [`RunAction::Redeal`]).
     pub can_redeal: bool,
-    /// Redeals ("Schieben") left in this series.
+    /// Einmischen left now ([`Run::redeals_left`]).
     pub redeals_left: u32,
+    /// Old name of `can_redeal` (Einpassen until 01.11.2026), kept while
+    /// frontend code still reads it. Always equal.
+    pub can_pass: bool,
     /// Whether the boss demands a hand game.
     pub hand_required: bool,
 }
@@ -867,7 +874,7 @@ impl Run {
             is_boss,
             target,
             game_limit: content.run.game_limit,
-            passes: content.passes(self.character),
+            redeals: content.redeals(self.character),
             boss: boss.map(|id| self.boss_info(content, id)),
         })
     }
@@ -926,8 +933,9 @@ impl Run {
                 games_played: series.games_played,
                 game_limit: series.game_limit,
                 games_left: series.games_left(),
-                passes_left: series.passes_left,
-                passes_used: series.passes_used,
+                redeals_left: self.redeals_left(content),
+                redeals_used: series.redeals_used,
+                passes_left: self.redeals_left(content),
                 boss,
                 guests: self.guest_infos(content),
             },
@@ -1087,15 +1095,21 @@ impl Run {
             .is_some_and(|a| a.game.phase() == Phase::DeclaringAfterSkat)
     }
 
-    /// The Ansage dialog (ADR 0011, 0012): every character may declare the
-    /// suit games, the grand and Null, each with the levels of this phase
-    /// (before the skat the hand levels, after it the levels without Hand:
-    /// suit and grand `Normal`, Null `Normal` and `Ouvert`).
+    /// The Ansage dialog (ADR 0011, 0012, 0013): every character may
+    /// declare the suit games, the grand and Null, each with the levels of
+    /// this phase (before the skat the hand levels, after it the levels
+    /// without Hand: suit and grand `Normal`, Schneider and Schwarz
+    /// angesagt, Ouvert; Null `Normal` and `Ouvert`).
     fn declare_options(&self, content: &Content) -> DeclareOptions {
         let after_skat = self.after_skat();
+        let skipped = if after_skat {
+            RiskLevel::Hand
+        } else {
+            RiskLevel::Normal
+        };
         let risks: Vec<RiskOption> = RiskLevel::ALL
             .into_iter()
-            .filter(|&risk| (risk == RiskLevel::Normal) == after_skat)
+            .filter(|&risk| risk != skipped)
             .map(|risk| RiskOption {
                 risk,
                 allowed: self.accepts(content, RunAction::Declare(Declaration::grand(risk))),
@@ -1139,6 +1153,7 @@ impl Run {
                 allowed: null_risks.iter().any(|r| r.allowed),
             }))
             .collect();
+        let can_redeal = self.accepts(content, RunAction::Redeal);
         DeclareOptions {
             games,
             risks,
@@ -1146,9 +1161,9 @@ impl Run {
             null_style: matches!(scoring, NullScoring::Formula(_)),
             can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
-            can_pass: self.accepts(content, RunAction::Pass),
-            can_redeal: self.accepts(content, RunAction::Redeal),
-            redeals_left: self.redeals_left(),
+            can_redeal,
+            redeals_left: self.redeals_left(content),
+            can_pass: can_redeal,
             hand_required: self.requires_hand(),
         }
     }
@@ -1495,9 +1510,9 @@ mod tests {
             vec![(NullRisk::Hand, 46), (NullRisk::OuvertHand, 92)]
         );
         assert!(options.null_style);
-        assert!(options.can_pass);
+        assert!(options.can_redeal);
+        assert_eq!(options.redeals_left, content.run.redeals);
         assert!(options.can_pick_up_skat);
-        assert!(!options.can_redeal);
         assert!(!options.hand_required);
         // Before the skat only the hand levels (ADR 0011).
         assert!(options.risks.iter().all(|r| r.risk != RiskLevel::Normal));
@@ -1593,7 +1608,7 @@ mod tests {
         assert_eq!(saw_declare, [true, true], "both Ansage dialogs");
         assert!(saw_shop || run.phase() == RunPhase::Lost);
         let stats = run.stats();
-        assert!(stats.games_won + stats.games_lost + stats.games_passed > 0);
+        assert!(stats.games_won + stats.games_lost + stats.redeals > 0);
     }
 
     #[test]

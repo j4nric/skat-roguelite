@@ -134,8 +134,9 @@ pub enum Character {
     /// Der Grandspieler: a Grand counts one Gewinnstufe more, a suit game
     /// one less (DESIGN 9.4).
     GrandPlayer,
-    /// Der Zaungast: sees the hand of the left defender, but has two
-    /// passes fewer per series (DESIGN 9.5). Not the figure "Der Kiebitz".
+    /// Der Zaungast: sees the hand of the left defender, but may redeal
+    /// (einmischen) once fewer per game (DESIGN 9.5). Not the figure "Der
+    /// Kiebitz".
     Onlooker,
     /// Die Wirtin: twice the Groschen for a won series, but one relic slot
     /// fewer (DESIGN 9.6). Not the figure "Der Wirt".
@@ -291,9 +292,11 @@ pub struct CharacterRule {
     pub passive: Vec<Effect>,
     /// Triggered effects, like a relic's.
     pub hooks: Vec<Hook>,
-    /// Passes per series added to `run.ron` (negative: fewer, never
-    /// below 0).
-    pub passes: i32,
+    /// Einmischen per game added to `run.ron` (negative: fewer, never
+    /// below 0). Also read under its old name `passes` (passes per series
+    /// until the Einmischen rule of 01.11.2026).
+    #[serde(alias = "passes")]
+    pub redeals: i32,
     /// Relic slots added to `run.ron` (negative: fewer, never below 0).
     pub relic_slots: i32,
     /// The Groschen of a won series (Grundbetrag, übrige Spiele, Zinsen)
@@ -306,7 +309,7 @@ impl Default for CharacterRule {
         CharacterRule {
             passive: Vec::new(),
             hooks: Vec::new(),
-            passes: 0,
+            redeals: 0,
             relic_slots: 0,
             payout_factor: 1,
         }
@@ -441,9 +444,10 @@ pub enum UnlockCondition {
         /// Only this boss (`None`: any).
         #[serde(default)]
         boss: Option<BossId>,
-        /// Only without passing in that series.
-        #[serde(default)]
-        without_pass: bool,
+        /// Only without redealing (einmischen) in that series. Also read
+        /// under its old name `without_pass`.
+        #[serde(default, alias = "without_pass")]
+        without_redeal: bool,
     },
     /// Win a series with at least this many games left.
     WinSeriesWithGamesLeft(u32),
@@ -698,17 +702,26 @@ pub enum ConsumableAction {
     /// Attach a card modification to a chosen card (at the Tresen). `None`
     /// picks one at random with the run's RNG.
     AddCardMod(Option<CardModId>),
-    /// More passes in the current series.
-    ExtraPasses(u32),
-    /// Shuffle and deal again before declaring, without using up a game.
+    /// Einmischen more in the current series ("Ein Bier", "Kräuter"): a
+    /// pool used once the game's own Einmischen are gone. Also read under
+    /// its old name `ExtraPasses`.
+    #[serde(alias = "ExtraPasses")]
+    ExtraRedeals(u32),
+    /// Shuffle and deal again before declaring, without using up an
+    /// Einmischen ("Neues Blatt").
     Redeal,
+    /// Take the last Einmischen back ("Reue"): the deal before it returns
+    /// as it was, and that hand is played. Only with ten cards before the
+    /// skat is touched, and only right after a redeal of this game; the
+    /// Einmischen stays used.
+    UndoRedeal,
     /// Look at the two skat cards before choosing Skat or Hand ("Kurzer").
     /// Only while the ten cards are held and the skat is untouched; the
     /// choice stays open. Information: off against "Der Kiebitz-Mörder".
     PeekSkat,
     /// Change the next declared game ("Doppelkorn", "Magenbitter"). Used at
     /// the Tresen or before the declaration of the dealt game; used up by
-    /// the next declaration (a pass does not waste it), like "Letzte
+    /// the next declaration (Einmischen does not waste it), like "Letzte
     /// Runde".
     NextGame(NextGameEffect),
     /// Repaint a card of the hand (target, never a jack or a blank) into
@@ -820,8 +833,11 @@ pub struct RunConfig {
     pub targets: Vec<(u64, u64, u64)>,
     /// Spiellimit per series.
     pub game_limit: u32,
-    /// Passes per series.
-    pub passes: u32,
+    /// Einmischen per game: how often the player may have a game dealt
+    /// again before declaring; then one of the hands must be played. Also
+    /// read under its old name `passes` (passes per series).
+    #[serde(alias = "passes")]
+    pub redeals: u32,
     /// Slots for house rules and figures together.
     pub relic_slots: u32,
     /// Slots for consumables.
@@ -1359,12 +1375,13 @@ impl Content {
         self.run.relic_slots.saturating_add_signed(delta)
     }
 
-    /// Passes per series of a run with `character`: `run.ron` plus the
-    /// character's rule, never below 0.
+    /// Einmischen per game of a run with `character`: `run.ron` plus the
+    /// character's rule, never below 0. Relics may add more per game
+    /// ([`Effect::ExtraRedeal`]).
     #[must_use]
-    pub fn passes(&self, character: Character) -> u32 {
-        let delta = self.character(character).map_or(0, |c| c.rule.passes);
-        self.run.passes.saturating_add_signed(delta)
+    pub fn redeals(&self, character: Character) -> u32 {
+        let delta = self.character(character).map_or(0, |c| c.rule.redeals);
+        self.run.redeals.saturating_add_signed(delta)
     }
 
     /// How many times the Groschen of a won series count for `character`
