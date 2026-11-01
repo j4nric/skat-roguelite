@@ -5,13 +5,13 @@
 // which modification a card gets or which relic a swap brings, when the
 // core drew them in advance.
 
-import { de, contentName, contentText, isCurse, t } from '../i18n';
+import { de, contentName, contentText, isCurse, relicLook, t } from '../i18n';
 import type { EncounterOptionView, RunView } from '../types';
 import { modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { coinIcon } from './hud';
+import { relicCoaster } from './emblems';
 import { encounterFaces, portrait } from './people';
-import { coasterEmblem } from './shop';
 
 /** A beer glass, for "Letzte Runde". */
 function glass(): string {
@@ -53,7 +53,8 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
   const relic = o.relic;
   const id = relic?.id ?? ('TakeRule' in c ? c.TakeRule : c.SwapRelic.relic);
   const name = contentName('relics', id);
-  const pic = `<span class="enc-coaster rarity-${esc(relic?.rarity ?? 'Common')}">${coasterEmblem(relic?.kind ?? 'HouseRule')}</span>`;
+  const shown = relic ?? relicLook(id);
+  const pic = `<span class="enc-coaster">${relicCoaster(shown, { size: 44 })}</span>`;
   if ('TakeRule' in c) return { title: name, hint: contentText('relics', id), pic, cls: 'is-rule', extra: '' };
   const fresh = o.new_relic;
   if (fresh) {

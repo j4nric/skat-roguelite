@@ -3,13 +3,14 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, cardName, contentName, contentText, face, t } from '../i18n';
+import { de, cardName, contentName, contentText, face, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
 import { cardSvg, modIcon, suitIcon } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
+import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
@@ -413,7 +414,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'boss':
       return sheet(
         `<div class="boss-intro">${portrait(bossPortraitId(overlay.boss.id), 'portrait-boss')}
-         <p class="small">${esc(de.boss.title)} · ${esc(de.boss.intro)}</p>
+         <p class="small boss-kicker">${bossCoaster(overlay.boss.id, { size: 32 })}<span>${esc(de.boss.title)} · ${esc(de.boss.intro)}</span></p>
          <h2>${esc(contentName('bosses', overlay.boss.id))}</h2>
          <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p></div>
          <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'boss-go' })}>${esc(de.boss.go)}</button>`,
@@ -708,16 +709,13 @@ function burst(): string {
   return `<span class="unlock-burst" aria-hidden="true">${Array.from({ length: 12 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</span>`;
 }
 
-/** A Bierdeckel with a foaming glass: a new relic for the Tresen. */
-function coasterGlass(): string {
-  return `<svg viewBox="0 0 40 40" width="46" height="46" aria-hidden="true"><path d="M12 12 L28 12 L26.5 33 L13.5 33 Z" fill="#e8a417" stroke="#2b1a0e" stroke-width="1.6"/><path d="M10.5 12.5 C10 7.5 15 7 17 9 C19 6 24 6 25.5 9 C28.5 7.5 31 10 29.5 12.5 Z" fill="#fffaf0" stroke="#2b1a0e" stroke-width="1.6"/><path d="M28 17 C33 17 33 27 27.2 27" fill="none" stroke="#2b1a0e" stroke-width="1.8"/><path d="M16 16 L15.6 30" stroke="#fff" stroke-width="1.3" opacity=".5"/></svg>`;
-}
-
-/** The picture of a reward: portrait, modification badge or a Bierdeckel with a glass. */
-function rewardPic(reward: Reward): string {
+/** The picture of a reward: portrait, modification badge or the relic's beer mat. */
+function rewardPic(reward: Reward, info?: RewardInfo): string {
   if ('Character' in reward) return portrait(characterPortraitId(reward.Character), 'portrait-lg');
   if ('CardMod' in reward) return `<span class="unlock-coaster unlock-mod">${modIcon(reward.CardMod, 46)}</span>`;
-  return `<span class="unlock-coaster">${coasterGlass()}</span>`;
+  const look = relicLook(reward.Relic);
+  const kind = info?.kind === 'Regular' || info?.kind === 'HouseRule' ? info.kind : look.kind;
+  return `<span class="unlock-deckel">${relicCoaster({ id: reward.Relic, kind, rarity: info?.rarity ?? look.rarity }, { size: 72 })}</span>`;
 }
 
 /** Festive notice of unlocks just earned. */
@@ -726,8 +724,8 @@ function renderUnlocks(meta: MetaView, ids: string[]): string {
     .map((id) => meta.unlocks.find((u) => u.id === id))
     .filter((u): u is UnlockEntry => u !== undefined)
     .map((u) => {
-      const infos: { reward: Reward; name: string; text: string; kind: string }[] = u.reward_info?.length
-        ? u.reward_info.map((i) => ({ reward: i.reward, name: infoName(i, meta), text: infoText(i), kind: infoKind(i) }))
+      const infos: { reward: Reward; name: string; text: string; kind: string; info?: RewardInfo }[] = u.reward_info?.length
+        ? u.reward_info.map((i) => ({ reward: i.reward, name: infoName(i, meta), text: infoText(i), kind: infoKind(i), info: i }))
         : u.rewards.map((r) => ({
             reward: r,
             name: rewardName(r, meta),
@@ -737,7 +735,7 @@ function renderUnlocks(meta: MetaView, ids: string[]): string {
       const rewards = infos
         .map(
           (i) =>
-            `<div class="unlock-reward"><div class="unlock-pic">${burst()}${rewardPic(i.reward)}</div>${i.kind ? `<span class="unlock-kind" data-testid="unlock-kind">${esc(i.kind)}</span>` : ''}<b>${esc(i.name)}</b><span class="small">${esc(i.text)}</span></div>`,
+            `<div class="unlock-reward"><div class="unlock-pic">${burst()}${rewardPic(i.reward, i.info)}</div>${i.kind ? `<span class="unlock-kind" data-testid="unlock-kind">${esc(i.kind)}</span>` : ''}<b>${esc(i.name)}</b><span class="small">${esc(i.text)}</span></div>`,
         )
         .join('');
       const line = t(de.unlock.line, { name: infos.map((i) => i.name).join(', ') });

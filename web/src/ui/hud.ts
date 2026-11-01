@@ -1,12 +1,11 @@
 // Head of the run screen: where we are in the tour, Groschen and the menu;
 // a slate panel with account and target, games and passes left as pips;
-// the collected relics (small paper cards) and items in one row.
+// the collected relics and items as beer mats (./emblems.ts) in one row.
 
 import { de, contentName, t } from '../i18n';
 import type { RunView } from '../types';
 import { attrs, esc } from './dom';
-import { goodSvg } from './goods';
-import { bossPortraitId, portrait } from './people';
+import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 
 /** A Groschen as an 8 × 8 pixel coin in copper. */
 export function coinIcon(size = 18): string {
@@ -29,13 +28,13 @@ export function relicChips(view: RunView): string {
   const relics = view.relics
     .map(
       (r) =>
-        `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}><span>${esc(contentName('relics', r.relic.id))}</span></button>`,
+        `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}>${relicCoaster(r.relic, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.relic.id))}</span></button>`,
     )
     .join('');
   const evening = view.evening_relics
     .map(
       (r, i) =>
-        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}` })}><span>${esc(contentName('relics', r.id))}</span><small>${esc(de.evening.tag)}</small></button>`,
+        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}` })}>${relicCoaster(r, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.id))}<small>${esc(de.evening.tag)}</small></span></button>`,
     )
     .join('');
   const pending = view.pending_factor
@@ -47,7 +46,7 @@ export function relicChips(view: RunView): string {
   const items = view.consumables
     .map(
       (c) =>
-        `<button class="item-chip" ${attrs({ 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}`, 'aria-label': contentName('consumables', c.consumable.id) })}>${goodSvg(c.consumable.id, 30)}</button>`,
+        `<button class="item-chip" ${attrs({ 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}`, 'aria-label': contentName('consumables', c.consumable.id) })}>${consumableCoaster(c.consumable, { size: 40 })}</button>`,
     )
     .join('');
   const flags = view.flags
@@ -76,7 +75,7 @@ export function renderHud(view: RunView): string {
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const boss =
     s.is_boss && s.boss
-      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${s.boss.id}`, 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${portrait(bossPortraitId(s.boss.id), 'portrait-xs')}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
+      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${s.boss.id}`, 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${bossCoaster(s.boss.id, { size: 34 })}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
       : '';
   const fill = meterPercent(s.score, s.target);
   const chips = relicChips(view);

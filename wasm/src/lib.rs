@@ -35,7 +35,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
-    Change, Character, Content, Effect, Hook, Lever, Rarity, RunLength, UnlockId,
+    Change, Character, ConsumableCategory, Content, Effect, Hook, Lever, Rarity, RelicKind,
+    RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -135,12 +136,25 @@ struct CardModEntry<'a> {
 }
 
 /// Name and text of a relic, plus the run counters it reads or raises, so
-/// the web app can show their values next to it.
+/// the web app can show their values next to it. Kind and rarity pick the
+/// look of its beer mat, also for relics no longer owned.
 #[derive(Serialize)]
 struct RelicEntry<'a> {
     name: &'a str,
     text: &'a str,
+    kind: RelicKind,
+    rarity: Rarity,
     counters: Vec<&'a str>,
+}
+
+/// Name, text, rarity and group of a consumable, so the web app can draw
+/// one that is already used up (score lines of a Schnaps).
+#[derive(Serialize)]
+struct ConsumableEntry<'a> {
+    name: &'a str,
+    text: &'a str,
+    rarity: Rarity,
+    category: ConsumableCategory,
 }
 
 /// The headline number of a card modification as written in the content:
@@ -201,7 +215,7 @@ struct Catalog<'a> {
     relics: BTreeMap<&'a str, RelicEntry<'a>>,
     card_mods: BTreeMap<&'a str, CardModEntry<'a>>,
     bosses: BTreeMap<&'a str, Entry<'a>>,
-    consumables: BTreeMap<&'a str, Entry<'a>>,
+    consumables: BTreeMap<&'a str, ConsumableEntry<'a>>,
     characters: BTreeMap<&'a str, Entry<'a>>,
     encounters: BTreeMap<&'a str, Entry<'a>>,
     unlocks: BTreeMap<&'a str, Entry<'a>>,
@@ -239,6 +253,8 @@ pub fn catalog_json() -> Result<String, String> {
                     RelicEntry {
                         name: &d.name,
                         text: &d.text,
+                        kind: d.kind,
+                        rarity: d.rarity,
                         counters: relic_counters(&d.passive, &d.hooks),
                     },
                 )
@@ -279,9 +295,11 @@ pub fn catalog_json() -> Result<String, String> {
             .map(|d| {
                 (
                     d.id.as_str(),
-                    Entry {
+                    ConsumableEntry {
                         name: &d.name,
                         text: &d.text,
+                        rarity: d.rarity,
+                        category: d.category,
                     },
                 )
             })
@@ -904,6 +922,12 @@ mod tests {
         let catalog: serde_json::Value =
             serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
         assert_eq!(catalog["relics"]["old_lady"]["name"], "Alte Dame");
+        assert_eq!(catalog["relics"]["old_lady"]["kind"], "HouseRule");
+        assert_eq!(catalog["relics"]["kibitzer"]["kind"], "Regular");
+        assert_eq!(catalog["relics"]["tour"]["rarity"], "Rare");
+        assert_eq!(catalog["consumables"]["chalk"]["category"], "Schnapps");
+        assert_eq!(catalog["consumables"]["beer"]["category"], "Item");
+        assert_eq!(catalog["consumables"]["new_deal"]["rarity"], "Uncommon");
         assert!(catalog["card_mods"]["fat"]["text"].is_string());
         assert_eq!(catalog["card_mods"]["fat"]["curse"], false);
         assert_eq!(catalog["card_mods"]["battered"]["curse"], true);

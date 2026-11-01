@@ -8,14 +8,14 @@
 // only labels, formats and animates them.
 
 import { sound } from '../audio';
-import { de, cardName, contentName, declarationName, gameName, t } from '../i18n';
+import { de, cardName, consumableLook, contentName, declarationName, gameName, relicLook, t } from '../i18n';
 import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
-import { goodSvg } from './goods';
+import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon, meterPercent } from './hud';
-import { bossPortraitId, encounterFaces, portrait } from './people';
+import { encounterFaces, portrait } from './people';
 import type { ScoreOverlay } from './state';
 
 /** "+3" / "−3" with a real minus sign. */
@@ -46,10 +46,10 @@ export function sourceName(source: Source, deck: DeckCard[]): string {
 
 function sourceIcon(source: Source, deck: DeckCard[]): string {
   if (source === 'Kontra' || source === 'Re') return `<span class="step-icon icon-kontra">K</span>`;
-  if ('Relic' in source) return `<span class="step-icon icon-coaster"></span>`;
-  if ('Boss' in source) return `<span class="step-icon">${portrait(bossPortraitId(source.Boss), 'portrait-xs')}</span>`;
+  if ('Relic' in source) return `<span class="step-icon">${relicCoaster(relicLook(source.Relic), { size: 22 })}</span>`;
+  if ('Boss' in source) return `<span class="step-icon">${bossCoaster(source.Boss, { size: 22 })}</span>`;
   if ('Encounter' in source) return `<span class="step-icon">${portrait(encounterFaces(source.Encounter)[0] ?? 'p-wirt', 'portrait-xs')}</span>`;
-  if ('Consumable' in source) return `<span class="step-icon">${goodSvg(source.Consumable, 20)}</span>`;
+  if ('Consumable' in source) return `<span class="step-icon">${consumableCoaster(consumableLook(source.Consumable), { size: 22 })}</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods)}</span>`
@@ -143,7 +143,7 @@ function termRow(term: ScoreTerm, deck: DeckCard[], parts: LevelParts): Row {
 function coasterStrip(o: ScoreOverlay): string {
   if (!o.relics.length) return '';
   return `<div class="relic-strip">${o.relics
-    .map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}" data-relic="${esc(r.relic.id)}">${esc(contentName('relics', r.relic.id))}</span>`)
+    .map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}" data-relic="${esc(r.relic.id)}">${relicCoaster(r.relic, { size: 22 })}${esc(contentName('relics', r.relic.id))}</span>`)
     .join('')}</div>`;
 }
 
