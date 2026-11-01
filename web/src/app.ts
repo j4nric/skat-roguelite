@@ -15,6 +15,19 @@ import { renderShop } from './ui/shop';
 import type { UiState } from './ui/state';
 import { renderTable } from './ui/table';
 
+/** Turn a core error (JSON `{code, message}` since the M2 polish) into a German text. */
+function errorText(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  try {
+    const parsed = JSON.parse(raw) as { code?: string };
+    const fallback = de.app.errors.default ?? '';
+    if (parsed.code) return de.app.errors[parsed.code] ?? fallback;
+  } catch {
+    /* not JSON: fall through */
+  }
+  return de.app.errors.default ?? '';
+}
+
 /** Delays in milliseconds; reduced motion shortens them. */
 const DELAY = {
   ownCard: 180,
@@ -167,7 +180,7 @@ export class App {
       step = this.core.apply(action);
     } catch (err) {
       console.warn('action rejected', action, err);
-      this.showToast(t(de.app.actionFailed, { reason: String(err) }));
+      this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
       return;
     }
     const view = step.view;
@@ -325,10 +338,6 @@ export class App {
     if ('Conceded' in ev) {
       this.showToast(de.toast.conceded);
       await this.pause(DELAY.notice);
-      return;
-    }
-    if ('SkatRedrawn' in ev) {
-      this.showToast(de.toast.redrawn);
       return;
     }
     if ('Discarded' in ev && anim) {
@@ -537,7 +546,7 @@ export class App {
         void this.act('Pass');
         return;
       case 'redraw':
-        void this.act('RedrawSkat');
+        void this.act('Redeal');
         return;
       case 're':
         void this.act({ AnswerKontra: { re: el.dataset.re === 'true' } });

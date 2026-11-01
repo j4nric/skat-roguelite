@@ -13,13 +13,15 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use super::{Kontra, Run, RunAction, RunPhase, RunStats, sell_price};
+use super::{
+    Kontra, Run, RunAction, RunPhase, RunStats, SERIES_PER_SECTION, sell_price, series_target,
+};
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardModId, ConsumableAction, ConsumableId, Content, Rarity, RelicId, RelicKind,
+    BossId, CardModId, ConsumableAction, ConsumableId, Content, Factor, Rarity, RelicId, RelicKind,
     ScoreBreakdown, ScoreStep,
 };
-use crate::deck::{DealtCard, DeckCard};
+use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{Declaration, GameType, RiskLevel, suit_strength, trump_strength};
 
@@ -32,6 +34,17 @@ pub struct RunView {
     pub phase: RunPhase,
     /// The current series.
     pub series: SeriesView,
+    /// The boss of the current section while its boss series is still
+    /// ahead or running: known from the start of the section (DESIGN 11).
+    /// `None` after the boss series and once the run is over.
+    pub upcoming_boss: Option<BossInfo>,
+    /// The series after the current one, for the Tresen and the run
+    /// overview. `None` after the last series and once the run is over.
+    pub next_series: Option<NextSeriesView>,
+    /// Where any one card of the deck lands when a game is dealt, for the
+    /// current deck (DESIGN 7.4). For a deck after a change use
+    /// [`crate::deck::deal_odds`] with the new size.
+    pub deal_odds: DealOdds,
     /// Sections (Abschnitte) in a run.
     pub sections: u32,
     /// Groschen.
@@ -88,12 +101,33 @@ pub struct SeriesView {
 /// A boss with its rule text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BossInfo {
-    /// Id.
+    /// Id, also the key for the frontend's texts.
     pub id: BossId,
     /// German name from the content.
     pub name: String,
     /// German rule text from the content.
     pub text: String,
+    /// Factor on the Zielwert of the boss series (1.0 = unchanged).
+    pub target_factor: Factor,
+}
+
+/// Preview of the next series.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NextSeriesView {
+    /// Section, from 0.
+    pub section: u32,
+    /// Series within the section, from 0.
+    pub index: u32,
+    /// Whether it is the boss series.
+    pub is_boss: bool,
+    /// Zielwert, with the boss's factor applied.
+    pub target: u64,
+    /// Spiellimit.
+    pub game_limit: u32,
+    /// Passes at the start of the series.
+    pub passes: u32,
+    /// Its boss, if it is the boss series.
+    pub boss: Option<BossInfo>,
 }
 
 /// A relic as the player sees it.
@@ -280,10 +314,10 @@ pub struct DeclareOptions {
     pub risks: Vec<RiskOption>,
     /// Whether Einpassen is possible.
     pub can_pass: bool,
-    /// Whether the skat can be redrawn ("Schieben").
-    pub can_redraw: bool,
-    /// Skat redraws left.
-    pub redraws_left: u32,
+    /// Whether the game can be dealt again ("Schieben").
+    pub can_redeal: bool,
+    /// Redeals ("Schieben") left in this series.
+    pub redeals_left: u32,
     /// Whether the boss demands a hand game.
     pub hand_required: bool,
 }
@@ -443,22 +477,67 @@ impl Run {
         }
     }
 
-    /// The read-only view of the run for a frontend.
-    #[must_use]
-    pub fn view(&self, content: &Content) -> RunView {
-        let series = &self.series;
-        let boss = series.boss.as_ref().map(|id| match content.boss(id) {
+    fn boss_info(content: &Content, id: &BossId) -> BossInfo {
+        match content.boss(id) {
             Some(def) => BossInfo {
                 id: id.clone(),
                 name: def.name.clone(),
                 text: def.text.clone(),
+                target_factor: def.target_factor,
             },
             None => BossInfo {
                 id: id.clone(),
                 name: id.to_string(),
                 text: String::new(),
+                target_factor: Factor::ONE,
             },
-        });
+        }
+    }
+
+    /// The series after the current one. A new section's boss is not drawn
+    /// yet, so its first series shows none.
+    fn next_series_view(&self, content: &Content) -> Option<NextSeriesView> {
+        if matches!(self.phase, RunPhase::Won | RunPhase::Lost) {
+            return None;
+        }
+        let (section, index) = if self.series.index + 1 >= SERIES_PER_SECTION {
+            (self.series.section + 1, 0)
+        } else {
+            (self.series.section, self.series.index + 1)
+        };
+        let is_boss = index + 1 == SERIES_PER_SECTION;
+        let boss = if is_boss {
+            self.section_boss.as_ref()
+        } else {
+            None
+        };
+        let target = series_target(content, section, index, boss)?;
+        Some(NextSeriesView {
+            section,
+            index,
+            is_boss,
+            target,
+            game_limit: content.run.game_limit,
+            passes: content.run.passes,
+            boss: boss.map(|id| Run::boss_info(content, id)),
+        })
+    }
+
+    /// The read-only view of the run for a frontend.
+    #[must_use]
+    pub fn view(&self, content: &Content) -> RunView {
+        let series = &self.series;
+        let boss = series.boss.as_ref().map(|id| Run::boss_info(content, id));
+        let boss_ahead = match self.phase {
+            RunPhase::Game => true,
+            RunPhase::Shop => series.index + 1 < SERIES_PER_SECTION,
+            RunPhase::Won | RunPhase::Lost => false,
+        };
+        let upcoming_boss = self
+            .section_boss
+            .as_ref()
+            .filter(|_| boss_ahead)
+            .map(|id| Run::boss_info(content, id));
         let relics = self
             .relics
             .iter()
@@ -485,7 +564,7 @@ impl Run {
             series: SeriesView {
                 section: series.section,
                 index: series.index,
-                is_boss: series.index + 1 == super::SERIES_PER_SECTION,
+                is_boss: series.index + 1 == SERIES_PER_SECTION,
                 target: series.target,
                 score: series.score,
                 games_played: series.games_played,
@@ -494,6 +573,9 @@ impl Run {
                 passes_left: series.passes_left,
                 boss,
             },
+            upcoming_boss,
+            next_series: self.next_series_view(content),
+            deal_odds: self.deck.deal_odds(),
             sections: u32::try_from(content.run.targets.len()).unwrap_or(0),
             coins: self.coins,
             relics,
@@ -611,8 +693,8 @@ impl Run {
             games,
             risks,
             can_pass: self.accepts(content, RunAction::Pass),
-            can_redraw: self.accepts(content, RunAction::RedrawSkat),
-            redraws_left: self.redraws_left(),
+            can_redeal: self.accepts(content, RunAction::Redeal),
+            redeals_left: self.redeals_left(),
             hand_required: self.requires_hand(),
         }
     }
@@ -751,7 +833,7 @@ mod tests {
         assert_eq!(options.games[0].base_value, 12);
         assert_eq!(options.games[4].base_value, 24);
         assert!(options.can_pass);
-        assert!(!options.can_redraw);
+        assert!(!options.can_redeal);
         assert!(!options.hand_required);
     }
 

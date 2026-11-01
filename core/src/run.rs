@@ -22,6 +22,7 @@
 //! effects of earlier sources in the same stage.
 
 pub mod bot;
+pub mod player;
 pub mod view;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -75,6 +76,9 @@ pub struct Series {
     pub passes_left: u32,
     /// Boss of a boss series.
     pub boss: Option<BossId>,
+    /// Redeals ("Schieben") used in this series.
+    #[serde(default)]
+    pub redeals_used: u32,
 }
 
 impl Series {
@@ -104,6 +108,7 @@ pub enum Kontra {
 
 /// Rules in force for one game, collected from passive effects and hooks.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GameRules {
     /// Thresholds for won and Schneider.
     pub thresholds: Thresholds,
@@ -115,8 +120,9 @@ pub struct GameRules {
     pub require_hand: bool,
     /// Who allows Kontra in this game, if anyone.
     pub kontra_source: Option<Source>,
-    /// Skat redraws left before the declaration.
-    pub redraws_left: u32,
+    /// Redeals ("Schieben") the content grants per series. Whether one is
+    /// left is [`Series::redeals_used`] against this.
+    pub series_redeals: u32,
 }
 
 /// The game in progress and everything content attached to it.
@@ -148,8 +154,10 @@ pub struct Shop {
     pub rerolls: u32,
 }
 
-/// Groschen paid for a won series.
+/// Groschen paid for a won series. Serialized with its sum as `total`, so
+/// that a frontend does not add anything up itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "PayoutRepr", from = "PayoutRepr")]
 pub struct Payout {
     /// Grundbetrag.
     pub base: u32,
@@ -164,6 +172,38 @@ impl Payout {
     #[must_use]
     pub const fn total(&self) -> u32 {
         self.base + self.games_left + self.interest
+    }
+}
+
+/// Serialized form of [`Payout`]: the parts plus their sum. The sum is
+/// ignored when reading; it is always recomputed.
+#[derive(Serialize, Deserialize)]
+struct PayoutRepr {
+    base: u32,
+    games_left: u32,
+    interest: u32,
+    #[serde(default)]
+    total: u32,
+}
+
+impl From<Payout> for PayoutRepr {
+    fn from(p: Payout) -> PayoutRepr {
+        PayoutRepr {
+            base: p.base,
+            games_left: p.games_left,
+            interest: p.interest,
+            total: p.total(),
+        }
+    }
+}
+
+impl From<PayoutRepr> for Payout {
+    fn from(p: PayoutRepr) -> Payout {
+        Payout {
+            base: p.base,
+            games_left: p.games_left,
+            interest: p.interest,
+        }
     }
 }
 
@@ -195,8 +235,11 @@ pub enum RunAction {
     /// Einpassen: skip the dealt game. Costs a game of the limit and a
     /// pass, no points.
     Pass,
-    /// Redraw the skat before declaring (house rule "Schieben").
-    RedrawSkat,
+    /// Have all hands and the skat dealt again before declaring, without
+    /// using up a game (house rule "Schieben", once per series). Also read
+    /// under its old name `RedrawSkat`.
+    #[serde(alias = "RedrawSkat")]
+    Redeal,
     /// Announce the game.
     Declare(Declaration),
     /// Answer a Kontra: `true` = Re.
@@ -230,8 +273,20 @@ pub enum RunAction {
 }
 
 /// Something that happened in the run, in order of occurrence.
+///
+/// `G` is the type of the game events: the full [`Event`] for the run
+/// itself and the simulator, [`player::PlayerGameEvent`] for what the
+/// player may see (see [`player::PlayerEvent`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RunEvent {
+pub enum RunEvent<G = Event<DealtCard>> {
+    /// A new section (Skatabend) began and its boss was drawn. The boss is
+    /// known from here on, so the player can prepare for it (DESIGN 11).
+    BossAnnounced {
+        /// Section, from 0.
+        section: u32,
+        /// The boss of this section's boss series.
+        boss: BossId,
+    },
     /// A new series started.
     SeriesStarted {
         /// Section, from 0.
@@ -255,7 +310,7 @@ pub enum RunEvent {
         forehand: Seat,
     },
     /// An event of the game in progress.
-    Game(Event<DealtCard>),
+    Game(G),
     /// The player passed.
     Passed {
         /// Passes left.
@@ -353,7 +408,8 @@ pub enum RunEvent {
         /// Passes left now.
         passes_left: u32,
     },
-    /// The game was thrown in and dealt again (consumable "Neues Blatt").
+    /// The game was thrown in and dealt again (consumable "Neues Blatt" or
+    /// house rule "Schieben").
     Redealt,
     /// The run was won.
     RunWon,
@@ -379,8 +435,8 @@ pub enum RunError {
     HandRequired,
     /// The Alleinspieler does not play Null (ADR 0003).
     NullNotAvailable,
-    /// No skat redraw available.
-    NoRedrawLeft,
+    /// No redeal ("Schieben") left in this series.
+    NoRedealLeft,
     /// Kontra must be answered first.
     AwaitingKontraAnswer,
     /// There is no Kontra to answer.
@@ -401,16 +457,164 @@ pub enum RunError {
     NoModAvailable,
     /// The content does not know this id.
     UnknownContent(String),
+    /// A [`RunStart`] names a section or series that does not exist.
+    InvalidStart,
+}
+
+/// Stable code of a [`RunError`], for frontends: serialized as its name
+/// (`"NotEnoughCoins"`), never renamed once released. A frontend maps the
+/// code to its own text; the English message of [`RunError`]'s `Display`
+/// is for logs only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum RunErrorCode {
+    /// The action does not fit the current phase of the run.
+    WrongPhase,
+    /// No passes left in this series.
+    NoPassesLeft,
+    /// The boss demands a hand game.
+    HandRequired,
+    /// The Alleinspieler does not play Null.
+    NullNotAvailable,
+    /// No redeal ("Schieben") left.
+    NoRedealLeft,
+    /// Kontra must be answered first.
+    AwaitingKontraAnswer,
+    /// There is no Kontra to answer.
+    NoKontra,
+    /// The declarer does not hold this card.
+    UnknownCard,
+    /// No item in this slot.
+    InvalidSlot,
+    /// Not enough Groschen.
+    NotEnoughCoins,
+    /// All slots are taken.
+    NoFreeSlot,
+    /// The consumable needs a target card.
+    TargetRequired,
+    /// No card modification can be added to this card.
+    NoModAvailable,
+    /// The content does not know this id.
+    UnknownContent,
+    /// The start of the run names a section or series that does not exist.
+    InvalidStart,
+    /// The game rejected the action in its current phase.
+    GameWrongPhase,
+    /// It is another seat's turn.
+    NotYourTurn,
+    /// The card is not in the hand.
+    CardNotInHand,
+    /// The card does not follow suit although the hand could.
+    MustFollowSuit,
+    /// The two discards are not two distinct cards of the hand.
+    InvalidDiscard,
+    /// The cards do not form a legal deal.
+    InvalidDeal,
+    /// A trick is in progress.
+    TrickInProgress,
+    /// The deck has no card with this id.
+    UnknownDeckCard,
+    /// The deck cannot shrink below 32 cards.
+    DeckAtMinimum,
+    /// Blanks carry no modifications.
+    BlankCannotBeModified,
+    /// The card already carries this modification.
+    AlreadyModified,
+}
+
+impl RunErrorCode {
+    /// The code as text, equal to its serialized form.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RunErrorCode::WrongPhase => "WrongPhase",
+            RunErrorCode::NoPassesLeft => "NoPassesLeft",
+            RunErrorCode::HandRequired => "HandRequired",
+            RunErrorCode::NullNotAvailable => "NullNotAvailable",
+            RunErrorCode::NoRedealLeft => "NoRedealLeft",
+            RunErrorCode::AwaitingKontraAnswer => "AwaitingKontraAnswer",
+            RunErrorCode::NoKontra => "NoKontra",
+            RunErrorCode::UnknownCard => "UnknownCard",
+            RunErrorCode::InvalidSlot => "InvalidSlot",
+            RunErrorCode::NotEnoughCoins => "NotEnoughCoins",
+            RunErrorCode::NoFreeSlot => "NoFreeSlot",
+            RunErrorCode::TargetRequired => "TargetRequired",
+            RunErrorCode::NoModAvailable => "NoModAvailable",
+            RunErrorCode::UnknownContent => "UnknownContent",
+            RunErrorCode::InvalidStart => "InvalidStart",
+            RunErrorCode::GameWrongPhase => "GameWrongPhase",
+            RunErrorCode::NotYourTurn => "NotYourTurn",
+            RunErrorCode::CardNotInHand => "CardNotInHand",
+            RunErrorCode::MustFollowSuit => "MustFollowSuit",
+            RunErrorCode::InvalidDiscard => "InvalidDiscard",
+            RunErrorCode::InvalidDeal => "InvalidDeal",
+            RunErrorCode::TrickInProgress => "TrickInProgress",
+            RunErrorCode::UnknownDeckCard => "UnknownDeckCard",
+            RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
+            RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
+            RunErrorCode::AlreadyModified => "AlreadyModified",
+        }
+    }
+}
+
+impl RunError {
+    /// The stable code of this error.
+    #[must_use]
+    pub const fn code(&self) -> RunErrorCode {
+        match self {
+            RunError::WrongPhase => RunErrorCode::WrongPhase,
+            RunError::Game(e) => match e {
+                GameError::WrongPhase { .. } => RunErrorCode::GameWrongPhase,
+                GameError::NotYourTurn { .. } => RunErrorCode::NotYourTurn,
+                GameError::CardNotInHand { .. } => RunErrorCode::CardNotInHand,
+                GameError::MustFollowSuit { .. } => RunErrorCode::MustFollowSuit,
+                GameError::InvalidDiscard { .. } => RunErrorCode::InvalidDiscard,
+                GameError::InvalidDeal => RunErrorCode::InvalidDeal,
+                GameError::TrickInProgress => RunErrorCode::TrickInProgress,
+            },
+            RunError::NoPassesLeft => RunErrorCode::NoPassesLeft,
+            RunError::HandRequired => RunErrorCode::HandRequired,
+            RunError::NullNotAvailable => RunErrorCode::NullNotAvailable,
+            RunError::NoRedealLeft => RunErrorCode::NoRedealLeft,
+            RunError::AwaitingKontraAnswer => RunErrorCode::AwaitingKontraAnswer,
+            RunError::NoKontra => RunErrorCode::NoKontra,
+            RunError::UnknownCard(_) => RunErrorCode::UnknownCard,
+            RunError::InvalidSlot => RunErrorCode::InvalidSlot,
+            RunError::NotEnoughCoins => RunErrorCode::NotEnoughCoins,
+            RunError::NoFreeSlot => RunErrorCode::NoFreeSlot,
+            RunError::Deck(e) => match e {
+                DeckError::UnknownCard(_) => RunErrorCode::UnknownDeckCard,
+                DeckError::WouldShrinkBelowMinimum => RunErrorCode::DeckAtMinimum,
+                DeckError::BlankCannotBeModified => RunErrorCode::BlankCannotBeModified,
+                DeckError::AlreadyModified(_) => RunErrorCode::AlreadyModified,
+            },
+            RunError::TargetRequired => RunErrorCode::TargetRequired,
+            RunError::NoModAvailable => RunErrorCode::NoModAvailable,
+            RunError::UnknownContent(_) => RunErrorCode::UnknownContent,
+            RunError::InvalidStart => RunErrorCode::InvalidStart,
+        }
+    }
 }
 
 impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            RunError::WrongPhase => f.write_str("the action does not fit the current phase"),
             RunError::Game(e) => write!(f, "game: {e}"),
-            RunError::Deck(e) => write!(f, "deck: {e}"),
+            RunError::NoPassesLeft => f.write_str("no passes left in this series"),
+            RunError::HandRequired => f.write_str("the boss demands a hand game"),
+            RunError::NullNotAvailable => f.write_str("the declarer does not play Null"),
+            RunError::NoRedealLeft => f.write_str("no redeal left in this series"),
+            RunError::AwaitingKontraAnswer => f.write_str("Kontra must be answered first"),
+            RunError::NoKontra => f.write_str("there is no Kontra to answer"),
             RunError::UnknownCard(id) => write!(f, "no card with id {id} in hand"),
+            RunError::InvalidSlot => f.write_str("no item in this slot"),
+            RunError::NotEnoughCoins => f.write_str("not enough Groschen"),
+            RunError::NoFreeSlot => f.write_str("all slots are taken"),
+            RunError::Deck(e) => write!(f, "deck: {e}"),
+            RunError::TargetRequired => f.write_str("this consumable needs a target card"),
+            RunError::NoModAvailable => f.write_str("no modification can be added to this card"),
             RunError::UnknownContent(id) => write!(f, "unknown content {id}"),
-            other => write!(f, "{other:?}"),
+            RunError::InvalidStart => f.write_str("the run cannot start at this series"),
         }
     }
 }
@@ -429,6 +633,20 @@ impl From<DeckError> for RunError {
     }
 }
 
+/// How a run starts. The default is a fresh run: no relics, first series
+/// of the first section.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct RunStart {
+    /// Relics owned from the start, in this order (a character's start
+    /// relic, the simulator's `--relic`). Their passive effects already
+    /// apply to the first game.
+    pub relics: Vec<RelicId>,
+    /// Section of the first series, from 0.
+    pub section: u32,
+    /// Series of the first series within its section (2 = boss series).
+    pub index: u32,
+}
+
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Run {
@@ -437,7 +655,7 @@ pub struct Run {
     deal_rng: Rng,
     /// Tresen offers.
     shop_rng: Rng,
-    /// Bosses, random card modifications, skat redraws.
+    /// Bosses, random card modifications.
     misc_rng: Rng,
     phase: RunPhase,
     series: Series,
@@ -455,11 +673,40 @@ pub struct Run {
     /// Statistics (absent in saves from before they existed).
     #[serde(default)]
     stats: RunStats,
+    /// Boss of the current section, drawn when the section begins (absent
+    /// in saves from before; then it is drawn at the next series start).
+    #[serde(default)]
+    section_boss: Option<BossId>,
 }
 
 impl Run {
     /// Start a run: the first series begins and its first game is dealt.
     pub fn new(content: &Content, seed: u64) -> Result<(Run, Vec<RunEvent>), RunError> {
+        Run::new_with(content, seed, &RunStart::default())
+    }
+
+    /// Start a run as `start` describes. The deals depend on the seed only,
+    /// so a run with start relics sees the same cards as one without.
+    pub fn new_with(
+        content: &Content,
+        seed: u64,
+        start: &RunStart,
+    ) -> Result<(Run, Vec<RunEvent>), RunError> {
+        let sections = u32::try_from(content.run.targets.len()).unwrap_or(0);
+        if start.section >= sections || start.index >= SERIES_PER_SECTION {
+            return Err(RunError::InvalidStart);
+        }
+        if start.relics.len() > usize::try_from(content.run.relic_slots).unwrap_or(0) {
+            return Err(RunError::NoFreeSlot);
+        }
+        for (i, relic) in start.relics.iter().enumerate() {
+            if content.relic(relic).is_none() {
+                return Err(RunError::UnknownContent(relic.to_string()));
+            }
+            if start.relics[..i].contains(relic) {
+                return Err(RunError::UnknownContent(format!("{relic} twice")));
+            }
+        }
         let mut master = Rng::from_seed(seed);
         let mut run = Run {
             seed,
@@ -476,10 +723,11 @@ impl Run {
                 game_limit: 0,
                 passes_left: 0,
                 boss: None,
+                redeals_used: 0,
             },
             coins: content.run.economy.starting_coins,
             deck: Deck::standard(),
-            relics: Vec::new(),
+            relics: start.relics.clone(),
             consumables: Vec::new(),
             flags: BTreeSet::new(),
             counters: BTreeMap::new(),
@@ -488,9 +736,10 @@ impl Run {
             shop: None,
             last_score: None,
             stats: RunStats::default(),
+            section_boss: None,
         };
         let mut events = Vec::new();
-        run.start_series(content, 0, 0, &mut events)?;
+        run.start_series(content, start.section, start.index, &mut events)?;
         Ok((run, events))
     }
 
@@ -564,6 +813,12 @@ impl Run {
         self.shop.as_ref()
     }
 
+    /// Boss of the current section, known from the start of the section.
+    #[must_use]
+    pub const fn section_boss(&self) -> Option<&BossId> {
+        self.section_boss.as_ref()
+    }
+
     /// Breakdown of the last scored game.
     #[must_use]
     pub const fn last_score(&self) -> Option<&ScoreBreakdown> {
@@ -618,7 +873,7 @@ impl Run {
     ) -> Result<(), RunError> {
         match action {
             RunAction::Pass => self.pass(content, events),
-            RunAction::RedrawSkat => self.redraw_skat(events),
+            RunAction::Redeal => self.redeal_series(content, events),
             RunAction::Declare(declaration) => self.declare(content, declaration, events),
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
@@ -664,16 +919,26 @@ impl Run {
         self.after_game(content, events)
     }
 
-    fn redraw_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        let mut rng = self.misc_rng.fork();
-        let active = self.declaring()?;
-        if active.rules.redraws_left == 0 {
-            return Err(RunError::NoRedrawLeft);
+    /// House rule "Schieben": deal the game again, once per series.
+    fn redeal_series(
+        &mut self,
+        content: &Content,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        self.declaring()?;
+        if self.redeals_left() == 0 {
+            return Err(RunError::NoRedealLeft);
         }
-        let game_events = active.game.redraw_skat(&mut rng)?;
-        active.rules.redraws_left -= 1;
-        events.extend(game_events.into_iter().map(RunEvent::Game));
-        Ok(())
+        self.series.redeals_used += 1;
+        self.redeal(content, events)
+    }
+
+    /// Throw the dealt game in and deal it again before the declaration,
+    /// without using up a game. The forehand stays.
+    fn redeal(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        self.declaring()?;
+        events.push(RunEvent::Redealt);
+        self.deal(content, false, events)
     }
 
     fn declare(
@@ -972,7 +1237,9 @@ impl Run {
                     active.rules.kontra_source = Some(source.clone());
                 }
             }
-            Effect::SkatRedraw => active.rules.redraws_left = active.rules.redraws_left.max(1),
+            Effect::SeriesRedeal => {
+                active.rules.series_redeals = active.rules.series_redeals.max(1)
+            }
             Effect::Concede => {
                 if active.game.phase() == Phase::Playing && active.game.current_trick().is_empty() {
                     if let Ok(game_events) = active.game.concede() {
@@ -1003,26 +1270,31 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         let config = &content.run;
-        let targets = config
-            .targets
-            .get(usize::try_from(section).unwrap_or(usize::MAX))
-            .ok_or(RunError::WrongPhase)?;
-        let target = match index {
-            0 => targets.0,
-            1 => targets.1,
-            _ => targets.2,
-        };
-        let boss = if index + 1 == SERIES_PER_SECTION {
+        if usize::try_from(section).unwrap_or(usize::MAX) >= config.targets.len() {
+            return Err(RunError::WrongPhase);
+        }
+        if index == 0 || self.section_boss.is_none() {
             let pick = self
                 .misc_rng
                 .gen_range(0..u64::try_from(config.bosses.len()).unwrap_or(1));
-            config
+            self.section_boss = config
                 .bosses
                 .get(usize::try_from(pick).unwrap_or(0))
-                .cloned()
+                .cloned();
+            if let Some(boss) = &self.section_boss {
+                events.push(RunEvent::BossAnnounced {
+                    section,
+                    boss: boss.clone(),
+                });
+            }
+        }
+        let boss = if index + 1 == SERIES_PER_SECTION {
+            self.section_boss.clone()
         } else {
             None
         };
+        let target =
+            series_target(content, section, index, boss.as_ref()).ok_or(RunError::WrongPhase)?;
         self.series = Series {
             section,
             index,
@@ -1032,6 +1304,7 @@ impl Run {
             game_limit: config.game_limit,
             passes_left: config.passes,
             boss: boss.clone(),
+            redeals_used: 0,
         };
         self.phase = RunPhase::Game;
         self.shop = None;
@@ -1508,11 +1781,7 @@ impl Run {
                     passes_left: self.series.passes_left,
                 });
             }
-            ConsumableAction::Redeal => {
-                self.declaring()?;
-                events.push(RunEvent::Redealt);
-                self.deal(content, false, events)?;
-            }
+            ConsumableAction::Redeal => self.redeal(content, events)?,
         }
         self.consumables.remove(slot);
         events.push(RunEvent::ConsumableUsed { consumable: id });
@@ -1531,11 +1800,39 @@ impl Run {
         self.game.as_ref().is_some_and(|a| a.awaiting_re)
     }
 
-    /// Skat redraws left in the current game.
+    /// Redeals ("Schieben") left in the current series.
     #[must_use]
-    pub fn redraws_left(&self) -> u32 {
-        self.game.as_ref().map_or(0, |a| a.rules.redraws_left)
+    pub fn redeals_left(&self) -> u32 {
+        self.game.as_ref().map_or(0, |a| {
+            a.rules
+                .series_redeals
+                .saturating_sub(self.series.redeals_used)
+        })
     }
+}
+
+/// Zielwert of a series: the value from `run.ron`, for a boss series times
+/// the boss's target factor. `None` if the section does not exist.
+#[must_use]
+pub fn series_target(
+    content: &Content,
+    section: u32,
+    index: u32,
+    boss: Option<&BossId>,
+) -> Option<u64> {
+    let targets = content
+        .run
+        .targets
+        .get(usize::try_from(section).unwrap_or(usize::MAX))?;
+    let base = match index {
+        0 => targets.0,
+        1 => targets.1,
+        _ => targets.2,
+    };
+    let factor = boss
+        .and_then(|b| content.boss(b))
+        .map_or(crate::content::Factor::ONE, |def| def.target_factor);
+    Some(factor.apply(base))
 }
 
 const fn kontra_line(source: Source) -> ScoreLine {

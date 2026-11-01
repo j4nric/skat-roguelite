@@ -31,6 +31,15 @@ const WEAK: [&str; 3] = [
 ];
 const WEAK_SKAT: &str = "C8 C9";
 
+/// Declarer holds ten hearts trumps without the H8 (in the skat) and leads:
+/// he takes every trick, the last one with the H7.
+const HEARTS_SEVEN: [&str; 3] = [
+    "CJ SJ HJ DJ HA HT HK HQ H9 H7",
+    "DA DT DK DQ D9 D8 D7 SA ST SK",
+    "SQ S9 S8 S7 CA CT CK CQ C9 C8",
+];
+const HEARTS_SEVEN_SKAT: &str = "H8 C7";
+
 fn relic_run(content: &Content, relics: &[&str]) -> Run {
     let (mut run, _) = Run::new(content, 11).expect("start");
     run.relics = relics.iter().map(|r| RelicId::new(r)).collect();
@@ -93,6 +102,7 @@ fn hand_game(game: GameType) -> Declaration {
 
 const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
 const CLUBS: GameType = GameType::Suit(Suit::Clubs);
+const HEARTS: GameType = GameType::Suit(Suit::Hearts);
 
 fn relic(id: &str) -> Source {
     Source::Relic(RelicId::new(id))
@@ -238,7 +248,22 @@ fn last_trick_seven_adds_a_level() {
         Change::Add(1)
     ));
     assert_eq!(b.levels, u64::from(b.rule_levels.total()) + 1);
-    // Without the D7 in the last trick nothing happens.
+    // Any seven counts: the H7 takes the last trick of a hearts game.
+    let mut run = relic_run(&content, &["last_trick_seven"]);
+    fixed_deal(&mut run, &content, HEARTS_SEVEN, HEARTS_SEVEN_SKAT);
+    let (events, b) = play(&mut run, &content, hand_game(HEARTS));
+    let last = events.iter().rev().find_map(|e| match e {
+        RunEvent::Game(Event::TrickWon { trick, .. }) => Some(trick.winning_card()),
+        _ => None,
+    });
+    assert_eq!(last.map(|c| c.to_string()).as_deref(), Some("H7"));
+    assert!(has_line(
+        &b,
+        &relic("last_trick_seven"),
+        Lever::Levels,
+        Change::Add(1)
+    ));
+    // Without a seven in the last trick nothing happens.
     let mut run = relic_run(&content, &["last_trick_seven"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));
@@ -291,43 +316,61 @@ fn ouvert_bonus_adds_a_second_ouvert_level() {
 }
 
 #[test]
-fn skat_redraw_deals_the_other_cards_again_once() {
+fn skat_redraw_deals_again_once_per_series() {
     let content = content();
-    let mut run = relic_run(&content, &["skat_redraw"]);
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    assert_eq!(run.redraws_left(), 1);
-    let before = run.game().expect("game").game.clone();
-    let events = run.apply(&content, RunAction::RedrawSkat).expect("redraw");
-    assert!(matches!(
-        events[0],
-        RunEvent::Game(Event::SkatRedrawn { .. })
-    ));
-    let after = &run.game().expect("game").game;
-    assert_eq!(after.hand(Seat::DECLARER), before.hand(Seat::DECLARER));
-    let others = |g: &Game<DealtCard>| {
-        let mut cards: Vec<DealtCard> = g.hand(Seat::DEFENDERS[0]).to_vec();
-        cards.extend(g.hand(Seat::DEFENDERS[1]));
-        cards.extend(g.skat());
-        cards.sort();
-        cards
+    let start = RunStart {
+        relics: vec![RelicId::new("skat_redraw")],
+        ..RunStart::default()
     };
-    assert_eq!(others(after), others(&before));
-    assert_ne!(after.skat(), before.skat());
+    let (mut run, _) = Run::new_with(&content, 11, &start).expect("start");
+    assert_eq!(run.redeals_left(), 1);
+    let before = run.game().expect("game").game.clone();
+    let events = run.apply(&content, RunAction::Redeal).expect("redeal");
+    assert_eq!(events[0], RunEvent::Redealt);
+    assert!(events.contains(&RunEvent::GameDealt {
+        number: 1,
+        forehand: before.forehand()
+    }));
+    let after = &run.game().expect("game").game;
+    assert_ne!(after.hand(Seat::DECLARER), before.hand(Seat::DECLARER));
+    assert_eq!(run.series().games_played, 0, "no game used up");
+    assert_eq!(run.series().passes_left, content.run.passes);
+    assert_eq!(run.redeals_left(), 0);
     assert_eq!(
-        run.apply(&content, RunAction::RedrawSkat),
-        Err(RunError::NoRedrawLeft)
+        run.apply(&content, RunAction::Redeal),
+        Err(RunError::NoRedealLeft)
     );
+    // The next game of the same series has none left; a new series has one.
+    run.apply(&content, RunAction::Pass).expect("pass");
+    assert_eq!(run.redeals_left(), 0);
+    run.series.redeals_used = 0;
+    assert_eq!(run.redeals_left(), 1);
+    // Only before the declaration, and the old action name still works.
+    let action: RunAction = ron::from_str("RedrawSkat").expect("old name");
+    assert_eq!(action, RunAction::Redeal);
+    run.apply(
+        &content,
+        RunAction::Declare(Declaration::new(CLUBS, RiskLevel::Hand)),
+    )
+    .expect("declare");
+    assert_eq!(
+        run.apply(&content, RunAction::Redeal),
+        Err(RunError::WrongPhase)
+    );
+    // Without the house rule there is no redeal.
+    let run = relic_run(&content, &[]);
+    assert_eq!(run.redeals_left(), 0);
 }
 
 #[test]
-fn virgin_counts_61_to_65_as_schneider() {
+fn virgin_counts_61_to_70_as_schneider() {
     let content = content();
     let run = relic_run(&content, &["virgin"]);
     let mut run = run;
     let mut events = Vec::new();
     run.deal(&content, true, &mut events).expect("deal");
     let rules = &run.game().expect("game").rules;
-    assert_eq!(rules.thresholds.declarer_schneider, vec![(61, 65)]);
+    assert_eq!(rules.thresholds.declarer_schneider, vec![(61, 70)]);
     let decl = Declaration::new(CLUBS, RiskLevel::Normal);
     let mit_1 = Matadors {
         with: true,
@@ -342,7 +385,9 @@ fn virgin_counts_61_to_65_as_schneider() {
     let b = score_game(decl, mit_1, &outcome(63), &rules.thresholds, Vec::new());
     assert!(b.won && b.schneider);
     assert_eq!(b.levels, 3);
-    let b = score_game(decl, mit_1, &outcome(66), &rules.thresholds, Vec::new());
+    let b = score_game(decl, mit_1, &outcome(70), &rules.thresholds, Vec::new());
+    assert!(b.won && b.schneider);
+    let b = score_game(decl, mit_1, &outcome(71), &rules.thresholds, Vec::new());
     assert!(!b.schneider);
     let b = score_game(decl, mit_1, &outcome(60), &rules.thresholds, Vec::new());
     assert!(
@@ -402,18 +447,28 @@ fn tour_raises_the_base_value_for_every_series_won_with_games_left() {
 }
 
 #[test]
-fn march_through_triples_the_base_value_when_all_tricks_are_won() {
+fn march_through_doubles_the_game_value_of_a_won_schneider() {
     let content = content();
     let mut run = relic_run(&content, &["march_through"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(b.won && b.schneider);
     assert!(has_line(
         &b,
         &relic("march_through"),
-        Lever::BaseValue,
-        Change::Multiply(3)
+        Lever::GameValue,
+        Change::Multiply(2)
     ));
-    assert_eq!(b.base_value, 27);
+    assert_eq!(b.base_value, 9);
+    assert_eq!(b.multiplier, 2);
+    assert_eq!(b.value, 9 * b.levels * 2);
+    // Schneider without Schwarz counts too: Schenken after five tricks.
+    let mut run = relic_run(&content, &["march_through", "concede"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(b.schneider);
+    assert_eq!(b.multiplier, 2);
+    // A lost game gets nothing.
     let mut run = relic_run(&content, &["march_through"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));

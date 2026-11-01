@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::cards::CardKind;
 use crate::cards::{PlayingCard, standard_deck};
 use crate::content::CardModId;
-use crate::game::CARDS_IN_PLAY;
+use crate::game::{CARDS_IN_PLAY, HAND_SIZE};
 
 /// One card instance of the run's deck.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -83,6 +83,74 @@ impl PlayingCard for DealtCard {
 impl fmt::Display for DealtCard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.kind.fmt(f)
+    }
+}
+
+/// A probability as an exact fraction plus its rounded value in
+/// thousandths, so a frontend can show "37,5 %" without computing anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Odds {
+    /// Favourable cases.
+    pub numerator: u32,
+    /// All cases (never 0).
+    pub denominator: u32,
+    /// The probability in thousandths, rounded half up.
+    pub permille: u32,
+}
+
+impl Odds {
+    /// `numerator / denominator`; a zero denominator gives 0.
+    #[must_use]
+    pub fn new(numerator: u32, denominator: u32) -> Odds {
+        let denominator = denominator.max(1);
+        let permille =
+            (u64::from(numerator) * 1000 + u64::from(denominator) / 2) / u64::from(denominator);
+        Odds {
+            numerator,
+            denominator,
+            permille: u32::try_from(permille).unwrap_or(u32::MAX),
+        }
+    }
+}
+
+/// Where one card of the deck lands when a game is dealt (DESIGN 7.4).
+///
+/// Every game shuffles the whole deck, blanks and talon included, and
+/// deals the first 32 cards 10/10/10/2; the rest stays in the talon. So
+/// every card instance has the same chance for every place, and the odds
+/// depend on the deck size only: in the standard deck a card reaches the
+/// player's hand or the skat with 12 / 32 = 37.5 %.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DealOdds {
+    /// Cards in the deck, blanks included.
+    pub deck_size: u32,
+    /// In the player's ten cards.
+    pub hand: Odds,
+    /// In the skat.
+    pub skat: Odds,
+    /// In the player's hand or the skat: the cards the player gets to use.
+    pub hand_or_skat: Odds,
+    /// With one of the two defenders.
+    pub defenders: Odds,
+    /// In the talon (not dealt in this game).
+    pub talon: Odds,
+}
+
+/// The odds for any one card of a deck with `deck_size` cards. Fewer than
+/// 32 cards cannot happen (blanks fill up), so such sizes count as 32.
+#[must_use]
+pub fn deal_odds(deck_size: usize) -> DealOdds {
+    let n = u32::try_from(deck_size.max(CARDS_IN_PLAY)).unwrap_or(u32::MAX);
+    let hand = u32::try_from(HAND_SIZE).unwrap_or(10);
+    let in_play = u32::try_from(CARDS_IN_PLAY).unwrap_or(32);
+    let skat = in_play - 3 * hand;
+    DealOdds {
+        deck_size: n,
+        hand: Odds::new(hand, n),
+        skat: Odds::new(skat, n),
+        hand_or_skat: Odds::new(hand + skat, n),
+        defenders: Odds::new(2 * hand, n),
+        talon: Odds::new(n - in_play, n),
     }
 }
 
@@ -265,6 +333,12 @@ impl Deck {
         }
     }
 
+    /// Where any one card of this deck lands when a game is dealt.
+    #[must_use]
+    pub fn deal_odds(&self) -> DealOdds {
+        deal_odds(self.len())
+    }
+
     /// Copy a card including its modifications ("Kopieren").
     pub fn copy(&mut self, id: u32) -> Result<DeckChange, DeckError> {
         let original = self.get(id).ok_or(DeckError::UnknownCard(id))?.clone();
@@ -369,6 +443,35 @@ mod tests {
             }
         );
         assert_eq!(deck.get(33).map(|d| d.mods.len()), Some(1));
+    }
+
+    #[test]
+    fn deal_odds_follow_the_deck_size() {
+        let odds = Deck::standard().deal_odds();
+        assert_eq!(odds.deck_size, 32);
+        assert_eq!(odds.hand_or_skat, Odds::new(12, 32));
+        assert_eq!(odds.hand_or_skat.permille, 375);
+        assert_eq!(odds.hand.permille, 313);
+        assert_eq!(odds.skat.permille, 63);
+        assert_eq!(odds.defenders.permille, 625);
+        assert_eq!(odds.talon.numerator, 0);
+        // A removed card leaves a blank: the odds stay.
+        let mut deck = Deck::standard();
+        deck.remove(0).expect("remove");
+        assert_eq!(deck.deal_odds(), Deck::standard().deal_odds());
+        // A card beyond 32 lowers everyone's odds and fills the talon.
+        deck.add(CardKind::Normal(c("CJ")), Vec::new());
+        deck.add(CardKind::Normal(c("CA")), Vec::new());
+        let odds = deck.deal_odds();
+        assert_eq!(odds.deck_size, 33);
+        assert_eq!(odds.hand_or_skat.permille, 364);
+        assert_eq!(odds.talon, Odds::new(1, 33));
+        let sum = odds.hand.numerator
+            + odds.skat.numerator
+            + odds.defenders.numerator
+            + odds.talon.numerator;
+        assert_eq!(sum, odds.deck_size);
+        assert_eq!(deal_odds(0).deck_size, 32);
     }
 
     #[test]

@@ -1,30 +1,234 @@
-//! A simple run policy for the simulator and for tests: the declarer
-//! heuristic of M1 for games, passing weak hands while passes are left, and
-//! at the Tresen buying the most expensive relic it can afford.
+//! A simple run policy for the simulator and for tests.
+//!
+//! Games: the declarer heuristic of M1 for the game choice, the discard and
+//! the play, plus three run decisions on top:
+//!
+//! - **Passing** ([`RunBot::is_weak`]): a suit game needs six trumps, or
+//!   five trumps and two aces; a grand needs two jacks and two aces. A
+//!   weaker hand is thrown in, cheapest first: a redeal ("Schieben"), the
+//!   consumable "Neues Blatt", a pass, and with no pass left "Ein Bier"
+//!   for one more. The last game of a series is never passed, because a
+//!   pass there loses the series for sure. The balancing measurement of
+//!   01.11.2026 showed that the weaker hands lose points on average
+//!   (`docs/balance/2026-11-01-m2-zielwerte.md`).
+//! - **Announcements** ([`RunBot::announcement`]): Schneider angesagt or
+//!   Ouvert only for hands that make it almost surely (conservative rules,
+//!   measured against the defender heuristic, see the function), Re on
+//!   Kontra only with a very strong hand ([`RunBot::says_re`]).
+//!
+//! Tresen ([`RunBot::shop_action`]): one action per call, in this order:
+//! use "Stempelkissen" on an ace, sell the weakest relic for a clearly
+//! better one when all slots are full, buy the most valuable relic, buy the
+//! most valuable consumable, draw a new offer when nothing sensible can be
+//! bought and Groschen are plenty, leave. Values come from
+//! [`relic_value`] and [`consumable_value`].
+//!
+//! The bot never looks at the Zielwert or the series account. The
+//! simulator's success curve (`--curve`) relies on that.
 //!
 //! It lives in the core (not in `sim/`) so that core tests can drive whole
 //! runs with it; a frontend could use it for an "auto play" button.
 
 use super::{Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, trump_count};
-use crate::content::Content;
+use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
+use crate::content::{ConsumableAction, ConsumableId, Content, RelicId};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
 use crate::rules::{Declaration, GameType, RiskLevel};
+
+/// How much the bot wants each relic, roughly by the measured effect of
+/// the relic alone (`docs/balance/2026-11-01-m2-zielwerte.md`, "Einzeln ab
+/// Spielbeginn"). The bot buys the highest value it can afford and swaps a
+/// relic for one that is worth at least [`SWAP_MARGIN`] more. Relics not
+/// listed are worth [`DEFAULT_RELIC_VALUE`].
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `bock_round` | 10 | strongest early (+38 % section 2) |
+/// | `old_lady` | 9 | +33 % section 2 |
+/// | `concede` | 8 | +24 % section 2, Schneider for free |
+/// | `march_through` | 7 | Schneider counts double; pairs with `concede` |
+/// | `tour` | 6 | weak early, scales late (+29 % section 3) |
+/// | `virgin` | 6 | 61 to 70 Augen count as Schneider |
+/// | `skat_redraw` | 6 | one free redeal per series, a pass that costs no game |
+/// | `kontra` | 3 | only helps against high Zielwerte, hurts early |
+/// | `last_trick_seven` | 2 | rare: last trick with a seven |
+/// | `ouvert_bonus` | 1 | the bot almost never plays Ouvert |
+pub const RELIC_VALUES: [(&str, u32); 10] = [
+    ("bock_round", 10),
+    ("old_lady", 9),
+    ("concede", 8),
+    ("march_through", 7),
+    ("tour", 6),
+    ("virgin", 6),
+    ("skat_redraw", 6),
+    ("kontra", 3),
+    ("last_trick_seven", 2),
+    ("ouvert_bonus", 1),
+];
+
+/// Value of a relic that is not in [`RELIC_VALUES`].
+pub const DEFAULT_RELIC_VALUE: u32 = 3;
+
+/// A relic is swapped only for one worth at least this much more.
+pub const SWAP_MARGIN: u32 = 3;
+
+/// How much the bot wants each consumable. Not listed: 0 (never bought).
+///
+/// | Consumable | Value | Use |
+/// |---|---|---|
+/// | `new_deal` | 4 | throws a weak hand in without using up a game |
+/// | `beer` | 3 | one more pass when the passes are used up |
+/// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
+/// | `fresh_deck` | 0 | a blank helps defenders as much as the declarer (it may always be played), so the bot does not remove cards |
+pub const CONSUMABLE_VALUES: [(&str, u32); 4] = [
+    ("new_deal", 4),
+    ("beer", 3),
+    ("ink_pad", 2),
+    ("fresh_deck", 0),
+];
+
+/// A Neuauslage needs at least this many Groschen left over after paying
+/// for it, enough for a cheap relic from the new offer.
+pub const REROLL_RESERVE: u32 = 6;
+
+/// At most this many Neuauslagen per Tresen visit.
+pub const MAX_REROLLS: u32 = 2;
+
+/// The bot's value of a relic.
+#[must_use]
+pub fn relic_value(id: &RelicId) -> u32 {
+    RELIC_VALUES
+        .iter()
+        .find(|(name, _)| *name == id.as_str())
+        .map_or(DEFAULT_RELIC_VALUE, |&(_, v)| v)
+}
+
+/// The bot's value of a consumable.
+#[must_use]
+pub fn consumable_value(id: &ConsumableId) -> u32 {
+    CONSUMABLE_VALUES
+        .iter()
+        .find(|(name, _)| *name == id.as_str())
+        .map_or(0, |&(_, v)| v)
+}
 
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RunBot;
 
+fn count_rank<C: PlayingCard>(hand: &[C], rank: Rank) -> usize {
+    hand.iter()
+        .filter(|c| c.face().is_some_and(|f| f.rank == rank))
+        .count()
+}
+
+/// Whether the hand holds this printed card.
+fn holds<C: PlayingCard>(hand: &[C], card: Card) -> bool {
+    hand.iter().any(|c| c.face() == Some(card))
+}
+
+/// Number of trumps the hand holds in an unbroken run from the top of the
+/// trump order (Kreuz-Bube downwards), i.e. Spitzen "mit".
+fn top_trumps<C: PlayingCard>(hand: &[C], game: GameType) -> usize {
+    game.trump_order()
+        .into_iter()
+        .take_while(|&card| holds(hand, card))
+        .count()
+}
+
+/// Non-trump cards of the hand that may lose a trick: everything but
+/// aces and tens backed by their ace.
+fn side_losers<C: PlayingCard>(hand: &[C], game: GameType) -> usize {
+    hand.iter()
+        .filter(|&&c| !crate::rules::is_trump(game, c))
+        .filter(|c| match c.face() {
+            Some(f) if f.rank == Rank::Ace => false,
+            Some(f) if f.rank == Rank::Ten => !holds(hand, Card::new(f.suit, Rank::Ace)),
+            _ => true,
+        })
+        .count()
+}
+
 impl RunBot {
-    /// Whether a hand is too weak to play: a suit game with fewer than five
-    /// trumps, or a grand with fewer than two jacks.
+    /// Whether a hand is too weak to play (pass rule of DESIGN 10 and the
+    /// balancing report): a suit game with fewer than six trumps unless it
+    /// has five trumps and two aces; a grand without two jacks and two
+    /// aces.
     #[must_use]
     pub fn is_weak(hand: &[DealtCard], declaration: Declaration) -> bool {
-        let trumps = trump_count(declaration.game, hand);
+        let aces = count_rank(hand, Rank::Ace);
         match declaration.game {
-            GameType::Grand => trumps < 2,
-            _ => trumps < 5,
+            GameType::Grand => count_rank(hand, Rank::Jack) < 2 || aces < 2,
+            game => {
+                let trumps = trump_count(game, hand);
+                !(trumps >= 6 || (trumps == 5 && aces >= 2))
+            }
+        }
+    }
+
+    /// The highest Risikostufe the bot dares with this ten-card hand.
+    ///
+    /// Measured on 2 000 000 deals against the defender heuristic (DESIGN
+    /// 14.3): an announcement only pays off when the hand has at most one
+    /// side card that may lose a trick ("loser": anything but an ace or a
+    /// ten backed by its ace). The rules take exactly the hand shapes whose
+    /// mean score beat the plain declaration:
+    ///
+    /// - **Ouvert** (Hand, Schneider and Schwarz angesagt, open): no loser
+    ///   and a suit game with eight trumps and the Kreuz-Bube, or a grand
+    ///   with all four jacks. Won 100 % in the sample; about 5 hands in a
+    ///   million.
+    /// - **Schneider angesagt** (a hand game): a suit game without loser,
+    ///   seven trumps and the Kreuz-Bube; or with one loser and eight
+    ///   trumps from the top three jacks, or nine trumps from the top two.
+    ///   A grand with three jacks and at most one loser. Won 92 to 100 %;
+    ///   about 1 hand in 8 000.
+    /// - Otherwise the risk of the declarer heuristic (Hand from eight
+    ///   trumps).
+    #[must_use]
+    pub fn announcement(hand: &[DealtCard], declaration: Declaration) -> RiskLevel {
+        let game = declaration.game;
+        let trumps = trump_count(game, hand);
+        let top = top_trumps(hand, game);
+        let losers = side_losers(hand, game);
+        let (ouvert, schneider) = match game {
+            GameType::Suit(_) => (
+                losers == 0 && trumps >= 8 && top >= 1,
+                (losers == 0 && trumps >= 7 && top >= 1)
+                    || (losers == 1 && ((trumps >= 8 && top >= 3) || (trumps >= 9 && top >= 2))),
+            ),
+            GameType::Grand => (
+                losers == 0 && top >= 4,
+                losers <= 1 && count_rank(hand, Rank::Jack) >= 3,
+            ),
+            GameType::Null => (false, false),
+        };
+        if ouvert {
+            RiskLevel::Ouvert
+        } else if schneider {
+            RiskLevel::SchneiderDeclared
+        } else {
+            declaration.risk
+        }
+    }
+
+    /// Whether to answer Kontra with Re: only with a very strong hand. A
+    /// suit game with seven trumps, or six trumps and two aces; a grand
+    /// with three jacks and three aces, or all four jacks and two aces.
+    #[must_use]
+    pub fn says_re(hand: &[DealtCard], game: GameType) -> bool {
+        let aces = count_rank(hand, Rank::Ace);
+        match game {
+            GameType::Grand => {
+                let jacks = count_rank(hand, Rank::Jack);
+                (jacks >= 3 && aces >= 3) || (jacks == 4 && aces >= 2)
+            }
+            game => {
+                let trumps = trump_count(game, hand);
+                trumps >= 7 || (trumps >= 6 && aces >= 2)
+            }
         }
     }
 
@@ -34,37 +238,138 @@ impl RunBot {
         match run.phase() {
             RunPhase::Won | RunPhase::Lost => None,
             RunPhase::Shop => Some(self.shop_action(run, content)),
-            RunPhase::Game => self.game_action(run),
+            RunPhase::Game => self.game_action(run, content),
         }
     }
 
-    fn shop_action(&self, run: &Run, content: &Content) -> RunAction {
+    /// Slot of an owned consumable with this action, if usable now.
+    fn usable(
+        run: &Run,
+        content: &Content,
+        wanted: impl Fn(&ConsumableAction) -> bool,
+        target: Option<u32>,
+    ) -> Option<RunAction> {
+        run.consumables()
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| content.consumable(id).is_some_and(|d| wanted(&d.action)))
+            .map(|(slot, _)| RunAction::UseConsumable { slot, target })
+            .find(|action| run.accepts(content, action.clone()))
+    }
+
+    /// The Tresen policy: one action per call, see the module docs.
+    #[must_use]
+    pub fn shop_action(&self, run: &Run, content: &Content) -> RunAction {
         let Some(shop) = run.shop() else {
             return RunAction::LeaveShop;
         };
-        let free_slot = run.relics().len() < usize::try_from(content.run.relic_slots).unwrap_or(0);
-        let best = shop
+        let coins = run.coins();
+        // 1. Stempelkissen: on an ace, Kreuz first, the least modified one.
+        for target in Self::ace_targets(run) {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::AddCardMod(_)),
+                Some(target),
+            ) {
+                return action;
+            }
+        }
+        let slots = usize::try_from(content.run.relic_slots).unwrap_or(0);
+        let free_slot = run.relics().len() < slots;
+        // Relic offers the bot wants: (value, price, slot).
+        let offers: Vec<(u32, u32, usize)> = shop
             .relics
             .iter()
             .enumerate()
             .filter_map(|(slot, id)| {
-                let def = content.relic(id.as_ref()?)?;
-                (def.price <= run.coins()).then_some((def.price, std::cmp::Reverse(slot)))
+                let id = id.as_ref()?;
+                let def = content.relic(id)?;
+                Some((relic_value(id), def.price, slot))
             })
-            .max();
-        match best {
-            Some((_, std::cmp::Reverse(slot))) if free_slot => RunAction::BuyRelic(slot),
-            _ => RunAction::LeaveShop,
+            .filter(|&(value, _, _)| value > 0)
+            .collect();
+        // 2. All slots full: sell the weakest relic for a clearly better one.
+        if !free_slot {
+            let weakest = run
+                .relics()
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    let refund = content.relic(id).map_or(0, |d| super::sell_price(d.price));
+                    (relic_value(id), index, refund)
+                })
+                .min_by_key(|&(value, index, _)| (value, std::cmp::Reverse(index)));
+            if let Some((weak_value, index, refund)) = weakest {
+                let better = offers.iter().any(|&(value, price, _)| {
+                    value >= weak_value + SWAP_MARGIN && price <= coins + refund
+                });
+                if better {
+                    return RunAction::SellRelic(index);
+                }
+            }
         }
+        // 3. Buy the most valuable relic.
+        if free_slot {
+            let best = offers
+                .iter()
+                .filter(|&&(_, price, _)| price <= coins)
+                .max_by_key(|&&(value, price, slot)| (value, price, std::cmp::Reverse(slot)));
+            if let Some(&(_, _, slot)) = best {
+                return RunAction::BuyRelic(slot);
+            }
+        }
+        // 4. Buy the most valuable consumable.
+        let consumable_slot =
+            run.consumables().len() < usize::try_from(content.run.consumable_slots).unwrap_or(0);
+        if consumable_slot {
+            let best = shop
+                .consumables
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, id)| {
+                    let id = id.as_ref()?;
+                    let def = content.consumable(id)?;
+                    let value = consumable_value(id);
+                    (value > 0 && def.price <= coins).then_some((value, def.price, slot))
+                })
+                .max_by_key(|&(value, price, slot)| (value, price, std::cmp::Reverse(slot)));
+            if let Some((_, _, slot)) = best {
+                return RunAction::BuyConsumable(slot);
+            }
+        }
+        // 5. Nothing sensible to buy: a new offer, if Groschen are plenty.
+        let cost = content.run.economy.reroll_cost;
+        if shop.rerolls < MAX_REROLLS && coins >= cost + REROLL_RESERVE {
+            return RunAction::Reroll;
+        }
+        RunAction::LeaveShop
     }
 
-    fn game_action(&self, run: &Run) -> Option<RunAction> {
+    /// Deck ids of the aces, Kreuz first, the least modified first.
+    fn ace_targets(run: &Run) -> Vec<u32> {
+        let mut aces: Vec<(usize, Suit, u32)> = run
+            .deck()
+            .cards()
+            .iter()
+            .filter_map(|c| match c.kind {
+                CardKind::Normal(card) if card.rank == Rank::Ace => {
+                    Some((c.mods.len(), card.suit, c.id))
+                }
+                _ => None,
+            })
+            .collect();
+        aces.sort_by_key(|&(mods, suit, id)| (mods, std::cmp::Reverse(suit), id));
+        aces.into_iter().map(|(_, _, id)| id).collect()
+    }
+
+    fn game_action(&self, run: &Run, content: &Content) -> Option<RunAction> {
         let active = run.game()?;
         let game = &active.game;
         let declarer = DeclarerHeuristic;
         if active.awaiting_re {
             let declaration = game.declaration()?;
-            let re = trump_count(declaration.game, game.hand(Seat::DECLARER)) >= 7;
+            let re = RunBot::says_re(game.hand(Seat::DECLARER), declaration.game);
             return Some(RunAction::AnswerKontra { re });
         }
         match game.phase() {
@@ -72,13 +377,11 @@ impl RunBot {
                 let hand = game.hand(Seat::DECLARER);
                 let mut declaration = declarer.choose_declaration(hand);
                 if RunBot::is_weak(hand, declaration) {
-                    if active.rules.redraws_left > 0 {
-                        return Some(RunAction::RedrawSkat);
-                    }
-                    if run.series().passes_left > 0 {
-                        return Some(RunAction::Pass);
+                    if let Some(action) = Self::throw_in(run, content) {
+                        return Some(action);
                     }
                 }
+                declaration.risk = RunBot::announcement(hand, declaration);
                 if active.rules.require_hand && declaration.risk < RiskLevel::Hand {
                     declaration.risk = RiskLevel::Hand;
                 }
@@ -96,6 +399,255 @@ impl RunBot {
                 Some(RunAction::Play(card.id))
             }
             Phase::Finished(_) => None,
+        }
+    }
+
+    /// The cheapest way to throw a weak hand in, if any: redeal, "Neues
+    /// Blatt", pass, "Ein Bier" for one more pass. Never on the last game.
+    fn throw_in(run: &Run, content: &Content) -> Option<RunAction> {
+        if run.redeals_left() > 0 {
+            return Some(RunAction::Redeal);
+        }
+        if let Some(action) = Self::usable(
+            run,
+            content,
+            |a| matches!(a, ConsumableAction::Redeal),
+            None,
+        ) {
+            return Some(action);
+        }
+        let series = run.series();
+        if series.games_left() <= 1 {
+            return None;
+        }
+        if series.passes_left > 0 {
+            return Some(RunAction::Pass);
+        }
+        Self::usable(
+            run,
+            content,
+            |a| matches!(a, ConsumableAction::ExtraPasses(_)),
+            None,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::CardKind;
+
+    fn hand(cards: &str) -> Vec<DealtCard> {
+        cards
+            .split_whitespace()
+            .zip(0u32..)
+            .map(|(s, id)| DealtCard::plain(id, s.parse::<CardKind>().expect("card")))
+            .collect()
+    }
+
+    fn suit(s: Suit) -> Declaration {
+        Declaration::new(GameType::Suit(s), RiskLevel::Normal)
+    }
+
+    #[test]
+    fn pass_rule_follows_trumps_and_aces() {
+        let hearts = suit(Suit::Hearts);
+        let five_two_aces = hand("CJ HA HT HK H9 SA ST S9 D7 D8");
+        assert!(!RunBot::is_weak(&five_two_aces, hearts));
+        let five_one_ace = hand("CJ HA HT HK H9 SK ST S9 D7 D8");
+        assert!(RunBot::is_weak(&five_one_ace, hearts));
+        let six = hand("CJ SJ HT HK H9 H8 ST S9 D7 D8");
+        assert!(!RunBot::is_weak(&six, hearts));
+        let grand = Declaration::new(GameType::Grand, RiskLevel::Normal);
+        assert!(!RunBot::is_weak(
+            &hand("CJ DJ CA SA S9 S8 H7 H8 D7 D8"),
+            grand
+        ));
+        assert!(RunBot::is_weak(
+            &hand("CJ SJ HJ CA S9 S8 H7 H8 D7 D8"),
+            grand
+        ));
+    }
+
+    #[test]
+    fn announcements_are_conservative() {
+        let clubs = suit(Suit::Clubs);
+        // Eight top trumps and two aces: Ouvert.
+        let ouvert = hand("CJ SJ HJ DJ CA CT CK CQ HA SA");
+        assert_eq!(RunBot::announcement(&ouvert, clubs), RiskLevel::Ouvert);
+        // Seven trumps with the top three jacks and standing aces: Schneider.
+        let schneider = hand("CJ SJ HJ CA CT CK C9 HA SA ST");
+        assert_eq!(
+            RunBot::announcement(&schneider, clubs),
+            RiskLevel::SchneiderDeclared
+        );
+        // A bare king outside: no announcement.
+        let bare = hand("CJ SJ HJ CA CT CK C9 HA SA SK");
+        assert_eq!(RunBot::announcement(&bare, clubs), RiskLevel::Normal);
+        // Eight trumps from the top three jacks and one loser: Schneider.
+        let one_loser = hand("CJ SJ HJ CA CT CK C9 C8 SA SK");
+        assert_eq!(
+            RunBot::announcement(&one_loser, clubs),
+            RiskLevel::SchneiderDeclared
+        );
+        let grand = Declaration::new(GameType::Grand, RiskLevel::Normal);
+        let jacks = hand("CJ SJ HJ DJ CA CT SA ST HA DA");
+        assert_eq!(RunBot::announcement(&jacks, grand), RiskLevel::Ouvert);
+        let three = hand("CJ SJ HJ CA CT SA ST HA DA D7");
+        assert_eq!(
+            RunBot::announcement(&three, grand),
+            RiskLevel::SchneiderDeclared
+        );
+        let two_losers = hand("CJ SJ HJ CA CT SA ST HA D8 D7");
+        assert_eq!(RunBot::announcement(&two_losers, grand), RiskLevel::Normal);
+        assert!(RunBot::says_re(&jacks, GameType::Grand));
+        assert!(!RunBot::says_re(&bare[..8], GameType::Grand));
+    }
+
+    fn open_shop(content: &Content, coins: u32) -> Run {
+        let (mut run, _) = Run::new(content, 9).expect("start");
+        run.coins = coins;
+        run.game = None;
+        run.phase = RunPhase::Shop;
+        run.shop = Some(run.draw_offer(content, 0));
+        run
+    }
+
+    fn offer(run: &mut Run, relics: &[&str], consumables: &[&str]) {
+        let shop = run.shop.as_mut().expect("shop");
+        shop.relics = relics.iter().map(|r| Some(RelicId::new(r))).collect();
+        shop.consumables = consumables
+            .iter()
+            .map(|c| Some(ConsumableId::new(c)))
+            .collect();
+    }
+
+    #[test]
+    fn shop_swaps_the_weakest_relic_for_a_clearly_better_one() {
+        let content = Content::load().expect("content");
+        let mut run = open_shop(&content, 5);
+        run.relics = ["kontra", "ouvert_bonus", "tour", "virgin", "concede"]
+            .iter()
+            .map(|r| RelicId::new(r))
+            .collect();
+        offer(&mut run, &["bock_round"], &[]);
+        // Bock costs 8; selling Ouvert-Bonus brings 2: 7 is not enough.
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
+        run.coins = 6;
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::SellRelic(1));
+        run.apply(&content, RunAction::SellRelic(1)).expect("sell");
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::BuyRelic(0));
+        // Not clearly better: Tournee (6) for Kontra (3) is, Kontra for
+        // Ouvert-Bonus is not.
+        let mut run = open_shop(&content, 50);
+        run.relics = ["ouvert_bonus", "bock_round", "old_lady", "concede", "tour"]
+            .iter()
+            .map(|r| RelicId::new(r))
+            .collect();
+        offer(&mut run, &["kontra"], &[]);
+        assert_ne!(RunBot.shop_action(&run, &content), RunAction::SellRelic(0));
+    }
+
+    #[test]
+    fn shop_buys_consumables_and_puts_the_ink_pad_on_an_ace() {
+        let content = Content::load().expect("content");
+        let mut run = open_shop(&content, 10);
+        offer(&mut run, &[], &["ink_pad", "beer"]);
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyConsumable(1)
+        );
+        run.apply(&content, RunAction::BuyConsumable(1))
+            .expect("beer");
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyConsumable(0)
+        );
+        run.apply(&content, RunAction::BuyConsumable(0))
+            .expect("ink");
+        let kreuz_ass = 31;
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::UseConsumable {
+                slot: 1,
+                target: Some(kreuz_ass)
+            }
+        );
+        // "Frisches Deck" is never bought.
+        let mut run = open_shop(&content, 10);
+        offer(&mut run, &[], &["fresh_deck"]);
+        assert_ne!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyConsumable(0)
+        );
+    }
+
+    #[test]
+    fn shop_rerolls_only_with_plenty_of_groschen() {
+        let content = Content::load().expect("content");
+        let cost = content.run.economy.reroll_cost;
+        let mut run = open_shop(&content, cost + REROLL_RESERVE);
+        offer(&mut run, &[], &[]);
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::Reroll);
+        run.coins -= 1;
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
+        run.coins += 1;
+        run.shop.as_mut().expect("shop").rerolls = MAX_REROLLS;
+        assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
+    }
+
+    #[test]
+    fn weak_hands_take_the_cheapest_way_out() {
+        let content = Content::load().expect("content");
+        let mut seed = 0;
+        let mut run = loop {
+            let (run, _) = Run::new(&content, seed).expect("start");
+            let hand = run.game().expect("game").game.hand(Seat::DECLARER);
+            if RunBot::is_weak(hand, DeclarerHeuristic.choose_declaration(hand)) {
+                break run;
+            }
+            seed += 1;
+        };
+        run.consumables = vec![ConsumableId::new("beer"), ConsumableId::new("new_deal")];
+        let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
+        assert_eq!(
+            next(&run),
+            RunAction::UseConsumable {
+                slot: 1,
+                target: None
+            }
+        );
+        run.consumables.pop();
+        assert_eq!(next(&run), RunAction::Pass);
+        run.series.passes_left = 0;
+        assert_eq!(
+            next(&run),
+            RunAction::UseConsumable {
+                slot: 0,
+                target: None
+            }
+        );
+        // The last game is played, whatever the hand.
+        run.series.games_played = run.series.game_limit - 1;
+        assert!(matches!(next(&run), RunAction::Declare(_)));
+    }
+
+    #[test]
+    fn value_tables_know_every_content_item() {
+        let content = Content::load().expect("content");
+        for id in content.relics.keys() {
+            assert!(
+                RELIC_VALUES.iter().any(|(name, _)| *name == id.as_str()),
+                "relic {id} has no bot value"
+            );
+        }
+        for id in content.consumables.keys() {
+            assert!(
+                CONSUMABLE_VALUES
+                    .iter()
+                    .any(|(name, _)| *name == id.as_str()),
+                "consumable {id} has no bot value"
+            );
         }
     }
 }

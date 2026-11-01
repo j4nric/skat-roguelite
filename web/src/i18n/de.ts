@@ -10,6 +10,14 @@ export const de = {
     loading: 'Der Tisch wird gedeckt …',
     loadFailed: 'Das Spiel konnte nicht geladen werden. Bitte Seite neu laden.',
     actionFailed: 'Das ging nicht: {reason}',
+    errors: {
+      WrongPhase: 'Das geht gerade nicht.',
+      NotEnoughCoins: 'Dafür reichen die Groschen nicht.',
+      NoRedealLeft: 'In dieser Serie wurde schon geschoben.',
+      MustFollowSuit: 'Du musst bedienen.',
+      UnknownCard: 'Diese Karte gibt es nicht.',
+      default: 'Unbekannter Fehler.',
+    } as Record<string, string>,
     close: 'Schließen',
   },
 
@@ -159,7 +167,6 @@ export const de = {
   toast: {
     passed: 'Eingepasst. Noch {left} Pässe.',
     redealt: 'Neu gemischt und gegeben.',
-    redrawn: 'Der Skat wurde neu gezogen.',
     conceded: 'Die Gegner schenken dir den Rest.',
     kontra: '{name}: Kontra!',
     re: 'Re!',
@@ -286,9 +293,6 @@ export const de = {
       old_lady: {
         name: 'Alter Ober',
         text: 'Jeder Ober zählt 5 Augen. Auch bei den Gegnern.',
-      },
-      last_trick_seven: {
-        text: 'Machst du den letzten Stich mit der Schellen-Sieben, gibt es eine Gewinnstufe mehr.',
       },
     },
     card_mods: {},

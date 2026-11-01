@@ -216,9 +216,12 @@ pub enum Effect {
     /// Lever Spielwert: the defenders may say Kontra (×2) after the
     /// declaration, the declarer may answer Re (×4). Passive or on deal.
     EnableKontra,
-    /// Lever Gewinnschwelle (consistency): the declarer may redraw the skat
-    /// once per game before declaring. Passive or on deal.
-    SkatRedraw,
+    /// Lever Spitzen and Risikostufe (hand quality, house rule
+    /// "Schieben"): once per series the declarer may have all hands and the
+    /// skat dealt again before declaring, without using up a game. He looks
+    /// for a hand with more Spitzen or enough trumps for Hand. Passive or
+    /// on deal.
+    SeriesRedeal,
     /// Lever Schneider: the defenders give up; the remaining tricks and
     /// Augen go to the declarer. On trick end only.
     Concede,
@@ -248,7 +251,7 @@ impl Effect {
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
             }
-            Effect::RequireHand | Effect::EnableKontra | Effect::SkatRedraw => {
+            Effect::RequireHand | Effect::EnableKontra | Effect::SeriesRedeal => {
                 matches!(stage, Stage::Passive | Stage::OnDeal)
             }
             Effect::Concede => stage == Stage::OnTrickEnd,
@@ -311,6 +314,18 @@ pub enum Condition {
         /// Whether the declarer must have won it.
         by_declarer: bool,
     },
+    /// The tenth trick was won with a printed card that matches the
+    /// filter, optionally only by the declarer. On score only.
+    LastTrickWinnerMatches {
+        /// Which winning cards count.
+        filter: CardFilter,
+        /// Whether the declarer must have won it.
+        by_declarer: bool,
+    },
+    /// The declarer won and the defenders are Schneider (also through a
+    /// declarer range such as "Jungfrau", by a concession or Schwarz). On
+    /// score only.
+    WonSchneider,
     /// This card won the tenth trick, whoever played it. Card
     /// modifications only, on score only.
     ThisCardWinsLastTrick,
@@ -343,6 +358,8 @@ impl Condition {
             | Condition::Lost
             | Condition::AllTricksWon
             | Condition::LastTrickWonWith { .. }
+            | Condition::LastTrickWinnerMatches { .. }
+            | Condition::WonSchneider
             | Condition::ThisCardWinsLastTrick => stage == Stage::OnScore,
             Condition::GameIs(_)
             | Condition::SuitGame
