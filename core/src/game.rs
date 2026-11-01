@@ -234,6 +234,14 @@ pub enum Event<C = Card> {
         /// The card put into the skat.
         gave: C,
     },
+    /// A card of the declarer's hand was repainted into another suit for
+    /// this game (consumable "Kreide"): `new` replaces `old` everywhere.
+    CardChalked {
+        /// The card as it was.
+        old: C,
+        /// The card as it is now.
+        new: C,
+    },
     /// The game is over and scored: all tricks played, the defenders
     /// conceded, or the Null declarer took a trick.
     GameFinished {
@@ -810,6 +818,44 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
+    /// Before the declaration: replace the card `old` of the declarer's hand
+    /// by `new` for the rest of the game (consumable "Kreide" repaints its
+    /// suit). The card is replaced wherever the game keeps it (hand, the
+    /// declarer's twelve cards, the cards in play and the deck), so trump,
+    /// following suit and Spitzen see `new`.
+    pub fn chalk(&mut self, old: C, new: C) -> Result<Vec<Event<C>>, GameError<C>> {
+        if !matches!(
+            self.phase,
+            Phase::Declaring | Phase::Discarding | Phase::DeclaringAfterSkat
+        ) {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        if !self.hand(Seat::DECLARER).contains(&old) {
+            return Err(GameError::CardNotInHand {
+                seat: Seat::DECLARER,
+                card: old,
+            });
+        }
+        let swap = |cards: &mut Vec<C>| {
+            for c in cards.iter_mut().filter(|c| **c == old) {
+                *c = new;
+            }
+            cards.sort();
+        };
+        swap(&mut self.hands[Seat::DECLARER.index()]);
+        swap(&mut self.declarer_cards);
+        swap(&mut self.in_play);
+        swap(&mut self.deck);
+        // While discarding, the picked-up skat cards are also still named
+        // in the skat.
+        for c in self.skat.iter_mut().filter(|c| **c == old) {
+            *c = new;
+        }
+        let events = vec![Event::CardChalked { old, new }];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
     /// Announce the game. Before the skat is touched ([`Phase::Declaring`])
     /// only a hand game (or the Ramsch) may be declared; after picking it up
     /// and discarding ([`Phase::DeclaringAfterSkat`]) only a game without
@@ -1303,6 +1349,63 @@ mod tests {
         assert_eq!(loaded.declaration(), Some(decl));
         assert!(loaded.skat_picked_up());
         assert_eq!(loaded.current_seat(), Some(Seat::DECLARER));
+    }
+
+    #[test]
+    fn a_chalked_card_follows_its_new_suit() {
+        use crate::cards::CardKind;
+        use crate::deck::DealtCard;
+        let base = fixed_game();
+        let mut id = 0;
+        let mut dealt = |cards: &[Card]| -> Vec<DealtCard> {
+            cards
+                .iter()
+                .map(|&card| {
+                    id += 1;
+                    DealtCard::plain(id, CardKind::Normal(card))
+                })
+                .collect()
+        };
+        let hands = [
+            dealt(base.hand(Seat(0))),
+            dealt(base.hand(Seat(1))),
+            dealt(base.hand(Seat(2))),
+        ];
+        let skat = dealt(&base.skat());
+        let mut game = Game::with_cards(hands, [skat[0], skat[1]], Seat(2)).expect("valid deal");
+        let find = |game: &Game<DealtCard>, seat: Seat, s: &str| {
+            game.hand(seat)
+                .iter()
+                .copied()
+                .find(|d| d.kind == CardKind::Normal(c(s)))
+                .expect("held")
+        };
+        // The declarer's only diamond becomes a spade.
+        let old = find(&game, Seat::DECLARER, "D7");
+        let new = DealtCard {
+            kind: CardKind::Normal(c("S7")),
+            ..old
+        };
+        assert!(matches!(
+            game.chalk(find(&game, Seat(1), "D8"), new),
+            Err(GameError::CardNotInHand { .. })
+        ));
+        let events = game.chalk(old, new).expect("chalk");
+        assert_eq!(events, vec![Event::CardChalked { old, new }]);
+        assert!(game.hand(Seat::DECLARER).contains(&new));
+        assert!(game.declarer_cards().contains(&new));
+        assert!(game.cards_in_play().contains(&new) && !game.cards_in_play().contains(&old));
+        assert!(game.deck_cards().contains(&new));
+        game.declare(Declaration::grand(RiskLevel::Hand))
+            .expect("declare");
+        assert!(matches!(
+            game.chalk(new, old),
+            Err(GameError::WrongPhase { .. })
+        ));
+        // A diamond is led: the declarer has none left and may play anything.
+        let lead = find(&game, Seat(2), "DA");
+        game.play(Seat(2), lead).expect("lead");
+        assert_eq!(game.legal_moves(Seat::DECLARER).len(), 10);
     }
 
     #[test]

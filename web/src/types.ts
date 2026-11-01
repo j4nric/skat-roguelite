@@ -32,6 +32,8 @@ export interface CardView extends DealtCard {
    * a "Ramponiert" card only when fewer than two others are left).
    */
   discardable: boolean;
+  /** "Kreide": the printed suit of a card repainted for this game; `kind` is the suit it has now. */
+  chalked?: Suit | null;
 }
 
 export interface DeckCard {
@@ -153,13 +155,29 @@ export interface CardModInfo {
   curse: boolean;
 }
 
+/** Group of a consumable, for labels: the Schnäpse are `Schnapps`. */
+export type ConsumableCategory = 'Item' | 'Schnapps';
+
 export interface ConsumableInfo {
   id: string;
   name: string;
   text: string;
   rarity: Rarity;
   price: number;
+  /** Needs a deck card (at the Tresen). */
   needs_target: boolean;
+  /** "Kreide": needs a card of the hand (one of `targets`) and another suit. */
+  needs_suit?: boolean;
+  category?: ConsumableCategory;
+}
+
+/** What a Schnaps does to the next declared game. */
+export type NextGameEffect = { Multiply: number } | 'SingleLoss';
+
+/** A Schnaps waiting for the next declared game. */
+export interface PendingNextGame {
+  consumable: string;
+  effect: NextGameEffect;
 }
 
 export interface OwnedRelic {
@@ -300,6 +318,8 @@ export interface GameView {
   can_take_from_skat: boolean;
   /** Skat cards a skat swap may take now; the first is taken by default. */
   skat_swap_cards: CardView[];
+  /** The untouched skat the player looked at ("Kurzer"); null if not, and once picked up. */
+  skat_peek?: CardView[] | null;
   /** Tricks per seat so far (index = seat). */
   seat_tricks: [number, number, number];
   /**
@@ -328,9 +348,10 @@ export type Source =
   | { Boss: string }
   | 'Kontra'
   | 'Re'
-  | { Encounter: string };
+  | { Encounter: string }
+  | { Consumable: string };
 
-export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider';
+export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider' | 'LossFactor';
 
 export type Change = { Add: number } | { Multiply: number } | { Set: number };
 
@@ -508,6 +529,8 @@ export interface RunView {
   evening_relics: RelicInfo[];
   /** Factor waiting for the next declared game ("Letzte Runde"). */
   pending_factor: number | null;
+  /** Schnäpse waiting for the next declared game ("Doppelkorn", "Magenbitter"). */
+  pending_next_game?: PendingNextGame[];
   last_score: ScoreView | null;
   deck: DeckCard[];
   stats: RunStats;
@@ -537,6 +560,7 @@ export type GameEvent =
   | { Conceded: { tricks: number; card_points: number } }
   | { DefenderHandsSwapped: { hand_sizes: number[] } }
   | { SkatSwapped: { took: DealtCard; gave: DealtCard } }
+  | { CardChalked: { old: DealtCard; new: DealtCard } }
   | { GameFinished: unknown };
 
 export type DeckChange =
@@ -580,6 +604,7 @@ export type RunEvent =
   | { EveningRuleAdded: string }
   | { RelicSwapped: { old: string; new: string } }
   | { NextGameDoubled: { factor: number } }
+  | { SkatPeeked: { skat: DealtCard[] } }
   | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } };
 
 export type RunAction =
@@ -592,7 +617,7 @@ export type RunAction =
   | { AnswerKontra: { re: boolean } }
   | { Discard: [number, number] }
   | { Play: number }
-  | { UseConsumable: { slot: number; target: number | null } }
+  | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
   | { BuyConsumable: number }
   | { SellRelic: number }

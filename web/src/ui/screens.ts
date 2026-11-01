@@ -3,12 +3,12 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, cardName, contentName, contentText, t } from '../i18n';
+import { de, cardName, contentName, contentText, face, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
-import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, UnlockEntry } from '../types';
-import { cardSvg, modIcon } from './cards';
+import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
+import { cardSvg, modIcon, suitIcon } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { goodSvg } from './goods';
 import { seatPerson } from './guests';
@@ -493,6 +493,41 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          ${oddsLine(view.deal_odds)}
          <div class="target-grid">${cards}</div>
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
+      );
+    }
+    case 'chalk': {
+      const item = view?.consumables.find((c) => c.slot === overlay.slot);
+      const hand = view?.game?.hand;
+      if (!view || !item || !hand) return '';
+      const picked = hand.find((c) => c.id === overlay.card) ?? null;
+      const cards = hand
+        .map((c) => {
+          const ok = item.targets.includes(c.id);
+          const on = c.id === overlay.card;
+          return `<button class="card target-card ${ok ? '' : 'is-dim'} ${on ? 'is-picked' : ''}" ${attrs({
+            'data-action': 'chalk-card',
+            'data-id': c.id,
+            disabled: !ok,
+            'aria-pressed': on ? 'true' : 'false',
+            'aria-label': cardName(c.kind),
+          })}>${cardSvg(c.kind, c.mods)}</button>`;
+        })
+        .join('');
+      const own = picked ? face(picked.kind)?.suit : undefined;
+      const suits = (['Clubs', 'Spades', 'Hearts', 'Diamonds'] as Suit[])
+        .map(
+          (suit) =>
+            `<button class="btn chalk-suit" ${attrs({ 'data-action': 'chalk-suit', 'data-suit': suit, disabled: !picked || suit === own })}>${suitIcon(suit, 20, null)}<span>${esc(de.suits[suit])}</span></button>`,
+        )
+        .join('');
+      return sheet(
+        `<h2>${esc(contentName('consumables', item.consumable.id))}</h2>
+         <p class="small">${esc(picked ? t(de.shop.chalkSuit, { card: cardName(picked.kind) }) : de.shop.chalkCard)}</p>
+         <div class="target-grid chalk-grid" data-testid="chalk-cards">${cards}</div>
+         <div class="chalk-suits" data-testid="chalk-suits">${suits}</div>
+         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
+        true,
+        'sheet-chalk',
       );
     }
     case 'encounter-target': {

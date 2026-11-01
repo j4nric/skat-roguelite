@@ -631,6 +631,41 @@ pub enum ConsumableAction {
     ExtraPasses(u32),
     /// Shuffle and deal again before declaring, without using up a game.
     Redeal,
+    /// Look at the two skat cards before choosing Skat or Hand ("Kurzer").
+    /// Only while the ten cards are held and the skat is untouched; the
+    /// choice stays open. Information: off against "Der Kiebitz-Mörder".
+    PeekSkat,
+    /// Change the next declared game ("Doppelkorn", "Magenbitter"). Used at
+    /// the Tresen or before the declaration of the dealt game; used up by
+    /// the next declaration (a pass does not waste it), like "Letzte
+    /// Runde".
+    NextGame(NextGameEffect),
+    /// Repaint a card of the hand (target, never a jack or a blank) into
+    /// another suit until the game ends ("Kreide"). Only before the
+    /// declaration; the card is that card for the whole game: trump,
+    /// following suit and Spitzen.
+    ChalkCard,
+}
+
+/// What a consumable of [`ConsumableAction::NextGame`] does to the next
+/// declared game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NextGameEffect {
+    /// The Spielwert counts this many times, won or lost ("Doppelkorn").
+    Multiply(u32),
+    /// Lost, the game counts once instead of twice ("Magenbitter"). Won,
+    /// it does nothing; it is used up by the game either way.
+    SingleLoss,
+}
+
+/// Group of a consumable at the Tresen, for labels only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ConsumableCategory {
+    /// A plain item (Gegenstand).
+    #[default]
+    Item,
+    /// A Schnaps: Kurzer, Doppelkorn, Kräuter, Magenbitter, Kreide.
+    Schnapps,
 }
 
 /// A consumable (Verbrauchsgegenstand).
@@ -651,6 +686,9 @@ pub struct ConsumableDef {
     /// Characters that meet it at the Tresen (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
+    /// Group for labels ("Schnäpse").
+    #[serde(default)]
+    pub category: ConsumableCategory,
 }
 
 /// Groschen rules (design document 12).
@@ -1011,6 +1049,12 @@ impl Content {
             )?;
         }
         for consumable in self.consumables.values() {
+            if consumable.action == ConsumableAction::NextGame(NextGameEffect::Multiply(0)) {
+                return Err(ContentError(format!(
+                    "consumable {}: factor 0",
+                    consumable.id
+                )));
+            }
             if let ConsumableAction::AddCardMod(Some(id)) = &consumable.action {
                 if !self.card_mods.contains_key(id) {
                     return Err(ContentError(format!(

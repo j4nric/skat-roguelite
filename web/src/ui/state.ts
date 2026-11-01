@@ -47,6 +47,8 @@ export type Overlay =
   | { kind: 'boss'; boss: BossInfo; resolve: () => void }
   | { kind: 'info'; title: string; subtitle: string; text: string; use?: number; coaster?: string; good?: string; odds?: boolean; buy?: { action: 'buy-relic' | 'buy-item'; slot: number; price: number } }
   | { kind: 'target'; slot: number }
+  /** "Kreide": pick a card of the hand (`card`), then its new suit. */
+  | { kind: 'chalk'; slot: number; card: number | null }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number }
   /** The Vereinsbuch: characters and unlocks, or the statistics page. */

@@ -73,6 +73,7 @@ fn the_ink_pad_never_draws_a_curse() {
                     RunAction::UseConsumable {
                         slot: 0,
                         target: Some(target),
+                        suit: None,
                     },
                 )
                 .expect("ink pad");

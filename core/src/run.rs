@@ -51,12 +51,12 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::ai::DefenderHeuristic;
-use crate::cards::PlayingCard;
+use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::content::{
     ActiveSource, BossId, CardFilter, CardModId, Change, Character, ConsumableAction, ConsumableId,
-    Content, Effect, EncounterId, EncounterKind, GameFocus, HookContext, Lever, RelicId, RelicKind,
-    RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool,
-    resolve_deck, score_parts,
+    Content, Effect, EncounterId, EncounterKind, GameFocus, HookContext, Lever, NextGameEffect,
+    RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources,
+    evaluate, in_pool, resolve_deck, score_parts,
 };
 use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
 use crate::game::{Event, Game, GameError, Phase, Seat};
@@ -263,6 +263,17 @@ pub struct ActiveGame {
     /// Endboss "Der Alte" the rule of this game.
     #[serde(default)]
     pub boss_rule: Option<BossId>,
+    /// The player looked at the untouched skat ("Kurzer").
+    #[serde(default)]
+    pub skat_peeked: bool,
+    /// Cards repainted for this game ("Kreide"): instance id and printed
+    /// suit.
+    #[serde(default)]
+    pub chalked: Vec<(u32, Suit)>,
+    /// Lost, this game counts once instead of twice ("Magenbitter"): who
+    /// granted it.
+    #[serde(default)]
+    pub single_loss: Option<Source>,
 }
 
 /// One choice of an encounter.
@@ -435,12 +446,17 @@ pub enum RunAction {
     Discard([u32; 2]),
     /// Play a card (instance id).
     Play(u32),
-    /// Use a consumable from the given slot, with a target card if needed.
+    /// Use a consumable from the given slot, with a target card and a suit
+    /// if needed.
     UseConsumable {
         /// Slot of the consumable.
         slot: usize,
-        /// Target card instance id for deck changes.
+        /// Target card instance id: a deck card for deck changes, a card of
+        /// the hand for "Kreide".
         target: Option<u32>,
+        /// The new suit of the target ("Kreide").
+        #[serde(default)]
+        suit: Option<Suit>,
     },
     /// Buy the relic in this Tresen slot.
     BuyRelic(usize),
@@ -673,6 +689,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Factor on the Spielwert.
         factor: u32,
     },
+    /// The player looked at the untouched skat ("Kurzer").
+    SkatPeeked {
+        /// The two skat cards.
+        skat: [DealtCard; 2],
+    },
     /// The run was won.
     RunWon {
         /// Who won it.
@@ -756,6 +777,9 @@ pub enum RunError {
     /// A defender is to move: advance the AI ([`Run::advance_ai`]) before
     /// the player acts again.
     AiToMove,
+    /// "Kreide" cannot repaint this card into this suit: a jack, a blank,
+    /// or the suit it already has.
+    CannotChalk,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -837,6 +861,8 @@ pub enum RunErrorCode {
     DiscardForbidden,
     /// A defender is to move; the player has to wait.
     AiToMove,
+    /// "Kreide" cannot repaint this card into this suit.
+    CannotChalk,
 }
 
 impl RunErrorCode {
@@ -880,6 +906,7 @@ impl RunErrorCode {
             RunErrorCode::RamschRequired => "RamschRequired",
             RunErrorCode::DiscardForbidden => "DiscardForbidden",
             RunErrorCode::AiToMove => "AiToMove",
+            RunErrorCode::CannotChalk => "CannotChalk",
         }
     }
 }
@@ -929,6 +956,7 @@ impl RunError {
             RunError::NothingToTake => RunErrorCode::NothingToTake,
             RunError::RamschRequired => RunErrorCode::RamschRequired,
             RunError::AiToMove => RunErrorCode::AiToMove,
+            RunError::CannotChalk => RunErrorCode::CannotChalk,
         }
     }
 }
@@ -959,6 +987,7 @@ impl fmt::Display for RunError {
             RunError::NothingToTake => f.write_str("no matching card lies in the skat"),
             RunError::RamschRequired => f.write_str("the Ramsch must be played"),
             RunError::AiToMove => f.write_str("a defender is to move"),
+            RunError::CannotChalk => f.write_str("this card cannot be repainted into this suit"),
         }
     }
 }
@@ -1061,6 +1090,10 @@ pub struct Run {
     /// "Letzte Runde": the next game declared counts this many times.
     #[serde(default)]
     pending_factor: Option<(EncounterId, u32)>,
+    /// Consumables used for the next declared game ("Doppelkorn",
+    /// "Magenbitter"), in the order used.
+    #[serde(default)]
+    pending_next_game: Vec<(ConsumableId, NextGameEffect)>,
     /// Stammgäste of the current series, seat 1 first ([`guests`]). Empty
     /// in saves from before; then they are derived from the seed.
     #[serde(default)]
@@ -1152,6 +1185,7 @@ impl Run {
             encounter: None,
             evening_relics: Vec::new(),
             pending_factor: None,
+            pending_next_game: Vec::new(),
             guests: Vec::new(),
             length: start.length,
             stake: start.stake,
@@ -1237,6 +1271,13 @@ impl Run {
     #[must_use]
     pub fn pending_factor(&self) -> Option<u32> {
         self.pending_factor.as_ref().map(|(_, f)| *f)
+    }
+
+    /// Consumables waiting for the next declared game ("Doppelkorn",
+    /// "Magenbitter"), in the order used.
+    #[must_use]
+    pub fn pending_next_game(&self) -> &[(ConsumableId, NextGameEffect)] {
+        &self.pending_next_game
     }
 
     /// The run's seed.
@@ -1458,8 +1499,8 @@ impl Run {
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
             RunAction::Play(id) => self.play(content, id, events),
-            RunAction::UseConsumable { slot, target } => {
-                self.use_consumable(content, slot, target, events)
+            RunAction::UseConsumable { slot, target, suit } => {
+                self.use_consumable(content, slot, target, suit, events)
             }
             RunAction::BuyRelic(slot) => self.buy_relic(content, slot, events),
             RunAction::BuyConsumable(slot) => self.buy_consumable(content, slot, events),
@@ -1588,16 +1629,32 @@ impl Run {
     }
 
     /// After any declaration (also the Ramsch): fire `OnDeclare` and use
-    /// up the factor of "Letzte Runde".
+    /// up the factor of "Letzte Runde" and the consumables waiting for the
+    /// next game ("Doppelkorn", "Magenbitter").
     fn after_declaration(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         self.fire(content, Stage::OnDeclare, None, None, events);
+        let pending = std::mem::take(&mut self.pending_next_game);
+        let Some(active) = self.game.as_mut() else {
+            return;
+        };
         if let Some((encounter, factor)) = self.pending_factor.take() {
-            if let Some(active) = self.game.as_mut() {
-                active.lines.push(ScoreLine {
-                    source: Source::Encounter(encounter),
+            active.lines.push(ScoreLine {
+                source: Source::Encounter(encounter),
+                lever: Lever::GameValue,
+                change: Change::Multiply(factor),
+            });
+        }
+        for (id, effect) in pending {
+            let source = Source::Consumable(id);
+            match effect {
+                NextGameEffect::Multiply(factor) => active.lines.push(ScoreLine {
+                    source,
                     lever: Lever::GameValue,
                     change: Change::Multiply(factor),
-                });
+                }),
+                NextGameEffect::SingleLoss => {
+                    active.single_loss.get_or_insert(source);
+                }
             }
         }
     }
@@ -2196,6 +2253,9 @@ impl Run {
             awaiting_re: false,
             peeked: Vec::new(),
             boss_rule,
+            skat_peeked: false,
+            chalked: Vec::new(),
+            single_loss: None,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -2271,6 +2331,15 @@ impl Run {
         }
         lines.extend(active.lines.iter().cloned());
         lines.extend(kontra_lines(active.kontra));
+        if !parts.won {
+            if let Some(source) = &active.single_loss {
+                lines.push(ScoreLine {
+                    source: source.clone(),
+                    lever: Lever::LossFactor,
+                    change: Change::Set(1),
+                });
+            }
+        }
         let mut breakdown = score_parts(
             declaration,
             matadors,
@@ -2633,6 +2702,7 @@ impl Run {
         content: &Content,
         slot: usize,
         target: Option<u32>,
+        suit: Option<Suit>,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         let id = self
@@ -2686,9 +2756,77 @@ impl Run {
                 });
             }
             ConsumableAction::Redeal => self.redeal(content, events)?,
+            ConsumableAction::PeekSkat => self.peek_skat(events)?,
+            ConsumableAction::NextGame(effect) => {
+                let before_declaration = self.phase == RunPhase::Shop
+                    || self.declaring().is_ok()
+                    || self.game.as_ref().is_some_and(|a| {
+                        matches!(
+                            a.game.phase(),
+                            Phase::Discarding | Phase::DeclaringAfterSkat
+                        ) && a.game.declaration().is_none()
+                    });
+                if !before_declaration {
+                    return Err(RunError::WrongPhase);
+                }
+                let duplicate = *effect == NextGameEffect::SingleLoss
+                    && self.pending_next_game.iter().any(|(_, e)| e == effect);
+                if duplicate {
+                    return Err(RunError::WrongPhase);
+                }
+                self.pending_next_game.push((id.clone(), *effect));
+            }
+            ConsumableAction::ChalkCard => {
+                let target = target.ok_or(RunError::TargetRequired)?;
+                let suit = suit.ok_or(RunError::TargetRequired)?;
+                self.chalk(target, suit, events)?;
+            }
         }
         self.consumables.remove(slot);
         events.push(RunEvent::ConsumableUsed { consumable: id });
+        Ok(())
+    }
+
+    /// "Kurzer": show the player the untouched skat while he still holds
+    /// ten cards and has not declared. Once per game; not against "Der
+    /// Kiebitz-Mörder" (information is off).
+    fn peek_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let active = self.declaring()?;
+        if active.skat_peeked || active.rules.no_information {
+            return Err(RunError::WrongPhase);
+        }
+        active.skat_peeked = true;
+        events.push(RunEvent::SkatPeeked {
+            skat: active.game.skat(),
+        });
+        Ok(())
+    }
+
+    /// "Kreide": repaint the card `id` of the player's hand into `suit`
+    /// until the game ends. Only before the declaration, never a jack (it
+    /// is trump by its rank) or a blank, and only into another suit.
+    fn chalk(&mut self, id: u32, suit: Suit, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let active = self.active_mut()?;
+        if active.rules.ramsch || active.game.declaration().is_some() {
+            return Err(RunError::WrongPhase);
+        }
+        if active.awaiting_re {
+            return Err(RunError::AwaitingKontraAnswer);
+        }
+        let old = Run::declarer_card(active, id)?;
+        let face = old.face().ok_or(RunError::CannotChalk)?;
+        if face.rank == Rank::Jack || face.suit == suit {
+            return Err(RunError::CannotChalk);
+        }
+        let new = DealtCard {
+            kind: CardKind::Normal(Card::new(suit, face.rank)),
+            ..old
+        };
+        let game_events = active.game.chalk(old, new)?;
+        if !active.chalked.iter().any(|(c, _)| *c == id) {
+            active.chalked.push((id, face.suit));
+        }
+        events.extend(game_events.into_iter().map(RunEvent::Game));
         Ok(())
     }
 
@@ -3158,6 +3296,8 @@ mod m4_tests;
 mod m5_tests;
 #[cfg(test)]
 mod m7_tests;
+#[cfg(test)]
+mod schnapps_tests;
 #[cfg(test)]
 mod skat_order_tests;
 #[cfg(test)]

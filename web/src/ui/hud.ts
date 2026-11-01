@@ -41,6 +41,9 @@ export function relicChips(view: RunView): string {
   const pending = view.pending_factor
     ? `<span class="flag-chip is-pending" data-testid="pending-factor">${esc(t(de.header.pending, { factor: view.pending_factor }))}</span>`
     : '';
+  const schnaps = schnapsNotes(view, de.header)
+    .map((text) => `<span class="flag-chip is-pending is-schnaps" data-testid="pending-schnaps">${esc(text)}</span>`)
+    .join('');
   const items = view.consumables
     .map(
       (c) =>
@@ -55,7 +58,17 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + evening + items + pending + flags + counters;
+  return relics + evening + items + pending + schnaps + flags + counters;
+}
+
+/** "Doppelkorn ×2" and the like, for each Schnaps waiting for the next game, in the given texts. */
+export function schnapsNotes(view: RunView, texts: { pendingSchnapsMul: string; pendingSchnapsLoss: string }): string[] {
+  return (view.pending_next_game ?? []).map((p) => {
+    const name = contentName('consumables', p.consumable);
+    return typeof p.effect === 'object'
+      ? t(texts.pendingSchnapsMul, { name, factor: p.effect.Multiply })
+      : t(texts.pendingSchnapsLoss, { name });
+  });
 }
 
 export function renderHud(view: RunView): string {

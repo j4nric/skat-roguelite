@@ -3,7 +3,7 @@
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
 import { de, contentName, contentText, t } from '../i18n';
-import type { OwnedRelic, RelicInfo, RunView } from '../types';
+import type { ConsumableCategory, OwnedRelic, RelicInfo, RunView } from '../types';
 import { pixels } from './art';
 import { attrs, esc } from './dom';
 import { goodSvg } from './goods';
@@ -59,12 +59,13 @@ function ownedCoaster(r: OwnedRelic, i: number): string {
 }
 
 /** An item as a thing on the counter; tap the picture or name for the full text. */
-function good(id: string, more: Record<string, string | number>, footer: string, extra = ''): string {
+function good(id: string, more: Record<string, string | number>, footer: string, extra = '', category?: ConsumableCategory): string {
   const name = contentName('consumables', id);
   const label = t(de.shop.moreAbout, { name });
-  return `<article class="good ${extra}">
+  const schnaps = category === 'Schnapps';
+  return `<article class="good ${extra} ${schnaps ? 'is-schnaps' : ''}">
     <button class="good-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
-    <div class="good-pic">${goodSvg(id, 56)}</div>
+    <div class="good-pic">${goodSvg(id, 56)}${schnaps ? `<span class="good-tag">${esc(de.shop.schnaps)}</span>` : ''}</div>
     <h4>${esc(name)}</h4>
     <p class="good-text">${esc(contentText('consumables', id))}</p>
     <div class="good-foot">${footer}</div>
@@ -111,6 +112,8 @@ export function renderShop(view: RunView): string {
         o.consumable.id,
         { 'data-action': 'info-offer-item', 'data-slot': o.slot },
         `${price(o.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        '',
+        o.consumable.category,
       );
     })
     .join('');
@@ -123,6 +126,7 @@ export function renderShop(view: RunView): string {
         `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
          <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
+        c.consumable.category,
       ),
     )
     .join('');

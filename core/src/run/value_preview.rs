@@ -147,7 +147,8 @@ struct Place {
 impl Knowledge {
     fn new(active: &ActiveGame) -> Knowledge {
         let game = &active.game;
-        let skat_known = game.skat_picked_up();
+        // Picked up, or looked at with "Kurzer".
+        let skat_known = game.skat_picked_up() || active.skat_peeked;
         let mut known: BTreeSet<u32> = game.hand(Seat::DECLARER).iter().map(|c| c.id).collect();
         known.extend(game.tricks().iter().flat_map(|t| t.cards).map(|c| c.id));
         known.extend(game.current_trick().iter().map(|c| c.id));

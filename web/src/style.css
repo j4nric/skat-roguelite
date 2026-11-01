@@ -1481,6 +1481,12 @@ button.card {
   background: var(--rot);
 }
 
+/* "Kreide": the printed suit, chalked over. */
+.plaque-chalk {
+  background: #f4efe2;
+  border-style: dashed;
+}
+
 /* ---------------------------------------------------------------- status */
 
 .status {
@@ -1659,6 +1665,15 @@ button.card {
 
 .choice-cards.is-hand .card-back:last-child {
   transform: rotate(8deg);
+}
+
+/* "Kurzer": the skat face up on the skat button. */
+.choice-cards.is-peeked .mini-card {
+  width: 26px;
+}
+
+.skat-peek-hint {
+  color: var(--accent);
 }
 
 .choice-name {
@@ -2135,6 +2150,29 @@ button.card {
 
 .target-card.is-dim {
   opacity: 0.35;
+}
+
+.target-card.is-picked {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+}
+
+/* "Kreide": the hand, then the four suits (the card's own one disabled). */
+.chalk-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.chalk-suits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.chalk-suit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .target-card:not(:disabled):hover {
@@ -3756,7 +3794,24 @@ button.card {
 }
 
 .good-pic {
+  position: relative;
   line-height: 0;
+}
+
+/* The Schnäpse get a small label on the picture. */
+.good-tag {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  padding: 1px 4px;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--line);
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  line-height: 1;
+  text-transform: uppercase;
+  transform: translateX(-50%);
 }
 
 .good-pic .good-svg {
