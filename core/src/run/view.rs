@@ -25,7 +25,8 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    Declaration, GameType, NullRisk, NullScoring, RiskLevel, suit_strength, trump_order_key,
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable, suit_strength,
+    trump_order_key,
 };
 
 /// Everything a frontend shows of a run.
@@ -37,6 +38,10 @@ pub struct RunView {
     pub character: CharacterInfo,
     /// What the run waits for.
     pub phase: RunPhase,
+    /// The defender who thinks next: while set, the run waits for the AI,
+    /// not for the player, and every action fails with `AiToMove`; the
+    /// frontend calls [`Run::advance_ai`] (one card) until it is `None`.
+    pub ai_to_move: Option<Seat>,
     /// The current series.
     pub series: SeriesView,
     /// The boss of the current section while its boss series is still
@@ -360,6 +365,11 @@ pub struct CardView {
     pub legal: bool,
     /// Whether it came from the skat (while discarding).
     pub from_skat: bool,
+    /// Whether the player may put it into the skat now: only for hand
+    /// cards while discarding. A card that must not be discarded
+    /// ("Ramponiert") only when fewer than two other cards are left
+    /// ([`crate::rules::discardable`]).
+    pub discardable: bool,
 }
 
 /// A card on the table and who played it.
@@ -582,6 +592,7 @@ impl Run {
                 .unwrap_or_default(),
             legal: false,
             from_skat: false,
+            discardable: false,
         }
     }
 
@@ -735,6 +746,7 @@ impl Run {
                 text: character.map_or_else(String::new, |c| c.text.clone()),
             },
             phase: self.phase,
+            ai_to_move: self.ai_to_move(),
             series: SeriesView {
                 section: series.section,
                 index: series.index,
@@ -1067,13 +1079,16 @@ impl Run {
             game.legal_moves(Seat::DECLARER)
         };
         let skat = game.skat();
-        let mut hand: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
+        let held = game.hand(Seat::DECLARER);
+        let discarding = phase == TablePhase::Discarding && !active.awaiting_re;
+        let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
         let hand = hand
             .into_iter()
             .map(|card| CardView {
                 legal: legal.contains(&card),
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
+                discardable: discarding && discardable(held, card),
                 ..self.card_view(card)
             })
             .collect();

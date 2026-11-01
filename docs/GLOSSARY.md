@@ -27,7 +27,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Rangbonus (Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
 | Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“ |
 | Platz in der Trumpfordnung | `trump_order_key` | Stärke, dann 0 für den Buben ehrenhalber, 1 für gedruckte Trümpfe |
-| Darf nicht gedrückt werden (Ramponiert) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden` |
+| Darf nicht gedrückt werden (Ramponiert) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden`; je Handkarte `discardable` (`rules::discardable`, `CardView::discardable`) |
 | Volle (Ass, Zehn) | `high_card` | |
 | Trumpf | `trump` | |
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
@@ -48,7 +48,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Null-Risikostufe | `NullRisk` | `Normal` (23), `Hand` (35), `Ouvert` (46), `OuvertHand` (59); Stufe 1 bis 4 (`step`) |
 | Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
 | Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
-| Augen und Stiche pro Platz | `SeatTotals` | `card_points`, `tricks` (Index = Platz); in `ScoreBreakdown::seats`, `GameFinished::seats`; Sicht `seat_tricks`, Zähler `count.seats` |
+| Augen und Stiche pro Platz | `SeatTotals` | `card_points`, `tricks` (Index = Platz), `most` (die meisten Augen, im Ramsch die Verlierer); in `ScoreBreakdown::seats`, `GameFinished::seats`; Sicht `seat_tricks`, Zähler `count.seats` |
 | Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null` |
 | Farbspiel | `GameType::Suit` | |
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
@@ -156,6 +156,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Wahrscheinlichkeit beim Geben | `DealOdds` | Wo eine Karte des Blatts landet (DESIGN 7.4), `Odds` als Bruch und Promille |
 | Gegenspieler-Stufe (KI je Abschnitt) | `Opponents` | `Heuristic` oder `Pimc { samples, depth }`, Liste `opponents` in `run.ron` (DESIGN 10.3) |
 | Perfect Information Monte Carlo | `PimcPolicy`, `PimcConfig` | KI-Stufe 2 (DESIGN 10.2), `ai::pimc` |
+| KI am Zug (ein Gegenspieler denkt) | `ai_to_move` | `Run::ai_to_move`, Sicht `RunView::ai_to_move`; ein KI-Zug `Run::advance_ai` (wasm `step`), nur die Spieleraktion `Run::apply_step`, bis zur nächsten Spielerentscheidung `Run::apply`; Fehler `AiToMove` |
 | Stichprobe (eine zufällige, stimmige Verteilung der unbekannten Karten) | `Sample` | `Knowledge::sample`, `ai::sample` |
 | Wissen eines Sitzes über die Kartenverteilung | `Knowledge` | Fehlfarben, offene Hände, festgelegte Karten (`Hints::pinned`) |
 | Fehlfarbe (Farbe, die ein Sitz nicht mehr hat) | `void` | Aus Nicht-Bedienen erschlossen |

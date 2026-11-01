@@ -52,8 +52,8 @@
 //   starts it; the menu shows the seed and copies the link; a second link
 //   (a locked character) while a run is saved must not overwrite it unasked
 //   (confirm dialog, cancel keeps the run). The daily seed is JJJJMMTT.
-// - the thought bubble appears while the core computes the opponents'
-//   moves, the setting is stored.
+// - the thought bubble appears while the core computes an opponent's card,
+//   one at a time at the opponent who is to move; the setting is stored.
 // - run-end.json: seed 13, the RunBot's run up to the last game of a series
 //   far below its target; playing it out ends the run. The end screen shares
 //   the seed, the Vereinsbuch's statistics page lists the run.
@@ -61,7 +61,7 @@
 //   "Ramponiert" on a random card: choosing it pays 3 Groschen (CoinsGained)
 //   with a coin animation naming the source.
 // - discard-battered.json: seed 14, that card in the hand at the Ansage;
-//   discarding it is refused by the core (DiscardForbidden) in German.
+//   the core marks it not discardable, so it cannot be picked for the skat.
 // - honorary-jack.json: seed 116, a "Unter ehrenhalber" in the hand: plaque.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
@@ -408,13 +408,21 @@ async function m5(browser, errors, reducedMotion) {
   await shoot(page, 'menu-share');
   await closeSheet(page);
 
-  // The thought bubble shows while the core computes the opponents' moves.
+  // The thought bubble shows while the core computes an opponent's card:
+  // one bubble at a time, at the opponent who is to move.
   await page.evaluate(() => {
     window.__thinkSeen = 0;
+    window.__thinkWrong = [];
     new MutationObserver((records) => {
       for (const r of records) {
         for (const n of r.addedNodes) {
-          if (n instanceof Element && (n.matches('.think-bubble') || n.querySelector('.think-bubble'))) window.__thinkSeen += 1;
+          if (n instanceof Element && (n.matches('.think-bubble') || n.querySelector('.think-bubble'))) {
+            window.__thinkSeen += 1;
+            const bubbles = Array.from(document.querySelectorAll('.think-bubble'));
+            const seats = bubbles.map((b) => b.closest('.opp')?.getAttribute('data-seat'));
+            const atTurn = bubbles.every((b) => b.closest('.opp')?.classList.contains('is-turn'));
+            if (bubbles.length !== 1 || !atTurn) window.__thinkWrong.push(`${bubbles.length} bubble(s) at ${seats.join(',')}, at turn: ${atTurn}`);
+          }
         }
       }
     }).observe(document.body, { childList: true, subtree: true });
@@ -430,6 +438,8 @@ async function m5(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
   const seen = await page.evaluate(() => window.__thinkSeen);
   if (!seen) fail('no thought bubble while the opponents played');
+  const wrong = await page.evaluate(() => window.__thinkWrong);
+  if (wrong.length) fail(`thought bubble not at the opponent to move: ${wrong.join('; ')}`);
   log(`thought bubble shown ${seen} times`);
 
   // A second link while this run is saved: offered, but nothing is overwritten unasked.
@@ -511,26 +521,26 @@ async function m5(browser, errors, reducedMotion) {
   if (coinsAfter !== coinsBefore + 3) fail(`Groschen ${coinsBefore} -> ${coinsAfter}, expected +3`);
   log(`curse paid: ${pop.replace(/\s+/g, ' ')}; ${coinsBefore} -> ${coinsAfter} Groschen`);
 
-  // A "Ramponiert" card in the hand: locked when discarding, the core refuses it.
+  // A "Ramponiert" card in the hand: the core marks it not discardable, so
+  // it is locked and cannot be picked; two other cards go into the skat.
   await resumeFixture(page, 'discard-battered.json');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.hand-card .plaque-lock').count())) fail('the Ramponiert card has no lock plaque');
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
-  await page.waitForSelector('[data-action="select"][data-no-discard="true"]');
-  await page.locator('[data-action="select"][data-no-discard="true"]').first().click();
-  await page.locator('[data-action="select"]:not([data-no-discard])').first().click();
-  await page.click('[data-action="discard"]');
-  await page.waitForSelector('.toast');
-  const refused = (await page.locator('.toast').textContent()) ?? '';
-  if (!refused.includes('Ramponierte')) fail(`discarding a Ramponiert card: ${refused}`);
-  if (!(await page.locator('[data-action="select"]').count())) fail('the hand left the discard phase after a refused discard');
+  await page.waitForSelector('[data-action="select"]');
+  const lockedCards = page.locator('.hand-card.is-locked');
+  const lockedCount = await lockedCards.count();
+  if (!lockedCount) fail('the Ramponiert card is not locked while discarding');
+  if (await page.locator('[data-action="select"][data-no-discard="true"]').count()) fail('the Ramponiert card can be picked for the skat');
+  await lockedCards.first().click();
+  if (await page.locator('[data-action="select"][aria-pressed="true"]').count()) fail('tapping the Ramponiert card picked something');
   await shoot(page, 'discard-locked');
-  await page.locator('[data-action="select"][data-no-discard="true"]').first().click();
-  await page.locator('[data-action="select"]:not([data-no-discard])').nth(1).click();
+  await page.locator('[data-action="select"]').nth(0).click();
+  await page.locator('[data-action="select"]').nth(1).click();
   await page.click('[data-action="discard"]');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
-  log(`Ramponiert: ${refused.trim()}`);
+  log(`Ramponiert: ${lockedCount} card(s) locked while discarding`);
 
   // "Unter ehrenhalber": a plaque on the card.
   await resumeFixture(page, 'honorary-jack.json');

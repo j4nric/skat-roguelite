@@ -14,9 +14,11 @@
 //
 // Seeds can be shared as a link (`#seed-<number>-<character>`, ./seed.ts);
 // opening one offers that run on the start screen without touching a run
-// in progress. Every core call that may let the opponents think runs after
-// the next frame, so a thought bubble (and the tapped card) is painted
-// before the main thread is busy.
+// in progress. The core plays the opponents one card per call: after the
+// player's action the app asks for one opponent card at a time while the
+// view names who is to move (`ai_to_move`). Each such call runs after the
+// next frame, so the thought bubble at that opponent is painted before the
+// main thread is busy, and the run is saved after every card.
 
 import { sound } from './audio';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
@@ -37,7 +39,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source } from './types';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source, Step } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
@@ -115,7 +117,7 @@ export class App {
     pickNullRisk: null,
     omaPick: false,
     swapTake: null,
-    thinking: false,
+    thinking: null,
     shared: null,
     copy: null,
     history: loadHistory(),
@@ -417,6 +419,8 @@ export class App {
     if (!this.core) return;
     this.ui.message = null;
     this.enterRun(this.core.view(), true);
+    // Saved while an opponent was to move: let him play on.
+    this.continueOpponents();
   }
 
   private enterRun(view: RunView, dealt: boolean): void {
@@ -442,50 +446,88 @@ export class App {
   // Actions
   // -------------------------------------------------------------------------
 
-  /** Send an action to the core, save, then play the events back. */
+  /** Send an action to the core, then play its events and the opponents' cards back. */
   private async act(action: RunAction): Promise<void> {
     if (!this.core || this.ui.busy) return;
     const before = this.ui.view;
     this.ui.busy = true;
-    // At the table the opponents may think for a while inside the core:
-    // paint the tapped state (and the thought bubble) first.
-    if (before?.phase === 'Game') {
-      this.ui.thinking = this.ui.settings.thinking;
-      this.render();
-      await nextPaint();
-    }
     let step;
     try {
       step = this.core.apply(action);
     } catch (err) {
       console.warn('action rejected', action, err);
       this.ui.busy = false;
-      this.ui.thinking = false;
       this.render();
       this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
       return;
     }
-    this.ui.thinking = false;
-    const view = step.view;
-    const over = view.phase === 'Won' || view.phase === 'Lost';
-    if (over) {
-      clearRun();
-      this.recordRun(view);
-    } else {
-      saveRun(this.core.save());
-    }
-    const earned = this.observe(step.events);
     this.fastForward = false;
     this.ui.overlay = null;
+    await this.playSteps(before, step);
+  }
+
+  /** A run loaded while an opponent was to move: let the opponents play on. */
+  private continueOpponents(): void {
+    const view = this.ui.view;
+    if (!this.core || this.ui.busy || view?.ai_to_move == null) return;
+    this.ui.busy = true;
+    this.fastForward = false;
+    void this.playSteps(view, null);
+  }
+
+  /**
+   * Play a step of the core back (`first`; null to start with an opponent's
+   * card), then, while an opponent is to move, one card of his at a time:
+   * the thought bubble at his seat is painted, then the core computes his
+   * card, then it is animated. The run is saved after every step.
+   */
+  private async playSteps(before: RunView | null, first: Step | null): Promise<void> {
+    let previous = before;
+    let view = before;
+    let step = first;
+    let earned: string[] = [];
     try {
-      await this.playEvents(before, step.events, view);
+      for (;;) {
+        if (!step) {
+          const seat = view?.ai_to_move ?? null;
+          if (seat === null || !this.core) break;
+          this.ui.thinking = this.ui.settings.thinking ? seat : null;
+          this.render();
+          await nextPaint();
+          try {
+            step = this.core.step();
+          } catch (err) {
+            console.warn('opponent move failed', err);
+            this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
+            break;
+          } finally {
+            this.ui.thinking = null;
+          }
+        }
+        view = step.view;
+        if (view.phase === 'Won' || view.phase === 'Lost') {
+          clearRun();
+          this.recordRun(view);
+        } else if (this.core) {
+          saveRun(this.core.save());
+        }
+        earned = earned.concat(this.observe(step.events));
+        await this.playEvents(previous, step.events, view);
+        // The table as the core has it now, before the next opponent thinks.
+        this.ui.anim = null;
+        this.ui.view = view;
+        this.playedFrom = null;
+        previous = view;
+        step = null;
+      }
     } finally {
       this.ui.busy = false;
       this.ui.anim = null;
-      this.ui.view = view;
+      this.ui.thinking = null;
+      if (view) this.ui.view = view;
       this.playedFrom = null;
       this.resetTableChoices();
-      if (over) {
+      if (view && (view.phase === 'Won' || view.phase === 'Lost')) {
         this.ui.ended = { won: view.phase === 'Won', view };
         this.ui.screen = 'end';
         this.ui.copy = null;
@@ -498,7 +540,7 @@ export class App {
 
   private cardOf(card: DealtCard, view: RunView): CardView {
     const mods = view.deck.find((d) => d.id === card.id)?.mods ?? [];
-    return { ...card, mods, legal: false, from_skat: false };
+    return { ...card, mods, legal: false, from_skat: false, discardable: false };
   }
 
   /** Animate what happened, using only the events and views of the core. */
@@ -507,7 +549,7 @@ export class App {
     if (game) {
       this.ui.anim = {
         trick: game.trick.slice(),
-        hand: game.hand.map((c) => ({ ...c, legal: false, from_skat: false })),
+        hand: game.hand.map((c) => ({ ...c, legal: false, from_skat: false, discardable: false })),
         handSizes: game.hand_sizes.slice(),
         status: '',
         turn: null,

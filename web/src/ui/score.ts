@@ -203,8 +203,8 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
 
 /**
  * Augen and tricks of every seat in a Ramsch, from the core's `seats`. The
- * seat marked as having the most is the one whose Augen are the Grundwert
- * the core scored (`rule_base_value`, the loser's Augen); a tie marks all.
+ * seats marked as having the most (the losers; a tie marks all) are the
+ * core's `most`.
  */
 function ramschSeats(b: ScoreBreakdown, names: string[]): string {
   const seats = b.seats;
@@ -212,7 +212,7 @@ function ramschSeats(b: ScoreBreakdown, names: string[]): string {
   const rows = ([0, 1, 2] as const)
     .map((seat) => {
       const points = seats.card_points[seat];
-      const most = points === b.rule_base_value;
+      const most = seats.most[seat] === true;
       const tricks = seats.tricks[seat];
       return `<li class="seat-row ${seat === 0 ? 'is-you' : ''} ${most ? 'is-most' : ''}" ${attrs({ 'data-seat': seat })}>
         <span class="seat-name"><span>${esc(names[seat] ?? '')}</span>${most ? `<span class="seat-most">${esc(de.score.most)}</span>` : ''}</span>

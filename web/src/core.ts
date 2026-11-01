@@ -80,9 +80,18 @@ export class CoreRun {
     return JSON.parse(this.run.view()) as RunView;
   }
 
-  /** Apply a player decision. Throws if the core rejects it. */
+  /**
+   * Apply a player decision. The opponents do not play here: while the
+   * returned view's `ai_to_move` is set, call `step()`. Throws if the core
+   * rejects it.
+   */
   apply(action: RunAction): Step {
     return JSON.parse(this.run.apply(JSON.stringify(action))) as Step;
+  }
+
+  /** Let the opponent named by `view.ai_to_move` play one card. */
+  step(): Step {
+    return JSON.parse(this.run.step()) as Step;
   }
 
   dispose(): void {

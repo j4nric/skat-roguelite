@@ -33,6 +33,7 @@ export const de = {
       NoFreeSlot: 'Dafür ist kein Platz mehr frei.',
       NotYourTurn: 'Du bist gerade nicht dran.',
       AwaitingKontraAnswer: 'Antworte zuerst auf das Kontra.',
+      AiToMove: 'Warte, die Gegner sind am Zug.',
       InvalidSeed: 'Der Seed muss eine ganze Zahl sein.',
       default: 'Unbekannter Fehler.',
     } as Record<string, string>,
