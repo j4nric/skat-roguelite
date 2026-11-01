@@ -1,10 +1,12 @@
-// The table: opponents on top, the open trick in the middle, the player's
-// hand at the bottom. While declaring, the Ansage panel takes the middle.
+// The table: the two regulars (or the boss) on top, the open trick on the
+// felt, the player's hand at the bottom in two rows. While declaring, the
+// Ansage panel takes the middle.
 
-import { de, cardName, gameName, t } from '../i18n';
+import { de, cardName, contentName, gameName, t } from '../i18n';
 import type { CardView, DeclareOptions, GameType, GameView, PlayedCard, RunView, Seat } from '../types';
 import { cardBack, cardSvg, suitIcon } from './cards';
 import { attrs, esc } from './dom';
+import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
 
 function seatName(seat: Seat): string {
@@ -15,27 +17,33 @@ function miniCard(card: CardView): string {
   return `<span class="mini-card" title="${esc(cardName(card.kind))}">${cardSvg(card.kind, card.mods)}</span>`;
 }
 
-function opponent(game: GameView, seat: Seat, ui: UiState): string {
+function kontraBadge(game: GameView, seat: Seat): string {
+  const k = game.kontra;
+  if (typeof k === 'object' && (('Kontra' in k && k.Kontra === seat) || ('Re' in k && k.Re === seat))) {
+    return `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
+  }
+  return '';
+}
+
+function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): string {
   const size = ui.anim ? (ui.anim.handSizes[seat] ?? 0) : (game.hand_sizes[seat] ?? 0);
   const turn = ui.anim ? ui.anim.turn === seat : false;
-  const backs = Array.from({ length: Math.min(size, 10) }, () => cardBack('fan')).join('');
-  const kontra = game.kontra;
-  let badge = '';
-  if (typeof kontra === 'object' && 'Kontra' in kontra && kontra.Kontra === seat) {
-    badge = `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
-  } else if (typeof kontra === 'object' && 'Re' in kontra && kontra.Re === seat) {
-    badge = `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
-  }
+  const backs = Array.from({ length: Math.min(size, 12) }, () => cardBack('fan')).join('');
   const revealed = game.revealed
     .filter((r) => r.holder === seat)
     .map((r) => miniCard(r.card))
     .join('');
   const position = game.positions[seat];
-  return `<div class="opp ${turn ? 'is-turn' : ''}" data-seat="${seat}">
-    <div class="opp-head"><b>${esc(seatName(seat))}</b>${badge}</div>
-    <div class="opp-row">
-      <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
-      <span class="opp-hand">${backs}<span class="opp-count" aria-label="${esc(t(de.table.cards, { count: size }))}">${esc(size)}</span></span>
+  // Bosses sit in the left chair with their own figure and name.
+  const boss = seat === 1 && view.series.is_boss && view.series.boss ? view.series.boss : null;
+  const face = boss ? bossPortraitId(boss.id) : `p-opp-${seat}`;
+  const name = boss ? contentName('bosses', boss.id) : seatName(seat);
+  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''}" data-seat="${seat}">
+    ${portrait(face, 'portrait-opp')}
+    <div class="opp-info">
+      <div class="opp-head"><b class="opp-name">${esc(name)}</b>${kontraBadge(game, seat)}</div>
+      <div class="opp-pos">${esc(position ? de.positions[position] : '')}</div>
+      <div class="opp-hand">${backs}<span class="opp-count" aria-label="${esc(t(de.table.cards, { count: size }))}">${esc(size)}</span></div>
     </div>
     ${revealed ? `<div class="opp-revealed"><span>${esc(de.table.holds)}</span>${revealed}</div>` : ''}
   </div>`;
@@ -46,14 +54,14 @@ function trickSlot(cards: PlayedCard[], seat: Seat): string {
   const inner = played
     ? `<div class="card trick-card" data-trick-seat="${seat}">${cardSvg(played.card.kind, played.card.mods)}</div>`
     : `<div class="card-slot"></div>`;
-  return `<div class="slot slot-${seat}">${inner}<span class="slot-label">${esc(de.seatsShort[seat] ?? '')}</span></div>`;
+  return `<div class="slot slot-${seat}">${inner}</div>`;
 }
 
-function gameIcon(game: GameType): string {
+function gameIcon(game: GameType, size = 30): string {
   if (game === 'Grand' || game === 'Null') {
-    return `<span class="grand-icon">${(['Clubs', 'Spades', 'Hearts', 'Diamonds'] as const).map((s) => suitIcon(s, 14)).join('')}</span>`;
+    return `<span class="grand-icon">${(['Clubs', 'Spades', 'Hearts', 'Diamonds'] as const).map((s) => suitIcon(s, Math.round(size / 2), null)).join('')}</span>`;
   }
-  return suitIcon(game.Suit, 30);
+  return suitIcon(game.Suit, size);
 }
 
 function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number): string {
@@ -85,6 +93,7 @@ function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number):
     ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
     : '';
   return `<section class="declare" aria-label="${esc(de.table.declareTitle)}">
+    <h2 class="declare-title">${esc(de.table.declareTitle)}</h2>
     <div class="declare-label">${esc(de.table.gameType)}</div>
     <div class="games">${games}</div>
     <div class="declare-label">${esc(de.table.risk)}</div>
@@ -105,7 +114,7 @@ function handCards(game: GameView, ui: UiState): string {
   const playing = !ui.anim && game.your_turn;
   const cols = Math.max(5, Math.ceil(hand.length / 2));
   const cards = hand
-    .map((c) => {
+    .map((c, i) => {
       const selected = ui.selected.includes(c.id);
       let action: string | null = null;
       if (discarding) action = 'select';
@@ -114,8 +123,11 @@ function handCards(game: GameView, ui: UiState): string {
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : ''].join(' ');
       const skatTag = c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '';
       const label = cardName(c.kind);
+      // Slight arc per row, like cards held in the hand.
+      const off = (i % cols) - (cols - 1) / 2;
+      const style = `--tilt:${(off * 1.6).toFixed(1)}deg;--lift:${(off * off * 0.9).toFixed(1)}px`;
       if (action) {
-        return `<button class="${cls}" ${attrs({
+        return `<button class="${cls}" style="${style}" ${attrs({
           'data-action': action,
           'data-id': c.id,
           'data-legal': c.legal ? 'true' : 'false',
@@ -123,7 +135,7 @@ function handCards(game: GameView, ui: UiState): string {
           'aria-label': label,
         })}>${cardSvg(c.kind, c.mods)}${skatTag}</button>`;
       }
-      return `<div class="${cls}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true' })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true' })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
     })
     .join('');
   return `<div class="hand" style="--cols:${cols}" data-testid="hand">${cards}</div>`;
@@ -131,7 +143,7 @@ function handCards(game: GameView, ui: UiState): string {
 
 function statusLine(game: GameView, ui: UiState): string {
   if (ui.anim) {
-    return `<div class="status">${esc(ui.anim.status)}</div>`;
+    return `<div class="status" aria-live="polite">${esc(ui.anim.status)}</div>`;
   }
   switch (game.phase) {
     case 'Declaring':
@@ -159,9 +171,9 @@ function gameLine(game: GameView): string {
     ? `<span class="skat"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</span>`
     : '';
   return `<div class="gameline">
-    <span class="decl">${esc(t(de.table.declaration, { game: gameName(d.game), risk: de.risks[d.risk] }))}</span>
+    <span class="decl">${gameIcon(d.game, 20)}<span>${esc(t(de.table.declaration, { game: gameName(d.game), risk: de.risks[d.risk] }))}</span></span>
     ${kontra}
-    <span class="tricks">${esc(t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }))}</span>
+    <span class="tricks" data-tricks>${esc(t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }))}</span>
     ${skat}
   </div>`;
 }
@@ -174,10 +186,9 @@ export function renderTable(view: RunView, ui: UiState): string {
   const center = declaring && game.declare
     ? declarePanel(game.declare, ui, view.series.passes_left)
     : `<div class="trick" data-action="fast">${trickSlot(trick, 1)}${trickSlot(trick, 2)}${trickSlot(trick, 0)}</div>`;
-  const toast = ui.toast ? `<div class="toast" role="status">${esc(ui.toast)}</div>` : '';
   return `<div class="table phase-${game.phase.toLowerCase()}">
-    <div class="opponents">${opponent(game, 1, ui)}${opponent(game, 2, ui)}</div>
-    <div class="center">${center}${toast}</div>
+    <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
+    <div class="center"><div class="deck-spot" aria-hidden="true"></div>${center}</div>
     ${gameLine(game)}
     ${statusLine(game, ui)}
     ${handCards(game, ui)}

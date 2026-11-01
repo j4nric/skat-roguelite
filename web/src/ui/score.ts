@@ -1,19 +1,30 @@
-// The Abrechnung: the score breakdown from the core, revealed step by step.
-// All numbers come from the core's ScoreStep list; this file only labels
-// and formats them.
+// The Abrechnung on the chalk board: the score breakdown from the core,
+// played step by step like in Balatro. Grundwert and Stufen count up, each
+// relic that contributes lights up on its Bierdeckel, then the result lands
+// with weight and the series account moves. A tap skips to the end.
+//
+// All numbers come from the core's ScoreStep list and breakdown; this file
+// only labels, formats and animates them.
 
+import { sound } from '../audio';
 import { de, cardName, contentName, gameName, t } from '../i18n';
-import type { Change, DeckCard, Lever, ScoreLine, ScoreTerm, Source } from '../types';
+import type { Change, DeckCard, Lever, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
+import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
-import type { Overlay } from './state';
-
-type ScoreOverlay = Extract<Overlay, { kind: 'score' }>;
+import { countUp, dur, finishAll, pulse, slam } from './fx';
+import { coinIcon, meterPercent } from './hud';
+import { bossPortraitId, portrait } from './people';
+import type { ScoreOverlay } from './state';
 
 /** "+3" / "−3" with a real minus sign. */
 export function signed(n: number): string {
   if (n > 0) return `+${n}`;
   if (n < 0) return `−${Math.abs(n)}`;
   return '0';
+}
+
+function plain(n: number): string {
+  return n < 0 ? `−${Math.abs(n)}` : String(n);
 }
 
 function sourceName(source: Source, deck: DeckCard[]): string {
@@ -26,6 +37,16 @@ function sourceName(source: Source, deck: DeckCard[]): string {
     mod: contentName('card_mods', source.CardMod.card_mod),
     card: card ? cardName(card.kind) : '',
   });
+}
+
+function sourceIcon(source: Source, deck: DeckCard[]): string {
+  if (source === 'Kontra' || source === 'Re') return `<span class="step-icon icon-kontra">K</span>`;
+  if ('Relic' in source) return `<span class="step-icon icon-coaster"></span>`;
+  if ('Boss' in source) return `<span class="step-icon">${portrait(bossPortraitId(source.Boss), 'portrait-xs')}</span>`;
+  const card = deck.find((c) => c.id === source.CardMod.card);
+  return card
+    ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods)}</span>`
+    : `<span class="step-icon">${modIcon(source.CardMod.card_mod, 20)}</span>`;
 }
 
 function levelText(n: number): string {
@@ -58,12 +79,28 @@ function changeText(lever: Lever, change: Change): string {
   }
 }
 
-function lineRow(line: ScoreLine, deck: DeckCard[]): [string, string, string] {
-  return [sourceName(line.source, deck), changeText(line.lever, line.change), 'is-relic'];
+interface Row {
+  label: string;
+  effect: string;
+  cls: string;
+  icon: string;
+  relic: string | null;
+}
+
+function lineRow(line: ScoreLine, deck: DeckCard[]): Row {
+  const relic = typeof line.source === 'object' && 'Relic' in line.source ? line.source.Relic : null;
+  return {
+    label: sourceName(line.source, deck),
+    effect: changeText(line.lever, line.change),
+    cls: relic ? 'is-relic' : 'is-line',
+    icon: sourceIcon(line.source, deck),
+    relic,
+  };
 }
 
 /** Label, effect and style of one step. */
-function termRow(term: ScoreTerm, deck: DeckCard[]): [string, string, string] {
+function termRow(term: ScoreTerm, deck: DeckCard[]): Row {
+  const row = (label: string, effect: string, cls: string): Row => ({ label, effect, cls, icon: '', relic: null });
   if (typeof term === 'string') {
     const labels: Record<typeof term, string> = {
       Game: de.score.game,
@@ -74,68 +111,241 @@ function termRow(term: ScoreTerm, deck: DeckCard[]): [string, string, string] {
       SchwarzDeclared: de.score.schwarzDeclared,
       Ouvert: de.score.ouvert,
     };
-    return [labels[term], levelText(1), 'is-level'];
+    return row(labels[term], levelText(1), 'is-level');
   }
   if ('BaseValue' in term) {
-    return [t(de.score.baseOf, { game: gameName(term.BaseValue.game) }), String(term.BaseValue.value), 'is-base'];
+    return row(t(de.score.baseOf, { game: gameName(term.BaseValue.game) }), String(term.BaseValue.value), 'is-base');
   }
-  if ('NullValue' in term) return [de.score.nullValue, String(term.NullValue), 'is-base'];
+  if ('NullValue' in term) return row(de.score.nullValue, String(term.NullValue), 'is-base');
   if ('Matadors' in term) {
     const m = term.Matadors;
-    return [t(m.with ? de.score.with : de.score.without, { count: m.count }), levelText(m.count), 'is-level'];
+    return row(t(m.with ? de.score.with : de.score.without, { count: m.count }), levelText(m.count), 'is-level');
   }
   return lineRow(term.Line, deck);
+}
+
+function coasterStrip(o: ScoreOverlay): string {
+  if (!o.relics.length) return '';
+  return `<div class="relic-strip">${o.relics
+    .map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}" data-relic="${esc(r.relic.id)}">${esc(contentName('relics', r.relic.id))}</span>`)
+    .join('')}</div>`;
 }
 
 export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
   const b = o.score.breakdown;
   const steps = o.score.steps;
-  const done = o.shown >= steps.length;
-  const current = steps[Math.min(o.shown, steps.length) - 1];
+  const hasMul = steps.some((s) => s.multiplier !== 1);
   const rows = steps
-    .slice(0, o.shown)
-    .map((step) => {
-      const [label, effect, cls] = termRow(step.term, deck);
-      return `<li class="step ${cls}"><span class="step-label">${esc(label)}</span><span class="step-effect">${esc(effect)}</span></li>`;
+    .map((step, i) => {
+      const r = termRow(step.term, deck);
+      return `<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
     })
     .join('');
-  const formula = current
-    ? current.multiplier > 1
-      ? t(de.score.formulaMul, { base: current.base_value, levels: current.levels, mul: current.multiplier })
-      : t(de.score.formula, { base: current.base_value, levels: current.levels })
-    : '';
   const decl = t(de.table.declaration, { game: gameName(b.declaration.game), risk: de.risks[b.declaration.risk] });
-  const result = done
-    ? `<div class="score-result ${b.won ? 'is-won' : 'is-lost'}">
-        <div><span>${esc(de.score.value)}</span><b>${esc(b.value)}</b></div>
-        <div><span>${esc(de.score.result)}</span><b data-testid="score-result">${esc(signed(b.score))}</b></div>
-        ${b.won ? '' : `<p class="small">${esc(de.score.lostDouble)}</p>`}
-        <div class="score-account">${esc(t(de.score.account, { score: o.seriesScore, target: o.target }))}</div>
+  const fill = meterPercent(o.previousScore, o.target);
+  const payout = o.payout
+    ? `<div class="payout" data-part="payout">
+        <h3>${esc(de.score.seriesWon)}</h3>
+        <dl>
+          <dt>${esc(de.score.payoutBase)}</dt><dd>${esc(signed(o.payout.payout.base))}</dd>
+          <dt>${esc(de.score.payoutGames)}</dt><dd>${esc(signed(o.payout.payout.games_left))}</dd>
+          <dt>${esc(de.score.payoutInterest)}</dt><dd>${esc(signed(o.payout.payout.interest))}</dd>
+          <dt>${esc(de.header.coins)}</dt><dd><b>${coinIcon(16)} ${esc(o.payout.coins)}</b></dd>
+        </dl>
       </div>`
     : '';
-  const payout =
-    done && o.payout
-      ? `<div class="payout">
-          <h3>${esc(de.score.seriesWon)}</h3>
-          <dl>
-            <dt>${esc(de.score.payoutBase)}</dt><dd>${esc(signed(o.payout.payout.base))}</dd>
-            <dt>${esc(de.score.payoutGames)}</dt><dd>${esc(signed(o.payout.payout.games_left))}</dd>
-            <dt>${esc(de.score.payoutInterest)}</dt><dd>${esc(signed(o.payout.payout.interest))}</dd>
-            <dt>${esc(de.header.coins)}</dt><dd><b>${esc(o.payout.coins)}</b></dd>
-          </dl>
-        </div>`
-      : '';
-  const button = done
-    ? `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'score-continue' })}>${esc(de.score.continue)}</button>`
-    : `<button class="btn btn-wide" ${attrs({ 'data-action': 'score-skip' })}>${esc(de.score.skip)}</button>`;
-  return `<div class="overlay" data-action="score-skip"><div class="sheet score-sheet" role="dialog" aria-modal="true" aria-labelledby="score-title">
-    <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
-    <div class="score-decl">${esc(decl)}</div>
-    <div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>
-    <div class="score-formula" aria-live="polite">${esc(formula)}</div>
+  return `<div class="overlay overlay-score" data-action="score-skip"><div class="sheet score-sheet chalkboard is-running" role="dialog" aria-modal="true" aria-labelledby="score-title">
+    <header class="score-head">
+      <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
+      <div class="score-decl">${esc(decl)}</div>
+      <div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>
+    </header>
+    ${coasterStrip(o)}
+    <div class="formula" aria-hidden="true">
+      <div class="fbox fbox-base"><span>${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
+      <span class="fop">×</span>
+      <div class="fbox fbox-levels"><span>${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
+      ${hasMul ? `<span class="fop">×</span><div class="fbox fbox-mul"><span>${esc(de.score.boxMul)}</span><b data-num="mul">1</b></div>` : ''}
+    </div>
     <ol class="steps">${rows}</ol>
-    ${result}
+    <div class="score-result ${b.won ? 'is-won' : 'is-lost'}" data-part="result">
+      <div class="value-line"><span>${esc(de.score.value)}</span><b data-num="value">${esc(b.value)}</b></div>
+      <div class="result-big" data-testid="score-result">${esc(signed(b.score))}</div>
+      ${b.won ? '' : `<p class="small">${esc(de.score.lostDouble)}</p>`}
+    </div>
+    <div class="score-account" data-part="account">
+      <div class="account-row"><span>${esc(de.score.accountLabel)}</span><b data-num="account">${esc(plain(o.previousScore))}</b><span>${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
+      <div class="chalk-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div></div>
+    </div>
     ${payout}
-    ${button}
+    <div class="score-actions">
+      <button class="btn btn-wide btn-ghost" ${attrs({ 'data-action': 'score-skip' })}>${esc(de.score.skip)}</button>
+    </div>
   </div></div>`;
+}
+
+function continueButton(): string {
+  return `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'score-continue' })}>${esc(de.score.continue)}</button>`;
+}
+
+/**
+ * Plays the score board inside `root` (the overlay layer). `skip()` jumps
+ * to the final state at once.
+ */
+export class ScoreBoard {
+  private skipped = false;
+  private finished = false;
+  private timers: number[] = [];
+  private wake: (() => void) | null = null;
+
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly o: ScoreOverlay,
+  ) {}
+
+  get done(): boolean {
+    return this.finished;
+  }
+
+  private q<T extends Element = HTMLElement>(sel: string): T | null {
+    return this.root.querySelector<T>(sel);
+  }
+
+  private wait(ms: number): Promise<void> {
+    const d = dur(ms);
+    if (this.skipped || !d) return Promise.resolve();
+    return new Promise((resolve) => {
+      const id = window.setTimeout(() => {
+        this.wake = null;
+        resolve();
+      }, d);
+      this.timers.push(id);
+      this.wake = () => {
+        window.clearTimeout(id);
+        resolve();
+      };
+    });
+  }
+
+  async play(): Promise<void> {
+    const steps = this.o.score.steps;
+    if (!dur(1)) {
+      this.skip();
+      return;
+    }
+    this.root.querySelectorAll('[data-step], [data-part], .result-big').forEach((el) => el.classList.add('is-pending'));
+    let prev: ScoreStep = { term: 'Game', base_value: 0, levels: 0, multiplier: 1 };
+    await this.wait(250);
+    for (let i = 0; i < steps.length && !this.skipped; i++) {
+      const step = steps[i];
+      if (!step) continue;
+      this.showStep(i, prev, step);
+      prev = step;
+      await this.wait(i === 0 ? 520 : 440);
+    }
+    if (this.skipped) return;
+    await this.showResult();
+  }
+
+  private showStep(i: number, prev: ScoreStep, step: ScoreStep): void {
+    const row = this.q(`[data-step="${i}"]`);
+    row?.classList.remove('is-pending');
+    row?.classList.add('is-in');
+    const boxes: [string, number, number][] = [
+      ['base', prev.base_value, step.base_value],
+      ['levels', prev.levels, step.levels],
+      ['mul', prev.multiplier, step.multiplier],
+    ];
+    for (const [name, from, to] of boxes) {
+      if (from === to) continue;
+      const el = this.q(`[data-num="${name}"]`);
+      if (!el) continue;
+      void countUp(el, from, to, 260, plain);
+      const box = el.closest('.fbox');
+      if (box) pulse(box, 1.14, 300);
+    }
+    const relic = row?.dataset.relic;
+    if (relic) {
+      const coaster = this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`);
+      coaster?.classList.add('is-lit');
+      if (coaster) pulse(coaster, 1.25, 380);
+      sound.play('clink');
+    } else {
+      sound.play('tick', { rate: 1 + Math.min(i, 10) * 0.07 });
+    }
+  }
+
+  private async showResult(): Promise<void> {
+    const result = this.q('[data-part="result"]');
+    const big = this.q('.result-big');
+    result?.classList.remove('is-pending');
+    const value = this.q('[data-num="value"]');
+    if (value) await countUp(value, 0, this.o.score.breakdown.value, 380, plain);
+    await this.wait(160);
+    if (this.skipped) return;
+    if (big) {
+      big.classList.remove('is-pending');
+      big.classList.add('is-landed');
+      slam(big, this.q('.score-sheet'));
+    }
+    sound.play('knock', { delay: 120 });
+    sound.play(this.o.score.breakdown.won ? 'win' : 'lose', { delay: 380 });
+    await this.wait(620);
+    if (this.skipped) return;
+    const account = this.q('[data-part="account"]');
+    account?.classList.remove('is-pending');
+    const fill = this.q('.score-account .chalk-fill');
+    if (fill) fill.style.width = `${meterPercent(this.o.seriesScore, this.o.target).toFixed(1)}%`;
+    const num = this.q('[data-num="account"]');
+    if (num) await countUp(num, this.o.previousScore, this.o.seriesScore, 520, plain);
+    if (this.skipped) return;
+    const payout = this.q('[data-part="payout"]');
+    if (payout) {
+      await this.wait(200);
+      payout.classList.remove('is-pending');
+      payout.classList.add('is-in');
+      sound.play('coin');
+      await this.wait(300);
+    }
+    this.complete();
+  }
+
+  /** Jump to the final state. */
+  skip(): void {
+    if (this.finished) return;
+    this.skipped = true;
+    for (const id of this.timers) window.clearTimeout(id);
+    this.wake?.();
+    finishAll();
+    const steps = this.o.score.steps;
+    const last = steps[steps.length - 1];
+    const set = (name: string, n: number): void => {
+      const el = this.q(`[data-num="${name}"]`);
+      if (el) el.textContent = plain(n);
+    };
+    if (last) {
+      set('base', last.base_value);
+      set('levels', last.levels);
+      set('mul', last.multiplier);
+    }
+    set('value', this.o.score.breakdown.value);
+    set('account', this.o.seriesScore);
+    const fill = this.q('.score-account .chalk-fill');
+    if (fill) fill.style.width = `${meterPercent(this.o.seriesScore, this.o.target).toFixed(1)}%`;
+    this.root.querySelectorAll('.is-pending').forEach((el) => el.classList.remove('is-pending'));
+    this.root.querySelectorAll('.step[data-relic]').forEach((row) => {
+      const relic = (row as HTMLElement).dataset.relic;
+      if (relic) this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`)?.classList.add('is-lit');
+    });
+    this.q('.result-big')?.classList.add('is-landed');
+    this.complete();
+  }
+
+  private complete(): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.q('.score-sheet')?.classList.remove('is-running');
+    const actions = this.q('.score-actions');
+    if (actions) actions.innerHTML = continueButton();
+  }
 }

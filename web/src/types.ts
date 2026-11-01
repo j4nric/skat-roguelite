@@ -47,6 +47,36 @@ export interface BossInfo {
   id: string;
   name: string;
   text: string;
+  /** Factor on the Zielwert of the boss series, as a decimal (1.4). */
+  target_factor: number;
+}
+
+/** Preview of the series after the current one. */
+export interface NextSeriesView {
+  section: number;
+  index: number;
+  is_boss: boolean;
+  target: number;
+  game_limit: number;
+  passes: number;
+  boss: BossInfo | null;
+}
+
+/** A probability from the core, with its value in thousandths. */
+export interface Odds {
+  numerator: number;
+  denominator: number;
+  permille: number;
+}
+
+/** Where any one card of the deck lands when a game is dealt (DESIGN 7.4). */
+export interface DealOdds {
+  deck_size: number;
+  hand: Odds;
+  skat: Odds;
+  hand_or_skat: Odds;
+  defenders: Odds;
+  talon: Odds;
 }
 
 export interface SeriesView {
@@ -257,6 +287,9 @@ export interface RunView {
   seed: string;
   phase: RunPhase;
   series: SeriesView;
+  upcoming_boss: BossInfo | null;
+  next_series: NextSeriesView | null;
+  deal_odds: DealOdds;
   sections: number;
   coins: number;
   relics: OwnedRelic[];
@@ -276,6 +309,7 @@ export interface Payout {
   base: number;
   games_left: number;
   interest: number;
+  total: number;
 }
 
 export interface CompletedTrick {
@@ -300,6 +334,7 @@ export type RunEvent =
   | 'ShopLeft'
   | 'Redealt'
   | 'RunWon'
+  | { BossAnnounced: { section: number; boss: string } }
   | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; passes: number; boss: string | null } }
   | { GameDealt: { number: number; forehand: Seat } }
   | { Game: GameEvent }
