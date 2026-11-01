@@ -445,13 +445,15 @@ Auslegungen, entschieden von Claude am 01.11.2026:
 
 ## 9. Charaktere
 
-Jeder Charakter hat ein eigenes Startblatt, ein Startrelikt und eigene Zielwertkurve.
+Jeder Charakter hat ein eigenes Startblatt, Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Grandspieler, der Zaungast und die Wirtin (je über eine Freischaltung, 9.3).
 
 ### 9.1 Der Alleinspieler (Standard)
 
 Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null. Null zählt seit dem 01.11.2026 für alle Charaktere nach der Formel mit Stilbonus (9.2); vorher galt beim Alleinspieler die Skatordnung (23, 35, 46, 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
 
-Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt, Startrelikte, optional eigene Zielwerte, Null-Wertung und die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
+Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt (`remove`, `add`, seit dem 01.11.2026 auch `mods`: Kartenmodifikationen ab Start), Startrelikte, Start-Verbrauchsgegenstände (`start_consumables`), optional eigene Zielwerte, Null-Wertung, die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2) und die eigene Regel (`rule`, `CharacterRule`). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
+
+**Die eigene Regel** (`rule`) hat zwei Teile, beide Daten: `passive` und `hooks` sind dieselbe Hook-API wie bei Relikten (Abschnitt 8) und wirken wie ein Relikt, das der Charakter immer hat, ohne Platz zu belegen; in der Wertung steht die Zeile mit der Quelle `Source::Character`. `passes`, `relic_slots` und `payout_factor` ändern die Run-Struktur aus `run.ron`: Pässe pro Serie und Relikt-Plätze als Zuschlag (negativ: weniger, nie unter 0), die Groschen einer gewonnenen Serie als Faktor (`Payout::bonus` ist der Zuschlag). Die Einsatz-Leiter (5.4) gilt pro Charakter von selbst (`MetaState::stakes` ist nach Charakter geschlüsselt).
 
 ### 9.2 Der Nullspieler
 
@@ -556,11 +558,46 @@ Nach den M4-Inhalten (gleiche Messung, alle 16 Freischaltungen):
 
 Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der Bot sagt fast nie an) und „Serie mit vier Spielen übrig“ für Auf dem Trockenen (1,7 Runs, in Serie 1-1 reicht ein Spiel).
 
+**Freischaltungen der neuen Charaktere** (01.11.2026, zählen in beiden Run-Längen, noch nicht im Simulator gemessen):
+
+| Freischaltung | Bedingung | Belohnung |
+|---|---|---|
+| `grand_master` („Großer Grand“) | Grand Schneider gewinnen, der mindestens 96 Punkte zählt (`WinGame(game: Grand, schneider: true, min_value: 96)`: zum Beispiel mit 2, Spiel 3, Schneider 4) | Der Grandspieler |
+| `beat_kibitz_killer` („Blinde Kuh“) | Boss Der Kiebitz-Mörder schlagen | Der Zaungast |
+| `full_till` („Volle Kasse“) | Nach einer gewonnenen Serie mindestens 20 Groschen haben (neue Bedingung `SeriesWonWithCoins(20)`, gemessen nach der Auszahlung) | Die Wirtin |
+
+Ein einfacher Grand Schneider ist schon die Freischaltung `grand_schneider` (im Mittel nach 2 Runs, zu leicht); 96 Punkte verlangen eine Stufe mehr. Der Kiebitz-Mörder nimmt jede Information, wer ihn schlägt, verdient den Zaungast, der ohne ihn immer mitschaut. 20 Groschen verlangen Sparen über Zinsen und übrige Spiele.
+
 Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreichbar, weil er Abschnitt 5 kaum schafft; für Menschen ist sie das Ziel des ersten Runs, wie in 9.2 entschieden.
 
-### 9.4 Spätere Kandidaten (nicht vor v1)
+### 9.4 Der Grandspieler
 
-- **Der Grandspieler**: Nur Grand, Grundwert 24, aber Spitzen zählen doppelt.
+Entschieden vom Nutzer am 01.11.2026. Lebt für den Grand.
+
+- **Regel**: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger, gewonnen wie verloren. Daten: zwei `OnDeclare`-Hooks mit `AddLevels(1)` bei `GameIs(Grand)` und `AddLevels(-1)` bei `SuitGame`. Null und Ramsch bleiben unverändert. Nie unter eine Stufe: Die Wertung rechnet `Stufen = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)` (4.2); ein Farbspiel hat nach der Skatordnung mindestens zwei Stufen (mit oder ohne 1, Spiel 1), nach dem Abzug also mindestens eine, und kommen weitere Abzüge dazu, hält die Formel bei 1.
+- **Startblatt**: das 32er-Blatt, der Eichel-Daus (`CA`) mit Goldrand (`gold_rim`, +8 Augen). Ursprünglich war ein gezinkter Eichel-Unter geplant; der ist aber ohnehin der höchste Trumpf, die Modifikation hätte kaum gewirkt (geändert am 01.11.2026). Startrelikte: keine.
+- **Tresen**: `focus_weights` Trump 120, Null 50.
+- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+
+### 9.5 Der Zaungast
+
+Entschieden vom Nutzer am 01.11.2026 (als „Kiebitz“; der Name ist an die Figur „Der Kiebitz“ vergeben, deshalb Zaungast). Der Zaungast schaut mit.
+
+- **Regel**: Er sieht das ganze Blatt des linken Gegners (Platz 1, spielt nach ihm), jedes Spiel von der Ausgabe an, dafür hat er zwei Pässe weniger pro Serie (mit `run.ron` von heute 4 statt 6; nie unter 0). Daten: `passive: [RevealDefenderHand(1)]`, `passes: -2`. `RevealDefenderHand` ist eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder schaltet sie ab. Die Karten stehen wie die des Kiebitz in `ActiveGame::peeked` (die Sicht nennt sie `RevealSource::Onlooker`, in Anzeige-Reihenfolge), deshalb kennen sie auch Wertvorschau und Bot. Hat er zusätzlich den Kiebitz, zieht dieser nur Karten, die er noch nicht sieht.
+- **Anzeige**: Am linken Gegner liegt sein Blatt als kleiner Fächer mit Auge; ausgespielte Karten verschwinden daraus. Kein Flüster-Hinweis pro Karte.
+- **Start**: Standardblatt, keine Startrelikte (die Regel ist die Information).
+- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+
+### 9.6 Die Wirtin
+
+Entschieden vom Nutzer am 01.11.2026 (als „Wirt“; der Name ist an die Figur „Der Wirt“ vergeben, deshalb Wirtin). Rechnet gut.
+
+- **Regel**: Jede gewonnene Serie zahlt doppelt so viele Groschen (Grundbetrag, übrige Spiele und Zinsen, die Verdopplung steht als eigene Zeile „Die Wirtin“ in der Auszahlung), dafür hat sie vier statt fünf Relikt-Plätze. Daten: `payout_factor: 2`, `relic_slots: -1`. Groschen aus Relikten nach der Serie (`OnSeriesWon`) verdoppeln sich nicht.
+- **Start**: Standardblatt, keine Startrelikte, ein Kräuter (ein Pass mehr) im Platz für Verbrauchsgegenstände (`start_consumables`).
+- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+
+### 9.7 Spätere Kandidaten (nicht vor v1)
+
 - **Der Ramscher**: Spielt Ramsch, gewinnt mit den wenigsten Augen. Eigenes Scoring.
 - **Der Schieber**: Sieht immer den Skat vor der Ansage, aber alle Spiele sind Hand.
 
@@ -824,6 +861,8 @@ Entschieden am 01.11.2026 im Chat (Problemliste):
 | Tempo | Simulator-Messungen und der große Browser-Test sind vorerst pausiert; danach eine große Testrunde. |
 
 ## 17. Offen
+
+- **Neue Charaktere kalibrieren** (01.11.2026, 9.4 bis 9.6): Grandspieler, Zaungast und Wirtin spielen mit den Zielwerten des Alleinspielers, ohne Simulator-Messung (Nutzerentscheidung: erst bauen, später gesammelt messen). Zu messen: `skat_sim --runs 3000 --bot pimc:12:3 --character grand|onlooker|landlady`, Abschnitt erreicht gegen den Alleinspieler, dann `targets` oder die Regel anpassen. Der Bot nutzt die Regeln nur teilweise: Er sieht das Blatt des Zaungasts in den PIMC-Stichproben, wählt aber Grand nicht bewusst öfter. Ebenso die Erreichbarkeit der drei Freischaltungen (`--unlocks`) messen.
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
 - **Zielwert-Faktoren pro Charakter**: erledigt mit ADR 0012 (`character_factors` in `bosses.ron`, 11). Schieber und Schwarzer Peter sind wieder bei beiden Charakteren. Offen: Die Oma bleibt beim Nullspieler draußen, weil sein Blatt keine Unter hat und sie ihm nichts nimmt (ADR 0012 sieht sie wieder bei jedem vor). Sobald er Unter ins Blatt bekommen kann, mit `--curve --boss grandma --character null` neu messen.

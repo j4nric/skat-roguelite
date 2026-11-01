@@ -557,7 +557,7 @@ impl RunBot {
                 return action;
             }
         }
-        let slots = usize::try_from(content.run.relic_slots).unwrap_or(0);
+        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
         let free_slot = run.relics().len() < slots;
         // Relic offers the bot wants: (value, price, slot).
         let offers: Vec<(u32, u32, usize)> = shop

@@ -53,7 +53,7 @@ pub const SAVE_VERSION: u32 = 1;
 /// core: `InvalidSeed` (not a decimal u64), `InvalidAction` (not a
 /// `RunAction` in JSON), `InvalidSave` (not a save), `UnsupportedSave`
 /// (another save version), `Internal` (content or serialization failed),
-/// `InvalidCharacter` (not `"Declarer"` or `"NullPlayer"`),
+/// `InvalidCharacter` (not a character id such as `"Declarer"`),
 /// `CharacterLocked` (the meta state has not unlocked it),
 /// `UnknownCharacter` (the content has no such character),
 /// `InvalidMeta` (not a meta save), `UnsupportedMeta` (another meta
@@ -381,10 +381,11 @@ impl Session {
         Ok(Session { content, run })
     }
 
-    /// Start a new run with `character` (`"Declarer"` or `"NullPlayer"`)
-    /// and `length` (`"Full"` or `"Short"`, DESIGN 5.3) at `stake`
-    /// (Einsatz-Leiter, DESIGN 9.3) from a meta state: the character and
-    /// the stake must be unlocked, locked relics stay off the Tresen.
+    /// Start a new run with `character` (`"Declarer"`, `"NullPlayer"`,
+    /// `"GrandPlayer"`, `"Onlooker"` or `"Landlady"`) and `length`
+    /// (`"Full"` or `"Short"`, DESIGN 5.3) at `stake` (Einsatz-Leiter,
+    /// DESIGN 9.3) from a meta state: the character and the stake must be
+    /// unlocked, locked relics stay off the Tresen.
     /// Returns the session and the events of the start as player events
     /// (feed them to the meta state).
     pub fn new_with(
@@ -633,7 +634,7 @@ impl WasmRun {
             .map_err(|e| JsError::new(&e))
     }
 
-    /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`)
+    /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`, …)
     /// and a length (`"Full"`, `"Short"`) at a stake (Einsatz-Leiter)
     /// from the meta state: locked relics stay off the Tresen, a locked
     /// character (`CharacterLocked`) or stake (`StakeLocked`) is refused.

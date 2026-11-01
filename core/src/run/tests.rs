@@ -729,6 +729,7 @@ fn payout_serializes_its_total() {
         base: 3,
         games_left: 2,
         interest: 1,
+        bonus: 0,
     };
     let text = ron::to_string(&payout).expect("ron");
     assert!(text.contains("total:6"), "{text}");

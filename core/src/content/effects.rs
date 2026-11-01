@@ -254,6 +254,11 @@ pub enum Effect {
     /// random cards of the defenders and who holds them (figure "Der
     /// Kiebitz"). An information effect. Passive or on deal.
     PeekDefenderCards(u32),
+    /// Lever Zählen: the player sees the whole hand of one defender, the
+    /// seat by index (1: the left neighbour, who plays after him; 2: the
+    /// right one), for the whole game (character "Der Zaungast"). An
+    /// information effect. Passive or on deal.
+    RevealDefenderHand(u8),
     /// Lever Zählen: the player sees the Augen taken so far by each side
     /// and the Augen he has not seen yet (figure "Der Zähler"). An
     /// information effect. Passive only.
@@ -345,6 +350,7 @@ impl Effect {
             | Effect::RamschOnce
             | Effect::DisableInformation => stage == Stage::Passive,
             Effect::PeekDefenderCards(_)
+            | Effect::RevealDefenderHand(_)
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
             Effect::SwapDefenderHands => stage == Stage::OnTrickEnd,
@@ -357,7 +363,10 @@ impl Effect {
     pub const fn is_information(&self) -> bool {
         matches!(
             self,
-            Effect::RevealHolder | Effect::PeekDefenderCards(_) | Effect::ShowCount
+            Effect::RevealHolder
+                | Effect::PeekDefenderCards(_)
+                | Effect::RevealDefenderHand(_)
+                | Effect::ShowCount
         )
     }
 

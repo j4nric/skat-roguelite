@@ -57,6 +57,8 @@ export const de = {
     locked: 'Gesperrt',
     lockedBy: 'Freischalten: {text}',
     picked: 'Ausgewählt',
+    charsBack: 'Vorige Charaktere',
+    charsNext: 'Weitere Charaktere',
     newRunAs: 'Neuer Run als {name}',
     book: 'Vereinsbuch',
     bookHint: '{done} von {total} Freischaltungen',
@@ -220,6 +222,9 @@ export const de = {
   characters: {
     Declarer: { short: 'Alleinspieler', role: 'Farbe, Grand und Null' },
     NullPlayer: { short: 'Nullspieler', role: 'Null-Spezialist' },
+    GrandPlayer: { short: 'Grandspieler', role: 'Grand +1 Stufe, Farbe −1' },
+    Onlooker: { short: 'Zaungast', role: 'Sieht links ins Blatt' },
+    Landlady: { short: 'Wirtin', role: 'Doppelte Groschen, 4 Plätze' },
   },
 
   risks: {
@@ -282,6 +287,9 @@ export const de = {
     ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
     kiebitz: 'Kiebitz',
     kiebitzHint: 'vom Kiebitz',
+    onlooker: 'Zaungast',
+    onlookerHint: 'vom Zaungast gesehen',
+    onlookerAria: 'Der Zaungast sieht {count} Karten in diesem Blatt',
     countTitle: 'Der Zähler',
     countYou: 'Du',
     countThem: 'Gegner',
@@ -435,6 +443,7 @@ export const de = {
     payoutBase: 'Grundbetrag',
     payoutGames: 'Übrige Spiele',
     payoutInterest: 'Zinsen',
+    payoutBonus: 'Die Wirtin',
   },
 
   shop: {

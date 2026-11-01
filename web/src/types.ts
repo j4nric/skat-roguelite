@@ -59,7 +59,9 @@ export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
 /** Spielart in a declaration: a GameType, or Ramsch (forced by "Der Ramscher"). */
 export type DeclaredGame = GameType | 'Ramsch';
 /** Who plays the run. */
-export type Character = 'Declarer' | 'NullPlayer';
+export type Character = 'Declarer' | 'NullPlayer' | 'GrandPlayer' | 'Onlooker' | 'Landlady';
+/** Every character, in the order of the core (`Character::ALL`). */
+export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'GrandPlayer', 'Onlooker', 'Landlady'];
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
@@ -280,8 +282,11 @@ export interface DeclareOptions {
   hand_required: boolean;
 }
 
-/** Why the player knows where a card is: a modification (by id) or "Der Kiebitz". */
-export type RevealSource = { CardMod: string } | 'Kibitz';
+/**
+ * Why the player knows where a card is: a modification (by id), "Der
+ * Kiebitz", or "Der Zaungast" (the whole left hand).
+ */
+export type RevealSource = { CardMod: string } | 'Kibitz' | 'Onlooker';
 
 /** A card the player sees in another seat, and why. */
 export interface RevealedCard {
@@ -359,7 +364,9 @@ export type Source =
   | 'Kontra'
   | 'Re'
   | { Encounter: string }
-  | { Consumable: string };
+  | { Consumable: string }
+  /** The own rule of the character ("Der Grandspieler"). */
+  | { Character: Character };
 
 export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider' | 'LossFactor';
 
@@ -550,6 +557,8 @@ export interface Payout {
   base: number;
   games_left: number;
   interest: number;
+  /** Extra from the character ("Die Wirtin": the parts once more); absent in old saves. */
+  bonus?: number;
   total: number;
 }
 

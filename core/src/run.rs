@@ -274,6 +274,10 @@ pub struct ActiveGame {
     /// granted it.
     #[serde(default)]
     pub single_loss: Option<Source>,
+    /// The defender whose whole hand the player sees ("Der Zaungast"):
+    /// his cards are in `peeked` with this seat.
+    #[serde(default)]
+    pub shown_hand: Option<Seat>,
 }
 
 /// One choice of an encounter.
@@ -351,13 +355,16 @@ pub struct Payout {
     pub games_left: u32,
     /// Zinsen on the Groschen held before the payout.
     pub interest: u32,
+    /// Extra from the character's rule ("Die Wirtin": the three parts
+    /// once more); 0 for most characters.
+    pub bonus: u32,
 }
 
 impl Payout {
     /// Sum of all parts.
     #[must_use]
     pub const fn total(&self) -> u32 {
-        self.base + self.games_left + self.interest
+        self.base + self.games_left + self.interest + self.bonus
     }
 }
 
@@ -369,6 +376,8 @@ struct PayoutRepr {
     games_left: u32,
     interest: u32,
     #[serde(default)]
+    bonus: u32,
+    #[serde(default)]
     total: u32,
 }
 
@@ -378,6 +387,7 @@ impl From<Payout> for PayoutRepr {
             base: p.base,
             games_left: p.games_left,
             interest: p.interest,
+            bonus: p.bonus,
             total: p.total(),
         }
     }
@@ -389,6 +399,7 @@ impl From<PayoutRepr> for Payout {
             base: p.base,
             games_left: p.games_left,
             interest: p.interest,
+            bonus: p.bonus,
         }
     }
 }
@@ -1139,7 +1150,17 @@ impl Run {
                 relics.push(relic.clone());
             }
         }
-        if relics.len() > usize::try_from(content.run.relic_slots).unwrap_or(0) {
+        if relics.len() > usize::try_from(content.relic_slots(start.character)).unwrap_or(0) {
+            return Err(RunError::NoFreeSlot);
+        }
+        for consumable in &character.start_consumables {
+            if content.consumable(consumable).is_none() {
+                return Err(RunError::UnknownContent(consumable.to_string()));
+            }
+        }
+        if character.start_consumables.len()
+            > usize::try_from(content.run.consumable_slots).unwrap_or(0)
+        {
             return Err(RunError::NoFreeSlot);
         }
         let mut deck = Deck::standard();
@@ -1169,7 +1190,7 @@ impl Run {
             coins: content.run.economy.starting_coins,
             deck,
             relics,
-            consumables: Vec::new(),
+            consumables: character.start_consumables.clone(),
             flags: BTreeSet::new(),
             counters: BTreeMap::new(),
             games_dealt: 0,
@@ -1879,10 +1900,21 @@ impl Run {
         rules.get(i).map(|id| (*id).clone())
     }
 
-    /// Boss, relics and house rules of the evening, plus the card
-    /// modifications in play if a game runs.
+    /// The character's own rule, boss, relics and house rules of the
+    /// evening, plus the card modifications in play if a game runs.
     fn sources<'c>(&self, content: &'c Content, with_card_mods: bool) -> Vec<ActiveSource<'c>> {
         let mut sources = Vec::new();
+        if let Some(def) = content.character(self.character) {
+            let rule = &def.rule;
+            if !rule.passive.is_empty() || !rule.hooks.is_empty() {
+                sources.push(ActiveSource {
+                    source: Source::Character(self.character),
+                    passive: &rule.passive,
+                    hooks: &rule.hooks,
+                    this_card: None,
+                });
+            }
+        }
         if let Some(def) = self.boss_rule(content).and_then(|b| content.boss(&b)) {
             sources.push(ActiveSource {
                 source: Source::Boss(def.id.clone()),
@@ -2035,6 +2067,18 @@ impl Run {
                 }
             }
             Effect::ShowCount => active.rules.show_count = !active.rules.no_information,
+            Effect::RevealDefenderHand(index) => {
+                let seat = Seat::from_index(usize::from(*index)).filter(|s| !s.is_declarer());
+                if let (Some(seat), false) = (seat, active.rules.no_information) {
+                    active.shown_hand = Some(seat);
+                    for &card in active.game.hand(seat) {
+                        if !active.peeked.iter().any(|(c, _)| c.id == card.id) {
+                            active.peeked.push((card, seat));
+                            events.push(RunEvent::CardPeeked { card, seat });
+                        }
+                    }
+                }
+            }
             Effect::SeriesSkatSwap(filter) => active.rules.skat_swaps.push(*filter),
             Effect::NoCheating => active.rules.no_cheating = true,
             Effect::RequireOuvert => active.rules.require_ouvert = true,
@@ -2134,7 +2178,7 @@ impl Run {
             score: 0,
             games_played: 0,
             game_limit: config.game_limit,
-            passes_left: config.passes,
+            passes_left: content.passes(self.character),
             boss: boss.clone(),
             redeals_used: 0,
             passes_used: 0,
@@ -2151,7 +2195,7 @@ impl Run {
             index,
             target,
             game_limit: config.game_limit,
-            passes: config.passes,
+            passes: content.passes(self.character),
             boss,
         });
         self.deal(content, true, events)
@@ -2193,9 +2237,12 @@ impl Run {
         let Some(active) = self.game.as_mut() else {
             return;
         };
+        // Cards the player already sees ("Der Zaungast") are not drawn.
+        let shown = active.peeked.clone();
         let mut pool: Vec<(DealtCard, Seat)> = Seat::DEFENDERS
             .iter()
             .flat_map(|&seat| active.game.hand(seat).iter().map(move |&c| (c, seat)))
+            .filter(|(c, _)| !shown.iter().any(|(s, _)| s.id == c.id))
             .collect();
         for _ in 0..active.rules.peek {
             if pool.is_empty() {
@@ -2256,6 +2303,7 @@ impl Run {
             skat_peeked: false,
             chalked: Vec::new(),
             single_loss: None,
+            shown_hand: None,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -2402,11 +2450,16 @@ impl Run {
             .checked_div(economy.interest_step)
             .unwrap_or(0)
             .min(economy.interest_max);
-        let payout = Payout {
+        let mut payout = Payout {
             base: economy.series_reward,
             games_left: games_left * economy.per_game_left,
             interest,
+            bonus: 0,
         };
+        // "Die Wirtin": the parts count `payout_factor` times.
+        payout.bonus = payout
+            .total()
+            .saturating_mul(content.payout_factor(self.character) - 1);
         self.coins = self.coins.saturating_add(payout.total());
         self.stats.series_won += 1;
         events.push(RunEvent::SeriesWon {
@@ -2575,7 +2628,7 @@ impl Run {
         if price > coins {
             return Err(RunError::NotEnoughCoins);
         }
-        if owned >= usize::try_from(content.run.relic_slots).unwrap_or(0) {
+        if owned >= usize::try_from(content.relic_slots(self.character)).unwrap_or(0) {
             return Err(RunError::NoFreeSlot);
         }
         if let Some(entry) = self.shop_mut()?.relics.get_mut(slot) {
@@ -3288,6 +3341,8 @@ fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -
     drawn
 }
 
+#[cfg(test)]
+mod character_tests;
 #[cfg(test)]
 mod content_tests;
 #[cfg(test)]

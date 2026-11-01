@@ -33,16 +33,22 @@ function characterName(c: CharacterEntry): string {
   return contentName('characters', c.character) || c.name;
 }
 
+/**
+ * A character in the picker row: portrait, short name and role; a locked one
+ * shows its unlock condition instead of the role. The picked character's
+ * whole text stands below the row ([`characterDetail`]).
+ */
 function characterCard(c: CharacterEntry, ui: UiState, meta: MetaView): string {
   const name = characterName(c);
   const short = de.characters[c.character];
+  const label = short?.short ?? name;
   if (!c.unlocked) {
-    return `<div class="char-card is-locked" ${attrs({ 'data-character': c.character, 'aria-disabled': 'true' })}>
+    const cond = t(de.start.lockedBy, { text: unlockText(meta, c.unlocked_by) });
+    return `<div class="char-card is-locked" ${attrs({ 'data-character': c.character, 'aria-disabled': 'true', role: 'group', 'aria-label': `${name}, ${de.start.locked}. ${cond}` })}>
       <span class="char-lock">${lockIcon(20)}<span>${esc(de.start.locked)}</span></span>
       ${portrait(characterPortraitId(c.character), 'portrait-char')}
-      <b class="char-name">${esc(name)}</b>
-      <span class="char-role">${esc(short?.role ?? '')}</span>
-      <span class="char-cond">${esc(t(de.start.lockedBy, { text: unlockText(meta, c.unlocked_by) }))}</span>
+      <b class="char-name">${esc(label)}</b>
+      <span class="char-cond">${esc(cond)}</span>
     </div>`;
   }
   const picked = ui.pickCharacter === c.character;
@@ -50,13 +56,63 @@ function characterCard(c: CharacterEntry, ui: UiState, meta: MetaView): string {
     'data-action': 'pick-character',
     'data-character': c.character,
     'aria-pressed': picked ? 'true' : 'false',
+    'aria-label': `${name}: ${short?.role ?? ''}`,
   })}>
     ${picked ? `<span class="char-check">${esc(de.start.picked)}</span>` : ''}
     ${portrait(characterPortraitId(c.character), 'portrait-char')}
-    <b class="char-name">${esc(name)}</b>
+    <b class="char-name">${esc(label)}</b>
     <span class="char-role">${esc(short?.role ?? '')}</span>
-    <span class="char-text">${esc(contentText('characters', c.character) || c.text)}</span>
   </button>`;
+}
+
+/** The whole text of the picked character, below the picker row. */
+function characterDetail(meta: MetaView, ui: UiState): string {
+  const c = meta.characters.find((x) => x.character === ui.pickCharacter && x.unlocked);
+  if (!c) return '';
+  return `<p class="char-detail" data-testid="char-detail"><b>${esc(characterName(c))}:</b> ${esc(contentText('characters', c.character) || c.text)}</p>`;
+}
+
+/** The picker row: every character in one row, swiped or moved with the arrows. */
+function characterPicker(meta: MetaView, ui: UiState): string {
+  const cards = meta.characters.map((c) => characterCard(c, ui, meta)).join('');
+  const arrow = (dir: -1 | 1, label: string, path: string): string =>
+    `<button class="char-nav" ${attrs({ 'data-action': 'char-scroll', 'data-dir': dir, 'aria-label': label })}><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="${path}" fill="currentColor"/></svg></button>`;
+  return `<section class="char-pick" aria-label="${esc(de.start.whoPlays)}">
+    <h2 class="char-title">${esc(de.start.whoPlays)}</h2>
+    <div class="char-row">
+      ${arrow(-1, de.start.charsBack, 'M7 0 L7 10 L1 5 Z')}
+      <div class="char-cards" data-testid="characters">${cards}</div>
+      ${arrow(1, de.start.charsNext, 'M3 0 L3 10 L9 5 Z')}
+    </div>
+    ${characterDetail(meta, ui)}
+  </section>`;
+}
+
+/**
+ * After the start screen was drawn: restore the picker row's scroll
+ * position, keep the picked character in sight and show the arrows only
+ * when the row does not fit.
+ */
+export function settleCharacterPicker(root: HTMLElement, scrollLeft: number | undefined): void {
+  const cards = root.querySelector<HTMLElement>('[data-testid="characters"]');
+  if (!cards) return;
+  cards.scrollLeft = scrollLeft ?? 0;
+  const picked = cards.querySelector<HTMLElement>('.char-card.is-picked');
+  if (picked) {
+    const left = picked.offsetLeft - cards.offsetLeft;
+    const right = left + picked.offsetWidth;
+    if (left < cards.scrollLeft) cards.scrollLeft = left;
+    else if (right > cards.scrollLeft + cards.clientWidth) cards.scrollLeft = right - cards.clientWidth;
+  }
+  cards.closest('.char-row')?.classList.toggle('has-overflow', cards.scrollWidth > cards.clientWidth + 1);
+}
+
+/** Move the picker row by about two cards. */
+export function scrollCharacterPicker(root: HTMLElement, dir: number, smooth: boolean): void {
+  const cards = root.querySelector<HTMLElement>('[data-testid="characters"]');
+  if (!cards) return;
+  const step = Math.max(cards.clientWidth * 0.66, 80);
+  cards.scrollBy({ left: dir * step, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 function startStats(meta: MetaView): string {
@@ -246,7 +302,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
        <p class="small" data-testid="resume-info">${esc(ui.saveInfo)}</p>`
     : '';
   const meta = ui.meta;
-  const chars = meta ? meta.characters.map((c) => characterCard(c, ui, meta)).join('') : '';
+  const chars = meta ? characterPicker(meta, ui) : '';
   const picked = meta?.characters.find((c) => c.character === ui.pickCharacter);
   const newLabel = picked ? t(de.start.newRunAs, { name: de.characters[picked.character]?.short ?? characterName(picked) }) : de.start.newRun;
   const done = meta ? meta.unlocks.filter((u) => u.unlocked).length : 0;
@@ -264,7 +320,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     <div class="start-actions">
       ${resume}
     </div>
-    ${chars ? `<section class="char-pick" aria-label="${esc(de.start.whoPlays)}"><h2 class="char-title">${esc(de.start.whoPlays)}</h2><div class="char-cards" data-testid="characters">${chars}</div></section>` : ''}
+    ${chars}
     ${meta ? lengthPick(ui) : ''}
     ${meta ? stakePick(ui) : ''}
     <div class="start-actions">

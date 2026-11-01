@@ -140,8 +140,13 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Fluch (negative Kartenmodifikation) | `curse` | Feld `CardModDef::curse`; Text beginnt mit „Fluch:“. Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
 | Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
-| Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler); Daten `CharacterDef` |
-| Startblatt (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add` |
+| Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast, nicht die Figur „Der Kiebitz“ `kibitzer`), `Landlady` (Wirtin, nicht die Figur „Der Wirt“ `landlord`); Daten `CharacterDef` |
+| Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `passes` und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`. Werte eines Runs: `Content::passes`, `Content::relic_slots`, `Content::payout_factor` |
+| Zuschlag der Auszahlung (Wirtin) | `Payout::bonus` | Was `payout_factor` über die einfache Auszahlung hinaus zahlt |
+| Blatt eines Gegners sehen (Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
+| Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
+| Nach einer Serie mindestens n Groschen | `SeriesWonWithCoins(n)` | Freischaltungs-Bedingung, gemessen nach der Auszahlung |
+| Startblatt (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add`, `mods` (Kartenmodifikationen ab Start, je auf der ersten Karte mit dem Aufdruck) |
 | Spielart, für die ein Relikt gemacht ist | `GameFocus` | `All`, `Trump` (Farbspiel und Grand), `Null`; Feld `focus` an Relikten und Modifikationen (ADR 0012) |
 | Tresen-Gewicht pro Spielart | `FocusWeights` | `trump`, `null` in Prozent der Seltenheit; Feld `focus_weights` in `CharacterDef` |
 | Freischaltung | `Unlock` | Definition `UnlockDef`, Id `UnlockId`, Bedingung `UnlockCondition`, Belohnung `Reward` |

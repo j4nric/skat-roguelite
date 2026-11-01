@@ -3,6 +3,8 @@
 // broken run save never costs the unlocks. Every access is guarded; a full
 // or blocked storage must never break the game.
 
+import { CHARACTERS, type Character } from './types';
+
 const RUN_KEY = 'stammtisch.run';
 const META_KEY = 'stammtisch.meta';
 const CHARACTER_KEY = 'stammtisch.character';
@@ -90,7 +92,7 @@ const RUN_INFO_KEY = 'stammtisch.runinfo';
 export const HISTORY_SIZE = 20;
 
 export interface RunRecord {
-  character: 'Declarer' | 'NullPlayer';
+  character: Character;
   seed: string;
   /** Kurzer Abend; absent (entries from before) means ganzer Abend. */
   short?: boolean;
@@ -113,7 +115,7 @@ function isRecord(value: unknown): value is RunRecord {
   if (typeof value !== 'object' || value === null) return false;
   const r = value as Record<string, unknown>;
   return (
-    (r.character === 'Declarer' || r.character === 'NullPlayer') &&
+    CHARACTERS.includes(r.character as Character) &&
     typeof r.seed === 'string' &&
     typeof r.section === 'number' &&
     typeof r.series === 'number' &&

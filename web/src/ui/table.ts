@@ -38,6 +38,9 @@ function eyeIcon(size = 14): string {
  */
 function revealedCard(r: RevealedCard): string {
   const card = r.card;
+  if (r.source === 'Onlooker') {
+    return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods)}</span>`;
+  }
   if (r.source === 'Kibitz') {
     return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
   }
@@ -84,9 +87,14 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
   const turn = ui.anim ? ui.anim.turn === seat : view.ai_to_move === seat;
   const thinking = ui.thinking === seat;
   const seen = game.revealed.filter((r) => r.holder === seat);
-  const open = seen.filter((r) => r.source !== 'Kibitz').map(revealedCard).join('');
+  const open = seen.filter((r) => typeof r.source === 'object').map(revealedCard).join('');
   const peeked = seen.filter((r) => r.source === 'Kibitz').map(revealedCard).join('');
+  // "Der Zaungast": the whole hand, as a tight fan in one row.
+  const onlooker = seen.filter((r) => r.source === 'Onlooker').map(revealedCard).join('');
   const revealed =
+    (onlooker
+      ? `<span class="opp-open-hand" data-testid="onlooker-hand" ${attrs({ 'aria-label': t(de.table.onlookerAria, { count: seen.filter((r) => r.source === 'Onlooker').length }) })}><span class="opp-tag kiebitz-tag" title="${esc(de.table.onlooker)}">${eyeIcon(14)}</span>${onlooker}</span>`
+      : '') +
     (open ? `<span class="opp-tag">${esc(de.table.holds)}</span>${open}` : '') +
     (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
   const position = game.positions[seat];
