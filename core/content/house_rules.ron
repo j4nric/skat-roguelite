@@ -149,6 +149,18 @@
         characters: [Declarer],
         passive: [SeriesSkatSwap((rank: Some(Jack)))],
     ),
+    // Lever Spitzen and Hand, like "Die Oma" but for the Daus. Both figures
+    // together give two swaps per series, one per figure.
+    (
+        id: "grandpa",
+        kind: Regular,
+        name: "Der Opa",
+        text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich ein Daus aus dem Skat nehmen und dafür eine Karte drücken. Ob eines drin liegt, verrät er dir.",
+        rarity: Rare,
+        price: 8,
+        characters: [Declarer],
+        passive: [SeriesSkatSwap((rank: Some(Ace)))],
+    ),
     (
         id: "referee",
         kind: Regular,
@@ -366,6 +378,49 @@
         passive: [AddBaseValueFromCounter("tally")],
         hooks: [
             OnScore(when: All([NullGame, Won]), then: [IncrementCounter("tally"), IncrementCounter("tally")]),
+        ],
+    ),
+    // Lever Gewinnstufen (Spitzen): mit or ohne 4 and more, one level more.
+    (
+        id: "with_four",
+        characters: [Declarer],
+        name: "Mit Vieren",
+        text: "Spielst du mit oder ohne 4 Spitzen oder mehr, gibt es eine Gewinnstufe mehr.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(
+                when: Any([
+                    MatadorsAtLeast(with: true, count: 4),
+                    MatadorsAtLeast(with: false, count: 4),
+                ]),
+                then: [AddLevels(1)],
+            ),
+        ],
+    ),
+    // Null style, lever Grundwert: a won Null with a seven ducked.
+    (
+        id: "seven_sleeper",
+        characters: [NullPlayer],
+        name: "Siebenschläfer",
+        text: "Gewinnst du ein Null, in dem du mit einer Sieben unterlaufen bist: Grundwert +5.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnScore(when: All([NullGame, Won, SevenDucked]), then: [AddBaseValue(5)]),
+        ],
+    ),
+    // Null style, lever Gewinnstufen: a won Null without ever following
+    // suit.
+    (
+        id: "clean_slate",
+        characters: [NullPlayer],
+        name: "Saubere Weste",
+        text: "Gewinnst du ein Null, in dem du nie bedienen musstest, gibt es zwei Gewinnstufen mehr.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(when: All([NullGame, Won, NeverFollowedSuit]), then: [AddLevels(2)]),
         ],
     ),
 ]

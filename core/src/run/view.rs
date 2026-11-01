@@ -25,7 +25,7 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    Declaration, GameType, NullRisk, NullScoring, RiskLevel, suit_strength, trump_strength,
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, suit_strength, trump_order_key,
 };
 
 /// Everything a frontend shows of a run.
@@ -134,6 +134,16 @@ pub struct EncounterOptionView {
     pub cost: u32,
     /// The relic it names (house rule on offer, relic given away).
     pub relic: Option<RelicInfo>,
+    /// The relic received by a swap ("Alter Bekannter"), known before the
+    /// choice.
+    pub new_relic: Option<RelicInfo>,
+    /// The modification a card gets ("Der Kartengeber" and the like),
+    /// known before the choice.
+    pub card_mod: Option<CardModInfo>,
+    /// Whether what the option gives is only drawn at random when it is
+    /// chosen: a swap or a modification of a save from before they were
+    /// drawn in advance. Then `new_relic` or `card_mod` is `None`.
+    pub random_gain: bool,
     /// Whether it can be chosen now (with one of `targets` if it needs
     /// one).
     pub can_choose: bool,
@@ -168,6 +178,9 @@ pub struct CountView {
     pub defenders: u32,
     /// Augen of all cards of the deck the player has not seen.
     pub unseen: u32,
+    /// Augen per seat (index = seat) from the tricks, the player's with
+    /// the skat once he knows it: who has the most in a Ramsch.
+    pub seats: [u32; 3],
 }
 
 /// A boss with its rule text.
@@ -217,6 +230,21 @@ pub struct RelicInfo {
     pub rarity: Rarity,
     /// Price at the Tresen.
     pub price: u32,
+}
+
+/// A card modification as the player sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CardModInfo {
+    /// Id.
+    pub id: CardModId,
+    /// German name from the content.
+    pub name: String,
+    /// German text from the content.
+    pub text: String,
+    /// Rarity.
+    pub rarity: Rarity,
+    /// Whether it is a curse (Fluch).
+    pub curse: bool,
 }
 
 /// A consumable as the player sees it.
@@ -352,13 +380,26 @@ pub struct TrickView {
     pub winner: Seat,
 }
 
-/// A card marked "Durchsichtig" and who holds it.
+/// Why the player knows where a card is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum RevealSource {
+    /// A card modification that shows its holder ("Durchsichtig",
+    /// "Bierfleck", "Attrappe"), by id.
+    CardMod(CardModId),
+    /// "Der Kiebitz" showed it before the declaration.
+    Kibitz,
+}
+
+/// A card whose holder the player knows, and why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RevealedCard {
     /// The card.
     pub card: CardView,
     /// Holder; `None` if in the skat or already played.
     pub holder: Option<Seat>,
+    /// Why it is known: a modification or "Der Kiebitz". A card known
+    /// both ways names its modification.
+    pub source: RevealSource,
 }
 
 /// A Spielart in the Ansage dialog.
@@ -466,9 +507,15 @@ pub struct GameView {
     pub boss_rule: Option<BossInfo>,
     /// The count of "Der Zähler", if a relic shows it.
     pub count: Option<CountView>,
-    /// Whether "Die Oma" lets the player take a card from the skat now
-    /// (with [`RunAction::TakeFromSkat`]): only if one lies there.
+    /// Whether "Die Oma" (or "Der Opa") lets the player take a card from
+    /// the skat now (with [`RunAction::TakeFromSkat`]): only if one lies
+    /// there.
     pub can_take_from_skat: bool,
+    /// The skat cards a skat swap may take now, the one taken by default
+    /// first (`take: None`): "Die Oma" names the jack that comes out.
+    pub skat_swap_cards: Vec<CardView>,
+    /// Tricks per seat so far (index = seat), as they lie on the table.
+    pub seat_tricks: [u32; 3],
 }
 
 /// The last scored game.
@@ -491,13 +538,18 @@ const GAMES: [GameType; 5] = [
 
 /// Display order of a card in a hand: trumps by strength, then the suits
 /// Kreuz, Pik, Herz, Karo by rank, blanks last. Uses the printed card, so a
-/// "Gezinkt" card stays in its place.
+/// "Gezinkt" card stays in its place; a "Bube ehrenhalber" sits below the
+/// jacks in a suit game.
 fn display_key(game: GameType, card: &DealtCard) -> (u8, u8, u32) {
     let Some(face) = card.face() else {
         return (9, 0, card.id);
     };
-    if let Some(strength) = trump_strength(game, face) {
-        return (0, u8::MAX - strength, card.id);
+    let printed = DealtCard {
+        rank_bonus: 0,
+        ..*card
+    };
+    if let Some((strength, exact)) = trump_order_key(game, printed) {
+        return (0, u8::MAX - (2 * strength + exact), card.id);
     }
     let suit_rank = match face.suit {
         Suit::Clubs => 1,
@@ -550,6 +602,25 @@ impl Run {
                 text: String::new(),
                 rarity: Rarity::Common,
                 price: 0,
+            },
+        }
+    }
+
+    fn card_mod_info(content: &Content, id: &CardModId) -> CardModInfo {
+        match content.card_mod(id) {
+            Some(def) => CardModInfo {
+                id: id.clone(),
+                name: def.name.clone(),
+                text: def.text.clone(),
+                rarity: def.rarity,
+                curse: def.curse,
+            },
+            None => CardModInfo {
+                id: id.clone(),
+                name: id.to_string(),
+                text: String::new(),
+                rarity: Rarity::Common,
+                curse: false,
             },
         }
     }
@@ -881,10 +952,12 @@ impl Run {
             .filter(|c| !seen.contains(c))
             .map(|c| c.card_points())
             .sum();
+        let own = points[0] + if known_skat { skat_points } else { 0 };
         Some(CountView {
-            declarer: points[0] + if known_skat { skat_points } else { 0 },
+            declarer: own,
             defenders: points[1] + points[2],
             unseen,
+            seats: [own, points[1], points[2]],
         })
     }
 
@@ -903,6 +976,25 @@ impl Run {
                         Some(Run::relic_info(content, id))
                     }
                     _ => None,
+                };
+                let new_relic = match &option.choice {
+                    EncounterChoice::SwapRelic { new: Some(id), .. } => {
+                        Some(Run::relic_info(content, id))
+                    }
+                    _ => None,
+                };
+                let marks = matches!(
+                    option.choice,
+                    EncounterChoice::MarkRandomCard | EncounterChoice::MarkChosenCard
+                );
+                let card_mod = option
+                    .card_mod
+                    .as_ref()
+                    .filter(|_| marks)
+                    .map(|id| Run::card_mod_info(content, id));
+                let random_gain = match &option.choice {
+                    EncounterChoice::SwapRelic { new, .. } => new.is_none(),
+                    _ => marks && card_mod.is_none(),
                 };
                 let targets: Vec<u32> = if needs_target {
                     self.deck
@@ -938,6 +1030,9 @@ impl Run {
                     choice: option.choice.clone(),
                     cost: option.cost,
                     relic,
+                    new_relic,
+                    card_mod,
+                    random_gain,
                     can_choose,
                     needs_target,
                     targets,
@@ -1018,6 +1113,7 @@ impl Run {
             .revealed_holders()
             .into_iter()
             .map(|(card, holder)| RevealedCard {
+                source: RevealSource::CardMod(self.reveal_mod(content, card.id)),
                 card: self.card_view(card),
                 holder,
             })
@@ -1027,14 +1123,30 @@ impl Run {
                 revealed.push(RevealedCard {
                     card: self.card_view(card),
                     holder: game.holder_of(card),
+                    source: RevealSource::Kibitz,
                 });
             }
         }
-        let can_take_from_skat = active.rules.skat_swap.is_some()
-            && game
-                .hand(Seat::DECLARER)
-                .first()
-                .is_some_and(|c| self.accepts(content, RunAction::TakeFromSkat { give: c.id }));
+        let skat_swap_cards: Vec<CardView> = self
+            .skat_swap_cards()
+            .into_iter()
+            .map(|c| self.card_view(c))
+            .collect();
+        let can_take_from_skat = !skat_swap_cards.is_empty()
+            && game.hand(Seat::DECLARER).iter().any(|c| {
+                self.accepts(
+                    content,
+                    RunAction::TakeFromSkat {
+                        give: c.id,
+                        take: None,
+                    },
+                )
+            });
+        let skat_swap_cards = if can_take_from_skat {
+            skat_swap_cards
+        } else {
+            Vec::new()
+        };
         Some(GameView {
             number: self.series.games_played + 1,
             phase,
@@ -1063,7 +1175,27 @@ impl Run {
                 .map(|id| Run::boss_info(content, id)),
             count: self.count_view(),
             can_take_from_skat,
+            skat_swap_cards,
+            seat_tricks: game.seat_tricks(),
         })
+    }
+
+    /// The first modification on a deck card that shows its holder.
+    fn reveal_mod(&self, content: &Content, card: u32) -> CardModId {
+        let mods = self
+            .deck
+            .get(card)
+            .map(|d| d.mods.as_slice())
+            .unwrap_or(&[]);
+        mods.iter()
+            .find(|m| {
+                content
+                    .card_mod(m)
+                    .is_some_and(|def| def.passive.contains(&crate::content::Effect::RevealHolder))
+            })
+            .or_else(|| mods.first())
+            .cloned()
+            .unwrap_or_else(|| CardModId::new("transparent"))
     }
 }
 

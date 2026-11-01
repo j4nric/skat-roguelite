@@ -25,6 +25,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit |
 | Karte im Spiel (Regel-Sicht) | `PlayingCard` (Trait) | Von `Card` und `DealtCard` implementiert |
 | Rangbonus (Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
+| Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“ |
+| Platz in der Trumpfordnung | `trump_order_key` | Stärke, dann 0 für den Buben ehrenhalber, 1 für gedruckte Trümpfe |
+| Darf nicht gedrückt werden (Ramponiert) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden` |
 | Volle (Ass, Zehn) | `high_card` | |
 | Trumpf | `trump` | |
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
@@ -45,11 +48,13 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Null-Risikostufe | `NullRisk` | `Normal` (23), `Hand` (35), `Ouvert` (46), `OuvertHand` (59); Stufe 1 bis 4 (`step`) |
 | Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
 | Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
+| Augen und Stiche pro Platz | `SeatTotals` | `card_points`, `tricks` (Index = Platz); in `ScoreBreakdown::seats`, `GameFinished::seats`; Sicht `seat_tricks`, Zähler `count.seats` |
 | Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null` |
 | Farbspiel | `GameType::Suit` | |
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
 | Skat aufnehmen | `pick_up_skat` | |
 | Drücken | `discard` | Die zwei Karten, die in den Skat gelegt werden |
+| Skattausch (Oma, Opa) | `skat_swap` | `GameRules::skat_swaps` (Liste von Filtern, je einer pro Figur und Serie), `Series::skat_swaps_taken`, Sicht `skat_swap_cards`, Aktion `TakeFromSkat { give, take }` |
 | Ausspielen | `lead` | Erste Karte eines Stichs |
 | Bedienen | `follow_suit` | |
 | Stechen | `ruff` / `trump` (verb) | Mit Trumpf übernehmen |
@@ -84,7 +89,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Verloren | `lost` | Zählt doppelt negativ |
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
 | Null-Wertung im Run | `NullScoring` | `Fixed` (Skatordnung) oder `Formula(NullFormula)`, Daten pro Charakter |
-| Stilbonus (Null) | `NullStyle` | `sevens_ducked` (mit einer Sieben unterlaufen), `never_followed` (nie bedienen müssen), `short_circuit` (Kurzschluss) |
+| Stilbonus (Null) | `NullStyle` | `sevens_ducked` (mit einer Sieben unterlaufen), `never_followed` (nie bedienen müssen), `short_circuit` (Kurzschluss). Bedingungen `SevenDucked`, `NeverFollowedSuit` |
+| Mindestens mit/ohne n Spitzen | `MatadorsAtLeast { with, count }` | Bedingung ab der Ansage |
 | Kann nie stechen (Unsichtbar) | `never_wins` | `PlayingCard::never_wins`, Effekt `NeverWins` |
 
 ## Roguelike
@@ -120,6 +126,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Relikt (Oberbegriff) | `Relic` | HouseRule und Regular, Definition `RelicDef` |
 | Tresen | `Shop` | |
 | Groschen | `coins` | Währung |
+| Groschen erhalten (Effekt) | `GainCoins` | Ereignis `CoinsGained { source, amount, coins }`; negativ zieht ab, nie unter 0 |
+| Beim Erhalt (Kartenmodifikation angebracht) | `OnAttach` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnAttach` |
+| Fluch (negative Kartenmodifikation) | `curse` | Feld `CardModDef::curse`; Text beginnt mit „Fluch:“ |
 | Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler); Daten `CharacterDef` |
@@ -128,12 +137,15 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Meta-Zustand (über Runs) | `MetaState` | Freischaltungen und Statistik, getrennt vom Run gespeichert |
 | Gesperrt | `locked` | Relikte, die noch Belohnung einer Freischaltung sind |
 | Pool eines Charakters | `characters` | Feld an Relikten, Modifikationen, Verbrauchsgegenständen, Bossen und Ereignissen; leer = alle |
+| Gesperrte Modifikation | `locked_card_mods` | Belohnung `Reward::CardMod` einer Freischaltung, wird bis dahin nicht zufällig gezogen |
+| Art und Seltenheit einer Belohnung | `RewardInfo`, `RewardKind` | `HouseRule`, `Regular`, `CardMod`, `Character`; Feld `reward_info` im Meta-View |
 | Endboss | `final_boss` | „Der Alte“, Regeln nacheinander: `rotation` |
 | Regel des Bosses in diesem Spiel | `boss_rule` | Beim Alten wechselt sie pro Spiel |
 | Schummeln (Boss-Regel) | `is_cheat` | Zwillinge, Revolutionär; abgeschaltet durch `NoCheating` |
 | Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
+| Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig, Bierfleck, Attrappe) oder `Kibitz`; Feld `RevealedCard::source` |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert |
 | Statistik eines Runs | `RunStats` | Gewonnene, verlorene, eingepasste Spiele, Serien, bestes Spiel |
 | Verkaufspreis | `sell_price` | Halber Preis |
@@ -238,7 +250,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Taschenspieler | `conjurer` |
 | Preisskat | `prize_skat` |
 | Gast aus Altenburg | `guest_from_altenburg` |
-| Fluch (negative Kartenmodifikation) | kein eigener Typ; Text beginnt mit „Fluch:“ |
+| Ramponiert | `battered` |
+| Bube ehrenhalber (Anzeige: Unter ehrenhalber) | `honorary_jack` |
+| Der Opa (Figur) | `grandpa` (nicht verwechseln mit `granny`) |
+| Mit Vieren | `with_four` |
+| Siebenschläfer | `seven_sleeper` |
+| Saubere Weste | `clean_slate` |
 
 ## Kartennotation
 

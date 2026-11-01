@@ -53,6 +53,13 @@ pub struct DealtCard {
     /// Whether this card can never take a trick ("Unsichtbar").
     #[serde(default)]
     pub never_wins: bool,
+    /// Whether this card is a trump below the Karo-Bube in suit games
+    /// ("Bube ehrenhalber").
+    #[serde(default)]
+    pub honorary_jack: bool,
+    /// Whether this card must not be discarded ("Ramponiert").
+    #[serde(default)]
+    pub no_discard: bool,
 }
 
 impl DealtCard {
@@ -66,6 +73,8 @@ impl DealtCard {
             rank_bonus: 0,
             revealed: false,
             never_wins: false,
+            honorary_jack: false,
+            no_discard: false,
         }
     }
 }
@@ -85,6 +94,14 @@ impl PlayingCard for DealtCard {
 
     fn never_wins(self) -> bool {
         self.never_wins
+    }
+
+    fn honorary_jack(self) -> bool {
+        self.honorary_jack
+    }
+
+    fn no_discard(self) -> bool {
+        self.no_discard
     }
 }
 

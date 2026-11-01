@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use skat_core::content::{Character, Content, UnlockId};
+use skat_core::content::{Character, Content, Rarity, UnlockId};
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
 use skat_core::run::player::{PlayerEvent, player_events};
@@ -110,12 +110,23 @@ struct Entry<'a> {
     text: &'a str,
 }
 
+/// Name, text, rarity and curse flag of a card modification.
+#[derive(Serialize)]
+struct CardModEntry<'a> {
+    name: &'a str,
+    text: &'a str,
+    rarity: Rarity,
+    /// A curse (Fluch, DESIGN 7.2).
+    curse: bool,
+}
+
 /// Names and texts of all content by id, so the web app can label every
-/// source of a score line, also of relics no longer owned.
+/// source of a score line, also of relics no longer owned. Card
+/// modifications also carry their rarity and whether they are a curse.
 #[derive(Serialize)]
 struct Catalog<'a> {
     relics: BTreeMap<&'a str, Entry<'a>>,
-    card_mods: BTreeMap<&'a str, Entry<'a>>,
+    card_mods: BTreeMap<&'a str, CardModEntry<'a>>,
     bosses: BTreeMap<&'a str, Entry<'a>>,
     consumables: BTreeMap<&'a str, Entry<'a>>,
     characters: BTreeMap<&'a str, Entry<'a>>,
@@ -165,9 +176,11 @@ pub fn catalog_json() -> Result<String, String> {
             .map(|d| {
                 (
                     d.id.as_str(),
-                    Entry {
+                    CardModEntry {
                         name: &d.name,
                         text: &d.text,
+                        rarity: d.rarity,
+                        curse: d.curse,
                     },
                 )
             })
@@ -694,6 +707,9 @@ mod tests {
             serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
         assert_eq!(catalog["relics"]["old_lady"]["name"], "Alte Dame");
         assert!(catalog["card_mods"]["fat"]["text"].is_string());
+        assert_eq!(catalog["card_mods"]["fat"]["curse"], false);
+        assert_eq!(catalog["card_mods"]["battered"]["curse"], true);
+        assert_eq!(catalog["card_mods"]["honorary_jack"]["rarity"], "Rare");
         assert!(catalog["bosses"]["grandma"]["name"].is_string());
         assert!(catalog["consumables"]["beer"]["name"].is_string());
     }
@@ -870,5 +886,74 @@ mod tests {
             session.run().phase(),
             RunPhase::Won | RunPhase::Lost
         ));
+    }
+
+    /// Saves written by the M4 web app (the e2e fixtures) still load, show
+    /// a view and play on: new fields have serde defaults, the single skat
+    /// swap filter of "Die Oma" reads as a list, encounter options without
+    /// a named modification or relic draw it when chosen.
+    #[test]
+    fn m4_saves_still_load_and_play_on() {
+        let content = content().expect("content");
+        let fixtures = [
+            (
+                "boss-tresen",
+                include_str!("../../web/e2e/fixtures/boss-tresen.json"),
+            ),
+            (
+                "encounter-dispute",
+                include_str!("../../web/e2e/fixtures/encounter-dispute.json"),
+            ),
+            (
+                "encounter",
+                include_str!("../../web/e2e/fixtures/encounter.json"),
+            ),
+            ("kontra", include_str!("../../web/e2e/fixtures/kontra.json")),
+            (
+                "old-man",
+                include_str!("../../web/e2e/fixtures/old-man.json"),
+            ),
+            ("oma", include_str!("../../web/e2e/fixtures/oma.json")),
+            ("ramsch", include_str!("../../web/e2e/fixtures/ramsch.json")),
+        ];
+        for (name, save) in fixtures {
+            let mut session = Session::load(save).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let view: serde_json::Value =
+                serde_json::from_str(&session.view().expect("view")).expect("json");
+            assert!(view["phase"].is_string(), "{name}");
+            if name == "oma" {
+                // The single filter of the old save became the list.
+                let rules = &session.run().game().expect("game").rules;
+                assert_eq!(rules.skat_swaps.len(), 1, "{name}");
+            }
+            if name == "encounter" {
+                let options = view["encounter"]["options"].as_array().expect("options");
+                assert_eq!(options[0]["choice"], "MarkRandomCard");
+                assert_eq!(options[0]["random_gain"], true);
+                assert!(options[0]["card_mod"].is_null());
+                let step = session
+                    .apply(r#"{"ChooseEncounter":{"option":0,"target":null}}"#)
+                    .expect("random card");
+                assert!(step.contains("DeckChanged"), "{name}");
+            }
+            for _ in 0..200 {
+                let Some(action) = RunBot.next_action(session.run(), content) else {
+                    break;
+                };
+                session
+                    .apply(&serde_json::to_string(&action).expect("json"))
+                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+            }
+            let saved = session.save().expect("save");
+            Session::load(&saved).unwrap_or_else(|e| panic!("{name} again: {e}"));
+        }
+        // The meta save of M4 loads too and shows reward kinds.
+        let meta =
+            MetaSession::load(include_str!("../../web/e2e/fixtures/meta-null.json")).expect("meta");
+        let view: serde_json::Value =
+            serde_json::from_str(&meta.view().expect("view")).expect("json");
+        let info = &view["unlocks"][0]["reward_info"][0];
+        assert!(info["kind"].is_string());
+        assert!(info["name"].is_string());
     }
 }

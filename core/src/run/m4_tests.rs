@@ -347,7 +347,13 @@ fn granny_lets_the_player_take_a_jack_from_the_skat_once() {
     assert!(run.view(&content).game.expect("game").can_take_from_skat);
     let heart_ace = 15;
     let events = run
-        .apply(&content, RunAction::TakeFromSkat { give: heart_ace })
+        .apply(
+            &content,
+            RunAction::TakeFromSkat {
+                give: heart_ace,
+                take: None,
+            },
+        )
         .expect("take");
     assert!(
         events
@@ -362,7 +368,13 @@ fn granny_lets_the_player_take_a_jack_from_the_skat_once() {
     );
     assert!(game.skat().iter().any(|c| c.id == heart_ace));
     assert_eq!(
-        run.apply(&content, RunAction::TakeFromSkat { give: 7 }),
+        run.apply(
+            &content,
+            RunAction::TakeFromSkat {
+                give: 7,
+                take: None,
+            }
+        ),
         Err(RunError::NoSkatSwapLeft)
     );
     // Not without the figure, not in a game with the skat picked up.
@@ -374,7 +386,13 @@ fn granny_lets_the_player_take_a_jack_from_the_skat_once() {
     )
     .expect("declare");
     assert_eq!(
-        run.apply(&content, RunAction::TakeFromSkat { give: heart_ace }),
+        run.apply(
+            &content,
+            RunAction::TakeFromSkat {
+                give: heart_ace,
+                take: None,
+            }
+        ),
         Err(RunError::NoSkatSwapLeft)
     );
 }
@@ -564,7 +582,11 @@ fn encounter(run: &mut Run, id: &str, options: Vec<EncounterOption>) {
 }
 
 fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
-    EncounterOption { choice, cost }
+    EncounterOption {
+        choice,
+        cost,
+        card_mod: None,
+    }
 }
 
 #[test]
@@ -698,6 +720,7 @@ fn encounter_choices_change_the_run() {
                 EncounterChoice::SwapRelic {
                     index: 0,
                     relic: RelicId::new("kontra"),
+                    new: None,
                 },
                 0,
             ),

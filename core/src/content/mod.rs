@@ -276,6 +276,9 @@ pub enum Reward {
     Relic(RelicId),
     /// A character can be chosen.
     Character(Character),
+    /// A card modification joins the random draws (Stempelkissen,
+    /// Kartengeber).
+    CardMod(CardModId),
 }
 
 /// An unlock (Freischaltung, DESIGN 9.3): one condition, its rewards.
@@ -366,6 +369,10 @@ pub struct CardModDef {
     /// Characters whose random modifications may draw it (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
+    /// A curse (Fluch, DESIGN 7.2): a drawback, usually paid for in
+    /// Groschen when attached.
+    #[serde(default)]
+    pub curse: bool,
 }
 
 /// A factor, written as a decimal number in RON and JSON (`1.0`, `0.6`,
@@ -725,6 +732,11 @@ fn validate_effects(
                 hook.when()
             )));
         }
+        if stage == Stage::OnAttach && !is_card_mod {
+            return Err(ContentError(format!(
+                "{what}: OnAttach only works on card modifications"
+            )));
+        }
         for effect in hook.then() {
             check(stage, effect)?;
         }
@@ -926,6 +938,7 @@ impl Content {
                     Reward::Character(c) => {
                         *c != Character::Declarer && self.characters.contains_key(c)
                     }
+                    Reward::CardMod(id) => self.card_mods.contains_key(id),
                 };
                 if !known {
                     return Err(ContentError(format!("{what}: unknown reward {reward:?}")));

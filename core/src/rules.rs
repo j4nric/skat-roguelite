@@ -115,11 +115,26 @@ const fn face_is_trump(game: GameType, card: Card) -> bool {
 }
 
 /// Whether `card` is a trump in `game`. In a suit game the jacks belong to
-/// the trump, not to their printed suit. Blanks are never trump.
+/// the trump, not to their printed suit, and so does a "Bube ehrenhalber"
+/// ([`PlayingCard::honorary_jack`]). Blanks are never trump.
 #[must_use]
 pub fn is_trump<C: PlayingCard>(game: GameType, card: C) -> bool {
-    card.face().is_some_and(|face| face_is_trump(game, face))
+    card.face()
+        .is_some_and(|face| face_is_trump(game, face) || acts_as_honorary_jack(game, card))
 }
+
+/// Whether `card` plays as a "Bube ehrenhalber" in `game` (DESIGN 4.4):
+/// only in a suit game, and a printed jack stays the jack it is.
+fn acts_as_honorary_jack<C: PlayingCard>(game: GameType, card: C) -> bool {
+    matches!(game, GameType::Suit(_))
+        && card.honorary_jack()
+        && card.face().is_some_and(|face| !face.is_jack())
+}
+
+/// Strength of a "Bube ehrenhalber" before any rank bonus: the strength of
+/// the Karo-Bube. It loses the tie against every printed card of the same
+/// strength (see [`trump_strength`]).
+const HONORARY_JACK_STRENGTH: u8 = 7 + 1;
 
 /// Position of a jack inside the jack order (Kreuz highest).
 const fn jack_strength(suit: Suit) -> u8 {
@@ -136,19 +151,36 @@ const fn jack_strength(suit: Suit) -> u8 {
 /// Modified cards ("Gezinkt") count [`PlayingCard::rank_bonus`] steps
 /// higher. A modified card that reaches the strength of another card does
 /// not beat it: on equal strength the card played earlier keeps the trick.
+///
+/// A "Bube ehrenhalber" ([`PlayingCard::honorary_jack`], suit games only)
+/// sits half a step below the Karo-Bube: it has the Karo-Bube's strength
+/// but loses to every printed card of equal strength, whichever came
+/// first, and beats every card below (the trump ace included). With a rank
+/// bonus it climbs whole steps from there. The exact order is
+/// [`trump_order_key`]; this strength is what the AI compares.
 #[must_use]
 pub fn trump_strength<C: PlayingCard>(game: GameType, card: C) -> Option<u8> {
     let face = card.face()?;
-    if !face_is_trump(game, face) {
+    let base = if acts_as_honorary_jack(game, card) {
+        HONORARY_JACK_STRENGTH
+    } else if !face_is_trump(game, face) {
         return None;
-    }
-    let base = if face.is_jack() {
+    } else if face.is_jack() {
         // Jacks sit above the seven suit trumps (strength 1..=7).
         7 + jack_strength(face.suit)
     } else {
         face.rank.suit_game_strength()
     };
     Some(base.saturating_add(card.rank_bonus()))
+}
+
+/// Exact place of a trump in the trump order, higher wins: the
+/// [`trump_strength`] and then 0 for a "Bube ehrenhalber", 1 for every
+/// printed trump. `None` if the card is no trump.
+#[must_use]
+pub fn trump_order_key<C: PlayingCard>(game: GameType, card: C) -> Option<(u8, u8)> {
+    let strength = trump_strength(game, card)?;
+    Some((strength, u8::from(!acts_as_honorary_jack(game, card))))
 }
 
 /// Strength of a non-trump card within its suit, including the rank bonus.
@@ -168,15 +200,17 @@ pub fn suit_strength<C: PlayingCard>(game: GameType, card: C) -> u8 {
 /// Whether `card` follows the lead card, i.e. is of the same kind: both
 /// trump, or both non-trump of the same suit. This is the Bedienpflicht
 /// test; jacks follow a trump lead in suit and grand games, never a suit.
-/// A blank never follows and can never be followed.
+/// A "Bube ehrenhalber" behaves like a jack in a suit game: it follows a
+/// trump lead and never its printed suit. A blank never follows and can
+/// never be followed.
 #[must_use]
 pub fn follows_lead<C: PlayingCard>(game: GameType, lead: C, card: C) -> bool {
-    let (Some(lead), Some(card)) = (lead.face(), card.face()) else {
+    let (Some(lead_face), Some(card_face)) = (lead.face(), card.face()) else {
         return false;
     };
-    match (face_is_trump(game, lead), face_is_trump(game, card)) {
+    match (is_trump(game, lead), is_trump(game, card)) {
         (true, true) => true,
-        (false, false) => card.suit as u8 == lead.suit as u8,
+        (false, false) => card_face.suit == lead_face.suit,
         _ => false,
     }
 }
@@ -199,8 +233,8 @@ pub fn beats<C: PlayingCard>(game: GameType, lead: C, holder: C, challenger: C) 
         return true;
     }
     match (
-        trump_strength(game, holder),
-        trump_strength(game, challenger),
+        trump_order_key(game, holder),
+        trump_order_key(game, challenger),
     ) {
         (_, None) if !follows_lead(game, lead, challenger) => false,
         (Some(h), Some(c)) => c > h,
@@ -267,6 +301,17 @@ pub fn legal_moves<C: PlayingCard>(game: GameType, hand: &[C], lead: Option<C>) 
     } else {
         hand.to_vec()
     }
+}
+
+/// Whether the declarer may put `cards` from his twelve cards (`hand`)
+/// into the skat. A card that must not be discarded ("Ramponiert",
+/// [`PlayingCard::no_discard`]) may only go when fewer than two other
+/// cards are left, and then as few of them as possible.
+#[must_use]
+pub fn valid_discard<C: PlayingCard>(hand: &[C], cards: [C; 2]) -> bool {
+    let free = hand.iter().filter(|c| !c.no_discard()).count();
+    let forced = cards.iter().filter(|c| c.no_discard()).count();
+    forced <= 2usize.saturating_sub(free)
 }
 
 // ---------------------------------------------------------------------------
@@ -727,6 +772,19 @@ pub struct Outcome {
     pub declarer_tricks: u32,
     /// Tricks won by the defenders together.
     pub defender_tricks: u32,
+}
+
+/// Augen and tricks per seat (index = seat, 0 is the player), for games
+/// where the sides do not tell enough: in a Ramsch everyone plays for
+/// himself and the one with the most Augen loses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct SeatTotals {
+    /// Augen per seat: tricks, plus the skat for the seat it counts for
+    /// (the declarer; in a Ramsch the winner of the last trick), plus
+    /// conceded Augen.
+    pub card_points: [u32; 3],
+    /// Tricks per seat, conceded tricks included.
+    pub tricks: [u32; 3],
 }
 
 /// Spielwert of a finished game.
@@ -1678,5 +1736,126 @@ mod tests {
         assert!(!beats(game, seven, seven, ace));
         assert!(beats(game, ace, ace, seven));
         assert_eq!(trick_winner(game, 0, [ace, seven, d(3, "S8")]), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // M5: "Bube ehrenhalber" and "Ramponiert"
+    // -----------------------------------------------------------------------
+
+    fn honorary(id: u32, s: &str) -> DealtCard {
+        DealtCard {
+            honorary_jack: true,
+            ..d(id, s)
+        }
+    }
+
+    // Trumpfordnung: the honorary jack sits between the Karo-Bube and the
+    // trump ace, whichever card comes first.
+    #[test]
+    fn the_honorary_jack_ranks_below_the_jacks_and_above_the_trump_ace() {
+        let hearts = GameType::Suit(Suit::Hearts);
+        let sk = honorary(1, "SK");
+        let (ha, dj) = (d(2, "HA"), d(3, "DJ"));
+        assert!(is_trump(hearts, sk));
+        assert!(beats(hearts, ha, ha, sk), "beats the trump ace");
+        assert!(!beats(hearts, sk, sk, ha));
+        assert!(beats(hearts, sk, sk, dj), "loses to the Karo-Bube");
+        assert!(!beats(hearts, dj, dj, sk));
+        // A trick: S7 led, the honorary SK ruffs, the trump ace comes too
+        // late, the Karo-Bube takes it.
+        assert_eq!(trick_winner(hearts, 0, [d(4, "S7"), sk, ha]), 1);
+        assert_eq!(trick_winner(hearts, 0, [d(4, "S7"), sk, dj]), 2);
+        // Of the trump suit itself: climbs above the ace.
+        let h7 = honorary(5, "H7");
+        assert!(beats(hearts, ha, ha, h7));
+        // With a rank bonus a whole step higher: above the Karo-Bube,
+        // below the Herz-Bube.
+        let mut marked = honorary(6, "SK");
+        marked.rank_bonus = 1;
+        assert!(beats(hearts, dj, dj, marked));
+        assert!(!beats(hearts, d(7, "HJ"), d(7, "HJ"), marked));
+        // A gezinkt trump ace keeps reaching the Karo-Bube (tie) and beats
+        // the honorary jack.
+        let mut ace = d(8, "HA");
+        ace.rank_bonus = 1;
+        assert!(beats(hearts, sk, sk, ace));
+        assert!(!beats(hearts, dj, dj, ace));
+        // Two honorary jacks: the earlier keeps the trick.
+        let other = honorary(9, "CK");
+        assert!(!beats(hearts, sk, sk, other));
+        assert!(!beats(hearts, other, other, sk));
+    }
+
+    // Grand, Null and Ramsch keep the printed card; a printed jack stays
+    // the jack it is.
+    #[test]
+    fn the_honorary_jack_is_trump_only_in_suit_games() {
+        let sk = honorary(1, "SK");
+        assert!(!is_trump(GameType::Grand, sk));
+        assert!(!is_trump(GameType::Null, sk));
+        assert!(follows_lead(GameType::Grand, d(2, "S7"), sk));
+        assert!(beats(GameType::Grand, d(3, "S7"), d(3, "S7"), sk));
+        let cj = honorary(4, "CJ");
+        let hearts = GameType::Suit(Suit::Hearts);
+        assert_eq!(trump_order_key(hearts, cj), Some((11, 1)));
+        assert_eq!(trump_order_key(hearts, sk), Some((8, 0)));
+        assert_eq!(trump_order_key(hearts, d(5, "DJ")), Some((8, 1)));
+    }
+
+    // Bedienpflicht: the honorary jack follows trump leads, never its
+    // printed suit, and a trump lead forces it out.
+    #[test]
+    fn the_honorary_jack_follows_trump_not_its_printed_suit() {
+        let hearts = GameType::Suit(Suit::Hearts);
+        let sk = honorary(1, "SK");
+        let hand = vec![sk, d(2, "S8"), d(3, "C7")];
+        // Spades led: only the S8 follows; the honorary SK is trump.
+        assert_eq!(
+            legal_moves(hearts, &hand, Some(d(4, "SA"))),
+            vec![d(2, "S8")]
+        );
+        // Trump led: the honorary SK must follow.
+        assert_eq!(legal_moves(hearts, &hand, Some(d(5, "H7"))), vec![sk]);
+        assert_eq!(legal_moves(hearts, &hand, Some(d(6, "DJ"))), vec![sk]);
+        // Led itself, it asks for trump.
+        assert!(follows_lead(hearts, sk, d(7, "H9")));
+        assert!(!follows_lead(hearts, sk, d(8, "S9")));
+    }
+
+    // Spitzen are counted along the printed trump order: the honorary jack
+    // is no extra Spitze and breaks no run.
+    #[test]
+    fn the_honorary_jack_is_no_spitze() {
+        let hearts = GameType::Suit(Suit::Hearts);
+        let full: Vec<DealtCard> = crate::cards::standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(c, id)| DealtCard::plain(id, CardKind::Normal(c)))
+            .collect();
+        let held = vec![d(100, "CJ"), d(101, "SJ"), honorary(102, "SK")];
+        assert_eq!(
+            matadors_in(hearts, &held, &full),
+            Matadors {
+                with: true,
+                count: 2
+            }
+        );
+    }
+
+    #[test]
+    fn battered_cards_go_into_the_skat_only_if_nothing_else_can() {
+        let battered = |id, s| DealtCard {
+            no_discard: true,
+            ..d(id, s)
+        };
+        let (b1, b2) = (battered(1, "S7"), battered(2, "S8"));
+        let (c, e) = (d(3, "C7"), d(4, "C8"));
+        assert!(valid_discard(&[b1, b2, c, e], [c, e]));
+        assert!(!valid_discard(&[b1, b2, c, e], [b1, c]));
+        // One free card: it must go, plus one battered card.
+        assert!(valid_discard(&[b1, b2, c], [b1, c]));
+        assert!(!valid_discard(&[b1, b2, c], [b1, b2]));
+        // Only battered cards: any two.
+        assert!(valid_discard(&[b1, b2], [b1, b2]));
     }
 }

@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{BossId, CardModId, EncounterId, RelicId};
 use crate::rules::{
-    Declaration, GameType, LevelParts, Matadors, Outcome, Thresholds, ValueParts, game_value_parts,
+    Declaration, GameType, LevelParts, Matadors, Outcome, SeatTotals, Thresholds, ValueParts,
+    game_value_parts,
 };
 
 /// Where a modification comes from.
@@ -116,6 +117,10 @@ pub struct ScoreBreakdown {
     pub value: u64,
     /// Signed result for the series account: `value` or `-2 × value`.
     pub score: i64,
+    /// Augen and tricks per seat, set by the run (who has the most Augen
+    /// in a Ramsch); `None` when scored from an [`Outcome`] alone.
+    #[serde(default)]
+    pub seats: Option<SeatTotals>,
 }
 
 impl ScoreBreakdown {
@@ -384,6 +389,7 @@ pub fn score_parts(
         multiplier: value_mul,
         value,
         score,
+        seats: None,
     }
 }
 

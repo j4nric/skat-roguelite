@@ -153,31 +153,64 @@
         text: "Fluch: Der Fleck kostet die Karte 5 Augen. Dafür erkennst du sie wieder: Du siehst, wer sie hält.",
         rarity: Common,
         price: 1,
+        curse: true,
         passive: [AddCardPoints(-5), RevealHolder],
     ),
-    // Curse on Stichgewinn (the card never wins), paid back with Augen.
+    // Curse on Stichgewinn (the card never wins), paid in Groschen when
+    // attached.
     (
         id: "cracked",
         characters: [Declarer],
         name: "Angeknackst",
-        text: "Fluch: Diese Karte gewinnt nie einen Stich, egal wer sie spielt. Dafür zählt sie 5 Augen mehr.",
+        text: "Fluch: Diese Karte gewinnt nie einen Stich, egal wer sie spielt. Dafür gibt es beim Erhalt 3 Groschen.",
         rarity: Common,
         price: 1,
-        passive: [NeverWins, AddCardPoints(5)],
+        curse: true,
+        passive: [NeverWins],
+        hooks: [
+            OnAttach(then: [GainCoins(3)]),
+        ],
     ),
-    // Curse on Grundwert (−3 when its suit is trump), paid back with
-    // Stichgewinn.
+    // Curse on Grundwert (−3 when its suit is trump), paid in Groschen
+    // when attached.
     (
         id: "black_cat",
         characters: [Declarer],
         name: "Schwarze Katze",
-        text: "Fluch: Ist die Farbe dieser Karte Trumpf, sinkt der Grundwert um 3. Dafür zählt sie eine Stufe höher.",
+        text: "Fluch: Ist die Farbe dieser Karte Trumpf, sinkt der Grundwert um 3. Dafür gibt es beim Erhalt 3 Groschen.",
         rarity: Common,
         price: 1,
-        passive: [RankBonus(1)],
+        curse: true,
         hooks: [
             OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(-3)]),
+            OnAttach(then: [GainCoins(3)]),
         ],
+    ),
+    // Curse "Ramponiert" (DESIGN 7.2): must not be discarded, paid in
+    // Groschen when attached. For both characters, the Nullspieler
+    // discards too.
+    (
+        id: "battered",
+        name: "Ramponiert",
+        text: "Fluch: Diese Karte darf nicht gedrückt werden. Dafür gibt es beim Erhalt 3 Groschen.",
+        rarity: Common,
+        price: 1,
+        curse: true,
+        passive: [NoDiscard],
+        hooks: [
+            OnAttach(then: [GainCoins(3)]),
+        ],
+    ),
+    // Lever Stichgewinn and Bedienpflicht (DESIGN 4.4): a trump half a step
+    // below the Karo-Unter in suit games, no Spitze.
+    (
+        id: "honorary_jack",
+        characters: [Declarer],
+        name: "Unter ehrenhalber",
+        text: "Im Farbspiel ist diese Karte Trumpf, direkt unter dem Schellen-Unter, egal wer sie spielt. Sie bedient Trumpf statt ihrer Farbe und zählt nicht als Spitze.",
+        rarity: Rare,
+        price: 6,
+        passive: [HonoraryJack],
     ),
     // Nullspieler only from here.
     // Lever Augen (Null formula: Kurzschluss).
