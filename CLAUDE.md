@@ -47,7 +47,7 @@ cargo run -p skat_sim -- --seed 42 --games 10000
 
 - Claude entscheidet alles innerhalb des Design-Dokuments selbst und dokumentiert es im Cockpit-Verlauf.
 - Gefragt wird nur, wenn eine Grundentscheidung aus einem ADR kippen müsste. Die Frage kommt ins Cockpit, die Arbeit geht an anderer Stelle weiter.
-- Ein geplanter Weckruf alle 3 Stunden setzt die Arbeit fort, bis M7 gemergt ist (entschieden am 01.11.2026). Danach wird er gelöscht.
+- Ein geplanter Weckruf alle 3 Stunden setzt die Arbeit fort, bis M8 gemergt ist (entschieden am 01.11.2026 im Cockpit). Danach wird er gelöscht.
 
 ## Cockpit (Artefakt)
 
@@ -57,7 +57,7 @@ https://claude.ai/artifact/X1K7udk5bFayH8gGSdMUzB
 Es ist eine Seite mit Datenbank (`ArtifactData`). Pflicht nach jedem Arbeitsschritt:
 
 - **Verlauf**: Eintrag in `log` (`ts`, `kind`: commit | pr | merge | decision | note, `title`, `body`, optional `url`). Ids sortierbar: `JJJJMMTT-HHMM-stichwort`.
-- **Meilensteine**: `milestones/M0..M7` mit `status` (done | active | planned) und kurzer `note` aktuell halten.
+- **Meilensteine**: `milestones/M0..M8` mit `status` (done | active | planned) und kurzer `note` aktuell halten.
 - **Fragen**: Jede Entscheidung, die der Nutzer treffen soll, kommt als Dokument in `questions` (`order`, `area`, `title`, `context`, `recommendation`, `options`, `status: open`). Nicht im Chat fragen, wenn es im Cockpit beantwortet werden kann.
 - **Antworten lesen**: Zu Beginn jeder Session `questions` mit `status == answered` und `claudeAck != true` abfragen, die Antwort umsetzen, dann `claudeAck: true` setzen.
 - **meta/project**: `branch`, `lastCommit`, `openPr`, `server`, `updatedAt` nach jedem Merge aktualisieren.
