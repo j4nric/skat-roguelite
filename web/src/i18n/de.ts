@@ -570,6 +570,95 @@ export const de = {
     thinking: 'Bedenkzeit',
     thinkingHint: 'Eine Denkblase über den Gegnern, solange sie rechnen.',
     reducedMotion: 'Weniger Bewegung gewünscht: Animationen kurz.',
+    hints: 'Hinweise des Wirts',
+    hintsReset: 'Zurücksetzen',
+    hintsResetAria: 'Hinweise des Wirts zurücksetzen',
+    hintsResetDone: 'Der Wirt erklärt dir alles noch mal.',
+    rules: 'Regelkarte',
+  },
+
+  /**
+   * "Geführter erster Abend": the Wirt explains, once each, what happens
+   * for the first time. Short, warm, a bit gruff; Skat itself is known.
+   */
+  hints: {
+    speaker: 'Der Wirt',
+    dismiss: 'Antippen zum Schließen',
+    welcome: 'Na, Neuer? Oben siehst du Konto und Ziel: Schaff das Ziel, bevor die Spiele der Serie alle sind, sonst ist Feierabend.',
+    skatOrHand:
+      'Gereizt wird hier nicht, du bist immer der Alleinspieler. Lässt du den Skat liegen und spielst Hand, gibt’s eine Stufe mehr.',
+    afterSkat:
+      'Skat aufgenommen, also bleibt’s bei Normal. Schneider, Schwarz oder Ouvert ansagen geht nur aus der Hand, so will es die Skatordnung.',
+    afterSkatNull:
+      'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
+    value:
+      'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, zahlst du das Doppelte.',
+    pass: 'Eingepasst ist keine Schande. Kostet ein Spiel der Serie, aber keinen Punkt, nur sind die Pässe knapp.',
+    score:
+      'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht doppelt runter.',
+    shop: 'Für jede gewonnene Serie gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Gegenstände zinken oder ändern dein Blatt.',
+    boss: 'Obacht, ein Boss! Der biegt für diese eine Serie eine Regel, also lies genau, was er vorhat.',
+    encounter: 'Zwischen zwei Serien ist auch mal Rast statt Tresen. Nimm dir, was dir passt, oder geh einfach weiter.',
+    runLost:
+      'Das war’s für heute, Kopf hoch. Freischaltungen und Statistik bleiben im Vereinsbuch, der nächste Run fängt wieder bei null an.',
+  },
+
+  /**
+   * The Regelkarte in the menu: what is different here, for players who
+   * know Skat. Numbers from the Skatordnung and DESIGN 4 to 6.
+   */
+  rules: {
+    title: 'Regelkarte',
+    intro: 'Skat kennst du. Hier steht, was am Stammtisch anders läuft.',
+    flowTitle: 'Ein Spiel',
+    flow: [
+      ['Skat oder Hand', 'Skat aufnehmen oder Hand spielen. Gereizt wird nicht.'],
+      ['Drücken', 'Nach dem Aufnehmen zwei Karten in den Skat. Ihre Augen zählen für dich.'],
+      ['Ansagen', 'Spielart und Risikostufe. Schneider, Schwarz und Ouvert nur aus der Hand.'],
+      ['10 Stiche', 'Bedienen wie gewohnt. Ab 61 Augen gewonnen, ab 90 Schneider, alle Stiche Schwarz.'],
+      ['Abrechnung', 'Der Spielwert kommt aufs Konto der Serie.'],
+    ] as [string, string][],
+    valueTitle: 'Spielwert',
+    valueFormula: 'Grundwert × Gewinnstufen',
+    baseTitle: 'Grundwerte',
+    /** Game (suit code, `Grand`, `Null`) and its Grundwert as printed; names from `suits` and `games`. */
+    bases: [
+      ['Diamonds', '9'],
+      ['Hearts', '10'],
+      ['Spades', '11'],
+      ['Clubs', '12'],
+      ['Grand', '24'],
+      ['Null', '23 × Stufe'],
+    ] as [string, string][],
+    nullNote: 'Null sagt der Nullspieler an. Seine Stufen: Spiel 1, Hand +1, Ouvert +2, bei Sieg ein Stilbonus.',
+    levelsTitle: 'Gewinnstufen',
+    levels: [
+      'Mit oder ohne: je Spitze eine Stufe, ab dem Eichel-Unter',
+      'Spiel +1',
+      'Hand +1',
+      'Schneider +1, angesagt +1',
+      'Schwarz +1, angesagt +1',
+      'Ouvert +1',
+    ],
+    lostNote: 'Verloren zählt doppelt: Der Spielwert geht zweimal vom Konto ab.',
+    bentTitle: 'Was hier anders ist',
+    bent: [
+      'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
+      'Kein Überreizen: Die Spitzen zählen nach dem Spiel, mit deinem Blatt samt Skat.',
+      'Einpassen kostet ein Spiel der Serie, aber keine Punkte. Die Pässe sind begrenzt.',
+      'Hausregeln, Figuren und gezinkte Karten biegen die Regeln, auch Grundwert, Stufen und Augen.',
+      'Ramsch, Kontra und Bock sind keine Grundregeln. Sie kommen über Hausregeln, Bosse oder Ereignisse.',
+      'Alle drei spielen mit deinem Blatt. Was du daran änderst, gilt für jeden.',
+    ],
+    runTitle: 'Die Tournee',
+    run: [
+      ['Abschnitt', 'Ein Skatabend in einer Kneipe: zwei Serien, dann die Boss-Serie.'],
+      ['Serie', 'Erreiche den Zielwert, bevor die Spiele der Serie aufgebraucht sind. Sonst ist der Run vorbei.'],
+      ['Boss', 'Biegt für seine Serie eine Regel. Am Tresen davor siehst du schon, wer kommt.'],
+      ['Tresen', 'Nach jeder gewonnenen Serie: Groschen ausgeben für Hausregeln, Figuren und Gegenstände.'],
+      ['Rast', 'Manchmal statt des Tresens ein Ereignis mit einer Wahl.'],
+      ['Danach', 'Freischaltungen und Statistik bleiben im Vereinsbuch, auch wenn der Run verloren ist.'],
+    ] as [string, string][],
   },
 
   save: {
@@ -578,7 +667,7 @@ export const de = {
     export: 'Spielstand sichern',
     import: 'Spielstand laden',
     exportText:
-      'Dieser Text enthält alles, was das Spiel in diesem Browser gespeichert hat: den laufenden Run, das Vereinsbuch mit allen Freischaltungen, die Statistik und deine Einstellungen.',
+      'Dieser Text enthält alles, was das Spiel in diesem Browser gespeichert hat: den laufenden Run, das Vereinsbuch mit allen Freischaltungen, die Statistik, deine Einstellungen und welche Hinweise des Wirts du schon kennst.',
     exportWhy: 'Bewahre ihn auf, etwa in einer Notiz oder einer Mail an dich selbst.',
     codeLabel: 'Gesicherter Spielstand',
     exportFailed: 'Der Spielstand konnte nicht zusammengestellt werden.',

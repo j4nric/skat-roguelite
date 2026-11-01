@@ -13,6 +13,7 @@ import { goodSvg } from './goods';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
+import { renderRules } from './rules';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import type { Overlay, UiState } from './state';
@@ -263,6 +264,12 @@ function settingsBlock(ui: UiState): string {
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span>${onOff('sound', ui.settings.sound)}</div>
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
+    <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
+      'data-action': 'hints-reset',
+      'data-testid': 'hints-reset',
+      'aria-label': de.menu.hintsResetAria,
+      title: de.menu.hintsResetAria,
+    })}>${esc(de.menu.hintsReset)}</button></div>
   </div>`;
 }
 
@@ -345,6 +352,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          ${settingsBlock(ui)}
          ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, ui) : ''}
          <div class="menu-list menu-grid">
+           <button class="btn" ${attrs({ 'data-action': 'rules', 'data-testid': 'rules-open' })}>${esc(de.menu.rules)}</button>
            ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
@@ -374,6 +382,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'credits':
       return sheet(credits(), true, 'sheet-credits');
+    case 'rules':
+      return sheet(renderRules(), true, 'sheet-rules');
     case 'target': {
       const item = view?.consumables.find((c) => c.slot === overlay.slot);
       if (!view || !item) return '';

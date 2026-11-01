@@ -4174,3 +4174,312 @@ button.card {
 .menu-grid > .menu-close:nth-child(odd) {
   grid-column: 1 / -1;
 }
+
+/* ------------------------------------------------- hints of the Wirt */
+
+/* "Geführter erster Abend": the Wirt's speech bubble hangs fixed below the
+   head of the run (top set by the app), above the dialogs and below the
+   toasts. Only the bubble takes taps; everything around it goes through.
+   Kept low so it stays over the opponents and never reaches the hand. */
+.hint-layer {
+  position: fixed;
+  top: calc(8px + var(--safe-top));
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 0 calc(10px + var(--safe-right)) 0 calc(10px + var(--safe-left));
+  pointer-events: none;
+}
+
+.hint {
+  display: flex;
+  width: 100%;
+  max-width: 520px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 4px 0 var(--line));
+  animation: hint-in 220ms steps(4);
+}
+
+.hint-layer.is-static .hint {
+  animation: none;
+}
+
+@keyframes hint-in {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+.portrait-hint {
+  width: 44px;
+  height: 44px;
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.hint-bubble {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 26px 7px 10px;
+  border: var(--edge) solid var(--line);
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+/* The tail towards the Wirt, in pixel steps. */
+.hint-bubble::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 12px;
+  width: 10px;
+  height: 12px;
+  background: var(--line);
+  clip-path: polygon(100% 0, 40% 0, 40% 33%, 0 33%, 0 67%, 40% 67%, 40% 100%, 100% 100%);
+}
+
+.hint-who {
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+.hint-text {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.hint-x {
+  position: absolute;
+  top: 2px;
+  right: 7px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent-dark);
+}
+
+.hint:focus-visible .hint-bubble {
+  outline: 2px solid var(--cool);
+  outline-offset: 2px;
+}
+
+/* Small phones: a little tighter, so the bubble ends above the Ansage. */
+@media (max-height: 700px) {
+  .portrait-hint {
+    width: 36px;
+    height: 36px;
+  }
+
+  .hint-text {
+    font-size: 12px;
+  }
+}
+
+/* Menu row "Hinweise des Wirts": switch and reset side by side. */
+.menu-row.menu-hints {
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+}
+
+.menu-hints .btn {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------ Regelkarte */
+
+.sheet-rules {
+  overflow: hidden;
+}
+
+.rules-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rules-intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.rules-h {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 2px solid var(--line);
+  font-family: var(--font-label);
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rules-sub {
+  margin: 2px 0 0;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rules-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.rules-flow li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 8px;
+  counter-increment: step;
+  font-size: 13px;
+}
+
+.rules-flow li::before {
+  content: counter(step);
+  grid-row: span 2;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--card-ink);
+  font-size: 12px;
+}
+
+.rules-flow b {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.rules-flow span {
+  color: var(--muted);
+}
+
+.rules-formula {
+  margin: 0;
+  padding: 6px 8px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--cool);
+  font-size: 16px;
+  text-align: center;
+}
+
+.rules-bases {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rules-bases li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 2px solid var(--line);
+  background: var(--card);
+  color: var(--card-ink);
+  font-size: 13px;
+}
+
+.rules-bases li b {
+  margin-left: auto;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.rules-bases li:last-child {
+  grid-column: span 3;
+}
+
+.rules-nosuit {
+  display: none;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.rules-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rules-note.is-warn {
+  color: var(--rot-light);
+}
+
+.rules-terms {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 5px 8px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.rules-terms dt {
+  color: var(--accent-light);
+}
+
+.rules-terms dd {
+  margin: 0;
+  color: var(--text);
+}
+
+/* At the Tresen the Wirt stands right above: no second portrait, the tail
+   points up to him. */
+.hint-shop .portrait-hint {
+  display: none;
+}
+
+.hint-shop .hint-bubble::before {
+  left: 24px;
+  top: -12px;
+  width: 15px;
+  height: 12px;
+  clip-path: polygon(0 100%, 0 60%, 33% 60%, 33% 0, 67% 0, 67% 60%, 100% 60%, 100% 100%);
+}
