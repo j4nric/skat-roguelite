@@ -43,7 +43,7 @@ pub struct ResolvedDeck {
 /// into blanks (their modifications are inactive for this game); then
 /// `SetCardPoints` from bosses and relics in source order; then the card's
 /// own modifications in the order they were attached (`AddCardPoints`,
-/// `RankBonus`, `RevealHolder`, `NeverWins`). Augen never drop below zero.
+/// `RankBonus`, `RevealHolder`, `NeverWins`, `HonoraryJack`, `NoDiscard`). Augen never drop below zero.
 /// `RevealHolder` is off while a global source has `DisableInformation`.
 #[must_use]
 pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>]) -> ResolvedDeck {
@@ -113,6 +113,8 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
                     }
                     Effect::RevealHolder => dealt.revealed = !no_information,
                     Effect::NeverWins => dealt.never_wins = true,
+                    Effect::HonoraryJack => dealt.honorary_jack = true,
+                    Effect::NoDiscard => dealt.no_discard = true,
                     _ => {}
                 }
             }
@@ -248,7 +250,21 @@ pub fn evaluate(
         Condition::RamschGame => declaration.is_some_and(Declaration::is_ramsch),
         Condition::HandGame => declaration.is_some_and(Declaration::hand),
         Condition::NoTrickTaken => game.is_some_and(|g| g.seat_tricks()[0] == 0),
+        Condition::SevenDucked => {
+            null_game(game).is_some_and(|g| g.null_style(0).sevens_ducked > 0)
+        }
+        Condition::NeverFollowedSuit => {
+            null_game(game).is_some_and(|g| g.null_style(0).never_followed)
+        }
+        Condition::MatadorsAtLeast { with, count } => game
+            .and_then(Game::matadors)
+            .is_some_and(|m| m.count > 0 && m.with == *with && m.count >= *count),
     }
+}
+
+/// The game, if it is a Null game.
+fn null_game(game: Option<&Game<DealtCard>>) -> Option<&Game<DealtCard>> {
+    game.filter(|g| g.declaration().is_some_and(Declaration::is_null))
 }
 
 /// The tenth trick, if it was played.

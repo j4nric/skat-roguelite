@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{RunEvent, RunStart};
 use crate::content::{
-    Character, Content, RelicId, Reward, ScoreBreakdown, UnlockCondition, UnlockId,
+    CardModId, Character, Content, Rarity, RelicId, RelicKind, Reward, ScoreBreakdown,
+    UnlockCondition, UnlockId,
 };
 use crate::rules::Declaration;
 
@@ -127,6 +128,34 @@ pub struct CharacterEntry {
     pub unlocked_by: Option<UnlockId>,
 }
 
+/// What kind of thing a reward is, for the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum RewardKind {
+    /// A house rule (Hausregel).
+    HouseRule,
+    /// A Stammtisch figure (Figur).
+    Regular,
+    /// A card modification (Kartenmodifikation).
+    CardMod,
+    /// A character.
+    Character,
+}
+
+/// A reward as the menu shows it: what it is, its name and rarity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RewardInfo {
+    /// The reward itself.
+    pub reward: Reward,
+    /// House rule, figure, card modification or character.
+    pub kind: RewardKind,
+    /// German name from the content.
+    pub name: String,
+    /// German text from the content.
+    pub text: String,
+    /// Rarity of a relic or card modification; `None` for a character.
+    pub rarity: Option<Rarity>,
+}
+
 /// An unlock as the menu shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnlockEntry {
@@ -140,6 +169,8 @@ pub struct UnlockEntry {
     pub unlocked: bool,
     /// What it opens.
     pub rewards: Vec<Reward>,
+    /// The rewards with kind, name and rarity, in the same order.
+    pub reward_info: Vec<RewardInfo>,
 }
 
 /// Everything a frontend shows of the meta state.
@@ -151,6 +182,8 @@ pub struct MetaView {
     pub unlocks: Vec<UnlockEntry>,
     /// Relics still locked.
     pub locked_relics: Vec<RelicId>,
+    /// Card modifications still locked.
+    pub locked_card_mods: Vec<CardModId>,
     /// Statistics.
     pub stats: MetaStats,
 }
@@ -199,7 +232,26 @@ impl MetaState {
             .flat_map(|u| u.rewards.iter())
             .filter_map(|r| match r {
                 Reward::Relic(id) => Some(id.clone()),
-                Reward::Character(_) => None,
+                Reward::Character(_) | Reward::CardMod(_) => None,
+            })
+            .collect();
+        locked.sort();
+        locked.dedup();
+        locked
+    }
+
+    /// Card modifications that are a reward of an unlock not yet earned,
+    /// in id order.
+    #[must_use]
+    pub fn locked_card_mods(&self, content: &Content) -> Vec<CardModId> {
+        let mut locked: Vec<CardModId> = content
+            .unlocks
+            .values()
+            .filter(|u| !self.unlocked.contains(&u.id))
+            .flat_map(|u| u.rewards.iter())
+            .filter_map(|r| match r {
+                Reward::CardMod(id) => Some(id.clone()),
+                Reward::Relic(_) | Reward::Character(_) => None,
             })
             .collect();
         locked.sort();
@@ -232,6 +284,7 @@ impl MetaState {
         Ok(RunStart {
             character,
             locked_relics: self.locked_relics(content),
+            locked_card_mods: self.locked_card_mods(content),
             ..RunStart::default()
         })
     }
@@ -367,11 +420,62 @@ impl MetaState {
                     text: def.text.clone(),
                     unlocked: self.unlocked.contains(&def.id),
                     rewards: def.rewards.clone(),
+                    reward_info: def
+                        .rewards
+                        .iter()
+                        .map(|r| reward_info(content, r))
+                        .collect(),
                 })
                 .collect(),
             locked_relics: self.locked_relics(content),
+            locked_card_mods: self.locked_card_mods(content),
             stats: self.stats.clone(),
         }
+    }
+}
+
+/// Kind, name and rarity of a reward from the content.
+fn reward_info(content: &Content, reward: &Reward) -> RewardInfo {
+    let (kind, name, text, rarity) = match reward {
+        Reward::Relic(id) => content.relic(id).map_or_else(
+            || (RewardKind::HouseRule, id.to_string(), String::new(), None),
+            |def| {
+                let kind = match def.kind {
+                    RelicKind::HouseRule => RewardKind::HouseRule,
+                    RelicKind::Regular => RewardKind::Regular,
+                };
+                (kind, def.name.clone(), def.text.clone(), Some(def.rarity))
+            },
+        ),
+        Reward::CardMod(id) => content.card_mod(id).map_or_else(
+            || (RewardKind::CardMod, id.to_string(), String::new(), None),
+            |def| {
+                (
+                    RewardKind::CardMod,
+                    def.name.clone(),
+                    def.text.clone(),
+                    Some(def.rarity),
+                )
+            },
+        ),
+        Reward::Character(c) => content.character(*c).map_or_else(
+            || (RewardKind::Character, c.to_string(), String::new(), None),
+            |def| {
+                (
+                    RewardKind::Character,
+                    def.name.clone(),
+                    def.text.clone(),
+                    None,
+                )
+            },
+        ),
+    };
+    RewardInfo {
+        reward: reward.clone(),
+        kind,
+        name,
+        text,
+        rarity,
     }
 }
 

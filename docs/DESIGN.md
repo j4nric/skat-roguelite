@@ -103,6 +103,12 @@ Diese Regeln gibt es im echten Skat nicht, weil das Blatt dort nie verändert wi
 - **Bockrunde** wird bei der Ansage verbraucht, nicht beim Geben. So verschenkt ein Pass den Bock nicht.
 - **Schenken**: Die restlichen Stiche gehen an den Alleinspieler. Das Spiel ist damit Schneider, und Schwarz, falls die Gegner noch keinen Stich hatten.
 
+Ergänzt in M5 (entschieden von Claude am 01.11.2026):
+
+- **Bube ehrenhalber** (Kartenmodifikation `honorary_jack`, Effekt `HonoraryJack`): Im Farbspiel ist die Karte Trumpf und steht eine halbe Stufe unter dem Karo-Buben: Sie schlägt das Trumpf-Ass und alles darunter und verliert gegen jeden Buben, egal in welcher Reihenfolge gespielt wird. Sie bedient Trumpf und nicht mehr ihre gedruckte Farbe; wird Trumpf ausgespielt, muss sie bedient werden. Liegt sie auf einer Karte der Trumpffarbe, steigt diese Karte über das Ass. Mit Rangbonus („Gezinkt“) steigt sie ganze Stufen von dort: einmal gezinkt schlägt sie den Karo-Buben und verliert gegen den Herz-Buben. Ein gezinktes Trumpf-Ass erreicht weiter den Karo-Buben (Gleichstand, der frühere behält den Stich) und schlägt damit den Buben ehrenhalber. Zwei Buben ehrenhalber im selben Stich: Der frühere behält ihn. Die **Spitzen zählen sie nicht mit**: Gezählt wird weiter die gedruckte Trumpfordnung; ein Bube ehrenhalber ist keine zusätzliche Spitze, und eine Trumpfkarte mit der Modifikation zählt an ihrer gedruckten Stelle. Im Grand, im Null und im Ramsch bleibt die Karte, was gedruckt ist, ebenso ein echter Bube. Im Code: `rules::trump_order_key` (Stärke, dann 0 für den Buben ehrenhalber, 1 für gedruckte Trümpfe), `is_trump` und `follows_lead` kennen ihn; die Gegner-KI sieht über `trump_strength` die Stärke des Karo-Buben.
+- **Ramponiert** (Fluch `battered`, Effekt `NoDiscard`): Die Karte darf nicht gedrückt werden, solange zwei andere Karten gedrückt werden können; sonst so wenige ramponierte wie möglich (`rules::valid_discard`, Fehler `DiscardForbidden`). Das gilt auch für die Karte, die beim Skattausch der Oma oder des Opas in den Skat geht.
+- **Mehrere Skattausch-Figuren**: Jede Figur mit `SeriesSkatSwap` gewährt ihren eigenen Tausch, einmal pro Serie (Oma: ein Unter, Opa: ein Daus). Sie können im selben Handspiel nacheinander genutzt werden. Die Sicht nennt die Karten, die herauskommen können (`skat_swap_cards`), die erste nimmt `TakeFromSkat` ohne `take`.
+
 ---
 
 ## 5. Run-Struktur
@@ -185,7 +191,7 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Information | „Durchsichtig“: Der Spieler sieht, wer diese Karte hält | Zählen |
 | Negativ | „Ramponiert“: Diese Karte darf nicht gedrückt werden | Fluch, gibt Geld |
 
-**Umgesetzt in M4: 20 Modifikationen** (`card_mods.ron`, Preise Platzhalter für `balance`). Zufällige Modifikationen (Stempelkissen, Kartengeber) ziehen gleichverteilt aus dem Pool des Charakters, Flüche eingeschlossen. Ereignisse können eine bestimmte Modifikation vergeben (13).
+**Umgesetzt in M4: 20 Modifikationen, in M5: 22** (`card_mods.ron`, Preise Platzhalter für `balance`). Zufällige Modifikationen (Stempelkissen, Kartengeber) ziehen gleichverteilt aus dem Pool des Charakters, Flüche eingeschlossen, gesperrte nicht (Belohnung `CardMod` einer Freischaltung, 9.3). Ereignisse können eine bestimmte Modifikation vergeben (13).
 
 | Modifikation | Effekt | Hebel | Seltenheit | Pool |
 |---|---|---|---|---|
@@ -202,15 +208,17 @@ Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spiel
 | Glückspfennig | Gewonnenes Spiel, dessen letzten Stich sie macht: Spielwert ×2 | Spielwert (multiplikativ) | Rare | Alleinspieler |
 | Durchsichtig | Du siehst, wer sie hält | Zählen | Common | alle |
 | Bierfleck (Fluch) | −5 Augen, dafür siehst du, wer sie hält | Augen (Fluch), Zählen | Common | alle |
-| Angeknackst (Fluch) | gewinnt nie, dafür +5 Augen | Stichgewinn (Fluch), Augen | Common | Alleinspieler |
-| Schwarze Katze (Fluch) | Ist ihre Farbe Trumpf: Grundwert −3, dafür eine Stufe höher | Grundwert (Fluch), Stichgewinn | Common | Alleinspieler |
+| Angeknackst (Fluch) | gewinnt nie; beim Erhalt 3 Groschen | Stichgewinn (Fluch), Groschen | Common | Alleinspieler |
+| Schwarze Katze (Fluch) | Ist ihre Farbe Trumpf: Grundwert −3; beim Erhalt 3 Groschen | Grundwert (Fluch), Groschen | Common | Alleinspieler |
+| Ramponiert (Fluch, M5) | darf nicht gedrückt werden; beim Erhalt 3 Groschen | Drücken (Fluch), Groschen | Common | alle |
+| Bube ehrenhalber (M5) | im Farbspiel Trumpf unter dem Karo-Buben, keine Spitze (4.4) | Stichgewinn, Bedienpflicht | Rare | Alleinspieler |
 | Unsichtbar | gewinnt nie, bedient aber | Stichgewinn | Uncommon | Nullspieler |
 | Attrappe | gewinnt nie, und du siehst, wer sie hält | Stichgewinn, Zählen | Rare | Nullspieler |
 | Bleigewicht | +10 Augen (Kurzschluss) | Augen | Common | Nullspieler |
 | Schlusslicht | Gewonnenes Null, dessen letzten Stich sie macht: +2 Gewinnstufen | Gewinnstufen | Uncommon | Nullspieler |
 | Aufgebrezelt | zwei Stufen höher: beim Gegner gut, bei dir gefährlich | Stichgewinn | Uncommon | Nullspieler |
 
-Flüche, entschieden von Claude am 01.11.2026: Einen Effekt, der Groschen gibt, und einen, der das Drücken verbietet („Ramponiert“), hat die Hook-API noch nicht (Auftrag an `core-dev`). Bis dahin sind Flüche Modifikationen mit einem klaren Nachteil auf einem Hebel und einem kleineren Ausgleich auf einem anderen. Sie kommen über Zufallsziehungen und das Ereignis „Umgekipptes Bier“ ins Blatt; der Bierfleck auf einer Lusche kostet nichts (Augen fallen nie unter 0), dort bleibt nur der Ausgleich.
+Flüche, entschieden von Claude am 01.11.2026: Flüche sind Modifikationen mit einem klaren Nachteil, markiert mit `curse: true` (in der Sicht `CardModInfo.curse`, im Katalog `card_mods.<id>.curse`). Sie kommen über Zufallsziehungen und das Ereignis „Umgekipptes Bier“ ins Blatt. Seit M5 zahlen sie beim Erhalt Groschen (Auslöser `OnAttach`, Effekt `GainCoins`) statt eines Nebenvorteils, weil das klarer ist: Angeknackst und Schwarze Katze verloren ihren Ausgleich (+5 Augen, eine Stufe höher) und geben 3 Groschen, Ramponiert ist neu. Der Bierfleck behält den Fleck, an dem man die Karte erkennt, und zahlt nichts; er kommt über ein Ereignis, bei dem man für 1 Groschen die Karte wählt, Geld beim Erhalt wäre dort ein Gewinn. Auf einer Lusche kostet er nichts (Augen fallen nie unter 0). Die Beträge sind Platzhalter für `balance`.
 
 ### 7.3 Karten hinzufügen und entfernen
 
@@ -278,6 +286,12 @@ Geändert am 01.11.2026 nach der M2-Messung (`docs/balance/2026-11-01-m2-zielwer
 | Dicke Sau | – | 27,5 / 7,6 / 2,0 | |
 | Glashaus | – | 27,0 / 7,3 / 1,7 | der Bot spielt Null Ouvert nur ohne offene Karte; Partner des Angebers |
 | Kerbholz | – | 27,8 / 7,9 / 2,1 | mit +2 je Null |
+| Mit Vieren (M5) | 29,3 / 6,1 / 0,7 | – | mit oder ohne 4 und mehr: +1 Gewinnstufe; Bedingung `MatadorsAtLeast` |
+| Siebenschläfer (M5) | – | 28,4 / 8,6 / 2,4 | gewonnenes Null mit unterlaufener Sieben: Grundwert +5; Bedingung `SevenDucked` |
+| Saubere Weste (M5) | – | 27,0 / 7,2 / 1,7 | gewonnenes Null, nie bedient: +2 Gewinnstufen; Bedingung `NeverFollowedSuit`. Der Bot erreicht das praktisch nie, für Menschen gedacht (Fehlfarben drücken) |
+| Der Opa (M5) | 29,3 / 5,8 / 0,5 | – | der Bot spielt fast nie Hand |
+
+M5-Werte gemessen mit `skat_sim --seed 42 --runs 3000 --no-shop --relic <id>` gegen 29,2 / 5,9 / 0,5 % (Alleinspieler) und 27,0 / 7,2 / 1,7 % (Nullspieler) ohne Hausregel.
 
 Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Multiplikatoren sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Multiplikatoren existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben.
 
@@ -307,11 +321,12 @@ Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhal
 
 - **Kiebitz** (`kibitzer`, Effekt `PeekDefenderCards(1)`): eine zufällige Karte eines Gegners und wer sie hält, gezogen mit dem Zufall des Spiels (das Geben bleibt gleich). Sie steht in der Sicht unter `revealed` und kommt als Ereignis `CardPeeked`, sonst nichts.
 - **Wirt** (`landlord`, `ShopDiscount(20)`): gilt für Relikte, Verbrauchsgegenstände und die Neuauslage, gerundet, mindestens 1 Groschen. Verkauft wird weiter zum halben vollen Preis, also kein Gewinn durch Kaufen und Verkaufen.
-- **Oma** (`granny`, `SeriesSkatSwap`): Ein gedrückter Bube lässt sich im echten Skat nicht sinnvoll zurücknehmen, weil der Spieler beim Drücken alles sieht. Umgesetzt als: Einmal pro Serie darf der Spieler in einem Handspiel vor seiner ersten Karte einen Buben aus dem Skat nehmen und dafür eine Karte drücken; das Spiel bleibt Hand. Ob ein Bube im Skat liegt, verrät die Oma (`can_take_from_skat`). Hebel: Hand plus Trumpf. Nur Alleinspieler.
+- **Oma** (`granny`, `SeriesSkatSwap`): Ein gedrückter Bube lässt sich im echten Skat nicht sinnvoll zurücknehmen, weil der Spieler beim Drücken alles sieht. Umgesetzt als: Einmal pro Serie darf der Spieler in einem Handspiel vor seiner ersten Karte einen Buben aus dem Skat nehmen und dafür eine Karte drücken; das Spiel bleibt Hand. Ob ein Bube im Skat liegt, verrät die Oma (`can_take_from_skat`), seit M5 auch welcher (`skat_swap_cards`). Hebel: Hand plus Trumpf. Nur Alleinspieler.
+- **Opa** (`grandpa`, M5, `SeriesSkatSwap` für Daus): wie die Oma, aber ein Daus aus dem Skat. Oma und Opa zusammen geben zwei Täusche pro Serie, je einen (4.4).
 - **Schiedsrichter** (`referee`, `NoCheating`): schaltet die Boss-Regeln ab, die als Schummeln markiert sind: Zwillinge und Revolutionär.
 - **Angeber** (`show_off`, `RequireOuvert` plus eine Stufe bei Ouvert): Für den Alleinspieler hieße „immer Ouvert“ immer Schwarz angesagt, das wäre Selbstmord. Deshalb nur im Pool des Nullspielers (Null Ouvert und Null Ouvert Hand).
 - **Stammgast** (`regular_guest`, Zähler `regular` plus `MultiplyGameValue(2)` ab 4): Hebel Spielwert. Der Multiplikator fürs Spätspiel, wer ihn früh kauft, wartet zwei Abende. Nur gewonnene Spiele zählen doppelt.
-- **Schneider** (`tailor`, `SchneiderFromDeclarerPoints(80, 89)`): Hebel Schneider, ein Wortspiel mit dem Handwerk. Nur Alleinspieler. Statt der zuerst geplanten Figur „Der Opa“ (wie die Oma, aber ein Daus aus dem Skat): Der Kern merkt sich nur einen `SeriesSkatSwap`-Filter, Oma und Opa zusammen würden sich gegenseitig aufheben (Auftrag an `core-dev`).
+- **Schneider** (`tailor`, `SchneiderFromDeclarerPoints(80, 89)`): Hebel Schneider, ein Wortspiel mit dem Handwerk. Nur Alleinspieler. Er kam statt des zuerst geplanten Opa, den der Kern in M4 nicht neben der Oma tragen konnte; seit M5 gibt es beide.
 - **Zähler** (`card_counter`, `ShowCount`): zeigt Augen beider Seiten aus den Stichen (plus den Skat, sobald der Spieler ihn kennt) und die Summe der Karten, die der Spieler noch nicht gesehen hat. Der Talon zählt dazu, weil niemand weiß, welche Karten dort liegen; so verrät der Zähler nie mehr als ein perfekter Mitzähler weiß.
 
 ### 8.3 Verbrauchsgegenstände
@@ -385,6 +400,8 @@ Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschal
 - Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Kein Konto, kein Server-Speicher.
 
 **Umgesetzt in M4.** Freischaltungen stehen in `core/content/unlocks.ron` (Bedingung und Belohnung). Jedes Relikt und jeder Charakter, der dort als Belohnung steht, ist bis dahin gesperrt. Der Meta-Zustand (`MetaState`: verdiente Freischaltungen, Statistik) ist ein eigenes, serialisierbares Objekt neben dem Run; er lernt aus den Ereignissen des Runs (auch aus den bereinigten Spieler-Ereignissen) und erzeugt den Start eines Runs mit den gesperrten Relikten. Anfangs gesperrt sind 15 von 31 Hausregeln und Figuren (Durchmarsch, Tournee, Jungfrau, Ouvert-Bonus, Kontra, Wirt, Oma, Schiedsrichter, dazu aus M4 Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider) und der Nullspieler. Die sieben Hausregeln und Figuren nur für den Nullspieler sind nicht gesperrt.
+
+Seit M5 kann eine Freischaltung auch eine Kartenmodifikation belohnen (`Reward::CardMod`): Bis dahin ziehen Stempelkissen und Ereignisse sie nicht zufällig. Noch nutzt kein Inhalt das. Die Sicht der Freischaltungen nennt jede Belohnung mit Art (Hausregel, Figur, Modifikation, Charakter), Name und Seltenheit (`reward_info`).
 
 Erreichbarkeit (`skat_sim --seed 42 --runs 3000 --unlocks`: 20 Folgen mit frischem Meta-Zustand, der Bot spielt Alleinspieler und nach der Freischaltung jeden zweiten Run Nullspieler):
 
@@ -476,7 +493,7 @@ Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander 
 **Umgesetzt in M4** (`bosses.ron`), Auslegungen von Claude am 01.11.2026:
 
 - **Zwillinge** (`DefendersSeeEachOther`): Die Gegner-KI kennt die Hand des Partners. Gilt als Schummeln.
-- **Ramscher** (`RamschOnce`): Das erste Spiel der Boss-Serie ist ein Ramsch: niemand sagt an, nicht passbar, Buben sind Trumpf wie im Grand, jeder spielt für sich, der Skat geht an den Gewinner des letzten Stichs. Eigene Wertung: Grundwert = Augen dessen mit den meisten Augen, eine Stufe, +1 „Jungfrau“, wenn ein Spieler keinen Stich hat. Hat der Spieler nicht die meisten Augen (bei Gleichstand verliert er), gewinnt er den Spielwert, sonst −2 × Spielwert.
+- **Ramscher** (`RamschOnce`): Das erste Spiel der Boss-Serie ist ein Ramsch: niemand sagt an, nicht passbar, Buben sind Trumpf wie im Grand, jeder spielt für sich, der Skat geht an den Gewinner des letzten Stichs. Eigene Wertung: Grundwert = Augen dessen mit den meisten Augen, eine Stufe, +1 „Jungfrau“, wenn ein Spieler keinen Stich hat. Hat der Spieler nicht die meisten Augen (bei Gleichstand verliert er), gewinnt er den Spielwert, sonst −2 × Spielwert. Seit M5 nennen Abrechnung (`ScoreBreakdown.seats`) und Spielende (`GameFinished.seats`) Augen und Stiche jedes Platzes, die Sicht die Stiche pro Platz (`seat_tricks`) und mit dem Zähler die Augen pro Platz (`count.seats`), damit die Oberfläche zeigen kann, wer die meisten Augen hat.
 - **Revolutionär** (`SwapDefenderHands` nach dem 5. Stich): Die Gegner tauschen die Hände. Gilt als Schummeln.
 - **Schwarzer Peter** (`MultiplyGameValue(0)`, wenn gewonnen ohne Schneider). Nur Alleinspieler.
 - **Kiebitz-Mörder** (`DisableInformation`): Kiebitz, Zähler und „Durchsichtig“ sind aus.
@@ -518,8 +535,8 @@ Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 **Umgesetzt in M4** (`core/content/encounters.ron`, Begriff im Code `Encounter`, weil `Event` die Zustandsereignisse sind). Nach einer gewonnenen Serie (nicht nach der letzten) kommt mit der Wahrscheinlichkeit `encounter_chance` aus `run.ron` (Platzhalter 0,2 für `balance`) ein Ereignis statt des Tresens, gezogen nach `weight`. Es bietet Optionen an (`EncounterOption`, immer zuletzt „Weitergehen“), der Spieler wählt mit `RunAction::ChooseEncounter`, danach beginnt sofort die nächste Serie.
 
 - **Stammtisch-Streit**: drei Hausregeln zur Wahl (freigeschaltet, nicht im Besitz, für den Charakter). Die gewählte gilt bis zum Ende des Abschnitts („Abend“) ohne Platz zu belegen.
-- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters.
-- **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein zufälliges anderes getauscht.
+- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
+- **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein anderes getauscht. Seit M5 wird das neue Relikt gezogen, wenn das Ereignis aufgeht, und jede Option nennt es (`SwapRelic.new`, in der Sicht `new_relic`). Bei Spielständen von vorher ist es weiter zufällig, und die Option sagt das (`random_gain`).
 - **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einpassen verschenkt es nicht.
 
 Gemessen (3 × 1000 Runs): etwa 0,45 Ereignisse pro Run; der Bot nimmt Hausregel und Gratis-Karte immer, tauscht schwache Relikte und lehnt die Letzte Runde ab.

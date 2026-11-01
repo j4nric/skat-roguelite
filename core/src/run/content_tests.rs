@@ -747,12 +747,16 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
         .filter(|m| m.characters == vec![Character::NullPlayer])
         .count();
     assert!(null_mods >= 5, "{null_mods}");
-    let curses = content
+    let curses: Vec<&str> = content
         .card_mods
         .values()
-        .filter(|m| m.text.starts_with("Fluch"))
-        .count();
-    assert_eq!(curses, 3);
+        .filter(|m| m.curse)
+        .map(|m| m.id.as_str())
+        .collect();
+    assert_eq!(curses, ["battered", "beer_stain", "black_cat", "cracked"]);
+    for def in content.card_mods.values() {
+        assert_eq!(def.curse, def.text.starts_with("Fluch"), "{}", def.id);
+    }
     for def in content.card_mods.values() {
         assert!(!def.name.is_empty() && !def.text.is_empty() && def.price > 0);
     }
@@ -1140,17 +1144,35 @@ fn beer_stain_costs_five_augen_but_shows_the_holder() {
     assert_eq!(resolved.cards[0].card_points, 0);
 }
 
+/// Attach a modification the way the run does (Stempelkissen, Ereignis)
+/// and return the events.
+fn attach(run: &mut Run, content: &Content, card: u32, card_mod: &str) -> Vec<RunEvent> {
+    let mut events = Vec::new();
+    run.attach_mod(content, card, CardModId::new(card_mod), &mut events)
+        .expect("attach");
+    events
+}
+
 #[test]
-fn a_cracked_card_never_wins_but_counts_five_more() {
+fn a_cracked_card_never_wins_and_pays_three_groschen() {
     let content = content();
     let run = card_mod_run(&content, 22, "cracked");
     let resolved = resolve_deck(&run.deck, &content, &[]);
     let king = resolved.cards[22];
     let seven = resolved.cards[16];
     assert!(king.never_wins);
-    assert_eq!(king.card_points, 9);
+    assert_eq!(king.card_points, 4);
     // The SK cannot even take a led S7.
     assert!(!crate::rules::beats(GameType::Grand, seven, seven, king));
+    let mut run = relic_run(&content, &[]);
+    let coins = run.coins();
+    let events = attach(&mut run, &content, 22, "cracked");
+    assert_eq!(run.coins(), coins + 3);
+    assert!(events.contains(&RunEvent::CoinsGained {
+        source: mod_source("cracked", 22),
+        amount: 3,
+        coins: coins + 3,
+    }));
 }
 
 #[test]
@@ -1166,7 +1188,11 @@ fn black_cat_lowers_the_base_value_when_its_suit_is_trump() {
     assert_eq!(b.base_value, 6);
     let run = card_mod_run(&content, 7, "black_cat");
     let resolved = resolve_deck(&run.deck, &content, &[]);
-    assert_eq!(resolved.cards[7].rank_bonus, 1);
+    assert_eq!(resolved.cards[7].rank_bonus, 0);
+    let mut run = relic_run(&content, &[]);
+    let coins = run.coins();
+    attach(&mut run, &content, 7, "black_cat");
+    assert_eq!(run.coins(), coins + 3);
     let run = declared_with_mod_on_trump_ace(&content, "black_cat", GameType::Grand);
     assert!(run.game().expect("game").lines.is_empty());
 }

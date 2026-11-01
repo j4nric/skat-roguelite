@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::RunEvent;
 use crate::deck::DealtCard;
 use crate::game::{CompletedTrick, Event, Seat};
-use crate::rules::{Declaration, GameValue, Matadors, Outcome};
+use crate::rules::{Declaration, GameValue, Matadors, Outcome, SeatTotals};
 
 /// A run event as the player may see it.
 pub type PlayerEvent = RunEvent<PlayerGameEvent>;
@@ -100,6 +100,9 @@ pub enum PlayerGameEvent {
         matadors: Matadors,
         /// The game value by the rules.
         value: GameValue,
+        /// Augen and tricks per seat.
+        #[serde(default)]
+        seats: SeatTotals,
     },
 }
 
@@ -141,10 +144,12 @@ impl PlayerGameEvent {
                 outcome,
                 matadors,
                 value,
+                seats,
             } => PlayerGameEvent::GameFinished {
                 outcome,
                 matadors,
                 value,
+                seats,
             },
         }
     }
@@ -182,6 +187,15 @@ impl RunEvent {
             RunEvent::CounterRaised { counter, value } => {
                 RunEvent::CounterRaised { counter, value }
             }
+            RunEvent::CoinsGained {
+                source,
+                amount,
+                coins,
+            } => RunEvent::CoinsGained {
+                source,
+                amount,
+                coins,
+            },
             RunEvent::GameScored {
                 breakdown,
                 series_score,

@@ -30,12 +30,15 @@
 //! skat (the two most exposed cards go into it).
 //!
 //! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
-//! of a Stammtisch-Streit, the free card of the Kartengeber, a swap of the
-//! weakest relic when it is worth less than an average one, never the
+//! of a Stammtisch-Streit, the free card of the Kartengeber, a swap for a
+//! relic worth at least [`SWAP_MARGIN`] more (or, in saves where the new
+//! relic is unknown, of a relic worth less than an average one), never the
 //! double stakes of "Letzte Runde".
 //!
-//! Figure "Die Oma": in a hand game the bot takes the jack from the skat
-//! whenever it may, giving away its cheapest side card.
+//! Figures "Die Oma" and "Der Opa": in a hand game the bot takes the card
+//! the run offers from the skat whenever it may, giving away its cheapest
+//! side card. It never discards a card that must not be discarded
+//! ("Ramponiert") while it has others.
 //!
 //! The bot never looks at the Zielwert or the series account. The
 //! simulator's success curve (`--curve`) relies on that.
@@ -90,7 +93,11 @@ use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
 /// | `safety_net` | 6 | Null: +1 level for a won Null with the skat, the bot's usual Null |
 /// | `fat_sow` | 4 | Null: aces 16 Augen, more Kurzschluss |
 /// | `glass_house` | 2 | Null: the bot rarely plays Null Ouvert |
-pub const RELIC_VALUES: [(&str, u32); 31] = [
+/// | `grandpa` | 4 | a Daus from the skat in hand games, like `granny` |
+/// | `with_four` | 3 | +1 level with mit or ohne 4, about one game in ten |
+/// | `seven_sleeper` | 6 | Null: +5 Grundwert, the Null deck has eight sevens |
+/// | `clean_slate` | 3 | Null: +2 levels when never following suit, rare |
+pub const RELIC_VALUES: [(&str, u32); 35] = [
     ("bock_round", 10),
     ("old_lady", 9),
     ("concede", 8),
@@ -122,6 +129,10 @@ pub const RELIC_VALUES: [(&str, u32); 31] = [
     ("safety_net", 6),
     ("fat_sow", 4),
     ("glass_house", 2),
+    ("grandpa", 4),
+    ("with_four", 3),
+    ("seven_sleeper", 6),
+    ("clean_slate", 3),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
@@ -325,9 +336,17 @@ impl RunBot {
             let value = match &option.choice {
                 EncounterChoice::TakeRule(id) => relic_value(id) + 1,
                 EncounterChoice::MarkRandomCard => 1,
-                EncounterChoice::SwapRelic { relic, .. }
-                    if relic_value(relic) < DEFAULT_RELIC_VALUE =>
-                {
+                // The relic received is known: swap for a clearly better one.
+                EncounterChoice::SwapRelic {
+                    relic,
+                    new: Some(new),
+                    ..
+                } if relic_value(new) >= relic_value(relic) + SWAP_MARGIN => {
+                    relic_value(new) - relic_value(relic)
+                }
+                EncounterChoice::SwapRelic {
+                    relic, new: None, ..
+                } if relic_value(relic) < DEFAULT_RELIC_VALUE => {
                     DEFAULT_RELIC_VALUE - relic_value(relic)
                 }
                 _ => 0,
@@ -526,16 +545,18 @@ impl RunBot {
             Phase::Discarding => {
                 let declaration = game.declaration()?;
                 let hand = game.hand(Seat::DECLARER);
-                let [a, b] = if declaration.is_null() {
-                    declarer.choose_null_discard(hand, game.deck_cards())?
-                } else {
-                    declarer.choose_discard(hand, declaration.game())?
-                };
+                let [a, b] = Self::discard(hand, |cards| {
+                    if declaration.is_null() {
+                        declarer.choose_null_discard(cards, game.deck_cards())
+                    } else {
+                        declarer.choose_discard(cards, declaration.game())
+                    }
+                })?;
                 Some(RunAction::Discard([a.id, b.id]))
             }
             Phase::Playing => {
-                if active.rules.skat_swap.is_some() {
-                    if let Some(action) = Self::take_jack(run, content) {
+                if !active.rules.skat_swaps.is_empty() {
+                    if let Some(action) = Self::take_from_skat(run, content) {
                         return Some(action);
                     }
                 }
@@ -547,8 +568,30 @@ impl RunBot {
         }
     }
 
-    /// "Die Oma": give the cheapest side card for the skat's jack.
-    fn take_jack(run: &Run, content: &Content) -> Option<RunAction> {
+    /// The two discards: chosen by `choose` among the cards that may be
+    /// discarded ("Ramponiert" stays in the hand); only if fewer than two
+    /// are left, the rest is filled from the others.
+    fn discard(
+        hand: &[DealtCard],
+        choose: impl Fn(&[DealtCard]) -> Option<[DealtCard; 2]>,
+    ) -> Option<[DealtCard; 2]> {
+        let free: Vec<DealtCard> = hand.iter().copied().filter(|c| !c.no_discard()).collect();
+        if free.len() >= 2 {
+            return choose(&free);
+        }
+        let mut chosen = free;
+        let bound: Vec<DealtCard> = hand.iter().copied().filter(|c| c.no_discard()).collect();
+        let fill = choose(&bound).map_or_else(|| bound.clone(), |pair| pair.to_vec());
+        chosen.extend(fill.into_iter().take(2 - chosen.len()));
+        match chosen[..] {
+            [a, b] => Some([a, b]),
+            _ => None,
+        }
+    }
+
+    /// Skat swaps ("Die Oma", "Der Opa"): give the cheapest side card for
+    /// the card the run offers first.
+    fn take_from_skat(run: &Run, content: &Content) -> Option<RunAction> {
         let active = run.game()?;
         let game = &active.game;
         let trump = game.declaration()?.game();
@@ -556,9 +599,12 @@ impl RunBot {
             .hand(Seat::DECLARER)
             .iter()
             .copied()
-            .filter(|&c| !crate::rules::is_trump(trump, c))
+            .filter(|&c| !crate::rules::is_trump(trump, c) && !c.no_discard())
             .min_by_key(|c| (c.card_points(), c.face().map(|f| f.rank)))?;
-        let action = RunAction::TakeFromSkat { give: give.id };
+        let action = RunAction::TakeFromSkat {
+            give: give.id,
+            take: None,
+        };
         run.accepts(content, action.clone()).then_some(action)
     }
 

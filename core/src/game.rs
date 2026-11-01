@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cards::{Card, PlayingCard, standard_deck};
 use crate::rng::Rng;
-use crate::rules::{self, Declaration, GameValue, Matadors, NullStyle, Outcome};
+use crate::rules::{self, Declaration, GameValue, Matadors, NullStyle, Outcome, SeatTotals};
 
 /// Cards each seat receives when dealing.
 pub const HAND_SIZE: usize = 10;
@@ -231,6 +231,9 @@ pub enum Event<C = Card> {
         matadors: Matadors,
         /// The resulting game value.
         value: GameValue,
+        /// Augen and tricks per seat (who has the most Augen in a Ramsch).
+        #[serde(default)]
+        seats: SeatTotals,
     },
 }
 
@@ -276,6 +279,12 @@ pub enum GameError<C = Card> {
     /// The card to take is not in the skat, or the skat may not be
     /// touched (no hand game, or play has begun).
     InvalidSkatSwap,
+    /// The card must not be discarded ("Ramponiert") while another card
+    /// could go into the skat instead.
+    DiscardForbidden {
+        /// The rejected card.
+        card: C,
+    },
 }
 
 impl<C: fmt::Display> fmt::Display for GameError<C> {
@@ -295,6 +304,7 @@ impl<C: fmt::Display> fmt::Display for GameError<C> {
             GameError::InvalidDeal => f.write_str("invalid deal"),
             GameError::TrickInProgress => f.write_str("a trick is in progress"),
             GameError::InvalidSkatSwap => f.write_str("the skat cannot be swapped with"),
+            GameError::DiscardForbidden { card } => write!(f, "{card} must not be discarded"),
         }
     }
 }
@@ -780,6 +790,14 @@ impl<C: PlayingCard> Game<C> {
         if cards[0] == cards[1] || !hand.contains(&cards[0]) || !hand.contains(&cards[1]) {
             return Err(GameError::InvalidDiscard { cards });
         }
+        if !rules::valid_discard(hand, cards) {
+            let card = if cards[0].no_discard() {
+                cards[0]
+            } else {
+                cards[1]
+            };
+            return Err(GameError::DiscardForbidden { card });
+        }
         self.hands[Seat::DECLARER.index()].retain(|c| !cards.contains(c));
         self.skat = cards;
         self.phase = Phase::Playing;
@@ -901,6 +919,11 @@ impl<C: PlayingCard> Game<C> {
                 card: gave,
             });
         }
+        // What goes into the skat is discarded: "Ramponiert" only if every
+        // card of the hand is.
+        if gave.no_discard() && self.hand(Seat::DECLARER).iter().any(|c| !c.no_discard()) {
+            return Err(GameError::DiscardForbidden { card: gave });
+        }
         let hand = &mut self.hands[Seat::DECLARER.index()];
         hand.retain(|&c| c != gave);
         hand.push(took);
@@ -928,6 +951,7 @@ impl<C: PlayingCard> Game<C> {
             outcome,
             matadors,
             value,
+            seats: self.seat_totals(),
         }
     }
 
@@ -970,6 +994,16 @@ impl<C: PlayingCard> Game<C> {
             points[0] += conceded;
         }
         points
+    }
+
+    /// Augen and tricks per seat so far ([`Game::seat_card_points`],
+    /// [`Game::seat_tricks`]).
+    #[must_use]
+    pub fn seat_totals(&self) -> SeatTotals {
+        SeatTotals {
+            card_points: self.seat_card_points(),
+            tricks: self.seat_tricks(),
+        }
     }
 
     /// Tricks per seat so far, conceded tricks included.

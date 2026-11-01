@@ -28,13 +28,16 @@ pub enum Stage {
     OnScore,
     /// After a series was won (no game in progress).
     OnSeriesWon,
+    /// When a card modification is attached to a card (no game in
+    /// progress). Card modifications only.
+    OnAttach,
 }
 
 impl Stage {
     /// Whether a game is in progress at this stage.
     #[must_use]
     pub const fn in_game(self) -> bool {
-        !matches!(self, Stage::OnSeriesWon)
+        !matches!(self, Stage::OnSeriesWon | Stage::OnAttach)
     }
 
     /// Whether this stage comes before the result is known, so that it may
@@ -103,6 +106,15 @@ pub enum Hook {
         /// Effects, applied in order.
         then: Vec<Effect>,
     },
+    /// When the card modification is attached to a card ("beim Erhalt").
+    /// Card modifications only.
+    OnAttach {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
 }
 
 impl Hook {
@@ -116,6 +128,7 @@ impl Hook {
             Hook::OnTrickEnd { .. } => Stage::OnTrickEnd,
             Hook::OnScore { .. } => Stage::OnScore,
             Hook::OnSeriesWon { .. } => Stage::OnSeriesWon,
+            Hook::OnAttach { .. } => Stage::OnAttach,
         }
     }
 
@@ -128,7 +141,8 @@ impl Hook {
             | Hook::OnCardPlayed { when, .. }
             | Hook::OnTrickEnd { when, .. }
             | Hook::OnScore { when, .. }
-            | Hook::OnSeriesWon { when, .. } => when,
+            | Hook::OnSeriesWon { when, .. }
+            | Hook::OnAttach { when, .. } => when,
         }
     }
 
@@ -141,7 +155,8 @@ impl Hook {
             | Hook::OnCardPlayed { then, .. }
             | Hook::OnTrickEnd { then, .. }
             | Hook::OnScore { then, .. }
-            | Hook::OnSeriesWon { then, .. } => then,
+            | Hook::OnSeriesWon { then, .. }
+            | Hook::OnAttach { then, .. } => then,
         }
     }
 }
@@ -250,8 +265,10 @@ pub enum Effect {
     /// Lever Spitzen and Hand: once per series, in a hand game before the
     /// first card, the player may take a card matching the filter from the
     /// untouched skat into his hand and put one of his cards in its place.
-    /// The game stays a hand game (figure "Die Oma", jacks). Whether such a
-    /// card lies in the skat is what the figure tells. Passive only.
+    /// The game stays a hand game (figure "Die Oma", jacks; "Der Opa",
+    /// aces). Whether such a card lies in the skat is what the figure
+    /// tells. Several of them add up: each grants its own swap per series.
+    /// Passive only.
     SeriesSkatSwap(CardFilter),
     /// Boss rules marked as cheating ([`Effect::is_cheat`]) do not apply
     /// (figure "Der Schiedsrichter"). Passive only.
@@ -274,6 +291,22 @@ pub enum Effect {
     /// Every information effect ([`Effect::is_information`]) is off,
     /// also "Durchsichtig" (boss "Der Kiebitz-Mörder"). Passive only.
     DisableInformation,
+    /// Lever Groschen: the player gains this many Groschen (fewer if
+    /// negative, never below 0). In every stage but `Passive`: on score,
+    /// after a won series, or on a card modification when it is attached
+    /// ("Ramponiert": a curse that pays).
+    GainCoins(i32),
+    /// Lever Gewinnschwelle (curse "Ramponiert"): this card must not be
+    /// discarded while two other cards could go into the skat (see
+    /// [`crate::rules::valid_discard`]). Card modifications only, passive
+    /// only.
+    NoDiscard,
+    /// Lever Stichgewinn and Bedienpflicht ("Bube ehrenhalber"): in a suit
+    /// game this card is a trump half a step below the Karo-Bube, follows
+    /// trump leads and no longer its printed suit. It is no Spitze. Grand,
+    /// Null and Ramsch keep the printed card (DESIGN 4.4). Card
+    /// modifications only, passive only.
+    HonoraryJack,
 }
 
 impl Effect {
@@ -298,10 +331,13 @@ impl Effect {
                 matches!(stage, Stage::Passive | Stage::OnDeal)
             }
             Effect::Concede => stage == Stage::OnTrickEnd,
-            Effect::SetFlag(_) | Effect::ClearFlag(_) | Effect::IncrementCounter(_) => {
-                stage != Stage::Passive
-            }
+            Effect::SetFlag(_)
+            | Effect::ClearFlag(_)
+            | Effect::IncrementCounter(_)
+            | Effect::GainCoins(_) => stage != Stage::Passive,
             Effect::NeverWins
+            | Effect::NoDiscard
+            | Effect::HonoraryJack
             | Effect::ShowCount
             | Effect::ShopDiscount(_)
             | Effect::SeriesSkatSwap(_)
@@ -345,6 +381,8 @@ impl Effect {
                 | Effect::RankBonus(_)
                 | Effect::RevealHolder
                 | Effect::NeverWins
+                | Effect::NoDiscard
+                | Effect::HonoraryJack
         )
     }
 }
@@ -434,6 +472,24 @@ pub enum Condition {
     /// The declarer took no trick yet (in a won Null game: none at all).
     /// During play and on score.
     NoTrickTaken,
+    /// Null style: a Null game in which the declarer has played a seven
+    /// in a trick he did not take, at least once so far ("mit einer Sieben
+    /// unterlaufen", see [`crate::rules::NullStyle`]). During play and on
+    /// score.
+    SevenDucked,
+    /// Null style: a Null game in which the declarer has never had to
+    /// follow suit to another seat's lead so far. During play and on
+    /// score.
+    NeverFollowedSuit,
+    /// The declarer's Spitzen are "mit" (`with: true`) or "ohne" and at
+    /// least `count` (suit games and grand; never in Null or Ramsch). From
+    /// the declaration on.
+    MatadorsAtLeast {
+        /// "mit" or "ohne".
+        with: bool,
+        /// Minimum number of Spitzen.
+        count: u32,
+    },
 }
 
 impl Condition {
@@ -472,9 +528,15 @@ impl Condition {
                 stage,
                 Stage::OnDeclare | Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
             ),
-            Condition::NoTrickTaken => matches!(
+            Condition::NoTrickTaken | Condition::SevenDucked | Condition::NeverFollowedSuit => {
+                matches!(
+                    stage,
+                    Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+                )
+            }
+            Condition::MatadorsAtLeast { .. } => matches!(
                 stage,
-                Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+                Stage::OnDeclare | Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
             ),
         }
     }

@@ -311,6 +311,20 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         false
     }
 
+    /// Whether this card is a "Bube ehrenhalber": in a suit game it is a
+    /// trump just below the Karo-Bube, whatever its printed suit (see
+    /// [`crate::rules::trump_strength`]). It is no Spitze. `false` for
+    /// plain cards.
+    fn honorary_jack(self) -> bool {
+        false
+    }
+
+    /// Whether this card must not be discarded ("Ramponiert", see
+    /// [`crate::rules::valid_discard`]). `false` for plain cards.
+    fn no_discard(self) -> bool {
+        false
+    }
+
     /// The printed card, `None` for a blank.
     fn face(self) -> Option<Card> {
         self.kind().face()
