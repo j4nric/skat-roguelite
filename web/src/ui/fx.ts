@@ -1,5 +1,6 @@
 // Visual effects with the Web Animations API: cards flying in, tricks
-// moving to the winner, dealing, number count-ups. Every effect respects
+// sliding off towards the winner, dealing (a little different each time),
+// cards turning over, number count-ups. Every effect respects
 // the tempo setting and prefers-reduced-motion, and can be finished at
 // once (a tap hurries the table). Effects never change what is shown,
 // only how it gets there.
@@ -49,8 +50,11 @@ function center(r: DOMRect): { x: number; y: number } {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
-/** Animate `el` from the place of `from` into its own place. */
-export function flyIn(el: Element, from: DOMRect, opts: { ms?: number; delay?: number; rotate?: number } = {}): Animation | null {
+/**
+ * Animate `el` from the place of `from` into its own place. `arc` bends the
+ * path sideways by that many px at its middle (a card thrown, not slid).
+ */
+export function flyIn(el: Element, from: DOMRect, opts: { ms?: number; delay?: number; rotate?: number; arc?: number } = {}): Animation | null {
   const duration = dur(opts.ms ?? 280);
   if (!duration) return null;
   const to = el.getBoundingClientRect();
@@ -59,49 +63,106 @@ export function flyIn(el: Element, from: DOMRect, opts: { ms?: number; delay?: n
   const b = center(to);
   const scale = Math.max(0.2, Math.min(2, from.width / to.width));
   const rotate = opts.rotate ?? 0;
-  return track(
-    el.animate(
-      [
-        { transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) scale(${scale}) rotate(${rotate}deg)`, opacity: 0.85 },
-        { transform: 'none', opacity: 1 },
-      ],
-      { duration, delay: dur(opts.delay ?? 0), easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' },
-    ),
-  );
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const frames: Keyframe[] = [{ transform: `translate(${dx}px, ${dy}px) scale(${scale}) rotate(${rotate}deg)`, opacity: 0.85 }];
+  if (opts.arc) {
+    const len = Math.hypot(dx, dy) || 1;
+    const mx = dx / 2 + (-dy / len) * opts.arc;
+    const my = dy / 2 + (dx / len) * opts.arc;
+    frames.push({ transform: `translate(${mx}px, ${my}px) scale(${(scale + 1) / 2}) rotate(${rotate / 3}deg)`, opacity: 1, offset: 0.55 });
+  }
+  frames.push({ transform: 'none', opacity: 1 });
+  return track(el.animate(frames, { duration, delay: dur(opts.delay ?? 0), easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' }));
 }
 
-/** Move elements towards `to`, shrinking and fading; resolves when done. */
-export async function flyAway(els: Element[], to: DOMRect, ms = 340): Promise<void> {
+/** A random number in [-n, n]: cosmetic only (Math.random, never the core's RNG). */
+function jitter(n: number): number {
+  return (Math.random() * 2 - 1) * n;
+}
+
+/**
+ * Deal: cards fly in from the deck, one after another. Every deal looks a
+ * little different: the start point, the spin, the curve of the path and
+ * the rhythm vary at random (cosmetic, no game state).
+ */
+export function deal(cards: Element[], from: DOMRect, opts: { step?: number; ms?: number; onCard?: (i: number) => void } = {}): void {
+  if (!motionOn()) return;
+  const step = opts.step ?? 45;
+  const ms = opts.ms ?? 300;
+  let at = 0;
+  cards.forEach((el, i) => {
+    const start = new DOMRect(from.x + jitter(9), from.y + jitter(7), from.width, from.height);
+    const anim = flyIn(el, start, { ms: ms * (0.85 + Math.random() * 0.4), delay: at, rotate: jitter(40), arc: jitter(28) });
+    if (anim && opts.onCard) {
+      const cb = opts.onCard;
+      window.setTimeout(() => cb(i), dur(at));
+    }
+    // Uneven rhythm, like a hand that deals: now and then a short pause.
+    at += step * (0.6 + Math.random() * 0.8) + (i % 3 === 2 ? step * Math.random() : 0);
+  });
+}
+
+/**
+ * A finished trick leaves the table towards the seat that took it: the
+ * cards close up on the middle card, then slide off together to `to` (a
+ * point beyond the edge of the table on the winner's side), turning a
+ * little and fading at the end. Resolves when done.
+ */
+export async function sweepAway(els: Element[], to: { x: number; y: number }, ms = 460): Promise<void> {
   const duration = dur(ms);
   if (!duration || !els.length) return;
-  const b = center(to);
+  const rects = els.map((el) => el.getBoundingClientRect());
+  const mid = rects[Math.floor(rects.length / 2)] ?? rects[0];
+  if (!mid) return;
+  const g = center(mid);
+  const spin = to.x < g.x - 20 ? -1 : to.x > g.x + 20 ? 1 : 0;
   const anims = els.map((el, i) => {
-    const r = el.getBoundingClientRect();
+    const r = rects[i] ?? mid;
     const a = center(r);
+    const gx = g.x - a.x + (i - 1) * 3;
+    const gy = g.y - a.y + (i - 1) * 2;
+    const tilt = jitter(7);
+    const last = spin * 18 + jitter(10);
     return track(
       el.animate(
         [
-          { transform: 'none', opacity: 1 },
-          { transform: `translate(${b.x - a.x}px, ${b.y - a.y}px) scale(0.35) rotate(${(i - 1) * 8}deg)`, opacity: 0.2 },
+          // Close up quickly, then slide off with growing speed.
+          { transform: 'none', opacity: 1, easing: 'cubic-bezier(.2,.7,.3,1)' },
+          { transform: `translate(${gx}px, ${gy}px) rotate(${tilt}deg)`, opacity: 1, offset: 0.26, easing: 'cubic-bezier(.5,0,.85,.5)' },
+          { transform: `translate(${gx + to.x - g.x}px, ${gy + to.y - g.y}px) rotate(${last}deg)`, opacity: 0.15 },
         ],
-        { duration, delay: i * dur(30), easing: 'cubic-bezier(.5,0,.75,.4)', fill: 'forwards' },
+        { duration, delay: i * dur(20), fill: 'forwards' },
       ),
     );
   });
   await Promise.all(anims.map((a) => a.finished.catch(() => undefined)));
 }
 
-/** Deal: cards fly in from the deck, one after another. */
-export function deal(cards: Element[], from: DOMRect, opts: { step?: number; ms?: number; onCard?: (i: number) => void } = {}): void {
-  if (!motionOn()) return;
-  const step = opts.step ?? 45;
-  cards.forEach((el, i) => {
-    const anim = flyIn(el, from, { ms: opts.ms ?? 300, delay: i * step, rotate: -25 + ((i * 37) % 50) });
-    if (anim && opts.onCard) {
-      const cb = opts.onCard;
-      window.setTimeout(() => cb(i), dur(i * step));
-    }
-  });
+/**
+ * Turn a card over: it narrows to an edge showing `back` (HTML of a card
+ * back laid over it), and widens again with its face. Plain 2D, so it
+ * looks the same in every browser.
+ */
+export function flip(el: HTMLElement, back: string, opts: { ms?: number; delay?: number } = {}): void {
+  const duration = dur(opts.ms ?? 320);
+  if (!duration) return;
+  const delay = dur(opts.delay ?? 0);
+  const cover = document.createElement('span');
+  cover.className = 'flip-cover';
+  cover.setAttribute('aria-hidden', 'true');
+  cover.innerHTML = back;
+  el.appendChild(cover);
+  track(
+    el.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0.04)', offset: 0.5 }, { transform: 'scaleX(1)' }], {
+      duration,
+      delay,
+      easing: 'ease-in-out',
+    }),
+  );
+  const hide = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }], { duration, delay, fill: 'both' }));
+  const gone = (): void => cover.remove();
+  hide.finished.then(gone, gone);
 }
 
 /**

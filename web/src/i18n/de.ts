@@ -265,7 +265,9 @@ export const de = {
     declareTitle: 'Ansage',
     choiceTitle: 'Skat oder Hand?',
     pickUpSkat: 'Skat aufnehmen',
-    pickUpSkatHint: 'Zwei Karten aufnehmen, zwei drücken, dann ansagen.',
+    pickUpSkatHint: 'Du nimmst die zwei Karten des Skats auf, legst zwei Karten zurück auf den Tisch (Drücken) und sagst dann an. Gedrückte Augen zählen für dich.',
+    /** Info card of the skat pile while choosing; tap = pick up. */
+    pickUpSkatTap: 'Antippen nimmt den Skat auf.',
     playHand: 'Hand spielen',
     playHandHint: 'Der Skat bleibt liegen. Das Spiel zählt eine Stufe mehr.',
     handTitle: 'Handspiel ansagen',
@@ -276,7 +278,19 @@ export const de = {
     gameType: 'Spielart',
     risk: 'Risikostufe',
     declare: 'Ansagen',
-    pass: 'Einpassen ({left})',
+    pass: 'Einmischen ({left})',
+    /** Caption under the deck while choosing Skat oder Hand. */
+    mix: 'Einmischen',
+    /** Shown in the middle while the deck is dragged (or after one tap on it). */
+    mixHere: 'Hier einmischen',
+    mixArmed: 'Zieh den Stapel in die Mitte oder tippe auf „Einmischen“.',
+    mixHint: 'Du lässt dieses Blatt aus: Die Karten werden eingemischt und neu gegeben. Kostet ein Spiel der Serie, aber keine Punkte. Wie oft das geht, ist begrenzt.',
+    mixHow: 'Zieh den Stapel in die Mitte, oder tippe ihn an und bestätige.',
+    redrawHint: 'Neu geben, ohne ein Spiel der Serie zu verbrauchen. Du bekommst ein neues Blatt.',
+    choiceKind: 'Skat oder Hand',
+    skatZone: 'Skat zum Drücken',
+    skatZoneCount: 'Skat · {n} von 2',
+    backToHand: '{card}, zurück auf die Hand',
     redraw: 'Schieben ({left})',
     handRequired: 'Der Boss verlangt ein Handspiel.',
     ouvertRequired: 'Der Angeber verlangt Ouvert.',
@@ -305,8 +319,8 @@ export const de = {
     pendingSchnapsMul: '{name}: Dieses Spiel zählt ×{factor}',
     pendingSchnapsLoss: '{name}: Verloren zählt dieses Spiel einfach',
     skatPeekShort: 'Skat',
-    discardHint: 'Tippe zwei Karten an und drück sie, danach sagst du an. Gedrückte Augen zählen für dich.',
-    discardHintDeclared: 'Tippe zwei Karten an. Gedrückte Augen zählen für dich.',
+    discardHint: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
+    discardHintDeclared: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
     declareAfterSkat: 'Skat gedrückt. Sag dein Spiel an.',
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
@@ -362,7 +376,7 @@ export const de = {
 
   toast: {
     bossAnnounced: 'Neuer Skatabend. Der Boss heute: {name}.',
-    passed: 'Eingepasst. Noch {left} Pässe.',
+    passed: 'Eingemischt und neu gegeben. Noch {left} Pässe.',
     redealt: 'Neu gemischt und gegeben.',
     conceded: 'Die Gegner schenken dir den Rest.',
     kontra: '{name}: Kontra!',
@@ -602,7 +616,7 @@ export const de = {
     lostText: 'Ausgeschieden in Abschnitt {section}, Serie {series}.',
     gamesWon: 'Spiele gewonnen',
     gamesLost: 'Spiele verloren',
-    gamesPassed: 'Eingepasst',
+    gamesPassed: 'Eingemischt',
     seriesWon: 'Serien gewonnen',
     bestGame: 'Bestes Spiel',
     coins: 'Groschen',
@@ -650,7 +664,7 @@ export const de = {
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
       'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, zahlst du das Doppelte.',
-    pass: 'Eingepasst ist keine Schande. Kostet ein Spiel der Serie, aber keinen Punkt, nur sind die Pässe knapp.',
+    pass: 'Einmischen ist keine Schande. Kostet ein Spiel der Serie, aber keinen Punkt, nur sind die Pässe knapp.',
     score:
       'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht doppelt runter.',
     shop: 'Für jede gewonnene Serie gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Gegenstände zinken oder ändern dein Blatt.',
@@ -703,7 +717,7 @@ export const de = {
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
       'Kein Überreizen: Die Spitzen zählen nach dem Spiel, mit deinem Blatt samt Skat.',
-      'Einpassen kostet ein Spiel der Serie, aber keine Punkte. Die Pässe sind begrenzt.',
+      'Einmischen kostet ein Spiel der Serie, aber keine Punkte. Die Pässe sind begrenzt.',
       'Hausregeln, Figuren und gezinkte Karten biegen die Regeln, auch Grundwert, Stufen und Augen.',
       'Ramsch, Kontra und Bock sind keine Grundregeln. Sie kommen über Hausregeln, Bosse oder Ereignisse.',
       'Alle drei spielen mit deinem Blatt. Was du daran änderst, gilt für jeden.',

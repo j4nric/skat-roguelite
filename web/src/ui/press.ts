@@ -14,6 +14,8 @@
 //
 // Pure input handling: what the card says comes from ./info.ts.
 
+import { clearSelection } from './dom';
+
 /** How long a press must last to open the card. */
 export const LONG_PRESS_MS = 400;
 /** How long the mouse must rest before the popover shows. */
@@ -91,6 +93,7 @@ export function watchPresses(root: HTMLElement, h: PressHandlers): void {
       const p = press;
       cancel();
       swallowClick();
+      clearSelection();
       h.open(p.key, p.el);
     }, LONG_PRESS_MS);
     press = { id: e.pointerId, x: e.clientX, y: e.clientY, key, el, timer, ring };

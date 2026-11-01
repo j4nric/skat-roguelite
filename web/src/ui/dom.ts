@@ -29,3 +29,18 @@ export function reducedMotion(): boolean {
     return false;
   }
 }
+
+/**
+ * Drop a text selection the browser may have started (a long touch on the
+ * table). A selection inside a text field is left alone.
+ */
+export function clearSelection(): void {
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+  try {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && !sel.isCollapsed) sel.removeAllRanges();
+  } catch {
+    // Nothing selected, nothing to do.
+  }
+}

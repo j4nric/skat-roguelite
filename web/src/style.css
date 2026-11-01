@@ -5036,8 +5036,11 @@ button.card {
   box-shadow: 0 6px 0 var(--line), 0 0 0 1px #3a4148 inset;
   color: var(--text);
   animation: sheet-in 180ms steps(4);
-  -webkit-user-select: text;
-  user-select: text;
+  /* The sheet opens under a finger still resting from the long-press: it
+     must not start marking its text. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .info-layer.is-static .info-card {
@@ -5333,4 +5336,430 @@ button.card {
 
 .next-boss .deckel {
   margin-top: 2px;
+}
+
+/* ------------------------------------------------- no selection on the table */
+
+/* A long touch on the table opens the info card; it must not mark text of
+   the page. Text fields keep their selection. */
+.run {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.run input,
+.run textarea {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ------------------------------------------------------------ dragging */
+
+/* Things that can be pulled across the table: the finger drags, the page
+   does not pan. */
+[data-drag] {
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+/* The copy that follows the finger (on the body, above everything; the
+   selector outweighs the position of what it copies). */
+body > .drag-ghost {
+  position: fixed;
+  z-index: 45;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 10px 0 rgba(8, 9, 11, 0.45);
+  transition: none;
+  transform-origin: 50% 50%;
+}
+
+.is-dragging {
+  opacity: 0.3;
+}
+
+/* The face-down cover of a card turning over (./ui/fx.ts flip). */
+.flip-cover {
+  position: absolute;
+  inset: calc(-1 * var(--edge));
+  z-index: 2;
+  display: block;
+  line-height: 0;
+}
+
+.flip-cover .card-back {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-width: var(--edge);
+}
+
+.info-backs {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.info-backs .card-back {
+  width: 34px;
+}
+
+.info-backs .card-back + .card-back {
+  margin-left: -18px;
+  transform: rotate(6deg);
+}
+
+/* ------------------------------------------- Skat oder Hand on the felt */
+
+/* While choosing, the hand is the thing to look at: as big as the width
+   allows for two rows of five. */
+.table.is-choice .hand {
+  --card-h: clamp(54px, min(calc(var(--avail) * 0.145), (100cqw - 24px) * 0.3), 170px);
+}
+
+/* The choice lies on the felt, not in a box. */
+.declare.declare-choice {
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.declare-choice .declare-title {
+  font-size: var(--fs-body);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* What the two at the table say: one line each, written out. */
+.table-talk {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-s);
+  line-height: 1.04;
+  color: var(--muted);
+  text-align: center;
+}
+
+.talk-line b {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.talk-line q {
+  quotes: '„' '“';
+  font-style: normal;
+}
+
+/* Deck | skat | (room): the deck goes into the middle to mix in. */
+.felt {
+  /* Card height on the felt: what the middle leaves after talk and buttons. */
+  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 172px), 150px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.deck-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-self: center;
+  gap: 6px;
+}
+
+.deck-pile {
+  position: relative;
+  display: block;
+  width: calc(var(--fh) * 2 / 3);
+  aspect-ratio: 2 / 3;
+  min-width: var(--touch);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  transform: translate(calc(var(--tx) * 0.5), calc(var(--ty) * 0.5)) rotate(calc(var(--tr) * 0.4));
+}
+
+.deck-pile:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.deck-pile:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.deck-backs .card-back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border-width: var(--edge);
+  box-shadow: 0 2px 0 var(--line);
+}
+
+.deck-backs .card-back:nth-child(1) {
+  transform: translate(-4px, 4px) rotate(-3deg);
+}
+
+.deck-backs .card-back:nth-child(2) {
+  transform: translate(-2px, 2px) rotate(2deg);
+}
+
+.deck-pile.is-armed .deck-backs .card-back:nth-child(3) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.deck-count {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  z-index: 1;
+  min-width: 22px;
+  padding: 1px 4px;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--card-ink);
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  line-height: 1;
+  text-align: center;
+}
+
+.felt-caption {
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  color: var(--muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The middle: the skat lies here, and here the deck is dropped. */
+.mix-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 2px dashed transparent;
+}
+
+.is-dragging-deck .mix-zone,
+.mix-zone.is-armed {
+  border-color: var(--accent);
+  background: rgba(209, 119, 63, 0.08);
+}
+
+.mix-zone.is-over {
+  border-style: solid;
+  background: rgba(209, 119, 63, 0.2);
+}
+
+.mix-label {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  z-index: 2;
+  display: none;
+  padding: 1px 5px;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--card-ink);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.is-dragging-deck .mix-label {
+  display: block;
+}
+
+.skat-pile {
+  position: relative;
+  display: block;
+  width: calc(var(--fh) * 2 / 3 * 1.8);
+  /* Room for the two cards turned askew. */
+  height: calc(var(--fh) * 1.16);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.skat-pile:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.skat-spot {
+  position: absolute;
+  top: calc(var(--fh) * 0.08);
+  width: calc(var(--fh) * 2 / 3);
+  transform: translate(var(--tx, 0), var(--ty, 0)) rotate(var(--tr, 0));
+  transition: transform 90ms steps(2);
+}
+
+.skat-spot:first-child {
+  left: 0;
+}
+
+.skat-spot:last-child {
+  right: 0;
+}
+
+.skat-spot.is-back {
+  background: var(--panel);
+}
+
+.skat-spot .card-back {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (hover: hover) {
+  .skat-pile:hover:not(:disabled) .skat-spot {
+    transform: translate(var(--tx, 0), calc(var(--ty, 0px) - 4px)) rotate(var(--tr, 0));
+  }
+}
+
+.skat-pile:focus-visible {
+  outline: 2px solid var(--cool);
+  outline-offset: 4px;
+}
+
+/* One tap on the deck: "Einmischen" waits under the skat. */
+.btn-mix {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  z-index: 3;
+  min-height: 40px;
+  padding: 0 10px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.mix-zone.is-armed .felt-caption {
+  visibility: hidden;
+}
+
+.mix-hint {
+  text-align: center;
+  color: var(--accent-light);
+}
+
+.choice-actions .btn-hand {
+  flex: 2;
+}
+
+/* The boss rule is read before the first decision: written out. */
+.table.is-choice .rule-text {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-height: 1.04;
+}
+
+/* ------------------------------------------------- Drücken on the table */
+
+.skat-zone {
+  --sh: clamp(48px, min(var(--trick-h) * 1.15, 100cqh - 64px), 170px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 12px;
+  border: 2px dashed var(--dot);
+}
+
+.is-dragging-card .skat-zone[data-drop] {
+  border-color: var(--accent);
+}
+
+.skat-zone.is-over {
+  border-style: solid;
+  background: rgba(209, 119, 63, 0.14);
+}
+
+.skat-zone-label {
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.skat-zone.is-full .skat-zone-label {
+  color: var(--accent);
+}
+
+.skat-slots {
+  display: flex;
+  gap: 18px;
+}
+
+.skat-slot {
+  display: block;
+  width: calc(var(--sh) * 2 / 3);
+  height: var(--sh);
+  transform: translate(var(--tx, 0), var(--ty, 0)) rotate(var(--tr, 0));
+}
+
+.skat-slot.is-empty {
+  border: var(--edge) dashed var(--dot);
+}
+
+.skat-card {
+  width: 100%;
+  height: 100%;
+}
+
+button.skat-card {
+  cursor: grab;
+}
+
+.hand[data-drop] {
+  outline: 2px dashed transparent;
+  outline-offset: 3px;
+}
+
+.is-dragging-card .hand[data-drop] {
+  outline-color: var(--dot);
+}
+
+.hand[data-drop].is-over {
+  outline-color: var(--accent);
+}
+
+/* Little height: the talk goes to one line each, the title goes. */
+@container table (max-height: 560px) {
+  .declare-choice .declare-title {
+    display: none;
+  }
+
+  .talk-line {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 }
