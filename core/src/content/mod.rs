@@ -24,8 +24,8 @@ use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
 pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
-    ActiveSource, HookContext, ResolvedDeck, card_mod_sources, evaluate, evaluate_if_won,
-    resolve_deck,
+    ActiveSource, CardModStatus, HookContext, ResolvedDeck, card_mod_sources, card_mod_status,
+    evaluate, evaluate_if_won, evaluate_known, resolve_deck,
 };
 pub use score::{
     Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
@@ -386,8 +386,16 @@ pub enum UnlockCondition {
     },
     /// Win a series with at least this many games left.
     WinSeriesWithGamesLeft(u32),
-    /// Win a run.
-    WinRun(Option<Character>),
+    /// Win a run. Only a won ganzer Abend counts by default, because a
+    /// kurzer Abend is much easier to win (DESIGN 9.3).
+    WinRun {
+        /// Only with this character (`None`: any).
+        #[serde(default)]
+        character: Option<Character>,
+        /// Only a run of this length (default: [`RunLength::Full`]).
+        #[serde(default)]
+        length: RunLength,
+    },
     /// Finish this many runs (won or lost).
     RunsFinished(u32),
 }

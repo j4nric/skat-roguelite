@@ -1259,3 +1259,133 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
             .contains(&RelicId::new("tuition"))
     );
 }
+
+/// The status of `card_mod` on card `id` in the game in progress.
+fn mod_status_of(
+    run: &Run,
+    content: &Content,
+    id: u32,
+    card_mod: &str,
+) -> Option<crate::content::CardModStatus> {
+    let active = run.game().expect("game");
+    let card = *active
+        .game
+        .cards_in_play()
+        .iter()
+        .find(|c| c.id == id)
+        .expect("card in play");
+    let ctx = crate::content::HookContext {
+        flags: &run.flags,
+        counters: &run.counters,
+        game: Some(&active.game),
+        played: None,
+        result: None,
+        games_left: 0,
+    };
+    let def = content.card_mod(&CardModId::new(card_mod)).expect("mod");
+    crate::content::card_mod_status(def, &ctx, card)
+}
+
+#[test]
+fn the_view_tells_whether_a_trump_mod_works_in_this_game() {
+    use crate::content::CardModStatus;
+    let content = content();
+    let hand_card = |run: &Run, id: u32| {
+        run.view(&content)
+            .game
+            .expect("game")
+            .hand
+            .into_iter()
+            .find(|c| c.card.id == id)
+            .expect("in hand")
+    };
+    // DA (id 7) with a crown and fat: before the declaration nothing is
+    // known, and fat has no condition at all.
+    let mut run = card_mod_run(&content, 7, "crown");
+    run.deck.add_mod(7, CardModId::new("fat")).expect("fat");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    assert!(hand_card(&run, 7).mod_status.is_empty());
+    let mut grand = run.clone();
+    run.apply(&content, RunAction::Declare(hand_game(DIAMONDS)))
+        .expect("declare");
+    let ace = hand_card(&run, 7);
+    assert_eq!(
+        ace.mod_status.into_iter().collect::<Vec<_>>(),
+        vec![(CardModId::new("crown"), CardModStatus::Active)]
+    );
+    grand
+        .apply(&content, RunAction::Declare(hand_game(GameType::Grand)))
+        .expect("declare");
+    assert_eq!(
+        hand_card(&grand, 7)
+            .mod_status
+            .get(&CardModId::new("crown")),
+        Some(&CardModStatus::Inactive)
+    );
+    // Every trump-suit modification follows the declaration.
+    for id in ["stamp", "seal", "horseshoe", "tape_measure", "black_cat"] {
+        let run = declared_with_mod_on_trump_ace(&content, id, DIAMONDS);
+        assert_eq!(
+            mod_status_of(&run, &content, 7, id),
+            Some(CardModStatus::Active),
+            "{id}"
+        );
+        let run = declared_with_mod_on_trump_ace(&content, id, HEARTS);
+        assert_eq!(
+            mod_status_of(&run, &content, 7, id),
+            Some(CardModStatus::Inactive),
+            "{id}"
+        );
+    }
+    // Unconditional modifications have no status.
+    let run = declared_with_mod_on_trump_ace(&content, "marked", DIAMONDS);
+    assert_eq!(mod_status_of(&run, &content, 7, "marked"), None);
+}
+
+#[test]
+fn a_last_trick_mod_is_open_until_its_card_falls() {
+    use crate::content::CardModStatus;
+    let content = content();
+    // "Glückspfennig" on the DA (id 7): open after the declaration, out
+    // once the DA fell in an earlier trick.
+    let mut run = declared_with_mod_on_trump_ace(&content, "lucky_penny", DIAMONDS);
+    assert_eq!(
+        mod_status_of(&run, &content, 7, "lucky_penny"),
+        Some(CardModStatus::Open)
+    );
+    // "Schlusslicht" needs a Null game: out in a suit game at once.
+    let tail = declared_with_mod_on_trump_ace(&content, "tail_light", DIAMONDS);
+    assert_eq!(
+        mod_status_of(&tail, &content, 7, "tail_light"),
+        Some(CardModStatus::Inactive)
+    );
+    loop {
+        let fell = run.game().expect("game").game.tricks();
+        if fell.iter().any(|t| t.cards.iter().any(|c| c.id == 7)) {
+            assert!(fell.len() < 10, "the DA does not take the last trick");
+            break;
+        }
+        let action = RunBot.next_action(&run, &content).expect("game continues");
+        run.apply(&content, action).expect("legal");
+    }
+    assert_eq!(
+        mod_status_of(&run, &content, 7, "lucky_penny"),
+        Some(CardModStatus::Inactive)
+    );
+}
+
+#[test]
+fn an_honorary_jack_works_only_in_a_suit_game() {
+    use crate::content::CardModStatus;
+    let content = content();
+    let run = declared_with_mod_on_trump_ace(&content, "honorary_jack", HEARTS);
+    assert_eq!(
+        mod_status_of(&run, &content, 7, "honorary_jack"),
+        Some(CardModStatus::Active)
+    );
+    let run = declared_with_mod_on_trump_ace(&content, "honorary_jack", GameType::Grand);
+    assert_eq!(
+        mod_status_of(&run, &content, 7, "honorary_jack"),
+        Some(CardModStatus::Inactive)
+    );
+}
