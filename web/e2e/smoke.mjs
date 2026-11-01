@@ -1520,7 +1520,7 @@ async function run() {
     const declarerNull = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
     if (declarerNull !== 'Hand,OuvertHand') fail(`the Alleinspieler's hand Ansage offers Null ${declarerNull}`);
     const declarerNullValues = ((await page.locator('.null-risks').textContent()) ?? '').replace(/\s+/g, ' ').trim();
-    if (!/Wert 35.*Wert 59/.test(declarerNullValues)) fail(`the Alleinspieler's Null levels: ${declarerNullValues}`);
+    if (!/Wert 46.*Wert 92/.test(declarerNullValues)) fail(`the Alleinspieler's Null levels: ${declarerNullValues}`);
     await shoot(page, 'table-declare-hand-null');
     await assertFits(page, 'hand Ansage with Null');
     await page.click('[data-action="hand-back"]');

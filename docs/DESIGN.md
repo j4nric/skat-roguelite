@@ -413,7 +413,7 @@ Jeder Charakter hat ein eigenes Startblatt, ein Startrelikt und eigene Zielwertk
 
 ### 9.1 Der Alleinspieler (Standard)
 
-Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null, gewertet nach der Skatordnung (`null_scoring: Fixed`: Null 23, Null Hand 35, Null Ouvert 46, Null Ouvert Hand 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
+Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null. Null zählt seit dem 01.11.2026 für alle Charaktere nach der Formel mit Stilbonus (9.2); vorher galt beim Alleinspieler die Skatordnung (23, 35, 46, 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
 
 Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt, Startrelikte, optional eigene Zielwerte, Null-Wertung und die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
 
@@ -460,7 +460,7 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 
 **Null für alle (ADR 0012, umgesetzt in M6).** Jeder Charakter darf Farbspiel, Grand und Null ansagen, in der Reihenfolge der Skatordnung (ADR 0011): aus der Hand Null Hand und Null Ouvert Hand, nach dem Skat Null und Null Ouvert. Was die Charaktere unterscheidet, sind nur noch Daten:
 
-- **Ansage**: Der Dialog zeigt jedem Charakter sechs Spielarten (Eichel, Grün, Rot, Schellen, Grand, Null); bei Null die Null-Stufen dieser Phase mit Wert (`DeclareOptions.null_risks`). `null_style` sagt, ob ein gewonnenes Null einen Stilbonus bekommt. Der Alleinspieler wertet Null nach der Skatordnung (`null_scoring: Fixed`, 23 / 35 / 46 / 59), der Nullspieler mit der Formel oben. Ramsch gibt es weiter nur beim Ramscher.
+- **Ansage**: Der Dialog zeigt jedem Charakter sechs Spielarten (Eichel, Grün, Rot, Schellen, Grand, Null); bei Null die Null-Stufen dieser Phase mit Wert (`DeclareOptions.null_risks`). `null_style` sagt, ob ein gewonnenes Null einen Stilbonus bekommt. Beide Charaktere werten Null mit der Formel oben (entschieden am 01.11.2026: eine Null-Wertung für alle, damit dasselbe Spiel überall gleich zählt; `Fixed` bleibt als Datenoption). Ramsch gibt es weiter nur beim Ramscher.
 - **Der Nullspieler bleibt Spezialist**: Startblatt ohne Unter mit acht Siebenern, Kiebitz, Formel-Wertung, und am Tresen öfter Null-Relikte. Er darf auch Farbe und Grand; ohne Unter ist jedes seiner Trumpfspiele „ohne 4“.
 - **Gemeinsamer Pool**: Jedes Relikt und jede Modifikation liegt bei jedem Charakter (die Null-Hausregeln, „Unsichtbar“, „Bleigewicht“, „Schlusslicht“, „Aufgebrezelt“, „Attrappe“ auch beim Alleinspieler). Das neue Feld `focus` (`GameFocus`: `All`, `Trump` für Farbspiel und Grand, `Null`) sagt, für welche Spielart ein Inhalt gemacht ist. `focus_weights` in `characters.ron` gewichtet damit Tresen, Stempelkissen und Ereignisse in Prozent der Seltenheit: Alleinspieler Trump 100, Null 50; Nullspieler Trump 50, Null 200; `All` immer 100. Kein Code-Zweig pro Charakter. Relikte für Trumpfspiele, die im Null Unsinn täten (Spitze, Schenken, Auf dem Trockenen), schließen Null in ihren Bedingungen aus (`Not(NullGame)`). Der Angeber verlangt Farbe oder Grand Ouvert Hand, sonst Null Ouvert.
 - **Bot** (`core/src/run/bot.rs`): Aus der Hand spielt er Null Ouvert Hand ohne offene Karte, Farbe oder Grand Hand mit acht Trümpfen oder einer Ansage; sonst nimmt er den Skat auf. Mit zwölf Karten vergleicht er das Farbspiel oder den Grand der Heuristik mit Null (die zwei offensten Karten gedrückt, Null Ouvert ohne offene Karte) nach dem erwarteten Ergebnis ohne Relikte (`suit_expected_score`, `null_expected_score`; Gewinnquoten `SUIT_WIN_PERCENT`, `GRAND_WIN_PERCENT`, `NULL_WIN_PERCENT`, gemessen mit dem PIMC-Spieler). Verloren zählt doppelt. Ein Blatt, das für Farbe und Grand schwach ist und mehr als fünf offene Karten hat, wirft er weg. Unter dem Schieber (nur Hand) spielt er Null Hand nur mit höchstens zwei offenen Karten (`NULL_HAND_MAX_EXPOSED`), die er ohne Skat nicht loswird; beim Schwarzen Peter nie Null, weil ein gewonnenes Null nie Schneider ist und nichts zählt.
@@ -772,6 +772,18 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 | Domain | sslip.io bleibt vorerst. Spielstand-Export als Text und dauerhafter Browserspeicher kommen trotzdem (M6). |
 | KI-Tempo | Am Handy flüssig, kein Hintergrund-Thread nötig. |
 | Planung | M6 Feinschliff und M7 Langzeit. Der Weckruf läuft bis M7. |
+
+Entschieden am 01.11.2026 im Chat (Problemliste):
+
+| Frage | Entscheidung |
+|---|---|
+| Grand | Bleibt 24. Gesteuert wird über Bosse und Relikte, nach der großen Testrunde neu bewerten. |
+| Null-Wertung | Eine für alle: die Formel mit Stilbonus (9.2). |
+| Endlos-Modus | Zurückgestellt, bis es Relikte mit echtem Wachstum gibt. Die Einsatz-Leiter kommt zuerst. |
+| Charaktere | Zwei bis drei neue Charaktere als Startdecks mit je einer eigenen Regel (Konzepte im Cockpit unter Ideen). |
+| Passen | Im Spieltest prüfen, ob es zu oft vorkommt. |
+| Freischaltungen | Run-Sieg-Freischaltungen nur im ganzen Abend. |
+| Tempo | Simulator-Messungen und der große Browser-Test sind vorerst pausiert; danach eine große Testrunde. |
 
 ## 17. Offen
 
