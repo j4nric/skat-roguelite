@@ -134,8 +134,9 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["fresh_deck", "ink_pad", "beer", "new_deal"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    assert_eq!(content.run.targets[0], (60, 100, 150));
-    assert_eq!(content.run.targets[4], (8000, 12000, 20000));
+    // Calibrated in docs/balance/2026-11-01-m2-zielwerte.md.
+    assert_eq!(content.run.targets[0], (18, 20, 24));
+    assert_eq!(content.run.targets[4], (132, 154, 180));
 }
 
 // ---------------------------------------------------------------------------
