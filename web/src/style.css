@@ -464,6 +464,18 @@ button {
   white-space: nowrap;
 }
 
+/* On a phone the chip is just the face; the boss also sits at the table,
+   and a tap tells the rule. */
+@media (max-width: 479px) {
+  .boss-chip {
+    padding: 0 2px;
+  }
+
+  .boss-chip span:last-child {
+    display: none;
+  }
+}
+
 .boss-chip::after,
 .coaster-chip::after,
 .item-chip::after {
@@ -748,6 +760,12 @@ button {
 .opp-pos {
   font-size: 0.75rem;
   color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.opp-pos .badge {
+  margin-left: 6px;
+  vertical-align: 1px;
 }
 
 .opp-hand {
@@ -1115,7 +1133,10 @@ button {
 
 /* ---------------------------------------------------------------- declare */
 
+/* Above the table: dealt cards fly out from under the Ansage. */
 .declare {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1451,8 +1472,30 @@ button {
 
 /* ------------------------------------------------------------------ score */
 
-.overlay-score {
-  align-items: center;
+/* Kontra: the question sits on top, so the hand stays in sight while the
+   player decides on Re. */
+.overlay.overlay-kontra {
+  align-items: flex-start;
+  background: rgba(10, 5, 2, 0.4);
+}
+
+.sheet-kontra {
+  border-radius: 0 0 18px 18px;
+  animation-name: sheet-down;
+}
+
+@keyframes sheet-down {
+  from {
+    transform: translateY(-40px);
+    opacity: 0;
+  }
+}
+
+/* Anchored at the top: while the board grows downwards, the lines already
+   shown stay where they are. */
+.overlay.overlay-score {
+  align-items: flex-start;
+  padding-top: clamp(6px, 3dvh, 32px);
 }
 
 .score-sheet {
@@ -1590,12 +1633,14 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* Parts not yet played take no space: the board grows line by line (the
+   score board opens each part from zero height, see ScoreBoard.reveal). */
 .step.is-pending,
 .result-big.is-pending,
 .score-result.is-pending,
 .score-account.is-pending,
 .payout.is-pending {
-  visibility: hidden;
+  display: none;
 }
 
 .step.is-in {
@@ -1995,57 +2040,90 @@ button {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
+/* Bierdeckel lie on the counter, two per row on a phone; an odd last one
+   sits in the middle. */
 .coasters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px 10px;
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 10px;
+  justify-items: center;
 }
 
-.coaster-wrap,
-.coaster-ring {
-  transform: rotate(calc((var(--i, 1) - 1) * 0.7deg));
+.coasters > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
-/* A Bierdeckel: thick cream card, printed ring, perforated edge. */
+.coaster-wrap {
+  width: 100%;
+  max-width: 184px;
+  transform: rotate(calc((var(--i, 1) - 1) * 2.5deg));
+}
+
+/* A round Bierdeckel: thick cream board, printed ring, perforated edge.
+   Only the start of the text shows; a tap opens the whole text. */
 .coaster {
   --ring: #2c6e46;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-height: 100%;
-  padding: 12px 12px 10px;
-  border-radius: 18px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 10% 12% 0;
+  border-radius: 50%;
   border: 3px solid var(--ring);
-  background: radial-gradient(ellipse at 50% 0%, #fffaf0, #f3e6c8 70%, #ead8b0);
+  background: radial-gradient(circle at 50% 30%, #fffaf0, #f3e6c8 62%, #e6d2a6);
   color: var(--paper-ink);
-  box-shadow: 0 4px 0 #c7b285, 0 7px 12px rgba(0, 0, 0, 0.45);
+  text-align: center;
+  box-shadow: 0 3px 0 #c7b285, 0 6px 10px rgba(0, 0, 0, 0.45);
 }
 
 .coaster::before {
   content: '';
   position: absolute;
-  inset: 4px;
-  border-radius: 13px;
+  inset: 5px;
+  border-radius: 50%;
   border: 1.5px dashed var(--ring);
   opacity: 0.55;
   pointer-events: none;
 }
 
-.coaster-emblem {
+/* The whole coaster opens the full text; buttons sit above it. */
+.coaster-cover,
+.good-cover {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 38px;
-  height: 38px;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.coaster-cover:focus-visible,
+.good-cover:focus-visible {
+  outline: 3px solid #ffd77a;
+  outline-offset: 2px;
+}
+
+.coaster-emblem-wrap {
+  flex: none;
+  display: grid;
+  pointer-events: none;
+}
+
+.coaster-emblem {
+  width: 26px;
+  height: 26px;
   color: var(--ring);
   opacity: 0.85;
-  transform: rotate(-8deg);
 }
 
 .coaster-kind {
-  padding-right: 40px;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2053,51 +2131,83 @@ button {
   font-weight: 700;
 }
 
+/* The price as a sticker on the rim. */
+.price-tag {
+  position: absolute;
+  z-index: 1;
+  top: 3%;
+  right: -2%;
+  padding: 2px 8px 2px 4px;
+  border-radius: 14px;
+  border: 2px solid #2b1d10;
+  background: #fff4d6;
+  color: #2b1d10;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+  transform: rotate(8deg);
+  pointer-events: none;
+}
+
 .coaster-name {
-  padding-right: 40px;
-  font-size: 1.45rem;
+  font-size: 1.2rem;
+  line-height: 1.05;
   color: var(--ring);
+  pointer-events: none;
 }
 
 .coaster-text {
-  flex: 1;
-  margin: 0;
-  font-size: 0.88rem;
-  line-height: 1.25;
+  margin: 1px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .coaster-foot {
   position: relative;
+  z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 1px;
+  margin-top: auto;
+  margin-bottom: 8%;
 }
 
 .coaster-foot .btn {
-  padding: 0 12px;
+  padding: 0 14px;
 }
 
 .coaster-ring {
   display: grid;
   place-items: center;
-  min-height: 52px;
-  border-radius: 18px;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
   border: 2px dashed rgba(255, 241, 208, 0.5);
   color: #fff1d0;
 }
 
 .coaster-big {
-  padding: 18px;
+  width: min(78vw, 300px);
+  align-self: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10% 12%;
 }
 
 .coaster-big .coaster-name {
-  font-size: 2rem;
+  font-size: 1.8rem;
 }
 
 .coaster-big .coaster-text {
   font-size: 1rem;
+  display: block;
+  overflow: visible;
 }
 
 .price {
@@ -2115,46 +2225,57 @@ button {
   gap: 10px;
 }
 
+/* An item on the counter: picture, name, the start of the text, price.
+   A tap on it opens the whole text. */
 .good {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px 10px;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px 8px;
   border-radius: 12px;
   background: rgba(40, 22, 10, 0.35);
   border: 1px solid rgba(255, 230, 190, 0.2);
   color: #fff1d0;
+  text-align: center;
 }
 
 .good-pic {
   display: grid;
   place-items: center;
   filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.5));
+  pointer-events: none;
 }
 
 .good h4 {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
+  line-height: 1.05;
+  pointer-events: none;
 }
 
-.good p {
+.good-text {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
   color: #f0dfbd;
-}
-
-.good-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .good-foot {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 6px;
   margin-top: auto;
+  padding-top: 4px;
   flex-wrap: wrap;
 }
 
@@ -2163,11 +2284,6 @@ button {
   display: grid;
   place-items: center;
   border-style: dashed;
-}
-
-.good-owned {
-  flex-direction: row;
-  align-items: center;
 }
 
 .shop-owned {
@@ -2182,13 +2298,15 @@ button {
 }
 
 .coasters-owned .coaster-name {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
 }
 
 .shop-bar {
   position: sticky;
+  z-index: 2;
   bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -2198,6 +2316,43 @@ button {
 
 .shop-bar .btn {
   flex: 1;
+}
+
+/* A strip on top of the bar while the goods are still below the fold. It
+   covers nothing; a tap scrolls down (the screen scrolls by hand too). */
+.more-hint {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: -4px 0 2px;
+  color: #f6d37a;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.more-hint::before,
+.more-hint::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-right: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  transform: rotate(45deg);
+  animation: hint-bob 1.6s ease-in-out infinite;
+}
+
+@keyframes hint-bob {
+  50% {
+    transform: translateY(3px) rotate(45deg);
+  }
+}
+
+.more-hint[hidden] {
+  display: none;
 }
 
 /* A chalk board on the back wall: what comes next. */
@@ -2311,15 +2466,7 @@ button {
 
 /* --------------------------------------------------------- larger screens */
 
-@media (min-width: 480px) {
-  .coasters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 
-  .coasters-owned {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 
 @media (min-width: 700px) {
   .app {
@@ -2340,6 +2487,10 @@ button {
   .sheet {
     border-radius: 18px;
     max-width: 480px;
+  }
+
+  .overlay.overlay-kontra {
+    padding-top: 14px;
   }
 }
 
@@ -2376,6 +2527,7 @@ button {
   *::before,
   *::after {
     animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
 }

@@ -17,9 +17,22 @@
 //
 // The seed is chosen so that this simple click strategy (Grand, discard the
 // first two cards, always play the first legal card) wins the first series.
+//
+// A second pass starts from saved runs in e2e/fixtures/ (the serialized
+// core state, as the app keeps it in localStorage), because the click
+// strategy does not get far enough on its own:
+// - boss-tresen.json: seed 13 played by the core's RunBot up to the Tresen
+//   before the boss series of Der Kontra-Hans. Leaving the Tresen must show
+//   the boss dialog, then the boss sits at the table.
+// - kontra.json: seed 29 played by the RunBot into that boss series, the
+//   Kontra-Hans has just said Kontra. The Kontra dialog must show, and
+//   "Kein Re" must lead back into the game.
+// Both were made with skat_wasm::Session and RunBot (create a session,
+// apply RunBot::next_action until the view matches, save). When the save
+// format changes (SAVE_VERSION), make them again the same way.
 
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +96,65 @@ async function shoot(page, name) {
 
 async function text(page, testId) {
   return (await page.locator(`[data-testid="${testId}"]`).first().textContent())?.trim() ?? '';
+}
+
+/** Open the app with a saved run from e2e/fixtures and resume it. */
+async function resumeFixture(page, name) {
+  const state = readFileSync(join(here, 'fixtures', name), 'utf8');
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
+  await page.reload();
+  const resume = page.locator('[data-action="resume"]');
+  try {
+    await resume.waitFor({ timeout: 10000 });
+  } catch {
+    fail(`saved run ${name} is not offered for resuming; the core may reject it (save format changed?), see the notes at the top`);
+  }
+  await resume.click();
+}
+
+/** Boss dialog and Kontra dialog, from saved runs. */
+async function bossAndKontra(browser, errors, reducedMotion) {
+  const context = await browser.newContext({ viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => errors.push(`page: ${err.message}`));
+  page.on('requestfailed', (req) => errors.push(`request failed: ${req.url()}`));
+
+  // Tresen before the boss series: the preview names the boss.
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  const next = await text(page, 'next-series');
+  if (!next.includes('Kontra-Hans')) fail(`the Tresen does not announce the boss: ${next}`);
+  await shoot(page, 'shop-boss');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  const bossText = (await page.locator('.sheet-boss').textContent()) ?? '';
+  if (!bossText.includes('Kontra-Hans')) fail(`boss dialog without the boss: ${bossText}`);
+  log('boss dialog shown');
+  await shoot(page, 'boss');
+  await page.click('[data-action="boss-go"]');
+  await page.waitForSelector('.declare');
+  if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
+  await shoot(page, 'table-boss');
+
+  // The Kontra-Hans says Kontra: answer without Re, the game goes on.
+  await resumeFixture(page, 'kontra.json');
+  await page.waitForSelector('[data-action="re"][data-re="false"]');
+  const kontraText = (await page.locator('.sheet').textContent()) ?? '';
+  if (!kontraText.includes('Kontra')) fail(`Kontra dialog without Kontra: ${kontraText}`);
+  log('Kontra dialog shown');
+  await shoot(page, 'kontra');
+  await page.click('[data-action="re"][data-re="false"]');
+  await page.waitForSelector('[data-action="re"]', { state: 'detached' });
+  await page.waitForSelector('[data-action="play"], [data-action="select"]', { timeout: 30000 });
+  if (!(await page.locator('.badge-kontra').count())) fail('no Kontra mark at the table after the answer');
+  log('Kontra answered, game goes on');
+  await shoot(page, 'table-kontra');
+  await context.close();
 }
 
 async function run() {
@@ -221,6 +293,8 @@ async function run() {
     await page.waitForSelector('[data-action="resume"]');
     log('saved after the Tresen');
     await context.close();
+
+    await bossAndKontra(browser, errors, reducedMotion);
   } finally {
     await browser.close();
     preview.kill();

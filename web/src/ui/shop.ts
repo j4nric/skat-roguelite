@@ -7,7 +7,6 @@ import type { OwnedRelic, RelicInfo, RunView } from '../types';
 import { attrs, esc } from './dom';
 import { goodSvg, shelfSvg } from './goods';
 import { coinIcon } from './hud';
-import { oddsLine } from './odds';
 import { bossPortraitId, portrait } from './people';
 
 function price(n: number): string {
@@ -23,23 +22,50 @@ export function coasterEmblem(kind: RelicInfo['kind']): string {
   return `<svg class="coaster-emblem" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/>${glyph}</svg>`;
 }
 
-/** A relic as a Bierdeckel; `footer` holds price and buttons. */
-export function coaster(relic: RelicInfo, footer: string, extra = ''): string {
-  return `<article class="coaster rarity-${esc(relic.rarity)} ${extra}">
-    ${coasterEmblem(relic.kind)}
-    <div class="coaster-kind">${esc(de.relicKind[relic.kind])} · ${esc(de.rarity[relic.rarity])}</div>
-    <h4 class="coaster-name">${esc(contentName('relics', relic.id))}</h4>
+/**
+ * A relic as a round Bierdeckel: emblem, name, the start of the text and
+ * `footer` (price and buttons). The whole coaster is a button that opens
+ * the full text (`more` = data attributes of that button).
+ */
+export function coaster(
+  relic: RelicInfo,
+  footer: string,
+  more: Record<string, string | number>,
+  opts: { price?: number; extra?: string } = {},
+): string {
+  const name = contentName('relics', relic.id);
+  const label = t(de.shop.moreAbout, { name });
+  const kind = de.relicKind[relic.kind];
+  return `<article class="coaster rarity-${esc(relic.rarity)} ${opts.extra ?? ''}">
+    <button class="coaster-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
+    ${opts.price === undefined ? '' : `<span class="price-tag">${price(opts.price)}</span>`}
+    <span class="coaster-emblem-wrap" title="${esc(kind)}">${coasterEmblem(relic.kind)}<span class="sr-only">${esc(kind)}</span></span>
+    <h4 class="coaster-name">${esc(name)}</h4>
     <p class="coaster-text">${esc(contentText('relics', relic.id))}</p>
     ${footer ? `<div class="coaster-foot">${footer}</div>` : ''}
   </article>`;
 }
 
-function ownedCoaster(r: OwnedRelic): string {
-  return coaster(
+function ownedCoaster(r: OwnedRelic, i: number): string {
+  return `<div class="coaster-wrap" style="--i:${i}">${coaster(
     r.relic,
     `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-relic', 'data-index': r.index, disabled: !r.can_sell })}>${esc(t(de.shop.sell, { price: r.sell_price }))}</button>`,
-    'coaster-owned',
-  );
+    { 'data-action': 'info-relic', 'data-index': r.index },
+    { extra: 'coaster-owned' },
+  )}</div>`;
+}
+
+/** An item as a thing on the counter; tap the picture or name for the full text. */
+function good(id: string, more: Record<string, string | number>, footer: string, extra = ''): string {
+  const name = contentName('consumables', id);
+  const label = t(de.shop.moreAbout, { name });
+  return `<article class="good ${extra}">
+    <button class="good-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
+    <div class="good-pic">${goodSvg(id, 56)}</div>
+    <h4>${esc(name)}</h4>
+    <p class="good-text">${esc(contentText('consumables', id))}</p>
+    <div class="good-foot">${footer}</div>
+  </article>`;
 }
 
 /** The chalk board on the back wall: the next series and the boss ahead. */
@@ -66,41 +92,35 @@ export function renderShop(view: RunView): string {
   if (!shop) return '';
   const relicOffers = shop.relics
     .map((o, i) => {
-      if (!o) return `<div class="coaster-ring is-sold" style="--i:${i}"><span>${esc(de.shop.soldOut)}</span></div>`;
+      if (!o) return `<div class="coaster-wrap" style="--i:${i}"><div class="coaster-ring is-sold"><span>${esc(de.shop.soldOut)}</span></div></div>`;
       return `<div class="coaster-wrap" style="--i:${i}">${coaster(
         o.relic,
-        `${price(o.relic.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        { 'data-action': 'info-offer-relic', 'data-slot': o.slot },
+        { price: o.relic.price },
       )}</div>`;
     })
     .join('');
   const itemOffers = shop.consumables
     .map((o) => {
       if (!o) return `<div class="good is-sold"><span>${esc(de.shop.soldOut)}</span></div>`;
-      return `<article class="good">
-        <div class="good-pic">${goodSvg(o.consumable.id, 72)}</div>
-        <div class="good-body">
-          <h4>${esc(contentName('consumables', o.consumable.id))}</h4>
-          <p>${esc(contentText('consumables', o.consumable.id))}</p>
-          ${o.consumable.needs_target ? oddsLine(view.deal_odds) : ''}
-          <div class="good-foot">${price(o.consumable.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
-        </div>
-      </article>`;
+      return good(
+        o.consumable.id,
+        { 'data-action': 'info-offer-item', 'data-slot': o.slot },
+        `${price(o.consumable.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+      );
     })
     .join('');
   const owned = view.relics.map(ownedCoaster).join('');
   const items = view.consumables
-    .map(
-      (c) => `<article class="good good-owned">
-        <div class="good-pic">${goodSvg(c.consumable.id, 52)}</div>
-        <div class="good-body">
-          <h4>${esc(contentName('consumables', c.consumable.id))}</h4>
-          <p>${esc(contentText('consumables', c.consumable.id))}</p>
-          <div class="good-foot">
-            <button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
-            <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>
-          </div>
-        </div>
-      </article>`,
+    .map((c) =>
+      good(
+        c.consumable.id,
+        { 'data-action': 'info-item', 'data-slot': c.slot },
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
+         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        'good-owned',
+      ),
     )
     .join('');
   const anyAffordable = shop.relics.some((o) => o?.can_buy) || shop.consumables.some((o) => o?.can_buy);
@@ -114,8 +134,8 @@ export function renderShop(view: RunView): string {
     <div class="counter">
       <h3>${esc(de.shop.relics)}</h3>
       <div class="coasters">${relicOffers}</div>
-      <h3>${esc(de.shop.consumables)}</h3>
-      <div class="goods">${itemOffers}</div>
+      <h3 id="shop-goods">${esc(de.shop.consumables)}</h3>
+      <div class="goods" data-goods>${itemOffers}</div>
     </div>
     <section class="shop-owned">
       <h3>${esc(t(de.shop.owned, { count: view.relics.length, slots: view.relic_slots }))}</h3>
@@ -124,8 +144,34 @@ export function renderShop(view: RunView): string {
       ${items ? `<div class="goods">${items}</div>` : `<p class="small">${esc(de.shop.noItems)}</p>`}
     </section>
     <div class="shop-bar">
+      <div class="more-hint" hidden aria-hidden="true" ${attrs({ 'data-action': 'scroll-goods' })}>${esc(de.shop.moreBelow)}</div>
       <button class="btn" ${attrs({ 'data-action': 'reroll', disabled: !shop.can_reroll })}>${esc(t(de.shop.reroll, { cost: shop.reroll_cost }))}</button>
       <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop' })}>${esc(de.shop.leave)}</button>
     </div>
   </main>`;
+}
+
+let goodsWatch: IntersectionObserver | null = null;
+
+/**
+ * Show the hint "more goods below" while the goods on the counter are out
+ * of sight (phones). Call after every render; it rewires itself.
+ */
+export function watchShop(root: HTMLElement): void {
+  goodsWatch?.disconnect();
+  goodsWatch = null;
+  const goods = root.querySelector('[data-goods]');
+  const hint = root.querySelector<HTMLElement>('.more-hint');
+  const bar = root.querySelector<HTMLElement>('.shop-bar');
+  if (!goods || !hint || !bar || typeof IntersectionObserver === 'undefined') return;
+  goodsWatch = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[entries.length - 1];
+      if (!entry) return;
+      // Hidden once the goods are in sight or already scrolled past.
+      hint.hidden = entry.intersectionRatio >= 0.5 || entry.boundingClientRect.top < 0;
+    },
+    { rootMargin: `0px 0px -${bar.offsetHeight}px 0px`, threshold: [0, 0.5, 1] },
+  );
+  goodsWatch.observe(goods);
 }

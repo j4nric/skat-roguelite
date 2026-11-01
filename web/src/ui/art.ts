@@ -68,20 +68,46 @@ function suitBody(suit: Suit): string {
 
 // --------------------------------------------------------------- the faces
 
-const L = 44.5;
-const R = 75.5;
+// Pips of the number cards (Sieben to Zehn).
+//
+// The pattern follows the German deck as far as it fits the large corner
+// indices of this app: two straight columns, symmetric about the middle of
+// the card, and the extra pips centred between them. The exact historical
+// pattern of the Altenburg German deck was not at hand, so this is a
+// chosen, documented layout:
+//
+//   Sieben  2-1-2-2  three pairs, the seventh pip centred in the upper gap
+//   Acht    2-2-2-2  two columns of four
+//   Neun    2-2-1-2-2  two columns of four, the ninth pip in the middle
+//   Zehn    2-2-2-2-2  two columns of five
+//
+// The columns (x = 45 and 75) stay clear of both corner indices (the top
+// left one ends at x = 33, the bottom right one starts at x = 87). As on a
+// real double-ended card, pips below the middle stand on their head.
+const L = 45;
+const R = 75;
+const ROWS4 = [28, 69.3, 110.7, 152];
+const ROWS5 = [28, 59, 90, 121, 152];
+const pair = (y: number): [number, number][] => [
+  [L, y],
+  [R, y],
+];
 const PIP_LAYOUT: Record<'7' | '8' | '9' | 'T', [number, number][]> = {
-  // Two columns, the extra pips in the middle (German pattern). The
-  // columns leave room for the large corner indices.
-  '7': [[L, 30], [R, 30], [60, 60], [L, 90], [R, 90], [L, 150], [R, 150]],
-  '8': [[L, 28], [R, 28], [L, 69], [R, 69], [L, 111], [R, 111], [L, 152], [R, 152]],
-  '9': [[L, 28], [R, 28], [L, 62], [R, 62], [60, 90], [L, 118], [R, 118], [L, 152], [R, 152]],
-  T: [[L, 26], [R, 26], [60, 48], [L, 70], [R, 70], [L, 110], [R, 110], [60, 132], [L, 154], [R, 154]],
+  '7': [...pair(28), [60, 59], ...pair(90), ...pair(152)],
+  '8': ROWS4.flatMap(pair),
+  '9': [...pair(28), ...pair(59), [60, 90], ...pair(121), ...pair(152)],
+  T: ROWS5.flatMap(pair),
 };
+const PIP_SIZE: Record<'7' | '8' | '9' | 'T', number> = { '7': 23, '8': 23, '9': 22, T: 22 };
 
 function pip(suit: Suit, cx: number, cy: number, size: number): string {
   const h = size / 2;
   return `<use href="#s-${CODE[suit]}" x="${cx - h}" y="${cy - h}" width="${size}" height="${size}"/>`;
+}
+
+/** A pip that stands on its head (lower half of a double-ended card). */
+function pipDown(suit: Suit, cx: number, cy: number, size: number): string {
+  return `<g transform="rotate(180 ${cx} ${cy})">${pip(suit, cx, cy, size)}</g>`;
 }
 
 /** Corner index: rank big, suit below; mirrored in the bottom right. */
@@ -100,8 +126,8 @@ function frame(suit: Suit): string {
 }
 
 function numberFace(suit: Suit, rank: '7' | '8' | '9' | 'T'): string {
-  const size = rank === 'T' ? 22 : rank === '9' ? 23 : 25;
-  return PIP_LAYOUT[rank].map(([x, y]) => pip(suit, x, y, size)).join('');
+  const size = PIP_SIZE[rank];
+  return PIP_LAYOUT[rank].map(([x, y]) => (y > 90 ? pipDown(suit, x, y, size) : pip(suit, x, y, size))).join('');
 }
 
 function aceFace(suit: Suit): string {
@@ -116,49 +142,102 @@ function aceFace(suit: Suit): string {
 ${pip(suit, 60, 84, 66)}`;
 }
 
+// The court cards are double-headed, as in the Altenburg Skat deck. Each
+// half shows one figure in the top half (x 10..110, y 10..90); the corner
+// index covers x < 33, y < 68, so the figure stands right of it.
+//
+// What tells them apart at hand size, beyond the corner letter:
+// - König: a big golden crown, a white beard and an ermine collar, seated
+//   on a dark blue throne whose round back frames his head; a sceptre, no
+//   suit pip in hand.
+// - Ober: holds his suit pip high above his head (top right corner, and
+//   bottom left on the turned half): the classic mark of the Ober.
+// - Unter: holds his suit pip low, next to the dividing line (left of the
+//   middle, and right of it on the turned half): the classic mark of the
+//   Unter. Young, beardless, with a cap.
+
+const HEAD = { x: 64, y: 42 };
+
+function figureBody(suit: Suit, collar: boolean): string {
+  const p = PALETTE[suit];
+  const torso = `<path d="M36 90 C36 74 44 64.5 56 61.5 L72 61.5 C84 64.5 92 74 92 90 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1.5"/>
+<path d="M56 61.5 L64 90 L72 61.5" fill="${p.robeDark}" opacity=".55"/>
+<path d="M58 66 L64 90 L70 66" fill="none" stroke="${p.trim}" stroke-width="2.2"/>`;
+  const ruff = collar
+    ? ''
+    : `<ellipse cx="64" cy="61" rx="13.5" ry="4.2" fill="#fffaf0" stroke="${OUTLINE}" stroke-width="1.2" stroke-dasharray="2.2 1.6"/>`;
+  return `${torso}${ruff}`;
+}
+
+function figureHead(hair: string): string {
+  const { x, y } = HEAD;
+  return `<rect x="${x - 5}" y="${y + 9}" width="10" height="9" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1"/>
+<path d="M${x - 11.5} ${y - 3} C${x - 13} ${y + 6} ${x - 10} ${y + 12} ${x - 6} ${y + 14} M${x + 11.5} ${y - 3} C${x + 13} ${y + 6} ${x + 10} ${y + 12} ${x + 6} ${y + 14}" fill="none" stroke="${hair}" stroke-width="5" stroke-linecap="round"/>
+<ellipse cx="${x}" cy="${y}" rx="11.5" ry="13" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<circle cx="${x - 6.5}" cy="${y + 5}" r="2.3" fill="#e9967a" opacity=".5"/><circle cx="${x + 6.5}" cy="${y + 5}" r="2.3" fill="#e9967a" opacity=".5"/>
+<path d="M${x - 7} ${y - 3.5} L${x - 2.5} ${y - 4.2} M${x + 2.5} ${y - 4.2} L${x + 7} ${y - 3.5}" stroke="${OUTLINE}" stroke-width="1.2" stroke-linecap="round"/>
+<circle cx="${x - 4.5}" cy="${y - 0.5}" r="1.5" fill="${OUTLINE}"/><circle cx="${x + 4.5}" cy="${y - 0.5}" r="1.5" fill="${OUTLINE}"/>
+<path d="M${x - 0.5} ${y + 1} C${x - 1} ${y + 3} ${x - 2.4} ${y + 4.5} ${x - 1.2} ${y + 5.6} C${x - 0.4} ${y + 6.2} ${x + 1} ${y + 5.9} ${x + 1.8} ${y + 5.2}" fill="none" stroke="${OUTLINE}" stroke-width="1" stroke-linecap="round"/>`;
+}
+
+function kingHalf(suit: Suit): string {
+  const p = PALETTE[suit];
+  const gold = '#e8b52a';
+  const goldDark = '#6b4c00';
+  const throne = `<path d="M37 90 L37 36 C37 19 49 11 64 11 C79 11 91 19 91 36 L91 90 Z" fill="#2c3e74" stroke="${OUTLINE}" stroke-width="1.3"/>
+<path d="M41.5 90 L41.5 37 C41.5 23 51 15.5 64 15.5 C77 15.5 86.5 23 86.5 37 L86.5 90" fill="none" stroke="${gold}" stroke-width="1.6" stroke-dasharray="1 3.2" stroke-linecap="round"/>`;
+  const ermine = `<path d="M38 80 C40 70 48 64.5 64 64.5 C80 64.5 88 70 90 80 C82 74 74 72.5 64 72.5 C54 72.5 46 74 38 80 Z" fill="#fffaf0" stroke="${OUTLINE}" stroke-width="1.2"/>
+<path d="M45 73 v2.6 M52 69.5 v2.6 M76 69.5 v2.6 M83 73 v2.6" stroke="${OUTLINE}" stroke-width="1.8" stroke-linecap="round"/>`;
+  const beard = `<path d="M52.5 44 C52 58 57 70 64 75 C71 70 76 58 75.5 44 C72 50 68 50.5 64 50.5 C60 50.5 56 50 52.5 44 Z" fill="#ebe6da" stroke="${OUTLINE}" stroke-width="1"/>
+<path d="M58.5 49 C61 47.6 67 47.6 69.5 49" fill="none" stroke="${OUTLINE}" stroke-width="1.3" stroke-linecap="round"/>
+<path d="M60 56 C61 62 62.5 66 64 69 M68 56 C67 62 65.5 66 64 69" fill="none" stroke="#bdb6a6" stroke-width="1"/>`;
+  const crown = `<path d="M49.5 32 L47.5 15 L56 22 L64 10 L72 22 L80.5 15 L78.5 32 Z" fill="${gold}" stroke="${goldDark}" stroke-width="1.3" stroke-linejoin="round"/>
+<circle cx="47.5" cy="14" r="2.3" fill="${gold}" stroke="${goldDark}" stroke-width="1"/><circle cx="64" cy="9.5" r="2.5" fill="${gold}" stroke="${goldDark}" stroke-width="1"/><circle cx="80.5" cy="14" r="2.3" fill="${gold}" stroke="${goldDark}" stroke-width="1"/>
+<rect x="48.5" y="28" width="31" height="6" rx="1.2" fill="#b8262d" stroke="${goldDark}" stroke-width="1"/>
+<circle cx="64" cy="23" r="2.6" fill="#2f6fb0" stroke="${goldDark}" stroke-width=".8"/><circle cx="55" cy="31" r="1.4" fill="#fff4c8"/><circle cx="64" cy="31" r="1.4" fill="#fff4c8"/><circle cx="73" cy="31" r="1.4" fill="#fff4c8"/>`;
+  const sceptre = `<path d="M84 70 C88 66 92 64 95 62 L98.5 66 C95 70 91 74 87 76 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1.2"/>
+<path d="M95 84 L101 25" stroke="${goldDark}" stroke-width="4" stroke-linecap="round"/><path d="M95 84 L101 25" stroke="${gold}" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M101.5 13 L104.5 19 L101.5 25 L98.5 19 Z M96 19.5 L107 18.5" fill="${gold}" stroke="${goldDark}" stroke-width="1.2" stroke-linejoin="round"/>
+<ellipse cx="97.5" cy="64" rx="4" ry="4.5" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1.1"/>`;
+  return `${throne}${figureBody(suit, true)}${ermine}${figureHead('#ebe6da')}${beard}${crown}${sceptre}`;
+}
+
+function oberHalf(suit: Suit): string {
+  const p = PALETTE[suit];
+  const hair = '#4f2c12';
+  const arm = `<path d="M80 64 C88 62 92 55 93.5 46 L101 47.5 C100 58 95 68 86 73 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<path d="M92.5 50 L100.5 51.5" stroke="${p.trim}" stroke-width="2.4"/>
+<ellipse cx="97.5" cy="42.5" rx="4.6" ry="4.2" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1.1"/>`;
+  const held = pip(suit, 94.5, 25.5, 32);
+  const face = `<path d="M57.5 49.5 C60 46.6 63 47.6 64 48.6 C65 47.6 68 46.6 70.5 49.5 C68 51.2 66 50.5 64 50.5 C62 50.5 60 51.2 57.5 49.5 Z" fill="${hair}"/>
+<path d="M61.5 53 L64 59.5 L66.5 53 Z" fill="${hair}"/>`;
+  const hat = `<path d="M50 33 C50 22 56 17.5 64 17.5 C73 17.5 78.5 22 78.5 33 Z" fill="${p.robeDark}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<ellipse cx="64" cy="33" rx="18" ry="4" fill="${p.robeDark}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<path d="M51 30 C51 29 77 29 78 30" fill="none" stroke="${p.trim}" stroke-width="2"/>
+<path d="M56 22 C47 19 41 12 42 4 C47 11 53 15 60 18 Z" fill="#fffaf0" stroke="${OUTLINE}" stroke-width="1"/>`;
+  return `${figureBody(suit, false)}${figureHead(hair)}${face}${hat}${arm}${held}`;
+}
+
+function unterHalf(suit: Suit): string {
+  const p = PALETTE[suit];
+  const hair = '#c98d3c';
+  const arm = `<path d="M47 64.5 C42 68 39.5 74 40.5 80 L48 80.5 C48 75 50 71 53.5 67.5 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<path d="M40.5 77 L48 77.5" stroke="${p.trim}" stroke-width="2.2"/>`;
+  const held = `<circle cx="40" cy="74.5" r="15.5" fill="${PAPER}" stroke="${p.ink}" stroke-width="1.5"/>${pip(suit, 40, 74.5, 27.5)}
+<ellipse cx="50" cy="81.5" rx="4.4" ry="4" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1.1"/>`;
+  const face = `<path d="M60.5 50 C62.5 51.8 65.5 51.8 67.5 50" fill="none" stroke="${OUTLINE}" stroke-width="1.1" stroke-linecap="round"/>`;
+  const cap = `<path d="M51 35 C50 24 56 19 65 19 C74 19 79 24 78.5 32 C70 29 59 30 51 35 Z" fill="${p.trim}" stroke="${OUTLINE}" stroke-width="1.3"/>
+<path d="M51 35 C59 30 70 29 78.5 32" fill="none" stroke="${p.robeDark}" stroke-width="2.4"/>
+<path d="M75 23 C81 17 88 16 92 19 C87 20 81 23 77.5 27 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1"/>`;
+  const belt = `<path d="M38.5 83 C50 85 78 85 89.5 83" fill="none" stroke="${OUTLINE}" stroke-width="3.2"/><rect x="61" y="81" width="6" height="5.5" rx="1" fill="${p.trim}" stroke="${OUTLINE}" stroke-width=".8"/>`;
+  return `${figureBody(suit, false)}${belt}${figureHead(hair)}${face}${cap}${arm}${held}`;
+}
+
 /** One half of a double-headed court card (König, Ober, Unter). */
 function figureHalf(suit: Suit, rank: 'K' | 'Q' | 'J'): string {
-  const p = PALETTE[suit];
-  const hair = rank === 'K' ? '#ebe6da' : rank === 'Q' ? '#4f2c12' : '#c98d3c';
-  const torso = `<path d="M38 90 C38 76 44 67 55 64 L81 64 C92 67 98 76 98 90 Z" fill="${p.robe}" stroke="${OUTLINE}" stroke-width="1.5"/>
-<path d="M55 64 L68 90 L81 64" fill="${p.robeDark}" opacity=".5"/>
-<path d="M43 90 C43 81 46 75 51 71 M93 90 C93 81 90 75 85 71" fill="none" stroke="${p.trim}" stroke-width="3"/>`;
-  const emblem = `<circle cx="68" cy="81" r="8" fill="${PAPER}" stroke="${OUTLINE}" stroke-width="1.2"/>${pip(suit, 68, 81, 11.5)}`;
-  const ruff = `<ellipse cx="68" cy="63" rx="15" ry="4.5" fill="#fffaf0" stroke="${OUTLINE}" stroke-width="1.2" stroke-dasharray="2.2 1.6"/>`;
-  const neck = `<rect x="63" y="54" width="10" height="8" fill="${SKIN}"/>`;
-  const head = `<ellipse cx="68" cy="42" rx="12" ry="14" fill="${SKIN}" stroke="${OUTLINE}" stroke-width="1.3"/>
-<circle cx="61.5" cy="47" r="2.4" fill="#e9967a" opacity=".45"/><circle cx="74.5" cy="47" r="2.4" fill="#e9967a" opacity=".45"/>`;
-  const hairSides = `<path d="M56.5 37 C55.5 45 57.5 51 60 54 M79.5 37 C80.5 45 78.5 51 76 54" fill="none" stroke="${hair}" stroke-width="4.5" stroke-linecap="round"/>`;
-  const eyes = `<path d="M61.5 40 L65.5 39.5 M70.5 39.5 L74.5 40" stroke="${OUTLINE}" stroke-width="1.1" stroke-linecap="round"/>
-<circle cx="63.5" cy="42.5" r="1.4" fill="${OUTLINE}"/><circle cx="72.5" cy="42.5" r="1.4" fill="${OUTLINE}"/>
-<path d="M68 43 L66.6 48 L69 48" fill="none" stroke="${OUTLINE}" stroke-width="1" stroke-linecap="round"/>`;
-  let face = '';
-  let hat = '';
-  let held = '';
-  if (rank === 'K') {
-    // König: crown, white full beard, sceptre.
-    face = `<path d="M56.5 45 C56.5 58 62 63.5 68 63.5 C74 63.5 79.5 58 79.5 45 C76 50.5 72 50 68 50 C64 50 60 50.5 56.5 45 Z" fill="${hair}" stroke="${OUTLINE}" stroke-width="1"/>
-<path d="M63 49.5 C65.5 48.5 70.5 48.5 73 49.5" fill="none" stroke="${OUTLINE}" stroke-width="1.2" stroke-linecap="round"/>`;
-    hat = `<path d="M55 31 L55 15 L61 22.5 L64.5 11 L68 20 L71.5 11 L75 22.5 L81 15 L81 31 Z" fill="#e8b52a" stroke="#6b4c00" stroke-width="1.3" stroke-linejoin="round"/>
-<rect x="54.5" y="28" width="27" height="5.5" rx="1" fill="#b8262d" stroke="#6b4c00" stroke-width="1"/>
-<circle cx="68" cy="24" r="2.2" fill="#2f6fb0"/><circle cx="61" cy="30.7" r="1.2" fill="#fff4c8"/><circle cx="75" cy="30.7" r="1.2" fill="#fff4c8"/>`;
-    held = `<path d="M95 70 L101 26" stroke="#8a6a1c" stroke-width="2.6" stroke-linecap="round"/><circle cx="101.3" cy="23" r="4.2" fill="#e8b52a" stroke="#6b4c00" stroke-width="1.2"/>`;
-  } else if (rank === 'Q') {
-    // Ober: feathered beret, dark moustache, symbol held high on a staff.
-    face = `<path d="M61 50 C63.5 47.5 66.5 48.5 68 49.5 C69.5 48.5 72.5 47.5 75 50 C72.5 52 70 51 68 51 C66 51 63.5 52 61 50 Z" fill="${hair}"/>
-<path d="M66 54.5 L68 59 L70 54.5" fill="${hair}"/>`;
-    hat = `<path d="M50 33 C51 24 59 20.5 68 20.5 C79 20.5 87 25 88 33 Z" fill="${p.robeDark}" stroke="${OUTLINE}" stroke-width="1.3"/>
-<ellipse cx="68" cy="33" rx="21" ry="4.2" fill="${p.robeDark}" stroke="${OUTLINE}" stroke-width="1.3"/>
-<path d="M78 24 C88 18 93 9 89 3 C87 11 82 17 74 22" fill="#fffaf0" stroke="${OUTLINE}" stroke-width="1"/>`;
-    held = `<path d="M97 70 L99 34" stroke="#7a5a2a" stroke-width="2.6" stroke-linecap="round"/>${pip(suit, 99, 23, 23)}`;
-  } else {
-    // Unter: young, a cap, symbol carried low next to the belt.
-    face = `<path d="M63.5 51.5 C66 53.5 70 53.5 72.5 51.5" fill="none" stroke="${OUTLINE}" stroke-width="1.1" stroke-linecap="round"/>`;
-    hat = `<path d="M55 35 C55 24 61 19.5 69 19.5 C77.5 19.5 82 25 82 33 C76 31 63 31 55 35 Z" fill="${p.trim}" stroke="${OUTLINE}" stroke-width="1.3"/>
-<path d="M79 24 C85 20.5 90 21.5 92 25" fill="none" stroke="${p.robe}" stroke-width="3.2" stroke-linecap="round"/>`;
-    held = `<path d="M40 74 L27 84" stroke="#7a5a2a" stroke-width="2.6" stroke-linecap="round"/>${pip(suit, 25, 79, 22)}`;
-  }
-  return `${torso}${ruff}${neck}${head}${hairSides}${eyes}${face}${hat}${emblem}${held}`;
+  if (rank === 'K') return kingHalf(suit);
+  if (rank === 'Q') return oberHalf(suit);
+  return unterHalf(suit);
 }
 
 function courtFace(suit: Suit, rank: 'K' | 'Q' | 'J'): string {

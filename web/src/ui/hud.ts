@@ -53,7 +53,7 @@ export function renderHud(view: RunView): string {
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const boss =
     s.is_boss && s.boss
-      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss' })}>${portrait(bossPortraitId(s.boss.id), 'portrait-xs')}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
+      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${portrait(bossPortraitId(s.boss.id), 'portrait-xs')}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
       : '';
   const fill = meterPercent(s.score, s.target);
   const chips = relicChips(view);

@@ -74,8 +74,8 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
   </main>`;
 }
 
-function sheet(inner: string, closable = true, cls = ''): string {
-  return `<div class="overlay" ${closable ? attrs({ 'data-action': 'close-overlay' }) : ''}><div class="sheet ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
+function sheet(inner: string, closable = true, cls = '', overlayCls = ''): string {
+  return `<div class="overlay ${overlayCls}" ${closable ? attrs({ 'data-action': 'close-overlay' }) : ''}><div class="sheet ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
 }
 
 export function renderKontra(view: RunView): string {
@@ -93,6 +93,8 @@ export function renderKontra(view: RunView): string {
        <button class="btn" ${attrs({ 'data-action': 're', 'data-re': 'false' })}>${esc(de.kontra.noRe)}</button>
      </div>`,
     false,
+    'sheet-kontra',
+    'overlay-kontra',
   );
 }
 
@@ -139,11 +141,12 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       const pic = overlay.good ? `<div class="info-pic">${goodSvg(overlay.good, 72)}</div>` : '';
       const body = overlay.coaster
         ? `<article class="coaster coaster-big rarity-${esc(overlay.coaster)}"><div class="coaster-kind">${esc(overlay.subtitle)}</div><h4 class="coaster-name">${esc(overlay.title)}</h4><p class="coaster-text">${esc(overlay.text)}</p></article>`
-        : `${pic}<p class="small">${esc(overlay.subtitle)}</p><h2>${esc(overlay.title)}</h2><p>${esc(overlay.text)}</p>`;
+        : `${pic}<p class="small">${esc(overlay.subtitle)}</p><h2>${esc(overlay.title)}</h2><p>${esc(overlay.text)}</p>${overlay.odds && view ? oddsLine(view.deal_odds) : ''}`;
       return sheet(
         `${body}
          <div class="sheet-actions">
            ${overlay.use !== undefined ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'use-item', 'data-slot': overlay.use })}>${esc(de.shop.use)}</button>` : ''}
+           ${overlay.buy ? `<button class="btn btn-primary" ${attrs({ 'data-action': overlay.buy.action, 'data-slot': overlay.buy.slot })}>${esc(t(de.shop.buy, { price: overlay.buy.price }))}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>
          </div>`,
       );
