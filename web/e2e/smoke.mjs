@@ -1766,7 +1766,7 @@ async function run() {
     await page.waitForSelector('[data-action="new-run"]');
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
-    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'f-back', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
     const aceCorner = await page.evaluate(() => document.querySelector('#x-CA .idx')?.textContent?.trim());
     if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);

@@ -6,7 +6,8 @@ Erlaubt sind Assets unter freien Lizenzen: CC0, CC-BY und SIL OFL (DESIGN 16, CL
 
 | Was | Datei | Autor | Lizenz |
 |---|---|---|---|
-| Kartenbilder des deutschen Blatts im Pixelstil (Farbzeichen als 8 × 8 Pixel, Zahlkarten, Daus, König, Ober, Unter, Kartenrücken, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt nach der Stilprobe `docs/design/stil-a4-mockup.dc.html` | Teil dieses Projekts |
+| Kartenbilder des deutschen Blatts im Pixelstil (Farbzeichen als 8 × 8 Pixel, Zahlkarten, Daus, König, Ober, Unter, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt nach der Stilprobe `docs/design/stil-a4-mockup.dc.html` | Teil dieses Projekts |
+| Kartenrückseite „Distel“ (Standard): Pixelgrafik nach dem Vorbild der traditionellen Altenburger Distel-Rückseite (Ockerrand, Kreuzband aus Dreiecken, Disteln, Kornblumen und Ranken); kein fremdes Asset, kein Foto oder Scan übernommen oder nachgezeichnet, Motiv und Raster werden im Code erzeugt | `src/ui/backs.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
 | Figuren (Stammgäste, Wirt, Bosse), Gegenstände am Tresen; beim Start zu Pixelbildern verkleinert (`src/ui/pixelate.ts`) | `src/ui/people.ts`, `src/ui/goods.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
 | Favicon | `public/favicon.svg` | selbst gezeichnet | Teil dieses Projekts |
 | Pixelschrift „VT323“ für alle Texte und die Kartenecken, auf Latin-1 und die Satzzeichen deutscher Texte reduziert, WOFF2, Umrisse unverändert | `src/assets/fonts/vt323.woff2` | Peter Hull (The VT323 Project Authors), über Google Fonts: https://github.com/google/fonts/tree/main/ofl/vt323 | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-VT323.txt` |

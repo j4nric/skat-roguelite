@@ -12,6 +12,7 @@
 import { de, cardName, contentName, face, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, ModFigure, Suit } from '../types';
 import { faceId, indexId, modIconId, paper, PALETTE, pixels, suitId } from './art';
+import { backId, DEFAULT_BACK, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
 
 /** Ink colour per suit, for text next to suit icons. */
@@ -273,7 +274,10 @@ export function cardSvg(kind: CardKind, mods: string[] = []): string {
   return `<svg class="card-svg" viewBox="0 0 120 180" shape-rendering="crispEdges" role="img" aria-label="${label}"${frame}>${body}${layers.over}${badges}</svg>`;
 }
 
-/** Back of a card. */
-export function cardBack(className = ''): string {
-  return `<span class="card-back ${className}" role="img" aria-label="${esc(de.card.back)}"><svg viewBox="0 0 120 180" aria-hidden="true"><use href="#f-back"/></svg></span>`;
+/**
+ * Back of a card in one of the back designs (a cosmetic setting, ./backs.ts).
+ * `size` "small" picks the simplified picture for tiny backs.
+ */
+export function cardBack(className = '', design: BackDesign = DEFAULT_BACK, size: BackSize = 'full'): string {
+  return `<span class="card-back ${className}" role="img" aria-label="${esc(de.card.back)}"><svg viewBox="0 0 120 180" shape-rendering="crispEdges" aria-hidden="true"><use href="#${backId(design, size)}"/></svg></span>`;
 }
