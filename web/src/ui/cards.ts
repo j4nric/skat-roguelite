@@ -3,7 +3,7 @@
 // bottom-left corner, plus an ink stamp or a glass sheen where it helps.
 // Pure drawing, no game logic.
 
-import { de, cardName, contentName, face, t } from '../i18n';
+import { de, cardName, contentName, face, isCurse, t } from '../i18n';
 import type { CardKind, Suit } from '../types';
 import { faceId, modIconId, PALETTE, suitId } from './art';
 import { esc } from './dom';
@@ -39,16 +39,20 @@ function modLayers(mods: string[]): string {
       return '';
     })
     .join('');
+  // A curse darkens the card's edge with a red, broken frame.
+  const curse = mods.some(isCurse)
+    ? `<rect x="3" y="3" width="114" height="174" rx="9" fill="none" stroke="#b3202a" stroke-width="3" stroke-dasharray="12 4 3 4" opacity=".85"/>`
+    : '';
   const badges = mods
     .map((m, i) => `<use href="#${modIconId(m)}" x="3" y="${150 - i * 27}" width="27" height="27"/>`)
     .join('');
-  return overlays + badges;
+  return overlays + curse + badges;
 }
 
 /** The face of a card as inline SVG (viewBox 120 × 180). */
 export function cardSvg(kind: CardKind, mods: string[] = []): string {
   const f = face(kind);
-  const modNames = mods.map((m) => contentName('card_mods', m)).join(', ');
+  const modNames = mods.map((m) => (isCurse(m) ? `${contentName('card_mods', m)} (${de.card.curse})` : contentName('card_mods', m))).join(', ');
   const label = esc(cardName(kind) + (mods.length ? ', ' + t(de.card.mods, { mods: modNames }) : ''));
   const id = f ? faceId(f.suit, f.rank) : 'f-blank';
   return `<svg class="card-svg" viewBox="0 0 120 180" role="img" aria-label="${label}"><use href="#${id}"/>${modLayers(mods)}</svg>`;

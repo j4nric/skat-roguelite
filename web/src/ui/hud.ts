@@ -31,6 +31,15 @@ export function relicChips(view: RunView): string {
         `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id })}><span>${esc(contentName('relics', r.relic.id))}</span></button>`,
     )
     .join('');
+  const evening = view.evening_relics
+    .map(
+      (r, i) =>
+        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id })}><span>${esc(contentName('relics', r.id))}</span><small>${esc(de.evening.tag)}</small></button>`,
+    )
+    .join('');
+  const pending = view.pending_factor
+    ? `<span class="flag-chip is-pending" data-testid="pending-factor">${esc(t(de.header.pending, { factor: view.pending_factor }))}</span>`
+    : '';
   const items = view.consumables
     .map(
       (c) =>
@@ -45,7 +54,7 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + items + flags + counters;
+  return relics + evening + items + pending + flags + counters;
 }
 
 export function renderHud(view: RunView): string {

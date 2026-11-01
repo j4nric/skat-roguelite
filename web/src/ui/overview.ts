@@ -1,11 +1,10 @@
 // The Kreidetafel: the tour as a chalk board (sections × series), the
 // statistics of this run with tally marks, the record over all runs, and
-// the shared deck. Shows only what the core's view and the stored record
-// say; future targets are not known here and stay empty.
+// the shared deck. Shows only what the core's run view and meta view say;
+// future targets are not known here and stay empty.
 
 import { de, contentName, t } from '../i18n';
-import type { Record } from '../storage';
-import type { RunView } from '../types';
+import type { MetaView, RunView } from '../types';
 import { cardSvg } from './cards';
 import { esc } from './dom';
 import { oddsDetail } from './odds';
@@ -38,8 +37,8 @@ function grid(view: RunView, lost: boolean): string {
       .map((s) => {
         const before = a < cur.section || (a === cur.section && s < cur.index);
         const now = a === cur.section && s === cur.index;
-        // At the Tresen the current series is already won.
-        if (now && view.phase === 'Shop') {
+        // At the Tresen or an encounter the current series is already won.
+        if (now && (view.phase === 'Shop' || view.phase === 'Encounter')) {
           return `<div class="tour-cell is-done" aria-label="${esc(de.overview.done)}">${CHECK}<b>${esc(t(de.overview.current, { score: cur.score, target: cur.target }))}</b></div>`;
         }
         if (before) return `<div class="tour-cell is-done" aria-label="${esc(de.overview.done)}">${CHECK}</div>`;
@@ -62,7 +61,7 @@ function grid(view: RunView, lost: boolean): string {
   return `<div class="tour-grid">${head}${rows.join('')}</div>`;
 }
 
-export function renderOverview(view: RunView, record: Record, lost = false): string {
+export function renderOverview(view: RunView, meta: MetaView | null, lost = false): string {
   const s = view.stats;
   const stats: [string, string][] = [
     [de.end.gamesWon, tally(s.games_won)],
@@ -72,25 +71,30 @@ export function renderOverview(view: RunView, record: Record, lost = false): str
     [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
     [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],
   ];
-  const all: [string, string][] = [
-    [de.overview.runs, tally(record.runs)],
-    [de.overview.runsWon, tally(record.won)],
-    [de.overview.bestSection, `<b class="chalk-num">${esc(record.bestSection)}</b>`],
-  ];
+  const m = meta?.stats;
+  const all: [string, string][] = m
+    ? [
+        [de.overview.runs, tally(m.runs_finished)],
+        [de.overview.runsWon, tally(m.runs_won)],
+        [de.overview.bestSection, `<b class="chalk-num">${esc(m.best_section)}</b>`],
+      ]
+    : [];
   const dl = (list: [string, string][]): string =>
     `<dl class="chalk-stats">${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
   const deck = view.deck
     .map((c) => `<span class="deck-card">${cardSvg(c.kind, c.mods)}</span>`)
     .join('');
-  const relics = view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${esc(contentName('relics', r.relic.id))}</span>`).join('');
+  const relics =
+    view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${esc(contentName('relics', r.relic.id))}</span>`).join('') +
+    view.evening_relics.map((r) => `<span class="mini-coaster is-evening rarity-${esc(r.rarity)}">${esc(contentName('relics', r.id))}</span>`).join('');
   return `<div class="tour">
     <h3 class="chalk-h">${esc(de.overview.tour)}</h3>
     ${grid(view, lost)}
     ${relics ? `<div class="relic-strip">${relics}</div>` : ''}
     <h3 class="chalk-h">${esc(de.overview.thisRun)}</h3>
+    <p class="chalk-small">${esc(t(de.overview.character, { name: contentName('characters', view.character.character) }))}</p>
     ${dl(stats)}
-    <h3 class="chalk-h">${esc(de.overview.allRuns)}</h3>
-    ${dl(all)}
+    ${all.length ? `<h3 class="chalk-h">${esc(de.overview.allRuns)}</h3>${dl(all)}` : ''}
     <h3 class="chalk-h">${esc(t(de.overview.deck, { count: view.deck.length }))}</h3>
     <p class="chalk-small">${esc(de.overview.deckHint)}</p>
     ${oddsDetail(view.deal_odds)}
