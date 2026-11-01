@@ -1,13 +1,14 @@
 // Hausregeln (passive Relikte). Effekte über die Hook-API, siehe
-// core/src/content/effects.rs. Preise sind Platzhalter (DESIGN 12: 5 bis 8),
-// die finalen Werte setzt `balance`.
+// core/src/content/effects.rs. Preise (DESIGN 12: 5 bis 8) nach der
+// M2-Messung in docs/balance/2026-11-01-m2-zielwerte.md: starke Hausregeln
+// teurer, Hausregeln ohne messbaren Effekt am unteren Rand.
 [
     (
         id: "bock_round",
         name: "Bockrunde",
         text: "Nach jedem verlorenen Spiel zählt das nächste doppelt.",
         rarity: Common,
-        price: 6,
+        price: 8,
         hooks: [
             OnScore(when: Lost, then: [SetFlag("bock")]),
             // Erst beim Ansagen verbraucht, damit Einpassen den Bock nicht verschenkt.
@@ -27,7 +28,7 @@
         name: "Spitze",
         text: "Machst du den letzten Stich mit der Karo-7, gibt es eine Gewinnstufe mehr.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         hooks: [
             OnScore(when: LastTrickWonWith(card: "D7", by_declarer: true), then: [AddLevels(1)]),
         ],
@@ -65,7 +66,7 @@
         name: "Jungfrau",
         text: "Gewinnst du mit 61 bis 65 Augen, zählt das Spiel trotzdem als Schneider.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         passive: [SchneiderFromDeclarerPoints(min: 61, max: 65)],
     ),
     (
@@ -73,7 +74,7 @@
         name: "Alte Dame",
         text: "Jede Dame zählt 5 Augen. Auch bei den Gegnern.",
         rarity: Common,
-        price: 5,
+        price: 7,
         passive: [SetCardPoints(filter: (rank: Some(Queen)), points: 5)],
     ),
     (
@@ -92,7 +93,7 @@
         name: "Durchmarsch",
         text: "Machst du alle Stiche, zählt der Grundwert dreifach.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: AllTricksWon, then: [MultiplyBaseValue(3)]),
         ],

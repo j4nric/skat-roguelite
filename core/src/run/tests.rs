@@ -69,18 +69,18 @@ fn run_starts_with_first_series_and_a_dealt_game() {
     let content = content();
     let (run, events) = Run::new(&content, 1).expect("start");
     assert_eq!(run.phase(), RunPhase::Game);
-    assert_eq!(run.series().target, 60);
-    assert_eq!(run.series().game_limit, 4);
-    assert_eq!(run.series().passes_left, 2);
+    assert_eq!(run.series().target, content.run.targets[0].0);
+    assert_eq!(run.series().game_limit, content.run.game_limit);
+    assert_eq!(run.series().passes_left, content.run.passes);
     assert_eq!(run.coins(), content.run.economy.starting_coins);
     assert!(matches!(
         events[0],
         RunEvent::SeriesStarted {
             section: 0,
             index: 0,
-            target: 60,
+            target,
             ..
-        }
+        } if target == content.run.targets[0].0
     ));
     assert!(
         matches!(events[1], RunEvent::GameDealt { number: 1, forehand } if forehand == Seat::DECLARER)
@@ -94,6 +94,8 @@ fn run_starts_with_first_series_and_a_dealt_game() {
 fn forehand_rotates_every_game_and_passes_cost_a_game() {
     let content = content();
     let (mut run, _) = Run::new(&content, 3).expect("start");
+    // Two passes, independent of the pass count in run.ron.
+    run.series.passes_left = 2;
     let events = run.apply(&content, RunAction::Pass).expect("pass");
     assert!(events.contains(&RunEvent::Passed { passes_left: 1 }));
     assert!(events.contains(&RunEvent::GameDealt {
@@ -202,11 +204,14 @@ fn series_won_pays_groschen_and_opens_the_shop() {
         {
             let breakdown = scored(&events);
             assert!(breakdown.won && breakdown.score > 0);
-            // 12 Groschen before: interest 2. One game played, three left.
-            assert_eq!(payout.base, 4);
-            assert_eq!(payout.games_left, 3);
+            // 12 Groschen before: interest 2. One game played, the rest
+            // of the limit left.
+            let economy = &content.run.economy;
+            let games_left = content.run.game_limit - 1;
+            assert_eq!(payout.base, economy.series_reward);
+            assert_eq!(payout.games_left, games_left * economy.per_game_left);
             assert_eq!(payout.interest, 2);
-            assert_eq!(*coins, 12 + 9);
+            assert_eq!(*coins, 12 + payout.base + payout.games_left + 2);
             won = true;
             break;
         }
@@ -324,9 +329,9 @@ fn leaving_the_shop_starts_the_next_series() {
         RunEvent::SeriesStarted {
             section: 0,
             index: 1,
-            target: 100,
+            target,
             ..
-        }
+        } if target == content.run.targets[0].1
     ));
     assert_eq!(run.phase(), RunPhase::Game);
     // After the boss series the next section begins.
@@ -346,10 +351,10 @@ fn leaving_the_shop_starts_the_next_series() {
         RunEvent::SeriesStarted {
             section: 1,
             index: 0,
-            target: 200,
+            target,
             boss: None,
             ..
-        }
+        } if target == content.run.targets[1].0
     ));
 }
 
@@ -403,7 +408,7 @@ fn consumables_change_the_deck_and_the_series() {
         },
     )
     .expect("beer");
-    assert_eq!(run.series().passes_left, 3);
+    assert_eq!(run.series().passes_left, content.run.passes + 1);
     let before = run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec());
     let events = run
         .apply(
