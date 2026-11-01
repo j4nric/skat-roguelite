@@ -4,13 +4,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
+
 use super::effects::{Condition, Effect, Hook};
 use super::score::Source;
-use super::{CardModId, Content};
+use super::{CardModDef, CardModId, Content};
 use crate::cards::{CardKind, PlayingCard};
 use crate::deck::{DealtCard, Deck};
 use crate::game::{Game, Seat, TRICKS_PER_GAME};
-use crate::rules::{Declaration, GameType, Matadors, ValueParts};
+use crate::rules::{Declaration, GameType, Matadors, ValueParts, acts_as_honorary_jack};
 
 /// One active content item: where it comes from and what it does. Card
 /// modifications carry the card instance they sit on.
@@ -355,6 +357,139 @@ pub fn evaluate_if_won(
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
         | Condition::HandGame => Some(evaluate(condition, ctx, this_card)),
+    }
+}
+
+/// Whether a card modification works in the game in progress, as far as
+/// the player can know it (shown in the info card of a card).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CardModStatus {
+    /// It works in this game (its condition holds).
+    Active,
+    /// It cannot work in this game any more.
+    Inactive,
+    /// It depends on how the game goes (the tenth trick, the result).
+    Open,
+}
+
+/// The status of a card modification on `this_card` in the game of
+/// `ctx`, once the game is declared. `None` before the declaration and
+/// for a modification whose effect in the game has no condition ("Fett",
+/// "Gezinkt": they always work).
+///
+/// Conditional are the in-game hooks with a condition (not "beim
+/// Erhalt") and the passive "Bube ehrenhalber" (suit games only). The
+/// modification is [`CardModStatus::Active`] when one of them holds for
+/// certain, [`CardModStatus::Inactive`] when none can hold any more, and
+/// [`CardModStatus::Open`] otherwise. Only what the player knows counts:
+/// the declaration, flags and counters, and the tricks on the table (see
+/// [`evaluate_known`]).
+#[must_use]
+pub fn card_mod_status(
+    def: &CardModDef,
+    ctx: &HookContext<'_>,
+    this_card: DealtCard,
+) -> Option<CardModStatus> {
+    let declaration = ctx.game.and_then(Game::declaration)?;
+    let mut parts: Vec<Option<bool>> = Vec::new();
+    if def.passive.contains(&Effect::HonoraryJack) {
+        parts.push(Some(acts_as_honorary_jack(declaration.game(), this_card)));
+    }
+    for hook in &def.hooks {
+        if hook.stage().in_game() && *hook.when() != Condition::Always {
+            parts.push(evaluate_known(hook.when(), ctx, Some(this_card)));
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else if parts.contains(&Some(true)) {
+        Some(CardModStatus::Active)
+    } else if parts.iter().all(|p| *p == Some(false)) {
+        Some(CardModStatus::Inactive)
+    } else {
+        Some(CardModStatus::Open)
+    }
+}
+
+/// Evaluate a condition during the game from what the player knows:
+/// `Some` when the answer is certain now, `None` when it depends on how
+/// the game goes on.
+///
+/// Certain: everything fixed by the declaration, flags and counters as
+/// they are now, and "this card wins the tenth trick" once the tenth
+/// trick is played or the card fell in an earlier one. Unknown: the
+/// result, the tricks to come, Augen, Null style and the Spitzen (they
+/// may hang on the hidden skat).
+#[must_use]
+pub fn evaluate_known(
+    condition: &Condition,
+    ctx: &HookContext<'_>,
+    this_card: Option<DealtCard>,
+) -> Option<bool> {
+    match condition {
+        Condition::All(cs) => {
+            let mut all = Some(true);
+            for c in cs {
+                match evaluate_known(c, ctx, this_card) {
+                    Some(false) => return Some(false),
+                    Some(true) => {}
+                    None => all = None,
+                }
+            }
+            all
+        }
+        Condition::Any(cs) => {
+            let mut any = Some(false);
+            for c in cs {
+                match evaluate_known(c, ctx, this_card) {
+                    Some(true) => return Some(true),
+                    Some(false) => {}
+                    None => any = None,
+                }
+            }
+            any
+        }
+        Condition::Not(c) => evaluate_known(c, ctx, this_card).map(|b| !b),
+        Condition::ThisCardWinsLastTrick => {
+            let (game, this) = (ctx.game?, this_card?);
+            let tricks = game.tricks();
+            if tricks.len() == TRICKS_PER_GAME {
+                Some(evaluate(condition, ctx, this_card))
+            } else if tricks
+                .iter()
+                .any(|t| t.cards.iter().any(|c| c.id == this.id))
+            {
+                Some(false)
+            } else {
+                None
+            }
+        }
+        Condition::Always
+        | Condition::Flag(_)
+        | Condition::CounterAtLeast { .. }
+        | Condition::GameIs(_)
+        | Condition::SuitGame
+        | Condition::RiskAtLeast(_)
+        | Condition::ThisCardIsTrumpSuit
+        | Condition::NullGame
+        | Condition::NullRiskAtLeast(_)
+        | Condition::RamschGame
+        | Condition::HandGame => Some(evaluate(condition, ctx, this_card)),
+        Condition::Won
+        | Condition::Lost
+        | Condition::AllTricksWon
+        | Condition::LastTrickWonWith { .. }
+        | Condition::LastTrickWinnerMatches { .. }
+        | Condition::WonSchneider
+        | Condition::TricksPlayed(_)
+        | Condition::DefenderPointsBelow(_)
+        | Condition::PlayedCardMatches(_)
+        | Condition::PlayedByDeclarer
+        | Condition::GamesLeftAtLeast(_)
+        | Condition::NoTrickTaken
+        | Condition::SevenDucked
+        | Condition::NeverFollowedSuit
+        | Condition::MatadorsAtLeast { .. } => None,
     }
 }
 

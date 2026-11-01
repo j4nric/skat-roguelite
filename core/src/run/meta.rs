@@ -480,9 +480,15 @@ impl MetaState {
                 UnlockCondition::WinSeriesWithGamesLeft(n),
                 RunEvent::SeriesWon { games_left, .. },
             ) => games_left >= n,
-            (UnlockCondition::WinRun(who), RunEvent::RunWon { character, .. }) => {
-                who.is_none_or(|c| c == *character)
-            }
+            (
+                UnlockCondition::WinRun {
+                    character: who,
+                    length: needed,
+                },
+                RunEvent::RunWon {
+                    character, length, ..
+                },
+            ) => who.is_none_or(|c| c == *character) && length == needed,
             (
                 UnlockCondition::RunsFinished(n),
                 RunEvent::RunWon { .. } | RunEvent::RunLost { .. },
@@ -743,6 +749,41 @@ mod tests {
         assert!(meta.character_unlocked(&content, Character::NullPlayer));
         assert!(meta.run_start(&content, Character::NullPlayer).is_ok());
         assert_eq!(meta.stats.runs_won, 1);
+    }
+
+    #[test]
+    fn a_run_win_unlock_needs_a_full_evening_by_default() {
+        use crate::content::UnlockCondition;
+        // Without a length the condition is the ganzer Abend.
+        let parsed: UnlockCondition =
+            ron::from_str("WinRun(character: Some(Declarer))").expect("ron");
+        assert_eq!(
+            parsed,
+            UnlockCondition::WinRun {
+                character: Some(Character::Declarer),
+                length: RunLength::Full,
+            }
+        );
+        let any: UnlockCondition = ron::from_str("WinRun()").expect("ron");
+        let meta = MetaState::new();
+        let won = |character, length| -> RunEvent {
+            RunEvent::RunWon {
+                character,
+                length,
+                stake: 0,
+            }
+        };
+        assert!(meta.met(&parsed, &won(Character::Declarer, RunLength::Full)));
+        assert!(!meta.met(&parsed, &won(Character::Declarer, RunLength::Short)));
+        assert!(!meta.met(&parsed, &won(Character::NullPlayer, RunLength::Full)));
+        assert!(meta.met(&any, &won(Character::NullPlayer, RunLength::Full)));
+        assert!(!meta.met(&any, &won(Character::NullPlayer, RunLength::Short)));
+        let short = UnlockCondition::WinRun {
+            character: None,
+            length: RunLength::Short,
+        };
+        assert!(meta.met(&short, &won(Character::Declarer, RunLength::Short)));
+        assert!(!meta.met(&short, &won(Character::Declarer, RunLength::Full)));
     }
 
     #[test]

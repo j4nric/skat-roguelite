@@ -821,6 +821,13 @@ export const de = {
     guestText: 'Spielt ohne eigene Regeln, nur mit dem Blatt, das alle teilen.',
     targetFactor: 'Zielwert der Serie ×{factor}',
     unknownMod: 'Noch nicht im Spiel.',
+    /** Whether a conditional card modification works in this game; `{game}` from `modGameSuit` or the game name. */
+    modStatus: {
+      Active: '{game}: wirkt',
+      Inactive: '{game}: wirkt nicht in diesem Spiel',
+      Open: '{game}: entscheidet sich im Spiel',
+    },
+    modGameSuit: 'Trumpf ist {suit}',
   },
 
   /**

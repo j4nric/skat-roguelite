@@ -125,7 +125,8 @@ pub fn is_trump<C: PlayingCard>(game: GameType, card: C) -> bool {
 
 /// Whether `card` plays as a "Bube ehrenhalber" in `game` (DESIGN 4.4):
 /// only in a suit game, and a printed jack stays the jack it is.
-fn acts_as_honorary_jack<C: PlayingCard>(game: GameType, card: C) -> bool {
+#[must_use]
+pub fn acts_as_honorary_jack<C: PlayingCard>(game: GameType, card: C) -> bool {
     matches!(game, GameType::Suit(_))
         && card.honorary_jack()
         && card.face().is_some_and(|face| !face.is_jack())

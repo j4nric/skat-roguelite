@@ -62,8 +62,9 @@
     (
         id: "tour_won",
         name: "Die Tournee gewonnen",
-        text: "Gewinne einen Run mit dem Alleinspieler.",
-        condition: WinRun(Some(Declarer)),
+        text: "Gewinne einen ganzen Abend mit dem Alleinspieler.",
+        // Only the ganzer Abend counts: a short one is much easier to win.
+        condition: WinRun(character: Some(Declarer), length: Full),
         rewards: [Character(NullPlayer)],
     ),
     // M4: seven of the fourteen new house rules and figures.
