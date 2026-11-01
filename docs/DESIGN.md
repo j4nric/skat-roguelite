@@ -21,7 +21,7 @@ Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Ober, Daus), 
 | # | Entscheidung | Begründung |
 |---|---|---|
 | 1 | **Der Spieler ist immer Alleinspieler.** Verteidigen gibt es nicht. | Hält den Kern einfach, jede Partie hat denselben Spannungsbogen. |
-| 2 | **Das Null-Spiel ist ein eigener Charakter**, nicht eine Option im Standard-Run. | Null ist mechanisch ein anderes Spiel. Als Charakter kann es eigene Karten, Relikte und Ziele bekommen. |
+| 2 | **Null ist für jeden ansagbar**, der Nullspieler ist ein freischaltbarer Spezialist (ADR 0012, ersetzt 0003). | „Farbe, Grand oder Null?“ ist die spannendste Entscheidung im Skat. Der Spezialist bekommt Startblatt und Relikte für Null, darf aber auch Farbe und Grand spielen. |
 | 3 | **Tech-Stack: Rust für den Spielkern, Web-App für die Präsentation.** | Rust-Kern ist headless simulierbar und testbar. Im Browser läuft er als WebAssembly (ADR 0009, ersetzt den ursprünglichen Godot-Plan). |
 | 4 | **Regeln dürfen gebogen werden, wenn es dem Spiel dient.** | Authentizität ist Geschmack, kein Dogma. Skatspieler sollen das Spiel wiedererkennen, nicht nachprüfen. |
 
@@ -603,6 +603,8 @@ skat-roguelite/
 | **M3 Web-UI** | Deutsches Blatt als Vektorgrafik, Tisch, Hand, Stiche, Ansage-Dialog, Tresen, Run-Übersicht, Wertungs-Aufschlüsselung, Animation, Klänge, Speichern im Browser | Ein Run fühlt sich wie ein fertiges Spiel an |
 | **M4 Content** | Nullspieler, restliche Bosse, Ereignisse, 30 Hausregeln, 20 Modifikationen, Endboss, freischaltbare Relikte | Inhaltlich vollständige v1 |
 | **M5 Balance** | Simulator-gestützte Kalibrierung der Zielwertkurve, PIMC-KI, Seeds teilen, Statistik | Spielbare v1 |
+| **M6 Feinschliff** | Oberfläche Stil A4 ohne Scrollen, große Abrechnung am Spielende, Null für alle (ADR 0012), geführter erster Abend, Stammgäste mit Namen und Pixelgesicht, leise Chiptune-Musik, Spielstand-Export | v1 zum Teilen |
+| **M7 Langzeit** | Kurzer Abend (3 Abschnitte), Endlos-Modus nach dem Endboss, Einsatz-Leiter (jeder Run-Sieg hebt die Gewinngrenze um ein Auge), angekündigte Flüche statt zufälliger | Grund, wiederzukommen |
 
 Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblatt, Zettel für Relikte, zwei menschliche Gegner. Was auf Papier keinen Spaß macht, wird nicht gebaut.
 
@@ -640,8 +642,26 @@ Entschieden am 01.11.2026 nach dem ersten Spieltest:
 | Stil der Oberfläche | Stil A „Spielhölle“ in der Farbwelt A4 „Kupfer und Schiefer“: Pixelschriften, Schiefergrau mit Kupfer und Mint, harte Pixelschatten. Stilproben: https://claude.ai/artifact/6K2j1apvyPeMveR4pRmTid |
 | Layout am Tisch | Kein Scrollen. Die Oberfläche füllt genau die sichtbare Höhe, auch als PWA ohne Adressleiste. Hand in zwei Reihen à fünf Karten. Die Wertung ist im Spiel nur eine kleine Zeile. |
 
+Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
+
+| Frage | Entscheidung |
+|---|---|
+| Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü. Skat selbst wird nicht von Grund auf gelehrt. |
+| Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). |
+| Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). |
+| Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). |
+| Flüche | Nur angekündigt (z. B. bei Ereignissen) und mit Groschen bezahlt, nie aus Zufallsziehungen (M7). |
+| Normale Gegner | Wechselnde Stammgäste mit Namen und Pixelgesicht, ohne eigene Regeln. Regeln bleiben den Bossen (M6). |
+| Relikte nur für Menschen | Behalten, selten und günstig (Mit Vieren, Der Opa, Saubere Weste, Bierdeckel, Glashaus, Ouvert-Bonus). |
+| Musik | Leise Chiptune-Schleifen für Tisch, Tresen und Boss, getrennt von den Klängen abschaltbar (M6). |
+| Wertung | Im Spiel eine kleine Zeile, nach dem letzten Stich eine große, überspringbare Abrechnung (M6). |
+| Null | Für jeden ansagbar, Nullspieler bleibt als Spezialist (ADR 0012, M6). |
+| Domain | sslip.io bleibt vorerst. Spielstand-Export als Text und dauerhafter Browserspeicher kommen trotzdem (M6). |
+| KI-Tempo | Am Handy flüssig, kein Hintergrund-Thread nötig. |
+| Planung | M6 Feinschliff und M7 Langzeit. Der Weckruf läuft bis M7. |
+
 ## 17. Offen
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
-- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (Schieber, Ramscher, 11). Bis dahin gelten die Faktoren des Alleinspielers.
+- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (Schieber, Ramscher, 11). Erledigt sich weitgehend mit ADR 0012, weil der Nullspieler dann auch Farbe und Grand spielen darf; nach dem Umbau nachmessen.
 - **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.
