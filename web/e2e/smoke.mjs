@@ -7,7 +7,9 @@
 // - reloads the page and checks that the run is resumed,
 // - plays a whole game (Ansage, Drücken, 10 Stiche, Abrechnung) and checks
 //   that the series account changed,
-// - visits the Tresen, buys something if possible and starts the next series.
+// - visits the Tresen, buys something if possible, opens the Kreidetafel and
+//   the menu (tempo setting is stored), and starts the next series.
+// The card sprite (German deck) and the shipped fonts must be present.
 // Screenshots of table, score and Tresen at 390 × 844 and 1280 × 800 go to
 // $SMOKE_SCREENS (default: web/e2e/screens). Any console error fails the test.
 // Runs with reduced motion for speed; SMOKE_FULL_MOTION=1 plays every
@@ -102,6 +104,13 @@ async function run() {
     await page.waitForSelector('[data-action="new-run"]');
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
+    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'f-back', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
+    const fonts = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return ['Grenze Gotisch', 'Alegreya Sans'].filter((f) => !document.fonts.check(`16px "${f}"`, 'Skat'));
+    });
+    if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
     await page.fill('#seed', SEED);
     await page.click('[data-action="new-run"]');
     await page.waitForSelector('.declare');
@@ -173,6 +182,9 @@ async function run() {
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
     const coinsBefore = Number(await text(page, 'coins'));
+    const next = await text(page, 'next-series');
+    if (!next) fail('the Tresen shows no preview of the next series');
+    log(`next series: ${next.replace(/\s+/g, ' ')}`);
     await shoot(page, 'shop');
     const buy = page.locator('[data-action="buy-relic"]:not([disabled]), [data-action="buy-item"]:not([disabled])');
     if (await buy.count()) {
@@ -184,6 +196,22 @@ async function run() {
       log(`bought at the Tresen: ${coinsBefore} -> ${await text(page, 'coins')} Groschen`);
       await shoot(page, 'shop-bought');
     }
+    // Kreidetafel: the tour with the won series ticked off.
+    await page.click('.hud [data-action="overview"]');
+    await page.waitForSelector('.tour-grid');
+    if ((await page.locator('.tour-cell.is-done').count()) < 1) fail('Kreidetafel shows no finished series');
+    await shoot(page, 'overview');
+    await page.click('.sheet [data-action="close-overlay"]');
+    await page.waitForSelector('.tour-grid', { state: 'detached' });
+
+    // Menu: the tempo setting is stored in the browser.
+    await page.click('[data-action="menu"]');
+    await page.click('[data-action="tempo"][data-tempo="fast"]');
+    const tempo = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').tempo);
+    if (tempo !== 'fast') fail(`tempo setting not stored: ${tempo}`);
+    await page.click('.sheet [data-action="close-overlay"]');
+    log('Kreidetafel and menu checked');
+
     await page.click('[data-action="leave-shop"]');
     await page.waitForSelector('.declare, [data-action="boss-go"]');
     log('next series started');

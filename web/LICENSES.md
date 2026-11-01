@@ -1,15 +1,22 @@
 # Lizenzen und Quellen der Web-App
 
-Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16). Jede fremde Quelle steht hier und später im Abspann.
+Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16), für Schriften zusätzlich die SIL Open Font License. Jede fremde Quelle steht hier und später im Abspann.
 
 ## Grafik, Schrift, Klang
 
-| Was | Quelle | Lizenz |
-|---|---|---|
-| Kartenbilder des deutschen Blatts (Eichel, Grün, Rot, Schellen, Kartenrücken, Blanko) | Selbst gezeichnet als SVG in `src/ui/cards.ts` und `src/style.css` | Teil dieses Projekts |
-| Favicon | Selbst gezeichnet, `public/favicon.svg` | Teil dieses Projekts |
-| Schrift | Systemschrift des Geräts (`system-ui`), nichts wird geladen | – |
-| Klänge | keine (kommen in M3) | – |
+| Was | Datei | Autor | Lizenz |
+|---|---|---|---|
+| Kartenbilder des deutschen Blatts (Farbzeichen, Zahlkarten, Daus, König, Ober, Unter, Kartenrücken, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
+| Figuren (Stammgäste, Wirt, Bosse), Gegenstände am Tresen, Regal | `src/ui/people.ts`, `src/ui/goods.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
+| Holz-, Filz- und Kreide-Texturen | `src/style.css` (SVG-Rauschfilter) | selbst erstellt | Teil dieses Projekts |
+| Favicon | `public/favicon.svg` | selbst gezeichnet | Teil dieses Projekts |
+| Schrift „Grenze Gotisch“ (Anzeige-Schrift), auf Latin-1 reduziert, WOFF2 | `src/assets/fonts/grenze-gotisch.woff2` | Omnibus-Type, The Grenze Gotisch Project Authors (https://github.com/Omnibus-Type/Grenze-Gotisch), bezogen über github.com/google/fonts | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-GrenzeGotisch.txt` |
+| Schrift „Alegreya Sans“ (Textschrift, Regular und Bold), auf Latin-1 reduziert, WOFF2 | `src/assets/fonts/alegreya-sans-*.woff2` | Juan Pablo del Peral, HT Fonts (Huerta Tipográfica), The Alegreya Sans Project Authors (https://github.com/huertatipografica/Alegreya-Sans), bezogen über github.com/google/fonts | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-AlegreyaSans.txt` |
+| Klänge: Karte legen, Stich, Kreide-Tick, Gläserklirren (Relikt), Groschen, Klopfen (Ergebnis), Sieg und Niederlage (Akkordeon) | `src/assets/sounds/*.mp3` | selbst synthetisiert mit `scripts/make-sounds.mjs` (Rauschen, Sinus-Teiltöne, kleine Akkordeon-Synthese), keine fremden Aufnahmen | Teil dieses Projekts |
+
+Die Schriften wurden mit `pyftsubset` (fontTools) auf die Zeichen für deutsche Texte reduziert. Das ist nach OFL erlaubt. Beide Schriften haben keinen reservierten Schriftnamen (Reserved Font Name), die reduzierten Fassungen dürfen ihren Namen also behalten. Die Lizenztexte liegen neben den Schriftdateien. Die Klänge lassen sich mit `node scripts/make-sounds.mjs` (braucht ffmpeg) jederzeit neu erzeugen.
+
+Dieselben Quellen nennt der Abspann im Spiel (Startseite und Menü, Texte in `src/i18n/de.ts`).
 
 Die App lädt zur Laufzeit nichts von fremden Servern.
 

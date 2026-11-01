@@ -19,6 +19,7 @@ export const de = {
       default: 'Unbekannter Fehler.',
     } as Record<string, string>,
     close: 'Schließen',
+    hurry: 'Tippen zum Beschleunigen',
   },
 
   start: {
@@ -33,6 +34,10 @@ export const de = {
     noRecord: 'Noch kein Run gespielt.',
     howTo:
       'Du bist immer Alleinspieler. Erreiche in jeder Serie den Zielwert, kaufe am Tresen Hausregeln und verändere das Blatt, mit dem alle drei spielen.',
+    sign: 'Gaststätte',
+    since: 'Skat seit 1813',
+    credits: 'Abspann',
+    settings: 'Einstellungen',
   },
 
   header: {
@@ -47,6 +52,12 @@ export const de = {
     coins: 'Groschen',
     seed: 'Seed {seed}',
     menu: 'Menü',
+    where: 'Abschnitt {section} · Serie {series}',
+    whereBoss: 'Abschnitt {section} · Boss',
+    overview: 'Kreidetafel öffnen',
+    tourHint: 'Kreidetafel',
+    gamesAria: '{left} von {limit} Spielen übrig',
+    passesAria: '{left} Pässe übrig',
   },
 
   suits: {
@@ -146,6 +157,7 @@ export const de = {
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
     trickTo: 'Stich an {name} ({points} Augen)',
+    trickToYou: 'Dein Stich ({points} Augen)',
     tricks: 'Stiche {own} : {theirs}',
     skat: 'Gedrückt',
     declaration: '{game} · {risk}',
@@ -154,6 +166,8 @@ export const de = {
     reBadge: 'Re',
     holds: 'hält',
     game: 'Spiel {number}',
+    tricksOwn: 'Deine Stiche',
+    you: 'Du',
   },
 
   kontra: {
@@ -164,7 +178,14 @@ export const de = {
     noRe: 'Kein Re',
   },
 
+  odds: {
+    line: 'Jede Karte landet zu {pct} bei dir oder im Skat.',
+    detail: 'Hand {hand} · Skat {skat} · Gegner {defenders}',
+    talon: ' · Talon {talon}',
+  },
+
   toast: {
+    bossAnnounced: 'Neuer Skatabend. Der Boss heute: {name}.',
     passed: 'Eingepasst. Noch {left} Pässe.',
     redealt: 'Neu gemischt und gegeben.',
     conceded: 'Die Gegner schenken dir den Rest.',
@@ -216,6 +237,12 @@ export const de = {
     account: 'Konto {score} / {target}',
     continue: 'Weiter',
     skip: 'Überspringen',
+    tapToSkip: 'Tippen zum Überspringen',
+    boxBase: 'Grundwert',
+    boxLevels: 'Stufen',
+    boxMul: 'Faktor',
+    accountLabel: 'Konto',
+    targetLabel: 'Ziel {target}',
     seriesWon: 'Serie gewonnen!',
     payoutBase: 'Grundbetrag',
     payoutGames: 'Übrige Spiele',
@@ -240,6 +267,19 @@ export const de = {
     pickTarget: 'Wähle eine Karte',
     pickHint: '{name}: {text}',
     cancel: 'Abbrechen',
+    wirtSays: 'Na, was darf’s sein?',
+    next: 'Als Nächstes',
+    nextSeries: 'Abschnitt {section} · Serie {series}',
+    nextBoss: 'Abschnitt {section} · Boss-Serie',
+    nextTarget: 'Ziel {target}',
+    nextGames: '{games} Spiele · {passes} Pässe',
+    bossTonight: 'Boss dieses Abends',
+    lastSeries: 'Das war die letzte Serie der Tournee.',
+    wirtBroke: 'Anschreiben gibt’s hier nicht.',
+    price: '{price} Gr.',
+    buyShort: 'Kaufen',
+    noRelics: 'Noch keine Bierdeckel gesammelt.',
+    noItems: 'Nichts in der Tasche.',
   },
 
   rarity: {
@@ -257,6 +297,7 @@ export const de = {
     title: 'Boss-Serie',
     intro: 'Am Tisch sitzt jetzt:',
     go: 'Los geht’s',
+    unknown: '?',
   },
 
   end: {
@@ -273,6 +314,63 @@ export const de = {
     seed: 'Seed',
     newRun: 'Neuer Run',
     toStart: 'Zum Start',
+    overview: 'Kreidetafel',
+  },
+
+  menu: {
+    tempo: 'Tempo',
+    tempos: { slow: 'Gemütlich', normal: 'Normal', fast: 'Flott' },
+    sound: 'Ton',
+    soundOn: 'An',
+    soundOff: 'Aus',
+    overview: 'Kreidetafel',
+    credits: 'Abspann',
+    reducedMotion: 'Dein Gerät wünscht weniger Bewegung. Animationen sind deshalb kurz.',
+  },
+
+  overview: {
+    title: 'Kreidetafel',
+    tour: 'Die Tournee',
+    section: 'Abschnitt {n}',
+    columns: ['Serie 1', 'Serie 2', 'Boss'],
+    current: '{score} / {target}',
+    done: 'geschafft',
+    lost: 'ausgeschieden',
+    thisRun: 'Diese Tournee',
+    allRuns: 'Alle Runs',
+    runs: 'Runs',
+    runsWon: 'Gewonnen',
+    bestSection: 'Weitester Abschnitt',
+    deck: 'Dein Blatt ({count} Karten)',
+    deckHint: 'Dieses Blatt teilen sich alle drei am Tisch.',
+  },
+
+  credits: {
+    title: 'Abspann',
+    intro: 'Stammtisch ist ein Projekt mit Liebe zum Skat. Diese Quellen stecken drin:',
+    entries: [
+      {
+        what: 'Schrift „Grenze Gotisch“',
+        who: 'Omnibus-Type (The Grenze Gotisch Project Authors)',
+        license: 'SIL Open Font License 1.1',
+      },
+      {
+        what: 'Schrift „Alegreya Sans“',
+        who: 'Juan Pablo del Peral, HT Fonts (Huerta Tipográfica)',
+        license: 'SIL Open Font License 1.1',
+      },
+      {
+        what: 'Kartenbild (deutsches Blatt), Figuren, Tresen',
+        who: 'Selbst gezeichnet als SVG für dieses Projekt',
+        license: 'Teil des Projekts',
+      },
+      {
+        what: 'Klänge (Karten, Stich, Kreide, Gläser, Groschen, Klopfen, Akkordeon)',
+        who: 'Selbst synthetisiert für dieses Projekt (scripts/make-sounds.mjs)',
+        license: 'Teil des Projekts',
+      },
+    ],
+    thanks: 'Gut Blatt!',
   },
 
   flags: {

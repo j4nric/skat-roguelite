@@ -13,6 +13,11 @@ export function t(template: string, params: Record<string, string | number> = {}
   );
 }
 
+/** A probability from the core (thousandths) as "37,5 %". */
+export function percent(permille: number): string {
+  return `${(permille / 10).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+}
+
 /** Suit and rank of a card kind, or null for a blank. */
 export function face(kind: CardKind): { suit: Suit; rank: Rank } | null {
   if (kind === 'Blank') return null;

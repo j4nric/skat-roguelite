@@ -1,18 +1,26 @@
 // The app controller: holds the core run and the UI state, turns taps into
-// RunActions, plays the core's events back with short delays and saves the
-// core state after every action. No game rules live here: what is legal,
-// what a game is worth and who takes a trick all come from the core.
+// RunActions, plays the core's events back as animations with sound, and
+// saves the core state after every action. No game rules live here: what
+// is legal, what a game is worth and who takes a trick all come from the
+// core.
+//
+// The DOM has three layers: the screen (re-rendered on every change), the
+// overlay (rendered only when the dialog changes, so the score board can
+// animate undisturbed) and the toast line.
 
+import { sound } from './audio';
 import { CoreRun, loadCatalog, loadCore } from './core';
 import { de, contentName, contentText, setCatalog, t } from './i18n';
+import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearRun, loadRecord, loadRun, recordRun, saveRun } from './storage';
-import type { CardView, DealtCard, Payout, RiskLevel, RunAction, RunEvent, RunView } from './types';
+import type { CardView, DealtCard, RiskLevel, RunAction, RunEvent, RunView, Seat } from './types';
 import { esc, reducedMotion } from './ui/dom';
+import { deal, finishAll, flyAway, flyIn, setTempo } from './ui/fx';
 import { renderHud } from './ui/hud';
-import { renderScore } from './ui/score';
+import { renderScore, ScoreBoard } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart } from './ui/screens';
 import { renderShop } from './ui/shop';
-import type { UiState } from './ui/state';
+import type { Overlay, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
 
 /** Turn a core error (JSON `{code, message}` since the M2 polish) into a German text. */
@@ -28,13 +36,13 @@ function errorText(err: unknown): string {
   return de.app.errors.default ?? '';
 }
 
-/** Delays in milliseconds; reduced motion shortens them. */
+/** Pauses in milliseconds at tempo "Normal"; reduced motion shortens them. */
 const DELAY = {
-  ownCard: 180,
-  aiCard: 520,
-  trickDone: 850,
-  toast: 1800,
-  scoreStep: 380,
+  ownCard: 260,
+  aiCard: 560,
+  trickShow: 650,
+  trickFly: 360,
+  toast: 1900,
   notice: 700,
 };
 
@@ -51,21 +59,40 @@ export class App {
     pickGame: null,
     pickRisk: null,
     overlay: null,
-    toast: null,
     message: null,
     saveInfo: null,
     record: loadRecord(),
+    settings: loadSettings(),
     ended: null,
   };
   private fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
-  private scoreTimer: number | undefined;
+  private readonly screenEl: HTMLElement;
+  private readonly layerEl: HTMLElement;
+  private readonly toastEl: HTMLElement;
+  private renderedOverlay: Overlay | null = null;
+  private overlayDirty = false;
+  private scoreBoard: ScoreBoard | null = null;
+  /** Effects to run once the next render is in the DOM. */
+  private afterRender: (() => void)[] = [];
+  /** Where the card the player just tapped was. */
+  private playedFrom: DOMRect | null = null;
 
   constructor(private readonly root: HTMLElement) {
+    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
+    this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
+    this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
+    this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
+    this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
+    // Browsers allow audio only after a user gesture.
+    const unlock = (): void => sound.unlock();
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.ui.overlay && this.ui.overlay.kind !== 'score' && this.ui.overlay.kind !== 'boss') {
+      const o = this.ui.overlay;
+      if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss') {
         this.ui.overlay = null;
         this.render();
       }
@@ -84,6 +111,11 @@ export class App {
       return;
     }
     this.toStart();
+  }
+
+  private applySettings(): void {
+    setTempo(TEMPO_FACTOR[this.ui.settings.tempo]);
+    sound.setEnabled(this.ui.settings.sound);
   }
 
   // -------------------------------------------------------------------------
@@ -143,21 +175,22 @@ export class App {
     this.ui.message = null;
     this.ui.ended = null;
     saveRun(core.save());
-    this.enterRun(core.view());
+    this.enterRun(core.view(), true);
   }
 
   private resume(): void {
     if (!this.core) return;
     this.ui.message = null;
-    this.enterRun(this.core.view());
+    this.enterRun(this.core.view(), true);
   }
 
-  private enterRun(view: RunView): void {
+  private enterRun(view: RunView, dealt: boolean): void {
     this.ui.view = view;
     this.ui.screen = 'run';
     this.ui.anim = null;
     this.ui.overlay = null;
     this.resetTableChoices();
+    if (dealt && view.game) this.afterRender.push(() => this.dealEffect());
     this.render();
   }
 
@@ -199,10 +232,12 @@ export class App {
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.view = view;
+      this.playedFrom = null;
       this.resetTableChoices();
       if (view.phase === 'Won' || view.phase === 'Lost') {
         this.ui.ended = { won: view.phase === 'Won', view };
         this.ui.screen = 'end';
+        sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
       }
       this.render();
     }
@@ -230,7 +265,10 @@ export class App {
       if (ev === undefined) continue;
       if (typeof ev === 'string') {
         if (ev === 'Re') this.showToast(de.toast.re);
-        if (ev === 'Redealt') this.showToast(de.toast.redealt);
+        if (ev === 'Redealt') {
+          this.showToast(de.toast.redealt);
+          this.afterRender.push(() => this.dealEffect());
+        }
         continue;
       }
       if ('Game' in ev) {
@@ -242,10 +280,16 @@ export class App {
         this.ui.anim = null;
         this.ui.view = after;
         this.resetTableChoices();
+        this.afterRender.push(() => this.dealEffect());
+        continue;
+      }
+      if ('BossAnnounced' in ev) {
+        this.showToast(t(de.toast.bossAnnounced, { name: contentName('bosses', ev.BossAnnounced.boss) }));
         continue;
       }
       if ('Kontra' in ev) {
-        this.showToast(t(de.toast.kontra, { name: de.seats[ev.Kontra.seat] ?? '' }));
+        this.showToast(t(de.toast.kontra, { name: this.seatLabel(ev.Kontra.seat, after) }));
+        sound.play('knock');
         await this.pause(DELAY.notice);
         continue;
       }
@@ -263,30 +307,36 @@ export class App {
       }
       if ('RelicBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('relics', ev.RelicBought.relic) }));
+        sound.play('coin');
         continue;
       }
       if ('ConsumableBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('consumables', ev.ConsumableBought.consumable) }));
+        sound.play('coin');
         continue;
       }
       if ('RelicSold' in ev) {
         this.showToast(t(de.toast.sold, { name: contentName('relics', ev.RelicSold.relic), price: ev.RelicSold.price }));
+        sound.play('coin');
         continue;
       }
       if ('ConsumableSold' in ev) {
         this.showToast(
           t(de.toast.sold, { name: contentName('consumables', ev.ConsumableSold.consumable), price: ev.ConsumableSold.price }),
         );
+        sound.play('coin');
         continue;
       }
       if ('ShopRerolled' in ev) {
         this.showToast(de.toast.rerolled);
+        sound.play('card');
         continue;
       }
       if ('GameScored' in ev) {
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
         await this.showScore(
+          before?.series.score ?? 0,
           ev.GameScored.series_score,
           before?.series.target ?? after.series.target,
           after,
@@ -314,12 +364,17 @@ export class App {
       if (!anim) return;
       const { seat, card } = ev.CardPlayed;
       if (anim.trick.length >= 3) anim.trick = [];
+      // Where the card comes from, measured before the table changes.
+      const from = seat === 0 ? (this.playedFrom ?? this.rectOf('.hand')) : this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
       anim.trick.push({ seat, card: this.cardOf(card, after) });
       anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
       if (seat === 0) anim.hand = anim.hand.filter((c) => c.id !== card.id);
       anim.turn = seat === 0 ? null : seat;
       anim.status = '';
       this.render();
+      const el = this.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
+      if (el && from && !this.fastForward) flyIn(el, from, { ms: seat === 0 ? 220 : 300, rotate: seat === 1 ? -20 : seat === 2 ? 20 : 0 });
+      sound.play('card', { rate: 0.94 + seat * 0.05 });
       await this.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;
     }
@@ -327,9 +382,16 @@ export class App {
       if (!anim) return;
       const { trick, card_points } = ev.TrickWon;
       anim.turn = null;
-      anim.status = t(de.table.trickTo, { name: de.seats[trick.winner] ?? '', points: card_points });
+      anim.status =
+        trick.winner === 0
+          ? t(de.table.trickToYou, { points: card_points })
+          : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
       this.render();
-      await this.pause(DELAY.trickDone);
+      await this.pause(DELAY.trickShow);
+      const target = this.winnerRect(trick.winner);
+      const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
+      sound.play('trick');
+      if (target && !this.fastForward) await Promise.race([flyAway(cards, target, DELAY.trickFly), this.pause(DELAY.trickFly + 200)]);
       anim.trick = [];
       anim.status = '';
       this.render();
@@ -358,51 +420,79 @@ export class App {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
       this.render();
+      if ('SkatPickedUp' in ev) {
+        // The two Skat cards slide from the middle into the hand.
+        const from = this.rectOf('.deck-spot');
+        if (from) {
+          for (const c of ev.SkatPickedUp.skat) {
+            const el = this.screenEl.querySelector(`.hand-card[data-id="${c.id}"]`);
+            if (el) flyIn(el, from, { ms: 320 });
+          }
+          sound.play('card');
+        }
+      }
     }
   }
 
+  private seatLabel(seat: Seat, view: RunView): string {
+    if (seat === 1 && view.series.is_boss && view.series.boss) return contentName('bosses', view.series.boss.id);
+    return de.seats[seat] ?? '';
+  }
+
+  private rectOf(selector: string): DOMRect | null {
+    const el = this.screenEl.querySelector(selector);
+    return el ? el.getBoundingClientRect() : null;
+  }
+
+  private winnerRect(seat: Seat): DOMRect | null {
+    if (seat === 0) return this.rectOf('[data-tricks]') ?? this.rectOf('.hand');
+    return this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
+  }
+
+  /** Cards fly from the middle of the table to the hands, in turns. */
+  private dealEffect(): void {
+    const from = this.rectOf('.deck-spot');
+    if (!from) return;
+    const hand = Array.from(this.screenEl.querySelectorAll('.hand-card'));
+    const left = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="1"] .opp-hand .card-back'));
+    const right = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="2"] .opp-hand .card-back'));
+    const order: Element[] = [];
+    for (let i = 0; i < Math.max(hand.length, left.length, right.length); i++) {
+      for (const list of [hand, left, right]) {
+        const el = list[i];
+        if (el) order.push(el);
+      }
+    }
+    deal(order, from, {
+      step: 22,
+      ms: 280,
+      onCard: (i) => {
+        if (i % 4 === 0) sound.play('card', { volume: 0.45, rate: 1.1 });
+      },
+    });
+  }
+
   private async showScore(
+    previousScore: number,
     seriesScore: number,
     target: number,
     after: RunView,
-    payout: { payout: Payout; coins: number } | null,
+    payout: ScoreOverlay['payout'],
   ): Promise<void> {
     const score = after.last_score;
     if (!score) return;
     await new Promise<void>((resolve) => {
-      const instant = reducedMotion() || this.fastForward;
-      this.ui.overlay = {
-        kind: 'score',
-        score,
-        seriesScore,
-        target,
-        payout,
-        shown: instant ? score.steps.length : 0,
-        resolve,
-      };
+      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, resolve };
       this.render();
-      this.scheduleScoreStep();
     });
-    window.clearTimeout(this.scoreTimer);
+    this.scoreBoard = null;
     this.ui.overlay = null;
-  }
-
-  private scheduleScoreStep(): void {
-    const o = this.ui.overlay;
-    if (!o || o.kind !== 'score' || o.shown >= o.score.steps.length) return;
-    this.scoreTimer = window.setTimeout(() => {
-      const cur = this.ui.overlay;
-      if (!cur || cur.kind !== 'score') return;
-      cur.shown += 1;
-      this.render();
-      this.scheduleScoreStep();
-    }, DELAY.scoreStep);
   }
 
   /** Wait, unless the player asked to hurry. */
   private pause(ms: number): Promise<void> {
     if (this.fastForward) return Promise.resolve();
-    const scaled = reducedMotion() ? ms * 0.25 : ms;
+    const scaled = ms * TEMPO_FACTOR[this.ui.settings.tempo] * (reducedMotion() ? 0.25 : 1);
     return new Promise((resolve) => {
       const timer = window.setTimeout(done, scaled);
       const wakers = this.wakers;
@@ -418,16 +508,23 @@ export class App {
 
   private hurry(): void {
     this.fastForward = true;
+    finishAll();
     for (const wake of this.wakers.slice()) wake();
   }
 
   private showToast(text: string): void {
-    this.ui.toast = text;
+    this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => {
-      this.ui.toast = null;
-      this.render();
+      this.toastEl.innerHTML = '';
     }, DELAY.toast);
+  }
+
+  private setSettings(change: Partial<UiState['settings']>): void {
+    this.ui.settings = { ...this.ui.settings, ...change };
+    saveSettings(this.ui.settings);
+    this.applySettings();
+    this.overlayDirty = true;
     this.render();
   }
 
@@ -445,7 +542,7 @@ export class App {
     }
     const action = el.dataset.action ?? '';
     // A tap on the backdrop of a dialog only counts if it hit the backdrop.
-    if ((action === 'close-overlay' || action === 'score-skip') && el.classList.contains('overlay') && target !== el) {
+    if (action === 'close-overlay' && el.classList.contains('overlay') && target !== el) {
       return;
     }
     if (el instanceof HTMLButtonElement && el.disabled) return;
@@ -462,9 +559,26 @@ export class App {
         this.toStart();
         return;
       case 'menu':
+      case 'settings':
         if (this.ui.busy) return;
         this.ui.overlay = { kind: 'menu' };
         this.render();
+        return;
+      case 'overview':
+        if (this.ui.busy || !view) return;
+        this.ui.overlay = { kind: 'overview' };
+        this.render();
+        return;
+      case 'credits':
+        this.ui.overlay = { kind: 'credits' };
+        this.render();
+        return;
+      case 'tempo':
+        this.setSettings({ tempo: (el.dataset.tempo ?? 'normal') as Tempo });
+        return;
+      case 'sound':
+        this.setSettings({ sound: el.dataset.on === 'true' });
+        if (el.dataset.on === 'true') sound.play('clink');
         return;
       case 'close-overlay':
         if (overlay && overlay.kind !== 'score' && overlay.kind !== 'boss') {
@@ -476,11 +590,7 @@ export class App {
         if (this.ui.busy) this.hurry();
         return;
       case 'score-skip':
-        if (overlay?.kind === 'score') {
-          overlay.shown = overlay.score.steps.length;
-          window.clearTimeout(this.scoreTimer);
-          this.render();
-        }
+        if (overlay?.kind === 'score') this.scoreBoard?.skip();
         return;
       case 'score-continue':
         if (overlay?.kind === 'score') overlay.resolve();
@@ -503,6 +613,7 @@ export class App {
             title: contentName('relics', relic.relic.id),
             subtitle: `${de.relicKind[relic.relic.kind]} · ${de.rarity[relic.relic.rarity]}`,
             text: contentText('relics', relic.relic.id),
+            coaster: relic.relic.rarity,
           };
           this.render();
         }
@@ -511,13 +622,13 @@ export class App {
       case 'info-item': {
         const item = view?.consumables.find((c) => c.slot === num('slot'));
         if (item) {
-          const usable = item.can_use && !item.consumable.needs_target && !this.ui.busy;
           this.ui.overlay = {
             kind: 'info',
             title: contentName('consumables', item.consumable.id),
             subtitle: de.shop.consumables,
             text: contentText('consumables', item.consumable.id),
-            ...(usable || (item.can_use && item.consumable.needs_target) ? { use: item.slot } : {}),
+            good: item.consumable.id,
+            ...(item.can_use && !this.ui.busy ? { use: item.slot } : {}),
           };
           this.render();
         }
@@ -566,6 +677,7 @@ export class App {
         return;
       }
       case 'play':
+        this.playedFrom = el.getBoundingClientRect();
         void this.act({ Play: num('id') });
         return;
       case 'buy-relic':
@@ -624,31 +736,52 @@ export class App {
         body = renderStart(ui, BUILD_INFO);
         break;
       case 'end':
-        body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view) : '';
+        body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : '';
         break;
       case 'run': {
         const view = ui.view;
         if (!view) break;
-        const main = view.phase === 'Shop' && !ui.anim ? renderShop(view) : renderTable(view, ui);
-        body = `<div class="run ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
+        const inShop = view.phase === 'Shop' && !ui.anim;
+        const main = inShop ? renderShop(view) : renderTable(view, ui);
+        body = `<div class="run ${inShop ? 'is-shop' : 'is-table'} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
         if (kontra) body += renderKontra(view);
-        if (view.phase === 'Shop' && ui.toast && !ui.anim) body += `<div class="toast toast-floating" role="status">${esc(ui.toast)}</div>`;
         break;
       }
     }
-    if (ui.overlay) {
-      body +=
-        ui.overlay.kind === 'score'
-          ? renderScore(ui.overlay, ui.view?.deck ?? [])
-          : renderOverlay(ui.overlay, ui.view);
-    }
     // Keep the typed seed across re-renders of the start screen.
     const seed = this.root.querySelector<HTMLInputElement>('#seed')?.value;
-    this.root.innerHTML = body;
+    this.screenEl.innerHTML = body;
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
       if (input) input.value = seed;
     }
+    this.renderLayer();
+    const effects = this.afterRender;
+    this.afterRender = [];
+    for (const fx of effects) fx();
+  }
+
+  /** The dialog layer: only rebuilt when the dialog itself changes. */
+  private renderLayer(): void {
+    const o = this.ui.overlay;
+    if (o === this.renderedOverlay && !this.overlayDirty) return;
+    const same = o !== null && o === this.renderedOverlay;
+    this.renderedOverlay = o;
+    this.overlayDirty = false;
+    this.layerEl.classList.toggle('is-static', same);
+    if (!o) {
+      this.layerEl.innerHTML = '';
+      this.scoreBoard = null;
+      return;
+    }
+    if (o.kind === 'score') {
+      this.layerEl.innerHTML = renderScore(o, this.ui.view?.deck ?? []);
+      this.scoreBoard = new ScoreBoard(this.layerEl, o);
+      void this.scoreBoard.play();
+      return;
+    }
+    const view = this.ui.screen === 'run' || this.ui.screen === 'end' ? this.ui.view : null;
+    this.layerEl.innerHTML = renderOverlay(o, view, this.ui);
   }
 }
