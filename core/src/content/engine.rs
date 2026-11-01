@@ -10,7 +10,7 @@ use super::{CardModId, Content};
 use crate::cards::{CardKind, PlayingCard};
 use crate::deck::{DealtCard, Deck};
 use crate::game::{Game, Seat, TRICKS_PER_GAME};
-use crate::rules::{Declaration, GameType, ValueParts};
+use crate::rules::{Declaration, GameType, Matadors, ValueParts};
 
 /// One active content item: where it comes from and what it does. Card
 /// modifications carry the card instance they sit on.
@@ -259,6 +259,102 @@ pub fn evaluate(
         Condition::MatadorsAtLeast { with, count } => game
             .and_then(Game::matadors)
             .is_some_and(|m| m.count > 0 && m.with == *with && m.count >= *count),
+    }
+}
+
+/// Evaluate an `OnScore` condition before the game is over, for a game
+/// the declarer would win: `Some(true)` or `Some(false)` when the answer
+/// is already certain from what the player knows, `None` when it depends
+/// on how the game goes on (the score preview of the run counts only
+/// certain hooks).
+///
+/// `ctx.result` is the result of the smallest win as currently known
+/// (Schneider and Schwarz only when declared). `matadors` holds every
+/// count of Spitzen that fits what the player knows (one entry once it is
+/// certain).
+///
+/// Certain: `Won` (true), `Lost` (false), flags and counters as they are
+/// now, everything fixed by the declaration, `WonSchneider` and
+/// `AllTricksWon` when the declaration demands them (false in Null),
+/// `NoTrickTaken` in Null (a won Null takes no trick), `MatadorsAtLeast`
+/// when every possible count agrees, and the conditions that are always
+/// false on score (the card just played). Unknown: everything about the
+/// tenth trick, Augen, tricks played and Null style.
+#[must_use]
+pub fn evaluate_if_won(
+    condition: &Condition,
+    ctx: &HookContext<'_>,
+    this_card: Option<DealtCard>,
+    matadors: &[Matadors],
+) -> Option<bool> {
+    let declaration = ctx.game.and_then(Game::declaration);
+    let null = declaration.is_some_and(Declaration::is_null);
+    match condition {
+        Condition::All(cs) => {
+            let mut all = Some(true);
+            for c in cs {
+                match evaluate_if_won(c, ctx, this_card, matadors) {
+                    Some(false) => return Some(false),
+                    Some(true) => {}
+                    None => all = None,
+                }
+            }
+            all
+        }
+        Condition::Any(cs) => {
+            let mut any = Some(false);
+            for c in cs {
+                match evaluate_if_won(c, ctx, this_card, matadors) {
+                    Some(true) => return Some(true),
+                    Some(false) => {}
+                    None => any = None,
+                }
+            }
+            any
+        }
+        Condition::Not(c) => evaluate_if_won(c, ctx, this_card, matadors).map(|b| !b),
+        Condition::Won => Some(true),
+        Condition::Lost => Some(false),
+        Condition::WonSchneider | Condition::AllTricksWon if null => Some(false),
+        Condition::WonSchneider => declaration
+            .is_some_and(Declaration::schneider_declared)
+            .then_some(true),
+        Condition::AllTricksWon => declaration
+            .is_some_and(Declaration::schwarz_declared)
+            .then_some(true),
+        Condition::NoTrickTaken if null => Some(true),
+        Condition::MatadorsAtLeast { with, count } => {
+            let holds = |m: &Matadors| m.count > 0 && m.with == *with && m.count >= *count;
+            if matadors.iter().all(holds) {
+                Some(true)
+            } else if matadors.iter().any(holds) {
+                None
+            } else {
+                Some(false)
+            }
+        }
+        Condition::LastTrickWonWith { .. }
+        | Condition::LastTrickWinnerMatches { .. }
+        | Condition::ThisCardWinsLastTrick
+        | Condition::TricksPlayed(_)
+        | Condition::DefenderPointsBelow(_)
+        | Condition::NoTrickTaken
+        | Condition::SevenDucked
+        | Condition::NeverFollowedSuit => None,
+        Condition::Always
+        | Condition::Flag(_)
+        | Condition::CounterAtLeast { .. }
+        | Condition::GameIs(_)
+        | Condition::SuitGame
+        | Condition::RiskAtLeast(_)
+        | Condition::ThisCardIsTrumpSuit
+        | Condition::PlayedCardMatches(_)
+        | Condition::PlayedByDeclarer
+        | Condition::GamesLeftAtLeast(_)
+        | Condition::NullGame
+        | Condition::NullRiskAtLeast(_)
+        | Condition::RamschGame
+        | Condition::HandGame => Some(evaluate(condition, ctx, this_card)),
     }
 }
 

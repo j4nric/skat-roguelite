@@ -42,6 +42,8 @@ pub mod opponents;
 pub mod player;
 pub mod view;
 
+mod value_preview;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -1828,11 +1830,6 @@ impl Run {
     /// Apply one effect. Card-level effects were applied when the deck was
     /// resolved and are ignored here.
     fn apply_effect(&mut self, source: &Source, effect: &Effect, events: &mut Vec<RunEvent>) {
-        let line = |lever, change| ScoreLine {
-            source: source.clone(),
-            lever,
-            change,
-        };
         match effect {
             Effect::SetFlag(flag) => {
                 if self.flags.insert(flag.clone()) {
@@ -1872,11 +1869,7 @@ impl Run {
             }
             _ => {}
         }
-        let counter_value = |name: &str| self.counters.get(name).copied().unwrap_or(0);
-        let from_counter = match effect {
-            Effect::AddBaseValueFromCounter(name) => counter_value(name),
-            _ => 0,
-        };
+        let line = score_line(source, effect, &self.counters);
         let ramsch_played = self.series.ramsch_played;
         let Some(active) = self.game.as_mut() else {
             return;
@@ -1885,25 +1878,11 @@ impl Run {
             return;
         }
         match effect {
-            Effect::AddBaseValue(n) => active
-                .lines
-                .push(line(Lever::BaseValue, Change::Add(i64::from(*n)))),
-            Effect::MultiplyBaseValue(n) => active
-                .lines
-                .push(line(Lever::BaseValue, Change::Multiply(*n))),
-            Effect::AddBaseValueFromCounter(_) => {
-                if from_counter > 0 {
-                    active
-                        .lines
-                        .push(line(Lever::BaseValue, Change::Add(i64::from(from_counter))));
-                }
-            }
-            Effect::AddLevels(n) => active
-                .lines
-                .push(line(Lever::Levels, Change::Add(i64::from(*n)))),
-            Effect::MultiplyGameValue(n) => active
-                .lines
-                .push(line(Lever::GameValue, Change::Multiply(*n))),
+            Effect::AddBaseValue(_)
+            | Effect::MultiplyBaseValue(_)
+            | Effect::AddBaseValueFromCounter(_)
+            | Effect::AddLevels(_)
+            | Effect::MultiplyGameValue(_) => active.lines.extend(line),
             Effect::WinThreshold(n) => {
                 if *n < active.rules.thresholds.win {
                     active.rules.thresholds.win = *n;
@@ -2228,14 +2207,7 @@ impl Run {
             }
         }
         lines.extend(active.lines.iter().cloned());
-        match active.kontra {
-            Kontra::None => {}
-            Kontra::Kontra(_) => lines.push(kontra_line(Source::Kontra)),
-            Kontra::Re(_) => {
-                lines.push(kontra_line(Source::Kontra));
-                lines.push(kontra_line(Source::Re));
-            }
-        }
+        lines.extend(kontra_lines(active.kontra));
         let mut breakdown = score_parts(
             declaration,
             matadors,
@@ -2983,6 +2955,44 @@ pub fn series_target(
         .and_then(|b| content.boss(b))
         .map_or(crate::content::Factor::ONE, |def| def.target_factor);
     Some(factor.apply(base))
+}
+
+/// The line a score effect (Grundwert, Gewinnstufen, Spielwert) adds, with
+/// the run counters as they are now. `None` for every other effect and for
+/// a counter that is still zero.
+fn score_line(
+    source: &Source,
+    effect: &Effect,
+    counters: &BTreeMap<String, u32>,
+) -> Option<ScoreLine> {
+    let (lever, change) = match effect {
+        Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
+        Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
+        Effect::AddBaseValueFromCounter(name) => {
+            let value = counters.get(name).copied().unwrap_or(0);
+            if value == 0 {
+                return None;
+            }
+            (Lever::BaseValue, Change::Add(i64::from(value)))
+        }
+        Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
+        Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
+        _ => return None,
+    };
+    Some(ScoreLine {
+        source: source.clone(),
+        lever,
+        change,
+    })
+}
+
+/// The Spielwert factors of Kontra and Re.
+fn kontra_lines(kontra: Kontra) -> Vec<ScoreLine> {
+    match kontra {
+        Kontra::None => Vec::new(),
+        Kontra::Kontra(_) => vec![kontra_line(Source::Kontra)],
+        Kontra::Re(_) => vec![kontra_line(Source::Kontra), kontra_line(Source::Re)],
+    }
 }
 
 const fn kontra_line(source: Source) -> ScoreLine {

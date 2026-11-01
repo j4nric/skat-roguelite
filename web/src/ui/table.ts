@@ -358,8 +358,24 @@ function statusLine(game: GameView, ui: UiState): string {
 }
 
 /**
+ * Grundwert × Gewinnstufen of the game in progress, as the core previews
+ * it (only what is certain; factors such as Kontra appended). Nothing in
+ * a Ramsch or before the declaration.
+ */
+function worthChip(game: GameView): string {
+  const p = game.value_preview;
+  if (!p) return '';
+  const label =
+    p.multiplier > 1
+      ? t(de.table.worthFactor, { base: p.base_value, levels: p.levels, factor: p.multiplier })
+      : t(de.table.worth, { base: p.base_value, levels: p.levels });
+  return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${esc(label)}</span>`;
+}
+
+/**
  * The small line above the trick: what is played, Kontra, the tricks so far
- * and the pressed skat. The score of the game only comes big at the end.
+ * with the value at stake, and the pressed skat. The score of the game only
+ * comes big at the end.
  */
 function gameLine(game: GameView): string {
   if (!game.declaration) return '';
@@ -381,7 +397,7 @@ function gameLine(game: GameView): string {
       d.game === 'Ramsch'
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
         : t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }),
-    )}</span>
+    )}</span>${worthChip(game)}
     ${skat}
   </div>`;
 }

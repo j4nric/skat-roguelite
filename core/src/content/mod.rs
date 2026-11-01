@@ -24,7 +24,8 @@ use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
 pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
-    ActiveSource, HookContext, ResolvedDeck, card_mod_sources, evaluate, resolve_deck,
+    ActiveSource, HookContext, ResolvedDeck, card_mod_sources, evaluate, evaluate_if_won,
+    resolve_deck,
 };
 pub use score::{
     Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
