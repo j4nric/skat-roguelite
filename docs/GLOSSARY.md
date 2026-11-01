@@ -13,8 +13,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Karo, Herz, Pik, Kreuz | `Diamonds`, `Hearts`, `Spades`, `Clubs` | Reihenfolge aufsteigend nach Grundwert |
 | Wert / Bild | `Rank` | |
 | Sieben, Acht, Neun, Zehn | `Seven`, `Eight`, `Nine`, `Ten` | |
-| Bube | `Jack` | nie `Unter`, nie `Wenzel` |
-| Dame | `Queen` | nie `Ober` |
+| Bube | `Jack` | im Code nie `Unter`, nie `Wenzel`. In der Anzeige heißt er Unter (ADR 0010). |
+| Dame | `Queen` | im Code nie `Ober`. In der Anzeige heißt sie Ober (ADR 0010). |
 | König | `King` | |
 | Ass | `Ace` | |
 | Augen | `card_points` | Summe im Blatt: 120 |
@@ -165,3 +165,20 @@ Werte:   7 8 9 T J Q K A
 Beispiel: CJ = Kreuz-Bube, DT = Karo-Zehn, HA = Herz-Ass
 Blanko:  XX
 ```
+
+## Anzeige im deutschen Blatt (ADR 0010)
+
+Nur für Spieltexte und Grafik. Code, Tests und Design-Dokument bleiben bei den Bezeichnern oben.
+
+| Code | Anzeige |
+|---|---|
+| `Clubs` | Eichel |
+| `Spades` | Grün |
+| `Hearts` | Rot |
+| `Diamonds` | Schellen |
+| `Ace` | Daus |
+| `Ten` | Zehn |
+| `King` | König |
+| `Queen` | Ober |
+| `Jack` | Unter |
+| `Nine`, `Eight`, `Seven` | Neun, Acht, Sieben |

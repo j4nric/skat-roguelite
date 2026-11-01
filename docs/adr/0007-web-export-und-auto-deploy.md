@@ -1,6 +1,6 @@
 # 0007: Web-Export auf dem vServer, Auto-Deploy über GitHub Actions
 
-Datum: 2026-10-31 · Status: Angenommen
+Datum: 2026-10-31 · Status: Angenommen · Plattform-Teil ersetzt durch 0009 (Web-App statt Godot-Web-Export)
 
 ## Kontext
 
