@@ -103,6 +103,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Serie | `Series` | Ein Blind: Zielwert plus Spiellimit |
 | Zielwert | `target` | |
 | Zielwert-Faktor (Boss) | `target_factor` | Typ `Factor`, in RON und JSON als Dezimalzahl, intern Tausendstel |
+| Zielwert-Faktor eines Bosses für einen Charakter | `character_factors` | `BTreeMap<Character, Factor>` in `BossDef`, ersetzt `target_factor` für diesen Charakter (`target_factor_for`) |
 | Boss angekündigt (Start eines Abschnitts) | `BossAnnounced` | Run-Ereignis; Boss des Abschnitts `section_boss` |
 | Bevorstehender Boss | `upcoming_boss` | Feld der Sicht |
 | Nächste Serie (Vorschau) | `next_series` | Feld der Sicht, `NextSeriesView` |
@@ -135,6 +136,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler); Daten `CharacterDef` |
 | Startblatt (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add` |
+| Spielart, für die ein Relikt gemacht ist | `GameFocus` | `All`, `Trump` (Farbspiel und Grand), `Null`; Feld `focus` an Relikten und Modifikationen (ADR 0012) |
+| Tresen-Gewicht pro Spielart | `FocusWeights` | `trump`, `null` in Prozent der Seltenheit; Feld `focus_weights` in `CharacterDef` |
 | Freischaltung | `Unlock` | Definition `UnlockDef`, Id `UnlockId`, Bedingung `UnlockCondition`, Belohnung `Reward` |
 | Meta-Zustand (über Runs) | `MetaState` | Freischaltungen und Statistik, getrennt vom Run gespeichert |
 | Gesperrt | `locked` | Relikte, die noch Belohnung einer Freischaltung sind |

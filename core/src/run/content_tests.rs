@@ -5,7 +5,7 @@ use super::bot::RunBot;
 use super::*;
 use crate::cards::PlayingCard;
 use crate::cards::Suit;
-use crate::content::CardModId;
+use crate::content::{CardModId, GameFocus};
 use crate::rules::{GameType, Matadors, Outcome, RiskLevel};
 
 pub(super) fn content() -> Content {
@@ -719,7 +719,7 @@ fn content_validation_rejects_misplaced_effects() {
 // ---------------------------------------------------------------------------
 
 /// Every item added in M4 loads with German texts, a price and the
-/// character pool it is meant for.
+/// Spielart it is made for; every character meets it (ADR 0012).
 #[test]
 fn m4_content_items_load_with_texts_prices_and_pools() {
     let content = content();
@@ -750,11 +750,12 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
             !def.name.is_empty() && !def.text.is_empty() && def.price > 0,
             "{id}"
         );
+        assert!(def.characters.is_empty(), "{id}");
         if null_only.contains(id) {
-            assert_eq!(def.characters, vec![Character::NullPlayer], "{id}");
+            assert_eq!(def.focus, GameFocus::Null, "{id}");
         }
         if declarer_only.contains(id) {
-            assert_eq!(def.characters, vec![Character::Declarer], "{id}");
+            assert_eq!(def.focus, GameFocus::Trump, "{id}");
         }
     }
     assert!(content.relics.len() >= 30);
@@ -763,7 +764,7 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
     let null_mods = content
         .card_mods
         .values()
-        .filter(|m| m.characters == vec![Character::NullPlayer])
+        .filter(|m| m.focus == GameFocus::Null)
         .count();
     assert!(null_mods >= 5, "{null_mods}");
     let curses: Vec<&str> = content

@@ -115,18 +115,21 @@ pub struct GuestDef {
     pub quips: GuestQuips,
 }
 
-/// Charakter: who the player is in a run (DESIGN 9). The mechanics differ
-/// in code (which games may be declared); everything else about a
-/// character is data in `characters.ron` ([`CharacterDef`]).
+/// Charakter: who the player is in a run (DESIGN 9). Every character may
+/// declare every game, suit games, grand and Null (ADR 0012); what sets
+/// them apart is data in `characters.ron` ([`CharacterDef`]): start deck,
+/// start relics, Zielwerte, Null scoring and which relics the Tresen
+/// offers more often.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
 )]
 pub enum Character {
-    /// Der Alleinspieler: suit games and grand. The standard character
-    /// and the measure for all balancing.
+    /// Der Alleinspieler: the standard character and the measure for all
+    /// balancing.
     #[default]
     Declarer,
-    /// Der Nullspieler: Null only (ADR 0003).
+    /// Der Nullspieler: the unlockable Null specialist (ADR 0012, which
+    /// replaces ADR 0003). He may declare every game too.
     NullPlayer,
 }
 
@@ -141,12 +144,6 @@ impl Character {
             Character::Declarer => "Declarer",
             Character::NullPlayer => "NullPlayer",
         }
-    }
-
-    /// Whether this character plays Null (and only Null).
-    #[must_use]
-    pub const fn plays_null(self) -> bool {
-        matches!(self, Character::NullPlayer)
     }
 }
 
@@ -183,9 +180,60 @@ impl RunLength {
     }
 }
 
+/// Which Spielarten a relic or card modification is made for (ADR 0012):
+/// every game, the trump games (suit games and grand) or Null. It decides
+/// how often the Tresen offers the item to a character
+/// ([`CharacterDef::focus_weights`]); what the item does stays in its
+/// effects and conditions.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub enum GameFocus {
+    /// Every Spielart.
+    #[default]
+    All,
+    /// Suit games and grand (Trumpfspiele).
+    Trump,
+    /// Null.
+    Null,
+}
+
+/// How often the Tresen offers items of each [`GameFocus`] to a character,
+/// in percent of the rarity weight. Items for every game always count
+/// 100 %.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FocusWeights {
+    /// Items for suit games and grand.
+    pub trump: u32,
+    /// Items for Null.
+    pub null: u32,
+}
+
+impl Default for FocusWeights {
+    fn default() -> FocusWeights {
+        FocusWeights {
+            trump: 100,
+            null: 100,
+        }
+    }
+}
+
 impl fmt::Display for RunLength {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl FocusWeights {
+    /// Weight of an item with this focus, in percent.
+    #[must_use]
+    pub const fn percent(&self, focus: GameFocus) -> u32 {
+        match focus {
+            GameFocus::All => 100,
+            GameFocus::Trump => self.trump,
+            GameFocus::Null => self.null,
+        }
     }
 }
 
@@ -210,8 +258,8 @@ pub struct DeckSpec {
     pub add: Vec<Card>,
 }
 
-/// A character as data (DESIGN 9): start deck, start relics, Zielwerte and
-/// for the Nullspieler the Null scoring.
+/// A character as data (DESIGN 9): start deck, start relics, Zielwerte,
+/// Null scoring and the Tresen weights per [`GameFocus`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterDef {
     /// Which character.
@@ -230,10 +278,15 @@ pub struct CharacterDef {
     /// sections as `run.ron`.
     #[serde(default)]
     pub targets: Option<Vec<(u64, u64, u64)>>,
-    /// How Null games are scored. Required for a character that plays
-    /// Null.
+    /// How Null games are scored; `None` scores them like the
+    /// Skatordnung ([`NullScoring::Fixed`]).
     #[serde(default)]
     pub null_scoring: Option<NullScoring>,
+    /// How often the Tresen, the Stempelkissen and the encounters offer
+    /// relics and card modifications made for one Spielart (default: as
+    /// often as any other).
+    #[serde(default)]
+    pub focus_weights: FocusWeights,
 }
 
 /// What an encounter (Ereignis, DESIGN 13) offers. The concrete options
@@ -410,6 +463,9 @@ pub struct RelicDef {
     /// Triggered effects.
     #[serde(default)]
     pub hooks: Vec<Hook>,
+    /// The Spielart it is made for (default: every game).
+    #[serde(default)]
+    pub focus: GameFocus,
     /// Characters that meet it at the Tresen (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
@@ -436,6 +492,9 @@ pub struct CardModDef {
     /// Triggered effects.
     #[serde(default)]
     pub hooks: Vec<Hook>,
+    /// The Spielart it is made for (default: every game).
+    #[serde(default)]
+    pub focus: GameFocus,
     /// Characters whose random modifications may draw it (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
@@ -543,6 +602,21 @@ pub struct BossDef {
     /// Characters that meet it (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
+    /// Zielwert factors for single characters, instead of `target_factor`
+    /// (a boss may hit one character harder than another).
+    #[serde(default)]
+    pub character_factors: BTreeMap<Character, Factor>,
+}
+
+impl BossDef {
+    /// The Zielwert factor of the boss series for this character.
+    #[must_use]
+    pub fn target_factor_for(&self, character: Character) -> Factor {
+        self.character_factors
+            .get(&character)
+            .copied()
+            .unwrap_or(self.target_factor)
+    }
 }
 
 /// What a consumable does when used. These are player actions, not hooks.
@@ -1036,11 +1110,6 @@ impl Content {
                         self.run.targets.len()
                     )));
                 }
-            }
-            if def.character.plays_null() && def.null_scoring.is_none() {
-                return Err(ContentError(format!(
-                    "{what}: plays Null without null_scoring"
-                )));
             }
             let mut deck = crate::deck::Deck::standard();
             deck.apply_spec(&def.deck)

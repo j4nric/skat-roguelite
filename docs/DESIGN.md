@@ -413,13 +413,13 @@ Jeder Charakter hat ein eigenes Startblatt, ein Startrelikt und eigene Zielwertk
 
 ### 9.1 Der Alleinspieler (Standard)
 
-Normales 32er-Blatt. Spielt Farbe und Grand. Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
+Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null, gewertet nach der Skatordnung (`null_scoring: Fixed`: Null 23, Null Hand 35, Null Ouvert 46, Null Ouvert Hand 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
 
-Charaktere sind Daten in `core/content/characters.ron` (Startblatt als Abweichung vom 32er-Blatt, Startrelikte, optional eigene Zielwerte, Null-Wertung). Welche Spiele ein Charakter ansagen darf, steht im Code (`Character::Declarer`, `Character::NullPlayer`).
+Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt, Startrelikte, optional eigene Zielwerte, Null-Wertung und die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
 
 ### 9.2 Der Nullspieler
 
-Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
+Seit ADR 0012 ein Null-Spezialist, der auch Farbe und Grand ansagen darf (siehe „Null für alle“ am Ende dieses Abschnitts). Ursprünglicher Entwurf (ADR 0003): Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
 
 **Die Formel muss hier neu gebaut werden**, denn Null hat im echten Skat feste Werte (23, 35, 46, 59) statt Grundwert × Stufen. Vorschlag:
 
@@ -456,7 +456,17 @@ Messung mit dem Nullspieler-Bot (`skat_sim --runs 1000 --character null [--null-
 
 Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Null bringt 23, ein verlorenes kostet 46, und im Null-Blatt mit acht Siebenern gewinnt der Bot nur 42 % seiner Nullspiele. Mit der Formel kommt er so weit wie der Alleinspieler, obwohl er seltener gewinnt: Der Stilbonus (vor allem unterlaufene Siebener, das Null-Blatt hat acht) hebt ein gewonnenes Null weit über 23, ein verlorenes kostet weiter nur 46 je Risikostufe. Dazu hat die Formel Raum zum Skalieren: Grundwert-Relikte (Tournee) wirken auf 23, Stufen-Relikte (Ouvert-Bonus, Blindflug, Angeber) auf eine Summe von 1 bis 4 plus Stil, statt wie bei `Fixed` mit einer einzigen Stufe jedes Mal den Spielwert zu verdoppeln. Der Nullspieler nutzt deshalb die Zielwerte des Alleinspielers (`targets: None`). Der Bot spielt ein Null, wenn höchstens vier Karten „offen“ sind (klassische Null-Regel: die k-te kleinste Karte einer Farbe ist sicher, wenn höchstens k−1 kleinere Karten draußen sind), ohne offene Karte Null Ouvert Hand.
 
-**Seit M5 eigene Zielwerte** (5.2, `targets` in `characters.ron`): Mit 8 Spielen pro Serie und Relikten (Bockrunde, Siebenschläfer, Lehrgeld) bringt ein gewonnenes Null meist 92 bis über 200 Punkte; mit Zielwerten nah an denen des Alleinspielers (36 / 46 / 66 in Abschnitt 1, 99 bis 198 in Abschnitt 4 und 5) gewann der Bot jede Serie zu 76 bis 86 % und kam in 3,8 % der Runs durch (Alleinspieler 1,4 %, je 2 × 1000 Runs). Der Bot spielt seit M5 bis zu fünf offene Karten (`NULL_MAX_EXPOSED` in `core/src/run/bot.rs`): mit 4 erreichte er Abschnitt 3 in 20,1 %, mit 5 in 25,1 % (vorherige M5-Messung, 3 × 600 Runs); er steht für einen guten Spieler.
+**M5: eigene Zielwerte** (bis ADR 0012, 5.2, `targets` in `characters.ron`): Mit 8 Spielen pro Serie und Relikten (Bockrunde, Siebenschläfer, Lehrgeld) bringt ein gewonnenes Null meist 92 bis über 200 Punkte; mit Zielwerten nah an denen des Alleinspielers (36 / 46 / 66 in Abschnitt 1, 99 bis 198 in Abschnitt 4 und 5) gewann der Bot jede Serie zu 76 bis 86 % und kam in 3,8 % der Runs durch (Alleinspieler 1,4 %, je 2 × 1000 Runs). Der Bot spielt seit M5 bis zu fünf offene Karten (`NULL_MAX_EXPOSED` in `core/src/run/bot.rs`): mit 4 erreichte er Abschnitt 3 in 20,1 %, mit 5 in 25,1 % (vorherige M5-Messung, 3 × 600 Runs); er steht für einen guten Spieler.
+
+**Null für alle (ADR 0012, umgesetzt in M6).** Jeder Charakter darf Farbspiel, Grand und Null ansagen, in der Reihenfolge der Skatordnung (ADR 0011): aus der Hand Null Hand und Null Ouvert Hand, nach dem Skat Null und Null Ouvert. Was die Charaktere unterscheidet, sind nur noch Daten:
+
+- **Ansage**: Der Dialog zeigt jedem Charakter sechs Spielarten (Eichel, Grün, Rot, Schellen, Grand, Null); bei Null die Null-Stufen dieser Phase mit Wert (`DeclareOptions.null_risks`). `null_style` sagt, ob ein gewonnenes Null einen Stilbonus bekommt. Der Alleinspieler wertet Null nach der Skatordnung (`null_scoring: Fixed`, 23 / 35 / 46 / 59), der Nullspieler mit der Formel oben. Ramsch gibt es weiter nur beim Ramscher.
+- **Der Nullspieler bleibt Spezialist**: Startblatt ohne Unter mit acht Siebenern, Kiebitz, Formel-Wertung, und am Tresen öfter Null-Relikte. Er darf auch Farbe und Grand; ohne Unter ist jedes seiner Trumpfspiele „ohne 4“.
+- **Gemeinsamer Pool**: Jedes Relikt und jede Modifikation liegt bei jedem Charakter (die Null-Hausregeln, „Unsichtbar“, „Bleigewicht“, „Schlusslicht“, „Aufgebrezelt“, „Attrappe“ auch beim Alleinspieler). Das neue Feld `focus` (`GameFocus`: `All`, `Trump` für Farbspiel und Grand, `Null`) sagt, für welche Spielart ein Inhalt gemacht ist. `focus_weights` in `characters.ron` gewichtet damit Tresen, Stempelkissen und Ereignisse in Prozent der Seltenheit: Alleinspieler Trump 100, Null 50; Nullspieler Trump 50, Null 200; `All` immer 100. Kein Code-Zweig pro Charakter. Relikte für Trumpfspiele, die im Null Unsinn täten (Spitze, Schenken, Auf dem Trockenen), schließen Null in ihren Bedingungen aus (`Not(NullGame)`). Der Angeber verlangt Farbe oder Grand Ouvert Hand, sonst Null Ouvert.
+- **Bot** (`core/src/run/bot.rs`): Aus der Hand spielt er Null Ouvert Hand ohne offene Karte, Farbe oder Grand Hand mit acht Trümpfen oder einer Ansage; sonst nimmt er den Skat auf. Mit zwölf Karten vergleicht er das Farbspiel oder den Grand der Heuristik mit Null (die zwei offensten Karten gedrückt, Null Ouvert ohne offene Karte) nach dem erwarteten Ergebnis ohne Relikte (`suit_expected_score`, `null_expected_score`; Gewinnquoten `SUIT_WIN_PERCENT`, `GRAND_WIN_PERCENT`, `NULL_WIN_PERCENT`, gemessen mit dem PIMC-Spieler). Verloren zählt doppelt. Ein Blatt, das für Farbe und Grand schwach ist und mehr als fünf offene Karten hat, wirft er weg. Unter dem Schieber (nur Hand) spielt er Null Hand nur mit höchstens zwei offenen Karten (`NULL_HAND_MAX_EXPOSED`), die er ohne Skat nicht loswird; beim Schwarzen Peter nie Null, weil ein gewonnenes Null nie Schneider ist und nichts zählt.
+- **Alte Spielstände** laden weiter: Die neuen Felder (`focus`, `focus_weights`, `character_factors`) haben Standardwerte, der Charakter im Spielstand bleibt gültig. `RunError::NullNotAvailable` bleibt als Fehlercode stehen, kommt aber nicht mehr vor.
+
+**Messung:** Vorläufig (3 × 3000 Runs, `--bot pimc:12:3`, vor dem Zusammenführen mit dem kurzen Abend): Der Nullspieler erreicht Abschnitt 2 in 34 % der Runs (vorher 37 %), Abschnitt 3 in 14 %. Der Alleinspieler spielt etwa jedes fünfte Spiel als Null. Die endgültige Messung folgt in der großen Testrunde (Entscheidung vom 01.11.2026: Messungen vorerst pausiert, später gesammelt).
 
 ### 9.3 Freischaltungen über Runs hinweg
 
@@ -557,7 +567,7 @@ Entschieden am 01.11.2026 (Cockpit): Die normalen Gegner sind wechselnde Stammg�
 
 Bosse sind Gegnerpaare mit einer Sonderregel, die für die ganze Boss-Serie gilt. Die Regel wird vor der Serie angezeigt, damit der Spieler sein Blatt und seine Ansagen anpassen kann.
 
-Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `BossAnnounced`) und ist ab dann in der Sicht lesbar (`upcoming_boss`, `next_series`). So kann der Spieler schon am Tresen vor Serie 2 auf den Boss hin einkaufen. Jeder Boss hat einen Zielwert-Faktor (`target_factor` in `bosses.ron`, Standard 1,0), der den Zielwert seiner Boss-Serie skaliert, weil die Bosse unterschiedlich schwer sind. Die Werte setzt `balance`; messen lässt sich das mit `skat_sim --curve --boss <id>`.
+Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `BossAnnounced`) und ist ab dann in der Sicht lesbar (`upcoming_boss`, `next_series`). So kann der Spieler schon am Tresen vor Serie 2 auf den Boss hin einkaufen. Jeder Boss hat einen Zielwert-Faktor (`target_factor` in `bosses.ron`, Standard 1,0), der den Zielwert seiner Boss-Serie skaliert, weil die Bosse unterschiedlich schwer sind. Seit ADR 0012 kann ein Boss für einzelne Charaktere einen eigenen Faktor haben (`character_factors`, etwa `{NullPlayer: 0.4}`); die Sicht zeigt den Faktor des Charakters, der spielt. Die Werte setzt `balance`; messen lässt sich das mit `skat_sim --curve --boss <id>`.
 
 | Boss | Regel |
 |---|---|
@@ -577,7 +587,7 @@ Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander 
 - **Zwillinge** (`DefendersSeeEachOther`): Die Gegner-KI kennt die Hand des Partners. Gilt als Schummeln.
 - **Ramscher** (`RamschOnce`): Das erste Spiel der Boss-Serie ist ein Ramsch: niemand sagt an, nicht passbar, Buben sind Trumpf wie im Grand, jeder spielt für sich, der Skat geht an den Gewinner des letzten Stichs. Eigene Wertung: Grundwert = Augen dessen mit den meisten Augen, eine Stufe, +1 „Jungfrau“, wenn ein Spieler keinen Stich hat. Hat der Spieler nicht die meisten Augen (bei Gleichstand verliert er), gewinnt er den Spielwert, sonst −2 × Spielwert. Seit M5 nennen Abrechnung (`ScoreBreakdown.seats`) und Spielende (`GameFinished.seats`) Augen und Stiche jedes Platzes, die Sicht die Stiche pro Platz (`seat_tricks`) und mit dem Zähler die Augen pro Platz (`count.seats`), damit die Oberfläche zeigen kann, wer die meisten Augen hat.
 - **Revolutionär** (`SwapDefenderHands` nach dem 5. Stich): Die Gegner tauschen die Hände. Gilt als Schummeln.
-- **Schwarzer Peter** (`MultiplyGameValue(0)`, wenn gewonnen ohne Schneider). Nur Alleinspieler.
+- **Schwarzer Peter** (`MultiplyGameValue(0)`, wenn gewonnen ohne Schneider). Ein gewonnenes Null ist nie Schneider und zählt hier nichts. Bis ADR 0012 nur Alleinspieler, seitdem bei beiden Charakteren.
 - **Kiebitz-Mörder** (`DisableInformation`): Kiebitz, Zähler und „Durchsichtig“ sind aus.
 - **Der Alte** (`rotation` in `bosses.ron`): in Spiel n die Regel des n-ten Bosses der Liste (Schieber, Zwillinge, Kontra-Hans, Revolutionär, Ramscher, Oma, Schwarzer Peter, Kiebitz-Mörder), Pässe zählen mit. Bosse außerhalb des Charakter-Pools werden übersprungen. Er ist immer der Boss des letzten Abschnitts (`final_boss` in `run.ron`).
 
@@ -607,6 +617,8 @@ Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve -
 | Der Alte (Endboss) | 1,4 | – / 69 | – / 67 | als Endboss etwa so schwer wie eine Boss-Serie |
 
 **Der Schieber und der Nullspieler**: Null Hand ohne Skat gewinnt der Nullspieler-Bot höchstens in 24 % der Boss-Serien (Kurve mit Zielwert 1, gegen 76 bis 80 % bei den anderen Bossen); vorher waren es 21 % gegen 67 %. Ein Zielwert-Faktor hilft da nicht. Entscheidung M5: Der Schieber steht nur noch im Pool des Alleinspielers (`characters: [Declarer]`, auch im Alten übersprungen). Vorschlag für später, sobald der Bot es kann: Unter dem Schieber sollte der Nullspieler-Bot nur Blätter mit höchstens ein bis zwei offenen Karten spielen (heute bis fünf, die er ohne Skat nicht loswird); danach neu messen und den Schieber mit eigenem Faktor für den Nullspieler zurückholen. Faktoren pro Charakter brauchen ein neues Feld (`core-dev`).
+
+@@BOSS12@@
 
 ---
 
@@ -764,7 +776,8 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 ## 17. Offen
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
-- **Zielwert-Faktoren pro Charakter**: Bosse wirken auf den Nullspieler anders (11). Der Schieber ist seit M5 nur im Pool des Alleinspielers; mit ADR 0012 (Null für alle, der Nullspieler darf auch Farbe und Grand) neu messen und ihn zurückholen.
+- **Zielwert-Faktoren pro Charakter**: erledigt mit ADR 0012 (`character_factors` in `bosses.ron`, 11). Schieber und Schwarzer Peter sind wieder bei beiden Charakteren. Offen: Die Oma bleibt beim Nullspieler draußen, weil sein Blatt keine Unter hat und sie ihm nichts nimmt (ADR 0012 sieht sie wieder bei jedem vor). Sobald er Unter ins Blatt bekommen kann, mit `--curve --boss grandma --character null` neu messen.
+- **Null für alle mit Menschen prüfen** (ADR 0012): Die Gewinnquoten hinter der Bot-Wahl Farbe, Grand oder Null (`SUIT_WIN_PERCENT`, `GRAND_WIN_PERCENT`, `NULL_WIN_PERCENT` in `core/src/run/bot.rs`) sind Bot-Messungen ohne Relikte. Ob Menschen mit dem Alleinspieler öfter Null spielen und ob die Tresen-Gewichte (`focus_weights`) den Nullspieler klar genug vom Alleinspieler trennen, zeigt die Statistik echter Runs.
 - **M5-Kurve mit Menschen prüfen**: Die Kurve (5.2) ist gegen den PIMC-Spieler gesetzt. Ein Mensch nutzt Hand, Ouvert und Informations-Relikte, die der Bot kaum spielt, und dürfte stärker sein. Testspiele und die Statistik der Web-App (Abschnitt erreicht) gegen die Bot-Zahlen halten.
 - **Relikte ohne Bot-Wirkung**: Spitze, Mit Vieren, Schiedsrichter, Bierdeckel, Ouvert-Bonus, Oma, Opa, Glashaus, Blindflug, Saubere Weste und Zähler bewegen beim Bot „Abschnitt 3 erreicht“ um weniger als 5 % (relativ). Sie sind für Menschen gedacht; ob sie die 5-%-Regel erfüllen, zeigt erst die Statistik echter Runs.
 - **Ereignis-Wahrscheinlichkeit, Figurenpreise**: Platzhalter, `balance`.

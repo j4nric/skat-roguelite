@@ -442,7 +442,7 @@ pub struct RiskOption {
     pub allowed: bool,
 }
 
-/// A Null-Risikostufe in the Ansage dialog of the Nullspieler.
+/// A Null-Risikostufe in the Ansage dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct NullRiskOption {
     /// The Null-Risikostufe.
@@ -462,14 +462,18 @@ pub struct NullRiskOption {
 /// `Ouvert`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeclareOptions {
-    /// Spielarten (the Nullspieler: only Null). `allowed` with the lowest
-    /// allowed Risikostufe of this phase.
+    /// Spielarten for every character (ADR 0012): Kreuz, Pik, Herz, Karo,
+    /// Grand, then Null. `allowed` with the lowest allowed Risikostufe of
+    /// this phase (Null: any allowed Null-Risikostufe); the Grundwert of
+    /// Null is that of the character's Null scoring.
     pub games: Vec<GameOption>,
-    /// Risikostufen of suit games and grand allowed in this phase, lowest
-    /// first (empty for the Nullspieler).
+    /// Risikostufen of suit games and grand in this phase, lowest first.
     pub risks: Vec<RiskOption>,
-    /// Null-Risikostufen allowed in this phase (only the Nullspieler).
+    /// Null-Risikostufen in this phase, lowest first.
     pub null_risks: Vec<NullRiskOption>,
+    /// Whether a won Null earns a style bonus (the character's Null
+    /// scoring is the formula of DESIGN 9.2, not the Skatordnung).
+    pub null_style: bool,
     /// Whether the skat can be picked up ([`RunAction::PickUpSkat`]): only
     /// before the skat, not against "Der Schieber" (every game is a hand
     /// game).
@@ -612,7 +616,7 @@ pub struct ScoreView {
     pub steps: Vec<ScoreStep>,
 }
 
-/// The Spielarten the Alleinspieler may choose, in dialog order.
+/// The trump games of the Ansage dialog in dialog order; Null follows.
 const GAMES: [GameType; 5] = [
     GameType::Suit(Suit::Clubs),
     GameType::Suit(Suit::Spades),
@@ -735,13 +739,15 @@ impl Run {
         }
     }
 
-    fn boss_info(content: &Content, id: &BossId) -> BossInfo {
+    /// A boss as the run's character meets it (with its Zielwert factor
+    /// for that character).
+    fn boss_info(&self, content: &Content, id: &BossId) -> BossInfo {
         match content.boss(id) {
             Some(def) => BossInfo {
                 id: id.clone(),
                 name: def.name.clone(),
                 text: def.text.clone(),
-                target_factor: def.target_factor,
+                target_factor: def.target_factor_for(self.character),
             },
             None => BossInfo {
                 id: id.clone(),
@@ -774,7 +780,7 @@ impl Run {
             target,
             game_limit: content.run.game_limit,
             passes: content.run.passes,
-            boss: boss.map(|id| Run::boss_info(content, id)),
+            boss: boss.map(|id| self.boss_info(content, id)),
         })
     }
 
@@ -782,7 +788,7 @@ impl Run {
     #[must_use]
     pub fn view(&self, content: &Content) -> RunView {
         let series = &self.series;
-        let boss = series.boss.as_ref().map(|id| Run::boss_info(content, id));
+        let boss = series.boss.as_ref().map(|id| self.boss_info(content, id));
         let boss_ahead = match self.phase {
             RunPhase::Game => true,
             RunPhase::Shop | RunPhase::Encounter => series.index + 1 < SERIES_PER_SECTION,
@@ -792,7 +798,7 @@ impl Run {
             .section_boss
             .as_ref()
             .filter(|_| boss_ahead)
-            .map(|id| Run::boss_info(content, id));
+            .map(|id| self.boss_info(content, id));
         let relics = self
             .relics
             .iter()
@@ -954,10 +960,11 @@ impl Run {
             .is_some_and(|a| a.game.phase() == Phase::DeclaringAfterSkat)
     }
 
+    /// The Ansage dialog (ADR 0011, 0012): every character may declare the
+    /// suit games, the grand and Null, each with the levels of this phase
+    /// (before the skat the hand levels, after it the levels without Hand:
+    /// suit and grand `Normal`, Null `Normal` and `Ouvert`).
     fn declare_options(&self, content: &Content) -> DeclareOptions {
-        if self.character.plays_null() {
-            return self.null_declare_options(content);
-        }
         let after_skat = self.after_skat();
         let risks: Vec<RiskOption> = RiskLevel::ALL
             .into_iter()
@@ -972,34 +979,7 @@ impl Run {
             .find(|r| r.allowed)
             .or_else(|| risks.first())
             .map_or(RiskLevel::Normal, |r| r.risk);
-        let games = GAMES
-            .into_iter()
-            .map(|game| GameOption {
-                game,
-                base_value: game.base_value().unwrap_or(0),
-                allowed: Declaration::new(game, lowest)
-                    .is_some_and(|d| self.accepts(content, RunAction::Declare(d))),
-            })
-            .collect();
-        DeclareOptions {
-            games,
-            risks,
-            null_risks: Vec::new(),
-            can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
-            ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
-            can_pass: self.accepts(content, RunAction::Pass),
-            can_redeal: self.accepts(content, RunAction::Redeal),
-            redeals_left: self.redeals_left(),
-            hand_required: self.requires_hand(),
-        }
-    }
-
-    /// The Ansage dialog of the Nullspieler: the Null levels of this phase
-    /// (before the skat Null Hand and Null Ouvert Hand, after it Null and
-    /// Null Ouvert).
-    fn null_declare_options(&self, content: &Content) -> DeclareOptions {
         let scoring = self.null_scoring(content);
-        let after_skat = self.after_skat();
         let null_risks: Vec<NullRiskOption> = NullRisk::ALL
             .into_iter()
             .filter(|risk| risk.hand() != after_skat)
@@ -1014,18 +994,29 @@ impl Run {
                 },
             })
             .collect();
-        let base_value = match &scoring {
+        let null_base = match &scoring {
             NullScoring::Fixed => crate::rules::null_value(false, false),
             NullScoring::Formula(f) => f.base_value,
         };
-        DeclareOptions {
-            games: vec![GameOption {
+        let games = GAMES
+            .into_iter()
+            .map(|game| GameOption {
+                game,
+                base_value: game.base_value().unwrap_or(0),
+                allowed: Declaration::new(game, lowest)
+                    .is_some_and(|d| self.accepts(content, RunAction::Declare(d))),
+            })
+            .chain(std::iter::once(GameOption {
                 game: GameType::Null,
-                base_value,
+                base_value: null_base,
                 allowed: null_risks.iter().any(|r| r.allowed),
-            }],
-            risks: Vec::new(),
+            }))
+            .collect();
+        DeclareOptions {
+            games,
+            risks,
             null_risks,
+            null_style: matches!(scoring, NullScoring::Formula(_)),
             can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_pass: self.accepts(content, RunAction::Pass),
@@ -1281,7 +1272,7 @@ impl Run {
             boss_rule: active
                 .boss_rule
                 .as_ref()
-                .map(|id| Run::boss_info(content, id)),
+                .map(|id| self.boss_info(content, id)),
             count: self.count_view(),
             can_take_from_skat,
             skat_swap_cards,
@@ -1341,11 +1332,26 @@ mod tests {
         sorted.sort();
         assert_eq!(keys, sorted, "hand in display order");
         let options = game.declare.expect("options");
-        assert_eq!(options.games.len(), 5);
+        // Every Spielart for every character (ADR 0012): Null last. The
+        // Alleinspieler counts Null like the Skatordnung, without style
+        // bonus.
+        assert_eq!(options.games.len(), 6);
         assert!(options.games.iter().all(|g| g.allowed));
         assert!(options.risks.iter().all(|r| r.allowed));
         assert_eq!(options.games[0].base_value, 12);
         assert_eq!(options.games[4].base_value, 24);
+        assert_eq!(options.games[5].game, GameType::Null);
+        assert_eq!(options.games[5].base_value, 23);
+        let null_risks: Vec<(NullRisk, u64)> = options
+            .null_risks
+            .iter()
+            .map(|r| (r.risk, r.value))
+            .collect();
+        assert_eq!(
+            null_risks,
+            vec![(NullRisk::Hand, 35), (NullRisk::OuvertHand, 59)]
+        );
+        assert!(!options.null_style);
         assert!(options.can_pass);
         assert!(options.can_pick_up_skat);
         assert!(!options.can_redeal);
@@ -1391,6 +1397,13 @@ mod tests {
                             run.accepts(&content, RunAction::Declare(grand))
                         );
                     }
+                    for risk in &options.null_risks {
+                        let null = Declaration::null(risk.risk);
+                        assert_eq!(
+                            risk.allowed,
+                            run.accepts(&content, RunAction::Declare(null))
+                        );
+                    }
                 }
                 let previewed = game.phase == TablePhase::Playing
                     && game.declaration.is_some_and(|d| !d.is_ramsch());
@@ -1415,7 +1428,8 @@ mod tests {
             if let Some(shop) = &view.shop {
                 saw_shop = true;
                 for offer in shop.relics.iter().flatten() {
-                    let affordable = offer.relic.price <= view.coins;
+                    // The price after discounts ("Der Wirt").
+                    let affordable = offer.price <= view.coins;
                     let free = view.relics.len() < view.relic_slots as usize;
                     assert_eq!(offer.can_buy, affordable && free);
                 }

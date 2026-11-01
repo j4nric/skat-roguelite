@@ -109,7 +109,8 @@ function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false): string {
 }
 
 function gameIcon(game: DeclaredGame, size = 30): string {
-  if (game === 'Grand' || game === 'Null' || game === 'Ramsch') {
+  if (game === 'Null') return '<span class="null-icon" aria-hidden="true">0</span>';
+  if (game === 'Grand' || game === 'Ramsch') {
     return `<span class="grand-icon">${(['Clubs', 'Spades', 'Hearts', 'Diamonds'] as const).map((s) => suitIcon(s, Math.round(size / 2), null)).join('')}</span>`;
   }
   return suitIcon(game.Suit, size);
@@ -155,7 +156,8 @@ function pressedCards(game: GameView): string {
  * play a hand game. Einpassen and Schieben stay here as before.
  */
 function choicePanel(options: DeclareOptions, passesLeft: number): string {
-  const handPossible = options.null_risks.length ? options.null_risks.some((r) => r.allowed) : options.games.some((g) => g.allowed);
+  // Every Spielart (Null too) comes from the core with `allowed`.
+  const handPossible = options.games.some((g) => g.allowed);
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
     <div class="choices">
@@ -176,13 +178,10 @@ function choicePanel(options: DeclareOptions, passesLeft: number): string {
 }
 
 /**
- * The Ansage of the Nullspieler: the Null levels the core offers in this
- * phase (Null Hand and Null Ouvert Hand before the skat, Null and Null
- * Ouvert after it) with their values from the core.
+ * The Null levels of the Ansage (Null Hand and Null Ouvert Hand before the
+ * skat, Null and Null Ouvert after it) with their values from the core.
  */
-function nullDeclarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
-  const afterSkat = game.phase === 'DeclaringAfterSkat';
-  const risk: NullRisk = ui.pickNullRisk ?? options.null_risks.find((r) => r.allowed)?.risk ?? 'Normal';
+function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
   const risks = options.null_risks
     .map((r) => {
       const picked = r.risk === risk;
@@ -194,40 +193,37 @@ function nullDeclarePanel(options: DeclareOptions, game: GameView, ui: UiState, 
       })}><span class="null-name">${esc(de.nullRisks[r.risk])}</span><span class="null-value">${esc(t(de.table.nullValue, { value: r.value }))}</span></button>`;
     })
     .join('');
-  const anyAllowed = options.null_risks.some((r) => r.allowed);
-  const title = afterSkat ? de.table.nullTitle : de.table.nullHandTitle;
-  const declare = `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare-null', 'data-risk': risk, disabled: !anyAllowed })}>${esc(de.table.declare)}</button>`;
-  return `<section class="declare declare-null" aria-label="${esc(title)}" data-testid="null-declare" data-phase="${esc(game.phase)}">
-    <h2 class="declare-title">${esc(title)}</h2>
-    ${pressedCards(game)}
-    <p class="no-trick" role="note"><b>${esc(de.table.noTrick)}</b> <span>${esc(de.table.nullHint)}</span></p>
-    <div class="null-risks">${risks}</div>
-    <p class="declare-hint">${esc(de.nullRiskHints[risk])} ${esc(de.table.nullStyle)}</p>
-    ${declareWarnings(options, afterSkat)}
-    ${declareActions(options, afterSkat, passesLeft, declare)}
-  </section>`;
+  return `<div class="null-risks">${risks}</div>
+    <p class="declare-hint no-trick" role="note"><b>${esc(de.table.noTrick)}</b> ${esc(de.nullRiskHints[risk])}${options.null_style ? ` <span class="null-style">${esc(de.table.nullStyle)}</span>` : ''}</p>`;
 }
 
 /**
  * The Ansage: with ten cards first the choice of skat or hand, then the
- * hand Ansage; after the skat the Ansage without hand levels. Which levels
- * there are and which are allowed comes from the core.
+ * hand Ansage; after the skat the Ansage without hand levels. Every
+ * character may declare every Spielart (ADR 0012); Null shows its own
+ * levels with their values. The Nullspieler starts with Null picked.
+ * Which levels there are and which are allowed comes from the core.
  */
 function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
   const afterSkat = game.phase === 'DeclaringAfterSkat';
   if (!afterSkat && options.can_pick_up_skat && !ui.handGame) return choicePanel(options, passesLeft);
-  if (options.null_risks.length) return nullDeclarePanel(options, game, ui, passesLeft);
+  const nullIndex = options.games.findIndex((g) => g.game === 'Null');
+  const specialist = ui.view?.character.character === 'NullPlayer';
+  const pick = ui.pickGame ?? (specialist && nullIndex >= 0 && options.games[nullIndex]?.allowed ? nullIndex : null);
+  const pickedNull = pick !== null && pick === nullIndex;
   const games = options.games
     .map((g, i) => {
-      const picked = ui.pickGame === i;
+      const picked = pick === i;
       return `<button class="game-btn ${picked ? 'is-picked' : ''}" ${attrs({
         'data-action': 'pick-game',
         'data-index': i,
+        'data-game': g.game === 'Null' ? 'Null' : null,
         disabled: !g.allowed,
         'aria-pressed': picked ? 'true' : 'false',
       })}>${gameIcon(g.game)}<span class="game-name">${esc(gameName(g.game))}</span><span class="game-base">${esc(g.base_value)}</span></button>`;
     })
     .join('');
+  const nullRisk: NullRisk = ui.pickNullRisk ?? options.null_risks.find((r) => r.allowed)?.risk ?? 'Normal';
   const risk = ui.pickRisk ?? options.risks.find((r) => r.allowed)?.risk ?? 'Normal';
   const risks = options.risks
     .map((r) => {
@@ -246,15 +242,17 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
       ? `<div class="declare-label">${esc(de.table.risk)}</div>
     <div class="risks" style="--n:${options.risks.length}">${risks}</div>`
       : '';
+  const levels = pickedNull ? nullRiskRow(options, nullRisk) : `${riskRow}<p class="declare-hint">${esc(de.riskHints[risk])}</p>`;
   const title = afterSkat ? de.table.afterSkatTitle : de.table.handTitle;
-  const declare = `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare', disabled: ui.pickGame === null })}>${esc(de.table.declare)}</button>`;
-  return `<section class="declare ${afterSkat ? 'declare-after-skat' : 'declare-hand'}" aria-label="${esc(title)}" data-phase="${esc(game.phase)}">
+  const declare = pickedNull
+    ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare-null', 'data-risk': nullRisk, disabled: !options.null_risks.some((r) => r.allowed) })}>${esc(de.table.declare)}</button>`
+    : `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare', disabled: pick === null })}>${esc(de.table.declare)}</button>`;
+  return `<section class="declare ${afterSkat ? 'declare-after-skat' : 'declare-hand'}${pickedNull ? ' declare-null' : ''}" aria-label="${esc(title)}" data-phase="${esc(game.phase)}" ${attrs({ 'data-testid': pickedNull ? 'null-declare' : null })}>
     <h2 class="declare-title">${esc(title)}</h2>
     ${pressedCards(game)}
     <div class="declare-label">${esc(de.table.gameType)}</div>
     <div class="games">${games}</div>
-    ${riskRow}
-    <p class="declare-hint">${esc(de.riskHints[risk])}</p>
+    ${levels}
     ${declareWarnings(options, afterSkat)}
     ${declareActions(options, afterSkat, passesLeft, declare)}
   </section>`;

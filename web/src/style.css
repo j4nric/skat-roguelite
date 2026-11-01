@@ -1672,10 +1672,11 @@ button.card {
   color: var(--muted);
 }
 
+/* Kreuz, Pik, Herz, Karo, Grand and Null (ADR 0012) in one row. */
 .games {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .game-btn {
@@ -1684,8 +1685,9 @@ button.card {
   align-items: center;
   justify-content: center;
   gap: 3px;
+  min-width: 0;
   min-height: 62px;
-  padding: 5px 2px;
+  padding: 5px 1px;
   border: var(--edge) solid var(--line);
   background: var(--card);
   color: var(--card-ink);
@@ -1703,10 +1705,23 @@ button.card {
   height: 11px;
 }
 
+/* Null in the row of Spielarten: a plain zero, as tall as a suit icon. */
+.null-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  font-family: var(--font-label);
+  font-size: var(--fs-h);
+  line-height: 24px;
+  text-align: center;
+}
+
 .game-name {
+  max-width: 100%;
+  overflow: hidden;
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -4071,7 +4086,7 @@ button.card {
   }
 
   .declare {
-    gap: 5px;
+    gap: 4px;
     padding: 6px 8px 8px;
   }
 
@@ -4079,16 +4094,28 @@ button.card {
     padding: 6px;
   }
 
-  /* No pictures of the skat, no labels over the rows; the status line
-     (game number and position) gives its room to the panel. */
+  /* No pictures of the skat, no labels over the rows, no note on the Null
+     style bonus; the status line (game number and position) gives its
+     room to the panel. */
   .choice-cards,
-  .declare-label {
+  .declare-label,
+  .null-style {
     display: none;
   }
 
+  /* Six Spielarten (Null too, ADR 0012): icon and Grundwert, no name. */
   .game-btn {
-    min-height: 50px;
-    padding: 3px 2px;
+    gap: 1px;
+    min-height: 44px;
+    padding: 2px 1px;
+  }
+
+  .game-btn .game-name {
+    display: none;
+  }
+
+  .game-btn .game-base {
+    line-height: 1;
   }
 
   .table.is-declaring .hand {

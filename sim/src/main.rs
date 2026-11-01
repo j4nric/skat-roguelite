@@ -20,8 +20,8 @@
 //!   `--boss` boss series); prints the share of series won for every
 //!   Zielwert of `run.ron`.
 //! - `--character declarer|null`: who plays (default: the Alleinspieler).
-//! - `--null-scoring fixed|formula`: override the Nullspieler's Null
-//!   scoring (DESIGN 9.2).
+//! - `--null-scoring fixed|formula`: override the Null scoring of the
+//!   character that plays (DESIGN 9.2).
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
 //!   state; prints after how many runs each unlock is earned.
 //! - `--short`: kurzer Abend, the sections of `run.ron`'s `short_sections`
@@ -33,7 +33,7 @@
 //!   play. In the runs mode this replaces the per-section opponents of
 //!   `run.ron` for every section.
 //! - `--bot heuristic|pimc[:samples[:depth]]`: the declarer's card play
-//!   (the game choice stays heuristic).
+//!   (the game choice stays with the run bot: suit game, grand or Null).
 //!
 //! The games mode then also prints the time per PIMC decision.
 //!

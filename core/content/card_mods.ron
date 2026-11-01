@@ -1,11 +1,13 @@
 // Kartenmodifikationen (gezinkte Karten). Sie hängen an einer Karte und
 // gelten, egal wer sie spielt (ADR 0005). Preise sind Platzhalter.
-// characters: für welche Charaktere „Stempelkissen“ und Ereignisse die
-// Modifikation ziehen (leer: alle).
+// focus: für welche Spielart die Modifikation gemacht ist (All, Trump für
+// Farbspiel und Grand, Null). „Stempelkissen“ und Ereignisse ziehen sie bei
+// jedem Charakter, gewichtet mit seinen focus_weights (characters.ron).
+// characters: für welche Charaktere sie gezogen wird (leer: alle).
 [
     (
         id: "fat",
-        characters: [Declarer],
+        focus: Trump,
         name: "Fett",
         text: "Diese Karte zählt 4 Augen mehr.",
         rarity: Common,
@@ -14,7 +16,7 @@
     ),
     (
         id: "marked",
-        characters: [Declarer],
+        focus: Trump,
         name: "Gezinkt",
         text: "Diese Karte zählt eine Stufe höher.",
         rarity: Common,
@@ -23,7 +25,7 @@
     ),
     (
         id: "stamp",
-        characters: [Declarer],
+        focus: Trump,
         name: "Stempel",
         text: "Ist die Farbe dieser Karte Trumpf, steigt der Grundwert um 3.",
         rarity: Uncommon,
@@ -34,7 +36,6 @@
     ),
     (
         id: "last_trick",
-        characters: [Declarer],
         name: "Spitze",
         text: "Gewinnt diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr. Egal, wer sie spielt.",
         rarity: Uncommon,
@@ -53,23 +54,24 @@
     ),
     (
         id: "invisible",
+        focus: Null,
         name: "Unsichtbar",
         text: "Diese Karte kann nie einen Stich gewinnen. Egal, wer sie spielt.",
         rarity: Uncommon,
         price: 4,
-        characters: [NullPlayer],
         passive: [NeverWins],
     ),
     // ---------------------------------------------------------------------
     // M4: 14 more modifications. Each names its lever. Random draws
-    // (Stempelkissen, Kartengeber) pick uniformly from the character's pool.
-    // M7: never a curse (`curse: true`); curses only come where an
-    // encounter announces them (DESIGN 7.2).
+    // (Stempelkissen, Kartengeber) pick from the character's pool, weighted
+    // by the character's focus_weights (ADR 0012). M7: never a curse
+    // (`curse: true`); curses only come where an encounter announces them
+    // (DESIGN 7.2).
     // ---------------------------------------------------------------------
     // Lever Augen.
     (
         id: "gold_rim",
-        characters: [Declarer],
+        focus: Trump,
         name: "Goldrand",
         text: "Diese Karte zählt 8 Augen mehr.",
         rarity: Rare,
@@ -79,7 +81,7 @@
     // Lever Stichgewinn.
     (
         id: "double_marked",
-        characters: [Declarer],
+        focus: Trump,
         name: "Doppelt gezinkt",
         text: "Diese Karte zählt zwei Stufen höher.",
         rarity: Uncommon,
@@ -89,7 +91,7 @@
     // Lever Grundwert ×2 (multiplicative).
     (
         id: "crown",
-        characters: [Declarer],
+        focus: Trump,
         name: "Krone",
         text: "Ist die Farbe dieser Karte Trumpf, zählt der Grundwert doppelt.",
         rarity: Rare,
@@ -101,7 +103,7 @@
     // Lever Gewinnstufen. Set at the declaration, so it counts won or lost.
     (
         id: "seal",
-        characters: [Declarer],
+        focus: Trump,
         name: "Siegel",
         text: "Ist die Farbe dieser Karte Trumpf, gibt es eine Gewinnstufe mehr, gewonnen wie verloren.",
         rarity: Uncommon,
@@ -113,7 +115,7 @@
     // Lever Gewinnschwelle.
     (
         id: "horseshoe",
-        characters: [Declarer],
+        focus: Trump,
         name: "Hufeisen",
         text: "Ist die Farbe dieser Karte Trumpf, gewinnst du schon mit 56 Augen.",
         rarity: Uncommon,
@@ -125,7 +127,7 @@
     // Lever Schneider.
     (
         id: "tape_measure",
-        characters: [Declarer],
+        focus: Trump,
         name: "Maßband",
         text: "Ist die Farbe dieser Karte Trumpf, sind die Gegner schon Schneider, wenn du mit 80 bis 89 Augen gewinnst.",
         rarity: Uncommon,
@@ -137,7 +139,6 @@
     // Lever Spielwert ×2 (multiplicative), only for a won game.
     (
         id: "lucky_penny",
-        characters: [Declarer],
         name: "Glückspfennig",
         text: "Gewinnst du ein Spiel, dessen letzten Stich diese Karte macht, zählt es doppelt. Egal, wer sie spielt.",
         rarity: Rare,
@@ -165,7 +166,7 @@
     // attached.
     (
         id: "cracked",
-        characters: [Declarer],
+        focus: Trump,
         name: "Angeknackst",
         text: "Fluch: Diese Karte gewinnt nie einen Stich, egal wer sie spielt. Dafür gibt es beim Erhalt 3 Groschen.",
         rarity: Common,
@@ -180,7 +181,7 @@
     // when attached.
     (
         id: "black_cat",
-        characters: [Declarer],
+        focus: Trump,
         name: "Schwarze Katze",
         text: "Fluch: Ist die Farbe dieser Karte Trumpf, sinkt der Grundwert um 3. Dafür gibt es beim Erhalt 3 Groschen.",
         rarity: Common,
@@ -210,20 +211,20 @@
     // below the Karo-Unter in suit games, no Spitze.
     (
         id: "honorary_jack",
-        characters: [Declarer],
+        focus: Trump,
         name: "Unter ehrenhalber",
         text: "Im Farbspiel ist diese Karte Trumpf, direkt unter dem Schellen-Unter, egal wer sie spielt. Sie bedient Trumpf statt ihrer Farbe und zählt nicht als Spitze.",
         rarity: Rare,
         price: 6,
         passive: [HonoraryJack],
     ),
-    // Nullspieler only from here.
+    // Made for Null from here (before ADR 0012 only for the Nullspieler).
     // Lever Augen (Null formula: Kurzschluss).
     (
         id: "lead_weight",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Bleigewicht",
-        text: "Diese Karte zählt 10 Augen mehr. Wer sie im Stich hat, ist schneller im Kurzschluss.",
+        text: "Diese Karte zählt 10 Augen mehr. Beim Null ist, wer sie im Stich hat, schneller im Kurzschluss.",
         rarity: Common,
         price: 3,
         passive: [AddCardPoints(10)],
@@ -231,7 +232,7 @@
     // Lever Gewinnstufen: in a won Null the last trick goes to a defender.
     (
         id: "tail_light",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Schlusslicht",
         text: "Gewinnst du ein Null und diese Karte macht den letzten Stich, gibt es zwei Gewinnstufen mehr.",
         rarity: Uncommon,
@@ -244,9 +245,9 @@
     // defender that lets the Nullspieler duck, in his own it is a danger.
     (
         id: "dressed_up",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Aufgebrezelt",
-        text: "Diese Karte zählt zwei Stufen höher. Beim Gegner sticht sie gern, bei dir ist sie eine Gefahr.",
+        text: "Diese Karte zählt zwei Stufen höher. Beim Null sticht sie beim Gegner gern, bei dir ist sie eine Gefahr.",
         rarity: Uncommon,
         price: 3,
         passive: [RankBonus(2)],
@@ -254,7 +255,7 @@
     // Lever Stichgewinn plus Zählen: "Unsichtbar" that also shows its holder.
     (
         id: "dummy",
-        characters: [NullPlayer],
+        focus: Null,
         name: "Attrappe",
         text: "Diese Karte gewinnt nie einen Stich, egal wer sie spielt, und du siehst, wer sie hält.",
         rarity: Rare,

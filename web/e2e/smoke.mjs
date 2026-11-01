@@ -10,8 +10,10 @@
 // - reloads the page and checks that the run is resumed,
 // - plays a whole game in the order of the Skatordnung (Skat oder Hand,
 //   Skat aufnehmen, Drücken, Ansage, 10 Stiche, Abrechnung) and checks that
-//   the series account changed; the hand Ansage offers only the hand levels,
-//   the Ansage after the skat only the levels without Hand,
+//   the series account changed; the hand Ansage offers only the hand levels
+//   and, for the Alleinspieler too (ADR 0012), Null Hand and Null Ouvert Hand
+//   with their values; the Ansage after the skat only the levels without Hand
+//   (Null and Null Ouvert too, 23 and 46),
 // - sees the unlock earned by winning the series with games left
 //   ("Neu am Stammtisch") and the meta state counting the game,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
@@ -1511,12 +1513,33 @@ async function run() {
     if (handRisks !== 'Hand,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`hand Ansage offers ${handRisks}`);
     await shoot(page, 'table-declare-hand');
     await assertFits(page, 'hand Ansage');
+    // Every character may declare Null (ADR 0012): the Alleinspieler too,
+    // with the values of the Skatordnung.
+    await page.click('[data-action="pick-game"][data-game="Null"]');
+    await page.waitForSelector('[data-testid="null-declare"][data-phase="Declaring"]');
+    const declarerNull = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+    if (declarerNull !== 'Hand,OuvertHand') fail(`the Alleinspieler's hand Ansage offers Null ${declarerNull}`);
+    const declarerNullValues = ((await page.locator('.null-risks').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+    if (!/Wert 35.*Wert 59/.test(declarerNullValues)) fail(`the Alleinspieler's Null levels: ${declarerNullValues}`);
+    await shoot(page, 'table-declare-hand-null');
+    await assertFits(page, 'hand Ansage with Null');
     await page.click('[data-action="hand-back"]');
-    log(`hand Ansage: ${handRisks}`);
+    log(`hand Ansage: ${handRisks}; Null for the Alleinspieler: ${declarerNullValues}`);
 
     // Skat aufnehmen, drücken, then the Ansage: Grand.
     await pickUpAndDiscard(page, 'first game', 'table-discard');
     if (await page.locator('[data-action="pick-risk"]').count()) fail('hand levels after the skat');
+    // After the skat the Alleinspieler may declare Null and Null Ouvert
+    // (ADR 0012), with the values of the Skatordnung.
+    await page.click('[data-action="pick-game"][data-game="Null"]');
+    await page.waitForSelector('[data-testid="null-declare"][data-phase="DeclaringAfterSkat"]');
+    const declarerNullAfter = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+    if (declarerNullAfter !== 'Normal,Ouvert') fail(`the Alleinspieler's Ansage after the skat offers Null ${declarerNullAfter}`);
+    const declarerNullAfterValues = ((await page.locator('.null-risks').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+    if (!/Wert 23.*Wert 46/.test(declarerNullAfterValues)) fail(`the Alleinspieler's Null levels after the skat: ${declarerNullAfterValues}`);
+    await shoot(page, 'table-declare-after-null');
+    await assertFits(page, 'Ansage after the skat with Null');
+    log(`Null after the skat for the Alleinspieler: ${declarerNullAfterValues}`);
     await page.click('[data-action="pick-game"][data-index="4"]');
     await shoot(page, 'table-declare-after');
     await assertFits(page, 'Ansage after the skat');

@@ -144,9 +144,13 @@ fn failing_actions_leave_the_run_untouched() {
     let (mut run, _) = Run::new(&content, 3).expect("start");
     let before = run.clone();
     let null = Declaration::null(NullRisk::Normal);
+    // Null without Hand only after the skat (every character may declare
+    // Null, ADR 0012).
     assert_eq!(
         run.apply(&content, RunAction::Declare(null)),
-        Err(RunError::NullNotAvailable)
+        Err(RunError::Game(GameError::InvalidDeclaration {
+            declaration: null
+        }))
     );
     let held = run.game().expect("game").game.hand(Seat::DECLARER)[0].id;
     assert_eq!(
@@ -517,6 +521,44 @@ fn the_boss_is_known_from_the_start_of_the_section() {
     assert!(view.upcoming_boss.is_none());
     let next = view.next_series.expect("next");
     assert_eq!((next.section, next.index), (1, 0));
+}
+
+/// ADR 0012: a boss may scale the Zielwert differently per character; the
+/// view shows the factor of the run's character.
+#[test]
+fn a_boss_may_have_its_own_factor_for_a_character() {
+    let content = Content::load().expect("content");
+    let pusher = BossId::new("the_pusher");
+    let def = content.boss(&pusher).expect("the_pusher");
+    assert_eq!(
+        def.target_factor_for(Character::Declarer),
+        def.target_factor
+    );
+    let factor = def.target_factor_for(Character::NullPlayer);
+    assert_ne!(factor, def.target_factor);
+    let null_base = content.characters[&Character::NullPlayer]
+        .targets
+        .as_ref()
+        .unwrap_or(&content.run.targets)[0]
+        .2;
+    assert_eq!(
+        series_target(&content, Character::NullPlayer, 0, 2, Some(&pusher)),
+        Some(factor.apply(null_base))
+    );
+    // Both bosses that were the Alleinspieler's alone are back for
+    // everyone; the Oma stays his (the Nullspieler has no jacks).
+    for id in ["the_pusher", "black_peter"] {
+        let def = content.boss(&BossId::new(id)).expect(id);
+        assert!(crate::content::in_pool(
+            &def.characters,
+            Character::NullPlayer
+        ));
+    }
+    let grandma = content.boss(&BossId::new("grandma")).expect("grandma");
+    assert!(!crate::content::in_pool(
+        &grandma.characters,
+        Character::NullPlayer
+    ));
 }
 
 #[test]
