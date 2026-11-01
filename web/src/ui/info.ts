@@ -7,7 +7,7 @@
 
 import { de, cardName, contentName, contentText, gameName, isCurse, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
-import { cardSvg } from './cards';
+import { cardBack, cardSvg } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -202,6 +202,36 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
   };
 }
 
+/**
+ * The choices before the first card (Skat oder Hand): what the skat, the
+ * hand game, the deck (Einmischen) and Schieben do. The buttons on the
+ * table stay short; this is their explanation.
+ */
+function choiceModel(key: string, view: RunView, arg: string): InfoModel | null {
+  const game = view.game;
+  const options = game?.declare;
+  if (!game || !options || game.phase !== 'Declaring') return null;
+  const art = (n: number): string => `<span class="info-backs">${cardBack().repeat(n)}</span>`;
+  const base = { key, kind: de.table.choiceKind, facts: [] as string[] };
+  switch (arg) {
+    case 'skat':
+      return { ...base, title: de.table.pickUpSkat, art: art(2), sections: [{ text: de.table.pickUpSkatHint, status: [{ text: de.table.pickUpSkatTap, on: null }] }] };
+    case 'hand':
+      return { ...base, title: de.table.playHand, art: art(1), sections: [{ text: de.table.playHandHint, status: [] }] };
+    case 'pass':
+      return {
+        ...base,
+        title: t(de.table.pass, { left: view.series.passes_left }),
+        art: art(3),
+        sections: [{ text: de.table.mixHint, status: [{ text: de.table.mixHow, on: null }] }],
+      };
+    case 'redeal':
+      return { ...base, title: t(de.table.redraw, { left: options.redeals_left }), art: art(3), sections: [{ text: de.table.redrawHint, status: [] }] };
+    default:
+      return null;
+  }
+}
+
 /** The content of the info card for a key, or null if it is not on screen any more. */
 export function infoModel(key: string, view: RunView | null, ui: UiState): InfoModel | null {
   if (!view) return null;
@@ -240,6 +270,8 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       return bossModel(key, view, arg, de.info.kinds.boss);
     case 'rule':
       return bossModel(key, view, arg, de.info.kinds.bossRule);
+    case 'choice':
+      return choiceModel(key, view, arg);
     default:
       return null;
   }

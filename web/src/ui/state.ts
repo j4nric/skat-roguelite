@@ -79,6 +79,8 @@ export interface UiState {
   selected: number[];
   /** The player chose "Hand spielen" before the skat: show the hand Ansage. */
   handGame: boolean;
+  /** One tap on the deck while choosing: "Einmischen" waits for a confirmation. */
+  mixArmed: boolean;
   /** Index into the declare options' games. */
   pickGame: number | null;
   pickRisk: RiskLevel | null;
