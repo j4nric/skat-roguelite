@@ -1349,9 +1349,9 @@ mod tests {
             .collect();
         assert_eq!(
             null_risks,
-            vec![(NullRisk::Hand, 35), (NullRisk::OuvertHand, 59)]
+            vec![(NullRisk::Hand, 46), (NullRisk::OuvertHand, 92)]
         );
-        assert!(!options.null_style);
+        assert!(options.null_style);
         assert!(options.can_pass);
         assert!(options.can_pick_up_skat);
         assert!(!options.can_redeal);

@@ -18,9 +18,16 @@
         name: "Der Alleinspieler",
         text: "Spielt Farbe, Grand und Null mit dem normalen Blatt. Der Maßstab für alles. Startet mit dem Zähler.",
         start_relics: ["card_counter"],
-        // Null zählt nach der Skatordnung (23, 35, 46, 59), die Formel mit
-        // Stilbonus hat nur der Nullspieler (DESIGN 9.2).
-        null_scoring: Some(Fixed),
+        // Null zählt für alle Charaktere nach der Formel mit Stilbonus
+        // (DESIGN 9.2, entschieden am 01.11.2026: eine Null-Wertung für alle).
+        null_scoring: Some(Formula((
+            base_value: 23,
+            per_seven_ducked: 1,
+            never_followed: 2,
+            short_circuit: 3,
+            short_circuit_tricks: 5,
+            short_circuit_points: 61,
+        ))),
         // ADR 0012: Null-Relikte liegen auch bei ihm am Tresen, aber
         // seltener als beim Nullspieler.
         focus_weights: (trump: 100, null: 50),
