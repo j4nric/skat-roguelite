@@ -807,7 +807,7 @@ export const de = {
         license: 'SIL Open Font License 1.1',
       },
       {
-        what: 'Kartenbild (deutsches Blatt, Pixel-Farbzeichen), Figuren, Tresen',
+        what: 'Kartenbild (deutsches Blatt, Pixel-Farbzeichen, Rückseite „Distel“ nach Altenburger Vorbild), Figuren, Tresen',
         who: 'Selbst gezeichnet als SVG für dieses Projekt',
         license: 'Teil des Projekts',
       },

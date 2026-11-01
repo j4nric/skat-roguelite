@@ -10,6 +10,7 @@
 
 import { de } from '../i18n';
 import type { Rank, Suit } from '../types';
+import { backSymbols } from './backs';
 import { peopleSymbols } from './people';
 
 export const SUITS: Suit[] = ['Clubs', 'Spades', 'Hearts', 'Diamonds'];
@@ -42,9 +43,6 @@ const INDEX_INK: Record<Suit, string> = {
 
 const PAPER = '#ecebe4';
 const PAPER_LINE = '#cfccc0';
-const LINE = '#0b0c0e';
-const SLATE = '#2a2f34';
-const SLATE_DARK = '#23282c';
 const COPPER = '#d1773f';
 const PIXEL_FONT = "'VT323', monospace";
 
@@ -176,24 +174,6 @@ function faceArt(suit: Suit, rank: Rank): string {
 
 // ------------------------------------------------------------- other faces
 
-function backBody(): string {
-  const emblem = SUITS.map((s, i) => {
-    const pos = [
-      [44, 70],
-      [64, 70],
-      [44, 94],
-      [64, 94],
-    ][i] ?? [44, 70];
-    return glyph(s, pos[0] ?? 44, pos[1] ?? 70, 16);
-  }).join('');
-  return `<rect width="120" height="180" fill="${SLATE}"/>
-<rect x="8" y="8" width="104" height="164" fill="url(#back-lattice)"/>
-<path d="M8 8h104v4h-104zM8 168h104v4h-104zM8 12h4v156h-4zM108 12h4v156h-4z" fill="${COPPER}"/>
-<rect x="36" y="62" width="48" height="56" fill="${PAPER}"/>
-<path d="M36 62h48v4h-48zM36 114h48v4h-48zM36 66h4v48h-4zM80 66h4v48h-4z" fill="${LINE}"/>
-${emblem}`;
-}
-
 function blankBody(): string {
   return `<rect width="120" height="180" fill="#dcd9cf"/>
 <rect x="10" y="10" width="100" height="160" fill="url(#blank-hatch)"/>
@@ -292,13 +272,11 @@ export function spriteSvg(): string {
   ).join('');
   return `<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
 <defs>
-<pattern id="back-lattice" width="16" height="16" patternUnits="userSpaceOnUse">
-<rect width="16" height="16" fill="${SLATE_DARK}"/><path d="M6 2h4v4h-4zM14 10h4v4h-4zM-2 10h4v4h-4z" fill="${COPPER}" opacity=".5"/></pattern>
 <pattern id="blank-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
 <path d="M0 0h4v4h-4z" fill="#cbc7bb"/></pattern>
 </defs>
 ${suits}${faces}
-<symbol id="f-back" viewBox="0 0 120 180" shape-rendering="crispEdges">${backBody()}</symbol>
+${backSymbols()}
 <symbol id="f-blank" viewBox="0 0 120 180" shape-rendering="crispEdges">${blankBody()}</symbol>
 ${modSymbols()}
 ${peopleSymbols()}
