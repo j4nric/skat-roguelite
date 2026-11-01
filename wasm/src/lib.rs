@@ -6,6 +6,12 @@
 //! [`RunView`] as JSON. Everything the web app shows is computed by the
 //! core (see `skat_core::run::view`).
 //!
+//! The defenders play one card per call: `apply` only carries out the
+//! player's action; while the view's `ai_to_move` names a seat, `step`
+//! lets that defender play one card and answers in the same form. So the
+//! browser's main thread is never busy for more than one AI decision, and
+//! the app can paint who thinks between two cards.
+//!
 //! The browser only gets what the player may know: the events go out as
 //! [`PlayerEvent`]s (no defender hands, no untouched skat, no talon), the
 //! view holds nothing hidden either. The save is the full run state and is
@@ -33,7 +39,7 @@ use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
 use skat_core::run::player::{PlayerEvent, player_events};
 use skat_core::run::view::RunView;
-use skat_core::run::{Run, RunAction, RunError, RunErrorCode, RunStart};
+use skat_core::run::{Run, RunAction, RunError, RunErrorCode, RunEvent, RunStart};
 use wasm_bindgen::prelude::*;
 
 /// Version of the save format. Saves with another version are rejected,
@@ -331,16 +337,35 @@ impl Session {
         serde_json::to_string(&self.run.view(self.content)).map_err(internal)
     }
 
-    /// Apply a [`RunAction`] given as JSON. Returns `{ events, view }` as
-    /// JSON, the events as [`PlayerEvent`]s. On error the run is unchanged
-    /// and the error is the JSON text described in the crate docs.
+    /// Apply a [`RunAction`] given as JSON, without letting the defenders
+    /// play ([`Run::apply_step`]). Returns `{ events, view }` as JSON, the
+    /// events as [`PlayerEvent`]s; if `view.ai_to_move` is set, call
+    /// [`Session::step`] next. On error the run is unchanged and the error
+    /// is the JSON text described in the crate docs (`AiToMove` while a
+    /// defender is to move).
     pub fn apply(&mut self, action: &str) -> Result<String, String> {
         let action: RunAction =
             serde_json::from_str(action).map_err(|e| error_json("InvalidAction", e))?;
         let events = self
             .run
-            .apply(self.content, action)
+            .apply_step(self.content, action)
             .map_err(|e| run_error(&e))?;
+        self.step_json(events)
+    }
+
+    /// Let the defender named by `view.ai_to_move` play one card
+    /// ([`Run::advance_ai`]). Returns `{ events, view }` as JSON like
+    /// [`Session::apply`]. Fails with `WrongPhase` if no defender is to
+    /// move; then the run is unchanged.
+    pub fn step(&mut self) -> Result<String, String> {
+        let events = self
+            .run
+            .advance_ai(self.content)
+            .map_err(|e| run_error(&e))?;
+        self.step_json(events)
+    }
+
+    fn step_json(&self, events: Vec<RunEvent>) -> Result<String, String> {
         serde_json::to_string(&Step {
             events: player_events(events),
             view: self.run.view(self.content),
@@ -553,9 +578,17 @@ impl WasmRun {
         self.session.view().map_err(|e| JsError::new(&e))
     }
 
-    /// Apply an action (JSON) and return `{ events, view }` as JSON.
+    /// Apply an action (JSON) and return `{ events, view }` as JSON. The
+    /// defenders do not play here: while `view.ai_to_move` is set, call
+    /// [`WasmRun::step`].
     pub fn apply(&mut self, action: &str) -> Result<String, JsError> {
         self.session.apply(action).map_err(|e| JsError::new(&e))
+    }
+
+    /// Let the defender who is to move play one card; returns
+    /// `{ events, view }` as JSON like [`WasmRun::apply`].
+    pub fn step(&mut self) -> Result<String, JsError> {
+        self.session.step().map_err(|e| JsError::new(&e))
     }
 }
 
@@ -564,6 +597,30 @@ mod tests {
     use super::*;
     use skat_core::run::RunPhase;
     use skat_core::run::bot::RunBot;
+
+    /// Apply an action (JSON), then let the AI play one card per `step`
+    /// until the player decides again, as the web app does. Returns
+    /// `{ events, view }` with the events of all calls in order and the
+    /// last view.
+    fn play(session: &mut Session, action: &str) -> Result<serde_json::Value, String> {
+        let first: serde_json::Value = serde_json::from_str(&session.apply(action)?).expect("json");
+        let mut events = first["events"].as_array().cloned().unwrap_or_default();
+        let mut view = first["view"].clone();
+        while !view["ai_to_move"].is_null() {
+            let step: serde_json::Value = serde_json::from_str(&session.step()?).expect("json");
+            events.extend(step["events"].as_array().cloned().unwrap_or_default());
+            view = step["view"].clone();
+        }
+        Ok(serde_json::json!({ "events": events, "view": view }))
+    }
+
+    /// [`play`] with a [`RunAction`].
+    fn play_action(session: &mut Session, action: &RunAction) -> Result<serde_json::Value, String> {
+        play(
+            session,
+            &serde_json::to_string(action).expect("action json"),
+        )
+    }
 
     #[test]
     fn new_view_apply_save_load() {
@@ -753,10 +810,7 @@ mod tests {
             let Some(action) = RunBot.next_action(session.run(), content) else {
                 break;
             };
-            let step = session
-                .apply(&serde_json::to_string(&action).expect("json"))
-                .expect("bot");
-            let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+            let step = play_action(&mut session, &action).expect("bot");
             let events = serde_json::to_string(&step["events"]).expect("json");
             let result: serde_json::Value =
                 serde_json::from_str(&meta.observe(&events).expect("observe")).expect("json");
@@ -826,12 +880,11 @@ mod tests {
                     let options = view["encounter"]["options"].as_array().expect("options");
                     let leave = options.len() - 1;
                     assert_eq!(options[leave]["choice"], "Leave");
-                    let step = session
-                        .apply(&format!(
-                            r#"{{"ChooseEncounter":{{"option":{leave},"target":null}}}}"#
-                        ))
-                        .expect("leave");
-                    let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+                    let step = play(
+                        &mut session,
+                        &format!(r#"{{"ChooseEncounter":{{"option":{leave},"target":null}}}}"#),
+                    )
+                    .expect("leave");
                     assert_eq!(step["view"]["phase"], "Game");
                     assert!(
                         step["events"]
@@ -848,9 +901,7 @@ mod tests {
                 let Some(action) = RunBot.next_action(session.run(), content) else {
                     break;
                 };
-                session
-                    .apply(&serde_json::to_string(&action).expect("json"))
-                    .expect("bot");
+                play_action(&mut session, &action).expect("bot");
             }
         }
         panic!("no encounter in 400 seeds");
@@ -866,9 +917,19 @@ mod tests {
                 break;
             };
             let json = serde_json::to_string(&action).expect("action json");
-            let step = session.apply(&json).expect("bot action");
-            let step: serde_json::Value = serde_json::from_str(&step).expect("json");
-            for event in step["events"].as_array().expect("events") {
+            let step: serde_json::Value =
+                serde_json::from_str(&session.apply(&json).expect("bot action")).expect("json");
+            let mut events = step["events"].as_array().cloned().unwrap_or_default();
+            let mut view = step["view"].clone();
+            // One AI card per step, saved and loaded in between.
+            while !view["ai_to_move"].is_null() {
+                session = Session::load(&session.save().expect("save")).expect("load");
+                let step: serde_json::Value =
+                    serde_json::from_str(&session.step().expect("AI card")).expect("json");
+                events.extend(step["events"].as_array().cloned().unwrap_or_default());
+                view = step["view"].clone();
+            }
+            for event in &events {
                 if let Some(payout) = event.get("SeriesWon").map(|w| &w["payout"]) {
                     let sum = ["base", "games_left", "interest"]
                         .iter()
@@ -888,12 +949,12 @@ mod tests {
         ));
     }
 
-    /// Saves written by the M4 web app (the e2e fixtures) still load, show
-    /// a view and play on: new fields have serde defaults, the single skat
-    /// swap filter of "Die Oma" reads as a list, encounter options without
-    /// a named modification or relic draw it when chosen.
+    /// Saves written by the M4 and M5 web app (the e2e fixtures) still
+    /// load, show a view and play on: new fields have serde defaults, the
+    /// single skat swap filter of "Die Oma" reads as a list, encounter
+    /// options without a named modification or relic draw it when chosen.
     #[test]
-    fn m4_saves_still_load_and_play_on() {
+    fn old_saves_still_load_and_play_on() {
         let content = content().expect("content");
         let fixtures = [
             (
@@ -915,12 +976,29 @@ mod tests {
             ),
             ("oma", include_str!("../../web/e2e/fixtures/oma.json")),
             ("ramsch", include_str!("../../web/e2e/fixtures/ramsch.json")),
+            (
+                "coins-curse",
+                include_str!("../../web/e2e/fixtures/coins-curse.json"),
+            ),
+            (
+                "discard-battered",
+                include_str!("../../web/e2e/fixtures/discard-battered.json"),
+            ),
+            (
+                "honorary-jack",
+                include_str!("../../web/e2e/fixtures/honorary-jack.json"),
+            ),
+            (
+                "run-end",
+                include_str!("../../web/e2e/fixtures/run-end.json"),
+            ),
         ];
         for (name, save) in fixtures {
             let mut session = Session::load(save).unwrap_or_else(|e| panic!("{name}: {e}"));
             let view: serde_json::Value =
                 serde_json::from_str(&session.view().expect("view")).expect("json");
             assert!(view["phase"].is_string(), "{name}");
+            assert!(view["ai_to_move"].is_null(), "{name}: saved at a decision");
             if name == "oma" {
                 // The single filter of the old save became the list.
                 let rules = &session.run().game().expect("game").rules;
@@ -931,18 +1009,58 @@ mod tests {
                 assert_eq!(options[0]["choice"], "MarkRandomCard");
                 assert_eq!(options[0]["random_gain"], true);
                 assert!(options[0]["card_mod"].is_null());
-                let step = session
-                    .apply(r#"{"ChooseEncounter":{"option":0,"target":null}}"#)
-                    .expect("random card");
-                assert!(step.contains("DeckChanged"), "{name}");
+                let step = play(
+                    &mut session,
+                    r#"{"ChooseEncounter":{"option":0,"target":null}}"#,
+                )
+                .expect("random card");
+                assert!(step.to_string().contains("DeckChanged"), "{name}");
             }
+            if name == "discard-battered" {
+                // After the Ansage the "Ramponiert" card cannot be discarded.
+                let step = play(
+                    &mut session,
+                    r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#,
+                )
+                .expect("declare");
+                let hand = step["view"]["game"]["hand"].as_array().expect("hand");
+                assert_eq!(hand.len(), 12, "{name}");
+                let battered: Vec<&serde_json::Value> =
+                    hand.iter().filter(|c| c["no_discard"] == true).collect();
+                assert!(!battered.is_empty(), "{name}");
+                assert!(battered.iter().all(|c| c["discardable"] == false));
+                assert!(
+                    hand.iter()
+                        .filter(|c| c["no_discard"] != true)
+                        .all(|c| c["discardable"] == true)
+                );
+            }
+            let mut ramsch_seats = None;
             for _ in 0..200 {
                 let Some(action) = RunBot.next_action(session.run(), content) else {
                     break;
                 };
-                session
-                    .apply(&serde_json::to_string(&action).expect("json"))
-                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+                let step =
+                    play_action(&mut session, &action).unwrap_or_else(|e| panic!("{name}: {e}"));
+                for event in step["events"].as_array().expect("events") {
+                    let breakdown = &event["GameScored"]["breakdown"];
+                    if breakdown["declaration"]["game"] == "Ramsch" {
+                        ramsch_seats.get_or_insert_with(|| breakdown["seats"].clone());
+                    }
+                }
+            }
+            if name == "ramsch" {
+                // The Ramsch result names who has the most Augen.
+                let seats = ramsch_seats.expect("the Ramsch was scored");
+                let points: Vec<u64> = seats["card_points"]
+                    .as_array()
+                    .expect("points")
+                    .iter()
+                    .filter_map(serde_json::Value::as_u64)
+                    .collect();
+                let max = points.iter().copied().max().expect("max");
+                let most: Vec<bool> = points.iter().map(|&p| p == max).collect();
+                assert_eq!(seats["most"], serde_json::json!(most), "{name}");
             }
             let saved = session.save().expect("save");
             Session::load(&saved).unwrap_or_else(|e| panic!("{name} again: {e}"));
@@ -955,5 +1073,61 @@ mod tests {
         let info = &view["unlocks"][0]["reward_info"][0];
         assert!(info["kind"].is_string());
         assert!(info["name"].is_string());
+    }
+
+    /// `apply` leaves the defenders' cards to `step`, one per call; the
+    /// player events are the same as of the core's whole action.
+    #[test]
+    fn the_ai_plays_one_card_per_step() {
+        let content = content().expect("content");
+        let code = |e: String| -> String {
+            let json: serde_json::Value = serde_json::from_str(&e).expect("error json");
+            json["code"].as_str().expect("code").to_string()
+        };
+        let mut session = Session::new("7").expect("new");
+        let mut twin = session.run().clone();
+        assert_eq!(
+            code(session.step().expect_err("nobody to move")),
+            "WrongPhase"
+        );
+        let mut steps = 0;
+        let mut waited = false;
+        for _ in 0..60 {
+            let Some(action) = RunBot.next_action(session.run(), content) else {
+                break;
+            };
+            let expected = player_events(twin.apply(content, action.clone()).expect("core"));
+            let json = serde_json::to_string(&action).expect("json");
+            let step: serde_json::Value =
+                serde_json::from_str(&session.apply(&json).expect("apply")).expect("json");
+            let mut events = step["events"].as_array().cloned().unwrap_or_default();
+            let mut view = step["view"].clone();
+            while let Some(seat) = view["ai_to_move"].as_u64() {
+                assert!(seat == 1 || seat == 2, "a defender: {seat}");
+                assert_eq!(view["game"]["your_turn"], false);
+                if !waited {
+                    waited = true;
+                    assert_eq!(code(session.apply(&json).expect_err("wait")), "AiToMove");
+                }
+                let step: serde_json::Value =
+                    serde_json::from_str(&session.step().expect("step")).expect("json");
+                let cards = step["events"]
+                    .as_array()
+                    .expect("events")
+                    .iter()
+                    .filter(|e| e["Game"].get("CardPlayed").is_some())
+                    .count();
+                assert_eq!(cards, 1, "one card per step");
+                events.extend(step["events"].as_array().cloned().unwrap_or_default());
+                view = step["view"].clone();
+                steps += 1;
+            }
+            assert_eq!(
+                serde_json::Value::Array(events),
+                serde_json::to_value(&expected).expect("json")
+            );
+            assert_eq!(session.run(), &twin);
+        }
+        assert!(waited && steps > 10, "{steps} steps");
     }
 }

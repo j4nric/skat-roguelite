@@ -70,8 +70,8 @@ export interface UiState {
   omaPick: boolean;
   /** Skat card picked to take in a skat swap; null takes the core's first. */
   swapTake: number | null;
-  /** The core is computing the opponents' moves (thought bubble). */
-  thinking: boolean;
+  /** The opponent whose move the core is computing (thought bubble). */
+  thinking: Seat | null;
   /** A seed from a shared link, offered on the start screen. */
   shared: (SharedSeed & { locked: boolean }) | null;
   /** Result of the last "copy link" tap: the link and whether it worked. */

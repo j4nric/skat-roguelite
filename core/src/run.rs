@@ -10,10 +10,15 @@
 //!
 //! The run is driven by [`RunAction`]s and answers with [`RunEvent`]s. The
 //! two defenders are played by the AI inside the run (heuristic or PIMC by
-//! section, see [`opponents`]), so after
-//! every action the run waits for the next decision of the player. The
+//! section, see [`opponents`]). [`Run::apply`] plays them until the next
+//! decision of the player (simulator, bot, tests). A frontend that wants to
+//! show each defender's move on its own drives the run step by step:
+//! [`Run::apply_step`] only carries out the player's action, then while
+//! [`Run::ai_to_move`] names a seat, [`Run::advance_ai`] plays exactly one
+//! card of the AI. Both ways give the same events in the same order. The
 //! whole state is serializable (serde), so a frontend can save and load a
-//! run at any point; equal seed and equal actions give equal results.
+//! run at any point, also while the AI is to move; equal seed and equal
+//! actions give equal results.
 //!
 //! Content effects fire at fixed points ([`Stage`]): passive effects when a
 //! game is set up, then `OnDeal`, `OnDeclare`, `OnCardPlayed`,
@@ -722,6 +727,9 @@ pub enum RunError {
     NothingToTake,
     /// The Ramsch of the series cannot be passed or dealt again.
     RamschRequired,
+    /// A defender is to move: advance the AI ([`Run::advance_ai`]) before
+    /// the player acts again.
+    AiToMove,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -798,6 +806,8 @@ pub enum RunErrorCode {
     RamschRequired,
     /// The card must not be discarded ("Ramponiert").
     DiscardForbidden,
+    /// A defender is to move; the player has to wait.
+    AiToMove,
 }
 
 impl RunErrorCode {
@@ -839,6 +849,7 @@ impl RunErrorCode {
             RunErrorCode::InvalidSkatSwap => "InvalidSkatSwap",
             RunErrorCode::RamschRequired => "RamschRequired",
             RunErrorCode::DiscardForbidden => "DiscardForbidden",
+            RunErrorCode::AiToMove => "AiToMove",
         }
     }
 }
@@ -886,6 +897,7 @@ impl RunError {
             RunError::NoSkatSwapLeft => RunErrorCode::NoSkatSwapLeft,
             RunError::NothingToTake => RunErrorCode::NothingToTake,
             RunError::RamschRequired => RunErrorCode::RamschRequired,
+            RunError::AiToMove => RunErrorCode::AiToMove,
         }
     }
 }
@@ -915,6 +927,7 @@ impl fmt::Display for RunError {
             RunError::NoSkatSwapLeft => f.write_str("no skat swap left in this series"),
             RunError::NothingToTake => f.write_str("no matching card lies in the skat"),
             RunError::RamschRequired => f.write_str("the Ramsch must be played"),
+            RunError::AiToMove => f.write_str("a defender is to move"),
         }
     }
 }
@@ -1014,6 +1027,8 @@ pub struct Run {
 
 impl Run {
     /// Start a run: the first series begins and its first game is dealt.
+    /// Should the defenders move first (a Ramsch from a start relic), they
+    /// have played when this returns, as after [`Run::apply`].
     pub fn new(content: &Content, seed: u64) -> Result<(Run, Vec<RunEvent>), RunError> {
         Run::new_with(content, seed, &RunStart::default())
     }
@@ -1092,6 +1107,7 @@ impl Run {
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
+        run.play_ai(content, &mut events)?;
         Ok((run, events))
     }
 
@@ -1246,7 +1262,11 @@ impl Run {
     // Actions
     // -----------------------------------------------------------------------
 
-    /// Apply a player decision. On error nothing changed.
+    /// Apply a player decision and let the defenders play until the
+    /// player decides again: [`Run::apply_step`] followed by
+    /// [`Run::advance_ai`] while [`Run::ai_to_move`] names a seat, with all
+    /// events in one list. For the simulator, the bot and tests. On error
+    /// nothing changed.
     pub fn apply(
         &mut self,
         content: &Content,
@@ -1256,8 +1276,88 @@ impl Run {
         // Work on a copy so that a failing action leaves the run untouched.
         let mut next = self.clone();
         next.dispatch(content, action, &mut events)?;
+        next.play_ai(content, &mut events)?;
         *self = next;
         Ok(events)
+    }
+
+    /// Apply a player decision without letting the defenders play: a
+    /// finished game is scored and the next one dealt, but if a defender
+    /// is to move afterwards the run waits in that state
+    /// ([`Run::ai_to_move`]) for [`Run::advance_ai`]. While a defender is
+    /// to move every action fails with [`RunError::AiToMove`]. On error
+    /// nothing changed.
+    pub fn apply_step(
+        &mut self,
+        content: &Content,
+        action: RunAction,
+    ) -> Result<Vec<RunEvent>, RunError> {
+        let mut events = Vec::new();
+        let mut next = self.clone();
+        next.dispatch(content, action, &mut events)?;
+        *self = next;
+        Ok(events)
+    }
+
+    /// The defender who is to play the next card, if the run waits for
+    /// the AI rather than for the player: in a game being played, no Kontra
+    /// waiting for an answer, a defender's turn.
+    #[must_use]
+    pub fn ai_to_move(&self) -> Option<Seat> {
+        if self.phase != RunPhase::Game {
+            return None;
+        }
+        let active = self.game.as_ref()?;
+        if active.awaiting_re || active.game.phase() != Phase::Playing {
+            return None;
+        }
+        active
+            .game
+            .current_seat()
+            .filter(|seat| !seat.is_declarer())
+    }
+
+    /// Let the AI play exactly one card of the defender who is to move
+    /// ([`Run::ai_to_move`]). A game finished by it is scored and the next
+    /// one dealt, as after a card of the player. Fails with
+    /// [`RunError::WrongPhase`] if no defender is to move; then nothing
+    /// changed.
+    pub fn advance_ai(&mut self, content: &Content) -> Result<Vec<RunEvent>, RunError> {
+        let mut events = Vec::new();
+        let mut next = self.clone();
+        next.ai_move(content, &mut events)?;
+        *self = next;
+        Ok(events)
+    }
+
+    /// Let the AI play until the player decides again (nothing if no
+    /// defender is to move), e.g. after loading a save made while the AI
+    /// was to move. On error nothing changed.
+    pub fn advance_ai_all(&mut self, content: &Content) -> Result<Vec<RunEvent>, RunError> {
+        let mut events = Vec::new();
+        let mut next = self.clone();
+        next.play_ai(content, &mut events)?;
+        *self = next;
+        Ok(events)
+    }
+
+    /// One card of the defender who is to move, then settle the game.
+    fn ai_move(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let seat = self.ai_to_move().ok_or(RunError::WrongPhase)?;
+        let active = self.game.as_ref().ok_or(RunError::WrongPhase)?;
+        let view = active.game.view(seat).ok_or(RunError::WrongPhase)?;
+        let card =
+            opponents::defender_card(self, content, active, &view).ok_or(RunError::WrongPhase)?;
+        self.play_card(content, seat, card, events)?;
+        self.settle(content, events)
+    }
+
+    /// Let the defenders play until the player decides again.
+    fn play_ai(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        while self.ai_to_move().is_some() {
+            self.ai_move(content, events)?;
+        }
+        Ok(())
     }
 
     fn dispatch(
@@ -1266,6 +1366,9 @@ impl Run {
         action: RunAction,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        if self.ai_to_move().is_some() {
+            return Err(RunError::AiToMove);
+        }
         match action {
             RunAction::Pass => self.pass(content, events),
             RunAction::Redeal => self.redeal_series(content, events),
@@ -1381,7 +1484,7 @@ impl Run {
                 }
             }
         }
-        self.advance(content, events)
+        self.settle(content, events)
     }
 
     /// After any declaration (also the Ramsch): fire `OnDeclare` and use
@@ -1507,7 +1610,7 @@ impl Run {
                 events.push(RunEvent::Re);
             }
         }
-        self.advance(content, events)
+        self.settle(content, events)
     }
 
     /// Find a card of the declarer's hand by instance id.
@@ -1537,7 +1640,7 @@ impl Run {
         ];
         let game_events = active.game.discard(cards)?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
-        self.advance(content, events)
+        self.settle(content, events)
     }
 
     fn play(
@@ -1552,7 +1655,7 @@ impl Run {
         }
         let card = Run::declarer_card(active, id)?;
         self.play_card(content, Seat::DECLARER, card, events)?;
-        self.advance(content, events)
+        self.settle(content, events)
     }
 
     /// Play one card and fire the in-play hooks.
@@ -1582,29 +1685,13 @@ impl Run {
         Ok(())
     }
 
-    /// Let the defenders play until it is the declarer's turn, then score a
-    /// finished game.
-    fn advance(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        loop {
-            let Some(active) = self.game.as_ref() else {
-                return Ok(());
-            };
-            match active.game.phase() {
-                Phase::Finished(_) => return self.finish_game(content, events),
-                Phase::Playing if !active.awaiting_re => {
-                    let Some(seat) = active.game.current_seat() else {
-                        return Ok(());
-                    };
-                    if seat.is_declarer() {
-                        return Ok(());
-                    }
-                    let view = active.game.view(seat).ok_or(RunError::WrongPhase)?;
-                    let card = opponents::defender_card(self, content, active, &view)
-                        .ok_or(RunError::WrongPhase)?;
-                    self.play_card(content, seat, card, events)?;
-                }
-                _ => return Ok(()),
-            }
+    /// Score a finished game (which deals the next one or ends the
+    /// series). The defenders do not play here: whether one is to move is
+    /// [`Run::ai_to_move`].
+    fn settle(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        match self.game.as_ref().map(|a| a.game.phase()) {
+            Some(Phase::Finished(_)) => self.finish_game(content, events),
+            _ => Ok(()),
         }
     }
 
@@ -1995,7 +2082,7 @@ impl Run {
         events.push(RunEvent::RamschDealt);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.after_declaration(content, events);
-        self.advance(content, events)
+        self.settle(content, events)
     }
 
     /// Install a freshly dealt game, apply passive effects and fire
@@ -2934,5 +3021,7 @@ mod content_tests;
 mod m4_tests;
 #[cfg(test)]
 mod m5_tests;
+#[cfg(test)]
+mod step_tests;
 #[cfg(test)]
 mod tests;

@@ -27,6 +27,11 @@ export interface CardView extends DealtCard {
   mods: string[];
   legal: boolean;
   from_skat: boolean;
+  /**
+   * Whether the card may go into the skat now (hand cards while discarding;
+   * a "Ramponiert" card only when fewer than two others are left).
+   */
+  discardable: boolean;
 }
 
 export interface DeckCard {
@@ -338,6 +343,8 @@ export interface ScoreBreakdown {
 export interface SeatTotals {
   card_points: [number, number, number];
   tricks: [number, number, number];
+  /** Who has the most Augen (several on a tie): in a Ramsch the losers. */
+  most: [boolean, boolean, boolean];
 }
 
 export type ScoreTerm =
@@ -421,6 +428,12 @@ export interface RunView {
   seed: string;
   character: CharacterInfo;
   phase: RunPhase;
+  /**
+   * The defender who thinks next. While set, the run waits for the AI:
+   * call `CoreRun.step()` (one card) until it is null; actions fail with
+   * `AiToMove`.
+   */
+  ai_to_move: Seat | null;
   series: SeriesView;
   upcoming_boss: BossInfo | null;
   next_series: NextSeriesView | null;

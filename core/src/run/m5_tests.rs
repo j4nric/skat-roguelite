@@ -94,6 +94,8 @@ fn a_ramsch_reports_augen_and_tricks_per_seat() {
     run.series.boss = Some(BossId::new("ramscher"));
     let mut events = Vec::new();
     run.deal(&content, true, &mut events).expect("deal");
+    // A defender may lead the Ramsch: let the AI play up to the player.
+    run.play_ai(&content, &mut events).expect("AI");
     assert!(events.contains(&RunEvent::RamschDealt));
     let mut seen_tricks = false;
     let breakdown = loop {

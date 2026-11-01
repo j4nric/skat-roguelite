@@ -40,7 +40,7 @@ function revealedCard(r: RevealedCard): string {
   return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod })}>${cardSvg(card.kind, card.mods)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
 }
 
-/** A small thought bubble while the core computes the opponents' moves. */
+/** A small thought bubble while the core computes this opponent's card. */
 function thinkBubble(): string {
   return `<span class="think-bubble" data-testid="think" role="status" aria-label="${esc(de.table.thinking)}"><i></i><i></i><i></i></span>`;
 }
@@ -69,7 +69,8 @@ function kontraBadge(game: GameView, seat: Seat): string {
 
 function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): string {
   const size = ui.anim ? (ui.anim.handSizes[seat] ?? 0) : (game.hand_sizes[seat] ?? 0);
-  const turn = ui.anim ? ui.anim.turn === seat : false;
+  const turn = ui.anim ? ui.anim.turn === seat : view.ai_to_move === seat;
+  const thinking = ui.thinking === seat;
   const backs = Array.from({ length: Math.min(size, 12) }, () => cardBack('fan')).join('');
   const seen = game.revealed.filter((r) => r.holder === seat);
   const open = seen.filter((r) => r.source !== 'Kibitz').map(revealedCard).join('');
@@ -87,8 +88,8 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
     tricks === null
       ? ''
       : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
-  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${ui.thinking ? 'is-thinking' : ''}" data-seat="${seat}">
-    ${portrait(face, 'portrait-opp')}${ui.thinking ? thinkBubble() : ''}
+  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" data-seat="${seat}">
+    ${portrait(face, 'portrait-opp')}${thinking ? thinkBubble() : ''}
     <div class="opp-info">
       <div class="opp-head"><b class="opp-name">${esc(name)}</b></div>
       <div class="opp-pos">${esc(position ? de.positions[position] : '')}${trickTag}${kontraBadge(game, seat)}</div>
@@ -212,11 +213,12 @@ function handCards(game: GameView, ui: UiState): string {
     .map((c, i) => {
       const selected = ui.selected.includes(c.id);
       let action: string | null = null;
-      if (discarding) action = 'select';
+      // The core says which cards may go into the skat ("Ramponiert" may not).
+      if (discarding) action = c.discardable ? 'select' : null;
       else if (oma) action = 'oma-give';
       else if (playing && c.legal) action = 'play';
       const dim = playing && !c.legal;
-      const locked = discarding && c.no_discard === true;
+      const locked = discarding && !c.discardable;
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : ''].join(' ');
       const skatTag = (c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '') + plaques(c);
       const label = cardLabel(c);

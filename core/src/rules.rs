@@ -314,6 +314,18 @@ pub fn valid_discard<C: PlayingCard>(hand: &[C], cards: [C; 2]) -> bool {
     forced <= 2usize.saturating_sub(free)
 }
 
+/// Whether `card` from the declarer's twelve cards (`hand`) can go into the
+/// skat together with some other card of the hand ([`valid_discard`]): a
+/// free card always, a card that must not be discarded only when fewer than
+/// two free cards are left.
+#[must_use]
+pub fn discardable<C: PlayingCard>(hand: &[C], card: C) -> bool {
+    hand.contains(&card)
+        && hand
+            .iter()
+            .any(|&other| other != card && valid_discard(hand, [card, other]))
+}
+
 // ---------------------------------------------------------------------------
 // Matadors
 // ---------------------------------------------------------------------------
@@ -777,7 +789,12 @@ pub struct Outcome {
 /// Augen and tricks per seat (index = seat, 0 is the player), for games
 /// where the sides do not tell enough: in a Ramsch everyone plays for
 /// himself and the one with the most Augen loses.
+///
+/// Serialized with [`SeatTotals::most`] as `most`, so that a frontend does
+/// not compare Augen itself; `most` is ignored when reading and always
+/// recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(into = "SeatTotalsRepr", from = "SeatTotalsRepr")]
 pub struct SeatTotals {
     /// Augen per seat: tricks, plus the skat for the seat it counts for
     /// (the declarer; in a Ramsch the winner of the last trick), plus
@@ -785,6 +802,45 @@ pub struct SeatTotals {
     pub card_points: [u32; 3],
     /// Tricks per seat, conceded tricks included.
     pub tricks: [u32; 3],
+}
+
+impl SeatTotals {
+    /// Which seats have the most Augen (index = seat; several on a tie):
+    /// in a Ramsch the losers. The player loses a Ramsch exactly when his
+    /// entry is `true` ([`ramsch_value_parts`]).
+    #[must_use]
+    pub fn most(&self) -> [bool; 3] {
+        let max = self.card_points.iter().copied().max().unwrap_or(0);
+        self.card_points.map(|p| p == max)
+    }
+}
+
+/// Serialized form of [`SeatTotals`]: the totals plus who has the most.
+#[derive(Serialize, Deserialize)]
+struct SeatTotalsRepr {
+    card_points: [u32; 3],
+    tricks: [u32; 3],
+    #[serde(default)]
+    most: [bool; 3],
+}
+
+impl From<SeatTotals> for SeatTotalsRepr {
+    fn from(t: SeatTotals) -> SeatTotalsRepr {
+        SeatTotalsRepr {
+            card_points: t.card_points,
+            tricks: t.tricks,
+            most: t.most(),
+        }
+    }
+}
+
+impl From<SeatTotalsRepr> for SeatTotals {
+    fn from(t: SeatTotalsRepr) -> SeatTotals {
+        SeatTotals {
+            card_points: t.card_points,
+            tricks: t.tricks,
+        }
+    }
 }
 
 /// Spielwert of a finished game.
@@ -1857,5 +1913,39 @@ mod tests {
         assert!(!valid_discard(&[b1, b2, c], [b1, b2]));
         // Only battered cards: any two.
         assert!(valid_discard(&[b1, b2], [b1, b2]));
+        // Per card: a battered card only when fewer than two free cards
+        // are left.
+        assert!(!discardable(&[b1, b2, c, e], b1));
+        assert!(discardable(&[b1, b2, c, e], c));
+        assert!(discardable(&[b1, b2, c], b1));
+        assert!(discardable(&[b1, b2, c], c));
+        assert!(discardable(&[b1, b2], b2));
+        assert!(!discardable(&[b1, c], e), "not in the hand");
+    }
+
+    #[test]
+    fn seat_totals_name_who_has_the_most() {
+        let totals = SeatTotals {
+            card_points: [40, 40, 40],
+            tricks: [3, 3, 4],
+        };
+        assert_eq!(totals.most(), [true, true, true]);
+        let totals = SeatTotals {
+            card_points: [30, 52, 38],
+            tricks: [3, 4, 3],
+        };
+        assert_eq!(totals.most(), [false, true, false]);
+        let text = ron::to_string(&totals).expect("ron");
+        assert!(text.contains("most:(false,true,false)"), "{text}");
+        let back: SeatTotals = ron::from_str(&text).expect("ron");
+        assert_eq!(back, totals);
+        // Saves without `most`, or with a wrong one, read the same.
+        let old: SeatTotals =
+            ron::from_str("(card_points:(30,52,38),tricks:(3,4,3))").expect("old");
+        assert_eq!(old, totals);
+        let wrong: SeatTotals =
+            ron::from_str("(card_points:(30,52,38),tricks:(3,4,3),most:(true,true,true))")
+                .expect("wrong");
+        assert_eq!(wrong, totals);
     }
 }

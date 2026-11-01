@@ -455,6 +455,8 @@ fn the_ramscher_makes_the_first_game_a_ramsch() {
     run.series.boss = Some(BossId::new("ramscher"));
     let mut events = Vec::new();
     run.deal(&content, true, &mut events).expect("deal");
+    // A defender may lead the Ramsch: let the AI play up to the player.
+    run.play_ai(&content, &mut events).expect("AI");
     assert!(events.contains(&RunEvent::RamschDealt));
     let game = &run.game().expect("game").game;
     assert_eq!(game.declaration(), Some(Declaration::Ramsch));

@@ -333,6 +333,7 @@ impl MetaState {
                 entry.runs += 1;
                 entry.won += 1;
                 entry.best_section = entry.best_section.max(self.current_section);
+                stats.best_section = stats.best_section.max(self.current_section);
                 self.current_section = 0;
             }
             RunEvent::RunLost {
@@ -342,6 +343,7 @@ impl MetaState {
                 let entry = stats.characters.entry(*character).or_default();
                 entry.runs += 1;
                 entry.best_section = entry.best_section.max(section + 1);
+                stats.best_section = stats.best_section.max(section + 1);
                 self.current_section = 0;
             }
             _ => {}
@@ -628,5 +630,28 @@ mod tests {
         assert!(meta.character_unlocked(&content, Character::NullPlayer));
         assert!(meta.run_start(&content, Character::NullPlayer).is_ok());
         assert_eq!(meta.stats.runs_won, 1);
+    }
+
+    #[test]
+    fn the_end_of_a_run_raises_the_best_section() {
+        let content = content();
+        // A meta state that missed the series starts (fed from the end of
+        // a run only) still counts the section the run ended in.
+        let mut meta = MetaState::new();
+        let events: Vec<RunEvent> = vec![RunEvent::RunLost {
+            section: 3,
+            index: 1,
+            character: Character::Declarer,
+        }];
+        meta.observe(&content, &events);
+        assert_eq!(meta.stats.best_section, 4);
+        assert_eq!(meta.stats.characters[&Character::Declarer].best_section, 4);
+        let mut meta = MetaState::new();
+        meta.current_section = 5;
+        let events: Vec<RunEvent> = vec![RunEvent::RunWon {
+            character: Character::Declarer,
+        }];
+        meta.observe(&content, &events);
+        assert_eq!(meta.stats.best_section, 5);
     }
 }
