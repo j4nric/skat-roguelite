@@ -68,10 +68,7 @@ export function contentText(category: Category, id: string): string {
   return de.content[category][id]?.text ?? catalog?.[category][id]?.text ?? '';
 }
 
-/**
- * Whether a card modification is a curse. The content has no type for it;
- * by convention (GLOSSARY) its text starts with "Fluch:".
- */
+/** Whether a card modification is a curse (Fluch), from the core's catalog. */
 export function isCurse(mod: string): boolean {
-  return contentText('card_mods', mod).startsWith(de.card.curseMark);
+  return catalog?.card_mods[mod]?.curse === true;
 }

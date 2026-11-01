@@ -1,7 +1,9 @@
 // UI state of the app. Holds the latest view from the core plus purely
 // visual state (selection, overlays, the animation snapshot).
 
+import type { SharedSeed } from '../seed';
 import type { Settings } from '../settings';
+import type { RunRecord } from '../storage';
 import type { BossInfo, CardView, Character, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunView, ScoreView, Seat } from '../types';
 
 /** What the table shows while events are being animated. */
@@ -23,7 +25,16 @@ export interface ScoreOverlay {
   target: number;
   payout: { payout: Payout; coins: number } | null;
   relics: OwnedRelic[];
+  /** Display names of the seats (a boss sits in seat 1). */
+  seatNames: string[];
   resolve: () => void;
+}
+
+/** A new run waiting for the player to give up the running one. */
+export interface PendingStart {
+  seed: string;
+  character: Character;
+  daily: boolean;
 }
 
 export type Overlay =
@@ -33,8 +44,10 @@ export type Overlay =
   | { kind: 'target'; slot: number }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number }
-  /** The Vereinsbuch: characters, unlocks, statistics. */
-  | { kind: 'book' }
+  /** The Vereinsbuch: characters and unlocks, or the statistics page. */
+  | { kind: 'book'; tab: 'book' | 'stats' }
+  /** Give up the running run for a new one? */
+  | { kind: 'confirm-new'; start: PendingStart }
   /** Unlocks just earned, ids from the meta state. */
   | { kind: 'unlock'; ids: string[] }
   | { kind: 'menu' }
@@ -53,8 +66,18 @@ export interface UiState {
   pickRisk: RiskLevel | null;
   /** Picked Null-Risikostufe (Nullspieler). */
   pickNullRisk: NullRisk | null;
-  /** "Die Oma": the player picks the card to put into the skat. */
+  /** Skat swap ("Die Oma", "Der Opa"): the player picks the card to put into the skat. */
   omaPick: boolean;
+  /** Skat card picked to take in a skat swap; null takes the core's first. */
+  swapTake: number | null;
+  /** The core is computing the opponents' moves (thought bubble). */
+  thinking: boolean;
+  /** A seed from a shared link, offered on the start screen. */
+  shared: (SharedSeed & { locked: boolean }) | null;
+  /** Result of the last "copy link" tap: the link and whether it worked. */
+  copy: { url: string; ok: boolean } | null;
+  /** Finished runs of this browser, newest first. */
+  history: RunRecord[];
   /** Character picked on the start screen. */
   pickCharacter: Character;
   overlay: Overlay | null;

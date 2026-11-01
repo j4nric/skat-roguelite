@@ -11,21 +11,41 @@
 // Next to the run the app keeps the meta state of the core (unlocks and
 // statistics across runs). It learns from the events of every step; what
 // it newly unlocks is announced at the end of the step.
+//
+// Seeds can be shared as a link (`#seed-<number>-<character>`, ./seed.ts);
+// opening one offers that run on the start screen without touching a run
+// in progress. Every core call that may let the opponents think runs after
+// the next frame, so a thought bubble (and the tapped card) is painted
+// before the main thread is busy.
 
 import { sound } from './audio';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
 import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
-import { backupMeta, clearRun, loadCharacter, loadMeta, loadRun, saveCharacter, saveMeta, saveRun } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat } from './types';
+import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
+import {
+  addToHistory,
+  backupMeta,
+  clearRun,
+  loadCharacter,
+  loadHistory,
+  loadMeta,
+  loadRun,
+  loadRunInfo,
+  saveCharacter,
+  saveMeta,
+  saveRun,
+  saveRunInfo,
+} from './storage';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
-import { deal, finishAll, flyAway, flyIn, motionOn, setTempo } from './ui/fx';
-import { renderHud } from './ui/hud';
-import { renderScore, ScoreBoard } from './ui/score';
+import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
+import { coinIcon, renderHud } from './ui/hud';
+import { renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
-import type { Overlay, ScoreOverlay, UiState } from './ui/state';
+import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
@@ -60,6 +80,22 @@ const DELAY = {
   notice: 700,
 };
 
+/** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    // rAF runs just before the paint; the timeout after it runs once the
+    // frame is on screen.
+    requestAnimationFrame(() => window.setTimeout(finish, 0));
+    window.setTimeout(finish, 120);
+  });
+}
+
 /** Toasts waiting at most; older ones are dropped. */
 const TOAST_QUEUE = 3;
 
@@ -78,6 +114,11 @@ export class App {
     pickRisk: null,
     pickNullRisk: null,
     omaPick: false,
+    swapTake: null,
+    thinking: false,
+    shared: null,
+    copy: null,
+    history: loadHistory(),
     pickCharacter: (() => {
       const stored = loadCharacter();
       return isCharacter(stored) ? stored : 'Declarer';
@@ -136,7 +177,21 @@ export class App {
       return;
     }
     this.loadMetaState();
+    this.readShareHash();
+    window.addEventListener('hashchange', () => {
+      this.readShareHash();
+      if (this.ui.screen === 'start') this.render();
+    });
     this.toStart();
+  }
+
+  /** Offer the seed of a shared link (`#seed-…`), if the address has one. */
+  private readShareHash(): void {
+    const shared = parseShareHash(window.location.hash);
+    if (!shared) return;
+    const entry = this.ui.meta?.characters.find((c) => c.character === shared.character);
+    const locked = shared.character !== 'Declarer' && entry?.unlocked !== true;
+    this.ui.shared = { ...shared, locked };
   }
 
   /** Load the meta state, or start a new one (keeping an unreadable save aside). */
@@ -229,6 +284,12 @@ export class App {
     this.render();
   }
 
+  /** Whether a run in progress is stored (it must not be overwritten unasked). */
+  private hasRunningRun(): boolean {
+    return loadRun() !== null;
+  }
+
+  /** "Neuer Run" on the start or end screen: the typed seed or a random one. */
   private newRun(): void {
     const input = this.root.querySelector<HTMLInputElement>('#seed');
     const typed = input?.value.trim() ?? '';
@@ -237,12 +298,30 @@ export class App {
       const random = new Uint32Array(1);
       crypto.getRandomValues(random);
       seed = String(random[0]);
+    } else if (!isSeedText(seed)) {
+      this.ui.message = de.start.seedInvalid;
+      this.render();
+      return;
     }
+    this.requestStart({ seed, character: this.ui.pickCharacter, daily: false });
+  }
+
+  /** Start a run, after asking if that gives up a running one. */
+  private requestStart(start: PendingStart): void {
+    if (this.hasRunningRun()) {
+      this.ui.overlay = { kind: 'confirm-new', start };
+      this.render();
+      return;
+    }
+    this.startRun(start);
+  }
+
+  private startRun({ seed, character, daily }: PendingStart): void {
     let core: CoreRun;
     let startEvents = '[]';
     try {
       if (this.meta) {
-        const started = CoreRun.createWith(seed, this.ui.pickCharacter, this.meta);
+        const started = CoreRun.createWith(seed, character, this.meta);
         core = started.run;
         startEvents = started.startEvents;
       } else {
@@ -250,6 +329,7 @@ export class App {
       }
     } catch (err) {
       console.warn('run not started', err);
+      this.ui.overlay = null;
       this.ui.message = errorCode(err) === 'InvalidSeed' ? de.start.seedInvalid : errorText(err);
       this.render();
       return;
@@ -258,12 +338,78 @@ export class App {
     this.core = core;
     this.ui.message = null;
     this.ui.ended = null;
+    this.ui.copy = null;
+    if (this.ui.shared) {
+      this.ui.shared = null;
+      clearShareHash();
+    }
     saveRun(core.save());
+    const view = core.view();
+    saveRunInfo({ seed: view.seed, daily });
     const earned = this.observe(startEvents);
-    this.enterRun(core.view(), true);
+    this.enterRun(view, true);
     if (earned.length) {
       this.announceUnlocks(earned);
       this.render();
+    }
+  }
+
+  /** Remember a finished run in the list of this browser. */
+  private recordRun(view: RunView): void {
+    const info = loadRunInfo();
+    this.ui.history = addToHistory({
+      character: view.character.character,
+      seed: view.seed,
+      section: view.series.section + 1,
+      series: view.series.index + 1,
+      won: view.phase === 'Won',
+      bestGame: view.stats.best_game,
+      date: new Date().toISOString(),
+      daily: info?.seed === view.seed && info.daily,
+    });
+  }
+
+  /** Copy the link of a seed; on failure show it to be copied by hand. */
+  private copyLink(url: string): void {
+    const done = (ok: boolean): void => {
+      this.ui.copy = { url, ok };
+      this.overlayDirty = true;
+      this.render();
+      if (ok) sound.play('clink');
+      else this.root.querySelector<HTMLInputElement>('[data-testid="share-fallback"]')?.select();
+    };
+    try {
+      const clip = navigator.clipboard as Clipboard | undefined;
+      if (!clip) {
+        done(false);
+        return;
+      }
+      clip.writeText(url).then(
+        () => done(true),
+        (err: unknown) => {
+          console.warn('clipboard refused', err);
+          done(false);
+        },
+      );
+    } catch (err) {
+      console.warn('clipboard unavailable', err);
+      done(false);
+    }
+  }
+
+  /** The share sheet of the system, where there is one. */
+  private shareNative(url: string, text: string): void {
+    try {
+      if (typeof navigator.share !== 'function') {
+        this.copyLink(url);
+        return;
+      }
+      navigator.share({ title: de.app.title, text, url }).catch((err: unknown) => {
+        // Closing the sheet is no error.
+        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copyLink(url);
+      });
+    } catch {
+      this.copyLink(url);
     }
   }
 
@@ -289,6 +435,7 @@ export class App {
     this.ui.pickRisk = null;
     this.ui.pickNullRisk = null;
     this.ui.omaPick = false;
+    this.ui.swapTake = null;
   }
 
   // -------------------------------------------------------------------------
@@ -299,22 +446,35 @@ export class App {
   private async act(action: RunAction): Promise<void> {
     if (!this.core || this.ui.busy) return;
     const before = this.ui.view;
+    this.ui.busy = true;
+    // At the table the opponents may think for a while inside the core:
+    // paint the tapped state (and the thought bubble) first.
+    if (before?.phase === 'Game') {
+      this.ui.thinking = this.ui.settings.thinking;
+      this.render();
+      await nextPaint();
+    }
     let step;
     try {
       step = this.core.apply(action);
     } catch (err) {
       console.warn('action rejected', action, err);
+      this.ui.busy = false;
+      this.ui.thinking = false;
+      this.render();
       this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
       return;
     }
+    this.ui.thinking = false;
     const view = step.view;
-    if (view.phase === 'Won' || view.phase === 'Lost') {
+    const over = view.phase === 'Won' || view.phase === 'Lost';
+    if (over) {
       clearRun();
+      this.recordRun(view);
     } else {
       saveRun(this.core.save());
     }
     const earned = this.observe(step.events);
-    this.ui.busy = true;
     this.fastForward = false;
     this.ui.overlay = null;
     try {
@@ -325,9 +485,10 @@ export class App {
       this.ui.view = view;
       this.playedFrom = null;
       this.resetTableChoices();
-      if (view.phase === 'Won' || view.phase === 'Lost') {
+      if (over) {
         this.ui.ended = { won: view.phase === 'Won', view };
         this.ui.screen = 'end';
+        this.ui.copy = null;
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
       }
       this.announceUnlocks(earned);
@@ -398,6 +559,10 @@ export class App {
       }
       if ('Game' in ev) {
         await this.playGameEvent(ev.Game, after);
+        continue;
+      }
+      if ('CoinsGained' in ev) {
+        await this.coinsGained(ev.CoinsGained.source, ev.CoinsGained.amount, ev.CoinsGained.coins, after);
         continue;
       }
       if ('GameDealt' in ev) {
@@ -583,6 +748,36 @@ export class App {
     }
   }
 
+  /**
+   * Groschen paid by content (a curse when it is attached): a coin pops up
+   * at the purse with the amount and where it came from, the purse shows
+   * the new total from the core.
+   */
+  private async coinsGained(source: Source, amount: number, coins: number, after: RunView): Promise<void> {
+    const from = sourceName(source, after.deck);
+    const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
+    this.showToast(t(de.toast.coins, { amount: sign, source: from }));
+    sound.play('coin');
+    const purse = this.screenEl.querySelector<HTMLElement>('[data-testid="coins"]');
+    if (purse) {
+      purse.textContent = String(coins);
+      pulse(purse.closest('.hud-coins') ?? purse, 1.3, 360);
+    }
+    const box = purse?.closest('.hud-coins')?.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = `coin-pop ${amount < 0 ? 'is-minus' : ''}`;
+    pop.dataset.testid = 'coin-pop';
+    pop.setAttribute('aria-hidden', 'true');
+    pop.innerHTML = `${coinIcon(22)}<b>${esc(sign)}</b><span>${esc(from)}</span>`;
+    if (box) {
+      pop.style.top = `${Math.round(box.bottom + 6)}px`;
+      pop.style.right = `${Math.max(8, Math.round(window.innerWidth - box.right))}px`;
+    }
+    this.root.appendChild(pop);
+    window.setTimeout(() => pop.remove(), Math.max(1400, 2200 * TEMPO_FACTOR[this.ui.settings.tempo]));
+    await this.pause(DELAY.notice);
+  }
+
   private seatLabel(seat: Seat, view: RunView): string {
     if (seat === 1 && view.series.is_boss && view.series.boss) return contentName('bosses', view.series.boss.id);
     return de.seats[seat] ?? '';
@@ -631,7 +826,8 @@ export class App {
     const score = after.last_score;
     if (!score) return;
     await new Promise<void>((resolve) => {
-      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, resolve };
+      const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
+      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, resolve };
       this.render();
     });
     this.scoreBoard = null;
@@ -714,6 +910,49 @@ export class App {
       case 'resume':
         this.resume();
         return;
+      case 'play-shared': {
+        const shared = this.ui.shared;
+        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, daily: false });
+        return;
+      }
+      case 'dismiss-shared':
+        this.ui.shared = null;
+        clearShareHash();
+        this.render();
+        return;
+      case 'play-daily':
+        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, daily: true });
+        return;
+      case 'replay': {
+        const c = el.dataset.character ?? null;
+        const seed = el.dataset.seed ?? '';
+        const entry = this.ui.meta?.characters.find((x) => x.character === c);
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, daily: false });
+        return;
+      }
+      case 'confirm-new':
+        if (overlay?.kind === 'confirm-new') {
+          const start = overlay.start;
+          this.ui.overlay = null;
+          clearRun();
+          this.startRun(start);
+        }
+        return;
+      case 'copy-link':
+        this.copyLink(el.dataset.url ?? '');
+        return;
+      case 'share-native':
+        this.shareNative(el.dataset.url ?? '', el.dataset.text ?? '');
+        return;
+      case 'book-tab':
+        if (overlay?.kind === 'book') {
+          this.ui.overlay = { kind: 'book', tab: el.dataset.tab === 'stats' ? 'stats' : 'book' };
+          this.render();
+        }
+        return;
+      case 'thinking':
+        this.setSettings({ thinking: el.dataset.on === 'true' });
+        return;
       case 'to-start':
         this.toStart();
         return;
@@ -734,7 +973,7 @@ export class App {
         return;
       case 'book':
         if (this.ui.busy || !this.ui.meta) return;
-        this.ui.overlay = { kind: 'book' };
+        this.ui.overlay = { kind: 'book', tab: 'book' };
         this.render();
         return;
       case 'pick-character': {
@@ -890,8 +1129,12 @@ export class App {
         this.ui.omaPick = false;
         this.render();
         return;
+      case 'swap-take':
+        this.ui.swapTake = num('id');
+        this.render();
+        return;
       case 'oma-give':
-        void this.act({ TakeFromSkat: { give: num('id') } });
+        void this.act({ TakeFromSkat: { give: num('id'), take: this.ui.swapTake } });
         return;
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));

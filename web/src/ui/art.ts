@@ -320,6 +320,10 @@ const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> =
   cracked: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M10 4.5 L13 9 L9.5 12 L14 15.5 L11.5 19.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' },
   // Fluch Schwarze Katze: a cat's head with yellow eyes.
   black_cat: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M6.5 18 C5.5 13 6 10 7 6 L10 9 C11.3 8.6 12.7 8.6 14 9 L17 6 C18 10 18.5 13 17.5 18 Z" fill="#3a3330" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="10" cy="13" rx="1.3" ry="1.6" fill="#f2d24a"/><ellipse cx="14" cy="13" rx="1.3" ry="1.6" fill="#f2d24a"/>' },
+  // Fluch Ramponiert: a dog-eared, torn card that stays in the hand.
+  battered: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M7.5 5 H13.5 L16.5 8 V19 H7.5 Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 5 V8 H16.5" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M7.5 12.5 L10 11.5 L11.5 13.5 L14 12 L16.5 13" fill="none" stroke="#e0505a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
+  // Unter ehrenhalber: a medal on a ribbon, a trump by honour.
+  honorary_jack: { fill: '#1f5a8c', glyph: '<path d="M9 4.5 L11 10 M15 4.5 L13 10" stroke="#e2b04a" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="14" r="5" fill="#e2b04a"/><path d="M12 10.8 L13 13.1 L15.4 13.2 L13.5 14.7 L14.2 17 L12 15.7 L9.8 17 L10.5 14.7 L8.6 13.2 L11 13.1 Z" fill="#fff"/>' },
   // Bleigewicht: a heavy weight.
   lead_weight: { fill: '#4a4f57', glyph: '<path d="M8.5 9.5 H15.5 L18 18 H6 Z" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><circle cx="12" cy="7.2" r="2.2" fill="none" stroke="#fff" stroke-width="1.6"/>' },
   // Schlusslicht: a red lamp for the last trick of a Null.

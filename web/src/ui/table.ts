@@ -2,11 +2,14 @@
 // felt, the player's hand at the bottom in two rows. While declaring, the
 // Ansage panel takes the middle (for the Nullspieler with the Null levels).
 // Around it: the boss rule of this game, the Ramsch notice, the count of
-// "Der Zähler", the Kiebitz card and the Oma's offer, all from the view.
+// "Der Zähler", the Kiebitz card and the skat swap of "Die Oma" or "Der
+// Opa", all from the view. Card flags the core resolved ("Unter
+// ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RunView, Seat } from '../types';
-import { cardBack, cardSvg, suitIcon } from './cards';
+import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat } from '../types';
+import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
+import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
@@ -25,12 +28,35 @@ function eyeIcon(size = 14): string {
 }
 
 /**
- * A card the player sees in a defender's hand. Cards shown by the Kiebitz
- * are not "Durchsichtig" (their `revealed` flag is unset) and get his eye.
+ * A card the player sees in a defender's hand, marked by why he knows it
+ * (the core's `source`): the Kiebitz's eye, or the modification's badge.
  */
-function revealedCard(card: CardView): string {
-  if (card.revealed) return miniCard(card);
-  return `<span class="mini-card is-kiebitz" title="${esc(`${cardName(card.kind)} (${de.table.kiebitzHint})`)}" data-kiebitz="${esc(card.id)}">${cardSvg(card.kind, card.mods)}</span>`;
+function revealedCard(r: RevealedCard): string {
+  const card = r.card;
+  if (r.source === 'Kibitz') {
+    return `<span class="mini-card is-kiebitz" title="${esc(`${cardName(card.kind)} (${de.table.kiebitzHint})`)}" data-kiebitz="${esc(card.id)}">${cardSvg(card.kind, card.mods)}</span>`;
+  }
+  const mod = r.source.CardMod;
+  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod })}>${cardSvg(card.kind, card.mods)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
+}
+
+/** A small thought bubble while the core computes the opponents' moves. */
+function thinkBubble(): string {
+  return `<span class="think-bubble" data-testid="think" role="status" aria-label="${esc(de.table.thinking)}"><i></i><i></i><i></i></span>`;
+}
+
+/** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert". */
+function plaques(c: CardView): string {
+  const out: string[] = [];
+  if (c.honorary_jack) out.push(`<span class="plaque plaque-hj" title="${esc(de.card.honoraryJack)}" aria-hidden="true">U</span>`);
+  if (c.no_discard) out.push(`<span class="plaque plaque-lock" title="${esc(de.card.noDiscard)}" aria-hidden="true">${lockIcon(13)}</span>`);
+  return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
+}
+
+/** Card name plus what its plaques say, for screen readers. */
+function cardLabel(c: CardView): string {
+  const extra = [c.honorary_jack ? de.card.honoraryJack : '', c.no_discard ? de.card.noDiscard : ''].filter(Boolean);
+  return extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
 }
 
 function kontraBadge(game: GameView, seat: Seat): string {
@@ -46,8 +72,8 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
   const turn = ui.anim ? ui.anim.turn === seat : false;
   const backs = Array.from({ length: Math.min(size, 12) }, () => cardBack('fan')).join('');
   const seen = game.revealed.filter((r) => r.holder === seat);
-  const open = seen.filter((r) => r.card.revealed).map((r) => revealedCard(r.card)).join('');
-  const peeked = seen.filter((r) => !r.card.revealed).map((r) => revealedCard(r.card)).join('');
+  const open = seen.filter((r) => r.source !== 'Kibitz').map(revealedCard).join('');
+  const peeked = seen.filter((r) => r.source === 'Kibitz').map(revealedCard).join('');
   const revealed =
     (open ? `<span>${esc(de.table.holds)}</span>${open}` : '') +
     (peeked ? `<span class="kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
@@ -56,11 +82,16 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
   const boss = seat === 1 && view.series.is_boss && view.series.boss ? view.series.boss : null;
   const face = boss ? bossPortraitId(boss.id) : `p-opp-${seat}`;
   const name = boss ? contentName('bosses', boss.id) : seatName(seat);
-  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''}" data-seat="${seat}">
-    ${portrait(face, 'portrait-opp')}
+  const tricks = game.phase === 'Playing' || game.phase === 'Finished' ? (game.seat_tricks[seat] ?? 0) : null;
+  const trickTag =
+    tricks === null
+      ? ''
+      : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
+  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${ui.thinking ? 'is-thinking' : ''}" data-seat="${seat}">
+    ${portrait(face, 'portrait-opp')}${ui.thinking ? thinkBubble() : ''}
     <div class="opp-info">
       <div class="opp-head"><b class="opp-name">${esc(name)}</b></div>
-      <div class="opp-pos">${esc(position ? de.positions[position] : '')}${kontraBadge(game, seat)}</div>
+      <div class="opp-pos">${esc(position ? de.positions[position] : '')}${trickTag}${kontraBadge(game, seat)}</div>
       <div class="opp-hand">${backs}<span class="opp-count" aria-label="${esc(t(de.table.cards, { count: size }))}">${esc(size)}</span></div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}
@@ -171,9 +202,11 @@ function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number):
 
 function handCards(game: GameView, ui: UiState): string {
   const hand = ui.anim ? ui.anim.hand : game.hand;
-  const discarding = !ui.anim && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
-  const oma = !ui.anim && ui.omaPick && game.can_take_from_skat;
-  const playing = !ui.anim && game.your_turn && !oma;
+  // While the core works (and the opponents think) nothing in the hand is tappable.
+  const idle = !ui.anim && !ui.busy;
+  const discarding = idle && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
+  const oma = idle && ui.omaPick && game.can_take_from_skat;
+  const playing = idle && game.your_turn && !oma;
   const cols = Math.max(5, Math.ceil(hand.length / 2));
   const cards = hand
     .map((c, i) => {
@@ -183,9 +216,10 @@ function handCards(game: GameView, ui: UiState): string {
       else if (oma) action = 'oma-give';
       else if (playing && c.legal) action = 'play';
       const dim = playing && !c.legal;
-      const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : ''].join(' ');
-      const skatTag = c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '';
-      const label = cardName(c.kind);
+      const locked = discarding && c.no_discard === true;
+      const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : ''].join(' ');
+      const skatTag = (c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '') + plaques(c);
+      const label = cardLabel(c);
       // Slight arc per row, like cards held in the hand.
       const off = (i % cols) - (cols - 1) / 2;
       const style = `--tilt:${(off * 1.6).toFixed(1)}deg;--lift:${(off * off * 0.9).toFixed(1)}px`;
@@ -194,11 +228,12 @@ function handCards(game: GameView, ui: UiState): string {
           'data-action': action,
           'data-id': c.id,
           'data-legal': c.legal ? 'true' : 'false',
+          'data-no-discard': c.no_discard ? 'true' : null,
           'aria-pressed': action === 'select' ? (selected ? 'true' : 'false') : null,
           'aria-label': label,
         })}>${cardSvg(c.kind, c.mods)}${skatTag}</button>`;
       }
-      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true' })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img' })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
     })
     .join('');
   const open = isOpen(game);
@@ -219,19 +254,38 @@ function statusLine(game: GameView, ui: UiState): string {
   switch (game.phase) {
     case 'Declaring':
       return `<div class="status">${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</div>`;
-    case 'Discarding':
-      return `<div class="status status-discard"><span>${esc(de.table.discardHint)}</span>
+    case 'Discarding': {
+      const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
+      return `<div class="status status-discard"><span>${esc(de.table.discardHint)}${locked}</span>
         <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', disabled: ui.selected.length !== 2 })}>${esc(de.table.discard)}</button></div>`;
-    case 'Playing':
-      if (game.can_take_from_skat && ui.omaPick) {
-        return `<div class="status status-oma"><span>${esc(de.table.omaHint)}</span>
+    }
+    case 'Playing': {
+      const swap = game.can_take_from_skat ? game.skat_swap_cards : [];
+      const take = swap.find((c) => c.id === ui.swapTake) ?? swap[0];
+      if (take && ui.omaPick) {
+        const choices =
+          swap.length > 1
+            ? `<span class="swap-pick"><span>${esc(de.table.swapPick)}</span>${swap
+                .map(
+                  (c) =>
+                    `<button class="mini-card swap-card ${c.id === take.id ? 'is-picked' : ''}" ${attrs({
+                      'data-action': 'swap-take',
+                      'data-id': c.id,
+                      'aria-pressed': c.id === take.id ? 'true' : 'false',
+                      'aria-label': cardName(c.kind),
+                    })}>${cardSvg(c.kind, c.mods)}</button>`,
+                )
+                .join('')}</span>`
+            : '';
+        return `<div class="status status-oma"><span>${esc(t(de.table.swapHint, { card: cardName(take.kind) }))}</span>${choices}
           <button class="btn" ${attrs({ 'data-action': 'oma-cancel' })}>${esc(de.table.omaCancel)}</button></div>`;
       }
-      if (game.can_take_from_skat) {
+      if (take) {
         return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
-          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma' })}>${portrait('p-boss-grandma', 'portrait-xs')}<span>${esc(de.table.oma)}</span></button></div>`;
+          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods)}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
       return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}">${esc(game.your_turn ? de.table.yourTurn : '')}</div>`;
+    }
     default:
       return `<div class="status"></div>`;
   }
@@ -257,7 +311,11 @@ function gameLine(game: GameView): string {
     <span class="decl">${gameIcon(d.game, 20)}<span>${esc(declarationName(d))}</span></span>
     ${special}
     ${kontra}
-    <span class="tricks" data-tricks>${esc(t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }))}</span>
+    <span class="tricks" data-tricks>${esc(
+      d.game === 'Ramsch'
+        ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
+        : t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }),
+    )}</span>
     ${skat}
   </div>`;
 }
@@ -287,9 +345,14 @@ function countPanel(game: GameView): string {
   const c = game.count;
   if (!c || !game.declaration) return '';
   const cell = (label: string, n: number, cls: string): string => `<span class="count-cell ${cls}"><span>${esc(label)}</span><b>${esc(n)}</b></span>`;
+  // In a Ramsch everyone counts for himself: Augen per seat.
+  const cells =
+    game.declaration.game === 'Ramsch'
+      ? cell(de.table.countYou, c.seats[0], 'is-you') + cell(de.table.countLeft, c.seats[1], 'is-them') + cell(de.table.countRight, c.seats[2], 'is-them')
+      : cell(de.table.countYou, c.declarer, 'is-you') + cell(de.table.countThem, c.defenders, 'is-them');
   return `<div class="counter-slate" data-testid="count" aria-label="${esc(de.table.countTitle)}">
     <span class="counter-title">${esc(de.table.countTitle)}</span>
-    ${cell(de.table.countYou, c.declarer, 'is-you')}${cell(de.table.countThem, c.defenders, 'is-them')}${cell(de.table.countUnseen, c.unseen, 'is-unseen')}
+    ${cells}${cell(de.table.countUnseen, c.unseen, 'is-unseen')}
   </div>`;
 }
 
