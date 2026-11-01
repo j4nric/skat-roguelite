@@ -111,6 +111,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ereignis / Rast | `Event` | |
 | Charakter | `Character` | Alleinspieler, Nullspieler |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert |
+| Statistik eines Runs | `RunStats` | Gewonnene, verlorene, eingepasste Spiele, Serien, bestes Spiel |
+| Verkaufspreis | `sell_price` | Halber Preis |
+| Sicht (Lese-Sicht für die Oberfläche) | `RunView` | `Run::view`, alles fertig berechnet; dazu `GameView`, `ShopView`, `CardView` |
 
 ## Hook-API und Wertung mit Relikten
 
@@ -125,6 +128,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Zeile der Abrechnung | `ScoreLine` | Herkunft, Hebel, Änderung |
 | Abrechnung (Spielwert mit allen Zuschlägen) | `ScoreBreakdown` | |
 | Gewinnstufen Term für Term | `LevelParts` | |
+| Schritt der Abrechnung | `ScoreStep` | Ein Term mit laufendem Grundwert, Stufen und Faktor, für die schrittweise Anzeige |
+| Term der Abrechnung | `ScoreTerm` | Grundwert, Spitzen, Spiel, Hand, …, oder eine `ScoreLine` |
 
 ## Content-IDs
 

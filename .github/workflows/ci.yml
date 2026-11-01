@@ -42,3 +42,35 @@ jobs:
         with:
           name: sim-baseline
           path: sim-out/baseline.txt
+
+  web:
+    name: wasm and web app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+      - name: Install wasm-bindgen CLI (same version as the crate)
+        run: |
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen 0.2.130"; then
+            cargo install wasm-bindgen-cli --version 0.2.130 --locked --force
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build wasm and web app
+        working-directory: web
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist

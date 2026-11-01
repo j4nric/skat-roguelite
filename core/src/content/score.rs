@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{BossId, CardModId, RelicId};
 use crate::rules::{
-    Declaration, LevelParts, Matadors, Outcome, Thresholds, ValueParts, game_value_parts,
+    Declaration, GameType, LevelParts, Matadors, Outcome, Thresholds, ValueParts, game_value_parts,
 };
 
 /// Where a modification comes from.
@@ -121,6 +121,166 @@ impl ScoreBreakdown {
     pub fn lines_of<'a>(&'a self, source: &'a Source) -> impl Iterator<Item = &'a ScoreLine> {
         self.lines.iter().filter(move |l| &l.source == source)
     }
+
+    /// The breakdown as a sequence of steps in the order of the formula,
+    /// each with the running Grundwert, Gewinnstufen and Spielwert factor,
+    /// so that a frontend can reveal the score term by term without doing
+    /// any arithmetic itself.
+    ///
+    /// Order: informational lines (Augen, Gewinnschwelle, Schneider), the
+    /// Grundwert of the Spielart, Grundwert additions, Grundwert factors,
+    /// the Gewinnstufen by the rules term by term, Gewinnstufen additions,
+    /// Spielwert factors. The last step carries exactly
+    /// [`ScoreBreakdown::base_value`], [`ScoreBreakdown::levels`] and
+    /// [`ScoreBreakdown::multiplier`].
+    #[must_use]
+    pub fn steps(&self) -> Vec<ScoreStep> {
+        let mut steps = Vec::new();
+        let mut base: u64 = 0;
+        let mut levels: u64 = 0;
+        let mut multiplier: u64 = 1;
+        let mut push = |term: ScoreTerm, base: u64, levels: u64, multiplier: u64| {
+            steps.push(ScoreStep {
+                term,
+                base_value: base,
+                levels,
+                multiplier,
+            });
+        };
+        let informational = |lever: Lever| {
+            matches!(
+                lever,
+                Lever::CardPoints | Lever::WinThreshold | Lever::Schneider
+            )
+        };
+        for line in self.lines.iter().filter(|l| informational(l.lever)) {
+            push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+        }
+        if self.rule_base_value == 0 {
+            // Null: fixed value, no levels and no Grundwert modifiers.
+            push(
+                ScoreTerm::NullValue(self.base_value),
+                self.base_value,
+                self.levels,
+                multiplier,
+            );
+            base = self.base_value;
+            levels = self.levels;
+        } else {
+            base = u64::from(self.rule_base_value);
+            push(
+                ScoreTerm::BaseValue {
+                    game: self.declaration.game,
+                    value: self.rule_base_value,
+                },
+                base,
+                levels,
+                multiplier,
+            );
+            let mut base_sum = i64::from(self.rule_base_value);
+            for line in self.lines.iter().filter(|l| l.lever == Lever::BaseValue) {
+                if let Change::Add(n) = line.change {
+                    base_sum = base_sum.saturating_add(n);
+                    base = u64::try_from(base_sum.max(1)).unwrap_or(1);
+                    push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+                }
+            }
+            for line in self.lines.iter().filter(|l| l.lever == Lever::BaseValue) {
+                if let Change::Multiply(n) = line.change {
+                    base = base.saturating_mul(u64::from(n));
+                    push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+                }
+            }
+            let parts = self.rule_levels;
+            let terms = [
+                (
+                    ScoreTerm::Matadors {
+                        with: self.matadors.with,
+                        count: parts.matadors,
+                    },
+                    parts.matadors,
+                ),
+                (ScoreTerm::Game, parts.game),
+                (ScoreTerm::Hand, parts.hand),
+                (ScoreTerm::Schneider, parts.schneider),
+                (ScoreTerm::SchneiderDeclared, parts.schneider_declared),
+                (ScoreTerm::Schwarz, parts.schwarz),
+                (ScoreTerm::SchwarzDeclared, parts.schwarz_declared),
+                (ScoreTerm::Ouvert, parts.ouvert),
+            ];
+            for (term, amount) in terms {
+                if amount > 0 {
+                    levels = levels.saturating_add(u64::from(amount));
+                    push(term, base, levels, multiplier);
+                }
+            }
+            let mut level_sum = i64::from(parts.total());
+            for line in self.lines.iter().filter(|l| l.lever == Lever::Levels) {
+                if let Change::Add(n) = line.change {
+                    level_sum = level_sum.saturating_add(n);
+                    levels = u64::try_from(level_sum.max(1)).unwrap_or(1);
+                    push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+                }
+            }
+        }
+        for line in self.lines.iter().filter(|l| l.lever == Lever::GameValue) {
+            if let Change::Multiply(n) = line.change {
+                multiplier = multiplier.saturating_mul(u64::from(n));
+                push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+            }
+        }
+        steps
+    }
+}
+
+/// One term of the score breakdown, as revealed step by step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScoreTerm {
+    /// Grundwert of the Spielart.
+    BaseValue {
+        /// The Spielart.
+        game: GameType,
+        /// Its Grundwert.
+        value: u32,
+    },
+    /// Fixed value of a Null game.
+    NullValue(u64),
+    /// Spitzen, mit or ohne.
+    Matadors {
+        /// `true` = mit.
+        with: bool,
+        /// Number of Spitzen.
+        count: u32,
+    },
+    /// +1 for the game.
+    Game,
+    /// +1 Hand.
+    Hand,
+    /// +1 Schneider.
+    Schneider,
+    /// +1 Schneider angesagt.
+    SchneiderDeclared,
+    /// +1 Schwarz.
+    Schwarz,
+    /// +1 Schwarz angesagt.
+    SchwarzDeclared,
+    /// +1 Ouvert.
+    Ouvert,
+    /// A modification by a relic, card modification, boss, Kontra or Re.
+    Line(ScoreLine),
+}
+
+/// One step of the score breakdown with the running totals after it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScoreStep {
+    /// What this step adds.
+    pub term: ScoreTerm,
+    /// Grundwert so far.
+    pub base_value: u64,
+    /// Gewinnstufen so far.
+    pub levels: u64,
+    /// Product of the Spielwert factors so far.
+    pub multiplier: u64,
 }
 
 /// Score a finished game. `lines` are the modifications collected by the
@@ -221,6 +381,67 @@ mod tests {
                 assert_eq!(b.won, rules.won);
             }
         }
+    }
+
+    #[test]
+    fn steps_end_with_the_breakdown_totals() {
+        let decl = Declaration::new(GameType::Suit(Suit::Clubs), RiskLevel::Hand);
+        let relic = Source::Relic(RelicId::new("x"));
+        let line = |lever, change| ScoreLine {
+            source: relic.clone(),
+            lever,
+            change,
+        };
+        let b = score_game(
+            decl,
+            MIT_2,
+            &outcome(95, 9),
+            &Thresholds::default(),
+            vec![
+                line(Lever::CardPoints, Change::Add(4)),
+                line(Lever::GameValue, Change::Multiply(2)),
+                line(Lever::BaseValue, Change::Multiply(2)),
+                line(Lever::BaseValue, Change::Add(3)),
+                line(Lever::Levels, Change::Add(1)),
+            ],
+        );
+        let steps = b.steps();
+        let last = steps.last().expect("steps");
+        assert_eq!(
+            (last.base_value, last.levels, last.multiplier),
+            (b.base_value, b.levels, b.multiplier)
+        );
+        let terms: Vec<&ScoreTerm> = steps.iter().map(|s| &s.term).collect();
+        assert!(matches!(terms[0], ScoreTerm::Line(l) if l.lever == Lever::CardPoints));
+        assert!(matches!(
+            terms[1],
+            ScoreTerm::BaseValue {
+                value: 12,
+                game: GameType::Suit(Suit::Clubs)
+            }
+        ));
+        // 12 + 3 = 15, then × 2 = 30.
+        assert_eq!(steps[2].base_value, 15);
+        assert_eq!(steps[3].base_value, 30);
+        // mit 2, Spiel, Hand, Schneider, then the relic level.
+        assert!(matches!(
+            terms[4],
+            ScoreTerm::Matadors {
+                with: true,
+                count: 2
+            }
+        ));
+        assert_eq!(steps[4].levels, 2);
+        assert!(matches!(terms[5], ScoreTerm::Game));
+        assert!(matches!(terms[6], ScoreTerm::Hand));
+        assert!(matches!(terms[7], ScoreTerm::Schneider));
+        assert_eq!(steps[8].levels, 6);
+        assert!(matches!(terms[9], ScoreTerm::Line(l) if l.lever == Lever::GameValue));
+        assert_eq!(steps.len(), 10);
+        // Without lines the steps are the rule terms only.
+        let plain = score_game(decl, MIT_2, &outcome(70, 6), &Thresholds::default(), vec![]);
+        let last = plain.steps().last().cloned().expect("steps");
+        assert_eq!((last.base_value, last.levels, last.multiplier), (12, 4, 1));
     }
 
     #[test]
