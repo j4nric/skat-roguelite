@@ -13,11 +13,16 @@
 //   the series account changed; the hand Ansage offers only the hand levels
 //   and, for the Alleinspieler too (ADR 0012), Null Hand and Null Ouvert Hand
 //   with their values; the Ansage after the skat only the levels without Hand
-//   (Null and Null Ouvert too, 23 and 46),
+//   (Null and Null Ouvert too, 23 and 69: 23 × (1, 1 + Ouvert 2), DESIGN 16),
 // - sees the unlock earned by winning the series with games left
 //   ("Neu am Stammtisch") and the meta state counting the game,
+// - while playing sees the two pressed cards big beside the trick (a tap
+//   shows one large) and, after the first trick, "Letzter Stich": the last
+//   trick with its winner on the felt until tapped again, without scrolling,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
-//   the menu (tempo setting is stored), and starts the next series.
+//   the menu (tempo setting is stored), and starts the next series. The
+//   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
+//   and 360 × 740: the page is no wider than the viewport, no element leaves it.
 // The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
 // The opponents are Stammgäste with names of their own (two different
@@ -253,6 +258,102 @@ async function assertFits(page, label, sizes = FIT_SIZES) {
   await page.setViewportSize(PHONE);
   await page.waitForTimeout(80);
   log(`${label}: table fits ${sizes.map((s) => `${s.width}x${s.height}${s.insets ? ' PWA' : ''}`).join(', ')}`);
+}
+
+/**
+ * Nothing scrolls sideways (play-test feedback: the Tresen did on a
+ * phone): at 390 × 844, 375 × 667 and 360 × 740 the page is no wider than
+ * the viewport, no scroll area inside `root` can be scrolled sideways, and
+ * no element of `root` reaches out of the viewport.
+ */
+async function assertNoSideScroll(page, label, root = '.shop') {
+  const original = page.viewportSize();
+  for (const size of [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(150);
+    const r = await page.evaluate((sel) => {
+      const box = document.querySelector(sel);
+      if (!box) return null;
+      const name = (el) => `${el.tagName.toLowerCase()}.${String(el.className?.baseVal ?? el.className ?? '').trim().replace(/\s+/g, '.')}`;
+      const scrollers = [box, ...box.querySelectorAll('*')]
+        .filter((el) => el.scrollWidth > el.clientWidth + 1 && !['visible', 'clip'].includes(getComputedStyle(el).overflowX) && !el.classList.contains('sr-only'))
+        .map((el) => `${name(el)} (${el.scrollWidth} > ${el.clientWidth})`);
+      const wide = [...box.querySelectorAll('*')]
+        .filter((el) => {
+          if (el.closest('.sr-only')) return false;
+          const b = el.getBoundingClientRect();
+          return b.width > 0 && (b.left < -0.5 || b.right > innerWidth + 0.5);
+        })
+        .map((el) => {
+          const b = el.getBoundingClientRect();
+          return `${name(el)} ${Math.round(b.left)}..${Math.round(b.right)}`;
+        });
+      return { doc: document.scrollingElement.scrollWidth, width: innerWidth, scrollers, wide };
+    }, root);
+    const where = `${label} at ${size.width}x${size.height}`;
+    if (!r) fail(`${where}: ${root} not on screen`);
+    if (r.doc > r.width) fail(`${where}: the page is ${r.doc}px wide, the viewport ${r.width}px`);
+    if (r.scrollers.length) fail(`${where}: scrolls sideways: ${r.scrollers.slice(0, 5).join(', ')}`);
+    if (r.wide.length) fail(`${where}: out of the viewport: ${r.wide.slice(0, 5).join(', ')}`);
+  }
+  if (original) await page.setViewportSize(original);
+  log(`${label}: nothing scrolls sideways at 390x844, 375x667, 360x740`);
+}
+
+/**
+ * While playing, the two pressed cards stand big beside the trick (at
+ * least `min` px wide at 390 × 844 and 375 × 667, play-test feedback), a
+ * tap shows one large in the info card.
+ */
+async function assertPressed(page, label) {
+  const original = page.viewportSize();
+  for (const [size, min] of [[PHONE, 40], [{ width: 375, height: 667 }, 36]]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(120);
+    const widths = await page.locator('[data-testid="pressed-play"] .pressed-card').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
+    if (widths.length !== 2) fail(`${label}: ${widths.length} pressed cards beside the trick at ${size.width}x${size.height}`);
+    if (widths.some((w) => w < min)) fail(`${label}: pressed cards ${widths.map(Math.round).join(', ')}px wide at ${size.width}x${size.height}, want ${min}`);
+  }
+  if (original) await page.setViewportSize(original);
+  await page.locator('[data-testid="pressed-play"] .pressed-card').last().click();
+  await page.waitForSelector('[data-testid="info-card"] .info-card-face');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  log(`${label}: pressed cards readable beside the trick, tap shows one large`);
+}
+
+/**
+ * "Letzter Stich": the button beside the trick shows the last finished
+ * trick (three cards, the winner marked, his name above) until tapped
+ * again; the page does not scroll with it, and the open trick comes back.
+ */
+async function assertLastTrick(page, label) {
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  if (!(await page.locator('[data-testid="last-trick-toggle"]').count())) fail(`${label}: no "Letzter Stich" button after a finished trick`);
+  await page.click('[data-testid="last-trick-toggle"]');
+  await page.waitForSelector('[data-testid="last-trick"]');
+  const r = await page.evaluate(() => ({
+    cards: document.querySelectorAll('[data-testid="last-trick"] .trick-card').length,
+    winners: document.querySelectorAll('[data-testid="last-trick"] .trick-card.is-winner').length,
+    caption: document.querySelector('[data-testid="last-trick-caption"]')?.textContent?.trim() ?? '',
+    pressed: document.querySelector('[data-testid="last-trick-toggle"]')?.getAttribute('aria-pressed'),
+    playable: document.querySelectorAll('[data-action="play"]').length,
+  }));
+  if (r.cards !== 3 || r.winners !== 1) fail(`${label}: last trick shows ${r.cards} cards, ${r.winners} marked as winner`);
+  if (!/^Letzter Stich · an \S/.test(r.caption)) fail(`${label}: last trick caption "${r.caption}"`);
+  if (r.pressed !== 'true') fail(`${label}: the button is not pressed while the last trick shows`);
+  if (!r.playable) fail(`${label}: no card playable while the last trick shows`);
+  await shoot(page, 'table-last-trick');
+  await assertFits(page, `${label}, last trick shown`, [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }, DESKTOP]);
+  // A tap on the trick puts the open one back.
+  await page.click('[data-testid="last-trick"]');
+  await page.waitForSelector('[data-testid="last-trick"]', { state: 'detached' });
+  await page.waitForSelector('[data-testid="last-trick-toggle"][aria-pressed="false"]');
+  if (await page.locator('[data-testid="last-trick-caption"]').count()) fail(`${label}: the caption stays after closing the last trick`);
+  // Open again: playing a card closes it.
+  await page.click('[data-testid="last-trick-toggle"]');
+  await page.waitForSelector('[data-testid="last-trick"]');
+  log(`${label}: last trick "${r.caption}" shown and closed`);
 }
 
 /** Look ids of the Stammgäste in the core content (core/content/guests.ron). */
@@ -538,6 +639,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   const next = await text(page, 'next-series');
   if (!next.includes('Kontra-Hans')) fail(`the Tresen does not announce the boss: ${next}`);
   await shoot(page, 'shop-boss');
+  await assertNoSideScroll(page, 'Tresen before the boss');
   await expectMusic(page, 'shop', 'Tresen before the boss');
   await page.click('[data-action="leave-shop"]');
   await page.waitForSelector('[data-action="boss-go"]');
@@ -632,6 +734,7 @@ async function m4(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="encounter"]');
   await expectMusic(page, 'shop', 'encounter');
   await shoot(page, 'encounter');
+  await assertNoSideScroll(page, 'encounter', '.encounter');
   await page.click('[data-action="choose-encounter"][data-target="true"]');
   await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
   await shoot(page, 'encounter-target');
@@ -1437,7 +1540,7 @@ async function run() {
     if (!build) fail('build info missing on the start screen');
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'f-back', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
-    const aceCorner = await page.evaluate(() => document.querySelector('#f-CA .idx')?.textContent?.trim());
+    const aceCorner = await page.evaluate(() => document.querySelector('#x-CA .idx')?.textContent?.trim());
     if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;
@@ -1536,7 +1639,7 @@ async function run() {
     const declarerNullAfter = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
     if (declarerNullAfter !== 'Normal,Ouvert') fail(`the Alleinspieler's Ansage after the skat offers Null ${declarerNullAfter}`);
     const declarerNullAfterValues = ((await page.locator('.null-risks').textContent()) ?? '').replace(/\s+/g, ' ').trim();
-    if (!/Wert 23.*Wert 46/.test(declarerNullAfterValues)) fail(`the Alleinspieler's Null levels after the skat: ${declarerNullAfterValues}`);
+    if (!/Wert 23.*Wert 69/.test(declarerNullAfterValues)) fail(`the Alleinspieler's Null levels after the skat: ${declarerNullAfterValues}`);
     await shoot(page, 'table-declare-after-null');
     await assertFits(page, 'Ansage after the skat with Null');
     log(`Null after the skat for the Alleinspieler: ${declarerNullAfterValues}`);
@@ -1560,7 +1663,13 @@ async function run() {
         log(`value preview: ${worth}`);
         await shoot(page, 'table-play');
         await assertFits(page, 'playing');
+        await assertPressed(page, 'playing');
+        // Before the first trick is finished there is nothing to look back at.
+        const tricks = ((await page.locator('[data-tricks]').textContent()) ?? '').trim();
+        if (tricks === 'Stiche 0 : 0' && (await page.locator('[data-testid="last-trick-toggle"]').count())) fail('a "Letzter Stich" button before any trick was finished');
       }
+      if (played === 2) await assertLastTrick(page, 'playing');
+      if (played === 3 && (await page.locator('[data-testid="last-trick"]').count())) fail('the last trick still shows after playing a card');
       if (played === 3 && dimmed > 0) await shoot(page, 'table-follow');
       await page.locator('[data-action="play"]').first().click();
       played += 1;
@@ -1602,6 +1711,7 @@ async function run() {
     if (!next) fail('the Tresen shows no preview of the next series');
     log(`next series: ${next.replace(/\s+/g, ' ')}`);
     await shoot(page, 'shop');
+    await assertNoSideScroll(page, 'Tresen');
     const buy = page.locator('[data-action="buy-relic"]:not([disabled]), [data-action="buy-item"]:not([disabled])');
     if (await buy.count()) {
       await buy.first().click();
@@ -1611,6 +1721,7 @@ async function run() {
       );
       log(`bought at the Tresen: ${coinsBefore} -> ${await text(page, 'coins')} Groschen`);
       await shoot(page, 'shop-bought');
+      await assertNoSideScroll(page, 'Tresen after buying');
     }
     // Kreidetafel: the tour with the won series ticked off.
     await page.click('.hud [data-action="overview"]');

@@ -515,11 +515,14 @@ button.card {
    (or the Tresen, an encounter) takes the rest. Only the Tresen and the
    encounters scroll inside their own area; the table never scrolls. */
 .run {
+  /* Side padding of the run; the sideways rows (chips, shop bar) reach
+     out to the edge by it. */
+  --run-x: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   height: 100%;
-  padding: 8px 12px 6px;
+  padding: 8px var(--run-x) 6px;
   overflow: hidden;
 }
 
@@ -527,8 +530,16 @@ button.card {
 .run > .encounter {
   flex: 1 1 0;
   min-height: 0;
+  /* The scroller spans the full width of the run (its side padding moved
+     inside), so the sticky bar's negative margins and the tilted coasters
+     stay inside it: nothing to scroll sideways on a phone. */
+  margin: 0 calc(-1 * var(--run-x));
+  padding-left: var(--run-x);
+  padding-right: var(--run-x);
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .run.is-busy .hand-card,
@@ -773,8 +784,8 @@ button.card {
   align-items: center;
   gap: 6px;
   height: 48px;
-  margin: 0 -12px;
-  padding: 2px 12px;
+  margin: 0 calc(-1 * var(--run-x));
+  padding: 2px var(--run-x);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1275,19 +1286,49 @@ button.card {
   font-variant-numeric: tabular-nums;
 }
 
-.gameline .skat {
-  display: inline-flex;
+/* While the player looks at the last trick, its caption covers the line
+   (same height, so nothing below moves). */
+.gameline {
+  position: relative;
+}
+
+.gameline.is-peek > :not(.peek-caption) {
+  visibility: hidden;
+}
+
+.peek-caption {
+  position: absolute;
+  inset: 0;
+  display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  color: var(--cool);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.gameline .skat > span:first-child {
-  margin-right: 2px;
+/* The felt: pressed skat | trick | "Letzter Stich". The sides take only
+   what the trick leaves, so the trick stays in the middle. */
+.trick-row {
+  /* The trick cards take what the middle leaves after the score line and
+     the count: never more than --trick-h, smaller when the table is full. */
+  --th: clamp(36px, min(var(--trick-h), 100cqh - 64px), 200px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+  width: 100%;
 }
 
-.gameline .skat .mini-card {
-  width: 14px;
-  border-width: 1px;
+.trick-side {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+}
+
+/* Both sides hug the trick (on a wide table too). */
+.trick-side.is-left {
+  justify-content: flex-end;
 }
 
 .trick {
@@ -1298,12 +1339,127 @@ button.card {
   cursor: pointer;
 }
 
-/* The trick cards take what the middle leaves after the score line and
-   the count: never more than --trick-h, smaller when the table is full. */
 .slot {
-  --th: clamp(36px, min(var(--trick-h), 100cqh - 64px), 200px);
   width: calc(var(--th) * 2 / 3);
   height: var(--th);
+}
+
+/* The two pressed cards, fanned downwards: both corner indexes show.
+   A little taller than the trick when the middle has room (never more
+   than the room the trick itself may take), never wider than the side. */
+.pressed-stack {
+  --pw: clamp(22px, calc((min(var(--th) * 1.3, 100cqh - 64px) - 16px) / 2.1), 48px);
+  display: flex;
+  width: var(--pw);
+  max-width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.pressed-label {
+  white-space: nowrap;
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.pressed-cards {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 2.1;
+}
+
+.pressed-card {
+  position: absolute;
+  left: 0;
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  border: 2px solid var(--line);
+  background: var(--card);
+  box-shadow: 0 2px 0 var(--line);
+  line-height: 0;
+  cursor: pointer;
+}
+
+.pressed-card:first-child {
+  top: 0;
+  transform: rotate(-4deg);
+}
+
+.pressed-card:last-child {
+  bottom: 0;
+  transform: rotate(3deg);
+}
+
+.pressed-card .card-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* "Letzter Stich": a small square button, two short lines under a sign. */
+.last-trick-btn {
+  display: inline-flex;
+  width: 100%;
+  max-width: 64px;
+  min-height: var(--touch);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 0.95;
+  text-align: center;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.last-trick-btn.is-on {
+  border-color: var(--cool);
+  color: var(--cool);
+}
+
+.last-trick-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The last trick on the felt: framed, the card that took it marked. */
+.trick.is-last {
+  outline: 2px dashed var(--cool);
+  outline-offset: 3px;
+}
+
+.trick-card.is-winner {
+  position: relative;
+  box-shadow: 0 0 0 3px var(--cool);
+}
+
+.trick-won-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  padding: 1px 4px;
+  border: 2px solid var(--line);
+  background: var(--cool);
+  color: var(--line);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  text-transform: uppercase;
+  transform: translateX(-50%);
 }
 
 .trick-card {
@@ -3566,6 +3722,14 @@ button.card {
   padding-bottom: 0;
 }
 
+/* Long German words (names of relics, Schnäpse, bosses) break inside
+   their mat instead of pushing it wider than a phone. */
+.shop,
+.encounter {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
 .backbar {
   display: flex;
   align-items: center;
@@ -3870,8 +4034,8 @@ button.card {
   z-index: 3;
   display: flex;
   gap: 8px;
-  margin: 0 -12px;
-  padding: 8px 12px 6px;
+  margin: 0 calc(-1 * var(--run-x));
+  padding: 8px var(--run-x) 6px;
   border-top: var(--edge) solid var(--line);
   background: var(--bg);
 }
@@ -4099,23 +4263,13 @@ button.card {
   }
 
   .run {
-    padding: 12px 18px 10px;
+    --run-x: 18px;
+    padding: 12px var(--run-x) 10px;
     border: var(--edge) solid var(--line);
     background: rgba(27, 30, 33, 0.72);
     box-shadow: 0 6px 0 var(--line);
   }
 
-  .chips {
-    margin: 0 -18px;
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
-  .shop-bar {
-    margin: 0 -18px;
-    padding-left: 18px;
-    padding-right: 18px;
-  }
 
   .overlay {
     align-items: center;
