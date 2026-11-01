@@ -586,6 +586,11 @@ pub struct RunConfig {
     /// series (0.0 to 1.0).
     #[serde(default = "Factor::zero")]
     pub encounter_chance: Factor,
+    /// The defenders' card play per section (DESIGN 10.3): heuristic or
+    /// PIMC with its strength. Later sections take the last entry; an
+    /// empty list means the heuristic everywhere.
+    #[serde(default)]
+    pub opponents: Vec<crate::ai::pimc::Opponents>,
 }
 
 /// Why content failed to load.

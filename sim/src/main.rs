@@ -25,6 +25,16 @@
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
 //!   state; prints after how many runs each unlock is earned.
 //!
+//! Opponents and bot (DESIGN 10.2, stage 2), in both modes:
+//!
+//! - `--defenders heuristic|pimc[:samples[:depth]]`: the defenders' card
+//!   play. In the runs mode this replaces the per-section opponents of
+//!   `run.ron` for every section.
+//! - `--bot heuristic|pimc[:samples[:depth]]`: the declarer's card play
+//!   (the game choice stays heuristic).
+//!
+//! The games mode then also prints the time per PIMC decision.
+//!
 //! Everything but the runtime lines is a pure function of the arguments,
 //! so two runs with the same arguments print identical statistics.
 
@@ -34,6 +44,7 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use skat_core::ai::pimc::{Opponents, PimcConfig, PimcPolicy};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
 use skat_core::content::{BossId, Character, RelicId};
@@ -46,7 +57,43 @@ struct Args {
     games: u32,
     runs: Option<u32>,
     json: bool,
+    players: Players,
     options: runs::Options,
+}
+
+/// Who plays the cards in the games mode.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Players {
+    /// The declarer's card play: heuristic or PIMC.
+    bot: Opponents,
+    /// The defenders' card play.
+    defenders: Opponents,
+}
+
+/// Parse `heuristic` or `pimc[:samples[:depth]]`.
+fn parse_opponents(flag: &str, value: &str) -> Result<Opponents, String> {
+    let mut parts = value.split(':');
+    match parts.next() {
+        Some("heuristic") if parts.next().is_none() => Ok(Opponents::Heuristic),
+        Some("pimc") => {
+            let default = PimcConfig::default();
+            let samples = match parts.next() {
+                Some(n) => n.parse().map_err(|e| format!("{flag}: samples: {e}"))?,
+                None => default.samples,
+            };
+            let depth = match parts.next() {
+                Some(n) => n.parse().map_err(|e| format!("{flag}: depth: {e}"))?,
+                None => default.depth,
+            };
+            if parts.next().is_some() {
+                return Err(format!("{flag}: too many parts in {value}"));
+            }
+            Ok(Opponents::Pimc { samples, depth })
+        }
+        _ => Err(format!(
+            "{flag}: expected heuristic or pimc[:samples[:depth]], got {value}"
+        )),
+    }
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -55,6 +102,7 @@ fn parse_args() -> Result<Args, String> {
         games: 1000,
         runs: None,
         json: false,
+        players: Players::default(),
         options: runs::Options::default(),
     };
     let mut it = std::env::args().skip(1);
@@ -79,6 +127,19 @@ fn parse_args() -> Result<Args, String> {
                     "formula" => runs::formula_scoring(),
                     other => return Err(format!("--null-scoring: unknown {other}")),
                 });
+            }
+            "--defenders" | "--bot" => {
+                let value = it
+                    .next()
+                    .ok_or_else(|| format!("missing value for {flag}"))?;
+                let opponents = parse_opponents(&flag, &value)?;
+                if flag == "--bot" {
+                    args.players.bot = opponents;
+                    args.options.bot = opponents;
+                } else {
+                    args.players.defenders = opponents;
+                    args.options.defenders = Some(opponents);
+                }
             }
             "--relic" | "--without" | "--boss" => {
                 let value = it
@@ -105,7 +166,12 @@ fn parse_args() -> Result<Args, String> {
             other => return Err(format!("unknown flag {other}")),
         }
     }
-    if args.runs.is_none() && args.options != runs::Options::default() {
+    let players_only = runs::Options {
+        bot: args.options.bot,
+        defenders: args.options.defenders,
+        ..runs::Options::default()
+    };
+    if args.runs.is_none() && args.options != players_only {
         if args.options.curve || args.options.unlocks {
             args.runs = Some(1000);
         } else {
@@ -235,10 +301,77 @@ fn game_index(game: GameType) -> Option<usize> {
     GAME_TYPES.iter().position(|&g| g == game)
 }
 
-/// Play one complete game with the heuristics on all seats.
-fn play_game(rng: &mut Rng, forehand: Seat) -> Result<GameResult, String> {
+/// Time spent in PIMC decisions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Timing {
+    /// Microseconds per PIMC decision with at least two legal moves.
+    micros: Vec<u64>,
+}
+
+impl Timing {
+    fn record(&mut self, micros: u64) {
+        self.micros.push(micros);
+    }
+
+    fn summary(&self) -> Option<String> {
+        if self.micros.is_empty() {
+            return None;
+        }
+        let mut sorted = self.micros.clone();
+        sorted.sort_unstable();
+        let n = sorted.len();
+        let mean = sorted.iter().sum::<u64>() as f64 / n as f64;
+        let at = |q: f64| sorted[((n as f64 * q) as usize).min(n - 1)] as f64 / 1000.0;
+        Some(format!(
+            "pimc decisions: {n}, mean {:.2} ms, median {:.2} ms, p95 {:.2} ms, p99 {:.2} ms, max {:.2} ms",
+            mean / 1000.0,
+            at(0.5),
+            at(0.95),
+            at(0.99),
+            at(1.0),
+        ))
+    }
+}
+
+/// Seed of the PIMC samples of game `index`: a pure function of the base
+/// seed and the game, so the deals stay those of the heuristic run.
+fn pimc_seed(seed: u64, index: u32) -> u64 {
+    seed.rotate_left(17) ^ u64::from(index).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
+
+/// Choose a card for `seat` with the configured player.
+fn choose_card(
+    view: &skat_core::game::SeatView<'_>,
+    player: Opponents,
+    pimc_seed: u64,
+    timing: &mut Timing,
+) -> Option<skat_core::cards::Card> {
+    match player.pimc() {
+        None if view.seat.is_declarer() => DeclarerHeuristic.choose(view),
+        None => DefenderHeuristic.choose(view),
+        Some(config) => {
+            let policy = PimcPolicy::new(config, pimc_seed);
+            if view.legal_moves.len() < 2 {
+                return policy.choose(view);
+            }
+            let start = Instant::now();
+            let card = policy.choose(view);
+            timing.record(u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX));
+            card
+        }
+    }
+}
+
+/// Play one complete game: heuristic game choice and discard, card play
+/// by `players` (the heuristics by default).
+fn play_game(
+    rng: &mut Rng,
+    forehand: Seat,
+    players: Players,
+    pimc_seed: u64,
+    timing: &mut Timing,
+) -> Result<GameResult, String> {
     let declarer = DeclarerHeuristic;
-    let defender = DefenderHeuristic;
     let mut game = Game::deal(rng, forehand);
     let declaration = declarer.choose_declaration(game.hand(Seat::DECLARER));
     game.declare(declaration).map_err(|e| e.to_string())?;
@@ -250,12 +383,13 @@ fn play_game(rng: &mut Rng, forehand: Seat) -> Result<GameResult, String> {
     }
     while let Some(seat) = game.current_seat() {
         let view = game.view(seat).ok_or("no view while playing")?;
-        let card = if seat.is_declarer() {
-            declarer.choose(&view)
+        let player = if seat.is_declarer() {
+            players.bot
         } else {
-            defender.choose(&view)
-        }
-        .ok_or("policy returned no card")?;
+            players.defenders
+        };
+        let card =
+            choose_card(&view, player, pimc_seed, timing).ok_or("policy returned no card")?;
         game.play(seat, card).map_err(|e| e.to_string())?;
     }
     let value = game.value().ok_or("game did not finish")?;
@@ -273,7 +407,12 @@ fn play_game(rng: &mut Rng, forehand: Seat) -> Result<GameResult, String> {
     })
 }
 
+#[cfg(test)]
 fn run(seed: u64, games: u32) -> Result<Stats, String> {
+    run_with(seed, games, Players::default(), &mut Timing::default())
+}
+
+fn run_with(seed: u64, games: u32, players: Players, timing: &mut Timing) -> Result<Stats, String> {
     let mut master = Rng::from_seed(seed);
     let mut stats = Stats {
         seed,
@@ -286,7 +425,8 @@ fn run(seed: u64, games: u32) -> Result<Stats, String> {
         let mut rng = master.fork();
         let forehand =
             Seat::from_index(usize::try_from(i % 3).unwrap_or(0)).unwrap_or(Seat::DECLARER);
-        let result = play_game(&mut rng, forehand).map_err(|e| format!("game {i}: {e}"))?;
+        let result = play_game(&mut rng, forehand, players, pimc_seed(seed, i), timing)
+            .map_err(|e| format!("game {i}: {e}"))?;
         let idx = game_index(result.game).ok_or_else(|| format!("game {i}: unexpected type"))?;
         stats.by_game[idx].add(&result);
         stats.total.add(&result);
@@ -394,13 +534,21 @@ fn render_json(stats: &Stats, runtime_us: u64) -> String {
     out
 }
 
+/// `heuristic` or `pimc:samples:depth`.
+fn describe(player: Opponents) -> String {
+    match player {
+        Opponents::Heuristic => "heuristic".into(),
+        Opponents::Pimc { samples, depth } => format!("pimc:{samples}:{depth}"),
+    }
+}
+
 fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null] [--null-scoring fixed|formula] [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null] [--null-scoring fixed|formula] [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }
@@ -409,7 +557,8 @@ fn main() -> ExitCode {
         return runs::main(args.seed, runs, &args.options);
     }
     let start = Instant::now();
-    let stats = match run(args.seed, args.games) {
+    let mut timing = Timing::default();
+    let stats = match run_with(args.seed, args.games, args.players, &mut timing) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("error: {e}");
@@ -417,7 +566,17 @@ fn main() -> ExitCode {
         }
     };
     let runtime_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
+    if args.players != Players::default() {
+        println!(
+            "players: bot={} defenders={}",
+            describe(args.players.bot),
+            describe(args.players.defenders)
+        );
+    }
     print!("{}", render_table(&stats, runtime_us));
+    if let Some(line) = timing.summary() {
+        println!("{line}");
+    }
     if args.json {
         println!("{}", render_json(&stats, runtime_us));
     }
