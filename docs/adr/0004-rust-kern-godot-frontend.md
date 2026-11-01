@@ -1,6 +1,6 @@
 # 0004: Rust-Kern, Godot-Frontend
 
-Datum: 2026-10-31 · Status: Angenommen
+Datum: 2026-10-31 · Status: Teilweise ersetzt durch 0009 (Frontend: Web-App statt Godot)
 
 ## Kontext
 

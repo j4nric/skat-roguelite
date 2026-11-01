@@ -23,4 +23,4 @@ Das ist dasselbe Muster wie bei `tee-proxy` und `vszw-proxy`.
 
 - Eine Änderung an Domain oder Netzwerk braucht einen PR im Haushalt-Repo.
 - Reihenfolge bei der Einrichtung: erst Netzwerk auf dem Server, dann Haushalt-Deploy, sonst scheitert dieser.
-- Die Cross-Origin-Header setzt unser Caddy. Der vordere Caddy reicht sie durch.
+- Header wie Cache-Control setzt unser Caddy. Der vordere Caddy reicht sie durch.
