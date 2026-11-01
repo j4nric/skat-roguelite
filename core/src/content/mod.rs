@@ -84,6 +84,36 @@ content_id!(
     /// Id of an unlock (Freischaltung).
     UnlockId
 );
+content_id!(
+    /// Id of a Stammgast at the table ([`GuestDef`]).
+    GuestId
+);
+
+/// What a Stammgast says in the speech bubble (one short line each).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuestQuips {
+    /// When the guest sits down (first game of a series).
+    pub greet: String,
+    /// When the guest takes a trick.
+    pub win: String,
+    /// When the player takes a trick.
+    pub lose: String,
+}
+
+/// A Stammgast (DESIGN 10): a normal opponent with a name and a pixel
+/// face, without rules of his own. Two sit at the table each series
+/// ([`crate::run::Run::guests`]). Pure presentation: no effect on play or AI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuestDef {
+    /// Content id.
+    pub id: GuestId,
+    /// German display name.
+    pub name: String,
+    /// Id of the face the frontend draws.
+    pub look: String,
+    /// Speech bubble lines.
+    pub quips: GuestQuips,
+}
 
 /// Charakter: who the player is in a run (DESIGN 9). The mechanics differ
 /// in code (which games may be declared); everything else about a
@@ -625,6 +655,8 @@ pub struct Sources<'a> {
     pub encounters: &'a str,
     /// `unlocks.ron`.
     pub unlocks: &'a str,
+    /// `guests.ron`: the Stammgäste.
+    pub guests: &'a str,
 }
 
 impl Sources<'static> {
@@ -640,6 +672,7 @@ impl Sources<'static> {
             characters: include_str!("../../content/characters.ron"),
             encounters: include_str!("../../content/encounters.ron"),
             unlocks: include_str!("../../content/unlocks.ron"),
+            guests: include_str!("../../content/guests.ron"),
         }
     }
 }
@@ -664,6 +697,8 @@ pub struct Content {
     pub encounters: BTreeMap<EncounterId, EncounterDef>,
     /// Unlocks (Freischaltungen).
     pub unlocks: BTreeMap<UnlockId, UnlockDef>,
+    /// Stammgäste, the normal opponents at the table.
+    pub guests: BTreeMap<GuestId, GuestDef>,
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(file: &str, text: &str) -> Result<T, ContentError> {
@@ -792,6 +827,11 @@ impl Content {
                 parse::<Vec<UnlockDef>>("unlocks", sources.unlocks)?,
                 |u| &u.id,
             )?,
+            guests: index(
+                "guests",
+                parse::<Vec<GuestDef>>("guests", sources.guests)?,
+                |g| &g.id,
+            )?,
         };
         content.validate()?;
         Ok(content)
@@ -867,7 +907,22 @@ impl Content {
         }
         self.validate_characters()?;
         self.validate_encounters()?;
+        self.validate_guests()?;
         self.validate_unlocks()
+    }
+
+    fn validate_guests(&self) -> Result<(), ContentError> {
+        for guest in self.guests.values() {
+            let q = &guest.quips;
+            let texts = [&guest.name, &guest.look, &q.greet, &q.win, &q.lose];
+            if guest.id.as_str().is_empty() || texts.iter().any(|t| t.trim().is_empty()) {
+                return Err(ContentError(format!(
+                    "guest {}: id, name, look and quips must not be empty",
+                    guest.id
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn validate_characters(&self) -> Result<(), ContentError> {
@@ -997,6 +1052,12 @@ impl Content {
     #[must_use]
     pub fn boss(&self, id: &BossId) -> Option<&BossDef> {
         self.bosses.get(id)
+    }
+
+    /// A Stammgast by id.
+    #[must_use]
+    pub fn guest(&self, id: &GuestId) -> Option<&GuestDef> {
+        self.guests.get(id)
     }
 
     /// A consumable by id.

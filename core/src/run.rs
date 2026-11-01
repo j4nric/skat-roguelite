@@ -37,6 +37,7 @@
 //! ([`RunStart::locked_relics`]).
 
 pub mod bot;
+pub mod guests;
 pub mod meta;
 pub mod opponents;
 pub mod player;
@@ -1039,6 +1040,10 @@ pub struct Run {
     /// "Letzte Runde": the next game declared counts this many times.
     #[serde(default)]
     pending_factor: Option<(EncounterId, u32)>,
+    /// Stammgäste of the current series, seat 1 first ([`guests`]). Empty
+    /// in saves from before; then they are derived from the seed.
+    #[serde(default)]
+    guests: Vec<crate::content::GuestId>,
 }
 
 impl Run {
@@ -1120,6 +1125,7 @@ impl Run {
             encounter: None,
             evening_relics: Vec::new(),
             pending_factor: None,
+            guests: Vec::new(),
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -2027,6 +2033,7 @@ impl Run {
         self.phase = RunPhase::Game;
         self.shop = None;
         self.encounter = None;
+        self.seat_guests(content, section, index);
         events.push(RunEvent::SeriesStarted {
             section,
             index,

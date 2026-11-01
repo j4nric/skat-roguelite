@@ -11,12 +11,9 @@ import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRi
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
+import { quipBubble, seatPerson } from './guests';
 import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
-
-function seatName(seat: Seat): string {
-  return de.seats[seat] ?? '';
-}
 
 function miniCard(card: CardView): string {
   return `<span class="mini-card" title="${esc(cardName(card.kind))}">${cardSvg(card.kind, card.mods)}</span>`;
@@ -67,7 +64,7 @@ function kontraBadge(game: GameView, seat: Seat): string {
   return '';
 }
 
-function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): string {
+function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): string {
   const size = ui.anim ? (ui.anim.handSizes[seat] ?? 0) : (game.hand_sizes[seat] ?? 0);
   const turn = ui.anim ? ui.anim.turn === seat : view.ai_to_move === seat;
   const thinking = ui.thinking === seat;
@@ -78,20 +75,21 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
     (open ? `<span class="opp-tag">${esc(de.table.holds)}</span>${open}` : '') +
     (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
   const position = game.positions[seat];
-  // Bosses sit in the left chair with their own figure and name.
-  const boss = seat === 1 && view.series.is_boss && view.series.boss ? view.series.boss : null;
-  const face = boss ? bossPortraitId(boss.id) : `p-opp-${seat}`;
-  const name = boss ? contentName('bosses', boss.id) : seatName(seat);
+  // Bosses sit in the left chair with their own figure and name, else the
+  // Stammgast the core seated for this series.
+  const person = seatPerson(view, seat);
+  const boss = person.isBoss;
+  const quip = ui.quip?.seat === seat ? quipBubble(ui.quip, person.name) : '';
   const tricks = game.phase === 'Playing' || game.phase === 'Finished' ? (game.seat_tricks[seat] ?? 0) : null;
   const trickTag =
     tricks === null
       ? ''
       : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
-  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" data-seat="${seat}">
+  return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" ${attrs({ 'data-seat': seat, 'data-guest': person.guest?.id ?? null, 'data-face': person.face })}>
     <div class="opp-main">
-      ${portrait(face, 'portrait-opp')}${thinking ? thinkBubble() : ''}
+      ${portrait(person.face, 'portrait-opp')}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
-        <b class="opp-name">${esc(name)}</b>
+        <b class="opp-name" data-testid="opp-name">${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
         <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
       </div>

@@ -117,6 +117,20 @@ export interface SeriesView {
   passes_left: number;
   passes_used: number;
   boss: BossInfo | null;
+  /** The Stammgäste at the table: seat 1 (left) and seat 2 (right). In a boss series the boss takes the left seat. */
+  guests: GuestInfo[];
+}
+
+/** A Stammgast (normal opponent): name, face and speech bubble lines, all from the core content. */
+export interface GuestInfo {
+  seat: Seat;
+  id: string;
+  name: string;
+  /** Id of the face in ui/people.ts. */
+  look: string;
+  greet: string;
+  win: string;
+  lose: string;
 }
 
 export interface RelicInfo {
