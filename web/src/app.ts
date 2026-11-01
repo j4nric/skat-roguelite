@@ -25,7 +25,8 @@
 // on screen, shows it once and remembers it when it is dismissed or the
 // situation has passed.
 
-import { sound } from './audio';
+import { sound, unlockAudio } from './audio';
+import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
 import { de, cardName, contentName, contentText, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
@@ -211,9 +212,8 @@ export class App {
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // Browsers allow audio only after a user gesture.
-    const unlock = (): void => sound.unlock();
-    window.addEventListener('pointerdown', unlock, { passive: true });
-    window.addEventListener('keydown', unlock);
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio);
     window.addEventListener('keydown', (e) => {
       const o = this.ui.overlay;
       if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss') {
@@ -301,6 +301,21 @@ export class App {
   private applySettings(): void {
     setTempo(TEMPO_FACTOR[this.ui.settings.tempo]);
     sound.setEnabled(this.ui.settings.sound);
+    music.setEnabled(this.ui.settings.music);
+  }
+
+  /**
+   * The music loop for what is on screen: the Tresen loop at the Tresen and
+   * at an encounter, the boss loop in a boss series, the table loop at the
+   * table and on the start and end screens.
+   */
+  private musicScene(): MusicId | null {
+    const ui = this.ui;
+    if (ui.screen === 'start' || ui.screen === 'end') return 'table';
+    if (ui.screen !== 'run' || !ui.view) return null;
+    const view = ui.view;
+    if ((view.phase === 'Shop' || view.phase === 'Encounter') && !ui.anim) return 'shop';
+    return view.series.is_boss ? 'boss' : 'table';
   }
 
   // -------------------------------------------------------------------------
@@ -1434,6 +1449,9 @@ export class App {
         this.setSettings({ sound: el.dataset.on === 'true' });
         if (el.dataset.on === 'true') sound.play('clink');
         return;
+      case 'music':
+        this.setSettings({ music: el.dataset.on === 'true' });
+        return;
       case 'close-overlay':
         if (overlay && overlay.kind !== 'score' && overlay.kind !== 'boss') {
           this.ui.overlay = null;
@@ -1700,6 +1718,7 @@ export class App {
     }
     this.renderLayer();
     this.updateHint();
+    music.setScene(this.musicScene());
     watchShop(this.screenEl);
     const effects = this.afterRender;
     this.afterRender = [];

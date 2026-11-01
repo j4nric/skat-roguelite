@@ -1,5 +1,5 @@
 // Player settings of the web app (presentation only): animation tempo,
-// sound, whether a thought bubble shows while the opponents think, and
+// sound effects, music, whether a thought bubble shows while the opponents think, and
 // whether the Wirt explains things the first time they happen.
 // Stored in localStorage, every access guarded.
 
@@ -7,7 +7,10 @@ export type Tempo = 'slow' | 'normal' | 'fast';
 
 export interface Settings {
   tempo: Tempo;
+  /** Sound effects. */
   sound: boolean;
+  /** Music loops (./music.ts), switched apart from the sound effects. */
+  music: boolean;
   /** Show a thought bubble over the opponents while the core computes their moves. */
   thinking: boolean;
   /** Hints of the Wirt ("Geführter erster Abend", ./hints.ts). */
@@ -15,7 +18,7 @@ export interface Settings {
 }
 
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, thinking: true, hints: true };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -30,7 +33,13 @@ export function loadSettings(): Settings {
     if (!text) return { ...DEFAULTS };
     const parsed = JSON.parse(text) as Partial<Settings>;
     const tempo = parsed.tempo === 'slow' || parsed.tempo === 'fast' ? parsed.tempo : 'normal';
-    return { tempo, sound: parsed.sound !== false, thinking: parsed.thinking !== false, hints: parsed.hints !== false };
+    return {
+      tempo,
+      sound: parsed.sound !== false,
+      music: parsed.music !== false,
+      thinking: parsed.thinking !== false,
+      hints: parsed.hints !== false,
+    };
   } catch {
     return { ...DEFAULTS };
   }

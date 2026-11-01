@@ -250,6 +250,17 @@ function onOff(action: string, on: boolean): string {
     </div>`;
 }
 
+/** A toggle that names its setting and state ("Musik: An"); a tap flips it. */
+function toggle(action: string, name: string, on: boolean): string {
+  return `<button class="seg seg-toggle ${on ? 'is-picked' : ''}" ${attrs({
+    'data-action': action,
+    'data-on': on ? 'false' : 'true',
+    'data-testid': `toggle-${action}`,
+    'aria-pressed': on ? 'true' : 'false',
+    'aria-label': name,
+  })}>${esc(t(on ? de.menu.toggleOn : de.menu.toggleOff, { name }))}</button>`;
+}
+
 /** The settings as tight rows: label left, switch right. */
 function settingsBlock(ui: UiState): string {
   const tempos = (['slow', 'normal', 'fast'] as const)
@@ -261,7 +272,7 @@ function settingsBlock(ui: UiState): string {
   return `<div class="menu-settings">
     <div class="menu-row"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
-    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span>${onOff('sound', ui.settings.sound)}</div>
+    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',
