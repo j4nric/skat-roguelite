@@ -1,7 +1,9 @@
 // Portraits of the people at the table, drawn as flat SVG symbols in a
 // 100 × 100 box: two anonymous regulars, the Wirt, and the bosses. The
 // boss portrait is picked by content id; unknown bosses get a generic one.
-// Pure drawing.
+// Pure drawing. At start they are turned into pixel images (./pixelate.ts).
+
+import { pixelUrl, type PixelJob } from './pixelate';
 
 const OUT = '#2b1a0e';
 
@@ -266,7 +268,17 @@ export function bossPortraitId(bossId: string): string {
   return id in PORTRAITS ? id : 'p-boss';
 }
 
-/** A portrait as inline SVG; the frame comes from CSS. */
+/** Jobs for ./pixelate.ts: every portrait as a small pixel image. */
+export function portraitJobs(): PixelJob[] {
+  return Object.entries(PORTRAITS).map(([id, draw]) => ({ key: id, markup: draw(), size: 30 }));
+}
+
+/**
+ * A portrait, the frame comes from CSS: the pixel image once it is
+ * prepared, else the vector drawing.
+ */
 export function portrait(id: string, className = ''): string {
-  return `<span class="portrait ${className}" aria-hidden="true"><svg viewBox="0 0 100 100"><use href="#${id}"/></svg></span>`;
+  const url = pixelUrl(id);
+  const inner = url ? `<img class="px" src="${url}" alt="" draggable="false">` : `<svg viewBox="0 0 100 100"><use href="#${id}"/></svg>`;
+  return `<span class="portrait ${className}" aria-hidden="true">${inner}</span>`;
 }

@@ -1,6 +1,6 @@
 // Cards as small SVGs that reference the sprite in ./art.ts. Blanks and
-// card modifications are marked: a badge per modification in the free
-// bottom-left corner, plus an ink stamp or a glass sheen where it helps.
+// card modifications are marked: a square badge per modification in the
+// free bottom-left corner, plus an ink stamp or a mint tint where it helps.
 // Pure drawing, no game logic.
 
 import { de, cardName, contentName, face, isCurse, t } from '../i18n';
@@ -19,7 +19,7 @@ export const SUIT_COLORS: Record<Suit, string> = {
 /** A suit symbol as a standalone inline SVG. */
 export function suitIcon(suit: Suit, size = 24, label: string | null = de.suits[suit]): string {
   const a11y = label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true"';
-  return `<svg class="suit-icon" viewBox="0 0 100 100" width="${size}" height="${size}" ${a11y}><use href="#${suitId(suit)}"/></svg>`;
+  return `<svg class="suit-icon" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" ${a11y}><use href="#${suitId(suit)}"/></svg>`;
 }
 
 /** A card modification icon (badge) as inline SVG. */
@@ -34,17 +34,17 @@ function modLayers(mods: string[]): string {
         return `<g transform="rotate(-16 64 112)" opacity=".5"><circle cx="64" cy="112" r="21" fill="none" stroke="#5e3796" stroke-width="3"/><circle cx="64" cy="112" r="16.5" fill="none" stroke="#5e3796" stroke-width="1.2"/><path d="M64 100 L67 109 L76 109 L69 115 L72 124 L64 118 L56 124 L59 115 L52 109 L61 109 Z" fill="#5e3796"/></g>`;
       }
       if (m === 'transparent') {
-        return `<rect x="1" y="1" width="118" height="178" rx="10" fill="url(#glass)" opacity=".5"/><rect x="3" y="3" width="114" height="174" rx="9" fill="none" stroke="#2f86c0" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+        return `<rect width="120" height="180" fill="#8fc7a8" opacity=".22"/><rect x="4" y="4" width="112" height="172" fill="none" stroke="#2f86c0" stroke-width="4" stroke-dasharray="8 8"/>`;
       }
       return '';
     })
     .join('');
   // A curse darkens the card's edge with a red, broken frame.
   const curse = mods.some(isCurse)
-    ? `<rect x="3" y="3" width="114" height="174" rx="9" fill="none" stroke="#b3202a" stroke-width="3" stroke-dasharray="12 4 3 4" opacity=".85"/>`
+    ? `<rect x="4" y="4" width="112" height="172" fill="none" stroke="#bd3b32" stroke-width="4" stroke-dasharray="12 4 4 4"/>`
     : '';
   const badges = mods
-    .map((m, i) => `<use href="#${modIconId(m)}" x="3" y="${150 - i * 27}" width="27" height="27"/>`)
+    .map((m, i) => `<use href="#${modIconId(m)}" x="6" y="${146 - i * 30}" width="28" height="28"/>`)
     .join('');
   return overlays + curse + badges;
 }

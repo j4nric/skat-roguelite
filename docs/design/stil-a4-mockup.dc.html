@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Stil A Tisch</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&amp;family=Silkscreen:wght@400;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; background-color: {{p.bg}}; background-image: radial-gradient({{p.dot}} 1.5px, transparent 1.5px); background-size: 8px 8px; font-family: 'Pixelify Sans', monospace; color: {{p.text}}">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; height: 32px">
+    <div style="font-family: Silkscreen, monospace; font-size: 13px; letter-spacing: 1px; color: {{p.muted}}">ABSCHNITT 2 · SERIE 1/3</div>
+    <div style="display: flex; align-items: center; gap: 6px; padding: 3px 10px; background: {{p.panel}}; border: 3px solid {{p.line}}; box-shadow: 0 3px 0 {{p.line}}">
+      <svg viewBox="0 0 8 8" width="16" height="16" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM3 2h2v1h-2zM7 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM5 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM3 5h2v1h-2zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z" fill="{{p.gold}}"></path></svg>
+      <span style="font-weight: 700; font-size: 18px; color: {{p.gold}}">7</span>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; height: 58px">
+    <div style="flex: 1; background: {{p.panel}}; border: 3px solid {{p.line}}; box-shadow: 0 4px 0 {{p.line}}; padding: 4px 10px; display: flex; align-items: center; justify-content: space-between">
+      <div>
+        <div style="font-family: Silkscreen, monospace; font-size: 10px; color: {{p.muted}}">KONTO / ZIEL</div>
+        <div style="font-size: 26px; font-weight: 700; line-height: 1; text-shadow: 2px 2px 0 {{p.line}}">12<span style="color: {{p.muted}}; font-size: 18px"> / </span><span style="color: {{p.gold}}">33</span></div>
+      </div>
+      <div style="width: 92px; height: 12px; background: {{p.line}}; border: 2px solid {{p.line}}; display: flex">
+        <div style="width: 36%; background: {{p.gold}}"></div>
+      </div>
+    </div>
+    <div style="width: 116px; background: {{p.panel}}; border: 3px solid {{p.line}}; box-shadow: 0 4px 0 {{p.line}}; padding: 4px 8px; display: flex; flex-direction: column; justify-content: center; gap: 4px; font-family: Silkscreen, monospace; font-size: 9px; color: {{p.muted}}">
+      <div style="display: flex; align-items: center; justify-content: space-between">SPIELE
+        <span style="display: flex; gap: 2px">
+          <span style="width: 9px; height: 9px; background: {{p.hot}}"></span><span style="width: 9px; height: 9px; background: {{p.hot}}"></span><span style="width: 9px; height: 9px; background: {{p.dot}}"></span><span style="width: 9px; height: 9px; background: {{p.dot}}"></span><span style="width: 9px; height: 9px; background: {{p.dot}}"></span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between">PÄSSE
+        <span style="display: flex; gap: 2px">
+          <span style="width: 9px; height: 9px; background: {{p.cool}}"></span><span style="width: 9px; height: 9px; background: {{p.cool}}"></span><span style="width: 9px; height: 9px; background: {{p.dot}}"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; height: 62px">
+    <sc-for list="{{relics}}" as="r" hint-placeholder-count="4">
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: {{p.card}}; color: {{p.cardInk}}; border: 3px solid {{p.line}}; box-shadow: 0 3px 0 {{p.line}}; transform: rotate({{r.tilt}})">
+        <svg viewBox="0 0 8 8" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><path d="{{r.icon}}" fill="{{r.ink}}"></path></svg>
+        <div style="font-family: Silkscreen, monospace; font-size: 8px; text-align: center; line-height: 1.1">{{r.name}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; height: 58px">
+    <div style="display: flex; align-items: center; gap: 8px; background: {{p.panel2}}; border: 3px solid {{p.line}}; padding: 5px">
+      <svg viewBox="0 0 12 12" width="38" height="38" shape-rendering="crispEdges" aria-hidden="true" style="background: {{p.dot}}"><path d="M3 0h6v1h-6zM2 1h8v1h-8zM0 2h12v1h-12z" fill="{{p.line}}"></path><path d="M2 3h8v1h-8zM2 4h1v1h-1zM4 4h4v1h-4zM9 4h1v1h-1zM2 5h8v1h-8zM2 6h1v1h-1zM9 6h1v1h-1zM2 7h1v1h-1zM9 7h1v1h-1zM3 8h6v1h-6zM4 9h4v1h-4z" fill="#e9b88f"></path><path d="M3 4h1v1h-1zM8 4h1v1h-1z" fill="#14100c"></path><path d="M3 6h6v1h-6zM3 7h2v1h-2zM7 7h2v1h-2z" fill="#6b3d1f"></path><path d="M2 10h8v1h-8zM1 11h10v1h-10z" fill="{{p.hot}}"></path></svg>
+      <div style="font-size: 13px; line-height: 1.25">Links · Vorhand<br><span style="color: {{p.muted}}; font-size: 12px">hat ausgespielt</span></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; background: {{p.panel2}}; border: 3px solid {{p.gold}}; padding: 5px">
+      <svg viewBox="0 0 12 12" width="38" height="38" shape-rendering="crispEdges" aria-hidden="true" style="background: {{p.dot}}"><path d="M3 0h6v1h-6zM2 1h8v1h-8zM0 2h12v1h-12z" fill="{{p.cool}}"></path><path d="M2 3h8v1h-8zM2 4h1v1h-1zM4 4h4v1h-4zM9 4h1v1h-1zM2 5h8v1h-8zM2 6h1v1h-1zM9 6h1v1h-1zM2 7h1v1h-1zM9 7h1v1h-1zM3 8h6v1h-6zM4 9h4v1h-4z" fill="#d9a07a"></path><path d="M3 4h1v1h-1zM8 4h1v1h-1z" fill="#14100c"></path><path d="M3 6h6v1h-6zM3 7h2v1h-2zM7 7h2v1h-2z" fill="#c9c2b0"></path><path d="M2 10h8v1h-8zM1 11h10v1h-10z" fill="{{p.cool}}"></path></svg>
+      <div style="font-size: 13px; line-height: 1.25">Rechts · Hinterhand<br><span style="color: {{p.gold}}; font-size: 12px">wartet auf dich</span></div>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 8px; font-family: Silkscreen, monospace; font-size: 11px; color: {{p.muted}}">
+      <span>EICHEL · MIT 2</span>
+      <span style="padding: 2px 6px; background: {{p.panel}}; border: 2px solid {{p.line}}; color: {{p.text}}">12 × 3</span>
+    </div>
+    <div style="display: flex; gap: 14px; align-items: flex-end">
+      <div style="width: 66px; height: 96px; box-sizing: border-box; background: {{p.card}}; border: 3px solid {{p.line}}; box-shadow: 0 4px 0 {{p.line}}; transform: rotate(-6deg); padding: 4px; display: flex; flex-direction: column; justify-content: space-between">
+        <div style="font-weight: 700; font-size: 18px; line-height: 1; color: {{p.rot}}">K</div>
+        <svg viewBox="0 0 8 8" width="34" height="34" shape-rendering="crispEdges" aria-hidden="true" style="align-self: center"><path d="M1 0h2v1h-2zM5 0h2v1h-2zM0 1h8v1h-8zM0 2h8v1h-8zM0 3h8v1h-8zM1 4h6v1h-6zM2 5h4v1h-4zM3 6h2v1h-2z" fill="{{p.rot}}"></path></svg>
+        <div style="height: 8px"></div>
+      </div>
+      <div style="width: 66px; height: 96px; box-sizing: border-box; border: 3px dashed {{p.gold}}; display: flex; align-items: center; justify-content: center; font-family: Silkscreen, monospace; font-size: 10px; color: {{p.gold}}">DU</div>
+      <div style="width: 66px; height: 96px; box-sizing: border-box; border: 3px dashed {{p.dot}}"></div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px 6px; padding-top: 4px">
+    <sc-for list="{{hand}}" as="c" hint-placeholder-count="10">
+      <div style="height: 98px; box-sizing: border-box; background: {{p.card}}; border: 3px solid {{c.edge}}; box-shadow: 0 4px 0 {{p.line}}; padding: 4px; display: flex; flex-direction: column; justify-content: space-between; transform: translateY({{c.lift}}) rotate({{c.tilt}}); opacity: {{c.op}}">
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span style="font-weight: 700; font-size: 18px; line-height: 1; color: {{c.ink}}">{{c.rank}}</span>
+          <svg viewBox="0 0 8 8" width="12" height="12" shape-rendering="crispEdges" aria-hidden="true"><path d="{{c.g2}}" fill="{{c.ink2}}"></path><path d="{{c.g}}" fill="{{c.ink}}"></path></svg>
+        </div>
+        <svg viewBox="0 0 8 8" width="34" height="34" shape-rendering="crispEdges" aria-hidden="true" style="align-self: center"><path d="{{c.g2}}" fill="{{c.ink2}}"></path><path d="{{c.g}}" fill="{{c.ink}}"></path></svg>
+        <div style="height: 10px"></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; height: 34px">
+    <div style="font-family: Silkscreen, monospace; font-size: 12px; color: {{p.gold}}">ROT BEDIENEN</div>
+    <button type="button" aria-label="Menü" style="width: 44px; height: 34px; background: {{p.panel}}; border: 3px solid {{p.line}}; box-shadow: 0 3px 0 {{p.line}}; color: {{p.text}}; font-family: Silkscreen, monospace; font-size: 14px; cursor: pointer">≡</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["moor","gas","bordeaux","schiefer"],"default":"moor"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const palettes = {
+      moor: { bg: '#11150e', dot: '#1f281b', panel: '#1d2619', panel2: '#182014', line: '#070906', text: '#efe6cf', muted: '#a3ad8c', gold: '#e0a43a', hot: '#b5532f', cool: '#6f9a5b', card: '#efe6cf', cardInk: '#11150e', rot: '#b8322a' },
+      gas: { bg: '#0e1524', dot: '#1a2540', panel: '#19243d', panel2: '#141d33', line: '#05080f', text: '#f1ead8', muted: '#9fb0cf', gold: '#d8b45f', hot: '#c2533f', cool: '#4fa59a', card: '#f3ecda', cardInk: '#0e1524', rot: '#bf3a2e' },
+      bordeaux: { bg: '#1a0b10', dot: '#2c1219', panel: '#2d121a', panel2: '#250f16', line: '#0a0406', text: '#f5e7d6', muted: '#c49aa5', gold: '#e3c16f', hot: '#d0607a', cool: '#8f86c9', card: '#f6ead4', cardInk: '#1a0b10', rot: '#b72d3b' },
+      schiefer: { bg: '#1b1e21', dot: '#272c30', panel: '#2a2f34', panel2: '#23282c', line: '#0b0c0e', text: '#ecebe4', muted: '#a4adb3', gold: '#d1773f', hot: '#d1773f', cool: '#8fc7a8', card: '#ecebe4', cardInk: '#1b1e21', rot: '#bd3b32' }
+    };
+    const p = palettes[this.props.palette] || palettes.moor;
+    const G = {
+      acornCap: 'M3 0h1v1h-1zM1 1h6v1h-6zM0 2h8v1h-8z',
+      acornNut: 'M1 3h6v1h-6zM1 4h6v1h-6zM2 5h4v1h-4zM2 6h4v1h-4zM3 7h2v1h-2z',
+      leaf: 'M4 0h1v1h-1zM3 1h3v1h-3zM2 2h5v1h-5zM1 3h6v1h-6zM1 4h6v1h-6zM2 5h4v1h-4zM3 6h2v1h-2zM3 7h1v1h-1z',
+      heart: 'M1 0h2v1h-2zM5 0h2v1h-2zM0 1h8v1h-8zM0 2h8v1h-8zM0 3h8v1h-8zM1 4h6v1h-6zM2 5h4v1h-4zM3 6h2v1h-2z',
+      bell: 'M3 0h2v1h-2zM2 1h4v1h-4zM1 2h6v1h-6zM1 3h6v1h-6zM0 4h8v1h-8zM0 5h8v1h-8zM1 6h1v1h-1zM3 6h2v1h-2zM6 6h1v1h-1zM3 7h2v1h-2z'
+    };
+    const suit = {
+      eichel: { g: G.acornNut, g2: G.acornCap, ink: '#8a5a2b', ink2: '#4a2c12' },
+      gruen: { g: G.leaf, g2: '', ink: '#2e7d4f', ink2: '#2e7d4f' },
+      rot: { g: G.heart, g2: '', ink: p.rot, ink2: p.rot },
+      schellen: { g: G.bell, g2: '', ink: '#b8840f', ink2: '#b8840f' }
+    };
+    const cards = [
+      ['eichel', 'U', false], ['gruen', 'U', false], ['eichel', 'A', false], ['eichel', '10', false], ['eichel', 'K', false],
+      ['eichel', '8', false], ['rot', 'A', true], ['rot', '9', true], ['gruen', '10', false], ['schellen', '7', false]
+    ];
+    const tilts = ['-1.5deg', '1deg', '-0.5deg', '1.5deg', '-1deg', '1deg', '-1.5deg', '0.5deg', '1.5deg', '-1deg'];
+    const hand = cards.map(([s, rank, legal], i) => ({
+      rank, ...suit[s], tilt: tilts[i],
+      lift: legal ? '-8px' : '0px',
+      op: legal ? '1' : '0.5',
+      edge: legal ? p.gold : p.line
+    }));
+    const relics = [
+      { name: 'BOCKRUNDE', icon: 'M0 0h1v1h-1zM7 0h1v1h-1zM1 1h1v1h-1zM6 1h1v1h-1zM2 2h4v1h-4zM1 3h6v1h-6zM1 4h1v1h-1zM3 4h2v1h-2zM6 4h1v1h-1zM1 5h6v1h-6zM2 6h1v1h-1zM5 6h1v1h-1zM2 7h4v1h-4z', ink: p.cardInk, tilt: '-3deg' },
+      { name: 'KIEBITZ', icon: 'M2 1h4v1h-4zM1 2h1v1h-1zM6 2h1v1h-1zM0 3h1v1h-1zM3 3h2v1h-2zM7 3h1v1h-1zM0 4h1v1h-1zM3 4h2v1h-2zM7 4h1v1h-1zM1 5h1v1h-1zM6 5h1v1h-1zM2 6h4v1h-4z', ink: p.cool, tilt: '2deg' },
+      { name: 'GLÜCKS- STRÄHNE', icon: 'M3 0h2v1h-2zM3 1h2v1h-2zM0 2h8v1h-8zM1 3h6v1h-6zM2 4h4v1h-4zM1 5h2v1h-2zM5 5h2v1h-2zM0 6h2v1h-2zM6 6h2v1h-2z', ink: p.hot, tilt: '-1deg' },
+      { name: 'ZÄHLER', icon: 'M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v1h-1zM3 2h2v1h-2zM7 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM5 3h1v1h-1zM7 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM3 5h2v1h-2zM7 5h1v1h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z', ink: p.gold, tilt: '3deg' }
+    ];
+    return { p, hand, relics };
+  }
+}
+</script>
+</body>
+</html>

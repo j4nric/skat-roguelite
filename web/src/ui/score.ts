@@ -1,7 +1,8 @@
-// The Abrechnung on the chalk board: the score breakdown from the core,
-// played step by step like in Balatro. Grundwert and Stufen count up, each
-// relic that contributes lights up on its Bierdeckel, then the result lands
-// with weight and the series account moves. A tap skips to the end.
+// The Abrechnung at the end of a game, big and short: the score breakdown
+// from the core, played step by step like in Balatro. Grundwert and Stufen
+// count up, each relic that contributes lights up on its little card, then
+// the result lands with weight and the series account moves. A tap skips
+// to the end; with reduced motion it shows at once.
 //
 // All numbers come from the core's ScoreStep list and breakdown; this file
 // only labels, formats and animates them.

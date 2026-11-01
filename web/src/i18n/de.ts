@@ -106,6 +106,7 @@ export const de = {
     series: 'Serie {series}/3',
     bossSeries: 'Boss: {name}',
     account: 'Konto',
+    accountTarget: 'Konto / Ziel',
     target: 'Ziel {target}',
     games: 'Spiele',
     gamesLeft: '{left} von {limit}',
@@ -274,6 +275,7 @@ export const de = {
     declareAfterSkat: 'Skat gedrückt. Sag dein Spiel an.',
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
+    slotYou: 'Du',
     trickTo: 'Stich an {name} ({points} Augen)',
     trickToYou: 'Dein Stich ({points} Augen)',
     tricks: 'Stiche {own} : {theirs}',
@@ -589,17 +591,12 @@ export const de = {
     intro: 'Stammtisch ist ein Projekt mit Liebe zum Skat. Diese Quellen stecken drin:',
     entries: [
       {
-        what: 'Schrift „Grenze Gotisch“',
-        who: 'Omnibus-Type (The Grenze Gotisch Project Authors)',
-        license: 'SIL Open Font License 1.1',
+        what: 'Pixelschriften „Kenney Mini“ und „Kenney Mini Square“',
+        who: 'Kenney (www.kenney.nl), Umlaute ergänzt für dieses Projekt',
+        license: 'CC0 1.0',
       },
       {
-        what: 'Schrift „Alegreya Sans“',
-        who: 'Juan Pablo del Peral, HT Fonts (Huerta Tipográfica)',
-        license: 'SIL Open Font License 1.1',
-      },
-      {
-        what: 'Kartenbild (deutsches Blatt), Figuren, Tresen',
+        what: 'Kartenbild (deutsches Blatt, Pixel-Farbzeichen), Figuren, Tresen',
         who: 'Selbst gezeichnet als SVG für dieses Projekt',
         license: 'Teil des Projekts',
       },

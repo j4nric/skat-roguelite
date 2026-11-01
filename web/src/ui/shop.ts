@@ -1,11 +1,12 @@
-// The Tresen: the Wirt behind the counter, relics as Bierdeckel, items as
-// things on the counter, owned relics and items, Neuauslage. What can be
+// The Tresen: the Wirt behind the counter, relics as little paper cards,
+// items as things on the counter, owned relics and items, Neuauslage. What can be
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
 import { de, contentName, contentText, t } from '../i18n';
 import type { OwnedRelic, RelicInfo, RunView } from '../types';
+import { pixels } from './art';
 import { attrs, esc } from './dom';
-import { goodSvg, shelfSvg } from './goods';
+import { goodSvg } from './goods';
 import { coinIcon } from './hud';
 import { bossPortraitId, portrait } from './people';
 
@@ -13,17 +14,19 @@ function price(n: number): string {
   return `<span class="price">${coinIcon(16)}${esc(t(de.shop.price, { price: n }))}</span>`;
 }
 
-/** The printed round mark of a Bierdeckel: a paragraph for house rules, a figure for regulars. */
+/** A paragraph sign, for house rules (8 × 8 pixels). */
+const PARAGRAPH = ['..####..', '.#......', '..###...', '.#...#..', '..###...', '.....#..', '.####...', '........'];
+/** A figure, for regulars (8 × 8 pixels). */
+const FIGURE = ['...##...', '..####..', '...##...', '.######.', '#.####.#', '..####..', '..#..#..', '..#..#..'];
+
+/** The printed mark of a relic card: a paragraph for house rules, a figure for regulars. */
 export function coasterEmblem(kind: RelicInfo['kind']): string {
-  const glyph =
-    kind === 'HouseRule'
-      ? '<text x="20" y="27.5" text-anchor="middle" font-size="22" font-weight="700" fill="currentColor" class="idx">§</text>'
-      : '<circle cx="20" cy="15" r="5.5" fill="currentColor"/><path d="M10 31 C10 23 14 21 20 21 C26 21 30 23 30 31 Z" fill="currentColor"/>';
-  return `<svg class="coaster-emblem" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="20" cy="20" r="14" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/>${glyph}</svg>`;
+  const glyph = pixels(kind === 'HouseRule' ? PARAGRAPH : FIGURE, 2, 2, 1, 'currentColor');
+  return `<svg class="coaster-emblem" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h12v1h-12zM0 11h12v1h-12zM0 1h1v10h-1zM11 1h1v10h-1z" fill="currentColor"/>${glyph}</svg>`;
 }
 
 /**
- * A relic as a round Bierdeckel: emblem, name, the start of the text and
+ * A relic as a little paper card: emblem, name, the start of the text and
  * `footer` (price and buttons). The whole coaster is a button that opens
  * the full text (`more` = data attributes of that button).
  */
@@ -126,7 +129,6 @@ export function renderShop(view: RunView): string {
   const anyAffordable = shop.relics.some((o) => o?.can_buy) || shop.consumables.some((o) => o?.can_buy);
   return `<main class="shop" data-testid="shop">
     <div class="backbar">
-      ${shelfSvg()}
       <div class="wirt">${portrait('p-wirt', 'portrait-wirt')}</div>
       <div class="bubble"><h2>${esc(de.shop.title)}</h2><p>${esc(anyAffordable ? de.shop.wirtSays : de.shop.wirtBroke)}</p></div>
     </div>

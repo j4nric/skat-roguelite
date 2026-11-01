@@ -1,6 +1,6 @@
-// Head of the run screen, a wooden beam over the table: where we are in the
-// tour, the chalk slate with account and target, games and passes left,
-// Groschen, and the collected Bierdeckel (relics) and items.
+// Head of the run screen: where we are in the tour, Groschen and the menu;
+// a slate panel with account and target, games and passes left as pips;
+// the collected relics (small paper cards) and items in one row.
 
 import { de, contentName, t } from '../i18n';
 import type { RunView } from '../types';
@@ -8,8 +8,9 @@ import { attrs, esc } from './dom';
 import { goodSvg } from './goods';
 import { bossPortraitId, portrait } from './people';
 
+/** A Groschen as an 8 × 8 pixel coin in copper. */
 export function coinIcon(size = 18): string {
-  return `<svg class="coin" viewBox="0 0 20 20" width="${size}" height="${size}" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="#e9b949" stroke="#8a6512" stroke-width="1.5"/><circle cx="10" cy="10" r="5.2" fill="none" stroke="#8a6512" stroke-width="1.1"/><path d="M8.4 7.5 L10.6 6.6 L10.6 13.4" fill="none" stroke="#8a6512" stroke-width="1.4"/></svg>`;
+  return `<svg class="coin" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h4v1h-4zM1 1h6v1h-6zM0 2h8v4h-8zM1 6h6v1h-6zM2 7h4v1h-4z" fill="#d1773f"/><path d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v4h-1zM7 2h1v4h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z" fill="#8a4a22"/><path d="M3 2h2v1h-2zM3 3h1v2h-1zM3 5h2v1h-2z" fill="#f1b48a"/></svg>`;
 }
 
 /** Meter fill in percent: purely the share of score in target. */
@@ -73,12 +74,15 @@ export function renderHud(view: RunView): string {
       <span class="hud-where-sub">${esc(de.header.tourHint)} · ${esc(t(de.header.section, { section: s.section + 1, sections: view.sections }))}</span>
     </button>
     ${boss}
-    <span class="hud-coins" aria-label="${esc(de.header.coins)}">${coinIcon(20)}<b data-testid="coins">${esc(view.coins)}</b></span>
+    <span class="hud-coins" aria-label="${esc(de.header.coins)}">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b></span>
     <button class="icon-btn" ${attrs({ 'data-action': 'menu', 'aria-label': de.header.menu })}><span class="burger"></span></button>
   </div>
   <div class="hud-board">
-    <div class="slate" role="meter" aria-valuemin="0" aria-valuemax="${esc(s.target)}" aria-valuenow="${esc(s.score)}">
-      <div class="slate-row"><span class="slate-label">${esc(de.header.account)}</span><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-target">${esc(t(de.header.target, { target: s.target }))}</span></div>
+    <div class="slate" role="meter" aria-label="${esc(de.header.accountTarget)}" aria-valuemin="0" aria-valuemax="${esc(s.target)}" aria-valuenow="${esc(s.score)}">
+      <div class="slate-text">
+        <span class="slate-label">${esc(de.header.accountTarget)}</span>
+        <span class="slate-row"><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-sep"> / </span><b class="slate-target">${esc(s.target)}</b></span>
+      </div>
       <div class="chalk-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div></div>
     </div>
     <div class="hud-counts">
