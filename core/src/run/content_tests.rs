@@ -1248,6 +1248,7 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
             index: 0,
             character: Character::Declarer,
             length: RunLength::Full,
+            stake: 0,
         })
         .collect();
     let earned = meta.observe(&content, &lost);

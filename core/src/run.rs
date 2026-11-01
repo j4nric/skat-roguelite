@@ -681,6 +681,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Ganzer or kurzer Abend.
         #[serde(default)]
         length: RunLength,
+        /// Stake of the run (Einsatz-Leiter).
+        #[serde(default)]
+        stake: u32,
     },
     /// The run was lost.
     RunLost {
@@ -694,6 +697,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Ganzer or kurzer Abend.
         #[serde(default)]
         length: RunLength,
+        /// Stake of the run (Einsatz-Leiter).
+        #[serde(default)]
+        stake: u32,
     },
 }
 
@@ -997,6 +1003,10 @@ pub struct RunStart {
     /// Ganzer or kurzer Abend (DESIGN 5.3).
     #[serde(default)]
     pub length: RunLength,
+    /// Einsatz-Leiter (DESIGN 9.3): suit games and Grand are won from
+    /// `61 + stake` Augen. 0 is the normal game.
+    #[serde(default)]
+    pub stake: u32,
 }
 
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
@@ -1058,6 +1068,9 @@ pub struct Run {
     /// Ganzer or kurzer Abend (saves from before: ganzer).
     #[serde(default)]
     length: RunLength,
+    /// Stake of the Einsatz-Leiter (saves from before: 0).
+    #[serde(default)]
+    stake: u32,
 }
 
 impl Run {
@@ -1141,6 +1154,7 @@ impl Run {
             pending_factor: None,
             guests: Vec::new(),
             length: start.length,
+            stake: start.stake,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1169,6 +1183,13 @@ impl Run {
     #[must_use]
     pub const fn length(&self) -> RunLength {
         self.length
+    }
+
+    /// Stake of the Einsatz-Leiter (DESIGN 9.3): suit games and Grand are
+    /// won from `61 + stake` Augen before relics.
+    #[must_use]
+    pub const fn stake(&self) -> u32 {
+        self.stake
     }
 
     /// Number of sections of this run (5, or 3 for a short evening).
@@ -1920,8 +1941,7 @@ impl Run {
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_) => active.lines.extend(line),
             Effect::WinThreshold(n) => {
-                if *n < active.rules.thresholds.win {
-                    active.rules.thresholds.win = *n;
+                if active.rules.thresholds.lower_win(*n) {
                     active.rules.win_threshold_source = Some(source.clone());
                 }
             }
@@ -2161,6 +2181,7 @@ impl Run {
         let global = self.sources(content, false);
         let has = |wanted: &Effect| global.iter().any(|s| s.passive.contains(wanted));
         let rules = GameRules {
+            thresholds: Thresholds::with_stake(self.stake),
             no_cheating: has(&Effect::NoCheating),
             no_information: has(&Effect::DisableInformation),
             ..GameRules::default()
@@ -2292,6 +2313,7 @@ impl Run {
                 index: self.series.index,
                 character: self.character,
                 length: self.length,
+                stake: self.stake,
             });
             return Ok(());
         }
@@ -2334,6 +2356,7 @@ impl Run {
             events.push(RunEvent::RunWon {
                 character: self.character,
                 length: self.length,
+                stake: self.stake,
             });
             return Ok(());
         }
@@ -3137,6 +3160,8 @@ mod m5_tests;
 mod m7_tests;
 #[cfg(test)]
 mod skat_order_tests;
+#[cfg(test)]
+mod stake_tests;
 #[cfg(test)]
 mod step_tests;
 #[cfg(test)]

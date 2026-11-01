@@ -2796,6 +2796,57 @@ button.card {
   color: var(--card-ink);
 }
 
+/* Einsatz-Leiter (DESIGN 9.3): one row under the run length. */
+.stake-pick {
+  display: grid;
+  grid-template-columns: var(--touch) 1fr var(--touch);
+  align-items: stretch;
+  gap: 6px;
+}
+
+.stake-pick .stake-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text);
+}
+
+.stake-pick .stake-arrow:disabled {
+  color: var(--muted);
+  opacity: 0.35;
+  box-shadow: none;
+  cursor: default;
+}
+
+.stake-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 6px;
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  line-height: 1;
+}
+
+.stake-text b {
+  font-size: var(--fs-body);
+  font-weight: 400;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.stake-text span {
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .seed {
   display: flex;
   flex-direction: column;

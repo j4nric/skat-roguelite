@@ -55,8 +55,9 @@ pub const SAVE_VERSION: u32 = 1;
 /// `UnknownCharacter` (the content has no such character),
 /// `InvalidMeta` (not a meta save), `UnsupportedMeta` (another meta
 /// version), `InvalidEvents` (not a list of player events),
-/// `InvalidLength` (not `"Full"` or `"Short"`).
-pub const SHELL_ERROR_CODES: [&str; 12] = [
+/// `InvalidLength` (not `"Full"` or `"Short"`), `StakeLocked` (the stake
+/// is above the highest the meta state unlocked).
+pub const SHELL_ERROR_CODES: [&str; 13] = [
     "InvalidSeed",
     "InvalidAction",
     "InvalidSave",
@@ -69,6 +70,7 @@ pub const SHELL_ERROR_CODES: [&str; 12] = [
     "UnsupportedMeta",
     "InvalidEvents",
     "InvalidLength",
+    "StakeLocked",
 ];
 
 /// An error as thrown to JavaScript.
@@ -297,14 +299,16 @@ impl Session {
     }
 
     /// Start a new run with `character` (`"Declarer"` or `"NullPlayer"`)
-    /// and `length` (`"Full"` or `"Short"`, DESIGN 5.3) from a meta state:
-    /// the character must be unlocked, locked relics stay off the Tresen.
+    /// and `length` (`"Full"` or `"Short"`, DESIGN 5.3) at `stake`
+    /// (Einsatz-Leiter, DESIGN 9.3) from a meta state: the character and
+    /// the stake must be unlocked, locked relics stay off the Tresen.
     /// Returns the session and the events of the start as player events
     /// (feed them to the meta state).
     pub fn new_with(
         seed: &str,
         character: &str,
         length: &str,
+        stake: u32,
         meta: &MetaState,
     ) -> Result<(Session, Vec<PlayerEvent>), String> {
         let seed = parse_seed(seed)?;
@@ -312,7 +316,7 @@ impl Session {
         let length = parse_length(length)?;
         let content = content()?;
         let start: RunStart = meta
-            .run_start_with(content, character, length)
+            .run_start_staked(content, character, length, stake)
             .map_err(|e| error_json(e.code(), &e))?;
         let (run, events) = Run::new_with(content, seed, &start).map_err(|e| run_error(&e))?;
         Ok((Session { content, run }, player_events(events)))
@@ -547,19 +551,21 @@ impl WasmRun {
     }
 
     /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`)
-    /// and a length (`"Full"`, `"Short"`) from the meta state: locked
-    /// relics stay off the Tresen, a locked character is refused
-    /// (`CharacterLocked`). Feed [`WasmRun::start_events`] to the meta
-    /// state once.
+    /// and a length (`"Full"`, `"Short"`) at a stake (Einsatz-Leiter)
+    /// from the meta state: locked relics stay off the Tresen, a locked
+    /// character (`CharacterLocked`) or stake (`StakeLocked`) is refused.
+    /// Feed [`WasmRun::start_events`] to the meta state once.
     #[wasm_bindgen(js_name = newRunWith)]
     pub fn new_run_with(
         seed: &str,
         character: &str,
         length: &str,
+        stake: u32,
         meta: &WasmMeta,
     ) -> Result<WasmRun, JsError> {
-        let (session, events) = Session::new_with(seed, character, length, &meta.session.meta)
-            .map_err(|e| JsError::new(&e))?;
+        let (session, events) =
+            Session::new_with(seed, character, length, stake, &meta.session.meta)
+                .map_err(|e| JsError::new(&e))?;
         let start = serde_json::to_string(&events).map_err(|e| JsError::new(&internal(e)))?;
         Ok(WasmRun {
             session,
@@ -864,26 +870,55 @@ mod tests {
             json["code"].as_str().expect("code").to_string()
         };
         assert_eq!(
-            code(Session::new_with("1", "NullPlayer", "Full", meta.meta()).expect_err("locked")),
+            code(Session::new_with("1", "NullPlayer", "Full", 0, meta.meta()).expect_err("locked")),
             "CharacterLocked"
         );
         assert_eq!(
-            code(Session::new_with("1", "Nobody", "Full", meta.meta()).expect_err("bad")),
+            code(Session::new_with("1", "Nobody", "Full", 0, meta.meta()).expect_err("bad")),
             "InvalidCharacter"
         );
         assert_eq!(
-            code(Session::new_with("1", "Declarer", "Long", meta.meta()).expect_err("bad")),
+            code(Session::new_with("1", "Declarer", "Long", 0, meta.meta()).expect_err("bad")),
             "InvalidLength"
         );
         // A short evening (DESIGN 5.3): three sections, the length in the
         // view.
-        let (short, _) = Session::new_with("5", "Declarer", "Short", meta.meta()).expect("short");
+        let (short, _) =
+            Session::new_with("5", "Declarer", "Short", 0, meta.meta()).expect("short");
         let view: serde_json::Value =
             serde_json::from_str(&short.view().expect("view")).expect("json");
         assert_eq!(view["sections"], 3);
         assert_eq!(view["length"], "Short");
+        assert_eq!(view["stake"], 0);
+        assert_eq!(view["win_threshold"], 61);
+        // Einsatz-Leiter: stake 1 is locked before a won run.
+        assert_eq!(
+            code(Session::new_with("5", "Declarer", "Full", 1, meta.meta()).expect_err("stake")),
+            "StakeLocked"
+        );
+        let mut climbed = meta.meta().clone();
+        climbed
+            .stakes
+            .entry(Character::Declarer)
+            .or_default()
+            .insert(RunLength::Full, 2);
+        let (staked, _) = Session::new_with("5", "Declarer", "Full", 2, &climbed).expect("stake 2");
+        let view: serde_json::Value =
+            serde_json::from_str(&staked.view().expect("view")).expect("json");
+        assert_eq!(view["stake"], 2);
+        assert_eq!(view["win_threshold"], 63);
+        assert_eq!(view["game"]["win_threshold"], 63);
+        let climbed = MetaSession {
+            content: content().expect("content"),
+            meta: climbed,
+        };
+        let meta_view: serde_json::Value =
+            serde_json::from_str(&climbed.view().expect("view")).expect("json");
+        let declarer = &meta_view["characters"][0];
+        assert_eq!(declarer["max_stakes"]["Full"], 2);
+        assert_eq!(declarer["max_stakes"]["Short"], 0);
         let (mut session, start) =
-            Session::new_with("5", "Declarer", "Full", meta.meta()).expect("run");
+            Session::new_with("5", "Declarer", "Full", 0, meta.meta()).expect("run");
         let start = serde_json::to_string(&start).expect("json");
         meta.observe(&start).expect("observe");
         let content = content().expect("content");
@@ -920,7 +955,7 @@ mod tests {
         );
         // Everything unlocked: the Nullspieler plays Null through JSON.
         let all = MetaState::all_unlocked(content);
-        let (mut null, _) = Session::new_with("8", "NullPlayer", "Full", &all).expect("null");
+        let (mut null, _) = Session::new_with("8", "NullPlayer", "Full", 0, &all).expect("null");
         let view: serde_json::Value =
             serde_json::from_str(&null.view().expect("view")).expect("json");
         assert_eq!(view["character"]["character"], "NullPlayer");

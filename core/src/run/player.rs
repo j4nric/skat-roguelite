@@ -260,17 +260,27 @@ impl RunEvent {
             RunEvent::EveningRulesEnded => RunEvent::EveningRulesEnded,
             RunEvent::RelicSwapped { old, new } => RunEvent::RelicSwapped { old, new },
             RunEvent::NextGameDoubled { factor } => RunEvent::NextGameDoubled { factor },
-            RunEvent::RunWon { character, length } => RunEvent::RunWon { character, length },
+            RunEvent::RunWon {
+                character,
+                length,
+                stake,
+            } => RunEvent::RunWon {
+                character,
+                length,
+                stake,
+            },
             RunEvent::RunLost {
                 section,
                 index,
                 character,
                 length,
+                stake,
             } => RunEvent::RunLost {
                 section,
                 index,
                 character,
                 length,
+                stake,
             },
         }
     }

@@ -57,6 +57,9 @@ pub struct Options {
     pub defenders: Option<Opponents>,
     /// Ganzer or kurzer Abend (`--short`, DESIGN 5.3).
     pub length: RunLength,
+    /// Stake of the Einsatz-Leiter (`--stake N`, DESIGN 9.3): suit games
+    /// and Grand are won from `61 + N` Augen.
+    pub stake: u32,
 }
 
 /// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
@@ -120,6 +123,7 @@ impl Options {
             relics: self.relics.clone(),
             character: self.character,
             length: self.length,
+            stake: self.stake,
             ..RunStart::default()
         }
     }
@@ -159,6 +163,9 @@ impl Options {
         }
         if self.length == RunLength::Short {
             parts.push("short".into());
+        }
+        if self.stake > 0 {
+            parts.push(format!("stake={}", self.stake));
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -785,6 +792,7 @@ pub fn unlocks(
                 .run_start_with(content, character, options.length)
                 .map_err(|e| e.to_string())?;
             start.relics.clone_from(&options.relics);
+            start.stake = options.stake;
             let run_seed = master.next_u64();
             let (mut run, mut events) =
                 Run::new_with(content, run_seed, &start).map_err(|e| e.to_string())?;
@@ -970,6 +978,21 @@ mod option_tests {
         let with = simulate(&base, &options, 8, 20).expect("runs");
         assert_eq!(with.runs, plain.runs);
         assert!(render(&with, &base, &options, 0).contains("relic=ouvert_bonus"));
+    }
+
+    #[test]
+    fn a_stake_makes_suit_games_harder_to_win() {
+        let base = content();
+        let plain = simulate(&base, &Options::default(), 11, 10).expect("plain");
+        let options = Options {
+            stake: 25,
+            ..Options::default()
+        };
+        assert_eq!(options.start().stake, 25);
+        let staked = simulate(&base, &options, 11, 10).expect("staked");
+        // Same seeds, 86 Augen to win a suit game or Grand: fewer won.
+        assert!(staked.games_won - staked.null_won < plain.games_won - plain.null_won);
+        assert!(render(&staked, &base, &options, 0).contains("stake=25"));
     }
 
     #[test]

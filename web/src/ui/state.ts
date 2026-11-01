@@ -37,6 +37,8 @@ export interface PendingStart {
   character: Character;
   /** Ganzer or kurzer Abend. */
   length: RunLength;
+  /** Stake of the Einsatz-Leiter. */
+  stake: number;
   daily: boolean;
 }
 
@@ -99,6 +101,8 @@ export interface UiState {
   pickCharacter: Character;
   /** Run length picked on the start screen (ganzer or kurzer Abend). */
   pickLength: RunLength;
+  /** Stake picked on the start screen; null plays the highest unlocked. */
+  pickStake: number | null;
   overlay: Overlay | null;
   message: string | null;
   saveInfo: string | null;

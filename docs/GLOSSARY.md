@@ -84,7 +84,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | angesagt | `_declared` | `schneider_declared`, `schwarz_declared` |
 | Ouvert | `ouvert` | Offen spielen |
 | Gewonnen | `won` | Ab 61 Augen |
-| Gewinnschwelle, Schneidergrenzen | `Thresholds` | `win`, `schneider_limit`, `declarer_schneider` |
+| Gewinnschwelle, Schneidergrenzen | `Thresholds` | `win`, `schneider_limit`, `declarer_schneider`, `stake` (Einsatz, `Thresholds::with_stake`, Relikte senken über `lower_win`) |
 | Spitzen im Spiel | `matadors_in` | Gezählt nur über Trümpfe, die im Spiel sind |
 | Verloren | `lost` | Zählt doppelt negativ |
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
@@ -100,6 +100,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Run / Tournee | `Run` | |
 | Abschnitt / Skatabend | `Section` | Ein Ante |
 | Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Beim Start gewählt (`RunStart::length`, `Run::length`); kurzer Abend: 3 Abschnitte, Zeilen der Kurve in `short_sections` (`run.ron`), Zeile eines Abschnitts `curve_row`. Statistik je Länge `MetaStats::lengths` (`LengthStats`). Im Link `-kurz` |
+| Einsatz, Einsatz-Leiter | `stake` | Gewinngrenze `61 + stake` für Farbspiel und Grand (`RunStart::stake`, `Run::stake`). Höchster freigeschalteter Einsatz je Charakter und Länge: `MetaState::stakes`, `MetaState::max_stake`, in der Sicht `CharacterEntry::max_stakes`. Im Link `-einsatz<n>` |
 | Serie | `Series` | Ein Blind: Zielwert plus Spiellimit |
 | Zielwert | `target` | |
 | Zielwert-Faktor (Boss) | `target_factor` | Typ `Factor`, in RON und JSON als Dezimalzahl, intern Tausendstel |

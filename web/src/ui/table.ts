@@ -14,6 +14,7 @@ import { attrs, esc } from './dom';
 import { quipBubble, seatPerson } from './guests';
 import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
+import { BASE_WIN } from '../stake';
 
 function miniCard(card: CardView): string {
   return `<span class="mini-card" title="${esc(cardName(card.kind))}">${cardSvg(card.kind, card.mods)}</span>`;
@@ -369,6 +370,18 @@ function worthChip(game: GameView): string {
 }
 
 /**
+ * The Augen the game needs when they differ from 61: a stake of the
+ * Einsatz-Leiter or a relic that lowers them. Suit games and Grand only;
+ * Null and Ramsch count no Augen.
+ */
+function winFromChip(game: GameView): string {
+  const d = game.declaration;
+  if (!d || d.game === 'Null' || d.game === 'Ramsch' || game.win_threshold === BASE_WIN) return '';
+  const augen = game.win_threshold;
+  return `<span class="worth win-from" ${attrs({ 'data-testid': 'win-from', title: t(de.table.winFromTitle, { augen }) })}>${esc(t(de.table.winFrom, { augen }))}</span>`;
+}
+
+/**
  * The small line above the trick: what is played, Kontra, the tricks so far
  * with the value at stake, and the pressed skat. The score of the game only
  * comes big at the end.
@@ -393,7 +406,7 @@ function gameLine(game: GameView): string {
       d.game === 'Ramsch'
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
         : t(de.table.tricks, { own: game.declarer_tricks, theirs: game.defender_tricks }),
-    )}</span>${worthChip(game)}
+    )}</span>${worthChip(game)}${winFromChip(game)}
     ${skat}
   </div>`;
 }

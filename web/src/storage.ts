@@ -94,6 +94,8 @@ export interface RunRecord {
   seed: string;
   /** Kurzer Abend; absent (entries from before) means ganzer Abend. */
   short?: boolean;
+  /** Stake of the Einsatz-Leiter; absent means 0. */
+  stake?: number;
   /** Section reached, from 1. */
   section: number;
   /** Series reached in that section, from 1. */
@@ -119,7 +121,8 @@ function isRecord(value: unknown): value is RunRecord {
     typeof r.bestGame === 'number' &&
     typeof r.date === 'string' &&
     typeof r.daily === 'boolean' &&
-    (r.short === undefined || typeof r.short === 'boolean')
+    (r.short === undefined || typeof r.short === 'boolean') &&
+    (r.stake === undefined || typeof r.stake === 'number')
   );
 }
 

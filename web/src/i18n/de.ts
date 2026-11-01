@@ -86,6 +86,13 @@ export const de = {
       Full: { name: 'Ganzer Abend', sections: '5 Abschnitte', aria: 'Ganzer Abend (5 Abschnitte)' },
       Short: { name: 'Kurzer Abend', sections: '3 Abschnitte', aria: 'Kurzer Abend (3 Abschnitte)' },
     } as Record<'Full' | 'Short', { name: string; sections: string; aria: string }>,
+    stake: 'Einsatz {stake}',
+    stakeWin: 'Gewinn ab {augen} Augen',
+    stakeAria: 'Einsatz {stake} von höchstens {max}: Gewinn ab {augen} Augen',
+    stakeDown: 'Einsatz senken',
+    stakeUp: 'Einsatz erhöhen',
+    sharedStake: 'Einsatz {stake}: Gewinn ab {augen} Augen.',
+    sharedStakeLocked: 'Einsatz {stake} hast du hier noch nicht erreicht. Du spielst mit Einsatz {fallback}.',
   },
 
   confirm: {
@@ -99,6 +106,8 @@ export const de = {
     title: 'Seed teilen',
     line: 'Seed {seed} · {character}',
     lineShort: 'Seed {seed} · {character} · kurzer Abend',
+    lineStake: ' · Einsatz {stake}',
+    nativeStake: ' Einsatz {stake}, Gewinn ab {augen} Augen.',
     hint: 'Wer den Link öffnet, spielt denselben Run: dieselben Karten, dieselben Gegner, derselbe Tresen.',
     copy: 'Link kopieren',
     copyShort: 'Kopieren',
@@ -127,6 +136,8 @@ export const de = {
     whereBoss: 'Abschnitt {section} · Boss',
     overview: 'Kreidetafel öffnen',
     tourHint: 'Kreidetafel',
+    stake: 'ab {augen}',
+    stakeTitle: 'Einsatz {stake}: Gewinn ab {augen} Augen',
     gamesAria: '{left} von {limit} Spielen übrig',
     passesAria: '{left} Pässe übrig',
     pending: 'Letzte Runde: nächstes Spiel ×{factor}',
@@ -204,8 +215,8 @@ export const de = {
   },
 
   characters: {
-    Declarer: { short: 'Alleinspieler', role: 'Farbe und Grand' },
-    NullPlayer: { short: 'Nullspieler', role: 'Nur Null' },
+    Declarer: { short: 'Alleinspieler', role: 'Farbe, Grand und Null' },
+    NullPlayer: { short: 'Nullspieler', role: 'Null-Spezialist' },
   },
 
   risks: {
@@ -286,6 +297,8 @@ export const de = {
     trickToYou: 'Dein Stich ({points} Augen)',
     tricks: 'Stiche {own} : {theirs}',
     worth: '{base} × {levels}',
+    winFrom: 'ab {augen}',
+    winFromTitle: 'Gewonnen ab {augen} Augen',
     worthFactor: '{base} × {levels} × {factor}',
     worthTitle: 'Grundwert × Gewinnstufen, so weit sicher. Gewonnen: {value}',
     skat: 'Gedrückt',
@@ -525,6 +538,7 @@ export const de = {
     replayAria: 'Seed {seed} als {character} nochmal spielen',
     daily: 'Tages-Seed',
     short: 'Kurz',
+    stake: 'Einsatz {stake}',
   },
 
   rewardKinds: {
@@ -668,6 +682,7 @@ export const de = {
       ['Tresen', 'Nach jeder gewonnenen Serie: Groschen ausgeben für Hausregeln, Figuren und Gegenstände.'],
       ['Rast', 'Manchmal statt des Tresens ein Ereignis mit einer Wahl.'],
       ['Danach', 'Freischaltungen und Statistik bleiben im Vereinsbuch, auch wenn der Run verloren ist.'],
+      ['Einsatz', 'Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge: 61, 62, 63 … Schneider bleibt bei 90, Null zählt keine Augen. Den Einsatz wählst du vor dem Run, je Charakter und für den ganzen und kurzen Abend getrennt.'],
     ] as [string, string][],
   },
 

@@ -236,7 +236,7 @@
         id: "blind_eye",
         focus: Trump,
         name: "Ein Auge zudrücken",
-        text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 58 Augen.",
+        text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 3 Augen weniger (58 statt 61).",
         rarity: Common,
         price: 8,
         passive: [WinThreshold(58)],

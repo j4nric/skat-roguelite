@@ -33,6 +33,7 @@ import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
+import { maxStake, pickedStake } from './stake';
 import {
   addToHistory,
   backupMeta,
@@ -60,7 +61,7 @@ import { hintText, renderHint } from './ui/hint';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
 import { coinIcon, renderHud } from './ui/hud';
 import { renderScore, ScoreBoard, sourceName } from './ui/score';
-import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart } from './ui/screens';
+import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
@@ -95,7 +96,8 @@ function runLine(view: RunView): string {
         score: view.series.score,
         target: view.series.target,
       });
-  return view.length === 'Short' ? `${line} · ${de.start.lengths.Short.name}` : line;
+  const short = view.length === 'Short' ? `${line} · ${de.start.lengths.Short.name}` : line;
+  return view.stake > 0 ? short + t(de.share.lineStake, { stake: view.stake }) : short;
 }
 
 function isCharacter(value: string | null): value is Character {
@@ -163,6 +165,7 @@ export class App {
       return isCharacter(stored) ? stored : 'Declarer';
     })(),
     pickLength: loadLength() === 'Short' ? 'Short' : 'Full',
+    pickStake: null,
     overlay: null,
     message: null,
     saveInfo: null,
@@ -370,7 +373,12 @@ export class App {
       this.render();
       return;
     }
-    this.requestStart({ seed, character: this.ui.pickCharacter, length: this.ui.pickLength, daily: false });
+    this.requestStart({ seed, character: this.ui.pickCharacter, length: this.ui.pickLength, stake: this.pickedStake(), daily: false });
+  }
+
+  /** The stake picked on the start screen, at most the highest unlocked. */
+  private pickedStake(): number {
+    return pickedStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickLength, this.ui.pickStake);
   }
 
   /** Start a run, after asking if that gives up a running one. */
@@ -383,12 +391,12 @@ export class App {
     this.startRun(start);
   }
 
-  private startRun({ seed, character, length, daily }: PendingStart): void {
+  private startRun({ seed, character, length, stake, daily }: PendingStart): void {
     let core: CoreRun;
     let startEvents = '[]';
     try {
       if (this.meta) {
-        const started = CoreRun.createWith(seed, character, length, this.meta);
+        const started = CoreRun.createWith(seed, character, length, stake, this.meta);
         core = started.run;
         startEvents = started.startEvents;
       } else {
@@ -428,6 +436,7 @@ export class App {
       character: view.character.character,
       seed: view.seed,
       ...(view.length === 'Short' ? { short: true } : {}),
+      ...(view.stake > 0 ? { stake: view.stake } : {}),
       section: view.series.section + 1,
       series: view.series.index + 1,
       won: view.phase === 'Won',
@@ -1309,7 +1318,7 @@ export class App {
         return;
       case 'play-shared': {
         const shared = this.ui.shared;
-        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, length: shared.length, daily: false });
+        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, length: shared.length, stake: sharedStake(this.ui), daily: false });
         return;
       }
       case 'dismiss-shared':
@@ -1318,14 +1327,16 @@ export class App {
         this.render();
         return;
       case 'play-daily':
-        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, length: this.ui.pickLength, daily: true });
+        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, length: this.ui.pickLength, stake: this.pickedStake(), daily: true });
         return;
       case 'replay': {
         const c = el.dataset.character ?? null;
         const seed = el.dataset.seed ?? '';
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
         const length: RunLength = el.dataset.length === 'Short' ? 'Short' : 'Full';
-        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, length, daily: false });
+        // Replayed at its stake, or the highest unlocked if that is lower.
+        const stake = isCharacter(c) ? Math.min(num('stake') < 0 ? 0 : num('stake'), maxStake(this.ui.meta, c, length)) : 0;
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, length, stake, daily: false });
         return;
       }
       case 'confirm-new':
@@ -1420,7 +1431,17 @@ export class App {
         const length = el.dataset.length;
         if (length === 'Full' || length === 'Short') {
           this.ui.pickLength = length;
+          this.ui.pickStake = null;
           saveLength(length);
+          this.render();
+        }
+        return;
+      }
+      case 'pick-stake': {
+        const max = maxStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickLength);
+        const stake = num('stake');
+        if (stake >= 0 && stake <= max) {
+          this.ui.pickStake = stake;
           this.render();
         }
         return;
@@ -1430,6 +1451,7 @@ export class App {
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
         if (isCharacter(c) && entry?.unlocked) {
           this.ui.pickCharacter = c;
+          this.ui.pickStake = null;
           saveCharacter(c);
           this.render();
         }

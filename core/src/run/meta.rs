@@ -92,6 +92,12 @@ pub struct MetaState {
     /// statistics when it ends.
     #[serde(default)]
     current_section: u32,
+    /// Einsatz-Leiter (DESIGN 9.3): the highest stake unlocked per
+    /// character and run length. Missing entries are 0 (61 Augen). A run
+    /// won at stake n unlocks n + 1 for its character and length. Ganzer
+    /// and kurzer Abend climb apart because a short win is easier.
+    #[serde(default)]
+    pub stakes: BTreeMap<Character, BTreeMap<RunLength, u32>>,
 }
 
 const fn meta_version() -> u32 {
@@ -105,6 +111,14 @@ pub enum MetaError {
     CharacterLocked(Character),
     /// The content has no such character.
     UnknownCharacter(Character),
+    /// The stake is above the highest unlocked for this character and
+    /// length.
+    StakeLocked {
+        /// The stake asked for.
+        stake: u32,
+        /// The highest unlocked.
+        max: u32,
+    },
 }
 
 impl fmt::Display for MetaError {
@@ -112,6 +126,9 @@ impl fmt::Display for MetaError {
         match self {
             MetaError::CharacterLocked(c) => write!(f, "character {c} is locked"),
             MetaError::UnknownCharacter(c) => write!(f, "unknown character {c}"),
+            MetaError::StakeLocked { stake, max } => {
+                write!(f, "stake {stake} is locked (highest unlocked: {max})")
+            }
         }
     }
 }
@@ -119,12 +136,14 @@ impl fmt::Display for MetaError {
 impl std::error::Error for MetaError {}
 
 impl MetaError {
-    /// Stable code for frontends: `CharacterLocked` or `UnknownCharacter`.
+    /// Stable code for frontends: `CharacterLocked`, `UnknownCharacter`
+    /// or `StakeLocked`.
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
             MetaError::CharacterLocked(_) => "CharacterLocked",
             MetaError::UnknownCharacter(_) => "UnknownCharacter",
+            MetaError::StakeLocked { .. } => "StakeLocked",
         }
     }
 }
@@ -142,6 +161,9 @@ pub struct CharacterEntry {
     pub unlocked: bool,
     /// The unlock that opens it, if it is locked.
     pub unlocked_by: Option<UnlockId>,
+    /// Highest stake unlocked per run length (Einsatz-Leiter), every
+    /// length listed.
+    pub max_stakes: BTreeMap<RunLength, u32>,
 }
 
 /// What kind of thing a reward is, for the menu.
@@ -295,12 +317,35 @@ impl MetaState {
     }
 
     /// The start of a run with `character` and `length` (ganzer or kurzer
-    /// Abend). Unlocks count in both.
+    /// Abend) at stake 0. Unlocks count in both.
     pub fn run_start_with(
         &self,
         content: &Content,
         character: Character,
         length: RunLength,
+    ) -> Result<RunStart, MetaError> {
+        self.run_start_staked(content, character, length, 0)
+    }
+
+    /// Highest stake unlocked for `character` and `length` (Einsatz-Leiter,
+    /// DESIGN 9.3); 0 before the first won run.
+    #[must_use]
+    pub fn max_stake(&self, character: Character, length: RunLength) -> u32 {
+        self.stakes
+            .get(&character)
+            .and_then(|by_length| by_length.get(&length))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The start of a run with `character`, `length` and `stake`. The
+    /// stake may be anything from 0 to [`MetaState::max_stake`].
+    pub fn run_start_staked(
+        &self,
+        content: &Content,
+        character: Character,
+        length: RunLength,
+        stake: u32,
     ) -> Result<RunStart, MetaError> {
         if content.character(character).is_none() {
             return Err(MetaError::UnknownCharacter(character));
@@ -308,11 +353,16 @@ impl MetaState {
         if !self.character_unlocked(content, character) {
             return Err(MetaError::CharacterLocked(character));
         }
+        let max = self.max_stake(character, length);
+        if stake > max {
+            return Err(MetaError::StakeLocked { stake, max });
+        }
         Ok(RunStart {
             character,
             locked_relics: self.locked_relics(content),
             locked_card_mods: self.locked_card_mods(content),
             length,
+            stake,
             ..RunStart::default()
         })
     }
@@ -354,7 +404,19 @@ impl MetaState {
                     stats.games_lost += 1;
                 }
             }
-            RunEvent::RunWon { character, length } => {
+            RunEvent::RunWon {
+                character,
+                length,
+                stake,
+            } => {
+                let next = stake.saturating_add(1);
+                let ladder = self
+                    .stakes
+                    .entry(*character)
+                    .or_default()
+                    .entry(*length)
+                    .or_insert(0);
+                *ladder = (*ladder).max(next);
                 stats.runs_finished += 1;
                 stats.runs_won += 1;
                 let entry = stats.characters.entry(*character).or_default();
@@ -448,6 +510,10 @@ impl MetaState {
                         } else {
                             Self::unlock_for(content, &Reward::Character(def.character)).cloned()
                         },
+                        max_stakes: [RunLength::Full, RunLength::Short]
+                            .into_iter()
+                            .map(|length| (length, self.max_stake(def.character, length)))
+                            .collect(),
                     }
                 })
                 .collect(),
@@ -670,6 +736,7 @@ mod tests {
         let events: Vec<RunEvent> = vec![RunEvent::RunWon {
             character: Character::Declarer,
             length: RunLength::Full,
+            stake: 0,
         }];
         let earned = meta.observe(&content, &events);
         assert!(earned.contains(&UnlockId::new("tour_won")));
@@ -689,6 +756,7 @@ mod tests {
             index: 1,
             character: Character::Declarer,
             length: RunLength::Full,
+            stake: 0,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 4);
@@ -698,6 +766,7 @@ mod tests {
         let events: Vec<RunEvent> = vec![RunEvent::RunWon {
             character: Character::Declarer,
             length: RunLength::Full,
+            stake: 0,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 5);

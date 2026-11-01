@@ -5,6 +5,7 @@
 
 import { de, cardName, contentName, contentText, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
+import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, UnlockEntry } from '../types';
 import { cardSvg, modIcon } from './cards';
@@ -87,14 +88,44 @@ function shortName(character: Character): string {
   return de.characters[character]?.short ?? contentName('characters', character);
 }
 
-/** "Seed 123 · Alleinspieler", with "· kurzer Abend" for a short evening. */
-function seedLine(seed: string, character: Character, length: RunLength): string {
-  return t(length === 'Short' ? de.share.lineShort : de.share.line, { seed, character: shortName(character) });
+/** "Seed 123 · Alleinspieler", with "· kurzer Abend" for a short evening and "· Einsatz 2" for a stake. */
+function seedLine(seed: string, character: Character, length: RunLength, stake = 0): string {
+  const line = t(length === 'Short' ? de.share.lineShort : de.share.line, { seed, character: shortName(character) });
+  return stake > 0 ? line + t(de.share.lineStake, { stake }) : line;
 }
 
 /** Text for the system share sheet. */
-function nativeText(seed: string, character: Character, length: RunLength): string {
-  return t(length === 'Short' ? de.share.nativeTextShort : de.share.nativeText, { seed, character: shortName(character) });
+function nativeText(seed: string, character: Character, length: RunLength, stake = 0): string {
+  const text = t(length === 'Short' ? de.share.nativeTextShort : de.share.nativeText, { seed, character: shortName(character) });
+  return stake > 0 ? text + t(de.share.nativeStake, { stake, augen: winThreshold(stake) }) : text;
+}
+
+/**
+ * Einsatz-Leiter (DESIGN 9.3): one row with arrows, "Einsatz 2 · Gewinn ab
+ * 63 Augen". Shown once any character has won a run; before that every
+ * stake is 0 and the row would only take room.
+ */
+function stakePick(ui: UiState): string {
+  if (!ladderStarted(ui.meta)) return '';
+  const max = maxStake(ui.meta, ui.pickCharacter, ui.pickLength);
+  const stake = pickedStake(ui.meta, ui.pickCharacter, ui.pickLength, ui.pickStake);
+  const augen = winThreshold(stake);
+  const arrow = (to: number, label: string, path: string): string =>
+    `<button class="seg stake-arrow" ${attrs({
+      'data-action': 'pick-stake',
+      'data-stake': to,
+      'aria-label': label,
+      disabled: to < 0 || to > max,
+    })}><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="${path}" fill="currentColor"/></svg></button>`;
+  return `<div class="stake-pick" role="group" data-testid="stake" ${attrs({
+    'data-stake': stake,
+    'data-max': max,
+    'aria-label': t(de.start.stakeAria, { stake, max, augen }),
+  })}>
+    ${arrow(stake - 1, de.start.stakeDown, 'M7 0 L7 10 L1 5 Z')}
+    <span class="stake-text"><b>${esc(t(de.start.stake, { stake }))}</b><span>${esc(t(de.start.stakeWin, { augen }))}</span></span>
+    ${arrow(stake + 1, de.start.stakeUp, 'M3 0 L3 10 L9 5 Z')}
+  </div>`;
 }
 
 /** Ganzer or kurzer Abend (DESIGN 5.3): two buttons side by side. */
@@ -122,9 +153,17 @@ function sharedOffer(ui: UiState): string {
   const locked = shared.locked
     ? `<p class="small is-warning">${esc(t(de.start.sharedLocked, { character: name, fallback: shortName('Declarer') }))}</p>`
     : '';
-  return `<section class="shared-offer" data-testid="shared-seed" ${attrs({ 'data-seed': shared.seed, 'data-character': shared.character, 'data-length': shared.length })}>
+  const playable = sharedStake(ui);
+  const stake =
+    shared.stake > 0
+      ? `<p class="small">${esc(t(de.start.sharedStake, { stake: shared.stake, augen: winThreshold(shared.stake) }))}</p>${
+          playable < shared.stake ? `<p class="small is-warning">${esc(t(de.start.sharedStakeLocked, { stake: shared.stake, fallback: playable }))}</p>` : ''
+        }`
+      : '';
+  return `<section class="shared-offer" data-testid="shared-seed" ${attrs({ 'data-seed': shared.seed, 'data-character': shared.character, 'data-length': shared.length, 'data-stake': playable })}>
     <div class="shared-head">${linkIcon(20)}<h2>${esc(de.start.sharedTitle)}</h2></div>
     <p>${esc(t(shared.length === 'Short' ? de.start.sharedTextShort : de.start.sharedText, { seed: shared.seed, character: name }))}</p>
+    ${stake}
     ${locked}
     ${ui.saveInfo ? `<p class="small">${esc(de.start.sharedKeep)}</p>` : ''}
     <div class="sheet-actions">
@@ -132,6 +171,17 @@ function sharedOffer(ui: UiState): string {
       <button class="btn" ${attrs({ 'data-action': 'dismiss-shared' })}>${esc(de.start.sharedDismiss)}</button>
     </div>
   </section>`;
+}
+
+/**
+ * The stake a shared link is played with: its own, but at most the highest
+ * this player has unlocked for the character that actually plays.
+ */
+export function sharedStake(ui: UiState): number {
+  const shared = ui.shared;
+  if (!shared) return 0;
+  const character = shared.locked ? 'Declarer' : shared.character;
+  return Math.min(shared.stake, maxStake(ui.meta, character, shared.length));
 }
 
 /** Result of a recorded run in a few words. */
@@ -149,7 +199,7 @@ function dailyBlock(ui: UiState): string {
     ${calendarIcon(today.getDate(), 40)}
     <div class="daily-text">
       <b>${esc(de.start.dailyTitle)}</b> <span>${esc(t(de.start.dailyDate, { date: dailyLabel(today) }))}</span>
-      <span class="small">${esc(de.start.dailyText)} ${esc(seedLine(seed, ui.pickCharacter, ui.pickLength))}</span>
+      <span class="small">${esc(de.start.dailyText)} ${esc(seedLine(seed, ui.pickCharacter, ui.pickLength, pickedStake(ui.meta, ui.pickCharacter, ui.pickLength, ui.pickStake)))}</span>
       ${played ? `<span class="small daily-done">${esc(t(de.start.dailyDone, { result: runResult(played) }))}</span>` : ''}
     </div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'play-daily' })}>${esc(t(de.start.dailyPlay, { name: shortName(ui.pickCharacter) }))}</button>
@@ -161,8 +211,8 @@ function dailyBlock(ui: UiState): string {
  * copies the link, the system share sheet where there is one. If copying
  * fails, the link shows in a field to copy by hand.
  */
-export function shareBlock(seed: string, character: Character, length: RunLength, ui: UiState): string {
-  const url = shareUrl(seed, character, length);
+export function shareBlock(seed: string, character: Character, length: RunLength, ui: UiState, stake = 0): string {
+  const url = shareUrl(seed, character, length, stake);
   const name = shortName(character);
   const copy = ui.copy && ui.copy.url === url ? ui.copy : null;
   const status = copy
@@ -173,14 +223,14 @@ export function shareBlock(seed: string, character: Character, length: RunLength
   let native = '';
   try {
     if (typeof navigator.share === 'function') {
-      native = `<button class="btn" ${attrs({ 'data-action': 'share-native', 'data-url': url, 'data-text': nativeText(seed, character, length) })}>${esc(de.share.native)}</button>`;
+      native = `<button class="btn" ${attrs({ 'data-action': 'share-native', 'data-url': url, 'data-text': nativeText(seed, character, length, stake) })}>${esc(de.share.native)}</button>`;
     }
   } catch {
     native = '';
   }
   return `<section class="share" data-testid="share">
     <div class="share-head">${linkIcon(18)}<b>${esc(de.share.title)}</b></div>
-    <p class="share-seed">${esc(de.end.seed)} <span class="seed-num" data-testid="run-seed">${esc(seed)}</span> · ${esc(name)}${length === 'Short' ? ` · ${esc(de.start.lengths.Short.name)}` : ''}</p>
+    <p class="share-seed">${esc(de.end.seed)} <span class="seed-num" data-testid="run-seed">${esc(seed)}</span> · ${esc(name)}${length === 'Short' ? ` · ${esc(de.start.lengths.Short.name)}` : ''}${stake > 0 ? esc(t(de.share.lineStake, { stake })) : ''}</p>
     <p class="small">${esc(de.share.hint)}</p>
     <div class="share-actions">
       <button class="btn btn-primary" ${attrs({ 'data-action': 'copy-link', 'data-url': url, 'data-testid': 'copy-link' })}>${linkIcon(16)}<span>${esc(de.share.copy)}</span></button>
@@ -216,6 +266,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     </div>
     ${chars ? `<section class="char-pick" aria-label="${esc(de.start.whoPlays)}"><h2 class="char-title">${esc(de.start.whoPlays)}</h2><div class="char-cards" data-testid="characters">${chars}</div></section>` : ''}
     ${meta ? lengthPick(ui) : ''}
+    ${meta ? stakePick(ui) : ''}
     <div class="start-actions">
       <button class="btn ${ui.saveInfo ? '' : 'btn-primary'} btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(newLabel)}</button>
       <label class="seed"><span>${esc(de.start.seedLabel)}</span>
@@ -238,7 +289,7 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
     <div class="sheet chalkboard end-board">
       <h1 class="${won ? 'is-won' : 'is-lost'}">${esc(won ? de.end.won : de.end.lost)}</h1>
       <p class="chalk-small">${esc(won ? de.end.wonText : t(de.end.lostText, { section: view.series.section + 1, series: view.series.index + 1 }))}</p>
-      ${shareBlock(view.seed, view.character.character, view.length, ui)}
+      ${shareBlock(view.seed, view.character.character, view.length, ui, view.stake ?? 0)}
       ${renderOverview(view, ui.meta, !won)}
     </div>
     <div class="end-actions">
@@ -312,8 +363,8 @@ function settingsBlock(ui: UiState): string {
 }
 
 /** The seed of the running run as one row with "Link kopieren" (menu). */
-function seedRow(seed: string, character: Character, length: RunLength, ui: UiState): string {
-  const url = shareUrl(seed, character, length);
+function seedRow(seed: string, character: Character, length: RunLength, ui: UiState, stake = 0): string {
+  const url = shareUrl(seed, character, length, stake);
   const copy = ui.copy && ui.copy.url === url ? ui.copy : null;
   const status = copy
     ? copy.ok
@@ -326,7 +377,7 @@ function seedRow(seed: string, character: Character, length: RunLength, ui: UiSt
       native = `<button class="btn btn-icon" ${attrs({
         'data-action': 'share-native',
         'data-url': url,
-        'data-text': nativeText(seed, character, length),
+        'data-text': nativeText(seed, character, length, stake),
         'aria-label': de.share.native,
         title: de.share.native,
       })}>${linkIcon(18)}</button>`;
@@ -388,7 +439,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(
         `<h2>${esc(de.header.menu)}</h2>
          ${settingsBlock(ui)}
-         ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, view.length, ui) : ''}
+         ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, view.length, ui, view.stake ?? 0) : ''}
          <div class="menu-list menu-grid">
            <button class="btn" ${attrs({ 'data-action': 'rules', 'data-testid': 'rules-open' })}>${esc(de.menu.rules)}</button>
            ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
@@ -473,7 +524,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         `<h2>${esc(de.confirm.title)}</h2>
          <p>${esc(de.confirm.text)}</p>
          ${ui.saveInfo ? `<p class="confirm-run"><b>${esc(ui.saveInfo)}</b></p>` : ''}
-         <p class="small">${esc(seedLine(overlay.start.seed, overlay.start.character, overlay.start.length))}</p>
+         <p class="small">${esc(seedLine(overlay.start.seed, overlay.start.character, overlay.start.length, overlay.start.stake))}</p>
          <div class="sheet-actions">
            <button class="btn btn-primary" ${attrs({ 'data-action': 'confirm-new' })}>${esc(de.confirm.go)}</button>
            <button class="btn" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.confirm.cancel)}</button>
@@ -577,12 +628,12 @@ function recentRow(r: RunRecord, meta: MetaView): string {
   const date = new Date(r.date);
   const when = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
   const replay = entry?.unlocked
-    ? `<button class="btn btn-small" ${attrs({ 'data-action': 'replay', 'data-seed': r.seed, 'data-character': r.character, 'data-length': r.short ? 'Short' : 'Full', 'aria-label': t(de.book.replayAria, { seed: r.seed, character: shortName(r.character) }) })}>${esc(de.book.replay)}</button>`
+    ? `<button class="btn btn-small" ${attrs({ 'data-action': 'replay', 'data-seed': r.seed, 'data-character': r.character, 'data-length': r.short ? 'Short' : 'Full', 'data-stake': r.stake ?? 0, 'aria-label': t(de.book.replayAria, { seed: r.seed, character: shortName(r.character) }) })}>${esc(de.book.replay)}</button>`
     : '';
   return `<li class="recent-row ${r.won ? 'is-won' : ''}" ${attrs({ 'data-seed': r.seed })}>
     ${portrait(characterPortraitId(r.character), 'portrait-xs')}
     <div class="recent-main">
-      <b>${esc(shortName(r.character))}</b>${r.short ? `<span class="recent-daily recent-short">${esc(de.book.short)}</span>` : ''}${r.daily ? `<span class="recent-daily">${esc(de.book.daily)}</span>` : ''}
+      <b>${esc(shortName(r.character))}</b>${r.short ? `<span class="recent-daily recent-short">${esc(de.book.short)}</span>` : ''}${r.stake ? `<span class="recent-daily recent-short">${esc(t(de.book.stake, { stake: r.stake }))}</span>` : ''}${r.daily ? `<span class="recent-daily">${esc(de.book.daily)}</span>` : ''}
       <span class="recent-result">${esc(runResult(r))} · ${esc(t(de.book.recentBest, { n: r.bestGame }))}</span>
       <span class="recent-seed">${esc(when)} · ${esc(t(de.book.recentSeed, { seed: r.seed }))}</span>
     </div>
