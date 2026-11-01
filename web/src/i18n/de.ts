@@ -162,7 +162,7 @@ export const de = {
     '9': 'Neun',
     T: 'Zehn',
     J: 'Unter',
-    Q: 'Ober',
+    Q: 'Oberin',
     K: 'König',
     A: 'Daus',
   },
@@ -870,7 +870,7 @@ export const de = {
    * write to them.
    */
   keywords: {
-    Augen: 'Die Punkte der Karten im Stich: Daus 11, Zehn 10, König 4, Ober 3, Unter 2. Ab 61 von 120 hast du gewonnen.',
+    Augen: 'Die Punkte der Karten im Stich: Daus 11, Zehn 10, König 4, Oberin 3, Unter 2. Ab 61 von 120 hast du gewonnen.',
     Stufe: 'Gewinnstufe: Spitzen, Spiel, Hand, Schneider und mehr. Spielwert ist Grundwert mal Stufen.',
     Grundwert: 'Der Wert der Spielart: Schellen 9, Rot 10, Grün 11, Eichel 12, Grand 24. Er wird mit den Stufen malgenommen.',
     Trumpf: 'Die Karten, die jede andere Farbe stechen: im Farbspiel die Unter und die angesagte Farbe, im Grand nur die Unter.',
@@ -939,8 +939,8 @@ export const de = {
   content: {
     relics: {
       old_lady: {
-        name: 'Alter Ober',
-        text: 'Jeder Ober zählt 5 Augen. Auch bei den Gegnern.',
+        name: 'Alte Oberin',
+        text: 'Jede Oberin zählt 5 Augen. Auch bei den Gegnern.',
       },
     },
     card_mods: {},

@@ -14,7 +14,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Wert / Bild | `Rank` | |
 | Sieben, Acht, Neun, Zehn | `Seven`, `Eight`, `Nine`, `Ten` | |
 | Bube | `Jack` | im Code nie `Unter`, nie `Wenzel`. In der Anzeige heißt er Unter (ADR 0010). |
-| Dame | `Queen` | im Code nie `Ober`. In der Anzeige heißt sie Ober (ADR 0010). |
+| Dame | `Queen` | im Code nie `Ober`. In der Anzeige heißt sie Oberin (ADR 0010, 0014). |
 | König | `King` | |
 | Ass | `Ace` | |
 | Augen | `card_points` | Summe im Blatt: 120 |
@@ -315,6 +315,6 @@ Nur für Spieltexte und Grafik. Code, Tests und Design-Dokument bleiben bei den 
 | `Ace` | Daus |
 | `Ten` | Zehn |
 | `King` | König |
-| `Queen` | Ober |
+| `Queen` | Oberin |
 | `Jack` | Unter |
 | `Nine`, `Eight`, `Seven` | Neun, Acht, Sieben |
