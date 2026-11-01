@@ -1,25 +1,25 @@
-// Run-Struktur als Daten. Zielwerte aus DESIGN 5.2 (erster Entwurf),
-// Wirtschaft aus DESIGN 12. Alle Zahlen sind Platzhalter für `balance`.
+// Run-Struktur als Daten. Zielwerte (DESIGN 5.2), Spiellimit, Pässe und
+// Wirtschaft (DESIGN 12) kalibriert für M2 mit dem Simulator, siehe
+// docs/balance/2026-11-01-m2-zielwerte.md. Die Zielwerte sind Reizwerte.
 (
     // (Serie 1, Serie 2, Boss-Serie) je Abschnitt.
     targets: [
-        (60, 100, 150),
-        (200, 300, 450),
-        (600, 900, 1400),
-        (2000, 3000, 5000),
-        (8000, 12000, 20000),
+        (18, 20, 24),
+        (27, 33, 36),
+        (44, 54, 63),
+        (77, 90, 110),
+        (132, 154, 180),
     ],
-    game_limit: 4,
-    passes: 2,
+    game_limit: 5,
+    passes: 3,
     relic_slots: 5,
     consumable_slots: 2,
     economy: (
-        series_reward: 4,
+        series_reward: 3,
         per_game_left: 1,
         interest_step: 5,
         interest_max: 5,
         reroll_cost: 2,
-        // Nicht im Design-Dokument festgelegt, Platzhalter.
         starting_coins: 4,
     ),
     shop: (

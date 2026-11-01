@@ -125,23 +125,27 @@ Run (eine Tournee)
 
 ### 5.1 Die Serie
 
-- Jede Serie hat einen **Zielwert** (z. B. 120 Punkte) und ein **Spiellimit** (z. B. 4 Spiele).
+- Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit** (in M2: 5 Spiele, davon bis zu 3 Pässe).
 - Gewonnene Spiele addieren ihren Spielwert. Verlorene Spiele ziehen den doppelten Spielwert ab.
 - Der Spieler darf ein Spiel **einpassen** (nicht spielen). Das kostet ein Spiel vom Limit, aber keine Punkte. Zahl der erlaubten Pässe ist begrenzt und durch Relikte erweiterbar.
 - Wer das Limit erreicht, ohne den Zielwert zu schaffen, verliert den Run.
 - Übrige Spiele am Ende einer gewonnenen Serie werden in Groschen umgewandelt (Zinsmechanik wie in Balatro).
 
-### 5.2 Zielwert-Progression (erster Entwurf)
+### 5.2 Zielwert-Progression (M2, kalibriert)
+
+Spiellimit 5, Pässe 3 pro Serie. Die Zielwerte sind Reizwerte.
 
 | Abschnitt | Serie 1 | Serie 2 | Boss |
 |---|---|---|---|
-| 1 | 60 | 100 | 150 |
-| 2 | 200 | 300 | 450 |
-| 3 | 600 | 900 | 1400 |
-| 4 | 2000 | 3000 | 5000 |
-| 5 | 8000 | 12000 | 20000 |
+| 1 | 18 | 20 | 24 |
+| 2 | 27 | 33 | 36 |
+| 3 | 44 | 54 | 63 |
+| 4 | 77 | 90 | 110 |
+| 5 | 132 | 154 | 180 |
 
-Zur Einordnung: Ein durchschnittlicher Grand ohne Upgrades liegt bei 48 bis 72 Punkten. Die Kurve verlangt also ab Abschnitt 3 echte Upgrades an Grundwert und Stufen. Die Zahlen sind Platzhalter und werden über den Simulator kalibriert.
+Kalibriert am 01.11.2026 mit dem Simulator gegen den Run-Bot, Messung und Begründung in `docs/balance/2026-11-01-m2-zielwerte.md`. Mit diesen Werten gewinnt der Bot Serie 1-1 in 70 % der Runs, 26 % erreichen Abschnitt 2, 7 % Abschnitt 3, 1 % Abschnitt 4. Das liegt nah an der Decke des Bots: Selbst mit Zielwert 1 überall erreicht er nur 31 % Abschnitt 2.
+
+Zur Einordnung: 18 ist der kleinste Wert eines gewonnenen Spiels, Serie 1-1 heißt also „ein Spiel netto gewinnen“. Ein durchschnittlicher Grand ohne Upgrades liegt bei 48 bis 72 Punkten. Die Kurve wächst um den Faktor 1,6 bis 1,7 pro Abschnitt, weil keine M2-Hausregel multiplikativ skaliert. Der erste Entwurf (60 bis 20 000) setzte das voraus. Abschnitt 4 und 5 sind mit dem Bot kaum gemessen und gelten als Vorschlag. In M5 wird die Kurve mit PIMC-KI und Testspielen neu kalibriert. Für Menschen ist Abschnitt 1 bis dahin bewusst leicht.
 
 ---
 
@@ -324,7 +328,7 @@ Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander 
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.
 - **Ausgaben am Tresen**: Hausregeln, Figuren, Verbrauchsgegenstände, Kartenmodifikationen, Neuauslage.
-- **Richtwerte**: Serie-Grundbetrag 4, Bonus pro übrigem Spiel 1, Zinsen 1 pro 5 Groschen bis maximal 5. Hausregeln kosten 5 bis 8, Figuren 6 bis 10, Verbrauchsgegenstände 2 bis 4.
+- **Richtwerte (M2, kalibriert)**: Startkapital 4, Serie-Grundbetrag 3, Bonus pro übrigem Spiel 1, Zinsen 1 pro 5 Groschen bis maximal 5, Neuauslage 2. Hausregeln kosten 5 bis 8: starke 7 bis 8 (Bockrunde 8, Alte Dame 7, Schenken 7, Tournee 8), schwache und noch nicht wirksame 5. Figuren 6 bis 10, Verbrauchsgegenstände 2 bis 4. Messung und Begründung in `docs/balance/2026-11-01-m2-zielwerte.md`. Der Run-Bot hat damit beim Start von Abschnitt 2 im Mittel drei Hausregeln, ab Abschnitt 3 alle fünf Plätze belegt. Fürs Spätspiel fehlen noch Ausgaben (offen für M4 und M5).
 
 ---
 
