@@ -43,6 +43,8 @@ pub mod opponents;
 pub mod player;
 pub mod view;
 
+mod settle;
+
 mod value_preview;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -493,6 +495,12 @@ pub enum RunAction {
         #[serde(default)]
         take: Option<u32>,
     },
+    /// "Rest abkürzen": end the game in progress when the remaining cards
+    /// can no longer change its score ([`view::GameView::can_settle`],
+    /// [`Run::can_settle`]). The remaining cards are played out by a fixed
+    /// rule and the game is scored as if played. Fails with
+    /// [`RunError::NotDecided`] otherwise.
+    SettleGame,
     /// Choose an option of the open encounter, with a target card if the
     /// option needs one; then the next series starts.
     ChooseEncounter {
@@ -791,6 +799,9 @@ pub enum RunError {
     /// "Kreide" cannot repaint this card into this suit: a jack, a blank,
     /// or the suit it already has.
     CannotChalk,
+    /// The rest of the game can still change its score
+    /// ([`RunAction::SettleGame`]).
+    NotDecided,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -874,6 +885,9 @@ pub enum RunErrorCode {
     AiToMove,
     /// "Kreide" cannot repaint this card into this suit.
     CannotChalk,
+    /// The rest of the game can still change its score; it cannot be
+    /// settled ([`RunAction::SettleGame`]).
+    NotDecided,
 }
 
 impl RunErrorCode {
@@ -918,6 +932,7 @@ impl RunErrorCode {
             RunErrorCode::DiscardForbidden => "DiscardForbidden",
             RunErrorCode::AiToMove => "AiToMove",
             RunErrorCode::CannotChalk => "CannotChalk",
+            RunErrorCode::NotDecided => "NotDecided",
         }
     }
 }
@@ -968,6 +983,7 @@ impl RunError {
             RunError::RamschRequired => RunErrorCode::RamschRequired,
             RunError::AiToMove => RunErrorCode::AiToMove,
             RunError::CannotChalk => RunErrorCode::CannotChalk,
+            RunError::NotDecided => RunErrorCode::NotDecided,
         }
     }
 }
@@ -999,6 +1015,7 @@ impl fmt::Display for RunError {
             RunError::RamschRequired => f.write_str("the Ramsch must be played"),
             RunError::AiToMove => f.write_str("a defender is to move"),
             RunError::CannotChalk => f.write_str("this card cannot be repainted into this suit"),
+            RunError::NotDecided => f.write_str("the rest of the game is not decided"),
         }
     }
 }
@@ -1530,6 +1547,7 @@ impl Run {
             RunAction::Reroll => self.reroll(content, events),
             RunAction::LeaveShop => self.leave_shop(content, events),
             RunAction::TakeFromSkat { give, take } => self.take_from_skat(give, take, events),
+            RunAction::SettleGame => self.settle_game(content, events),
             RunAction::ChooseEncounter { option, target } => {
                 self.choose_encounter(content, option, target, events)
             }
@@ -3353,6 +3371,8 @@ mod m5_tests;
 mod m7_tests;
 #[cfg(test)]
 mod schnapps_tests;
+#[cfg(test)]
+mod settle_tests;
 #[cfg(test)]
 mod skat_order_tests;
 #[cfg(test)]

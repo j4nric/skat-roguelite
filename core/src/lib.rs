@@ -15,6 +15,7 @@ pub mod ai;
 pub mod cards;
 pub mod content;
 pub mod deck;
+pub mod endgame;
 pub mod game;
 pub mod rng;
 pub mod rules;

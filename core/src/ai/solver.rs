@@ -26,7 +26,7 @@ use crate::rules::{self, GameType};
 /// Kind of a non-trump card: its suit (0..4). Trumps and blanks follow.
 const TRUMP: u8 = 4;
 /// Kind of a blank: follows nothing, never wins.
-const BLANK: u8 = 5;
+pub(crate) const BLANK: u8 = 5;
 /// Most live cards a position may hold.
 const MAX_CARDS: usize = 32;
 /// "No move" marker in the transposition table.
@@ -1001,7 +1001,7 @@ fn range_mask(lo: u32, hi: u32) -> u32 {
 }
 
 /// Kind of a card: suit 0..4 for non-trumps, [`TRUMP`], [`BLANK`].
-fn card_kind<C: PlayingCard>(game: GameType, card: C) -> u8 {
+pub(crate) fn card_kind<C: PlayingCard>(game: GameType, card: C) -> u8 {
     match card.face() {
         None => BLANK,
         Some(_) if rules::is_trump(game, card) => TRUMP,
@@ -1012,7 +1012,7 @@ fn card_kind<C: PlayingCard>(game: GameType, card: C) -> u8 {
 /// Strength within the kind, 0 for cards that never win. Trumps follow
 /// [`rules::trump_order_key`] (a "Bube ehrenhalber" half a step below the
 /// printed card of equal strength), so equal values really tie.
-fn card_strength<C: PlayingCard>(game: GameType, card: C) -> u8 {
+pub(crate) fn card_strength<C: PlayingCard>(game: GameType, card: C) -> u8 {
     if card.is_blank() || card.never_wins() {
         return 0;
     }

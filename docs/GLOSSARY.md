@@ -66,6 +66,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Kontra | `kontra` | Gegenspieler verdoppeln (Hausregel, Boss) |
 | Re | `re` | Antwort des Alleinspielers auf Kontra |
 | Schenken (Gegner geben auf) | `concede` | Rest der Stiche und Augen geht an den Alleinspieler |
+| Rest abkürzen (entschiedenes Spiel beenden) | `settle` | `RunAction::SettleGame`, Sicht `can_settle`, `Run::can_settle`; Schranken der Reststiche in `endgame` (`Reach`, `Span`). Nicht verwechseln mit `Run::settle` (ein fertiges Spiel werten) |
 | Schieben (Hausregel: neu geben lassen) | `redeal` | `RunAction::Redeal`, einmal pro Serie vor der Ansage, alle Hände und Skat neu, kostet kein Spiel (DESIGN 8.1). Effekt `SeriesRedeal` |
 | Neu geben (Schieben, „Neues Blatt“) | `redeal` | Ereignis `Redealt` |
 | Skat neu ziehen (nur Spielebene) | `redraw_skat` | `Game::redraw_skat`: Gegner und Skat neu, eigene Hand bleibt. Von keinem Inhalt mehr genutzt |
