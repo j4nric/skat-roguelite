@@ -12,7 +12,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
-Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Ober, Daus), siehe ADR 0010. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
 
 ---
 

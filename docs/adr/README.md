@@ -15,7 +15,8 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0007 | Web-Export auf dem vServer, Auto-Deploy über GitHub Actions | Angenommen |
 | 0008 | Hinter dem bestehenden Caddy der Haushalt-App | Angenommen |
 | 0009 | Web-Frontend mit WebAssembly-Kern statt Godot | Angenommen |
-| 0010 | Deutsches Blatt in der Darstellung | Angenommen |
+| 0010 | Deutsches Blatt in der Darstellung | Angenommen, Ober heißt Oberin seit 0014 |
 | 0011 | Erst der Skat, dann die Ansage | Angenommen, ein Punkt geändert durch 0013 |
 | 0012 | Null für alle, Nullspieler als Spezialist | Angenommen |
 | 0013 | Schneider, Schwarz und Ouvert auch nach dem Skat | Angenommen |
+| 0014 | Die Oberin statt des Obers | Angenommen |
