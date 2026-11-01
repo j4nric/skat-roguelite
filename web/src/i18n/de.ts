@@ -640,7 +640,7 @@ export const de = {
       ['Grand', '24'],
       ['Null', '23'],
     ] as [string, string][],
-    nullNote: 'Null darf jeder ansagen: 23, Hand 35, Ouvert 46, Ouvert Hand 59. Der Nullspieler rechnet 23 × Stufe (Spiel 1, Hand +1, Ouvert +2), bei Sieg mit Stilbonus.',
+    nullNote: 'Null darf jeder ansagen. Es zählt 23 × Stufe (Spiel 1, Hand +1, Ouvert +2), bei Sieg mit Stilbonus.',
     levelsTitle: 'Gewinnstufen',
     levels: [
       'Mit oder ohne: je Spitze eine Stufe, ab dem Eichel-Unter',
