@@ -2,6 +2,7 @@
 // visual state (selection, overlays, the animation snapshot).
 
 import type { SharedSeed } from '../seed';
+import type { Quip } from './guests';
 import type { Settings } from '../settings';
 import type { RunRecord } from '../storage';
 import type { BossInfo, CardView, Character, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunView, ScoreView, Seat } from '../types';
@@ -84,6 +85,8 @@ export interface UiState {
   swapTake: number | null;
   /** The opponent whose move the core is computing (thought bubble). */
   thinking: Seat | null;
+  /** A Stammgast's speech bubble on the table, at most one at a time. */
+  quip: Quip | null;
   /** A seed from a shared link, offered on the start screen. */
   shared: (SharedSeed & { locked: boolean }) | null;
   /** Result of the last "copy link" tap: the link and whether it worked. */

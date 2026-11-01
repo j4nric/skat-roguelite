@@ -10,6 +10,7 @@ import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunView, 
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { goodSvg } from './goods';
+import { seatPerson } from './guests';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
@@ -225,10 +226,8 @@ function sheet(inner: string, closable = true, cls = '', overlayCls = ''): strin
 
 export function renderKontra(view: RunView): string {
   const kontra = view.game?.kontra;
-  const seat = typeof kontra === 'object' && 'Kontra' in kontra ? kontra.Kontra : 1;
-  const boss = seat === 1 && view.series.is_boss && view.series.boss ? view.series.boss : null;
-  const face = boss ? bossPortraitId(boss.id) : `p-opp-${seat}`;
-  const name = boss ? contentName('bosses', boss.id) : (de.seats[seat] ?? '');
+  const kontraSeat = typeof kontra === 'object' && 'Kontra' in kontra ? kontra.Kontra : 1;
+  const { face, name } = seatPerson(view, kontraSeat === 2 ? 2 : 1);
   return sheet(
     `<div class="speaker">${portrait(face, 'portrait-lg')}<div class="speech"><h2>${esc(de.kontra.title)}</h2>
      <p>${esc(t(de.kontra.text, { name }))}</p></div></div>

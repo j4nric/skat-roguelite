@@ -17,7 +17,12 @@
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series.
 // The card sprite (German deck) and the shipped pixel fonts (Kenney, CC0)
-// must be present. The table must fit the visible height without scrolling
+// must be present, and a face for every Stammgast of core/content/guests.ron.
+// The opponents are Stammgäste with names of their own (two different
+// ones, new ones in the next series, the boss on the left in a boss
+// series); the first game of a series starts with a quip that stays in its
+// opponent's box, and the table still fits with it at 390 × 844 and
+// 375 × 667. The table must fit the visible height without scrolling
 // (DESIGN 16): while choosing Skat oder Hand, in the hand Ansage, while
 // discarding with twelve cards, in the Ansage after the skat and while
 // playing, at 390 × 844, 375 × 667, 360 × 740, 412 × 915, 1280 × 800 and
@@ -230,6 +235,55 @@ async function assertFits(page, label, sizes = FIT_SIZES) {
   log(`${label}: table fits ${sizes.map((s) => `${s.width}x${s.height}${s.insets ? ' PWA' : ''}`).join(', ')}`);
 }
 
+/** Look ids of the Stammgäste in the core content (core/content/guests.ron). */
+function guestLooks() {
+  const ron = readFileSync(resolve(webDir, '..', 'core', 'content', 'guests.ron'), 'utf8');
+  return [...ron.matchAll(/\blook:\s*"([^"]+)"/g)].map((m) => m[1]);
+}
+
+/**
+ * The two opponents are Stammgäste with a name and a face of their own
+ * (DESIGN 16, M6), the names differ; in a boss series the boss sits on
+ * the left and a Stammgast on the right. A quip, if one shows, stays in
+ * its opponent's box and covers neither the hand nor a button.
+ */
+async function assertGuests(page, label, { boss = false } = {}) {
+  const r = await page.evaluate(() => {
+    const box = (el) => el.getBoundingClientRect();
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const quip = document.querySelector('[data-testid="quip"]');
+    const q = quip ? box(quip) : null;
+    const owner = quip?.closest('.opp');
+    const covered = q
+      ? [...document.querySelectorAll('.hand-card, button, .trick')].filter((el) => !quip.contains(el) && hit(q, box(el))).map((el) => el.className || el.tagName)
+      : [];
+    return {
+      opps: [...document.querySelectorAll('.opp')].map((o) => ({
+        seat: o.dataset.seat,
+        guest: o.dataset.guest ?? null,
+        face: o.dataset.face ?? '',
+        boss: o.classList.contains('is-boss'),
+        name: o.querySelector('[data-testid="opp-name"]')?.textContent?.trim() ?? '',
+      })),
+      quip: quip ? { text: quip.textContent.trim(), inside: owner ? (() => { const o = box(owner); return q.left >= o.left - 1 && q.right <= o.right + 1 && q.top >= o.top - 1 && q.bottom <= o.bottom + 1; })() : false, covered } : null,
+    };
+  });
+  const where = `${label}: opponents`;
+  if (r.opps.length !== 2) fail(`${where}: ${r.opps.length} opponent boxes`);
+  const [left, right] = r.opps;
+  for (const o of r.opps) {
+    if (!o.name || /^Gegner (links|rechts)$/.test(o.name)) fail(`${where}: seat ${o.seat} has no name of its own (${o.name || 'empty'})`);
+    if (!o.boss && (!o.guest || !o.face.startsWith('p-guest-'))) fail(`${where}: seat ${o.seat} is no Stammgast with a face (${JSON.stringify(o)})`);
+  }
+  if (left.name === right.name) fail(`${where}: both are called ${left.name}`);
+  if (boss && !(left.boss && !right.boss)) fail(`${where}: the boss should sit left, a Stammgast right (${JSON.stringify(r.opps)})`);
+  if (!boss && (left.boss || right.boss)) fail(`${where}: a boss in a normal series`);
+  if (r.quip && !r.quip.inside) fail(`${where}: the quip "${r.quip.text}" leaves its opponent's box`);
+  if (r.quip?.covered.length) fail(`${where}: the quip covers ${r.quip.covered.join(', ')}`);
+  log(`${where}: ${left.name} and ${right.name}${r.quip ? `, quip "${r.quip.text}"` : ''}`);
+  return r;
+}
+
 /**
  * A browser context in which the Wirt keeps quiet: before the app starts,
  * the settings get `hints: false` unless the page already stored settings.
@@ -370,6 +424,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
+  await assertGuests(page, 'boss series', { boss: true });
   await shoot(page, 'table-boss');
   await assertFits(page, 'boss at the table');
 
@@ -1167,6 +1222,12 @@ async function run() {
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
     const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
+    // Every Stammgast of the core content has a face drawn in ui/people.ts.
+    const looks = guestLooks();
+    if (looks.length < 12) fail(`only ${looks.length} Stammgäste in guests.ron`);
+    const faceless = await page.evaluate((ids) => ids.filter((look) => !document.getElementById(`p-guest-${look}`)), looks);
+    if (faceless.length) fail(`Stammgäste without a face in ui/people.ts: ${faceless.join(', ')}`);
+    log(`${looks.length} Stammgäste, each with a face`);
 
     // A new player: fresh meta state, Alleinspieler picked, Nullspieler locked.
     const fresh = await storedMeta(page);
@@ -1192,8 +1253,11 @@ async function run() {
     await page.click('[data-action="new-run"]');
     await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
+    const seated = await assertGuests(page, 'first series');
+    if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
     await shoot(page, 'table-declare');
     await assertFits(page, 'Skat oder Hand');
+    await assertFits(page, 'Skat oder Hand with a quip', [PHONE, { width: 375, height: 667 }]);
 
     // Pass once.
     const passes = Number(await text(page, 'passes-left'));
@@ -1318,6 +1382,13 @@ async function run() {
     await page.click('[data-action="leave-shop"]');
     await page.waitForSelector('.declare, [data-action="boss-go"]');
     log('next series started');
+    if (await page.locator('.declare').count()) {
+      // New series, new Stammgäste: neither of the first two sits down again.
+      const next = await assertGuests(page, 'second series');
+      const before = seated.opps.map((o) => o.guest);
+      const again = next.opps.filter((o) => before.includes(o.guest));
+      if (again.length) fail(`the same Stammgast in two series in a row: ${again.map((o) => o.name).join(', ')}`);
+    }
 
     // Reload once more: the run is still there.
     await page.reload();

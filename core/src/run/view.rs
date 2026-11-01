@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use super::guests::GuestInfo;
 use super::{
     EncounterChoice, Kontra, Run, RunAction, RunPhase, RunStats, SERIES_PER_SECTION, sell_price,
     series_target,
@@ -115,6 +116,9 @@ pub struct SeriesView {
     pub passes_used: u32,
     /// The boss of a boss series.
     pub boss: Option<BossInfo>,
+    /// The Stammgäste at the table, seat 1 (left) and seat 2 (right). In a
+    /// boss series the boss takes the left seat in the frontend.
+    pub guests: Vec<GuestInfo>,
 }
 
 /// The character of the run.
@@ -828,6 +832,7 @@ impl Run {
                 passes_left: series.passes_left,
                 passes_used: series.passes_used,
                 boss,
+                guests: self.guest_infos(content),
             },
             upcoming_boss,
             next_series: self.next_series_view(content),

@@ -1,0 +1,96 @@
+// Stammgäste (DESIGN 10, entschieden am 01.11.2026): die normalen Gegner.
+// Wechselnde Gäste mit Namen und Pixelgesicht, ohne eigene Regeln; Regeln
+// bleiben den Bossen. Zu Beginn jeder Serie setzen sich zwei an den Tisch
+// (eigener Zufallsstrom aus dem Seed des Runs, siehe core/src/run/guests.rs).
+// In der Boss-Serie sitzt links der Boss, rechts ein Stammgast.
+//
+// look: Id des Gesichts in web/src/ui/people.ts (GUEST_LOOKS).
+// quips: kurze Sprüche für die Sprechblase. greet beim ersten Spiel der
+// Serie, win wenn der Gast einen Stich holt, lose wenn du einen holst.
+// Kurz halten (die Blase ist klein), freundlich, kein Spott über Personen.
+[
+    (
+        id: "kalle",
+        name: "Kalle",
+        look: "kalle",
+        quips: (greet: "Na, dann misch mal ordentlich.", win: "Der gehört Kalle!", lose: "Ach, lass stecken."),
+    ),
+    (
+        id: "gerda",
+        name: "Die Gerda",
+        look: "gerda",
+        quips: (greet: "Ich hab heut ein gutes Gefühl, Schätzchen.", win: "Tja, Schätzchen.", lose: "Na warte."),
+    ),
+    (
+        id: "ede",
+        name: "Ede vom Bau",
+        look: "ede",
+        quips: (greet: "Feierabend! Jetzt wird gekloppt.", win: "Sitzt, passt, wackelt.", lose: "Hat der Polier nicht gesehen."),
+    ),
+    (
+        id: "frau_schmitz",
+        name: "Frau Schmitz",
+        look: "schmitz",
+        quips: (greet: "Guten Abend. Bitte ordentlich geben.", win: "Das gehört sich so.", lose: "Also wirklich."),
+    ),
+    (
+        id: "onkel_heinz",
+        name: "Onkel Heinz",
+        look: "heinz",
+        quips: (greet: "Früher ging's um Streichhölzer.", win: "Gelernt ist gelernt.", lose: "Zu meiner Zeit …"),
+    ),
+    (
+        id: "moni",
+        name: "Moni",
+        look: "moni",
+        quips: (greet: "Los, ich hab nachher noch was vor!", win: "Zack!", lose: "Menno."),
+    ),
+    (
+        id: "paule",
+        name: "Paule",
+        look: "paule",
+        quips: (greet: "Ich spiel nur zum Spaß. Ehrlich.", win: "Ha! Gesehen?", lose: "Das war Absicht."),
+    ),
+    (
+        id: "doktor",
+        name: "Der Doktor",
+        look: "doktor",
+        quips: (greet: "Rein statistisch gewinne ich heute.", win: "Wie berechnet.", lose: "Eine Abweichung."),
+    ),
+    (
+        id: "tante_erna",
+        name: "Tante Erna",
+        look: "erna",
+        quips: (greet: "Hat jemand Kuchen mitgebracht?", win: "Ach, wie schön!", lose: "Macht nix, Kind."),
+    ),
+    (
+        id: "jupp",
+        name: "Jupp",
+        look: "jupp",
+        quips: (greet: "Prost! Auf ein faires Spiel.", win: "Der ist meiner.", lose: "Kannste nix machen."),
+    ),
+    (
+        id: "lotte",
+        name: "Lotte",
+        look: "lotte",
+        quips: (greet: "Ich schreib heut an, ja?", win: "Strich für mich!", lose: "Huch."),
+    ),
+    (
+        id: "kowalski",
+        name: "Kowalski",
+        look: "kowalski",
+        quips: (greet: "Kowalski. Angenehm.", win: "Läuft bei mir.", lose: "Noch ist nix entschieden."),
+    ),
+    (
+        id: "kiosk_hilde",
+        name: "Hilde vom Kiosk",
+        look: "hilde",
+        quips: (greet: "Kiosk ist zu, jetzt wird gespielt.", win: "Und 'ne Tüte Gemischtes!", lose: "Nächstes Mal."),
+    ),
+    (
+        id: "muetzen_bernd",
+        name: "Mützen-Bernd",
+        look: "bernd",
+        quips: (greet: "Mütze bleibt auf. Glücksmütze.", win: "Siehste, die Mütze!", lose: "Mütze saß schief."),
+    ),
+]

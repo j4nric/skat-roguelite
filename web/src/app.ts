@@ -52,6 +52,7 @@ import {
 import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source, Step } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
+import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
 import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
 import { coinIcon, renderHud } from './ui/hud';
@@ -96,6 +97,11 @@ function runLine(view: RunView): string {
 function isCharacter(value: string | null): value is Character {
   return value === 'Declarer' || value === 'NullPlayer';
 }
+
+/** How long a Stammgast's bubble stays at tempo "Normal" (reading time, not motion). */
+const QUIP_MS = 2800;
+/** At least this many tricks between two quips: about one every second game. */
+const QUIP_EVERY_TRICKS = 14;
 
 /** Pauses in milliseconds at tempo "Normal"; reduced motion shortens them. */
 const DELAY = {
@@ -144,6 +150,7 @@ export class App {
     omaPick: false,
     swapTake: null,
     thinking: null,
+    quip: null,
     shared: null,
     copy: null,
     history: loadHistory(),
@@ -174,6 +181,11 @@ export class App {
   private hintsShown = new Set<HintId>();
   /** The player passed a game in this visit (for the hint about passing). */
   private passedOnce = false;
+  /** Series ("section-index") whose Stammgast already said hello. */
+  private quipSeries = '';
+  /** Tricks since the last quip: quips stay rare. */
+  private tricksSinceQuip = 0;
+  private quipTimer: number | undefined;
   private renderedOverlay: Overlay | null = null;
   private overlayDirty = false;
   private scoreBoard: ScoreBoard | null = null;
@@ -629,6 +641,9 @@ export class App {
     this.ui.overlay = null;
     this.resetTableChoices();
     if (dealt && view.game) this.afterRender.push(() => this.dealEffect());
+    // A fresh series says hello; a run resumed mid-series does not.
+    if (dealt && view.game && view.series.games_played === 0) this.greetSeries(view);
+    else this.quipSeries = `${view.series.section}-${view.series.index}`;
     this.render();
   }
 
@@ -812,6 +827,7 @@ export class App {
         this.ui.anim = null;
         this.ui.view = after;
         this.resetTableChoices();
+        this.greetSeries(after);
         this.afterRender.push(() => this.dealEffect());
         continue;
       }
@@ -919,6 +935,7 @@ export class App {
         trick.winner === 0
           ? t(de.table.trickToYou, { points: card_points })
           : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
+      this.trickQuip(after, trick.winner, card_points);
       this.render();
       await this.pause(DELAY.trickShow);
       const target = this.winnerRect(trick.winner);
@@ -1022,8 +1039,50 @@ export class App {
   }
 
   private seatLabel(seat: Seat, view: RunView): string {
-    if (seat === 1 && view.series.is_boss && view.series.boss) return contentName('bosses', view.series.boss.id);
-    return de.seats[seat] ?? '';
+    return seatLabelOf(view, seat);
+  }
+
+  /**
+   * A Stammgast says one of his lines (from the core content) in a small
+   * bubble at his seat: hello at the first game of a series, and now and
+   * then after a trick worth something. One bubble at a time, never while
+   * the Wirt explains something, gone after a few seconds (tempo setting).
+   * Pure decoration: it changes nothing and catches no taps.
+   */
+  private sayQuip(view: RunView, seat: 1 | 2, line: 'greet' | 'win' | 'lose'): void {
+    const guest = seatPerson(view, seat).guest;
+    if (!guest || this.hint) return;
+    this.ui.quip = { seat, text: guest[line] };
+    this.tricksSinceQuip = 0;
+    window.clearTimeout(this.quipTimer);
+    const ms = Math.max(1800, QUIP_MS * TEMPO_FACTOR[this.ui.settings.tempo]);
+    this.quipTimer = window.setTimeout(() => {
+      this.ui.quip = null;
+      // Remove just the bubble: a full render could cut a running animation.
+      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
+    }, ms);
+  }
+
+  /** Hello from a Stammgast when a new series sits down at the table. */
+  private greetSeries(view: RunView): void {
+    const key = `${view.series.section}-${view.series.index}`;
+    if (key === this.quipSeries) return;
+    this.quipSeries = key;
+    // The boss on the left has no lines; else the two take turns per series.
+    const seat = view.series.is_boss ? 2 : (((view.series.section * 3 + view.series.index) % 2) + 1) as 1 | 2;
+    this.sayQuip(view, seat, 'greet');
+  }
+
+  /** Now and then a line after a trick worth something (Augen from the core). */
+  private trickQuip(view: RunView, winner: Seat, points: number): void {
+    this.tricksSinceQuip += 1;
+    if (this.tricksSinceQuip < QUIP_EVERY_TRICKS || points < 10) return;
+    if (winner !== 0) {
+      this.sayQuip(view, winner, 'win');
+      return;
+    }
+    const seat = view.series.is_boss ? 2 : ((this.tricksSinceQuip % 2) + 1) as 1 | 2;
+    this.sayQuip(view, seat, 'lose');
   }
 
   private rectOf(selector: string): DOMRect | null {
@@ -1156,6 +1215,11 @@ export class App {
       if (this.hint) this.hintEl.innerHTML = '';
       this.hint = null;
       return;
+    }
+    // One bubble at a time: the Wirt goes before a Stammgast's line.
+    if (this.ui.quip) {
+      this.ui.quip = null;
+      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
     }
     const html = renderHint(pick.id, pick.anchor, hintText(pick.id, this.ui));
     if (html !== this.hint?.html) {

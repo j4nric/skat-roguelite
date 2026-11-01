@@ -109,6 +109,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Boss-Serie | `BossSeries` | |
 | Hausregel | `HouseRule` | Passives Relikt, Joker-Äquivalent |
 | Stammtisch-Figur | `Regular` | Passives Relikt mit Persönlichkeit |
+| Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`: `greet`, `win`, `lose`), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
 | Verbrauchsgegenstand | `Consumable` | Definition `ConsumableDef` |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare` |

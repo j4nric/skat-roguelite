@@ -1070,6 +1070,51 @@ button.card {
   }
 }
 
+/*
+ * A Stammgast's line: a tiny speech bubble inside his own box, beside the
+ * portrait with the tail towards the face. It lies over his name for a few
+ * seconds, never over the trick, the hand or a button, and catches no taps.
+ */
+.quip {
+  position: absolute;
+  top: 0;
+  left: 52px;
+  right: 0;
+  z-index: 3;
+  display: block;
+  max-height: 46px;
+  overflow: hidden;
+  padding: 3px 5px 4px;
+  border: 2px solid var(--line);
+  background: var(--card);
+  color: var(--card-ink);
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 1.15;
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 3px 0 var(--line);
+  pointer-events: none;
+  animation: quip-in 220ms steps(3) both;
+}
+
+/* The tail towards the face, in pixel steps. */
+.quip::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  width: 8px;
+  height: 10px;
+  background: var(--line);
+  clip-path: polygon(100% 0, 40% 0, 40% 30%, 0 30%, 0 70%, 40% 70%, 40% 100%, 100% 100%);
+}
+
+@keyframes quip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
 /* Boss rule, Ramsch and "Letzte Runde": one compact line each. */
 .rule-strip,
 .ramsch-banner {
@@ -3951,6 +3996,10 @@ button.card {
     height: 34px;
   }
 
+  .quip {
+    left: 46px;
+  }
+
   /* The settlement stays big, a little less so. */
   .score-head h2 {
     font-size: 32px;
@@ -4010,6 +4059,10 @@ button.card {
   .portrait-opp {
     width: 34px;
     height: 34px;
+  }
+
+  .quip {
+    left: 46px;
   }
 }
 
