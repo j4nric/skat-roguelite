@@ -1,0 +1,31 @@
+// Run-Struktur als Daten. Zielwerte aus DESIGN 5.2 (erster Entwurf),
+// Wirtschaft aus DESIGN 12. Alle Zahlen sind Platzhalter für `balance`.
+(
+    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt.
+    targets: [
+        (60, 100, 150),
+        (200, 300, 450),
+        (600, 900, 1400),
+        (2000, 3000, 5000),
+        (8000, 12000, 20000),
+    ],
+    game_limit: 4,
+    passes: 2,
+    relic_slots: 5,
+    consumable_slots: 2,
+    economy: (
+        series_reward: 4,
+        per_game_left: 1,
+        interest_step: 5,
+        interest_max: 5,
+        reroll_cost: 2,
+        // Nicht im Design-Dokument festgelegt, Platzhalter.
+        starting_coins: 4,
+    ),
+    shop: (
+        relic_offers: 3,
+        consumable_offers: 2,
+        rarity_weights: (common: 6, uncommon: 3, rare: 1),
+    ),
+    bosses: ["the_pusher", "kontra_hans", "grandma"],
+)

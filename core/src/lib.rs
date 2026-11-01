@@ -6,17 +6,16 @@
 //! - Event based: state changes emit events that a frontend may animate and
 //!   a simulator may ignore.
 //! - Content (relics, card mods, bosses) lives in data files, not in code.
+//! - WebAssembly safe: no threads, no file system, no clock. Content is
+//!   embedded with `include_str!` and parsed at start.
 //!
 //! Term mapping German ↔ English: `docs/GLOSSARY.md`.
 
 pub mod ai;
 pub mod cards;
+pub mod content;
+pub mod deck;
 pub mod game;
 pub mod rng;
 pub mod rules;
-
-/// Run structure: series, sections, shop, relics, events. Milestone M2.
-pub mod run {}
-
-/// Data-driven content loading (RON) and the effect hook API. Milestone M2.
-pub mod content {}
+pub mod run;

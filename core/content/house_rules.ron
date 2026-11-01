@@ -1,0 +1,100 @@
+// Hausregeln (passive Relikte). Effekte über die Hook-API, siehe
+// core/src/content/effects.rs. Preise sind Platzhalter (DESIGN 12: 5 bis 8),
+// die finalen Werte setzt `balance`.
+[
+    (
+        id: "bock_round",
+        name: "Bockrunde",
+        text: "Nach jedem verlorenen Spiel zählt das nächste doppelt.",
+        rarity: Common,
+        price: 6,
+        hooks: [
+            OnScore(when: Lost, then: [SetFlag("bock")]),
+            // Erst beim Ansagen verbraucht, damit Einpassen den Bock nicht verschenkt.
+            OnDeclare(when: Flag("bock"), then: [MultiplyBaseValue(2), ClearFlag("bock")]),
+        ],
+    ),
+    (
+        id: "kontra",
+        name: "Kontra",
+        text: "Die Gegner dürfen Kontra sagen (Spielwert ×2). Du darfst Re sagen (×4).",
+        rarity: Common,
+        price: 5,
+        passive: [EnableKontra],
+    ),
+    (
+        id: "last_trick_seven",
+        name: "Spitze",
+        text: "Machst du den letzten Stich mit der Karo-7, gibt es eine Gewinnstufe mehr.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(when: LastTrickWonWith(card: "D7", by_declarer: true), then: [AddLevels(1)]),
+        ],
+    ),
+    (
+        id: "concede",
+        name: "Schenken",
+        text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnTrickEnd(when: All([TricksPlayed(5), DefenderPointsBelow(15)]), then: [Concede]),
+        ],
+    ),
+    (
+        id: "ouvert_bonus",
+        name: "Ouvert-Bonus",
+        text: "Ouvert zählt zwei Gewinnstufen statt einer.",
+        rarity: Uncommon,
+        price: 5,
+        hooks: [
+            OnScore(when: RiskAtLeast(Ouvert), then: [AddLevels(1)]),
+        ],
+    ),
+    (
+        id: "skat_redraw",
+        name: "Schieben",
+        text: "Einmal pro Spiel darfst du vor der Ansage den Skat neu ziehen. Die Gegner bekommen dabei neue Karten.",
+        rarity: Common,
+        price: 5,
+        passive: [SkatRedraw],
+    ),
+    (
+        id: "virgin",
+        name: "Jungfrau",
+        text: "Gewinnst du mit 61 bis 65 Augen, zählt das Spiel trotzdem als Schneider.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [SchneiderFromDeclarerPoints(min: 61, max: 65)],
+    ),
+    (
+        id: "old_lady",
+        name: "Alte Dame",
+        text: "Jede Dame zählt 5 Augen. Auch bei den Gegnern.",
+        rarity: Common,
+        price: 5,
+        passive: [SetCardPoints(filter: (rank: Some(Queen)), points: 5)],
+    ),
+    (
+        id: "tour",
+        name: "Tournee",
+        text: "Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs.",
+        rarity: Rare,
+        price: 8,
+        passive: [AddBaseValueFromCounter("tour")],
+        hooks: [
+            OnSeriesWon(when: GamesLeftAtLeast(1), then: [IncrementCounter("tour")]),
+        ],
+    ),
+    (
+        id: "march_through",
+        name: "Durchmarsch",
+        text: "Machst du alle Stiche, zählt der Grundwert dreifach.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: AllTricksWon, then: [MultiplyBaseValue(3)]),
+        ],
+    ),
+]

@@ -1,13 +1,20 @@
 //! State machine for a single Skat game: deal → declare → (discard) → ten
 //! tricks → scored.
 //!
+//! The game is generic over the card type ([`PlayingCard`]): `Game<Card>`
+//! (the default) plays the plain 32-card deck of milestone M1, while
+//! `Game<DealtCard>` plays card instances of the shared roguelike deck with
+//! blanks and modifications (see [`crate::deck`]).
+//!
 //! Every state change is recorded as an [`Event`]; frontends animate them,
 //! the simulator ignores them. Illegal actions return a [`GameError`] and
 //! leave the state untouched. Nothing in here panics on bad input.
 
 use std::fmt;
 
-use crate::cards::{Card, standard_deck};
+use serde::{Deserialize, Serialize};
+
+use crate::cards::{Card, PlayingCard, standard_deck};
 use crate::rng::Rng;
 use crate::rules::{self, Declaration, GameValue, Matadors, Outcome};
 
@@ -15,10 +22,13 @@ use crate::rules::{self, Declaration, GameValue, Matadors, Outcome};
 pub const HAND_SIZE: usize = 10;
 /// Tricks in a game.
 pub const TRICKS_PER_GAME: usize = 10;
+/// Cards dealt into one game: three hands plus the skat. A larger deck
+/// leaves the rest in the talon.
+pub const CARDS_IN_PLAY: usize = 3 * HAND_SIZE + 2;
 
 /// One of the three seats at the table. Seat 0 is always the declarer
 /// (the human player, see ADR 0002), seats 1 and 2 are the defenders.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Seat(u8);
 
 impl Seat {
@@ -26,6 +36,8 @@ impl Seat {
     pub const DECLARER: Seat = Seat(0);
     /// All seats in table order.
     pub const ALL: [Seat; 3] = [Seat(0), Seat(1), Seat(2)];
+    /// The two defender seats.
+    pub const DEFENDERS: [Seat; 2] = [Seat(1), Seat(2)];
 
     /// Seat with the given index (0..3).
     #[must_use]
@@ -75,7 +87,7 @@ impl fmt::Display for Seat {
 
 /// Table position relative to the dealer for one game. Forehand leads the
 /// first trick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Position {
     /// Vorhand: leads the first trick.
     Forehand,
@@ -87,7 +99,7 @@ pub enum Position {
 
 /// Phase of the game. Dealing happens inside [`Game::deal`], so a freshly
 /// dealt game starts in `Declaring`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Phase {
     /// The declarer looks at ten cards and chooses the declaration.
     Declaring,
@@ -95,22 +107,24 @@ pub enum Phase {
     Discarding,
     /// Tricks are being played.
     Playing,
-    /// All tricks are played and the game is scored.
+    /// All tricks are played (or the defenders conceded) and the game is
+    /// scored by the Skatordnung. Relic modifiers are applied on top by the
+    /// run (see [`crate::content::ScoreBreakdown`]).
     Finished(GameValue),
 }
 
 /// A trick that has been played out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CompletedTrick {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletedTrick<C = Card> {
     /// Seat that led.
     pub lead: Seat,
     /// Cards in play order, `cards[0]` by `lead`.
-    pub cards: [Card; 3],
+    pub cards: [C; 3],
     /// Seat that won the trick.
     pub winner: Seat,
 }
 
-impl CompletedTrick {
+impl<C: PlayingCard> CompletedTrick<C> {
     /// Augen in the trick.
     #[must_use]
     pub fn card_points(&self) -> u32 {
@@ -122,6 +136,13 @@ impl CompletedTrick {
     pub fn seat_of(&self, i: usize) -> Seat {
         seat_at(self.lead, i)
     }
+
+    /// The card that won the trick.
+    #[must_use]
+    pub fn winning_card(&self) -> C {
+        let offset = (self.winner.index() + 3 - self.lead.index()) % 3;
+        self.cards[offset]
+    }
 }
 
 /// Seat that plays the card at `offset` in a trick led by `lead`.
@@ -132,16 +153,24 @@ pub fn seat_at(lead: Seat, offset: usize) -> Seat {
 }
 
 /// Something that happened in the game, in order of occurrence.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Event<C = Card> {
     /// Cards were dealt.
     Dealt {
         /// Seat that will lead the first trick.
         forehand: Seat,
         /// Hands per seat.
-        hands: [Vec<Card>; 3],
+        hands: [Vec<C>; 3],
         /// The two cards in the skat.
-        skat: [Card; 2],
+        skat: [C; 2],
+    },
+    /// The defenders' hands and the skat were dealt again from the cards
+    /// the declarer does not hold (house rule "Schieben").
+    SkatRedrawn {
+        /// Hands per seat; the declarer's hand is unchanged.
+        hands: [Vec<C>; 3],
+        /// The new skat.
+        skat: [C; 2],
     },
     /// The declarer announced the game.
     Declared {
@@ -151,25 +180,33 @@ pub enum Event {
     /// The declarer picked up the skat (not in hand games).
     SkatPickedUp {
         /// The two cards that joined the declarer's hand.
-        skat: [Card; 2],
+        skat: [C; 2],
     },
     /// The declarer discarded two cards.
     Discarded {
         /// The discarded cards (they count for the declarer).
-        cards: [Card; 2],
+        cards: [C; 2],
     },
     /// A card was played.
     CardPlayed {
         /// Who played.
         seat: Seat,
         /// What was played.
-        card: Card,
+        card: C,
     },
     /// A trick was completed.
     TrickWon {
         /// The completed trick.
-        trick: CompletedTrick,
+        trick: CompletedTrick<C>,
         /// Augen in the trick.
+        card_points: u32,
+    },
+    /// The defenders gave up (house rule "Schenken"). The remaining tricks
+    /// and the Augen still in the hands go to the declarer.
+    Conceded {
+        /// Tricks that were not played.
+        tricks: u32,
+        /// Augen still in the hands.
         card_points: u32,
     },
     /// The last trick was played and the game is scored.
@@ -184,8 +221,8 @@ pub enum Event {
 }
 
 /// Why an action was rejected.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GameError {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GameError<C = Card> {
     /// The action is not allowed in the current phase.
     WrongPhase {
         /// What the game is doing right now.
@@ -203,26 +240,28 @@ pub enum GameError {
         /// The seat that tried to act.
         seat: Seat,
         /// The card it does not hold.
-        card: Card,
+        card: C,
     },
     /// The card does not follow the lead although the seat could.
     MustFollowSuit {
         /// The rejected card.
-        card: Card,
+        card: C,
         /// The lead card of the trick.
-        lead: Card,
+        lead: C,
     },
     /// The two discards are not two distinct cards from the hand.
     InvalidDiscard {
         /// The rejected discards.
-        cards: [Card; 2],
+        cards: [C; 2],
     },
     /// The supplied cards do not form a legal deal (32 distinct cards,
     /// ten per hand).
     InvalidDeal,
+    /// The action needs a trick boundary but a trick is in progress.
+    TrickInProgress,
 }
 
-impl fmt::Display for GameError {
+impl<C: fmt::Display> fmt::Display for GameError<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GameError::WrongPhase { phase } => write!(f, "action not allowed in phase {phase:?}"),
@@ -237,17 +276,19 @@ impl fmt::Display for GameError {
                 write!(f, "cannot discard {} {}", cards[0], cards[1])
             }
             GameError::InvalidDeal => f.write_str("invalid deal"),
+            GameError::TrickInProgress => f.write_str("a trick is in progress"),
         }
     }
 }
 
-impl std::error::Error for GameError {}
+impl<C: fmt::Debug + fmt::Display> std::error::Error for GameError<C> {}
 
 /// What a seat is allowed to know when choosing a card: its own hand, the
 /// declaration, everything played so far and, for the declarer after
-/// discarding, the skat.
+/// discarding, the skat. In an Ouvert game the defenders also see the
+/// declarer's hand once the first card has been led.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SeatView<'a> {
+pub struct SeatView<'a, C = Card> {
     /// The seat looking at the table.
     pub seat: Seat,
     /// The declaration being played.
@@ -255,25 +296,33 @@ pub struct SeatView<'a> {
     /// Seat that led the first trick.
     pub forehand: Seat,
     /// Own hand.
-    pub hand: &'a [Card],
+    pub hand: &'a [C],
     /// Seat that led the current trick.
     pub trick_lead: Seat,
     /// Cards of the current trick in play order (0 to 2 cards).
-    pub trick: &'a [Card],
+    pub trick: &'a [C],
     /// Completed tricks in order.
-    pub tricks: &'a [CompletedTrick],
+    pub tricks: &'a [CompletedTrick<C>],
     /// The skat, if this seat knows it (declarer after picking it up).
-    pub skat: Option<[Card; 2]>,
+    pub skat: Option<[C; 2]>,
+    /// The declarer's current hand, open on the table in an Ouvert game
+    /// from the first lead on. `None` for the declarer's own view and in
+    /// all other games.
+    pub declarer_hand: Option<&'a [C]>,
+    /// Every card that may be in this game: the dealt cards plus the talon,
+    /// sorted. The deck is shared and known to all seats, but nobody knows
+    /// which cards lie in the talon.
+    pub deck: &'a [C],
     /// Cards this seat may play now. Empty if it is not its turn.
-    pub legal_moves: Vec<Card>,
+    pub legal_moves: Vec<C>,
 }
 
-impl SeatView<'_> {
+impl<C: PlayingCard> SeatView<'_, C> {
     /// Every card that is no longer unknown to this seat: own hand, all
     /// played cards and the skat if known.
     #[must_use]
-    pub fn seen_cards(&self) -> Vec<Card> {
-        let mut seen: Vec<Card> = self.hand.to_vec();
+    pub fn seen_cards(&self) -> Vec<C> {
+        let mut seen: Vec<C> = self.hand.to_vec();
         seen.extend(self.tricks.iter().flat_map(|t| t.cards.iter().copied()));
         seen.extend(self.trick.iter().copied());
         if let Some(skat) = self.skat {
@@ -282,39 +331,56 @@ impl SeatView<'_> {
         seen
     }
 
-    /// Cards whose location this seat does not know.
+    /// Cards whose location this seat does not know. The open hand of an
+    /// Ouvert declarer still counts as unseen here: those cards can still
+    /// beat the seat's cards.
     #[must_use]
-    pub fn unseen_cards(&self) -> Vec<Card> {
+    pub fn unseen_cards(&self) -> Vec<C> {
         let seen = self.seen_cards();
-        standard_deck()
-            .into_iter()
+        self.deck
+            .iter()
+            .copied()
             .filter(|c| !seen.contains(c))
             .collect()
+    }
+
+    /// The card that must be followed in the current trick, if any.
+    #[must_use]
+    pub fn lead_card(&self) -> Option<C> {
+        rules::effective_lead(self.trick)
     }
 }
 
 /// A single Skat game.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Game {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Game<C = Card> {
     forehand: Seat,
-    hands: [Vec<Card>; 3],
-    skat: [Card; 2],
+    hands: [Vec<C>; 3],
+    skat: [C; 2],
+    /// Cards that were not dealt (roguelike deck with more than 32 cards).
+    talon: Vec<C>,
+    /// Dealt cards plus talon, sorted: what any seat may expect to see.
+    deck: Vec<C>,
+    /// The 32 dealt cards, sorted: the trumps in play for matadors.
+    in_play: Vec<C>,
     /// Declarer's original hand plus skat: the twelve cards for matadors.
-    declarer_cards: Vec<Card>,
+    declarer_cards: Vec<C>,
     declaration: Option<Declaration>,
     phase: Phase,
     trick_lead: Seat,
-    trick: Vec<Card>,
-    tricks: Vec<CompletedTrick>,
+    trick: Vec<C>,
+    tricks: Vec<CompletedTrick<C>>,
     card_points: [u32; 3],
-    log: Vec<Event>,
+    /// Tricks and Augen handed to the declarer by a concession.
+    conceded: Option<(u32, u32)>,
+    log: Vec<Event<C>>,
 }
 
-impl Game {
+impl Game<Card> {
     /// Shuffle the standard deck with `rng` and deal 10/10/10/2. The game
     /// starts in [`Phase::Declaring`]; the `Dealt` event is in [`Game::log`].
     #[must_use]
-    pub fn deal(rng: &mut Rng, forehand: Seat) -> Game {
+    pub fn deal(rng: &mut Rng, forehand: Seat) -> Game<Card> {
         let mut deck = standard_deck();
         rng.shuffle(&mut deck);
         let hands = [
@@ -324,35 +390,83 @@ impl Game {
         ];
         let skat = [deck[3 * HAND_SIZE], deck[3 * HAND_SIZE + 1]];
         // A shuffled standard deck is a valid deal by construction.
-        Game::build(hands, skat, forehand)
+        Game::build(hands, skat, Vec::new(), forehand)
+    }
+}
+
+impl<C: PlayingCard> Game<C> {
+    /// Shuffle `cards` with `rng` and deal 10/10/10/2. Cards beyond the
+    /// first 32 stay in the talon for this game. Fails with fewer than 32
+    /// cards or if a card appears twice.
+    pub fn deal_from(
+        rng: &mut Rng,
+        mut cards: Vec<C>,
+        forehand: Seat,
+    ) -> Result<Game<C>, GameError<C>> {
+        if cards.len() < CARDS_IN_PLAY {
+            return Err(GameError::InvalidDeal);
+        }
+        rng.shuffle(&mut cards);
+        let talon = cards.split_off(CARDS_IN_PLAY);
+        let hands = [
+            cards[0..HAND_SIZE].to_vec(),
+            cards[HAND_SIZE..2 * HAND_SIZE].to_vec(),
+            cards[2 * HAND_SIZE..3 * HAND_SIZE].to_vec(),
+        ];
+        let skat = [cards[3 * HAND_SIZE], cards[3 * HAND_SIZE + 1]];
+        Game::with_talon(hands, skat, talon, forehand)
     }
 
     /// Start a game from explicit cards (tests, replays, frontends with a
     /// modified deck). Hands are sorted so that equal deals compare equal.
     pub fn with_cards(
-        hands: [Vec<Card>; 3],
-        skat: [Card; 2],
+        hands: [Vec<C>; 3],
+        skat: [C; 2],
         forehand: Seat,
-    ) -> Result<Game, GameError> {
+    ) -> Result<Game<C>, GameError<C>> {
+        Game::with_talon(hands, skat, Vec::new(), forehand)
+    }
+
+    /// Like [`Game::with_cards`], with extra cards in the talon that are
+    /// known to exist but are not dealt.
+    pub fn with_talon(
+        hands: [Vec<C>; 3],
+        skat: [C; 2],
+        talon: Vec<C>,
+        forehand: Seat,
+    ) -> Result<Game<C>, GameError<C>> {
         if hands.iter().any(|h| h.len() != HAND_SIZE) {
             return Err(GameError::InvalidDeal);
         }
-        let mut all: Vec<Card> = hands.iter().flatten().copied().chain(skat).collect();
+        let mut all: Vec<C> = hands
+            .iter()
+            .flatten()
+            .copied()
+            .chain(skat)
+            .chain(talon.iter().copied())
+            .collect();
+        let total = all.len();
         all.sort();
         all.dedup();
-        if all.len() != 3 * HAND_SIZE + 2 {
+        if all.len() != total {
             return Err(GameError::InvalidDeal);
         }
-        Ok(Game::build(hands, skat, forehand))
+        Ok(Game::build(hands, skat, talon, forehand))
     }
 
     /// Build the initial state from cards that are known to be valid.
-    fn build(mut hands: [Vec<Card>; 3], skat: [Card; 2], forehand: Seat) -> Game {
+    fn build(mut hands: [Vec<C>; 3], skat: [C; 2], mut talon: Vec<C>, forehand: Seat) -> Game<C> {
         for hand in &mut hands {
             hand.sort();
         }
+        talon.sort();
         let mut declarer_cards = hands[0].clone();
         declarer_cards.extend(skat);
+        let mut in_play: Vec<C> = hands.iter().flatten().copied().chain(skat).collect();
+        in_play.sort();
+        let mut deck = in_play.clone();
+        deck.extend(talon.iter().copied());
+        deck.sort();
         let log = vec![Event::Dealt {
             forehand,
             hands: hands.clone(),
@@ -362,6 +476,9 @@ impl Game {
             forehand,
             hands,
             skat,
+            talon,
+            deck,
+            in_play,
             declarer_cards,
             declaration: None,
             phase: Phase::Declaring,
@@ -369,6 +486,7 @@ impl Game {
             trick: Vec::with_capacity(3),
             tricks: Vec::with_capacity(TRICKS_PER_GAME),
             card_points: [0; 3],
+            conceded: None,
             log,
         }
     }
@@ -405,19 +523,31 @@ impl Game {
 
     /// Hand of a seat.
     #[must_use]
-    pub fn hand(&self, seat: Seat) -> &[Card] {
+    pub fn hand(&self, seat: Seat) -> &[C] {
         &self.hands[seat.index()]
     }
 
     /// The skat: untouched in hand games, the discards otherwise.
     #[must_use]
-    pub fn skat(&self) -> [Card; 2] {
+    pub fn skat(&self) -> [C; 2] {
         self.skat
+    }
+
+    /// Cards of the deck that were not dealt into this game.
+    #[must_use]
+    pub fn talon(&self) -> &[C] {
+        &self.talon
+    }
+
+    /// The 32 dealt cards (hands plus skat), sorted.
+    #[must_use]
+    pub fn cards_in_play(&self) -> &[C] {
+        &self.in_play
     }
 
     /// The declarer's original ten cards plus the skat.
     #[must_use]
-    pub fn declarer_cards(&self) -> &[Card] {
+    pub fn declarer_cards(&self) -> &[C] {
         &self.declarer_cards
     }
 
@@ -429,13 +559,13 @@ impl Game {
 
     /// Completed tricks in order.
     #[must_use]
-    pub fn tricks(&self) -> &[CompletedTrick] {
+    pub fn tricks(&self) -> &[CompletedTrick<C>] {
         &self.tricks
     }
 
     /// Cards of the current, incomplete trick in play order.
     #[must_use]
-    pub fn current_trick(&self) -> &[Card] {
+    pub fn current_trick(&self) -> &[C] {
         &self.trick
     }
 
@@ -451,9 +581,23 @@ impl Game {
         self.card_points
     }
 
+    /// Whether the defenders conceded the game.
+    #[must_use]
+    pub fn conceded(&self) -> bool {
+        self.conceded.is_some()
+    }
+
+    /// Seat that currently holds `card`, if it is in a hand.
+    #[must_use]
+    pub fn holder_of(&self, card: C) -> Option<Seat> {
+        Seat::ALL
+            .into_iter()
+            .find(|seat| self.hands[seat.index()].contains(&card))
+    }
+
     /// All events so far, oldest first.
     #[must_use]
-    pub fn log(&self) -> &[Event] {
+    pub fn log(&self) -> &[Event<C>] {
         &self.log
     }
 
@@ -466,14 +610,14 @@ impl Game {
         }
     }
 
-    /// Lead card of the current trick, if any.
-    fn lead_card(&self) -> Option<Card> {
-        self.trick.first().copied()
+    /// The card that must be followed in the current trick, if any.
+    fn lead_card(&self) -> Option<C> {
+        rules::effective_lead(&self.trick)
     }
 
     /// Cards `seat` may play right now. Empty unless it is that seat's turn.
     #[must_use]
-    pub fn legal_moves(&self, seat: Seat) -> Vec<Card> {
+    pub fn legal_moves(&self, seat: Seat) -> Vec<C> {
         match (self.current_seat(), self.declaration) {
             (Some(current), Some(declaration)) if current == seat => {
                 rules::legal_moves(declaration.game, self.hand(seat), self.lead_card())
@@ -484,13 +628,19 @@ impl Game {
 
     /// What `seat` knows during play. `None` outside [`Phase::Playing`].
     #[must_use]
-    pub fn view(&self, seat: Seat) -> Option<SeatView<'_>> {
+    pub fn view(&self, seat: Seat) -> Option<SeatView<'_, C>> {
         if self.phase != Phase::Playing {
             return None;
         }
         let declaration = self.declaration?;
         let skat = if seat.is_declarer() && !declaration.hand() {
             Some(self.skat)
+        } else {
+            None
+        };
+        let first_lead_done = !self.tricks.is_empty() || !self.trick.is_empty();
+        let declarer_hand = if declaration.ouvert() && !seat.is_declarer() && first_lead_done {
+            Some(self.hand(Seat::DECLARER))
         } else {
             None
         };
@@ -503,13 +653,56 @@ impl Game {
             trick: &self.trick,
             tricks: &self.tricks,
             skat,
+            declarer_hand,
+            deck: &self.deck,
             legal_moves: self.legal_moves(seat),
         })
     }
 
+    /// Deal the defenders' hands and the skat again from all cards the
+    /// declarer does not hold (including the talon). Only before the
+    /// declaration. Used by the house rule "Schieben".
+    pub fn redraw_skat(&mut self, rng: &mut Rng) -> Result<Vec<Event<C>>, GameError<C>> {
+        if self.phase != Phase::Declaring {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        let mut pool: Vec<C> = self.hands[1]
+            .iter()
+            .chain(self.hands[2].iter())
+            .copied()
+            .chain(self.skat)
+            .chain(self.talon.iter().copied())
+            .collect();
+        pool.sort();
+        rng.shuffle(&mut pool);
+        let mut talon = pool.split_off(2 * HAND_SIZE + 2);
+        talon.sort();
+        let mut first = pool[0..HAND_SIZE].to_vec();
+        let mut second = pool[HAND_SIZE..2 * HAND_SIZE].to_vec();
+        first.sort();
+        second.sort();
+        let skat = [pool[2 * HAND_SIZE], pool[2 * HAND_SIZE + 1]];
+        self.hands[1] = first;
+        self.hands[2] = second;
+        self.skat = skat;
+        self.talon = talon;
+        let mut declarer_cards = self.hands[0].clone();
+        declarer_cards.extend(skat);
+        self.declarer_cards = declarer_cards;
+        let mut in_play: Vec<C> = self.hands.iter().flatten().copied().chain(skat).collect();
+        in_play.sort();
+        self.in_play = in_play;
+        let events = vec![Event::SkatRedrawn {
+            hands: self.hands.clone(),
+            skat,
+        }];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
     /// Announce the game. Hand games go straight to playing; otherwise the
     /// skat is picked up and the game waits for the discard.
-    pub fn declare(&mut self, declaration: Declaration) -> Result<Vec<Event>, GameError> {
+    pub fn declare(&mut self, declaration: Declaration) -> Result<Vec<Event<C>>, GameError<C>> {
         if self.phase != Phase::Declaring {
             return Err(GameError::WrongPhase { phase: self.phase });
         }
@@ -528,7 +721,7 @@ impl Game {
     }
 
     /// Put two cards from the declarer's twelve back into the skat.
-    pub fn discard(&mut self, cards: [Card; 2]) -> Result<Vec<Event>, GameError> {
+    pub fn discard(&mut self, cards: [C; 2]) -> Result<Vec<Event<C>>, GameError<C>> {
         if self.phase != Phase::Discarding {
             return Err(GameError::WrongPhase { phase: self.phase });
         }
@@ -546,7 +739,7 @@ impl Game {
 
     /// Play a card. Returns the events this caused: the card, possibly the
     /// completed trick, possibly the finished game.
-    pub fn play(&mut self, seat: Seat, card: Card) -> Result<Vec<Event>, GameError> {
+    pub fn play(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
         let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
             return Err(GameError::WrongPhase { phase: self.phase });
         };
@@ -585,22 +778,67 @@ impl Game {
             events.push(Event::TrickWon { trick, card_points });
 
             if self.tricks.len() == TRICKS_PER_GAME {
-                let outcome = self.outcome();
-                let matadors = rules::matadors(declaration.game, &self.declarer_cards);
-                let value = rules::game_value(declaration, matadors, &outcome);
-                self.phase = Phase::Finished(value);
-                events.push(Event::GameFinished {
-                    outcome,
-                    matadors,
-                    value,
-                });
+                events.push(self.finish(declaration));
             }
         }
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
 
-    /// Trick outcome so far. The skat always counts for the declarer.
+    /// The defenders give up between two tricks (house rule "Schenken").
+    /// The tricks not yet played and the Augen still in the hands go to the
+    /// declarer, and the game is scored.
+    pub fn concede(&mut self) -> Result<Vec<Event<C>>, GameError<C>> {
+        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        };
+        if !self.trick.is_empty() {
+            return Err(GameError::TrickInProgress);
+        }
+        let tricks = u32::try_from(TRICKS_PER_GAME.saturating_sub(self.tricks.len())).unwrap_or(0);
+        let card_points: u32 = self.hands.iter().flatten().map(|c| c.card_points()).sum();
+        self.conceded = Some((tricks, card_points));
+        let events = vec![
+            Event::Conceded {
+                tricks,
+                card_points,
+            },
+            self.finish(declaration),
+        ];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
+    /// Score the game by the Skatordnung and switch to `Finished`.
+    fn finish(&mut self, declaration: Declaration) -> Event<C> {
+        let outcome = self.outcome();
+        let matadors = self.matadors().unwrap_or(Matadors {
+            with: false,
+            count: 0,
+        });
+        let value = rules::game_value(declaration, matadors, &outcome);
+        self.phase = Phase::Finished(value);
+        Event::GameFinished {
+            outcome,
+            matadors,
+            value,
+        }
+    }
+
+    /// Spitzen of the declarer over hand plus skat, counted along the
+    /// trumps in play. `None` before the declaration.
+    #[must_use]
+    pub fn matadors(&self) -> Option<Matadors> {
+        let declaration = self.declaration?;
+        Some(rules::matadors_in(
+            declaration.game,
+            &self.declarer_cards,
+            &self.in_play,
+        ))
+    }
+
+    /// Trick outcome so far. The skat always counts for the declarer, and so
+    /// does everything the defenders conceded.
     #[must_use]
     pub fn outcome(&self) -> Outcome {
         let skat_points: u32 = self.skat.iter().map(|c| c.card_points()).sum();
@@ -609,11 +847,12 @@ impl Game {
             .iter()
             .filter(|t| t.winner.is_declarer())
             .count();
+        let (conceded_tricks, conceded_points) = self.conceded.unwrap_or((0, 0));
         Outcome {
-            declarer_card_points: self.card_points[0] + skat_points,
+            declarer_card_points: self.card_points[0] + skat_points + conceded_points,
             defender_card_points: self.card_points[1] + self.card_points[2],
             // At most ten tricks exist.
-            declarer_tricks: u32::try_from(declarer_tricks).unwrap_or(u32::MAX),
+            declarer_tricks: u32::try_from(declarer_tricks).unwrap_or(u32::MAX) + conceded_tricks,
             defender_tricks: u32::try_from(self.tricks.len() - declarer_tricks).unwrap_or(u32::MAX),
         }
     }
@@ -790,5 +1029,95 @@ mod tests {
         assert_eq!(Seat(1).partner(), Some(Seat(2)));
         assert_eq!(Seat(0).partner(), None);
         assert_eq!(seat_at(Seat(2), 2), Seat(1));
+    }
+
+    #[test]
+    fn ouvert_shows_the_declarer_hand_to_defenders_after_the_first_lead() {
+        let mut game = fixed_game();
+        game.declare(Declaration::new(
+            GameType::Suit(Suit::Hearts),
+            RiskLevel::Ouvert,
+        ))
+        .expect("declare");
+        // Before the first card nothing is open.
+        assert_eq!(game.view(Seat(1)).and_then(|v| v.declarer_hand), None);
+        game.play(Seat::DECLARER, c("SA")).expect("lead");
+        let view = game.view(Seat(1)).expect("view");
+        assert_eq!(view.declarer_hand, Some(game.hand(Seat::DECLARER)));
+        assert_eq!(view.declarer_hand.map(<[Card]>::len), Some(9));
+        // The declarer's own view and non-ouvert games stay closed.
+        game.play(Seat(1), c("S9")).expect("follow");
+        game.play(Seat(2), c("S7")).expect("follow");
+        assert_eq!(
+            game.view(Seat::DECLARER).and_then(|v| v.declarer_hand),
+            None
+        );
+        let mut closed = fixed_game();
+        closed
+            .declare(Declaration::new(
+                GameType::Suit(Suit::Hearts),
+                RiskLevel::SchwarzDeclared,
+            ))
+            .expect("declare");
+        closed.play(Seat::DECLARER, c("SA")).expect("lead");
+        assert_eq!(closed.view(Seat(1)).and_then(|v| v.declarer_hand), None);
+    }
+
+    #[test]
+    fn deal_from_leaves_extra_cards_in_the_talon() {
+        let mut cards = standard_deck();
+        let extra = cards.pop().expect("card");
+        let mut rng = Rng::from_seed(4);
+        assert_eq!(
+            Game::deal_from(&mut rng, cards.clone(), Seat::DECLARER),
+            Err(GameError::InvalidDeal)
+        );
+        // 32 distinct cards deal 10/10/10/2 with an empty talon.
+        cards.push(extra);
+        let game = Game::deal_from(&mut rng, cards, Seat::DECLARER).expect("deal");
+        assert!(game.talon().is_empty());
+        assert_eq!(game.cards_in_play().len(), 32);
+    }
+
+    #[test]
+    fn concede_gives_the_rest_to_the_declarer() {
+        let mut game = fixed_game();
+        game.declare(Declaration::new(
+            GameType::Suit(Suit::Hearts),
+            RiskLevel::Hand,
+        ))
+        .expect("declare");
+        game.play(Seat::DECLARER, c("SA")).expect("lead");
+        assert_eq!(game.concede(), Err(GameError::TrickInProgress));
+        game.play(Seat(1), c("S9")).expect("follow");
+        game.play(Seat(2), c("S7")).expect("follow");
+        let events = game.concede().expect("concede");
+        assert!(matches!(events[0], Event::Conceded { tricks: 9, .. }));
+        assert!(game.conceded());
+        let outcome = game.outcome();
+        assert_eq!(
+            outcome.declarer_card_points + outcome.defender_card_points,
+            120
+        );
+        assert_eq!(outcome.declarer_tricks, 10);
+        assert!(game.value().is_some_and(|v| v.won && v.schwarz));
+    }
+
+    #[test]
+    fn redraw_skat_keeps_the_declarer_hand() {
+        let mut game = fixed_game();
+        let hand = game.hand(Seat::DECLARER).to_vec();
+        let mut rng = Rng::from_seed(9);
+        game.redraw_skat(&mut rng).expect("redraw");
+        assert_eq!(game.hand(Seat::DECLARER), &hand[..]);
+        assert_eq!(game.hand(Seat(1)).len(), 10);
+        assert_eq!(game.hand(Seat(2)).len(), 10);
+        assert_eq!(game.declarer_cards().len(), 12);
+        game.declare(Declaration::new(GameType::Grand, RiskLevel::Hand))
+            .expect("declare");
+        assert!(matches!(
+            game.redraw_skat(&mut rng),
+            Err(GameError::WrongPhase { .. })
+        ));
     }
 }

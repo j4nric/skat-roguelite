@@ -1,0 +1,36 @@
+// Verbrauchsgegenstände: einmal nutzbar, höchstens zwei auf der Hand.
+// Preise sind Platzhalter (DESIGN 12: 2 bis 4).
+[
+    (
+        id: "fresh_deck",
+        name: "Frisches Deck",
+        text: "Entferne eine Karte dauerhaft aus dem Blatt. An ihre Stelle tritt eine Blanko.",
+        rarity: Common,
+        price: 3,
+        action: RemoveCard,
+    ),
+    (
+        id: "ink_pad",
+        name: "Stempelkissen",
+        text: "Verpasse einer Karte eine zufällige Modifikation.",
+        rarity: Common,
+        price: 3,
+        action: AddCardMod(None),
+    ),
+    (
+        id: "beer",
+        name: "Ein Bier",
+        text: "Ein Pass mehr in dieser Serie.",
+        rarity: Common,
+        price: 2,
+        action: ExtraPasses(1),
+    ),
+    (
+        id: "new_deal",
+        name: "Neues Blatt",
+        text: "Mischen und neu geben, ohne dass ein Spiel verbraucht wird.",
+        rarity: Uncommon,
+        price: 4,
+        action: Redeal,
+    ),
+]

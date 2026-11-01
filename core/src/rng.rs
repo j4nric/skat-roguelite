@@ -8,8 +8,11 @@
 
 use std::ops::Range;
 
-/// A seeded, deterministic PRNG (xoshiro256**).
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+/// A seeded, deterministic PRNG (xoshiro256**). Serializable, so a saved
+/// run continues with exactly the same random stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rng {
     state: [u64; 4],
 }
