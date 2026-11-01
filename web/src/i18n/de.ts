@@ -731,9 +731,9 @@ export const de = {
     intro: 'Stammtisch ist ein Projekt mit Liebe zum Skat. Diese Quellen stecken drin:',
     entries: [
       {
-        what: 'Pixelschriften „Kenney Mini“ und „Kenney Mini Square“',
-        who: 'Kenney (www.kenney.nl), Umlaute ergänzt für dieses Projekt',
-        license: 'CC0 1.0',
+        what: 'Schrift „VT323“',
+        who: 'Peter Hull (The VT323 Project Authors), über Google Fonts',
+        license: 'SIL Open Font License 1.1',
       },
       {
         what: 'Kartenbild (deutsches Blatt, Pixel-Farbzeichen), Figuren, Tresen',

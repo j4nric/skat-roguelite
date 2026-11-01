@@ -16,7 +16,7 @@
 //   ("Neu am Stammtisch") and the meta state counting the game,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series.
-// The card sprite (German deck) and the shipped pixel fonts (Kenney, CC0)
+// The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
 // The opponents are Stammgäste with names of their own (two different
 // ones, new ones in the next series, the boss on the left in a boss
@@ -1330,7 +1330,7 @@ async function run() {
     if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;
-      const families = ['Kenney Mini', 'Kenney Mini Square'];
+      const families = ['VT323'];
       await Promise.all(families.map((f) => document.fonts.load(`16px "${f}"`, 'Skat')));
       const loaded = [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, ''));
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);

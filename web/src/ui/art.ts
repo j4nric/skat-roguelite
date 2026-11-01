@@ -46,7 +46,7 @@ const LINE = '#0b0c0e';
 const SLATE = '#2a2f34';
 const SLATE_DARK = '#23282c';
 const COPPER = '#d1773f';
-const PIXEL_FONT = "'Kenney Mini Square', 'Kenney Mini', monospace";
+const PIXEL_FONT = "'VT323', monospace";
 
 // ------------------------------------------------------------ suit glyphs
 
@@ -109,9 +109,8 @@ export function pixels(rows: string[], x: number, y: number, u: number, fill: st
 
 /** Corner index: the rank, big, top left; the small glyph top right. */
 function index(suit: Suit, rank: Rank): string {
-  const text = de.rankShort[rank];
-  const wide = text.length > 1;
-  return `<text x="9" y="42" font-family="${PIXEL_FONT}" font-size="${wide ? 40 : 46}" fill="${INDEX_INK[suit]}" ${wide ? 'letter-spacing="-3"' : ''} class="idx">${text}</text>
+  // VT323 is narrow: the 10 fits at the same size as a single letter.
+  return `<text x="9" y="42" font-family="${PIXEL_FONT}" font-size="54" fill="${INDEX_INK[suit]}" class="idx">${de.rankShort[rank]}</text>
 ${glyph(suit, 82, 11, 28)}`;
 }
 
@@ -190,7 +189,7 @@ function blankBody(): string {
   return `<rect width="120" height="180" fill="#dcd9cf"/>
 <rect x="10" y="10" width="100" height="160" fill="url(#blank-hatch)"/>
 <rect x="14" y="76" width="92" height="30" fill="#dcd9cf"/>
-<text x="60" y="98" text-anchor="middle" font-family="${PIXEL_FONT}" font-size="20" fill="#6f7479" class="idx">${de.card.blank}</text>`;
+<text x="60" y="98" text-anchor="middle" font-family="${PIXEL_FONT}" font-size="25" fill="#6f7479" class="idx">${de.card.blank}</text>`;
 }
 
 // --------------------------------------------------------- modifications

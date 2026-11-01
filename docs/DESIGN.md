@@ -672,7 +672,8 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Kartenbild | Deutsches Blatt, ADR 0010. |
 | Zielgerät | Handy hochkant zuerst. |
 | Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. |
-| Assets | CC0 und CC-BY mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
+| Assets | CC0, CC-BY und SIL OFL, mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
+| Schrift | VT323 (S4 aus der Schriftauswahl), SIL OFL |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |
 | Rückfragen | Nur bei Grundentscheidungen (ADRs). Alles andere entscheidet Claude und dokumentiert es. |
 | Null-Wertung | Wird in M4 mit dem Simulator entschieden (9.2). Entschieden: Formel, siehe 9.2. |

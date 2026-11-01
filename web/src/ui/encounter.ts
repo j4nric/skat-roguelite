@@ -20,7 +20,7 @@ function glass(): string {
 
 /** A marked card, for the Kartengeber. */
 function markedCard(chosen: boolean): string {
-  return `<svg class="enc-card" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><rect x="5" y="3" width="30" height="45" rx="4" fill="#fbf3e2" stroke="#2b1a0e" stroke-width="2"/><path d="M12 10 L28 10 M12 15 L22 15" stroke="#c9b78f" stroke-width="2"/><circle cx="20" cy="30" r="8" fill="none" stroke="#5e3796" stroke-width="2.4"/><path d="M20 24 L22 29 L27 29 L23 32 L24.5 37 L20 34 L15.5 37 L17 32 L13 29 L18 29 Z" fill="#5e3796"/>${chosen ? '<path d="M29 40 L37 48" stroke="#2b1a0e" stroke-width="3" stroke-linecap="round"/>' : '<text x="31" y="47" font-size="12" font-weight="700" fill="#2b1a0e" text-anchor="middle">?</text>'}</svg>`;
+  return `<svg class="enc-card" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><rect x="5" y="3" width="30" height="45" rx="4" fill="#fbf3e2" stroke="#2b1a0e" stroke-width="2"/><path d="M12 10 L28 10 M12 15 L22 15" stroke="#c9b78f" stroke-width="2"/><circle cx="20" cy="30" r="8" fill="none" stroke="#5e3796" stroke-width="2.4"/><path d="M20 24 L22 29 L27 29 L23 32 L24.5 37 L20 34 L15.5 37 L17 32 L13 29 L18 29 Z" fill="#5e3796"/>${chosen ? '<path d="M29 40 L37 48" stroke="#2b1a0e" stroke-width="3" stroke-linecap="round"/>' : '<text x="31" y="47" font-size="16" fill="#2b1a0e" text-anchor="middle">?</text>'}</svg>`;
 }
 
 /** A door, for walking on. */

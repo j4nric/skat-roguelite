@@ -41,7 +41,7 @@ cargo run -p skat_sim -- --seed 42 --games 10000
 ## Darstellung und Sprache
 
 - Spieltexte nur Deutsch, aus einer Übersetzungsdatei. Deutsches Blatt in der Anzeige (Eichel, Grün, Rot, Schellen; Unter, Ober, Daus), siehe ADR 0010. Im Code bleiben die Bezeichner aus dem Glossar.
-- Fremde Assets nur CC0 oder CC-BY. Jede Quelle mit Lizenz in `web/LICENSES.md`.
+- Fremde Assets unter freien Lizenzen (CC0, CC-BY, SIL OFL). Jede Quelle mit Lizenz in `web/LICENSES.md`.
 
 ## Autonomie
 

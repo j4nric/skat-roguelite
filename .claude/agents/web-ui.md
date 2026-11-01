@@ -29,7 +29,7 @@ Die Web-App ist ein Konsument des Kerns. Sie zeigt Zustand und Ereignisse an und
 - **Wertung sichtbar machen**: Die Aufschlüsselung des Spielwerts (Grundwert, Gewinnstufen, Beitrag jedes Relikts) ist der Höhepunkt jedes Spiels. Sie wird Schritt für Schritt animiert, wie in Balatro, und ist mit einem Tipp überspringbar.
 - **Speichern**: laufender Run, Freischaltungen und Statistik in `localStorage`, jeder Zugriff in try/catch. Gespeichert wird der serialisierte Kern-Zustand, nicht der Zustand der Oberfläche.
 - Animationen abbrechbar und beschleunigbar, `prefers-reduced-motion` beachten. Ein Spiel muss in unter zwei Minuten spielbar sein.
-- Fremde Assets nur CC0 oder CC-BY, jede Quelle in `web/LICENSES.md`.
+- Fremde Assets unter freien Lizenzen (CC0, CC-BY, SIL OFL), jede Quelle in `web/LICENSES.md`.
 
 ## Prüfen vor dem Abschluss
 
