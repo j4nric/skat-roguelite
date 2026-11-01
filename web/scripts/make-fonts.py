@@ -1,121 +1,80 @@
 #!/usr/bin/env python3
-"""Build the pixel fonts of the web app from Kenney's CC0 font pack.
+"""Build the web font of the app: VT323 (Peter Hull, SIL OFL 1.1) as WOFF2.
 
-    python3 scripts/make-fonts.py <dir with the Kenney TTFs>
+    python3 scripts/make-fonts.py [path to VT323-Regular.ttf]
 
-Needs fontTools and brotli (pip install fonttools brotli). The input is the
-Kenney Fonts pack (https://kenney.nl/assets/kenney-fonts, CC0), files
-"Kenney Mini.ttf" and "Kenney Mini Square.ttf" (also mirrored in
-github.com/ereborstudios/kenney-fonts). Output: WOFF2 files in
-src/assets/fonts/, reduced to the characters of German texts.
+Needs fontTools and brotli (pip install fonttools brotli). Without an
+argument the TTF is downloaded from the Google Fonts repository:
 
-Fixes on top of the originals (CC0 allows any change):
-- the lowercase umlauts (ä, ö, ü) reuse the capital glyphs in the pack;
-  they are rebuilt from the lowercase letter plus the dots of the capital,
-  moved down to sit one pixel above the x-height,
-- the lowercase l of Kenney Mini is a small capital L at x-height, which
-  makes "links" read like "unks"; it gets the plain stem of the capital I,
-- the minus sign (U+2212) and the en dash (U+2013) are missing; they get
-  the hyphen's outline.
+    https://raw.githubusercontent.com/google/fonts/main/ofl/vt323/VT323-Regular.ttf
+    https://raw.githubusercontent.com/google/fonts/main/ofl/vt323/OFL.txt
+
+Both files are checked against the SHA-256 below, so the output stays the
+same as long as the source does not change. Output: src/assets/fonts/
+vt323.woff2, reduced to Latin-1 plus the punctuation of German texts, and
+the licence next to it as OFL-VT323.txt (the OFL asks for the licence to
+travel with the font). The outlines are not changed; the font declares no
+Reserved Font Name, so the subset keeps the name VT323.
 """
 
+import hashlib
 import os
+import shutil
 import sys
+import tempfile
+import urllib.request
 
 from fontTools import subset
-from fontTools.pens.recordingPen import DecomposingRecordingPen
-from fontTools.pens.transformPen import TransformPen
-from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
-FONTS = {
-    "Kenney Mini.ttf": "kenney-mini.woff2",
-    "Kenney Mini Square.ttf": "kenney-mini-square.woff2",
+BASE = "https://raw.githubusercontent.com/google/fonts/main/ofl/vt323/"
+SOURCES = {
+    "VT323-Regular.ttf": "cf4de751ada78ceac033dbe16a687742939995b77bc2a052ae17a4957958594d",
+    "OFL.txt": "27d9af34210253e7ca1251fbace86c6f65b40031d6ce1a75493a1b2093631298",
 }
 
-UMLAUTS = {"adieresis": ("a", "Adieresis", "A"), "odieresis": ("o", "Odieresis", "O"), "udieresis": ("u", "Udieresis", "U")}
-
-# Latin-1 plus the punctuation the texts use.
-UNICODES = list(range(0x20, 0x7F)) + list(range(0xA0, 0x100)) + [0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E, 0x2022, 0x2026, 0x2212, 0x20AC]
-
-
-def contours(font, name):
-    """The decomposed outline of a glyph as a list of contours (pen calls)."""
-    pen = DecomposingRecordingPen(font.getGlyphSet())
-    font.getGlyphSet()[name].draw(pen)
-    out, cur = [], []
-    for op, args in pen.value:
-        cur.append((op, args))
-        if op in ("closePath", "endPath"):
-            out.append(cur)
-            cur = []
-    return out
+# Latin-1 plus the punctuation the texts use (de.ts and core/content/*.ron):
+# en and em dash, quotes „“ ‚‘ ’ ”, bullet, ellipsis, minus, euro.
+UNICODES = list(range(0x20, 0x7F)) + list(range(0xA0, 0x100)) + [
+    0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E, 0x2022, 0x2026, 0x2212, 0x20AC,
+]
 
 
-def bounds(font, name):
-    pen = BoundsPen(font.getGlyphSet())
-    font.getGlyphSet()[name].draw(pen)
-    return pen.bounds
+def sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
-def replay(pen, calls):
-    for op, args in calls:
-        getattr(pen, op)(*args)
-
-
-def contour_ymin(calls):
-    ys = [pt[1] for _, args in calls for pt in args if pt is not None]
-    return min(ys) if ys else 0
-
-
-def fix_umlauts(font):
-    glyf = font["glyf"]
-    for target, (lower, upper_uml, upper) in UMLAUTS.items():
-        cap_top = bounds(font, upper)[3]
-        x_top = bounds(font, lower)[3]
-        dots = [c for c in contours(font, upper_uml) if contour_ymin(c) >= cap_top]
-        if not dots:
-            continue
-        pen = TTGlyphPen(font.getGlyphSet())
-        replay(pen, [call for c in contours(font, lower) for call in c])
-        shifted = TransformPen(pen, (1, 0, 0, 1, 0, x_top - cap_top))
-        for c in dots:
-            replay(shifted, c)
-        glyf[target] = pen.glyph()
-        font["hmtx"][target] = font["hmtx"][lower]
-
-
-def fix_l(font):
-    """A small-capital l (lower than the capitals) becomes the stem of I."""
-    if bounds(font, "l")[3] >= bounds(font, "I")[3]:
-        return
-    pen = TTGlyphPen(font.getGlyphSet())
-    replay(pen, [call for c in contours(font, "I") for call in c])
-    font["glyf"]["l"] = pen.glyph()
-    font["hmtx"]["l"] = font["hmtx"]["I"]
-
-
-def add_dashes(font):
-    for table in font["cmap"].tables:
-        if not table.isUnicode():
-            continue
-        hyphen = table.cmap.get(0x2D)
-        if hyphen:
-            table.cmap.setdefault(0x2212, hyphen)
-            table.cmap.setdefault(0x2013, hyphen)
+def fetch(name, into):
+    path = os.path.join(into, name)
+    with urllib.request.urlopen(BASE + name) as r, open(path, "wb") as f:
+        shutil.copyfileobj(r, f)
+    return path
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) > 2:
         sys.exit(__doc__)
-    src = sys.argv[1]
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "assets", "fonts")
-    for name, out in FONTS.items():
-        font = TTFont(os.path.join(src, name))
-        fix_umlauts(font)
-        fix_l(font)
-        add_dashes(font)
+    with tempfile.TemporaryDirectory() as tmp:
+        if len(sys.argv) == 2:
+            ttf = sys.argv[1]
+            ofl = os.path.join(os.path.dirname(os.path.abspath(ttf)), "OFL.txt")
+            if not os.path.exists(ofl):
+                ofl = fetch("OFL.txt", tmp)
+        else:
+            ttf = fetch("VT323-Regular.ttf", tmp)
+            ofl = fetch("OFL.txt", tmp)
+        for path, name in ((ttf, "VT323-Regular.ttf"), (ofl, "OFL.txt")):
+            if sha256(path) != SOURCES[name]:
+                print(f"warning: {name} differs from the known version (SHA-256 {sha256(path)})", file=sys.stderr)
+
+        # Keep the timestamp of the source, so equal input gives equal bytes.
+        font = TTFont(ttf, recalcTimestamp=False)
+        cmap = font.getBestCmap()
+        missing = [f"U+{u:04X}" for u in UNICODES if u not in cmap]
+        if missing:
+            print(f"warning: VT323 has no glyph for {', '.join(missing)}", file=sys.stderr)
         options = subset.Options()
         options.flavor = "woff2"
         options.layout_features = []
@@ -124,9 +83,10 @@ def main():
         sub.populate(unicodes=UNICODES)
         sub.subset(font)
         font.flavor = "woff2"
-        path = os.path.join(out_dir, out)
+        path = os.path.join(out_dir, "vt323.woff2")
         font.save(path)
         print(f"{path}: {os.path.getsize(path)} bytes")
+        shutil.copyfile(ofl, os.path.join(out_dir, "OFL-VT323.txt"))
 
 
 if __name__ == "__main__":

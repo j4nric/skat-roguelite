@@ -1,6 +1,6 @@
 # Lizenzen und Quellen der Web-App
 
-Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16, CLAUDE.md). Jede fremde Quelle steht hier und im Abspann.
+Erlaubt sind Assets unter freien Lizenzen: CC0, CC-BY und SIL OFL (DESIGN 16, CLAUDE.md). Jede fremde Quelle steht hier und im Abspann.
 
 ## Grafik, Schrift, Klang
 
@@ -9,10 +9,10 @@ Erlaubt sind nur Assets unter CC0 oder CC-BY (DESIGN 16, CLAUDE.md). Jede fremde
 | Kartenbilder des deutschen Blatts im Pixelstil (Farbzeichen als 8 × 8 Pixel, Zahlkarten, Daus, König, Ober, Unter, Kartenrücken, Blanko, Markierungen der Kartenmodifikationen) | `src/ui/art.ts`, `src/ui/cards.ts` | selbst gezeichnet für dieses Projekt nach der Stilprobe `docs/design/stil-a4-mockup.dc.html` | Teil dieses Projekts |
 | Figuren (Stammgäste, Wirt, Bosse), Gegenstände am Tresen; beim Start zu Pixelbildern verkleinert (`src/ui/pixelate.ts`) | `src/ui/people.ts`, `src/ui/goods.ts` | selbst gezeichnet für dieses Projekt | Teil dieses Projekts |
 | Favicon | `public/favicon.svg` | selbst gezeichnet | Teil dieses Projekts |
-| Pixelschriften „Kenney Mini“ (Text) und „Kenney Mini Square“ (Beschriftungen, Kartenecken), auf Latin-1 reduziert, WOFF2; Kleinbuchstaben ä, ö, ü und l nachgebessert, Minus und Halbgeviertstrich ergänzt | `src/assets/fonts/kenney-mini.woff2`, `src/assets/fonts/kenney-mini-square.woff2` | Kenney (www.kenney.nl), Paket „Kenney Fonts“ (https://kenney.nl/assets/kenney-fonts), bezogen über den Spiegel github.com/ereborstudios/kenney-fonts | CC0 1.0, Text in `src/assets/fonts/Kenney-License.txt` |
+| Pixelschrift „VT323“ für alle Texte und die Kartenecken, auf Latin-1 und die Satzzeichen deutscher Texte reduziert, WOFF2, Umrisse unverändert | `src/assets/fonts/vt323.woff2` | Peter Hull (The VT323 Project Authors), über Google Fonts: https://github.com/google/fonts/tree/main/ofl/vt323 | SIL Open Font License 1.1, Text in `src/assets/fonts/OFL-VT323.txt` |
 | Klänge: Karte legen, Stich, Kreide-Tick, Gläserklirren (Relikt), Groschen, Klopfen (Ergebnis), Sieg und Niederlage (Akkordeon) | `src/assets/sounds/*.mp3` | selbst synthetisiert mit `scripts/make-sounds.mjs` (Rauschen, Sinus-Teiltöne, kleine Akkordeon-Synthese), keine fremden Aufnahmen | Teil dieses Projekts |
 
-Die Schriften baut `scripts/make-fonts.py` (braucht fontTools und brotli) aus den TTF-Dateien des Kenney-Pakets: Sie werden auf die Zeichen für deutsche Texte reduziert, die Kleinbuchstaben ä, ö und ü bekommen eigene Punkte (im Paket sind es die Großbuchstaben), das kleine l bekommt einen vollen Strich, Minus und Halbgeviertstrich werden ergänzt. CC0 erlaubt jede Änderung; die Namensnennung ist freiwillig und steht trotzdem hier und im Abspann. Die Klänge lassen sich mit `node scripts/make-sounds.mjs` (braucht ffmpeg) jederzeit neu erzeugen.
+Die Schrift baut `scripts/make-fonts.py` (braucht fontTools und brotli): Es lädt `VT323-Regular.ttf` und `OFL.txt` aus dem Google-Fonts-Repository (https://raw.githubusercontent.com/google/fonts/main/ofl/vt323/), prüft beide gegen eine SHA-256-Summe, reduziert die Schrift auf die Zeichen deutscher Texte und legt die Lizenz daneben. Die OFL erlaubt das Reduzieren und Weitergeben mit der App, solange die Lizenz beiliegt und die Schrift nicht allein verkauft wird; VT323 hat keinen reservierten Schriftnamen. Die Klänge lassen sich mit `node scripts/make-sounds.mjs` (braucht ffmpeg) jederzeit neu erzeugen.
 
 Dieselben Quellen nennt der Abspann im Spiel (Startseite und Menü, Texte in `src/i18n/de.ts`).
 
