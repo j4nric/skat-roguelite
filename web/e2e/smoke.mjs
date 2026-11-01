@@ -6,10 +6,19 @@
 // - checks the start screen of a new player: a fresh meta state is stored,
 //   the Alleinspieler is picked, the Nullspieler is locked with his
 //   condition, and the Vereinsbuch lists every unlock as open,
-// - starts a run with a fixed seed and passes once,
+// - starts a run with a fixed seed; Skat oder Hand lies on the felt: the
+//   Stammgäste's greetings written out, short labels ("Hand spielen", the
+//   deck as "Einmischen") with their explanations on the info card (hover),
+//   the skat face down, the hand bigger than under the Ansage; a long press
+//   and a drag across the table mark no text; with reduced motion nothing
+//   flies in; then it passes once by dragging the deck into the middle,
 // - reloads the page and checks that the run is resumed,
 // - plays a whole game in the order of the Skatordnung (Skat oder Hand,
 //   Skat aufnehmen, Drücken, Ansage, 10 Stiche, Abrechnung) and checks that
+//   (Drücken on the table: the picked-up skat lies face up on the table,
+//   a hand card dropped onto a table card swaps with it, one dragged back
+//   leaves Drücken disabled, taps move cards as the fallback; the click
+//   strategy below moves the skat back and taps the first two hand cards)
 //   the series account changed; the hand Ansage offers only the hand levels
 //   and, for the Alleinspieler too (ADR 0012), Null Hand and Null Ouvert Hand
 //   with their values; the Ansage after the skat only the levels without Hand
@@ -98,6 +107,12 @@
 // same seed, account, passes and hand; every stored key is back as it was.
 // Persistent storage is asked for once, after the run started, not on load.
 // All passes above run with the Wirt's hints switched off (quietContext).
+//
+// Motion (motionPass, always with animations): a deal flies in from the
+// deck with varied spins and a second deal differs, the skat turns over on
+// the table after picking it up, and finished tricks slide off towards
+// their winner (left regular left, right regular right, the player down);
+// screenshots trick-leaves-*.
 //
 // M6 "Musik" (musicPass and checks in the passes above): the music loops
 // are mirrored in <html data-music>; an init script counts AudioContexts and
@@ -487,9 +502,7 @@ async function playOut(page, label, shotAt = null) {
       continue;
     }
     if (await page.locator('[data-action="select"]').count()) {
-      await page.locator('[data-action="select"]').nth(0).click();
-      await page.locator('[data-action="select"]').nth(1).click();
-      await page.click('[data-action="discard"]');
+      await discardFirstTwo(page, label);
       continue;
     }
     if (shotAt !== null && played === shotAt.at) await shoot(page, shotAt.name);
@@ -509,21 +522,151 @@ async function text(page, testId) {
   return (await page.locator(`[data-testid="${testId}"]`).first().textContent())?.trim() ?? '';
 }
 
-/** Pick up the skat and press the first two cards the core lets go. */
+/**
+ * Drücken with the old click strategy, so the seeds still win: the skat
+ * cards lying on the table go back to the hand (a tap each), then the
+ * first two cards of the hand the core lets go are tapped onto the table.
+ * `atTwelve` runs while all twelve cards are in the hand.
+ */
+async function discardFirstTwo(page, label, atTwelve = null) {
+  const onTable = page.locator('[data-testid="skat-zone"] [data-action="select"]');
+  for (let i = 0; (await onTable.count()) && i < 3; i++) await onTable.first().click();
+  if (await onTable.count()) fail(`${label}: the skat cards do not go back to the hand on a tap`);
+  if (!(await page.locator('[data-action="discard"]').isDisabled())) fail(`${label}: Drücken possible with no card on the table`);
+  if (atTwelve) await atTwelve();
+  const hand = page.locator('.hand [data-action="select"]');
+  await hand.first().click();
+  await hand.first().click();
+  const lying = await page.locator('[data-testid="skat-zone"] .skat-card').count();
+  if (lying !== 2) fail(`${label}: ${lying} cards on the table after tapping two`);
+  await page.click('[data-action="discard"]');
+}
+
+/**
+ * Drag the element `from` onto `to` with the mouse, in small steps; with
+ * `shot`, a screenshot (390 × 844) just before letting go.
+ */
+async function dragOnto(page, from, to, steps = 12, shot = null) {
+  const a = await page.locator(from).first().boundingBox();
+  const b = await page.locator(to).first().boundingBox();
+  if (!a || !b) fail(`nothing to drag: ${from} -> ${to}`);
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(a.x + a.width / 2 + ((b.x + b.width / 2 - a.x - a.width / 2) * i) / steps, a.y + a.height / 2 + ((b.y + b.height / 2 - a.y - a.height / 2) * i) / steps);
+  }
+  if (shot) {
+    await page.screenshot({ path: join(screens, `${shot}-390x844.png`) });
+    log(`screenshot ${shot} (while dragging)`);
+  }
+  await page.mouse.up();
+  await page.mouse.move(1, 1);
+}
+
+/** Einmischen with the tap fallback: tap the deck, then the button in the middle. */
+async function mixIn(page) {
+  await page.click('[data-testid="deck"]');
+  await page.waitForSelector('[data-testid="deck"][aria-expanded="true"]');
+  await page.click('[data-testid="mix-confirm"]');
+}
+
+/**
+ * Skat oder Hand on the felt (play-test feedback): what the Stammgäste say
+ * stands written out, the choices have short labels ("Einmischen" on the
+ * deck, "Hand spielen") with their explanations on the info card (hover
+ * here), the skat lies face down in the middle. A long press opens the
+ * info card and marks no text; dragging across the table marks none either.
+ */
+async function assertChoice(page, seated) {
+  const talk = (await page.locator('[data-testid="table-talk"] .talk-line').allTextContents()).map((l) => l.replace(/\s+/g, ' ').trim());
+  const names = seated.opps.map((o) => o.name);
+  if (talk.length !== 2 || !names.every((n, i) => talk[i]?.startsWith(`${n}:`))) fail(`table talk ${JSON.stringify(talk)} does not name ${names.join(', ')}`);
+  if (seated.quip && !talk.some((l) => l.includes(seated.quip.text))) fail(`the greeting "${seated.quip.text}" is not on the felt: ${JSON.stringify(talk)}`);
+  const hand = (await page.locator('[data-action="play-hand"]').textContent())?.trim();
+  if (hand !== 'Hand spielen') fail(`the hand button reads "${hand}"`);
+  const deck = await page.locator('[data-testid="deck"]').getAttribute('aria-label');
+  if (!deck?.startsWith('Einmischen')) fail(`the deck is labelled "${deck}"`);
+  if ((await page.locator('[data-testid="skat-pile"] .skat-spot.is-back').count()) !== 2) fail('the skat does not lie face down in the middle');
+  for (const [sel, key] of [
+    ['[data-action="play-hand"]', 'choice:hand'],
+    ['[data-action="pick-up-skat"]', 'choice:skat'],
+    ['[data-testid="deck"]', 'choice:pass'],
+  ]) {
+    await page.hover(sel);
+    await page.waitForSelector(`[data-testid="info-card"][data-info-key="${key}"]`, { timeout: 3000 }).catch(() => fail(`no explanation on hovering ${sel}`));
+  }
+  await page.mouse.move(1, 1);
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  // Long press on a hand card, the mouse still down moving over the sheet.
+  const card = await page.locator('.hand-card').first().boundingBox();
+  await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.move(20, 300, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForSelector('.info-card.is-sheet');
+  const marked = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  if (marked) fail(`a long press marked text: "${marked.slice(0, 60)}"`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.info-card', { state: 'detached' });
+  // Dragging across the talk and the opponents marks nothing.
+  const line = await page.locator('[data-testid="table-talk"]').boundingBox();
+  await page.mouse.move(line.x + 2, line.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(line.x + line.width - 2, line.y - 60, { steps: 6 });
+  await page.mouse.up();
+  const dragged = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  if (dragged) fail(`dragging across the table marked text: "${dragged.slice(0, 60)}"`);
+  await page.mouse.move(1, 1);
+  log(`Skat oder Hand: talk ${JSON.stringify(talk)}, explanations on hover, no text marked`);
+}
+
+/**
+ * Drücken on the table by dragging: a hand card dropped onto a card on the
+ * table takes its place (that one goes to the hand); a card dragged back
+ * into the hand leaves one on the table, and Drücken waits for two.
+ */
+async function assertDiscardDrag(page, label) {
+  const ids = () =>
+    page.evaluate(() => ({
+      table: [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id),
+      hand: [...document.querySelectorAll('.hand-card')].map((e) => e.dataset.id),
+    }));
+  const before = await ids();
+  const handId = await page.locator('.hand [data-action="select"]').first().getAttribute('data-id');
+  const target = before.table[0];
+  await dragOnto(page, `.hand [data-id="${handId}"]`, `[data-testid="skat-zone"] .skat-card[data-id="${target}"]`, 12, 'table-discard-dragging');
+  const swapped = await ids();
+  if (!swapped.table.includes(handId) || swapped.table.includes(target) || !swapped.hand.includes(target)) fail(`${label}: dropping a hand card onto the table did not swap (${JSON.stringify(before)} -> ${JSON.stringify(swapped)})`);
+  await shoot(page, 'table-discard-drag');
+  await dragOnto(page, `[data-testid="skat-zone"] .skat-card[data-id="${handId}"]`, '.hand');
+  const back = await ids();
+  if (back.table.length !== 1 || !back.hand.includes(handId)) fail(`${label}: dragging a card back into the hand left ${JSON.stringify(back)}`);
+  if (!(await page.locator('[data-action="discard"]').isDisabled())) fail(`${label}: Drücken possible with one card on the table`);
+  log(`${label}: cards dragged between hand and table`);
+}
+
+/**
+ * Pick up the skat: its two cards lie face up on the table (Drücken on the
+ * table), the hand holds the other ten; press the first two cards the core
+ * lets go (discardFirstTwo).
+ */
 async function pickUpAndDiscard(page, label, shot = null) {
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.click('[data-action="pick-up-skat"]');
-  await page.waitForSelector('[data-action="select"]');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  const onTable = await page.locator('[data-testid="skat-zone"] .skat-card').count();
   const handSize = await page.locator('.hand-card').count();
-  if (handSize !== 12) fail(`${label}: expected 12 cards while discarding, saw ${handSize}`);
+  if (onTable + handSize !== 12) fail(`${label}: expected 12 cards while discarding, saw ${handSize} in the hand and ${onTable} on the table`);
+  if (onTable !== 2) fail(`${label}: the skat should lie on the table after picking it up, ${onTable} cards there`);
+  if (await page.locator('[data-action="discard"]').isDisabled()) fail(`${label}: Drücken not possible with the skat on the table`);
   if (await page.locator('.declare').count()) fail(`${label}: an Ansage while discarding`);
-  await page.locator('[data-action="select"]').nth(0).click();
-  await page.locator('[data-action="select"]').nth(1).click();
   if (shot) {
     await shoot(page, shot);
-    await assertFits(page, `${label}, discarding (12 cards)`);
+    await assertFits(page, `${label}, discarding (skat on the table)`);
+    await assertDiscardDrag(page, label);
   }
-  await page.click('[data-action="discard"]');
+  await discardFirstTwo(page, label, shot ? () => assertFits(page, `${label}, discarding (12 cards in the hand)`) : null);
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
   const pressed = await page.locator('[data-testid="pressed"] .mini-card').count();
   if (pressed !== 2) fail(`${label}: the Ansage after the skat shows ${pressed} pressed cards`);
@@ -974,13 +1117,17 @@ async function m5(browser, errors, reducedMotion) {
   const lockedCount = await lockedCards.count();
   if (!lockedCount) fail('the Ramponiert card is not locked while discarding');
   if (await page.locator('[data-action="select"][data-no-discard="true"]').count()) fail('the Ramponiert card can be picked for the skat');
+  if (await page.locator('[data-testid="skat-zone"] [data-no-discard="true"], [data-testid="skat-zone"] .plaque-lock').count()) fail('a Ramponiert card lies on the table to be pressed');
+  const tableIds = () => page.locator('[data-testid="skat-zone"] .skat-card').evaluateAll((els) => els.map((e) => e.dataset.id).join(','));
+  const lyingBefore = await tableIds();
   await lockedCards.first().click();
-  if (await page.locator('[data-action="select"][aria-pressed="true"]').count()) fail('tapping the Ramponiert card picked something');
+  if ((await tableIds()) !== lyingBefore) fail('tapping the Ramponiert card moved it onto the table');
+  // Dragged onto the table it stays in the hand too.
+  await dragOnto(page, '.hand-card.is-locked', '[data-testid="skat-zone"]');
+  if ((await tableIds()) !== lyingBefore) fail('dragging the Ramponiert card moved it onto the table');
   await shoot(page, 'discard-locked');
   await assertFits(page, 'Ramponiert while discarding');
-  await page.locator('[data-action="select"]').nth(0).click();
-  await page.locator('[data-action="select"]').nth(1).click();
-  await page.click('[data-action="discard"]');
+  await discardFirstTwo(page, 'Ramponiert');
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
@@ -1103,7 +1250,7 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.waitForFunction(() => window.__persistCalls === 1).catch(() => fail(`${label}: persistent storage not asked for after the run started`));
   const passes = Number(await text(page, 'passes-left'));
-  await page.click('[data-action="pass"]');
+  await mixIn(page);
   await page.waitForFunction(
     (n) => document.querySelector('[data-testid="passes-left"]')?.textContent?.trim() === String(n - 1),
     passes,
@@ -1315,8 +1462,8 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await dismissHint(page, 'skatOrHand');
   log('after reload: welcome stays dismissed');
 
-  // A pass.
-  await page.click('[data-action="pass"]');
+  // A pass (Einmischen: the deck into the middle, here with the tap fallback).
+  await mixIn(page);
   log(`hint pass: ${await expectHint(page, 'pass')}`);
   await shoot(page, 'hint-pass');
   await dismissHint(page, 'pass');
@@ -1523,6 +1670,87 @@ async function shortEvening(browser, errors, reducedMotion) {
   await other.close();
 }
 
+/**
+ * The table in motion (play-test feedback), with animations on whatever
+ * the other passes use: every deal flies in from the deck with its own
+ * spins (cosmetic randomness: a second deal differs), the skat turns over
+ * where it lies after picking it up, and a finished trick slides off
+ * towards the seat that took it (left regular: to the left, right
+ * regular: to the right, the player: down).
+ */
+async function motionPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const spins = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.hand-card')].map((el) => {
+        const a = el.getAnimations()[0];
+        return a ? String(a.effect.getKeyframes()[0].transform) : null;
+      }),
+    );
+  const first = await spins();
+  if (first.filter(Boolean).length < 10) fail(`motion: only ${first.filter(Boolean).length} hand cards fly in when dealt`);
+  if (new Set(first).size < 5) fail('motion: the cards of a deal all fly in the same way');
+  await page.waitForTimeout(1500);
+  await page.mouse.move(1, 1);
+  await mixIn(page);
+  await page.waitForFunction(() => document.querySelectorAll('.hand-card').length === 10 && document.querySelector('.hand-card')?.getAnimations().length);
+  const second = await spins();
+  if (second.every((t, i) => t === first[i])) fail('motion: the second deal flies in exactly like the first');
+  log('motion: deals fly in from the deck, each a little different');
+  await page.waitForTimeout(2000);
+  await page.click('[data-action="pick-up-skat"]');
+  await page
+    .waitForFunction(() => [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].filter((el) => el.querySelector('.flip-cover') && el.getAnimations().length).length === 2, null, { timeout: 5000 })
+    .catch(() => fail('motion: the skat does not turn over on the table'));
+  log('motion: the skat turns over on the table');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  await discardFirstTwo(page, 'motion');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  const names = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.opp')].map((o) => [o.dataset.seat, o.querySelector('[data-testid="opp-name"]')?.textContent?.trim()])));
+  const seen = {};
+  for (let n = 0; n < 10 && Object.keys(seen).length < 3; n++) {
+    await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+    await page.locator('[data-action="play"]').first().click();
+    await page.mouse.move(1, 1);
+    const sweep = await page
+      .waitForFunction(
+        () => {
+          const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+          if (!a) return null;
+          const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(a.effect.getKeyframes()[2].transform));
+          return m ? { x: Number(m[1]), y: Number(m[2]), status: document.querySelector('.status')?.textContent?.trim() ?? '' } : null;
+        },
+        null,
+        { timeout: 20000, polling: 16 },
+      )
+      .then((h) => h.jsonValue());
+    const winner = sweep.status.startsWith('Dein') ? 'you' : sweep.status.includes(names[1]) ? 'left' : sweep.status.includes(names[2]) ? 'right' : '?';
+    const ok = winner === 'left' ? sweep.x < -60 : winner === 'right' ? sweep.x > 60 : winner === 'you' ? sweep.y > 60 && Math.abs(sweep.x) < sweep.y : false;
+    if (!ok) fail(`motion: trick to ${winner} (${sweep.status}) leaves by ${Math.round(sweep.x)}, ${Math.round(sweep.y)}`);
+    if (!seen[winner]) {
+      // Half way off the table.
+      await page.waitForFunction(() => {
+        const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+        return !a || a.currentTime > a.effect.getTiming().duration * 0.7;
+      }, null, { polling: 16 });
+      await page.screenshot({ path: join(screens, `trick-leaves-${winner}-390x844.png`) });
+    }
+    seen[winner] = true;
+  }
+  if (Object.keys(seen).length < 2) fail(`motion: tricks left the table only towards ${Object.keys(seen).join(', ')}`);
+  log(`motion: tricks slide off towards ${Object.keys(seen).join(', ')}`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -1583,15 +1811,22 @@ async function run() {
     await page.click('[data-action="new-run"]');
     await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
+    if (reducedMotion === 'reduce') {
+      // Reduced motion: the cards are there at once, nothing flies in.
+      const flying = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.hand, .skat-pile')).length);
+      if (flying) fail(`${flying} cards fly in although reduced motion is asked for`);
+    }
     const seated = await assertGuests(page, 'first series');
     if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
+    await assertChoice(page, seated);
     await shoot(page, 'table-declare');
     await assertFits(page, 'Skat oder Hand');
     await assertFits(page, 'Skat oder Hand with a quip', [PHONE, { width: 375, height: 667 }]);
+    const choiceCard = await page.locator('.hand-card').first().evaluate((e) => e.getBoundingClientRect().height);
 
-    // Pass once.
+    // Pass once: the deck dragged into the middle (Einmischen).
     const passes = Number(await text(page, 'passes-left'));
-    await page.click('[data-action="pass"]');
+    await dragOnto(page, '[data-testid="deck"]', '.mix-zone', 12, 'table-deck-drag');
     await page.waitForFunction(
       (before) => document.querySelector('[data-testid="passes-left"]')?.textContent?.trim() === String(before - 1),
       passes,
@@ -1614,6 +1849,10 @@ async function run() {
     await page.waitForSelector('.declare-hand');
     const handRisks = await page.locator('[data-action="pick-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
     if (handRisks !== 'Hand,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`hand Ansage offers ${handRisks}`);
+    // While choosing Skat oder Hand the hand is bigger than under the Ansage.
+    const ansageCard = await page.locator('.hand-card').first().evaluate((e) => e.getBoundingClientRect().height);
+    if (!(choiceCard > ansageCard)) fail(`hand cards ${Math.round(choiceCard)}px high while choosing, ${Math.round(ansageCard)}px under the Ansage`);
+    log(`hand cards ${Math.round(choiceCard)}px while choosing, ${Math.round(ansageCard)}px under the Ansage`);
     await shoot(page, 'table-declare-hand');
     await assertFits(page, 'hand Ansage');
     // Every character may declare Null (ADR 0012): the Alleinspieler too,
@@ -1765,6 +2004,7 @@ async function run() {
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
     await hintsAndRules(browser, errors, reducedMotion);
+    await motionPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

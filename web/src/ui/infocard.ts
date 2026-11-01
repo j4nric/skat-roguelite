@@ -12,7 +12,7 @@
 // the card. Purely presentation: it never changes the run.
 
 import { de, t } from '../i18n';
-import { attrs, esc } from './dom';
+import { attrs, clearSelection, esc } from './dom';
 import type { InfoModel, InfoSection } from './info';
 import { swallowClick } from './press';
 
@@ -147,6 +147,8 @@ export class InfoCard {
     this.anchor = anchor ? anchor.getBoundingClientRect() : null;
     if (mode === 'sheet') this.opener = anchor instanceof HTMLElement ? anchor : null;
     window.clearTimeout(this.hoverLeave);
+    // A long touch may have begun to mark text under the finger.
+    if (mode === 'sheet') clearSelection();
     this.render(fresh);
     if (mode === 'sheet' && fresh) this.layer.querySelector<HTMLElement>('[data-info-close]')?.focus({ preventScroll: true });
     return true;

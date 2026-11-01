@@ -62,7 +62,10 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, finishAll, flyAway, flyIn, motionOn, pulse, setTempo } from './ui/fx';
+import { deal, finishAll, flip, flyIn, motionOn, pulse, setTempo, sweepAway } from './ui/fx';
+import { cardBack } from './ui/cards';
+import { watchDrags } from './ui/drag';
+import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
@@ -118,9 +121,11 @@ const DELAY = {
   ownCard: 260,
   aiCard: 560,
   trickShow: 650,
-  trickFly: 360,
+  trickFly: 480,
   toast: 1900,
   notice: 700,
+  /** The skat turning over on the table. */
+  flip: 420,
   /** Relics and modifications that fired, before the score board covers them. */
   trigger: 650,
 };
@@ -159,6 +164,7 @@ export class App {
     busy: false,
     selected: [],
     handGame: false,
+    mixArmed: false,
     pickGame: null,
     pickRisk: null,
     pickNullRisk: null,
@@ -235,6 +241,17 @@ export class App {
       leave: () => this.info.closeHoverSoon(),
       // Only where the run is on screen, and not behind the score board.
       blocked: () => !this.ui.view || (this.ui.screen !== 'run' && this.ui.screen !== 'end') || this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss',
+    });
+    // Drag cards between hand and table, the deck into the middle.
+    watchDrags(root, {
+      drop: (el, zone, over, at) => this.onDrop(el, zone, over, at),
+      blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet',
+    });
+    // No text selection on the table: a long-press opens the info card and
+    // must not mark the page. Inputs (seed, save code) keep theirs.
+    root.addEventListener('selectstart', (e) => {
+      const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
+      if (el?.closest('.run, .info-layer') && !el.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
     });
     // A press anywhere else closes the popover of the mouse.
     root.addEventListener('pointerdown', (e) => {
@@ -701,7 +718,10 @@ export class App {
     this.ui.anim = null;
     this.ui.overlay = null;
     this.resetTableChoices();
-    if (dealt && view.game) this.afterRender.push(() => this.dealEffect());
+    if (dealt && view.game) {
+      reshuffle();
+      this.afterRender.push(() => this.dealEffect());
+    }
     // A fresh series says hello; a run resumed mid-series does not.
     if (dealt && view.game && view.series.games_played === 0) this.greetSeries(view);
     else this.quipSeries = `${view.series.section}-${view.series.index}`;
@@ -709,14 +729,25 @@ export class App {
   }
 
   private resetTableChoices(): void {
-    this.ui.selected = [];
+    this.ui.selected = this.skatOnTable();
     this.ui.handGame = false;
+    this.ui.mixArmed = false;
     this.ui.pickGame = null;
     this.ui.pickRisk = null;
     this.ui.pickNullRisk = null;
     this.ui.omaPick = false;
     this.ui.swapTake = null;
     this.ui.peekTrick = false;
+  }
+
+  /**
+   * While discarding, the cards that came from the skat lie on the table
+   * at first (those the core lets go; a "Ramponiert" one goes to the hand).
+   */
+  private skatOnTable(): number[] {
+    const game = this.ui.view?.game;
+    if (game?.phase !== 'Discarding') return [];
+    return game.hand.filter((c) => c.from_skat && c.discardable).map((c) => c.id);
   }
 
   // -------------------------------------------------------------------------
@@ -864,10 +895,12 @@ export class App {
         if (ev === 'Redealt') {
           this.passedOnce = true;
           this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
+          reshuffle();
           this.afterRender.push(() => this.dealEffect());
         }
         if (ev === 'RedealUndone') {
           this.showToast(de.toast.redealUndone);
+          reshuffle();
           this.afterRender.push(() => this.dealEffect());
         }
         if (ev === 'RamschDealt') {
@@ -922,6 +955,7 @@ export class App {
         this.ui.view = after;
         this.resetTableChoices();
         this.greetSeries(after);
+        reshuffle();
         this.afterRender.push(() => this.dealEffect());
         continue;
       }
@@ -1040,10 +1074,10 @@ export class App {
       this.trickQuip(after, trick.winner, card_points);
       this.render();
       await this.pause(DELAY.trickShow);
-      const target = this.winnerRect(trick.winner);
+      const target = this.sweepTarget(trick.winner);
       const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
       sound.play('trick');
-      if (target && !this.fastForward) await Promise.race([flyAway(cards, target, DELAY.trickFly), this.pause(DELAY.trickFly + 200)]);
+      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly), this.pause(DELAY.trickFly + 200)]);
       anim.trick = [];
       anim.status = '';
       this.render();
@@ -1093,24 +1127,34 @@ export class App {
     if (('Declared' in ev || 'SkatPickedUp' in ev) && anim) {
       // Show the new hand order and the declaration right away.
       const g = after.game;
+      // "Kurzer": the skat lay face up already, nothing to turn over.
+      const peeked = Boolean(this.ui.view?.game?.skat_peek?.length);
       if (g && 'SkatPickedUp' in ev) {
         anim.hand = g.hand.map((c) => ({ ...c, legal: false }));
         anim.handSizes[0] = anim.hand.length;
+        // The skat stays on the table, face up: the cards to press lie there.
+        const loose = new Set(g.hand.filter((c) => c.discardable).map((c) => c.id));
+        if (g.phase === 'Discarding') this.ui.selected = ev.SkatPickedUp.skat.map((c) => c.id).filter((id) => loose.has(id));
       }
       if (g && this.ui.view?.game) {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
       this.render();
-      if ('SkatPickedUp' in ev) {
-        // The two Skat cards slide from the middle into the hand.
-        const from = this.rectOf('.deck-spot');
-        if (from) {
-          for (const c of ev.SkatPickedUp.skat) {
-            const el = this.screenEl.querySelector(`.hand-card[data-id="${c.id}"]`);
-            if (el) flyIn(el, from, { ms: 320 });
+      if ('SkatPickedUp' in ev && !this.fastForward) {
+        // The two skat cards turn over where they lie; one the core keeps
+        // from the skat ("Ramponiert") slides into the hand instead.
+        const from = this.rectOf('.skat-zone') ?? this.rectOf('.deck-spot');
+        ev.SkatPickedUp.skat.forEach((c, i) => {
+          const onTable = this.screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"]`);
+          if (onTable) {
+            if (!peeked) flip(onTable, cardBack(), { delay: i * 90 });
+            return;
           }
-          sound.play('card');
-        }
+          const inHand = this.screenEl.querySelector(`.hand-card[data-id="${c.id}"]`);
+          if (inHand && from) flyIn(inHand, from, { ms: 320 });
+        });
+        sound.play('card');
+        await this.pause(DELAY.flip);
       }
     }
   }
@@ -1247,18 +1291,31 @@ export class App {
     return el ? el.getBoundingClientRect() : null;
   }
 
-  private winnerRect(seat: Seat): DOMRect | null {
-    if (seat === 0) return this.rectOf('[data-tricks]') ?? this.rectOf('.hand');
-    return this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
+  /**
+   * Where a finished trick goes: off the edge of the table on the side of
+   * the seat that took it, the left or right regular (a little towards his
+   * chair) or down to the player.
+   */
+  private sweepTarget(seat: Seat): { x: number; y: number } | null {
+    const table = this.rectOf('.table');
+    const trick = this.rectOf('.trick');
+    if (!table || !trick) return null;
+    const card = trick.height;
+    const cy = trick.top + trick.height / 2;
+    if (seat === 0) return { x: trick.left + trick.width / 2, y: table.bottom + card };
+    const opp = this.rectOf(`.opp[data-seat="${seat}"]`);
+    const y = opp ? (opp.top + opp.height / 2 + cy) / 2 : cy;
+    return seat === 1 ? { x: table.left - card, y } : { x: table.right + card, y };
   }
 
-  /** Cards fly from the middle of the table to the hands, in turns. */
+  /** Cards fly from the deck to the hands, in turns, then two to the skat. */
   private dealEffect(): void {
-    const from = this.rectOf('.deck-spot');
+    const from = this.rectOf('.deck-pile') ?? this.rectOf('.deck-spot');
     if (!from) return;
     const hand = Array.from(this.screenEl.querySelectorAll('.hand-card'));
     const left = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="1"] .opp-hand .card-back'));
     const right = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="2"] .opp-hand .card-back'));
+    const skat = Array.from(this.screenEl.querySelectorAll('.skat-pile .skat-spot'));
     const order: Element[] = [];
     for (let i = 0; i < Math.max(hand.length, left.length, right.length); i++) {
       for (const list of [hand, left, right]) {
@@ -1266,11 +1323,12 @@ export class App {
         if (el) order.push(el);
       }
     }
+    order.push(...skat);
     deal(order, from, {
       step: 22,
       ms: 280,
       onCard: (i) => {
-        if (i % 4 === 0) sound.play('card', { volume: 0.45, rate: 1.1 });
+        if (i % 4 === 0) sound.play('card', { volume: 0.45, rate: 0.95 + Math.random() * 0.2 });
       },
     });
   }
@@ -1712,23 +1770,26 @@ export class App {
         void this.act({ Declare: { game: game.game, risk } });
         return;
       }
-      case 'pass':
-        // Einmischen (the button keeps its old action name).
-        void this.act('Redeal');
+      case 'pass-arm':
+        // One tap on the deck: the middle offers "Einmischen"; a second tap undoes it.
+        this.ui.mixArmed = !this.ui.mixArmed;
+        this.render();
         return;
-      case 'redraw':
+      case 'pass':
+        // Einmischen (deck tap fallback; the button keeps its old action name).
+        this.ui.mixArmed = false;
         void this.act('Redeal');
         return;
       case 're':
         void this.act({ AnswerKontra: { re: el.dataset.re === 'true' } });
         return;
       case 'select': {
+        // A tap moves a card between hand and table (the fallback for dragging).
         const id = num('id');
         const sel = this.ui.selected;
-        if (sel.includes(id)) this.ui.selected = sel.filter((x) => x !== id);
-        else if (sel.length < 2) this.ui.selected = [...sel, id];
-        else this.ui.selected = [sel[1] ?? id, id];
-        this.render();
+        if (sel.includes(id)) this.moveCards(sel.filter((x) => x !== id), id, el.getBoundingClientRect());
+        else if (sel.length < 2) this.moveCards([...sel, id], id, el.getBoundingClientRect());
+        else this.moveCards([sel[1] ?? id, id], id, el.getBoundingClientRect());
         return;
       }
       case 'discard': {
@@ -1793,6 +1854,62 @@ export class App {
         void this.act('LeaveShop');
         return;
     }
+  }
+
+  /**
+   * A drag ended (./ui/drag.ts): the deck in the middle mixes in, a card
+   * goes between hand and table. Onto a card on the table it takes that
+   * card's place. Only which two lie there is decided here; the core checks
+   * the pair on Drücken.
+   */
+  private onDrop(el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null): void {
+    if (this.ui.busy || !this.ui.view?.game) return;
+    const kind = el.dataset.drag;
+    const where = zone?.dataset.drop;
+    if (kind === 'deck') {
+      if (where === 'mix' && this.ui.view.game.declare?.can_redeal) {
+        this.ui.mixArmed = false;
+        void this.act('Redeal');
+      }
+      return;
+    }
+    if (kind !== 'card' || this.ui.view.game.phase !== 'Discarding') return;
+    const id = Number(el.dataset.id ?? '-1');
+    const sel = this.ui.selected;
+    if (where === 'hand' && sel.includes(id)) {
+      this.moveCards(
+        sel.filter((x) => x !== id),
+        id,
+        at,
+      );
+      return;
+    }
+    if (where !== 'skat' || sel.includes(id)) return;
+    const target = Number(over?.closest<HTMLElement>('.skat-card')?.dataset.id ?? '-1');
+    if (sel.includes(target)) this.moveCards(sel.map((x) => (x === target ? id : x)), id, at, target);
+    else if (sel.length < 2) this.moveCards([...sel, id], id, at);
+    else this.moveCards([sel[1] ?? id, id], id, at);
+  }
+
+  /**
+   * Lay out the cards to press anew; the moved card (and the one it
+   * replaced) slides from where it was to its new place.
+   */
+  private moveCards(selected: number[], moved: number, from: DOMRect | null, swapped: number | null = null): void {
+    const old = swapped === null ? null : this.screenEl.querySelector(`.skat-card[data-id="${swapped}"]`)?.getBoundingClientRect() ?? null;
+    // Cards that change sides, measured before the table changes.
+    const leaving = this.ui.selected.filter((x) => !selected.includes(x) && x !== swapped);
+    const before = new Map(leaving.map((x) => [x, this.screenEl.querySelector(`[data-id="${x}"]`)?.getBoundingClientRect() ?? null]));
+    this.ui.selected = selected;
+    this.render();
+    const land = (id: number, rect: DOMRect | null | undefined): void => {
+      const el = this.screenEl.querySelector(`.skat-card[data-id="${id}"], .hand-card[data-id="${id}"]`);
+      if (el && rect) flyIn(el, rect, { ms: 200 });
+    };
+    land(moved, from);
+    if (swapped !== null) land(swapped, old);
+    for (const [id, rect] of before) land(id, rect);
+    sound.play('card', { volume: 0.5, rate: 1.05 });
   }
 
   // -------------------------------------------------------------------------

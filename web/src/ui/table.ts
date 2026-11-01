@@ -1,7 +1,13 @@
 // The table: the two regulars (or the boss) on top, the open trick on the
 // felt between the pressed skat and the "Letzter Stich" button (which shows
-// the core's last trick instead), the player's hand at the bottom in two rows. While declaring, the
-// Ansage panel takes the middle (for the Nullspieler with the Null levels).
+// the core's last trick instead), the player's hand at the bottom in two rows.
+// Before the first card the felt holds the choice of Skat oder Hand: the
+// deck (dragged into the middle it mixes in), the skat face down in the
+// middle (a tap picks it up), what the Stammgäste say, "Hand spielen".
+// After picking up, the skat lies face up on the table and the player
+// swaps cards between hand and table until the two to press lie there.
+// While declaring, the Ansage panel takes the middle (for the Nullspieler
+// with the Null levels).
 // Around it: the boss rule of this game, the Ramsch notice, the count of
 // "Der Zähler", the Kiebitz card and the skat swap of "Die Oma" or "Der
 // Opa", all from the view. Card flags the core resolved ("Unter
@@ -18,6 +24,7 @@ import { bossCoaster } from './emblems';
 import { portrait } from './people';
 import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
+import { tossStyle } from './scatter';
 
 /** Marks a card for the info card (long-press, hover, "i"). */
 function infoAttrs(id: number, focusable = true): Record<string, string | number | null> {
@@ -183,32 +190,95 @@ function pressedCards(game: GameView): string {
 }
 
 /**
- * The first decision with ten cards (Skatordnung): pick up the skat, or
- * play a hand game. Einpassen and Schieben stay here as before.
+ * What the two at the table say before the first decision: each
+ * Stammgast's greeting, written out (the boss's rule stands above in the
+ * rule strip). From the core content, compact, one line each if it fits.
  */
-function choicePanel(options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined): string {
+function tableTalk(view: RunView): string {
+  const lines = ([1, 2] as const)
+    .map((seat) => seatPerson(view, seat))
+    .filter((p) => p.guest)
+    .map((p) => `<li class="talk-line"><b>${esc(p.name)}:</b> <q>${esc(p.guest?.greet ?? '')}</q></li>`)
+    .join('');
+  return lines ? `<ul class="table-talk" data-testid="table-talk">${lines}</ul>` : '';
+}
+
+/** The deck, three backs on top of each other. */
+function deckPile(): string {
+  return `<span class="deck-backs" aria-hidden="true">${cardBack()}${cardBack()}${cardBack()}</span>`;
+}
+
+/**
+ * The first decision with ten cards (Skatordnung), laid out on the felt:
+ * the deck on the left (pull it into the middle, or tap it twice, to
+ * Einmischen), the two skat cards face down and a little askew in the
+ * middle (a tap picks them up), "Hand spielen" below. What each does is on
+ * its info card (hover, long-press, "i"), not on the buttons.
+ */
+function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined, ui: UiState): string {
   // Every Spielart (Null too) comes from the core with `allowed`.
   const handPossible = options.games.some((g) => g.allowed);
-  // "Kurzer": the skat face up on the skat button, the choice stays open.
-  const skatCards = peek?.length ? peek.map(miniCard).join('') : `${cardBack('mini')}${cardBack('mini')}`;
+  const peeked = Boolean(peek?.length);
+  // "Kurzer": the skat lies face up, the choice stays open.
+  const skatCards = (peeked && peek ? peek.map((c) => cardSvg(c.kind, c.mods)) : [cardBack(), cardBack()])
+    .map((inner, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}">${inner}</span>`)
+    .join('');
+  const canMix = options.can_redeal;
+  const armed = ui.mixArmed && canMix;
+  const deck = `<div class="deck-col">
+      <button class="deck-pile ${armed ? 'is-armed' : ''}" style="${tossStyle(2)}" ${attrs({
+        'data-action': canMix ? 'pass-arm' : null,
+        'data-drag': canMix ? 'deck' : null,
+        'data-info': 'choice:pass',
+        'data-testid': 'deck',
+        'aria-label': t(de.table.pass, { left: passesLeft }),
+        'aria-expanded': canMix ? (armed ? 'true' : 'false') : null,
+        disabled: !canMix,
+      })}>${deckPile()}<span class="deck-count" aria-hidden="true">${esc(passesLeft)}</span></button>
+      <span class="felt-caption">${esc(de.table.mix)}</span>
+    </div>`;
+  const confirm = armed
+    ? `<button class="btn btn-mix" ${attrs({ 'data-action': 'pass', 'data-testid': 'mix-confirm' })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
+    : '';
+  const skat = `<div class="mix-zone ${armed ? 'is-armed' : ''}" ${attrs({ 'data-drop': canMix ? 'mix' : null, 'data-accept': canMix ? 'deck' : null, 'data-swipe': canMix ? '' : null })}>
+      <span class="mix-label" aria-hidden="true">${esc(de.table.mixHere)}</span>
+      <button class="skat-pile" ${attrs({
+        'data-action': 'pick-up-skat',
+        'data-info': 'choice:skat',
+        'data-testid': peeked ? 'skat-peek' : 'skat-pile',
+        'aria-label': peeked && peek ? `${de.table.pickUpSkat}: ${peek.map((c) => cardName(c.kind)).join(', ')}` : de.table.pickUpSkat,
+        disabled: !options.can_pick_up_skat,
+      })}>${skatCards}</button>
+      <span class="felt-caption">${esc(de.table.pickUpSkat)}</span>
+      ${confirm}
+    </div>`;
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
-    <div class="choices">
-      <button class="choice-btn is-skat" ${attrs({ 'data-action': 'pick-up-skat' })}>
-        <span class="choice-cards ${peek?.length ? 'is-peeked' : ''}" ${attrs({ 'aria-hidden': peek?.length ? null : 'true', 'data-testid': peek?.length ? 'skat-peek' : null })}>${skatCards}</span>
-        <b class="choice-name">${esc(de.table.pickUpSkat)}</b>
-        <span class="choice-hint">${esc(de.table.pickUpSkatHint)}</span>
-      </button>
-      <button class="choice-btn is-hand" ${attrs({ 'data-action': 'play-hand', disabled: !handPossible })}>
-        <span class="choice-cards is-hand" aria-hidden="true">${cardBack('mini')}${cardBack('mini')}</span>
-        <b class="choice-name">${esc(de.table.playHand)}</b>
-        <span class="choice-hint">${esc(de.table.playHandHint)}</span>
-      </button>
-    </div>
-    ${peek?.length ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
+    ${armed ? `<p class="declare-hint mix-hint" role="status">${esc(de.table.mixArmed)}</p>` : tableTalk(view)}
+    <div class="felt">${deck}${skat}<div class="felt-side" aria-hidden="true"></div></div>
+    ${peeked && peek ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
     ${declareWarnings(options, false)}
-    ${declareActions({ ...options, can_pick_up_skat: false }, false, passesLeft, '')}
+    <div class="declare-actions choice-actions">
+      <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
+      ${regretButton(view)}
+    </div>
   </section>`;
+}
+
+/**
+ * "Reue" right after an Einmischen: takes it back, the deal before is on
+ * the table again. Only while the core says it can be used; its info card
+ * carries the text from the content.
+ */
+function regretButton(view: RunView): string {
+  const item = view.consumables.find((c) => c.consumable.id === 'regret' && c.can_use);
+  if (!item) return '';
+  return `<button class="btn btn-regret" ${attrs({
+    'data-action': 'use-item',
+    'data-slot': item.slot,
+    'data-info': `item:${item.slot}`,
+    'data-testid': 'regret',
+  })}>${esc(t(de.table.regret, { name: item.consumable.name }))}</button>`;
 }
 
 /**
@@ -240,7 +310,7 @@ function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
  */
 function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
   const afterSkat = game.phase === 'DeclaringAfterSkat';
-  if (!afterSkat && options.can_pick_up_skat && !ui.handGame) return choicePanel(options, passesLeft, game.skat_peek);
+  if (!afterSkat && options.can_pick_up_skat && !ui.handGame && ui.view) return choicePanel(ui.view, options, passesLeft, game.skat_peek, ui);
   const nullIndex = options.games.findIndex((g) => g.game === 'Null');
   const specialist = ui.view?.character.character === 'NullPlayer';
   const pick = ui.pickGame ?? (specialist && nullIndex >= 0 && options.games[nullIndex]?.allowed ? nullIndex : null);
@@ -292,11 +362,28 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
   </section>`;
 }
 
-function handCards(game: GameView, ui: UiState): string {
+/** Ids of the cards lying on the table to be pressed (Drücken); none outside that phase. */
+function onTable(game: GameView, ui: UiState): number[] {
+  return game.phase === 'Discarding' ? ui.selected : [];
+}
+
+/** The cards in the hand, without those laid on the table to be pressed. */
+function shownHand(game: GameView, ui: UiState): CardView[] {
+  const table = onTable(game, ui);
   const hand = ui.anim ? ui.anim.hand : game.hand;
+  return table.length ? hand.filter((c) => !table.includes(c.id)) : hand;
+}
+
+/** Whether the player is laying two cards on the table right now. */
+function discardingNow(game: GameView, ui: UiState): boolean {
+  return !ui.anim && !ui.busy && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
+}
+
+function handCards(game: GameView, ui: UiState): string {
+  const hand = shownHand(game, ui);
   // While the core works (and the opponents think) nothing in the hand is tappable.
   const idle = !ui.anim && !ui.busy;
-  const discarding = idle && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
+  const discarding = discardingNow(game, ui);
   const oma = idle && ui.omaPick && game.can_take_from_skat;
   const playing = idle && game.your_turn && !oma;
   const cols = Math.max(5, Math.ceil(hand.length / 2));
@@ -319,6 +406,7 @@ function handCards(game: GameView, ui: UiState): string {
       if (action) {
         return `<button class="${cls}" style="${style}" ${attrs({
           'data-action': action,
+          'data-drag': action === 'select' ? 'card' : null,
           'data-id': c.id,
           'data-legal': c.legal ? 'true' : 'false',
           'data-no-discard': c.no_discard ? 'true' : null,
@@ -332,7 +420,8 @@ function handCards(game: GameView, ui: UiState): string {
     .join('');
   const open = isOpen(game);
   const banner = open ? `<p class="open-banner">${eyeIcon(16)}<span>${esc(de.table.openHand)}</span></p>` : '';
-  return `${banner}<div class="hand ${open ? 'is-open' : ''} ${oma ? 'is-oma' : ''}" style="--cols:${cols}" data-testid="hand">${cards}</div>`;
+  const drop = discarding ? { 'data-drop': 'hand', 'data-accept': 'card' } : {};
+  return `${banner}<div class="hand ${open ? 'is-open' : ''} ${oma ? 'is-oma' : ''}" style="--cols:${cols}" ${attrs({ 'data-testid': 'hand', ...drop })}>${cards}</div>`;
 }
 
 /** Whether the player plays with open cards (Ouvert, also Null Ouvert). */
@@ -482,6 +571,36 @@ function lastTrickToggle(game: GameView, ui: UiState): string {
 }
 
 /**
+ * Drücken on the table: after the skat is picked up its two cards lie face
+ * up in the middle, a little askew. The player swaps cards between hand
+ * and table (drag, or tap as the fallback); the two lying here are pressed.
+ * Which cards may go (not "Ramponiert") the core says per card; whether
+ * the pair is valid the core checks on Drücken.
+ */
+function skatZone(game: GameView, ui: UiState): string {
+  const ids = onTable(game, ui);
+  const hand = ui.anim ? ui.anim.hand : game.hand;
+  const active = discardingNow(game, ui);
+  const spots = [0, 1]
+    .map((i) => {
+      const c = hand.find((x) => x.id === ids[i]);
+      if (!c) return `<span class="skat-slot is-empty" style="${tossStyle(i)}" aria-hidden="true"></span>`;
+      const label = cardLabel(c);
+      const inner = `${cardSvg(c.kind, c.mods)}${plaques(c)}`;
+      const card = active
+        ? `<button class="card skat-card is-active" ${attrs({ 'data-action': 'select', 'data-drag': 'card', 'data-id': c.id, 'aria-pressed': 'true', 'aria-label': t(de.table.backToHand, { card: label }), ...infoAttrs(c.id, false) })}>${inner}</button>`
+        : `<div class="card skat-card" ${attrs({ 'data-id': c.id, role: 'img', 'aria-label': label, ...infoAttrs(c.id, false) })}>${inner}</div>`;
+      return `<span class="skat-slot" style="${tossStyle(i)}">${card}</span>`;
+    })
+    .join('');
+  const drop = active ? { 'data-drop': 'skat', 'data-accept': 'card' } : {};
+  return `<div class="skat-zone ${ids.length === 2 ? 'is-full' : ''}" ${attrs({ 'data-testid': 'skat-zone', role: 'group', 'aria-label': de.table.skatZone, ...drop })}>
+    <span class="skat-zone-label">${esc(t(de.table.skatZoneCount, { n: ids.length }))}</span>
+    <div class="skat-slots">${spots}</div>
+  </div>`;
+}
+
+/**
  * The felt: the pressed skat on the left, the trick in the middle (or the
  * last trick while the player looks at it), the "Letzter Stich" button on
  * the right. The sides take only the room the trick leaves.
@@ -562,10 +681,13 @@ export function renderTable(view: RunView, ui: UiState): string {
   const center =
     declaring && game.declare
       ? declarePanel(game.declare, game, ui, view.series.redeals_left)
-      : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
+      : game.phase === 'Discarding'
+        ? `${gameLine(view, game, null)}${skatZone(game, ui)}`
+        : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
-  const cols = Math.max(5, Math.ceil((ui.anim ? ui.anim.hand : game.hand).length / 2));
-  return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''}" style="--cols:${cols}">
+  const choice = Boolean(declaring && game.declare && game.phase === 'Declaring' && game.declare.can_pick_up_skat && !ui.handGame);
+  const cols = Math.max(5, Math.ceil(shownHand(game, ui).length / 2));
+  return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">
     <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
     ${ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
     <div class="center"><div class="deck-spot" aria-hidden="true"></div>${center}</div>
