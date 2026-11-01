@@ -15,11 +15,11 @@ import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings
 import { clearRun, loadRecord, loadRun, recordRun, saveRun } from './storage';
 import type { CardView, DealtCard, RiskLevel, RunAction, RunEvent, RunView, Seat } from './types';
 import { esc, reducedMotion } from './ui/dom';
-import { deal, finishAll, flyAway, flyIn, setTempo } from './ui/fx';
+import { deal, finishAll, flyAway, flyIn, motionOn, setTempo } from './ui/fx';
 import { renderHud } from './ui/hud';
 import { renderScore, ScoreBoard } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart } from './ui/screens';
-import { renderShop } from './ui/shop';
+import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, ScoreOverlay, UiState } from './ui/state';
 import { renderTable } from './ui/table';
 
@@ -619,6 +619,40 @@ export class App {
         }
         return;
       }
+      case 'info-offer-relic': {
+        const offer = view?.shop?.relics.find((o) => o?.slot === num('slot'));
+        if (offer) {
+          this.ui.overlay = {
+            kind: 'info',
+            title: contentName('relics', offer.relic.id),
+            subtitle: `${de.relicKind[offer.relic.kind]} · ${de.rarity[offer.relic.rarity]}`,
+            text: contentText('relics', offer.relic.id),
+            coaster: offer.relic.rarity,
+            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-relic', slot: offer.slot, price: offer.relic.price } } : {}),
+          };
+          this.render();
+        }
+        return;
+      }
+      case 'info-offer-item': {
+        const offer = view?.shop?.consumables.find((o) => o?.slot === num('slot'));
+        if (offer) {
+          this.ui.overlay = {
+            kind: 'info',
+            title: contentName('consumables', offer.consumable.id),
+            subtitle: de.shop.consumables,
+            text: contentText('consumables', offer.consumable.id),
+            good: offer.consumable.id,
+            odds: offer.consumable.needs_target,
+            ...(offer.can_buy && !this.ui.busy ? { buy: { action: 'buy-item', slot: offer.slot, price: offer.consumable.price } } : {}),
+          };
+          this.render();
+        }
+        return;
+      }
+      case 'scroll-goods':
+        this.root.querySelector('#shop-goods')?.scrollIntoView({ behavior: motionOn() ? 'smooth' : 'auto', block: 'start' });
+        return;
       case 'info-item': {
         const item = view?.consumables.find((c) => c.slot === num('slot'));
         if (item) {
@@ -757,6 +791,7 @@ export class App {
       if (input) input.value = seed;
     }
     this.renderLayer();
+    watchShop(this.screenEl);
     const effects = this.afterRender;
     this.afterRender = [];
     for (const fx of effects) fx();

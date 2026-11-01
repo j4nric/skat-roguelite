@@ -280,6 +280,8 @@ export const de = {
     buyShort: 'Kaufen',
     noRelics: 'Noch keine Bierdeckel gesammelt.',
     noItems: 'Nichts in der Tasche.',
+    moreAbout: '{name}: ganze Beschreibung',
+    moreBelow: 'Weitere Waren weiter unten',
   },
 
   rarity: {

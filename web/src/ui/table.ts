@@ -41,8 +41,8 @@ function opponent(view: RunView, game: GameView, seat: Seat, ui: UiState): strin
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''}" data-seat="${seat}">
     ${portrait(face, 'portrait-opp')}
     <div class="opp-info">
-      <div class="opp-head"><b class="opp-name">${esc(name)}</b>${kontraBadge(game, seat)}</div>
-      <div class="opp-pos">${esc(position ? de.positions[position] : '')}</div>
+      <div class="opp-head"><b class="opp-name">${esc(name)}</b></div>
+      <div class="opp-pos">${esc(position ? de.positions[position] : '')}${kontraBadge(game, seat)}</div>
       <div class="opp-hand">${backs}<span class="opp-count" aria-label="${esc(t(de.table.cards, { count: size }))}">${esc(size)}</span></div>
     </div>
     ${revealed ? `<div class="opp-revealed"><span>${esc(de.table.holds)}</span>${revealed}</div>` : ''}

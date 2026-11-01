@@ -104,6 +104,48 @@ export function deal(cards: Element[], from: DOMRect, opts: { step?: number; ms?
   });
 }
 
+/**
+ * Let a block that was just shown open up from zero height, so the content
+ * below slides down instead of jumping. `gap` is the flex gap in front of
+ * the block, which opens up too. Resolves when the block has its height.
+ */
+export function grow(el: HTMLElement, opts: { ms?: number; gap?: number; fade?: boolean } = {}): Promise<void> {
+  const duration = dur(opts.ms ?? 180);
+  if (!duration) return Promise.resolve();
+  const cs = getComputedStyle(el);
+  const height = el.getBoundingClientRect().height;
+  if (!height) return Promise.resolve();
+  const gap = opts.gap ?? 0;
+  const from: Keyframe = {
+    height: '0px',
+    minHeight: '0px',
+    paddingTop: '0px',
+    paddingBottom: '0px',
+    borderTopWidth: '0px',
+    borderBottomWidth: '0px',
+    marginTop: `${-gap}px`,
+  };
+  const to: Keyframe = {
+    height: `${height}px`,
+    minHeight: '0px',
+    paddingTop: cs.paddingTop,
+    paddingBottom: cs.paddingBottom,
+    borderTopWidth: cs.borderTopWidth,
+    borderBottomWidth: cs.borderBottomWidth,
+    marginTop: cs.marginTop,
+  };
+  if (opts.fade) {
+    from.opacity = 0;
+    to.opacity = 0;
+  }
+  el.style.overflow = 'hidden';
+  const anim = track(el.animate([from, to], { duration, easing: 'cubic-bezier(.25,.8,.35,1)' }));
+  const done = (): void => {
+    el.style.overflow = '';
+  };
+  return anim.finished.then(done, done);
+}
+
 /** A short bump to draw the eye. */
 export function pulse(el: Element, scale = 1.18, ms = 260): void {
   const duration = dur(ms);
@@ -156,9 +198,12 @@ export function countUp(el: HTMLElement, from: number, to: number, ms: number, f
   // Driven by a WAAPI timer, so finishAll() ends it too.
   const timer = track(el.animate([{ opacity: 1 }, { opacity: 1 }], { duration }));
   return new Promise((resolve) => {
+    // The frame time of requestAnimationFrame can lie before the moment the
+    // count started (and far before it after a stalled tab), so the progress
+    // is clamped; outside 0..1 the easing would overshoot wildly.
     const start = performance.now();
     const frame = (now: number): void => {
-      const p = timer.playState === 'finished' ? 1 : Math.min(1, (now - start) / duration);
+      const p = timer.playState === 'finished' ? 1 : Math.max(0, Math.min(1, (now - start) / duration));
       el.textContent = format(Math.round(from + (to - from) * (1 - (1 - p) ** 2)));
       if (p < 1) requestAnimationFrame(frame);
       else resolve();

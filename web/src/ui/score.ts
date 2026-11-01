@@ -11,7 +11,7 @@ import { de, cardName, contentName, gameName, t } from '../i18n';
 import type { Change, DeckCard, Lever, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
-import { countUp, dur, finishAll, pulse, slam } from './fx';
+import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
 import { coinIcon, meterPercent } from './hud';
 import { bossPortraitId, portrait } from './people';
 import type { ScoreOverlay } from './state';
@@ -184,6 +184,9 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
   </div></div>`;
 }
 
+/** Flex gap between the parts of the score sheet (CSS `.score-sheet`). */
+const SHEET_GAP = 8;
+
 function continueButton(): string {
   return `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'score-continue' })}>${esc(de.score.continue)}</button>`;
 }
@@ -247,9 +250,32 @@ export class ScoreBoard {
     await this.showResult();
   }
 
+  /**
+   * Show a hidden part of the board. Hidden parts take no space (no gap
+   * while the board plays); a shown part opens up from zero height, so the
+   * lines below slide down instead of jumping, and the board scrolls along
+   * when it is taller than the screen.
+   */
+  private reveal(el: HTMLElement | null, opts: { gap?: number; fade?: boolean } = {}): Promise<void> {
+    if (!el) return Promise.resolve();
+    el.classList.remove('is-pending');
+    if (this.skipped) return Promise.resolve();
+    return grow(el, opts).then(() => this.follow(el));
+  }
+
+  /** Keep the newest line in sight on a board taller than the screen. */
+  private follow(el: HTMLElement): void {
+    const sheet = this.q('.score-sheet');
+    if (!sheet || this.skipped || sheet.scrollHeight <= sheet.clientHeight) return;
+    const box = el.getBoundingClientRect();
+    const view = sheet.getBoundingClientRect();
+    const below = box.bottom - view.bottom + 64;
+    if (below > 0) sheet.scrollBy({ top: below, behavior: dur(1) ? 'smooth' : 'auto' });
+  }
+
   private showStep(i: number, prev: ScoreStep, step: ScoreStep): void {
     const row = this.q(`[data-step="${i}"]`);
-    row?.classList.remove('is-pending');
+    void this.reveal(row);
     row?.classList.add('is-in');
     const boxes: [string, number, number][] = [
       ['base', prev.base_value, step.base_value],
@@ -278,13 +304,16 @@ export class ScoreBoard {
   private async showResult(): Promise<void> {
     const result = this.q('[data-part="result"]');
     const big = this.q('.result-big');
-    result?.classList.remove('is-pending');
     const value = this.q('[data-num="value"]');
+    if (value) value.textContent = plain(0);
+    await this.reveal(result, { gap: SHEET_GAP });
     if (value) await countUp(value, 0, this.o.score.breakdown.value, 380, plain);
-    await this.wait(160);
+    await this.wait(120);
     if (this.skipped) return;
     if (big) {
-      big.classList.remove('is-pending');
+      // The space opens while the number is still invisible, then it lands.
+      await this.reveal(big, { fade: true });
+      if (this.skipped) return;
       big.classList.add('is-landed');
       slam(big, this.q('.score-sheet'));
     }
@@ -293,7 +322,7 @@ export class ScoreBoard {
     await this.wait(620);
     if (this.skipped) return;
     const account = this.q('[data-part="account"]');
-    account?.classList.remove('is-pending');
+    void this.reveal(account, { gap: SHEET_GAP });
     const fill = this.q('.score-account .chalk-fill');
     if (fill) fill.style.width = `${meterPercent(this.o.seriesScore, this.o.target).toFixed(1)}%`;
     const num = this.q('[data-num="account"]');
@@ -302,7 +331,7 @@ export class ScoreBoard {
     const payout = this.q('[data-part="payout"]');
     if (payout) {
       await this.wait(200);
-      payout.classList.remove('is-pending');
+      void this.reveal(payout, { gap: SHEET_GAP });
       payout.classList.add('is-in');
       sound.play('coin');
       await this.wait(300);
