@@ -1074,20 +1074,21 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
             .filter(|c| c.mods.contains(&CardModId::new(m)))
             .count()
     };
-    // Umgekipptes Bier: for 1 Groschen on a chosen card, else at random.
+    // Umgekipptes Bier: for 4 Groschen on a chosen card, else at random.
+    // Since M7 the Bierfleck pays 3 Groschen when attached (DESIGN 7.2).
     let mut run = relic_run(&content, &[]);
-    run.coins = 1;
+    run.coins = 4;
     encounter(
         &mut run,
         "spilled_beer",
         vec![
             option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::MarkChosenCard, 1),
+            option(EncounterChoice::MarkChosenCard, 4),
             option(EncounterChoice::Leave, 0),
         ],
     );
     run.apply(&content, choose(1, Some(16))).expect("chosen");
-    assert_eq!(run.coins(), 0);
+    assert_eq!(run.coins(), 3);
     assert!(has_mod(&run, 16, "beer_stain"));
     let mut run = relic_run(&content, &[]);
     encounter(

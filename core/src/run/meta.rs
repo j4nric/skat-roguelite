@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{RunEvent, RunStart};
 use crate::content::{
-    CardModId, Character, Content, Rarity, RelicId, RelicKind, Reward, ScoreBreakdown,
+    CardModId, Character, Content, Rarity, RelicId, RelicKind, Reward, RunLength, ScoreBreakdown,
     UnlockCondition, UnlockId,
 };
 use crate::rules::Declaration;
@@ -58,6 +58,22 @@ pub struct MetaStats {
     pub best_game: u64,
     /// Per character.
     pub characters: BTreeMap<Character, CharacterStats>,
+    /// Per run length (ganzer or kurzer Abend, DESIGN 5.3). Runs finished
+    /// before the short evening existed count as ganzer Abend only in the
+    /// totals above, not here.
+    pub lengths: BTreeMap<RunLength, LengthStats>,
+}
+
+/// Statistics of the runs of one length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LengthStats {
+    /// Runs finished (won or lost).
+    pub runs: u32,
+    /// Runs won.
+    pub won: u32,
+    /// Highest section reached (from 1), 0 before the first run.
+    pub best_section: u32,
 }
 
 /// The meta state: unlocks earned and statistics.
@@ -268,12 +284,23 @@ impl MetaState {
                 .is_none_or(|id| self.unlocked.contains(id))
     }
 
-    /// The start of a run with `character`: its locked relics stay off the
-    /// Tresen.
+    /// The start of a full run with `character`: its locked relics stay off
+    /// the Tresen.
     pub fn run_start(
         &self,
         content: &Content,
         character: Character,
+    ) -> Result<RunStart, MetaError> {
+        self.run_start_with(content, character, RunLength::Full)
+    }
+
+    /// The start of a run with `character` and `length` (ganzer or kurzer
+    /// Abend). Unlocks count in both.
+    pub fn run_start_with(
+        &self,
+        content: &Content,
+        character: Character,
+        length: RunLength,
     ) -> Result<RunStart, MetaError> {
         if content.character(character).is_none() {
             return Err(MetaError::UnknownCharacter(character));
@@ -285,6 +312,7 @@ impl MetaState {
             character,
             locked_relics: self.locked_relics(content),
             locked_card_mods: self.locked_card_mods(content),
+            length,
             ..RunStart::default()
         })
     }
@@ -326,23 +354,33 @@ impl MetaState {
                     stats.games_lost += 1;
                 }
             }
-            RunEvent::RunWon { character } => {
+            RunEvent::RunWon { character, length } => {
                 stats.runs_finished += 1;
                 stats.runs_won += 1;
                 let entry = stats.characters.entry(*character).or_default();
                 entry.runs += 1;
                 entry.won += 1;
                 entry.best_section = entry.best_section.max(self.current_section);
+                let by_length = stats.lengths.entry(*length).or_default();
+                by_length.runs += 1;
+                by_length.won += 1;
+                by_length.best_section = by_length.best_section.max(self.current_section);
                 stats.best_section = stats.best_section.max(self.current_section);
                 self.current_section = 0;
             }
             RunEvent::RunLost {
-                section, character, ..
+                section,
+                character,
+                length,
+                ..
             } => {
                 stats.runs_finished += 1;
                 let entry = stats.characters.entry(*character).or_default();
                 entry.runs += 1;
                 entry.best_section = entry.best_section.max(section + 1);
+                let by_length = stats.lengths.entry(*length).or_default();
+                by_length.runs += 1;
+                by_length.best_section = by_length.best_section.max(section + 1);
                 stats.best_section = stats.best_section.max(section + 1);
                 self.current_section = 0;
             }
@@ -380,7 +418,7 @@ impl MetaState {
                 UnlockCondition::WinSeriesWithGamesLeft(n),
                 RunEvent::SeriesWon { games_left, .. },
             ) => games_left >= n,
-            (UnlockCondition::WinRun(who), RunEvent::RunWon { character }) => {
+            (UnlockCondition::WinRun(who), RunEvent::RunWon { character, .. }) => {
                 who.is_none_or(|c| c == *character)
             }
             (
@@ -631,6 +669,7 @@ mod tests {
         let mut meta = MetaState::new();
         let events: Vec<RunEvent> = vec![RunEvent::RunWon {
             character: Character::Declarer,
+            length: RunLength::Full,
         }];
         let earned = meta.observe(&content, &events);
         assert!(earned.contains(&UnlockId::new("tour_won")));
@@ -649,6 +688,7 @@ mod tests {
             section: 3,
             index: 1,
             character: Character::Declarer,
+            length: RunLength::Full,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 4);
@@ -657,6 +697,7 @@ mod tests {
         meta.current_section = 5;
         let events: Vec<RunEvent> = vec![RunEvent::RunWon {
             character: Character::Declarer,
+            length: RunLength::Full,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 5);

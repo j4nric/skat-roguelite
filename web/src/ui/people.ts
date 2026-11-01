@@ -460,6 +460,7 @@ const ENCOUNTER_FACES: Record<string, string[]> = {
   spilled_beer: ['p-opp-1'],
   crown_inn: ['p-wirt'],
   conjurer: ['p-dealer'],
+  card_sharp: ['p-dealer'],
   prize_skat: ['p-opp-1', 'p-opp-2'],
   guest_from_altenburg: ['p-friend'],
 };

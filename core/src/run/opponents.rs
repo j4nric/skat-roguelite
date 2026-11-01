@@ -18,7 +18,8 @@ use crate::content::Content;
 use crate::deck::DealtCard;
 use crate::game::{Event, Seat, SeatView};
 
-/// The defenders' policy in `section` (counted from 0).
+/// The defenders' policy in `section` (counted from 0; for a short evening
+/// the row of the curve, [`Run::curve_row`]).
 #[must_use]
 pub fn opponents_in(content: &Content, section: u32) -> Opponents {
     let list = &content.run.opponents;
@@ -62,7 +63,7 @@ pub(super) fn defender_card(
     active: &ActiveGame,
     view: &SeatView<'_, DealtCard>,
 ) -> Option<DealtCard> {
-    match opponents_in(content, run.series.section).pimc() {
+    match opponents_in(content, run.curve_row(content)).pimc() {
         None => DefenderHeuristic.choose(view),
         Some(config) => {
             let hints = Hints {

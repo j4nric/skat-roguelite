@@ -63,4 +63,8 @@
         Pimc(samples: 12, depth: 3),
         Pimc(samples: 16, depth: 3),
     ],
+    // Kurzer Abend (DESIGN 5.3): die Zeilen von targets und opponents, die
+    // ein kurzer Run spielt, ab 0 gezählt. Der letzte endet mit dem
+    // Endboss.
+    short_sections: [0, 1, 2],
 )

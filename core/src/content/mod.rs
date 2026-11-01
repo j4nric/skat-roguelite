@@ -156,6 +156,39 @@ impl fmt::Display for Character {
     }
 }
 
+/// How long a run is (DESIGN 5.3), chosen at the start: the whole evening
+/// with every section of `run.ron`, or the short evening (kurzer Abend)
+/// with the sections listed in [`RunConfig::short_sections`].
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub enum RunLength {
+    /// Ganzer Abend: every section (five). Saves and links from before
+    /// the short evening are this.
+    #[default]
+    Full,
+    /// Kurzer Abend: the sections of [`RunConfig::short_sections`]
+    /// (three), ending with the final boss.
+    Short,
+}
+
+impl RunLength {
+    /// The id as text, equal to its serialized form.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RunLength::Full => "Full",
+            RunLength::Short => "Short",
+        }
+    }
+}
+
+impl fmt::Display for RunLength {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Which characters a content item is for. Empty means every character.
 pub type CharacterPool = Vec<Character>;
 
@@ -217,12 +250,18 @@ pub enum EncounterKind {
     /// Der Kartengeber: a random card of the deck gets a card modification
     /// for free, or for `price` Groschen the player chooses the card. The
     /// modification is `card_mod`, or random from the character's pool.
+    /// A random draw never gives a curse unless `curse` asks for one
+    /// (DESIGN 7.2: curses only where announced).
     MarkCard {
         /// Price for choosing the card.
         price: u32,
         /// The modification; `None` draws one.
         #[serde(default)]
         card_mod: Option<CardModId>,
+        /// With `card_mod: None`: draw a curse instead of a modification
+        /// without drawback. The encounter's text must announce it.
+        #[serde(default)]
+        curse: bool,
     },
     /// Alter Bekannter: swap an owned relic for a random other one (not
     /// owned, unlocked, for the character).
@@ -622,6 +661,41 @@ pub struct RunConfig {
     /// empty list means the heuristic everywhere.
     #[serde(default)]
     pub opponents: Vec<crate::ai::pimc::Opponents>,
+    /// Kurzer Abend (DESIGN 5.3): the rows of `targets` and `opponents`
+    /// (and of a character's own Zielwerte) a short run plays, in order,
+    /// counted from 0. Its last section ends with the final boss. Empty:
+    /// a short run plays every section like a full one.
+    #[serde(default)]
+    pub short_sections: Vec<u32>,
+}
+
+impl RunConfig {
+    /// Number of sections of a run of this length.
+    #[must_use]
+    pub fn sections(&self, length: RunLength) -> u32 {
+        let n = match length {
+            RunLength::Short if !self.short_sections.is_empty() => self.short_sections.len(),
+            _ => self.targets.len(),
+        };
+        u32::try_from(n).unwrap_or(0)
+    }
+
+    /// The row of the curve (`targets`, `opponents`, a character's
+    /// Zielwerte) that `section` (from 0) of a run of this length plays.
+    /// `None` past the last section.
+    #[must_use]
+    pub fn curve_row(&self, length: RunLength, section: u32) -> Option<u32> {
+        if section >= self.sections(length) {
+            return None;
+        }
+        match length {
+            RunLength::Short if !self.short_sections.is_empty() => usize::try_from(section)
+                .ok()
+                .and_then(|i| self.short_sections.get(i))
+                .copied(),
+            _ => Some(section),
+        }
+    }
 }
 
 /// Why content failed to load.
@@ -878,6 +952,17 @@ impl Content {
         if self.run.game_limit == 0 {
             return Err(ContentError("run: game limit 0".into()));
         }
+        let rows = self.run.targets.len();
+        let short = &self.run.short_sections;
+        if short
+            .iter()
+            .any(|&row| usize::try_from(row).map_or(true, |r| r >= rows))
+            || short.windows(2).any(|w| w[0] >= w[1])
+        {
+            return Err(ContentError(format!(
+                "run: short_sections {short:?} must rise and stay below {rows} sections"
+            )));
+        }
         for boss in &self.run.bosses {
             if !self.bosses.contains_key(boss) {
                 return Err(ContentError(format!("run: unknown boss {boss}")));
@@ -966,16 +1051,36 @@ impl Content {
 
     fn validate_encounters(&self) -> Result<(), ContentError> {
         for def in self.encounters.values() {
-            if let EncounterKind::MarkCard {
-                card_mod: Some(id), ..
+            let EncounterKind::MarkCard {
+                card_mod, curse, ..
             } = &def.kind
-            {
-                if !self.card_mods.contains_key(id) {
-                    return Err(ContentError(format!(
-                        "encounter {}: unknown card mod {id}",
-                        def.id
-                    )));
+            else {
+                continue;
+            };
+            let gives_curse = match card_mod {
+                Some(id) => {
+                    let Some(named) = self.card_mods.get(id) else {
+                        return Err(ContentError(format!(
+                            "encounter {}: unknown card mod {id}",
+                            def.id
+                        )));
+                    };
+                    if *curse && !named.curse {
+                        return Err(ContentError(format!(
+                            "encounter {}: curse: true names {id}, which is no curse",
+                            def.id
+                        )));
+                    }
+                    named.curse
                 }
+                None => *curse,
+            };
+            // Curses come only where announced (DESIGN 7.2).
+            if gives_curse && !def.text.contains("Fluch") {
+                return Err(ContentError(format!(
+                    "encounter {}: gives a curse, its text must say \"Fluch\"",
+                    def.id
+                )));
             }
         }
         if self.run.encounter_chance > Factor::zero() && self.encounters.is_empty() {

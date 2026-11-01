@@ -3,7 +3,7 @@
 
 import init, { WasmMeta, WasmRun, catalog as wasmCatalog } from './wasm/pkg/skat_wasm.js';
 import wasmUrl from './wasm/pkg/skat_wasm_bg.wasm?url';
-import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunView, Step } from './types';
+import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step } from './types';
 
 let ready: Promise<void> | null = null;
 
@@ -58,11 +58,11 @@ export class CoreRun {
   }
 
   /**
-   * Start a new run with a character from the meta state. Returns the run
+   * Start a new run with a character and length from the meta state. Returns the run
    * and the events of its start as JSON (feed them to the meta state).
    */
-  static createWith(seed: string, character: Character, meta: CoreMeta): { run: CoreRun; startEvents: string } {
-    const run = WasmRun.newRunWith(seed, character, meta.meta);
+  static createWith(seed: string, character: Character, length: RunLength, meta: CoreMeta): { run: CoreRun; startEvents: string } {
+    const run = WasmRun.newRunWith(seed, character, length, meta.meta);
     return { run: new CoreRun(run), startEvents: run.startEvents() };
   }
 

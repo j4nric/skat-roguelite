@@ -39,6 +39,7 @@ import {
   clearRun,
   loadCharacter,
   loadHistory,
+  loadLength,
   loadMeta,
   loadRun,
   loadRunInfo,
@@ -46,11 +47,12 @@ import {
   replaceAllKeys,
   runAndMetaOf,
   saveCharacter,
+  saveLength,
   saveMeta,
   saveRun,
   saveRunInfo,
 } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunView, Seat, Source, Step } from './types';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, Seat, Source, Step } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -84,7 +86,7 @@ function errorText(err: unknown): string {
 /** One line about a saved run: who plays, where, the account. */
 function runLine(view: RunView): string {
   const character = contentName('characters', view.character.character);
-  return view.phase === 'Encounter'
+  const line = view.phase === 'Encounter'
     ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
     : t(de.start.resumeInfo, {
         character,
@@ -93,6 +95,7 @@ function runLine(view: RunView): string {
         score: view.series.score,
         target: view.series.target,
       });
+  return view.length === 'Short' ? `${line} · ${de.start.lengths.Short.name}` : line;
 }
 
 function isCharacter(value: string | null): value is Character {
@@ -159,6 +162,7 @@ export class App {
       const stored = loadCharacter();
       return isCharacter(stored) ? stored : 'Declarer';
     })(),
+    pickLength: loadLength() === 'Short' ? 'Short' : 'Full',
     overlay: null,
     message: null,
     saveInfo: null,
@@ -366,7 +370,7 @@ export class App {
       this.render();
       return;
     }
-    this.requestStart({ seed, character: this.ui.pickCharacter, daily: false });
+    this.requestStart({ seed, character: this.ui.pickCharacter, length: this.ui.pickLength, daily: false });
   }
 
   /** Start a run, after asking if that gives up a running one. */
@@ -379,12 +383,12 @@ export class App {
     this.startRun(start);
   }
 
-  private startRun({ seed, character, daily }: PendingStart): void {
+  private startRun({ seed, character, length, daily }: PendingStart): void {
     let core: CoreRun;
     let startEvents = '[]';
     try {
       if (this.meta) {
-        const started = CoreRun.createWith(seed, character, this.meta);
+        const started = CoreRun.createWith(seed, character, length, this.meta);
         core = started.run;
         startEvents = started.startEvents;
       } else {
@@ -423,6 +427,7 @@ export class App {
     this.ui.history = addToHistory({
       character: view.character.character,
       seed: view.seed,
+      ...(view.length === 'Short' ? { short: true } : {}),
       section: view.series.section + 1,
       series: view.series.index + 1,
       won: view.phase === 'Won',
@@ -1304,7 +1309,7 @@ export class App {
         return;
       case 'play-shared': {
         const shared = this.ui.shared;
-        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, daily: false });
+        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, length: shared.length, daily: false });
         return;
       }
       case 'dismiss-shared':
@@ -1313,13 +1318,14 @@ export class App {
         this.render();
         return;
       case 'play-daily':
-        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, daily: true });
+        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, length: this.ui.pickLength, daily: true });
         return;
       case 'replay': {
         const c = el.dataset.character ?? null;
         const seed = el.dataset.seed ?? '';
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
-        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, daily: false });
+        const length: RunLength = el.dataset.length === 'Short' ? 'Short' : 'Full';
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, length, daily: false });
         return;
       }
       case 'confirm-new':
@@ -1410,6 +1416,15 @@ export class App {
         this.ui.overlay = { kind: 'book', tab: 'book' };
         this.render();
         return;
+      case 'pick-length': {
+        const length = el.dataset.length;
+        if (length === 'Full' || length === 'Short') {
+          this.ui.pickLength = length;
+          saveLength(length);
+          this.render();
+        }
+        return;
+      }
       case 'pick-character': {
         const c = el.dataset.character ?? null;
         const entry = this.ui.meta?.characters.find((x) => x.character === c);

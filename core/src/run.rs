@@ -55,8 +55,8 @@ use crate::cards::PlayingCard;
 use crate::content::{
     ActiveSource, BossId, CardFilter, CardModId, Change, Character, ConsumableAction, ConsumableId,
     Content, Effect, EncounterId, EncounterKind, HookContext, Lever, Rarity, RelicId, RelicKind,
-    ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool, resolve_deck,
-    score_parts,
+    RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool,
+    resolve_deck, score_parts,
 };
 use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
 use crate::game::{Event, Game, GameError, Phase, Seat};
@@ -678,6 +678,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Who won it.
         #[serde(default)]
         character: Character,
+        /// Ganzer or kurzer Abend.
+        #[serde(default)]
+        length: RunLength,
     },
     /// The run was lost.
     RunLost {
@@ -688,6 +691,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Who lost it.
         #[serde(default)]
         character: Character,
+        /// Ganzer or kurzer Abend.
+        #[serde(default)]
+        length: RunLength,
     },
 }
 
@@ -986,6 +992,9 @@ pub struct RunStart {
     /// random (a consumable or encounter that names one still gives it).
     #[serde(default)]
     pub locked_card_mods: Vec<CardModId>,
+    /// Ganzer or kurzer Abend (DESIGN 5.3).
+    #[serde(default)]
+    pub length: RunLength,
 }
 
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
@@ -1044,6 +1053,9 @@ pub struct Run {
     /// in saves from before; then they are derived from the seed.
     #[serde(default)]
     guests: Vec<crate::content::GuestId>,
+    /// Ganzer or kurzer Abend (saves from before: ganzer).
+    #[serde(default)]
+    length: RunLength,
 }
 
 impl Run {
@@ -1063,7 +1075,7 @@ impl Run {
         seed: u64,
         start: &RunStart,
     ) -> Result<(Run, Vec<RunEvent>), RunError> {
-        let sections = u32::try_from(content.run.targets.len()).unwrap_or(0);
+        let sections = content.run.sections(start.length);
         if start.section >= sections || start.index >= SERIES_PER_SECTION {
             return Err(RunError::InvalidStart);
         }
@@ -1126,6 +1138,7 @@ impl Run {
             evening_relics: Vec::new(),
             pending_factor: None,
             guests: Vec::new(),
+            length: start.length,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1148,6 +1161,29 @@ impl Run {
     #[must_use]
     pub const fn character(&self) -> Character {
         self.character
+    }
+
+    /// Ganzer or kurzer Abend.
+    #[must_use]
+    pub const fn length(&self) -> RunLength {
+        self.length
+    }
+
+    /// Number of sections of this run (5, or 3 for a short evening).
+    #[must_use]
+    pub fn sections(&self, content: &Content) -> u32 {
+        content.run.sections(self.length)
+    }
+
+    /// The row of the curve (Zielwerte, opponents) the current section
+    /// plays: the section itself, or for a short evening the row
+    /// `run.ron` names for it.
+    #[must_use]
+    pub fn curve_row(&self, content: &Content) -> u32 {
+        content
+            .run
+            .curve_row(self.length, self.series.section)
+            .unwrap_or(self.series.section)
     }
 
     /// Relics that are not unlocked in this run.
@@ -1973,7 +2009,8 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         let config = &content.run;
-        if usize::try_from(section).unwrap_or(usize::MAX) >= config.targets.len() {
+        let sections = config.sections(self.length);
+        if section >= sections {
             return Err(RunError::WrongPhase);
         }
         if index == 0 && !self.evening_relics.is_empty() {
@@ -1981,7 +2018,7 @@ impl Run {
             events.push(RunEvent::EveningRulesEnded);
         }
         if index == 0 || self.section_boss.is_none() {
-            let last = usize::try_from(section).unwrap_or(0) + 1 == config.targets.len();
+            let last = section + 1 == sections;
             self.section_boss = match (&config.final_boss, last) {
                 (Some(boss), true) => Some(boss.clone()),
                 _ => {
@@ -2013,7 +2050,11 @@ impl Run {
         } else {
             None
         };
-        let target = series_target(content, self.character, section, index, boss.as_ref())
+        let row = content
+            .run
+            .curve_row(self.length, section)
+            .ok_or(RunError::WrongPhase)?;
+        let target = series_target(content, self.character, row, index, boss.as_ref())
             .ok_or(RunError::WrongPhase)?;
         self.series = Series {
             section,
@@ -2256,6 +2297,7 @@ impl Run {
                 section: self.series.section,
                 index: self.series.index,
                 character: self.character,
+                length: self.length,
             });
             return Ok(());
         }
@@ -2292,11 +2334,12 @@ impl Run {
             games_left,
         });
         self.fire(content, Stage::OnSeriesWon, None, None, events);
-        let last_section = u32::try_from(content.run.targets.len()).unwrap_or(1) - 1;
+        let last_section = self.sections(content).saturating_sub(1);
         if self.series.index + 1 == SERIES_PER_SECTION && self.series.section >= last_section {
             self.phase = RunPhase::Won;
             events.push(RunEvent::RunWon {
                 character: self.character,
+                length: self.length,
             });
             return Ok(());
         }
@@ -2623,12 +2666,19 @@ impl Run {
     }
 
     /// Card modifications a random draw may give a card that already
-    /// carries `mods`: for the character, unlocked, not on the card yet, in
-    /// id order.
+    /// carries `mods`: for the character, unlocked, not on the card yet, no
+    /// curse (DESIGN 7.2: curses only where announced), in id order.
     fn card_mod_pool(&self, content: &Content, mods: &[CardModId]) -> Vec<CardModId> {
+        self.mod_pool(content, mods, false)
+    }
+
+    /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
+    /// modifications without drawback.
+    fn mod_pool(&self, content: &Content, mods: &[CardModId], curse: bool) -> Vec<CardModId> {
         content
             .card_mods
             .values()
+            .filter(|m| m.curse == curse)
             .filter(|m| in_pool(&m.characters, self.character) && !mods.contains(&m.id))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
             .map(|m| m.id.clone())
@@ -2724,13 +2774,18 @@ impl Run {
                         .map(|id| free(EncounterChoice::TakeRule(id))),
                 );
             }
-            EncounterKind::MarkCard { price, card_mod } => {
+            EncounterKind::MarkCard {
+                price,
+                card_mod,
+                curse,
+            } => {
                 // The modification is known before the choice: named by the
-                // encounter or drawn now from the character's pool.
+                // encounter or drawn now from the character's pool (a curse
+                // only if the encounter announces one).
                 let card_mod = match card_mod {
                     Some(id) => Some(id.clone()),
                     None => {
-                        let pool = self.card_mod_pool(content, &[]);
+                        let pool = self.mod_pool(content, &[], *curse);
                         let pick = self
                             .encounter_rng
                             .gen_range(0..u64::try_from(pool.len()).unwrap_or(0));
@@ -2788,7 +2843,8 @@ impl Run {
     }
 
     /// The modification an encounter puts on `card`: the one it names, or
-    /// a random one from the character's pool.
+    /// (saves from before the draw at opening) a random one from the
+    /// character's pool, never a curse.
     fn encounter_mod(
         &mut self,
         content: &Content,
@@ -2939,7 +2995,9 @@ impl Run {
 
 /// Zielwert of a series: the character's value (from `characters.ron`, or
 /// `run.ron` if the character has none), for a boss series times the
-/// boss's target factor. `None` if the section does not exist.
+/// boss's target factor. `section` is the row of the curve
+/// ([`crate::content::RunConfig::curve_row`]; for a full run the section
+/// itself). `None` if the row does not exist.
 #[must_use]
 pub fn series_target(
     content: &Content,
@@ -3079,6 +3137,8 @@ mod content_tests;
 mod m4_tests;
 #[cfg(test)]
 mod m5_tests;
+#[cfg(test)]
+mod m7_tests;
 #[cfg(test)]
 mod skat_order_tests;
 #[cfg(test)]

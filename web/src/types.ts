@@ -48,6 +48,8 @@ export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
 export type DeclaredGame = GameType | 'Ramsch';
 /** Who plays the run. */
 export type Character = 'Declarer' | 'NullPlayer';
+/** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
+export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
 export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Won' | 'Lost';
 /**
@@ -482,7 +484,10 @@ export interface RunView {
   upcoming_boss: BossInfo | null;
   next_series: NextSeriesView | null;
   deal_odds: DealOdds;
+  /** Sections of this run: 5, or 3 for a short evening. */
   sections: number;
+  /** Ganzer or kurzer Abend (DESIGN 5.3). */
+  length: RunLength;
   coins: number;
   relics: OwnedRelic[];
   relic_slots: number;
@@ -541,7 +546,7 @@ export type RunEvent =
   | 'Redealt'
   | 'RamschDealt'
   | 'EveningRulesEnded'
-  | { RunWon: { character: Character } }
+  | { RunWon: { character: Character; length?: RunLength } }
   | { BossAnnounced: { section: number; boss: string } }
   | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; passes: number; boss: string | null } }
   | { GameDealt: { number: number; forehand: Seat } }
@@ -569,7 +574,7 @@ export type RunEvent =
   | { EveningRuleAdded: string }
   | { RelicSwapped: { old: string; new: string } }
   | { NextGameDoubled: { factor: number } }
-  | { RunLost: { section: number; index: number; character: Character } };
+  | { RunLost: { section: number; index: number; character: Character; length?: RunLength } };
 
 export type RunAction =
   | 'Pass'
@@ -666,6 +671,8 @@ export interface MetaStats {
   games_lost: number;
   best_game: number;
   characters: Partial<Record<Character, CharacterStats>>;
+  /** Per run length; runs finished before the short evening are not in here. */
+  lengths?: Partial<Record<RunLength, CharacterStats>>;
 }
 
 export interface MetaView {

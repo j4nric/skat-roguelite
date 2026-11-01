@@ -7,8 +7,9 @@
 //! `--no-shop`, `--relic <id>` (repeatable), `--without <id>`
 //! (repeatable), `--boss <id>`, `--character declarer|null`,
 //! `--null-scoring fixed|formula`, `--curve` (success curve of a single
-//! series instead of whole runs, see [`curve`]) and `--unlocks`
-//! (reachability of every unlock, see [`unlocks`]).
+//! series instead of whole runs, see [`curve`]), `--unlocks`
+//! (reachability of every unlock, see [`unlocks`]) and `--short` (kurzer
+//! Abend, DESIGN 5.3).
 //!
 //! Runs start with everything unlocked (no relic is locked), so that the
 //! measurement does not depend on a player's progress. `--unlocks` plays
@@ -20,7 +21,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use skat_core::ai::pimc::Opponents;
-use skat_core::content::{BossId, Character, Content, EncounterId, RelicId, UnlockId};
+use skat_core::content::{BossId, Character, Content, EncounterId, RelicId, RunLength, UnlockId};
 use skat_core::rng::Rng;
 use skat_core::rules::{NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
@@ -54,6 +55,8 @@ pub struct Options {
     /// The defenders' card play in every section (`--defenders`), instead
     /// of the per-section list of `run.ron`.
     pub defenders: Option<Opponents>,
+    /// Ganzer or kurzer Abend (`--short`, DESIGN 5.3).
+    pub length: RunLength,
 }
 
 /// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
@@ -116,6 +119,7 @@ impl Options {
         RunStart {
             relics: self.relics.clone(),
             character: self.character,
+            length: self.length,
             ..RunStart::default()
         }
     }
@@ -152,6 +156,9 @@ impl Options {
                 parts.push(format!("defenders=pimc:{samples}:{depth}"));
             }
             None => {}
+        }
+        if self.length == RunLength::Short {
+            parts.push("short".into());
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -248,7 +255,7 @@ fn play_run(
             return Err("run does not end".into());
         }
     }
-    let sections = content.run.targets.len();
+    let sections = usize::try_from(content.run.sections(options.length)).unwrap_or(1);
     let mut bought: BTreeSet<RelicId> = BTreeSet::new();
     let mut current_boss: Option<(BossId, u32)> = None;
     for event in &events {
@@ -351,7 +358,7 @@ pub fn simulate(
     seed: u64,
     runs: u32,
 ) -> Result<RunStats, String> {
-    let sections = content.run.targets.len();
+    let sections = usize::try_from(content.run.sections(options.length)).unwrap_or(1);
     let mut stats = RunStats {
         seed,
         runs,
@@ -417,7 +424,12 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     );
     for (section, row) in stats.series.iter().enumerate() {
         for (index, (attempts, wins)) in row.iter().enumerate() {
-            let target = content.run.targets.get(section).map_or(0, |t| match index {
+            let row = u32::try_from(section)
+                .ok()
+                .and_then(|s| content.run.curve_row(options.length, s))
+                .and_then(|r| usize::try_from(r).ok())
+                .unwrap_or(usize::MAX);
+            let target = content.run.targets.get(row).map_or(0, |t| match index {
                 0 => t.0,
                 1 => t.1,
                 _ => t.2,
@@ -755,7 +767,7 @@ pub fn unlocks(
                 Character::Declarer
             };
             let mut start = meta
-                .run_start(content, character)
+                .run_start_with(content, character, options.length)
                 .map_err(|e| e.to_string())?;
             start.relics.clone_from(&options.relics);
             let run_seed = master.next_u64();
@@ -943,6 +955,23 @@ mod option_tests {
         let with = simulate(&base, &options, 8, 20).expect("runs");
         assert_eq!(with.runs, plain.runs);
         assert!(render(&with, &base, &options, 0).contains("relic=ouvert_bonus"));
+    }
+
+    #[test]
+    fn short_evenings_have_three_sections_and_the_same_first_deals() {
+        let base = content();
+        let full = simulate(&base, &Options::default(), 9, 30).expect("full");
+        let options = Options {
+            length: RunLength::Short,
+            ..Options::default()
+        };
+        let short = simulate(&base, &options, 9, 30).expect("short");
+        assert_eq!(short.lost_in_section.len(), 3);
+        assert_eq!(short.series.len(), 3);
+        assert_eq!(full.lost_in_section.len(), base.run.targets.len());
+        // Section 1 is the same row of the curve: the same runs fail there.
+        assert_eq!(short.lost_in_section[0], full.lost_in_section[0]);
+        assert!(render(&short, &base, &options, 0).contains("short"));
     }
 
     #[test]

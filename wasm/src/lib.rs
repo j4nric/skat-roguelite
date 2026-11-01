@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use skat_core::content::{Character, Content, Rarity, UnlockId};
+use skat_core::content::{Character, Content, Rarity, RunLength, UnlockId};
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
 use skat_core::run::player::{PlayerEvent, player_events};
@@ -54,8 +54,9 @@ pub const SAVE_VERSION: u32 = 1;
 /// `CharacterLocked` (the meta state has not unlocked it),
 /// `UnknownCharacter` (the content has no such character),
 /// `InvalidMeta` (not a meta save), `UnsupportedMeta` (another meta
-/// version), `InvalidEvents` (not a list of player events).
-pub const SHELL_ERROR_CODES: [&str; 11] = [
+/// version), `InvalidEvents` (not a list of player events),
+/// `InvalidLength` (not `"Full"` or `"Short"`).
+pub const SHELL_ERROR_CODES: [&str; 12] = [
     "InvalidSeed",
     "InvalidAction",
     "InvalidSave",
@@ -67,6 +68,7 @@ pub const SHELL_ERROR_CODES: [&str; 11] = [
     "InvalidMeta",
     "UnsupportedMeta",
     "InvalidEvents",
+    "InvalidLength",
 ];
 
 /// An error as thrown to JavaScript.
@@ -279,6 +281,11 @@ fn parse_character(character: &str) -> Result<Character, String> {
     })
 }
 
+fn parse_length(length: &str) -> Result<RunLength, String> {
+    serde_json::from_value(serde_json::Value::String(length.trim().to_string()))
+        .map_err(|_| error_json("InvalidLength", format!("invalid run length {length:?}")))
+}
+
 impl Session {
     /// Start a new run of the Alleinspieler with every relic unlocked (the
     /// web app before it keeps a meta state). `seed` is a decimal u64.
@@ -290,19 +297,22 @@ impl Session {
     }
 
     /// Start a new run with `character` (`"Declarer"` or `"NullPlayer"`)
-    /// from a meta state: the character must be unlocked, locked relics
-    /// stay off the Tresen. Returns the session and the events of the
-    /// start as player events (feed them to the meta state).
+    /// and `length` (`"Full"` or `"Short"`, DESIGN 5.3) from a meta state:
+    /// the character must be unlocked, locked relics stay off the Tresen.
+    /// Returns the session and the events of the start as player events
+    /// (feed them to the meta state).
     pub fn new_with(
         seed: &str,
         character: &str,
+        length: &str,
         meta: &MetaState,
     ) -> Result<(Session, Vec<PlayerEvent>), String> {
         let seed = parse_seed(seed)?;
         let character = parse_character(character)?;
+        let length = parse_length(length)?;
         let content = content()?;
         let start: RunStart = meta
-            .run_start(content, character)
+            .run_start_with(content, character, length)
             .map_err(|e| error_json(e.code(), &e))?;
         let (run, events) = Run::new_with(content, seed, &start).map_err(|e| run_error(&e))?;
         Ok((Session { content, run }, player_events(events)))
@@ -537,13 +547,19 @@ impl WasmRun {
     }
 
     /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`)
-    /// from the meta state: locked relics stay off the Tresen, a locked
-    /// character is refused (`CharacterLocked`). Feed
-    /// [`WasmRun::start_events`] to the meta state once.
+    /// and a length (`"Full"`, `"Short"`) from the meta state: locked
+    /// relics stay off the Tresen, a locked character is refused
+    /// (`CharacterLocked`). Feed [`WasmRun::start_events`] to the meta
+    /// state once.
     #[wasm_bindgen(js_name = newRunWith)]
-    pub fn new_run_with(seed: &str, character: &str, meta: &WasmMeta) -> Result<WasmRun, JsError> {
-        let (session, events) =
-            Session::new_with(seed, character, &meta.session.meta).map_err(|e| JsError::new(&e))?;
+    pub fn new_run_with(
+        seed: &str,
+        character: &str,
+        length: &str,
+        meta: &WasmMeta,
+    ) -> Result<WasmRun, JsError> {
+        let (session, events) = Session::new_with(seed, character, length, &meta.session.meta)
+            .map_err(|e| JsError::new(&e))?;
         let start = serde_json::to_string(&events).map_err(|e| JsError::new(&internal(e)))?;
         Ok(WasmRun {
             session,
@@ -848,14 +864,26 @@ mod tests {
             json["code"].as_str().expect("code").to_string()
         };
         assert_eq!(
-            code(Session::new_with("1", "NullPlayer", meta.meta()).expect_err("locked")),
+            code(Session::new_with("1", "NullPlayer", "Full", meta.meta()).expect_err("locked")),
             "CharacterLocked"
         );
         assert_eq!(
-            code(Session::new_with("1", "Nobody", meta.meta()).expect_err("bad")),
+            code(Session::new_with("1", "Nobody", "Full", meta.meta()).expect_err("bad")),
             "InvalidCharacter"
         );
-        let (mut session, start) = Session::new_with("5", "Declarer", meta.meta()).expect("run");
+        assert_eq!(
+            code(Session::new_with("1", "Declarer", "Long", meta.meta()).expect_err("bad")),
+            "InvalidLength"
+        );
+        // A short evening (DESIGN 5.3): three sections, the length in the
+        // view.
+        let (short, _) = Session::new_with("5", "Declarer", "Short", meta.meta()).expect("short");
+        let view: serde_json::Value =
+            serde_json::from_str(&short.view().expect("view")).expect("json");
+        assert_eq!(view["sections"], 3);
+        assert_eq!(view["length"], "Short");
+        let (mut session, start) =
+            Session::new_with("5", "Declarer", "Full", meta.meta()).expect("run");
         let start = serde_json::to_string(&start).expect("json");
         meta.observe(&start).expect("observe");
         let content = content().expect("content");
@@ -892,7 +920,7 @@ mod tests {
         );
         // Everything unlocked: the Nullspieler plays Null through JSON.
         let all = MetaState::all_unlocked(content);
-        let (mut null, _) = Session::new_with("8", "NullPlayer", &all).expect("null");
+        let (mut null, _) = Session::new_with("8", "NullPlayer", "Full", &all).expect("null");
         let view: serde_json::Value =
             serde_json::from_str(&null.view().expect("view")).expect("json");
         assert_eq!(view["character"]["character"], "NullPlayer");

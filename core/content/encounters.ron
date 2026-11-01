@@ -2,6 +2,9 @@
 // mit der Wahrscheinlichkeit encounter_chance aus run.ron. Jedes Ereignis
 // bietet Optionen an, eine davon ist immer „Weitergehen“.
 // weight: wie oft es gezogen wird (Standard 1). characters: leer = alle.
+// Flüche (DESIGN 7.2) kommen nur über Ereignisse, deren Text „Fluch“ sagt
+// (geprüft beim Laden); jeder Fluch zahlt beim Erhalt Groschen. Zufällige
+// Modifikationen (card_mod: None) sind nie ein Fluch, außer mit curse: true.
 [
     (
         id: "stammtisch_dispute",
@@ -12,7 +15,7 @@
     (
         id: "card_dealer",
         name: "Der Kartengeber",
-        text: "Der Kartengeber zinkt dir eine zufällige Karte. Für 3 Groschen darfst du die Karte selbst wählen.",
+        text: "Der Kartengeber zinkt dir eine zufällige Karte, nie mit einem Fluch. Für 3 Groschen darfst du die Karte selbst wählen.",
         kind: MarkCard(price: 3),
     ),
     (
@@ -31,8 +34,8 @@
     (
         id: "spilled_beer",
         name: "Umgekipptes Bier",
-        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte kriegt einen Bierfleck: 5 Augen weniger, dafür erkennst du sie. Für 1 Groschen wischst du ihn auf eine Karte deiner Wahl.",
-        kind: MarkCard(price: 1, card_mod: Some("beer_stain")),
+        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte kriegt einen Bierfleck, einen Fluch: 5 Augen weniger, dafür erkennst du sie. Du kassierst 3 Groschen dafür. Für 4 Groschen wischst du ihn auf eine Karte deiner Wahl.",
+        kind: MarkCard(price: 4, card_mod: Some("beer_stain")),
     ),
     (
         id: "crown_inn",
@@ -53,6 +56,15 @@
         name: "Preisskat",
         text: "Im Nebenzimmer läuft ein Preisskat. Spielst du mit, zählt das nächste Spiel dreifach, gewonnen wie verloren.",
         kind: DoubleNextGame(factor: 3),
+    ),
+    // M7: curses only where announced. The curse is drawn when the
+    // encounter opens and both options name it; it pays 3 Groschen when
+    // attached, choosing the card costs 1 more than that.
+    (
+        id: "card_sharp",
+        name: "Der Falschspieler",
+        text: "Ein Falschspieler zahlt dir 3 Groschen, wenn er eine zufällige Karte deines Blatts präparieren darf. Das ist ein Fluch, welcher, siehst du vorher. Für 4 Groschen suchst du die Karte selbst aus.",
+        kind: MarkCard(price: 4, curse: true),
     ),
     (
         id: "guest_from_altenburg",
