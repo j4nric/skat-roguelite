@@ -395,7 +395,8 @@ fn consumables_change_the_deck_and_the_series() {
             &content,
             RunAction::UseConsumable {
                 slot: 0,
-                target: None
+                target: None,
+                suit: None
             }
         ),
         Err(RunError::TargetRequired)
@@ -405,6 +406,7 @@ fn consumables_change_the_deck_and_the_series() {
         RunAction::UseConsumable {
             slot: 0,
             target: Some(0),
+            suit: None,
         },
     )
     .expect("remove D7");
@@ -415,6 +417,7 @@ fn consumables_change_the_deck_and_the_series() {
         RunAction::UseConsumable {
             slot: 0,
             target: Some(31),
+            suit: None,
         },
     )
     .expect("stamp CA");
@@ -429,6 +432,7 @@ fn consumables_change_the_deck_and_the_series() {
         RunAction::UseConsumable {
             slot: 0,
             target: None,
+            suit: None,
         },
     )
     .expect("beer");
@@ -440,6 +444,7 @@ fn consumables_change_the_deck_and_the_series() {
             RunAction::UseConsumable {
                 slot: 0,
                 target: None,
+                suit: None,
             },
         )
         .expect("new deal");
@@ -457,7 +462,8 @@ fn consumables_change_the_deck_and_the_series() {
             &content,
             RunAction::UseConsumable {
                 slot: 0,
-                target: Some(3)
+                target: Some(3),
+                suit: None
             }
         ),
         Err(RunError::WrongPhase)

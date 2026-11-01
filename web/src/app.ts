@@ -53,7 +53,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, Seat, Source, Step } from './types';
+import type { CardView, Character, DealtCard, NullRisk, RiskLevel, RunAction, RunEvent, RunLength, RunView, Seat, Source, Step, Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -880,7 +880,14 @@ export class App {
         continue;
       }
       if ('ConsumableUsed' in ev) {
-        this.showToast(t(de.toast.consumableUsed, { name: contentName('consumables', ev.ConsumableUsed.consumable) }));
+        const id = ev.ConsumableUsed.consumable;
+        // A Schnaps that changes the next game says so; the others just get used.
+        const waiting = after.pending_next_game?.find((p) => p.consumable === id);
+        this.showToast(
+          waiting
+            ? t(de.toast.schnapsWaiting, { name: contentName('consumables', id) })
+            : t(de.toast.consumableUsed, { name: contentName('consumables', id) }),
+        );
         continue;
       }
       if ('RelicBought' in ev) {
@@ -987,6 +994,11 @@ export class App {
       sound.play('card');
       this.render();
       await this.pause(DELAY.notice);
+      return;
+    }
+    if ('CardChalked' in ev) {
+      const { old, new: painted } = ev.CardChalked;
+      this.showToast(t(de.toast.chalked, { old: cardName(old.kind), new: cardName(painted.kind) }));
       return;
     }
     if ('SkatSwapped' in ev) {
@@ -1549,7 +1561,7 @@ export class App {
           this.ui.overlay = {
             kind: 'info',
             title: contentName('consumables', offer.consumable.id),
-            subtitle: de.shop.consumables,
+            subtitle: offer.consumable.category === 'Schnapps' ? de.shop.schnaps : de.shop.consumables,
             text: contentText('consumables', offer.consumable.id),
             good: offer.consumable.id,
             odds: offer.consumable.needs_target,
@@ -1568,7 +1580,7 @@ export class App {
           this.ui.overlay = {
             kind: 'info',
             title: contentName('consumables', item.consumable.id),
-            subtitle: de.shop.consumables,
+            subtitle: item.consumable.category === 'Schnapps' ? de.shop.schnaps : de.shop.consumables,
             text: contentText('consumables', item.consumable.id),
             good: item.consumable.id,
             ...(item.can_use && !this.ui.busy ? { use: item.slot } : {}),
@@ -1691,7 +1703,10 @@ export class App {
         const slot = num('slot');
         const item = view.consumables.find((c) => c.slot === slot);
         if (!item) return;
-        if (item.consumable.needs_target) {
+        if (item.consumable.needs_suit) {
+          this.ui.overlay = { kind: 'chalk', slot, card: null };
+          this.render();
+        } else if (item.consumable.needs_target) {
           this.ui.overlay = { kind: 'target', slot };
           this.render();
         } else {
@@ -1702,6 +1717,20 @@ export class App {
       case 'target': {
         const o = this.ui.overlay;
         if (o?.kind === 'target') void this.act({ UseConsumable: { slot: o.slot, target: num('id') } });
+        return;
+      }
+      case 'chalk-card': {
+        const o = this.ui.overlay;
+        if (o?.kind === 'chalk') {
+          this.ui.overlay = { ...o, card: num('id') };
+          this.render();
+        }
+        return;
+      }
+      case 'chalk-suit': {
+        const o = this.ui.overlay;
+        const suit = el.dataset.suit as Suit | undefined;
+        if (o?.kind === 'chalk' && o.card !== null && suit) void this.act({ UseConsumable: { slot: o.slot, target: o.card, suit } });
         return;
       }
       case 'reroll':

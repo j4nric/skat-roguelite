@@ -7,11 +7,12 @@
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat } from '../types';
+import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit } from '../types';
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { quipBubble, seatPerson } from './guests';
+import { schnapsNotes } from './hud';
 import { bossPortraitId, portrait } from './people';
 import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
@@ -43,17 +44,23 @@ function thinkBubble(): string {
   return `<span class="think-bubble" data-testid="think" role="status" aria-label="${esc(de.table.thinking)}"><i></i><i></i><i></i></span>`;
 }
 
-/** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert". */
+/** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert", "Kreide". */
 function plaques(c: CardView): string {
   const out: string[] = [];
+  if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
   if (c.honorary_jack) out.push(`<span class="plaque plaque-hj" title="${esc(de.card.honoraryJack)}" aria-hidden="true">U</span>`);
   if (c.no_discard) out.push(`<span class="plaque plaque-lock" title="${esc(de.card.noDiscard)}" aria-hidden="true">${lockIcon(13)}</span>`);
   return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
 }
 
+/** "Kreide, eigentlich Rot". */
+function chalkLabel(printed: Suit): string {
+  return t(de.card.chalked, { suit: de.suits[printed] });
+}
+
 /** Card name plus what its plaques say, for screen readers. */
 function cardLabel(c: CardView): string {
-  const extra = [c.honorary_jack ? de.card.honoraryJack : '', c.no_discard ? de.card.noDiscard : ''].filter(Boolean);
+  const extra = [c.honorary_jack ? de.card.honoraryJack : '', c.no_discard ? de.card.noDiscard : '', c.chalked ? chalkLabel(c.chalked) : ''].filter(Boolean);
   return extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
 }
 
@@ -146,6 +153,12 @@ function declareWarnings(options: DeclareOptions, afterSkat: boolean): string {
     .join('');
 }
 
+/** The skat seen with "Kurzer", shown on the hand Ansage. */
+function peekedCards(game: GameView): string {
+  if (!game.skat_peek?.length || game.phase !== 'Declaring') return '';
+  return `<p class="declare-pressed" data-testid="skat-peek-hand"><span>${esc(de.table.skatPeekShort)}</span>${game.skat_peek.map(miniCard).join('')}</p>`;
+}
+
 /** The two discarded cards, shown on the Ansage after the skat. */
 function pressedCards(game: GameView): string {
   if (!game.skat?.length) return '';
@@ -156,14 +169,16 @@ function pressedCards(game: GameView): string {
  * The first decision with ten cards (Skatordnung): pick up the skat, or
  * play a hand game. Einpassen and Schieben stay here as before.
  */
-function choicePanel(options: DeclareOptions, passesLeft: number): string {
+function choicePanel(options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined): string {
   // Every Spielart (Null too) comes from the core with `allowed`.
   const handPossible = options.games.some((g) => g.allowed);
+  // "Kurzer": the skat face up on the skat button, the choice stays open.
+  const skatCards = peek?.length ? peek.map(miniCard).join('') : `${cardBack('mini')}${cardBack('mini')}`;
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
     <div class="choices">
       <button class="choice-btn is-skat" ${attrs({ 'data-action': 'pick-up-skat' })}>
-        <span class="choice-cards" aria-hidden="true">${cardBack('mini')}${cardBack('mini')}</span>
+        <span class="choice-cards ${peek?.length ? 'is-peeked' : ''}" ${attrs({ 'aria-hidden': peek?.length ? null : 'true', 'data-testid': peek?.length ? 'skat-peek' : null })}>${skatCards}</span>
         <b class="choice-name">${esc(de.table.pickUpSkat)}</b>
         <span class="choice-hint">${esc(de.table.pickUpSkatHint)}</span>
       </button>
@@ -173,6 +188,7 @@ function choicePanel(options: DeclareOptions, passesLeft: number): string {
         <span class="choice-hint">${esc(de.table.playHandHint)}</span>
       </button>
     </div>
+    ${peek?.length ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
     ${declareWarnings(options, false)}
     ${declareActions({ ...options, can_pick_up_skat: false }, false, passesLeft, '')}
   </section>`;
@@ -207,7 +223,7 @@ function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
  */
 function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
   const afterSkat = game.phase === 'DeclaringAfterSkat';
-  if (!afterSkat && options.can_pick_up_skat && !ui.handGame) return choicePanel(options, passesLeft);
+  if (!afterSkat && options.can_pick_up_skat && !ui.handGame) return choicePanel(options, passesLeft, game.skat_peek);
   const nullIndex = options.games.findIndex((g) => g.game === 'Null');
   const specialist = ui.view?.character.character === 'NullPlayer';
   const pick = ui.pickGame ?? (specialist && nullIndex >= 0 && options.games[nullIndex]?.allowed ? nullIndex : null);
@@ -250,7 +266,7 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
     : `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare', disabled: pick === null })}>${esc(de.table.declare)}</button>`;
   return `<section class="declare ${afterSkat ? 'declare-after-skat' : 'declare-hand'}${pickedNull ? ' declare-null' : ''}" aria-label="${esc(title)}" data-phase="${esc(game.phase)}" ${attrs({ 'data-testid': pickedNull ? 'null-declare' : null })}>
     <h2 class="declare-title">${esc(title)}</h2>
-    ${pressedCards(game)}
+    ${pressedCards(game)}${peekedCards(game)}
     <div class="declare-label">${esc(de.table.gameType)}</div>
     <div class="games">${games}</div>
     ${levels}
@@ -455,8 +471,9 @@ function ramschBanner(game: GameView): string {
 
 /** "Letzte Runde": this game counts more (shown while declaring). */
 function pendingNote(view: RunView, game: GameView): string {
-  if (!view.pending_factor || (game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat')) return '';
-  return `<p class="pending-note">${esc(t(de.table.pendingFactor, { factor: view.pending_factor }))}</p>`;
+  if (game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat') return '';
+  const notes = [view.pending_factor ? t(de.table.pendingFactor, { factor: view.pending_factor }) : '', ...schnapsNotes(view, de.table)].filter(Boolean);
+  return notes.length ? `<p class="pending-note">${esc(notes.join(' · '))}</p>` : '';
 }
 
 export function renderTable(view: RunView, ui: UiState): string {

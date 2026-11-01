@@ -92,6 +92,13 @@ pub enum PlayerGameEvent {
         /// The card put into the skat.
         gave: DealtCard,
     },
+    /// The player repainted a card of his hand for this game ("Kreide").
+    CardChalked {
+        /// The card as it was.
+        old: DealtCard,
+        /// The card as it is now.
+        new: DealtCard,
+    },
     /// The game is scored by the rules.
     GameFinished {
         /// Trick outcome.
@@ -140,6 +147,7 @@ impl PlayerGameEvent {
                 hand_sizes: sizes(&hands),
             },
             Event::SkatSwapped { took, gave } => PlayerGameEvent::SkatSwapped { took, gave },
+            Event::CardChalked { old, new } => PlayerGameEvent::CardChalked { old, new },
             Event::GameFinished {
                 outcome,
                 matadors,
@@ -260,6 +268,7 @@ impl RunEvent {
             RunEvent::EveningRulesEnded => RunEvent::EveningRulesEnded,
             RunEvent::RelicSwapped { old, new } => RunEvent::RelicSwapped { old, new },
             RunEvent::NextGameDoubled { factor } => RunEvent::NextGameDoubled { factor },
+            RunEvent::SkatPeeked { skat } => RunEvent::SkatPeeked { skat },
             RunEvent::RunWon {
                 character,
                 length,

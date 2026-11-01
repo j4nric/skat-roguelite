@@ -114,6 +114,11 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stammtisch-Figur | `Regular` | Passives Relikt mit Persönlichkeit |
 | Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`: `greet`, `win`, `lose`), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
 | Verbrauchsgegenstand | `Consumable` | Definition `ConsumableDef` |
+| Schnaps (Gruppe von Verbrauchsgegenständen) | `ConsumableCategory::Schnapps` | Feld `category` an `ConsumableDef` und `ConsumableInfo`; sonst `Item` |
+| Wirkung aufs nächste angesagte Spiel (Doppelkorn, Magenbitter) | `NextGameEffect` | `Multiply(n)`, `SingleLoss`; Aktion `ConsumableAction::NextGame`, wartend `Run::pending_next_game` |
+| Skat ansehen (Kurzer) | `PeekSkat`, `SkatPeeked` | Feld `ActiveGame::skat_peeked`, Sicht `GameView::skat_peek` |
+| Umgemalte Karte (Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
+| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, Magenbitter setzt 1 |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare` |
 | Preis | `price` | Groschen |
@@ -177,8 +182,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Effekt | `Effect` | Geschlossener `enum`, jeder Effekt nennt seinen Hebel |
 | Bedingung | `Condition` | Geschlossener `enum` |
 | Kartenfilter | `CardFilter` | Farbe und/oder Wert |
-| Hebel der Formel | `Lever` | `BaseValue`, `Levels`, `GameValue`, `CardPoints`, `WinThreshold`, `Schneider` |
-| Herkunft eines Zuschlags | `Source` | Relikt, Kartenmodifikation, Boss, Kontra, Re |
+| Hebel der Formel | `Lever` | `BaseValue`, `Levels`, `GameValue`, `CardPoints`, `WinThreshold`, `Schneider`, `LossFactor` |
+| Herkunft eines Zuschlags | `Source` | Relikt, Kartenmodifikation, Boss, Kontra, Re, Ereignis, Verbrauchsgegenstand (`Consumable`) |
 | Zeile der Abrechnung | `ScoreLine` | Herkunft, Hebel, Änderung |
 | Abrechnung (Spielwert mit allen Zuschlägen) | `ScoreBreakdown` | |
 | Gewinnstufen Term für Term | `LevelParts` | |
@@ -213,6 +218,11 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Stempelkissen | `ink_pad` |
 | Ein Bier | `beer` |
 | Neues Blatt | `new_deal` |
+| Kurzer | `shot` |
+| Doppelkorn | `double_grain` |
+| Kräuter | `herbal` |
+| Magenbitter | `bitters` |
+| Kreide | `chalk` |
 | Blindflug | `blind_flight` |
 | Der Kiebitz | `kibitzer` |
 | Der Wirt | `landlord` |

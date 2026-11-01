@@ -48,6 +48,13 @@
 //! relic is unknown, of a relic worth less than an average one), never the
 //! double stakes of "Letzte Runde".
 //!
+//! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
+//! skat (the bot does not use what it sees); after the skat, "Kreide"
+//! paints the cheapest side card (never a jack) into the trump suit of a
+//! suit game, then "Doppelkorn" before a game that is not weak
+//! ([`RunBot::is_weak`]) and "Magenbitter" before a weak one, never before
+//! a Null. "Kräuter" counts as "Ein Bier".
+//!
 //! Figures "Die Oma" and "Der Opa": in a hand game the bot takes the card
 //! the run offers from the skat whenever it may (never in a Null), giving
 //! away its cheapest side card. It never discards a card that must not be discarded
@@ -62,7 +69,7 @@
 use super::{EncounterChoice, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
-use crate::content::{ConsumableAction, ConsumableId, Content, RelicId};
+use crate::content::{ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
 use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
@@ -164,10 +171,22 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `beer` | 3 | one more pass when the passes are used up |
 /// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
 /// | `fresh_deck` | 0 | a blank helps defenders as much as the declarer (it may always be played), so the bot does not remove cards |
-pub const CONSUMABLE_VALUES: [(&str, u32); 4] = [
+/// | `herbal` | 3 | "Kräuter": like "Ein Bier" |
+/// | `double_grain` | 2 | "Doppelkorn": before a game that is not weak |
+/// | `bitters` | 2 | "Magenbitter": before a weak game |
+/// | `chalk` | 2 | "Kreide": the cheapest side card into trump |
+/// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
+///
+/// The Schnäpse are placeholders, not measured.
+pub const CONSUMABLE_VALUES: [(&str, u32); 9] = [
     ("new_deal", 4),
     ("beer", 3),
+    ("herbal", 3),
     ("ink_pad", 2),
+    ("double_grain", 2),
+    ("bitters", 2),
+    ("chalk", 2),
+    ("shot", 1),
     ("fresh_deck", 0),
 ];
 
@@ -511,7 +530,11 @@ impl RunBot {
             .iter()
             .enumerate()
             .filter(|(_, id)| content.consumable(id).is_some_and(|d| wanted(&d.action)))
-            .map(|(slot, _)| RunAction::UseConsumable { slot, target })
+            .map(|(slot, _)| RunAction::UseConsumable {
+                slot,
+                target,
+                suit: None,
+            })
             .find(|action| run.accepts(content, action.clone()))
     }
 
@@ -633,7 +656,20 @@ impl RunBot {
             return Some(RunAction::AnswerKontra { re });
         }
         match game.phase() {
-            Phase::Declaring => Self::before_skat(run, content),
+            Phase::Declaring => {
+                let action = Self::before_skat(run, content)?;
+                if action == RunAction::PickUpSkat {
+                    if let Some(peek) = Self::usable(
+                        run,
+                        content,
+                        |a| matches!(a, ConsumableAction::PeekSkat),
+                        None,
+                    ) {
+                        return Some(peek);
+                    }
+                }
+                Some(action)
+            }
             Phase::Discarding => {
                 // Saves from before ADR 0011 declared before the skat.
                 if let Some(declaration) = game.declaration() {
@@ -649,6 +685,9 @@ impl RunBot {
             }
             Phase::DeclaringAfterSkat => {
                 let (declaration, _) = Self::after_skat(run, content)?;
+                if let Some(action) = Self::schnapps_before_declaring(run, content, declaration) {
+                    return Some(action);
+                }
                 Some(RunAction::Declare(declaration))
             }
             Phase::Playing => {
@@ -925,6 +964,70 @@ impl RunBot {
         run.accepts(content, action.clone()).then_some(action)
     }
 
+    /// Schnäpse right before the declaration after the skat, see the
+    /// module docs: "Kreide" on the cheapest side card of a suit game,
+    /// then "Doppelkorn" (not weak) or "Magenbitter" (weak).
+    fn schnapps_before_declaring(
+        run: &Run,
+        content: &Content,
+        declaration: Declaration,
+    ) -> Option<RunAction> {
+        if declaration.is_null() {
+            return None;
+        }
+        let hand = run.game()?.game.hand(Seat::DECLARER);
+        if let GameType::Suit(trump) = declaration.game() {
+            let side = hand
+                .iter()
+                .copied()
+                .filter(|&c| !crate::rules::is_trump(declaration.game(), c))
+                .filter(|c| c.face().is_some_and(|f| f.rank != Rank::Jack))
+                .min_by_key(|c| (c.card_points(), c.face().map(|f| f.rank), c.id));
+            if let Some(card) = side {
+                let chalk = run
+                    .consumables()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, id)| {
+                        content
+                            .consumable(id)
+                            .is_some_and(|d| d.action == ConsumableAction::ChalkCard)
+                    })
+                    .map(|(slot, _)| RunAction::UseConsumable {
+                        slot,
+                        target: Some(card.id),
+                        suit: Some(trump),
+                    })
+                    .find(|action| run.accepts(content, action.clone()));
+                if chalk.is_some() {
+                    return chalk;
+                }
+            }
+        }
+        // One "Doppelkorn" or "Magenbitter" per game.
+        if !run.pending_next_game().is_empty() {
+            return None;
+        }
+        let wanted = if RunBot::is_weak(hand, declaration) {
+            NextGameEffect::SingleLoss
+        } else {
+            NextGameEffect::Multiply(2)
+        };
+        Self::usable(
+            run,
+            content,
+            |a| match (a, wanted) {
+                (
+                    ConsumableAction::NextGame(NextGameEffect::Multiply(_)),
+                    NextGameEffect::Multiply(_),
+                ) => true,
+                (ConsumableAction::NextGame(e), w) => *e == w,
+                _ => false,
+            },
+            None,
+        )
+    }
+
     /// The cheapest way to throw a weak hand in, if any: redeal, "Neues
     /// Blatt", pass, "Ein Bier" for one more pass. Never on the last game.
     fn throw_in(run: &Run, content: &Content) -> Option<RunAction> {
@@ -1093,7 +1196,8 @@ mod tests {
             RunBot.shop_action(&run, &content),
             RunAction::UseConsumable {
                 slot: 1,
-                target: Some(kreuz_ass)
+                target: Some(kreuz_ass),
+                suit: None
             }
         );
         // "Frisches Deck" is never bought.
@@ -1140,7 +1244,8 @@ mod tests {
             next(&run),
             RunAction::UseConsumable {
                 slot: 1,
-                target: None
+                target: None,
+                suit: None
             }
         );
         run.consumables.pop();
@@ -1150,7 +1255,8 @@ mod tests {
             next(&run),
             RunAction::UseConsumable {
                 slot: 0,
-                target: None
+                target: None,
+                suit: None
             }
         );
         // The last game is played, whatever the hand: with the skat.

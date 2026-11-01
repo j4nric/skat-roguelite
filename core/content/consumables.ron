@@ -1,5 +1,7 @@
 // Verbrauchsgegenstände: einmal nutzbar, höchstens zwei auf der Hand.
-// Preise sind Platzhalter (DESIGN 12: 2 bis 4).
+// Preise sind Platzhalter (DESIGN 12: 2 bis 4). `category: Schnapps` fasst
+// die Schnäpse zusammen (DESIGN 8.3); Preise und Seltenheit auch dort
+// Platzhalter für `balance`.
 [
     (
         id: "fresh_deck",
@@ -32,5 +34,50 @@
         rarity: Uncommon,
         price: 4,
         action: Redeal,
+    ),
+    (
+        id: "shot",
+        name: "Kurzer",
+        text: "Vor der Wahl zwischen Skat und Hand: Schau dir die beiden Skatkarten an. Die Wahl bleibt offen.",
+        rarity: Common,
+        price: 2,
+        action: PeekSkat,
+        category: Schnapps,
+    ),
+    (
+        id: "double_grain",
+        name: "Doppelkorn",
+        text: "Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren.",
+        rarity: Uncommon,
+        price: 3,
+        action: NextGame(Multiply(2)),
+        category: Schnapps,
+    ),
+    (
+        id: "herbal",
+        name: "Kräuter",
+        text: "Ein Pass mehr in dieser Serie.",
+        rarity: Common,
+        price: 2,
+        action: ExtraPasses(1),
+        category: Schnapps,
+    ),
+    (
+        id: "bitters",
+        name: "Magenbitter",
+        text: "Geht das nächste angesagte Spiel verloren, zählt es einfach statt doppelt.",
+        rarity: Common,
+        price: 2,
+        action: NextGame(SingleLoss),
+        category: Schnapps,
+    ),
+    (
+        id: "chalk",
+        name: "Kreide",
+        text: "Vor der Ansage: Male eine Karte deiner Hand bis zum Spielende in eine andere Farbe um. Buben nicht.",
+        rarity: Uncommon,
+        price: 3,
+        action: ChalkCard,
+        category: Schnapps,
     ),
 ]

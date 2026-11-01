@@ -20,8 +20,9 @@ use super::{
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardModId, Character, ConsumableAction, ConsumableId, Content, EncounterId, Factor,
-    Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep,
+    BossId, CardModId, Character, ConsumableAction, ConsumableCategory, ConsumableId, Content,
+    EncounterId, Factor, NextGameEffect, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
+    ScoreStep,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
@@ -91,6 +92,9 @@ pub struct RunView {
     pub evening_relics: Vec<RelicInfo>,
     /// Factor waiting for the next declared game ("Letzte Runde").
     pub pending_factor: Option<u32>,
+    /// Consumables used for the next declared game ("Doppelkorn",
+    /// "Magenbitter"), in the order used.
+    pub pending_next_game: Vec<PendingNextGame>,
     /// The last scored game.
     pub last_score: Option<ScoreView>,
     /// The shared deck, in id order.
@@ -277,8 +281,14 @@ pub struct ConsumableInfo {
     pub rarity: Rarity,
     /// Price at the Tresen.
     pub price: u32,
-    /// Whether using it needs a target card of the deck.
+    /// Whether using it needs a target card of the deck (at the Tresen).
     pub needs_target: bool,
+    /// Whether using it needs a card of the hand and a suit ("Kreide"):
+    /// one of [`OwnedConsumable::targets`] and any other suit than the
+    /// card's own.
+    pub needs_suit: bool,
+    /// Group for labels ("Schnäpse").
+    pub category: ConsumableCategory,
 }
 
 /// An owned relic.
@@ -294,6 +304,15 @@ pub struct OwnedRelic {
     pub can_sell: bool,
 }
 
+/// A consumable waiting for the next declared game.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingNextGame {
+    /// The consumable.
+    pub consumable: ConsumableId,
+    /// What it will do.
+    pub effect: NextGameEffect,
+}
+
 /// An owned consumable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OwnedConsumable {
@@ -307,7 +326,8 @@ pub struct OwnedConsumable {
     pub can_sell: bool,
     /// Whether it can be used now (with one of `targets` if it needs one).
     pub can_use: bool,
-    /// Deck card ids it can be used on now.
+    /// Card ids it can be used on now: deck cards, or for "Kreide" the
+    /// cards of the hand.
     pub targets: Vec<u32>,
 }
 
@@ -381,6 +401,9 @@ pub struct CardView {
     pub legal: bool,
     /// Whether it came from the skat (while discarding).
     pub from_skat: bool,
+    /// The printed suit of a card "Kreide" repainted for this game; the
+    /// card's `kind` is the suit it has now.
+    pub chalked: Option<Suit>,
     /// Whether the player may put it into the skat now: only for hand
     /// cards while discarding. A card that must not be discarded
     /// ("Ramponiert") only when fewer than two other cards are left
@@ -557,6 +580,9 @@ pub struct GameView {
     /// The skat cards a skat swap may take now, the one taken by default
     /// first (`take: None`): "Die Oma" names the jack that comes out.
     pub skat_swap_cards: Vec<CardView>,
+    /// The untouched skat the player looked at ("Kurzer"); `None` if he
+    /// did not, and once the skat is picked up.
+    pub skat_peek: Option<Vec<CardView>>,
     /// Tricks per seat so far (index = seat), as they lie on the table.
     pub seat_tricks: [u32; 3],
     /// What the game is worth if the player wins it, as far as it is
@@ -670,7 +696,14 @@ impl Run {
     }
 
     fn card_view(&self, card: DealtCard) -> CardView {
+        let chalked = self.game.as_ref().and_then(|a| {
+            a.chalked
+                .iter()
+                .find(|(id, _)| *id == card.id)
+                .map(|&(_, suit)| suit)
+        });
         CardView {
+            chalked,
             card,
             mods: self
                 .deck
@@ -735,6 +768,8 @@ impl Run {
                     def.action,
                     ConsumableAction::RemoveCard | ConsumableAction::AddCardMod(_)
                 ),
+                needs_suit: def.action == ConsumableAction::ChalkCard,
+                category: def.category,
             },
             None => ConsumableInfo {
                 id: id.clone(),
@@ -743,6 +778,8 @@ impl Run {
                 rarity: Rarity::Common,
                 price: 0,
                 needs_target: false,
+                needs_suit: false,
+                category: ConsumableCategory::Item,
             },
         }
     }
@@ -874,6 +911,14 @@ impl Run {
                 .map(|id| Run::relic_info(content, id))
                 .collect(),
             pending_factor: self.pending_factor(),
+            pending_next_game: self
+                .pending_next_game
+                .iter()
+                .map(|(consumable, effect)| PendingNextGame {
+                    consumable: consumable.clone(),
+                    effect: *effect,
+                })
+                .collect(),
             last_score: self.last_score.as_ref().map(|b| ScoreView {
                 breakdown: b.clone(),
                 steps: b.steps(),
@@ -890,7 +935,31 @@ impl Run {
         id: &ConsumableId,
     ) -> OwnedConsumable {
         let consumable = Run::consumable_info(content, id);
-        let (can_use, targets) = if consumable.needs_target {
+        let (can_use, targets) = if consumable.needs_suit {
+            let hand: Vec<DealtCard> = self
+                .game
+                .as_ref()
+                .map(|a| a.game.hand(Seat::DECLARER).to_vec())
+                .unwrap_or_default();
+            let targets: Vec<u32> = hand
+                .iter()
+                .filter(|card| {
+                    // Every other suit is as good as any: try one.
+                    let own = card.face().map(|f| f.suit);
+                    let other = Suit::ALL.into_iter().find(|&s| Some(s) != own);
+                    self.accepts(
+                        content,
+                        RunAction::UseConsumable {
+                            slot,
+                            target: Some(card.id),
+                            suit: other,
+                        },
+                    )
+                })
+                .map(|c| c.id)
+                .collect();
+            (!targets.is_empty(), targets)
+        } else if consumable.needs_target {
             let targets: Vec<u32> = self
                 .deck
                 .cards()
@@ -902,14 +971,19 @@ impl Run {
                         RunAction::UseConsumable {
                             slot,
                             target: Some(card),
+                            suit: None,
                         },
                     )
                 })
                 .collect();
             (!targets.is_empty(), targets)
         } else {
-            let usable = self.accepts(content, RunAction::UseConsumable { slot, target: None });
-            (usable, Vec::new())
+            let action = RunAction::UseConsumable {
+                slot,
+                target: None,
+                suit: None,
+            };
+            (self.accepts(content, action), Vec::new())
         };
         OwnedConsumable {
             slot,
@@ -1286,6 +1360,8 @@ impl Run {
             count: self.count_view(),
             can_take_from_skat,
             skat_swap_cards,
+            skat_peek: (active.skat_peeked && !game.skat_picked_up())
+                .then(|| skat.iter().map(|&c| self.card_view(c)).collect()),
             seat_tricks: game.seat_tricks(),
             value_preview: self.value_preview(content),
         })

@@ -13,6 +13,7 @@ import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, Sc
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
+import { goodSvg } from './goods';
 import { coinIcon, meterPercent } from './hud';
 import { bossPortraitId, encounterFaces, portrait } from './people';
 import type { ScoreOverlay } from './state';
@@ -35,6 +36,7 @@ export function sourceName(source: Source, deck: DeckCard[]): string {
   if ('Relic' in source) return contentName('relics', source.Relic);
   if ('Boss' in source) return contentName('bosses', source.Boss);
   if ('Encounter' in source) return contentName('encounters', source.Encounter);
+  if ('Consumable' in source) return contentName('consumables', source.Consumable);
   const card = deck.find((c) => c.id === source.CardMod.card);
   return t(de.score.cardMod, {
     mod: contentName('card_mods', source.CardMod.card_mod),
@@ -47,6 +49,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if ('Relic' in source) return `<span class="step-icon icon-coaster"></span>`;
   if ('Boss' in source) return `<span class="step-icon">${portrait(bossPortraitId(source.Boss), 'portrait-xs')}</span>`;
   if ('Encounter' in source) return `<span class="step-icon">${portrait(encounterFaces(source.Encounter)[0] ?? 'p-wirt', 'portrait-xs')}</span>`;
+  if ('Consumable' in source) return `<span class="step-icon">${goodSvg(source.Consumable, 20)}</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods)}</span>`
@@ -68,6 +71,7 @@ function changeText(lever: Lever, change: Change): string {
   if ('Set' in change) {
     if (lever === 'WinThreshold') return t(de.score.threshold, { n: change.Set });
     if (lever === 'Schneider') return de.score.schneiderBy;
+    if (lever === 'LossFactor') return change.Set === 1 ? de.score.lossSingle : t(de.score.lossFactor, { n: change.Set });
     return t(de.score.setTo, { n: change.Set });
   }
   const n = change.Add;
@@ -189,7 +193,7 @@ export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
     <div class="score-result ${b.won ? 'is-won' : 'is-lost'}" data-part="result">
       <div class="value-line"><span>${esc(de.score.value)}</span><b data-num="value">${esc(b.value)}</b></div>
       <div class="result-big" data-testid="score-result">${esc(signed(b.score))}</div>
-      ${b.won ? '' : `<p class="small">${esc(de.score.lostDouble)}</p>`}
+      ${b.won ? '' : `<p class="small">${esc(lossNote(b))}</p>`}
     </div>
     <div class="score-account" data-part="account">
       <div class="account-row"><span>${esc(de.score.accountLabel)}</span><b data-num="account">${esc(plain(o.previousScore))}</b><span>${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
@@ -223,6 +227,13 @@ function ramschSeats(b: ScoreBreakdown, names: string[]): string {
     })
     .join('');
   return `<ol class="ramsch-seats" data-testid="ramsch-seats" aria-label="${esc(de.score.ramschSeats)}">${rows}</ol>`;
+}
+
+/** How a lost game counts: double, or single with "Magenbitter" (a LossFactor line). */
+function lossNote(b: ScoreBreakdown): string {
+  const line = b.lines.find((l) => l.lever === 'LossFactor' && 'Set' in l.change);
+  if (!line || !('Set' in line.change)) return de.score.lostDouble;
+  return line.change.Set === 1 ? t(de.score.lostSingle, { name: sourceName(line.source, []) }) : de.score.lostDouble;
 }
 
 /** Why a Null or Ramsch was won or lost, from the core's `won` flag. */

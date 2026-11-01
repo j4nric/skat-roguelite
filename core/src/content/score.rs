@@ -8,7 +8,7 @@
 //! Grundwert  = max(1, Grundwert der Spielart + Σ Grundwert-Zuschläge) × Π Grundwert-Faktoren
 //! Stufen     = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)
 //! Spielwert  = Grundwert × Stufen × Π Spielwert-Faktoren (Kontra, Re, …)
-//! Ergebnis   = Spielwert, verloren −2 × Spielwert
+//! Ergebnis   = Spielwert, verloren −2 × Spielwert ("Magenbitter": −1 ×)
 //! ```
 //!
 //! Additions come before multiplications, as in Balatro. Lines on the
@@ -17,7 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{BossId, CardModId, EncounterId, RelicId};
+use super::{BossId, CardModId, ConsumableId, EncounterId, RelicId};
 use crate::rules::{
     Declaration, GameType, LevelParts, Matadors, Outcome, SeatTotals, Thresholds, ValueParts,
     game_value_parts,
@@ -43,6 +43,8 @@ pub enum Source {
     Re,
     /// An encounter (Ereignis), e.g. "Letzte Runde".
     Encounter(EncounterId),
+    /// A consumable used for this game, e.g. "Doppelkorn".
+    Consumable(ConsumableId),
 }
 
 /// The lever of the game value formula a line turns.
@@ -60,6 +62,9 @@ pub enum Lever {
     WinThreshold,
     /// Schneider (informational).
     Schneider,
+    /// Factor of a lost game against the series account: 2 by the rules
+    /// of the run, `Set(n)` by "Magenbitter" (1). Only on lost games.
+    LossFactor,
 }
 
 /// How a line changes its lever.
@@ -115,7 +120,8 @@ pub struct ScoreBreakdown {
     pub multiplier: u64,
     /// Spielwert after modifiers.
     pub value: u64,
-    /// Signed result for the series account: `value` or `-2 × value`.
+    /// Signed result for the series account: `value` or `-2 × value` (a
+    /// [`Lever::LossFactor`] line sets the 2).
     pub score: i64,
     /// Augen and tricks per seat, set by the run (who has the most Augen
     /// in a Ramsch); `None` when scored from an [`Outcome`] alone.
@@ -137,7 +143,8 @@ impl ScoreBreakdown {
     /// Order: informational lines (Augen, Gewinnschwelle, Schneider), the
     /// Grundwert of the Spielart, Grundwert additions, Grundwert factors,
     /// the Gewinnstufen by the rules term by term, Gewinnstufen additions,
-    /// Spielwert factors. The last step carries exactly
+    /// Spielwert factors, then the factor of a lost game ("Magenbitter").
+    /// The last step carries exactly
     /// [`ScoreBreakdown::base_value`], [`ScoreBreakdown::levels`] and
     /// [`ScoreBreakdown::multiplier`].
     #[must_use]
@@ -244,6 +251,10 @@ impl ScoreBreakdown {
                 push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
             }
         }
+        // The factor of a lost game changes the result, not the Spielwert.
+        for line in self.lines.iter().filter(|l| l.lever == Lever::LossFactor) {
+            push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
+        }
         steps
     }
 }
@@ -342,8 +353,10 @@ pub fn score_parts(
     let mut base_mul: u64 = 1;
     let mut level_add: i64 = 0;
     let mut value_mul: u64 = 1;
+    let mut loss_factor: i64 = 2;
     for line in &lines {
         match (line.lever, line.change) {
+            (Lever::LossFactor, Change::Set(n)) => loss_factor = n.max(0),
             (Lever::BaseValue, Change::Add(n)) => base_add = base_add.saturating_add(n),
             (Lever::BaseValue, Change::Multiply(n)) => {
                 base_mul = base_mul.saturating_mul(u64::from(n))
@@ -371,7 +384,7 @@ pub fn score_parts(
     let score = if parts.won {
         signed
     } else {
-        signed.saturating_mul(-2)
+        signed.saturating_mul(-loss_factor)
     };
     ScoreBreakdown {
         declaration,
