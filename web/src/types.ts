@@ -50,7 +50,12 @@ export type DeclaredGame = GameType | 'Ramsch';
 export type Character = 'Declarer' | 'NullPlayer';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
 export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Won' | 'Lost';
-export type TablePhase = 'Declaring' | 'Discarding' | 'Playing' | 'Finished';
+/**
+ * Phase of the game, in the order of the Skatordnung: ten cards (hand game or
+ * pick up the skat), twelve cards (discard two), the Ansage after the skat,
+ * tricks, scored.
+ */
+export type TablePhase = 'Declaring' | 'Discarding' | 'DeclaringAfterSkat' | 'Playing' | 'Finished';
 export type RelicKind = 'HouseRule' | 'Regular';
 export type Rarity = 'Common' | 'Uncommon' | 'Rare';
 export type Kontra = 'None' | { Kontra: Seat } | { Re: Seat };
@@ -209,11 +214,18 @@ export interface NullRiskOption {
   value: number;
 }
 
+/**
+ * What the player may declare now. Before the skat the lists hold only the
+ * hand levels; after picking it up and discarding only the levels without
+ * Hand. The core decides which are allowed.
+ */
 export interface DeclareOptions {
   games: GameOption[];
   risks: RiskOption[];
   /** Only for the Nullspieler. */
   null_risks: NullRiskOption[];
+  /** Whether the skat may be picked up (RunAction `PickUpSkat`). */
+  can_pick_up_skat: boolean;
   /** "Der Angeber" demands Ouvert. */
   ouvert_required: boolean;
   can_pass: boolean;
@@ -532,6 +544,7 @@ export type RunAction =
   | 'Redeal'
   | 'Reroll'
   | 'LeaveShop'
+  | 'PickUpSkat'
   | { Declare: Declaration }
   | { AnswerKontra: { re: boolean } }
   | { Discard: [number, number] }

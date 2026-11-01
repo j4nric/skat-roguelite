@@ -167,9 +167,7 @@ fn failing_actions_leave_the_run_untouched() {
 
 /// Play the current game to the end with the heuristics.
 fn play_current_game(run: &mut Run, content: &Content, declaration: Declaration) -> Vec<RunEvent> {
-    let mut events = run
-        .apply(content, RunAction::Declare(declaration))
-        .expect("declare");
+    let mut events = super::content_tests::declare(run, content, declaration).expect("declare");
     while run.phase() == RunPhase::Game
         && run.game().is_some_and(|a| a.game.value().is_none())
         && !events

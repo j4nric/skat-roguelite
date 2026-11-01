@@ -1,8 +1,13 @@
 //! A simple run policy for the simulator and for tests.
 //!
 //! Games: the declarer heuristic of M1 for the game choice, the discard and
-//! the play, plus three run decisions on top:
+//! the play, plus run decisions on top:
 //!
+//! - **Hand or skat** (Skatordnung, ADR 0011): with ten cards the bot
+//!   declares a hand game only for a very strong hand (eight trumps, or an
+//!   announcement below); otherwise it picks up the skat, chooses the game
+//!   for all twelve cards ([`DeclarerHeuristic::choose_declaration`]),
+//!   discards for that game and declares it.
 //! - **Passing** ([`RunBot::is_weak`]): a suit game needs six trumps, or
 //!   five trumps and two aces; a grand needs two jacks and two aces. A
 //!   weaker hand is thrown in, cheapest first: a redeal ("Schieben"), the
@@ -26,8 +31,9 @@
 //! Nullspieler ([`RunBot::null_declaration`]): a hand with more than
 //! [`NULL_MAX_EXPOSED`] exposed cards (classic Null rule, see
 //! [`crate::ai::null_exposure`]) is thrown in like a weak hand; a hand
-//! without exposed card is played Ouvert Hand, otherwise Null with the
-//! skat (the two most exposed cards go into it).
+//! without exposed card is played Ouvert Hand, otherwise the skat is picked
+//! up, the two most exposed cards go into it, and the game is Null Ouvert
+//! if no exposed card is left, else Null.
 //!
 //! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
 //! of a Stammtisch-Streit, the free card of the Kartengeber, a swap for a
@@ -519,14 +525,14 @@ impl RunBot {
                         NullRisk::Hand
                     };
                 }
-                if active.rules.require_ouvert && !risk.ouvert() {
-                    risk = if risk.hand() {
-                        NullRisk::OuvertHand
-                    } else {
-                        NullRisk::Ouvert
-                    };
+                if risk.hand() {
+                    if active.rules.require_ouvert {
+                        risk = NullRisk::OuvertHand;
+                    }
+                    Some(RunAction::Declare(Declaration::null(risk)))
+                } else {
+                    Some(RunAction::PickUpSkat)
                 }
-                Some(RunAction::Declare(Declaration::null(risk)))
             }
             Phase::Declaring => {
                 let hand = game.hand(Seat::DECLARER);
@@ -540,19 +546,37 @@ impl RunBot {
                 if active.rules.require_hand && !declaration.hand() {
                     declaration = declaration.with_risk(RiskLevel::Hand);
                 }
-                Some(RunAction::Declare(declaration))
+                if declaration.hand() {
+                    Some(RunAction::Declare(declaration))
+                } else {
+                    Some(RunAction::PickUpSkat)
+                }
             }
             Phase::Discarding => {
-                let declaration = game.declaration()?;
-                let hand = game.hand(Seat::DECLARER);
-                let [a, b] = Self::discard(hand, |cards| {
-                    if declaration.is_null() {
-                        declarer.choose_null_discard(cards, game.deck_cards())
-                    } else {
-                        declarer.choose_discard(cards, declaration.game())
-                    }
-                })?;
+                // Saves from before ADR 0011 declared before the skat.
+                let declaration = game
+                    .declaration()
+                    .unwrap_or_else(|| Self::game_after_skat(run));
+                let [a, b] =
+                    Self::discard_for(game.hand(Seat::DECLARER), declaration, game.deck_cards())?;
                 Some(RunAction::Discard([a.id, b.id]))
+            }
+            Phase::DeclaringAfterSkat => {
+                let mut declaration = Self::game_after_skat(run);
+                if declaration.is_null() {
+                    let hand = game.hand(Seat::DECLARER);
+                    let skat = game.skat();
+                    let rest: Vec<DealtCard> = game
+                        .deck_cards()
+                        .iter()
+                        .copied()
+                        .filter(|c| !skat.contains(c))
+                        .collect();
+                    if active.rules.require_ouvert || null_unsafe_cards(hand, &rest) == 0 {
+                        declaration = Declaration::null(NullRisk::Ouvert);
+                    }
+                }
+                Some(RunAction::Declare(declaration))
             }
             Phase::Playing => {
                 if !active.rules.skat_swaps.is_empty() {
@@ -566,6 +590,39 @@ impl RunBot {
             }
             Phase::Finished(_) => None,
         }
+    }
+
+    /// The game the bot plays after picking up the skat, without hand
+    /// levels: the Nullspieler Null, the Alleinspieler the game the declarer
+    /// heuristic picks for all twelve cards
+    /// ([`DeclarerHeuristic::choose_game_after_skat`] over the ten dealt
+    /// cards plus the skat, also once discarded, so that discard and
+    /// declaration agree).
+    fn game_after_skat(run: &Run) -> Declaration {
+        if run.character().plays_null() {
+            return Declaration::null(NullRisk::Normal);
+        }
+        let cards = run.game().map_or(&[][..], |a| a.game.declarer_cards());
+        DeclarerHeuristic.choose_game_after_skat(cards)
+    }
+
+    /// The two discards for `declaration` from the twelve cards: the declarer
+    /// heuristic's choice (the most exposed cards in a Null), never a card
+    /// that must not be discarded while others are left.
+    #[must_use]
+    pub fn discard_for(
+        cards: &[DealtCard],
+        declaration: Declaration,
+        deck: &[DealtCard],
+    ) -> Option<[DealtCard; 2]> {
+        let declarer = DeclarerHeuristic;
+        Self::discard(cards, |cards| {
+            if declaration.is_null() {
+                declarer.choose_null_discard(cards, deck)
+            } else {
+                declarer.choose_discard(cards, declaration.game())
+            }
+        })
     }
 
     /// The two discards: chosen by `choose` among the cards that may be
@@ -833,9 +890,96 @@ mod tests {
                 target: None
             }
         );
-        // The last game is played, whatever the hand.
+        // The last game is played, whatever the hand: with the skat.
         run.series.games_played = run.series.game_limit - 1;
-        assert!(matches!(next(&run), RunAction::Declare(_)));
+        assert_eq!(next(&run), RunAction::PickUpSkat);
+    }
+
+    /// Hand only for a very strong hand; otherwise pick up the skat, then
+    /// discard and declare the game chosen for all twelve cards.
+    #[test]
+    fn the_bot_sees_the_skat_before_it_chooses_the_game() {
+        let content = Content::load().expect("content");
+        let (mut hand_games, mut skat_games) = (0, 0);
+        for seed in 0..60 {
+            let (mut run, _) = Run::new(&content, seed).expect("start");
+            let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
+            match next(&run) {
+                RunAction::Declare(d) => {
+                    assert!(d.hand(), "seed {seed}: {d:?} before the skat");
+                    hand_games += 1;
+                }
+                RunAction::PickUpSkat => {
+                    let twelve = run.game().expect("game").game.declarer_cards().to_vec();
+                    let planned = DeclarerHeuristic.choose_game_after_skat(&twelve);
+                    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+                    let RunAction::Discard(ids) = next(&run) else {
+                        panic!("seed {seed}: no discard after picking up");
+                    };
+                    let hand = run.game().expect("game").game.hand(Seat::DECLARER);
+                    let expected = RunBot::discard_for(hand, planned, &[]).expect("discard");
+                    assert_eq!(ids, [expected[0].id, expected[1].id], "seed {seed}");
+                    run.apply(&content, RunAction::Discard(ids))
+                        .expect("discard");
+                    assert_eq!(next(&run), RunAction::Declare(planned), "seed {seed}");
+                    assert!(!planned.hand());
+                    run.apply(&content, RunAction::Declare(planned))
+                        .expect("declare");
+                    skat_games += 1;
+                }
+                _ => {} // thrown in
+            }
+        }
+        assert!(
+            skat_games > 10 && hand_games < skat_games,
+            "{hand_games} {skat_games}"
+        );
+    }
+
+    #[test]
+    fn the_null_bot_picks_up_and_plays_ouvert_when_nothing_is_exposed() {
+        let content = Content::load().expect("content");
+        let start = super::super::RunStart {
+            character: crate::content::Character::NullPlayer,
+            ..super::super::RunStart::default()
+        };
+        let mut seen = [0; 4];
+        for seed in 0..80 {
+            let (mut run, _) = Run::new_with(&content, seed, &start).expect("start");
+            let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
+            match next(&run) {
+                RunAction::Declare(d) => {
+                    assert_eq!(d, Declaration::null(NullRisk::OuvertHand));
+                    seen[0] += 1;
+                }
+                RunAction::PickUpSkat => {
+                    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+                    let action = next(&run);
+                    run.apply(&content, action).expect("discard");
+                    let RunAction::Declare(d) = next(&run) else {
+                        panic!("seed {seed}: no declaration after the discard");
+                    };
+                    let game = &run.game().expect("game").game;
+                    let skat = game.skat();
+                    let rest: Vec<DealtCard> = game
+                        .deck_cards()
+                        .iter()
+                        .copied()
+                        .filter(|c| !skat.contains(c))
+                        .collect();
+                    let exposed = null_unsafe_cards(game.hand(Seat::DECLARER), &rest);
+                    let expected = if exposed == 0 {
+                        NullRisk::Ouvert
+                    } else {
+                        NullRisk::Normal
+                    };
+                    assert_eq!(d, Declaration::null(expected), "seed {seed}");
+                    seen[if exposed == 0 { 1 } else { 2 }] += 1;
+                }
+                _ => seen[3] += 1,
+            }
+        }
+        assert!(seen[2] > 0, "{seen:?}");
     }
 
     #[test]

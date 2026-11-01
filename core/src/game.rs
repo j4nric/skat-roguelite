@@ -1,5 +1,6 @@
-//! State machine for a single Skat game: deal → declare → (discard) → ten
-//! tricks → scored.
+//! State machine for a single Skat game, in the order of the Skatordnung
+//! (ADR 0011): deal → hand declaration, or pick up the skat → discard →
+//! declaration → ten tricks → scored.
 //!
 //! The game is generic over the card type ([`PlayingCard`]): `Game<Card>`
 //! (the default) plays the plain 32-card deck of milestone M1, while
@@ -99,12 +100,23 @@ pub enum Position {
 
 /// Phase of the game. Dealing happens inside [`Game::deal`], so a freshly
 /// dealt game starts in `Declaring`.
+///
+/// The order follows the Skatordnung (ADR 0011): with ten cards the
+/// declarer either declares a hand game or picks up the skat; after picking
+/// it up he discards two cards and only then declares the game. Saves from
+/// before ADR 0011 that wait in `Declaring` simply continue with this
+/// choice; a save in `Discarding` that already holds a declaration goes
+/// straight to `Playing` after the discard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Phase {
-    /// The declarer looks at ten cards and chooses the declaration.
+    /// The declarer looks at ten cards and decides: declare a hand game
+    /// ([`Game::declare`]) or pick up the skat ([`Game::pick_up_skat`]).
     Declaring,
     /// The declarer holds twelve cards and must discard two.
     Discarding,
+    /// The skat is picked up and two cards are discarded: the declarer
+    /// announces the game, without hand levels ([`Game::declare`]).
+    DeclaringAfterSkat,
     /// Tricks are being played.
     Playing,
     /// All tricks are played (or the defenders conceded) and the game is
@@ -276,6 +288,14 @@ pub enum GameError<C = Card> {
     InvalidDeal,
     /// The action needs a trick boundary but a trick is in progress.
     TrickInProgress,
+    /// The declaration does not fit the skat: before the skat is picked up
+    /// only hand games may be declared, after picking it up only games
+    /// without hand levels (no Hand, Schneider or Schwarz angesagt, no
+    /// Ouvert except Null Ouvert).
+    InvalidDeclaration {
+        /// The rejected declaration.
+        declaration: Declaration,
+    },
     /// The card to take is not in the skat, or the skat may not be
     /// touched (no hand game, or play has begun).
     InvalidSkatSwap,
@@ -303,6 +323,9 @@ impl<C: fmt::Display> fmt::Display for GameError<C> {
             }
             GameError::InvalidDeal => f.write_str("invalid deal"),
             GameError::TrickInProgress => f.write_str("a trick is in progress"),
+            GameError::InvalidDeclaration { declaration } => {
+                write!(f, "{declaration:?} does not fit the skat")
+            }
             GameError::InvalidSkatSwap => f.write_str("the skat cannot be swapped with"),
             GameError::DiscardForbidden { card } => write!(f, "{card} must not be discarded"),
         }
@@ -595,6 +618,17 @@ impl<C: PlayingCard> Game<C> {
         self.declaration
     }
 
+    /// Whether the declarer picked up the skat: while discarding, while
+    /// declaring after it, and in every game that is not a hand game.
+    #[must_use]
+    pub fn skat_picked_up(&self) -> bool {
+        match self.phase {
+            Phase::Discarding | Phase::DeclaringAfterSkat => true,
+            Phase::Declaring => false,
+            Phase::Playing | Phase::Finished(_) => self.declaration.is_some_and(|d| !d.hand()),
+        }
+    }
+
     /// Completed tricks in order.
     #[must_use]
     pub fn tricks(&self) -> &[CompletedTrick<C>] {
@@ -761,27 +795,43 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
-    /// Announce the game. Hand games go straight to playing; otherwise the
-    /// skat is picked up and the game waits for the discard.
-    pub fn declare(&mut self, declaration: Declaration) -> Result<Vec<Event<C>>, GameError<C>> {
+    /// Pick up the skat instead of declaring a hand game: the two cards join
+    /// the declarer's hand and the game waits for the discard. Only with ten
+    /// cards, before anything is declared.
+    pub fn pick_up_skat(&mut self) -> Result<Vec<Event<C>>, GameError<C>> {
         if self.phase != Phase::Declaring {
             return Err(GameError::WrongPhase { phase: self.phase });
         }
-        self.declaration = Some(declaration);
-        let mut events = vec![Event::Declared { declaration }];
-        if declaration.hand() {
-            self.phase = Phase::Playing;
-        } else {
-            self.hands[Seat::DECLARER.index()].extend(self.skat);
-            self.hands[Seat::DECLARER.index()].sort();
-            events.push(Event::SkatPickedUp { skat: self.skat });
-            self.phase = Phase::Discarding;
-        }
+        self.hands[Seat::DECLARER.index()].extend(self.skat);
+        self.hands[Seat::DECLARER.index()].sort();
+        self.phase = Phase::Discarding;
+        let events = vec![Event::SkatPickedUp { skat: self.skat }];
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
 
-    /// Put two cards from the declarer's twelve back into the skat.
+    /// Announce the game. Before the skat is touched ([`Phase::Declaring`])
+    /// only a hand game (or the Ramsch) may be declared; after picking it up
+    /// and discarding ([`Phase::DeclaringAfterSkat`]) only a game without
+    /// hand levels. Either way play begins.
+    pub fn declare(&mut self, declaration: Declaration) -> Result<Vec<Event<C>>, GameError<C>> {
+        let fits = match self.phase {
+            Phase::Declaring => declaration.hand(),
+            Phase::DeclaringAfterSkat => !declaration.hand(),
+            phase => return Err(GameError::WrongPhase { phase }),
+        };
+        if !fits {
+            return Err(GameError::InvalidDeclaration { declaration });
+        }
+        self.declaration = Some(declaration);
+        self.phase = Phase::Playing;
+        let events = vec![Event::Declared { declaration }];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
+    /// Put two cards from the declarer's twelve back into the skat. Then the
+    /// game waits for the declaration ([`Phase::DeclaringAfterSkat`]).
     pub fn discard(&mut self, cards: [C; 2]) -> Result<Vec<Event<C>>, GameError<C>> {
         if self.phase != Phase::Discarding {
             return Err(GameError::WrongPhase { phase: self.phase });
@@ -800,7 +850,12 @@ impl<C: PlayingCard> Game<C> {
         }
         self.hands[Seat::DECLARER.index()].retain(|c| !cards.contains(c));
         self.skat = cards;
-        self.phase = Phase::Playing;
+        // Saves from before ADR 0011 declared before picking up the skat.
+        self.phase = if self.declaration.is_some() {
+            Phase::Playing
+        } else {
+            Phase::DeclaringAfterSkat
+        };
         let events = vec![Event::Discarded { cards }];
         self.log.extend(events.iter().cloned());
         Ok(events)
@@ -1088,7 +1143,7 @@ impl<C: PlayingCard> Game<C> {
 mod tests {
     use super::*;
     use crate::cards::{Suit, parse_cards};
-    use crate::rules::RiskLevel;
+    use crate::rules::{NullRisk, RiskLevel};
 
     fn c(s: &str) -> Card {
         s.parse().expect("test card")
@@ -1153,13 +1208,28 @@ mod tests {
     }
 
     #[test]
-    fn declare_normal_picks_up_skat_and_requires_discard() {
+    fn skat_is_picked_up_and_discarded_before_the_declaration() {
         let mut game = fixed_game();
         let decl = Declaration::suit(Suit::Hearts, RiskLevel::Normal);
-        let events = game.declare(decl).expect("declare");
-        assert_eq!(events.len(), 2);
+        // Before the skat only hand games may be declared.
+        assert_eq!(
+            game.declare(decl),
+            Err(GameError::InvalidDeclaration { declaration: decl })
+        );
+        assert!(!game.skat_picked_up());
+        let events = game.pick_up_skat().expect("pick up");
+        assert_eq!(events, vec![Event::SkatPickedUp { skat: game.skat() }]);
         assert_eq!(game.phase(), Phase::Discarding);
+        assert!(game.skat_picked_up());
         assert_eq!(game.hand(Seat::DECLARER).len(), 12);
+        assert!(matches!(
+            game.pick_up_skat(),
+            Err(GameError::WrongPhase { .. })
+        ));
+        assert!(matches!(
+            game.declare(decl),
+            Err(GameError::WrongPhase { .. })
+        ));
         assert!(matches!(
             game.discard([c("D7"), c("D7")]),
             Err(GameError::InvalidDiscard { .. })
@@ -1169,15 +1239,70 @@ mod tests {
             Err(GameError::InvalidDiscard { .. })
         ));
         game.discard([c("D7"), c("DQ")]).expect("discard");
-        assert_eq!(game.phase(), Phase::Playing);
+        assert_eq!(game.phase(), Phase::DeclaringAfterSkat);
+        assert_eq!(game.declaration(), None);
         assert_eq!(game.skat(), [c("D7"), c("DQ")]);
         assert_eq!(game.hand(Seat::DECLARER).len(), 10);
         assert!(game.hand(Seat::DECLARER).contains(&c("D9")));
+        // After the skat no hand levels: no Hand, no Schneider angesagt, no
+        // Ouvert; Null Ouvert is fine.
+        for risk in [
+            RiskLevel::Hand,
+            RiskLevel::SchneiderDeclared,
+            RiskLevel::Ouvert,
+        ] {
+            let hand = Declaration::suit(Suit::Hearts, risk);
+            assert_eq!(
+                game.clone().declare(hand),
+                Err(GameError::InvalidDeclaration { declaration: hand })
+            );
+        }
+        for null in [NullRisk::Hand, NullRisk::OuvertHand] {
+            assert!(game.clone().declare(Declaration::null(null)).is_err());
+        }
+        assert!(
+            game.clone()
+                .declare(Declaration::null(NullRisk::Ouvert))
+                .is_ok()
+        );
+        let events = game.declare(decl).expect("declare");
+        assert_eq!(events, vec![Event::Declared { declaration: decl }]);
+        assert_eq!(game.phase(), Phase::Playing);
+        assert!(game.skat_picked_up());
+        let order: Vec<&str> = game
+            .log()
+            .iter()
+            .map(|e| match e {
+                Event::Dealt { .. } => "dealt",
+                Event::SkatPickedUp { .. } => "picked up",
+                Event::Discarded { .. } => "discarded",
+                Event::Declared { .. } => "declared",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(order, ["dealt", "picked up", "discarded", "declared"]);
         assert_eq!(
             game.view(Seat::DECLARER).and_then(|v| v.skat),
             Some([c("D7"), c("DQ")])
         );
         assert_eq!(game.view(Seat(1)).and_then(|v| v.skat), None);
+    }
+
+    /// A save from before ADR 0011: declared first, then the skat was picked
+    /// up. The discard goes straight to playing.
+    #[test]
+    fn old_saves_declared_before_the_skat_play_on_after_the_discard() {
+        let mut game = fixed_game();
+        game.pick_up_skat().expect("pick up");
+        let decl = Declaration::suit(Suit::Hearts, RiskLevel::Normal);
+        game.declaration = Some(decl);
+        let saved = ron::to_string(&game).expect("save");
+        let mut loaded: Game = ron::from_str(&saved).expect("load");
+        loaded.discard([c("D7"), c("DQ")]).expect("discard");
+        assert_eq!(loaded.phase(), Phase::Playing);
+        assert_eq!(loaded.declaration(), Some(decl));
+        assert!(loaded.skat_picked_up());
+        assert_eq!(loaded.current_seat(), Some(Seat::DECLARER));
     }
 
     #[test]
@@ -1187,6 +1312,7 @@ mod tests {
         let events = game.declare(decl).expect("declare");
         assert_eq!(events.len(), 1);
         assert_eq!(game.phase(), Phase::Playing);
+        assert!(!game.skat_picked_up());
         assert_eq!(game.hand(Seat::DECLARER).len(), 10);
         assert_eq!(game.outcome().declarer_card_points, 3);
         assert_eq!(game.view(Seat::DECLARER).and_then(|v| v.skat), None);

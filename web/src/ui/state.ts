@@ -61,6 +61,8 @@ export interface UiState {
   busy: boolean;
   /** Card ids picked for discarding. */
   selected: number[];
+  /** The player chose "Hand spielen" before the skat: show the hand Ansage. */
+  handGame: boolean;
   /** Index into the declare options' games. */
   pickGame: number | null;
   pickRisk: RiskLevel | null;

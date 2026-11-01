@@ -112,6 +112,7 @@ export class App {
     anim: null,
     busy: false,
     selected: [],
+    handGame: false,
     pickGame: null,
     pickRisk: null,
     pickNullRisk: null,
@@ -435,6 +436,7 @@ export class App {
 
   private resetTableChoices(): void {
     this.ui.selected = [];
+    this.ui.handGame = false;
     this.ui.pickGame = null;
     this.ui.pickRisk = null;
     this.ui.pickNullRisk = null;
@@ -1158,6 +1160,20 @@ export class App {
         return;
       case 'pick-null-risk':
         this.ui.pickNullRisk = (el.dataset.risk ?? 'Normal') as NullRisk;
+        this.render();
+        return;
+      case 'pick-up-skat':
+        void this.act('PickUpSkat');
+        return;
+      case 'play-hand':
+        this.ui.handGame = true;
+        this.render();
+        return;
+      case 'hand-back':
+        this.ui.handGame = false;
+        this.ui.pickGame = null;
+        this.ui.pickRisk = null;
+        this.ui.pickNullRisk = null;
         this.render();
         return;
       case 'declare-null':

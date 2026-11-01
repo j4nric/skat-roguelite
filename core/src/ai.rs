@@ -24,7 +24,7 @@ pub mod sample;
 pub mod solver;
 
 use crate::cards::{Card, PlayingCard, Rank, Suit};
-use crate::game::{Seat, SeatView, seat_at};
+use crate::game::{Game, GameError, Seat, SeatView, seat_at};
 use crate::rules::{self, Declaration, GameType, RiskLevel};
 
 /// A card-choosing strategy for one seat.
@@ -417,6 +417,72 @@ impl DeclarerHeuristic {
         };
         // The candidates above are suit games and the grand only.
         Declaration::new(game, risk).unwrap_or(Declaration::grand(risk))
+    }
+
+    /// The game to declare after picking up the skat: the choice of
+    /// [`DeclarerHeuristic::choose_declaration`] for all twelve cards, without
+    /// hand levels (Risikostufe `Normal`).
+    #[must_use]
+    pub fn choose_game_after_skat<C: PlayingCard>(&self, cards: &[C]) -> Declaration {
+        self.choose_declaration(cards).with_risk(RiskLevel::Normal)
+    }
+
+    /// Play the Ansage of a dealt game in the order of the Skatordnung (ADR
+    /// 0011), for the simulator and tests: a hand game if
+    /// [`DeclarerHeuristic::choose_declaration`] says so for the ten cards;
+    /// otherwise pick up the skat, choose the game for all twelve cards
+    /// ([`DeclarerHeuristic::choose_game_after_skat`]), discard for it and
+    /// declare it. Returns the declaration.
+    pub fn declare<C: PlayingCard>(&self, game: &mut Game<C>) -> Result<Declaration, GameError<C>> {
+        let first = self.choose_declaration(game.hand(Seat::DECLARER));
+        if first.hand() {
+            game.declare(first)?;
+            return Ok(first);
+        }
+        game.pick_up_skat()?;
+        let declaration = self.choose_game_after_skat(game.hand(Seat::DECLARER));
+        self.discard_and_declare(game, declaration)?;
+        Ok(declaration)
+    }
+
+    /// Declare `declaration` for a dealt game: a hand game (or the Ramsch)
+    /// at once; any other game after picking up the skat and discarding with
+    /// [`DeclarerHeuristic::choose_discard`] (the most exposed cards in a
+    /// Null, [`DeclarerHeuristic::choose_null_discard`]). For tests and
+    /// measurements that fix the game.
+    pub fn declare_as<C: PlayingCard>(
+        &self,
+        game: &mut Game<C>,
+        declaration: Declaration,
+    ) -> Result<(), GameError<C>> {
+        if declaration.hand() {
+            game.declare(declaration)?;
+            return Ok(());
+        }
+        game.pick_up_skat()?;
+        self.discard_and_declare(game, declaration)
+    }
+
+    /// Discard for `declaration` from the twelve cards, then declare it.
+    fn discard_and_declare<C: PlayingCard>(
+        &self,
+        game: &mut Game<C>,
+        declaration: Declaration,
+    ) -> Result<(), GameError<C>> {
+        let cards = game.hand(Seat::DECLARER).to_vec();
+        let discard = if declaration.is_null() {
+            self.choose_null_discard(&cards, game.deck_cards())
+        } else {
+            self.choose_discard(&cards, declaration.game())
+        };
+        let Some(discard) = discard else {
+            return Err(GameError::WrongPhase {
+                phase: game.phase(),
+            });
+        };
+        game.discard(discard)?;
+        game.declare(declaration)?;
+        Ok(())
     }
 
     /// Choose the two discards from the twelve cards. Blanks go first (they
@@ -866,14 +932,7 @@ mod tests {
         let mut game = Game::deal(&mut rng, Seat::DECLARER);
         let declarer = DeclarerHeuristic;
         let defender = DefenderHeuristic;
-        let decl = declarer.choose_declaration(game.hand(Seat::DECLARER));
-        game.declare(decl).expect("declare");
-        if game.phase() == crate::game::Phase::Discarding {
-            let discard = declarer
-                .choose_discard(game.hand(Seat::DECLARER), decl.game())
-                .expect("discard");
-            game.discard(discard).expect("discard");
-        }
+        declarer.declare(&mut game).expect("declare");
         while let Some(seat) = game.current_seat() {
             let view = game.view(seat).expect("playing");
             let card = if seat.is_declarer() {
@@ -963,8 +1022,11 @@ mod tests {
             if seed % 4 == 0 {
                 decl = decl.with_risk(RiskLevel::Ouvert);
             }
-            game.declare(decl).expect("declare");
-            if game.phase() == crate::game::Phase::Discarding {
+            if decl.hand() {
+                game.declare(decl).expect("declare");
+            } else {
+                game.pick_up_skat().expect("pick up");
+                let decl = declarer.choose_game_after_skat(game.hand(Seat::DECLARER));
                 let discard = declarer
                     .choose_discard(game.hand(Seat::DECLARER), decl.game())
                     .expect("discard");
@@ -976,6 +1038,7 @@ mod tests {
                 let discarded = discard.iter().filter(|d| d.is_blank()).count();
                 assert_eq!(discarded, blanks.min(2), "blanks are discarded first");
                 game.discard(discard).expect("discard");
+                game.declare(decl).expect("declare");
             }
             while let Some(seat) = game.current_seat() {
                 let view = game.view(seat).expect("playing");

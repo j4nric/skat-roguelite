@@ -340,13 +340,17 @@ pub struct ConsumableOffer {
     pub can_buy: bool,
 }
 
-/// Phase of the game in progress.
+/// Phase of the game in progress, in the order of the Skatordnung (ADR
+/// 0011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TablePhase {
-    /// Ansage.
+    /// Ten cards: declare a hand game, pick up the skat ([`DeclareOptions`]
+    /// says what is allowed), pass or redeal.
     Declaring,
-    /// Two cards to discard.
+    /// Twelve cards: two to discard.
     Discarding,
+    /// Skat picked up and discarded: the Ansage without hand levels.
+    DeclaringAfterSkat,
     /// Tricks.
     Playing,
     /// Scored.
@@ -444,15 +448,26 @@ pub struct NullRiskOption {
     pub value: u64,
 }
 
-/// What the player may do before the declaration.
+/// What the player may do before the declaration. Before the skat
+/// ([`TablePhase::Declaring`]) the lists hold the hand levels only, the
+/// other way is [`DeclareOptions::can_pick_up_skat`]; after picking up the
+/// skat and discarding ([`TablePhase::DeclaringAfterSkat`]) they hold the
+/// levels without Hand (suit and grand: `Normal`; Null: `Normal` and
+/// `Ouvert`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeclareOptions {
-    /// Spielarten (the Nullspieler: only Null).
+    /// Spielarten (the Nullspieler: only Null). `allowed` with the lowest
+    /// allowed Risikostufe of this phase.
     pub games: Vec<GameOption>,
-    /// Risikostufen of suit games and grand (empty for the Nullspieler).
+    /// Risikostufen of suit games and grand allowed in this phase, lowest
+    /// first (empty for the Nullspieler).
     pub risks: Vec<RiskOption>,
-    /// Null-Risikostufen (only the Nullspieler).
+    /// Null-Risikostufen allowed in this phase (only the Nullspieler).
     pub null_risks: Vec<NullRiskOption>,
+    /// Whether the skat can be picked up ([`RunAction::PickUpSkat`]): only
+    /// before the skat, not against "Der Schieber" (every game is a hand
+    /// game).
+    pub can_pick_up_skat: bool,
     /// Whether "Der Angeber" demands Ouvert.
     pub ouvert_required: bool,
     /// Whether Einpassen is possible.
@@ -494,8 +509,8 @@ pub struct GameView {
     pub declarer_tricks: usize,
     /// Tricks taken by the defenders.
     pub defender_tricks: usize,
-    /// The skat as the player knows it: the discards after discarding,
-    /// `None` in hand games and before.
+    /// The skat as the player knows it: the discards once discarded (also
+    /// while declaring after the skat), `None` in hand games and before.
     pub skat: Option<Vec<CardView>>,
     /// Whether the player has to play a card now.
     pub your_turn: bool,
@@ -507,7 +522,7 @@ pub struct GameView {
     pub kontra_possible: bool,
     /// Augen needed to win.
     pub win_threshold: u32,
-    /// Ansage options while declaring.
+    /// Ansage options while declaring, before and after the skat.
     pub declare: Option<DeclareOptions>,
     /// "Durchsichtig" cards and the cards "Der Kiebitz" showed, with their
     /// holders.
@@ -868,12 +883,22 @@ impl Run {
         })
     }
 
+    /// Whether the skat is picked up and discarded: the Ansage without hand
+    /// levels.
+    fn after_skat(&self) -> bool {
+        self.game
+            .as_ref()
+            .is_some_and(|a| a.game.phase() == Phase::DeclaringAfterSkat)
+    }
+
     fn declare_options(&self, content: &Content) -> DeclareOptions {
         if self.character.plays_null() {
             return self.null_declare_options(content);
         }
+        let after_skat = self.after_skat();
         let risks: Vec<RiskOption> = RiskLevel::ALL
             .into_iter()
+            .filter(|&risk| (risk == RiskLevel::Normal) == after_skat)
             .map(|risk| RiskOption {
                 risk,
                 allowed: self.accepts(content, RunAction::Declare(Declaration::grand(risk))),
@@ -882,6 +907,7 @@ impl Run {
         let lowest = risks
             .iter()
             .find(|r| r.allowed)
+            .or_else(|| risks.first())
             .map_or(RiskLevel::Normal, |r| r.risk);
         let games = GAMES
             .into_iter()
@@ -896,6 +922,7 @@ impl Run {
             games,
             risks,
             null_risks: Vec::new(),
+            can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_pass: self.accepts(content, RunAction::Pass),
             can_redeal: self.accepts(content, RunAction::Redeal),
@@ -904,11 +931,15 @@ impl Run {
         }
     }
 
-    /// The Ansage dialog of the Nullspieler: Null and its four levels.
+    /// The Ansage dialog of the Nullspieler: the Null levels of this phase
+    /// (before the skat Null Hand and Null Ouvert Hand, after it Null and
+    /// Null Ouvert).
     fn null_declare_options(&self, content: &Content) -> DeclareOptions {
         let scoring = self.null_scoring(content);
+        let after_skat = self.after_skat();
         let null_risks: Vec<NullRiskOption> = NullRisk::ALL
             .into_iter()
+            .filter(|risk| risk.hand() != after_skat)
             .map(|risk| NullRiskOption {
                 risk,
                 allowed: self.accepts(content, RunAction::Declare(Declaration::null(risk))),
@@ -932,6 +963,7 @@ impl Run {
             }],
             risks: Vec::new(),
             null_risks,
+            can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_pass: self.accepts(content, RunAction::Pass),
             can_redeal: self.accepts(content, RunAction::Redeal),
@@ -948,9 +980,7 @@ impl Run {
         }
         let game = &active.game;
         let points = game.trick_card_points();
-        let known_skat = game
-            .declaration()
-            .is_some_and(|d| !d.hand() && game.phase() != Phase::Discarding);
+        let known_skat = game.skat_picked_up() && game.phase() != Phase::Discarding;
         let skat_points: u32 = game.skat().iter().map(|c| c.card_points()).sum();
         let mut seen: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
         seen.extend(game.tricks().iter().flat_map(|t| t.cards));
@@ -1069,6 +1099,7 @@ impl Run {
         let phase = match game.phase() {
             Phase::Declaring => TablePhase::Declaring,
             Phase::Discarding => TablePhase::Discarding,
+            Phase::DeclaringAfterSkat => TablePhase::DeclaringAfterSkat,
             Phase::Playing => TablePhase::Playing,
             Phase::Finished(_) => TablePhase::Finished,
         };
@@ -1118,12 +1149,8 @@ impl Run {
             .iter()
             .filter(|t| t.winner.is_declarer())
             .count();
-        let known_skat = match (declaration, phase) {
-            (Some(d), TablePhase::Playing | TablePhase::Finished) if !d.hand() => {
-                Some(skat.iter().map(|&c| self.card_view(c)).collect())
-            }
-            _ => None,
-        };
+        let known_skat = (game.skat_picked_up() && phase != TablePhase::Discarding)
+            .then(|| skat.iter().map(|&c| self.card_view(c)).collect());
         let mut revealed: Vec<RevealedCard> = self
             .revealed_holders()
             .into_iter()
@@ -1182,7 +1209,11 @@ impl Run {
             awaiting_kontra_answer: active.awaiting_re,
             kontra_possible: active.rules.kontra_source.is_some(),
             win_threshold: active.rules.thresholds.win,
-            declare: (phase == TablePhase::Declaring).then(|| self.declare_options(content)),
+            declare: matches!(
+                phase,
+                TablePhase::Declaring | TablePhase::DeclaringAfterSkat
+            )
+            .then(|| self.declare_options(content)),
             revealed,
             boss_rule: active
                 .boss_rule
@@ -1252,8 +1283,12 @@ mod tests {
         assert_eq!(options.games[0].base_value, 12);
         assert_eq!(options.games[4].base_value, 24);
         assert!(options.can_pass);
+        assert!(options.can_pick_up_skat);
         assert!(!options.can_redeal);
         assert!(!options.hand_required);
+        // Before the skat only the hand levels (ADR 0011).
+        assert!(options.risks.iter().all(|r| r.risk != RiskLevel::Normal));
+        assert_eq!(options.risks.len(), 4);
     }
 
     #[test]
@@ -1261,6 +1296,7 @@ mod tests {
         let content = content();
         let (mut run, _) = Run::new(&content, 21).expect("start");
         let mut saw_discard = false;
+        let mut saw_declare = [false; 2];
         let mut saw_play = false;
         let mut saw_shop = false;
         let mut saw_score = false;
@@ -1277,6 +1313,20 @@ mod tests {
                     saw_discard = true;
                     assert_eq!(game.hand.len(), 12);
                     assert_eq!(game.hand.iter().filter(|c| c.from_skat).count(), 2);
+                }
+                if let Some(options) = &game.declare {
+                    saw_declare[usize::from(game.phase == TablePhase::DeclaringAfterSkat)] = true;
+                    assert_eq!(
+                        options.can_pick_up_skat,
+                        run.accepts(&content, RunAction::PickUpSkat)
+                    );
+                    for risk in &options.risks {
+                        let grand = Declaration::grand(risk.risk);
+                        assert_eq!(
+                            risk.allowed,
+                            run.accepts(&content, RunAction::Declare(grand))
+                        );
+                    }
                 }
                 if game.your_turn {
                     saw_play = true;
@@ -1313,6 +1363,7 @@ mod tests {
             run.apply(&content, action).expect("bot action");
         }
         assert!(saw_discard && saw_play && saw_score, "covered the table");
+        assert_eq!(saw_declare, [true, true], "both Ansage dialogs");
         assert!(saw_shop || run.phase() == RunPhase::Lost);
         let stats = run.stats();
         assert!(stats.games_won + stats.games_lost + stats.games_passed > 0);
