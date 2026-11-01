@@ -51,6 +51,14 @@ export type Overlay =
   /** Unlocks just earned, ids from the meta state. */
   | { kind: 'unlock'; ids: string[] }
   | { kind: 'menu' }
+  /** "Spielstand": why to keep a copy, then export or import. */
+  | { kind: 'save-menu' }
+  /** The save code of everything stored, to copy or share; `copied` after a copy attempt. */
+  | { kind: 'save-export'; code: string; copied: boolean | null }
+  /** Paste a save code; `error` names why the last one was rejected. */
+  | { kind: 'save-import'; text: string; error: string | null; checking: boolean }
+  /** A checked save code, waiting for the player to replace the current progress. */
+  | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[] }
   | { kind: 'overview' }
   | { kind: 'credits' };
 

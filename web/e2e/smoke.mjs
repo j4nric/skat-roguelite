@@ -78,6 +78,14 @@
 // - honorary-jack.json: seed 116, a "Unter ehrenhalber" in the hand: plaque.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
+// Save code (menu "Spielstand sichern" / "Spielstand laden"), at 390 × 844
+// and at 1280 × 800: a run with seed 64 is played into its first game, the
+// code is exported from the menu (and copied), localStorage is cleared, a
+// damaged code and a foreign text are rejected with a message, the real
+// code is imported after the confirmation, and the resumed run has the
+// same seed, account, passes and hand; every stored key is back as it was.
+// Persistent storage is asked for once, after the run started, not on load.
+//
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
@@ -90,6 +98,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crc32 } from 'node:zlib';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -673,6 +682,215 @@ async function m5(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/** A save code without compression, made here (format: web/src/savecode.ts). */
+function plainSaveCode(keys) {
+  const payload = Buffer.from(JSON.stringify({ v: 1, keys }), 'utf8').toString('base64url');
+  const body = `j:${payload}`;
+  return `STAMMTISCH1:${body}:${crc32(body).toString(16).padStart(8, '0')}`;
+}
+
+/** The app's keys in localStorage. */
+async function storedKeys(page) {
+  return page.evaluate(() => {
+    const keys = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('stammtisch.')) keys[key] = localStorage.getItem(key);
+    }
+    return keys;
+  });
+}
+
+/** What the table shows of the run: seed, account, passes, hand. */
+async function tableState(page) {
+  const seed = await menuSeed(page);
+  await closeSheet(page);
+  return {
+    seed,
+    account: await text(page, 'account'),
+    passes: await text(page, 'passes-left'),
+    hand: await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')).join(', ')),
+  };
+}
+
+/** Paste a text into "Spielstand laden" and press "Prüfen". */
+async function pasteSaveCode(page, code) {
+  await page.fill('[data-testid="save-input"]', code);
+  await page.click('[data-action="save-check"]');
+  await page.waitForSelector('[data-testid="save-error"], [data-testid="save-contains"]');
+}
+
+/** The menu fits the viewport (it scrolls inside), the page itself does not scroll. */
+async function assertMenuFits(page, label) {
+  const r = await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+    const sheet = document.querySelector('.layer .sheet')?.getBoundingClientRect();
+    const doc = document.scrollingElement;
+    return { top: sheet?.top ?? -1, bottom: sheet?.bottom ?? 1e9, height: innerHeight, scroll: (doc?.scrollHeight ?? 0) - innerHeight };
+  });
+  if (r.top < 0 || r.bottom > r.height + 1) fail(`${label}: dialog ${r.top}..${r.bottom} leaves the viewport of ${r.height}`);
+  if (r.scroll > 1) fail(`${label}: the page scrolls by ${r.scroll}px`);
+}
+
+/**
+ * The menu needs no scrolling (the player does not want any): at 390 × 844
+ * and 375 × 667 the dialog has no inner overflow and "Schließen" is fully
+ * in view. Leaves the viewport as it found it.
+ */
+async function assertMenuNoScroll(page, label) {
+  const original = page.viewportSize();
+  for (const size of [PHONE, { width: 375, height: 667 }]) {
+    await page.setViewportSize(size);
+    const r = await page.evaluate(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+      const sheet = document.querySelector('.layer .sheet-menu');
+      const close = document.querySelector('.layer [data-testid="menu-close"]')?.getBoundingClientRect();
+      return {
+        found: Boolean(sheet && close),
+        overflow: sheet ? sheet.scrollHeight - sheet.clientHeight : 0,
+        closeTop: close?.top ?? -1,
+        closeBottom: close?.bottom ?? 1e9,
+        height: innerHeight,
+      };
+    });
+    const where = `${label} at ${size.width}x${size.height}`;
+    if (!r.found) fail(`${where}: menu or its "Schließen" button missing`);
+    if (r.overflow > 0) fail(`${where}: the menu scrolls inside by ${r.overflow}px`);
+    if (r.closeTop < 0 || r.closeBottom > r.height) fail(`${where}: "Schließen" at ${r.closeTop}..${r.closeBottom} is not in view (${r.height})`);
+  }
+  log(`${label}: menu fits 390x844 and 375x667 without scrolling`);
+  if (original) await page.setViewportSize(original);
+}
+
+/** Export the save code, clear the browser, import it again. */
+async function saveCode(browser, errors, reducedMotion, viewport, shots) {
+  const label = `save code ${viewport.width}x${viewport.height}`;
+  const context = await browser.newContext({ viewport, reducedMotion });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
+  // Count the requests for persistent storage.
+  await context.addInitScript(() => {
+    window.__persistCalls = 0;
+    if (navigator.storage) {
+      navigator.storage.persist = () => {
+        window.__persistCalls += 1;
+        return Promise.resolve(true);
+      };
+    }
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if ((await page.evaluate(() => window.__persistCalls)) !== 0) fail(`${label}: persistent storage asked for on page load`);
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.waitForFunction(() => window.__persistCalls === 1).catch(() => fail(`${label}: persistent storage not asked for after the run started`));
+  const passes = Number(await text(page, 'passes-left'));
+  await page.click('[data-action="pass"]');
+  await page.waitForFunction(
+    (n) => document.querySelector('[data-testid="passes-left"]')?.textContent?.trim() === String(n - 1),
+    passes,
+  );
+  await skatThenGrand(page, label);
+  for (let i = 0; i < 2; i++) {
+    await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+    await page.locator('[data-action="play"]').first().click();
+  }
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  const before = await tableState(page);
+  const keysBefore = await storedKeys(page);
+  if (!keysBefore['stammtisch.run'] || !keysBefore['stammtisch.meta']) fail(`${label}: run or meta not stored`);
+
+  // Export from the menu.
+  await page.click('.hud [data-action="menu"]');
+  await page.waitForSelector('[data-testid="save-menu"]');
+  if (shots) await shoot(page, 'menu');
+  await assertMenuFits(page, `${label}, menu`);
+  await assertMenuNoScroll(page, `${label}, menu in a run`);
+  await page.click('[data-action="copy-link"]');
+  await page.waitForSelector('[data-testid="share-copied"], [data-testid="share-fallback"]');
+  await assertMenuNoScroll(page, `${label}, menu after copying the link`);
+  await page.click('[data-testid="save-menu"]');
+  await page.waitForSelector('[data-testid="save-export"]');
+  if (shots) await shoot(page, 'save-menu');
+  await page.click('[data-testid="save-export"]');
+  await page.waitForSelector('[data-testid="save-code"]');
+  const code = await page.locator('[data-testid="save-code"]').inputValue();
+  if (!/^STAMMTISCH1:[dj]:[A-Za-z0-9_-]+:[0-9a-f]{8}$/.test(code)) fail(`${label}: save code looks wrong: ${code.slice(0, 40)}…`);
+  await page.click('[data-action="save-copy"]');
+  await page.waitForSelector('[data-testid="save-copied"], [data-testid="save-copy-failed"]');
+  if (await page.locator('[data-testid="save-copied"]').count()) {
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    if (copied !== code) fail(`${label}: the clipboard holds something else than the code`);
+    log(`${label}: code copied to the clipboard`);
+  } else {
+    log(`${label}: clipboard refused, code marked for copying by hand`);
+  }
+  if (shots) await shoot(page, 'save-export');
+  await assertMenuFits(page, `${label}, export`);
+  log(`${label}: code exported, ${code.length} characters (${code.slice(0, 14)}…)`);
+
+  // A cleared browser: no run, a fresh meta state.
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForSelector('[data-action="new-run"]');
+  if (await page.locator('[data-action="resume"]').count()) fail(`${label}: a run is offered after clearing the storage`);
+
+  // Import from the menu of the start screen; broken codes are rejected.
+  await page.click('[data-action="settings"]');
+  await page.waitForSelector('[data-testid="save-menu"]');
+  await assertMenuNoScroll(page, `${label}, menu on the start screen`);
+  if (shots) await shoot(page, 'menu-start');
+  await page.click('[data-testid="save-menu"]');
+  await page.click('[data-testid="save-import"]');
+  await page.waitForSelector('[data-testid="save-input"]');
+  const parts = code.split(':');
+  const payload = parts[2];
+  const flip = payload[20] === 'A' ? 'B' : 'A';
+  const typo = [parts[0], parts[1], payload.slice(0, 20) + flip + payload.slice(21), parts[3]].join(':');
+  await pasteSaveCode(page, typo);
+  const typoError = await text(page, 'save-error');
+  if (!typoError.includes('beschädigt')) fail(`${label}: a typo in the code gives: ${typoError || 'no error'}`);
+  await pasteSaveCode(page, code.slice(0, Math.floor(code.length / 2)));
+  if (!(await text(page, 'save-error')).includes('beschädigt')) fail(`${label}: a cut-off code is not rejected`);
+  await pasteSaveCode(page, 'Hallo Stammtisch');
+  if (!(await text(page, 'save-error')).includes('kein Stammtisch-Spielstand')) fail(`${label}: foreign text not rejected`);
+  // Fine checksum, but the run inside is no run the core can load.
+  await pasteSaveCode(page, plainSaveCode({ 'stammtisch.run': '{"version":1,"run":{}}' }));
+  if (!(await text(page, 'save-error')).includes('passt nicht')) fail(`${label}: a run the core rejects is not refused`);
+  if ((await storedKeys(page))['stammtisch.run']) fail(`${label}: a rejected code wrote a run`);
+  await pasteSaveCode(page, typo);
+  if (shots) await shoot(page, 'save-import-error');
+  log(`${label}: damaged code rejected: ${typoError}`);
+
+  // The real code, with line breaks as from a messenger: confirm, reload.
+  await pasteSaveCode(page, `Mein Spielstand:\n${code.slice(0, 60)}\n${code.slice(60)}\n`);
+  const contains = ((await page.locator('[data-testid="save-contains"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  if (!contains.includes('Laufender Run')) fail(`${label}: confirmation does not name the run: ${contains}`);
+  if (shots) await shoot(page, 'save-confirm');
+  await assertMenuFits(page, `${label}, confirm`);
+  await Promise.all([page.waitForEvent('load'), page.click('[data-action="save-apply"]')]);
+  await page.waitForSelector('[data-action="resume"]');
+  const keysAfter = await storedKeys(page);
+  if (JSON.stringify(Object.entries(keysAfter).sort()) !== JSON.stringify(Object.entries(keysBefore).sort())) {
+    fail(`${label}: stored keys differ after the import: ${Object.keys(keysAfter).join(', ')}`);
+  }
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  const after = await tableState(page);
+  for (const key of Object.keys(before)) {
+    if (after[key] !== before[key]) fail(`${label}: ${key} after the import is ${after[key]}, was ${before[key]}`);
+  }
+  log(`${label}: imported, run goes on: seed ${after.seed}, account ${after.account}, ${after.hand.split(', ').length} cards`);
+  await page.locator('[data-action="play"]').first().click();
+  await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -859,6 +1077,8 @@ async function run() {
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
+    await saveCode(browser, errors, reducedMotion, PHONE, true);
+    await saveCode(browser, errors, reducedMotion, DESKTOP, false);
   } finally {
     await browser.close();
     preview.kill();
