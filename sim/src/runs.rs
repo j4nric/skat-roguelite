@@ -9,7 +9,8 @@
 //! `--null-scoring fixed|formula`, `--curve` (success curve of a single
 //! series instead of whole runs, see [`curve`]), `--unlocks`
 //! (reachability of every unlock, see [`unlocks`]) and `--short` (kurzer
-//! Abend, DESIGN 5.3).
+//! Abend, DESIGN 5.3) and `--consumable <id>` (a steady supply of one
+//! consumable, see [`Options::consumable`]).
 //!
 //! Runs start with everything unlocked (no relic is locked), so that the
 //! measurement does not depend on a player's progress. `--unlocks` plays
@@ -21,13 +22,16 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use skat_core::ai::pimc::Opponents;
-use skat_core::content::{BossId, Character, Content, EncounterId, RelicId, RunLength, UnlockId};
+use skat_core::content::{
+    BossId, Character, ConsumableId, Content, EncounterId, RelicId, RunLength, UnlockId,
+};
 use skat_core::rng::Rng;
 use skat_core::rules::{NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
 use skat_core::run::meta::MetaState;
 use skat_core::run::{
     EncounterChoice, Run, RunAction, RunEvent, RunPhase, RunStart, SERIES_PER_SECTION,
+    series_target,
 };
 
 /// Measurement options of the runs mode.
@@ -60,7 +64,16 @@ pub struct Options {
     /// Stake of the Einsatz-Leiter (`--stake N`, DESIGN 9.3): suit games
     /// and Grand are won from `61 + N` Augen.
     pub stake: u32,
+    /// A steady supply of one consumable (`--consumable <id>`), to measure
+    /// its effect alone: every run starts with one, and every Tresen offers
+    /// only this one, for free, and no relics (so with the bot it is like
+    /// `--no-shop` plus the consumable). Compare against `--no-shop`.
+    pub consumable: Option<ConsumableId>,
 }
+
+/// Price of the Neuauslage under `--consumable`: never affordable, so
+/// the bot keeps its Groschen as under `--no-shop`.
+const NO_REROLL: u32 = 1_000;
 
 /// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
 /// `--null-scoring formula`.
@@ -114,6 +127,35 @@ impl Options {
         if let Some(defenders) = self.defenders {
             content.run.opponents = vec![defenders];
         }
+        if let Some(id) = &self.consumable {
+            if content.consumable(id).is_none() {
+                return Err(format!("--consumable: unknown consumable {id}"));
+            }
+            // Every other consumable only for the other characters: off
+            // this character's Tresen.
+            let others: Vec<Character> = content
+                .characters
+                .keys()
+                .copied()
+                .filter(|c| *c != self.character)
+                .collect();
+            for def in content.consumables.values_mut() {
+                if def.id == *id {
+                    def.price = 0;
+                } else {
+                    def.characters.clone_from(&others);
+                }
+            }
+            content.run.shop.relic_offers = 0;
+            content.run.shop.consumable_offers = 1;
+            content.run.economy.reroll_cost = NO_REROLL;
+            let slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
+            if let Some(def) = content.characters.get_mut(&self.character) {
+                if def.start_consumables.len() < slots {
+                    def.start_consumables.push(id.clone());
+                }
+            }
+        }
         Ok(content)
     }
 
@@ -166,6 +208,9 @@ impl Options {
         }
         if self.stake > 0 {
             parts.push(format!("stake={}", self.stake));
+        }
+        if let Some(id) = &self.consumable {
+            parts.push(format!("consumable={id}"));
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -247,6 +292,8 @@ pub struct RunStats {
     pub encounters: BTreeMap<EncounterId, (u64, u64)>,
     /// Highest Spielwert of a won game, summed over runs.
     pub best_game: u64,
+    /// Per consumable: (bought, used).
+    pub consumables: BTreeMap<ConsumableId, (u64, u64)>,
 }
 
 /// Play one run to the end and add it to the statistics.
@@ -334,7 +381,13 @@ fn play_run(
                 stats.coins_spent += u64::from(*price);
                 bought.insert(relic.clone());
             }
-            RunEvent::ConsumableBought { price, .. } => stats.coins_spent += u64::from(*price),
+            RunEvent::ConsumableBought { consumable, price } => {
+                stats.coins_spent += u64::from(*price);
+                stats.consumables.entry(consumable.clone()).or_default().0 += 1;
+            }
+            RunEvent::ConsumableUsed { consumable } => {
+                stats.consumables.entry(consumable.clone()).or_default().1 += 1;
+            }
             RunEvent::EncounterOpened { encounter, .. } => {
                 stats.encounters.entry(encounter.clone()).or_default().0 += 1;
             }
@@ -384,6 +437,9 @@ pub fn simulate(
     // Every relic appears in the table, also if it was never bought.
     for id in content.relics.keys() {
         stats.relics.insert(id.clone(), RelicStat::default());
+    }
+    for id in content.consumables.keys() {
+        stats.consumables.insert(id.clone(), (0, 0));
     }
     let mut master = Rng::from_seed(seed);
     for i in 0..runs {
@@ -444,11 +500,15 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
                 .and_then(|s| content.run.curve_row(options.length, s))
                 .and_then(|r| usize::try_from(r).ok())
                 .unwrap_or(usize::MAX);
-            let target = content.run.targets.get(row).map_or(0, |t| match index {
-                0 => t.0,
-                1 => t.1,
-                _ => t.2,
-            });
+            // The character's own Zielwerte if it has some, before boss
+            // factors.
+            let target = u32::try_from(row)
+                .ok()
+                .zip(u32::try_from(index).ok())
+                .and_then(|(row, index)| {
+                    series_target(content, options.character, row, index, None)
+                })
+                .unwrap_or(0);
             let label = if index + 1 == usize::try_from(SERIES_PER_SECTION).unwrap_or(3) {
                 format!("{}-boss", section + 1)
             } else {
@@ -506,6 +566,11 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         mean(stats.coins_spent, runs),
         mean(stats.coins_end, runs)
     );
+    let _ = write!(out, "consumables (bought/used):");
+    for (id, (bought, used)) in &stats.consumables {
+        let _ = write!(out, " {id}={bought}/{used}");
+    }
+    out.push('\n');
     let _ = writeln!(
         out,
         "{:<18} {:>7} {:>6} {:>9} {:>13}",
@@ -604,6 +669,12 @@ pub fn curve(
         .run
         .targets
         .fill((unreachable, unreachable, unreachable));
+    // A character with its own Zielwerte (characters.ron) plays those.
+    for def in content.characters.values_mut() {
+        if let Some(targets) = def.targets.as_mut() {
+            targets.fill((unreachable, unreachable, unreachable));
+        }
+    }
     let start = RunStart {
         index: if options.boss.is_some() {
             SERIES_PER_SECTION - 1
@@ -948,6 +1019,35 @@ mod option_tests {
     }
 
     #[test]
+    fn consumable_option_supplies_only_that_consumable() {
+        let base = content();
+        let options = Options {
+            consumable: Some(ConsumableId::new("double_grain")),
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        assert_eq!(content.run.shop.relic_offers, 0);
+        let stats = simulate(&content, &options, 6, 30).expect("runs");
+        assert!(stats.relics.values().all(|r| r.bought == 0));
+        assert_eq!(stats.coins_spent, 0, "free, and no Neuauslage");
+        let (bought, used) = stats.consumables[&ConsumableId::new("double_grain")];
+        assert!(bought > 0 && used > 0, "{bought}/{used}");
+        assert!(
+            stats
+                .consumables
+                .iter()
+                .filter(|(id, _)| id.as_str() != "double_grain")
+                .all(|(_, &(b, u))| b == 0 && u == 0)
+        );
+        assert!(render(&stats, &content, &options, 0).contains("consumable=double_grain"));
+        let bad = Options {
+            consumable: Some(ConsumableId::new("nope")),
+            ..Options::default()
+        };
+        assert!(bad.content(&base).is_err());
+    }
+
+    #[test]
     fn boss_option_draws_only_that_boss() {
         let base = content();
         let options = Options {
@@ -1043,6 +1143,16 @@ mod option_tests {
         let content = boss.content(&base).expect("content");
         let b = curve(&content, &boss, 42, 50).expect("boss curve");
         assert_eq!(b.best.len(), 50);
+        // A character with its own Zielwerte plays every series to the end
+        // too, so the curve reaches past its first Zielwert.
+        let null = Options {
+            character: Character::NullPlayer,
+            ..Options::default()
+        };
+        let n = curve(&base, &null, 42, 100).expect("null curve");
+        let limit = u64::from(base.run.game_limit);
+        assert_eq!(n.games + n.passes, 100 * limit);
+        assert_eq!(a.games + a.passes, 200 * limit);
     }
 
     #[test]

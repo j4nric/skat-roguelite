@@ -700,7 +700,7 @@ Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve -
 
 **Der Schieber und der Nullspieler**: Null Hand ohne Skat gewinnt der Nullspieler-Bot höchstens in 24 % der Boss-Serien (Kurve mit Zielwert 1, gegen 76 bis 80 % bei den anderen Bossen); vorher waren es 21 % gegen 67 %. Ein Zielwert-Faktor hilft da nicht. Entscheidung M5: Der Schieber steht nur noch im Pool des Alleinspielers (`characters: [Declarer]`, auch im Alten übersprungen). Vorschlag für später, sobald der Bot es kann: Unter dem Schieber sollte der Nullspieler-Bot nur Blätter mit höchstens ein bis zwei offenen Karten spielen (heute bis fünf, die er ohne Skat nicht loswird); danach neu messen und den Schieber mit eigenem Faktor für den Nullspieler zurückholen. Faktoren pro Charakter brauchen ein neues Feld (`core-dev`).
 
-@@BOSS12@@
+Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schieber ist wieder bei allen Charakteren; neu gemessen wird nach der Umstellung auf drei Spiele je Serie.
 
 ---
 
