@@ -5,9 +5,16 @@
 	encode zstd gzip
 	file_server
 
-	# Hashed build assets can be cached for a long time; index.html never.
+	# The web app is built by Vite (web/dist): index.html plus hashed files
+	# under /assets/, including the WebAssembly core. Hashed build assets can
+	# be cached for a long time; index.html never.
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
 	@html path / /index.html
 	header @html Cache-Control "no-cache"
+
+	# Caddy maps .wasm to application/wasm already; set it explicitly so
+	# WebAssembly.instantiateStreaming never depends on the MIME table.
+	@wasm path *.wasm
+	header @wasm Content-Type application/wasm
 }

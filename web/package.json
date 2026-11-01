@@ -1,0 +1,23 @@
+{
+  "name": "stammtisch-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stammtisch: Skat als Roguelike. Web-App über dem Rust-Kern (WebAssembly).",
+  "scripts": {
+    "wasm": "sh scripts/build-wasm.sh",
+    "typecheck": "tsc --noEmit",
+    "dev": "npm run wasm && vite",
+    "build": "npm run wasm && tsc --noEmit && vite build",
+    "build:web": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "smoke": "node e2e/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

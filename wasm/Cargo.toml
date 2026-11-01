@@ -1,0 +1,20 @@
+[package]
+name = "skat_wasm"
+description = "wasm-bindgen layer exposing skat_core to the web app. A thin shell: no rules, no state besides the wrapped run."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+skat_core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Keep in sync with the wasm-bindgen CLI in web/scripts/build-wasm.sh and CI.
+wasm-bindgen = "=0.2.130"
+
+[lints]
+workspace = true

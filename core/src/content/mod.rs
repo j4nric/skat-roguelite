@@ -22,7 +22,9 @@ pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
     ActiveSource, HookContext, ResolvedDeck, card_mod_sources, evaluate, resolve_deck,
 };
-pub use score::{Change, Lever, ScoreBreakdown, ScoreLine, Source, score_game};
+pub use score::{
+    Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game,
+};
 
 macro_rules! content_id {
     ($(#[$meta:meta])* $name:ident) => {

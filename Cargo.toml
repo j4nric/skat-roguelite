@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "sim", "bridge"]
+members = ["core", "sim", "wasm"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,3 +14,12 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+
+# Size-optimized build of the WebAssembly core for the browser
+# (web/scripts/build-wasm.sh). The simulator keeps the fast release profile.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

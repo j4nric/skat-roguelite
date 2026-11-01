@@ -60,7 +60,7 @@ Solange die Secrets fehlen, überspringt der Deploy-Job den Server-Schritt mit e
 
 1. Tests und Lint wie in `ci.yml`.
 2. Simulator-Baseline erzeugen.
-3. `site/` zusammenstellen: aktuell der Platzhalter aus `web/` mit Build-Info, ab M2 die gebaute Web-App aus `web/`.
+3. Web-App bauen (`web/`, `npm run build`: Kern als WebAssembly plus Vite-Build) und `site/` aus `web/dist/` zusammenstellen. Commit und Datum stehen als Build-Info in der Fußzeile des Startbildschirms.
 4. `site/`, `docker-compose.yml` und `Caddyfile` per `rsync` über SSH nach `/opt/skat`.
 5. Netzwerk `stammtisch-proxy` anlegen, falls es fehlt, dann `docker compose up -d`.
 

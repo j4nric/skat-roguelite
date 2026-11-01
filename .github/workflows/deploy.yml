@@ -21,7 +21,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen CLI (same version as the crate)
+        run: |
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen 0.2.130"; then
+            cargo install wasm-bindgen-cli --version 0.2.130 --locked --force
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Check
         run: |
           cargo fmt --all -- --check
@@ -29,15 +40,17 @@ jobs:
           cargo test
       - name: Simulator baseline
         run: cargo run --release -p skat_sim -- --seed 42 --games 10000 | tee sim-baseline.txt
+      - name: Build web app
+        working-directory: web
+        run: |
+          npm ci
+          export BUILD_INFO="${GITHUB_SHA::7} · $(date -u +%Y-%m-%dT%H:%MZ)"
+          npm run build
       - name: Assemble site
         run: |
           mkdir -p site
-          cp -r web/. site/
+          cp -r web/dist/. site/
           cp sim-baseline.txt site/
-          BUILD_INFO="${GITHUB_SHA::7} · $(date -u +%Y-%m-%dT%H:%MZ)"
-          sed -i "s|__BUILD_INFO__|${BUILD_INFO}|" site/index.html
-      # M3: Godot web export goes here, e.g.
-      #   - uses: chickensoft-games/setup-godot@v2 ; godot --headless --export-release "Web" ../site/index.html
       - uses: actions/upload-artifact@v4
         with:
           name: site

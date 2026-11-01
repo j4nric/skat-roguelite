@@ -22,6 +22,7 @@
 //! effects of earlier sources in the same stage.
 
 pub mod bot;
+pub mod view;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -164,6 +165,28 @@ impl Payout {
     pub const fn total(&self) -> u32 {
         self.base + self.games_left + self.interest
     }
+}
+
+/// Statistics of a run, for the run summary. Bookkeeping only; nothing in
+/// the run reads them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct RunStats {
+    /// Games won.
+    pub games_won: u32,
+    /// Games lost.
+    pub games_lost: u32,
+    /// Games passed (eingepasst).
+    pub games_passed: u32,
+    /// Series won.
+    pub series_won: u32,
+    /// Highest Spielwert of a won game.
+    pub best_game: u64,
+}
+
+/// Groschen paid when selling a relic or consumable: half its price.
+#[must_use]
+pub const fn sell_price(price: u32) -> u32 {
+    price / 2
 }
 
 /// A decision of the player.
@@ -429,6 +452,9 @@ pub struct Run {
     game: Option<ActiveGame>,
     shop: Option<Shop>,
     last_score: Option<ScoreBreakdown>,
+    /// Statistics (absent in saves from before they existed).
+    #[serde(default)]
+    stats: RunStats,
 }
 
 impl Run {
@@ -461,6 +487,7 @@ impl Run {
             game: None,
             shop: None,
             last_score: None,
+            stats: RunStats::default(),
         };
         let mut events = Vec::new();
         run.start_series(content, 0, 0, &mut events)?;
@@ -541,6 +568,12 @@ impl Run {
     #[must_use]
     pub const fn last_score(&self) -> Option<&ScoreBreakdown> {
         self.last_score.as_ref()
+    }
+
+    /// Statistics of the run so far.
+    #[must_use]
+    pub const fn stats(&self) -> &RunStats {
+        &self.stats
     }
 
     /// Cards marked "Durchsichtig" in the current game and who holds them
@@ -624,6 +657,7 @@ impl Run {
         }
         self.series.passes_left -= 1;
         self.series.games_played += 1;
+        self.stats.games_passed += 1;
         events.push(RunEvent::Passed {
             passes_left: self.series.passes_left,
         });
@@ -1134,6 +1168,12 @@ impl Run {
         );
         self.series.score = self.series.score.saturating_add(breakdown.score);
         self.series.games_played += 1;
+        if breakdown.won {
+            self.stats.games_won += 1;
+            self.stats.best_game = self.stats.best_game.max(breakdown.value);
+        } else {
+            self.stats.games_lost += 1;
+        }
         events.push(RunEvent::GameScored {
             breakdown: breakdown.clone(),
             series_score: self.series.score,
@@ -1182,6 +1222,7 @@ impl Run {
             interest,
         };
         self.coins = self.coins.saturating_add(payout.total());
+        self.stats.series_won += 1;
         events.push(RunEvent::SeriesWon {
             section: self.series.section,
             index: self.series.index,
@@ -1335,7 +1376,7 @@ impl Run {
             .get(index)
             .cloned()
             .ok_or(RunError::InvalidSlot)?;
-        let price = content.relic(&id).map_or(0, |d| d.price / 2);
+        let price = content.relic(&id).map_or(0, |d| sell_price(d.price));
         self.relics.remove(index);
         self.coins = self.coins.saturating_add(price);
         events.push(RunEvent::RelicSold { relic: id, price });
@@ -1354,7 +1395,7 @@ impl Run {
             .get(index)
             .cloned()
             .ok_or(RunError::InvalidSlot)?;
-        let price = content.consumable(&id).map_or(0, |d| d.price / 2);
+        let price = content.consumable(&id).map_or(0, |d| sell_price(d.price));
         self.consumables.remove(index);
         self.coins = self.coins.saturating_add(price);
         events.push(RunEvent::ConsumableSold {
