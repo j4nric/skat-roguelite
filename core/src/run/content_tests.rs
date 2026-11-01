@@ -80,15 +80,33 @@ pub(super) fn fixed_deal(
     events
 }
 
+/// Declare in the order of the Skatordnung (ADR 0011): a hand game at once,
+/// any other game after picking up the skat and discarding as the bot does
+/// for this game.
+pub(super) fn declare(
+    run: &mut Run,
+    content: &Content,
+    declaration: Declaration,
+) -> Result<Vec<RunEvent>, RunError> {
+    if declaration.hand() {
+        return run.apply(content, RunAction::Declare(declaration));
+    }
+    let mut events = run.apply(content, RunAction::PickUpSkat)?;
+    let game = &run.game().ok_or(RunError::WrongPhase)?.game;
+    let [a, b] = RunBot::discard_for(game.hand(Seat::DECLARER), declaration, game.deck_cards())
+        .ok_or(RunError::WrongPhase)?;
+    events.extend(run.apply(content, RunAction::Discard([a.id, b.id]))?);
+    events.extend(run.apply(content, RunAction::Declare(declaration))?);
+    Ok(events)
+}
+
 /// Declare and let the bot play until the game is scored.
 pub(super) fn play(
     run: &mut Run,
     content: &Content,
     declaration: Declaration,
 ) -> (Vec<RunEvent>, ScoreBreakdown) {
-    let mut events = run
-        .apply(content, RunAction::Declare(declaration))
-        .expect("declare");
+    let mut events = declare(run, content, declaration).expect("declare");
     loop {
         if let Some(breakdown) = events.iter().find_map(|e| match e {
             RunEvent::GameScored { breakdown, .. } => Some(breakdown.clone()),

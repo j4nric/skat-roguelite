@@ -1168,6 +1168,94 @@ button {
   gap: 6px;
 }
 
+.risks {
+  grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr));
+}
+
+/* Skat oder Hand: the first decision with ten cards. */
+.choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 116px;
+  padding: 10px 8px;
+  border: 2px solid #d6c7a4;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: var(--paper-ink);
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.choice-btn.is-skat {
+  border-color: #c98d22;
+  background: #ffefc2;
+}
+
+.choice-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.choice-cards {
+  display: flex;
+  justify-content: center;
+  height: 40px;
+}
+
+.choice-cards .card-back {
+  width: 26px;
+  margin: 0 -4px;
+}
+
+.choice-cards .card-back:first-child {
+  transform: rotate(-8deg);
+}
+
+.choice-cards .card-back:last-child {
+  transform: rotate(8deg);
+}
+
+/* Hand: the skat stays face down on the table, side by side. */
+.choice-cards.is-hand .card-back {
+  transform: none;
+  margin: 0 2px;
+}
+
+.choice-name {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 400;
+}
+
+.choice-hint {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  color: #5a4a34;
+}
+
+.declare-pressed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6a5a42;
+}
+
+.declare-pressed .mini-card {
+  width: 30px;
+}
+
 .game-btn,
 .risk-btn {
   min-height: var(--touch);

@@ -635,12 +635,56 @@ mod tests {
             "card fields are flattened"
         );
 
+        // Skatordnung (ADR 0011): pick up the skat, discard, then declare.
+        assert!(
+            session
+                .apply(r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#)
+                .is_err(),
+            "no game without hand levels before the skat"
+        );
+        assert_eq!(view["game"]["declare"]["can_pick_up_skat"], true);
+        let step = session.apply(r#""PickUpSkat""#).expect("pick up");
+        let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+        assert_eq!(step["view"]["game"]["phase"], "Discarding");
+        assert_eq!(
+            step["view"]["game"]["hand"].as_array().map(Vec::len),
+            Some(12)
+        );
+        assert!(step["events"].as_array().is_some_and(|e| !e.is_empty()));
+        let saved = session.save().expect("save");
+        assert_eq!(Session::load(&saved).expect("load").run(), session.run());
+        let discard: Vec<u64> = step["view"]["game"]["hand"]
+            .as_array()
+            .expect("hand")
+            .iter()
+            .filter(|c| c["discardable"] == true)
+            .take(2)
+            .filter_map(|c| c["id"].as_u64())
+            .collect();
+        let step = session
+            .apply(&format!(r#"{{"Discard":[{},{}]}}"#, discard[0], discard[1]))
+            .expect("discard");
+        let step: serde_json::Value = serde_json::from_str(&step).expect("json");
+        assert_eq!(step["view"]["game"]["phase"], "DeclaringAfterSkat");
+        assert_eq!(
+            step["view"]["game"]["skat"].as_array().map(Vec::len),
+            Some(2)
+        );
+        let options = &step["view"]["game"]["declare"];
+        assert_eq!(options["can_pick_up_skat"], false);
+        assert_eq!(options["risks"][0]["risk"], "Normal");
+        assert_eq!(options["risks"].as_array().map(Vec::len), Some(1));
+        assert!(
+            session
+                .apply(r#"{"Declare":{"game":"Grand","risk":"Hand"}}"#)
+                .is_err(),
+            "no Hand after the skat"
+        );
         let step = session
             .apply(r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#)
             .expect("declare");
         let step: serde_json::Value = serde_json::from_str(&step).expect("json");
-        assert_eq!(step["view"]["game"]["phase"], "Discarding");
-        assert!(step["events"].as_array().is_some_and(|e| !e.is_empty()));
+        assert_eq!(step["view"]["game"]["declaration"]["game"], "Grand");
 
         let saved = session.save().expect("save");
         let loaded = Session::load(&saved).expect("load");
@@ -844,8 +888,15 @@ mod tests {
         assert_eq!(view["character"]["character"], "NullPlayer");
         let options = &view["game"]["declare"];
         assert_eq!(options["games"][0]["game"], "Null");
-        assert_eq!(options["null_risks"].as_array().map(Vec::len), Some(4));
-        assert_eq!(options["null_risks"][3]["value"], 92);
+        // Before the skat only the hand levels: Null Hand, Null Ouvert Hand.
+        assert_eq!(options["null_risks"].as_array().map(Vec::len), Some(2));
+        assert_eq!(options["null_risks"][0]["risk"], "Hand");
+        assert_eq!(options["null_risks"][1]["risk"], "OuvertHand");
+        assert_eq!(options["null_risks"][1]["value"], 92);
+        assert!(
+            null.apply(r#"{"Declare":{"game":"Null","risk":"Normal"}}"#)
+                .is_err()
+        );
         assert!(
             null.apply(r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#)
                 .is_err()
@@ -953,6 +1004,10 @@ mod tests {
     /// load, show a view and play on: new fields have serde defaults, the
     /// single skat swap filter of "Die Oma" reads as a list, encounter
     /// options without a named modification or relic draw it when chosen.
+    /// They predate the Skatordnung order (ADR 0011): a save waiting at the
+    /// Ansage continues with the choice of skat or hand, and the Kontra save
+    /// (declared, then the skat picked up) plays on after the discard
+    /// without a second Ansage.
     #[test]
     fn old_saves_still_load_and_play_on() {
         let content = content().expect("content");
@@ -1016,13 +1071,16 @@ mod tests {
                 .expect("random card");
                 assert!(step.to_string().contains("DeckChanged"), "{name}");
             }
+            if name == "kontra" {
+                // Saved before ADR 0011: declared, then the skat picked up.
+                // The discard goes straight to playing.
+                assert_eq!(view["game"]["phase"], "Discarding", "{name}");
+                assert!(view["game"]["declaration"].is_object(), "{name}");
+            }
             if name == "discard-battered" {
-                // After the Ansage the "Ramponiert" card cannot be discarded.
-                let step = play(
-                    &mut session,
-                    r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#,
-                )
-                .expect("declare");
+                // After picking up the skat the "Ramponiert" card cannot be
+                // discarded.
+                let step = play(&mut session, r#""PickUpSkat""#).expect("pick up");
                 let hand = step["view"]["game"]["hand"].as_array().expect("hand");
                 assert_eq!(hand.len(), 12, "{name}");
                 let battered: Vec<&serde_json::Value> =
@@ -1036,12 +1094,18 @@ mod tests {
                 );
             }
             let mut ramsch_seats = None;
+            let mut old_discard = false;
             for _ in 0..200 {
                 let Some(action) = RunBot.next_action(session.run(), content) else {
                     break;
                 };
                 let step =
                     play_action(&mut session, &action).unwrap_or_else(|e| panic!("{name}: {e}"));
+                if name == "kontra" && matches!(action, RunAction::Discard(_)) && !old_discard {
+                    // Declared before the skat: no second Ansage.
+                    old_discard = true;
+                    assert_eq!(step["view"]["game"]["phase"], "Playing", "{name}");
+                }
                 for event in step["events"].as_array().expect("events") {
                     let breakdown = &event["GameScored"]["breakdown"];
                     if breakdown["declaration"]["game"] == "Ramsch" {
@@ -1049,6 +1113,7 @@ mod tests {
                     }
                 }
             }
+            assert_eq!(old_discard, name == "kontra", "{name}: the old discard");
             if name == "ramsch" {
                 // The Ramsch result names who has the most Augen.
                 let seats = ramsch_seats.expect("the Ramsch was scored");

@@ -8,8 +8,10 @@
 //   condition, and the Vereinsbuch lists every unlock as open,
 // - starts a run with a fixed seed and passes once,
 // - reloads the page and checks that the run is resumed,
-// - plays a whole game (Ansage, Drücken, 10 Stiche, Abrechnung) and checks
-//   that the series account changed,
+// - plays a whole game in the order of the Skatordnung (Skat oder Hand,
+//   Skat aufnehmen, Drücken, Ansage, 10 Stiche, Abrechnung) and checks that
+//   the series account changed; the hand Ansage offers only the hand levels,
+//   the Ansage after the skat only the levels without Hand,
 // - sees the unlock earned by winning the series with games left
 //   ("Neu am Stammtisch") and the meta state counting the game,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
@@ -20,8 +22,9 @@
 // Runs with reduced motion for speed; SMOKE_FULL_MOTION=1 plays every
 // animation at normal speed.
 //
-// The seed is chosen so that this simple click strategy (Grand, discard the
-// first two cards, always play the first legal card) wins the first series.
+// The seed is chosen so that this simple click strategy (pick up the skat,
+// discard the first two cards, Grand, always play the first legal card) wins
+// the first series. The Daus carries an "A" in its corner.
 //
 // A second pass starts from saved runs in e2e/fixtures/ (the serialized
 // core state, as the app keeps it in localStorage), because the click
@@ -31,7 +34,9 @@
 //   the boss dialog, then the boss sits at the table.
 // - kontra.json: seed 29 played by the RunBot into that boss series, the
 //   Kontra-Hans has just said Kontra. The Kontra dialog must show, and
-//   "Kein Re" must lead back into the game.
+//   "Kein Re" must lead back into the game. The save is from before the
+//   Skatordnung order (declared, then the skat picked up): after the discard
+//   the game is played without a second Ansage.
 // - encounter.json: seed 14, the RunBot's run up to "Der Kartengeber"
 //   with the paid option affordable. Choosing a card of one's own must
 //   open the card picker and start the next series.
@@ -45,7 +50,8 @@
 // - oma.json: seed 1720 up to a hand game in which "Die Oma" can take a
 //   Unter from the skat; giving a card for it must use her up.
 // - meta-null.json: a meta state (not a run) with four unlocks, among them
-//   the Nullspieler. With it a Null game is declared and played.
+//   the Nullspieler. With it the hand Ansage offers Null Hand and Null Ouvert
+//   Hand; after picking up the skat Null and Null Ouvert; a Null is played.
 //
 // M5 (fixtures made with the M5 core, same way):
 // - seed links: `#seed-4242-alleinspieler` opened fresh offers that seed and
@@ -68,7 +74,9 @@
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
-// changes (SAVE_VERSION, META_VERSION), make them again the same way.
+// changes (SAVE_VERSION, META_VERSION), make them again the same way. The
+// run fixtures are kept from before the Skatordnung order on purpose: they
+// show that old saves still load and play on.
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -187,6 +195,33 @@ async function text(page, testId) {
   return (await page.locator(`[data-testid="${testId}"]`).first().textContent())?.trim() ?? '';
 }
 
+/** Pick up the skat and press the first two cards the core lets go. */
+async function pickUpAndDiscard(page, label, shot = null) {
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-action="select"]');
+  const handSize = await page.locator('.hand-card').count();
+  if (handSize !== 12) fail(`${label}: expected 12 cards while discarding, saw ${handSize}`);
+  if (await page.locator('.declare').count()) fail(`${label}: an Ansage while discarding`);
+  await page.locator('[data-action="select"]').nth(0).click();
+  await page.locator('[data-action="select"]').nth(1).click();
+  if (shot) await shoot(page, shot);
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  const pressed = await page.locator('[data-testid="pressed"] .mini-card').count();
+  if (pressed !== 2) fail(`${label}: the Ansage after the skat shows ${pressed} pressed cards`);
+}
+
+/** Skat aufnehmen, drücken, then declare a Grand without hand levels. */
+async function skatThenGrand(page, label, shot = null) {
+  await pickUpAndDiscard(page, label, shot);
+  if (await page.locator('[data-action="pick-risk"]').count()) fail(`${label}: hand levels after the skat`);
+  if (await page.locator('[data-action="hand-back"]').count()) fail(`${label}: back to the skat choice after the skat`);
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+}
+
 /** Open the app with a saved run from e2e/fixtures and resume it. */
 async function resumeFixture(page, name) {
   const state = fixture(name);
@@ -267,15 +302,25 @@ async function m4(browser, errors, reducedMotion) {
   await page.click('.ledger [data-action="close-overlay"]');
   await page.fill('#seed', '5');
   await page.click('[data-action="new-run"]');
-  await page.waitForSelector('[data-testid="null-declare"]');
-  const levels = await page.locator('[data-action="pick-null-risk"]').count();
-  if (levels !== 4) fail(`Null Ansage with ${levels} levels, expected 4`);
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  if (!(await page.locator('.mini-card.is-kiebitz').count())) fail('the Kiebitz shows no card');
+  // Hand: Null Hand and Null Ouvert Hand.
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('[data-testid="null-declare"][data-phase="Declaring"]');
+  const handLevels = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+  if (handLevels !== 'Hand,OuvertHand') fail(`Null hand Ansage offers ${handLevels}`);
+  await shoot(page, 'null-declare-hand');
+  await page.click('[data-action="hand-back"]');
+  // With the skat: Null and Null Ouvert.
+  await pickUpAndDiscard(page, 'Null');
+  await page.waitForSelector('[data-testid="null-declare"][data-phase="DeclaringAfterSkat"]');
+  const levels = await page.locator('[data-action="pick-null-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+  if (levels !== 'Normal,Ouvert') fail(`Null Ansage after the skat offers ${levels}`);
   const values = ((await page.locator('.null-risks').textContent()) ?? '').replace(/\s+/g, ' ');
   if (!/Wert \d+/.test(values)) fail(`Null levels without values: ${values}`);
-  if (!(await page.locator('.mini-card.is-kiebitz').count())) fail('the Kiebitz shows no card');
-  log(`Null Ansage: ${values.trim()}; Kiebitz card shown`);
+  log(`Null Ansage: hand ${handLevels}; after the skat ${values.trim()}; Kiebitz card shown`);
   await shoot(page, 'null-declare');
-  await page.click('[data-action="pick-null-risk"][data-risk="Hand"]');
+  await page.click('[data-action="pick-null-risk"][data-risk="Normal"]');
   await page.click('[data-action="declare-null"]');
   await page.waitForSelector('.badge-null');
   await playOut(page, 'Null game', { at: 1, name: 'null-play' });
@@ -427,12 +472,7 @@ async function m5(browser, errors, reducedMotion) {
       }
     }).observe(document.body, { childList: true, subtree: true });
   });
-  await page.click('[data-action="pick-game"][data-index="4"]');
-  await page.click('[data-action="declare"]');
-  await page.waitForSelector('[data-action="select"]');
-  await page.locator('[data-action="select"]').nth(0).click();
-  await page.locator('[data-action="select"]').nth(1).click();
-  await page.click('[data-action="discard"]');
+  await skatThenGrand(page, 'seed link');
   await page.waitForSelector('[data-action="play"]');
   await page.locator('[data-action="play"]').first().click();
   await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
@@ -482,8 +522,7 @@ async function m5(browser, errors, reducedMotion) {
   // A run that ends: the end screen shares the seed, the statistics page lists the run.
   await resumeFixture(page, 'run-end.json');
   await page.waitForSelector('.declare');
-  await page.click('[data-action="pick-game"][data-index="4"]');
-  await page.click('[data-action="declare"]');
+  await skatThenGrand(page, 'last game');
   await playOut(page, 'last game');
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('[data-testid="end"]');
@@ -526,8 +565,7 @@ async function m5(browser, errors, reducedMotion) {
   await resumeFixture(page, 'discard-battered.json');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.hand-card .plaque-lock').count())) fail('the Ramponiert card has no lock plaque');
-  await page.click('[data-action="pick-game"][data-index="4"]');
-  await page.click('[data-action="declare"]');
+  await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-action="select"]');
   const lockedCards = page.locator('.hand-card.is-locked');
   const lockedCount = await lockedCards.count();
@@ -539,6 +577,9 @@ async function m5(browser, errors, reducedMotion) {
   await page.locator('[data-action="select"]').nth(0).click();
   await page.locator('[data-action="select"]').nth(1).click();
   await page.click('[data-action="discard"]');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   log(`Ramponiert: ${lockedCount} card(s) locked while discarding`);
 
@@ -568,6 +609,8 @@ async function run() {
     if (!build) fail('build info missing on the start screen');
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'f-back', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
+    const aceCorner = await page.evaluate(() => document.querySelector('#f-CA .idx')?.textContent?.trim());
+    if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;
       return ['Grenze Gotisch', 'Alegreya Sans'].filter((f) => !document.fonts.check(`16px "${f}"`, 'Skat'));
@@ -598,7 +641,7 @@ async function run() {
 
     await page.fill('#seed', SEED);
     await page.click('[data-action="new-run"]');
-    await page.waitForSelector('.declare');
+    await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
     await shoot(page, 'table-declare');
 
@@ -621,19 +664,24 @@ async function run() {
     if (resumedPasses !== passes - 1) fail(`resumed run has ${resumedPasses} passes, expected ${passes - 1}`);
     log('run resumed after reload');
 
-    // Ansage: Grand, normal risk.
+    // Skat oder Hand: the hand Ansage offers only the hand levels.
     const accountBefore = await text(page, 'account');
-    await page.click('[data-action="pick-game"][data-index="4"]');
-    await page.click('[data-action="declare"]');
+    await page.click('[data-action="play-hand"]');
+    await page.waitForSelector('.declare-hand');
+    const handRisks = await page.locator('[data-action="pick-risk"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-risk')).join(','));
+    if (handRisks !== 'Hand,SchneiderDeclared,SchwarzDeclared,Ouvert') fail(`hand Ansage offers ${handRisks}`);
+    await shoot(page, 'table-declare-hand');
+    await page.click('[data-action="hand-back"]');
+    log(`hand Ansage: ${handRisks}`);
 
-    // Skat aufnehmen und drücken.
-    await page.waitForSelector('[data-action="select"]');
-    const handSize = await page.locator('.hand-card').count();
-    if (handSize !== 12) fail(`expected 12 cards while discarding, saw ${handSize}`);
-    await page.locator('[data-action="select"]').nth(0).click();
-    await page.locator('[data-action="select"]').nth(1).click();
-    await shoot(page, 'table-discard');
-    await page.click('[data-action="discard"]');
+    // Skat aufnehmen, drücken, then the Ansage: Grand.
+    await pickUpAndDiscard(page, 'first game', 'table-discard');
+    if (await page.locator('[data-action="pick-risk"]').count()) fail('hand levels after the skat');
+    await page.click('[data-action="pick-game"][data-index="4"]');
+    await shoot(page, 'table-declare-after');
+    await page.click('[data-action="declare"]');
+    await page.waitForSelector('.declare', { state: 'detached' });
+    log('skat picked up, two cards pressed, Grand declared');
 
     // Ten tricks: always the first legal card.
     let played = 0;

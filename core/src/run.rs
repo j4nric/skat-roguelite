@@ -412,14 +412,23 @@ pub enum RunAction {
     /// under its old name `RedrawSkat`.
     #[serde(alias = "RedrawSkat")]
     Redeal,
-    /// Announce the game.
+    /// Pick up the skat instead of declaring a hand game (Skatordnung, ADR
+    /// 0011). Then two cards are discarded ([`RunAction::Discard`]) and the
+    /// game is declared ([`RunAction::Declare`]). Einpassen and Schieben are
+    /// no longer possible after it.
+    PickUpSkat,
+    /// Announce the game. With ten cards, before the skat is touched, only a
+    /// hand game (Hand, Schneider or Schwarz angesagt, Ouvert; Null Hand,
+    /// Null Ouvert Hand). After picking up the skat and discarding, only a
+    /// game without hand levels (Risikostufe `Normal`; Null or Null Ouvert).
     Declare(Declaration),
     /// Answer a Kontra: `true` = Re.
     AnswerKontra {
         /// Whether to say Re.
         re: bool,
     },
-    /// Discard two cards (instance ids) after picking up the skat.
+    /// Discard two cards (instance ids) after picking up the skat; the
+    /// declaration follows.
     Discard([u32; 2]),
     /// Play a card (instance id).
     Play(u32),
@@ -782,6 +791,9 @@ pub enum RunErrorCode {
     InvalidDeal,
     /// A trick is in progress.
     TrickInProgress,
+    /// The declaration does not fit the skat: before it is picked up only
+    /// hand games, after it only games without hand levels.
+    InvalidDeclaration,
     /// The deck has no card with this id.
     UnknownDeckCard,
     /// The deck cannot shrink below 32 cards.
@@ -837,6 +849,7 @@ impl RunErrorCode {
             RunErrorCode::InvalidDiscard => "InvalidDiscard",
             RunErrorCode::InvalidDeal => "InvalidDeal",
             RunErrorCode::TrickInProgress => "TrickInProgress",
+            RunErrorCode::InvalidDeclaration => "InvalidDeclaration",
             RunErrorCode::UnknownDeckCard => "UnknownDeckCard",
             RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
             RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
@@ -868,6 +881,7 @@ impl RunError {
                 GameError::InvalidDiscard { .. } => RunErrorCode::InvalidDiscard,
                 GameError::InvalidDeal => RunErrorCode::InvalidDeal,
                 GameError::TrickInProgress => RunErrorCode::TrickInProgress,
+                GameError::InvalidDeclaration { .. } => RunErrorCode::InvalidDeclaration,
                 GameError::InvalidSkatSwap => RunErrorCode::InvalidSkatSwap,
                 GameError::DiscardForbidden { .. } => RunErrorCode::DiscardForbidden,
             },
@@ -1372,6 +1386,7 @@ impl Run {
         match action {
             RunAction::Pass => self.pass(content, events),
             RunAction::Redeal => self.redeal_series(content, events),
+            RunAction::PickUpSkat => self.pick_up_skat(events),
             RunAction::Declare(declaration) => self.declare(content, declaration, events),
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
@@ -1447,6 +1462,23 @@ impl Run {
         self.deal(content, false, events)
     }
 
+    /// Pick up the skat (ADR 0011). Not if the boss demands a hand game, and
+    /// not if no game declared after the skat could satisfy "Der Angeber"
+    /// (only Null Ouvert can be played open with the skat).
+    fn pick_up_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let plays_null = self.character.plays_null();
+        let active = self.declaring()?;
+        if active.rules.require_hand {
+            return Err(RunError::HandRequired);
+        }
+        if active.rules.require_ouvert && !plays_null {
+            return Err(RunError::OuvertRequired);
+        }
+        let game_events = active.game.pick_up_skat()?;
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        Ok(())
+    }
+
     fn declare(
         &mut self,
         content: &Content,
@@ -1454,7 +1486,16 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         let character = self.character;
-        let active = self.declaring()?;
+        let active = self.active_mut()?;
+        if active.rules.ramsch {
+            return Err(RunError::RamschRequired);
+        }
+        if !matches!(
+            active.game.phase(),
+            Phase::Declaring | Phase::DeclaringAfterSkat
+        ) {
+            return Err(RunError::WrongPhase);
+        }
         match (character.plays_null(), declaration) {
             (_, Declaration::Ramsch) => return Err(RunError::GameNotAvailable),
             (false, Declaration::Null { .. }) => return Err(RunError::NullNotAvailable),
@@ -3021,6 +3062,8 @@ mod content_tests;
 mod m4_tests;
 #[cfg(test)]
 mod m5_tests;
+#[cfg(test)]
+mod skat_order_tests;
 #[cfg(test)]
 mod step_tests;
 #[cfg(test)]

@@ -331,19 +331,34 @@ mod tests {
         let content = Content::load().expect("content");
         let (mut run, _) = Run::new(&content, 17).expect("start");
         let skat = run.game().expect("game").game.skat();
-        let events = run
-            .apply(
-                &content,
-                RunAction::Declare(
-                    Declaration::new(
-                        crate::rules::GameType::Grand,
-                        crate::rules::RiskLevel::Normal,
-                    )
-                    .expect("suit or grand"),
-                ),
-            )
-            .expect("declare");
+        let events = run.apply(&content, RunAction::PickUpSkat).expect("pick up");
         let player = player_events(events);
-        assert!(player.contains(&RunEvent::Game(PlayerGameEvent::SkatPickedUp { skat })));
+        assert_eq!(
+            player,
+            vec![RunEvent::Game(PlayerGameEvent::SkatPickedUp { skat })]
+        );
+        let hand = run.game().expect("game").game.hand(Seat::DECLARER);
+        let discard = [hand[0].id, hand[1].id];
+        let events = run
+            .apply(&content, RunAction::Discard(discard))
+            .expect("discard");
+        let events = player_events(events);
+        assert!(matches!(
+            events[..],
+            [RunEvent::Game(PlayerGameEvent::Discarded { .. })]
+        ));
+        let grand = Declaration::new(
+            crate::rules::GameType::Grand,
+            crate::rules::RiskLevel::Normal,
+        )
+        .expect("suit or grand");
+        let events = run
+            .apply(&content, RunAction::Declare(grand))
+            .expect("declare");
+        assert!(
+            player_events(events).contains(&RunEvent::Game(PlayerGameEvent::Declared {
+                declaration: grand
+            }))
+        );
     }
 }

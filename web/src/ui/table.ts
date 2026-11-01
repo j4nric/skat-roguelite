@@ -114,8 +114,73 @@ function gameIcon(game: DeclaredGame, size = 30): string {
   return suitIcon(game.Suit, size);
 }
 
-/** The Ansage of the Nullspieler: the four Null levels with their values from the core. */
-function nullDeclarePanel(options: DeclareOptions, ui: UiState, passesLeft: number): string {
+/**
+ * The buttons below an Ansage: back to the choice of skat or hand (when the
+ * skat may still be picked up), else Einpassen; Schieben; Ansagen.
+ */
+function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string): string {
+  const back = !afterSkat && options.can_pick_up_skat;
+  const first = back
+    ? `<button class="btn" ${attrs({ 'data-action': 'hand-back' })}>${esc(de.table.back)}</button>`
+    : !afterSkat || options.can_pass
+      ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_pass })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
+      : '';
+  const redraw = options.can_redeal
+    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
+    : '';
+  return `<div class="declare-actions">${first}${redraw}${declare}</div>`;
+}
+
+/** Warnings of the boss rules on the Ansage. */
+function declareWarnings(options: DeclareOptions, afterSkat: boolean): string {
+  return [
+    options.hand_required ? de.table.handRequired : '',
+    options.ouvert_required ? de.table.ouvertRequired : '',
+    !afterSkat && !options.can_pick_up_skat && !options.hand_required && !options.ouvert_required ? de.table.noPickUp : '',
+  ]
+    .filter(Boolean)
+    .map((h) => `<p class="declare-hint is-warning">${esc(h)}</p>`)
+    .join('');
+}
+
+/** The two discarded cards, shown on the Ansage after the skat. */
+function pressedCards(game: GameView): string {
+  if (!game.skat?.length) return '';
+  return `<p class="declare-pressed" data-testid="pressed"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</p>`;
+}
+
+/**
+ * The first decision with ten cards (Skatordnung): pick up the skat, or
+ * play a hand game. Einpassen and Schieben stay here as before.
+ */
+function choicePanel(options: DeclareOptions, passesLeft: number): string {
+  const handPossible = options.null_risks.length ? options.null_risks.some((r) => r.allowed) : options.games.some((g) => g.allowed);
+  return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
+    <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
+    <div class="choices">
+      <button class="choice-btn is-skat" ${attrs({ 'data-action': 'pick-up-skat' })}>
+        <span class="choice-cards" aria-hidden="true">${cardBack('mini')}${cardBack('mini')}</span>
+        <b class="choice-name">${esc(de.table.pickUpSkat)}</b>
+        <span class="choice-hint">${esc(de.table.pickUpSkatHint)}</span>
+      </button>
+      <button class="choice-btn is-hand" ${attrs({ 'data-action': 'play-hand', disabled: !handPossible })}>
+        <span class="choice-cards is-hand" aria-hidden="true">${cardBack('mini')}${cardBack('mini')}</span>
+        <b class="choice-name">${esc(de.table.playHand)}</b>
+        <span class="choice-hint">${esc(de.table.playHandHint)}</span>
+      </button>
+    </div>
+    ${declareWarnings(options, false)}
+    ${declareActions({ ...options, can_pick_up_skat: false }, false, passesLeft, '')}
+  </section>`;
+}
+
+/**
+ * The Ansage of the Nullspieler: the Null levels the core offers in this
+ * phase (Null Hand and Null Ouvert Hand before the skat, Null and Null
+ * Ouvert after it) with their values from the core.
+ */
+function nullDeclarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
+  const afterSkat = game.phase === 'DeclaringAfterSkat';
   const risk: NullRisk = ui.pickNullRisk ?? options.null_risks.find((r) => r.allowed)?.risk ?? 'Normal';
   const risks = options.null_risks
     .map((r) => {
@@ -128,33 +193,29 @@ function nullDeclarePanel(options: DeclareOptions, ui: UiState, passesLeft: numb
       })}><span class="null-name">${esc(de.nullRisks[r.risk])}</span><span class="null-value">${esc(t(de.table.nullValue, { value: r.value }))}</span></button>`;
     })
     .join('');
-  const hints = [
-    options.ouvert_required ? de.table.ouvertRequired : '',
-    options.hand_required ? de.table.handRequired : '',
-  ]
-    .filter(Boolean)
-    .map((h) => `<p class="declare-hint is-warning">${esc(h)}</p>`)
-    .join('');
-  const redraw = options.can_redeal
-    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
-    : '';
   const anyAllowed = options.null_risks.some((r) => r.allowed);
-  return `<section class="declare declare-null" aria-label="${esc(de.table.nullTitle)}" data-testid="null-declare">
-    <h2 class="declare-title">${esc(de.table.nullTitle)}</h2>
+  const title = afterSkat ? de.table.nullTitle : de.table.nullHandTitle;
+  const declare = `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare-null', 'data-risk': risk, disabled: !anyAllowed })}>${esc(de.table.declare)}</button>`;
+  return `<section class="declare declare-null" aria-label="${esc(title)}" data-testid="null-declare" data-phase="${esc(game.phase)}">
+    <h2 class="declare-title">${esc(title)}</h2>
+    ${pressedCards(game)}
     <p class="no-trick" role="note"><b>${esc(de.table.noTrick)}</b> <span>${esc(de.table.nullHint)}</span></p>
     <div class="null-risks">${risks}</div>
     <p class="declare-hint">${esc(de.nullRiskHints[risk])} ${esc(de.table.nullStyle)}</p>
-    ${hints}
-    <div class="declare-actions">
-      <button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_pass })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>
-      ${redraw}
-      <button class="btn btn-primary" ${attrs({ 'data-action': 'declare-null', 'data-risk': risk, disabled: !anyAllowed })}>${esc(de.table.declare)}</button>
-    </div>
+    ${declareWarnings(options, afterSkat)}
+    ${declareActions(options, afterSkat, passesLeft, declare)}
   </section>`;
 }
 
-function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number): string {
-  if (options.null_risks.length) return nullDeclarePanel(options, ui, passesLeft);
+/**
+ * The Ansage: with ten cards first the choice of skat or hand, then the
+ * hand Ansage; after the skat the Ansage without hand levels. Which levels
+ * there are and which are allowed comes from the core.
+ */
+function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
+  const afterSkat = game.phase === 'DeclaringAfterSkat';
+  if (!afterSkat && options.can_pick_up_skat && !ui.handGame) return choicePanel(options, passesLeft);
+  if (options.null_risks.length) return nullDeclarePanel(options, game, ui, passesLeft);
   const games = options.games
     .map((g, i) => {
       const picked = ui.pickGame === i;
@@ -178,26 +239,23 @@ function declarePanel(options: DeclareOptions, ui: UiState, passesLeft: number):
       })}>${esc(de.risksShort[r.risk])}</button>`;
     })
     .join('');
-  const hint = [options.hand_required ? de.table.handRequired : '', options.ouvert_required ? de.table.ouvertRequired : '']
-    .filter(Boolean)
-    .map((h) => `<p class="declare-hint is-warning">${esc(h)}</p>`)
-    .join('');
-  const redraw = options.can_redeal
-    ? `<button class="btn" ${attrs({ 'data-action': 'redraw' })}>${esc(t(de.table.redraw, { left: options.redeals_left }))}</button>`
-    : '';
-  return `<section class="declare" aria-label="${esc(de.table.declareTitle)}">
-    <h2 class="declare-title">${esc(de.table.declareTitle)}</h2>
+  // A single level (after the skat: only Normal) needs no row of buttons.
+  const riskRow =
+    options.risks.length > 1
+      ? `<div class="declare-label">${esc(de.table.risk)}</div>
+    <div class="risks" style="--n:${options.risks.length}">${risks}</div>`
+      : '';
+  const title = afterSkat ? de.table.afterSkatTitle : de.table.handTitle;
+  const declare = `<button class="btn btn-primary" ${attrs({ 'data-action': 'declare', disabled: ui.pickGame === null })}>${esc(de.table.declare)}</button>`;
+  return `<section class="declare ${afterSkat ? 'declare-after-skat' : 'declare-hand'}" aria-label="${esc(title)}" data-phase="${esc(game.phase)}">
+    <h2 class="declare-title">${esc(title)}</h2>
+    ${pressedCards(game)}
     <div class="declare-label">${esc(de.table.gameType)}</div>
     <div class="games">${games}</div>
-    <div class="declare-label">${esc(de.table.risk)}</div>
-    <div class="risks">${risks}</div>
+    ${riskRow}
     <p class="declare-hint">${esc(de.riskHints[risk])}</p>
-    ${hint}
-    <div class="declare-actions">
-      <button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_pass })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>
-      ${redraw}
-      <button class="btn btn-primary" ${attrs({ 'data-action': 'declare', disabled: ui.pickGame === null })}>${esc(de.table.declare)}</button>
-    </div>
+    ${declareWarnings(options, afterSkat)}
+    ${declareActions(options, afterSkat, passesLeft, declare)}
   </section>`;
 }
 
@@ -246,7 +304,7 @@ function handCards(game: GameView, ui: UiState): string {
 /** Whether the player plays with open cards (Ouvert, also Null Ouvert). */
 function isOpen(game: GameView): boolean {
   const risk = game.declaration?.risk;
-  return game.phase !== 'Declaring' && (risk === 'Ouvert' || risk === 'OuvertHand');
+  return game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat' && (risk === 'Ouvert' || risk === 'OuvertHand');
 }
 
 function statusLine(game: GameView, ui: UiState): string {
@@ -256,9 +314,12 @@ function statusLine(game: GameView, ui: UiState): string {
   switch (game.phase) {
     case 'Declaring':
       return `<div class="status">${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</div>`;
+    case 'DeclaringAfterSkat':
+      return `<div class="status">${esc(t(de.table.game, { number: game.number }))} · ${esc(de.table.declareAfterSkat)}</div>`;
     case 'Discarding': {
+      // Saves from before the Skatordnung order already hold the declaration here.
       const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
-      return `<div class="status status-discard"><span>${esc(de.table.discardHint)}${locked}</span>
+      return `<div class="status status-discard"><span>${esc(game.declaration ? de.table.discardHintDeclared : de.table.discardHint)}${locked}</span>
         <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', disabled: ui.selected.length !== 2 })}>${esc(de.table.discard)}</button></div>`;
     }
     case 'Playing': {
@@ -366,17 +427,17 @@ function ramschBanner(game: GameView): string {
 
 /** "Letzte Runde": this game counts more (shown while declaring). */
 function pendingNote(view: RunView, game: GameView): string {
-  if (!view.pending_factor || game.phase !== 'Declaring') return '';
+  if (!view.pending_factor || (game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat')) return '';
   return `<p class="pending-note">${esc(t(de.table.pendingFactor, { factor: view.pending_factor }))}</p>`;
 }
 
 export function renderTable(view: RunView, ui: UiState): string {
   const game = view.game;
   if (!game) return '';
-  const declaring = game.phase === 'Declaring' && !ui.anim && game.declare;
+  const declaring = (game.phase === 'Declaring' || game.phase === 'DeclaringAfterSkat') && !ui.anim && game.declare;
   const trick = ui.anim ? ui.anim.trick : game.trick;
   const center = declaring && game.declare
-    ? declarePanel(game.declare, ui, view.series.passes_left)
+    ? declarePanel(game.declare, game, ui, view.series.passes_left)
     : `<div class="trick" data-action="fast">${trickSlot(trick, 1)}${trickSlot(trick, 2)}${trickSlot(trick, 0)}</div>`;
   const ramsch = game.declaration?.game === 'Ramsch';
   return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''}">

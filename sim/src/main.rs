@@ -48,7 +48,7 @@ use skat_core::ai::pimc::{Opponents, PimcConfig, PimcPolicy};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
 use skat_core::content::{BossId, Character, RelicId};
-use skat_core::game::{Game, Phase, Seat};
+use skat_core::game::{Game, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{GameType, Matadors, NullScoring};
 
@@ -362,8 +362,9 @@ fn choose_card(
     }
 }
 
-/// Play one complete game: heuristic game choice and discard, card play
-/// by `players` (the heuristics by default).
+/// Play one complete game: heuristic Ansage in the order of the Skatordnung
+/// (hand game or skat first, then discard and game choice, ADR 0011), card
+/// play by `players` (the heuristics by default).
 fn play_game(
     rng: &mut Rng,
     forehand: Seat,
@@ -373,14 +374,7 @@ fn play_game(
 ) -> Result<GameResult, String> {
     let declarer = DeclarerHeuristic;
     let mut game = Game::deal(rng, forehand);
-    let declaration = declarer.choose_declaration(game.hand(Seat::DECLARER));
-    game.declare(declaration).map_err(|e| e.to_string())?;
-    if game.phase() == Phase::Discarding {
-        let discard = declarer
-            .choose_discard(game.hand(Seat::DECLARER), declaration.game())
-            .ok_or("no discard")?;
-        game.discard(discard).map_err(|e| e.to_string())?;
-    }
+    let declaration = declarer.declare(&mut game).map_err(|e| e.to_string())?;
     while let Some(seat) = game.current_seat() {
         let view = game.view(seat).ok_or("no view while playing")?;
         let player = if seat.is_declarer() {

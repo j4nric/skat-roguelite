@@ -219,9 +219,10 @@ fn matadors_count_untouched_skat_in_hand_game() {
 fn matadors_count_discarded_jack() {
     let mut game = deal_with_top_jacks_in_skat();
     let decl = Declaration::suit(Suit::Hearts, RiskLevel::Normal);
-    game.declare(decl).expect("declare");
+    game.pick_up_skat().expect("pick up");
     // Discard the Kreuz-Bube: the declarer still plays "mit 3".
     game.discard([c("CJ"), c("CA")]).expect("discard");
+    game.declare(decl).expect("declare");
     play_out(&mut game);
     assert_eq!(finished_matadors(&game), MIT_3);
 }
@@ -230,9 +231,10 @@ fn matadors_count_discarded_jack() {
 #[test]
 fn discarded_card_points_count_for_declarer() {
     let mut game = deal_with_top_jacks_in_skat();
+    game.pick_up_skat().expect("pick up");
+    game.discard([c("CA"), c("CT")]).expect("discard");
     game.declare(Declaration::grand(RiskLevel::Normal))
         .expect("declare");
-    game.discard([c("CA"), c("CT")]).expect("discard");
     // Before any trick the declarer already owns the 21 Augen in the skat.
     assert_eq!(game.outcome().declarer_card_points, 21);
     play_out(&mut game);

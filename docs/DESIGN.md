@@ -78,10 +78,10 @@ In der Sprache des Genres: **Grundwert sind die Chips, Gewinnstufen sind der Mul
 
 ### 4.3 Was gebogen wird
 
-**Reizen entfällt.** Stattdessen gibt es die **Ansage**. Vor dem Aufnehmen des Skats erklärt der Spieler:
+**Reizen entfällt.** Stattdessen gibt es die **Ansage**. Die Reihenfolge folgt der Skatordnung (ADR 0011): Erst entscheidet der Spieler, ob er den Skat aufnimmt oder Hand spielt; nach dem Aufnehmen drückt er zwei Karten. Danach erklärt er:
 
 1. Spielart (Farbe oder Grand; beim Null-Charakter Null-Varianten).
-2. Risikostufe: *Normal*, *Hand* (Skat bleibt liegen), *Schneider angesagt*, *Schwarz angesagt*, *Ouvert* (offen spielen).
+2. Risikostufe: *Normal*, *Hand* (Skat bleibt liegen), *Schneider angesagt*, *Schwarz angesagt*, *Ouvert* (offen spielen). Schneider, Schwarz und Ouvert ansagen geht nur beim Handspiel; nach dem Aufnehmen bleibt im Farbspiel und Grand nur *Normal*, beim Null *Normal* und *Ouvert*.
 
 Jede Stufe erhöht die Gewinnstufen, aber ein Fehlschlag auf einer angesagten Stufe gilt als verloren. Das ersetzt den Push-your-luck-Charakter des Reizens durch eine einzige, klare Entscheidung.
 
@@ -124,7 +124,7 @@ Run (eine Tournee)
 
 | Ebene | Skat-Begriff | Genre-Gegenstück | Dauer |
 |---|---|---|---|
-| Ein Spiel | Ansage, Skat, 10 Stiche, Abrechnung | Eine Hand | ~90 Sekunden |
+| Ein Spiel | Skat, Ansage, 10 Stiche, Abrechnung | Eine Hand | ~90 Sekunden |
 | Eine Serie | 3 bis 5 Spiele mit Punkteziel | Ein Blind | 5 bis 8 Minuten |
 | Ein Abschnitt | Skatabend in einer Kneipe | Ein Ante | 15 bis 20 Minuten |
 | Der Run | Tournee durch 3 bis 5 Kneipen | Der Run | 45 bis 60 Minuten |
@@ -159,8 +159,8 @@ Zur Einordnung: 18 ist der kleinste Wert eines gewonnenen Spiels, Serie 1-1 hei�
 
 1. **Geben.** Das aktuelle Blatt (32 Karten plus Modifikationen) wird gemischt. 10/10/10/2.
 2. **Blatt ansehen.** Der Spieler sieht seine 10 Karten. Relikte, die Informationen geben (Kiebitz), wirken jetzt.
-3. **Ansage.** Spielart und Risikostufe wählen. Bei *Hand* wird der Skat nicht aufgenommen.
-4. **Skat aufnehmen und drücken.** 2 Karten aufnehmen, 2 Karten drücken. Gedrückte Karten zählen zu den Augen des Alleinspielers.
+3. **Skat oder Hand.** Skat aufnehmen und 2 Karten drücken, oder Hand spielen. Gedrückte Karten zählen zu den Augen des Alleinspielers.
+4. **Ansage.** Spielart und Risikostufe wählen (ADR 0011).
 5. **10 Stiche.** Vorhand spielt aus. Die Gegner-KI spielt gemeinsam gegen den Spieler.
 6. **Abrechnung.** Augen zählen, Spitzen bestimmen, Gewinnstufen summieren, Spielwert berechnen, Serie-Konto aktualisieren.
 7. **Triggerphase.** Relikte mit Nachwirkung (z. B. „Bock“ läuft weiter) werden aktualisiert.

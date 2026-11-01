@@ -1,6 +1,7 @@
 //! A complete random game played by the heuristics: card points add up to
-//! 120, ten tricks are played, the events arrive in the right order and the
-//! same seed replays the same game.
+//! 120, ten tricks are played, the events arrive in the order of the
+//! Skatordnung (skat before the declaration, ADR 0011) and the same seed
+//! replays the same game.
 
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::game::{Event, Game, Phase, Seat};
@@ -13,14 +14,7 @@ fn play_seeded(seed: u64) -> Game {
     let mut game = Game::deal(&mut rng, forehand);
     let declarer = DeclarerHeuristic;
     let defender = DefenderHeuristic;
-    let declaration = declarer.choose_declaration(game.hand(Seat::DECLARER));
-    game.declare(declaration).expect("declare");
-    if game.phase() == Phase::Discarding {
-        let discard = declarer
-            .choose_discard(game.hand(Seat::DECLARER), declaration.game())
-            .expect("two discards");
-        game.discard(discard).expect("discard");
-    }
+    declarer.declare(&mut game).expect("declare");
     while let Some(seat) = game.current_seat() {
         let view = game.view(seat).expect("view while playing");
         let card = if seat.is_declarer() {
@@ -66,17 +60,16 @@ fn events_arrive_in_order() {
     let game = play_seeded(11);
     let log = game.log();
     let hand = game.declaration().expect("declared").hand();
+    assert!(!hand, "seed 11 picks up the skat");
     let mut i = 0;
     assert!(matches!(log[i], Event::Dealt { .. }));
     i += 1;
+    assert!(matches!(log[i], Event::SkatPickedUp { .. }));
+    i += 1;
+    assert!(matches!(log[i], Event::Discarded { .. }));
+    i += 1;
     assert!(matches!(log[i], Event::Declared { .. }));
     i += 1;
-    if !hand {
-        assert!(matches!(log[i], Event::SkatPickedUp { .. }));
-        i += 1;
-        assert!(matches!(log[i], Event::Discarded { .. }));
-        i += 1;
-    }
     for trick in 0..10 {
         for _ in 0..3 {
             assert!(matches!(log[i], Event::CardPlayed { .. }), "trick {trick}");

@@ -175,13 +175,7 @@ fn hand_cards_say_whether_they_can_be_discarded() {
         view.hand.iter().all(|c| !c.discardable),
         "not while declaring"
     );
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::Grand {
-            risk: crate::rules::RiskLevel::Normal,
-        }),
-    )
-    .expect("declare");
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
     let view = run.view(&content).game.expect("game");
     assert_eq!(view.phase, TablePhase::Discarding);
     assert_eq!(view.hand.len(), 12);

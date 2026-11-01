@@ -4,7 +4,7 @@
 //! options that name what they give, and rewards in the meta view.
 
 use super::bot::RunBot;
-use super::content_tests::{content, fixed_deal, play, relic_run};
+use super::content_tests::{content, declare, fixed_deal, play, relic_run};
 use super::meta::{MetaState, RewardKind};
 use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
@@ -238,11 +238,7 @@ fn battered_pays_when_attached_and_stays_out_of_the_skat() {
     add_mod(&mut run, "D7", "battered");
     add_mod(&mut run, "C7", "battered");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::suit(Suit::Diamonds, RiskLevel::Normal)),
-    )
-    .expect("declare");
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
     let view = run.view(&content).game.expect("game");
     let flagged: Vec<u32> = view
         .hand
@@ -250,7 +246,11 @@ fn battered_pays_when_attached_and_stays_out_of_the_skat() {
         .filter(|c| c.card.no_discard)
         .map(|c| c.card.id)
         .collect();
-    assert_eq!(flagged, vec![id("D7"), id("C7")], "trumps first");
+    assert_eq!(
+        flagged,
+        vec![id("C7"), id("D7")],
+        "no game yet: grand order, Kreuz first"
+    );
     for pair in [[id("D7"), id("D9")], [id("C7"), id("D8")]] {
         let err = run
             .clone()
@@ -553,11 +553,7 @@ fn matadors_at_least_counts_mit_and_ohne() {
         ],
         "H7 HA",
     );
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::grand(RiskLevel::Normal)),
-    )
-    .expect("declare");
+    declare(&mut run, &content, Declaration::grand(RiskLevel::Normal)).expect("declare");
     assert!(check(&run, &cond(false, 4)));
     assert!(!check(&run, &cond(true, 1)));
 }

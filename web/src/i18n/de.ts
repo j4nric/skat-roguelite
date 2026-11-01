@@ -149,7 +149,7 @@ export const de = {
     J: 'U',
     Q: 'O',
     K: 'K',
-    A: 'D',
+    A: 'A',
   },
 
   card: {
@@ -187,9 +187,9 @@ export const de = {
   },
 
   nullRiskHints: {
-    Normal: 'Skat aufnehmen, zwei Karten drücken.',
+    Normal: 'Mit Skat gespielt, deine Karten bleiben verdeckt.',
     Hand: 'Der Skat bleibt liegen.',
-    Ouvert: 'Skat aufnehmen, dann spielst du mit offenen Karten.',
+    Ouvert: 'Mit Skat gespielt, aber mit offenen Karten.',
     OuvertHand: 'Ohne Skat und mit offenen Karten. Das höchste Null.',
   },
 
@@ -215,7 +215,7 @@ export const de = {
   },
 
   riskHints: {
-    Normal: 'Skat aufnehmen, zwei Karten drücken.',
+    Normal: 'Mit Skat gespielt. Schneider und Schwarz zählen, ansagen kannst du sie nur beim Handspiel.',
     Hand: 'Skat bleibt liegen. Eine Stufe mehr.',
     SchneiderDeclared: 'Hand, dazu Schneider angesagt. Schaffst du ihn nicht, ist das Spiel verloren.',
     SchwarzDeclared: 'Hand, dazu Schwarz angesagt: alle Stiche oder verloren.',
@@ -233,6 +233,17 @@ export const de = {
 
   table: {
     declareTitle: 'Ansage',
+    choiceTitle: 'Skat oder Hand?',
+    pickUpSkat: 'Skat aufnehmen',
+    pickUpSkatHint: 'Zwei Karten aufnehmen, zwei drücken, dann ansagen.',
+    playHand: 'Hand spielen',
+    playHandHint: 'Der Skat bleibt liegen. Das Spiel zählt eine Stufe mehr.',
+    handTitle: 'Handspiel ansagen',
+    nullHandTitle: 'Null Hand ansagen',
+    afterSkatTitle: 'Ansage nach dem Skat',
+    afterSkatHint: 'Skat aufgenommen und gedrückt. Jetzt sagst du dein Spiel an.',
+    back: 'Zurück',
+    noPickUp: 'Den Skat darfst du in diesem Spiel nicht aufnehmen.',
     gameType: 'Spielart',
     risk: 'Risikostufe',
     declare: 'Ansagen',
@@ -258,7 +269,9 @@ export const de = {
     bossRule: 'Boss-Regel',
     oldMan: '{name} legt auf:',
     pendingFactor: 'Letzte Runde: Dieses Spiel zählt ×{factor}',
-    discardHint: 'Tippe zwei Karten an. Gedrückte Augen zählen für dich.',
+    discardHint: 'Tippe zwei Karten an und drück sie, danach sagst du an. Gedrückte Augen zählen für dich.',
+    discardHintDeclared: 'Tippe zwei Karten an. Gedrückte Augen zählen für dich.',
+    declareAfterSkat: 'Skat gedrückt. Sag dein Spiel an.',
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
     trickTo: 'Stich an {name} ({points} Augen)',

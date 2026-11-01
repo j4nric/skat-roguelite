@@ -464,7 +464,7 @@ mod tests {
     use super::*;
     use crate::cards::{Card, CardKind, Suit, standard_deck};
     use crate::deck::DealtCard;
-    use crate::game::{Game, Phase};
+    use crate::game::Game;
     use crate::rules::{Declaration, NullRisk, RiskLevel};
 
     fn weak() -> PimcConfig {
@@ -493,17 +493,9 @@ mod tests {
     }
 
     fn declare<C: PlayingCard>(game: &mut Game<C>, declaration: Declaration) {
-        game.declare(declaration).expect("declare");
-        if game.phase() == Phase::Discarding {
-            let hand = game.hand(Seat::DECLARER).to_vec();
-            let discard = if declaration.is_null() {
-                DeclarerHeuristic.choose_null_discard(&hand, game.deck_cards())
-            } else {
-                DeclarerHeuristic.choose_discard(&hand, declaration.game())
-            }
-            .expect("discard");
-            game.discard(discard).expect("discard");
-        }
+        DeclarerHeuristic
+            .declare_as(game, declaration)
+            .expect("declare");
     }
 
     #[test]
@@ -659,7 +651,7 @@ mod tests {
 #[cfg(test)]
 mod bench {
     use super::*;
-    use crate::game::{Game, Phase};
+    use crate::game::Game;
 
     /// `cargo test --release -p skat_core bench_pimc -- --ignored --nocapture`
     #[test]
@@ -684,13 +676,9 @@ mod bench {
             } else {
                 DeclarerHeuristic.choose_declaration(game.hand(Seat::DECLARER))
             };
-            game.declare(decl).expect("declare");
-            if game.phase() == Phase::Discarding {
-                let d = DeclarerHeuristic
-                    .choose_discard(game.hand(Seat::DECLARER), decl.game())
-                    .expect("discard");
-                game.discard(d).expect("discard");
-            }
+            DeclarerHeuristic
+                .declare_as(&mut game, decl)
+                .expect("declare");
             while let Some(seat) = game.current_seat() {
                 let view = game.view(seat).expect("view");
                 let trick = view.tricks.len();
