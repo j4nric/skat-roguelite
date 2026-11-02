@@ -49,12 +49,12 @@ export function legKey(view: RunView): string {
 const CITIES = new Map<string, City>();
 
 function cityFor(district: DistrictView | undefined, fallbackSeed: number): City {
-  const name = district?.name ?? '';
+  const look = lookOf(district?.look);
   const seed = String(district?.map_seed ?? fallbackSeed);
-  const key = `${name}:${seed}`;
+  const key = `${look}:${seed}`;
   let city = CITIES.get(key);
   if (!city) {
-    city = genCity(seed, lookOf(name));
+    city = genCity(seed, look);
     CITIES.set(key, city);
   }
   return city;
@@ -242,7 +242,7 @@ function tourPlan(view: RunView): string {
       })
       .join('');
     const cls = d.index < current ? 'is-done' : d.index === current ? 'is-current' : 'is-ahead';
-    return `<section class="plan-district ${cls}" ${attrs({ 'data-district': d.index })}><h3>${esc(t(de.route.district, { n: d.index + 1, name: d.name }))}</h3><ol>${rows}</ol></section>`;
+    return `<section class="plan-district ${cls}" ${attrs({ 'data-district': d.index, 'data-look': d.look })}><h3>${esc(t(de.route.district, { n: d.index + 1, name: d.name }))}</h3><ol>${rows}</ol></section>`;
   });
   return `<div class="route-plan" data-testid="route-plan"><h2>${esc(de.route.planTitle)}</h2>${blocks.join('')}</div>`;
 }

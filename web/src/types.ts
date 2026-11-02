@@ -702,9 +702,14 @@ export interface SpelunkeNode {
   state: PubState;
 }
 
+/** How a district looks on the map (core/content/tour.ron). */
+export type DistrictLook = 'OldTown' | 'Harbour' | 'Station';
+
 export interface DistrictView {
   index: number;
   name: string;
+  /** Look on the map, data of core/content/tour.ron. */
+  look: DistrictLook;
   boss: BossInfo | null;
   map_seed: number;
   pubs: PubNode[];

@@ -63,7 +63,10 @@ macro_rules! content_id {
 
 mod tour;
 
-pub use tour::{CityNames, MalusCurse, MalusDef, MalusId, NamePattern, TourContent};
+pub use tour::{
+    CityDistrict, CityNames, DistrictLook, DistrictName, MalusCurse, MalusDef, MalusId,
+    NamePattern, TourContent,
+};
 
 content_id!(
     /// Id of a relic (house rule or Stammtisch figure).
@@ -1693,6 +1696,14 @@ impl Content {
         if city.districts.len() < self.targets_rows() || city.pubs.is_empty() {
             return Err(ContentError(
                 "tour: needs a district name per Stadtteil and pub patterns".into(),
+            ));
+        }
+        let mut looks: Vec<_> = city.districts.iter().map(|d| d.look).collect();
+        looks.sort_unstable();
+        looks.dedup();
+        if looks.len() < self.targets_rows().min(3) {
+            return Err(ContentError(
+                "tour: needs a district of a different look per Stadtteil".into(),
             ));
         }
         if city.boss_pubs.is_empty() || city.spelunken.is_empty() || pubs == 0 {

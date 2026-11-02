@@ -10,6 +10,8 @@
 // "core" frame is MW × MH art pixels (2 CSS px each at 390 px width); the
 // canvas reaches beyond it so wider or taller screens see more city.
 
+import type { DistrictLook } from '../types';
+
 export const MW = 195;
 export const MH = 309;
 /** The drawn canvas in art pixels, around the core frame. */
@@ -23,16 +25,14 @@ export type Way = 'fuss' | 'bahn' | 'rad';
 type Pt = [number, number];
 type Cells = Pt[];
 
+const LOOKS: Record<DistrictLook, Look> = { OldTown: 'altstadt', Harbour: 'hafen', Station: 'bahnhof' };
+
 /**
- * The look of a district, by its name from the core content
- * (core/content/tour.ron): water and quays for the port, tracks for the
- * station and the newer quarters, river and old lanes for the rest.
+ * The drawing look of a district from its look in the core content:
+ * river and old lanes, water and quays, or tracks and the station hall.
  */
-export function lookOf(name: string): Look {
-  const n = name.toLowerCase();
-  if (n.includes('hafen')) return 'hafen';
-  if (['bahnhof', 'zeche', 'neustadt', 'gründerzeit'].some((w) => n.includes(w))) return 'bahnhof';
-  return 'altstadt';
+export function lookOf(look: DistrictLook | undefined): Look {
+  return (look && LOOKS[look]) || 'altstadt';
 }
 
 interface Palette {

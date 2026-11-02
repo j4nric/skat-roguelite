@@ -32,11 +32,49 @@ pub struct NamePattern {
     pub weight: u32,
 }
 
+/// How a district looks on the city map (Ansicht des Stadtteils): pure
+/// presentation, it never changes play.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+pub enum DistrictLook {
+    /// Old lanes and a river (Altstadt).
+    #[default]
+    OldTown,
+    /// Water and quays (Hafen).
+    Harbour,
+    /// Tracks and a station hall (Bahnhof).
+    Station,
+}
+
+/// A district name of the generator with the look it gets on the map.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistrictName {
+    /// The name, e.g. `"Altstadt"`.
+    pub name: String,
+    /// Its look on the map.
+    #[serde(default)]
+    pub look: DistrictLook,
+}
+
+/// A named district of a run's city: name, look and the names of its
+/// pubs (the last the boss pub).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CityDistrict {
+    /// The district's name.
+    pub name: String,
+    /// Its look on the map.
+    pub look: DistrictLook,
+    /// Names of its pubs, the boss pub last.
+    pub pubs: Vec<String>,
+}
+
 /// The word lists of the name generator (German).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct CityNames {
-    /// Names of the districts (Stadtteile); a run draws distinct ones.
-    pub districts: Vec<String>,
+    /// Names of the districts (Stadtteile) with their looks; a run draws
+    /// distinct ones, of different looks while there are enough looks.
+    pub districts: Vec<DistrictName>,
     /// Patterns of a normal pub (Kneipe).
     pub pubs: Vec<NamePattern>,
     /// Patterns of a boss pub (Boss-Kneipe).
@@ -102,21 +140,43 @@ impl CityNames {
     }
 
     /// Name a city of `districts` districts with `pubs` pubs each (the
-    /// last of each a boss pub): distinct district names (repeated only
-    /// when the list is too short) and pub names, all from one generator
-    /// seeded with `seed`.
+    /// last of each a boss pub), all from one generator seeded with
+    /// `seed`: the looks present in the list in a seeded order, one per
+    /// district (repeated only when there are more districts than looks),
+    /// then per district an unused name of its look (any unused name if
+    /// its look has none left, a numbered one if the list is used up) and
+    /// distinct pub names.
     #[must_use]
-    pub fn generate(&self, seed: u64, districts: u32, pubs: u32) -> Vec<(String, Vec<String>)> {
+    pub fn generate(&self, seed: u64, districts: u32, pubs: u32) -> Vec<CityDistrict> {
         let mut rng = Rng::from_seed(seed);
-        let mut pool: Vec<&String> = self.districts.iter().collect();
+        let mut looks: Vec<DistrictLook> = self.districts.iter().map(|d| d.look).collect();
+        looks.sort_unstable();
+        looks.dedup();
+        // Seeded Fisher-Yates shuffle of the looks.
+        for i in (1..looks.len()).rev() {
+            let j = rng.gen_range(0..(i as u64 + 1));
+            looks.swap(i, usize::try_from(j).unwrap_or(0));
+        }
+        let mut pool: Vec<&DistrictName> = self.districts.iter().collect();
         let mut used = Vec::new();
         (0..districts)
             .map(|d| {
-                let name = if pool.is_empty() {
-                    format!("Viertel {}", d + 1)
+                let wanted = (!looks.is_empty())
+                    .then(|| looks[usize::try_from(d).unwrap_or(0) % looks.len()]);
+                let of_look: Vec<usize> = (0..pool.len())
+                    .filter(|&i| Some(pool[i].look) == wanted)
+                    .collect();
+                let candidates: Vec<usize> = if of_look.is_empty() {
+                    (0..pool.len()).collect()
                 } else {
-                    let pick = rng.gen_range(0..pool.len() as u64);
-                    pool.remove(usize::try_from(pick).unwrap_or(0)).clone()
+                    of_look
+                };
+                let (name, look) = if candidates.is_empty() {
+                    (format!("Viertel {}", d + 1), wanted.unwrap_or_default())
+                } else {
+                    let pick = rng.gen_range(0..candidates.len() as u64);
+                    let chosen = pool.remove(candidates[usize::try_from(pick).unwrap_or(0)]);
+                    (chosen.name.clone(), chosen.look)
                 };
                 let names = (0..pubs)
                     .map(|p| {
@@ -128,7 +188,11 @@ impl CityNames {
                         self.fresh(&mut rng, patterns, &mut used)
                     })
                     .collect();
-                (name, names)
+                CityDistrict {
+                    name,
+                    look,
+                    pubs: names,
+                }
             })
             .collect()
     }
@@ -188,10 +252,25 @@ pub struct TourContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
+    fn district(name: &str, look: DistrictLook) -> DistrictName {
+        DistrictName {
+            name: name.to_owned(),
+            look,
+        }
+    }
 
     fn names() -> CityNames {
         CityNames {
-            districts: vec!["Altstadt".into(), "Hafen".into(), "Bahnhofsviertel".into()],
+            districts: vec![
+                district("Altstadt", DistrictLook::OldTown),
+                district("Schlossberg", DistrictLook::OldTown),
+                district("Unterstadt", DistrictLook::OldTown),
+                district("Hafen", DistrictLook::Harbour),
+                district("Bahnhofsviertel", DistrictLook::Station),
+                district("Neustadt", DistrictLook::Station),
+            ],
             pubs: vec![NamePattern {
                 pattern: "Zum {adj} {noun}".into(),
                 weight: 1,
@@ -219,11 +298,11 @@ mod tests {
         let city = names().generate(42, 3, 5);
         assert_eq!(city, names().generate(42, 3, 5));
         assert_eq!(city.len(), 3);
-        let districts: Vec<&String> = city.iter().map(|(d, _)| d).collect();
+        let districts: Vec<&String> = city.iter().map(|d| &d.name).collect();
         for (i, d) in districts.iter().enumerate() {
             assert!(!districts[..i].contains(d), "distinct districts");
         }
-        for (_, pubs) in &city {
+        for CityDistrict { pubs, .. } in &city {
             assert_eq!(pubs.len(), 5);
             assert!(
                 pubs[..4]
@@ -237,5 +316,44 @@ mod tests {
             names().generate(43, 3, 5),
             "another seed, another city"
         );
+    }
+
+    #[test]
+    fn every_evening_has_one_district_of_each_look_in_seeded_order() {
+        let names = names();
+        let mut orders = BTreeSet::new();
+        for seed in 0..64 {
+            let city = names.generate(seed, 3, 5);
+            let mut looks: Vec<DistrictLook> = city.iter().map(|d| d.look).collect();
+            orders.insert(looks.clone());
+            looks.sort_unstable();
+            assert_eq!(
+                looks,
+                [
+                    DistrictLook::OldTown,
+                    DistrictLook::Harbour,
+                    DistrictLook::Station
+                ],
+                "seed {seed}: one of each look"
+            );
+            for d in &city {
+                let def = names.districts.iter().find(|n| n.name == d.name);
+                assert_eq!(def.map(|n| n.look), Some(d.look), "the name's own look");
+            }
+        }
+        assert_eq!(orders.len(), 6, "every order of the looks occurs");
+    }
+
+    #[test]
+    fn short_lists_repeat_looks_then_number_districts() {
+        let mut names = names();
+        names.districts = vec![
+            district("Altstadt", DistrictLook::OldTown),
+            district("Hafen", DistrictLook::Harbour),
+        ];
+        let city = names.generate(7, 3, 5);
+        let mut found: Vec<&str> = city.iter().map(|d| d.name.as_str()).collect();
+        found.sort_unstable();
+        assert_eq!(found, ["Altstadt", "Hafen", "Viertel 3"]);
     }
 }
