@@ -3,6 +3,9 @@
 //
 // city: Wortlisten des Namensgenerators. Ein Run zieht mit seinem Seed drei
 // verschiedene Stadtteile und für jeden vier Kneipen und eine Boss-Kneipe;
+// look: Ansicht des Stadtteils auf der Karte (OldTown: Altstadt mit Fluss,
+// Harbour: Hafen mit Kais, Station: Bahnhof mit Gleisen). Jeder Abend hat
+// einen Stadtteil jeder Ansicht, die Reihenfolge zieht der Seed;
 // eine Spelunke bekommt ihren Namen, wenn die Route gezogen wird. Muster
 // enthalten Platzhalter {liste}, die mit einem Wort der Liste gefüllt
 // werden. weight: wie oft ein Muster gezogen wird (Standard 1). Nur
@@ -17,16 +20,16 @@
 (
     city: (
         districts: [
-            "Altstadt",
-            "Bahnhofsviertel",
-            "Hafen",
-            "Neustadt",
-            "Kanalviertel",
-            "Schlossberg",
-            "Gründerzeitviertel",
-            "Am Viehmarkt",
-            "Zechensiedlung",
-            "Unterstadt",
+            (name: "Altstadt", look: OldTown),
+            (name: "Schlossberg", look: OldTown),
+            (name: "Am Viehmarkt", look: OldTown),
+            (name: "Unterstadt", look: OldTown),
+            (name: "Hafen", look: Harbour),
+            (name: "Kanalviertel", look: Harbour),
+            (name: "Bahnhofsviertel", look: Station),
+            (name: "Neustadt", look: Station),
+            (name: "Gründerzeitviertel", look: Station),
+            (name: "Zechensiedlung", look: Station),
         ],
         pubs: [
             (pattern: "Zum {adj_m} {masc}", weight: 4),

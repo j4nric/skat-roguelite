@@ -28,7 +28,8 @@ use super::{
     PUBS_PER_DISTRICT, Run, RunError, RunEvent, RunPhase, Shop, draw_weighted, series_target,
 };
 use crate::content::{
-    Content, EncounterId, EncounterKind, MalusDef, MalusId, StopCategory, in_pool,
+    CityDistrict, Content, DistrictLook, EncounterId, EncounterKind, MalusDef, MalusId,
+    StopCategory, in_pool,
 };
 use crate::deck::{CardKind, DeckChange};
 
@@ -157,10 +158,11 @@ impl Run {
         content.maluses.get(&spelunke.malus)
     }
 
-    /// The names of the city: per district its name and the names of its
-    /// pubs (the last the boss pub). Derived from the seed alone.
+    /// The names of the city: per district its name, its look on the map
+    /// and the names of its pubs (the last the boss pub). Derived from
+    /// the seed alone.
     #[must_use]
-    pub fn city(&self, content: &Content) -> Vec<(String, Vec<String>)> {
+    pub fn city(&self, content: &Content) -> Vec<CityDistrict> {
         content.city.generate(
             self.seed ^ CITY_STREAM,
             content.run.sections(),
@@ -462,7 +464,7 @@ impl Run {
                 let mut names: Vec<String> = self
                     .city(content)
                     .into_iter()
-                    .flat_map(|(_, pubs)| pubs)
+                    .flat_map(|d| d.pubs)
                     .collect();
                 let city = &content.city;
                 let name = city.fresh(&mut self.tour_rng, &city.spelunken, &mut names);
@@ -576,7 +578,7 @@ impl Run {
     fn pub_preview(
         &self,
         content: &Content,
-        city: &[(String, Vec<String>)],
+        city: &[CityDistrict],
         section: u32,
         index: u32,
         spelunke: Option<&Spelunke>,
@@ -592,9 +594,9 @@ impl Run {
         if spelunke.is_some() {
             target = content.run.spelunke.target_factor.apply(target);
         }
-        let (district, pubs) = city.get(usize::try_from(section).ok()?)?;
+        let district = city.get(usize::try_from(section).ok()?)?;
         let name = spelunke.map_or_else(
-            || pubs.get(usize::try_from(index).ok()?).cloned(),
+            || district.pubs.get(usize::try_from(index).ok()?).cloned(),
             |s| Some(s.name.clone()),
         )?;
         let guests = seat_guests(content, self.seed, section, index, &self.guests)
@@ -607,7 +609,7 @@ impl Run {
             section,
             index,
             name,
-            district: district.clone(),
+            district: district.name.clone(),
             target,
             game_limit: content.run.game_limit,
             is_boss,
@@ -659,11 +661,11 @@ impl Run {
         let districts = city
             .iter()
             .enumerate()
-            .map(|(d, (name, pubs))| {
+            .map(|(d, district)| {
                 let section = u32::try_from(d).unwrap_or(0);
                 let mut nodes = Vec::new();
                 let mut spelunken = Vec::new();
-                for (p, pub_name) in pubs.iter().enumerate() {
+                for (p, pub_name) in district.pubs.iter().enumerate() {
                     let index = u32::try_from(p).unwrap_or(0);
                     let here = (section, index) == current;
                     let result = done(section, index);
@@ -708,7 +710,8 @@ impl Run {
                 }
                 DistrictView {
                     index: section,
-                    name: name.clone(),
+                    name: district.name.clone(),
+                    look: district.look,
                     boss: (section == self.series.section)
                         .then_some(self.section_boss.as_ref())
                         .flatten()
@@ -905,6 +908,8 @@ pub struct DistrictView {
     pub index: u32,
     /// Its name.
     pub name: String,
+    /// How it looks on the map (from the content, `tour.ron`).
+    pub look: DistrictLook,
     /// Its boss once known (from the start of the district; earlier and
     /// later districts show none).
     pub boss: Option<BossInfo>,

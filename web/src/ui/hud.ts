@@ -108,10 +108,15 @@ export function renderHud(view: RunView): string {
   const malus = pub?.malus
     ? `<span class="flag-chip is-malus" data-testid="pub-malus" ${attrs({ title: pub.malus.text })}>${esc(t(de.pub.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}</span>`
     : '';
-  const boss =
-    s.is_boss && s.boss
-      ? `<button class="boss-chip" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${s.boss.id}`, 'aria-label': contentName('bosses', s.boss.id), title: contentName('bosses', s.boss.id) })}>${bossCoaster(s.boss.id, { size: 34 })}<span>${esc(contentName('bosses', s.boss.id))}</span></button>`
-      : '';
+  // The boss chip only while the boss pub is the one at hand: at its
+  // table, or on the route when it is the next target. After the boss pub
+  // the route shows the district label instead.
+  const atBossTable = (view.phase === 'Game' || view.phase === 'Lost') && s.is_boss;
+  const bossNext = view.phase === 'Route' && tour.route?.next.is_boss;
+  const bossInfo = atBossTable ? s.boss : bossNext ? (tour.route?.next.boss ?? null) : null;
+  const boss = bossInfo
+    ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': contentName('bosses', bossInfo.id), title: contentName('bosses', bossInfo.id) })}>${bossCoaster(bossInfo.id, { size: 34 })}<span>${esc(contentName('bosses', bossInfo.id))}</span></button>`
+    : '';
   const fill = meterPercent(s.score, s.target);
   const chips = relicChips(view);
   return `<header class="hud">

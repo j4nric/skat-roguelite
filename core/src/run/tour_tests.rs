@@ -488,11 +488,23 @@ fn the_city_is_named_by_the_seed() {
     assert_ne!(a.city(&content), c.city(&content));
     let city = a.city(&content);
     assert_eq!(city.len(), 3);
-    for (i, (district, pubs)) in city.iter().enumerate() {
-        assert!(!district.is_empty());
-        assert!(city[..i].iter().all(|(d, _)| d != district), "distinct");
-        assert_eq!(pubs.len(), 5);
-        assert!(pubs.iter().all(|p| !p.is_empty() && !p.contains('{')));
+    for (i, district) in city.iter().enumerate() {
+        assert!(!district.name.is_empty());
+        assert!(
+            city[..i].iter().all(|d| d.name != district.name),
+            "distinct"
+        );
+        assert!(
+            city[..i].iter().all(|d| d.look != district.look),
+            "one district of each look"
+        );
+        assert_eq!(district.pubs.len(), 5);
+        assert!(
+            district
+                .pubs
+                .iter()
+                .all(|p| !p.is_empty() && !p.contains('{'))
+        );
     }
     let view = a.view(&content).tour;
     assert_eq!(view.lives, content.run.lives.start);
@@ -505,7 +517,15 @@ fn the_city_is_named_by_the_seed() {
     assert!(view.districts[0].pubs[4].is_boss);
     assert!(view.districts[0].boss.is_some(), "the first boss is known");
     assert_eq!(view.map_seed, b.view(&content).tour.map_seed);
-    assert_eq!(view.current.expect("current").name, city[0].1[0]);
+    assert_eq!(view.current.expect("current").name, city[0].pubs[0]);
+    let looks: Vec<_> = view.districts.iter().map(|d| d.look).collect();
+    assert_eq!(
+        looks,
+        city.iter().map(|d| d.look).collect::<Vec<_>>(),
+        "the view shows each district's look"
+    );
+    let json = serde_json::to_value(&view.districts[0]).expect("json");
+    assert!(json["look"].is_string(), "look in the view: {json}");
 }
 
 #[test]

@@ -92,8 +92,10 @@
 //   route choice after the first pub, one way leading into a Spelunke: the
 //   Spelunke stands on the map apart from the next pub, picking its way
 //   shows it with its malus on the card.
-// - route-station.json: seed 1 at the route into the second district
-//   (Gründerzeitviertel, station look); with full motion "Los" walks the
+// - route-station.json: seed 1 at the route into the second district,
+//   right after the first boss pub: the map draws the look the core gives
+//   (tour.ron, one district of each look per evening), the head shows the
+//   district label and no boss chip; with full motion "Los" walks the
 //   position along the way with a chalk trail before the stop opens.
 // The route choice (routePass) is a city map: the leg as a pixel image
 // with three ways, a tap on a transport highlights its way, "−" opens the
@@ -1038,6 +1040,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
+  if (!(await page.locator('.hud [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
   await expectBacks(page, 'Kontra-Hans series', 'kontra_hans', 'regulars');
   await expectMusic(page, 'boss', 'boss series');
   await assertGuests(page, 'boss series', { boss: true });
@@ -2706,7 +2709,8 @@ async function routePass(page, label) {
  * route-spelunke.json (seed 1) has a way into a Spelunke. It stands on the
  * map as a place of its own, away from the next pub; picking that way
  * shows the Spelunke on the card with its malus. route-station.json has
- * the leg into the second district, drawn with the station look. With
+ * the leg into the second district after the boss pub, drawn with the look
+ * the core gives it, the head without the boss chip. With
  * full motion the position travels along the chosen way and leaves a
  * chalk trail before the stop opens.
  */
@@ -2739,8 +2743,29 @@ async function mapPass(browser, errors) {
   watch(page2, errors);
   await resumeFixture(page2, 'route-station.json');
   await page2.waitForSelector('[data-testid="map-svg"]');
+  // The look comes from the core's content (tour.ron), one district of each
+  // look per evening; the map draws the look the view gives.
   const look = await page2.getAttribute('[data-testid="map-svg"]', 'data-look');
-  if (look !== 'bahnhof') fail(`second district drawn as ${look}, expected the station look`);
+  await page2.click('[data-testid="zoom-out"]');
+  await page2.waitForSelector('[data-testid="route-plan"]');
+  const looks = await page2.locator('.route-plan .plan-district').evaluateAll((els) => els.map((e) => e.getAttribute('data-look')));
+  if (new Set(looks).size !== 3 || looks.some((l) => !['OldTown', 'Harbour', 'Station'].includes(l ?? ''))) fail(`the evening's districts have the looks ${looks}, expected one of each`);
+  const drawn = { OldTown: 'altstadt', Harbour: 'hafen', Station: 'bahnhof' }[looks[1] ?? ''];
+  if (look !== drawn) fail(`second district drawn as ${look}, its look in the view is ${looks[1]}`);
+  log(`district looks from the core: ${looks.join(', ')}; the second drawn as ${look}`);
+  await page2.click('[data-testid="zoom-in"]');
+  await page2.waitForSelector('[data-testid="map-svg"]');
+  // After the boss pub the head shows the district label, no boss chip.
+  if (await page2.locator('.hud [data-testid="hud-boss"]').count()) fail('route after the boss pub: the boss chip is still in the head');
+  const label = await page2.evaluate(() => {
+    const sub = document.querySelector('.hud .hud-where-sub');
+    if (!sub) return null;
+    const r = sub.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + Math.min(r.width - 2, 40), r.top + r.height / 2);
+    return { text: sub.textContent ?? '', width: r.width, onTop: !!top && sub.contains(top) };
+  });
+  if (!label || !/Stadtteil \d\/\d/.test(label.text) || label.width < 60 || !label.onTop) fail(`route after the boss pub: district label hidden ${JSON.stringify(label)}`);
+  log(`route after the boss pub: head shows "${label.text.trim()}"`);
   await shoot(page2, 'route-station');
   await page2.click('[data-testid="route-go"]');
   await page2.waitForSelector('.map-trail');
