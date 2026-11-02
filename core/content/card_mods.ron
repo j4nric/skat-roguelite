@@ -39,11 +39,13 @@
         kind: Edge,
         focus: Trump,
         name: "Rang",
-        text: "Diese Karte sticht {n} Stufen höher (höchstens 3).",
+        text: "Diese Karte sticht {n} Stufen höher (höchstens 2).",
         rarity: Common,
         price: 3,
         values: [1],
-        max: Some(3),
+        // Antwort im Cockpit (02.11.2026): höchstens 2 statt 3. Alte
+        // Spielstände kappt der Kern beim Laden (deck::RANK_MAX).
+        max: Some(2),
         passive: [RankBonus(1)],
     ),
     // Lever Grundwert. Streng nach ADR 0015: nur, wenn der Spieler die

@@ -355,9 +355,15 @@ const fn one() -> i32 {
 }
 
 /// The version of the card modifications in a saved deck: 2 is effects v2
-/// (DESIGN 7.2). A deck without it is converted when it is loaded
-/// ([`migrate_legacy_mods`]).
-pub const MODS_VERSION: u32 = 2;
+/// (DESIGN 7.2), 3 caps "Rang" at [`RANK_MAX`] (02.11.2026). A deck without
+/// it is converted when it is loaded ([`migrate_legacy_mods`]), a deck of
+/// version 2 gets its Rang capped.
+pub const MODS_VERSION: u32 = 3;
+
+/// The highest value of "Rang" (`rank`), the same as `max` in
+/// `card_mods.ron` (a test checks it). Saves are migrated without content,
+/// so the cap of old saves lives here.
+pub const RANK_MAX: i32 = 2;
 
 /// An edition of the 32 cards (ADR 0015): per card its modifications. The
 /// run stores the player's ([`crate::run::Run::edition`]); a boss edition
@@ -385,12 +391,20 @@ impl<'de> Deserialize<'de> for Edition {
             next_id: saved.next_id,
             mods_version: saved.mods_version,
         };
-        if deck.mods_version < MODS_VERSION {
+        if deck.mods_version < 2 {
             for card in &mut deck.cards {
                 migrate_legacy_mods(card);
             }
-            deck.mods_version = MODS_VERSION;
         }
+        if deck.mods_version < 3 {
+            let rank = CardModId::new("rank");
+            for card in &mut deck.cards {
+                if let Some(value) = card.mod_values.get_mut(&rank) {
+                    *value = (*value).min(RANK_MAX);
+                }
+            }
+        }
+        deck.mods_version = MODS_VERSION;
         Ok(deck)
     }
 }
@@ -448,7 +462,7 @@ const LEGACY_VALUED: [&str; 6] = [
 
 /// Convert the modifications of a card saved before effects v2 (DESIGN
 /// 7.2): map every old id ([`legacy_mod`]), add up equal ones (Rang at most
-/// 3), keep one by [`LEGACY_KEEP_ORDER`] and the special cards.
+/// [`RANK_MAX`]), keep one by [`LEGACY_KEEP_ORDER`] and the special cards.
 pub fn migrate_legacy_mods(card: &mut DeckCard) {
     let mut merged: BTreeMap<&'static str, i32> = BTreeMap::new();
     for id in &card.mods {
@@ -458,7 +472,7 @@ pub fn migrate_legacy_mods(card: &mut DeckCard) {
         }
     }
     if let Some(rank) = merged.get_mut("rank") {
-        *rank = (*rank).min(3);
+        *rank = (*rank).min(RANK_MAX);
     }
     let kept = LEGACY_KEEP_ORDER
         .iter()

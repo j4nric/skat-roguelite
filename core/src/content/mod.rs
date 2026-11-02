@@ -633,7 +633,7 @@ pub struct CardModDef {
     /// and cannot be raised.
     #[serde(default)]
     pub values: Vec<i32>,
-    /// The highest value a raise may reach ("Rang": 3). `None`: no limit.
+    /// The highest value a raise may reach ("Rang": 2). `None`: no limit.
     #[serde(default)]
     pub max: Option<i32>,
     /// Only cards whose printed card matches may carry it ("Glasdaus":

@@ -2141,8 +2141,9 @@ async function voucherPass(browser, errors) {
  * Schellen-König (Trumpf) asks "ersetzt Trumpf durch Augen" and "Lieber
  * nicht" goes back to the picker; on the Schellen-Zehn (Augen +4) it shows
  * the raise "+4 → +7" and applies it. Cursed cards are dimmed with the
- * reason "Fluch". "Rang +1" refuses the Schellen-Oberin at Rang 3 with
- * "Höchstwert". The Stempelkissen bought and used on the Schellen-König
+ * reason "Fluch". "Rang +1" refuses the Schellen-Oberin with
+ * "Höchstwert": the fixture saved her at Rang 3 (before the cap of
+ * 02.11.2026), the core loads her at Rang 2, the maximum. The Stempelkissen bought and used on the Schellen-König
  * only says that the card carries a modification already (drawn at random).
  */
 async function modConfirmPass(browser, errors, reducedMotion) {
@@ -2175,10 +2176,10 @@ async function modConfirmPass(browser, errors, reducedMotion) {
     const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
     return run?.edition?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7;
   }, null, { timeout: 5000 }).catch(() => fail('raise confirm: the Schellen-Zehn does not carry Augen +7 afterwards'));
-  // "Rang +1" (now slot 0): the Oberin at Rang 3 is at the maximum.
+  // "Rang +1" (now slot 0): the Oberin (saved at Rang 3, loaded at 2) is at the maximum.
   await page.click('[data-action="use-item"][data-slot="0"]');
   await page.waitForSelector('.target-grid');
-  if (!(await page.locator('.target-card[data-id="5"][data-reason="ModAtMaximum"]').count())) fail('Rang +1: the Schellen-Oberin at Rang 3 is not refused as "Höchstwert"');
+  if (!(await page.locator('.target-card[data-id="5"][data-reason="ModAtMaximum"]').count())) fail('Rang +1: the Schellen-Oberin at Rang 2 is not refused as "Höchstwert"');
   await page.click('.sheet [data-action="close-overlay"]');
   // Stempelkissen: drawn at random, only the hint that the card carries one.
   await page.click('[data-action="buy-item"]:not([disabled])');
