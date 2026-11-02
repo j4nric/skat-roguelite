@@ -1,6 +1,6 @@
 # 0012: Null ist für jeden ansagbar, der Nullspieler wird ein Spezialist
 
-Datum: 2026-11-01 · Status: Angenommen · Ersetzt 0003
+Datum: 2026-11-01 · Status: Angenommen · Ersetzt 0003 · Startblatt des Nullspielers geändert durch 0015 (Modifikationen auf seiner Ausgabe statt anderer Zusammensetzung)
 
 ## Kontext
 
