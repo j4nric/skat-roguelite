@@ -122,23 +122,82 @@ Rest abkürzen (entschieden von Claude am 01.11.2026, auf Wunsch des Nutzers):
 
 ## 5. Run-Struktur
 
+**Seit ADR 0016 (02.11.2026, Entscheidung des Nutzers) ist ein Abend eine Kneipentour.** Abschnitte und Serien sind ersetzt; was in 5.1 bis 5.3 über Serien steht, gilt für die Kneipe weiter, wo nichts anderes gesagt ist (drei Spiele, Einmischen, Auszahlung), und ist sonst Geschichte. Die Kalibrierung in 5.2 galt der alten Struktur; alle Zahlen der Kneipentour sind vorläufig (5.0.4).
+
 ```
-Run (eine Tournee)
-└── Abschnitt (ein Skatabend in einer Kneipe), 3 bis 5 pro Run
-    ├── Runde 1: Serie      (Zielwert, 3 Spiele, gleiche zwei Gäste)
-    ├── Runde 2: Serie      (höherer Zielwert)
-    ├── Runde 3: Boss-Serie (Gegner mit Sonderregel)
-    └── dazwischen: Tresen (Shop), Ereignisse, Rast
+Run (eine Kneipentour durch eine erfundene Stadt)
+└── Stadtteil (3 pro Abend, z. B. Altstadt, Bahnhofsviertel, Hafen)
+    ├── Kneipe 1 bis 4   (Zielwert, bis zu 3 Spiele, zwei Stammgäste)
+    │     dazwischen: Routenwahl, drei Wege mit je einer Station
+    │     (Tresen, Begegnung, Werkstatt, Rast), manchmal eine Spelunke
+    └── Boss-Kneipe      (Boss mit Sonderregel; verloren: noch einmal)
 ```
 
 | Ebene | Skat-Begriff | Genre-Gegenstück | Dauer |
 |---|---|---|---|
 | Ein Spiel | Skat, Ansage, 10 Stiche, Abrechnung | Eine Hand | ~90 Sekunden |
-| Eine Serie | 3 Spiele mit Punkteziel gegen dieselben zwei Gäste, je Spiel bis zu zweimal einmischen | Ein Blind | 3 bis 5 Minuten |
-| Ein Abschnitt | Skatabend in einer Kneipe | Ein Ante | 15 bis 20 Minuten |
-| Der Run | Tournee durch 3 bis 5 Kneipen | Der Run | 45 bis 60 Minuten |
+| Eine Kneipe | bis zu 3 Spiele mit Punkteziel gegen zwei Stammgäste, je Spiel bis zu zweimal einmischen | Ein Blind | 2 bis 5 Minuten |
+| Ein Stadtteil | vier Kneipen und die Boss-Kneipe | Ein Ante | 15 bis 20 Minuten |
+| Der Run | Kneipentour durch drei Stadtteile (15 Kneipen) | Der Run | 45 bis 60 Minuten |
 
-### 5.1 Die Serie
+### 5.0 Die Kneipentour (ADR 0016)
+
+- **Kneipe**: Zielwert in Augen (Reizwerte wie bisher die Serie), bis zu drei Spiele gegen zwei Stammgäste. Wer den Zielwert erreicht, ist sofort fertig. Belohnung: Grundbetrag (`series_reward`, 3) plus je übrigem Spiel `per_game_left` (vorläufig 3 statt 1, damit sich eine früh geschaffte Kneipe lohnt), dazu Zinsen wie bisher (die Auszahlung, `Payout`). Im Code bleibt der Typ `Series` (Glossar).
+- **Verfehlt** (Zielwert nach dem dritten Spiel nicht erreicht): ein Leben weg, weiter zur Routenwahl ohne Belohnung (`PubLost`, `LivesChanged`). Hooks nach einer gewonnenen Kneipe (`OnSeriesWon`) feuern nicht.
+- **Leben** (`lives` in `run.ron`): Start 3, höchstens 5, eine geschaffte Boss-Kneipe +1. Mit dem letzten Leben ist der Run verloren (`RunLost`). Die Web-App zeigt sie als Herzen.
+- **Boss-Kneipe**: letzte Kneipe eines Stadtteils, der Boss-Tisch wie bisher die Boss-Serie (Boss links, ein Stammgast rechts, Boss-Ausgabe, 11). Der Boss wird beim Start des Stadtteils gezogen und ist ab dann sichtbar. Verloren: ein Leben weg und **sofort noch einmal** gegen denselben Boss, mit neuen Spielen und neuen Stammgästen, ohne Routenwahl dazwischen (Auslegung von Claude; „Boss-Kneipe verloren: Leben weg, Boss wiederholen“). Im letzten Stadtteil sitzt der Endboss „Der Alte“; ihn zu schlagen gewinnt den Run.
+- **Zweite Boss-Figur (Sekundant)**: Im Cockpit offen, ob der Boss einen Sekundanten mit derselben Ausgabe auf dem zweiten Platz bekommt. Bis dahin bleibt ein Boss-Platz (`BOSS_SEAT`); das Datenmodell ist offen dafür: Wer an welchem Platz sitzt, entscheidet allein `Run::owner_of_seat`, die Boss-Ausgabe hängt am Besitzer (`Owner::Boss`), nicht am Platz. Ein Sekundant wäre ein zweiter Platz mit `Owner::Boss` (oder ein eigener Besitzer mit eigener Ausgabe) und eine Liste statt eines Bosses in `Series::boss`.
+- **Hausregeln des Stammtisch-Streits** gelten bis zum Ende des Stadtteils (bisher des Abschnitts).
+- **Einmischen, Schnäpse, Relikte „einmal pro Serie“** zählen je Kneipe.
+
+#### 5.0.1 Routenwahl und Stationen
+
+Nach jeder Kneipe, die den Run nicht beendet, wählt der Spieler einen von **drei Wegen** zur nächsten Kneipe (`RunPhase::Route`, `RunAction::ChooseRoute`). Vorher sichtbar: die nächste Kneipe mit Namen, Stadtteil, Zielwert, Spielen und den Stammgästen am Tisch (in der Boss-Kneipe der Boss, sobald bekannt).
+
+- **Verkehrsmittel**: Zu Fuß, Bahn, Fahrrad. Seit der Nachentscheidung des Nutzers vom 02.11.2026 **verhalten sich alle drei gleich**: Jeder Weg führt über genau eine Station, kostet nichts extra, und die Kategorie der Station wird **je Weg gewürfelt** und angezeigt. Das Verkehrsmittel ist Darstellung (Weg auf der Karte, eine dekorative Fahrzeit `minutes`). Der erste Entwurf (Bahn kostet 1 Groschen und zeigt das genaue Ereignis, Fahrrad zwei Stationen mit einer Überraschung) ist verworfen.
+- **Stationen** (`StopCategory`): **Tresen** (der Laden wie bisher), **Begegnung** (die Ereignisse aus 13), **Upgrade** („Werkstatt“, selten: eine Modifikation auf eine gewählte Karte oder eine Karte ganz säubern; dazu der Kartengeber, der Gasthof zur Krone und der Taschenspieler, die Karten aufwerten) und **Rast** (Imbissbude: ein Leben zurück, nur gezogen, solange ein Leben fehlt). Gewichte in `run.ron` (`route.weights`, vorläufig Tresen 40, Begegnung 35, Upgrade 12, Rast 8). Unter den drei Wegen ist immer einer mit Tresen. Das genaue Ereignis ist beim Wählen gezogen, aber verdeckt; die Kategorie ist sichtbar. Jedes Ereignis trägt seine Kategorie als Daten (`category` in `encounters.ron`).
+- **Ein Ereignis ohne Angebot** (etwa „Alter Bekannter“ ohne Relikt) wird nicht auf einen Weg gelegt; geht eines unterwegs doch leer aus, geht es direkt in die Kneipe.
+- **Zufall**: eigener Generator des Runs für Wege, Spelunken und Mali (`tour_rng`); die Karten der Spiele ändern sich dadurch nicht.
+
+#### 5.0.2 Die Spelunke
+
+Mit der Wahrscheinlichkeit `spelunke.chance` (vorläufig 0,3) führt **einer** der drei Wege statt zur nächsten Kneipe in eine **Spelunke**, nie vor einer Boss-Kneipe. Die Spelunke ist **ein eigener Ort**: eigener Name aus eigener Wortliste (`city.spelunken` in `tour.ron`), eigener Knoten (`d0-p2-s`); sie steht in der Reihenfolge des Stadtteils für die Kneipe, die sie ersetzt (diese gilt als übergangen, `PubState::Skipped`).
+
+- **Zielwert**: der der ersetzten Kneipe × `spelunke.target_factor` (vorläufig 1,25).
+- **Malus**: einer, zufällig nach Gewicht, vor der Wahl angezeigt (Antwort-Vorschlag der offenen Cockpit-Frage „ein zufälliger Malus, vorher sichtbar“, umgesetzt als Voreinstellung). Mali sind Daten (`maluses` in `tour.ron`): **Kein Einmischen** (`no_redeal`), **Klebrige Karten** (zwei zufällige Karten der Ausgabe ohne Modifikation sind ramponiert, Augen −5, nur für diese Kneipe, ohne die Groschen eines Fluchs; `curse`), **Kein Skat** (jedes Spiel Hand, `passive: [RequireHand]`, nicht für den Nullspieler) und **Schnapsverbot** (`lock_schnapps`, Fehler `ConsumablesLocked`). Tischregeln wirken als Quelle `Source::Malus` wie eine Boss-Regel.
+- **Belohnung**: die normale Auszahlung, dazu die **Beute**: ein Relikt, gezogen beim Gewinnen, in einen freien Platz oder für den halben Preis in Groschen (Ereignis `spelunke_loot`). Verloren kostet sie ein Leben wie jede Kneipe.
+
+#### 5.0.3 Die Stadt und ihre Namen
+
+Stadtteile und Kneipen heißen nach einem **Namensgenerator** mit deutschen Wortlisten in `tour.ron` („Zum Goldenen Hirschen“, „Eckkneipe bei Uschi“, „Bahnhofsklause“, Boss-Kneipen wie „Vereinsheim Gut Blatt“), je Run aus dem Seed, ohne einen anderen Zufallsstrom zu berühren. Namen sind Anzeige. Die **Kartengeometrie** (Straßen, Lage) gehört der Web-App: Die Sicht liefert stabile Knoten-Ids (`d<Stadtteil>-p<Kneipe>`, Spelunke mit `-s`, Wege `…-r<n>`), je Stadtteil und für die Stadt einen Seed (`map_seed`) und den ganzen Plan des Abends (`TourView`: Stadtteile, Kneipen mit Zustand gewonnen, verloren, aktuell, kommend, übergangen, Spelunken, Boss des laufenden Stadtteils), damit die Web-App eine Übersicht und später eine Pixel-Stadtkarte zeichnen kann.
+
+#### 5.0.4 Vorläufige Zahlen der Kneipentour
+
+Gesetzt am 02.11.2026 nach Augenmaß, **ohne Messung** (die Simulationen ruhen auf Wunsch des Nutzers). Grundlage: Die 15 Zielwerte der alten Kurve (5 Abschnitte × 3 Serien, 5.2) laufen über dieselbe Spanne auf 15 Kneipen. Mit Leben ist eine einzelne Kneipe weniger tödlich; ob die Kurve steiler werden muss, zeigt erst die Messung.
+
+| Größe | Wert | Ort |
+|---|---|---|
+| Stadtteile, Kneipen je Stadtteil | 3, 4 + Boss-Kneipe | `targets` in `run.ron`, `PUBS_PER_DISTRICT` |
+| Zielwerte Alleinspieler | 33 / 36 / 38 / 40 / Boss 45 · 40 / 42 / 44 / 46 / Boss 52 · 46 / 48 / 50 / 52 / Boss 60 | `run.ron` |
+| Zielwerte Nullspieler | 18 / 20 / 20 / 23 / 23 · 20 / 23 / 23 / 27 / 27 · 23 / 27 / 27 / 30 / 30 | `characters.ron` |
+| Zielwerte Grandspieler | 48 / 50 / 52 / 54 / 60 · 52 / 54 / 55 / 57 / 60 · 55 / 57 / 59 / 60 / 66 | `characters.ron` |
+| Zielwerte Zaungast | 33 / 35 / 37 / 40 / 45 · 36 / 38 / 40 / 42 / 46 · 40 / 42 / 44 / 44 / 48 | `characters.ron` |
+| Zielwerte Wirtin | 40 / 42 / 44 / 46 / 54 · 44 / 46 / 47 / 48 / 55 · 48 / 50 / 52 / 54 / 60 | `characters.ron` |
+| Boss-Faktoren | unverändert (11) | `bosses.ron` |
+| Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
+| Leben | Start 3, höchstens 5, Boss +1 | `lives` |
+| Grundbetrag, je übrigem Spiel | 3, 3 (bisher 1) | `economy` |
+| Gewichte der Stationen | Tresen 40, Begegnung 35, Upgrade 12, Rast 8 (Rast nur mit fehlendem Leben); immer ein Tresen | `route.weights` |
+| Spelunke | Chance 0,3, Zielwert × 1,25, ein Malus (alle Gewicht 1) | `spelunke`, `tour.ron` |
+| Rast | +1 Leben | `encounters.ron` (`snack_bar`) |
+| Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast mit fehlendem Leben; Spelunke nur mit 3 Leben und 3 Relikten | `RunBot::route_action` |
+
+Zu messen, sobald der Simulator wieder läuft: Stadtteil 2 und 3 erreicht und Run gewonnen je Charakter (Zielbild neu festzulegen, bisher: ein Drittel erreicht die zweite Stufe, 1 bis 2 % gewinnen), mittlere Leben je Stadtteil, Anteil verlorener Kneipen, Wert der Spelunke (Gewinnquote mit und ohne Malus), Groschen je Run mit dem höheren Bonus je Spiel, Erreichbarkeit der umgeschriebenen Freischaltungen.
+
+### 5.1 Die Serie (seit ADR 0016: die Kneipe)
+
+Gilt für die Kneipe weiter: Zielwert, drei Spiele, Einmischen, Auszahlung. Überholt: „Wer das Limit erreicht, ohne den Zielwert zu schaffen, verliert den Run“ (seit ADR 0016 kostet es ein Leben, 5.0).
+
 
 - Jede Serie hat einen **Zielwert** (siehe 5.2) und ein **Spiellimit**: seit dem 01.11.2026 **3 Spiele** gegen dieselben zwei Stammgäste („3 Spiele bilden eine Serie, 2 Serien münden in eine Boss-Serie“, Entscheidung des Nutzers nach dem Spieltest). Vorher: M5 8 Spiele mit bis zu 6 Pässen, M2 5 und 3 (5.2).
 - Gewonnene Spiele addieren ihren Spielwert. Verlorene Spiele ziehen den doppelten Spielwert ab.
@@ -148,7 +207,10 @@ Run (eine Tournee)
 - **Alte Spielstände** laden: Eine Serie, die mitten in den alten 8 Spielen gespeichert wurde, spielt mit ihrem gespeicherten Spiellimit zu Ende; ab der nächsten Serie gelten 3 Spiele. Übrige Pässe verfallen, Einmischen gilt sofort nach der neuen Regel (das laufende Spiel hat seine zwei). Gespeicherte Statistik zählt eingepasste Spiele als Einmischen. Alte Namen (`Pass`, `passes`, `passes_used`, `games_passed`, `PassesAdded`, `ExtraPasses`, `SeriesRedeal`, `series_redeals`, `without_pass`) werden weiter gelesen.
 - **Im Code**: `Series::redeals_in_game` (verbraucht im laufenden Spiel, mit jedem neuen Spiel 0), `Series::extra_redeals` (Ein Bier, Kräuter), `Series::redeals_used` (alle der Serie, auch „Neues Blatt“), `Run::redeals_left(content)`; Fehler `NoRedealLeft`.
 
-### 5.2 Zielwert-Progression
+### 5.2 Zielwert-Progression (Abschnitte und Serien, bis ADR 0016)
+
+Die folgende Kalibrierung galt der alten Struktur aus fünf Abschnitten. Die vorläufigen Zielwerte der Kneipentour stehen in 5.0.4.
+
 
 **Kalibriert am 02.11.2026 für Serien mit 3 Spielen** (zweimal einmischen je Spiel, Ansagen nach dem Skat, Relikte bis Welle 2a), Messung in `docs/balance/2026-11-02-kalibrierung-dreierserie.md`. Zielbild wie in M5: Der PIMC-Spieler (`--bot pimc:12:3`) erreicht Abschnitt 2 in gut einem Drittel der Runs und gewinnt 1 bis 2 % der ganzen Abende, **mit jedem Charakter**. Deshalb hat jeder Charakter außer dem Alleinspieler eigene Zielwerte (`targets` in `characters.ron`), alle Reizwerte. Je Zelle: Serie 1 / Serie 2 / Boss-Serie, die Boss-Serie vor dem Boss-Faktor (11).
 
@@ -217,7 +279,10 @@ Zur Form: Abschnitt 1 (Heuristik-Gegner) verlangt etwa zwei gewonnene Spiele. Ab
 
 Vorher (M2, Spiellimit 5, Pässe 3, Kurve 18 bis 180, `main` 3eb9884): gegen den PIMC-Spieler 38,7 / 14,3 / 4,1 / 0,6 % erreicht, Run gewonnen 0,07 % (6 von 9000), Nullspieler 27,7 / 7,7 / 2,3 / 0,7 %, 0,10 %. Die M2-Messung mit dem Heuristik-Bot steht in `docs/balance/2026-11-01-m2-zielwerte.md`.
 
-### 5.3 Kurzer Abend (M7)
+### 5.3 Kurzer Abend (M7, entfällt seit ADR 0016)
+
+**Entfällt vorerst** (ADR 0016): Es gibt nur noch den ganzen Abend mit drei Stadtteilen. Der Startbildschirm zeigt keine Wahl mehr; alte Links mit `-kurz` spielen den Seed als ganzen Abend (das Angebot sagt es). `RunLength::Short` bleibt im Kern, damit alte Meta-Stände mit Statistik und Einsätzen des kurzen Abends laden; ein Run kann so nicht starten (`InvalidStart`, in der Web-Schicht `InvalidLength`), der Simulator lehnt `--short` ab. Das Folgende ist Geschichte.
+
 
 Entschieden über das Cockpit (16, „Run-Länge“): 5 Abschnitte als Standard, dazu ein kurzer Abend mit 3 Abschnitten für unterwegs, Freischaltungen in beiden. Der Spieler wählt auf dem Startbildschirm zwischen Charakter und Startknopf „Ganzer Abend (5 Abschnitte)“ oder „Kurzer Abend (3 Abschnitte)“; die Wahl bleibt im Browser (`stammtisch.length`, nur Anzeige). Die Kopfzeile zeigt „Abschnitt x/3“, die Kreidetafel drei Zeilen.
 
@@ -256,6 +321,9 @@ cargo run --release -p skat_sim -- --seed 42 --runs 3000 --bot pimc:12:3 --short
 Freischaltungen im kurzen Abend (`skat_sim --seed 42 --runs 300 --unlocks --short`, Heuristik-Bot, 20 Folgen mit frischem Meta-Zustand): alle erreichbar bis auf `fourth_evening`. `tour_won` (Nullspieler) kam nach 24,9 Runs im Mittel (2 bis 61), im ganzen Abend nach rund 1700 (9.3). Seit dem 01.11.2026 zählt ein gewonnener kurzer Abend nicht mehr für `tour_won` (9.3); im kurzen Abend ist es damit nicht erreichbar. Siehe 17.
 
 ### 5.4 Einsatz-Leiter (M7)
+
+Seit ADR 0016 gibt es eine Länge: Die Leiter steigt je Charakter für den einen Abend (`MetaState::stakes[character][Full]`). Einsätze, die im kurzen Abend freigeschaltet wurden, bleiben gespeichert, wirken aber nicht mehr.
+
 
 Entschieden über das Cockpit (16, „Schwierigkeit“): Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Die Leiter ist endlos. Umgesetzt von Claude am 01.11.2026, die Einzelheiten im Rahmen der Autonomie-Regel:
 
@@ -693,6 +761,17 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 
 ### 9.3 Freischaltungen über Runs hinweg
 
+**Seit ADR 0016 (Kneipentour)**: Bedingungen an Abschnitten sind umgeschrieben, die Ids bleiben (verdiente Freischaltungen gelten weiter). Neu ist die Bedingung `ReachPub(n)` (n-te Kneipe des Abends, über die Stadtteile gezählt). Vorläufig, nicht gemessen:
+
+| Id | bisher | jetzt |
+|---|---|---|
+| `second_evening` („Kneipenbummel“, bisher „Zweiter Abend“) | Erreiche Abschnitt 2 | Erreiche die dritte Kneipe des Abends (`ReachPub(3)`) |
+| `third_evening` („Vor dem Boss“, bisher „Dritter Abend“) | Erreiche Abschnitt 3 | Erreiche die Boss-Kneipe im ersten Stadtteil (`ReachPub(5)`) |
+| `fourth_evening` („Neues Viertel“, bisher „Vierter Abend“) | Erreiche Abschnitt 4 | Erreiche Stadtteil 2 (`ReachSection(2)`) |
+| `early_finish`, `boss_without_pass`, `full_till` | „Serie“ | „Kneipe“ (Bedingungen unverändert) |
+
+`full_till` (15 Groschen nach einer gewonnenen Kneipe) dürfte mit dem höheren Bonus je übrigem Spiel (3 statt 1) leichter werden; zu messen. `tour_won` verlangt weiter einen gewonnenen ganzen Abend (es gibt nur noch den).
+
 Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschaltet.
 
 - Ein neuer Spielstand kennt etwa die Hälfte der Hausregeln und Figuren. Die übrigen erscheinen erst nach einer Freischaltung im Tresen.
@@ -873,6 +952,8 @@ Umgesetzt in M9: `SeatView::editions` trägt die 32 Karten in der Ausgabe jedes 
 
 ## 11. Bosse
 
+**Seit ADR 0016** sitzt der Boss in der Boss-Kneipe am Ende jedes Stadtteils (drei je Abend, die letzte der Endboss). Was hier „Boss-Serie“ heißt, ist die Boss-Kneipe; verloren wird sie wiederholt (5.0). Die Messungen unten galten den fünf Abschnitten.
+
 Bosse sind Gegnerpaare mit einer Sonderregel, die für die ganze Boss-Serie gilt. Die Regel wird vor der Serie angezeigt, damit der Spieler sein Blatt und seine Ansagen anpassen kann.
 
 Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `BossAnnounced`) und ist ab dann in der Sicht lesbar (`upcoming_boss`, `next_series`). So kann der Spieler schon am Tresen vor Serie 2 auf den Boss hin einkaufen. Jeder Boss hat einen Zielwert-Faktor (`target_factor` in `bosses.ron`, Standard 1,0), der den Zielwert seiner Boss-Serie skaliert, weil die Bosse unterschiedlich schwer sind. Seit ADR 0012 kann ein Boss für einzelne Charaktere einen eigenen Faktor haben (`character_factors`, etwa `{NullPlayer: 0.4}`); die Sicht zeigt den Faktor des Charakters, der spielt. Die Werte setzt `balance`; messen lässt sich das mit `skat_sim --curve --boss <id>`.
@@ -969,6 +1050,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 
 ## 12. Wirtschaft
 
+**Seit ADR 0016**: Groschen je gewonnener Kneipe (Grundbetrag 3, je übrigem Spiel vorläufig 3 statt 1, Zinsen wie bisher); eine verlorene Kneipe zahlt nichts. Der Tresen kommt nur noch als Station eines Weges (5.0.1), nicht mehr nach jeder Serie; die Spelunke bringt ein Relikt oder seinen halben Preis. Alles vorläufig (5.0.4).
+
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.
 - **Ausgaben am Tresen**: Hausregeln, Figuren, Verbrauchsgegenstände, Kartenmodifikationen, Neuauslage.
@@ -986,6 +1069,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 ---
 
 ## 13. Ereignisse (Rast)
+
+**Seit ADR 0016** sind Ereignisse Stationen auf einem Weg zwischen zwei Kneipen (5.0.1) und tragen eine Kategorie: Begegnung (Stammtisch-Streit, Alter Bekannter, Letzte Runde, Umgekipptes Bier, Preisskat, Falschspieler, Gast aus Altenburg), Upgrade (Kartengeber, Gasthof zur Krone, Taschenspieler, neu die Kartenwerkstatt: eine Modifikation auf eine gewählte Karte oder eine Karte säubern, beides gratis) und Rast (neu die Imbissbude: ein Leben zurück). Die Wahrscheinlichkeit `encounter_chance` entfällt. Die Beute der Spelunke ist ein Ereignis, das nie auf einem Weg liegt (`spelunke_loot`, Gewicht 0). Der Stammtisch-Streit gilt bis zum Ende des Stadtteils.
 
 Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 
@@ -1077,6 +1162,7 @@ skat-roguelite/
 | **M6 Feinschliff** | Oberfläche Stil A4 ohne Scrollen, große Abrechnung am Spielende, Null für alle (ADR 0012), geführter erster Abend, Stammgäste mit Namen und Pixelgesicht, leise Chiptune-Musik, Spielstand-Export | v1 zum Teilen |
 | **M7 Langzeit** | Kurzer Abend (3 Abschnitte, umgesetzt 5.3), Endlos-Modus nach dem Endboss, Einsatz-Leiter (jeder Run-Sieg hebt die Gewinngrenze um ein Auge), angekündigte Flüche statt zufälliger (umgesetzt 7.2, 13) | Grund, wiederzukommen |
 | **M8 Inhalte** ✔ | Schnäpse, drei neue Charaktere (Grandspieler, Zaungast, Wirtin), Bierdeckel-Grafiken, Infokarte, große Testrunde, Welle 2 (Relikte: Skat-Hebel, Bau-Richtungen, Spiel-Relikte; Welle 2a mit acht Hausregeln und Welle 2b mit drei umgesetzt, 8.1), Welle 3 (Wandelkarte, Glasdaus, Heimweh, Stufe Legendär mit Skatgott und Ehrenvorsitz; umgesetzt 7.2, 8.4) | Ein Run mit vielen Bau-Richtungen |
+| **M10 Kneipentour** | ADR 0016: drei Stadtteile mit je vier Kneipen und einer Boss-Kneipe, Leben, Routenwahl, Spelunke, Namensgenerator, kurzer Abend entfällt, laufende Spielstände verworfen (Kern, Inhalte, Bot, einfache Routenwahl im Web umgesetzt am 02.11.2026; Stadtkarte getrennt im Entwurf), Messung offen (5.0.4) | Ein Abend mit Weg und zweiten Chancen |
 | **M9 Eigene Ausgaben** | ADR 0015: Ausgabe des Spielers statt geteiltem Blatt, Grunddecks als Modifikationen, Boss-Ausgaben, Gegner-Rückseiten, alte laufende Spielstände verworfen (Kern, Inhalte, KI, Web umgesetzt am 02.11.2026), Nachmessung offen (18) | Jeder spielt mit seinen eigenen Karten |
 
 Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblatt, Zettel für Relikte, zwei menschliche Gegner. Was auf Papier keinen Spaß macht, wird nicht gebaut.
@@ -1163,6 +1249,8 @@ Entschieden am 02.11.2026 (Nutzer):
 | Kartenmodifikationen | **Effekte v2** (7.2): höchstens eine Modifikation je Karte (Spezialkarten zusätzlich eine), Steigerung durch dieselbe, Ersetzen durch eine andere, Flüche sperren die Karte; Rand (Augen, Rang, Trumpf), Moment (Letzter Stich, Erster Stich), Gutschein (wenn gedrückt), Flüche (Durchsichtig, Ramponiert, Fleckig), Spezialkarten (Untot, Wandelkarte). Visuelle Grammatik: Rahmen = was, oben rechts = wann, unten Mitte = wie viel, unten links = Fluch. 18 alte Modifikationen und Heimweh gestrichen, alte Spielstände werden umgerechnet. |
 
 ## 17. Offen
+
+- **Kneipentour (ADR 0016)**: alle Zahlen vorläufig und ungemessen (5.0.4): Zielwerte je Kneipe und Charakter, Leben (3/5/+1), Bonus je übrigem Spiel (3), Gewichte der Stationen, Spelunke (0,3 und × 1,25), Gegnerstärke je Stadtteil, umgeschriebene Freischaltungen. Auslegungen von Claude: Eine verlorene Boss-Kneipe wird sofort wiederholt, ohne Routenwahl dazwischen (also auch ohne Tresen); die Spelunke kommt nie vor einer Boss-Kneipe; unter drei Wegen ist immer ein Tresen; Rast nur mit fehlendem Leben; der Malus „Kein Skat“ trifft den Nullspieler nicht. Offen im Cockpit: Sekundant des Bosses (Datenmodell vorbereitet, 5.0), die Form des Malus (umgesetzt: einer, zufällig, vorher sichtbar). Die Stadtkarte (Pixel-Stadtplan) wird getrennt entworfen; die Sicht liefert dafür den ganzen Plan, Knoten-Ids und Seeds (5.0.3).
 
 - **Effekte v2** (02.11.2026, 7.2): Werte, Preise und Seltenheit sind Platzhalter, nichts gemessen (Simulationen pausiert). Entschieden: Moment-Modifikationen und Spezial-Gutscheine höchstens einmal, Groschen-Gutschein, Augen und Trumpf ohne Obergrenze, Trumpf und Fleckig streng (Cockpit). Mit M9 erledigt: Frisches Deck reinigt (7.3), die Sicht zeigt die Ausgabe des Gegners auf einer durchsichtigen Karte (7.2).
 - **Eigene Ausgaben (ADR 0015)**: beantwortet im Cockpit und umgesetzt in M9 (02.11.2026): Trumpf und Fleckig streng, Boss-Ausgaben mild, Stammgäste normal, Frisches Deck reinigt, Nullspieler mit Abgestuft, laufende Spielstände verworfen. Offen: alle Messungen (18.4, Simulationen pausiert); ob die Gleichstands-Regel bei Abgestuft auf Daus und Zehn (gleiche Stärke, die frühere gewinnt) für Menschen verständlich ist; ob die Web-App vor der Boss-Serie zusätzlich die Reihenfolge der Ausgaben des Alten zeigen soll (heute nur die Ausgabe der Regel im laufenden Blatt).

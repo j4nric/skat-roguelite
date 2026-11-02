@@ -21,3 +21,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0013 | Schneider, Schwarz und Ouvert auch nach dem Skat | Angenommen |
 | 0014 | Die Oberin statt des Obers | Angenommen |
 | 0015 | Eigene Ausgabe jeder Karte | Angenommen, ersetzt 0005 teilweise, ändert 0012 |
+| 0016 | Die Kneipentour statt Abschnitten und Serien | Angenommen |
