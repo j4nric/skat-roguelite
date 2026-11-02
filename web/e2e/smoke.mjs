@@ -2513,20 +2513,13 @@ async function wave3(browser, errors, reducedMotion) {
   if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
-  // "Ehrenvorsitz": the player leads. The Grün-Daus (id 23, a Glasdaus in
-  // the old save, dealt before effects v2) first; it no longer breaks.
-  await page.waitForSelector('[data-action="play"][data-id="23"]', { timeout: 30000 });
-  await page.click('[data-action="play"][data-id="23"]');
-  // The Wandelkarte (Rot-Daus, id 15): a Schellen lead, only Schellen may be named.
+  // The Wandelkarte (Rot-Daus, id 15) settles as the game starts: five
+  // spades in the hand, it is a Grün-Daus now (DESIGN 7.2, 03.11.2026).
+  // "Ehrenvorsitz": the player leads it.
   await page.waitForSelector('[data-action="play"][data-id="15"]', { timeout: 30000 });
+  const settled = (await page.locator('.hand-card[data-id="15"]').first().getAttribute('aria-label')) ?? '';
+  if (!settled.startsWith('Grün-Daus')) fail(`the settled Wandelkarte shows as ${settled}`);
   await page.click('[data-action="play"][data-id="15"]');
-  await page.waitForSelector('[data-testid="wild-suits"]');
-  const allowed = await page.locator('[data-action="wild-suit"]:not([disabled])').evaluateAll((els) => els.map((e) => e.getAttribute('data-suit')).join(','));
-  if (allowed !== 'Diamonds') fail(`Wandelkarte: the picker allows ${allowed}, expected Diamonds`);
-  await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
-  await shoot(page, 'wave3-wild-picker');
-  await page.click('[data-testid="wild-Diamonds"]');
-  await page.waitForSelector('[data-testid="wild-suits"]', { state: 'detached' });
   await page.waitForFunction(() => window.__toasts.some((t) => t.includes('Wandelkarte')), null, { timeout: 30000 });
   // The trick on the table, or once it is finished the "Letzter Stich".
   await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
@@ -2536,9 +2529,9 @@ async function wave3(browser, errors, reducedMotion) {
     await page.waitForSelector('[data-testid="last-trick"]');
   }
   const wild = page.locator('.trick-card[data-card-id="15"]').first();
-  if (!(await wild.locator('.plaque-wild').count())) fail('the named Wandelkarte has no plaque on the table');
+  if (!(await wild.locator('.plaque-wild').count())) fail('the settled Wandelkarte has no plaque on the table');
   const shown = await wild.locator('svg.card-svg').getAttribute('aria-label');
-  if (!(shown ?? '').startsWith('Schellen-Daus')) fail(`the named Wandelkarte shows as ${shown}`);
+  if (!(shown ?? '').startsWith('Grün-Daus')) fail(`the settled Wandelkarte shows as ${shown}`);
   await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
   await shoot(page, 'wave3-wild-played');
   if (await page.locator('[data-testid="last-trick"]').count()) {

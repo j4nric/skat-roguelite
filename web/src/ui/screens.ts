@@ -9,7 +9,7 @@ import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
 import { backDesign } from './backs';
-import { cardBack, cardSvg, modIcon, suitIcon, WILD } from './cards';
+import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -546,37 +546,6 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
         true,
         'sheet-chalk',
-      );
-    }
-    case 'wild': {
-      // "Wandelkarte": the card once per suit; only the suits the core allows.
-      const card = view?.game?.hand.find((c) => c.id === overlay.card);
-      const f = card ? face(card.kind) : null;
-      if (!view || !card || !f) return '';
-      const allowed = card.wild_suits ?? [];
-      const letter = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' } as const;
-      const options = (['Clubs', 'Spades', 'Hearts', 'Diamonds'] as Suit[])
-        .map((suit) => {
-          const kind = { Normal: `${letter[suit]}${f.rank}` };
-          const ok = allowed.includes(suit);
-          return `<button class="card target-card wild-option ${ok ? '' : 'is-dim'}" ${attrs({
-            'data-action': 'wild-suit',
-            'data-suit': suit,
-            'data-testid': `wild-${suit}`,
-            disabled: !ok,
-            'aria-label': t(de.card.wildSuit, { card: cardName(kind) }),
-          })}>${cardSvg(kind, card.mods.filter((m) => m !== WILD), 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
-        })
-        .join('');
-      const follow = allowed.length < 4 ? `<p class="small">${esc(t(de.card.wildFollow, { suits: allowed.map((s) => de.suits[s]).join(', ') }))}</p>` : '';
-      return sheet(
-        `<h2>${esc(de.card.wildTitle)}</h2>
-         <p class="small">${esc(t(de.card.wildPick, { card: cardName(card.kind) }))}</p>
-         ${follow}
-         <div class="target-grid wild-grid" data-testid="wild-suits">${options}</div>
-         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
-        true,
-        'sheet-wild',
       );
     }
     case 'encounter-target': {

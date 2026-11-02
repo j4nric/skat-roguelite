@@ -70,7 +70,6 @@ export type Overlay =
   /** "Kreide": pick a card of the hand (`card`), then its new suit. */
   | { kind: 'chalk'; slot: number; card: number | null }
   /** "Wandelkarte": the suit to name for `card` as it is played. */
-  | { kind: 'wild'; card: number }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
   /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back. */

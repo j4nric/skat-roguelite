@@ -199,10 +199,6 @@ export const de = {
     noDiscard: 'darf nicht gedrückt werden',
     canRise: 'Untot: steht in diesem Spiel noch einmal auf',
     named: 'Wandelkarte, eigentlich {suit}',
-    wildTitle: 'Wandelkarte',
-    wildPick: 'Als welche Farbe spielst du {card}?',
-    wildFollow: 'Du musst bedienen: nur {suits} geht.',
-    wildSuit: 'als {card}',
   },
 
   /** Asking before a card modification replaces or raises the one on a card (Tresen, encounters). */
@@ -480,7 +476,7 @@ export const de = {
     cardReturned: '{card} geht an {name} zurück.',
     skatShown: 'Spickzettel: {card} liegt im Skat.',
     leadDemanded: 'Lockvogel: Der nächste Gegner spielt {suit} aus, wenn er kann.',
-    wildNamed: 'Wandelkarte: {old} gespielt als {new}.',
+    wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
     coins: '{amount} Groschen: {source}',

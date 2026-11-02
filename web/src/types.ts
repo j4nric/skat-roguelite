@@ -21,7 +21,7 @@ export interface DealtCard {
   honorary_jack?: boolean;
   /** "Ramponiert": must not be discarded. */
   no_discard?: boolean;
-  /** "Wandelkarte" in the player's hand: he names its suit as he plays it. */
+  /** "Wandelkarte" of the player whose suit is not settled yet (until the game starts). */
   wild?: boolean;
   /** "Abgestuft" (Nullspieler): a Unter is the lowest card of its suit, any other card one step lower. */
   demoted?: boolean;
@@ -57,9 +57,9 @@ export interface CardView extends DealtCard {
    * for views from an older core.
    */
   mod_status?: Partial<Record<string, CardModStatus>>;
-  /** "Wandelkarte" the player may play now: the suits he may name (RunAction `PlayAs`). */
-  wild_suits?: Suit[];
-  /** A Wandelkarte played in this game: its printed suit; `kind` has the suit named. */
+  /** "Wandelkarte" whose suit is still open: before the game starts (left out when false). */
+  unsettled?: boolean;
+  /** A Wandelkarte settled as this game started: its printed suit; `kind` has the settled suit. */
   named?: Suit | null;
   /** "Untot": would rise if played now (left out when false). */
   can_rise?: boolean;
@@ -753,6 +753,8 @@ export type GameEvent =
   | { DefenderHandsSwapped: { hand_sizes: number[] } }
   | { SkatSwapped: { took: DealtCard; gave: DealtCard } }
   | { CardChalked: { old: DealtCard; new: DealtCard } }
+  /** "Wandelkarte": its suit was settled as the game started; `new` is the card from now on. */
+  | { WildCardSettled: { old: DealtCard; new: DealtCard } }
   /** "Drei drücken": drawn from a defender with the skat. */
   | { CardDrawn: { seat: Seat; card: DealtCard } }
   /** "Drei drücken": the lowest discard went back to that defender. */
@@ -809,8 +811,6 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
-  /** "Wandelkarte": the player named the suit of `card` (as printed) as he played it. */
-  | { WildCardNamed: { card: DealtCard; suit: Suit } }
   /** Effekte v2: a voucher was redeemed when its card was discarded. */
   | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
@@ -836,7 +836,6 @@ export type RunAction =
   | { DiscardThree: [number, number, number] }
   | { DemandLead: LeadSuit }
   | { Play: number }
-  | { PlayAs: { card: number; suit: Suit } }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
   | { BuyConsumable: number }
