@@ -6,16 +6,34 @@ figure with straight edges and stair-step chamfers."""
 import numpy as np
 
 GW, GH = 33, 49          # art grid (the card is 33 x 49.5, the last half row stays white)
+# Suit colours (F3, chosen 02.11.2026): every suit's pictures use only its
+# own core colour (with its own shades) plus neutrals: black, white, skin,
+# greys, hair and wood brown, and a muted metal gold for crowns, chains and
+# sceptres. The Wandelkarte (wild.py) keeps its rainbow.
 PAL = {
-    'r': '#e0281e',      # signal red
-    'y': '#f7c21a',      # golden yellow
-    'g': '#2e9a3c',      # leaf green
-    'b': '#2a63c4',      # royal blue
-    'o': '#8b4a1c',      # acorn brown
+    # core colours
+    'r': '#e0281e',      # Rot: signal red
+    'g': '#2e9a3c',      # Gruen: leaf green
+    'j': '#4f86c6',      # Eichel: jeans blue
+    'y': '#f5d52a',      # Schellen: lemon yellow
+    # own shades
+    'f': '#24507f',      # Eichel dark blue: acorn cap, index ink (8.2:1 on the paper, 7.1:1 tinted)
+    't': '#a9c6e8',      # Eichel light blue (where the loden green was)
+    'u': '#a87800',      # Schellen dark amber (where the red slashes were)
+    'a': '#8a5f00',      # Schellen index ink (5.5:1 on the paper, 5.1:1 tinted)
+    'v': '#1f7a30',      # Gruen index ink (5.3:1 on the paper, 4.6:1 tinted)
+    'q': '#c0221a',      # Rot index ink (5.9:1 on the paper, 4.9:1 tinted)
+    # neutrals
+    'm': '#c39a3a',      # metal gold, all suits (crowns, chains, rims)
+    'o': '#8b4a1c',      # brown: hair, wood, leather
     'k': '#1c1a1a',      # black
+    'd': '#454b53',      # anthracite
+    'i': '#8d939b',      # grey
     'w': '#ffffff',      # white
     's': '#f3c9a0',      # skin
-    'a': '#966c00',      # ochre: ink of the Schellen index (4.6:1 on the paper)
+    'p': '#c4685c',      # lips
+    'h': '#8b4a1c',      # hair and wood of the Eichel cards (becomes 'o', see SUIT_MAP)
+    'b': '#2a63c4',      # royal blue, only in the Wandelkarte's rainbow
 }
 BG = '#fdfdfb'
 
@@ -35,28 +53,64 @@ HEART3 = ["x.x", "xxx", ".x."]
 SIGN = {
     'Rot': ["r.r", "rrr", ".r."],
     'Gruen': [".g.", "ggg", "ggg", ".o."],
-    'Eichel': [".k.", "gkg", "ooo", ".o."],
-    'Schellen': [".k.", "yyy", "rrr", "yky"],
+    'Eichel': [".k.", "fff", "jjj", ".j."],
+    'Schellen': [".k.", "yyy", "uuu", "yky"],
 }
-# Ink of the rank letter per suit. Schellen gets a dark ochre instead of
-# black: black read as a fifth suit; the yellow of the sign itself is too
-# light for letters on the white paper.
-INK = {'Rot': 'r', 'Gruen': 'g', 'Eichel': 'o', 'Schellen': 'a'}
+# Ink of the rank letter per suit: a dark shade of the suit's own colour,
+# at least 4.5:1 on the paper and on the suit's tinted paper ("Kartenfarbe
+# tönen"). Never black: black read as a fifth suit.
+INK = {'Rot': 'q', 'Gruen': 'v', 'Eichel': 'f', 'Schellen': 'a'}
 # held / pip signs, 7 wide
 BIG = {
     'Rot': [".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."],
     'Gruen': ["...g...", "..ggg..", ".ggggg.", "ggggggg", "gggkggg", ".ggkgg.", "...o..."],
-    'Eichel': ["...k...", ".gkgkg.", "gkgkgkg", "ooooooo", ".ooooo.", ".ooooo.", "..ooo..", "...o..."],
-    'Schellen': ["...k...", "..yyy..", ".yyyyy.", "yyyyyyy", "rrrrrrr", "yyykyyy", ".yykyy."],
+    # the acorn: a stalk, a wide checkered cap over a narrower nut, so it
+    # does not read as a heart at game size
+    'Eichel': ["...k...", ".fjfjf.", "fjfjfjf", ".jjjjj.", ".jjjjj.", ".jjjjj.", "..jjj..", "...j..."],
+    'Schellen': ["...k...", "..yyy..", ".yyyyy.", "yyyyyyy", "uuuuuuu", "yyykyyy", ".yykyy."],
 }
 MID = {
     'Rot': ["rr.rr", "rrrrr", "rrrrr", ".rrr.", "..r.."],
     'Gruen': ["..g..", ".ggg.", "ggggg", "ggkgg", "..o.."],
-    'Eichel': ["..k..", "gkgkg", "ooooo", ".ooo.", "..o.."],
-    'Schellen': ["..k..", ".yyy.", "yyyyy", "rrrrr", "yykyy"],
+    'Eichel': ["..k..", "fffff", ".jjj.", ".jjj.", "..j.."],
+    'Schellen': ["..k..", ".yyy.", "yyyyy", "uuuuu", "yykyy"],
 }
 HEART5 = [".x.x.", "xxxxx", "xxxxx", ".xxx.", "..x.."]
 HEART7 = [".xx.xx.", "xxxxxxx", "xxxxxxx", ".xxxxx.", "..xxx..", "...x..."]
+
+
+# Per suit, the keys the drawings use that are not the suit's own colour
+# or a neutral, and what they become. The drawings use 'y' for gold
+# everywhere; it stays lemon only on Schellen (except crowns, chains and
+# sceptres, which cards2/aces2 draw in metal gold 'm' there). 'h' marks
+# hair and wood on the Eichel cards, whose brown 'o' becomes the blue.
+SUIT_MAP = {
+    'Rot': {'y': 'm', 'b': 'i', 'g': 'i', 'h': 'o'},
+    'Gruen': {'y': 'm', 'r': 'w', 'b': 'w', 'h': 'o'},
+    'Eichel': {'o': 'j', 'h': 'o', 'g': 't', 'r': 'f', 'y': 'm', 'b': 'f'},
+    'Schellen': {'r': 'u', 'b': 'd', 'g': 'd', 'h': 'o'},
+}
+
+
+def suit_colours(grid, suit):
+    """Recolour a finished face to its suit's colours (SUIT_MAP). Red pixels
+    beside skin or beard in the head area are lips and become 'p' on every
+    suit."""
+    m = SUIT_MAP.get(suit)
+    if m is None:
+        return
+    g = grid.g
+    lips = [(x, y) for y in range(17) for x in range(1, GW - 1) if g[y, x] == 'r' and
+            (g[y, x - 1] in 'sh' or g[y, x + 1] in 'sh')]
+    out = g.copy()
+    for y in range(GH):
+        for x in range(GW):
+            c = g[y, x]
+            if c in m:
+                out[y, x] = m[c]
+    for x, y in lips:
+        out[y, x] = 'p'
+    grid.g = out
 
 
 class Grid:
@@ -102,6 +156,8 @@ class Grid:
         # bottom right, upright: sign above the rank
         self.stamp(sg, GW - 5, GH - 8 - len(sg))
         self.stamp(g, GW - 2 - w, GH - 7, {'x': col})
+        # The index is the last thing every face stamps: its suit colours now.
+        suit_colours(self, suit)
 
     def big(self, rows, x0, y0, k=2):
         """Stamp a sprite scaled by k (chunky blocks)."""

@@ -119,8 +119,8 @@ def daus_rot():
 def daus_eichel():
     g = Grid()
     # crossed boar spears
-    line(g, 4, 45, 26, 10, 'o')
-    line(g, 26, 34, 6, 10, 'o')
+    line(g, 4, 45, 26, 10, 'h')
+    line(g, 26, 34, 6, 10, 'h')
     for x, y in ((26, 10), (6, 10)):
         g.stamp([".k.", "kwk", "kwk", ".k.", "kkk"], x - 1, y - 4)
     mantle(g, 13, 40, 'o', 'g', cut=corner_safe)
@@ -128,12 +128,13 @@ def daus_eichel():
     def tri(x, y):
         return 15 <= y <= 45 and abs(x - 16) <= min(11.5, (45 - y) * 0.45 + 0.4)
     emblem(g, mask_fn(tri))
-    g.big(["...k...", "..gkg..", ".gkgkg.", "gkgkgkg", "ooooooo", ".ooooo.", ".ooooo.", "..ooo..", "...o..."], 9, 16)
+    # the acorn: stalk, wide checkered cap, narrower nut (blue on the Eichel cards)
+    g.big(["...k...", "..fjf..", ".fjfjf.", "fjfjfjf", ".jjjjj.", ".jjjjj.", ".jjjjj.", "..jjj..", "...j..."], 9, 16)
     # barred helm with antlers
-    g.stamp(["o.o.....o.o",
-             "oo.o...o.oo",
-             ".ooo...ooo.",
-             "...oo.oo...",
+    g.stamp(["h.h.....h.h",
+             "hh.h...h.hh",
+             ".hhh...hhh.",
+             "...hh.hh...",
              "...kkkkk...",
              "..kwwwwwk..",
              "..kwkwkwk..",
@@ -182,7 +183,7 @@ def daus_schellen():
     line(g, 4, 44, 26, 12, 'k')
     line(g, 26, 34, 6, 12, 'k')
     for x, y in ((26, 11), (6, 11)):
-        g.stamp([".y.", "yky", ".y."], x - 1, y - 2)
+        g.stamp([".m.", "mkm", ".m."], x - 1, y - 2)
     # sunburst behind the medallion
     rays = set()
     for y in range(9, 46):
@@ -209,13 +210,14 @@ def daus_schellen():
         if (x + y) % 3 == 0:
             g.px(x, y, 'k')
     g.big(BIG['Schellen'], 9, 21)
-    g.stamp(["y...y...y...y",
-             "yy..y..yyy.yy",
-             "yyyyyyyyyyyyy",
-             "yrybyyryybyry",
+    # crown and coins in metal gold: lemon is the suit, not the metal
+    g.stamp(["m...m...m...m",
+             "mm..m..mmm.mm",
+             "mmmmmmmmmmmmm",
+             "mkmwmmkmmwmkm",
              "kkkkkkkkkkkkk"], 10, 10)
     for x, y in ((6, 40), (24, 41)):
-        g.stamp([".yy.", "ykky", ".yy."], x, y)
+        g.stamp([".mm.", "mkkm", ".mm."], x, y)
     g.index('A', 'Schellen')
     return g
 

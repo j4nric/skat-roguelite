@@ -70,8 +70,7 @@ def undead_face(suit, rank):
 
 def undead_palette():
     pal = {UNDEAD_KEYS.get(k, k): v for k, v in untot.EXTRA.items() if k in UNDEAD_KEYS}
-    pal.update({'2': untot.ROT['r'], '3': untot.ROT['y'], '4': untot.ROT['g'], '5': untot.ROT['b'],
-                '6': untot.ROT['o'], '7': untot.ROT['w']})
+    pal.update(untot.ROT_PAL)
     return pal
 
 

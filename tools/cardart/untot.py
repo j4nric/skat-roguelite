@@ -23,6 +23,13 @@ GHOST = {'k': '#3b5f7a', 'r': '#86c6da', 'y': '#e2f6f8', 'g': '#a6dccd', 'b': '#
          'w': '#f4fcfe', 's': '#d4f0f4'}
 ROT = {'r': '#9e4038', 'y': '#bc9c4a', 'g': '#557c40', 'b': '#4a628a', 'o': '#6b4a2a', 'w': '#dcd6c0', 'k': '#1c1a1a',
        's': '#9cb86e'}
+# Zombie keys: every colour of a living face to its rotten digit key (ROT_PAL).
+# The suit colours (pix.SUIT_MAP) rot within their own hue: blue stays blue,
+# lemon a dull lemon; metal gold the old muted gold.
+ROT_KEY = {'r': '2', 'y': '1', 'm': '3', 'g': '4', 'b': '5', 'o': '6', 'h': '6', 'u': '6', 'w': '7', 's': 'Z',
+           'j': '8', 'f': '9', 't': '0'}
+ROT_PAL = {'1': '#c4b24e', '2': ROT['r'], '3': ROT['y'], '4': ROT['g'], '5': ROT['b'], '6': ROT['o'], '7': ROT['w'],
+           '8': '#5a7498', '9': '#2c4562', '0': '#8ea3bb'}
 FADE = {'r': '#c25a4e', 'y': '#e2c46a', 'g': '#5e9a58', 'b': '#5a7cb8', 'o': '#8a6040', 'w': '#ffffff', 'k': '#1c1a1a',
         's': '#ece4c8'}
 SKULL = ['.###.', '#####', '#.#.#', '#####', '.#.#.']
@@ -213,7 +220,7 @@ def zombie(suit, rank):
             for x in range(x0, x1 + 1):
                 if g.g[y, x] == 's':
                     g.g[y, x] = 'Z'
-                elif g.g[y, x] == 'r':
+                elif g.g[y, x] in ('r', 'p'):
                     g.g[y, x] = 'X'
         # a red glowing eye
         for y in range(y0, y1 + 1):
@@ -229,9 +236,9 @@ def zombie(suit, rank):
     for y in range(GH):
         for x in range(GW):
             c = g.g[y, x]
-            if not im[y, x] and c in ROT and c not in 'k':
-                g.g[y, x] = {'r': '2', 'y': '3', 'g': '4', 'b': '5', 'o': '6', 'w': '7', 's': 'Z'}[c]
-    pal.update({'2': ROT['r'], '3': ROT['y'], '4': ROT['g'], '5': ROT['b'], '6': ROT['o'], '7': ROT['w']})
+            if not im[y, x] and c in ROT_KEY:
+                g.g[y, x] = ROT_KEY[c]
+    pal.update(ROT_PAL)
     pal.update(EXTRA)
     if not getattr(g, 'no_marker', False) and globals().get('ZOMBIE_GRID_MARKER', True):
         marker(g, 'X')
@@ -291,7 +298,7 @@ def zombie_number(suit, n):
     g.suit, g.rank = suit, str(n)
     im = index_mask(g)
     pal = dict(PAL)
-    pal.update({'2': ROT['r'], '3': ROT['y'], '4': ROT['g'], '5': ROT['b'], '6': ROT['o'], '7': ROT['w']})
+    pal.update(ROT_PAL)
     pal.update(EXTRA)
     out = g.g.copy()
     for y in range(GH):
@@ -302,8 +309,8 @@ def zombie_number(suit, n):
             if (x * 7 + y * 5) % 17 == 0:
                 out[y, x] = '.'
                 continue
-            if c in ROT and c != 'k':
-                out[y, x] = {'r': '2', 'y': '3', 'g': '4', 'b': '5', 'o': '6', 'w': '7', 's': 'Z'}[c]
+            if c in ROT_KEY:
+                out[y, x] = ROT_KEY[c]
     # slime dripping from the lowest pixel of some pip columns
     for x in range(5, 28):
         col = [y for y in range(6, 40) if out[y, x] not in ('.',) and not im[y, x]]

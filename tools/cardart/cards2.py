@@ -162,7 +162,7 @@ def k_pat_schellen(x, y):
     if y < 27:
         # chain of office on striped puffs
         if abs(x - 16) == 22 - y or (abs(x - 16) <= 1 and y in (23, 24)):
-            return 'k' if (x + y) % 2 else 'y'
+            return 'k' if (x + y) % 2 else 'm'
         return 'r' if x % 2 == 0 else 'y'
     if x in (12, 20):
         return 'k' if y % 2 else 'w'
@@ -177,10 +177,10 @@ KOENIG = {
                 right=[".b..", "bb..", "bb..", "bb..", "bb..", "bb..", "bb..", "bb..", "bb..", "bb..", "yyyy",
                        ".k..", ".ss.", ".ss."],
                 left=["ss", "ss", "y.", "y.", "y.", "y.", "y.", "yy", "yy", "r."]),
-    'Eichel': dict(pat=k_pat_eichel, rim=('y', 'k'), hair='o', beard='o',
+    'Eichel': dict(pat=k_pat_eichel, rim=('y', 'k'), hair='h', beard='h',
                    crown=(12, 3, ["y...y...y", "yy.yyy.yy", "yyyyyyyyy", "ygyyryygy", "owowowowo"]),
-                   right=["..k.", ".kwk", ".kwk", ".kwk", "..k.", "kkkk", "..o.", "..o.", "..o.", "..o.", "..o.",
-                          "..o.", ".ss.", ".ss.", "..o.", "..o.", "..o.", "..o."],
+                   right=["..k.", ".kwk", ".kwk", ".kwk", "..k.", "kkkk", "..h.", "..h.", "..h.", "..h.", "..h.",
+                          "..h.", ".ss.", ".ss.", "..h.", "..h.", "..h.", "..h."],
                    left=["ss.", "ss.", "y..", "yy.", "yyy", ".yy", "..k"]),
     'Gruen': dict(pat=k_pat_gruen, rim=('y', 'k'), hair='y', beard='y',
                   crown=(12, 2, [".y..y..y.", "yyy.y.yyy", ".y.yyy.y.", "yyyyyyyyy", "gygrgygyg", "........."]),
@@ -188,8 +188,8 @@ KOENIG = {
                          "..y..", "..y..", ".ss..", ".ss..", "..y..", "..y.."],
                   left=[".y.", "yry", "yyy", "ss.", "ss."]),
     'Schellen': dict(pat=k_pat_schellen, rim=('k', 'y'), hair='k', beard='k',
-                     crown=(11, 3, ["...y.y.y...", "...yyyyy...", "...yryby...", "rrrrrrrrrrr", ".rrrrrrrrr."]),
-                     right=[".yyy", ".yky", ".yyy", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.",
+                     crown=(11, 3, ["...m.m.m...", "...mmmmm...", "...mkmkm...", "rrrrrrrrrrr", ".rrrrrrrrr."]),
+                     right=[".mmm", ".mkm", ".mmm", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.",
                             "..k.", ".ss.", ".ss.", "..k.", "..k."],
                      left=["ss.", "ss.", ".k.", "ooo", "oyo", "ooo"]),
 }
@@ -408,7 +408,7 @@ def u_pat_eichel(x, y):
         return 'y' if x == 16 else 'o'
     if y > 28:
         # leather breeches with braces
-        return 'g' if x in (13, 19) else ('k' if y == 34 else 'o')
+        return 'g' if x in (13, 19) else ('k' if y == 34 else 'h')
     # loden lapels in a V, horn buttons
     if abs(x - 16) <= (y - 14) // 2 + 1 and abs(x - 16) >= (y - 14) // 2 - 1:
         return 'g'
@@ -467,7 +467,7 @@ def legs_rot(g):
 def legs_eichel(g):
     for y in range(35, 45):
         for x in list(range(10, 15)) + list(range(18, 23)):
-            g.px(x, y, 'g' if y in (37, 38) else ('o' if y <= 36 else ('w' if y < 43 or x % 5 else 'k')))
+            g.px(x, y, 'g' if y in (37, 38) else ('h' if y <= 36 else ('w' if y < 43 or x % 5 else 'k')))
     g.hline(10, 14, 35, 'k')
     g.hline(18, 22, 35, 'k')
 
@@ -477,7 +477,7 @@ def legs_gruen(g):
         for x in range(10, 15):
             g.px(x, y, 'g')
         for x in range(18, 23):
-            g.px(x, y, 'y')
+            g.px(x, y, 'd')
     g.px(15, 44, 'k')
     g.px(23, 44, 'k')
 
@@ -501,10 +501,10 @@ UNTER = {
                 pole=["..b.", ".bbb", "bbbk", "bbkk", ".bk.", "..k.", "..k.", "..k.", "..k.", "..k.", ".ss.", ".ss.",
                       "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k.", "..k."]),
     'Eichel': dict(pat=u_pat_eichel, rim=('y', 'k'), legs=legs_eichel,
-                   head=["..kk....", "...kg...", "..ggggg.", ".rrrrrr.", "gggggggg", ".oossss.", ".osssks.", ".oossss",
-                         ".oooroo.", "..oooo.."],
-                   pole=["..k.", ".kwk", ".kwk", ".kwk", "..k.", "kkkk", "..o.", "..o.", "..o.", "..o.", ".ss.", ".ss.",
-                         "..o.", "..o.", "..o.", "..o.", "..o.", "..o.", "..o.", "..o.", "..o."]),
+                   head=["..kk....", "...kg...", "..ggggg.", ".rrrrrr.", "gggggggg", ".hhssss.", ".hsssks.", ".hhssss",
+                         ".hhhrhh.", "..hhhh.."],
+                   pole=["..k.", ".kwk", ".kwk", ".kwk", "..k.", "kkkk", "..h.", "..h.", "..h.", "..h.", ".ss.", ".ss.",
+                         "..h.", "..h.", "..h.", "..h.", "..h.", "..h.", "..h.", "..h.", "..h."]),
     'Gruen': dict(pat=u_pat_gruen, rim=('y', 'k'), legs=legs_gruen,
                   head=["g.......", "gg.gggg.", ".gggggggg", "gggssssg", "ggsssksg", "ggssssss", "ggsssrsg", "gggssssg",
                         ".gggggg."],

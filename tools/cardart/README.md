@@ -2,7 +2,8 @@
 
 Das Blatt der Web-App (32 Karten, deutsches Blatt) ist eigene Pixelgrafik und wird von diesen Skripten erzeugt. Die Web-App liest nur das erzeugte Modul `web/src/ui/pixelcards.gen.ts`; beim Bauen läuft kein Python.
 
-- `pix.py`: Raster (33 × 49,5 Bildpunkte, ein Bildpunkt = 2 × 2 CSS-Pixel bei 66 × 99), Palette mit neun Farben (Ocker nur für die Eckzeichen von Schellen), Pixelbuchstaben und Farbzeichen, Eckzeichen oben links und unten rechts (aufrecht).
+- `pix.py`: Raster (33 × 49,5 Bildpunkte, ein Bildpunkt = 2 × 2 CSS-Pixel bei 66 × 99), Palette, Pixelbuchstaben und Farbzeichen, Eckzeichen oben links und unten rechts (aufrecht).
+- **Farben (F3, 02.11.2026):** Eichel Jeansblau `#4f86c6` (Kappe und Eckzeichen `#24507f`, hell `#a9c6e8`), Grün `#2e9a3c` (Eckzeichen `#1f7a30`), Rot `#e0281e` (Eckzeichen `#c0221a`), Schellen Zitronengelb `#f5d52a` (dunkel `#a87800`, Eckzeichen `#8a5f00`). Jede Farbe nutzt in ihren Bildern nur ihre eigene Kernfarbe und Neutrales: Schwarz, Anthrazit, Grau, Weiß, Haut, Lippen, Haar- und Holzbraun und ein gedecktes Metallgold `#c39a3a` für Kronen, Ketten und Zepter auf allen Farben. `pix.suit_colours` färbt jedes fertige Bild nach `SUIT_MAP` um (die Zeichnungen nutzen `y` für Gold, auf Eichel `o` für den Stoff und `h` für Haar und Holz). Ausnahme: die Wandelkarte (`wild.py`) behält ihren Regenbogen. Eckzeichen mindestens 4,5:1 auf Papier und getöntem Papier.
 - `cards2.py`: König, Oberin und Unter je Farbe (gleiche Pose je Rang, eigener Hof je Farbe), Zahlkarten 10 bis 7.
 - `aces2.py`: die vier Daus.
 - `untot.py`: die Bilder der Spezialkarte „Untot“: Zombie-Bilder der Bildkarten (`zombie`; `skelett` und `geist` sind verworfene Entwürfe der Abstimmung) und faule Zahlkarten mit Riss und Schleim (`zombie_number`). Untot hat keinen eigenen Rand, nur das Bild ändert sich.
