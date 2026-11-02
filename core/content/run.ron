@@ -1,20 +1,22 @@
 // Run-Struktur als Daten. Zielwerte (DESIGN 5.2), Spiellimit, Einmischen und
 // Wirtschaft (DESIGN 12). Wirtschaft kalibriert für v1 (M5) gegen den
 // PIMC-Spieler (`--bot pimc:12:3`), siehe docs/balance/2026-11-01-m5-v1.md.
-// Die Zielwerte sind seit den Serien mit 3 Spielen (01.11.2026) eine
-// vorläufige Kurve aus einer kurzen Messung (DESIGN 5.2); die volle
-// Kalibrierung folgt.
+// Die Zielwerte sind für Serien mit 3 Spielen kalibriert (02.11.2026,
+// docs/balance/2026-11-02-kalibrierung-dreierserie.md).
 (
-    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt, vorläufig. Gemessen
-    // (2 × 500 Runs, Seeds 42 und 43): normale Serien 76 bis 81 % in
-    // Abschnitt 1 bis 3, Boss-Serien 61 bis 75 %. M5-Kurve für 8 Spiele war
-    // 36/44/54 bis 60/66/72.
+    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt, Reizwerte. Kurve des
+    // Alleinspielers (die anderen Charaktere haben eigene, characters.ron).
+    // Abschnitt 1 zieht am stärksten an: Mit den Relikten wird der Run nach
+    // hinten leichter, die Kurve steigt danach nur flach. Gemessen (3 × 800
+    // Runs, Seeds 42 bis 44, --bot pimc:12:3): Abschnitt 2 in 37 % der
+    // Runs, Run gewonnen 1,4 %. Vorläufige Kurve vom 01.11.2026: 24/30/36
+    // bis 48/54/60 (43 % und 1,9 %).
     targets: [
-        (24, 30, 36),
-        (30, 36, 42),
-        (36, 42, 48),
-        (42, 48, 54),
-        (48, 54, 60),
+        (33, 40, 45),
+        (35, 40, 46),
+        (36, 44, 48),
+        (40, 46, 54),
+        (45, 50, 60),
     ],
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Serie, und jedes Spiel darf bis zu zweimal eingemischt (neu gegeben)

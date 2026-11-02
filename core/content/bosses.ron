@@ -76,7 +76,12 @@
         hooks: [
             OnTrickEnd(when: TricksPlayed(5), then: [SwapDefenderHands]),
         ],
-        target_factor: 1.0,
+        // 02.11.2026 (Serien mit 3 Spielen): Mit 1,0 gewann der Bot ihn so
+        // oft wie eine normale Serie (Alleinspieler 80 %, Grandspieler 83 %,
+        // Wirtin 82 %), mit 1,5 zu 68 bis 74 %, wie den Kontra-Hans. Der
+        // Nullspieler gewann ihn mit 1,0 nur zu 68 % und behält 1,0.
+        target_factor: 1.5,
+        character_factors: {NullPlayer: 1.0},
     ),
     (
         id: "black_peter",
@@ -100,7 +105,11 @@
         name: "Der Kiebitz-Mörder",
         text: "Keiner schaut in fremde Karten: Kiebitz, Zähler und durchsichtige Karten sind abgeschaltet.",
         passive: [DisableInformation],
-        target_factor: 1.0,
+        // 02.11.2026 (Serien mit 3 Spielen): Mit 1,0 gewann der Bot ihn so
+        // oft wie eine normale Serie (75 bis 85 %), mit 1,5 zu 68 bis 71 %.
+        // Der Nullspieler (72 % mit 1,0) behält 1,0.
+        target_factor: 1.5,
+        character_factors: {NullPlayer: 1.0},
     ),
     (
         id: "the_old_man",
