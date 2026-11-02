@@ -1,6 +1,6 @@
 # Stammtisch – Design-Dokument
 
-Stand: 2026-11-01 · Status: Entwurf v0.3 · Sprache des Projekts: Deutsch (Code und Kommentare: Englisch) · Arbeitstitel bis 31.10.2026: „Skat Roguelike“
+Stand: 2026-11-02 · Status: Entwurf v0.4 (eigene Ausgaben, ADR 0015) · Sprache des Projekts: Deutsch (Code und Kommentare: Englisch) · Arbeitstitel bis 31.10.2026: „Skat Roguelike“
 
 Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so weit, dass ein erster spielbarer Prototyp daraus gebaut werden kann. Alles unter „Offen“ ist noch nicht entschieden. Alles andere gilt, bis es hier geändert wird.
 
@@ -8,7 +8,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 ## 1. Pitch
 
-**Stammtisch: Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen. Die Spielwertformel des echten Skats (Grundwert × Gewinnstufen) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
+**Stammtisch: Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden deine Ausgabe des Blatts: Gegeben wird ein Skatblatt für alle drei, aber jeder hält seine eigene Ausgabe jeder Karte (ADR 0015). Die Spielwertformel des echten Skats (Grundwert × Gewinnstufen) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
@@ -30,7 +30,7 @@ Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus)
 ## 3. Designsäulen
 
 1. **Die Formel ist das Spiel.** Jede Entscheidung des Spielers muss sich an einem Faktor der Spielwertformel festmachen lassen. Wenn ein Relikt an keiner Stelle der Formel dreht, gehört es nicht ins Spiel.
-2. **Das Blatt ist geteilt.** Deine Karten können bei den Gegnern landen. Deckbau ist ein Risiko, kein reiner Vorteil. Das ist die einzige Idee, die dieses Spiel von Balatro unterscheidet, und sie wird verteidigt.
+2. **Das Blatt ist geteilt, die Ausgaben nicht** (ADR 0015, ersetzt „Deine Karten können bei den Gegnern landen“). Alle drei spielen mit denselben 32 Karten, aber jeder mit seiner eigenen Ausgabe. Jede Karte, die ein Gegner bekommt, fehlt dir: Deine Aufwertung schläft in diesem Spiel, und was du ausspielst, kann im Stich des Gegners landen. Deckbau ist ein Risiko, kein reiner Vorteil. Das unterscheidet dieses Spiel von Balatro und wird verteidigt.
 3. **Zählen lohnt sich.** Skat lebt vom Mitzählen. Jedes System muss Spielern, die mitzählen, einen Vorteil geben, und darf nie durch Zufall diesen Vorteil zunichtemachen.
 4. **Kurze Partien, lange Runs.** Eine Partie dauert unter zwei Minuten. Ein Run dauert 40 bis 60 Minuten.
 5. **Stammtisch, nicht Turnier.** Ton, Figuren und Sprache kommen aus der Kneipe. Lokalkolorit ist erwünscht.
@@ -97,11 +97,11 @@ Jede Stufe erhöht die Gewinnstufen, aber ein Fehlschlag auf einer angesagten St
 
 Diese Regeln gibt es im echten Skat nicht, weil das Blatt dort nie verändert wird. Entschieden von Claude am 01.11.2026 im Rahmen der Autonomie-Regel.
 
-- **Spitzen zählen nur über Trümpfe, die im Spiel sind.** Ist der Kreuz-Bube entfernt, beginnt die Zählung beim nächsten vorhandenen Trumpf. Sonst brächte jedes Entfernen eines Buben allen ein Gratis-„ohne“.
-- **Blankos** bedienen nie und gewinnen nie. Wird eine Blanko ausgespielt, bestimmt die erste normale Karte die Farbe. Drei Blankos gehen an den Ausspieler.
+- **Spitzen zählen nur über Trümpfe, die im Spiel sind.** Ist der Kreuz-Bube entfernt, beginnt die Zählung beim nächsten vorhandenen Trumpf. Sonst brächte jedes Entfernen eines Buben allen ein Gratis-„ohne“. Seit ADR 0015 wird keine Karte mehr entfernt; die Regel gilt weiter für Unter, die ein Karteneffekt zur Blanko macht (Boss-Regel der Oma). Die Spitzen zählen über die zwölf Karten des Alleinspielers **in seiner Ausgabe**: Ist ein Unter für ihn keine Unter (Nullspieler, 9.2), zählt er nicht, wie eine umgemalte Karte der Kreide (8.3).
+- **Blankos** bedienen nie und gewinnen nie. Wird eine Blanko ausgespielt, bestimmt die erste normale Karte die Farbe. Drei Blankos gehen an den Ausspieler. Seit ADR 0015 entstehen sie nur noch durch Karteneffekte (Boss-Regel der Oma, ein zerbrochener Glasdaus, 7.2), nie durch ein kleineres Blatt.
 - **Gezinkte Karten** steigen eine Stufe. Bei gleicher Stärke behält die früher gespielte Karte den Stich.
 - **Schneider** wird immer an der verlierenden Seite gemessen (höchstens 30 Augen). Relikte wie „Jungfrau“ legen zusätzlich Bereiche der Alleinspieler-Augen fest, die ein gewonnenes Spiel zum Schneider machen.
-- **Kartenmodifikationen wirken für jeden, der die Karte spielt** (ADR 0005), auch die Modifikation „Spitze“. Die gleichnamige Hausregel verlangt dagegen den Alleinspieler.
+- ~~**Kartenmodifikationen wirken für jeden, der die Karte spielt** (ADR 0005), auch die Modifikation „Spitze“.~~ Seit ADR 0015: **Kartenmodifikationen wirken nur in der Ausgabe ihres Halters** (7.1). Die Modifikation „Spitze“ des Spielers zählt nur, wenn er die Karte spielt; die gleichnamige Hausregel verlangt weiter den Alleinspieler.
 - **Bockrunde** wird bei der Ansage verbraucht, nicht beim Geben. So verschenkt Einmischen den Bock nicht.
 - **Schenken**: Die restlichen Stiche gehen an den Alleinspieler. Das Spiel ist damit Schneider, und Schwarz, falls die Gegner noch keinen Stich hatten.
 
@@ -275,7 +275,7 @@ Gemessen am 02.11.2026 (Alleinspieler, Zielwerte aus 5.2, der Bot rechnet bei An
 
 ## 6. Ein Spiel im Detail
 
-1. **Geben.** Das aktuelle Blatt (32 Karten plus Modifikationen) wird gemischt. 10/10/10/2.
+1. **Geben.** Das Skatblatt (32 verschiedene Karten) wird gemischt, 10/10/10/2. Jede Karte zeigt die Ausgabe ihres Halters: In der Hand des Spielers und im Skat seine, bei einem Stammgast die normale, beim Boss die Boss-Ausgabe (ADR 0015, 7.1).
 2. **Blatt ansehen.** Der Spieler sieht seine 10 Karten. Relikte, die Informationen geben (Kiebitz), wirken jetzt.
 3. **Skat oder Hand.** Skat aufnehmen und 2 Karten drücken, oder Hand spielen. Gedrückte Karten zählen zu den Augen des Alleinspielers. Oder vorher einmischen: neu geben lassen, bis zu zweimal pro Spiel (5.1).
 4. **Ansage.** Spielart und Risikostufe wählen (ADR 0011, 0013).
@@ -289,15 +289,29 @@ Die Rollen Vorhand, Mittelhand, Hinterhand rotieren pro Spiel. Vorhand zu sein i
 
 ## 7. Deckbau
 
-### 7.1 Das geteilte Blatt
+### 7.1 Ein Blatt, drei Ausgaben (ADR 0015)
 
-Es gibt genau **ein Blatt** pro Run. Alle drei Spieler spielen daraus. Jede Änderung am Blatt betrifft potenziell auch die Gegner. Das ist Absicht und das zentrale Spannungsmoment des Deckbaus.
+**Bis 02.11.2026 (ADR 0005):** Es gab genau ein Blatt pro Run, alle drei Spieler spielten daraus, jede Modifikation und jede hinzugefügte oder entfernte Karte betraf alle. Bei mehr als 32 Karten blieb der Rest im Talon, bei weniger füllten Blanko-Karten auf.
 
-Das Blatt darf wachsen und schrumpfen, aber die Verteilung bleibt 10/10/10/2. Bei mehr als 32 Karten bleibt der Rest **im Talon** und kommt nicht ins Spiel. Bei weniger als 32 Karten (durch Zerstörung) wird mit **Blanko-Karten** aufgefüllt, die keine Farbe und keine Augen haben und immer verlieren. Ein dünnes Blatt ist damit eine echte Strategie: Weniger Luschen heißt mehr Augen auf der Hand.
+**Seit ADR 0015 (Entscheidung des Nutzers vom 02.11.2026):** Gegeben wird ein normales Skatblatt aus 32 verschiedenen Karten mit 120 Augen. Jeder Spieler besitzt seine eigene **Ausgabe** jeder Karte: dieselbe Karte, aber mit seinen Modifikationen. Wer eine Karte bekommt, hält seine Version. Der Spieler baut über den Run nur an seiner Ausgabe; die Gegner haben ihre eigene (Stammgäste die normale, 10.4; Bosse eine Boss-Ausgabe, 11). Keine Karte verlässt das Blatt, keine kommt hinzu, es gibt keinen Talon und kein Blatt über oder unter 32 Karten.
+
+Regeln, entschieden vom Nutzer (1 bis 3) und ausgelegt von Claude am 02.11.2026 (4 bis 9):
+
+1. **Keine Karten hinzufügen oder entfernen.** Was bisher das Blatt veränderte, ist ein Karteneffekt (7.3). Charaktere unterscheiden sich durch Modifikationen auf ihrer Ausgabe, nicht durch eine andere Zusammensetzung (9).
+2. **Der Skat gehört dem Alleinspieler.** Die zwei Skatkarten sind immer Ausgaben des Spielers, gegeben wie gedrückt, auch im Handspiel (ihre Augen zählen für ihn wie immer).
+3. **Gegnerkarten haben eine eigene Rückseite.** Die Rückseite zeigt den Besitzer der Ausgabe: die Distel (oder eine freigeschaltete Rückseite, 9.3) für die Karten des Spielers und den Skat, eine Gegner-Rückseite für die Hände der Gegner, auf Wunsch je Gast oder Boss eine eigene.
+4. **Eine Karte zeigt immer die Ausgabe ihres Halters.** Wechselt sie den Halter, wechselt ihre Ausgabe mit: die Karte, die „Drei drücken“ vom linken Gegner holt, ist in der Hand des Spielers seine Ausgabe, die zurückgegebene wieder die des Gegners (8.1); beim Revolutionär tauschen die Gegner Karten, die Ausgaben bleiben bei den Plätzen (11); Heimweh holt die Karte vor dem Spiel in die Hand und damit in die Ausgabe des Spielers (7.2).
+5. **Im Stich bleibt eine Karte in der Ausgabe dessen, der sie gespielt hat.** Ihre Augen zählen für den, der den Stich macht. Eine „fette“ Karte des Spielers, die ein Gegner sticht, bringt dem Gegner die vier Augen. Das ist das verbliebene Risiko beim Ausspielen.
+6. **Der Skat bleibt auch im Ramsch die Ausgabe des Spielers**, wenn er an den Gewinner des letzten Stichs geht; er wird nie gespielt und wechselt deshalb keinen Halter.
+7. **Hausregeln und Boss-Regeln sind Regeln des Tisches** und gelten für jede Ausgabe (Alte Dame, Kleinvieh, Dicke Sau zählen die Augen jeder Karte; die Oma macht jeden Unter zur Blanko). Nur Kartenmodifikationen hängen an einer Ausgabe.
+8. **Die Ausgaben sind öffentlich, die Hände nicht.** Der Spieler sieht vor der Boss-Serie die Boss-Ausgabe neben der Regel, die Gegner-KI kennt die Ausgabe des Spielers (10.5). Wer welche Karte hält, bleibt unbekannt wie im Skat.
+9. **Aufwertungen schlafen.** Im Mittel hält der Spieler 12 von 32 Karten (Hand und Skat, 37,5 %). Liegt eine Karte bei einem Gegner, spielt in diesem Spiel dessen Ausgabe; die Aufwertung des Spielers wirkt dann nicht. Das ist das Risiko des Deckbaus (Säule 2).
+
+Im Kern (geplant, 18): Die Ausgabe des Spielers ersetzt das Blatt des Runs (`Run::edition`, je Karte die Modifikationen); die Ausgaben der Gegner ergeben sich aus dem, der am Platz sitzt (Boss oder Gast), und werden nicht gespeichert. Gegeben werden die 32 Karten wie bisher, dann wird jede Karte mit der Ausgabe ihres Halters aufgelöst.
 
 ### 7.2 Kartenmodifikationen (gezinkte Karten)
 
-Modifikationen hängen an einer konkreten Karte und gelten, **egal wer sie spielt**. Ausnahme: Modifikationen mit dem Zusatz *„nur in deiner Hand“*, die seltener und teurer sind.
+Modifikationen hängen an einer konkreten Karte **der Ausgabe des Spielers** und gelten nur, wenn er die Karte hält oder gespielt hat (ADR 0015, 7.1). Bis 02.11.2026 galten sie, egal wer die Karte spielte, mit der Ausnahme *„nur in deiner Hand“*; diese Ausnahme ist jetzt die Regel. Was das für jede Modifikation heißt, steht am Ende dieses Abschnitts.
 
 | Kategorie | Beispiel | Hebel in der Formel |
 |---|---|---|
@@ -359,19 +373,19 @@ Alles im Rauschen (bei 9000 Runs etwa ±0,5 Prozentpunkte auf Abschnitt 2, ±0,1
 
 **Welle 3 (M8, umgesetzt am 02.11.2026).** Drei Modifikationen aus der Abstimmung im Cockpit (alle „ja“), Texte wie abgestimmt, Daten in `card_mods.ron`, Kartenbild wie in der Abstimmung gezeichnet (`web/src/ui/cards.ts`, feste Plätze je Modifikation). Sie kommen wie die anderen ins Blatt: zufällig über Stempelkissen und den Kartengeber (Pool des Charakters, gewichtet nach `focus_weights`), keine ist ein Fluch. Auslegungen, entschieden von Claude am 02.11.2026:
 
-- **Wandelkarte** (`wild_card`, Effekt `Wild`): In der Hand des Spielers zwingt sie ihn nie zum Bedienen (sie zählt für die Bedienpflicht nicht mit), und wenn er sie spielt, nennt er ihre Farbe (Aktion `RunAction::PlayAs { card, suit }`, Ereignis `WildCardNamed`). Erlaubt ist jede Farbe, in der sie bedient, und jede Farbe, wenn keine andere Karte seiner Hand bedienen kann (`rules::wild_suits`, `rules::may_play`); spielt er sie aus, jede Farbe. Wird sie zur Trumpffarbe benannt, ist sie Trumpf ihres Rangs; im Grand wird nur ein Unter Trumpf. Ein Unter bleibt Unter: Die Farbe setzt seinen Platz unter den Untern (als Eichel-Unter der höchste), er bedient also nur Trumpf. Die Karte ist bis zum Spielende die benannte Karte (auf dem Tisch, für Stich und Augen), die Spitzen bleiben, wie angesagt (gezählt über die gedruckte Karte), Augen und Modifikationen bleiben. Beim nächsten Geben ist sie wieder gedruckt. In der Hand eines Gegners ist sie die gedruckte Karte („Du legst“: nur der Spieler benennt), der Kern nimmt den Gegnern die Eigenschaft beim Geben ab. Doppelte Karten (zwei Schellen-Daus) sind erlaubt wie bei der Kreide: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). „Rest abkürzen“ wartet, solange sie in der Hand ist. Sicht `CardView::wild_suits` (die Farben, die jetzt gehen) und `CardView::named` (die gedruckte Farbe einer benannten Karte); die Web-App fragt beim Tippen mit vier Karten nach der Farbe. Bot: Die Suche spielt sie wie gedruckt (`opponents::tame_game`), dann benennt `RunBot::wild_suit`: ausspielen wie gedruckt; bedienen mit einer Farbe, die den Stich nimmt, zuerst die angespielte, dann Trumpf; im Null und Ramsch eine, die ihn nicht nimmt.
-- **Glasdaus** (`glass_ace`): nur auf einem Daus (neues Feld `only_on` an der Modifikation, `CardModDef::fits`; Zufallsziehungen und die Wahl der Karte bieten ihn nur für einen Daus an, der ihn noch nicht trägt). Doppelte Augen (Effekt `MultiplyCardPoints(2)`: 22 statt 11, nach allen anderen Änderungen), für jeden, der ihn nimmt, wie jede Modifikation (ADR 0005). Zerbricht, wenn ein Gegner ihn sticht: Er liegt in einem Stich, den ein Gegner mit einer anderen Karte macht (Bedingung `ThisCardBeatenByDefender`, Effekt `BreakThisCard`, Ereignis `CardBroken`), egal wer ihn gespielt hat. Gewinnt ein Gegner mit dem Glasdaus selbst, zerbricht nichts. Er zählt in diesem Spiel noch mit und verlässt nach der Abrechnung das Blatt für den Rest des Runs; wie beim Frischen Deck tritt eine Blanko an seine Stelle (`DeckChanged`). Im Skat zerbricht er nie. „Rest abkürzen“ wartet, solange er noch gespielt werden kann.
-- **Heimweh** (`homesick`, Effekt `Homesick`): Liegt die Karte am Ende eines gewerteten Spiels im Skat (gegeben oder gedrückt; im Handspiel und im Ramsch der liegende Skat), kommt sie beim nächsten Geben in die Hand des Spielers, auch in der nächsten Serie nach dem Tresen und bei jedem Einmischen dieses Spiels (`Run::homesick`, Sicht `RunView::homesick`, Ereignis `CardCameHome`). Liegt sie nach dem Mischen woanders (Gegnerhand, Skat, Talon), tauscht sie den Platz mit einer Karte der Hand, die mit dem Zufall des Spiels gezogen wird (deterministisch; ohne Heimweh-Karte bleibt das Geben unverändert). Ein eingemischtes Spiel zählt nicht als Spiel. Ist die Karte nicht mehr im Blatt (Frisches Deck, Glasdaus), entfällt sie.
+- **Wandelkarte** (`wild_card`, Effekt `Wild`): In der Hand des Spielers zwingt sie ihn nie zum Bedienen (sie zählt für die Bedienpflicht nicht mit), und wenn er sie spielt, nennt er ihre Farbe (Aktion `RunAction::PlayAs { card, suit }`, Ereignis `WildCardNamed`). Erlaubt ist jede Farbe, in der sie bedient, und jede Farbe, wenn keine andere Karte seiner Hand bedienen kann (`rules::wild_suits`, `rules::may_play`); spielt er sie aus, jede Farbe. Wird sie zur Trumpffarbe benannt, ist sie Trumpf ihres Rangs; im Grand wird nur ein Unter Trumpf. Ein Unter bleibt Unter: Die Farbe setzt seinen Platz unter den Untern (als Eichel-Unter der höchste), er bedient also nur Trumpf. Die Karte ist bis zum Spielende die benannte Karte (auf dem Tisch, für Stich und Augen), die Spitzen bleiben, wie angesagt (gezählt über die gedruckte Karte), Augen und Modifikationen bleiben. Beim nächsten Geben ist sie wieder gedruckt. In der Hand eines Gegners ist sie die gedruckte Karte („Du legst“: nur der Spieler benennt), der Kern nimmt den Gegnern die Eigenschaft beim Geben ab (seit ADR 0015 die allgemeine Regel: Beim Gegner liegt seine Ausgabe). Doppelte Karten (zwei Schellen-Daus) sind erlaubt wie bei der Kreide: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). „Rest abkürzen“ wartet, solange sie in der Hand ist. Sicht `CardView::wild_suits` (die Farben, die jetzt gehen) und `CardView::named` (die gedruckte Farbe einer benannten Karte); die Web-App fragt beim Tippen mit vier Karten nach der Farbe. Bot: Die Suche spielt sie wie gedruckt (`opponents::tame_game`), dann benennt `RunBot::wild_suit`: ausspielen wie gedruckt; bedienen mit einer Farbe, die den Stich nimmt, zuerst die angespielte, dann Trumpf; im Null und Ramsch eine, die ihn nicht nimmt.
+- **Glasdaus** (`glass_ace`): nur auf einem Daus (neues Feld `only_on` an der Modifikation, `CardModDef::fits`; Zufallsziehungen und die Wahl der Karte bieten ihn nur für einen Daus an, der ihn noch nicht trägt). Doppelte Augen (Effekt `MultiplyCardPoints(2)`: 22 statt 11, nach allen anderen Änderungen), für jeden, der ihn nimmt, wie jede Modifikation (ADR 0005). Zerbricht, wenn ein Gegner ihn sticht: Er liegt in einem Stich, den ein Gegner mit einer anderen Karte macht (Bedingung `ThisCardBeatenByDefender`, Effekt `BreakThisCard`, Ereignis `CardBroken`), egal wer ihn gespielt hat. Gewinnt ein Gegner mit dem Glasdaus selbst, zerbricht nichts. Er zählt in diesem Spiel noch mit und verlässt nach der Abrechnung das Blatt für den Rest des Runs; wie beim Frischen Deck tritt eine Blanko an seine Stelle (`DeckChanged`). Im Skat zerbricht er nie. Seit ADR 0015 gibt es ihn nur in der Ausgabe des Spielers, und er verlässt das Blatt nicht mehr; was bleibt, ist offen (Empfehlung „Scherben“, siehe unten). „Rest abkürzen“ wartet, solange er noch gespielt werden kann.
+- **Heimweh** (`homesick`, Effekt `Homesick`): Liegt die Karte am Ende eines gewerteten Spiels im Skat (gegeben oder gedrückt; im Handspiel und im Ramsch der liegende Skat), kommt sie beim nächsten Geben in die Hand des Spielers, auch in der nächsten Serie nach dem Tresen und bei jedem Einmischen dieses Spiels (`Run::homesick`, Sicht `RunView::homesick`, Ereignis `CardCameHome`). Liegt sie nach dem Mischen woanders (Gegnerhand, Skat, Talon), tauscht sie den Platz mit einer Karte der Hand, die mit dem Zufall des Spiels gezogen wird (deterministisch; ohne Heimweh-Karte bleibt das Geben unverändert). Ein eingemischtes Spiel zählt nicht als Spiel. Ist die Karte nicht mehr im Blatt (Frisches Deck, Glasdaus), entfällt sie (seit ADR 0015 verlässt keine Karte das Blatt; Heimweh hängt an der Karte, sie kommt in der Ausgabe des Spielers).
 
 Gemessen wie Welle 2a (`docs/balance/2026-11-02-welle3.md`): Wandelkarte (HA) +0,2, Glasdaus (CA) +0,1 (Abschnitt 2 +3,5, Abschnitt 4 −1,1: er zerbricht in 70 % der Runs), Heimweh (CJ) +0,5 Punkte auf „Abschnitt 3 erreicht“ (ohne 8,9 %). Für den Bot fast ohne Wirkung; ein Mensch drückt die Heimweh-Karte bewusst und benennt die Wandelkarte gezielt. Seltenheit und Preise sind Platzhalter für `balance`.
 
-**Untot (umgesetzt am 02.11.2026, Idee des Nutzers).** Text: „Karte wird gespielt, dann aber wieder auf die Hand genommen und eine zufällige Karte abgeworfen. Einmal pro Spiel, nur im Farbspiel und Grand.“ (`undead`, Effekt `Undead`, Daten in `card_mods.ron`, Seltenheit Rare, Preis 5, beides Platzhalter für `balance`). Sie kommt wie die anderen ins Blatt (Stempelkissen, Kartengeber, Ereignisse, die eine zufällige Modifikation ziehen), ist kein Fluch und passt auf jede Karte; Bilder sind für die Bildkarten und Daus geplant, andere Karten zeigen das allgemeine Zeichen. Noch ohne Darstellung in der Web-App (erst messen, dann Oberfläche). Auslegung, entschieden von Claude am 02.11.2026:
+**Untot (umgesetzt am 02.11.2026, Idee des Nutzers).** Text: „Karte wird gespielt, dann aber wieder auf die Hand genommen und eine zufällige Karte abgeworfen. Einmal pro Spiel, nur im Farbspiel und Grand.“ (`undead`, Effekt `Undead`, Daten in `card_mods.ron`, Seltenheit Rare, Preis 5, beides Platzhalter für `balance`). Sie kommt wie die anderen ins Blatt (Stempelkissen, Kartengeber, Ereignisse, die eine zufällige Modifikation ziehen), ist kein Fluch und passt auf jede Karte; Bilder sind für die Bildkarten und Daus geplant, andere Karten zeigen das allgemeine Zeichen. Seit dem 02.11.2026 in der Web-App: Zombie-Bild auf Bildkarten, zerfetzter grüner Rand, Totenkopf, Aufsteigen mit Animation. Auslegung, entschieden von Claude am 02.11.2026:
 
 - **Regel:** Spielt der Spieler die Karte und ist der Stich voll, wird der Stich nach den normalen Regeln mit ihr entschieden, und die `OnTrickEnd`-Hooks feuern (Glasdaus, Luschenkönig, Schenken, Revolutionär sehen den Stich, wie er gespielt wurde). Danach steigt sie zurück in seine Hand, und eine andere Karte seiner Hand, gezogen mit dem Zufall des Spiels, nimmt ihren Platz im Stich ein (`Game::raise`, Ereignis `CardRose { seat, card, substitute }`). Der Stich behält seinen Gewinner; wer ihn macht, bekommt die Augen der Ersatzkarte, nicht die der untoten Karte. Die Ersatzkarte gilt als gespielt: Sie liegt im Stich, für Zählen, Augen und alles, was später auf die Stiche schaut. So bleibt jede Zahl stimmig: Jede Hand gibt pro Stich eine Karte ab, zehn Stiche mit je drei Karten, jede Karte endet in genau einem Stich, Augen in Stichen plus Skat bleiben 120.
 - **Einmal pro Spiel** je Karte (`ActiveGame::risen`), nicht in jedem Stich: Eine Karte, die jeden Stich macht und immer wiederkommt, wäre ein Daus, der das ganze Spiel gewinnt, und das Spiel würde zum Auslosen der Ersatzkarten. „Einmal kommt eine untote Karte zurück“ ist auch das Bild der Karte. Die Variante „in jedem Stich“ ist nicht gemessen (siehe 17).
 - **Nicht als letzte Karte:** Ist sie die letzte Karte seiner Hand, bleibt sie im Stich. Deshalb steigt sie nie im zehnten Stich, und „letzter Stich“-Modifikationen (Spitze, Glückspfennig) bleiben unberührt.
 - **Nur im Farbspiel und Grand** (`focus: Trump`). Im Null verliert der Spieler mit dem ersten Stich, das Spiel ist sofort aus; eine Ersatzkarte würde dort die offene Hand (Ouvert) und die Stilboni (Siebenen unterlaufen, nie bedient) nach Zufall ändern. Im Ramsch spielt jeder für sich, und die Augen der Ersatzkarte entschieden den Verlierer nach Zufall. In beiden ist sie eine normale Karte.
-- **Nur in der Hand des Spielers** wie die Wandelkarte: Spielt ein Gegner sie, passiert nichts.
+- **Nur in der Ausgabe des Spielers** (ADR 0015): Gegner haben ihre eigene Ausgabe der Karte.
 - **Spitzen** bleiben, wie angesagt: Sie werden über die zwölf Karten bei der Ansage gezählt, die Ersatzkarte ändert daran nichts. **Schneider und Schwarz** zählen wie immer über Augen und Stiche; die Stichzahl ändert sich nie, die Augen um die Differenz der beiden Karten.
 - **Zufall:** Beim Geben wird aus dem Zufall des Spiels ein eigener Strom abgezweigt, wenn eine untote Karte im Spiel ist (`ActiveGame::undead_rng`, nach allem, was das Geben zieht; Geben, Kiebitz und Heimweh bleiben unverändert). Spielstände von vorher leiten ihn aus dem Seed ab.
 - **Rest abkürzen** wartet, solange eine Karte der Hand noch steigen kann (die Ersatzkarte ist Zufall). **Glasdaus:** Liegt er als Ersatzkarte in einem Gegnerstich, zerbricht er nicht (er wurde nicht gestochen). Eine untote Wandelkarte kommt als die benannte Karte zurück und bleibt bis zum Spielende so. **Drei drücken, Heimweh, Kreide** wirken vor dem ersten Stich und ändern nichts an der Regel.
@@ -379,17 +393,52 @@ Gemessen wie Welle 2a (`docs/balance/2026-11-02-welle3.md`): Wandelkarte (HA) +0
 
 Tests: `core/src/run/undead_tests.rs`, je Regelkante einer.
 
-### 7.3 Karten hinzufügen und entfernen
+#### Modifikationen in der eigenen Ausgabe (ADR 0015)
 
-- **Entfernen**: Luschen (7, 8, 9) rauswerfen ist der naheliegende Pfad. Jede entfernte Karte wird durch eine Blanko ersetzt (siehe 7.1). Blankos können später ebenfalls entfernt werden, dann wird das Blatt wirklich kleiner und es gibt weniger Stiche. *Offen: ob Stiche unter 10 sinnvoll sind.*
-- **Hinzufügen**: Fünfter Bube (Trumpf, eigene Spitze), Doppel-Ass, „Sechs“ als neue Lusche mit Sondereffekt, Joker-Karten mit wählbarer Farbe beim Ausspielen.
-- **Kopieren**: Eine bestehende Karte inklusive Modifikationen duplizieren.
+Ausgelegt von Claude am 02.11.2026, offen markierte Punkte stehen als Frage im Cockpit (17). Grundsatz: Eine Modifikation wirkt, wenn die Karte in der Hand oder im Skat des Spielers liegt oder er sie gespielt hat. Liegt die Karte bei einem Gegner, gibt es sie in diesem Spiel nicht. „Egal, wer sie spielt“ verschwindet aus allen Texten.
+
+| Modifikation | bis ADR 0015 | mit eigener Ausgabe |
+|---|---|---|
+| Fett, Goldrand, Bleigewicht | Augen für jeden, der den Stich macht | unverändert für den Stich, aber nur, wenn der Spieler die Karte hält: Spielt er sie und ein Gegner sticht, zählen die Augen für den Gegner (7.1, Regel 5) |
+| Gezinkt, Doppelt gezinkt, Unter ehrenhalber | stach auch für die Gegner | nur für den Spieler; nie mehr ein gezinkter Trumpf gegen ihn |
+| Stempel, Krone, Siegel, Hufeisen, Maßband, Schwarze Katze | wirkten bei der Ansage, egal wer die Karte hielt (der Kern prüft alle 32 Karten im Spiel) | **offen (Frage im Cockpit)**: Folgt man ADR 0015 streng, wirken sie nur, wenn die Karte unter den zwölf Karten des Spielers liegt (37,5 % statt immer). Dann lenken sie die Wahl der Trumpffarbe, sind aber deutlich schwächer; Preise und Seltenheit misst `balance` neu. Empfohlen: streng |
+| Spitze, Glückspfennig | wer die Karte im letzten Stich spielte | nur, wenn der Spieler sie spielt und damit den letzten Stich macht |
+| Schlusslicht | ein Gegner macht mit der Karte den letzten Stich eines gewonnenen Null | in einem gewonnenen Null macht der Spieler keinen Stich; neue Auslegung: **Spielt der Spieler sie in den letzten Stich eines gewonnenen Null**, +2 Stufen (er muss sie bis zum Schluss halten) |
+| Aufgebrezelt | zwei Stufen höher: beim Gegner gut (er sticht), beim Spieler gefährlich | wirkt nur noch beim Spieler, also nur noch als Gefahr im Null und als Doppelt gezinkt im Farbspiel. Vorschlag an `content`: „Im Null zwei Stufen tiefer, sonst zwei Stufen höher“ oder streichen |
+| Unsichtbar, Attrappe (gewinnt nie) | im Null gut beim Spieler, beim Gegner schlecht | nur beim Spieler: ein reines Null-Werkzeug |
+| Angeknackst (Fluch) | gewinnt nie, auch beim Gegner (dann ein Vorteil) | ein reiner Nachteil der eigenen Karte, bezahlt mit Groschen |
+| Durchsichtig, Bierfleck (Erkennen), Attrappe (Erkennen) | du siehst, wer die Karte hält | in der eigenen Hand wertlos. **Offen (Frage im Cockpit)**; empfohlen: Informations-Wirkungen sind Wissen des Spielers über die Karte, nicht über seine Ausgabe, und zeigen weiter, wer sie hält, auch wenn es die Ausgabe eines Gegners ist. Sie verändern die Karte des Gegners nicht, deshalb kein Widerspruch zu „jeder spielt mit seinen eigenen Modifikationen“ |
+| Bierfleck (−5 Augen), Schwarze Katze, Ramponiert | Flüche für jeden Halter | Flüche der eigenen Karte, sonst unverändert |
+| Wandelkarte | nur der Spieler benennt, der Kern nahm sie den Gegnern beim Geben ab | dieselbe Wirkung ohne Sonderregel: Beim Gegner gibt es sie nicht |
+| Glasdaus | doppelte Augen für jeden; zerbricht, wenn ein Gegner ihn sticht, und verlässt das Blatt (eine Blanko tritt an seine Stelle) | nur in der Ausgabe des Spielers; zerbricht, wenn er ihn spielt und ein Gegner den Stich macht. **Offen (Frage im Cockpit), was dann bleibt**; empfohlen: Der Daus bekommt „Scherben“ (`shards`) statt des Glasdaus: Er ist in der Ausgabe des Spielers eine Blanko (bedient nie, gewinnt nie, 0 Augen), bis Frisches Deck ihn heilt (7.3). Das ist das nächste Gegenstück zum Verlassen des Blatts, trifft aber nur noch den Spieler |
+| Heimweh | eine Karte aus dem Skat kommt beim nächsten Geben in die Hand | unverändert: Der Skat ist immer die Ausgabe des Spielers, die Karte kommt mit dieser Ausgabe zurück |
+| Untot (in Arbeit, Zweig `feat/undead`) | „nie für die Karte eines Gegners“ | dieselbe Wirkung ohne Sonderregel |
+
+Folgen für die Messungen: Augen- und Rang-Modifikationen werden stärker, weil sie den Gegnern nie mehr helfen; die Modifikationen auf die Trumpffarbe schwächer (wenn streng); Glasdaus und Grandspieler verlieren ihr Risiko beim Gegner (22 Augen, Goldrand +8 für die Gegner). Alle Zahlen in 7.2, 8 und 12 sind bis zur nächsten Messung vorläufig (18.4).
+
+### 7.3 Karten hinzufügen und entfernen (entfällt seit ADR 0015)
+
+Bis 02.11.2026 geplant und teils umgesetzt: Luschen entfernen (eine Blanko tritt an ihre Stelle), Fünfter Bube, Doppel-Ass, „Sechs“, Joker, Kopieren einer Karte samt Modifikationen; ein Talon über 32 Karten.
+
+Seit ADR 0015 verlässt keine Karte das Blatt und keine kommt hinzu. Was davon bleibt, ist ein Karteneffekt auf der Ausgabe des Spielers (entschieden von Claude am 02.11.2026, Frisches Deck als Frage im Cockpit):
+
+| Bisher | Mit eigener Ausgabe |
+|---|---|
+| Frisches Deck: eine Karte entfernen, eine Blanko tritt an ihre Stelle | **offen (Frage im Cockpit)**; empfohlen: „Frisches Deck: Eine Karte deiner Ausgabe ist wieder wie neu. Alle Modifikationen fallen ab, auch Flüche und Scherben.“ Ein dünnes Blatt gibt es nicht mehr (die Karten im Spiel sind immer dieselben 32), dafür lohnt sich das Reinigen, weil Flüche jetzt nur den Spieler treffen |
+| Luschen entfernen, damit mehr Augen auf die Hand kommen | entfällt; der Hebel Augen läuft über Fett, Goldrand, Bleigewicht und Hausregeln |
+| Fünfter Bube | Unter ehrenhalber (gibt es) |
+| Doppel-Ass, Joker | Kreide (8.3) und Wandelkarte (7.2): eine eigene Karte wird für ein Spiel zu einer anderen; doppelte Karten im Stich wie in 4.4 |
+| Kopieren | Idee für `content`: „Abklatsch“, die Modifikationen einer eigenen Karte auf eine zweite übertragen |
+| Startblatt des Nullspielers (ohne Unter, vier Siebener mehr) | Modifikation auf seinen Untern (9.2) |
+| Glasdaus zerbricht und verlässt das Blatt | Scherben auf der Ausgabe des Spielers (7.2) |
+
+Blankos gibt es weiter, aber nur als Wirkung auf eine Karte: Die Oma macht für ihre Serie jeden Unter zur Blanko (Tischregel, jede Ausgabe), Scherben machen den eigenen Daus zur Blanko. Ein Stich bleibt immer einer von zehn.
 
 ### 7.4 Das Risiko sichtbar machen
 
-Das UI zeigt bei jeder Blatt-Änderung die Wahrscheinlichkeit, dass die Karte in der eigenen Hand oder im Skat landet (12 von 32 Karten, also 37,5 % im Grundblatt). Spieler sollen dieses Risiko spüren, nicht nachrechnen müssen.
+Bis ADR 0015 zeigte das UI bei jeder Blatt-Änderung die Wahrscheinlichkeit, dass die Karte in der eigenen Hand oder im Skat landet (12 von n Karten, 37,5 % im Grundblatt, weniger mit Talon). Der Kern rechnet das aus (`DealOdds`, Feld `deal_odds` der Sicht, wasm-Funktion `dealOdds`).
 
-Der Kern rechnet das aus (`DealOdds`, Feld `deal_odds` der Sicht, wasm-Funktion `dealOdds`). Gemischt wird immer das ganze Blatt einschließlich Blankos und Talon, gegeben werden die ersten 32 Karten. Deshalb hat jede Karte dieselbe Chance, und sie hängt nur an der Blattgröße: 12 von n Karten. Eine entfernte Karte wird zur Blanko und ändert nichts, jede Karte über 32 senkt die Chance aller (33 Karten: 36,4 %).
+Seit ADR 0015 ist das Blatt immer 32 Karten groß, die Chance also immer 12 von 32: „Deine Ausgabe spielt in 37,5 % der Spiele, sonst hält ein Gegner diese Karte in seiner Ausgabe.“ `DealOdds` bleibt als Sicht, rechnet aber nur noch mit 32 (der Talon fällt weg). Das Risiko, das der Spieler spüren soll, ist nicht mehr „hilft dem Gegner“, sondern „schläft“ (7.1, Regel 9); die Anzeige beim Stempelkissen sagt das in einem Satz.
 
 ---
 
@@ -513,6 +562,8 @@ Einzeln gemessen wie Welle 2a (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --
 | Lockvogel | 42,8 / 13,0 / 3,7 | +1,1 | Uncommon, 6 | wie der Kiebitz; der Bot fordert fast immer, Menschen zählen gezielter |
 | Spickzettel | 40,8 / 12,3 / 3,5 | +0,3 | Common, 4 | nur Handspiele (beim Bot 6 % der Spiele); für Menschen |
 
+**Hausregeln mit eigener Ausgabe (ADR 0015, ausgelegt von Claude am 02.11.2026).** Hausregeln sind Regeln des Tisches und gelten für jede Ausgabe (7.1, Regel 7): Alte Dame, Kleinvieh und Dicke Sau zählen die Augen jeder Karte, wer sie auch hält. Skatpfleger zählt die Skatkarten in der Ausgabe des Spielers. **Drei drücken**: Die Karte, die vom linken Gegner kommt, ist in der Hand des Spielers seine Ausgabe (mit seinen Modifikationen); die Karte, die zurückgeht, ist beim Gegner wieder dessen Ausgabe. „Die wenigsten Augen“ (`rules::returned_discard`) misst an den drei Karten, wie der Spieler sie hält, also in seiner Ausgabe.
+
 
 
 ### 8.2 Stammtisch-Figuren (passive Relikte mit Persönlichkeit)
@@ -530,7 +581,7 @@ Einzeln gemessen wie Welle 2a (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --
 
 Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhalter für `balance`). Auslegungen, entschieden von Claude am 01.11.2026:
 
-- **Kiebitz** (`kibitzer`, Effekt `PeekDefenderCards(1)`): eine zufällige Karte eines Gegners und wer sie hält, gezogen mit dem Zufall des Spiels (das Geben bleibt gleich). Sie steht in der Sicht unter `revealed` und kommt als Ereignis `CardPeeked`, sonst nichts.
+- **Kiebitz** (`kibitzer`, Effekt `PeekDefenderCards(1)`): eine zufällige Karte eines Gegners und wer sie hält, gezogen mit dem Zufall des Spiels (das Geben bleibt gleich). Sie steht in der Sicht unter `revealed` und kommt als Ereignis `CardPeeked`, sonst nichts. Seit ADR 0015 zeigt er die Karte in der Ausgabe des Gegners (beim Boss mit dessen Modifikationen); ebenso der Zaungast (9.5).
 - **Wirt** (`landlord`, `ShopDiscount(20)`): gilt für Relikte, Verbrauchsgegenstände und die Neuauslage, gerundet, mindestens 1 Groschen. Verkauft wird weiter zum halben vollen Preis, also kein Gewinn durch Kaufen und Verkaufen.
 - **Oma** (`granny`, `SeriesSkatSwap`): Ein gedrückter Bube lässt sich im echten Skat nicht sinnvoll zurücknehmen, weil der Spieler beim Drücken alles sieht. Umgesetzt als: Einmal pro Serie darf der Spieler in einem Handspiel vor seiner ersten Karte einen Buben aus dem Skat nehmen und dafür eine Karte drücken; das Spiel bleibt Hand. Ob ein Bube im Skat liegt, verrät die Oma (`can_take_from_skat`), seit M5 auch welcher (`skat_swap_cards`). Hebel: Hand plus Trumpf. Nur Alleinspieler.
 - **Opa** (`grandpa`, M5, `SeriesSkatSwap` für Daus): wie die Oma, aber ein Daus aus dem Skat. Oma und Opa zusammen geben zwei Täusche pro Serie, je einen (4.4).
@@ -538,14 +589,14 @@ Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhal
 - **Angeber** (`show_off`, `RequireOuvert` plus eine Stufe bei Ouvert): Für den Alleinspieler hieße „immer Ouvert“ immer Schwarz angesagt, das wäre Selbstmord. Deshalb nur im Pool des Nullspielers (Null Ouvert und Null Ouvert Hand).
 - **Stammgast** (`regular_guest`, Zähler `regular` plus `MultiplyGameValue(2)` ab 4): Hebel Spielwert. Der Multiplikator fürs Spätspiel, wer ihn früh kauft, wartet zwei Abende. Nur gewonnene Spiele zählen doppelt.
 - **Schneider** (`tailor`, `SchneiderFromDeclarerPoints(80, 89)`): Hebel Schneider, ein Wortspiel mit dem Handwerk. Nur Alleinspieler. Er kam statt des zuerst geplanten Opa, den der Kern in M4 nicht neben der Oma tragen konnte; seit M5 gibt es beide.
-- **Zähler** (`card_counter`, `ShowCount`): zeigt Augen beider Seiten aus den Stichen (plus den Skat, sobald der Spieler ihn kennt) und die Summe der Karten, die der Spieler noch nicht gesehen hat. Der Talon zählt dazu, weil niemand weiß, welche Karten dort liegen; so verrät der Zähler nie mehr als ein perfekter Mitzähler weiß.
+- **Zähler** (`card_counter`, `ShowCount`): zeigt Augen beider Seiten aus den Stichen (plus den Skat, sobald der Spieler ihn kennt) und die Summe der Karten, die der Spieler noch nicht gesehen hat. Der Talon zählt dazu, weil niemand weiß, welche Karten dort liegen; so verrät der Zähler nie mehr als ein perfekter Mitzähler weiß. Seit ADR 0015 gibt es keinen Talon; jede ungesehene Karte liegt bei einem der beiden Gegner. Hat der Boss eine Ausgabe mit Augen-Modifikationen, hängt die Summe davon ab, wer die Karte hält: Der Zähler zeigt dann den kleinsten und den größten möglichen Wert („noch 34 bis 38“), damit er nicht mehr verrät als ein Mitzähler weiß.
 
 ### 8.3 Verbrauchsgegenstände
 
 Einmal nutzbare Karten, maximal zwei auf der Hand.
 
-- **Frisches Deck**: Entferne eine Karte dauerhaft.
-- **Stempelkissen**: Verpasse einer Karte eine Modifikation.
+- **Frisches Deck**: Entferne eine Karte dauerhaft. Seit ADR 0015 nicht mehr möglich; neue Wirkung offen, empfohlen „eine Karte deiner Ausgabe ist wieder wie neu, alle Modifikationen fallen ab“ (7.3).
+- **Stempelkissen**: Verpasse einer Karte eine Modifikation (seit ADR 0015: einer Karte deiner Ausgabe; die Wahl hat immer 32 Karten).
 - **Ein Bier**: Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie (seit 01.11.2026; vorher +1 Pass).
 - **Runde Schnaps**: Beide Gegner spielen das nächste Spiel mit offenem Blatt.
 - **Neues Blatt**: Sofort neu mischen und geben, ohne dass es ein Einmischen kostet.
@@ -566,7 +617,7 @@ Gewählt am 01.11.2026 mit dem Einmischen: Ein Bier und Kräuter wirken **für d
 Auslegungen, entschieden von Claude am 01.11.2026:
 
 - **Magenbitter wird vom nächsten angesagten Spiel verbraucht, nicht erst vom nächsten verlorenen.** So ist er eine Entscheidung vor einem riskanten Spiel (Grand Hand, Schneider angesagt) statt einer Versicherung, die man kauft und vergisst. Wer ihn trinkt und gewinnt, hat ihn umsonst getrunken.
-- **Kreide ist vorübergehend** (Entscheidung des Nutzers): Das Blatt des Runs behält die gedruckte Karte, mit dem nächsten Geben ist sie wieder, was gedruckt ist. Einmischen (auch „Neues Blatt“) beendet das Spiel und damit auch die Kreide; „Reue“ bringt das alte Blatt samt Kreide zurück. Im Kern ersetzt `Game::chalk` die Karte überall, wo das Spiel sie führt (Hand, die zwölf Karten des Alleinspielers, die Karten im Spiel, das Blatt), Ereignis `CardChalked`. Doppelte Karten (zwei Grün-Zehnen) sind wie beim veränderbaren Blatt erlaubt: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). Die Spitzen zählen über die umgemalte Karte, weil sie für dieses Spiel diese Karte ist; ein gemalter Trumpf-Daus kann damit eine Spitze mehr bringen.
+- **Kreide ist vorübergehend** (Entscheidung des Nutzers). Seit ADR 0015 malt sie die Ausgabe des Spielers um, nur für dieses Spiel, und nur, solange er die Karte hält oder gespielt hat: Das Blatt des Runs behält die gedruckte Karte, mit dem nächsten Geben ist sie wieder, was gedruckt ist. Einmischen (auch „Neues Blatt“) beendet das Spiel und damit auch die Kreide; „Reue“ bringt das alte Blatt samt Kreide zurück. Im Kern ersetzt `Game::chalk` die Karte überall, wo das Spiel sie führt (Hand, die zwölf Karten des Alleinspielers, die Karten im Spiel, das Blatt), Ereignis `CardChalked`. Doppelte Karten (zwei Grün-Zehnen) sind wie beim veränderbaren Blatt erlaubt: Bei gleicher Stärke behält die früher gespielte den Stich (4.4). Die Spitzen zählen über die umgemalte Karte, weil sie für dieses Spiel diese Karte ist; ein gemalter Trumpf-Daus kann damit eine Spitze mehr bringen.
 - **Doppelkorn und Magenbitter** wirken auf die nächste Ansage im Sinne von `after_declaration`, wie „Letzte Runde“: Auch der Ramsch des Ramschers zählt als angesagtes Spiel. Während des Spiels (nach der Ansage) sind sie nicht nutzbar, damit niemand glaubt, sie wirkten noch aufs laufende Spiel.
 - **Kurzer** gilt als Information: Gegen den Kiebitz-Mörder ist er nicht nutzbar. Die Wertvorschau zählt den gesehenen Skat als bekannt.
 - **Bot** (`run/bot.rs`, einfache Regeln, nicht kalibriert): Kurzer direkt vor dem Aufnehmen des Skats (der Bot nutzt das Gesehene nicht), nach dem Skat Kreide auf die billigste Beikarte in die Trumpffarbe eines Farbspiels, dann Doppelkorn vor einem nicht schwachen und Magenbitter vor einem schwachen Spiel, nie vor einem Null; Kräuter wie Ein Bier. Reue nutzt der Bot nie (Kaufwert 0).
@@ -590,13 +641,13 @@ Gemessen (`docs/balance/2026-11-02-welle3.md`, wie Welle 2a): Skatgott +4,7 auf 
 
 ## 9. Charaktere
 
-Jeder Charakter hat ein eigenes Startblatt, Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Grandspieler, der Zaungast und die Wirtin (je über eine Freischaltung, 9.3).
+Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Grandspieler, der Zaungast und die Wirtin (je über eine Freischaltung, 9.3).
 
 ### 9.1 Der Alleinspieler (Standard)
 
 Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null. Null zählt seit dem 01.11.2026 für alle Charaktere nach der Formel mit Stilbonus (9.2); vorher galt beim Alleinspieler die Skatordnung (23, 35, 46, 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
 
-Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt (`remove`, `add`, seit dem 01.11.2026 auch `mods`: Kartenmodifikationen ab Start), Startrelikte, Start-Verbrauchsgegenstände (`start_consumables`), optional eigene Zielwerte, Null-Wertung, die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2) und die eigene Regel (`rule`, `CharacterRule`). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
+Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt (`remove`, `add`, seit dem 01.11.2026 auch `mods`: Kartenmodifikationen ab Start; seit ADR 0015 nur noch `mods`, der Ladevorgang lehnt `remove` und `add` ab), Startrelikte, Start-Verbrauchsgegenstände (`start_consumables`), optional eigene Zielwerte, Null-Wertung, die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2) und die eigene Regel (`rule`, `CharacterRule`). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
 
 **Die eigene Regel** (`rule`) hat zwei Teile, beide Daten: `passive` und `hooks` sind dieselbe Hook-API wie bei Relikten (Abschnitt 8) und wirken wie ein Relikt, das der Charakter immer hat, ohne Platz zu belegen; in der Wertung steht die Zeile mit der Quelle `Source::Character`. `passes`, `relic_slots` und `payout_factor` ändern die Run-Struktur aus `run.ron`: Pässe pro Serie und Relikt-Plätze als Zuschlag (negativ: weniger, nie unter 0), die Groschen einer gewonnenen Serie als Faktor (`Payout::bonus` ist der Zuschlag). Die Einsatz-Leiter (5.4) gilt pro Charakter von selbst (`MetaState::stakes` ist nach Charakter geschlüsselt).
 
@@ -615,7 +666,7 @@ Stilbonus:    +1 je Stich, den du mit einer 7 „unterlaufen“ hast
               +3 „Kurzschluss“: Gegner haben nach 5 Stichen alle Augen
 ```
 
-Das Startblatt des Nullspielers hat keine Buben, dafür vier zusätzliche Siebener. Seine Upgrades drehen die Logik um: Karten werden „leiser“ statt stärker, Luschen sind Gold, Asse sind Flüche. Der Tresen bietet andere Modifikationen (z. B. „Unsichtbar“: diese Karte kann nie einen Stich gewinnen).
+Das Startblatt des Nullspielers hat keine Buben, dafür vier zusätzliche Siebener (bis ADR 0015; jetzt eine Modifikation auf seinen Untern, 9.8). Seine Upgrades drehen die Logik um: Karten werden „leiser“ statt stärker, Luschen sind Gold, Asse sind Flüche. Der Tresen bietet andere Modifikationen (z. B. „Unsichtbar“: diese Karte kann nie einen Stich gewinnen).
 
 Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn ein Run mit dem Alleinspieler gewonnen wurde.
 
@@ -644,7 +695,7 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 **Null für alle (ADR 0012, umgesetzt in M6).** Jeder Charakter darf Farbspiel, Grand und Null ansagen, in der Reihenfolge der Skatordnung (ADR 0011): aus der Hand Null Hand und Null Ouvert Hand, nach dem Skat Null und Null Ouvert. Was die Charaktere unterscheidet, sind nur noch Daten:
 
 - **Ansage**: Der Dialog zeigt jedem Charakter sechs Spielarten (Eichel, Grün, Rot, Schellen, Grand, Null); bei Null die Null-Stufen dieser Phase mit Wert (`DeclareOptions.null_risks`). `null_style` sagt, ob ein gewonnenes Null einen Stilbonus bekommt. Beide Charaktere werten Null mit der Formel oben (entschieden am 01.11.2026: eine Null-Wertung für alle, damit dasselbe Spiel überall gleich zählt; `Fixed` bleibt als Datenoption). Ramsch gibt es weiter nur beim Ramscher.
-- **Der Nullspieler bleibt Spezialist**: Startblatt ohne Unter mit acht Siebenern, Kiebitz, Formel-Wertung, und am Tresen öfter Null-Relikte. Er darf auch Farbe und Grand; ohne Unter ist jedes seiner Trumpfspiele „ohne 4“.
+- **Der Nullspieler bleibt Spezialist**: Startblatt ohne Unter mit acht Siebenern (seit ADR 0015 ersetzt, 9.8), Kiebitz, Formel-Wertung, und am Tresen öfter Null-Relikte. Er darf auch Farbe und Grand; ohne Unter ist jedes seiner Trumpfspiele „ohne 4“.
 - **Gemeinsamer Pool**: Jedes Relikt und jede Modifikation liegt bei jedem Charakter (die Null-Hausregeln, „Unsichtbar“, „Bleigewicht“, „Schlusslicht“, „Aufgebrezelt“, „Attrappe“ auch beim Alleinspieler). Das neue Feld `focus` (`GameFocus`: `All`, `Trump` für Farbspiel und Grand, `Null`) sagt, für welche Spielart ein Inhalt gemacht ist. `focus_weights` in `characters.ron` gewichtet damit Tresen, Stempelkissen und Ereignisse in Prozent der Seltenheit: Alleinspieler Trump 100, Null 50; Nullspieler Trump 50, Null 200; `All` immer 100. Kein Code-Zweig pro Charakter. Relikte für Trumpfspiele, die im Null Unsinn täten (Spitze, Schenken, Auf dem Trockenen), schließen Null in ihren Bedingungen aus (`Not(NullGame)`). Der Angeber verlangt Farbe oder Grand Ouvert Hand, sonst Null Ouvert.
 - **Bot** (`core/src/run/bot.rs`): Aus der Hand spielt er Null Ouvert Hand ohne offene Karte, Farbe oder Grand Hand mit acht Trümpfen oder einer Ansage; sonst nimmt er den Skat auf. Mit zwölf Karten vergleicht er das Farbspiel oder den Grand der Heuristik mit Null (die zwei offensten Karten gedrückt, Null Ouvert ohne offene Karte) nach dem erwarteten Ergebnis ohne Relikte (`suit_expected_score`, `null_expected_score`; Gewinnquoten `SUIT_WIN_PERCENT`, `GRAND_WIN_PERCENT`, `NULL_WIN_PERCENT`, gemessen mit dem PIMC-Spieler). Verloren zählt doppelt. Ein Blatt, das für Farbe und Grand schwach ist und mehr als fünf offene Karten hat, wirft er weg. Unter dem Schieber (nur Hand) spielt er Null Hand nur mit höchstens zwei offenen Karten (`NULL_HAND_MAX_EXPOSED`), die er ohne Skat nicht loswird; beim Schwarzen Peter nie Null, weil ein gewonnenes Null nie Schneider ist und nichts zählt.
 - **Alte Spielstände** laden weiter: Die neuen Felder (`focus`, `focus_weights`, `character_factors`) haben Standardwerte, der Charakter im Spielstand bleibt gültig. `RunError::NullNotAvailable` bleibt als Fehlercode stehen, kommt aber nicht mehr vor.
@@ -721,14 +772,14 @@ Ein einfacher Grand Schneider ist schon die Freischaltung `grand_schneider` (im 
 
 Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreichbar, weil er Abschnitt 5 kaum schafft; für Menschen ist sie das Ziel des ersten Runs, wie in 9.2 entschieden.
 
-**Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
+**Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Seit ADR 0015 zeigt die Rückseite, wessen Ausgabe eine Karte ist: Die Distel (oder die gewählte) gehört dem Spieler und dem Skat; die Hände der Gegner zeigen eine Gegner-Rückseite, die als Daten am Gast oder Boss hängt (`back` in `guests.ron` und `bosses.ron`, ohne Angabe eine gemeinsame Rückseite der Stammgäste). Die Gegner-Rückseiten sind keine Freischaltung und nicht wählbar. Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
 
 ### 9.4 Der Grandspieler
 
 Entschieden vom Nutzer am 01.11.2026. Lebt für den Grand.
 
 - **Regel**: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger, gewonnen wie verloren. Daten: zwei `OnDeclare`-Hooks mit `AddLevels(1)` bei `GameIs(Grand)` und `AddLevels(-1)` bei `SuitGame`. Null und Ramsch bleiben unverändert. Nie unter eine Stufe: Die Wertung rechnet `Stufen = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)` (4.2); ein Farbspiel hat nach der Skatordnung mindestens zwei Stufen (mit oder ohne 1, Spiel 1), nach dem Abzug also mindestens eine, und kommen weitere Abzüge dazu, hält die Formel bei 1.
-- **Startblatt**: das 32er-Blatt, der Eichel-Daus (`CA`) mit Goldrand (`gold_rim`, +8 Augen). Ursprünglich war ein gezinkter Eichel-Unter geplant; der ist aber ohnehin der höchste Trumpf, die Modifikation hätte kaum gewirkt (geändert am 01.11.2026). Startrelikte: keine.
+- **Startblatt**: das 32er-Blatt, der Eichel-Daus (`CA`) mit Goldrand (`gold_rim`, +8 Augen). Seit ADR 0015 nur in seiner Ausgabe (9.8). Ursprünglich war ein gezinkter Eichel-Unter geplant; der ist aber ohnehin der höchste Trumpf, die Modifikation hätte kaum gewirkt (geändert am 01.11.2026). Startrelikte: keine.
 - **Tresen**: `focus_weights` Trump 120, Null 50.
 - **Zielwerte**: eigene seit 02.11.2026, vorne rund 1,4-mal der Alleinspieler, hinten flach (5.2).
 
@@ -753,6 +804,26 @@ Entschieden vom Nutzer am 01.11.2026 (als „Wirt“; der Name ist an die Figur 
 
 - **Der Ramscher**: Spielt Ramsch, gewinnt mit den wenigsten Augen. Eigenes Scoring.
 - **Der Schieber**: Sieht immer den Skat vor der Ansage, aber alle Spiele sind Hand.
+
+### 9.8 Grunddecks als Ausgaben (ADR 0015)
+
+Seit ADR 0015 unterscheidet sich das Grunddeck eines Charakters nur durch Modifikationen auf seiner Ausgabe. Ziel der Vorschläge (Claude, 02.11.2026): die Eigenart jedes Charakters erhalten und seine gemessene Stärke (5.2) so wenig wie möglich verschieben. Gemessen wird erst, wenn die Simulationen wieder laufen (18.4).
+
+| Charakter | Grunddeck bis ADR 0015 | Ausgabe ab ADR 0015 | Erwartete Verschiebung |
+|---|---|---|---|
+| Alleinspieler | 32er-Blatt | normale Ausgabe, keine Modifikationen | keine (Maßstab) |
+| Nullspieler | ohne Unter, vier Siebener mehr | **offen (Frage im Cockpit)**, empfohlen Variante A unten: seine vier Unter tragen „Abgestuft“ | im Null etwas leichter, im Farbspiel etwas schwerer, siehe unten |
+| Grandspieler | Eichel-Daus mit Goldrand | unverändert: Eichel-Daus mit Goldrand, aber nur in seiner Ausgabe | stärker: Die Gegner bekommen die +8 nicht mehr, wenn sie den Daus halten (20 von 32 Spielen); bei Bedarf hebt `balance` seine Zielwerte |
+| Zaungast | 32er-Blatt | normale Ausgabe | keine (seine Eigenart ist die Regel) |
+| Wirtin | 32er-Blatt | normale Ausgabe | keine (ihre Eigenart ist die Regel) |
+
+**Der Nullspieler: Ersatz für „ohne Unter, vier Siebener mehr“.** Bisher hatte niemand am Tisch einen Unter, und es gab jede Sieben doppelt. Für seine eigene Hand war das ein Blatt aus 32 Karten mit acht Siebenern; für die Gegner hieß es auch: keine Trümpfe aus Untern und mehr niedrige Karten. Varianten:
+
+- **A (empfohlen): neue Modifikation „Abgestuft“ (`demoted`, nur auf Untern)**: „In deiner Hand ist dieser Unter eine Sieben seiner Farbe: kein Trumpf, keine Spitze, keine Augen.“ Seine Hand zieht damit genau wie bisher aus 32 Karten mit acht Karten, die für ihn Siebenen sind; Spitzen zählt er „ohne“ wie bisher (4.4). Anders als bisher hält ein Gegner, der einen Unter bekommt, einen echten Unter: Im Null ist das eine mittlere Karte, die eher sticht (leichter für ihn), im Farbspiel ein Trumpf gegen ihn (schwerer). Eine Sieben kann doppelt im Stich liegen; bei Gleichstand behält die früher gespielte ihn (4.4). Neue Wirkung im Kern (`Demote`), wie die Kreide eine Karte, die für ihr Spiel eine andere ist.
+- **B: „Unsichtbar“ auf seinen vier Untern** (gibt es schon): Die Unter gewinnen nie, bedienen aber. Im Null stärker als eine Sieben (eine Sieben kann einen Stich machen, wenn keiner bedient). Im Farbspiel bleiben sie Trumpf, und weil die Spitzen über die gedruckte Trumpfordnung zählen, zählte er „mit“ Spitzen über Trümpfe, die nie stechen; das müsste eine Ausnahme abfangen. Stärker als bisher.
+- **C: Normale Unter, dafür Null-Werkzeuge auf hohen Karten**, etwa „Attrappe“ auf allen vier Daus (gewinnen nie, er sieht, wer sie hält). Einfach und mit vorhandenen Modifikationen; sein Farbspiel wird aber normal, er wäre ein Alleinspieler mit Null-Vorteil und verlöre seine Eigenart „kein Trumpfspieler“.
+
+Mit A bleibt die Oma weiter außerhalb seines Pools (sie macht auch seine abgestuften Unter zur Blanko, im Null ein Geschenk, 17). Seine drei Einmischen, Kiebitz, Formel-Wertung und `focus_weights` bleiben.
 
 ---
 
@@ -788,6 +859,17 @@ Entschieden am 01.11.2026 (Cockpit): Die normalen Gegner sind wechselnde Stammg�
 - Spielstände von vorher bekommen die Gäste der laufenden Serie aus dem Seed, ab der nächsten Serie wie oben.
 - Jeder Gast hat drei kurze Sprüche (Begrüßung, eigener Stich, Stich des Spielers). Die Oberfläche zeigt selten einen davon als kleine Sprechblase in seinem Kasten: beim ersten Spiel einer Serie und höchstens etwa jedes zweite Spiel nach einem Stich ab 10 Augen. Nie zusammen mit einem Hinweis des Wirts.
 - Kein Einfluss auf Spiel und KI.
+- **Ausgabe** (ADR 0015): Stammgäste spielen die normale Ausgabe ohne Modifikationen. Ob einzelne Gäste später eine leichte eigene Note bekommen (eine Modifikation auf einer Karte, passend zum Gesicht), ist eine Frage im Cockpit; empfohlen ist, erst die Bosse zu messen. Ihre Karten zeigen eine gemeinsame Gegner-Rückseite (9.3).
+
+### 10.5 Was die KI über Ausgaben weiß (ADR 0015)
+
+Ausgelegt von Claude am 02.11.2026:
+
+- **Eigene Ausgabe und die des Partners**: Jeder Gegner kennt seine eigene Ausgabe und die seines Partners (Stammgäste normal, die Boss-Ausgabe ist ohnehin öffentlich). Seine Handkarten sind mit seiner Ausgabe aufgelöst, die Heuristik liest Augen, Rangbonus und „gewinnt nie“ wie bisher an der Karte.
+- **Ausgabe des Spielers**: Die KI kennt sie, wie der Spieler die Boss-Ausgabe kennt (7.1, Regel 8). Sie weiß also, dass der Eichel-Daus des Spielers ein Glasdaus ist, falls er ihn hält, aber nicht, ob er ihn hält. Die Stichproben (`ai::sample`) verteilen die unbekannten Karten wie bisher und lösen jede Karte mit der Ausgabe des Platzes auf, auf den sie fällt; der Skat ist immer die Ausgabe des Spielers. Was der Spieler ausspielt, liegt offen mit seinen Modifikationen im Stich.
+- **Wechsel des Halters**: Revolutionär, Drei drücken und Heimweh ändern die Ausgabe einer Karte. Die Sicht eines Platzes (`SeatView`) zeigt jede bekannte Karte in der Ausgabe ihres jetzigen Halters; die Suche löst nach jedem Wechsel neu auf.
+- **Wandelkarte, Untot**: Die KI rechnet weiter ohne sie (`opponents::tame_game`); weil es sie nur in der Ausgabe des Spielers gibt, entfällt das Abnehmen beim Geben.
+- **Kosten**: Das Auflösen einer Karte ist ein Nachschlagen je Karte und Stichprobe; die Suche bleibt gleich teuer.
 
 ---
 
@@ -809,6 +891,22 @@ Der Boss eines Abschnitts wird beim Start des Abschnitts gezogen (Ereignis `Boss
 | **Der Kiebitz-Mörder** | Alle Informations-Relikte sind deaktiviert |
 
 Endboss nach Abschnitt 5: **Der Alte**, der jede der obigen Regeln nacheinander auflegt, eine pro Spiel.
+
+**Boss-Ausgaben (ADR 0015, Vorschlag von Claude am 02.11.2026).** Jeder Boss hat neben seiner Regel eine eigene Ausgabe: Die Karten, die er bekommt, tragen seine Modifikationen. Leitlinie: ein Thema, eine Gruppe von vier Karten (einer Gruppe gleichen Rangs; er hält im Mittel 1,25 davon), vorhandene Modifikationen, wo es geht. So bleibt eine Boss-Ausgabe auf einen Blick lesbar und verschiebt die Boss-Faktoren wenig. Sie steht vor der Boss-Serie neben der Regel (`upcoming_boss`), seine Karten zeigen seine Rückseite. Nur der Boss-Platz (links) hat sie, der Stammgast rechts spielt die normale Ausgabe. Wie stark die Ausgaben sein sollen, ist eine Frage im Cockpit; die Tabelle ist die milde Stufe.
+
+| Boss | Ausgabe | Thema | Hebel | Wirkung für den Spieler |
+|---|---|---|---|---|
+| Der Schieber | Siebenen „Fett“ (+4 Augen) | Schmuggelware: Luschen, die doch etwas wert sind | Augen | im Mittel rund +5 Augen bei den Gegnern; jedes Handspiel wird knapper |
+| Der Kontra-Hans | Könige „Spitze“ (macht der König den letzten Stich, +1 Stufe) | Hans legt einen drauf | Gewinnstufen | der Einsatz steigt, gewonnen wie verloren, wenn er den letzten Stich mit einem König macht; passt zum immer erlaubten Kontra |
+| Die Oma | Oberinnen „Fett“ (7 statt 3 Augen) | die alte Oberin, wie die Hausregel „Alte Oberin“ | Augen | rund +5 Augen; zur Regel (keine Unter) kommt Gewicht in den Stichen |
+| Die Zwillinge | Achten „Doppelt gezinkt“ (zwei Stufen höher) | die Acht sieht aus wie zwei Nullen übereinander | Stichgewinn | eine Lusche, die so hoch steht wie die Oberin (bei Gleichstand die frühere); Zählen wird schwerer, nicht unmöglich |
+| Der Ramscher | Daus „Unsichtbar“ (gewinnt nie, bedient aber) | er lässt laufen | Stichgewinn, zweischneidig | im Ramsch wird er seine Daus los, ohne zu stechen (schwerer für den Spieler); im Farbspiel und Grand sticht er nie mit einem Daus (leichter) |
+| Der Revolutionär | Zehnen „Gezinkt“ (gleich hoch wie der Daus, bei Gleichstand die frühere) | die Zehn stürzt den Daus | Stichgewinn | nach dem Tausch nach dem fünften Stich gehen die Zehnen an den Stammgast und sind dort normal: Die Ausgabe bleibt beim Platz (7.1, Regel 4), der Tausch kostet ihn also etwas |
+| Der Schwarze Peter | Eichel- und Grün-Unter „Durchsichtig“ (Ruß an den Fingern) | der schwarze Unter, den keiner haben will | Zählen, für den Spieler | der Spieler sieht, ob der Peter die schwarzen Unter hält; der schwerste Boss (11, 17) bekommt eine Hilfe statt einer Härte |
+| Der Kiebitz-Mörder | keine Modifikationen, nur eine eigene Rückseite | er nimmt Information, er gibt keine | – | keine; seine Regel schaltet ohnehin Informations-Wirkungen ab, auch die des Peters |
+| Der Alte (Endboss) | die Ausgabe des Bosses, dessen Regel gerade gilt, eine pro Blatt | wie seine Regel | wie dort | wechselt mit dem Blatt wie die Regel; vor der Serie zeigt die Sicht die Reihenfolge |
+
+Auslegungen dazu: Die Oma macht weiter jeden Unter zur Blanko, in jeder Ausgabe (Tischregel, 7.1 Regel 7). Die Boss-Ausgabe ist Daten (`edition` in `bosses.ron`, Liste aus Kartenfilter und Modifikation, `back` für die Rückseite); neue Wirkungen braucht keine der milden Ausgaben. Ein Boss-Faktor (`target_factor`) gilt bis zur Messung weiter; die Ausgaben von Schieber, Oma, Zwillingen und Revolutionär machen ihre Serie etwas schwerer, die des Peters etwas leichter.
 
 **Umgesetzt in M4** (`bosses.ron`), Auslegungen von Claude am 01.11.2026:
 
@@ -898,7 +996,7 @@ Zwischen Serien kann statt des Tresens ein Ereignis kommen. Beispiele:
 **Umgesetzt in M4** (`core/content/encounters.ron`, Begriff im Code `Encounter`, weil `Event` die Zustandsereignisse sind). Nach einer gewonnenen Serie (nicht nach der letzten) kommt mit der Wahrscheinlichkeit `encounter_chance` aus `run.ron` (Platzhalter 0,2 für `balance`) ein Ereignis statt des Tresens, gezogen nach `weight`. Es bietet Optionen an (`EncounterOption`, immer zuletzt „Weitergehen“), der Spieler wählt mit `RunAction::ChooseEncounter`, danach beginnt sofort die nächste Serie.
 
 - **Stammtisch-Streit**: drei Hausregeln zur Wahl (freigeschaltet, nicht im Besitz, für den Charakter). Die gewählte gilt bis zum Ende des Abschnitts („Abend“) ohne Platz zu belegen.
-- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen. Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters, seit M7 nie ein Fluch. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
+- **Der Kartengeber**: „zinken“ heißt eine Kartenmodifikation anbringen (seit ADR 0015 immer auf einer Karte der Ausgabe des Spielers; das gilt für jedes Ereignis, das eine Karte markiert, auch für Flüche). Kostenlos auf eine zufällige Karte, für 3 Groschen auf eine gewählte; die Modifikation ist zufällig aus dem Pool des Charakters, seit M7 nie ein Fluch. Seit M5 wird sie gezogen, wenn das Ereignis aufgeht, und beide Optionen nennen sie (`EncounterOption.card_mod`, in der Sicht `card_mod` mit Name und Fluch-Markierung). Der Spieler entscheidet also mit Wissen; zufällig ist nur noch die Karte.
 - **Alter Bekannter**: Ein gewähltes eigenes Relikt wird gegen ein anderes getauscht. Seit M5 wird das neue Relikt gezogen, wenn das Ereignis aufgeht, und jede Option nennt es (`SwapRelic.new`, in der Sicht `new_relic`). Bei Spielständen von vorher ist es weiter zufällig, und die Option sagt das (`random_gain`).
 - **Letzte Runde**: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (Spielwert ×2, Herkunft `Source::Encounter`). Wie die Bockrunde wird es bei der Ansage verbraucht, Einmischen verschenkt es nicht.
 
@@ -928,7 +1026,7 @@ Damit trifft jeder Charakter acht Ereignisse (seit M7 neun, siehe unten). Der Bo
 ```
 skat-roguelite/
 ├── core/            Rust-Crate „skat_core“: Regeln, Zustand, KI, Run-Logik, Content
-│   ├── cards        Karten, Blatt, Modifikationen
+│   ├── cards        Karten, Ausgaben (ADR 0015), Modifikationen
 │   ├── rules        Stichregeln, Trumpfordnung, Spielwert
 │   ├── game         Zustandsautomat für ein Spiel
 │   ├── run          Serie, Abschnitt, Tresen, Relikte, Ereignisse
@@ -970,6 +1068,7 @@ skat-roguelite/
 | **M6 Feinschliff** | Oberfläche Stil A4 ohne Scrollen, große Abrechnung am Spielende, Null für alle (ADR 0012), geführter erster Abend, Stammgäste mit Namen und Pixelgesicht, leise Chiptune-Musik, Spielstand-Export | v1 zum Teilen |
 | **M7 Langzeit** | Kurzer Abend (3 Abschnitte, umgesetzt 5.3), Endlos-Modus nach dem Endboss, Einsatz-Leiter (jeder Run-Sieg hebt die Gewinngrenze um ein Auge), angekündigte Flüche statt zufälliger (umgesetzt 7.2, 13) | Grund, wiederzukommen |
 | **M8 Inhalte** ✔ | Schnäpse, drei neue Charaktere (Grandspieler, Zaungast, Wirtin), Bierdeckel-Grafiken, Infokarte, große Testrunde, Welle 2 (Relikte: Skat-Hebel, Bau-Richtungen, Spiel-Relikte; Welle 2a mit acht Hausregeln und Welle 2b mit drei umgesetzt, 8.1), Welle 3 (Wandelkarte, Glasdaus, Heimweh, Stufe Legendär mit Skatgott und Ehrenvorsitz; umgesetzt 7.2, 8.4) | Ein Run mit vielen Bau-Richtungen |
+| **M9 Eigene Ausgaben** | ADR 0015: Ausgabe des Spielers statt geteiltem Blatt, Grunddecks als Modifikationen, Boss-Ausgaben, Gegner-Rückseiten, Umrechnung alter Spielstände, Nachmessung (18) | Jeder spielt mit seinen eigenen Karten |
 
 Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblatt, Zettel für Relikte, zwei menschliche Gegner. Was auf Papier keinen Spaß macht, wird nicht gebaut.
 
@@ -1047,12 +1146,20 @@ Entschieden am 01.11.2026 nach dem Spieltest (Nutzer, umgesetzt von Claude):
 | Ansagen nach dem Skat | Schneider, Schwarz angesagt und Ouvert auch nach dem Aufnehmen, ohne Hand-Stufe (ADR 0013, 4.3). Der Bot sagt nach dem Skat mit denselben Regeln an wie aus der Hand. |
 | Freischaltungen | `early_finish` heißt jetzt „Serie gleich im ersten Spiel gewinnen“, `boss_without_pass` „Boss ohne Einmischen“, `grand_master` verlangt 144 statt 96 Punkte (9.3). |
 
+Entschieden am 02.11.2026 (Nutzer):
+
+| Frage | Entscheidung |
+|---|---|
+| Blatt-Modell | **Eigene Ausgabe jeder Karte** (ADR 0015, ersetzt 0005 teilweise): ein normales Skatblatt für alle, jeder hält seine eigene Ausgabe; keine Karten hinzufügen oder entfernen, Grunddecks als Modifikationen; der Skat gehört dem Spieler; Gegnerkarten mit eigener Rückseite (7.1, 9.8, 11, 18). Simulationen bleiben pausiert, gemessen wird später. |
+
 ## 17. Offen
+
+- **Eigene Ausgaben (ADR 0015)**, Fragen im Cockpit: Ersatz für das Grunddeck des Nullspielers (9.8), was vom zerbrochenen Glasdaus bleibt (7.2), ob Modifikationen auf die Trumpffarbe nur in den zwölf Karten des Spielers wirken (7.2), was aus den Informations-Modifikationen wird (7.2), wie stark die Boss-Ausgaben sind (11), ob Stammgäste eine eigene Note bekommen (10.4), die neue Wirkung von Frisches Deck (7.3) und was mit laufenden Spielständen passiert (18.3). Bis zur Antwort gelten die Empfehlungen als Plan, umgesetzt wird nichts.
 
 - **Zielwerte für 3 Spiele**: erledigt am 02.11.2026 (5.2, je Charakter eigene Kurve, Boss-Faktoren 11, Einsatz-Leiter 5.4, Freischaltungen 9.3). Offen daraus: (a) **Nullspieler gewinnt nur 0,6 % der ganzen Abende** (Ziel 1 bis 2 %); seine Kurve liegt ab Abschnitt 3 fast am Boden, Zielwerte bewegen dort kaum noch etwas. Entschieden am 02.11.2026: ein Einmischen mehr (`rule: (redeals: 1)` in `characters.ron`, 0,69 → 1,12 % bei gleichen Seeds), siehe 9.2. (b) **Der Schwarze Peter** bleibt mit 35 bis 48 % der schwerste Boss; mit 3 Spielen liegt seine Obergrenze bei 50 % (Nullspieler 37 %), kein Faktor hilft. Wenn er keine Ausnahme sein soll, braucht er eine andere Regel (an `core-dev`/Design), etwa „gewonnene Spiele ohne Schneider zählen halb“. (c) Preise von Schieben, Ein Bier, Kräuter, Neues Blatt und Reue (8.1, 8.3) und ob Einmischen beim Alten (Regel je Blatt) zu leicht macht, sind noch nicht gemessen.
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
-- **Zielwert-Faktoren pro Charakter**: erledigt mit ADR 0012 (`character_factors` in `bosses.ron`, 11). Schieber und Schwarzer Peter sind wieder bei beiden Charakteren. Offen: Die Oma bleibt beim Nullspieler draußen, weil sein Blatt keine Unter hat und sie ihm nichts nimmt (ADR 0012 sieht sie wieder bei jedem vor). Sobald er Unter ins Blatt bekommen kann, mit `--curve --boss grandma --character null` neu messen.
+- **Zielwert-Faktoren pro Charakter**: erledigt mit ADR 0012 (`character_factors` in `bosses.ron`, 11). Schieber und Schwarzer Peter sind wieder bei beiden Charakteren. Offen: Die Oma bleibt beim Nullspieler draußen, weil sein Blatt keine Unter hat und sie ihm nichts nimmt (ADR 0012 sieht sie wieder bei jedem vor). Sobald er Unter ins Blatt bekommen kann, mit `--curve --boss grandma --character null` neu messen. Mit ADR 0015 (Variante A, 9.8) halten die Gegner wieder echte Unter, die Oma nimmt sie ihnen; neu messen, wenn die Simulationen wieder laufen.
 - **Null für alle mit Menschen prüfen** (ADR 0012): Die Gewinnquoten hinter der Bot-Wahl Farbe, Grand oder Null (`SUIT_WIN_PERCENT`, `GRAND_WIN_PERCENT`, `NULL_WIN_PERCENT` in `core/src/run/bot.rs`) sind Bot-Messungen ohne Relikte. Ob Menschen mit dem Alleinspieler öfter Null spielen und ob die Tresen-Gewichte (`focus_weights`) den Nullspieler klar genug vom Alleinspieler trennen, zeigt die Statistik echter Runs.
 - **M5-Kurve mit Menschen prüfen**: Die Kurve (5.2) ist gegen den PIMC-Spieler gesetzt. Ein Mensch nutzt Hand, Ouvert und Informations-Relikte, die der Bot kaum spielt, und dürfte stärker sein. Testspiele und die Statistik der Web-App (Abschnitt erreicht) gegen die Bot-Zahlen halten.
 - **Relikte ohne Bot-Wirkung**: Spitze, Mit Vieren, Schiedsrichter, Bierdeckel, Ouvert-Bonus, Oma, Opa, Glashaus, Blindflug, Saubere Weste und Zähler bewegen beim Bot „Abschnitt 3 erreicht“ um weniger als 5 % (relativ). Sie sind für Menschen gedacht; ob sie die 5-%-Regel erfüllen, zeigt erst die Statistik echter Runs.
@@ -1061,7 +1168,74 @@ Entschieden am 01.11.2026 nach dem Spieltest (Nutzer, umgesetzt von Claude):
 - ~~**Drei drücken zähmen?**~~ Entschieden am 02.11.2026 (Lead): einmal pro Serie, beim ersten Aufnehmen des Skats (8.1). Gemessen +7,9 Prozentpunkte auf „Abschnitt 3 erreicht“ statt +18,0 in jedem Spiel; nicht weiter abgestimmt. Offen bleibt nur die Wirkung im vollen Run mit Tresen und beim Nullspieler.
 - **Nullspieler über den kurzen Abend** (M7, 5.3): „Run gewinnen“ zählt auch im kurzen Abend, der Nullspieler ist damit nach rund 25 statt rund 1700 Runs (Heuristik-Bot) frei. Entschieden ist „Freischaltungen in beiden“; soll der Nullspieler ein Ziel des ganzen Abends bleiben, bekäme die Bedingung `WinRun` eine Länge (Daten in `unlocks.ron`). Ebenso „Abschnitt 4 erreichen“: nur im ganzen Abend möglich.
 - **Weitere Kartenrückseiten** (9.3): Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Offen: welche Erfolge. Die Bedingung gehört wie jede Freischaltung in den Kern (`unlocks.ron`, eine neue Belohnungsart für Kosmetik); die Web-App bietet nur die verdienten Rückseiten zur Wahl an.
-- **Welle 3** (02.11.2026, 7.2, 8.4, `docs/balance/2026-11-02-welle3.md`): Abschnitt 3: Skatgott +4,7, Heimweh +0,5, Wandelkarte +0,2, Glasdaus +0,1, Ehrenvorsitz −0,4 (Alte Dame +4,5). Entschieden am 02.11.2026: Skatgott nur auf gewonnene Spiele, Preise nach Wirkung statt nach Stufe (8.4, 12). Der Glasdaus bringt früh Punkte und kostet spät (er zerbricht in 70 % der Runs); ob er beim Gegner (22 Augen für die Gegner) zu oft schadet, zeigen echte Runs. Heimweh und Wandelkarte nutzt nur ein Mensch richtig (bewusst drücken, gezielt benennen). Nicht gemessen: voller Run mit Tresen, Nullspieler.
-- **Untot** (02.11.2026, 7.2): Messung im Simulator steht aus (auf Wunsch des Nutzers zurückgestellt, das Blatt-Konzept kann sich noch ändern). Zu messen wie Welle 3 (`--card-mod CK:undead`, PIMC 12:3, Alleinspieler, 3 × 500 Runs), dazu die Variante „in jedem Stich“; Seltenheit und Preis bis dahin Platzhalter. Erst danach kommt sie in die Oberfläche.
+- **Welle 3** (02.11.2026, 7.2, 8.4, `docs/balance/2026-11-02-welle3.md`): Abschnitt 3: Skatgott +4,7, Heimweh +0,5, Wandelkarte +0,2, Glasdaus +0,1, Ehrenvorsitz −0,4 (Alte Dame +4,5). Entschieden am 02.11.2026: Skatgott nur auf gewonnene Spiele, Preise nach Wirkung statt nach Stufe (8.4, 12). Der Glasdaus bringt früh Punkte und kostet spät (er zerbricht in 70 % der Runs); ob er beim Gegner (22 Augen für die Gegner) zu oft schadet, zeigen echte Runs (seit ADR 0015 hinfällig: Beim Gegner gibt es ihn nicht mehr). Heimweh und Wandelkarte nutzt nur ein Mensch richtig (bewusst drücken, gezielt benennen). Nicht gemessen: voller Run mit Tresen, Nullspieler.
+- **Untot** (02.11.2026, 7.2): Messung im Simulator steht aus (auf Wunsch des Nutzers zurückgestellt, das Blatt-Konzept kann sich noch ändern). Zu messen wie Welle 3 (`--card-mod CK:undead`, PIMC 12:3, Alleinspieler, 3 × 500 Runs), dazu die Variante „in jedem Stich“; Seltenheit und Preis bis dahin Platzhalter. Die Oberfläche ist seit dem 02.11.2026 eingebaut (Wunsch des Nutzers: Simulationen pausiert).
 - **Fluchbeträge** (M7, 7.2): alle Flüche zahlen 3 Groschen, die gewählte Karte kostet bei Bier und Falschspieler 4. Platzhalter für `balance`. Die Option „Zufällige Karte“ zeigt in der Web-App „gratis“, die 3 Groschen stehen nur im Text des Fluchs.
 - **Einsatz-Leiter**: gemessen am 02.11.2026 (5.4): ein Auge kostet rund 1,2 Punkte „Abschnitt 2“, Null wird bei Einsatz 5 etwas häufiger (35,8 % statt 32,6 %), dominiert aber nicht. Höhere Stufen (ab 10) noch nicht mit dem einsatzbewussten Bot gemessen. Die Texte von „Ein Auge zudrücken“ und „Hufeisen“ sagen seit der Einsatz-Leiter „drei/fünf Augen weniger“.
+
+---
+
+## 18. Umbau auf eigene Ausgaben (ADR 0015)
+
+Plan von Claude, 02.11.2026. Nur Dokumentation; Code folgt in eigenen Zweigen, wenn die Fragen im Cockpit beantwortet sind. Der Zweig `feat/undead` (Modifikation „Untot“, Kartenbilder in `web/src/ui/cards.ts`) wird vorher zusammengeführt, damit sich `card_mods.ron`, `DealtCard` und die Kartenbilder nicht doppelt ändern.
+
+### 18.1 Datenmodell im Kern
+
+- **Ausgabe** (`Edition`): je Karte des Skatblatts (32, in der Reihenfolge von `standard_deck`) die Liste der Modifikationen. Die Ausgabe des Spielers ersetzt das Blatt des Runs (`Run::edition` statt `Run::deck`); jede Karte behält eine feste Id (heute `DeckCard::id`), damit Ereignisse, Heimweh und die Oberfläche weiter über Ids sprechen.
+- **Ausgaben der Gegner** werden nicht gespeichert, sondern beim Geben aus dem Platz abgeleitet: Stammgast normal, Boss aus `bosses.ron` (`edition`), beim Alten die des Bosses, dessen Regel gilt.
+- **Geben**: Gemischt und gegeben werden die 32 Karten wie heute (gleicher Zufallsstrom, gleiche Reihenfolge, damit Seeds dieselben Karten geben). Danach wird jede Karte mit der Ausgabe ihres Halters aufgelöst (`resolve_card(card, edition)` statt `resolve_deck`); `DealtCard` bekommt den Besitzer der Ausgabe (`owner`, für Sicht, Rückseite und Hooks). Der Skat wird mit der Ausgabe des Spielers aufgelöst.
+- **Wechsel des Halters**: eine Funktion im Spielautomaten, die eine Karte von einem Platz zum anderen bewegt und neu auflöst, mit Ereignis (`CardChangedHands`); genutzt von Drei drücken, Revolutionär und Heimweh. Gespielte Karten werden nie neu aufgelöst.
+- **Hooks**: `card_mod_sources` nimmt nur noch Karten in der Ausgabe ihres Halters (Spieler: Hand, Skat, gespielte Karten; Boss: seine Hand und seine gespielten Karten), mit `this_card` und dem Besitzer. `ThisCardBeatenByDefender` (Glasdaus) prüft zusätzlich, dass der Spieler die Karte gespielt hat.
+- **Entfällt**: `DeckSpec::remove` und `add` (Ladefehler), `Deck::remove`, `Deck::add`, `Deck::copy`, `DeckChange::Added`, `FilledBlank`, `ReplacedByBlank` (nur noch zum Lesen alter Ereignisse), der Talon in `Game` und in den Sichten, `DealOdds` nach Blattgröße. `CardKind::Blank` bleibt (Oma, Scherben). Die Sonderwege für Wandelkarte und Untot beim Geben entfallen.
+- **Neu im Content** (je nach Antwort): Wirkung `Demote` und Modifikation `demoted` (Nullspieler), Modifikation `shards` (Scherben) mit der Wirkung „in dieser Ausgabe eine Blanko“, Glasdaus `BreakThisCard` → ersetzt sich durch `shards`, Verbrauchsgegenstand Frisches Deck mit Aktion `CleanseCard`, Felder `edition` und `back` in `bosses.ron`, `back` in `guests.ron`.
+- **Glossar**: Ausgabe `Edition`, Halter `holder`, Besitzer einer Ausgabe `owner`, Scherben `shards`, Abgestuft `demoted`, Rückseite `back` (eingetragen am 02.11.2026).
+
+### 18.2 Inhalte und Texte
+
+- `characters.ron`: Nullspieler nach der Antwort (9.8), Texte ohne „keine Unter, vier Siebener mehr“.
+- `card_mods.ron`: Texte ohne „egal, wer sie spielt“ (Spitze, Glückspfennig, Unsichtbar, Angeknackst, Attrappe, Unter ehrenhalber); Schlusslicht und Aufgebrezelt neu (7.2); Glasdaus „… zerbricht, wenn ein Gegner sie sticht, und bleibt als Scherben“.
+- `bosses.ron`: Ausgaben nach der Antwort (11), die Boss-Vorschau nennt sie.
+- `consumables.ron`: Frisches Deck neu (7.3), Stempelkissen „einer Karte deiner Ausgabe“.
+- `encounters.ron`: Texte „eine Karte deiner Ausgabe“.
+- Web: Übersetzungsdatei und Regelkarte („Jeder spielt mit seiner eigenen Ausgabe“), Wirt-Hinweis beim ersten Boss mit Ausgabe.
+
+### 18.3 Spielstände
+
+Laufende Runs liegen im Browser (9.3). Empfohlen (Frage im Cockpit): beim Laden umrechnen, ohne dass der Spieler etwas merkt.
+
+- Ein Blatt aus genau 32 verschiedenen Karten ohne Blankos wird 1:1 die Ausgabe des Spielers (Ids und Modifikationen bleiben). Das sind fast alle Runs: Alleinspieler, Grandspieler, Zaungast, Wirtin ohne Frisches Deck und ohne zerbrochenen Glasdaus.
+- Fehlt eine Karte (durch eine Blanko ersetzt), bekommt sie in der Ausgabe: beim Daus „Scherben“ (das war fast immer ein Glasdaus), sonst keine Modifikation (Frisches Deck). Modifikationen auf Blankos gibt es nicht.
+- Nullspieler: Doppelte Siebenen werden zusammengelegt (Modifikationen der zweiten gehen auf die erste, soweit sie dort nicht schon liegen; was nicht passt, verfällt), die vier fehlenden Unter bekommen die neue Modifikation des Nullspielers.
+- Karten über 32 (heute erzeugt das kein Inhalt) verfallen samt Modifikationen.
+- Ein Spiel, das mitten im Stich gespeichert wurde, spielt im alten Modell zu Ende (die aufgelösten Karten stehen im Spielstand); ab dem nächsten Geben gilt die Ausgabe. Alte Ereignisse (`DeckChanged` mit `ReplacedByBlank`) werden weiter gelesen. Meta-Stände sind nicht betroffen.
+- Tests: Spielstände aus `main` vor dem Umbau als Fixtures (je Charakter, mit zerbrochenem Glasdaus, mit Frischem Deck), Laden, Umrechnen, ein Spiel weiterspielen.
+
+### 18.4 Simulator
+
+Die Simulationen sind pausiert (16). Was der Umbau ungültig macht und später gemessen werden muss, in dieser Reihenfolge:
+
+1. Gleichheit: Alleinspieler ohne Relikte vor und nach dem Umbau mit denselben Seeds; die Karten sind dieselben, die Ergebnisse müssen gleich sein (ohne Modifikationen gibt es keinen Unterschied). Das ist der Test, dass das Geben unverändert ist.
+2. Charaktere: Nullspieler (neues Grunddeck) und Grandspieler (Goldrand nur noch bei ihm) gegen ihre Zielwerte (5.2).
+3. Bosse: jede Boss-Ausgabe mit `--curve --boss <id>` und im Run, Faktoren anpassen (11).
+4. Modifikationen: einzeln wie Welle 3, vor allem die Modifikationen auf die Trumpffarbe (wenn streng) und Glasdaus mit Scherben.
+5. Ganze Kalibrierung (3 × 800 Runs je Charakter) wie in 5.2.
+
+Der Simulator braucht dafür keine neuen Schalter; `--boss` und `--character` reichen. Der `RunBot` muss die neue Wirkung von Frisches Deck kaufen und einsetzen können (Kaufwert in `CONSUMABLE_VALUES`).
+
+### 18.5 Schritte
+
+1. **Kern: Datenmodell** (`core-dev`): `Edition`, Auflösen nach Halter, Wechsel des Halters, Hooks nach Besitzer, Skat als Ausgabe des Spielers, Talon und Blattgröße entfernen, Umrechnung alter Spielstände. Golden-Vektoren bleiben unverändert (die Formel ändert sich nicht); neue Tests für jede Regel aus 7.1. Gleichheitstest aus 18.4.1 als Test im Kern (feste Seeds, Alleinspieler ohne Modifikationen).
+2. **Inhalte** (`content`, nach den Antworten): Nullspieler, Boss-Ausgaben, Texte, Scherben, Frisches Deck, Rückseiten-Ids.
+3. **KI** (`core-dev`): Stichproben lösen nach Platz auf, die KI kennt die Ausgabe des Spielers (10.5), `tame_game` ohne Sonderweg; Bot-Kaufwerte.
+4. **Web** (`web-ui`): Rückseite je Besitzer (Hände der Gegner, Skat mit Distel), Boss-Vorschau mit Ausgabe, Infokarte zeigt die Ausgabe des Halters, Zähler mit Spanne, `DealOdds`-Satz, Regelkarte. Mit Playwright im Browser prüfen (Handy hochkant, Desktop).
+5. **Messung** (`balance`, wenn die Simulationen wieder laufen): 18.4, danach Zielwerte und Faktoren.
+
+### 18.6 Risiken
+
+- **Gleiche Seeds, andere Runs**: Wer die Karten anders mischt, verliert die Vergleichbarkeit aller Messungen und geteilten Seeds. Gegenmittel: die 32 Karten in der heutigen Reihenfolge geben und den Gleichheitstest (18.4.1) vor allem anderen bauen.
+- **Ausgabe am falschen Platz**: Eine Karte, die den Halter wechselt und nicht neu aufgelöst wird, trägt fremde Modifikationen. Gegenmittel: eine einzige Funktion für den Wechsel, eine Prüfung im Test, dass jede Karte in jeder Hand die Ausgabe ihres Halters zeigt.
+- **Kein Ausgleich mehr über die Gegner**: Augen- und Rang-Modifikationen werden stärker, die Modifikationen auf die Trumpffarbe schwächer; bis zur Messung stimmen Zielwerte, Preise und Boss-Faktoren nicht. Gegenmittel: Messung zuerst nach dem Kern-Schritt, Zahlen in 5.2, 11 und 12 als vorläufig markieren.
+- **Säule 2 wird leiser**: Ohne das Risiko „hilft dem Gegner“ ist Deckbau sicherer. Bleibt: die Aufwertung schläft, Augen landen im fremden Stich, Glasdaus bricht. Wenn das zu wenig ist, können Flüche, Boss-Ausgaben oder Ereignisse das Risiko zurückbringen; im Spieltest prüfen.
+- **Zusammenführen mit `feat/undead`**: beide ändern `card_mods.ron`, `DealtCard` und `cards.ts`. Gegenmittel: Untot zuerst zusammenführen, dann den Umbau darauf aufsetzen.
+- **Spielstände**: Umrechnung mit Annahmen (Blanko beim Daus = Glasdaus). Gegenmittel: Fixtures aus echten Spielständen, die Umrechnung sagt im Verlauf (Ereignis), was sie getan hat.
+- **Oberfläche**: zwei Rückseiten am Tisch und Modifikationen auf Gegnerkarten im Stich dürfen das Handy-Layout nicht überladen. Gegenmittel: Boss-Ausgaben mit höchstens einer Gruppe, Kennzeichen wie bei den eigenen Modifikationen.
