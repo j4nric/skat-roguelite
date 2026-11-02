@@ -9,7 +9,7 @@
 // Pure drawing, no game logic: the printed numbers come from the core's
 // catalog.
 
-import { de, cardName, contentName, face, isCurse, modFigure, t } from '../i18n';
+import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, ModFigure, Suit } from '../types';
 import { faceId, indexId, modIconId, paper, PALETTE, pixels, suitId } from './art';
 import { backId, DEFAULT_BACK, type BackDesign, type BackSize } from './backs';
@@ -216,6 +216,7 @@ export function figureText(figure: ModFigure | null): string {
   if (!figure) return '';
   const c = figure.change;
   if ('Multiply' in c) return `×${c.Multiply}`;
+  if ('Scale' in c) return `×${factorText(c.Scale)}`;
   if ('Set' in c) return String(c.Set);
   return c.Add > 0 ? `+${c.Add}` : c.Add < 0 ? `−${Math.abs(c.Add)}` : '0';
 }

@@ -929,6 +929,9 @@ export const de = {
     beer_mat: 'Bierdeckel: +{value} Grundwert',
     tally: 'Kerbholz: +{value} Grundwert',
     regular: 'Stammgast: {value} von 4 Serien',
+    old_deck: 'Altes Blatt: +{value} Grundwert in dieser Serie',
+    all_rounder: 'Allrounder: {value} von 3 Spielarten in dieser Serie',
+    home_suit: 'Stammfarbe: {value}× dieselbe Trumpffarbe',
   } as Record<string, string>,
 
   /**

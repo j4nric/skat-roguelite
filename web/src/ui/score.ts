@@ -8,7 +8,7 @@
 // only labels, formats and animates them.
 
 import { sound } from '../audio';
-import { de, cardName, consumableLook, contentName, declarationName, gameName, relicLook, t } from '../i18n';
+import { de, cardName, consumableLook, contentName, declarationName, factorText, gameName, relicLook, t } from '../i18n';
 import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { cardSvg, modIcon } from './cards';
 import { attrs, esc } from './dom';
@@ -71,6 +71,7 @@ export function changeText(lever: Lever, change: Change): string {
       ? t(de.score.baseMul, { n: change.Multiply })
       : t(de.score.valueMul, { n: change.Multiply });
   }
+  if ('Scale' in change) return t(de.score.valueMul, { n: factorText(change.Scale) });
   if ('Set' in change) {
     if (lever === 'WinThreshold') return t(de.score.threshold, { n: change.Set });
     if (lever === 'Schneider') return de.score.schneiderBy;
@@ -349,7 +350,9 @@ export class ScoreBoard {
       if (from === to) continue;
       const el = this.q(`[data-num="${name}"]`);
       if (!el) continue;
-      void countUp(el, from, to, 260, plain);
+      // A factor such as 1,5 does not count up in whole steps.
+      if (name === 'mul' && !(Number.isInteger(from) && Number.isInteger(to))) el.textContent = factorText(to);
+      else void countUp(el, from, to, 260, plain);
       const box = el.closest('.fbox');
       if (box) pulse(box, 1.14, 300);
     }
@@ -418,7 +421,8 @@ export class ScoreBoard {
     if (last) {
       set('base', last.base_value);
       set('levels', last.levels);
-      set('mul', last.multiplier);
+      const mul = this.q('[data-num="mul"]');
+      if (mul) mul.textContent = factorText(last.multiplier);
     }
     set('value', this.o.score.breakdown.value);
     set('account', this.o.seriesScore);

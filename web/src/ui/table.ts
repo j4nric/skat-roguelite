@@ -13,7 +13,7 @@
 // Opa", all from the view. Card flags the core resolved ("Unter
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
-import { de, cardName, contentName, contentText, declarationName, gameName, t } from '../i18n';
+import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
 import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
 import { DEFAULT_BACK } from './backs';
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
@@ -489,7 +489,7 @@ function worthChip(game: GameView): string {
   if (!p) return '';
   const label =
     p.multiplier > 1
-      ? t(de.table.worthFactor, { base: p.base_value, levels: p.levels, factor: p.multiplier })
+      ? t(de.table.worthFactor, { base: p.base_value, levels: p.levels, factor: factorText(p.multiplier) })
       : t(de.table.worth, { base: p.base_value, levels: p.levels });
   return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${esc(label)}</span>`;
 }
