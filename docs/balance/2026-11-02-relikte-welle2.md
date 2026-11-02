@@ -85,3 +85,69 @@ Die Kaufwerte (`RELIC_VALUES` in `core/src/run/bot.rs`) folgen der Tabelle dort,
 - Wirkung im vollen Run mit Tresen und beim Nullspieler (`--character null`) nicht gemessen; die neuen Relikte verdünnen den Pool (43 statt 35 Relikte).
 - Ob Wechselbalg nur bei gewonnenen Spielen zählen soll: Dann wäre er für jeden Spieler ein reiner Gewinn. Jetzt zählt er wie jede Stufe (Hand, Ouvert-Bonus) auch verloren, wie der Text sagt.
 - Der Bot nutzt den Skatpfleger beim Drücken nicht (er drückt weiter nach Fehlfarben und wenig Augen). Wenn der Bot Menschen abbilden soll, wäre „Zehnen drücken mit Skatpfleger“ eine Regel für `RunBot::discard_for`.
+
+# M8 Welle 2b: Drei drücken, Spickzettel, Lockvogel
+
+- **Datum**: 02.11.2026
+- **Branch**: `feat/relics-wave2b` (auf `main` 4255f6e, Welle 2a gemergt)
+- **Agent**: `core-dev`
+- **Maßstab**: wie Welle 2a: PIMC-Spieler (`--bot pimc:12:3`), Relikt ab Spielbeginn, ohne Tresen, Alleinspieler, Seeds 42, 43, 44 mit je 500 Runs. Regeln wie in DESIGN 8.1 (Welle 2b). Die Zeile „ohne Relikt“ ist auf diesem Branch neu gemessen: 11,9 statt 11,7 % „Abschnitt 3 erreicht“, weil der größere Relikt-Pool (46 statt 43) die Ziehungen der Ereignisse ändert (Stammtisch-Streit, Alter Bekannter). Verglichen wird nur auf demselben Stand.
+
+## Befehle
+
+```sh
+# je Seed 42, 43, 44
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3 --relic three_discard
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3 --relic decoy
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3 --relic crib_sheet
+# Nutzung je Spiel (Heuristik-Kartenspiel, nur Abschnitt 1, 400 Runs je Relikt)
+cargo test --release -p skat_core --lib wave_two_b_usage -- --ignored --nocapture
+```
+
+## Ergebnis
+
+Abschnitt erreicht in Prozent (Veränderung gegen „ohne Relikt“ in Prozentpunkten), Spiele gewonnen in Prozent, Punkte je Spiel im Mittel aller gespielten Spiele.
+
+| Relikt | Abschnitt 2 | Abschnitt 3 | Abschnitt 4 | Δ Abschnitt 3 | Spiele gewonnen | Punkte je Spiel | Δ Punkte |
+|---|---|---|---|---|---|---|---|
+| ohne Relikt | 40,6 | 11,9 | 3,5 | – | 64,5 | 16,3 | – |
+| Drei drücken | 63,3 (+22,7) | 29,9 | 13,7 | +18,0 | 73,6 | 31,4 | +15,1 |
+| Lockvogel | 42,8 (+2,2) | 13,0 | 3,7 | +1,1 | 65,2 | 17,0 | +0,7 |
+| Spickzettel | 40,8 (+0,2) | 12,3 | 3,5 | +0,3 | 64,6 | 16,5 | +0,1 |
+| Kiebitz (Vergleich, Information) | 41,3 (+0,7) | 13,1 | 3,1 | +1,2 | 64,5 | 16,1 | −0,3 |
+| Drei drücken, Variante „kleinste Karte des Gegners“ (verworfen) | 67,0 (+26,4) | 38,3 | 19,9 | +26,4 | 73,2 | 41,5 | +25,2 |
+
+„Abschnitt 3 erreicht“ je Seed (42 / 43 / 44): ohne 12,0 / 12,0 / 11,8; Drei drücken 29,0 / 30,0 / 30,8; Lockvogel 11,8 / 14,0 / 13,2; Spickzettel 12,4 / 11,8 / 12,6; Kiebitz 10,8 / 15,6 / 13,0; Variante kleinste Karte 36,8 / 39,6 / 38,6.
+
+Die Variante „kleinste Karte“ ist ein Gegenversuch, nicht im Kern: Statt einer zufälligen Karte gibt der linke Gegner seine Karte mit den wenigsten Augen (gemessen mit einem Probe-Build vor dem letzten Commit, ohne den Hinweis auf die zurückgegebene Karte im PIMC-Spieler; das ändert an der Größenordnung nichts).
+
+### Wie oft sie wirken
+
+Heuristik-Kartenspiel, nur Abschnitt 1, 400 Runs je Relikt, etwa 1700 Spiele:
+
+| Relikt | Spiele, in denen es wirkt | Anmerkung |
+|---|---|---|
+| Drei drücken | 94,1 % | jedes Spiel mit aufgenommenem Skat |
+| Lockvogel | 98,7 % | der Bot fordert fast immer; der nächste Gegner spielt in 45 % der Forderungen die genannte Farbe aus, sonst hat er keine oder das Spiel ist vorher vorbei |
+| Spickzettel | 6,0 % | nur Handspiele, die der Bot selten spielt |
+
+## Einordnung
+
+- **Drei drücken** ist mit Abstand das stärkste Relikt des Spiels: +18,0 Punkte auf „Abschnitt 3 erreicht“, dreimal so viel wie die Alte Dame (+5,3 in Welle 2a), und doppelt so viele Punkte je Spiel. Die Wirkung kommt nicht aus dem dritten Skatplatz, sondern daraus, dass eine Karte die Seite wechselt: Der Alleinspieler wählt seine zehn aus 13 Karten, der linke Gegner verliert eine zufällige Karte (in jedem achten Spiel einen Unter) und bekommt die schwächste des Alleinspielers. Der Gegenversuch zeigt, dass jede Variante, die die dritte Karte beim Gegner holt, so stark ist: Nimmt man seine kleinste Karte, wird es noch stärker (+26,4), weil der Alleinspieler dann im Null eine Sieben bekommt und dem Gegner sein bestes Mittel zum Einfangen fehlt. Ein dritter Skatplatz ohne Gegnerkarte ginge nur mit einer 33. Karte (Blanko im Grundblatt), siehe DESIGN 8.1.
+- **Lockvogel** hilft dem Bot wenig (+1,1, im Rauschen der drei Seeds), etwa wie der Kiebitz. Er fordert fast in jedem Spiel, meist eine Farbe, deren Daus er hält. Ein Mensch, der mitzählt, setzt ihn gezielter: wenn er weiß, wer welche Farbe noch hat, und um einen Stich mit vielen Augen in seine Volle zu lenken.
+- **Spickzettel** wirkt beim Bot praktisch nicht (+0,3), weil er nur in 6 % der Spiele Hand spielt und eine bekannte Skatkarte das Kartenspiel kaum ändert (der PIMC-Spieler legt sie in seinen Stichproben in den Skat). Ein Relikt für Menschen, die Hand spielen; Partner von Bierdeckel, Oma, Opa und Blindflug.
+
+## Gesetzt (Platzhalter für `balance`)
+
+| Relikt | Seltenheit | Preis | Kaufwert Bot | Begründung |
+|---|---|---|---|---|
+| Drei drücken | Rare | 12 | 10 | „selten und teuer“ (Abstimmung); +18,0 liegt weit über der Staffel (ab +4,9: 9), der Preis deshalb über allen anderen Relikten. Dazu gesperrt hinter der Freischaltung „Stammkunde“ (zehn Runs zu Ende spielen) |
+| Lockvogel | Uncommon | 6 | 3 | +1,1, Grenzfall zwischen 5 und 6; für Menschen stärker (Zählen), deshalb 6 |
+| Spickzettel | Common | 4 | 1 | Information für Handspiele, beim Bot ohne Wirkung; billiger als der Kiebitz (5), der in jedem Spiel wirkt |
+
+## Offen
+
+- **Drei drücken entscheiden** (Nutzer oder `balance`): Bleibt es bei +18, ist es ein Relikt, um das sich ein Run dreht. Wege, es zu zähmen, ohne den Text zu ändern: (1) Preis weiter hoch (der Bot hat im Mittel 23 bis 26 Groschen pro Run); (2) einmal pro Serie statt in jedem Spiel; (3) die dritte Karte als 33. Karte aus dem Talon, im Grundblatt eine Blanko, die zufällig gegeben wird (der Skat hätte dann wirklich drei Plätze, braucht aber einen Umbau aller Skat-Stellen im Kern und in der KI). Gemessen ist nur die umgesetzte Regel und die Variante „kleinste Karte“.
+- Wirkung im vollen Run mit Tresen und beim Nullspieler nicht gemessen (Drei drücken dürfte dort wegen der Sieben im Null noch stärker sein).
+- Die Gegner-KI nutzt nicht, was ein Gegner über den Tausch weiß (welche Karte er abgab und zurückbekam); der PIMC-Spieler kennt die zurückgegebene Karte. Eine noch wartende Lockvogel-Forderung kennt die PIMC-Suche nur für den Stich, in dem sie gilt.

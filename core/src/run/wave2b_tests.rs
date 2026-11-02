@@ -730,3 +730,39 @@ fn wave_two_b_usage() {
         );
     }
 }
+
+#[test]
+fn three_discard_keeps_every_card_once() {
+    let content = content();
+    let start = RunStart {
+        relics: vec![RelicId::new("three_discard")],
+        ..RunStart::default()
+    };
+    let mut checked = 0;
+    for seed in 0..8 {
+        let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
+        while run.series().section == 0 {
+            let Some(action) = RunBot.next_action(&run, &content) else {
+                break;
+            };
+            let before = run.game().map(|a| a.game.clone());
+            let events = run.apply(&content, action).expect("legal");
+            let Some(game) = before else { continue };
+            for e in &events {
+                let RunEvent::Game(Event::GameFinished { outcome, .. }) = e else {
+                    continue;
+                };
+                let total: u32 = game.cards_in_play().iter().map(|c| c.card_points()).sum();
+                let finished = game.drawn().is_some() || !game.tricks().is_empty();
+                if finished && game.declaration().is_some_and(|d| !d.is_null()) {
+                    assert_eq!(
+                        outcome.declarer_card_points + outcome.defender_card_points,
+                        total
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 0);
+}

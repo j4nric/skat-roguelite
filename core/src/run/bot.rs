@@ -150,6 +150,14 @@ use crate::rules::{
 /// | `blank_king` | 4 | +1.3, +1.9 |
 /// | `changeling` | 2 | +0.5, +2.4; -1.4 points per game (levels on lost Null games) |
 /// | `home_suit` | 1 | +0.1: the bot almost never plays three suit games in a row with one trump suit |
+///
+/// Wave 2b (same report, same method):
+///
+/// | Relic | Value | Measured (section 3, section 2) |
+/// |---|---|---|
+/// | `three_discard` | 10 | +18.0, +22.7: by far the strongest relic, the top value |
+/// | `decoy` | 3 | +1.1, +2.2 |
+/// | `crib_sheet` | 1 | +0.3, +0.2: the bot rarely plays hand |
 pub const RELIC_VALUES: [(&str, u32); 46] = [
     ("every_bit_counts", 10),
     ("bock_round", 10),
@@ -194,7 +202,7 @@ pub const RELIC_VALUES: [(&str, u32); 46] = [
     ("blank_king", 4),
     ("changeling", 2),
     ("home_suit", 1),
-    ("three_discard", 6),
+    ("three_discard", 10),
     ("decoy", 3),
     ("crib_sheet", 1),
 ];
