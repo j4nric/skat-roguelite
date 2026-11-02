@@ -155,7 +155,7 @@ use crate::rules::{
 ///
 /// | Relic | Value | Measured (section 3, section 2) |
 /// |---|---|---|
-/// | `three_discard` | 10 | +18.0, +22.7: by far the strongest relic, the top value |
+/// | `three_discard` | 10 | once per series +7.9, +12.1 (new targets of PR #47); in every game it was +18.0 |
 /// | `decoy` | 3 | +1.1, +2.2 |
 /// | `crib_sheet` | 1 | +0.3, +0.2: the bot rarely plays hand |
 pub const RELIC_VALUES: [(&str, u32); 46] = [

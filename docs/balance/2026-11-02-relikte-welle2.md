@@ -142,12 +142,31 @@ Heuristik-Kartenspiel, nur Abschnitt 1, 400 Runs je Relikt, etwa 1700 Spiele:
 
 | Relikt | Seltenheit | Preis | Kaufwert Bot | Begründung |
 |---|---|---|---|---|
-| Drei drücken | Rare | 12 | 10 | „selten und teuer“ (Abstimmung); +18,0 liegt weit über der Staffel (ab +4,9: 9), der Preis deshalb über allen anderen Relikten. Dazu gesperrt hinter der Freischaltung „Stammkunde“ (zehn Runs zu Ende spielen) |
+| Drei drücken | Rare | 12 (seit dem Nachtrag 9) | 10 | „selten und teuer“ (Abstimmung); +18,0 liegt weit über der Staffel (ab +4,9: 9), der Preis deshalb über allen anderen Relikten. Dazu gesperrt hinter der Freischaltung „Stammkunde“ (zehn Runs zu Ende spielen). Seit dem Nachtrag einmal pro Serie, siehe unten |
 | Lockvogel | Uncommon | 6 | 3 | +1,1, Grenzfall zwischen 5 und 6; für Menschen stärker (Zählen), deshalb 6 |
 | Spickzettel | Common | 4 | 1 | Information für Handspiele, beim Bot ohne Wirkung; billiger als der Kiebitz (5), der in jedem Spiel wirkt |
 
 ## Offen
 
-- **Drei drücken entscheiden** (Nutzer oder `balance`): Bleibt es bei +18, ist es ein Relikt, um das sich ein Run dreht. Wege, es zu zähmen, ohne den Text zu ändern: (1) Preis weiter hoch (der Bot hat im Mittel 23 bis 26 Groschen pro Run); (2) einmal pro Serie statt in jedem Spiel; (3) die dritte Karte als 33. Karte aus dem Talon, im Grundblatt eine Blanko, die zufällig gegeben wird (der Skat hätte dann wirklich drei Plätze, braucht aber einen Umbau aller Skat-Stellen im Kern und in der KI). Gemessen ist nur die umgesetzte Regel und die Variante „kleinste Karte“.
+- ~~**Drei drücken entscheiden**~~ (entschieden: einmal pro Serie, siehe Nachtrag): Bleibt es bei +18, ist es ein Relikt, um das sich ein Run dreht. Wege, es zu zähmen, ohne den Text zu ändern: (1) Preis weiter hoch (der Bot hat im Mittel 23 bis 26 Groschen pro Run); (2) einmal pro Serie statt in jedem Spiel; (3) die dritte Karte als 33. Karte aus dem Talon, im Grundblatt eine Blanko, die zufällig gegeben wird (der Skat hätte dann wirklich drei Plätze, braucht aber einen Umbau aller Skat-Stellen im Kern und in der KI). Gemessen ist nur die umgesetzte Regel und die Variante „kleinste Karte“.
 - Wirkung im vollen Run mit Tresen und beim Nullspieler nicht gemessen (Drei drücken dürfte dort wegen der Sieben im Null noch stärker sein).
 - Die Gegner-KI nutzt nicht, was ein Gegner über den Tausch weiß (welche Karte er abgab und zurückbekam); der PIMC-Spieler kennt die zurückgegebene Karte. Eine noch wartende Lockvogel-Forderung kennt die PIMC-Suche nur für den Stich, in dem sie gilt.
+
+## Nachtrag: Drei drücken einmal pro Serie (Entscheidung des Leads, 02.11.2026)
+
+In jedem Spiel war Drei drücken mit +18,0 dreimal so stark wie jedes andere Relikt. Entscheidung: Die dritte Karte kommt nur noch beim **ersten Aufnehmen des Skats in jeder Serie** dazu (ein Handspiel verbraucht sie nicht), die Rückgaberegel, Rare und die Sperre bleiben. Gemessen nach dem Merge von PR #47 (neue Zielwerte je Charakter), deshalb mit neuer Zeile „ohne Relikt“; sonst wie oben (PIMC 12:3, Alleinspieler, ohne Tresen, 3 × 500 Runs).
+
+| Relikt | Abschnitt 2 | Abschnitt 3 | Abschnitt 4 | Δ Abschnitt 3 | Spiele gewonnen | Punkte je Spiel | Δ Punkte |
+|---|---|---|---|---|---|---|---|
+| ohne Relikt (Zielwerte PR #47) | 34,1 | 8,9 | 2,7 | – | 64,8 | 16,8 | – |
+| Drei drücken, 1× pro Serie | 46,3 (+12,1) | 16,8 | 5,5 | +7,9 | 70,0 | 25,3 | +8,6 |
+
+„Abschnitt 3 erreicht“ je Seed (42 / 43 / 44): ohne 9,4 / 8,8 / 8,6; Drei drücken 17,4 / 16,6 / 16,4.
+
+Einordnung: +7,9 liegt knapp über dem Ziel des Leads (+5 bis +7, Alte-Dame-Niveau) und unter der Grenze von etwa +8, ab der weiter abgestimmt würde; nicht weiter abgestimmt. Auf der niedrigeren Grundlinie (8,9 statt 11,9 %) ist das fast eine Verdopplung von „Abschnitt 3 erreicht“. Die Alte Dame ist auf den neuen Zielwerten nicht nachgemessen. Preis jetzt 9 (oberste Stufe der Staffel) statt 12, Kaufwert des Bots 10. Lockvogel und Spickzettel sind auf den alten Zielwerten gemessen (Tabelle oben).
+
+```sh
+# je Seed 42, 43, 44, nach dem Merge von origin/main (a8402d9)
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3
+cargo run --release -p skat_sim -- --seed 42 --runs 500 --no-shop --bot pimc:12:3 --relic three_discard
+```

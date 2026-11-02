@@ -594,13 +594,14 @@
     // comes from the defender and one goes back. In every game it gave
     // +18 points on "Abschnitt 3 erreicht", three times the strongest
     // other relic; since 02.11.2026 (lead decision) only at the first
-    // pickup of each series (docs/balance/2026-11-02-relikte-welle2.md).
+    // pickup of each series: +7.9, price 9, the top of the ladder
+    // (docs/balance/2026-11-02-relikte-welle2.md).
     (
         id: "three_discard",
         name: "Drei drücken",
         text: "Einmal pro Serie: Du nimmst drei Karten aus einem größeren Talon und drückst drei.",
         rarity: Rare,
-        price: 12,
+        price: 9,
         passive: [DiscardThree],
     ),
     // Lever Zählen (information): after a hand declaration one card of the
