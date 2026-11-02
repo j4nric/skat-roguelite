@@ -1,7 +1,15 @@
 """Wandelkarte: eight suit-independent cards (A, K, O, U, 10-7) with a
 joker vibe: harlequin diamonds, jester caps with bells, a marotte, and a
 rainbow diamond as the sign. Registers the pseudo-suit 'Wild' in the pix
-and cards2 tables (same poses and frames as every suit)."""
+and cards2 tables (same poses and frames as every suit).
+
+Two looks (DESIGN 7.2, decided by the user on 03.11.2026):
+- open (`card`): before the game starts the fool wears a harlequin in the
+  four suit colours (Rot 'r', Schellen 'y', Gruen 'g', Eichel 'j'), the
+  corner index shows the rank and four tiny suit pips;
+- settled (`settled`): a palette swap of the same drawing, costume and cap
+  only in shades of the new suit, and the normal corner index of that
+  suit, exactly like an ordinary card."""
 
 import math
 import pix
@@ -10,9 +18,10 @@ import aces2
 from pix import Grid, GW, GH
 
 # ------------------------------------------------------------ signs
-pix.BIG['Wild'] = ["...r...", "..rrr..", ".yyyyy.", "ggggggg", ".bbbbb.", "..ooo..", "...o..."]
-pix.MID['Wild'] = ["..r..", ".yyy.", "ggggg", ".bbb.", "..o.."]
-pix.SIGN['Wild'] = [".r.", "ygy", ".b."]
+pix.BIG['Wild'] = ["...r...", "..rrr..", ".yyyyy.", "ggggggg", ".jjjjj.", "..ooo..", "...o..."]
+pix.MID['Wild'] = ["..r..", ".yyy.", "ggggg", ".jjj.", "..o.."]
+# the corner index of the open card: four tiny suit pips (Eichel, Gruen / Rot, Schellen)
+pix.SIGN['Wild'] = ["jjgg", "jjgg", "rryy", "rryy"]
 pix.INK['Wild'] = 'k'
 
 HQ = 'rygb'
@@ -139,11 +148,53 @@ aces2.ACE['Wild'] = daus_wild
 
 
 def card(rank):
+    """The open Wandelkarte: the harlequin in the four suit colours."""
     if rank == 'A':
         g = daus_wild()
     elif rank in ('K', 'O', 'U'):
         g = cards2.FIG[rank]('Wild')
     else:
         g = cards2.number('Wild', int(rank))
+    # The drawings use royal blue 'b' for the fourth colour: Eichel's jeans blue.
+    g.g[g.g == 'b'] = 'j'
     g.suit, g.rank = 'Wild', str(rank)
+    return g
+
+
+# Shades of the settled costume per suit: (core, light, dark).
+TONES = {
+    'Eichel': ('j', 't', 'f'),
+    'Gruen': ('g', 'l', 'v'),
+    'Rot': ('r', 'n', 'q'),
+    'Schellen': ('y', 'c', 'u'),
+}
+
+
+def settled(suit, rank):
+    """The Wandelkarte settled into `suit`: the open drawing with every
+    harlequin colour swapped for a shade of that suit (neighbouring
+    diamonds keep apart by shade and the black seams), and the suit's
+    normal corner index instead of the four pips."""
+    g = card(rank)
+    open_idx = Grid()
+    open_idx.index(str(rank), 'Wild')
+    core, light, dark = TONES[suit]
+    swap = {'r': core, 'y': light, 'g': dark, 'j': core}
+    src = g.g
+    out = src.copy()
+    for y in range(GH):
+        for x in range(GW):
+            if open_idx.g[y, x] != '.':
+                out[y, x] = '.'
+                continue
+            c = src[y, x]
+            if c == 'r' and y < 17 and 0 < x < GW - 1 and (src[y, x - 1] == 's' or src[y, x + 1] == 's'):
+                out[y, x] = 'p'      # lips stay lips
+            elif c in swap:
+                out[y, x] = swap[c]
+    idx = Grid()
+    idx.index(str(rank), suit)
+    out[idx.g != '.'] = idx.g[idx.g != '.']
+    g.g = out
+    g.suit, g.rank = suit, str(rank)
     return g
