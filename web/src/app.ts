@@ -364,6 +364,8 @@ export class App {
     setTempo(TEMPO_FACTOR[this.ui.settings.tempo]);
     sound.setEnabled(this.ui.settings.sound);
     music.setEnabled(this.ui.settings.music);
+    // Pure presentation: style.css tints the cards' paper under this flag.
+    document.documentElement.toggleAttribute('data-suit-tint', this.ui.settings.suitTint);
   }
 
   /**
@@ -1650,6 +1652,9 @@ export class App {
         return;
       case 'hints':
         this.setSettings({ hints: el.dataset.on === 'true' });
+        return;
+      case 'suit-tint':
+        this.setSettings({ suitTint: el.dataset.on === 'true' });
         return;
       case 'hints-reset':
         this.resetHints();
