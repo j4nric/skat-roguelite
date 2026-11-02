@@ -117,6 +117,11 @@ export interface UiState {
   swapTake: number | null;
   /** "Lockvogel": the suit picker is open. */
   lurePick: boolean;
+  /** Route choice: the way highlighted on the map (by option index) for the leg `routeLeg`. */
+  routePick: number | null;
+  routeLeg: string;
+  /** Route choice: the whole tour as a line plan instead of the map ("−"). */
+  routeOverview: boolean;
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
   /** "Untot": the card that last rose from a trick in this game and its substitute there (from the CardRose event), for a note in the last trick. */

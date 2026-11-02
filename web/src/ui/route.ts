@@ -1,44 +1,155 @@
-// The route choice between two pubs (Kneipentour, ADR 0016): the next pub
-// with its target and guests, then three ways, each with its transport,
-// a decorative travel time and the category of its one stop; sometimes a
-// way leads into a Spelunke (its own place, target and malus shown).
-// Everything comes from the core's TourView; the structure (one card per
-// way with stable node ids) is meant to sit under a map drawn later.
+// The route choice between two pubs (Kneipentour, ADR 0016) on the city
+// map (approved design "Karte Runde 3"): the current leg as a static pixel
+// map with the position, the next pub (and a Spelunke as a place of its
+// own) and the three ways along the streets; the chosen way stands out with
+// the badge of its stop. Below it a travel bar with the three transports
+// and "Los"; "−" shows the whole tour as a line plan, "+" goes back.
+//
+// Everything shown comes from the core's TourView: which way leads where,
+// its stop, its minutes, the targets. The map itself is decoration drawn
+// from the district's map seed and the node ids (./citymap.ts).
 
 import { de, contentName, t } from '../i18n';
-import type { PubPreview, RouteOptionView, RunView, StopCategory, Transport } from '../types';
+import type { DistrictView, PubPreview, RouteOptionView, RunView, StopCategory, Transport } from '../types';
+import { MH, MW, INK, cityImageTag, genCity, lookOf, planLeg, stamps, type City, type LegPlan, type Pattern, type Way } from './citymap';
 import { attrs, esc } from './dom';
-import { bossCoaster } from './emblems';
-import { hearts } from './hud';
+import { glyph, mapIcon, type MapIcon } from './mapicons';
+import { bossPortraitId, guestPortraitId, portrait } from './people';
 
-/** A small pixel icon per stop category. */
+const PAPER = '#fbf6e8';
+
+const WAY: Record<Transport, Way> = { Walk: 'fuss', Train: 'bahn', Bike: 'rad' };
+const LINE: Record<Way, { colour: string; pattern: Pattern }> = {
+  fuss: { colour: '#7a2232', pattern: 'solid' },
+  bahn: { colour: '#1b4a4c', pattern: 'dashed' },
+  rad: { colour: '#9a6418', pattern: 'dotted' },
+};
+const STOP_ICON: Record<StopCategory, MapIcon> = { Tresen: 'shop', Event: 'begegnung', Upgrade: 'upgrade', Rest: 'rast' };
+
+/** The pixel icon of a stop category. */
 export function categoryIcon(category: StopCategory, size = 28): string {
-  const svg = (body: string): string =>
-    `<svg class="stop-icon stop-${category.toLowerCase()}" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true">${body}</svg>`;
-  switch (category) {
-    case 'Tresen':
-      // A beer glass.
-      return svg('<path d="M1 1h5v6h-5z" fill="#e8a417"/><path d="M1 1h5v1h-5z" fill="#fffaf0"/><path d="M6 2h1v3h-1z" fill="#6b4427"/>');
-    case 'Event':
-      // A speech bubble.
-      return svg('<path d="M0 1h8v4h-4l-2 2v-2h-2z" fill="#f1e3c0"/><path d="M2 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1z" fill="#6b4427"/>');
-    case 'Upgrade':
-      // A brush on a card.
-      return svg('<path d="M1 0h4v7h-4z" fill="#fbf3e2"/><path d="M2 2h2v2h-2z" fill="#5e3796"/><path d="M5 3h1v1h1v4h-1v-1h-1z" fill="#8a4a22"/>');
-    case 'Rest':
-      // A heart.
-      return svg('<path d="M1 1h2v1h2v-1h2v1h1v2h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1v-2h1z" fill="#c8312b"/>');
-  }
+  return mapIcon(STOP_ICON[category] ?? 'begegnung', size, undefined, `stop-icon stop-${category.toLowerCase()}`);
 }
 
-/** A small pixel icon per transport. */
-function transportIcon(transport: Transport): string {
-  const body: Record<Transport, string> = {
-    Walk: '<path d="M3 0h2v2h-2zM2 2h3v3h-3zM2 5h1v3h-1zM4 5h1v2h1v1h-2z" fill="#d8cdb8"/>',
-    Train: '<path d="M1 0h6v6h-6z" fill="#2f5d8a"/><path d="M2 1h4v2h-4z" fill="#cfe3f5"/><path d="M1 6h1v2h-1zM6 6h1v2h-1z" fill="#3a2a1a"/>',
-    Bike: '<path d="M0 4h3v3h-3zM5 4h3v3h-3z" fill="none" stroke="#d8cdb8" stroke-width=".8"/><path d="M2 3h4v1h-4zM4 2h1v1h-1z" fill="#a33"/>',
-  };
-  return `<svg class="transport-icon" viewBox="0 0 8 8" width="26" height="26" shape-rendering="crispEdges" aria-hidden="true">${body[transport]}</svg>`;
+/** The way picked by default: the first open one that does not turn off into a Spelunke. */
+export function defaultPick(view: RunView): number {
+  const options = view.tour.route?.options ?? [];
+  const plain = options.find((o) => o.can_choose && !o.spelunke) ?? options.find((o) => o.can_choose) ?? options[0];
+  return plain?.index ?? 0;
+}
+
+/** A key of the leg: where the player stands and where the ways lead. */
+export function legKey(view: RunView): string {
+  const route = view.tour.route;
+  return `${view.tour.current?.id ?? 'start'}>${route?.next.id ?? ''}`;
+}
+
+// ---------------------------------------------------------------- the map
+
+const CITIES = new Map<string, City>();
+
+function cityFor(district: DistrictView | undefined, fallbackSeed: number): City {
+  const name = district?.name ?? '';
+  const seed = String(district?.map_seed ?? fallbackSeed);
+  const key = `${name}:${seed}`;
+  let city = CITIES.get(key);
+  if (!city) {
+    city = genCity(seed, lookOf(name));
+    CITIES.set(key, city);
+  }
+  return city;
+}
+
+function placeIcon(pub: PubPreview): MapIcon {
+  if (pub.malus) return 'spelunke';
+  return pub.is_boss ? 'festsaal' : 'kneipe';
+}
+
+/** A framed tile standing on its place, with a small spike to the street. */
+function tile(kind: MapIcon, x: number, y: number, big: boolean, frame: string, extra: string): string {
+  const s = big ? 30 : 26;
+  const u = big ? 1.5 : 1.25;
+  const x0 = Math.round(x - s / 2);
+  const y0 = y - s - 7;
+  return `<g ${extra}><rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + (s - 16 * u) / 2, y0 + (s - 16 * u) / 2, u)}<path d="M${x - 3} ${y0 + s + 1}h6v2h-1v2h-1v2h-2v-2h-1v-2h-1z" fill="${INK}"/></g>`;
+}
+
+function badge(kind: MapIcon, x: number, y: number, frame: string, category: string): string {
+  const s = 24;
+  const x0 = x - s / 2;
+  const y0 = y - s / 2;
+  return `<g class="map-badge" data-testid="map-badge" ${attrs({ 'data-category': category })}><rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + 2, y0 + 2, 1.25)}</g>`;
+}
+
+function positionMark(x: number, y: number): string {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  return `<g class="map-pos" data-testid="map-pos"><rect x="${px - 8}" y="${py - 8}" width="16" height="16" fill="${PAPER}" opacity=".85"/>${glyph('position', px - 8, py - 8, 1)}</g>`;
+}
+
+interface Leg {
+  city: City;
+  plan: LegPlan;
+}
+
+function legOf(view: RunView): Leg | null {
+  const route = view.tour.route;
+  if (!route) return null;
+  const next = route.next;
+  const district = view.tour.districts.find((d) => d.index === next.section);
+  const city = cityFor(district, view.tour.map_seed);
+  const spelunkeOption = route.options.find((o) => o.spelunke);
+  const spelunkeWay = spelunkeOption ? WAY[spelunkeOption.transport] : null;
+  const ahead = (district?.pubs ?? []).filter((p) => p.index > next.index && p.state === 'Ahead').length;
+  const plan = planLeg(city, legKey(view), spelunkeWay, Math.min(2, ahead));
+  return { city, plan };
+}
+
+/** The leg as one SVG: city, future pubs, the three ways, targets, position. */
+export function mapSvg(view: RunView, pick: number): string {
+  const route = view.tour.route;
+  const leg = legOf(view);
+  if (!route || !leg) return '';
+  const { city, plan } = leg;
+  let out = cityImageTag(city);
+  for (const [x, y] of plan.future) out += `<g opacity=".4">${glyph('kneipe', Math.round(x) - 8, Math.round(y) - 8, 1, '#5a5650')}</g>`;
+  const picked = route.options.find((o) => o.index === pick) ?? route.options[0];
+  for (const o of route.options) {
+    if (o === picked) continue;
+    const way = WAY[o.transport];
+    out += `<g class="map-route" ${attrs({ 'data-route': o.transport, 'data-option': o.index })}>${stamps(plan.routes[way], LINE[way].colour, 3, LINE[way].pattern, ' opacity=".4"')}</g>`;
+  }
+  if (picked) {
+    const way = WAY[picked.transport];
+    const cells = plan.routes[way];
+    const { colour, pattern } = LINE[way];
+    const [mx, my] = cells[Math.floor(cells.length / 2)] ?? plan.pos;
+    const stop = picked.stops[0]?.category ?? 'Tresen';
+    out += `<g class="map-route is-selected" data-testid="map-route" ${attrs({ 'data-route': picked.transport, 'data-option': picked.index, 'data-cells': cells.map(([x, y]) => `${x},${y}`).join(' ') })}>${stamps(cells, '#ffffff', 7, pattern)}${stamps(cells, colour, 5, pattern)}</g>`;
+    out += badge(STOP_ICON[stop], mx, my, colour, stop);
+  }
+  const next = route.next;
+  const [tx, ty] = plan.target;
+  out += tile(placeIcon(next), Math.round(tx), Math.round(ty), next.is_boss, next.is_boss ? '#8a6a22' : '#7a2232', attrs({ class: 'map-target', 'data-testid': 'map-target', 'data-node': next.id }));
+  const sp = route.options.find((o) => o.spelunke)?.spelunke;
+  if (sp && plan.spelunke) {
+    const [sx, sy] = plan.spelunke;
+    out += tile('spelunke', Math.round(sx), Math.round(sy), false, '#383b42', attrs({ class: 'map-spelunke', 'data-testid': 'map-spelunke', 'data-node': sp.id }));
+  }
+  out += positionMark(plan.pos[0], plan.pos[1]);
+  const label = t(de.route.mapAria, { from: view.tour.current?.name ?? '', to: next.name });
+  return `<svg class="map-svg look-${city.look}" data-testid="map-svg" viewBox="0 0 ${MW} ${MH}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" overflow="visible" role="img" ${attrs({ 'aria-label': label, 'data-leg': legKey(view), 'data-look': city.look, 'data-seed': city.key })}>${out}</svg>`;
+}
+
+// ---------------------------------------------------------------- the target card
+
+function guestFaces(pub: PubPreview): string {
+  return pub.guests
+    .map((g, i) => {
+      const face = i === 0 && pub.is_boss && pub.boss ? bossPortraitId(pub.boss.id) : guestPortraitId(g.look, g.seat === 2 ? 2 : 1);
+      return portrait(face, 'portrait-sm route-face');
+    })
+    .join('');
 }
 
 function guestNames(pub: PubPreview): string {
@@ -47,56 +158,169 @@ function guestNames(pub: PubPreview): string {
   return names.join(', ');
 }
 
-function pubCard(pub: PubPreview): string {
-  const boss = pub.is_boss && pub.boss ? `<span class="route-boss">${bossCoaster(pub.boss.id, { size: 34 })}${esc(t(de.route.bossAt, { name: contentName('bosses', pub.boss.id) }))}</span>` : '';
-  return `<section class="route-next" data-testid="route-next" ${attrs({ 'data-node': pub.id })}>
-    <span class="route-kicker">${esc(pub.is_boss ? de.route.nextBoss : de.route.next)} · ${esc(pub.district)}</span>
-    <h2 class="route-pub-name">${esc(pub.name)}</h2>
-    <p class="route-target" data-testid="route-target">${esc(t(de.route.target, { target: pub.target, games: pub.game_limit }))}</p>
-    <p class="route-guests">${esc(t(de.route.guests, { names: guestNames(pub) }))}</p>
-    ${boss}
+function targetCard(view: RunView, picked: RouteOptionView | undefined): string {
+  const route = view.tour.route;
+  if (!route) return '';
+  const pub = picked?.spelunke ?? route.next;
+  const kind = placeIcon(pub);
+  let extra = '';
+  if (pub.malus) {
+    extra = `<span class="route-malus" data-testid="route-malus"><b>${esc(t(de.route.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}:</b> ${esc(pub.malus.text)}</span>
+      <span class="route-reward">${esc(de.route.spelunkeReward)}</span>`;
+  } else if (pub.is_boss) {
+    const boss = pub.boss ? contentName('bosses', pub.boss.id) : de.route.bossUnknown;
+    extra = `<span class="route-warn"><b class="route-tag is-boss">${esc(de.route.bossTag)}</b><span class="route-boss">${esc(t(de.route.bossEnd, { name: boss }))}</span></span>`;
+  }
+  return `<section class="route-next ${pub.malus ? 'is-spelunke' : ''} ${pub.is_boss ? 'is-boss' : ''}" data-testid="route-next" ${attrs({ 'data-node': pub.id, 'data-kind': kind })}>
+    ${mapIcon(kind, 44, undefined, 'route-kind')}
+    <span class="route-text">
+      <h2 class="route-pub-name">${esc(pub.name)}</h2>
+      <span class="route-target" data-testid="route-target">${esc(de.route.kinds[kind] ?? '')} · ${esc(t(de.route.target, { target: pub.target, games: pub.game_limit }))}</span>
+      <span class="sr-only">${esc(t(de.route.guests, { names: guestNames(pub) }))}</span>
+    </span>
+    <span class="route-faces" ${attrs({ title: guestNames(pub) })}>${guestFaces(pub)}</span>
+    ${extra}
   </section>`;
 }
 
-function spelunkeBox(sp: PubPreview, next: PubPreview): string {
-  const malus = sp.malus;
-  return `<span class="route-spelunke" data-testid="route-spelunke" ${attrs({ 'data-node': sp.id })}>
-    <b>${esc(de.route.spelunke)}: ${esc(sp.name)}</b>
-    <span>${esc(t(de.route.spelunkeTarget, { name: next.name, target: sp.target }))}</span>
-    ${malus ? `<span class="route-malus" data-testid="route-malus">${esc(t(de.route.malus, { name: contentName('maluses', malus.id) || malus.name }))}: ${esc(malus.text)}</span>` : ''}
-    <span class="route-reward">${esc(de.route.spelunkeReward)}</span>
-  </span>`;
+// ---------------------------------------------------------------- the travel bar
+
+function lineSample(way: Way): string {
+  const { colour, pattern } = LINE[way];
+  return `<span class="route-line" style="border-top: 4px ${pattern} ${colour}"></span>`;
 }
 
-function optionCard(o: RouteOptionView, next: PubPreview, i: number): string {
+function wayButton(o: RouteOptionView, picked: boolean, i: number): string {
   const stop = o.stops[0]?.category ?? 'Tresen';
-  return `<button class="route-option ${o.spelunke ? 'is-spelunke' : ''}" style="--i:${i}" ${attrs({
-    'data-action': 'choose-route',
+  const way = WAY[o.transport];
+  const label = de.route.transportsShort[o.transport] ?? o.transport;
+  const aria = `${label}, ${de.route.categories[stop] ?? stop}, ${t(de.route.minutes, { n: o.minutes })}${o.spelunke ? `, ${de.route.spelunkeTag}` : ''}`;
+  return `<button class="route-option ${picked ? 'is-picked' : ''} ${o.spelunke ? 'is-spelunke' : ''}" style="--i:${i}" ${attrs({
+    'data-action': 'pick-route',
     'data-option': o.index,
     'data-testid': 'route-option',
     'data-category': stop,
     'data-transport': o.transport,
     'data-node': o.id,
     'data-spelunke': o.spelunke ? 'true' : 'false',
+    'aria-pressed': picked ? 'true' : 'false',
+    'aria-label': aria,
+    title: de.route.categoryHints[stop] ?? '',
     disabled: !o.can_choose,
   })}>
-    <span class="route-way">${transportIcon(o.transport)}<b>${esc(de.route.transports[o.transport] ?? o.transport)}</b><small>${esc(t(de.route.minutes, { n: o.minutes }))}</small></span>
-    <span class="route-stop">${categoryIcon(stop)}<span><b>${esc(de.route.categories[stop] ?? stop)}</b><small>${esc(de.route.categoryHints[stop] ?? '')}</small></span></span>
-    ${o.spelunke ? spelunkeBox(o.spelunke, next) : ''}
+    <span class="route-way">${mapIcon(way, 30, undefined, 'transport-icon')}<b>${esc(label)}</b></span>
+    ${lineSample(way)}
+    <span class="route-stop">${categoryIcon(stop, 24)}${o.spelunke ? mapIcon('spelunke', 24, undefined, 'stop-icon') : ''}<small>${esc(t(de.route.minutes, { n: o.minutes }))}</small></span>
   </button>`;
 }
 
-export function renderRoute(view: RunView): string {
+// ---------------------------------------------------------------- the whole tour
+
+function planRow(icon: MapIcon, name: string, state: string, mark: string, node: string): string {
+  return `<li class="plan-stop is-${state}" ${attrs({ 'data-node': node, 'data-state': state })}><i class="plan-line"></i>${mapIcon(icon, 26)}<span class="plan-name">${esc(name)}</span>${mark}</li>`;
+}
+
+function tourPlan(view: RunView): string {
+  const here = view.tour.current?.id ?? '';
+  const nextId = view.tour.route?.next.id ?? '';
+  const current = view.tour.route?.next.section ?? view.series.section;
+  const blocks = view.tour.districts.map((d) => {
+    const rows = d.pubs
+      .map((p) => {
+        const sp = d.spelunken.find((s) => s.index === p.index);
+        const id = sp ? sp.id : p.id;
+        const state = sp ? sp.state : p.state;
+        const icon: MapIcon = sp ? 'spelunke' : p.is_boss ? 'festsaal' : 'kneipe';
+        const name = sp ? sp.name : p.name;
+        let mark = '';
+        if (state === 'Won') mark = `<b class="plan-mark is-won">✓</b>`;
+        if (state === 'Lost') mark = `<b class="plan-mark is-lost">✗</b>`;
+        if (id === here || p.id === here) mark += `<b class="plan-mark is-here" data-testid="plan-here">${esc(de.route.here)}</b>`;
+        if (p.id === nextId) mark += `<b class="plan-mark is-next">${esc(de.route.goal)}</b>`;
+        const shown = state === 'Won' || state === 'Lost' ? 'done' : id === here ? 'done' : p.id === nextId ? 'next' : 'ahead';
+        return planRow(icon, name, shown, mark, id);
+      })
+      .join('');
+    const cls = d.index < current ? 'is-done' : d.index === current ? 'is-current' : 'is-ahead';
+    return `<section class="plan-district ${cls}" ${attrs({ 'data-district': d.index })}><h3>${esc(t(de.route.district, { n: d.index + 1, name: d.name }))}</h3><ol>${rows}</ol></section>`;
+  });
+  return `<div class="route-plan" data-testid="route-plan"><h2>${esc(de.route.planTitle)}</h2>${blocks.join('')}</div>`;
+}
+
+/** "+" and "−" as pixel bars (the font's minus is too thin). */
+function zoomGlyph(plus: boolean): string {
+  return `<svg viewBox="0 0 9 9" width="18" height="18" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 4h9v1h-9z${plus ? 'M4 0h1v9h-1z' : ''}" fill="currentColor"/></svg>`;
+}
+
+function zoomButtons(overview: boolean): string {
+  return `<div class="map-zoom">
+    <button class="map-zoom-btn" ${attrs({ 'data-action': 'route-map', 'data-testid': 'zoom-in', 'aria-label': de.route.zoomIn, title: de.route.zoomIn, disabled: !overview })}>${zoomGlyph(true)}</button>
+    <button class="map-zoom-btn" ${attrs({ 'data-action': 'route-overview', 'data-testid': 'zoom-out', 'aria-label': de.route.zoomOut, title: de.route.zoomOut, disabled: overview })}>${zoomGlyph(false)}</button>
+  </div>`;
+}
+
+export function renderRoute(view: RunView, pick: number, overview: boolean): string {
   const route = view.tour.route;
   if (!route) return '';
-  const options = route.options.map((o, i) => optionCard(o, route.next, i)).join('');
-  return `<main class="route" data-testid="route">
-    <div class="route-head">
-      <h1>${esc(de.route.title)}</h1>
-      <span class="route-lives">${hearts(view.tour.lives, view.tour.max_lives, 16)}</span>
+  const picked = route.options.find((o) => o.index === pick && o.can_choose) ?? route.options.find((o) => o.index === defaultPick(view));
+  const sel = picked?.index ?? 0;
+  const buttons = route.options.map((o, i) => wayButton(o, o.index === sel, i)).join('');
+  const body = overview ? tourPlan(view) : `${mapSvg(view, sel)}${targetCard(view, picked)}`;
+  const go = picked ? t(de.route.go, { way: de.route.transportsShort[picked.transport] ?? '' }) : de.route.goShort;
+  return `<main class="route ${overview ? 'is-overview' : ''}" data-testid="route" ${attrs({ 'aria-label': de.route.title })}>
+    <div class="route-map ${picked?.spelunke ? 'is-spelunke' : ''}" data-testid="route-map">
+      ${body}
+      ${zoomButtons(overview)}
     </div>
-    <p class="route-sub">${esc(de.route.subtitle)}</p>
-    ${pubCard(route.next)}
-    <div class="route-options">${options}</div>
+    <div class="route-bar">
+      <div class="route-options">${buttons}</div>
+      <button class="btn route-go" ${attrs({ 'data-action': 'choose-route', 'data-option': sel, 'data-testid': 'route-go', disabled: !picked?.can_choose })}>${esc(go)}</button>
+    </div>
   </main>`;
+}
+
+// ---------------------------------------------------------------- travelling
+
+/**
+ * The trip: the position walks along the chosen way and leaves a chalk
+ * trail. Resolves when it arrives (or at once after a tap on the screen).
+ */
+export function playTravel(root: HTMLElement, ms: number): Promise<void> {
+  const svg = root.querySelector<SVGSVGElement>('.map-svg');
+  const sel = svg?.querySelector<SVGGElement>('.map-route.is-selected');
+  const pos = svg?.querySelector<SVGGElement>('.map-pos');
+  const cells = (sel?.dataset.cells ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((c) => c.split(',').map(Number) as [number, number]);
+  if (!svg || !sel || !pos || cells.length < 2 || ms <= 0) return Promise.resolve();
+  const NS = 'http://www.w3.org/2000/svg';
+  const trail = document.createElementNS(NS, 'path');
+  trail.setAttribute('fill', PAPER);
+  trail.setAttribute('class', 'map-trail');
+  pos.before(trail);
+  const [x0, y0] = cells[0] as [number, number];
+  root.querySelector('.route')?.classList.add('is-travelling');
+  return new Promise((resolve) => {
+    let done = false;
+    const start = performance.now();
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      root.removeEventListener('pointerdown', finish);
+      resolve();
+    };
+    root.addEventListener('pointerdown', finish);
+    const frame = (now: number): void => {
+      if (done) return;
+      const p = Math.min(1, (now - start) / ms);
+      const k = Math.floor((cells.length - 1) * p);
+      const [x, y] = cells[k] as [number, number];
+      trail.setAttribute('d', cells.slice(0, k + 1).map(([cx, cy]) => `M${cx - 1} ${cy - 1}h2v2h-2z`).join(''));
+      pos.setAttribute('transform', `translate(${x - x0} ${y - y0})`);
+      if (p < 1) requestAnimationFrame(frame);
+      else window.setTimeout(finish, Math.min(400, ms / 4));
+    };
+    requestAnimationFrame(frame);
+  });
 }

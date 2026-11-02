@@ -88,6 +88,18 @@
 //   no seed below 4000 gets there) up to the second game against the final boss
 //   "Der Alte"; the table must name the rule he lays on this game, and his
 //   cards show his own back, not the back of the boss whose rule is on.
+// - route-spelunke.json: seed 1 by the RunBot (save version 3) at the
+//   route choice after the first pub, one way leading into a Spelunke: the
+//   Spelunke stands on the map apart from the next pub, picking its way
+//   shows it with its malus on the card.
+// - route-station.json: seed 1 at the route into the second district
+//   (Gründerzeitviertel, station look); with full motion "Los" walks the
+//   position along the way with a chalk trail before the stop opens.
+// The route choice (routePass) is a city map: the leg as a pixel image
+// with three ways, a tap on a transport highlights its way, "−" opens the
+// whole tour as a line plan and "+" closes it, the same leg is drawn
+// identically after a reload (same seed), and the screen fits every size
+// of the table check without scrolling.
 // Card backs (ADR 0015): every back of tools/cardart/backs.py is in the
 // sprite; the Stammgäste show "regulars" on their fans, a boss series the
 // boss's back (Kontra-Hans in the boss dialog and on the fan).
@@ -353,9 +365,20 @@ async function assertNoSideScroll(page, label, root = '.shop') {
       const scrollers = [box, ...box.querySelectorAll('*')]
         .filter((el) => el.scrollWidth > el.clientWidth + 1 && !['visible', 'clip'].includes(getComputedStyle(el).overflowX) && !el.classList.contains('sr-only'))
         .map((el) => `${name(el)} (${el.scrollWidth} > ${el.clientWidth})`);
+      // Drawings inside an SVG (the city map) may reach beyond it when a
+      // clipping box around them stays inside the viewport.
+      const clipped = (el) => {
+        if (!el.ownerSVGElement) return false;
+        for (let up = el.ownerSVGElement.parentElement; up; up = up.parentElement) {
+          if (getComputedStyle(up).overflowX === 'visible') continue;
+          const b = up.getBoundingClientRect();
+          return b.left >= -0.5 && b.right <= innerWidth + 0.5;
+        }
+        return false;
+      };
       const wide = [...box.querySelectorAll('*')]
         .filter((el) => {
-          if (el.closest('.sr-only')) return false;
+          if (el.closest('.sr-only') || clipped(el)) return false;
           const b = el.getBoundingClientRect();
           return b.width > 0 && (b.left < -0.5 || b.right > innerWidth + 0.5);
         })
@@ -1883,7 +1906,7 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   log(`hint route: ${await expectHint(page, 'route')}`);
   await shoot(page, 'hint-route');
   await dismissHint(page, 'route');
-  await page.locator('[data-testid="route-option"][data-category="Tresen"]').first().click();
+  await takeRoute(page, 'Tresen');
   log(`hint shop: ${await expectHint(page, 'shop')}`);
   const seenValue = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.hints') ?? '[]'));
   if (!seenValue.includes('value')) fail('the value hint, left alone, did not count as seen once the game was over');
@@ -2526,10 +2549,93 @@ async function wave3(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/** Pick the way over a stop of `category` on the map, then "Los". */
+async function takeRoute(page, category) {
+  await page.locator(`[data-testid="route-option"][data-category="${category}"]`).first().click();
+  await page.waitForSelector(`[data-testid="route-option"][data-category="${category}"][aria-pressed="true"]`);
+  await page.click('[data-testid="route-go"]');
+}
+
+/** The map as the player sees it: the SVG with its image, the highlighted way, the targets. */
+async function mapState(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('[data-testid="map-svg"]');
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2, node: el.getAttribute('data-node') };
+    };
+    const sel = svg?.querySelector('.map-route.is-selected');
+    const image = svg?.querySelector('image');
+    return {
+      svg: svg ? svg.outerHTML : '',
+      image: image ? (image.getAttribute('href') ?? '').length : 0,
+      routes: svg ? svg.querySelectorAll('.map-route').length : 0,
+      selected: sel?.getAttribute('data-route') ?? null,
+      cells: sel?.getAttribute('data-cells') ?? '',
+      badge: svg?.querySelector('[data-testid="map-badge"]')?.getAttribute('data-category') ?? null,
+      target: box('[data-testid="map-target"]'),
+      spelunke: box('[data-testid="map-spelunke"]'),
+      pos: box('[data-testid="map-pos"]'),
+    };
+  });
+}
+
 /**
- * The route choice (Kneipentour, ADR 0016): the screen with hearts, the
- * next pub (name, target, guests) and three ways with one stop each, a
- * Tresen among them; fits the phone and the desktop without side scroll.
+ * The route screen fits like the table (FIT_SIZES, PWA sizes included):
+ * the page does not scroll, the map has room, the travel bar with "Los"
+ * ends inside the viewport and the target card does not cover the
+ * position or the target.
+ */
+async function assertRouteFits(page, label) {
+  for (const size of FIT_SIZES) {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    const insets = size.insets ?? { top: 0, bottom: 0 };
+    await page.evaluate((i) => {
+      const root = document.documentElement.style;
+      if (i.top) root.setProperty('--safe-top', `${i.top}px`);
+      if (i.bottom) root.setProperty('--safe-bottom', `${i.bottom}px`);
+    }, insets);
+    await page.waitForTimeout(120);
+    const r = await page.evaluate(() => {
+      const rect = (sel) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
+      return {
+        scroll: document.scrollingElement.scrollHeight,
+        inner: window.innerHeight,
+        wide: document.scrollingElement.scrollWidth > window.innerWidth,
+        map: rect('[data-testid="route-map"]'),
+        go: rect('[data-testid="route-go"]'),
+        card: rect('[data-testid="route-next"]'),
+        pos: rect('[data-testid="map-pos"]'),
+        target: rect('[data-testid="map-target"]'),
+      };
+    });
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty('--safe-top');
+      document.documentElement.style.removeProperty('--safe-bottom');
+    });
+    const where = `${label} at ${size.width}x${size.height}${size.insets ? ' (PWA, safe areas)' : ''}`;
+    if (r.scroll > r.inner) fail(`${where}: the page scrolls (${r.scroll} > ${r.inner})`);
+    if (r.wide) fail(`${where}: the page scrolls sideways`);
+    if (!r.map || r.map.height < 300) fail(`${where}: the map is ${r.map ? Math.round(r.map.height) : 0}px high`);
+    if (!r.go || r.go.bottom > r.inner - insets.bottom + 0.5) fail(`${where}: "Los" ends at ${r.go ? Math.round(r.go.bottom) : '?'}, below ${r.inner - insets.bottom}`);
+    if (r.card && r.pos && r.pos.top + r.pos.height / 2 > r.card.top) fail(`${where}: the target card covers the position`);
+    if (r.card && r.target && r.target.bottom > r.card.top) fail(`${where}: the target card covers the target`);
+  }
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(80);
+  log(`${label}: route screen fits ${FIT_SIZES.map((s) => `${s.width}x${s.height}${s.insets ? ' PWA' : ''}`).join(', ')}`);
+}
+
+/**
+ * The route choice on the city map (Kneipentour, ADR 0016, design "Karte
+ * Runde 3"): hearts in the head, the map of the leg (a pixel image, three
+ * ways as paths, the position, the next pub), the target card (name,
+ * target, guests), three transport buttons each with its stop, a Tresen
+ * among them, and "Los". A tap on another transport highlights its way;
+ * "−" shows the whole tour as a line plan, "+" goes back. Fits the phone,
+ * the desktop and an installed app without scrolling.
  */
 async function routePass(page, label) {
   await page.waitForSelector('[data-testid="route"]');
@@ -2543,15 +2649,107 @@ async function routePass(page, label) {
   if (!/Ziel \d+ Augen in 3 Spielen/.test(next) || !next.includes('Am Tisch:')) fail(`${label}: next pub ${next}`);
   const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
   if (!/^d\d-p\d$/.test(node ?? '')) fail(`${label}: node id ${node}`);
-  if ((await page.locator('.route .heart').count()) < 3) fail(`${label}: no hearts on the route screen`);
+  if ((await page.locator('.hud .heart').count()) < 3) fail(`${label}: no hearts in the head of the route screen`);
+  if (!(await page.locator('.hud [data-testid="coins"]').count())) fail(`${label}: no Groschen in the head of the route screen`);
+  // The map: the city as an image, three ways, one highlighted with its stop.
+  const map = await mapState(page);
+  if (map.image < 1000) fail(`${label}: the map has no city image`);
+  if (map.routes !== 3) fail(`${label}: ${map.routes} ways on the map`);
+  const picked = await page.locator('[data-testid="route-option"][aria-pressed="true"]').getAttribute('data-transport');
+  if (map.selected !== picked) fail(`${label}: the map highlights ${map.selected}, the bar ${picked}`);
+  const pickedCategory = await page.locator('[data-testid="route-option"][aria-pressed="true"]').getAttribute('data-category');
+  if (map.badge !== pickedCategory) fail(`${label}: the badge shows ${map.badge}, the way stops at ${pickedCategory}`);
+  if (map.target?.node !== node) fail(`${label}: the map's target is ${map.target?.node}, the card's ${node}`);
+  if (!map.pos) fail(`${label}: no position on the map`);
   log(`${label}: ${categories.join(' / ')}, next ${next.slice(0, 80)}`);
   await shoot(page, 'route');
   await assertNoSideScroll(page, label, '.route');
-  const original = page.viewportSize();
-  await page.setViewportSize(DESKTOP);
-  await page.waitForTimeout(150);
-  await shoot(page, 'route-desktop');
-  await page.setViewportSize(original);
+  await assertRouteFits(page, label);
+  // Switching the transport highlights another way (another path).
+  const other = transports.split(',').find((t) => t !== picked);
+  await page.click(`[data-testid="route-option"][data-transport="${other}"]`);
+  await page.waitForSelector(`[data-testid="route-option"][data-transport="${other}"][aria-pressed="true"]`);
+  const switched = await mapState(page);
+  if (switched.selected !== other) fail(`${label}: tapping ${other} highlights ${switched.selected}`);
+  if (switched.cells === map.cells) fail(`${label}: ${other} highlights the same path as ${picked}`);
+  if ((await page.getAttribute('[data-testid="route-go"]', 'data-option')) !== (await page.getAttribute(`[data-testid="route-option"][data-transport="${other}"]`, 'data-option'))) fail(`${label}: "Los" does not take the highlighted way`);
+  log(`${label}: ${picked} -> ${other} switches the highlighted way`);
+  await shoot(page, 'route-switched');
+  // "−": the whole tour as a line plan; "+" back to the map.
+  if (!(await page.locator('[data-testid="zoom-in"]').isDisabled())) fail(`${label}: "+" is active on the map`);
+  await page.click('[data-testid="zoom-out"]');
+  await page.waitForSelector('[data-testid="route-plan"]');
+  if (await page.locator('[data-testid="map-svg"]').count()) fail(`${label}: the map stays under the overview`);
+  if (!(await page.locator('[data-testid="zoom-out"]').isDisabled())) fail(`${label}: "−" is active in the overview`);
+  if ((await page.locator('.route-plan .plan-district').count()) !== 3) fail(`${label}: the overview does not show three districts`);
+  if (!(await page.locator('[data-testid="plan-here"]').count())) fail(`${label}: the overview does not say where the player is`);
+  if ((await page.locator('.route-plan .plan-stop.is-done').count()) < 1) fail(`${label}: the overview shows no pub done`);
+  await shoot(page, 'route-overview');
+  await assertRouteFits(page, `${label} (overview)`);
+  await page.click('[data-testid="zoom-in"]');
+  await page.waitForSelector('[data-testid="map-svg"]');
+  if (await page.locator('[data-testid="route-plan"]').count()) fail(`${label}: "+" did not close the overview`);
+  // Same seed, same map: after a reload the leg is drawn identically.
+  await page.click(`[data-testid="route-option"][data-transport="${picked}"]`);
+  const again = await mapState(page);
+  if (again.svg !== map.svg) fail(`${label}: the map changed between two renders of the same leg`);
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="map-svg"]');
+  const reloaded = await mapState(page);
+  if (reloaded.svg !== map.svg) fail(`${label}: the map is not the same after a reload (same seed)`);
+  log(`${label}: map identical after a reload (${Math.round(map.svg.length / 1024)} kB)`);
+}
+
+/**
+ * The map from saved runs (e2e/fixtures, played by the core's RunBot):
+ * route-spelunke.json (seed 1) has a way into a Spelunke. It stands on the
+ * map as a place of its own, away from the next pub; picking that way
+ * shows the Spelunke on the card with its malus. route-station.json has
+ * the leg into the second district, drawn with the station look. With
+ * full motion the position travels along the chosen way and leaves a
+ * chalk trail before the stop opens.
+ */
+async function mapPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'route-spelunke.json');
+  await page.waitForSelector('[data-testid="map-svg"]');
+  const map = await mapState(page);
+  if (!map.spelunke || !map.target) fail('Spelunke: no Spelunke or no target on the map');
+  const apart = Math.hypot(map.spelunke.x - map.target.x, map.spelunke.y - map.target.y);
+  if (apart < 40) fail(`Spelunke: drawn ${Math.round(apart)}px from the next pub, not a place of its own`);
+  const way = page.locator('[data-testid="route-option"][data-spelunke="true"]');
+  if ((await way.count()) !== 1) fail(`Spelunke: ${await way.count()} ways into a Spelunke`);
+  if ((await way.getAttribute('aria-pressed')) === 'true') fail('Spelunke: the way into the Spelunke is picked by default');
+  await way.click();
+  await page.waitForSelector('[data-testid="route-option"][data-spelunke="true"][aria-pressed="true"]');
+  const card = await page.getAttribute('[data-testid="route-next"]', 'data-node');
+  if (card !== map.spelunke.node || !/^d\d-p\d-s$/.test(card ?? '')) fail(`Spelunke: the card shows ${card}, the map's Spelunke is ${map.spelunke.node}`);
+  if (!(await page.locator('[data-testid="route-malus"]').count())) fail('Spelunke: the card shows no malus');
+  const end = (await mapState(page)).cells.split(' ').pop();
+  log(`Spelunke ${card} ${Math.round(apart)}px from the next pub; its way ends at ${end}`);
+  await shoot(page, 'route-spelunke');
+  await assertRouteFits(page, 'route with a Spelunke picked');
+  await context.close();
+
+  const station = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page2 = await station.newPage();
+  watch(page2, errors);
+  await resumeFixture(page2, 'route-station.json');
+  await page2.waitForSelector('[data-testid="map-svg"]');
+  const look = await page2.getAttribute('[data-testid="map-svg"]', 'data-look');
+  if (look !== 'bahnhof') fail(`second district drawn as ${look}, expected the station look`);
+  await shoot(page2, 'route-station');
+  await page2.click('[data-testid="route-go"]');
+  await page2.waitForSelector('.map-trail');
+  await page2.waitForTimeout(500);
+  const moved = await page2.evaluate(() => document.querySelector('.map-pos')?.getAttribute('transform') ?? '');
+  if (!/translate/.test(moved)) fail('travel: the position does not move along the way');
+  await page2.waitForSelector('[data-testid="route"]', { state: 'detached', timeout: 10000 });
+  log('travel: the position walked the way with a chalk trail, then the stop opened');
+  await station.close();
 }
 
 async function run() {
@@ -2779,7 +2977,7 @@ async function run() {
     // route choice to the next pub opens: lives as hearts, the next pub
     // with name, target and guests, three ways each with its stop.
     await routePass(page, 'first route');
-    await page.locator('[data-testid="route-option"][data-category="Tresen"]').first().click();
+    await takeRoute(page, 'Tresen');
 
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
@@ -2835,6 +3033,7 @@ async function run() {
     log('saved after the Tresen');
     await context.close();
 
+    await mapPass(browser, errors);
     await musicPass(browser, errors, reducedMotion);
     await suitTintPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);

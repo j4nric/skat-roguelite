@@ -55,7 +55,7 @@ import {
 import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
-import { renderRoute } from './ui/route';
+import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
 import { infoModel } from './ui/info';
@@ -157,6 +157,8 @@ const FLYING = '.trick:not(.is-last) .trick-card';
 
 /** How long the cards slide away before a settled game is scored. */
 const SETTLE_MS = 260;
+/** The trip along a way on the map at tempo "Normal". */
+const TRAVEL_MS = 1600;
 
 /** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
 function nextPaint(): Promise<void> {
@@ -202,6 +204,9 @@ export class App {
     swapTake: null,
     lurePick: false,
     peekTrick: false,
+    routePick: null,
+    routeLeg: '',
+    routeOverview: false,
     risen: null,
     thinking: null,
     quip: null,
@@ -825,6 +830,22 @@ export class App {
     this.fastForward = fast;
     this.ui.overlay = null;
     await this.playSteps(before, step);
+  }
+
+  /**
+   * "Los": the position travels along the chosen way on the map (not with
+   * reduced motion; the tempo setting scales it, a tap skips it), then the
+   * core takes the choice and the stop follows.
+   */
+  private async travel(option: number): Promise<void> {
+    if (this.ui.busy) return;
+    if (motionOn() && !this.ui.routeOverview) {
+      this.ui.busy = true;
+      this.screenEl.querySelectorAll<HTMLButtonElement>('.route button').forEach((b) => (b.disabled = true));
+      await playTravel(this.screenEl, TRAVEL_MS * this.tempo());
+      this.ui.busy = false;
+    }
+    await this.act({ ChooseRoute: option });
   }
 
   /**
@@ -2022,8 +2043,19 @@ export class App {
       case 'oma-give':
         void this.act({ TakeFromSkat: { give: num('id'), take: this.ui.swapTake } });
         return;
+      case 'pick-route':
+        this.ui.routePick = num('option');
+        this.ui.routeLeg = legKey(view);
+        this.render();
+        return;
+      case 'route-overview':
+      case 'route-map':
+        this.ui.routeOverview = action === 'route-overview';
+        this.ui.routeLeg = legKey(view);
+        this.render();
+        return;
       case 'choose-route':
-        void this.act({ ChooseRoute: num('option') });
+        void this.travel(num('option'));
         return;
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
@@ -2435,7 +2467,19 @@ export class App {
         const inShop = view.phase === 'Shop' && !ui.anim;
         const inEncounter = view.phase === 'Encounter' && !ui.anim;
         const inRoute = view.phase === 'Route' && !ui.anim;
-        const main = inShop ? renderShop(view) : inEncounter ? renderEncounter(view) : inRoute ? renderRoute(view) : renderTable(view, ui);
+        if (inRoute && ui.routeLeg !== legKey(view)) {
+          // A new leg: the default way, the map in front.
+          ui.routeLeg = legKey(view);
+          ui.routePick = defaultPick(view);
+          ui.routeOverview = false;
+        }
+        const main = inShop
+          ? renderShop(view)
+          : inEncounter
+            ? renderEncounter(view)
+            : inRoute
+              ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
+              : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
