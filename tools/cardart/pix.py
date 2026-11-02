@@ -64,9 +64,10 @@ INK = {'Rot': 'q', 'Gruen': 'v', 'Eichel': 'f', 'Schellen': 'a'}
 BIG = {
     'Rot': [".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."],
     'Gruen': ["...g...", "..ggg..", ".ggggg.", "ggggggg", "gggkggg", ".ggkgg.", "...o..."],
-    # the acorn: a stalk, a wide checkered cap over a narrower nut, so it
-    # does not read as a heart at game size
-    'Eichel': ["...k...", ".fjfjf.", "fjfjfjf", ".jjjjj.", ".jjjjj.", ".jjjjj.", "..jjj..", "...j..."],
+    # the acorn: a bent two-pixel stalk, a plain dark cap wider than the
+    # nut, a lighter nut with a point, so it reads as an acorn, not as a
+    # heart or (with the old checkered cap) as a berry at game size
+    'Eichel': ["....k..", "...k...", ".fffff.", "fffffff", ".jjjjj.", ".jjjjj.", ".jjjjj.", "..jjj.."],
     'Schellen': ["...k...", "..yyy..", ".yyyyy.", "yyyyyyy", "uuuuuuu", "yyykyyy", ".yykyy."],
 }
 MID = {
