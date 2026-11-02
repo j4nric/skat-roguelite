@@ -121,6 +121,16 @@ pub enum PlayerGameEvent {
         /// The card as it is now.
         new: DealtCard,
     },
+    /// An "Untot" card of the player rose from the last trick back into his
+    /// hand; `substitute` from his hand lies in the trick now.
+    CardRose {
+        /// Who played the card (the player).
+        seat: Seat,
+        /// The card back in the hand.
+        card: DealtCard,
+        /// The card in the trick now.
+        substitute: DealtCard,
+    },
     /// The game is scored by the rules.
     GameFinished {
         /// Trick outcome.
@@ -173,6 +183,15 @@ impl PlayerGameEvent {
             Event::CardDrawn { seat, card } => PlayerGameEvent::CardDrawn { seat, card },
             Event::CardReturned { seat, card } => PlayerGameEvent::CardReturned { seat, card },
             Event::LeadDemanded { suit } => PlayerGameEvent::LeadDemanded { suit },
+            Event::CardRose {
+                seat,
+                card,
+                substitute,
+            } => PlayerGameEvent::CardRose {
+                seat,
+                card,
+                substitute,
+            },
             Event::GameFinished {
                 outcome,
                 matadors,

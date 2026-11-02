@@ -361,6 +361,14 @@ pub enum Effect {
     /// (and at every redeal of that game). Card modifications only, passive
     /// only.
     Homesick,
+    /// Lever Stichgewinn and Augen ("Untot", DESIGN 7.2): when the player
+    /// plays this card in a suit game or Grand and the trick is complete,
+    /// the card comes back into his hand once per game and a random other
+    /// card of his hand takes its place in the trick (the trick winner
+    /// stays, the substitute's Augen count). Not with his last card, not in
+    /// Null or Ramsch, not for a defender's copy. Card modifications only,
+    /// passive only.
+    Undead,
     /// Lever Stichgewinn (Vorhand): the player leads the first trick of
     /// every game ("Ehrenvorsitz"). Passive only.
     AlwaysForehand,
@@ -412,6 +420,7 @@ impl Effect {
             | Effect::RevealHolder
             | Effect::Wild
             | Effect::Homesick
+            | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::BlankOut(_) => stage == Stage::Passive,
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
@@ -485,6 +494,7 @@ impl Effect {
                 | Effect::Wild
                 | Effect::BreakThisCard
                 | Effect::Homesick
+                | Effect::Undead
         )
     }
 }

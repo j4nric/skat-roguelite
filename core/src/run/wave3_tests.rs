@@ -16,7 +16,7 @@ const GLASS: &str = "glass_ace";
 const HOMESICK: &str = "homesick";
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).
-fn id_of(notation: &str) -> u32 {
+pub(super) fn id_of(notation: &str) -> u32 {
     let card: Card = notation.parse().expect("card");
     let suit = Suit::ALL
         .iter()
@@ -38,7 +38,7 @@ fn id_of(notation: &str) -> u32 {
     u32::try_from(suit * 8 + rank).expect("small")
 }
 
-fn with_mod(content: &Content, run: &mut Run, card: &str, card_mod: &str) {
+pub(super) fn with_mod(content: &Content, run: &mut Run, card: &str, card_mod: &str) {
     run.attach_mod(
         content,
         id_of(card),
@@ -51,7 +51,7 @@ fn with_mod(content: &Content, run: &mut Run, card: &str, card_mod: &str) {
 /// Replace the current game by a constructed deal with `forehand`, with
 /// every content effect of a normal deal, and a target the series will not
 /// reach.
-fn deal_with(
+pub(super) fn deal_with(
     run: &mut Run,
     content: &Content,
     hands: [&str; 3],
@@ -80,13 +80,18 @@ fn deal_with(
     events
 }
 
-fn card_in(cards: &[DealtCard], notation: &str) -> DealtCard {
+pub(super) fn card_in(cards: &[DealtCard], notation: &str) -> DealtCard {
     let kind: CardKind = notation.parse().expect("notation");
     *cards.iter().find(|c| c.kind == kind).expect("card held")
 }
 
 /// A defender plays `notation` (fires the hooks like the AI would).
-fn defender_plays(run: &mut Run, content: &Content, seat: Seat, notation: &str) -> Vec<RunEvent> {
+pub(super) fn defender_plays(
+    run: &mut Run,
+    content: &Content,
+    seat: Seat,
+    notation: &str,
+) -> Vec<RunEvent> {
     let card = card_in(run.game().expect("game").game.hand(seat), notation);
     let mut events = Vec::new();
     run.play_card(content, seat, card, &mut events)
@@ -96,7 +101,7 @@ fn defender_plays(run: &mut Run, content: &Content, seat: Seat, notation: &str) 
 }
 
 /// Let the bot play the game to its end.
-fn bot_to_end(run: &mut Run, content: &Content) -> (Vec<RunEvent>, ScoreBreakdown) {
+pub(super) fn bot_to_end(run: &mut Run, content: &Content) -> (Vec<RunEvent>, ScoreBreakdown) {
     let mut events = Vec::new();
     loop {
         if let Some(b) = events.iter().find_map(|e| match e {
@@ -114,7 +119,7 @@ fn bot_to_end(run: &mut Run, content: &Content) -> (Vec<RunEvent>, ScoreBreakdow
     }
 }
 
-fn hand_clubs() -> Declaration {
+pub(super) fn hand_clubs() -> Declaration {
     Declaration::suit(Suit::Clubs, RiskLevel::Hand)
 }
 

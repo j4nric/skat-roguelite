@@ -378,6 +378,15 @@ impl Run {
         if declaration.is_ramsch() || game.hand(Seat::DECLARER).iter().any(|c| c.wild) {
             return false;
         }
+        // An "Untot" card that can still rise: the substitute is drawn at
+        // random, the bounds of the rest cannot know it.
+        if game
+            .hand(Seat::DECLARER)
+            .iter()
+            .any(|&c| self.can_rise(content, c))
+        {
+            return false;
+        }
         let sources = self.sources(content, true);
         let now = HookContext {
             flags: &self.flags,

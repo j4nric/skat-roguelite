@@ -49,6 +49,8 @@ export interface CardView extends DealtCard {
   wild_suits?: Suit[];
   /** A Wandelkarte played in this game: its printed suit; `kind` has the suit named. */
   named?: Suit | null;
+  /** "Untot": would rise if played now (left out when false). */
+  can_rise?: boolean;
 }
 
 /** Whether a card modification works in the game in progress: yes, no, or it depends on how the game goes. */
@@ -625,6 +627,8 @@ export type GameEvent =
   | { CardReturned: { seat: Seat; card: DealtCard } }
   /** "Lockvogel": the next defender lead must be this. */
   | { LeadDemanded: { suit: LeadSuit } }
+  /** "Untot": the card rose back into the hand, the substitute lies in the trick. */
+  | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard } }
   | { GameFinished: unknown };
 
 export type DeckChange =
