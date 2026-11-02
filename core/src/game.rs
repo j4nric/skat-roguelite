@@ -273,8 +273,9 @@ pub enum Event<C = Card> {
         /// The card.
         card: C,
     },
-    /// The declarer named what the next defender who leads must lead, if
-    /// he can (house rule "Lockvogel").
+    /// The declarer named what the next defender who leads must lead (house
+    /// rule "Lockvogel", removed on 02.11.2026). Never emitted any more;
+    /// kept so that the log of an older save still reads.
     LeadDemanded {
         /// What must be led.
         suit: LeadSuit,
@@ -370,17 +371,6 @@ pub enum GameError<C = Card> {
         /// The rejected card.
         card: C,
     },
-    /// A lead was demanded ("Lockvogel") and the card does not meet it
-    /// although the seat holds one that does.
-    MustLeadDemanded {
-        /// The rejected card.
-        card: C,
-        /// What must be led.
-        suit: LeadSuit,
-    },
-    /// No lead can be demanded now: not while playing, one is already
-    /// waiting, or trump in a Null game.
-    InvalidLeadDemand,
 }
 
 impl<C: fmt::Display> fmt::Display for GameError<C> {
@@ -404,10 +394,6 @@ impl<C: fmt::Display> fmt::Display for GameError<C> {
             }
             GameError::InvalidSkatSwap => f.write_str("the skat cannot be swapped with"),
             GameError::DiscardForbidden { card } => write!(f, "{card} must not be discarded"),
-            GameError::MustLeadDemanded { card, suit } => {
-                write!(f, "{card} does not meet the demanded lead {suit:?}")
-            }
-            GameError::InvalidLeadDemand => f.write_str("no lead can be demanded now"),
         }
     }
 }
@@ -547,10 +533,6 @@ pub struct Game<C = Card> {
     /// The discard that went back to that defender ("Drei drücken").
     #[serde(default = "no_card", skip_serializing_if = "Option::is_none")]
     returned: Option<(Seat, C)>,
-    /// What the next defender who leads must lead, if he can
-    /// ("Lockvogel"). Used up by that lead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    lead_demand: Option<LeadSuit>,
     /// Extra Augen per seat from card effects ("Erster Stich", DESIGN
     /// 7.2).
     #[serde(default, skip_serializing_if = "no_bonus")]
@@ -739,7 +721,6 @@ impl<C: PlayingCard> Game<C> {
             defenders_open: false,
             drawn: None,
             returned: None,
-            lead_demand: None,
             bonus_points: [0; 3],
             log,
         }
@@ -950,13 +931,6 @@ impl<C: PlayingCard> Game<C> {
         }
     }
 
-    /// What the next defender who leads must lead, while a demand waits
-    /// ("Lockvogel").
-    #[must_use]
-    pub fn lead_demand(&self) -> Option<LeadSuit> {
-        self.lead_demand
-    }
-
     /// The declaration, once made.
     #[must_use]
     pub fn declaration(&self) -> Option<Declaration> {
@@ -1064,24 +1038,14 @@ impl<C: PlayingCard> Game<C> {
     }
 
     /// Cards `seat` may play right now. Empty unless it is that seat's turn.
-    /// A defender who leads while a lead is demanded ("Lockvogel") must
-    /// meet it if he can ([`rules::legal_leads`]).
     #[must_use]
     pub fn legal_moves(&self, seat: Seat) -> Vec<C> {
         match (self.current_seat(), self.declaration) {
-            (Some(current), Some(declaration)) if current == seat => match self.demand_for(seat) {
-                Some(demand) => rules::legal_leads(declaration.game(), self.hand(seat), demand),
-                None => rules::legal_moves(declaration.game(), self.hand(seat), self.lead_card()),
-            },
+            (Some(current), Some(declaration)) if current == seat => {
+                rules::legal_moves(declaration.game(), self.hand(seat), self.lead_card())
+            }
             _ => Vec::new(),
         }
-    }
-
-    /// The demand `seat` has to meet with its next card: only a defender
-    /// leading a trick while one waits.
-    fn demand_for(&self, seat: Seat) -> Option<LeadSuit> {
-        self.lead_demand
-            .filter(|_| !seat.is_declarer() && self.trick.is_empty())
     }
 
     /// What `seat` knows during play. `None` outside [`Phase::Playing`].
@@ -1435,23 +1399,6 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
-    /// The declarer names what the next defender who leads must lead, if
-    /// he can (house rule "Lockvogel"). Only while playing and while no
-    /// demand waits; no trump in Null. The run decides how often a game
-    /// allows it.
-    pub fn demand_lead(&mut self, suit: LeadSuit) -> Result<Vec<Event<C>>, GameError<C>> {
-        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
-            return Err(GameError::WrongPhase { phase: self.phase });
-        };
-        if self.lead_demand.is_some() || !LeadSuit::options(declaration.game()).contains(&suit) {
-            return Err(GameError::InvalidLeadDemand);
-        }
-        self.lead_demand = Some(suit);
-        let events = vec![Event::LeadDemanded { suit }];
-        self.log.extend(events.iter().cloned());
-        Ok(events)
-    }
-
     /// Play a card. Returns the events this caused: the card, possibly the
     /// completed trick, possibly the finished game.
     pub fn play(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
@@ -1469,13 +1416,6 @@ impl<C: PlayingCard> Game<C> {
             if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), card) {
                 return Err(GameError::MustFollowSuit { card, lead });
             }
-        }
-        if let Some(suit) = self.demand_for(seat) {
-            if !rules::legal_leads(declaration.game(), self.hand(seat), suit).contains(&card) {
-                return Err(GameError::MustLeadDemanded { card, suit });
-            }
-            // The demand is used up by this lead, met or not.
-            self.lead_demand = None;
         }
 
         self.hands[seat.index()].retain(|&c| c != card);

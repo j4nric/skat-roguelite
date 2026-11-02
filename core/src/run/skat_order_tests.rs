@@ -241,7 +241,7 @@ fn the_null_player_picks_up_for_null_and_null_ouvert() {
 
 #[test]
 fn the_show_off_lets_the_null_player_pick_up_for_null_ouvert_only() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let start = RunStart {
         character: Character::NullPlayer,
         relics: vec![RelicId::new("show_off")],
@@ -274,7 +274,7 @@ fn the_show_off_lets_the_null_player_pick_up_for_null_ouvert_only() {
 /// use the Bock up, the declaration after the discard does.
 #[test]
 fn on_declare_effects_wait_for_the_declaration_after_the_skat() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["bock_round"]);
     run.flags.insert("bock".into());
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -298,7 +298,7 @@ fn on_declare_effects_wait_for_the_declaration_after_the_skat() {
 /// Kontra comes after the declaration, also after picking up the skat.
 #[test]
 fn kontra_follows_the_declaration_after_the_skat() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["kontra"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let events = run.apply(&content, RunAction::PickUpSkat).expect("pick up");

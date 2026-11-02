@@ -422,6 +422,71 @@ pub enum EncounterKind {
     /// into a free slot or turned into Groschen (half its price). Never
     /// drawn on a route.
     RelicReward,
+    /// Der Wirt spendiert (02.11.2026): one of `offers` Schnäpse (drawn
+    /// now) into a free slot for free, or `coins` Groschen.
+    FreeSchnapps {
+        /// Schnäpse on offer.
+        offers: u32,
+        /// Groschen instead.
+        coins: u32,
+    },
+    /// Falschspieler am Nebentisch (02.11.2026): for `price` Groschen one
+    /// of `offers` (drawn now) on a card of the player's choice; with
+    /// `curse_percent` percent a random curse lands there instead. The
+    /// text must say "Fluch".
+    Gamble {
+        /// Price.
+        price: u32,
+        /// Modifications with their value, one drawn.
+        offers: Vec<(CardModId, i32)>,
+        /// Chance of the curse, in percent.
+        curse_percent: u32,
+    },
+    /// Verlorenes Portemonnaie (02.11.2026): keep it (`coins` Groschen and
+    /// the curse `curse` on a random card) or hand it in (`lives` back).
+    Wallet {
+        /// Groschen in the wallet.
+        coins: u32,
+        /// The curse that comes with keeping it.
+        curse: CardModId,
+        /// Lives for handing it in.
+        lives: u32,
+    },
+    /// Der Skatlehrer (02.11.2026): `card_mod` with `value` on a card of
+    /// the player's choice for free; the first game of the next pub allows
+    /// `redeals` Einmischen fewer.
+    Lesson {
+        /// The modification.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+        /// Einmischen fewer in the next pub.
+        redeals: u32,
+    },
+    /// Die Wette (02.11.2026): stake one of `stakes` Groschen on the next
+    /// declared game (the Ramsch does not count); won with Schneider it
+    /// pays the stake `factor` times, otherwise it is gone.
+    Wager {
+        /// The stakes on offer.
+        stakes: Vec<u32>,
+        /// Payout factor (2: the stake doubles).
+        factor: u32,
+    },
+    /// Alte Karten im Schrank (02.11.2026): one of `vouchers` (drawn now)
+    /// on a card of the player's choice, a random curse (drawn now) on
+    /// another card. The text must say "Fluch".
+    OldCards {
+        /// Vouchers, one drawn.
+        vouchers: Vec<CardModId>,
+    },
+    /// Kiebitz am Fenster (02.11.2026): see the exact stops of the next
+    /// `legs` route choices, or `redeals` Einmischen more in the next pub.
+    Lookout {
+        /// Route choices whose stops are shown.
+        legs: u32,
+        /// Einmischen more in the next pub.
+        redeals: u32,
+    },
 }
 
 /// The kind of a stop on a route between two pubs (ADR 0016): the
@@ -580,6 +645,21 @@ pub enum RelicKind {
     Regular,
 }
 
+/// Display group of a relic (02.11.2026): which lever it turns, for the
+/// shape of its beer mat in a frontend. Presentation only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum RelicGroup {
+    /// Wert: Augen, Grundwert, Skat.
+    #[default]
+    Value,
+    /// Multiplikator: Gewinnstufen, Schneider, Spielwert.
+    Multiplier,
+    /// Kontrolle: Blatt, Skat, Information, Vorhand.
+    Control,
+    /// Tour: Groschen, Tresen, Leben, Wege.
+    Tour,
+}
+
 /// A relic: house rule or Stammtisch figure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelicDef {
@@ -608,6 +688,9 @@ pub struct RelicDef {
     /// Characters that meet it at the Tresen (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
+    /// Display group (default: Value).
+    #[serde(default)]
+    pub group: RelicGroup,
 }
 
 /// The kind of a card modification in the effects v2 system (DESIGN 7.2).
@@ -935,6 +1018,31 @@ pub enum ConsumableAction {
     /// declaration; the card is that card for the whole game: trump,
     /// following suit and Spitzen.
     ChalkCard,
+    /// Deal again at once without using up an Einmischen, and change the
+    /// next declared game ("Doppelkorn" since 02.11.2026): like
+    /// [`ConsumableAction::Redeal`] plus [`ConsumableAction::NextGame`], so
+    /// it cannot be drunk on a hand already known. Only with ten cards
+    /// before the skat is touched.
+    RedealNextGame(NextGameEffect),
+    /// Lives back, at most to the maximum ("Katerfrühstück"). Outside a
+    /// game only, and only with a life missing.
+    GainLives(u32),
+    /// Draw the stops of the open route choice again ("Taxi"): every way
+    /// gets a new stop, the Tresen stays within reach, a Spelunke stays
+    /// where it is. At the route choice only.
+    RerollRoutes,
+    /// Change the next pub ("Wegbier"): `redeals` more Einmischen for the
+    /// whole pub (fewer if negative: the first game allows that many
+    /// fewer) and its Zielwert changed by `target` (never below 1).
+    /// Between two pubs only (route choice, Tresen, encounter).
+    NextPub {
+        /// Einmischen more (fewer if negative).
+        #[serde(default)]
+        redeals: i32,
+        /// Change of the Zielwert.
+        #[serde(default)]
+        target: i32,
+    },
 }
 
 /// What a consumable of [`ConsumableAction::NextGame`] does to the next
@@ -1616,6 +1724,45 @@ impl Content {
     }
 
     fn validate_encounters(&self) -> Result<(), ContentError> {
+        for def in self.encounters.values() {
+            let (mods, curse): (Vec<&CardModId>, bool) = match &def.kind {
+                EncounterKind::Gamble { offers, .. } => {
+                    (offers.iter().map(|(m, _)| m).collect(), true)
+                }
+                EncounterKind::Wallet { curse, .. } => (vec![curse], true),
+                EncounterKind::Lesson { card_mod, .. } => (vec![card_mod], false),
+                EncounterKind::OldCards { vouchers } => (vouchers.iter().collect(), true),
+                _ => continue,
+            };
+            for id in &mods {
+                if !self.card_mods.contains_key(*id) {
+                    return Err(ContentError(format!(
+                        "encounter {}: unknown card mod {id}",
+                        def.id
+                    )));
+                }
+            }
+            if let EncounterKind::Wallet { curse: id, .. } = &def.kind {
+                if !self.card_mods.get(id).is_some_and(CardModDef::is_curse) {
+                    return Err(ContentError(format!(
+                        "encounter {}: {id} is no curse",
+                        def.id
+                    )));
+                }
+            }
+            if mods.is_empty() {
+                return Err(ContentError(format!(
+                    "encounter {}: nothing on offer",
+                    def.id
+                )));
+            }
+            if curse && !def.text.contains("Fluch") {
+                return Err(ContentError(format!(
+                    "encounter {}: gives a curse, its text must say \"Fluch\"",
+                    def.id
+                )));
+            }
+        }
         for def in self.encounters.values() {
             let EncounterKind::MarkCard {
                 card_mod, curse, ..

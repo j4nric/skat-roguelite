@@ -1,7 +1,9 @@
 // Verbrauchsgegenstände: einmal nutzbar, höchstens zwei auf der Hand.
 // Preise sind Platzhalter (DESIGN 12: 2 bis 4). `category: Schnapps` fasst
 // die Schnäpse zusammen (DESIGN 8.3); Preise und Seltenheit auch dort
-// Platzhalter für `balance`.
+// Platzhalter für `balance`. Entfernt am 02.11.2026 (Gegenstands-Review des
+// Nutzers): Ein Bier, Neues Blatt, Magenbitter, Reue, Augen +5, Trumpf +4;
+// alte Spielstände verlieren sie beim Laden.
 [
     (
         id: "fresh_deck",
@@ -20,22 +22,6 @@
         action: AddCardMod(None),
     ),
     (
-        id: "beer",
-        name: "Ein Bier",
-        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Kneipe.",
-        rarity: Common,
-        price: 2,
-        action: ExtraRedeals(1),
-    ),
-    (
-        id: "new_deal",
-        name: "Neues Blatt",
-        text: "Sofort neu mischen und geben, ohne dass es ein Einmischen kostet.",
-        rarity: Uncommon,
-        price: 4,
-        action: Redeal,
-    ),
-    (
         id: "shot",
         name: "Kurzer",
         text: "Vor der Wahl zwischen Skat und Hand: Schau dir die beiden Skatkarten an. Die Wahl bleibt offen.",
@@ -44,31 +30,28 @@
         action: PeekSkat,
         category: Schnapps,
     ),
+    // Item review of 02.11.2026 (user): drinking it deals again at once
+    // (free, no Einmischen used), so it cannot be saved for a known hand;
+    // the new game counts double, further Einmischen keep the effect until
+    // a game is declared.
     (
         id: "double_grain",
         name: "Doppelkorn",
-        text: "Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren.",
+        text: "Vor der Wahl zwischen Skat und Hand: Es wird sofort neu gegeben, ohne ein Einmischen zu kosten, und das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren.",
         rarity: Uncommon,
         price: 3,
-        action: NextGame(Multiply(2)),
+        action: RedealNextGame(Multiply(2)),
         category: Schnapps,
     ),
+    // Item review of 02.11.2026: what "Neues Blatt" did (now removed).
+    // Price provisional (3, before 2).
     (
         id: "herbal",
         name: "Kräuter",
-        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Kneipe.",
+        text: "Vor der Wahl zwischen Skat und Hand: Sofort neu mischen und geben, ohne dass es ein Einmischen kostet.",
         rarity: Common,
-        price: 2,
-        action: ExtraRedeals(1),
-        category: Schnapps,
-    ),
-    (
-        id: "bitters",
-        name: "Magenbitter",
-        text: "Geht das nächste angesagte Spiel verloren, zählt es einfach statt doppelt.",
-        rarity: Common,
-        price: 2,
-        action: NextGame(SingleLoss),
+        price: 3,
+        action: Redeal,
         category: Schnapps,
     ),
     (
@@ -80,15 +63,33 @@
         action: ChalkCard,
         category: Schnapps,
     ),
-    // Neu am 01.11.2026 mit dem Einmischen (DESIGN 8.3). Preis und
-    // Seltenheit Platzhalter für `balance`.
+    // Gegenstands-Review vom 02.11.2026 (Nutzer): neue Schnäpse. Preise und
+    // Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung (DESIGN 8.3, 12).
     (
-        id: "regret",
-        name: "Reue",
-        text: "Gleich nach dem Einmischen: Nimm es zurück. Das Blatt davor liegt wieder auf dem Tisch, und du spielst es. Das Einmischen bleibt verbraucht.",
+        id: "hangover_breakfast",
+        name: "Katerfrühstück",
+        text: "Außerhalb eines Spiels: Du bekommst ein Leben zurück, höchstens bis zum Maximum.",
+        rarity: Uncommon,
+        price: 4,
+        action: GainLives(1),
+        category: Schnapps,
+    ),
+    (
+        id: "taxi",
+        name: "Taxi",
+        text: "Bei der Wahl des Weges: Die Stationen aller drei Wege werden neu ausgelost.",
         rarity: Common,
         price: 2,
-        action: UndoRedeal,
+        action: RerollRoutes,
+        category: Schnapps,
+    ),
+    (
+        id: "road_beer",
+        name: "Wegbier",
+        text: "Auf dem Weg zur nächsten Kneipe: Dort darfst du einmal mehr einmischen, und ihr Zielwert sinkt um 3.",
+        rarity: Common,
+        price: 3,
+        action: NextPub(redeals: 1, target: -3),
         category: Schnapps,
     ),
     // Effekte v2 (DESIGN 7.2, 12): Modifikationen mit festem Wert am
@@ -103,28 +104,12 @@
         action: ApplyCardMod(card_mod: "points", value: 3),
     ),
     (
-        id: "points_5",
-        name: "Augen +5",
-        text: "Eine Karte zählt 5 Augen mehr. Trägt sie schon Augen, kommen sie dazu.",
-        rarity: Uncommon,
-        price: 3,
-        action: ApplyCardMod(card_mod: "points", value: 5),
-    ),
-    (
         id: "trump_2",
         name: "Trumpf +2",
         text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 2.",
         rarity: Common,
         price: 3,
         action: ApplyCardMod(card_mod: "trump_bonus", value: 2),
-    ),
-    (
-        id: "trump_4",
-        name: "Trumpf +4",
-        text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 4.",
-        rarity: Uncommon,
-        price: 4,
-        action: ApplyCardMod(card_mod: "trump_bonus", value: 4),
     ),
     (
         id: "rank_1",

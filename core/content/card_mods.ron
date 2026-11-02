@@ -72,7 +72,7 @@
         kind: Moment,
         focus: Trump,
         name: "Letzter Stich",
-        text: "Macht diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr.",
+        text: "Macht diese Karte den letzten Stich: +1 Multiplikator.",
         rarity: Uncommon,
         price: 4,
         values: [1],

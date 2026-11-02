@@ -75,12 +75,6 @@
 //! twelve and discards three: the two it would discard, then the one it
 //! would discard next (the run gives the lowest of them back).
 //!
-//! "Lockvogel" ([`RunBot::lead_demand`]): on its own turn, as soon as it
-//! holds the highest card still out in a side suit the defenders still
-//! hold (or the highest trump while trumps are out), it names that suit
-//! (side suits first, the most Augen still out); in Null a suit in which
-//! its lowest card is below every card still out.
-//!
 //! The bot never looks at the Zielwert or the series account. The
 //! simulator's success curve (`--curve`) relies on that.
 //!
@@ -95,10 +89,7 @@ use crate::content::{
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
-use crate::rules::{
-    Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, suit_strength,
-    trump_order_key,
-};
+use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 
 /// How much the bot wants each relic, by the measured effect of the relic
 /// alone (`docs/balance/2026-11-01-m5-v1.md`: PIMC card play, relic from the
@@ -168,54 +159,53 @@ use crate::rules::{
 /// |---|---|---|
 /// | `three_discard` | 10 | once per series +7.9, +12.1 (new targets of PR #47); in every game it was +18.0 |
 /// | `decoy` | 3 | +1.1, +2.2 |
-/// | `crib_sheet` | 1 | +0.3, +0.2: the bot rarely plays hand |
-pub const RELIC_VALUES: [(&str, u32); 46] = [
+/// | `crib_sheet` | 1 | +0.3, +0.2: the bot rarely plays hand; both skat cards since 02.11.2026, not measured |
+///
+/// Item review of 02.11.2026: the relics removed then (`bock_round`,
+/// `kontra`, `regular_guest`, `seven_sleeper` and the rest of the tables
+/// above that have no entry below, and `decoy`) stay in the
+/// tables as history only. The Kneipentour relics added then are set by
+/// judgement, not measured (simulations paused):
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `closing_time` | 3 | +4 Groschen per pub won in the first game, about one pub in four |
+/// | `season_ticket` | 2 | +1 Groschen per Bahn; the route policy does not seek the Bahn |
+/// | `kitty` | 3 | +1 Groschen per pub won, paid at the next Tresen |
+/// | `slate` | 2 | the bot never buys on credit, it only pays the debt back |
+/// | `guardian_angel` | 7 | a life per district at most, like a won boss pub |
+/// | `dive_expert` | 1 | the bot rarely enters a Spelunke |
+pub const RELIC_VALUES: [(&str, u32); 30] = [
     ("every_bit_counts", 10),
-    ("bock_round", 10),
     ("old_lady", 10),
-    ("regular_guest", 8),
     ("concede", 8),
     ("blind_eye", 8),
-    ("seven_sleeper", 8),
     ("skat_redraw", 7),
-    ("march_through", 7),
-    ("safety_net", 7),
     ("lucky_streak", 6),
-    ("tuition", 6),
     ("virgin", 6),
     ("tour", 6),
     ("tailor", 6),
     ("landlord", 5),
     ("null_eight_fifteen", 5),
-    ("tally_stick", 5),
     ("fat_sow", 4),
-    ("kontra", 3),
     ("kibitzer", 3),
-    ("high_and_dry", 3),
-    ("schneider_bock", 3),
-    ("granny", 2),
-    ("grandpa", 2),
     ("last_trick_seven", 2),
     ("with_four", 2),
-    ("blind_flight", 2),
-    ("referee", 1),
     ("beer_mat", 1),
-    ("ouvert_bonus", 1),
-    ("glass_house", 1),
-    ("clean_slate", 1),
     ("card_counter", 1),
-    ("show_off", 0),
     ("all_rounder", 7),
-    ("old_deck", 7),
     ("watertight", 6),
     ("skat_keeper", 6),
-    ("jack_parade", 4),
     ("blank_king", 4),
-    ("changeling", 2),
     ("home_suit", 1),
     ("three_discard", 10),
-    ("decoy", 3),
     ("crib_sheet", 1),
+    ("closing_time", 3),
+    ("season_ticket", 2),
+    ("kitty", 3),
+    ("slate", 2),
+    ("guardian_angel", 7),
+    ("dive_expert", 1),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -238,19 +228,19 @@ pub const SWAP_MARGIN: u32 = 3;
 ///
 /// | Consumable | Value | Use |
 /// |---|---|---|
-/// | `new_deal` | 2 | throws a weak hand in once the game's Einmischen are used up |
-/// | `beer` | 1 | one more Einmischen once those of the game are used up |
+/// | `herbal` | 2 | "Kräuter" (since 02.11.2026 what "Neues Blatt" did): throws a weak hand in once the game's Einmischen are used up |
 /// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
 /// | `fresh_deck` | 0, 2 with a cursed card | ADR 0015: cleanses a card of the player's edition; the bot buys it only while a card carries a curse (not "Abgestuft") and uses it on that card at once |
-/// | `herbal` | 1 | "Kräuter": like "Ein Bier" |
-/// | `double_grain` | 2 | "Doppelkorn": before a game that is not weak |
-/// | `bitters` | 2 | "Magenbitter": before a weak game |
+/// | `double_grain` | 2 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
 /// | `chalk` | 2 | "Kreide": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
-/// | `regret` | 0 | "Reue": the bot never takes an Einmischen back |
+/// | `hangover_breakfast` | 2 | "Katerfrühstück": at the route choice with a life missing |
+/// | `road_beer` | 2 | "Wegbier": at the route choice, at once |
+/// | `taxi` | 0 | "Taxi": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
 ///
-/// The Schnäpse are placeholders, not measured. "Neues Blatt", "Ein Bier"
-/// and "Kräuter" only help once the two Einmischen of a game are used up:
+/// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
+/// `new_deal`, `beer`, `bitters`, `regret`, `points_5`, `trump_4`. "Neues
+/// Blatt", "Ein Bier" and "Kräuter" only help once the two Einmischen of a game are used up:
 /// the bot throws in about every second deal (0.75 Einmischen per game in
 /// the run measurement of 01.11.2026, DESIGN 5.2), so three weak deals in
 /// a row come in about one game of eight, once every three series. Before the
@@ -260,22 +250,19 @@ pub const SWAP_MARGIN: u32 = 3;
 /// Effects v2 (DESIGN 7.2, 12): the card modifications with a value at the
 /// Tresen are placeholders, not measured; the bot puts them on a Daus
 /// without modification like the Stempelkissen.
-pub const CONSUMABLE_VALUES: [(&str, u32); 15] = [
-    ("new_deal", 2),
-    ("beer", 1),
-    ("herbal", 1),
+pub const CONSUMABLE_VALUES: [(&str, u32); 12] = [
+    ("herbal", 2),
     ("ink_pad", 2),
     ("double_grain", 2),
-    ("bitters", 2),
     ("chalk", 2),
     ("shot", 1),
     ("fresh_deck", 0),
-    ("regret", 0),
     ("points_3", 1),
-    ("points_5", 2),
     ("trump_2", 1),
-    ("trump_4", 2),
     ("rank_1", 1),
+    ("hangover_breakfast", 2),
+    ("road_beer", 2),
+    ("taxi", 0),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -593,6 +580,12 @@ impl RunBot {
         let Some(route) = run.route() else {
             return RunAction::LeaveShop;
         };
+        if let Some(action) = Self::route_schnapps(run, content) {
+            return action;
+        }
+        if let Some(action) = Self::malus_choice(run) {
+            return action;
+        }
         let max_lives = content.run.lives.max;
         let cursed = Self::cursed_card(run, content).is_some();
         let strong = run.lives() >= 3 && run.relics().len() >= 3;
@@ -637,12 +630,16 @@ impl RunBot {
         };
         let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
         let free_slot = run.relics().len() < slots;
+        let item_slot =
+            run.consumables().len() < usize::try_from(content.run.consumable_slots).unwrap_or(0);
         let cursed = Self::cursed_card(run, content);
-        // The Werkstatt (free choices with a target).
+        // The Werkstatt and the Skatlehrer (free choices with a target).
         for (i, option) in encounter.options.iter().enumerate() {
             let target = match option.choice {
                 EncounterChoice::CleanseChosenCard => cursed,
-                EncounterChoice::MarkChosenCard if option.cost == 0 && cursed.is_none() => {
+                EncounterChoice::MarkChosenCard | EncounterChoice::Lesson { .. }
+                    if option.cost == 0 && cursed.is_none() =>
+                {
                     Self::ace_targets(run).into_iter().find(|&card| {
                         run.accepts(
                             content,
@@ -668,7 +665,11 @@ impl RunBot {
                 EncounterChoice::TakeRule(id) => relic_value(id) + 1,
                 EncounterChoice::TakeRelic(id) if free_slot => relic_value(id) + 1,
                 EncounterChoice::TakeCoins(n) => (*n).max(1),
-                EncounterChoice::Heal(_) => 100,
+                EncounterChoice::Heal(_) if run.lives() < content.run.lives.max => 100,
+                EncounterChoice::TakeConsumable(id) if item_slot => consumable_value(id) + 1,
+                EncounterChoice::KeepWallet { coins, .. } => coins / 2,
+                EncounterChoice::NextPubRedeals(_) => 2,
+                EncounterChoice::Scout(_) => 1,
                 EncounterChoice::MarkRandomCard => 1,
                 // The relic received is known: swap for a clearly better one.
                 EncounterChoice::SwapRelic {
@@ -905,14 +906,6 @@ impl RunBot {
                 if !active.rules.skat_swaps.is_empty() {
                     if let Some(action) = Self::take_from_skat(run, content) {
                         return Some(action);
-                    }
-                }
-                if active.lead_demands_used < active.rules.lead_demands {
-                    if let Some(suit) = Self::lead_demand(run) {
-                        let action = RunAction::DemandLead(suit);
-                        if run.accepts(content, action.clone()) {
-                            return Some(action);
-                        }
                     }
                 }
                 if let Some(card) = Self::undead_card(run, content) {
@@ -1263,63 +1256,6 @@ impl RunBot {
         Some(chosen)
     }
 
-    /// "Lockvogel": what to demand of the next defender lead, if anything
-    /// is worth it now (see the module docs). Counted from what the
-    /// declarer sees: unseen cards are those of the deck not in his hand,
-    /// not played and not in a skat he knows.
-    #[must_use]
-    pub fn lead_demand(run: &Run) -> Option<LeadSuit> {
-        let game = &run.game()?.game;
-        let view = game.view(Seat::DECLARER)?;
-        let declaration = game.declaration()?;
-        let trump = declaration.game();
-        let unseen = view.unseen_cards();
-        let hand = game.hand(Seat::DECLARER);
-        let options = LeadSuit::options(trump);
-        if declaration.is_null() {
-            return options.into_iter().find(|&suit| {
-                let low = hand
-                    .iter()
-                    .filter(|&&c| suit.matches(trump, c))
-                    .map(|&c| suit_strength(trump, c))
-                    .min();
-                let out: Vec<u8> = unseen
-                    .iter()
-                    .filter(|&&c| suit.matches(trump, c))
-                    .map(|&c| suit_strength(trump, c))
-                    .collect();
-                low.is_some_and(|low| out.len() >= 2 && out.iter().all(|&o| o > low))
-            });
-        }
-        let strength = |c: DealtCard| -> (u8, u8) {
-            trump_order_key(trump, c).map_or((0, suit_strength(trump, c)), |(s, e)| (s + 20, e))
-        };
-        let mut best: Option<(bool, u32, LeadSuit)> = None;
-        for suit in options {
-            let top = hand
-                .iter()
-                .copied()
-                .filter(|&c| suit.matches(trump, c))
-                .map(strength)
-                .max();
-            let out: Vec<DealtCard> = unseen
-                .iter()
-                .copied()
-                .filter(|&c| suit.matches(trump, c))
-                .collect();
-            let wins = top.is_some_and(|top| out.iter().all(|&c| strength(c) < top));
-            if !wins || out.len() < 2 {
-                continue;
-            }
-            let side = suit != LeadSuit::Trump;
-            let augen: u32 = out.iter().map(|c| c.card_points()).sum();
-            if best.is_none_or(|(s, a, _)| (side, augen) > (s, a)) {
-                best = Some((side, augen, suit));
-            }
-        }
-        best.map(|(_, _, suit)| suit)
-    }
-
     /// The two discards for `declaration` from the twelve cards: the declarer
     /// heuristic's choice (the most exposed cards in a Null), never a card
     /// that must not be discarded while others are left.
@@ -1448,7 +1384,8 @@ impl RunBot {
     }
 
     /// The cheapest way to throw a weak hand in, if any: an Einmischen
-    /// left, "Neues Blatt", "Ein Bier" for one more Einmischen. Einmischen
+    /// left, "Kräuter", "Doppelkorn" (the new game counts double),
+    /// "Ein Bier" of older content for one more Einmischen. Einmischen
     /// costs no game, so the last game of a series is no exception.
     fn throw_in(run: &Run, content: &Content) -> Option<RunAction> {
         if run.redeals_left(content) > 0 && run.accepts(content, RunAction::Redeal) {
@@ -1462,12 +1399,83 @@ impl RunBot {
         ) {
             return Some(action);
         }
+        if let Some(action) = Self::usable(
+            run,
+            content,
+            |a| matches!(a, ConsumableAction::RedealNextGame(_)),
+            None,
+        ) {
+            return Some(action);
+        }
         Self::usable(
             run,
             content,
             |a| matches!(a, ConsumableAction::ExtraRedeals(_)),
             None,
         )
+    }
+
+    /// Schnäpse at the route choice: "Katerfrühstück" with a life missing,
+    /// "Wegbier" at once, "Taxi" when no way has what the bot wants most.
+    fn route_schnapps(run: &Run, content: &Content) -> Option<RunAction> {
+        if run.lives() < content.run.lives.max {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::GainLives(_)),
+                None,
+            ) {
+                return Some(action);
+            }
+        }
+        if let Some(action) = Self::usable(
+            run,
+            content,
+            |a| matches!(a, ConsumableAction::NextPub { .. }),
+            None,
+        ) {
+            return Some(action);
+        }
+        let route = run.route()?;
+        let has = |category: StopCategory| {
+            route
+                .options
+                .iter()
+                .any(|o| o.stops.iter().any(|s| s.category == category))
+        };
+        let wants_upgrade =
+            Self::cursed_card(run, content).is_some() && !has(StopCategory::Upgrade);
+        let wants_rest =
+            run.lives() <= 2 && run.lives() < content.run.lives.max && !has(StopCategory::Rest);
+        if wants_upgrade || wants_rest {
+            return Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::RerollRoutes),
+                None,
+            );
+        }
+        None
+    }
+
+    /// "Spelunkenkenner": the malus the bot likes best on a Spelunke way,
+    /// if it is not the chosen one yet (Schnapsverbot, then Klebrige
+    /// Karten, Kein Einmischen, Kein Skat).
+    fn malus_choice(run: &Run) -> Option<RunAction> {
+        const LIKED: [&str; 4] = ["schnapps_locked", "cursed_cards", "no_redeal", "hand_only"];
+        let route = run.route()?;
+        route.options.iter().enumerate().find_map(|(option, o)| {
+            let spelunke = o.spelunke.as_ref()?;
+            let best = spelunke
+                .malus_options
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, m)| LIKED.iter().position(|l| *l == m.as_str()).unwrap_or(9))?;
+            (*best.1 != spelunke.malus).then_some(RunAction::ChooseMalus {
+                option,
+                malus: best.0,
+            })
+        })
     }
 }
 
@@ -1565,25 +1573,30 @@ mod tests {
     fn shop_swaps_the_weakest_relic_for_a_clearly_better_one() {
         let content = Content::load().expect("content");
         let mut run = open_shop(&content, 6);
-        run.relics = ["kontra", "ouvert_bonus", "tour", "virgin", "concede"]
+        run.relics = ["crib_sheet", "beer_mat", "tour", "virgin", "concede"]
             .iter()
             .map(|r| RelicId::new(r))
             .collect();
-        offer(&mut run, &["bock_round"], &[]);
-        // Bock costs 9; selling Ouvert-Bonus brings 2: 8 is not enough.
+        offer(&mut run, &["old_lady"], &[]);
+        // Alte Dame costs 9; selling Bierdeckel brings 2: 8 is not enough.
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
         run.coins = 7;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::SellRelic(1));
         run.apply(&content, RunAction::SellRelic(1)).expect("sell");
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::BuyRelic(0));
-        // Not clearly better: Tournee (6) for Kontra (3) is, Kontra for
-        // Ouvert-Bonus is not.
+        // Not clearly better: the Kiebitz (3) for the Spickzettel (1).
         let mut run = open_shop(&content, 50);
-        run.relics = ["ouvert_bonus", "bock_round", "old_lady", "concede", "tour"]
-            .iter()
-            .map(|r| RelicId::new(r))
-            .collect();
-        offer(&mut run, &["kontra"], &[]);
+        run.relics = [
+            "crib_sheet",
+            "every_bit_counts",
+            "old_lady",
+            "concede",
+            "tour",
+        ]
+        .iter()
+        .map(|r| RelicId::new(r))
+        .collect();
+        offer(&mut run, &["kibitzer"], &[]);
         assert_ne!(RunBot.shop_action(&run, &content), RunAction::SellRelic(0));
     }
 
@@ -1591,8 +1604,8 @@ mod tests {
     fn shop_buys_consumables_and_puts_the_ink_pad_on_an_ace() {
         let content = Content::load().expect("content");
         let mut run = open_shop(&content, 10);
-        offer(&mut run, &[], &["beer", "ink_pad"]);
-        // Since the Einmischen rule the ink pad (2) comes before the beer (1).
+        offer(&mut run, &[], &["shot", "ink_pad"]);
+        // The ink pad (2) comes before the Kurzer (1).
         assert_eq!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(1)
@@ -1612,7 +1625,7 @@ mod tests {
             RunAction::BuyConsumable(0)
         );
         run.apply(&content, RunAction::BuyConsumable(0))
-            .expect("beer");
+            .expect("shot");
         // "Frisches Deck" only with a cursed card, then used on it.
         let mut run = open_shop(&content, 10);
         offer(&mut run, &[], &["fresh_deck"]);
@@ -1670,7 +1683,10 @@ mod tests {
             }
             seed += 1;
         };
-        run.consumables = vec![ConsumableId::new("beer"), ConsumableId::new("new_deal")];
+        run.consumables = vec![
+            ConsumableId::new("double_grain"),
+            ConsumableId::new("herbal"),
+        ];
         let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
         // The game's own Einmischen first.
         assert_eq!(next(&run), RunAction::Redeal);

@@ -323,6 +323,34 @@ impl RunEvent {
             }
             RunEvent::ShopRerolled { cost } => RunEvent::ShopRerolled { cost },
             RunEvent::ShopLeft => RunEvent::ShopLeft,
+            RunEvent::DebtChanged { debt } => RunEvent::DebtChanged { debt },
+            RunEvent::LifeSpared { source } => RunEvent::LifeSpared { source },
+            RunEvent::CoinsStashed {
+                source,
+                amount,
+                pot,
+                coins,
+            } => RunEvent::CoinsStashed {
+                source,
+                amount,
+                pot,
+                coins,
+            },
+            RunEvent::RoutesRerolled => RunEvent::RoutesRerolled,
+            RunEvent::NextPubPlanned { redeals, target } => {
+                RunEvent::NextPubPlanned { redeals, target }
+            }
+            RunEvent::NextPubApplied { redeals, target } => {
+                RunEvent::NextPubApplied { redeals, target }
+            }
+            RunEvent::WagerPlaced { stake } => RunEvent::WagerPlaced { stake },
+            RunEvent::WagerSettled { stake, won, payout } => {
+                RunEvent::WagerSettled { stake, won, payout }
+            }
+            RunEvent::StopsRevealed { legs } => RunEvent::StopsRevealed { legs },
+            RunEvent::MalusChosen { option, malus } => RunEvent::MalusChosen { option, malus },
+            RunEvent::GambleResolved { curse } => RunEvent::GambleResolved { curse },
+            RunEvent::ConsumableGained { consumable } => RunEvent::ConsumableGained { consumable },
             RunEvent::ConsumableUsed { consumable } => RunEvent::ConsumableUsed { consumable },
             RunEvent::DeckChanged(change) => RunEvent::DeckChanged(change),
             RunEvent::RedealsAdded {

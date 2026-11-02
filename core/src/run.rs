@@ -73,8 +73,8 @@ use crate::deck::{CardKind, DealtCard, DeckChange, DeckError, Edition, Owner};
 use crate::game::{Event, Game, GameError, Phase, Seat};
 use crate::rng::Rng;
 use crate::rules::{
-    Declaration, GameType, LeadSuit, NullScoring, Thresholds, ValueParts, game_value_parts,
-    null_value_parts, ramsch_value_parts, suit_strength, trump_strength,
+    Declaration, GameType, NullScoring, Thresholds, ValueParts, game_value_parts, null_value_parts,
+    ramsch_value_parts, suit_strength, trump_strength,
 };
 
 /// Pubs per district (Stadtteil, ADR 0016): four Kneipen and the
@@ -161,6 +161,49 @@ pub struct Series {
     /// malus), with the curse that landed; taken off when the pub ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub temp_curses: Vec<(u32, CardModId)>,
+    /// Einmischen the first game of this pub allows fewer ("Der
+    /// Skatlehrer", [`NextPubPlan`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub redeals_withheld: u32,
+}
+
+/// Changes waiting for the next pub ("Wegbier", "Der Skatlehrer",
+/// "Kiebitz am Fenster"), applied when it starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct NextPubPlan {
+    /// Einmischen more for the whole pub; fewer if negative (then the
+    /// first game allows that many fewer).
+    pub redeals: i32,
+    /// Change of the Zielwert (never below 1).
+    pub target: i32,
+}
+
+impl NextPubPlan {
+    /// Whether nothing is planned.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.redeals == 0 && self.target == 0
+    }
+
+    /// A Zielwert with the planned change, at least 1.
+    #[must_use]
+    pub fn apply_to(&self, target: u64) -> u64 {
+        let changed = i64::try_from(target)
+            .unwrap_or(i64::MAX)
+            .saturating_add(i64::from(self.target));
+        u64::try_from(changed.max(1)).unwrap_or(1)
+    }
+}
+
+/// A bet on the next declared game ("Die Wette").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Wager {
+    /// The encounter that took it.
+    pub encounter: EncounterId,
+    /// Groschen staked (already paid).
+    pub stake: u32,
+    /// Paid back this many times if the game is won with Schneider.
+    pub factor: u32,
 }
 
 impl Series {
@@ -238,8 +281,6 @@ pub struct GameRules {
     /// Who lets the player draw a third card with the skat and discard
     /// three ("Drei drücken").
     pub discard_three: Option<Source>,
-    /// Leads the player may demand in this game ("Lockvogel").
-    pub lead_demands: u32,
 }
 
 /// Read a list of card filters, or the single optional filter of saves
@@ -347,9 +388,6 @@ pub struct ActiveGame {
     /// hand game ("Spickzettel").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skat_shown: Vec<DealtCard>,
-    /// Leads demanded in this game ("Lockvogel").
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub lead_demands_used: u32,
     /// "Untot" cards that rose in this game (instance ids): each rises
     /// once per game ([`Effect::Undead`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -412,8 +450,46 @@ pub enum EncounterChoice {
     CleanseChosenCard,
     /// Loot of a Spelunke: take this relic into a free slot.
     TakeRelic(RelicId),
-    /// Loot of a Spelunke: these Groschen instead of the relic.
+    /// Loot of a Spelunke, "Der Wirt spendiert": these Groschen.
     TakeCoins(u32),
+    /// "Der Wirt spendiert": this consumable into a free slot.
+    TakeConsumable(ConsumableId),
+    /// "Falschspieler am Nebentisch": the option's modification on a card
+    /// of the player's choice (target needed), or with the encounter's
+    /// chance a random curse instead.
+    Gamble,
+    /// "Verlorenes Portemonnaie": keep it, these Groschen and the curse on
+    /// a random card.
+    KeepWallet {
+        /// Groschen.
+        coins: u32,
+        /// The curse.
+        curse: CardModId,
+    },
+    /// "Der Skatlehrer": the option's modification on a card of the
+    /// player's choice (target needed); the first game of the next pub
+    /// allows this many Einmischen fewer.
+    Lesson {
+        /// Einmischen fewer.
+        redeals: u32,
+    },
+    /// "Die Wette": stake the option's cost on the next declared game.
+    Wager {
+        /// Paid back this many times if won with Schneider.
+        factor: u32,
+    },
+    /// "Alte Karten im Schrank": the voucher on a card of the player's
+    /// choice (target needed), the curse on a random other card.
+    OldCards {
+        /// The voucher.
+        voucher: CardModId,
+        /// The curse.
+        curse: CardModId,
+    },
+    /// "Kiebitz am Fenster": the exact stops of the next route choices.
+    Scout(u32),
+    /// "Kiebitz am Fenster": Einmischen more in the next pub.
+    NextPubRedeals(u32),
     /// Walk on without taking anything.
     Leave,
 }
@@ -456,6 +532,10 @@ pub struct Shop {
     pub consumables: Vec<Option<ConsumableId>>,
     /// Neuauslagen bought during this visit.
     pub rerolls: u32,
+    /// This visit sold on credit ("Deckel anschreiben"): it may go on
+    /// down to the limit.
+    #[serde(default)]
+    pub on_credit: bool,
 }
 
 /// Groschen paid for a won series. Serialized with its sum as `total`, so
@@ -582,10 +662,6 @@ pub enum RunAction {
     /// goes back to the defender the third card came from
     /// ([`crate::rules::returned_discard`]), the other two into the skat.
     DiscardThree([u32; 3]),
-    /// "Lockvogel": name what the next defender who leads must lead, if he
-    /// can. While playing, once per granting effect and game
-    /// ([`view::GameView::can_demand_lead`]).
-    DemandLead(LeadSuit),
     /// Play a card (instance id).
     Play(u32),
     /// Play a Wandelkarte (instance id) as a card of `suit` (DESIGN 7.2, M8
@@ -607,6 +683,15 @@ pub enum RunAction {
         /// The new suit of the target ("Kreide").
         #[serde(default)]
         suit: Option<Suit>,
+    },
+    /// "Spelunkenkenner": at the route choice, pick the malus of the
+    /// Spelunke on route `option` from its offers
+    /// ([`tour::Spelunke::malus_options`]).
+    ChooseMalus {
+        /// Index of the route.
+        option: usize,
+        /// Index into the malus offers.
+        malus: usize,
     },
     /// Buy the relic in this Tresen slot.
     BuyRelic(usize),
@@ -951,6 +1036,82 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The relic.
         relic: RelicId,
     },
+    /// The Groschen owed at the Tresen changed ("Deckel anschreiben"):
+    /// credit taken, or paid back from income.
+    DebtChanged {
+        /// Groschen owed now.
+        debt: u32,
+    },
+    /// A lost pub cost no life ("Schutzengel").
+    LifeSpared {
+        /// Who spared it.
+        source: Source,
+    },
+    /// Content put Groschen into a pot ("Stammtischkasse").
+    CoinsStashed {
+        /// Who did it.
+        source: Source,
+        /// Groschen moved.
+        amount: u32,
+        /// Groschen in the pot now.
+        pot: u32,
+        /// Groschen left to the player.
+        coins: u32,
+    },
+    /// The stops of the open route choice were drawn again ("Taxi").
+    RoutesRerolled,
+    /// The plan for the next pub changed ("Wegbier", "Der Skatlehrer",
+    /// "Kiebitz am Fenster"); the whole plan now.
+    NextPubPlanned {
+        /// Einmischen more (fewer if negative).
+        redeals: i32,
+        /// Change of the Zielwert.
+        target: i32,
+    },
+    /// The plan for the next pub took effect as it started.
+    NextPubApplied {
+        /// Einmischen more (fewer if negative: in the first game).
+        redeals: i32,
+        /// Change of the Zielwert.
+        target: i32,
+    },
+    /// A bet on the next declared game was placed ("Die Wette").
+    WagerPlaced {
+        /// Groschen staked.
+        stake: u32,
+    },
+    /// The bet was decided by a scored game.
+    WagerSettled {
+        /// Groschen staked.
+        stake: u32,
+        /// Won with Schneider.
+        won: bool,
+        /// Groschen paid out (0 if lost).
+        payout: u32,
+    },
+    /// The exact stops of the next route choices are shown ("Kiebitz am
+    /// Fenster").
+    StopsRevealed {
+        /// Route choices still shown.
+        legs: u32,
+    },
+    /// The malus of a Spelunke was chosen ("Spelunkenkenner").
+    MalusChosen {
+        /// Index of the route.
+        option: usize,
+        /// The malus.
+        malus: crate::content::MalusId,
+    },
+    /// "Falschspieler am Nebentisch": whether the trick was a curse.
+    GambleResolved {
+        /// A curse landed instead of the offer.
+        curse: bool,
+    },
+    /// A consumable was gained without paying ("Der Wirt spendiert").
+    ConsumableGained {
+        /// The consumable.
+        consumable: ConsumableId,
+    },
     /// The run was won.
     RunWon {
         /// Who won it.
@@ -1044,11 +1205,14 @@ pub enum RunError {
     NotDecided,
     /// "Reue": there is no Einmischen of this game to take back.
     NoRedealToUndo,
-    /// "Lockvogel": no lead can be demanded in this game (none granted or
-    /// all used).
+    /// "Lockvogel": no lead can be demanded in this game. Never returned
+    /// since the relic was removed (02.11.2026); kept so that the error
+    /// codes stay stable.
     NoLeadDemandLeft,
     /// A Spelunke's malus locks the Schnäpse in this pub (ADR 0016).
     ConsumablesLocked,
+    /// No life is missing ("Katerfrühstück").
+    LivesFull,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1146,15 +1310,18 @@ pub enum RunErrorCode {
     NotDecided,
     /// "Reue": no Einmischen of this game to take back.
     NoRedealToUndo,
-    /// "Lockvogel": the lead does not meet the demand although the seat
-    /// could.
+    /// "Lockvogel" (removed on 02.11.2026, never returned, kept for stable
+    /// codes): the lead did not meet the demand.
     MustLeadDemanded,
-    /// "Lockvogel": no lead can be demanded now.
+    /// "Lockvogel" (never returned, kept for stable codes): no lead could
+    /// be demanded.
     InvalidLeadDemand,
-    /// "Lockvogel": none left in this game.
+    /// "Lockvogel" (never returned, kept for stable codes): none left.
     NoLeadDemandLeft,
     /// A Spelunke's malus locks the Schnäpse.
     ConsumablesLocked,
+    /// No life is missing.
+    LivesFull,
 }
 
 impl RunErrorCode {
@@ -1208,6 +1375,7 @@ impl RunErrorCode {
             RunErrorCode::InvalidLeadDemand => "InvalidLeadDemand",
             RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
             RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
+            RunErrorCode::LivesFull => "LivesFull",
         }
     }
 }
@@ -1229,8 +1397,6 @@ impl RunError {
                 GameError::InvalidDeclaration { .. } => RunErrorCode::InvalidDeclaration,
                 GameError::InvalidSkatSwap => RunErrorCode::InvalidSkatSwap,
                 GameError::DiscardForbidden { .. } => RunErrorCode::DiscardForbidden,
-                GameError::MustLeadDemanded { .. } => RunErrorCode::MustLeadDemanded,
-                GameError::InvalidLeadDemand => RunErrorCode::InvalidLeadDemand,
             },
             RunError::NoPassesLeft => RunErrorCode::NoPassesLeft,
             RunError::HandRequired => RunErrorCode::HandRequired,
@@ -1267,6 +1433,7 @@ impl RunError {
             RunError::NoRedealToUndo => RunErrorCode::NoRedealToUndo,
             RunError::NoLeadDemandLeft => RunErrorCode::NoLeadDemandLeft,
             RunError::ConsumablesLocked => RunErrorCode::ConsumablesLocked,
+            RunError::LivesFull => RunErrorCode::LivesFull,
         }
     }
 }
@@ -1302,6 +1469,7 @@ impl fmt::Display for RunError {
             RunError::NoRedealToUndo => f.write_str("no Einmischen to take back"),
             RunError::NoLeadDemandLeft => f.write_str("no lead can be demanded in this game"),
             RunError::ConsumablesLocked => f.write_str("the Schnäpse are locked in this pub"),
+            RunError::LivesFull => f.write_str("no life is missing"),
         }
     }
 }
@@ -1435,6 +1603,26 @@ pub struct Run {
     /// Every pub played so far, in order.
     #[serde(default)]
     pub_results: Vec<tour::PubResult>,
+    /// Changes waiting for the next pub.
+    #[serde(default, skip_serializing_if = "NextPubPlan::is_empty")]
+    next_pub: NextPubPlan,
+    /// Groschen owed at the Tresen ("Deckel anschreiben"); later income
+    /// pays it first.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    debt: u32,
+    /// The district in which the Tresen sold on credit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    credit_section: Option<u32>,
+    /// The district in which "Schutzengel" spared a life.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spared_section: Option<u32>,
+    /// The bet on the next declared game ("Die Wette").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wager: Option<Wager>,
+    /// Route choices still to come whose exact stops are shown ("Kiebitz am
+    /// Fenster").
+    #[serde(default, skip_serializing_if = "is_zero")]
+    scout_legs: u32,
 }
 
 impl Run {
@@ -1512,6 +1700,7 @@ impl Run {
                 discard_three_used: false,
                 spelunke: None,
                 temp_curses: Vec::new(),
+                redeals_withheld: 0,
             },
             coins: content.run.economy.starting_coins,
             edition,
@@ -1541,11 +1730,84 @@ impl Run {
             route: None,
             trip: None,
             pub_results: Vec::new(),
+            next_pub: NextPubPlan::default(),
+            debt: 0,
+            credit_section: None,
+            spared_section: None,
+            wager: None,
+            scout_legs: 0,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
         run.play_ai(content, &mut events)?;
         Ok((run, events))
+    }
+
+    /// Drop what the content no longer knows from a loaded run (relics and
+    /// consumables removed by the item review of 02.11.2026, DESIGN 18.3):
+    /// owned and evening relics, consumables, Tresen offers, locked
+    /// relics, consumables waiting for the next game and encounter options
+    /// that name them. Returns the ids dropped, in order, for a note.
+    /// Nothing else changes; a run without such ids stays as it is.
+    pub fn drop_unknown_content(&mut self, content: &Content) -> Vec<String> {
+        let mut dropped: Vec<String> = Vec::new();
+        let keep_relic = |id: &RelicId, dropped: &mut Vec<String>| {
+            let known = content.relic(id).is_some();
+            if !known {
+                dropped.push(id.to_string());
+            }
+            known
+        };
+        self.relics.retain(|r| keep_relic(r, &mut dropped));
+        self.evening_relics.retain(|r| keep_relic(r, &mut dropped));
+        self.locked.retain(|r| content.relic(r).is_some());
+        let keep_item = |id: &ConsumableId, dropped: &mut Vec<String>| {
+            let known = content.consumable(id).is_some();
+            if !known {
+                dropped.push(id.to_string());
+            }
+            known
+        };
+        self.consumables.retain(|c| keep_item(c, &mut dropped));
+        self.pending_next_game
+            .retain(|(c, _)| keep_item(c, &mut dropped));
+        if let Some(shop) = self.shop.as_mut() {
+            for offer in &mut shop.relics {
+                if offer.as_ref().is_some_and(|r| content.relic(r).is_none()) {
+                    *offer = None;
+                }
+            }
+            for offer in &mut shop.consumables {
+                if offer
+                    .as_ref()
+                    .is_some_and(|c| content.consumable(c).is_none())
+                {
+                    *offer = None;
+                }
+            }
+        }
+        if let Some(encounter) = self.encounter.as_mut() {
+            encounter.options.retain(|o| match &o.choice {
+                EncounterChoice::TakeRule(id) | EncounterChoice::TakeRelic(id) => {
+                    content.relic(id).is_some()
+                }
+                EncounterChoice::SwapRelic { relic, new, .. } => {
+                    content.relic(relic).is_some()
+                        && new.as_ref().is_none_or(|n| content.relic(n).is_some())
+                }
+                EncounterChoice::TakeConsumable(id) => content.consumable(id).is_some(),
+                _ => true,
+            });
+            // Indices of swaps follow the owned relics.
+            for option in &mut encounter.options {
+                if let EncounterChoice::SwapRelic { index, relic, .. } = &mut option.choice {
+                    if let Some(i) = self.relics.iter().position(|r| r == relic) {
+                        *index = i;
+                    }
+                }
+            }
+        }
+        dropped
     }
 
     /// Encounter generator of saves from before encounters existed:
@@ -1887,7 +2149,6 @@ impl Run {
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
             RunAction::DiscardThree(ids) => self.discard_three(content, ids, events),
-            RunAction::DemandLead(suit) => self.demand_lead(suit, events),
             RunAction::Play(id) => self.play(content, id, events),
             RunAction::PlayAs { card, suit } => self.play_as(content, card, suit, events),
             RunAction::UseConsumable { slot, target, suit } => {
@@ -1905,6 +2166,9 @@ impl Run {
                 self.choose_encounter(content, option, target, events)
             }
             RunAction::ChooseRoute(option) => self.choose_route(content, option, events),
+            RunAction::ChooseMalus { option, malus } => {
+                self.choose_malus(content, option, malus, events)
+            }
         }
     }
 
@@ -2012,31 +2276,16 @@ impl Run {
     }
 
     /// Whether "Drei drücken" draws a card at the next pickup of the
-    /// skat: granted in this game and not yet used in this series.
+    /// skat: granted in this game, the first game of the pub (since
+    /// 02.11.2026), and not yet used in it.
     #[must_use]
     pub fn discard_three_ready(&self) -> bool {
         !self.series.discard_three_used
+            && self.series.games_played == 0
             && self
                 .game
                 .as_ref()
                 .is_some_and(|a| a.rules.discard_three.is_some())
-    }
-
-    /// "Lockvogel": the player names what the next defender who leads
-    /// must lead. While playing, not while Kontra waits for an answer, as
-    /// often per game as the content grants.
-    fn demand_lead(&mut self, suit: LeadSuit, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        let active = self.active_mut()?;
-        if active.awaiting_re {
-            return Err(RunError::AwaitingKontraAnswer);
-        }
-        if active.lead_demands_used >= active.rules.lead_demands {
-            return Err(RunError::NoLeadDemandLeft);
-        }
-        let game_events = active.game.demand_lead(suit)?;
-        active.lead_demands_used += 1;
-        events.extend(game_events.into_iter().map(RunEvent::Game));
-        Ok(())
     }
 
     fn declare(
@@ -2552,6 +2801,20 @@ impl Run {
         result: Option<&ValueParts>,
         events: &mut Vec<RunEvent>,
     ) {
+        self.fire_with(content, stage, played, result, None, events);
+    }
+
+    /// [`Run::fire`] with the means of transport of the route just taken
+    /// (on route chosen).
+    fn fire_with(
+        &mut self,
+        content: &Content,
+        stage: Stage,
+        played: Option<(Seat, DealtCard)>,
+        result: Option<&ValueParts>,
+        transport: Option<tour::Transport>,
+        events: &mut Vec<RunEvent>,
+    ) {
         let games_left = self.series.games_left();
         let sources = self.sources(content, stage.in_game());
         for source in &sources {
@@ -2564,6 +2827,7 @@ impl Run {
                         played,
                         result,
                         games_left,
+                        transport,
                     };
                     evaluate(hook.when(), &ctx, source.this_card)
                 };
@@ -2623,6 +2887,43 @@ impl Run {
                         amount: *amount,
                         coins: self.coins,
                     });
+                    self.settle_debt(events);
+                }
+                return;
+            }
+            Effect::StashCoins { counter, amount } => {
+                let moved = (*amount).min(self.coins);
+                if moved > 0 {
+                    self.coins -= moved;
+                    let pot = self.counters.entry(counter.clone()).or_insert(0);
+                    *pot = pot.saturating_add(moved);
+                    let pot = *pot;
+                    events.push(RunEvent::CoinsStashed {
+                        source: source.clone(),
+                        amount: moved,
+                        pot,
+                        coins: self.coins,
+                    });
+                }
+                return;
+            }
+            Effect::PayOutCounter { counter, percent } => {
+                let pot = self.counters.remove(counter).unwrap_or(0);
+                if pot > 0 {
+                    events.push(RunEvent::CounterReset {
+                        counter: counter.clone(),
+                    });
+                    let paid = u32::try_from(u64::from(pot) * u64::from(*percent) / 100)
+                        .unwrap_or(u32::MAX);
+                    if paid > 0 {
+                        self.coins = self.coins.saturating_add(paid);
+                        events.push(RunEvent::CoinsGained {
+                            source: source.clone(),
+                            amount: i32::try_from(paid).unwrap_or(i32::MAX),
+                            coins: self.coins,
+                        });
+                        self.settle_debt(events);
+                    }
                 }
                 return;
             }
@@ -2754,9 +3055,6 @@ impl Run {
                     .discard_three
                     .get_or_insert_with(|| source.clone());
             }
-            Effect::DemandLead(n) => {
-                active.rules.lead_demands = active.rules.lead_demands.saturating_add(*n);
-            }
             Effect::RevealSkatCard(n) => {
                 let untouched = active
                     .game
@@ -2813,7 +3111,12 @@ impl Run {
             | Effect::ClearFlag(_)
             | Effect::IncrementCounter(_)
             | Effect::ResetCounter(_)
-            | Effect::GainCoins(_) => {}
+            | Effect::GainCoins(_)
+            | Effect::StashCoins { .. }
+            | Effect::PayOutCounter { .. }
+            | Effect::Credit(_)
+            | Effect::SpareLife
+            | Effect::ChooseMalus(_) => {}
         }
     }
 
@@ -2888,6 +3191,9 @@ impl Run {
         if spelunke.is_some() {
             target = config.spelunke.target_factor.apply(target);
         }
+        let plan = std::mem::take(&mut self.next_pub);
+        target = plan.apply_to(target);
+        let redeals_withheld = plan.redeals.min(0).unsigned_abs();
         let malus = spelunke.as_ref().map(|s| s.malus.clone());
         self.series = Series {
             section,
@@ -2906,13 +3212,21 @@ impl Run {
             discard_three_used: false,
             spelunke,
             temp_curses: Vec::new(),
+            redeals_withheld,
         };
         self.phase = RunPhase::Game;
         self.shop = None;
         self.encounter = None;
         self.route = None;
         self.trip = None;
+        self.series.extra_redeals = u32::try_from(plan.redeals.max(0)).unwrap_or(0);
         self.seat_guests(content, section, index);
+        if !plan.is_empty() {
+            events.push(RunEvent::NextPubApplied {
+                redeals: plan.redeals,
+                target: plan.target,
+            });
+        }
         events.push(RunEvent::SeriesStarted {
             section,
             index,
@@ -3168,7 +3482,6 @@ impl Run {
             previous: None,
             named: Vec::new(),
             skat_shown: Vec::new(),
-            lead_demands_used: 0,
             risen: Vec::new(),
             undead_rng: None,
             boss_edition: None,
@@ -3294,6 +3607,30 @@ impl Run {
             breakdown: breakdown.clone(),
             series_score: self.series.score,
         });
+        if !declaration.is_ramsch() {
+            if let Some(wager) = self.wager.take() {
+                let won = breakdown.won && breakdown.schneider;
+                let payout = if won {
+                    wager.stake.saturating_mul(wager.factor)
+                } else {
+                    0
+                };
+                events.push(RunEvent::WagerSettled {
+                    stake: wager.stake,
+                    won,
+                    payout,
+                });
+                if payout > 0 {
+                    self.coins = self.coins.saturating_add(payout);
+                    events.push(RunEvent::CoinsGained {
+                        source: Source::Encounter(wager.encounter),
+                        amount: i32::try_from(payout).unwrap_or(i32::MAX),
+                        coins: self.coins,
+                    });
+                    self.settle_debt(events);
+                }
+            }
+        }
         self.last_score = Some(breakdown);
         self.after_game(content, events)
     }
@@ -3362,6 +3699,7 @@ impl Run {
             redeals_used: self.series.redeals_used,
             games_left,
         });
+        self.settle_debt(events);
         self.fire(content, Stage::OnSeriesWon, None, None, events);
         self.pub_won(content, events)
     }
@@ -3426,7 +3764,115 @@ impl Run {
             relics: relics.into_iter().map(Some).collect(),
             consumables: consumables.into_iter().map(Some).collect(),
             rerolls,
+            on_credit: false,
         }
+    }
+
+    /// The passive effects of the owned relics and the evening's house
+    /// rules.
+    fn relic_passives<'c>(&self, content: &'c Content) -> Vec<&'c Effect> {
+        self.relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .flat_map(|def| def.passive.iter())
+            .collect()
+    }
+
+    /// The Source of the first owned relic with a passive effect matching
+    /// `wanted`.
+    fn relic_with(&self, content: &Content, wanted: impl Fn(&Effect) -> bool) -> Option<Source> {
+        self.relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .find(|def| def.passive.iter().any(&wanted))
+            .map(|def| Source::Relic(def.id.clone()))
+    }
+
+    /// The credit limit at the Tresen ("Deckel anschreiben"): the largest
+    /// granted, 0 without.
+    fn credit_limit(&self, content: &Content) -> u32 {
+        self.relic_passives(content)
+            .into_iter()
+            .map(|e| match e {
+                Effect::Credit(n) => *n,
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The district the Tresen and the way belong to: where the way
+    /// leads, else the current pub's.
+    fn way_section(&self) -> u32 {
+        self.trip
+            .as_ref()
+            .map_or(self.series.section, |t| t.section)
+    }
+
+    /// Whether the player can pay `price` at the Tresen now: from his
+    /// Groschen, or on credit ("Deckel anschreiben", once per district,
+    /// down to the limit).
+    fn can_pay(&self, content: &Content, price: u32) -> bool {
+        if price <= self.coins {
+            return true;
+        }
+        let limit = self.credit_limit(content);
+        let open = self.shop.as_ref().is_some_and(|s| s.on_credit)
+            || self.credit_section != Some(self.way_section());
+        open && limit > 0 && self.debt.saturating_add(price - self.coins) <= limit
+    }
+
+    /// Pay `price` at the Tresen, on credit for what the Groschen do not
+    /// cover. Check [`Run::can_pay`] first.
+    fn pay(&mut self, price: u32, events: &mut Vec<RunEvent>) {
+        if price <= self.coins {
+            self.coins -= price;
+            return;
+        }
+        let short = price - self.coins;
+        self.coins = 0;
+        self.debt = self.debt.saturating_add(short);
+        self.credit_section = Some(self.way_section());
+        if let Some(shop) = self.shop.as_mut() {
+            shop.on_credit = true;
+        }
+        events.push(RunEvent::DebtChanged { debt: self.debt });
+    }
+
+    /// Income pays the debt first ("Deckel anschreiben").
+    fn settle_debt(&mut self, events: &mut Vec<RunEvent>) {
+        let paid = self.debt.min(self.coins);
+        if paid > 0 {
+            self.debt -= paid;
+            self.coins -= paid;
+            events.push(RunEvent::DebtChanged { debt: self.debt });
+        }
+    }
+
+    /// Groschen owed at the Tresen ("Deckel anschreiben").
+    #[must_use]
+    pub const fn debt(&self) -> u32 {
+        self.debt
+    }
+
+    /// Changes waiting for the next pub.
+    #[must_use]
+    pub const fn next_pub_plan(&self) -> NextPubPlan {
+        self.next_pub
+    }
+
+    /// The bet on the next declared game ("Die Wette").
+    #[must_use]
+    pub const fn wager(&self) -> Option<&Wager> {
+        self.wager.as_ref()
+    }
+
+    /// Route choices still to come whose exact stops are shown.
+    #[must_use]
+    pub const fn scout_legs(&self) -> u32 {
+        self.scout_legs
     }
 
     /// Percent off at the Tresen from the owned relics ("Der Wirt"), at
@@ -3494,7 +3940,7 @@ impl Run {
             .relic(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
         let price = self.shop_price(content, def.price);
-        if price > coins {
+        if price > coins && !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
         if owned >= usize::try_from(content.relic_slots(self.character)).unwrap_or(0) {
@@ -3503,7 +3949,7 @@ impl Run {
         if let Some(entry) = self.shop_mut()?.relics.get_mut(slot) {
             *entry = None;
         }
-        self.coins -= price;
+        self.pay(price, events);
         self.relics.push(id.clone());
         events.push(RunEvent::RelicBought { relic: id, price });
         Ok(())
@@ -3528,7 +3974,7 @@ impl Run {
             .consumable(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
         let price = self.shop_price(content, def.price);
-        if price > coins {
+        if price > coins && !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
         if owned >= usize::try_from(content.run.consumable_slots).unwrap_or(0) {
@@ -3537,7 +3983,7 @@ impl Run {
         if let Some(entry) = self.shop_mut()?.consumables.get_mut(slot) {
             *entry = None;
         }
-        self.coins -= price;
+        self.pay(price, events);
         self.consumables.push(id.clone());
         events.push(RunEvent::ConsumableBought {
             consumable: id,
@@ -3562,6 +4008,7 @@ impl Run {
         self.relics.remove(index);
         self.coins = self.coins.saturating_add(price);
         events.push(RunEvent::RelicSold { relic: id, price });
+        self.settle_debt(events);
         Ok(())
     }
 
@@ -3584,17 +4031,20 @@ impl Run {
             consumable: id,
             price,
         });
+        self.settle_debt(events);
         Ok(())
     }
 
     fn reroll(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let rerolls = self.shop_mut()?.rerolls;
         let cost = self.shop_price(content, content.run.economy.reroll_cost);
-        if cost > self.coins {
+        if !self.can_pay(content, cost) {
             return Err(RunError::NotEnoughCoins);
         }
-        self.coins -= cost;
-        let shop = self.draw_offer(content, rerolls + 1);
+        self.pay(cost, events);
+        let on_credit = self.shop.as_ref().is_some_and(|s| s.on_credit);
+        let mut shop = self.draw_offer(content, rerolls + 1);
+        shop.on_credit = on_credit;
         events.push(RunEvent::ShopRerolled { cost });
         events.push(RunEvent::ShopOpened {
             relics: shop.relics.clone(),
@@ -3718,10 +4168,52 @@ impl Run {
                 let suit = suit.ok_or(RunError::TargetRequired)?;
                 self.chalk(target, suit, events)?;
             }
+            ConsumableAction::RedealNextGame(effect) => {
+                self.redeal(content, events)?;
+                self.pending_next_game.push((id.clone(), *effect));
+            }
+            ConsumableAction::GainLives(n) => {
+                if !matches!(
+                    self.phase,
+                    RunPhase::Shop | RunPhase::Encounter | RunPhase::Route
+                ) {
+                    return Err(RunError::WrongPhase);
+                }
+                if self.lives >= content.run.lives.max {
+                    return Err(RunError::LivesFull);
+                }
+                self.gain_lives(content, *n, events);
+            }
+            ConsumableAction::RerollRoutes => {
+                if self.phase != RunPhase::Route {
+                    return Err(RunError::WrongPhase);
+                }
+                self.reroll_routes(content);
+                events.push(RunEvent::RoutesRerolled);
+            }
+            ConsumableAction::NextPub { redeals, target } => {
+                if !matches!(
+                    self.phase,
+                    RunPhase::Shop | RunPhase::Encounter | RunPhase::Route
+                ) {
+                    return Err(RunError::WrongPhase);
+                }
+                self.plan_next_pub(*redeals, *target, events);
+            }
         }
         self.consumables.remove(slot);
         events.push(RunEvent::ConsumableUsed { consumable: id });
         Ok(())
+    }
+
+    /// Add to the plan for the next pub.
+    fn plan_next_pub(&mut self, redeals: i32, target: i32, events: &mut Vec<RunEvent>) {
+        self.next_pub.redeals = self.next_pub.redeals.saturating_add(redeals);
+        self.next_pub.target = self.next_pub.target.saturating_add(target);
+        events.push(RunEvent::NextPubPlanned {
+            redeals: self.next_pub.redeals,
+            target: self.next_pub.target,
+        });
     }
 
     /// "Kurzer": show the player the untouched skat while he still holds
@@ -3869,6 +4361,7 @@ impl Run {
                     played: None,
                     result: None,
                     games_left: self.series.games_left(),
+                    transport: None,
                 };
                 evaluate(hook.when(), &ctx, None)
             };
@@ -3940,6 +4433,7 @@ impl Run {
                             played: None,
                             result: None,
                             games_left: self.series.games_left(),
+                            transport: None,
                         };
                         evaluate(hook.when(), &ctx, None)
                     };
@@ -4067,6 +4561,96 @@ impl Run {
                     options.push(free(EncounterChoice::TakeCoins(coins)));
                 }
             }
+            EncounterKind::FreeSchnapps { offers, coins } => {
+                let pool: Vec<(ConsumableId, u32)> = content
+                    .consumables
+                    .values()
+                    .filter(|c| c.category == crate::content::ConsumableCategory::Schnapps)
+                    .filter(|c| in_pool(&c.characters, self.character))
+                    .map(|c| {
+                        let weights = &content.run.shop.rarity_weights;
+                        (c.id.clone(), weights.weight(c.rarity))
+                    })
+                    .collect();
+                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers);
+                options.extend(
+                    drawn
+                        .into_iter()
+                        .map(|id| free(EncounterChoice::TakeConsumable(id))),
+                );
+                options.push(free(EncounterChoice::TakeCoins(*coins)));
+            }
+            EncounterKind::Gamble { price, offers, .. } => {
+                let pool: Vec<((CardModId, i32), u32)> =
+                    offers.iter().map(|o| (o.clone(), 1)).collect();
+                if let Some((card_mod, value)) =
+                    draw_weighted(&mut self.encounter_rng, pool, 1).pop()
+                {
+                    options.push(EncounterOption {
+                        choice: EncounterChoice::Gamble,
+                        cost: *price,
+                        card_mod: Some(card_mod),
+                        value: Some(value),
+                    });
+                }
+            }
+            EncounterKind::Wallet {
+                coins,
+                curse,
+                lives,
+            } => {
+                options.push(EncounterOption {
+                    choice: EncounterChoice::KeepWallet {
+                        coins: *coins,
+                        curse: curse.clone(),
+                    },
+                    cost: 0,
+                    card_mod: Some(curse.clone()),
+                    value: content.card_mod(curse).map(CardModDef::default_value),
+                });
+                options.push(free(EncounterChoice::Heal(*lives)));
+            }
+            EncounterKind::Lesson {
+                card_mod,
+                value,
+                redeals,
+            } => {
+                options.push(EncounterOption {
+                    choice: EncounterChoice::Lesson { redeals: *redeals },
+                    cost: 0,
+                    card_mod: Some(card_mod.clone()),
+                    value: Some(*value),
+                });
+            }
+            EncounterKind::Wager { stakes, factor } => {
+                options.extend(stakes.iter().map(|&stake| EncounterOption {
+                    choice: EncounterChoice::Wager { factor: *factor },
+                    cost: stake,
+                    card_mod: None,
+                    value: None,
+                }));
+            }
+            EncounterKind::OldCards { vouchers } => {
+                let pool: Vec<(CardModId, u32)> = vouchers.iter().map(|v| (v.clone(), 1)).collect();
+                let voucher = draw_weighted(&mut self.encounter_rng, pool, 1).pop();
+                let curses = self.mod_pool(content, true);
+                let curse = draw_weighted(&mut self.encounter_rng, curses, 1).pop();
+                if let (Some(voucher), Some(curse)) = (voucher, curse) {
+                    options.push(EncounterOption {
+                        choice: EncounterChoice::OldCards {
+                            voucher: voucher.clone(),
+                            curse,
+                        },
+                        cost: 0,
+                        card_mod: Some(voucher),
+                        value: None,
+                    });
+                }
+            }
+            EncounterKind::Lookout { legs, redeals } => {
+                options.push(free(EncounterChoice::Scout(*legs)));
+                options.push(free(EncounterChoice::NextPubRedeals(*redeals)));
+            }
         }
         if options.is_empty() {
             return false;
@@ -4142,6 +4726,40 @@ impl Run {
             self.phase = RunPhase::Encounter;
         }
         opened
+    }
+
+    /// A random card of the player's edition `card_mod` may go on now, a
+    /// bare one first, never `except`. Drawn with the encounter generator.
+    fn random_card_for(
+        &mut self,
+        content: &Content,
+        card_mod: &CardModId,
+        except: Option<u32>,
+    ) -> Option<u32> {
+        let fitting: Vec<&crate::deck::DeckCard> = self
+            .edition
+            .cards()
+            .iter()
+            .filter(|c| c.kind != CardKind::Blank && Some(c.id) != except)
+            .filter(|c| self.may_attach(content, c.id, card_mod))
+            .collect();
+        let bare: Vec<u32> = fitting
+            .iter()
+            .filter(|c| c.mods.is_empty())
+            .map(|c| c.id)
+            .collect();
+        let cards: Vec<u32> = if bare.is_empty() {
+            fitting.iter().map(|c| c.id).collect()
+        } else {
+            bare
+        };
+        if cards.is_empty() {
+            return None;
+        }
+        let pick = self
+            .encounter_rng
+            .gen_range(0..u64::try_from(cards.len()).unwrap_or(1));
+        cards.get(usize::try_from(pick).unwrap_or(0)).copied()
     }
 
     /// The modification an encounter puts on `card`: the one it names
@@ -4295,9 +4913,104 @@ impl Run {
                     coins: self.coins,
                 });
             }
+            EncounterChoice::TakeConsumable(id) => {
+                let slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
+                if self.consumables.len() >= slots {
+                    return Err(RunError::NoFreeSlot);
+                }
+                self.consumables.push(id.clone());
+                events.push(RunEvent::ConsumableGained {
+                    consumable: id.clone(),
+                });
+            }
+            EncounterChoice::Gamble => {
+                let card = target.ok_or(RunError::TargetRequired)?;
+                let card_mod = chosen.card_mod.clone().ok_or(RunError::NoModAvailable)?;
+                let value = mod_value(content, &card_mod, chosen.value);
+                if !self.may_attach(content, card, &card_mod) {
+                    return Err(RunError::NoModAvailable);
+                }
+                let percent = match &def.kind {
+                    EncounterKind::Gamble { curse_percent, .. } => u64::from(*curse_percent),
+                    _ => 0,
+                };
+                let curse = if self.encounter_rng.gen_range(0..100) < percent {
+                    let pool: Vec<(CardModId, u32)> = self
+                        .mod_pool(content, true)
+                        .into_iter()
+                        .filter(|(m, _)| self.may_attach(content, card, m))
+                        .collect();
+                    draw_weighted(&mut self.encounter_rng, pool, 1).pop()
+                } else {
+                    None
+                };
+                events.push(RunEvent::GambleResolved {
+                    curse: curse.is_some(),
+                });
+                match curse {
+                    Some(curse) => {
+                        let value = mod_value(content, &curse, None);
+                        self.attach_mod(content, card, &curse, value, events)?;
+                    }
+                    None => self.attach_mod(content, card, &card_mod, value, events)?,
+                }
+            }
+            EncounterChoice::KeepWallet { coins, curse } => {
+                self.coins = self.coins.saturating_add(*coins);
+                events.push(RunEvent::CoinsGained {
+                    source: Source::Encounter(encounter.id.clone()),
+                    amount: i32::try_from(*coins).unwrap_or(i32::MAX),
+                    coins: self.coins,
+                });
+                if let Some(card) = self.random_card_for(content, curse, None) {
+                    let value = mod_value(content, curse, None);
+                    self.attach_mod(content, card, curse, value, events)?;
+                }
+            }
+            EncounterChoice::Lesson { redeals } => {
+                let card = target.ok_or(RunError::TargetRequired)?;
+                let card_mod = chosen.card_mod.clone().ok_or(RunError::NoModAvailable)?;
+                let value = mod_value(content, &card_mod, chosen.value);
+                self.attach_mod(content, card, &card_mod, value, events)?;
+                let fewer = i32::try_from(*redeals).unwrap_or(i32::MAX);
+                self.plan_next_pub(-fewer, 0, events);
+            }
+            EncounterChoice::Wager { factor } => {
+                if chosen.cost == 0 || self.wager.is_some() {
+                    return Err(RunError::WrongPhase);
+                }
+                self.wager = Some(Wager {
+                    encounter: encounter.id.clone(),
+                    stake: chosen.cost,
+                    factor: *factor,
+                });
+                events.push(RunEvent::WagerPlaced { stake: chosen.cost });
+            }
+            EncounterChoice::OldCards { voucher, curse } => {
+                let card = target.ok_or(RunError::TargetRequired)?;
+                if !self.may_attach(content, card, voucher) {
+                    return Err(RunError::NoModAvailable);
+                }
+                let value = mod_value(content, voucher, None);
+                self.attach_mod(content, card, voucher, value, events)?;
+                if let Some(other) = self.random_card_for(content, curse, Some(card)) {
+                    let value = mod_value(content, curse, None);
+                    self.attach_mod(content, other, curse, value, events)?;
+                }
+            }
+            EncounterChoice::Scout(legs) => {
+                self.scout_legs = self.scout_legs.max(*legs);
+                events.push(RunEvent::StopsRevealed {
+                    legs: self.scout_legs,
+                });
+            }
+            EncounterChoice::NextPubRedeals(n) => {
+                self.plan_next_pub(i32::try_from(*n).unwrap_or(i32::MAX), 0, events);
+            }
             EncounterChoice::Leave => {}
         }
         self.coins -= chosen.cost;
+        self.settle_debt(events);
         events.push(RunEvent::EncounterResolved {
             encounter: encounter.id.clone(),
             choice: chosen.choice,
@@ -4336,7 +5049,15 @@ impl Run {
             return 0;
         }
         let extra = self.game.as_ref().map_or(0, |a| a.rules.extra_redeals);
-        content.redeals(self.character).saturating_add(extra)
+        let withheld = if self.series.games_played == 0 {
+            self.series.redeals_withheld
+        } else {
+            0
+        };
+        content
+            .redeals(self.character)
+            .saturating_add(extra)
+            .saturating_sub(withheld)
     }
 
     /// Einmischen left now: what the game in progress still allows of its
@@ -4535,6 +5256,25 @@ fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -
     drawn
 }
 
+/// Tests only: the content plus the relics and consumables removed by the
+/// item review of 02.11.2026 (`run/legacy_*.ron`), so the dormant effects
+/// and actions they used stay under test.
+#[cfg(test)]
+pub(crate) fn legacy_content() -> Content {
+    let mut content = Content::load().expect("content");
+    let relics: Vec<crate::content::RelicDef> =
+        ron::from_str(include_str!("run/legacy_relics.ron")).expect("legacy relics");
+    for relic in relics {
+        content.relics.insert(relic.id.clone(), relic);
+    }
+    let items: Vec<crate::content::ConsumableDef> =
+        ron::from_str(include_str!("run/legacy_consumables.ron")).expect("legacy consumables");
+    for item in items {
+        content.consumables.insert(item.id.clone(), item);
+    }
+    content
+}
+
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]
@@ -4543,6 +5283,8 @@ mod content_tests;
 mod edition_tests;
 #[cfg(test)]
 mod effects_v2_tests;
+#[cfg(test)]
+mod items_tests;
 #[cfg(test)]
 mod m4_tests;
 #[cfg(test)]

@@ -243,6 +243,8 @@ pub struct HookContext<'a> {
     pub result: Option<&'a ValueParts>,
     /// Games left in the series (on series won).
     pub games_left: u32,
+    /// The means of transport of the route just taken (on route chosen).
+    pub transport: Option<crate::run::tour::Transport>,
 }
 
 /// Evaluate a condition. `this_card` is the card a modification sits on.
@@ -326,6 +328,7 @@ pub fn evaluate(
                 && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
         }),
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
+        Condition::TransportIs(t) => ctx.transport == Some(*t),
         Condition::NullGame => declaration.is_some_and(Declaration::is_null),
         Condition::NullRiskAtLeast(risk) => {
             declaration.is_some_and(|d| d.null_risk().is_some_and(|r| r >= *risk))
@@ -437,6 +440,7 @@ pub fn evaluate_if_won(
         | Condition::PlayedCardMatches(_)
         | Condition::PlayedByDeclarer
         | Condition::GamesLeftAtLeast(_)
+        | Condition::TransportIs(_)
         | Condition::NullGame
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
@@ -570,6 +574,7 @@ pub fn evaluate_known(
         | Condition::PlayedCardMatches(_)
         | Condition::PlayedByDeclarer
         | Condition::GamesLeftAtLeast(_)
+        | Condition::TransportIs(_)
         | Condition::NoTrickTaken
         | Condition::SevenDucked
         | Condition::NeverFollowedSuit

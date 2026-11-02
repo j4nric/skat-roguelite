@@ -71,6 +71,10 @@ pub struct Spelunke {
     pub name: String,
     /// The malus of this pub.
     pub malus: MalusId,
+    /// The maluses on offer ("Spelunkenkenner"); `malus` is one of them.
+    /// Empty without a choice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub malus_options: Vec<MalusId>,
 }
 
 /// One way to the next pub.
@@ -318,11 +322,19 @@ impl Run {
             index,
             boss: self.series.boss.clone(),
         });
-        self.lives = self.lives.saturating_sub(1);
-        events.push(RunEvent::LivesChanged {
-            change: -1,
-            lives: self.lives,
-        });
+        let angel = self
+            .relic_with(content, |e| *e == crate::content::Effect::SpareLife)
+            .filter(|_| self.spared_section != Some(section));
+        if let Some(source) = angel {
+            self.spared_section = Some(section);
+            events.push(RunEvent::LifeSpared { source });
+        } else {
+            self.lives = self.lives.saturating_sub(1);
+            events.push(RunEvent::LivesChanged {
+                change: -1,
+                lives: self.lives,
+            });
+        }
         if self.lives == 0 {
             self.phase = RunPhase::Lost;
             events.push(RunEvent::RunLost {
@@ -352,7 +364,15 @@ impl Run {
             EncounterKind::RelicReward => false,
             EncounterKind::MarkCard { .. }
             | EncounterKind::DoubleNextGame { .. }
-            | EncounterKind::Workshop => true,
+            | EncounterKind::Workshop
+            | EncounterKind::FreeSchnapps { .. }
+            | EncounterKind::Gamble { .. }
+            | EncounterKind::Wallet { .. }
+            | EncounterKind::Lesson { .. }
+            | EncounterKind::OldCards { .. }
+            | EncounterKind::Lookout { .. } => true,
+            // A bet waits for its game; one at a time.
+            EncounterKind::Wager { .. } => self.wager.is_none(),
         }
     }
 
@@ -425,7 +445,6 @@ impl Run {
         if section >= content.run.sections() {
             return Err(RunError::WrongPhase);
         }
-        let mut used = Vec::new();
         let mut options: Vec<RouteOption> = Transport::ALL
             .into_iter()
             .map(|transport| RouteOption {
@@ -434,10 +453,63 @@ impl Run {
                 spelunke: None,
             })
             .collect();
-        for option in &mut options {
+        self.draw_stops(content, &mut options);
+        // A Spelunke replaces a normal pub, never a boss pub.
+        let chance = u64::from(content.run.spelunke.chance.permille());
+        if index + 1 < PUBS_PER_DISTRICT && chance > 0 && self.tour_rng.gen_range(0..1000) < chance
+        {
+            let maluses: Vec<(MalusId, u32)> = content
+                .maluses
+                .values()
+                .filter(|m| m.weight > 0 && in_pool(&m.characters, self.character))
+                .map(|m| (m.id.clone(), m.weight))
+                .collect();
+            let offers = self
+                .relic_passives(content)
+                .into_iter()
+                .map(|e| match e {
+                    crate::content::Effect::ChooseMalus(n) => *n,
+                    _ => 1,
+                })
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let drawn = draw_weighted(&mut self.tour_rng, maluses, offers);
+            if let Some(malus) = drawn.first().cloned() {
+                let malus_options = if drawn.len() > 1 { drawn } else { Vec::new() };
+                let pick = self.tour_rng.gen_range(0..options.len() as u64);
+                let mut names: Vec<String> = self
+                    .city(content)
+                    .into_iter()
+                    .flat_map(|d| d.pubs)
+                    .collect();
+                let city = &content.city;
+                let name = city.fresh(&mut self.tour_rng, &city.spelunken, &mut names);
+                if let Some(option) = options.get_mut(usize::try_from(pick).unwrap_or(0)) {
+                    option.spelunke = Some(Spelunke {
+                        name,
+                        malus,
+                        malus_options,
+                    });
+                }
+            }
+        }
+        self.phase = RunPhase::Route;
+        self.route = Some(RouteChoice {
+            section,
+            index,
+            options,
+        });
+        events.push(RunEvent::RouteOpened { section, index });
+        Ok(())
+    }
+
+    /// One stop per way, drawn anew; the Tresen always within reach.
+    fn draw_stops(&mut self, content: &Content, options: &mut [RouteOption]) {
+        let mut used = Vec::new();
+        for option in options.iter_mut() {
             option.stops = vec![self.draw_stop(content, &mut used)];
         }
-        // The Tresen is always within reach.
         let tresen = options
             .iter()
             .any(|o| o.stops.iter().any(|s| s.category == StopCategory::Tresen));
@@ -449,37 +521,46 @@ impl Run {
                 };
             }
         }
-        // A Spelunke replaces a normal pub, never a boss pub.
-        let chance = u64::from(content.run.spelunke.chance.permille());
-        if index + 1 < PUBS_PER_DISTRICT && chance > 0 && self.tour_rng.gen_range(0..1000) < chance
-        {
-            let maluses: Vec<(MalusId, u32)> = content
-                .maluses
-                .values()
-                .filter(|m| m.weight > 0 && in_pool(&m.characters, self.character))
-                .map(|m| (m.id.clone(), m.weight))
-                .collect();
-            if let Some(malus) = draw_weighted(&mut self.tour_rng, maluses, 1).pop() {
-                let pick = self.tour_rng.gen_range(0..options.len() as u64);
-                let mut names: Vec<String> = self
-                    .city(content)
-                    .into_iter()
-                    .flat_map(|d| d.pubs)
-                    .collect();
-                let city = &content.city;
-                let name = city.fresh(&mut self.tour_rng, &city.spelunken, &mut names);
-                if let Some(option) = options.get_mut(usize::try_from(pick).unwrap_or(0)) {
-                    option.spelunke = Some(Spelunke { name, malus });
-                }
-            }
+    }
+
+    /// "Taxi": the stops of the open route choice drawn again; Spelunken
+    /// stay.
+    pub(super) fn reroll_routes(&mut self, content: &Content) {
+        let Some(mut route) = self.route.take() else {
+            return;
+        };
+        self.draw_stops(content, &mut route.options);
+        self.route = Some(route);
+    }
+
+    /// "Spelunkenkenner": pick the malus of the Spelunke on route `option`
+    /// ([`super::RunAction::ChooseMalus`]).
+    pub(super) fn choose_malus(
+        &mut self,
+        _content: &Content,
+        option: usize,
+        malus: usize,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        if self.phase != RunPhase::Route {
+            return Err(RunError::WrongPhase);
         }
-        self.phase = RunPhase::Route;
-        self.route = Some(RouteChoice {
-            section,
-            index,
-            options,
+        let spelunke = self
+            .route
+            .as_mut()
+            .and_then(|r| r.options.get_mut(option))
+            .and_then(|o| o.spelunke.as_mut())
+            .ok_or(RunError::InvalidSlot)?;
+        let chosen = spelunke
+            .malus_options
+            .get(malus)
+            .cloned()
+            .ok_or(RunError::InvalidSlot)?;
+        spelunke.malus = chosen.clone();
+        events.push(RunEvent::MalusChosen {
+            option,
+            malus: chosen,
         });
-        events.push(RunEvent::RouteOpened { section, index });
         Ok(())
     }
 
@@ -512,6 +593,17 @@ impl Run {
             spelunke: chosen.spelunke,
         });
         self.route = None;
+        if self.scout_legs > 0 {
+            self.scout_legs -= 1;
+        }
+        self.fire_with(
+            content,
+            crate::content::Stage::OnRouteChosen,
+            None,
+            None,
+            Some(chosen.transport),
+            events,
+        );
         self.continue_trip(content, events)
     }
 
@@ -557,6 +649,13 @@ impl Run {
                     consumables: shop.consumables.clone(),
                 });
                 self.shop = Some(shop);
+                self.fire(
+                    content,
+                    crate::content::Stage::OnShopOpened,
+                    None,
+                    None,
+                    events,
+                );
                 true
             }
             (_, Some(id)) => {
@@ -593,6 +692,9 @@ impl Run {
         let mut target = series_target(content, self.character, section, index, boss)?;
         if spelunke.is_some() {
             target = content.run.spelunke.target_factor.apply(target);
+        }
+        if (section, index) != (self.series.section, self.series.index) {
+            target = self.next_pub.apply_to(target);
         }
         let district = city.get(usize::try_from(section).ok()?)?;
         let name = spelunke.map_or_else(
@@ -643,8 +745,27 @@ impl Run {
                         .iter()
                         .map(|stop| StopView {
                             category: stop.category,
+                            encounter: (self.scout_legs > 0)
+                                .then_some(stop.encounter.as_ref())
+                                .flatten()
+                                .and_then(|id| content.encounter(id))
+                                .map(|e| StopEncounter {
+                                    id: e.id.clone(),
+                                    name: e.name.clone(),
+                                }),
                         })
                         .collect(),
+                    malus_options: o
+                        .spelunke
+                        .as_ref()
+                        .map(|s| {
+                            s.malus_options
+                                .iter()
+                                .filter_map(|m| content.maluses.get(m))
+                                .map(malus_info)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     spelunke: o.spelunke.as_ref().and_then(|s| {
                         self.pub_preview(content, &city, r.section, r.index, Some(s))
                     }),
@@ -815,6 +936,18 @@ pub struct PubPreview {
 pub struct StopView {
     /// Its category (the exact encounter stays hidden).
     pub category: StopCategory,
+    /// The exact encounter, shown only while "Kiebitz am Fenster" scouts
+    /// ([`Run::scout_legs`]).
+    pub encounter: Option<StopEncounter>,
+}
+
+/// An encounter a scouted stop shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StopEncounter {
+    /// Id, also the key for the frontend's texts.
+    pub id: EncounterId,
+    /// German name.
+    pub name: String,
 }
 
 /// One way of the route choice.
@@ -835,6 +968,10 @@ pub struct RouteOptionView {
     pub stops: Vec<StopView>,
     /// The Spelunke it leads into instead of the next pub.
     pub spelunke: Option<PubPreview>,
+    /// "Spelunkenkenner": the maluses the Spelunke offers
+    /// ([`super::RunAction::ChooseMalus`]); its `malus` is the one chosen.
+    /// Empty without a choice.
+    pub malus_options: Vec<MalusInfo>,
 }
 
 /// The open route choice.

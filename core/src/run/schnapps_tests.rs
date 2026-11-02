@@ -79,9 +79,18 @@ fn hand_card(run: &Run, notation: &str) -> DealtCard {
 }
 
 #[test]
-fn the_five_schnaepse_load_as_one_group() {
+fn the_schnaepse_load_as_one_group() {
     let content = content();
-    for id in ["shot", "double_grain", "herbal", "bitters", "chalk"] {
+    let schnaepse = [
+        "shot",
+        "double_grain",
+        "herbal",
+        "chalk",
+        "hangover_breakfast",
+        "taxi",
+        "road_beer",
+    ];
+    for id in schnaepse {
         let def = content.consumable(&ConsumableId::new(id)).expect("loaded");
         assert_eq!(def.category, ConsumableCategory::Schnapps, "{id}");
         assert!((2..=4).contains(&def.price), "{id}");
@@ -93,8 +102,8 @@ fn the_five_schnaepse_load_as_one_group() {
         .filter(|d| d.category == ConsumableCategory::Item)
         .count();
     assert_eq!(
-        items, 9,
-        "the old consumables and the five of effects v2 are items"
+        items, 5,
+        "Frisches Deck, Stempelkissen and the three of effects v2 are items"
     );
     // They come to the Tresen like every other consumable.
     let mut seen = BTreeSet::new();
@@ -103,7 +112,7 @@ fn the_five_schnaepse_load_as_one_group() {
         let shop = run.draw_offer(&content, 0);
         seen.extend(shop.consumables.into_iter().flatten());
     }
-    for id in ["shot", "double_grain", "herbal", "bitters", "chalk"] {
+    for id in schnaepse {
         assert!(seen.contains(&ConsumableId::new(id)), "{id} never offered");
     }
 }
@@ -164,16 +173,20 @@ fn shot_works_only_with_ten_cards_and_not_against_the_kibitz_killer() {
 }
 
 #[test]
-fn double_grain_doubles_the_next_declared_game_won_or_lost() {
+fn double_grain_deals_again_and_doubles_the_next_declared_game() {
     let content = content();
     // Plain game for comparison.
     let mut plain = run_with(&content, &[]);
     fixed_deal(&mut plain, &content, STRONG, STRONG_SKAT);
     let (_, base) = play(&mut plain, &content, hand(DIAMONDS));
-    // Drunk before the deal is declared; Einmischen does not waste it.
+    // Drunk with ten cards: a new deal at once, no Einmischen used.
     let mut run = run_with(&content, &["double_grain"]);
-    run.apply(&content, use_item(0)).expect("drink");
+    let before = run.redeals_left(&content);
+    let events = run.apply(&content, use_item(0)).expect("drink");
+    assert!(events.contains(&RunEvent::Redealt));
+    assert_eq!(run.redeals_left(&content), before, "free");
     assert_eq!(run.view(&content).pending_next_game.len(), 1);
+    // Further Einmischen keep the effect until a game is declared.
     run.apply(&content, RunAction::Redeal).expect("einmischen");
     assert_eq!(run.pending_next_game().len(), 1, "Einmischen keeps it");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -188,46 +201,47 @@ fn double_grain_doubles_the_next_declared_game_won_or_lost() {
     assert!(run.pending_next_game().is_empty(), "used up");
     // Lost, it counts double as well: −2 × doubled value.
     let mut run = run_with(&content, &["double_grain"]);
-    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     run.apply(&content, use_item(0)).expect("drink");
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, lost) = play(&mut run, &content, hand(CLUBS));
     assert!(!lost.won);
     assert_eq!(lost.multiplier, Factor::from_int(2));
     assert_eq!(lost.score, -2 * i64::try_from(lost.value).expect("value"));
-    // At the Tresen it waits for the next game; during play it is too late.
-    let mut run = run_with(&content, &["double_grain", "double_grain"]);
+    // Not at the Tresen (no hand to deal again), not after the
+    // declaration, not after picking up the skat.
+    let mut run = run_with(&content, &["double_grain"]);
     run.game = None;
     run.phase = RunPhase::Shop;
     run.shop = Some(run.draw_offer(&content, 0));
-    run.apply(&content, use_item(0)).expect("at the Tresen");
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
     let mut run = run_with(&content, &["double_grain"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     run.apply(&content, RunAction::Declare(hand(DIAMONDS)))
         .expect("hand");
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
+    let mut run = run_with(&content, &["double_grain"]);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
 }
 
 #[test]
-fn herbal_adds_one_einmischen_in_the_series() {
+fn herbal_deals_again_without_an_einmischen() {
     let content = content();
     let mut run = run_with(&content, &["herbal"]);
     let before = run.redeals_left(&content);
+    let hand_before: Vec<DealtCard> = run.game().expect("game").game.hand(Seat::DECLARER).to_vec();
     let events = run.apply(&content, use_item(0)).expect("drink");
-    assert_eq!(run.redeals_left(&content), before + 1);
-    assert!(events.contains(&RunEvent::RedealsAdded {
-        redeals: 1,
-        redeals_left: before + 1
-    }));
-    // The game's own Einmischen go first, the extra one stays for the
-    // series.
-    for _ in 0..before {
-        run.apply(&content, RunAction::Redeal).expect("einmischen");
-    }
-    assert_eq!(run.series().extra_redeals, 1);
-    run.apply(&content, RunAction::Redeal)
-        .expect("the extra one");
-    assert_eq!(run.series().extra_redeals, 0);
-    assert_eq!(run.redeals_left(&content), 0);
+    assert!(events.contains(&RunEvent::Redealt));
+    assert_eq!(run.redeals_left(&content), before, "no Einmischen used");
+    assert_ne!(
+        run.game().expect("game").game.hand(Seat::DECLARER),
+        &hand_before[..]
+    );
+    assert!(run.consumables().is_empty());
+    // Not after the skat is picked up.
+    let mut run = run_with(&content, &["herbal"]);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
     // Old saves and events: "PassesAdded" and "ExtraPasses" read as the
     // new names.
     let old: RunEvent = ron::from_str("PassesAdded(passes: 1, passes_left: 3)").expect("old event");
@@ -245,7 +259,7 @@ fn herbal_adds_one_einmischen_in_the_series() {
 
 #[test]
 fn bitters_makes_the_next_lost_game_count_single() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = run_with(&content, &["bitters", "bitters"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     run.apply(&content, use_item(0)).expect("drink");
@@ -367,27 +381,25 @@ fn the_bot_drinks_each_schnaps() {
         RunBot.next_action(&run, &content),
         Some(RunAction::PickUpSkat)
     );
-    // A strong game after the skat: Doppelkorn.
+    // A weak hand without Einmischen left: Doppelkorn throws it in.
     let mut run = run_with(&content, &["double_grain"]);
-    fixed_deal(&mut run, &content, ONE_HEART, STRONG_SKAT);
-    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-    assert_eq!(drunk_until_play(&mut run, &content), ["double_grain"]);
-    // A weak game after the skat: Magenbitter.
+    fixed_deal(&mut run, &content, ACES, ACES_SKAT);
+    run.series.redeals_in_game = 99;
+    assert_eq!(RunBot.next_action(&run, &content), Some(use_item(0)));
+    // A weak game after the skat: Magenbitter (removed 02.11.2026, the
+    // dormant action stays).
+    let content = crate::run::legacy_content();
     let mut run = run_with(&content, &["bitters"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
     // No Einmischen left: the hand is played.
     run.series.redeals_in_game = 99;
     assert_eq!(drunk_until_play(&mut run, &content), ["bitters"]);
-    // Kreide paints a side card into trump; with it the same hand is no
-    // longer weak (five trumps, four aces), so Doppelkorn follows.
-    let mut run = run_with(&content, &["chalk", "double_grain"]);
+    // Kreide paints a side card into trump.
+    let mut run = run_with(&content, &["chalk"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
     // No Einmischen left: the hand is played.
     run.series.redeals_in_game = 99;
-    assert_eq!(
-        drunk_until_play(&mut run, &content),
-        ["chalk", "double_grain"]
-    );
+    assert_eq!(drunk_until_play(&mut run, &content), ["chalk"]);
     let active = run.game().expect("game");
     assert_eq!(active.chalked.len(), 1);
     let trump = active.game.declaration().expect("declared").game();
@@ -447,7 +459,7 @@ fn old_saves_without_the_schnaps_fields_still_load() {
 
 #[test]
 fn regret_brings_back_the_deal_before_the_last_einmischen() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let def = content
         .consumable(&ConsumableId::new("regret"))
         .expect("regret");

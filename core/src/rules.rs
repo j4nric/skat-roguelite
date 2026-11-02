@@ -430,64 +430,16 @@ pub fn returned_discard<C: PlayingCard>(cards: [C; 3]) -> C {
     low
 }
 
-/// What the next lead of a defender must be when the declarer names it
-/// (house rule "Lockvogel", DESIGN 8.1): trump, or a suit without the
-/// cards that are trump in this game (a jack belongs to no suit in a suit
-/// game or Grand).
+/// What the next lead of a defender had to be under the house rule
+/// "Lockvogel" (removed with the item review of 02.11.2026). Kept only so
+/// that the game log of an older save still reads
+/// ([`crate::game::Event::LeadDemanded`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LeadSuit {
-    /// Trump: every card that is trump in the game (not in Null).
+    /// Trump.
     Trump,
-    /// A suit: its cards that are not trump.
+    /// A suit without its trump cards.
     Suit(Suit),
-}
-
-impl LeadSuit {
-    /// The demands that make sense in `game`: trump first (not in Null),
-    /// then Kreuz, Pik, Herz, Karo without the trump suit of a suit game
-    /// (its cards are trump).
-    #[must_use]
-    pub fn options(game: GameType) -> Vec<LeadSuit> {
-        let mut options = Vec::with_capacity(5);
-        if game != GameType::Null {
-            options.push(LeadSuit::Trump);
-        }
-        for suit in Suit::ALL.into_iter().rev() {
-            if game != GameType::Suit(suit) {
-                options.push(LeadSuit::Suit(suit));
-            }
-        }
-        options
-    }
-
-    /// Whether `card` meets the demand in `game`. Blanks never do.
-    #[must_use]
-    pub fn matches<C: PlayingCard>(self, game: GameType, card: C) -> bool {
-        let Some(face) = card.face() else {
-            return false;
-        };
-        match self {
-            LeadSuit::Trump => is_trump(game, card),
-            LeadSuit::Suit(suit) => !is_trump(game, card) && face.suit == suit,
-        }
-    }
-}
-
-/// The cards from `hand` that may lead a trick under `demand`
-/// ("Lockvogel"): those that meet it, or every card when none does (then
-/// the lead is free).
-#[must_use]
-pub fn legal_leads<C: PlayingCard>(game: GameType, hand: &[C], demand: LeadSuit) -> Vec<C> {
-    let meeting: Vec<C> = hand
-        .iter()
-        .copied()
-        .filter(|&c| demand.matches(game, c))
-        .collect();
-    if meeting.is_empty() {
-        hand.to_vec()
-    } else {
-        meeting
-    }
 }
 
 // ---------------------------------------------------------------------------
