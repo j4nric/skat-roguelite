@@ -2038,7 +2038,11 @@ async function run() {
     if (!build) fail('build info missing on the start screen');
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
-    const aceCorner = await page.evaluate(() => document.querySelector('#x-CA .idx')?.textContent?.trim());
+    // The pixel deck (tools/cardart): the index layer names its rank and has pixels.
+    const aceCorner = await page.evaluate(() => {
+      const index = document.getElementById('x-CA');
+      return index?.querySelector('path') ? index.getAttribute('data-rank') : null;
+    });
     if (aceCorner !== 'A') fail(`the Daus shows "${aceCorner}" in its corner, expected "A"`);
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;

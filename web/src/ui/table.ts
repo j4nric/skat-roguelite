@@ -33,7 +33,7 @@ function infoAttrs(id: number, focusable = true): Record<string, string | number
 }
 
 function miniCard(card: CardView): string {
-  return `<span class="mini-card" ${attrs({ title: cardName(card.kind), ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
+  return `<span class="mini-card" ${attrs({ title: cardName(card.kind), ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
 }
 
 /** An eye, for the Kiebitz. */
@@ -48,16 +48,16 @@ function eyeIcon(size = 14): string {
 function revealedCard(r: RevealedCard): string {
   const card = r.card;
   if (r.source === 'Onlooker') {
-    return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods)}</span>`;
+    return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
   }
   if (r.source === 'Returned') {
-    return `<span class="mini-card is-returned" ${attrs({ title: `${cardName(card.kind)} (${de.table.returnedHint})`, 'data-returned': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
+    return `<span class="mini-card is-returned" ${attrs({ title: `${cardName(card.kind)} (${de.table.returnedHint})`, 'data-returned': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
   }
   if (r.source === 'Kibitz') {
-    return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
+    return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
   }
   const mod = r.source.CardMod;
-  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
+  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
 }
 
 /** A small thought bubble while the core computes this opponent's card. */
@@ -418,9 +418,10 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : ''].join(' ');
       const skatTag = cardTag(view, c) + plaques(c);
       const label = cardLabel(c);
-      // Slight arc per row, like cards held in the hand.
+      // Slight arc per row, like cards held in the hand (lifted, not turned:
+      // turned pixel art blurs).
       const off = (i % cols) - (cols - 1) / 2;
-      const style = `--tilt:${(off * 1.6).toFixed(1)}deg;--lift:${(off * off * 0.9).toFixed(1)}px`;
+      const style = `--lift:${(off * off * 0.9).toFixed(1)}px`;
       if (action) {
         return `<button class="${cls}" style="${style}" ${attrs({
           'data-action': action,
@@ -516,7 +517,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
                       'aria-pressed': c.id === take.id ? 'true' : 'false',
                       'aria-label': cardName(c.kind),
                       ...infoAttrs(c.id, false),
-                    })}>${cardSvg(c.kind, c.mods)}</button>`,
+                    })}>${cardSvg(c.kind, c.mods, 'small')}</button>`,
                 )
                 .join('')}</span>`
             : '';
@@ -525,7 +526,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
       }
       if (take) {
         return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
-          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods)}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
+          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods, 'small')}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
       const lure = lureControl(game, ui);
       if (lure && ui.lurePick) return `<div class="status status-lure">${lure}</div>`;
