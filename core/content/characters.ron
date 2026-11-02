@@ -44,7 +44,7 @@
     (
         character: NullPlayer,
         name: "Der Nullspieler",
-        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Startet mit dem Kiebitz.",
+        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
         // Eigene Zielwerte (DESIGN 5.2), seit 02.11.2026 rund die Hälfte des
         // Alleinspielers: Sein Blatt ohne Unter gewinnt eine Serie mit drei
         // Spielen auch bei Zielwert 1 nur zu 76 % (Alleinspieler 86 %). Mit
@@ -60,6 +60,12 @@
             (23, 27, 30),
         ]),
         start_relics: ["kibitzer"],
+        // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
+        // Zielwerten oben gewann er nur 0,6 % der ganzen Abende; ein
+        // Einmischen mehr hob ihn auf 1,1 % (2 × 800 Runs, DESIGN 5.2).
+        rule: (
+            redeals: 1,
+        ),
         deck: (
             remove: ["CJ", "SJ", "HJ", "DJ"],
             add: ["C7", "S7", "H7", "D7"],
