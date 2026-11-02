@@ -28,6 +28,9 @@
 // - while playing sees the two pressed cards big beside the trick (a tap
 //   shows one large) and, after the first trick, "Letzter Stich": the last
 //   trick with its winner on the felt until tapped again, without scrolling,
+// - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
+//   paper in its suit (off by default, stored, survives a reload), and the
+//   Schellen rank letter in the corner is ochre, not black,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
@@ -807,6 +810,72 @@ async function musicPass(browser, errors, reducedMotion) {
   await expectMusic(page, 'table', 'Musik on again');
   settings = await stored();
   if (settings.music !== true || settings.sound !== true) fail(`Musik on stored as ${JSON.stringify(settings)}`);
+  await context.close();
+}
+
+/**
+ * "Kartenfarbe tönen": off by default (plain paper); the menu switch tints
+ * each card's paper in its suit, is stored and survives a reload. The
+ * Schellen corner index uses the ochre ink, not black.
+ */
+async function suitTintPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const papers = () =>
+    page.$$eval('.hand .card-svg[data-suit] rect.paper', (rects) =>
+      rects.map((r) => ({ suit: r.closest('.card-svg').dataset.suit, fill: getComputedStyle(r).fill })),
+    );
+  const bySuit = (list) => {
+    const out = {};
+    for (const { suit, fill } of list) (out[suit] ??= new Set()).add(fill);
+    return out;
+  };
+  await page.goto(base);
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+
+  const inks = await page.$$eval('#x-D7 path, #x-DK path', (paths) => paths.map((p) => p.getAttribute('fill')));
+  // The rank letter is ochre (the black left is the knob of the bell sign).
+  if (!inks.includes('#966c00')) fail(`Schellen index inks ${inks.join(', ')}: expected the ochre #966c00 for the letter`);
+
+  const plain = await papers();
+  const suits = Object.keys(bySuit(plain));
+  if (suits.length < 4) fail(`the hand of seed ${SEED} should hold all four suits, has ${suits.join(', ')}`);
+  const plainFills = new Set(plain.map((p) => p.fill));
+  if (plainFills.size !== 1) fail(`with the tint off the papers differ: ${[...plainFills].join(', ')}`);
+
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-suit-tint"]');
+  await page.click('[data-testid="setting-suit-tint"] [data-on="true"]');
+  await page.waitForSelector('[data-testid="setting-suit-tint"] [data-on="true"][aria-pressed="true"]');
+  await assertMenuNoScroll(page, 'menu with "Kartenfarbe tönen"');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+  if (stored.suitTint !== true) fail(`"Kartenfarbe tönen" not stored: ${JSON.stringify(stored)}`);
+  await page.click('[data-testid="menu-close"]');
+
+  const check = async (where) => {
+    const tinted = bySuit(await papers());
+    const per = Object.entries(tinted).map(([suit, fills]) => {
+      if (fills.size !== 1) fail(`${where}: the ${suit} cards have different papers`);
+      return [...fills][0];
+    });
+    if (new Set(per).size !== 4) fail(`${where}: the four suits do not have four papers: ${per.join(', ')}`);
+    if (per.some((f) => plainFills.has(f))) fail(`${where}: a suit kept the plain paper: ${per.join(', ')}`);
+  };
+  await check('tint on');
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await check('tint on after a reload');
+
+  await page.click('[data-action="menu"]');
+  await page.click('[data-testid="setting-suit-tint"] [data-on="false"]');
+  await page.click('[data-testid="menu-close"]');
+  const off = new Set((await papers()).map((p) => p.fill));
+  if (off.size !== 1 || !plainFills.has([...off][0])) fail(`tint off again: papers ${[...off].join(', ')}`);
+  log('"Kartenfarbe tönen": off by default, tints the paper per suit, stored, off again');
   await context.close();
 }
 
@@ -2274,6 +2343,7 @@ async function run() {
     await context.close();
 
     await musicPass(browser, errors, reducedMotion);
+    await suitTintPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);

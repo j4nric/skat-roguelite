@@ -409,6 +409,7 @@ function settingsBlock(ui: UiState): string {
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
+    <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',
       'data-testid': 'hints-reset',

@@ -1,7 +1,8 @@
 // Cards as small SVGs that reference the sprite in ./art.ts. A face is
 // drawn in layers on the art grid of the deck (33 × 49.5 art pixels, one
 // art pixel = 2 × 2 CSS px at the 66 × 99 hand size): paper (tinted by
-// some modifications), the picture, the washes and tints of modifications,
+// some modifications, else plain or, with the setting "Kartenfarbe
+// tönen", lightly in the suit's colour), the picture, the washes and tints of modifications,
 // the corner index, then the marks of modifications on top. Every
 // modification has the design the player chose, as pixel art on the same
 // grid, at fixed places that keep both corner indexes free:
@@ -39,6 +40,20 @@ export function modIcon(mod: string, size = 20): string {
 // ------------------------------------------------------- modification art
 
 const CURSE_RED = '#bd3b32';
+
+/**
+ * The plain paper of a face. A CSS variable, so the setting "Kartenfarbe
+ * tönen" can tint it per suit (`data-suit` on the SVG, see style.css)
+ * without drawing the cards again; the halos of marks follow it. The
+ * paper of a modification (Glasdaus, ...) replaces it, so the
+ * modification stays recognisable.
+ */
+const PLAIN = `var(--suit-paper, ${PAPER})`;
+
+/** A fill as SVG attribute; CSS variables need the style property. */
+function fillOf(fill: string): string {
+  return fill.startsWith('var(') ? `style="fill:${fill}"` : `fill="${fill}"`;
+}
 const W = CARD_W;
 const H = CARD_H;
 
@@ -100,7 +115,7 @@ function draw(cells: Cells, fill: string): string {
       i = k + 1;
     }
   }
-  return d ? `<path d="${d}" fill="${fill}"/>` : '';
+  return d ? `<path d="${d}" ${fillOf(fill)}/>` : '';
 }
 
 /** Marks over the picture with a one-pixel halo in the paper colour around them all. */
@@ -181,7 +196,7 @@ function dashedEdge(stroke: string): string {
 }
 
 /** The faded look of a card that never takes a trick. */
-const VEIL = `<rect width="${W}" height="${H}" fill="${PAPER}" opacity=".7"/>`;
+const VEIL = `<rect width="${W}" height="${H}" ${fillOf(PLAIN)} opacity=".7"/>`;
 
 /** An eye at the bottom left: you see who holds this card. */
 const EYE = (paper: string): string => marked([[shape(['.###.', '#####', '.###.'], 2, 43), '#2f86c0'], [rects('4 44 1 1'), '#0b0c0e']], paper);
@@ -319,7 +334,7 @@ interface Layers {
 /** Lay out the modifications of one card: each at its places, or as a badge. */
 function layoutMods(mods: string[]): Layers {
   const used = new Set<Place>();
-  const out: Layers = { paper: PAPER, under: '', over: '', frame: null, badges: [], curse: mods.some(isCurse) };
+  const out: Layers = { paper: PLAIN, under: '', over: '', frame: null, badges: [], curse: mods.some(isCurse) };
   const placed: { art: ModArt; figure: string }[] = [];
   for (const mod of mods) {
     const art = MOD_ART[mod];
@@ -332,7 +347,7 @@ function layoutMods(mods: string[]): Layers {
     }
     for (const p of places) used.add(p);
     placed.push({ art, figure });
-    if (art.paper && out.paper === PAPER) out.paper = art.paper;
+    if (art.paper && out.paper === PLAIN) out.paper = art.paper;
     if (art.frame && !out.frame) out.frame = mod;
   }
   let values = '';
@@ -365,7 +380,8 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   const label = esc(cardName(kind) + (mods.length ? ', ' + t(de.card.mods, { mods: modNames }) : ''));
   const layers = layoutMods(mods);
   const frame = layers.frame ? ` data-frame="${esc(layers.frame)}"` : '';
-  const paper = `<rect width="${W}" height="${H}" fill="${layers.paper}"/>`;
+  const paper = `<rect class="paper" width="${W}" height="${H}" ${fillOf(layers.paper)}/>`;
+  const suit = f ? ` data-suit="${f.suit}"` : '';
   let body: string;
   if (size === 'small') {
     body = f ? `${paper}<use href="#${smallFaceId(f.suit, f.rank)}"/>` : `<use href="#f-blank"/>`;
@@ -377,7 +393,7 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
       : `<use href="#f-blank"/>${layers.under}`;
     body += layers.over + badges;
   }
-  return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${frame}>${body}</svg>`;
+  return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${frame}>${body}</svg>`;
 }
 
 /**
