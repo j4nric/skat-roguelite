@@ -204,7 +204,7 @@ export const de = {
 
   /** Asking before a card modification replaces or raises the one on a card (Tresen, encounters). */
   modConfirm: {
-    replaceTitle: 'Zinke ersetzen?',
+    replaceTitle: 'Effekt ersetzen?',
     replace: '{card}: ersetzt {old} durch {new}.',
     replaceGo: 'Ersetzen',
     raiseTitle: 'Zinke steigern?',
@@ -216,7 +216,7 @@ export const de = {
     dropTitle: 'Zinke aufheben?',
     drop: '{card}: {old} und {new} heben sich auf, die Karte ist danach ohne Zinke.',
     dropGo: 'Trotzdem',
-    randomTitle: 'Zinke ersetzen?',
+    randomTitle: 'Effekt ersetzen?',
     random: '{card} trägt schon {old}. Die neue Zinke zieht das Los; ist es eine andere, ersetzt sie {old}.',
     randomGo: 'Auf gut Glück',
     before: 'Jetzt',
