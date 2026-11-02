@@ -6171,151 +6171,410 @@ button.skat-card {
   stroke: var(--rot-light);
 }
 
+/* The route choice on the city map (Kneipentour, approved design "Karte
+   Runde 3"): the map takes all the height between the head and the travel
+   bar, the target card lies over its lower edge. The map is a static
+   pixel image (ui/citymap.ts); the core frame always fits, wider or taller
+   screens see more of the city around it. */
+.run.is-route {
+  padding-bottom: 0;
+}
+
+.run.is-route .hud-board,
+.run.is-route .chips {
+  display: none;
+}
+
 .route {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
-  gap: 10px;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 10px 12px 16px;
-  overflow-wrap: anywhere;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--run-x));
 }
 
-.route-head {
+.route-map {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top: var(--edge) solid var(--line);
+  background: #e4dcc6;
+}
+
+.map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.map-icon {
+  display: block;
+  flex: none;
+}
+
+.map-zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  border: var(--edge) solid var(--line);
+  box-shadow: var(--shadow-sm);
 }
 
-.route-head h1 {
+.map-zoom-btn {
+  display: grid;
+  place-items: center;
+  width: var(--touch);
+  height: var(--touch);
+  padding: 0;
+  border: 0;
+  background: #fbf6e8;
+  color: #2a2320;
+  font: inherit;
+  font-size: 34px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.map-zoom-btn + .map-zoom-btn {
+  border-top: 2px solid var(--line);
+}
+
+.map-zoom-btn:disabled {
+  background: #d9d4c6;
+  color: #a8a294;
+  cursor: default;
+}
+
+.map-zoom-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.route-next {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 10px;
+  padding: 7px 10px;
+  border: var(--edge) solid var(--line);
+  background: #f1e6cc;
+  box-shadow: var(--shadow);
+  color: #2a2320;
+}
+
+.route-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.route-pub-name {
   margin: 0;
+  text-shadow: none;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.route-target {
+  color: #7a2232;
+  font-size: var(--fs-s);
+}
+
+.route-warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: var(--fs-s);
+}
+
+.route-tag {
+  padding: 1px 6px;
+  border: 2px solid var(--line);
+  font-weight: 400;
+}
+
+.route-tag.is-spelunke {
+  background: #383b42;
+  color: #f1e6cc;
+}
+
+.route-tag.is-boss {
+  background: #c9a24a;
+  color: #2a2320;
+}
+
+.route-boss {
+  color: #7a2232;
+}
+
+.route-next.is-spelunke {
+  border-color: #383b42;
+  box-shadow: 0 4px 0 var(--line), inset 0 0 0 2px #383b42;
+}
+
+.route-malus,
+.route-reward,
+.route-warn {
+  grid-column: 1 / -1;
+}
+
+.route-malus {
+  font-size: var(--fs-xs);
+  line-height: 1.05;
+  color: #2a2320;
+}
+
+.route-malus b {
+  font-weight: 400;
+  color: #7a2232;
+}
+
+.route-reward {
+  font-size: var(--fs-xs);
+  color: #1b4a4c;
+}
+
+.route-faces {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.route-face.portrait {
+  width: 32px;
+  height: 32px;
+  border-width: 2px;
+  background: #d9ccaa;
+}
+
+.route-plan {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 64px 12px 12px;
+  color: #2a2320;
+}
+
+.route-plan h2 {
+  margin: 4px 0 10px;
+  text-shadow: none;
   font-size: var(--fs-h);
   font-weight: 400;
 }
 
-.route-lives {
-  display: inline-flex;
-  gap: 2px;
+.plan-district {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border: var(--edge) solid var(--line);
+  background: #f1e6cc;
 }
 
-.route-sub {
+.plan-district.is-ahead {
+  background: #e2dccb;
+}
+
+.plan-district h3 {
+  margin: 2px 0 4px;
+  color: #2a2320;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.plan-district ol {
   margin: 0;
-  color: var(--muted);
+  padding: 0;
+  list-style: none;
+}
+
+.plan-stop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
   font-size: var(--fs-m);
 }
 
-.route-next {
-  padding: 10px 12px;
-  border: 2px solid var(--line);
-  background: var(--panel);
+.plan-line {
+  align-self: stretch;
+  width: 6px;
+  background: #7a2232;
 }
 
-.route-kicker {
-  font-size: var(--fs-xs);
-  color: var(--accent-light);
+.plan-stop.is-ahead {
+  opacity: 0.45;
 }
 
-.route-pub-name {
-  margin: 2px 0;
-  font-size: var(--fs-l);
+.plan-stop.is-ahead .plan-line {
+  background: #a8a294;
+}
+
+.plan-stop.is-next .plan-line {
+  background: repeating-linear-gradient(#7a2232 0 4px, transparent 4px 8px);
+}
+
+.plan-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.plan-mark {
   font-weight: 400;
 }
 
-.route-next p {
-  margin: 2px 0;
-  font-size: var(--fs-m);
+.plan-mark.is-won {
+  color: #2f6f72;
 }
 
-.route-boss {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-m);
+.plan-mark.is-lost {
+  color: #a3263a;
+}
+
+.plan-mark.is-here,
+.plan-mark.is-next {
+  padding: 0 5px;
+  background: #7a2232;
+  color: #fbf6e8;
+  font-size: var(--fs-s);
+}
+
+.plan-mark.is-next {
+  background: #2a2320;
+}
+
+.route-bar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px calc(8px + var(--safe-bottom, 0px));
+  border-top: var(--edge) solid var(--line);
+  background: #2a2f2a;
 }
 
 .route-options {
   display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
 .route-option {
-  display: grid;
-  grid-template-columns: minmax(7.5em, auto) 1fr;
-  gap: 6px 10px;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
   align-items: center;
-  width: 100%;
+  gap: 4px;
+  min-width: 0;
   min-height: var(--touch);
-  padding: 8px 10px;
-  border: 2px solid var(--line);
-  background: var(--panel2);
-  color: var(--text);
+  padding: 6px 4px 5px;
+  border: var(--edge) solid #8a8476;
+  background: #d9ccaa;
+  color: #2a2320;
   font: inherit;
-  text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
-.route-option:hover:not(:disabled),
+.route-option.is-picked {
+  border-color: var(--line);
+  background: #f1e6cc;
+  box-shadow: var(--shadow);
+}
+
 .route-option:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .route-option:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 
-.route-option.is-spelunke {
-  border-color: var(--rot);
+.route-way {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.route-way,
+.route-way b {
+  font-size: var(--fs-l);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.route-line {
+  display: block;
+  width: 70%;
+  height: 0;
+}
+
 .route-stop {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
-.route-way {
-  flex-wrap: wrap;
-}
-
-.route-way small,
 .route-stop small {
-  display: block;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-}
-
-.route-stop b,
-.route-way b {
-  font-weight: 400;
-}
-
-.route-spelunke {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  border-left: 3px solid var(--rot);
-  background: #2c2224;
+  color: #6a6458;
   font-size: var(--fs-s);
+  white-space: nowrap;
 }
 
-.route-spelunke b {
-  font-weight: 400;
-  color: var(--rot-light);
+.route-go {
+  width: 100%;
+  background: var(--accent);
+  color: #1b1e21;
 }
 
-.route-malus {
-  color: var(--text);
+.route.is-travelling .route-bar {
+  opacity: 0.7;
 }
 
-.route-reward {
-  color: var(--cool);
+/* Short phones: the transport tiles in one line each. */
+@media (max-height: 700px) {
+  .route-option {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 4px;
+    padding: 4px 2px;
+  }
+
+  .route-option .transport-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .route-line {
+    order: 3;
+    width: 80%;
+  }
+
+  .route-way b {
+    font-size: var(--fs-m);
+  }
+
+  .route-next {
+    padding: 5px 8px;
+  }
+
+  .route-next .route-kind {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 .stop-icon,
