@@ -730,7 +730,7 @@ impl Factor {
     }
 
     /// `value × factor`, rounded half up; unlike [`Factor::apply`] it
-    /// may be 0 (the factor 0 of "Der Schwarze Peter"). Saturates.
+    /// may be 0 (a factor 0, `MultiplyGameValue(0)`). Saturates.
     #[must_use]
     pub fn scale(self, value: u64) -> u64 {
         let scaled = (u128::from(value) * u128::from(self.permille) + 500) / 1000;

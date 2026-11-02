@@ -6,7 +6,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play, relic_run};
 use super::*;
 use crate::cards::{Card, Suit};
-use crate::content::{EncounterId, Factor, ScoreTerm};
+use crate::content::{Change, EncounterId, Factor, Lever, ScoreLine, ScoreTerm, Source};
 use crate::rules::{NullRisk, RiskLevel};
 
 /// A Null deal the declarer cannot lose: he holds the four sevens and his
@@ -467,7 +467,7 @@ fn the_ramscher_makes_the_first_game_a_ramsch() {
 }
 
 #[test]
-fn black_peter_only_pays_won_schneider_games() {
+fn black_peter_pays_won_games_without_schneider_half() {
     let content = content();
     let mut run = relic_run(&content, &[]);
     run.series.boss = Some(BossId::new("black_peter"));
@@ -479,7 +479,13 @@ fn black_peter_only_pays_won_schneider_games() {
     );
     assert!(b.won && b.schneider);
     assert!(b.score > 0, "Schneider counts");
-    // A won game without Schneider counts nothing.
+    assert!(
+        !b.lines
+            .iter()
+            .any(|l| l.source == Source::Boss(BossId::new("black_peter"))),
+        "a Schneider win counts fully"
+    );
+    // A won game without Schneider counts half, rounded half up.
     for seed in 0..200 {
         let (mut run, _) = Run::new(&content, seed).expect("run");
         run.series.boss = Some(BossId::new("black_peter"));
@@ -495,8 +501,16 @@ fn black_peter_only_pays_won_schneider_games() {
             for event in run.apply(&content, action).expect("legal") {
                 if let RunEvent::GameScored { breakdown, .. } = event {
                     if breakdown.won && !breakdown.schneider {
-                        assert_eq!(breakdown.score, 0);
-                        assert_eq!(breakdown.multiplier, Factor::from_int(0));
+                        let half = ScoreLine {
+                            source: Source::Boss(BossId::new("black_peter")),
+                            lever: Lever::GameValue,
+                            change: Change::Scale(Factor::from_permille(500)),
+                        };
+                        assert!(breakdown.lines.contains(&half), "{breakdown:?}");
+                        let raw = breakdown.base_value * breakdown.levels;
+                        assert_eq!(breakdown.value, breakdown.multiplier.scale(raw));
+                        assert!(breakdown.score > 0, "half, not zero");
+                        assert_eq!(breakdown.score, i64::try_from(breakdown.value).unwrap());
                         return;
                     }
                 }
