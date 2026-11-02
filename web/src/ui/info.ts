@@ -141,7 +141,7 @@ function relicModel(
     kind: `${label} · ${de.rarity[relic.rarity]}`,
     art: `<span class="info-emblem">${relicCoaster(relic, { size: 72 })}</span>`,
     facts: [],
-    sections: [{ text: contentText('relics', id), status }],
+    sections: [{ text: contentText('relics', id), status }, ...(de.relicRules[id] ? [{ text: de.relicRules[id] ?? '', status: [] }] : [])],
     ...(actions ? { actions } : {}),
   };
 }

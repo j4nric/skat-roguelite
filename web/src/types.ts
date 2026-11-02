@@ -27,6 +27,8 @@ export interface CardView extends DealtCard {
   mods: string[];
   legal: boolean;
   from_skat: boolean;
+  /** "Drei drücken": the defender this card was drawn from with the skat, while discarding. */
+  drawn_from?: Seat | null;
   /**
    * Whether the card may go into the skat now (hand cards while discarding;
    * a "Ramponiert" card only when fewer than two others are left).
@@ -291,7 +293,10 @@ export interface DeclareOptions {
  * Why the player knows where a card is: a modification (by id), "Der
  * Kiebitz", or "Der Zaungast" (the whole left hand).
  */
-export type RevealSource = { CardMod: string } | 'Kibitz' | 'Onlooker';
+export type RevealSource = { CardMod: string } | 'Kibitz' | 'Onlooker' | 'Returned';
+
+/** What a defender must lead when the player names it ("Lockvogel"): trump or a suit. */
+export type LeadSuit = 'Trump' | { Suit: Suit };
 
 /** A card the player sees in another seat, and why. */
 export interface RevealedCard {
@@ -354,6 +359,16 @@ export interface GameView {
    * Optional for views from an older core.
    */
   can_settle?: boolean;
+  /** Cards to press now: 2, or 3 with "Drei drücken"; 0 outside Discarding. Optional for views from an older core. */
+  discard_count?: number;
+  /** Skat cards "Spickzettel" showed after a hand declaration, while they lie in the skat. */
+  skat_shown?: CardView[];
+  /** "Lockvogel": the player may name the next defender lead now (RunAction `DemandLead`). */
+  can_demand_lead?: boolean;
+  /** "Lockvogel": what may be named in this game; empty without the relic. */
+  lead_demand_options?: LeadSuit[];
+  /** "Lockvogel": the demand waiting for the next defender lead. */
+  lead_demand?: LeadSuit | null;
 }
 
 /** The table's score line while playing, computed by the core. */
@@ -594,6 +609,12 @@ export type GameEvent =
   | { DefenderHandsSwapped: { hand_sizes: number[] } }
   | { SkatSwapped: { took: DealtCard; gave: DealtCard } }
   | { CardChalked: { old: DealtCard; new: DealtCard } }
+  /** "Drei drücken": drawn from a defender with the skat. */
+  | { CardDrawn: { seat: Seat; card: DealtCard } }
+  /** "Drei drücken": the lowest discard went back to that defender. */
+  | { CardReturned: { seat: Seat; card: DealtCard } }
+  /** "Lockvogel": the next defender lead must be this. */
+  | { LeadDemanded: { suit: LeadSuit } }
   | { GameFinished: unknown };
 
 export type DeckChange =
@@ -641,6 +662,8 @@ export type RunEvent =
   | { RelicSwapped: { old: string; new: string } }
   | { NextGameDoubled: { factor: number } }
   | { SkatPeeked: { skat: DealtCard[] } }
+  /** "Spickzettel": a card of the untouched skat after a hand declaration. */
+  | { SkatCardShown: { source: Source; card: DealtCard } }
   | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } };
 
 export type RunAction =
@@ -651,6 +674,8 @@ export type RunAction =
   | { Declare: Declaration }
   | { AnswerKontra: { re: boolean } }
   | { Discard: [number, number] }
+  | { DiscardThree: [number, number, number] }
+  | { DemandLead: LeadSuit }
   | { Play: number }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
