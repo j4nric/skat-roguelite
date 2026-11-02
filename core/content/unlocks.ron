@@ -5,16 +5,19 @@
 [
     (
         id: "second_evening",
-        name: "Zweiter Abend",
-        text: "Erreiche Abschnitt 2.",
-        condition: ReachSection(2),
+        // Kneipentour (ADR 0016): bis 02.11.2026 „Erreiche Abschnitt 2“.
+        // Die Ids bleiben, damit verdiente Freischaltungen gelten.
+        name: "Kneipenbummel",
+        text: "Erreiche die dritte Kneipe des Abends.",
+        condition: ReachPub(3),
         rewards: [Relic("landlord")],
     ),
     (
         id: "third_evening",
-        name: "Dritter Abend",
-        text: "Erreiche Abschnitt 3.",
-        condition: ReachSection(3),
+        // Bis 02.11.2026 „Erreiche Abschnitt 3“.
+        name: "Vor dem Boss",
+        text: "Erreiche die Boss-Kneipe im ersten Stadtteil.",
+        condition: ReachPub(5),
         rewards: [Relic("tour")],
     ),
     (
@@ -42,15 +45,16 @@
         id: "early_finish",
         name: "Früher Feierabend",
         // Seit den Serien mit drei Spielen (01.11.2026): gleich im ersten
-        // Spiel, vorher drei von acht Spielen übrig.
-        text: "Gewinne eine Serie gleich im ersten Spiel.",
+        // Spiel, vorher drei von acht Spielen übrig. Seit ADR 0016 eine
+        // Kneipe statt einer Serie.
+        text: "Gewinne eine Kneipe gleich im ersten Spiel.",
         condition: WinSeriesWithGamesLeft(2),
         rewards: [Relic("virgin")],
     ),
     (
         id: "boss_without_pass",
         name: "Ohne Einmischen",
-        text: "Schlage einen Boss, ohne in seiner Serie einzumischen.",
+        text: "Schlage einen Boss, ohne in seiner Kneipe einzumischen.",
         condition: BeatBoss(without_redeal: true),
         rewards: [Relic("referee")],
     ),
@@ -72,9 +76,10 @@
     // M4: seven of the fourteen new house rules and figures.
     (
         id: "fourth_evening",
-        name: "Vierter Abend",
-        text: "Erreiche Abschnitt 4.",
-        condition: ReachSection(4),
+        // Bis 02.11.2026 „Erreiche Abschnitt 4“.
+        name: "Neues Viertel",
+        text: "Erreiche Stadtteil 2.",
+        condition: ReachSection(2),
         rewards: [Relic("regular_guest")],
     ),
     (
@@ -119,8 +124,7 @@
         condition: WinGame(game: Some(Suit(Hearts)), schneider: true),
         rewards: [Relic("tailor")],
     ),
-    // Neue Charaktere vom 01.11.2026 (DESIGN 9.3): zählen in beiden
-    // Run-Längen.
+    // Neue Charaktere vom 01.11.2026 (DESIGN 9.3).
     (
         id: "grand_master",
         name: "Großer Grand",
@@ -141,7 +145,7 @@
         id: "full_till",
         name: "Volle Kasse",
         // Antwort im Cockpit (02.11.2026): 15 statt 20 Groschen.
-        text: "Habe nach einer gewonnenen Serie mindestens 15 Groschen.",
+        text: "Habe nach einer gewonnenen Kneipe mindestens 15 Groschen.",
         condition: SeriesWonWithCoins(15),
         rewards: [Character(Landlady)],
     ),

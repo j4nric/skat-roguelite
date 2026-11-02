@@ -468,6 +468,9 @@ impl MetaState {
             (UnlockCondition::ReachSection(n), RunEvent::SeriesStarted { section, .. }) => {
                 section + 1 >= *n
             }
+            (UnlockCondition::ReachPub(n), RunEvent::SeriesStarted { section, index, .. }) => {
+                section * super::PUBS_PER_DISTRICT + index + 1 >= *n
+            }
             (
                 UnlockCondition::BeatBoss {
                     boss,

@@ -471,6 +471,10 @@ fn honorary_chair_makes_the_player_forehand_in_every_game() {
         let Some(action) = RunBot.next_action(&with, &content) else {
             break;
         };
+        // An encounter may swap it away (Alter Bekannter).
+        if !with.relics().contains(&RelicId::new("honorary_chair")) {
+            break;
+        }
         let events = with.apply(&content, action).expect("legal");
         forehands.extend(events.iter().filter_map(|e| match e {
             RunEvent::GameDealt { forehand, .. } => Some(*forehand),

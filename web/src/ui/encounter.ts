@@ -9,7 +9,7 @@ import { de, contentName, contentText, isCurse, relicLook, t } from '../i18n';
 import type { EncounterOptionView, RunView } from '../types';
 import { modIcon } from './cards';
 import { attrs, esc } from './dom';
-import { coinIcon } from './hud';
+import { coinIcon, heart } from './hud';
 import { relicCoaster } from './emblems';
 import { encounterFaces, portrait } from './people';
 
@@ -47,15 +47,25 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
   if (c === 'Leave') return { title: de.encounter.leave, hint: de.encounter.leaveHint, pic: door(), cls: 'is-leave', extra: '' };
   if (c === 'MarkRandomCard') return { title: de.encounter.markRandom, hint: de.encounter.markRandomHint, pic: markedCard(false), cls: '', extra: modLine(o) };
   if (c === 'MarkChosenCard') return { title: de.encounter.markChosen, hint: de.encounter.markChosenHint, pic: markedCard(true), cls: '', extra: modLine(o) };
+  if (c === 'CleanseChosenCard') return { title: de.encounter.cleanse, hint: de.encounter.cleanseHint, pic: markedCard(true), cls: '', extra: '' };
   if ('DoubleNextGame' in c) {
     return { title: de.encounter.double, hint: t(de.encounter.doubleHint, { factor: c.DoubleNextGame }), pic: glass(), cls: '', extra: '' };
   }
+  if ('Heal' in c) {
+    return { title: de.encounter.heal, hint: t(de.encounter.healHint, { n: c.Heal, max: maxLives }), pic: heart(true, 34), cls: 'is-heal', extra: '' };
+  }
+  if ('TakeCoins' in c) {
+    return { title: t(de.encounter.takeCoins, { coins: c.TakeCoins }), hint: de.encounter.takeCoinsHint, pic: coinIcon(34), cls: '', extra: '' };
+  }
   const relic = o.relic;
-  const id = relic?.id ?? ('TakeRule' in c ? c.TakeRule : c.SwapRelic.relic);
+  const id = relic?.id ?? ('TakeRule' in c ? c.TakeRule : 'TakeRelic' in c ? c.TakeRelic : c.SwapRelic.relic);
   const name = contentName('relics', id);
   const shown = relic ?? relicLook(id);
   const pic = `<span class="enc-coaster">${relicCoaster(shown, { size: 44 })}</span>`;
   if ('TakeRule' in c) return { title: name, hint: contentText('relics', id), pic, cls: 'is-rule', extra: '' };
+  if ('TakeRelic' in c) {
+    return { title: t(de.encounter.takeRelic, { name }), hint: o.can_choose ? contentText('relics', id) : de.encounter.takeRelicFull, pic, cls: 'is-rule', extra: '' };
+  }
   const fresh = o.new_relic;
   if (fresh) {
     const newName = contentName('relics', fresh.id) || fresh.name;
@@ -69,6 +79,9 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
   }
   return { title: t(de.encounter.swapRelic, { name }), hint: de.encounter.swapHint, pic, cls: 'is-swap', extra: '' };
 }
+
+/** Most lives a player can hold, for the Rast's hint (set per render). */
+let maxLives = 5;
 
 function optionCard(o: EncounterOptionView, i: number): string {
   const p = optionParts(o);
@@ -91,6 +104,7 @@ export function renderEncounter(view: RunView): string {
   const faces = encounterFaces(e.id)
     .map((f) => portrait(f, 'portrait-enc'))
     .join('');
+  maxLives = view.tour.max_lives;
   const options = e.options.map(optionCard).join('');
   return `<main class="encounter" data-testid="encounter" ${attrs({ 'data-encounter': e.id })}>
     <div class="enc-wall">

@@ -51,6 +51,14 @@
 //! relic is unknown, of a relic worth less than an average one), never the
 //! double stakes of "Letzte Runde".
 //!
+//! Kneipentour (ADR 0016, simple rules, not tuned, not measured): at a
+//! Rast the life, at the Werkstatt the cursed card cleansed (else the free
+//! modification on an ace), from a Spelunke's loot the relic into a free
+//! slot (else the Groschen). The route ([`RunBot::route_action`]) scores
+//! each way by the category it shows: the Tresen when rich, an Upgrade
+//! with a cursed card, a Rast with lives missing; a Spelunke only when
+//! strong (three lives and three relics).
+//!
 //! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
 //! skat (the bot does not use what it sees); after the skat, "Kreide"
 //! paints the cheapest side card (never a jack) into the trump suit of a
@@ -82,7 +90,9 @@
 use super::{EncounterChoice, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
-use crate::content::{ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId};
+use crate::content::{
+    ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId, StopCategory,
+};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
 use crate::rules::{
@@ -274,6 +284,10 @@ pub const REROLL_RESERVE: u32 = 6;
 
 /// At most this many Neuauslagen per Tresen visit.
 pub const MAX_REROLLS: u32 = 2;
+
+/// Groschen from which the route policy heads for the Tresen (Kneipentour,
+/// not measured).
+pub const RICH: u32 = 8;
 
 /// The bot's value of a relic.
 #[must_use]
@@ -566,14 +580,53 @@ impl RunBot {
         match run.phase() {
             RunPhase::Won | RunPhase::Lost => None,
             RunPhase::Shop => Some(self.shop_action(run, content)),
-            RunPhase::Encounter => Some(self.encounter_action(run)),
+            RunPhase::Encounter => Some(self.encounter_action(run, content)),
+            RunPhase::Route => Some(self.route_action(run, content)),
             RunPhase::Game => self.game_action(run, content),
         }
     }
 
+    /// The route policy, see the module docs: the way with the best
+    /// score, the first on a tie.
+    #[must_use]
+    pub fn route_action(&self, run: &Run, content: &Content) -> RunAction {
+        let Some(route) = run.route() else {
+            return RunAction::LeaveShop;
+        };
+        let max_lives = content.run.lives.max;
+        let cursed = Self::cursed_card(run, content).is_some();
+        let strong = run.lives() >= 3 && run.relics().len() >= 3;
+        let mut best: Option<(i64, usize)> = None;
+        for (i, option) in route.options.iter().enumerate() {
+            let mut score: i64 = 0;
+            for stop in &option.stops {
+                score += match stop.category {
+                    StopCategory::Tresen if run.coins() >= RICH => 4,
+                    StopCategory::Tresen => 1,
+                    StopCategory::Upgrade if cursed => 5,
+                    StopCategory::Upgrade => 2,
+                    StopCategory::Rest => match max_lives.saturating_sub(run.lives()) {
+                        0 => 0,
+                        _ if run.lives() <= 1 => 6,
+                        _ if run.lives() <= 2 => 3,
+                        _ => 1,
+                    },
+                    StopCategory::Event => 1,
+                };
+            }
+            if option.spelunke.is_some() {
+                score += if strong { 3 } else { -20 };
+            }
+            if best.is_none_or(|(b, _)| score > b) {
+                best = Some((score, i));
+            }
+        }
+        RunAction::ChooseRoute(best.map_or(0, |(_, i)| i))
+    }
+
     /// The encounter policy, see the module docs.
     #[must_use]
-    pub fn encounter_action(&self, run: &Run) -> RunAction {
+    pub fn encounter_action(&self, run: &Run, content: &Content) -> RunAction {
         let Some(encounter) = run.encounter() else {
             return RunAction::LeaveShop;
         };
@@ -582,6 +635,30 @@ impl RunBot {
             option,
             target: None,
         };
+        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
+        let free_slot = run.relics().len() < slots;
+        let cursed = Self::cursed_card(run, content);
+        // The Werkstatt (free choices with a target).
+        for (i, option) in encounter.options.iter().enumerate() {
+            let target = match option.choice {
+                EncounterChoice::CleanseChosenCard => cursed,
+                EncounterChoice::MarkChosenCard if option.cost == 0 && cursed.is_none() => {
+                    Self::ace_targets(run).into_iter().find(|&card| {
+                        run.accepts(
+                            content,
+                            RunAction::ChooseEncounter {
+                                option: i,
+                                target: Some(card),
+                            },
+                        )
+                    })
+                }
+                _ => None,
+            };
+            if target.is_some() {
+                return RunAction::ChooseEncounter { option: i, target };
+            }
+        }
         let mut best: Option<(u32, usize)> = None;
         for (i, option) in encounter.options.iter().enumerate() {
             if option.cost > run.coins() {
@@ -589,6 +666,9 @@ impl RunBot {
             }
             let value = match &option.choice {
                 EncounterChoice::TakeRule(id) => relic_value(id) + 1,
+                EncounterChoice::TakeRelic(id) if free_slot => relic_value(id) + 1,
+                EncounterChoice::TakeCoins(n) => (*n).max(1),
+                EncounterChoice::Heal(_) => 100,
                 EncounterChoice::MarkRandomCard => 1,
                 // The relic received is known: swap for a clearly better one.
                 EncounterChoice::SwapRelic {

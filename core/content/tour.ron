@@ -1,0 +1,93 @@
+// Kneipentour (ADR 0016, DESIGN 5): Namen der erfundenen Stadt und die
+// Mali der Spelunken.
+//
+// city: Wortlisten des Namensgenerators. Ein Run zieht mit seinem Seed drei
+// verschiedene Stadtteile und für jeden vier Kneipen und eine Boss-Kneipe;
+// eine Spelunke bekommt ihren Namen, wenn die Route gezogen wird. Muster
+// enthalten Platzhalter {liste}, die mit einem Wort der Liste gefüllt
+// werden. weight: wie oft ein Muster gezogen wird (Standard 1). Nur
+// Anzeige: Namen ändern nichts am Spiel.
+//
+// maluses: Mali der Spelunke (eine Regel nur für diese Kneipe, vor der
+// Routenwahl sichtbar). passive: Tischregeln wie bei einem Boss;
+// no_redeal: kein Einmischen; lock_schnapps: keine Schnäpse;
+// curse: zufällige Karten ohne Modifikation tragen für diese Kneipe einen
+// Fluch (ohne die Groschen beim Erhalt). characters: leer = alle.
+// Gewichte vorläufig (02.11.2026).
+(
+    city: (
+        districts: [
+            "Altstadt",
+            "Bahnhofsviertel",
+            "Hafen",
+            "Neustadt",
+            "Kanalviertel",
+            "Schlossberg",
+            "Gründerzeitviertel",
+            "Am Viehmarkt",
+            "Zechensiedlung",
+            "Unterstadt",
+        ],
+        pubs: [
+            (pattern: "Zum {adj_m} {masc}", weight: 4),
+            (pattern: "Zur {adj_f} {fem}", weight: 3),
+            (pattern: "Eckkneipe bei {first}", weight: 2),
+            (pattern: "{place}klause", weight: 2),
+            (pattern: "{place}stübchen", weight: 1),
+            (pattern: "Gaststätte {family}", weight: 1),
+            (pattern: "{first}s Bierstube", weight: 1),
+        ],
+        boss_pubs: [
+            (pattern: "Vereinsheim {club}", weight: 2),
+            (pattern: "Festsaal Zum {adj_m} {masc}", weight: 1),
+            (pattern: "Hinterzimmer der {fem_place}", weight: 1),
+        ],
+        spelunken: [
+            (pattern: "Spelunke {dive}", weight: 2),
+            (pattern: "Kaschemme am {water}", weight: 1),
+            (pattern: "Kellerbar {dive}", weight: 1),
+        ],
+        words: {
+            "adj_m": ["Goldenen", "Roten", "Grünen", "Blauen", "Alten", "Schwarzen", "Weißen", "Lustigen", "Durstigen", "Krummen", "Wilden", "Letzten"],
+            "masc": ["Hirschen", "Ochsen", "Anker", "Adler", "Löwen", "Schwan", "Bären", "Stern", "Hahn", "Krug", "Fass", "Kranich"],
+            "adj_f": ["Goldenen", "Alten", "Grünen", "Roten", "Schönen", "Lustigen", "Blauen", "Krummen"],
+            "fem": ["Linde", "Sonne", "Post", "Glocke", "Traube", "Krone", "Mühle", "Laterne", "Eiche", "Waage"],
+            "first": ["Uschi", "Heinz", "Gerda", "Kalle", "Rosi", "Manni", "Helga", "Erwin", "Elke", "Jupp"],
+            "family": ["Kowalski", "Brinkmann", "Schulte", "Novak", "Hoffmann", "Petersen"],
+            "place": ["Bahnhofs", "Hafen", "Markt", "Kegel", "Turm", "Brücken", "Schleusen", "Zechen"],
+            "club": ["Gut Blatt", "Kreuz As", "Grand Hand 1952", "Eichel Ober", "Skatfreunde Nord", "Zum Stich"],
+            "fem_place": ["Brauerei", "Schützengilde", "Feuerwehr", "Sparkasse", "Kegelbahn"],
+            "dive": ["Zum Letzten Heller", "Rattenloch", "Absturz", "Zur Trüben Funzel", "Blauer Montag", "Schwarzes Loch"],
+            "water": ["Kanal", "Kai", "Pegel", "Schlachthof", "Güterbahnhof"],
+        },
+    ),
+    maluses: [
+        (
+            id: "no_redeal",
+            name: "Kein Einmischen",
+            text: "Hier wird jedes Blatt gespielt, wie es kommt: In dieser Kneipe darfst du nicht einmischen.",
+            no_redeal: true,
+        ),
+        (
+            id: "cursed_cards",
+            name: "Klebrige Karten",
+            text: "Die Karten kleben vom Bier: Zwei zufällige Karten deiner Ausgabe ohne Modifikation sind hier ramponiert (Augen −5), ein Fluch nur für diese Kneipe. Danach sind sie wieder sauber.",
+            curse: Some((card_mod: "battered", value: 5, cards: 2)),
+        ),
+        (
+            id: "hand_only",
+            name: "Kein Skat",
+            text: "Der Wirt hat den Skat unter dem Bierdeckel: Jedes Spiel in dieser Kneipe ist ein Handspiel.",
+            passive: [RequireHand],
+            // Null Hand allein ist für den Nullspieler fast nie zu gewinnen
+            // (wie beim Schieber, DESIGN 11).
+            characters: [Declarer, GrandPlayer, Onlooker, Landlady],
+        ),
+        (
+            id: "schnapps_locked",
+            name: "Schnapsverbot",
+            text: "Hier wird nur Bier ausgeschenkt: In dieser Kneipe kannst du keine Schnäpse trinken.",
+            lock_schnapps: true,
+        ),
+    ],
+)

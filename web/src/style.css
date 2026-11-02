@@ -3630,7 +3630,7 @@ button.card {
 
 .tour-grid {
   display: grid;
-  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  grid-template-columns: auto repeat(5, minmax(0, 1fr));
   gap: 3px;
 }
 
@@ -6123,4 +6123,203 @@ button.skat-card {
     white-space: nowrap;
     text-overflow: ellipsis;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Kneipentour (ADR 0016): hearts, pub progress, route choice
+   --------------------------------------------------------------------------- */
+
+.hud-lives {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+}
+
+.heart {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.flag-chip.is-malus {
+  border-color: var(--rot);
+  color: var(--rot-light);
+}
+
+.tour-row-head {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.tour-row-head small {
+  max-width: 6.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.tour-spelunke {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: 10px;
+  color: var(--rot-light);
+}
+
+.tour-cell.is-lost .chalk-mark {
+  stroke: var(--rot-light);
+}
+
+.route {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 12px 16px;
+  overflow-wrap: anywhere;
+}
+
+.route-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.route-head h1 {
+  margin: 0;
+  font-size: var(--fs-h);
+  font-weight: 400;
+}
+
+.route-lives {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.route-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-m);
+}
+
+.route-next {
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+}
+
+.route-kicker {
+  font-size: var(--fs-xs);
+  color: var(--accent-light);
+}
+
+.route-pub-name {
+  margin: 2px 0;
+  font-size: var(--fs-l);
+  font-weight: 400;
+}
+
+.route-next p {
+  margin: 2px 0;
+  font-size: var(--fs-m);
+}
+
+.route-boss {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-m);
+}
+
+.route-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.route-option {
+  display: grid;
+  grid-template-columns: minmax(7.5em, auto) 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-option:hover:not(:disabled),
+.route-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.route-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.route-option.is-spelunke {
+  border-color: var(--rot);
+}
+
+.route-way,
+.route-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.route-way {
+  flex-wrap: wrap;
+}
+
+.route-way small,
+.route-stop small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.route-stop b,
+.route-way b {
+  font-weight: 400;
+}
+
+.route-spelunke {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--rot);
+  background: #2c2224;
+  font-size: var(--fs-s);
+}
+
+.route-spelunke b {
+  font-weight: 400;
+  color: var(--rot-light);
+}
+
+.route-malus {
+  color: var(--text);
+}
+
+.route-reward {
+  color: var(--cool);
+}
+
+.stop-icon,
+.transport-icon {
+  flex: none;
+  image-rendering: pixelated;
 }

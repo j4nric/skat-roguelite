@@ -1,7 +1,10 @@
-// Ereignisse (DESIGN 13): kommen zwischen zwei Serien statt des Tresens,
-// mit der Wahrscheinlichkeit encounter_chance aus run.ron. Jedes Ereignis
-// bietet Optionen an, eine davon ist immer „Weitergehen“.
-// weight: wie oft es gezogen wird (Standard 1). characters: leer = alle.
+// Ereignisse (DESIGN 13): Stationen auf dem Weg zwischen zwei Kneipen
+// (Kneipentour, ADR 0016). Jedes Ereignis gehört zu einer Kategorie, die
+// die Routenwahl zeigt: Event (Begegnung, Standard), Upgrade (Karten
+// verbessern oder säubern) oder Rest (Rast). Jedes Ereignis bietet
+// Optionen an, eine davon ist immer „Weitergehen“.
+// weight: wie oft es innerhalb seiner Kategorie gezogen wird (Standard 1;
+// 0 = nie auf einer Route). characters: leer = alle.
 // Flüche (DESIGN 7.2) kommen nur über Ereignisse, deren Text „Fluch“ sagt
 // (geprüft beim Laden); jeder Fluch zahlt beim Erhalt Groschen. Zufällige
 // Modifikationen (card_mod: None) sind nie ein Fluch, außer mit curse: true.
@@ -9,7 +12,7 @@
     (
         id: "stammtisch_dispute",
         name: "Stammtisch-Streit",
-        text: "Am Tisch wird gestritten, welche Hausregel gilt. Wähle eine: Sie gilt bis zum Ende des Abends, ohne einen Platz zu belegen.",
+        text: "Am Tisch wird gestritten, welche Hausregel gilt. Wähle eine: Sie gilt bis zum Ende des Stadtteils, ohne einen Platz zu belegen.",
         kind: EveningRule(offers: 3),
     ),
     (
@@ -17,6 +20,7 @@
         name: "Der Kartengeber",
         text: "Der Kartengeber zinkt dir eine zufällige Karte, nie mit einem Fluch. Trägt sie dieselbe Modifikation, steigt sie; eine andere ersetzt er. Für 3 Groschen darfst du die Karte selbst wählen.",
         kind: MarkCard(price: 3),
+        category: Upgrade,
     ),
     (
         id: "old_friend",
@@ -43,6 +47,7 @@
         text: "Der Kronenwirt stempelt einer zufälligen Karte seine Krone auf: Trumpf +4, ist ihre Farbe Trumpf und hältst du sie, steigt der Grundwert um 4. Für 4 Groschen wählst du die Karte.",
         kind: MarkCard(price: 4, card_mod: Some("trump_bonus"), value: Some(4)),
         characters: [Declarer],
+        category: Upgrade,
     ),
     (
         id: "conjurer",
@@ -50,6 +55,7 @@
         text: "Ein Taschenspieler steckt einer zufälligen Karte einen Gutschein zu: Drückst du sie, wird sie zur Wandelkarte. Für 3 Groschen wählst du die Karte.",
         kind: MarkCard(price: 3, card_mod: Some("voucher_wild")),
         characters: [NullPlayer],
+        category: Upgrade,
     ),
     (
         id: "prize_skat",
@@ -69,7 +75,30 @@
     (
         id: "guest_from_altenburg",
         name: "Gast aus Altenburg",
-        text: "Ein Gast aus Altenburg bringt zwei Hausregeln mit. Wähle eine: Sie gilt bis zum Ende des Abends, ohne einen Platz zu belegen.",
+        text: "Ein Gast aus Altenburg bringt zwei Hausregeln mit. Wähle eine: Sie gilt bis zum Ende des Stadtteils, ohne einen Platz zu belegen.",
         kind: EveningRule(offers: 2),
+    ),
+    // Kneipentour (ADR 0016, 02.11.2026): Werkstatt (Upgrade), Rast und
+    // die Beute einer Spelunke (nie auf einer Route, weight: 0).
+    (
+        id: "workshop",
+        name: "Die Kartenwerkstatt",
+        text: "In der Hinterhofwerkstatt malt ein alter Kartenmaler Karten auf. Er setzt dir umsonst eine Modifikation auf eine Karte deiner Wahl, nie einen Fluch, oder er wäscht eine Karte ganz sauber, Flüche eingeschlossen.",
+        kind: Workshop,
+        category: Upgrade,
+    ),
+    (
+        id: "snack_bar",
+        name: "Die Imbissbude",
+        text: "Eine Currywurst mit Pommes und ein Wasser dazu: Du kommst wieder zu Kräften und bekommst ein Leben zurück.",
+        kind: Rest(lives: 1),
+        category: Rest,
+    ),
+    (
+        id: "spelunke_loot",
+        name: "Die Beute",
+        text: "Der Wirt der Spelunke schiebt dir über den Tresen, was er unter der Theke hatte. Nimm es mit oder lass es dir in Groschen auszahlen.",
+        kind: RelicReward,
+        weight: 0,
     ),
 ]

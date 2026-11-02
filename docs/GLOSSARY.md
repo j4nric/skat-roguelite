@@ -15,7 +15,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Nicht umgesetzt (der Glasdaus ist mit Effekte v2 gestrichen) |
 | Abgestuft (Nullspieler, ADR 0015) | `demoted` | Spezialkarte, die ein Fluch ist (`ModKind::SpecialCurse`), Wirkung `Demote`, `PlayingCard::demoted`, `DealtCard::demoted`: ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe ohne Augen (`rules::is_demoted_jack`), jede andere Karte sticht eine Stufe tiefer |
 | Reinigen (Frisches Deck, ADR 0015) | `cleanse` | Alle Modifikationen einer Karte der Ausgabe fallen ab: Aktion `ConsumableAction::CleanseCard`, `Edition::cleanse`, `DeckChange::Cleansed`, Fehler `DeckError::NothingToCleanse` |
-| Alter Spielstand (vor ADR 0015) | `OutdatedSave` | Fehler beim Laden eines laufenden Runs der Spielstand-Version 1; der Run wird verworfen |
+| Alter Spielstand (vor ADR 0015 oder 0016) | `OutdatedSave` | Fehler beim Laden eines laufenden Runs der Spielstand-Version 1 oder 2; der Run wird verworfen (`SAVE_VERSION` 3 seit ADR 0016) |
 | Blatt (die Karten eines Spielers) | `hand` | |
 | Karte | `Card` | |
 | Farbe | `Suit` | |
@@ -134,19 +134,29 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Run / Tournee | `Run` | |
-| Abschnitt / Skatabend | `Section` | Ein Ante |
-| Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Beim Start gewählt (`RunStart::length`, `Run::length`); kurzer Abend: 3 Abschnitte, Zeilen der Kurve in `short_sections` (`run.ron`), Zeile eines Abschnitts `curve_row`. Statistik je Länge `MetaStats::lengths` (`LengthStats`). Im Link `-kurz` |
+| Run / Kneipentour (bis ADR 0016 Tournee) | `Run` | Ein Abend: drei Stadtteile |
+| Stadtteil (ADR 0016; bis dahin Abschnitt / Skatabend) | `section` | Vier Kneipen und die Boss-Kneipe; im Code weiter `section` (`Series::section`, `RunStart::section`, `Run::sections`, `RunConfig::sections`); Name aus dem Namensgenerator (`DistrictView::name`). Ein Ante |
+| Kneipe (ADR 0016; bis dahin Serie) | `Series` | Ein Blind: Zielwert, 3 Spiele, zwei Stammgäste. Der Typ behält den Namen `Series` (Index `Series::index` 0 bis 4, `PUBS_PER_DISTRICT` = 5, die letzte die Boss-Kneipe, `Series::is_boss_pub`); Run-Ereignisse `SeriesStarted`, `SeriesWon`, neu `PubLost`. Verlauf `Run::pub_results` (`PubResult`). Knoten-Id `d<Stadtteil>-p<Kneipe>` (`tour::pub_id`) |
+| Boss-Kneipe (bis ADR 0016 Boss-Serie) | `is_boss_pub` | Letzte Kneipe eines Stadtteils; verloren wird sie wiederholt |
+| Leben | `lives` | `Run::lives`, `RunConfig::lives` (`LivesConfig`: `start`, `max`, `boss_bonus`), Ereignis `LivesChanged { change, lives }`, Sicht `TourView::lives`, `max_lives`. In der Anzeige Herzen |
+| Route, Routenwahl | `route` | `RunPhase::Route`, `tour::RouteChoice` (nächste Kneipe und drei `RouteOption`), Aktion `RunAction::ChooseRoute(i)`, Ereignisse `RouteOpened`, `RouteChosen`; unterwegs `tour::Trip`. Sicht `TourView::route` (`RouteView`, `RouteOptionView`, `minutes` nur Dekoration) |
+| Verkehrsmittel (Zu Fuß, Bahn, Fahrrad) | `Transport` (`Walk`, `Train`, `Bike`) | Seit 02.11.2026 alle gleich: je eine Station, nichts kostet extra; nur Darstellung |
+| Station (unterwegs) | `RouteStop` | `category` und, außer beim Tresen, das gezogene Ereignis (`encounter`, verdeckt) |
+| Stationsart: Tresen, Begegnung, Upgrade (Werkstatt), Rast | `StopCategory` (`Tresen`, `Event`, `Upgrade`, `Rest`) | Je Weg gewürfelt nach `RouteConfig::weights`; Ereignisse tragen ihre Kategorie (`EncounterDef::category`) |
+| Spelunke (Elite-Kneipe) | `Spelunke` | Eigener Ort mit eigenem Namen (`city.spelunken`), steht für eine normale Kneipe; Zielwert × `SpelunkeConfig::target_factor`, ein Malus, Beute ein Relikt (Ereignis `spelunke_loot`, `EncounterKind::RelicReward`, Wahl `TakeRelic`, `TakeCoins`). In `Series::spelunke`, `RouteOption::spelunke`; Knoten-Id `d<S>-p<K>-s`, Sicht `SpelunkeNode` |
+| Malus (Spelunke) | `MalusDef`, `MalusId` | Daten in `tour.ron`: `passive` (Tischregeln, Quelle `Source::Malus`), `no_redeal`, `lock_schnapps` (Fehler `ConsumablesLocked`), `curse` (`MalusCurse`, Karten nur für diese Kneipe, `Series::temp_curses`) |
+| Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
+| Rast (Leben zurück) | `EncounterKind::Rest` | Wahl `EncounterChoice::Heal(n)` |
+| Werkstatt (Upgrade) | `EncounterKind::Workshop` | Modifikation auf eine gewählte Karte oder `EncounterChoice::CleanseChosenCard` |
+| Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Seit ADR 0016 nur noch der ganze Abend; `Short` bleibt für alte Meta-Stände lesbar (`MetaStats::lengths`, `MetaState::stakes`), ein Run kann so nicht mehr starten (`InvalidStart`, in der Web-Schicht `InvalidLength`). Alte Links mit `-kurz` spielen den ganzen Abend |
 | Einsatz, Einsatz-Leiter | `stake` | Gewinngrenze `61 + stake` für Farbspiel und Grand (`RunStart::stake`, `Run::stake`). Höchster freigeschalteter Einsatz je Charakter und Länge: `MetaState::stakes`, `MetaState::max_stake`, in der Sicht `CharacterEntry::max_stakes`. Im Link `-einsatz<n>` |
-| Serie | `Series` | Ein Blind: Zielwert plus Spiellimit |
 | Zielwert | `target` | |
 | Zielwert-Faktor (Boss) | `target_factor` | Typ `Factor`, in RON und JSON als Dezimalzahl, intern Tausendstel |
 | Zielwert-Faktor eines Bosses für einen Charakter | `character_factors` | `BTreeMap<Character, Factor>` in `BossDef`, ersetzt `target_factor` für diesen Charakter (`target_factor_for`) |
-| Boss angekündigt (Start eines Abschnitts) | `BossAnnounced` | Run-Ereignis; Boss des Abschnitts `section_boss` |
+| Boss angekündigt (Start eines Stadtteils) | `BossAnnounced` | Run-Ereignis; Boss des Stadtteils `section_boss` |
 | Bevorstehender Boss | `upcoming_boss` | Feld der Sicht |
-| Nächste Serie (Vorschau) | `next_series` | Feld der Sicht, `NextSeriesView` |
+| Nächste Kneipe (Vorschau) | `next_series` | Feld der Sicht, `NextSeriesView`; auf der Routenwahl `RouteView::next` (`PubPreview`) |
 | Spiellimit | `game_limit` | |
-| Boss-Serie | `BossSeries` | |
 | Hausregel | `HouseRule` | Passives Relikt, Joker-Äquivalent |
 | Stammtisch-Figur | `Regular` | Passives Relikt mit Persönlichkeit |
 | Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`: `greet`, `win`, `lose`), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
@@ -165,9 +175,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
 | Neuauslage (Tresen) | `reroll` | |
-| Grundbetrag (gewonnene Serie) | `series_reward` | |
+| Grundbetrag (gewonnene Kneipe) | `series_reward` | |
 | Zinsen | `interest` | |
-| Auszahlung einer Serie | `Payout` | Grundbetrag, Bonus für übrige Spiele, Zinsen |
+| Auszahlung einer Kneipe | `Payout` | Grundbetrag, Bonus für übrige Spiele (`per_game_left`), Zinsen; eine verlorene Kneipe zahlt nichts |
 | Run-Aktion (Entscheidung des Spielers) | `RunAction` | |
 | Run-Ereignis | `RunEvent` | |
 | Flagge (Relikt-Zustand, z. B. Bock) | `flag` | Pro Run |
@@ -180,14 +190,15 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Beim Erhalt (Kartenmodifikation angebracht) | `OnAttach` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnAttach` |
 | Wenn gedrückt (Gutschein) | `OnDiscard` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnDiscard`; die Karte landet beim Drücken im Skat |
 | Fluch (negative Kartenmodifikation) | `curse` | `ModKind::Curse`, Prüfung `CardModDef::is_curse` (in Sicht und Katalog weiter `curse`); Text beginnt mit „Fluch:“. Sperrt die Karte für jede weitere Modifikation (Effekte v2). Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
-| Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
-| Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
+| Ereignis / Rast | `Encounter` | Station unterwegs (ADR 0016). Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
+| Hausregel des Stadtteils (Stammtisch-Streit, bis ADR 0016 des Abends) | `evening_relics` | Gilt bis zum Ende des Stadtteils, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast, nicht die Figur „Der Kiebitz“ `kibitzer`), `Landlady` (Wirtin, nicht die Figur „Der Wirt“ `landlord`); Daten `CharacterDef` |
 | Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
 | Zuschlag der Auszahlung (Wirtin) | `Payout::bonus` | Was `payout_factor` über die einfache Auszahlung hinaus zahlt |
 | Blatt eines Gegners sehen (Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
 | Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
-| Nach einer Serie mindestens n Groschen | `SeriesWonWithCoins(n)` | Freischaltungs-Bedingung, gemessen nach der Auszahlung |
+| Nach einer Kneipe mindestens n Groschen | `SeriesWonWithCoins(n)` | Freischaltungs-Bedingung, gemessen nach der Auszahlung |
+| n-te Kneipe des Abends erreichen | `ReachPub(n)` | Freischaltungs-Bedingung (ADR 0016), gezählt über die Stadtteile: `Stadtteil × 5 + Kneipe + 1` |
 | Startblatt / Grunddeck (Abweichung vom 32er-Blatt) | `DeckSpec` | seit ADR 0015 nur `mods` (Kartenmodifikationen der Ausgabe des Charakters); `remove` und `add` sind ein Ladefehler |
 | Spielart, für die ein Relikt gemacht ist | `GameFocus` | `All`, `Trump` (Farbspiel und Grand), `Null`; Feld `focus` an Relikten und Modifikationen (ADR 0012) |
 | Tresen-Gewicht pro Spielart | `FocusWeights` | `trump`, `null` in Prozent der Seltenheit; Feld `focus_weights` in `CharacterDef` |

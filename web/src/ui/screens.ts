@@ -185,22 +185,6 @@ function stakePick(ui: UiState): string {
   </div>`;
 }
 
-/** Ganzer or kurzer Abend (DESIGN 5.3): two buttons side by side. */
-function lengthPick(ui: UiState): string {
-  const buttons = (['Full', 'Short'] as const)
-    .map((length) => {
-      const text = de.start.lengths[length];
-      const picked = ui.pickLength === length;
-      return `<button class="seg length-opt ${picked ? 'is-picked' : ''}" ${attrs({
-        'data-action': 'pick-length',
-        'data-length': length,
-        'aria-pressed': picked ? 'true' : 'false',
-        'aria-label': text.aria,
-      })}><b>${esc(text.name)}</b><span>${esc(text.sections)}</span></button>`;
-    })
-    .join('');
-  return `<div class="segmented length-pick" role="group" data-testid="run-length" ${attrs({ 'aria-label': de.start.howLong, 'data-length': ui.pickLength })}>${buttons}</div>`;
-}
 
 /** A seed from a shared link: play it or not. A running run stays until the player decides. */
 function sharedOffer(ui: UiState): string {
@@ -322,7 +306,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       ${resume}
     </div>
     ${chars}
-    ${meta ? lengthPick(ui) : ''}
+    ${''/* ADR 0016: the short evening is dropped, no length choice */}
     ${meta ? stakePick(ui) : ''}
     <div class="start-actions">
       <button class="btn ${ui.saveInfo ? '' : 'btn-primary'} btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(newLabel)}</button>

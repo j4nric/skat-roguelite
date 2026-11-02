@@ -18,6 +18,7 @@ export type HintId =
   | 'shop'
   | 'boss'
   | 'encounter'
+  | 'route'
   | 'longPress'
   | 'runLost';
 
@@ -89,6 +90,7 @@ const HINTS: HintDef[] = [
   { id: 'longPress', anchor: 'hud', when: ({ ui }) => table(ui)?.phase === 'Playing' && !ui.anim },
   { id: 'shop', anchor: 'shop', when: ({ ui }) => ui.screen === 'run' && ui.view?.phase === 'Shop' && !ui.anim },
   { id: 'encounter', anchor: 'hud', when: ({ ui }) => ui.screen === 'run' && ui.view?.phase === 'Encounter' && !ui.anim },
+  { id: 'route', anchor: 'hud', when: ({ ui }) => ui.screen === 'run' && ui.view?.phase === 'Route' && !ui.anim },
 ];
 
 /** Whether nothing else is in the way of a hint (a dialog, the Kontra question). */

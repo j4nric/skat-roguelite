@@ -100,23 +100,31 @@ impl Run {
         self.guests = seat_guests(content, self.seed, section, index, &self.guests);
     }
 
+    /// One guest for the view.
+    pub(super) fn guest_info(
+        &self,
+        content: &Content,
+        id: &GuestId,
+        seat: Seat,
+    ) -> Option<GuestInfo> {
+        let def = content.guest(id)?;
+        Some(GuestInfo {
+            seat,
+            id: id.clone(),
+            name: def.name.clone(),
+            look: def.look.clone(),
+            greet: def.quips.greet.clone(),
+            win: def.quips.win.clone(),
+            lose: def.quips.lose.clone(),
+        })
+    }
+
     /// The guests of the current series for the view.
     pub(super) fn guest_infos(&self, content: &Content) -> Vec<GuestInfo> {
         self.guests(content)
             .iter()
             .zip(Seat::DEFENDERS)
-            .filter_map(|(id, seat)| {
-                let def = content.guest(id)?;
-                Some(GuestInfo {
-                    seat,
-                    id: id.clone(),
-                    name: def.name.clone(),
-                    look: def.look.clone(),
-                    greet: def.quips.greet.clone(),
-                    win: def.quips.win.clone(),
-                    lose: def.quips.lose.clone(),
-                })
-            })
+            .filter_map(|(id, seat)| self.guest_info(content, id, seat))
             .collect()
     }
 }
@@ -237,16 +245,18 @@ mod tests {
             assert_eq!(seats, Seat::DEFENDERS.to_vec());
             assert_eq!(view.series.guests[0].id, run.guests(&content)[0]);
             assert!(!view.series.guests[1].name.is_empty());
-            let mut series = (run.series().section, run.series().index);
             let mut previous = run.guests(&content);
             while let Some(action) = RunBot.next_action(&run, &content) {
-                run.apply(&content, action).expect("bot action");
+                let events = run.apply(&content, action).expect("bot action");
                 let now = (run.series().section, run.series().index);
-                if now != series {
+                // A lost boss pub starts again in the same place.
+                let started = events
+                    .iter()
+                    .any(|e| matches!(e, crate::run::RunEvent::SeriesStarted { .. }));
+                if started {
                     let guests = run.guests(&content);
                     assert_eq!(guests, seat_guests(&content, seed, now.0, now.1, &previous));
                     assert!(guests.iter().all(|g| !previous.contains(g)));
-                    series = now;
                     previous = guests;
                     changes += 1;
                 } else {

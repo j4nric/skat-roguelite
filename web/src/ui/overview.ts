@@ -1,4 +1,4 @@
-// The Kreidetafel: the tour as a chalk board (sections × series), the
+// The Kreidetafel: the Kneipentour as a chalk board (districts × pubs), the
 // statistics of this run with tally marks, the record over all runs, and
 // the shared deck. Shows only what the core's run view and meta view say;
 // future targets are not known here and stay empty.
@@ -9,6 +9,7 @@ import { cardSvg } from './cards';
 import { attrs, esc } from './dom';
 import { oddsDetail } from './odds';
 import { bossCoaster, relicCoaster } from './emblems';
+import { hearts } from './hud';
 
 /** Tally marks in groups of five, drawn in chalk; large numbers as digits. */
 export function tally(n: number): string {
@@ -28,37 +29,31 @@ export function tally(n: number): string {
 const CHECK = `<svg class="chalk-mark" viewBox="0 0 40 30" aria-hidden="true"><path d="M5 16 L15 25 L36 4"/></svg>`;
 const CROSS = `<svg class="chalk-mark" viewBox="0 0 40 30" aria-hidden="true"><path d="M8 4 L32 26 M32 4 L8 26"/></svg>`;
 
+/** The whole tour (ADR 0016): a row per district, a cell per pub. */
 function grid(view: RunView, lost: boolean): string {
   const cur = view.series;
   const head = `<div class="tour-cell tour-head"></div>${de.overview.columns.map((c) => `<div class="tour-cell tour-head">${esc(c)}</div>`).join('')}`;
-  const rows: string[] = [];
-  for (let a = 0; a < view.sections; a++) {
-    const cells = [0, 1, 2]
-      .map((s) => {
-        const before = a < cur.section || (a === cur.section && s < cur.index);
-        const now = a === cur.section && s === cur.index;
-        // At the Tresen or an encounter the current series is already won.
-        if (now && (view.phase === 'Shop' || view.phase === 'Encounter')) {
-          return `<div class="tour-cell is-done" aria-label="${esc(de.overview.done)}">${CHECK}<b>${esc(t(de.overview.current, { score: cur.score, target: cur.target }))}</b></div>`;
+  const rows = view.tour.districts.map((d) => {
+    const cells = d.pubs
+      .map((p) => {
+        const spelunke = d.spelunken.find((s) => s.index === p.index);
+        const state = spelunke ? spelunke.state : p.state;
+        const title = spelunke ? `${de.pub.spelunke}: ${spelunke.name}` : p.name;
+        const node = attrs({ 'data-node': spelunke ? spelunke.id : p.id, title, 'data-state': state });
+        const face = p.is_boss && d.boss ? bossCoaster(d.boss.id, { size: 28 }) : '';
+        const mark = spelunke ? `<span class="tour-spelunke">${esc(de.pub.spelunke)}</span>` : '';
+        if (state === 'Won') return `<div class="tour-cell is-done" ${node} aria-label="${esc(de.overview.done)}">${CHECK}${mark}</div>`;
+        if (state === 'Lost') return `<div class="tour-cell is-done is-lost" ${node}>${CROSS}${mark}</div>`;
+        if (state === 'Current') {
+          return `<div class="tour-cell is-now ${lost ? 'is-lost' : ''}" ${node}>${lost ? CROSS : ''}${face}${mark}<b>${esc(t(de.overview.current, { score: cur.score, target: cur.target }))}</b></div>`;
         }
-        if (before) return `<div class="tour-cell is-done" aria-label="${esc(de.overview.done)}">${CHECK}</div>`;
-        if (now) {
-          const boss = cur.is_boss && cur.boss ? bossCoaster(cur.boss.id, { size: 28 }) : '';
-          return `<div class="tour-cell is-now ${lost ? 'is-lost' : ''}">${lost ? CROSS : ''}${boss}<b>${esc(t(de.overview.current, { score: cur.score, target: cur.target }))}</b></div>`;
-        }
-        const next = view.next_series;
-        const isNext = next && next.section === a && next.index === s;
-        // The boss of the running section is known from its start.
-        const boss = isNext && next.boss ? next.boss : s === 2 && a === cur.section ? view.upcoming_boss : null;
-        const face = boss ? bossCoaster(boss.id, { size: 28 }) : '';
-        if (isNext) return `<div class="tour-cell is-later is-next">${face}<b>${esc(next.target)}</b></div>`;
-        if (face) return `<div class="tour-cell is-later is-next">${face}</div>`;
-        return `<div class="tour-cell is-later">${s === 2 ? `<span class="tour-q">${esc(de.boss.unknown)}</span>` : ''}</div>`;
+        if (p.is_boss) return `<div class="tour-cell is-later is-next" ${node}>${face || `<span class="tour-q">${esc(de.boss.unknown)}</span>`}</div>`;
+        return `<div class="tour-cell is-later" ${node}></div>`;
       })
       .join('');
-    rows.push(`<div class="tour-cell tour-row-head ${a === cur.section ? 'is-current' : ''}">${esc(t(de.overview.section, { n: a + 1 }))}</div>${cells}`);
-  }
-  return `<div class="tour-grid">${head}${rows.join('')}</div>`;
+    return `<div class="tour-cell tour-row-head ${d.index === cur.section ? 'is-current' : ''}" title="${esc(d.name)}">${esc(t(de.overview.section, { n: d.index + 1 }))}<small>${esc(d.name)}</small></div>${cells}`;
+  });
+  return `<div class="tour-grid" data-testid="tour-grid">${head}${rows.join('')}</div>`;
 }
 
 export function renderOverview(view: RunView, meta: MetaView | null, lost = false): string {
@@ -68,6 +63,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     [de.end.gamesLost, tally(s.games_lost)],
     [de.end.gamesPassed, tally(s.redeals)],
     [de.end.seriesWon, tally(s.series_won)],
+    [de.lives.label, hearts(view.tour.lives, view.tour.max_lives, 14)],
     [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
     [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],
   ];

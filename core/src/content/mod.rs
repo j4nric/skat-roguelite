@@ -61,6 +61,10 @@ macro_rules! content_id {
     };
 }
 
+mod tour;
+
+pub use tour::{CityNames, MalusCurse, MalusDef, MalusId, NamePattern, TourContent};
+
 content_id!(
     /// Id of a relic (house rule or Stammtisch figure).
     RelicId
@@ -78,7 +82,7 @@ content_id!(
     ConsumableId
 );
 content_id!(
-    /// Id of an encounter (Ereignis between two series).
+    /// Id of an encounter (Ereignis on the way between two pubs).
     EncounterId
 );
 content_id!(
@@ -184,19 +188,20 @@ impl fmt::Display for Character {
     }
 }
 
-/// How long a run is (DESIGN 5.3), chosen at the start: the whole evening
-/// with every section of `run.ron`, or the short evening (kurzer Abend)
-/// with the sections listed in [`RunConfig::short_sections`].
+/// How long a run is. Since the Kneipentour (ADR 0016) there is only the
+/// whole evening (three Stadtteile); the short evening (kurzer Abend,
+/// DESIGN 5.3 until 02.11.2026) is dropped for now. The value stays so
+/// that old meta states (statistics and stakes per length) still load; a
+/// run cannot start as `Short` any more.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
 )]
 pub enum RunLength {
-    /// Ganzer Abend: every section (five). Saves and links from before
-    /// the short evening are this.
+    /// Ganzer Abend: every Stadtteil. Saves and links from before the
+    /// short evening are this.
     #[default]
     Full,
-    /// Kurzer Abend: the sections of [`RunConfig::short_sections`]
-    /// (three), ending with the final boss.
+    /// Kurzer Abend (until ADR 0016): only read from old meta states.
     Short,
 }
 
@@ -346,10 +351,10 @@ pub struct CharacterDef {
     /// Start deck.
     #[serde(default)]
     pub deck: DeckSpec,
-    /// Zielwerte per section; `None` uses `run.ron`. Must have as many
-    /// sections as `run.ron`.
+    /// Zielwerte per Stadtteil, one per pub (the last the boss pub);
+    /// `None` uses `run.ron`. Must have the shape of `run.ron`'s.
     #[serde(default)]
-    pub targets: Option<Vec<(u64, u64, u64)>>,
+    pub targets: Option<Vec<Vec<u64>>>,
     /// How Null games are scored; `None` scores them like the
     /// Skatordnung ([`NullScoring::Fixed`]).
     #[serde(default)]
@@ -401,10 +406,40 @@ pub enum EncounterKind {
         /// Factor on the Spielwert.
         factor: u32,
     },
+    /// Rast (ADR 0016): win back lives, up to the maximum.
+    Rest {
+        /// Lives gained.
+        lives: u32,
+    },
+    /// Werkstatt (Upgrade, ADR 0016): a modification drawn from the
+    /// character's pool (never a curse) on a card of the player's choice,
+    /// or every modification off a chosen card, both free.
+    Workshop,
+    /// The loot of a won Spelunke (ADR 0016): a relic drawn now, taken
+    /// into a free slot or turned into Groschen (half its price). Never
+    /// drawn on a route.
+    RelicReward,
 }
 
-/// An encounter (Ereignis / Rast, DESIGN 13): may come instead of the
-/// Tresen between two series.
+/// The kind of a stop on a route between two pubs (ADR 0016): the
+/// Tresen, or the category of an encounter. Shown on the route choice.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub enum StopCategory {
+    /// The Tresen (shop).
+    Tresen,
+    /// Begegnung: an event (Ereignis).
+    #[default]
+    Event,
+    /// Upgrade: modifications on, curses off.
+    Upgrade,
+    /// Rast: lives back.
+    Rest,
+}
+
+/// An encounter (Ereignis / Rast, DESIGN 13): a stop on a route between
+/// two pubs (ADR 0016).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncounterDef {
     /// Unique id.
@@ -415,15 +450,23 @@ pub struct EncounterDef {
     pub text: String,
     /// What it offers.
     pub kind: EncounterKind,
-    /// Weight when drawn (default 1).
+    /// Weight when drawn (default 1); 0: never drawn on a route.
     #[serde(default = "one")]
     pub weight: u32,
     /// Characters that meet it (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
+    /// The route category it is drawn for (default: Begegnung). Never
+    /// [`StopCategory::Tresen`].
+    #[serde(default)]
+    pub category: StopCategory,
 }
 
 const fn one() -> u32 {
+    1
+}
+
+const fn one_i32() -> i32 {
     1
 }
 
@@ -449,8 +492,11 @@ pub enum UnlockCondition {
     },
     /// Win a Null game from this Null-Risikostufe on.
     WinNull(NullRisk),
-    /// Reach this section (from 1).
+    /// Reach this section (Stadtteil, from 1).
     ReachSection(u32),
+    /// Reach the n-th pub of the evening (from 1, counted over the
+    /// Stadtteile: pub p of Stadtteil d is `d × 5 + p + 1`).
+    ReachPub(u32),
     /// Win a boss series.
     BeatBoss {
         /// Only this boss (`None`: any).
@@ -1012,12 +1058,74 @@ pub struct ShopConfig {
     pub rarity_weights: RarityWeights,
 }
 
+/// Lives of the Kneipentour (ADR 0016).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LivesConfig {
+    /// Lives at the start of a run.
+    pub start: u32,
+    /// Most lives a player can hold.
+    pub max: u32,
+    /// Lives gained for a won boss pub.
+    pub boss_bonus: u32,
+}
+
+/// Draw weights of the stop categories on a route.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopWeights {
+    /// The Tresen.
+    pub tresen: u32,
+    /// Begegnung.
+    pub event: u32,
+    /// Upgrade.
+    pub upgrade: u32,
+    /// Rast (only drawn while a life is missing).
+    pub rest: u32,
+}
+
+impl StopWeights {
+    /// The weight of one category.
+    #[must_use]
+    pub const fn of(&self, category: StopCategory) -> u32 {
+        match category {
+            StopCategory::Tresen => self.tresen,
+            StopCategory::Event => self.event,
+            StopCategory::Upgrade => self.upgrade,
+            StopCategory::Rest => self.rest,
+        }
+    }
+}
+
+/// The route choice between two pubs (ADR 0016).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteConfig {
+    /// How often each stop category is drawn.
+    pub weights: StopWeights,
+}
+
+/// The Spelunke (elite pub, ADR 0016).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpelunkeConfig {
+    /// Chance that one route of a choice leads to a Spelunke instead of
+    /// the next normal pub (0.0 to 1.0).
+    pub chance: Factor,
+    /// Factor on the Zielwert of the pub it replaces.
+    pub target_factor: Factor,
+}
+
 /// Run structure as data: target values, limits, slots, economy, bosses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunConfig {
-    /// Zielwerte per section: (series 1, series 2, boss series).
-    pub targets: Vec<(u64, u64, u64)>,
-    /// Spiellimit per series.
+    /// Zielwerte per Stadtteil, one per pub in order; the last of each row
+    /// is the boss pub (before the boss's factor). Every row has
+    /// [`crate::run::PUBS_PER_DISTRICT`] values.
+    pub targets: Vec<Vec<u64>>,
+    /// Lives (ADR 0016).
+    pub lives: LivesConfig,
+    /// The route choice between two pubs.
+    pub route: RouteConfig,
+    /// The Spelunke.
+    pub spelunke: SpelunkeConfig,
+    /// Spiellimit per pub.
     pub game_limit: u32,
     /// Einmischen per game: how often the player may have a game dealt
     /// again before declaring; then one of the hands must be played. Also
@@ -1034,52 +1142,21 @@ pub struct RunConfig {
     pub shop: ShopConfig,
     /// Bosses a boss series may draw from.
     pub bosses: Vec<BossId>,
-    /// Boss of the last section's boss series (Endboss), not drawn.
+    /// Boss of the last Stadtteil's boss pub (Endboss), not drawn.
     #[serde(default)]
     pub final_boss: Option<BossId>,
-    /// Chance that an encounter comes instead of the Tresen between two
-    /// series (0.0 to 1.0).
-    #[serde(default = "Factor::zero")]
-    pub encounter_chance: Factor,
-    /// The defenders' card play per section (DESIGN 10.3): heuristic or
-    /// PIMC with its strength. Later sections take the last entry; an
+    /// The defenders' card play per Stadtteil (DESIGN 10.3): heuristic or
+    /// PIMC with its strength. Later Stadtteile take the last entry; an
     /// empty list means the heuristic everywhere.
     #[serde(default)]
     pub opponents: Vec<crate::ai::pimc::Opponents>,
-    /// Kurzer Abend (DESIGN 5.3): the rows of `targets` and `opponents`
-    /// (and of a character's own Zielwerte) a short run plays, in order,
-    /// counted from 0. Its last section ends with the final boss. Empty:
-    /// a short run plays every section like a full one.
-    #[serde(default)]
-    pub short_sections: Vec<u32>,
 }
 
 impl RunConfig {
-    /// Number of sections of a run of this length.
+    /// Number of Stadtteile (sections) of a run.
     #[must_use]
-    pub fn sections(&self, length: RunLength) -> u32 {
-        let n = match length {
-            RunLength::Short if !self.short_sections.is_empty() => self.short_sections.len(),
-            _ => self.targets.len(),
-        };
-        u32::try_from(n).unwrap_or(0)
-    }
-
-    /// The row of the curve (`targets`, `opponents`, a character's
-    /// Zielwerte) that `section` (from 0) of a run of this length plays.
-    /// `None` past the last section.
-    #[must_use]
-    pub fn curve_row(&self, length: RunLength, section: u32) -> Option<u32> {
-        if section >= self.sections(length) {
-            return None;
-        }
-        match length {
-            RunLength::Short if !self.short_sections.is_empty() => usize::try_from(section)
-                .ok()
-                .and_then(|i| self.short_sections.get(i))
-                .copied(),
-            _ => Some(section),
-        }
+    pub fn sections(&self) -> u32 {
+        u32::try_from(self.targets.len()).unwrap_or(0)
     }
 }
 
@@ -1116,6 +1193,8 @@ pub struct Sources<'a> {
     pub unlocks: &'a str,
     /// `guests.ron`: the Stammgäste.
     pub guests: &'a str,
+    /// `tour.ron`: names of the city and the Spelunke maluses.
+    pub tour: &'a str,
 }
 
 impl Sources<'static> {
@@ -1132,6 +1211,7 @@ impl Sources<'static> {
             encounters: include_str!("../../content/encounters.ron"),
             unlocks: include_str!("../../content/unlocks.ron"),
             guests: include_str!("../../content/guests.ron"),
+            tour: include_str!("../../content/tour.ron"),
         }
     }
 }
@@ -1158,6 +1238,10 @@ pub struct Content {
     pub unlocks: BTreeMap<UnlockId, UnlockDef>,
     /// Stammgäste, the normal opponents at the table.
     pub guests: BTreeMap<GuestId, GuestDef>,
+    /// Word lists of the city's name generator (ADR 0016).
+    pub city: CityNames,
+    /// Spelunke maluses (ADR 0016).
+    pub maluses: BTreeMap<MalusId, MalusDef>,
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(file: &str, text: &str) -> Result<T, ContentError> {
@@ -1263,6 +1347,7 @@ impl Content {
     /// Parse and validate content from RON texts (tests, modding).
     pub fn from_sources(sources: &Sources<'_>) -> Result<Content, ContentError> {
         let characters: Vec<CharacterDef> = parse("characters", sources.characters)?;
+        let tour: TourContent = parse("tour", sources.tour)?;
         let content = Content {
             relics: index(
                 "relics",
@@ -1301,6 +1386,8 @@ impl Content {
                 parse::<Vec<GuestDef>>("guests", sources.guests)?,
                 |g| &g.id,
             )?,
+            city: tour.city,
+            maluses: index("tour", tour.maluses, |m| &m.id)?,
         };
         content.validate()?;
         Ok(content)
@@ -1356,20 +1443,25 @@ impl Content {
         if self.run.targets.is_empty() {
             return Err(ContentError("run: no sections".into()));
         }
+        let pubs = usize::try_from(crate::run::PUBS_PER_DISTRICT).unwrap_or(0);
+        if self.run.targets.iter().any(|row| row.len() != pubs) {
+            return Err(ContentError(format!(
+                "run: every row of targets needs {pubs} pubs"
+            )));
+        }
         if self.run.game_limit == 0 {
             return Err(ContentError("run: game limit 0".into()));
         }
-        let rows = self.run.targets.len();
-        let short = &self.run.short_sections;
-        if short
-            .iter()
-            .any(|&row| usize::try_from(row).map_or(true, |r| r >= rows))
-            || short.windows(2).any(|w| w[0] >= w[1])
-        {
-            return Err(ContentError(format!(
-                "run: short_sections {short:?} must rise and stay below {rows} sections"
-            )));
+        let lives = &self.run.lives;
+        if lives.start == 0 || lives.start > lives.max {
+            return Err(ContentError(
+                "run: lives must start above 0 and at most at the maximum".into(),
+            ));
         }
+        if self.run.spelunke.chance > Factor::ONE {
+            return Err(ContentError("run: Spelunke chance above 1".into()));
+        }
+        self.validate_tour()?;
         for boss in &self.run.bosses {
             if !self.bosses.contains_key(boss) {
                 return Err(ContentError(format!("run: unknown boss {boss}")));
@@ -1382,9 +1474,6 @@ impl Content {
             if !self.bosses.contains_key(boss) {
                 return Err(ContentError(format!("run: unknown final boss {boss}")));
             }
-        }
-        if self.run.encounter_chance > Factor::ONE {
-            return Err(ContentError("run: encounter chance above 1".into()));
         }
         for boss in self.bosses.values() {
             if !boss.rotation.is_empty() && !boss.edition.is_empty() {
@@ -1507,7 +1596,8 @@ impl Content {
                 )));
             }
             if let Some(targets) = &def.targets {
-                if targets.len() != self.run.targets.len() {
+                let shape = |t: &Vec<Vec<u64>>| t.iter().map(Vec::len).collect::<Vec<_>>();
+                if shape(targets) != shape(&self.run.targets) {
                     return Err(ContentError(format!(
                         "{what}: {} sections of Zielwerte, run.ron has {}",
                         targets.len(),
@@ -1556,12 +1646,110 @@ impl Content {
                 )));
             }
         }
-        if self.run.encounter_chance > Factor::zero() && self.encounters.is_empty() {
+        for def in self.encounters.values() {
+            if def.category == StopCategory::Tresen {
+                return Err(ContentError(format!(
+                    "encounter {}: the Tresen is no encounter category",
+                    def.id
+                )));
+            }
+        }
+        // Every category a route may draw needs an encounter for everyone.
+        let weights = &self.run.route.weights;
+        for category in [
+            StopCategory::Event,
+            StopCategory::Upgrade,
+            StopCategory::Rest,
+        ] {
+            if weights.of(category) == 0 {
+                continue;
+            }
+            for character in self.characters.keys() {
+                let met = self.encounters.values().any(|e| {
+                    e.category == category && e.weight > 0 && in_pool(&e.characters, *character)
+                });
+                if !met {
+                    return Err(ContentError(format!(
+                        "run: no {category:?} encounter for {character}"
+                    )));
+                }
+            }
+        }
+        if !self
+            .encounters
+            .values()
+            .any(|e| e.kind == EncounterKind::RelicReward)
+        {
             return Err(ContentError(
-                "run: encounter chance without encounters".into(),
+                "encounters: the Spelunke needs a RelicReward encounter".into(),
             ));
         }
         Ok(())
+    }
+
+    fn validate_tour(&self) -> Result<(), ContentError> {
+        let city = &self.city;
+        let pubs = self.run.sections() * (crate::run::PUBS_PER_DISTRICT - 1);
+        if city.districts.len() < self.targets_rows() || city.pubs.is_empty() {
+            return Err(ContentError(
+                "tour: needs a district name per Stadtteil and pub patterns".into(),
+            ));
+        }
+        if city.boss_pubs.is_empty() || city.spelunken.is_empty() || pubs == 0 {
+            return Err(ContentError(
+                "tour: needs boss pub and Spelunke patterns".into(),
+            ));
+        }
+        for pattern in city
+            .pubs
+            .iter()
+            .chain(&city.boss_pubs)
+            .chain(&city.spelunken)
+        {
+            let mut rest = pattern.pattern.as_str();
+            while let Some(start) = rest.find('{') {
+                let Some(len) = rest[start..].find('}') else {
+                    return Err(ContentError(format!(
+                        "tour: unclosed placeholder in {:?}",
+                        pattern.pattern
+                    )));
+                };
+                let key = &rest[start + 1..start + len];
+                if city.words.get(key).is_none_or(Vec::is_empty) {
+                    return Err(ContentError(format!(
+                        "tour: {:?} names the empty or unknown list {key}",
+                        pattern.pattern
+                    )));
+                }
+                rest = &rest[start + len + 1..];
+            }
+        }
+        if self.maluses.is_empty() {
+            return Err(ContentError("tour: no Spelunke maluses".into()));
+        }
+        for malus in self.maluses.values() {
+            validate_effects(&format!("malus {}", malus.id), &malus.passive, &[], false)?;
+            if let Some(curse) = &malus.curse {
+                if !self
+                    .card_mods
+                    .get(&curse.card_mod)
+                    .is_some_and(CardModDef::is_curse)
+                {
+                    return Err(ContentError(format!(
+                        "malus {}: {} is no curse",
+                        malus.id, curse.card_mod
+                    )));
+                }
+            }
+            if malus.text.trim().is_empty() || malus.name.trim().is_empty() {
+                return Err(ContentError(format!("malus {}: name and text", malus.id)));
+            }
+        }
+        Ok(())
+    }
+
+    fn targets_rows(&self) -> usize {
+        self.run.targets.len()
     }
 
     fn validate_unlocks(&self) -> Result<(), ContentError> {
