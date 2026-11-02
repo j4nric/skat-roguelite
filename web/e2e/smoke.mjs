@@ -114,12 +114,20 @@
 //   Eichel Hand, the Grün-Daus led, then a Schellen lead: the Wandelkarte
 //   opens the suit picker with only Schellen allowed, and played it lies on
 //   the table as the Schellen-Daus with its printed suit as a plaque.
-// Effekte v2 placeholders and "Untot" (framesPass, undeadPass):
+// Effekte v3 and "Untot" (framesPass, modConfirmPass, voucherPass, undeadPass):
 // - frames.json: boss-tresen.json with its deck patched by text (mods_version
 //   2): every modification of effects v2 once, plus Untot with Augen +5,
 //   Wandelkarte with Trumpf +4 and Untot with Ramponiert. On the Kreidetafel
-//   every modification is named; Augen gold, Trumpf purple, curses and
-//   Untot carry their state, an Untot picture card shows its zombie face.
+//   (the gallery of every modification) every one is named and drawn as on
+//   the board "Effekte v3": its frame, mark and band colour, curses in
+//   anthracite without badge, Untot with its zombie face (rotten pips on a
+//   number card), the Wandelkarte with its joker face.
+// - mods-confirm.json: frames.json with "Augen +3" and "Rang +1" in the bag
+//   and 20 Groschen: the in-app sheet before a modification replaces or
+//   raises another (see modConfirmPass).
+// - voucher.json: frames.json with "Gutschein" on the Grün-Neun and
+//   "Gutschein Untot" on the Grün-Acht, both dealt to the player in the boss
+//   game: pressed, they are redeemed with their animation (voucherPass).
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
 //   the Grün-König (22), both with their Untot look. In an Eichel Hand
 //   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
@@ -1988,7 +1996,7 @@ async function motionPass(browser, errors) {
   await context.close();
 }
 
-/** Frame language: every modification on the Kreidetafel (frames.json). */
+/** Effekte v3: every modification on the Kreidetafel, the gallery of frames.json. */
 async function framesPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
@@ -2014,16 +2022,156 @@ async function framesPass(browser, errors, reducedMotion) {
     const c = card(name);
     if (!c || !ok(c)) fail(`frame language: ${name} ${what} (${JSON.stringify(c)})`);
   };
-  // Effekte v2 (DESIGN 7.2): placeholders on the old frame code until the
-  // art track; one modification per card, a special card may carry one more.
-  expect('Schellen-Zehn', (c) => c.fills.includes('#d98e0b'), 'has no gold Augen frame');
-  expect('Schellen-König', (c) => c.fills.includes('#6a3fa8'), 'has no purple Trumpf frame');
-  for (const name of ['Schellen-Sieben', 'Schellen-Acht', 'Schellen-Neun']) expect(name, (c) => c.state === 'curse', 'is not marked as cursed');
-  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK') && c.label.includes('Augen'), 'shows no zombie face, state or its Augen');
-  expect('Grün-Sieben', (c) => c.state === 'both', 'is not Fluch and Untot at once');
-  log(`frame language: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, placeholders as planned`);
+  // Effekte v3 (tools/cardart/fx3.py): frame = what, mark top right =
+  // when, band at the bottom middle = how much (its colour per
+  // modification), curses anthracite; Untot and Wandelkarte change the
+  // picture; one normal modification per card, a special card one more.
+  const band = { Augen: '#d98e0b', Rang: '#8e2430', Trumpf: '#6a3fa8', 'Letzter Stich': '#16707a', 'Erster Stich': '#d2552a', Gutschein: '#2f7d6a', Durchsichtig: '#33363b', Ramponiert: '#33363b', Fleckig: '#33363b' };
+  expect('Schellen-Zehn', (c) => c.fills.includes(band.Augen) && c.fills.includes('#ffe08a'), 'has no gold Augen frame and band');
+  expect('Schellen-Unter', (c) => c.fills.includes(band.Rang), 'has no wine Rang band');
+  expect('Schellen-König', (c) => c.fills.includes(band.Trumpf), 'has no purple Trumpf frame');
+  expect('Schellen-Daus', (c) => c.fills.includes(band['Letzter Stich']), 'has no petrol Letzter-Stich frame');
+  expect('Rot-Sieben', (c) => c.fills.includes(band['Erster Stich']), 'has no rust Erster-Stich frame');
+  for (const name of ['Rot-Acht', 'Rot-Neun', 'Rot-Zehn']) expect(name, (c) => c.fills.includes(band.Gutschein) && c.fills.includes('#bfe3d6'), 'has no Gutschein stamp margin');
+  for (const name of ['Schellen-Sieben', 'Schellen-Acht', 'Schellen-Neun']) {
+    expect(name, (c) => c.state === 'curse' && c.fills.includes(band.Ramponiert) && !c.picture.some((h) => h.startsWith('#m-')), 'is not an anthracite curse without badge');
+  }
+  expect('Schellen-Sieben', (c) => c.fills.includes('#1b1e21'), 'Ramponiert shows no tears');
+  expect('Rot-Unter', (c) => c.picture.includes('#w-J') && c.picture.includes('#wx-J'), 'Wandelkarte shows no joker face');
+  expect('Rot-Daus', (c) => c.picture.includes('#w-A') && c.fills.includes(band.Trumpf), 'Wandelkarte with Trumpf shows not both');
+  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK') && c.fills.includes(band.Augen), 'Untot with Augen shows no zombie face and gold band');
+  expect('Grün-Sieben', (c) => c.state === 'both' && c.picture.includes('#u-S7') && c.fills.includes('#1b1e21'), 'Untot number card with Ramponiert shows no rotten pips and tears');
+  log(`Effekte v3: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, each with its frame and band`);
   await page.locator('.deck-grid').scrollIntoViewIfNeeded();
   await shoot(page, 'frames-gallery');
+  await context.close();
+}
+
+/**
+ * Gutschein (voucher.json: frames.json with "Gutschein" on the Grün-Neun
+ * and "Gutschein Untot" on the Grün-Acht, both dealt to the player in the
+ * boss game). With animations: both pressed, the stamp margin tears off,
+ * a coin flies to the Groschen counter (+3), the Grün-Acht turns over into
+ * its Untot face; a toast above the Stammgäste names each voucher.
+ */
+async function voucherPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'voucher.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.click('[data-action="boss-go"]');
+  await page.waitForSelector('[data-action="pick-up-skat"]');
+  for (const id of [17, 18]) if (!(await page.locator(`.hand-card[data-id="${id}"] path[fill="#bfe3d6"]`).count())) fail(`Gutschein: card ${id} shows no stamp margin in the hand`);
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-action="discard"]');
+  await page.evaluate(() => {
+    window.__toasts = [];
+    const layer = document.querySelector('.toast-layer');
+    new MutationObserver(() => {
+      const t = layer?.textContent?.trim();
+      if (t) window.__toasts.push(t);
+    }).observe(layer, { childList: true, subtree: true, characterData: true });
+  });
+  for (const id of await page.locator('.skat-card[data-action="select"]').evaluateAll((els) => els.map((e) => e.dataset.id))) {
+    await page.click(`.skat-card[data-id="${id}"]`);
+    await page.waitForSelector(`.skat-card[data-id="${id}"]`, { state: 'detached' });
+  }
+  for (const id of [18, 17]) {
+    await page.click(`.hand-card[data-id="${id}"]`);
+    await page.waitForSelector(`.skat-card[data-id="${id}"]`);
+  }
+  const coins = Number(await text(page, 'coins'));
+  await page.click('[data-action="discard"]');
+  const stages = new Set();
+  const deadline = Date.now() + 15000;
+  let shotTorn = false;
+  let turnedFace = '';
+  while (Date.now() < deadline && !(stages.has('coin') && stages.has('turned'))) {
+    const now = await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="voucher-redeem"]');
+      return box ? { stage: box.dataset.stage, uses: [...box.querySelectorAll('use')].map((u) => u.getAttribute('href')) } : null;
+    });
+    if (now) {
+      stages.add(now.stage);
+      if (now.stage === 'torn' && !shotTorn) {
+        shotTorn = true;
+        await page.screenshot({ path: join(screens, 'voucher-torn-390x844.png') });
+      }
+      if (now.stage === 'turned') turnedFace = now.uses.join(' ');
+    }
+    await page.waitForTimeout(30);
+  }
+  for (const st of ['torn', 'coin', 'turned']) if (!stages.has(st)) fail(`Gutschein: no redeem step "${st}" (saw ${[...stages].join(', ')})`);
+  if (!turnedFace.includes('#u-S8')) fail(`Gutschein Untot: the Grün-Acht did not turn into its Untot face (${turnedFace})`);
+  await page.waitForSelector('[data-testid="voucher-redeem"]', { state: 'detached' });
+  const after = Number(await text(page, 'coins'));
+  if (after !== coins + 3) fail(`Gutschein: Groschen ${coins} -> ${after}, expected +3`);
+  await page
+    .waitForFunction(() => window.__toasts.some((t) => t.startsWith('Gutschein eingelöst')) && window.__toasts.some((t) => t.startsWith('Gutschein Untot eingelöst')), null, { timeout: 15000 })
+    .catch(async () => fail(`Gutschein: no toast per voucher (${(await page.evaluate(() => window.__toasts)).join(' | ')})`));
+  log(`Gutschein: margin torn, coin to the counter (${coins} -> ${after}), Grün-Acht turned Untot`);
+  await shoot(page, 'voucher-redeemed');
+  await context.close();
+}
+
+/**
+ * Replace confirm (mods-confirm.json: frames.json with "Augen +3" and "Rang
+ * +1" in the bag, 20 Groschen). At the Tresen "Augen +3" on the
+ * Schellen-König (Trumpf) asks "ersetzt Trumpf durch Augen" and "Lieber
+ * nicht" goes back to the picker; on the Schellen-Zehn (Augen +4) it shows
+ * the raise "+4 → +7" and applies it. Cursed cards are dimmed with the
+ * reason "Fluch". "Rang +1" refuses the Schellen-Oberin at Rang 3 with
+ * "Höchstwert". The Stempelkissen bought and used on the Schellen-König
+ * only says that the card carries a modification already (drawn at random).
+ */
+async function modConfirmPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'mods-confirm.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="use-item"][data-slot="0"]');
+  await page.waitForSelector('.target-grid');
+  const reasons = await page.locator('.target-card[data-reason]').evaluateAll((els) => els.map((e) => ({ id: e.dataset.id, reason: e.dataset.reason, tag: e.querySelector('.target-reason')?.textContent ?? '' })));
+  for (const id of ['0', '1', '2', '16']) if (!reasons.some((r) => r.id === id && r.reason === 'CardCursed' && r.tag === 'Fluch')) fail(`replace confirm: cursed card ${id} not dimmed with "Fluch" (${JSON.stringify(reasons)})`);
+  await shoot(page, 'mod-picker');
+  await page.click('.target-card[data-id="6"]');
+  await page.waitForSelector('[data-testid="mod-confirm-text"]');
+  const replace = await text(page, 'mod-confirm-text');
+  if (replace !== 'Schellen-König: ersetzt Trumpf durch Augen.') fail(`replace confirm: says "${replace}"`);
+  if ((await page.locator('[data-testid="mod-confirm-cards"] .card').count()) !== 2) fail('replace confirm: does not show the card now and after');
+  await shoot(page, 'mod-replace');
+  await page.click('[data-testid="mod-confirm-back"]');
+  await page.waitForSelector('.target-grid');
+  await page.click('.target-card[data-id="3"]');
+  await page.waitForSelector('[data-testid="mod-confirm-text"]');
+  const raise = await text(page, 'mod-confirm-text');
+  if (raise !== 'Schellen-Zehn: Augen +4 → +7.') fail(`raise confirm: says "${raise}"`);
+  await shoot(page, 'mod-raise');
+  await page.click('[data-testid="mod-confirm-go"]');
+  await page.waitForSelector('[data-testid="mod-confirm-text"]', { state: 'detached' });
+  await page.waitForFunction(() => {
+    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
+    return run?.deck?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7;
+  }, null, { timeout: 5000 }).catch(() => fail('raise confirm: the Schellen-Zehn does not carry Augen +7 afterwards'));
+  // "Rang +1" (now slot 0): the Oberin at Rang 3 is at the maximum.
+  await page.click('[data-action="use-item"][data-slot="0"]');
+  await page.waitForSelector('.target-grid');
+  if (!(await page.locator('.target-card[data-id="5"][data-reason="ModAtMaximum"]').count())) fail('Rang +1: the Schellen-Oberin at Rang 3 is not refused as "Höchstwert"');
+  await page.click('.sheet [data-action="close-overlay"]');
+  // Stempelkissen: drawn at random, only the hint that the card carries one.
+  await page.click('[data-action="buy-item"]:not([disabled])');
+  await page.waitForSelector('[data-action="use-item"][data-slot="1"]');
+  await page.click('[data-action="use-item"][data-slot="1"]');
+  await page.waitForSelector('.target-grid');
+  await page.click('.target-card[data-id="6"]');
+  await page.waitForSelector('[data-testid="mod-confirm-text"]');
+  const random = await text(page, 'mod-confirm-text');
+  if (!random.startsWith('Schellen-König trägt schon Trumpf.')) fail(`random confirm: says "${random}"`);
+  await page.click('[data-testid="mod-confirm-back"]');
+  log(`replace confirm: "${replace}" / "${raise}" / "${random}"`);
   await context.close();
 }
 
@@ -2165,7 +2313,7 @@ async function run() {
     await page.waitForSelector('[data-action="new-run"]');
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
-    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'u-S7', 'u-CA', 'w-A', 'wx-T', 'wt-K', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
     // The pixel deck (tools/cardart): the index layer names its rank and has pixels.
     const aceCorner = await page.evaluate(() => {
@@ -2409,6 +2557,8 @@ async function run() {
     await m5(browser, errors, reducedMotion);
     await wave3(browser, errors, reducedMotion);
     await framesPass(browser, errors, reducedMotion);
+    await modConfirmPass(browser, errors, reducedMotion);
+    await voucherPass(browser, errors);
     await undeadPass(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);
     await wave2b(browser, errors, reducedMotion);

@@ -756,6 +756,10 @@ export interface RelicEntry extends CatalogEntry {
 export interface ConsumableEntry extends CatalogEntry {
   rarity?: Rarity;
   category?: ConsumableCategory;
+  /** The card modification it puts on a card, if the content names one. */
+  card_mod?: string | null;
+  /** It puts a modification drawn at random on a card ("Stempelkissen"). */
+  random_card_mod?: boolean;
 }
 
 export interface Catalog {

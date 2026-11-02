@@ -202,6 +202,44 @@ export const de = {
     wildSuit: 'als {card}',
   },
 
+  /** Asking before a card modification replaces or raises the one on a card (Tresen, encounters). */
+  modConfirm: {
+    replaceTitle: 'Effekt ersetzen?',
+    replace: '{card}: ersetzt {old} durch {new}.',
+    replaceGo: 'Ersetzen',
+    raiseTitle: 'Zinke steigern?',
+    raise: '{card}: {mod} {from} → {to}.',
+    raiseGo: 'Steigern',
+    changeTitle: 'Zinke verrechnen?',
+    change: '{card}: {new} verrechnet sich mit {old}, {from} → {to}.',
+    changeGo: 'Verrechnen',
+    dropTitle: 'Zinke aufheben?',
+    drop: '{card}: {old} und {new} heben sich auf, die Karte ist danach ohne Zinke.',
+    dropGo: 'Trotzdem',
+    randomTitle: 'Effekt ersetzen?',
+    random: '{card} trägt schon {old}. Die neue Zinke zieht das Los; ist es eine andere, ersetzt sie {old}.',
+    randomGo: 'Auf gut Glück',
+    before: 'Jetzt',
+    after: 'Danach',
+    keep: 'Lieber nicht',
+    /** Why a card in the picker cannot take it, by the core's error code. */
+    reasons: {
+      CardCursed: 'Fluch {curse}: nimmt keine Zinke an',
+      ModAtMaximum: 'schon am Höchstwert',
+      AlreadyModified: 'hat sie schon',
+      BlankCannotBeModified: 'Blanko',
+      NoModAvailable: 'passt nicht',
+    } as Record<string, string>,
+    /** Short tag on the card in the picker. */
+    tags: {
+      CardCursed: 'Fluch',
+      ModAtMaximum: 'Höchstwert',
+      AlreadyModified: 'schon da',
+      BlankCannotBeModified: 'Blanko',
+      NoModAvailable: 'passt nicht',
+    } as Record<string, string>,
+  },
+
   /** Short badge per card modification id. */
   modShort: {
     fat: 'F',

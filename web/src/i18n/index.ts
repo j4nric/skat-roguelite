@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { Catalog, CardKind, ConsumableCategory, Rarity, RelicKind, ModFigure, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
+import type { Catalog, CardKind, ConsumableCategory, Rarity, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -105,6 +105,17 @@ export function consumableLook(item: string): { id: string; category: Consumable
 }
 
 /** Whether a card modification is a curse (Fluch), from the core's catalog. */
+/** Rand, Moment, Gutschein, Fluch or Spezialkarte, from the core's catalog. */
+export function modKind(mod: string): ModKind | null {
+  return catalog?.card_mods[mod]?.kind ?? null;
+}
+
+/** The consumable's card modification as the catalog names it (null: none or drawn at random). */
+export function consumableMod(id: string): { mod: string | null; random: boolean } {
+  const entry = catalog?.consumables[id];
+  return { mod: entry?.card_mod ?? null, random: entry?.random_card_mod === true };
+}
+
 export function isCurse(mod: string): boolean {
   return catalog?.card_mods[mod]?.curse === true;
 }
