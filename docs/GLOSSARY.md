@@ -6,7 +6,13 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Blatt (das ganze Spiel, 32 Karten) | `deck` | Im Roguelike: das geteilte, modifizierbare Blatt |
+| Blatt (das ganze Spiel, 32 Karten) | `deck` | Im Roguelike bis ADR 0015 das geteilte, modifizierbare Blatt; seit ADR 0015 immer das normale Skatblatt aus 32 verschiedenen Karten |
+| Ausgabe (ADR 0015) | `Edition` | Die Version jeder Karte, die ein Spieler besitzt: je Karte die Modifikationen. Ausgabe des Spielers `Run::edition` (geplant, ersetzt `Run::deck`); Gegner: normal (Stammgast) oder Boss-Ausgabe (`edition` in `bosses.ron`) |
+| Halter einer Karte | `holder` | Der Platz, der die Karte gerade hält; die Karte zeigt seine Ausgabe. Der Skat gehört dem Alleinspieler |
+| Besitzer einer Ausgabe | `owner` | An `DealtCard` (geplant): wessen Ausgabe die aufgelöste Karte ist, für Sicht, Rückseite und Hooks |
+| Rückseite | `back` | Kosmetik; Spieler: gewählte Rückseite (Standard Distel, `web/src/ui/backs.ts`), Gegner: `back` in `guests.ron` und `bosses.ron` (geplant) |
+| Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Geplante Modifikation, Vorschlag: in der Ausgabe des Spielers eine Blanko |
+| Abgestuft (Nullspieler, ADR 0015) | `demoted` | Geplante Modifikation, Vorschlag: ein Unter ist in der Ausgabe des Spielers eine Sieben seiner Farbe; Wirkung `Demote` |
 | Blatt (die Karten eines Spielers) | `hand` | |
 | Karte | `Card` | |
 | Farbe | `Suit` | |
@@ -19,7 +25,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ass | `Ace` | |
 | Augen | `card_points` | Summe im Blatt: 120 |
 | Lusche (7, 8, 9) | `blank` | Karte ohne Augen |
-| Blanko-Karte (Roguelike) | `CardKind::Blank` | Ohne Farbe, ohne Augen, verliert immer, bedient nie, darf immer gespielt werden. Ersetzt entfernte Karten. Notation `XX`. |
+| Blanko-Karte (Roguelike) | `CardKind::Blank` | Ohne Farbe, ohne Augen, verliert immer, bedient nie, darf immer gespielt werden. Ersetzte bis ADR 0015 entfernte Karten; seit ADR 0015 nur noch als Karteneffekt (Oma, Scherben). Notation `XX`. |
 | Kartenart (normal oder Blanko) | `CardKind` | `CardKind::Normal(Card)`, `CardKind::Blank` |
 | Karteninstanz im Blatt des Runs | `DeckCard` | `id`, `kind`, `mods` |
 | Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit |
@@ -31,7 +37,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Volle (Ass, Zehn) | `high_card` | |
 | Trumpf | `trump` | |
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
-| Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | nur im Roguelike-Kontext |
+| Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | nur im Roguelike-Kontext; entfällt mit ADR 0015 |
 | Gezinkte Karte / Kartenmodifikation | `CardMod` | Definition `CardModDef`, Id `CardModId` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | Talon gehört nicht dazu |
 | Wandelkarte (Farbe beim Ausspielen benennen) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers), Effekt `Wild`; zwingt nie zum Bedienen. Benennen: `RunAction::PlayAs { card, suit }`, `Game::play_as`, erlaubte Farben `rules::wild_suits`, Prüfung `rules::may_play`; Ereignis `WildCardNamed`; Sicht `CardView::wild_suits`, `CardView::named` (gedruckte Farbe), `ActiveGame::named`. Die KI rechnet ohne sie: `opponents::tame_game` |
@@ -164,7 +170,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Blatt eines Gegners sehen (Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
 | Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
 | Nach einer Serie mindestens n Groschen | `SeriesWonWithCoins(n)` | Freischaltungs-Bedingung, gemessen nach der Auszahlung |
-| Startblatt (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add`, `mods` (Kartenmodifikationen ab Start, je auf der ersten Karte mit dem Aufdruck) |
+| Startblatt / Grunddeck (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add`, `mods` (Kartenmodifikationen ab Start, je auf der ersten Karte mit dem Aufdruck); seit ADR 0015 nur noch `mods` auf der Ausgabe des Charakters |
 | Spielart, für die ein Relikt gemacht ist | `GameFocus` | `All`, `Trump` (Farbspiel und Grand), `Null`; Feld `focus` an Relikten und Modifikationen (ADR 0012) |
 | Tresen-Gewicht pro Spielart | `FocusWeights` | `trump`, `null` in Prozent der Seltenheit; Feld `focus_weights` in `CharacterDef` |
 | Freischaltung | `Unlock` | Definition `UnlockDef`, Id `UnlockId`, Bedingung `UnlockCondition`, Belohnung `Reward` |

@@ -1,6 +1,6 @@
 # 0005: Ein geteiltes Blatt für alle drei Spieler
 
-Datum: 2026-10-31 · Status: Angenommen
+Datum: 2026-10-31 · Status: Teilweise ersetzt durch 0015 (gegeben wird weiter ein gemeinsames Skatblatt aus 32 Karten, aber jeder Spieler hält seine eigene Ausgabe jeder Karte; Karten werden nicht mehr hinzugefügt oder entfernt)
 
 ## Kontext
 
