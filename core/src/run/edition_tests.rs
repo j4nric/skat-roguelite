@@ -173,8 +173,8 @@ fn every_dealt_card_shows_the_edition_of_its_holder_and_the_skat_is_the_players(
         table.backs,
         [
             None,
-            Some("opponent".to_owned()),
-            Some("opponent".to_owned())
+            Some("regulars".to_owned()),
+            Some("regulars".to_owned())
         ]
     );
     // Hooks fire only for the owner's edition: only the player's cards are
@@ -301,9 +301,10 @@ fn the_old_man_plays_the_edition_of_the_rule_in_force() {
         assert_eq!(c.rank_bonus, if eight { 2 } else { 0 }, "{c}");
     }
     let view = run.view(&content);
+    // Der Alte shows his own back, not the one of the boss whose rule is on.
     assert_eq!(
         view.game.expect("game").backs[1],
-        Some("opponent".to_owned())
+        Some("the_old_man".to_owned())
     );
 }
 
@@ -385,7 +386,7 @@ fn a_transparent_card_with_a_defender_shows_who_holds_it_in_his_edition() {
     assert_eq!(shown.card.card.owner, Owner::Boss);
     assert_eq!(shown.card.card.card_points, 4);
     assert_eq!(shown.card.mods, vec![CardModId::new("points")]);
-    assert_eq!(shown.card.back.as_deref(), Some("opponent"));
+    assert_eq!(shown.card.back.as_deref(), Some("the_pusher"));
     assert_eq!(
         shown.source,
         super::view::RevealSource::CardMod(CardModId::new("transparent"))

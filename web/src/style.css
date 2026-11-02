@@ -2338,6 +2338,38 @@ button.card {
   gap: 8px;
 }
 
+/* The boss's portrait and the back of his cards (ADR 0015). */
+.boss-faces {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.boss-back .card-back {
+  display: block;
+  width: 66px;
+}
+
+.next-boss-marks {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.next-boss-back .card-back,
+.info-back .card-back {
+  display: block;
+  width: 33px;
+}
+
+.info-art-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .portrait-boss {
   width: 112px;
   height: 112px;

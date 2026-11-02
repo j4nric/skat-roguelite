@@ -77,7 +77,11 @@
 //   must say so; playing it out must end in a Ramsch score.
 // - old-man.json: seed 98 (content of commit 2259e7a; with the M4 content
 //   no seed below 4000 gets there) up to the second game against the final boss
-//   "Der Alte"; the table must name the rule he lays on this game.
+//   "Der Alte"; the table must name the rule he lays on this game, and his
+//   cards show his own back, not the back of the boss whose rule is on.
+// Card backs (ADR 0015): every back of tools/cardart/backs.py is in the
+// sprite; the Stammgäste show "regulars" on their fans, a boss series the
+// boss's back (Kontra-Hans in the boss dialog and on the fan).
 // - oma.json: seed 1720 up to a hand game in which "Die Oma" can take a
 //   Unter from the skat; giving a card for it must use her up.
 // - meta-null.json: a meta state (not a run) with four unlocks, among them
@@ -915,11 +919,14 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await expectMusic(page, 'boss', 'boss dialog');
   const bossText = (await page.locator('.sheet-boss').textContent()) ?? '';
   if (!bossText.includes('Kontra-Hans')) fail(`boss dialog without the boss: ${bossText}`);
-  log('boss dialog shown');
+  const dialogBack = await page.locator('[data-testid="boss-back"]').getAttribute('data-back');
+  if (dialogBack !== 'kontra_hans') fail(`the boss dialog shows the back ${dialogBack}`);
+  log('boss dialog shown with his back');
   await shoot(page, 'boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
+  await expectBacks(page, 'Kontra-Hans series', 'kontra_hans', 'regulars');
   await expectMusic(page, 'boss', 'boss series');
   await assertGuests(page, 'boss series', { boss: true });
   await shoot(page, 'table-boss');
@@ -940,6 +947,19 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await shoot(page, 'table-kontra');
   await assertFits(page, 'after Kontra');
   await context.close();
+}
+
+/**
+ * The backs on the opponents' fans (ADR 0015): `left` and `right` are the
+ * back ids of seat 1 and 2 (the boss sits left), in their small picture.
+ */
+async function expectBacks(page, label, left, right) {
+  const seen = await page.evaluate(() =>
+    [1, 2].map((s) => document.querySelector(`.opp[data-seat="${s}"] .opp-hand use`)?.getAttribute('href') ?? null),
+  );
+  const want = [`#bk-${left}-s`, `#bk-${right}-s`];
+  if (seen[0] !== want[0] || seen[1] !== want[1]) fail(`${label}: opponent backs ${JSON.stringify(seen)}, expected ${JSON.stringify(want)}`);
+  log(`${label}: backs ${seen.join(', ')}`);
 }
 
 /** M4: the Nullspieler, encounters, the Ramsch and "Der Alte". */
@@ -1059,6 +1079,8 @@ async function m4(browser, errors, reducedMotion) {
   const rule = ((await page.locator('[data-testid="boss-rule"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
   if (!rule.includes('Der Alte')) fail(`the final boss's rule strip does not name him: ${rule}`);
   log(`Der Alte: ${rule}`);
+  // His own back, not the one of the boss whose rule is on.
+  await expectBacks(page, 'Der Alte', 'the_old_man', 'regulars');
   await shoot(page, 'old-man');
   await assertFits(page, 'Der Alte');
   await context.close();
@@ -1251,11 +1273,9 @@ async function m5(browser, errors, reducedMotion) {
   // M8 wave 2a: the new relics at the table and in the Abrechnung.
   await resumeFixture(page, 'wave2-relics.json');
   await page.waitForSelector('.declare');
-  // M9 (ADR 0015): the opponents' cards show the opponent back, the
-  // player's stay the Distel.
-  const backs = await page.locator('.opp-hand use').evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-  if (backs.length !== 2 || backs.some((b) => b !== '#bk-opponent-s')) fail(`opponent backs: ${JSON.stringify(backs)}`);
-  log(`opponent backs: ${backs.join(', ')}`);
+  // M9 (ADR 0015): the Stammgäste's cards show their back, the player's
+  // stay the Distel.
+  await expectBacks(page, 'Stammgäste', 'regulars', 'regulars');
   for (const id of ['home_suit', 'all_rounder', 'old_deck', 'skat_keeper', 'watertight']) {
     if (!(await page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`).count())) fail(`relic ${id} has no beer mat in the head`);
   }
@@ -2334,6 +2354,10 @@ async function run() {
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'u-S7', 'u-CA', 'w-A', 'wx-T', 'wt-K', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    // Every opponent back (tools/cardart/backs.py) in both sizes, with a picture.
+    const backIds = ['regulars', 'black_peter', 'grandma', 'the_pusher', 'ramscher', 'kontra_hans', 'revolutionary', 'kibitz_killer', 'twins', 'the_old_man'];
+    const emptyBacks = await page.evaluate((ids) => ids.flatMap((id) => [`bk-${id}`, `bk-${id}-s`]).filter((id) => !document.getElementById(id)?.childElementCount), backIds);
+    if (emptyBacks.length) fail(`card backs missing or empty: ${emptyBacks.join(', ')}`);
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
     // The pixel deck (tools/cardart): the index layer names its rank and has pixels.
     const aceCorner = await page.evaluate(() => {

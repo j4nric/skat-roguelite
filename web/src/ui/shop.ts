@@ -4,6 +4,8 @@
 
 import { de, bossEditionText, contentName, contentText, t } from '../i18n';
 import type { ConsumableInfo, OwnedRelic, RelicInfo, RunView } from '../types';
+import { backDesign } from './backs';
+import { cardBack } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
@@ -68,7 +70,7 @@ function nextBoard(view: RunView): string {
   const where = t(next.is_boss ? de.shop.nextBoss : de.shop.nextSeries, { section: next.section + 1, series: next.index + 1 });
   const boss = next.boss ?? view.upcoming_boss;
   const bossBlock = boss
-    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}>${bossCoaster(boss.id, { size: 48 })}<div>
+    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}><span class="next-boss-marks">${bossCoaster(boss.id, { size: 48 })}<span class="next-boss-back">${cardBack('', backDesign(boss.back))}</span></span><div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
         <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
         <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p>${bossEditionText(boss) ? `<p class="next-boss-text boss-edition">${esc(bossEditionText(boss))}</p>` : ''}</div></div>`
