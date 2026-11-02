@@ -247,7 +247,7 @@ impl Options {
             return Some(RunAction::LeaveShop);
         }
         let action = RunBot.next_action(run, content)?;
-        let plays = matches!(action, RunAction::Play(_) | RunAction::PlayAs { .. });
+        let plays = matches!(action, RunAction::Play(_));
         // An "Untot" card that takes the trick and rises: the bot's rule
         // comes before the search, which knows nothing of rising.
         if plays && RunBot::undead_card(run, content).is_some() {
@@ -255,7 +255,7 @@ impl Options {
         }
         if let (true, Some(config)) = (plays, self.bot.pimc()) {
             if let Some(card) = skat_core::run::opponents::player_card(run, config) {
-                return Some(RunBot::play_action(run, card));
+                return Some(RunAction::Play(card.id));
             }
         }
         Some(action)

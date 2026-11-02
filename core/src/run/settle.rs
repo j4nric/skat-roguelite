@@ -363,9 +363,7 @@ impl Run {
         let Some(declaration) = game.declaration() else {
             return false;
         };
-        // A Ramsch, and a Wandelkarte still in the hand: its suit is named
-        // only when it is played, the rule playing the rest out cannot.
-        if declaration.is_ramsch() || game.hand(Seat::DECLARER).iter().any(|c| c.wild) {
+        if declaration.is_ramsch() {
             return false;
         }
         // An "Untot" card that can still rise: the substitute is drawn at

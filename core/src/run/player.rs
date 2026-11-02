@@ -121,6 +121,14 @@ pub enum PlayerGameEvent {
         /// The card as it is now.
         new: DealtCard,
     },
+    /// A Wandelkarte of the player took its suit as the game started
+    /// (DESIGN 7.2); `new` is the card from now on.
+    WildCardSettled {
+        /// The card as printed.
+        old: DealtCard,
+        /// The card with its settled suit.
+        new: DealtCard,
+    },
     /// An "Untot" card of the player rose from the last trick back into his
     /// hand; `substitute` from his hand lies in the trick now.
     CardRose {
@@ -191,6 +199,7 @@ impl PlayerGameEvent {
             },
             Event::SkatSwapped { took, gave } => PlayerGameEvent::SkatSwapped { took, gave },
             Event::CardChalked { old, new } => PlayerGameEvent::CardChalked { old, new },
+            Event::WildCardSettled { old, new } => PlayerGameEvent::WildCardSettled { old, new },
             Event::CardDrawn { seat, card } => PlayerGameEvent::CardDrawn { seat, card },
             Event::CardReturned { seat, card } => PlayerGameEvent::CardReturned { seat, card },
             Event::CardChangedHands { seat, old, new } => PlayerGameEvent::CardChangedHands {
@@ -334,8 +343,6 @@ impl RunEvent {
             },
             RunEvent::Redealt => RunEvent::Redealt,
             RunEvent::RedealUndone => RunEvent::RedealUndone,
-            // The Kiebitz shows this card to the player: allowed knowledge.
-            RunEvent::WildCardNamed { card, suit } => RunEvent::WildCardNamed { card, suit },
             RunEvent::VoucherRedeemed {
                 card,
                 card_mod,

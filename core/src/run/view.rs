@@ -28,7 +28,7 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    self, Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, discardable_of,
+    Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, discardable_of,
     suit_strength, trump_order_key,
 };
 
@@ -452,12 +452,13 @@ pub struct CardView {
     /// the declaration; modifications without a condition ("Fett") are
     /// left out.
     pub mod_status: BTreeMap<CardModId, CardModStatus>,
-    /// A Wandelkarte of the hand the player may play now: the suits he may
-    /// name ([`RunAction::PlayAs`], [`crate::rules::wild_suits`]). Empty
-    /// otherwise.
-    pub wild_suits: Vec<Suit>,
-    /// The printed suit of a Wandelkarte the player played in this game;
-    /// the card's `kind` has the suit he named.
+    /// A Wandelkarte of the player whose suit is still open: before the
+    /// game starts (the card is its printed card until then, DESIGN 7.2).
+    /// Left out of the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unsettled: bool,
+    /// The printed suit of a Wandelkarte settled as this game started; the
+    /// card's `kind` has its settled suit ([`ActiveGame::named`]).
     pub named: Option<Suit>,
     /// An "Untot" card of the hand that would rise if played now
     /// ([`Run::can_rise`]): it comes back once per game in a suit game or
@@ -854,7 +855,11 @@ impl Run {
             drawn_from: None,
             discardable: false,
             mod_status,
-            wild_suits: Vec::new(),
+            unsettled: card.wild
+                && self
+                    .game
+                    .as_ref()
+                    .is_some_and(|a| a.game.declaration().is_none()),
             named,
             can_rise: false,
         }
@@ -1478,17 +1483,10 @@ impl Run {
         let drawn = game.drawn().filter(|_| phase == TablePhase::Discarding);
         let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
-        let lead = rules::effective_lead(game.current_trick());
         let hand = hand
             .into_iter()
             .map(|card| CardView {
                 legal: legal.contains(&card),
-                wild_suits: match declaration {
-                    Some(d) if card.wild && legal.contains(&card) => {
-                        rules::wild_suits(d.game(), held, lead, card)
-                    }
-                    _ => Vec::new(),
-                },
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
                 discardable: discarding && discardable_of(held, card, discard_count),

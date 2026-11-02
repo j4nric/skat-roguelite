@@ -373,10 +373,11 @@ pub enum Effect {
     /// modifications only, when discarded only.
     TurnInto(CardModId),
     /// Lever Stichgewinn and Bedienpflicht ("Wandelkarte"): in the player's
-    /// hand this card never obliges him to follow suit, and when he plays
-    /// it he names its suit; it is then that card for the trick (see
-    /// [`crate::rules::wild_suits`]). In a defender's hand it is the
-    /// printed card. Card modifications only, passive only.
+    /// hand this card takes a suit when the game starts, the one of which
+    /// he holds the most cards (see [`crate::rules::settled_wild_suit`]),
+    /// and is that card of the same rank until the end of the game. In a
+    /// defender's hand it is the printed card. Card modifications only,
+    /// passive only.
     Wild,
     /// Lever Stichgewinn ("Abgestuft", DESIGN 9.2): a Unter is no Unter
     /// any more but the lowest card of its suit, with no Augen; every other

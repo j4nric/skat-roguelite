@@ -339,10 +339,11 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         i64::from(self.card_points()) - i64::from(self.point_debt())
     }
 
-    /// Whether this card is a "Wandelkarte" in the player's hand: it never
-    /// obliges its holder to follow suit, and when the player plays it he
-    /// names its suit (see [`crate::rules::wild_suits`]). `false` for plain
-    /// cards and for a Wandelkarte held by a defender.
+    /// Whether this card is a "Wandelkarte" of the player whose suit is not
+    /// settled yet: until the game starts it is its printed card, then it
+    /// takes the suit [`crate::rules::settled_wild_suit`] of the hand
+    /// ([`Self::settle_wild`]). `false` for plain cards, for a Wandelkarte
+    /// held by a defender and for one already settled.
     fn wild(self) -> bool {
         false
     }
@@ -366,6 +367,14 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
     /// kept ("Kreide", "Wandelkarte"). A blank stays a blank.
     #[must_use]
     fn with_suit(self, suit: Suit) -> Self;
+
+    /// The Wandelkarte settled into `suit` at the start of the game: the
+    /// card of that suit with the same rank ([`Self::with_suit`]), no
+    /// longer [`Self::wild`].
+    #[must_use]
+    fn settle_wild(self, suit: Suit) -> Self {
+        self.with_suit(suit)
+    }
 
     /// The printed card, `None` for a blank.
     fn face(self) -> Option<Card> {
