@@ -89,7 +89,7 @@ export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Gran
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
-export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Won' | 'Lost';
+export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Route' | 'Won' | 'Lost';
 /**
  * Phase of the game, in the order of the Skatordnung: ten cards (hand game or
  * pick up the skat), twelve cards (discard two), the Ansage after the skat,
@@ -432,7 +432,9 @@ export type Source =
   | { Encounter: string }
   | { Consumable: string }
   /** The own rule of the character ("Der Grandspieler"). */
-  | { Character: Character };
+  | { Character: Character }
+  /** The malus of a Spelunke (ADR 0016). */
+  | { Malus: string };
 
 export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider' | 'LossFactor';
 
@@ -537,6 +539,8 @@ export interface RunStats {
   /** Einmischen in the run. */
   redeals: number;
   series_won: number;
+  /** Pubs lost (each cost a life, ADR 0016). */
+  pubs_lost?: number;
   best_game: number;
 }
 
@@ -553,6 +557,13 @@ export type EncounterChoice =
   | 'MarkChosenCard'
   | { SwapRelic: { index: number; relic: string; new?: string | null } }
   | { DoubleNextGame: number }
+  /** Rast (ADR 0016): lives back. */
+  | { Heal: number }
+  /** Werkstatt: every modification off a chosen card. */
+  | 'CleanseChosenCard'
+  /** Loot of a Spelunke: the relic into a free slot, or Groschen instead. */
+  | { TakeRelic: string }
+  | { TakeCoins: number }
   | 'Leave';
 
 export interface EncounterOptionView {
@@ -593,10 +604,12 @@ export interface RunView {
   upcoming_boss: BossInfo | null;
   next_series: NextSeriesView | null;
   deal_odds: DealOdds;
-  /** Sections of this run: 5, or 3 for a short evening. */
+  /** Districts (Stadtteile) of this run. */
   sections: number;
-  /** Ganzer or kurzer Abend (DESIGN 5.3). */
+  /** Always the ganzer Abend since ADR 0016. */
   length: RunLength;
+  /** The Kneipentour: lives, the city, the route choice (ADR 0016). */
+  tour: TourView;
   /** Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game. */
   stake: number;
   /** Augen a suit game or Grand needs in this run before relics: 61 + stake. */
@@ -621,6 +634,91 @@ export interface RunView {
   /** The player's edition of the 32 cards (ADR 0015). */
   edition: DeckCard[];
   stats: RunStats;
+}
+
+// ---------------------------------------------------------------------------
+// Kneipentour (ADR 0016)
+// ---------------------------------------------------------------------------
+
+/** How the player goes to the next pub; flavour only, every way is alike. */
+export type Transport = 'Walk' | 'Train' | 'Bike';
+/** The kind of a stop on the way. */
+export type StopCategory = 'Tresen' | 'Event' | 'Upgrade' | 'Rest';
+export type PubState = 'Won' | 'Lost' | 'Current' | 'Ahead' | 'Skipped';
+
+export interface MalusInfo {
+  id: string;
+  name: string;
+  text: string;
+}
+
+/** A pub before or while it is played. */
+export interface PubPreview {
+  /** Stable node id: `d0-p3`, a Spelunke `d0-p3-s`. */
+  id: string;
+  section: number;
+  index: number;
+  name: string;
+  district: string;
+  target: number;
+  game_limit: number;
+  is_boss: boolean;
+  boss: BossInfo | null;
+  guests: GuestInfo[];
+  /** The malus of a Spelunke. */
+  malus: MalusInfo | null;
+}
+
+export interface RouteOptionView {
+  /** Stable node id of the way (`d0-p3-r1`). */
+  id: string;
+  index: number;
+  transport: Transport;
+  /** Decorative travel time. */
+  minutes: number;
+  can_choose: boolean;
+  stops: { category: StopCategory }[];
+  /** The Spelunke it leads into instead of the next pub. */
+  spelunke: PubPreview | null;
+}
+
+export interface RouteView {
+  next: PubPreview;
+  options: RouteOptionView[];
+}
+
+export interface PubNode {
+  id: string;
+  index: number;
+  name: string;
+  is_boss: boolean;
+  state: PubState;
+}
+
+export interface SpelunkeNode {
+  id: string;
+  index: number;
+  name: string;
+  state: PubState;
+}
+
+export interface DistrictView {
+  index: number;
+  name: string;
+  boss: BossInfo | null;
+  map_seed: number;
+  pubs: PubNode[];
+  spelunken: SpelunkeNode[];
+}
+
+export interface TourView {
+  lives: number;
+  max_lives: number;
+  map_seed: number;
+  districts: DistrictView[];
+  current: PubPreview | null;
+  route: RouteView | null;
+  trip: { transport: Transport; stops_left: number; spelunke: boolean } | null;
 }
 
 export interface Payout {
@@ -677,7 +775,13 @@ export type RunEvent =
   | 'EveningRulesEnded'
   | { RunWon: { character: Character; length?: RunLength; stake?: number } }
   | { BossAnnounced: { section: number; boss: string } }
-  | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; redeals: number; boss: string | null } }
+  | { SeriesStarted: { section: number; index: number; target: number; game_limit: number; redeals: number; boss: string | null; malus?: string } }
+  /** Kneipentour (ADR 0016). */
+  | { RouteOpened: { section: number; index: number } }
+  | { RouteChosen: { option: number; transport: Transport; spelunke: boolean } }
+  | { PubLost: { section: number; index: number; boss: string | null } }
+  | { LivesChanged: { change: number; lives: number } }
+  | { RelicGained: { relic: string } }
   | { GameDealt: { number: number; forehand: Seat } }
   | { Game: GameEvent }
   | { Kontra: { seat: Seat } }
@@ -735,7 +839,8 @@ export type RunAction =
   | { SellConsumable: number }
   | { TakeFromSkat: { give: number; take: number | null } }
   | 'SettleGame'
-  | { ChooseEncounter: { option: number; target: number | null } };
+  | { ChooseEncounter: { option: number; target: number | null } }
+  | { ChooseRoute: number };
 
 export interface Step {
   events: RunEvent[];
@@ -794,6 +899,7 @@ export interface Catalog {
   characters: Record<string, CatalogEntry>;
   encounters: Record<string, CatalogEntry>;
   unlocks: Record<string, CatalogEntry>;
+  maluses: Record<string, CatalogEntry>;
 }
 
 // ---------------------------------------------------------------------------

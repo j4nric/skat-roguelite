@@ -38,6 +38,7 @@ export function sourceName(source: Source, deck: DeckCard[]): string {
   if ('Encounter' in source) return contentName('encounters', source.Encounter);
   if ('Consumable' in source) return contentName('consumables', source.Consumable);
   if ('Character' in source) return contentName('characters', source.Character);
+  if ('Malus' in source) return contentName('maluses', source.Malus);
   const card = deck.find((c) => c.id === source.CardMod.card);
   return t(de.score.cardMod, {
     mod: contentName('card_mods', source.CardMod.card_mod),
@@ -52,6 +53,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if ('Encounter' in source) return `<span class="step-icon">${portrait(encounterFaces(source.Encounter)[0] ?? 'p-wirt', 'portrait-xs')}</span>`;
   if ('Consumable' in source) return `<span class="step-icon">${consumableCoaster(consumableLook(source.Consumable), { size: 22 })}</span>`;
   if ('Character' in source) return `<span class="step-icon">${portrait(characterPortraitId(source.Character), 'portrait-xs')}</span>`;
+  if ('Malus' in source) return `<span class="step-icon icon-kontra">!</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`

@@ -40,7 +40,6 @@ import {
   clearRun,
   loadCharacter,
   loadHistory,
-  loadLength,
   loadMeta,
   loadRun,
   loadRunInfo,
@@ -56,6 +55,7 @@ import {
 import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
+import { renderRoute } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
 import { infoModel } from './ui/info';
@@ -113,7 +113,7 @@ function errorText(err: unknown): string {
 /** One line about a saved run: who plays, where, the account. */
 function runLine(view: RunView): string {
   const character = contentName('characters', view.character.character);
-  const line = view.phase === 'Encounter'
+  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop'
     ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
     : t(de.start.resumeInfo, {
         character,
@@ -212,7 +212,8 @@ export class App {
       const stored = loadCharacter();
       return isCharacter(stored) ? stored : 'Declarer';
     })(),
-    pickLength: loadLength() === 'Short' ? 'Short' : 'Full',
+    // The short evening is dropped (ADR 0016): always the whole evening.
+    pickLength: 'Full',
     pickStake: null,
     overlay: null,
     message: null,
@@ -410,7 +411,7 @@ export class App {
     if (ui.screen === 'start' || ui.screen === 'end') return 'table';
     if (ui.screen !== 'run' || !ui.view) return null;
     const view = ui.view;
-    if ((view.phase === 'Shop' || view.phase === 'Encounter') && !ui.anim) return 'shop';
+    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route') && !ui.anim) return 'shop';
     return view.series.is_boss ? 'boss' : 'table';
   }
 
@@ -481,7 +482,9 @@ export class App {
     this.startRun(start);
   }
 
-  private startRun({ seed, character, length, stake, daily }: PendingStart): void {
+  private startRun({ seed, character, length: _asked, stake, daily }: PendingStart): void {
+    // Since ADR 0016 every run is the whole evening, also from old `-kurz` links.
+    const length: RunLength = 'Full';
     let core: CoreRun;
     let startEvents = '[]';
     try {
@@ -1132,6 +1135,18 @@ export class App {
           after,
           won ? { payout: won.SeriesWon.payout, coins: won.SeriesWon.coins } : null,
         );
+        continue;
+      }
+      if ('LivesChanged' in ev) {
+        const { change, lives } = ev.LivesChanged;
+        const lostPub = events.find((e): e is Extract<RunEvent, { PubLost: unknown }> => typeof e === 'object' && 'PubLost' in e);
+        if (change < 0) {
+          const why = lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
+          this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
+          sound.play('lose');
+        } else {
+          this.showToast(t(de.lives.gained, { lives }), 'top');
+        }
         continue;
       }
       if ('SeriesStarted' in ev && ev.SeriesStarted.boss && after.series.boss) {
@@ -2007,6 +2022,9 @@ export class App {
       case 'oma-give':
         void this.act({ TakeFromSkat: { give: num('id'), take: this.ui.swapTake } });
         return;
+      case 'choose-route':
+        void this.act({ ChooseRoute: num('option') });
+        return;
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
@@ -2416,8 +2434,9 @@ export class App {
         if (!view) break;
         const inShop = view.phase === 'Shop' && !ui.anim;
         const inEncounter = view.phase === 'Encounter' && !ui.anim;
-        const main = inShop ? renderShop(view) : inEncounter ? renderEncounter(view) : renderTable(view, ui);
-        const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : 'is-table';
+        const inRoute = view.phase === 'Route' && !ui.anim;
+        const main = inShop ? renderShop(view) : inEncounter ? renderEncounter(view) : inRoute ? renderRoute(view) : renderTable(view, ui);
+        const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
         if (kontra) body += renderKontra(view);

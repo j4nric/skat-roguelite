@@ -149,7 +149,7 @@
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
-// - "Drei drücken" (once per series, "1×/Serie" on its chip, dimmed once
+// - "Drei drücken" (once per pub, "1×/Kneipe" on its chip, dimmed once
 //   used): picking up lays three cards on the table (the skat
 //   and the card drawn from the left Stammgast, tagged with his name),
 //   Drücken waits for three, a card tapped back into the hand and another
@@ -1440,7 +1440,7 @@ async function wave2b(browser, errors, reducedMotion) {
     ['"lead_demands":0', '"lead_demands":1'],
   ]);
   const note = (await page.locator('[data-testid="once-three_discard"]').textContent())?.trim();
-  if (note !== '1×/Serie') fail(`Drei drücken: the chip says "${note}"`);
+  if (note !== '1×/Kneipe') fail(`Drei drücken: the chip says "${note}"`);
   if (await page.locator('.coaster-chip.is-used').count()) fail('Drei drücken: marked used before the skat');
   await shoot(page, 'wave2b-chip');
   await page.click('[data-action="pick-up-skat"]');
@@ -1452,7 +1452,7 @@ async function wave2b(browser, errors, reducedMotion) {
   const drawnTag = ((await page.locator(`${zone} .skat-tag.is-drawn`).textContent()) ?? '').trim();
   if (!drawnTag.startsWith('von ')) fail(`Drei drücken: the drawn card is tagged "${drawnTag}"`);
   const label = ((await page.locator(`${zone} .skat-zone-label`).textContent()) ?? '').trim();
-  if (label !== 'Drei drücken (1×/Serie) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
+  if (label !== 'Drei drücken (1×/Kneipe) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
   // Its toast stands above the Stammgäste, never over the cards on the table.
   const toast = await page
     .waitForSelector('.toast-layer.is-top .toast', { timeout: 3000 })
@@ -1461,7 +1461,7 @@ async function wave2b(browser, errors, reducedMotion) {
   const table = await page.locator(zone).boundingBox();
   if (!toast) fail('Drei drücken: no toast above the Stammgäste');
   if (toast.y + toast.height > table.y) fail(`Drei drücken: the toast (bottom ${Math.round(toast.y + toast.height)}) covers the table zone (top ${Math.round(table.y)})`);
-  if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1×/Serie" as used');
+  if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1×/Kneipe" as used');
   if (await page.locator('[data-action="discard"]').isDisabled()) fail('Drei drücken: Drücken not possible with three on the table');
   await shoot(page, 'wave2b-three-discard');
   await assertFits(page, 'Drei drücken', [PHONE, { width: 375, height: 667 }, DESKTOP]);
@@ -1879,6 +1879,11 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="unlock-new"]');
   if (await page.locator('[data-testid="hint"]').count()) fail('a hint over the unlock dialog');
   await page.click('.sheet-unlock [data-action="close-overlay"]');
+  // Kneipentour: the route choice comes first, with its own hint.
+  log(`hint route: ${await expectHint(page, 'route')}`);
+  await shoot(page, 'hint-route');
+  await dismissHint(page, 'route');
+  await page.locator('[data-testid="route-option"][data-category="Tresen"]').first().click();
   log(`hint shop: ${await expectHint(page, 'shop')}`);
   const seenValue = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.hints') ?? '[]'));
   if (!seenValue.includes('value')) fail('the value hint, left alone, did not count as seen once the game was over');
@@ -1961,85 +1966,45 @@ async function hudSection(page) {
   return ((await page.locator('.hud .hud-where-sub').first().textContent()) ?? '').replace(/\s+/g, ' ').trim();
 }
 
-/** M7: the short evening (kurzer Abend) from the start screen and from a link. */
+/**
+ * The short evening is dropped (ADR 0016): no length choice on the start
+ * screen, the start button fits; an old `-kurz` link is offered and played
+ * as the whole evening (three districts in the HUD).
+ */
 async function shortEvening(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
   const page = await context.newPage();
   watch(page, errors);
   await page.goto(base);
-  await page.waitForSelector('[data-testid="run-length"]');
-  const picked = await page.locator('[data-action="pick-length"][aria-pressed="true"]').getAttribute('data-length');
-  if (picked !== 'Full') fail(`a new player starts with ${picked} picked, expected the full evening`);
-  const labels = ((await page.locator('[data-testid="run-length"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  if (!labels.includes('Ganzer Abend') || !labels.includes('Kurzer Abend') || !labels.includes('3 Abschnitte')) fail(`length choice reads "${labels}"`);
-  // The choice and the start button are visible without scrolling.
+  await page.waitForSelector('[data-action="new-run"]');
+  if (await page.locator('[data-testid="run-length"]').count()) fail('the start screen still offers a run length');
   for (const size of [PHONE, { width: 375, height: 667 }]) {
     await page.setViewportSize(size);
     await page.waitForTimeout(100);
-    const r = await page.evaluate(() => {
-      const bottom = (sel) => document.querySelector(sel)?.getBoundingClientRect().bottom ?? Infinity;
-      const screen = document.querySelector('.screen');
-      return {
-        inner: window.innerHeight,
-        scrolled: (screen?.scrollTop ?? 0) + (document.scrollingElement?.scrollTop ?? 0),
-        choice: bottom('[data-testid="run-length"]'),
-        start: bottom('[data-action="new-run"]'),
-      };
-    });
-    const where = `start screen at ${size.width}x${size.height}`;
-    if (r.scrolled) fail(`${where}: scrolled by ${r.scrolled}px on load`);
-    if (r.choice > r.inner) fail(`${where}: the length choice ends at ${Math.round(r.choice)}, below ${r.inner}`);
-    if (r.start > r.inner) fail(`${where}: the start button ends at ${Math.round(r.start)}, below ${r.inner}`);
+    const r = await page.evaluate(() => ({
+      inner: window.innerHeight,
+      start: document.querySelector('[data-action="new-run"]')?.getBoundingClientRect().bottom ?? Infinity,
+    }));
+    if (r.start > r.inner) fail(`start screen at ${size.width}x${size.height}: the start button ends at ${Math.round(r.start)}, below ${r.inner}`);
   }
   await page.setViewportSize(PHONE);
-  log('start screen: length choice and start button fit 390x844 and 375x667');
-  await page.click('[data-action="pick-length"][data-length="Short"]');
-  await page.waitForSelector('[data-action="pick-length"][data-length="Short"][aria-pressed="true"]');
-  const stored = await page.evaluate(() => localStorage.getItem('stammtisch.length'));
-  if (stored !== 'Short') fail(`length pick not stored: ${stored}`);
-  await shoot(page, 'start-short');
-
-  // A short evening: three sections in the HUD, the link carries it.
-  await page.fill('#seed', '4343');
-  await page.click('[data-action="new-run"]');
-  await page.waitForSelector('.declare');
-  const hud = await hudSection(page);
-  if (!hud.includes('Abschnitt 1/3')) fail(`HUD of a short evening reads "${hud}"`);
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.length);
-  if (saved !== 'Short') fail(`saved run has length ${saved}`);
-  await shoot(page, 'short-table');
-  const link = await menuLink(page);
-  if (!link.endsWith('#seed-4343-alleinspieler-kurz')) fail(`link of a short evening is ${link}`);
-  log(`short evening: HUD "${hud}", link ${link}`);
   await context.close();
-
-  // The link in a fresh browser: offered and played as a short evening.
   const other = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page2 = await other.newPage();
   watch(page2, errors);
-  await page2.goto(`${base}#seed-4343-alleinspieler-kurz`);
-  await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4343"][data-length="Short"]');
-  const offer = ((await page2.locator('[data-testid="shared-seed"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  if (!offer.includes('kurzer Abend')) fail(`the offer of a short link does not say so: ${offer}`);
-  await shoot(page2, 'shared-short');
-  await page2.click('[data-action="play-shared"]');
-  await page2.waitForSelector('.declare');
-  const hud2 = await hudSection(page2);
-  if (!hud2.includes('Abschnitt 1/3')) fail(`HUD of the shared short evening reads "${hud2}"`);
-  if ((await menuSeed(page2)) !== '4343') fail('the shared short evening has another seed');
-  await page2.click('.sheet [data-action="to-start"]');
-  await page2.waitForSelector('[data-action="resume"]');
-  // An old link without the length is a full evening, whatever is picked.
+  await page2.goto(base);
   await page2.evaluate(() => localStorage.setItem('stammtisch.length', 'Short'));
-  await page2.goto(`${base}#seed-4242-alleinspieler`);
-  await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4242"][data-length="Full"]');
+  await page2.goto(`${base}#seed-4343-alleinspieler-kurz`);
+  await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4343"]');
+  const offer = ((await page2.locator('[data-testid="shared-seed"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!offer.includes('ganzen Abend')) fail(`the offer of an old short link does not say it plays the whole evening: ${offer}`);
   await page2.click('[data-action="play-shared"]');
-  await page2.click('.sheet-confirm [data-action="confirm-new"]');
   await page2.waitForSelector('.declare');
-  const hud3 = await hudSection(page2);
-  if (!hud3.includes('Abschnitt 1/5')) fail(`HUD of an old link reads "${hud3}"`);
-  log('shared short link replays as a short evening, an old link as a full one');
+  const hud = await hudSection(page2);
+  if (!hud.includes('Stadtteil 1/3')) fail(`HUD of an old short link reads "${hud}"`);
+  const saved = await page2.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.length);
+  if (saved !== 'Full') fail(`saved run has length ${saved}`);
+  log(`short evening dropped: no length choice, an old short link plays the whole evening ("${hud}")`);
   await other.close();
 }
 
@@ -2320,6 +2285,10 @@ async function voucherPass(browser, errors) {
   await page.waitForSelector('[data-testid="shop"]');
   await page.click('[data-action="leave-shop"]');
   await page.click('[data-action="boss-go"]');
+  // Reaching the boss pub earns "Vor dem Boss" with a fresh meta state.
+  if (await page.waitForSelector('.sheet-unlock', { timeout: 3000 }).catch(() => null)) {
+    await page.click('.sheet-unlock [data-action="close-overlay"]');
+  }
   await page.waitForSelector('[data-action="pick-up-skat"]');
   for (const id of [17, 18]) if (!(await page.locator(`.hand-card[data-id="${id}"] path[fill="#bfe3d6"]`).count())) fail(`Gutschein: card ${id} shows no stamp margin in the hand`);
   await page.click('[data-action="pick-up-skat"]');
@@ -2557,6 +2526,34 @@ async function wave3(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/**
+ * The route choice (Kneipentour, ADR 0016): the screen with hearts, the
+ * next pub (name, target, guests) and three ways with one stop each, a
+ * Tresen among them; fits the phone and the desktop without side scroll.
+ */
+async function routePass(page, label) {
+  await page.waitForSelector('[data-testid="route"]');
+  const options = page.locator('[data-testid="route-option"]');
+  if ((await options.count()) !== 3) fail(`${label}: ${await options.count()} ways, expected 3`);
+  const categories = await options.evaluateAll((els) => els.map((e) => e.getAttribute('data-category')));
+  if (!categories.includes('Tresen')) fail(`${label}: no way over the Tresen: ${categories}`);
+  const transports = await options.evaluateAll((els) => els.map((e) => e.getAttribute('data-transport')).join(','));
+  if (transports !== 'Walk,Train,Bike') fail(`${label}: ways ${transports}`);
+  const next = ((await page.locator('[data-testid="route-next"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!/Ziel \d+ Augen in 3 Spielen/.test(next) || !next.includes('Am Tisch:')) fail(`${label}: next pub ${next}`);
+  const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
+  if (!/^d\d-p\d$/.test(node ?? '')) fail(`${label}: node id ${node}`);
+  if ((await page.locator('.route .heart').count()) < 3) fail(`${label}: no hearts on the route screen`);
+  log(`${label}: ${categories.join(' / ')}, next ${next.slice(0, 80)}`);
+  await shoot(page, 'route');
+  await assertNoSideScroll(page, label, '.route');
+  const original = page.viewportSize();
+  await page.setViewportSize(DESKTOP);
+  await page.waitForTimeout(150);
+  await shoot(page, 'route-desktop');
+  await page.setViewportSize(original);
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -2626,11 +2623,19 @@ async function run() {
     await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
     if (reducedMotion === 'reduce') {
-      // Reduced motion: the cards are there at once, nothing flies in.
-      const flying = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.hand, .skat-pile')).length);
+      // Reduced motion: the cards are there at once, nothing flies in (a
+      // transition of 1 ms is the reduced-motion stand-in, not a flight).
+      const anims = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.hand, .skat-pile') && Number(a.effect?.getTiming?.().duration) > 1).map((a) => `${a.animationName ?? a.constructor.name} ${a.effect?.target?.getAttribute?.('class')} ${a.effect?.getTiming?.().duration}`));
+      const flying = anims.length;
+      if (flying) console.log('[smoke] debug anims', anims.join(' | '));
       if (flying) fail(`${flying} cards fly in although reduced motion is asked for`);
     }
     const seated = await assertGuests(page, 'first series');
+    const progress = await text(page, 'pub-progress');
+    if (!/Spiel 1 von 3 · 0 \/ \d+ Augen/.test(progress)) fail(`pub progress in the head: ${progress}`);
+    const hearts = await page.locator('[data-testid="lives"] .heart.is-full').count();
+    if (hearts !== 3) fail(`${hearts} hearts in the head, expected 3`);
+    log(`head: ${progress}, ${hearts} hearts`);
     if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
     await assertChoice(page, seated);
     await shoot(page, 'table-declare');
@@ -2769,6 +2774,12 @@ async function run() {
     const accountAfter = await text(page, 'account');
     if (accountAfter === accountBefore) fail(`account unchanged: ${accountAfter}`);
     log(`account ${accountBefore} -> ${accountAfter}`);
+
+    // Kneipentour (ADR 0016): the pub was won in its first game, so the
+    // route choice to the next pub opens: lives as hearts, the next pub
+    // with name, target and guests, three ways each with its stop.
+    await routePass(page, 'first route');
+    await page.locator('[data-testid="route-option"][data-category="Tresen"]').first().click();
 
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
