@@ -62,10 +62,10 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, finishAll, flip, flyIn, motionOn, pulse, setTempo, sweepAway } from './ui/fx';
+import { deal, finishAll, finishOn, flip, flyIn, motionOn, noteFlights, pulse, resumeFlights, setTempo, springBack, sweepAway, throwCard } from './ui/fx';
 import { backDesign } from './ui/backs';
 import { cardBack, cardSvg, modValueText } from './ui/cards';
-import { watchDrags } from './ui/drag';
+import { watchDrags, type Fling } from './ui/drag';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
@@ -137,7 +137,7 @@ const QUIP_EVERY_TRICKS = 14;
 
 /** Pauses in milliseconds at tempo "Normal"; reduced motion shortens them. */
 const DELAY = {
-  ownCard: 260,
+  ownCard: 340,
   aiCard: 560,
   trickShow: 650,
   trickFly: 480,
@@ -148,6 +148,12 @@ const DELAY = {
   /** Relics and modifications that fired, before the score board covers them. */
   trigger: 650,
 };
+
+/** A flick upwards this fast (px per ms) throws a card even if let go over the hand. */
+const FLICK_UP = 0.9;
+
+/** The cards of the open trick, whose flights survive a re-render. */
+const FLYING = '.trick:not(.is-last) .trick-card';
 
 /** How long the cards slide away before a settled game is scored. */
 const SETTLE_MS = 260;
@@ -251,6 +257,8 @@ export class App {
   private afterRender: (() => void)[] = [];
   /** Where the card the player just tapped was. */
   private playedFrom: DOMRect | null = null;
+  /** How the player's card was thrown (drag and flick), for its flight. */
+  private thrown: Fling | null = null;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
@@ -274,7 +282,7 @@ export class App {
     });
     // Drag cards between hand and table, the deck into the middle.
     watchDrags(root, {
-      drop: (el, zone, over, at) => this.onDrop(el, zone, over, at),
+      drop: (el, zone, over, at, fling) => this.onDrop(el, zone, over, at, fling),
       blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet',
     });
     // No text selection on the table: a long-press opens the info card and
@@ -884,6 +892,7 @@ export class App {
         this.ui.anim = null;
         this.ui.view = view;
         this.playedFrom = null;
+        this.thrown = null;
         previous = view;
         step = null;
       }
@@ -893,6 +902,7 @@ export class App {
       this.ui.thinking = null;
       if (view) this.ui.view = view;
       this.playedFrom = null;
+      this.thrown = null;
       this.resetTableChoices();
       if (view && (view.phase === 'Won' || view.phase === 'Lost')) {
         this.ui.ended = { won: view.phase === 'Won', view };
@@ -1153,10 +1163,8 @@ export class App {
       anim.status = '';
       this.render();
       const el = this.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
-      if (el && from && !this.fastForward) flyIn(el, from, { ms: seat === 0 ? 220 : 300, rotate: seat === 1 ? -20 : seat === 2 ? 20 : 0 });
-      // An opponent's card turns over from his own back on the way (ADR 0015).
       const played = anim.trick[anim.trick.length - 1]?.card;
-      if (seat !== 0 && el instanceof HTMLElement && !this.fastForward && played?.back) flip(el, cardBack('', backDesign(played.back)), { ms: 300 });
+      if (el instanceof HTMLElement && from && !this.fastForward) this.throwOnto(el, seat, from, played?.back ?? null);
       sound.play('card', { rate: 0.94 + seat * 0.05 });
       await this.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;
@@ -1182,6 +1190,8 @@ export class App {
       if (rising) await this.riseCard(rising, after);
       const target = this.sweepTarget(trick.winner);
       const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
+      // A card still sliding onto its place lies there now.
+      finishOn(cards);
       sound.play('trick');
       if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly), this.pause(DELAY.trickFly + 200)]);
       anim.trick = [];
@@ -2085,19 +2095,9 @@ export class App {
         if (suit) void this.act({ DemandLead: suit });
         return;
       }
-      case 'play': {
-        this.playedFrom = el.getBoundingClientRect();
-        const id = num('id');
-        // "Wandelkarte": the suit is named first (the core says which).
-        const wild = view.game?.hand.find((c) => c.id === id && (c.wild_suits?.length ?? 0) > 0);
-        if (wild) {
-          this.ui.overlay = { kind: 'wild', card: id };
-          this.render();
-          return;
-        }
-        void this.act({ Play: id });
+      case 'play':
+        this.playCard(num('id'), el.getBoundingClientRect(), null);
         return;
-      }
       case 'wild-suit': {
         const o = this.ui.overlay;
         const suit = el.dataset.suit as Suit | undefined;
@@ -2247,10 +2247,14 @@ export class App {
    * card's place. Only which two lie there is decided here; the core checks
    * the pair on Drücken.
    */
-  private onDrop(el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null): void {
+  private onDrop(el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null, fling: Fling): void {
     if (this.ui.busy || !this.ui.view?.game) return;
     const kind = el.dataset.drag;
     const where = zone?.dataset.drop;
+    if (kind === 'play') {
+      this.onThrow(el, where === 'table', at, fling);
+      return;
+    }
     if (kind === 'deck') {
       if (where === 'mix' && this.ui.view.game.declare?.can_redeal) {
         this.ui.mixArmed = false;
@@ -2275,6 +2279,95 @@ export class App {
     if (sel.includes(target)) this.moveCards(sel.map((x) => (x === target ? id : x)), id, at, target);
     else if (sel.length < need) this.moveCards([...sel, id], id, at);
     else this.moveCards([...sel.slice(1), id], id, at);
+  }
+
+  /**
+   * A hand card thrown while it is the player's turn: it counts when let
+   * go over the felt or flicked hard upwards. Whether the card may be
+   * played the core said (`data-legal` from the view); one that may not
+   * springs back into the hand and shakes. Otherwise it goes back quietly.
+   */
+  private onThrow(el: HTMLElement, overFelt: boolean, at: DOMRect | null, fling: Fling): void {
+    const game = this.ui.view?.game;
+    const upward = fling.vy < -FLICK_UP && Math.abs(fling.vx) < -fling.vy * 1.2;
+    if (!game?.your_turn || !(overFelt || upward)) {
+      springBack(el, at, false);
+      return;
+    }
+    if (el.dataset.legal !== 'true') {
+      springBack(el, at, true);
+      sound.play('card', { volume: 0.35, rate: 0.7 });
+      this.showToast(de.table.notPlayable, 'top');
+      return;
+    }
+    this.playCard(Number(el.dataset.id ?? '-1'), at, fling);
+  }
+
+  /** Play a hand card (tap or throw); "Wandelkarte" first asks for its suit. */
+  private playCard(id: number, from: DOMRect | null, fling: Fling | null): void {
+    this.playedFrom = from;
+    this.thrown = fling;
+    // "Wandelkarte": the suit is named first (the core says which).
+    const wild = this.ui.view?.game?.hand.find((c) => c.id === id && (c.wild_suits?.length ?? 0) > 0);
+    if (wild) {
+      this.ui.overlay = { kind: 'wild', card: id };
+      this.render();
+      return;
+    }
+    void this.act({ Play: id });
+  }
+
+  /**
+   * A card lands on the felt (cosmetic): an opponent's flies in from his
+   * portrait turning over from his back; the player's from the hand, or,
+   * thrown, as far as the flick sent it across the felt. Each comes down a
+   * little askew, lies there for a moment and slides onto its place.
+   */
+  private throwOnto(el: HTMLElement, seat: Seat, from: DOMRect, back: string | null): void {
+    const side = seat === 1 ? -1 : seat === 2 ? 1 : Math.random() < 0.5 ? -1 : 1;
+    if (seat !== 0) {
+      throwCard(el, {
+        from,
+        spin: side * (200 + Math.random() * 220),
+        flightMs: 340,
+        holdMs: 340,
+        settleMs: 260,
+        ...(back ? { back: cardBack('', backDesign(back)) } : {}),
+      });
+      return;
+    }
+    const fling = this.thrown;
+    if (!fling) {
+      throwCard(el, { from, spin: side * (90 + Math.random() * 120), flightMs: 260, holdMs: 320, settleMs: 240 });
+      return;
+    }
+    // Thrown: the faster the flick, the further and quicker it flies.
+    // It comes down on the felt around the trick, never off it.
+    const row = this.rectOf('.trick-row');
+    const felt = row ? new DOMRect(row.left, row.top - 24, row.width, row.height + 36) : null;
+    const speed = Math.min(4, Math.hypot(fling.vx, fling.vy));
+    const sx = from.left + from.width / 2;
+    const sy = from.top + from.height / 2;
+    const reach = Math.min(1, speed / 2.5) * 260;
+    let land = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
+    if (felt) {
+      const card = el.getBoundingClientRect();
+      const mx = card.width / 2;
+      const my = card.height / 2;
+      land = { x: Math.max(felt.left + mx, Math.min(felt.right - mx, land.x)), y: Math.max(felt.top + my, Math.min(felt.bottom - my, land.y)) };
+    }
+    const way = Math.hypot(land.x - sx, land.y - sy);
+    const slot = el.getBoundingClientRect();
+    const home = Math.hypot(slot.left + slot.width / 2 - land.x, slot.top + slot.height / 2 - land.y);
+    throwCard(el, {
+      from,
+      fromRotate: fling.tilt,
+      land,
+      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * (40 + speed * 150),
+      flightMs: Math.max(140, Math.min(440, way / Math.max(0.7, speed))),
+      holdMs: 300,
+      settleMs: Math.max(220, Math.min(520, 200 + home * 0.9)),
+    });
   }
 
   /**
@@ -2336,7 +2429,10 @@ export class App {
     const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
     // The Tresen stays where it was scrolled to after buying or selling.
     const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
+    // Cards flying onto the felt keep flying through the re-render.
+    const flights = noteFlights(this.screenEl, FLYING);
     this.screenEl.innerHTML = body;
+    if (flights.length) resumeFlights(this.screenEl, FLYING, flights);
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
       if (input) input.value = seed;

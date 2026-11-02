@@ -279,3 +279,186 @@ export function countUp(el: HTMLElement, from: number, to: number, ms: number, f
     );
   });
 }
+
+/** How a card is thrown onto the felt (./table.ts places it in its slot). */
+export interface ThrowOpts {
+  /** Where it starts: the hand card, the copy let go, an opponent's portrait. */
+  from: DOMRect;
+  /** Its turn at the start, in degrees (the copy's tilt). */
+  fromRotate?: number;
+  /**
+   * The point (screen) where its centre comes down before it slides onto
+   * its place; default: near the place, a little off.
+   */
+  land?: { x: number; y: number };
+  /** Turns on the way, in degrees (sign = direction). */
+  spin: number;
+  /** Flight, the moment it lies askew, the slide onto its place (ms at tempo Normal). */
+  flightMs: number;
+  holdMs: number;
+  settleMs: number;
+  /** HTML of a back it shows for the first half of the flight (an opponent's card turning over). */
+  back?: string;
+}
+
+/**
+ * Throw a card onto the felt: it flies in from `from`, turning, comes down
+ * a little askew and off its place (or where a flick sent it), lies there
+ * for a moment, then slides straight onto its place. The card stays in
+ * its slot in the DOM all the time; only its transform moves. Cosmetic
+ * only: the jitter comes from Math.random.
+ */
+export function throwCard(el: HTMLElement, o: ThrowOpts): Animation | null {
+  const flight = dur(o.flightMs);
+  if (!flight) return null;
+  const hold = dur(o.holdMs);
+  const settle = dur(o.settleMs);
+  const total = flight + hold + settle;
+  const to = el.getBoundingClientRect();
+  if (!to.width) return null;
+  const b = center(to);
+  const a = center(o.from);
+  const land = o.land ?? { x: b.x + jitter(12), y: b.y + jitter(9) };
+  const lean = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 9);
+  const scale = Math.max(0.3, Math.min(2, o.from.width / to.width));
+  const f1 = flight / total;
+  const f2 = (flight + hold) / total;
+  const at = (x: number, y: number, r: number, s: number): string => `translate(${(x - b.x).toFixed(1)}px, ${(y - b.y).toFixed(1)}px) rotate(${r.toFixed(1)}deg) scale(${s.toFixed(3)})`;
+  const frames: Keyframe[] = [
+    // Fast off the hand, slowing down on the felt.
+    { transform: at(a.x, a.y, lean + (o.fromRotate ?? 0) - o.spin, scale), offset: 0, easing: 'cubic-bezier(.15,.65,.3,1)' },
+    { transform: at(land.x, land.y, lean, 1), offset: f1, easing: 'linear' },
+    { transform: at(land.x, land.y, lean, 1), offset: f2, easing: 'cubic-bezier(.45,0,.25,1)' },
+    { transform: at(b.x, b.y, 0, 1), offset: 1 },
+  ];
+  const anim = track(el.animate(frames, { duration: total, fill: 'backwards' }));
+  anim.id = 'throw';
+  if (o.back) {
+    // Turned over half way: the back narrows to an edge, the face widens.
+    const cover = document.createElement('span');
+    cover.className = 'flip-cover';
+    cover.setAttribute('aria-hidden', 'true');
+    cover.innerHTML = o.back;
+    el.appendChild(cover);
+    const mid = f1 * 0.5;
+    track(
+      el.animate(
+        [
+          { transform: 'scaleX(1)', offset: 0 },
+          { transform: 'scaleX(0.06)', offset: mid },
+          { transform: 'scaleX(1)', offset: f1 },
+          { transform: 'scaleX(1)', offset: 1 },
+        ],
+        { duration: total, composite: 'add' },
+      ),
+    );
+    const hide = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: mid }, { opacity: 0, offset: mid }, { opacity: 0 }], { duration: total, fill: 'both' }));
+    const gone = (): void => cover.remove();
+    hide.finished.then(gone, gone);
+  }
+  return anim;
+}
+
+/**
+ * A card that may not be played goes back: it glides from `from` (where
+ * it was let go) into its place in the hand, then shakes its head.
+ */
+export function springBack(el: HTMLElement, from: DOMRect | null, shake: boolean): void {
+  const back = from ? dur(220) : 0;
+  if (from && back) flyIn(el, from, { ms: 220 });
+  if (!shake || !motionOn()) return;
+  track(
+    el.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-7px)', offset: 0.2 },
+        { transform: 'translateX(6px)', offset: 0.4 },
+        { transform: 'translateX(-4px)', offset: 0.6 },
+        { transform: 'translateX(3px)', offset: 0.8 },
+        { transform: 'translateX(0)' },
+      ],
+      { duration: 300, delay: back, composite: 'add' },
+    ),
+  );
+}
+
+/** Running animations of the cards on the felt, kept across a re-render. */
+export interface FlightSnapshot {
+  id: string;
+  name: string;
+  cover: string | null;
+  anims: { onCover: boolean; frames: Keyframe[]; timing: EffectTiming; composite: CompositeOperation; time: number }[];
+}
+
+/**
+ * The app re-renders the table from scratch while cards still fly or
+ * settle (the next opponent thinks). Before a render, note what runs on
+ * the cards matching `selector` (keyed by `data-card-id`); after it,
+ * `resumeFlights` starts the same animations on the new elements where
+ * they were.
+ */
+export function noteFlights(root: Element, selector: string): FlightSnapshot[] {
+  if (!motionOn()) return [];
+  const out: FlightSnapshot[] = [];
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
+    const id = el.dataset.cardId;
+    const anims = el.getAnimations({ subtree: true }).filter((x) => x.playState === 'running' && x.effect instanceof KeyframeEffect);
+    if (!id || !anims.length) continue;
+    const cover = el.querySelector(':scope > .flip-cover');
+    const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [] };
+    for (const x of anims) {
+      const effect = x.effect as KeyframeEffect;
+      const onCover = effect.target !== el;
+      if (onCover && effect.target !== cover) continue;
+      snap.anims.push({ onCover, frames: effect.getKeyframes(), timing: effect.getTiming(), composite: effect.composite, time: Number(x.currentTime ?? 0) });
+      x.cancel();
+    }
+    out.push(snap);
+  }
+  return out;
+}
+
+/** Continue the animations noted before a render on the new elements. */
+export function resumeFlights(root: Element, selector: string, notes: FlightSnapshot[]): void {
+  for (const n of notes) {
+    const el = Array.from(root.querySelectorAll<HTMLElement>(selector)).find((x) => x.dataset.cardId === n.id);
+    if (!el) continue;
+    let cover: HTMLElement | null = null;
+    if (n.cover !== null) {
+      cover = document.createElement('span');
+      cover.className = 'flip-cover';
+      cover.setAttribute('aria-hidden', 'true');
+      cover.innerHTML = n.cover;
+      el.appendChild(cover);
+    }
+    for (const a of n.anims) {
+      const target = a.onCover ? cover : el;
+      if (!target) continue;
+      const frames = a.frames.map((f) => {
+        const { computedOffset: _c, ...rest } = f as Keyframe & { computedOffset?: number };
+        return rest;
+      });
+      const anim = track(target.animate(frames, { ...(a.timing as KeyframeAnimationOptions), composite: a.composite }));
+      anim.currentTime = a.time;
+      if (!a.onCover && a.composite !== 'add') anim.id = n.name;
+      if (a.onCover && cover) {
+        const c = cover;
+        const gone = (): void => c.remove();
+        anim.finished.then(gone, gone);
+      }
+    }
+  }
+}
+
+/** Jump the animations on these elements (and inside them) to their end. */
+export function finishOn(els: Element[]): void {
+  for (const el of els) {
+    for (const a of el.getAnimations({ subtree: true })) {
+      try {
+        a.finish();
+      } catch {
+        a.cancel();
+      }
+    }
+  }
+}

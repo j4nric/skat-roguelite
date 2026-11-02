@@ -5,6 +5,8 @@
 // towards a place marked `data-swipe` counts as a drop there too (swiping
 // the deck into the middle). A press that does not move further than a few
 // pixels stays a normal tap, so every drag has a tap as its fallback.
+// The speed of the finger at the release goes with the drop (`fling`), so
+// a card thrown onto the table can fly as far as it was flicked.
 //
 // Pure input handling: what a drop means is decided by the app (and what
 // is allowed by the core).
@@ -22,11 +24,19 @@ export interface DragHandlers {
   /**
    * The thing `el` was let go over `zone` (null: nowhere). `over` is the
    * element under the finger inside the zone, for drops onto a card; `at`
-   * where the copy was let go.
+   * where the copy was let go (and how it was turned), `fling` the speed of
+   * the finger at the release in px per ms.
    */
-  drop: (el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null) => void;
+  drop: (el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null, fling: Fling) => void;
   /** Whether dragging is off right now. */
   blocked?: () => boolean;
+}
+
+/** Speed of the finger when it let go, in px per ms; `tilt` the copy's turn in degrees. */
+export interface Fling {
+  vx: number;
+  vy: number;
+  tilt: number;
 }
 
 interface Drag {
@@ -39,6 +49,7 @@ interface Drag {
   trail: { x: number; y: number; t: number }[];
   ghost: HTMLElement | null;
   zone: HTMLElement | null;
+  tilt: number;
 }
 
 function zonesFor(root: HTMLElement, kind: string): HTMLElement[] {
@@ -81,7 +92,7 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
     const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-drag]') : null;
     if (!el || h.blocked?.()) return;
     if (el instanceof HTMLButtonElement && el.disabled) return;
-    drag = { id: e.pointerId, el, kind: el.dataset.drag ?? '', x0: e.clientX, y0: e.clientY, trail: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }], ghost: null, zone: null };
+    drag = { id: e.pointerId, el, kind: el.dataset.drag ?? '', x0: e.clientX, y0: e.clientY, trail: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }], ghost: null, zone: null, tilt: 0 };
   });
 
   window.addEventListener('pointermove', (e) => {
@@ -116,6 +127,7 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
       root.classList.add(`is-dragging-${d.kind}`);
     }
     const tilt = Math.max(-12, Math.min(12, dx / 12));
+    d.tilt = tilt;
     d.ghost.style.transform = `translate(${dx}px, ${dy}px) rotate(${tilt}deg) scale(1.06)`;
     mark(zoneAt(d.kind, e.clientX, e.clientY, d.el));
   });
@@ -136,7 +148,10 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
     const over = zone ? document.elementsFromPoint(e.clientX, e.clientY).find((x) => x !== d.ghost && zone?.contains(x) && x !== zone) ?? null : null;
     const el = d.el;
     const ghost = d.ghost;
-    const at = ghost.getBoundingClientRect();
+    // The copy's box without its turn and lift: where the card itself is.
+    const r0 = d.el.getBoundingClientRect();
+    const at = new DOMRect(r0.left + e.clientX - d.x0, r0.top + e.clientY - d.y0, r0.width, r0.height);
+    const fling = speedOf(d, e);
     if (zone?.hasAttribute('data-swipe') && motionOn()) {
       // The deck lands in the middle, then goes (the new deal follows).
       d.ghost = null;
@@ -150,10 +165,20 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
       anim.finished.then(gone, gone);
     }
     end();
-    if (e.type === 'pointerup') h.drop(el, zone, over, at);
+    if (e.type === 'pointerup') h.drop(el, zone, over, at, fling);
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
+
+  /** The finger's speed over its last few positions (the release included). */
+  function speedOf(d: Drag, e: PointerEvent): Fling {
+    // Only the last 120 ms count: a drag that stopped before the release is no throw.
+    const recent = d.trail.filter((p) => e.timeStamp - p.t <= 120);
+    const first = recent[0];
+    if (!first) return { vx: 0, vy: 0, tilt: d.tilt };
+    const dt = Math.max(8, e.timeStamp - first.t);
+    return { vx: (e.clientX - first.x) / dt, vy: (e.clientY - first.y) / dt, tilt: d.tilt };
+  }
 
   /** A flick: fast enough and pointing at a place that takes swipes. */
   function flickTarget(d: Drag, e: PointerEvent): HTMLElement | null {

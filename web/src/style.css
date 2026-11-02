@@ -1302,6 +1302,8 @@ button.card {
 
 .center {
   position: relative;
+  /* Cards thrown from the hand fly above it. */
+  z-index: 2;
   display: flex;
   flex: 1 1 0;
   min-height: 0;
@@ -1380,12 +1382,16 @@ button.card {
   white-space: nowrap;
 }
 
-/* The felt: pressed skat | trick | "Letzter Stich". The sides take only
-   what the trick leaves, so the trick stays in the middle. */
+/* The felt: "Letzter Stich" | trick | pressed skat. The sides take only
+   what the trick leaves, so the trick stays in the middle; their things
+   sit in the bottom corners. */
 .trick-row {
   /* The trick cards take what the middle leaves after the score line and
-     the count: never more than --trick-h, smaller when the table is full. */
-  --th: clamp(36px, min(var(--trick-h), 100cqh - 64px), 200px);
+     the count: never more than --trick-h, smaller when the table is full.
+     The triangle is 1.6 cards high. */
+  --th: clamp(36px, min(var(--trick-h), (100cqh - 64px) / 1.6), 200px);
+  --w0: calc(var(--th) * 2 / 3);
+  --tw: min(var(--w0), var(--w0) - mod(var(--w0), var(--art-step)) + max(0px, mod(var(--w0), var(--art-step)) - 8px) * 1000);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: end;
@@ -1399,37 +1405,65 @@ button.card {
   align-items: flex-end;
 }
 
-/* Both sides hug the trick (on a wide table too). */
+/* The corners: the button on the left edge, the pressed skat on the right. */
 .trick-side.is-left {
+  justify-content: flex-start;
+}
+
+.trick-side.is-right {
   justify-content: flex-end;
 }
 
+/* The trick as a triangle pointing at the player: left regular top left,
+   right regular top right, the player's card bottom centre, between them
+   and lower, so that no card hides a corner index of another. */
 .trick {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 14px;
+  position: relative;
+  width: calc(var(--tw) * 2.9);
+  height: calc(var(--tw) * 2.4);
   cursor: pointer;
 }
 
 .slot {
-  --w0: calc(var(--th) * 2 / 3);
-  --tw: min(var(--w0), var(--w0) - mod(var(--w0), var(--art-step)) + max(0px, mod(var(--w0), var(--art-step)) - 8px) * 1000);
+  position: absolute;
+  z-index: var(--z, 1);
   width: var(--tw);
   height: calc(var(--tw) * 1.5);
 }
 
-/* The two pressed cards, fanned downwards: both corner indexes show.
-   A little taller than the trick when the middle has room (never more
-   than the room the trick itself may take), never wider than the side. */
+.slot-1 {
+  left: 0;
+  top: 0;
+}
+
+.slot-2 {
+  right: 0;
+  top: 0;
+}
+
+.slot-0 {
+  left: calc(50% - var(--tw) / 2);
+  bottom: 0;
+}
+
+/* The pressed skat: a small stack of backs, a tap shows the cards. The
+   button is a full touch target around the little stack. */
 .pressed-stack {
-  --pw: clamp(22px, calc((min(var(--th) * 1.3, 100cqh - 64px) - 16px) / 2.1), 48px);
-  display: flex;
-  width: var(--pw);
-  max-width: 100%;
+  --pw: clamp(24px, calc(var(--tw) * 0.5), 38px);
+  display: inline-flex;
+  min-width: var(--touch);
+  min-height: var(--touch);
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .pressed-label {
@@ -1444,15 +1478,16 @@ button.card {
 .pressed-cards {
   position: relative;
   display: block;
-  width: 100%;
-  aspect-ratio: 1 / 2.1;
+  width: calc(var(--pw) + (var(--n, 2) - 1) * 5px);
+  height: calc(var(--pw) * 1.5 + (var(--n, 2) - 1) * 2px);
 }
 
 .pressed-card {
   position: absolute;
-  left: 0;
+  left: calc(var(--i, 0) * 5px);
+  top: calc((var(--n, 2) - 1 - var(--i, 0)) * 2px);
   display: block;
-  width: 100%;
+  width: var(--pw);
   aspect-ratio: 2 / 3;
   padding: 0;
   border: 0;
@@ -1462,14 +1497,12 @@ button.card {
   cursor: pointer;
 }
 
-.pressed-card:first-child {
-  top: 0;
-  transform: rotate(-4deg);
+.pressed-card:nth-child(odd) {
+  transform: rotate(-3deg);
 }
 
-.pressed-card:last-child {
-  bottom: 0;
-  transform: rotate(3deg);
+.pressed-card:nth-child(even) {
+  transform: rotate(4deg);
 }
 
 .pressed-card .card-svg {
@@ -1477,16 +1510,25 @@ button.card {
   height: 100%;
 }
 
-/* "Spickzettel": the skat card nobody showed stays face down. */
-.pressed-card.is-back {
-  cursor: default;
-}
-
 .pressed-card.is-back .card-back,
 .pressed-card.is-back svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.pressed-stack:hover .pressed-label,
+.pressed-stack:focus-visible .pressed-label {
+  color: var(--text);
+}
+
+/* "Spickzettel": the shown card on top must stay readable. */
+.pressed-stack.is-crib {
+  --pw: clamp(30px, calc(var(--tw) * 0.62), 48px);
+}
+
+.pressed-stack.is-crib .pressed-card:not(.is-back) {
+  transform: none;
 }
 
 /* "Letzter Stich": a small square button, two short lines under a sign. */
@@ -1552,14 +1594,6 @@ button.card {
 .trick-card {
   width: 100%;
   height: 100%;
-}
-
-.slot-1 .trick-card {
-  transform: rotate(-6deg);
-}
-
-.slot-2 .trick-card {
-  transform: rotate(5deg);
 }
 
 .card-slot {
@@ -5373,6 +5407,20 @@ button.card {
   line-height: 0;
 }
 
+/* The pressed skat face up: two cards side by side, 2 × the art grid. */
+.info-pressed {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.info-pressed-card {
+  width: 66px;
+}
+
+.is-popover .info-pressed-card {
+  width: 44px;
+}
+
 /* 3 × and 2 × the art grid: whole pixels for the look at a card. */
 .info-card-face {
   width: 99px;
@@ -6052,6 +6100,16 @@ button.skat-card {
 
 .hand[data-drop].is-over {
   outline-color: var(--accent);
+}
+
+/* Throwing a card: the player's place lights up, more so over the felt. */
+.is-dragging-play .center[data-drop] .slot-0 .card-slot {
+  background: rgba(209, 119, 63, 0.1);
+}
+
+.center[data-drop].is-over .slot-0 .card-slot {
+  border-style: solid;
+  background: rgba(209, 119, 63, 0.24);
 }
 
 /* Little height: the talk goes to one line each, the title goes. */

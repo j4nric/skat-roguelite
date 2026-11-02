@@ -1,6 +1,8 @@
 // The table: the two regulars (or the boss) on top, the open trick on the
-// felt between the pressed skat and the "Letzter Stich" button (which shows
-// the core's last trick instead), the player's hand at the bottom in two rows.
+// felt as a triangle pointing at the player, the "Letzter Stich" button
+// (which shows the core's last trick instead) in the bottom left corner,
+// the pressed skat face down in the bottom right one, the player's hand at
+// the bottom in two rows (a card is played by a tap or thrown onto the felt).
 // Before the first card the felt holds the choice of Skat oder Hand: the
 // deck (dragged into the middle it mixes in), the skat face down in the
 // middle (a tap picks it up), what the Stammgäste say, "Hand spielen".
@@ -151,9 +153,13 @@ function skullIcon(size: number): string {
 /**
  * One seat's place in the trick; `winner` marks the card that took a
  * finished trick, `risen` the substitute of a card that rose ("Untot").
+ * The places form a triangle pointing at the player: the left regular top
+ * left, the right one top right, the player's card bottom centre. A card
+ * played later lies on top of one played earlier (`--z`).
  */
 function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null, risen: UiState['risen'] = null): string {
-  const played = cards.find((c) => c.seat === seat);
+  const order = cards.findIndex((c) => c.seat === seat);
+  const played = cards[order];
   const won = winner === seat;
   let tag = won ? `<span class="trick-won-tag">${esc(de.table.lastTrickWon)}</span>` : '';
   if (played && risen && played.card.id === risen.substitute) {
@@ -164,7 +170,7 @@ function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Se
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;
-  return `<div class="slot slot-${seat}">${inner}</div>`;
+  return `<div class="slot slot-${seat}" style="--z:${played ? order + 2 : 1}" data-slot="${seat}">${inner}</div>`;
 }
 
 function gameIcon(game: DeclaredGame, size = 30): string {
@@ -437,7 +443,7 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       if (action) {
         return `<button class="${cls}" style="${style}" ${attrs({
           'data-action': action,
-          'data-drag': action === 'select' ? 'card' : null,
+          'data-drag': action === 'select' ? 'card' : action === 'play' ? 'play' : null,
           'data-id': c.id,
           'data-legal': c.legal ? 'true' : 'false',
           'data-no-discard': c.no_discard ? 'true' : null,
@@ -446,7 +452,8 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
           ...infoAttrs(c.id, false),
         })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${skatTag}</button>`;
       }
-      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${skatTag}</div>`;
+      // A card that may not be played can still be thrown: it comes back (the core's `legal`).
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'data-drag': dim ? 'play' : null, 'data-legal': dim ? 'false' : null, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${skatTag}</div>`;
     })
     .join('');
   const open = isOpen(game);
@@ -605,38 +612,37 @@ function gameLine(view: RunView, game: GameView, peek: TrickView | null): string
 }
 
 /**
- * The two pressed cards beside the trick, fanned so both corner indexes
- * show, big enough to read on a phone. A tap opens the card large (the
- * info card).
+ * The pressed cards in the bottom right corner of the felt: a small stack
+ * of face-down backs, out of the way while playing. A tap (or a long
+ * press, or the mouse resting on it) shows them face up on the info card.
  */
 function pressedStack(game: GameView): string {
   const skat = game.skat;
   if (!skat?.length) return cribStack(game);
-  const cards = skat
-    .map(
-      (c) =>
-        `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`,
-    )
-    .join('');
-  const label = t(de.table.pressedAria, { cards: skat.map((c) => cardName(c.kind)).join(', ') });
-  return `<div class="pressed-stack" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'pressed-play' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.skat)}</span><span class="pressed-cards">${cards}</span></div>`;
+  const backs = skat.map((_, i) => `<span class="pressed-card is-back" style="--i:${i}">${cardBack()}</span>`).join('');
+  return `<button class="pressed-stack" ${attrs({
+    'data-action': 'info-card',
+    'data-info': 'pressed:',
+    'data-testid': 'pressed-play',
+    'aria-label': t(de.table.pressedAria, { n: skat.length }),
+  })}><span class="pressed-cards" style="--n:${skat.length}">${backs}</span><span class="pressed-label" aria-hidden="true">${esc(de.table.skat)}</span></button>`;
 }
 
 /**
- * "Spickzettel": the untouched skat of a hand game beside the trick, the
- * card it showed face up, the other face down.
+ * "Spickzettel": the untouched skat of a hand game in the same corner, the
+ * card it showed face up on top, the other face down underneath.
  */
 function cribStack(game: GameView): string {
   const shown = game.skat_shown ?? [];
   if (!shown.length || game.phase !== 'Playing') return '';
+  const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, (_, i) => `<span class="pressed-card is-back" style="--i:${i}">${cardBack()}</span>`);
   const open = shown.map(
-    (c) =>
-      `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`,
+    (c, i) =>
+      `<button class="pressed-card" style="--i:${hidden.length + i}" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`,
   );
-  const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, () => `<span class="pressed-card is-back">${cardBack()}</span>`);
+  const cards = [...hidden, ...open].join('');
   const label = t(de.table.cribAria, { cards: shown.map((c) => cardName(c.kind)).join(', ') });
-  // The face-down card underneath, the shown one on top where it can be read.
-  return `<div class="pressed-stack is-crib" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'crib-skat' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.crib)}</span><span class="pressed-cards">${[...hidden, ...open].join('')}</span></div>`;
+  return `<div class="pressed-stack is-crib" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'crib-skat' })}><span class="pressed-cards" style="--n:${hidden.length + open.length}">${cards}</span><span class="pressed-label" aria-hidden="true">${esc(de.table.crib)}</span></div>`;
 }
 
 /** Small stack of three cards: the sign of "Letzter Stich". */
@@ -693,19 +699,18 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
 }
 
 /**
- * The felt: the pressed skat on the left, the trick in the middle (or the
- * last trick while the player looks at it), the "Letzter Stich" button on
- * the right. The sides take only the room the trick leaves.
+ * The felt: the trick in the middle as a triangle (or the last trick while
+ * the player looks at it, in the same places), "Letzter Stich" in the
+ * bottom left corner, the pressed skat face down in the bottom right one.
+ * During play the felt takes a hand card thrown onto it (`data-drop`).
  */
 function trickRow(game: GameView, ui: UiState, peek: TrickView | null): string {
+  const slots = (cards: PlayedCard[], you: boolean, winner: Seat | null, risen: UiState['risen']): string =>
+    `${trickSlot(cards, 1, false, winner, risen)}${trickSlot(cards, 2, false, winner, risen)}${trickSlot(cards, 0, you, winner, risen)}`;
   const trick = peek
-    ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${trickSlot(peek.cards, 1, false, peek.winner, ui.risen)}${trickSlot(peek.cards, 0, false, peek.winner, ui.risen)}${trickSlot(peek.cards, 2, false, peek.winner, ui.risen)}</div>`
-    : (() => {
-        const open = ui.anim ? ui.anim.trick : game.trick;
-        const risen = ui.anim ? ui.risen : null;
-        return `<div class="trick" data-action="fast">${trickSlot(open, 1, false, null, risen)}${trickSlot(open, 0, !ui.anim && !ui.busy && game.your_turn, null, risen)}${trickSlot(open, 2, false, null, risen)}</div>`;
-      })();
-  return `<div class="trick-row"><div class="trick-side is-left">${pressedStack(game)}</div>${trick}<div class="trick-side is-right">${lastTrickToggle(game, ui)}</div></div>`;
+    ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${slots(peek.cards, false, peek.winner, ui.risen)}</div>`
+    : `<div class="trick" data-action="fast" data-testid="trick">${slots(ui.anim ? ui.anim.trick : game.trick, !ui.anim && !ui.busy && game.your_turn, null, ui.anim ? ui.risen : null)}</div>`;
+  return `<div class="trick-row"><div class="trick-side is-left">${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${pressedStack(game)}</div></div>`;
 }
 
 /**
@@ -780,10 +785,13 @@ export function renderTable(view: RunView, ui: UiState): string {
   const ramsch = game.declaration?.game === 'Ramsch';
   const choice = Boolean(declaring && game.declare && game.phase === 'Declaring' && game.declare.can_pick_up_skat && !ui.handGame);
   const cols = Math.max(5, Math.ceil(shownHand(game, ui).length / 2));
+  // While the player is to play, the felt takes a hand card thrown onto it.
+  const throwable = game.phase === 'Playing' && game.your_turn && !ui.anim && !ui.busy && !ui.omaPick;
+  const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
   return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">
     <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
     ${ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
-    <div class="center"><div class="deck-spot" aria-hidden="true"></div>${center}</div>
+    <div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>
     ${handCards(view, game, ui)}
     ${statusLine(view, game, ui)}
   </div>`;
