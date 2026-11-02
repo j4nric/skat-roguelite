@@ -150,34 +150,41 @@ Run (eine Tournee)
 
 ### 5.2 Zielwert-Progression
 
-**Vorläufig seit 01.11.2026 (3 Spiele je Serie, zweimal einmischen je Spiel).** Mit drei Spielen statt acht war die M5-Kurve (36/44/54 …) viel zu hoch. Die Kurve unten ist eine **erste grobe Setzung** aus einer kurzen Messung; die volle Kalibrierung folgt in einer späteren Testrunde (`balance`). Ziel: Der PIMC-Spieler gewinnt normale Serien zu etwa 75 bis 85 %, Boss-Serien zu etwa 60 bis 70 %.
+**Kalibriert am 02.11.2026 für Serien mit 3 Spielen** (zweimal einmischen je Spiel, Ansagen nach dem Skat, Relikte bis Welle 2a), Messung in `docs/balance/2026-11-02-kalibrierung-dreierserie.md`. Zielbild wie in M5: Der PIMC-Spieler (`--bot pimc:12:3`) erreicht Abschnitt 2 in gut einem Drittel der Runs und gewinnt 1 bis 2 % der ganzen Abende, **mit jedem Charakter**. Deshalb hat jeder Charakter außer dem Alleinspieler eigene Zielwerte (`targets` in `characters.ron`), alle Reizwerte. Je Zelle: Serie 1 / Serie 2 / Boss-Serie, die Boss-Serie vor dem Boss-Faktor (11).
 
-| Abschnitt | Gegner | Alleinspieler (`run.ron`) | Nullspieler (`characters.ron`) |
-|---|---|---|---|
-| 1 | Heuristik | 24 / 30 / 36 | 24 / 30 / 36 |
-| 2 | PIMC 6:2 | 30 / 36 / 42 | 24 / 30 / 36 |
-| 3 | PIMC 8:3 | 36 / 42 / 48 | 30 / 36 / 42 |
-| 4 | PIMC 12:3 | 42 / 48 / 54 | 36 / 42 / 48 |
-| 5 | PIMC 16:3 | 48 / 54 / 60 | 42 / 48 / 54 |
+| Abschnitt | Gegner | Alleinspieler (`run.ron`) | Nullspieler | Grandspieler | Zaungast | Wirtin |
+|---|---|---|---|---|---|---|
+| 1 | Heuristik | 33 / 40 / 45 | 18 / 20 / 23 | 48 / 54 / 60 | 33 / 40 / 45 | 40 / 46 / 54 |
+| 2 | PIMC 6:2 | 35 / 40 / 46 | 20 / 23 / 27 | 48 / 54 / 60 | 33 / 40 / 45 | 40 / 46 / 54 |
+| 3 | PIMC 8:3 | 36 / 44 / 48 | 20 / 23 / 27 | 48 / 54 / 60 | 35 / 40 / 46 | 40 / 46 / 54 |
+| 4 | PIMC 12:3 | 40 / 46 / 54 | 23 / 27 / 30 | 48 / 55 / 63 | 35 / 40 / 46 | 44 / 48 / 55 |
+| 5 | PIMC 16:3 | 45 / 50 / 60 | 23 / 27 / 30 | 50 / 60 / 66 | 36 / 44 / 48 | 46 / 54 / 60 |
 
-Die Charaktere ohne eigene Zielwerte (Grandspieler, Zaungast, Wirtin) nehmen die des Alleinspielers; der Nullspieler behält sein Muster (eine Zeile später) mit den neuen Werten. Boss-Faktoren (11) unverändert.
+Ergebnis (3 × 800 Runs je Charakter und Länge, Seeds 42 bis 44, Standardfehler für „Abschnitt 2“ rund 1 Punkt; im kurzen Abend sind Abschnitt 1 und 2 dieselben Runs):
 
-Gewählt mit der Erfolgskurve einer Serie ohne Relikte (`--curve`, 1500 Serien, Seed 42, `--bot pimc:12:3`, P(Serie gewonnen) bei Zielwert 24 / 36 / 48 / 60): gegen Heuristik-Gegner 80 / 76 / 72 / 67 %, PIMC 6:2 78 / 73 / 69 / 64 %, PIMC 12:3 76 / 71 / 66 / 61 %, PIMC 16:3 75 / 70 / 66 / 60 %. Die Decke (Zielwert 1) liegt bei 80 bis 85 %; die Kurve ist flach, weil drei Spiele mit doppelt zählenden Niederlagen viel Zufall tragen. Relikte heben die Quoten im Run. Dann im ganzen Run (2 × 500 Runs, Seeds 42 und 43, `--bot pimc:12:3`, Alleinspieler):
+| Charakter | Abschnitt 2 | 3 | 4 | 5 | Run gewonnen | kurzer Abend gewonnen | gehalten je Abschnitt |
+|---|---|---|---|---|---|---|---|
+| Alleinspieler | 37,3 % | 13,8 % | 5,7 % | 2,7 % | 1,42 % | 6,00 % | 37 / 37 / 41 / 47 / 53 % |
+| Nullspieler | 36,9 % | 14,5 % | 5,6 % | 1,9 % | 0,58 % | 5,96 % | 37 / 39 / 38 / 34 / 30 % |
+| Grandspieler | 36,3 % | 13,2 % | 4,8 % | 2,2 % | 1,21 % | 4,92 % | 36 / 36 / 36 / 47 / 54 % |
+| Zaungast | 37,2 % | 13,9 % | 5,1 % | 2,5 % | 1,29 % | 5,54 % | 37 / 37 / 37 / 49 / 52 % |
+| Wirtin | 39,9 % | 17,0 % | 7,8 % | 3,6 % | 1,58 % | 7,54 % | 40 / 42 / 46 / 47 / 44 % |
 
-| Serie | 1 | 2 | Boss |
-|---|---|---|---|
-| Abschnitt 1 | 80,4 % | 79,0 % | 69,3 % |
-| Abschnitt 2 | 76,8 % | 79,3 % | 67,6 % |
-| Abschnitt 3 | 79,6 % | 77,1 % | 67,6 % |
-| Abschnitt 4 | 84,0 % | 77,8 % | 75,5 % |
-| Abschnitt 5 | 81,1 % | 93,3 % | 75,0 % |
+Zur Form:
 
-Abschnitt 2 / 3 / 4 / 5 erreicht 44,0 / 18,1 / 7,5 / 3,7 %, Run gewonnen 2,1 %. Ab Abschnitt 4 sind die Stichproben klein (26 bis 75 Serien). Zum Vergleich `main` 07141fd (8 Spiele, 6 Pässe, M5-Kurve, gleiche Messung): normale Serien 81 bis 94 %, Boss 67 bis 83 %, erreicht 50,7 / 27,5 / 16,1 / 10,1 %, Run gewonnen 6,4 %. Ein Run spielt jetzt im Mittel 7,4 Spiele und 5,6 Einmischen (0,75 je Spiel). Nullspieler (300 Runs, Seed 42): normale Serien in Abschnitt 1 und 2 71 bis 77 %, Boss 49 bis 65 %, Abschnitt 2 erreicht 35 %; für ihn ist die Kurve noch etwas zu hoch (17).
+- **Abschnitt 1 zieht an, danach steigt die Kurve flach.** Eine Serie mit drei Spielen hat eine flache Erfolgskurve: Der Alleinspieler gewinnt sie ohne Relikte gegen Heuristik-Gegner bei Zielwert 1 zu 86 %, bei 24 zu 82 %, bei 60 zu 67 % (rund 0,4 Punkte je Zielwert-Punkt). Mit den Relikten wird der Run nach hinten leichter; eine Kurve, die wie bisher um 6 je Abschnitt steigt, machte Abschnitt 1 zu leicht oder den Rest zu schwer. Gegen die stärkeren PIMC-Gegner ab Abschnitt 2 hält dieselbe Zahl mehr.
+- **Abstände zwischen den Charakteren**: Der Grandspieler braucht vorne rund 1,4-mal so viel (seine Kurve ist flacher, ein Grand bringt viel), die Wirtin vorne rund 1,2-mal (doppelte Groschen kaufen früh Relikte) und hinten kaum mehr (vier Plätze). Der Zaungast fängt wie der Alleinspieler an, wird aber gegen die PIMC-Gegner mit nur einem Einmischen schwächer und steigt deshalb flacher. Der Nullspieler gewinnt eine Serie ohne Unter auch bei Zielwert 1 nur zu 76 % (Alleinspieler 86 %); er bekommt rund die Hälfte, 23 ist ein einfaches gewonnenes Null. Seine Kurve liegt ab Abschnitt 3 fast am Boden, sein „Run gewonnen“ bleibt trotzdem unter 1 % (17). Deshalb mischt er seit 02.11.2026 dreimal statt zweimal ein (`rule: (redeals: 1)`): gemessen (2 × 800 Runs, Seeds 42 und 43) hebt das ihn von 38,6 auf 40,0 % (Abschnitt 2) und von 0,69 auf 1,12 % (Run gewonnen).
+- **Boss-Serien** gewinnt der Bot in Abschnitt 1 bis 4 zu 60 bis 69 %, normale Serien zu 70 bis 89 %. Je Boss siehe 11.
+- **Länge**: Ein ganzer Abend spielt im Mittel 6,3 bis 7,0 Spiele und 3,4 bis 5,9 Einmischen je Run; der kurze Abend gewinnt 5 bis 7,5 % (er ist leichter, weil zwei Abschnitte fehlen, 5.3).
 
 ```sh
-cargo run --release -p skat_sim -- --seed 42 --runs 500 --bot pimc:12:3
-cargo run --release -p skat_sim -- --seed 42 --runs 1500 --bot pimc:12:3 --curve --defenders pimc:12:3
+cargo run --release -p skat_sim -- --seed 42 --runs 800 --bot pimc:12:3 --character declarer|null|grand|onlooker|landlady [--short]
+# dasselbe mit --seed 43 und --seed 44
 ```
+
+#### Vorläufige Kurve (01.11.2026 bis 02.11.2026)
+
+Gleich nach der Umstellung auf 3 Spiele: Alleinspieler 24/30/36, 30/36/42, 36/42/48, 42/48/54, 48/54/60, Grandspieler, Zaungast und Wirtin dieselbe, der Nullspieler dieselbe eine Zeile später. Gemessen (3 × 800 Runs, `main` 1dace9c): Abschnitt 2 / Run gewonnen Alleinspieler 43,0 / 1,92 %, Nullspieler 31,7 / 0,42 %, Grandspieler 49,5 / 2,92 %, Zaungast 43,6 / 1,29 %, Wirtin 49,0 / 2,96 %; kurzer Abend gewonnen 7,7 / 3,3 / 10,3 / 6,4 / 12,8 %.
 
 #### M5-Kurve (8 Spiele, 6 Pässe, bis 01.11.2026)
 
@@ -262,7 +269,7 @@ Entschieden über das Cockpit (16, „Schwierigkeit“): Jeder gewonnene Run heb
 - **Seeds teilen**: Ein Link mit Einsatz endet auf `-einsatz<n>` (`#seed-4343-alleinspieler-kurz-einsatz2`), Links ohne sind Einsatz 0. Wer den Einsatz noch nicht erreicht hat, spielt den Seed mit seinem höchsten (wie ein gesperrter Charakter als Alleinspieler gespielt wird); das Angebot sagt es. Der Tages-Seed gilt für den gewählten Einsatz, die Liste der letzten Runs merkt ihn sich, „Nochmal“ spielt ihn wieder (höchstens mit dem freigeschalteten).
 - **Simulator**: `--stake N`, auch mit `--unlocks` (dann ohne Prüfung der Freischaltung).
 
-Nicht gemessen: Wie stark ein Auge die Siegquote senkt, ist noch nicht kalibriert (siehe 17).
+Gemessen am 02.11.2026 (Alleinspieler, Zielwerte aus 5.2, der Bot rechnet bei Ansage und Einmischen mit der Schwelle `61 + n`; 3 × 800 Runs bei Einsatz 0, 3 × 500 bei 2 und 5): Abschnitt 2 erreicht 37,3 / 35,1 / 31,2 %, Run gewonnen 1,42 / 0,80 / 0,73 %, Farbspiel und Grand gewonnen 72,1 / 69,6 / 65,9 %, Null-Anteil 32,6 / 33,6 / 35,8 %. Ein Auge kostet rund 1,2 Punkte „Abschnitt 2“; die Leiter ist flacher als vor dem einsatzbewussten Bot (dort halbierte Einsatz 5 den Abschnitt-2-Wert fast). Null wird bei hohem Einsatz häufiger, dominiert bei 5 aber nicht. Messung in `docs/balance/2026-11-02-kalibrierung-dreierserie.md`.
 
 ---
 
@@ -540,7 +547,7 @@ Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichun
 
 ### 9.2 Der Nullspieler
 
-Seit ADR 0012 ein Null-Spezialist, der auch Farbe und Grand ansagen darf (siehe „Null für alle“ am Ende dieses Abschnitts). Ursprünglicher Entwurf (ADR 0003): Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
+Seit ADR 0012 ein Null-Spezialist, der auch Farbe und Grand ansagen darf (siehe „Null für alle“ am Ende dieses Abschnitts). Seit dem 02.11.2026 mischt er dreimal statt zweimal pro Spiel ein, weil sein Blatt ohne Unter sonst zu selten einen ganzen Abend trägt (5.2). Ursprünglicher Entwurf (ADR 0003): Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
 
 **Die Formel muss hier neu gebaut werden**, denn Null hat im echten Skat feste Werte (23, 35, 46, 59) statt Grundwert × Stufen. Vorschlag:
 
@@ -575,7 +582,7 @@ Messung mit dem Nullspieler-Bot (`skat_sim --runs 1000 --character null [--null-
 | Gewonnene Spiele | 65,7 % | 42,1 % | 43,0 % |
 | Punkte je Spiel | +1,3 | −20,3 | +22,2 |
 
-Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Null bringt 23, ein verlorenes kostet 46, und im Null-Blatt mit acht Siebenern gewinnt der Bot nur 42 % seiner Nullspiele. Mit der Formel kommt er so weit wie der Alleinspieler, obwohl er seltener gewinnt: Der Stilbonus (vor allem unterlaufene Siebener, das Null-Blatt hat acht) hebt ein gewonnenes Null weit über 23, ein verlorenes kostet weiter nur 46 je Risikostufe. Dazu hat die Formel Raum zum Skalieren: Grundwert-Relikte (Tournee) wirken auf 23, Stufen-Relikte (Ouvert-Bonus, Blindflug, Angeber) auf eine Summe von 1 bis 4 plus Stil, statt wie bei `Fixed` mit einer einzigen Stufe jedes Mal den Spielwert zu verdoppeln. Der Nullspieler nutzt deshalb die Zielwerte des Alleinspielers (`targets: None`). Der Bot spielt ein Null, wenn höchstens vier Karten „offen“ sind (klassische Null-Regel: die k-te kleinste Karte einer Farbe ist sicher, wenn höchstens k−1 kleinere Karten draußen sind), ohne offene Karte Null Ouvert Hand.
+Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Null bringt 23, ein verlorenes kostet 46, und im Null-Blatt mit acht Siebenern gewinnt der Bot nur 42 % seiner Nullspiele. Mit der Formel kommt er so weit wie der Alleinspieler, obwohl er seltener gewinnt: Der Stilbonus (vor allem unterlaufene Siebener, das Null-Blatt hat acht) hebt ein gewonnenes Null weit über 23, ein verlorenes kostet weiter nur 46 je Risikostufe. Dazu hat die Formel Raum zum Skalieren: Grundwert-Relikte (Tournee) wirken auf 23, Stufen-Relikte (Ouvert-Bonus, Blindflug, Angeber) auf eine Summe von 1 bis 4 plus Stil, statt wie bei `Fixed` mit einer einzigen Stufe jedes Mal den Spielwert zu verdoppeln. Der Nullspieler nutzte deshalb die Zielwerte des Alleinspielers (`targets: None`); seit den Serien mit 3 Spielen hat er eigene, rund die Hälfte (5.2, 02.11.2026). Der Bot spielt ein Null, wenn höchstens vier Karten „offen“ sind (klassische Null-Regel: die k-te kleinste Karte einer Farbe ist sicher, wenn höchstens k−1 kleinere Karten draußen sind), ohne offene Karte Null Ouvert Hand.
 
 **M5: eigene Zielwerte** (bis ADR 0012, 5.2, `targets` in `characters.ron`): Mit 8 Spielen pro Serie und Relikten (Bockrunde, Siebenschläfer, Lehrgeld) bringt ein gewonnenes Null meist 92 bis über 200 Punkte; mit Zielwerten nah an denen des Alleinspielers (36 / 46 / 66 in Abschnitt 1, 99 bis 198 in Abschnitt 4 und 5) gewann der Bot jede Serie zu 76 bis 86 % und kam in 3,8 % der Runs durch (Alleinspieler 1,4 %, je 2 × 1000 Runs). Der Bot spielt seit M5 bis zu fünf offene Karten (`NULL_MAX_EXPOSED` in `core/src/run/bot.rs`): mit 4 erreichte er Abschnitt 3 in 20,1 %, mit 5 in 25,1 % (vorherige M5-Messung, 3 × 600 Runs); er steht für einen guten Spieler.
 
@@ -639,7 +646,9 @@ Nach den M4-Inhalten (gleiche Messung, alle 16 Freischaltungen):
 | `grand_hand` | Grand Hand gewinnen | Bierdeckel | 35,3 |
 | `tour_won` | Run mit dem Alleinspieler gewinnen | Nullspieler | 1677 (8 von 20 Folgen in 3000 Runs) |
 
-Seit den Serien mit 3 Spielen (01.11.2026): `early_finish` verlangt eine Serie gleich im ersten Spiel (`WinSeriesWithGamesLeft(2)`, mit drei übrigen wäre sie unerreichbar), `boss_without_pass` heißt „Ohne Einmischen“ (`BeatBoss(without_redeal: true)`, Id unverändert). Beide nicht neu gemessen.
+Seit den Serien mit 3 Spielen (01.11.2026): `early_finish` verlangt eine Serie gleich im ersten Spiel (`WinSeriesWithGamesLeft(2)`, mit drei übrigen wäre sie unerreichbar), `boss_without_pass` heißt „Ohne Einmischen“ (`BeatBoss(without_redeal: true)`, Id unverändert).
+
+Neu gemessen am 02.11.2026 (Serien mit 3 Spielen, Zielwerte aus 5.2, `skat_sim --seed 42 --runs 200 --unlocks --bot pimc:12:3`, 20 Folgen, Mittel der Runs bis dahin): `early_finish` 1,3; `grand_schneider` 2,3; `second_evening` 2,4; `big_game` 3,1; `boss_without_pass` 4,0; `apprenticeship` 5,0; `hand_won` 6,5; `third_evening` 6,5; `hearts_schneider` 8,4; `beat_kibitz_killer` (Zaungast) 9,2; `beat_kontra_hans` 10,1; `big_win` 11,1; `fourth_evening` 11,6; `grand_master` (Grandspieler, 144) 13,1 (1 bis 37); `grand_hand` 19,6; `beat_grandma` 22,6; `beat_black_peter` 24,4; `full_till` (Wirtin) 34,8 (4 bis 152); `tour_won` (Nullspieler) 48,8, 18 von 20 Folgen in 200 Runs. Alle erreichbar; `grand_master` mit 144 liegt jetzt im Mittelfeld statt bei drei Runs, `early_finish` und `boss_without_pass` sind leichte Einstiegsziele.
 
 Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der Bot sagt fast nie an) und „Serie mit vier Spielen übrig“ für Auf dem Trockenen (1,7 Runs, in Serie 1-1 reicht ein Spiel).
 
@@ -664,7 +673,7 @@ Entschieden vom Nutzer am 01.11.2026. Lebt für den Grand.
 - **Regel**: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger, gewonnen wie verloren. Daten: zwei `OnDeclare`-Hooks mit `AddLevels(1)` bei `GameIs(Grand)` und `AddLevels(-1)` bei `SuitGame`. Null und Ramsch bleiben unverändert. Nie unter eine Stufe: Die Wertung rechnet `Stufen = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)` (4.2); ein Farbspiel hat nach der Skatordnung mindestens zwei Stufen (mit oder ohne 1, Spiel 1), nach dem Abzug also mindestens eine, und kommen weitere Abzüge dazu, hält die Formel bei 1.
 - **Startblatt**: das 32er-Blatt, der Eichel-Daus (`CA`) mit Goldrand (`gold_rim`, +8 Augen). Ursprünglich war ein gezinkter Eichel-Unter geplant; der ist aber ohnehin der höchste Trumpf, die Modifikation hätte kaum gewirkt (geändert am 01.11.2026). Startrelikte: keine.
 - **Tresen**: `focus_weights` Trump 120, Null 50.
-- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+- **Zielwerte**: eigene seit 02.11.2026, vorne rund 1,4-mal der Alleinspieler, hinten flach (5.2).
 
 ### 9.5 Der Zaungast
 
@@ -673,7 +682,7 @@ Entschieden vom Nutzer am 01.11.2026 (als „Kiebitz“; der Name ist an die Fig
 - **Regel**: Er sieht das ganze Blatt des linken Gegners (Platz 1, spielt nach ihm), jedes Spiel von der Ausgabe an, dafür darf er nur einmal pro Spiel einmischen statt zweimal (seit 01.11.2026; vorher zwei Pässe weniger pro Serie; nie unter 0). Daten: `passive: [RevealDefenderHand(1)]`, `redeals: -1`. `RevealDefenderHand` ist eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder schaltet sie ab. Die Karten stehen wie die des Kiebitz in `ActiveGame::peeked` (die Sicht nennt sie `RevealSource::Onlooker`, in Anzeige-Reihenfolge), deshalb kennen sie auch Wertvorschau und Bot. Hat er zusätzlich den Kiebitz, zieht dieser nur Karten, die er noch nicht sieht.
 - **Anzeige**: Am linken Gegner liegt sein Blatt als kleiner Fächer mit Auge; ausgespielte Karten verschwinden daraus. Kein Flüster-Hinweis pro Karte.
 - **Start**: Standardblatt, keine Startrelikte (die Regel ist die Information).
-- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+- **Zielwerte**: eigene seit 02.11.2026, Abschnitt 1 wie der Alleinspieler, danach flacher (5.2).
 
 ### 9.6 Die Wirtin
 
@@ -681,7 +690,7 @@ Entschieden vom Nutzer am 01.11.2026 (als „Wirt“; der Name ist an die Figur 
 
 - **Regel**: Jede gewonnene Serie zahlt doppelt so viele Groschen (Grundbetrag, übrige Spiele und Zinsen, die Verdopplung steht als eigene Zeile „Die Wirtin“ in der Auszahlung), dafür hat sie vier statt fünf Relikt-Plätze. Daten: `payout_factor: 2`, `relic_slots: -1`. Groschen aus Relikten nach der Serie (`OnSeriesWon`) verdoppeln sich nicht.
 - **Start**: Standardblatt, keine Startrelikte, ein Kräuter (einmal mehr einmischen in einer Serie) im Platz für Verbrauchsgegenstände (`start_consumables`).
-- **Zielwerte**: die des Alleinspielers, noch nicht kalibriert (17).
+- **Zielwerte**: eigene seit 02.11.2026, vorne rund 1,2-mal der Alleinspieler, hinten kaum höher (5.2).
 
 ### 9.7 Spätere Kandidaten (nicht vor v1)
 
@@ -781,6 +790,25 @@ Zielwert-Faktoren nach der M4-Messung (`skat_sim --seed 42 --runs 3000 --curve -
 **Der Schieber und der Nullspieler**: Null Hand ohne Skat gewinnt der Nullspieler-Bot höchstens in 24 % der Boss-Serien (Kurve mit Zielwert 1, gegen 76 bis 80 % bei den anderen Bossen); vorher waren es 21 % gegen 67 %. Ein Zielwert-Faktor hilft da nicht. Entscheidung M5: Der Schieber steht nur noch im Pool des Alleinspielers (`characters: [Declarer]`, auch im Alten übersprungen). Vorschlag für später, sobald der Bot es kann: Unter dem Schieber sollte der Nullspieler-Bot nur Blätter mit höchstens ein bis zwei offenen Karten spielen (heute bis fünf, die er ohne Skat nicht loswird); danach neu messen und den Schieber mit eigenem Faktor für den Nullspieler zurückholen. Faktoren pro Charakter brauchen ein neues Feld (`core-dev`).
 
 Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schieber ist wieder bei allen Charakteren; neu gemessen wird nach der Umstellung auf drei Spiele je Serie.
+
+**Stand Serien mit 3 Spielen** (02.11.2026, Zielwerte aus 5.2; Boss-Serie gewonnen im Run, alle Abschnitte, 3 × 800 ganze Abende je Charakter, je Boss 260 bis 370 Serien; normale Serien 70 bis 89 %). Messung in `docs/balance/2026-11-02-kalibrierung-dreierserie.md`.
+
+| Boss | Faktor | Alleinspieler | Nullspieler | Grandspieler | Zaungast | Wirtin |
+|---|---|---|---|---|---|---|
+| Der Schwarze Peter | 0,5 (Nullspieler 0,2) | 44 % | 35 % | 42 % | 41 % | 47 % |
+| Die Oma | 0,3 (nur Alleinspieler) | 53 % | – | – | – | – |
+| Der Schieber | 1,0 (Nullspieler 0,4) | 51 % | 53 % | 55 % | 54 % | 60 % |
+| Der Ramscher | 1,25 | 69 % | 75 % | 63 % | 73 % | 69 % |
+| Der Kontra-Hans | 1,5 | 77 % | 67 % | 71 % | 72 % | 71 % |
+| Der Revolutionär | 1,0 → **1,5** (Nullspieler 1,0) | 71 % | 75 % | 69 % | 68 % | 73 % |
+| Der Kiebitz-Mörder | 1,0 → **1,5** (Nullspieler 1,0) | 68 % | 77 % | 69 % | 69 % | 73 % |
+| Die Zwillinge | 1,0 | 73 % | 76 % | 71 % | 73 % | 74 % |
+| Der Alte (Endboss) | 1,4 | 68 % | 58 % | 81 % | 82 % | 61 % |
+
+- **Revolutionär und Kiebitz-Mörder 1,0 → 1,5**: Mit 1,0 gewann der Bot sie so oft wie eine normale Serie (Alleinspieler 80 und 79 %, Grandspieler 83 und 81 %, Wirtin 82 und 85 %); mit 1,5 liegen sie wie der Kontra-Hans. Der Nullspieler gewann sie schon mit 1,0 nur zu 68 und 72 % und behält 1,0.
+- **Schieber bleibt 1,0** (vorgeschlagen war 0,8): Er liegt mit 51 bis 60 % bei der Oma, schwer, aber keine Wand.
+- **Schwarzer Peter bleibt der schwerste Boss** (35 bis 47 %), und kein Faktor hilft: Mit 3 Spielen gewinnt der Bot die Serie auch bei Zielwert 1 nur zu 50 % (Alleinspieler, `--curve --boss black_peter`, bei 24 noch 49 %), der Nullspieler zu 37 %. Die Grenze ist die Regel selbst (ein Schneider-Sieg, kein verlorenes Spiel). Offen in 17.
+- Der Alte hat je Charakter nur 24 bis 62 Serien; seine Spanne ist Rauschen.
 
 ---
 
@@ -956,15 +984,13 @@ Entschieden am 01.11.2026 nach dem Spieltest (Nutzer, umgesetzt von Claude):
 | Frage | Entscheidung |
 |---|---|
 | Passen | Ersetzt durch **Einmischen**: bis zu zweimal pro Spiel neu geben lassen, kostet kein Spiel; danach muss gespielt werden (5.1). Relikte und Schnäpse: Schieben +1 pro Spiel, Ein Bier und Kräuter +1 für die Serie, Neues Blatt sofort ohne Einmischen, Zaungast eins weniger pro Spiel, neuer Schnaps „Reue“ nimmt das letzte Einmischen zurück (8.1, 8.3, 9.5). |
-| Serie | 3 Spiele je Serie gegen dieselben zwei Gäste, 2 Serien und eine Boss-Serie je Abschnitt (5.1). Zielwerte vorläufig neu gesetzt (5.2). |
+| Serie | 3 Spiele je Serie gegen dieselben zwei Gäste, 2 Serien und eine Boss-Serie je Abschnitt (5.1). Zielwerte am 02.11.2026 neu kalibriert, je Charakter (5.2). |
 | Ansagen nach dem Skat | Schneider, Schwarz angesagt und Ouvert auch nach dem Aufnehmen, ohne Hand-Stufe (ADR 0013, 4.3). Der Bot sagt nach dem Skat mit denselben Regeln an wie aus der Hand. |
 | Freischaltungen | `early_finish` heißt jetzt „Serie gleich im ersten Spiel gewinnen“, `boss_without_pass` „Boss ohne Einmischen“, `grand_master` verlangt 144 statt 96 Punkte (9.3). |
 
 ## 17. Offen
 
-- **Zielwerte für 3 Spiele kalibrieren** (01.11.2026, 5.2): Die Kurve ist eine grobe Setzung aus 2 × 500 Runs. Volle Messung mit 3 × 3000 Runs je Charakter, kurzer Abend, Boss-Faktoren (`--curve --boss`), Einsatz-Leiter. Der Nullspieler liegt darunter (Abschnitt 2: 35 % gegen 44 %). Ebenso Preise von Schieben, Ein Bier, Kräuter, Neues Blatt und Reue (8.1, 8.3), die Erreichbarkeit von `early_finish`, `boss_without_pass` und `grand_master` (`--unlocks`) und ob Einmischen beim Alten (Regel je Blatt) zu leicht macht.
-
-- **Neue Charaktere kalibrieren** (01.11.2026, 9.4 bis 9.6): Grandspieler, Zaungast und Wirtin spielen mit den Zielwerten des Alleinspielers, ohne Simulator-Messung (Nutzerentscheidung: erst bauen, später gesammelt messen). Zu messen: `skat_sim --runs 3000 --bot pimc:12:3 --character grand|onlooker|landlady`, Abschnitt erreicht gegen den Alleinspieler, dann `targets` oder die Regel anpassen. Der Bot nutzt die Regeln nur teilweise: Er sieht das Blatt des Zaungasts in den PIMC-Stichproben, wählt aber Grand nicht bewusst öfter. Ebenso die Erreichbarkeit der drei Freischaltungen (`--unlocks`) messen.
+- **Zielwerte für 3 Spiele**: erledigt am 02.11.2026 (5.2, je Charakter eigene Kurve, Boss-Faktoren 11, Einsatz-Leiter 5.4, Freischaltungen 9.3). Offen daraus: (a) **Nullspieler gewinnt nur 0,6 % der ganzen Abende** (Ziel 1 bis 2 %); seine Kurve liegt ab Abschnitt 3 fast am Boden, Zielwerte bewegen dort kaum noch etwas. Entschieden am 02.11.2026: ein Einmischen mehr (`rule: (redeals: 1)` in `characters.ron`, 0,69 → 1,12 % bei gleichen Seeds), siehe 9.2. (b) **Der Schwarze Peter** bleibt mit 35 bis 48 % der schwerste Boss; mit 3 Spielen liegt seine Obergrenze bei 50 % (Nullspieler 37 %), kein Faktor hilft. Wenn er keine Ausnahme sein soll, braucht er eine andere Regel (an `core-dev`/Design), etwa „gewonnene Spiele ohne Schneider zählen halb“. (c) Preise von Schieben, Ein Bier, Kräuter, Neues Blatt und Reue (8.1, 8.3) und ob Einmischen beim Alten (Regel je Blatt) zu leicht macht, sind noch nicht gemessen.
 
 - **Null-Formel**: entschieden in M4 (9.2). Offen bleibt das Feintuning der Stilboni mit Testspielen.
 - **Zielwert-Faktoren pro Charakter**: erledigt mit ADR 0012 (`character_factors` in `bosses.ron`, 11). Schieber und Schwarzer Peter sind wieder bei beiden Charakteren. Offen: Die Oma bleibt beim Nullspieler draußen, weil sein Blatt keine Unter hat und sie ihm nichts nimmt (ADR 0012 sieht sie wieder bei jedem vor). Sobald er Unter ins Blatt bekommen kann, mit `--curve --boss grandma --character null` neu messen.
@@ -976,4 +1002,4 @@ Entschieden am 01.11.2026 nach dem Spieltest (Nutzer, umgesetzt von Claude):
 - **Nullspieler über den kurzen Abend** (M7, 5.3): „Run gewinnen“ zählt auch im kurzen Abend, der Nullspieler ist damit nach rund 25 statt rund 1700 Runs (Heuristik-Bot) frei. Entschieden ist „Freischaltungen in beiden“; soll der Nullspieler ein Ziel des ganzen Abends bleiben, bekäme die Bedingung `WinRun` eine Länge (Daten in `unlocks.ron`). Ebenso „Abschnitt 4 erreichen“: nur im ganzen Abend möglich.
 - **Weitere Kartenrückseiten** (9.3): Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Offen: welche Erfolge. Die Bedingung gehört wie jede Freischaltung in den Kern (`unlocks.ron`, eine neue Belohnungsart für Kosmetik); die Web-App bietet nur die verdienten Rückseiten zur Wahl an.
 - **Fluchbeträge** (M7, 7.2): alle Flüche zahlen 3 Groschen, die gewählte Karte kostet bei Bier und Falschspieler 4. Platzhalter für `balance`. Die Option „Zufällige Karte“ zeigt in der Web-App „gratis“, die 3 Groschen stehen nur im Text des Fluchs.
-- **Einsatz-Leiter messen** (M7, 5.4): Die Wirkung je Auge ist nicht kalibriert (`skat_sim --runs 3000 --bot pimc:12:3 --stake N` für einige N). Offen auch, ob Null bei hohem Einsatz zu stark wird. Die Texte von „Ein Auge zudrücken“ und „Hufeisen“ sagen seit der Einsatz-Leiter „drei/fünf Augen weniger“.
+- **Einsatz-Leiter**: gemessen am 02.11.2026 (5.4): ein Auge kostet rund 1,2 Punkte „Abschnitt 2“, Null wird bei Einsatz 5 etwas häufiger (35,8 % statt 32,6 %), dominiert aber nicht. Höhere Stufen (ab 10) noch nicht mit dem einsatzbewussten Bot gemessen. Die Texte von „Ein Auge zudrücken“ und „Hufeisen“ sagen seit der Einsatz-Leiter „drei/fünf Augen weniger“.

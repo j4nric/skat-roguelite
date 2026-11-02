@@ -44,23 +44,28 @@
     (
         character: NullPlayer,
         name: "Der Nullspieler",
-        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Startet mit dem Kiebitz.",
-        start_relics: ["kibitzer"],
-        // Zielwerte des Alleinspielers (run.ron), seit ADR 0012 gemessen:
-        // Mit Farbe und Grand spielt der Bot nur noch rund 30 % seiner Spiele
-        // als Null. Mit den eigenen M5-Zielwerten (72/80/88 bis 198/240/264)
-        // erreichte er Abschnitt 2 nur in 23 % der Runs (Alleinspieler 36 %),
-        // mit denen des Alleinspielers wie dieser (DESIGN 9.2, 3 × 3000 Runs,
-        // --bot pimc:12:3). Seit den Serien mit 3 Spielen (01.11.2026)
-        // dieselbe vorläufige Kurve wie run.ron, eine Zeile später (DESIGN
-        // 5.2); 300 Runs: Abschnitt 2 in 35 % (Alleinspieler 44 %).
+        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
+        // Eigene Zielwerte (DESIGN 5.2), seit 02.11.2026 rund die Hälfte des
+        // Alleinspielers: Sein Blatt ohne Unter gewinnt eine Serie mit drei
+        // Spielen auch bei Zielwert 1 nur zu 76 % (Alleinspieler 86 %). Mit
+        // der vorläufigen Kurve (eine Zeile später als run.ron, 24/30/36 bis
+        // 42/48/54) erreichte er Abschnitt 2 in 32 % und gewann 0,4 % der
+        // Runs; 23 ist ein einfaches gewonnenes Null. Ab Abschnitt 3 flach,
+        // weil er gegen die stärkeren Gegner kaum zulegt.
         targets: Some([
-            (24, 30, 36),
-            (24, 30, 36),
-            (30, 36, 42),
-            (36, 42, 48),
-            (42, 48, 54),
+            (18, 20, 23),
+            (20, 23, 27),
+            (20, 23, 27),
+            (23, 27, 30),
+            (23, 27, 30),
         ]),
+        start_relics: ["kibitzer"],
+        // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
+        // Zielwerten oben gewann er nur 0,6 % der ganzen Abende; ein
+        // Einmischen mehr hob ihn auf 1,1 % (2 × 800 Runs, DESIGN 5.2).
+        rule: (
+            redeals: 1,
+        ),
         deck: (
             remove: ["CJ", "SJ", "HJ", "DJ"],
             add: ["C7", "S7", "H7", "D7"],
@@ -77,13 +82,26 @@
         // halb so oft (sein Blatt hat keine Unter).
         focus_weights: (trump: 50, null: 200),
     ),
-    // Neue Charaktere vom 01.11.2026 (DESIGN 9.4 bis 9.6). Zielwerte des
-    // Alleinspielers (targets: None), noch nicht im Simulator kalibriert
-    // (DESIGN 17).
+    // Neue Charaktere vom 01.11.2026 (DESIGN 9.4 bis 9.6). Eigene Zielwerte
+    // seit 02.11.2026 (DESIGN 5.2, docs/balance/
+    // 2026-11-02-kalibrierung-dreierserie.md), alle auf dasselbe Zielbild
+    // wie der Alleinspieler: Abschnitt 2 in gut einem Drittel der Runs, Run
+    // gewonnen 1 bis 2 %.
     (
         character: GrandPlayer,
         name: "Der Grandspieler",
         text: "Lebt für den Grand: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger. Sein Eichel-Daus hat einen Goldrand (+8 Augen).",
+        // Vorne rund 1,4-mal der Alleinspieler, hinten flach: Ein gewonnener
+        // Grand bringt viel, seine Erfolgskurve ist flacher (mit der
+        // vorläufigen Kurve vom 01.11. Abschnitt 2 in 50 %, Run gewonnen
+        // 2,9 %).
+        targets: Some([
+            (48, 54, 60),
+            (48, 54, 60),
+            (48, 54, 60),
+            (48, 55, 63),
+            (50, 60, 66),
+        ]),
         start_relics: [],
         deck: (
             mods: [("CA", "gold_rim")],
@@ -110,6 +128,17 @@
         character: Onlooker,
         name: "Der Zaungast",
         text: "Schaut dem linken Gegner immer ins Blatt, darf dafür nur einmal pro Spiel einmischen. Der Kiebitz-Mörder nimmt ihm die Sicht.",
+        // Abschnitt 1 wie der Alleinspieler, danach flacher: Mit nur einem
+        // Einmischen ist er gegen die stärkeren Gegner schwächer (vorläufige
+        // Kurve vom 01.11.: gehalten je Abschnitt 44 / 39 / 35 / 45 / 48 %,
+        // Alleinspieler 43 / 41 / 42 / 47 / 55 %).
+        targets: Some([
+            (33, 40, 45),
+            (33, 40, 45),
+            (35, 40, 46),
+            (35, 40, 46),
+            (36, 44, 48),
+        ]),
         start_relics: [],
         // Eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder
         // schaltet sie ab.
@@ -132,6 +161,16 @@
         character: Landlady,
         name: "Die Wirtin",
         text: "Rechnet gut: Jede gewonnene Serie bringt doppelt so viele Groschen, aber sie hat nur vier Plätze für Relikte. Startet mit einem Kräuter.",
+        // Vorne deutlich höher (doppelte Groschen kaufen früh Relikte, mit der
+        // vorläufigen Kurve Abschnitt 2 in 49 %), hinten flach: Mit
+        // vier Plätzen wird sie spät schwächer.
+        targets: Some([
+            (40, 46, 54),
+            (40, 46, 54),
+            (40, 46, 54),
+            (44, 48, 55),
+            (46, 54, 60),
+        ]),
         start_relics: [],
         start_consumables: ["herbal"],
         rule: (

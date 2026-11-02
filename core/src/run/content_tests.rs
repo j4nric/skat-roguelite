@@ -167,9 +167,9 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["fresh_deck", "ink_pad", "beer", "new_deal"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Provisional curve for series of 3 games (DESIGN 5.2, 01.11.2026).
-    assert_eq!(content.run.targets[0], (24, 30, 36));
-    assert_eq!(content.run.targets[4], (48, 54, 60));
+    // Curve for series of 3 games (DESIGN 5.2, calibrated 02.11.2026).
+    assert_eq!(content.run.targets[0], (33, 40, 45));
+    assert_eq!(content.run.targets[4], (45, 50, 60));
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
