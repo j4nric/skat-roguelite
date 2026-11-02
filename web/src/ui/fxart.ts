@@ -185,7 +185,7 @@ function glyphCells(item: BandItem, x: number, y: number): { parts: [Cells, stri
     ];
     const dia: [string, string][] = [
       ['..#..', '#e0281e'],
-      ['.###.', '#f7c21a'],
+      ['.###.', '#f5d52a'],
       ['#####', '#2e9a3c'],
       ['.###.', '#2a63c4'],
       ['..#..', '#8b4a1c'],

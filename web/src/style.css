@@ -437,7 +437,7 @@ button:focus-visible,
 }
 
 :root[data-suit-tint] .card-svg[data-suit='Clubs'] {
-  --suit-paper: #f5e5cc;
+  --suit-paper: #e5eef8;
 }
 
 :root[data-suit-tint] .card-svg[data-suit='Spades'] {
@@ -449,7 +449,7 @@ button:focus-visible,
 }
 
 :root[data-suit-tint] .card-svg[data-suit='Diamonds'] {
-  --suit-paper: #fbf0c4;
+  --suit-paper: #fcf5cf;
 }
 
 button.card {

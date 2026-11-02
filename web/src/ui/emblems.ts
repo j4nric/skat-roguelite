@@ -40,11 +40,13 @@ const PALETTE: Record<string, string> = {
   l: '#f1b48a', // light orange
   m: '#8fc7a8', // mint
   M: '#3f6b55', // dark mint
-  b: '#8a5a2b', // Eichel
+  b: '#8a5a2b', // brown (wood, leather)
+  J: '#4f86c6', // Eichel (jeans blue)
+  L: '#f5d52a', // Schellen (lemon)
   e: '#2e7d4f', // Grün
   r: '#bd3b32', // Rot
   R: '#e5776d', // light red
-  y: '#b8840f', // Schellen
+  y: '#b8840f', // ochre gold
   Y: '#e3b24c', // light gold
   p: '#d98e9a', // pink
   s: '#e0b48a', // skin
@@ -1255,8 +1257,8 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
   ],
   with_four: [
     sp('Große Vier mit Farben', `
-      .bb..........ee
-      .bb..GG..GG..ee
+      .JJ..........ee
+      .JJ..GG..GG..ee
       .....GG..GG
       .....GG..GG
       .....GG..GG
@@ -1265,11 +1267,11 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       .........GG
       .........GG
       .........GG
-      .rr......GG..yy
-      .rr..........yy`),
+      .rr......GG..LL
+      .rr..........LL`),
     sp('Vier Unter', `
-      bbb.eee.rrr.yyy
-      bbb.eee.rrr.yyy
+      JJJ.eee.rrr.LLL
+      JJJ.eee.rrr.LLL
       sss.sss.sss.sss
       sks.sks.sks.sks
       sss.sss.sss.sss
@@ -1469,10 +1471,10 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       .G...G...G...G.
       GGG.GGG.GGG.GGG
       sss.sss.sss.sss
-      bbb.eee.rrr.yyy
-      bbb.eee.rrr.yyy
-      bbb.eee.rrr.yyy
-      b.b.e.e.r.r.y.y`),
+      JJJ.eee.rrr.LLL
+      JJJ.eee.rrr.LLL
+      JJJ.eee.rrr.LLL
+      J.J.e.e.r.r.L.L`),
   ],
   blank_king: [
     sp('Sieben mit Krone', `

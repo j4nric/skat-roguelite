@@ -29,8 +29,8 @@
 //   shows one large) and, after the first trick, "Letzter Stich": the last
 //   trick with its winner on the felt until tapped again, without scrolling,
 // - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
-//   paper in its suit (off by default, stored, survives a reload), and the
-//   Schellen rank letter in the corner is ochre, not black,
+//   paper in its suit (off by default, stored, survives a reload), and each
+//   rank letter in the corner has its suit's dark ink, never black,
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
@@ -830,8 +830,8 @@ async function musicPass(browser, errors, reducedMotion) {
 
 /**
  * "Kartenfarbe tönen": off by default (plain paper); the menu switch tints
- * each card's paper in its suit, is stored and survives a reload. The
- * Schellen corner index uses the ochre ink, not black.
+ * each card's paper in its suit, is stored and survives a reload. Every
+ * corner index uses its suit's dark ink, not black.
  */
 async function suitTintPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -851,9 +851,11 @@ async function suitTintPass(browser, errors, reducedMotion) {
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
 
-  const inks = await page.$$eval('#x-D7 path, #x-DK path', (paths) => paths.map((p) => p.getAttribute('fill')));
-  // The rank letter is ochre (the black left is the knob of the bell sign).
-  if (!inks.includes('#966c00')) fail(`Schellen index inks ${inks.join(', ')}: expected the ochre #966c00 for the letter`);
+  // Each rank letter has the dark ink of its suit (F3 colours, at least 4.5:1 on plain and tinted paper).
+  for (const [id, ink] of [['x-C7', '#24507f'], ['x-S7', '#1f7a30'], ['x-H7', '#c0221a'], ['x-D7', '#8a5f00']]) {
+    const inks = await page.$$eval(`#${id} path`, (paths) => paths.map((p) => p.getAttribute('fill')));
+    if (!inks.includes(ink)) fail(`index ${id} inks ${inks.join(', ')}: expected ${ink} for the letter`);
+  }
 
   const plain = await papers();
   const suits = Object.keys(bySuit(plain));
