@@ -153,6 +153,12 @@ fn three_discard_draws_from_the_left_defender_and_gives_the_lowest_back() {
         .expect("returned card shown");
     assert_eq!(known.source, RevealSource::Returned);
     assert_eq!(known.holder, Some(from));
+    // The PIMC player knows it too.
+    assert!(
+        opponents::player_hints(&run)
+            .pinned
+            .contains(&(back, Some(from)))
+    );
     // And the game plays to its end.
     let events = run
         .apply(
@@ -327,6 +333,11 @@ fn crib_sheet_shows_a_skat_card_after_a_hand_declaration() {
     let view = run.view(&content).game.expect("view");
     assert_eq!(view.skat_shown.len(), 1);
     assert_eq!(view.skat_shown[0].card.id, skat[0].id);
+    assert!(
+        opponents::player_hints(&run)
+            .pinned
+            .contains(&(skat[0], None))
+    );
     // The player's event carries it too.
     let public: Vec<_> = events.into_iter().map(RunEvent::for_player).collect();
     assert!(

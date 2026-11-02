@@ -114,7 +114,8 @@ pub enum Phase {
     /// The declarer looks at ten cards and decides: declare a hand game
     /// ([`Game::declare`]) or pick up the skat ([`Game::pick_up_skat`]).
     Declaring,
-    /// The declarer holds twelve cards and must discard two.
+    /// The declarer holds twelve cards and must discard two (thirteen and
+    /// three after drawing a card with the skat, "Drei drücken").
     Discarding,
     /// The skat is picked up and two cards are discarded: the declarer
     /// announces the game, without hand levels ([`Game::declare`]).

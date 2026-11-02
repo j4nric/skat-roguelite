@@ -482,9 +482,10 @@ pub enum RunAction {
     #[serde(alias = "RedrawSkat", alias = "Pass")]
     Redeal,
     /// Pick up the skat instead of declaring a hand game (Skatordnung, ADR
-    /// 0011). Then two cards are discarded ([`RunAction::Discard`]) and the
-    /// game is declared ([`RunAction::Declare`]). Einmischen is no longer
-    /// possible after it.
+    /// 0011). Then two cards are discarded ([`RunAction::Discard`]; with
+    /// "Drei drücken" a card of the left defender joins and three go,
+    /// [`RunAction::DiscardThree`]) and the game is declared
+    /// ([`RunAction::Declare`]). Einmischen is no longer possible after it.
     PickUpSkat,
     /// Announce the game. With ten cards, before the skat is touched, only a
     /// hand game (Hand, Schneider or Schwarz angesagt, Ouvert; Null Hand,
