@@ -97,6 +97,12 @@
 // - discard-battered.json: seed 14, that card in the hand at the Ansage;
 //   the core marks it not discardable, so it cannot be picked for the skat.
 // - honorary-jack.json: seed 116, a "Unter ehrenhalber" in the hand: plaque.
+// - wave2-relics.json (M8, crafted from a fresh run with seed 77): five
+//   relics of wave 2a in the head with their own beer mats, and
+//   "Stammfarbe" two suit games into its streak (every trump suit flagged).
+//   A suit game after the skat shows "× 1,5" in the score line and the
+//   Abrechnung names Stammfarbe, Allrounder and Altes Blatt, the factor box
+//   showing 1,5.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
 // Save code (menu "Spielstand sichern" / "Spielstand laden"), at 390 × 844
@@ -1151,6 +1157,29 @@ async function m5(browser, errors, reducedMotion) {
   if (!(await page.locator('.hand-card .plaque-hj').count())) fail('the Unter ehrenhalber has no plaque');
   await shoot(page, 'honorary-jack');
   log('Unter ehrenhalber plaque shown');
+
+  // M8 wave 2a: the new relics at the table and in the Abrechnung.
+  await resumeFixture(page, 'wave2-relics.json');
+  await page.waitForSelector('.declare');
+  for (const id of ['home_suit', 'all_rounder', 'old_deck', 'skat_keeper', 'watertight']) {
+    if (!(await page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`).count())) fail(`relic ${id} has no beer mat in the head`);
+  }
+  await pickUpAndDiscard(page, 'wave 2a');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  const worth = await text(page, 'value-preview');
+  if (!worth.includes('× 1,5')) fail(`Stammfarbe: the score line says "${worth}"`);
+  await shoot(page, 'wave2-table');
+  await playOut(page, 'wave 2a');
+  const board = ((await page.locator('.score-sheet').textContent()) ?? '').replace(/\s+/g, ' ');
+  for (const want of ['Stammfarbe', 'Spielwert ×1,5', 'Allrounder', 'Altes Blatt']) {
+    if (!board.includes(want)) fail(`wave 2a: the Abrechnung does not say "${want}"`);
+  }
+  const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
+  if (mul !== '1,5') fail(`wave 2a: the factor box shows "${mul}"`);
+  await shoot(page, 'wave2-score');
+  log(`wave 2a: score line ${worth}, Abrechnung with Stammfarbe ×1,5`);
   await context.close();
 }
 
