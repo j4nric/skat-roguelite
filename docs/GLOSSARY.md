@@ -6,13 +6,16 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Blatt (das ganze Spiel, 32 Karten) | `deck` | Im Roguelike bis ADR 0015 das geteilte, modifizierbare Blatt; seit ADR 0015 immer das normale Skatblatt aus 32 verschiedenen Karten |
-| Ausgabe (ADR 0015) | `Edition` | Die Version jeder Karte, die ein Spieler besitzt: je Karte die Modifikationen. Ausgabe des Spielers `Run::edition` (geplant, ersetzt `Run::deck`); Gegner: normal (Stammgast) oder Boss-Ausgabe (`edition` in `bosses.ron`) |
-| Halter einer Karte | `holder` | Der Platz, der die Karte gerade hält; die Karte zeigt seine Ausgabe. Der Skat gehört dem Alleinspieler |
-| Besitzer einer Ausgabe | `owner` | An `DealtCard` (geplant): wessen Ausgabe die aufgelöste Karte ist, für Sicht, Rückseite und Hooks |
-| Rückseite | `back` | Kosmetik; Spieler: gewählte Rückseite (Standard Distel, `web/src/ui/backs.ts`), Gegner: `back` in `guests.ron` und `bosses.ron` (geplant) |
-| Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Geplante Modifikation, Vorschlag: in der Ausgabe des Spielers eine Blanko |
-| Abgestuft (Nullspieler, ADR 0015) | `demoted` | Geplante Modifikation, Vorschlag: ein Unter ist in der Ausgabe des Spielers eine Sieben seiner Farbe; Wirkung `Demote` |
+| Blatt (das ganze Spiel, 32 Karten) | `deck` | Im Roguelike bis ADR 0015 das geteilte, modifizierbare Blatt; seit ADR 0015 immer das normale Skatblatt aus 32 verschiedenen Karten (`Game::deck_cards`: jede Karte in der Ausgabe ihres Halters) |
+| Ausgabe (ADR 0015) | `Edition` | Die Version jeder Karte, die ein Spieler besitzt: je Karte die Modifikationen (`core/src/deck.rs`). Ausgabe des Spielers `Run::edition` (ersetzt `Run::deck`, Sicht `RunView::edition`); Gegner: normal (Stammgast) oder Boss-Ausgabe (`edition` in `bosses.ron`, `Edition::with_mods`, `ActiveGame::boss_edition`); `Editions` bündelt die beiden für die Hooks |
+| Halter einer Karte | `holder` | Der Platz, der die Karte gerade hält; die Karte zeigt seine Ausgabe. Der Skat gehört dem Alleinspieler. Wechsel nur über `Game::change_holder`, Ereignis `CardChangedHands`; `Game::in_edition_of`, `Game::current` |
+| Besitzer einer Ausgabe | `owner` | `DealtCard::owner` (`Owner`: `Player`, `Guest`, `Boss`): wessen Ausgabe die aufgelöste Karte ist, für Sicht, Rückseite und Hooks; `Run::owner_of_seat`, Platz des Bosses `BOSS_SEAT` |
+| Rückseite | `back` | Kosmetik; Spieler: gewählte Rückseite (Standard Distel, `web/src/ui/backs.ts`), Gegner: `back` in `guests.ron` (Standard `opponent`, `OPPONENT_BACK`) und `bosses.ron` (Kiebitz-Mörder `kibitz_killer`); Sicht `CardView::back`, `GameView::backs`, `BossInfo::back` |
+| Boss-Ausgabe (Zeile) | `EditionEntry` | Kartenfilter und Modifikation, Sicht `BossInfo::edition` |
+| Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Nicht umgesetzt (der Glasdaus ist mit Effekte v2 gestrichen) |
+| Abgestuft (Nullspieler, ADR 0015) | `demoted` | Spezialkarte, die ein Fluch ist (`ModKind::SpecialCurse`), Wirkung `Demote`, `PlayingCard::demoted`, `DealtCard::demoted`: ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe ohne Augen (`rules::is_demoted_jack`), jede andere Karte sticht eine Stufe tiefer |
+| Reinigen (Frisches Deck, ADR 0015) | `cleanse` | Alle Modifikationen einer Karte der Ausgabe fallen ab: Aktion `ConsumableAction::CleanseCard`, `Edition::cleanse`, `DeckChange::Cleansed`, Fehler `DeckError::NothingToCleanse` |
+| Alter Spielstand (vor ADR 0015) | `OutdatedSave` | Fehler beim Laden eines laufenden Runs der Spielstand-Version 1; der Run wird verworfen |
 | Blatt (die Karten eines Spielers) | `hand` | |
 | Karte | `Card` | |
 | Farbe | `Suit` | |
@@ -27,8 +30,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Lusche (7, 8, 9) | `blank` | Karte ohne Augen |
 | Blanko-Karte (Roguelike) | `CardKind::Blank` | Ohne Farbe, ohne Augen, verliert immer, bedient nie, darf immer gespielt werden. Ersetzte bis ADR 0015 entfernte Karten; seit ADR 0015 nur noch als Karteneffekt (Oma, Scherben). Notation `XX`. |
 | Kartenart (normal oder Blanko) | `CardKind` | `CardKind::Normal(Card)`, `CardKind::Blank` |
-| Karteninstanz im Blatt des Runs | `DeckCard` | `id`, `kind`, `mods`, `mod_values` (Wert je Modifikation, ohne Eintrag 1; Effekte v2) |
-| Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit |
+| Karte einer Ausgabe | `DeckCard` | `id`, `kind`, `mods`, `mod_values` (Wert je Modifikation, ohne Eintrag 1; Effekte v2) |
+| Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit, in der Ausgabe ihres Halters (`owner`) |
 | Karte im Spiel (Regel-Sicht) | `PlayingCard` (Trait) | Von `Card` und `DealtCard` implementiert |
 | Rangbonus (Modifikation Rang, bis Effekte v2 Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
 | Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“. Seit Effekte v2 ohne Inhalt, die Wirkung ruht |
@@ -37,9 +40,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Volle (Ass, Zehn) | `high_card` | |
 | Trumpf | `trump` | |
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
-| Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | nur im Roguelike-Kontext; entfällt mit ADR 0015 |
+| Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | entfallen mit ADR 0015 (M9), im Code gestrichen |
 | Gezinkte Karte / Kartenmodifikation | `CardMod` | Definition `CardModDef`, Id `CardModId` |
-| Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | Talon gehört nicht dazu |
+| Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | immer alle 32 Karten (kein Talon seit ADR 0015) |
 | Wandelkarte (Farbe beim Ausspielen benennen) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers), Effekt `Wild`; zwingt nie zum Bedienen. Benennen: `RunAction::PlayAs { card, suit }`, `Game::play_as`, erlaubte Farben `rules::wild_suits`, Prüfung `rules::may_play`; Ereignis `WildCardNamed`; Sicht `CardView::wild_suits`, `CardView::named` (gedruckte Farbe), `ActiveGame::named`. Die KI rechnet ohne sie: `opponents::tame_game` |
 | Untot (Karte steigt aus dem Stich zurück in die Hand) | `undead` | Effekt `Undead`, Prüfung `Run::can_rise`, verbraucht `ActiveGame::risen` (einmal pro Spiel), Zufall `ActiveGame::undead_rng`; Spielebene `Game::raise`, Ereignis `CardRose` (`card` zurück in der Hand, `substitute` im Stich); Sicht `CardView::can_rise`; Bot `RunBot::undead_card` |
 | Ersatzkarte (Untot: die Karte, die an ihrer Stelle im Stich liegt) | `substitute` | Feld von `CardRose` |
@@ -185,7 +188,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Blatt eines Gegners sehen (Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
 | Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
 | Nach einer Serie mindestens n Groschen | `SeriesWonWithCoins(n)` | Freischaltungs-Bedingung, gemessen nach der Auszahlung |
-| Startblatt / Grunddeck (Abweichung vom 32er-Blatt) | `DeckSpec` | `remove`, `add`, `mods` (Kartenmodifikationen ab Start, je auf der ersten Karte mit dem Aufdruck); seit ADR 0015 nur noch `mods` auf der Ausgabe des Charakters |
+| Startblatt / Grunddeck (Abweichung vom 32er-Blatt) | `DeckSpec` | seit ADR 0015 nur `mods` (Kartenmodifikationen der Ausgabe des Charakters); `remove` und `add` sind ein Ladefehler |
 | Spielart, für die ein Relikt gemacht ist | `GameFocus` | `All`, `Trump` (Farbspiel und Grand), `Null`; Feld `focus` an Relikten und Modifikationen (ADR 0012) |
 | Tresen-Gewicht pro Spielart | `FocusWeights` | `trump`, `null` in Prozent der Seltenheit; Feld `focus_weights` in `CharacterDef` |
 | Freischaltung | `Unlock` | Definition `UnlockDef`, Id `UnlockId`, Bedingung `UnlockCondition`, Belohnung `Reward` |
