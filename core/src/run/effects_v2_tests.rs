@@ -132,13 +132,37 @@ fn first_trick_doubles_the_augen_of_the_first_trick_it_wins() {
         seat: Seat::DECLARER,
         card_points: points,
     }));
-    // Raised once more: ×4, three times the Augen on top.
+}
+
+#[test]
+fn moments_and_special_vouchers_do_not_stack_coins_and_augen_do() {
+    let content = content();
     let mut deck = Deck::standard();
-    deck.add_mod(&content, 28, &id("first_trick"), 2)
-        .expect("x2");
-    deck.add_mod(&content, 28, &id("first_trick"), 2)
-        .expect("x4");
-    assert_eq!(card(&deck, 28).mod_value(&id("first_trick")), 4);
+    for (m, v, card_id) in [("first_trick", 2, 28), ("last_trick", 1, 0)] {
+        deck.add_mod(&content, card_id, &id(m), v).expect("first");
+        assert_eq!(
+            deck.add_mod(&content, card_id, &id(m), v),
+            Err(DeckError::AtMaximum(id(m))),
+            "{m}"
+        );
+        assert_eq!(card(&deck, card_id).mod_value(&id(m)), v);
+    }
+    for m in ["voucher_undead", "voucher_wild"] {
+        deck.add_mod(&content, 5, &id(m), 1).expect("voucher");
+        assert!(deck.add_mod(&content, 5, &id(m), 1).is_err(), "{m}");
+    }
+    deck.add_mod(&content, 9, &id("voucher_coins"), 3)
+        .expect("3");
+    deck.add_mod(&content, 9, &id("voucher_coins"), 3)
+        .expect("6");
+    assert_eq!(card(&deck, 9).mod_value(&id("voucher_coins")), 6);
+    for (m, card_id) in [(AUGEN, 10), ("trump_bonus", 11)] {
+        for _ in 0..5 {
+            deck.add_mod(&content, card_id, &id(m), 4)
+                .expect("uncapped");
+        }
+        assert_eq!(card(&deck, card_id).mod_value(&id(m)), 20, "{m}");
+    }
 }
 
 #[test]

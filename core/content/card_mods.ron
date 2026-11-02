@@ -70,16 +70,17 @@
         kind: Moment,
         focus: Trump,
         name: "Letzter Stich",
-        text: "Macht diese Karte den letzten Stich, gibt es {n} Gewinnstufe(n) mehr.",
+        text: "Macht diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr.",
         rarity: Uncommon,
         price: 4,
         values: [1],
+        max: Some(1),
         hooks: [
             OnScore(when: ThisCardWinsLastTrick, then: [AddLevels(1)]),
         ],
     ),
-    // Lever Augen. Der Wert ist der Faktor: 2 heißt doppelt, eine
-    // Steigerung addiert ihn (×4).
+    // Lever Augen. Der Wert ist der Faktor: 2 heißt doppelt. Moment-
+    // Modifikationen lassen sich nicht steigern (max).
     (
         id: "first_trick",
         kind: Moment,
@@ -89,6 +90,7 @@
         rarity: Uncommon,
         price: 4,
         values: [2],
+        max: Some(2),
         hooks: [
             OnTrickEnd(when: ThisCardWinsFirstTrick, then: [MultiplyTrickPoints(1)]),
         ],
