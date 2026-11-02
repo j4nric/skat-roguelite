@@ -4,8 +4,9 @@
 //!
 //! The game is generic over the card type ([`PlayingCard`]): `Game<Card>`
 //! (the default) plays the plain 32-card deck of milestone M1, while
-//! `Game<DealtCard>` plays card instances of the shared roguelike deck with
-//! blanks and modifications (see [`crate::deck`]).
+//! `Game<DealtCard>` plays card instances of the roguelike deck: the 32
+//! cards, each in the edition of the seat that holds it (ADR 0015, see
+//! [`crate::deck`]).
 //!
 //! Every state change is recorded as an [`Event`]; frontends animate them,
 //! the simulator ignores them. Illegal actions return a [`GameError`] and
@@ -25,8 +26,7 @@ use crate::rules::{
 pub const HAND_SIZE: usize = 10;
 /// Tricks in a game.
 pub const TRICKS_PER_GAME: usize = 10;
-/// Cards dealt into one game: three hands plus the skat. A larger deck
-/// leaves the rest in the talon.
+/// Cards dealt into one game: three hands plus the skat.
 pub const CARDS_IN_PLAY: usize = 3 * HAND_SIZE + 2;
 
 /// One of the three seats at the table. Seat 0 is always the declarer
@@ -244,6 +244,18 @@ pub enum Event<C = Card> {
         /// The card put into the skat.
         gave: C,
     },
+    /// A card changed its holder and shows the holder's edition now (ADR
+    /// 0015): drawn with "Drei drücken", given back, swapped by "Der
+    /// Revolutionär" (a new deal by "Schieben" logs only
+    /// [`Event::SkatRedrawn`]). Only when the edition changes the card.
+    CardChangedHands {
+        /// The new holder (the declarer also for the skat).
+        seat: Seat,
+        /// The card in the edition of its old holder.
+        old: C,
+        /// The card in the edition of its new holder.
+        new: C,
+    },
     /// With the skat the declarer drew a card from a defender's hand
     /// (house rule "Drei drücken"); he discards three.
     CardDrawn {
@@ -431,10 +443,15 @@ pub struct SeatView<'a, C = Card> {
     /// The partner's hand, for a defender whose partner plays open (boss
     /// "Die Zwillinge"). `None` otherwise.
     pub partner_hand: Option<&'a [C]>,
-    /// Every card that may be in this game: the dealt cards plus the talon,
-    /// sorted. The deck is shared and known to all seats, but nobody knows
-    /// which cards lie in the talon.
+    /// Every card of this game, sorted: the 32 dealt cards, each in the
+    /// edition of its current holder (the skat in the declarer's).
     pub deck: &'a [C],
+    /// The 32 cards in the edition of each seat (index = seat, the skat
+    /// goes with the declarer's), or empty lists for a game without
+    /// editions. The editions are public (ADR 0015, DESIGN 10.5): a seat
+    /// that deals the unknown cards resolves each with the seat it falls
+    /// to ([`SeatView::in_edition_of`]).
+    pub editions: &'a [Vec<C>; 3],
     /// Cards this seat may play now. Empty if it is not its turn.
     pub legal_moves: Vec<C>,
 }
@@ -474,6 +491,25 @@ impl<C: PlayingCard> SeatView<'_, C> {
     pub fn lead_card(&self) -> Option<C> {
         rules::effective_lead(self.trick)
     }
+
+    /// `card` in the edition of `seat` ([`Game::in_edition_of`]).
+    #[must_use]
+    pub fn in_edition_of(&self, card: C, seat: Seat) -> C {
+        resolve_in(self.editions, card, seat)
+    }
+}
+
+/// `card` in the edition of `seat`: the copy with the same instance in
+/// `editions[seat]`, or `card` itself without editions.
+pub(crate) fn resolve_in<C: PlayingCard>(editions: &[Vec<C>; 3], card: C, seat: Seat) -> C {
+    let Some(id) = card.instance() else {
+        return card;
+    };
+    editions[seat.index()]
+        .iter()
+        .copied()
+        .find(|c| c.instance() == Some(id))
+        .unwrap_or(card)
 }
 
 /// A single Skat game.
@@ -482,10 +518,13 @@ pub struct Game<C = Card> {
     forehand: Seat,
     hands: [Vec<C>; 3],
     skat: [C; 2],
-    /// Cards that were not dealt (roguelike deck with more than 32 cards).
-    talon: Vec<C>,
-    /// Dealt cards plus talon, sorted: what any seat may expect to see.
+    /// The 32 cards, sorted, each in the edition of its current holder:
+    /// what any seat may expect to see.
     deck: Vec<C>,
+    /// The 32 cards in the edition of each seat (ADR 0015), empty for a
+    /// game without editions. The skat goes with the declarer's.
+    #[serde(default = "no_editions", skip_serializing_if = "no_edition_lists")]
+    editions: [Vec<C>; 3],
     /// The 32 dealt cards, sorted: the trumps in play for matadors.
     in_play: Vec<C>,
     /// Declarer's original hand plus skat: the twelve cards for matadors.
@@ -524,6 +563,14 @@ fn no_bonus(points: &[u32; 3]) -> bool {
     *points == [0; 3]
 }
 
+const fn no_editions<C>() -> [Vec<C>; 3] {
+    [Vec::new(), Vec::new(), Vec::new()]
+}
+
+fn no_edition_lists<C>(editions: &[Vec<C>; 3]) -> bool {
+    editions.iter().all(Vec::is_empty)
+}
+
 /// Default of the optional card fields of saves from before them (without a
 /// `C: Default` bound, which a derived default would ask for).
 const fn no_card<C>() -> Option<(Seat, C)> {
@@ -544,31 +591,99 @@ impl Game<Card> {
         ];
         let skat = [deck[3 * HAND_SIZE], deck[3 * HAND_SIZE + 1]];
         // A shuffled standard deck is a valid deal by construction.
-        Game::build(hands, skat, Vec::new(), forehand)
+        Game::build(hands, skat, forehand)
     }
 }
 
 impl<C: PlayingCard> Game<C> {
-    /// Shuffle `cards` with `rng` and deal 10/10/10/2. Cards beyond the
-    /// first 32 stay in the talon for this game. Fails with fewer than 32
-    /// cards or if a card appears twice.
+    /// Shuffle `cards` with `rng` and deal 10/10/10/2. Fails unless there
+    /// are exactly 32 different cards.
     pub fn deal_from(
         rng: &mut Rng,
         mut cards: Vec<C>,
         forehand: Seat,
     ) -> Result<Game<C>, GameError<C>> {
-        if cards.len() < CARDS_IN_PLAY {
+        if cards.len() != CARDS_IN_PLAY {
             return Err(GameError::InvalidDeal);
         }
         rng.shuffle(&mut cards);
-        let talon = cards.split_off(CARDS_IN_PLAY);
         let hands = [
             cards[0..HAND_SIZE].to_vec(),
             cards[HAND_SIZE..2 * HAND_SIZE].to_vec(),
             cards[2 * HAND_SIZE..3 * HAND_SIZE].to_vec(),
         ];
         let skat = [cards[3 * HAND_SIZE], cards[3 * HAND_SIZE + 1]];
-        Game::with_talon(hands, skat, talon, forehand)
+        Game::with_cards(hands, skat, forehand)
+    }
+
+    /// Deal the 32 cards with their own edition per seat (ADR 0015):
+    /// `editions[seat]` lists the same 32 card instances in the edition of
+    /// that seat, in the same order. The order is shuffled with `rng`
+    /// exactly as [`Game::deal_from`] shuffles one list, so equal seeds deal
+    /// the same cards to the same seats; then every card is taken from the
+    /// edition of the seat it falls to, the skat from the declarer's.
+    pub fn deal_editions(
+        rng: &mut Rng,
+        editions: [Vec<C>; 3],
+        forehand: Seat,
+    ) -> Result<Game<C>, GameError<C>> {
+        let same_cards = editions.iter().all(|e| {
+            e.len() == CARDS_IN_PLAY
+                && e.iter()
+                    .zip(&editions[0])
+                    .all(|(a, b)| a.instance() == b.instance())
+        });
+        if !same_cards {
+            return Err(GameError::InvalidDeal);
+        }
+        let mut order: Vec<usize> = (0..CARDS_IN_PLAY).collect();
+        rng.shuffle(&mut order);
+        let take = |seat: usize, range: std::ops::Range<usize>| -> Vec<C> {
+            order[range].iter().map(|&i| editions[seat][i]).collect()
+        };
+        let hands = [
+            take(0, 0..HAND_SIZE),
+            take(1, HAND_SIZE..2 * HAND_SIZE),
+            take(2, 2 * HAND_SIZE..3 * HAND_SIZE),
+        ];
+        let skat = [
+            editions[0][order[3 * HAND_SIZE]],
+            editions[0][order[3 * HAND_SIZE + 1]],
+        ];
+        let mut game = Game::with_cards(hands, skat, forehand)?;
+        game.editions = editions;
+        for edition in &mut game.editions {
+            edition.sort();
+        }
+        Ok(game)
+    }
+
+    /// Start a game from explicit cards with an edition per seat (tests,
+    /// replays): like [`Game::with_cards`], and `editions` lists the 32
+    /// cards in the edition of each seat (see [`Game::deal_editions`]).
+    /// Every card must be in the edition of the seat that gets it, the
+    /// skat in the declarer's.
+    pub fn with_editions(
+        hands: [Vec<C>; 3],
+        skat: [C; 2],
+        mut editions: [Vec<C>; 3],
+        forehand: Seat,
+    ) -> Result<Game<C>, GameError<C>> {
+        let fits = |seat: usize, card: &C| editions[seat].contains(card);
+        let placed = hands
+            .iter()
+            .enumerate()
+            .all(|(seat, hand)| hand.iter().all(|c| fits(seat, c)))
+            && skat.iter().all(|c| fits(0, c));
+        if !placed || editions.iter().any(|e| e.len() != CARDS_IN_PLAY) {
+            return Err(GameError::InvalidDeal);
+        }
+        let mut game = Game::with_cards(hands, skat, forehand)?;
+        for edition in &mut editions {
+            edition.sort();
+        }
+        game.editions = editions;
+        Ok(game)
     }
 
     /// Start a game from explicit cards (tests, replays, frontends with a
@@ -578,49 +693,29 @@ impl<C: PlayingCard> Game<C> {
         skat: [C; 2],
         forehand: Seat,
     ) -> Result<Game<C>, GameError<C>> {
-        Game::with_talon(hands, skat, Vec::new(), forehand)
-    }
-
-    /// Like [`Game::with_cards`], with extra cards in the talon that are
-    /// known to exist but are not dealt.
-    pub fn with_talon(
-        hands: [Vec<C>; 3],
-        skat: [C; 2],
-        talon: Vec<C>,
-        forehand: Seat,
-    ) -> Result<Game<C>, GameError<C>> {
         if hands.iter().any(|h| h.len() != HAND_SIZE) {
             return Err(GameError::InvalidDeal);
         }
-        let mut all: Vec<C> = hands
-            .iter()
-            .flatten()
-            .copied()
-            .chain(skat)
-            .chain(talon.iter().copied())
-            .collect();
+        let mut all: Vec<C> = hands.iter().flatten().copied().chain(skat).collect();
         let total = all.len();
         all.sort();
         all.dedup();
         if all.len() != total {
             return Err(GameError::InvalidDeal);
         }
-        Ok(Game::build(hands, skat, talon, forehand))
+        Ok(Game::build(hands, skat, forehand))
     }
 
     /// Build the initial state from cards that are known to be valid.
-    fn build(mut hands: [Vec<C>; 3], skat: [C; 2], mut talon: Vec<C>, forehand: Seat) -> Game<C> {
+    fn build(mut hands: [Vec<C>; 3], skat: [C; 2], forehand: Seat) -> Game<C> {
         for hand in &mut hands {
             hand.sort();
         }
-        talon.sort();
         let mut declarer_cards = hands[0].clone();
         declarer_cards.extend(skat);
         let mut in_play: Vec<C> = hands.iter().flatten().copied().chain(skat).collect();
         in_play.sort();
-        let mut deck = in_play.clone();
-        deck.extend(talon.iter().copied());
-        deck.sort();
+        let deck = in_play.clone();
         let log = vec![Event::Dealt {
             forehand,
             hands: hands.clone(),
@@ -630,8 +725,8 @@ impl<C: PlayingCard> Game<C> {
             forehand,
             hands,
             skat,
-            talon,
             deck,
+            editions: no_editions(),
             in_play,
             declarer_cards,
             declaration: None,
@@ -648,6 +743,128 @@ impl<C: PlayingCard> Game<C> {
             bonus_points: [0; 3],
             log,
         }
+    }
+
+    /// The 32 cards in the edition of each seat (ADR 0015); empty lists
+    /// for a game without editions.
+    #[must_use]
+    pub fn editions(&self) -> &[Vec<C>; 3] {
+        &self.editions
+    }
+
+    /// `card` in the edition of `seat`: a card always shows the edition of
+    /// its holder (ADR 0015). Without editions `card` itself.
+    #[must_use]
+    pub fn in_edition_of(&self, card: C, seat: Seat) -> C {
+        resolve_in(&self.editions, card, seat)
+    }
+
+    /// The copy of `card` the game holds now (hand, skat, trick: the
+    /// edition of its holder), found by instance; `card` itself if it is
+    /// not in play. For cards a run remembers across a change of holder
+    /// ("Der Kiebitz", "Durchsichtig").
+    #[must_use]
+    pub fn current(&self, card: C) -> C {
+        match card.instance() {
+            Some(id) => self
+                .deck
+                .iter()
+                .copied()
+                .find(|c| c.instance() == Some(id))
+                .unwrap_or(card),
+            None => card,
+        }
+    }
+
+    /// Tests and fixture tools: give a game dealt without editions (a save
+    /// from before ADR 0015) the editions `editions` and every card the
+    /// copy of the seat that holds it, played it, or for the skat the
+    /// declarer. A card "Kreide" or a Wandelkarte renamed keeps its suit.
+    #[cfg(test)]
+    pub(crate) fn adopt_editions(&mut self, mut editions: [Vec<C>; 3]) {
+        for edition in &mut editions {
+            edition.sort();
+        }
+        self.editions = editions;
+        let resolve = |game: &Game<C>, card: C, seat: Seat| -> C {
+            let new = game.in_edition_of(card, seat);
+            match card.face() {
+                Some(face) if new.face() != Some(face) => new.with_suit(face.suit),
+                _ => new,
+            }
+        };
+        let mut placed: Vec<(C, C)> = Vec::new();
+        for seat in Seat::ALL {
+            let hand: Vec<C> = self.hands[seat.index()]
+                .iter()
+                .map(|&c| resolve(self, c, seat))
+                .collect();
+            placed.extend(
+                self.hands[seat.index()]
+                    .iter()
+                    .copied()
+                    .zip(hand.iter().copied()),
+            );
+            self.hands[seat.index()] = hand;
+        }
+        let skat = self.skat.map(|c| resolve(self, c, Seat::DECLARER));
+        placed.extend(self.skat.iter().copied().zip(skat));
+        self.skat = skat;
+        let lead = self.trick_lead;
+        let trick: Vec<C> = self
+            .trick
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| resolve(self, c, seat_at(lead, i)))
+            .collect();
+        placed.extend(self.trick.iter().copied().zip(trick.iter().copied()));
+        self.trick = trick;
+        let mut tricks = self.tricks.clone();
+        for (trick, old) in tricks.iter_mut().zip(&self.tricks) {
+            for i in 0..3 {
+                trick.cards[i] = resolve(self, old.cards[i], old.seat_of(i));
+                placed.push((old.cards[i], trick.cards[i]));
+            }
+        }
+        self.tricks = tricks;
+        let find = |c: C| -> C {
+            placed
+                .iter()
+                .find(|(old, _)| old.instance() == c.instance())
+                .map_or(c, |(_, new)| *new)
+        };
+        for list in [&mut self.deck, &mut self.in_play, &mut self.declarer_cards] {
+            for c in list.iter_mut() {
+                *c = find(*c);
+            }
+            list.sort();
+        }
+        self.drawn = self.drawn.map(|(s, c)| (s, find(c)));
+        self.returned = self.returned.map(|(s, c)| (s, find(c)));
+    }
+
+    /// The one place where a card changes its holder (ADR 0015, DESIGN
+    /// 18.1): `card` goes to `to` in `to`'s edition. Replaces it in the
+    /// deck, the cards in play and the declarer's twelve cards; the caller
+    /// moves it between hands. Logs [`Event::CardChangedHands`] if the
+    /// edition changes the card. Returns the card as `to` holds it.
+    fn change_holder(&mut self, card: C, to: Seat, events: &mut Vec<Event<C>>) -> C {
+        let new = self.in_edition_of(card, to);
+        if new == card {
+            return card;
+        }
+        for list in [&mut self.deck, &mut self.in_play, &mut self.declarer_cards] {
+            for c in list.iter_mut().filter(|c| **c == card) {
+                *c = new;
+            }
+            list.sort();
+        }
+        events.push(Event::CardChangedHands {
+            seat: to,
+            old: card,
+            new,
+        });
+        new
     }
 
     /// Current phase.
@@ -690,12 +907,6 @@ impl<C: PlayingCard> Game<C> {
     #[must_use]
     pub fn skat(&self) -> [C; 2] {
         self.skat
-    }
-
-    /// Cards of the deck that were not dealt into this game.
-    #[must_use]
-    pub fn talon(&self) -> &[C] {
-        &self.talon
     }
 
     /// The 32 dealt cards (hands plus skat), sorted.
@@ -814,8 +1025,8 @@ impl<C: PlayingCard> Game<C> {
             .find(|seat| self.hands[seat.index()].contains(&card))
     }
 
-    /// Every card that may be in this game, the talon included, sorted.
-    /// The deck is shared and public; which cards lie in the talon is not.
+    /// The 32 cards of this game, sorted, each in the edition of its
+    /// current holder (played cards in the edition of who played them).
     #[must_use]
     pub fn deck_cards(&self) -> &[C] {
         &self.deck
@@ -907,13 +1118,15 @@ impl<C: PlayingCard> Game<C> {
             declarer_hand,
             partner_hand,
             deck: &self.deck,
+            editions: &self.editions,
             legal_moves: self.legal_moves(seat),
         })
     }
 
     /// Deal the defenders' hands and the skat again from all cards the
-    /// declarer does not hold (including the talon). Only before the
-    /// declaration. Used by the house rule "Schieben".
+    /// declarer does not hold. Only before the declaration. Used by the
+    /// house rule "Schieben". Every card goes in the edition of its new
+    /// holder (the skat in the declarer's).
     pub fn redraw_skat(&mut self, rng: &mut Rng) -> Result<Vec<Event<C>>, GameError<C>> {
         if self.phase != Phase::Declaring {
             return Err(GameError::WrongPhase { phase: self.phase });
@@ -923,27 +1136,40 @@ impl<C: PlayingCard> Game<C> {
             .chain(self.hands[2].iter())
             .copied()
             .chain(self.skat)
-            .chain(self.talon.iter().copied())
             .collect();
         pool.sort();
         rng.shuffle(&mut pool);
-        let mut talon = pool.split_off(2 * HAND_SIZE + 2);
-        talon.sort();
-        let mut first = pool[0..HAND_SIZE].to_vec();
-        let mut second = pool[HAND_SIZE..2 * HAND_SIZE].to_vec();
+        let mut changes = Vec::new();
+        let mut place = |game: &mut Game<C>, card: C, seat: Seat| -> C {
+            game.change_holder(card, seat, &mut changes)
+        };
+        let mut first: Vec<C> = Vec::with_capacity(HAND_SIZE);
+        let mut second: Vec<C> = Vec::with_capacity(HAND_SIZE);
+        for (i, &card) in pool.iter().enumerate() {
+            if i < HAND_SIZE {
+                first.push(place(self, card, Seat::DEFENDERS[0]));
+            } else if i < 2 * HAND_SIZE {
+                second.push(place(self, card, Seat::DEFENDERS[1]));
+            }
+        }
+        let skat = [
+            place(self, pool[2 * HAND_SIZE], Seat::DECLARER),
+            place(self, pool[2 * HAND_SIZE + 1], Seat::DECLARER),
+        ];
         first.sort();
         second.sort();
-        let skat = [pool[2 * HAND_SIZE], pool[2 * HAND_SIZE + 1]];
         self.hands[1] = first;
         self.hands[2] = second;
         self.skat = skat;
-        self.talon = talon;
         let mut declarer_cards = self.hands[0].clone();
         declarer_cards.extend(skat);
         self.declarer_cards = declarer_cards;
         let mut in_play: Vec<C> = self.hands.iter().flatten().copied().chain(skat).collect();
         in_play.sort();
         self.in_play = in_play;
+        // A new deal of hidden cards: the changes of edition are not
+        // logged one by one ([`Event::SkatRedrawn`] carries the result).
+        drop(changes);
         let events = vec![Event::SkatRedrawn {
             hands: self.hands.clone(),
             skat,
@@ -984,15 +1210,17 @@ impl<C: PlayingCard> Game<C> {
         }
         let mut events = self.pick_up_skat()?;
         self.hands[from.index()].retain(|&c| c != card);
+        let mut changed = Vec::new();
+        let card = self.change_holder(card, Seat::DECLARER, &mut changed);
         let hand = &mut self.hands[Seat::DECLARER.index()];
         hand.push(card);
         hand.sort();
         self.declarer_cards.push(card);
         self.declarer_cards.sort();
         self.drawn = Some((from, card));
-        let drawn = Event::CardDrawn { seat: from, card };
-        self.log.push(drawn.clone());
-        events.push(drawn);
+        changed.push(Event::CardDrawn { seat: from, card });
+        self.log.extend(changed.iter().cloned());
+        events.extend(changed);
         Ok(events)
     }
 
@@ -1024,6 +1252,16 @@ impl<C: PlayingCard> Game<C> {
         swap(&mut self.declarer_cards);
         swap(&mut self.in_play);
         swap(&mut self.deck);
+        // The card is repainted in every edition: should it change its
+        // holder, it keeps the new suit.
+        if let (Some(id), Some(face)) = (old.instance(), new.face()) {
+            for edition in &mut self.editions {
+                for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
+                    *c = c.with_suit(face.suit);
+                }
+                edition.sort();
+            }
+        }
         // While discarding, the picked-up skat cards are also still named
         // in the skat.
         for c in self.skat.iter_mut().filter(|c| **c == old) {
@@ -1171,6 +1409,8 @@ impl<C: PlayingCard> Game<C> {
         };
         let skat = [first, second];
         self.hands[Seat::DECLARER.index()].retain(|c| !cards.contains(c));
+        let mut changed = Vec::new();
+        let back = self.change_holder(back, from, &mut changed);
         let defender = &mut self.hands[from.index()];
         defender.push(back);
         defender.sort();
@@ -1185,13 +1425,12 @@ impl<C: PlayingCard> Game<C> {
         } else {
             Phase::DeclaringAfterSkat
         };
-        let events = vec![
-            Event::Discarded { cards: skat },
-            Event::CardReturned {
-                seat: from,
-                card: back,
-            },
-        ];
+        let mut events = vec![Event::Discarded { cards: skat }];
+        events.extend(changed);
+        events.push(Event::CardReturned {
+            seat: from,
+            card: back,
+        });
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
@@ -1361,7 +1600,7 @@ impl<C: PlayingCard> Game<C> {
     }
 
     /// A copy of the game with every card passed through `f`: hands, skat,
-    /// talon, the cards in play, the declarer's twelve cards, the trick,
+    /// the editions, the cards in play, the declarer's twelve cards, the trick,
     /// the finished tricks and the cards of "Drei drücken". The log stays as it was. For an AI that should
     /// see the cards differently ([`PlayingCard::wild`] taken off), never
     /// for the game itself.
@@ -1375,8 +1614,12 @@ impl<C: PlayingCard> Game<C> {
             list(&self.hands[2]),
         ];
         game.skat = [f(self.skat[0]), f(self.skat[1])];
-        game.talon = list(&self.talon);
         game.deck = list(&self.deck);
+        game.editions = [
+            list(&self.editions[0]),
+            list(&self.editions[1]),
+            list(&self.editions[2]),
+        ];
         game.in_play = list(&self.in_play);
         game.declarer_cards = list(&self.declarer_cards);
         game.trick = list(&self.trick);
@@ -1423,9 +1666,20 @@ impl<C: PlayingCard> Game<C> {
             return Err(GameError::TrickInProgress);
         }
         self.hands.swap(1, 2);
-        let events = vec![Event::DefenderHandsSwapped {
+        // The editions stay with the seats (ADR 0015, DESIGN 7.1 rule 4).
+        let mut events = Vec::new();
+        for seat in Seat::DEFENDERS {
+            let hand = std::mem::take(&mut self.hands[seat.index()]);
+            let mut moved: Vec<C> = hand
+                .into_iter()
+                .map(|card| self.change_holder(card, seat, &mut events))
+                .collect();
+            moved.sort();
+            self.hands[seat.index()] = moved;
+        }
+        events.push(Event::DefenderHandsSwapped {
             hands: self.hands.clone(),
-        }];
+        });
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
@@ -1953,7 +2207,7 @@ mod tests {
     }
 
     #[test]
-    fn deal_from_leaves_extra_cards_in_the_talon() {
+    fn deal_from_needs_exactly_32_cards() {
         let mut cards = standard_deck();
         let extra = cards.pop().expect("card");
         let mut rng = Rng::from_seed(4);
@@ -1961,11 +2215,119 @@ mod tests {
             Game::deal_from(&mut rng, cards.clone(), Seat::DECLARER),
             Err(GameError::InvalidDeal)
         );
-        // 32 distinct cards deal 10/10/10/2 with an empty talon.
         cards.push(extra);
+        cards.push(extra);
+        assert_eq!(
+            Game::deal_from(&mut rng, cards.clone(), Seat::DECLARER),
+            Err(GameError::InvalidDeal)
+        );
+        cards.pop();
         let game = Game::deal_from(&mut rng, cards, Seat::DECLARER).expect("deal");
-        assert!(game.talon().is_empty());
         assert_eq!(game.cards_in_play().len(), 32);
+    }
+
+    /// Three editions of the 32 cards: the player's counts one Auge more on
+    /// every card, the boss's (seat 1) two, the guest's (seat 2) is plain.
+    fn three_editions() -> [Vec<crate::deck::DealtCard>; 3] {
+        use crate::cards::CardKind;
+        use crate::deck::{DealtCard, Owner};
+        let edition = |owner: Owner, extra: u32| -> Vec<DealtCard> {
+            standard_deck()
+                .into_iter()
+                .zip(0u32..)
+                .map(|(card, id)| {
+                    let plain = DealtCard::plain(id, CardKind::Normal(card));
+                    DealtCard {
+                        owner,
+                        card_points: plain.card_points + extra,
+                        ..plain
+                    }
+                })
+                .collect()
+        };
+        [
+            edition(Owner::Player, 1),
+            edition(Owner::Boss, 2),
+            edition(Owner::Guest, 0),
+        ]
+    }
+
+    #[test]
+    fn editions_deal_like_one_deck_and_resolve_every_card_by_its_holder() {
+        use crate::deck::Owner;
+        let owners = [Owner::Player, Owner::Boss, Owner::Guest];
+        for seed in 0..20 {
+            let editions = three_editions();
+            let plain = Game::deal_from(
+                &mut Rng::from_seed(seed),
+                editions[0].clone(),
+                Seat::DECLARER,
+            )
+            .expect("deal");
+            let game = Game::deal_editions(&mut Rng::from_seed(seed), editions, Seat::DECLARER)
+                .expect("deal");
+            for seat in Seat::ALL {
+                let ids = |g: &Game<crate::deck::DealtCard>| -> Vec<u32> {
+                    g.hand(seat).iter().map(|c| c.id).collect()
+                };
+                assert_eq!(ids(&game), ids(&plain), "same cards to the same seat");
+                assert!(
+                    game.hand(seat)
+                        .iter()
+                        .all(|c| c.owner == owners[seat.index()])
+                );
+            }
+            // The skat is the declarer's (ADR 0015).
+            assert_eq!(game.skat().map(|c| c.id), plain.skat().map(|c| c.id));
+            assert!(game.skat().iter().all(|c| c.owner == Owner::Player));
+            assert_eq!(game.deck_cards().len(), 32);
+        }
+    }
+
+    #[test]
+    fn a_card_that_changes_hands_takes_the_edition_of_its_new_holder() {
+        use crate::deck::Owner;
+        let mut game =
+            Game::deal_editions(&mut Rng::from_seed(3), three_editions(), Seat::DECLARER)
+                .expect("deal");
+        // "Drei drücken": the drawn card becomes the player's.
+        let card = game.hand(Seat(1))[0];
+        assert_eq!(card.owner, Owner::Boss);
+        let events = game.pick_up_skat_drawing(Seat(1), card).expect("draw");
+        let (_, drawn) = game.drawn().expect("drawn");
+        assert_eq!((drawn.id, drawn.owner), (card.id, Owner::Player));
+        assert_eq!(drawn.card_points, card.card_points - 1);
+        assert!(events.contains(&Event::CardChangedHands {
+            seat: Seat::DECLARER,
+            old: card,
+            new: drawn,
+        }));
+        assert!(game.declarer_cards().contains(&drawn));
+        assert!(game.deck_cards().contains(&drawn) && !game.deck_cards().contains(&card));
+        // The card given back is the boss's again.
+        let hand = game.hand(Seat::DECLARER).to_vec();
+        game.discard_three([hand[0], hand[1], hand[2]])
+            .expect("discard three");
+        let (seat, back) = game.returned().expect("returned");
+        assert_eq!((seat, back.owner), (Seat(1), Owner::Boss));
+        assert!(game.hand(Seat(1)).contains(&back));
+        assert!(game.skat().iter().all(|c| c.owner == Owner::Player));
+        game.declare(Declaration::suit(Suit::Hearts, RiskLevel::Normal))
+            .expect("declare");
+        // "Der Revolutionär": the editions stay with the seats.
+        game.swap_defender_hands().expect("swap");
+        assert!(game.hand(Seat(1)).iter().all(|c| c.owner == Owner::Boss));
+        assert!(game.hand(Seat(2)).iter().all(|c| c.owner == Owner::Guest));
+        for seat in Seat::ALL {
+            for &c in game.hand(seat) {
+                assert_eq!(
+                    game.in_edition_of(c, seat),
+                    c,
+                    "every card in its holder's edition"
+                );
+                assert!(game.deck_cards().contains(&c));
+            }
+        }
     }
 
     #[test]

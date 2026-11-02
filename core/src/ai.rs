@@ -55,7 +55,8 @@ fn suit_of<C: PlayingCard>(card: C) -> Option<Suit> {
 
 /// Whether the card is a printed card of `rank`.
 fn has_rank<C: PlayingCard>(card: C, rank: Rank) -> bool {
-    card.face().is_some_and(|f| f.rank == rank)
+    // A demoted Unter ("Abgestuft") is no Unter.
+    card.face().is_some_and(|f| f.rank == rank) && !rules::is_demoted_jack(card)
 }
 
 fn lowest<C: PlayingCard>(game: GameType, cards: &[C]) -> Option<C> {

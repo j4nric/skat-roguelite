@@ -20,11 +20,12 @@ use super::{
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
-    ConsumableId, Content, EncounterId, Factor, HookContext, ModKind, NextGameEffect, Rarity,
-    RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep, card_mod_status,
+    BossId, CardFilter, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
+    ConsumableId, Content, EncounterId, Factor, HookContext, ModKind, NextGameEffect,
+    OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep,
+    card_mod_status,
 };
-use crate::deck::{DealOdds, DealtCard, DeckCard};
+use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
     self, Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, discardable_of,
@@ -53,9 +54,8 @@ pub struct RunView {
     /// The series after the current one, for the Tresen and the run
     /// overview. `None` after the last series and once the run is over.
     pub next_series: Option<NextSeriesView>,
-    /// Where any one card of the deck lands when a game is dealt, for the
-    /// current deck (DESIGN 7.4). For a deck after a change use
-    /// [`crate::deck::deal_odds`] with the new size.
+    /// Where any one card lands when a game is dealt (DESIGN 7.4): always
+    /// 12 of 32 for the player's hand or the skat since ADR 0015.
     pub deal_odds: DealOdds,
     /// Sections (Abschnitte) in this run: 5, or 3 for a short evening.
     pub sections: u32,
@@ -97,8 +97,8 @@ pub struct RunView {
     pub pending_next_game: Vec<PendingNextGame>,
     /// The last scored game.
     pub last_score: Option<ScoreView>,
-    /// The shared deck, in id order.
-    pub deck: Vec<DeckCard>,
+    /// The player's edition of the 32 cards (ADR 0015), in id order.
+    pub edition: Vec<DeckCard>,
     /// Statistics of the run.
     pub stats: RunStats,
 }
@@ -217,6 +217,22 @@ pub struct BossInfo {
     pub text: String,
     /// Factor on the Zielwert of the boss series (1.0 = unchanged).
     pub target_factor: Factor,
+    /// His boss edition (ADR 0015, DESIGN 11): the modifications his cards
+    /// carry. Empty for "Der Alte" (he plays the edition of the rule in
+    /// force, see [`GameView::boss_rule`]) and the Kiebitz-Mörder.
+    pub edition: Vec<EditionEntry>,
+    /// The card back of his cards.
+    pub back: String,
+}
+
+/// One line of a boss edition: every card that matches the filter carries
+/// the modification with its value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EditionEntry {
+    /// The cards: a rank, a suit or one card.
+    pub filter: CardFilter,
+    /// The modification with name, text and value.
+    pub card_mod: CardModInfo,
 }
 
 /// Preview of the next series.
@@ -400,11 +416,16 @@ pub enum TablePhase {
 /// A card as shown to the player.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardView {
-    /// The dealt card with its effective Augen.
+    /// The dealt card with its effective Augen, in the edition of its
+    /// holder (`owner`, ADR 0015).
     #[serde(flatten)]
     pub card: DealtCard,
-    /// Card modifications on this instance.
+    /// Card modifications on this instance in its owner's edition.
     pub mods: Vec<CardModId>,
+    /// The card back of the owner: `None` for the player's own cards
+    /// (the back he chose), the opponent's back otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub back: Option<String>,
     /// Their values, for those that have one ([`DeckCard::mod_values`]).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub mod_values: BTreeMap<CardModId, i32>,
@@ -603,8 +624,12 @@ pub struct GameView {
     /// holders.
     pub revealed: Vec<RevealedCard>,
     /// The boss rule in force in this game: the series' boss, for the
-    /// Endboss "Der Alte" the rule of this game.
+    /// Endboss "Der Alte" the rule of this game (with its edition).
     pub boss_rule: Option<BossInfo>,
+    /// Card back per seat (index = seat): `None` for the player (his own
+    /// choice), the back of the boss or the Stammgast otherwise (ADR
+    /// 0015).
+    pub backs: [Option<String>; 3],
     /// The count of "Der Zähler", if a relic shows it.
     pub count: Option<CountView>,
     /// Whether "Die Oma" (or "Der Opa") lets the player take a card from
@@ -756,6 +781,45 @@ impl Run {
         probe.dispatch(content, action, &mut Vec::new()).is_ok()
     }
 
+    /// The card back of a seat (ADR 0015): `None` for the player, the
+    /// boss's in his seat, a Stammgast's otherwise.
+    fn back_of_seat(&self, content: &Content, seat: Seat) -> Option<String> {
+        match self.owner_of_seat(seat) {
+            Owner::Player => None,
+            Owner::Boss => Some(self.boss_back(content)),
+            Owner::Guest => Some(
+                self.guests(content)
+                    .iter()
+                    .zip(Seat::DEFENDERS)
+                    .find(|(_, s)| *s == seat)
+                    .and_then(|(id, _)| content.guest(id))
+                    .map_or_else(|| OPPONENT_BACK.to_owned(), |g| g.back.clone()),
+            ),
+        }
+    }
+
+    /// The back of the boss whose rule is on (for "Der Alte" his own).
+    fn boss_back(&self, content: &Content) -> String {
+        let back = |id: &BossId| content.boss(id).and_then(|b| b.back.clone());
+        self.series
+            .boss
+            .as_ref()
+            .and_then(back)
+            .or_else(|| self.game.as_ref()?.boss_rule.as_ref().and_then(back))
+            .unwrap_or_else(|| OPPONENT_BACK.to_owned())
+    }
+
+    /// The card back of a card's owner: `None` for the player's own.
+    fn back_of(&self, content: &Content, owner: Owner) -> Option<String> {
+        match owner {
+            Owner::Player => None,
+            Owner::Boss => Some(self.boss_back(content)),
+            // The Stammgast's seat: right of the player (seat 2) holds one
+            // in every series.
+            Owner::Guest => self.back_of_seat(content, Seat::DEFENDERS[1]),
+        }
+    }
+
     fn card_view(&self, content: &Content, card: DealtCard) -> CardView {
         let chalked = self.game.as_ref().and_then(|a| {
             a.chalked
@@ -764,8 +828,9 @@ impl Run {
                 .map(|&(_, suit)| suit)
         });
         let (mods, mod_values) = self
-            .deck
-            .get(card.id)
+            .editions()
+            .of(card.owner)
+            .and_then(|e| e.get(card.id))
             .map(|d| (d.mods.clone(), d.mod_values.clone()))
             .unwrap_or_default();
         let mod_status = self.mod_status(content, card, &mods);
@@ -779,6 +844,7 @@ impl Run {
             chalked,
             card,
             mods,
+            back: self.back_of(content, card.owner),
             mod_values,
             legal: false,
             from_skat: false,
@@ -877,7 +943,7 @@ impl Run {
                 price: def.price,
                 needs_target: matches!(
                     def.action,
-                    ConsumableAction::RemoveCard
+                    ConsumableAction::CleanseCard
                         | ConsumableAction::AddCardMod(_)
                         | ConsumableAction::ApplyCardMod { .. }
                 ),
@@ -906,12 +972,26 @@ impl Run {
                 name: def.name.clone(),
                 text: def.text.clone(),
                 target_factor: def.target_factor_for(self.character),
+                edition: def
+                    .edition
+                    .iter()
+                    .map(|(filter, card_mod, value)| EditionEntry {
+                        filter: *filter,
+                        card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
+                    })
+                    .collect(),
+                back: def
+                    .back
+                    .clone()
+                    .unwrap_or_else(|| crate::content::OPPONENT_BACK.to_owned()),
             },
             None => BossInfo {
                 id: id.clone(),
                 name: id.to_string(),
                 text: String::new(),
                 target_factor: Factor::ONE,
+                edition: Vec::new(),
+                back: crate::content::OPPONENT_BACK.to_owned(),
             },
         }
     }
@@ -1003,7 +1083,7 @@ impl Run {
             },
             upcoming_boss,
             next_series: self.next_series_view(content),
-            deal_odds: self.deck.deal_odds(),
+            deal_odds: crate::deck::deal_odds(),
             sections: self.sections(content),
             length: self.length,
             stake: self.stake,
@@ -1036,7 +1116,7 @@ impl Run {
                 breakdown: b.clone(),
                 steps: b.steps(),
             }),
-            deck: self.deck.cards().to_vec(),
+            edition: self.edition.cards().to_vec(),
             stats: self.stats,
         }
     }
@@ -1074,7 +1154,7 @@ impl Run {
             (!targets.is_empty(), targets)
         } else if consumable.needs_target {
             let targets: Vec<u32> = self
-                .deck
+                .edition
                 .cards()
                 .iter()
                 .map(|c| c.id)
@@ -1300,7 +1380,7 @@ impl Run {
                     _ => marks && card_mod.is_none(),
                 };
                 let targets: Vec<u32> = if needs_target {
-                    self.deck
+                    self.edition
                         .cards()
                         .iter()
                         .map(|c| c.id)
@@ -1427,7 +1507,7 @@ impl Run {
             .revealed_holders()
             .into_iter()
             .map(|(card, holder)| RevealedCard {
-                source: RevealSource::CardMod(self.reveal_mod(content, card.id)),
+                source: RevealSource::CardMod(self.reveal_mod(content, card)),
                 card: self.card_view(content, card),
                 holder,
             })
@@ -1442,6 +1522,8 @@ impl Run {
             }
         });
         for &(card, seat) in &peeked {
+            // The copy of its holder now (a swap changes the edition).
+            let card = game.current(card);
             if !revealed.iter().any(|r| r.card.card.id == card.id) {
                 revealed.push(RevealedCard {
                     card: self.card_view(content, card),
@@ -1457,6 +1539,7 @@ impl Run {
         // The card given back ("Drei drücken"): the player knows who holds
         // it until it is played.
         if let Some((_, card)) = game.returned() {
+            let card = game.current(card);
             if !revealed.iter().any(|r| r.card.card.id == card.id) {
                 revealed.push(RevealedCard {
                     card: self.card_view(content, card),
@@ -1515,6 +1598,7 @@ impl Run {
                 .boss_rule
                 .as_ref()
                 .map(|id| self.boss_info(content, id)),
+            backs: Seat::ALL.map(|seat| self.back_of_seat(content, seat)),
             count: self.count_view(),
             can_take_from_skat,
             skat_swap_cards,
@@ -1556,20 +1640,20 @@ impl Run {
                 .any(|suit| self.accepts(content, RunAction::DemandLead(suit)))
     }
 
-    /// The first modification on a deck card that shows its holder.
-    fn reveal_mod(&self, content: &Content, card: u32) -> CardModId {
-        let mods = self
-            .deck
-            .get(card)
-            .map(|d| d.mods.as_slice())
-            .unwrap_or(&[]);
-        mods.iter()
-            .find(|m| {
-                content
-                    .card_mod(m)
-                    .is_some_and(|def| def.passive.contains(&crate::content::Effect::RevealHolder))
-            })
-            .or_else(|| mods.first())
+    /// The modification that shows the holder of `card` ("Durchsichtig"):
+    /// on the copy's own edition, else on the player's edition.
+    fn reveal_mod(&self, content: &Content, card: DealtCard) -> CardModId {
+        let editions = self.editions();
+        let reveals = |m: &&CardModId| {
+            content
+                .card_mod(m)
+                .is_some_and(|def| def.passive.contains(&crate::content::Effect::RevealHolder))
+        };
+        [editions.of(card.owner), Some(editions.player)]
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.get(card.id))
+            .find_map(|d| d.mods.iter().find(reveals))
             .cloned()
             .unwrap_or_else(|| CardModId::new("transparent"))
     }
@@ -1742,9 +1826,15 @@ mod tests {
         run.game = None;
         run.phase = RunPhase::Shop;
         run.shop = Some(run.draw_offer(&content, 0));
+        // Frisches Deck cleanses a card that carries a modification.
+        let view = run.view(&content);
+        assert!(!view.consumables[0].can_use);
+        run.edition
+            .add_mod(&content, 7, &CardModId::new("points"), 3)
+            .expect("Augen");
         let view = run.view(&content);
         assert!(view.consumables[0].can_use);
-        assert_eq!(view.consumables[0].targets.len(), 32);
+        assert_eq!(view.consumables[0].targets, vec![7]);
         assert!(!view.consumables[1].can_use);
         assert!(view.consumables[1].can_sell);
         assert_eq!(view.consumables[1].sell_price, 1);

@@ -23,10 +23,20 @@ export interface DealtCard {
   no_discard?: boolean;
   /** "Wandelkarte" in the player's hand: he names its suit as he plays it. */
   wild?: boolean;
+  /** "Abgestuft" (Nullspieler): a Unter is the lowest card of its suit, any other card one step lower. */
+  demoted?: boolean;
+  /** Whose edition this copy is (ADR 0015); absent in old views: the player's. */
+  owner?: Owner;
 }
 
+/** Whose edition a card is (ADR 0015): every player owns his own edition of each card. */
+export type Owner = 'Player' | 'Guest' | 'Boss';
+
 export interface CardView extends DealtCard {
+  /** Modifications in the edition of the card's owner (its holder). */
   mods: string[];
+  /** Card back of an opponent's card (ui/backs.ts); absent for the player's own. */
+  back?: string;
   /** Effekte v2: the value of each modification that has one (absent: 1). */
   mod_values?: Record<string, number>;
   legal: boolean;
@@ -108,6 +118,16 @@ export interface BossInfo {
   text: string;
   /** Factor on the Zielwert of the boss series, as a decimal (1.4). */
   target_factor: number;
+  /** His boss edition (ADR 0015): the modifications his cards carry. */
+  edition?: EditionEntry[];
+  /** Card back of his cards (ui/backs.ts). */
+  back?: string;
+}
+
+/** One line of a boss edition: every card matching the filter carries the modification. */
+export interface EditionEntry {
+  filter: { suit?: Suit | null; rank?: string | null };
+  card_mod: CardModInfo;
 }
 
 /** Preview of the series after the current one. */
@@ -136,7 +156,6 @@ export interface DealOdds {
   skat: Odds;
   hand_or_skat: Odds;
   defenders: Odds;
-  talon: Odds;
 }
 
 export interface SeriesView {
@@ -166,6 +185,8 @@ export interface GuestInfo {
   greet: string;
   win: string;
   lose: string;
+  /** Card back of his cards (ui/backs.ts). */
+  back?: string;
 }
 
 export interface RelicInfo {
@@ -353,6 +374,8 @@ export interface GameView {
   revealed: RevealedCard[];
   /** The boss rule of this game (for "Der Alte" the rule laid on this game). */
   boss_rule: BossInfo | null;
+  /** Card back per seat (ADR 0015): null for the player (his own choice), the opponent's back otherwise. */
+  backs?: (string | null)[];
   count: CountView | null;
   /** "Die Oma" (or "Der Opa") lets the player take a card from the skat now. */
   can_take_from_skat: boolean;
@@ -595,7 +618,8 @@ export interface RunView {
   /** Schnäpse waiting for the next declared game ("Doppelkorn", "Magenbitter"). */
   pending_next_game?: PendingNextGame[];
   last_score: ScoreView | null;
-  deck: DeckCard[];
+  /** The player's edition of the 32 cards (ADR 0015). */
+  edition: DeckCard[];
   stats: RunStats;
 }
 
@@ -634,15 +658,15 @@ export type GameEvent =
   | { LeadDemanded: { suit: LeadSuit } }
   /** "Untot": the card rose back into the hand, the substitute lies in the trick. */
   | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard } }
+  /** ADR 0015: a card changed its holder and shows his edition (the card only if the player knows it). */
+  | { CardChangedHands: { seat: Seat; card?: DealtCard } }
   | { GameFinished: unknown };
 
 export type DeckChange =
-  | { ReplacedByBlank: { removed: DeckCard; blank: number } }
-  | { Removed: { removed: DeckCard } }
-  | { FilledBlank: { card: number; blank: number } }
-  | { Added: { card: number } }
   | { Modified: { card: number; card_mod: string; value?: number; replaced?: string | null } }
-  | { Unmodified: { card: number; card_mod: string } };
+  | { Unmodified: { card: number; card_mod: string } }
+  /** "Frisches Deck": every modification fell off the card. */
+  | { Cleansed: { card: number; removed: string[] } };
 
 export type RunEvent =
   | 'Re'
@@ -731,7 +755,7 @@ export interface ModFigure {
 
 /** A card modification in the catalog, with rarity, curse flag and its printed number. */
 /** Effekte v2: Rand, Moment, Gutschein, Fluch, Spezialkarte. */
-export type ModKind = 'Edge' | 'Moment' | 'Voucher' | 'Curse' | 'Special';
+export type ModKind = 'Edge' | 'Moment' | 'Voucher' | 'Curse' | 'Special' | 'SpecialCurse';
 
 export interface CardModEntry extends CatalogEntry {
   rarity: Rarity;

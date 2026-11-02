@@ -347,6 +347,21 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         false
     }
 
+    /// Whether this card is "Abgestuft" (DESIGN 9.2, 9.8): a Unter leaves
+    /// the trump and Unter row and is the lowest card of its suit, every
+    /// other card counts one step lower within its kind (see
+    /// [`crate::rules::trump_strength`]). `false` for plain cards.
+    fn demoted(self) -> bool {
+        false
+    }
+
+    /// The identity of this card instance across editions (ADR 0015): the
+    /// same id in every edition of the card. `None` for plain cards, which
+    /// have one edition only.
+    fn instance(self) -> Option<u32> {
+        None
+    }
+
     /// The same card with another suit and the same rank, everything else
     /// kept ("Kreide", "Wandelkarte"). A blank stays a blank.
     #[must_use]

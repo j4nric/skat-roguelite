@@ -24,9 +24,9 @@ use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
 pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
-    ActiveSource, CardModStatus, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
+    ActiveSource, CardModStatus, Editions, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
-    resolve_deck,
+    resolve_edition,
 };
 pub use score::{
     Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
@@ -114,6 +114,17 @@ pub struct GuestDef {
     pub look: String,
     /// Speech bubble lines.
     pub quips: GuestQuips,
+    /// Card back of his cards (ADR 0015); the shared opponent back
+    /// `"opponent"` if not set.
+    #[serde(default = "opponent_back")]
+    pub back: String,
+}
+
+/// The card back every opponent shows unless content names another one.
+pub const OPPONENT_BACK: &str = "opponent";
+
+fn opponent_back() -> String {
+    OPPONENT_BACK.to_owned()
 }
 
 /// Charakter: who the player is in a run (DESIGN 9). Every character may
@@ -266,20 +277,15 @@ pub fn in_pool(pool: &[Character], character: Character) -> bool {
     pool.is_empty() || pool.contains(&character)
 }
 
-/// How a character's start deck differs from the standard 32 cards:
-/// `remove` takes printed cards out (each leaves a blank), `add` puts new
-/// cards in (filling blanks first), `mods` attaches card modifications.
+/// How a character's start edition differs from the plain one (ADR
+/// 0015): card modifications only. Cards are never removed or added; the
+/// old fields `remove` and `add` are a load error.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct DeckSpec {
-    /// Printed cards to remove, one instance each.
-    pub remove: Vec<Card>,
-    /// Printed cards to add.
-    pub add: Vec<Card>,
-    /// Card modifications on the start deck, after removing and adding:
-    /// each goes on the first instance (by id) of its printed card, with
-    /// its value (effects v2, DESIGN 7.2). Their "beim Erhalt" hooks do
-    /// not fire (the card comes modified).
+    /// Card modifications on the start edition: each goes on its printed
+    /// card, with its value (effects v2, DESIGN 7.2). Their "beim Erhalt"
+    /// hooks do not fire (the card comes modified).
     pub mods: Vec<(Card, CardModId, i32)>,
 }
 
@@ -571,6 +577,24 @@ pub enum ModKind {
     /// Spezialkarte (Untot, Wandelkarte): changes the card's design and
     /// may sit next to one normal modification.
     Special,
+    /// Spezialkarte that is a curse ("Abgestuft", DESIGN 9.2): it holds the
+    /// special slot, may sit next to one normal modification, and no
+    /// other special card replaces it; only Frisches Deck takes it off.
+    SpecialCurse,
+}
+
+impl ModKind {
+    /// Whether it sits in the special slot (Spezialkarte).
+    #[must_use]
+    pub fn is_special(self) -> bool {
+        matches!(self, ModKind::Special | ModKind::SpecialCurse)
+    }
+
+    /// Whether it is a curse.
+    #[must_use]
+    pub fn is_curse(self) -> bool {
+        matches!(self, ModKind::Curse | ModKind::SpecialCurse)
+    }
 }
 
 /// A card modification (gezinkte Karte). It acts on the card instance it is
@@ -622,13 +646,13 @@ impl CardModDef {
     /// Whether it is a curse (Fluch, DESIGN 7.2).
     #[must_use]
     pub fn is_curse(&self) -> bool {
-        self.kind == ModKind::Curse
+        self.kind.is_curse()
     }
 
     /// Whether it is a special card (Untot, Wandelkarte).
     #[must_use]
     pub fn is_special(&self) -> bool {
-        self.kind == ModKind::Special
+        self.kind.is_special()
     }
 
     /// Whether it carries a value that a second copy raises.
@@ -794,6 +818,14 @@ pub struct BossDef {
     /// (a boss may hit one character harder than another).
     #[serde(default)]
     pub character_factors: BTreeMap<Character, Factor>,
+    /// The boss edition (ADR 0015, DESIGN 11): modifications on every card
+    /// that matches the filter, with their value. The cards the boss holds
+    /// carry them; the Stammgast next to him plays the plain edition.
+    #[serde(default)]
+    pub edition: Vec<(CardFilter, CardModId, i32)>,
+    /// Card back of his cards; the shared opponent back if not set.
+    #[serde(default)]
+    pub back: Option<String>,
 }
 
 impl BossDef {
@@ -810,8 +842,12 @@ impl BossDef {
 /// What a consumable does when used. These are player actions, not hooks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConsumableAction {
-    /// Remove a chosen card from the deck for good (at the Tresen).
-    RemoveCard,
+    /// "Frisches Deck" (DESIGN 7.3): every modification of a chosen card
+    /// of the player's edition falls off, curses included (at the
+    /// Tresen). Saves name it `RemoveCard` (before ADR 0015 it removed
+    /// the card).
+    #[serde(alias = "RemoveCard")]
+    CleanseCard,
     /// Attach a card modification to a chosen card (at the Tresen). `None`
     /// picks one at random with the run's RNG.
     AddCardMod(Option<CardModId>),
@@ -1351,6 +1387,14 @@ impl Content {
             return Err(ContentError("run: encounter chance above 1".into()));
         }
         for boss in self.bosses.values() {
+            if !boss.rotation.is_empty() && !boss.edition.is_empty() {
+                return Err(ContentError(format!(
+                    "boss {}: a rotating boss plays the edition of the rule in force",
+                    boss.id
+                )));
+            }
+            crate::deck::Edition::with_mods(&boss.edition, self)
+                .map_err(|e| ContentError(format!("boss {}: edition: {e}", boss.id)))?;
             for sub in &boss.rotation {
                 let known = self.bosses.get(sub);
                 if known.is_none_or(|b| !b.rotation.is_empty()) {
@@ -1471,7 +1515,7 @@ impl Content {
                     )));
                 }
             }
-            let mut deck = crate::deck::Deck::standard();
+            let mut deck = crate::deck::Edition::standard();
             deck.apply_spec(&def.deck, self)
                 .map_err(|e| ContentError(format!("{what}: start deck: {e}")))?;
         }

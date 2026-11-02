@@ -11,7 +11,7 @@ use crate::rules::{NullRisk, RiskLevel};
 /// A Null the declarer cannot lose once a defender leads (all eight
 /// sevens of the Nullspieler's deck).
 const SAFE_NULL: [&str; 3] = [
-    "D7 D7 H7 H7 S7 S7 C7 C7 D8 H8",
+    "D7 DJ H7 HJ S7 SJ C7 CJ D8 H8",
     "D9 DT DQ DK DA H9 HT HQ HK HA",
     "S8 S9 ST SQ SK SA C8 C9 CT CQ",
 ];

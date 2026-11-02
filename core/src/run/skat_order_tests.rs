@@ -32,7 +32,7 @@ fn diamonds(risk: RiskLevel) -> Declaration {
 /// Instance id of a card in the standard deck.
 fn id(run: &Run, notation: &str) -> u32 {
     let kind: crate::cards::CardKind = notation.parse().expect("notation");
-    run.deck()
+    run.edition()
         .cards()
         .iter()
         .find(|c| c.kind == kind)

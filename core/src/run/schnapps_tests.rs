@@ -329,7 +329,7 @@ fn chalk_repaints_a_card_of_the_hand_until_the_game_ends() {
     assert_eq!(won.matadors.count, 11);
     // The deck keeps the printed card; the next game knows nothing of it.
     let printed: CardKind = "H7".parse().expect("notation");
-    assert_eq!(run.deck().get(heart.id).expect("deck").kind, printed);
+    assert_eq!(run.edition().get(heart.id).expect("deck").kind, printed);
     if let Some(active) = run.game() {
         assert!(active.chalked.is_empty());
     }

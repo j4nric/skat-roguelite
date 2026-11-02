@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { Catalog, CardKind, ConsumableCategory, Rarity, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
+import type { BossInfo, Catalog, CardKind, ConsumableCategory, Rarity, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -80,6 +80,27 @@ export function contentText(category: Category, id: string): string {
 export function modText(mod: string, value: number): string {
   const signed = value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '0';
   return contentText('card_mods', mod).replaceAll('{+n}', signed).replaceAll('{n}', String(Math.abs(value)));
+}
+
+/**
+ * A boss edition in one line (ADR 0015): "Seine Ausgabe: Siebenen: Augen +4".
+ * Empty if he has none. Formatting only; the entries come from the core.
+ */
+export function bossEditionText(boss: BossInfo | null | undefined): string {
+  const entries = boss?.edition ?? [];
+  if (!entries.length) return '';
+  const rankKey: Record<string, Rank> = { Seven: '7', Eight: '8', Nine: '9', Ten: 'T', Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A' };
+  const parts = entries.map((e) => {
+    const { suit, rank } = e.filter;
+    const cards = suit && rank ? `${de.suits[suit]}-${de.ranks[rankKey[rank] ?? '7']}` : rank ? (de.info.rankPlural[rank] ?? rank) : suit ? de.suits[suit] : '';
+    const value = e.card_mod.value ?? 1;
+    const name = contentName('card_mods', e.card_mod.id);
+    const negative = e.card_mod.id === 'battered' || e.card_mod.id === 'stained';
+    const counted = ['points', 'battered', 'rank', 'trump_bonus', 'stained'].includes(e.card_mod.id);
+    const mod = counted ? `${name} ${negative ? '−' : '+'}${Math.abs(value)}` : name;
+    return t(de.info.bossEditionEntry, { cards, mod });
+  });
+  return t(de.info.bossEdition, { entries: parts.join(' · ') });
 }
 
 /** The number a card modification prints on its card, from the core's catalog. */

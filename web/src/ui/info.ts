@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, cardName, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
+import { de, bossEditionText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
 import { cardBack, cardSvg } from './cards';
 import { attrs, esc } from './dom';
@@ -83,7 +83,7 @@ function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mod
   }
   const seen = game?.revealed.find((r) => r.card.id === id);
   if (seen) return { kind: seen.card.kind, mods: seen.card.mods, values: seen.card.mod_values ?? {}, card: seen.card, holder: seen.holder };
-  const deck: DeckCard | undefined = view.deck.find((c) => c.id === id);
+  const deck: DeckCard | undefined = view.edition.find((c) => c.id === id);
   return deck ? { kind: deck.kind, mods: deck.mods, values: deck.mod_values ?? {}, card: null, holder: null } : null;
 }
 
@@ -96,6 +96,10 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     facts.push(t(card.card_points === 1 ? de.info.pointsOne : de.info.points, { n: card.card_points }));
     if (card.rank_bonus > 0) facts.push(t(card.rank_bonus === 1 ? de.info.rankBonus : de.info.rankBonusMany, { n: card.rank_bonus }));
     if (card.never_wins) facts.push(de.info.neverWins);
+    if (card.demoted) facts.push(face(card.kind)?.rank === 'J' ? de.info.demotedJack : de.info.demoted);
+    // ADR 0015: an opponent's card shows his edition.
+    if (card.owner === 'Guest') facts.push(de.info.ownerGuest);
+    if (card.owner === 'Boss') facts.push(t(de.info.ownerBoss, { name: view.game?.boss_rule?.name ?? view.series.boss?.name ?? '' }));
     if (card.honorary_jack) facts.push(de.card.honoraryJack);
     if (card.no_discard) facts.push(de.card.noDiscard);
     if ('can_rise' in card && card.can_rise) facts.push(de.card.canRise);
@@ -175,7 +179,7 @@ function bossModel(key: string, view: RunView, id: string, kind: string, face = 
     kind,
     art: face ? portrait(bossPortraitId(id), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`,
     facts,
-    sections: [{ text: contentText('bosses', id) || boss?.text || '', status: [] }],
+    sections: [{ text: [contentText('bosses', id) || boss?.text || '', bossEditionText(boss)].filter(Boolean).join(' '), status: [] }],
   };
 }
 

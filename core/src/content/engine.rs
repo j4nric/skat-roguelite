@@ -1,4 +1,4 @@
-//! Applying content: resolving the deck into dealt cards for one game and
+//! Applying content: resolving editions into dealt cards for one game and
 //! evaluating hook conditions. The run ([`crate::run`]) decides when hooks
 //! fire and applies their effects to its own state.
 
@@ -10,7 +10,7 @@ use super::effects::{Condition, Effect, Hook};
 use super::score::Source;
 use super::{CardModDef, CardModId, Content};
 use crate::cards::{CardKind, PlayingCard};
-use crate::deck::{DealtCard, Deck};
+use crate::deck::{DealtCard, Edition, Owner};
 use crate::game::{Game, Seat, TRICKS_PER_GAME, seat_at};
 use crate::rules::{Declaration, GameType, Matadors, ValueParts, acts_as_honorary_jack};
 
@@ -38,30 +38,36 @@ pub struct ActiveSource<'a> {
     pub scale: i32,
 }
 
-/// The deck resolved for one game.
+/// An edition resolved for one game.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedDeck {
-    /// Every card of the deck with effective Augen, rank bonus and
-    /// visibility, in deck order.
+    /// Every card of the edition with effective Augen, rank bonus and
+    /// visibility, in id order.
     pub cards: Vec<DealtCard>,
     /// Augen changes per card and source, for the score breakdown:
     /// `(card id, source, delta)`.
     pub point_changes: Vec<(u32, Source, i32)>,
 }
 
-/// Resolve the deck for one game.
+/// Resolve one edition for one game, every card as a copy of `owner`.
 ///
 /// Order per card: `BlankOut` from bosses and relics turns matching cards
 /// into blanks (their modifications are inactive for this game); then
-/// `SetCardPoints` from bosses and relics in source order; then the card's
-/// own modifications in the order they were attached, each scaled by the
-/// value the card carries (`AddCardPoints`, `RankBonus`, `RevealHolder`,
-/// `NeverWins`, `HonoraryJack`, `NoDiscard`, `Wild`). Augen below zero
-/// leave the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). The
-/// game keeps `Wild` only on the cards the player holds.
-/// `RevealHolder` is off while a global source has `DisableInformation`.
+/// `SetCardPoints` from bosses and relics in source order (rules of the
+/// table, for every edition); then the card's own modifications in the
+/// order they were attached, each scaled by the value the card carries
+/// (`AddCardPoints`, `RankBonus`, `RevealHolder`, `NeverWins`,
+/// `HonoraryJack`, `NoDiscard`, `Wild`, `Demote`). Augen below zero leave
+/// the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). A demoted
+/// Unter has no Augen. `RevealHolder` is off while a global source has
+/// `DisableInformation`.
 #[must_use]
-pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>]) -> ResolvedDeck {
+pub fn resolve_edition(
+    deck: &Edition,
+    owner: Owner,
+    content: &Content,
+    global: &[ActiveSource<'_>],
+) -> ResolvedDeck {
     let mut cards = Vec::with_capacity(deck.len());
     let mut point_changes = Vec::new();
     let no_information = global
@@ -80,7 +86,10 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
         } else {
             deck_card.kind
         };
-        let mut dealt = DealtCard::plain(deck_card.id, kind);
+        let mut dealt = DealtCard {
+            owner,
+            ..DealtCard::plain(deck_card.id, kind)
+        };
         let Some(face) = kind.face() else {
             cards.push(dealt);
             continue;
@@ -125,6 +134,21 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
                         dealt.point_debt = u32::try_from((-new).max(0)).unwrap_or(0);
                     }
                     Effect::Wild => dealt.wild = true,
+                    Effect::Demote => {
+                        dealt.demoted = true;
+                        if face.is_jack() {
+                            let old = i64::from(dealt.card_points) - i64::from(dealt.point_debt);
+                            if old != 0 {
+                                point_changes.push((
+                                    dealt.id,
+                                    source.clone(),
+                                    i32::try_from(-old).unwrap_or(0),
+                                ));
+                            }
+                            dealt.card_points = 0;
+                            dealt.point_debt = 0;
+                        }
+                    }
                     Effect::RankBonus(bonus) => {
                         dealt.rank_bonus = dealt.rank_bonus.saturating_add(bonus);
                     }
@@ -144,11 +168,35 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
     }
 }
 
+/// The editions of one game (ADR 0015): the player's and, in a boss
+/// series, the boss's. A Stammgast's edition is plain.
+#[derive(Debug, Clone, Copy)]
+pub struct Editions<'e> {
+    /// The player's edition.
+    pub player: &'e Edition,
+    /// The boss edition of the boss at the table, if any.
+    pub boss: Option<&'e Edition>,
+}
+
+impl<'e> Editions<'e> {
+    /// The edition of `owner`; `None` for the plain edition.
+    #[must_use]
+    pub fn of(&self, owner: Owner) -> Option<&'e Edition> {
+        match owner {
+            Owner::Player => Some(self.player),
+            Owner::Boss => self.boss,
+            Owner::Guest => None,
+        }
+    }
+}
+
 /// The card modifications that are active in a game: those on dealt cards
-/// that are in play and not blanked out, in card id order.
+/// that are in play and not blanked out, each in the edition of the card's
+/// owner (a card shows the edition of its holder, ADR 0015), in card id
+/// order.
 #[must_use]
 pub fn card_mod_sources<'a>(
-    deck: &Deck,
+    editions: Editions<'_>,
     content: &'a Content,
     game: &Game<DealtCard>,
 ) -> Vec<ActiveSource<'a>> {
@@ -159,7 +207,7 @@ pub fn card_mod_sources<'a>(
         if card.is_blank() {
             continue;
         }
-        let Some(deck_card) = deck.get(card.id) else {
+        let Some(deck_card) = editions.of(card.owner).and_then(|e| e.get(card.id)) else {
             continue;
         };
         for mod_id in &deck_card.mods {

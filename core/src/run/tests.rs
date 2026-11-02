@@ -1,6 +1,6 @@
 use super::bot::RunBot;
 use super::*;
-use crate::cards::{Card, PlayingCard};
+use crate::cards::PlayingCard;
 use crate::rules::NullRisk;
 
 fn content() -> Content {
@@ -459,6 +459,21 @@ fn consumables_change_the_deck_and_the_series() {
         ),
         Err(RunError::TargetRequired)
     );
+    // Frisches Deck cleanses a card of the player's edition (ADR 0015).
+    assert_eq!(
+        run.apply(
+            &content,
+            RunAction::UseConsumable {
+                slot: 0,
+                target: Some(0),
+                suit: None,
+            },
+        ),
+        Err(RunError::Deck(DeckError::NothingToCleanse(0)))
+    );
+    run.edition
+        .add_mod(&content, 0, &CardModId::new("battered"), 5)
+        .expect("curse");
     run.apply(
         &content,
         RunAction::UseConsumable {
@@ -467,8 +482,9 @@ fn consumables_change_the_deck_and_the_series() {
             suit: None,
         },
     )
-    .expect("remove D7");
-    assert_eq!(run.deck().blanks(), 1);
+    .expect("cleanse D7");
+    assert!(run.edition().get(0).is_some_and(|c| c.mods.is_empty()));
+    assert_eq!(run.edition().len(), 32);
     assert_eq!(run.consumables(), &[ConsumableId::new("ink_pad")]);
     run.apply(
         &content,
@@ -479,7 +495,7 @@ fn consumables_change_the_deck_and_the_series() {
         },
     )
     .expect("stamp CA");
-    assert_eq!(run.deck().get(31).map(|c| c.mods.len()), Some(1));
+    assert_eq!(run.edition().get(31).map(|c| c.mods.len()), Some(1));
     assert!(run.consumables().is_empty());
 
     // Beer during a series, new deal before declaring.
@@ -531,31 +547,6 @@ fn consumables_change_the_deck_and_the_series() {
         ),
         Err(RunError::WrongPhase)
     );
-}
-
-#[test]
-fn a_removed_card_is_dealt_as_blank() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 4).expect("start");
-    run.deck.remove(31).expect("remove CA");
-    run.games_dealt = 0;
-    let mut events = Vec::new();
-    run.deal(&content, true, &mut events).expect("deal");
-    let game = &run.game().expect("game").game;
-    let blanks = game
-        .cards_in_play()
-        .iter()
-        .filter(|c| c.kind == CardKind::Blank)
-        .count();
-    assert_eq!(blanks, 1);
-    let ace: Card = "CA".parse().expect("card");
-    assert!(
-        !game
-            .cards_in_play()
-            .iter()
-            .any(|c| c.kind == CardKind::Normal(ace))
-    );
-    assert_eq!(game.cards_in_play().len(), 32);
 }
 
 #[test]
@@ -772,8 +763,8 @@ fn error_codes_are_stable_names() {
             "TrickInProgress",
         ),
         (
-            RunError::Deck(DeckError::WouldShrinkBelowMinimum),
-            "DeckAtMinimum",
+            RunError::Deck(DeckError::NothingToCleanse(0)),
+            "NothingToCleanse",
         ),
         (RunError::InvalidStart, "InvalidStart"),
     ];

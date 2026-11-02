@@ -10,8 +10,19 @@
 // only turn into noise. Both are <symbol>s in the card sprite (./art.ts),
 // in the card's 120 × 180 box.
 
-/** The available back designs. Only one so far; more will be unlocked later. */
-export type BackDesign = 'distel';
+/**
+ * The available back designs. "distel" is the player's (more will be
+ * unlocked later); since ADR 0015 the opponents' cards show their own back:
+ * "opponent" for every Stammgast and boss, "kibitz_killer" for Der
+ * Kiebitz-Mörder (`back` in guests.ron and bosses.ron).
+ */
+export type BackDesign = 'distel' | 'opponent' | 'kibitz_killer';
+
+/** The design of a back id from the core; unknown ids show the opponent back. */
+export function backDesign(id: string | null | undefined): BackDesign {
+  if (!id) return DEFAULT_BACK;
+  return id in BACKS ? (id as BackDesign) : 'opponent';
+}
 
 export const DEFAULT_BACK: BackDesign = 'distel';
 
@@ -354,7 +365,51 @@ ${panel(16, 18, true)}${panel(68, 18, true)}${panel(16, 100, false)}${panel(68, 
 <rect x="56" y="84" width="8" height="12" fill="${OCHRE}"/>`;
 }
 
+// --------------------------------------------- opponent backs (ADR 0015)
+
+const OXBLOOD = '#7a2630';
+const OXBLOOD_DARK = '#4e151c';
+const SLATE = '#2b2f36';
+
+/**
+ * A plain opponent back: oxblood with a cream frame and a lattice of
+ * diamonds, so the opponents' cards never look like the player's Distel.
+ */
+function latticeBack(ground: string, line: string, accent: string, step: number): string {
+  let cells = '';
+  for (let y = 16; y < 164; y += step) {
+    for (let x = 14 + (((y - 16) / step) % 2) * (step / 2); x < 106; x += step) {
+      cells += `M${x} ${y + step / 2}l${step / 2} -${step / 2}l${step / 2} ${step / 2}l-${step / 2} ${step / 2}z`;
+    }
+  }
+  return `<rect width="120" height="180" fill="${CREAM}"/>
+<rect x="6" y="6" width="108" height="168" fill="${ground}"/>
+<rect x="10" y="10" width="100" height="160" fill="none" stroke="${CREAM_LINE}" stroke-width="2"/>
+<path d="${cells}" fill="${line}"/>
+<rect x="48" y="78" width="24" height="24" fill="${accent}"/>
+<rect x="54" y="84" width="12" height="12" fill="${CREAM}"/>`;
+}
+
+function opponentFull(): string {
+  return latticeBack(OXBLOOD, OXBLOOD_DARK, GOLD, 12);
+}
+
+function opponentSmall(): string {
+  return `<rect width="120" height="180" fill="${CREAM}"/><rect x="10" y="10" width="100" height="160" fill="${OXBLOOD}"/><rect x="44" y="74" width="32" height="32" fill="${GOLD}"/>`;
+}
+
+/** Der Kiebitz-Mörder: slate, no window to look through. */
+function killerFull(): string {
+  return latticeBack(SLATE, BLACK, OXBLOOD, 16);
+}
+
+function killerSmall(): string {
+  return `<rect width="120" height="180" fill="${CREAM}"/><rect x="10" y="10" width="100" height="160" fill="${SLATE}"/><rect x="44" y="74" width="32" height="32" fill="${OXBLOOD}"/>`;
+}
+
 const BACKS: Record<BackDesign, BackArt> = {
+  opponent: { full: opponentFull, small: opponentSmall },
+  kibitz_killer: { full: killerFull, small: killerSmall },
   distel: {
     full: distelFull,
     small: distelSmall,

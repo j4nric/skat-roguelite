@@ -6,12 +6,21 @@
 // target_factor (ADR 0012: ein Boss trifft den Nullspieler anders).
 // rotation: Endboss, der die Regeln dieser Bosse nacheinander auflegt, eine
 // pro Spiel.
+// edition: die Boss-Ausgabe (ADR 0015, DESIGN 11, milde Stufe vom
+// 02.11.2026): Kartenfilter, Modifikation, Wert. Die Karten, die der Boss
+// (links) hält, tragen sie; der Stammgast rechts spielt die normale
+// Ausgabe. Der Alte hat keine eigene, er spielt die Ausgabe des Bosses,
+// dessen Regel gerade gilt.
+// back: Id der Kartenrückseite (web/src/ui/backs.ts); ohne Angabe die
+// gemeinsame Gegner-Rückseite.
 [
     (
         id: "the_pusher",
         name: "Der Schieber",
         text: "Jedes Spiel ist ein Handspiel.",
         passive: [RequireHand],
+        // Schmuggelware: Luschen, die doch etwas wert sind.
+        edition: [((rank: Some(Seven)), "points", 4)],
         target_factor: 1.0,
         // M5: Der Nullspieler gewann Null Hand ohne Skat höchstens 24 % der
         // Boss-Serien und stand nicht im Pool. Seit ADR 0012 darf er auch
@@ -27,6 +36,9 @@
         name: "Der Kontra-Hans",
         text: "Kontra ist immer erlaubt, auch ohne Hausregel.",
         passive: [EnableKontra],
+        // Hans legt einen drauf: Macht sein König den letzten Stich, eine
+        // Gewinnstufe mehr (der Einsatz steigt, gewonnen wie verloren).
+        edition: [((rank: Some(King)), "last_trick", 1)],
         // M5: Im Run gewinnt der PIMC-Spieler 89 bis 91 % der Boss-Serien
         // (normale Serie 85 %), bei 72 in der Kurve 68 % statt 56 %. Mit 1,5
         // liegt er bei jedem Zielwert knapp unter einer normalen Serie.
@@ -37,6 +49,8 @@
         name: "Die Oma",
         text: "Die Oma hat alle Buben eingesteckt. In dieser Serie sind sie Blankos.",
         passive: [BlankOut((rank: Some(Jack)))],
+        // Die alte Oberin: 6 statt 3 Augen.
+        edition: [((rank: Some(Queen)), "points", 3)],
         // M4-Messung (--curve --boss grandma, 3000 Serien): ohne Buben gewinnt der
         // Bot höchstens 35 % (Zielwert 1), bei 110 nur 0,7 % (normal 18,5 %).
         // M5 (PIMC-Spieler, 8 Spiele): Obergrenze 42 %, bei 24 noch 36 %.
@@ -54,6 +68,8 @@
         name: "Die Zwillinge",
         text: "Die Gegner sehen gegenseitig ihre Blätter und spielen danach.",
         passive: [DefendersSeeEachOther],
+        // Die Acht sieht aus wie zwei Nullen übereinander: zwei Stufen höher.
+        edition: [((rank: Some(Eight)), "rank", 2)],
         target_factor: 1.0,
     ),
     (
@@ -61,6 +77,8 @@
         name: "Der Ramscher",
         text: "Das erste Spiel der Serie ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst doppelt gegen dich.",
         passive: [RamschOnce],
+        // Er lässt laufen: seine Daus zählen 6 Augen weniger (Ramponiert).
+        edition: [((rank: Some(Ace)), "battered", 6)],
         // M4-Messung: Der Ramsch bringt gewonnen die Augen des Verlierers, der
         // Bot gewinnt ihn oft. Bei 63 gewinnt er 59 % (normal 41 %), bei 110
         // 37,5 % (18,5 %). M5 (8 Spiele, PIMC): Die Kurve ist flach (73 % bei
@@ -76,6 +94,10 @@
         hooks: [
             OnTrickEnd(when: TricksPlayed(5), then: [SwapDefenderHands]),
         ],
+        // Die Zehn stürzt den Daus: eine Stufe höher. Nach dem Tausch
+        // bleibt die Ausgabe beim Platz, die Zehnen sind beim Stammgast
+        // normal.
+        edition: [((rank: Some(Ten)), "rank", 1)],
         // 02.11.2026 (Serien mit 3 Spielen): Mit 1,0 gewann der Bot ihn so
         // oft wie eine normale Serie (Alleinspieler 80 %, Grandspieler 83 %,
         // Wirtin 82 %), mit 1,5 zu 68 bis 74 %, wie den Kontra-Hans. Der
@@ -89,6 +111,11 @@
         text: "Ein gewonnenes Spiel zählt nur, wenn die Gegner Schneider sind. Verlorene zählen wie immer.",
         hooks: [
             OnScore(when: All([Won, Not(WonSchneider)]), then: [MultiplyGameValue(0)]),
+        ],
+        // Ruß an den Fingern: Hält er die schwarzen Unter, siehst du es.
+        edition: [
+            ((suit: Some(Clubs), rank: Some(Jack)), "transparent", 1),
+            ((suit: Some(Spades), rank: Some(Jack)), "transparent", 1),
         ],
         // M4-Messung: Obergrenze 41 % (Zielwert 1), bei 110 nur 6,6 % (normal
         // 18,5 %). M5 (PIMC-Spieler): Obergrenze 53 %, im Run 57 bis 60 %.
@@ -105,6 +132,8 @@
         name: "Der Kiebitz-Mörder",
         text: "Keiner schaut in fremde Karten: Kiebitz, Zähler und durchsichtige Karten sind abgeschaltet.",
         passive: [DisableInformation],
+        // Keine Modifikationen, nur eine eigene Rückseite.
+        back: Some("kibitz_killer"),
         // 02.11.2026 (Serien mit 3 Spielen): Mit 1,0 gewann der Bot ihn so
         // oft wie eine normale Serie (75 bis 85 %), mit 1,5 zu 68 bis 71 %.
         // Der Nullspieler (72 % mit 1,0) behält 1,0.

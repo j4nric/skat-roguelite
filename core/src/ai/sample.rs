@@ -15,7 +15,7 @@
 //! deals but close, and it never fails on a consistent position.
 
 use crate::cards::PlayingCard;
-use crate::game::{Seat, SeatView, seat_at};
+use crate::game::{Seat, SeatView, resolve_in, seat_at};
 use crate::rng::Rng;
 use crate::rules::{self, GameType};
 
@@ -74,6 +74,10 @@ pub struct Knowledge<C> {
     voids: [[bool; 5]; 3],
     /// Whether void information had to be dropped to stay consistent.
     relaxed: bool,
+    /// The 32 cards in each seat's edition (ADR 0015), empty without
+    /// editions: a dealt card is resolved with the seat it falls to, the
+    /// hidden pile with the declarer's.
+    editions: [Vec<C>; 3],
 }
 
 /// Kind index for the void table, `None` for a blank.
@@ -174,6 +178,7 @@ impl<C: PlayingCard> Knowledge<C> {
             room,
             voids,
             relaxed: false,
+            editions: view.editions.clone(),
         };
         knowledge.allowed = knowledge.allowed_places(game, true);
         if !knowledge.feasible_all() {
@@ -286,6 +291,8 @@ impl<C: PlayingCard> Knowledge<C> {
                 chosen
             };
             room[place] = room[place].saturating_sub(1);
+            let holder = Seat::from_index(place).unwrap_or(Seat::DECLARER);
+            let card = resolve_in(&self.editions, card, holder);
             if place == HIDDEN {
                 hidden.push(card);
             } else {

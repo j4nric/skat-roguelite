@@ -378,6 +378,12 @@ pub enum Effect {
     /// [`crate::rules::wild_suits`]). In a defender's hand it is the
     /// printed card. Card modifications only, passive only.
     Wild,
+    /// Lever Stichgewinn ("Abgestuft", DESIGN 9.2): a Unter is no Unter
+    /// any more but the lowest card of its suit, with no Augen; every other
+    /// card counts one step lower within its kind (see
+    /// [`crate::rules::is_demoted_jack`]). Card modifications only, passive
+    /// only.
+    Demote,
     /// Lever Stichgewinn and Augen ("Untot", DESIGN 7.2): when the player
     /// plays this card in a suit game or Grand and the trick is complete,
     /// the card comes back into his hand once per game and a random other
@@ -438,6 +444,7 @@ impl Effect {
             | Effect::RankBonus(_)
             | Effect::RevealHolder
             | Effect::Wild
+            | Effect::Demote
             | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::BlankOut(_) => stage == Stage::Passive,
@@ -509,6 +516,7 @@ impl Effect {
                 | Effect::NoDiscard
                 | Effect::HonoraryJack
                 | Effect::Wild
+                | Effect::Demote
                 | Effect::TurnInto(_)
                 | Effect::Undead
         )

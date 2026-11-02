@@ -54,23 +54,21 @@ pub(super) fn deal_with(
 ) -> Vec<RunEvent> {
     run.series.target = 100_000;
     run.series.game_limit = 100;
-    let global = run.sources(content, false);
-    let resolved = resolve_deck(&run.deck, content, &global);
-    let mut pool = resolved.cards.clone();
-    let mut take = |notation: &str| -> DealtCard {
-        let kind: CardKind = notation.parse().expect("notation");
-        let index = pool
-            .iter()
-            .position(|c| c.kind == kind)
-            .expect("card in deck");
-        pool.remove(index)
+    let kinds = |s: &str| -> Vec<CardKind> {
+        s.split_whitespace()
+            .map(|n| n.parse().expect("notation"))
+            .collect()
     };
-    let mut parse = |s: &str| -> Vec<DealtCard> { s.split_whitespace().map(&mut take).collect() };
-    let hands = [parse(hands[0]), parse(hands[1]), parse(hands[2])];
-    let skat = parse(skat);
-    let game = Game::with_talon(hands, [skat[0], skat[1]], pool, forehand).expect("deal");
+    let hands = [kinds(hands[0]), kinds(hands[1]), kinds(hands[2])];
+    let skat = kinds(skat);
     let mut events = Vec::new();
-    run.set_up_game(content, game, resolved.point_changes, &mut events);
+    run.deal_fixed(
+        content,
+        [&hands[0], &hands[1], &hands[2]],
+        [skat[0], skat[1]],
+        forehand,
+        &mut events,
+    );
     events
 }
 
