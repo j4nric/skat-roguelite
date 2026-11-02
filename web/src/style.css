@@ -2508,6 +2508,77 @@ button.card {
   opacity: 0.35;
 }
 
+/* A card the core refuses, with its reason (Fluch, Höchstwert …) readable on it. */
+.target-card[data-reason] {
+  opacity: 1;
+}
+
+.target-card[data-reason] .card-svg {
+  opacity: 0.4;
+}
+
+.target-reason {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 38%;
+  padding: 1px 0;
+  background: var(--line);
+  color: var(--card-paper);
+  font-family: var(--font-label);
+  font-size: 11px;
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* A voucher redeemed: the card big over the table, then a coin to the purse. */
+.voucher-redeem {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 60;
+  width: 99px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.voucher-coin {
+  position: fixed;
+  z-index: 61;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+
+/* Before a card modification replaces or raises another: the card now and after. */
+.mod-confirm-cards {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+
+.mod-confirm-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+}
+
+.mod-confirm-card .card {
+  width: 99px;
+}
+
+.mod-confirm-arrow {
+  font-size: 28px;
+  color: var(--accent);
+}
+
 .target-card.is-picked {
   --ring: var(--accent);
   transform: translateY(-4px);

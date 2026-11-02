@@ -282,3 +282,42 @@ def zombie_card(suit, rank):
     finally:
         ZOMBIE_GRID_MARKER = True
     return g, pal, fx2.MODS['untot'][1](BG)
+
+
+def zombie_number(suit, n):
+    """Untot number card: rotten pips, a crack through the card, slime under
+    some pips and a few bites out of the pips. No extra border."""
+    g = cards2.number(suit, n)
+    g.suit, g.rank = suit, str(n)
+    im = index_mask(g)
+    pal = dict(PAL)
+    pal.update({'2': ROT['r'], '3': ROT['y'], '4': ROT['g'], '5': ROT['b'], '6': ROT['o'], '7': ROT['w']})
+    pal.update(EXTRA)
+    out = g.g.copy()
+    for y in range(GH):
+        for x in range(GW):
+            c = g.g[y, x]
+            if im[y, x] or c == '.':
+                continue
+            if (x * 7 + y * 5) % 17 == 0:
+                out[y, x] = '.'
+                continue
+            if c in ROT and c != 'k':
+                out[y, x] = {'r': '2', 'y': '3', 'g': '4', 'b': '5', 'o': '6', 'w': '7', 's': 'Z'}[c]
+    # slime dripping from the lowest pixel of some pip columns
+    for x in range(5, 28):
+        col = [y for y in range(6, 40) if out[y, x] not in ('.',) and not im[y, x]]
+        if col and x % 3 == 0:
+            yb = max(col)
+            for k in range(1, 2 + (x % 4)):
+                if yb + k < GH and out[yb + k, x] == '.':
+                    out[yb + k, x] = 'X' if k > 1 else 'Z'
+    # a crack running down the card
+    crack = [(19, 4), (18, 5), (18, 6), (17, 7), (17, 8), (18, 9), (18, 10), (17, 11), (16, 12), (16, 13), (15, 14),
+             (15, 15), (16, 16), (16, 17), (15, 18), (14, 19), (14, 20), (15, 21), (15, 22), (14, 23), (13, 24),
+             (13, 25), (14, 26), (14, 27), (13, 28), (12, 29), (12, 30), (13, 31), (13, 32), (12, 33), (11, 34)]
+    for x, y in crack:
+        if not im[y, x]:
+            out[y, x] = 'k'
+    g.g = out
+    return g, pal

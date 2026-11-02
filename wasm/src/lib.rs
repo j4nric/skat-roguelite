@@ -35,8 +35,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
-    Change, Character, ConsumableCategory, Content, Effect, Hook, Lever, ModKind, Rarity,
-    RelicKind, RunLength, UnlockId,
+    Change, Character, ConsumableAction, ConsumableCategory, Content, Effect, Hook, Lever, ModKind,
+    Rarity, RelicKind, RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -163,6 +163,10 @@ struct ConsumableEntry<'a> {
     text: &'a str,
     rarity: Rarity,
     category: ConsumableCategory,
+    /// The card modification it puts on a card, if the content names one.
+    card_mod: Option<&'a str>,
+    /// It puts a modification drawn at random on a card ("Stempelkissen").
+    random_card_mod: bool,
 }
 
 /// The headline number of a card modification as written in the content:
@@ -317,6 +321,14 @@ pub fn catalog_json() -> Result<String, String> {
                         text: &d.text,
                         rarity: d.rarity,
                         category: d.category,
+                        card_mod: match &d.action {
+                            ConsumableAction::AddCardMod(Some(m))
+                            | ConsumableAction::ApplyCardMod { card_mod: m, .. } => {
+                                Some(m.as_str())
+                            }
+                            _ => None,
+                        },
+                        random_card_mod: d.action == ConsumableAction::AddCardMod(None),
                     },
                 )
             })
@@ -466,6 +478,24 @@ impl Session {
             .apply_step(self.content, action)
             .map_err(|e| run_error(&e))?;
         self.step_json(events)
+    }
+
+    /// What an action would do, without doing it: the action is applied to
+    /// a copy of the run, the run itself stays unchanged. Returns
+    /// `{ events, view }` of the copy as JSON like [`Session::apply`], or
+    /// the error the core reports (`CardCursed`, `ModAtMaximum`, …). Read-only: the web app
+    /// uses it to ask before a card modification replaces another one
+    /// (`DeckChanged` → `Modified.replaced`). An action that draws at
+    /// random draws on the copy, so its result must not be shown.
+    pub fn preview(&self, action: &str) -> Result<String, String> {
+        let action: RunAction =
+            serde_json::from_str(action).map_err(|e| error_json("InvalidAction", e))?;
+        let mut copy = self.clone();
+        let events = copy
+            .run
+            .apply_step(self.content, action)
+            .map_err(|e| run_error(&e))?;
+        copy.step_json(events)
     }
 
     /// Let the defender named by `view.ai_to_move` play one card
@@ -708,6 +738,12 @@ impl WasmRun {
         self.session.apply(action).map_err(|e| JsError::new(&e))
     }
 
+    /// What an action would do, without doing it (see
+    /// [`Session::preview`]): `{ events, view }` of a copy, the run unchanged.
+    pub fn preview(&self, action: &str) -> Result<String, JsError> {
+        self.session.preview(action).map_err(|e| JsError::new(&e))
+    }
+
     /// Let the defender who is to move play one card; returns
     /// `{ events, view }` as JSON like [`WasmRun::apply`].
     pub fn step(&mut self) -> Result<String, JsError> {
@@ -881,6 +917,24 @@ mod tests {
     }
 
     #[test]
+    fn preview_reports_events_and_leaves_the_run_unchanged() {
+        let session = Session::new("42").expect("new");
+        let before = session.save().expect("save");
+        let step: serde_json::Value =
+            serde_json::from_str(&session.preview(r#""PickUpSkat""#).expect("preview"))
+                .expect("json");
+        assert!(step["events"].as_array().is_some_and(|e| !e.is_empty()));
+        assert_eq!(step["view"]["game"]["phase"], "Discarding");
+        assert_eq!(session.save().expect("save"), before, "run unchanged");
+        let err = session
+            .preview(r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#)
+            .expect_err("no game before the skat without hand levels");
+        let err: serde_json::Value = serde_json::from_str(&err).expect("json");
+        assert!(err["code"].is_string());
+        assert_eq!(session.save().expect("save"), before, "run unchanged");
+    }
+
+    #[test]
     fn the_player_json_holds_no_hidden_card_after_a_deal() {
         let mut session = Session::new("42").expect("new");
         let step = session.apply(r#""Redeal""#).expect("einmischen");
@@ -975,6 +1029,13 @@ mod tests {
         assert_eq!(catalog["consumables"]["chalk"]["category"], "Schnapps");
         assert_eq!(catalog["consumables"]["beer"]["category"], "Item");
         assert_eq!(catalog["consumables"]["new_deal"]["rarity"], "Uncommon");
+        assert_eq!(catalog["consumables"]["points_3"]["card_mod"], "points");
+        assert_eq!(catalog["consumables"]["points_3"]["random_card_mod"], false);
+        assert_eq!(
+            catalog["consumables"]["ink_pad"]["card_mod"],
+            serde_json::Value::Null
+        );
+        assert_eq!(catalog["consumables"]["ink_pad"]["random_card_mod"], true);
         assert!(catalog["card_mods"]["points"]["text"].is_string());
         assert_eq!(catalog["card_mods"]["points"]["curse"], false);
         assert_eq!(catalog["card_mods"]["points"]["kind"], "Edge");

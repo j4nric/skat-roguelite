@@ -3,12 +3,12 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, cardName, contentName, contentText, face, relicLook, t } from '../i18n';
+import { de, cardName, contentName, contentText, face, isCurse, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
-import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
-import { cardSvg, modIcon, suitIcon } from './cards';
+import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
+import { cardSvg, modIcon, suitIcon, WILD } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -18,7 +18,7 @@ import { renderOverview } from './overview';
 import { renderRules } from './rules';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
-import type { Overlay, UiState } from './state';
+import type { ModQuestion, Overlay, UiState } from './state';
 
 export { lockIcon };
 
@@ -519,18 +519,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'target': {
       const item = view?.consumables.find((c) => c.slot === overlay.slot);
       if (!view || !item) return '';
-      const cards = view.deck
-        .map((c) => {
-          const ok = item.targets.includes(c.id);
-          return `<button class="card target-card ${ok ? '' : 'is-dim'}" ${attrs({
-            'data-action': 'target',
-            'data-id': c.id,
-            'data-info': `card:${c.id}`,
-            disabled: !ok,
-            'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
-        })
-        .join('');
+      const cards = view.deck.map((c) => targetCard(c, item.targets.includes(c.id), 'target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.shop.pickTarget)}</h2>
          <p class="small">${esc(t(de.shop.pickHint, { name: contentName('consumables', item.consumable.id), text: contentText('consumables', item.consumable.id) }))}</p>
@@ -591,7 +580,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-testid': `wild-${suit}`,
             disabled: !ok,
             'aria-label': t(de.card.wildSuit, { card: cardName(kind) }),
-          })}>${cardSvg(kind, card.mods, 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
+          })}>${cardSvg(kind, card.mods.filter((m) => m !== WILD), 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
         })
         .join('');
       const follow = allowed.length < 4 ? `<p class="small">${esc(t(de.card.wildFollow, { suits: allowed.map((s) => de.suits[s]).join(', ') }))}</p>` : '';
@@ -608,18 +597,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'encounter-target': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
-      const cards = view.deck
-        .map((c) => {
-          const ok = option.targets.includes(c.id);
-          return `<button class="card target-card ${ok ? '' : 'is-dim'}" ${attrs({
-            'data-action': 'encounter-target',
-            'data-id': c.id,
-            'data-info': `card:${c.id}`,
-            disabled: !ok,
-            'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
-        })
-        .join('');
+      const cards = view.deck.map((c) => targetCard(c, option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.encounter.pickTarget)}</h2>
          <p class="small">${esc(contentText('encounters', view.encounter?.id ?? ''))}</p>
@@ -628,6 +606,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
       );
     }
+    case 'mod-confirm':
+      return renderModConfirm(overlay.ask);
     case 'book':
       return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger', 'overlay-book') : '';
     case 'confirm-new':
@@ -836,4 +816,61 @@ function renderUnlocks(meta: MetaView, ids: string[]): string {
   return `<h2 class="unlock-title">${esc(de.unlock.title)}</h2>
     <ul class="unlock-list" data-testid="unlock-new">${items}</ul>
     <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.unlock.go)}</button>`;
+}
+
+/**
+ * A card in a picker (consumable or encounter). A card the core refuses is
+ * dimmed with the core's reason (its error code from the preview): a
+ * short tag on the card, the full reason as its label.
+ */
+function targetCard(c: DeckCard, ok: boolean, action: string, reason: string | undefined): string {
+  const curse = c.mods.find(isCurse);
+  const why = !ok && reason ? de.modConfirm.reasons[reason] : undefined;
+  const tag = !ok && reason ? de.modConfirm.tags[reason] : undefined;
+  const label = why ? `${cardName(c.kind)}: ${t(why, { curse: curse ? contentName('card_mods', curse) : '' })}` : cardName(c.kind);
+  return `<button class="card target-card ${ok ? '' : 'is-dim'}" ${attrs({
+    'data-action': action,
+    'data-id': c.id,
+    'data-info': `card:${c.id}`,
+    'data-reason': !ok && reason ? reason : null,
+    disabled: !ok,
+    title: why ? label : null,
+    'aria-label': label,
+  })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${tag ? `<span class="target-reason">${esc(tag)}</span>` : ''}</button>`;
+}
+
+/**
+ * Asking before a card modification replaces, raises or cancels the one on
+ * a card: what the core's preview reported, with the card now and after.
+ */
+function renderModConfirm(ask: ModQuestion): string {
+  const card = cardName(ask.card.kind);
+  const name = (m: string | null): string => (m ? contentName('card_mods', m) : '');
+  const c = de.modConfirm;
+  const [title, text, go] =
+    ask.type === 'replace'
+      ? [c.replaceTitle, t(c.replace, { card, old: name(ask.old), new: name(ask.mod) }), c.replaceGo]
+      : ask.type === 'raise'
+        ? [c.raiseTitle, t(c.raise, { card, mod: name(ask.mod), from: ask.from, to: ask.to }), c.raiseGo]
+        : ask.type === 'change'
+          ? [c.changeTitle, t(c.change, { card, old: name(ask.old), new: name(ask.mod), from: ask.from, to: ask.to }), c.changeGo]
+        : ask.type === 'drop'
+          ? [c.dropTitle, t(c.drop, { card, old: name(ask.old), new: name(ask.mod) }), c.dropGo]
+          : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
+  const face = (d: DeckCard, label: string): string =>
+    `<figure class="mod-confirm-card"><span class="card">${cardSvg(d.kind, d.mods, 'full', d.mod_values)}</span><figcaption>${esc(label)}</figcaption></figure>`;
+  const cards = ask.after
+    ? `${face(ask.card, c.before)}<span class="mod-confirm-arrow" aria-hidden="true">→</span>${face(ask.after, c.after)}`
+    : face(ask.card, c.before);
+  return sheet(
+    `<h2>${esc(title)}</h2>
+     <p data-testid="mod-confirm-text">${esc(text)}</p>
+     <div class="mod-confirm-cards" data-testid="mod-confirm-cards">${cards}</div>
+     <div class="sheet-actions">
+       <button class="btn btn-primary" ${attrs({ 'data-action': 'mod-confirm-go', 'data-testid': 'mod-confirm-go' })}>${esc(go)}</button>
+       <button class="btn" ${attrs({ 'data-action': 'mod-confirm-back', 'data-testid': 'mod-confirm-back' })}>${esc(c.keep)}</button>
+     </div>`,
+    false,
+    'sheet-mod-confirm',
+  );
 }
