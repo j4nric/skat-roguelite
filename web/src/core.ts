@@ -90,6 +90,17 @@ export class CoreRun {
     return JSON.parse(this.run.apply(JSON.stringify(action))) as Step;
   }
 
+  /**
+   * What an action would do, without doing it: the core applies it to a
+   * copy of the run and returns that copy's events and view. Throws the
+   * core's error (`CardCursed`, `ModAtMaximum`, …) like `apply`. Read-only;
+   * an action that draws at random draws on the copy, so its outcome must
+   * not be shown.
+   */
+  preview(action: RunAction): Step {
+    return JSON.parse(this.run.preview(JSON.stringify(action))) as Step;
+  }
+
   /** Let the opponent named by `view.ai_to_move` play one card. */
   step(): Step {
     return JSON.parse(this.run.step()) as Step;

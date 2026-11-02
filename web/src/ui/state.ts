@@ -5,7 +5,7 @@ import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
 import type { RunRecord } from '../storage';
-import type { BossInfo, CardView, Character, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunLength, RunView, ScoreView, Seat } from '../types';
+import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunLength, RunView, ScoreView, Seat } from '../types';
 
 /** What the table shows while events are being animated. */
 export interface AnimState {
@@ -42,16 +42,39 @@ export interface PendingStart {
   daily: boolean;
 }
 
+/**
+ * What applying a card modification would do to a card, as the core's
+ * preview reported it (`DeckChanged`): replace another, raise the same,
+ * net with it or cancel out (Augen and Ramponiert), or, drawn at random,
+ * maybe replace.
+ */
+export interface ModQuestion {
+  type: 'replace' | 'raise' | 'change' | 'drop' | 'random';
+  /** The card now and, from the preview's view, afterwards (null when drawn at random). */
+  card: DeckCard;
+  after: DeckCard | null;
+  /** The modification on the card that goes (replace, drop, random). */
+  old: string | null;
+  /** The modification that comes (replace, raise, drop). */
+  mod: string | null;
+  /** The band texts before and after a raise ("+4", "+8"). */
+  from: string;
+  to: string;
+}
+
 export type Overlay =
   | ScoreOverlay
   | { kind: 'boss'; boss: BossInfo; resolve: () => void }
-  | { kind: 'target'; slot: number }
+  /** Pick the card for a consumable; `reasons`: the core's error code per card it cannot take. */
+  | { kind: 'target'; slot: number; reasons?: Record<number, string> }
   /** "Kreide": pick a card of the hand (`card`), then its new suit. */
   | { kind: 'chalk'; slot: number; card: number | null }
   /** "Wandelkarte": the suit to name for `card` as it is played. */
   | { kind: 'wild'; card: number }
   /** Pick the card for an encounter option that needs one. */
-  | { kind: 'encounter-target'; option: number }
+  | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
+  /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back. */
+  | { kind: 'mod-confirm'; action: RunAction; back: Overlay; ask: ModQuestion }
   /** The Vereinsbuch: characters and unlocks, or the statistics page. */
   | { kind: 'book'; tab: 'book' | 'stats' }
   /** Give up the running run for a new one? */

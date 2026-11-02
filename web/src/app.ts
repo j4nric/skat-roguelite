@@ -28,7 +28,7 @@
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, cardName, contentName, face, relicCounters, setCatalog, t } from './i18n';
+import { de, cardName, consumableMod, contentName, face, modKind, relicCounters, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
@@ -53,7 +53,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { CHARACTERS, type CardView, type Character, type DealtCard, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -63,14 +63,14 @@ import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, flip, flyIn, motionOn, pulse, setTempo, sweepAway } from './ui/fx';
-import { cardBack } from './ui/cards';
+import { cardBack, modValueText } from './ui/cards';
 import { watchDrags } from './ui/drag';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
-import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
+import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { discardNeed, leadSuitName, renderTable } from './ui/table';
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
@@ -1909,7 +1909,8 @@ export class App {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
         if (option.needs_target) {
-          this.ui.overlay = { kind: 'encounter-target', option: option.index };
+          const reasons = option.card_mod || option.random_gain ? this.refusals(view, option.targets, (id) => ({ ChooseEncounter: { option: option.index, target: id } })) : {};
+          this.ui.overlay = { kind: 'encounter-target', option: option.index, reasons };
           this.render();
         } else {
           void this.act({ ChooseEncounter: { option: option.index, target: null } });
@@ -1918,7 +1919,23 @@ export class App {
       }
       case 'encounter-target': {
         const o = this.ui.overlay;
-        if (o?.kind === 'encounter-target') void this.act({ ChooseEncounter: { option: o.option, target: num('id') } });
+        if (o?.kind !== 'encounter-target') return;
+        const option = view.encounter?.options.find((x) => x.index === o.option);
+        const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id') } };
+        this.applyMod(view, action, num('id'), option?.card_mod?.id ?? null, !option?.card_mod && option?.random_gain === true, o);
+        return;
+      }
+      case 'mod-confirm-go': {
+        const o = this.ui.overlay;
+        if (o?.kind === 'mod-confirm') void this.act(o.action);
+        return;
+      }
+      case 'mod-confirm-back': {
+        const o = this.ui.overlay;
+        if (o?.kind === 'mod-confirm') {
+          this.ui.overlay = o.back;
+          this.render();
+        }
         return;
       }
       case 'declare': {
@@ -2018,7 +2035,9 @@ export class App {
           this.ui.overlay = { kind: 'chalk', slot, card: null };
           this.render();
         } else if (item.consumable.needs_target) {
-          this.ui.overlay = { kind: 'target', slot };
+          const marks = consumableMod(item.consumable.id);
+          const reasons = marks.mod || marks.random ? this.refusals(view, item.targets, (id) => ({ UseConsumable: { slot, target: id } })) : {};
+          this.ui.overlay = { kind: 'target', slot, reasons };
           this.render();
         } else {
           void this.act({ UseConsumable: { slot, target: null } });
@@ -2027,7 +2046,12 @@ export class App {
       }
       case 'target': {
         const o = this.ui.overlay;
-        if (o?.kind === 'target') void this.act({ UseConsumable: { slot: o.slot, target: num('id') } });
+        if (o?.kind !== 'target') return;
+        const item = view.consumables.find((c) => c.slot === o.slot);
+        const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
+        const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
+        if (marks.mod || marks.random) this.applyMod(view, action, num('id'), marks.mod, marks.random, o);
+        else void this.act(action);
         return;
       }
       case 'chalk-card': {
@@ -2051,6 +2075,78 @@ export class App {
         void this.act('LeaveShop');
         return;
     }
+  }
+
+  /**
+   * Why the core refuses each card a modification would go on: its error
+   * code from a preview of the action (CardCursed, ModAtMaximum, …), for
+   * the dimmed cards of the picker. Read-only.
+   */
+  private refusals(view: RunView, targets: number[], action: (id: number) => RunAction): Record<number, string> {
+    const out: Record<number, string> = {};
+    if (!this.core) return out;
+    for (const c of view.deck) {
+      if (targets.includes(c.id)) continue;
+      try {
+        this.core.preview(action(c.id));
+      } catch (err) {
+        const code = errorCode(err);
+        if (code) out[c.id] = code;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A card modification goes on a card: if the core's preview says it
+   * replaces, raises or cancels the one on the card, ask first (an in-app
+   * sheet); otherwise apply it at once. One drawn at random is not
+   * previewed: the sheet only says that the card carries one already.
+   */
+  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay): void {
+    const card = view.deck.find((c) => c.id === id);
+    const ask = card ? this.modQuestion(card, action, mod, random) : null;
+    if (!ask) {
+      void this.act(action);
+      return;
+    }
+    this.ui.overlay = { kind: 'mod-confirm', action, back, ask };
+    this.render();
+  }
+
+  private modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean): ModQuestion | null {
+    const blank = { card, after: null, old: null, mod: null, from: '', to: '' };
+    if (random) {
+      const old = card.mods.find((m) => modKind(m) !== 'Special');
+      return old ? { ...blank, type: 'random', old } : null;
+    }
+    let step: Step;
+    try {
+      step = this.core!.preview(action);
+    } catch {
+      // The core refuses it: applying shows its error.
+      return null;
+    }
+    const after = step.view.deck.find((c) => c.id === card.id) ?? null;
+    for (const ev of step.events) {
+      if (typeof ev !== 'object' || !('DeckChanged' in ev)) continue;
+      const change = ev.DeckChanged;
+      if ('Modified' in change && change.Modified.card === card.id) {
+        const m = change.Modified;
+        if (m.replaced) return { ...blank, after, type: 'replace', old: m.replaced, mod: m.card_mod };
+        if (card.mods.includes(m.card_mod)) {
+          // The same again raises it; another (Ramponiert on Augen) is netted with it.
+          const values = { from: modValueText(m.card_mod, card.mod_values), to: modValueText(m.card_mod, after?.mod_values ?? {}) };
+          if (mod && mod !== m.card_mod) return { ...blank, ...values, after, type: 'change', old: m.card_mod, mod };
+          return { ...blank, ...values, after, type: 'raise', mod: m.card_mod };
+        }
+        return null;
+      }
+      if ('Unmodified' in change && change.Unmodified.card === card.id) {
+        return { ...blank, after, type: 'drop', old: change.Unmodified.card_mod, mod };
+      }
+    }
+    return null;
   }
 
   /**
