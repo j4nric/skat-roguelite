@@ -740,3 +740,164 @@ fn honorary_chair_makes_the_player_forehand_in_every_game() {
         Seat::DECLARER
     );
 }
+
+#[test]
+fn a_defender_winning_with_the_glass_ace_does_not_break_it() {
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "HA", GLASS);
+    deal_with(
+        &mut run,
+        &content,
+        [
+            "CJ SJ H8 CA CT CK SA ST D7 D8",
+            "HA HJ DJ HK HQ H9 SK S7 DA DT",
+            "H7 HT SQ S9 S8 DK DQ D9 CQ C9",
+        ],
+        "C8 C7",
+        Seat::DEFENDERS[0],
+    );
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "HA");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "H7");
+    let events = run
+        .apply_step(&content, RunAction::Play(id_of("H8")))
+        .expect("follows");
+    let trick = events.iter().find_map(|e| match e {
+        RunEvent::Game(Event::TrickWon { trick, card_points }) => {
+            Some((trick.winner, *card_points))
+        }
+        _ => None,
+    });
+    assert_eq!(trick, Some((Seat::DEFENDERS[0], 22)));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::CardBroken { .. }))
+    );
+    assert!(run.game().expect("game").broken.is_empty());
+}
+
+#[test]
+fn the_bot_does_not_throw_a_wild_card_it_cannot_ruff_with() {
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "HA", WILD);
+    deal_with(
+        &mut run,
+        &content,
+        [
+            "CJ SJ HA HT HK HQ DK ST S7 D8",
+            "HJ DJ DA DT H9 H8 S8 SA SK S9",
+            "SQ H7 DQ D9 D7 CA CT CK CQ C9",
+        ],
+        "C8 C7",
+        Seat::DEFENDERS[0],
+    );
+    let hearts = Declaration::suit(Suit::Hearts, RiskLevel::Hand);
+    run.apply_step(&content, RunAction::Declare(hearts))
+        .expect("declare");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "DA");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "D7");
+    // As printed the Rot-Daus is a trump, but the player holds diamonds:
+    // named it could only be a Schellen-Daus and lose to the first one.
+    let action = RunBot.next_action(&run, &content).expect("plays");
+    let hand = hand_of(&run).to_vec();
+    let played = match action {
+        RunAction::Play(id) | RunAction::PlayAs { card: id, .. } => id,
+        other => panic!("{other:?}"),
+    };
+    let card = hand.iter().find(|c| c.id == played).expect("held");
+    assert_eq!(card.face().map(|f| f.suit), Some(Suit::Diamonds), "{card}");
+}
+
+/// Statistics for the balance report (`docs/balance/2026-11-02-welle3.md`):
+/// how often the wave 3 items act in whole runs of the bot (heuristic card
+/// play, no Tresen, 400 runs each, the item from the start).
+#[test]
+#[ignore = "statistics for the balance report, not a check"]
+fn wave_three_trigger_statistics() {
+    let base = content();
+    let with_mod = |card: &str, id: &str| {
+        let mut c = base.clone();
+        if let Some(def) = c.characters.get_mut(&Character::Declarer) {
+            def.deck
+                .mods
+                .push((card.parse().expect("card"), CardModId::new(id)));
+        }
+        c
+    };
+    let items: [(&str, Content, Vec<RelicId>); 5] = [
+        ("wild_card on HA", with_mod("HA", WILD), Vec::new()),
+        ("glass_ace on CA", with_mod("CA", GLASS), Vec::new()),
+        ("homesick on CJ", with_mod("CJ", HOMESICK), Vec::new()),
+        ("skat_god", base.clone(), vec![RelicId::new("skat_god")]),
+        (
+            "honorary_chair",
+            base.clone(),
+            vec![RelicId::new("honorary_chair")],
+        ),
+    ];
+    for (name, content, relics) in items {
+        let (mut games, mut named, mut renamed, mut broke, mut home, mut levels) =
+            (0u32, 0u32, 0u32, 0u32, 0u32, 0i64);
+        let mut broke_after = 0u32;
+        let mut counter_end = 0u32;
+        let runs = 400u32;
+        for seed in 0..u64::from(runs) {
+            let start = RunStart {
+                relics: relics.clone(),
+                ..RunStart::default()
+            };
+            let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
+            let mut run_games = 0u32;
+            for _ in 0..5000 {
+                let action = match run.phase() {
+                    RunPhase::Shop => RunAction::LeaveShop,
+                    _ => match RunBot.next_action(&run, &content) {
+                        Some(a) => a,
+                        None => break,
+                    },
+                };
+                for e in run.apply(&content, action).expect("legal") {
+                    match e {
+                        RunEvent::GameScored { breakdown, .. } => {
+                            games += 1;
+                            run_games += 1;
+                            let source = Source::Relic(RelicId::new("skat_god"));
+                            for l in breakdown.lines_of(&source) {
+                                if let Change::Add(n) = l.change {
+                                    levels += n;
+                                }
+                            }
+                        }
+                        RunEvent::WildCardNamed { card, suit } => {
+                            named += 1;
+                            if card.face().is_some_and(|f| f.suit != suit) {
+                                renamed += 1;
+                            }
+                        }
+                        RunEvent::CardBroken { .. } => {
+                            broke += 1;
+                            broke_after += run_games + 1;
+                        }
+                        RunEvent::CardCameHome { .. } => home += 1,
+                        _ => {}
+                    }
+                }
+            }
+            counter_end += run.counters().get("skat_god").copied().unwrap_or(0);
+        }
+        let per = |n: u32| f64::from(n) / f64::from(games.max(1));
+        println!(
+            "{name}: games {games}; named {:.3}/game ({renamed} into another suit); broke in {:.1} % of runs, after {:.1} games; came home {:.3}/game; skat_god levels {:.3}/game, counter at the end {:.2}",
+            per(named),
+            100.0 * f64::from(broke) / f64::from(runs),
+            f64::from(broke_after) / f64::from(broke.max(1)),
+            per(home),
+            levels as f64 / f64::from(games.max(1)),
+            f64::from(counter_end) / f64::from(runs),
+        );
+    }
+}

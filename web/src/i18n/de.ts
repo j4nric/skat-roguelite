@@ -189,6 +189,11 @@ export const de = {
     honoraryJack: 'Unter ehrenhalber',
     chalked: 'mit Kreide umgemalt, eigentlich {suit}',
     noDiscard: 'darf nicht gedrückt werden',
+    named: 'Wandelkarte, eigentlich {suit}',
+    wildTitle: 'Wandelkarte',
+    wildPick: 'Als welche Farbe spielst du {card}?',
+    wildFollow: 'Du musst bedienen: nur {suits} geht.',
+    wildSuit: 'als {card}',
   },
 
   /** Short badge per card modification id. */
@@ -398,6 +403,9 @@ export const de = {
     cardMarked: '{card} gezinkt: {mod}.',
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
+    wildNamed: 'Wandelkarte: {old} gespielt als {new}.',
+    glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
+    cameHome: 'Heimweh: {card} ist wieder in deiner Hand.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -512,6 +520,7 @@ export const de = {
     Common: 'gewöhnlich',
     Uncommon: 'ungewöhnlich',
     Rare: 'selten',
+    Legendary: 'legendär',
   },
 
   relicKind: {

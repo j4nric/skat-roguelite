@@ -1636,6 +1636,48 @@ button.card {
   border-style: dashed;
 }
 
+/* "Wandelkarte": the printed suit of a card named into another one. */
+.plaque-wild {
+  background: #d8ebdf;
+  border-color: #2e7d4f;
+}
+
+/* "Glasdaus": the card cracks, flashes and falls apart before the trick leaves. */
+.trick-card.is-shattering {
+  animation: glass-shatter 0.7s steps(7) forwards;
+}
+
+.trick-card.is-shattering::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(62deg, transparent 47%, #ffffff 48%, #ffffff 51%, transparent 52%),
+    linear-gradient(-38deg, transparent 46%, #e8f4f8 47%, #e8f4f8 50%, transparent 51%),
+    linear-gradient(8deg, transparent 58%, #9fd3ff 59%, #9fd3ff 61%, transparent 62%);
+  pointer-events: none;
+}
+
+@keyframes glass-shatter {
+  0% {
+    transform: none;
+    opacity: 1;
+    filter: none;
+  }
+  30% {
+    transform: translate(-2px, 1px) rotate(-2deg);
+    filter: brightness(1.6);
+  }
+  60% {
+    transform: translate(2px, 4px) rotate(3deg) scale(0.96);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(0, 18px) rotate(8deg) scale(0.85);
+    opacity: 0;
+  }
+}
+
 /* ---------------------------------------------------------------- status */
 
 .status {
@@ -2319,6 +2361,30 @@ button.card {
 .target-card.is-picked {
   border-color: var(--accent);
   transform: translateY(-4px);
+}
+
+/* "Wandelkarte": the card once per suit, those the core allows lit. */
+.wild-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wild-option {
+  position: relative;
+  padding-bottom: 22px;
+}
+
+.wild-suit-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
 }
 
 /* "Kreide": the hand, then the four suits (the card's own one disabled). */

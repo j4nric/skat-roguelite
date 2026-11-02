@@ -228,7 +228,7 @@ fn on_score(
         // On trick end only: never true when the game is scored.
         Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardTakenByDefender => Some(false),
+        | Condition::ThisCardBeatenByDefender => Some(false),
     }
 }
 
@@ -336,7 +336,7 @@ fn during_play(
         // "Glasdaus": open while the card is still to be played (in a hand
         // or in the trick on the table); in the skat or after its trick it
         // cannot break any more.
-        Condition::ThisCardTakenByDefender => {
+        Condition::ThisCardBeatenByDefender => {
             let pending = this_card.is_some_and(|this| {
                 Seat::ALL
                     .iter()

@@ -280,8 +280,9 @@
         passive: [Wild],
     ),
     // Lever Augen, only on a Daus: twice the Augen (22 instead of 11, for
-    // every seat). Lands it in a trick a defender takes, it breaks and
-    // leaves the deck once the game is scored (a blank takes its place).
+    // every seat). Beats a defender it (takes the trick it lies in with
+    // another card), it breaks and leaves the deck once the game is scored
+    // (a blank takes its place). A defender winning with it does not.
     (
         id: "glass_ace",
         focus: Trump,
@@ -292,7 +293,7 @@
         only_on: Some((rank: Some(Ace))),
         passive: [MultiplyCardPoints(2)],
         hooks: [
-            OnTrickEnd(when: ThisCardTakenByDefender, then: [BreakThisCard]),
+            OnTrickEnd(when: ThisCardBeatenByDefender, then: [BreakThisCard]),
         ],
     ),
     // Lever Spitzen and hand quality: lies it in the skat when a game ends

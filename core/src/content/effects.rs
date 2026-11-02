@@ -552,10 +552,12 @@ pub enum Condition {
     /// The trick just completed is the first one the declarer took
     /// ("Stichfest"). On trick end only.
     FirstTrickOfDeclarer,
-    /// The trick just completed holds this card and went to a defender,
-    /// whoever played it ("Glasdaus": a Gegner sticht sie). Card
-    /// modifications only, on trick end only.
-    ThisCardTakenByDefender,
+    /// The trick just completed holds this card and a defender took it
+    /// with another card: a Gegner beat it ("Glasdaus": ein Gegner sticht
+    /// sie), whoever played it. A defender who wins the trick with this
+    /// card itself does not beat it. Card modifications only, on trick end
+    /// only.
+    ThisCardBeatenByDefender,
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
@@ -622,7 +624,7 @@ impl Condition {
             }
             Condition::TrickWinnerMatches { .. }
             | Condition::FirstTrickOfDeclarer
-            | Condition::ThisCardTakenByDefender => stage == Stage::OnTrickEnd,
+            | Condition::ThisCardBeatenByDefender => stage == Stage::OnTrickEnd,
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
             Condition::NullGame
             | Condition::NullRiskAtLeast(_)
@@ -652,7 +654,7 @@ impl Condition {
             Condition::Not(c) => c.card_mod_only(),
             Condition::ThisCardWinsLastTrick
             | Condition::ThisCardIsTrumpSuit
-            | Condition::ThisCardTakenByDefender => true,
+            | Condition::ThisCardBeatenByDefender => true,
             _ => false,
         }
     }

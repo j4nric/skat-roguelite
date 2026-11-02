@@ -1101,6 +1101,27 @@ mod option_tests {
     }
 
     #[test]
+    fn card_mods_go_on_the_start_deck_and_must_fit() {
+        let base = content();
+        let options = Options {
+            card_mods: vec![("CA".parse().expect("card"), CardModId::new("glass_ace"))],
+            no_shop: true,
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let deck = &content.character(Character::Declarer).expect("def").deck;
+        assert!(deck.mods.iter().any(|(_, id)| id.as_str() == "glass_ace"));
+        let stats = simulate(&base, &options, 8, 10).expect("runs");
+        assert_eq!(stats.runs, 10);
+        assert!(render(&stats, &base, &options, 0).contains("card-mod=CA:glass_ace"));
+        let wrong = Options {
+            card_mods: vec![("CT".parse().expect("card"), CardModId::new("glass_ace"))],
+            ..Options::default()
+        };
+        assert!(wrong.content(&base).is_err(), "a Glasdaus only fits a Daus");
+    }
+
+    #[test]
     fn a_stake_makes_suit_games_harder_to_win() {
         let base = content();
         let plain = simulate(&base, &Options::default(), 11, 10).expect("plain");

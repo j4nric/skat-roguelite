@@ -34,6 +34,11 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | nur im Roguelike-Kontext |
 | Gezinkte Karte / Kartenmodifikation | `CardMod` | Definition `CardModDef`, Id `CardModId` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | Talon gehört nicht dazu |
+| Wandelkarte (Farbe beim Ausspielen benennen) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers), Effekt `Wild`; zwingt nie zum Bedienen. Benennen: `RunAction::PlayAs { card, suit }`, `Game::play_as`, erlaubte Farben `rules::wild_suits`, Prüfung `rules::may_play`; Ereignis `WildCardNamed`; Sicht `CardView::wild_suits`, `CardView::named` (gedruckte Farbe), `ActiveGame::named`. Die KI rechnet ohne sie: `opponents::tame_game` |
+| Zerbrechen (Glasdaus) | `break` | Effekt `BreakThisCard`, Bedingung `ThisCardBeatenByDefender` (ein Gegner macht den Stich mit einer anderen Karte), Ereignis `CardBroken`, `ActiveGame::broken`; nach der Abrechnung `Deck::remove` |
+| Heimweh (aus dem Skat in die Hand) | `homesick` | Effekt `Homesick`, `Run::homesick`, Sicht `RunView::homesick`, Ereignis `CardCameHome` |
+| Nur auf (Modifikation passt nur auf bestimmte Karten) | `only_on` | Feld `CardModDef::only_on` (`CardFilter`), Prüfung `CardModDef::fits` |
+| Augen vervielfachen (Glasdaus) | `MultiplyCardPoints` | Effekt, nach allen anderen Augen-Änderungen der Karte |
 
 ## Spielablauf
 
@@ -127,7 +132,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Umgemalte Karte (Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
 | Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, Magenbitter setzt 1 |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
-| Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare` |
+| Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare`, `Legendary` (Legendär, M8) |
+| Gewicht der Stufe Legendär | `RarityWeights::legendary` | Dezimalzahl (Standard 0,3), `RarityWeights::percent_weight` |
+| Immer Vorhand (Ehrenvorsitz) | `AlwaysForehand` | Effekt, nur passiv |
+| Stufen je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für Gewinnstufen |
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
 | Neuauslage (Tresen) | `reroll` | |
@@ -303,6 +311,11 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Bubenparade | `jack_parade` |
 | Luschenkönig | `blank_king` (Lusche = `blank`, nicht Blanko) |
 | Stichfest | `watertight` |
+| Wandelkarte | `wild_card` |
+| Glasdaus | `glass_ace` |
+| Heimweh | `homesick` |
+| Skatgott | `skat_god` (Zähler `skat_god`) |
+| Ehrenvorsitz | `honorary_chair` |
 
 ## Kartennotation
 

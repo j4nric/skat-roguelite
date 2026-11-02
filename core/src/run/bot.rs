@@ -187,11 +187,11 @@ pub const RELIC_VALUES: [(&str, u32); 43] = [
 /// `docs/balance/2026-11-02-welle3.md`, same method as wave 2a), kept apart
 /// from [`RELIC_VALUES`] so that the tiers stay readable.
 ///
-/// | Relic | Value | Measured (section 3) |
+/// | Relic | Value | Measured (section 3, section 2) |
 /// |---|---|---|
-/// | `skat_god` | 6 | see the report |
-/// | `honorary_chair` | 4 | see the report |
-pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 6), ("honorary_chair", 4)];
+/// | `skat_god` | 4 | +1.3, +1.1; fewer points per game (-2.4): its levels count on lost games and Null too |
+/// | `honorary_chair` | 1 | -0.4, -0.6: leading every first trick does not help the bot |
+pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 4), ("honorary_chair", 1)];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;
@@ -753,8 +753,15 @@ impl RunBot {
                         return Some(action);
                     }
                 }
-                let view = game.view(Seat::DECLARER)?;
-                let card = declarer.choose(&view)?;
+                // A Wandelkarte is chosen as printed, then named.
+                let tame = super::opponents::tame_game(game);
+                let view = tame.as_ref().unwrap_or(game).view(Seat::DECLARER)?;
+                let chosen = declarer.choose(&view)?;
+                let card = game
+                    .hand(Seat::DECLARER)
+                    .iter()
+                    .copied()
+                    .find(|c| c.id == chosen.id)?;
                 Some(RunBot::play_action(run, card))
             }
             Phase::Finished(_) => None,

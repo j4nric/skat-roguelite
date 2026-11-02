@@ -1040,6 +1040,32 @@ impl<C: PlayingCard> Game<C> {
         self.play(seat, named)
     }
 
+    /// A copy of the game with every card passed through `f`: hands, skat,
+    /// talon, the cards in play, the declarer's twelve cards, the trick and
+    /// the finished tricks. The log stays as it was. For an AI that should
+    /// see the cards differently ([`PlayingCard::wild`] taken off), never
+    /// for the game itself.
+    #[must_use]
+    pub fn map_cards(&self, f: impl Fn(C) -> C) -> Game<C> {
+        let list = |cards: &[C]| -> Vec<C> { cards.iter().map(|&c| f(c)).collect() };
+        let mut game = self.clone();
+        game.hands = [
+            list(&self.hands[0]),
+            list(&self.hands[1]),
+            list(&self.hands[2]),
+        ];
+        game.skat = [f(self.skat[0]), f(self.skat[1])];
+        game.talon = list(&self.talon);
+        game.deck = list(&self.deck);
+        game.in_play = list(&self.in_play);
+        game.declarer_cards = list(&self.declarer_cards);
+        game.trick = list(&self.trick);
+        for (trick, old) in game.tricks.iter_mut().zip(&self.tricks) {
+            trick.cards = [f(old.cards[0]), f(old.cards[1]), f(old.cards[2])];
+        }
+        game
+    }
+
     /// The defenders give up between two tricks (house rule "Schenken").
     /// The tricks not yet played and the Augen still in the hands go to the
     /// declarer, and the game is scored.

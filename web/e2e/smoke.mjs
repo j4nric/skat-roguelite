@@ -105,6 +105,16 @@
 //   showing 1,5.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
+// - wave3-mods.json (M8 wave 3, crafted with the core: a Run started with
+//   seed 645, the legendary relics "Skatgott" and "Ehrenvorsitz", and the
+//   start deck carrying "Wandelkarte" on the Rot-Daus, "Glasdaus" on the
+//   Grün-Daus and "Heimweh" on the Eichel-Unter): both legendary beer mats
+//   in the head with the gold ring, the three modifications drawn on their
+//   cards, the player is Vorhand. Eichel Hand, the glass Daus led: a
+//   defender trumps it, it shatters with a toast. Then a Schellen lead: the
+//   Wandelkarte opens the suit picker with only Schellen allowed, and played
+//   it lies on the table as the Schellen-Daus with its printed suit as a
+//   plaque.
 // Save code (menu "Spielstand sichern" / "Spielstand laden"), at 390 × 844
 // and at 1280 × 800: a run with seed 64 is played into its first game, the
 // code is exported from the menu (and copied), localStorage is cleared, a
@@ -1791,6 +1801,83 @@ async function motionPass(browser, errors) {
   await context.close();
 }
 
+/** M8 wave 3: Wandelkarte, Glasdaus, Heimweh and the legendary relics. */
+async function wave3(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'wave3-mods.json');
+  await page.waitForSelector('.declare');
+  await page.evaluate(() => {
+    window.__toasts = [];
+    const layer = document.querySelector('.toast-layer');
+    new MutationObserver(() => {
+      const t = layer?.textContent?.trim();
+      if (t) window.__toasts.push(t);
+    }).observe(layer, { childList: true, subtree: true, characterData: true });
+  });
+  for (const id of ['skat_god', 'honorary_chair']) {
+    const mat = page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`);
+    if (!(await mat.count())) fail(`legendary relic ${id} has no beer mat in the head`);
+    if (!(await mat.first().locator('path[stroke="#e3b24c"][stroke-width="2"]').count())) fail(`legendary relic ${id} lacks the gold ring`);
+  }
+  const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
+  for (const mod of ['Wandelkarte', 'Glasdaus', 'Heimweh']) {
+    if (!labels.includes(mod)) fail(`wave 3: no hand card names ${mod}: ${labels}`);
+  }
+  await shoot(page, 'wave3-hand');
+  // The info card names the tier.
+  await page.click('[data-info="relic:skat_god"]');
+  await page.waitForSelector('[data-testid="info-card"]');
+  const info = ((await page.locator('[data-testid="info-card"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!info.includes('legendär')) fail(`Skatgott info card: ${info}`);
+  await shoot(page, 'wave3-legendary-info');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  // "Ehrenvorsitz": the player leads. The glass Daus (Grün, id 23) first.
+  await page.waitForSelector('[data-action="play"][data-id="23"]', { timeout: 30000 });
+  await page.click('[data-action="play"][data-id="23"]');
+  await page.waitForFunction(() => window.__toasts.some((t) => t.includes('zerbrochen')), null, { timeout: 30000 });
+  // The Wandelkarte (Rot-Daus, id 15): a Schellen lead, only Schellen may be named.
+  await page.waitForSelector('[data-action="play"][data-id="15"]', { timeout: 30000 });
+  await page.click('[data-action="play"][data-id="15"]');
+  await page.waitForSelector('[data-testid="wild-suits"]');
+  const allowed = await page.locator('[data-action="wild-suit"]:not([disabled])').evaluateAll((els) => els.map((e) => e.getAttribute('data-suit')).join(','));
+  if (allowed !== 'Diamonds') fail(`Wandelkarte: the picker allows ${allowed}, expected Diamonds`);
+  await shoot(page, 'wave3-wild-picker');
+  await page.click('[data-testid="wild-Diamonds"]');
+  await page.waitForSelector('[data-testid="wild-suits"]', { state: 'detached' });
+  await page.waitForFunction(() => window.__toasts.some((t) => t.includes('Wandelkarte')), null, { timeout: 30000 });
+  // The trick on the table, or once it is finished the "Letzter Stich".
+  await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+  if (!(await page.locator('.trick-card[data-card-id="15"]').count())) {
+    await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+    await page.click('[data-testid="last-trick-toggle"]');
+    await page.waitForSelector('[data-testid="last-trick"]');
+  }
+  const wild = page.locator('.trick-card[data-card-id="15"]').first();
+  if (!(await wild.locator('.plaque-wild').count())) fail('the named Wandelkarte has no plaque on the table');
+  const shown = await wild.locator('svg.card-svg').getAttribute('aria-label');
+  if (!(shown ?? '').startsWith('Schellen-Daus')) fail(`the named Wandelkarte shows as ${shown}`);
+  await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
+  await shoot(page, 'wave3-wild-played');
+  if (await page.locator('[data-testid="last-trick"]').count()) {
+    await page.click('[data-testid="last-trick"]');
+    await page.waitForSelector('[data-testid="last-trick"]', { state: 'detached' });
+  }
+  await playOut(page, 'wave 3');
+  await shoot(page, 'wave3-score');
+  const toasts = await page.evaluate(() => window.__toasts.join(' | '));
+  log(`wave 3: ${toasts.replace(/\s+/g, ' ').slice(0, 300)}`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -2043,6 +2130,7 @@ async function run() {
     await bossAndKontra(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
+    await wave3(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);

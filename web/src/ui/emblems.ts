@@ -1363,6 +1363,40 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       bbbbbbbbbbbb
       ...YYYY`),
   ],
+  // ---- M8 wave 3, Legendär (one motif each, drawn for the wave, not voted)
+  skat_god: [
+    sp('Gekrönter Kopf mit Heiligenschein', `
+      ....YYYYYYY
+      ...Y.......Y
+      ....YYYYYYY
+      ...y..y.y..y
+      ...yyyyyyyyy
+      ...yryyyyyry
+      ...yyyyyyyyy
+      ....sssssss
+      ....skssska
+      ....sssssss
+      ....wskkksw
+      ...wwwsssww
+      ..wwwwwwwwww
+      ..wwwwwwwwww`),
+  ],
+  honorary_chair: [
+    sp('Lehnstuhl mit goldenem Stern', `
+      ..YnnnnnnnnnY
+      ..nnnnnnnnnnn
+      ..nnrrrrrrrnn
+      ..nnrrrYrrrnn
+      ..nnrrYYYrrnn
+      ..nnrrrYrrrnn
+      ..nnrrrrrrrnn
+      ..nnnnnnnnnnn
+      .nrrrrrrrrrrrn
+      .nnnnnnnnnnnnn
+      .nn.........nn
+      .nn.........nn
+      .nn.........nn`),
+  ],
   // ---- M8 wave 2a (one motif each, drawn for the wave, not voted)
   skat_keeper: [
     sp('Zwei Karten mit rotem Kreuz', `
@@ -2184,6 +2218,22 @@ const RING: Record<string, string> = {
   Legendary: '#e3b24c',
 };
 
+/**
+ * Legendär: a second, solid gold ring inside the dashed one and four
+ * pixel sparkles on the rim, so the tier reads at a glance next to Rare.
+ */
+function legendaryRing(kind: CoasterKind): string {
+  const sparkles = [
+    [CX, CY - 45],
+    [CX + 45, CY],
+    [CX, CY + 45],
+    [CX - 45, CY],
+  ]
+    .map(([x = 0, y = 0]) => `<path d="M${x - 1.5} ${y - 5}h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z" fill="#fff4c8" stroke="#8a6512" stroke-width=".8"/>`)
+    .join('');
+  return `<path d="${shape(kind, 10)}" fill="none" stroke="#e3b24c" stroke-width="2"/>${sparkles}`;
+}
+
 /** A small tilt between -5 and 5 degrees, fixed per id. */
 export function tiltOf(id: string): number {
   let h = 2166136261;
@@ -2229,6 +2279,7 @@ export function coasterInner(id: string, kind: CoasterKind, ring: CoasterRing, v
     `<path d="${d0}" fill="#0b0c0e" transform="translate(0 4)"/>` +
     `<path d="${d0}" fill="${PAPER[kind]}"/>${rim}` +
     `<path d="${shape(kind, 5)}" fill="none" stroke="${RING[ring] ?? RING.Common}" stroke-width="4" stroke-dasharray="6 3"/>` +
+    (ring === 'Legendary' ? legendaryRing(kind) : '') +
     `<g transform="translate(22 20) scale(3.5)">${spriteMarkup(spriteFor(id, kind, variant))}</g></g>`
   );
 }

@@ -268,10 +268,12 @@ pub fn evaluate(
             g.tricks().last().is_some_and(|t| t.winner.is_declarer())
                 && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
         }),
-        Condition::ThisCardTakenByDefender => {
+        Condition::ThisCardBeatenByDefender => {
             match (game.and_then(|g| g.tricks().last()), this_card) {
                 (Some(t), Some(this)) => {
-                    !t.winner.is_declarer() && t.cards.iter().any(|c| c.id == this.id)
+                    !t.winner.is_declarer()
+                        && t.winning_card().id != this.id
+                        && t.cards.iter().any(|c| c.id == this.id)
                 }
                 _ => false,
             }
@@ -377,7 +379,7 @@ pub fn evaluate_if_won(
         | Condition::NeverFollowedSuit
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardTakenByDefender => None,
+        | Condition::ThisCardBeatenByDefender => None,
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
@@ -531,12 +533,12 @@ pub fn evaluate_known(
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer => None,
         // Certain once the card fell in a completed trick.
-        Condition::ThisCardTakenByDefender => {
+        Condition::ThisCardBeatenByDefender => {
             let (game, this) = (ctx.game?, this_card?);
             game.tricks()
                 .iter()
                 .find(|t| t.cards.iter().any(|c| c.id == this.id))
-                .map(|t| !t.winner.is_declarer())
+                .map(|t| !t.winner.is_declarer() && t.winning_card().id != this.id)
         }
     }
 }
