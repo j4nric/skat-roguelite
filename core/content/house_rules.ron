@@ -444,22 +444,23 @@
     // ---------------------------------------------------------------------
     // M8 Welle 3, abgestimmt im Cockpit: Stufe Legendär. Am Tresen weit
     // seltener als Rare (Gewicht `legendary` in run.ron, Standard 0,3 statt
-    // 1) und teuer. Texte wie abgestimmt, Preise Platzhalter für `balance`
-    // (docs/balance/2026-11-02-welle3.md, DESIGN 8.1 und 12).
+    // 1). Preise nach der gemessenen Wirkung (Staffel aus Welle 2a), nicht
+    // nach der Stufe; Platzhalter für `balance`
+    // (docs/balance/2026-11-02-welle3.md, DESIGN 8.4 und 12).
     // ---------------------------------------------------------------------
     // Lever Gewinnstufen (run counter): every won Schneider game raises the
-    // counter; from the next game on every game (won or lost, Farbspiel,
-    // Grand and Null, not the Ramsch) gets one level per point. Set at the
-    // declaration, so the preview shows it.
+    // counter; from the next game on every won game (Farbspiel, Grand and
+    // Null, not the Ramsch) gets one level per point, on score. The level
+    // hook comes first, so a Schneider game does not count its own point.
     (
         id: "skat_god",
         focus: Trump,
         name: "Skatgott",
-        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Stufe auf alles.",
+        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Stufe auf jedes gewonnene Spiel.",
         rarity: Legendary,
-        price: 12,
+        price: 9,
         hooks: [
-            OnDeclare(when: Not(RamschGame), then: [AddLevelsPerCounter(counter: "skat_god", per: 1)]),
+            OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerCounter(counter: "skat_god", per: 1)]),
             OnScore(when: WonSchneider, then: [IncrementCounter("skat_god")]),
         ],
     ),
@@ -470,7 +471,7 @@
         name: "Ehrenvorsitz",
         text: "Du bist immer Vorhand.",
         rarity: Legendary,
-        price: 10,
+        price: 6,
         passive: [AlwaysForehand],
     ),
     // ---------------------------------------------------------------------

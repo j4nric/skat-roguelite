@@ -745,7 +745,7 @@ fn relic_schneider_bonus_and_fractional_factor_vectors() {
 }
 
 /// M8 wave 3, worked out by hand: "Skatgott" adds one Gewinnstufe per won
-/// Schneider game so far (a `Levels` line, won and lost); a "Glasdaus"
+/// Schneider game so far to a won game (a `Levels` line); a "Glasdaus"
 /// counts 22 Augen, so the deck holds 131 and Schneider stays measured on
 /// the losing side.
 #[test]
@@ -768,7 +768,8 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
         defender_tricks: 10 - tricks,
     };
     // Grand mit 2, Spiel 3, Skatgott after two Schneider games: + 2 = 5,
-    // 24 × 5 = 120; lost −240.
+    // 24 × 5 = 120. Lost, Skatgott adds nothing (only won games): 24 × 3,
+    // −144.
     let grand = Declaration::grand(RiskLevel::Normal);
     let skat_god = vec![ScoreLine {
         source: Source::Relic(RelicId::new("skat_god")),
@@ -780,7 +781,7 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
         mit_2,
         &outcome(70, 50, 6),
         &Thresholds::default(),
-        skat_god.clone(),
+        skat_god,
     );
     assert_eq!((won.levels, won.value, won.score), (5, 120, 120));
     let lost = score_game(
@@ -788,9 +789,9 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
         mit_2,
         &outcome(50, 70, 4),
         &Thresholds::default(),
-        skat_god,
+        Vec::new(),
     );
-    assert_eq!((lost.levels, lost.value, lost.score), (5, 120, -240));
+    assert_eq!((lost.levels, lost.value, lost.score), (3, 72, -144));
 
     // Kreuz mit 1 with a glass Daus among the declarer's tricks: 50
     // printed Augen + 11 = 61 is won, 12 × 2 = 24 (without it 50, lost).

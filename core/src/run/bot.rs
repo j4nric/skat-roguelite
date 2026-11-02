@@ -189,9 +189,9 @@ pub const RELIC_VALUES: [(&str, u32); 43] = [
 ///
 /// | Relic | Value | Measured (section 3, section 2) |
 /// |---|---|---|
-/// | `skat_god` | 4 | +1.3, +1.1; fewer points per game (-2.4): its levels count on lost games and Null too |
+/// | `skat_god` | 9 | +4.7, +3.6; +3.7 on section 4, levels on won games only |
 /// | `honorary_chair` | 1 | -0.4, -0.6: leading every first trick does not help the bot |
-pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 4), ("honorary_chair", 1)];
+pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 9), ("honorary_chair", 1)];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;

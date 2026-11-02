@@ -139,7 +139,6 @@ fn wave_three_items_load_with_their_tier() {
     for id in ["skat_god", "honorary_chair"] {
         let def = content.relic(&RelicId::new(id)).expect("relic");
         assert_eq!(def.rarity, Rarity::Legendary, "{id}");
-        assert!(def.price >= 10, "{id} is expensive");
     }
     // A run.ron without the legendary weight reads 0.3.
     let weights: RarityWeights = ron::from_str("(common: 6, uncommon: 3, rare: 1)").expect("ron");
@@ -663,7 +662,7 @@ fn a_homesick_card_that_left_the_deck_is_skipped() {
 // -------------------------------------------------------------- Skatgott
 
 #[test]
-fn skat_god_adds_a_level_to_every_game_after_a_won_schneider() {
+fn skat_god_adds_a_level_to_every_won_game_after_a_won_schneider() {
     let content = content();
     let mut run = relic_run(&content, &["skat_god"]);
     let strong = [
@@ -687,7 +686,7 @@ fn skat_god_adds_a_level_to_every_game_after_a_won_schneider() {
         counter: "skat_god".into(),
         value: 1,
     }));
-    // The next game, lost: +1 level, counted double negative.
+    // The next game, lost: no level.
     let weak = [
         "D7 D8 D9 H7 H8 H9 S7 S8 S9 C7",
         "CJ SJ HJ DJ CA CT CK CQ DA DT",
@@ -696,16 +695,37 @@ fn skat_god_adds_a_level_to_every_game_after_a_won_schneider() {
     deal_with(&mut run, &content, weak, "C8 C9", Seat::DECLARER);
     run.apply(&content, RunAction::Declare(hand_clubs()))
         .expect("declare");
+    let (_, breakdown) = bot_to_end(&mut run, &content);
+    assert!(!breakdown.won);
+    assert_eq!(breakdown.lines_of(&source).count(), 0, "lost: no level");
+    // A won game: +1 level from the one Schneider so far; it is Schneider
+    // again, so the counter climbs to 2 for the games after it.
     let line = ScoreLine {
         source: source.clone(),
         lever: Lever::Levels,
         change: Change::Add(1),
     };
-    assert!(run.game().expect("game").lines.contains(&line));
+    deal_with(&mut run, &content, strong, "D8 C7", Seat::DECLARER);
+    run.apply(&content, RunAction::Declare(diamonds))
+        .expect("declare");
     let (_, breakdown) = bot_to_end(&mut run, &content);
-    assert!(!breakdown.won);
+    assert!(breakdown.won);
     assert!(breakdown.lines_of(&source).any(|l| *l == line));
-    assert_eq!(run.counters().get("skat_god"), Some(&1));
+    assert_eq!(run.counters().get("skat_god"), Some(&2));
+    // The value preview (if won) counts the two levels at once.
+    let preview = |run: &Run| {
+        run.view(&content)
+            .game
+            .and_then(|g| g.value_preview)
+            .expect("preview")
+            .levels
+    };
+    deal_with(&mut run, &content, strong, "D8 C7", Seat::DECLARER);
+    run.apply(&content, RunAction::Declare(diamonds))
+        .expect("declare");
+    let mut without = run.clone();
+    without.counters.remove("skat_god");
+    assert_eq!(preview(&run), preview(&without) + 2);
 }
 
 // ---------------------------------------------------------- Ehrenvorsitz
