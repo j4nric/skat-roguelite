@@ -58,6 +58,19 @@
   --edge: 3px;
   --shadow: 0 4px 0 var(--line);
   --shadow-sm: 0 3px 0 var(--line);
+  /* Cards: a 1 px dark line and a hard shadow, both outside the box, so
+     the art inside keeps its integer pixel scale (66 × 99 = 2 × 2 CSS px
+     per art pixel). A state colours the ring around the line (--ring). */
+  --card-paper: #fdfdfb;
+  --card-frame: 0 0 0 1px var(--line), 0 3px 0 var(--line);
+  /* 33 device pixels in CSS px (set from devicePixelRatio, ./main.ts): a
+     card width that is a multiple of it shows every art pixel with the
+     same number of device pixels. Hand and trick cards round down to it
+     when that costs at most 8 px: width W, remainder r = mod(W, step),
+     snapped = min(W, W - r + max(0, r - 8px) × 1000). Phones (2 to 3
+     device px per CSS px) round nearly always; at 1 device px per CSS px
+     a step is 33 px, so there it only happens just above 66 or 99 px. */
+  --art-step: 33px;
 
   /* The visible height without browser bars and without the safe areas
      (notch, home bar) of an installed app. Sizes on the table derive from
@@ -384,22 +397,34 @@ button:focus-visible,
 
 /* ------------------------------------------------------------------ cards */
 
+/* The colour of the ring around a card in a state (picked, playable,
+   winner); not inherited, so a card never takes its parent's ring. */
+@property --ring {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 .card {
   position: relative;
   display: block;
   padding: 0;
   aspect-ratio: 2 / 3;
-  border: var(--edge) solid var(--line);
-  background: var(--card);
-  box-shadow: var(--shadow);
+  border: 0;
+  background: var(--card-paper);
+  box-shadow: 0 0 0 2px var(--ring), 0 0 0 1px var(--line), 0 3px 0 var(--line);
   color: var(--card-ink);
 }
 
+/* Pixel art: hard edges at every size (sizes between the integer scales
+   give some art pixels one device pixel more, never a blur). */
 .card-svg,
 .card-back svg {
   display: block;
   width: 100%;
   height: 100%;
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
 }
 
 button.card {
@@ -410,8 +435,9 @@ button.card {
 .card-back {
   display: inline-block;
   aspect-ratio: 2 / 3;
-  border: 2px solid var(--line);
+  border: 0;
   background: var(--panel);
+  box-shadow: var(--card-frame);
   overflow: hidden;
   line-height: 0;
 }
@@ -423,7 +449,7 @@ button.card {
   aspect-ratio: 2 / 3;
   padding: 0;
   border: 2px solid var(--line);
-  background: var(--card);
+  background: var(--card-paper);
   overflow: hidden;
   line-height: 0;
   vertical-align: middle;
@@ -989,7 +1015,8 @@ button.card {
 
 .opp-hand .card-back {
   width: 10px;
-  border-width: 1px;
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
 
 .opp-meta .badge {
@@ -1361,8 +1388,10 @@ button.card {
 }
 
 .slot {
-  width: calc(var(--th) * 2 / 3);
-  height: var(--th);
+  --w0: calc(var(--th) * 2 / 3);
+  --tw: min(var(--w0), var(--w0) - mod(var(--w0), var(--art-step)) + max(0px, mod(var(--w0), var(--art-step)) - 8px) * 1000);
+  width: var(--tw);
+  height: calc(var(--tw) * 1.5);
 }
 
 /* The two pressed cards, fanned downwards: both corner indexes show.
@@ -1401,9 +1430,9 @@ button.card {
   width: 100%;
   aspect-ratio: 2 / 3;
   padding: 0;
-  border: 2px solid var(--line);
-  background: var(--card);
-  box-shadow: 0 2px 0 var(--line);
+  border: 0;
+  background: var(--card-paper);
+  box-shadow: var(--card-frame);
   line-height: 0;
   cursor: pointer;
 }
@@ -1477,7 +1506,7 @@ button.card {
 
 .trick-card.is-winner {
   position: relative;
-  box-shadow: 0 0 0 3px var(--cool);
+  --ring: var(--cool);
 }
 
 .trick-won-tag {
@@ -1569,9 +1598,11 @@ button.card {
 }
 
 .hand {
+  --w0: calc(var(--card-h) * 2 / 3);
+  --card-w: min(var(--w0), var(--w0) - mod(var(--w0), var(--art-step)) + max(0px, mod(var(--w0), var(--art-step)) - 8px) * 1000);
   display: grid;
   flex: none;
-  grid-template-columns: repeat(var(--cols, 5), minmax(0, calc(var(--card-h) * 2 / 3)));
+  grid-template-columns: repeat(var(--cols, 5), minmax(0, var(--card-w)));
   justify-content: center;
   gap: 7px 6px;
   padding-top: 8px;
@@ -1579,7 +1610,8 @@ button.card {
 
 .hand-card {
   width: 100%;
-  transform: translateY(calc(var(--lift, 0px) * 0.4)) rotate(calc(var(--tilt, 0deg) * 0.45));
+  /* Lifted along the arc, but never turned: turned pixel art blurs. */
+  transform: translateY(round(calc(var(--lift, 0px) * 0.4), 1px));
   transition: transform 90ms steps(2), opacity 90ms;
 }
 
@@ -1592,25 +1624,24 @@ button.card {
 }
 
 .phase-playing .hand-card.is-active {
-  border-color: var(--accent);
-  transform: translateY(-8px) rotate(calc(var(--tilt, 0deg) * 0.45));
+  --ring: var(--accent);
+  transform: translateY(-8px);
 }
 
 .hand-card.is-selected {
-  border-color: var(--accent);
-  box-shadow: 0 4px 0 var(--line), 0 0 0 2px var(--accent);
-  transform: translateY(-10px) rotate(calc(var(--tilt, 0deg) * 0.45));
+  --ring: var(--accent);
+  transform: translateY(-10px);
 }
 
 @media (hover: hover) {
   .phase-playing .hand-card.is-active:hover,
   .phase-discarding .hand-card.is-active:hover {
-    transform: translateY(-12px) rotate(calc(var(--tilt, 0deg) * 0.45));
+    transform: translateY(-12px);
   }
 }
 
 .hand.is-oma .hand-card {
-  border-color: var(--cool);
+  --ring: var(--cool);
 }
 
 .skat-tag {
@@ -1628,17 +1659,15 @@ button.card {
   pointer-events: none;
 }
 
+/* Top right: both corner indexes stay free (bottom right is the index). */
 .plaques {
   position: absolute;
+  top: 2px;
   right: 2px;
-  bottom: 2px;
   display: flex;
+  flex-direction: column;
   gap: 2px;
   pointer-events: none;
-}
-
-.skat-tag + .plaques {
-  bottom: 18px;
 }
 
 .plaque {
@@ -2421,7 +2450,6 @@ button.card {
 
 .target-card {
   width: 100%;
-  box-shadow: var(--shadow-sm);
 }
 
 .target-card.is-dim {
@@ -2429,7 +2457,7 @@ button.card {
 }
 
 .target-card.is-picked {
-  border-color: var(--accent);
+  --ring: var(--accent);
   transform: translateY(-4px);
 }
 
@@ -2476,7 +2504,7 @@ button.card {
 }
 
 .target-card:not(:disabled):hover {
-  border-color: var(--accent);
+  --ring: var(--accent);
 }
 
 /* ------------------------------------------------------------------ score */
@@ -2722,7 +2750,7 @@ button.card {
   width: 16px;
   height: 24px;
   border: 1px solid var(--line);
-  background: var(--card);
+  background: var(--card-paper);
 }
 
 .step-icon .deckel,
@@ -2975,11 +3003,11 @@ button.card {
 
 .fan-card {
   position: absolute;
-  left: calc(50% - 32px);
+  left: calc(50% - 33px);
   bottom: 0;
-  width: 64px;
-  border: var(--edge) solid var(--line);
-  box-shadow: var(--shadow);
+  width: 66px;
+  background: var(--card-paper);
+  box-shadow: var(--card-frame);
   line-height: 0;
   transform-origin: 50% 120%;
   transform: rotate(calc((var(--i) - 1.5) * 12deg));
@@ -3548,8 +3576,9 @@ button.card {
 
 .deck-card {
   display: block;
-  border: 2px solid var(--line);
-  background: var(--card);
+  margin: 1px 1px 3px;
+  background: var(--card-paper);
+  box-shadow: var(--card-frame);
   line-height: 0;
 }
 
@@ -5048,13 +5077,14 @@ button.card {
    around its dark edge, so it never covers the index or the numbers. */
 :has(> .card-svg[data-frame]) {
   outline: 3px solid;
-  outline-offset: 0;
+  outline-offset: 1px;
 }
 
 .mini-card:has(> .card-svg[data-frame]),
 .deck-card:has(> .card-svg[data-frame]),
 .icon-card:has(> .card-svg[data-frame]) {
   outline-width: 2px;
+  outline-offset: 0;
 }
 
 :has(> .card-svg[data-frame='fat']) {
@@ -5215,12 +5245,13 @@ button.card {
   line-height: 0;
 }
 
+/* 3 × and 2 × the art grid: whole pixels for the look at a card. */
 .info-card-face {
-  width: 64px;
+  width: 99px;
 }
 
 .is-popover .info-card-face {
-  width: 48px;
+  width: 66px;
 }
 
 .info-emblem {
@@ -5519,7 +5550,7 @@ body > .drag-ghost {
 /* The face-down cover of a card turning over (./ui/fx.ts flip). */
 .flip-cover {
   position: absolute;
-  inset: calc(-1 * var(--edge));
+  inset: 0;
   z-index: 2;
   display: block;
   line-height: 0;
@@ -5529,7 +5560,7 @@ body > .drag-ghost {
   display: block;
   width: 100%;
   height: 100%;
-  border-width: var(--edge);
+  box-shadow: none;
 }
 
 .info-backs {
@@ -5641,8 +5672,6 @@ body > .drag-ghost {
   position: absolute;
   inset: 0;
   width: 100%;
-  border-width: var(--edge);
-  box-shadow: 0 2px 0 var(--line);
 }
 
 .deck-backs .card-back:nth-child(1) {
@@ -5768,7 +5797,7 @@ body > .drag-ghost {
   display: block;
   width: 100%;
   height: 100%;
-  border: 0;
+  box-shadow: none;
 }
 
 @media (hover: hover) {
