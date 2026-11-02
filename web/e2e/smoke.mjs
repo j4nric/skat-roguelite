@@ -1850,6 +1850,7 @@ async function wave3(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="wild-suits"]');
   const allowed = await page.locator('[data-action="wild-suit"]:not([disabled])').evaluateAll((els) => els.map((e) => e.getAttribute('data-suit')).join(','));
   if (allowed !== 'Diamonds') fail(`Wandelkarte: the picker allows ${allowed}, expected Diamonds`);
+  await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
   await shoot(page, 'wave3-wild-picker');
   await page.click('[data-testid="wild-Diamonds"]');
   await page.waitForSelector('[data-testid="wild-suits"]', { state: 'detached' });
