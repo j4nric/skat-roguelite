@@ -108,7 +108,7 @@
     (
         id: "tour",
         name: "Tournee",
-        text: "Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs.",
+        text: "Jede Kneipe, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs.",
         rarity: Rare,
         price: 7,
         passive: [AddBaseValueFromCounter("tour")],
@@ -162,7 +162,7 @@
         focus: Trump,
         kind: Regular,
         name: "Die Oma",
-        text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich einen Unter aus dem Skat nehmen und dafür eine Karte drücken. Ob einer drin liegt, verrät sie dir.",
+        text: "Einmal pro Kneipe darfst du in einem Handspiel vor dem ersten Stich einen Unter aus dem Skat nehmen und dafür eine Karte drücken. Ob einer drin liegt, verrät sie dir.",
         rarity: Rare,
         price: 6,
         passive: [SeriesSkatSwap((rank: Some(Jack)))],
@@ -174,7 +174,7 @@
         focus: Trump,
         kind: Regular,
         name: "Der Opa",
-        text: "Einmal pro Serie darfst du in einem Handspiel vor dem ersten Stich ein Daus aus dem Skat nehmen und dafür eine Karte drücken. Ob eines drin liegt, verrät er dir.",
+        text: "Einmal pro Kneipe darfst du in einem Handspiel vor dem ersten Stich ein Daus aus dem Skat nehmen und dafür eine Karte drücken. Ob eines drin liegt, verrät er dir.",
         rarity: Rare,
         price: 6,
         passive: [SeriesSkatSwap((rank: Some(Ace)))],
@@ -328,7 +328,7 @@
         id: "regular_guest",
         kind: Regular,
         name: "Der Stammgast",
-        text: "Er zählt jede Serie, die du mit ihm gewinnst. Ab der vierten bist du Stammgast: Jedes gewonnene Spiel zählt doppelt.",
+        text: "Er zählt jede Kneipe, die du mit ihm gewinnst. Ab der vierten bist du Stammgast: Jedes gewonnene Spiel zählt doppelt.",
         rarity: Rare,
         price: 9,
         hooks: [
@@ -503,7 +503,7 @@
     (
         id: "old_deck",
         name: "Altes Blatt",
-        text: "Jede gedrückte Karte gibt bis zum Ende der Serie +1 Grundwert.",
+        text: "Jede gedrückte Karte gibt +1 Grundwert, bis du die Kneipe verlässt.",
         rarity: Uncommon,
         price: 7,
         hooks: [
@@ -518,7 +518,7 @@
     (
         id: "all_rounder",
         name: "Allrounder",
-        text: "Je verschiedener Spielart in einer Serie +3 Grundwert.",
+        text: "Je verschiedener Spielart in einer Kneipe +3 Grundwert.",
         rarity: Uncommon,
         price: 8,
         hooks: [
@@ -632,7 +632,7 @@
     (
         id: "three_discard",
         name: "Drei drücken",
-        text: "Einmal pro Serie: Du nimmst drei Karten aus einem größeren Talon und drückst drei.",
+        text: "Einmal pro Kneipe: Du nimmst drei Karten aus einem größeren Talon und drückst drei.",
         rarity: Rare,
         price: 9,
         passive: [DiscardThree],

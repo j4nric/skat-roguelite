@@ -1,34 +1,49 @@
-// Run-Struktur als Daten. Zielwerte (DESIGN 5.2), Spiellimit, Einmischen und
-// Wirtschaft (DESIGN 12). Wirtschaft kalibriert für v1 (M5) gegen den
-// PIMC-Spieler (`--bot pimc:12:3`), siehe docs/balance/2026-11-01-m5-v1.md.
-// Die Zielwerte sind für Serien mit 3 Spielen kalibriert (02.11.2026,
-// docs/balance/2026-11-02-kalibrierung-dreierserie.md).
+// Run-Struktur als Daten. Kneipentour (ADR 0016, DESIGN 5): ein Abend sind
+// drei Stadtteile mit je vier Kneipen und einer Boss-Kneipe. Zielwerte,
+// Leben, Routen, Spelunke, Spiellimit, Einmischen und Wirtschaft (DESIGN 12).
+// Alle Zahlen der Kneipentour sind VORLÄUFIG (02.11.2026, nach Augenmaß,
+// ohne Simulator-Messung; die Simulationen ruhen auf Wunsch des Nutzers).
 (
-    // (Serie 1, Serie 2, Boss-Serie) je Abschnitt, Reizwerte. Kurve des
-    // Alleinspielers (die anderen Charaktere haben eigene, characters.ron).
-    // Abschnitt 1 zieht am stärksten an: Mit den Relikten wird der Run nach
-    // hinten leichter, die Kurve steigt danach nur flach. Gemessen (3 × 800
-    // Runs, Seeds 42 bis 44, --bot pimc:12:3): Abschnitt 2 in 37 % der
-    // Runs, Run gewonnen 1,4 %. Vorläufige Kurve vom 01.11.2026: 24/30/36
-    // bis 48/54/60 (43 % und 1,9 %).
+    // Zielwerte je Stadtteil: vier Kneipen und die Boss-Kneipe (vor dem
+    // Boss-Faktor), Reizwerte. Kurve des Alleinspielers (die anderen
+    // Charaktere haben eigene, characters.ron). Vorläufig aus der
+    // kalibrierten Kurve der Abschnitte (5 × 3 Serien, 02.11.2026)
+    // abgeleitet: die 15 Kneipen laufen über dieselbe Spanne von 33 bis 60.
     targets: [
-        (33, 40, 45),
-        (35, 40, 46),
-        (36, 44, 48),
-        (40, 46, 54),
-        (45, 50, 60),
+        [33, 36, 38, 40, 45],
+        [40, 42, 44, 46, 52],
+        [46, 48, 50, 52, 60],
     ],
+    // Leben (ADR 0016): Start 3, eine verlorene Kneipe kostet eins, eine
+    // gewonnene Boss-Kneipe bringt eins, höchstens 5. Vorläufig.
+    lives: (start: 3, max: 5, boss_bonus: 1),
+    // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
+    // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
+    // deren Kategorie je Weg gewürfelt und angezeigt wird, nichts kostet
+    // extra. Gewichte der Kategorien; Rast nur, solange ein Leben fehlt.
+    // Vorläufig.
+    route: (
+        weights: (tresen: 40, event: 35, upgrade: 12, rest: 8),
+    ),
+    // Spelunke (Elite): Mit chance führt eine der drei Routen statt zur
+    // nächsten Kneipe in eine Spelunke. Zielwert × target_factor, ein
+    // Malus aus tour.ron, Belohnung ein Relikt zusätzlich. Vorläufig.
+    spelunke: (chance: 0.3, target_factor: 1.25),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
-    // Serie, und jedes Spiel darf bis zu zweimal eingemischt (neu gegeben)
-    // werden, ohne ein Spiel zu kosten; danach wird gespielt. Vorher 8
-    // Spiele und 6 Pässe je Serie (M5), davor 5 und 3 (M2).
+    // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
+    // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach
+    // wird gespielt. Vorher 8 Spiele und 6 Pässe je Serie (M5), davor 5
+    // und 3 (M2).
     game_limit: 3,
     redeals: 2,
     relic_slots: 5,
     consumable_slots: 2,
+    // series_reward: Groschen je gewonnener Kneipe; per_game_left: je
+    // übrigem Spiel (seit ADR 0016 vorläufig 3 statt 1: eine früh
+    // gewonnene Kneipe soll sich lohnen).
     economy: (
         series_reward: 3,
-        per_game_left: 1,
+        per_game_left: 3,
         interest_step: 5,
         interest_max: 5,
         reroll_cost: 2,
@@ -49,26 +64,17 @@
         "black_peter",
         "kibitz_killer",
     ],
-    // Endboss der Boss-Serie im letzten Abschnitt (DESIGN 11).
+    // Endboss der Boss-Kneipe im letzten Stadtteil (DESIGN 11).
     final_boss: Some("the_old_man"),
-    // Wahrscheinlichkeit, dass zwischen zwei Serien statt des Tresens ein
-    // Ereignis kommt (DESIGN 13). Platzhalter für `balance`.
-    encounter_chance: 0.2,
-    // Kartenspiel der Gegenspieler je Abschnitt (DESIGN 10.3): Abschnitt 1
+    // Kartenspiel der Gegenspieler je Stadtteil (DESIGN 10.3): Stadtteil 1
     // Heuristik, danach PIMC mit steigender Zahl an Stichproben. `depth`:
     // exakt durchsuchte Stiche je Stichprobe, dahinter eine schnelle
     // Ausspiel-Schätzung (0 = bis zum Ende). Messung und Laufzeit:
-    // docs/balance/2026-11-01-m5-pimc.md. Spätere Abschnitte nehmen den
-    // letzten Eintrag.
+    // docs/balance/2026-11-01-m5-pimc.md. Vorläufig (ADR 0016): die Stärken
+    // der alten Abschnitte 1, 3 und 4.
     opponents: [
         Heuristic,
-        Pimc(samples: 6, depth: 2),
         Pimc(samples: 8, depth: 3),
         Pimc(samples: 12, depth: 3),
-        Pimc(samples: 16, depth: 3),
     ],
-    // Kurzer Abend (DESIGN 5.3): die Zeilen von targets und opponents, die
-    // ein kurzer Run spielt, ab 0 gezählt. Der letzte endet mit dem
-    // Endboss.
-    short_sections: [0, 1, 2],
 )

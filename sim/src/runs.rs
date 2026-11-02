@@ -8,8 +8,7 @@
 //! (repeatable), `--boss <id>`, `--character declarer|null`,
 //! `--null-scoring fixed|formula`, `--curve` (success curve of a single
 //! series instead of whole runs, see [`curve`]), `--unlocks`
-//! (reachability of every unlock, see [`unlocks`]) and `--short` (kurzer
-//! Abend, DESIGN 5.3) and `--consumable <id>` (a steady supply of one
+//! (reachability of every unlock, see [`unlocks`]) and `--consumable <id>` (a steady supply of one
 //! consumable, see [`Options::consumable`]).
 //!
 //! Runs start with everything unlocked (no relic is locked), so that the
@@ -31,8 +30,7 @@ use skat_core::rules::{NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
 use skat_core::run::meta::MetaState;
 use skat_core::run::{
-    EncounterChoice, Run, RunAction, RunEvent, RunPhase, RunStart, SERIES_PER_SECTION,
-    series_target,
+    EncounterChoice, PUBS_PER_DISTRICT, Run, RunAction, RunEvent, RunPhase, RunStart, series_target,
 };
 
 /// Measurement options of the runs mode.
@@ -292,7 +290,7 @@ pub struct RunStats {
     /// Runs won.
     pub won: u64,
     /// Attempts and wins per (section, series).
-    pub series: Vec<[(u64, u64); 3]>,
+    pub series: Vec<[(u64, u64); 5]>,
     /// Attempts and wins per boss in section 1.
     pub bosses: BTreeMap<BossId, (u64, u64)>,
     /// Attempts and wins per boss from section 2 on.
@@ -343,7 +341,7 @@ fn play_run(
             return Err("run does not end".into());
         }
     }
-    let sections = usize::try_from(content.run.sections(options.length)).unwrap_or(1);
+    let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let mut bought: BTreeSet<RelicId> = BTreeSet::new();
     let mut current_boss: Option<(BossId, u32)> = None;
     for event in &events {
@@ -456,12 +454,12 @@ pub fn simulate(
     seed: u64,
     runs: u32,
 ) -> Result<RunStats, String> {
-    let sections = usize::try_from(content.run.sections(options.length)).unwrap_or(1);
+    let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let mut stats = RunStats {
         seed,
         runs,
         lost_in_section: vec![0; sections],
-        series: vec![[(0, 0); 3]; sections],
+        series: vec![[(0, 0); 5]; sections],
         ..RunStats::default()
     };
     // Every relic appears in the table, also if it was never bought.
@@ -525,11 +523,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     );
     for (section, row) in stats.series.iter().enumerate() {
         for (index, (attempts, wins)) in row.iter().enumerate() {
-            let row = u32::try_from(section)
-                .ok()
-                .and_then(|s| content.run.curve_row(options.length, s))
-                .and_then(|r| usize::try_from(r).ok())
-                .unwrap_or(usize::MAX);
+            let row = section;
             // The character's own Zielwerte if it has some, before boss
             // factors.
             let target = u32::try_from(row)
@@ -539,7 +533,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
                     series_target(content, options.character, row, index, None)
                 })
                 .unwrap_or(0);
-            let label = if index + 1 == usize::try_from(SERIES_PER_SECTION).unwrap_or(3) {
+            let label = if index + 1 == usize::try_from(PUBS_PER_DISTRICT).unwrap_or(5) {
                 format!("{}-boss", section + 1)
             } else {
                 format!("{}-{}", section + 1, index + 1)
@@ -679,7 +673,7 @@ impl Curve {
 /// Zielwerte the curve reports: 1 and every Zielwert of `run.ron`.
 fn curve_targets(content: &Content) -> Vec<u64> {
     let mut targets: Vec<u64> = std::iter::once(1)
-        .chain(content.run.targets.iter().flat_map(|t| [t.0, t.1, t.2]))
+        .chain(content.run.targets.iter().flatten().copied())
         .collect();
     targets.sort_unstable();
     targets.dedup();
@@ -698,16 +692,17 @@ pub fn curve(
     content
         .run
         .targets
-        .fill((unreachable, unreachable, unreachable));
+        .iter_mut()
+        .for_each(|row| row.fill(unreachable));
     // A character with its own Zielwerte (characters.ron) plays those.
     for def in content.characters.values_mut() {
         if let Some(targets) = def.targets.as_mut() {
-            targets.fill((unreachable, unreachable, unreachable));
+            targets.iter_mut().for_each(|row| row.fill(unreachable));
         }
     }
     let start = RunStart {
         index: if options.boss.is_some() {
-            SERIES_PER_SECTION - 1
+            PUBS_PER_DISTRICT - 1
         } else {
             0
         },
@@ -1162,23 +1157,6 @@ mod option_tests {
     }
 
     #[test]
-    fn short_evenings_have_three_sections_and_the_same_first_deals() {
-        let base = content();
-        let full = simulate(&base, &Options::default(), 9, 30).expect("full");
-        let options = Options {
-            length: RunLength::Short,
-            ..Options::default()
-        };
-        let short = simulate(&base, &options, 9, 30).expect("short");
-        assert_eq!(short.lost_in_section.len(), 3);
-        assert_eq!(short.series.len(), 3);
-        assert_eq!(full.lost_in_section.len(), base.run.targets.len());
-        // Section 1 is the same row of the curve: the same runs fail there.
-        assert_eq!(short.lost_in_section[0], full.lost_in_section[0]);
-        assert!(render(&short, &base, &options, 0).contains("short"));
-    }
-
-    #[test]
     fn curve_falls_with_the_target_and_is_deterministic() {
         let base = content();
         let options = Options::default();
@@ -1194,7 +1172,7 @@ mod option_tests {
         // curve reaches its Zielwert.
         let runs = simulate(&base, &options, 42, 200).expect("runs");
         let won_1_1 = runs.series[0][0].1;
-        let first = base.run.targets[0].0;
+        let first = base.run.targets[0][0];
         let from_curve = a
             .best
             .iter()

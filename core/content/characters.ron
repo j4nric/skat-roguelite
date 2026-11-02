@@ -4,7 +4,9 @@
 //
 // deck: die Ausgabe des Charakters (ADR 0015): nur Modifikationen
 // (deck.mods), nie andere Karten; remove und add sind ein Ladefehler.
-// targets: None nimmt die Zielwerte aus run.ron.
+// targets: None nimmt die Zielwerte aus run.ron. Je Stadtteil vier Kneipen
+// und die Boss-Kneipe (ADR 0016, vorläufig nach Augenmaß aus den
+// kalibrierten Kurven der Abschnitte abgeleitet, 02.11.2026).
 // null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
 // oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2). Ohne
 // Angabe Fixed.
@@ -54,11 +56,9 @@
         // Runs; 23 ist ein einfaches gewonnenes Null. Ab Abschnitt 3 flach,
         // weil er gegen die stärkeren Gegner kaum zulegt.
         targets: Some([
-            (18, 20, 23),
-            (20, 23, 27),
-            (20, 23, 27),
-            (23, 27, 30),
-            (23, 27, 30),
+            [18, 20, 20, 23, 23],
+            [20, 23, 23, 27, 27],
+            [23, 27, 27, 30, 30],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -105,11 +105,9 @@
         // vorläufigen Kurve vom 01.11. Abschnitt 2 in 50 %, Run gewonnen
         // 2,9 %).
         targets: Some([
-            (48, 54, 60),
-            (48, 54, 60),
-            (48, 54, 60),
-            (48, 55, 63),
-            (50, 60, 66),
+            [48, 50, 52, 54, 60],
+            [52, 54, 55, 57, 60],
+            [55, 57, 59, 60, 66],
         ]),
         start_relics: [],
         deck: (
@@ -142,11 +140,9 @@
         // Kurve vom 01.11.: gehalten je Abschnitt 44 / 39 / 35 / 45 / 48 %,
         // Alleinspieler 43 / 41 / 42 / 47 / 55 %).
         targets: Some([
-            (33, 40, 45),
-            (33, 40, 45),
-            (35, 40, 46),
-            (35, 40, 46),
-            (36, 44, 48),
+            [33, 35, 37, 40, 45],
+            [36, 38, 40, 42, 46],
+            [40, 42, 44, 44, 48],
         ]),
         start_relics: [],
         // Eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder
@@ -169,16 +165,14 @@
     (
         character: Landlady,
         name: "Die Wirtin",
-        text: "Rechnet gut: Jede gewonnene Serie bringt doppelt so viele Groschen, aber sie hat nur vier Plätze für Relikte. Startet mit einem Kräuter.",
+        text: "Rechnet gut: Jede gewonnene Kneipe bringt doppelt so viele Groschen, aber sie hat nur vier Plätze für Relikte. Startet mit einem Kräuter.",
         // Vorne deutlich höher (doppelte Groschen kaufen früh Relikte, mit der
         // vorläufigen Kurve Abschnitt 2 in 49 %), hinten flach: Mit
         // vier Plätzen wird sie spät schwächer.
         targets: Some([
-            (40, 46, 54),
-            (40, 46, 54),
-            (40, 46, 54),
-            (44, 48, 55),
-            (46, 54, 60),
+            [40, 42, 44, 46, 54],
+            [44, 46, 47, 48, 55],
+            [48, 50, 52, 54, 60],
         ]),
         start_relics: [],
         start_consumables: ["herbal"],

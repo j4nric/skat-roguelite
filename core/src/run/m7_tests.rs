@@ -4,9 +4,8 @@
 use super::bot::RunBot;
 use super::content_tests::content;
 use super::meta::MetaState;
-use super::opponents::opponents_in;
 use super::*;
-use crate::content::{ConsumableId, Factor, UnlockId};
+use crate::content::ConsumableId;
 use crate::deck::DeckChange;
 
 fn is_curse(content: &Content, id: &CardModId) -> bool {
@@ -45,7 +44,6 @@ fn only_encounter(id: &str) -> Content {
     let mut content = content();
     content.encounters.retain(|k, _| k.as_str() == id);
     assert_eq!(content.encounters.len(), 1, "{id}");
-    content.run.encounter_chance = Factor::ONE;
     content
 }
 
@@ -98,7 +96,10 @@ fn the_card_dealer_never_draws_a_curse() {
             let mut run = shop_run(&content, seed, character);
             run.shop = None;
             let mut events = Vec::new();
-            assert!(run.open_encounter(&content, &mut events), "seed {seed}");
+            assert!(
+                run.open_random_encounter(&content, &mut events),
+                "seed {seed}"
+            );
             let options = &run.encounter().expect("open").options;
             for option in options {
                 if let Some(m) = &option.card_mod {
@@ -168,8 +169,7 @@ fn old_card_dealer_options_without_a_drawn_mod_never_give_a_curse() {
 /// "Fluch", and pays.
 #[test]
 fn in_whole_runs_curses_come_only_from_announcing_encounters() {
-    let mut content = content();
-    content.run.encounter_chance = Factor::ONE;
+    let content = content();
     let mut curses = 0;
     for character in Character::ALL {
         for seed in 0..40 {
@@ -182,12 +182,21 @@ fn in_whole_runs_curses_come_only_from_announcing_encounters() {
                 events.extend(run.apply(&content, action).expect("bot"));
             }
             let mut open: Option<EncounterId> = None;
+            let mut malus_curse = false;
             for (i, event) in events.iter().enumerate() {
                 match event {
                     RunEvent::EncounterOpened { encounter, .. } => open = Some(encounter.clone()),
                     RunEvent::EncounterResolved { .. } => open = None,
+                    // A Spelunke malus curses cards for its pub (ADR 0016),
+                    // announced on the route choice.
+                    RunEvent::SeriesStarted { malus: Some(m), .. }
+                        if content.maluses[m].curse.is_some() =>
+                    {
+                        malus_curse = true;
+                    }
+                    RunEvent::GameDealt { .. } => malus_curse = false,
                     RunEvent::DeckChanged(DeckChange::Modified { card_mod, .. })
-                        if is_curse(&content, card_mod) =>
+                        if is_curse(&content, card_mod) && !malus_curse =>
                     {
                         curses += 1;
                         let encounter = open
@@ -245,7 +254,7 @@ fn announced_curses_name_the_curse_and_pay() {
             let mut run = shop_run(&content, seed, character);
             run.shop = None;
             let mut events = Vec::new();
-            assert!(run.open_encounter(&content, &mut events));
+            assert!(run.open_random_encounter(&content, &mut events));
             let options = run.encounter().expect("open").options.clone();
             assert_eq!(options.len(), 3);
             let curse = options[0].card_mod.clone().expect("named");
@@ -278,7 +287,7 @@ fn announced_curses_name_the_curse_and_pay() {
     let mut run = shop_run(&content, 5, Character::Declarer);
     run.shop = None;
     let mut events = Vec::new();
-    assert!(run.open_encounter(&content, &mut events));
+    assert!(run.open_random_encounter(&content, &mut events));
     run.apply(
         &content,
         RunAction::ChooseEncounter {
@@ -348,189 +357,28 @@ fn an_encounter_that_gives_a_curse_must_say_so() {
 }
 
 // ---------------------------------------------------------------------------
-// Short evening
+// Short evening (dropped with ADR 0016)
 // ---------------------------------------------------------------------------
 
-fn short_start(character: Character) -> RunStart {
-    RunStart {
-        character,
+#[test]
+fn a_short_evening_cannot_start_and_old_meta_states_keep_it() {
+    let content = content();
+    let start = RunStart {
         length: RunLength::Short,
         ..RunStart::default()
-    }
-}
-
-#[test]
-fn a_short_evening_plays_the_rows_of_run_ron() {
-    let content = content();
-    let rows = content.run.short_sections.clone();
-    assert_eq!(rows.len(), 3, "kurzer Abend: 3 Abschnitte");
-    assert_eq!(content.run.sections(RunLength::Short), 3);
-    assert_eq!(
-        content.run.sections(RunLength::Full),
-        u32::try_from(content.run.targets.len()).expect("len")
-    );
-    for character in Character::ALL {
-        for (section, &row) in (0u32..).zip(&rows) {
-            let start = RunStart {
-                section,
-                ..short_start(character)
-            };
-            let (run, _) = Run::new_with(&content, 3, &start).expect("run");
-            assert_eq!(run.length(), RunLength::Short);
-            assert_eq!(run.sections(&content), 3);
-            assert_eq!(run.curve_row(&content), row);
-            assert_eq!(
-                run.series().target,
-                series_target(&content, character, row, 0, None).expect("target")
-            );
-            assert_eq!(
-                opponents_in(&content, run.curve_row(&content)),
-                opponents_in(&content, row)
-            );
-            let view = run.view(&content);
-            assert_eq!(view.sections, 3);
-            assert_eq!(view.length, RunLength::Short);
-            assert_eq!(view.series.section, section);
-        }
-    }
-    // A short evening has no fourth section.
-    let start = RunStart {
-        section: 3,
-        ..short_start(Character::Declarer)
     };
     assert_eq!(
-        Run::new_with(&content, 3, &start).map(|_| ()),
+        Run::new_with(&content, 21, &start).map(|_| ()),
         Err(RunError::InvalidStart)
     );
-}
-
-#[test]
-fn a_short_evening_ends_with_the_final_boss() {
-    let content = content();
-    let final_boss = content.run.final_boss.clone().expect("Der Alte");
-    let start = RunStart {
-        section: 2,
-        index: 2,
-        ..short_start(Character::Declarer)
-    };
-    let (mut run, events) = Run::new_with(&content, 8, &start).expect("run");
-    assert!(events.contains(&RunEvent::BossAnnounced {
-        section: 2,
-        boss: final_boss.clone(),
-    }));
-    assert_eq!(run.series().boss.as_ref(), Some(&final_boss));
-    let row = content.run.short_sections[2];
-    assert_eq!(
-        run.series().target,
-        series_target(&content, Character::Declarer, row, 2, Some(&final_boss)).expect("target")
-    );
-    // The boss series won: the run is won, as a short evening.
-    run.series.score = i64::try_from(run.series.target).expect("target");
-    run.game = None;
-    let mut events = Vec::new();
-    run.after_game(&content, &mut events).expect("won");
-    assert_eq!(run.phase(), RunPhase::Won);
-    assert!(events.contains(&RunEvent::RunWon {
-        character: Character::Declarer,
-        length: RunLength::Short,
-        stake: 0,
-    }));
-    // In a full run the third section's boss is drawn, not the final boss.
-    let start = RunStart {
-        section: 2,
-        index: 2,
-        ..RunStart::default()
-    };
-    for seed in 0..20 {
-        let (run, _) = Run::new_with(&content, seed, &start).expect("run");
-        assert_ne!(run.series().boss.as_ref(), Some(&final_boss));
-    }
-}
-
-#[test]
-fn the_bot_plays_short_evenings_to_the_end() {
-    let content = content();
-    let mut sections = BTreeSet::new();
-    for character in Character::ALL {
-        for seed in 0..30 {
-            let (mut run, _) = Run::new_with(&content, seed, &short_start(character)).expect("run");
-            while let Some(action) = RunBot.next_action(&run, &content) {
-                let events = run.apply(&content, action).expect("bot");
-                for event in &events {
-                    if let RunEvent::RunLost { length, .. } | RunEvent::RunWon { length, .. } =
-                        event
-                    {
-                        assert_eq!(*length, RunLength::Short);
-                    }
-                }
-            }
-            assert!(matches!(run.phase(), RunPhase::Won | RunPhase::Lost));
-            assert!(run.series().section < 3);
-            sections.insert(run.series().section);
-        }
-    }
-    assert!(sections.len() >= 2, "{sections:?}");
-}
-
-#[test]
-fn a_short_evening_counts_for_unlocks_but_not_run_wins_and_its_own_statistics() {
-    let content = content();
-    let mut meta = MetaState::new();
-    let start = meta
-        .run_start_with(&content, Character::Declarer, RunLength::Short)
-        .expect("start");
-    assert_eq!(start.length, RunLength::Short);
-    assert_eq!(
-        meta.run_start(&content, Character::Declarer)
-            .expect("full")
-            .length,
-        RunLength::Full
-    );
-    let events: Vec<RunEvent> = vec![
-        RunEvent::SeriesStarted {
-            section: 2,
-            index: 0,
-            target: 48,
-            game_limit: 3,
-            redeals: 2,
-            boss: None,
-        },
-        RunEvent::RunWon {
-            character: Character::Declarer,
-            length: RunLength::Short,
-            stake: 0,
-        },
-    ];
-    let earned = meta.observe(&content, &events);
-    // A won short evening counts for every unlock except winning a run
-    // (DESIGN 9.3): reaching section 3 does, `tour_won` does not.
-    assert!(!earned.contains(&UnlockId::new("tour_won")), "{earned:?}");
-    assert!(!meta.character_unlocked(&content, Character::NullPlayer));
-    assert!(
-        earned.contains(&UnlockId::new("third_evening")),
-        "{earned:?}"
-    );
-    assert_eq!(meta.stats.runs_won, 1);
+    // A meta state with short-evening statistics and stakes still loads.
+    let meta: MetaState = ron::from_str(
+        "(version:1,unlocked:[],stats:(runs_finished:2,lengths:{Short:(runs:2,won:1,best_section:3)}),stakes:{Declarer:{Short:1}})",
+    )
+    .expect("old meta");
     assert_eq!(meta.stats.lengths[&RunLength::Short].won, 1);
-    assert_eq!(meta.stats.lengths[&RunLength::Short].best_section, 3);
-    assert!(!meta.stats.lengths.contains_key(&RunLength::Full));
-    let events: Vec<RunEvent> = vec![RunEvent::RunLost {
-        section: 1,
-        index: 2,
-        character: Character::Declarer,
-        length: RunLength::Full,
-        stake: 0,
-    }];
-    meta.observe(&content, &events);
-    assert_eq!(meta.stats.runs_finished, 2);
-    assert_eq!(meta.stats.lengths[&RunLength::Full].runs, 1);
-    assert_eq!(meta.stats.lengths[&RunLength::Full].won, 0);
-    assert_eq!(meta.stats.lengths[&RunLength::Full].best_section, 2);
-    // Round trip with the length as a map key.
-    let text = ron::to_string(&meta).expect("ron");
-    assert!(text.contains("Short:"), "{text}");
-    let back: MetaState = ron::from_str(&text).expect("ron");
-    assert_eq!(back, meta);
+    assert_eq!(meta.max_stake(Character::Declarer, RunLength::Short), 1);
+    assert_eq!(meta.max_stake(Character::Declarer, RunLength::Full), 0);
 }
 
 #[test]
@@ -557,18 +405,5 @@ fn saves_and_events_from_before_the_short_evening_are_full() {
             length: RunLength::Full,
             stake: 0,
         }
-    );
-}
-
-#[test]
-fn short_sections_must_rise_within_the_curve() {
-    let list = format!("short_sections: {:?},", content().run.short_sections);
-    assert!(load_with("run", &list, "short_sections: [0, 2, 5],").is_err());
-    assert!(load_with("run", &list, "short_sections: [2, 1, 4],").is_err());
-    // Without a list a short evening is a full one.
-    let content = load_with("run", &list, "").expect("no list");
-    assert_eq!(
-        content.run.sections(RunLength::Short),
-        content.run.sections(RunLength::Full)
     );
 }

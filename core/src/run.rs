@@ -1,14 +1,20 @@
 //! Run state machine (design document 5, 6 and 12).
 //!
-//! A run is a tour through sections (Skatabende). Each section has three
-//! series: two normal ones and a boss series. A series has a target
-//! (Zielwert) and a game limit. Before declaring, the player may have each
-//! game dealt again a few times (einmischen, [`RunAction::Redeal`]) without
+//! A run is a Kneipentour (ADR 0016) through a city: three districts
+//! (Stadtteile, `section` in the code), each with four pubs (Kneipen) and a
+//! boss pub. A pub is played as a [`Series`] (the name of the structure
+//! before ADR 0016): a target (Zielwert) and a game limit of three games
+//! against two Stammgäste. Before declaring, the player may have each game
+//! dealt again a few times (einmischen, [`RunAction::Redeal`]) without
 //! using up a game; then one of the hands must be played. Won games add
-//! their value to the series account, lost games subtract twice their value
-//! including all relic modifiers. A series is won the moment the account
-//! reaches the target; the run is lost when the game limit is reached
-//! below the target. Between series the Tresen (shop) opens.
+//! their value to the pub's account, lost games subtract twice their value
+//! including all relic modifiers. A pub is won the moment the account
+//! reaches the target. Missing the target after the last game costs a life
+//! (Leben): a normal pub is left without reward, a boss pub is played
+//! again. The run is lost with the last life. Between two pubs the player
+//! chooses a route ([`tour`]): three ways (Verkehrsmittel), each leading
+//! over one or two stops (Tresen, encounters), sometimes into a Spelunke
+//! instead of the next pub.
 //!
 //! The run is driven by [`RunAction`]s and answers with [`RunEvent`]s. The
 //! two defenders are played by the AI inside the run (heuristic or PIMC by
@@ -24,17 +30,17 @@
 //!
 //! Content effects fire at fixed points ([`Stage`]): passive effects when a
 //! game is set up, then `OnDeal`, `OnDeclare`, `OnCardPlayed`,
-//! `OnTrickEnd`, `OnScore` and, after a won series, `OnSeriesWon`. Sources
-//! fire in a fixed order: boss, relics in purchase order, the house rules
-//! of the evening (encounter "Stammtisch-Streit"), card modifications of
+//! `OnTrickEnd`, `OnScore` and, after a won pub, `OnSeriesWon`. Sources
+//! fire in a fixed order: character, boss, the malus of a Spelunke, relics
+//! in purchase order, the house rules of the district (encounter
+//! "Stammtisch-Streit"), card modifications of
 //! the cards in play by card id. Conditions see the effects of earlier
 //! sources in the same stage. A card modification's `OnAttach` hooks fire
 //! when it is attached to a card (curses pay Groschen there).
 //!
 //! A run is played by one [`Character`] (DESIGN 9): the Alleinspieler
-//! declares suit games and grand, the Nullspieler only Null. Between two
-//! series an encounter (Ereignis, DESIGN 13) may come instead of the
-//! Tresen. What is unlocked across runs lives outside the run, in
+//! declares suit games and grand, the Nullspieler only Null. What is
+//! unlocked across runs lives outside the run, in
 //! [`meta::MetaState`]; a run only gets the relics that are still locked
 //! ([`RunStart::locked_relics`]).
 
@@ -43,6 +49,7 @@ pub mod guests;
 pub mod meta;
 pub mod opponents;
 pub mod player;
+pub mod tour;
 pub mod view;
 
 mod settle;
@@ -70,8 +77,12 @@ use crate::rules::{
     null_value_parts, ramsch_value_parts, suit_strength, trump_strength,
 };
 
-/// Series per section: two normal ones and the boss series.
-pub const SERIES_PER_SECTION: u32 = 3;
+/// Pubs per district (Stadtteil, ADR 0016): four Kneipen and the
+/// Boss-Kneipe last.
+pub const PUBS_PER_DISTRICT: u32 = 5;
+
+/// Old name of [`PUBS_PER_DISTRICT`] (series per section before ADR 0016).
+pub const SERIES_PER_SECTION: u32 = PUBS_PER_DISTRICT;
 
 /// Mixed into the game's seed for the card "Drei drücken" draws, so that
 /// the draw is independent of the PIMC samples of the same game.
@@ -80,25 +91,29 @@ const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 /// What the run is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunPhase {
-    /// A game of the current series is dealt; see [`ActiveGame`].
+    /// A game of the current pub is dealt; see [`ActiveGame`].
     Game,
-    /// The Tresen is open between two series.
+    /// The Tresen is open, a stop on the way to the next pub.
     Shop,
-    /// An encounter (Ereignis) came instead of the Tresen; see
-    /// [`ActiveEncounter`].
+    /// An encounter (Ereignis) is open, a stop on the way, or the loot of
+    /// a won Spelunke; see [`ActiveEncounter`].
     Encounter,
-    /// The last boss series was won.
+    /// The player chooses the way to the next pub ([`tour::RouteChoice`]).
+    Route,
+    /// The last boss pub was won.
     Won,
-    /// A series ended below its target.
+    /// The last life was lost.
     Lost,
 }
 
-/// The current series.
+/// The current pub (Kneipe; the type keeps its name from before ADR 0016,
+/// when a section had three series).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Series {
-    /// Section (Abschnitt), counted from 0.
+    /// District (Stadtteil; Abschnitt before ADR 0016), counted from 0.
     pub section: u32,
-    /// Series within the section: 0, 1 or 2 (boss series).
+    /// Pub within the district, from 0; the last
+    /// ([`PUBS_PER_DISTRICT`] − 1) is the boss pub.
     pub index: u32,
     /// Zielwert.
     pub target: u64,
@@ -139,6 +154,13 @@ pub struct Series {
     /// series, at the first pickup of the skat).
     #[serde(default)]
     pub discard_three_used: bool,
+    /// The Spelunke this pub is, if it replaced a normal pub (ADR 0016).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spelunke: Option<tour::Spelunke>,
+    /// Cards of the player's edition cursed for this pub only (Spelunke
+    /// malus), with the curse that landed; taken off when the pub ends.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub temp_curses: Vec<(u32, CardModId)>,
 }
 
 impl Series {
@@ -152,6 +174,12 @@ impl Series {
     #[must_use]
     pub fn target_reached(&self) -> bool {
         i128::from(self.score) >= i128::from(self.target)
+    }
+
+    /// Whether this is the boss pub of its district.
+    #[must_use]
+    pub const fn is_boss_pub(&self) -> bool {
+        self.index + 1 == PUBS_PER_DISTRICT
     }
 }
 
@@ -377,6 +405,15 @@ pub enum EncounterChoice {
     },
     /// Letzte Runde: the next game declared counts this many times.
     DoubleNextGame(u32),
+    /// Rast: this many lives back, up to the maximum (ADR 0016).
+    Heal(u32),
+    /// Werkstatt: every modification off a card of the player's choice
+    /// (target needed).
+    CleanseChosenCard,
+    /// Loot of a Spelunke: take this relic into a free slot.
+    TakeRelic(RelicId),
+    /// Loot of a Spelunke: these Groschen instead of the relic.
+    TakeCoins(u32),
     /// Walk on without taking anything.
     Leave,
 }
@@ -493,10 +530,13 @@ pub struct RunStats {
     /// under its old name `games_passed` (games passed until 01.11.2026).
     #[serde(alias = "games_passed")]
     pub redeals: u32,
-    /// Series won.
+    /// Pubs won (series before ADR 0016).
     pub series_won: u32,
     /// Highest Spielwert of a won game.
     pub best_game: u64,
+    /// Pubs lost (each cost a life).
+    #[serde(default)]
+    pub pubs_lost: u32,
 }
 
 /// Groschen paid when selling a relic or consumable: half its price.
@@ -599,13 +639,18 @@ pub enum RunAction {
     /// [`RunError::NotDecided`] otherwise.
     SettleGame,
     /// Choose an option of the open encounter, with a target card if the
-    /// option needs one; then the next series starts.
+    /// option needs one; then the way goes on (next stop, the route
+    /// choice or the next pub).
     ChooseEncounter {
         /// Index into [`ActiveEncounter::options`].
         option: usize,
-        /// Deck card id for [`EncounterChoice::MarkChosenCard`].
+        /// Deck card id for [`EncounterChoice::MarkChosenCard`] and
+        /// [`EncounterChoice::CleanseChosenCard`].
         target: Option<u32>,
     },
+    /// Take the route at this index of the open route choice
+    /// ([`tour::RouteChoice::options`]).
+    ChooseRoute(usize),
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -623,7 +668,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The boss of this section's boss series.
         boss: BossId,
     },
-    /// A new series started.
+    /// A new pub started (the event keeps its name from the series).
     SeriesStarted {
         /// Section, from 0.
         section: u32,
@@ -639,6 +684,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         redeals: u32,
         /// Boss of a boss series.
         boss: Option<BossId>,
+        /// The malus of a Spelunke.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        malus: Option<crate::content::MalusId>,
     },
     /// A game was dealt.
     GameDealt {
@@ -865,6 +913,44 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The skat card.
         card: DealtCard,
     },
+    /// The route choice to the next pub opened (ADR 0016).
+    RouteOpened {
+        /// District of the next pub.
+        section: u32,
+        /// The next pub within it.
+        index: u32,
+    },
+    /// The player took a route.
+    RouteChosen {
+        /// Index of the route.
+        option: usize,
+        /// How he goes.
+        transport: tour::Transport,
+        /// Whether it leads into a Spelunke.
+        spelunke: bool,
+    },
+    /// A pub ended below its target after its last game (ADR 0016).
+    PubLost {
+        /// District.
+        section: u32,
+        /// Pub within the district.
+        index: u32,
+        /// The boss of a boss pub (it is played again).
+        #[serde(default)]
+        boss: Option<BossId>,
+    },
+    /// Lives changed (ADR 0016).
+    LivesChanged {
+        /// Gained (positive) or lost (negative).
+        change: i32,
+        /// Lives now.
+        lives: u32,
+    },
+    /// A relic was gained without paying (loot of a Spelunke).
+    RelicGained {
+        /// The relic.
+        relic: RelicId,
+    },
     /// The run was won.
     RunWon {
         /// Who won it.
@@ -877,11 +963,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         #[serde(default)]
         stake: u32,
     },
-    /// The run was lost.
+    /// The run was lost: the last life went.
     RunLost {
-        /// Section of the lost series.
+        /// District of the pub that cost the last life.
         section: u32,
-        /// Series within the section.
+        /// Pub within the district.
         index: u32,
         /// Who lost it.
         #[serde(default)]
@@ -961,6 +1047,8 @@ pub enum RunError {
     /// "Lockvogel": no lead can be demanded in this game (none granted or
     /// all used).
     NoLeadDemandLeft,
+    /// A Spelunke's malus locks the Schnäpse in this pub (ADR 0016).
+    ConsumablesLocked,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1065,6 +1153,8 @@ pub enum RunErrorCode {
     InvalidLeadDemand,
     /// "Lockvogel": none left in this game.
     NoLeadDemandLeft,
+    /// A Spelunke's malus locks the Schnäpse.
+    ConsumablesLocked,
 }
 
 impl RunErrorCode {
@@ -1117,6 +1207,7 @@ impl RunErrorCode {
             RunErrorCode::MustLeadDemanded => "MustLeadDemanded",
             RunErrorCode::InvalidLeadDemand => "InvalidLeadDemand",
             RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
+            RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
         }
     }
 }
@@ -1175,6 +1266,7 @@ impl RunError {
             RunError::NotDecided => RunErrorCode::NotDecided,
             RunError::NoRedealToUndo => RunErrorCode::NoRedealToUndo,
             RunError::NoLeadDemandLeft => RunErrorCode::NoLeadDemandLeft,
+            RunError::ConsumablesLocked => RunErrorCode::ConsumablesLocked,
         }
     }
 }
@@ -1209,6 +1301,7 @@ impl fmt::Display for RunError {
             RunError::NotDecided => f.write_str("the rest of the game is not decided"),
             RunError::NoRedealToUndo => f.write_str("no Einmischen to take back"),
             RunError::NoLeadDemandLeft => f.write_str("no lead can be demanded in this game"),
+            RunError::ConsumablesLocked => f.write_str("the Schnäpse are locked in this pub"),
         }
     }
 }
@@ -1235,9 +1328,9 @@ pub struct RunStart {
     /// (the simulator's `--relic`), in this order after them. Their passive
     /// effects already apply to the first game.
     pub relics: Vec<RelicId>,
-    /// Section of the first series, from 0.
+    /// District of the first pub, from 0.
     pub section: u32,
-    /// Series of the first series within its section (2 = boss series).
+    /// The first pub within its district (the last is the boss pub).
     pub index: u32,
     /// Who plays the run.
     #[serde(default)]
@@ -1250,7 +1343,8 @@ pub struct RunStart {
     /// random (a consumable or encounter that names one still gives it).
     #[serde(default)]
     pub locked_card_mods: Vec<CardModId>,
-    /// Ganzer or kurzer Abend (DESIGN 5.3).
+    /// Ganzer Abend; `Short` is rejected since ADR 0016
+    /// ([`RunError::InvalidStart`]).
     #[serde(default)]
     pub length: RunLength,
     /// Einsatz-Leiter (DESIGN 9.3): suit games and Grand are won from
@@ -1326,6 +1420,21 @@ pub struct Run {
     /// Stake of the Einsatz-Leiter (saves from before: 0).
     #[serde(default)]
     stake: u32,
+    /// Lives (Leben, ADR 0016).
+    #[serde(default = "Run::default_lives")]
+    lives: u32,
+    /// Routes, Spelunken, maluses (ADR 0016).
+    #[serde(default = "Run::default_tour_rng")]
+    tour_rng: Rng,
+    /// The open route choice.
+    #[serde(default)]
+    route: Option<tour::RouteChoice>,
+    /// The route taken: stops still ahead and the pub it leads to.
+    #[serde(default)]
+    trip: Option<tour::Trip>,
+    /// Every pub played so far, in order.
+    #[serde(default)]
+    pub_results: Vec<tour::PubResult>,
 }
 
 impl Run {
@@ -1345,8 +1454,11 @@ impl Run {
         seed: u64,
         start: &RunStart,
     ) -> Result<(Run, Vec<RunEvent>), RunError> {
-        let sections = content.run.sections(start.length);
-        if start.section >= sections || start.index >= SERIES_PER_SECTION {
+        let sections = content.run.sections();
+        if start.section >= sections
+            || start.index >= PUBS_PER_DISTRICT
+            || start.length == RunLength::Short
+        {
             return Err(RunError::InvalidStart);
         }
         let character = content
@@ -1398,6 +1510,8 @@ impl Run {
                 skat_swaps_taken: Vec::new(),
                 ramsch_played: false,
                 discard_three_used: false,
+                spelunke: None,
+                temp_curses: Vec::new(),
             },
             coins: content.run.economy.starting_coins,
             edition,
@@ -1422,6 +1536,11 @@ impl Run {
             guests: Vec::new(),
             length: start.length,
             stake: start.stake,
+            lives: content.run.lives.start,
+            tour_rng: master.fork(),
+            route: None,
+            trip: None,
+            pub_results: Vec::new(),
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1434,6 +1553,16 @@ impl Run {
     /// deterministic.
     fn default_encounter_rng() -> Rng {
         Rng::from_seed(0x5354_414D_4D54_4953)
+    }
+
+    /// Lives of a save from before the Kneipentour.
+    const fn default_lives() -> u32 {
+        3
+    }
+
+    /// Route generator of saves from before the Kneipentour.
+    fn default_tour_rng() -> Rng {
+        Rng::from_seed(0x4B4E_4549_5045_4E54)
     }
 
     // -----------------------------------------------------------------------
@@ -1459,21 +1588,17 @@ impl Run {
         self.stake
     }
 
-    /// Number of sections of this run (5, or 3 for a short evening).
+    /// Number of districts (Stadtteile) of this run.
     #[must_use]
     pub fn sections(&self, content: &Content) -> u32 {
-        content.run.sections(self.length)
+        content.run.sections()
     }
 
-    /// The row of the curve (Zielwerte, opponents) the current section
-    /// plays: the section itself, or for a short evening the row
-    /// `run.ron` names for it.
+    /// The row of the curve (Zielwerte, opponents) the current district
+    /// plays: since ADR 0016 the district itself.
     #[must_use]
-    pub fn curve_row(&self, content: &Content) -> u32 {
-        content
-            .run
-            .curve_row(self.length, self.series.section)
-            .unwrap_or(self.series.section)
+    pub const fn curve_row(&self, _content: &Content) -> u32 {
+        self.series.section
     }
 
     /// Relics that are not unlocked in this run.
@@ -1779,6 +1904,7 @@ impl Run {
             RunAction::ChooseEncounter { option, target } => {
                 self.choose_encounter(content, option, target, events)
             }
+            RunAction::ChooseRoute(option) => self.choose_route(content, option, events),
         }
     }
 
@@ -1813,7 +1939,8 @@ impl Run {
             .saturating_sub(self.series.redeals_in_game);
         if own_left > 0 {
             self.series.redeals_in_game += 1;
-        } else if self.series.extra_redeals > 0 {
+        } else if self.series.extra_redeals > 0 && !self.malus(content).is_some_and(|m| m.no_redeal)
+        {
             self.series.extra_redeals -= 1;
         } else {
             return Err(RunError::NoRedealLeft);
@@ -2389,6 +2516,15 @@ impl Run {
                 scale: 1,
             });
         }
+        if let Some(def) = self.malus(content) {
+            sources.push(ActiveSource {
+                source: Source::Malus(def.id.clone()),
+                passive: &def.passive,
+                hooks: &[],
+                this_card: None,
+                scale: 1,
+            });
+        }
         let relics = self.relics.iter().chain(&self.evening_relics);
         for def in relics.filter_map(|r| content.relic(r)) {
             sources.push(ActiveSource {
@@ -2692,9 +2828,22 @@ impl Run {
         index: u32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        self.start_pub(content, section, index, None, events)
+    }
+
+    /// Start pub `index` of district `section`, a Spelunke if `spelunke`
+    /// is set (ADR 0016), and deal its first game.
+    fn start_pub(
+        &mut self,
+        content: &Content,
+        section: u32,
+        index: u32,
+        spelunke: Option<tour::Spelunke>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
         let config = &content.run;
-        let sections = config.sections(self.length);
-        if section >= sections {
+        let sections = config.sections();
+        if section >= sections || index >= PUBS_PER_DISTRICT {
             return Err(RunError::WrongPhase);
         }
         if index == 0 && !self.evening_relics.is_empty() {
@@ -2729,17 +2878,17 @@ impl Run {
                 });
             }
         }
-        let boss = if index + 1 == SERIES_PER_SECTION {
+        let boss = if index + 1 == PUBS_PER_DISTRICT {
             self.section_boss.clone()
         } else {
             None
         };
-        let row = content
-            .run
-            .curve_row(self.length, section)
+        let mut target = series_target(content, self.character, section, index, boss.as_ref())
             .ok_or(RunError::WrongPhase)?;
-        let target = series_target(content, self.character, row, index, boss.as_ref())
-            .ok_or(RunError::WrongPhase)?;
+        if spelunke.is_some() {
+            target = config.spelunke.target_factor.apply(target);
+        }
+        let malus = spelunke.as_ref().map(|s| s.malus.clone());
         self.series = Series {
             section,
             index,
@@ -2755,10 +2904,14 @@ impl Run {
             skat_swaps_taken: Vec::new(),
             ramsch_played: false,
             discard_three_used: false,
+            spelunke,
+            temp_curses: Vec::new(),
         };
         self.phase = RunPhase::Game;
         self.shop = None;
         self.encounter = None;
+        self.route = None;
+        self.trip = None;
         self.seat_guests(content, section, index);
         events.push(RunEvent::SeriesStarted {
             section,
@@ -2767,7 +2920,9 @@ impl Run {
             game_limit: config.game_limit,
             redeals: content.redeals(self.character),
             boss,
+            malus,
         });
+        self.curse_for_pub(content, events);
         self.deal(content, true, events)
     }
 
@@ -3157,7 +3312,7 @@ impl Run {
         })
     }
 
-    /// After a game was scored: series won, run lost or next deal.
+    /// After a game was scored: pub won, pub lost or next deal.
     fn after_game(
         &mut self,
         content: &Content,
@@ -3168,15 +3323,7 @@ impl Run {
         }
         if self.series.games_left() == 0 {
             self.game = None;
-            self.phase = RunPhase::Lost;
-            events.push(RunEvent::RunLost {
-                section: self.series.section,
-                index: self.series.index,
-                character: self.character,
-                length: self.length,
-                stake: self.stake,
-            });
-            return Ok(());
+            return self.pub_lost(content, events);
         }
         self.deal(content, true, events)
     }
@@ -3216,27 +3363,7 @@ impl Run {
             games_left,
         });
         self.fire(content, Stage::OnSeriesWon, None, None, events);
-        let last_section = self.sections(content).saturating_sub(1);
-        if self.series.index + 1 == SERIES_PER_SECTION && self.series.section >= last_section {
-            self.phase = RunPhase::Won;
-            events.push(RunEvent::RunWon {
-                character: self.character,
-                length: self.length,
-                stake: self.stake,
-            });
-            return Ok(());
-        }
-        if self.open_encounter(content, events) {
-            return Ok(());
-        }
-        self.phase = RunPhase::Shop;
-        let shop = self.draw_offer(content, 0);
-        events.push(RunEvent::ShopOpened {
-            relics: shop.relics.clone(),
-            consumables: shop.consumables.clone(),
-        });
-        self.shop = Some(shop);
-        Ok(())
+        self.pub_won(content, events)
     }
 
     // -----------------------------------------------------------------------
@@ -3484,8 +3611,8 @@ impl Run {
     ) -> Result<(), RunError> {
         self.shop_mut()?;
         events.push(RunEvent::ShopLeft);
-        let (section, index) = self.next_series_position();
-        self.start_series(content, section, index, events)
+        self.shop = None;
+        self.continue_trip(content, events)
     }
 
     // -----------------------------------------------------------------------
@@ -3508,6 +3635,12 @@ impl Run {
         let def = content
             .consumable(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
+        if def.category == crate::content::ConsumableCategory::Schnapps
+            && self.phase == RunPhase::Game
+            && self.malus(content).is_some_and(|m| m.lock_schnapps)
+        {
+            return Err(RunError::ConsumablesLocked);
+        }
         match &def.action {
             ConsumableAction::CleanseCard => {
                 if self.phase != RunPhase::Shop {
@@ -3831,34 +3964,16 @@ impl Run {
     // Encounters (Ereignisse, DESIGN 13)
     // -----------------------------------------------------------------------
 
-    /// Roll whether an encounter comes instead of the Tresen and open it.
-    /// Returns `false` (the Tresen opens) if none comes or the drawn one has
-    /// nothing to offer.
-    fn open_encounter(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> bool {
-        let chance = u64::from(content.run.encounter_chance.permille());
-        if chance == 0 || self.encounter_rng.gen_range(0..1000) >= chance {
-            return false;
-        }
-        let pool: Vec<(&EncounterId, u32)> = content
-            .encounters
-            .values()
-            .filter(|e| in_pool(&e.characters, self.character) && e.weight > 0)
-            .map(|e| (&e.id, e.weight))
-            .collect();
-        let total: u64 = pool.iter().map(|(_, w)| u64::from(*w)).sum();
-        if total == 0 {
-            return false;
-        }
-        let mut roll = self.encounter_rng.gen_range(0..total);
-        let mut chosen = None;
-        for (id, weight) in pool {
-            if roll < u64::from(weight) {
-                chosen = Some(id.clone());
-                break;
-            }
-            roll -= u64::from(weight);
-        }
-        let Some(def) = chosen.and_then(|id| content.encounter(&id)) else {
+    /// Open the encounter `id` (a stop on the way, or the loot of a
+    /// Spelunke): its options are drawn now. Returns `false` if it has
+    /// nothing to offer; then the run is unchanged but for the draws.
+    fn open_encounter(
+        &mut self,
+        content: &Content,
+        id: &EncounterId,
+        events: &mut Vec<RunEvent>,
+    ) -> bool {
+        let Some(def) = content.encounter(id) else {
             return false;
         };
         let mut options: Vec<EncounterOption> = Vec::new();
@@ -3928,6 +4043,30 @@ impl Run {
             EncounterKind::DoubleNextGame { factor } => {
                 options.push(free(EncounterChoice::DoubleNextGame(*factor)));
             }
+            EncounterKind::Rest { lives } => {
+                options.push(free(EncounterChoice::Heal(*lives)));
+            }
+            EncounterKind::Workshop => {
+                let pool = self.mod_pool(content, false);
+                if let Some(card_mod) = draw_weighted(&mut self.encounter_rng, pool, 1).pop() {
+                    let value = content.card_mod(&card_mod).map(CardModDef::default_value);
+                    options.push(EncounterOption {
+                        choice: EncounterChoice::MarkChosenCard,
+                        cost: 0,
+                        card_mod: Some(card_mod),
+                        value,
+                    });
+                }
+                options.push(free(EncounterChoice::CleanseChosenCard));
+            }
+            EncounterKind::RelicReward => {
+                let pool = self.relic_pool(content, false);
+                if let Some(relic) = draw_weighted(&mut self.encounter_rng, pool, 1).pop() {
+                    let coins = content.relic(&relic).map_or(0, |r| sell_price(r.price));
+                    options.push(free(EncounterChoice::TakeRelic(relic)));
+                    options.push(free(EncounterChoice::TakeCoins(coins)));
+                }
+            }
         }
         if options.is_empty() {
             return false;
@@ -3943,6 +4082,66 @@ impl Run {
             options,
         });
         true
+    }
+
+    /// Tests: at the route choice, walk to the next pub over the Tresen
+    /// alone (as the Tresen came after every series before ADR 0016).
+    #[cfg(test)]
+    pub(crate) fn walk_to_tresen(&mut self, content: &Content) -> Vec<RunEvent> {
+        self.walk(content, true)
+    }
+
+    /// Tests: at the route choice, walk straight to the next pub.
+    #[cfg(test)]
+    pub(crate) fn walk_to_pub(&mut self, content: &Content) -> Vec<RunEvent> {
+        self.walk(content, false)
+    }
+
+    #[cfg(test)]
+    fn walk(&mut self, content: &Content, tresen: bool) -> Vec<RunEvent> {
+        let route = self.route.clone().expect("route choice");
+        let mut events = Vec::new();
+        self.route = None;
+        self.trip = Some(tour::Trip {
+            section: route.section,
+            index: route.index,
+            transport: tour::Transport::Walk,
+            stops: if tresen {
+                vec![tour::RouteStop {
+                    category: crate::content::StopCategory::Tresen,
+                    encounter: None,
+                }]
+            } else {
+                Vec::new()
+            },
+            spelunke: None,
+        });
+        self.continue_trip(content, &mut events).expect("walk");
+        events
+    }
+
+    /// Tests: draw an encounter by weight from every route category (as
+    /// the Tresen's stand-in did before ADR 0016) and open it.
+    #[cfg(test)]
+    pub(crate) fn open_random_encounter(
+        &mut self,
+        content: &Content,
+        events: &mut Vec<RunEvent>,
+    ) -> bool {
+        let pool: Vec<(EncounterId, u32)> = content
+            .encounters
+            .values()
+            .filter(|e| in_pool(&e.characters, self.character) && e.weight > 0)
+            .map(|e| (e.id.clone(), e.weight))
+            .collect();
+        let Some(id) = draw_weighted(&mut self.encounter_rng, pool, 1).pop() else {
+            return false;
+        };
+        let opened = self.open_encounter(content, &id, events);
+        if opened {
+            self.phase = RunPhase::Encounter;
+        }
+        opened
     }
 
     /// The modification an encounter puts on `card`: the one it names
@@ -4070,6 +4269,32 @@ impl Run {
                 self.pending_factor = Some((encounter.id.clone(), *factor));
                 events.push(RunEvent::NextGameDoubled { factor: *factor });
             }
+            EncounterChoice::Heal(lives) => {
+                self.gain_lives(content, *lives, events);
+            }
+            EncounterChoice::CleanseChosenCard => {
+                let card = target.ok_or(RunError::TargetRequired)?;
+                let change = self.edition.cleanse(card)?;
+                events.push(RunEvent::DeckChanged(change));
+            }
+            EncounterChoice::TakeRelic(relic) => {
+                let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
+                if self.relics.len() >= slots {
+                    return Err(RunError::NoFreeSlot);
+                }
+                self.relics.push(relic.clone());
+                events.push(RunEvent::RelicGained {
+                    relic: relic.clone(),
+                });
+            }
+            EncounterChoice::TakeCoins(amount) => {
+                self.coins = self.coins.saturating_add(*amount);
+                events.push(RunEvent::CoinsGained {
+                    source: Source::Encounter(encounter.id.clone()),
+                    amount: i32::try_from(*amount).unwrap_or(i32::MAX),
+                    coins: self.coins,
+                });
+            }
             EncounterChoice::Leave => {}
         }
         self.coins -= chosen.cost;
@@ -4078,13 +4303,13 @@ impl Run {
             choice: chosen.choice,
         });
         self.encounter = None;
-        let (section, index) = self.next_series_position();
-        self.start_series(content, section, index, events)
+        self.continue_trip(content, events)
     }
 
-    /// Section and index of the series after the current one.
+    /// District and index of the pub after the current one in the
+    /// regular order.
     fn next_series_position(&self) -> (u32, u32) {
-        if self.series.index + 1 >= SERIES_PER_SECTION {
+        if self.series.index + 1 >= PUBS_PER_DISTRICT {
             (self.series.section + 1, 0)
         } else {
             (self.series.section, self.series.index + 1)
@@ -4107,6 +4332,9 @@ impl Run {
     /// progress: `run.ron` and the character ([`Content::redeals`]) plus
     /// one per "Schieben" in force ([`GameRules::extra_redeals`]).
     fn redeal_allowance(&self, content: &Content) -> u32 {
+        if self.malus(content).is_some_and(|m| m.no_redeal) {
+            return 0;
+        }
         let extra = self.game.as_ref().map_or(0, |a| a.rules.extra_redeals);
         content.redeals(self.character).saturating_add(extra)
     }
@@ -4118,7 +4346,7 @@ impl Run {
     /// [`Run::accepts`]`(`[`RunAction::Redeal`]`)`.
     #[must_use]
     pub fn redeals_left(&self, content: &Content) -> u32 {
-        if self.game.is_none() {
+        if self.game.is_none() || self.malus(content).is_some_and(|m| m.no_redeal) {
             return 0;
         }
         self.redeal_allowance(content)
@@ -4127,11 +4355,11 @@ impl Run {
     }
 }
 
-/// Zielwert of a series: the character's value (from `characters.ron`, or
-/// `run.ron` if the character has none), for a boss series times the
-/// boss's target factor. `section` is the row of the curve
-/// ([`crate::content::RunConfig::curve_row`]; for a full run the section
-/// itself). `None` if the row does not exist.
+/// Zielwert of a pub: the character's value (from `characters.ron`, or
+/// `run.ron` if the character has none), for a boss pub times the boss's
+/// target factor (a Spelunke's factor comes on top, [`Run`] applies it).
+/// `section` is the district, `index` the pub within it. `None` if the
+/// row or pub does not exist.
 #[must_use]
 pub fn series_target(
     content: &Content,
@@ -4145,11 +4373,7 @@ pub fn series_target(
         .and_then(|c| c.targets.as_ref())
         .unwrap_or(&content.run.targets);
     let targets = curve.get(usize::try_from(section).unwrap_or(usize::MAX))?;
-    let base = match index {
-        0 => targets.0,
-        1 => targets.1,
-        _ => targets.2,
-    };
+    let base = *targets.get(usize::try_from(index).unwrap_or(usize::MAX))?;
     let factor = boss
         .and_then(|b| content.boss(b))
         .map_or(crate::content::Factor::ONE, |def| {
@@ -4337,6 +4561,8 @@ mod stake_tests;
 mod step_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tour_tests;
 #[cfg(test)]
 mod undead_tests;
 #[cfg(test)]

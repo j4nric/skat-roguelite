@@ -540,15 +540,15 @@ fn the_old_man_lays_one_rule_per_game() {
     );
     // The last section ends with the Endboss.
     let start = RunStart {
-        section: 4,
-        index: 2,
+        section: 2,
+        index: 4,
         ..RunStart::default()
     };
     let (run, _) = Run::new_with(&content, 4, &start).expect("start");
     assert_eq!(run.series().boss, Some(BossId::new("the_old_man")));
     assert_eq!(
         run.series().target,
-        def.target_factor.apply(content.run.targets[4].2)
+        def.target_factor.apply(content.run.targets[2][4])
     );
     // The Nullspieler never meets the jack boss "Die Oma" in the rotation.
     let mut null = null_run(&content, &[]);
@@ -568,6 +568,15 @@ fn encounter(run: &mut Run, id: &str, options: Vec<EncounterOption>) {
         id: EncounterId::new(id),
         options,
     });
+    // A stop on the way to the next pub (ADR 0016).
+    let (section, index) = run.next_series_position();
+    run.trip = Some(super::tour::Trip {
+        section,
+        index,
+        transport: super::tour::Transport::Walk,
+        stops: Vec::new(),
+        spelunke: None,
+    });
 }
 
 fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
@@ -581,18 +590,27 @@ fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
 
 #[test]
 fn encounters_come_instead_of_the_tresen_and_leave_to_the_next_series() {
-    let mut content = content();
-    content.run.encounter_chance = Factor::ONE;
+    let content = content();
     for seed in 0..50 {
         let (mut run, _) = Run::new(&content, seed).expect("run");
         while run.phase() == RunPhase::Game {
             let action = RunBot.next_action(&run, &content).expect("action");
             run.apply(&content, action).expect("legal");
         }
-        if run.phase() == RunPhase::Lost {
+        if run.phase() != RunPhase::Route || run.series().index != 0 {
             continue;
         }
-        assert_eq!(run.phase(), RunPhase::Encounter);
+        // A single stop with an encounter (Zu Fuß or Bahn).
+        let Some(way) = run.route().expect("route").options.iter().position(|o| {
+            o.stops.len() == 1 && o.stops[0].encounter.is_some() && o.spelunke.is_none()
+        }) else {
+            continue;
+        };
+        run.apply(&content, RunAction::ChooseRoute(way))
+            .expect("route");
+        if run.phase() != RunPhase::Encounter {
+            continue;
+        }
         let encounter = run.encounter().expect("open").clone();
         assert_eq!(
             encounter.options.last().map(|o| &o.choice),
@@ -650,12 +668,12 @@ fn encounter_choices_change_the_run() {
             .any(|s| s.source == Source::Relic(RelicId::new("bock_round")))
     );
     // The evening ends with the section.
+    run.series.index = 4;
     encounter(
         &mut run,
         "last_round",
         vec![option(EncounterChoice::Leave, 0)],
     );
-    run.series.index = 2;
     let events = run
         .apply(
             &content,
@@ -1054,11 +1072,10 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     only_guest
         .encounters
         .retain(|id, _| id.as_str() == "guest_from_altenburg");
-    only_guest.run.encounter_chance = Factor::ONE;
     let mut run = relic_run(&only_guest, &[]);
     run.game = None;
     let mut events = Vec::new();
-    assert!(run.open_encounter(&only_guest, &mut events));
+    assert!(run.open_random_encounter(&only_guest, &mut events));
     let options = &run.encounter().expect("open").options;
     assert_eq!(options.len(), 3);
     for o in &options[..2] {

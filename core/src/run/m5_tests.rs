@@ -10,7 +10,7 @@ use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
-use crate::content::{Condition, EncounterId, Factor, Rarity, Reward, UnlockId};
+use crate::content::{Condition, EncounterId, Rarity, Reward, UnlockId};
 use crate::rules::{NullRisk, RiskLevel};
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).
@@ -491,7 +491,6 @@ fn revealed_cards_name_their_source() {
 /// Content in which only this encounter comes, after every series.
 fn only_encounter(id: &str) -> Content {
     let mut content = content();
-    content.run.encounter_chance = Factor::ONE;
     content.encounters.retain(|k, _| k.as_str() == id);
     content
 }
@@ -502,7 +501,7 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
     let mut run = relic_run(&content, &[]);
     run.coins = 10;
     let mut events = Vec::new();
-    assert!(run.open_encounter(&content, &mut events));
+    assert!(run.open_random_encounter(&content, &mut events));
     let encounter = run.encounter().expect("open").clone();
     let named = encounter.options[0].card_mod.clone().expect("named");
     assert_eq!(encounter.options[1].card_mod.as_ref(), Some(&named));
@@ -532,7 +531,7 @@ fn the_old_friend_names_the_relic_received() {
     let content = only_encounter("old_friend");
     let mut run = relic_run(&content, &["kontra", "tour"]);
     let mut events = Vec::new();
-    assert!(run.open_encounter(&content, &mut events));
+    assert!(run.open_random_encounter(&content, &mut events));
     let encounter = run.encounter().expect("open").clone();
     let EncounterChoice::SwapRelic { new: Some(new), .. } = &encounter.options[1].choice else {
         panic!("swap with a known relic: {:?}", encounter.options);

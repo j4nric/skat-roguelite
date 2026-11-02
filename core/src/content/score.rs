@@ -48,6 +48,8 @@ pub enum Source {
     Encounter(EncounterId),
     /// A consumable used for this game, e.g. "Doppelkorn".
     Consumable(ConsumableId),
+    /// The malus of a Spelunke (ADR 0016), a rule of that pub only.
+    Malus(super::MalusId),
 }
 
 /// The lever of the game value formula a line turns.

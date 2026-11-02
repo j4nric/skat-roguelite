@@ -22,7 +22,7 @@
     (
         id: "beer",
         name: "Ein Bier",
-        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie.",
+        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Kneipe.",
         rarity: Common,
         price: 2,
         action: ExtraRedeals(1),
@@ -56,7 +56,7 @@
     (
         id: "herbal",
         name: "Kräuter",
-        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Serie.",
+        text: "Einmal mehr einmischen, in einem beliebigen Spiel dieser Kneipe.",
         rarity: Common,
         price: 2,
         action: ExtraRedeals(1),

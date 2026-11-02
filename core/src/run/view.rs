@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use super::guests::GuestInfo;
 use super::{
-    EncounterChoice, Kontra, Run, RunAction, RunPhase, RunStats, SERIES_PER_SECTION, sell_price,
+    EncounterChoice, Kontra, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats, sell_price,
     series_target,
 };
 use crate::cards::{Card, PlayingCard, Suit};
@@ -51,16 +51,19 @@ pub struct RunView {
     /// ahead or running: known from the start of the section (DESIGN 11).
     /// `None` after the boss series and once the run is over.
     pub upcoming_boss: Option<BossInfo>,
-    /// The series after the current one, for the Tresen and the run
-    /// overview. `None` after the last series and once the run is over.
+    /// The pub the way leads to (on the way and at the route choice the
+    /// regular next pub), for the Tresen and the run overview. `None` once
+    /// the run is over.
     pub next_series: Option<NextSeriesView>,
     /// Where any one card lands when a game is dealt (DESIGN 7.4): always
     /// 12 of 32 for the player's hand or the skat since ADR 0015.
     pub deal_odds: DealOdds,
-    /// Sections (Abschnitte) in this run: 5, or 3 for a short evening.
+    /// Districts (Stadtteile) in this run.
     pub sections: u32,
-    /// Ganzer or kurzer Abend (DESIGN 5.3).
+    /// Always the ganzer Abend since ADR 0016.
     pub length: RunLength,
+    /// The Kneipentour: lives, the city, the route choice (ADR 0016).
+    pub tour: super::tour::TourView,
     /// Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game.
     pub stake: u32,
     /// Augen a suit game or Grand needs to win in this run before relics
@@ -965,7 +968,7 @@ impl Run {
 
     /// A boss as the run's character meets it (with its Zielwert factor
     /// for that character).
-    fn boss_info(&self, content: &Content, id: &BossId) -> BossInfo {
+    pub(super) fn boss_info(&self, content: &Content, id: &BossId) -> BossInfo {
         match content.boss(id) {
             Some(def) => BossInfo {
                 id: id.clone(),
@@ -996,21 +999,34 @@ impl Run {
         }
     }
 
-    /// The series after the current one. A new section's boss is not drawn
-    /// yet, so its first series shows none.
+    /// The pub after the current one: where the way leads (a Spelunke's
+    /// target with its factor), else the regular next pub. A new
+    /// district's boss is not drawn yet, so its first pub shows none.
     fn next_series_view(&self, content: &Content) -> Option<NextSeriesView> {
         if matches!(self.phase, RunPhase::Won | RunPhase::Lost) {
             return None;
         }
-        let (section, index) = self.next_series_position();
-        let is_boss = index + 1 == SERIES_PER_SECTION;
-        let boss = if is_boss {
+        let (section, index, spelunke) = match (&self.trip, &self.route) {
+            (Some(trip), _) => (trip.section, trip.index, trip.spelunke.is_some()),
+            (None, Some(route)) => (route.section, route.index, false),
+            (None, None) => {
+                let (s, i) = self.next_series_position();
+                (s, i, false)
+            }
+        };
+        if section >= content.run.sections() {
+            return None;
+        }
+        let is_boss = index + 1 == PUBS_PER_DISTRICT;
+        let boss = if is_boss && section == self.series.section {
             self.section_boss.as_ref()
         } else {
             None
         };
-        let row = content.run.curve_row(self.length, section)?;
-        let target = series_target(content, self.character, row, index, boss)?;
+        let mut target = series_target(content, self.character, section, index, boss)?;
+        if spelunke {
+            target = content.run.spelunke.target_factor.apply(target);
+        }
         Some(NextSeriesView {
             section,
             index,
@@ -1029,7 +1045,7 @@ impl Run {
         let boss = series.boss.as_ref().map(|id| self.boss_info(content, id));
         let boss_ahead = match self.phase {
             RunPhase::Game => true,
-            RunPhase::Shop | RunPhase::Encounter => series.index + 1 < SERIES_PER_SECTION,
+            RunPhase::Shop | RunPhase::Encounter | RunPhase::Route => !series.is_boss_pub(),
             RunPhase::Won | RunPhase::Lost => false,
         };
         let upcoming_boss = self
@@ -1070,7 +1086,7 @@ impl Run {
             series: SeriesView {
                 section: series.section,
                 index: series.index,
-                is_boss: series.index + 1 == SERIES_PER_SECTION,
+                is_boss: series.is_boss_pub(),
                 target: series.target,
                 score: series.score,
                 games_played: series.games_played,
@@ -1086,6 +1102,7 @@ impl Run {
             deal_odds: crate::deck::deal_odds(),
             sections: self.sections(content),
             length: self.length,
+            tour: self.tour_view(content),
             stake: self.stake,
             win_threshold: crate::rules::WIN_THRESHOLD.saturating_add(self.stake),
             coins: self.coins,
@@ -1352,9 +1369,13 @@ impl Run {
             .iter()
             .enumerate()
             .map(|(index, option)| {
-                let needs_target = option.choice == EncounterChoice::MarkChosenCard;
+                let needs_target = matches!(
+                    option.choice,
+                    EncounterChoice::MarkChosenCard | EncounterChoice::CleanseChosenCard
+                );
                 let relic = match &option.choice {
                     EncounterChoice::TakeRule(id)
+                    | EncounterChoice::TakeRelic(id)
                     | EncounterChoice::SwapRelic { relic: id, .. } => {
                         Some(Run::relic_info(content, id))
                     }

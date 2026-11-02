@@ -46,24 +46,25 @@ use skat_core::run::{Run, RunAction, RunError, RunErrorCode, RunEvent, RunStart}
 use wasm_bindgen::prelude::*;
 
 /// Version of the save format. Saves with another version are rejected,
-/// so the web app can start a new run instead of crashing. Version 2 is
-/// the model of own editions (ADR 0015, M9): a running run saved before
-/// (version 1, shared deck) is discarded with `OutdatedSave`; the meta
-/// state (unlocks, statistics, stakes) is a separate save and stays.
-pub const SAVE_VERSION: u32 = 2;
+/// so the web app can start a new run instead of crashing. Version 3 is
+/// the Kneipentour (ADR 0016): a running run saved before (version 2,
+/// sections and series; version 1, shared deck) is discarded with
+/// `OutdatedSave`; the meta state (unlocks, statistics, stakes) is a
+/// separate save and stays.
+pub const SAVE_VERSION: u32 = 3;
 
 /// Error codes of the shell itself, next to the [`RunErrorCode`]s of the
 /// core: `InvalidSeed` (not a decimal u64), `InvalidAction` (not a
 /// `RunAction` in JSON), `InvalidSave` (not a save), `UnsupportedSave`
 /// (another save version), `OutdatedSave` (a run saved under older rules,
-/// before own editions, ADR 0015: discarded, the player is told once),
+/// before the Kneipentour, ADR 0016: discarded, the player is told once),
 /// `Internal` (content or serialization failed),
 /// `InvalidCharacter` (not a character id such as `"Declarer"`),
 /// `CharacterLocked` (the meta state has not unlocked it),
 /// `UnknownCharacter` (the content has no such character),
 /// `InvalidMeta` (not a meta save), `UnsupportedMeta` (another meta
 /// version), `InvalidEvents` (not a list of player events),
-/// `InvalidLength` (not `"Full"` or `"Short"`), `StakeLocked` (the stake
+/// `InvalidLength` (not `"Full"`; `"Short"` since ADR 0016 too), `StakeLocked` (the stake
 /// is above the highest the meta state unlocked).
 pub const SHELL_ERROR_CODES: [&str; 14] = [
     "InvalidSeed",
@@ -243,6 +244,7 @@ struct Catalog<'a> {
     characters: BTreeMap<&'a str, Entry<'a>>,
     encounters: BTreeMap<&'a str, Entry<'a>>,
     unlocks: BTreeMap<&'a str, Entry<'a>>,
+    maluses: BTreeMap<&'a str, Entry<'a>>,
 }
 
 fn entries<'a, T: 'a>(
@@ -357,6 +359,12 @@ pub fn catalog_json() -> Result<String, String> {
             |d| &d.name,
             |d| &d.text,
         ),
+        maluses: entries(
+            content.maluses.values(),
+            |d| d.id.as_str(),
+            |d| &d.name,
+            |d| &d.text,
+        ),
     };
     serde_json::to_string(&catalog).map_err(internal)
 }
@@ -401,9 +409,17 @@ fn parse_character(character: &str) -> Result<Character, String> {
     })
 }
 
+/// The run length: only `"Full"` since the Kneipentour (ADR 0016) dropped
+/// the short evening.
 fn parse_length(length: &str) -> Result<RunLength, String> {
-    serde_json::from_value(serde_json::Value::String(length.trim().to_string()))
-        .map_err(|_| error_json("InvalidLength", format!("invalid run length {length:?}")))
+    let invalid = || error_json("InvalidLength", format!("invalid run length {length:?}"));
+    let parsed: RunLength =
+        serde_json::from_value(serde_json::Value::String(length.trim().to_string()))
+            .map_err(|_| invalid())?;
+    if parsed == RunLength::Short {
+        return Err(invalid());
+    }
+    Ok(parsed)
 }
 
 impl Session {
@@ -418,7 +434,7 @@ impl Session {
 
     /// Start a new run with `character` (`"Declarer"`, `"NullPlayer"`,
     /// `"GrandPlayer"`, `"Onlooker"` or `"Landlady"`) and `length`
-    /// (`"Full"` or `"Short"`, DESIGN 5.3) at `stake` (Einsatz-Leiter,
+    /// (`"Full"`; the short evening is dropped, ADR 0016) at `stake` (Einsatz-Leiter,
     /// DESIGN 9.3) from a meta state: the character and the stake must be
     /// unlocked, locked relics stay off the Tresen.
     /// Returns the session and the events of the start as player events
@@ -454,7 +470,7 @@ impl Session {
             return Err(error_json(
                 "OutdatedSave",
                 format!(
-                    "save version {} is from before own editions (ADR 0015)",
+                    "save version {} is from before the Kneipentour (ADR 0016)",
                     version.version
                 ),
             ));
@@ -704,7 +720,7 @@ impl WasmRun {
     }
 
     /// Start a new run with a character (`"Declarer"`, `"NullPlayer"`, …)
-    /// and a length (`"Full"`, `"Short"`) at a stake (Einsatz-Leiter)
+    /// and a length (`"Full"`; ADR 0016 dropped `"Short"`) at a stake (Einsatz-Leiter)
     /// from the meta state: locked relics stay off the Tresen, a locked
     /// character (`CharacterLocked`) or stake (`StakeLocked`) is refused.
     /// Feed [`WasmRun::start_events`] to the meta state once.
@@ -902,7 +918,7 @@ mod tests {
         let saved = session.save().expect("save");
         let loaded = Session::load(&saved).expect("load");
         assert_eq!(loaded.run(), session.run());
-        assert!(Session::load(&saved.replace("\"version\":2", "\"version\":99")).is_err());
+        assert!(Session::load(&saved.replace("\"version\":3", "\"version\":99")).is_err());
         assert!(Session::load("garbage").is_err());
         assert!(Session::new("not a number").is_err());
         assert!(session.apply(r#""LeaveShop""#).is_err(), "wrong phase");
@@ -1125,14 +1141,18 @@ mod tests {
             code(Session::new_with("1", "Declarer", "Long", 0, meta.meta()).expect_err("bad")),
             "InvalidLength"
         );
-        // A short evening (DESIGN 5.3): three sections, the length in the
-        // view.
-        let (short, _) =
-            Session::new_with("5", "Declarer", "Short", 0, meta.meta()).expect("short");
+        // The short evening is dropped (ADR 0016).
+        assert_eq!(
+            code(Session::new_with("5", "Declarer", "Short", 0, meta.meta()).expect_err("short")),
+            "InvalidLength"
+        );
+        let (full, _) = Session::new_with("5", "Declarer", "Full", 0, meta.meta()).expect("full");
         let view: serde_json::Value =
-            serde_json::from_str(&short.view().expect("view")).expect("json");
+            serde_json::from_str(&full.view().expect("view")).expect("json");
         assert_eq!(view["sections"], 3);
-        assert_eq!(view["length"], "Short");
+        assert_eq!(view["length"], "Full");
+        assert_eq!(view["tour"]["lives"], 3);
+        assert_eq!(view["tour"]["districts"].as_array().map(Vec::len), Some(3));
         assert_eq!(view["stake"], 0);
         assert_eq!(view["win_threshold"], 61);
         // Einsatz-Leiter: stake 1 is locked before a won run.
@@ -1240,6 +1260,7 @@ mod tests {
         assert!(catalog["characters"]["NullPlayer"]["name"].is_string());
         assert!(catalog["encounters"]["last_round"]["name"].is_string());
         assert!(catalog["unlocks"]["tour_won"]["text"].is_string());
+        assert!(catalog["maluses"]["no_redeal"]["name"].is_string());
     }
 
     #[test]
@@ -1260,7 +1281,9 @@ mod tests {
                         &format!(r#"{{"ChooseEncounter":{{"option":{leave},"target":null}}}}"#),
                     )
                     .expect("leave");
-                    assert_eq!(step["view"]["phase"], "Game");
+                    // On to the pub (or, after a Spelunke's loot, the route).
+                    let phase = &step["view"]["phase"];
+                    assert!(phase == "Game" || phase == "Route", "{phase}");
                     assert!(
                         step["events"]
                             .as_array()
@@ -1269,6 +1292,25 @@ mod tests {
                             .any(|e| e.get("EncounterResolved").is_some())
                     );
                     return;
+                }
+                if view["phase"] == "Route" {
+                    // The route choice (ADR 0016): three ways, each with
+                    // one shown stop, the next pub named.
+                    let route = &view["tour"]["route"];
+                    let options = route["options"].as_array().expect("ways");
+                    assert_eq!(options.len(), 3);
+                    assert!(
+                        options
+                            .iter()
+                            .all(|o| o["stops"].as_array().map(Vec::len) == Some(1))
+                    );
+                    assert!(route["next"]["name"].is_string());
+                    let way = options.iter().position(|o| {
+                        o["stops"][0]["category"] != "Tresen" && o["spelunke"].is_null()
+                    });
+                    let Some(way) = way else { break };
+                    play(&mut session, &format!(r#"{{"ChooseRoute":{way}}}"#)).expect("route");
+                    continue;
                 }
                 if view["phase"] == "Shop" || view["phase"] == "Lost" {
                     break;
@@ -1351,8 +1393,13 @@ mod tests {
             code(Session::load(r#"{"version":1,"run":{}}"#).expect_err("outdated")),
             "OutdatedSave"
         );
+        // A run saved before the Kneipentour (ADR 0016) as well.
         assert_eq!(
-            code(Session::load(r#"{"version":3,"run":{}}"#).expect_err("newer")),
+            code(Session::load(r#"{"version":2,"run":{}}"#).expect_err("outdated")),
+            "OutdatedSave"
+        );
+        assert_eq!(
+            code(Session::load(r#"{"version":4,"run":{}}"#).expect_err("newer")),
             "UnsupportedSave"
         );
         assert!(
@@ -1362,7 +1409,8 @@ mod tests {
     }
 
     /// Fixtures upgraded to save version 2 (ADR 0015, see the core's
-    /// `regenerate_fixtures`). They predate the Skatordnung order (ADR 0011): a save waiting at the
+    /// `regenerate_fixtures`) and to version 3 (ADR 0016,
+    /// `regenerate_tour_fixtures`). They predate the Skatordnung order (ADR 0011): a save waiting at the
     /// Ansage continues with the choice of skat or hand, and the Kontra save
     /// (declared, then the skat picked up) plays on after the discard
     /// without a second Ansage.

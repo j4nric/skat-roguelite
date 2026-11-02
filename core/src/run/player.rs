@@ -238,6 +238,7 @@ impl RunEvent {
                 game_limit,
                 redeals,
                 boss,
+                malus,
             } => RunEvent::SeriesStarted {
                 section,
                 index,
@@ -245,6 +246,7 @@ impl RunEvent {
                 game_limit,
                 redeals,
                 boss,
+                malus,
             },
             RunEvent::GameDealt { number, forehand } => RunEvent::GameDealt { number, forehand },
             RunEvent::Kontra { seat } => RunEvent::Kontra { seat },
@@ -357,6 +359,27 @@ impl RunEvent {
             RunEvent::NextGameDoubled { factor } => RunEvent::NextGameDoubled { factor },
             RunEvent::SkatPeeked { skat } => RunEvent::SkatPeeked { skat },
             RunEvent::SkatCardShown { source, card } => RunEvent::SkatCardShown { source, card },
+            RunEvent::RouteOpened { section, index } => RunEvent::RouteOpened { section, index },
+            RunEvent::RouteChosen {
+                option,
+                transport,
+                spelunke,
+            } => RunEvent::RouteChosen {
+                option,
+                transport,
+                spelunke,
+            },
+            RunEvent::PubLost {
+                section,
+                index,
+                boss,
+            } => RunEvent::PubLost {
+                section,
+                index,
+                boss,
+            },
+            RunEvent::LivesChanged { change, lives } => RunEvent::LivesChanged { change, lives },
+            RunEvent::RelicGained { relic } => RunEvent::RelicGained { relic },
             RunEvent::RunWon {
                 character,
                 length,

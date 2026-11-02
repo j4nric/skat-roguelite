@@ -85,7 +85,7 @@ fn run_starts_with_first_series_and_a_dealt_game() {
     let content = content();
     let (run, events) = Run::new(&content, 1).expect("start");
     assert_eq!(run.phase(), RunPhase::Game);
-    assert_eq!(run.series().target, content.run.targets[0].0);
+    assert_eq!(run.series().target, content.run.targets[0][0]);
     assert_eq!(run.series().game_limit, content.run.game_limit);
     assert_eq!(run.series().game_limit, 3);
     assert_eq!(run.redeals_left(&content), content.run.redeals);
@@ -103,7 +103,7 @@ fn run_starts_with_first_series_and_a_dealt_game() {
             target,
             boss: None,
             ..
-        } if target == content.run.targets[0].0
+        } if target == content.run.targets[0][0]
     ));
     assert!(
         matches!(events[2], RunEvent::GameDealt { number: 1, forehand } if forehand == Seat::DECLARER)
@@ -175,8 +175,10 @@ fn reaching_the_limit_below_target_loses_the_run() {
     let (mut run, _) = Run::new(&content, 3).expect("start");
     run.series.game_limit = 1;
     run.series.target = 100_000;
+    run.lives = 1;
     let events = play_out_game(&mut run, &content);
     assert_eq!(run.phase(), RunPhase::Lost);
+    assert_eq!(run.lives(), 0);
     assert!(events.contains(&RunEvent::RunLost {
         section: 0,
         index: 0,
@@ -290,6 +292,8 @@ fn series_won_pays_groschen_and_opens_the_shop() {
         run.coins = 12;
     }
     assert!(won, "some game must be won");
+    assert_eq!(run.phase(), RunPhase::Route);
+    run.walk_to_tresen(&content);
     assert_eq!(run.phase(), RunPhase::Shop);
     let shop = run.shop().expect("open");
     assert_eq!(shop.relics.len(), 3);
@@ -391,7 +395,11 @@ fn buy_sell_reroll_and_slots() {
 #[test]
 fn leaving_the_shop_starts_the_next_series() {
     let content = content();
+    // A Tresen on the way: leaving it starts the pub the way leads to.
     let mut run = open_shop(&content, 9, 0);
+    run.apply(&content, RunAction::LeaveShop).expect("leave");
+    assert_eq!(run.phase(), RunPhase::Route, "no way taken: choose one");
+    run.walk_to_tresen(&content);
     let events = run.apply(&content, RunAction::LeaveShop).expect("leave");
     assert!(events.contains(&RunEvent::ShopLeft));
     assert!(matches!(
@@ -401,17 +409,17 @@ fn leaving_the_shop_starts_the_next_series() {
             index: 1,
             target,
             ..
-        } if target == content.run.targets[0].1
+        } if target == content.run.targets[0][1]
     ));
     assert_eq!(run.phase(), RunPhase::Game);
-    // After the boss series the next section begins.
-    // The boss series brings the boss drawn at the start of the section.
+    // The boss pub brings the boss drawn at the start of the district.
     let mut run = open_shop(&content, 9, 0);
     let announced = run.section_boss().cloned().expect("drawn at the start");
-    run.series.index = 1;
-    let events = run.apply(&content, RunAction::LeaveShop).expect("leave");
+    run.series.index = 3;
+    run.apply(&content, RunAction::LeaveShop).expect("leave");
+    let events = run.walk_to_pub(&content);
     let boss = events.iter().find_map(|e| match e {
-        RunEvent::SeriesStarted { index: 2, boss, .. } => boss.clone(),
+        RunEvent::SeriesStarted { index: 4, boss, .. } => boss.clone(),
         _ => None,
     });
     assert_eq!(boss, Some(announced));
@@ -420,23 +428,24 @@ fn leaving_the_shop_starts_the_next_series() {
             .iter()
             .any(|e| matches!(e, RunEvent::BossAnnounced { .. }))
     );
-    // A new section draws its boss first.
+    // A new district draws its boss first.
     let mut run = open_shop(&content, 9, 0);
-    run.series.index = 2;
-    let events = run.apply(&content, RunAction::LeaveShop).expect("leave");
+    run.series.index = 4;
+    run.apply(&content, RunAction::LeaveShop).expect("leave");
+    let events = run.walk_to_pub(&content);
     assert!(matches!(
-        &events[1],
+        &events[0],
         RunEvent::BossAnnounced { section: 1, boss } if Some(boss) == run.section_boss()
     ));
     assert!(matches!(
-        events[2],
+        events[1],
         RunEvent::SeriesStarted {
             section: 1,
             index: 0,
             target,
             boss: None,
             ..
-        } if target == content.run.targets[1].0
+        } if target == content.run.targets[1][0]
     ));
 }
 
@@ -563,21 +572,21 @@ fn the_boss_is_known_from_the_start_of_the_section() {
     // The next series is series 2 of section 1, without boss.
     let next = view.next_series.expect("next");
     assert_eq!((next.section, next.index, next.is_boss), (0, 1, false));
-    assert_eq!(next.target, content.run.targets[0].1);
+    assert_eq!(next.target, content.run.targets[0][1]);
     assert_eq!(next.game_limit, content.run.game_limit);
     assert!(next.boss.is_none());
-    // At the Tresen before the boss series the preview shows the boss.
+    // At the Tresen before the boss pub the preview shows the boss.
     let mut run = open_shop(&content, 31, 0);
-    run.series.index = 1;
+    run.series.index = 3;
     let next = run.view(&content).next_series.expect("next");
     assert!(next.is_boss);
     assert_eq!(
         next.target,
-        series_target(&content, Character::Declarer, 0, 2, Some(&boss)).expect("target")
+        series_target(&content, Character::Declarer, 0, 4, Some(&boss)).expect("target")
     );
     assert_eq!(next.boss.map(|b| b.id), Some(boss));
-    // After the boss series the boss is no longer ahead.
-    run.series.index = 2;
+    // After the boss pub the boss is no longer ahead.
+    run.series.index = 4;
     let view = run.view(&content);
     assert!(view.upcoming_boss.is_none());
     let next = view.next_series.expect("next");
@@ -600,10 +609,9 @@ fn a_boss_may_have_its_own_factor_for_a_character() {
     let null_base = content.characters[&Character::NullPlayer]
         .targets
         .as_ref()
-        .unwrap_or(&content.run.targets)[0]
-        .2;
+        .unwrap_or(&content.run.targets)[0][4];
     assert_eq!(
-        series_target(&content, Character::NullPlayer, 0, 2, Some(&pusher)),
+        series_target(&content, Character::NullPlayer, 0, 4, Some(&pusher)),
         Some(factor.apply(null_base))
     );
     // Both bosses that were the Alleinspieler's alone are back for
@@ -635,18 +643,18 @@ fn the_boss_target_factor_scales_the_boss_series() {
         content.boss(&hard).map(|b| b.target_factor),
         Some(crate::content::Factor::from_permille(1400))
     );
-    let base = content.run.targets[0].2;
+    let base = content.run.targets[0][4];
     let expected = (base * 14 + 5) / 10;
     assert_eq!(
-        series_target(&content, Character::Declarer, 0, 2, Some(&hard)),
+        series_target(&content, Character::Declarer, 0, 4, Some(&hard)),
         Some(expected)
     );
     assert_eq!(
         series_target(&content, Character::Declarer, 0, 1, None),
-        Some(content.run.targets[0].1)
+        Some(content.run.targets[0][1])
     );
     let start = RunStart {
-        index: 2,
+        index: 4,
         ..RunStart::default()
     };
     let (run, events) = Run::new_with(&content, 3, &start).expect("start");
@@ -654,7 +662,7 @@ fn the_boss_target_factor_scales_the_boss_series() {
     assert_eq!(run.series().boss, Some(hard));
     assert!(events.iter().any(|e| matches!(
         e,
-        RunEvent::SeriesStarted { index: 2, target, .. } if *target == expected
+        RunEvent::SeriesStarted { index: 4, target, .. } if *target == expected
     )));
     // Factors are positive and at most 2 (set from measurements, see
     // bosses.ron).
@@ -741,7 +749,7 @@ fn a_run_can_start_with_relics_and_later() {
     )
     .expect("start");
     assert_eq!((later.series().section, later.series().index), (1, 1));
-    assert_eq!(later.series().target, content.run.targets[1].1);
+    assert_eq!(later.series().target, content.run.targets[1][1]);
     assert!(later.section_boss().is_some());
 }
 

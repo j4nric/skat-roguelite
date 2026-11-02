@@ -120,8 +120,11 @@ fn settle_equals_play(run: &Run, content: &Content, rng: &mut Rng, lines: usize)
         .iter()
         .map(|&s| run.game().map_or(0, |a| a.game.hand(s).len()))
         .sum();
+    // Only this game's cards: a boss pub played again may deal a Ramsch
+    // the defenders open at once.
     let played = events
         .iter()
+        .take_while(|e| !matches!(e, RunEvent::GameScored { .. }))
         .filter(|e| matches!(e, RunEvent::Game(Event::CardPlayed { .. })))
         .count();
     if breakdown.won || !breakdown.declaration.is_null() {

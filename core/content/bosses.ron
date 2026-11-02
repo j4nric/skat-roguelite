@@ -51,7 +51,7 @@
         id: "grandma",
         name: "Die Oma",
         back: Some("grandma"),
-        text: "Die Oma hat alle Buben eingesteckt. In dieser Serie sind sie Blankos.",
+        text: "Die Oma hat alle Buben eingesteckt. In dieser Kneipe sind sie Blankos.",
         passive: [BlankOut((rank: Some(Jack)))],
         // Die alte Oberin: 6 statt 3 Augen.
         edition: [((rank: Some(Queen)), "points", 3)],
@@ -81,7 +81,7 @@
         id: "ramscher",
         name: "Der Ramscher",
         back: Some("ramscher"),
-        text: "Das erste Spiel der Serie ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst doppelt gegen dich.",
+        text: "Das erste Spiel in der Kneipe ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst doppelt gegen dich.",
         passive: [RamschOnce],
         // Er lässt laufen: seine Daus zählen 6 Augen weniger (Ramponiert).
         edition: [((rank: Some(Ace)), "battered", 6)],
