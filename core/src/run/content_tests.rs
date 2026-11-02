@@ -5,7 +5,7 @@ use super::bot::RunBot;
 use super::*;
 use crate::cards::PlayingCard;
 use crate::cards::Suit;
-use crate::content::{CardModId, GameFocus};
+use crate::content::{CardModId, Factor, GameFocus};
 use crate::rules::{GameType, Matadors, Outcome, RiskLevel};
 
 pub(super) fn content() -> Content {
@@ -228,7 +228,7 @@ fn kontra_doubles_and_re_quadruples() {
         events.extend(run.apply(&content, action).expect("legal"));
     }
     let breakdown = run.last_score().expect("scored").clone();
-    assert_eq!(breakdown.multiplier, 4);
+    assert_eq!(breakdown.multiplier, Factor::from_int(4));
     assert!(has_line(
         &breakdown,
         &Source::Kontra,
@@ -490,14 +490,14 @@ fn march_through_doubles_the_game_value_of_a_won_schneider() {
         Change::Multiply(2)
     ));
     assert_eq!(b.base_value, 9);
-    assert_eq!(b.multiplier, 2);
+    assert_eq!(b.multiplier, Factor::from_int(2));
     assert_eq!(b.value, 9 * b.levels * 2);
     // Schneider without Schwarz counts too: Schenken after five tricks.
     let mut run = relic_run(&content, &["march_through", "concede"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
     assert!(b.schneider);
-    assert_eq!(b.multiplier, 2);
+    assert_eq!(b.multiplier, Factor::from_int(2));
     // A lost game gets nothing.
     let mut run = relic_run(&content, &["march_through"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
@@ -673,7 +673,7 @@ fn kontra_hans_enables_kontra_without_the_house_rule() {
         guard += 1;
     }
     let b = run.last_score().expect("scored");
-    assert_eq!(b.multiplier, 2);
+    assert_eq!(b.multiplier, Factor::from_int(2));
 }
 
 #[test]
@@ -956,11 +956,11 @@ fn lucky_streak_doubles_from_the_third_win_in_a_row_until_a_loss() {
     // A loss counts normally and ends the streak.
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, lost) = play(&mut run, &content, hand_game(CLUBS));
-    assert!(!lost.won && lost.multiplier == 1);
+    assert!(!lost.won && lost.multiplier == Factor::from_int(1));
     assert!(!run.flags().contains("streak") && !run.flags().contains("streak_start"));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.multiplier, 1);
+    assert_eq!(b.multiplier, Factor::from_int(1));
 }
 
 #[test]
@@ -993,7 +993,7 @@ fn the_regular_guest_doubles_won_games_from_the_fourth_series() {
     run.counters.insert("regular".into(), 3);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.multiplier, 1);
+    assert_eq!(b.multiplier, Factor::from_int(1));
     // Four: won games count double, lost ones normally.
     let mut run = relic_run(&content, &["regular_guest"]);
     run.counters.insert("regular".into(), 4);
@@ -1009,7 +1009,7 @@ fn the_regular_guest_doubles_won_games_from_the_fourth_series() {
     run.counters.insert("regular".into(), 4);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));
-    assert_eq!(b.multiplier, 1);
+    assert_eq!(b.multiplier, Factor::from_int(1));
 }
 
 // ---------------------------------------------------------------------------
@@ -1140,7 +1140,7 @@ fn lucky_penny_doubles_a_won_game_when_its_card_takes_the_last_trick() {
     ));
     // On the DA (id 7), which does not: nothing.
     let b = play_with_mod_on_trump_ace(&content, "lucky_penny");
-    assert_eq!(b.multiplier, 1);
+    assert_eq!(b.multiplier, Factor::from_int(1));
 }
 
 #[test]

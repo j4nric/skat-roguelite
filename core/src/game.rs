@@ -856,6 +856,39 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
+    /// Replace the two discarded skat cards by `f(card)` everywhere the
+    /// game holds them (the skat, the declarer's twelve cards, the cards
+    /// in play, the deck), e.g. with more Augen (house rule "Skatpfleger").
+    /// Only after the skat was picked up and discarded and before the
+    /// first card; the skat counts for the declarer, so his Augen change
+    /// and nobody else's. Returns the skat as it was.
+    pub fn map_skat(&mut self, f: impl Fn(C) -> C) -> Result<[C; 2], GameError<C>> {
+        let discarded = matches!(self.phase, Phase::DeclaringAfterSkat | Phase::Playing)
+            && self.skat_picked_up()
+            && self.tricks.is_empty()
+            && self.trick.is_empty();
+        if !discarded {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        let old = self.skat;
+        for card in old {
+            let new = f(card);
+            let swap = |cards: &mut Vec<C>| {
+                for c in cards.iter_mut().filter(|c| **c == card) {
+                    *c = new;
+                }
+                cards.sort();
+            };
+            swap(&mut self.declarer_cards);
+            swap(&mut self.in_play);
+            swap(&mut self.deck);
+            for c in self.skat.iter_mut().filter(|c| **c == card) {
+                *c = new;
+            }
+        }
+        Ok(old)
+    }
+
     /// Announce the game. Before the skat is touched ([`Phase::Declaring`])
     /// only a hand game (or the Ramsch) may be declared; after picking it up
     /// and discarding ([`Phase::DeclaringAfterSkat`]) only a game without

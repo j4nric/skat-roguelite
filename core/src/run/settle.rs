@@ -37,7 +37,7 @@
 
 use super::{Run, RunError, RunEvent, RunPhase};
 use crate::cards::PlayingCard;
-use crate::content::{Condition, Content, HookContext, Stage, evaluate};
+use crate::content::{CardFilter, Condition, Content, HookContext, Stage, evaluate};
 use crate::deck::DealtCard;
 use crate::endgame::{
     LastTrick, Reach, ReachOptions, Span, live_points, loose_reach, null_reach, reach,
@@ -225,6 +225,8 @@ fn on_score(
         Condition::ThisCardWinsLastTrick => certain_last(end.last_tricks, |l| {
             l.is_some_and(|(c, _)| this_card.is_some_and(|t| t.id == c.id))
         }),
+        // On trick end only: never true when the game is scored.
+        Condition::TrickWinnerMatches { .. } | Condition::FirstTrickOfDeclarer => Some(false),
     }
 }
 
@@ -241,7 +243,29 @@ fn during_play(
     let done = u32::try_from(game.tricks().len()).unwrap_or(0);
     let outcome = game.outcome();
     let null = game.declaration().is_some_and(Declaration::is_null);
+    // A card of the filter still to be played: by anyone, or only by the
+    // declarer (the cards on the table were played already).
+    let to_play = |filter: &CardFilter, declarer_only: bool| {
+        let matches = |c: &DealtCard| c.face().is_some_and(|f| filter.matches(f));
+        if declarer_only {
+            game.hand(Seat::DECLARER).iter().any(matches)
+        } else {
+            Seat::ALL
+                .iter()
+                .any(|&seat| game.hand(seat).iter().any(matches))
+        }
+    };
     match condition {
+        // "A card of the declarer that matches" ("Bubenparade"): only his
+        // own cards still to come can make it true.
+        Condition::All(cs)
+            if stage == Stage::OnCardPlayed && cs.contains(&Condition::PlayedByDeclarer) =>
+        {
+            all3(cs.iter().map(|c| match c {
+                Condition::PlayedCardMatches(filter) => (!to_play(filter, true)).then_some(false),
+                _ => during_play(c, stage, ctx, this_card),
+            }))
+        }
         Condition::All(cs) => all3(cs.iter().map(|c| during_play(c, stage, ctx, this_card))),
         Condition::Any(cs) => any3(cs.iter().map(|c| during_play(c, stage, ctx, this_card))),
         Condition::Not(c) => during_play(c, stage, ctx, this_card).map(|b| !b),
@@ -280,12 +304,33 @@ fn during_play(
         }
         // The defenders' Augen only grow.
         Condition::DefenderPointsBelow(n) => (outcome.defender_card_points >= *n).then_some(false),
-        Condition::PlayedCardMatches(_) | Condition::PlayedByDeclarer => {
-            (stage == Stage::OnTrickEnd).then_some(false)
+        Condition::PlayedCardMatches(filter) => {
+            (stage == Stage::OnTrickEnd || !to_play(filter, false)).then_some(false)
         }
+        Condition::PlayedByDeclarer => (stage == Stage::OnTrickEnd).then_some(false),
         Condition::NoTrickTaken => (outcome.declarer_tricks > 0).then_some(false),
         Condition::AllTricksWon => (outcome.defender_tricks > 0).then_some(false),
         Condition::SevenDucked | Condition::NeverFollowedSuit => (!null).then_some(false),
+        // Only a card still in a hand (or on the table) can win a trick to
+        // come: the declarer's own for `by_declarer` (it is his turn, so
+        // none of his lies on the table).
+        Condition::TrickWinnerMatches {
+            filter,
+            by_declarer,
+        } => {
+            let matches = |c: &DealtCard| c.face().is_some_and(|f| filter.matches(f));
+            let left = if *by_declarer {
+                game.hand(Seat::DECLARER).iter().any(matches)
+            } else {
+                Seat::ALL
+                    .iter()
+                    .any(|&seat| game.hand(seat).iter().any(matches))
+                    || game.current_trick().iter().any(matches)
+            };
+            (!left).then_some(false)
+        }
+        // The declarer's trick count only grows.
+        Condition::FirstTrickOfDeclarer => (outcome.declarer_tricks > 0).then_some(false),
         Condition::LastTrickWonWith { .. }
         | Condition::LastTrickWinnerMatches { .. }
         | Condition::ThisCardWinsLastTrick => None,

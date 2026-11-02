@@ -197,6 +197,8 @@ pub struct GameRules {
     pub no_information: bool,
     /// Boss rules that cheat are off ("Der Schiedsrichter").
     pub no_cheating: bool,
+    /// Source of the Schneider bonus in the thresholds ("Stichfest").
+    pub schneider_bonus_source: Option<Source>,
 }
 
 /// Read a list of card filters, or the single optional filter of saves
@@ -589,6 +591,19 @@ pub enum RunEvent<G = Event<DealtCard>> {
         counter: String,
         /// New value.
         value: u32,
+    },
+    /// A counter went back to zero ("Altes Blatt" after a won series).
+    CounterReset {
+        /// Counter name.
+        counter: String,
+    },
+    /// Content made the discarded skat count more Augen for the declarer
+    /// ("Skatpfleger").
+    SkatPointsRaised {
+        /// Who did it.
+        source: Source,
+        /// Augen the declarer counts more (fewer if negative).
+        card_points: i32,
     },
     /// Content paid (or took) Groschen ("Ramponiert" when attached).
     CoinsGained {
@@ -2070,6 +2085,14 @@ impl Run {
                 });
                 return;
             }
+            Effect::ResetCounter(counter) => {
+                if self.counters.remove(counter).is_some_and(|v| v > 0) {
+                    events.push(RunEvent::CounterReset {
+                        counter: counter.clone(),
+                    });
+                }
+                return;
+            }
             Effect::GainCoins(amount) => {
                 if *amount != 0 {
                     self.coins = if *amount > 0 {
@@ -2099,8 +2122,47 @@ impl Run {
             Effect::AddBaseValue(_)
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
+            | Effect::AddBaseValuePerCounter { .. }
             | Effect::AddLevels(_)
-            | Effect::MultiplyGameValue(_) => active.lines.extend(line),
+            | Effect::MultiplyGameValue(_)
+            | Effect::ScaleGameValue(_) => active.lines.extend(line),
+            Effect::MultiplySkatPoints(factor) => {
+                let factor = *factor;
+                let scaled = |c: DealtCard| DealtCard {
+                    card_points: c.card_points.saturating_mul(factor),
+                    ..c
+                };
+                // Nothing in a hand game: no card was discarded.
+                if let Ok(old) = active.game.map_skat(scaled) {
+                    let mut added: i64 = 0;
+                    for card in old {
+                        let delta =
+                            i64::from(scaled(card).card_points) - i64::from(card.card_points);
+                        if delta != 0 {
+                            let delta = i32::try_from(delta).unwrap_or(0);
+                            active.point_changes.push((card.id, source.clone(), delta));
+                            added += i64::from(delta);
+                        }
+                    }
+                    if added != 0 {
+                        events.push(RunEvent::SkatPointsRaised {
+                            source: source.clone(),
+                            card_points: i32::try_from(added).unwrap_or(0),
+                        });
+                    }
+                }
+            }
+            Effect::SchneiderBonusFromTrick => {
+                let points = active.game.tricks().last().map_or(0, |t| t.card_points());
+                if points > 0 {
+                    let thresholds = &mut active.rules.thresholds;
+                    thresholds.schneider_bonus = thresholds.schneider_bonus.saturating_add(points);
+                    active
+                        .rules
+                        .schneider_bonus_source
+                        .get_or_insert_with(|| source.clone());
+                }
+            }
             Effect::WinThreshold(n) => {
                 if active.rules.thresholds.lower_win(*n) {
                     active.rules.win_threshold_source = Some(source.clone());
@@ -2180,6 +2242,7 @@ impl Run {
             | Effect::SetFlag(_)
             | Effect::ClearFlag(_)
             | Effect::IncrementCounter(_)
+            | Effect::ResetCounter(_)
             | Effect::GainCoins(_) => {}
         }
     }
@@ -2449,6 +2512,22 @@ impl Run {
                     lever: Lever::Schneider,
                     change: Change::Set(1),
                 });
+            }
+        }
+        if parts.schneider && active.rules.thresholds.schneider_bonus > 0 {
+            if let Some(source) = &active.rules.schneider_bonus_source {
+                // A line only if the bonus made the difference.
+                let without = Thresholds {
+                    schneider_bonus: 0,
+                    ..active.rules.thresholds.clone()
+                };
+                if !game_value_parts(declaration, matadors, &outcome, &without).schneider {
+                    lines.push(ScoreLine {
+                        source: source.clone(),
+                        lever: Lever::Schneider,
+                        change: Change::Set(1),
+                    });
+                }
             }
         }
         lines.extend(active.lines.iter().cloned());
@@ -3343,8 +3422,17 @@ fn score_line(
             }
             (Lever::BaseValue, Change::Add(i64::from(value)))
         }
+        Effect::AddBaseValuePerCounter { counter, per } => {
+            let value = counters.get(counter).copied().unwrap_or(0);
+            let add = i64::from(value) * i64::from(*per);
+            if add == 0 {
+                return None;
+            }
+            (Lever::BaseValue, Change::Add(add))
+        }
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
+        Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
         _ => return None,
     };
     Some(ScoreLine {
@@ -3451,3 +3539,5 @@ mod stake_tests;
 mod step_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wave2_tests;

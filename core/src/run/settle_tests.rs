@@ -54,7 +54,7 @@ struct After {
     value: u64,
     base_value: u64,
     levels: u64,
-    multiplier: u64,
+    multiplier: crate::content::Factor,
     series_score: i64,
     coins: u32,
     flags: BTreeSet<String>,

@@ -685,3 +685,61 @@ fn declarer_schwarz_implies_declarer_schneider() {
     // mit 2, Spiel 3, Schneider 4, Schwarz 5
     assert_eq!(value.levels, 5);
 }
+
+/// Wave 2 relics that reach into the formula (DESIGN 8.1), worked out by
+/// hand: "Stichfest" moves only the Schneider line, "Stammfarbe" scales
+/// the Spielwert by 1.5 and rounds half up at the end.
+#[test]
+fn relic_schneider_bonus_and_fractional_factor_vectors() {
+    use skat_core::content::{Change, Factor, Lever, RelicId, ScoreLine, Source, score_game};
+    use skat_core::rules::{Thresholds, game_value_parts};
+
+    let mit_2 = Matadors {
+        with: true,
+        count: 2,
+    };
+    let outcome = |declarer: u32, tricks: u32| Outcome {
+        declarer_card_points: declarer,
+        defender_card_points: TOTAL_CARD_POINTS - declarer,
+        declarer_tricks: tricks,
+        defender_tricks: 10 - tricks,
+    };
+    // Kreuz mit 2, first trick 14 Augen: 76 Augen (defenders 44) are
+    // Schneider, 12 × (2 + 1 + 1) = 48; 75 Augen are not, 12 × 3 = 36.
+    let kreuz = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
+    let stichfest = Thresholds {
+        schneider_bonus: 14,
+        ..Thresholds::default()
+    };
+    let parts = game_value_parts(kreuz, mit_2, &outcome(76, 7), &stichfest);
+    assert_eq!(
+        (parts.won, parts.schneider, parts.value.value),
+        (true, true, 48)
+    );
+    let parts = game_value_parts(kreuz, mit_2, &outcome(75, 7), &stichfest);
+    assert_eq!(
+        (parts.won, parts.schneider, parts.value.value),
+        (true, false, 36)
+    );
+    // 60 Augen stay lost: −2 × 36.
+    let parts = game_value_parts(kreuz, mit_2, &outcome(60, 5), &stichfest);
+    assert_eq!((parts.won, parts.value.score), (false, -72));
+
+    // Karo mit 2, Spiel 3: 9 × 3 = 27, × 1.5 = 40.5 → 41; lost −82.
+    let karo = Declaration::suit(Suit::Diamonds, RiskLevel::Normal);
+    let scale = vec![ScoreLine {
+        source: Source::Relic(RelicId::new("home_suit")),
+        lever: Lever::GameValue,
+        change: Change::Scale(Factor::from_permille(1500)),
+    }];
+    let won = score_game(
+        karo,
+        mit_2,
+        &outcome(70, 6),
+        &Thresholds::default(),
+        scale.clone(),
+    );
+    assert_eq!((won.value, won.score), (41, 41));
+    let lost = score_game(karo, mit_2, &outcome(50, 4), &Thresholds::default(), scale);
+    assert_eq!((lost.value, lost.score), (41, -82));
+}

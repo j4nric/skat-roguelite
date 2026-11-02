@@ -242,6 +242,17 @@ pub fn evaluate(
             .and_then(|(_, card)| card.face())
             .is_some_and(|face| filter.matches(face)),
         Condition::PlayedByDeclarer => ctx.played.is_some_and(|(seat, _)| seat.is_declarer()),
+        Condition::TrickWinnerMatches {
+            filter,
+            by_declarer,
+        } => game.and_then(|g| g.tricks().last()).is_some_and(|t| {
+            t.winning_card().face().is_some_and(|f| filter.matches(f))
+                && (!by_declarer || t.winner.is_declarer())
+        }),
+        Condition::FirstTrickOfDeclarer => game.is_some_and(|g| {
+            g.tricks().last().is_some_and(|t| t.winner.is_declarer())
+                && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
+        }),
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
         Condition::NullGame => declaration.is_some_and(Declaration::is_null),
         Condition::NullRiskAtLeast(risk) => {
@@ -340,7 +351,9 @@ pub fn evaluate_if_won(
         | Condition::DefenderPointsBelow(_)
         | Condition::NoTrickTaken
         | Condition::SevenDucked
-        | Condition::NeverFollowedSuit => None,
+        | Condition::NeverFollowedSuit
+        | Condition::TrickWinnerMatches { .. }
+        | Condition::FirstTrickOfDeclarer => None,
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
@@ -487,7 +500,9 @@ pub fn evaluate_known(
         | Condition::NoTrickTaken
         | Condition::SevenDucked
         | Condition::NeverFollowedSuit
-        | Condition::MatadorsAtLeast { .. } => None,
+        | Condition::MatadorsAtLeast { .. }
+        | Condition::TrickWinnerMatches { .. }
+        | Condition::FirstTrickOfDeclarer => None,
     }
 }
 

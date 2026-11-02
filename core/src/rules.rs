@@ -1005,6 +1005,14 @@ pub struct Thresholds {
     /// Stake of the run: Augen added to [`WIN_THRESHOLD`] before relics.
     #[serde(default)]
     pub stake: u32,
+    /// Augen that count once more for the Schneider line only (house rule
+    /// "Stichfest": the declarer's first trick counts twice): a declarer
+    /// who won on points makes the defenders Schneider with at most
+    /// `schneider_limit + schneider_bonus` Augen. Winning does not change,
+    /// nor does the declarer's own Schneider. Measured on the losing side
+    /// like Schneider itself, so it holds with a changed deck.
+    #[serde(default)]
+    pub schneider_bonus: u32,
 }
 
 impl Default for Thresholds {
@@ -1023,6 +1031,7 @@ impl Thresholds {
             schneider_limit: SCHNEIDER_LIMIT,
             declarer_schneider: Vec::new(),
             stake,
+            schneider_bonus: 0,
         }
     }
 
@@ -1169,7 +1178,13 @@ pub fn game_value_parts(
             .declarer_schneider
             .iter()
             .any(|&(min, max)| (min..=max).contains(&points));
-    let schneider = losing_side_schneider || declarer_range_schneider;
+    let bonus_schneider = won_on_points
+        && thresholds.schneider_bonus > 0
+        && outcome.defender_card_points
+            <= thresholds
+                .schneider_limit
+                .saturating_add(thresholds.schneider_bonus);
+    let schneider = losing_side_schneider || declarer_range_schneider || bonus_schneider;
     let won = won_on_points && (!schneider_declared || schneider) && (!schwarz_declared || schwarz);
 
     let declarer_schwarz = !won && outcome.declarer_tricks == 0;
@@ -1769,6 +1784,39 @@ mod tests {
     }
 
     #[test]
+    fn schneider_bonus_moves_only_the_schneider_line() {
+        // "Stichfest": 14 Augen of the first trick count once more.
+        let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
+        let thresholds = Thresholds {
+            schneider_bonus: 14,
+            ..Thresholds::default()
+        };
+        // 76 Augen, defenders 44 = 30 + 14: Schneider.
+        let parts = game_value_parts(decl, MIT_2, &outcome(76, 7), &thresholds);
+        assert!(parts.won && parts.schneider);
+        assert!(!parts.schneider_by_declarer_points);
+        assert_eq!(parts.value.levels, 4);
+        // One Auge less is not.
+        let parts = game_value_parts(decl, MIT_2, &outcome(75, 7), &thresholds);
+        assert!(parts.won && !parts.schneider);
+        // Winning does not move: 60 Augen stay lost and the defenders are
+        // no Schneider, however big the bonus.
+        let big = Thresholds {
+            schneider_bonus: 40,
+            ..Thresholds::default()
+        };
+        let parts = game_value_parts(decl, MIT_2, &outcome(60, 5), &big);
+        assert!(!parts.won && !parts.schneider);
+        // Nor the declarer's own Schneider.
+        let parts = game_value_parts(decl, MIT_2, &outcome(30, 2), &big);
+        assert!(!parts.won && parts.levels.schneider == 1);
+        // Schneider angesagt is made through the bonus.
+        let announced = Declaration::suit(Suit::Clubs, RiskLevel::SchneiderDeclared);
+        let parts = game_value_parts(announced, MIT_2, &outcome(76, 7), &thresholds);
+        assert!(parts.won && parts.schneider);
+    }
+
+    #[test]
     fn lowered_win_threshold_and_declarer_schneider_ranges() {
         let decl = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
         let thresholds = Thresholds {
@@ -1776,6 +1824,7 @@ mod tests {
             schneider_limit: SCHNEIDER_LIMIT,
             declarer_schneider: vec![(85, u32::MAX)],
             stake: 0,
+            schneider_bonus: 0,
         };
         let parts = game_value_parts(decl, MIT_2, &outcome(59, 5), &thresholds);
         assert!(parts.won && parts.won_by_lowered_threshold);

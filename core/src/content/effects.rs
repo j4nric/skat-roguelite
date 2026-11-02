@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::Factor;
 use crate::cards::{Card, Rank, Suit};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
@@ -193,6 +194,28 @@ pub enum Effect {
     AddLevels(i32),
     /// Lever Spielwert: multiply the whole game value (Kontra-like).
     MultiplyGameValue(u32),
+    /// Lever Spielwert: multiply the whole game value by a factor that
+    /// need not be whole, written as a decimal (`ScaleGameValue(1.5)`,
+    /// "Stammfarbe"). The Spielwert is rounded half up at the end.
+    ScaleGameValue(Factor),
+    /// Lever Grundwert: add `per` times the current value of a run counter
+    /// ("Allrounder": +3 per Spielart of the series).
+    AddBaseValuePerCounter {
+        /// Counter name.
+        counter: String,
+        /// Grundwert per point of the counter.
+        per: i32,
+    },
+    /// Lever Augen: the two discarded cards in the skat count this many
+    /// times their Augen for the declarer ("Skatpfleger": 2). Only in a
+    /// game with the skat picked up; nothing in a hand game. On declare
+    /// only (the discard is final then).
+    MultiplySkatPoints(u32),
+    /// Lever Schneider: the Augen of the trick just completed count once
+    /// more for the Schneider line, not for winning ("Stichfest": the
+    /// declarer's first trick, see [`crate::rules::Thresholds`]
+    /// `schneider_bonus`). On trick end only.
+    SchneiderBonusFromTrick,
     /// Lever Augen: every matching card counts this many Augen, for every
     /// seat (the deck is shared). Passive only.
     SetCardPoints {
@@ -248,6 +271,9 @@ pub enum Effect {
     ClearFlag(String),
     /// Run state: add one to a counter (e.g. "tournee").
     IncrementCounter(String),
+    /// Run state: set a counter back to zero (counters of one series,
+    /// e.g. "Altes Blatt" after a won series).
+    ResetCounter(String),
     /// Lever Stichgewinn (Null): this card can never take a trick, whoever
     /// plays it ("Unsichtbar"). It keeps its suit and follows suit. Card
     /// modifications only, passive only.
@@ -324,8 +350,12 @@ impl Effect {
             Effect::AddBaseValue(_)
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
+            | Effect::AddBaseValuePerCounter { .. }
             | Effect::AddLevels(_)
-            | Effect::MultiplyGameValue(_) => stage.in_game(),
+            | Effect::MultiplyGameValue(_)
+            | Effect::ScaleGameValue(_) => stage.in_game(),
+            Effect::MultiplySkatPoints(_) => stage == Stage::OnDeclare,
+            Effect::SchneiderBonusFromTrick => stage == Stage::OnTrickEnd,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)
@@ -341,6 +371,7 @@ impl Effect {
             Effect::SetFlag(_)
             | Effect::ClearFlag(_)
             | Effect::IncrementCounter(_)
+            | Effect::ResetCounter(_)
             | Effect::GainCoins(_) => stage != Stage::Passive,
             Effect::NeverWins
             | Effect::NoDiscard
@@ -470,6 +501,18 @@ pub enum Condition {
     /// The card just played was played by the declarer. On card played
     /// only.
     PlayedByDeclarer,
+    /// The trick just completed was won with a printed card that matches
+    /// the filter, optionally only by the declarer ("Luschenkönig": a
+    /// seven of the declarer). On trick end only.
+    TrickWinnerMatches {
+        /// Which winning cards count.
+        filter: CardFilter,
+        /// Whether the declarer must have won it.
+        by_declarer: bool,
+    },
+    /// The trick just completed is the first one the declarer took
+    /// ("Stichfest"). On trick end only.
+    FirstTrickOfDeclarer,
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
@@ -533,6 +576,9 @@ impl Condition {
             }
             Condition::PlayedCardMatches(_) | Condition::PlayedByDeclarer => {
                 stage == Stage::OnCardPlayed
+            }
+            Condition::TrickWinnerMatches { .. } | Condition::FirstTrickOfDeclarer => {
+                stage == Stage::OnTrickEnd
             }
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
             Condition::NullGame
@@ -601,5 +647,28 @@ mod tests {
         assert!(!Effect::SetFlag("x".into()).allowed_in(Stage::Passive));
         assert!(Effect::RankBonus(1).card_mod_only());
         assert!(Condition::Not(Box::new(Condition::ThisCardIsTrumpSuit)).card_mod_only());
+        assert!(Effect::MultiplySkatPoints(2).allowed_in(Stage::OnDeclare));
+        assert!(!Effect::MultiplySkatPoints(2).allowed_in(Stage::Passive));
+        assert!(Effect::SchneiderBonusFromTrick.allowed_in(Stage::OnTrickEnd));
+        assert!(!Effect::SchneiderBonusFromTrick.allowed_in(Stage::OnScore));
+        assert!(!Effect::ResetCounter("x".into()).allowed_in(Stage::Passive));
+        assert!(Condition::FirstTrickOfDeclarer.allowed_in(Stage::OnTrickEnd));
+        assert!(!Condition::FirstTrickOfDeclarer.allowed_in(Stage::OnScore));
+    }
+
+    #[test]
+    fn wave_two_effects_parse_from_ron() {
+        let hook: Hook = ron::from_str(
+            r#"OnDeclare(when: SuitGame, then: [ScaleGameValue(1.5), AddBaseValuePerCounter(counter: "all_rounder", per: 3)])"#,
+        )
+        .expect("ron");
+        assert_eq!(
+            hook.then()[0],
+            Effect::ScaleGameValue(Factor::from_permille(1500))
+        );
+        let cond: Condition =
+            ron::from_str("TrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true)")
+                .expect("ron");
+        assert!(cond.allowed_in(Stage::OnTrickEnd));
     }
 }

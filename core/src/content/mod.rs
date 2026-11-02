@@ -610,6 +610,32 @@ impl Factor {
         self.permille
     }
 
+    /// The whole number `n` as a factor (2 = 2.0). Saturates.
+    #[must_use]
+    pub const fn from_int(n: u32) -> Factor {
+        Factor {
+            permille: n.saturating_mul(1000),
+        }
+    }
+
+    /// `value × factor`, rounded half up; unlike [`Factor::apply`] it
+    /// may be 0 (the factor 0 of "Der Schwarze Peter"). Saturates.
+    #[must_use]
+    pub fn scale(self, value: u64) -> u64 {
+        let scaled = (u128::from(value) * u128::from(self.permille) + 500) / 1000;
+        u64::try_from(scaled).unwrap_or(u64::MAX)
+    }
+
+    /// The product of two factors, rounded half up to thousandths.
+    /// Saturates instead of overflowing.
+    #[must_use]
+    pub fn times(self, other: Factor) -> Factor {
+        let product = (u64::from(self.permille) * u64::from(other.permille) + 500) / 1000;
+        Factor {
+            permille: u32::try_from(product).unwrap_or(u32::MAX),
+        }
+    }
+
     /// `value × factor`, rounded half up, at least 1 for a positive value.
     /// Saturates instead of overflowing.
     #[must_use]

@@ -5,7 +5,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play};
 use super::*;
 use crate::cards::Suit;
-use crate::content::{ConsumableCategory, ConsumableId, ScoreTerm};
+use crate::content::{ConsumableCategory, ConsumableId, Factor, ScoreTerm};
 use crate::rules::{GameType, RiskLevel, is_trump};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
@@ -189,7 +189,7 @@ fn double_grain_doubles_the_next_declared_game_won_or_lost() {
     run.apply(&content, use_item(0)).expect("drink");
     let (_, lost) = play(&mut run, &content, hand(CLUBS));
     assert!(!lost.won);
-    assert_eq!(lost.multiplier, 2);
+    assert_eq!(lost.multiplier, Factor::from_int(2));
     assert_eq!(lost.score, -2 * i64::try_from(lost.value).expect("value"));
     // At the Tresen it waits for the next game; during play it is too late.
     let mut run = run_with(&content, &["double_grain", "double_grain"]);

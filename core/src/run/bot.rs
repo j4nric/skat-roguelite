@@ -121,7 +121,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `clean_slate` | 1 | Null: +0.1, the bot almost never avoids following suit |
 /// | `card_counter` | 1 | information the PIMC bot already has |
 /// | `show_off` | 0 | Null: -15.9, forced Ouvert ruins the bot: never bought |
-pub const RELIC_VALUES: [(&str, u32); 35] = [
+pub const RELIC_VALUES: [(&str, u32); 43] = [
     ("every_bit_counts", 10),
     ("bock_round", 10),
     ("old_lady", 10),
@@ -157,6 +157,14 @@ pub const RELIC_VALUES: [(&str, u32); 35] = [
     ("clean_slate", 1),
     ("card_counter", 1),
     ("show_off", 0),
+    ("skat_keeper", 5),
+    ("old_deck", 5),
+    ("all_rounder", 5),
+    ("home_suit", 4),
+    ("changeling", 2),
+    ("jack_parade", 4),
+    ("blank_king", 2),
+    ("watertight", 3),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
