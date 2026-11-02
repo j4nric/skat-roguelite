@@ -8,7 +8,8 @@ import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
-import { cardSvg, modIcon, suitIcon, WILD } from './cards';
+import { backDesign } from './backs';
+import { cardBack, cardSvg, modIcon, suitIcon, WILD } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -470,7 +471,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
   switch (overlay.kind) {
     case 'boss':
       return sheet(
-        `<div class="boss-intro">${portrait(bossPortraitId(overlay.boss.id), 'portrait-boss')}
+        `<div class="boss-intro"><div class="boss-faces">${portrait(bossPortraitId(overlay.boss.id), 'portrait-boss')}<span class="boss-back" data-testid="boss-back" data-back="${esc(backDesign(overlay.boss.back))}">${cardBack('', backDesign(overlay.boss.back))}</span></div>
          <p class="small boss-kicker">${bossCoaster(overlay.boss.id, { size: 32 })}<span>${esc(de.boss.title)} · ${esc(de.boss.intro)}</span></p>
          <h2>${esc(contentName('bosses', overlay.boss.id))}</h2>
          <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p>${bossEditionText(overlay.boss) ? `<p class="boss-edition">${esc(bossEditionText(overlay.boss))}</p>` : ''}</div>

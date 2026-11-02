@@ -7,6 +7,7 @@
 
 import { de, bossEditionText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
+import { backDesign } from './backs';
 import { cardBack, cardSvg } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -177,7 +178,7 @@ function bossModel(key: string, view: RunView, id: string, kind: string, face = 
     key,
     title: contentName('bosses', id),
     kind,
-    art: face ? portrait(bossPortraitId(id), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`,
+    art: `<span class="info-art-pair">${face ? portrait(bossPortraitId(id), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`}${boss?.back ? `<span class="info-back">${cardBack('', backDesign(boss.back))}</span>` : ''}</span>`,
     facts,
     sections: [{ text: [contentText('bosses', id) || boss?.text || '', bossEditionText(boss)].filter(Boolean).join(' '), status: [] }],
   };

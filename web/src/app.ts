@@ -63,6 +63,7 @@ import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, flip, flyIn, motionOn, pulse, setTempo, sweepAway } from './ui/fx';
+import { backDesign } from './ui/backs';
 import { cardBack, cardSvg, modValueText } from './ui/cards';
 import { watchDrags } from './ui/drag';
 import { reshuffle } from './ui/scatter';
@@ -911,7 +912,7 @@ export class App {
     const boss = owner === 'Boss' ? bossEditionOf(card, view.game?.boss_rule?.edition ?? []) : null;
     const mods = own?.mods ?? boss?.mods ?? [];
     const mod_values = own?.mod_values ?? boss?.mod_values ?? {};
-    const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'opponent');
+    const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'regulars');
     return { ...card, mods, mod_values, ...(back ? { back } : {}), legal: false, from_skat: false, discardable: false, named: this.wildNamed.get(card.id) ?? null };
   }
 
@@ -1153,6 +1154,9 @@ export class App {
       this.render();
       const el = this.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
       if (el && from && !this.fastForward) flyIn(el, from, { ms: seat === 0 ? 220 : 300, rotate: seat === 1 ? -20 : seat === 2 ? 20 : 0 });
+      // An opponent's card turns over from his own back on the way (ADR 0015).
+      const played = anim.trick[anim.trick.length - 1]?.card;
+      if (seat !== 0 && el instanceof HTMLElement && !this.fastForward && played?.back) flip(el, cardBack('', backDesign(played.back)), { ms: 300 });
       sound.play('card', { rate: 0.94 + seat * 0.05 });
       await this.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;

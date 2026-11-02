@@ -136,7 +136,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
       <div class="opp-info">
         <b class="opp-name" data-testid="opp-name">${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
-        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'opponent'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
+        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
       </div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}
