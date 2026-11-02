@@ -15,7 +15,7 @@
 
 import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
 import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, LeadSuit, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
-import { DEFAULT_BACK } from './backs';
+import { backDesign } from './backs';
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
@@ -136,7 +136,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
       <div class="opp-info">
         <b class="opp-name" data-testid="opp-name">${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
-        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', DEFAULT_BACK, 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
+        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'opponent'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
       </div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}

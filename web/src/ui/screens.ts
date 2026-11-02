@@ -3,7 +3,7 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, cardName, contentName, contentText, face, isCurse, relicLook, t } from '../i18n';
+import { de, bossEditionText, cardName, contentName, contentText, face, isCurse, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
@@ -473,7 +473,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         `<div class="boss-intro">${portrait(bossPortraitId(overlay.boss.id), 'portrait-boss')}
          <p class="small boss-kicker">${bossCoaster(overlay.boss.id, { size: 32 })}<span>${esc(de.boss.title)} · ${esc(de.boss.intro)}</span></p>
          <h2>${esc(contentName('bosses', overlay.boss.id))}</h2>
-         <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p></div>
+         <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p>${bossEditionText(overlay.boss) ? `<p class="boss-edition">${esc(bossEditionText(overlay.boss))}</p>` : ''}</div>
          <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'boss-go' })}>${esc(de.boss.go)}</button>`,
         false,
         'sheet-boss',
@@ -519,7 +519,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'target': {
       const item = view?.consumables.find((c) => c.slot === overlay.slot);
       if (!view || !item) return '';
-      const cards = view.deck.map((c) => targetCard(c, item.targets.includes(c.id), 'target', overlay.reasons?.[c.id])).join('');
+      const cards = view.edition.map((c) => targetCard(c, item.targets.includes(c.id), 'target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.shop.pickTarget)}</h2>
          <p class="small">${esc(t(de.shop.pickHint, { name: contentName('consumables', item.consumable.id), text: contentText('consumables', item.consumable.id) }))}</p>
@@ -597,7 +597,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'encounter-target': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
-      const cards = view.deck.map((c) => targetCard(c, option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
+      const cards = view.edition.map((c) => targetCard(c, option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.encounter.pickTarget)}</h2>
          <p class="small">${esc(contentText('encounters', view.encounter?.id ?? ''))}</p>

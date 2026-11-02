@@ -53,7 +53,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -82,6 +82,24 @@ function errorCode(err: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/** The boss edition's modifications on a boss card (ADR 0015), from the filters the core names. */
+function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string[]; mod_values: Record<string, number> } | null {
+  if (typeof card.kind !== 'object') return null;
+  const code = card.kind.Normal;
+  const suits: Record<string, Suit> = { C: 'Clubs', S: 'Spades', H: 'Hearts', D: 'Diamonds' };
+  const ranks: Record<string, string> = { '7': 'Seven', '8': 'Eight', '9': 'Nine', T: 'Ten', J: 'Jack', Q: 'Queen', K: 'King', A: 'Ace' };
+  const suit = suits[code[0] ?? ''];
+  const rank = ranks[code[1] ?? ''];
+  const mods: string[] = [];
+  const mod_values: Record<string, number> = {};
+  for (const e of edition) {
+    if ((e.filter.suit && e.filter.suit !== suit) || (e.filter.rank && e.filter.rank !== rank)) continue;
+    mods.push(e.card_mod.id);
+    if (e.card_mod.value != null) mod_values[e.card_mod.id] = e.card_mod.value;
+  }
+  return { mods, mod_values };
 }
 
 /** Turn a core error into a German text. */
@@ -409,7 +427,8 @@ export class App {
         console.warn('saved run discarded', err);
         clearRun();
         this.core = null;
-        this.ui.message = de.start.resumeFailed;
+        // A run of the old rules (shared deck, before ADR 0015) is told once.
+        this.ui.message = errorCode(err) === 'OutdatedSave' ? de.start.newRules : de.start.resumeFailed;
       }
     }
     this.ui.screen = 'start';
@@ -885,9 +904,15 @@ export class App {
     }
   }
 
+  /** A card from an event as the table shows it: the modifications of its owner's edition (ADR 0015). */
   private cardOf(card: DealtCard, view: RunView): CardView {
-    const mods = view.deck.find((d) => d.id === card.id)?.mods ?? [];
-    return { ...card, mods, legal: false, from_skat: false, discardable: false, named: this.wildNamed.get(card.id) ?? null };
+    const owner = card.owner ?? 'Player';
+    const own = owner === 'Player' ? view.edition.find((d) => d.id === card.id) : undefined;
+    const boss = owner === 'Boss' ? bossEditionOf(card, view.game?.boss_rule?.edition ?? []) : null;
+    const mods = own?.mods ?? boss?.mods ?? [];
+    const mod_values = own?.mod_values ?? boss?.mod_values ?? {};
+    const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'opponent');
+    return { ...card, mods, mod_values, ...(back ? { back } : {}), legal: false, from_skat: false, discardable: false, named: this.wildNamed.get(card.id) ?? null };
   }
 
   /** Animate what happened, using only the events and views of the core. */
@@ -945,10 +970,10 @@ export class App {
       if ('VoucherRedeemed' in ev) {
         // Effekte v2: a voucher was redeemed when its card was discarded.
         const id = ev.VoucherRedeemed.card;
-        const card = before?.deck.find((c) => c.id === id) ?? after.deck.find((c) => c.id === id);
+        const card = before?.edition.find((c) => c.id === id) ?? after.edition.find((c) => c.id === id);
         this.showToast(t(de.toast.voucherRedeemed, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }), 'top');
         sound.play('clink');
-        if (card) await this.redeemVoucher(card, after.deck.find((c) => c.id === id) ?? null);
+        if (card) await this.redeemVoucher(card, after.edition.find((c) => c.id === id) ?? null);
         continue;
       }
       if ('EveningRuleAdded' in ev) {
@@ -969,8 +994,12 @@ export class App {
       if ('DeckChanged' in ev) {
         const change = ev.DeckChanged;
         if ('Modified' in change) {
-          const card = after.deck.find((c) => c.id === change.Modified.card);
+          const card = after.edition.find((c) => c.id === change.Modified.card);
           if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));
+        }
+        if ('Cleansed' in change) {
+          const card = after.edition.find((c) => c.id === change.Cleansed.card);
+          if (card) this.showToast(t(de.toast.cardCleansed, { card: cardName(card.kind) }));
         }
         continue;
       }
@@ -1275,7 +1304,7 @@ export class App {
    * the new total from the core.
    */
   private async coinsGained(source: Source, amount: number, coins: number, after: RunView): Promise<void> {
-    const from = sourceName(source, after.deck);
+    const from = sourceName(source, after.edition);
     this.wiggleSource(source);
     const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
     this.showToast(t(de.toast.coins, { amount: sign, source: from }));
@@ -1416,7 +1445,7 @@ export class App {
       .filter((l) => typeof l.source === 'object' && ('Relic' in l.source || 'CardMod' in l.source))
       .map((l) => ({
         source: l.source,
-        text: t(de.trigger.line, { source: sourceName(l.source, after.deck), effect: changeText(l.lever, l.change) }),
+        text: t(de.trigger.line, { source: sourceName(l.source, after.edition), effect: changeText(l.lever, l.change) }),
       }));
     if (!fired.length || this.fastForward) return false;
     this.positionTriggers();
@@ -2144,7 +2173,7 @@ export class App {
   private refusals(view: RunView, targets: number[], action: (id: number) => RunAction): Record<number, string> {
     const out: Record<number, string> = {};
     if (!this.core) return out;
-    for (const c of view.deck) {
+    for (const c of view.edition) {
       if (targets.includes(c.id)) continue;
       try {
         this.core.preview(action(c.id));
@@ -2163,7 +2192,7 @@ export class App {
    * previewed: the sheet only says that the card carries one already.
    */
   private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay): void {
-    const card = view.deck.find((c) => c.id === id);
+    const card = view.edition.find((c) => c.id === id);
     const ask = card ? this.modQuestion(card, action, mod, random) : null;
     if (!ask) {
       void this.act(action);
@@ -2176,7 +2205,7 @@ export class App {
   private modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean): ModQuestion | null {
     const blank = { card, after: null, old: null, mod: null, from: '', to: '' };
     if (random) {
-      const old = card.mods.find((m) => modKind(m) !== 'Special');
+      const old = card.mods.find((m) => modKind(m) !== 'Special' && modKind(m) !== 'SpecialCurse');
       return old ? { ...blank, type: 'random', old } : null;
     }
     let step: Step;
@@ -2186,7 +2215,7 @@ export class App {
       // The core refuses it: applying shows its error.
       return null;
     }
-    const after = step.view.deck.find((c) => c.id === card.id) ?? null;
+    const after = step.view.edition.find((c) => c.id === card.id) ?? null;
     for (const ev of step.events) {
       if (typeof ev !== 'object' || !('DeckChanged' in ev)) continue;
       const change = ev.DeckChanged;
@@ -2342,7 +2371,7 @@ export class App {
       return;
     }
     if (o.kind === 'score') {
-      this.layerEl.innerHTML = renderScore(o, this.ui.view?.deck ?? []);
+      this.layerEl.innerHTML = renderScore(o, this.ui.view?.edition ?? []);
       this.scoreBoard = new ScoreBoard(this.layerEl, o);
       void this.scoreBoard.play();
       return;

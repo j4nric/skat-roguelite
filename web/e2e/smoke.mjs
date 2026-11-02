@@ -1232,11 +1232,28 @@ async function m5(browser, errors, reducedMotion) {
 
   // Effekte v2: "Ramponiert" means −X Augen now, the old "darf nicht
   // gedrückt werden" and "Unter ehrenhalber" are gone (DESIGN 7.2); their
-  // fixtures stay as old saves for the core's load test (skat_wasm).
+  // fixtures stay as old saves (save version 1).
+  // M9 (ADR 0015): a run saved under the old rules (shared deck) is
+  // discarded once with a note; a new run can start.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), fixture('discard-battered.json'));
+  await page.reload();
+  await page.waitForSelector('[data-action="new-run"]');
+  const note = (await page.locator('.is-warning[role="alert"]').first().textContent().catch(() => '')) ?? '';
+  if (!note.includes('Neue Regeln')) fail(`an old run is not discarded with a note: "${note}"`);
+  if (await page.locator('[data-action="resume"]').count()) fail('an old run is still offered for resuming');
+  if (await page.evaluate(() => localStorage.getItem('stammtisch.run'))) fail('the old run is still saved');
+  log(`old run discarded: ${note.trim()}`);
 
   // M8 wave 2a: the new relics at the table and in the Abrechnung.
   await resumeFixture(page, 'wave2-relics.json');
   await page.waitForSelector('.declare');
+  // M9 (ADR 0015): the opponents' cards show the opponent back, the
+  // player's stay the Distel.
+  const backs = await page.locator('.opp-hand use').evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+  if (backs.length !== 2 || backs.some((b) => b !== '#bk-opponent-s')) fail(`opponent backs: ${JSON.stringify(backs)}`);
+  log(`opponent backs: ${backs.join(', ')}`);
   for (const id of ['home_suit', 'all_rounder', 'old_deck', 'skat_keeper', 'watertight']) {
     if (!(await page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`).count())) fail(`relic ${id} has no beer mat in the head`);
   }
@@ -2154,7 +2171,7 @@ async function modConfirmPass(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="mod-confirm-text"]', { state: 'detached' });
   await page.waitForFunction(() => {
     const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run?.deck?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7;
+    return run?.edition?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7;
   }, null, { timeout: 5000 }).catch(() => fail('raise confirm: the Schellen-Zehn does not carry Augen +7 afterwards'));
   // "Rang +1" (now slot 0): the Oberin at Rang 3 is at the maximum.
   await page.click('[data-action="use-item"][data-slot="0"]');

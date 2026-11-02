@@ -587,6 +587,12 @@ fn regenerate_fixtures() {
     for path in names {
         let text = std::fs::read_to_string(&path).expect("read");
         let mut save: serde_json::Value = serde_json::from_str(&text).expect("json");
+        // These two stay old saves: they show that such a run is
+        // discarded (skat_wasm).
+        let kept_old = ["discard-battered.json", "honorary-jack.json"];
+        if kept_old.iter().any(|k| path.ends_with(k)) {
+            continue;
+        }
         if save["version"] != 1 || !save["run"].is_object() {
             continue;
         }

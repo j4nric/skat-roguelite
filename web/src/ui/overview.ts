@@ -81,7 +81,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     : [];
   const dl = (list: [string, string][]): string =>
     `<dl class="chalk-stats">${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
-  const deck = view.deck
+  const deck = view.edition
     .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</span>`)
     .join('');
   const relics =
@@ -95,7 +95,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     <p class="chalk-small">${esc(t(de.overview.character, { name: contentName('characters', view.character.character) }))}</p>
     ${dl(stats)}
     ${all.length ? `<h3 class="chalk-h">${esc(de.overview.allRuns)}</h3>${dl(all)}` : ''}
-    <h3 class="chalk-h">${esc(t(de.overview.deck, { count: view.deck.length }))}</h3>
+    <h3 class="chalk-h">${esc(t(de.overview.deck, { count: view.edition.length }))}</h3>
     <p class="chalk-small">${esc(de.overview.deckHint)}</p>
     ${oddsDetail(view.deal_odds)}
     <div class="deck-grid">${deck}</div>

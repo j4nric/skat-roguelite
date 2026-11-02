@@ -6,7 +6,7 @@
     (
         id: "fresh_deck",
         name: "Frisches Deck",
-        text: "Eine Karte deiner Ausgabe ist wieder wie neu: Alle Modifikationen fallen ab, auch Flüche.",
+        text: "Reinigt eine Karte deiner Ausgabe: Alle Effekte fallen ab, auch Flüche.",
         rarity: Common,
         price: 3,
         action: CleanseCard,

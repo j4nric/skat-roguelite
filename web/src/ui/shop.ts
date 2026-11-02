@@ -2,7 +2,7 @@
 // items as things on the counter, owned relics and items, Neuauslage. What can be
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
-import { de, contentName, contentText, t } from '../i18n';
+import { de, bossEditionText, contentName, contentText, t } from '../i18n';
 import type { ConsumableInfo, OwnedRelic, RelicInfo, RunView } from '../types';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -71,7 +71,7 @@ function nextBoard(view: RunView): string {
     ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}>${bossCoaster(boss.id, { size: 48 })}<div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
         <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
-        <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p></div></div>`
+        <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p>${bossEditionText(boss) ? `<p class="next-boss-text boss-edition">${esc(bossEditionText(boss))}</p>` : ''}</div></div>`
     : '';
   return `<div class="next-board chalkboard" data-testid="next-series">
     <div class="next-head"><span class="chalk-small">${esc(de.shop.next)}</span><b>${esc(where)}</b></div>

@@ -52,12 +52,14 @@ export const de = {
     resumeInfo: '{character} · Abschnitt {section}, Serie {series} · Konto {score} / {target}',
     resumeEncounter: '{character} · Abschnitt {section} · ein Ereignis wartet',
     resumeFailed: 'Der gespeicherte Run passt nicht mehr zu dieser Version und wurde verworfen.',
+    /** A run saved before own editions (ADR 0015) is discarded once. */
+    newRules: 'Neue Regeln: Jeder spielt jetzt mit seiner eigenen Ausgabe der Karten. Dein laufender Abend wurde beendet; Freischaltungen, Statistik und Einsätze bleiben.',
     seedLabel: 'Seed (leer lassen für Zufall)',
     seedPlaceholder: 'zufällig',
     seedInvalid: 'Der Seed muss eine ganze Zahl sein.',
     noRecord: 'Noch kein Run gespielt.',
     howTo:
-      'Erreiche in jeder Serie den Zielwert, kaufe am Tresen Hausregeln und Figuren und verändere das Blatt, mit dem alle drei spielen.',
+      'Erreiche in jeder Serie den Zielwert, kaufe am Tresen Hausregeln und Figuren und verändere deine Ausgabe der Karten. Jeder am Tisch spielt mit seiner eigenen.',
     whoPlays: 'Wer spielt heute?',
     locked: 'Gesperrt',
     lockedBy: 'Freischalten: {text}',
@@ -439,9 +441,8 @@ export const de = {
   },
 
   odds: {
-    line: 'Jede Karte landet zu {pct} bei dir oder im Skat.',
+    line: 'Deine Ausgabe spielt in {pct} der Spiele (Hand oder Skat). Sonst hält ein Gegner die Karte in seiner eigenen.',
     detail: 'Hand {hand} · Skat {skat} · Gegner {defenders}',
-    talon: ' · Talon {talon}',
   },
 
   toast: {
@@ -465,6 +466,7 @@ export const de = {
     relicSwapped: '{old} gegen {new} getauscht.',
     nextDoubled: 'Letzte Runde! Das nächste Spiel zählt ×{factor}.',
     cardMarked: '{card} gezinkt: {mod}.',
+    cardCleansed: '{card} ist wieder wie neu.',
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
     cardDrawn: 'Drei drücken: {card} von {name} kommt dazu.',
@@ -880,8 +882,8 @@ export const de = {
     runs: 'Runs',
     runsWon: 'Gewonnen',
     bestSection: 'Weitester Abschnitt',
-    deck: 'Dein Blatt ({count} Karten)',
-    deckHint: 'Dieses Blatt teilen sich alle drei am Tisch.',
+    deck: 'Deine Ausgabe ({count} Karten)',
+    deckHint: 'Gegeben wird das normale Skatblatt. Was du hältst, spielt in deiner Ausgabe, was ein Gegner hält, in seiner.',
   },
 
   credits: {
@@ -932,6 +934,17 @@ export const de = {
     rankBonus: 'Sticht {n} Stufe höher',
     rankBonusMany: 'Sticht {n} Stufen höher',
     neverWins: 'Gewinnt keinen Stich',
+    /** "Abgestuft" on a Unter: no Unter, the lowest card of its suit. */
+    demotedJack: 'Abgestuft: kein Unter, die niedrigste Karte der Farbe',
+    demoted: 'Abgestuft: sticht eine Stufe tiefer',
+    /** Whose edition the card shows (ADR 0015). */
+    ownerGuest: 'Ausgabe des Stammgasts',
+    ownerBoss: 'Ausgabe von {name}',
+    /** A boss's edition next to his rule. */
+    bossEdition: 'Seine Ausgabe: {entries}',
+    bossEditionEntry: '{cards}: {mod}',
+    /** Plural of a rank for a group of a boss edition ("Siebenen"). */
+    rankPlural: { Seven: 'Siebenen', Eight: 'Achten', Nine: 'Neunen', Ten: 'Zehnen', Jack: 'Unter', Queen: 'Oberinnen', King: 'Könige', Ace: 'Daus' } as Record<string, string>,
     holder: 'Liegt bei {name}',
     noMods: 'Keine Modifikation.',
     lastGame: 'Im letzten Spiel: {effect}',
