@@ -6,10 +6,10 @@
     (
         id: "fresh_deck",
         name: "Frisches Deck",
-        text: "Entferne eine Karte dauerhaft aus dem Blatt. An ihre Stelle tritt eine Blanko.",
+        text: "Eine Karte deiner Ausgabe ist wieder wie neu: Alle Modifikationen fallen ab, auch Flüche.",
         rarity: Common,
         price: 3,
-        action: RemoveCard,
+        action: CleanseCard,
     ),
     (
         id: "ink_pad",

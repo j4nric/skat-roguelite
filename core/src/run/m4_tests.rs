@@ -9,10 +9,11 @@ use crate::cards::{Card, Suit};
 use crate::content::{EncounterId, Factor, ScoreTerm};
 use crate::rules::{NullRisk, RiskLevel};
 
-/// A Null deal the declarer cannot lose: he holds all eight sevens plus
+/// A Null deal the declarer cannot lose: he holds the four sevens and his
+/// four demoted Unter (the lowest card of each suit, ADR 0015) plus
 /// the lowest diamond and heart, so he can always go under.
 const SAFE_NULL: [&str; 3] = [
-    "D7 D7 H7 H7 S7 S7 C7 C7 D8 H8",
+    "D7 DJ H7 HJ S7 SJ C7 CJ D8 H8",
     "D9 DT DQ DK DA H9 HT HQ HK HA",
     "S8 S9 ST SQ SK SA C8 C9 CT CQ",
 ];
@@ -46,7 +47,7 @@ fn null_run(content: &Content, relics: &[&str]) -> Run {
 }
 
 fn printed(run: &Run) -> Vec<Card> {
-    run.deck()
+    run.edition()
         .cards()
         .iter()
         .filter_map(|c| c.kind.face())
@@ -66,18 +67,18 @@ fn the_null_player_starts_with_his_deck_relic_and_plays_every_game() {
     )
     .expect("start");
     assert_eq!(run.character(), Character::NullPlayer);
+    // ADR 0015: the normal 32 cards, his four Unter "Abgestuft".
     let cards = printed(&run);
-    assert_eq!(
-        cards.len(),
-        32,
-        "no blanks: the sevens fill the jacks' places"
-    );
-    assert!(cards.iter().all(|c| !c.is_jack()));
-    let sevens = cards
+    assert_eq!(cards, crate::cards::standard_deck());
+    let demoted: Vec<Card> = run
+        .edition()
+        .cards()
         .iter()
-        .filter(|c| c.rank == crate::cards::Rank::Seven)
-        .count();
-    assert_eq!(sevens, 8);
+        .filter(|c| c.mods == [CardModId::new("demoted")])
+        .filter_map(|c| c.kind.face())
+        .collect();
+    assert_eq!(demoted.len(), 4);
+    assert!(demoted.iter().all(|c| c.is_jack()));
     assert_eq!(run.relics(), &[RelicId::new("kibitzer")]);
     // The Kiebitz shows one defender card at the deal.
     let peeked: Vec<(DealtCard, Seat)> = events
@@ -672,7 +673,7 @@ fn encounter_choices_change_the_run() {
     );
     run.apply(&content, choose(1, Some(31))).expect("chosen");
     assert_eq!(run.coins(), 2);
-    assert_eq!(run.deck().get(31).map(|c| c.mods.len()), Some(1));
+    assert_eq!(run.edition().get(31).map(|c| c.mods.len()), Some(1));
     let mut random = relic_run(&content, &[]);
     encounter(
         &mut random,
@@ -944,12 +945,12 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     let content = content();
     let choose = |option, target| RunAction::ChooseEncounter { option, target };
     let has_mod = |run: &Run, id: u32, m: &str| {
-        run.deck()
+        run.edition()
             .get(id)
             .is_some_and(|c| c.mods.contains(&CardModId::new(m)))
     };
     let marked = |run: &Run, m: &str| {
-        run.deck()
+        run.edition()
             .cards()
             .iter()
             .filter(|c| c.mods.contains(&CardModId::new(m)))

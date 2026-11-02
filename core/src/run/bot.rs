@@ -230,7 +230,7 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `new_deal` | 2 | throws a weak hand in once the game's Einmischen are used up |
 /// | `beer` | 1 | one more Einmischen once those of the game are used up |
 /// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
-/// | `fresh_deck` | 0 | a blank helps defenders as much as the declarer (it may always be played), so the bot does not remove cards |
+/// | `fresh_deck` | 0, 2 with a cursed card | ADR 0015: cleanses a card of the player's edition; the bot buys it only while a card carries a curse (not "Abgestuft") and uses it on that card at once |
 /// | `herbal` | 1 | "Kräuter": like "Ein Bier" |
 /// | `double_grain` | 2 | "Doppelkorn": before a game that is not weak |
 /// | `bitters` | 2 | "Magenbitter": before a weak game |
@@ -444,8 +444,10 @@ pub fn suit_expected_score(
 pub struct RunBot;
 
 fn count_rank<C: PlayingCard>(hand: &[C], rank: Rank) -> usize {
+    // A demoted Unter ("Abgestuft") is no Unter.
     hand.iter()
         .filter(|c| c.face().is_some_and(|f| f.rank == rank))
+        .filter(|c| !crate::rules::is_demoted_jack(**c))
         .count()
 }
 
@@ -636,6 +638,18 @@ impl RunBot {
         };
         let coins = run.coins();
         let price = |p: u32| run.shop_price(content, p);
+        let cursed = Self::cursed_card(run, content);
+        // 0. "Frisches Deck" on a cursed card (ADR 0015).
+        if let Some(target) = cursed {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::CleanseCard),
+                Some(target),
+            ) {
+                return action;
+            }
+        }
         // 1. Stempelkissen and the modifications with a value: on an ace,
         // Kreuz first, one without modification first (effects v2: another
         // modification would replace it).
@@ -709,7 +723,10 @@ impl RunBot {
                 .filter_map(|(slot, id)| {
                     let id = id.as_ref()?;
                     let def = content.consumable(id)?;
-                    let value = consumable_value(id);
+                    let value = match def.action {
+                        ConsumableAction::CleanseCard if cursed.is_some() => 2,
+                        _ => consumable_value(id),
+                    };
                     let cost = price(def.price);
                     (value > 0 && cost <= coins).then_some((value, cost, slot))
                 })
@@ -726,10 +743,26 @@ impl RunBot {
         RunAction::LeaveShop
     }
 
+    /// The first card of the player's edition that carries a curse ("Abgestuft"
+    /// stays: it is the Nullspieler's start edition).
+    fn cursed_card(run: &Run, content: &Content) -> Option<u32> {
+        run.edition()
+            .cards()
+            .iter()
+            .find(|c| {
+                c.mods.iter().any(|m| {
+                    content
+                        .card_mod(m)
+                        .is_some_and(|d| d.kind == crate::content::ModKind::Curse)
+                })
+            })
+            .map(|c| c.id)
+    }
+
     /// Deck ids of the aces, Kreuz first, the least modified first.
     fn ace_targets(run: &Run) -> Vec<u32> {
         let mut aces: Vec<(usize, Suit, u32)> = run
-            .deck()
+            .edition()
             .cards()
             .iter()
             .filter_map(|c| match c.kind {
@@ -1499,13 +1532,32 @@ mod tests {
         );
         run.apply(&content, RunAction::BuyConsumable(0))
             .expect("beer");
-        // "Frisches Deck" is never bought.
+        // "Frisches Deck" only with a cursed card, then used on it.
         let mut run = open_shop(&content, 10);
         offer(&mut run, &[], &["fresh_deck"]);
         assert_ne!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(0)
         );
+        run.edition
+            .add_mod(&content, 9, &crate::content::CardModId::new("battered"), 5)
+            .expect("curse");
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyConsumable(0)
+        );
+        run.apply(&content, RunAction::BuyConsumable(0))
+            .expect("fresh deck");
+        let cleanse = RunBot.shop_action(&run, &content);
+        assert!(matches!(
+            cleanse,
+            RunAction::UseConsumable {
+                target: Some(9),
+                ..
+            }
+        ));
+        run.apply(&content, cleanse).expect("cleanse");
+        assert!(run.edition().get(9).is_some_and(|c| c.mods.is_empty()));
     }
 
     #[test]
@@ -1647,7 +1699,7 @@ mod tests {
             644
         );
         let hearts = suit(Suit::Hearts);
-        let deck: Vec<DealtCard> = crate::deck::Deck::standard()
+        let deck: Vec<DealtCard> = crate::deck::Edition::standard()
             .cards()
             .iter()
             .filter_map(|c| match c.kind {

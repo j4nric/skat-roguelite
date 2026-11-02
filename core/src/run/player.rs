@@ -131,6 +131,17 @@ pub enum PlayerGameEvent {
         /// The card in the trick now.
         substitute: DealtCard,
     },
+    /// A card changed its holder and shows the new holder's edition (ADR
+    /// 0015). The card only when the player knows it: it came to him, or
+    /// it was his (the card given back with "Drei drücken"). A swap
+    /// between the defenders shows no card.
+    CardChangedHands {
+        /// The new holder.
+        seat: Seat,
+        /// The card in the new holder's edition, if the player knows it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        card: Option<DealtCard>,
+    },
     /// The game is scored by the rules.
     GameFinished {
         /// Trick outcome.
@@ -182,6 +193,11 @@ impl PlayerGameEvent {
             Event::CardChalked { old, new } => PlayerGameEvent::CardChalked { old, new },
             Event::CardDrawn { seat, card } => PlayerGameEvent::CardDrawn { seat, card },
             Event::CardReturned { seat, card } => PlayerGameEvent::CardReturned { seat, card },
+            Event::CardChangedHands { seat, old, new } => PlayerGameEvent::CardChangedHands {
+                seat,
+                card: (seat.is_declarer() || old.owner == crate::deck::Owner::Player)
+                    .then_some(new),
+            },
             Event::LeadDemanded { suit } => PlayerGameEvent::LeadDemanded { suit },
             Event::CardRose {
                 seat,

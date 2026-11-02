@@ -80,7 +80,7 @@ fn grand_player_starts_with_eight_augen_on_the_club_ace() {
     let content = content();
     let run = character_run(&content, Character::GrandPlayer);
     let marked: Vec<_> = run
-        .deck()
+        .edition()
         .cards()
         .iter()
         .filter(|c| !c.mods.is_empty())
@@ -89,7 +89,7 @@ fn grand_player_starts_with_eight_augen_on_the_club_ace() {
     assert_eq!(marked[0].kind, "CA".parse().expect("card"));
     assert_eq!(marked[0].mods, vec![CardModId::new("points")]);
     assert_eq!(marked[0].mod_value(&CardModId::new("points")), 8);
-    assert_eq!(run.deck().len(), 32);
+    assert_eq!(run.edition().len(), 32);
     assert!(run.relics().is_empty());
 }
 

@@ -54,29 +54,21 @@ pub(super) fn fixed_deal(
     hands: [&str; 3],
     skat: &str,
 ) -> Vec<RunEvent> {
-    let global = run.sources(content, false);
-    let resolved = resolve_deck(&run.deck, content, &global);
-    let mut pool = resolved.cards.clone();
-    let mut take = |notation: &str| -> DealtCard {
-        let kind: CardKind = notation.parse().expect("notation");
-        let index = pool
-            .iter()
-            .position(|c| c.kind == kind)
-            .expect("card in deck");
-        pool.remove(index)
+    let kinds = |s: &str| -> Vec<CardKind> {
+        s.split_whitespace()
+            .map(|n| n.parse().expect("notation"))
+            .collect()
     };
-    let parse = |s: &str, take: &mut dyn FnMut(&str) -> DealtCard| -> Vec<DealtCard> {
-        s.split_whitespace().map(take).collect()
-    };
-    let hands = [
-        parse(hands[0], &mut take),
-        parse(hands[1], &mut take),
-        parse(hands[2], &mut take),
-    ];
-    let skat = parse(skat, &mut take);
-    let game = Game::with_talon(hands, [skat[0], skat[1]], pool, Seat::DECLARER).expect("deal");
+    let hands = [kinds(hands[0]), kinds(hands[1]), kinds(hands[2])];
+    let skat = kinds(skat);
     let mut events = Vec::new();
-    run.set_up_game(content, game, resolved.point_changes, &mut events);
+    run.deal_fixed(
+        content,
+        [&hands[0], &hands[1], &hands[2]],
+        [skat[0], skat[1]],
+        Seat::DECLARER,
+        &mut events,
+    );
     events
 }
 
@@ -534,7 +526,7 @@ pub(super) fn card_mod_run(content: &Content, card: u32, card_mod: &str) -> Run 
 /// A run whose deck carries `card_mod` with `value` on `card`.
 pub(super) fn card_mod_run_with(content: &Content, card: u32, card_mod: &str, value: i32) -> Run {
     let mut run = relic_run(content, &[]);
-    run.deck
+    run.edition
         .add_mod(content, card, &CardModId::new(card_mod), value)
         .expect("mod");
     run
@@ -573,7 +565,7 @@ fn rank_card_counts_one_rank_higher() {
     let content = content();
     // SK (id 22) carries Rang 1: it now ties with the ST and keeps the trick.
     let run = card_mod_run(&content, 22, "rank");
-    let resolved = resolve_deck(&run.deck, &content, &[]);
+    let resolved = resolve_edition(&run.edition, crate::deck::Owner::Player, &content, &[]);
     let find = |id: u32| *resolved.cards.iter().find(|c| c.id == id).expect("card");
     let king = find(22);
     let ten = find(19);
@@ -582,7 +574,12 @@ fn rank_card_counts_one_rank_higher() {
     assert!(!crate::rules::beats(GameType::Grand, king, king, ten));
     assert!(crate::rules::beats(GameType::Grand, king, king, ace));
     // Unmarked, the ten takes the king.
-    let plain = resolve_deck(&Deck::standard(), &content, &[]);
+    let plain = resolve_edition(
+        &Edition::standard(),
+        crate::deck::Owner::Player,
+        &content,
+        &[],
+    );
     let plain_king = plain.cards[22];
     assert!(crate::rules::beats(
         GameType::Grand,
@@ -719,8 +716,13 @@ fn grandma_turns_all_jacks_into_blanks() {
     let ace = in_play.iter().copied().find(|c| c.id == 7).expect("DA");
     let m = crate::rules::matadors_in(decl.game(), &[ace], in_play);
     assert!(m.with && m.count >= 1);
-    // The deck itself keeps its jacks.
-    assert_eq!(run.deck().blanks(), 0);
+    // The edition itself keeps its jacks.
+    assert!(
+        run.edition()
+            .cards()
+            .iter()
+            .all(|c| c.kind != CardKind::Blank)
+    );
 }
 
 #[test]
@@ -788,8 +790,9 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
         }
     }
     assert!(content.relics.len() >= 30);
-    // Effekte v2 (DESIGN 7.2): 13 modifications.
-    assert_eq!(content.card_mods.len(), 13);
+    // Effekte v2 (DESIGN 7.2): 13 modifications, plus "Abgestuft" of the
+    // Nullspieler (ADR 0015).
+    assert_eq!(content.card_mods.len(), 14);
     assert!(content.encounters.len() >= 8);
     let curses: Vec<&str> = content
         .card_mods
@@ -797,7 +800,7 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
         .filter(|m| m.is_curse())
         .map(|m| m.id.as_str())
         .collect();
-    assert_eq!(curses, ["battered", "stained", "transparent"]);
+    assert_eq!(curses, ["battered", "demoted", "stained", "transparent"]);
     for def in content.card_mods.values() {
         assert_eq!(def.is_curse(), def.text.starts_with("Fluch"), "{}", def.id);
     }
@@ -1075,7 +1078,7 @@ fn stained_lowers_the_base_value_when_its_suit_is_trump() {
     ));
     assert_eq!(b.base_value, 6);
     let run = card_mod_run(&content, 7, "stained");
-    let resolved = resolve_deck(&run.deck, &content, &[]);
+    let resolved = resolve_edition(&run.edition, crate::deck::Owner::Player, &content, &[]);
     assert_eq!(resolved.cards[7].rank_bonus, 0);
     let mut run = relic_run(&content, &[]);
     let coins = run.coins();

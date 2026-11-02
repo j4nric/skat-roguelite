@@ -6,7 +6,7 @@
 //
 // kind: Edge (Rand, immer aktiv), Moment (Markierung oben rechts),
 // Voucher (Gutschein, wenn gedrückt), Curse (Fluch), Special
-// (Spezialkarte).
+// (Spezialkarte), SpecialCurse (Spezialkarte, die ein Fluch ist).
 // values: angebotene Werte, der erste für Zufallsziehungen. Die Wirkungen
 // stehen je Einheit da und werden mit dem Wert der Karte vervielfacht.
 // Ohne values hat die Modifikation keinen Wert und lässt sich nicht
@@ -198,6 +198,22 @@
         rarity: Rare,
         price: 5,
         passive: [Wild],
+    ),
+    // Lever Stichgewinn (ADR 0015, Nullspieler, 02.11.2026): eine
+    // Spezialkarte, die ein Fluch ist, das Gegenstück zu Rang. Ein Unter
+    // ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe
+    // (unter der Sieben, ohne Augen, keine Spitze), jede andere Karte
+    // sticht eine Stufe tiefer. Darf eine normale Modifikation tragen,
+    // keine andere Spezialkarte ersetzt sie, nur Frisches Deck nimmt sie
+    // ab. Nur im Grunddeck des Nullspielers, nie zufällig.
+    (
+        id: "demoted",
+        kind: SpecialCurse,
+        name: "Abgestuft",
+        text: "Fluch: Ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe, ohne Augen. Jede andere Karte sticht eine Stufe tiefer.",
+        rarity: Common,
+        price: 1,
+        passive: [Demote],
     ),
     // Lever Stichgewinn and Augen (user idea, 02.11.2026): played by the
     // player in a suit game or Grand, the card comes back into his hand

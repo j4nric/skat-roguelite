@@ -1,17 +1,17 @@
-//! The shared deck of a run (ADR 0005) as card instances.
+//! The player's edition of the deck (ADR 0015) as card instances.
 //!
-//! Every card of the run's deck is a [`DeckCard`]: a stable instance id, a
-//! [`CardKind`] (normal card or Blanko-Karte) and the card modifications
-//! attached to it. The deck never drops below 32 cards: removing a card at
-//! 32 replaces it with a blank, so the deal stays 10/10/10/2 and there are
-//! always ten tricks (design document 16). Adding a card fills a blank if
-//! there is one; otherwise the deck grows beyond 32 and for every game the
-//! cards beyond the first 32 after shuffling stay in the talon.
+//! Every game deals the normal Skat deck: 32 different cards, ids 0..32 in
+//! [`standard_deck`] order. Every player owns his own edition of each card
+//! ([`Edition`]): the same card with his modifications. The player builds
+//! his edition over the run ([`DeckCard`] per card); the defenders' editions
+//! are derived from who sits at the table (a Stammgast plays the plain
+//! edition, a boss his boss edition) and never stored. No card leaves the
+//! deck and none is added: there is no talon and no blank from removing.
 //!
-//! For one game the deck is resolved into [`DealtCard`]s: copies that carry
-//! the effective Augen, rank bonus and visibility after all modifications.
-//! The resolution itself lives in [`crate::content`], because it applies
-//! content effects.
+//! For one game every dealt card is resolved into a [`DealtCard`] with the
+//! edition of the seat that holds it ([`Owner`]): the effective Augen, rank
+//! bonus and visibility after its modifications. The resolution itself
+//! lives in [`crate::content`], because it applies content effects.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -23,10 +23,11 @@ use crate::cards::{Card, PlayingCard, Suit, standard_deck};
 use crate::content::{CardModId, Content, DeckSpec, ModKind};
 use crate::game::{CARDS_IN_PLAY, HAND_SIZE};
 
-/// One card instance of the run's deck.
+/// One card of an edition.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeckCard {
-    /// Stable instance id, unique within the run.
+    /// Stable instance id: the card's index in [`standard_deck`], the same
+    /// in every edition.
     pub id: u32,
     /// Normal card or blank.
     pub kind: CardKind,
@@ -61,8 +62,25 @@ impl DeckCard {
     }
 }
 
+/// Whose edition a dealt card is (ADR 0015): the player's, a Stammgast's
+/// (the plain edition) or the boss's. For the view, the card back and the
+/// hooks: a card's modifications act only in its owner's edition.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+pub enum Owner {
+    /// The player's edition ([`Edition`] of the run), also the skat.
+    #[default]
+    Player,
+    /// A Stammgast: the plain edition.
+    Guest,
+    /// The boss: his boss edition (`edition` in `bosses.ron`).
+    Boss,
+}
+
 /// A card instance as dealt into one game, with every modification already
-/// resolved. Cheap to copy; the game state machine and the AI work on it.
+/// resolved in the edition of its holder. Cheap to copy; the game state
+/// machine and the AI work on it.
 ///
 /// Ordering: by kind (so hands sort like plain cards, blanks last), then by
 /// instance id.
@@ -70,7 +88,7 @@ impl DeckCard {
 pub struct DealtCard {
     /// Normal card or blank (a boss may blank out cards for one game).
     pub kind: CardKind,
-    /// Instance id of the [`DeckCard`].
+    /// Instance id of the [`DeckCard`]: the same in every edition.
     pub id: u32,
     /// Effective Augen.
     pub card_points: u32,
@@ -98,6 +116,12 @@ pub struct DealtCard {
     /// Only the copies the player holds (hand and skat) carry it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wild: bool,
+    /// "Abgestuft" (DESIGN 9.2): see [`PlayingCard::demoted`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub demoted: bool,
+    /// Whose edition this copy is.
+    #[serde(default)]
+    pub owner: Owner,
 }
 
 impl DealtCard {
@@ -115,6 +139,8 @@ impl DealtCard {
             no_discard: false,
             point_debt: 0,
             wild: false,
+            demoted: false,
+            owner: Owner::Player,
         }
     }
 }
@@ -155,6 +181,14 @@ impl PlayingCard for DealtCard {
 
     fn wild(self) -> bool {
         self.wild
+    }
+
+    fn demoted(self) -> bool {
+        self.demoted
+    }
+
+    fn instance(self) -> Option<u32> {
+        Some(self.id)
     }
 
     fn with_suit(self, suit: Suit) -> DealtCard {
@@ -201,16 +235,14 @@ impl Odds {
     }
 }
 
-/// Where one card of the deck lands when a game is dealt (DESIGN 7.4).
+/// Where one card lands when a game is dealt (DESIGN 7.4).
 ///
-/// Every game shuffles the whole deck, blanks and talon included, and
-/// deals the first 32 cards 10/10/10/2; the rest stays in the talon. So
-/// every card instance has the same chance for every place, and the odds
-/// depend on the deck size only: in the standard deck a card reaches the
-/// player's hand or the skat with 12 / 32 = 37.5 %.
+/// Since ADR 0015 the deck is always the 32 cards of the Skat deck, so
+/// every card reaches the player's hand or the skat with 12 / 32 = 37.5 %;
+/// otherwise a defender holds it in his own edition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DealOdds {
-    /// Cards in the deck, blanks included.
+    /// Cards in the deck: always 32.
     pub deck_size: u32,
     /// In the player's ten cards.
     pub hand: Odds,
@@ -220,25 +252,20 @@ pub struct DealOdds {
     pub hand_or_skat: Odds,
     /// With one of the two defenders.
     pub defenders: Odds,
-    /// In the talon (not dealt in this game).
-    pub talon: Odds,
 }
 
-/// The odds for any one card of a deck with `deck_size` cards. Fewer than
-/// 32 cards cannot happen (blanks fill up), so such sizes count as 32.
+/// The odds for any one card of the deck.
 #[must_use]
-pub fn deal_odds(deck_size: usize) -> DealOdds {
-    let n = u32::try_from(deck_size.max(CARDS_IN_PLAY)).unwrap_or(u32::MAX);
+pub fn deal_odds() -> DealOdds {
+    let n = u32::try_from(CARDS_IN_PLAY).unwrap_or(32);
     let hand = u32::try_from(HAND_SIZE).unwrap_or(10);
-    let in_play = u32::try_from(CARDS_IN_PLAY).unwrap_or(32);
-    let skat = in_play - 3 * hand;
+    let skat = n - 3 * hand;
     DealOdds {
         deck_size: n,
         hand: Odds::new(hand, n),
         skat: Odds::new(skat, n),
         hand_or_skat: Odds::new(hand + skat, n),
         defenders: Odds::new(2 * hand, n),
-        talon: Odds::new(n - in_play, n),
     }
 }
 
@@ -247,9 +274,6 @@ pub fn deal_odds(deck_size: usize) -> DealOdds {
 pub enum DeckError {
     /// No card with this instance id.
     UnknownCard(u32),
-    /// A blank cannot be removed while the deck holds only 32 cards: that
-    /// would leave fewer than ten tricks.
-    WouldShrinkBelowMinimum,
     /// Blanks carry no modifications.
     BlankCannotBeModified,
     /// The card already carries this modification and it cannot be
@@ -264,19 +288,21 @@ pub enum DeckError {
     UnknownMod(CardModId),
     /// The deck holds no instance of this printed card.
     MissingCard(Card),
+    /// "Frisches Deck": the card carries no modification.
+    NothingToCleanse(u32),
 }
 
 impl fmt::Display for DeckError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DeckError::UnknownCard(id) => write!(f, "no card with id {id}"),
-            DeckError::WouldShrinkBelowMinimum => f.write_str("the deck cannot shrink below 32"),
             DeckError::BlankCannotBeModified => f.write_str("blanks cannot be modified"),
             DeckError::AlreadyModified(m) => write!(f, "card already carries {m}"),
             DeckError::Cursed(m) => write!(f, "card is cursed with {m}"),
             DeckError::AtMaximum(m) => write!(f, "{m} is at its highest value"),
             DeckError::UnknownMod(m) => write!(f, "unknown card mod {m}"),
             DeckError::MissingCard(c) => write!(f, "no {c} in the deck"),
+            DeckError::NothingToCleanse(id) => write!(f, "card {id} carries no modification"),
         }
     }
 }
@@ -286,30 +312,6 @@ impl std::error::Error for DeckError {}
 /// What a deck operation did, for events and the UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeckChange {
-    /// A card was replaced by a new blank.
-    ReplacedByBlank {
-        /// The removed card.
-        removed: DeckCard,
-        /// Id of the new blank.
-        blank: u32,
-    },
-    /// A card left the deck without replacement (deck above 32).
-    Removed {
-        /// The removed card.
-        removed: DeckCard,
-    },
-    /// A card was added and took the place of a blank.
-    FilledBlank {
-        /// Id of the new card.
-        card: u32,
-        /// Id of the blank that left the deck.
-        blank: u32,
-    },
-    /// A card was added on top of 32 or more cards.
-    Added {
-        /// Id of the new card.
-        card: u32,
-    },
     /// A modification was attached to a card, raised or put in place of
     /// another one (effects v2, DESIGN 7.2).
     Modified {
@@ -331,6 +333,14 @@ pub enum DeckChange {
         /// The modification that fell off.
         card_mod: CardModId,
     },
+    /// "Frisches Deck": every modification fell off a card, curses
+    /// included (DESIGN 7.3).
+    Cleansed {
+        /// Id of the card.
+        card: u32,
+        /// The modifications that fell off.
+        removed: Vec<CardModId>,
+    },
 }
 
 /// The modification "Augen" (DESIGN 7.2): one signed value with
@@ -349,17 +359,19 @@ const fn one() -> i32 {
 /// ([`migrate_legacy_mods`]).
 pub const MODS_VERSION: u32 = 2;
 
-/// The run's shared deck.
+/// An edition of the 32 cards (ADR 0015): per card its modifications. The
+/// run stores the player's ([`crate::run::Run::edition`]); a boss edition
+/// is built from `bosses.ron` for every game ([`Edition::with_mods`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Deck {
+pub struct Edition {
     cards: Vec<DeckCard>,
     next_id: u32,
     /// [`MODS_VERSION`] once the card modifications are effects v2.
     mods_version: u32,
 }
 
-impl<'de> Deserialize<'de> for Deck {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Deck, D::Error> {
+impl<'de> Deserialize<'de> for Edition {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Edition, D::Error> {
         #[derive(Deserialize)]
         struct Saved {
             cards: Vec<DeckCard>,
@@ -368,7 +380,7 @@ impl<'de> Deserialize<'de> for Deck {
             mods_version: u32,
         }
         let saved = Saved::deserialize(deserializer)?;
-        let mut deck = Deck {
+        let mut deck = Edition {
             cards: saved.cards,
             next_id: saved.next_id,
             mods_version: saved.mods_version,
@@ -468,26 +480,49 @@ pub fn migrate_legacy_mods(card: &mut DeckCard) {
     }
 }
 
-impl Default for Deck {
-    fn default() -> Deck {
-        Deck::standard()
+impl Default for Edition {
+    fn default() -> Edition {
+        Edition::standard()
     }
 }
 
-impl Deck {
-    /// The standard 32-card deck, ids 0..32 in [`standard_deck`] order.
+impl Edition {
+    /// The plain edition: the 32 cards without modifications, ids 0..32 in
+    /// [`standard_deck`] order.
     #[must_use]
-    pub fn standard() -> Deck {
+    pub fn standard() -> Edition {
         let cards: Vec<DeckCard> = standard_deck()
             .into_iter()
             .zip(0u32..)
             .map(|(card, id)| DeckCard::new(id, CardKind::Normal(card)))
             .collect();
-        Deck {
+        Edition {
             next_id: 32,
             cards,
             mods_version: MODS_VERSION,
         }
+    }
+
+    /// The plain edition with `mods` on every card that matches their
+    /// filter (a boss edition, `edition` in `bosses.ron`). Their "beim
+    /// Erhalt" hooks do not fire.
+    pub fn with_mods(
+        mods: &[(crate::content::CardFilter, CardModId, i32)],
+        content: &Content,
+    ) -> Result<Edition, DeckError> {
+        let mut edition = Edition::standard();
+        for (filter, card_mod, value) in mods {
+            let ids: Vec<u32> = edition
+                .cards
+                .iter()
+                .filter(|c| c.kind.face().is_some_and(|f| filter.matches(f)))
+                .map(|c| c.id)
+                .collect();
+            for id in ids {
+                edition.add_mod(content, id, card_mod, *value)?;
+            }
+        }
+        Ok(edition)
     }
 
     /// All cards, in id order.
@@ -508,119 +543,56 @@ impl Deck {
         self.cards.is_empty()
     }
 
-    /// Number of blanks.
-    #[must_use]
-    pub fn blanks(&self) -> usize {
-        self.cards
-            .iter()
-            .filter(|c| c.kind == CardKind::Blank)
-            .count()
-    }
-
     /// The card with this instance id.
     #[must_use]
     pub fn get(&self, id: u32) -> Option<&DeckCard> {
         self.cards.iter().find(|c| c.id == id)
     }
 
-    fn take_id(&mut self) -> u32 {
-        let id = self.next_id;
-        self.next_id += 1;
-        id
-    }
-
-    /// Remove a card. At 32 cards it is replaced by a new blank; above 32
-    /// it simply leaves the deck. A blank can only be removed above 32.
-    pub fn remove(&mut self, id: u32) -> Result<DeckChange, DeckError> {
-        let index = self
-            .cards
-            .iter()
-            .position(|c| c.id == id)
-            .ok_or(DeckError::UnknownCard(id))?;
-        if self.cards.len() > CARDS_IN_PLAY {
-            let removed = self.cards.remove(index);
-            return Ok(DeckChange::Removed { removed });
-        }
-        if self.cards[index].kind == CardKind::Blank {
-            return Err(DeckError::WouldShrinkBelowMinimum);
-        }
-        let removed = self.cards.remove(index);
-        let blank = self.take_id();
-        self.cards.push(DeckCard::new(blank, CardKind::Blank));
-        Ok(DeckChange::ReplacedByBlank { removed, blank })
-    }
-
-    /// Add a card. It takes the place of the oldest blank if there is one;
-    /// otherwise the deck grows and the extra cards rotate through the
-    /// talon from game to game.
-    pub fn add(&mut self, kind: CardKind, mods: Vec<CardModId>) -> DeckChange {
-        let card = self.take_id();
-        let blank = self
-            .cards
-            .iter()
-            .position(|c| c.kind == CardKind::Blank && kind != CardKind::Blank);
-        let mut new = DeckCard::new(card, kind);
-        new.mods = mods;
-        self.cards.push(new);
-        match blank {
-            Some(index) => {
-                let blank = self.cards.remove(index).id;
-                DeckChange::FilledBlank { card, blank }
-            }
-            None => DeckChange::Added { card },
-        }
-    }
-
-    /// Build a character's start deck from this one: remove one instance
-    /// of every card in `spec.remove` (the first by id), then add every
-    /// card of `spec.add` (filling the blanks the removals left), then
-    /// attach every modification of `spec.mods` to the first instance (by
-    /// id) of its card, with its value ([`Deck::add_mod`]).
+    /// Build a character's start edition from this one: attach every
+    /// modification of `spec.mods` to its card, with its value
+    /// ([`Edition::add_mod`]).
     pub fn apply_spec(
         &mut self,
         spec: &DeckSpec,
         content: &Content,
     ) -> Result<Vec<DeckChange>, DeckError> {
         let mut changes = Vec::new();
-        for &card in &spec.remove {
-            let id = self
-                .cards
-                .iter()
-                .find(|c| c.kind == CardKind::Normal(card))
-                .map(|c| c.id)
-                .ok_or(DeckError::MissingCard(card))?;
-            changes.push(self.remove(id)?);
-        }
-        for &card in &spec.add {
-            changes.push(self.add(CardKind::Normal(card), Vec::new()));
-        }
         for (card, card_mod, value) in &spec.mods {
             let id = self
                 .cards
                 .iter()
-                .filter(|c| c.kind == CardKind::Normal(*card))
+                .find(|c| c.kind == CardKind::Normal(*card))
                 .map(|c| c.id)
-                .min()
                 .ok_or(DeckError::MissingCard(*card))?;
             changes.push(self.add_mod(content, id, card_mod, *value)?);
         }
         Ok(changes)
     }
 
-    /// Where any one card of this deck lands when a game is dealt.
+    /// The id of a printed card in this edition.
     #[must_use]
-    pub fn deal_odds(&self) -> DealOdds {
-        deal_odds(self.len())
+    pub fn id_of(&self, card: Card) -> Option<u32> {
+        self.cards
+            .iter()
+            .find(|c| c.kind == CardKind::Normal(card))
+            .map(|c| c.id)
     }
 
-    /// Copy a card including its modifications ("Kopieren").
-    pub fn copy(&mut self, id: u32) -> Result<DeckChange, DeckError> {
-        let original = self.get(id).ok_or(DeckError::UnknownCard(id))?.clone();
-        let change = self.add(original.kind, original.mods);
-        if let Some(copy) = self.cards.iter_mut().max_by_key(|c| c.id) {
-            copy.mod_values = original.mod_values;
+    /// "Frisches Deck" (DESIGN 7.3): every modification falls off the
+    /// card, curses and special cards included.
+    pub fn cleanse(&mut self, id: u32) -> Result<DeckChange, DeckError> {
+        let card = self
+            .cards
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(DeckError::UnknownCard(id))?;
+        if card.mods.is_empty() {
+            return Err(DeckError::NothingToCleanse(id));
         }
-        Ok(change)
+        let removed = std::mem::take(&mut card.mods);
+        card.mod_values.clear();
+        Ok(DeckChange::Cleansed { card: id, removed })
     }
 
     /// Attach a modification with `value` to a normal card by the rules
@@ -634,7 +606,8 @@ impl Deck {
     /// - another modification replaces the one on the card (named in
     ///   [`DeckChange::Modified`] as `replaced`);
     /// - a cursed card takes nothing but a special card
-    ///   ([`DeckError::Cursed`]);
+    ///   ([`DeckError::Cursed`]); a special curse ("Abgestuft") takes a
+    ///   normal modification but no other special card;
     /// - Augen and Ramponiert are one signed value ([`AUGEN`],
     ///   [`RAMPONIERT`]): Augen with a negative value is Ramponiert, a
     ///   curse; Ramponiert on a card with Augen adds up, and the sign of
@@ -666,8 +639,17 @@ impl Deck {
             return Err(DeckError::BlankCannotBeModified);
         }
         let kind_of = |m: &CardModId| content.card_mod(m).map(|d| d.kind);
-        let special = |m: &CardModId| kind_of(m) == Some(ModKind::Special);
-        if !def.is_special() {
+        let special = |m: &CardModId| kind_of(m).is_some_and(ModKind::is_special);
+        if def.is_special() {
+            // A special curse ("Abgestuft") holds the special slot for good.
+            if let Some(curse) = card
+                .mods
+                .iter()
+                .find(|m| kind_of(m) == Some(ModKind::SpecialCurse) && *m != card_mod)
+            {
+                return Err(DeckError::Cursed(curse.clone()));
+            }
+        } else {
             if let Some(curse) = card
                 .mods
                 .iter()
@@ -718,7 +700,7 @@ impl Deck {
         })
     }
 
-    /// [`Deck::add_mod`] for the signed Augen value (Augen ≥ +1,
+    /// [`Edition::add_mod`] for the signed Augen value (Augen ≥ +1,
     /// Ramponiert ≤ −1, DESIGN 7.2).
     fn add_signed_points(
         &mut self,
@@ -749,7 +731,7 @@ impl Deck {
         let normal = card
             .mods
             .iter()
-            .find(|m| kind_of(m) != Some(ModKind::Special))
+            .find(|m| !kind_of(m).is_some_and(ModKind::is_special))
             .cloned();
         let (base, replaced) = match normal {
             Some(m) if m == augen => (card.mod_value(&augen), None),
@@ -807,104 +789,108 @@ mod tests {
     }
 
     #[test]
-    fn standard_deck_has_32_cards_with_ids_in_order() {
-        let deck = Deck::standard();
-        assert_eq!(deck.len(), 32);
-        assert_eq!(deck.blanks(), 0);
-        assert_eq!(deck.get(0).map(|d| d.kind), Some(CardKind::Normal(c("D7"))));
+    fn standard_edition_has_32_cards_with_ids_in_order() {
+        let edition = Edition::standard();
+        assert_eq!(edition.len(), 32);
         assert_eq!(
-            deck.get(31).map(|d| d.kind),
+            edition.get(0).map(|d| d.kind),
+            Some(CardKind::Normal(c("D7")))
+        );
+        assert_eq!(
+            edition.get(31).map(|d| d.kind),
             Some(CardKind::Normal(c("CA")))
         );
+        assert_eq!(edition.id_of(c("CA")), Some(31));
     }
 
     #[test]
-    fn removing_at_32_leaves_a_blank() {
-        let mut deck = Deck::standard();
-        let change = deck.remove(0).expect("remove");
-        assert!(matches!(
-            change,
-            DeckChange::ReplacedByBlank { blank: 32, .. }
-        ));
-        assert_eq!(deck.len(), 32);
-        assert_eq!(deck.blanks(), 1);
-        assert_eq!(deck.get(0), None);
-        // A blank cannot be removed at 32.
-        assert_eq!(deck.remove(32), Err(DeckError::WouldShrinkBelowMinimum));
-        assert_eq!(deck.remove(99), Err(DeckError::UnknownCard(99)));
-    }
-
-    #[test]
-    fn adding_fills_a_blank_first_then_grows_into_the_talon() {
-        let mut deck = Deck::standard();
-        deck.remove(0).expect("remove");
-        let change = deck.add(CardKind::Normal(c("CJ")), Vec::new());
-        assert_eq!(
-            change,
-            DeckChange::FilledBlank {
-                card: 33,
-                blank: 32
-            }
-        );
-        assert_eq!(deck.len(), 32);
-        assert_eq!(deck.blanks(), 0);
-        let change = deck.add(CardKind::Normal(c("CA")), Vec::new());
-        assert_eq!(change, DeckChange::Added { card: 34 });
-        assert_eq!(deck.len(), 33);
-        // Above 32 a removal shrinks the deck instead of leaving a blank.
-        assert!(matches!(deck.remove(34), Ok(DeckChange::Removed { .. })));
-        assert_eq!(deck.len(), 32);
-    }
-
-    #[test]
-    fn modifications_never_go_on_blanks_and_copy_with_their_values() {
+    fn cleansing_takes_every_modification_off_curses_included() {
         let content = Content::load().expect("content");
-        let mut deck = Deck::standard();
-        let points = CardModId::new(AUGEN);
-        deck.add_mod(&content, 5, &points, 4).expect("mod");
-        deck.remove(6).expect("remove");
+        let mut edition = Edition::standard();
+        let battered = CardModId::new(RAMPONIERT);
+        edition.add_mod(&content, 5, &battered, 5).expect("curse");
+        edition
+            .add_mod(&content, 5, &CardModId::new("undead"), 1)
+            .expect("special");
         assert_eq!(
-            deck.add_mod(&content, 32, &points, 4),
-            Err(DeckError::BlankCannotBeModified)
+            edition.cleanse(5),
+            Ok(DeckChange::Cleansed {
+                card: 5,
+                removed: vec![battered, CardModId::new("undead")],
+            })
         );
-        let copy = deck.copy(5).expect("copy");
-        assert_eq!(
-            copy,
-            DeckChange::FilledBlank {
-                card: 33,
-                blank: 32
-            }
+        assert!(
+            edition
+                .get(5)
+                .is_some_and(|d| d.mods.is_empty() && d.mod_values.is_empty())
         );
-        assert_eq!(deck.get(33).map(|d| d.mod_value(&points)), Some(4));
+        assert_eq!(edition.cleanse(5), Err(DeckError::NothingToCleanse(5)));
+        assert_eq!(edition.cleanse(40), Err(DeckError::UnknownCard(40)));
     }
 
     #[test]
-    fn deal_odds_follow_the_deck_size() {
-        let odds = Deck::standard().deal_odds();
+    fn demoted_is_a_special_curse_next_to_one_normal_modification() {
+        let content = Content::load().expect("content");
+        let mut edition = Edition::standard();
+        let jack = edition.id_of(c("CJ")).expect("CJ");
+        let demoted = CardModId::new("demoted");
+        edition
+            .add_mod(&content, jack, &demoted, 1)
+            .expect("demoted");
+        // A normal modification sits next to it.
+        edition
+            .add_mod(&content, jack, &CardModId::new(AUGEN), 3)
+            .expect("Augen next to the special curse");
+        // No other special card replaces it, and it is not raised.
+        assert_eq!(
+            edition.add_mod(&content, jack, &CardModId::new("undead"), 1),
+            Err(DeckError::Cursed(demoted.clone()))
+        );
+        assert_eq!(
+            edition.add_mod(&content, jack, &demoted, 1),
+            Err(DeckError::AlreadyModified(demoted.clone()))
+        );
+        assert_eq!(
+            edition.get(jack).map(|d| d.mods.clone()),
+            Some(vec![demoted, CardModId::new(AUGEN)])
+        );
+        // Frisches Deck takes it off.
+        assert!(edition.cleanse(jack).is_ok());
+    }
+
+    #[test]
+    fn boss_editions_put_a_modification_on_every_matching_card() {
+        let content = Content::load().expect("content");
+        let sevens = crate::content::CardFilter {
+            suit: None,
+            rank: Some(crate::cards::Rank::Seven),
+        };
+        let edition =
+            Edition::with_mods(&[(sevens, CardModId::new(AUGEN), 4)], &content).expect("edition");
+        let modified: Vec<u32> = edition
+            .cards()
+            .iter()
+            .filter(|d| !d.mods.is_empty())
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(modified.len(), 4);
+        assert!(modified.iter().all(|&id| edition.get(id).is_some_and(|d| {
+            d.kind
+                .face()
+                .is_some_and(|f| f.rank == crate::cards::Rank::Seven)
+                && d.mod_value(&CardModId::new(AUGEN)) == 4
+        })));
+    }
+
+    #[test]
+    fn deal_odds_are_twelve_of_thirty_two() {
+        let odds = deal_odds();
         assert_eq!(odds.deck_size, 32);
         assert_eq!(odds.hand_or_skat, Odds::new(12, 32));
         assert_eq!(odds.hand_or_skat.permille, 375);
         assert_eq!(odds.hand.permille, 313);
         assert_eq!(odds.skat.permille, 63);
         assert_eq!(odds.defenders.permille, 625);
-        assert_eq!(odds.talon.numerator, 0);
-        // A removed card leaves a blank: the odds stay.
-        let mut deck = Deck::standard();
-        deck.remove(0).expect("remove");
-        assert_eq!(deck.deal_odds(), Deck::standard().deal_odds());
-        // A card beyond 32 lowers everyone's odds and fills the talon.
-        deck.add(CardKind::Normal(c("CJ")), Vec::new());
-        deck.add(CardKind::Normal(c("CA")), Vec::new());
-        let odds = deck.deal_odds();
-        assert_eq!(odds.deck_size, 33);
-        assert_eq!(odds.hand_or_skat.permille, 364);
-        assert_eq!(odds.talon, Odds::new(1, 33));
-        let sum = odds.hand.numerator
-            + odds.skat.numerator
-            + odds.defenders.numerator
-            + odds.talon.numerator;
-        assert_eq!(sum, odds.deck_size);
-        assert_eq!(deal_odds(0).deck_size, 32);
     }
 
     #[test]

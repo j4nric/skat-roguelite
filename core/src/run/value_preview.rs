@@ -128,8 +128,6 @@ struct Knowledge {
     known: BTreeSet<u32>,
     /// Whether the player has seen the skat.
     skat_known: bool,
-    /// Whether cards lie in the talon (deck larger than 32 cards).
-    talon: bool,
 }
 
 /// Where a trump may be, as far as the player knows.
@@ -139,7 +137,8 @@ struct Place {
     held: bool,
     /// In play with a defender.
     not_held: bool,
-    /// Not in play (every copy in the talon).
+    /// No Spitze in this game: a Unter the player's edition demotes
+    /// ("Abgestuft") that is or may be among his twelve cards.
     absent: bool,
 }
 
@@ -171,25 +170,16 @@ impl Knowledge {
         // card given back to a defender ("Drei drücken").
         known.extend(active.skat_shown.iter().map(|c| c.id));
         known.extend(game.returned().map(|(_, c)| c.id));
-        Knowledge {
-            known,
-            skat_known,
-            talon: !game.talon().is_empty(),
-        }
-    }
-
-    /// Whether the player knows the card is in play: always without a
-    /// talon.
-    fn in_play(&self, card: u32) -> bool {
-        !self.talon || self.known.contains(&card)
+        Knowledge { known, skat_known }
     }
 
     /// Whether lines and hooks of `source` count for the preview: card
-    /// modifications only on cards the player knows to be in play, so the
-    /// preview does not tell which cards lie in the talon.
+    /// modifications only on cards whose holder the player knows (ADR
+    /// 0015: a card's modifications are its holder's edition, so an
+    /// unknown card might sit in another edition).
     fn counts(&self, source: &Source) -> bool {
         match source {
-            Source::CardMod { card, .. } => self.in_play(*card),
+            Source::CardMod { card, .. } => self.known.contains(card),
             _ => true,
         }
     }
@@ -201,6 +191,13 @@ impl Knowledge {
         let game = &active.game;
         let declarer = game.declarer_cards();
         let deck = game.deck_cards();
+        // The player's edition: a Unter it demotes is no Unter in his
+        // twelve cards (ADR 0015, DESIGN 9.2).
+        let demoted_for_player = |id: u32| {
+            game.editions()[Seat::DECLARER.index()]
+                .iter()
+                .any(|e| e.id == id && crate::rules::is_demoted_jack(*e))
+        };
         let places: Vec<Place> = game_type
             .trump_order()
             .into_iter()
@@ -209,22 +206,28 @@ impl Knowledge {
                 if copies.is_empty() {
                     return None;
                 }
-                let known_held = copies
+                let held_copy = copies
                     .iter()
-                    .any(|c| self.known.contains(&c.id) && declarer.iter().any(|d| d.id == c.id));
-                if known_held {
+                    .find(|c| self.known.contains(&c.id) && declarer.iter().any(|d| d.id == c.id));
+                if let Some(c) = held_copy {
+                    let demoted = crate::rules::is_demoted_jack(**c);
                     return Some(Place {
-                        held: true,
+                        held: !demoted,
                         not_held: false,
-                        absent: false,
+                        absent: demoted,
                     });
                 }
-                let unknown = copies.iter().any(|c| !self.known.contains(&c.id));
+                let unknown: Vec<_> = copies
+                    .iter()
+                    .filter(|c| !self.known.contains(&c.id))
+                    .collect();
                 let known_in_play = copies.iter().any(|c| self.known.contains(&c.id));
+                let maybe_held = !unknown.is_empty() && !self.skat_known;
+                let demoted = unknown.iter().any(|c| demoted_for_player(c.id));
                 Some(Place {
-                    held: unknown && !self.skat_known,
-                    not_held: known_in_play || unknown,
-                    absent: !known_in_play && self.talon,
+                    held: maybe_held && !demoted,
+                    not_held: known_in_play || !unknown.is_empty(),
+                    absent: maybe_held && demoted,
                 })
             })
             .collect();
@@ -289,7 +292,7 @@ mod tests {
 
     /// A Null deal the declarer cannot lose (all eight sevens).
     const SAFE_NULL: [&str; 3] = [
-        "D7 D7 H7 H7 S7 S7 C7 C7 D8 H8",
+        "D7 DJ H7 HJ S7 SJ C7 CJ D8 H8",
         "D9 DT DQ DK DA H9 HT HQ HK HA",
         "S8 S9 ST SQ SK SA C8 C9 CT CQ",
     ];
@@ -477,7 +480,7 @@ mod tests {
             &mut out,
         );
         assert_eq!(out.into_iter().collect::<Vec<_>>(), vec![(false, 2)]);
-        // A trump that may lie in the talon is skipped or counted.
+        // A demoted Unter that may lie in the skat is skipped or counted.
         let maybe = Place {
             held: false,
             not_held: true,

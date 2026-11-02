@@ -46,13 +46,18 @@ use skat_core::run::{Run, RunAction, RunError, RunErrorCode, RunEvent, RunStart}
 use wasm_bindgen::prelude::*;
 
 /// Version of the save format. Saves with another version are rejected,
-/// so the web app can start a new run instead of crashing.
-pub const SAVE_VERSION: u32 = 1;
+/// so the web app can start a new run instead of crashing. Version 2 is
+/// the model of own editions (ADR 0015, M9): a running run saved before
+/// (version 1, shared deck) is discarded with `OutdatedSave`; the meta
+/// state (unlocks, statistics, stakes) is a separate save and stays.
+pub const SAVE_VERSION: u32 = 2;
 
 /// Error codes of the shell itself, next to the [`RunErrorCode`]s of the
 /// core: `InvalidSeed` (not a decimal u64), `InvalidAction` (not a
 /// `RunAction` in JSON), `InvalidSave` (not a save), `UnsupportedSave`
-/// (another save version), `Internal` (content or serialization failed),
+/// (another save version), `OutdatedSave` (a run saved under older rules,
+/// before own editions, ADR 0015: discarded, the player is told once),
+/// `Internal` (content or serialization failed),
 /// `InvalidCharacter` (not a character id such as `"Declarer"`),
 /// `CharacterLocked` (the meta state has not unlocked it),
 /// `UnknownCharacter` (the content has no such character),
@@ -60,11 +65,12 @@ pub const SAVE_VERSION: u32 = 1;
 /// version), `InvalidEvents` (not a list of player events),
 /// `InvalidLength` (not `"Full"` or `"Short"`), `StakeLocked` (the stake
 /// is above the highest the meta state unlocked).
-pub const SHELL_ERROR_CODES: [&str; 13] = [
+pub const SHELL_ERROR_CODES: [&str; 14] = [
     "InvalidSeed",
     "InvalidAction",
     "InvalidSave",
     "UnsupportedSave",
+    "OutdatedSave",
     "Internal",
     "InvalidCharacter",
     "CharacterLocked",
@@ -343,12 +349,12 @@ pub fn catalog_json() -> Result<String, String> {
     serde_json::to_string(&catalog).map_err(internal)
 }
 
-/// Where any one card lands when a deck of `deck_size` cards is dealt
-/// (DESIGN 7.4), as JSON: `{deck_size, hand, skat, hand_or_skat,
-/// defenders, talon}`, each odds as `{numerator, denominator, permille}`.
-pub fn deal_odds_json(deck_size: u32) -> Result<String, String> {
-    let size = usize::try_from(deck_size).map_err(internal)?;
-    serde_json::to_string(&deal_odds(size)).map_err(internal)
+/// Where any one card lands when a game is dealt (DESIGN 7.4; always the
+/// 32 cards since ADR 0015), as JSON: `{deck_size, hand, skat,
+/// hand_or_skat, defenders}`, each odds as `{numerator, denominator,
+/// permille}`.
+pub fn deal_odds_json() -> Result<String, String> {
+    serde_json::to_string(&deal_odds()).map_err(internal)
 }
 
 /// The embedded content, parsed once.
@@ -425,13 +431,29 @@ impl Session {
 
     /// Load a run saved with [`Session::save`].
     pub fn load(state: &str) -> Result<Session, String> {
-        let save: Save = serde_json::from_str(state).map_err(|e| error_json("InvalidSave", e))?;
-        if save.version != SAVE_VERSION {
+        #[derive(Deserialize)]
+        struct Version {
+            version: u32,
+        }
+        // The version first: an older run does not parse as a run any more.
+        let version: Version =
+            serde_json::from_str(state).map_err(|e| error_json("InvalidSave", e))?;
+        if version.version < SAVE_VERSION {
             return Err(error_json(
-                "UnsupportedSave",
-                format!("unsupported save version {}", save.version),
+                "OutdatedSave",
+                format!(
+                    "save version {} is from before own editions (ADR 0015)",
+                    version.version
+                ),
             ));
         }
+        if version.version != SAVE_VERSION {
+            return Err(error_json(
+                "UnsupportedSave",
+                format!("unsupported save version {}", version.version),
+            ));
+        }
+        let save: Save = serde_json::from_str(state).map_err(|e| error_json("InvalidSave", e))?;
         Ok(Session {
             content: content()?,
             run: save.run,
@@ -584,11 +606,11 @@ pub fn catalog() -> Result<String, JsError> {
     catalog_json().map_err(|e| JsError::new(&e))
 }
 
-/// Where any one card lands when a deck of `deckSize` cards is dealt, as
-/// JSON (see [`deal_odds_json`]).
+/// Where any one card lands when a game is dealt, as JSON (see
+/// [`deal_odds_json`]).
 #[wasm_bindgen(js_name = dealOdds)]
-pub fn deal_odds_js(deck_size: u32) -> Result<String, JsError> {
-    deal_odds_json(deck_size).map_err(|e| JsError::new(&e))
+pub fn deal_odds_js() -> Result<String, JsError> {
+    deal_odds_json().map_err(|e| JsError::new(&e))
 }
 
 /// The run as seen from JavaScript.
@@ -844,7 +866,7 @@ mod tests {
         let saved = session.save().expect("save");
         let loaded = Session::load(&saved).expect("load");
         assert_eq!(loaded.run(), session.run());
-        assert!(Session::load(&saved.replace("\"version\":1", "\"version\":99")).is_err());
+        assert!(Session::load(&saved.replace("\"version\":2", "\"version\":99")).is_err());
         assert!(Session::load("garbage").is_err());
         assert!(Session::new("not a number").is_err());
         assert!(session.apply(r#""LeaveShop""#).is_err(), "wrong phase");
@@ -958,10 +980,10 @@ mod tests {
         assert_eq!(view["game"]["declare"]["can_redeal"], true);
         assert_eq!(view["series"]["redeals_left"], 2);
         let odds: serde_json::Value =
-            serde_json::from_str(&deal_odds_json(33).expect("odds")).expect("json");
-        assert_eq!(odds["deck_size"], 33);
+            serde_json::from_str(&deal_odds_json().expect("odds")).expect("json");
+        assert_eq!(odds["deck_size"], 32);
         assert_eq!(odds["hand_or_skat"]["numerator"], 12);
-        assert_eq!(odds["talon"]["numerator"], 1);
+        assert!(odds.get("talon").is_none());
     }
 
     #[test]
@@ -1245,7 +1267,41 @@ mod tests {
     /// load, show a view and play on: new fields have serde defaults, the
     /// single skat swap filter of "Die Oma" reads as a list, encounter
     /// options without a named modification or relic draw it when chosen.
-    /// They predate the Skatordnung order (ADR 0011): a save waiting at the
+    /// A run saved before own editions (save version 1, ADR 0015) is
+    /// discarded with `OutdatedSave`, whatever it holds; a new run starts.
+    /// The meta state is a separate save and stays.
+    #[test]
+    fn runs_saved_before_own_editions_are_discarded() {
+        let code = |e: String| -> String {
+            let json: serde_json::Value = serde_json::from_str(&e).expect("error json");
+            json["code"].as_str().expect("code").to_string()
+        };
+        for save in [
+            include_str!("../../web/e2e/fixtures/discard-battered.json"),
+            include_str!("../../web/e2e/fixtures/honorary-jack.json"),
+        ] {
+            assert_eq!(
+                code(Session::load(save).expect_err("outdated")),
+                "OutdatedSave"
+            );
+        }
+        // Only the version decides, also for a save that would not parse.
+        assert_eq!(
+            code(Session::load(r#"{"version":1,"run":{}}"#).expect_err("outdated")),
+            "OutdatedSave"
+        );
+        assert_eq!(
+            code(Session::load(r#"{"version":3,"run":{}}"#).expect_err("newer")),
+            "UnsupportedSave"
+        );
+        assert!(
+            MetaSession::load(include_str!("../../web/e2e/fixtures/meta-null.json")).is_ok(),
+            "the meta state stays"
+        );
+    }
+
+    /// Fixtures upgraded to save version 2 (ADR 0015, see the core's
+    /// `regenerate_fixtures`). They predate the Skatordnung order (ADR 0011): a save waiting at the
     /// Ansage continues with the choice of skat or hand, and the Kontra save
     /// (declared, then the skat picked up) plays on after the discard
     /// without a second Ansage.
@@ -1275,14 +1331,6 @@ mod tests {
             (
                 "coins-curse",
                 include_str!("../../web/e2e/fixtures/coins-curse.json"),
-            ),
-            (
-                "discard-battered",
-                include_str!("../../web/e2e/fixtures/discard-battered.json"),
-            ),
-            (
-                "honorary-jack",
-                include_str!("../../web/e2e/fixtures/honorary-jack.json"),
             ),
             (
                 "run-end",
@@ -1317,22 +1365,6 @@ mod tests {
                 // The discard goes straight to playing.
                 assert_eq!(view["game"]["phase"], "Discarding", "{name}");
                 assert!(view["game"]["declaration"].is_object(), "{name}");
-            }
-            if name == "discard-battered" {
-                // After picking up the skat the "Ramponiert" card cannot be
-                // discarded.
-                let step = play(&mut session, r#""PickUpSkat""#).expect("pick up");
-                let hand = step["view"]["game"]["hand"].as_array().expect("hand");
-                assert_eq!(hand.len(), 12, "{name}");
-                let battered: Vec<&serde_json::Value> =
-                    hand.iter().filter(|c| c["no_discard"] == true).collect();
-                assert!(!battered.is_empty(), "{name}");
-                assert!(battered.iter().all(|c| c["discardable"] == false));
-                assert!(
-                    hand.iter()
-                        .filter(|c| c["no_discard"] != true)
-                        .all(|c| c["discardable"] == true)
-                );
             }
             let mut ramsch_seats = None;
             let mut old_discard = false;

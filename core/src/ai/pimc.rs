@@ -454,6 +454,7 @@ fn fits_declaration<C: PlayingCard>(
         GameType::Grand => {
             cards
                 .filter(|c| c.face().is_some_and(|f| f.rank == Rank::Jack))
+                .filter(|c| !rules::is_demoted_jack(**c))
                 .count()
                 >= 2
         }
@@ -545,7 +546,6 @@ mod tests {
                 }
                 dealt
             })
-            .chain((40..43).map(|id| DealtCard::plain(id, CardKind::Blank)))
             .collect()
     }
 

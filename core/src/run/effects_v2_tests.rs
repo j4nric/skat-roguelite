@@ -32,7 +32,7 @@ fn id(m: &str) -> CardModId {
     CardModId::new(m)
 }
 
-fn card(deck: &Deck, card: u32) -> DeckCard {
+fn card(deck: &Edition, card: u32) -> DeckCard {
     deck.get(card).expect("card").clone()
 }
 
@@ -67,7 +67,7 @@ fn ramponiert_takes_augen_below_zero_from_whoever_takes_the_card() {
 #[test]
 fn rank_rises_to_three_and_no_further() {
     let content = content();
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     for expected in 1..=3 {
         let change = deck.add_mod(&content, 22, &id("rank"), 1).expect("rank");
         assert!(matches!(change, DeckChange::Modified { value, .. } if value == expected));
@@ -76,7 +76,7 @@ fn rank_rises_to_three_and_no_further() {
         deck.add_mod(&content, 22, &id("rank"), 1),
         Err(DeckError::AtMaximum(id("rank")))
     );
-    let resolved = resolve_deck(&deck, &content, &[]);
+    let resolved = resolve_edition(&deck, crate::deck::Owner::Player, &content, &[]);
     assert_eq!(resolved.cards[22].rank_bonus, 3);
 }
 
@@ -137,7 +137,7 @@ fn first_trick_doubles_the_augen_of_the_first_trick_it_wins() {
 #[test]
 fn moments_and_special_vouchers_do_not_stack_coins_and_augen_do() {
     let content = content();
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     for (m, v, card_id) in [("first_trick", 2, 28), ("last_trick", 1, 0)] {
         deck.add_mod(&content, card_id, &id(m), v).expect("first");
         assert_eq!(
@@ -224,15 +224,15 @@ fn a_voucher_pays_when_discarded_and_falls_off() {
         card_mod: id("voucher_coins"),
         value: 3,
     }));
-    assert!(card(run.deck(), 2).mods.is_empty());
+    assert!(card(run.edition(), 2).mods.is_empty());
 }
 
 #[test]
 fn a_special_voucher_turns_the_card_into_a_special_card() {
     let (_, run, _, _) = discard_voucher("voucher_undead");
-    assert_eq!(card(run.deck(), 2).mods, vec![id("undead")]);
+    assert_eq!(card(run.edition(), 2).mods, vec![id("undead")]);
     let (_, run, _, _) = discard_voucher("voucher_wild");
-    assert_eq!(card(run.deck(), 2).mods, vec![id("wild_card")]);
+    assert_eq!(card(run.edition(), 2).mods, vec![id("wild_card")]);
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn a_voucher_stays_in_a_hand_game() {
             .iter()
             .any(|e| matches!(e, RunEvent::VoucherRedeemed { .. }))
     );
-    assert_eq!(card(run.deck(), 2).mods, vec![id("voucher_coins")]);
+    assert_eq!(card(run.edition(), 2).mods, vec![id("voucher_coins")]);
     assert!(run.coins() >= coins);
 }
 
@@ -258,7 +258,7 @@ fn a_voucher_stays_in_a_hand_game() {
 #[test]
 fn the_same_modification_raises_another_replaces() {
     let content = content();
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     deck.add_mod(&content, 7, &id(AUGEN), 3).expect("+3");
     deck.add_mod(&content, 7, &id(AUGEN), 5).expect("+5");
     assert_eq!(card(&deck, 7).mods, vec![id(AUGEN)]);
@@ -289,7 +289,7 @@ fn the_same_modification_raises_another_replaces() {
 #[test]
 fn a_special_card_carries_one_normal_modification_besides() {
     let content = content();
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     deck.add_mod(&content, 7, &id("undead"), 1).expect("undead");
     deck.add_mod(&content, 7, &id(AUGEN), 4).expect("augen");
     deck.add_mod(&content, 7, &id("rank"), 1).expect("rank");
@@ -303,7 +303,7 @@ fn a_special_card_carries_one_normal_modification_besides() {
 #[test]
 fn a_curse_blocks_the_card() {
     let content = content();
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     // A curse replaces a normal modification.
     deck.add_mod(&content, 7, &id("rank"), 1).expect("rank");
     deck.add_mod(&content, 7, &id("stained"), 3).expect("curse");
@@ -317,12 +317,12 @@ fn a_curse_blocks_the_card() {
     }
     // Every target choice leaves the cursed card out.
     let mut run = relic_run(&content, &[]);
-    run.deck
+    run.edition
         .add_mod(&content, 7, &id("transparent"), 1)
         .expect("curse");
     assert!(!run.may_attach(&content, 7, &id(AUGEN)));
     assert!(
-        run.card_mod_pool_for(&content, &card(&run.deck, 7))
+        run.card_mod_pool_for(&content, &card(&run.edition, 7))
             .is_empty()
     );
 }
@@ -330,9 +330,9 @@ fn a_curse_blocks_the_card() {
 #[test]
 fn augen_and_ramponiert_are_one_signed_value() {
     let content = content();
-    let value = |deck: &Deck, m: &str| card(deck, 7).mod_value(&id(m));
+    let value = |deck: &Edition, m: &str| card(deck, 7).mod_value(&id(m));
     // Ramponiert −5 on Augen +3: −2, the curse.
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     deck.add_mod(&content, 7, &id(AUGEN), 3).expect("+3");
     let change = deck.add_mod(&content, 7, &id(RAMPONIERT), 5).expect("−5");
     assert_eq!(
@@ -352,7 +352,7 @@ fn augen_and_ramponiert_are_one_signed_value() {
         Err(DeckError::Cursed(id(RAMPONIERT)))
     );
     // Ramponiert −5 on Augen +8: Augen +3 stays.
-    let mut deck = Deck::standard();
+    let mut deck = Edition::standard();
     deck.add_mod(&content, 7, &id(AUGEN), 8).expect("+8");
     deck.add_mod(&content, 7, &id(RAMPONIERT), 5).expect("−5");
     assert_eq!(card(&deck, 7).mods, vec![id(AUGEN)]);
@@ -400,7 +400,7 @@ fn old_saves_convert_their_card_modifications() {
         (id:6,kind:Normal("DK"),mods:["black_cat","transparent"]),
         (id:7,kind:Normal("DA"),mods:["honorary_jack","cracked","battered"]),
     ],next_id:32)"#;
-    let deck: Deck = ron::from_str(old).expect("old deck loads");
+    let deck: Edition = ron::from_str(old).expect("old deck loads");
     let mods = |i: u32| {
         let c = card(&deck, i);
         c.mods
@@ -422,7 +422,7 @@ fn old_saves_convert_their_card_modifications() {
     assert_eq!(mods(6), one("stained", 3), "Fleckig before Durchsichtig");
     assert!(mods(7).is_empty(), "everything else falls away");
     // Saved again, it stays as it is.
-    let again: Deck = ron::from_str(&ron::to_string(&deck).expect("ron")).expect("load");
+    let again: Edition = ron::from_str(&ron::to_string(&deck).expect("ron")).expect("load");
     assert_eq!(again, deck);
     assert_eq!(legacy_mod("tail_light"), Some(("last_trick", 1)));
     assert_eq!(legacy_mod("dummy"), None);
@@ -459,6 +459,6 @@ fn an_open_encounter_of_an_old_save_gives_the_converted_modification() {
         },
     )
     .expect("chosen");
-    assert_eq!(card(run.deck(), 7).mods, vec![id("trump_bonus")]);
-    assert_eq!(card(run.deck(), 7).mod_value(&id("trump_bonus")), 6);
+    assert_eq!(card(run.edition(), 7).mods, vec![id("trump_bonus")]);
+    assert_eq!(card(run.edition(), 7).mod_value(&id("trump_bonus")), 6);
 }

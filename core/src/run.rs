@@ -58,11 +58,11 @@ use crate::ai::DefenderHeuristic;
 use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::content::{
     ActiveSource, BossId, CardFilter, CardModDef, CardModId, Change, Character, ConsumableAction,
-    ConsumableId, Content, Effect, EncounterId, EncounterKind, GameFocus, Hook, HookContext, Lever,
-    NextGameEffect, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine, Source, Stage,
-    card_mod_sources, evaluate, in_pool, resolve_deck, score_parts,
+    ConsumableId, Content, Editions, Effect, EncounterId, EncounterKind, GameFocus, Hook,
+    HookContext, Lever, NextGameEffect, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine,
+    Source, Stage, card_mod_sources, evaluate, in_pool, resolve_edition, score_parts,
 };
-use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
+use crate::deck::{CardKind, DealtCard, DeckChange, DeckError, Edition, Owner};
 use crate::game::{Event, Game, GameError, Phase, Seat};
 use crate::rng::Rng;
 use crate::rules::{
@@ -331,7 +331,21 @@ pub struct ActiveGame {
     /// play. Saves from before it derive one from the run's seed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undead_rng: Option<Rng>,
+    /// The boss edition of the boss whose rule is on (ADR 0015, DESIGN
+    /// 11), held by the boss seat ([`BOSS_SEAT`]). `None` outside a boss
+    /// series.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boss_edition: Option<Edition>,
+    /// Cards the player's edition marks "Durchsichtig" in this game (ids;
+    /// empty under "Der Kiebitz-Mörder"): shown with their holder and his
+    /// edition also while a defender holds them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub player_marked: Vec<u32>,
 }
+
+/// The seat of the boss in a boss series: left of the player (DESIGN
+/// 10.4). The Stammgast sits right.
+pub const BOSS_SEAT: Seat = Seat::DEFENDERS[0];
 
 /// Whether a counter is zero (fields left out of saves while unused).
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -1005,8 +1019,11 @@ pub enum RunErrorCode {
     InvalidDeclaration,
     /// The deck has no card with this id.
     UnknownDeckCard,
-    /// The deck cannot shrink below 32 cards.
+    /// The deck cannot shrink below 32 cards (no longer produced since
+    /// ADR 0015: no card leaves the deck).
     DeckAtMinimum,
+    /// "Frisches Deck": the card carries no modification.
+    NothingToCleanse,
     /// Blanks carry no modifications.
     BlankCannotBeModified,
     /// The card already carries this modification and it cannot be
@@ -1080,6 +1097,7 @@ impl RunErrorCode {
             RunErrorCode::InvalidDeclaration => "InvalidDeclaration",
             RunErrorCode::UnknownDeckCard => "UnknownDeckCard",
             RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
+            RunErrorCode::NothingToCleanse => "NothingToCleanse",
             RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
             RunErrorCode::AlreadyModified => "AlreadyModified",
             RunErrorCode::CardCursed => "CardCursed",
@@ -1135,7 +1153,7 @@ impl RunError {
             RunError::NoFreeSlot => RunErrorCode::NoFreeSlot,
             RunError::Deck(e) => match e {
                 DeckError::UnknownCard(_) => RunErrorCode::UnknownDeckCard,
-                DeckError::WouldShrinkBelowMinimum => RunErrorCode::DeckAtMinimum,
+                DeckError::NothingToCleanse(_) => RunErrorCode::NothingToCleanse,
                 DeckError::BlankCannotBeModified => RunErrorCode::BlankCannotBeModified,
                 DeckError::AlreadyModified(_) => RunErrorCode::AlreadyModified,
                 DeckError::Cursed(_) => RunErrorCode::CardCursed,
@@ -1254,7 +1272,8 @@ pub struct Run {
     phase: RunPhase,
     series: Series,
     coins: u32,
-    deck: Deck,
+    /// The player's edition of the 32 cards (ADR 0015).
+    edition: Edition,
     relics: Vec<RelicId>,
     consumables: Vec<ConsumableId>,
     flags: BTreeSet<String>,
@@ -1355,8 +1374,8 @@ impl Run {
         {
             return Err(RunError::NoFreeSlot);
         }
-        let mut deck = Deck::standard();
-        deck.apply_spec(&character.deck, content)?;
+        let mut edition = Edition::standard();
+        edition.apply_spec(&character.deck, content)?;
         let mut master = Rng::from_seed(seed);
         let mut run = Run {
             seed,
@@ -1381,7 +1400,7 @@ impl Run {
                 discard_three_used: false,
             },
             coins: content.run.economy.starting_coins,
-            deck,
+            edition,
             relics,
             consumables: character.start_consumables.clone(),
             flags: BTreeSet::new(),
@@ -1518,10 +1537,33 @@ impl Run {
         self.coins
     }
 
-    /// The shared deck.
+    /// The player's edition of the 32 cards (ADR 0015).
     #[must_use]
-    pub const fn deck(&self) -> &Deck {
-        &self.deck
+    pub const fn edition(&self) -> &Edition {
+        &self.edition
+    }
+
+    /// The editions of the game in progress: the player's and the boss
+    /// edition at the table, if any.
+    #[must_use]
+    pub fn editions(&self) -> Editions<'_> {
+        Editions {
+            player: &self.edition,
+            boss: self.game.as_ref().and_then(|a| a.boss_edition.as_ref()),
+        }
+    }
+
+    /// Whose edition the seat plays (ADR 0015): the player's, the boss's
+    /// (left of the player in a boss series) or a Stammgast's.
+    #[must_use]
+    pub fn owner_of_seat(&self, seat: Seat) -> Owner {
+        if seat.is_declarer() {
+            Owner::Player
+        } else if seat == BOSS_SEAT && self.series.boss.is_some() {
+            Owner::Boss
+        } else {
+            Owner::Guest
+        }
     }
 
     /// Owned relics in purchase order.
@@ -1579,18 +1621,26 @@ impl Run {
     }
 
     /// Cards marked "Durchsichtig" in the current game and who holds them
-    /// (`None`: in the skat or already played).
+    /// (`None`: in the skat or already played), each as its holder holds
+    /// it. The knowledge hangs on the card (DESIGN 7.2): a card is shown
+    /// if its holder's copy is marked (the player's own, or a boss card
+    /// such as the black Unter of "Der Schwarze Peter"), and also if the
+    /// player's edition marks it while a defender holds it: then the
+    /// player sees who holds it and that defender's edition of the card.
+    /// Off under "Der Kiebitz-Mörder".
     #[must_use]
     pub fn revealed_holders(&self) -> Vec<(DealtCard, Option<Seat>)> {
         let Some(active) = &self.game else {
             return Vec::new();
         };
+        let marked_by_player = |c: &DealtCard| active.player_marked.contains(&c.id);
         active
             .game
             .cards_in_play()
             .iter()
-            .filter(|c| c.revealed)
-            .map(|&c| (c, active.game.holder_of(c)))
+            .map(|&c| active.game.current(c))
+            .filter(|c| c.revealed || marked_by_player(c))
+            .map(|c| (c, active.game.holder_of(c)))
             .collect()
     }
 
@@ -2217,7 +2267,7 @@ impl Run {
             && hand.len() > 1
             && hand.contains(&card)
             && !active.risen.contains(&card.id)
-            && self.has_card_effect(content, card.id, &Effect::Undead)
+            && self.has_card_effect(content, card, &Effect::Undead)
     }
 
     /// "Untot" (DESIGN 7.2): after the `OnTrickEnd` hooks of a completed
@@ -2250,7 +2300,7 @@ impl Run {
             || card.is_blank()
             || hand.is_empty()
             || active.risen.contains(&card.id)
-            || !self.has_card_effect(content, card.id, &Effect::Undead)
+            || !self.has_card_effect(content, card, &Effect::Undead)
         {
             return;
         }
@@ -2351,7 +2401,7 @@ impl Run {
         }
         if with_card_mods {
             if let Some(active) = &self.game {
-                sources.extend(card_mod_sources(&self.deck, content, &active.game));
+                sources.extend(card_mod_sources(self.editions(), content, &active.game));
             }
         }
         sources
@@ -2617,6 +2667,7 @@ impl Run {
             | Effect::HonoraryJack
             | Effect::NoDiscard
             | Effect::Wild
+            | Effect::Demote
             | Effect::TurnInto(_)
             | Effect::Undead
             | Effect::AlwaysForehand
@@ -2747,10 +2798,10 @@ impl Run {
             self.games_dealt += 1;
             self.series.redeals_in_game = 0;
         }
-        let resolved = resolve_deck(&self.deck, content, &global);
+        let (resolved, boss_edition) = self.resolve_editions(content, &global);
         let mut rng = self.deal_rng.fork();
-        let game = Game::deal_from(&mut rng, resolved.cards, forehand)?;
-        self.set_up_game(content, game, resolved.point_changes, events);
+        let game = Game::deal_editions(&mut rng, resolved.clone().map(|r| r.cards), forehand)?;
+        self.install_game(content, game, &resolved, boss_edition, events);
         self.peek(&mut rng, events);
         // "Untot": the substitutes come from the game's generator, after
         // everything the deal drew from it.
@@ -2759,7 +2810,7 @@ impl Run {
                 .game
                 .cards_in_play()
                 .iter()
-                .any(|c| !c.is_blank() && self.has_card_effect(content, c.id, &Effect::Undead))
+                .any(|c| !c.is_blank() && self.has_card_effect(content, *c, &Effect::Undead))
         });
         if let (true, Some(active)) = (undead_in_play, self.game.as_mut()) {
             active.undead_rng = Some(rng.fork());
@@ -2810,6 +2861,122 @@ impl Run {
         self.settle(content, events)
     }
 
+    /// ADR 0015: every seat owns an edition of the 32 cards. Resolve the
+    /// edition of each seat for the next game (index = seat; the skat goes
+    /// with the player's), plus the boss edition at the table.
+    fn resolve_editions(
+        &self,
+        content: &Content,
+        global: &[ActiveSource<'_>],
+    ) -> ([crate::content::ResolvedDeck; 3], Option<Edition>) {
+        let boss_edition = self.boss_edition(content);
+        let plain = Edition::standard();
+        let resolved = Seat::ALL.map(|seat| {
+            let owner = self.owner_of_seat(seat);
+            let edition = match owner {
+                Owner::Player => &self.edition,
+                Owner::Boss => boss_edition.as_ref().unwrap_or(&plain),
+                Owner::Guest => &plain,
+            };
+            resolve_edition(edition, owner, content, global)
+        });
+        (resolved, boss_edition)
+    }
+
+    /// Install a game dealt from [`Run::resolve_editions`]: the Augen
+    /// changes of the copies actually dealt go to the breakdown, the boss
+    /// edition and the player's "Durchsichtig" cards to the game.
+    fn install_game(
+        &mut self,
+        content: &Content,
+        game: Game<DealtCard>,
+        resolved: &[crate::content::ResolvedDeck; 3],
+        boss_edition: Option<Edition>,
+        events: &mut Vec<RunEvent>,
+    ) {
+        let mut point_changes: Vec<(u32, Source, i32)> = Vec::new();
+        for card in game.cards_in_play() {
+            let seat = game.holder_of(*card).unwrap_or(Seat::DECLARER);
+            point_changes.extend(
+                resolved[seat.index()]
+                    .point_changes
+                    .iter()
+                    .filter(|(id, _, _)| *id == card.id)
+                    .cloned(),
+            );
+        }
+        point_changes.sort_by_key(|(id, _, _)| *id);
+        let player_marked = resolved[Seat::DECLARER.index()]
+            .cards
+            .iter()
+            .filter(|c| c.revealed)
+            .map(|c| c.id)
+            .collect();
+        self.set_up_game(content, game, point_changes, events);
+        if let Some(active) = self.game.as_mut() {
+            active.boss_edition = boss_edition;
+            active.player_marked = player_marked;
+        }
+    }
+
+    /// Tests: replace the current game by a constructed deal, every card
+    /// in the edition of the seat that gets it (the skat in the player's),
+    /// with all content effects of a normal deal.
+    #[cfg(test)]
+    pub(crate) fn deal_fixed(
+        &mut self,
+        content: &Content,
+        hands: [&[CardKind]; 3],
+        skat: [CardKind; 2],
+        forehand: Seat,
+        events: &mut Vec<RunEvent>,
+    ) {
+        let global = self.sources(content, false);
+        let (resolved, boss_edition) = self.resolve_editions(content, &global);
+        let editions = resolved.clone().map(|r| r.cards);
+        let pick = |seat: usize, kind: CardKind| -> DealtCard {
+            *editions[seat]
+                .iter()
+                .find(|c| c.kind == kind)
+                .expect("card in the deck")
+        };
+        let hands = [0, 1, 2].map(|seat| hands[seat].iter().map(|&k| pick(seat, k)).collect());
+        let skat = skat.map(|k| pick(0, k));
+        let game = Game::with_editions(hands, skat, editions, forehand).expect("valid deal");
+        self.install_game(content, game, &resolved, boss_edition, events);
+    }
+
+    /// Fixture tool: a run saved before ADR 0015 continues with editions
+    /// (its game in progress resolved card by card by the holder).
+    #[cfg(test)]
+    pub(crate) fn adopt_editions(&mut self, content: &Content) {
+        let global = self.sources(content, false);
+        let (resolved, boss_edition) = self.resolve_editions(content, &global);
+        let player_marked: Vec<u32> = resolved[0]
+            .cards
+            .iter()
+            .filter(|c| c.revealed)
+            .map(|c| c.id)
+            .collect();
+        let editions = resolved.map(|r| r.cards);
+        let mut next = self.game.as_mut();
+        while let Some(active) = next {
+            active.game.adopt_editions(editions.clone());
+            active.boss_edition.clone_from(&boss_edition);
+            active.player_marked.clone_from(&player_marked);
+            next = active.previous.as_deref_mut();
+        }
+    }
+
+    /// The boss edition of the boss whose rule is on (for "Der Alte" the
+    /// boss of this game's rule), in a boss series only.
+    fn boss_edition(&self, content: &Content) -> Option<Edition> {
+        self.series.boss.as_ref()?;
+        let def = self.boss_rule(content).and_then(|b| content.boss(&b))?;
+        // Validated when the content loads.
+        Edition::with_mods(&def.edition, content).ok()
+    }
+
     /// Install a freshly dealt game, apply passive effects and fire
     /// `OnDeal`.
     fn set_up_game(
@@ -2819,7 +2986,6 @@ impl Run {
         point_changes: Vec<(u32, Source, i32)>,
         events: &mut Vec<RunEvent>,
     ) {
-        let game = Run::tame_defender_wild_cards(game);
         let forehand = game.forehand();
         let dealt_events: Vec<Event<DealtCard>> = game.log().to_vec();
         let global = self.sources(content, false);
@@ -2850,6 +3016,8 @@ impl Run {
             lead_demands_used: 0,
             risen: Vec::new(),
             undead_rng: None,
+            boss_edition: None,
+            player_marked: Vec::new(),
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -2864,30 +3032,6 @@ impl Run {
             }
         }
         self.fire(content, Stage::OnDeal, None, None, events);
-    }
-
-    /// A Wandelkarte is wild only in the player's hand (and the skat he may
-    /// pick up): the defenders' copies lose the flag and play as printed.
-    fn tame_defender_wild_cards(game: Game<DealtCard>) -> Game<DealtCard> {
-        let wild_defender = Seat::DEFENDERS
-            .iter()
-            .any(|&seat| game.hand(seat).iter().any(|c| c.wild));
-        if !wild_defender {
-            return game;
-        }
-        let tame = |cards: &[DealtCard]| -> Vec<DealtCard> {
-            cards
-                .iter()
-                .map(|&c| DealtCard { wild: false, ..c })
-                .collect()
-        };
-        let hands = [
-            game.hand(Seat::DECLARER).to_vec(),
-            tame(game.hand(Seat::DEFENDERS[0])),
-            tame(game.hand(Seat::DEFENDERS[1])),
-        ];
-        let forehand = game.forehand();
-        Game::with_talon(hands, game.skat(), game.talon().to_vec(), forehand).unwrap_or(game)
     }
 
     /// Score the finished game and move on.
@@ -2999,9 +3143,13 @@ impl Run {
         self.after_game(content, events)
     }
 
-    /// Whether a modification on the deck card `id` has this passive effect.
-    fn has_card_effect(&self, content: &Content, id: u32, effect: &Effect) -> bool {
-        self.deck.get(id).is_some_and(|card| {
+    /// Whether a modification on the player's card has this passive
+    /// effect: only a card in the player's edition (ADR 0015).
+    fn has_card_effect(&self, content: &Content, card: DealtCard, effect: &Effect) -> bool {
+        if card.owner != Owner::Player {
+            return false;
+        }
+        self.edition.get(card.id).is_some_and(|card| {
             card.mods
                 .iter()
                 .filter_map(|m| content.card_mod(m))
@@ -3361,12 +3509,12 @@ impl Run {
             .consumable(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
         match &def.action {
-            ConsumableAction::RemoveCard => {
+            ConsumableAction::CleanseCard => {
                 if self.phase != RunPhase::Shop {
                     return Err(RunError::WrongPhase);
                 }
                 let target = target.ok_or(RunError::TargetRequired)?;
-                let change = self.deck.remove(target)?;
+                let change = self.edition.cleanse(target)?;
                 events.push(RunEvent::DeckChanged(change));
             }
             ConsumableAction::AddCardMod(card_mod) => {
@@ -3375,7 +3523,7 @@ impl Run {
                 }
                 let target = target.ok_or(RunError::TargetRequired)?;
                 let card = self
-                    .deck
+                    .edition
                     .get(target)
                     .ok_or(DeckError::UnknownCard(target))?;
                 if card.kind == CardKind::Blank {
@@ -3517,9 +3665,9 @@ impl Run {
         let Some(def) = content.card_mod(card_mod) else {
             return false;
         };
-        let fits = self.deck.get(card).is_some_and(|c| def.fits(c.kind));
+        let fits = self.edition.get(card).is_some_and(|c| def.fits(c.kind));
         fits && self
-            .deck
+            .edition
             .clone()
             .add_mod(content, card, card_mod, def.default_value())
             .is_ok()
@@ -3536,7 +3684,7 @@ impl Run {
             .filter(|m| !self.locked_card_mods.contains(&m.id))
             // Only what some card of the deck may still take.
             .filter(|m| {
-                self.deck
+                self.edition
                     .cards()
                     .iter()
                     .any(|c| self.may_attach(content, c.id, &m.id))
@@ -3558,12 +3706,12 @@ impl Run {
         value: i32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if let (Some(def), Some(deck_card)) = (content.card_mod(card_mod), self.deck.get(card)) {
+        if let (Some(def), Some(deck_card)) = (content.card_mod(card_mod), self.edition.get(card)) {
             if deck_card.kind != CardKind::Blank && !def.fits(deck_card.kind) {
                 return Err(RunError::NoModAvailable);
             }
         }
-        let change = self.deck.add_mod(content, card, card_mod, value)?;
+        let change = self.edition.add_mod(content, card, card_mod, value)?;
         // What the card carries now: Augen and Ramponiert are one signed
         // value, so the result may be the other one, or nothing.
         let landed = match &change {
@@ -3615,7 +3763,7 @@ impl Run {
         }
         let skat: Vec<u32> = active.game.skat().iter().map(|c| c.id).collect();
         for card in skat {
-            let Some(deck_card) = self.deck.get(card) else {
+            let Some(deck_card) = self.edition.get(card) else {
                 continue;
             };
             let vouchers: Vec<(CardModId, i32)> = deck_card
@@ -3647,7 +3795,7 @@ impl Run {
                     .filter(|h| h.stage() == Stage::OnDiscard)
                     .cloned()
                     .collect();
-                if let Some(change) = self.deck.remove_mod(card, &card_mod) {
+                if let Some(change) = self.edition.remove_mod(card, &card_mod) {
                     events.push(RunEvent::DeckChanged(change));
                 }
                 for hook in hooks {
@@ -3667,7 +3815,7 @@ impl Run {
                     }
                     for effect in hook.then() {
                         if let Effect::TurnInto(special) = effect {
-                            if let Ok(change) = self.deck.add_mod(content, card, special, 1) {
+                            if let Ok(change) = self.edition.add_mod(content, card, special, 1) {
                                 events.push(RunEvent::DeckChanged(change));
                             }
                         } else {
@@ -3807,7 +3955,7 @@ impl Run {
         named: Option<&CardModId>,
         card: u32,
     ) -> Result<CardModId, RunError> {
-        let deck_card = self.deck.get(card).ok_or(DeckError::UnknownCard(card))?;
+        let deck_card = self.edition.get(card).ok_or(DeckError::UnknownCard(card))?;
         if deck_card.kind == CardKind::Blank {
             return Err(DeckError::BlankCannotBeModified.into());
         }
@@ -3864,7 +4012,7 @@ impl Run {
                 // no modification yet, so a random draw does not throw away
                 // what the player built.
                 let fitting: Vec<&crate::deck::DeckCard> = self
-                    .deck
+                    .edition
                     .cards()
                     .iter()
                     .filter(|c| c.kind != CardKind::Blank)
@@ -4167,6 +4315,8 @@ fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -
 mod character_tests;
 #[cfg(test)]
 mod content_tests;
+#[cfg(test)]
+mod edition_tests;
 #[cfg(test)]
 mod effects_v2_tests;
 #[cfg(test)]

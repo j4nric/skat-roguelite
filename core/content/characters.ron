@@ -2,8 +2,8 @@
 // und wie oft der Tresen Relikte für eine Spielart anbietet. Jeder Charakter
 // darf Farbspiel, Grand und Null ansagen (ADR 0012).
 //
-// deck: Abweichung vom normalen 32er-Blatt. remove nimmt Karten heraus
-// (je eine Blanko), add füllt die Blankos mit neuen Karten.
+// deck: die Ausgabe des Charakters (ADR 0015): nur Modifikationen
+// (deck.mods), nie andere Karten; remove und add sind ein Ladefehler.
 // targets: None nimmt die Zielwerte aus run.ron.
 // null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
 // oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2). Ohne
@@ -13,9 +13,9 @@
 // für Null (null) anbieten, gemessen an der Seltenheit. Relikte für jedes
 // Spiel zählen immer 100. Ohne Angabe 100 und 100.
 // start_consumables: Verbrauchsgegenstände ab Start (z. B. ein Schnaps).
-// deck.mods: Kartenmodifikationen im Startblatt mit Wert (Effekte v2,
-// DESIGN 7.2), je auf der ersten Karte mit diesem Aufdruck; „beim Erhalt“
-// feuert dabei nicht.
+// deck.mods: Kartenmodifikationen seiner Ausgabe mit Wert (Effekte v2,
+// DESIGN 7.2), je auf der Karte mit diesem Aufdruck; „beim Erhalt“ feuert
+// dabei nicht.
 // rule: die eine eigene Regel (DESIGN 9). passive und hooks wirken wie ein
 // Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
 // der Wertung). redeals (Einmischen pro Spiel) und relic_slots ändern
@@ -45,7 +45,7 @@
     (
         character: NullPlayer,
         name: "Der Nullspieler",
-        text: "Der Null-Spezialist: Sein Blatt hat keine Unter, dafür vier Siebener mehr, und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
+        text: "Der Null-Spezialist: Seine Unter sind abgestuft (die niedrigste Karte ihrer Farbe), und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
         // Eigene Zielwerte (DESIGN 5.2), seit 02.11.2026 rund die Hälfte des
         // Alleinspielers: Sein Blatt ohne Unter gewinnt eine Serie mit drei
         // Spielen auch bei Zielwert 1 nur zu 76 % (Alleinspieler 86 %). Mit
@@ -67,9 +67,17 @@
         rule: (
             redeals: 1,
         ),
+        // ADR 0015 (02.11.2026): statt „ohne Unter, vier Siebener mehr“
+        // tragen seine vier Unter „Abgestuft“: In seiner Ausgabe sind sie
+        // keine Unter, sondern die niedrigste Karte ihrer Farbe ohne Augen.
+        // Hält ein Gegner einen Unter, ist er ein echter Unter.
         deck: (
-            remove: ["CJ", "SJ", "HJ", "DJ"],
-            add: ["C7", "S7", "H7", "D7"],
+            mods: [
+                ("CJ", "demoted", 1),
+                ("SJ", "demoted", 1),
+                ("HJ", "demoted", 1),
+                ("DJ", "demoted", 1),
+            ],
         ),
         null_scoring: Some(Formula((
             base_value: 23,

@@ -56,22 +56,11 @@ pub fn defender_swaps<C>(log: &[Event<C>]) -> Vec<usize> {
     swaps
 }
 
-/// The defender's card in the run's current game.
+/// The defender's card in the run's current game. A defender never holds
+/// a Wandelkarte (ADR 0015: it exists only in the player's edition), so it
+/// plays the game as it is; the samples resolve every card by the seat it
+/// falls to (DESIGN 10.5).
 pub(super) fn defender_card(
-    run: &Run,
-    content: &Content,
-    active: &ActiveGame,
-    view: &SeatView<'_, DealtCard>,
-) -> Option<DealtCard> {
-    if let Some(tame) = tame_game(&active.game) {
-        let view = tame.view(view.seat)?;
-        let chosen = defender_choice(run, content, active, &view)?;
-        return real_card(&active.game, chosen);
-    }
-    defender_choice(run, content, active, view)
-}
-
-fn defender_choice(
     run: &Run,
     content: &Content,
     active: &ActiveGame,
@@ -92,7 +81,7 @@ fn defender_choice(
 /// hands and, effects v2 (DESIGN 7.2), every "Durchsichtig" card the
 /// player holds, in his hand or in the skat (`DealtCard::revealed`, off
 /// under "Der Kiebitz-Mörder"). The cards are taken from the view, so
-/// they match the view's copies (a tame Wandelkarte).
+/// they match the view's copies.
 #[must_use]
 pub fn defender_hints(active: &ActiveGame, view: &SeatView<'_, DealtCard>) -> Hints<DealtCard> {
     let game = &active.game;
@@ -136,6 +125,9 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
     // The card given back ("Drei drücken") is known like a peeked one.
     let returned = active.game.returned().map(|(seat, card)| (card, seat));
     for &(card, seat) in active.peeked.iter().chain(returned.iter()) {
+        // The copy the game holds now: a swap of the defenders' hands
+        // changes its edition (ADR 0015).
+        let card = active.game.current(card);
         let holder = if swaps.len() % 2 == 1 {
             seat.partner().unwrap_or(seat)
         } else {
@@ -148,6 +140,7 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
     // A skat card shown after a hand declaration ("Spickzettel") is in no
     // hand.
     for &card in &active.skat_shown {
+        let card = active.game.current(card);
         if !pinned.iter().any(|(c, _)| *c == card) {
             pinned.push((card, None));
         }

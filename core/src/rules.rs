@@ -119,8 +119,33 @@ const fn face_is_trump(game: GameType, card: Card) -> bool {
 /// ([`PlayingCard::honorary_jack`]). Blanks are never trump.
 #[must_use]
 pub fn is_trump<C: PlayingCard>(game: GameType, card: C) -> bool {
-    card.face()
-        .is_some_and(|face| face_is_trump(game, face) || acts_as_honorary_jack(game, card))
+    card.face().is_some_and(|face| {
+        if is_demoted_jack(card) {
+            // "Abgestuft": no Unter any more, a card of its printed suit.
+            return game == GameType::Suit(face.suit);
+        }
+        face_is_trump(game, face) || acts_as_honorary_jack(game, card)
+    })
+}
+
+/// Whether `card` is a Unter that is "Abgestuft" (DESIGN 9.2): it is no
+/// Unter in any game, but the lowest card of its printed suit, below the
+/// Seven (in a suit game of its suit the lowest trump). It is no Spitze.
+#[must_use]
+pub fn is_demoted_jack<C: PlayingCard>(card: C) -> bool {
+    card.demoted() && card.face().is_some_and(|face| face.is_jack())
+}
+
+/// The base strength (before the rank bonus) one step lower for a demoted
+/// card ("Abgestuft" on a card that is no Unter), 0 for a demoted Unter.
+fn demote(card: impl PlayingCard, base: u8) -> u8 {
+    if is_demoted_jack(card) {
+        0
+    } else if card.demoted() {
+        base.saturating_sub(1)
+    } else {
+        base
+    }
 }
 
 /// Whether `card` plays as a "Bube ehrenhalber" in `game` (DESIGN 4.4):
@@ -164,13 +189,19 @@ pub fn trump_strength<C: PlayingCard>(game: GameType, card: C) -> Option<u8> {
     let face = card.face()?;
     let base = if acts_as_honorary_jack(game, card) {
         HONORARY_JACK_STRENGTH
+    } else if is_demoted_jack(card) {
+        if !is_trump(game, card) {
+            return None;
+        }
+        // "Abgestuft": the lowest trump, below the Seven.
+        0
     } else if !face_is_trump(game, face) {
         return None;
     } else if face.is_jack() {
         // Jacks sit above the seven suit trumps (strength 1..=7).
         7 + jack_strength(face.suit)
     } else {
-        face.rank.suit_game_strength()
+        demote(card, face.rank.suit_game_strength())
     };
     Some(base.saturating_add(card.rank_bonus()))
 }
@@ -195,7 +226,7 @@ pub fn suit_strength<C: PlayingCard>(game: GameType, card: C) -> u8 {
         GameType::Null => face.rank as u8 + 1,
         _ => face.rank.suit_game_strength(),
     };
-    base.saturating_add(card.rank_bonus())
+    demote(card, base).saturating_add(card.rank_bonus())
 }
 
 /// Whether `card` follows the lead card, i.e. is of the same kind: both
@@ -510,8 +541,17 @@ pub fn matadors_in<C: PlayingCard>(
     declarer_cards: &[C],
     in_play: &[C],
 ) -> Matadors {
-    let present: Vec<Card> = in_play.iter().filter_map(|c| c.face()).collect();
-    let held: Vec<Card> = declarer_cards.iter().filter_map(|c| c.face()).collect();
+    // A demoted Unter ("Abgestuft") is no Unter in this game: like a card
+    // "Kreide" repainted, it is skipped.
+    let faces = |cards: &[C]| -> Vec<Card> {
+        cards
+            .iter()
+            .filter(|c| !is_demoted_jack(**c))
+            .filter_map(|c| c.face())
+            .collect()
+    };
+    let present = faces(in_play);
+    let held = faces(declarer_cards);
     let order: Vec<Card> = game
         .trump_order()
         .into_iter()

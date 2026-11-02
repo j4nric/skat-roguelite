@@ -33,7 +33,7 @@ fn add_mod(run: &mut Run, notation: &str, card_mod: &str) {
     let value = content
         .card_mod(&id_mod)
         .map_or(1, crate::content::CardModDef::default_value);
-    run.deck
+    run.edition
         .add_mod(&content, id(notation), &id_mod, value)
         .expect("mod");
 }
@@ -66,7 +66,7 @@ const STRONG_SKAT: &str = "D8 C7";
 
 /// A Null deal the declarer cannot lose (all eight sevens).
 const SAFE_NULL: [&str; 3] = [
-    "D7 D7 H7 H7 S7 S7 C7 C7 D8 H8",
+    "D7 DJ H7 HJ S7 SJ C7 CJ D8 H8",
     "D9 DT DQ DK DA H9 HT HQ HK HA",
     "S8 S9 ST SQ SK SA C8 C9 CT CQ",
 ];
@@ -120,7 +120,22 @@ fn a_ramsch_reports_augen_and_tricks_per_seat() {
     assert!(seen_tricks);
     assert!(breakdown.declaration.is_ramsch());
     let seats = breakdown.seats.expect("seats");
-    assert_eq!(seats.card_points.iter().sum::<u32>(), 120);
+    // "Der Ramscher": his Daus count 6 Augen less (his edition, ADR 0015).
+    let boss_aces = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::Game(Event::Dealt { hands, .. }) => Some(
+                hands[1]
+                    .iter()
+                    .filter(|c| c.face().is_some_and(|f| f.rank == crate::cards::Rank::Ace))
+                    .count(),
+            ),
+            _ => None,
+        })
+        .expect("dealt");
+    let total = seats.card_points.iter().sum::<u32>();
+    let lowest = 120 - 6 * u32::try_from(boss_aces).expect("count");
+    assert!((lowest..=120).contains(&total), "{total}, {boss_aces} aces");
     assert_eq!(seats.tricks.iter().sum::<u32>(), 10);
     let most = seats.card_points.iter().copied().max().expect("max");
     assert_eq!(breakdown.won, seats.card_points[0] < most);
@@ -507,7 +522,7 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
     )
     .expect("chosen");
     assert_eq!(
-        run.deck().get(target).map(|c| c.mods.clone()),
+        run.edition().get(target).map(|c| c.mods.clone()),
         Some(vec![named])
     );
 }

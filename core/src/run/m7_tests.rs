@@ -62,7 +62,7 @@ fn the_ink_pad_never_draws_a_curse() {
             let mut run = shop_run(&content, seed, character);
             run.consumables = vec![ConsumableId::new("ink_pad")];
             let cards: Vec<u32> = run
-                .deck()
+                .edition()
                 .cards()
                 .iter()
                 .filter(|c| c.kind != CardKind::Blank)
@@ -217,8 +217,10 @@ fn every_curse_pays_groschen_when_attached() {
     let curses: Vec<_> = content
         .card_mods
         .values()
-        .filter(|m| m.is_curse())
+        .filter(|m| m.kind == crate::content::ModKind::Curse)
         .collect();
+    // "Abgestuft" (a special curse of the Nullspieler's edition) is never
+    // attached at the Tresen and pays nothing.
     assert_eq!(curses.len(), 3);
     for def in curses {
         assert!(def.text.starts_with("Fluch:"), "{}", def.id);
@@ -287,7 +289,7 @@ fn announced_curses_name_the_curse_and_pay() {
     .expect("random card");
     assert_eq!(run.coins(), 3);
     assert_eq!(
-        run.deck()
+        run.edition()
             .cards()
             .iter()
             .filter(|c| c.mods.contains(&CardModId::new("battered")))
