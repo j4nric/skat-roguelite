@@ -296,7 +296,7 @@ export const de = {
     skatZone: 'Skat zum Drücken',
     skatZoneCount: 'Skat · {n} von 2',
     /** "Drei drücken": three cards on the table. */
-    skatZoneCountThree: 'Drei drücken · {n} von 3',
+    skatZoneCountThree: 'Drei drücken (1×/Serie) · {n} von 3',
     backToHand: '{card}, zurück auf die Hand',
     /** "Reue" right after an Einmischen: name of the Schnaps from the content. */
     regret: '{name}: altes Blatt zurück',
@@ -543,6 +543,13 @@ export const de = {
   relicKind: {
     HouseRule: 'Hausregel',
     Regular: 'Figur',
+  },
+
+  hud: {
+    /** Note on the chip of a relic that works once per series ("Drei drücken"). */
+    oncePerSeries: '1×/Serie',
+    onceFree: 'In dieser Serie noch frei: beim nächsten Aufnehmen des Skats',
+    onceUsed: 'In dieser Serie schon genutzt',
   },
 
   evening: {
@@ -955,7 +962,7 @@ export const de = {
    */
   relicRules: {
     three_discard:
-      'Nimmst du den Skat auf, kommt eine zufällige Karte des linken Gegners dazu. Du hältst 13 Karten und drückst drei: Die mit den wenigsten Augen bekommt er zurück, die zwei anderen liegen im Skat und zählen für dich.',
+      'Einmal pro Serie, beim ersten Aufnehmen des Skats: Eine zufällige Karte des linken Gegners kommt dazu. Du hältst 13 Karten und drückst drei: Die mit den wenigsten Augen bekommt er zurück, die zwei anderen liegen im Skat und zählen für dich.',
     crib_sheet: 'Nach der Ansage eines Handspiels liegt eine der zwei Skatkarten offen neben dem Stich. Nur zum Wissen, sie zählt wie immer.',
     decoy: 'Wenn du dran bist, wählst du Trumpf oder eine Farbe. Der nächste Gegner, der einen Stich eröffnet, muss sie ausspielen, wenn er sie hat; sonst spielt er frei aus.',
   } as Record<string, string>,

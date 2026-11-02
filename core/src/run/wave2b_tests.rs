@@ -244,6 +244,8 @@ fn three_discard_does_nothing_in_a_hand_game_and_draws_the_same_card_again() {
     let game = &run.game().expect("game").game;
     assert_eq!(game.drawn(), None);
     assert_eq!(game.hand(Seat::DEFENDERS[0]).len(), 10);
+    // A hand game does not use it up.
+    assert!(run.discard_three_ready());
 
     // The draw comes from the game's seed: equal runs draw equal cards.
     let draw = || {
@@ -294,7 +296,11 @@ fn old_saves_load_without_the_new_fields() {
         assert!(!text.contains(field), "{field} left out while unused");
     }
     // Rules of a save from before have neither of the new rules.
-    for field in [",discard_three:None", ",lead_demands:0"] {
+    for field in [
+        ",discard_three:None",
+        ",lead_demands:0",
+        ",discard_three_used:false",
+    ] {
         assert!(text.contains(field), "{field}");
         text = text.replacen(field, "", 1);
     }
@@ -765,4 +771,31 @@ fn three_discard_keeps_every_card_once() {
         }
     }
     assert!(checked > 0);
+}
+
+#[test]
+fn three_discard_works_once_per_series() {
+    let content = content();
+    let mut run = relic_run(&content, &["three_discard"]);
+    deal(&mut run, &content, STRONG, STRONG_SKAT);
+    assert!(run.view(&content).game.expect("view").discard_three_ready);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert!(run.game().expect("game").game.drawn().is_some());
+    assert!(run.series().discard_three_used);
+    assert!(!run.discard_three_ready());
+    // The next game of the series: an ordinary pickup with two cards.
+    deal(&mut run, &content, STRONG, STRONG_SKAT);
+    assert!(!run.view(&content).game.expect("view").discard_three_ready);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    let game = &run.game().expect("game").game;
+    assert_eq!(game.drawn(), None);
+    assert_eq!(game.discard_count(), 2);
+    // A new series grants it again.
+    let mut events = Vec::new();
+    run.start_series(&content, 0, 1, &mut events)
+        .expect("series");
+    assert!(run.discard_three_ready());
+    deal(&mut run, &content, STRONG, STRONG_SKAT);
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert!(run.game().expect("game").game.drawn().is_some());
 }

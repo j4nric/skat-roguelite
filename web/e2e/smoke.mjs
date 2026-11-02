@@ -108,7 +108,8 @@
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
-// - "Drei drücken": picking up lays three cards on the table (the skat
+// - "Drei drücken" (once per series, "1×/Serie" on its chip, dimmed once
+//   used): picking up lays three cards on the table (the skat
 //   and the card drawn from the left Stammgast, tagged with his name),
 //   Drücken waits for three, a card tapped back into the hand and another
 //   tapped out works as with two; after Drücken the Ansage shows two
@@ -1247,6 +1248,10 @@ async function wave2b(browser, errors, reducedMotion) {
     ['"discard_three":null', '"discard_three":{"Relic":"three_discard"}'],
     ['"lead_demands":0', '"lead_demands":1'],
   ]);
+  const note = (await page.locator('[data-testid="once-three_discard"]').textContent())?.trim();
+  if (note !== '1×/Serie') fail(`Drei drücken: the chip says "${note}"`);
+  if (await page.locator('.coaster-chip.is-used').count()) fail('Drei drücken: marked used before the skat');
+  await shoot(page, 'wave2b-chip');
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   const zone = '[data-testid="skat-zone"]';
@@ -1256,7 +1261,16 @@ async function wave2b(browser, errors, reducedMotion) {
   const drawnTag = ((await page.locator(`${zone} .skat-tag.is-drawn`).textContent()) ?? '').trim();
   if (!drawnTag.startsWith('von ')) fail(`Drei drücken: the drawn card is tagged "${drawnTag}"`);
   const label = ((await page.locator(`${zone} .skat-zone-label`).textContent()) ?? '').trim();
-  if (label !== 'Drei drücken · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
+  if (label !== 'Drei drücken (1×/Serie) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
+  // Its toast stands above the Stammgäste, never over the cards on the table.
+  const toast = await page
+    .waitForSelector('.toast-layer.is-top .toast', { timeout: 3000 })
+    .then((el) => el.boundingBox())
+    .catch(() => null);
+  const table = await page.locator(zone).boundingBox();
+  if (!toast) fail('Drei drücken: no toast above the Stammgäste');
+  if (toast.y + toast.height > table.y) fail(`Drei drücken: the toast (bottom ${Math.round(toast.y + toast.height)}) covers the table zone (top ${Math.round(table.y)})`);
+  if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1×/Serie" as used');
   if (await page.locator('[data-action="discard"]').isDisabled()) fail('Drei drücken: Drücken not possible with three on the table');
   await shoot(page, 'wave2b-three-discard');
   await assertFits(page, 'Drei drücken', [PHONE, { width: 375, height: 667 }, DESKTOP]);

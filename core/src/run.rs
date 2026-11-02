@@ -135,6 +135,10 @@ pub struct Series {
     /// Whether the Ramsch of this series ("Der Ramscher") was dealt.
     #[serde(default)]
     pub ramsch_played: bool,
+    /// Whether "Drei drücken" drew its card in this series (once per
+    /// series, at the first pickup of the skat).
+    #[serde(default)]
+    pub discard_three_used: bool,
 }
 
 impl Series {
@@ -1310,6 +1314,7 @@ impl Run {
                 skat_swaps_used: 0,
                 skat_swaps_taken: Vec::new(),
                 ramsch_played: false,
+                discard_three_used: false,
             },
             coins: content.run.economy.starting_coins,
             deck,
@@ -1735,16 +1740,18 @@ impl Run {
     /// "Der Angeber" allows it: Null Ouvert can be played open after the
     /// skat (ADR 0012, every character may declare Null).
     ///
-    /// "Drei drücken": the third card is a random card of the left
-    /// defender, drawn with a generator of its own from the game's seed,
-    /// so the deal and every other draw stay the same.
+    /// "Drei drücken": at the first pickup of the series the third card is
+    /// a random card of the left defender, drawn with a generator of its
+    /// own from the game's seed, so the deal and every other draw stay the
+    /// same.
     fn pick_up_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let mut draw_rng = Rng::from_seed(opponents::game_seed(self) ^ DRAW_SEED);
+        let draw = self.discard_three_ready();
         let active = self.declaring()?;
         if active.rules.require_hand {
             return Err(RunError::HandRequired);
         }
-        let game_events = if active.rules.discard_three.is_some() {
+        let game_events = if draw {
             let from = Seat::DEFENDERS[0];
             let hand = active.game.hand(from);
             let pick = draw_rng.gen_range(0..u64::try_from(hand.len()).unwrap_or(1));
@@ -1752,12 +1759,25 @@ impl Run {
                 .get(usize::try_from(pick).unwrap_or(0))
                 .copied()
                 .ok_or(RunError::WrongPhase)?;
-            active.game.pick_up_skat_drawing(from, card)?
+            let game_events = active.game.pick_up_skat_drawing(from, card)?;
+            self.series.discard_three_used = true;
+            game_events
         } else {
             active.game.pick_up_skat()?
         };
         events.extend(game_events.into_iter().map(RunEvent::Game));
         Ok(())
+    }
+
+    /// Whether "Drei drücken" draws a card at the next pickup of the
+    /// skat: granted in this game and not yet used in this series.
+    #[must_use]
+    pub fn discard_three_ready(&self) -> bool {
+        !self.series.discard_three_used
+            && self
+                .game
+                .as_ref()
+                .is_some_and(|a| a.rules.discard_three.is_some())
     }
 
     /// "Lockvogel": the player names what the next defender who leads
@@ -2464,6 +2484,7 @@ impl Run {
             skat_swaps_used: 0,
             skat_swaps_taken: Vec::new(),
             ramsch_played: false,
+            discard_three_used: false,
         };
         self.phase = RunPhase::Game;
         self.shop = None;

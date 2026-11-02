@@ -625,6 +625,9 @@ pub struct GameView {
     pub lead_demand_options: Vec<LeadSuit>,
     /// The demand waiting for the next defender lead, if any.
     pub lead_demand: Option<LeadSuit>,
+    /// Whether "Drei drücken" draws a card at the next pickup of the skat
+    /// (once per series; [`Run::discard_three_ready`]).
+    pub discard_three_ready: bool,
 }
 
 /// The score line of the table while playing: what the game in progress
@@ -1485,6 +1488,7 @@ impl Run {
                 Vec::new()
             },
             lead_demand: game.lead_demand(),
+            discard_three_ready: self.discard_three_ready(),
         })
     }
 

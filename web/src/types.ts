@@ -369,6 +369,8 @@ export interface GameView {
   lead_demand_options?: LeadSuit[];
   /** "Lockvogel": the demand waiting for the next defender lead. */
   lead_demand?: LeadSuit | null;
+  /** "Drei drücken" (once per series) draws a card at the next pickup of the skat. */
+  discard_three_ready?: boolean;
 }
 
 /** The table's score line while playing, computed by the core. */

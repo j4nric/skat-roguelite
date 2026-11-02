@@ -497,6 +497,11 @@ button.card {
   pointer-events: none;
 }
 
+/* Above the Stammgäste (top set by the app), so the felt stays readable. */
+.toast-layer.is-top {
+  transform: translateY(-100%);
+}
+
 .toast {
   max-width: min(92vw, 440px);
   padding: 8px 14px;
@@ -833,6 +838,11 @@ button.card {
   display: block;
   font-size: var(--fs-2xs);
   color: var(--muted);
+}
+
+/* A once-per-series relic already used in this series. */
+.coaster-chip.is-used .deckel {
+  opacity: 0.45;
 }
 
 .item-chip {

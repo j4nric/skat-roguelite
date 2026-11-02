@@ -152,6 +152,9 @@ function nextPaint(): Promise<void> {
 /** Toasts waiting at most; older ones are dropped. */
 const TOAST_QUEUE = 3;
 
+/** Where a toast shows: the middle of the screen, or above the Stammgäste. */
+type ToastPlace = 'middle' | 'top';
+
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
 export class App {
@@ -193,7 +196,7 @@ export class App {
   private fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
-  private toasts: string[] = [];
+  private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
@@ -1021,7 +1024,7 @@ export class App {
       if ('SkatCardShown' in ev) {
         // "Spickzettel": the card lies face up beside the trick from now on.
         this.wiggleSource(ev.SkatCardShown.source);
-        this.showToast(t(de.toast.skatShown, { card: cardName(ev.SkatCardShown.card.kind) }));
+        this.showToast(t(de.toast.skatShown, { card: cardName(ev.SkatCardShown.card.kind) }), 'top');
         continue;
       }
       if ('SkatPointsRaised' in ev) {
@@ -1138,7 +1141,7 @@ export class App {
         anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
         this.render();
       }
-      this.showToast(t(de.toast.cardDrawn, { card: cardName(card.kind), name: this.seatLabel(seat, after) }));
+      this.showToast(t(de.toast.cardDrawn, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
       const from = this.rectOf(`.opp[data-seat="${seat}"]`);
       const el = this.screenEl.querySelector(`.skat-zone [data-id="${card.id}"], .hand-card[data-id="${card.id}"]`);
       if (from && el && !this.fastForward) flyIn(el, from, { ms: 360 });
@@ -1154,11 +1157,11 @@ export class App {
         anim.handSizes[seat] = (anim.handSizes[seat] ?? 0) + 1;
         this.render();
       }
-      this.showToast(t(de.toast.cardReturned, { card: cardName(card.kind), name: this.seatLabel(seat, after) }));
+      this.showToast(t(de.toast.cardReturned, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
       return;
     }
     if ('LeadDemanded' in ev) {
-      this.showToast(t(de.toast.leadDemanded, { suit: leadSuitName(ev.LeadDemanded.suit) }));
+      this.showToast(t(de.toast.leadDemanded, { suit: leadSuitName(ev.LeadDemanded.suit) }), 'top');
       sound.play('knock');
       return;
     }
@@ -1422,20 +1425,33 @@ export class App {
   }
 
   /** Show a toast; while one is up, the next ones wait their turn. */
-  private showToast(text: string): void {
+  /**
+   * A short message. `top`: above the Stammgäste, for messages while
+   * cards lie on the felt (Drücken, the Ansage, the trick) that must stay
+   * readable.
+   */
+  private showToast(text: string, place: ToastPlace = 'middle'): void {
     if (this.toastTimer !== undefined) {
-      this.toasts.push(text);
+      this.toasts.push({ text, place });
       if (this.toasts.length > TOAST_QUEUE) this.toasts.shift();
       return;
     }
     this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
+    this.toastEl.classList.toggle('is-top', place === 'top');
+    this.toastEl.style.top = '';
+    if (place === 'top') {
+      // The toast's bottom edge sits just above the opponents' row.
+      const opps = this.screenEl.querySelector('.opponents')?.getBoundingClientRect();
+      const height = this.toastEl.querySelector('.toast')?.getBoundingClientRect().height ?? 0;
+      if (opps) this.toastEl.style.top = `${Math.round(Math.max(height + 4, opps.top - 4))}px`;
+    }
     // Shorter while others wait.
     const ms = this.toasts.length ? DELAY.toast * 0.7 : DELAY.toast;
     this.toastTimer = window.setTimeout(() => {
       this.toastTimer = undefined;
       this.toastEl.innerHTML = '';
       const next = this.toasts.shift();
-      if (next !== undefined) this.showToast(next);
+      if (next !== undefined) this.showToast(next.text, next.place);
     }, ms);
   }
 
