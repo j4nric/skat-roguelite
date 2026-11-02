@@ -942,14 +942,10 @@ export class App {
         if (f) this.showToast(t(de.toast.wildNamed, { old: cardName(card.kind), new: cardName({ Normal: `${letter[suit]}${f.slice(1)}` }) }));
         continue;
       }
-      if ('CardBroken' in ev) {
-        // The shards flew with the trick (playGameEvent); here the words.
-        const card = before?.deck.find((c) => c.id === ev.CardBroken.card) ?? after.deck.find((c) => c.id === ev.CardBroken.card);
-        this.showToast(t(de.toast.glassBroken, { card: card ? cardName(card.kind) : contentName('card_mods', ev.CardBroken.card_mod) }));
-        continue;
-      }
-      if ('CardCameHome' in ev) {
-        this.showToast(t(de.toast.cameHome, { card: cardName(ev.CardCameHome.card.kind) }));
+      if ('VoucherRedeemed' in ev) {
+        // Effekte v2: a voucher was redeemed when its card was discarded.
+        const card = before?.deck.find((c) => c.id === ev.VoucherRedeemed.card) ?? after.deck.find((c) => c.id === ev.VoucherRedeemed.card);
+        this.showToast(t(de.toast.voucherRedeemed, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }));
         sound.play('clink');
         continue;
       }
@@ -988,7 +984,6 @@ export class App {
               if ('CardRose' in next.Game) rising = next.Game.CardRose;
               break;
             }
-            if ('CardBroken' in next) breaking.push(next.CardBroken.card);
           }
           if (!rising) {
             const later = events.slice(i + 1).find((e): e is Extract<RunEvent, { Game: unknown }> => typeof e === 'object' && 'Game' in e);

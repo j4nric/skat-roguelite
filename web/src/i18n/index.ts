@@ -73,6 +73,15 @@ export function contentText(category: Category, id: string): string {
   return de.content[category][id]?.text ?? catalog?.[category][id]?.text ?? '';
 }
 
+/**
+ * The text of a card modification with its value filled in (Effekte v2:
+ * `{n}` the amount, `{+n}` with its sign). Formatting only.
+ */
+export function modText(mod: string, value: number): string {
+  const signed = value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '0';
+  return contentText('card_mods', mod).replaceAll('{+n}', signed).replaceAll('{n}', String(Math.abs(value)));
+}
+
 /** The number a card modification prints on its card, from the core's catalog. */
 export function modFigure(mod: string): ModFigure | null {
   return catalog?.card_mods[mod]?.figure ?? null;

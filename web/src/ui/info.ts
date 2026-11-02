@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, cardName, contentName, contentText, gameName, isCurse, relicCounters, t } from '../i18n';
+import { de, cardName, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
 import { cardBack, cardSvg } from './cards';
 import { attrs, esc } from './dom';
@@ -70,7 +70,7 @@ function modStatusLine(status: CardModStatus | undefined, declaration: Declarati
 }
 
 /** A card of the game or the deck by id, as complete as the view has it. */
-function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mods: string[]; card: CardView | null; holder: Seat | null } | null {
+function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mods: string[]; values: Record<string, number>; card: CardView | null; holder: Seat | null } | null {
   const game = view.game;
   const lists: CardView[][] = [];
   if (ui.anim) lists.push(ui.anim.hand, ui.anim.trick.map((p) => p.card));
@@ -79,18 +79,18 @@ function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mod
   }
   for (const list of lists) {
     const c = list.find((x) => x.id === id);
-    if (c) return { kind: c.kind, mods: c.mods, card: c, holder: null };
+    if (c) return { kind: c.kind, mods: c.mods, values: c.mod_values ?? {}, card: c, holder: null };
   }
   const seen = game?.revealed.find((r) => r.card.id === id);
-  if (seen) return { kind: seen.card.kind, mods: seen.card.mods, card: seen.card, holder: seen.holder };
+  if (seen) return { kind: seen.card.kind, mods: seen.card.mods, values: seen.card.mod_values ?? {}, card: seen.card, holder: seen.holder };
   const deck: DeckCard | undefined = view.deck.find((c) => c.id === id);
-  return deck ? { kind: deck.kind, mods: deck.mods, card: null, holder: null } : null;
+  return deck ? { kind: deck.kind, mods: deck.mods, values: deck.mod_values ?? {}, card: null, holder: null } : null;
 }
 
 function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoModel | null {
   const found = findCard(view, ui, id);
   if (!found) return null;
-  const { kind, mods, card, holder } = found;
+  const { kind, mods, values, card, holder } = found;
   const facts: string[] = [];
   if (card) {
     facts.push(t(card.card_points === 1 ? de.info.pointsOne : de.info.points, { n: card.card_points }));
@@ -108,7 +108,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
       name: contentName('card_mods', m),
       tag: curse ? de.info.kinds.curse : de.info.kinds.cardMod,
       curse,
-      text: contentText('card_mods', m) || de.info.unknownMod,
+      text: modText(m, values[m] ?? 1) || de.info.unknownMod,
       status: [...modStatusLine(card?.mod_status?.[m], view.game?.declaration), ...lastGameStatus(lines)],
     };
   });
@@ -116,7 +116,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     key,
     title: cardName(kind),
     kind: de.info.kinds.card,
-    art: `<span class="card info-card-face">${cardSvg(kind, mods)}</span>`,
+    art: `<span class="card info-card-face">${cardSvg(kind, mods, 'full', values)}</span>`,
     facts,
     sections: sections.length ? sections : [{ text: de.info.noMods, status: [] }],
   };

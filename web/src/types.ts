@@ -27,6 +27,8 @@ export interface DealtCard {
 
 export interface CardView extends DealtCard {
   mods: string[];
+  /** Effekte v2: the value of each modification that has one (absent: 1). */
+  mod_values?: Record<string, number>;
   legal: boolean;
   from_skat: boolean;
   /** "Drei drücken": the defender this card was drawn from with the skat, while discarding. */
@@ -60,6 +62,8 @@ export interface DeckCard {
   id: number;
   kind: CardKind;
   mods: string[];
+  /** Effekte v2: the value of each modification that has one (absent: 1). */
+  mod_values?: Record<string, number>;
 }
 
 export type GameType = { Suit: Suit } | 'Grand' | 'Null';
@@ -180,6 +184,9 @@ export interface CardModInfo {
   rarity: Rarity;
   /** A curse (Fluch). */
   curse: boolean;
+  kind?: ModKind;
+  /** The value it comes with (the text has it filled in). */
+  value?: number | null;
 }
 
 /** Group of a consumable, for labels: the Schnäpse are `Schnapps`. */
@@ -589,8 +596,6 @@ export interface RunView {
   pending_next_game?: PendingNextGame[];
   last_score: ScoreView | null;
   deck: DeckCard[];
-  /** "Heimweh": deck cards that come into the hand at the next deal (absent in an older core). */
-  homesick?: number[];
   stats: RunStats;
 }
 
@@ -636,7 +641,8 @@ export type DeckChange =
   | { Removed: { removed: DeckCard } }
   | { FilledBlank: { card: number; blank: number } }
   | { Added: { card: number } }
-  | { Modified: { card: number; card_mod: string } };
+  | { Modified: { card: number; card_mod: string; value?: number; replaced?: string | null } }
+  | { Unmodified: { card: number; card_mod: string } };
 
 export type RunEvent =
   | 'Re'
@@ -672,10 +678,10 @@ export type RunEvent =
   | { CardPeeked: { card: DealtCard; seat: Seat } }
   /** "Wandelkarte": the player named the suit of `card` (as printed) as he played it. */
   | { WildCardNamed: { card: DealtCard; suit: Suit } }
-  /** "Glasdaus": the card broke in a defender's trick; it leaves the deck after the game. */
-  | { CardBroken: { card: number; card_mod: string } }
-  /** "Heimweh": a card that lay in the skat came into the player's hand. */
-  | { CardCameHome: { card: DealtCard } }
+  /** Effekte v2: a voucher was redeemed when its card was discarded. */
+  | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
+  /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
+  | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
   | { EncounterResolved: { encounter: string; choice: EncounterChoice } }
   | { EveningRuleAdded: string }
@@ -724,9 +730,17 @@ export interface ModFigure {
 }
 
 /** A card modification in the catalog, with rarity, curse flag and its printed number. */
+/** Effekte v2: Rand, Moment, Gutschein, Fluch, Spezialkarte. */
+export type ModKind = 'Edge' | 'Moment' | 'Voucher' | 'Curse' | 'Special';
+
 export interface CardModEntry extends CatalogEntry {
   rarity: Rarity;
   curse: boolean;
+  kind?: ModKind;
+  /** Values on offer; empty: no value. */
+  values?: number[];
+  max?: number | null;
+  /** The printed number per unit of the card's value. */
   figure?: ModFigure | null;
 }
 

@@ -33,7 +33,7 @@ function infoAttrs(id: number, focusable = true): Record<string, string | number
 }
 
 function miniCard(card: CardView): string {
-  return `<span class="mini-card" ${attrs({ title: cardName(card.kind), ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
+  return `<span class="mini-card" ${attrs({ title: cardName(card.kind), ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`;
 }
 
 /** An eye, for the Kiebitz. */
@@ -48,16 +48,16 @@ function eyeIcon(size = 14): string {
 function revealedCard(r: RevealedCard): string {
   const card = r.card;
   if (r.source === 'Onlooker') {
-    return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
+    return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`;
   }
   if (r.source === 'Returned') {
-    return `<span class="mini-card is-returned" ${attrs({ title: `${cardName(card.kind)} (${de.table.returnedHint})`, 'data-returned': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
+    return `<span class="mini-card is-returned" ${attrs({ title: `${cardName(card.kind)} (${de.table.returnedHint})`, 'data-returned': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`;
   }
   if (r.source === 'Kibitz') {
-    return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}</span>`;
+    return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`;
   }
   const mod = r.source.CardMod;
-  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small')}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
+  return `<span class="mini-card is-revealed" ${attrs({ title: `${cardName(card.kind)} (${contentName('card_mods', mod)})`, 'data-reveal-mod': mod, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods, 'small', card.mod_values)}<span class="reveal-mod">${modIcon(mod, 14)}</span></span>`;
 }
 
 /** A small thought bubble while the core computes this opponent's card. */
@@ -160,7 +160,7 @@ function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Se
     tag += `<span class="trick-rose-tag" data-testid="rose-note" title="${esc(t(de.table.roseHint, { card: risen.card }))}">${skullIcon(9)}${esc(de.table.roseTag)}</span>`;
   }
   const inner = played
-    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}${plaques(played.card)}${tag}</div>`
+    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods, 'full', played.card.mod_values)}${plaques(played.card)}${tag}</div>`
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;
@@ -245,7 +245,7 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
   const handPossible = options.games.some((g) => g.allowed);
   const peeked = Boolean(peek?.length);
   // "Kurzer": the skat lies face up, the choice stays open.
-  const skatCards = (peeked && peek ? peek.map((c) => cardSvg(c.kind, c.mods)) : [cardBack(), cardBack()])
+  const skatCards = (peeked && peek ? peek.map((c) => cardSvg(c.kind, c.mods, 'full', c.mod_values)) : [cardBack(), cardBack()])
     .map((inner, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}">${inner}</span>`)
     .join('');
   const canMix = options.can_redeal;
@@ -444,9 +444,9 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
           'aria-pressed': action === 'select' ? (selected ? 'true' : 'false') : null,
           'aria-label': label,
           ...infoAttrs(c.id, false),
-        })}>${cardSvg(c.kind, c.mods)}${skatTag}</button>`;
+        })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${skatTag}</button>`;
       }
-      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${cardSvg(c.kind, c.mods)}${skatTag}</div>`;
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${skatTag}</div>`;
     })
     .join('');
   const open = isOpen(game);
@@ -529,7 +529,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
                       'aria-pressed': c.id === take.id ? 'true' : 'false',
                       'aria-label': cardName(c.kind),
                       ...infoAttrs(c.id, false),
-                    })}>${cardSvg(c.kind, c.mods, 'small')}</button>`,
+                    })}>${cardSvg(c.kind, c.mods, 'small', c.mod_values)}</button>`,
                 )
                 .join('')}</span>`
             : '';
@@ -538,7 +538,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
       }
       if (take) {
         return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
-          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods, 'small')}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
+          <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods, 'small', take.mod_values)}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
       const lure = lureControl(game, ui);
       if (lure && ui.lurePick) return `<div class="status status-lure">${lure}</div>`;
@@ -615,7 +615,7 @@ function pressedStack(game: GameView): string {
   const cards = skat
     .map(
       (c) =>
-        `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods)}</button>`,
+        `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`,
     )
     .join('');
   const label = t(de.table.pressedAria, { cards: skat.map((c) => cardName(c.kind)).join(', ') });
@@ -631,7 +631,7 @@ function cribStack(game: GameView): string {
   if (!shown.length || game.phase !== 'Playing') return '';
   const open = shown.map(
     (c) =>
-      `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods)}</button>`,
+      `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`,
   );
   const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, () => `<span class="pressed-card is-back">${cardBack()}</span>`);
   const label = t(de.table.cribAria, { cards: shown.map((c) => cardName(c.kind)).join(', ') });
@@ -678,7 +678,7 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
       const label = cardLabel(c);
       // "Drei drücken": the card drawn from a defender says whose it was.
       const tag = c.drawn_from != null ? cardTag(view, c) : '';
-      const inner = `${cardSvg(c.kind, c.mods)}${tag}${plaques(c)}`;
+      const inner = `${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${tag}${plaques(c)}`;
       const card = active
         ? `<button class="card skat-card is-active" ${attrs({ 'data-action': 'select', 'data-drag': 'card', 'data-id': c.id, 'aria-pressed': 'true', 'aria-label': t(de.table.backToHand, { card: label }), ...infoAttrs(c.id, false) })}>${inner}</button>`
         : `<div class="card skat-card" ${attrs({ 'data-id': c.id, role: 'img', 'aria-label': label, ...infoAttrs(c.id, false) })}>${inner}</div>`;

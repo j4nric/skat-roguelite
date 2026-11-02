@@ -528,7 +528,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-info': `card:${c.id}`,
             disabled: !ok,
             'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods)}</button>`;
+          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
         })
         .join('');
       return sheet(
@@ -554,7 +554,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             disabled: !ok,
             'aria-pressed': on ? 'true' : 'false',
             'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods)}</button>`;
+          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
         })
         .join('');
       const own = picked ? face(picked.kind)?.suit : undefined;
@@ -591,7 +591,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-testid': `wild-${suit}`,
             disabled: !ok,
             'aria-label': t(de.card.wildSuit, { card: cardName(kind) }),
-          })}>${cardSvg(kind, card.mods)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
+          })}>${cardSvg(kind, card.mods, 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
         })
         .join('');
       const follow = allowed.length < 4 ? `<p class="small">${esc(t(de.card.wildFollow, { suits: allowed.map((s) => de.suits[s]).join(', ') }))}</p>` : '';
@@ -617,7 +617,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-info': `card:${c.id}`,
             disabled: !ok,
             'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods)}</button>`;
+          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
         })
         .join('');
       return sheet(
