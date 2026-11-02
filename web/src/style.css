@@ -2532,6 +2532,25 @@ button.card {
   overflow-wrap: anywhere;
 }
 
+/* A voucher redeemed: the card big over the table, then a coin to the purse. */
+.voucher-redeem {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 60;
+  width: 99px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.voucher-coin {
+  position: fixed;
+  z-index: 61;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+
 /* Before a card modification replaces or raises another: the card now and after. */
 .mod-confirm-cards {
   display: flex;

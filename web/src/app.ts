@@ -63,7 +63,7 @@ import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, flip, flyIn, motionOn, pulse, setTempo, sweepAway } from './ui/fx';
-import { cardBack, modValueText } from './ui/cards';
+import { cardBack, cardSvg, modValueText } from './ui/cards';
 import { watchDrags } from './ui/drag';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -944,9 +944,11 @@ export class App {
       }
       if ('VoucherRedeemed' in ev) {
         // Effekte v2: a voucher was redeemed when its card was discarded.
-        const card = before?.deck.find((c) => c.id === ev.VoucherRedeemed.card) ?? after.deck.find((c) => c.id === ev.VoucherRedeemed.card);
-        this.showToast(t(de.toast.voucherRedeemed, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }));
+        const id = ev.VoucherRedeemed.card;
+        const card = before?.deck.find((c) => c.id === id) ?? after.deck.find((c) => c.id === id);
+        this.showToast(t(de.toast.voucherRedeemed, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }), 'top');
         sound.play('clink');
+        if (card) await this.redeemVoucher(card, after.deck.find((c) => c.id === id) ?? null);
         continue;
       }
       if ('EveningRuleAdded' in ev) {
@@ -1296,6 +1298,63 @@ export class App {
     this.root.appendChild(pop);
     window.setTimeout(() => pop.remove(), Math.max(1400, 2200 * TEMPO_FACTOR[this.ui.settings.tempo]));
     await this.pause(DELAY.notice);
+  }
+
+  /**
+   * A voucher redeemed (VoucherRedeemed, board "Einlösen in drei
+   * Schritten"): the card shows big over the table, its stamp margin tears
+   * off, then a coin flies to the Groschen counter, or the card turns over
+   * into its new form (Untot, Wandelkarte). Both faces come from the core's
+   * views before and after the discard; the Groschen follow as their own
+   * event. Skipped with reduced motion and when the table is hurried.
+   */
+  private async redeemVoucher(card: DeckCard, now: DeckCard | null): Promise<void> {
+    if (!motionOn() || this.fastForward) return;
+    const from = this.screenEl.querySelector(`[data-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
+    const box = document.createElement('div');
+    box.className = 'voucher-redeem';
+    box.dataset.testid = 'voucher-redeem';
+    box.dataset.stage = 'voucher';
+    box.setAttribute('aria-hidden', 'true');
+    box.innerHTML = `<span class="card">${cardSvg(card.kind, card.mods, 'full', card.mod_values)}</span>`;
+    this.root.appendChild(box);
+    const el = box.querySelector<HTMLElement>('.card');
+    if (!el) return;
+    if (from?.width) flyIn(el, from, { ms: 260 });
+    await this.pause(DELAY.notice * 0.5);
+    // Step 2: the stamp margin tears off.
+    el.innerHTML = cardSvg(card.kind, card.mods, 'full', card.mod_values, { redeeming: true });
+    box.dataset.stage = 'torn';
+    el.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-4deg)' }, { transform: 'rotate(3deg)' }, { transform: 'rotate(0)' }], { duration: 260, easing: 'ease-out' });
+    sound.play('card', { rate: 1.3 });
+    await this.pause(DELAY.notice * 0.6);
+    // Step 3: what the voucher gives.
+    if (now) {
+      const turned = now.mods.some((m) => !card.mods.includes(m));
+      if (turned) {
+        el.innerHTML = cardSvg(now.kind, now.mods, 'full', now.mod_values);
+        flip(el, cardBack(), { ms: 360 });
+        box.dataset.stage = 'turned';
+      } else {
+        el.innerHTML = cardSvg(now.kind, now.mods, 'full', now.mod_values);
+        box.dataset.stage = 'coin';
+        const purse = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
+        if (purse) {
+          const coin = document.createElement('span');
+          coin.className = 'voucher-coin';
+          coin.innerHTML = coinIcon(28);
+          coin.style.left = `${Math.round(purse.left + purse.width / 2 - 14)}px`;
+          coin.style.top = `${Math.round(purse.top + purse.height / 2 - 14)}px`;
+          this.root.appendChild(coin);
+          const anim = flyIn(coin, el.getBoundingClientRect(), { ms: 420, arc: 40 });
+          const gone = (): void => coin.remove();
+          if (anim) anim.finished.then(gone, gone);
+          else gone();
+        }
+      }
+    }
+    await this.pause(DELAY.notice * 0.8);
+    box.remove();
   }
 
   /**
