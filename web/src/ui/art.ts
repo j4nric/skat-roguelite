@@ -162,6 +162,20 @@ const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> =
   dummy: { fill: '#7d6a50', glyph: '<rect x="7.5" y="5.5" width="9" height="13" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.4 10 C10.4 8.4 13.6 8.4 13.6 10 C13.6 11.4 12 11.4 12 13" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.4" r=".9" fill="#fff"/>' },
 };
 
+// Effekte v2 (DESIGN 7.2): placeholders on the old badges until the art track.
+const alias = (id: string, from: string, fill?: string): void => {
+  const icon = MOD_ICON[from];
+  if (icon) MOD_ICON[id] = fill ? { ...icon, fill } : icon;
+};
+alias('points', 'fat');
+alias('rank', 'marked');
+alias('trump_bonus', 'stamp');
+alias('first_trick', 'lucky_penny');
+alias('voucher_coins', 'lucky_penny', '#2e7d4f');
+alias('voucher_undead', 'undead', '#2e7d4f');
+alias('voucher_wild', 'wild_card', '#2e7d4f');
+alias('stained', 'black_cat');
+
 export function modIconId(mod: string): string {
   return MOD_ICON[mod] ? `m-${mod}` : 'm-other';
 }

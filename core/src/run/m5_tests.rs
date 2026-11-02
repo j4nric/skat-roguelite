@@ -11,7 +11,6 @@ use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
 use crate::content::{Condition, EncounterId, Factor, Rarity, Reward, UnlockId};
-use crate::game::GameError;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).
@@ -29,8 +28,13 @@ fn id(notation: &str) -> u32 {
 }
 
 fn add_mod(run: &mut Run, notation: &str, card_mod: &str) {
+    let content = content();
+    let id_mod = CardModId::new(card_mod);
+    let value = content
+        .card_mod(&id_mod)
+        .map_or(1, crate::content::CardModDef::default_value);
     run.deck
-        .add_mod(id(notation), CardModId::new(card_mod))
+        .add_mod(&content, id(notation), &id_mod, value)
         .expect("mod");
 }
 
@@ -217,97 +221,6 @@ fn gain_coins_is_allowed_outside_passive_and_never_drops_below_zero() {
     assert!(load(good).is_ok(), "{:?}", load(good));
 }
 
-#[test]
-fn battered_pays_when_attached_and_stays_out_of_the_skat() {
-    let content = content();
-    // The ink pad (Stempelkissen) names no mod: give the run one that does.
-    let mut run = relic_run(&content, &[]);
-    run.game = None;
-    run.phase = RunPhase::Shop;
-    run.shop = Some(run.draw_offer(&content, 0));
-    let coins = run.coins();
-    let mut events = Vec::new();
-    run.attach_mod(&content, id("S7"), CardModId::new("battered"), &mut events)
-        .expect("attach");
-    assert_eq!(run.coins(), coins + 3);
-    assert!(matches!(events[0], RunEvent::DeckChanged(_)));
-    assert!(matches!(events[1], RunEvent::CoinsGained { amount: 3, .. }));
-
-    // In a game: the D7 in the hand and the C7 in the skat are battered.
-    let mut run = relic_run(&content, &[]);
-    add_mod(&mut run, "D7", "battered");
-    add_mod(&mut run, "C7", "battered");
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-    let view = run.view(&content).game.expect("game");
-    let flagged: Vec<u32> = view
-        .hand
-        .iter()
-        .filter(|c| c.card.no_discard)
-        .map(|c| c.card.id)
-        .collect();
-    assert_eq!(
-        flagged,
-        vec![id("C7"), id("D7")],
-        "no game yet: grand order, Kreuz first"
-    );
-    for pair in [[id("D7"), id("D9")], [id("C7"), id("D8")]] {
-        let err = run
-            .clone()
-            .apply(&content, RunAction::Discard(pair))
-            .expect_err("battered");
-        assert!(matches!(
-            err,
-            RunError::Game(GameError::DiscardForbidden { .. })
-        ));
-        assert_eq!(err.code(), RunErrorCode::DiscardForbidden);
-    }
-    assert!(
-        run.clone()
-            .apply(&content, RunAction::Discard([id("D8"), id("D9")]))
-            .is_ok()
-    );
-    // The bot never pushes a battered card while it has others.
-    let action = RunBot.next_action(&run, &content).expect("discard");
-    assert!(matches!(action, RunAction::Discard(_)), "{action:?}");
-    run.apply(&content, action).expect("bot discard");
-    let skat = run.game().expect("game").game.skat();
-    assert!(skat.iter().all(|c| !c.no_discard), "{skat:?}");
-    assert_eq!(RunErrorCode::DiscardForbidden.as_str(), "DiscardForbidden");
-}
-
-#[test]
-fn the_grannys_swap_cannot_push_a_battered_card() {
-    let content = content();
-    let mut run = relic_run(&content, &["granny"]);
-    add_mod(&mut run, "H7", "battered");
-    fixed_deal(&mut run, &content, JACK_AND_ACE, JACK_AND_ACE_SKAT);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::suit(Suit::Diamonds, RiskLevel::Hand)),
-    )
-    .expect("declare");
-    let err = run
-        .clone()
-        .apply(
-            &content,
-            RunAction::TakeFromSkat {
-                give: id("H7"),
-                take: None,
-            },
-        )
-        .expect_err("battered");
-    assert_eq!(err.code(), RunErrorCode::DiscardForbidden);
-    run.apply(
-        &content,
-        RunAction::TakeFromSkat {
-            give: id("D7"),
-            take: None,
-        },
-    )
-    .expect("another card");
-}
-
 // ---------------------------------------------------------------------------
 // 9: several skat swaps; 6: the view names the card
 // ---------------------------------------------------------------------------
@@ -400,79 +313,6 @@ fn granny_and_grandpa_swap_once_each_and_the_view_names_the_card() {
     let text = ron::to_string(&old).expect("ron");
     let back: Run = ron::from_str(&text).expect("ron");
     assert_eq!(back, old);
-}
-
-// ---------------------------------------------------------------------------
-// 10: "Bube ehrenhalber"
-// ---------------------------------------------------------------------------
-
-#[test]
-fn an_honorary_jack_is_trump_in_the_run_and_sorts_below_the_jacks() {
-    let content = content();
-    let mut run = relic_run(&content, &[]);
-    // The declarer's SK becomes a jack of honour.
-    add_mod(&mut run, "H7", "honorary_jack");
-    fixed_deal(
-        &mut run,
-        &content,
-        [
-            "CJ SJ HJ DJ DA DT DK DQ D9 H7",
-            "HA HT HK HQ H9 H8 D7 SA ST SK",
-            "SQ S9 S8 S7 CA CT CK CQ C9 C8",
-        ],
-        "D8 C7",
-    );
-    let h7 = run
-        .game()
-        .expect("game")
-        .game
-        .hand(Seat::DECLARER)
-        .iter()
-        .find(|c| c.id == id("H7"))
-        .copied()
-        .expect("H7");
-    assert!(h7.honorary_jack);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::suit(Suit::Diamonds, RiskLevel::Hand)),
-    )
-    .expect("declare");
-    let game = run.view(&content).game.expect("game");
-    let order: Vec<u32> = game.hand.iter().map(|c| c.card.id).collect();
-    assert_eq!(
-        &order[..5],
-        &[id("CJ"), id("SJ"), id("HJ"), id("DJ"), id("H7")]
-    );
-    assert!(game.hand[4].card.honorary_jack);
-    // No Spitze: CJ to DJ, DA to D9 and the D8 in the skat are mit 10
-    // along the printed order (the D7 is out); the honorary H7 adds
-    // nothing.
-    let matadors = run.game().expect("game").game.matadors().expect("matadors");
-    assert_eq!(
-        matadors,
-        crate::rules::Matadors {
-            with: true,
-            count: 10
-        }
-    );
-    // The bot can play it through.
-    let (_, b) = play_on(&mut run, &content);
-    assert!(b.won);
-}
-
-/// Let the bot finish the current game.
-fn play_on(run: &mut Run, content: &Content) -> (Vec<RunEvent>, ScoreBreakdown) {
-    let mut events = Vec::new();
-    loop {
-        if let Some(b) = events.iter().find_map(|e: &RunEvent| match e {
-            RunEvent::GameScored { breakdown, .. } => Some(breakdown.clone()),
-            _ => None,
-        }) {
-            return (events, b);
-        }
-        let action = RunBot.next_action(run, content).expect("play");
-        events.extend(run.apply(content, action).expect("legal"));
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -714,6 +554,7 @@ fn the_old_friend_names_the_relic_received() {
             },
             cost: 0,
             card_mod: None,
+            value: None,
         }],
     });
     let view = old.view(&content).encounter.expect("view");
@@ -749,7 +590,7 @@ fn rewards_show_kind_and_rarity_and_card_mods_can_be_locked() {
         assert_eq!(unlock.rewards.len(), unlock.reward_info.len());
     }
     // A card modification as a reward stays out of random draws.
-    let honorary = CardModId::new("honorary_jack");
+    let honorary = CardModId::new("rank");
     content
         .unlocks
         .get_mut(&UnlockId::new("hand_won"))
@@ -766,7 +607,7 @@ fn rewards_show_kind_and_rarity_and_card_mods_can_be_locked() {
     assert_eq!(start.locked_card_mods, vec![honorary.clone()]);
     let (run, _) = Run::new_with(&content, 1, &start).expect("run");
     assert!(
-        !run.card_mod_pool(&content, &[])
+        !run.card_mod_pool(&content)
             .iter()
             .any(|(m, _)| *m == honorary)
     );
@@ -795,11 +636,13 @@ fn the_bot_plays_whole_runs_with_the_new_content() {
         let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
         for (card, card_mod) in [
             ("S7", "battered"),
-            ("H8", "battered"),
-            ("C9", "battered"),
-            ("SK", "honorary_jack"),
-            ("HA", "honorary_jack"),
-            ("D9", "cracked"),
+            ("H8", "voucher_coins"),
+            ("C9", "stained"),
+            ("SK", "rank"),
+            ("HA", "points"),
+            ("D9", "transparent"),
+            ("DA", "first_trick"),
+            ("D7", "voucher_undead"),
         ] {
             add_mod(&mut run, card, card_mod);
         }

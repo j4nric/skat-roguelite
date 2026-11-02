@@ -31,8 +31,9 @@
 //!   relics. Compare against `--no-shop` for its effect alone.
 //! - `--stake N`: Einsatz-Leiter (DESIGN 9.3), suit games and Grand are
 //!   won from `61 + N` Augen (also in `--unlocks`, whatever is unlocked).
-//! - `--card-mod <card>:<id>`: the start deck carries this card
-//!   modification on the first instance of the printed card (`CA:glass_ace`,
+//! - `--card-mod <card>:<id>[:<value>]`: the start deck carries this card
+//!   modification on the first instance of the printed card
+//!   (`CA:points:5`, `CK:undead`; without value its first value on offer,
 //!   repeatable), like a character's start deck. The deals stay the same.
 //!
 //! Opponents and bot (DESIGN 10.2, stage 2), in both modes:
@@ -171,11 +172,18 @@ fn parse_args() -> Result<Args, String> {
             }
             "--card-mod" => {
                 let value = it.next().ok_or("missing value for --card-mod")?;
-                let (card, id) = value
-                    .split_once(':')
-                    .ok_or("--card-mod needs <card>:<id>, e.g. CA:glass_ace")?;
+                let mut parts = value.split(':');
+                let (Some(card), Some(id)) = (parts.next(), parts.next()) else {
+                    return Err("--card-mod needs <card>:<id>[:<value>], e.g. CA:points:5".into());
+                };
                 let card = card.parse().map_err(|e| format!("--card-mod: {e}"))?;
-                args.options.card_mods.push((card, CardModId::new(id)));
+                let value = match parts.next() {
+                    Some(v) => Some(v.parse().map_err(|e| format!("--card-mod: {e}"))?),
+                    None => None,
+                };
+                args.options
+                    .card_mods
+                    .push((card, CardModId::new(id), value));
             }
             "--stake" => {
                 let value = it.next().ok_or("missing value for --stake")?;
@@ -572,7 +580,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--consumable ID] [--card-mod CARD:ID]... [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

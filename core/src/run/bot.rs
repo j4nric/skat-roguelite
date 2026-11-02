@@ -245,7 +245,11 @@ pub const SWAP_MARGIN: u32 = 3;
 /// a row come in about one game of eight, once every three series. Before the
 /// Einmischen rule they were worth 4, 3 and 3 and were bought far more
 /// often than used.
-pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
+///
+/// Effects v2 (DESIGN 7.2, 12): the card modifications with a value at the
+/// Tresen are placeholders, not measured; the bot puts them on a Daus
+/// without modification like the Stempelkissen.
+pub const CONSUMABLE_VALUES: [(&str, u32); 15] = [
     ("new_deal", 2),
     ("beer", 1),
     ("herbal", 1),
@@ -256,6 +260,11 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("shot", 1),
     ("fresh_deck", 0),
     ("regret", 0),
+    ("points_3", 1),
+    ("points_5", 2),
+    ("trump_2", 1),
+    ("trump_4", 2),
+    ("rank_1", 1),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -627,12 +636,19 @@ impl RunBot {
         };
         let coins = run.coins();
         let price = |p: u32| run.shop_price(content, p);
-        // 1. Stempelkissen: on an ace, Kreuz first, the least modified one.
+        // 1. Stempelkissen and the modifications with a value: on an ace,
+        // Kreuz first, one without modification first (effects v2: another
+        // modification would replace it).
         for target in Self::ace_targets(run) {
             if let Some(action) = Self::usable(
                 run,
                 content,
-                |a| matches!(a, ConsumableAction::AddCardMod(_)),
+                |a| {
+                    matches!(
+                        a,
+                        ConsumableAction::AddCardMod(_) | ConsumableAction::ApplyCardMod { .. }
+                    )
+                },
                 Some(target),
             ) {
                 return action;

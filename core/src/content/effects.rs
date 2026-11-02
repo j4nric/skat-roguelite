@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::Factor;
+use super::{CardModId, Factor};
 use crate::cards::{Card, Rank, Suit};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
@@ -32,13 +32,21 @@ pub enum Stage {
     /// When a card modification is attached to a card (no game in
     /// progress). Card modifications only.
     OnAttach,
+    /// When the card it sits on lands in the skat by discarding ("wenn
+    /// gedrückt", vouchers, DESIGN 7.2). Acts outside the game in
+    /// progress: only run state (Groschen, the deck). Card modifications
+    /// only.
+    OnDiscard,
 }
 
 impl Stage {
     /// Whether a game is in progress at this stage.
     #[must_use]
     pub const fn in_game(self) -> bool {
-        !matches!(self, Stage::OnSeriesWon | Stage::OnAttach)
+        !matches!(
+            self,
+            Stage::OnSeriesWon | Stage::OnAttach | Stage::OnDiscard
+        )
     }
 
     /// Whether this stage comes before the result is known, so that it may
@@ -116,6 +124,15 @@ pub enum Hook {
         /// Effects, applied in order.
         then: Vec<Effect>,
     },
+    /// When the card is discarded into the skat ("wenn gedrückt").
+    /// Card modifications only.
+    OnDiscard {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
 }
 
 impl Hook {
@@ -130,6 +147,7 @@ impl Hook {
             Hook::OnScore { .. } => Stage::OnScore,
             Hook::OnSeriesWon { .. } => Stage::OnSeriesWon,
             Hook::OnAttach { .. } => Stage::OnAttach,
+            Hook::OnDiscard { .. } => Stage::OnDiscard,
         }
     }
 
@@ -143,7 +161,8 @@ impl Hook {
             | Hook::OnTrickEnd { when, .. }
             | Hook::OnScore { when, .. }
             | Hook::OnSeriesWon { when, .. }
-            | Hook::OnAttach { when, .. } => when,
+            | Hook::OnAttach { when, .. }
+            | Hook::OnDiscard { when, .. } => when,
         }
     }
 
@@ -157,7 +176,8 @@ impl Hook {
             | Hook::OnTrickEnd { then, .. }
             | Hook::OnScore { then, .. }
             | Hook::OnSeriesWon { then, .. }
-            | Hook::OnAttach { then, .. } => then,
+            | Hook::OnAttach { then, .. }
+            | Hook::OnDiscard { then, .. } => then,
         }
     }
 }
@@ -232,7 +252,8 @@ pub enum Effect {
         /// Their new Augen.
         points: u32,
     },
-    /// Lever Augen: this card counts more (or fewer) Augen. Card
+    /// Lever Augen: this card counts more (or fewer) Augen, also below
+    /// zero (DESIGN 7.2, [`crate::deck::DealtCard::point_debt`]). Card
     /// modifications only, passive only.
     AddCardPoints(i32),
     /// Lever Stichgewinn: this card counts this many steps higher within
@@ -342,25 +363,21 @@ pub enum Effect {
     /// [`crate::rules::valid_discard`]). Card modifications only, passive
     /// only.
     NoDiscard,
-    /// Lever Augen: this card counts this many times its Augen, after
-    /// every other change of its Augen ("Glasdaus": 2). Card modifications
-    /// only, passive only.
-    MultiplyCardPoints(u32),
+    /// Lever Augen ("Erster Stich", DESIGN 7.2): the Augen of the trick
+    /// just completed count this many times in total for the seat that
+    /// took it (1: unchanged, 2: twice). The extra goes to
+    /// [`crate::game::Game::add_bonus_points`]. On trick end only.
+    MultiplyTrickPoints(u32),
+    /// Deck ("Gutschein", DESIGN 7.2): this card becomes the named special
+    /// card (Untot, Wandelkarte) from the next game on. Card
+    /// modifications only, when discarded only.
+    TurnInto(CardModId),
     /// Lever Stichgewinn and Bedienpflicht ("Wandelkarte"): in the player's
     /// hand this card never obliges him to follow suit, and when he plays
     /// it he names its suit; it is then that card for the trick (see
     /// [`crate::rules::wild_suits`]). In a defender's hand it is the
     /// printed card. Card modifications only, passive only.
     Wild,
-    /// Deck ("Glasdaus"): this card breaks and leaves the deck for the rest
-    /// of the run once the game is scored (a blank takes its place, like
-    /// "Frisches Deck"). Card modifications only, on trick end only.
-    BreakThisCard,
-    /// Lever Spitzen and hand quality ("Heimweh"): a card that lies in the
-    /// skat when a game ends comes into the player's hand at the next deal
-    /// (and at every redeal of that game). Card modifications only, passive
-    /// only.
-    Homesick,
     /// Lever Stichgewinn and Augen ("Untot", DESIGN 7.2): when the player
     /// plays this card in a suit game or Grand and the trick is complete,
     /// the card comes back into his hand once per game and a random other
@@ -412,14 +429,15 @@ impl Effect {
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_) => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
-            Effect::SchneiderBonusFromTrick | Effect::BreakThisCard => stage == Stage::OnTrickEnd,
+            Effect::SchneiderBonusFromTrick | Effect::MultiplyTrickPoints(_) => {
+                stage == Stage::OnTrickEnd
+            }
+            Effect::TurnInto(_) => stage == Stage::OnDiscard,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
-            | Effect::MultiplyCardPoints(_)
             | Effect::RankBonus(_)
             | Effect::RevealHolder
             | Effect::Wild
-            | Effect::Homesick
             | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::BlankOut(_) => stage == Stage::Passive,
@@ -485,17 +503,40 @@ impl Effect {
         matches!(
             self,
             Effect::AddCardPoints(_)
-                | Effect::MultiplyCardPoints(_)
                 | Effect::RankBonus(_)
                 | Effect::RevealHolder
                 | Effect::NeverWins
                 | Effect::NoDiscard
                 | Effect::HonoraryJack
                 | Effect::Wild
-                | Effect::BreakThisCard
-                | Effect::Homesick
+                | Effect::TurnInto(_)
                 | Effect::Undead
         )
+    }
+
+    /// This effect for a card modification of `value` (DESIGN 7.2): the
+    /// effects of a card modification are written per unit of its value
+    /// and multiplied here. Scaled: `AddCardPoints`, `RankBonus` (at most
+    /// 255), `AddBaseValue`, `AddLevels`, `GainCoins` and
+    /// `MultiplyTrickPoints` (the factor itself is the value: one unit of
+    /// "Erster Stich" with value 2 is ×2). Every other effect stays as it
+    /// is. A value of 1 changes nothing.
+    #[must_use]
+    pub fn scaled(&self, value: i32) -> Effect {
+        let times = |n: i32| n.saturating_mul(value);
+        match self {
+            Effect::AddCardPoints(n) => Effect::AddCardPoints(times(*n)),
+            Effect::AddBaseValue(n) => Effect::AddBaseValue(times(*n)),
+            Effect::AddLevels(n) => Effect::AddLevels(times(*n)),
+            Effect::GainCoins(n) => Effect::GainCoins(times(*n)),
+            Effect::RankBonus(n) => {
+                Effect::RankBonus(u8::try_from(times(i32::from(*n)).clamp(0, 255)).unwrap_or(0))
+            }
+            Effect::MultiplyTrickPoints(n) => Effect::MultiplyTrickPoints(
+                u32::try_from(i64::from(*n) * i64::from(value.max(0))).unwrap_or(u32::MAX),
+            ),
+            other => other.clone(),
+        }
     }
 }
 
@@ -559,8 +600,11 @@ pub enum Condition {
     /// This card won the tenth trick, whoever played it. Card
     /// modifications only, on score only.
     ThisCardWinsLastTrick,
-    /// This card's suit is the trump suit of the declared suit game. Card
-    /// modifications only, from the declaration on.
+    /// This card's suit is the trump suit of the declared suit game and,
+    /// while [`super::engine::TRUMP_MODS_NEED_PLAYER`] is on (ADR 0015
+    /// strict, DESIGN 7.2), the player holds the card: in his hand, in the
+    /// skat or played by him. Card modifications only, from the
+    /// declaration on.
     ThisCardIsTrumpSuit,
     /// Exactly this many tricks are complete. During play.
     TricksPlayed(u32),
@@ -583,12 +627,10 @@ pub enum Condition {
     /// The trick just completed is the first one the declarer took
     /// ("Stichfest"). On trick end only.
     FirstTrickOfDeclarer,
-    /// The trick just completed holds this card and a defender took it
-    /// with another card: a Gegner beat it ("Glasdaus": ein Gegner sticht
-    /// sie), whoever played it. A defender who wins the trick with this
-    /// card itself does not beat it. Card modifications only, on trick end
-    /// only.
-    ThisCardBeatenByDefender,
+    /// The trick just completed is the first trick of the game and this
+    /// card won it, whoever played it ("Erster Stich"). Card modifications
+    /// only, on trick end only.
+    ThisCardWinsFirstTrick,
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
@@ -655,7 +697,7 @@ impl Condition {
             }
             Condition::TrickWinnerMatches { .. }
             | Condition::FirstTrickOfDeclarer
-            | Condition::ThisCardBeatenByDefender => stage == Stage::OnTrickEnd,
+            | Condition::ThisCardWinsFirstTrick => stage == Stage::OnTrickEnd,
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
             Condition::NullGame
             | Condition::NullRiskAtLeast(_)
@@ -685,7 +727,7 @@ impl Condition {
             Condition::Not(c) => c.card_mod_only(),
             Condition::ThisCardWinsLastTrick
             | Condition::ThisCardIsTrumpSuit
-            | Condition::ThisCardBeatenByDefender => true,
+            | Condition::ThisCardWinsFirstTrick => true,
             _ => false,
         }
     }

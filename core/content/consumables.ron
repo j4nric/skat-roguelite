@@ -14,7 +14,7 @@
     (
         id: "ink_pad",
         name: "Stempelkissen",
-        text: "Verpasse einer Karte eine zufällige Modifikation, nie einen Fluch.",
+        text: "Verpasse einer Karte eine zufällige Modifikation, nie einen Fluch. Dieselbe steigt, eine andere ersetzt die alte.",
         rarity: Common,
         price: 3,
         action: AddCardMod(None),
@@ -90,5 +90,48 @@
         price: 2,
         action: UndoRedeal,
         category: Schnapps,
+    ),
+    // Effekte v2 (DESIGN 7.2, 12): Modifikationen mit festem Wert am
+    // Tresen. Dieselbe auf derselben Karte steigt, eine andere ersetzt.
+    // Preise und Seltenheit Platzhalter für `balance`.
+    (
+        id: "points_3",
+        name: "Augen +3",
+        text: "Eine Karte zählt 3 Augen mehr. Trägt sie schon Augen, kommen sie dazu.",
+        rarity: Common,
+        price: 2,
+        action: ApplyCardMod(card_mod: "points", value: 3),
+    ),
+    (
+        id: "points_5",
+        name: "Augen +5",
+        text: "Eine Karte zählt 5 Augen mehr. Trägt sie schon Augen, kommen sie dazu.",
+        rarity: Uncommon,
+        price: 3,
+        action: ApplyCardMod(card_mod: "points", value: 5),
+    ),
+    (
+        id: "trump_2",
+        name: "Trumpf +2",
+        text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 2.",
+        rarity: Common,
+        price: 3,
+        action: ApplyCardMod(card_mod: "trump_bonus", value: 2),
+    ),
+    (
+        id: "trump_4",
+        name: "Trumpf +4",
+        text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 4.",
+        rarity: Uncommon,
+        price: 4,
+        action: ApplyCardMod(card_mod: "trump_bonus", value: 4),
+    ),
+    (
+        id: "rank_1",
+        name: "Rang +1",
+        text: "Eine Karte sticht eine Stufe höher, höchstens drei.",
+        rarity: Common,
+        price: 3,
+        action: ApplyCardMod(card_mod: "rank", value: 1),
     ),
 ]

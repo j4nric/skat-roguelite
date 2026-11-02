@@ -38,7 +38,7 @@ function modLine(o: EncounterOptionView): string {
   const mod = o.card_mod;
   if (!mod) return o.random_gain ? `<span class="enc-mod is-random">${esc(de.encounter.randomMod)}</span>` : '';
   const curse = mod.curse || isCurse(mod.id);
-  return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.cardMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(contentText('card_mods', mod.id) || mod.text)}</span></span></span>`;
+  return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.cardMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span></span></span>`;
 }
 
 /** Title, hint and picture of one option. */

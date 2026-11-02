@@ -21,8 +21,8 @@ use super::{
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
     BossId, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
-    ConsumableId, Content, EncounterId, Factor, HookContext, NextGameEffect, Rarity, RelicId,
-    RelicKind, RunLength, ScoreBreakdown, ScoreStep, card_mod_status,
+    ConsumableId, Content, EncounterId, Factor, HookContext, ModKind, NextGameEffect, Rarity,
+    RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep, card_mod_status,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
@@ -99,9 +99,6 @@ pub struct RunView {
     pub last_score: Option<ScoreView>,
     /// The shared deck, in id order.
     pub deck: Vec<DeckCard>,
-    /// Deck cards that come into the player's hand at the next deal
-    /// ("Heimweh": they lay in the skat when the last game ended).
-    pub homesick: Vec<u32>,
     /// Statistics of the run.
     pub stats: RunStats,
 }
@@ -271,6 +268,11 @@ pub struct CardModInfo {
     pub rarity: Rarity,
     /// Whether it is a curse (Fluch).
     pub curse: bool,
+    /// Rand, Moment, Gutschein, Fluch or Spezialkarte (effects v2).
+    pub kind: ModKind,
+    /// The value it comes with, if it has one (the text has it filled in).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<i32>,
 }
 
 /// A consumable as the player sees it.
@@ -403,6 +405,9 @@ pub struct CardView {
     pub card: DealtCard,
     /// Card modifications on this instance.
     pub mods: Vec<CardModId>,
+    /// Their values, for those that have one ([`DeckCard::mod_values`]).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mod_values: BTreeMap<CardModId, i32>,
     /// Whether the player may play it now.
     pub legal: bool,
     /// Whether it came from the skat (while discarding).
@@ -758,10 +763,10 @@ impl Run {
                 .find(|(id, _)| *id == card.id)
                 .map(|&(_, suit)| suit)
         });
-        let mods: Vec<CardModId> = self
+        let (mods, mod_values) = self
             .deck
             .get(card.id)
-            .map(|d| d.mods.clone())
+            .map(|d| (d.mods.clone(), d.mod_values.clone()))
             .unwrap_or_default();
         let mod_status = self.mod_status(content, card, &mods);
         let named = self.game.as_ref().and_then(|a| {
@@ -774,6 +779,7 @@ impl Run {
             chalked,
             card,
             mods,
+            mod_values,
             legal: false,
             from_skat: false,
             drawn_from: None,
@@ -833,21 +839,30 @@ impl Run {
         }
     }
 
-    fn card_mod_info(content: &Content, id: &CardModId) -> CardModInfo {
+    fn card_mod_info(content: &Content, id: &CardModId, value: Option<i32>) -> CardModInfo {
         match content.card_mod(id) {
-            Some(def) => CardModInfo {
-                id: id.clone(),
-                name: def.name.clone(),
-                text: def.text.clone(),
-                rarity: def.rarity,
-                curse: def.curse,
-            },
+            Some(def) => {
+                let value = def
+                    .has_value()
+                    .then(|| value.unwrap_or_else(|| def.default_value()));
+                CardModInfo {
+                    id: id.clone(),
+                    name: def.name.clone(),
+                    text: def.text_for(value.unwrap_or(1)),
+                    rarity: def.rarity,
+                    curse: def.is_curse(),
+                    kind: def.kind,
+                    value,
+                }
+            }
             None => CardModInfo {
                 id: id.clone(),
                 name: id.to_string(),
                 text: String::new(),
                 rarity: Rarity::Common,
                 curse: false,
+                kind: ModKind::Edge,
+                value,
             },
         }
     }
@@ -862,7 +877,9 @@ impl Run {
                 price: def.price,
                 needs_target: matches!(
                     def.action,
-                    ConsumableAction::RemoveCard | ConsumableAction::AddCardMod(_)
+                    ConsumableAction::RemoveCard
+                        | ConsumableAction::AddCardMod(_)
+                        | ConsumableAction::ApplyCardMod { .. }
                 ),
                 needs_suit: def.action == ConsumableAction::ChalkCard,
                 category: def.category,
@@ -1020,7 +1037,6 @@ impl Run {
                 steps: b.steps(),
             }),
             deck: self.deck.cards().to_vec(),
-            homesick: self.homesick.clone(),
             stats: self.stats,
         }
     }
@@ -1278,7 +1294,7 @@ impl Run {
                     .card_mod
                     .as_ref()
                     .filter(|_| marks)
-                    .map(|id| Run::card_mod_info(content, id));
+                    .map(|id| Run::card_mod_info(content, id, option.value));
                 let random_gain = match &option.choice {
                     EncounterChoice::SwapRelic { new, .. } => new.is_none(),
                     _ => marks && card_mod.is_none(),

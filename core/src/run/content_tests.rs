@@ -158,7 +158,21 @@ fn every_content_item_loads_with_german_texts() {
             "{id}"
         );
     }
-    for id in ["fat", "marked", "stamp", "last_trick", "transparent"] {
+    for id in [
+        "points",
+        "rank",
+        "trump_bonus",
+        "last_trick",
+        "first_trick",
+        "voucher_coins",
+        "voucher_undead",
+        "voucher_wild",
+        "transparent",
+        "battered",
+        "stained",
+        "wild_card",
+        "undead",
+    ] {
         assert!(content.card_mod(&CardModId::new(id)).is_some(), "{id}");
     }
     for id in ["the_pusher", "kontra_hans", "grandma"] {
@@ -509,10 +523,19 @@ fn march_through_doubles_the_game_value_of_a_won_schneider() {
 // Card modifications
 // ---------------------------------------------------------------------------
 
-fn card_mod_run(content: &Content, card: u32, card_mod: &str) -> Run {
+/// A run whose deck carries `card_mod` with its first value on `card`.
+pub(super) fn card_mod_run(content: &Content, card: u32, card_mod: &str) -> Run {
+    let value = content
+        .card_mod(&CardModId::new(card_mod))
+        .map_or(1, crate::content::CardModDef::default_value);
+    card_mod_run_with(content, card, card_mod, value)
+}
+
+/// A run whose deck carries `card_mod` with `value` on `card`.
+pub(super) fn card_mod_run_with(content: &Content, card: u32, card_mod: &str, value: i32) -> Run {
     let mut run = relic_run(content, &[]);
     run.deck
-        .add_mod(card, CardModId::new(card_mod))
+        .add_mod(content, card, &CardModId::new(card_mod), value)
         .expect("mod");
     run
 }
@@ -525,10 +548,10 @@ fn mod_source(card_mod: &str, card: u32) -> Source {
 }
 
 #[test]
-fn fat_adds_four_augen_for_whoever_takes_the_card() {
+fn points_add_augen_for_whoever_takes_the_card() {
     let content = content();
-    // DA (id 7) is fat and stays with the declarer.
-    let mut run = card_mod_run(&content, 7, "fat");
+    // DA (id 7) carries Augen +4 and stays with the declarer.
+    let mut run = card_mod_run_with(&content, 7, "points", 4);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let ace = run
         .game()
@@ -539,17 +562,17 @@ fn fat_adds_four_augen_for_whoever_takes_the_card() {
     assert_eq!(b.outcome.declarer_card_points, 124);
     assert!(has_line(
         &b,
-        &mod_source("fat", 7),
+        &mod_source("points", 7),
         Lever::CardPoints,
         Change::Add(4)
     ));
 }
 
 #[test]
-fn marked_card_counts_one_rank_higher() {
+fn rank_card_counts_one_rank_higher() {
     let content = content();
-    // SK (id 22) is marked: it now ties with the ST and keeps the trick.
-    let run = card_mod_run(&content, 22, "marked");
+    // SK (id 22) carries Rang 1: it now ties with the ST and keeps the trick.
+    let run = card_mod_run(&content, 22, "rank");
     let resolved = resolve_deck(&run.deck, &content, &[]);
     let find = |id: u32| *resolved.cards.iter().find(|c| c.id == id).expect("card");
     let king = find(22);
@@ -570,20 +593,20 @@ fn marked_card_counts_one_rank_higher() {
 }
 
 #[test]
-fn stamp_adds_three_to_the_base_value_when_its_suit_is_trump() {
+fn trump_bonus_adds_to_the_base_value_when_its_suit_is_trump() {
     let content = content();
-    let mut run = card_mod_run(&content, 7, "stamp");
+    let mut run = card_mod_run_with(&content, 7, "trump_bonus", 3);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
     assert!(has_line(
         &b,
-        &mod_source("stamp", 7),
+        &mod_source("trump_bonus", 7),
         Lever::BaseValue,
         Change::Add(3)
     ));
     assert_eq!(b.base_value, 12);
-    // In a grand the stamp does nothing.
-    let mut run = card_mod_run(&content, 7, "stamp");
+    // In a grand it does nothing.
+    let mut run = card_mod_run(&content, 7, "trump_bonus");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     run.apply(&content, RunAction::Declare(hand_game(GameType::Grand)))
         .expect("declare");
@@ -765,23 +788,18 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
         }
     }
     assert!(content.relics.len() >= 30);
-    assert!(content.card_mods.len() >= 20);
+    // Effekte v2 (DESIGN 7.2): 13 modifications.
+    assert_eq!(content.card_mods.len(), 13);
     assert!(content.encounters.len() >= 8);
-    let null_mods = content
-        .card_mods
-        .values()
-        .filter(|m| m.focus == GameFocus::Null)
-        .count();
-    assert!(null_mods >= 5, "{null_mods}");
     let curses: Vec<&str> = content
         .card_mods
         .values()
-        .filter(|m| m.curse)
+        .filter(|m| m.is_curse())
         .map(|m| m.id.as_str())
         .collect();
-    assert_eq!(curses, ["battered", "beer_stain", "black_cat", "cracked"]);
+    assert_eq!(curses, ["battered", "stained", "transparent"]);
     for def in content.card_mods.values() {
-        assert_eq!(def.curse, def.text.starts_with("Fluch"), "{}", def.id);
+        assert_eq!(def.is_curse(), def.text.starts_with("Fluch"), "{}", def.id);
     }
     for def in content.card_mods.values() {
         assert!(!def.name.is_empty() && !def.text.is_empty() && def.price > 0);
@@ -1016,35 +1034,6 @@ fn the_regular_guest_doubles_won_games_from_the_fourth_series() {
 // M4 content: card modifications (declarer side)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn gold_rim_adds_eight_augen() {
-    let content = content();
-    let mut run = card_mod_run(&content, 7, "gold_rim");
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.outcome.declarer_card_points, 128);
-    assert!(has_line(
-        &b,
-        &mod_source("gold_rim", 7),
-        Lever::CardPoints,
-        Change::Add(8)
-    ));
-}
-
-#[test]
-fn double_marked_card_counts_two_ranks_higher() {
-    let content = content();
-    // SK (id 22) ties with the SA (id 23): the earlier card keeps it.
-    let run = card_mod_run(&content, 22, "double_marked");
-    let resolved = resolve_deck(&run.deck, &content, &[]);
-    let find = |id: u32| *resolved.cards.iter().find(|c| c.id == id).expect("card");
-    let (king, ten, ace) = (find(22), find(19), find(23));
-    assert_eq!(king.rank_bonus, 2);
-    assert!(!crate::rules::beats(GameType::Grand, king, king, ten));
-    assert!(!crate::rules::beats(GameType::Grand, king, king, ace));
-    assert!(!crate::rules::beats(GameType::Grand, ace, ace, king));
-}
-
 /// Play the STRONG deal as a diamonds hand game with `card_mod` on the DA.
 fn play_with_mod_on_trump_ace(content: &Content, card_mod: &str) -> ScoreBreakdown {
     let mut run = card_mod_run(content, 7, card_mod);
@@ -1061,166 +1050,38 @@ fn declared_with_mod_on_trump_ace(content: &Content, card_mod: &str, game: GameT
     run
 }
 
-#[test]
-fn crown_doubles_the_base_value_when_its_suit_is_trump() {
-    let content = content();
-    let b = play_with_mod_on_trump_ace(&content, "crown");
-    assert!(has_line(
-        &b,
-        &mod_source("crown", 7),
-        Lever::BaseValue,
-        Change::Multiply(2)
-    ));
-    assert_eq!(b.base_value, 18);
-    let run = declared_with_mod_on_trump_ace(&content, "crown", GameType::Grand);
-    assert!(run.game().expect("game").lines.is_empty());
-}
-
-#[test]
-fn seal_adds_a_level_when_its_suit_is_trump() {
-    let content = content();
-    let b = play_with_mod_on_trump_ace(&content, "seal");
-    assert!(has_line(
-        &b,
-        &mod_source("seal", 7),
-        Lever::Levels,
-        Change::Add(1)
-    ));
-    assert_eq!(b.levels, u64::from(b.rule_levels.total()) + 1);
-    let run = declared_with_mod_on_trump_ace(&content, "seal", HEARTS);
-    assert!(run.game().expect("game").lines.is_empty());
-}
-
-#[test]
-fn horseshoe_lowers_the_win_threshold_when_its_suit_is_trump() {
-    let content = content();
-    let run = declared_with_mod_on_trump_ace(&content, "horseshoe", DIAMONDS);
-    let rules = &run.game().expect("game").rules;
-    assert_eq!(rules.thresholds.win, 56);
-    assert_eq!(rules.win_threshold_source, Some(mod_source("horseshoe", 7)));
-    let run = declared_with_mod_on_trump_ace(&content, "horseshoe", GameType::Grand);
-    assert_eq!(run.game().expect("game").rules.thresholds.win, 61);
-}
-
-#[test]
-fn tape_measure_makes_80_to_89_augen_schneider_when_its_suit_is_trump() {
-    let content = content();
-    let run = declared_with_mod_on_trump_ace(&content, "tape_measure", DIAMONDS);
-    assert_eq!(
-        run.game()
-            .expect("game")
-            .rules
-            .thresholds
-            .declarer_schneider,
-        vec![(80, 89)]
-    );
-    let run = declared_with_mod_on_trump_ace(&content, "tape_measure", CLUBS);
-    assert!(
-        run.game()
-            .expect("game")
-            .rules
-            .thresholds
-            .declarer_schneider
-            .is_empty()
-    );
-}
-
-#[test]
-fn lucky_penny_doubles_a_won_game_when_its_card_takes_the_last_trick() {
-    let content = content();
-    // D7 (id 0) wins the tenth trick.
-    let mut run = card_mod_run(&content, 0, "lucky_penny");
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert!(has_line(
-        &b,
-        &mod_source("lucky_penny", 0),
-        Lever::GameValue,
-        Change::Multiply(2)
-    ));
-    // On the DA (id 7), which does not: nothing.
-    let b = play_with_mod_on_trump_ace(&content, "lucky_penny");
-    assert_eq!(b.multiplier, Factor::from_int(1));
-}
-
-#[test]
-fn beer_stain_costs_five_augen_but_shows_the_holder() {
-    let content = content();
-    // HA (id 15) lies with seat 1.
-    let mut run = card_mod_run(&content, 15, "beer_stain");
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    let ace = run
-        .game()
-        .and_then(|a| a.game.cards_in_play().iter().find(|c| c.id == 15).copied())
-        .expect("HA");
-    assert_eq!(ace.card_points, 6);
-    let revealed = run.revealed_holders();
-    assert_eq!(revealed.len(), 1);
-    assert_eq!(revealed[0].1, Some(Seat::DEFENDERS[0]));
-    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.outcome.declarer_card_points, 115);
-    assert!(has_line(
-        &b,
-        &mod_source("beer_stain", 15),
-        Lever::CardPoints,
-        Change::Add(-5)
-    ));
-    // On a seven nothing is lost below zero.
-    let run = card_mod_run(&content, 0, "beer_stain");
-    let resolved = resolve_deck(&run.deck, &content, &[]);
-    assert_eq!(resolved.cards[0].card_points, 0);
-}
-
 /// Attach a modification the way the run does (Stempelkissen, Ereignis)
 /// and return the events.
-fn attach(run: &mut Run, content: &Content, card: u32, card_mod: &str) -> Vec<RunEvent> {
+pub(super) fn attach(run: &mut Run, content: &Content, card: u32, card_mod: &str) -> Vec<RunEvent> {
+    let id = CardModId::new(card_mod);
+    let value = content
+        .card_mod(&id)
+        .map_or(1, crate::content::CardModDef::default_value);
     let mut events = Vec::new();
-    run.attach_mod(content, card, CardModId::new(card_mod), &mut events)
+    run.attach_mod(content, card, &id, value, &mut events)
         .expect("attach");
     events
 }
 
 #[test]
-fn a_cracked_card_never_wins_and_pays_three_groschen() {
+fn stained_lowers_the_base_value_when_its_suit_is_trump() {
     let content = content();
-    let run = card_mod_run(&content, 22, "cracked");
-    let resolved = resolve_deck(&run.deck, &content, &[]);
-    let king = resolved.cards[22];
-    let seven = resolved.cards[16];
-    assert!(king.never_wins);
-    assert_eq!(king.card_points, 4);
-    // The SK cannot even take a led S7.
-    assert!(!crate::rules::beats(GameType::Grand, seven, seven, king));
-    let mut run = relic_run(&content, &[]);
-    let coins = run.coins();
-    let events = attach(&mut run, &content, 22, "cracked");
-    assert_eq!(run.coins(), coins + 3);
-    assert!(events.contains(&RunEvent::CoinsGained {
-        source: mod_source("cracked", 22),
-        amount: 3,
-        coins: coins + 3,
-    }));
-}
-
-#[test]
-fn black_cat_lowers_the_base_value_when_its_suit_is_trump() {
-    let content = content();
-    let b = play_with_mod_on_trump_ace(&content, "black_cat");
+    let b = play_with_mod_on_trump_ace(&content, "stained");
     assert!(has_line(
         &b,
-        &mod_source("black_cat", 7),
+        &mod_source("stained", 7),
         Lever::BaseValue,
         Change::Add(-3)
     ));
     assert_eq!(b.base_value, 6);
-    let run = card_mod_run(&content, 7, "black_cat");
+    let run = card_mod_run(&content, 7, "stained");
     let resolved = resolve_deck(&run.deck, &content, &[]);
     assert_eq!(resolved.cards[7].rank_bonus, 0);
     let mut run = relic_run(&content, &[]);
     let coins = run.coins();
-    attach(&mut run, &content, 7, "black_cat");
+    attach(&mut run, &content, 7, "stained");
     assert_eq!(run.coins(), coins + 3);
-    let run = declared_with_mod_on_trump_ace(&content, "black_cat", GameType::Grand);
+    let run = declared_with_mod_on_trump_ace(&content, "stained", GameType::Grand);
     assert!(run.game().expect("game").lines.is_empty());
 }
 
@@ -1306,10 +1167,8 @@ fn the_view_tells_whether_a_trump_mod_works_in_this_game() {
             .find(|c| c.card.id == id)
             .expect("in hand")
     };
-    // DA (id 7) with a crown and fat: before the declaration nothing is
-    // known, and fat has no condition at all.
-    let mut run = card_mod_run(&content, 7, "crown");
-    run.deck.add_mod(7, CardModId::new("fat")).expect("fat");
+    // DA (id 7) with Trumpf +3: before the declaration nothing is known.
+    let mut run = card_mod_run(&content, 7, "trump_bonus");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     assert!(hand_card(&run, 7).mod_status.is_empty());
     let mut grand = run.clone();
@@ -1318,7 +1177,7 @@ fn the_view_tells_whether_a_trump_mod_works_in_this_game() {
     let ace = hand_card(&run, 7);
     assert_eq!(
         ace.mod_status.into_iter().collect::<Vec<_>>(),
-        vec![(CardModId::new("crown"), CardModStatus::Active)]
+        vec![(CardModId::new("trump_bonus"), CardModStatus::Active)]
     );
     grand
         .apply(&content, RunAction::Declare(hand_game(GameType::Grand)))
@@ -1326,11 +1185,11 @@ fn the_view_tells_whether_a_trump_mod_works_in_this_game() {
     assert_eq!(
         hand_card(&grand, 7)
             .mod_status
-            .get(&CardModId::new("crown")),
+            .get(&CardModId::new("trump_bonus")),
         Some(&CardModStatus::Inactive)
     );
     // Every trump-suit modification follows the declaration.
-    for id in ["stamp", "seal", "horseshoe", "tape_measure", "black_cat"] {
+    for id in ["trump_bonus", "stained"] {
         let run = declared_with_mod_on_trump_ace(&content, id, DIAMONDS);
         assert_eq!(
             mod_status_of(&run, &content, 7, id),
@@ -1345,26 +1204,20 @@ fn the_view_tells_whether_a_trump_mod_works_in_this_game() {
         );
     }
     // Unconditional modifications have no status.
-    let run = declared_with_mod_on_trump_ace(&content, "marked", DIAMONDS);
-    assert_eq!(mod_status_of(&run, &content, 7, "marked"), None);
+    let run = declared_with_mod_on_trump_ace(&content, "rank", DIAMONDS);
+    assert_eq!(mod_status_of(&run, &content, 7, "rank"), None);
 }
 
 #[test]
 fn a_last_trick_mod_is_open_until_its_card_falls() {
     use crate::content::CardModStatus;
     let content = content();
-    // "Glückspfennig" on the DA (id 7): open after the declaration, out
+    // "Letzter Stich" on the DA (id 7): open after the declaration, out
     // once the DA fell in an earlier trick.
-    let mut run = declared_with_mod_on_trump_ace(&content, "lucky_penny", DIAMONDS);
+    let mut run = declared_with_mod_on_trump_ace(&content, "last_trick", DIAMONDS);
     assert_eq!(
-        mod_status_of(&run, &content, 7, "lucky_penny"),
+        mod_status_of(&run, &content, 7, "last_trick"),
         Some(CardModStatus::Open)
-    );
-    // "Schlusslicht" needs a Null game: out in a suit game at once.
-    let tail = declared_with_mod_on_trump_ace(&content, "tail_light", DIAMONDS);
-    assert_eq!(
-        mod_status_of(&tail, &content, 7, "tail_light"),
-        Some(CardModStatus::Inactive)
     );
     loop {
         let fell = run.game().expect("game").game.tricks();
@@ -1376,23 +1229,7 @@ fn a_last_trick_mod_is_open_until_its_card_falls() {
         run.apply(&content, action).expect("legal");
     }
     assert_eq!(
-        mod_status_of(&run, &content, 7, "lucky_penny"),
-        Some(CardModStatus::Inactive)
-    );
-}
-
-#[test]
-fn an_honorary_jack_works_only_in_a_suit_game() {
-    use crate::content::CardModStatus;
-    let content = content();
-    let run = declared_with_mod_on_trump_ace(&content, "honorary_jack", HEARTS);
-    assert_eq!(
-        mod_status_of(&run, &content, 7, "honorary_jack"),
-        Some(CardModStatus::Active)
-    );
-    let run = declared_with_mod_on_trump_ace(&content, "honorary_jack", GameType::Grand);
-    assert_eq!(
-        mod_status_of(&run, &content, 7, "honorary_jack"),
+        mod_status_of(&run, &content, 7, "last_trick"),
         Some(CardModStatus::Inactive)
     );
 }

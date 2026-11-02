@@ -82,7 +82,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
   const dl = (list: [string, string][]): string =>
     `<dl class="chalk-stats">${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
   const deck = view.deck
-    .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${cardSvg(c.kind, c.mods)}</span>`)
+    .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</span>`)
     .join('');
   const relics =
     view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${relicCoaster(r.relic, { size: 26 })}${esc(contentName('relics', r.relic.id))}</span>`).join('') +

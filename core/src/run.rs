@@ -57,10 +57,10 @@ use serde::{Deserialize, Serialize};
 use crate::ai::DefenderHeuristic;
 use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::content::{
-    ActiveSource, BossId, CardFilter, CardModId, Change, Character, ConsumableAction, ConsumableId,
-    Content, Effect, EncounterId, EncounterKind, GameFocus, HookContext, Lever, NextGameEffect,
-    RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources,
-    evaluate, in_pool, resolve_deck, score_parts,
+    ActiveSource, BossId, CardFilter, CardModDef, CardModId, Change, Character, ConsumableAction,
+    ConsumableId, Content, Effect, EncounterId, EncounterKind, GameFocus, Hook, HookContext, Lever,
+    NextGameEffect, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine, Source, Stage,
+    card_mod_sources, evaluate, in_pool, resolve_deck, score_parts,
 };
 use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
 use crate::game::{Event, Game, GameError, Phase, Seat};
@@ -315,10 +315,6 @@ pub struct ActiveGame {
     /// printed suit (the card on the table has the suit he named).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub named: Vec<(u32, Suit)>,
-    /// Cards that broke in this game ("Glasdaus", [`Effect::BreakThisCard`]):
-    /// they leave the deck once the game is scored.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub broken: Vec<u32>,
     /// Cards of the untouched skat the player was shown after declaring a
     /// hand game ("Spickzettel").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -384,6 +380,10 @@ pub struct EncounterOption {
     /// before): drawn at random when chosen.
     #[serde(default)]
     pub card_mod: Option<CardModId>,
+    /// The value of `card_mod` (effects v2, DESIGN 7.2). `None` (saves
+    /// from before): its first value on offer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<i32>,
 }
 
 /// The encounter (Ereignis) between two series, while open.
@@ -666,7 +666,17 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Augen the declarer counts more (fewer if negative).
         card_points: i32,
     },
-    /// Content paid (or took) Groschen ("Ramponiert" when attached).
+    /// A card effect gave a seat extra Augen ("Erster Stich": the Augen of
+    /// the first trick once more, DESIGN 7.2).
+    BonusPoints {
+        /// Who did it.
+        source: Source,
+        /// The seat that gets them.
+        seat: Seat,
+        /// Extra Augen.
+        card_points: u32,
+    },
+    /// Content paid (or took) Groschen (a curse when attached, a voucher).
     CoinsGained {
         /// Who paid.
         source: Source,
@@ -777,20 +787,16 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The suit he named.
         suit: Suit,
     },
-    /// A card broke ("Glasdaus": a defender took the trick it lies in). It
-    /// stays in this game and leaves the deck when the game is scored
-    /// (a `DeckChanged` follows then).
-    CardBroken {
-        /// Instance id.
+    /// A voucher was redeemed: its card went into the skat by discarding
+    /// ("wenn gedrückt", DESIGN 7.2). Its effects follow as their own
+    /// events (`CoinsGained`, `DeckChanged`), then it falls off the card.
+    VoucherRedeemed {
+        /// Instance id of the card.
         card: u32,
-        /// The modification that broke it.
+        /// The voucher.
         card_mod: CardModId,
-    },
-    /// A card that lay in the skat at the end of the last game came into
-    /// the player's hand ("Heimweh").
-    CardCameHome {
-        /// The card as dealt.
-        card: DealtCard,
+        /// Its value.
+        value: i32,
     },
     /// "Der Kiebitz" showed the player a defender's card.
     CardPeeked {
@@ -1003,8 +1009,13 @@ pub enum RunErrorCode {
     DeckAtMinimum,
     /// Blanks carry no modifications.
     BlankCannotBeModified,
-    /// The card already carries this modification.
+    /// The card already carries this modification and it cannot be
+    /// raised.
     AlreadyModified,
+    /// The card carries a curse and takes no modification (DESIGN 7.2).
+    CardCursed,
+    /// The modification on the card is at its highest value.
+    ModAtMaximum,
     /// The card is not in the deck.
     MissingCard,
     /// The character cannot declare this game.
@@ -1071,6 +1082,8 @@ impl RunErrorCode {
             RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
             RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
             RunErrorCode::AlreadyModified => "AlreadyModified",
+            RunErrorCode::CardCursed => "CardCursed",
+            RunErrorCode::ModAtMaximum => "ModAtMaximum",
             RunErrorCode::MissingCard => "MissingCard",
             RunErrorCode::GameNotAvailable => "GameNotAvailable",
             RunErrorCode::OuvertRequired => "OuvertRequired",
@@ -1125,6 +1138,9 @@ impl RunError {
                 DeckError::WouldShrinkBelowMinimum => RunErrorCode::DeckAtMinimum,
                 DeckError::BlankCannotBeModified => RunErrorCode::BlankCannotBeModified,
                 DeckError::AlreadyModified(_) => RunErrorCode::AlreadyModified,
+                DeckError::Cursed(_) => RunErrorCode::CardCursed,
+                DeckError::AtMaximum(_) => RunErrorCode::ModAtMaximum,
+                DeckError::UnknownMod(_) => RunErrorCode::UnknownContent,
                 DeckError::MissingCard(_) => RunErrorCode::MissingCard,
             },
             RunError::TargetRequired => RunErrorCode::TargetRequired,
@@ -1291,10 +1307,6 @@ pub struct Run {
     /// Stake of the Einsatz-Leiter (saves from before: 0).
     #[serde(default)]
     stake: u32,
-    /// Cards that come into the player's hand at the next deal ("Heimweh"):
-    /// they lay in the skat when the last game ended.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    homesick: Vec<u32>,
 }
 
 impl Run {
@@ -1344,7 +1356,7 @@ impl Run {
             return Err(RunError::NoFreeSlot);
         }
         let mut deck = Deck::standard();
-        deck.apply_spec(&character.deck)?;
+        deck.apply_spec(&character.deck, content)?;
         let mut master = Rng::from_seed(seed);
         let mut run = Run {
             seed,
@@ -1391,7 +1403,6 @@ impl Run {
             guests: Vec::new(),
             length: start.length,
             stake: start.stake,
-            homesick: Vec::new(),
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1523,12 +1534,6 @@ impl Run {
     #[must_use]
     pub fn consumables(&self) -> &[ConsumableId] {
         &self.consumables
-    }
-
-    /// Cards that come into the player's hand at the next deal ("Heimweh").
-    #[must_use]
-    pub fn homesick(&self) -> &[u32] {
-        &self.homesick
     }
 
     /// Run flags set by content.
@@ -2071,6 +2076,7 @@ impl Run {
         ];
         let game_events = active.game.discard(cards)?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.redeem_vouchers(content, events);
         self.settle(content, events)
     }
 
@@ -2092,6 +2098,7 @@ impl Run {
         ];
         let game_events = active.game.discard_three(cards)?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.redeem_vouchers(content, events);
         self.settle(content, events)
     }
 
@@ -2319,6 +2326,7 @@ impl Run {
                     passive: &rule.passive,
                     hooks: &rule.hooks,
                     this_card: None,
+                    scale: 1,
                 });
             }
         }
@@ -2328,6 +2336,7 @@ impl Run {
                 passive: &def.passive,
                 hooks: &def.hooks,
                 this_card: None,
+                scale: 1,
             });
         }
         let relics = self.relics.iter().chain(&self.evening_relics);
@@ -2337,6 +2346,7 @@ impl Run {
                 passive: &def.passive,
                 hooks: &def.hooks,
                 this_card: None,
+                scale: 1,
             });
         }
         if with_card_mods {
@@ -2373,7 +2383,7 @@ impl Run {
                 };
                 if holds {
                     for effect in hook.then() {
-                        self.apply_effect(&source.source, effect, events);
+                        self.apply_effect(&source.source, &effect.scaled(source.scale), events);
                     }
                 }
             }
@@ -2413,6 +2423,8 @@ impl Run {
                 }
                 return;
             }
+            // Needs the content: applied by `redeem_vouchers`.
+            Effect::TurnInto(_) => return,
             Effect::GainCoins(amount) => {
                 if *amount != 0 {
                     self.coins = if *amount > 0 {
@@ -2447,13 +2459,17 @@ impl Run {
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_) => active.lines.extend(line),
-            Effect::BreakThisCard => {
-                if let Source::CardMod { card_mod, card } = source {
-                    if !active.broken.contains(card) {
-                        active.broken.push(*card);
-                        events.push(RunEvent::CardBroken {
-                            card: *card,
-                            card_mod: card_mod.clone(),
+            Effect::MultiplyTrickPoints(factor) => {
+                if let Some(trick) = active.game.tricks().last() {
+                    let points = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
+                    let extra = points.saturating_mul(factor.saturating_sub(1));
+                    if extra > 0 {
+                        let winner = trick.winner;
+                        active.game.add_bonus_points(winner, extra);
+                        events.push(RunEvent::BonusPoints {
+                            source: source.clone(),
+                            seat: winner,
+                            card_points: extra,
                         });
                     }
                 }
@@ -2595,14 +2611,13 @@ impl Run {
             }
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
-            | Effect::MultiplyCardPoints(_)
             | Effect::RankBonus(_)
             | Effect::RevealHolder
             | Effect::NeverWins
             | Effect::HonoraryJack
             | Effect::NoDiscard
             | Effect::Wild
-            | Effect::Homesick
+            | Effect::TurnInto(_)
             | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
@@ -2735,13 +2750,7 @@ impl Run {
         let resolved = resolve_deck(&self.deck, content, &global);
         let mut rng = self.deal_rng.fork();
         let game = Game::deal_from(&mut rng, resolved.cards, forehand)?;
-        let (game, came_home) = self.bring_home(game, &mut rng)?;
         self.set_up_game(content, game, resolved.point_changes, events);
-        events.extend(
-            came_home
-                .into_iter()
-                .map(|card| RunEvent::CardCameHome { card }),
-        );
         self.peek(&mut rng, events);
         // "Untot": the substitutes come from the game's generator, after
         // everything the deal drew from it.
@@ -2759,67 +2768,6 @@ impl Run {
             return self.start_ramsch(content, events);
         }
         Ok(())
-    }
-
-    /// "Heimweh": every card of [`Run::homesick`] that is in the game but
-    /// not in the player's hand swaps places with a card of his hand,
-    /// drawn with the game's generator (deterministic). A card that left
-    /// the deck is skipped. Returns the game and the cards that came home.
-    /// Without such cards the deal and the generator are untouched.
-    fn bring_home(
-        &self,
-        game: Game<DealtCard>,
-        rng: &mut Rng,
-    ) -> Result<(Game<DealtCard>, Vec<DealtCard>), RunError> {
-        if self.homesick.is_empty() {
-            return Ok((game, Vec::new()));
-        }
-        let mut own = game.hand(Seat::DECLARER).to_vec();
-        let mut left = game.hand(Seat::DEFENDERS[0]).to_vec();
-        let mut right = game.hand(Seat::DEFENDERS[1]).to_vec();
-        let mut skat = game.skat();
-        let mut talon = game.talon().to_vec();
-        let mut came_home = Vec::new();
-        let mut moved = false;
-        for &id in &self.homesick {
-            if let Some(&card) = own.iter().find(|c| c.id == id) {
-                came_home.push(card);
-                continue;
-            }
-            // Where the card lies now: a defender's hand, the skat or the
-            // talon.
-            let Some(slot) = left
-                .iter_mut()
-                .chain(right.iter_mut())
-                .chain(skat.iter_mut())
-                .chain(talon.iter_mut())
-                .find(|c| c.id == id)
-            else {
-                continue;
-            };
-            let candidates: Vec<usize> = own
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| !self.homesick.contains(&c.id))
-                .map(|(i, _)| i)
-                .collect();
-            if candidates.is_empty() {
-                continue;
-            }
-            let roll = rng.gen_range(0..u64::try_from(candidates.len()).unwrap_or(1));
-            let Some(&pick) = usize::try_from(roll).ok().and_then(|i| candidates.get(i)) else {
-                continue;
-            };
-            std::mem::swap(slot, &mut own[pick]);
-            came_home.push(own[pick]);
-            moved = true;
-        }
-        if !moved {
-            return Ok((game, came_home));
-        }
-        let forehand = game.forehand();
-        let game = Game::with_talon([own, left, right], skat, talon, forehand)?;
-        Ok((game, came_home))
     }
 
     /// "Der Kiebitz": show the player random cards of the defenders, drawn
@@ -2898,7 +2846,6 @@ impl Run {
             shown_hand: None,
             previous: None,
             named: Vec::new(),
-            broken: Vec::new(),
             skat_shown: Vec::new(),
             lead_demands_used: 0,
             risen: Vec::new(),
@@ -3049,31 +2996,7 @@ impl Run {
             series_score: self.series.score,
         });
         self.last_score = Some(breakdown);
-        self.after_scoring(content, events);
         self.after_game(content, events)
-    }
-
-    /// After a game is scored: cards that broke leave the deck
-    /// ("Glasdaus"), and cards with "Heimweh" that lie in the skat come
-    /// into the player's hand at the next deal.
-    fn after_scoring(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
-        let Some(active) = self.game.as_ref() else {
-            return;
-        };
-        let broken = active.broken.clone();
-        let skat = active.game.skat();
-        self.homesick = skat
-            .iter()
-            .map(|c| c.id)
-            .filter(|&id| {
-                !broken.contains(&id) && self.has_card_effect(content, id, &Effect::Homesick)
-            })
-            .collect();
-        for id in broken {
-            if let Ok(change) = self.deck.remove(id) {
-                events.push(RunEvent::DeckChanged(change));
-            }
-        }
     }
 
     /// Whether a modification on the deck card `id` has this passive effect.
@@ -3467,7 +3390,15 @@ impl Run {
                             .ok_or(RunError::NoModAvailable)?
                     }
                 };
-                self.attach_mod(content, target, card_mod, events)?;
+                let value = content.card_mod(&card_mod).map_or(1, |d| d.default_value());
+                self.attach_mod(content, target, &card_mod, value, events)?;
+            }
+            ConsumableAction::ApplyCardMod { card_mod, value } => {
+                if self.phase != RunPhase::Shop {
+                    return Err(RunError::WrongPhase);
+                }
+                let target = target.ok_or(RunError::TargetRequired)?;
+                self.attach_mod(content, target, card_mod, *value, events)?;
             }
             ConsumableAction::ExtraRedeals(n) => {
                 if self.phase != RunPhase::Game {
@@ -3555,76 +3486,99 @@ impl Run {
         Ok(())
     }
 
-    /// Card modifications a random draw may give a card that already
-    /// carries `mods`, with their draw weight: for the character, unlocked,
-    /// not on the card yet, no curse (DESIGN 7.2: curses only where
-    /// announced), in id order. Rarity does not count here; the weight is
-    /// the character's weight for the modification's Spielart
+    /// Card modifications a random draw may give a card, with their draw
+    /// weight: for the character, unlocked, no curse (DESIGN 7.2: curses
+    /// only where announced) and no special card (that comes with a
+    /// voucher), in id order. Rarity does not count here; the weight is the
+    /// character's weight for the modification's Spielart
     /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
-    fn card_mod_pool(&self, content: &Content, mods: &[CardModId]) -> Vec<(CardModId, u32)> {
-        self.mod_pool(content, mods, false)
+    fn card_mod_pool(&self, content: &Content) -> Vec<(CardModId, u32)> {
+        self.mod_pool(content, false)
     }
 
     /// [`Run::card_mod_pool`] for one deck card: only modifications that
-    /// may sit on it ([`crate::content::CardModDef::only_on`]).
+    /// may go on it now ([`crate::content::CardModDef::only_on`], and by
+    /// the rules of [`Deck::add_mod`]: not on a cursed card, not past the
+    /// limit).
     fn card_mod_pool_for(
         &self,
         content: &Content,
         card: &crate::deck::DeckCard,
     ) -> Vec<(CardModId, u32)> {
-        self.card_mod_pool(content, &card.mods)
+        self.card_mod_pool(content)
             .into_iter()
-            .filter(|(id, _)| content.card_mod(id).is_some_and(|d| d.fits(card.kind)))
+            .filter(|(id, _)| self.may_attach(content, card.id, id))
             .collect()
+    }
+
+    /// Whether `card_mod` with its first value may go on the deck card
+    /// `card` now. Tried on a copy of the deck.
+    fn may_attach(&self, content: &Content, card: u32, card_mod: &CardModId) -> bool {
+        let Some(def) = content.card_mod(card_mod) else {
+            return false;
+        };
+        let fits = self.deck.get(card).is_some_and(|c| def.fits(c.kind));
+        fits && self
+            .deck
+            .clone()
+            .add_mod(content, card, card_mod, def.default_value())
+            .is_ok()
     }
 
     /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
     /// modifications without drawback.
-    fn mod_pool(
-        &self,
-        content: &Content,
-        mods: &[CardModId],
-        curse: bool,
-    ) -> Vec<(CardModId, u32)> {
+    fn mod_pool(&self, content: &Content, curse: bool) -> Vec<(CardModId, u32)> {
         content
             .card_mods
             .values()
-            .filter(|m| m.curse == curse)
-            .filter(|m| in_pool(&m.characters, self.character) && !mods.contains(&m.id))
+            .filter(|m| m.is_curse() == curse && !m.is_special())
+            .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            // Only what some card of the deck may still carry ("Glasdaus":
-            // a Daus without it).
+            // Only what some card of the deck may still take.
             .filter(|m| {
                 self.deck
                     .cards()
                     .iter()
-                    .any(|c| m.fits(c.kind) && !c.mods.contains(&m.id))
+                    .any(|c| self.may_attach(content, c.id, &m.id))
             })
             .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
             .filter(|&(_, weight)| weight > 0)
             .collect()
     }
 
-    /// Attach a card modification to a deck card and fire its `OnAttach`
-    /// hooks ("Ramponiert" pays Groschen).
+    /// Attach a card modification with `value` to a deck card by the
+    /// rules of effects v2 ([`Deck::add_mod`]) and fire the `OnAttach`
+    /// hooks of what the card carries then (a curse pays Groschen, not
+    /// scaled by the value).
     fn attach_mod(
         &mut self,
         content: &Content,
         card: u32,
-        card_mod: CardModId,
+        card_mod: &CardModId,
+        value: i32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if let (Some(def), Some(deck_card)) = (content.card_mod(&card_mod), self.deck.get(card)) {
+        if let (Some(def), Some(deck_card)) = (content.card_mod(card_mod), self.deck.get(card)) {
             if deck_card.kind != CardKind::Blank && !def.fits(deck_card.kind) {
                 return Err(RunError::NoModAvailable);
             }
         }
-        let change = self.deck.add_mod(card, card_mod.clone())?;
+        let change = self.deck.add_mod(content, card, card_mod, value)?;
+        // What the card carries now: Augen and Ramponiert are one signed
+        // value, so the result may be the other one, or nothing.
+        let landed = match &change {
+            DeckChange::Modified { card_mod, .. } => Some(card_mod.clone()),
+            _ => None,
+        };
         events.push(RunEvent::DeckChanged(change));
-        let Some(def) = content.card_mod(&card_mod) else {
+        let Some((card_mod, def)) = landed.and_then(|m| content.card_mod(&m).map(|d| (m, d)))
+        else {
             return Ok(());
         };
-        let source = Source::CardMod { card_mod, card };
+        let source = Source::CardMod {
+            card_mod: card_mod.clone(),
+            card,
+        };
         for hook in def.hooks.iter().filter(|h| h.stage() == Stage::OnAttach) {
             let holds = {
                 let ctx = HookContext {
@@ -3637,6 +3591,7 @@ impl Run {
                 };
                 evaluate(hook.when(), &ctx, None)
             };
+            // "Beim Erhalt" is not scaled: a curse pays its Groschen once.
             if holds {
                 for effect in hook.then() {
                     self.apply_effect(&source, effect, events);
@@ -3644,6 +3599,84 @@ impl Run {
             }
         }
         Ok(())
+    }
+
+    /// Redeem the vouchers of the cards that lie in the skat after the
+    /// discard ("wenn gedrückt", DESIGN 7.2): their `OnDiscard` hooks fire
+    /// at once, scaled by their value, whatever becomes of the game, and
+    /// the voucher falls off the card. `TurnInto` puts the special card on
+    /// the card (from the next game on). A hand game discards nothing.
+    fn redeem_vouchers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        let Some(active) = self.game.as_ref() else {
+            return;
+        };
+        if !active.game.skat_picked_up() {
+            return;
+        }
+        let skat: Vec<u32> = active.game.skat().iter().map(|c| c.id).collect();
+        for card in skat {
+            let Some(deck_card) = self.deck.get(card) else {
+                continue;
+            };
+            let vouchers: Vec<(CardModId, i32)> = deck_card
+                .mods
+                .iter()
+                .filter(|m| {
+                    content
+                        .card_mod(m)
+                        .is_some_and(|d| d.kind == crate::content::ModKind::Voucher)
+                })
+                .map(|m| (m.clone(), deck_card.mod_value(m)))
+                .collect();
+            for (card_mod, value) in vouchers {
+                let Some(def) = content.card_mod(&card_mod) else {
+                    continue;
+                };
+                events.push(RunEvent::VoucherRedeemed {
+                    card,
+                    card_mod: card_mod.clone(),
+                    value,
+                });
+                let source = Source::CardMod {
+                    card_mod: card_mod.clone(),
+                    card,
+                };
+                let hooks: Vec<Hook> = def
+                    .hooks
+                    .iter()
+                    .filter(|h| h.stage() == Stage::OnDiscard)
+                    .cloned()
+                    .collect();
+                if let Some(change) = self.deck.remove_mod(card, &card_mod) {
+                    events.push(RunEvent::DeckChanged(change));
+                }
+                for hook in hooks {
+                    let holds = {
+                        let ctx = HookContext {
+                            flags: &self.flags,
+                            counters: &self.counters,
+                            game: None,
+                            played: None,
+                            result: None,
+                            games_left: self.series.games_left(),
+                        };
+                        evaluate(hook.when(), &ctx, None)
+                    };
+                    if !holds {
+                        continue;
+                    }
+                    for effect in hook.then() {
+                        if let Effect::TurnInto(special) = effect {
+                            if let Ok(change) = self.deck.add_mod(content, card, special, 1) {
+                                events.push(RunEvent::DeckChanged(change));
+                            }
+                        } else {
+                            self.apply_effect(&source, &effect.scaled(value), events);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -3685,6 +3718,7 @@ impl Run {
             choice,
             cost: 0,
             card_mod: None,
+            value: None,
         };
         match &def.kind {
             EncounterKind::EveningRule { offers } => {
@@ -3699,6 +3733,7 @@ impl Run {
             EncounterKind::MarkCard {
                 price,
                 card_mod,
+                value,
                 curse,
             } => {
                 // The modification is known before the choice: named by the
@@ -3707,20 +3742,24 @@ impl Run {
                 let card_mod = match card_mod {
                     Some(id) => Some(id.clone()),
                     None => {
-                        let pool = self.mod_pool(content, &[], *curse);
+                        let pool = self.mod_pool(content, *curse);
                         draw_weighted(&mut self.encounter_rng, pool, 1).pop()
                     }
                 };
                 if let Some(card_mod) = card_mod {
+                    let value = value
+                        .or_else(|| content.card_mod(&card_mod).map(CardModDef::default_value));
                     options.push(EncounterOption {
                         choice: EncounterChoice::MarkRandomCard,
                         cost: 0,
                         card_mod: Some(card_mod.clone()),
+                        value,
                     });
                     options.push(EncounterOption {
                         choice: EncounterChoice::MarkChosenCard,
                         cost: *price,
                         card_mod: Some(card_mod),
+                        value,
                     });
                 }
             }
@@ -3758,9 +3797,10 @@ impl Run {
         true
     }
 
-    /// The modification an encounter puts on `card`: the one it names, or
-    /// (saves from before the draw at opening) a random one from the
-    /// character's pool, never a curse.
+    /// The modification an encounter puts on `card`: the one it names
+    /// (an old id of a save from before effects v2 converted, DESIGN 7.2),
+    /// or (saves from before the draw at opening, or an old id that was
+    /// dropped) a random one from the character's pool, never a curse.
     fn encounter_mod(
         &mut self,
         content: &Content,
@@ -3802,30 +3842,47 @@ impl Run {
         if chosen.cost > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
-        let named = match &def.kind {
-            EncounterKind::MarkCard { card_mod, .. } => {
-                chosen.card_mod.as_ref().or(card_mod.as_ref())
-            }
-            _ => None,
+        let (named, named_value) = match &def.kind {
+            EncounterKind::MarkCard {
+                card_mod, value, ..
+            } => current_mod(
+                content,
+                chosen.card_mod.as_ref().or(card_mod.as_ref()),
+                chosen.value.or(*value),
+            ),
+            _ => (None, None),
         };
+        let named = named.as_ref();
         match &chosen.choice {
             EncounterChoice::TakeRule(id) => {
                 self.evening_relics.push(id.clone());
                 events.push(RunEvent::EveningRuleAdded(id.clone()));
             }
             EncounterChoice::MarkRandomCard => {
-                let cards: Vec<u32> = self
+                // A random card the modification may go on now: never a
+                // cursed one, and (effects v2) preferably one that carries
+                // no modification yet, so a random draw does not throw away
+                // what the player built.
+                let fitting: Vec<&crate::deck::DeckCard> = self
                     .deck
                     .cards()
                     .iter()
                     .filter(|c| c.kind != CardKind::Blank)
-                    .filter(|c| named.is_none_or(|m| !c.mods.contains(m)))
-                    .filter(|c| {
-                        named.is_none_or(|m| content.card_mod(m).is_none_or(|d| d.fits(c.kind)))
+                    .filter(|c| match named {
+                        Some(m) => self.may_attach(content, c.id, m),
+                        None => !self.card_mod_pool_for(content, c).is_empty(),
                     })
-                    .filter(|c| named.is_some() || !self.card_mod_pool_for(content, c).is_empty())
+                    .collect();
+                let bare: Vec<u32> = fitting
+                    .iter()
+                    .filter(|c| c.mods.is_empty())
                     .map(|c| c.id)
                     .collect();
+                let cards: Vec<u32> = if bare.is_empty() {
+                    fitting.iter().map(|c| c.id).collect()
+                } else {
+                    bare
+                };
                 let pick = self
                     .encounter_rng
                     .gen_range(0..u64::try_from(cards.len()).unwrap_or(0));
@@ -3833,12 +3890,14 @@ impl Run {
                     .get(usize::try_from(pick).unwrap_or(usize::MAX))
                     .ok_or(RunError::NoModAvailable)?;
                 let card_mod = self.encounter_mod(content, named, card)?;
-                self.attach_mod(content, card, card_mod, events)?;
+                let value = mod_value(content, &card_mod, named_value);
+                self.attach_mod(content, card, &card_mod, value, events)?;
             }
             EncounterChoice::MarkChosenCard => {
                 let card = target.ok_or(RunError::TargetRequired)?;
                 let card_mod = self.encounter_mod(content, named, card)?;
-                self.attach_mod(content, card, card_mod, events)?;
+                let value = mod_value(content, &card_mod, named_value);
+                self.attach_mod(content, card, &card_mod, value, events)?;
             }
             EncounterChoice::SwapRelic { index, relic, new } => {
                 if self.relics.get(*index) != Some(relic) {
@@ -4045,6 +4104,38 @@ fn declarer_point_lines(active: &ActiveGame) -> Vec<ScoreLine> {
         .collect()
 }
 
+/// An encounter's modification as of effects v2 (DESIGN 7.2): an id the
+/// content knows stays, an old id of a save from before is converted with
+/// its value ([`crate::deck::legacy_mod`]); a dropped one becomes `None`
+/// (then one is drawn when chosen).
+fn current_mod(
+    content: &Content,
+    named: Option<&CardModId>,
+    value: Option<i32>,
+) -> (Option<CardModId>, Option<i32>) {
+    match named {
+        Some(id) if content.card_mod(id).is_some() => (Some(id.clone()), value),
+        Some(id) => match crate::deck::legacy_mod(id.as_str()) {
+            Some((new, v)) if content.card_mod(&CardModId::new(new)).is_some() => {
+                (Some(CardModId::new(new)), Some(v))
+            }
+            _ => (None, None),
+        },
+        None => (None, None),
+    }
+}
+
+/// The value a modification goes on with: the one named, else the first on
+/// offer only if it is the named modification (a random draw takes its
+/// own first value).
+fn mod_value(content: &Content, card_mod: &CardModId, named: Option<i32>) -> i32 {
+    named.unwrap_or_else(|| {
+        content
+            .card_mod(card_mod)
+            .map_or(1, CardModDef::default_value)
+    })
+}
+
 /// Draw up to `count` distinct items by their weight (items of weight 0
 /// never), in a fixed pool order.
 fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -> Vec<T> {
@@ -4076,6 +4167,8 @@ fn draw_weighted<T: Clone>(rng: &mut Rng, mut pool: Vec<(T, u32)>, count: u32) -
 mod character_tests;
 #[cfg(test)]
 mod content_tests;
+#[cfg(test)]
+mod effects_v2_tests;
 #[cfg(test)]
 mod m4_tests;
 #[cfg(test)]

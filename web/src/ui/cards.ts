@@ -103,16 +103,6 @@ function shape(rows: string[], x: number, y: number): Cells {
   return out;
 }
 
-/** Every cell blown up to a k × k block, from (x0, y0). */
-function scaled(cells: Cells, k: number, x0: number, y0: number): Cells {
-  const out: Cells = new Set();
-  for (const c of cells) {
-    const [x, y] = xy(c);
-    for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) out.add(key(x0 + x * k + i, y0 + y * k + j));
-  }
-  return out;
-}
-
 /** The cells on the card as one path, merged into runs per row. */
 function draw(cells: Cells, fill: string): string {
   const rows = new Map<number, number[]>();
@@ -350,7 +340,7 @@ interface ModArt {
   /** The Schwarze Katze or the torn corner take the corner like a sign. */
   corner?: (paper: string) => string;
   /** A mark at a place of its own. */
-  mark?: { place: Place; draw: (paper: string) => string };
+  mark?: { place: Place; draw: (paper: string, value: number) => string };
   /** The paper where it carries meaning. */
   paper?: string;
 }
@@ -361,53 +351,31 @@ const GOLD_DARK = '#8a5a0a';
 const PURPLE = '#6a3fa8';
 const EYE: CornerSign = { rows: ['.....', '.###.', '#####', '.###.', '.....'], fill: '#2f86c0', extra: [cellsOf([[4, 44]]), '#0b0c0e'] };
 
-/** The design per modification id (frame language, tools/cardart/fx2.py and the spec of 02.11.2026). */
+/**
+ * Placeholder design per modification id for Effekte v2 (DESIGN 7.2),
+ * reusing the old frame code; the real pictures follow in the art track.
+ * Grammar: frame = what, mark top right = when, number at the bottom
+ * middle = how much, bottom left = curses. A mark ("Rang") draws its
+ * chevrons from the card's value.
+ */
 const MOD_ART: Record<string, ModArt> = {
-  // Augen: a double frame in gold or lead, the extra Augen in its colour.
-  fat: { family: 'augen', frame: frames.augen(GOLD, GOLD_LIGHT), value: GOLD_DARK },
-  gold_rim: { family: 'augen', frame: frames.augen('#f7c21a', '#fff3b0'), ring3: true, value: GOLD_DARK },
-  lead_weight: { family: 'augen', frame: frames.augen('#4a4f57', '#a9adb3'), value: '#4a4f57' },
-  // Rang: chevrons under the index, no frame.
-  marked: { mark: { place: 'top', draw: (p) => chevrons(1, '#8e2430', p) } },
-  double_marked: { mark: { place: 'top', draw: (p) => chevrons(2, '#8e2430', p) } },
-  dressed_up: { mark: { place: 'top', draw: (p) => chevrons(2, '#b0336e', p) }, sign: { rows: ['#...#', '##.##', '#####', '##.##', '#...#'], fill: '#b0336e' } },
-  // Trumpf: the perforated edge of a stamp, the number in its colour.
-  stamp: { family: 'trumpf', frame: frames.trumpf(PURPLE), value: PURPLE },
-  crown: { family: 'trumpf', frame: frames.trumpf('#c08a12'), value: '#c08a12', sign: { rows: ['#.#.#', '#####', '#####', '.....', '.....'], fill: '#c08a12' } },
-  seal: { family: 'trumpf', frame: frames.trumpf('#a3263a'), value: '#a3263a', sign: { rows: ['.###.', '##.##', '#...#', '##.##', '.###.'], fill: '#a3263a' } },
-  horseshoe: { family: 'trumpf', frame: frames.trumpf('#4f6272'), value: '#4f6272', sign: { rows: ['#...#', '#...#', '#...#', '.###.', '.....'], fill: '#4f6272' } },
-  tape_measure: { family: 'trumpf', frame: frames.trumpf('#b07d0c'), value: '#b07d0c', sign: { rows: ['#####', '#.#.#', '#####', '.....', '.....'], fill: '#b07d0c' } },
-  // Letzter Stich: the flag top right, no frame.
+  // Rand: Augen (gold frame), Rang (chevrons, count = value), Trumpf (stamp edge).
+  points: { family: 'augen', frame: frames.augen(GOLD, GOLD_LIGHT), value: GOLD_DARK },
+  rank: { mark: { place: 'top', draw: (p, v) => chevrons(Math.max(1, Math.min(3, v)), '#8e2430', p) } },
+  trump_bonus: { family: 'trumpf', frame: frames.trumpf(PURPLE), value: PURPLE },
+  // Moment: the flag top right.
   last_trick: { mark: { place: 'flag', draw: () => lastTrickFlag('#16707a', ['#....', '###..', '####.', '#....', '#....']) } },
-  lucky_penny: { mark: { place: 'flag', draw: () => lastTrickFlag('#b06a2c', ['.###.', '#.#.#', '#.#.#', '#.#.#', '.###.']) } },
-  tail_light: { mark: { place: 'flag', draw: () => lastTrickFlag('#b3202a', ['.###.', '#####', '#####', '.###.', '#.#.#']) } },
-  // Sicht: a dashed frame; faded where the card never takes a trick.
-  transparent: { family: 'sicht', frame: frames.sicht('#2f86c0'), sign: EYE },
-  invisible: { family: 'sicht', frame: frames.sicht('#7a7f8a'), veil: true },
-  dummy: {
-    family: 'sicht',
-    frame: frames.sicht('#7a7f8a'),
-    veil: true,
-    sign: EYE,
-    mark: { place: 'center', draw: () => draw(scaled(shape(['.###.', '#...#', '...#.', '..#..', '..#..', '.....', '..#..'], 0, 0), 2, 12, 17), '#7d6a50') },
-  },
-  honorary_jack: { family: 'ehren', frame: frames.ehren(), paper: '#e3ebf5', sign: { rows: ['#...#', '.#.#.', '.###.', '.###.', '..#..'], fill: '#1f5a8c' } },
+  first_trick: { value: '#b06a2c', mark: { place: 'flag', draw: () => lastTrickFlag('#b06a2c', ['..#..', '.##..', '..#..', '..#..', '.###.']) } },
+  // Gutschein: a jagged edge (the stamp frame in green), no mark.
+  voucher_coins: { family: 'heim', frame: frames.trumpf('#2e7d4f'), value: '#2e7d4f' },
+  voucher_undead: { family: 'heim', frame: frames.trumpf(UNDEAD_GREEN), sign: { rows: SKULL, fill: UNDEAD_SKULL } },
+  voucher_wild: { family: 'heim', frame: frames.trumpf('#2e7d4f'), sign: { rows: ['##.##', '##.##', '.....', '##.##', '##.##'], fill: '#2e7d4f' } },
+  // Flüche: bottom left (ring 0 red for every curse until the art track).
+  transparent: { sign: EYE },
+  battered: { value: CURSE_RED, corner: () => draw(rects('0 44 1 1, 0 45 2 1, 0 46 3 1, 0 47 4 1, 0 48 5 1'), '#1b1e21') },
+  stained: { paper: '#ece4d4', value: CURSE_RED, corner: blackCat },
+  // Spezialkarten.
   wild_card: { family: 'wandel', frame: frames.wandel(), sign: { rows: ['##.##', '##.##', '.....', '##.##', '##.##'], fill: '#2e7d4f' } },
-  glass_ace: { family: 'glas', frame: frames.glas(), paper: '#e8f4fc', value: '#2f86c0' },
-  homesick: { family: 'heim', frame: frames.heim(), sign: { rows: ['..#..', '.###.', '#####', '.#.#.', '.###.'], fill: '#8e2430' } },
-  // Flüche: ring 0 red and broken (for every curse), and their mark.
-  beer_stain: { value: CURSE_RED, mark: { place: 'stain', draw: (p) => marked([[rects('19 15 6 2, 18 17 9 3, 19 20 7 2, 21 22 3 1'), '#c98a2a']], p) } },
-  cracked: {
-    mark: {
-      place: 'crack',
-      draw: (p) => marked([[rects('13 0 1 5, 14 5 1 3, 12 8 2 1, 11 9 1 5, 12 14 1 1, 13 15 1 4, 14 19 1 4, 13 23 1 3, 12 26 1 5, 13 31 2 1, 15 32 1 5, 14 37 1 4, 13 41 1 8'), '#1d1a18']], p),
-    },
-  },
-  black_cat: { paper: '#ece4d4', value: CURSE_RED, corner: blackCat },
-  battered: {
-    corner: () => draw(rects('0 44 1 1, 0 45 2 1, 0 46 3 1, 0 47 4 1, 0 48 5 1'), '#1b1e21'),
-    mark: { place: 'notch', draw: () => draw(rects('30 22 3 1, 29 23 4 1, 30 24 3 1'), '#1b1e21') },
-  },
   // Untot: ring 0 ragged green (drawn for the state), the skull in the corner.
   undead: { sign: { rows: SKULL, fill: UNDEAD_SKULL } },
 };
@@ -415,14 +383,19 @@ const MOD_ART: Record<string, ModArt> = {
 /** The modification "Untot" (core/content/card_mods.ron). */
 export const UNDEAD = 'undead';
 
-/** "+4", "−3", "×2", "56": the printed number of a modification. Formatting only. */
-export function figureText(figure: ModFigure | null): string {
+/**
+ * "+4", "−3", "×2", "56": the printed number of a modification. Formatting
+ * only. Effekte v2: the catalog's figure is per unit of the card's value,
+ * an `Add` is multiplied by it, a `Multiply` is the value itself.
+ */
+export function figureText(figure: ModFigure | null, value = 1): string {
   if (!figure) return '';
   const c = figure.change;
-  if ('Multiply' in c) return `×${c.Multiply}`;
+  if ('Multiply' in c) return `×${c.Multiply * value}`;
   if ('Scale' in c) return `×${factorText(c.Scale)}`;
   if ('Set' in c) return String(c.Set);
-  return c.Add > 0 ? `+${c.Add}` : c.Add < 0 ? `−${Math.abs(c.Add)}` : '0';
+  const n = c.Add * value;
+  return n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0';
 }
 
 interface Layers {
@@ -441,7 +414,8 @@ interface Layers {
  * one corner sign bottom left (the skull of Untot first), marks at their
  * places. Whatever does not fit is a badge on the left edge.
  */
-function layoutMods(mods: string[]): Layers {
+function layoutMods(mods: string[], modValues: Record<string, number> = {}): Layers {
+  const valueOf = (mod: string): number => modValues[mod] ?? 1;
   const curse = mods.some(isCurse);
   const undead = mods.includes(UNDEAD);
   const out: Layers = { paper: PLAIN, over: '', badges: [], curse, undead };
@@ -486,7 +460,7 @@ function layoutMods(mods: string[]): Layers {
       continue;
     }
     used.add(mark.place);
-    marks += mark.draw(out.paper);
+    marks += mark.draw(out.paper, valueOf(mod));
   }
   // The corner bottom left: the skull of Untot first, then in order.
   let corner = '';
@@ -511,7 +485,7 @@ function layoutMods(mods: string[]): Layers {
   for (const mod of placed) {
     const art = MOD_ART[mod];
     if (!art?.value) continue;
-    const text = figureText(modFigure(mod));
+    const text = figureText(modFigure(mod), valueOf(mod));
     if (!text) continue;
     if (values.length >= 2) badge(mod);
     else values.push({ text, fill: art.value });
@@ -543,11 +517,11 @@ export type FaceSize = 'full' | 'small';
  * (Fluch, Untot) as a thin ring, but without frames and marks. An "Untot"
  * picture card shows its zombie face.
  */
-export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'full'): string {
+export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'full', values: Record<string, number> = {}): string {
   const f = face(kind);
   const modNames = mods.map((m) => (isCurse(m) ? `${contentName('card_mods', m)} (${de.card.curse})` : contentName('card_mods', m))).join(', ');
   const label = esc(cardName(kind) + (mods.length ? ', ' + t(de.card.mods, { mods: modNames }) : ''));
-  const layers = layoutMods(mods);
+  const layers = layoutMods(mods, values);
   const paper = `<rect class="paper" width="${W}" height="${H}" ${fillOf(layers.paper)}/>`;
   const suit = f ? ` data-suit="${f.suit}"` : '';
   const state = layers.undead || layers.curse ? ` data-state="${layers.undead && layers.curse ? 'both' : layers.undead ? 'undead' : 'curse'}"` : '';

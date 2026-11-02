@@ -97,9 +97,8 @@
 // - coins-curse.json: seed 14 up to "Der Kartengeber" offering the curse
 //   "Ramponiert" on a random card: choosing it pays 3 Groschen (CoinsGained)
 //   with a coin animation naming the source.
-// - discard-battered.json: seed 14, that card in the hand at the Ansage;
-//   the core marks it not discardable, so it cannot be picked for the skat.
-// - honorary-jack.json: seed 116, a "Unter ehrenhalber" in the hand: plaque.
+// - discard-battered.json, honorary-jack.json: old saves with mods that
+//   effects v2 removed; no UI step any more, the core's load test uses them.
 // - wave2-relics.json (M8, crafted from a fresh run with seed 77): five
 //   relics of wave 2a in the head with their own beer mats, and
 //   "Stammfarbe" two suit games into its streak (every trump suit flagged).
@@ -108,26 +107,19 @@
 //   showing 1,5.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
-// - wave3-mods.json (M8 wave 3, crafted with the core: a Run started with
-//   seed 645, the legendary relics "Skatgott" and "Ehrenvorsitz", and the
-//   start deck carrying "Wandelkarte" on the Rot-Daus, "Glasdaus" on the
-//   Grün-Daus and "Heimweh" on the Eichel-Unter): both legendary beer mats
-//   in the head with the gold ring, the three modifications drawn on their
-//   cards, the player is Vorhand. Eichel Hand, the glass Daus led: a
-//   defender trumps it, it shatters with a toast. Then a Schellen lead: the
-//   Wandelkarte opens the suit picker with only Schellen allowed, and played
-//   it lies on the table as the Schellen-Daus with its printed suit as a
-//   plaque.
-// Frame language and "Untot" (framesPass, undeadPass):
-// - frames.json: boss-tresen.json with its deck patched by text, one
-//   modification per card (all 25 plus "Untot"), and some combinations
-//   (Augen + Trumpf, Glas + Augen, Fluch + Untot, three families). On the
-//   Kreidetafel every modification is named on a card; frames have their
-//   colours (Augen gold, Trumpf purple, Glas light blue), curses and Untot
-//   carry their state (data-state curse, undead, both), an Untot picture
-//   card shows its zombie face (u-…), an Untot number card does not; badges
-//   only on the card with three families and where the skull of Untot takes
-//   the Schwarze Katze's corner. Screenshots frames-gallery-*.
+// - wave3-mods.json (M8 wave 3, an old save: "Wandelkarte" on the Rot-Daus,
+//   "Glasdaus" on the Grün-Daus, "Heimweh" on the Eichel-Unter; since
+//   effects v2 converted on load to Wandelkarte, Augen +11 and nothing):
+//   both legendary beer mats with the gold ring, the player is Vorhand.
+//   Eichel Hand, the Grün-Daus led, then a Schellen lead: the Wandelkarte
+//   opens the suit picker with only Schellen allowed, and played it lies on
+//   the table as the Schellen-Daus with its printed suit as a plaque.
+// Effekte v2 placeholders and "Untot" (framesPass, undeadPass):
+// - frames.json: boss-tresen.json with its deck patched by text (mods_version
+//   2): every modification of effects v2 once, plus Untot with Augen +5,
+//   Wandelkarte with Trumpf +4 and Untot with Ramponiert. On the Kreidetafel
+//   every modification is named; Augen gold, Trumpf purple, curses and
+//   Untot carry their state, an Untot picture card shows its zombie face.
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
 //   the Grün-König (22), both with their Untot look. In an Eichel Hand
 //   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
@@ -1230,40 +1222,9 @@ async function m5(browser, errors, reducedMotion) {
   if (coinsAfter !== coinsBefore + 3) fail(`Groschen ${coinsBefore} -> ${coinsAfter}, expected +3`);
   log(`curse paid: ${pop.replace(/\s+/g, ' ')}; ${coinsBefore} -> ${coinsAfter} Groschen`);
 
-  // A "Ramponiert" card in the hand: the core marks it not discardable, so
-  // it is locked and cannot be picked; two other cards go into the skat.
-  await resumeFixture(page, 'discard-battered.json');
-  await page.waitForSelector('.declare');
-  if (!(await page.locator('.hand-card .plaque-lock').count())) fail('the Ramponiert card has no lock plaque');
-  await page.click('[data-action="pick-up-skat"]');
-  await page.waitForSelector('[data-action="select"]');
-  const lockedCards = page.locator('.hand-card.is-locked');
-  const lockedCount = await lockedCards.count();
-  if (!lockedCount) fail('the Ramponiert card is not locked while discarding');
-  if (await page.locator('[data-action="select"][data-no-discard="true"]').count()) fail('the Ramponiert card can be picked for the skat');
-  if (await page.locator('[data-testid="skat-zone"] [data-no-discard="true"], [data-testid="skat-zone"] .plaque-lock').count()) fail('a Ramponiert card lies on the table to be pressed');
-  const tableIds = () => page.locator('[data-testid="skat-zone"] .skat-card').evaluateAll((els) => els.map((e) => e.dataset.id).join(','));
-  const lyingBefore = await tableIds();
-  await lockedCards.first().click();
-  if ((await tableIds()) !== lyingBefore) fail('tapping the Ramponiert card moved it onto the table');
-  // Dragged onto the table it stays in the hand too.
-  await dragOnto(page, '.hand-card.is-locked', '[data-testid="skat-zone"]');
-  if ((await tableIds()) !== lyingBefore) fail('dragging the Ramponiert card moved it onto the table');
-  await shoot(page, 'discard-locked');
-  await assertFits(page, 'Ramponiert while discarding');
-  await discardFirstTwo(page, 'Ramponiert');
-  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
-  await page.click('[data-action="pick-game"][data-index="4"]');
-  await page.click('[data-action="declare"]');
-  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
-  log(`Ramponiert: ${lockedCount} card(s) locked while discarding`);
-
-  // "Unter ehrenhalber": a plaque on the card.
-  await resumeFixture(page, 'honorary-jack.json');
-  await page.waitForSelector('.declare');
-  if (!(await page.locator('.hand-card .plaque-hj').count())) fail('the Unter ehrenhalber has no plaque');
-  await shoot(page, 'honorary-jack');
-  log('Unter ehrenhalber plaque shown');
+  // Effekte v2: "Ramponiert" means −X Augen now, the old "darf nicht
+  // gedrückt werden" and "Unter ehrenhalber" are gone (DESIGN 7.2); their
+  // fixtures stay as old saves for the core's load test (skat_wasm).
 
   // M8 wave 2a: the new relics at the table and in the Abrechnung.
   await resumeFixture(page, 'wave2-relics.json');
@@ -2027,7 +1988,6 @@ async function motionPass(browser, errors) {
   await context.close();
 }
 
-/** M8 wave 3: Wandelkarte, Glasdaus, Heimweh and the legendary relics. */
 /** Frame language: every modification on the Kreidetafel (frames.json). */
 async function framesPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -2046,7 +2006,7 @@ async function framesPass(browser, errors, reducedMotion) {
     })),
   );
   if (cards.length !== 32) fail(`Kreidetafel shows ${cards.length} cards`);
-  const names = ['Fett', 'Goldrand', 'Bleigewicht', 'Gezinkt', 'Doppelt gezinkt', 'Aufgebrezelt', 'Stempel', 'Krone', 'Siegel', 'Hufeisen', 'Maßband', 'Spitze', 'Glückspfennig', 'Schlusslicht', 'Durchsichtig', 'Unsichtbar', 'Attrappe', 'Unter ehrenhalber', 'Wandelkarte', 'Glasdaus', 'Heimweh', 'Bierfleck', 'Angeknackst', 'Schwarze Katze', 'Ramponiert', 'Untot'];
+  const names = ['Augen', 'Rang', 'Trumpf', 'Letzter Stich', 'Erster Stich', 'Gutschein', 'Gutschein Untot', 'Gutschein Wandelkarte', 'Durchsichtig', 'Ramponiert', 'Fleckig', 'Wandelkarte', 'Untot'];
   const missing = names.filter((n) => !cards.some((c) => c.label.includes(n)));
   if (missing.length) fail(`Kreidetafel: no card names ${missing.join(', ')}`);
   const card = (name) => cards.find((c) => c.label.startsWith(`${name},`));
@@ -2054,18 +2014,14 @@ async function framesPass(browser, errors, reducedMotion) {
     const c = card(name);
     if (!c || !ok(c)) fail(`frame language: ${name} ${what} (${JSON.stringify(c)})`);
   };
-  expect('Eichel-Neun', (c) => c.fills.includes('#d98e0b'), 'has no gold Augen frame');
-  expect('Eichel-Sieben', (c) => c.fills.includes('#6a3fa8'), 'has no purple Trumpf frame');
-  expect('Schellen-Daus', (c) => c.fills.includes('#7fc4e8'), 'has no glass frame');
-  for (const name of ['Schellen-Sieben', 'Schellen-Acht', 'Schellen-Neun', 'Eichel-Acht']) expect(name, (c) => c.state === 'curse', 'is not marked as cursed');
-  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK'), 'shows no zombie face or state');
-  expect('Eichel-Zehn', (c) => c.state === 'undead' && !c.picture.some((h) => h.startsWith('#u-')), 'should keep its face with the Untot state');
-  expect('Eichel-Unter', (c) => c.state === 'both' && c.picture.includes('#u-CJ'), 'is not Fluch and Untot at once');
-  // Badges only where something has no place: the third family (Eichel-König) and
-  // the Schwarze Katze, whose corner the skull of Untot takes (Eichel-Unter).
-  const badged = cards.filter((c) => c.picture.some((h) => h.startsWith('#m-'))).map((c) => c.label.split(',')[0]).sort();
-  if (badged.join() !== 'Eichel-König,Eichel-Unter') fail(`badges on ${badged.join(', ')}, expected Eichel-König and Eichel-Unter`);
-  log(`frame language: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, states and frames as designed`);
+  // Effekte v2 (DESIGN 7.2): placeholders on the old frame code until the
+  // art track; one modification per card, a special card may carry one more.
+  expect('Schellen-Zehn', (c) => c.fills.includes('#d98e0b'), 'has no gold Augen frame');
+  expect('Schellen-König', (c) => c.fills.includes('#6a3fa8'), 'has no purple Trumpf frame');
+  for (const name of ['Schellen-Sieben', 'Schellen-Acht', 'Schellen-Neun']) expect(name, (c) => c.state === 'curse', 'is not marked as cursed');
+  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK') && c.label.includes('Augen'), 'shows no zombie face, state or its Augen');
+  expect('Grün-Sieben', (c) => c.state === 'both', 'is not Fluch and Untot at once');
+  log(`frame language: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, placeholders as planned`);
   await page.locator('.deck-grid').scrollIntoViewIfNeeded();
   await shoot(page, 'frames-gallery');
   await context.close();
@@ -2136,7 +2092,8 @@ async function wave3(browser, errors, reducedMotion) {
     if (!(await mat.first().locator('path[stroke="#e3b24c"][stroke-width="2"]').count())) fail(`legendary relic ${id} lacks the gold ring`);
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
-  for (const mod of ['Wandelkarte', 'Glasdaus', 'Heimweh']) {
+  // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.
+  for (const mod of ['Wandelkarte', 'Augen']) {
     if (!labels.includes(mod)) fail(`wave 3: no hand card names ${mod}: ${labels}`);
   }
   await shoot(page, 'wave3-hand');
@@ -2154,10 +2111,10 @@ async function wave3(browser, errors, reducedMotion) {
   if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
-  // "Ehrenvorsitz": the player leads. The glass Daus (Grün, id 23) first.
+  // "Ehrenvorsitz": the player leads. The Grün-Daus (id 23, a Glasdaus in
+  // the old save, dealt before effects v2) first; it no longer breaks.
   await page.waitForSelector('[data-action="play"][data-id="23"]', { timeout: 30000 });
   await page.click('[data-action="play"][data-id="23"]');
-  await page.waitForFunction(() => window.__toasts.some((t) => t.includes('zerbrochen')), null, { timeout: 30000 });
   // The Wandelkarte (Rot-Daus, id 15): a Schellen lead, only Schellen may be named.
   await page.waitForSelector('[data-action="play"][data-id="15"]', { timeout: 30000 });
   await page.click('[data-action="play"][data-id="15"]');

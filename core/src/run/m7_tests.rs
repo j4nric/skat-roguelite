@@ -10,7 +10,9 @@ use crate::content::{ConsumableId, Factor, UnlockId};
 use crate::deck::DeckChange;
 
 fn is_curse(content: &Content, id: &CardModId) -> bool {
-    content.card_mod(id).is_some_and(|m| m.curse)
+    content
+        .card_mod(id)
+        .is_some_and(crate::content::CardModDef::is_curse)
 }
 
 /// Modifications attached by these events.
@@ -136,11 +138,13 @@ fn old_card_dealer_options_without_a_drawn_mod_never_give_a_curse() {
                     choice: EncounterChoice::MarkRandomCard,
                     cost: 0,
                     card_mod: None,
+                    value: None,
                 },
                 EncounterOption {
                     choice: EncounterChoice::Leave,
                     cost: 0,
                     card_mod: None,
+                    value: None,
                 },
             ],
         });
@@ -210,8 +214,12 @@ fn in_whole_runs_curses_come_only_from_announcing_encounters() {
 #[test]
 fn every_curse_pays_groschen_when_attached() {
     let content = content();
-    let curses: Vec<_> = content.card_mods.values().filter(|m| m.curse).collect();
-    assert!(curses.len() >= 4);
+    let curses: Vec<_> = content
+        .card_mods
+        .values()
+        .filter(|m| m.is_curse())
+        .collect();
+    assert_eq!(curses.len(), 3);
     for def in curses {
         assert!(def.text.starts_with("Fluch:"), "{}", def.id);
         let pays = def.hooks.iter().any(|h| {
@@ -257,7 +265,7 @@ fn announced_curses_name_the_curse_and_pay() {
         }
         // Every curse of the character's pool can come.
         let pool: Vec<CardModId> = shop_run(&content, 0, character)
-            .mod_pool(&content, &[], true)
+            .mod_pool(&content, true)
             .into_iter()
             .map(|(id, _)| id)
             .collect();
@@ -282,7 +290,7 @@ fn announced_curses_name_the_curse_and_pay() {
         run.deck()
             .cards()
             .iter()
-            .filter(|c| c.mods.contains(&CardModId::new("beer_stain")))
+            .filter(|c| c.mods.contains(&CardModId::new("battered")))
             .count(),
         1
     );

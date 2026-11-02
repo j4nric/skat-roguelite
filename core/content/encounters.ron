@@ -15,7 +15,7 @@
     (
         id: "card_dealer",
         name: "Der Kartengeber",
-        text: "Der Kartengeber zinkt dir eine zufällige Karte, nie mit einem Fluch. Für 3 Groschen darfst du die Karte selbst wählen.",
+        text: "Der Kartengeber zinkt dir eine zufällige Karte, nie mit einem Fluch. Trägt sie dieselbe Modifikation, steigt sie; eine andere ersetzt er. Für 3 Groschen darfst du die Karte selbst wählen.",
         kind: MarkCard(price: 3),
     ),
     (
@@ -34,21 +34,21 @@
     (
         id: "spilled_beer",
         name: "Umgekipptes Bier",
-        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte kriegt einen Bierfleck, einen Fluch: 5 Augen weniger, dafür erkennst du sie. Du kassierst 3 Groschen dafür. Für 4 Groschen wischst du ihn auf eine Karte deiner Wahl.",
-        kind: MarkCard(price: 4, card_mod: Some("beer_stain")),
+        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte wird ramponiert, ein Fluch: 5 Augen weniger, auch unter 0. Du kassierst 3 Groschen dafür. Für 4 Groschen wischst du es auf eine Karte deiner Wahl.",
+        kind: MarkCard(price: 4, card_mod: Some("battered"), value: Some(5)),
     ),
     (
         id: "crown_inn",
         name: "Gasthof zur Krone",
-        text: "Der Kronenwirt stempelt einer zufälligen Karte seine Krone auf: Ist ihre Farbe Trumpf, zählt der Grundwert doppelt. Für 4 Groschen wählst du die Karte.",
-        kind: MarkCard(price: 4, card_mod: Some("crown")),
+        text: "Der Kronenwirt stempelt einer zufälligen Karte seine Krone auf: Trumpf +4, ist ihre Farbe Trumpf und hältst du sie, steigt der Grundwert um 4. Für 4 Groschen wählst du die Karte.",
+        kind: MarkCard(price: 4, card_mod: Some("trump_bonus"), value: Some(4)),
         characters: [Declarer],
     ),
     (
         id: "conjurer",
         name: "Der Taschenspieler",
-        text: "Ein Taschenspieler macht eine zufällige Karte zur Attrappe: Sie gewinnt nie, und du siehst, wer sie hält. Für 3 Groschen wählst du die Karte.",
-        kind: MarkCard(price: 3, card_mod: Some("dummy")),
+        text: "Ein Taschenspieler steckt einer zufälligen Karte einen Gutschein zu: Drückst du sie, wird sie zur Wandelkarte. Für 3 Groschen wählst du die Karte.",
+        kind: MarkCard(price: 3, card_mod: Some("voucher_wild")),
         characters: [NullPlayer],
     ),
     (

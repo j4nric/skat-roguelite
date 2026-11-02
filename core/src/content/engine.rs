@@ -11,8 +11,15 @@ use super::score::Source;
 use super::{CardModDef, CardModId, Content};
 use crate::cards::{CardKind, PlayingCard};
 use crate::deck::{DealtCard, Deck};
-use crate::game::{Game, Seat, TRICKS_PER_GAME};
+use crate::game::{Game, Seat, TRICKS_PER_GAME, seat_at};
 use crate::rules::{Declaration, GameType, Matadors, ValueParts, acts_as_honorary_jack};
+
+/// Whether "Trumpf" and "Fleckig" (condition
+/// [`Condition::ThisCardIsTrumpSuit`]) act only when the player holds the
+/// card (ADR 0015 strict, DESIGN 7.2). The one switch for that rule:
+/// `false` lets them act wherever the card is in play, as before effects
+/// v2.
+pub const TRUMP_MODS_NEED_PLAYER: bool = true;
 
 /// One active content item: where it comes from and what it does. Card
 /// modifications carry the card instance they sit on.
@@ -26,6 +33,9 @@ pub struct ActiveSource<'a> {
     pub hooks: &'a [Hook],
     /// For card modifications: the dealt card it sits on.
     pub this_card: Option<DealtCard>,
+    /// For card modifications: the value the card carries; every effect
+    /// is applied [`Effect::scaled`] by it. 1 for everything else.
+    pub scale: i32,
 }
 
 /// The deck resolved for one game.
@@ -44,9 +54,10 @@ pub struct ResolvedDeck {
 /// Order per card: `BlankOut` from bosses and relics turns matching cards
 /// into blanks (their modifications are inactive for this game); then
 /// `SetCardPoints` from bosses and relics in source order; then the card's
-/// own modifications in the order they were attached (`AddCardPoints`,
-/// `MultiplyCardPoints`, `RankBonus`, `RevealHolder`, `NeverWins`,
-/// `HonoraryJack`, `NoDiscard`, `Wild`). Augen never drop below zero. The
+/// own modifications in the order they were attached, each scaled by the
+/// value the card carries (`AddCardPoints`, `RankBonus`, `RevealHolder`,
+/// `NeverWins`, `HonoraryJack`, `NoDiscard`, `Wild`). Augen below zero
+/// leave the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). The
 /// game keeps `Wild` only on the cards the player holds.
 /// `RevealHolder` is off while a global source has `DisableInformation`.
 #[must_use]
@@ -97,36 +108,25 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
                 card_mod: mod_id.clone(),
                 card: deck_card.id,
             };
-            for effect in &def.passive {
+            let value = deck_card.mod_value(mod_id);
+            for effect in def.passive.iter().map(|e| e.scaled(value)) {
                 match effect {
                     Effect::AddCardPoints(delta) => {
-                        let new = i64::from(dealt.card_points) + i64::from(*delta);
-                        let new = u32::try_from(new.max(0)).unwrap_or(0);
-                        let applied = i64::from(new) - i64::from(dealt.card_points);
-                        if applied != 0 {
+                        let old = i64::from(dealt.card_points) - i64::from(dealt.point_debt);
+                        let new = old + i64::from(delta);
+                        if new != old {
                             point_changes.push((
                                 dealt.id,
                                 source.clone(),
-                                i32::try_from(applied).unwrap_or(0),
+                                i32::try_from(new - old).unwrap_or(0),
                             ));
                         }
-                        dealt.card_points = new;
-                    }
-                    Effect::MultiplyCardPoints(factor) => {
-                        let new = dealt.card_points.saturating_mul(*factor);
-                        let applied = i64::from(new) - i64::from(dealt.card_points);
-                        if applied != 0 {
-                            point_changes.push((
-                                dealt.id,
-                                source.clone(),
-                                i32::try_from(applied).unwrap_or(0),
-                            ));
-                        }
-                        dealt.card_points = new;
+                        dealt.card_points = u32::try_from(new.max(0)).unwrap_or(0);
+                        dealt.point_debt = u32::try_from((-new).max(0)).unwrap_or(0);
                     }
                     Effect::Wild => dealt.wild = true,
                     Effect::RankBonus(bonus) => {
-                        dealt.rank_bonus = dealt.rank_bonus.saturating_add(*bonus);
+                        dealt.rank_bonus = dealt.rank_bonus.saturating_add(bonus);
                     }
                     Effect::RevealHolder => dealt.revealed = !no_information,
                     Effect::NeverWins => dealt.never_wins = true,
@@ -172,6 +172,7 @@ pub fn card_mod_sources<'a>(
                     passive: &def.passive,
                     hooks: &def.hooks,
                     this_card: Some(card),
+                    scale: deck_card.mod_value(mod_id),
                 });
             }
         }
@@ -242,8 +243,16 @@ pub fn evaluate(
             (Some(t), Some(this)) => t.winning_card().id == this.id,
             _ => false,
         },
-        Condition::ThisCardIsTrumpSuit => match (declaration, this_card.and_then(|c| c.face())) {
-            (Some(d), Some(face)) => d.game() == GameType::Suit(face.suit),
+        Condition::ThisCardIsTrumpSuit => match (declaration, this_card) {
+            (Some(d), Some(this)) => {
+                this.face()
+                    .is_some_and(|face| d.game() == GameType::Suit(face.suit))
+                    && (!TRUMP_MODS_NEED_PLAYER || game.is_some_and(|g| held_by_player(g, this.id)))
+            }
+            _ => false,
+        },
+        Condition::ThisCardWinsFirstTrick => match (game.map(Game::tricks), this_card) {
+            (Some([first]), Some(this)) => first.winning_card().id == this.id,
             _ => false,
         },
         Condition::TricksPlayed(n) => {
@@ -268,16 +277,6 @@ pub fn evaluate(
             g.tricks().last().is_some_and(|t| t.winner.is_declarer())
                 && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
         }),
-        Condition::ThisCardBeatenByDefender => {
-            match (game.and_then(|g| g.tricks().last()), this_card) {
-                (Some(t), Some(this)) => {
-                    !t.winner.is_declarer()
-                        && t.winning_card().id != this.id
-                        && t.cards.iter().any(|c| c.id == this.id)
-                }
-                _ => false,
-            }
-        }
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
         Condition::NullGame => declaration.is_some_and(Declaration::is_null),
         Condition::NullRiskAtLeast(risk) => {
@@ -379,7 +378,7 @@ pub fn evaluate_if_won(
         | Condition::NeverFollowedSuit
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardBeatenByDefender => None,
+        | Condition::ThisCardWinsFirstTrick => None,
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
@@ -433,10 +432,7 @@ pub fn card_mod_status(
         parts.push(Some(acts_as_honorary_jack(declaration.game(), this_card)));
     }
     for hook in &def.hooks {
-        // Breaking ("Glasdaus") is what happens to the card, not whether
-        // its modification works.
-        let side_effect_only = hook.then().iter().all(|e| *e == Effect::BreakThisCard);
-        if hook.stage().in_game() && *hook.when() != Condition::Always && !side_effect_only {
+        if hook.stage().in_game() && *hook.when() != Condition::Always {
             parts.push(evaluate_known(hook.when(), ctx, Some(this_card)));
         }
     }
@@ -532,15 +528,35 @@ pub fn evaluate_known(
         | Condition::MatadorsAtLeast { .. }
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer => None,
-        // Certain once the card fell in a completed trick.
-        Condition::ThisCardBeatenByDefender => {
-            let (game, this) = (ctx.game?, this_card?);
+        // Certain once the first trick is complete.
+        Condition::ThisCardWinsFirstTrick => {
+            let game = ctx.game?;
             game.tricks()
-                .iter()
-                .find(|t| t.cards.iter().any(|c| c.id == this.id))
-                .map(|t| !t.winner.is_declarer() && t.winning_card().id != this.id)
+                .first()
+                .map(|t| this_card.is_some_and(|this| t.winning_card().id == this.id))
         }
     }
+}
+
+/// Whether the player holds the card with this id in `game`: in his hand,
+/// in the skat (the skat belongs to the declarer, ADR 0015) or played by
+/// him in a trick (DESIGN 7.2, "Trumpf" and "Fleckig").
+#[must_use]
+pub fn held_by_player(game: &Game<DealtCard>, id: u32) -> bool {
+    let in_hand = game.hand(Seat::DECLARER).iter().any(|c| c.id == id);
+    let in_skat = game.skat().iter().any(|c| c.id == id);
+    let played = game
+        .tricks()
+        .iter()
+        .any(|t| (0..3).any(|i| t.cards[i].id == id && t.seat_of(i).is_declarer()))
+        || {
+            let lead = game.trick_lead();
+            game.current_trick()
+                .iter()
+                .enumerate()
+                .any(|(i, c)| c.id == id && seat_at(lead, i).is_declarer())
+        };
+    in_hand || in_skat || played
 }
 
 /// The game, if it is a Null game.

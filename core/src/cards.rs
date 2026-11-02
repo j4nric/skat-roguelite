@@ -319,10 +319,24 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         false
     }
 
-    /// Whether this card must not be discarded ("Ramponiert", see
-    /// [`crate::rules::valid_discard`]). `false` for plain cards.
+    /// Whether this card must not be discarded (see
+    /// [`crate::rules::valid_discard`]; no content uses it since effects
+    /// v2). `false` for plain cards.
     fn no_discard(self) -> bool {
         false
+    }
+
+    /// Augen below zero (DESIGN 7.2, "Ramponiert"): [`Self::card_points`]
+    /// is 0 then, and whoever takes the card loses this many Augen. Zero
+    /// for plain cards.
+    fn point_debt(self) -> u32 {
+        0
+    }
+
+    /// The Augen with their sign: [`Self::card_points`] minus
+    /// [`Self::point_debt`].
+    fn signed_points(self) -> i64 {
+        i64::from(self.card_points()) - i64::from(self.point_debt())
     }
 
     /// Whether this card is a "Wandelkarte" in the player's hand: it never

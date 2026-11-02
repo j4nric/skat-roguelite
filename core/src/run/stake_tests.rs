@@ -68,18 +68,6 @@ fn relics_lower_the_staked_threshold_by_their_own_amount() {
         rules.win_threshold_source,
         Some(Source::Relic(RelicId::new("blind_eye")))
     );
-    // Hufeisen (56, five below) on the trump ace at stake 3: 59, and it
-    // beats the house rule (61) because it is lower.
-    let mut run = relic_run(&content, &["blind_eye"]);
-    run.stake = 3;
-    run.deck
-        .add_mod(7, CardModId::new("horseshoe"))
-        .expect("mod");
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    assert_eq!(run.game().expect("game").rules.thresholds.win, 61);
-    run.apply(&content, RunAction::Declare(diamonds_hand()))
-        .expect("declare");
-    assert_eq!(run.game().expect("game").rules.thresholds.win, 59);
 }
 
 #[test]

@@ -27,13 +27,13 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Lusche (7, 8, 9) | `blank` | Karte ohne Augen |
 | Blanko-Karte (Roguelike) | `CardKind::Blank` | Ohne Farbe, ohne Augen, verliert immer, bedient nie, darf immer gespielt werden. Ersetzte bis ADR 0015 entfernte Karten; seit ADR 0015 nur noch als Karteneffekt (Oma, Scherben). Notation `XX`. |
 | Kartenart (normal oder Blanko) | `CardKind` | `CardKind::Normal(Card)`, `CardKind::Blank` |
-| Karteninstanz im Blatt des Runs | `DeckCard` | `id`, `kind`, `mods` |
+| Karteninstanz im Blatt des Runs | `DeckCard` | `id`, `kind`, `mods`, `mod_values` (Wert je Modifikation, ohne Eintrag 1; Effekte v2) |
 | Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit |
 | Karte im Spiel (Regel-Sicht) | `PlayingCard` (Trait) | Von `Card` und `DealtCard` implementiert |
-| Rangbonus (Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
-| Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“ |
+| Rangbonus (Modifikation Rang, bis Effekte v2 Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
+| Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“. Seit Effekte v2 ohne Inhalt, die Wirkung ruht |
 | Platz in der Trumpfordnung | `trump_order_key` | Stärke, dann 0 für den Buben ehrenhalber, 1 für gedruckte Trümpfe |
-| Darf nicht gedrückt werden (Ramponiert) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden`; je Handkarte `discardable` (`rules::discardable`, `CardView::discardable`) |
+| Darf nicht gedrückt werden (bis Effekte v2 der Fluch Ramponiert, seitdem ruhend) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden`; je Handkarte `discardable` (`rules::discardable`, `CardView::discardable`) |
 | Volle (Ass, Zehn) | `high_card` | |
 | Trumpf | `trump` | |
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
@@ -41,12 +41,24 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Gezinkte Karte / Kartenmodifikation | `CardMod` | Definition `CardModDef`, Id `CardModId` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | Talon gehört nicht dazu |
 | Wandelkarte (Farbe beim Ausspielen benennen) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers), Effekt `Wild`; zwingt nie zum Bedienen. Benennen: `RunAction::PlayAs { card, suit }`, `Game::play_as`, erlaubte Farben `rules::wild_suits`, Prüfung `rules::may_play`; Ereignis `WildCardNamed`; Sicht `CardView::wild_suits`, `CardView::named` (gedruckte Farbe), `ActiveGame::named`. Die KI rechnet ohne sie: `opponents::tame_game` |
-| Zerbrechen (Glasdaus) | `break` | Effekt `BreakThisCard`, Bedingung `ThisCardBeatenByDefender` (ein Gegner macht den Stich mit einer anderen Karte), Ereignis `CardBroken`, `ActiveGame::broken`; nach der Abrechnung `Deck::remove` |
-| Heimweh (aus dem Skat in die Hand) | `homesick` | Effekt `Homesick`, `Run::homesick`, Sicht `RunView::homesick`, Ereignis `CardCameHome` |
 | Untot (Karte steigt aus dem Stich zurück in die Hand) | `undead` | Effekt `Undead`, Prüfung `Run::can_rise`, verbraucht `ActiveGame::risen` (einmal pro Spiel), Zufall `ActiveGame::undead_rng`; Spielebene `Game::raise`, Ereignis `CardRose` (`card` zurück in der Hand, `substitute` im Stich); Sicht `CardView::can_rise`; Bot `RunBot::undead_card` |
 | Ersatzkarte (Untot: die Karte, die an ihrer Stelle im Stich liegt) | `substitute` | Feld von `CardRose` |
 | Nur auf (Modifikation passt nur auf bestimmte Karten) | `only_on` | Feld `CardModDef::only_on` (`CardFilter`), Prüfung `CardModDef::fits` |
-| Augen vervielfachen (Glasdaus) | `MultiplyCardPoints` | Effekt, nach allen anderen Augen-Änderungen der Karte |
+| Effekte v2 (System der Kartenmodifikationen seit 02.11.2026) | – | DESIGN 7.2 |
+| Art einer Modifikation | `ModKind` | `Edge` (Rand: immer aktiv), `Moment` (Markierung oben rechts), `Voucher` (Gutschein), `Curse` (Fluch), `Special` (Spezialkarte); Feld `CardModDef::kind` |
+| Rand-Modifikation | `ModKind::Edge` | Augen, Rang, Trumpf |
+| Moment-Modifikation | `ModKind::Moment` | Letzter Stich, Erster Stich |
+| Gutschein (wenn gedrückt) | `ModKind::Voucher` | Auslöser `OnDiscard`, Ereignis `VoucherRedeemed { card, card_mod, value }`, Wirkung `TurnInto` (wird Spezialkarte) |
+| Spezialkarte | `ModKind::Special` | Untot, Wandelkarte; darf zusätzlich eine normale Modifikation tragen |
+| Wert einer Modifikation | `value` | An der Karte `DeckCard::mod_values`, angeboten `CardModDef::values`, Obergrenze `CardModDef::max`, Wirkung je Einheit mal Wert `Effect::scaled` |
+| Steigerung (dieselbe Modifikation noch einmal) | `upgrade` | Werte addieren, Rang bis 3; Ergebnis `DeckChange::Modified { value, replaced: None }` |
+| Ersetzen (andere Modifikation) | `replace` | `DeckChange::Modified.replaced` nennt die alte |
+| Verflucht (Karte kann nicht verändert werden) | `cursed` | Fehler `DeckError::Cursed` |
+| Grenze erreicht | `AtMaximum` | Fehler `DeckError::AtMaximum` (Rang 3) |
+| Schuld (Augen unter 0) | `point_debt` | `DealtCard::point_debt`, `PlayingCard::point_debt`; zieht der Stich ab, die Augen einer Seite fallen nie unter 0 |
+| Zuschlag auf Augen (Erster Stich) | `bonus_points` | `Game::bonus_points`, `Game::add_bonus_points`; Wirkung `MultiplyTrickPoints`, Bedingung `ThisCardWinsFirstTrick` |
+| Trumpf-Modifikationen nur beim Spieler | `TRUMP_MODS_NEED_PLAYER` | Schalter in `content::engine` für `ThisCardIsTrumpSuit` (ADR 0015 streng) |
+| Version der Modifikationen eines Blatts | `mods_version` | Feld von `Deck`; ohne 2 wird beim Laden umgerechnet (`deck::migrate_legacy_mods`) |
 
 ## Spielablauf
 
@@ -163,7 +175,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Groschen | `coins` | Währung |
 | Groschen erhalten (Effekt) | `GainCoins` | Ereignis `CoinsGained { source, amount, coins }`; negativ zieht ab, nie unter 0 |
 | Beim Erhalt (Kartenmodifikation angebracht) | `OnAttach` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnAttach` |
-| Fluch (negative Kartenmodifikation) | `curse` | Feld `CardModDef::curse`; Text beginnt mit „Fluch:“. Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
+| Wenn gedrückt (Gutschein) | `OnDiscard` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnDiscard`; die Karte landet beim Drücken im Skat |
+| Fluch (negative Kartenmodifikation) | `curse` | `ModKind::Curse`, Prüfung `CardModDef::is_curse` (in Sicht und Katalog weiter `curse`); Text beginnt mit „Fluch:“. Sperrt die Karte für jede weitere Modifikation (Effekte v2). Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
 | Ereignis / Rast | `Encounter` | Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Abends (Stammtisch-Streit) | `evening_relics` | Gilt bis zum Ende des Abschnitts, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast, nicht die Figur „Der Kiebitz“ `kibitzer`), `Landlady` (Wirtin, nicht die Figur „Der Wirt“ `landlord`); Daten `CharacterDef` |
@@ -187,7 +200,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler, Spickzettel; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
-| Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig, Bierfleck, Attrappe) oder `Kibitz`; Feld `RevealedCard::source` |
+| Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig) oder `Kibitz`; Feld `RevealedCard::source` |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert; die drei Ansagen auch nach dem Skat (ADR 0013) |
 | Statistik eines Runs | `RunStats` | Gewonnene und verlorene Spiele, Einmischen (`redeals`), Serien, bestes Spiel |
 | Verkaufspreis | `sell_price` | Halber Preis |
@@ -239,11 +252,20 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Alte Dame | `old_lady` |
 | Tournee | `tour` |
 | Durchmarsch | `march_through` |
-| Fett | `fat` |
-| Gezinkt | `marked` |
-| Stempel | `stamp` |
-| Spitze (Kartenmodifikation) | `last_trick` |
-| Durchsichtig | `transparent` |
+| Augen (Modifikation) | `points` (nicht verwechseln mit Augen = `card_points`) |
+| Rang (Modifikation) | `rank` |
+| Trumpf (Modifikation) | `trump_bonus` |
+| Letzter Stich (Modifikation, bis Effekte v2 „Spitze“) | `last_trick` |
+| Erster Stich (Modifikation) | `first_trick` |
+| Gutschein | `voucher_coins` |
+| Gutschein Untot | `voucher_undead` |
+| Gutschein Wandelkarte | `voucher_wild` |
+| Durchsichtig (Fluch seit Effekte v2) | `transparent` |
+| Fleckig (Fluch, bis Effekte v2 „Schwarze Katze“) | `stained` |
+| Augen +3, Augen +5 (Verbrauchsgegenstand) | `points_3`, `points_5` |
+| Trumpf +2, Trumpf +4 (Verbrauchsgegenstand) | `trump_2`, `trump_4` |
+| Rang +1 (Verbrauchsgegenstand) | `rank_1` |
+| Gestrichen mit Effekte v2 (alte Ids, nur noch beim Umrechnen) | `fat`, `marked`, `stamp`, `invisible`, `gold_rim`, `double_marked`, `crown`, `seal`, `horseshoe`, `tape_measure`, `lucky_penny`, `beer_stain`, `cracked`, `black_cat`, `lead_weight`, `tail_light`, `dressed_up`, `dummy`, `honorary_jack`, `glass_ace`, `homesick` |
 | Der Schieber | `the_pusher` |
 | Der Kontra-Hans | `kontra_hans` |
 | Die Oma | `grandma` |
@@ -264,7 +286,6 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Schiedsrichter | `referee` |
 | Der Angeber | `show_off` |
 | Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
-| Unsichtbar | `invisible` |
 | Die Zwillinge | `twins` |
 | Der Ramscher | `ramscher` |
 | Der Revolutionär | `revolutionary` |
@@ -289,27 +310,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Dicke Sau | `fat_sow` |
 | Glashaus | `glass_house` |
 | Kerbholz | `tally_stick` (Zähler `tally`) |
-| Goldrand | `gold_rim` |
-| Doppelt gezinkt | `double_marked` |
-| Krone | `crown` |
-| Siegel | `seal` |
-| Hufeisen | `horseshoe` |
-| Maßband | `tape_measure` |
-| Glückspfennig | `lucky_penny` |
-| Bierfleck | `beer_stain` |
-| Angeknackst | `cracked` |
-| Schwarze Katze | `black_cat` |
-| Bleigewicht | `lead_weight` |
-| Schlusslicht | `tail_light` |
-| Aufgebrezelt | `dressed_up` |
-| Attrappe | `dummy` |
 | Umgekipptes Bier | `spilled_beer` |
 | Gasthof zur Krone | `crown_inn` |
 | Der Taschenspieler | `conjurer` |
 | Preisskat | `prize_skat` |
 | Gast aus Altenburg | `guest_from_altenburg` |
-| Ramponiert | `battered` |
-| Bube ehrenhalber (Anzeige: Unter ehrenhalber) | `honorary_jack` |
+| Ramponiert (Fluch, seit Effekte v2 −X Augen: Augen mit negativem Wert, Konstante `deck::RAMPONIERT` neben `deck::AUGEN`) | `battered` |
 | Der Opa (Figur) | `grandpa` (nicht verwechseln mit `granny`) |
 | Mit Vieren | `with_four` |
 | Siebenschläfer | `seven_sleeper` |
@@ -326,8 +332,6 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Spickzettel | `crib_sheet` |
 | Lockvogel | `decoy` |
 | Wandelkarte | `wild_card` |
-| Glasdaus | `glass_ace` |
-| Heimweh | `homesick` |
 | Untot | `undead` |
 | Skatgott | `skat_god` (Zähler `skat_god`) |
 | Ehrenvorsitz | `honorary_chair` |

@@ -436,7 +436,7 @@ export const de = {
     leadDemanded: 'Lockvogel: Der nächste Gegner spielt {suit} aus, wenn er kann.',
     wildNamed: 'Wandelkarte: {old} gespielt als {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
-    cameHome: 'Heimweh: {card} ist wieder in deiner Hand.',
+    voucherRedeemed: '{mod} eingelöst: {card}.',
     coins: '{amount} Groschen: {source}',
   },
 

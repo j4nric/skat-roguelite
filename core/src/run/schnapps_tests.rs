@@ -92,7 +92,10 @@ fn the_five_schnaepse_load_as_one_group() {
         .values()
         .filter(|d| d.category == ConsumableCategory::Item)
         .count();
-    assert_eq!(items, 4, "the old consumables stay items");
+    assert_eq!(
+        items, 9,
+        "the old consumables and the five of effects v2 are items"
+    );
     // They come to the Tresen like every other consumable.
     let mut seen = BTreeSet::new();
     for seed in 0..200 {

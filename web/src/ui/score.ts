@@ -54,7 +54,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if ('Character' in source) return `<span class="step-icon">${portrait(characterPortraitId(source.Character), 'portrait-xs')}</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
-    ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods, 'small')}</span>`
+    ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`
     : `<span class="step-icon">${modIcon(source.CardMod.card_mod, 20)}</span>`;
 }
 
