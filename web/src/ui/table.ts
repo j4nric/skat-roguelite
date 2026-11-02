@@ -71,6 +71,7 @@ function plaques(c: CardView): string {
   if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
   if (c.honorary_jack) out.push(`<span class="plaque plaque-hj" title="${esc(de.card.honoraryJack)}" aria-hidden="true">U</span>`);
   if (c.no_discard) out.push(`<span class="plaque plaque-lock" title="${esc(de.card.noDiscard)}" aria-hidden="true">${lockIcon(13)}</span>`);
+  if (c.can_rise) out.push(`<span class="plaque plaque-rise" title="${esc(de.card.canRise)}" aria-hidden="true">${skullIcon(12)}</span>`);
   if (c.named) out.push(`<span class="plaque plaque-wild" title="${esc(t(de.card.named, { suit: de.suits[c.named] }))}" aria-hidden="true">${suitIcon(c.named, 11, null)}</span>`);
   return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
 }
@@ -142,11 +143,22 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
   </div>`;
 }
 
-/** One seat's place in the trick; `winner` marks the card that took a finished trick. */
-function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null): string {
+/** A small pixel skull ("Untot"). */
+function skullIcon(size: number): string {
+  return `<svg class="skull-icon" viewBox="0 0 5 5" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 0h3v1h-3zM0 1h5v1h-5zM0 2h1v1h-1zM2 2h1v1h-1zM4 2h1v1h-1zM0 3h5v1h-5zM1 4h1v1h-1zM3 4h1v1h-1z" fill="currentColor"/></svg>`;
+}
+
+/**
+ * One seat's place in the trick; `winner` marks the card that took a
+ * finished trick, `risen` the substitute of a card that rose ("Untot").
+ */
+function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null, risen: UiState['risen'] = null): string {
   const played = cards.find((c) => c.seat === seat);
   const won = winner === seat;
-  const tag = won ? `<span class="trick-won-tag">${esc(de.table.lastTrickWon)}</span>` : '';
+  let tag = won ? `<span class="trick-won-tag">${esc(de.table.lastTrickWon)}</span>` : '';
+  if (played && risen && played.card.id === risen.substitute) {
+    tag += `<span class="trick-rose-tag" data-testid="rose-note" title="${esc(t(de.table.roseHint, { card: risen.card }))}">${skullIcon(9)}${esc(de.table.roseTag)}</span>`;
+  }
   const inner = played
     ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}${plaques(played.card)}${tag}</div>`
     : yourTurn
@@ -687,10 +699,11 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
  */
 function trickRow(game: GameView, ui: UiState, peek: TrickView | null): string {
   const trick = peek
-    ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${trickSlot(peek.cards, 1, false, peek.winner)}${trickSlot(peek.cards, 0, false, peek.winner)}${trickSlot(peek.cards, 2, false, peek.winner)}</div>`
+    ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${trickSlot(peek.cards, 1, false, peek.winner, ui.risen)}${trickSlot(peek.cards, 0, false, peek.winner, ui.risen)}${trickSlot(peek.cards, 2, false, peek.winner, ui.risen)}</div>`
     : (() => {
         const open = ui.anim ? ui.anim.trick : game.trick;
-        return `<div class="trick" data-action="fast">${trickSlot(open, 1)}${trickSlot(open, 0, !ui.anim && !ui.busy && game.your_turn)}${trickSlot(open, 2)}</div>`;
+        const risen = ui.anim ? ui.risen : null;
+        return `<div class="trick" data-action="fast">${trickSlot(open, 1, false, null, risen)}${trickSlot(open, 0, !ui.anim && !ui.busy && game.your_turn, null, risen)}${trickSlot(open, 2, false, null, risen)}</div>`;
       })();
   return `<div class="trick-row"><div class="trick-side is-left">${pressedStack(game)}</div>${trick}<div class="trick-side is-right">${lastTrickToggle(game, ui)}</div></div>`;
 }

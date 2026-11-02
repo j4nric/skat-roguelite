@@ -118,6 +118,21 @@
 //   Wandelkarte opens the suit picker with only Schellen allowed, and played
 //   it lies on the table as the Schellen-Daus with its printed suit as a
 //   plaque.
+// Frame language and "Untot" (framesPass, undeadPass):
+// - frames.json: boss-tresen.json with its deck patched by text, one
+//   modification per card (all 25 plus "Untot"), and some combinations
+//   (Augen + Trumpf, Glas + Augen, Fluch + Untot, three families). On the
+//   Kreidetafel every modification is named on a card; frames have their
+//   colours (Augen gold, Trumpf purple, Glas light blue), curses and Untot
+//   carry their state (data-state curse, undead, both), an Untot picture
+//   card shows its zombie face (u-…), an Untot number card does not; badges
+//   only on the card with three families and where the skull of Untot takes
+//   the Schwarze Katze's corner. Screenshots frames-gallery-*.
+// - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
+//   the Grün-König (22), both with their Untot look. In an Eichel Hand
+//   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
+//   complete (toast "Untot"), the last trick shows the substitute with its
+//   note "Ersatz" and not the Daus, and the Daus has no plaque any more.
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
@@ -2013,6 +2028,94 @@ async function motionPass(browser, errors) {
 }
 
 /** M8 wave 3: Wandelkarte, Glasdaus, Heimweh and the legendary relics. */
+/** Frame language: every modification on the Kreidetafel (frames.json). */
+async function framesPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'frames.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('.hud [data-action="overview"]');
+  await page.waitForSelector('.deck-card .card-svg');
+  const cards = await page.locator('.deck-card .card-svg').evaluateAll((els) =>
+    els.map((el) => ({
+      label: el.getAttribute('aria-label') ?? '',
+      state: el.getAttribute('data-state'),
+      picture: [...el.querySelectorAll('use')].map((u) => u.getAttribute('href') ?? ''),
+      fills: [...el.querySelectorAll('path')].map((p) => p.getAttribute('fill') ?? ''),
+    })),
+  );
+  if (cards.length !== 32) fail(`Kreidetafel shows ${cards.length} cards`);
+  const names = ['Fett', 'Goldrand', 'Bleigewicht', 'Gezinkt', 'Doppelt gezinkt', 'Aufgebrezelt', 'Stempel', 'Krone', 'Siegel', 'Hufeisen', 'Maßband', 'Spitze', 'Glückspfennig', 'Schlusslicht', 'Durchsichtig', 'Unsichtbar', 'Attrappe', 'Unter ehrenhalber', 'Wandelkarte', 'Glasdaus', 'Heimweh', 'Bierfleck', 'Angeknackst', 'Schwarze Katze', 'Ramponiert', 'Untot'];
+  const missing = names.filter((n) => !cards.some((c) => c.label.includes(n)));
+  if (missing.length) fail(`Kreidetafel: no card names ${missing.join(', ')}`);
+  const card = (name) => cards.find((c) => c.label.startsWith(`${name},`));
+  const expect = (name, ok, what) => {
+    const c = card(name);
+    if (!c || !ok(c)) fail(`frame language: ${name} ${what} (${JSON.stringify(c)})`);
+  };
+  expect('Eichel-Neun', (c) => c.fills.includes('#d98e0b'), 'has no gold Augen frame');
+  expect('Eichel-Sieben', (c) => c.fills.includes('#6a3fa8'), 'has no purple Trumpf frame');
+  expect('Schellen-Daus', (c) => c.fills.includes('#7fc4e8'), 'has no glass frame');
+  for (const name of ['Schellen-Sieben', 'Schellen-Acht', 'Schellen-Neun', 'Eichel-Acht']) expect(name, (c) => c.state === 'curse', 'is not marked as cursed');
+  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK'), 'shows no zombie face or state');
+  expect('Eichel-Zehn', (c) => c.state === 'undead' && !c.picture.some((h) => h.startsWith('#u-')), 'should keep its face with the Untot state');
+  expect('Eichel-Unter', (c) => c.state === 'both' && c.picture.includes('#u-CJ'), 'is not Fluch and Untot at once');
+  // Badges only where something has no place: the third family (Eichel-König) and
+  // the Schwarze Katze, whose corner the skull of Untot takes (Eichel-Unter).
+  const badged = cards.filter((c) => c.picture.some((h) => h.startsWith('#m-'))).map((c) => c.label.split(',')[0]).sort();
+  if (badged.join() !== 'Eichel-König,Eichel-Unter') fail(`badges on ${badged.join(', ')}, expected Eichel-König and Eichel-Unter`);
+  log(`frame language: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, states and frames as designed`);
+  await page.locator('.deck-grid').scrollIntoViewIfNeeded();
+  await shoot(page, 'frames-gallery');
+  await context.close();
+}
+
+/** "Untot": a card rises from the trick back into the hand (undead.json). */
+async function undeadPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'undead.json');
+  await page.waitForSelector('.declare');
+  await page.evaluate(() => {
+    window.__toasts = [];
+    const layer = document.querySelector('.toast-layer');
+    new MutationObserver(() => {
+      const t = layer?.textContent?.trim();
+      if (t) window.__toasts.push(t);
+    }).observe(layer, { childList: true, subtree: true, characterData: true });
+  });
+  if (!(await page.locator('.hand-card[data-id="22"] use[href="#u-SK"]').count())) fail('Untot: the Grün-König shows no zombie face');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForSelector('[data-action="play"][data-id="31"]', { timeout: 30000 });
+  // In the suit game both can rise: the skull plaque on each.
+  for (const id of ['31', '22']) {
+    if (!(await page.locator(`.hand-card[data-id="${id}"] .plaque-rise`).count())) fail(`Untot: card ${id} shows no skull plaque in the hand`);
+  }
+  await shoot(page, 'undead-hand');
+  await page.click('[data-action="play"][data-id="31"]');
+  await page.waitForFunction(() => window.__toasts.some((t) => t.startsWith('Untot:')), null, { timeout: 30000 });
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  if (!(await page.locator('.hand-card[data-id="31"]').count())) fail('Untot: the Eichel-Daus did not come back into the hand');
+  if (await page.locator('.hand-card[data-id="31"] .plaque-rise').count()) fail('Untot: the risen Daus still says it can rise');
+  await page.click('[data-testid="last-trick-toggle"]');
+  await page.waitForSelector('[data-testid="last-trick"]');
+  if (await page.locator('[data-testid="last-trick"] .trick-card[data-card-id="31"]').count()) fail('Untot: the Daus still lies in the last trick');
+  if ((await page.locator('[data-testid="last-trick"] .trick-card').count()) !== 3) fail('Untot: the last trick does not hold three cards');
+  if (!(await page.locator('[data-testid="last-trick"] [data-testid="rose-note"]').count())) fail('Untot: the substitute in the last trick has no note');
+  const toast = await page.evaluate(() => window.__toasts.find((t) => t.startsWith('Untot:')));
+  log(`Untot: ${toast}`);
+  await shoot(page, 'undead-last-trick');
+  await context.close();
+}
+
 async function wave3(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
@@ -2348,6 +2451,8 @@ async function run() {
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
     await wave3(browser, errors, reducedMotion);
+    await framesPass(browser, errors, reducedMotion);
+    await undeadPass(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
