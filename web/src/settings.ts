@@ -1,6 +1,7 @@
 // Player settings of the web app (presentation only): animation tempo,
 // sound effects, music, whether a thought bubble shows while the opponents think, and
-// whether the Wirt explains things the first time they happen.
+// whether the Wirt explains things the first time they happen, and whether
+// the cards' paper takes a light tint of their suit.
 // Stored in localStorage, every access guarded.
 
 export type Tempo = 'slow' | 'normal' | 'fast';
@@ -15,10 +16,12 @@ export interface Settings {
   thinking: boolean;
   /** Hints of the Wirt ("Geführter erster Abend", ./hints.ts). */
   hints: boolean;
+  /** "Kartenfarbe tönen": each card's paper lightly tinted in its suit (CSS, ./style.css). */
+  suitTint: boolean;
 }
 
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -39,6 +42,7 @@ export function loadSettings(): Settings {
       music: parsed.music !== false,
       thinking: parsed.thinking !== false,
       hints: parsed.hints !== false,
+      suitTint: parsed.suitTint === true,
     };
   } catch {
     return { ...DEFAULTS };

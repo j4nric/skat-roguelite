@@ -427,6 +427,31 @@ button:focus-visible,
   shape-rendering: crispEdges;
 }
 
+/* "Kartenfarbe tönen" (setting, off by default, data-suit-tint on <html>):
+   the plain paper of a face takes a light tint of its suit (./ui/cards.ts
+   draws it as var(--suit-paper)). Light enough that the art, the corner
+   ink and the marks of modifications keep their contrast; a modification
+   with its own paper (Glasdaus, ...) keeps it. */
+.card-svg {
+  --suit-paper: var(--card-paper);
+}
+
+:root[data-suit-tint] .card-svg[data-suit='Clubs'] {
+  --suit-paper: #f5e5cc;
+}
+
+:root[data-suit-tint] .card-svg[data-suit='Spades'] {
+  --suit-paper: #e3f1de;
+}
+
+:root[data-suit-tint] .card-svg[data-suit='Hearts'] {
+  --suit-paper: #fbe3e0;
+}
+
+:root[data-suit-tint] .card-svg[data-suit='Diamonds'] {
+  --suit-paper: #fbf0c4;
+}
+
 button.card {
   cursor: pointer;
   touch-action: manipulation;

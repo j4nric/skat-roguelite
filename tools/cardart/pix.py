@@ -15,6 +15,7 @@ PAL = {
     'k': '#1c1a1a',      # black
     'w': '#ffffff',      # white
     's': '#f3c9a0',      # skin
+    'a': '#966c00',      # ochre: ink of the Schellen index (4.6:1 on the paper)
 }
 BG = '#fdfdfb'
 
@@ -37,7 +38,10 @@ SIGN = {
     'Eichel': [".k.", "gkg", "ooo", ".o."],
     'Schellen': [".k.", "yyy", "rrr", "yky"],
 }
-INK = {'Rot': 'r', 'Gruen': 'g', 'Eichel': 'o', 'Schellen': 'k'}
+# Ink of the rank letter per suit. Schellen gets a dark ochre instead of
+# black: black read as a fifth suit; the yellow of the sign itself is too
+# light for letters on the white paper.
+INK = {'Rot': 'r', 'Gruen': 'g', 'Eichel': 'o', 'Schellen': 'a'}
 # held / pip signs, 7 wide
 BIG = {
     'Rot': [".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."],

@@ -685,6 +685,8 @@ export const de = {
     thinkingHint: 'Eine Denkblase über den Gegnern, solange sie rechnen.',
     reducedMotion: 'Weniger Bewegung gewünscht: Animationen kurz.',
     hints: 'Hinweise des Wirts',
+    suitTint: 'Kartenfarbe tönen',
+    suitTintHint: 'Das Papier jeder Karte leicht in ihrer Farbe: Eichel beige, Grün grün, Rot rosa, Schellen gelb.',
     hintsReset: 'Zurücksetzen',
     hintsResetAria: 'Hinweise des Wirts zurücksetzen',
     hintsResetDone: 'Der Wirt erklärt dir alles noch mal.',
