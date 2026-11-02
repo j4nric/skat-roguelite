@@ -144,4 +144,14 @@
         condition: SeriesWonWithCoins(20),
         rewards: [Character(Landlady)],
     ),
+    // Welle 2b (02.11.2026): "Drei drücken" biegt eine Regel und ist
+    // selten und teuer; wer es am Tresen sehen will, hat ein paar Abende
+    // hinter sich.
+    (
+        id: "ten_runs",
+        name: "Stammkunde",
+        text: "Spiele zehn Runs zu Ende, gewonnen oder verloren.",
+        condition: RunsFinished(10),
+        rewards: [Relic("three_discard")],
+    ),
 ]

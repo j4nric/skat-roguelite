@@ -24,11 +24,23 @@ function pips(left: number, limit: number, cls: string): string {
   return Array.from({ length: n }, (_, i) => `<i class="${cls} ${i < left ? 'is-on' : ''}"></i>`).join('');
 }
 
+/** Relics that work once per series: a small note on their chip. */
+const ONCE_PER_SERIES = new Set(['three_discard']);
+
+function onceNote(id: string): string {
+  return ONCE_PER_SERIES.has(id) ? `<small data-testid="once-${esc(id)}">${esc(de.hud.oncePerSeries)}</small>` : '';
+}
+
+/** "Drei drücken" was used in this series (the core's `discard_three_ready` is off). */
+function seriesUsed(view: RunView, id: string): boolean {
+  return id === 'three_discard' && Boolean(view.game) && view.game?.discard_three_ready === false;
+}
+
 export function relicChips(view: RunView): string {
   const relics = view.relics
     .map(
       (r) =>
-        `<button class="coaster-chip rarity-${esc(r.relic.rarity)}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}>${relicCoaster(r.relic, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.relic.id))}</span></button>`,
+        `<button class="coaster-chip rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}>${relicCoaster(r.relic, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.relic.id))}${onceNote(r.relic.id)}</span></button>`,
     )
     .join('');
   const evening = view.evening_relics

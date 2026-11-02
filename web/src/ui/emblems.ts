@@ -1504,6 +1504,46 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ...GmmG
       ....GG`),
   ],
+  // ---- M8 wave 2b (one motif each, drawn for the wave, not voted)
+  three_discard: [
+    sp('Drei Karten über einem Pfeil nach unten', `
+      wwww.wwww.wwww
+      weww.wrww.wyww
+      weew.wrrw.wyyw
+      weww.wrww.wyww
+      wwww.wwww.wwww
+      wwww.wwww.wwww
+      ..............
+      ....GGGGGG
+      .....GGGG
+      ......GG`),
+  ],
+  crib_sheet: [
+    sp('Zettel mit Bleistift', `
+      wwwwwwwww
+      wGGwGGGww
+      wwwwwwwww
+      wGGGwGGww....yy
+      wwwwwwwww...yyy
+      wGGwGGGww..yyy
+      wwwwwwwww.yyy
+      wGGGwGww.yyy
+      wwwwwwwwlyy
+      ........nl`),
+  ],
+  decoy: [
+    sp('Holzente auf dem Wasser', `
+      ......bbb
+      .....bbkbb
+      .....bbbbll
+      ......bbb
+      ..bbbbbbbbb
+      .bbbbbbbbbbb
+      bbbYYYbbbbbb
+      .bbbbbbbbbb
+      ..ccccccccc
+      .ccccccccccc`),
+  ],
   // ---- consumables (core/content/consumables.ron)
   fresh_deck: [
     sp('Kartenschachtel', `

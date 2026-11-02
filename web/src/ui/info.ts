@@ -134,6 +134,11 @@ function relicModel(
     .filter((c) => view.counters[c] !== undefined && de.counters[c])
     .map((c) => ({ text: t(de.counters[c] ?? c, { value: view.counters[c] ?? 0 }), on: null }));
   status.push(...lastGameStatus(lastLines(view, (s) => 'Relic' in s && s.Relic === id)));
+  // "Drei drücken" works once per series: whether it is still free.
+  if (id === 'three_discard' && view.game) {
+    const ready = view.game.discard_three_ready === true;
+    status.push({ text: ready ? de.hud.onceFree : de.hud.onceUsed, on: ready });
+  }
   const actions = buy?.ok && !ui.busy ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'buy-relic', 'data-slot': buy.slot })}>${esc(t(de.shop.buy, { price: buy.price }))}</button>` : '';
   return {
     key,
@@ -141,7 +146,7 @@ function relicModel(
     kind: `${label} · ${de.rarity[relic.rarity]}`,
     art: `<span class="info-emblem">${relicCoaster(relic, { size: 72 })}</span>`,
     facts: [],
-    sections: [{ text: contentText('relics', id), status }],
+    sections: [{ text: contentText('relics', id), status }, ...(de.relicRules[id] ? [{ text: de.relicRules[id] ?? '', status: [] }] : [])],
     ...(actions ? { actions } : {}),
   };
 }

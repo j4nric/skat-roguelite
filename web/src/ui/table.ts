@@ -14,7 +14,7 @@
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
+import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, LeadSuit, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
 import { DEFAULT_BACK } from './backs';
 import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
@@ -49,6 +49,9 @@ function revealedCard(r: RevealedCard): string {
   const card = r.card;
   if (r.source === 'Onlooker') {
     return `<span class="mini-card is-onlooker" ${attrs({ title: `${cardName(card.kind)} (${de.table.onlookerHint})`, 'data-onlooker': card.id, ...infoAttrs(card.id, false) })}>${cardSvg(card.kind, card.mods)}</span>`;
+  }
+  if (r.source === 'Returned') {
+    return `<span class="mini-card is-returned" ${attrs({ title: `${cardName(card.kind)} (${de.table.returnedHint})`, 'data-returned': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
   }
   if (r.source === 'Kibitz') {
     return `<span class="mini-card is-kiebitz" ${attrs({ title: `${cardName(card.kind)} (${de.table.kiebitzHint})`, 'data-kiebitz': card.id, ...infoAttrs(card.id) })}>${cardSvg(card.kind, card.mods)}</span>`;
@@ -104,6 +107,8 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
   const seen = game.revealed.filter((r) => r.holder === seat);
   const open = seen.filter((r) => typeof r.source === 'object').map(revealedCard).join('');
   const peeked = seen.filter((r) => r.source === 'Kibitz').map(revealedCard).join('');
+  // "Drei drücken": the card the player gave back to this defender.
+  const returned = seen.filter((r) => r.source === 'Returned').map(revealedCard).join('');
   // "Der Zaungast": the whole hand, as a tight fan in one row.
   const onlooker = seen.filter((r) => r.source === 'Onlooker').map(revealedCard).join('');
   const revealed =
@@ -111,7 +116,8 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
       ? `<span class="opp-open-hand" data-testid="onlooker-hand" ${attrs({ 'aria-label': t(de.table.onlookerAria, { count: seen.filter((r) => r.source === 'Onlooker').length }) })}><span class="opp-tag kiebitz-tag" title="${esc(de.table.onlooker)}">${eyeIcon(14)}</span>${onlooker}</span>`
       : '') +
     (open ? `<span class="opp-tag">${esc(de.table.holds)}</span>${open}` : '') +
-    (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '');
+    (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '') +
+    (returned ? `<span class="opp-tag">${esc(de.table.returned)}</span>${returned}` : '');
   const position = game.positions[seat];
   // Bosses sit in the left chair with their own figure and name, else the
   // Stammgast the core seated for this series.
@@ -381,12 +387,17 @@ function shownHand(game: GameView, ui: UiState): CardView[] {
   return table.length ? hand.filter((c) => !table.includes(c.id)) : hand;
 }
 
-/** Whether the player is laying two cards on the table right now. */
+/** Cards to press: two, or three with "Drei drücken" (the core's `discard_count`). */
+export function discardNeed(game: GameView): number {
+  return game.discard_count === 3 ? 3 : 2;
+}
+
+/** Whether the player is laying the cards to press on the table right now. */
 function discardingNow(game: GameView, ui: UiState): boolean {
   return !ui.anim && !ui.busy && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
 }
 
-function handCards(game: GameView, ui: UiState): string {
+function handCards(view: RunView, game: GameView, ui: UiState): string {
   const hand = shownHand(game, ui);
   // While the core works (and the opponents think) nothing in the hand is tappable.
   const idle = !ui.anim && !ui.busy;
@@ -405,7 +416,7 @@ function handCards(game: GameView, ui: UiState): string {
       const dim = playing && !c.legal;
       const locked = discarding && !c.discardable;
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : ''].join(' ');
-      const skatTag = (c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '') + plaques(c);
+      const skatTag = cardTag(view, c) + plaques(c);
       const label = cardLabel(c);
       // Slight arc per row, like cards held in the hand.
       const off = (i % cols) - (cols - 1) / 2;
@@ -431,13 +442,47 @@ function handCards(game: GameView, ui: UiState): string {
   return `${banner}<div class="hand ${open ? 'is-open' : ''} ${oma ? 'is-oma' : ''}" style="--cols:${cols}" ${attrs({ 'data-testid': 'hand', ...drop })}>${cards}</div>`;
 }
 
+/** Where a card in the hand came from while pressing: the skat, or a defender ("Drei drücken"). */
+function cardTag(view: RunView, c: CardView): string {
+  if (c.drawn_from === 1 || c.drawn_from === 2) {
+    return `<span class="skat-tag is-drawn">${esc(t(de.card.fromDefender, { name: seatLabel(view, c.drawn_from) }))}</span>`;
+  }
+  return c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '';
+}
+
+/** "Lockvogel": the name of a demand, "Trumpf" or the suit. */
+export function leadSuitName(suit: LeadSuit): string {
+  return suit === 'Trump' ? de.table.lureTrump : de.suits[suit.Suit];
+}
+
+/**
+ * "Lockvogel" in the status line: a small button while the core allows a
+ * demand; tapped, the options of the core (trump, the suits) as buttons.
+ */
+function lureControl(game: GameView, ui: UiState): string {
+  if (!game.can_demand_lead || ui.anim || ui.busy) return '';
+  const options = game.lead_demand_options ?? [];
+  if (!options.length) return '';
+  if (!ui.lurePick) {
+    return `<button class="btn btn-lure" ${attrs({ 'data-action': 'lure', 'data-testid': 'lure', title: de.table.lureTitle })}>${esc(de.table.lure)}</button>`;
+  }
+  const buttons = options
+    .map((o) => {
+      const icon = o === 'Trump' ? '' : suitIcon(o.Suit, 16);
+      const key = o === 'Trump' ? 'Trump' : o.Suit;
+      return `<button class="btn btn-lure-suit" ${attrs({ 'data-action': 'lure-suit', 'data-lead': key, 'data-testid': `lure-${key}`, 'aria-label': leadSuitName(o) })}>${icon}<span>${esc(leadSuitName(o))}</span></button>`;
+    })
+    .join('');
+  return `<span class="lure-pick" role="group" ${attrs({ 'aria-label': de.table.lurePick, 'data-testid': 'lure-pick' })}><span class="lure-q">${esc(de.table.lurePick)}</span>${buttons}<button class="btn" ${attrs({ 'data-action': 'lure-cancel' })}>${esc(de.table.lureCancel)}</button></span>`;
+}
+
 /** Whether the player plays with open cards (Ouvert, also Null Ouvert). */
 function isOpen(game: GameView): boolean {
   const risk = game.declaration?.risk;
   return game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat' && (risk === 'Ouvert' || risk === 'OuvertHand');
 }
 
-function statusLine(game: GameView, ui: UiState): string {
+function statusLine(view: RunView, game: GameView, ui: UiState): string {
   if (ui.anim) {
     return `<div class="status" aria-live="polite">${esc(ui.anim.status)}</div>`;
   }
@@ -449,8 +494,12 @@ function statusLine(game: GameView, ui: UiState): string {
     case 'Discarding': {
       // Saves from before the Skatordnung order already hold the declaration here.
       const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
-      return `<div class="status status-discard"><span>${esc(game.declaration ? de.table.discardHintDeclared : de.table.discardHint)}${locked}</span>
-        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', disabled: ui.selected.length !== 2 })}>${esc(de.table.discard)}</button></div>`;
+      const need = discardNeed(game);
+      const drawnFrom = game.hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
+      const hint =
+        need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
+      return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
+        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: ui.selected.length !== need })}>${esc(de.table.discard)}</button></div>`;
     }
     case 'Playing': {
       const swap = game.can_take_from_skat ? game.skat_swap_cards : [];
@@ -478,7 +527,9 @@ function statusLine(game: GameView, ui: UiState): string {
         return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
           <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${cardSvg(take.kind, take.mods)}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
-      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}">${esc(game.your_turn ? de.table.yourTurn : '')}</div>`;
+      const lure = lureControl(game, ui);
+      if (lure && ui.lurePick) return `<div class="status status-lure">${lure}</div>`;
+      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>${lure}</div>`;
     }
     default:
       return `<div class="status"></div>`;
@@ -527,9 +578,10 @@ function gameLine(view: RunView, game: GameView, peek: TrickView | null): string
         ? `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span><span class="badge badge-kontra">${esc(de.table.reBadge)}</span>`
         : `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
   const special = d.game === 'Null' ? `<span class="badge badge-null">${esc(de.table.noTrick)}</span>` : '';
+  const lure = game.lead_demand ? `<span class="badge badge-lure" data-testid="lure-badge">${esc(t(de.table.lureBadge, { suit: leadSuitName(game.lead_demand) }))}</span>` : '';
   return `<div class="gameline ${peek ? 'is-peek' : ''}">
     <span class="decl">${gameIcon(d.game, 14)}<span>${esc(declarationName(d))}</span></span>
-    ${special}${kontra}
+    ${special}${kontra}${lure}
     <span class="tricks" data-tricks>${esc(
       d.game === 'Ramsch'
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })
@@ -546,7 +598,7 @@ function gameLine(view: RunView, game: GameView, peek: TrickView | null): string
  */
 function pressedStack(game: GameView): string {
   const skat = game.skat;
-  if (!skat?.length) return '';
+  if (!skat?.length) return cribStack(game);
   const cards = skat
     .map(
       (c) =>
@@ -555,6 +607,23 @@ function pressedStack(game: GameView): string {
     .join('');
   const label = t(de.table.pressedAria, { cards: skat.map((c) => cardName(c.kind)).join(', ') });
   return `<div class="pressed-stack" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'pressed-play' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.skat)}</span><span class="pressed-cards">${cards}</span></div>`;
+}
+
+/**
+ * "Spickzettel": the untouched skat of a hand game beside the trick, the
+ * card it showed face up, the other face down.
+ */
+function cribStack(game: GameView): string {
+  const shown = game.skat_shown ?? [];
+  if (!shown.length || game.phase !== 'Playing') return '';
+  const open = shown.map(
+    (c) =>
+      `<button class="pressed-card" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${cardSvg(c.kind, c.mods)}</button>`,
+  );
+  const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, () => `<span class="pressed-card is-back">${cardBack()}</span>`);
+  const label = t(de.table.cribAria, { cards: shown.map((c) => cardName(c.kind)).join(', ') });
+  // The face-down card underneath, the shown one on top where it can be read.
+  return `<div class="pressed-stack is-crib" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'crib-skat' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.crib)}</span><span class="pressed-cards">${[...hidden, ...open].join('')}</span></div>`;
 }
 
 /** Small stack of three cards: the sign of "Letzter Stich". */
@@ -584,16 +653,19 @@ function lastTrickToggle(game: GameView, ui: UiState): string {
  * Which cards may go (not "Ramponiert") the core says per card; whether
  * the pair is valid the core checks on Drücken.
  */
-function skatZone(game: GameView, ui: UiState): string {
+function skatZone(view: RunView, game: GameView, ui: UiState): string {
   const ids = onTable(game, ui);
   const hand = ui.anim ? ui.anim.hand : game.hand;
   const active = discardingNow(game, ui);
-  const spots = [0, 1]
+  const need = discardNeed(game);
+  const spots = Array.from({ length: need }, (_, i) => i)
     .map((i) => {
       const c = hand.find((x) => x.id === ids[i]);
       if (!c) return `<span class="skat-slot is-empty" style="${tossStyle(i)}" aria-hidden="true"></span>`;
       const label = cardLabel(c);
-      const inner = `${cardSvg(c.kind, c.mods)}${plaques(c)}`;
+      // "Drei drücken": the card drawn from a defender says whose it was.
+      const tag = c.drawn_from != null ? cardTag(view, c) : '';
+      const inner = `${cardSvg(c.kind, c.mods)}${tag}${plaques(c)}`;
       const card = active
         ? `<button class="card skat-card is-active" ${attrs({ 'data-action': 'select', 'data-drag': 'card', 'data-id': c.id, 'aria-pressed': 'true', 'aria-label': t(de.table.backToHand, { card: label }), ...infoAttrs(c.id, false) })}>${inner}</button>`
         : `<div class="card skat-card" ${attrs({ 'data-id': c.id, role: 'img', 'aria-label': label, ...infoAttrs(c.id, false) })}>${inner}</div>`;
@@ -601,8 +673,8 @@ function skatZone(game: GameView, ui: UiState): string {
     })
     .join('');
   const drop = active ? { 'data-drop': 'skat', 'data-accept': 'card' } : {};
-  return `<div class="skat-zone ${ids.length === 2 ? 'is-full' : ''}" ${attrs({ 'data-testid': 'skat-zone', role: 'group', 'aria-label': de.table.skatZone, ...drop })}>
-    <span class="skat-zone-label">${esc(t(de.table.skatZoneCount, { n: ids.length }))}</span>
+  return `<div class="skat-zone ${ids.length === need ? 'is-full' : ''} ${need === 3 ? 'is-three' : ''}" ${attrs({ 'data-testid': 'skat-zone', role: 'group', 'aria-label': de.table.skatZone, ...drop })}>
+    <span class="skat-zone-label">${esc(t(need === 3 ? de.table.skatZoneCountThree : de.table.skatZoneCount, { n: ids.length }))}</span>
     <div class="skat-slots">${spots}</div>
   </div>`;
 }
@@ -689,7 +761,7 @@ export function renderTable(view: RunView, ui: UiState): string {
     declaring && game.declare
       ? declarePanel(game.declare, game, ui, view.series.redeals_left)
       : game.phase === 'Discarding'
-        ? `${gameLine(view, game, null)}${skatZone(game, ui)}`
+        ? `${gameLine(view, game, null)}${skatZone(view, game, ui)}`
         : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
   const ramsch = game.declaration?.game === 'Ramsch';
   const choice = Boolean(declaring && game.declare && game.phase === 'Declaring' && game.declare.can_pick_up_skat && !ui.handGame);
@@ -698,7 +770,7 @@ export function renderTable(view: RunView, ui: UiState): string {
     <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
     ${ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
     <div class="center"><div class="deck-spot" aria-hidden="true"></div>${center}</div>
-    ${handCards(game, ui)}
-    ${statusLine(game, ui)}
+    ${handCards(view, game, ui)}
+    ${statusLine(view, game, ui)}
   </div>`;
 }

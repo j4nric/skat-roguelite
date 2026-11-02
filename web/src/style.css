@@ -376,6 +376,12 @@ button:focus-visible,
   color: var(--card-ink);
 }
 
+/* "Lockvogel": the demand waiting for the next defender lead. */
+.badge-lure {
+  background: var(--accent);
+  color: var(--card-ink);
+}
+
 /* ------------------------------------------------------------------ cards */
 
 .card {
@@ -489,6 +495,11 @@ button.card {
   display: flex;
   justify-content: center;
   pointer-events: none;
+}
+
+/* Above the Stammgäste (top set by the app), so the felt stays readable. */
+.toast-layer.is-top {
+  transform: translateY(-100%);
 }
 
 .toast {
@@ -829,6 +840,11 @@ button.card {
   color: var(--muted);
 }
 
+/* A once-per-series relic already used in this series. */
+.coaster-chip.is-used .deckel {
+  opacity: 0.45;
+}
+
 .item-chip {
   display: inline-flex;
   flex: none;
@@ -1004,6 +1020,11 @@ button.card {
 
 .mini-card.is-kiebitz {
   border-color: var(--cool);
+}
+
+/* "Drei drücken": the card the player gave back to this defender. */
+.mini-card.is-returned {
+  border-color: var(--accent);
 }
 
 /* "Der Zaungast": the left hand, overlapping in one row. */
@@ -1402,6 +1423,18 @@ button.card {
   height: 100%;
 }
 
+/* "Spickzettel": the skat card nobody showed stays face down. */
+.pressed-card.is-back {
+  cursor: default;
+}
+
+.pressed-card.is-back .card-back,
+.pressed-card.is-back svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* "Letzter Stich": a small square button, two short lines under a sign. */
 .last-trick-btn {
   display: inline-flex;
@@ -1725,6 +1758,43 @@ button.card {
 
 .btn-oma .mini-card {
   width: 20px;
+}
+
+/* "Lockvogel": a small button beside "Du bist dran"; tapped, the choices. */
+.btn-lure {
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: var(--fs-s);
+}
+
+.status-lure {
+  justify-content: flex-start;
+}
+
+.lure-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lure-q {
+  flex: 1 0 100%;
+}
+
+.btn-lure-suit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 40px;
+  padding: 0 6px;
+  font-size: var(--fs-s);
+}
+
+.skat-tag.is-drawn {
+  background: var(--accent);
+  white-space: nowrap;
 }
 
 /* "Rest abkürzen": a small button in a corner of the middle, over nothing
@@ -5793,6 +5863,16 @@ body > .drag-ghost {
 
 .skat-slot.is-empty {
   border: var(--edge) dashed var(--dot);
+}
+
+/* "Drei drücken": three slots fit beside each other on a phone. */
+.skat-zone.is-three {
+  --sh: clamp(48px, min(var(--trick-h) * 1.05, 100cqh - 64px), 132px);
+  padding: 6px 10px 12px;
+}
+
+.skat-zone.is-three .skat-slots {
+  gap: 10px;
 }
 
 .skat-card {

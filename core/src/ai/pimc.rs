@@ -295,6 +295,7 @@ impl PimcPolicy {
                 &layout,
                 points,
                 &mut table,
+                legal,
                 &mut utilities,
             ) else {
                 continue;
@@ -334,9 +335,11 @@ impl PimcPolicy {
         })
     }
 
-    /// Solve one deal and write what every legal move is worth to `seat`
-    /// into `out`. Returns the nodes searched, `None` if the deal could not
-    /// be solved.
+    /// Solve one deal and write what every legal move (`legal`, in the
+    /// order of `out`) is worth to `seat` into `out`. The search finds the
+    /// moves by the rules; `legal` may be fewer when a lead is demanded
+    /// ("Lockvogel"), so the results are matched by card. Returns the
+    /// nodes searched, `None` if the deal could not be solved.
     #[allow(clippy::too_many_arguments)]
     fn evaluate<C: PlayingCard>(
         &self,
@@ -346,6 +349,7 @@ impl PimcPolicy {
         layout: &Layout<C>,
         points: Points,
         table: &mut Table,
+        legal: &[C],
         out: &mut [i64],
     ) -> Option<u64> {
         let limits = Limits {
@@ -364,7 +368,7 @@ impl PimcPolicy {
             let threshold = i32::try_from(threshold).ok()?;
             let (moves, n) = solver::probe_with(game, goal, layout, threshold, limits, table);
             nodes += n;
-            (moves.len() == len).then(|| moves.into_iter().map(|(_, r)| r).collect())
+            pick(&moves, legal)
         };
         match goal {
             Goal::NullDeclarerTrick => {
@@ -378,10 +382,8 @@ impl PimcPolicy {
                 let exact = Limits::default();
                 let (values, n) = solver::solve_with(game, goal, layout, exact, table);
                 nodes += n;
-                if values.len() != out.len() {
-                    return None;
-                }
-                for (u, (_, v)) in out.iter_mut().zip(values) {
+                let values = pick(&values, legal)?;
+                for (u, v) in out.iter_mut().zip(values) {
                     *u = i64::from(v);
                 }
             }
@@ -417,6 +419,15 @@ impl PimcPolicy {
         }
         Some(nodes)
     }
+}
+
+/// The search results of the cards in `legal`, in that order; `None` if a
+/// card has none.
+fn pick<C: PlayingCard, T: Copy>(results: &[(C, T)], legal: &[C]) -> Option<Vec<T>> {
+    legal
+        .iter()
+        .map(|card| results.iter().find(|(c, _)| c == card).map(|&(_, r)| r))
+        .collect()
 }
 
 /// Augen that decide a point game on one deal.

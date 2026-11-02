@@ -66,12 +66,16 @@ use crate::deck::{CardKind, DealtCard, Deck, DeckChange, DeckError};
 use crate::game::{Event, Game, GameError, Phase, Seat};
 use crate::rng::Rng;
 use crate::rules::{
-    Declaration, GameType, NullScoring, Thresholds, ValueParts, game_value_parts, null_value_parts,
-    ramsch_value_parts, suit_strength, trump_strength,
+    Declaration, GameType, LeadSuit, NullScoring, Thresholds, ValueParts, game_value_parts,
+    null_value_parts, ramsch_value_parts, suit_strength, trump_strength,
 };
 
 /// Series per section: two normal ones and the boss series.
 pub const SERIES_PER_SECTION: u32 = 3;
+
+/// Mixed into the game's seed for the card "Drei drücken" draws, so that
+/// the draw is independent of the PIMC samples of the same game.
+const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 
 /// What the run is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +135,10 @@ pub struct Series {
     /// Whether the Ramsch of this series ("Der Ramscher") was dealt.
     #[serde(default)]
     pub ramsch_played: bool,
+    /// Whether "Drei drücken" drew its card in this series (once per
+    /// series, at the first pickup of the skat).
+    #[serde(default)]
+    pub discard_three_used: bool,
 }
 
 impl Series {
@@ -199,6 +207,11 @@ pub struct GameRules {
     pub no_cheating: bool,
     /// Source of the Schneider bonus in the thresholds ("Stichfest").
     pub schneider_bonus_source: Option<Source>,
+    /// Who lets the player draw a third card with the skat and discard
+    /// three ("Drei drücken").
+    pub discard_three: Option<Source>,
+    /// Leads the player may demand in this game ("Lockvogel").
+    pub lead_demands: u32,
 }
 
 /// Read a list of card filters, or the single optional filter of saves
@@ -306,6 +319,19 @@ pub struct ActiveGame {
     /// they leave the deck once the game is scored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub broken: Vec<u32>,
+    /// Cards of the untouched skat the player was shown after declaring a
+    /// hand game ("Spickzettel").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skat_shown: Vec<DealtCard>,
+    /// Leads demanded in this game ("Lockvogel").
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lead_demands_used: u32,
+}
+
+/// Whether a counter is zero (fields left out of saves while unused).
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// One choice of an encounter.
@@ -468,9 +494,10 @@ pub enum RunAction {
     #[serde(alias = "RedrawSkat", alias = "Pass")]
     Redeal,
     /// Pick up the skat instead of declaring a hand game (Skatordnung, ADR
-    /// 0011). Then two cards are discarded ([`RunAction::Discard`]) and the
-    /// game is declared ([`RunAction::Declare`]). Einmischen is no longer
-    /// possible after it.
+    /// 0011). Then two cards are discarded ([`RunAction::Discard`]; with
+    /// "Drei drücken" a card of the left defender joins and three go,
+    /// [`RunAction::DiscardThree`]) and the game is declared
+    /// ([`RunAction::Declare`]). Einmischen is no longer possible after it.
     PickUpSkat,
     /// Announce the game. With ten cards, before the skat is touched, only a
     /// hand game (Hand, Schneider or Schwarz angesagt, Ouvert; Null Hand,
@@ -487,6 +514,15 @@ pub enum RunAction {
     /// Discard two cards (instance ids) after picking up the skat; the
     /// declaration follows.
     Discard([u32; 2]),
+    /// Discard three cards (instance ids) after picking up the skat with
+    /// "Drei drücken" ([`view::GameView::discard_count`] is 3): the lowest
+    /// goes back to the defender the third card came from
+    /// ([`crate::rules::returned_discard`]), the other two into the skat.
+    DiscardThree([u32; 3]),
+    /// "Lockvogel": name what the next defender who leads must lead, if he
+    /// can. While playing, once per granting effect and game
+    /// ([`view::GameView::can_demand_lead`]).
+    DemandLead(LeadSuit),
     /// Play a card (instance id).
     Play(u32),
     /// Play a Wandelkarte (instance id) as a card of `suit` (DESIGN 7.2, M8
@@ -792,6 +828,14 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The two skat cards.
         skat: [DealtCard; 2],
     },
+    /// After a hand declaration the player was shown a card of the
+    /// untouched skat ("Spickzettel").
+    SkatCardShown {
+        /// Who showed it.
+        source: Source,
+        /// The skat card.
+        card: DealtCard,
+    },
     /// The run was won.
     RunWon {
         /// Who won it.
@@ -885,6 +929,9 @@ pub enum RunError {
     NotDecided,
     /// "Reue": there is no Einmischen of this game to take back.
     NoRedealToUndo,
+    /// "Lockvogel": no lead can be demanded in this game (none granted or
+    /// all used).
+    NoLeadDemandLeft,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -974,6 +1021,13 @@ pub enum RunErrorCode {
     NotDecided,
     /// "Reue": no Einmischen of this game to take back.
     NoRedealToUndo,
+    /// "Lockvogel": the lead does not meet the demand although the seat
+    /// could.
+    MustLeadDemanded,
+    /// "Lockvogel": no lead can be demanded now.
+    InvalidLeadDemand,
+    /// "Lockvogel": none left in this game.
+    NoLeadDemandLeft,
 }
 
 impl RunErrorCode {
@@ -1020,6 +1074,9 @@ impl RunErrorCode {
             RunErrorCode::CannotChalk => "CannotChalk",
             RunErrorCode::NotDecided => "NotDecided",
             RunErrorCode::NoRedealToUndo => "NoRedealToUndo",
+            RunErrorCode::MustLeadDemanded => "MustLeadDemanded",
+            RunErrorCode::InvalidLeadDemand => "InvalidLeadDemand",
+            RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
         }
     }
 }
@@ -1041,6 +1098,8 @@ impl RunError {
                 GameError::InvalidDeclaration { .. } => RunErrorCode::InvalidDeclaration,
                 GameError::InvalidSkatSwap => RunErrorCode::InvalidSkatSwap,
                 GameError::DiscardForbidden { .. } => RunErrorCode::DiscardForbidden,
+                GameError::MustLeadDemanded { .. } => RunErrorCode::MustLeadDemanded,
+                GameError::InvalidLeadDemand => RunErrorCode::InvalidLeadDemand,
             },
             RunError::NoPassesLeft => RunErrorCode::NoPassesLeft,
             RunError::HandRequired => RunErrorCode::HandRequired,
@@ -1072,6 +1131,7 @@ impl RunError {
             RunError::CannotChalk => RunErrorCode::CannotChalk,
             RunError::NotDecided => RunErrorCode::NotDecided,
             RunError::NoRedealToUndo => RunErrorCode::NoRedealToUndo,
+            RunError::NoLeadDemandLeft => RunErrorCode::NoLeadDemandLeft,
         }
     }
 }
@@ -1105,6 +1165,7 @@ impl fmt::Display for RunError {
             RunError::CannotChalk => f.write_str("this card cannot be repainted into this suit"),
             RunError::NotDecided => f.write_str("the rest of the game is not decided"),
             RunError::NoRedealToUndo => f.write_str("no Einmischen to take back"),
+            RunError::NoLeadDemandLeft => f.write_str("no lead can be demanded in this game"),
         }
     }
 }
@@ -1296,6 +1357,7 @@ impl Run {
                 skat_swaps_used: 0,
                 skat_swaps_taken: Vec::new(),
                 ramsch_played: false,
+                discard_three_used: false,
             },
             coins: content.run.economy.starting_coins,
             deck,
@@ -1635,6 +1697,8 @@ impl Run {
             RunAction::Declare(declaration) => self.declare(content, declaration, events),
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
+            RunAction::DiscardThree(ids) => self.discard_three(content, ids, events),
+            RunAction::DemandLead(suit) => self.demand_lead(suit, events),
             RunAction::Play(id) => self.play(content, id, events),
             RunAction::PlayAs { card, suit } => self.play_as(content, card, suit, events),
             RunAction::UseConsumable { slot, target, suit } => {
@@ -1726,12 +1790,60 @@ impl Run {
     /// Pick up the skat (ADR 0011). Not if the boss demands a hand game.
     /// "Der Angeber" allows it: Null Ouvert can be played open after the
     /// skat (ADR 0012, every character may declare Null).
+    ///
+    /// "Drei drücken": at the first pickup of the series the third card is
+    /// a random card of the left defender, drawn with a generator of its
+    /// own from the game's seed, so the deal and every other draw stay the
+    /// same.
     fn pick_up_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let mut draw_rng = Rng::from_seed(opponents::game_seed(self) ^ DRAW_SEED);
+        let draw = self.discard_three_ready();
         let active = self.declaring()?;
         if active.rules.require_hand {
             return Err(RunError::HandRequired);
         }
-        let game_events = active.game.pick_up_skat()?;
+        let game_events = if draw {
+            let from = Seat::DEFENDERS[0];
+            let hand = active.game.hand(from);
+            let pick = draw_rng.gen_range(0..u64::try_from(hand.len()).unwrap_or(1));
+            let card = hand
+                .get(usize::try_from(pick).unwrap_or(0))
+                .copied()
+                .ok_or(RunError::WrongPhase)?;
+            let game_events = active.game.pick_up_skat_drawing(from, card)?;
+            self.series.discard_three_used = true;
+            game_events
+        } else {
+            active.game.pick_up_skat()?
+        };
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        Ok(())
+    }
+
+    /// Whether "Drei drücken" draws a card at the next pickup of the
+    /// skat: granted in this game and not yet used in this series.
+    #[must_use]
+    pub fn discard_three_ready(&self) -> bool {
+        !self.series.discard_three_used
+            && self
+                .game
+                .as_ref()
+                .is_some_and(|a| a.rules.discard_three.is_some())
+    }
+
+    /// "Lockvogel": the player names what the next defender who leads
+    /// must lead. While playing, not while Kontra waits for an answer, as
+    /// often per game as the content grants.
+    fn demand_lead(&mut self, suit: LeadSuit, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
+        let active = self.active_mut()?;
+        if active.awaiting_re {
+            return Err(RunError::AwaitingKontraAnswer);
+        }
+        if active.lead_demands_used >= active.rules.lead_demands {
+            return Err(RunError::NoLeadDemandLeft);
+        }
+        let game_events = active.game.demand_lead(suit)?;
+        active.lead_demands_used += 1;
         events.extend(game_events.into_iter().map(RunEvent::Game));
         Ok(())
     }
@@ -1949,6 +2061,27 @@ impl Run {
             Run::declarer_card(active, ids[1])?,
         ];
         let game_events = active.game.discard(cards)?;
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.settle(content, events)
+    }
+
+    /// "Drei drücken": discard three of the thirteen cards.
+    fn discard_three(
+        &mut self,
+        content: &Content,
+        ids: [u32; 3],
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let active = self.active_mut()?;
+        if active.awaiting_re {
+            return Err(RunError::AwaitingKontraAnswer);
+        }
+        let cards = [
+            Run::declarer_card(active, ids[0])?,
+            Run::declarer_card(active, ids[1])?,
+            Run::declarer_card(active, ids[2])?,
+        ];
+        let game_events = active.game.discard_three(cards)?;
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.settle(content, events)
     }
@@ -2330,6 +2463,37 @@ impl Run {
                 }
             }
             Effect::SeriesSkatSwap(filter) => active.rules.skat_swaps.push(*filter),
+            Effect::DiscardThree => {
+                active
+                    .rules
+                    .discard_three
+                    .get_or_insert_with(|| source.clone());
+            }
+            Effect::DemandLead(n) => {
+                active.rules.lead_demands = active.rules.lead_demands.saturating_add(*n);
+            }
+            Effect::RevealSkatCard(n) => {
+                let untouched = active
+                    .game
+                    .declaration()
+                    .is_some_and(|d| d.hand() && !d.is_ramsch());
+                if untouched && !active.rules.no_information {
+                    let fresh: Vec<DealtCard> = active
+                        .game
+                        .skat()
+                        .into_iter()
+                        .filter(|c| !active.skat_shown.iter().any(|s| s.id == c.id))
+                        .take(usize::try_from(*n).unwrap_or(usize::MAX))
+                        .collect();
+                    for card in fresh {
+                        active.skat_shown.push(card);
+                        events.push(RunEvent::SkatCardShown {
+                            source: source.clone(),
+                            card,
+                        });
+                    }
+                }
+            }
             Effect::NoCheating => active.rules.no_cheating = true,
             Effect::RequireOuvert => active.rules.require_ouvert = true,
             Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
@@ -2440,6 +2604,7 @@ impl Run {
             skat_swaps_used: 0,
             skat_swaps_taken: Vec::new(),
             ramsch_played: false,
+            discard_three_used: false,
         };
         self.phase = RunPhase::Game;
         self.shop = None;
@@ -2638,6 +2803,8 @@ impl Run {
             previous: None,
             named: Vec::new(),
             broken: Vec::new(),
+            skat_shown: Vec::new(),
+            lead_demands_used: 0,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -3831,5 +3998,7 @@ mod step_tests;
 mod tests;
 #[cfg(test)]
 mod wave2_tests;
+#[cfg(test)]
+mod wave2b_tests;
 #[cfg(test)]
 mod wave3_tests;

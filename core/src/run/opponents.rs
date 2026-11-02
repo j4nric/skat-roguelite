@@ -92,8 +92,10 @@ fn defender_choice(
 }
 
 /// What the player knows beyond his seat's view: "Durchsichtig" cards
-/// with their holder, the cards "Der Kiebitz" showed (moved along with a
-/// swap of the defenders' hands) and the swaps themselves.
+/// with their holder, the cards "Der Kiebitz" showed and the card given
+/// back with "Drei drücken" (moved along with a swap of the defenders'
+/// hands), the skat card "Spickzettel" showed (in no hand) and the swaps
+/// themselves.
 #[must_use]
 pub fn player_hints(run: &Run) -> Hints<DealtCard> {
     let Some(active) = run.game() else {
@@ -105,7 +107,9 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
         .into_iter()
         .filter(|(_, holder)| *holder != Some(Seat::DECLARER))
         .collect();
-    for &(card, seat) in &active.peeked {
+    // The card given back ("Drei drücken") is known like a peeked one.
+    let returned = active.game.returned().map(|(seat, card)| (card, seat));
+    for &(card, seat) in active.peeked.iter().chain(returned.iter()) {
         let holder = if swaps.len() % 2 == 1 {
             seat.partner().unwrap_or(seat)
         } else {
@@ -113,6 +117,13 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
         };
         if !pinned.iter().any(|(c, _)| *c == card) {
             pinned.push((card, Some(holder)));
+        }
+    }
+    // A skat card shown after a hand declaration ("Spickzettel") is in no
+    // hand.
+    for &card in &active.skat_shown {
+        if !pinned.iter().any(|(c, _)| *c == card) {
+            pinned.push((card, None));
         }
     }
     Hints {
