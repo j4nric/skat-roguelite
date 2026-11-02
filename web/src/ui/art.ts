@@ -7,7 +7,8 @@
 //
 // A face is three layers so card modifications (./cards.ts) can lie in
 // between: paper (drawn by ./cards.ts, some modifications tint it), the
-// picture (f-…) and the corner index (x-…). The card's frame (1 px dark
+// picture (f-…; the "Untot" picture u-…, the "Wandelkarte" face w-…) and
+// the corner index (x-…, wx-… for the Wandelkarte). The card's frame (1 px dark
 // line, hard shadow) comes from CSS and lies outside the art, so the art
 // keeps its integer scale.
 
@@ -15,7 +16,8 @@ import { de } from '../i18n';
 import type { Rank, Suit } from '../types';
 import { backSymbols } from './backs';
 import { peopleSymbols } from './people';
-import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_W } from './pixelcards.gen';
+import { modIconBody, ICON_MODS } from './fxart';
+import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_W, ART_WILD, ART_WILD_BIG, ART_WILD_INK } from './pixelcards.gen';
 
 export const SUITS: Suit[] = ['Clubs', 'Spades', 'Hearts', 'Diamonds'];
 export const RANKS: Rank[] = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -83,8 +85,11 @@ function faceRows(suit: Suit, rank: Rank): string[] {
  * both big.
  */
 function smallFace(suit: Suit, rank: Rank): string {
-  const glyph = (ART_GLYPHS[rank] ?? []).map((r) => r.replace(/x/g, ART_INK[CODE[suit]] ?? 'k'));
-  const sign = ART_SIGNS[CODE[suit]] ?? [];
+  return smallBody(rank, ART_INK[CODE[suit]] ?? 'k', ART_SIGNS[CODE[suit]] ?? []);
+}
+
+function smallBody(rank: Rank, ink: string, sign: string[]): string {
+  const glyph = (ART_GLYPHS[rank] ?? []).map((r) => r.replace(/x/g, ink));
   const gw = (glyph[0]?.length ?? 0) * 4;
   const sw = (sign[0]?.length ?? 0) * 2;
   return gridPaths(glyph, same, (CARD_W - gw) / 2, 4, 4) + gridPaths(sign, same, (CARD_W - sw) / 2, 41 - sign.length * 2, 2);
@@ -101,93 +106,14 @@ function blankBody(): string {
 
 // --------------------------------------------------------- modifications
 
-/**
- * Badge icons of the card modifications, in a 24 × 24 box. Curses get a
- * black square with a red rim, so they read as bad luck at a glance.
- */
-const CURSE_FILL = '#1d1a18';
-const CURSE_RING = '#e0505a';
-const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> = {
-  // Fett: more points.
-  fat: { fill: '#d98e0b', glyph: '<path d="M12 6 V18 M6 12 H18" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>' },
-  // Gezinkt: one rank higher.
-  marked: { fill: '#8e2430', glyph: '<path d="M6.5 15 L12 8.5 L17.5 15" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>' },
-  // Stempel: an inked star.
-  stamp: { fill: '#5e3796', glyph: '<path d="M12 5 L14 10 L19.2 10.2 L15.1 13.4 L16.5 18.5 L12 15.6 L7.5 18.5 L8.9 13.4 L4.8 10.2 L10 10 Z" fill="#fff"/>' },
-  // Spitze: a pennant for the last trick.
-  last_trick: { fill: '#16707a', glyph: '<path d="M8 19 V5 M8 5.5 L17.5 9 L8 12.5" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' },
-  // Durchsichtig: an eye.
-  transparent: { fill: '#2f86c0', glyph: '<path d="M4 12 C7 7 17 7 20 12 C17 17 7 17 4 12 Z" fill="none" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="#fff"/>' },
-  // Unsichtbar: a dashed outline, nothing inside.
-  invisible: { fill: '#7a7f8a', glyph: '<circle cx="12" cy="12" r="6" fill="none" stroke="#fff" stroke-width="2.2" stroke-dasharray="2.6 2.2"/>' },
-  // Goldrand: many more points, a golden plus in a ring.
-  gold_rim: { fill: '#b8901c', glyph: '<circle cx="12" cy="12" r="7.2" fill="none" stroke="#fff6cf" stroke-width="1.6"/><path d="M12 8 V16 M8 12 H16" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/>' },
-  // Doppelt gezinkt: two ranks higher.
-  double_marked: { fill: '#6e1622', glyph: '<path d="M7 12.5 L12 7.5 L17 12.5 M7 17 L12 12 L17 17" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' },
-  // Krone: the Grundwert doubles when trump.
-  crown: { fill: '#c08a12', glyph: '<path d="M5.5 16.5 L6.5 8.5 L10 12 L12 7 L14 12 L17.5 8.5 L18.5 16.5 Z" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>' },
-  // Siegel: a wax seal with ribbons.
-  seal: { fill: '#a3263a', glyph: '<path d="M9.5 14 L8 20 L10.5 18.5 L12 20.5 M14.5 14 L16 20 L13.5 18.5 L12 20.5" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><circle cx="12" cy="10" r="5" fill="#fff"/><circle cx="12" cy="10" r="2.4" fill="#a3263a"/>' },
-  // Hufeisen: luck, won with fewer Augen.
-  horseshoe: { fill: '#4f6272', glyph: '<path d="M7.5 6.5 V12 A4.5 4.5 0 0 0 16.5 12 V6.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="7.5" cy="10" r=".9" fill="#4f6272"/><circle cx="16.5" cy="10" r=".9" fill="#4f6272"/>' },
-  // Maßband: Schneider measured generously.
-  tape_measure: { fill: '#d29a18', glyph: '<rect x="4.5" y="9" width="15" height="6" rx="1" fill="#fff"/><path d="M7 9 V11.5 M9.5 9 V12.5 M12 9 V11.5 M14.5 9 V12.5 M17 9 V11.5" stroke="#d29a18" stroke-width="1.2"/>' },
-  // Glückspfennig: a lucky coin.
-  lucky_penny: { fill: '#b06a2c', glyph: '<circle cx="12" cy="12" r="6.2" fill="#fff"/><circle cx="12" cy="12" r="4.4" fill="none" stroke="#b06a2c" stroke-width="1.2"/><path d="M11 10 L12.6 9.2 V15" fill="none" stroke="#b06a2c" stroke-width="1.6"/>' },
-  // Fluch Bierfleck: a beer stain.
-  beer_stain: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M12 5.5 C14.5 5.5 14.6 7.6 16.6 8 C19 8.5 18.6 11.5 17.6 12.8 C16.8 14 18.8 16 16.4 17.6 C14.6 18.8 13.2 17.2 11.4 18.2 C9 19.5 6.4 17.8 6.8 15.6 C7.1 14 5 13 5.8 10.6 C6.5 8.4 9.2 9 9.8 7.4 C10.3 6.2 10.8 5.5 12 5.5 Z" fill="#c98a2a"/><circle cx="18.6" cy="6" r="1.1" fill="#c98a2a"/>' },
-  // Fluch Angeknackst: a crack.
-  cracked: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M10 4.5 L13 9 L9.5 12 L14 15.5 L11.5 19.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' },
-  // Fluch Schwarze Katze: a cat's head with yellow eyes.
-  black_cat: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M6.5 18 C5.5 13 6 10 7 6 L10 9 C11.3 8.6 12.7 8.6 14 9 L17 6 C18 10 18.5 13 17.5 18 Z" fill="#3a3330" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="10" cy="13" rx="1.3" ry="1.6" fill="#f2d24a"/><ellipse cx="14" cy="13" rx="1.3" ry="1.6" fill="#f2d24a"/>' },
-  // Fluch Ramponiert: a dog-eared, torn card that stays in the hand.
-  battered: { fill: CURSE_FILL, ring: CURSE_RING, glyph: '<path d="M7.5 5 H13.5 L16.5 8 V19 H7.5 Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 5 V8 H16.5" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M7.5 12.5 L10 11.5 L11.5 13.5 L14 12 L16.5 13" fill="none" stroke="#e0505a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
-  // Unter ehrenhalber: a medal on a ribbon, a trump by honour.
-  honorary_jack: { fill: '#1f5a8c', glyph: '<path d="M9 4.5 L11 10 M15 4.5 L13 10" stroke="#e2b04a" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="14" r="5" fill="#e2b04a"/><path d="M12 10.8 L13 13.1 L15.4 13.2 L13.5 14.7 L14.2 17 L12 15.7 L9.8 17 L10.5 14.7 L8.6 13.2 L11 13.1 Z" fill="#fff"/>' },
-  // Bleigewicht: a heavy weight.
-  lead_weight: { fill: '#4a4f57', glyph: '<path d="M8.5 9.5 H15.5 L18 18 H6 Z" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><circle cx="12" cy="7.2" r="2.2" fill="none" stroke="#fff" stroke-width="1.6"/>' },
-  // Schlusslicht: a red lamp for the last trick of a Null.
-  tail_light: { fill: '#b3202a', glyph: '<circle cx="12" cy="12" r="3.6" fill="#fff"/><path d="M12 4.8 V6.6 M12 17.4 V19.2 M4.8 12 H6.6 M17.4 12 H19.2 M6.9 6.9 L8.1 8.1 M15.9 15.9 L17.1 17.1 M17.1 6.9 L15.9 8.1 M8.1 15.9 L6.9 17.1" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>' },
-  // Aufgebrezelt: a bow tie.
-  dressed_up: { fill: '#b0336e', glyph: '<path d="M4.5 8 L11 11 V13 L4.5 16 Z M19.5 8 L13 11 V13 L19.5 16 Z" fill="#fff"/><rect x="10.6" y="10.4" width="2.8" height="3.2" rx=".8" fill="#fff"/>' },
-  // Wandelkarte: four squares, one per suit.
-  wild_card: { fill: '#2e7d4f', glyph: '<path d="M6 6h5v5h-5zM13 6h5v5h-5zM6 13h5v5h-5zM13 13h5v5h-5z" fill="#fff"/>' },
-  // Glasdaus: a pane of glass with a glint.
-  glass_ace: { fill: '#2f86c0', glyph: '<rect x="6" y="5" width="12" height="14" fill="#cfe8fd"/><path d="M8.5 15.5 L14.5 8.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>' },
-  // Heimweh: a little house.
-  homesick: { fill: '#8e2430', glyph: '<path d="M12 5 L19 11 H17 V18.5 H7 V11 H5 Z" fill="#fff"/><rect x="10.5" y="13.5" width="3" height="5" fill="#8e2430"/>' },
-  // Attrappe: a dummy, a card with a question mark.
-  // Untot: a skull.
-  undead: { fill: '#3c5226', glyph: '<path d="M12 4.5 C16.4 4.5 18.5 7.4 18.5 10.6 C18.5 13 17.2 14.3 16 15 V18.5 H8 V15 C6.8 14.3 5.5 13 5.5 10.6 C5.5 7.4 7.6 4.5 12 4.5 Z" fill="#e8ecd8"/><rect x="8.2" y="9.2" width="2.8" height="3" fill="#3c5226"/><rect x="13" y="9.2" width="2.8" height="3" fill="#3c5226"/><path d="M10.5 16 V18.5 M13.5 16 V18.5" stroke="#3c5226" stroke-width="1"/>' },
-  dummy: { fill: '#7d6a50', glyph: '<rect x="7.5" y="5.5" width="9" height="13" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.4 10 C10.4 8.4 13.6 8.4 13.6 10 C13.6 11.4 12 11.4 12 13" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.4" r=".9" fill="#fff"/>' },
-};
-
-// Effekte v2 (DESIGN 7.2): placeholders on the old badges until the art track.
-const alias = (id: string, from: string, fill?: string): void => {
-  const icon = MOD_ICON[from];
-  if (icon) MOD_ICON[id] = fill ? { ...icon, fill } : icon;
-};
-alias('points', 'fat');
-alias('rank', 'marked');
-alias('trump_bonus', 'stamp');
-alias('first_trick', 'lucky_penny');
-alias('voucher_coins', 'lucky_penny', '#2e7d4f');
-alias('voucher_undead', 'undead', '#2e7d4f');
-alias('voucher_wild', 'wild_card', '#2e7d4f');
-alias('stained', 'black_cat');
-
+/** Icons of the card modifications (./fxart.ts), for lists beside the cards. */
 export function modIconId(mod: string): string {
-  return MOD_ICON[mod] ? `m-${mod}` : 'm-other';
+  return ICON_MODS.includes(mod) ? `m-${mod}` : 'm-other';
 }
 
 function modSymbols(): string {
-  const icons = Object.entries(MOD_ICON)
-    .map(
-      ([id, icon]) =>
-        `<symbol id="m-${id}" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="${icon.fill}" stroke="${icon.ring ?? '#0b0c0e'}" stroke-width="2"/>${icon.glyph}</symbol>`,
-    )
-    .join('');
-  return `${icons}<symbol id="m-other" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="#6a6a5a" stroke="#0b0c0e" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#fff"/></symbol>`;
+  const icons = ICON_MODS.map((id) => `<symbol id="m-${id}" viewBox="0 0 16 16" shape-rendering="crispEdges">${modIconBody(id) ?? ''}</symbol>`).join('');
+  return `${icons}<symbol id="m-other" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#0b0c0e"/><rect x="1" y="1" width="14" height="14" fill="#6a6a5a"/><rect x="7" y="7" width="2" height="2" fill="#fff"/></symbol>`;
 }
 
 // ---------------------------------------------------------------- sprite
@@ -208,12 +134,21 @@ export function spriteSvg(): string {
       );
     }),
   ).join('');
+  // "Wandelkarte": eight faces for every suit, with their own index (rank in black, rainbow sign).
+  const wild = RANKS.map((r) => {
+    const rows = ART_WILD[r] ?? [];
+    return (
+      `<symbol id="w-${r}" ${box}>${gridPaths(rows, lower)}</symbol>` +
+      `<symbol id="wx-${r}" ${box}>${gridPaths(rows, upper)}</symbol>` +
+      `<symbol id="wt-${r}" ${box}>${smallBody(r, ART_WILD_INK, ART_WILD_BIG)}</symbol>`
+    );
+  }).join('');
   return `<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
 <defs>
 <pattern id="blank-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
 <path d="M0 0h4v4h-4z" fill="#cbc7bb"/></pattern>
 </defs>
-${suits}${faces}
+${suits}${faces}${wild}
 ${backSymbols()}
 <symbol id="f-blank" viewBox="0 0 120 180" shape-rendering="crispEdges">${blankBody()}</symbol>
 ${modSymbols()}
@@ -236,10 +171,15 @@ export function smallFaceId(suit: Suit, rank: Rank): string {
   return `t-${CODE[suit]}${rank}`;
 }
 
-/** Symbol id of the zombie picture of an "Untot" picture card, or null for number cards. */
+/** Symbol id of the "Untot" picture of a card (zombie figure, rotten pips), or null if there is none. */
 export function undeadFaceId(suit: Suit, rank: Rank): string | null {
   const id = `${CODE[suit]}${rank}`;
   return ART_UNDEAD[id] ? `u-${id}` : null;
+}
+
+/** Symbol ids of the "Wandelkarte" face of a rank: picture, corner index, tiny face. */
+export function wildFaceIds(rank: Rank): { picture: string; index: string; small: string } {
+  return { picture: `w-${rank}`, index: `wx-${rank}`, small: `wt-${rank}` };
 }
 
 export function suitId(suit: Suit): string {

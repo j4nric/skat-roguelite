@@ -7,9 +7,11 @@ Every face is its art grid (33 x 49 art pixels), one string per row. A
 capital letter A-Z is a pixel of the corner index (its lowercase palette
 key), "." is paper, any other key a picture pixel. The web app splits the
 two layers so card modifications can lie between picture and index
-(web/src/ui/art.ts). The "Untot" zombie faces of the picture cards
-(untot.py) follow in the same form; the frames and marks of the card
-modifications are drawn by web/src/ui/cards.ts after fx2.py.
+(web/src/ui/art.ts). The "Untot" faces of all 32 cards (untot.py: zombie
+pictures, rotten number cards) and the eight suit-independent faces of the
+"Wandelkarte" (wild.py) follow in the same form; the frames, marks and
+bands of the card modifications are drawn by web/src/ui/cards.ts after
+fx3.py.
 """
 
 import os
@@ -22,7 +24,8 @@ sys.path.insert(0, HERE)
 import aces2  # noqa: E402
 import cards2  # noqa: E402
 import untot  # noqa: E402
-from pix import BG, BIG, GH, GW, GLYPH, INK, PAL, Grid  # noqa: E402
+import wild  # noqa: E402
+from pix import BG, BIG, GH, GW, GLYPH, INK, PAL, SIGN, Grid  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(ROOT, 'web', 'src', 'ui', 'pixelcards.gen.ts')
@@ -50,12 +53,13 @@ def index_layer(suit, rank):
 # Keys of the "Untot" zombie faces (untot.py) in the TypeScript grid: its
 # capital letters become lowercase ones (capitals mean corner index there).
 UNDEAD_KEYS = {'Z': 'z', 'X': 'x', 'E': 'e'}
-UNDEAD_RANKS = ['J', 'Q', 'K', 'A']
 
 
 def undead_face(suit, rank):
-    """The zombie face of a picture card, without its skull marker (the web
-    app draws the skull as the mark of the modification)."""
+    """The Untot face of a card: the zombie picture of a picture card
+    (without its skull marker), the rotten pips of a number card."""
+    if isinstance(rank, int):
+        return untot.zombie_number(suit, rank)[0]
     untot.ZOMBIE_GRID_MARKER = False
     try:
         g, _ = untot.zombie(suit, rank)
@@ -125,15 +129,23 @@ def ts():
             lines.append(f'  {code}{rc}: [')
             lines += [f"    '{r}'," for r in rows(suit, rank)]
             lines.append('  ],')
-    lines += ['};', '', '/** "Untot": the zombie faces of the picture cards (untot.py), same codes. */',
+    lines += ['};', '', '/** "Untot": the faces of all 32 cards (untot.py), same codes. */',
               'export const ART_UNDEAD: Record<string, string[]> = {']
     for code, suit in SUITS.items():
-        for rc in UNDEAD_RANKS:
-            rank = RANKS[rc]
+        for rc, rank in RANKS.items():
             lines.append(f'  {code}{rc}: [')
             lines += [f"    '{r}'," for r in rows(suit, rank, undead_face(suit, rank))]
             lines.append('  ],')
-    lines += ['};', '']
+    lines += ['};', '', '/** "Wandelkarte": eight faces by rank code, the same for every suit (wild.py). */',
+              'export const ART_WILD: Record<string, string[]> = {']
+    for rc, rank in RANKS.items():
+        lines.append(f'  {rc}: [')
+        lines += [f"    '{r}'," for r in rows('Wild', rank, wild.card(rank))]
+        lines.append('  ],')
+    lines += ['};', '', '/** The Wandelkarte\'s rainbow sign: index size (3 wide) and held size (7 wide). */',
+              'export const ART_WILD_SIGN: string[] = [' + ', '.join(f"'{r}'" for r in SIGN['Wild']) + '];',
+              'export const ART_WILD_BIG: string[] = [' + ', '.join(f"'{r}'" for r in BIG['Wild']) + '];',
+              f"export const ART_WILD_INK = '{INK['Wild']}';", '']
     return '\n'.join(lines)
 
 

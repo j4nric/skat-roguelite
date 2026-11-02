@@ -8,7 +8,7 @@ import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
-import { cardSvg, modIcon, suitIcon } from './cards';
+import { cardSvg, modIcon, suitIcon, WILD } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -591,7 +591,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-testid': `wild-${suit}`,
             disabled: !ok,
             'aria-label': t(de.card.wildSuit, { card: cardName(kind) }),
-          })}>${cardSvg(kind, card.mods, 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
+          })}>${cardSvg(kind, card.mods.filter((m) => m !== WILD), 'full', card.mod_values)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
         })
         .join('');
       const follow = allowed.length < 4 ? `<p class="small">${esc(t(de.card.wildFollow, { suits: allowed.map((s) => de.suits[s]).join(', ') }))}</p>` : '';
