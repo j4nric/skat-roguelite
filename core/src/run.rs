@@ -326,6 +326,15 @@ pub struct ActiveGame {
     /// Leads demanded in this game ("Lockvogel").
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lead_demands_used: u32,
+    /// "Untot" cards that rose in this game (instance ids): each rises
+    /// once per game ([`Effect::Undead`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub risen: Vec<u32>,
+    /// Generator that draws the substitute of a rising "Untot" card, forked
+    /// from the game's own generator at the deal if an "Untot" card is in
+    /// play. Saves from before it derive one from the run's seed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub undead_rng: Option<Rng>,
 }
 
 /// Whether a counter is zero (fields left out of saves while unused).
@@ -2178,6 +2187,80 @@ impl Run {
         );
         if trick_done {
             self.fire(content, Stage::OnTrickEnd, None, None, events);
+            self.raise_undead(content, events);
+        }
+    }
+
+    /// Whether the player's `card` would rise if he played it now and the
+    /// trick were complete ("Untot", [`Effect::Undead`]): it carries the
+    /// modification, did not rise in this game yet, the game is a suit game
+    /// or Grand, and it is not his last card. `false` outside a game.
+    #[must_use]
+    pub fn can_rise(&self, content: &Content, card: DealtCard) -> bool {
+        let Some(active) = self.game.as_ref() else {
+            return false;
+        };
+        let game = &active.game;
+        let trump_game = game
+            .declaration()
+            .is_some_and(|d| !d.is_null() && !d.is_ramsch());
+        let hand = game.hand(Seat::DECLARER);
+        trump_game
+            && !card.is_blank()
+            && hand.len() > 1
+            && hand.contains(&card)
+            && !active.risen.contains(&card.id)
+            && self.has_card_effect(content, card.id, &Effect::Undead)
+    }
+
+    /// "Untot" (DESIGN 7.2): after the `OnTrickEnd` hooks of a completed
+    /// trick, the player's card in it rises back into his hand if it may
+    /// ([`Run::can_rise`], judged as if it were still in the hand), and a
+    /// card of his hand drawn with the game's generator takes its place in
+    /// the trick.
+    fn raise_undead(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        let Some(active) = self.game.as_ref() else {
+            return;
+        };
+        let game = &active.game;
+        if game.phase() != Phase::Playing || !game.current_trick().is_empty() {
+            return;
+        }
+        let Some(trick) = game.tricks().last() else {
+            return;
+        };
+        let Some(card) = (0..3)
+            .find(|&i| trick.seat_of(i).is_declarer())
+            .map(|i| trick.cards[i])
+        else {
+            return;
+        };
+        let trump_game = game
+            .declaration()
+            .is_some_and(|d| !d.is_null() && !d.is_ramsch());
+        let hand = game.hand(Seat::DECLARER).to_vec();
+        if !trump_game
+            || card.is_blank()
+            || hand.is_empty()
+            || active.risen.contains(&card.id)
+            || !self.has_card_effect(content, card.id, &Effect::Undead)
+        {
+            return;
+        }
+        let fallback = opponents::game_seed(self) ^ 0x0DEA_D0DE_AD00;
+        let Some(active) = self.game.as_mut() else {
+            return;
+        };
+        let rng = active
+            .undead_rng
+            .get_or_insert_with(|| Rng::from_seed(fallback));
+        let roll = rng.gen_range(0..u64::try_from(hand.len()).unwrap_or(1));
+        let Some(&substitute) = usize::try_from(roll).ok().and_then(|i| hand.get(i)) else {
+            return;
+        };
+        if let Ok(game_events) = active.game.raise(Seat::DECLARER, card, substitute) {
+            active.risen.push(card.id);
+            events.extend(game_events.into_iter().map(RunEvent::Game));
         }
     }
 
@@ -2520,6 +2603,7 @@ impl Run {
             | Effect::NoDiscard
             | Effect::Wild
             | Effect::Homesick
+            | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
             | Effect::BlankOut(_)
@@ -2659,6 +2743,18 @@ impl Run {
                 .map(|card| RunEvent::CardCameHome { card }),
         );
         self.peek(&mut rng, events);
+        // "Untot": the substitutes come from the game's generator, after
+        // everything the deal drew from it.
+        let undead_in_play = self.game.as_ref().is_some_and(|active| {
+            active
+                .game
+                .cards_in_play()
+                .iter()
+                .any(|c| !c.is_blank() && self.has_card_effect(content, c.id, &Effect::Undead))
+        });
+        if let (true, Some(active)) = (undead_in_play, self.game.as_mut()) {
+            active.undead_rng = Some(rng.fork());
+        }
         if self.game.as_ref().is_some_and(|a| a.rules.ramsch) {
             return self.start_ramsch(content, events);
         }
@@ -2805,6 +2901,8 @@ impl Run {
             broken: Vec::new(),
             skat_shown: Vec::new(),
             lead_demands_used: 0,
+            risen: Vec::new(),
+            undead_rng: None,
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -3996,6 +4094,8 @@ mod stake_tests;
 mod step_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod undead_tests;
 #[cfg(test)]
 mod wave2_tests;
 #[cfg(test)]

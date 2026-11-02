@@ -96,6 +96,8 @@ export interface UiState {
   lurePick: boolean;
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
+  /** "Untot": the card that last rose from a trick in this game and its substitute there (from the CardRose event), for a note in the last trick. */
+  risen: { substitute: number; card: string } | null;
   /** The opponent whose move the core is computing (thought bubble). */
   thinking: Seat | null;
   /** A Stammgast's speech bubble on the table, at most one at a time. */

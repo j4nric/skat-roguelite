@@ -154,6 +154,8 @@ const TOAST_QUEUE = 3;
 
 /** Where a toast shows: the middle of the screen, or above the Stammgäste. */
 type ToastPlace = 'middle' | 'top';
+/** "Untot": the event of a card that rose from the trick. */
+type RoseEvent = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { CardRose: unknown }>['CardRose'];
 
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
@@ -175,6 +177,7 @@ export class App {
     swapTake: null,
     lurePick: false,
     peekTrick: false,
+    risen: null,
     thinking: null,
     quip: null,
     shared: null,
@@ -202,6 +205,8 @@ export class App {
   private readonly toastEl: HTMLElement;
   /** "Wandelkarte": printed suits of the cards named in this game, for the trick on screen. */
   private readonly wildNamed = new Map<number, Suit>();
+  /** "Untot": cards whose rising was already shown with their trick in this game. */
+  private readonly riseShown = new Set<number>();
   private readonly hintEl: HTMLElement;
   /** The info card (long-press, hover, "i"): one for everything. */
   private readonly info: InfoCard;
@@ -974,13 +979,23 @@ export class App {
       if ('Game' in ev) {
         // "Glasdaus": cards that break with this trick (their events follow it).
         const breaking: number[] = [];
+        // "Untot": a card that rises from this trick (its event follows the trick's hooks).
+        let rising: RoseEvent | null = null;
         if ('TrickWon' in ev.Game) {
           for (const next of events.slice(i + 1)) {
-            if (typeof next !== 'object' || 'Game' in next) break;
+            if (typeof next !== 'object') break;
+            if ('Game' in next) {
+              if ('CardRose' in next.Game) rising = next.Game.CardRose;
+              break;
+            }
             if ('CardBroken' in next) breaking.push(next.CardBroken.card);
           }
+          if (!rising) {
+            const later = events.slice(i + 1).find((e): e is Extract<RunEvent, { Game: unknown }> => typeof e === 'object' && 'Game' in e);
+            if (later && 'CardRose' in later.Game) rising = later.Game.CardRose;
+          }
         }
-        await this.playGameEvent(ev.Game, after, breaking);
+        await this.playGameEvent(ev.Game, after, breaking, rising);
         continue;
       }
       if ('CoinsGained' in ev) {
@@ -989,6 +1004,8 @@ export class App {
       }
       if ('GameDealt' in ev) {
         this.wildNamed.clear();
+        this.ui.risen = null;
+        this.riseShown.clear();
         // A new game: from here on the final view tells the story.
         this.ui.anim = null;
         this.ui.view = after;
@@ -1094,7 +1111,7 @@ export class App {
     }
   }
 
-  private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView, breaking: number[] = []): Promise<void> {
+  private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView, breaking: number[] = [], rising: RoseEvent | null = null): Promise<void> {
     const anim = this.ui.anim;
     if ('CardPlayed' in ev) {
       if (!anim) return;
@@ -1131,6 +1148,8 @@ export class App {
         sound.play('clink', { rate: 1.6 });
         await this.pause(DELAY.notice);
       }
+      // "Untot": the card rises back into the hand, the substitute takes its place, then the trick leaves.
+      if (rising) await this.riseCard(rising, after);
       const target = this.sweepTarget(trick.winner);
       const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
       sound.play('trick');
@@ -1151,6 +1170,11 @@ export class App {
       sound.play('card');
       this.render();
       await this.pause(DELAY.notice);
+      return;
+    }
+    if ('CardRose' in ev) {
+      // Shown with its trick (riseCard) unless the trick was not on screen.
+      if (!this.riseShown.has(ev.CardRose.card.id)) await this.riseCard(ev.CardRose, after);
       return;
     }
     if ('CardChalked' in ev) {
@@ -1276,6 +1300,41 @@ export class App {
     }
     this.root.appendChild(pop);
     window.setTimeout(() => pop.remove(), Math.max(1400, 2200 * TEMPO_FACTOR[this.ui.settings.tempo]));
+    await this.pause(DELAY.notice);
+  }
+
+  /**
+   * "Untot" (CardRose): the card lifts out of the trick back into the hand,
+   * the substitute from the hand turns over into its place; a toast above
+   * the Stammgäste says so. Everything from the event and the core's view.
+   */
+  private async riseCard(rose: RoseEvent, after: RunView): Promise<void> {
+    const { card, substitute } = rose;
+    this.riseShown.add(card.id);
+    this.ui.risen = { substitute: substitute.id, card: cardName(card.kind) };
+    this.showToast(t(de.toast.cardRose, { card: cardName(card.kind), substitute: cardName(substitute.kind) }), 'top');
+    const anim = this.ui.anim;
+    if (!anim) return;
+    const from = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
+    const subFrom = this.screenEl.querySelector(`.hand-card[data-id="${substitute.id}"]`)?.getBoundingClientRect() ?? null;
+    anim.trick = anim.trick.map((p) => (p.card.id === card.id ? { seat: p.seat, card: this.cardOf(substitute, after) } : p));
+    // The trick's Augen changed with the card; the core's count follows with the score.
+    anim.status = '';
+    const hand = after.game?.hand;
+    anim.hand = hand
+      ? hand.map((c) => ({ ...c, legal: false }))
+      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(card, after), can_rise: false }];
+    this.render();
+    if (!this.fastForward) {
+      const back = this.screenEl.querySelector(`.hand-card[data-id="${card.id}"]`);
+      if (back && from) flyIn(back, from, { ms: 380, arc: -30 });
+      const sub = this.screenEl.querySelector<HTMLElement>(`.trick-card[data-card-id="${substitute.id}"]`);
+      if (sub) {
+        if (subFrom) flyIn(sub, subFrom, { ms: 300, delay: 120 });
+        flip(sub, cardBack(), { ms: 320, delay: 160 });
+      }
+    }
+    sound.play('card', { rate: 0.8 });
     await this.pause(DELAY.notice);
   }
 

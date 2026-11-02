@@ -1717,6 +1717,33 @@ button.card {
   background: var(--rot);
 }
 
+/* "Untot": the card can still rise in this game. */
+.plaque-rise {
+  background: #3c5226;
+  color: #e8ecd8;
+}
+
+/* "Untot": the substitute in the trick, for the card that rose. */
+.trick-rose-tag {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border: 2px solid var(--line);
+  background: #3c5226;
+  color: #e8ecd8;
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 /* "Kreide": the printed suit, chalked over. */
 .plaque-chalk {
   background: #f4efe2;
@@ -5098,35 +5125,8 @@ button.card {
 
 /* ------------------------------------------------ card modifications */
 
-/* The Augen frame (Fett, Goldrand, Bleigewicht) lies outside the card,
-   around its dark edge, so it never covers the index or the numbers. */
-:has(> .card-svg[data-frame]) {
-  outline: 3px solid;
-  outline-offset: 1px;
-}
-
-.mini-card:has(> .card-svg[data-frame]),
-.deck-card:has(> .card-svg[data-frame]),
-.icon-card:has(> .card-svg[data-frame]) {
-  outline-width: 2px;
-  outline-offset: 0;
-}
-
-:has(> .card-svg[data-frame='fat']) {
-  outline-color: #d98e0b;
-}
-
-:has(> .card-svg[data-frame='gold_rim']) {
-  outline-color: #b8901c;
-}
-
-:has(> .card-svg[data-frame='lead_weight']) {
-  outline-color: #4a4f57;
-}
-
-.card:focus-visible:has(> .card-svg[data-frame]) {
-  outline-color: var(--cool);
-}
+/* The frames of the modifications are drawn inside the card (ui/cards.ts,
+   frame language); only a tiny card's state ring is in its SVG too. */
 
 /* ---------------------------------------------------------- info card */
 

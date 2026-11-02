@@ -430,6 +430,11 @@ pub struct CardView {
     /// The printed suit of a Wandelkarte the player played in this game;
     /// the card's `kind` has the suit he named.
     pub named: Option<Suit>,
+    /// An "Untot" card of the hand that would rise if played now
+    /// ([`Run::can_rise`]): it comes back once per game in a suit game or
+    /// Grand, not as the last card. Left out of the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub can_rise: bool,
 }
 
 /// A card on the table and who played it.
@@ -776,6 +781,7 @@ impl Run {
             mod_status,
             wild_suits: Vec::new(),
             named,
+            can_rise: false,
         }
     }
 
@@ -1369,6 +1375,7 @@ impl Run {
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
                 discardable: discarding && discardable_of(held, card, discard_count),
+                can_rise: self.can_rise(content, card),
                 ..self.card_view(content, card)
             })
             .collect();

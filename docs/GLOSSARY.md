@@ -43,6 +43,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Wandelkarte (Farbe beim Ausspielen benennen) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers), Effekt `Wild`; zwingt nie zum Bedienen. Benennen: `RunAction::PlayAs { card, suit }`, `Game::play_as`, erlaubte Farben `rules::wild_suits`, Prüfung `rules::may_play`; Ereignis `WildCardNamed`; Sicht `CardView::wild_suits`, `CardView::named` (gedruckte Farbe), `ActiveGame::named`. Die KI rechnet ohne sie: `opponents::tame_game` |
 | Zerbrechen (Glasdaus) | `break` | Effekt `BreakThisCard`, Bedingung `ThisCardBeatenByDefender` (ein Gegner macht den Stich mit einer anderen Karte), Ereignis `CardBroken`, `ActiveGame::broken`; nach der Abrechnung `Deck::remove` |
 | Heimweh (aus dem Skat in die Hand) | `homesick` | Effekt `Homesick`, `Run::homesick`, Sicht `RunView::homesick`, Ereignis `CardCameHome` |
+| Untot (Karte steigt aus dem Stich zurück in die Hand) | `undead` | Effekt `Undead`, Prüfung `Run::can_rise`, verbraucht `ActiveGame::risen` (einmal pro Spiel), Zufall `ActiveGame::undead_rng`; Spielebene `Game::raise`, Ereignis `CardRose` (`card` zurück in der Hand, `substitute` im Stich); Sicht `CardView::can_rise`; Bot `RunBot::undead_card` |
+| Ersatzkarte (Untot: die Karte, die an ihrer Stelle im Stich liegt) | `substitute` | Feld von `CardRose` |
 | Nur auf (Modifikation passt nur auf bestimmte Karten) | `only_on` | Feld `CardModDef::only_on` (`CardFilter`), Prüfung `CardModDef::fits` |
 | Augen vervielfachen (Glasdaus) | `MultiplyCardPoints` | Effekt, nach allen anderen Augen-Änderungen der Karte |
 
@@ -326,6 +328,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Wandelkarte | `wild_card` |
 | Glasdaus | `glass_ace` |
 | Heimweh | `homesick` |
+| Untot | `undead` |
 | Skatgott | `skat_god` (Zähler `skat_god`) |
 | Ehrenvorsitz | `honorary_chair` |
 

@@ -307,4 +307,19 @@
         price: 4,
         passive: [Homesick],
     ),
+    // Lever Stichgewinn and Augen (user idea, 02.11.2026): played by the
+    // player in a suit game or Grand, the card comes back into his hand
+    // once per game when the trick is complete, and a random other card of
+    // his hand takes its place in the trick (the winner stays, the
+    // substitute's Augen count). Not as his last card, not in Null or
+    // Ramsch, never for a defender's copy. Rarity and price placeholders.
+    (
+        id: "undead",
+        focus: Trump,
+        name: "Untot",
+        text: "Karte wird gespielt, dann aber wieder auf die Hand genommen und eine zufällige Karte abgeworfen. Einmal pro Spiel, nur im Farbspiel und Grand.",
+        rarity: Rare,
+        price: 5,
+        passive: [Undead],
+    ),
 ]

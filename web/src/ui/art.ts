@@ -15,7 +15,7 @@ import { de } from '../i18n';
 import type { Rank, Suit } from '../types';
 import { backSymbols } from './backs';
 import { peopleSymbols } from './people';
-import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_W } from './pixelcards.gen';
+import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_W } from './pixelcards.gen';
 
 export const SUITS: Suit[] = ['Clubs', 'Spades', 'Hearts', 'Diamonds'];
 export const RANKS: Rank[] = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -56,8 +56,10 @@ function gridPaths(rows: string[], pick: (ch: string) => string | null, x0 = 0, 
   return [...runs].map(([key, d]) => `<path d="${d}" fill="${ART_PALETTE[key] ?? '#000'}"/>`).join('');
 }
 
-const lower = (ch: string): string | null => (ch !== '.' && ch === ch.toLowerCase() ? ch : null);
-const upper = (ch: string): string | null => (ch !== '.' && ch === ch.toUpperCase() ? ch.toLowerCase() : null);
+/** Capitals A-Z are the corner index, "." is paper, any other key is picture. */
+const INDEX_KEY = /^[A-Z]$/;
+const lower = (ch: string): string | null => (ch !== '.' && !INDEX_KEY.test(ch) ? ch : null);
+const upper = (ch: string): string | null => (INDEX_KEY.test(ch) ? ch.toLowerCase() : null);
 const same = (ch: string): string | null => (ch !== '.' ? ch : null);
 
 // ------------------------------------------------------------ suit signs
@@ -155,6 +157,8 @@ const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> =
   // Heimweh: a little house.
   homesick: { fill: '#8e2430', glyph: '<path d="M12 5 L19 11 H17 V18.5 H7 V11 H5 Z" fill="#fff"/><rect x="10.5" y="13.5" width="3" height="5" fill="#8e2430"/>' },
   // Attrappe: a dummy, a card with a question mark.
+  // Untot: a skull.
+  undead: { fill: '#3c5226', glyph: '<path d="M12 4.5 C16.4 4.5 18.5 7.4 18.5 10.6 C18.5 13 17.2 14.3 16 15 V18.5 H8 V15 C6.8 14.3 5.5 13 5.5 10.6 C5.5 7.4 7.6 4.5 12 4.5 Z" fill="#e8ecd8"/><rect x="8.2" y="9.2" width="2.8" height="3" fill="#3c5226"/><rect x="13" y="9.2" width="2.8" height="3" fill="#3c5226"/><path d="M10.5 16 V18.5 M13.5 16 V18.5" stroke="#3c5226" stroke-width="1"/>' },
   dummy: { fill: '#7d6a50', glyph: '<rect x="7.5" y="5.5" width="9" height="13" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.4 10 C10.4 8.4 13.6 8.4 13.6 10 C13.6 11.4 12 11.4 12 13" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.4" r=".9" fill="#fff"/>' },
 };
 
@@ -185,7 +189,8 @@ export function spriteSvg(): string {
       return (
         `<symbol id="f-${id}" ${box}>${gridPaths(rows, lower)}</symbol>` +
         `<symbol id="x-${id}" ${box} data-rank="${de.rankShort[r]}">${gridPaths(rows, upper)}</symbol>` +
-        `<symbol id="t-${id}" ${box}>${smallFace(s, r)}</symbol>`
+        `<symbol id="t-${id}" ${box}>${smallFace(s, r)}</symbol>` +
+        (ART_UNDEAD[id] ? `<symbol id="u-${id}" ${box}>${gridPaths(ART_UNDEAD[id] ?? [], lower)}</symbol>` : '')
       );
     }),
   ).join('');
@@ -215,6 +220,12 @@ export function indexId(suit: Suit, rank: Rank): string {
 /** Symbol id of the face for tiny cards (index letter and sign, big). */
 export function smallFaceId(suit: Suit, rank: Rank): string {
   return `t-${CODE[suit]}${rank}`;
+}
+
+/** Symbol id of the zombie picture of an "Untot" picture card, or null for number cards. */
+export function undeadFaceId(suit: Suit, rank: Rank): string | null {
+  const id = `${CODE[suit]}${rank}`;
+  return ART_UNDEAD[id] ? `u-${id}` : null;
 }
 
 export function suitId(suit: Suit): string {

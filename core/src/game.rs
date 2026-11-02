@@ -268,6 +268,18 @@ pub enum Event<C = Card> {
         /// The card as it is now.
         new: C,
     },
+    /// An "Untot" card rose from the last completed trick back into the
+    /// hand of the seat that played it, and `substitute` from that hand
+    /// took its place in the trick ([`Game::raise`]). The trick winner
+    /// stays; the trick's Augen are now those of the substitute.
+    CardRose {
+        /// Who played the card.
+        seat: Seat,
+        /// The card that came back into the hand.
+        card: C,
+        /// The card that lies in the trick now.
+        substitute: C,
+    },
     /// The game is over and scored: all tricks played, the defenders
     /// conceded, or the Null declarer took a trick.
     GameFinished {
@@ -1267,6 +1279,55 @@ impl<C: PlayingCard> Game<C> {
             swap(&mut self.deck);
         }
         self.play(seat, named)
+    }
+
+    /// "Untot" (DESIGN 7.2): `card`, which `seat` played into the last
+    /// completed trick, goes back into that seat's hand, and `substitute`
+    /// from the hand takes its place in the trick. The trick keeps its
+    /// winner (decided with `card`); the winner's Augen change by the
+    /// difference. Only while playing, between two tricks; the hand keeps
+    /// its size, so every seat still plays one card per trick. Which card
+    /// may rise and which substitute is drawn is the run's business.
+    pub fn raise(
+        &mut self,
+        seat: Seat,
+        card: C,
+        substitute: C,
+    ) -> Result<Vec<Event<C>>, GameError<C>> {
+        if self.phase != Phase::Playing {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        if !self.trick.is_empty() {
+            return Err(GameError::TrickInProgress);
+        }
+        if substitute == card || !self.hand(seat).contains(&substitute) {
+            return Err(GameError::CardNotInHand {
+                seat,
+                card: substitute,
+            });
+        }
+        let Some(trick) = self.tricks.last_mut() else {
+            return Err(GameError::CardNotInHand { seat, card });
+        };
+        let Some(offset) = (0..3).find(|&i| trick.seat_of(i) == seat && trick.cards[i] == card)
+        else {
+            return Err(GameError::CardNotInHand { seat, card });
+        };
+        trick.cards[offset] = substitute;
+        let winner = trick.winner.index();
+        let points = &mut self.card_points[winner];
+        *points = points.saturating_sub(card.card_points()) + substitute.card_points();
+        let hand = &mut self.hands[seat.index()];
+        hand.retain(|&c| c != substitute);
+        hand.push(card);
+        hand.sort();
+        let events = vec![Event::CardRose {
+            seat,
+            card,
+            substitute,
+        }];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
     }
 
     /// A copy of the game with every card passed through `f`: hands, skat,

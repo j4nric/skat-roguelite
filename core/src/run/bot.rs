@@ -785,6 +785,9 @@ impl RunBot {
                         }
                     }
                 }
+                if let Some(card) = Self::undead_card(run, content) {
+                    return Some(RunAction::Play(card.id));
+                }
                 // A Wandelkarte is chosen as printed, then named.
                 let tame = super::opponents::tame_game(game);
                 let view = tame.as_ref().unwrap_or(game).view(Seat::DECLARER)?;
@@ -798,6 +801,30 @@ impl RunBot {
             }
             Phase::Finished(_) => None,
         }
+    }
+
+    /// An "Untot" card the bot plays now (simple rule, not tuned): playing
+    /// last to the trick, a card of the hand that may rise
+    /// ([`Run::can_rise`]), is legal and takes the trick. It comes back,
+    /// and the substitute's Augen go to the player. A Wandelkarte is left
+    /// to the naming rule. `None` otherwise.
+    #[must_use]
+    pub fn undead_card(run: &Run, content: &Content) -> Option<DealtCard> {
+        let active = run.game()?;
+        let game = &active.game;
+        let declaration = game.declaration()?;
+        let trick = game.current_trick();
+        if trick.len() != 2 || active.awaiting_re {
+            return None;
+        }
+        game.legal_moves(Seat::DECLARER)
+            .into_iter()
+            .filter(|&c| !c.wild && run.can_rise(content, c))
+            .find(|&c| {
+                let mut cards = trick.to_vec();
+                cards.push(c);
+                crate::rules::winning_index(declaration.game(), &cards) == Some(2)
+            })
     }
 
     /// The action that plays `card` of the player's hand: a Wandelkarte with
