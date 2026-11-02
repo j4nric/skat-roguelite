@@ -1742,6 +1742,7 @@ button.card {
 
 .skat-tag.is-drawn {
   background: var(--accent);
+  white-space: nowrap;
 }
 
 /* "Rest abkürzen": a small button in a corner of the middle, over nothing

@@ -616,7 +616,8 @@ function cribStack(game: GameView): string {
   );
   const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, () => `<span class="pressed-card is-back">${cardBack()}</span>`);
   const label = t(de.table.cribAria, { cards: shown.map((c) => cardName(c.kind)).join(', ') });
-  return `<div class="pressed-stack is-crib" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'crib-skat' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.crib)}</span><span class="pressed-cards">${[...open, ...hidden].join('')}</span></div>`;
+  // The face-down card underneath, the shown one on top where it can be read.
+  return `<div class="pressed-stack is-crib" role="group" ${attrs({ 'aria-label': label, 'data-testid': 'crib-skat' })}><span class="pressed-label" aria-hidden="true">${esc(de.table.crib)}</span><span class="pressed-cards">${[...hidden, ...open].join('')}</span></div>`;
 }
 
 /** Small stack of three cards: the sign of "Letzter Stich". */

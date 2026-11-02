@@ -105,6 +105,18 @@
 //   showing 1,5.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
+// M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
+// browser (owned relics and the rules of the dealt game, by text so the
+// big rng numbers stay exact), then resumed:
+// - "Drei drücken": picking up lays three cards on the table (the skat
+//   and the card drawn from the left Stammgast, tagged with his name),
+//   Drücken waits for three, a card tapped back into the hand and another
+//   tapped out works as with two; after Drücken the Ansage shows two
+//   pressed cards and the Stammgast holds the card given back (revealed).
+// - "Lockvogel": on the player's turn a small button opens the choices of
+//   the core; one tapped, the badge names it and the button is gone.
+// - "Spickzettel" (second run): after "Hand spielen" and a Grand Hand one
+//   skat card lies face up beside the trick, the other face down.
 // Save code (menu "Spielstand sichern" / "Spielstand laden"), at 390 × 844
 // and at 1280 × 800: a run with seed 64 is played into its first game, the
 // code is exported from the menu (and copied), localStorage is cleared, a
@@ -1183,6 +1195,122 @@ async function m5(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/**
+ * Start a run with `seed` and give it `relics` (after the character's start
+ * relics) from the first game on: the
+ * save in localStorage is patched as text (JSON.parse would round the big
+ * rng numbers), `rules` are extra replacements in the dealt game's rules.
+ */
+async function patchedRun(page, seed, relics, rules = []) {
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  // A run left from before would be offered for resuming instead.
+  await page.evaluate(() => localStorage.removeItem('stammtisch.run'));
+  await page.reload();
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', seed);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const ok = await page.evaluate(
+    ({ relics, rules }) => {
+      let s = localStorage.getItem('stammtisch.run') ?? '';
+      // The owned relics (the character's start relics first) get the new ones.
+      const owned = /"relics":\[([^\]]*)\]/;
+      if (!owned.test(s)) return false;
+      s = s.replace(owned, (_, inner) => `"relics":[${[inner, ...relics.map((r) => JSON.stringify(r))].filter(Boolean).join(',')}]`);
+      for (const [from, to] of rules) {
+        if (!s.includes(from)) return false;
+        s = s.replace(from, to);
+      }
+      localStorage.setItem('stammtisch.run', s);
+      return true;
+    },
+    { relics, rules },
+  );
+  if (!ok) fail(`could not patch the save of seed ${seed} with ${relics.join(', ')}`);
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  for (const id of relics) {
+    if (!(await page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`).count())) fail(`relic ${id} has no beer mat in the head`);
+  }
+}
+
+/** M8 wave 2b: Drei drücken, Lockvogel and Spickzettel at the table. */
+async function wave2b(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  // Drei drücken and Lockvogel.
+  await patchedRun(page, SEED, ['three_discard', 'decoy'], [
+    ['"discard_three":null', '"discard_three":{"Relic":"three_discard"}'],
+    ['"lead_demands":0', '"lead_demands":1'],
+  ]);
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  const zone = '[data-testid="skat-zone"]';
+  const onTable = await page.locator(`${zone} .skat-card`).count();
+  const inHand = await page.locator('.hand-card').count();
+  if (onTable !== 3 || inHand !== 10) fail(`Drei drücken: ${onTable} cards on the table, ${inHand} in the hand`);
+  const drawnTag = ((await page.locator(`${zone} .skat-tag.is-drawn`).textContent()) ?? '').trim();
+  if (!drawnTag.startsWith('von ')) fail(`Drei drücken: the drawn card is tagged "${drawnTag}"`);
+  const label = ((await page.locator(`${zone} .skat-zone-label`).textContent()) ?? '').trim();
+  if (label !== 'Drei drücken · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
+  if (await page.locator('[data-action="discard"]').isDisabled()) fail('Drei drücken: Drücken not possible with three on the table');
+  await shoot(page, 'wave2b-three-discard');
+  await assertFits(page, 'Drei drücken', [PHONE, { width: 375, height: 667 }, DESKTOP]);
+  // One back into the hand: Drücken waits; another one out: three again.
+  await page.locator(`${zone} [data-action="select"]`).first().click();
+  if (!(await page.locator('[data-action="discard"]').isDisabled())) fail('Drei drücken: Drücken possible with two on the table');
+  await page.locator('.hand [data-action="select"]').first().click();
+  if ((await page.locator(`${zone} .skat-card`).count()) !== 3) fail('Drei drücken: a tapped hand card did not go onto the table');
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  const pressed = await page.locator('[data-testid="pressed"] .mini-card').count();
+  if (pressed !== 2) fail(`Drei drücken: the Ansage shows ${pressed} pressed cards`);
+  if ((await page.locator('.opp[data-seat="1"] [data-returned]').count()) !== 1) fail('Drei drücken: the card given back is not shown at the left Stammgast');
+  if ((await page.locator('.hand-card').count()) !== 10) fail('Drei drücken: not ten cards after Drücken');
+  await shoot(page, 'wave2b-three-discard-ansage');
+  log('Drei drücken: three on the table, two pressed, one back to the left Stammgast');
+
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForSelector('[data-testid="lure"]', { timeout: 30000 });
+  await shoot(page, 'wave2b-lure-button');
+  await page.click('[data-testid="lure"]');
+  await page.waitForSelector('[data-testid="lure-pick"]');
+  const leads = await page.locator('[data-action="lure-suit"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-lead')).join(','));
+  if (leads !== 'Trump,Clubs,Spades,Hearts,Diamonds') fail(`Lockvogel in a Grand offers ${leads}`);
+  await shoot(page, 'wave2b-lure-pick');
+  await assertFits(page, 'Lockvogel picker', [PHONE, { width: 375, height: 667 }]);
+  await page.click('[data-testid="lure-Hearts"]');
+  await page.waitForSelector('[data-testid="lure-badge"]');
+  const badge = await text(page, 'lure-badge');
+  if (badge !== 'Lockvogel: Rot') fail(`Lockvogel badge says "${badge}"`);
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  if (await page.locator('[data-testid="lure"]').count()) fail('Lockvogel offered twice in one game');
+  await shoot(page, 'wave2b-lure');
+  await playOut(page, 'wave 2b');
+  log(`Lockvogel: picker with ${leads}, badge "${badge}"`);
+
+  // Spickzettel.
+  await patchedRun(page, '65', ['crib_sheet']);
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('[data-testid="crib-skat"]', { timeout: 30000 });
+  const open = await page.locator('[data-testid="crib-skat"] button.pressed-card').count();
+  const hidden = await page.locator('[data-testid="crib-skat"] .pressed-card.is-back').count();
+  if (open !== 1 || hidden !== 1) fail(`Spickzettel: ${open} skat card(s) open, ${hidden} face down`);
+  await shoot(page, 'wave2b-crib');
+  await assertFits(page, 'Spickzettel', [PHONE, { width: 375, height: 667 }]);
+  log('Spickzettel: one skat card face up beside the trick');
+  await context.close();
+}
+
 /** A save code without compression, made here (format: web/src/savecode.ts). */
 function plainSaveCode(keys) {
   const payload = Buffer.from(JSON.stringify({ v: 1, keys }), 'utf8').toString('base64url');
@@ -2044,6 +2172,7 @@ async function run() {
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);
+    await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
     await hintsAndRules(browser, errors, reducedMotion);
