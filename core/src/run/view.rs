@@ -27,8 +27,8 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable, suit_strength,
-    trump_order_key,
+    Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, discardable_of,
+    suit_strength, trump_order_key,
 };
 
 /// Everything a frontend shows of a run.
@@ -381,7 +381,8 @@ pub enum TablePhase {
     /// Ten cards: declare a hand game, pick up the skat ([`DeclareOptions`]
     /// says what is allowed) or redeal (einmischen).
     Declaring,
-    /// Twelve cards: two to discard.
+    /// Twelve cards: two to discard ("Drei drücken": thirteen and three,
+    /// [`GameView::discard_count`]).
     Discarding,
     /// Skat picked up and discarded: the Ansage without the Hand level.
     DeclaringAfterSkat,
@@ -403,6 +404,9 @@ pub struct CardView {
     pub legal: bool,
     /// Whether it came from the skat (while discarding).
     pub from_skat: bool,
+    /// The defender it was drawn from with the skat ("Drei drücken"),
+    /// while discarding.
+    pub drawn_from: Option<Seat>,
     /// The printed suit of a card "Kreide" repainted for this game; the
     /// card's `kind` is the suit it has now.
     pub chalked: Option<Suit>,
@@ -446,6 +450,8 @@ pub enum RevealSource {
     Kibitz,
     /// "Der Zaungast" sees the whole hand of this defender.
     Onlooker,
+    /// The player gave it back to this defender ("Drei drücken").
+    Returned,
 }
 
 /// A card whose holder the player knows, and why.
@@ -603,6 +609,25 @@ pub struct GameView {
     /// plays them ([`Run::can_settle`]). Says nothing about the
     /// defenders' cards beyond that.
     pub can_settle: bool,
+    /// Cards to discard now: 2, or 3 after drawing a card with the skat
+    /// ("Drei drücken", [`RunAction::DiscardThree`]); 0 outside
+    /// [`TablePhase::Discarding`].
+    pub discard_count: usize,
+    /// Cards of the untouched skat the player was shown after declaring a
+    /// hand game ("Spickzettel"), as long as they lie in the skat.
+    pub skat_shown: Vec<CardView>,
+    /// Whether the player may name the next defender lead now
+    /// ([`RunAction::DemandLead`], "Lockvogel"), with one of
+    /// `lead_demand_options`.
+    pub can_demand_lead: bool,
+    /// What may be demanded in this game: trump (not in Null), then the
+    /// suits without the trump suit. Empty when no lead can be demanded.
+    pub lead_demand_options: Vec<LeadSuit>,
+    /// The demand waiting for the next defender lead, if any.
+    pub lead_demand: Option<LeadSuit>,
+    /// Whether "Drei drücken" draws a card at the next pickup of the skat
+    /// (once per series; [`Run::discard_three_ready`]).
+    pub discard_three_ready: bool,
 }
 
 /// The score line of the table while playing: what the game in progress
@@ -730,6 +755,7 @@ impl Run {
             mods,
             legal: false,
             from_skat: false,
+            drawn_from: None,
             discardable: false,
             mod_status,
         }
@@ -1178,6 +1204,10 @@ impl Run {
         if known_skat {
             seen.extend(game.skat());
         }
+        // A skat card shown by "Spickzettel", a card given back ("Drei
+        // drücken").
+        seen.extend(active.skat_shown.iter().copied());
+        seen.extend(game.returned().map(|(_, c)| c));
         let unseen: u32 = game
             .deck_cards()
             .iter()
@@ -1302,6 +1332,8 @@ impl Run {
         let skat = game.skat();
         let held = game.hand(Seat::DECLARER);
         let discarding = phase == TablePhase::Discarding && !active.awaiting_re;
+        let discard_count = game.discard_count();
+        let drawn = game.drawn().filter(|_| phase == TablePhase::Discarding);
         let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
         let hand = hand
@@ -1309,7 +1341,8 @@ impl Run {
             .map(|card| CardView {
                 legal: legal.contains(&card),
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
-                discardable: discarding && discardable(held, card),
+                drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
+                discardable: discarding && discardable_of(held, card, discard_count),
                 ..self.card_view(content, card)
             })
             .collect();
@@ -1372,6 +1405,17 @@ impl Run {
                 });
             }
         }
+        // The card given back ("Drei drücken"): the player knows who holds
+        // it until it is played.
+        if let Some((_, card)) = game.returned() {
+            if !revealed.iter().any(|r| r.card.card.id == card.id) {
+                revealed.push(RevealedCard {
+                    card: self.card_view(content, card),
+                    holder: game.holder_of(card),
+                    source: RevealSource::Returned,
+                });
+            }
+        }
         let skat_swap_cards: Vec<CardView> = self
             .skat_swap_cards()
             .into_iter()
@@ -1430,7 +1474,37 @@ impl Run {
             seat_tricks: game.seat_tricks(),
             value_preview: self.value_preview(content),
             can_settle: self.can_settle(content),
+            discard_count,
+            skat_shown: active
+                .skat_shown
+                .iter()
+                .filter(|c| skat.contains(c))
+                .map(|&c| self.card_view(content, c))
+                .collect(),
+            can_demand_lead: self.can_demand_lead(content),
+            lead_demand_options: if active.rules.lead_demands > 0 {
+                declaration.map_or_else(Vec::new, |d| LeadSuit::options(d.game()))
+            } else {
+                Vec::new()
+            },
+            lead_demand: game.lead_demand(),
+            discard_three_ready: self.discard_three_ready(),
         })
+    }
+
+    /// Whether some lead can be demanded now ("Lockvogel"): tried with
+    /// each option on a copy of the run.
+    fn can_demand_lead(&self, content: &Content) -> bool {
+        let Some(active) = &self.game else {
+            return false;
+        };
+        let Some(declaration) = active.game.declaration() else {
+            return false;
+        };
+        active.rules.lead_demands > active.lead_demands_used
+            && LeadSuit::options(declaration.game())
+                .into_iter()
+                .any(|suit| self.accepts(content, RunAction::DemandLead(suit)))
     }
 
     /// The first modification on a deck card that shows its holder.

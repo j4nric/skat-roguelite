@@ -17,7 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cards::{Card, PlayingCard, standard_deck};
 use crate::rng::Rng;
-use crate::rules::{self, Declaration, GameValue, Matadors, NullStyle, Outcome, SeatTotals};
+use crate::rules::{
+    self, Declaration, GameValue, LeadSuit, Matadors, NullStyle, Outcome, SeatTotals,
+};
 
 /// Cards each seat receives when dealing.
 pub const HAND_SIZE: usize = 10;
@@ -112,7 +114,8 @@ pub enum Phase {
     /// The declarer looks at ten cards and decides: declare a hand game
     /// ([`Game::declare`]) or pick up the skat ([`Game::pick_up_skat`]).
     Declaring,
-    /// The declarer holds twelve cards and must discard two.
+    /// The declarer holds twelve cards and must discard two (thirteen and
+    /// three after drawing a card with the skat, "Drei drücken").
     Discarding,
     /// The skat is picked up and two cards are discarded: the declarer
     /// announces the game, without hand levels ([`Game::declare`]).
@@ -234,6 +237,29 @@ pub enum Event<C = Card> {
         /// The card put into the skat.
         gave: C,
     },
+    /// With the skat the declarer drew a card from a defender's hand
+    /// (house rule "Drei drücken"); he discards three.
+    CardDrawn {
+        /// The defender who held it.
+        seat: Seat,
+        /// The card, now in the declarer's hand.
+        card: C,
+    },
+    /// Of the declarer's three discards the lowest went back to the
+    /// defender the third card was drawn from ("Drei drücken",
+    /// [`rules::returned_discard`]).
+    CardReturned {
+        /// The defender who gets it.
+        seat: Seat,
+        /// The card.
+        card: C,
+    },
+    /// The declarer named what the next defender who leads must lead, if
+    /// he can (house rule "Lockvogel").
+    LeadDemanded {
+        /// What must be led.
+        suit: LeadSuit,
+    },
     /// A card of the declarer's hand was repainted into another suit for
     /// this game (consumable "Kreide"): `new` replaces `old` everywhere.
     CardChalked {
@@ -313,6 +339,17 @@ pub enum GameError<C = Card> {
         /// The rejected card.
         card: C,
     },
+    /// A lead was demanded ("Lockvogel") and the card does not meet it
+    /// although the seat holds one that does.
+    MustLeadDemanded {
+        /// The rejected card.
+        card: C,
+        /// What must be led.
+        suit: LeadSuit,
+    },
+    /// No lead can be demanded now: not while playing, one is already
+    /// waiting, or trump in a Null game.
+    InvalidLeadDemand,
 }
 
 impl<C: fmt::Display> fmt::Display for GameError<C> {
@@ -336,6 +373,10 @@ impl<C: fmt::Display> fmt::Display for GameError<C> {
             }
             GameError::InvalidSkatSwap => f.write_str("the skat cannot be swapped with"),
             GameError::DiscardForbidden { card } => write!(f, "{card} must not be discarded"),
+            GameError::MustLeadDemanded { card, suit } => {
+                write!(f, "{card} does not meet the demanded lead {suit:?}")
+            }
+            GameError::InvalidLeadDemand => f.write_str("no lead can be demanded now"),
         }
     }
 }
@@ -441,7 +482,24 @@ pub struct Game<C = Card> {
     /// The defenders see each other's hands (boss "Die Zwillinge").
     #[serde(default)]
     defenders_open: bool,
+    /// The card the declarer drew from a defender with the skat ("Drei
+    /// drücken") and who held it.
+    #[serde(default = "no_card", skip_serializing_if = "Option::is_none")]
+    drawn: Option<(Seat, C)>,
+    /// The discard that went back to that defender ("Drei drücken").
+    #[serde(default = "no_card", skip_serializing_if = "Option::is_none")]
+    returned: Option<(Seat, C)>,
+    /// What the next defender who leads must lead, if he can
+    /// ("Lockvogel"). Used up by that lead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lead_demand: Option<LeadSuit>,
     log: Vec<Event<C>>,
+}
+
+/// Default of the optional card fields of saves from before them (without a
+/// `C: Default` bound, which a derived default would ask for).
+const fn no_card<C>() -> Option<(Seat, C)> {
+    None
 }
 
 impl Game<Card> {
@@ -556,6 +614,9 @@ impl<C: PlayingCard> Game<C> {
             card_points: [0; 3],
             conceded: None,
             defenders_open: false,
+            drawn: None,
+            returned: None,
+            lead_demand: None,
             log,
         }
     }
@@ -614,10 +675,46 @@ impl<C: PlayingCard> Game<C> {
         &self.in_play
     }
 
-    /// The declarer's original ten cards plus the skat.
+    /// The declarer's original ten cards plus the skat: the twelve cards
+    /// the Spitzen are counted over. With "Drei drücken" the card drawn
+    /// from a defender joins them while discarding (thirteen), and after
+    /// the discard they are the ten cards kept plus the skat.
     #[must_use]
     pub fn declarer_cards(&self) -> &[C] {
         &self.declarer_cards
+    }
+
+    /// The card the declarer drew from a defender with the skat and who
+    /// held it ("Drei drücken"), once drawn.
+    #[must_use]
+    pub fn drawn(&self) -> Option<(Seat, C)> {
+        self.drawn
+    }
+
+    /// The discard that went back to a defender ("Drei drücken"), once
+    /// discarded.
+    #[must_use]
+    pub fn returned(&self) -> Option<(Seat, C)> {
+        self.returned
+    }
+
+    /// Cards the declarer must discard now: two, three after drawing a
+    /// card with the skat ("Drei drücken"), none outside
+    /// [`Phase::Discarding`].
+    #[must_use]
+    pub fn discard_count(&self) -> usize {
+        match (self.phase, self.drawn) {
+            (Phase::Discarding, Some(_)) => 3,
+            (Phase::Discarding, None) => 2,
+            _ => 0,
+        }
+    }
+
+    /// What the next defender who leads must lead, while a demand waits
+    /// ("Lockvogel").
+    #[must_use]
+    pub fn lead_demand(&self) -> Option<LeadSuit> {
+        self.lead_demand
     }
 
     /// The declaration, once made.
@@ -714,14 +811,24 @@ impl<C: PlayingCard> Game<C> {
     }
 
     /// Cards `seat` may play right now. Empty unless it is that seat's turn.
+    /// A defender who leads while a lead is demanded ("Lockvogel") must
+    /// meet it if he can ([`rules::legal_leads`]).
     #[must_use]
     pub fn legal_moves(&self, seat: Seat) -> Vec<C> {
         match (self.current_seat(), self.declaration) {
-            (Some(current), Some(declaration)) if current == seat => {
-                rules::legal_moves(declaration.game(), self.hand(seat), self.lead_card())
-            }
+            (Some(current), Some(declaration)) if current == seat => match self.demand_for(seat) {
+                Some(demand) => rules::legal_leads(declaration.game(), self.hand(seat), demand),
+                None => rules::legal_moves(declaration.game(), self.hand(seat), self.lead_card()),
+            },
             _ => Vec::new(),
         }
+    }
+
+    /// The demand `seat` has to meet with its next card: only a defender
+    /// leading a trick while one waits.
+    fn demand_for(&self, seat: Seat) -> Option<LeadSuit> {
+        self.lead_demand
+            .filter(|_| !seat.is_declarer() && self.trick.is_empty())
     }
 
     /// What `seat` knows during play. `None` outside [`Phase::Playing`].
@@ -818,6 +925,35 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
+    /// Pick up the skat and draw `card` from the hand of the defender
+    /// `from` as a third card (house rule "Drei drücken", DESIGN 8.1): the
+    /// declarer holds thirteen cards and discards three
+    /// ([`Game::discard_three`]); the lowest of them goes back to `from`.
+    pub fn pick_up_skat_drawing(
+        &mut self,
+        from: Seat,
+        card: C,
+    ) -> Result<Vec<Event<C>>, GameError<C>> {
+        if self.phase != Phase::Declaring {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        if from.is_declarer() || !self.hand(from).contains(&card) {
+            return Err(GameError::CardNotInHand { seat: from, card });
+        }
+        let mut events = self.pick_up_skat()?;
+        self.hands[from.index()].retain(|&c| c != card);
+        let hand = &mut self.hands[Seat::DECLARER.index()];
+        hand.push(card);
+        hand.sort();
+        self.declarer_cards.push(card);
+        self.declarer_cards.sort();
+        self.drawn = Some((from, card));
+        let drawn = Event::CardDrawn { seat: from, card };
+        self.log.push(drawn.clone());
+        events.push(drawn);
+        Ok(events)
+    }
+
     /// Before the declaration: replace the card `old` of the declarer's hand
     /// by `new` for the rest of the game (consumable "Kreide" repaints its
     /// suit). The card is replaced wherever the game keeps it (hand, the
@@ -849,6 +985,9 @@ impl<C: PlayingCard> Game<C> {
         // While discarding, the picked-up skat cards are also still named
         // in the skat.
         for c in self.skat.iter_mut().filter(|c| **c == old) {
+            *c = new;
+        }
+        if let Some((_, c)) = self.drawn.as_mut().filter(|(_, c)| *c == old) {
             *c = new;
         }
         let events = vec![Event::CardChalked { old, new }];
@@ -925,7 +1064,12 @@ impl<C: PlayingCard> Game<C> {
             return Err(GameError::WrongPhase { phase: self.phase });
         }
         let hand = &self.hands[Seat::DECLARER.index()];
-        if cards[0] == cards[1] || !hand.contains(&cards[0]) || !hand.contains(&cards[1]) {
+        // After drawing a third card ("Drei drücken") three go.
+        if self.drawn.is_some()
+            || cards[0] == cards[1]
+            || !hand.contains(&cards[0])
+            || !hand.contains(&cards[1])
+        {
             return Err(GameError::InvalidDiscard { cards });
         }
         if !rules::valid_discard(hand, cards) {
@@ -949,6 +1093,84 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
+    /// Discard three of the thirteen cards after drawing a card with the
+    /// skat ("Drei drücken"): the lowest of them
+    /// ([`rules::returned_discard`]) goes back to the defender the card
+    /// was drawn from, the other two into the skat, where they count for
+    /// the declarer. The Spitzen are counted over the ten cards kept plus
+    /// the skat. Then the game waits for the declaration.
+    pub fn discard_three(&mut self, cards: [C; 3]) -> Result<Vec<Event<C>>, GameError<C>> {
+        if self.phase != Phase::Discarding {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        let invalid = GameError::InvalidDiscard {
+            cards: [cards[0], cards[1]],
+        };
+        let Some((from, _)) = self.drawn else {
+            return Err(invalid);
+        };
+        let hand = &self.hands[Seat::DECLARER.index()];
+        let distinct = cards[0] != cards[1] && cards[0] != cards[2] && cards[1] != cards[2];
+        if !distinct || cards.iter().any(|c| !hand.contains(c)) {
+            return Err(invalid);
+        }
+        if !rules::valid_discard_of(hand, &cards) {
+            let card = cards
+                .iter()
+                .copied()
+                .find(|c| c.no_discard())
+                .unwrap_or(cards[0]);
+            return Err(GameError::DiscardForbidden { card });
+        }
+        let back = rules::returned_discard(cards);
+        let mut skat = cards.iter().copied().filter(|&c| c != back);
+        let (Some(first), Some(second)) = (skat.next(), skat.next()) else {
+            return Err(invalid);
+        };
+        let skat = [first, second];
+        self.hands[Seat::DECLARER.index()].retain(|c| !cards.contains(c));
+        let defender = &mut self.hands[from.index()];
+        defender.push(back);
+        defender.sort();
+        self.skat = skat;
+        let mut declarer_cards = self.hands[Seat::DECLARER.index()].clone();
+        declarer_cards.extend(skat);
+        declarer_cards.sort();
+        self.declarer_cards = declarer_cards;
+        self.returned = Some((from, back));
+        self.phase = if self.declaration.is_some() {
+            Phase::Playing
+        } else {
+            Phase::DeclaringAfterSkat
+        };
+        let events = vec![
+            Event::Discarded { cards: skat },
+            Event::CardReturned {
+                seat: from,
+                card: back,
+            },
+        ];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
+    /// The declarer names what the next defender who leads must lead, if
+    /// he can (house rule "Lockvogel"). Only while playing and while no
+    /// demand waits; no trump in Null. The run decides how often a game
+    /// allows it.
+    pub fn demand_lead(&mut self, suit: LeadSuit) -> Result<Vec<Event<C>>, GameError<C>> {
+        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        };
+        if self.lead_demand.is_some() || !LeadSuit::options(declaration.game()).contains(&suit) {
+            return Err(GameError::InvalidLeadDemand);
+        }
+        self.lead_demand = Some(suit);
+        let events = vec![Event::LeadDemanded { suit }];
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
     /// Play a card. Returns the events this caused: the card, possibly the
     /// completed trick, possibly the finished game.
     pub fn play(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
@@ -967,6 +1189,13 @@ impl<C: PlayingCard> Game<C> {
             {
                 return Err(GameError::MustFollowSuit { card, lead });
             }
+        }
+        if let Some(suit) = self.demand_for(seat) {
+            if !rules::legal_leads(declaration.game(), self.hand(seat), suit).contains(&card) {
+                return Err(GameError::MustLeadDemanded { card, suit });
+            }
+            // The demand is used up by this lead, met or not.
+            self.lead_demand = None;
         }
 
         self.hands[seat.index()].retain(|&c| c != card);

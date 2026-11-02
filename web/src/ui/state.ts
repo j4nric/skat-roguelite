@@ -90,6 +90,8 @@ export interface UiState {
   omaPick: boolean;
   /** Skat card picked to take in a skat swap; null takes the core's first. */
   swapTake: number | null;
+  /** "Lockvogel": the suit picker is open. */
+  lurePick: boolean;
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
   /** The opponent whose move the core is computing (thought bubble). */

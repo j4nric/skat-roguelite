@@ -55,6 +55,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
 | Skat aufnehmen | `pick_up_skat` | |
 | Drücken | `discard` | Die zwei Karten, die in den Skat gelegt werden |
+| Drei drücken (dritte Karte vom linken Gegner, drei drücken, einmal pro Serie) | `discard_three` | Effekt `DiscardThree`, Regel `GameRules::discard_three`, verbraucht `Series::discard_three_used`, frei `Run::discard_three_ready` (Sicht `discard_three_ready`); `Game::pick_up_skat_drawing`, `Game::discard_three`, `Game::drawn`, `Game::returned`, `Game::discard_count`; Ereignisse `CardDrawn`, `CardReturned`; Aktion `RunAction::DiscardThree`; Sicht `GameView::discard_count`, `CardView::drawn_from`, `RevealSource::Returned`. Welche Karte zurückgeht: `rules::returned_discard`; Ramponiert bei drei: `valid_discard_of`, `discardable_of` |
+| Ausspiel vorgeben (Lockvogel) | `lead_demand` | `rules::LeadSuit` (`Trump` oder `Suit(Suit)`, `options`, `matches`), `rules::legal_leads`; Effekt `DemandLead(n)`, Regel `GameRules::lead_demands`, gezählt `ActiveGame::lead_demands_used`; `Game::demand_lead`, `Game::lead_demand`; Ereignis `LeadDemanded`; Aktion `RunAction::DemandLead`; Sicht `can_demand_lead`, `lead_demand_options`, `lead_demand`; Fehler `MustLeadDemanded`, `InvalidLeadDemand`, `NoLeadDemandLeft` |
 | Skattausch (Oma, Opa) | `skat_swap` | `GameRules::skat_swaps` (Liste von Filtern, je einer pro Figur und Serie), `Series::skat_swaps_taken`, Sicht `skat_swap_cards`, Aktion `TakeFromSkat { give, take }` |
 | Ausspielen | `lead` | Erste Karte eines Stichs |
 | Bedienen | `follow_suit` | |
@@ -124,6 +126,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Schnaps (Gruppe von Verbrauchsgegenständen) | `ConsumableCategory::Schnapps` | Feld `category` an `ConsumableDef` und `ConsumableInfo`; sonst `Item` |
 | Wirkung aufs nächste angesagte Spiel (Doppelkorn, Magenbitter) | `NextGameEffect` | `Multiply(n)`, `SingleLoss`; Aktion `ConsumableAction::NextGame`, wartend `Run::pending_next_game` |
 | Skat ansehen (Kurzer) | `PeekSkat`, `SkatPeeked` | Feld `ActiveGame::skat_peeked`, Sicht `GameView::skat_peek` |
+| Skatkarte zeigen (Spickzettel) | `skat_shown` | Effekt `RevealSkatCard(n)` (Information, bei der Ansage eines Handspiels), Feld `ActiveGame::skat_shown`, Run-Ereignis `SkatCardShown`, Sicht `GameView::skat_shown` |
 | Umgemalte Karte (Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
 | Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, Magenbitter setzt 1 |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
@@ -165,7 +168,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Endboss | `final_boss` | „Der Alte“, Regeln nacheinander: `rotation` |
 | Regel des Bosses in diesem Spiel | `boss_rule` | Beim Alten wechselt sie pro Spiel |
 | Schummeln (Boss-Regel) | `is_cheat` | Zwillinge, Revolutionär; abgeschaltet durch `NoCheating` |
-| Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler; abgeschaltet durch `DisableInformation` |
+| Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler, Spickzettel; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
 | Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig, Bierfleck, Attrappe) oder `Kibitz`; Feld `RevealedCard::source` |
@@ -303,6 +306,9 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Bubenparade | `jack_parade` |
 | Luschenkönig | `blank_king` (Lusche = `blank`, nicht Blanko) |
 | Stichfest | `watertight` |
+| Drei drücken | `three_discard` (Freischaltung `ten_runs`, „Stammkunde“) |
+| Spickzettel | `crib_sheet` |
+| Lockvogel | `decoy` |
 
 ## Kartennotation
 

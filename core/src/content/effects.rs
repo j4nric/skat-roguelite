@@ -340,6 +340,24 @@ pub enum Effect {
     /// Null and Ramsch keep the printed card (DESIGN 4.4). Card
     /// modifications only, passive only.
     HonoraryJack,
+    /// Lever Augen and Spitzen ("Drei drücken", DESIGN 8.1): once per
+    /// series, at the first pickup of the skat, the player also draws a
+    /// random card from the hand of the left defender, holds thirteen
+    /// cards and discards three. The lowest
+    /// of the three goes back to that defender
+    /// ([`crate::rules::returned_discard`]), the other two into the skat.
+    /// Several sources still draw one card. Passive only.
+    DiscardThree,
+    /// Lever Zählen ("Spickzettel"): in a hand game, after the
+    /// declaration, the player sees this many cards of the untouched skat.
+    /// An information effect. On declare only; nothing once the skat is
+    /// picked up.
+    RevealSkatCard(u32),
+    /// Lever Stichgewinn ("Lockvogel"): this many times per game the
+    /// player may name what the next defender who leads must lead, a suit
+    /// or trump, if he can ([`crate::rules::LeadSuit`]). Passive only;
+    /// several sources add up.
+    DemandLead(u32),
 }
 
 impl Effect {
@@ -354,7 +372,7 @@ impl Effect {
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_) => stage.in_game(),
-            Effect::MultiplySkatPoints(_) => stage == Stage::OnDeclare,
+            Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
             Effect::SchneiderBonusFromTrick => stage == Stage::OnTrickEnd,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
@@ -376,6 +394,8 @@ impl Effect {
             Effect::NeverWins
             | Effect::NoDiscard
             | Effect::HonoraryJack
+            | Effect::DiscardThree
+            | Effect::DemandLead(_)
             | Effect::ShowCount
             | Effect::ShopDiscount(_)
             | Effect::SeriesSkatSwap(_)
@@ -400,6 +420,7 @@ impl Effect {
                 | Effect::PeekDefenderCards(_)
                 | Effect::RevealDefenderHand(_)
                 | Effect::ShowCount
+                | Effect::RevealSkatCard(_)
         )
     }
 

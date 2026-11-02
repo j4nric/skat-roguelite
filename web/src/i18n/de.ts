@@ -28,6 +28,9 @@ export const de = {
       InvalidCharacter: 'Diesen Charakter gibt es nicht.',
       UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
+      NoLeadDemandLeft: 'Der Lockvogel hat in diesem Spiel schon gelockt.',
+      InvalidLeadDemand: 'Das kannst du jetzt nicht verlangen.',
+      MustLeadDemanded: 'Der Lockvogel verlangt eine andere Farbe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
       NoPassesLeft: 'Du kannst nicht mehr einmischen.',
@@ -184,6 +187,8 @@ export const de = {
     blank: 'Blanko',
     back: 'Verdeckte Karte',
     fromSkat: 'Skat',
+    /** "Drei drücken": the card drawn from this defender. */
+    fromDefender: 'von {name}',
     mods: 'Gezinkt: {mods}',
     curse: 'Fluch',
     honoraryJack: 'Unter ehrenhalber',
@@ -290,6 +295,8 @@ export const de = {
     choiceKind: 'Skat oder Hand',
     skatZone: 'Skat zum Drücken',
     skatZoneCount: 'Skat · {n} von 2',
+    /** "Drei drücken": three cards on the table. */
+    skatZoneCountThree: 'Drei drücken (1×/Serie) · {n} von 3',
     backToHand: '{card}, zurück auf die Hand',
     /** "Reue" right after an Einmischen: name of the Schnaps from the content. */
     regret: '{name}: altes Blatt zurück',
@@ -322,6 +329,21 @@ export const de = {
     skatPeekShort: 'Skat',
     discardHint: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
     discardHintDeclared: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
+    /** "Drei drücken": which of the three goes back. */
+    discardHintThree: 'Drei Karten auf den Tisch: Die mit den wenigsten Augen bekommt {name} zurück, zwei drückst du.',
+    /** "Spickzettel": the skat of a hand game with the card it showed. */
+    crib: 'Skat',
+    cribAria: 'Spickzettel: Im Skat liegt {cards}. Antippen zeigt die Karte groß.',
+    /** "Lockvogel". */
+    lure: 'Lockvogel',
+    lureTitle: 'Bestimme, was der nächste Gegner ausspielen muss.',
+    lurePick: 'Was muss der Gegner ausspielen?',
+    lureTrump: 'Trumpf',
+    lureBadge: 'Lockvogel: {suit}',
+    lureCancel: 'Abbrechen',
+    /** A card the player gave back ("Drei drücken"). */
+    returned: 'von dir',
+    returnedHint: 'von dir zurückgegeben',
     declareAfterSkat: 'Skat gedrückt. Sag dein Spiel an.',
     discard: 'Drücken',
     yourTurn: 'Du bist dran',
@@ -398,6 +420,10 @@ export const de = {
     cardMarked: '{card} gezinkt: {mod}.',
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
+    cardDrawn: 'Drei drücken: {card} von {name} kommt dazu.',
+    cardReturned: '{card} geht an {name} zurück.',
+    skatShown: 'Spickzettel: {card} liegt im Skat.',
+    leadDemanded: 'Lockvogel: Der nächste Gegner spielt {suit} aus, wenn er kann.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -517,6 +543,13 @@ export const de = {
   relicKind: {
     HouseRule: 'Hausregel',
     Regular: 'Figur',
+  },
+
+  hud: {
+    /** Note on the chip of a relic that works once per series ("Drei drücken"). */
+    oncePerSeries: '1×/Serie',
+    onceFree: 'In dieser Serie noch frei: beim nächsten Aufnehmen des Skats',
+    onceUsed: 'In dieser Serie schon genutzt',
   },
 
   evening: {
@@ -921,6 +954,17 @@ export const de = {
     schneider_bock: 'Schneiderbock: das nächste Spiel zählt doppelt',
     streak_start: 'Glückssträhne: zuletzt gewonnen',
     streak: 'Glückssträhne: jeder Sieg zählt doppelt',
+  } as Record<string, string>,
+
+  /**
+   * How a relic works in detail, when its short text (as voted) leaves it
+   * out: a second paragraph on its info card.
+   */
+  relicRules: {
+    three_discard:
+      'Einmal pro Serie, beim ersten Aufnehmen des Skats: Eine zufällige Karte des linken Gegners kommt dazu. Du hältst 13 Karten und drückst drei: Die mit den wenigsten Augen bekommt er zurück, die zwei anderen liegen im Skat und zählen für dich.',
+    crib_sheet: 'Nach der Ansage eines Handspiels liegt eine der zwei Skatkarten offen neben dem Stich. Nur zum Wissen, sie zählt wie immer.',
+    decoy: 'Wenn du dran bist, wählst du Trumpf oder eine Farbe. Der nächste Gegner, der einen Stich eröffnet, muss sie ausspielen, wenn er sie hat; sonst spielt er frei aus.',
   } as Record<string, string>,
 
   counters: {

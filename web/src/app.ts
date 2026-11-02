@@ -71,7 +71,7 @@ import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
-import { renderTable } from './ui/table';
+import { discardNeed, leadSuitName, renderTable } from './ui/table';
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
 function errorCode(err: unknown): string | null {
@@ -152,6 +152,9 @@ function nextPaint(): Promise<void> {
 /** Toasts waiting at most; older ones are dropped. */
 const TOAST_QUEUE = 3;
 
+/** Where a toast shows: the middle of the screen, or above the Stammgäste. */
+type ToastPlace = 'middle' | 'top';
+
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
 export class App {
@@ -170,6 +173,7 @@ export class App {
     pickNullRisk: null,
     omaPick: false,
     swapTake: null,
+    lurePick: false,
     peekTrick: false,
     thinking: null,
     quip: null,
@@ -192,7 +196,7 @@ export class App {
   private fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
-  private toasts: string[] = [];
+  private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
@@ -737,6 +741,7 @@ export class App {
     this.ui.pickNullRisk = null;
     this.ui.omaPick = false;
     this.ui.swapTake = null;
+    this.ui.lurePick = false;
     this.ui.peekTrick = false;
   }
 
@@ -747,7 +752,8 @@ export class App {
   private skatOnTable(): number[] {
     const game = this.ui.view?.game;
     if (game?.phase !== 'Discarding') return [];
-    return game.hand.filter((c) => c.from_skat && c.discardable).map((c) => c.id);
+    // "Drei drücken": the card drawn from a defender lies there too.
+    return game.hand.filter((c) => (c.from_skat || c.drawn_from != null) && c.discardable).map((c) => c.id);
   }
 
   // -------------------------------------------------------------------------
@@ -1015,6 +1021,12 @@ export class App {
         this.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
         continue;
       }
+      if ('SkatCardShown' in ev) {
+        // "Spickzettel": the card lies face up beside the trick from now on.
+        this.wiggleSource(ev.SkatCardShown.source);
+        this.showToast(t(de.toast.skatShown, { card: cardName(ev.SkatCardShown.card.kind) }), 'top');
+        continue;
+      }
       if ('SkatPointsRaised' in ev) {
         // "Skatpfleger": the discards count more, say so at the relic.
         const { source, card_points } = ev.SkatPointsRaised;
@@ -1123,6 +1135,36 @@ export class App {
       await this.pause(DELAY.notice);
       return;
     }
+    if ('CardDrawn' in ev) {
+      const { seat, card } = ev.CardDrawn;
+      if (anim) {
+        anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
+        this.render();
+      }
+      this.showToast(t(de.toast.cardDrawn, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
+      const from = this.rectOf(`.opp[data-seat="${seat}"]`);
+      const el = this.screenEl.querySelector(`.skat-zone [data-id="${card.id}"], .hand-card[data-id="${card.id}"]`);
+      if (from && el && !this.fastForward) flyIn(el, from, { ms: 360 });
+      sound.play('card');
+      await this.pause(DELAY.notice);
+      return;
+    }
+    if ('CardReturned' in ev) {
+      const { seat, card } = ev.CardReturned;
+      if (anim) {
+        anim.hand = anim.hand.filter((c) => c.id !== card.id);
+        anim.handSizes[0] = anim.hand.length;
+        anim.handSizes[seat] = (anim.handSizes[seat] ?? 0) + 1;
+        this.render();
+      }
+      this.showToast(t(de.toast.cardReturned, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
+      return;
+    }
+    if ('LeadDemanded' in ev) {
+      this.showToast(t(de.toast.leadDemanded, { suit: leadSuitName(ev.LeadDemanded.suit) }), 'top');
+      sound.play('knock');
+      return;
+    }
     if ('Discarded' in ev && anim) {
       const gone = ev.Discarded.cards.map((c) => c.id);
       anim.hand = anim.hand.filter((c) => !gone.includes(c.id));
@@ -1140,7 +1182,9 @@ export class App {
         anim.handSizes[0] = anim.hand.length;
         // The skat stays on the table, face up: the cards to press lie there.
         const loose = new Set(g.hand.filter((c) => c.discardable).map((c) => c.id));
-        if (g.phase === 'Discarding') this.ui.selected = ev.SkatPickedUp.skat.map((c) => c.id).filter((id) => loose.has(id));
+        // "Drei drücken": the card drawn from a defender joins them on the table.
+        const drawn = g.hand.filter((c) => c.drawn_from != null).map((c) => c.id);
+        if (g.phase === 'Discarding') this.ui.selected = [...ev.SkatPickedUp.skat.map((c) => c.id), ...drawn].filter((id) => loose.has(id));
       }
       if (g && this.ui.view?.game) {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
@@ -1381,20 +1425,33 @@ export class App {
   }
 
   /** Show a toast; while one is up, the next ones wait their turn. */
-  private showToast(text: string): void {
+  /**
+   * A short message. `top`: above the Stammgäste, for messages while
+   * cards lie on the felt (Drücken, the Ansage, the trick) that must stay
+   * readable.
+   */
+  private showToast(text: string, place: ToastPlace = 'middle'): void {
     if (this.toastTimer !== undefined) {
-      this.toasts.push(text);
+      this.toasts.push({ text, place });
       if (this.toasts.length > TOAST_QUEUE) this.toasts.shift();
       return;
     }
     this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
+    this.toastEl.classList.toggle('is-top', place === 'top');
+    this.toastEl.style.top = '';
+    if (place === 'top') {
+      // The toast's bottom edge sits just above the opponents' row.
+      const opps = this.screenEl.querySelector('.opponents')?.getBoundingClientRect();
+      const height = this.toastEl.querySelector('.toast')?.getBoundingClientRect().height ?? 0;
+      if (opps) this.toastEl.style.top = `${Math.round(Math.max(height + 4, opps.top - 4))}px`;
+    }
     // Shorter while others wait.
     const ms = this.toasts.length ? DELAY.toast * 0.7 : DELAY.toast;
     this.toastTimer = window.setTimeout(() => {
       this.toastTimer = undefined;
       this.toastEl.innerHTML = '';
       const next = this.toasts.shift();
-      if (next !== undefined) this.showToast(next);
+      if (next !== undefined) this.showToast(next.text, next.place);
     }, ms);
   }
 
@@ -1793,14 +1850,34 @@ export class App {
         // A tap moves a card between hand and table (the fallback for dragging).
         const id = num('id');
         const sel = this.ui.selected;
+        const need = view.game ? discardNeed(view.game) : 2;
         if (sel.includes(id)) this.moveCards(sel.filter((x) => x !== id), id, el.getBoundingClientRect());
-        else if (sel.length < 2) this.moveCards([...sel, id], id, el.getBoundingClientRect());
-        else this.moveCards([sel[1] ?? id, id], id, el.getBoundingClientRect());
+        else if (sel.length < need) this.moveCards([...sel, id], id, el.getBoundingClientRect());
+        else this.moveCards([...sel.slice(1), id], id, el.getBoundingClientRect());
         return;
       }
       case 'discard': {
-        const [a, b] = this.ui.selected;
-        if (a !== undefined && b !== undefined) void this.act({ Discard: [a, b] });
+        const sel = this.ui.selected;
+        const need = view.game ? discardNeed(view.game) : 2;
+        const [a, b, c] = sel;
+        if (sel.length !== need || a === undefined || b === undefined) return;
+        if (need === 3 && c !== undefined) void this.act({ DiscardThree: [a, b, c] });
+        else void this.act({ Discard: [a, b] });
+        return;
+      }
+      case 'lure':
+        this.ui.lurePick = true;
+        this.render();
+        return;
+      case 'lure-cancel':
+        this.ui.lurePick = false;
+        this.render();
+        return;
+      case 'lure-suit': {
+        const lead = el.dataset.lead;
+        const suit = view.game?.lead_demand_options?.find((o) => (o === 'Trump' ? 'Trump' : o.Suit) === lead);
+        this.ui.lurePick = false;
+        if (suit) void this.act({ DemandLead: suit });
         return;
       }
       case 'play':
@@ -1892,9 +1969,10 @@ export class App {
     }
     if (where !== 'skat' || sel.includes(id)) return;
     const target = Number(over?.closest<HTMLElement>('.skat-card')?.dataset.id ?? '-1');
+    const need = discardNeed(this.ui.view.game);
     if (sel.includes(target)) this.moveCards(sel.map((x) => (x === target ? id : x)), id, at, target);
-    else if (sel.length < 2) this.moveCards([...sel, id], id, at);
-    else this.moveCards([sel[1] ?? id, id], id, at);
+    else if (sel.length < need) this.moveCards([...sel, id], id, at);
+    else this.moveCards([...sel.slice(1), id], id, at);
   }
 
   /**

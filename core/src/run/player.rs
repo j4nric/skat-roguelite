@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::RunEvent;
 use crate::deck::DealtCard;
 use crate::game::{CompletedTrick, Event, Seat};
-use crate::rules::{Declaration, GameValue, Matadors, Outcome, SeatTotals};
+use crate::rules::{Declaration, GameValue, LeadSuit, Matadors, Outcome, SeatTotals};
 
 /// A run event as the player may see it.
 pub type PlayerEvent = RunEvent<PlayerGameEvent>;
@@ -92,6 +92,28 @@ pub enum PlayerGameEvent {
         /// The card put into the skat.
         gave: DealtCard,
     },
+    /// With the skat the player drew a card from a defender ("Drei
+    /// drücken"); it is in his hand now.
+    CardDrawn {
+        /// The defender who held it.
+        seat: Seat,
+        /// The card.
+        card: DealtCard,
+    },
+    /// The lowest of the player's three discards went back to the defender
+    /// ("Drei drücken").
+    CardReturned {
+        /// The defender who gets it.
+        seat: Seat,
+        /// The card.
+        card: DealtCard,
+    },
+    /// The player named what the next defender who leads must lead
+    /// ("Lockvogel").
+    LeadDemanded {
+        /// What must be led.
+        suit: LeadSuit,
+    },
     /// The player repainted a card of his hand for this game ("Kreide").
     CardChalked {
         /// The card as it was.
@@ -148,6 +170,9 @@ impl PlayerGameEvent {
             },
             Event::SkatSwapped { took, gave } => PlayerGameEvent::SkatSwapped { took, gave },
             Event::CardChalked { old, new } => PlayerGameEvent::CardChalked { old, new },
+            Event::CardDrawn { seat, card } => PlayerGameEvent::CardDrawn { seat, card },
+            Event::CardReturned { seat, card } => PlayerGameEvent::CardReturned { seat, card },
+            Event::LeadDemanded { suit } => PlayerGameEvent::LeadDemanded { suit },
             Event::GameFinished {
                 outcome,
                 matadors,
@@ -277,6 +302,7 @@ impl RunEvent {
             RunEvent::RelicSwapped { old, new } => RunEvent::RelicSwapped { old, new },
             RunEvent::NextGameDoubled { factor } => RunEvent::NextGameDoubled { factor },
             RunEvent::SkatPeeked { skat } => RunEvent::SkatPeeked { skat },
+            RunEvent::SkatCardShown { source, card } => RunEvent::SkatCardShown { source, card },
             RunEvent::RunWon {
                 character,
                 length,
