@@ -62,6 +62,16 @@
 //! away its cheapest side card. It never discards a card that must not be discarded
 //! ("Ramponiert") while it has others.
 //!
+//! "Drei drücken": with thirteen cards the bot chooses its game as with
+//! twelve and discards three: the two it would discard, then the one it
+//! would discard next (the run gives the lowest of them back).
+//!
+//! "Lockvogel" ([`RunBot::lead_demand`]): on its own turn, as soon as it
+//! holds the highest card still out in a side suit the defenders still
+//! hold (or the highest trump while trumps are out), it names that suit
+//! (side suits first, the most Augen still out); in Null a suit in which
+//! its lowest card is below every card still out.
+//!
 //! The bot never looks at the Zielwert or the series account. The
 //! simulator's success curve (`--curve`) relies on that.
 //!
@@ -74,7 +84,10 @@ use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId};
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
-use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
+use crate::rules::{
+    Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, suit_strength,
+    trump_order_key,
+};
 
 /// How much the bot wants each relic, by the measured effect of the relic
 /// alone (`docs/balance/2026-11-01-m5-v1.md`: PIMC card play, relic from the
@@ -137,7 +150,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `blank_king` | 4 | +1.3, +1.9 |
 /// | `changeling` | 2 | +0.5, +2.4; -1.4 points per game (levels on lost Null games) |
 /// | `home_suit` | 1 | +0.1: the bot almost never plays three suit games in a row with one trump suit |
-pub const RELIC_VALUES: [(&str, u32); 43] = [
+pub const RELIC_VALUES: [(&str, u32); 46] = [
     ("every_bit_counts", 10),
     ("bock_round", 10),
     ("old_lady", 10),
@@ -181,6 +194,9 @@ pub const RELIC_VALUES: [(&str, u32); 43] = [
     ("blank_king", 4),
     ("changeling", 2),
     ("home_suit", 1),
+    ("three_discard", 6),
+    ("decoy", 3),
+    ("crib_sheet", 1),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
@@ -726,8 +742,8 @@ impl RunBot {
                     )?;
                     return Some(RunAction::Discard([a.id, b.id]));
                 }
-                let (_, [a, b]) = Self::after_skat(run, content)?;
-                Some(RunAction::Discard([a.id, b.id]))
+                let (_, discard) = Self::after_skat(run, content)?;
+                Some(Self::discard_action(&discard)?)
             }
             Phase::DeclaringAfterSkat => {
                 let (declaration, _) = Self::after_skat(run, content)?;
@@ -740,6 +756,14 @@ impl RunBot {
                 if !active.rules.skat_swaps.is_empty() {
                     if let Some(action) = Self::take_from_skat(run, content) {
                         return Some(action);
+                    }
+                }
+                if active.lead_demands_used < active.rules.lead_demands {
+                    if let Some(suit) = Self::lead_demand(run) {
+                        let action = RunAction::DemandLead(suit);
+                        if run.accepts(content, action.clone()) {
+                            return Some(action);
+                        }
                     }
                 }
                 let view = game.view(Seat::DECLARER)?;
@@ -865,12 +889,14 @@ impl RunBot {
     /// allow ([`RunBot::announcement`], ADR 0013: also after the skat,
     /// without Hand). With "Der Angeber" it is played only if that is
     /// Ouvert, otherwise Null Ouvert.
-    fn after_skat(run: &Run, content: &Content) -> Option<(Declaration, [DealtCard; 2])> {
+    fn after_skat(run: &Run, content: &Content) -> Option<(Declaration, Vec<DealtCard>)> {
         let active = run.game()?;
         let game = &active.game;
         let cards = game.declarer_cards();
         let deck = game.deck_cards();
-        let null_discard = Self::discard_for(cards, Declaration::null(NullRisk::Normal), deck)?;
+        let count = game.discard_count().max(2);
+        let null_discard =
+            Self::discard_n(cards, Declaration::null(NullRisk::Normal), deck, count)?;
         let null_hand: Vec<DealtCard> = cards
             .iter()
             .copied()
@@ -888,7 +914,7 @@ impl RunBot {
             Declaration::null(NullRisk::Normal)
         };
         let suit = DeclarerHeuristic.choose_game_after_skat(cards);
-        let suit_discard = Self::discard_for(cards, suit, deck)?;
+        let suit_discard = Self::discard_n(cards, suit, deck, count)?;
         let suit_hand: Vec<DealtCard> = cards
             .iter()
             .copied()
@@ -903,7 +929,7 @@ impl RunBot {
             }
             return Some((null, null_discard));
         }
-        if !Self::null_counts(run, content, Some(null_discard)) {
+        if !Self::null_counts(run, content, Some(&null_discard)) {
             return Some((suit, suit_discard));
         }
         let scoring = run.null_scoring(content);
@@ -922,7 +948,7 @@ impl RunBot {
     /// preview, which holds every hook certain for a win. "Der Schwarze
     /// Peter" (a won game counts only with Schneider) makes it 0. If the
     /// probe cannot declare Null, it counts.
-    fn null_counts(run: &Run, content: &Content, discard: Option<[DealtCard; 2]>) -> bool {
+    fn null_counts(run: &Run, content: &Content, discard: Option<&[DealtCard]>) -> bool {
         let Some(active) = run.game() else {
             return true;
         };
@@ -932,13 +958,10 @@ impl RunBot {
             Phase::Declaring if ouvert => NullRisk::OuvertHand,
             Phase::Declaring => NullRisk::Hand,
             Phase::Discarding => {
-                let Some([a, b]) = discard else {
+                let Some(action) = discard.and_then(Self::discard_action) else {
                     return true;
                 };
-                if probe
-                    .apply(content, RunAction::Discard([a.id, b.id]))
-                    .is_err()
-                {
+                if probe.apply(content, action).is_err() {
                     return true;
                 }
                 if ouvert {
@@ -960,6 +983,95 @@ impl RunBot {
         probe
             .value_preview(content)
             .is_none_or(|p| p.game_value > 0)
+    }
+
+    /// The action that discards `cards`: two, or three after drawing a card
+    /// with the skat ("Drei drücken").
+    fn discard_action(cards: &[DealtCard]) -> Option<RunAction> {
+        match *cards {
+            [a, b] => Some(RunAction::Discard([a.id, b.id])),
+            [a, b, c] => Some(RunAction::DiscardThree([a.id, b.id, c.id])),
+            _ => None,
+        }
+    }
+
+    /// `count` discards for `declaration` (two, or three with "Drei
+    /// drücken"): the two of [`RunBot::discard_for`], then for a third the
+    /// first of the two it would discard from the cards left.
+    fn discard_n(
+        cards: &[DealtCard],
+        declaration: Declaration,
+        deck: &[DealtCard],
+        count: usize,
+    ) -> Option<Vec<DealtCard>> {
+        let mut chosen: Vec<DealtCard> = Vec::with_capacity(count);
+        let mut left = cards.to_vec();
+        while chosen.len() < count {
+            let pair = Self::discard_for(&left, declaration, deck)?;
+            let take = (count - chosen.len()).min(2);
+            for card in pair.into_iter().take(take) {
+                left.retain(|&c| c != card);
+                chosen.push(card);
+            }
+        }
+        Some(chosen)
+    }
+
+    /// "Lockvogel": what to demand of the next defender lead, if anything
+    /// is worth it now (see the module docs). Counted from what the
+    /// declarer sees: unseen cards are those of the deck not in his hand,
+    /// not played and not in a skat he knows.
+    #[must_use]
+    pub fn lead_demand(run: &Run) -> Option<LeadSuit> {
+        let game = &run.game()?.game;
+        let view = game.view(Seat::DECLARER)?;
+        let declaration = game.declaration()?;
+        let trump = declaration.game();
+        let unseen = view.unseen_cards();
+        let hand = game.hand(Seat::DECLARER);
+        let options = LeadSuit::options(trump);
+        if declaration.is_null() {
+            return options.into_iter().find(|&suit| {
+                let low = hand
+                    .iter()
+                    .filter(|&&c| suit.matches(trump, c))
+                    .map(|&c| suit_strength(trump, c))
+                    .min();
+                let out: Vec<u8> = unseen
+                    .iter()
+                    .filter(|&&c| suit.matches(trump, c))
+                    .map(|&c| suit_strength(trump, c))
+                    .collect();
+                low.is_some_and(|low| out.len() >= 2 && out.iter().all(|&o| o > low))
+            });
+        }
+        let strength = |c: DealtCard| -> (u8, u8) {
+            trump_order_key(trump, c).map_or((0, suit_strength(trump, c)), |(s, e)| (s + 20, e))
+        };
+        let mut best: Option<(bool, u32, LeadSuit)> = None;
+        for suit in options {
+            let top = hand
+                .iter()
+                .copied()
+                .filter(|&c| suit.matches(trump, c))
+                .map(strength)
+                .max();
+            let out: Vec<DealtCard> = unseen
+                .iter()
+                .copied()
+                .filter(|&c| suit.matches(trump, c))
+                .collect();
+            let wins = top.is_some_and(|top| out.iter().all(|&c| strength(c) < top));
+            if !wins || out.len() < 2 {
+                continue;
+            }
+            let side = suit != LeadSuit::Trump;
+            let augen: u32 = out.iter().map(|c| c.card_points()).sum();
+            if best.is_none_or(|(s, a, _)| (side, augen) > (s, a)) {
+                best = Some((side, augen, suit));
+            }
+        }
+        best.map(|(_, _, suit)| suit)
     }
 
     /// The two discards for `declaration` from the twelve cards: the declarer

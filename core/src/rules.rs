@@ -310,9 +310,17 @@ pub fn legal_moves<C: PlayingCard>(game: GameType, hand: &[C], lead: Option<C>) 
 /// cards are left, and then as few of them as possible.
 #[must_use]
 pub fn valid_discard<C: PlayingCard>(hand: &[C], cards: [C; 2]) -> bool {
+    valid_discard_of(hand, &cards)
+}
+
+/// [`valid_discard`] for any number of discards ("Drei drücken": three
+/// from thirteen cards): as many cards that must not be discarded as the
+/// free cards of the hand leave room for, and no more.
+#[must_use]
+pub fn valid_discard_of<C: PlayingCard>(hand: &[C], cards: &[C]) -> bool {
     let free = hand.iter().filter(|c| !c.no_discard()).count();
     let forced = cards.iter().filter(|c| c.no_discard()).count();
-    forced <= 2usize.saturating_sub(free)
+    forced <= cards.len().saturating_sub(free)
 }
 
 /// Whether `card` from the declarer's twelve cards (`hand`) can go into the
@@ -321,10 +329,96 @@ pub fn valid_discard<C: PlayingCard>(hand: &[C], cards: [C; 2]) -> bool {
 /// two free cards are left.
 #[must_use]
 pub fn discardable<C: PlayingCard>(hand: &[C], card: C) -> bool {
-    hand.contains(&card)
-        && hand
-            .iter()
-            .any(|&other| other != card && valid_discard(hand, [card, other]))
+    discardable_of(hand, card, 2)
+}
+
+/// [`discardable`] when `count` cards are discarded together
+/// ([`valid_discard_of`]): a free card always, a card that must not be
+/// discarded only when fewer than `count` free cards are left.
+#[must_use]
+pub fn discardable_of<C: PlayingCard>(hand: &[C], card: C, count: usize) -> bool {
+    if count == 0 || hand.len() < count || !hand.contains(&card) {
+        return false;
+    }
+    !card.no_discard() || hand.iter().filter(|c| !c.no_discard()).count() < count
+}
+
+/// The card of three discards that goes back to the defender it was drawn
+/// from ("Drei drücken", DESIGN 8.1): the one with the fewest Augen; among
+/// equals a blank first, then the lowest printed rank (7, 8, 9, …), then
+/// the lowest suit (Karo, Herz, Pik, Kreuz). Fixed by the cards alone, so
+/// the player knows which of his three cards the defender gets.
+#[must_use]
+pub fn returned_discard<C: PlayingCard>(cards: [C; 3]) -> C {
+    let key = |c: &C| (c.card_points(), c.face().map(|f| (f.rank, f.suit)));
+    let [first, second, third] = cards;
+    let mut low = first;
+    for card in [second, third] {
+        if key(&card) < key(&low) {
+            low = card;
+        }
+    }
+    low
+}
+
+/// What the next lead of a defender must be when the declarer names it
+/// (house rule "Lockvogel", DESIGN 8.1): trump, or a suit without the
+/// cards that are trump in this game (a jack belongs to no suit in a suit
+/// game or Grand).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum LeadSuit {
+    /// Trump: every card that is trump in the game (not in Null).
+    Trump,
+    /// A suit: its cards that are not trump.
+    Suit(Suit),
+}
+
+impl LeadSuit {
+    /// The demands that make sense in `game`: trump first (not in Null),
+    /// then Kreuz, Pik, Herz, Karo without the trump suit of a suit game
+    /// (its cards are trump).
+    #[must_use]
+    pub fn options(game: GameType) -> Vec<LeadSuit> {
+        let mut options = Vec::with_capacity(5);
+        if game != GameType::Null {
+            options.push(LeadSuit::Trump);
+        }
+        for suit in Suit::ALL.into_iter().rev() {
+            if game != GameType::Suit(suit) {
+                options.push(LeadSuit::Suit(suit));
+            }
+        }
+        options
+    }
+
+    /// Whether `card` meets the demand in `game`. Blanks never do.
+    #[must_use]
+    pub fn matches<C: PlayingCard>(self, game: GameType, card: C) -> bool {
+        let Some(face) = card.face() else {
+            return false;
+        };
+        match self {
+            LeadSuit::Trump => is_trump(game, card),
+            LeadSuit::Suit(suit) => !is_trump(game, card) && face.suit == suit,
+        }
+    }
+}
+
+/// The cards from `hand` that may lead a trick under `demand`
+/// ("Lockvogel"): those that meet it, or every card when none does (then
+/// the lead is free).
+#[must_use]
+pub fn legal_leads<C: PlayingCard>(game: GameType, hand: &[C], demand: LeadSuit) -> Vec<C> {
+    let meeting: Vec<C> = hand
+        .iter()
+        .copied()
+        .filter(|&c| demand.matches(game, c))
+        .collect();
+    if meeting.is_empty() {
+        hand.to_vec()
+    } else {
+        meeting
+    }
 }
 
 // ---------------------------------------------------------------------------

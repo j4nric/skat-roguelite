@@ -584,4 +584,43 @@
             OnTrickEnd(when: All([FirstTrickOfDeclarer, Not(NullGame), Not(RamschGame)]), then: [SchneiderBonusFromTrick]),
         ],
     ),
+    // Wave 2b (M8): three relics that need new interactions.
+    //
+    // Lever Augen and Spitzen (bends the deal, DESIGN 8.1): picking up the
+    // skat, a random card of the left defender joins it. The player holds
+    // thirteen and discards three; the one with the fewest Augen goes back
+    // to that defender, the other two into the skat. 32 cards cannot give
+    // a three-card skat with ten cards for everyone, so the third card
+    // comes from the defender and one goes back.
+    (
+        id: "three_discard",
+        name: "Drei drücken",
+        text: "Du nimmst drei Karten aus einem größeren Talon und drückst drei.",
+        rarity: Rare,
+        price: 9,
+        passive: [DiscardThree],
+    ),
+    // Lever Zählen (information): after a hand declaration one card of the
+    // untouched skat is shown. Not in the Ramsch (nobody declares a hand
+    // game there), off against "Der Kiebitz-Mörder".
+    (
+        id: "crib_sheet",
+        name: "Spickzettel",
+        text: "Beim Handspiel siehst du nach der Ansage eine Skatkarte.",
+        rarity: Common,
+        price: 4,
+        hooks: [
+            OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [RevealSkatCard(1)]),
+        ],
+    ),
+    // Lever Stichgewinn: once per game the player names a suit or trump;
+    // the next defender who leads must lead it if he can.
+    (
+        id: "decoy",
+        name: "Lockvogel",
+        text: "Einmal pro Spiel bestimmst du, welche Farbe der Gegner ausspielen muss.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [DemandLead(1)],
+    ),
 ]
