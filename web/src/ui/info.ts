@@ -241,6 +241,34 @@ function choiceModel(key: string, view: RunView, arg: string): InfoModel | null 
   }
 }
 
+/**
+ * The pressed cards, face down in the corner of the felt while playing:
+ * the look at them shows them face up, each with its modifications.
+ */
+function pressedModel(key: string, view: RunView): InfoModel | null {
+  const skat = view.game?.skat;
+  if (!skat?.length) return null;
+  return {
+    key,
+    title: de.table.skat,
+    kind: de.table.pressedKind,
+    art: `<span class="info-pressed" data-testid="pressed-peek">${skat.map((c) => `<span class="card info-pressed-card" data-card-id="${c.id}">${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</span>`).join('')}</span>`,
+    facts: skat.map((c) => cardName(c.kind)),
+    sections: [
+      { text: de.table.pressedHint, status: [] },
+      ...skat.flatMap((c) =>
+        c.mods.map((m): InfoSection => ({
+          name: `${cardName(c.kind)}: ${contentName('card_mods', m)}`,
+          tag: isCurse(m) ? de.info.kinds.curse : de.info.kinds.cardMod,
+          curse: isCurse(m),
+          text: modText(m, c.mod_values?.[m] ?? 1) || de.info.unknownMod,
+          status: [],
+        })),
+      ),
+    ],
+  };
+}
+
 /** The content of the info card for a key, or null if it is not on screen any more. */
 export function infoModel(key: string, view: RunView | null, ui: UiState): InfoModel | null {
   if (!view) return null;
@@ -281,6 +309,8 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       return bossModel(key, view, arg, de.info.kinds.bossRule);
     case 'choice':
       return choiceModel(key, view, arg);
+    case 'pressed':
+      return pressedModel(key, view);
     default:
       return null;
   }

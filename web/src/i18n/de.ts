@@ -403,7 +403,12 @@ export const de = {
     worthFactor: '{base} × {levels} × {factor}',
     worthTitle: 'Grundwert × Gewinnstufen, so weit sicher. Gewonnen: {value}',
     skat: 'Gedrückt',
-    pressedAria: 'Gedrückt: {cards}. Antippen zeigt die Karte groß.',
+    pressedAria: 'Gedrückt: {n} Karten, verdeckt. Antippen zeigt sie.',
+    /** The look at the pressed cards (info card). */
+    pressedKind: 'Dein Skat',
+    pressedHint: 'Diese Karten hast du gedrückt. Sie liegen verdeckt vor dir.',
+    /** A hand card thrown onto the table that the core does not let go now. */
+    notPlayable: 'Diese Karte geht gerade nicht.',
     lastTrick: 'Letzter Stich',
     lastTrickTo: 'Letzter Stich · an {name}',
     lastTrickToYou: 'Letzter Stich · an dich',

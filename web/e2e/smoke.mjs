@@ -25,9 +25,18 @@
 //   (Null and Null Ouvert too, 23 and 69: 23 × (1, 1 + Ouvert 2), DESIGN 16),
 // - sees the unlock earned by winning the series with games left
 //   ("Neu am Stammtisch") and the meta state counting the game,
-// - while playing sees the two pressed cards big beside the trick (a tap
-//   shows one large) and, after the first trick, "Letzter Stich": the last
-//   trick with its winner on the felt until tapped again, without scrolling,
+// - while playing sees the pressed cards face down as a small stack in the
+//   bottom right corner of the felt (a tap shows both face up), the trick
+//   as a triangle (left regular top left, right regular top right, the
+//   player's card bottom centre), throws one card with the mouse onto the
+//   felt instead of tapping it, and, after the first trick, "Letzter
+//   Stich": the last trick with its winner on the felt (in the same
+//   triangle) until tapped again, without scrolling,
+// - with full motion (tableFeelPass, 390 × 844 and 1280 × 800): a card
+//   thrown with a flick flies with a turn, comes down askew and off its
+//   place, lies there a moment and slides onto it; an opponent's card
+//   flies in from his seat; a card let go over the hand goes back unplayed;
+//   one the core does not let go springs back and shakes,
 // - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
@@ -367,25 +376,104 @@ async function assertNoSideScroll(page, label, root = '.shop') {
 }
 
 /**
- * While playing, the two pressed cards stand big beside the trick (at
- * least `min` px wide at 390 × 844 and 375 × 667, play-test feedback), a
- * tap shows one large in the info card.
+ * While playing, the pressed cards lie face down as a small stack in the
+ * bottom right corner of the felt (play-test feedback: face up they were
+ * too present): only backs, right of the trick, at the bottom of the trick
+ * row, a touch target of 44 px. A tap shows them face up on the info card.
  */
-async function assertPressed(page, label) {
+async function assertPressed(page, label, shot = null) {
   const original = page.viewportSize();
-  for (const [size, min] of [[PHONE, 40], [{ width: 375, height: 667 }, 36]]) {
+  for (const size of [PHONE, { width: 375, height: 667 }, DESKTOP]) {
     await page.setViewportSize(size);
     await page.waitForTimeout(120);
-    const widths = await page.locator('[data-testid="pressed-play"] .pressed-card').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
-    if (widths.length !== 2) fail(`${label}: ${widths.length} pressed cards beside the trick at ${size.width}x${size.height}`);
-    if (widths.some((w) => w < min)) fail(`${label}: pressed cards ${widths.map(Math.round).join(', ')}px wide at ${size.width}x${size.height}, want ${min}`);
+    const r = await page.evaluate(() => {
+      const stack = document.querySelector('[data-testid="pressed-play"]');
+      const row = document.querySelector('.trick-row')?.getBoundingClientRect();
+      const trick = document.querySelector('[data-testid="trick"], [data-testid="last-trick"]')?.getBoundingClientRect();
+      if (!stack || !row || !trick) return null;
+      const box = stack.getBoundingClientRect();
+      return {
+        backs: stack.querySelectorAll('.pressed-card.is-back').length,
+        faces: stack.querySelectorAll('.card-svg, use[href^="#f-"]').length,
+        box: { left: box.left, right: box.right, bottom: box.bottom, width: box.width, height: box.height },
+        row: { right: row.right, bottom: row.bottom },
+        trickRight: trick.right,
+      };
+    });
+    const where = `${label} at ${size.width}x${size.height}`;
+    if (!r) fail(`${where}: no pressed stack on the felt`);
+    if (r.backs !== 2 || r.faces) fail(`${where}: the pressed stack shows ${r.backs} backs and ${r.faces} faces, want 2 face down`);
+    if (r.box.left < r.trickRight || r.row.right - r.box.right > 2 || r.row.bottom - r.box.bottom > 2) fail(`${where}: the pressed stack is not in the bottom right corner (${JSON.stringify(r)})`);
+    if (r.box.width < 44 || r.box.height < 44) fail(`${where}: the pressed stack is ${Math.round(r.box.width)}x${Math.round(r.box.height)}, below 44 px`);
   }
   if (original) await page.setViewportSize(original);
-  await page.locator('[data-testid="pressed-play"] .pressed-card').last().click();
-  await page.waitForSelector('[data-testid="info-card"] .info-card-face');
+  if (shot) await shoot(page, shot);
+  await page.click('[data-testid="pressed-play"]');
+  await page.waitForSelector('[data-testid="info-card"] [data-testid="pressed-peek"]');
+  const peeked = await page.locator('[data-testid="pressed-peek"] .info-pressed-card .card-svg').count();
+  if (peeked !== 2) fail(`${label}: the look at the pressed skat shows ${peeked} cards face up`);
+  if (shot) await shoot(page, `${shot}-peek`);
   await page.click('[data-testid="info-card"] [data-info-close]');
   await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
-  log(`${label}: pressed cards readable beside the trick, tap shows one large`);
+  log(`${label}: pressed skat face down in the bottom right corner, a tap shows both face up`);
+}
+
+/**
+ * The trick is a triangle pointing at the player (play-test feedback):
+ * the left regular's place top left, the right one's top right, the
+ * player's bottom centre, lower than both; no two places hide each
+ * other's corner index. A played card lies exactly on its place.
+ */
+async function assertTriangle(page, label, sizes = [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+  const original = page.viewportSize();
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(120);
+    const r = await page.evaluate(() => {
+      const rect = (sel) => {
+        const b = document.querySelector(sel)?.getBoundingClientRect();
+        return b ? { x: b.left + b.width / 2, y: b.top + b.height / 2, left: b.left, right: b.right, top: b.top, bottom: b.bottom, w: b.width } : null;
+      };
+      const cards = [...document.querySelectorAll('.trick .trick-card')].map((c) => {
+        const slot = c.closest('.slot')?.getBoundingClientRect();
+        const b = c.getBoundingClientRect();
+        return { seat: c.dataset.trickSeat ?? c.dataset.lastSeat, slot: c.closest('.slot')?.dataset.slot, dx: slot ? Math.abs(b.left - slot.left) + Math.abs(b.top - slot.top) : 99 };
+      });
+      return { s0: rect('.trick .slot-0'), s1: rect('.trick .slot-1'), s2: rect('.trick .slot-2'), cards };
+    });
+    const where = `${label} at ${size.width}x${size.height}`;
+    const { s0, s1, s2 } = r;
+    if (!s0 || !s1 || !s2) fail(`${where}: the trick lacks a place (${JSON.stringify(r)})`);
+    if (!(s1.x < s0.x && s0.x < s2.x)) fail(`${where}: the places are not left, player, right (${Math.round(s1.x)}, ${Math.round(s0.x)}, ${Math.round(s2.x)})`);
+    if (Math.abs(s0.x - (s1.x + s2.x) / 2) > 2) fail(`${where}: the player's place is not centred between the two others`);
+    if (!(s0.y > s1.y + s0.w * 0.5 && Math.abs(s1.y - s2.y) < 1)) fail(`${where}: the player's place is not below the two others`);
+    if (s0.left < s1.right - s0.w * 0.08 || s0.right > s2.left + s0.w * 0.08) fail(`${where}: the player's place covers a corner of another`);
+    for (const c of r.cards) {
+      if (c.seat !== c.slot) fail(`${where}: the card of seat ${c.seat} lies on place ${c.slot}`);
+      if (c.dx > 1) fail(`${where}: the card of seat ${c.seat} lies ${c.dx}px off its place`);
+    }
+  }
+  if (original) await page.setViewportSize(original);
+  log(`${label}: the trick is a triangle (left, right, the player bottom centre), cards on their places`);
+}
+
+/**
+ * Throw a hand card with the mouse: pressed, dragged up in steps, let go
+ * with a flick of `flick` px per step (0: let go standing still) at `to`.
+ */
+async function throwCard(page, from, to, flick = 40) {
+  const a = await page.locator(from).first().boundingBox();
+  if (!a) fail(`nothing to throw: ${from}`);
+  const x0 = a.x + a.width / 2;
+  const y0 = a.y + a.height / 2;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down();
+  const steps = 8;
+  for (let i = 1; i <= steps; i++) await page.mouse.move(x0 + ((to.x - x0) * i) / steps, y0 + ((to.y - y0) * i) / steps);
+  if (flick) for (let i = 1; i <= 2; i++) await page.mouse.move(to.x + i * flick * 0.2, to.y - i * flick);
+  // Standing still before letting go: no speed left.
+  else await page.waitForTimeout(200);
+  await page.mouse.up();
 }
 
 /**
@@ -410,6 +498,7 @@ async function assertLastTrick(page, label) {
   if (r.pressed !== 'true') fail(`${label}: the button is not pressed while the last trick shows`);
   if (!r.playable) fail(`${label}: no card playable while the last trick shows`);
   await shoot(page, 'table-last-trick');
+  await assertTriangle(page, `${label}, last trick`, [PHONE, DESKTOP]);
   await assertFits(page, `${label}, last trick shown`, [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }, DESKTOP]);
   // A tap on the trick puts the open one back.
   await page.click('[data-testid="last-trick"]');
@@ -2035,6 +2124,136 @@ async function motionPass(browser, errors) {
   await context.close();
 }
 
+/**
+ * The feel of the table with full motion (play-test feedback), at one
+ * viewport: cards are thrown onto the felt with a turn, come down askew
+ * and off their place, lie there a moment and slide onto it; a hand card
+ * can be thrown with the mouse (the stronger the flick, the further it
+ * flies), one the core does not let go springs back and shakes, one let
+ * go over the hand without a flick goes back without being played.
+ * Screenshots: the throw in flight, an opponent's card in flight, the
+ * trick with all three cards, the pressed skat and its look.
+ */
+async function tableFeelPass(browser, errors, viewport) {
+  const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
+  // Tempo "Gemütlich": time for the screenshots while the trick lies there.
+  await context.addInitScript(() => {
+    if (!localStorage.getItem('stammtisch.settings')) localStorage.setItem('stammtisch.settings', JSON.stringify({ tempo: 'slow', sound: false, thinking: true, hints: false }));
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-action="pick-up-skat"]');
+  await page.waitForTimeout(1200);
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  await page.waitForTimeout(700);
+  await page.click('[data-action="discard"]');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect?.target?.closest?.('.trick, .hand')));
+
+  // The pressed skat: face down in the corner, a tap shows it.
+  await snap('feel-pressed');
+  await page.click('[data-testid="pressed-play"]');
+  await page.waitForSelector('[data-testid="pressed-peek"]');
+  await page.waitForTimeout(300);
+  await snap('feel-pressed-peek');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+
+  // Thrown with a strong flick from the hand.
+  const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
+  const felt = await page.locator('[data-testid="trick"]').boundingBox();
+  await throwCard(page, `.hand [data-action="play"][data-id="${id}"]`, { x: felt.x + felt.width / 2, y: felt.y + felt.height }, 60);
+  const flight = await page
+    .waitForFunction(
+      (cardId) => {
+        const el = document.querySelector(`.trick-card[data-card-id="${cardId}"]`);
+        const a = el?.getAnimations().find((x) => x.id === 'throw');
+        if (!a) return null;
+        const k = a.effect.getKeyframes();
+        return { frames: k.map((f) => String(f.transform)), offsets: k.map((f) => f.computedOffset), slot: el.closest('.slot')?.dataset.slot, time: a.currentTime, total: a.effect.getTiming().duration };
+      },
+      id,
+      { timeout: 10000, polling: 16 },
+    )
+    .then((h) => h.jsonValue())
+    .catch(() => fail(`feel ${tag}: the card thrown does not fly onto the felt`));
+  await snap('feel-throw-flight');
+  if (flight.slot !== '0') fail(`feel ${tag}: the player's card lies on place ${flight.slot}`);
+  // translate(x, y) rotate(r) scale(s) of a keyframe.
+  const parts = (t) => (/translate\((-?[\d.]+)px, (-?[\d.]+)px\) rotate\((-?[\d.]+)deg\) scale\(([\d.]+)\)/.exec(t) ?? []).slice(1).map(Number);
+  const [start, land, , end] = flight.frames.map(parts);
+  if (!start?.length || !land?.length || !end?.length) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames)}`);
+  if (flight.frames[1] !== flight.frames[2]) fail(`feel ${tag}: the card does not lie still a moment before it slides onto its place (${flight.frames[1]} / ${flight.frames[2]})`);
+  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[3]}`);
+  if (Math.abs(land[2]) < 4) fail(`feel ${tag}: the card comes down straight, not askew: ${flight.frames[1]}`);
+  if (Math.abs(start[2] - land[2]) < 30) fail(`feel ${tag}: the card does not turn in flight (${flight.frames[0]} -> ${flight.frames[1]})`);
+  if (Math.hypot(land[0], land[1]) < 3) fail(`feel ${tag}: the card comes down right on its place, not off it`);
+  const holdMs = (flight.offsets[2] - flight.offsets[1]) * flight.total;
+  if (holdMs < 300 * 0.9 || holdMs > 500 * 1.5 * 1.1) fail(`feel ${tag}: the card lies askew for ${Math.round(holdMs)} ms`);
+  log(`feel ${tag}: thrown card flies (${Math.round(flight.total)} ms), lies askew ${Math.round(holdMs)} ms, slides onto the player's place`);
+  // An opponent's card in flight.
+  const opp = await page
+    .waitForFunction(() => [...document.querySelectorAll('.trick-card')].find((el) => el.dataset.trickSeat !== '0' && el.getAnimations().some((a) => a.id === 'throw' && a.currentTime < a.effect.getTiming().duration * 0.3))?.dataset.trickSeat ?? null, null, { timeout: 20000, polling: 16 })
+    .then((h) => h.jsonValue())
+    .catch(() => null);
+  if (opp) await snap('feel-opponent-flight');
+  // All three cards on the felt, then lying on their places.
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="trick"] .trick-card').length === 3, null, { timeout: 20000, polling: 16 });
+  await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="trick"] .trick-card')].some((el) => el.getAnimations({ subtree: true }).length), null, { polling: 16 });
+  await page.mouse.move(1, 1);
+  await snap('feel-trick-three');
+  await assertTriangle(page, `feel ${tag}, three cards`, [viewport]);
+  // Faster from here on.
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  await page.click('[data-action="menu"]');
+  await page.click('[data-action="tempo"][data-tempo="fast"]');
+  await page.click('.sheet [data-action="close-overlay"]');
+
+  // Let go over the hand, standing still: back into the hand, not played.
+  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+  const keep = await page.locator('[data-action="play"]').first().getAttribute('data-id');
+  const kb = await page.locator(`.hand [data-id="${keep}"]`).boundingBox();
+  await throwCard(page, `.hand [data-id="${keep}"]`, { x: kb.x + kb.width / 2 + 30, y: kb.y + kb.height / 2 - 20 }, 0);
+  await page.waitForTimeout(400);
+  if (!(await page.locator(`.hand [data-id="${keep}"]`).count()) || (await page.locator('.run.is-busy').count())) fail(`feel ${tag}: a card let go over the hand was played`);
+  log(`feel ${tag}: a card let go over the hand goes back`);
+
+  // A card the core does not let go: thrown, it springs back and shakes.
+  let dim = null;
+  for (let n = 0; n < 9 && !dim; n++) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    if (await page.locator('.hand-card.is-dim').count()) dim = await page.locator('.hand-card.is-dim').first().getAttribute('data-id');
+    else await page.locator('[data-action="play"]').first().click();
+    await page.mouse.move(1, 1);
+  }
+  if (dim) {
+    const t = await page.locator('[data-testid="trick"]').boundingBox();
+    await throwCard(page, `.hand [data-id="${dim}"]`, { x: t.x + t.width / 2, y: t.y + t.height / 2 }, 40);
+    const shook = await page
+      .waitForFunction((cardId) => document.querySelector(`.hand-card[data-id="${cardId}"]`)?.getAnimations().some((a) => a.effect.composite === 'add'), dim, { timeout: 3000, polling: 16 })
+      .then(() => true)
+      .catch(() => false);
+    if (!shook) fail(`feel ${tag}: a card that may not be played does not shake when thrown`);
+    if (!(await page.locator(`.hand [data-id="${dim}"]`).count())) fail(`feel ${tag}: a card that may not be played left the hand`);
+    await page.waitForSelector('.toast', { timeout: 3000 }).catch(() => fail(`feel ${tag}: no note for a card that may not be played`));
+    log(`feel ${tag}: a card the core does not let go springs back and shakes`);
+  } else {
+    log(`feel ${tag}: no card to follow suit with in this game, spring back not checked`);
+  }
+  await context.close();
+}
+
 /** Effekte v3: every modification on the Kreidetafel, the gallery of frames.json. */
 async function framesPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -2500,7 +2719,8 @@ async function run() {
         log(`value preview: ${worth}`);
         await shoot(page, 'table-play');
         await assertFits(page, 'playing');
-        await assertPressed(page, 'playing');
+        await assertPressed(page, 'playing', 'table-pressed');
+        await assertTriangle(page, 'playing');
         // Before the first trick is finished there is nothing to look back at.
         const tricks = ((await page.locator('[data-tricks]').textContent()) ?? '').trim();
         if (tricks === 'Stiche 0 : 0' && (await page.locator('[data-testid="last-trick-toggle"]').count())) fail('a "Letzter Stich" button before any trick was finished');
@@ -2508,7 +2728,17 @@ async function run() {
       if (played === 2) await assertLastTrick(page, 'playing');
       if (played === 3 && (await page.locator('[data-testid="last-trick"]').count())) fail('the last trick still shows after playing a card');
       if (played === 3 && dimmed > 0) await shoot(page, 'table-follow');
-      await page.locator('[data-action="play"]').first().click();
+      if (played === 1) {
+        // Thrown with the mouse instead of a tap: let go over the felt.
+        const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
+        const felt = await page.locator('[data-testid="trick"]').boundingBox();
+        await throwCard(page, `.hand [data-action="play"][data-id="${id}"]`, { x: felt.x + felt.width / 2, y: felt.y + felt.height * 0.6 }, 30);
+        await page.waitForFunction((cardId) => !document.querySelector(`.hand-card[data-id="${cardId}"]`), id, { timeout: 10000 }).catch(() => fail(`the card ${id} thrown onto the felt was not played`));
+        await page.mouse.move(1, 1);
+        log(`card ${id} thrown onto the felt and played`);
+      } else {
+        await page.locator('[data-action="play"]').first().click();
+      }
       played += 1;
       if (played > 10) fail('played more than ten cards');
     }
@@ -2610,6 +2840,8 @@ async function run() {
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
     await hintsAndRules(browser, errors, reducedMotion);
     await motionPass(browser, errors);
+    await tableFeelPass(browser, errors, PHONE);
+    await tableFeelPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();
