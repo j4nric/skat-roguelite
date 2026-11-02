@@ -963,8 +963,7 @@ impl<C: PlayingCard> Game<C> {
             return Err(GameError::CardNotInHand { seat, card });
         }
         if let Some(lead) = self.lead_card() {
-            if !rules::legal_moves(declaration.game(), self.hand(seat), Some(lead)).contains(&card)
-            {
+            if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), card) {
                 return Err(GameError::MustFollowSuit { card, lead });
             }
         }
@@ -998,6 +997,47 @@ impl<C: PlayingCard> Game<C> {
         }
         self.log.extend(events.iter().cloned());
         Ok(events)
+    }
+
+    /// Play the Wandelkarte `card` ([`PlayingCard::wild`]) as a card of
+    /// `suit` (DESIGN 7.2, M8 wave 3): it is that card for the trick and
+    /// stays it on the table. The named suit must be one of
+    /// [`rules::wild_suits`]. The declarer's twelve cards and the cards in
+    /// play keep the printed card, so the Spitzen stay as declared; the
+    /// deck the seats reason about takes the named card, like the table.
+    pub fn play_as(
+        &mut self,
+        seat: Seat,
+        card: C,
+        suit: crate::cards::Suit,
+    ) -> Result<Vec<Event<C>>, GameError<C>> {
+        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        };
+        let expected = seat_at(self.trick_lead, self.trick.len());
+        if seat != expected {
+            return Err(GameError::NotYourTurn { seat, expected });
+        }
+        if !self.hand(seat).contains(&card) || !card.wild() {
+            return Err(GameError::CardNotInHand { seat, card });
+        }
+        let named = card.with_suit(suit);
+        if let Some(lead) = self.lead_card() {
+            if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), named) {
+                return Err(GameError::MustFollowSuit { card: named, lead });
+            }
+        }
+        if named != card {
+            let swap = |cards: &mut Vec<C>| {
+                for c in cards.iter_mut().filter(|c| **c == card) {
+                    *c = named;
+                }
+                cards.sort();
+            };
+            swap(&mut self.hands[seat.index()]);
+            swap(&mut self.deck);
+        }
+        self.play(seat, named)
     }
 
     /// The defenders give up between two tricks (house rule "Schenken").

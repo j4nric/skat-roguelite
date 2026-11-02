@@ -298,6 +298,14 @@ pub struct ActiveGame {
     /// empty. `None` before the first Einmischen and after an undo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous: Option<Box<ActiveGame>>,
+    /// Wandelkarten the player played in this game: instance id and the
+    /// printed suit (the card on the table has the suit he named).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub named: Vec<(u32, Suit)>,
+    /// Cards that broke in this game ("Glasdaus", [`Effect::BreakThisCard`]):
+    /// they leave the deck once the game is scored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub broken: Vec<u32>,
 }
 
 /// One choice of an encounter.
@@ -481,6 +489,14 @@ pub enum RunAction {
     Discard([u32; 2]),
     /// Play a card (instance id).
     Play(u32),
+    /// Play a Wandelkarte (instance id) as a card of `suit` (DESIGN 7.2, M8
+    /// wave 3); the suit must be one of [`view::CardView::wild_suits`].
+    PlayAs {
+        /// The Wandelkarte.
+        card: u32,
+        /// The suit the player names.
+        suit: Suit,
+    },
     /// Use a consumable from the given slot, with a target card and a suit
     /// if needed.
     UseConsumable {
@@ -708,6 +724,29 @@ pub enum RunEvent<G = Event<DealtCard>> {
     /// "Reue": the last Einmischen was taken back; the deal before it is
     /// on the table again.
     RedealUndone,
+    /// The player named the suit of a Wandelkarte as he played it. The
+    /// `CardPlayed` that follows shows the card as named.
+    WildCardNamed {
+        /// The card as printed.
+        card: DealtCard,
+        /// The suit he named.
+        suit: Suit,
+    },
+    /// A card broke ("Glasdaus": a defender took the trick it lies in). It
+    /// stays in this game and leaves the deck when the game is scored
+    /// (a `DeckChanged` follows then).
+    CardBroken {
+        /// Instance id.
+        card: u32,
+        /// The modification that broke it.
+        card_mod: CardModId,
+    },
+    /// A card that lay in the skat at the end of the last game came into
+    /// the player's hand ("Heimweh").
+    CardCameHome {
+        /// The card as dealt.
+        card: DealtCard,
+    },
     /// "Der Kiebitz" showed the player a defender's card.
     CardPeeked {
         /// The card.
@@ -1182,6 +1221,10 @@ pub struct Run {
     /// Stake of the Einsatz-Leiter (saves from before: 0).
     #[serde(default)]
     stake: u32,
+    /// Cards that come into the player's hand at the next deal ("Heimweh"):
+    /// they lay in the skat when the last game ended.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    homesick: Vec<u32>,
 }
 
 impl Run {
@@ -1277,6 +1320,7 @@ impl Run {
             guests: Vec::new(),
             length: start.length,
             stake: start.stake,
+            homesick: Vec::new(),
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1408,6 +1452,12 @@ impl Run {
     #[must_use]
     pub fn consumables(&self) -> &[ConsumableId] {
         &self.consumables
+    }
+
+    /// Cards that come into the player's hand at the next deal ("Heimweh").
+    #[must_use]
+    pub fn homesick(&self) -> &[u32] {
+        &self.homesick
     }
 
     /// Run flags set by content.
@@ -1586,6 +1636,7 @@ impl Run {
             RunAction::AnswerKontra { re } => self.answer_kontra(content, re, events),
             RunAction::Discard(ids) => self.discard(content, ids, events),
             RunAction::Play(id) => self.play(content, id, events),
+            RunAction::PlayAs { card, suit } => self.play_as(content, card, suit, events),
             RunAction::UseConsumable { slot, target, suit } => {
                 self.use_consumable(content, slot, target, suit, events)
             }
@@ -1917,6 +1968,46 @@ impl Run {
         self.settle(content, events)
     }
 
+    /// Play a Wandelkarte of the player as a card of `suit`.
+    fn play_as(
+        &mut self,
+        content: &Content,
+        id: u32,
+        suit: Suit,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let active = self.active_mut()?;
+        if active.awaiting_re {
+            return Err(RunError::AwaitingKontraAnswer);
+        }
+        let card = Run::declarer_card(active, id)?;
+        let face = card.face().ok_or(RunError::CannotChalk)?;
+        if !card.wild {
+            return Err(RunError::UnknownCard(id));
+        }
+        let game_events = active.game.play_as(Seat::DECLARER, card, suit)?;
+        if !active.named.iter().any(|(c, _)| *c == id) {
+            active.named.push((id, face.suit));
+        }
+        let trick_done = game_events
+            .iter()
+            .any(|e| matches!(e, Event::TrickWon { .. }));
+        let played = game_events.iter().find_map(|e| match e {
+            Event::CardPlayed { card, .. } => Some(*card),
+            _ => None,
+        });
+        events.push(RunEvent::WildCardNamed { card, suit });
+        events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.after_card(
+            content,
+            Seat::DECLARER,
+            played.unwrap_or(card),
+            trick_done,
+            events,
+        );
+        self.settle(content, events)
+    }
+
     /// Play one card and fire the in-play hooks.
     fn play_card(
         &mut self,
@@ -1931,6 +2022,20 @@ impl Run {
             .iter()
             .any(|e| matches!(e, Event::TrickWon { .. }));
         events.extend(game_events.into_iter().map(RunEvent::Game));
+        self.after_card(content, seat, card, trick_done, events);
+        Ok(())
+    }
+
+    /// Fire the hooks after a card: `OnCardPlayed`, and `OnTrickEnd` if it
+    /// completed a trick.
+    fn after_card(
+        &mut self,
+        content: &Content,
+        seat: Seat,
+        card: DealtCard,
+        trick_done: bool,
+        events: &mut Vec<RunEvent>,
+    ) {
         self.fire(
             content,
             Stage::OnCardPlayed,
@@ -1941,7 +2046,6 @@ impl Run {
         if trick_done {
             self.fire(content, Stage::OnTrickEnd, None, None, events);
         }
-        Ok(())
     }
 
     /// Score a finished game (which deals the next one or ends the
@@ -2123,9 +2227,21 @@ impl Run {
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
+            | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_) => active.lines.extend(line),
+            Effect::BreakThisCard => {
+                if let Source::CardMod { card_mod, card } = source {
+                    if !active.broken.contains(card) {
+                        active.broken.push(*card);
+                        events.push(RunEvent::CardBroken {
+                            card: *card,
+                            card_mod: card_mod.clone(),
+                        });
+                    }
+                }
+            }
             Effect::MultiplySkatPoints(factor) => {
                 let factor = *factor;
                 let scaled = |c: DealtCard| DealtCard {
@@ -2232,11 +2348,15 @@ impl Run {
             }
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
+            | Effect::MultiplyCardPoints(_)
             | Effect::RankBonus(_)
             | Effect::RevealHolder
             | Effect::NeverWins
             | Effect::HonoraryJack
             | Effect::NoDiscard
+            | Effect::Wild
+            | Effect::Homesick
+            | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
             | Effect::BlankOut(_)
             | Effect::SetFlag(_)
@@ -2349,22 +2469,96 @@ impl Run {
         } else {
             self.games_dealt.saturating_sub(1)
         };
-        let forehand =
-            Seat::from_index(usize::try_from(rotation % 3).unwrap_or(0)).unwrap_or(Seat::DECLARER);
+        let global = self.sources(content, false);
+        // "Ehrenvorsitz": the player always leads; the rotation runs on.
+        let always_forehand = global
+            .iter()
+            .any(|s| s.passive.contains(&Effect::AlwaysForehand));
+        let forehand = if always_forehand {
+            Seat::DECLARER
+        } else {
+            Seat::from_index(usize::try_from(rotation % 3).unwrap_or(0)).unwrap_or(Seat::DECLARER)
+        };
         if rotate {
             self.games_dealt += 1;
             self.series.redeals_in_game = 0;
         }
-        let global = self.sources(content, false);
         let resolved = resolve_deck(&self.deck, content, &global);
         let mut rng = self.deal_rng.fork();
         let game = Game::deal_from(&mut rng, resolved.cards, forehand)?;
+        let (game, came_home) = self.bring_home(game, &mut rng)?;
         self.set_up_game(content, game, resolved.point_changes, events);
+        events.extend(
+            came_home
+                .into_iter()
+                .map(|card| RunEvent::CardCameHome { card }),
+        );
         self.peek(&mut rng, events);
         if self.game.as_ref().is_some_and(|a| a.rules.ramsch) {
             return self.start_ramsch(content, events);
         }
         Ok(())
+    }
+
+    /// "Heimweh": every card of [`Run::homesick`] that is in the game but
+    /// not in the player's hand swaps places with a card of his hand,
+    /// drawn with the game's generator (deterministic). A card that left
+    /// the deck is skipped. Returns the game and the cards that came home.
+    /// Without such cards the deal and the generator are untouched.
+    fn bring_home(
+        &self,
+        game: Game<DealtCard>,
+        rng: &mut Rng,
+    ) -> Result<(Game<DealtCard>, Vec<DealtCard>), RunError> {
+        if self.homesick.is_empty() {
+            return Ok((game, Vec::new()));
+        }
+        let mut own = game.hand(Seat::DECLARER).to_vec();
+        let mut left = game.hand(Seat::DEFENDERS[0]).to_vec();
+        let mut right = game.hand(Seat::DEFENDERS[1]).to_vec();
+        let mut skat = game.skat();
+        let mut talon = game.talon().to_vec();
+        let mut came_home = Vec::new();
+        let mut moved = false;
+        for &id in &self.homesick {
+            if let Some(&card) = own.iter().find(|c| c.id == id) {
+                came_home.push(card);
+                continue;
+            }
+            // Where the card lies now: a defender's hand, the skat or the
+            // talon.
+            let Some(slot) = left
+                .iter_mut()
+                .chain(right.iter_mut())
+                .chain(skat.iter_mut())
+                .chain(talon.iter_mut())
+                .find(|c| c.id == id)
+            else {
+                continue;
+            };
+            let candidates: Vec<usize> = own
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| !self.homesick.contains(&c.id))
+                .map(|(i, _)| i)
+                .collect();
+            if candidates.is_empty() {
+                continue;
+            }
+            let roll = rng.gen_range(0..u64::try_from(candidates.len()).unwrap_or(1));
+            let Some(&pick) = usize::try_from(roll).ok().and_then(|i| candidates.get(i)) else {
+                continue;
+            };
+            std::mem::swap(slot, &mut own[pick]);
+            came_home.push(own[pick]);
+            moved = true;
+        }
+        if !moved {
+            return Ok((game, came_home));
+        }
+        let forehand = game.forehand();
+        let game = Game::with_talon([own, left, right], skat, talon, forehand)?;
+        Ok((game, came_home))
     }
 
     /// "Der Kiebitz": show the player random cards of the defenders, drawn
@@ -2416,6 +2610,7 @@ impl Run {
         point_changes: Vec<(u32, Source, i32)>,
         events: &mut Vec<RunEvent>,
     ) {
+        let game = Run::tame_defender_wild_cards(game);
         let forehand = game.forehand();
         let dealt_events: Vec<Event<DealtCard>> = game.log().to_vec();
         let global = self.sources(content, false);
@@ -2441,6 +2636,8 @@ impl Run {
             single_loss: None,
             shown_hand: None,
             previous: None,
+            named: Vec::new(),
+            broken: Vec::new(),
         });
         events.push(RunEvent::GameDealt {
             number: self.series.games_played + 1,
@@ -2455,6 +2652,30 @@ impl Run {
             }
         }
         self.fire(content, Stage::OnDeal, None, None, events);
+    }
+
+    /// A Wandelkarte is wild only in the player's hand (and the skat he may
+    /// pick up): the defenders' copies lose the flag and play as printed.
+    fn tame_defender_wild_cards(game: Game<DealtCard>) -> Game<DealtCard> {
+        let wild_defender = Seat::DEFENDERS
+            .iter()
+            .any(|&seat| game.hand(seat).iter().any(|c| c.wild));
+        if !wild_defender {
+            return game;
+        }
+        let tame = |cards: &[DealtCard]| -> Vec<DealtCard> {
+            cards
+                .iter()
+                .map(|&c| DealtCard { wild: false, ..c })
+                .collect()
+        };
+        let hands = [
+            game.hand(Seat::DECLARER).to_vec(),
+            tame(game.hand(Seat::DEFENDERS[0])),
+            tame(game.hand(Seat::DEFENDERS[1])),
+        ];
+        let forehand = game.forehand();
+        Game::with_talon(hands, game.skat(), game.talon().to_vec(), forehand).unwrap_or(game)
     }
 
     /// Score the finished game and move on.
@@ -2563,7 +2784,41 @@ impl Run {
             series_score: self.series.score,
         });
         self.last_score = Some(breakdown);
+        self.after_scoring(content, events);
         self.after_game(content, events)
+    }
+
+    /// After a game is scored: cards that broke leave the deck
+    /// ("Glasdaus"), and cards with "Heimweh" that lie in the skat come
+    /// into the player's hand at the next deal.
+    fn after_scoring(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        let Some(active) = self.game.as_ref() else {
+            return;
+        };
+        let broken = active.broken.clone();
+        let skat = active.game.skat();
+        self.homesick = skat
+            .iter()
+            .map(|c| c.id)
+            .filter(|&id| {
+                !broken.contains(&id) && self.has_card_effect(content, id, &Effect::Homesick)
+            })
+            .collect();
+        for id in broken {
+            if let Ok(change) = self.deck.remove(id) {
+                events.push(RunEvent::DeckChanged(change));
+            }
+        }
+    }
+
+    /// Whether a modification on the deck card `id` has this passive effect.
+    fn has_card_effect(&self, content: &Content, id: u32, effect: &Effect) -> bool {
+        self.deck.get(id).is_some_and(|card| {
+            card.mods
+                .iter()
+                .filter_map(|m| content.card_mod(m))
+                .any(|def| def.passive.contains(effect))
+        })
     }
 
     /// After a game was scored: series won, run lost or next deal.
@@ -2667,9 +2922,7 @@ impl Run {
             .filter(|r| !self.relics.contains(&r.id) && !self.evening_relics.contains(&r.id))
             .filter(|r| !house_rules_only || r.kind == RelicKind::HouseRule)
             .map(|r| {
-                let weight = weights
-                    .weight(r.rarity)
-                    .saturating_mul(self.focus_weight(content, r.focus));
+                let weight = weights.percent_weight(r.rarity, self.focus_weight(content, r.focus));
                 (r.id.clone(), weight)
             })
             .collect()
@@ -2943,7 +3196,7 @@ impl Run {
                 let card_mod = match card_mod {
                     Some(m) => m.clone(),
                     None => {
-                        let options = self.card_mod_pool(content, &card.mods);
+                        let options = self.card_mod_pool_for(content, card);
                         draw_weighted(&mut self.misc_rng, options, 1)
                             .pop()
                             .ok_or(RunError::NoModAvailable)?
@@ -3047,6 +3300,19 @@ impl Run {
         self.mod_pool(content, mods, false)
     }
 
+    /// [`Run::card_mod_pool`] for one deck card: only modifications that
+    /// may sit on it ([`crate::content::CardModDef::only_on`]).
+    fn card_mod_pool_for(
+        &self,
+        content: &Content,
+        card: &crate::deck::DeckCard,
+    ) -> Vec<(CardModId, u32)> {
+        self.card_mod_pool(content, &card.mods)
+            .into_iter()
+            .filter(|(id, _)| content.card_mod(id).is_some_and(|d| d.fits(card.kind)))
+            .collect()
+    }
+
     /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
     /// modifications without drawback.
     fn mod_pool(
@@ -3061,6 +3327,14 @@ impl Run {
             .filter(|m| m.curse == curse)
             .filter(|m| in_pool(&m.characters, self.character) && !mods.contains(&m.id))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            // Only what some card of the deck may still carry ("Glasdaus":
+            // a Daus without it).
+            .filter(|m| {
+                self.deck
+                    .cards()
+                    .iter()
+                    .any(|c| m.fits(c.kind) && !c.mods.contains(&m.id))
+            })
             .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
             .filter(|&(_, weight)| weight > 0)
             .collect()
@@ -3075,6 +3349,11 @@ impl Run {
         card_mod: CardModId,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        if let (Some(def), Some(deck_card)) = (content.card_mod(&card_mod), self.deck.get(card)) {
+            if deck_card.kind != CardKind::Blank && !def.fits(deck_card.kind) {
+                return Err(RunError::NoModAvailable);
+            }
+        }
         let change = self.deck.add_mod(card, card_mod.clone())?;
         events.push(RunEvent::DeckChanged(change));
         let Some(def) = content.card_mod(&card_mod) else {
@@ -3230,7 +3509,7 @@ impl Run {
         if let Some(id) = named {
             return Ok(id.clone());
         }
-        let options = self.card_mod_pool(content, &deck_card.mods);
+        let options = self.card_mod_pool_for(content, deck_card);
         draw_weighted(&mut self.encounter_rng, options, 1)
             .pop()
             .ok_or(RunError::NoModAvailable)
@@ -3276,7 +3555,10 @@ impl Run {
                     .iter()
                     .filter(|c| c.kind != CardKind::Blank)
                     .filter(|c| named.is_none_or(|m| !c.mods.contains(m)))
-                    .filter(|c| named.is_some() || !self.card_mod_pool(content, &c.mods).is_empty())
+                    .filter(|c| {
+                        named.is_none_or(|m| content.card_mod(m).is_none_or(|d| d.fits(c.kind)))
+                    })
+                    .filter(|c| named.is_some() || !self.card_mod_pool_for(content, c).is_empty())
                     .map(|c| c.id)
                     .collect();
                 let pick = self
@@ -3431,6 +3713,14 @@ fn score_line(
             (Lever::BaseValue, Change::Add(add))
         }
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
+        Effect::AddLevelsPerCounter { counter, per } => {
+            let value = counters.get(counter).copied().unwrap_or(0);
+            let add = i64::from(value) * i64::from(*per);
+            if add == 0 {
+                return None;
+            }
+            (Lever::Levels, Change::Add(add))
+        }
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
         Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
         _ => return None,
@@ -3541,3 +3831,5 @@ mod step_tests;
 mod tests;
 #[cfg(test)]
 mod wave2_tests;
+#[cfg(test)]
+mod wave3_tests;

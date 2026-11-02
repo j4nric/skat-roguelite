@@ -442,6 +442,38 @@
         ],
     ),
     // ---------------------------------------------------------------------
+    // M8 Welle 3, abgestimmt im Cockpit: Stufe Legendär. Am Tresen weit
+    // seltener als Rare (Gewicht `legendary` in run.ron, Standard 0,3 statt
+    // 1) und teuer. Texte wie abgestimmt, Preise Platzhalter für `balance`
+    // (docs/balance/2026-11-02-welle3.md, DESIGN 8.1 und 12).
+    // ---------------------------------------------------------------------
+    // Lever Gewinnstufen (run counter): every won Schneider game raises the
+    // counter; from the next game on every game (won or lost, Farbspiel,
+    // Grand and Null, not the Ramsch) gets one level per point. Set at the
+    // declaration, so the preview shows it.
+    (
+        id: "skat_god",
+        focus: Trump,
+        name: "Skatgott",
+        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Stufe auf alles.",
+        rarity: Legendary,
+        price: 12,
+        hooks: [
+            OnDeclare(when: Not(RamschGame), then: [AddLevelsPerCounter(counter: "skat_god", per: 1)]),
+            OnScore(when: WonSchneider, then: [IncrementCounter("skat_god")]),
+        ],
+    ),
+    // Lever Stichgewinn (Vorhand): the player leads the first trick of
+    // every game; the rotation of the Gäste runs on behind him.
+    (
+        id: "honorary_chair",
+        name: "Ehrenvorsitz",
+        text: "Du bist immer Vorhand.",
+        rarity: Legendary,
+        price: 10,
+        passive: [AlwaysForehand],
+    ),
+    // ---------------------------------------------------------------------
     // M8 Welle 2a, abgestimmt im Cockpit (02.11.2026): Skat-Hebel,
     // Bau-Richtungen, Spiel-Relikte. Texte wie abgestimmt. Seltenheit und
     // Preise nach der Einzelmessung (docs/balance/2026-11-02-relikte-

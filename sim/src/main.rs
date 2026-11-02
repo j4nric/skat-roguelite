@@ -31,6 +31,9 @@
 //!   relics. Compare against `--no-shop` for its effect alone.
 //! - `--stake N`: Einsatz-Leiter (DESIGN 9.3), suit games and Grand are
 //!   won from `61 + N` Augen (also in `--unlocks`, whatever is unlocked).
+//! - `--card-mod <card>:<id>`: the start deck carries this card
+//!   modification on the first instance of the printed card (`CA:glass_ace`,
+//!   repeatable), like a character's start deck. The deals stay the same.
 //!
 //! Opponents and bot (DESIGN 10.2, stage 2), in both modes:
 //!
@@ -54,7 +57,7 @@ use std::time::Instant;
 use skat_core::ai::pimc::{Opponents, PimcConfig, PimcPolicy};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use skat_core::cards::Suit;
-use skat_core::content::{BossId, Character, ConsumableId, RelicId, RunLength};
+use skat_core::content::{BossId, CardModId, Character, ConsumableId, RelicId, RunLength};
 use skat_core::game::{Game, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{GameType, Matadors, NullScoring};
@@ -165,6 +168,14 @@ fn parse_args() -> Result<Args, String> {
             "--consumable" => {
                 let value = it.next().ok_or("missing value for --consumable")?;
                 args.options.consumable = Some(ConsumableId::new(&value));
+            }
+            "--card-mod" => {
+                let value = it.next().ok_or("missing value for --card-mod")?;
+                let (card, id) = value
+                    .split_once(':')
+                    .ok_or("--card-mod needs <card>:<id>, e.g. CA:glass_ace")?;
+                let card = card.parse().map_err(|e| format!("--card-mod: {e}"))?;
+                args.options.card_mods.push((card, CardModId::new(id)));
             }
             "--stake" => {
                 let value = it.next().ok_or("missing value for --stake")?;
@@ -561,7 +572,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--consumable ID] [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--short] [--stake N] [--consumable ID] [--card-mod CARD:ID]... [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

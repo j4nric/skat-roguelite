@@ -325,6 +325,19 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
         false
     }
 
+    /// Whether this card is a "Wandelkarte" in the player's hand: it never
+    /// obliges its holder to follow suit, and when the player plays it he
+    /// names its suit (see [`crate::rules::wild_suits`]). `false` for plain
+    /// cards and for a Wandelkarte held by a defender.
+    fn wild(self) -> bool {
+        false
+    }
+
+    /// The same card with another suit and the same rank, everything else
+    /// kept ("Kreide", "Wandelkarte"). A blank stays a blank.
+    #[must_use]
+    fn with_suit(self, suit: Suit) -> Self;
+
     /// The printed card, `None` for a blank.
     fn face(self) -> Option<Card> {
         self.kind().face()
@@ -343,6 +356,10 @@ impl PlayingCard for Card {
 
     fn card_points(self) -> u32 {
         self.rank.card_points()
+    }
+
+    fn with_suit(self, suit: Suit) -> Card {
+        Card::new(suit, self.rank)
     }
 }
 

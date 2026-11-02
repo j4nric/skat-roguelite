@@ -226,7 +226,9 @@ fn on_score(
             l.is_some_and(|(c, _)| this_card.is_some_and(|t| t.id == c.id))
         }),
         // On trick end only: never true when the game is scored.
-        Condition::TrickWinnerMatches { .. } | Condition::FirstTrickOfDeclarer => Some(false),
+        Condition::TrickWinnerMatches { .. }
+        | Condition::FirstTrickOfDeclarer
+        | Condition::ThisCardTakenByDefender => Some(false),
     }
 }
 
@@ -331,6 +333,18 @@ fn during_play(
         }
         // The declarer's trick count only grows.
         Condition::FirstTrickOfDeclarer => (outcome.declarer_tricks > 0).then_some(false),
+        // "Glasdaus": open while the card is still to be played (in a hand
+        // or in the trick on the table); in the skat or after its trick it
+        // cannot break any more.
+        Condition::ThisCardTakenByDefender => {
+            let pending = this_card.is_some_and(|this| {
+                Seat::ALL
+                    .iter()
+                    .any(|&seat| game.hand(seat).iter().any(|c| c.id == this.id))
+                    || game.current_trick().iter().any(|c| c.id == this.id)
+            });
+            (!pending).then_some(false)
+        }
         Condition::LastTrickWonWith { .. }
         | Condition::LastTrickWinnerMatches { .. }
         | Condition::ThisCardWinsLastTrick => None,
@@ -359,7 +373,9 @@ impl Run {
         let Some(declaration) = game.declaration() else {
             return false;
         };
-        if declaration.is_ramsch() {
+        // A Ramsch, and a Wandelkarte still in the hand: its suit is named
+        // only when it is played, the rule playing the rest out cannot.
+        if declaration.is_ramsch() || game.hand(Seat::DECLARER).iter().any(|c| c.wild) {
             return false;
         }
         let sources = self.sources(content, true);

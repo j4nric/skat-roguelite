@@ -27,7 +27,7 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable, suit_strength,
+    self, Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable, suit_strength,
     trump_order_key,
 };
 
@@ -99,6 +99,9 @@ pub struct RunView {
     pub last_score: Option<ScoreView>,
     /// The shared deck, in id order.
     pub deck: Vec<DeckCard>,
+    /// Deck cards that come into the player's hand at the next deal
+    /// ("Heimweh": they lay in the skat when the last game ended).
+    pub homesick: Vec<u32>,
     /// Statistics of the run.
     pub stats: RunStats,
 }
@@ -416,6 +419,13 @@ pub struct CardView {
     /// the declaration; modifications without a condition ("Fett") are
     /// left out.
     pub mod_status: BTreeMap<CardModId, CardModStatus>,
+    /// A Wandelkarte of the hand the player may play now: the suits he may
+    /// name ([`RunAction::PlayAs`], [`crate::rules::wild_suits`]). Empty
+    /// otherwise.
+    pub wild_suits: Vec<Suit>,
+    /// The printed suit of a Wandelkarte the player played in this game;
+    /// the card's `kind` has the suit he named.
+    pub named: Option<Suit>,
 }
 
 /// A card on the table and who played it.
@@ -724,6 +734,12 @@ impl Run {
             .map(|d| d.mods.clone())
             .unwrap_or_default();
         let mod_status = self.mod_status(content, card, &mods);
+        let named = self.game.as_ref().and_then(|a| {
+            a.named
+                .iter()
+                .find(|(id, _)| *id == card.id)
+                .map(|&(_, suit)| suit)
+        });
         CardView {
             chalked,
             card,
@@ -732,6 +748,8 @@ impl Run {
             from_skat: false,
             discardable: false,
             mod_status,
+            wild_suits: Vec::new(),
+            named,
         }
     }
 
@@ -970,6 +988,7 @@ impl Run {
                 steps: b.steps(),
             }),
             deck: self.deck.cards().to_vec(),
+            homesick: self.homesick.clone(),
             stats: self.stats,
         }
     }
@@ -1304,10 +1323,17 @@ impl Run {
         let discarding = phase == TablePhase::Discarding && !active.awaiting_re;
         let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
+        let lead = rules::effective_lead(game.current_trick());
         let hand = hand
             .into_iter()
             .map(|card| CardView {
                 legal: legal.contains(&card),
+                wild_suits: match declaration {
+                    Some(d) if card.wild && legal.contains(&card) => {
+                        rules::wild_suits(d.game(), held, lead, card)
+                    }
+                    _ => Vec::new(),
+                },
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 discardable: discarding && discardable(held, card),
                 ..self.card_view(content, card)
