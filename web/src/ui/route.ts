@@ -165,11 +165,30 @@ function targetCard(view: RunView, picked: RouteOptionView | undefined): string 
   const kind = placeIcon(pub);
   let extra = '';
   if (pub.malus) {
+    const options = picked?.spelunke ? (picked.malus_options ?? []) : [];
+    const pickMalus = options.length
+      ? `<span class="route-malus-pick" role="group" data-testid="malus-pick" ${attrs({ 'aria-label': de.route.malusPick })}><small>${esc(de.route.malusPick)}</small>${options
+          .map(
+            (m, i) =>
+              `<button class="btn btn-small ${m.id === pub.malus?.id ? 'is-picked' : ''}" ${attrs({ 'data-action': 'choose-malus', 'data-option': picked?.index ?? 0, 'data-malus': i, 'aria-pressed': m.id === pub.malus?.id ? 'true' : 'false' })}>${esc(contentName('maluses', m.id) || m.name)}</button>`,
+          )
+          .join('')}</span>`
+      : '';
     extra = `<span class="route-malus" data-testid="route-malus"><b>${esc(t(de.route.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}:</b> ${esc(pub.malus.text)}</span>
-      <span class="route-reward">${esc(de.route.spelunkeReward)}</span>`;
+      ${pickMalus}<span class="route-reward">${esc(de.route.spelunkeReward)}</span>`;
   } else if (pub.is_boss) {
     const boss = pub.boss ? contentName('bosses', pub.boss.id) : de.route.bossUnknown;
     extra = `<span class="route-warn"><b class="route-tag is-boss">${esc(de.route.bossTag)}</b><span class="route-boss">${esc(t(de.route.bossEnd, { name: boss }))}</span></span>`;
+  }
+  const scouted = picked?.stops[0]?.encounter;
+  if (scouted) extra += `<span class="route-scout" data-testid="route-scout">${esc(t(de.route.scouted, { name: contentName('encounters', scouted.id) || scouted.name }))}</span>`;
+  const plan = view.next_pub;
+  if (plan && (plan.redeals || plan.target)) {
+    const parts: string[] = [];
+    if (plan.redeals > 0) parts.push(t(de.route.planRedeals, { n: `+${plan.redeals}` }));
+    if (plan.redeals < 0) parts.push(t(de.route.planRedealsFirst, { n: -plan.redeals }));
+    if (plan.target) parts.push(t(de.route.planTarget, { n: plan.target > 0 ? `+${plan.target}` : `−${-plan.target}` }));
+    extra += `<span class="route-plan-note" data-testid="route-plan-note">${esc(t(de.route.plan, { parts: parts.join(', ') }))}</span>`;
   }
   return `<section class="route-next ${pub.malus ? 'is-spelunke' : ''} ${pub.is_boss ? 'is-boss' : ''}" data-testid="route-next" ${attrs({ 'data-node': pub.id, 'data-kind': kind })}>
     ${mapIcon(kind, 44, undefined, 'route-kind')}

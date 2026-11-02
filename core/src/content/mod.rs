@@ -1014,7 +1014,7 @@ pub enum ConsumableAction {
     /// Runde".
     NextGame(NextGameEffect),
     /// Repaint a card of the hand (target, never a jack or a blank) into
-    /// another suit until the game ends ("Kreide"). Only before the
+    /// another suit until the game ends ("Blue Curaçao"). Only before the
     /// declaration; the card is that card for the whole game: trump,
     /// following suit and Spitzen.
     ChalkCard,
@@ -1024,10 +1024,10 @@ pub enum ConsumableAction {
     /// it cannot be drunk on a hand already known. Only with ten cards
     /// before the skat is touched.
     RedealNextGame(NextGameEffect),
-    /// Lives back, at most to the maximum ("Katerfrühstück"). Outside a
+    /// Lives back, at most to the maximum ("Konterbier"). Outside a
     /// game only, and only with a life missing.
     GainLives(u32),
-    /// Draw the stops of the open route choice again ("Taxi"): every way
+    /// Draw the stops of the open route choice again ("Schwenker"): every way
     /// gets a new stop, the Tresen stays within reach, a Spelunke stays
     /// where it is. At the route choice only.
     RerollRoutes,
@@ -1062,7 +1062,7 @@ pub enum ConsumableCategory {
     /// A plain item (Gegenstand).
     #[default]
     Item,
-    /// A Schnaps: Kurzer, Doppelkorn, Kräuter, Magenbitter, Kreide.
+    /// A Schnaps: Kurzer, Doppelkorn, Kräuter, Magenbitter, Blue Curaçao.
     Schnapps,
 }
 

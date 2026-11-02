@@ -281,7 +281,7 @@ pub enum Event<C = Card> {
         suit: LeadSuit,
     },
     /// A card of the declarer's hand was repainted into another suit for
-    /// this game (consumable "Kreide"): `new` replaces `old` everywhere.
+    /// this game (consumable "Blue Curaçao"): `new` replaces `old` everywhere.
     CardChalked {
         /// The card as it was.
         old: C,
@@ -760,7 +760,7 @@ impl<C: PlayingCard> Game<C> {
     /// Tests and fixture tools: give a game dealt without editions (a save
     /// from before ADR 0015) the editions `editions` and every card the
     /// copy of the seat that holds it, played it, or for the skat the
-    /// declarer. A card "Kreide" or a Wandelkarte renamed keeps its suit.
+    /// declarer. A card "Blue Curaçao" or a Wandelkarte renamed keeps its suit.
     #[cfg(test)]
     pub(crate) fn adopt_editions(&mut self, mut editions: [Vec<C>; 3]) {
         for edition in &mut editions {
@@ -1189,7 +1189,7 @@ impl<C: PlayingCard> Game<C> {
     }
 
     /// Before the declaration: replace the card `old` of the declarer's hand
-    /// by `new` for the rest of the game (consumable "Kreide" repaints its
+    /// by `new` for the rest of the game (consumable "Blue Curaçao" repaints its
     /// suit). The card is replaced wherever the game keeps it (hand, the
     /// declarer's twelve cards, the cards in play and the deck), so trump,
     /// following suit and Spitzen see `new`.
@@ -2036,7 +2036,7 @@ mod tests {
             game.chalk(find(&game, Seat(1), "D8"), new),
             Err(GameError::CardNotInHand { .. })
         ));
-        let events = game.chalk(old, new).expect("chalk");
+        let events = game.chalk(old, new).expect("blue_curacao");
         assert_eq!(events, vec![Event::CardChalked { old, new }]);
         assert!(game.hand(Seat::DECLARER).contains(&new));
         assert!(game.declarer_cards().contains(&new));

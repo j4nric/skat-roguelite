@@ -523,7 +523,7 @@ impl Run {
         }
     }
 
-    /// "Taxi": the stops of the open route choice drawn again; Spelunken
+    /// "Schwenker": the stops of the open route choice drawn again; Spelunken
     /// stay.
     pub(super) fn reroll_routes(&mut self, content: &Content) {
         let Some(mut route) = self.route.take() else {

@@ -88,6 +88,11 @@ pub const SERIES_PER_SECTION: u32 = PUBS_PER_DISTRICT;
 /// the draw is independent of the PIMC samples of the same game.
 const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 
+/// Consumables renamed by the item review of 02.11.2026: old id, new id.
+/// A loaded run reads the old ids as the new ones
+/// ([`Run::drop_unknown_content`]).
+pub const RENAMED_CONSUMABLES: [(&str, &str); 1] = [("chalk", "blue_curacao")];
+
 /// What the run is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunPhase {
@@ -363,7 +368,7 @@ pub struct ActiveGame {
     /// The player looked at the untouched skat ("Kurzer").
     #[serde(default)]
     pub skat_peeked: bool,
-    /// Cards repainted for this game ("Kreide"): instance id and printed
+    /// Cards repainted for this game ("Blue Curaçao"): instance id and printed
     /// suit.
     #[serde(default)]
     pub chalked: Vec<(u32, Suit)>,
@@ -678,9 +683,9 @@ pub enum RunAction {
         /// Slot of the consumable.
         slot: usize,
         /// Target card instance id: a deck card for deck changes, a card of
-        /// the hand for "Kreide".
+        /// the hand for "Blue Curaçao".
         target: Option<u32>,
-        /// The new suit of the target ("Kreide").
+        /// The new suit of the target ("Blue Curaçao").
         #[serde(default)]
         suit: Option<Suit>,
     },
@@ -1058,7 +1063,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Groschen left to the player.
         coins: u32,
     },
-    /// The stops of the open route choice were drawn again ("Taxi").
+    /// The stops of the open route choice were drawn again ("Schwenker").
     RoutesRerolled,
     /// The plan for the next pub changed ("Wegbier", "Der Skatlehrer",
     /// "Kiebitz am Fenster"); the whole plan now.
@@ -1197,7 +1202,7 @@ pub enum RunError {
     /// A defender is to move: advance the AI ([`Run::advance_ai`]) before
     /// the player acts again.
     AiToMove,
-    /// "Kreide" cannot repaint this card into this suit: a jack, a blank,
+    /// "Blue Curaçao" cannot repaint this card into this suit: a jack, a blank,
     /// or the suit it already has.
     CannotChalk,
     /// The rest of the game can still change its score
@@ -1211,7 +1216,7 @@ pub enum RunError {
     NoLeadDemandLeft,
     /// A Spelunke's malus locks the Schnäpse in this pub (ADR 0016).
     ConsumablesLocked,
-    /// No life is missing ("Katerfrühstück").
+    /// No life is missing ("Konterbier").
     LivesFull,
 }
 
@@ -1303,7 +1308,7 @@ pub enum RunErrorCode {
     DiscardForbidden,
     /// A defender is to move; the player has to wait.
     AiToMove,
-    /// "Kreide" cannot repaint this card into this suit.
+    /// "Blue Curaçao" cannot repaint this card into this suit.
     CannotChalk,
     /// The rest of the game can still change its score; it cannot be
     /// settled ([`RunAction::SettleGame`]).
@@ -1744,12 +1749,36 @@ impl Run {
     }
 
     /// Drop what the content no longer knows from a loaded run (relics and
-    /// consumables removed by the item review of 02.11.2026, DESIGN 18.3):
+    /// consumables removed by the item review of 02.11.2026, DESIGN 18.3;
+    /// renamed consumables, [`RENAMED_CONSUMABLES`], are renamed first):
     /// owned and evening relics, consumables, Tresen offers, locked
     /// relics, consumables waiting for the next game and encounter options
     /// that name them. Returns the ids dropped, in order, for a note.
     /// Nothing else changes; a run without such ids stays as it is.
     pub fn drop_unknown_content(&mut self, content: &Content) -> Vec<String> {
+        // Renamed consumables keep their place.
+        let rename = |id: &mut ConsumableId| {
+            if let Some((_, new)) = RENAMED_CONSUMABLES
+                .iter()
+                .find(|(old, _)| *old == id.as_str())
+            {
+                *id = ConsumableId::new(new);
+            }
+        };
+        self.consumables.iter_mut().for_each(rename);
+        self.pending_next_game
+            .iter_mut()
+            .for_each(|(id, _)| rename(id));
+        if let Some(shop) = self.shop.as_mut() {
+            shop.consumables.iter_mut().flatten().for_each(rename);
+        }
+        if let Some(encounter) = self.encounter.as_mut() {
+            for option in &mut encounter.options {
+                if let EncounterChoice::TakeConsumable(id) = &mut option.choice {
+                    rename(id);
+                }
+            }
+        }
         let mut dropped: Vec<String> = Vec::new();
         let keep_relic = |id: &RelicId, dropped: &mut Vec<String>| {
             let known = content.relic(id).is_some();
@@ -4231,7 +4260,7 @@ impl Run {
         Ok(())
     }
 
-    /// "Kreide": repaint the card `id` of the player's hand into `suit`
+    /// "Blue Curaçao": repaint the card `id` of the player's hand into `suit`
     /// until the game ends. Only before the declaration, never a jack (it
     /// is trump by its rank) or a blank, and only into another suit.
     fn chalk(&mut self, id: u32, suit: Suit, events: &mut Vec<RunEvent>) -> Result<(), RunError> {

@@ -114,7 +114,7 @@ pub enum PlayerGameEvent {
         /// What must be led.
         suit: LeadSuit,
     },
-    /// The player repainted a card of his hand for this game ("Kreide").
+    /// The player repainted a card of his hand for this game ("Blue Curaçao").
     CardChalked {
         /// The card as it was.
         old: DealtCard,

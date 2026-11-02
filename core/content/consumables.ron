@@ -54,10 +54,12 @@
         action: Redeal,
         category: Schnapps,
     ),
+    // Bis 02.11.2026 "Kreide" (id chalk); alte Spielstände lesen die alte Id
+    // (`Run::drop_unknown_content`).
     (
-        id: "chalk",
-        name: "Kreide",
-        text: "Vor der Ansage: Male eine Karte deiner Hand bis zum Spielende in eine andere Farbe um. Buben nicht.",
+        id: "blue_curacao",
+        name: "Blue Curaçao",
+        text: "Vor der Ansage: Färbe eine Karte deiner Hand bis zum Spielende in eine andere Farbe um. Unter nicht.",
         rarity: Uncommon,
         price: 3,
         action: ChalkCard,
@@ -66,8 +68,8 @@
     // Gegenstands-Review vom 02.11.2026 (Nutzer): neue Schnäpse. Preise und
     // Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung (DESIGN 8.3, 12).
     (
-        id: "hangover_breakfast",
-        name: "Katerfrühstück",
+        id: "counter_beer",
+        name: "Konterbier",
         text: "Außerhalb eines Spiels: Du bekommst ein Leben zurück, höchstens bis zum Maximum.",
         rarity: Uncommon,
         price: 4,
@@ -75,8 +77,8 @@
         category: Schnapps,
     ),
     (
-        id: "taxi",
-        name: "Taxi",
+        id: "snifter",
+        name: "Schwenker",
         text: "Bei der Wahl des Weges: Die Stationen aller drei Wege werden neu ausgelost.",
         rarity: Common,
         price: 2,

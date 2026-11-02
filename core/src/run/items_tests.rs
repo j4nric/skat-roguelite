@@ -261,6 +261,11 @@ fn an_old_save_drops_the_removed_relics_and_items_on_load() {
     });
     run.drop_unknown_content(&content);
     assert_eq!(run.encounter().expect("open").options.len(), 2);
+    // A renamed Schnaps keeps its slot: "Kreide" is "Blue Curaçao".
+    let mut run = relic_run(&content, &[]);
+    run.consumables = vec![ConsumableId::new("chalk"), ConsumableId::new("bitters")];
+    assert_eq!(run.drop_unknown_content(&content), ["bitters"]);
+    assert_eq!(run.consumables(), &[ConsumableId::new("blue_curacao")]);
     // Nothing to drop: nothing changes.
     let (mut run, _) = Run::new(&content, 3).expect("run");
     let before = run.clone();
@@ -341,23 +346,23 @@ fn groups_of_the_relics_are_data() {
 #[test]
 fn the_new_schnaepse_are_schnaepse() {
     let content = content();
-    for id in ["hangover_breakfast", "taxi", "road_beer"] {
+    for id in ["counter_beer", "snifter", "road_beer"] {
         let def = content.consumable(&ConsumableId::new(id)).expect(id);
         assert_eq!(def.category, ConsumableCategory::Schnapps, "{id}");
     }
 }
 
 #[test]
-fn hangover_breakfast_gives_a_life_outside_a_game() {
+fn counter_beer_gives_a_life_outside_a_game() {
     let content = content();
     // Not in a game.
     let mut run = relic_run(&content, &[]);
-    run.consumables = vec![ConsumableId::new("hangover_breakfast")];
+    run.consumables = vec![ConsumableId::new("counter_beer")];
     run.lives = 1;
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
     // At the route choice with all lives: nothing to win back.
     let mut run = at_route(&content, &[]);
-    run.consumables = vec![ConsumableId::new("hangover_breakfast")];
+    run.consumables = vec![ConsumableId::new("counter_beer")];
     run.lives = content.run.lives.max;
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::LivesFull));
     assert!(!run.view(&content).consumables[0].can_use);
@@ -372,15 +377,15 @@ fn hangover_breakfast_gives_a_life_outside_a_game() {
 }
 
 #[test]
-fn taxi_draws_the_stops_of_the_route_choice_again() {
+fn snifter_draws_the_stops_of_the_route_choice_again() {
     let content = content();
     let mut changed = false;
     for seed in 0..12 {
         let mut run = at_route(&content, &[]);
         run.tour_rng = crate::rng::Rng::from_seed(seed);
-        run.consumables = vec![ConsumableId::new("taxi")];
+        run.consumables = vec![ConsumableId::new("snifter")];
         let before = run.route().expect("route").clone();
-        let events = run.apply(&content, use_item(0)).expect("taxi");
+        let events = run.apply(&content, use_item(0)).expect("snifter");
         assert!(events.contains(&RunEvent::RoutesRerolled));
         let after = run.route().expect("route");
         assert_eq!((after.section, after.index), (before.section, before.index));
@@ -399,7 +404,7 @@ fn taxi_draws_the_stops_of_the_route_choice_again() {
     assert!(changed, "new stops");
     // Only at the route choice.
     let mut run = relic_run(&content, &[]);
-    run.consumables = vec![ConsumableId::new("taxi")];
+    run.consumables = vec![ConsumableId::new("snifter")];
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
 }
 

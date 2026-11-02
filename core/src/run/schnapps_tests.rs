@@ -1,5 +1,5 @@
 //! Tests of the Schnäpse (DESIGN 8.3): Kurzer, Doppelkorn, Kräuter,
-//! Magenbitter and Kreide.
+//! Magenbitter and Blue Curaçao.
 
 use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play};
@@ -85,9 +85,9 @@ fn the_schnaepse_load_as_one_group() {
         "shot",
         "double_grain",
         "herbal",
-        "chalk",
-        "hangover_breakfast",
-        "taxi",
+        "blue_curacao",
+        "counter_beer",
+        "snifter",
         "road_beer",
     ];
     for id in schnaepse {
@@ -290,7 +290,7 @@ fn bitters_makes_the_next_lost_game_count_single() {
 #[test]
 fn chalk_repaints_a_card_of_the_hand_until_the_game_ends() {
     let content = content();
-    let mut run = run_with(&content, &["chalk"]);
+    let mut run = run_with(&content, &["blue_curacao"]);
     fixed_deal(&mut run, &content, ONE_HEART, STRONG_SKAT);
     let heart = hand_card(&run, "H7");
     let view = run.view(&content);
@@ -319,7 +319,7 @@ fn chalk_repaints_a_card_of_the_hand_until_the_game_ends() {
     );
     let events = run
         .apply(&content, chalk(heart.id, Suit::Diamonds))
-        .expect("chalk");
+        .expect("blue_curacao");
     let painted = hand_card(&run, "D7");
     assert_eq!(painted.id, heart.id);
     assert!(events.contains(&RunEvent::Game(Event::CardChalked {
@@ -352,7 +352,7 @@ fn chalk_repaints_a_card_of_the_hand_until_the_game_ends() {
 #[test]
 fn chalk_only_before_the_declaration() {
     let content = content();
-    let mut run = run_with(&content, &["chalk"]);
+    let mut run = run_with(&content, &["blue_curacao"]);
     fixed_deal(&mut run, &content, ONE_HEART, STRONG_SKAT);
     let heart = hand_card(&run, "H7");
     run.apply(&content, RunAction::Declare(hand(DIAMONDS)))
@@ -394,12 +394,12 @@ fn the_bot_drinks_each_schnaps() {
     // No Einmischen left: the hand is played.
     run.series.redeals_in_game = 99;
     assert_eq!(drunk_until_play(&mut run, &content), ["bitters"]);
-    // Kreide paints a side card into trump.
-    let mut run = run_with(&content, &["chalk"]);
+    // Blue Curaçao paints a side card into trump.
+    let mut run = run_with(&content, &["blue_curacao"]);
     fixed_deal(&mut run, &content, ACES, ACES_SKAT);
     // No Einmischen left: the hand is played.
     run.series.redeals_in_game = 99;
-    assert_eq!(drunk_until_play(&mut run, &content), ["chalk"]);
+    assert_eq!(drunk_until_play(&mut run, &content), ["blue_curacao"]);
     let active = run.game().expect("game");
     assert_eq!(active.chalked.len(), 1);
     let trump = active.game.declaration().expect("declared").game();

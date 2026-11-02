@@ -494,7 +494,7 @@ pub fn matadors_in<C: PlayingCard>(
     in_play: &[C],
 ) -> Matadors {
     // A demoted Unter ("Abgestuft") is no Unter in this game: like a card
-    // "Kreide" repainted, it is skipped.
+    // "Blue Curaçao" repainted, it is skipped.
     let faces = |cards: &[C]| -> Vec<Card> {
         cards
             .iter()

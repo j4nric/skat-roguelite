@@ -60,7 +60,7 @@
 //! strong (three lives and three relics).
 //!
 //! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
-//! skat (the bot does not use what it sees); after the skat, "Kreide"
+//! skat (the bot does not use what it sees); after the skat, "Blue Curaçao"
 //! paints the cheapest side card (never a jack) into the trump suit of a
 //! suit game, then "Doppelkorn" before a game that is not weak
 //! ([`RunBot::is_weak`]) and "Magenbitter" before a weak one, never before
@@ -232,11 +232,11 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
 /// | `fresh_deck` | 0, 2 with a cursed card | ADR 0015: cleanses a card of the player's edition; the bot buys it only while a card carries a curse (not "Abgestuft") and uses it on that card at once |
 /// | `double_grain` | 2 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
-/// | `chalk` | 2 | "Kreide": the cheapest side card into trump |
+/// | `blue_curacao` | 2 | "Blue Curaçao": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
-/// | `hangover_breakfast` | 2 | "Katerfrühstück": at the route choice with a life missing |
+/// | `counter_beer` | 2 | "Konterbier": at the route choice with a life missing |
 /// | `road_beer` | 2 | "Wegbier": at the route choice, at once |
-/// | `taxi` | 0 | "Taxi": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
+/// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
 ///
 /// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
 /// `new_deal`, `beer`, `bitters`, `regret`, `points_5`, `trump_4`. "Neues
@@ -254,15 +254,15 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 12] = [
     ("herbal", 2),
     ("ink_pad", 2),
     ("double_grain", 2),
-    ("chalk", 2),
+    ("blue_curacao", 2),
     ("shot", 1),
     ("fresh_deck", 0),
     ("points_3", 1),
     ("trump_2", 1),
     ("rank_1", 1),
-    ("hangover_breakfast", 2),
+    ("counter_beer", 2),
     ("road_beer", 2),
-    ("taxi", 0),
+    ("snifter", 0),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -1320,7 +1320,7 @@ impl RunBot {
     }
 
     /// Schnäpse right before the declaration after the skat, see the
-    /// module docs: "Kreide" on the cheapest side card of a suit game,
+    /// module docs: "Blue Curaçao" on the cheapest side card of a suit game,
     /// then "Doppelkorn" (not weak) or "Magenbitter" (weak).
     fn schnapps_before_declaring(
         run: &Run,
@@ -1415,8 +1415,8 @@ impl RunBot {
         )
     }
 
-    /// Schnäpse at the route choice: "Katerfrühstück" with a life missing,
-    /// "Wegbier" at once, "Taxi" when no way has what the bot wants most.
+    /// Schnäpse at the route choice: "Konterbier" with a life missing,
+    /// "Wegbier" at once, "Schwenker" when no way has what the bot wants most.
     fn route_schnapps(run: &Run, content: &Content) -> Option<RunAction> {
         if run.lives() < content.run.lives.max {
             if let Some(action) = Self::usable(

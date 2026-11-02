@@ -1071,7 +1071,10 @@ mod tests {
         assert_eq!(catalog["relics"]["kibitzer"]["group"], "Control");
         assert_eq!(catalog["relics"]["kitty"]["group"], "Tour");
         assert_eq!(catalog["relics"]["tour"]["rarity"], "Rare");
-        assert_eq!(catalog["consumables"]["chalk"]["category"], "Schnapps");
+        assert_eq!(
+            catalog["consumables"]["blue_curacao"]["category"],
+            "Schnapps"
+        );
         assert_eq!(catalog["consumables"]["fresh_deck"]["category"], "Item");
         assert_eq!(catalog["consumables"]["double_grain"]["rarity"], "Uncommon");
         assert_eq!(catalog["consumables"]["points_3"]["card_mod"], "points");
@@ -1111,7 +1114,7 @@ mod tests {
             serde_json::json!([])
         );
         assert!(catalog["bosses"]["grandma"]["name"].is_string());
-        assert!(catalog["consumables"]["taxi"]["name"].is_string());
+        assert!(catalog["consumables"]["snifter"]["name"].is_string());
     }
 
     #[test]
@@ -1463,6 +1466,26 @@ mod tests {
                 // The single filter of the old save became the list.
                 let rules = &session.run().game().expect("game").rules;
                 assert_eq!(rules.skat_swaps.len(), 1, "{name}");
+                // "Die Oma" was removed on 02.11.2026: the save drops her on
+                // load and plays on.
+                assert!(
+                    !session
+                        .run()
+                        .relics()
+                        .iter()
+                        .any(|r| r.as_str() == "granny"),
+                    "{name}"
+                );
+            }
+            // Relics and consumables removed on 02.11.2026 are gone.
+            let removed = ["bock_round", "kontra", "granny", "beer", "new_deal"];
+            for owned in view["relics"].as_array().expect("relics") {
+                let id = owned["relic"]["id"].as_str().unwrap_or("");
+                assert!(!removed.contains(&id), "{name}: {id}");
+            }
+            for owned in view["consumables"].as_array().expect("consumables") {
+                let id = owned["consumable"]["id"].as_str().unwrap_or("");
+                assert!(!removed.contains(&id), "{name}: {id}");
             }
             if name == "encounter" {
                 let options = view["encounter"]["options"].as_array().expect("options");

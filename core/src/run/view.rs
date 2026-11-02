@@ -331,7 +331,7 @@ pub struct ConsumableInfo {
     pub price: u32,
     /// Whether using it needs a target card of the deck (at the Tresen).
     pub needs_target: bool,
-    /// Whether using it needs a card of the hand and a suit ("Kreide"):
+    /// Whether using it needs a card of the hand and a suit ("Blue Curaçao"):
     /// one of [`OwnedConsumable::targets`] and any other suit than the
     /// card's own.
     pub needs_suit: bool,
@@ -374,7 +374,7 @@ pub struct OwnedConsumable {
     pub can_sell: bool,
     /// Whether it can be used now (with one of `targets` if it needs one).
     pub can_use: bool,
-    /// Card ids it can be used on now: deck cards, or for "Kreide" the
+    /// Card ids it can be used on now: deck cards, or for "Blue Curaçao" the
     /// cards of the hand.
     pub targets: Vec<u32>,
 }
@@ -461,7 +461,7 @@ pub struct CardView {
     /// The defender it was drawn from with the skat ("Drei drücken"),
     /// while discarding.
     pub drawn_from: Option<Seat>,
-    /// The printed suit of a card "Kreide" repainted for this game; the
+    /// The printed suit of a card "Blue Curaçao" repainted for this game; the
     /// card's `kind` is the suit it has now.
     pub chalked: Option<Suit>,
     /// Whether the player may put it into the skat now: only for hand
