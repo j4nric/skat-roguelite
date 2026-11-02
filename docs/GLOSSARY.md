@@ -315,7 +315,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Taschenspieler | `conjurer` |
 | Preisskat | `prize_skat` |
 | Gast aus Altenburg | `guest_from_altenburg` |
-| Ramponiert (Fluch, seit Effekte v2 −X Augen) | `battered` |
+| Ramponiert (Fluch, seit Effekte v2 −X Augen: Augen mit negativem Wert, Konstante `deck::RAMPONIERT` neben `deck::AUGEN`) | `battered` |
 | Der Opa (Figur) | `grandpa` (nicht verwechseln mit `granny`) |
 | Mit Vieren | `with_four` |
 | Siebenschläfer | `seven_sleeper` |

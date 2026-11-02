@@ -7,7 +7,7 @@ use super::content_tests::{content, fixed_deal, play, relic_run};
 use super::*;
 use crate::cards::{Card, Suit};
 use crate::content::{EncounterId, Factor, ScoreTerm};
-use crate::rules::{GameType, NullRisk, RiskLevel};
+use crate::rules::{NullRisk, RiskLevel};
 
 /// A Null deal the declarer cannot lose: he holds all eight sevens plus
 /// the lowest diamond and heart, so he can always go under.
@@ -182,7 +182,7 @@ fn a_null_ends_with_the_declarers_first_trick() {
 }
 
 #[test]
-fn null_ouvert_shows_the_hand_and_invisible_cards_never_win() {
+fn null_ouvert_shows_the_hand() {
     let content = content();
     let mut run = null_run(&content, &[]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
@@ -200,36 +200,6 @@ fn null_ouvert_shows_the_hand_and_invisible_cards_never_win() {
         view.declarer_hand.map(<[DealtCard]>::len),
         Some(active.game.hand(Seat::DECLARER).len())
     );
-    // "Unsichtbar" on the Kreuz-Ass makes it never win.
-    let content = content.clone();
-    let mut run = null_run(&content, &[]);
-    let ace = run
-        .deck()
-        .cards()
-        .iter()
-        .find(|c| c.kind == CardKind::Normal(Card::new(Suit::Clubs, crate::cards::Rank::Ace)))
-        .map(|c| c.id)
-        .expect("ace");
-    run.deck
-        .add_mod(ace, CardModId::new("invisible"))
-        .expect("mod");
-    let global = run.sources(&content, false);
-    let resolved = resolve_deck(&run.deck, &content, &global);
-    let card = resolved
-        .cards
-        .iter()
-        .find(|c| c.id == ace)
-        .copied()
-        .expect("card");
-    assert!(card.never_wins);
-    let seven = resolved
-        .cards
-        .iter()
-        .find(|c| c.kind == CardKind::Normal(Card::new(Suit::Clubs, crate::cards::Rank::Seven)))
-        .copied()
-        .expect("seven");
-    assert!(crate::rules::beats(GameType::Null, card, card, seven));
-    assert!(!crate::rules::beats(GameType::Null, seven, seven, card));
 }
 
 #[test]
@@ -590,6 +560,7 @@ fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
         choice,
         cost,
         card_mod: None,
+        value: None,
     }
 }
 
@@ -803,11 +774,13 @@ fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
     assert_eq!(weight(&pool, "blind_flight"), Some(1200));
     assert_eq!(weight(&pool, "old_lady"), Some(150));
     assert_eq!(weight(&pool, "bock_round"), Some(300));
-    let mods = run.card_mod_pool(&content, &[]);
+    let mods = run.card_mod_pool(&content);
     let mod_weight = |id: &str| mods.iter().find(|(m, _)| m.as_str() == id).map(|&(_, w)| w);
-    assert_eq!(mod_weight("invisible"), Some(200));
-    assert_eq!(mod_weight("fat"), Some(50));
-    assert_eq!(mod_weight("transparent"), Some(100));
+    assert_eq!(mod_weight("points"), Some(50));
+    assert_eq!(mod_weight("voucher_coins"), Some(100));
+    // Effekte v2: random draws never give a curse or a special card.
+    assert_eq!(mod_weight("transparent"), None);
+    assert_eq!(mod_weight("undead"), None);
 }
 
 #[test]
@@ -966,108 +939,6 @@ fn tally_stick_adds_two_base_value_per_won_null() {
     }));
 }
 
-/// Deck id of a printed card in the Nullspieler's deck.
-fn null_card(run: &Run, card: &str) -> u32 {
-    let kind: CardKind = card.parse().expect("card");
-    run.deck()
-        .cards()
-        .iter()
-        .find(|c| c.kind == kind)
-        .map(|c| c.id)
-        .expect("in deck")
-}
-
-fn resolved_card(run: &Run, content: &Content, id: u32) -> DealtCard {
-    let global = run.sources(content, false);
-    resolve_deck(&run.deck, content, &global)
-        .cards
-        .into_iter()
-        .find(|c| c.id == id)
-        .expect("card")
-}
-
-#[test]
-fn lead_weight_adds_ten_augen() {
-    let content = content();
-    let mut run = null_run(&content, &[]);
-    let ace = null_card(&run, "CA");
-    run.deck
-        .add_mod(ace, CardModId::new("lead_weight"))
-        .expect("mod");
-    assert_eq!(resolved_card(&run, &content, ace).card_points, 21);
-}
-
-#[test]
-fn tail_light_adds_two_levels_when_its_card_takes_the_last_trick_of_a_won_null() {
-    let content = content();
-    // Find the card that takes the tenth trick of the safe Null.
-    let mut probe = null_run(&content, &[]);
-    fixed_deal(&mut probe, &content, SAFE_NULL, SAFE_NULL_SKAT);
-    let (events, b) = play(&mut probe, &content, Declaration::null(NullRisk::Hand));
-    assert!(b.won);
-    let last = events
-        .iter()
-        .rev()
-        .find_map(|e| match e {
-            RunEvent::Game(Event::TrickWon { trick, .. }) => Some(trick.winning_card().id),
-            _ => None,
-        })
-        .expect("ten tricks");
-    let mut run = null_run(&content, &[]);
-    run.deck
-        .add_mod(last, CardModId::new("tail_light"))
-        .expect("mod");
-    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
-    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
-    assert!(b.lines.iter().any(|l| l.source
-        == Source::CardMod {
-            card_mod: CardModId::new("tail_light"),
-            card: last,
-        }
-        && l.change == Change::Add(2)));
-    // On the declarer's D7 it never takes the last trick of a won Null.
-    let mut run = null_run(&content, &[]);
-    let seven = null_card(&run, "D7");
-    run.deck
-        .add_mod(seven, CardModId::new("tail_light"))
-        .expect("mod");
-    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
-    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
-    assert!(b.lines.is_empty());
-}
-
-#[test]
-fn dressed_up_card_counts_two_ranks_higher_in_null() {
-    let content = content();
-    let mut run = null_run(&content, &[]);
-    let nine = null_card(&run, "C9");
-    run.deck
-        .add_mod(nine, CardModId::new("dressed_up"))
-        .expect("mod");
-    let nine = resolved_card(&run, &content, nine);
-    assert_eq!(nine.rank_bonus, 2);
-    // In Null the order is 7 8 9 10 Unter Ober König Daus: two steps up,
-    // the C9 ranks with the Unter (none in this deck) and beats the CT.
-    let ten = resolved_card(&run, &content, null_card(&run, "CT"));
-    assert!(crate::rules::beats(GameType::Null, ten, ten, nine));
-}
-
-#[test]
-fn a_dummy_never_wins_and_shows_its_holder() {
-    let content = content();
-    let mut run = null_run(&content, &[]);
-    // CK lies in the skat of the safe Null; take the HA (seat 1).
-    let ace = null_card(&run, "HA");
-    run.deck.add_mod(ace, CardModId::new("dummy")).expect("mod");
-    fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
-    let card = resolved_card(&run, &content, ace);
-    assert!(card.never_wins && card.revealed);
-    let revealed = run.revealed_holders();
-    assert_eq!(revealed.len(), 1);
-    assert_eq!(revealed[0].0.id, ace);
-    assert_eq!(revealed[0].1, Some(Seat::DEFENDERS[0]));
-}
-
 #[test]
 fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     let content = content();
@@ -1099,7 +970,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     );
     run.apply(&content, choose(1, Some(16))).expect("chosen");
     assert_eq!(run.coins(), 3);
-    assert!(has_mod(&run, 16, "beer_stain"));
+    assert!(has_mod(&run, 16, "battered"));
     let mut run = relic_run(&content, &[]);
     encounter(
         &mut run,
@@ -1110,7 +981,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
         ],
     );
     run.apply(&content, choose(0, None)).expect("random");
-    assert_eq!(marked(&run, "beer_stain"), 1);
+    assert_eq!(marked(&run, "battered"), 1);
     // Gasthof zur Krone (Alleinspieler) and Der Taschenspieler (Nullspieler).
     let mut run = relic_run(&content, &[]);
     encounter(
@@ -1122,7 +993,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
         ],
     );
     run.apply(&content, choose(0, None)).expect("crown");
-    assert_eq!(marked(&run, "crown"), 1);
+    assert_eq!(marked(&run, "trump_bonus"), 1);
     let mut run = null_run(&content, &[]);
     encounter(
         &mut run,
@@ -1133,7 +1004,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
         ],
     );
     run.apply(&content, choose(0, None)).expect("dummy");
-    assert_eq!(marked(&run, "dummy"), 1);
+    assert_eq!(marked(&run, "voucher_wild"), 1);
     for (id, character) in [
         ("crown_inn", Character::Declarer),
         ("conjurer", Character::NullPlayer),

@@ -13,13 +13,14 @@
 //! The resolution itself lives in [`crate::content`], because it applies
 //! content effects.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub use crate::cards::CardKind;
 use crate::cards::{Card, PlayingCard, Suit, standard_deck};
-use crate::content::{CardModId, DeckSpec};
+use crate::content::{CardModId, Content, DeckSpec, ModKind};
 use crate::game::{CARDS_IN_PLAY, HAND_SIZE};
 
 /// One card instance of the run's deck.
@@ -29,8 +30,35 @@ pub struct DeckCard {
     pub id: u32,
     /// Normal card or blank.
     pub kind: CardKind,
-    /// Card modifications attached to this instance, in the order applied.
+    /// Card modifications attached to this instance, in the order applied:
+    /// at most one besides a special card (effects v2, DESIGN 7.2).
     pub mods: Vec<CardModId>,
+    /// The value of each modification that has one (Augen +5: 5, Rang 2:
+    /// 2). A modification without entry counts 1.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mod_values: BTreeMap<CardModId, i32>,
+}
+
+impl DeckCard {
+    /// The value of a modification on this card (1 without entry).
+    #[must_use]
+    pub fn mod_value(&self, card_mod: &CardModId) -> i32 {
+        self.mod_values.get(card_mod).copied().unwrap_or(1)
+    }
+
+    fn new(id: u32, kind: CardKind) -> DeckCard {
+        DeckCard {
+            id,
+            kind,
+            mods: Vec::new(),
+            mod_values: BTreeMap::new(),
+        }
+    }
+
+    fn drop_mod(&mut self, card_mod: &CardModId) {
+        self.mods.retain(|m| m != card_mod);
+        self.mod_values.remove(card_mod);
+    }
 }
 
 /// A card instance as dealt into one game, with every modification already
@@ -57,9 +85,14 @@ pub struct DealtCard {
     /// ("Bube ehrenhalber").
     #[serde(default)]
     pub honorary_jack: bool,
-    /// Whether this card must not be discarded ("Ramponiert").
+    /// Whether this card must not be discarded (dormant since effects v2).
     #[serde(default)]
     pub no_discard: bool,
+    /// Augen below zero ("Ramponiert", "Augen −X" on a low card, DESIGN
+    /// 7.2): `card_points` is 0 then and the trick that takes the card
+    /// loses this many Augen.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub point_debt: u32,
     /// Whether this is a "Wandelkarte" in the player's hand: it never
     /// obliges him to follow suit, and he names its suit when he plays it.
     /// Only the copies the player holds (hand and skat) carry it.
@@ -80,9 +113,15 @@ impl DealtCard {
             never_wins: false,
             honorary_jack: false,
             no_discard: false,
+            point_debt: 0,
             wild: false,
         }
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl PlayingCard for DealtCard {
@@ -108,6 +147,10 @@ impl PlayingCard for DealtCard {
 
     fn no_discard(self) -> bool {
         self.no_discard
+    }
+
+    fn point_debt(self) -> u32 {
+        self.point_debt
     }
 
     fn wild(self) -> bool {
@@ -209,8 +252,16 @@ pub enum DeckError {
     WouldShrinkBelowMinimum,
     /// Blanks carry no modifications.
     BlankCannotBeModified,
-    /// The card already carries this modification.
+    /// The card already carries this modification and it cannot be
+    /// raised (it has no value).
     AlreadyModified(CardModId),
+    /// The card carries a curse: no other modification, no raise (DESIGN
+    /// 7.2).
+    Cursed(CardModId),
+    /// The modification is at its highest value already ("Rang" 3).
+    AtMaximum(CardModId),
+    /// No such card modification in the content.
+    UnknownMod(CardModId),
     /// The deck holds no instance of this printed card.
     MissingCard(Card),
 }
@@ -222,6 +273,9 @@ impl fmt::Display for DeckError {
             DeckError::WouldShrinkBelowMinimum => f.write_str("the deck cannot shrink below 32"),
             DeckError::BlankCannotBeModified => f.write_str("blanks cannot be modified"),
             DeckError::AlreadyModified(m) => write!(f, "card already carries {m}"),
+            DeckError::Cursed(m) => write!(f, "card is cursed with {m}"),
+            DeckError::AtMaximum(m) => write!(f, "{m} is at its highest value"),
+            DeckError::UnknownMod(m) => write!(f, "unknown card mod {m}"),
             DeckError::MissingCard(c) => write!(f, "no {c} in the deck"),
         }
     }
@@ -256,20 +310,162 @@ pub enum DeckChange {
         /// Id of the new card.
         card: u32,
     },
-    /// A modification was attached to a card.
+    /// A modification was attached to a card, raised or put in place of
+    /// another one (effects v2, DESIGN 7.2).
     Modified {
         /// Id of the card.
         card: u32,
         /// The new modification.
         card_mod: CardModId,
+        /// Its value on the card now (after a raise: the sum).
+        #[serde(default = "one")]
+        value: i32,
+        /// The modification it replaced, if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replaced: Option<CardModId>,
+    },
+    /// A modification fell off a card (a voucher once redeemed).
+    Unmodified {
+        /// Id of the card.
+        card: u32,
+        /// The modification that fell off.
+        card_mod: CardModId,
     },
 }
 
+/// The modification "Augen" (DESIGN 7.2): one signed value with
+/// [`RAMPONIERT`].
+pub const AUGEN: &str = "points";
+
+/// The curse "Ramponiert": Augen with a negative value (DESIGN 7.2).
+pub const RAMPONIERT: &str = "battered";
+
+const fn one() -> i32 {
+    1
+}
+
+/// The version of the card modifications in a saved deck: 2 is effects v2
+/// (DESIGN 7.2). A deck without it is converted when it is loaded
+/// ([`migrate_legacy_mods`]).
+pub const MODS_VERSION: u32 = 2;
+
 /// The run's shared deck.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Deck {
     cards: Vec<DeckCard>,
     next_id: u32,
+    /// [`MODS_VERSION`] once the card modifications are effects v2.
+    mods_version: u32,
+}
+
+impl<'de> Deserialize<'de> for Deck {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Deck, D::Error> {
+        #[derive(Deserialize)]
+        struct Saved {
+            cards: Vec<DeckCard>,
+            next_id: u32,
+            #[serde(default)]
+            mods_version: u32,
+        }
+        let saved = Saved::deserialize(deserializer)?;
+        let mut deck = Deck {
+            cards: saved.cards,
+            next_id: saved.next_id,
+            mods_version: saved.mods_version,
+        };
+        if deck.mods_version < MODS_VERSION {
+            for card in &mut deck.cards {
+                migrate_legacy_mods(card);
+            }
+            deck.mods_version = MODS_VERSION;
+        }
+        Ok(deck)
+    }
+}
+
+/// What an old card modification (before effects v2, 02.11.2026) becomes:
+/// a new id with its value, or `None` if it is dropped (DESIGN 7.2,
+/// "Umrechnung").
+#[must_use]
+pub fn legacy_mod(id: &str) -> Option<(&'static str, i32)> {
+    Some(match id {
+        "fat" => ("points", 4),
+        "gold_rim" => ("points", 8),
+        "lead_weight" => ("points", 10),
+        "glass_ace" => ("points", 11),
+        "marked" => ("rank", 1),
+        "double_marked" | "dressed_up" => ("rank", 2),
+        "stamp" => ("trump_bonus", 3),
+        "crown" => ("trump_bonus", 6),
+        "last_trick" | "seal" | "lucky_penny" | "tail_light" => ("last_trick", 1),
+        "beer_stain" => ("battered", 5),
+        "black_cat" => ("stained", 3),
+        "transparent" => ("transparent", 1),
+        "undead" => ("undead", 1),
+        "wild_card" => ("wild_card", 1),
+        _ => return None,
+    })
+}
+
+/// Which of the converted modifications a card keeps, first wins: a curse
+/// before anything else (Ramponiert, Fleckig, Durchsichtig), then the
+/// strongest by a fixed order (Rang, Trumpf, Letzter Stich, Augen).
+pub const LEGACY_KEEP_ORDER: [&str; 7] = [
+    "battered",
+    "stained",
+    "transparent",
+    "rank",
+    "trump_bonus",
+    "last_trick",
+    "points",
+];
+
+/// The special cards among the converted modifications; they stay next to
+/// the one kept.
+const LEGACY_SPECIALS: [&str; 2] = ["undead", "wild_card"];
+
+/// The converted modifications that carry a value.
+const LEGACY_VALUED: [&str; 6] = [
+    "points",
+    "rank",
+    "trump_bonus",
+    "last_trick",
+    "battered",
+    "stained",
+];
+
+/// Convert the modifications of a card saved before effects v2 (DESIGN
+/// 7.2): map every old id ([`legacy_mod`]), add up equal ones (Rang at most
+/// 3), keep one by [`LEGACY_KEEP_ORDER`] and the special cards.
+pub fn migrate_legacy_mods(card: &mut DeckCard) {
+    let mut merged: BTreeMap<&'static str, i32> = BTreeMap::new();
+    for id in &card.mods {
+        if let Some((new, value)) = legacy_mod(id.as_str()) {
+            let sum = merged.entry(new).or_insert(0);
+            *sum = sum.saturating_add(value);
+        }
+    }
+    if let Some(rank) = merged.get_mut("rank") {
+        *rank = (*rank).min(3);
+    }
+    let kept = LEGACY_KEEP_ORDER
+        .iter()
+        .find(|id| merged.contains_key(*id))
+        .copied();
+    card.mods.clear();
+    card.mod_values.clear();
+    if card.kind == CardKind::Blank {
+        return;
+    }
+    let specials = LEGACY_SPECIALS.iter().filter(|id| merged.contains_key(*id));
+    for id in specials.copied().chain(kept) {
+        let card_mod = CardModId::new(id);
+        if LEGACY_VALUED.contains(&id) {
+            let value = merged.get(id).copied().unwrap_or(1);
+            card.mod_values.insert(card_mod.clone(), value);
+        }
+        card.mods.push(card_mod);
+    }
 }
 
 impl Default for Deck {
@@ -285,13 +481,13 @@ impl Deck {
         let cards: Vec<DeckCard> = standard_deck()
             .into_iter()
             .zip(0u32..)
-            .map(|(card, id)| DeckCard {
-                id,
-                kind: CardKind::Normal(card),
-                mods: Vec::new(),
-            })
+            .map(|(card, id)| DeckCard::new(id, CardKind::Normal(card)))
             .collect();
-        Deck { next_id: 32, cards }
+        Deck {
+            next_id: 32,
+            cards,
+            mods_version: MODS_VERSION,
+        }
     }
 
     /// All cards, in id order.
@@ -350,11 +546,7 @@ impl Deck {
         }
         let removed = self.cards.remove(index);
         let blank = self.take_id();
-        self.cards.push(DeckCard {
-            id: blank,
-            kind: CardKind::Blank,
-            mods: Vec::new(),
-        });
+        self.cards.push(DeckCard::new(blank, CardKind::Blank));
         Ok(DeckChange::ReplacedByBlank { removed, blank })
     }
 
@@ -367,11 +559,9 @@ impl Deck {
             .cards
             .iter()
             .position(|c| c.kind == CardKind::Blank && kind != CardKind::Blank);
-        self.cards.push(DeckCard {
-            id: card,
-            kind,
-            mods,
-        });
+        let mut new = DeckCard::new(card, kind);
+        new.mods = mods;
+        self.cards.push(new);
         match blank {
             Some(index) => {
                 let blank = self.cards.remove(index).id;
@@ -385,8 +575,12 @@ impl Deck {
     /// of every card in `spec.remove` (the first by id), then add every
     /// card of `spec.add` (filling the blanks the removals left), then
     /// attach every modification of `spec.mods` to the first instance (by
-    /// id) of its card.
-    pub fn apply_spec(&mut self, spec: &DeckSpec) -> Result<Vec<DeckChange>, DeckError> {
+    /// id) of its card, with its value ([`Deck::add_mod`]).
+    pub fn apply_spec(
+        &mut self,
+        spec: &DeckSpec,
+        content: &Content,
+    ) -> Result<Vec<DeckChange>, DeckError> {
         let mut changes = Vec::new();
         for &card in &spec.remove {
             let id = self
@@ -400,7 +594,7 @@ impl Deck {
         for &card in &spec.add {
             changes.push(self.add(CardKind::Normal(card), Vec::new()));
         }
-        for (card, card_mod) in &spec.mods {
+        for (card, card_mod, value) in &spec.mods {
             let id = self
                 .cards
                 .iter()
@@ -408,7 +602,7 @@ impl Deck {
                 .map(|c| c.id)
                 .min()
                 .ok_or(DeckError::MissingCard(*card))?;
-            changes.push(self.add_mod(id, card_mod.clone())?);
+            changes.push(self.add_mod(content, id, card_mod, *value)?);
         }
         Ok(changes)
     }
@@ -422,12 +616,47 @@ impl Deck {
     /// Copy a card including its modifications ("Kopieren").
     pub fn copy(&mut self, id: u32) -> Result<DeckChange, DeckError> {
         let original = self.get(id).ok_or(DeckError::UnknownCard(id))?.clone();
-        Ok(self.add(original.kind, original.mods))
+        let change = self.add(original.kind, original.mods);
+        if let Some(copy) = self.cards.iter_mut().max_by_key(|c| c.id) {
+            copy.mod_values = original.mod_values;
+        }
+        Ok(change)
     }
 
-    /// Attach a modification to a normal card. Each modification at most
-    /// once per card.
-    pub fn add_mod(&mut self, id: u32, card_mod: CardModId) -> Result<DeckChange, DeckError> {
+    /// Attach a modification with `value` to a normal card by the rules
+    /// of effects v2 (DESIGN 7.2):
+    ///
+    /// - a card carries at most one modification, plus one special card
+    ///   (Untot, Wandelkarte); a new special card replaces another one;
+    /// - the same modification again raises it: the values add up, at most
+    ///   to [`crate::content::CardModDef::max`]; one without value cannot
+    ///   be raised ([`DeckError::AlreadyModified`]);
+    /// - another modification replaces the one on the card (named in
+    ///   [`DeckChange::Modified`] as `replaced`);
+    /// - a cursed card takes nothing but a special card
+    ///   ([`DeckError::Cursed`]);
+    /// - Augen and Ramponiert are one signed value ([`AUGEN`],
+    ///   [`RAMPONIERT`]): Augen with a negative value is Ramponiert, a
+    ///   curse; Ramponiert on a card with Augen adds up, and the sign of
+    ///   the sum decides which of the two the card carries (0: none).
+    pub fn add_mod(
+        &mut self,
+        content: &Content,
+        id: u32,
+        card_mod: &CardModId,
+        value: i32,
+    ) -> Result<DeckChange, DeckError> {
+        if card_mod.as_str() == AUGEN || card_mod.as_str() == RAMPONIERT {
+            let signed = if card_mod.as_str() == AUGEN {
+                value
+            } else {
+                -value
+            };
+            return self.add_signed_points(content, id, signed);
+        }
+        let def = content
+            .card_mod(card_mod)
+            .ok_or_else(|| DeckError::UnknownMod(card_mod.clone()))?;
         let card = self
             .cards
             .iter_mut()
@@ -436,11 +665,135 @@ impl Deck {
         if card.kind == CardKind::Blank {
             return Err(DeckError::BlankCannotBeModified);
         }
-        if card.mods.contains(&card_mod) {
-            return Err(DeckError::AlreadyModified(card_mod));
+        let kind_of = |m: &CardModId| content.card_mod(m).map(|d| d.kind);
+        let special = |m: &CardModId| kind_of(m) == Some(ModKind::Special);
+        if !def.is_special() {
+            if let Some(curse) = card
+                .mods
+                .iter()
+                .find(|m| kind_of(m) == Some(ModKind::Curse))
+            {
+                return Err(DeckError::Cursed(curse.clone()));
+            }
         }
-        card.mods.push(card_mod.clone());
-        Ok(DeckChange::Modified { card: id, card_mod })
+        // The modification in the slot the new one goes to.
+        let current = card
+            .mods
+            .iter()
+            .find(|m| special(m) == def.is_special())
+            .cloned();
+        let limit = |v: i32| def.max.map_or(v, |max| v.min(max));
+        let mut replaced = None;
+        let new_value = match current {
+            Some(old) if old == *card_mod => {
+                if !def.has_value() {
+                    return Err(DeckError::AlreadyModified(card_mod.clone()));
+                }
+                let old_value = card.mod_value(card_mod);
+                let sum = limit(old_value.saturating_add(value));
+                if sum == old_value {
+                    return Err(DeckError::AtMaximum(card_mod.clone()));
+                }
+                sum
+            }
+            Some(old) => {
+                card.drop_mod(&old);
+                replaced = Some(old);
+                card.mods.push(card_mod.clone());
+                limit(value)
+            }
+            None => {
+                card.mods.push(card_mod.clone());
+                limit(value)
+            }
+        };
+        if def.has_value() {
+            card.mod_values.insert(card_mod.clone(), new_value);
+        }
+        Ok(DeckChange::Modified {
+            card: id,
+            card_mod: card_mod.clone(),
+            value: new_value,
+            replaced,
+        })
+    }
+
+    /// [`Deck::add_mod`] for the signed Augen value (Augen ≥ +1,
+    /// Ramponiert ≤ −1, DESIGN 7.2).
+    fn add_signed_points(
+        &mut self,
+        content: &Content,
+        id: u32,
+        signed: i32,
+    ) -> Result<DeckChange, DeckError> {
+        let (augen, ramponiert) = (CardModId::new(AUGEN), CardModId::new(RAMPONIERT));
+        if content.card_mod(&augen).is_none() || content.card_mod(&ramponiert).is_none() {
+            return Err(DeckError::UnknownMod(augen));
+        }
+        let card = self
+            .cards
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(DeckError::UnknownCard(id))?;
+        if card.kind == CardKind::Blank {
+            return Err(DeckError::BlankCannotBeModified);
+        }
+        let kind_of = |m: &CardModId| content.card_mod(m).map(|d| d.kind);
+        if let Some(curse) = card
+            .mods
+            .iter()
+            .find(|m| kind_of(m) == Some(ModKind::Curse))
+        {
+            return Err(DeckError::Cursed(curse.clone()));
+        }
+        let normal = card
+            .mods
+            .iter()
+            .find(|m| kind_of(m) != Some(ModKind::Special))
+            .cloned();
+        let (base, replaced) = match normal {
+            Some(m) if m == augen => (card.mod_value(&augen), None),
+            Some(m) => (0, Some(m)),
+            None => (0, None),
+        };
+        if let Some(old) = &replaced {
+            card.drop_mod(old);
+        }
+        card.drop_mod(&augen);
+        let sum = base.saturating_add(signed);
+        let (new, value) = match sum.cmp(&0) {
+            std::cmp::Ordering::Greater => (augen.clone(), sum),
+            std::cmp::Ordering::Less => (ramponiert, -sum),
+            std::cmp::Ordering::Equal => {
+                return Ok(DeckChange::Unmodified {
+                    card: id,
+                    card_mod: augen,
+                });
+            }
+        };
+        card.mods.push(new.clone());
+        card.mod_values.insert(new.clone(), value);
+        let replaced = replaced.or_else(|| (base > 0 && new != augen).then_some(augen));
+        Ok(DeckChange::Modified {
+            card: id,
+            card_mod: new,
+            value,
+            replaced,
+        })
+    }
+
+    /// Take a modification off a card (a redeemed voucher). Nothing if the
+    /// card does not carry it.
+    pub fn remove_mod(&mut self, id: u32, card_mod: &CardModId) -> Option<DeckChange> {
+        let card = self.cards.iter_mut().find(|c| c.id == id)?;
+        if !card.mods.contains(card_mod) {
+            return None;
+        }
+        card.drop_mod(card_mod);
+        Some(DeckChange::Unmodified {
+            card: id,
+            card_mod: card_mod.clone(),
+        })
     }
 }
 
@@ -504,16 +857,16 @@ mod tests {
     }
 
     #[test]
-    fn modifications_attach_once_and_never_to_blanks() {
+    fn modifications_never_go_on_blanks_and_copy_with_their_values() {
+        let content = Content::load().expect("content");
         let mut deck = Deck::standard();
-        let fat = CardModId::new("fat");
-        deck.add_mod(5, fat.clone()).expect("mod");
-        assert_eq!(
-            deck.add_mod(5, fat.clone()),
-            Err(DeckError::AlreadyModified(fat.clone()))
-        );
+        let points = CardModId::new(AUGEN);
+        deck.add_mod(&content, 5, &points, 4).expect("mod");
         deck.remove(6).expect("remove");
-        assert_eq!(deck.add_mod(32, fat), Err(DeckError::BlankCannotBeModified));
+        assert_eq!(
+            deck.add_mod(&content, 32, &points, 4),
+            Err(DeckError::BlankCannotBeModified)
+        );
         let copy = deck.copy(5).expect("copy");
         assert_eq!(
             copy,
@@ -522,7 +875,7 @@ mod tests {
                 blank: 32
             }
         );
-        assert_eq!(deck.get(33).map(|d| d.mods.len()), Some(1));
+        assert_eq!(deck.get(33).map(|d| d.mod_value(&points)), Some(4));
     }
 
     #[test]

@@ -1,320 +1,208 @@
-// Kartenmodifikationen (gezinkte Karten). Sie hängen an einer Karte und
-// gelten, egal wer sie spielt (ADR 0005). Preise sind Platzhalter.
-// focus: für welche Spielart die Modifikation gemacht ist (All, Trump für
-// Farbspiel und Grand, Null). „Stempelkissen“ und Ereignisse ziehen sie bei
-// jedem Charakter, gewichtet mit seinen focus_weights (characters.ron).
-// characters: für welche Charaktere sie gezogen wird (leer: alle).
+// Kartenmodifikationen, Effekte v2 (DESIGN 7.2, entschieden vom Nutzer am
+// 02.11.2026). Eine Modifikation je Karte, Spezialkarten (Untot,
+// Wandelkarte) dürfen zusätzlich eine normale tragen. Dieselbe noch einmal
+// steigert (Werte addieren, höchstens `max`), eine andere ersetzt, ein
+// Fluch sperrt die Karte.
+//
+// kind: Edge (Rand, immer aktiv), Moment (Markierung oben rechts),
+// Voucher (Gutschein, wenn gedrückt), Curse (Fluch), Special
+// (Spezialkarte).
+// values: angebotene Werte, der erste für Zufallsziehungen. Die Wirkungen
+// stehen je Einheit da und werden mit dem Wert der Karte vervielfacht.
+// Ohne values hat die Modifikation keinen Wert und lässt sich nicht
+// steigern.
+// text: {n} ist der Betrag, {+n} der Wert mit Vorzeichen.
+// focus: für welche Spielart (All, Trump für Farbspiel und Grand, Null).
+// Zufallsziehungen (Stempelkissen, Kartengeber) gewichten damit nach
+// focus_weights (characters.ron); sie ziehen nie Flüche und nie
+// Spezialkarten. Werte, Preise und Seltenheit sind Platzhalter für
+// `balance`.
 [
+    // ---------------------------------------------------------------------
+    // Rand: immer aktiv, die Zahl im Band unten.
+    // ---------------------------------------------------------------------
+    // Lever Augen.
     (
-        id: "fat",
+        id: "points",
+        kind: Edge,
         focus: Trump,
-        name: "Fett",
-        text: "Diese Karte zählt 4 Augen mehr.",
+        name: "Augen",
+        text: "Diese Karte zählt {+n} Augen.",
         rarity: Common,
         price: 3,
-        passive: [AddCardPoints(4)],
+        values: [4, 3, 5],
+        passive: [AddCardPoints(1)],
     ),
+    // Lever Stichgewinn. Winkel nach oben statt einer Zahl.
     (
-        id: "marked",
+        id: "rank",
+        kind: Edge,
         focus: Trump,
-        name: "Gezinkt",
-        text: "Diese Karte zählt eine Stufe höher.",
+        name: "Rang",
+        text: "Diese Karte sticht {n} Stufen höher (höchstens 3).",
         rarity: Common,
         price: 3,
+        values: [1],
+        max: Some(3),
         passive: [RankBonus(1)],
     ),
+    // Lever Grundwert. Streng nach ADR 0015: nur, wenn der Spieler die
+    // Karte hält (ein Schalter im Kern, TRUMP_MODS_NEED_PLAYER).
     (
-        id: "stamp",
+        id: "trump_bonus",
+        kind: Edge,
         focus: Trump,
-        name: "Stempel",
-        text: "Ist die Farbe dieser Karte Trumpf, steigt der Grundwert um 3.",
+        name: "Trumpf",
+        text: "Ist die Farbe dieser Karte Trumpf und hältst du sie, steigt der Grundwert um {n}.",
         rarity: Uncommon,
         price: 4,
+        values: [3, 2, 4],
         hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(3)]),
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(1)]),
         ],
     ),
+    // ---------------------------------------------------------------------
+    // Moment: Markierung oben rechts, Text unten Mitte.
+    // ---------------------------------------------------------------------
+    // Lever Gewinnstufen (bis Effekte v2 "Spitze").
     (
         id: "last_trick",
-        name: "Spitze",
-        text: "Gewinnt diese Karte den letzten Stich, gibt es eine Gewinnstufe mehr. Egal, wer sie spielt.",
+        kind: Moment,
+        focus: Trump,
+        name: "Letzter Stich",
+        text: "Macht diese Karte den letzten Stich, gibt es {n} Gewinnstufe(n) mehr.",
         rarity: Uncommon,
         price: 4,
+        values: [1],
         hooks: [
             OnScore(when: ThisCardWinsLastTrick, then: [AddLevels(1)]),
         ],
     ),
+    // Lever Augen. Der Wert ist der Faktor: 2 heißt doppelt, eine
+    // Steigerung addiert ihn (×4).
     (
-        id: "transparent",
-        name: "Durchsichtig",
-        text: "Du siehst, wer diese Karte hält.",
+        id: "first_trick",
+        kind: Moment,
+        focus: Trump,
+        name: "Erster Stich",
+        text: "Gewinnt diese Karte den ersten Stich, zählen seine Augen ×{n}.",
+        rarity: Uncommon,
+        price: 4,
+        values: [2],
+        hooks: [
+            OnTrickEnd(when: ThisCardWinsFirstTrick, then: [MultiplyTrickPoints(1)]),
+        ],
+    ),
+    // ---------------------------------------------------------------------
+    // Gutschein: Zackenrand, keine Markierung. Wirkt beim Drücken, sofort,
+    // egal wie das Spiel ausgeht, und fällt dann von der Karte.
+    // ---------------------------------------------------------------------
+    // Lever Groschen.
+    (
+        id: "voucher_coins",
+        kind: Voucher,
+        name: "Gutschein",
+        text: "Wenn gedrückt: {n} Groschen. Danach ist der Gutschein weg.",
         rarity: Common,
         price: 2,
+        values: [3],
+        hooks: [
+            OnDiscard(then: [GainCoins(1)]),
+        ],
+    ),
+    (
+        id: "voucher_undead",
+        kind: Voucher,
+        focus: Trump,
+        name: "Gutschein Untot",
+        text: "Wenn gedrückt: Die Karte wird Untot. Danach ist der Gutschein weg.",
+        rarity: Rare,
+        price: 5,
+        hooks: [
+            OnDiscard(then: [TurnInto("undead")]),
+        ],
+    ),
+    (
+        id: "voucher_wild",
+        kind: Voucher,
+        name: "Gutschein Wandelkarte",
+        text: "Wenn gedrückt: Die Karte wird Wandelkarte. Danach ist der Gutschein weg.",
+        rarity: Rare,
+        price: 5,
+        hooks: [
+            OnDiscard(then: [TurnInto("wild_card")]),
+        ],
+    ),
+    // ---------------------------------------------------------------------
+    // Flüche: Feld unten links. Nur über Ereignisse, die sie ankündigen;
+    // sie zahlen beim Erhalt 3 Groschen (Platzhalter). Eine verfluchte
+    // Karte nimmt keine andere Modifikation, nur Frisches Deck hilft.
+    // ---------------------------------------------------------------------
+    // Lever Zählen: das Wissen hängt an der Karte. Beim Spieler kennen die
+    // KI-Gegner sie, beim Gegner sieht der Spieler, wer sie hat.
+    (
+        id: "transparent",
+        kind: Curse,
+        name: "Durchsichtig",
+        text: "Fluch: Hältst du diese Karte, wissen die Gegner das. Hält sie ein Gegner, siehst du, wer. Beim Erhalt 3 Groschen.",
+        rarity: Common,
+        price: 1,
         passive: [RevealHolder],
-    ),
-    (
-        id: "invisible",
-        focus: Null,
-        name: "Unsichtbar",
-        text: "Diese Karte kann nie einen Stich gewinnen. Egal, wer sie spielt.",
-        rarity: Uncommon,
-        price: 4,
-        passive: [NeverWins],
-    ),
-    // ---------------------------------------------------------------------
-    // M4: 14 more modifications. Each names its lever. Random draws
-    // (Stempelkissen, Kartengeber) pick from the character's pool, weighted
-    // by the character's focus_weights (ADR 0012). M7: never a curse
-    // (`curse: true`); curses only come where an encounter announces them
-    // (DESIGN 7.2).
-    // ---------------------------------------------------------------------
-    // Lever Augen.
-    (
-        id: "gold_rim",
-        focus: Trump,
-        name: "Goldrand",
-        text: "Diese Karte zählt 8 Augen mehr.",
-        rarity: Rare,
-        price: 5,
-        passive: [AddCardPoints(8)],
-    ),
-    // Lever Stichgewinn.
-    (
-        id: "double_marked",
-        focus: Trump,
-        name: "Doppelt gezinkt",
-        text: "Diese Karte zählt zwei Stufen höher.",
-        rarity: Uncommon,
-        price: 4,
-        passive: [RankBonus(2)],
-    ),
-    // Lever Grundwert ×2 (multiplicative).
-    (
-        id: "crown",
-        focus: Trump,
-        name: "Krone",
-        text: "Ist die Farbe dieser Karte Trumpf, zählt der Grundwert doppelt.",
-        rarity: Rare,
-        price: 6,
-        hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [MultiplyBaseValue(2)]),
-        ],
-    ),
-    // Lever Gewinnstufen. Set at the declaration, so it counts won or lost.
-    (
-        id: "seal",
-        focus: Trump,
-        name: "Siegel",
-        text: "Ist die Farbe dieser Karte Trumpf, gibt es eine Gewinnstufe mehr, gewonnen wie verloren.",
-        rarity: Uncommon,
-        price: 5,
-        hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddLevels(1)]),
-        ],
-    ),
-    // Lever Gewinnschwelle.
-    (
-        id: "horseshoe",
-        focus: Trump,
-        name: "Hufeisen",
-        text: "Ist die Farbe dieser Karte Trumpf, gewinnst du schon mit 5 Augen weniger (56 statt 61).",
-        rarity: Uncommon,
-        price: 4,
-        hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [WinThreshold(56)]),
-        ],
-    ),
-    // Lever Schneider.
-    (
-        id: "tape_measure",
-        focus: Trump,
-        name: "Maßband",
-        text: "Ist die Farbe dieser Karte Trumpf, sind die Gegner schon Schneider, wenn du mit 80 bis 89 Augen gewinnst.",
-        rarity: Uncommon,
-        price: 4,
-        hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [SchneiderFromDeclarerPoints(min: 80, max: 89)]),
-        ],
-    ),
-    // Lever Spielwert ×2 (multiplicative), only for a won game.
-    (
-        id: "lucky_penny",
-        name: "Glückspfennig",
-        text: "Gewinnst du ein Spiel, dessen letzten Stich diese Karte macht, zählt es doppelt. Egal, wer sie spielt.",
-        rarity: Rare,
-        price: 5,
-        hooks: [
-            OnScore(when: All([Won, ThisCardWinsLastTrick]), then: [MultiplyGameValue(2)]),
-        ],
-    ),
-    // Curses: a clear downside, paid in Groschen when attached. Since M7
-    // they only come where an encounter announces them.
-    // Curse on Augen (−5, never below 0), with Zählen on top.
-    (
-        id: "beer_stain",
-        name: "Bierfleck",
-        text: "Fluch: Der Fleck kostet die Karte 5 Augen. Du erkennst sie wieder: Du siehst, wer sie hält. Dafür gibt es beim Erhalt 3 Groschen.",
-        rarity: Common,
-        price: 1,
-        curse: true,
-        passive: [AddCardPoints(-5), RevealHolder],
         hooks: [
             OnAttach(then: [GainCoins(3)]),
         ],
     ),
-    // Curse on Stichgewinn (the card never wins), paid in Groschen when
-    // attached.
-    (
-        id: "cracked",
-        focus: Trump,
-        name: "Angeknackst",
-        text: "Fluch: Diese Karte gewinnt nie einen Stich, egal wer sie spielt. Dafür gibt es beim Erhalt 3 Groschen.",
-        rarity: Common,
-        price: 1,
-        curse: true,
-        passive: [NeverWins],
-        hooks: [
-            OnAttach(then: [GainCoins(3)]),
-        ],
-    ),
-    // Curse on Grundwert (−3 when its suit is trump), paid in Groschen
-    // when attached.
-    (
-        id: "black_cat",
-        focus: Trump,
-        name: "Schwarze Katze",
-        text: "Fluch: Ist die Farbe dieser Karte Trumpf, sinkt der Grundwert um 3. Dafür gibt es beim Erhalt 3 Groschen.",
-        rarity: Common,
-        price: 1,
-        curse: true,
-        hooks: [
-            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(-3)]),
-            OnAttach(then: [GainCoins(3)]),
-        ],
-    ),
-    // Curse "Ramponiert" (DESIGN 7.2): must not be discarded, paid in
-    // Groschen when attached. For both characters, the Nullspieler
-    // discards too.
+    // Lever Augen, auch unter 0.
     (
         id: "battered",
+        kind: Curse,
         name: "Ramponiert",
-        text: "Fluch: Diese Karte darf nicht gedrückt werden. Dafür gibt es beim Erhalt 3 Groschen.",
+        text: "Fluch: Diese Karte zählt {n} Augen weniger, auch unter 0. Beim Erhalt 3 Groschen.",
         rarity: Common,
         price: 1,
-        curse: true,
-        passive: [NoDiscard],
+        values: [5],
+        passive: [AddCardPoints(-1)],
         hooks: [
             OnAttach(then: [GainCoins(3)]),
         ],
     ),
-    // Lever Stichgewinn and Bedienpflicht (DESIGN 4.4): a trump half a step
-    // below the Karo-Unter in suit games, no Spitze.
+    // Lever Grundwert (bis Effekte v2 "Schwarze Katze"). Streng nach ADR
+    // 0015 wie Trumpf.
     (
-        id: "honorary_jack",
+        id: "stained",
+        kind: Curse,
         focus: Trump,
-        name: "Unter ehrenhalber",
-        text: "Im Farbspiel ist diese Karte Trumpf, direkt unter dem Schellen-Unter, egal wer sie spielt. Sie bedient Trumpf statt ihrer Farbe und zählt nicht als Spitze.",
-        rarity: Rare,
-        price: 6,
-        passive: [HonoraryJack],
-    ),
-    // Made for Null from here (before ADR 0012 only for the Nullspieler).
-    // Lever Augen (Null formula: Kurzschluss).
-    (
-        id: "lead_weight",
-        focus: Null,
-        name: "Bleigewicht",
-        text: "Diese Karte zählt 10 Augen mehr. Beim Null ist, wer sie im Stich hat, schneller im Kurzschluss.",
+        name: "Fleckig",
+        text: "Fluch: Ist die Farbe dieser Karte Trumpf und hältst du sie, sinkt der Grundwert um {n}. Beim Erhalt 3 Groschen.",
         rarity: Common,
-        price: 3,
-        passive: [AddCardPoints(10)],
-    ),
-    // Lever Gewinnstufen: in a won Null the last trick goes to a defender.
-    (
-        id: "tail_light",
-        focus: Null,
-        name: "Schlusslicht",
-        text: "Gewinnst du ein Null und diese Karte macht den letzten Stich, gibt es zwei Gewinnstufen mehr.",
-        rarity: Uncommon,
-        price: 4,
+        price: 1,
+        values: [3],
         hooks: [
-            OnScore(when: All([NullGame, Won, ThisCardWinsLastTrick]), then: [AddLevels(2)]),
+            OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(-1)]),
+            OnAttach(then: [GainCoins(3)]),
         ],
     ),
-    // Lever Stichgewinn: stronger cards take tricks; in the hands of a
-    // defender that lets the Nullspieler duck, in his own it is a danger.
-    (
-        id: "dressed_up",
-        focus: Null,
-        name: "Aufgebrezelt",
-        text: "Diese Karte zählt zwei Stufen höher. Beim Null sticht sie beim Gegner gern, bei dir ist sie eine Gefahr.",
-        rarity: Uncommon,
-        price: 3,
-        passive: [RankBonus(2)],
-    ),
-    // Lever Stichgewinn plus Zählen: "Unsichtbar" that also shows its holder.
-    (
-        id: "dummy",
-        focus: Null,
-        name: "Attrappe",
-        text: "Diese Karte gewinnt nie einen Stich, egal wer sie spielt, und du siehst, wer sie hält.",
-        rarity: Rare,
-        price: 5,
-        passive: [NeverWins, RevealHolder],
-    ),
     // ---------------------------------------------------------------------
-    // M8 Welle 3, abgestimmt im Cockpit: drei neue Modifikationen, Texte
-    // wie abgestimmt. Seltenheit und Preise Platzhalter für `balance`
-    // (docs/balance/2026-11-02-welle3.md, DESIGN 7.2).
+    // Spezialkarten: ändern das Grunddesign, dürfen zusätzlich eine normale
+    // Modifikation tragen. Sie kommen über die Gutscheine.
     // ---------------------------------------------------------------------
     // Lever Stichgewinn and Bedienpflicht: in the player's hand it never
-    // obliges him to follow suit, and he names its suit when he plays it
-    // (it may follow any lead; a Unter stays a Unter). In a defender's hand
-    // it is the printed card.
+    // obliges him to follow suit, and he names its suit when he plays it.
     (
         id: "wild_card",
+        kind: Special,
         name: "Wandelkarte",
         text: "Du legst ihre Farbe beim Ausspielen fest.",
         rarity: Rare,
         price: 5,
         passive: [Wild],
     ),
-    // Lever Augen, only on a Daus: twice the Augen (22 instead of 11, for
-    // every seat). Beats a defender it (takes the trick it lies in with
-    // another card), it breaks and leaves the deck once the game is scored
-    // (a blank takes its place). A defender winning with it does not.
-    (
-        id: "glass_ace",
-        focus: Trump,
-        name: "Glasdaus",
-        text: "Doppelte Augen, geht aber kaputt, wenn ein Gegner sie sticht.",
-        rarity: Uncommon,
-        price: 4,
-        only_on: Some((rank: Some(Ace))),
-        passive: [MultiplyCardPoints(2)],
-        hooks: [
-            OnTrickEnd(when: ThisCardBeatenByDefender, then: [BreakThisCard]),
-        ],
-    ),
-    // Lever Spitzen and hand quality: lies it in the skat when a game ends
-    // (dealt there or discarded), the next deal puts it into the player's
-    // hand (every deal of that game, also after Einmischen).
-    (
-        id: "homesick",
-        name: "Heimweh",
-        text: "Liegt sie im Skat, kommt sie im nächsten Spiel garantiert in deine Hand.",
-        rarity: Uncommon,
-        price: 4,
-        passive: [Homesick],
-    ),
     // Lever Stichgewinn and Augen (user idea, 02.11.2026): played by the
     // player in a suit game or Grand, the card comes back into his hand
-    // once per game when the trick is complete, and a random other card of
-    // his hand takes its place in the trick (the winner stays, the
-    // substitute's Augen count). Not as his last card, not in Null or
-    // Ramsch, never for a defender's copy. Rarity and price placeholders.
+    // once per game, a random other card of his hand takes its place.
     (
         id: "undead",
+        kind: Special,
         focus: Trump,
         name: "Untot",
         text: "Karte wird gespielt, dann aber wieder auf die Hand genommen und eine zufällige Karte abgeworfen. Einmal pro Spiel, nur im Farbspiel und Grand.",

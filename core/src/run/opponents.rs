@@ -80,14 +80,40 @@ fn defender_choice(
     match opponents_in(content, run.curve_row(content)).pimc() {
         None => DefenderHeuristic.choose(view),
         Some(config) => {
-            let hints = Hints {
-                pinned: Vec::new(),
-                defender_swaps: defender_swaps(active.game.log()),
-            };
+            let hints = defender_hints(active, view);
             PimcPolicy::new(config, game_seed(run))
                 .with_thresholds(active.rules.thresholds.clone())
                 .choose_with(view, &hints)
         }
+    }
+}
+
+/// What the defenders know beyond their seat's view: the swaps of their
+/// hands and, effects v2 (DESIGN 7.2), every "Durchsichtig" card the
+/// player holds, in his hand or in the skat (`DealtCard::revealed`, off
+/// under "Der Kiebitz-Mörder"). The cards are taken from the view, so
+/// they match the view's copies (a tame Wandelkarte).
+#[must_use]
+pub fn defender_hints(active: &ActiveGame, view: &SeatView<'_, DealtCard>) -> Hints<DealtCard> {
+    let game = &active.game;
+    let as_seen = |card: &DealtCard| view.deck.iter().find(|c| c.id == card.id).copied();
+    let mut pinned: Vec<(DealtCard, Option<Seat>)> = game
+        .hand(Seat::DECLARER)
+        .iter()
+        .filter(|c| c.revealed)
+        .filter_map(as_seen)
+        .map(|c| (c, Some(Seat::DECLARER)))
+        .collect();
+    pinned.extend(
+        game.skat()
+            .iter()
+            .filter(|c| c.revealed)
+            .filter_map(as_seen)
+            .map(|c| (c, None)),
+    );
+    Hints {
+        pinned,
+        defender_swaps: defender_swaps(game.log()),
     }
 }
 

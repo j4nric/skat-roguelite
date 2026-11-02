@@ -4,8 +4,7 @@
 //! [`Run::apply`], also across saving and loading while the AI is to move.
 
 use super::bot::RunBot;
-use super::content_tests::{content, fixed_deal};
-use super::view::TablePhase;
+use super::content_tests::content;
 use super::*;
 
 /// Play a run with the bot through [`Run::apply`] for at most `actions`
@@ -141,56 +140,4 @@ fn a_ramsch_led_by_a_defender_waits_for_the_ai() {
         assert!(run.view(&content).game.is_some_and(|g| g.your_turn));
     }
     assert!(found, "some deal lets a defender lead");
-}
-
-#[test]
-fn hand_cards_say_whether_they_can_be_discarded() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 3).expect("run");
-    // Three "Ramponiert" cards: two in the hand, one in the skat.
-    let battered = ["D7", "H7", "C7"].map(|notation| {
-        let kind: CardKind = notation.parse().expect("card");
-        let id = run
-            .deck
-            .cards()
-            .iter()
-            .find(|c| c.kind == kind)
-            .expect("in deck")
-            .id;
-        run.deck
-            .add_mod(id, CardModId::new("battered"))
-            .expect("mod");
-        id
-    });
-    fixed_deal(
-        &mut run,
-        &content,
-        [
-            "CJ SJ HJ DJ DA DT DK DQ D9 D7",
-            "HA HT HK HQ H9 H8 H7 SA ST SK",
-            "SQ S9 S8 S7 CA CT CK CQ C9 C8",
-        ],
-        "D8 C7",
-    );
-    let view = run.view(&content).game.expect("game");
-    assert!(
-        view.hand.iter().all(|c| !c.discardable),
-        "not while declaring"
-    );
-    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-    let view = run.view(&content).game.expect("game");
-    assert_eq!(view.phase, TablePhase::Discarding);
-    assert_eq!(view.hand.len(), 12);
-    let mut locked = 0;
-    for card in &view.hand {
-        let accepted = view
-            .hand
-            .iter()
-            .filter(|o| o.card.id != card.card.id)
-            .any(|o| run.accepts(&content, RunAction::Discard([card.card.id, o.card.id])));
-        assert_eq!(card.discardable, accepted, "{:?}", card.card);
-        assert_eq!(card.discardable, !battered.contains(&card.card.id));
-        locked += usize::from(!card.discardable);
-    }
-    assert_eq!(locked, 2, "D7 and C7");
 }

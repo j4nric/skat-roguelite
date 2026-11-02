@@ -24,8 +24,9 @@ use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
 pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
-    ActiveSource, CardModStatus, HookContext, ResolvedDeck, card_mod_sources, card_mod_status,
-    evaluate, evaluate_if_won, evaluate_known, resolve_deck,
+    ActiveSource, CardModStatus, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
+    card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
+    resolve_deck,
 };
 pub use score::{
     Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
@@ -276,9 +277,10 @@ pub struct DeckSpec {
     /// Printed cards to add.
     pub add: Vec<Card>,
     /// Card modifications on the start deck, after removing and adding:
-    /// each goes on the first instance (by id) of its printed card. Their
-    /// "beim Erhalt" hooks do not fire (the card comes modified).
-    pub mods: Vec<(Card, CardModId)>,
+    /// each goes on the first instance (by id) of its printed card, with
+    /// its value (effects v2, DESIGN 7.2). Their "beim Erhalt" hooks do
+    /// not fire (the card comes modified).
+    pub mods: Vec<(Card, CardModId, i32)>,
 }
 
 /// The one own rule of a character (DESIGN 9): effects that act like a
@@ -375,6 +377,10 @@ pub enum EncounterKind {
         /// The modification; `None` draws one.
         #[serde(default)]
         card_mod: Option<CardModId>,
+        /// Its value; `None`: the first value on offer
+        /// ([`CardModDef::default_value`]).
+        #[serde(default)]
+        value: Option<i32>,
         /// With `card_mod: None`: draw a curse instead of a modification
         /// without drawback. The encounter's text must announce it.
         #[serde(default)]
@@ -549,9 +555,29 @@ pub struct RelicDef {
     pub characters: CharacterPool,
 }
 
+/// The kind of a card modification in the effects v2 system (DESIGN 7.2).
+/// It decides how it is drawn, whether it blocks the card and where it is
+/// drawn on the card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ModKind {
+    /// Rand: always on, the number on the band (Augen, Rang, Trumpf).
+    Edge,
+    /// Moment: a mark top right says when it acts (last, first trick).
+    Moment,
+    /// Gutschein: acts when discarded, then falls off the card.
+    Voucher,
+    /// Fluch: a drawback; the card takes no other modification any more.
+    Curse,
+    /// Spezialkarte (Untot, Wandelkarte): changes the card's design and
+    /// may sit next to one normal modification.
+    Special,
+}
+
 /// A card modification (gezinkte Karte). It acts on the card instance it is
 /// attached to, whoever holds it (ADR 0005), and only while the card is in
-/// play and not blanked out.
+/// play and not blanked out. Effects v2 (DESIGN 7.2): a card carries at
+/// most one modification besides a special card; the effects are written
+/// per unit of the value the card carries ([`Effect::scaled`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardModDef {
     /// Unique id.
@@ -576,10 +602,16 @@ pub struct CardModDef {
     /// Characters whose random modifications may draw it (empty: all).
     #[serde(default)]
     pub characters: CharacterPool,
-    /// A curse (Fluch, DESIGN 7.2): a drawback, usually paid for in
-    /// Groschen when attached.
+    /// Rand, Moment, Gutschein, Fluch or Spezialkarte.
+    pub kind: ModKind,
+    /// The values on offer, the first for random draws and when no value
+    /// is named. Empty: the modification has no value (it counts as 1)
+    /// and cannot be raised.
     #[serde(default)]
-    pub curse: bool,
+    pub values: Vec<i32>,
+    /// The highest value a raise may reach ("Rang": 3). `None`: no limit.
+    #[serde(default)]
+    pub max: Option<i32>,
     /// Only cards whose printed card matches may carry it ("Glasdaus":
     /// only a Daus). `None`: every normal card.
     #[serde(default)]
@@ -587,6 +619,44 @@ pub struct CardModDef {
 }
 
 impl CardModDef {
+    /// Whether it is a curse (Fluch, DESIGN 7.2).
+    #[must_use]
+    pub fn is_curse(&self) -> bool {
+        self.kind == ModKind::Curse
+    }
+
+    /// Whether it is a special card (Untot, Wandelkarte).
+    #[must_use]
+    pub fn is_special(&self) -> bool {
+        self.kind == ModKind::Special
+    }
+
+    /// Whether it carries a value that a second copy raises.
+    #[must_use]
+    pub fn has_value(&self) -> bool {
+        !self.values.is_empty()
+    }
+
+    /// The value of a random draw: the first on offer, 1 without values.
+    #[must_use]
+    pub fn default_value(&self) -> i32 {
+        self.values.first().copied().unwrap_or(1)
+    }
+
+    /// The text with its value filled in: `{n}` is the amount, `{+n}` the
+    /// value with its sign ("+4", "−5").
+    #[must_use]
+    pub fn text_for(&self, value: i32) -> String {
+        let signed = match value.cmp(&0) {
+            std::cmp::Ordering::Less => format!("−{}", value.unsigned_abs()),
+            std::cmp::Ordering::Equal => "0".to_owned(),
+            std::cmp::Ordering::Greater => format!("+{value}"),
+        };
+        self.text
+            .replace("{+n}", &signed)
+            .replace("{n}", &value.unsigned_abs().to_string())
+    }
+
     /// Whether this modification may sit on `card` (a normal card; blanks
     /// never carry modifications).
     #[must_use]
@@ -745,6 +815,14 @@ pub enum ConsumableAction {
     /// Attach a card modification to a chosen card (at the Tresen). `None`
     /// picks one at random with the run's RNG.
     AddCardMod(Option<CardModId>),
+    /// Attach this card modification with this value to a chosen card (at
+    /// the Tresen, effects v2: "Augen +3", "Trumpf +4", "Rang +1").
+    ApplyCardMod {
+        /// The modification.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+    },
     /// Einmischen more in the current series ("Ein Bier", "Kräuter"): a
     /// pool used once the game's own Einmischen are gone. Also read under
     /// its old name `ExtraPasses`.
@@ -1128,9 +1206,9 @@ fn validate_effects(
                 hook.when()
             )));
         }
-        if stage == Stage::OnAttach && !is_card_mod {
+        if matches!(stage, Stage::OnAttach | Stage::OnDiscard) && !is_card_mod {
             return Err(ContentError(format!(
-                "{what}: OnAttach only works on card modifications"
+                "{what}: {stage:?} only works on card modifications"
             )));
         }
         for effect in hook.then() {
@@ -1208,6 +1286,7 @@ impl Content {
                 &card_mod.hooks,
                 true,
             )?;
+            self.validate_card_mod(card_mod)?;
         }
         for boss in self.bosses.values() {
             validate_effects(
@@ -1224,7 +1303,12 @@ impl Content {
                     consumable.id
                 )));
             }
-            if let ConsumableAction::AddCardMod(Some(id)) = &consumable.action {
+            let named = match &consumable.action {
+                ConsumableAction::AddCardMod(Some(id))
+                | ConsumableAction::ApplyCardMod { card_mod: id, .. } => Some(id),
+                _ => None,
+            };
+            if let Some(id) = named {
                 if !self.card_mods.contains_key(id) {
                     return Err(ContentError(format!(
                         "consumable {}: unknown card mod {id}",
@@ -1297,6 +1381,41 @@ impl Content {
         Ok(())
     }
 
+    /// Effects v2 (DESIGN 7.2): a voucher acts when discarded and only
+    /// then, it turns a card only into a special card, a curse says
+    /// "Fluch:", a limit is not below the first value.
+    fn validate_card_mod(&self, def: &CardModDef) -> Result<(), ContentError> {
+        let what = format!("card mod {}", def.id);
+        let on_discard = def.hooks.iter().any(|h| h.stage() == Stage::OnDiscard);
+        if on_discard != (def.kind == ModKind::Voucher) {
+            return Err(ContentError(format!(
+                "{what}: a voucher and only a voucher acts on discard"
+            )));
+        }
+        for effect in def.hooks.iter().flat_map(Hook::then) {
+            if let Effect::TurnInto(target) = effect {
+                if !self
+                    .card_mods
+                    .get(target)
+                    .is_some_and(CardModDef::is_special)
+                {
+                    return Err(ContentError(format!(
+                        "{what}: TurnInto needs a special card, not {target}"
+                    )));
+                }
+            }
+        }
+        if def.is_curse() && !def.text.starts_with("Fluch:") {
+            return Err(ContentError(format!(
+                "{what}: a curse's text starts with \"Fluch:\""
+            )));
+        }
+        if def.max.is_some_and(|max| max < def.default_value()) {
+            return Err(ContentError(format!("{what}: max below the first value")));
+        }
+        Ok(())
+    }
+
     fn validate_characters(&self) -> Result<(), ContentError> {
         if !self.characters.contains_key(&Character::Declarer) {
             return Err(ContentError(
@@ -1330,7 +1449,7 @@ impl Content {
                     "{what}: more start consumables than slots"
                 )));
             }
-            for (card, card_mod) in &def.deck.mods {
+            for (card, card_mod, _) in &def.deck.mods {
                 if !self.card_mods.contains_key(card_mod) {
                     return Err(ContentError(format!(
                         "{what}: unknown card mod {card_mod} on {card}"
@@ -1353,7 +1472,7 @@ impl Content {
                 }
             }
             let mut deck = crate::deck::Deck::standard();
-            deck.apply_spec(&def.deck)
+            deck.apply_spec(&def.deck, self)
                 .map_err(|e| ContentError(format!("{what}: start deck: {e}")))?;
         }
         Ok(())
@@ -1375,13 +1494,13 @@ impl Content {
                             def.id
                         )));
                     };
-                    if *curse && !named.curse {
+                    if *curse && !named.is_curse() {
                         return Err(ContentError(format!(
                             "encounter {}: curse: true names {id}, which is no curse",
                             def.id
                         )));
                     }
-                    named.curse
+                    named.is_curse()
                 }
                 None => *curse,
             };

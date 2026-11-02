@@ -103,11 +103,9 @@ impl Run {
             }
             for hook in source.hooks.iter().filter(|h| h.stage() == Stage::OnScore) {
                 if evaluate_if_won(hook.when(), &ctx, source.this_card, &possible) == Some(true) {
-                    lines.extend(
-                        hook.then()
-                            .iter()
-                            .filter_map(|e| score_line(&source.source, e, &self.counters)),
-                    );
+                    lines.extend(hook.then().iter().filter_map(|e| {
+                        score_line(&source.source, &e.scaled(source.scale), &self.counters)
+                    }));
                 }
             }
         }

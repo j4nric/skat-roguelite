@@ -146,6 +146,13 @@ impl<C: PlayingCard> CompletedTrick<C> {
         self.cards.iter().map(|c| c.card_points()).sum()
     }
 
+    /// Augen in the trick with their sign: Augen below zero
+    /// ([`PlayingCard::point_debt`]) count against it (DESIGN 7.2).
+    #[must_use]
+    pub fn signed_points(&self) -> i64 {
+        self.cards.iter().map(|c| c.signed_points()).sum()
+    }
+
     /// Seat that played `cards[i]`.
     #[must_use]
     pub fn seat_of(&self, i: usize) -> Seat {
@@ -505,7 +512,16 @@ pub struct Game<C = Card> {
     /// ("Lockvogel"). Used up by that lead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lead_demand: Option<LeadSuit>,
+    /// Extra Augen per seat from card effects ("Erster Stich", DESIGN
+    /// 7.2).
+    #[serde(default, skip_serializing_if = "no_bonus")]
+    bonus_points: [u32; 3],
     log: Vec<Event<C>>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_bonus(points: &[u32; 3]) -> bool {
+    *points == [0; 3]
 }
 
 /// Default of the optional card fields of saves from before them (without a
@@ -629,6 +645,7 @@ impl<C: PlayingCard> Game<C> {
             drawn: None,
             returned: None,
             lead_demand: None,
+            bonus_points: [0; 3],
             log,
         }
     }
@@ -768,6 +785,19 @@ impl<C: PlayingCard> Game<C> {
     #[must_use]
     pub fn trick_card_points(&self) -> [u32; 3] {
         self.card_points
+    }
+
+    /// Extra Augen per seat from card effects ("Erster Stich").
+    #[must_use]
+    pub fn bonus_points(&self) -> [u32; 3] {
+        self.bonus_points
+    }
+
+    /// Give `seat` extra Augen ("Erster Stich": the Augen of the first
+    /// trick once more). They count in [`Game::seat_card_points`].
+    pub fn add_bonus_points(&mut self, seat: Seat, points: u32) {
+        let total = &mut self.bonus_points[seat.index()];
+        *total = total.saturating_add(points);
     }
 
     /// Whether the defenders conceded the game.
@@ -1369,7 +1399,8 @@ impl<C: PlayingCard> Game<C> {
             return Err(GameError::TrickInProgress);
         }
         let tricks = u32::try_from(TRICKS_PER_GAME.saturating_sub(self.tricks.len())).unwrap_or(0);
-        let card_points: u32 = self.hands.iter().flatten().map(|c| c.card_points()).sum();
+        let card_points: i64 = self.hands.iter().flatten().map(|c| c.signed_points()).sum();
+        let card_points = u32::try_from(card_points.max(0)).unwrap_or(0);
         self.conceded = Some((tricks, card_points));
         let events = vec![
             Event::Conceded {
@@ -1477,10 +1508,17 @@ impl<C: PlayingCard> Game<C> {
     /// Augen per seat so far: tricks, the skat and conceded Augen. The skat
     /// counts for the declarer; in a Ramsch it goes to the seat that took
     /// the last trick (nobody's until then).
+    ///
+    /// Augen below zero ([`PlayingCard::point_debt`], DESIGN 7.2) count
+    /// against the seat that took them; a seat never has fewer than 0.
+    /// Extra Augen from card effects ([`Game::bonus_points`]) count too.
     #[must_use]
     pub fn seat_card_points(&self) -> [u32; 3] {
-        let mut points = self.card_points;
-        let skat_points: u32 = self.skat.iter().map(|c| c.card_points()).sum();
+        let mut points: [i64; 3] = self.bonus_points.map(i64::from);
+        for trick in &self.tricks {
+            points[trick.winner.index()] += trick.signed_points();
+        }
+        let skat_points: i64 = self.skat.iter().map(|c| c.signed_points()).sum();
         let ramsch = self.declaration.is_some_and(Declaration::is_ramsch);
         if ramsch {
             if self.tricks.len() == TRICKS_PER_GAME {
@@ -1492,9 +1530,9 @@ impl<C: PlayingCard> Game<C> {
             points[0] += skat_points;
         }
         if let Some((_, conceded)) = self.conceded {
-            points[0] += conceded;
+            points[0] += i64::from(conceded);
         }
-        points
+        points.map(|p| u32::try_from(p.max(0)).unwrap_or(u32::MAX))
     }
 
     /// Augen and tricks per seat so far ([`Game::seat_card_points`],

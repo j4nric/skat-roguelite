@@ -35,8 +35,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
-    Change, Character, ConsumableCategory, Content, Effect, Hook, Lever, Rarity, RelicKind,
-    RunLength, UnlockId,
+    Change, Character, ConsumableCategory, Content, Effect, Hook, Lever, ModKind, Rarity,
+    RelicKind, RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -131,7 +131,15 @@ struct CardModEntry<'a> {
     rarity: Rarity,
     /// A curse (Fluch, DESIGN 7.2).
     curse: bool,
-    /// The number printed on the card face, if the modification has one.
+    /// Rand, Moment, Gutschein, Fluch or Spezialkarte (effects v2).
+    kind: ModKind,
+    /// The values on offer; empty: no value.
+    values: &'a [i32],
+    /// The highest value a raise may reach.
+    max: Option<i32>,
+    /// The number printed on the card face per unit of the card's value
+    /// (effects v2: the card's value times an `Add`; a `Multiply` is the
+    /// value itself), if the modification has one.
     figure: Option<Figure>,
 }
 
@@ -171,7 +179,7 @@ struct Figure {
 fn effect_figure(effect: &Effect) -> Option<Figure> {
     let (lever, change) = match effect {
         Effect::AddCardPoints(n) => (Lever::CardPoints, Change::Add(i64::from(*n))),
-        Effect::MultiplyCardPoints(n) => (Lever::CardPoints, Change::Multiply(*n)),
+        Effect::MultiplyTrickPoints(n) => (Lever::CardPoints, Change::Multiply(*n)),
         Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
         Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
@@ -276,7 +284,10 @@ pub fn catalog_json() -> Result<String, String> {
                         name: &d.name,
                         text: &d.text,
                         rarity: d.rarity,
-                        curse: d.curse,
+                        curse: d.is_curse(),
+                        kind: d.kind,
+                        values: &d.values,
+                        max: d.max,
                         figure: first_figure(&d.passive, &d.hooks),
                     },
                 )
@@ -964,24 +975,26 @@ mod tests {
         assert_eq!(catalog["consumables"]["chalk"]["category"], "Schnapps");
         assert_eq!(catalog["consumables"]["beer"]["category"], "Item");
         assert_eq!(catalog["consumables"]["new_deal"]["rarity"], "Uncommon");
-        assert!(catalog["card_mods"]["fat"]["text"].is_string());
-        assert_eq!(catalog["card_mods"]["fat"]["curse"], false);
+        assert!(catalog["card_mods"]["points"]["text"].is_string());
+        assert_eq!(catalog["card_mods"]["points"]["curse"], false);
+        assert_eq!(catalog["card_mods"]["points"]["kind"], "Edge");
+        assert_eq!(
+            catalog["card_mods"]["points"]["values"],
+            serde_json::json!([4, 3, 5])
+        );
         assert_eq!(catalog["card_mods"]["battered"]["curse"], true);
-        assert_eq!(catalog["card_mods"]["honorary_jack"]["rarity"], "Rare");
-        // The number on the card face, straight from the content.
+        assert_eq!(catalog["card_mods"]["rank"]["max"], 3);
+        assert_eq!(catalog["card_mods"]["undead"]["kind"], "Special");
+        // The number on the card face per unit of the card's value.
         assert_eq!(
-            catalog["card_mods"]["fat"]["figure"],
-            serde_json::json!({"lever": "CardPoints", "change": {"Add": 4}})
+            catalog["card_mods"]["points"]["figure"],
+            serde_json::json!({"lever": "CardPoints", "change": {"Add": 1}})
         );
         assert_eq!(
-            catalog["card_mods"]["crown"]["figure"],
-            serde_json::json!({"lever": "BaseValue", "change": {"Multiply": 2}})
+            catalog["card_mods"]["stained"]["figure"],
+            serde_json::json!({"lever": "BaseValue", "change": {"Add": -1}})
         );
-        assert_eq!(
-            catalog["card_mods"]["black_cat"]["figure"],
-            serde_json::json!({"lever": "BaseValue", "change": {"Add": -3}})
-        );
-        assert!(catalog["card_mods"]["marked"]["figure"].is_null());
+        assert!(catalog["card_mods"]["rank"]["figure"].is_null());
         // Counters a relic reads or raises.
         assert_eq!(
             catalog["relics"]["tally_stick"]["counters"],

@@ -54,24 +54,24 @@ fn trick(run: &mut Run, content: &Content, lead: &str, left: &str, right: &str) 
 }
 
 #[test]
-fn undead_loads_as_a_trump_mod_for_every_card() {
+fn undead_loads_as_a_special_card_for_every_card() {
     let content = content();
     let def = content.card_mod(&CardModId::new(UNDEAD)).expect("undead");
     assert_eq!(def.name, "Untot");
     assert_eq!(def.focus, GameFocus::Trump);
-    assert!(!def.curse);
+    assert!(def.is_special());
     assert!(def.passive.contains(&Effect::Undead));
     for card in ["CK", "HQ", "SA", "D7", "CJ"] {
         assert!(def.fits(CardKind::Normal(card.parse().expect("card"))));
     }
     assert!(!def.fits(CardKind::Blank));
+    // Effekte v2: a special card, it comes with the voucher "Gutschein
+    // Untot", never from a random draw.
+    let (run, _) = Run::new(&content, 1).expect("run");
     assert!(
-        content
-            .card_mods
-            .values()
-            .filter(|d| !d.curse)
-            .any(|d| d.id.as_str() == UNDEAD),
-        "drawn at random like the other mods"
+        !run.card_mod_pool(&content)
+            .iter()
+            .any(|(id, _)| id.as_str() == UNDEAD)
     );
 }
 

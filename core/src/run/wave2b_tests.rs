@@ -758,7 +758,18 @@ fn three_discard_keeps_every_card_once() {
                 let RunEvent::Game(Event::GameFinished { outcome, .. }) = e else {
                     continue;
                 };
-                let total: u32 = game.cards_in_play().iter().map(|c| c.card_points()).sum();
+                // Effekte v2: "Erster Stich" gives extra Augen.
+                let bonus: u32 = game.bonus_points().iter().sum::<u32>()
+                    + events
+                        .iter()
+                        .map(|e| match e {
+                            RunEvent::BonusPoints { card_points, .. } => *card_points,
+                            _ => 0,
+                        })
+                        .sum::<u32>();
+                // and "Ramponiert" takes Augen, also below 0.
+                let signed: i64 = game.cards_in_play().iter().map(|c| c.signed_points()).sum();
+                let total = u32::try_from(signed).expect("positive") + bonus;
                 let finished = game.drawn().is_some() || !game.tricks().is_empty();
                 if finished && game.declaration().is_some_and(|d| !d.is_null()) {
                     assert_eq!(

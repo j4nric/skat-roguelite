@@ -246,6 +246,15 @@ impl RunEvent {
                 source,
                 card_points,
             },
+            RunEvent::BonusPoints {
+                source,
+                seat,
+                card_points,
+            } => RunEvent::BonusPoints {
+                source,
+                seat,
+                card_points,
+            },
             RunEvent::CoinsGained {
                 source,
                 amount,
@@ -309,8 +318,15 @@ impl RunEvent {
             RunEvent::RedealUndone => RunEvent::RedealUndone,
             // The Kiebitz shows this card to the player: allowed knowledge.
             RunEvent::WildCardNamed { card, suit } => RunEvent::WildCardNamed { card, suit },
-            RunEvent::CardBroken { card, card_mod } => RunEvent::CardBroken { card, card_mod },
-            RunEvent::CardCameHome { card } => RunEvent::CardCameHome { card },
+            RunEvent::VoucherRedeemed {
+                card,
+                card_mod,
+                value,
+            } => RunEvent::VoucherRedeemed {
+                card,
+                card_mod,
+                value,
+            },
             RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
             RunEvent::RamschDealt => RunEvent::RamschDealt,
             RunEvent::EncounterOpened { encounter, options } => {

@@ -70,10 +70,11 @@ pub struct Options {
     /// only this one, for free, and no relics (so with the bot it is like
     /// `--no-shop` plus the consumable). Compare against `--no-shop`.
     pub consumable: Option<ConsumableId>,
-    /// Card modifications on the start deck (`--card-mod <card>:<id>`), each
-    /// on the first instance of its printed card, like
+    /// Card modifications on the start deck (`--card-mod
+    /// <card>:<id>[:<value>]`), each on the first instance of its printed
+    /// card with its value (default: its first value on offer), like
     /// [`skat_core::content::DeckSpec::mods`].
-    pub card_mods: Vec<(Card, CardModId)>,
+    pub card_mods: Vec<(Card, CardModId, Option<i32>)>,
 }
 
 /// Price of the Neuauslage under `--consumable`: never affordable, so
@@ -129,15 +130,16 @@ impl Options {
         if content.character(self.character).is_none() {
             return Err(format!("--character: unknown {}", self.character));
         }
-        for (card, id) in &self.card_mods {
+        for (card, id, value) in &self.card_mods {
             let def = content
                 .card_mod(id)
                 .ok_or_else(|| format!("--card-mod: unknown card mod {id}"))?;
             if !def.fits(CardKind::Normal(*card)) {
                 return Err(format!("--card-mod: {id} does not fit {card}"));
             }
+            let value = value.unwrap_or_else(|| def.default_value());
             if let Some(def) = content.characters.get_mut(&self.character) {
-                def.deck.mods.push((*card, id.clone()));
+                def.deck.mods.push((*card, id.clone(), value));
             }
         }
         if let Some(defenders) = self.defenders {
@@ -228,8 +230,11 @@ impl Options {
         if let Some(id) = &self.consumable {
             parts.push(format!("consumable={id}"));
         }
-        for (card, id) in &self.card_mods {
-            parts.push(format!("card-mod={card}:{id}"));
+        for (card, id, value) in &self.card_mods {
+            match value {
+                Some(value) => parts.push(format!("card-mod={card}:{id}:{value}")),
+                None => parts.push(format!("card-mod={card}:{id}")),
+            }
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -1109,21 +1114,36 @@ mod option_tests {
     fn card_mods_go_on_the_start_deck_and_must_fit() {
         let base = content();
         let options = Options {
-            card_mods: vec![("CA".parse().expect("card"), CardModId::new("glass_ace"))],
+            card_mods: vec![(
+                "CA".parse().expect("card"),
+                CardModId::new("points"),
+                Some(5),
+            )],
             no_shop: true,
             ..Options::default()
         };
         let content = options.content(&base).expect("content");
         let deck = &content.character(Character::Declarer).expect("def").deck;
-        assert!(deck.mods.iter().any(|(_, id)| id.as_str() == "glass_ace"));
+        assert!(
+            deck.mods
+                .iter()
+                .any(|(_, id, value)| id.as_str() == "points" && *value == 5)
+        );
         let stats = simulate(&base, &options, 8, 10).expect("runs");
         assert_eq!(stats.runs, 10);
-        assert!(render(&stats, &base, &options, 0).contains("card-mod=CA:glass_ace"));
+        assert!(render(&stats, &base, &options, 0).contains("card-mod=CA:points:5"));
         let wrong = Options {
-            card_mods: vec![("CT".parse().expect("card"), CardModId::new("glass_ace"))],
+            card_mods: vec![(
+                "CT".parse().expect("card"),
+                CardModId::new("glass_ace"),
+                None,
+            )],
             ..Options::default()
         };
-        assert!(wrong.content(&base).is_err(), "a Glasdaus only fits a Daus");
+        assert!(
+            wrong.content(&base).is_err(),
+            "the Glasdaus is gone with effects v2"
+        );
     }
 
     #[test]

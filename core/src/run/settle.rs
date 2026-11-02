@@ -228,7 +228,7 @@ fn on_score(
         // On trick end only: never true when the game is scored.
         Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardBeatenByDefender => Some(false),
+        | Condition::ThisCardWinsFirstTrick => Some(false),
     }
 }
 
@@ -333,18 +333,8 @@ fn during_play(
         }
         // The declarer's trick count only grows.
         Condition::FirstTrickOfDeclarer => (outcome.declarer_tricks > 0).then_some(false),
-        // "Glasdaus": open while the card is still to be played (in a hand
-        // or in the trick on the table); in the skat or after its trick it
-        // cannot break any more.
-        Condition::ThisCardBeatenByDefender => {
-            let pending = this_card.is_some_and(|this| {
-                Seat::ALL
-                    .iter()
-                    .any(|&seat| game.hand(seat).iter().any(|c| c.id == this.id))
-                    || game.current_trick().iter().any(|c| c.id == this.id)
-            });
-            (!pending).then_some(false)
-        }
+        // "Erster Stich": decided once the first trick is complete.
+        Condition::ThisCardWinsFirstTrick => (done > 0).then_some(false),
         Condition::LastTrickWonWith { .. }
         | Condition::LastTrickWinnerMatches { .. }
         | Condition::ThisCardWinsLastTrick => None,
@@ -385,6 +375,16 @@ impl Run {
             .iter()
             .any(|&c| self.can_rise(content, c))
         {
+            return false;
+        }
+        // Augen below zero still to fall (effects v2, "Ramponiert"): the
+        // bounds of the rest count every card with at least 0 Augen.
+        let debt_left = Seat::ALL
+            .iter()
+            .flat_map(|&seat| game.hand(seat).iter())
+            .chain(game.current_trick())
+            .any(|c| c.point_debt > 0);
+        if debt_left {
             return false;
         }
         let sources = self.sources(content, true);

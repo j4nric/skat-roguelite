@@ -1,6 +1,6 @@
-//! M8 wave 3 (DESIGN 7.2, 8.1): the card modifications "Wandelkarte",
-//! "Glasdaus" and "Heimweh" and the legendary relics "Skatgott" and
-//! "Ehrenvorsitz". One test per item in a constructed situation, plus the
+//! M8 wave 3 (DESIGN 7.2, 8.1): the card modification "Wandelkarte" (the
+//! Glasdaus and Heimweh are gone with effects v2) and the legendary relics
+//! "Skatgott" and "Ehrenvorsitz". One test per item in a constructed situation, plus the
 //! edge cases of their rules.
 
 use super::bot::RunBot;
@@ -8,12 +8,9 @@ use super::content_tests::{content, relic_run};
 use super::*;
 use crate::cards::Suit;
 use crate::content::{CardModDef, Factor, Rarity, RarityWeights};
-use crate::deck::DeckChange;
 use crate::rules::{self, RiskLevel};
 
 const WILD: &str = "wild_card";
-const GLASS: &str = "glass_ace";
-const HOMESICK: &str = "homesick";
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).
 pub(super) fn id_of(notation: &str) -> u32 {
@@ -39,13 +36,10 @@ pub(super) fn id_of(notation: &str) -> u32 {
 }
 
 pub(super) fn with_mod(content: &Content, run: &mut Run, card: &str, card_mod: &str) {
-    run.attach_mod(
-        content,
-        id_of(card),
-        CardModId::new(card_mod),
-        &mut Vec::new(),
-    )
-    .expect("attach");
+    let id = CardModId::new(card_mod);
+    let value = content.card_mod(&id).map_or(1, CardModDef::default_value);
+    run.attach_mod(content, id_of(card), &id, value, &mut Vec::new())
+        .expect("attach");
 }
 
 /// Replace the current game by a constructed deal with `forehand`, with
@@ -138,9 +132,7 @@ fn dealt(notation: &str, wild: bool) -> DealtCard {
 #[test]
 fn wave_three_items_load_with_their_tier() {
     let content = content();
-    for id in [WILD, GLASS, HOMESICK] {
-        assert!(content.card_mod(&CardModId::new(id)).is_some(), "{id}");
-    }
+    assert!(content.card_mod(&CardModId::new(WILD)).is_some());
     for id in ["skat_god", "honorary_chair"] {
         let def = content.relic(&RelicId::new(id)).expect("relic");
         assert_eq!(def.rarity, Rarity::Legendary, "{id}");
@@ -388,280 +380,10 @@ fn the_bot_names_a_suit_that_takes_the_trick() {
 
 // -------------------------------------------------------------- Glasdaus
 
-#[test]
-fn a_glass_ace_counts_double_and_breaks_in_a_defender_trick() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "SA", GLASS);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "SA CJ CA CT CK CQ C9 C8 C7 D7",
-            "SJ HJ DJ HA HT HK HQ H9 H8 H7",
-            "ST SK SQ S9 S8 S7 DA DT DK DQ",
-        ],
-        "D8 D9",
-        Seat::DECLARER,
-    );
-    let ace = card_in(run.game().expect("game").game.hand(Seat::DECLARER), "SA");
-    assert_eq!(ace.card_points, 22);
-    run.apply_step(&content, RunAction::Declare(hand_clubs()))
-        .expect("declare");
-    run.apply_step(&content, RunAction::Play(id_of("SA")))
-        .expect("lead");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "SJ");
-    let events = defender_plays(&mut run, &content, Seat::DEFENDERS[1], "S7");
-    let trick = events.iter().find_map(|e| match e {
-        RunEvent::Game(Event::TrickWon { card_points, .. }) => Some(*card_points),
-        _ => None,
-    });
-    assert_eq!(trick, Some(24), "22 for the glass Daus, 2 for the Unter");
-    assert!(events.contains(&RunEvent::CardBroken {
-        card: id_of("SA"),
-        card_mod: CardModId::new(GLASS),
-    }));
-    // It stays in this game; it leaves the deck once the game is scored.
-    assert!(run.deck().get(id_of("SA")).is_some());
-    let (events, _) = bot_to_end(&mut run, &content);
-    assert!(events.iter().any(|e| matches!(
-        e,
-        RunEvent::DeckChanged(DeckChange::ReplacedByBlank { removed, .. }) if removed.id == id_of("SA")
-    )));
-    assert!(run.deck().get(id_of("SA")).is_none());
-    assert_eq!(run.deck().len(), 32);
-    assert_eq!(run.deck().blanks(), 1);
-}
-
-#[test]
-fn a_glass_ace_the_player_takes_or_keeps_in_the_skat_stays_whole() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "SA", GLASS);
-    with_mod(&content, &mut run, "DA", GLASS);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "SA CJ CA CT CK CQ C9 C8 C7 D7",
-            "SJ HJ DJ HA HT HK HQ H9 H8 S7",
-            "ST SK SQ S9 S8 H7 DK DT D9 DQ",
-        ],
-        "D8 DA",
-        Seat::DECLARER,
-    );
-    run.apply_step(&content, RunAction::Declare(hand_clubs()))
-        .expect("declare");
-    run.apply_step(&content, RunAction::Play(id_of("SA")))
-        .expect("lead");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "S7");
-    let events = defender_plays(&mut run, &content, Seat::DEFENDERS[1], "S8");
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::CardBroken { .. }))
-    );
-    let (events, breakdown) = bot_to_end(&mut run, &content);
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::CardBroken { .. }))
-    );
-    assert!(run.deck().get(id_of("SA")).is_some());
-    assert!(
-        run.deck().get(id_of("DA")).is_some(),
-        "the skat never breaks"
-    );
-    // The skat's glass Daus counts 22 for the player: one Augen line.
-    let glass = Source::CardMod {
-        card_mod: CardModId::new(GLASS),
-        card: id_of("DA"),
-    };
-    assert!(
-        breakdown
-            .lines_of(&glass)
-            .any(|l| l.change == Change::Add(11))
-    );
-}
-
-#[test]
-fn a_glass_ace_only_goes_on_a_daus() {
-    let content = content();
-    let def: &CardModDef = content.card_mod(&CardModId::new(GLASS)).expect("mod");
-    assert!(def.fits(CardKind::Normal("HA".parse().expect("card"))));
-    assert!(!def.fits(CardKind::Normal("HT".parse().expect("card"))));
-    assert!(!def.fits(CardKind::Blank));
-    let (mut run, _) = Run::new(&content, 5).expect("start");
-    assert_eq!(
-        run.attach_mod(
-            &content,
-            id_of("HT"),
-            CardModId::new(GLASS),
-            &mut Vec::new()
-        ),
-        Err(RunError::NoModAvailable)
-    );
-    // Random draws for a card leave it out unless the card is a Daus.
-    let ten = run.deck().get(id_of("HT")).expect("card").clone();
-    let ace = run.deck().get(id_of("HA")).expect("card").clone();
-    let has = |pool: Vec<(CardModId, u32)>| pool.iter().any(|(id, _)| id.as_str() == GLASS);
-    assert!(!has(run.card_mod_pool_for(&content, &ten)));
-    assert!(has(run.card_mod_pool_for(&content, &ace)));
-    // An encounter that names it puts it on a Daus.
-    for seed in 0..20 {
-        let (mut run, _) = Run::new(&content, seed).expect("start");
-        run.phase = RunPhase::Encounter;
-        run.game = None;
-        run.encounter = Some(ActiveEncounter {
-            id: EncounterId::new("card_dealer"),
-            options: vec![
-                EncounterOption {
-                    choice: EncounterChoice::MarkRandomCard,
-                    cost: 0,
-                    card_mod: Some(CardModId::new(GLASS)),
-                },
-                EncounterOption {
-                    choice: EncounterChoice::Leave,
-                    cost: 0,
-                    card_mod: None,
-                },
-            ],
-        });
-        let view = run.view(&content);
-        assert!(view.encounter.expect("open").options[0].can_choose);
-        let events = run
-            .apply(
-                &content,
-                RunAction::ChooseEncounter {
-                    option: 0,
-                    target: None,
-                },
-            )
-            .expect("chosen");
-        let card = events.iter().find_map(|e| match e {
-            RunEvent::DeckChanged(DeckChange::Modified { card, .. }) => Some(*card),
-            _ => None,
-        });
-        let kind = run.deck().get(card.expect("marked")).expect("card").kind;
-        assert_eq!(kind.face().map(|f| f.rank), Some(Rank::Ace), "seed {seed}");
-    }
-    // With every Daus glass, nothing is left to draw it for.
-    let (mut run, _) = Run::new(&content, 5).expect("start");
-    for ace in ["DA", "HA", "SA", "CA"] {
-        with_mod(&content, &mut run, ace, GLASS);
-    }
-    assert!(
-        !run.mod_pool(&content, &[], false)
-            .iter()
-            .any(|(id, _)| id.as_str() == GLASS)
-    );
-}
-
 // --------------------------------------------------------------- Heimweh
-
-#[test]
-fn a_homesick_card_in_the_skat_comes_into_the_hand_next_game() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "CJ", HOMESICK);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "SJ HJ DJ CA CT CK CQ C9 C8 SA",
-            "HA HT HK HQ H9 H8 H7 ST SK SQ",
-            "S9 S8 S7 DA DT DK DQ D9 D8 D7",
-        ],
-        "CJ C7",
-        Seat::DECLARER,
-    );
-    run.apply(&content, RunAction::Declare(hand_clubs()))
-        .expect("declare");
-    let (events, _) = bot_to_end(&mut run, &content);
-    assert_eq!(run.homesick(), [id_of("CJ")]);
-    // The next game is dealt at once: the Kreuz-Unter is in the hand.
-    let home = events.iter().find_map(|e| match e {
-        RunEvent::CardCameHome { card } => Some(*card),
-        _ => None,
-    });
-    assert_eq!(home.map(|c| c.id), Some(id_of("CJ")));
-    let hand = run.game().expect("game").game.hand(Seat::DECLARER).to_vec();
-    assert!(hand.iter().any(|c| c.id == id_of("CJ")));
-    assert_eq!(run.view(&content).homesick, [id_of("CJ")]);
-    // Also after Einmischen in that game.
-    for _ in 0..2 {
-        run.apply(&content, RunAction::Redeal).expect("redeal");
-        let hand = run.game().expect("game").game.hand(Seat::DECLARER).to_vec();
-        assert!(hand.iter().any(|c| c.id == id_of("CJ")));
-        assert_eq!(hand.len(), 10);
-    }
-    // Deterministic: the same run deals the same hand again.
-    run.series.extra_redeals = 1;
-    let mut again = run.clone();
-    let mut copy = run.clone();
-    again
-        .apply(&content, RunAction::Redeal)
-        .expect("extra redeal");
-    copy.apply(&content, RunAction::Redeal)
-        .expect("extra redeal");
-    assert_eq!(hand_of(&again), hand_of(&copy));
-}
 
 fn hand_of(run: &Run) -> &[DealtCard] {
     run.game().expect("game").game.hand(Seat::DECLARER)
-}
-
-#[test]
-fn a_discarded_homesick_card_comes_back_and_a_played_one_does_not() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "D7", HOMESICK);
-    with_mod(&content, &mut run, "SA", HOMESICK);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "CJ SJ HJ DJ CA CT CK SA D7 D8",
-            "HA HT HK HQ H9 H8 H7 ST SK SQ",
-            "S9 S8 S7 DA DT DK DQ D9 CQ C9",
-        ],
-        "C8 C7",
-        Seat::DECLARER,
-    );
-    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
-    run.apply(&content, RunAction::Discard([id_of("D7"), id_of("D8")]))
-        .expect("discard");
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::suit(Suit::Clubs, RiskLevel::Normal)),
-    )
-    .expect("declare");
-    let (_, _) = bot_to_end(&mut run, &content);
-    assert_eq!(run.homesick(), [id_of("D7")], "the SA was played");
-    assert!(hand_of(&run).iter().any(|c| c.id == id_of("D7")));
-}
-
-#[test]
-fn a_homesick_card_that_left_the_deck_is_skipped() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "CJ", HOMESICK);
-    run.homesick = vec![id_of("CJ")];
-    run.deck.remove(id_of("CJ")).expect("removed");
-    let mut events = Vec::new();
-    run.game = None;
-    run.deal(&content, true, &mut events).expect("deal");
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::CardCameHome { .. }))
-    );
-    assert_eq!(hand_of(&run).len(), 10);
-    // Saves keep the list.
-    let text = ron::to_string(&run).expect("save");
-    assert!(text.contains("homesick"));
-    let back: Run = ron::from_str(&text).expect("load");
-    assert_eq!(back, run);
 }
 
 // -------------------------------------------------------------- Skatgott
@@ -767,44 +489,6 @@ fn honorary_chair_makes_the_player_forehand_in_every_game() {
 }
 
 #[test]
-fn a_defender_winning_with_the_glass_ace_does_not_break_it() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "HA", GLASS);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "CJ SJ H8 CA CT CK SA ST D7 D8",
-            "HA HJ DJ HK HQ H9 SK S7 DA DT",
-            "H7 HT SQ S9 S8 DK DQ D9 CQ C9",
-        ],
-        "C8 C7",
-        Seat::DEFENDERS[0],
-    );
-    run.apply_step(&content, RunAction::Declare(hand_clubs()))
-        .expect("declare");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "HA");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "H7");
-    let events = run
-        .apply_step(&content, RunAction::Play(id_of("H8")))
-        .expect("follows");
-    let trick = events.iter().find_map(|e| match e {
-        RunEvent::Game(Event::TrickWon { trick, card_points }) => {
-            Some((trick.winner, *card_points))
-        }
-        _ => None,
-    });
-    assert_eq!(trick, Some((Seat::DEFENDERS[0], 22)));
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::CardBroken { .. }))
-    );
-    assert!(run.game().expect("game").broken.is_empty());
-}
-
-#[test]
 fn the_bot_does_not_throw_a_wild_card_it_cannot_ruff_with() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
@@ -849,14 +533,12 @@ fn wave_three_trigger_statistics() {
         if let Some(def) = c.characters.get_mut(&Character::Declarer) {
             def.deck
                 .mods
-                .push((card.parse().expect("card"), CardModId::new(id)));
+                .push((card.parse().expect("card"), CardModId::new(id), 1));
         }
         c
     };
-    let items: [(&str, Content, Vec<RelicId>); 5] = [
+    let items: [(&str, Content, Vec<RelicId>); 3] = [
         ("wild_card on HA", with_mod("HA", WILD), Vec::new()),
-        ("glass_ace on CA", with_mod("CA", GLASS), Vec::new()),
-        ("homesick on CJ", with_mod("CJ", HOMESICK), Vec::new()),
         ("skat_god", base.clone(), vec![RelicId::new("skat_god")]),
         (
             "honorary_chair",
@@ -865,9 +547,7 @@ fn wave_three_trigger_statistics() {
         ),
     ];
     for (name, content, relics) in items {
-        let (mut games, mut named, mut renamed, mut broke, mut home, mut levels) =
-            (0u32, 0u32, 0u32, 0u32, 0u32, 0i64);
-        let mut broke_after = 0u32;
+        let (mut games, mut named, mut renamed, mut levels) = (0u32, 0u32, 0u32, 0i64);
         let mut counter_end = 0u32;
         let runs = 400u32;
         for seed in 0..u64::from(runs) {
@@ -876,7 +556,6 @@ fn wave_three_trigger_statistics() {
                 ..RunStart::default()
             };
             let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
-            let mut run_games = 0u32;
             for _ in 0..5000 {
                 let action = match run.phase() {
                     RunPhase::Shop => RunAction::LeaveShop,
@@ -889,7 +568,6 @@ fn wave_three_trigger_statistics() {
                     match e {
                         RunEvent::GameScored { breakdown, .. } => {
                             games += 1;
-                            run_games += 1;
                             let source = Source::Relic(RelicId::new("skat_god"));
                             for l in breakdown.lines_of(&source) {
                                 if let Change::Add(n) = l.change {
@@ -903,11 +581,6 @@ fn wave_three_trigger_statistics() {
                                 renamed += 1;
                             }
                         }
-                        RunEvent::CardBroken { .. } => {
-                            broke += 1;
-                            broke_after += run_games + 1;
-                        }
-                        RunEvent::CardCameHome { .. } => home += 1,
                         _ => {}
                     }
                 }
@@ -916,11 +589,8 @@ fn wave_three_trigger_statistics() {
         }
         let per = |n: u32| f64::from(n) / f64::from(games.max(1));
         println!(
-            "{name}: games {games}; named {:.3}/game ({renamed} into another suit); broke in {:.1} % of runs, after {:.1} games; came home {:.3}/game; skat_god levels {:.3}/game, counter at the end {:.2}",
+            "{name}: games {games}; named {:.3}/game ({renamed} into another suit); skat_god levels {:.3}/game, counter at the end {:.2}",
             per(named),
-            100.0 * f64::from(broke) / f64::from(runs),
-            f64::from(broke_after) / f64::from(broke.max(1)),
-            per(home),
             levels as f64 / f64::from(games.max(1)),
             f64::from(counter_end) / f64::from(runs),
         );

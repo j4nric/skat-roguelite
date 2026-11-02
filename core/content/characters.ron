@@ -13,8 +13,9 @@
 // für Null (null) anbieten, gemessen an der Seltenheit. Relikte für jedes
 // Spiel zählen immer 100. Ohne Angabe 100 und 100.
 // start_consumables: Verbrauchsgegenstände ab Start (z. B. ein Schnaps).
-// deck.mods: Kartenmodifikationen im Startblatt, je auf der ersten Karte
-// mit diesem Aufdruck; „beim Erhalt“ feuert dabei nicht.
+// deck.mods: Kartenmodifikationen im Startblatt mit Wert (Effekte v2,
+// DESIGN 7.2), je auf der ersten Karte mit diesem Aufdruck; „beim Erhalt“
+// feuert dabei nicht.
 // rule: die eine eigene Regel (DESIGN 9). passive und hooks wirken wie ein
 // Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
 // der Wertung). redeals (Einmischen pro Spiel) und relic_slots ändern
@@ -104,7 +105,7 @@
         ]),
         start_relics: [],
         deck: (
-            mods: [("CA", "gold_rim")],
+            mods: [("CA", "points", 8)],
         ),
         // Wirkt auf gewonnene und verlorene Spiele. Die Stufen fallen nie
         // unter 1 (Stufen = max(1, Regel + Zuschläge), DESIGN 4.2).
