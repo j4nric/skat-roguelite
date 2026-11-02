@@ -121,6 +121,22 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `clean_slate` | 1 | Null: +0.1, the bot almost never avoids following suit |
 /// | `card_counter` | 1 | information the PIMC bot already has |
 /// | `show_off` | 0 | Null: -15.9, forced Ouvert ruins the bot: never bought |
+///
+/// Wave 2a (`docs/balance/2026-11-02-relikte-welle2.md`, same method with
+/// 3-game series, 3 × 500 runs). The baseline reaches section 3 less often
+/// now (11.7 % instead of 14.5 %; "Alte Dame" +5.5 instead of +7.1), so the
+/// effects are scaled by about 1.3 to compare with the table above:
+///
+/// | Relic | Value | Measured (section 3, section 2) |
+/// |---|---|---|
+/// | `all_rounder` | 7 | +3.7, +6.6 |
+/// | `old_deck` | 7 | +3.4, +5.1 |
+/// | `watertight` | 6 | +3.0, +3.3 |
+/// | `skat_keeper` | 6 | +2.5, +2.6; the bot discards few Augen |
+/// | `jack_parade` | 4 | +1.8, +2.9 |
+/// | `blank_king` | 4 | +1.3, +1.9 |
+/// | `changeling` | 2 | +0.5, +2.4; -1.4 points per game (levels on lost Null games) |
+/// | `home_suit` | 1 | +0.1: the bot almost never plays three suit games in a row with one trump suit |
 pub const RELIC_VALUES: [(&str, u32); 43] = [
     ("every_bit_counts", 10),
     ("bock_round", 10),
@@ -157,14 +173,14 @@ pub const RELIC_VALUES: [(&str, u32); 43] = [
     ("clean_slate", 1),
     ("card_counter", 1),
     ("show_off", 0),
-    ("skat_keeper", 5),
-    ("old_deck", 5),
-    ("all_rounder", 5),
-    ("home_suit", 4),
-    ("changeling", 2),
+    ("all_rounder", 7),
+    ("old_deck", 7),
+    ("watertight", 6),
+    ("skat_keeper", 6),
     ("jack_parade", 4),
-    ("blank_king", 2),
-    ("watertight", 3),
+    ("blank_king", 4),
+    ("changeling", 2),
+    ("home_suit", 1),
 ];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].

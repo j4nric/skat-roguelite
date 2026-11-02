@@ -708,6 +708,18 @@ mod tests {
     use skat_core::run::RunPhase;
     use skat_core::run::bot::RunBot;
 
+    /// Saves from before fractional Spielwert factors hold the multiplier
+    /// of the last score as a whole number; it still loads.
+    #[test]
+    fn score_multiplier_reads_whole_numbers_of_old_saves() {
+        use skat_core::content::Factor;
+        let old: Factor = serde_json::from_str("2").expect("integer");
+        assert_eq!(old, Factor::from_int(2));
+        let new: Factor = serde_json::from_str("1.5").expect("decimal");
+        assert_eq!(new, Factor::from_permille(1500));
+        assert_eq!(serde_json::to_string(&new).expect("json"), "1.5");
+    }
+
     /// Apply an action (JSON), then let the AI play one card per `step`
     /// until the player decides again, as the web app does. Returns
     /// `{ events, view }` with the events of all calls in order and the

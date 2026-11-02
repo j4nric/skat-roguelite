@@ -486,8 +486,8 @@
         id: "all_rounder",
         name: "Allrounder",
         text: "Je verschiedener Spielart in einer Serie +3 Grundwert.",
-        rarity: Common,
-        price: 6,
+        rarity: Uncommon,
+        price: 8,
         hooks: [
             OnDeclare(when: All([SuitGame, Not(Flag("all_rounder_suit"))]), then: [SetFlag("all_rounder_suit"), IncrementCounter("all_rounder")]),
             OnDeclare(when: All([GameIs(Grand), Not(Flag("all_rounder_grand"))]), then: [SetFlag("all_rounder_grand"), IncrementCounter("all_rounder")]),
@@ -506,7 +506,7 @@
         name: "Stammfarbe",
         text: "Dreimal hintereinander dieselbe Trumpffarbe: ×1,5.",
         rarity: Rare,
-        price: 7,
+        price: 6,
         hooks: [
             OnDeclare(when: All([GameIs(Suit(Clubs)), Not(Flag("home_suit_clubs"))]), then: [ClearFlag("home_suit_spades"), ClearFlag("home_suit_hearts"), ClearFlag("home_suit_diamonds"), SetFlag("home_suit_clubs"), ResetCounter("home_suit")]),
             OnDeclare(when: All([GameIs(Suit(Spades)), Not(Flag("home_suit_spades"))]), then: [ClearFlag("home_suit_clubs"), ClearFlag("home_suit_hearts"), ClearFlag("home_suit_diamonds"), SetFlag("home_suit_spades"), ResetCounter("home_suit")]),
@@ -551,7 +551,7 @@
         name: "Bubenparade",
         text: "Jeder Unter, den du ausspielst: +1 Grundwert.",
         rarity: Common,
-        price: 5,
+        price: 6,
         hooks: [
             OnCardPlayed(when: All([PlayedByDeclarer, PlayedCardMatches((rank: Some(Jack))), Not(RamschGame)]), then: [AddBaseValue(1)]),
         ],
@@ -579,7 +579,7 @@
         name: "Stichfest",
         text: "Dein erster Stich zählt für die Schneider-Grenze doppelt.",
         rarity: Uncommon,
-        price: 5,
+        price: 7,
         hooks: [
             OnTrickEnd(when: All([FirstTrickOfDeclarer, Not(NullGame), Not(RamschGame)]), then: [SchneiderBonusFromTrick]),
         ],

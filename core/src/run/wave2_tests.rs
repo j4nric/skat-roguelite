@@ -651,3 +651,57 @@ fn in_play_hooks_let_the_rest_be_settled_once_they_cannot_fire() {
     declare_hand(&mut run, &content, hand_suit(Suit::Diamonds));
     assert!(!run.can_settle(&content));
 }
+
+#[test]
+#[ignore = "statistics for the balance report, not a check"]
+fn wave_two_trigger_statistics() {
+    let content = content();
+    for id in [
+        "skat_keeper",
+        "old_deck",
+        "all_rounder",
+        "home_suit",
+        "changeling",
+        "jack_parade",
+        "blank_king",
+        "watertight",
+    ] {
+        let (mut games, mut fired, mut sum) = (0u32, 0u32, 0i64);
+        for seed in 0..400 {
+            let start = RunStart {
+                relics: vec![RelicId::new(id)],
+                ..RunStart::default()
+            };
+            let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
+            while run.series().section == 0 {
+                let Some(action) = RunBot.next_action(&run, &content) else {
+                    break;
+                };
+                let events = run.apply(&content, action).expect("legal");
+                for b in events.iter().filter_map(|e| match e {
+                    RunEvent::GameScored { breakdown, .. } => Some(breakdown),
+                    _ => None,
+                }) {
+                    games += 1;
+                    let source = relic(id);
+                    let lines: Vec<&ScoreLine> = b.lines_of(&source).collect();
+                    if !lines.is_empty() {
+                        fired += 1;
+                    }
+                    for l in lines {
+                        sum += match l.change {
+                            Change::Add(n) => n,
+                            Change::Scale(_) | Change::Multiply(_) | Change::Set(_) => 1,
+                        };
+                    }
+                }
+            }
+        }
+        println!(
+            "{id}: games {games}, fired {:.1} %, mean per game {:.2}, mean when fired {:.2}",
+            100.0 * f64::from(fired) / f64::from(games),
+            sum as f64 / f64::from(games),
+            sum as f64 / f64::from(fired.max(1))
+        );
+    }
+}
