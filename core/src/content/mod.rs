@@ -633,7 +633,7 @@ pub struct CardModDef {
     /// and cannot be raised.
     #[serde(default)]
     pub values: Vec<i32>,
-    /// The highest value a raise may reach ("Rang": 3). `None`: no limit.
+    /// The highest value a raise may reach ("Rang": 2). `None`: no limit.
     #[serde(default)]
     pub max: Option<i32>,
     /// Only cards whose printed card matches may carry it ("Glasdaus":
@@ -730,7 +730,7 @@ impl Factor {
     }
 
     /// `value × factor`, rounded half up; unlike [`Factor::apply`] it
-    /// may be 0 (the factor 0 of "Der Schwarze Peter"). Saturates.
+    /// may be 0 (a factor 0, `MultiplyGameValue(0)`). Saturates.
     #[must_use]
     pub fn scale(self, value: u64) -> u64 {
         let scaled = (u128::from(value) * u128::from(self.permille) + 500) / 1000;

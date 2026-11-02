@@ -744,6 +744,44 @@ fn relic_schneider_bonus_and_fractional_factor_vectors() {
     assert_eq!((lost.value, lost.score), (41, -82));
 }
 
+/// Boss "Der Schwarze Peter" (DESIGN 11): a won game without Schneider
+/// counts half (`ScaleGameValue(0.5)`), rounded half up like every factor
+/// on the Spielwert; a Schneider win counts fully, a loss as always.
+#[test]
+fn black_peter_half_value_vectors() {
+    use skat_core::content::{BossId, Change, Factor, Lever, ScoreLine, Source, score_game};
+    use skat_core::rules::Thresholds;
+
+    let half = vec![ScoreLine {
+        source: Source::Boss(BossId::new("black_peter")),
+        lever: Lever::GameValue,
+        change: Change::Scale(Factor::from_permille(500)),
+    }];
+    let outcome = |declarer: u32, tricks: u32| Outcome {
+        declarer_card_points: declarer,
+        defender_card_points: TOTAL_CARD_POINTS - declarer,
+        declarer_tricks: tricks,
+        defender_tricks: 10 - tricks,
+    };
+    let mit_2 = Matadors {
+        with: true,
+        count: 2,
+    };
+    let thresholds = Thresholds::default();
+    // Karo mit 2, Spiel 3: 9 × 3 = 27, × 0.5 = 13.5 → 14.
+    let karo = Declaration::suit(Suit::Diamonds, RiskLevel::Normal);
+    let won = score_game(karo, mit_2, &outcome(70, 6), &thresholds, half.clone());
+    assert_eq!((won.value, won.score), (14, 14));
+    // Grand mit 2, Spiel 3: 24 × 3 = 72, × 0.5 = 36.
+    let grand = Declaration::grand(RiskLevel::Normal);
+    let won = score_game(grand, mit_2, &outcome(70, 6), &thresholds, half.clone());
+    assert_eq!((won.value, won.score), (36, 36));
+    // Null: 23 × 0.5 = 11.5 → 12.
+    let null = Declaration::null(NullRisk::Normal);
+    let won = score_game(null, mit_2, &outcome(0, 0), &thresholds, half);
+    assert_eq!((won.value, won.score), (12, 12));
+}
+
 /// M8 wave 3, worked out by hand: "Skatgott" adds one Gewinnstufe per won
 /// Schneider game so far to a won game (a `Levels` line); a "Glasdaus"
 /// counts 22 Augen, so the deck holds 131 and Schneider stays measured on

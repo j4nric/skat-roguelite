@@ -15,7 +15,8 @@
 //!   exposed cards discarded, Null Ouvert if none is left), whichever has
 //!   the better expected score ([`suit_expected_score`],
 //!   [`null_expected_score`], win rates measured with the PIMC player). Null
-//!   is left out where a won Null counts nothing ("Der Schwarze Peter").
+//!   is left out where a won Null would count nothing (no boss does that
+//!   since "Der Schwarze Peter" pays half, but a rule could).
 //! - **Einmischen** ([`RunBot::is_weak`]): a suit game needs six trumps,
 //!   or five trumps and two aces; a grand needs two jacks and two aces;
 //!   Null at most [`NULL_MAX_EXPOSED`] exposed cards. A hand weak for both
@@ -1110,9 +1111,9 @@ impl RunBot {
 
     /// Whether a won Null would count anything here: declare Null on a copy
     /// of the run (after `discard` while discarding) and read the value
-    /// preview, which holds every hook certain for a win. "Der Schwarze
-    /// Peter" (a won game counts only with Schneider) makes it 0. If the
-    /// probe cannot declare Null, it counts.
+    /// preview, which holds every hook certain for a win. A factor 0 on
+    /// the Spielwert makes it 0 ("Der Schwarze Peter" only halves it since
+    /// 02.11.2026). If the probe cannot declare Null, it counts.
     fn null_counts(run: &Run, content: &Content, discard: Option<&[DealtCard]>) -> bool {
         let Some(active) = run.game() else {
             return true;

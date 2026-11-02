@@ -129,7 +129,7 @@
     (
         id: "rank_1",
         name: "Rang +1",
-        text: "Eine Karte sticht eine Stufe höher, höchstens drei.",
+        text: "Eine Karte sticht eine Stufe höher, höchstens zwei.",
         rarity: Common,
         price: 3,
         action: ApplyCardMod(card_mod: "rank", value: 1),

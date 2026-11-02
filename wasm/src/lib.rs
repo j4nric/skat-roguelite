@@ -1066,7 +1066,7 @@ mod tests {
             serde_json::json!([4, 3, 5])
         );
         assert_eq!(catalog["card_mods"]["battered"]["curse"], true);
-        assert_eq!(catalog["card_mods"]["rank"]["max"], 3);
+        assert_eq!(catalog["card_mods"]["rank"]["max"], 2);
         assert_eq!(catalog["card_mods"]["undead"]["kind"], "Special");
         // The number on the card face per unit of the card's value.
         assert_eq!(

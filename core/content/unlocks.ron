@@ -140,8 +140,9 @@
     (
         id: "full_till",
         name: "Volle Kasse",
-        text: "Habe nach einer gewonnenen Serie mindestens 20 Groschen.",
-        condition: SeriesWonWithCoins(20),
+        // Antwort im Cockpit (02.11.2026): 15 statt 20 Groschen.
+        text: "Habe nach einer gewonnenen Serie mindestens 15 Groschen.",
+        condition: SeriesWonWithCoins(15),
         rewards: [Character(Landlady)],
     ),
     // Welle 2b (02.11.2026): "Drei drücken" biegt eine Regel und ist

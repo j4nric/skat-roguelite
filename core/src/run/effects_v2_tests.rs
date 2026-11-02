@@ -7,7 +7,7 @@ use super::content_tests::{card_mod_run_with, content, fixed_deal, play, relic_r
 use super::opponents::defender_hints;
 use super::*;
 use crate::content::TRUMP_MODS_NEED_PLAYER;
-use crate::deck::{AUGEN, DeckCard, RAMPONIERT, legacy_mod};
+use crate::deck::{AUGEN, DeckCard, RAMPONIERT, RANK_MAX, legacy_mod};
 use crate::rules::{GameType, RiskLevel};
 
 /// The declarer holds all trumps of a diamonds game but the D8 (in the
@@ -65,10 +65,15 @@ fn ramponiert_takes_augen_below_zero_from_whoever_takes_the_card() {
 }
 
 #[test]
-fn rank_rises_to_three_and_no_further() {
+fn rank_rises_to_two_and_no_further() {
     let content = content();
+    assert_eq!(
+        content.card_mod(&id("rank")).and_then(|d| d.max),
+        Some(RANK_MAX),
+        "the save migration caps at the content maximum"
+    );
     let mut deck = Edition::standard();
-    for expected in 1..=3 {
+    for expected in 1..=2 {
         let change = deck.add_mod(&content, 22, &id("rank"), 1).expect("rank");
         assert!(matches!(change, DeckChange::Modified { value, .. } if value == expected));
     }
@@ -77,7 +82,7 @@ fn rank_rises_to_three_and_no_further() {
         Err(DeckError::AtMaximum(id("rank")))
     );
     let resolved = resolve_edition(&deck, crate::deck::Owner::Player, &content, &[]);
-    assert_eq!(resolved.cards[22].rank_bonus, 3);
+    assert_eq!(resolved.cards[22].rank_bonus, 2);
 }
 
 #[test]
@@ -411,7 +416,7 @@ fn old_saves_convert_their_card_modifications() {
     let one = |m: &str, v: i32| vec![(m.to_owned(), v)];
     assert_eq!(mods(0), one("points", 4));
     assert_eq!(mods(1), one("points", 12), "equal ones add up");
-    assert_eq!(mods(2), one("rank", 3), "rank at most 3");
+    assert_eq!(mods(2), one("rank", 2), "rank at most 2");
     assert_eq!(mods(3), one("battered", 5), "a curse wins");
     assert_eq!(
         mods(4),
@@ -426,6 +431,33 @@ fn old_saves_convert_their_card_modifications() {
     assert_eq!(again, deck);
     assert_eq!(legacy_mod("tail_light"), Some(("last_trick", 1)));
     assert_eq!(legacy_mod("dummy"), None);
+}
+
+#[test]
+fn saves_from_before_rank_two_cap_rank_at_two() {
+    // Effects v2 saves (mods version 2) allowed Rang 3; since 02.11.2026
+    // the maximum is 2 (DESIGN 7.2).
+    let v2 = r#"(cards:[
+        (id:0,kind:Normal("D7"),mods:["rank"],mod_values:{"rank":3}),
+        (id:1,kind:Normal("D8"),mods:["rank"],mod_values:{"rank":2}),
+        (id:2,kind:Normal("D9"),mods:["rank"]),
+        (id:3,kind:Normal("DT"),mods:["points"],mod_values:{"points":8}),
+    ],next_id:32,mods_version:2)"#;
+    let deck: Edition = ron::from_str(v2).expect("v2 deck loads");
+    let value = |i: u32, m: &str| card(&deck, i).mod_value(&id(m));
+    assert_eq!(value(0, "rank"), 2, "Rang 3 becomes 2");
+    assert_eq!(value(1, "rank"), 2);
+    assert_eq!(value(2, "rank"), 1);
+    assert_eq!(value(3, "points"), 8, "other values stay");
+    assert_eq!(card(&deck, 0).mods, vec![id("rank")]);
+    let again: Edition = ron::from_str(&ron::to_string(&deck).expect("ron")).expect("load");
+    assert_eq!(again, deck);
+    let content = content();
+    let mut deck = deck;
+    assert_eq!(
+        deck.add_mod(&content, 0, &id("rank"), 1),
+        Err(DeckError::AtMaximum(id("rank")))
+    );
 }
 
 #[test]
