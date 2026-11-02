@@ -4,10 +4,12 @@
     python3 tools/cardart/emit.py --check    # fails if the committed file is stale
 
 Every face is its art grid (33 x 49 art pixels), one string per row. A
-lowercase letter is a picture pixel, an uppercase letter a pixel of the
-corner index (same palette key), "." is paper. The web app splits the two
-layers so card modifications can lie between picture and index
-(web/src/ui/art.ts).
+capital letter A-Z is a pixel of the corner index (its lowercase palette
+key), "." is paper, any other key a picture pixel. The web app splits the
+two layers so card modifications can lie between picture and index
+(web/src/ui/art.ts). The "Untot" zombie faces of the picture cards
+(untot.py) follow in the same form; the frames and marks of the card
+modifications are drawn by web/src/ui/cards.ts after fx2.py.
 """
 
 import os
@@ -19,6 +21,7 @@ sys.path.insert(0, HERE)
 
 import aces2  # noqa: E402
 import cards2  # noqa: E402
+import untot  # noqa: E402
 from pix import BG, BIG, GH, GW, GLYPH, INK, PAL, Grid  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -44,8 +47,32 @@ def index_layer(suit, rank):
     return g.g
 
 
-def rows(suit, rank):
-    full = face(suit, rank).g
+# Keys of the "Untot" zombie faces (untot.py) in the TypeScript grid: its
+# capital letters become lowercase ones (capitals mean corner index there).
+UNDEAD_KEYS = {'Z': 'z', 'X': 'x', 'E': 'e'}
+UNDEAD_RANKS = ['J', 'Q', 'K', 'A']
+
+
+def undead_face(suit, rank):
+    """The zombie face of a picture card, without its skull marker (the web
+    app draws the skull as the mark of the modification)."""
+    untot.ZOMBIE_GRID_MARKER = False
+    try:
+        g, _ = untot.zombie(suit, rank)
+    finally:
+        untot.ZOMBIE_GRID_MARKER = True
+    return g
+
+
+def undead_palette():
+    pal = {UNDEAD_KEYS.get(k, k): v for k, v in untot.EXTRA.items() if k in UNDEAD_KEYS}
+    pal.update({'2': untot.ROT['r'], '3': untot.ROT['y'], '4': untot.ROT['g'], '5': untot.ROT['b'],
+                '6': untot.ROT['o'], '7': untot.ROT['w']})
+    return pal
+
+
+def rows(suit, rank, grid=None):
+    full = (grid if grid is not None else face(suit, rank)).g
     idx = index_layer(suit, rank)
     out = []
     for y in range(GH):
@@ -56,6 +83,8 @@ def rows(suit, rank):
                 # The index is stamped last, so it is what the board shows.
                 assert c == idx[y, x], (suit, rank, x, y)
                 c = c.upper()
+            else:
+                c = UNDEAD_KEYS.get(c, c)
             line += c
         out.append(line)
     return out
@@ -67,8 +96,8 @@ def ts():
         '// change the generator and run it again (tools/cardart/README.md).',
         '//',
         f'// A face is {GW} x {GH} art pixels (the card is {GW} x {GH}.5, the last half',
-        '// row stays paper), one string per row. Lowercase: picture, uppercase: corner',
-        '// index, ".": paper. Letters are keys of ART_PALETTE.',
+        '// row stays paper), one string per row. Capitals A-Z: corner index (the',
+        '// lowercase key), ".": paper, any other key: picture. Keys of ART_PALETTE.',
         '',
         f'export const ART_W = {GW};',
         f'export const ART_H = {GH};',
@@ -77,6 +106,7 @@ def ts():
         'export const ART_PALETTE: Record<string, string> = {',
     ]
     lines += [f"  {k}: '{v}'," for k, v in PAL.items()]
+    lines += [f"  '{k}': '{v}'," if k.isdigit() else f"  {k}: '{v}'," for k, v in undead_palette().items()]
     lines += ['};', '', '/** The held suit signs (7 wide), also used as suit icons. */',
               'export const ART_SIGNS: Record<string, string[]> = {']
     for code, suit in SUITS.items():
@@ -94,6 +124,14 @@ def ts():
         for rc, rank in RANKS.items():
             lines.append(f'  {code}{rc}: [')
             lines += [f"    '{r}'," for r in rows(suit, rank)]
+            lines.append('  ],')
+    lines += ['};', '', '/** "Untot": the zombie faces of the picture cards (untot.py), same codes. */',
+              'export const ART_UNDEAD: Record<string, string[]> = {']
+    for code, suit in SUITS.items():
+        for rc in UNDEAD_RANKS:
+            rank = RANKS[rc]
+            lines.append(f'  {code}{rc}: [')
+            lines += [f"    '{r}'," for r in rows(suit, rank, undead_face(suit, rank))]
             lines.append('  ],')
     lines += ['};', '']
     return '\n'.join(lines)
