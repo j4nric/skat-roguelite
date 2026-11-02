@@ -18,7 +18,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub use crate::cards::CardKind;
-use crate::cards::{Card, PlayingCard, standard_deck};
+use crate::cards::{Card, PlayingCard, Suit, standard_deck};
 use crate::content::{CardModId, DeckSpec};
 use crate::game::{CARDS_IN_PLAY, HAND_SIZE};
 
@@ -60,6 +60,11 @@ pub struct DealtCard {
     /// Whether this card must not be discarded ("Ramponiert").
     #[serde(default)]
     pub no_discard: bool,
+    /// Whether this is a "Wandelkarte" in the player's hand: it never
+    /// obliges him to follow suit, and he names its suit when he plays it.
+    /// Only the copies the player holds (hand and skat) carry it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wild: bool,
 }
 
 impl DealtCard {
@@ -75,6 +80,7 @@ impl DealtCard {
             never_wins: false,
             honorary_jack: false,
             no_discard: false,
+            wild: false,
         }
     }
 }
@@ -102,6 +108,20 @@ impl PlayingCard for DealtCard {
 
     fn no_discard(self) -> bool {
         self.no_discard
+    }
+
+    fn wild(self) -> bool {
+        self.wild
+    }
+
+    fn with_suit(self, suit: Suit) -> DealtCard {
+        match self.kind {
+            CardKind::Normal(card) => DealtCard {
+                kind: CardKind::Normal(Card::new(suit, card.rank)),
+                ..self
+            },
+            CardKind::Blank => self,
+        }
     }
 }
 

@@ -289,6 +289,9 @@ impl RunEvent {
             RunEvent::Redealt => RunEvent::Redealt,
             RunEvent::RedealUndone => RunEvent::RedealUndone,
             // The Kiebitz shows this card to the player: allowed knowledge.
+            RunEvent::WildCardNamed { card, suit } => RunEvent::WildCardNamed { card, suit },
+            RunEvent::CardBroken { card, card_mod } => RunEvent::CardBroken { card, card_mod },
+            RunEvent::CardCameHome { card } => RunEvent::CardCameHome { card },
             RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
             RunEvent::RamschDealt => RunEvent::RamschDealt,
             RunEvent::EncounterOpened { encounter, options } => {

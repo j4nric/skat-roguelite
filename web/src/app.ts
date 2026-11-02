@@ -28,7 +28,7 @@
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, cardName, contentName, relicCounters, setCatalog, t } from './i18n';
+import { de, cardName, contentName, face, relicCounters, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
@@ -200,6 +200,8 @@ export class App {
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
+  /** "Wandelkarte": printed suits of the cards named in this game, for the trick on screen. */
+  private readonly wildNamed = new Map<number, Suit>();
   private readonly hintEl: HTMLElement;
   /** The info card (long-press, hover, "i"): one for everything. */
   private readonly info: InfoCard;
@@ -878,7 +880,7 @@ export class App {
 
   private cardOf(card: DealtCard, view: RunView): CardView {
     const mods = view.deck.find((d) => d.id === card.id)?.mods ?? [];
-    return { ...card, mods, legal: false, from_skat: false, discardable: false };
+    return { ...card, mods, legal: false, from_skat: false, discardable: false, named: this.wildNamed.get(card.id) ?? null };
   }
 
   /** Animate what happened, using only the events and views of the core. */
@@ -924,6 +926,26 @@ export class App {
         this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
         continue;
       }
+      if ('WildCardNamed' in ev) {
+        const { card, suit } = ev.WildCardNamed;
+        const f = card.kind === 'Blank' ? null : card.kind.Normal;
+        const printed = face(card.kind)?.suit;
+        if (printed) this.wildNamed.set(card.id, printed);
+        const letter = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' } as const;
+        if (f) this.showToast(t(de.toast.wildNamed, { old: cardName(card.kind), new: cardName({ Normal: `${letter[suit]}${f.slice(1)}` }) }));
+        continue;
+      }
+      if ('CardBroken' in ev) {
+        // The shards flew with the trick (playGameEvent); here the words.
+        const card = before?.deck.find((c) => c.id === ev.CardBroken.card) ?? after.deck.find((c) => c.id === ev.CardBroken.card);
+        this.showToast(t(de.toast.glassBroken, { card: card ? cardName(card.kind) : contentName('card_mods', ev.CardBroken.card_mod) }));
+        continue;
+      }
+      if ('CardCameHome' in ev) {
+        this.showToast(t(de.toast.cameHome, { card: cardName(ev.CardCameHome.card.kind) }));
+        sound.play('clink');
+        continue;
+      }
       if ('EveningRuleAdded' in ev) {
         this.showToast(t(de.toast.eveningRule, { name: contentName('relics', ev.EveningRuleAdded) }));
         sound.play('clink');
@@ -948,7 +970,15 @@ export class App {
         continue;
       }
       if ('Game' in ev) {
-        await this.playGameEvent(ev.Game, after);
+        // "Glasdaus": cards that break with this trick (their events follow it).
+        const breaking: number[] = [];
+        if ('TrickWon' in ev.Game) {
+          for (const next of events.slice(i + 1)) {
+            if (typeof next !== 'object' || 'Game' in next) break;
+            if ('CardBroken' in next) breaking.push(next.CardBroken.card);
+          }
+        }
+        await this.playGameEvent(ev.Game, after, breaking);
         continue;
       }
       if ('CoinsGained' in ev) {
@@ -956,6 +986,7 @@ export class App {
         continue;
       }
       if ('GameDealt' in ev) {
+        this.wildNamed.clear();
         // A new game: from here on the final view tells the story.
         this.ui.anim = null;
         this.ui.view = after;
@@ -1061,7 +1092,7 @@ export class App {
     }
   }
 
-  private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView): Promise<void> {
+  private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView, breaking: number[] = []): Promise<void> {
     const anim = this.ui.anim;
     if ('CardPlayed' in ev) {
       if (!anim) return;
@@ -1092,6 +1123,12 @@ export class App {
       this.trickQuip(after, trick.winner, card_points);
       this.render();
       await this.pause(DELAY.trickShow);
+      if (breaking.length) {
+        // "Glasdaus": the card cracks and shatters before the trick leaves.
+        for (const id of breaking) this.screenEl.querySelector(`.trick-card[data-card-id="${id}"]`)?.classList.add('is-shattering');
+        sound.play('clink', { rate: 1.6 });
+        await this.pause(DELAY.notice);
+      }
       const target = this.sweepTarget(trick.winner);
       const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
       sound.play('trick');
@@ -1880,10 +1917,28 @@ export class App {
         if (suit) void this.act({ DemandLead: suit });
         return;
       }
-      case 'play':
+      case 'play': {
         this.playedFrom = el.getBoundingClientRect();
-        void this.act({ Play: num('id') });
+        const id = num('id');
+        // "Wandelkarte": the suit is named first (the core says which).
+        const wild = view.game?.hand.find((c) => c.id === id && (c.wild_suits?.length ?? 0) > 0);
+        if (wild) {
+          this.ui.overlay = { kind: 'wild', card: id };
+          this.render();
+          return;
+        }
+        void this.act({ Play: id });
         return;
+      }
+      case 'wild-suit': {
+        const o = this.ui.overlay;
+        const suit = el.dataset.suit as Suit | undefined;
+        if (o?.kind === 'wild' && suit) {
+          this.ui.overlay = null;
+          void this.act({ PlayAs: { card: o.card, suit } });
+        }
+        return;
+      }
       case 'buy-relic':
         void this.act({ BuyRelic: num('slot') });
         return;

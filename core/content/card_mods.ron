@@ -262,4 +262,49 @@
         price: 5,
         passive: [NeverWins, RevealHolder],
     ),
+    // ---------------------------------------------------------------------
+    // M8 Welle 3, abgestimmt im Cockpit: drei neue Modifikationen, Texte
+    // wie abgestimmt. Seltenheit und Preise Platzhalter für `balance`
+    // (docs/balance/2026-11-02-welle3.md, DESIGN 7.2).
+    // ---------------------------------------------------------------------
+    // Lever Stichgewinn and Bedienpflicht: in the player's hand it never
+    // obliges him to follow suit, and he names its suit when he plays it
+    // (it may follow any lead; a Unter stays a Unter). In a defender's hand
+    // it is the printed card.
+    (
+        id: "wild_card",
+        name: "Wandelkarte",
+        text: "Du legst ihre Farbe beim Ausspielen fest.",
+        rarity: Rare,
+        price: 5,
+        passive: [Wild],
+    ),
+    // Lever Augen, only on a Daus: twice the Augen (22 instead of 11, for
+    // every seat). Beats a defender it (takes the trick it lies in with
+    // another card), it breaks and leaves the deck once the game is scored
+    // (a blank takes its place). A defender winning with it does not.
+    (
+        id: "glass_ace",
+        focus: Trump,
+        name: "Glasdaus",
+        text: "Doppelte Augen, geht aber kaputt, wenn ein Gegner sie sticht.",
+        rarity: Uncommon,
+        price: 4,
+        only_on: Some((rank: Some(Ace))),
+        passive: [MultiplyCardPoints(2)],
+        hooks: [
+            OnTrickEnd(when: ThisCardBeatenByDefender, then: [BreakThisCard]),
+        ],
+    ),
+    // Lever Spitzen and hand quality: lies it in the skat when a game ends
+    // (dealt there or discarded), the next deal puts it into the player's
+    // hand (every deal of that game, also after Einmischen).
+    (
+        id: "homesick",
+        name: "Heimweh",
+        text: "Liegt sie im Skat, kommt sie im nächsten Spiel garantiert in deine Hand.",
+        rarity: Uncommon,
+        price: 4,
+        passive: [Homesick],
+    ),
 ]

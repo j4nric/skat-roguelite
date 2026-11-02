@@ -22,8 +22,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use skat_core::ai::pimc::Opponents;
+use skat_core::cards::{Card, CardKind};
 use skat_core::content::{
-    BossId, Character, ConsumableId, Content, EncounterId, RelicId, RunLength, UnlockId,
+    BossId, CardModId, Character, ConsumableId, Content, EncounterId, RelicId, RunLength, UnlockId,
 };
 use skat_core::rng::Rng;
 use skat_core::rules::{NullFormula, NullScoring};
@@ -69,6 +70,10 @@ pub struct Options {
     /// only this one, for free, and no relics (so with the bot it is like
     /// `--no-shop` plus the consumable). Compare against `--no-shop`.
     pub consumable: Option<ConsumableId>,
+    /// Card modifications on the start deck (`--card-mod <card>:<id>`), each
+    /// on the first instance of its printed card, like
+    /// [`skat_core::content::DeckSpec::mods`].
+    pub card_mods: Vec<(Card, CardModId)>,
 }
 
 /// Price of the Neuauslage under `--consumable`: never affordable, so
@@ -123,6 +128,17 @@ impl Options {
         }
         if content.character(self.character).is_none() {
             return Err(format!("--character: unknown {}", self.character));
+        }
+        for (card, id) in &self.card_mods {
+            let def = content
+                .card_mod(id)
+                .ok_or_else(|| format!("--card-mod: unknown card mod {id}"))?;
+            if !def.fits(CardKind::Normal(*card)) {
+                return Err(format!("--card-mod: {id} does not fit {card}"));
+            }
+            if let Some(def) = content.characters.get_mut(&self.character) {
+                def.deck.mods.push((*card, id.clone()));
+            }
         }
         if let Some(defenders) = self.defenders {
             content.run.opponents = vec![defenders];
@@ -212,6 +228,9 @@ impl Options {
         if let Some(id) = &self.consumable {
             parts.push(format!("consumable={id}"));
         }
+        for (card, id) in &self.card_mods {
+            parts.push(format!("card-mod={card}:{id}"));
+        }
         if parts.is_empty() {
             "standard".to_string()
         } else {
@@ -225,9 +244,10 @@ impl Options {
             return Some(RunAction::LeaveShop);
         }
         let action = RunBot.next_action(run, content)?;
-        if let (RunAction::Play(_), Some(config)) = (&action, self.bot.pimc()) {
+        let plays = matches!(action, RunAction::Play(_) | RunAction::PlayAs { .. });
+        if let (true, Some(config)) = (plays, self.bot.pimc()) {
             if let Some(card) = skat_core::run::opponents::player_card(run, config) {
-                return Some(RunAction::Play(card.id));
+                return Some(RunBot::play_action(run, card));
             }
         }
         Some(action)
@@ -1078,6 +1098,27 @@ mod option_tests {
         let with = simulate(&base, &options, 8, 20).expect("runs");
         assert_eq!(with.runs, plain.runs);
         assert!(render(&with, &base, &options, 0).contains("relic=ouvert_bonus"));
+    }
+
+    #[test]
+    fn card_mods_go_on_the_start_deck_and_must_fit() {
+        let base = content();
+        let options = Options {
+            card_mods: vec![("CA".parse().expect("card"), CardModId::new("glass_ace"))],
+            no_shop: true,
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let deck = &content.character(Character::Declarer).expect("def").deck;
+        assert!(deck.mods.iter().any(|(_, id)| id.as_str() == "glass_ace"));
+        let stats = simulate(&base, &options, 8, 10).expect("runs");
+        assert_eq!(stats.runs, 10);
+        assert!(render(&stats, &base, &options, 0).contains("card-mod=CA:glass_ace"));
+        let wrong = Options {
+            card_mods: vec![("CT".parse().expect("card"), CardModId::new("glass_ace"))],
+            ..Options::default()
+        };
+        assert!(wrong.content(&base).is_err(), "a Glasdaus only fits a Daus");
     }
 
     #[test]

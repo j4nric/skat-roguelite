@@ -16,7 +16,7 @@ use crate::ai::sample::Hints;
 use crate::ai::{DefenderHeuristic, Policy};
 use crate::content::Content;
 use crate::deck::DealtCard;
-use crate::game::{Event, Seat, SeatView};
+use crate::game::{Event, Game, Seat, SeatView};
 
 /// The defenders' policy in `section` (counted from 0; for a short evening
 /// the row of the curve, [`Run::curve_row`]).
@@ -58,6 +58,20 @@ pub fn defender_swaps<C>(log: &[Event<C>]) -> Vec<usize> {
 
 /// The defender's card in the run's current game.
 pub(super) fn defender_card(
+    run: &Run,
+    content: &Content,
+    active: &ActiveGame,
+    view: &SeatView<'_, DealtCard>,
+) -> Option<DealtCard> {
+    if let Some(tame) = tame_game(&active.game) {
+        let view = tame.view(view.seat)?;
+        let chosen = defender_choice(run, content, active, &view)?;
+        return real_card(&active.game, chosen);
+    }
+    defender_choice(run, content, active, view)
+}
+
+fn defender_choice(
     run: &Run,
     content: &Content,
     active: &ActiveGame,
@@ -124,13 +138,49 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
 #[must_use]
 pub fn player_card(run: &Run, config: PimcConfig) -> Option<DealtCard> {
     let active = run.game()?;
-    let view = active.game.view(Seat::DECLARER)?;
+    let tame = tame_game(&active.game);
+    let game = tame.as_ref().unwrap_or(&active.game);
+    let view = game.view(Seat::DECLARER)?;
     if view.legal_moves.is_empty() {
         return None;
     }
-    PimcPolicy::new(config, game_seed(run) ^ 0x5EA7_0000)
+    let mut hints = player_hints(run);
+    for (card, _) in &mut hints.pinned {
+        card.wild = false;
+    }
+    let chosen = PimcPolicy::new(config, game_seed(run) ^ 0x5EA7_0000)
         .with_thresholds(active.rules.thresholds.clone())
-        .choose_with(&view, &player_hints(run))
+        .choose_with(&view, &hints)?;
+    real_card(&active.game, chosen)
+}
+
+/// The game as the AI sees it: a "Wandelkarte" is its printed card
+/// ([`DealtCard::wild`] off), so that the search does not play it as
+/// printed where only a named suit would be legal. `None` if no card is
+/// wild (then the game itself serves). A card chosen from it is legal in
+/// the real game too: whatever the printed rules allow, the rules of the
+/// Wandelkarte allow as well ([`crate::rules::may_play`]); the player's
+/// Wandelkarte is then named by [`super::bot::RunBot::wild_suit`].
+#[must_use]
+pub fn tame_game(game: &Game<DealtCard>) -> Option<Game<DealtCard>> {
+    game.deck_cards()
+        .iter()
+        .chain(game.current_trick())
+        .any(|c| c.wild)
+        .then(|| game.map_cards(|c| DealtCard { wild: false, ..c }))
+}
+
+/// The card of the real game with the id of `chosen` (from [`tame_game`]):
+/// in the hands, or `chosen` itself.
+fn real_card(game: &Game<DealtCard>, chosen: DealtCard) -> Option<DealtCard> {
+    Some(
+        Seat::ALL
+            .iter()
+            .flat_map(|&seat| game.hand(seat).iter())
+            .copied()
+            .find(|c| c.id == chosen.id)
+            .unwrap_or(chosen),
+    )
 }
 
 #[cfg(test)]

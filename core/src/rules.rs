@@ -283,25 +283,63 @@ pub fn trick_winner<C: PlayingCard>(game: GameType, lead_seat: usize, cards: [C;
     (lead_seat + offset) % 3
 }
 
-/// The cards from `hand` that may legally be played. `lead` is the
-/// [`effective_lead`] of the current trick. With no lead every card is
-/// allowed. Otherwise the lead must be followed (trump with trump, a suit
-/// with that suit); whoever cannot follow may play anything. Blanks may
-/// always be played.
+/// Whether `card` may be played from `hand` as it is (for a Wandelkarte:
+/// as named). `lead` is the [`effective_lead`] of the current trick. With
+/// no lead every card is allowed. Otherwise the lead must be followed
+/// (trump with trump, a suit with that suit); whoever cannot follow may
+/// play anything. Blanks may always be played. A Wandelkarte
+/// ([`PlayingCard::wild`]) never obliges: only the other cards of the hand
+/// decide whether its holder can follow. `card` need not be in `hand` (a
+/// Wandelkarte as named is not).
+#[must_use]
+pub fn may_play<C: PlayingCard>(game: GameType, hand: &[C], lead: Option<C>, card: C) -> bool {
+    let Some(lead) = lead else {
+        return true;
+    };
+    card.is_blank()
+        || follows_lead(game, lead, card)
+        || !hand
+            .iter()
+            .any(|&c| c != card && !c.wild() && follows_lead(game, lead, c))
+}
+
+/// The suits the player may name for the Wandelkarte `card` of his `hand`
+/// now (DESIGN 7.2, M8 wave 3): every suit when he leads, otherwise those
+/// that let it follow the lead and, if no other card of his hand can
+/// follow, every suit. A Unter named into another suit stays a Unter (in
+/// suit games and Grand a trump, the named suit sets its place among the
+/// Unter). Empty for a blank or a card that is no Wandelkarte.
+#[must_use]
+pub fn wild_suits<C: PlayingCard>(
+    game: GameType,
+    hand: &[C],
+    lead: Option<C>,
+    card: C,
+) -> Vec<crate::cards::Suit> {
+    if !card.wild() || card.is_blank() {
+        return Vec::new();
+    }
+    crate::cards::Suit::ALL
+        .into_iter()
+        .filter(|&suit| may_play(game, hand, lead, card.with_suit(suit)))
+        .collect()
+}
+
+/// The cards from `hand` that may legally be played ([`may_play`]). A
+/// Wandelkarte counts if some suit may be named for it ([`wild_suits`]),
+/// even if it may not be played as printed.
 #[must_use]
 pub fn legal_moves<C: PlayingCard>(game: GameType, hand: &[C], lead: Option<C>) -> Vec<C> {
-    let Some(lead) = lead else {
+    if lead.is_none() {
         return hand.to_vec();
-    };
-    let can_follow = hand.iter().any(|&c| follows_lead(game, lead, c));
-    if can_follow {
-        hand.iter()
-            .copied()
-            .filter(|&c| c.is_blank() || follows_lead(game, lead, c))
-            .collect()
-    } else {
-        hand.to_vec()
     }
+    hand.iter()
+        .copied()
+        .filter(|&c| {
+            may_play(game, hand, lead, c)
+                || (c.wild() && !wild_suits(game, hand, lead, c).is_empty())
+        })
+        .collect()
 }
 
 /// Whether the declarer may put `cards` from his twelve cards (`hand`)

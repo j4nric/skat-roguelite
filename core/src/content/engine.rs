@@ -45,7 +45,9 @@ pub struct ResolvedDeck {
 /// into blanks (their modifications are inactive for this game); then
 /// `SetCardPoints` from bosses and relics in source order; then the card's
 /// own modifications in the order they were attached (`AddCardPoints`,
-/// `RankBonus`, `RevealHolder`, `NeverWins`, `HonoraryJack`, `NoDiscard`). Augen never drop below zero.
+/// `MultiplyCardPoints`, `RankBonus`, `RevealHolder`, `NeverWins`,
+/// `HonoraryJack`, `NoDiscard`, `Wild`). Augen never drop below zero. The
+/// game keeps `Wild` only on the cards the player holds.
 /// `RevealHolder` is off while a global source has `DisableInformation`.
 #[must_use]
 pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>]) -> ResolvedDeck {
@@ -110,6 +112,19 @@ pub fn resolve_deck(deck: &Deck, content: &Content, global: &[ActiveSource<'_>])
                         }
                         dealt.card_points = new;
                     }
+                    Effect::MultiplyCardPoints(factor) => {
+                        let new = dealt.card_points.saturating_mul(*factor);
+                        let applied = i64::from(new) - i64::from(dealt.card_points);
+                        if applied != 0 {
+                            point_changes.push((
+                                dealt.id,
+                                source.clone(),
+                                i32::try_from(applied).unwrap_or(0),
+                            ));
+                        }
+                        dealt.card_points = new;
+                    }
+                    Effect::Wild => dealt.wild = true,
                     Effect::RankBonus(bonus) => {
                         dealt.rank_bonus = dealt.rank_bonus.saturating_add(*bonus);
                     }
@@ -253,6 +268,16 @@ pub fn evaluate(
             g.tricks().last().is_some_and(|t| t.winner.is_declarer())
                 && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
         }),
+        Condition::ThisCardBeatenByDefender => {
+            match (game.and_then(|g| g.tricks().last()), this_card) {
+                (Some(t), Some(this)) => {
+                    !t.winner.is_declarer()
+                        && t.winning_card().id != this.id
+                        && t.cards.iter().any(|c| c.id == this.id)
+                }
+                _ => false,
+            }
+        }
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
         Condition::NullGame => declaration.is_some_and(Declaration::is_null),
         Condition::NullRiskAtLeast(risk) => {
@@ -353,7 +378,8 @@ pub fn evaluate_if_won(
         | Condition::SevenDucked
         | Condition::NeverFollowedSuit
         | Condition::TrickWinnerMatches { .. }
-        | Condition::FirstTrickOfDeclarer => None,
+        | Condition::FirstTrickOfDeclarer
+        | Condition::ThisCardBeatenByDefender => None,
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
@@ -407,7 +433,10 @@ pub fn card_mod_status(
         parts.push(Some(acts_as_honorary_jack(declaration.game(), this_card)));
     }
     for hook in &def.hooks {
-        if hook.stage().in_game() && *hook.when() != Condition::Always {
+        // Breaking ("Glasdaus") is what happens to the card, not whether
+        // its modification works.
+        let side_effect_only = hook.then().iter().all(|e| *e == Effect::BreakThisCard);
+        if hook.stage().in_game() && *hook.when() != Condition::Always && !side_effect_only {
             parts.push(evaluate_known(hook.when(), ctx, Some(this_card)));
         }
     }
@@ -503,6 +532,14 @@ pub fn evaluate_known(
         | Condition::MatadorsAtLeast { .. }
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer => None,
+        // Certain once the card fell in a completed trick.
+        Condition::ThisCardBeatenByDefender => {
+            let (game, this) = (ctx.game?, this_card?);
+            game.tricks()
+                .iter()
+                .find(|t| t.cards.iter().any(|c| c.id == this.id))
+                .map(|t| !t.winner.is_declarer() && t.winning_card().id != this.id)
+        }
     }
 }
 

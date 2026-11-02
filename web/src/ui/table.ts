@@ -71,6 +71,7 @@ function plaques(c: CardView): string {
   if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
   if (c.honorary_jack) out.push(`<span class="plaque plaque-hj" title="${esc(de.card.honoraryJack)}" aria-hidden="true">U</span>`);
   if (c.no_discard) out.push(`<span class="plaque plaque-lock" title="${esc(de.card.noDiscard)}" aria-hidden="true">${lockIcon(13)}</span>`);
+  if (c.named) out.push(`<span class="plaque plaque-wild" title="${esc(t(de.card.named, { suit: de.suits[c.named] }))}" aria-hidden="true">${suitIcon(c.named, 11, null)}</span>`);
   return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
 }
 
@@ -81,7 +82,12 @@ function chalkLabel(printed: Suit): string {
 
 /** Card name plus what its plaques say, for screen readers. */
 function cardLabel(c: CardView): string {
-  const extra = [c.honorary_jack ? de.card.honoraryJack : '', c.no_discard ? de.card.noDiscard : '', c.chalked ? chalkLabel(c.chalked) : ''].filter(Boolean);
+  const extra = [
+    c.honorary_jack ? de.card.honoraryJack : '',
+    c.no_discard ? de.card.noDiscard : '',
+    c.chalked ? chalkLabel(c.chalked) : '',
+    c.named ? t(de.card.named, { suit: de.suits[c.named] }) : '',
+  ].filter(Boolean);
   const name = extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
   return c.mods.length ? `${name}, ${t(de.card.mods, { mods: c.mods.map((m) => contentName('card_mods', m)).join(', ') })}` : name;
 }
@@ -142,7 +148,7 @@ function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Se
   const won = winner === seat;
   const tag = won ? `<span class="trick-won-tag">${esc(de.table.lastTrickWon)}</span>` : '';
   const inner = played
-    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}${tag}</div>`
+    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, ...infoAttrs(played.card.id) })}>${cardSvg(played.card.kind, played.card.mods)}${plaques(played.card)}${tag}</div>`
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;

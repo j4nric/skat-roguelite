@@ -206,6 +206,14 @@ pub enum Effect {
         /// Grundwert per point of the counter.
         per: i32,
     },
+    /// Lever Gewinnstufen: add `per` levels per point of a run counter
+    /// ("Skatgott": +1 per won Schneider game, for the rest of the run).
+    AddLevelsPerCounter {
+        /// Counter name.
+        counter: String,
+        /// Gewinnstufen per point of the counter.
+        per: i32,
+    },
     /// Lever Augen: the two discarded cards in the skat count this many
     /// times their Augen for the declarer ("Skatpfleger": 2). Only in a
     /// game with the skat picked up; nothing in a hand game. On declare
@@ -334,6 +342,28 @@ pub enum Effect {
     /// [`crate::rules::valid_discard`]). Card modifications only, passive
     /// only.
     NoDiscard,
+    /// Lever Augen: this card counts this many times its Augen, after
+    /// every other change of its Augen ("Glasdaus": 2). Card modifications
+    /// only, passive only.
+    MultiplyCardPoints(u32),
+    /// Lever Stichgewinn and Bedienpflicht ("Wandelkarte"): in the player's
+    /// hand this card never obliges him to follow suit, and when he plays
+    /// it he names its suit; it is then that card for the trick (see
+    /// [`crate::rules::wild_suits`]). In a defender's hand it is the
+    /// printed card. Card modifications only, passive only.
+    Wild,
+    /// Deck ("Glasdaus"): this card breaks and leaves the deck for the rest
+    /// of the run once the game is scored (a blank takes its place, like
+    /// "Frisches Deck"). Card modifications only, on trick end only.
+    BreakThisCard,
+    /// Lever Spitzen and hand quality ("Heimweh"): a card that lies in the
+    /// skat when a game ends comes into the player's hand at the next deal
+    /// (and at every redeal of that game). Card modifications only, passive
+    /// only.
+    Homesick,
+    /// Lever Stichgewinn (Vorhand): the player leads the first trick of
+    /// every game ("Ehrenvorsitz"). Passive only.
+    AlwaysForehand,
     /// Lever Stichgewinn and Bedienpflicht ("Bube ehrenhalber"): in a suit
     /// game this card is a trump half a step below the Karo-Bube, follows
     /// trump leads and no longer its printed suit. It is no Spitze. Grand,
@@ -369,15 +399,20 @@ impl Effect {
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
+            | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_) => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
-            Effect::SchneiderBonusFromTrick => stage == Stage::OnTrickEnd,
+            Effect::SchneiderBonusFromTrick | Effect::BreakThisCard => stage == Stage::OnTrickEnd,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
+            | Effect::MultiplyCardPoints(_)
             | Effect::RankBonus(_)
             | Effect::RevealHolder
+            | Effect::Wild
+            | Effect::Homesick
+            | Effect::AlwaysForehand
             | Effect::BlankOut(_) => stage == Stage::Passive,
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
@@ -441,11 +476,15 @@ impl Effect {
         matches!(
             self,
             Effect::AddCardPoints(_)
+                | Effect::MultiplyCardPoints(_)
                 | Effect::RankBonus(_)
                 | Effect::RevealHolder
                 | Effect::NeverWins
                 | Effect::NoDiscard
                 | Effect::HonoraryJack
+                | Effect::Wild
+                | Effect::BreakThisCard
+                | Effect::Homesick
         )
     }
 }
@@ -534,6 +573,12 @@ pub enum Condition {
     /// The trick just completed is the first one the declarer took
     /// ("Stichfest"). On trick end only.
     FirstTrickOfDeclarer,
+    /// The trick just completed holds this card and a defender took it
+    /// with another card: a Gegner beat it ("Glasdaus": ein Gegner sticht
+    /// sie), whoever played it. A defender who wins the trick with this
+    /// card itself does not beat it. Card modifications only, on trick end
+    /// only.
+    ThisCardBeatenByDefender,
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
@@ -598,9 +643,9 @@ impl Condition {
             Condition::PlayedCardMatches(_) | Condition::PlayedByDeclarer => {
                 stage == Stage::OnCardPlayed
             }
-            Condition::TrickWinnerMatches { .. } | Condition::FirstTrickOfDeclarer => {
-                stage == Stage::OnTrickEnd
-            }
+            Condition::TrickWinnerMatches { .. }
+            | Condition::FirstTrickOfDeclarer
+            | Condition::ThisCardBeatenByDefender => stage == Stage::OnTrickEnd,
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
             Condition::NullGame
             | Condition::NullRiskAtLeast(_)
@@ -628,7 +673,9 @@ impl Condition {
         match self {
             Condition::All(cs) | Condition::Any(cs) => cs.iter().any(Condition::card_mod_only),
             Condition::Not(c) => c.card_mod_only(),
-            Condition::ThisCardWinsLastTrick | Condition::ThisCardIsTrumpSuit => true,
+            Condition::ThisCardWinsLastTrick
+            | Condition::ThisCardIsTrumpSuit
+            | Condition::ThisCardBeatenByDefender => true,
             _ => false,
         }
     }

@@ -743,3 +743,75 @@ fn relic_schneider_bonus_and_fractional_factor_vectors() {
     let lost = score_game(karo, mit_2, &outcome(50, 4), &Thresholds::default(), scale);
     assert_eq!((lost.value, lost.score), (41, -82));
 }
+
+/// M8 wave 3, worked out by hand: "Skatgott" adds one Gewinnstufe per won
+/// Schneider game so far to a won game (a `Levels` line); a "Glasdaus"
+/// counts 22 Augen, so the deck holds 131 and Schneider stays measured on
+/// the losing side.
+#[test]
+fn skat_god_levels_and_glass_ace_augen_vectors() {
+    use skat_core::content::{Change, Lever, RelicId, ScoreLine, Source, score_game};
+    use skat_core::rules::Thresholds;
+
+    let mit_2 = Matadors {
+        with: true,
+        count: 2,
+    };
+    let mit_1 = Matadors {
+        with: true,
+        count: 1,
+    };
+    let outcome = |declarer: u32, defenders: u32, tricks: u32| Outcome {
+        declarer_card_points: declarer,
+        defender_card_points: defenders,
+        declarer_tricks: tricks,
+        defender_tricks: 10 - tricks,
+    };
+    // Grand mit 2, Spiel 3, Skatgott after two Schneider games: + 2 = 5,
+    // 24 × 5 = 120. Lost, Skatgott adds nothing (only won games): 24 × 3,
+    // −144.
+    let grand = Declaration::grand(RiskLevel::Normal);
+    let skat_god = vec![ScoreLine {
+        source: Source::Relic(RelicId::new("skat_god")),
+        lever: Lever::Levels,
+        change: Change::Add(2),
+    }];
+    let won = score_game(
+        grand,
+        mit_2,
+        &outcome(70, 50, 6),
+        &Thresholds::default(),
+        skat_god,
+    );
+    assert_eq!((won.levels, won.value, won.score), (5, 120, 120));
+    let lost = score_game(
+        grand,
+        mit_2,
+        &outcome(50, 70, 4),
+        &Thresholds::default(),
+        Vec::new(),
+    );
+    assert_eq!((lost.levels, lost.value, lost.score), (3, 72, -144));
+
+    // Kreuz mit 1 with a glass Daus among the declarer's tricks: 50
+    // printed Augen + 11 = 61 is won, 12 × 2 = 24 (without it 50, lost).
+    let kreuz = Declaration::suit(Suit::Clubs, RiskLevel::Normal);
+    let won = score_game(
+        kreuz,
+        mit_1,
+        &outcome(61, 70, 5),
+        &Thresholds::default(),
+        Vec::new(),
+    );
+    assert_eq!((won.won, won.value), (true, 24));
+    // The glass Daus with the defenders: 30 of 131 Augen are still
+    // Schneider, 12 × 3 = 36.
+    let schneider = score_game(
+        kreuz,
+        mit_1,
+        &outcome(101, 30, 8),
+        &Thresholds::default(),
+        Vec::new(),
+    );
+    assert_eq!((schneider.schneider, schneider.value), (true, 36));
+}

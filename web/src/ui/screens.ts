@@ -573,6 +573,37 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         'sheet-chalk',
       );
     }
+    case 'wild': {
+      // "Wandelkarte": the card once per suit; only the suits the core allows.
+      const card = view?.game?.hand.find((c) => c.id === overlay.card);
+      const f = card ? face(card.kind) : null;
+      if (!view || !card || !f) return '';
+      const allowed = card.wild_suits ?? [];
+      const letter = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' } as const;
+      const options = (['Clubs', 'Spades', 'Hearts', 'Diamonds'] as Suit[])
+        .map((suit) => {
+          const kind = { Normal: `${letter[suit]}${f.rank}` };
+          const ok = allowed.includes(suit);
+          return `<button class="card target-card wild-option ${ok ? '' : 'is-dim'}" ${attrs({
+            'data-action': 'wild-suit',
+            'data-suit': suit,
+            'data-testid': `wild-${suit}`,
+            disabled: !ok,
+            'aria-label': t(de.card.wildSuit, { card: cardName(kind) }),
+          })}>${cardSvg(kind, card.mods)}<span class="wild-suit-name">${suitIcon(suit, 14, null)}${esc(de.suits[suit])}</span></button>`;
+        })
+        .join('');
+      const follow = allowed.length < 4 ? `<p class="small">${esc(t(de.card.wildFollow, { suits: allowed.map((s) => de.suits[s]).join(', ') }))}</p>` : '';
+      return sheet(
+        `<h2>${esc(de.card.wildTitle)}</h2>
+         <p class="small">${esc(t(de.card.wildPick, { card: cardName(card.kind) }))}</p>
+         ${follow}
+         <div class="target-grid wild-grid" data-testid="wild-suits">${options}</div>
+         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
+        true,
+        'sheet-wild',
+      );
+    }
     case 'encounter-target': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';

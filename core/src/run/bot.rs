@@ -207,6 +207,16 @@ pub const RELIC_VALUES: [(&str, u32); 46] = [
     ("crib_sheet", 1),
 ];
 
+/// Bot values of the legendary relics (M8 wave 3,
+/// `docs/balance/2026-11-02-welle3.md`, same method as wave 2a), kept apart
+/// from [`RELIC_VALUES`] so that the tiers stay readable.
+///
+/// | Relic | Value | Measured (section 3, section 2) |
+/// |---|---|---|
+/// | `skat_god` | 9 | +4.7, +3.6; +3.7 on section 4, levels on won games only |
+/// | `honorary_chair` | 1 | -0.4, -0.6: leading every first trick does not help the bot |
+pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 9), ("honorary_chair", 1)];
+
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;
 
@@ -260,6 +270,7 @@ pub const MAX_REROLLS: u32 = 2;
 pub fn relic_value(id: &RelicId) -> u32 {
     RELIC_VALUES
         .iter()
+        .chain(LEGENDARY_VALUES.iter())
         .find(|(name, _)| *name == id.as_str())
         .map_or(DEFAULT_RELIC_VALUE, |&(_, v)| v)
 }
@@ -774,12 +785,82 @@ impl RunBot {
                         }
                     }
                 }
-                let view = game.view(Seat::DECLARER)?;
-                let card = declarer.choose(&view)?;
-                Some(RunAction::Play(card.id))
+                // A Wandelkarte is chosen as printed, then named.
+                let tame = super::opponents::tame_game(game);
+                let view = tame.as_ref().unwrap_or(game).view(Seat::DECLARER)?;
+                let chosen = declarer.choose(&view)?;
+                let card = game
+                    .hand(Seat::DECLARER)
+                    .iter()
+                    .copied()
+                    .find(|c| c.id == chosen.id)?;
+                Some(RunBot::play_action(run, card))
             }
             Phase::Finished(_) => None,
         }
+    }
+
+    /// The action that plays `card` of the player's hand: a Wandelkarte with
+    /// the suit of [`RunBot::wild_suit`], every other card as it is.
+    #[must_use]
+    pub fn play_action(run: &Run, card: DealtCard) -> RunAction {
+        match RunBot::wild_suit(run, card) {
+            Some(suit) => RunAction::PlayAs {
+                card: card.id,
+                suit,
+            },
+            None => RunAction::Play(card.id),
+        }
+    }
+
+    /// The suit the bot names for a Wandelkarte (simple rule, not tuned):
+    /// leading, its printed suit (the card play chose it as printed);
+    /// following, a suit with which it takes the trick so far, the led
+    /// suit first, then trump, then the printed suit, except in Null and
+    /// Ramsch, where it looks for a suit that does not take the trick.
+    /// Without such a suit the printed one if allowed, else the first
+    /// allowed. `None` for a card that is no Wandelkarte or may not be
+    /// played now.
+    #[must_use]
+    pub fn wild_suit(run: &Run, card: DealtCard) -> Option<Suit> {
+        let active = run.game()?;
+        let game = &active.game;
+        let declaration = game.declaration()?;
+        let kind = declaration.game();
+        let trick = game.current_trick();
+        let lead = crate::rules::effective_lead(trick);
+        let suits = crate::rules::wild_suits(kind, game.hand(Seat::DECLARER), lead, card);
+        let printed = card.face()?.suit;
+        if suits.is_empty() {
+            return None;
+        }
+        let fallback = if suits.contains(&printed) {
+            printed
+        } else {
+            suits[0]
+        };
+        let Some(lead) = lead else {
+            return Some(fallback);
+        };
+        let avoid = declaration.is_null() || declaration.is_ramsch();
+        let takes = |suit: Suit| {
+            let mut cards = trick.to_vec();
+            cards.push(card.with_suit(suit));
+            crate::rules::winning_index(kind, &cards) == Some(cards.len() - 1)
+        };
+        let mut order: Vec<Suit> = Vec::new();
+        if let Some(face) = lead.face() {
+            order.push(face.suit);
+        }
+        if let GameType::Suit(trump) = kind {
+            order.push(trump);
+        }
+        order.push(printed);
+        order.extend(Suit::ALL);
+        order
+            .into_iter()
+            .find(|&s| suits.contains(&s) && takes(s) != avoid)
+            .or(Some(fallback))
     }
 
     /// The decision with ten cards (Skatordnung, ADR 0011), for every
@@ -1584,7 +1665,10 @@ mod tests {
         let content = Content::load().expect("content");
         for id in content.relics.keys() {
             assert!(
-                RELIC_VALUES.iter().any(|(name, _)| *name == id.as_str()),
+                RELIC_VALUES
+                    .iter()
+                    .chain(LEGENDARY_VALUES.iter())
+                    .any(|(name, _)| *name == id.as_str()),
                 "relic {id} has no bot value"
             );
         }

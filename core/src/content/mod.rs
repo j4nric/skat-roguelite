@@ -504,6 +504,9 @@ pub enum Rarity {
     Uncommon,
     /// Rare.
     Rare,
+    /// Legendär (M8 wave 3): far rarer than Rare and expensive, for relics
+    /// that change the run for good.
+    Legendary,
 }
 
 /// Kind of relic.
@@ -577,6 +580,20 @@ pub struct CardModDef {
     /// Groschen when attached.
     #[serde(default)]
     pub curse: bool,
+    /// Only cards whose printed card matches may carry it ("Glasdaus":
+    /// only a Daus). `None`: every normal card.
+    #[serde(default)]
+    pub only_on: Option<CardFilter>,
+}
+
+impl CardModDef {
+    /// Whether this modification may sit on `card` (a normal card; blanks
+    /// never carry modifications).
+    #[must_use]
+    pub fn fits(&self, card: crate::cards::CardKind) -> bool {
+        card.face()
+            .is_some_and(|face| self.only_on.is_none_or(|f| f.matches(face)))
+    }
 }
 
 /// A factor, written as a decimal number in RON and JSON (`1.0`, `0.6`,
@@ -827,16 +844,45 @@ pub struct RarityWeights {
     pub uncommon: u32,
     /// Weight of rare items.
     pub rare: u32,
+    /// Weight of legendary relics, as a fraction of the others' unit
+    /// (decimal, default 0.3: a third of a rare one). Absent in `run.ron`
+    /// before the tier existed.
+    #[serde(default = "RarityWeights::default_legendary")]
+    pub legendary: Factor,
 }
 
 impl RarityWeights {
-    /// Weight of one rarity.
+    /// Weight of legendary relics if `run.ron` names none.
+    #[must_use]
+    pub const fn default_legendary() -> Factor {
+        Factor::from_permille(300)
+    }
+
+    /// Weight of one rarity, in whole units. Legendary items have less
+    /// than one unit and count 0 here; draws that may offer them use
+    /// [`RarityWeights::percent_weight`].
     #[must_use]
     pub const fn weight(&self, rarity: Rarity) -> u32 {
         match rarity {
             Rarity::Common => self.common,
             Rarity::Uncommon => self.uncommon,
             Rarity::Rare => self.rare,
+            Rarity::Legendary => 0,
+        }
+    }
+
+    /// Weight of one rarity times `percent` (the character's weight for
+    /// the item's Spielart, 100 = plain), so that the fractional legendary
+    /// weight keeps its share: common 6 × 100 = 600, legendary 0.3 × 100 =
+    /// 30.
+    #[must_use]
+    pub fn percent_weight(&self, rarity: Rarity, percent: u32) -> u32 {
+        match rarity {
+            Rarity::Legendary => {
+                let scaled = u64::from(self.legendary.permille()) * u64::from(percent) / 1000;
+                u32::try_from(scaled).unwrap_or(u32::MAX)
+            }
+            _ => self.weight(rarity).saturating_mul(percent),
         }
     }
 }

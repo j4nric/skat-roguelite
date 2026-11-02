@@ -118,11 +118,7 @@ const CURSE_FRAME = grid(
   CURSE_RED,
 );
 
-/**
- * The design per modification id, as chosen in the design review. Ids
- * without content yet (wandelkarte, glasdaus, heimweh) are drawn already,
- * so they show as soon as the core has them.
- */
+/** The design per modification id, as chosen in the design review. */
 const MOD_ART: Record<string, ModArt> = {
   // Augen: a frame around the whole card, the extra Augen at the bottom.
   fat: { places: ['outline', 'value'], frame: '#d98e0b', value: { fill: '#d98e0b', size: 36 } },
@@ -184,14 +180,16 @@ const MOD_ART: Record<string, ModArt> = {
       `<path d="M96 4h4v4h-4zM96 8h8v4h-8zM96 12h12v4h-12zM100 16h12v4h-12z" fill="#c9c4b6"/>` +
       `<path d="M0 80h12v4h-12zM0 84h16v4h-16zM0 88h12v4h-12z" fill="#1d1a18"/>`,
   },
-  // New from the vote, drawn ahead of their content.
-  wandelkarte: {
+  // M8 wave 3 (designs from the vote). Wandelkarte: the four suit
+  // colours over the picture, a four-square sign in the corner.
+  wild_card: {
     places: ['tint', 'corner'],
     under: () =>
       `<g opacity=".18"><rect width="60" height="92" fill="#8a5a2b"/><rect x="60" width="60" height="92" fill="#2e7d4f"/><rect y="92" width="60" height="88" fill="#bd3b32"/><rect x="60" y="92" width="60" height="88" fill="#b8840f"/></g>`,
     over: () => icon(['##.##', '##.##', '.....', '##.##', '##.##'], 23, 2, '#2e7d4f'),
   },
-  glasdaus: {
+  // Glasdaus: glass-blue paper and edge with a glint, "×2" at the bottom.
+  glass_ace: {
     places: ['tint', 'edge', 'value'],
     paper: '#e3f1fb',
     under: () => `<rect width="120" height="180" fill="#9fd3ff" opacity=".3"/>`,
@@ -204,7 +202,8 @@ const MOD_ART: Record<string, ModArt> = {
       ),
     value: { fill: '#2f86c0', size: 36 },
   },
-  heimweh: {
+  // Heimweh: a faint house over the picture, the house in the corner.
+  homesick: {
     places: ['wash', 'corner'],
     under: () => wash(['..#..', '.###.', '#####', '.#.#.', '.###.'], '#8e2430', 0.2),
     over: () => icon(['..#..', '.###.', '#####', '.#.#.', '.###.'], 23, 2, '#8e2430'),

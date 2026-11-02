@@ -21,6 +21,8 @@ export interface DealtCard {
   honorary_jack?: boolean;
   /** "Ramponiert": must not be discarded. */
   no_discard?: boolean;
+  /** "Wandelkarte" in the player's hand: he names its suit as he plays it. */
+  wild?: boolean;
 }
 
 export interface CardView extends DealtCard {
@@ -43,6 +45,10 @@ export interface CardView extends DealtCard {
    * for views from an older core.
    */
   mod_status?: Partial<Record<string, CardModStatus>>;
+  /** "Wandelkarte" the player may play now: the suits he may name (RunAction `PlayAs`). */
+  wild_suits?: Suit[];
+  /** A Wandelkarte played in this game: its printed suit; `kind` has the suit named. */
+  named?: Suit | null;
 }
 
 /** Whether a card modification works in the game in progress: yes, no, or it depends on how the game goes. */
@@ -75,7 +81,7 @@ export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Won' | 'Lost';
  */
 export type TablePhase = 'Declaring' | 'Discarding' | 'DeclaringAfterSkat' | 'Playing' | 'Finished';
 export type RelicKind = 'HouseRule' | 'Regular';
-export type Rarity = 'Common' | 'Uncommon' | 'Rare';
+export type Rarity = 'Common' | 'Uncommon' | 'Rare' | 'Legendary';
 export type Kontra = 'None' | { Kontra: Seat } | { Re: Seat };
 
 /**
@@ -581,6 +587,8 @@ export interface RunView {
   pending_next_game?: PendingNextGame[];
   last_score: ScoreView | null;
   deck: DeckCard[];
+  /** "Heimweh": deck cards that come into the hand at the next deal (absent in an older core). */
+  homesick?: number[];
   stats: RunStats;
 }
 
@@ -658,6 +666,12 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
+  /** "Wandelkarte": the player named the suit of `card` (as printed) as he played it. */
+  | { WildCardNamed: { card: DealtCard; suit: Suit } }
+  /** "Glasdaus": the card broke in a defender's trick; it leaves the deck after the game. */
+  | { CardBroken: { card: number; card_mod: string } }
+  /** "Heimweh": a card that lay in the skat came into the player's hand. */
+  | { CardCameHome: { card: DealtCard } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
   | { EncounterResolved: { encounter: string; choice: EncounterChoice } }
   | { EveningRuleAdded: string }
@@ -679,6 +693,7 @@ export type RunAction =
   | { DiscardThree: [number, number, number] }
   | { DemandLead: LeadSuit }
   | { Play: number }
+  | { PlayAs: { card: number; suit: Suit } }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
   | { BuyConsumable: number }

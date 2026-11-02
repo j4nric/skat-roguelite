@@ -171,6 +171,7 @@ struct Figure {
 fn effect_figure(effect: &Effect) -> Option<Figure> {
     let (lever, change) = match effect {
         Effect::AddCardPoints(n) => (Lever::CardPoints, Change::Add(i64::from(*n))),
+        Effect::MultiplyCardPoints(n) => (Lever::CardPoints, Change::Multiply(*n)),
         Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
         Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
@@ -200,6 +201,7 @@ fn relic_counters<'a>(passive: &'a [Effect], hooks: &'a [Hook]) -> Vec<&'a str> 
         let name = match effect {
             Effect::AddBaseValueFromCounter(c)
             | Effect::AddBaseValuePerCounter { counter: c, .. }
+            | Effect::AddLevelsPerCounter { counter: c, .. }
             | Effect::IncrementCounter(c)
             | Effect::ResetCounter(c) => c.as_str(),
             _ => continue,

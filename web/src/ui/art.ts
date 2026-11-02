@@ -233,11 +233,11 @@ const MOD_ICON: Record<string, { fill: string; glyph: string; ring?: string }> =
   // Aufgebrezelt: a bow tie.
   dressed_up: { fill: '#b0336e', glyph: '<path d="M4.5 8 L11 11 V13 L4.5 16 Z M19.5 8 L13 11 V13 L19.5 16 Z" fill="#fff"/><rect x="10.6" y="10.4" width="2.8" height="3.2" rx=".8" fill="#fff"/>' },
   // Wandelkarte: four squares, one per suit.
-  wandelkarte: { fill: '#2e7d4f', glyph: '<path d="M6 6h5v5h-5zM13 6h5v5h-5zM6 13h5v5h-5zM13 13h5v5h-5z" fill="#fff"/>' },
+  wild_card: { fill: '#2e7d4f', glyph: '<path d="M6 6h5v5h-5zM13 6h5v5h-5zM6 13h5v5h-5zM13 13h5v5h-5z" fill="#fff"/>' },
   // Glasdaus: a pane of glass with a glint.
-  glasdaus: { fill: '#2f86c0', glyph: '<rect x="6" y="5" width="12" height="14" fill="#cfe8fd"/><path d="M8.5 15.5 L14.5 8.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>' },
+  glass_ace: { fill: '#2f86c0', glyph: '<rect x="6" y="5" width="12" height="14" fill="#cfe8fd"/><path d="M8.5 15.5 L14.5 8.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>' },
   // Heimweh: a little house.
-  heimweh: { fill: '#8e2430', glyph: '<path d="M12 5 L19 11 H17 V18.5 H7 V11 H5 Z" fill="#fff"/><rect x="10.5" y="13.5" width="3" height="5" fill="#8e2430"/>' },
+  homesick: { fill: '#8e2430', glyph: '<path d="M12 5 L19 11 H17 V18.5 H7 V11 H5 Z" fill="#fff"/><rect x="10.5" y="13.5" width="3" height="5" fill="#8e2430"/>' },
   // Attrappe: a dummy, a card with a question mark.
   dummy: { fill: '#7d6a50', glyph: '<rect x="7.5" y="5.5" width="9" height="13" rx="1.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.4 10 C10.4 8.4 13.6 8.4 13.6 10 C13.6 11.4 12 11.4 12 13" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.4" r=".9" fill="#fff"/>' },
 };
