@@ -47,7 +47,7 @@ cargo run -p skat_sim -- --seed 42 --games 10000
 
 - Claude entscheidet alles innerhalb des Design-Dokuments selbst und dokumentiert es im Cockpit-Verlauf.
 - Gefragt wird nur, wenn eine Grundentscheidung aus einem ADR kippen müsste. Die Frage kommt ins Cockpit, die Arbeit geht an anderer Stelle weiter.
-- Ein geplanter Weckruf alle 3 Stunden setzt die Arbeit fort, bis M8 gemergt ist (entschieden am 01.11.2026 im Cockpit). Danach wird er gelöscht.
+- Der geplante Weckruf alle 3 Stunden lief bis zum Abschluss von M8 (01.11. bis 02.11.2026) und ist gelöscht. Ein neuer Weckruf nur auf Wunsch des Nutzers.
 
 ## Cockpit (Artefakt)
 
