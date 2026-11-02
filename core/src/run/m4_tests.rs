@@ -525,7 +525,7 @@ fn black_peter_only_pays_won_schneider_games() {
                 if let RunEvent::GameScored { breakdown, .. } = event {
                     if breakdown.won && !breakdown.schneider {
                         assert_eq!(breakdown.score, 0);
-                        assert_eq!(breakdown.multiplier, 0);
+                        assert_eq!(breakdown.multiplier, Factor::from_int(0));
                         return;
                     }
                 }
@@ -946,7 +946,7 @@ fn glass_house_doubles_a_won_null_ouvert() {
     let mut run = null_run(&content, &["glass_house"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
-    assert_eq!(b.multiplier, 1);
+    assert_eq!(b.multiplier, Factor::from_int(1));
 }
 
 #[test]

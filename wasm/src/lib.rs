@@ -175,6 +175,7 @@ fn effect_figure(effect: &Effect) -> Option<Figure> {
         Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
+        Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
         Effect::WinThreshold(n) => (Lever::WinThreshold, Change::Set(i64::from(*n))),
         Effect::SchneiderFromDeclarerPoints { min, .. } => {
             (Lever::Schneider, Change::Set(i64::from(*min)))
@@ -197,7 +198,10 @@ fn relic_counters<'a>(passive: &'a [Effect], hooks: &'a [Hook]) -> Vec<&'a str> 
     let mut out: Vec<&'a str> = Vec::new();
     for effect in passive.iter().chain(hooks.iter().flat_map(Hook::then)) {
         let name = match effect {
-            Effect::AddBaseValueFromCounter(c) | Effect::IncrementCounter(c) => c.as_str(),
+            Effect::AddBaseValueFromCounter(c)
+            | Effect::AddBaseValuePerCounter { counter: c, .. }
+            | Effect::IncrementCounter(c)
+            | Effect::ResetCounter(c) => c.as_str(),
             _ => continue,
         };
         if !out.contains(&name) {
@@ -704,6 +708,18 @@ mod tests {
     use skat_core::run::RunPhase;
     use skat_core::run::bot::RunBot;
 
+    /// Saves from before fractional Spielwert factors hold the multiplier
+    /// of the last score as a whole number; it still loads.
+    #[test]
+    fn score_multiplier_reads_whole_numbers_of_old_saves() {
+        use skat_core::content::Factor;
+        let old: Factor = serde_json::from_str("2").expect("integer");
+        assert_eq!(old, Factor::from_int(2));
+        let new: Factor = serde_json::from_str("1.5").expect("decimal");
+        assert_eq!(new, Factor::from_permille(1500));
+        assert_eq!(serde_json::to_string(&new).expect("json"), "1.5");
+    }
+
     /// Apply an action (JSON), then let the AI play one card per `step`
     /// until the player decides again, as the web app does. Returns
     /// `{ events, view }` with the events of all calls in order and the
@@ -805,9 +821,11 @@ mod tests {
         assert_eq!(preview["base_value"], 24);
         let levels = preview["levels"].as_u64().expect("levels");
         assert!(levels >= 2, "Spitzen plus Spiel");
+        // The factor is a decimal number (1.5 for "Stammfarbe").
+        let multiplier = preview["multiplier"].as_f64().expect("multiplier");
         assert_eq!(
-            preview["game_value"].as_u64(),
-            Some(24 * levels * preview["multiplier"].as_u64().expect("multiplier"))
+            preview["game_value"].as_f64(),
+            Some((24.0 * levels as f64 * multiplier).round())
         );
 
         let saved = session.save().expect("save");

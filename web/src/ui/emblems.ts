@@ -59,8 +59,11 @@ const OUTLINE = '#1b1e21';
 
 const sp = (label: string, art: string, pal?: Record<string, string>): Sprite => (pal ? { label, art, pal } : { label, art });
 
-/** Three motif variants per relic and consumable id. */
-export const SHOP_ART: Record<string, [Sprite, Sprite, Sprite]> = {
+/**
+ * Motif variants per relic and consumable id: three for the items of the
+ * art vote, one for later ones (shown as variant A).
+ */
+export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
   // ---- house rules and Stammtisch figures (core/content/house_rules.ron)
   bock_round: [
     sp('Ziegenkopf', `
@@ -1359,6 +1362,113 @@ export const SHOP_ART: Record<string, [Sprite, Sprite, Sprite]> = {
       bMMMMMMMMMMb
       bbbbbbbbbbbb
       ...YYYY`),
+  ],
+  // ---- M8 wave 2a (one motif each, drawn for the wave, not voted)
+  skat_keeper: [
+    sp('Zwei Karten mit rotem Kreuz', `
+      wwwwwww
+      wwwrwww
+      wwrrrww
+      wwwrwww.wwwwwww
+      wwwwwww.wwwrwww
+      wwwwwww.wwrrrww
+      wwwwwww.wwwrwww
+      wwwwwww.wwwwwww
+      ........wwwwwww
+      ........wwwwwww`),
+  ],
+  old_deck: [
+    sp('Vergilbte Karte mit Eselsohr', `
+      YYYYYYY
+      YfffffYY
+      YfnfffYfY
+      YfffffYYYY
+      YffffffffY
+      YffnfffffY
+      YffffffnfY
+      YffffffffY
+      YfnffffffY
+      YffffffffY
+      YYYYYYYYYY`),
+  ],
+  all_rounder: [
+    sp('Taschenmesser', `
+      gggggggg
+      .gggggggggg
+      ...rrrrrrrrrr
+      ..rrrrrwrrrrr
+      ..rrrrwwwrrrr
+      ..rrrrrwrrrrr
+      ...rrrrrrrrrr
+      ..........g.g
+      ...........gg`),
+  ],
+  home_suit: [
+    sp('Haus mit rotem Herz', `
+      ......OO
+      .....OOOO
+      ....OOOOOO
+      ...OOOOOOOO
+      ..OOOOOOOOOO
+      .OOOOOOOOOOOO
+      ..wwwwwwwwww
+      ..wrrwrrwwww
+      ..wrrrrrwnnw
+      ..wwrrrwwnnw
+      ..wwwrwwwnnw
+      ..wwwwwwwnnw`),
+  ],
+  changeling: [
+    sp('Halb grünes, halb violettes Gesicht', `
+      ...eeevvv
+      ..eeeevvvv
+      .eeeeevvvvv
+      .eekeeevkvv
+      .eeeeevvvvv
+      .eeeeevvvvv
+      .eekkkkkkvv
+      ..eeeevvvv
+      ...eeevvv`),
+  ],
+  jack_parade: [
+    sp('Vier Unter in einer Reihe', `
+      .G...G...G...G.
+      GGG.GGG.GGG.GGG
+      sss.sss.sss.sss
+      bbb.eee.rrr.yyy
+      bbb.eee.rrr.yyy
+      bbb.eee.rrr.yyy
+      b.b.e.e.r.r.y.y`),
+  ],
+  blank_king: [
+    sp('Sieben mit Krone', `
+      .y..y..y.
+      .yyyyyyy.
+      .yryyyry.
+      .yyyyyyy.
+      .........
+      rrrrrrrrr
+      .......rr
+      ......rr
+      .....rr
+      ....rr
+      ....rr
+      ....rr`),
+  ],
+  watertight: [
+    sp('Schild', `
+      GGGGGGGGGG
+      GmmmmmmmmG
+      GmmmGGmmmG
+      GmmmGGmmmG
+      GmGGGGGGmG
+      GmGGGGGGmG
+      GmmmGGmmmG
+      .GmmGGmmG
+      .GmmmmmmG
+      ..GmmmmG
+      ...GmmG
+      ....GG`),
   ],
   // ---- consumables (core/content/consumables.ron)
   fresh_deck: [

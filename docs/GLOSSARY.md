@@ -50,7 +50,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
 | Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
 | Augen und Stiche pro Platz | `SeatTotals` | `card_points`, `tricks` (Index = Platz), `most` (die meisten Augen, im Ramsch die Verlierer); in `ScoreBreakdown::seats`, `GameFinished::seats`; Sicht `seat_tricks`, Zähler `count.seats` |
-| Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null` |
+| Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null`. In Relikt-Texten (Allrounder, Wechselbalg) wie in der Skatordnung nur Farbspiel, Grand oder Null: Bedingungen `SuitGame`, `GameIs(Grand)`, `NullGame`; ein Wechsel der Trumpffarbe ist keine andere Spielart |
 | Farbspiel | `GameType::Suit` | |
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
 | Skat aufnehmen | `pick_up_skat` | |
@@ -81,6 +81,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Spielwert | `game_value` | Grundwert × Gewinnstufen |
 | Grundwert | `base_value` | Karo 9, Herz 10, Pik 11, Kreuz 12, Grand 24 |
 | Gewinnstufen | `levels` | Spitzen + 1 + Hand + Schneider + … |
+| Spielwert-Faktor (auch gebrochen, ×1,5) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekt `ScaleGameValue`). Der Spielwert wird am Ende halb aufgerundet |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
 | Schneider | `schneider` | Eine Seite mit höchstens 30 Augen (`SCHNEIDER_LIMIT`). Gemessen an der verlierenden Seite, damit es auch bei veränderten Blättern gilt. Schwarz schließt Schneider immer ein. |
@@ -88,7 +89,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | angesagt | `_declared` | `schneider_declared`, `schwarz_declared` |
 | Ouvert | `ouvert` | Offen spielen |
 | Gewonnen | `won` | Ab 61 Augen |
-| Gewinnschwelle, Schneidergrenzen | `Thresholds` | `win`, `schneider_limit`, `declarer_schneider`, `stake` (Einsatz, `Thresholds::with_stake`, Relikte senken über `lower_win`) |
+| Gewinnschwelle, Schneidergrenzen | `Thresholds` | `win`, `schneider_limit`, `declarer_schneider`, `stake` (Einsatz, `Thresholds::with_stake`, Relikte senken über `lower_win`), `schneider_bonus` |
+| Schneider-Zuschlag (Stichfest: erster Stich zählt für die Schneider-Grenze doppelt) | `schneider_bonus` | `Thresholds::schneider_bonus`: Augen, die nur für Schneider ein zweites Mal zählen; gewonnen und Gegner mit höchstens `schneider_limit + schneider_bonus` Augen ist Schneider. Effekt `SchneiderBonusFromTrick`, Quelle `GameRules::schneider_bonus_source`, Zeile `Lever::Schneider` |
+| Gedrückte Karten zählen mehrfach (Skatpfleger) | `MultiplySkatPoints` | Effekt bei der Ansage, nur nach dem Aufnehmen; `Game::map_skat` ersetzt die zwei Skatkarten, Ereignis `SkatPointsRaised`, Zeile `Lever::CardPoints` |
 | Spitzen im Spiel | `matadors_in` | Gezählt nur über Trümpfe, die im Spiel sind |
 | Verloren | `lost` | Zählt doppelt negativ |
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
@@ -134,7 +137,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Run-Aktion (Entscheidung des Spielers) | `RunAction` | |
 | Run-Ereignis | `RunEvent` | |
 | Flagge (Relikt-Zustand, z. B. Bock) | `flag` | Pro Run |
-| Zähler (Relikt-Zustand, z. B. Tournee) | `counter` | Pro Run |
+| Zähler (Relikt-Zustand, z. B. Tournee) | `counter` | Pro Run. Zähler einer Serie setzt `ResetCounter` nach der gewonnenen Serie zurück (Ereignis `CounterReset`); `AddBaseValuePerCounter { counter, per }` gibt `per` Grundwert je Punkt |
 | Bock | `bock` | Flagge der Bockrunde |
 | Relikt (Oberbegriff) | `Relic` | HouseRule und Regular, Definition `RelicDef` |
 | Tresen | `Shop` | |
@@ -190,6 +193,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Auslöser (Zeitpunkt) | `Hook`, `Stage` | `OnDeal`, `OnDeclare`, `OnCardPlayed`, `OnTrickEnd`, `OnScore`, `OnSeriesWon`, dazu `Passive` |
 | Effekt | `Effect` | Geschlossener `enum`, jeder Effekt nennt seinen Hebel |
 | Bedingung | `Condition` | Geschlossener `enum` |
+| Stich gewonnen mit (Luschenkönig) | `TrickWinnerMatches` | `filter`, `by_declarer`: der eben beendete Stich, nur bei Stichende |
+| Erster Stich des Alleinspielers (Stichfest) | `FirstTrickOfDeclarer` | Der eben beendete Stich ist der erste, den der Alleinspieler macht |
 | Kartenfilter | `CardFilter` | Farbe und/oder Wert |
 | Hebel der Formel | `Lever` | `BaseValue`, `Levels`, `GameValue`, `CardPoints`, `WinThreshold`, `Schneider`, `LossFactor` |
 | Herkunft eines Zuschlags | `Source` | Relikt, Kartenmodifikation, Boss, Kontra, Re, Ereignis, Verbrauchsgegenstand (`Consumable`) |
@@ -290,6 +295,14 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Mit Vieren | `with_four` |
 | Siebenschläfer | `seven_sleeper` |
 | Saubere Weste | `clean_slate` |
+| Skatpfleger | `skat_keeper` |
+| Altes Blatt | `old_deck` (Zähler `old_deck`) |
+| Allrounder | `all_rounder` (Zähler `all_rounder`, Flaggen `all_rounder_suit`, `_grand`, `_null`) |
+| Stammfarbe | `home_suit` (Zähler `home_suit`, Flaggen `home_suit_clubs`, `_spades`, `_hearts`, `_diamonds`) |
+| Wechselbalg | `changeling` (Flaggen `changeling_suit`, `_grand`, `_null`) |
+| Bubenparade | `jack_parade` |
+| Luschenkönig | `blank_king` (Lusche = `blank`, nicht Blanko) |
+| Stichfest | `watertight` |
 
 ## Kartennotation
 

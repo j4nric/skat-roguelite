@@ -1015,6 +1015,12 @@ export class App {
         this.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
         continue;
       }
+      if ('SkatPointsRaised' in ev) {
+        // "Skatpfleger": the discards count more, say so at the relic.
+        const { source, card_points } = ev.SkatPointsRaised;
+        this.fireTriggers([{ source, lever: 'CardPoints', change: { Add: card_points } }], after);
+        continue;
+      }
       if ('GameScored' in ev) {
         // What fired, on the chips and cards still on screen, before the board covers them.
         if (this.fireTriggers(ev.GameScored.breakdown.lines, after)) await this.pause(DELAY.trigger);

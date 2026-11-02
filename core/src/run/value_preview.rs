@@ -65,6 +65,7 @@ impl Run {
             // only if declared (then winning needs them). Augen ranges
             // that make a game Schneider depend on the Augen played.
             thresholds.declarer_schneider.clear();
+            thresholds.schneider_bonus = 0;
             let schneider = declaration.schneider_declared();
             let schwarz = declaration.schwarz_declared();
             let outcome = Outcome {
@@ -264,7 +265,7 @@ mod tests {
     use super::super::{Character, RelicId, RunAction, RunStart};
     use super::*;
     use crate::cards::Suit;
-    use crate::content::BossId;
+    use crate::content::{BossId, Factor};
     use crate::rules::{NullRisk, RiskLevel};
 
     /// The declarer holds CJ, HJ and the diamonds; SJ and HA lie in the
@@ -321,7 +322,7 @@ mod tests {
         assert_eq!(matadors.count, 3);
         // Diamonds 9 × (mit 3 + Spiel).
         let p = preview(&run, &content);
-        assert_eq!((p.base_value, p.levels, p.multiplier), (9, 4, 1));
+        assert_eq!((p.base_value, p.levels, p.multiplier), (9, 4, Factor::ONE));
         assert_eq!(p.game_value, 36);
     }
 
@@ -374,7 +375,7 @@ mod tests {
         )
         .expect("declare");
         let p = preview(&run, &content);
-        assert_eq!((p.base_value, p.levels, p.multiplier), (26, 7, 1));
+        assert_eq!((p.base_value, p.levels, p.multiplier), (26, 7, Factor::ONE));
         assert_eq!(p.game_value, 182);
 
         // Declared Schneider: "Durchmarsch" is certain for a win.
@@ -387,7 +388,10 @@ mod tests {
         .expect("declare");
         let p = preview(&run, &content);
         // Mit 4, Spiel, Hand, Schneider, angesagt: 24 × 8 × 2.
-        assert_eq!((p.base_value, p.levels, p.multiplier), (24, 8, 2));
+        assert_eq!(
+            (p.base_value, p.levels, p.multiplier),
+            (24, 8, Factor::from_int(2))
+        );
         assert_eq!(p.game_value, 384);
     }
 
@@ -409,7 +413,7 @@ mod tests {
         let active = run.game.as_mut().expect("game");
         active.kontra = super::super::Kontra::Kontra(Seat::ALL[1]);
         let p = preview(&run, &content);
-        assert_eq!((p.multiplier, p.game_value), (2, 576));
+        assert_eq!((p.multiplier, p.game_value), (Factor::from_int(2), 576));
     }
 
     #[test]

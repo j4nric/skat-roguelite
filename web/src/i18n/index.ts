@@ -18,6 +18,11 @@ export function percent(permille: number): string {
   return `${(permille / 10).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 }
 
+/** A factor from the core with the German decimal comma: "2", "1,5", "2,25". */
+export function factorText(n: number): string {
+  return n.toLocaleString('de-DE', { maximumFractionDigits: 3 });
+}
+
 /** Suit and rank of a card kind, or null for a blank. */
 export function face(kind: CardKind): { suit: Suit; rank: Rank } | null {
   if (kind === 'Blank') return null;

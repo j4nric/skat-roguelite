@@ -194,6 +194,14 @@ impl RunEvent {
             RunEvent::CounterRaised { counter, value } => {
                 RunEvent::CounterRaised { counter, value }
             }
+            RunEvent::CounterReset { counter } => RunEvent::CounterReset { counter },
+            RunEvent::SkatPointsRaised {
+                source,
+                card_points,
+            } => RunEvent::SkatPointsRaised {
+                source,
+                card_points,
+            },
             RunEvent::CoinsGained {
                 source,
                 amount,

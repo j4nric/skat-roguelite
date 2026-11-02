@@ -381,7 +381,8 @@ export type Source =
 
 export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider' | 'LossFactor';
 
-export type Change = { Add: number } | { Multiply: number } | { Set: number };
+/** `Scale`: a factor that need not be whole, as a decimal (1.5, "Stammfarbe"). */
+export type Change = { Add: number } | { Multiply: number } | { Scale: number } | { Set: number };
 
 export interface ScoreLine {
   source: Source;
@@ -466,6 +467,7 @@ export interface ScoreStep {
   term: ScoreTerm;
   base_value: number;
   levels: number;
+  /** Product of the Spielwert factors so far, a decimal (2, 1.5). */
   multiplier: number;
 }
 
@@ -617,6 +619,9 @@ export type RunEvent =
   | { FlagSet: string }
   | { FlagCleared: string }
   | { CounterRaised: { counter: string; value: number } }
+  | { CounterReset: { counter: string } }
+  /** "Skatpfleger": the discarded skat counts `card_points` Augen more for the player. */
+  | { SkatPointsRaised: { source: Source; card_points: number } }
   | { CoinsGained: { source: Source; amount: number; coins: number } }
   | { GameScored: { breakdown: ScoreBreakdown; series_score: number } }
   | { SeriesWon: { section: number; index: number; payout: Payout; coins: number; boss: string | null; redeals_used: number; games_left: number } }

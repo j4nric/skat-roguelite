@@ -7,7 +7,8 @@
 //! ```text
 //! Grundwert  = max(1, Grundwert der Spielart + Σ Grundwert-Zuschläge) × Π Grundwert-Faktoren
 //! Stufen     = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)
-//! Spielwert  = Grundwert × Stufen × Π Spielwert-Faktoren (Kontra, Re, …)
+//! Spielwert  = Grundwert × Stufen × Π Spielwert-Faktoren (Kontra, Re, ×1,5 …),
+//!              auf ganze Zahlen gerundet (halbe auf)
 //! Ergebnis   = Spielwert, verloren −2 × Spielwert ("Magenbitter": −1 ×)
 //! ```
 //!
@@ -17,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{BossId, CardModId, ConsumableId, EncounterId, RelicId};
+use super::{BossId, CardModId, ConsumableId, EncounterId, Factor, RelicId};
 use crate::rules::{
     Declaration, GameType, LevelParts, Matadors, Outcome, SeatTotals, Thresholds, ValueParts,
     game_value_parts,
@@ -76,6 +77,9 @@ pub enum Change {
     Add(i64),
     /// Multiply by a factor.
     Multiply(u32),
+    /// Multiply by a factor that need not be whole ("Stammfarbe": ×1,5).
+    /// Only on the Spielwert; the product is rounded half up at the end.
+    Scale(Factor),
     /// Set to a value.
     Set(i64),
 }
@@ -118,9 +122,11 @@ pub struct ScoreBreakdown {
     pub base_value: u64,
     /// Gewinnstufen after modifiers.
     pub levels: u64,
-    /// Product of all game value factors.
-    pub multiplier: u64,
-    /// Spielwert after modifiers.
+    /// Product of all game value factors (Kontra ×2, "Stammfarbe" ×1,5),
+    /// as a decimal number in JSON (`1.0`, `2.0`, `1.5`).
+    pub multiplier: Factor,
+    /// Spielwert after modifiers: `base_value × levels × multiplier`,
+    /// rounded half up.
     pub value: u64,
     /// Signed result for the series account: `value` or `-2 × value` (a
     /// [`Lever::LossFactor`] line sets the 2).
@@ -154,8 +160,8 @@ impl ScoreBreakdown {
         let mut steps = Vec::new();
         let mut base: u64 = 0;
         let mut levels: u64 = 0;
-        let mut multiplier: u64 = 1;
-        let mut push = |term: ScoreTerm, base: u64, levels: u64, multiplier: u64| {
+        let mut multiplier = Factor::ONE;
+        let mut push = |term: ScoreTerm, base: u64, levels: u64, multiplier: Factor| {
             steps.push(ScoreStep {
                 term,
                 base_value: base,
@@ -248,10 +254,13 @@ impl ScoreBreakdown {
             }
         }
         for line in self.lines.iter().filter(|l| l.lever == Lever::GameValue) {
-            if let Change::Multiply(n) = line.change {
-                multiplier = multiplier.saturating_mul(u64::from(n));
-                push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
-            }
+            let factor = match line.change {
+                Change::Multiply(n) => Factor::from_int(n),
+                Change::Scale(f) => f,
+                Change::Add(_) | Change::Set(_) => continue,
+            };
+            multiplier = multiplier.times(factor);
+            push(ScoreTerm::Line(line.clone()), base, levels, multiplier);
         }
         // The factor of a lost game changes the result, not the Spielwert.
         for line in self.lines.iter().filter(|l| l.lever == Lever::LossFactor) {
@@ -319,8 +328,8 @@ pub struct ScoreStep {
     pub base_value: u64,
     /// Gewinnstufen so far.
     pub levels: u64,
-    /// Product of the Spielwert factors so far.
-    pub multiplier: u64,
+    /// Product of the Spielwert factors so far (a decimal number in JSON).
+    pub multiplier: Factor,
 }
 
 /// Score a finished game. `lines` are the modifications collected by the
@@ -354,7 +363,7 @@ pub fn score_parts(
     let mut base_add: i64 = 0;
     let mut base_mul: u64 = 1;
     let mut level_add: i64 = 0;
-    let mut value_mul: u64 = 1;
+    let mut value_mul = Factor::ONE;
     let mut loss_factor: i64 = 2;
     for line in &lines {
         match (line.lever, line.change) {
@@ -365,8 +374,9 @@ pub fn score_parts(
             }
             (Lever::Levels, Change::Add(n)) => level_add = level_add.saturating_add(n),
             (Lever::GameValue, Change::Multiply(n)) => {
-                value_mul = value_mul.saturating_mul(u64::from(n));
+                value_mul = value_mul.times(Factor::from_int(n));
             }
+            (Lever::GameValue, Change::Scale(f)) => value_mul = value_mul.times(f),
             _ => {}
         }
     }
@@ -381,7 +391,7 @@ pub fn score_parts(
             u64::try_from(levels).unwrap_or(1),
         )
     };
-    let value = base_value.saturating_mul(levels).saturating_mul(value_mul);
+    let value = value_mul.scale(base_value.saturating_mul(levels));
     let signed = i64::try_from(value).unwrap_or(i64::MAX);
     let score = if parts.won {
         signed
@@ -501,7 +511,10 @@ mod tests {
         // Without lines the steps are the rule terms only.
         let plain = score_game(decl, MIT_2, &outcome(70, 6), &Thresholds::default(), vec![]);
         let last = plain.steps().last().cloned().expect("steps");
-        assert_eq!((last.base_value, last.levels, last.multiplier), (12, 4, 1));
+        assert_eq!(
+            (last.base_value, last.levels, last.multiplier),
+            (12, 4, Factor::ONE)
+        );
     }
 
     #[test]
@@ -526,7 +539,10 @@ mod tests {
             ],
         );
         // (12 + 3) × 2 = 30 base, 3 + 1 = 4 levels, × 2.
-        assert_eq!((b.base_value, b.levels, b.multiplier), (30, 4, 2));
+        assert_eq!(
+            (b.base_value, b.levels, b.multiplier),
+            (30, 4, Factor::from_int(2))
+        );
         assert_eq!(b.value, 240);
         assert_eq!(b.score, 240);
         assert_eq!(b.lines_of(&relic).count(), 4);
@@ -539,5 +555,46 @@ mod tests {
             vec![line(Lever::GameValue, Change::Multiply(2))],
         );
         assert_eq!(b.score, -2 * 36 * 2);
+    }
+
+    #[test]
+    fn fractional_factors_round_half_up_at_the_end() {
+        let relic = Source::Relic(RelicId::new("x"));
+        let scale = |permille| ScoreLine {
+            source: relic.clone(),
+            lever: Lever::GameValue,
+            change: Change::Scale(Factor::from_permille(permille)),
+        };
+        // Diamonds mit 2, Spiel 3: 9 × 3 = 27, × 1.5 = 40.5 → 41.
+        let decl = Declaration::suit(Suit::Diamonds, RiskLevel::Normal);
+        let b = score_game(
+            decl,
+            MIT_2,
+            &outcome(70, 6),
+            &Thresholds::default(),
+            vec![scale(1500)],
+        );
+        assert_eq!(b.multiplier, Factor::from_permille(1500));
+        assert_eq!((b.value, b.score), (41, 41));
+        let steps = b.steps();
+        assert_eq!(
+            steps.last().map(|s| s.multiplier),
+            Some(Factor::from_permille(1500))
+        );
+        // Two of them and a Kontra: × 1.5 × 1.5 × 2 = × 4.5, 27 × 4.5 = 121.5 → 122.
+        let kontra = ScoreLine {
+            source: Source::Kontra,
+            lever: Lever::GameValue,
+            change: Change::Multiply(2),
+        };
+        let b = score_game(
+            decl,
+            MIT_2,
+            &outcome(50, 4),
+            &Thresholds::default(),
+            vec![scale(1500), kontra, scale(1500)],
+        );
+        assert_eq!(b.multiplier, Factor::from_permille(4500));
+        assert_eq!((b.value, b.score), (122, -244));
     }
 }

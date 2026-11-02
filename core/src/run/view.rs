@@ -608,7 +608,8 @@ pub struct GameView {
 /// The score line of the table while playing: what the game in progress
 /// is worth if the player wins it, as far as it is certain now. Computed
 /// with the scoring of a finished game ([`crate::content::score_parts`]),
-/// so `game_value = base_value × levels × multiplier` and the numbers are
+/// so `game_value = base_value × levels × multiplier` (rounded half up)
+/// and the numbers are
 /// the ones the score screen would start from.
 ///
 /// Included, for suit games and grand:
@@ -649,9 +650,10 @@ pub struct ValuePreview {
     pub base_value: u64,
     /// Gewinnstufen after the certain modifications.
     pub levels: u64,
-    /// Product of the certain Spielwert factors (1 without any).
-    pub multiplier: u64,
-    /// `base_value × levels × multiplier`.
+    /// Product of the certain Spielwert factors (1 without any; a decimal
+    /// number in JSON, e.g. 1.5 for "Stammfarbe").
+    pub multiplier: Factor,
+    /// `base_value × levels × multiplier`, rounded half up.
     pub game_value: u64,
 }
 
@@ -1559,7 +1561,7 @@ mod tests {
                     && game.declaration.is_some_and(|d| !d.is_ramsch());
                 assert_eq!(game.value_preview.is_some(), previewed);
                 if let Some(p) = game.value_preview {
-                    assert_eq!(p.game_value, p.base_value * p.levels * p.multiplier);
+                    assert_eq!(p.game_value, p.multiplier.scale(p.base_value * p.levels));
                 }
                 if game.your_turn {
                     saw_play = true;

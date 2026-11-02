@@ -441,4 +441,147 @@
             OnScore(when: All([NullGame, Won, NeverFollowedSuit]), then: [AddLevels(2)]),
         ],
     ),
+    // ---------------------------------------------------------------------
+    // M8 Welle 2a, abgestimmt im Cockpit (02.11.2026): Skat-Hebel,
+    // Bau-Richtungen, Spiel-Relikte. Texte wie abgestimmt. Seltenheit und
+    // Preise nach der Einzelmessung (docs/balance/2026-11-02-relikte-
+    // welle2.md), Platzhalter für `balance`. "Spielart" heißt hier wie in
+    // der Skatordnung Farbspiel, Grand oder Null; der Ramsch des Ramschers
+    // zählt nie mit und unterbricht nichts. "Das Spiel davor" und "drei-
+    // mal hintereinander" gehen über Seriengrenzen (DESIGN 8.1).
+    // ---------------------------------------------------------------------
+    // Lever Augen: after the discard the two skat cards count twice for
+    // the declarer, for winning and Schneider (one Augen line). A hand
+    // game discards nothing.
+    (
+        id: "skat_keeper",
+        name: "Skatpfleger",
+        text: "Die Augen der gedrückten Karten zählen doppelt.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnDeclare(when: Not(HandGame), then: [MultiplySkatPoints(2)]),
+        ],
+    ),
+    // Lever Grundwert (counter of one series): every discarded card gives
+    // +1 from this game to the end of the series, so with the skat in
+    // every game +2, +4, +6. Back to zero after the won series (a lost
+    // series ends the run).
+    (
+        id: "old_deck",
+        name: "Altes Blatt",
+        text: "Jede gedrückte Karte gibt bis zum Ende der Serie +1 Grundwert.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnDeclare(when: Not(HandGame), then: [IncrementCounter("old_deck"), IncrementCounter("old_deck")]),
+            OnDeclare(when: Not(RamschGame), then: [AddBaseValueFromCounter("old_deck")]),
+            OnSeriesWon(then: [ResetCounter("old_deck")]),
+        ],
+    ),
+    // Lever Grundwert (counter of one series): +3 per Spielart (Farbspiel,
+    // Grand, Null) declared in the series so far, this game included:
+    // +3 for the first game, up to +9 for the third.
+    (
+        id: "all_rounder",
+        name: "Allrounder",
+        text: "Je verschiedener Spielart in einer Serie +3 Grundwert.",
+        rarity: Uncommon,
+        price: 8,
+        hooks: [
+            OnDeclare(when: All([SuitGame, Not(Flag("all_rounder_suit"))]), then: [SetFlag("all_rounder_suit"), IncrementCounter("all_rounder")]),
+            OnDeclare(when: All([GameIs(Grand), Not(Flag("all_rounder_grand"))]), then: [SetFlag("all_rounder_grand"), IncrementCounter("all_rounder")]),
+            OnDeclare(when: All([NullGame, Not(Flag("all_rounder_null"))]), then: [SetFlag("all_rounder_null"), IncrementCounter("all_rounder")]),
+            OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCounter(counter: "all_rounder", per: 3)]),
+            OnSeriesWon(then: [ClearFlag("all_rounder_suit"), ClearFlag("all_rounder_grand"), ClearFlag("all_rounder_null"), ResetCounter("all_rounder")]),
+        ],
+    ),
+    // Lever Spielwert ×1,5 (multiplicative): from the third suit game in a
+    // row with the same trump suit, each further one too, won or lost. The
+    // streak goes over series boundaries; a grand, a Null or another trump
+    // suit starts over. The flag holds the suit, the counter the streak.
+    (
+        id: "home_suit",
+        focus: Trump,
+        name: "Stammfarbe",
+        text: "Dreimal hintereinander dieselbe Trumpffarbe: ×1,5.",
+        rarity: Rare,
+        price: 6,
+        hooks: [
+            OnDeclare(when: All([GameIs(Suit(Clubs)), Not(Flag("home_suit_clubs"))]), then: [ClearFlag("home_suit_spades"), ClearFlag("home_suit_hearts"), ClearFlag("home_suit_diamonds"), SetFlag("home_suit_clubs"), ResetCounter("home_suit")]),
+            OnDeclare(when: All([GameIs(Suit(Spades)), Not(Flag("home_suit_spades"))]), then: [ClearFlag("home_suit_clubs"), ClearFlag("home_suit_hearts"), ClearFlag("home_suit_diamonds"), SetFlag("home_suit_spades"), ResetCounter("home_suit")]),
+            OnDeclare(when: All([GameIs(Suit(Hearts)), Not(Flag("home_suit_hearts"))]), then: [ClearFlag("home_suit_clubs"), ClearFlag("home_suit_spades"), ClearFlag("home_suit_diamonds"), SetFlag("home_suit_hearts"), ResetCounter("home_suit")]),
+            OnDeclare(when: All([GameIs(Suit(Diamonds)), Not(Flag("home_suit_diamonds"))]), then: [ClearFlag("home_suit_clubs"), ClearFlag("home_suit_spades"), ClearFlag("home_suit_hearts"), SetFlag("home_suit_diamonds"), ResetCounter("home_suit")]),
+            OnDeclare(when: SuitGame, then: [IncrementCounter("home_suit")]),
+            OnDeclare(when: Any([GameIs(Grand), NullGame]), then: [ClearFlag("home_suit_clubs"), ClearFlag("home_suit_spades"), ClearFlag("home_suit_hearts"), ClearFlag("home_suit_diamonds"), ResetCounter("home_suit")]),
+            OnDeclare(when: All([SuitGame, CounterAtLeast(counter: "home_suit", value: 3)]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    // Lever Gewinnstufen: +1 when the Spielart differs from the game
+    // before (Farbspiel, Grand, Null; a change of trump suit is none),
+    // won or lost. The first game with it has no game before. The flags
+    // hold the Spielart of the last game.
+    (
+        id: "changeling",
+        name: "Wechselbalg",
+        text: "+1 Stufe, wenn du eine andere Spielart ansagst als im Spiel davor.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnDeclare(
+                when: Any([
+                    All([SuitGame, Any([Flag("changeling_grand"), Flag("changeling_null")])]),
+                    All([GameIs(Grand), Any([Flag("changeling_suit"), Flag("changeling_null")])]),
+                    All([NullGame, Any([Flag("changeling_suit"), Flag("changeling_grand")])]),
+                ]),
+                then: [AddLevels(1)],
+            ),
+            OnDeclare(when: Not(RamschGame), then: [ClearFlag("changeling_suit"), ClearFlag("changeling_grand"), ClearFlag("changeling_null")]),
+            OnDeclare(when: SuitGame, then: [SetFlag("changeling_suit")]),
+            OnDeclare(when: GameIs(Grand), then: [SetFlag("changeling_grand")]),
+            OnDeclare(when: NullGame, then: [SetFlag("changeling_null")]),
+        ],
+    ),
+    // Lever Grundwert: +1 for every Unter the declarer plays in the game
+    // ("ausspielen" in the everyday sense: put on the table, not only
+    // lead), won or lost. Cards conceded by "Schenken" are not played.
+    (
+        id: "jack_parade",
+        focus: Trump,
+        name: "Bubenparade",
+        text: "Jeder Unter, den du ausspielst: +1 Grundwert.",
+        rarity: Common,
+        price: 6,
+        hooks: [
+            OnCardPlayed(when: All([PlayedByDeclarer, PlayedCardMatches((rank: Some(Jack))), Not(RamschGame)]), then: [AddBaseValue(1)]),
+        ],
+    ),
+    // Lever Gewinnstufen: +1 for every trick a seven of the declarer takes
+    // (by the rules: a trump seven, or a seven nobody could beat). Not in
+    // Null, where a trick of the declarer loses.
+    (
+        id: "blank_king",
+        focus: Trump,
+        name: "Luschenkönig",
+        text: "Gewinnt eine Sieben einen Stich: +1 Stufe.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnTrickEnd(when: All([TrickWinnerMatches(filter: (rank: Some(Seven)), by_declarer: true), Not(NullGame), Not(RamschGame)]), then: [AddLevels(1)]),
+        ],
+    ),
+    // Lever Schneider: the Augen of the declarer's first trick count once
+    // more for the Schneider line (defenders at most 30 plus them), never
+    // for winning.
+    (
+        id: "watertight",
+        focus: Trump,
+        name: "Stichfest",
+        text: "Dein erster Stich zählt für die Schneider-Grenze doppelt.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnTrickEnd(when: All([FirstTrickOfDeclarer, Not(NullGame), Not(RamschGame)]), then: [SchneiderBonusFromTrick]),
+        ],
+    ),
 ]
