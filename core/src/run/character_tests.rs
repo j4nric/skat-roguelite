@@ -343,12 +343,12 @@ fn series_won(coins: u32, boss: Option<&str>) -> RunEvent {
 }
 
 #[test]
-fn landlady_unlocks_with_twenty_groschen_after_a_series() {
+fn landlady_unlocks_with_fifteen_groschen_after_a_series() {
     let content = content();
     let mut meta = MetaState::new();
-    assert!(meta.observe(&content, &[series_won(19, None)]).is_empty());
+    assert!(meta.observe(&content, &[series_won(14, None)]).is_empty());
     assert_eq!(
-        meta.observe(&content, &[series_won(20, None)]),
+        meta.observe(&content, &[series_won(15, None)]),
         vec![UnlockId::new("full_till")]
     );
     assert!(meta.character_unlocked(&content, Character::Landlady));

@@ -753,9 +753,9 @@ Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der B
 |---|---|---|
 | `grand_master` („Großer Grand“) | Grand Schneider gewinnen, der mindestens 144 Punkte zählt (`WinGame(game: Grand, schneider: true, min_value: 144)`: zum Beispiel mit 4, Spiel 5, Schneider 6; bis 01.11.2026 96, im Testlauf nach rund drei Runs erreicht, zu leicht) | Der Grandspieler |
 | `beat_kibitz_killer` („Blinde Kuh“) | Boss Der Kiebitz-Mörder schlagen | Der Zaungast |
-| `full_till` („Volle Kasse“) | Nach einer gewonnenen Serie mindestens 20 Groschen haben (neue Bedingung `SeriesWonWithCoins(20)`, gemessen nach der Auszahlung) | Die Wirtin |
+| `full_till` („Volle Kasse“) | Nach einer gewonnenen Serie mindestens 15 Groschen haben (Bedingung `SeriesWonWithCoins(15)`, gemessen nach der Auszahlung; bis 02.11.2026 20, gesenkt nach Antwort im Cockpit) | Die Wirtin |
 
-Ein einfacher Grand Schneider ist schon die Freischaltung `grand_schneider` (im Mittel nach 2 Runs, zu leicht); 96 Punkte verlangen eine Stufe mehr. Der Kiebitz-Mörder nimmt jede Information, wer ihn schlägt, verdient den Zaungast, der ohne ihn immer mitschaut. 20 Groschen verlangen Sparen über Zinsen und übrige Spiele.
+Ein einfacher Grand Schneider ist schon die Freischaltung `grand_schneider` (im Mittel nach 2 Runs, zu leicht); 96 Punkte verlangen eine Stufe mehr. Der Kiebitz-Mörder nimmt jede Information, wer ihn schlägt, verdient den Zaungast, der ohne ihn immer mitschaut. 15 Groschen verlangen Sparen über Zinsen und übrige Spiele (die Messung oben, 34,8 Runs, galt für 20).
 
 **Stammkunde** (02.11.2026, Welle 2b): zehn Runs zu Ende spielen (`RunsFinished(10)`, `ten_runs`) schaltet „Drei drücken“ frei (8.1). Damit sind 16 von 46 Hausregeln und Figuren gesperrt. Nicht im Simulator gemessen; zehn beendete Runs sind wie „Lehrjahre“ (fünf) sicher erreichbar.
 
