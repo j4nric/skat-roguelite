@@ -109,7 +109,13 @@ impl Run {
             for hook in source.hooks.iter().filter(|h| h.stage() == Stage::OnScore) {
                 if evaluate_if_won(hook.when(), &ctx, source.this_card, &possible) == Some(true) {
                     lines.extend(hook.then().iter().filter_map(|e| {
-                        score_line(&source.source, &e.scaled(source.scale), &self.counters)
+                        let e = e.scaled(source.scale);
+                        score_line(
+                            &source.source,
+                            &e,
+                            &self.counters,
+                            self.cursed_for(content, &e),
+                        )
                     }));
                 }
             }
@@ -234,9 +240,13 @@ impl Run {
         for source in self.sources(content, true) {
             for hook in source.hooks {
                 for effect in hook.then() {
-                    let Some(line) =
-                        score_line(&source.source, &effect.scaled(source.scale), &self.counters)
-                    else {
+                    let effect = effect.scaled(source.scale);
+                    let Some(line) = score_line(
+                        &source.source,
+                        &effect,
+                        &self.counters,
+                        self.cursed_for(content, &effect),
+                    ) else {
                         continue;
                     };
                     if raises(&line) {

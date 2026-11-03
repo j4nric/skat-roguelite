@@ -552,7 +552,7 @@ Seit ADR 0015 ist das Blatt immer 32 Karten groß, die Chance also immer 12 von 
 
 ### 8.1 Hausregeln (passive Relikte, Joker-Äquivalent)
 
-Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2026 fünf Plätze im Grundzustand, seitdem unbegrenzt (8.0).
+Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2026 fünf Plätze im Grundzustand, seitdem unbegrenzt (8.0). Seit dem 03.11.2026 gibt es den Pechvogel (+1 Grundwert je verfluchter Karte) und am Tresen die Hehlerware (8.8).
 
 **Seit dem Gegenstands-Review vom 02.11.2026 (8.5)** sind Bockrunde, Kontra, Ouvert-Bonus, Durchmarsch, Blindflug, Lehrgeld, Auf dem Trockenen, Schneiderbock, Doppelter Boden, Glashaus, Kerbholz, Siebenschläfer, Saubere Weste, Altes Blatt, Wechselbalg, Bubenparade und Lockvogel entfernt; Drei drücken und Spickzettel sind geändert. Was hier über sie steht, ist Geschichte.
 
@@ -707,6 +707,8 @@ Einmal nutzbare Karten, maximal zwei auf der Hand.
 
 **Seit dem 03.11.2026 (8.7)** gibt es drei Rettungs-Schnäpse für eine Kneipe im Minus: Klarer, Absacker und Eierlikör.
 
+**Seit dem 03.11.2026 (8.8)** gibt es den Fusel: das nächste Spiel doppelt, dafür ein Fluch für immer.
+
 **Seit den Zinken am Tresen (02.11.2026, 8.6)** sind auch Frisches Deck (jetzt der Tresen-Dienst „Karte reinigen“), Stempelkissen, Augen +3, Trumpf +2 und Rang +1 keine Gegenstände mehr; es bleiben nur die Schnäpse.
 
 - **Frisches Deck** (entfernt am 02.11.2026, jetzt „Karte reinigen“, 8.6): Entferne eine Karte dauerhaft. Seit ADR 0015 nicht mehr möglich; ab M9 „eine Karte deiner Ausgabe ist wieder wie neu, alle Modifikationen fallen ab“ (7.3).
@@ -826,7 +828,7 @@ Tests: `core/src/run/items_tests.rs` (je Gegenstand einer, dazu Entfernung und L
 
 **Die Auslage.** Jeder Tresen legt **drei Angebote** aus, jedes eine bestimmte Karte der Ausgabe des Spielers mit einer bestimmten Zinke und ihrem Wert, vor dem Kauf sichtbar (die Oberfläche zeigt die Karte, wie sie danach aussieht). Gezogen mit einem eigenen Zufallsstrom des Runs (`zinken_rng`), damit die übrigen Tresen-Angebote, Wege und Spiele gleich bleiben.
 
-- **Nie ein Fluch**, nie eine Zinke, die nicht auf die Karte passt (`only_on`) oder die die Regeln aus 7.2 ablehnen (verfluchte Karte, Winkel schon bei 2). Eine Karte höchstens einmal je Auslage. Eine Spezialkarte nur als seltenes Angebot (unten), nie eine Toten- oder Narrenmarke, deren Spezialkarte die Ausgabe nicht mehr bekommen darf (7.2).
+- **Nie ein Fluch** als Zinke (ein Schnäppchen legt seinen Fluch auf eine andere Karte, 8.8), nie eine Zinke, die nicht auf die Karte passt (`only_on`) oder die die Regeln aus 7.2 ablehnen (verfluchte Karte, Winkel schon bei 2). Eine Karte höchstens einmal je Auslage. Eine Spezialkarte nur als seltenes Angebot (unten), nie eine Toten- oder Narrenmarke, deren Spezialkarte die Ausgabe nicht mehr bekommen darf (7.2).
 - **Selten eine Spezialkarte direkt** (seit 03.11.2026, Entscheidung des Nutzers „A + B“, Auslegung von Claude): Jedes Angebot ist mit 5 % (`special_percent`, etwa eines von zwanzig) „wird Untot“ oder „wird Wandelkarte“ auf einer bestimmten Karte, solange die Ausgabe diese Spezialkarte noch bekommen darf (`Run::special_offers`). Höchstens eins je Auslage und Spezialkarte, die Marke dafür eingeschlossen, damit ein Kauf kein anderes Angebot derselben Auslage wertlos macht. Nie auf einer Karte, die schon eine Spezialkarte trägt; die Zinke der Karte bleibt daneben (7.2, Grundregel 1), die Kachel sagt „Aufdruck bleibt“. Gezogen mit demselben Zufallsstrom und denselben Kartengewichten (ohne Modifikation 3, sonst 1), gewürfelt nur, wenn eine solche Spezialkarte möglich ist. Preis 6 Groschen (`special_price`), auf Unter und Daus 7, dann wie jedes Angebot über den Wirt und den Preis des Charakters (`Run::card_offer_cost`: `shop_price`, `zinken_price`). Die Kachel trägt ein Band „Selten“ und zeigt die Karte mit ihrem Spezialbild.
 - **Karten ohne Modifikation werden bevorzugt**: Gewicht 3 gegen 1 für Karten, die schon etwas tragen (`bare_weight`, `modded_weight`).
 - **Gewicht der Zinke**: Seltenheit wie bei den Relikten (gewöhnlich 6, ungewöhnlich 3, selten 1) mal das Gewicht des Charakters für die Spielart (`focus_weights`), **Gutscheine** (Pfandmarke, Totenmarke, Narrenmarke) nur mit der Hälfte (`voucher_percent: 50`).
@@ -901,6 +903,32 @@ Auslegungen von Claude: „Zwischen zwei Spielen“ heißt im Kern „das gegebe
 **Bot** (`run/bot.rs`, Regeln, nicht kalibriert; Kaufwerte Klarer 1, Absacker 2, Eierlikör 1): Vor „Skat oder Hand“ trinkt er Klarer mit Minus, Absacker vor dem letzten Spiel ohne erreichtes Ziel und Eierlikör, sobald er angenommen wird.
 
 Tests: `core/src/run/rescue_tests.rs`. Zu messen, sobald der Simulator wieder läuft: wie oft die drei gekauft und getrunken werden und was sie an „Stadtteil 2 erreicht“ ändern.
+
+### 8.8 Flüche als Handel (03.11.2026)
+
+**Entschieden vom Nutzer am 03.11.2026, maßgeblich ab hier.** Ein Fluch ist der Preis eines guten Geschäfts. Drei Angebote zahlen mit einem, dazu ein Relikt, das Flüche belohnt. Alle Zahlen sind **vorläufig**, nach Augenmaß ohne Messung; `balance` misst. Code `core/src/run/trade.rs`, Tests `core/src/run/trade_tests.rs`, Daten `trade` in `run.ron` (`TradeConfig`).
+
+**Der Fluch eines Handels** (`Run::trade_curse`): ein dauerhafter, zufälliger Fluch (Durchsichtig, Ramponiert, Fleckig; nie Abgestuft) auf einer zufälligen Karte der Ausgabe, die noch keinen Fluch trägt (`Run::trade_curse_targets`). Erst die Karte (gleich verteilt unter allen, die einen Fluch nehmen können), dann der Fluch nach seinem Gewicht unter denen, die auf sie passen (`only_on`, Gewicht des Charakters je Spielart wie bei den Ereignissen). Es gelten die Regeln aus 7.2: Der Fluch ersetzt die normale Zinke der Karte, eine Spezialkarte (Untot, Wandelkarte) bleibt daneben. Er zahlt beim Erhalt seine 3 Groschen wie überall (Auslegung von Claude: Der Text jedes Fluchs verspricht sie; ob ein Handel sie behalten soll, misst `balance`). Ereignis `TradeCurse { card, curse, cause }` vor dem `DeckChanged`, die Oberfläche sagt es als Meldung („Schnäppchen: Grün-Ober ist jetzt verflucht (Ramponiert).“). Ein Handel wird nur angeboten, solange eine Karte den Fluch nehmen kann; ist beim Kauf keine mehr frei, fällt der Fluch weg. Bruderherz kann diese Flüche wie seine eigenen nicht reinigen.
+
+**Eigener Zufallsstrom** (`Run::trade_rng`): ob ein Angebot ein Handel ist, welche Karte, welcher Fluch. So bleiben Relikte, Schnäpse, Auslage, Wege und Spiele mit und ohne Handel gleich (Test `trades_leave_the_other_draws_alone`). Alte Spielstände bekommen ihn aus einer festen Zahl.
+
+| Was | Id | Wirkung | Zahlen (vorläufig) |
+|---|---|---|---|
+| **Pechvogel** (Relikt, Gruppe Wert) | `jinx` | +1 Grundwert für jede verfluchte Karte der Ausgabe, gezählt bei der Ansage (`OnDeclare`, nicht im Ramsch; Effekt `AddBaseValuePerCursedCard(1)`, `Run::cursed_cards`) | Rare, 9 Groschen |
+| **Fusel** (Schnaps) | `rotgut` | Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren (wie der Doppelkorn), und eine zufällige Karte ohne Fluch bekommt einen Fluch für immer (`NextGameCursed(Multiply(2))`) | Common, 2 Groschen |
+| **Schnäppchen** (Auslage) | `CardOffer::bargain` | Ein Angebot der Auslage zum halben Preis (abgerundet, mindestens 1), dafür ein Fluch auf einer anderen Karte, wenn möglich auf keiner, die die Auslage noch anbietet | etwa jedes fünfte Angebot (`bargain_percent: 20`), nie eine Spezialkarte |
+| **Hehlerware** (Tresen) | `Shop::fence` | Eines der drei Relikte zum halben Preis (abgerundet, mindestens 1), dafür beim Kauf ein Fluch auf einer zufälligen Karte | etwa jede vierte Auslage der Relikte (`fence_percent: 25`), auch nach der Neuauslage neu gewürfelt |
+
+Auslegungen von Claude:
+
+- **Pechvogel zählt jeden Fluch** (`ModKind::Curse` und `SpecialCurse`), also auch Abgestuft und die Flüche einer Kneipe (Die Oma, Spelunke), solange sie liegen: Er zählt, was gerade verflucht ist. Damit bringt er dem Nullspieler ab Start +4 (seine vier abgestuften Unter) und Bruderherz +9 (sechs Fleckig, drei Ramponiert). Darum Rare und 9 Groschen, die oberste Stufe der Staffel. Im Null zählt der Grundwert wie bei Acht-Fünfzehn mit. Der Bot reinigt keine Flüche mehr, solange er ihn hält.
+- **Fusel** wird wie Kurzer und Eierlikör vor „Skat oder Hand“ getrunken (zehn Karten, Skat unberührt), nicht am Tresen und nicht nach dem Aufnehmen. Anders als der Doppelkorn gibt er nicht neu: Er darf auf ein bekanntes Blatt, der Fluch ist der Preis dafür. Der Fluch liegt sofort auf der Karte; was er beim Geben tut (Augen, Durchsichtig), gilt ab dem nächsten Spiel, seine Hooks (Fleckig bei der Ansage) und der Wegfall der ersetzten Zinke schon jetzt. Kann keine Karte mehr einen Fluch nehmen, lehnt der Run ihn ab (`NoModAvailable`).
+- **Preis**: Der halbe Preis gilt vor dem Wirt und dem Preis des Charakters (Bruderherz: halb auf Rot); die Kachel zeigt den vollen Preis durchgestrichen daneben (`was` in der Sicht).
+- **Bot** (`run/bot.rs`, nicht gemessen): Pechvogel Kaufwert 4, Fusel 1 (vor „Skat oder Hand“ bei einem nicht schwachen Blatt, wenn kein anderer Schnaps auf das Spiel wartet). Hehlerware und Schnäppchen zählen 1 weniger als dasselbe Angebot ohne Fluch (`TRADE_PENALTY`), mit Pechvogel voll.
+
+**Oberfläche.** Die Relikte am Tresen liegen seit dem 03.11.2026 als **Reihe aus drei Kacheln** wie die Auslage der Zinken (3 × 1, auch hochkant am Handy): Bierdeckel, Name, Text, Preis, Kaufen; die ganze Kachel öffnet die Infokarte. Schnäppchen und Hehlerware tragen ein rotes Band („Schnäppchen“, „Hehlerware“), einen gestrichelten roten Rand, den vollen Preis durchgestrichen und die Zeile „Schnäppchen: dafür ein Fluch auf einer anderen Karte“ bzw. „Hehlerware: dafür ein Fluch auf einer zufälligen Karte“; die Infokarte der Hehlerware erklärt den Handel. Motive: Pechvogel eine schwarze Katze auf dem runden Wert-Deckel, Fusel eine schmutzige Flasche ohne Etikett.
+
+**Spielstände.** Keine neue Version: `Shop::fence`, `CardOffer::bargain` und `trade_rng` fehlen in alten Spielständen und kommen leer bzw. aus einer festen Zahl.
 
 ---
 
@@ -1302,6 +1330,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 **Wege und Begegnungen v2 (03.11.2026, 5.0.1 und 13.0), vorläufig ohne Messung**: Neue Einnahmen unterwegs: Fundgroschen 2, die Gratis-Optionen der Ereignisse (Kartengeber 2, Wasser 1, Kiebitzen beim Preisskat 2, Falschspieler auffliegen lassen 4, Finderlohn 4, altes Blatt 4, Kiebitz 2, Wirt 5), ein Relikt zum vollen Preis beim Alten Bekannten, ein Schnaps bei vollen Plätzen sein Tresen-Preis in Groschen. Neue Ausgaben: eine Runde ausgeben 3, aufwischen 2, die Wette auf einen Sieg 2 (zahlt 3), die Würfelbude 2, 4 oder 6 (Erwartungswert 0). Der Kiosk verkauft einen von zwei Schnäpsen 1 Groschen unter dem Tresen-Preis (nach dem Rabatt des Wirts, mindestens 1), ohne Anschreiben.
 
 **Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie das Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
+
+**Flüche als Handel (03.11.2026, 8.8), vorläufig ohne Messung**: Pechvogel 9 (Rare; Bruderherz hat ab Start +9 Grundwert), Fusel 2 (Common). Schnäppchen (etwa jedes fünfte Angebot der Auslage) und Hehlerware (etwa jede vierte Auslage der Relikte) kosten die Hälfte, abgerundet, mindestens 1; der Fluch zahlt beim Erhalt wie jeder Fluch 3 Groschen. Kaufwerte des Bots: Pechvogel 4, Fusel 1, ein Handel 1 weniger als ohne Fluch.
 
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.

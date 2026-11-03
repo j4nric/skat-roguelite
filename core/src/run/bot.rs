@@ -52,7 +52,9 @@
 //! without modification when Groschen are plenty, draw a new offer when
 //! nothing sensible can be bought and Groschen are plenty, leave. Values
 //! come from [`relic_value`], [`consumable_value`] and [`zinken_value`].
-//! The bot never pays on credit for Zinken.
+//! The bot never pays on credit for Zinken. A trade offer ("Hehlerware",
+//! "Schnäppchen") counts [`TRADE_PENALTY`] less at its half price; with
+//! "Pechvogel" it counts in full and the bot keeps its curses.
 //!
 //! Encounters ([`RunBot::encounter_action`], since 03.11.2026 one option
 //! must be taken): the option with the best value ([`RunBot::option_value`],
@@ -78,7 +80,8 @@
 //! paints the cheapest side card (never a jack) into the trump suit of a
 //! suit game, then "Doppelkorn" before a game that is not weak
 //! ([`RunBot::is_weak`]) and "Magenbitter" before a weak one, never before
-//! a Null. "Kräuter" counts as "Ein Bier".
+//! a Null. "Kräuter" counts as "Ein Bier". "Fusel" before Skat oder Hand
+//! with a hand that is not weak, when no other Schnaps waits for the game.
 //!
 //! Figures "Die Oma" and "Der Opa": in a hand game the bot takes the card
 //! the run offers from the skat whenever it may (never in a Null), giving
@@ -99,7 +102,7 @@ use super::{EncounterOption, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{
-    BetOn, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content,
+    BetOn, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content, Effect,
     EncounterEffect, NextGameEffect, RelicId, StopCategory,
 };
 use crate::deck::DealtCard;
@@ -190,7 +193,13 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `slate` | 2 | the bot never buys on credit, it only pays the debt back |
 /// | `guardian_angel` | 7 | a life per district at most, never in a boss pub |
 /// | `dive_expert` | 1 | the bot rarely enters a Spelunke |
-pub const RELIC_VALUES: [(&str, u32); 30] = [
+///
+/// Curses as trade (03.11.2026), by judgement, not measured:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `jinx` | 4 | +1 Grundwert per cursed card: +9 for "Bruderherz" from the start, +4 for the Nullspieler, little for the Alleinspieler |
+pub const RELIC_VALUES: [(&str, u32); 31] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -221,6 +230,7 @@ pub const RELIC_VALUES: [(&str, u32); 30] = [
     ("slate", 2),
     ("guardian_angel", 7),
     ("dive_expert", 1),
+    ("jinx", 4),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -252,6 +262,7 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `clear_spirit` | 1 | "Klarer": between two games when the account is below 0 |
 /// | `nightcap` | 2 | "Absacker": before the last game of a normal pub when the target is not reached |
 /// | `eggnog` | 1 | "Eierlikör": before Skat oder Hand whenever the account is below half the target |
+/// | `rotgut` | 1 | "Fusel": before Skat oder Hand with a hand that is not weak; the curse costs a card |
 /// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
 ///
 /// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
@@ -267,7 +278,7 @@ pub const SWAP_MARGIN: u32 = 3;
 /// often than used. Kräuter and Doppelkorn 2 → 1 on 03.11.2026: about
 /// half of them were never drunk
 /// (`docs/balance/2026-11-03-kleine-runde.md`, 1387 / 772 and 695 / 349).
-pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
+pub const CONSUMABLE_VALUES: [(&str, u32); 11] = [
     ("herbal", 1),
     ("double_grain", 1),
     ("blue_curacao", 2),
@@ -278,6 +289,7 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("clear_spirit", 1),
     ("nightcap", 2),
     ("eggnog", 1),
+    ("rotgut", 1),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -311,6 +323,11 @@ pub const ZINKEN_VALUES: [(&str, u32); 8] = [
     ("undead", 2),
     ("wild_card", 1),
 ];
+
+/// A trade offer ("Hehlerware", "Schnäppchen", curses as trade) is worth
+/// this much less to the bot than the same offer without the curse, unless
+/// it owns a relic that likes curses ("Pechvogel"). Not measured.
+pub const TRADE_PENALTY: u32 = 1;
 
 /// The Kartenmaler needs at least this many Groschen left over after
 /// paying for him (not measured).
@@ -953,6 +970,7 @@ impl RunBot {
         let coins = run.coins();
         let price = |p: u32| run.shop_price(content, p);
         let cursed = Self::cursed_card(run, content);
+        let likes_curses = Self::likes_curses(run, content);
         let zinken = &content.run.shop.zinken;
         // 1. "Karte reinigen" on a cursed card (ADR 0015).
         if let Some(target) = cursed {
@@ -970,7 +988,12 @@ impl RunBot {
             .filter_map(|(slot, id)| {
                 let id = id.as_ref()?;
                 let def = content.relic(id)?;
-                Some((relic_value(id), price(def.price), slot))
+                let value = if run.is_fence(slot) && !likes_curses {
+                    relic_value(id).saturating_sub(TRADE_PENALTY)
+                } else {
+                    relic_value(id)
+                };
+                Some((value, run.relic_offer_cost(content, slot, def.price), slot))
             })
             .filter(|&(value, _, _)| value > 0)
             .collect();
@@ -1035,7 +1058,11 @@ impl RunBot {
                 let offer = offer.as_ref()?;
                 let card = run.edition().get(offer.card)?;
                 let bare = card.mods.iter().all(|m| *m == offer.card_mod);
-                let value = zinken_value(&offer.card_mod);
+                let value = if offer.bargain.is_some() && !likes_curses {
+                    zinken_value(&offer.card_mod).saturating_sub(TRADE_PENALTY)
+                } else {
+                    zinken_value(&offer.card_mod)
+                };
                 let cost = run.card_offer_cost(content, offer);
                 (bare && value > 0 && cost <= coins).then_some((value, cost, slot))
             })
@@ -1083,9 +1110,11 @@ impl RunBot {
     /// stays: it is the Nullspieler's start edition).
     fn cursed_card(run: &Run, content: &Content) -> Option<u32> {
         // "Bruderherz" cannot cleanse his curses: nothing to aim for.
+        // With "Pechvogel" a curse is worth Grundwert.
         if content
             .character(run.character())
             .is_some_and(|c| c.rule.keep_curses)
+            || Self::likes_curses(run, content)
         {
             return None;
         }
@@ -1100,6 +1129,21 @@ impl RunBot {
                 })
             })
             .map(|c| c.id)
+    }
+
+    /// Whether the bot owns a relic that pays for cursed cards
+    /// ("Pechvogel"): then it keeps its curses and takes trade offers at
+    /// full value.
+    fn likes_curses(run: &Run, content: &Content) -> bool {
+        run.relics()
+            .iter()
+            .filter_map(|r| content.relic(r))
+            .flat_map(|d| {
+                d.passive
+                    .iter()
+                    .chain(d.hooks.iter().flat_map(|h| h.then()))
+            })
+            .any(|e| matches!(e, Effect::AddBaseValuePerCursedCard(n) if *n > 0))
     }
 
     /// Deck ids of the aces, Kreuz first, the least modified first.
@@ -1233,6 +1277,20 @@ impl RunBot {
         let rules = &active.rules;
         if rules.require_hand {
             return Self::forced_hand(run, content);
+        }
+        // "Fusel" on a hand that is not weak, one next-game Schnaps per game.
+        if !rules.require_ouvert
+            && run.pending_next_game().is_empty()
+            && !RunBot::is_weak(hand, suit)
+        {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::NextGameCursed(_)),
+                None,
+            ) {
+                return Some(action);
+            }
         }
         let null_counts = Self::null_counts(run, content, None);
         let exposed = if null_counts { exposed } else { usize::MAX };
@@ -1868,6 +1926,7 @@ mod tests {
                 card_mod: CardModId::new(card_mod),
                 value: 1,
                 price,
+                bargain: None,
             })
         };
         run.edition

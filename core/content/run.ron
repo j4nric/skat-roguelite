@@ -109,6 +109,16 @@
             special_price: 6,
             capped_voucher_coins: 3,
         ),
+        // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026, DESIGN
+        // 8.6): Schnäppchen in der Auslage (bargain_percent je Angebot, halber
+        // Preis abgerundet, mindestens 1, dafür ein Fluch auf einer anderen
+        // Karte) und Hehlerware unter den Relikten (fence_percent je
+        // Auslage der Relikte: ein Relikt zum halben Preis, dafür ein Fluch
+        // auf einer zufälligen Karte). VORLÄUFIG, nach Augenmaß.
+        trade: (
+            bargain_percent: 20,
+            fence_percent: 25,
+        ),
     ),
     // Bosse (DESIGN 11). Seit ADR 0017 ohne Kontra-Hans, Revolutionär und
     // Kiebitz-Mörder.

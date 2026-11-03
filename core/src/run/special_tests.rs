@@ -363,6 +363,7 @@ fn a_special_offer_keeps_the_zinke_of_the_card() {
             card_mod: id("undead"),
             value: 1,
             price: 7,
+            bargain: None,
         }],
     );
     let view = run.view(&content).shop.expect("shop");
@@ -390,6 +391,7 @@ fn a_special_offer_goes_through_the_tresen_prices() {
         card_mod: id("undead"),
         value: 1,
         price: 7,
+        bargain: None,
     };
     let plain = run.card_offer_cost(&content, &offer);
     assert_eq!(plain, 7);
@@ -412,6 +414,7 @@ fn a_special_offer_the_cap_forbids_cannot_be_bought() {
             card_mod: id("undead"),
             value: 1,
             price: 7,
+            bargain: None,
         }],
     );
     let err = run
@@ -517,6 +520,7 @@ fn a_save_from_before_the_cap_keeps_both_special_cards() {
             card_mod: id("wild_card"),
             value: 1,
             price: 7,
+            bargain: None,
         }],
     );
     let json = serde_json::to_string(&run).expect("save");

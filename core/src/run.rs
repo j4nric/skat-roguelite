@@ -55,6 +55,7 @@ pub mod meta;
 pub mod opponents;
 pub mod player;
 pub mod tour;
+pub mod trade;
 pub mod view;
 pub mod zinken;
 
@@ -664,6 +665,11 @@ pub struct Shop {
     /// no Zinken, no selling of relics, no credit.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub kiosk: bool,
+    /// The slot of the relic offered as "Hehlerware" (curses as trade,
+    /// DESIGN 8.6): half price, and a curse on a random card when bought.
+    /// `None` in saves from before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fence: Option<usize>,
 }
 
 /// Groschen paid for a won series. Serialized with its sum as `total`, so
@@ -1037,6 +1043,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         relics: Vec<Option<RelicId>>,
         /// Consumables on offer.
         consumables: Vec<Option<ConsumableId>>,
+        /// The slot of the relic offered as "Hehlerware", if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fence: Option<usize>,
     },
     /// A relic was bought.
     RelicBought {
@@ -1115,6 +1124,19 @@ pub enum RunEvent<G = Event<DealtCard>> {
         card_mod: CardModId,
         /// Its value.
         value: i32,
+    },
+    /// A trade put a permanent curse on a card of the player's edition
+    /// (curses as trade, DESIGN 8.6): a "Schnäppchen" of the Auslage, a
+    /// relic of the "Hehlerware", the Schnaps "Fusel". The `DeckChanged`
+    /// that follows shows the card; a curse that pays when attached says
+    /// so after it.
+    TradeCurse {
+        /// The card (instance id).
+        card: u32,
+        /// The curse.
+        curse: CardModId,
+        /// What the curse was the price of.
+        cause: trade::CurseCause,
     },
     /// "Karte reinigen" at the Tresen was paid. The `DeckChanged` that
     /// follows shows the card.
@@ -1998,6 +2020,11 @@ pub struct Run {
     /// The Kartenmaler's choice, waiting for the player.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     painter: Option<zinken::PainterChoice>,
+    /// Curses as trade (DESIGN 8.6): whether an offer is a "Schnäppchen"
+    /// or "Hehlerware", and which card a trade curses with which curse.
+    /// Its own generator, so that the other draws stay as they were.
+    #[serde(default = "Run::default_trade_rng")]
+    trade_rng: Rng,
 }
 
 impl Run {
@@ -2118,6 +2145,7 @@ impl Run {
             boss_reward: None,
             zinken_rng: master.fork(),
             painter: None,
+            trade_rng: master.fork(),
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -2229,6 +2257,11 @@ impl Run {
     /// Route generator of saves from before the Kneipentour.
     fn default_tour_rng() -> Rng {
         Rng::from_seed(0x4B4E_4549_5045_4E54)
+    }
+
+    /// Trade generator of saves from before curses as trade ("HANDEL").
+    fn default_trade_rng() -> Rng {
+        Rng::from_seed(0x4841_4E44_454C_0000)
     }
 
     /// Zinken generator of saves from before the Auslage ("ZINKEN").
@@ -3221,7 +3254,12 @@ impl Run {
                 };
                 if holds {
                     for effect in hook.then() {
-                        self.apply_effect(&source.source, &effect.scaled(source.scale), events);
+                        self.apply_effect(
+                            content,
+                            &source.source,
+                            &effect.scaled(source.scale),
+                            events,
+                        );
                     }
                 }
             }
@@ -3230,7 +3268,13 @@ impl Run {
 
     /// Apply one effect. Card-level effects were applied when the deck was
     /// resolved and are ignored here.
-    fn apply_effect(&mut self, source: &Source, effect: &Effect, events: &mut Vec<RunEvent>) {
+    fn apply_effect(
+        &mut self,
+        content: &Content,
+        source: &Source,
+        effect: &Effect,
+        events: &mut Vec<RunEvent>,
+    ) {
         match effect {
             Effect::SetFlag(flag) => {
                 if self.flags.insert(flag.clone()) {
@@ -3317,7 +3361,12 @@ impl Run {
             }
             _ => {}
         }
-        let line = score_line(source, effect, &self.counters);
+        let line = score_line(
+            source,
+            effect,
+            &self.counters,
+            self.cursed_for(content, effect),
+        );
         let Some(active) = self.game.as_mut() else {
             return;
         };
@@ -3329,6 +3378,7 @@ impl Run {
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
+            | Effect::AddBaseValuePerCursedCard(_)
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
@@ -3895,7 +3945,7 @@ impl Run {
         let sources = self.sources(content, true);
         for source in &sources {
             for effect in source.passive {
-                self.apply_effect(&source.source, effect, events);
+                self.apply_effect(content, &source.source, effect, events);
             }
         }
         self.fire(content, Stage::OnDeal, None, None, events);
@@ -4219,7 +4269,8 @@ impl Run {
     /// Draw a deterministic offer from the content pool. Relics the player
     /// owns, locked relics and items for other characters are not offered;
     /// no item twice in one offer. Rarer items are drawn less often
-    /// (weights in `run.ron`).
+    /// (weights in `run.ron`). One relic may be "Hehlerware"
+    /// ([`Run::draw_fence`]).
     fn draw_offer(&mut self, content: &Content, rerolls: u32) -> Shop {
         let weights = &content.run.shop.rarity_weights;
         let relic_pool = self.relic_pool(content, false);
@@ -4239,7 +4290,9 @@ impl Run {
             consumable_pool,
             content.run.shop.consumable_offers,
         );
+        let fence = self.draw_fence(content, relics.len());
         Shop {
+            fence,
             relics: relics.into_iter().map(Some).collect(),
             consumables: consumables.into_iter().map(Some).collect(),
             rerolls,
@@ -4473,6 +4526,30 @@ impl Run {
         Ok(self.edition.cleanse(card)?)
     }
 
+    /// How many cards of the player's edition carry a curse now (a special
+    /// curse such as "Abgestuft" and a curse laid for one pub included):
+    /// what "Pechvogel" counts ([`Effect::AddBaseValuePerCursedCard`]).
+    #[must_use]
+    pub fn cursed_cards(&self, content: &Content) -> u32 {
+        let count = self
+            .edition
+            .cards()
+            .iter()
+            .filter(|c| self.card_is_cursed(content, c.id))
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
+    /// [`Run::cursed_cards`] for an effect that counts them, else 0 (not
+    /// counted).
+    fn cursed_for(&self, content: &Content, effect: &Effect) -> u32 {
+        if matches!(effect, Effect::AddBaseValuePerCursedCard(_)) {
+            self.cursed_cards(content)
+        } else {
+            0
+        }
+    }
+
     /// Whether a card of the player's edition carries a curse (a special
     /// curse such as "Abgestuft" included).
     #[must_use]
@@ -4546,19 +4623,23 @@ impl Run {
         let def = content
             .relic(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
-        let price = self.shop_price(content, def.price);
+        let price = self.relic_offer_cost(content, slot, def.price);
         if price > coins && !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
         if !content.relic_slot_free(self.character, owned) {
             return Err(RunError::NoFreeSlot);
         }
+        let fence = self.is_fence(slot);
         if let Some(entry) = self.shop_mut()?.relics.get_mut(slot) {
             *entry = None;
         }
         self.pay(price, events);
         self.relics.push(id.clone());
         events.push(RunEvent::RelicBought { relic: id, price });
+        if fence {
+            self.trade_curse(content, &[], trade::CurseCause::Fence, events)?;
+        }
         Ok(())
     }
 
@@ -4668,6 +4749,7 @@ impl Run {
         events.push(RunEvent::ShopOpened {
             relics: shop.relics.clone(),
             consumables: shop.consumables.clone(),
+            fence: shop.fence,
         });
         self.shop = Some(shop);
         Ok(())
@@ -4851,6 +4933,14 @@ impl Run {
                 }
                 self.pending_next_game.push((id.clone(), *effect));
             }
+            ConsumableAction::NextGameCursed(effect) => {
+                self.declaring()?;
+                if self.trade_curse_targets(content, &[]).is_empty() {
+                    return Err(RunError::NoModAvailable);
+                }
+                self.pending_next_game.push((id.clone(), *effect));
+                self.trade_curse(content, &[], trade::CurseCause::Schnapps, events)?;
+            }
         }
         self.consumables.remove(slot);
         events.push(RunEvent::ConsumableUsed { consumable: id });
@@ -5024,7 +5114,7 @@ impl Run {
             // "Beim Erhalt" is not scaled: a curse pays its Groschen once.
             if holds {
                 for effect in hook.then() {
-                    self.apply_effect(&source, effect, events);
+                    self.apply_effect(content, &source, effect, events);
                 }
             }
         }
@@ -5108,7 +5198,7 @@ impl Run {
                         if let Effect::TurnInto(special) = effect {
                             self.turn_into(content, card, &card_mod, special, &source, events);
                         } else {
-                            self.apply_effect(&source, &effect.scaled(value), events);
+                            self.apply_effect(content, &source, &effect.scaled(value), events);
                         }
                     }
                 }
@@ -5143,7 +5233,7 @@ impl Run {
                     coins,
                 });
                 let amount = i32::try_from(coins).unwrap_or(i32::MAX);
-                self.apply_effect(source, &Effect::GainCoins(amount), events);
+                self.apply_effect(content, source, &Effect::GainCoins(amount), events);
             }
             Err(_) => {}
         }
@@ -5298,12 +5388,14 @@ pub fn series_target(
 }
 
 /// The line a score effect (Grundwert, Gewinnstufen, Spielwert) adds, with
-/// the run counters as they are now. `None` for every other effect and for
-/// a counter that is still zero.
+/// the run counters as they are now and `cursed_cards` cursed cards in the
+/// player's edition ([`Run::cursed_for`]). `None` for every other effect
+/// and for a counter (or count of cursed cards) that is still zero.
 fn score_line(
     source: &Source,
     effect: &Effect,
     counters: &BTreeMap<String, u32>,
+    cursed_cards: u32,
 ) -> Option<ScoreLine> {
     let (lever, change) = match effect {
         Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
@@ -5318,6 +5410,13 @@ fn score_line(
         Effect::AddBaseValuePerCounter { counter, per } => {
             let value = counters.get(counter).copied().unwrap_or(0);
             let add = i64::from(value) * i64::from(*per);
+            if add == 0 {
+                return None;
+            }
+            (Lever::BaseValue, Change::Add(add))
+        }
+        Effect::AddBaseValuePerCursedCard(per) => {
+            let add = i64::from(cursed_cards) * i64::from(*per);
             if add == 0 {
                 return None;
             }
@@ -5495,6 +5594,8 @@ mod step_tests;
 mod tests;
 #[cfg(test)]
 mod tour_tests;
+#[cfg(test)]
+mod trade_tests;
 #[cfg(test)]
 mod undead_tests;
 #[cfg(test)]

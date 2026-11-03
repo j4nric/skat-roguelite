@@ -520,6 +520,12 @@ pub struct CardOfferView {
     pub replaces: Option<CardModId>,
     /// Whether it would raise the same modification on the card.
     pub raises: bool,
+    /// A "Schnäppchen" (curses as trade, DESIGN 8.6): half price, and
+    /// buying it curses another card of the edition.
+    pub bargain: bool,
+    /// For a "Schnäppchen": what it would cost without the trade (after
+    /// discounts).
+    pub was: Option<u32>,
 }
 
 /// A service of the Tresen that works on a card of the player's choice
@@ -573,10 +579,17 @@ pub struct RelicOffer {
     pub slot: usize,
     /// The relic.
     pub relic: RelicInfo,
-    /// What it costs now (the content price minus discounts).
+    /// What it costs now (the content price minus discounts, half for
+    /// "Hehlerware").
     pub price: u32,
     /// Whether it can be bought now (Groschen and free slot).
     pub can_buy: bool,
+    /// "Hehlerware" (curses as trade, DESIGN 8.6): half price, and buying
+    /// it curses a random card of the edition.
+    pub fence: bool,
+    /// For "Hehlerware": what it would cost without the trade (after
+    /// discounts).
+    pub was: Option<u32>,
 }
 
 /// A consumable on offer.
@@ -1486,9 +1499,12 @@ impl Run {
                 .map(|(slot, id)| {
                     id.as_ref().map(|id| {
                         let relic = Run::relic_info(content, id);
+                        let fence = self.is_fence(slot);
                         RelicOffer {
                             slot,
-                            price: self.shop_price(content, relic.price),
+                            price: self.relic_offer_cost(content, slot, relic.price),
+                            was: fence.then(|| self.shop_price(content, relic.price)),
+                            fence,
                             relic,
                             can_buy: self.accepts(content, RunAction::BuyRelic(slot)),
                         }
@@ -1532,6 +1548,14 @@ impl Run {
                         can_buy: self.accepts(content, RunAction::BuyCardOffer(slot)),
                         replaces,
                         raises,
+                        bargain: offer.bargain.is_some(),
+                        was: offer.bargain.map(|full| {
+                            let full = super::zinken::CardOffer {
+                                price: full,
+                                ..offer.clone()
+                            };
+                            self.card_offer_cost(content, &full)
+                        }),
                     })
                 })
                 .collect(),

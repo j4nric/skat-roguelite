@@ -51,6 +51,7 @@ fn offer(card: u32, card_mod: &str, value: i32, price: u32) -> CardOffer {
         card_mod: CardModId::new(card_mod),
         value,
         price,
+        bargain: None,
     }
 }
 
@@ -134,7 +135,15 @@ fn the_tresen_lays_out_three_concrete_offers() {
             } else {
                 def.price
             };
-            assert_eq!(o.price, base + if premium { zinken.premium } else { 0 });
+            let full = base + if premium { zinken.premium } else { 0 };
+            // A "Schnäppchen" (curses as trade) costs half.
+            match o.bargain {
+                Some(before) => {
+                    assert_eq!(before, full);
+                    assert_eq!(o.price, crate::content::TradeConfig::half(full));
+                }
+                None => assert_eq!(o.price, full),
+            }
         }
         // Deterministic.
         let (again, _) = tresen(&content, seed, 10);

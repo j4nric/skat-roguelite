@@ -257,6 +257,11 @@ pub enum Effect {
         /// Grundwert per point of the counter.
         per: i32,
     },
+    /// Lever Grundwert: add this much per card of the player's edition that
+    /// carries a curse when the effect fires, a special curse such as
+    /// "Abgestuft" and a curse laid for one pub included ("Pechvogel",
+    /// 03.11.2026). Scaled like [`Effect::AddBaseValue`].
+    AddBaseValuePerCursedCard(i32),
     /// Lever Gewinnstufen: add `per` levels per point of a run counter
     /// ("Skatgott": +1 per won Schneider game, for the rest of the run).
     AddLevelsPerCounter {
@@ -498,6 +503,7 @@ impl Effect {
             | Effect::MultiplyBaseValue(_)
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
+            | Effect::AddBaseValuePerCursedCard(_)
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
@@ -594,7 +600,7 @@ impl Effect {
     /// This effect for a card modification of `value` (DESIGN 7.2): the
     /// effects of a card modification are written per unit of its value
     /// and multiplied here. Scaled: `AddCardPoints`, `RankBonus` (at most
-    /// 255), `AddBaseValue`, `AddLevels`, `GainCoins` and
+    /// 255), `AddBaseValue`, `AddBaseValuePerCursedCard`, `AddLevels`, `GainCoins` and
     /// `MultiplyTrickPoints` (the factor itself is the value: one unit of
     /// "Erster Stich" with value 2 is ×2). Every other effect stays as it
     /// is. A value of 1 changes nothing.
@@ -604,6 +610,7 @@ impl Effect {
         match self {
             Effect::AddCardPoints(n) => Effect::AddCardPoints(times(*n)),
             Effect::AddBaseValue(n) => Effect::AddBaseValue(times(*n)),
+            Effect::AddBaseValuePerCursedCard(n) => Effect::AddBaseValuePerCursedCard(times(*n)),
             Effect::AddLevels(n) => Effect::AddLevels(times(*n)),
             Effect::GainCoins(n) => Effect::GainCoins(times(*n)),
             Effect::RankBonus(n) => {

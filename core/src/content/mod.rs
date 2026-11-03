@@ -1220,6 +1220,12 @@ pub enum ConsumableAction {
     /// ("Eierlikör"; else `ConditionNotMet`). Drunk between two games
     /// only: with ten cards before the skat is touched.
     NextGameIfBehind(NextGameEffect),
+    /// Change the next declared game like [`ConsumableAction::NextGame`]
+    /// and put a permanent curse on a random card of the player's edition
+    /// that carries none ("Fusel", 03.11.2026: curses as trade). Drunk
+    /// before Skat oder Hand only (ten cards, skat untouched); refused with
+    /// no card left to take a curse.
+    NextGameCursed(NextGameEffect),
 }
 
 /// What a consumable of [`ConsumableAction::NextGame`] does to the next
@@ -1350,6 +1356,35 @@ pub struct ShopConfig {
     /// Zinken at the Tresen: the Auslage, its reroll, the Kartenmaler and
     /// "Karte reinigen" (DESIGN 8.6).
     pub zinken: ZinkenConfig,
+    /// Curses as trade: "Schnäppchen" in the Auslage and "Hehlerware" among
+    /// the relics (DESIGN 8.6). Without it neither is offered.
+    #[serde(default)]
+    pub trade: TradeConfig,
+}
+
+/// Curses as trade at the Tresen (decided by the user on 03.11.2026,
+/// DESIGN 8.6): an offer at half price (rounded down, at least 1) that
+/// puts a curse on a random card of the player's edition. Every number is
+/// provisional.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct TradeConfig {
+    /// Chance in percent that an offer of the Auslage is a "Schnäppchen":
+    /// half price, and a curse on another card.
+    #[serde(default)]
+    pub bargain_percent: u32,
+    /// Chance in percent that a drawn relic offer has one "Hehlerware": a
+    /// relic at half price that curses a card when bought.
+    #[serde(default)]
+    pub fence_percent: u32,
+}
+
+impl TradeConfig {
+    /// The trade price of an offer: half of `price`, rounded down, at
+    /// least 1 (0 stays 0).
+    #[must_use]
+    pub fn half(price: u32) -> u32 {
+        if price == 0 { 0 } else { (price / 2).max(1) }
+    }
 }
 
 /// Zinken at the Tresen (DESIGN 8.6, decided by the user on 02.11.2026):
@@ -1835,6 +1870,8 @@ impl Content {
                 ConsumableAction::NextGame(
                     NextGameEffect::Multiply(0) | NextGameEffect::MultiplyWin(0)
                 ) | ConsumableAction::NextGameIfBehind(
+                    NextGameEffect::Multiply(0) | NextGameEffect::MultiplyWin(0)
+                ) | ConsumableAction::NextGameCursed(
                     NextGameEffect::Multiply(0) | NextGameEffect::MultiplyWin(0)
                 ) | ConsumableAction::ExtraGames(0)
             );
