@@ -1029,6 +1029,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
         let def = content.relic(id).expect("relic");
         assert_eq!(def.kind, crate::content::RelicKind::HouseRule);
     }
-    run.apply(&content, choose(2, Some(31))).expect("winkel");
-    assert!(has_mod(&run, 31, "rank"));
+    // "Winkel" fits no Daus since 03.11.2026: the König beside it.
+    run.apply(&content, choose(2, Some(30))).expect("winkel");
+    assert!(has_mod(&run, 30, "rank"));
 }

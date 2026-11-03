@@ -341,6 +341,9 @@ fn the_auslage_never_offers_a_special_card_the_edition_has() {
         run.edition
             .add_mod(&content, 12, &id("voucher_wild"), 1)
             .expect("Narrenmarke");
+        run.edition
+            .add_mod(&content, 14, &id("doppelganger"), 1)
+            .expect("Doppelgänger");
         run.walk_to_tresen(&content);
         for o in offers(&run) {
             let def = content.card_mod(&o.card_mod).expect("mod");

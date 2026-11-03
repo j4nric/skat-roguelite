@@ -226,10 +226,26 @@ fn on_score(
         Condition::ThisCardWinsLastTrick => certain_last(end.last_tricks, |l| {
             l.is_some_and(|(c, _)| this_card.is_some_and(|t| t.id == c.id))
         }),
+        // "Schneiderkreide": true once played; a card still in the hand
+        // may be played or not.
+        Condition::ThisCardPlayed => {
+            if evaluate(condition, ctx, this_card) {
+                Some(true)
+            } else if this_card.is_some_and(|t| {
+                ctx.game
+                    .is_some_and(|g| g.hand(Seat::DECLARER).iter().any(|c| c.id == t.id))
+            }) {
+                None
+            } else {
+                Some(false)
+            }
+        }
         // On trick end only: never true when the game is scored.
         Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardWinsFirstTrick => Some(false),
+        | Condition::ThisCardWinsFirstTrick
+        | Condition::ThisCardWinsTrick
+        | Condition::ThisCardBeatsDefenderCard(_) => Some(false),
     }
 }
 
@@ -337,6 +353,17 @@ fn during_play(
         Condition::FirstTrickOfDeclarer => (outcome.declarer_tricks > 0).then_some(false),
         // "Erster Stich": decided once the first trick is complete.
         Condition::ThisCardWinsFirstTrick => (done > 0).then_some(false),
+        // "Goldkante", "Fadenkreuz", "Schneiderkreide": only a card the
+        // player still holds can win a trick to come or be played.
+        Condition::ThisCardWinsTrick
+        | Condition::ThisCardBeatsDefenderCard(_)
+        | Condition::ThisCardPlayed => {
+            let held = this_card.is_some_and(|t| {
+                game.hand(Seat::DECLARER).iter().any(|c| c.id == t.id)
+                    || game.current_trick().iter().any(|c| c.id == t.id)
+            });
+            (!held).then_some(false)
+        }
         Condition::LastTrickWonWith { .. }
         | Condition::LastTrickWinnerMatches { .. }
         | Condition::ThisCardWinsLastTrick => None,
@@ -357,6 +384,7 @@ impl Run {
         };
         let game = &active.game;
         if active.awaiting_re
+            || active.pending_rise.is_some()
             || game.phase() != Phase::Playing
             || game.current_seat() != Some(Seat::DECLARER)
         {
@@ -368,12 +396,13 @@ impl Run {
         if declaration.is_ramsch() {
             return false;
         }
-        // An "Untot" card that can still rise: the substitute is drawn at
-        // random, the bounds of the rest cannot know it.
+        // An "Untot" card that can still rise, or a "Doppelgänger" still to
+        // swap: the cards are drawn at random, the bounds of the rest
+        // cannot know them.
         if game
             .hand(Seat::DECLARER)
             .iter()
-            .any(|&c| self.can_rise(content, c))
+            .any(|&c| self.can_rise(content, c) || self.is_doppelganger(content, c))
         {
             return false;
         }

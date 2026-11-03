@@ -914,6 +914,25 @@ pub struct GameView {
     /// Whether "Drei drücken" draws a card at the next pickup of the skat
     /// (once per series; [`Run::discard_three_ready`]).
     pub discard_three_ready: bool,
+    /// An "Untot" card waiting for the player's three cards
+    /// ([`RunAction::ChooseRiseCards`]); every card of the hand may be
+    /// picked. `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rise_choice: Option<RiseChoiceView>,
+}
+
+/// "Untot" (DESIGN 7.2): the player picks [`super::UNDEAD_PICK`] cards of
+/// his hand, one of them is drawn and goes into the trick in place of the
+/// rising card.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RiseChoiceView {
+    /// The card as it lies in the trick.
+    pub card: CardView,
+    /// The card it comes back as: a copy of the trick's winning card (the
+    /// card itself if it won the trick).
+    pub becomes: CardView,
+    /// How many cards to pick: always [`super::UNDEAD_PICK`].
+    pub pick: usize,
 }
 
 /// The score line of the table while playing: what the game in progress
@@ -1070,6 +1089,23 @@ impl Run {
             // in every series.
             Owner::Guest => self.back_of_seat(content, Seat::DEFENDERS[1]),
         }
+    }
+
+    /// The "Untot" card waiting for the player's three cards, if any.
+    fn rise_choice_view(&self, content: &Content) -> Option<RiseChoiceView> {
+        let card = self.rise_pending()?;
+        let trick = self.game.as_ref()?.game.tricks().last().copied()?;
+        let winning = trick.winning_card();
+        let becomes = if winning == card {
+            card
+        } else {
+            card.risen_as(winning)
+        };
+        Some(RiseChoiceView {
+            card: self.card_view(content, card),
+            becomes: self.card_view(content, becomes),
+            pick: super::UNDEAD_PICK,
+        })
     }
 
     fn card_view(&self, content: &Content, card: DealtCard) -> CardView {
@@ -2088,7 +2124,9 @@ impl Run {
             declarer_tricks,
             defender_tricks: game.tricks().len() - declarer_tricks,
             skat: known_skat,
-            your_turn: !active.awaiting_re && game.current_seat() == Some(Seat::DECLARER),
+            your_turn: !active.awaiting_re
+                && active.pending_rise.is_none()
+                && game.current_seat() == Some(Seat::DECLARER),
             kontra: active.kontra,
             awaiting_kontra_answer: active.awaiting_re,
             kontra_possible: active.rules.kontra_source.is_some(),
@@ -2132,6 +2170,7 @@ impl Run {
                 .map(|&c| self.card_view(content, c))
                 .collect(),
             discard_three_ready: self.discard_three_ready(),
+            rise_choice: self.rise_choice_view(content),
         })
     }
 

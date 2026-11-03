@@ -1,6 +1,8 @@
-//! Card modification "Untot" (DESIGN 7.2): a card of the player that rises
-//! from a completed trick back into his hand once per game, a random other
-//! card of his hand taking its place in the trick. One test per rule edge.
+//! Card modification "Untot" (DESIGN 7.2, reworked 03.11.2026): a card of
+//! the player that rises from a completed trick back into his hand once per
+//! game, as a copy of the card that won the trick; he picks three cards of
+//! his hand, one of them is drawn and takes its place in the trick. One
+//! test per rule edge.
 
 use super::bot::RunBot;
 use super::content_tests::content;
@@ -43,14 +45,40 @@ fn game(run: &Run) -> &Game<DealtCard> {
     &run.game().expect("game").game
 }
 
-/// Player leads `lead`, the defenders answer.
+/// The first three cards of the player's hand, in hand order.
+fn first_three(run: &Run) -> [u32; 3] {
+    let hand = game(run).hand(Seat::DECLARER);
+    [hand[0].id, hand[1].id, hand[2].id]
+}
+
+/// If an "Untot" card waits, pick the first three cards of the hand.
+fn resolve_rise(run: &mut Run, content: &Content, events: &mut Vec<RunEvent>) {
+    if run.rise_pending().is_some() {
+        let pick = first_three(run);
+        events.extend(
+            run.apply_step(content, RunAction::ChooseRiseCards(pick))
+                .expect("pick"),
+        );
+    }
+}
+
+/// Player leads `lead`, the defenders answer; a waiting rise takes the
+/// first three cards of the hand.
 fn trick(run: &mut Run, content: &Content, lead: &str, left: &str, right: &str) -> Vec<RunEvent> {
     let mut events = run
         .apply_step(content, RunAction::Play(id_of(lead)))
         .expect("lead");
     events.extend(defender_plays(run, content, Seat::DEFENDERS[0], left));
     events.extend(defender_plays(run, content, Seat::DEFENDERS[1], right));
+    resolve_rise(run, content, &mut events);
     events
+}
+
+fn risen(events: &[RunEvent]) -> Option<DealtCard> {
+    events.iter().find_map(|e| match e {
+        RunEvent::Game(Event::CardRose { risen, .. }) => *risen,
+        _ => None,
+    })
 }
 
 #[test]
@@ -154,7 +182,7 @@ fn a_losing_undead_card_rises_and_the_substitute_goes_to_the_defender() {
     run.apply_step(&content, RunAction::Declare(hand_clubs()))
         .expect("declare");
     let events = trick(&mut run, &content, "H7", "HA", "S9");
-    let (_, substitute) = rose(&events).expect("rose");
+    let (card, substitute) = rose(&events).expect("rose");
     let g = game(&run);
     assert_eq!(g.tricks()[0].winner, Seat::DEFENDERS[0]);
     assert_eq!(
@@ -163,6 +191,183 @@ fn a_losing_undead_card_rises_and_the_substitute_goes_to_the_defender() {
         "Daus plus the substitute, not the Sieben"
     );
     assert_eq!(g.trick_card_points()[0], 0);
+    // It comes back as a copy of the Daus that won the trick, with its own
+    // identity.
+    let back = risen(&events).expect("risen");
+    assert_eq!(back.id, card.id);
+    assert_eq!(back.kind, "HA".parse::<CardKind>().expect("card"));
+    assert_eq!(back.card_points, 11);
+    assert_eq!(back.owner, card.owner);
+    assert!(g.hand(Seat::DECLARER).contains(&back));
+    assert!(g.deck_cards().contains(&back), "the deck knows the copy");
+}
+
+#[test]
+fn an_undead_card_that_wins_its_trick_comes_back_unchanged() {
+    let (content, mut run) = undead_run("CJ");
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    let events = trick(&mut run, &content, "CJ", "H8", "C8");
+    let (card, _) = rose(&events).expect("rose");
+    assert_eq!(risen(&events), Some(card));
+}
+
+#[test]
+fn an_undead_card_beaten_by_a_unter_comes_back_as_that_unter_but_no_spitze() {
+    // The left defender is void in hearts and trumps with the Pik-Unter.
+    let hands = [
+        "CJ HJ DJ CA CT CK C9 D7 H7 H9",
+        "SJ SA ST SK SQ S9 S8 DA DT DK",
+        "HA HT HK HQ H8 S7 DQ D9 CQ C8",
+    ];
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "H7", UNDEAD);
+    deal_with(&mut run, &content, hands, SKAT, Seat::DECLARER);
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    let matadors = game(&run).matadors();
+    let events = trick(&mut run, &content, "H7", "SJ", "H8");
+    let back = risen(&events).expect("risen");
+    assert_eq!(back.id, id_of("H7"));
+    assert_eq!(back.kind, "SJ".parse::<CardKind>().expect("card"));
+    let declaration = game(&run).declaration().expect("declared");
+    assert!(
+        crate::rules::is_trump(declaration.game(), back),
+        "an extra trump"
+    );
+    assert_eq!(game(&run).matadors(), matadors, "Spitzen as declared");
+    // It plays as the Pik-Unter: it beats the Herz-Unter.
+    assert!(crate::rules::beats(
+        declaration.game(),
+        card_in(game(&run).hand(Seat::DECLARER), "HJ"),
+        card_in(game(&run).hand(Seat::DECLARER), "HJ"),
+        back
+    ));
+}
+
+#[test]
+fn the_player_picks_three_cards_and_one_of_them_is_drawn() {
+    let (content, mut run) = undead_run("CJ");
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    run.apply_step(&content, RunAction::Play(id_of("CJ")))
+        .expect("lead");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "H8");
+    let events = defender_plays(&mut run, &content, Seat::DEFENDERS[1], "C8");
+    // The trick is complete, the card waits in it for the pick.
+    let waiting = run.rise_pending().expect("waits");
+    assert_eq!(waiting.id, id_of("CJ"));
+    assert!(rose(&events).is_none());
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RunEvent::RiseChoice { card, pick: 3, .. } if card.id == id_of("CJ")
+    )));
+    let view = run.view(&content);
+    let g = view.game.as_ref().expect("game");
+    let choice = g.rise_choice.as_ref().expect("view");
+    assert_eq!(choice.pick, 3);
+    assert_eq!(choice.becomes.card.id, id_of("CJ"));
+    assert!(!g.your_turn, "no card while it waits");
+    assert_eq!(run.ai_to_move(), None);
+    // Nothing else goes before it, and only three different hand cards.
+    assert_eq!(
+        run.apply_step(&content, RunAction::Play(id_of("SJ"))),
+        Err(RunError::RisePending)
+    );
+    let hand = first_three(&run);
+    for bad in [
+        [hand[0], hand[0], hand[1]],
+        [hand[0], hand[1], id_of("HA")],
+        [hand[0], hand[1], id_of("CJ")],
+    ] {
+        assert_eq!(
+            run.apply_step(&content, RunAction::ChooseRiseCards(bad)),
+            Err(RunError::InvalidRiseCards)
+        );
+    }
+    let events = run
+        .apply_step(&content, RunAction::ChooseRiseCards(hand))
+        .expect("pick");
+    let (_, substitute) = rose(&events).expect("rose");
+    assert!(hand.contains(&substitute.id), "one of the three");
+    assert!(run.rise_pending().is_none());
+    assert_eq!(
+        run.apply_step(&content, RunAction::ChooseRiseCards(first_three(&run))),
+        Err(RunError::InvalidRiseCards),
+        "nothing waits any more"
+    );
+    // The order of the pick does not change the draw.
+    let draw = |order: [usize; 3]| {
+        let (content, mut run) = undead_run("CJ");
+        run.apply_step(&content, RunAction::Declare(hand_clubs()))
+            .expect("declare");
+        run.apply_step(&content, RunAction::Play(id_of("CJ")))
+            .expect("lead");
+        defender_plays(&mut run, &content, Seat::DEFENDERS[0], "H8");
+        defender_plays(&mut run, &content, Seat::DEFENDERS[1], "C8");
+        let pick = first_three(&run);
+        let events = run
+            .apply_step(&content, RunAction::ChooseRiseCards(order.map(|i| pick[i])))
+            .expect("pick");
+        rose(&events).expect("rose").1
+    };
+    assert_eq!(draw([0, 1, 2]), draw([2, 0, 1]));
+    // Over many games every one of the three comes up.
+    let mut seen = std::collections::BTreeSet::new();
+    for seed in 0..40 {
+        let content = super::content_tests::content();
+        let (mut run, _) = Run::new(&content, seed).expect("start");
+        with_mod(&content, &mut run, "CJ", UNDEAD);
+        let mut deal = Vec::new();
+        run.deal(&content, true, &mut deal).expect("deal");
+        deal_with(&mut run, &content, HANDS, SKAT, Seat::DECLARER);
+        run.game.as_mut().expect("game").undead_rng = Some(Rng::from_seed(seed));
+        run.apply_step(&content, RunAction::Declare(hand_clubs()))
+            .expect("declare");
+        let events = trick(&mut run, &content, "CJ", "H8", "C8");
+        seen.insert(rose(&events).expect("rose").1.id);
+    }
+    assert_eq!(seen.len(), 3, "{seen:?}");
+}
+
+#[test]
+fn with_three_cards_or_fewer_left_all_of_them_are_the_candidates() {
+    // The player holds all ten trumps and leads them; the Untot C9 goes
+    // seventh, with three cards left.
+    let hands = [
+        "CJ SJ HJ DJ CA CT CK C9 CQ C8",
+        "HA HT HK HQ H9 H8 SA ST SK SQ",
+        "S9 S8 S7 DA DT DK DQ D9 D8 D7",
+    ];
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "C9", UNDEAD);
+    deal_with(&mut run, &content, hands, "H7 C7", Seat::DECLARER);
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    for lead in ["CJ", "SJ", "HJ", "DJ", "CA", "CT"] {
+        lead_and_slough(&mut run, &content, lead);
+    }
+    let left: Vec<u32> = game(&run)
+        .hand(Seat::DECLARER)
+        .iter()
+        .filter(|c| c.id != id_of("C9"))
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(left.len(), 3);
+    let events = run
+        .apply_step(&content, RunAction::Play(id_of("C9")))
+        .expect("lead");
+    let mut events = events;
+    for seat in Seat::DEFENDERS {
+        let card = game(&run).legal_moves(seat)[0];
+        run.play_card(&content, seat, card, &mut events)
+            .expect("legal");
+    }
+    assert!(run.rise_pending().is_none(), "no pick needed");
+    let (_, substitute) = rose(&events).expect("rose at once");
+    assert!(left.contains(&substitute.id));
 }
 
 #[test]
@@ -306,6 +511,7 @@ fn lead_and_slough(run: &mut Run, content: &Content, lead: &str) -> Vec<RunEvent
         run.settle(content, &mut more).expect("settle");
         events.extend(more);
     }
+    resolve_rise(run, content, &mut events);
     events
 }
 
@@ -419,7 +625,12 @@ fn player_events_show_the_rising() {
             seat: Seat::DECLARER,
             card,
             substitute,
+            risen: Some(card),
         }))
+    );
+    assert!(
+        seen.iter()
+            .any(|e| matches!(e, RunEvent::RiseChoice { pick: 3, .. }))
     );
 }
 
@@ -491,6 +702,7 @@ fn game_raise_checks_its_cards_and_the_trick_boundary() {
             seat: Seat::DECLARER,
             card: c("CJ"),
             substitute: c("CA"),
+            risen: Some(c("CJ")),
         }]
     );
     assert_eq!(g.trick_card_points()[0], 11);

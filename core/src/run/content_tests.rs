@@ -572,32 +572,24 @@ fn points_add_augen_for_whoever_takes_the_card() {
 }
 
 #[test]
-fn rank_card_counts_one_rank_higher() {
+fn rank_card_becomes_the_next_higher_card() {
     let content = content();
-    // SK (id 22) carries Rang 1: it now ties with the ST and keeps the trick.
+    // SK (id 22) carries Winkel 1 (03.11.2026): it becomes the S10, keeps
+    // its four Augen and ties with the printed S10, which keeps the trick
+    // when it came first.
     let run = card_mod_run(&content, 22, "rank");
     let resolved = resolve_edition(&run.edition, crate::deck::Owner::Player, &content, &[]);
     let find = |id: u32| *resolved.cards.iter().find(|c| c.id == id).expect("card");
     let king = find(22);
     let ten = find(19);
     let ace = find(23);
-    assert_eq!(king.rank_bonus, 1);
+    assert_eq!(king.kind, ten.kind, "it is the Zehn now");
+    assert_eq!(king.promoted, 1);
+    assert_eq!(king.card_points, 4, "its own Augen");
+    assert_eq!(king.rank_bonus, 0);
     assert!(!crate::rules::beats(GameType::Grand, king, king, ten));
+    assert!(!crate::rules::beats(GameType::Grand, ten, ten, king));
     assert!(crate::rules::beats(GameType::Grand, king, king, ace));
-    // Unmarked, the ten takes the king.
-    let plain = resolve_edition(
-        &Edition::standard(),
-        crate::deck::Owner::Player,
-        &content,
-        &[],
-    );
-    let plain_king = plain.cards[22];
-    assert!(crate::rules::beats(
-        GameType::Grand,
-        plain_king,
-        plain_king,
-        ten
-    ));
 }
 
 #[test]
@@ -798,8 +790,9 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
     // Item review of 02.11.2026: 22 relics removed, 6 added.
     assert!(content.relics.len() >= 30);
     // Effekte v2 (DESIGN 7.2): 13 modifications, plus "Abgestuft" of the
-    // Nullspieler (ADR 0015).
-    assert_eq!(content.card_mods.len(), 14);
+    // Nullspieler (ADR 0015), plus Zinken v2 (03.11.2026): Blei,
+    // Goldkante, Fadenkreuz, Schneiderkreide, Doppelgänger.
+    assert_eq!(content.card_mods.len(), 19);
     assert!(content.encounters.len() >= 8);
     let curses: Vec<&str> = content
         .card_mods

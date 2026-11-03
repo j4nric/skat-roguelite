@@ -82,7 +82,10 @@ fn rank_rises_to_two_and_no_further() {
         Err(DeckError::AtMaximum(id("rank")))
     );
     let resolved = resolve_edition(&deck, crate::deck::Owner::Player, &content, &[]);
-    assert_eq!(resolved.cards[22].rank_bonus, 2);
+    // Winkel 2 on the König: König, Zehn, Daus (03.11.2026).
+    assert_eq!(resolved.cards[22].kind, resolved.cards[23].kind);
+    assert_eq!(resolved.cards[22].promoted, 2);
+    assert_eq!(resolved.cards[22].card_points, 4);
 }
 
 #[test]

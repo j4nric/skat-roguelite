@@ -293,8 +293,20 @@ pub enum Effect {
     /// modifications only, passive only.
     AddCardPoints(i32),
     /// Lever Stichgewinn: this card counts this many steps higher within
-    /// its kind. Card modifications only, passive only.
+    /// its kind. Card modifications only, passive only. No content uses it
+    /// since "Winkel" became [`Effect::Promote`] (03.11.2026).
     RankBonus(u8),
+    /// Lever Stichgewinn ("Winkel", DESIGN 7.2, 03.11.2026): this card
+    /// becomes the card this many steps higher in its suit (7, 8, 9, Ober,
+    /// König, 10, Daus; [`crate::cards::Rank::promoted`]) in every game and
+    /// keeps its own Augen. A Unter never rises and is never reached, a
+    /// Daus stays. Card modifications only, passive only.
+    Promote(u8),
+    /// Lever Stichgewinn (Null, "Blei", DESIGN 7.2): in a Null game this
+    /// card is the lowest card of its suit, below the Seven
+    /// ([`crate::rules::suit_strength`]). Card modifications only, passive
+    /// only.
+    NullLowest,
     /// Lever Zählen: the player sees who holds this card. Card
     /// modifications only, passive only.
     RevealHolder,
@@ -439,6 +451,14 @@ pub enum Effect {
     /// Null or Ramsch, not for a defender's copy. Card modifications only,
     /// passive only.
     Undead,
+    /// Lever Stichgewinn ("Doppelgänger", DESIGN 7.2, 03.11.2026): when the
+    /// player plays this card (a legal play as printed) in a suit game,
+    /// Grand or Null, it takes a card of the same rank and another suit
+    /// from the next opponent in play order, else from the other one (a
+    /// random one of several); that card lies in the trick instead, and the
+    /// robbed opponent holds this card for the rest of the game. Without a
+    /// match it is played as itself. Card modifications only, passive only.
+    Doppelganger,
     /// Lever Stichgewinn (Vorhand): the player leads the first trick of
     /// every game ("Ehrenvorsitz"). Passive only.
     AlwaysForehand,
@@ -516,10 +536,13 @@ impl Effect {
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)
+            | Effect::Promote(_)
+            | Effect::NullLowest
             | Effect::RevealHolder
             | Effect::Wild
             | Effect::Demote
             | Effect::Undead
+            | Effect::Doppelganger
             | Effect::AlwaysForehand => stage == Stage::Passive,
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
@@ -586,6 +609,8 @@ impl Effect {
             self,
             Effect::AddCardPoints(_)
                 | Effect::RankBonus(_)
+                | Effect::Promote(_)
+                | Effect::NullLowest
                 | Effect::RevealHolder
                 | Effect::NeverWins
                 | Effect::NoDiscard
@@ -594,13 +619,14 @@ impl Effect {
                 | Effect::Demote
                 | Effect::TurnInto(_)
                 | Effect::Undead
+                | Effect::Doppelganger
         )
     }
 
     /// This effect for a card modification of `value` (DESIGN 7.2): the
     /// effects of a card modification are written per unit of its value
-    /// and multiplied here. Scaled: `AddCardPoints`, `RankBonus` (at most
-    /// 255), `AddBaseValue`, `AddBaseValuePerCursedCard`, `AddLevels`, `GainCoins` and
+    /// and multiplied here. Scaled: `AddCardPoints`, `RankBonus` and
+    /// `Promote` (at most 255), `AddBaseValue`, `AddBaseValuePerCursedCard`, `AddLevels`, `GainCoins` and
     /// `MultiplyTrickPoints` (the factor itself is the value: one unit of
     /// "Erster Stich" with value 2 is ×2). Every other effect stays as it
     /// is. A value of 1 changes nothing.
@@ -615,6 +641,9 @@ impl Effect {
             Effect::GainCoins(n) => Effect::GainCoins(times(*n)),
             Effect::RankBonus(n) => {
                 Effect::RankBonus(u8::try_from(times(i32::from(*n)).clamp(0, 255)).unwrap_or(0))
+            }
+            Effect::Promote(n) => {
+                Effect::Promote(u8::try_from(times(i32::from(*n)).clamp(0, 255)).unwrap_or(0))
             }
             Effect::MultiplyTrickPoints(n) => Effect::MultiplyTrickPoints(
                 u32::try_from(i64::from(*n) * i64::from(value.max(0))).unwrap_or(u32::MAX),
@@ -715,6 +744,17 @@ pub enum Condition {
     /// card won it, whoever played it ("Erster Stich"). Card modifications
     /// only, on trick end only.
     ThisCardWinsFirstTrick,
+    /// This card won the trick just completed ("Goldkante"). Card
+    /// modifications only, on trick end only.
+    ThisCardWinsTrick,
+    /// This card won the trick just completed and a defender played a
+    /// card matching the filter into it ("Fadenkreuz": a Daus of an
+    /// opponent). Card modifications only, on trick end only.
+    ThisCardBeatsDefenderCard(CardFilter),
+    /// The player played this card into a completed trick of this game
+    /// ("Schneiderkreide"). Card modifications only, during play and on
+    /// score.
+    ThisCardPlayed,
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
@@ -784,7 +824,13 @@ impl Condition {
             }
             Condition::TrickWinnerMatches { .. }
             | Condition::FirstTrickOfDeclarer
-            | Condition::ThisCardWinsFirstTrick => stage == Stage::OnTrickEnd,
+            | Condition::ThisCardWinsFirstTrick
+            | Condition::ThisCardWinsTrick
+            | Condition::ThisCardBeatsDefenderCard(_) => stage == Stage::OnTrickEnd,
+            Condition::ThisCardPlayed => matches!(
+                stage,
+                Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+            ),
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
             Condition::TransportIs(_) => stage == Stage::OnRouteChosen,
             Condition::NullGame
@@ -815,7 +861,10 @@ impl Condition {
             Condition::Not(c) => c.card_mod_only(),
             Condition::ThisCardWinsLastTrick
             | Condition::ThisCardIsTrumpSuit
-            | Condition::ThisCardWinsFirstTrick => true,
+            | Condition::ThisCardWinsFirstTrick
+            | Condition::ThisCardWinsTrick
+            | Condition::ThisCardBeatsDefenderCard(_)
+            | Condition::ThisCardPlayed => true,
             _ => false,
         }
     }

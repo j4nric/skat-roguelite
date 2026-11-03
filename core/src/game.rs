@@ -308,10 +308,33 @@ pub enum Event<C = Card> {
     CardRose {
         /// Who played the card.
         seat: Seat,
-        /// The card that came back into the hand.
+        /// The card as it was played.
         card: C,
         /// The card that lies in the trick now.
         substitute: C,
+        /// The card as it came back into the hand: a copy of the card
+        /// that won the trick ([`PlayingCard::risen_as`]), `card` itself
+        /// if it won the trick. `None` in logs from before 03.11.2026,
+        /// when it came back as it was (a missing `Option` reads as
+        /// `None`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        risen: Option<C>,
+    },
+    /// "Doppelgänger" (DESIGN 7.2): `seat` played `card`, and `stolen`
+    /// from the hand of `from` lies in the trick in its place
+    /// ([`Game::play_swapped`]); `given` is `card` as `from` holds it now.
+    /// [`Event::CardPlayed`] with the stolen card follows.
+    DoppelgangerSwapped {
+        /// Who played the Doppelgänger.
+        seat: Seat,
+        /// The Doppelgänger as it was played.
+        card: C,
+        /// The robbed seat.
+        from: Seat,
+        /// The card taken from him into the trick.
+        stolen: C,
+        /// The Doppelgänger in his hand, in his edition.
+        given: C,
     },
     /// The game is over and scored: all tricks played, the defenders
     /// conceded, or the Null declarer took a trick.
@@ -1480,8 +1503,79 @@ impl<C: PlayingCard> Game<C> {
         }
 
         self.hands[seat.index()].retain(|&c| c != card);
+        let mut events = Vec::new();
+        self.put_into_trick(declaration, seat, card, &mut events);
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
+    /// "Doppelgänger" (DESIGN 7.2, 03.11.2026): `seat` plays `card`, which
+    /// must be a legal play as printed, and `stolen` from the hand of
+    /// `from` lies in the trick instead, as it is (also of another suit);
+    /// `card` goes into the hand of `from` in his edition
+    /// ([`Event::CardChangedHands`]) for the rest of the game. Logs
+    /// [`Event::DoppelgangerSwapped`], then [`Event::CardPlayed`] with the
+    /// stolen card. Which card is stolen is the run's business.
+    pub fn play_swapped(
+        &mut self,
+        seat: Seat,
+        card: C,
+        from: Seat,
+        stolen: C,
+    ) -> Result<Vec<Event<C>>, GameError<C>> {
+        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        };
+        let expected = seat_at(self.trick_lead, self.trick.len());
+        if seat != expected {
+            return Err(GameError::NotYourTurn { seat, expected });
+        }
+        if !self.hand(seat).contains(&card) {
+            return Err(GameError::CardNotInHand { seat, card });
+        }
+        if from == seat || !self.hand(from).contains(&stolen) {
+            return Err(GameError::CardNotInHand {
+                seat: from,
+                card: stolen,
+            });
+        }
+        if let Some(lead) = self.lead_card() {
+            if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), card) {
+                return Err(GameError::MustFollowSuit { card, lead });
+            }
+        }
+        let mut events = Vec::new();
+        self.hands[seat.index()].retain(|&c| c != card);
+        self.hands[from.index()].retain(|&c| c != stolen);
+        let given = self.change_holder(card, from, &mut events);
+        let hand = &mut self.hands[from.index()];
+        hand.push(given);
+        hand.sort();
+        events.insert(
+            0,
+            Event::DoppelgangerSwapped {
+                seat,
+                card,
+                from,
+                stolen,
+                given,
+            },
+        );
+        self.put_into_trick(declaration, seat, stolen, &mut events);
+        self.log.extend(events.iter().cloned());
+        Ok(events)
+    }
+
+    /// Lay `card` of `seat` into the trick and complete it if it is full.
+    fn put_into_trick(
+        &mut self,
+        declaration: Declaration,
+        seat: Seat,
+        card: C,
+        events: &mut Vec<Event<C>>,
+    ) {
         self.trick.push(card);
-        let mut events = vec![Event::CardPlayed { seat, card }];
+        events.push(Event::CardPlayed { seat, card });
 
         if self.trick.len() == 3 {
             let cards = [self.trick[0], self.trick[1], self.trick[2]];
@@ -1506,17 +1600,20 @@ impl<C: PlayingCard> Game<C> {
                 events.push(self.finish(declaration));
             }
         }
-        self.log.extend(events.iter().cloned());
-        Ok(events)
     }
 
-    /// "Untot" (DESIGN 7.2): `card`, which `seat` played into the last
-    /// completed trick, goes back into that seat's hand, and `substitute`
-    /// from the hand takes its place in the trick. The trick keeps its
-    /// winner (decided with `card`); the winner's Augen change by the
-    /// difference. Only while playing, between two tricks; the hand keeps
-    /// its size, so every seat still plays one card per trick. Which card
-    /// may rise and which substitute is drawn is the run's business.
+    /// "Untot" (DESIGN 7.2, reworked 03.11.2026): `card`, which `seat`
+    /// played into the last completed trick, goes back into that seat's
+    /// hand as a copy of the card that won the trick
+    /// ([`PlayingCard::risen_as`]; unchanged if it won the trick itself),
+    /// and `substitute` from the hand takes its place in the trick. The
+    /// trick keeps its winner (decided with `card`); the winner's Augen
+    /// change by the difference. The copy replaces the card in the deck and
+    /// the editions; the declarer's twelve cards and the cards in play keep
+    /// the card as dealt, so the Spitzen stay as declared. Only while
+    /// playing, between two tricks; the hand keeps its size, so every seat
+    /// still plays one card per trick. Which card may rise and which
+    /// substitute is drawn is the run's business.
     pub fn raise(
         &mut self,
         seat: Seat,
@@ -1542,18 +1639,39 @@ impl<C: PlayingCard> Game<C> {
         else {
             return Err(GameError::CardNotInHand { seat, card });
         };
+        let winning = trick.winning_card();
+        let risen = if winning == card {
+            card
+        } else {
+            card.risen_as(winning)
+        };
         trick.cards[offset] = substitute;
         let winner = trick.winner.index();
         let points = &mut self.card_points[winner];
         *points = points.saturating_sub(card.card_points()) + substitute.card_points();
         let hand = &mut self.hands[seat.index()];
         hand.retain(|&c| c != substitute);
-        hand.push(card);
+        hand.push(risen);
         hand.sort();
+        if risen != card {
+            for c in self.deck.iter_mut().filter(|c| **c == card) {
+                *c = risen;
+            }
+            self.deck.sort();
+            if let Some(id) = card.instance() {
+                for edition in &mut self.editions {
+                    for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
+                        *c = c.risen_as(winning);
+                    }
+                    edition.sort();
+                }
+            }
+        }
         let events = vec![Event::CardRose {
             seat,
             card,
             substitute,
+            risen: Some(risen),
         }];
         self.log.extend(events.iter().cloned());
         Ok(events)

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::effects::{Condition, Effect, Hook};
 use super::score::Source;
 use super::{CardModDef, CardModId, Content};
+use crate::cards::CardKind;
 use crate::cards::PlayingCard;
 use crate::deck::{DealtCard, Edition, Owner};
 use crate::game::{Game, Seat, TRICKS_PER_GAME, seat_at};
@@ -54,8 +55,8 @@ pub struct ResolvedDeck {
 /// Order per card: `SetCardPoints` from bosses and relics in source order (rules of the
 /// table, for every edition); then the card's own modifications in the
 /// order they were attached, each scaled by the value the card carries
-/// (`AddCardPoints`, `RankBonus`, `RevealHolder`, `NeverWins`,
-/// `HonoraryJack`, `NoDiscard`, `Wild`, `Demote`). Augen below zero leave
+/// (`AddCardPoints`, `RankBonus`, `Promote`, `NullLowest`, `RevealHolder`,
+/// `NeverWins`, `HonoraryJack`, `NoDiscard`, `Wild`, `Demote`). Augen below zero leave
 /// the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). A demoted
 /// Unter has no Augen.
 #[must_use]
@@ -135,6 +136,17 @@ pub fn resolve_edition(
                     Effect::RankBonus(bonus) => {
                         dealt.rank_bonus = dealt.rank_bonus.saturating_add(bonus);
                     }
+                    Effect::Promote(steps) => {
+                        // "Winkel": the card becomes the higher card of its
+                        // suit and keeps its Augen.
+                        if let CardKind::Normal(card) = dealt.kind {
+                            let rank = card.rank.promoted(steps);
+                            let room = card.rank.promotion_room();
+                            dealt.promoted = dealt.promoted.saturating_add(steps.min(room));
+                            dealt.kind = CardKind::Normal(crate::cards::Card::new(card.suit, rank));
+                        }
+                    }
+                    Effect::NullLowest => dealt.leaden = true,
                     Effect::RevealHolder => dealt.revealed = true,
                     Effect::NeverWins => dealt.never_wins = true,
                     Effect::HonoraryJack => dealt.honorary_jack = true,
@@ -292,6 +304,26 @@ pub fn evaluate(
             (Some([first]), Some(this)) => first.winning_card().id == this.id,
             _ => false,
         },
+        Condition::ThisCardWinsTrick => match (game.and_then(|g| g.tricks().last()), this_card) {
+            (Some(t), Some(this)) => t.winning_card().id == this.id,
+            _ => false,
+        },
+        Condition::ThisCardBeatsDefenderCard(filter) => {
+            match (game.and_then(|g| g.tricks().last()), this_card) {
+                (Some(t), Some(this)) => {
+                    t.winning_card().id == this.id
+                        && (0..3).any(|i| {
+                            !t.seat_of(i).is_declarer()
+                                && t.cards[i].face().is_some_and(|f| filter.matches(f))
+                        })
+                }
+                _ => false,
+            }
+        }
+        Condition::ThisCardPlayed => match (game, this_card) {
+            (Some(g), Some(this)) => played_by_player(g, this.id),
+            _ => false,
+        },
         Condition::TricksPlayed(n) => {
             game.is_some_and(|g| u32::try_from(g.tricks().len()).unwrap_or(0) == *n)
         }
@@ -396,6 +428,7 @@ pub fn evaluate_if_won(
             .is_some_and(Declaration::schwarz_declared)
             .then_some(true),
         Condition::NoTrickTaken if null => Some(true),
+        Condition::ThisCardPlayed => evaluate(condition, ctx, this_card).then_some(true),
         Condition::MatadorsAtLeast { with, count } => {
             let holds = |m: &Matadors| m.count > 0 && m.with == *with && m.count >= *count;
             if matadors.iter().all(holds) {
@@ -416,7 +449,9 @@ pub fn evaluate_if_won(
         | Condition::NeverFollowedSuit
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
-        | Condition::ThisCardWinsFirstTrick => None,
+        | Condition::ThisCardWinsFirstTrick
+        | Condition::ThisCardWinsTrick
+        | Condition::ThisCardBeatsDefenderCard(_) => None,
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
@@ -568,6 +603,31 @@ pub fn evaluate_known(
         | Condition::MatadorsAtLeast { .. }
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer => None,
+        // Certain once the card lies in a trick (an "Untot" card may come
+        // back and be played again, so only `true` is final).
+        Condition::ThisCardPlayed => evaluate(condition, ctx, this_card).then_some(true),
+        // Fire after every trick: open while the card may still win one,
+        // certain once it lies in a completed trick.
+        Condition::ThisCardWinsTrick | Condition::ThisCardBeatsDefenderCard(_) => {
+            let (game, this) = (ctx.game?, this_card?);
+            let won = game.tricks().iter().any(|t| {
+                t.winning_card().id == this.id
+                    && match condition {
+                        Condition::ThisCardBeatsDefenderCard(filter) => (0..3).any(|i| {
+                            !t.seat_of(i).is_declarer()
+                                && t.cards[i].face().is_some_and(|f| filter.matches(f))
+                        }),
+                        _ => true,
+                    }
+            });
+            if won {
+                Some(true)
+            } else if game.hand(Seat::DECLARER).iter().any(|c| c.id == this.id) {
+                None
+            } else {
+                Some(false)
+            }
+        }
         // Certain once the first trick is complete.
         Condition::ThisCardWinsFirstTrick => {
             let game = ctx.game?;
@@ -597,6 +657,14 @@ pub fn held_by_player(game: &Game<DealtCard>, id: u32) -> bool {
                 .any(|(i, c)| c.id == id && seat_at(lead, i).is_declarer())
         };
     in_hand || in_skat || played
+}
+
+/// Whether the player played the card with this id into a completed
+/// trick of `game`.
+fn played_by_player(game: &Game<DealtCard>, id: u32) -> bool {
+    game.tricks()
+        .iter()
+        .any(|t| (0..3).any(|i| t.cards[i].id == id && t.seat_of(i).is_declarer()))
 }
 
 /// The game, if it is a Null game.
