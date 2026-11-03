@@ -248,7 +248,7 @@ export interface ConsumableInfo {
 }
 
 /** What a Schnaps does to the next declared game. */
-export type NextGameEffect = { Multiply: number } | 'SingleLoss';
+export type NextGameEffect = { Multiply: number } | { MultiplyWin: number } | 'SingleLoss';
 
 /** A Schnaps waiting for the next declared game. */
 export interface PendingNextGame {
@@ -734,6 +734,10 @@ export interface RunView {
   /** Route choices still to come whose stops are shown (Kiebitz am Fenster). */
   scout_legs?: number;
   last_score: ScoreView | null;
+  /** "Kneipe verlassen" goes now: between two games, from the second on (DESIGN 8.7). */
+  can_give_up?: boolean;
+  /** "Noch nötig" before the last game of a pub (DESIGN 8.7). */
+  needed?: NeededView | null;
   /** The player's edition of the 32 cards (ADR 0015). */
   edition: DeckCard[];
   stats: RunStats;
@@ -887,6 +891,18 @@ export type DeckChange =
   /** Reinigen ("Karte reinigen", Werkstatt): every modification fell off the card. */
   | { Cleansed: { card: number; removed: string[] } };
 
+/** "Noch nötig": what the last game of a pub has to bring (core `NeededView`). */
+export interface NeededView {
+  /** Zielwert minus account; 0 or less when the target is reached. */
+  points: number;
+  /** Smallest plain Spielwert (no relics) of at least `points`. */
+  smallest_game: number | null;
+  /** Upper bound of a won game's value now. */
+  max_value: number;
+  /** Whether a won game can still reach the target. */
+  reachable: boolean;
+}
+
 export type RunEvent =
   | 'Re'
   | 'ShopLeft'
@@ -964,12 +980,17 @@ export type RunEvent =
   | { StopsRevealed: { legs: number } }
   | { MalusChosen: { option: number; malus: string } }
   | { GambleResolved: { curse: boolean } }
-  | { ConsumableGained: { consumable: string } };
+  | { ConsumableGained: { consumable: string } }
+  /** Pub rescue (DESIGN 8.7). */
+  | { PubGivenUp: { section: number; index: number; score: number } }
+  | { AccountCleared: { before: number; score: number } }
+  | { GamesAdded: { games: number; game_limit: number; games_left: number } };
 
 export type RunAction =
   | 'Redeal'
   | 'Reroll'
   | 'LeaveShop'
+  | 'GiveUpPub'
   | 'PickUpSkat'
   | { Declare: Declaration }
   | { AnswerKontra: { re: boolean } }

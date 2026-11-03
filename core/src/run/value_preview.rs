@@ -7,15 +7,19 @@
 
 use std::collections::BTreeSet;
 
+use super::view::NeededView;
 use super::view::ValuePreview;
-use super::{ActiveGame, Run, kontra_lines, score_line};
+use super::{ActiveGame, Run, kontra_lines, score_line, win_factor_lines};
 use crate::cards::PlayingCard;
+use crate::cards::Suit;
 use crate::content::{
-    Content, HookContext, ScoreLine, Source, Stage, evaluate_if_won, score_parts,
+    Change, Content, HookContext, Lever, NextGameEffect, ScoreLine, Source, Stage, evaluate_if_won,
+    score_parts,
 };
 use crate::game::{Event, Phase, Seat, TRICKS_PER_GAME};
 use crate::rules::{
-    Declaration, GameType, Matadors, NullStyle, Outcome, game_value_parts, null_value_parts,
+    Declaration, GameType, Matadors, NullRisk, NullStyle, Outcome, RiskLevel, game_value_parts,
+    null_value_parts, ramsch_value_parts,
 };
 
 impl Run {
@@ -111,6 +115,7 @@ impl Run {
             }
         }
         lines.extend(kontra_lines(active.kontra));
+        lines.extend(win_factor_lines(active));
         let b = score_parts(declaration, matadors, &outcome, &thresholds, parts, lines);
         Some(ValuePreview {
             base_value: b.base_value,
@@ -118,6 +123,225 @@ impl Run {
             multiplier: b.multiplier,
             game_value: b.value,
         })
+    }
+}
+
+/// Spielwerte of the plain formula (no relics, no factors), sorted: every
+/// suit game and Grand from "mit/ohne 1, Spiel 2" to the highest, and the
+/// four Null values. The smallest of them a pub still needs is the hint of
+/// [`NeededView::smallest_game`].
+fn plain_values() -> Vec<u64> {
+    let mut values: Vec<u64> = vec![23, 35, 46, 59];
+    for game in [
+        GameType::Suit(Suit::Diamonds),
+        GameType::Suit(Suit::Hearts),
+        GameType::Suit(Suit::Spades),
+        GameType::Suit(Suit::Clubs),
+        GameType::Grand,
+    ] {
+        let base = u64::from(game.base_value().unwrap_or(0));
+        // Spitzen up to every trump, plus Spiel, Hand, Schneider, angesagt,
+        // Schwarz, angesagt and Ouvert.
+        let most = u64::try_from(game.trump_order().len()).unwrap_or(0) + 7;
+        values.extend((2..=most).map(|levels| base * levels));
+    }
+    values.sort_unstable();
+    values.dedup();
+    values
+}
+
+/// How often a hook of `stage` can fire in one game at most, for the upper
+/// bound of [`Run::max_game_value`]: once at the deal, the declaration and
+/// the score, after each of the ten tricks and each of the 30 cards.
+const fn max_firings(stage: Stage) -> usize {
+    match stage {
+        Stage::OnDeal | Stage::OnDeclare | Stage::OnScore => 1,
+        Stage::OnTrickEnd => TRICKS_PER_GAME,
+        Stage::OnCardPlayed => 3 * TRICKS_PER_GAME,
+        Stage::Passive
+        | Stage::OnSeriesWon
+        | Stage::OnAttach
+        | Stage::OnDiscard
+        | Stage::OnRouteChosen
+        | Stage::OnShopOpened => 0,
+    }
+}
+
+/// Whether a score line can only raise a won game's value.
+fn raises(line: &ScoreLine) -> bool {
+    match (line.lever, line.change) {
+        (Lever::BaseValue | Lever::Levels, Change::Add(n)) => n > 0,
+        (Lever::BaseValue | Lever::GameValue, Change::Multiply(n)) => n > 1,
+        (Lever::GameValue, Change::Scale(f)) => f > crate::content::Factor::ONE,
+        _ => false,
+    }
+}
+
+impl Run {
+    /// "Noch nötig" before the last game of a pub (DESIGN 5.1): what the
+    /// account still needs and whether a won game can bring it. `None`
+    /// outside a game, before any other game than the last, and once the
+    /// last game is declared (then the value preview takes over).
+    pub(super) fn needed_view(&self, content: &Content) -> Option<NeededView> {
+        let active = self.game.as_ref()?;
+        if self.series.games_left() != 1 {
+            return None;
+        }
+        let undeclared = match active.game.declaration() {
+            None => true,
+            Some(d) => d.is_ramsch() && active.game.tricks().is_empty(),
+        };
+        if !undeclared {
+            return None;
+        }
+        let target = i64::try_from(self.series.target).unwrap_or(i64::MAX);
+        let points = target.saturating_sub(self.series.score);
+        let max_value = self.max_game_value(content);
+        let smallest_game = u64::try_from(points)
+            .ok()
+            .filter(|&p| p > 0)
+            .and_then(|p| plain_values().into_iter().find(|&v| v >= p));
+        Some(NeededView {
+            points,
+            smallest_game,
+            max_value,
+            reachable: u64::try_from(points).map_or(true, |p| p <= max_value),
+        })
+    }
+
+    /// An upper bound of the Spielwert a won game of the current pub can
+    /// reach, without knowing the hand: the highest game of the formula
+    /// (Grand and every suit Ouvert, Hand, Schwarz angesagt with every
+    /// trump as Spitze; Null Ouvert Hand with every style bonus; in a
+    /// Ramsch the loser with all 120 Augen and a Jungfrau) with every
+    /// raising line of every relic, boss, character and card of the game
+    /// as if its condition held, each as often as its stage can fire
+    /// ([`max_firings`]), plus the waiting factors ("Doppelkorn",
+    /// "Eierlikör", "Letzte Runde"). Kontra and Re do not count: the
+    /// player cannot make a defender say Kontra.
+    #[must_use]
+    pub fn max_game_value(&self, content: &Content) -> u64 {
+        let Some(active) = self.game.as_ref() else {
+            return 0;
+        };
+        let mut lines: Vec<ScoreLine> = active
+            .lines
+            .iter()
+            .chain(&win_factor_lines(active).collect::<Vec<_>>())
+            .filter(|l| raises(l))
+            .cloned()
+            .collect();
+        for source in self.sources(content, true) {
+            for hook in source.hooks {
+                for effect in hook.then() {
+                    let Some(line) =
+                        score_line(&source.source, &effect.scaled(source.scale), &self.counters)
+                    else {
+                        continue;
+                    };
+                    if raises(&line) {
+                        let times = max_firings(hook.stage());
+                        lines.extend(std::iter::repeat_n(line, times));
+                    }
+                }
+            }
+        }
+        if let Some((encounter, factor)) = &self.pending_factor {
+            lines.push(ScoreLine {
+                source: Source::Encounter(encounter.clone()),
+                lever: Lever::GameValue,
+                change: Change::Multiply(*factor),
+            });
+        }
+        for (id, effect) in &self.pending_next_game {
+            if let NextGameEffect::Multiply(n) | NextGameEffect::MultiplyWin(n) = effect {
+                lines.push(ScoreLine {
+                    source: Source::Consumable(id.clone()),
+                    lever: Lever::GameValue,
+                    change: Change::Multiply(*n),
+                });
+            }
+        }
+        let tricks = u32::try_from(TRICKS_PER_GAME).unwrap_or(10);
+        let thresholds = &active.rules.thresholds;
+        let mut best = 0;
+        let mut consider =
+            |declaration: Declaration, matadors: Matadors, outcome: Outcome, parts| {
+                let b = score_parts(
+                    declaration,
+                    matadors,
+                    &outcome,
+                    thresholds,
+                    parts,
+                    lines.clone(),
+                );
+                best = best.max(b.value);
+            };
+        if active.rules.ramsch {
+            let outcome = Outcome {
+                declarer_card_points: 0,
+                defender_card_points: 120,
+                declarer_tricks: 0,
+                defender_tricks: tricks,
+            };
+            let parts = ramsch_value_parts([0, 120, 0], [0, tricks, 0]);
+            consider(
+                Declaration::Ramsch,
+                Matadors {
+                    with: false,
+                    count: 0,
+                },
+                outcome,
+                parts,
+            );
+            return best;
+        }
+        let schwarz = Outcome {
+            declarer_card_points: 120,
+            defender_card_points: 0,
+            declarer_tricks: tricks,
+            defender_tricks: 0,
+        };
+        for game in [
+            GameType::Grand,
+            GameType::Suit(Suit::Clubs),
+            GameType::Suit(Suit::Spades),
+            GameType::Suit(Suit::Hearts),
+            GameType::Suit(Suit::Diamonds),
+        ] {
+            let Some(declaration) = Declaration::new(game, RiskLevel::Ouvert) else {
+                continue;
+            };
+            let matadors = Matadors {
+                with: true,
+                count: u32::try_from(game.trump_order().len()).unwrap_or(0),
+            };
+            let parts = game_value_parts(declaration, matadors, &schwarz, thresholds);
+            consider(declaration, matadors, schwarz, parts);
+        }
+        let null = Outcome {
+            declarer_card_points: 0,
+            defender_card_points: 120,
+            declarer_tricks: 0,
+            defender_tricks: tricks,
+        };
+        let style = NullStyle {
+            sevens_ducked: 4,
+            never_followed: true,
+            defender_points_after: Some(120),
+        };
+        let risk = NullRisk::OuvertHand;
+        let parts = null_value_parts(risk, &self.null_scoring(content), &null, &style);
+        consider(
+            Declaration::Null { risk },
+            Matadors {
+                with: false,
+                count: 0,
+            },
+            null,
+            parts,
+        );
+        best
     }
 }
 

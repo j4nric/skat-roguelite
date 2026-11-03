@@ -382,6 +382,27 @@ impl RunEvent {
                 coins,
             },
             RunEvent::RoutesRerolled => RunEvent::RoutesRerolled,
+            RunEvent::PubGivenUp {
+                section,
+                index,
+                score,
+            } => RunEvent::PubGivenUp {
+                section,
+                index,
+                score,
+            },
+            RunEvent::AccountCleared { before, score } => {
+                RunEvent::AccountCleared { before, score }
+            }
+            RunEvent::GamesAdded {
+                games,
+                game_limit,
+                games_left,
+            } => RunEvent::GamesAdded {
+                games,
+                game_limit,
+                games_left,
+            },
             RunEvent::NextPubPlanned { redeals, target } => {
                 RunEvent::NextPubPlanned { redeals, target }
             }

@@ -120,10 +120,36 @@ pub struct RunView {
     pub scout_legs: u32,
     /// The last scored game.
     pub last_score: Option<ScoreView>,
+    /// Whether the player may give up the pub now ("Kneipe verlassen",
+    /// [`RunAction::GiveUpPub`]): between two games, from the second game
+    /// of a pub on. In a boss pub it ends the run (ADR 0017).
+    pub can_give_up: bool,
+    /// "Noch nötig" before the last game of a pub; `None` otherwise.
+    pub needed: Option<NeededView>,
     /// The player's edition of the 32 cards (ADR 0015), in id order.
     pub edition: Vec<DeckCard>,
     /// Statistics of the run.
     pub stats: RunStats,
+}
+
+/// "Noch nötig": what the last game of a pub has to bring (DESIGN 5.1).
+/// The frontend makes the German line of it ("Du brauchst noch 87
+/// Punkte", "Nicht mehr zu schaffen").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct NeededView {
+    /// Zielwert minus account: what a won game must be worth. 0 or less
+    /// once the target is reached (a boss pub plays all its games).
+    pub points: i64,
+    /// The smallest Spielwert of the plain formula (no relics, no factors)
+    /// that is at least [`NeededView::points`]; `None` when nothing is
+    /// needed or no plain game is worth that much.
+    pub smallest_game: Option<u64>,
+    /// Upper bound of a won game's value now, without knowing the hand
+    /// ([`Run::max_game_value`]).
+    pub max_value: u64,
+    /// Whether a won game can still reach the target:
+    /// `points <= max_value`.
+    pub reachable: bool,
 }
 
 /// The current series.
@@ -1321,6 +1347,8 @@ impl Run {
                 breakdown: b.clone(),
                 steps: b.steps(),
             }),
+            can_give_up: self.accepts(content, RunAction::GiveUpPub),
+            needed: self.needed_view(content),
             edition: self.edition.cards().to_vec(),
             stats: self.stats,
         }

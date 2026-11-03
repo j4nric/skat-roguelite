@@ -1229,6 +1229,52 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ...bbbbb.ssss
       ...bbbbb..sss`),
   ],
+  // ---- rescue Schnäpse (DESIGN 8.7, 03.11.2026), one motif each
+  clear_spirit: [
+    sp('Klare Flasche mit Kappe', `
+      ......GGG
+      ......ggg
+      ......chc
+      ......chc
+      .....chhcc
+      ....cchcccc
+      ...cchcccccc
+      ...chccccccc
+      ...chwwwwwwc
+      ...chwJJJJwc
+      ...chwwwwwwc
+      ...chccccccc
+      ...chccccccc
+      ...cccccccccc`),
+  ],
+  nightcap: [
+    sp('Glas unter dem Mond', `
+      ..........LLL
+      .........LL
+      .........L
+      .........LL
+      ..........LLL
+      ..............
+      .cccccccccc
+      .chcccccccc
+      .choooooooc
+      .choooooooc
+      .cOOOOOOOOc
+      .cccccccccc`),
+  ],
+  eggnog: [
+    sp('Eierlikör im Gläschen', `
+      .cccccccccc
+      .chYLLLLLLc
+      .chLLLLLLLc
+      ..chLLLLLc....ww
+      ...cLLLLc....wwww
+      ....cccc.....wwww
+      .....cc......wwww
+      .....cc.......ww
+      ....cccc
+      ...cccccc`),
+  ],
 };
 
 /** One motif per boss (core/content/bosses.ron). */
@@ -1404,6 +1450,9 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   guardian_angel: 0,
   dive_expert: 0,
   road_beer: 0,
+  clear_spirit: 0,
+  nightcap: 0,
+  eggnog: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
   counter_beer: 0,

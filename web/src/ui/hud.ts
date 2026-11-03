@@ -86,13 +86,32 @@ export function relicChips(view: RunView): string {
 }
 
 /** "Doppelkorn ×2" and the like, for each Schnaps waiting for the next game, in the given texts. */
-export function schnapsNotes(view: RunView, texts: { pendingSchnapsMul: string; pendingSchnapsLoss: string }): string[] {
+export function schnapsNotes(
+  view: RunView,
+  texts: { pendingSchnapsMul: string; pendingSchnapsLoss: string; pendingSchnapsWin: string },
+): string[] {
   return (view.pending_next_game ?? []).map((p) => {
     const name = contentName('consumables', p.consumable);
-    return typeof p.effect === 'object'
-      ? t(texts.pendingSchnapsMul, { name, factor: p.effect.Multiply })
-      : t(texts.pendingSchnapsLoss, { name });
+    if (typeof p.effect !== 'object') return t(texts.pendingSchnapsLoss, { name });
+    return 'MultiplyWin' in p.effect
+      ? t(texts.pendingSchnapsWin, { name, factor: p.effect.MultiplyWin })
+      : t(texts.pendingSchnapsMul, { name, factor: p.effect.Multiply });
   });
+}
+
+/**
+ * "Noch nötig" before the last game of a pub (DESIGN 8.7): what the account
+ * still needs, or that no game can bring it any more. Empty otherwise.
+ */
+export function neededLine(view: RunView): string {
+  const n = view.needed;
+  if (!n || view.phase !== 'Game') return '';
+  let text: string;
+  if (n.points <= 0) text = de.header.neededDone;
+  else if (!n.reachable) text = t(de.header.neededHopeless, { n: n.points, max: n.max_value });
+  else if (n.smallest_game !== null && n.smallest_game !== n.points) text = t(de.header.neededGame, { n: n.points, value: n.smallest_game });
+  else text = t(de.header.needed, { n: n.points });
+  return `<p class="hud-needed ${n.reachable ? '' : 'is-hopeless'}" role="status" data-testid="needed" ${attrs({ 'data-reachable': n.reachable ? 'true' : 'false' })}>${esc(text)}</p>`;
 }
 
 export function renderHud(view: RunView): string {
@@ -147,6 +166,7 @@ export function renderHud(view: RunView): string {
       <div class="count-row" aria-label="${esc(t(de.header.passesAria, { left: s.redeals_left }))}"><span class="count-label">${esc(de.header.passes)}</span><span class="pips">${pips(s.redeals_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num">${esc(s.redeals_left)}</b></div>
     </div>
   </div>
+  ${neededLine(view)}
   ${chips || malus ? `<div class="chips">${malus}${chips}</div>` : ''}
 </header>`;
 }

@@ -81,4 +81,35 @@
         action: NextPub(redeals: 1, target: -3),
         category: Schnapps,
     ),
+    // Rettungs-Schnäpse (Entscheidung des Nutzers vom 03.11.2026 über das
+    // Cockpit): für Kneipen, deren Konto nach zwei verlorenen Spielen tief
+    // im Minus steht. Preise und Seltenheit VORLÄUFIG nach Augenmaß, ohne
+    // Messung (DESIGN 8.3, 12).
+    (
+        id: "clear_spirit",
+        name: "Klarer",
+        text: "Zwischen zwei Spielen einer Kneipe: Steht dein Konto unter 0, steht es wieder auf 0.",
+        rarity: Common,
+        price: 3,
+        action: ClearAccount,
+        category: Schnapps,
+    ),
+    (
+        id: "nightcap",
+        name: "Absacker",
+        text: "Zwischen zwei Spielen einer Kneipe: Ein Spiel mehr in dieser Kneipe. Nicht in der Boss-Kneipe.",
+        rarity: Uncommon,
+        price: 4,
+        action: ExtraGames(1),
+        category: Schnapps,
+    ),
+    (
+        id: "eggnog",
+        name: "Eierlikör",
+        text: "Vor der Wahl zwischen Skat und Hand, wenn dein Konto unter der Hälfte des Zielwerts steht: Gewinnst du das nächste angesagte Spiel, zählt es doppelt.",
+        rarity: Common,
+        price: 3,
+        action: NextGameIfBehind(MultiplyWin(2)),
+        category: Schnapps,
+    ),
 ]

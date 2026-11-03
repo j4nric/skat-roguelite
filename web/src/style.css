@@ -7041,3 +7041,73 @@ button.skat-card {
   overflow: visible;
   -webkit-line-clamp: unset;
 }
+
+/* "Noch nötig" before the last game of a pub (DESIGN 8.7): one line under
+   the slate; red when no game can bring the target any more. */
+.hud-needed {
+  margin: 0;
+  padding: 2px 8px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--accent-light);
+  font-size: var(--fs-s);
+  line-height: 1.05;
+}
+
+.hud-needed.is-hopeless {
+  background: var(--rot);
+  color: var(--text);
+}
+
+/* "Kneipe verlassen": quiet beside "Hand spielen", loud once hopeless. */
+.choice-actions .btn-give-up {
+  flex: 1;
+  color: var(--muted);
+  font-size: var(--fs-l);
+}
+
+.choice-actions .btn-give-up.is-urgent {
+  background: var(--rot);
+  color: var(--text);
+  box-shadow: 0 4px 0 var(--line), inset 0 -3px 0 #7a221c;
+  animation: give-up-pulse 1.2s steps(2) infinite;
+}
+
+@keyframes give-up-pulse {
+  50% {
+    background: #d24a40;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choice-actions .btn-give-up.is-urgent {
+    animation: none;
+  }
+}
+
+.btn-danger {
+  background: var(--rot);
+  color: var(--text);
+  box-shadow: 0 4px 0 var(--line), inset 0 -3px 0 #7a221c;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #d24a40;
+}
+
+.give-up-warning {
+  color: var(--rot-light);
+}
+
+/* Under a forced hand Ansage it gets a row of its own. */
+.declare > .btn-give-up {
+  align-self: center;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.declare > .btn-give-up.is-urgent {
+  background: var(--rot);
+  color: var(--text);
+  animation: give-up-pulse 1.2s steps(2) infinite;
+}

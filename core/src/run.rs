@@ -406,6 +406,10 @@ pub struct ActiveGame {
     /// granted it.
     #[serde(default)]
     pub single_loss: Option<Source>,
+    /// Won, this game counts that many times more ("Eierlikör",
+    /// [`NextGameEffect::MultiplyWin`]): who granted it and the factor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub win_factors: Vec<(Source, u32)>,
     /// The defender whose whole hand the player sees (`RevealDefenderHand`):
     /// his cards are in `peeked` with this seat.
     #[serde(default)]
@@ -805,6 +809,11 @@ pub enum RunAction {
     CleanseCard(u32),
     /// Leave the Tresen and start the next series.
     LeaveShop,
+    /// "Kneipe verlassen": give up the current pub between two games, from
+    /// its second game on ([`view::RunView::can_give_up`]). It counts as
+    /// lost: a life goes ("Schutzengel" may spare it), nothing is paid,
+    /// `OnSeriesWon` does not fire; in a boss pub the run ends (ADR 0017).
+    GiveUpPub,
     /// "Die Oma" (and every other skat swap): in a hand game before the
     /// first card, take a matching card from the skat and put this card
     /// (instance id) in its place.
@@ -1211,6 +1220,34 @@ pub enum RunEvent<G = Event<DealtCard>> {
         #[serde(default)]
         boss: Option<BossId>,
     },
+    /// The player gave up the pub ("Kneipe verlassen",
+    /// [`RunAction::GiveUpPub`]). It counts as lost: `PubLost` and what a
+    /// lost pub brings follow (a life, or the end of the run in a boss
+    /// pub).
+    PubGivenUp {
+        /// District.
+        section: u32,
+        /// Pub within the district.
+        index: u32,
+        /// Account when given up.
+        score: i64,
+    },
+    /// A pub account below 0 was set to 0 ("Klarer").
+    AccountCleared {
+        /// Account before.
+        before: i64,
+        /// Account now (0).
+        score: i64,
+    },
+    /// The Spiellimit of the pub rose ("Absacker").
+    GamesAdded {
+        /// Games added.
+        games: u32,
+        /// Spiellimit now.
+        game_limit: u32,
+        /// Games left now.
+        games_left: u32,
+    },
     /// Lives changed (ADR 0016).
     LivesChanged {
         /// Gained (positive) or lost (negative).
@@ -1434,6 +1471,11 @@ pub enum RunError {
     AlreadyUsed,
     /// "Bruderherz": a curse on his edition cannot be cleansed.
     CurseStays,
+    /// The consumable does nothing now: "Klarer" with an account of 0 or
+    /// more, "Eierlikör" with an account of half the Zielwert or more.
+    ConditionNotMet,
+    /// Not in a boss pub ("Absacker").
+    NotInBossPub,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1552,6 +1594,11 @@ pub enum RunErrorCode {
     /// Another card of the edition is this special card already (at most
     /// one Untot and one Wandelkarte, DESIGN 7.2).
     SpecialTaken,
+    /// The consumable does nothing now ("Klarer" without a minus,
+    /// "Eierlikör" without being behind).
+    ConditionNotMet,
+    /// Not in a boss pub ("Absacker").
+    NotInBossPub,
 }
 
 impl RunErrorCode {
@@ -1610,6 +1657,8 @@ impl RunErrorCode {
             RunErrorCode::AlreadyUsed => "AlreadyUsed",
             RunErrorCode::CurseStays => "CurseStays",
             RunErrorCode::SpecialTaken => "SpecialTaken",
+            RunErrorCode::ConditionNotMet => "ConditionNotMet",
+            RunErrorCode::NotInBossPub => "NotInBossPub",
         }
     }
 }
@@ -1672,6 +1721,8 @@ impl RunError {
             RunError::PainterPending => RunErrorCode::PainterPending,
             RunError::AlreadyUsed => RunErrorCode::AlreadyUsed,
             RunError::CurseStays => RunErrorCode::CurseStays,
+            RunError::ConditionNotMet => RunErrorCode::ConditionNotMet,
+            RunError::NotInBossPub => RunErrorCode::NotInBossPub,
         }
     }
 }
@@ -1711,6 +1762,8 @@ impl fmt::Display for RunError {
             RunError::PainterPending => f.write_str("the Kartenmaler waits for a choice"),
             RunError::AlreadyUsed => f.write_str("already used at this Tresen"),
             RunError::CurseStays => f.write_str("the character's curses cannot be cleansed"),
+            RunError::ConditionNotMet => f.write_str("the consumable would do nothing now"),
+            RunError::NotInBossPub => f.write_str("not in a boss pub"),
         }
     }
 }
@@ -2471,6 +2524,7 @@ impl Run {
             RunAction::ChoosePaint(option) => self.choose_paint(content, option, events),
             RunAction::CleanseCard(card) => self.cleanse_at_tresen(content, card, events),
             RunAction::LeaveShop => self.leave_shop(content, events),
+            RunAction::GiveUpPub => self.give_up_pub(content, events),
             RunAction::TakeFromSkat { give, take } => self.take_from_skat(give, take, events),
             RunAction::SettleGame => self.settle_game(content, events),
             RunAction::ChooseEncounter { option, target } => {
@@ -2675,6 +2729,7 @@ impl Run {
                 NextGameEffect::SingleLoss => {
                     active.single_loss.get_or_insert(source);
                 }
+                NextGameEffect::MultiplyWin(factor) => active.win_factors.push((source, factor)),
             }
         }
     }
@@ -3762,6 +3817,7 @@ impl Run {
             skat_peeked: false,
             chalked: Vec::new(),
             single_loss: None,
+            win_factors: Vec::new(),
             shown_hand: None,
             previous: None,
             named: Vec::new(),
@@ -3870,6 +3926,8 @@ impl Run {
                     change: Change::Set(1),
                 });
             }
+        } else {
+            lines.extend(win_factor_lines(active));
         }
         let mut breakdown = score_parts(
             declaration,
@@ -3957,6 +4015,56 @@ impl Run {
             return self.pub_lost(content, events);
         }
         self.deal(content, true, events)
+    }
+
+    /// Whether the run stands between two games of a pub: the dealt game
+    /// is untouched (ten cards, skat not picked up, nothing declared and
+    /// no card played; a Ramsch before its first card). Klarer, Absacker
+    /// and "Kneipe verlassen" go only now.
+    #[must_use]
+    pub fn between_games(&self) -> bool {
+        if self.phase != RunPhase::Game {
+            return false;
+        }
+        let Some(active) = self.game.as_ref() else {
+            return false;
+        };
+        let game = &active.game;
+        let undeclared = match game.declaration() {
+            None => game.phase() == Phase::Declaring,
+            Some(d) => d.is_ramsch(),
+        };
+        undeclared
+            && !game.skat_picked_up()
+            && game.tricks().is_empty()
+            && game.current_trick().is_empty()
+            && !active.awaiting_re
+    }
+
+    /// Whether the player may give up the pub now
+    /// ([`RunAction::GiveUpPub`]): between two games, once its first game
+    /// was played.
+    #[must_use]
+    pub fn can_give_up(&self) -> bool {
+        self.series.games_played >= 1 && self.between_games()
+    }
+
+    /// "Kneipe verlassen": the pub ends as lost ([`Run::can_give_up`]).
+    fn give_up_pub(
+        &mut self,
+        content: &Content,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        if !self.can_give_up() {
+            return Err(RunError::WrongPhase);
+        }
+        self.game = None;
+        events.push(RunEvent::PubGivenUp {
+            section: self.series.section,
+            index: self.series.index,
+            score: self.series.score,
+        });
+        self.pub_lost(content, events)
     }
 
     fn series_won(
@@ -4569,10 +4677,47 @@ impl Run {
                 }
                 self.plan_next_pub(*redeals, *target, events);
             }
+            ConsumableAction::ClearAccount => {
+                if !self.between_games() {
+                    return Err(RunError::WrongPhase);
+                }
+                if self.series.score >= 0 {
+                    return Err(RunError::ConditionNotMet);
+                }
+                let before = self.series.score;
+                self.series.score = 0;
+                events.push(RunEvent::AccountCleared { before, score: 0 });
+            }
+            ConsumableAction::ExtraGames(n) => {
+                if !self.between_games() {
+                    return Err(RunError::WrongPhase);
+                }
+                if self.series.is_boss_pub() {
+                    return Err(RunError::NotInBossPub);
+                }
+                self.series.game_limit = self.series.game_limit.saturating_add(*n);
+                events.push(RunEvent::GamesAdded {
+                    games: *n,
+                    game_limit: self.series.game_limit,
+                    games_left: self.series.games_left(),
+                });
+            }
+            ConsumableAction::NextGameIfBehind(effect) => {
+                self.declaring()?;
+                if !self.behind() {
+                    return Err(RunError::ConditionNotMet);
+                }
+                self.pending_next_game.push((id.clone(), *effect));
+            }
         }
         self.consumables.remove(slot);
         events.push(RunEvent::ConsumableUsed { consumable: id });
         Ok(())
+    }
+
+    /// Whether the pub account is below half its Zielwert ("Eierlikör").
+    fn behind(&self) -> bool {
+        i128::from(self.series.score).saturating_mul(2) < i128::from(self.series.target)
     }
 
     /// Add to the plan for the next pub.
@@ -5588,6 +5733,15 @@ fn score_line(
     })
 }
 
+/// The Spielwert factors of a won game ("Eierlikör").
+fn win_factor_lines(active: &ActiveGame) -> impl Iterator<Item = ScoreLine> + '_ {
+    active.win_factors.iter().map(|(source, factor)| ScoreLine {
+        source: source.clone(),
+        lever: Lever::GameValue,
+        change: Change::Multiply(*factor),
+    })
+}
+
 /// The Spielwert factors of Kontra and Re.
 fn kontra_lines(kontra: Kontra) -> Vec<ScoreLine> {
     match kontra {
@@ -5730,6 +5884,8 @@ mod m4_tests;
 mod m5_tests;
 #[cfg(test)]
 mod m7_tests;
+#[cfg(test)]
+mod rescue_tests;
 #[cfg(test)]
 mod schnapps_tests;
 #[cfg(test)]

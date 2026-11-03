@@ -149,6 +149,7 @@ Run (eine Kneipentour durch eine erfundene Stadt)
 - **Boss-Kneipe (ADR 0017, Entscheidung des Nutzers vom 03.11.2026)**: letzte Kneipe eines Stadtteils. Am Tisch sitzen **zwei Boss-Spieler**, die beiden Figuren des Bosses (links `BOSS_SEAT`, `Owner::Boss`; rechts `PARTNER_SEAT`, `Owner::BossPartner`), jede mit eigenem Namen, eigener Ausgabe und der Rückseite des Bosses (11). Der Boss wird beim Start des Stadtteils gezogen und ist ab dann sichtbar. **Alle drei Spiele werden gespielt**, der Zielwert zählt nach dem dritten (kein frühes Ende). **Verloren ist der Run vorbei** (`RunLost` mit `boss`), egal wie viele Leben übrig sind; der Schutzengel hilft hier nicht. **Gewonnen**: doppelte Auszahlung (`Payout::boss`), gerechnet, als blieben zwei Spiele übrig (`boss_reward.games_left_as` in `run.ron`, seit 03.11.2026; vorher fiel der Bonus je übrigem Spiel weg, und eine gewonnene Boss-Kneipe zahlte mit 6,45 Groschen weniger als eine früh geschaffte Kneipe mit 7,93, `docs/balance/2026-11-03-kleine-runde.md`), ein Leben und ein Relikt nach Wahl aus drei der Seltenheit Ungewöhnlich oder höher (`RunPhase::BossReward`, `RunAction::ChooseBossRelic`, `boss_reward` in `run.ron`); sind alle Plätze belegt, wird ein eigenes Relikt für den halben Preis verkauft, oder der Spieler verzichtet. Im letzten Stadtteil sitzt der Endboss „Der Alte“ mit „Der Alten“; ihn zu schlagen gewinnt den Run (ohne Wahl). Bis ADR 0017 saß ein Boss links und ein Stammgast rechts, eine verlorene Boss-Kneipe kostete ein Leben und wurde sofort wiederholt.
 - **Hausregeln des Stammtisch-Streits** gelten bis zum Ende des Stadtteils (bisher des Abschnitts).
 - **Einmischen, Schnäpse, Relikte „einmal pro Serie“** zählen je Kneipe.
+- **Kneipe verlassen** (seit 03.11.2026, 8.7): Zwischen zwei Spielen, ab dem zweiten, kann der Spieler eine Kneipe aufgeben. Sie zählt als verloren (ein Leben, keine Auszahlung; der Schutzengel verschont auch sie); eine aufgegebene Boss-Kneipe beendet den Run. Vor dem letzten Spiel zeigt die Kopfzeile, was noch nötig ist.
 
 #### 5.0.1 Routenwahl und Stationen
 
@@ -691,6 +692,8 @@ Einmal nutzbare Karten, maximal zwei auf der Hand.
 
 **Seit 02.11.2026 (8.5)** sind Ein Bier, Neues Blatt, Magenbitter, Reue, Augen +5 und Trumpf +4 entfernt; Kräuter und Doppelkorn wirken anders, Kreide heißt Blue Curaçao, neu sind Konterbier, Schwenker und Wegbier. Was hier über die entfernten steht, ist Geschichte.
 
+**Seit dem 03.11.2026 (8.7)** gibt es drei Rettungs-Schnäpse für eine Kneipe im Minus: Klarer, Absacker und Eierlikör.
+
 **Seit den Zinken am Tresen (02.11.2026, 8.6)** sind auch Frisches Deck (jetzt der Tresen-Dienst „Karte reinigen“), Stempelkissen, Augen +3, Trumpf +2 und Rang +1 keine Gegenstände mehr; es bleiben nur die Schnäpse.
 
 - **Frisches Deck** (entfernt am 02.11.2026, jetzt „Karte reinigen“, 8.6): Entferne eine Karte dauerhaft. Seit ADR 0015 nicht mehr möglich; ab M9 „eine Karte deiner Ausgabe ist wieder wie neu, alle Modifikationen fallen ab“ (7.3).
@@ -850,6 +853,41 @@ Begründung: Die Auslage legt die Karte fest, ist also weniger wert als die alte
 **Oberfläche.** Der Tresen bekommt eine Reihe „Auslage“ mit drei Angeboten: die Karte mit der neuen Zinke in der Rahmensprache gezeichnet, Name, Wirkung und Preis, Kaufen mit Ersetzen-Bestätigung; daneben „Neu auslosen“ mit Preis, der Kartenmaler (bezahlen, Karte wählen, eine von zwei wählen) und Karte reinigen.
 
 Zu messen, sobald der Simulator wieder läuft: Käufe je Tresen (Auslage, Kartenmaler, Reinigen), Groschen je Run, Wirkung auf „Stadtteil 2 erreicht“ gegenüber den alten Kartenwaren, Anteil der Auslagen ohne passendes Angebot für den Bot.
+
+### 8.7 Rettung einer Kneipe (03.11.2026)
+
+**Entschieden vom Nutzer am 03.11.2026 über das Cockpit** (Varianten A, C und D): Nach zwei verlorenen Spielen steht das Konto oft so tief im Minus, dass das dritte Spiel die Kneipe nicht mehr schaffen kann. Das frustriert, weil man ein Spiel zu Ende spielt, das nichts mehr ändert. Dagegen: aufgeben können, sehen, was noch nötig ist, und drei Rettungs-Schnäpse.
+
+**A, „Kneipe verlassen“** (`RunAction::GiveUpPub`, Ereignis `PubGivenUp`, Sicht `RunView::can_give_up`, `Run::can_give_up`):
+
+- Geht **zwischen zwei Spielen** einer Kneipe (`Run::between_games`: das gegebene Spiel ist unberührt, zehn Karten, Skat nicht aufgenommen, nichts angesagt, keine Karte gespielt; ein Ramsch vor seiner ersten Karte) und **ab dem zweiten Spiel** (`games_played >= 1`). Entschieden von Claude: nicht schon vor dem ersten Spiel, weil dann nichts verloren ist, was eine Aufgabe rechtfertigt, und ein Fehlgriff ein Leben kostet.
+- Zählt als **verlorene Kneipe**: Auf `PubGivenUp` folgt alles, was eine verfehlte Kneipe bringt (`PubLost`, ein Leben weg, mit dem letzten Leben `RunLost`, sonst die Routenwahl). Keine Auszahlung, `OnSeriesWon` feuert nicht. Eine Spelunke wie eine normale Kneipe.
+- **Boss-Kneipe**: Aufgeben beendet den Run (ADR 0017, `RunLost` mit `boss`). Die Oberfläche fragt deutlich nach: „Aufgeben beendet den Run.“
+- **Schutzengel**: verschont auch eine aufgegebene Kneipe (entschieden von Claude, wie vom Nutzer vorgeschlagen): Sie ist eine verlorene Kneipe, und der Engel fragt nicht, wie sie verloren ging. Wie sonst einmal pro Stadtteil und nie in der Boss-Kneipe.
+- **Bot**: gibt nie auf. Eine verlorene Kneipe kostet ihn dasselbe Leben, ob er das letzte Spiel spielt oder nicht, und gespielt kann ein Wunder noch helfen.
+
+**D, „noch nötig“** (Sicht `RunView::needed`, `NeededView`, `Run::max_game_value`): Vor dem letzten Spiel einer Kneipe (ein Spiel übrig, noch nicht angesagt) rechnet der Kern
+
+- `points`: Zielwert minus Konto, was ein gewonnenes Spiel bringen muss (0 oder weniger, wenn das Ziel schon steht; die Boss-Kneipe spielt alle Spiele);
+- `smallest_game`: den kleinsten Spielwert der reinen Formel (ohne Relikte und Faktoren), der reicht, z. B. 88 (Pik mit Multiplikator 8) für 87 nötige Punkte;
+- `max_value`: eine **Obergrenze** für ein gewonnenes Spiel ohne Wissen über das Blatt: das höchste Spiel der Formel (Grand und jede Farbe Ouvert, Hand, Schwarz angesagt mit allen Trümpfen als Spitzen; Null Ouvert Hand mit allen Stilboni; im Ramsch der Verlierer mit 120 Augen und Jungfrau) mit **jeder** erhöhenden Zeile aller Relikte, Bosse, Charaktere und Karten, als gälte ihre Bedingung, so oft ihr Auslöser feuern kann (Stichende zehnmal, jede Karte dreißigmal), dazu die wartenden Faktoren (Doppelkorn, Eierlikör, Letzte Runde). Kontra und Re zählen nicht: Der Spieler kann keinen Gegner zum Kontra bringen;
+- `reachable`: `points <= max_value`.
+
+Ehrlich heißt hier: „Nicht mehr zu schaffen“ steht nur, wenn wirklich kein gewonnenes Spiel reicht (bis auf Kontra und Re). Die Web-App zeigt in der Kopfzeile „Du brauchst noch 87 Punkte“ oder „Nicht mehr zu schaffen“ und hebt dann „Kneipe verlassen“ hervor; die Texte stehen in der Übersetzungsdatei.
+
+**C, drei Rettungs-Schnäpse** (`consumables.ron`, `category: Schnapps`; Preise und Seltenheit **vorläufig nach Augenmaß, ohne Messung**, für `balance`):
+
+| Schnaps | Id | Wirkung | Wann | Seltenheit, Preis |
+|---|---|---|---|---|
+| **Klarer** | `clear_spirit` | Steht das Konto der Kneipe unter 0, steht es wieder auf 0 (`ClearAccount`, Ereignis `AccountCleared`) | zwischen zwei Spielen einer Kneipe (`between_games`), nur mit Minus (sonst `ConditionNotMet`) | Common, 3 |
+| **Absacker** | `nightcap` | Ein Spiel mehr in dieser Kneipe (`ExtraGames(1)`, Ereignis `GamesAdded`) | zwischen zwei Spielen einer normalen Kneipe oder Spelunke, nie in der Boss-Kneipe (`NotInBossPub`) | Uncommon, 4 |
+| **Eierlikör** | `eggnog` | Gewinnst du das nächste angesagte Spiel, zählt es doppelt; verloren wie sonst (`NextGameIfBehind(MultiplyWin(2))`, Zeile `Spielwert ×2` nur beim Sieg, `ActiveGame::win_factors`) | mit zehn Karten vor „Skat oder Hand“, nur wenn das Konto unter der Hälfte des Zielwerts steht (sonst `ConditionNotMet`); verbraucht von der nächsten Ansage, Einmischen verschenkt ihn nicht | Common, 3 |
+
+Auslegungen von Claude: „Zwischen zwei Spielen“ heißt im Kern „das gegebene Spiel ist noch unberührt“, denn nach der Wertung wird sofort neu gegeben; also auch vor dem ersten Spiel, wo Klarer mangels Minus aber nichts tut. Der Eierlikör braucht dagegen zehn Karten vor „Skat oder Hand“ wie der Kurzer, damit er nicht auf ein schon bekanntes Blatt nach dem Skat getrunken wird. Zwei Eierlikör stapeln (×4 beim Sieg), wie zwei Doppelkorn. Die Wertvorschau zählt den Eierlikör mit, weil sie den Wert eines Siegs zeigt.
+
+**Bot** (`run/bot.rs`, Regeln, nicht kalibriert; Kaufwerte Klarer 1, Absacker 2, Eierlikör 1): Vor „Skat oder Hand“ trinkt er Klarer mit Minus, Absacker vor dem letzten Spiel ohne erreichtes Ziel und Eierlikör, sobald er angenommen wird.
+
+Tests: `core/src/run/rescue_tests.rs`. Zu messen, sobald der Simulator wieder läuft: wie oft die drei gekauft und getrunken werden und was sie an „Stadtteil 2 erreicht“ ändern.
 
 ---
 
@@ -1247,6 +1285,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 **Gemessen am 03.11.2026** (Alleinspieler, PIMC-Spieler, `docs/balance/2026-11-03-grosse-runde.md`): Ein Run bringt im Mittel 31,6 Groschen aus Kneipen (vorher 55,8), dazu 4 Startkapital, 2,4 aus Verkäufen und 2,4 aus Inhalten; ausgegeben werden 36,9, davon Relikte 60 %, Zinken 19 %, Schnäpse 19 %, Kartenmaler 1 %, Neuauslage und Reinigen unter 1 %; Neu auslosen der Zinken nutzt der Bot nie. 4,0 Tresen-Besuche je Run. Eine gewonnene normale Kneipe zahlt 4,6 bis 6,0, eine gewonnene Boss-Kneipe 14,5 (vorher 6,45, weniger als eine Kneipe). Die fünf Relikt-Plätze sind beim Boss 1 im Mittel zu 4,0 belegt, ab Stadtteil 2 voll (vorher schon beim Betreten von Stadtteil 2 zu 93 %). **Preise seit 03.11.2026** nach der Einzelmessung ohne Tresen: Skatgott 9 → 12, Ein Auge zudrücken 8 → 7, Schieben 8 → 6, Schenken 8 → 6, Schutzengel 8 → 6, Feierabend 5 → 4.
 
 **Gegenstands-Review (02.11.2026, 8.5), vorläufig ohne Messung**: Kräuter 3 (Common), Doppelkorn 3 (Uncommon), Konterbier 4 (Uncommon), Schwenker 2 (Common), Wegbier 3 (Common); Spickzettel 5 (bisher 4); Feierabend 5 (Common), Monatskarte 4 (Common), Stammtischkasse 5 (Uncommon), Deckel anschreiben 5 (Uncommon), Schutzengel 8 (Rare), Spelunkenkenner 4 (Uncommon). Neu in der Wirtschaft: Schulden am Tresen (Deckel anschreiben, bis −5, einmal pro Stadtteil), eine Kasse (2 je Kneipe, +50 % beim nächsten Tresen), die Wette (3 oder 6 Groschen) und Groschen aus Begegnungen (Wirt 5, Portemonnaie 8). Der Falschspieler kostet jetzt 2 Groschen, statt 3 zu zahlen.
+
+**Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie das Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
 
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.

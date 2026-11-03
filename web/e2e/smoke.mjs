@@ -2664,6 +2664,106 @@ async function zinkenPass(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/**
+ * Pub rescue (DESIGN 8.7), from wave3-mods.json changed in place: the last
+ * game of a normal pub deep in the minus with Klarer and Eierlikör. The
+ * "noch nötig" line says "Nicht mehr zu schaffen" and "Kneipe verlassen"
+ * is highlighted; Klarer sets the account to 0 (toast, the line says what
+ * is needed now), Eierlikör waits for the next game; giving up asks, then
+ * costs a life and opens the route. In a boss pub (boss-lost.json) the
+ * question says that giving up ends the run, and it does. The Tresen
+ * shows the three new Schnäpse with their motifs.
+ */
+async function rescuePass(browser, errors, reducedMotion, viewport) {
+  const tag = viewport.width < 600 ? 'phone' : 'desktop';
+  const context = await quietContext(browser, { viewport, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const shot = (name) => page.screenshot({ path: join(screens, `rescue-${name}-${viewport.width}x${viewport.height}.png`) });
+  const save = JSON.parse(fixture('wave3-mods.json'));
+  save.run.relics = [];
+  save.run.series.games_played = 2;
+  save.run.series.score = -2000;
+  save.run.consumables = ['clear_spirit', 'eggnog'];
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(save));
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="needed"]');
+  if ((await page.getAttribute('[data-testid="needed"]', 'data-reachable')) !== 'false') fail('rescue: −2000 is called reachable');
+  const hopeless = await text(page, 'needed');
+  if (!hopeless.startsWith('Nicht mehr zu schaffen')) fail(`rescue: the line says "${hopeless}"`);
+  if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
+  await shot('hopeless');
+  if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
+  // Klarer from the HUD: account 0, the line tells what is needed.
+  await page.click('.hud .item-chip[data-slot="0"]');
+  await page.click('[data-action="use-item"][data-slot="0"]');
+  await page.waitForFunction(() => document.querySelector('[data-testid="account"]')?.textContent?.trim() === '0', null, { timeout: 5000 }).catch(() => fail('Klarer: the account is not 0'));
+  await page.waitForSelector('[data-testid="needed"][data-reachable="true"]');
+  const needed = await text(page, 'needed');
+  if (!needed.startsWith('Du brauchst noch 33 Punkte')) fail(`Klarer: the line says "${needed}"`);
+  await page.waitForSelector('.toast');
+  await shot('klarer');
+  // Eierlikör: waits for the next game, the HUD says so.
+  await page.click('.hud .item-chip[data-slot="0"]');
+  await page.click('[data-action="use-item"][data-slot="0"]');
+  await page.waitForSelector('[data-testid="pending-schnaps"]');
+  const pending = await text(page, 'pending-schnaps');
+  if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
+  // Give up: asked first, then a life goes.
+  const lives = Number(await page.getAttribute('[data-testid="lives"]', 'data-lives'));
+  await page.click('[data-testid="give-up"]');
+  await page.waitForSelector('[data-testid="give-up-confirm"]');
+  await shot('confirm');
+  await page.click('[data-testid="give-up-confirm"]');
+  await page.waitForSelector('[data-testid="map-target"]', { timeout: 15000 }).catch(() => fail('give up: no route choice afterwards'));
+  const after = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (after.lives !== lives - 1) fail(`give up: ${after.lives} lives, expected ${lives - 1}`);
+  await shot('given-up');
+  await context.close();
+
+  // Boss pub: giving up ends the run.
+  const boss = await quietContext(browser, { viewport, reducedMotion });
+  const bossPage = await boss.newPage();
+  watch(bossPage, errors);
+  await resumeFixture(bossPage, 'boss-lost.json');
+  await bossPage.waitForSelector('[data-testid="give-up"]', { timeout: 15000 }).catch(() => fail('boss pub: no "Kneipe verlassen"'));
+  await bossPage.click('[data-testid="give-up"]');
+  await bossPage.waitForSelector('[data-testid="give-up-boss"]');
+  const warning = (await bossPage.locator('[data-testid="give-up-boss"]').textContent())?.trim();
+  if (warning !== 'Aufgeben beendet den Run.') fail(`boss pub: the question says "${warning}"`);
+  await bossPage.screenshot({ path: join(screens, `rescue-boss-confirm-${viewport.width}x${viewport.height}.png`) });
+  await bossPage.click('[data-testid="give-up-confirm"]');
+  await bossPage
+    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? 'null')?.run?.phase !== 'Game', null, { timeout: 15000 })
+    .catch(() => fail('boss pub: the run goes on after giving up'));
+  await bossPage.waitForTimeout(1500);
+  await bossPage.screenshot({ path: join(screens, `rescue-boss-end-${viewport.width}x${viewport.height}.png`) });
+  await boss.close();
+
+  // The Tresen with the three new Schnäpse.
+  const shop = await quietContext(browser, { viewport, reducedMotion });
+  const shopPage = await shop.newPage();
+  watch(shopPage, errors);
+  const tresen = JSON.parse(fixture('zinken.json'));
+  tresen.run.shop.consumables = ['clear_spirit', 'nightcap', 'eggnog'];
+  await shopPage.goto(base);
+  await shopPage.waitForSelector('[data-action="new-run"]');
+  await shopPage.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(tresen));
+  await shopPage.reload();
+  await shopPage.click('[data-action="resume"]');
+  await shopPage.waitForSelector('[data-testid="shop"]');
+  const goods = await shopPage.locator('[data-testid="shop"]').textContent();
+  for (const name of ['Klarer', 'Absacker', 'Eierlikör']) if (!goods?.includes(name)) fail(`Tresen: ${name} not on offer`);
+  await shopPage.getByText('Eierlikör', { exact: true }).last().scrollIntoViewIfNeeded();
+  await shopPage.screenshot({ path: join(screens, `rescue-tresen-${viewport.width}x${viewport.height}.png`) });
+  if (viewport.width < 600) await assertNoSideScroll(shopPage, 'Tresen with the rescue Schnäpse');
+  await shop.close();
+  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / given up / boss pub ends the run / Tresen`);
+}
+
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
 async function workshopPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -3501,6 +3601,8 @@ async function run() {
     await wildSettlePass(browser, errors);
     await framesPass(browser, errors, reducedMotion);
     await zinkenPass(browser, errors, reducedMotion);
+    await rescuePass(browser, errors, reducedMotion, PHONE);
+    await rescuePass(browser, errors, reducedMotion, DESKTOP);
     await workshopPass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);

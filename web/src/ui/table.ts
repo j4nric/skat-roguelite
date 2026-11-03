@@ -186,14 +186,15 @@ function gameIcon(game: DeclaredGame, size = 30): string {
  * skat may still be picked up), else Einmischen (with ten cards); Ansagen.
  * `passesLeft` is the Einmischen left now (`series.redeals_left`).
  */
-function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string): string {
+function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string, giveUp = ''): string {
   const back = !afterSkat && options.can_pick_up_skat;
   const first = back
     ? `<button class="btn" ${attrs({ 'data-action': 'hand-back' })}>${esc(de.table.back)}</button>`
     : !afterSkat
       ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_redeal })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
       : '';
-  return `<div class="declare-actions">${first}${declare}</div>`;
+  // "Kneipe verlassen" here only when there is no choice panel (a hand game forced).
+  return `<div class="declare-actions">${first}${declare}</div>${back ? '' : giveUp}`;
 }
 
 /** Warnings of the boss rules on the Ansage. */
@@ -237,6 +238,17 @@ function tableTalk(view: RunView): string {
 /** The deck, three backs on top of each other. */
 function deckPile(): string {
   return `<span class="deck-backs" aria-hidden="true">${cardBack()}${cardBack()}${cardBack()}</span>`;
+}
+
+/**
+ * "Kneipe verlassen" (DESIGN 8.7) while the core allows it; highlighted
+ * when the "noch nötig" line says the pub cannot be won any more. The tap
+ * asks first (overlay `confirm-give-up`).
+ */
+function giveUpButton(view: RunView): string {
+  if (!view.can_give_up) return '';
+  const hopeless = view.needed?.reachable === false;
+  return `<button class="btn btn-give-up ${hopeless ? 'is-urgent' : ''}" ${attrs({ 'data-action': 'give-up', 'data-testid': 'give-up', title: de.table.giveUpTitle })}>${esc(de.table.giveUp)}</button>`;
 }
 
 /**
@@ -291,6 +303,7 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     ${declareWarnings(options, false)}
     <div class="declare-actions choice-actions">
       <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
+      ${giveUpButton(view)}
     </div>
   </section>`;
 }
@@ -372,7 +385,7 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
     <div class="games">${games}</div>
     ${levels}
     ${declareWarnings(options, afterSkat)}
-    ${declareActions(options, afterSkat, passesLeft, declare)}
+    ${declareActions(options, afterSkat, passesLeft, declare, ui.view && !afterSkat ? giveUpButton(ui.view) : '')}
   </section>`;
 }
 
