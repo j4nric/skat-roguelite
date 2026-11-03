@@ -24,7 +24,15 @@ const LINE: Record<Way, { colour: string; pattern: Pattern }> = {
   bahn: { colour: '#1b4a4c', pattern: 'dashed' },
   rad: { colour: '#9a6418', pattern: 'dotted' },
 };
-const STOP_ICON: Record<StopCategory, MapIcon> = { Tresen: 'shop', Event: 'begegnung', Upgrade: 'upgrade', Rest: 'rast' };
+const STOP_ICON: Record<StopCategory, MapIcon> = {
+  Tresen: 'shop',
+  Event: 'begegnung',
+  Upgrade: 'upgrade',
+  Rest: 'rast',
+  FoundCoins: 'fundgroschen',
+  Kiosk: 'kiosk',
+  DiceStall: 'wuerfel',
+};
 
 /** The pixel icon of a stop category. */
 export function categoryIcon(category: StopCategory, size = 28): string {
