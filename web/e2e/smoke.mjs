@@ -36,7 +36,11 @@
 //   thrown with a flick flies with a turn, comes down askew and off its
 //   place, lies there a moment and slides onto it; an opponent's card
 //   flies in from his seat; a card let go over the hand goes back unplayed;
-//   one the core does not let go springs back and shakes,
+//   one the core does not let go springs back and shakes; a skat card
+//   tapped on the table is lifted and flies into its sorted slot in the
+//   hand (sampled every frame), a hand card tapped flies onto the table,
+//   on Drücken both fly into the Ansage and after it into the stack in
+//   the felt's corner, turning face down,
 // - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
@@ -2412,6 +2416,78 @@ async function rewardFxPass(browser, errors, viewport) {
  * Screenshots: the throw in flight, an opponent's card in flight, the
  * trick with all three cards, the pressed skat and its look.
  */
+/**
+ * Drücken with full motion: a skat card tapped on the table is lifted and
+ * flies into its slot in the hand. Its place is sampled every frame: it
+ * starts up at the table, moves over several frames and comes to rest in
+ * the hand, in the place of the core's order (the hand with both skat
+ * cards back holds it in the same order), with the other cards in reading
+ * order around it. Tapping it again sends it back onto the table, the
+ * same way. Leaves the skat on the table as it was.
+ */
+async function assertPickupFlight(page, tag, snap) {
+  const zone = '[data-testid="skat-zone"] .skat-card';
+  const [first, second] = await page.locator(zone).evaluateAll((els) => els.map((e) => e.dataset.id));
+  if (!first || !second) fail(`feel ${tag}: the skat does not lie on the table`);
+  const flight = page.evaluate(
+    (id) =>
+      new Promise((resolve) => {
+        const start = document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`).getBoundingClientRect();
+        document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`).click();
+        const track = [];
+        const t0 = performance.now();
+        const frame = () => {
+          const el = document.querySelector(`.hand-card[data-id="${id}"]`);
+          const r = el?.getBoundingClientRect();
+          if (r) track.push({ t: Math.round(performance.now() - t0), x: r.left + r.width / 2, y: r.top + r.height / 2, flying: el.getAnimations().some((a) => a.id === 'glide') });
+          if (performance.now() - t0 < 1400) requestAnimationFrame(frame);
+          else resolve({ start: { x: start.left + start.width / 2, y: start.top + start.height / 2 }, track });
+        };
+        requestAnimationFrame(frame);
+      }),
+    first,
+  );
+  await page.waitForTimeout(160);
+  await snap('feel-pickup-flight');
+  const { start, track } = await flight;
+  const moving = track.filter((p) => p.flying);
+  const end = track[track.length - 1];
+  if (!end || end.flying) fail(`feel ${tag}: the skat card picked up is still flying after 1.4 s (${JSON.stringify(end)})`);
+  if (moving.length < 4) fail(`feel ${tag}: the skat card jumps into the hand (${moving.length} frames in flight)`);
+  const way = new Set(moving.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+  if (way.size < 4) fail(`feel ${tag}: the skat card does not move over time: ${JSON.stringify(moving)}`);
+  const firstSeen = moving[0];
+  if (Math.hypot(firstSeen.x - start.x, firstSeen.y - start.y) > Math.hypot(end.x - start.x, end.y - start.y) * 0.35) fail(`feel ${tag}: the flight does not start at the table (${JSON.stringify(start)} -> ${JSON.stringify(firstSeen)})`);
+  const hand = await page.evaluate(() =>
+    [...document.querySelectorAll('.hand-card')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { id: e.dataset.id, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }),
+  );
+  const mine = hand.find((c) => c.id === first);
+  if (!mine || Math.hypot(mine.x - end.x, mine.y - end.y) > 1) fail(`feel ${tag}: the card picked up does not rest where it landed`);
+  // Reading order (row by row, left to right) is the hand's order.
+  const rows = [...new Set(hand.map((c) => Math.round(c.y / 20)))].sort((a, b) => a - b);
+  const reading = [...hand].sort((a, b) => rows.indexOf(Math.round(a.y / 20)) - rows.indexOf(Math.round(b.y / 20)) || a.x - b.x).map((c) => c.id);
+  if (reading.join() !== hand.map((c) => c.id).join()) fail(`feel ${tag}: the hand is not laid out in its order after the flight: ${reading.join()} vs ${hand.map((c) => c.id).join()}`);
+  // The other skat card too: the hand then holds all twelve in the core's order.
+  await page.locator(`${zone}[data-id="${second}"]`).click();
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
+  const twelve = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.dataset.id));
+  const eleven = hand.map((c) => c.id);
+  if (twelve.filter((x) => x !== second).join() !== eleven.join()) fail(`feel ${tag}: the card picked up did not land in its sorted slot (${eleven.join()} within ${twelve.join()})`);
+  // Back onto the table, the way it came.
+  await page.locator(`.hand-card[data-id="${first}"]`).click();
+  await page
+    .waitForFunction((id) => document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`)?.getAnimations().some((a) => a.id === 'glide'), first, { timeout: 3000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: a hand card tapped onto the table does not fly there`));
+  await page.locator(`.hand-card[data-id="${second}"]`).click();
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
+  const back = await page.locator(zone).evaluateAll((els) => els.map((e) => e.dataset.id));
+  if (back.join() !== [first, second].join()) fail(`feel ${tag}: the skat is not back on the table (${back.join()})`);
+  log(`feel ${tag}: a skat card picked up flies into its slot in the hand (${moving.length} frames, ${way.size} places), the others make room`);
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -2431,10 +2507,22 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   await page.waitForTimeout(700);
+  await assertPickupFlight(page, tag, snap);
   await page.click('[data-action="discard"]');
+  // Drücken: the two cards fly from the table into the Ansage's row.
+  await page
+    .waitForFunction(() => [...document.querySelectorAll('[data-testid="pressed"] .mini-card')].filter((el) => el.getAnimations().some((a) => a.id === 'glide')).length === 2, null, { timeout: 5000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: the pressed cards do not fly into the Ansage`));
+  await snap('feel-discard-flight');
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
+  // After the Ansage they fly on into the stack in the felt's corner, turning face down.
+  await page
+    .waitForFunction(() => [...document.querySelectorAll('[data-testid="pressed-play"] .pressed-card')].filter((el) => el.querySelector('.flip-cover') && el.getAnimations().some((a) => a.id === 'glide')).length === 2, null, { timeout: 5000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: the pressed cards do not fly into the stack turning face down`));
+  await snap('feel-press-flight');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect?.target?.closest?.('.trick, .hand')));
 

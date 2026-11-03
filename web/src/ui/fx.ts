@@ -119,6 +119,12 @@ export function flyIn(el: Element, from: DOMRect, opts: { ms?: number; delay?: n
     frames.push({ transform: `translate(${mx}px, ${my}px) scale(${(scale + 1) / 2}) rotate(${rotate / 3}deg)`, opacity: 1, offset: 0.55 });
   }
   frames.push({ transform: 'none', opacity: 1 });
+  // A card of the fanned hand starts upright and turns into the fan on the way.
+  const turn = el instanceof HTMLElement ? getComputedStyle(el).rotate : 'none';
+  if (turn && turn !== 'none') {
+    (frames[0] as Keyframe).rotate = '0deg';
+    (frames[frames.length - 1] as Keyframe).rotate = turn;
+  }
   return track(el.animate(frames, { duration, delay: dur(opts.delay ?? 0), easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards' }));
 }
 
@@ -436,6 +442,17 @@ export interface FlightSnapshot {
   anims: { onCover: boolean; frames: Keyframe[]; timing: EffectTiming; composite: CompositeOperation; time: number }[];
 }
 
+/** The key a card keeps across a re-render: its card id, or a place name (`data-fly`). */
+function keyOf(el: HTMLElement): string | undefined {
+  const k = el.dataset.cardId ?? el.dataset.id ?? el.dataset.fly;
+  return k === undefined ? undefined : `${el.classList.contains('skat-card') ? 's' : ''}${k}`;
+}
+
+/** Transitions and animations of the stylesheet: the new element runs its own. */
+function cssDriven(a: Animation): boolean {
+  return (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) || (typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation);
+}
+
 /**
  * The app re-renders the table from scratch while cards still fly or
  * settle (the next opponent thinks). Before a render, note what runs on
@@ -447,8 +464,8 @@ export function noteFlights(root: Element, selector: string): FlightSnapshot[] {
   if (!motionOn()) return [];
   const out: FlightSnapshot[] = [];
   for (const el of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
-    const id = el.dataset.cardId;
-    const anims = el.getAnimations({ subtree: true }).filter((x) => x.playState === 'running' && x.effect instanceof KeyframeEffect);
+    const id = keyOf(el);
+    const anims = el.getAnimations({ subtree: true }).filter((x) => x.playState === 'running' && x.effect instanceof KeyframeEffect && !cssDriven(x));
     if (!id || !anims.length) continue;
     const cover = el.querySelector(':scope > .flip-cover');
     const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [] };
@@ -467,7 +484,7 @@ export function noteFlights(root: Element, selector: string): FlightSnapshot[] {
 /** Continue the animations noted before a render on the new elements. */
 export function resumeFlights(root: Element, selector: string, notes: FlightSnapshot[]): void {
   for (const n of notes) {
-    const el = Array.from(root.querySelectorAll<HTMLElement>(selector)).find((x) => x.dataset.cardId === n.id);
+    const el = Array.from(root.querySelectorAll<HTMLElement>(selector)).find((x) => keyOf(x) === n.id);
     if (!el) continue;
     let cover: HTMLElement | null = null;
     if (n.cover !== null) {
@@ -506,5 +523,216 @@ export function finishOn(els: Element[]): void {
         a.cancel();
       }
     }
+  }
+}
+
+/** Where a card is on the screen: its centre, its width as seen, its turn in degrees. */
+export interface Spot {
+  x: number;
+  y: number;
+  w: number;
+  turn: number;
+}
+
+/** The turn of a computed `transform` (a matrix or "none"), in degrees. */
+function matrixOf(transform: string): DOMMatrix {
+  try {
+    return new DOMMatrix(transform === 'none' ? undefined : transform);
+  } catch {
+    return new DOMMatrix();
+  }
+}
+
+function turnOf(m: DOMMatrix): number {
+  return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+}
+
+/** The computed `rotate` property in degrees ("none" or "7deg"; only turns in the plane occur here). */
+function rotateOf(cs: CSSStyleDeclaration): number {
+  const v = cs.rotate;
+  if (!v || v === 'none') return 0;
+  const n = parseFloat(v.split(' ').pop() ?? '0');
+  return Number.isFinite(n) ? n : 0;
+}
+
+function translateOf(cs: CSSStyleDeclaration): { x: number; y: number } {
+  const v = cs.translate;
+  if (!v || v === 'none') return { x: 0, y: 0 };
+  const [x, y] = v.split(' ').map((p) => parseFloat(p));
+  return { x: Number.isFinite(x) ? (x as number) : 0, y: Number.isFinite(y) ? (y as number) : 0 };
+}
+
+function scaleOf(cs: CSSStyleDeclaration): number {
+  const v = cs.scale;
+  if (!v || v === 'none') return 1;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 1;
+}
+
+/** The turn its parent adds (a skat card lies in a slot turned askew). */
+function parentTurn(el: HTMLElement): number {
+  const p = el.parentElement;
+  return p ? turnOf(matrixOf(getComputedStyle(p).transform)) : 0;
+}
+
+/**
+ * Where `el` is seen right now, a running flight included (so a card
+ * caught mid-air flies on from there, not from where it set out).
+ */
+export function spotOf(el: HTMLElement): Spot {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  const m = matrixOf(cs.transform);
+  const w = (el.offsetWidth || r.width) * scaleOf(cs) * Math.hypot(m.a, m.b);
+  // The box of a turned rectangle has the same centre as the rectangle.
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, w, turn: rotateOf(cs) + turnOf(m) + parentTurn(el) };
+}
+
+/** The upright box of `el` around its centre as seen (a fanned hand card without its turn). */
+export function boxOf(el: HTMLElement): DOMRect {
+  const s = spotOf(el);
+  const h = el.offsetWidth ? (s.w * el.offsetHeight) / el.offsetWidth : el.getBoundingClientRect().height;
+  return new DOMRect(s.x - s.w / 2, s.y - h / 2, s.w, h);
+}
+
+/** A spot from a plain box (a card let go after dragging, upright). */
+export function spotOfRect(r: DOMRect, turn = 0): Spot {
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, turn };
+}
+
+/** Spots of the cards under `root` matching `selector`, by `data-id`. */
+export function spotsOf(root: ParentNode, selector: string): Map<string, Spot> {
+  const out = new Map<string, Spot>();
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
+    const id = el.dataset.id;
+    if (id !== undefined) out.set(id, spotOf(el));
+  }
+  return out;
+}
+
+function rot(v: { x: number; y: number }, deg: number): { x: number; y: number } {
+  const a = (deg * Math.PI) / 180;
+  return { x: v.x * Math.cos(a) - v.y * Math.sin(a), y: v.x * Math.sin(a) + v.y * Math.cos(a) };
+}
+
+export interface GlideOpts {
+  ms?: number;
+  delay?: number;
+  /** Lifted off the table on the way: px upwards at the middle (and a little bigger). */
+  lift?: number;
+  /** Bends the path sideways by that many px at its middle. */
+  arc?: number;
+  /**
+   * HTML laid over the card for the first half of the turn: a back (the
+   * card turns face up) or a face (it turns face down onto its back).
+   */
+  cover?: string;
+  /** With `cover`: turn over (default), or keep the cover and fade it out at the end (a big face landing as a small one). */
+  turn?: boolean;
+  /** Paint above its neighbours (and the felt) while it flies. */
+  above?: boolean;
+}
+
+/**
+ * Move a card from `from` into its own place (FLIP): it keeps its slot in
+ * the DOM, only `translate`, `rotate` and `scale` move, ending exactly at
+ * the values its CSS gives it (the fan of the hand, a lifted card). With
+ * `lift` and `arc` it is picked up and thrown in a curve, with `cover` it
+ * turns over on the way. Whatever ran on the card before stops: it was
+ * measured where it was seen.
+ */
+export function glide(el: HTMLElement, from: Spot, opts: GlideOpts = {}): Animation | null {
+  const duration = dur(opts.ms ?? 300);
+  if (!duration) return null;
+  for (const a of el.getAnimations({ subtree: true })) if (!cssDriven(a)) a.cancel();
+  el.querySelectorAll(':scope > .flip-cover').forEach((c) => c.remove());
+  if (!el.offsetWidth) return null;
+  const to = spotOf(el);
+  const cs = getComputedStyle(el);
+  const m = matrixOf(cs.transform);
+  const phi = parentTurn(el);
+  const restRot = rotateOf(cs);
+  const restTr = translateOf(cs);
+  const restScale = scaleOf(cs);
+  // The centre seen from the transform origin, through the card's own transform.
+  const [ox = 0, oy = 0] = cs.transformOrigin.split(' ').map((p) => parseFloat(p));
+  const c0 = { x: el.offsetWidth / 2 - ox, y: el.offsetHeight / 2 - oy };
+  const q = { x: m.a * c0.x + m.c * c0.y, y: m.b * c0.x + m.d * c0.y };
+  const restQ = rot({ x: q.x * restScale, y: q.y * restScale }, restRot);
+  // The translate that puts the centre at (x, y) with this turn and scale.
+  const place = (x: number, y: number, turn: number, scale: number): Keyframe => {
+    const theta = turn - phi - turnOf(m);
+    const qq = rot({ x: q.x * scale, y: q.y * scale }, theta);
+    const d = rot({ x: x - to.x, y: y - to.y }, -phi);
+    const tx = restTr.x + restQ.x - qq.x + d.x;
+    const ty = restTr.y + restQ.y - qq.y + d.y;
+    return { translate: `${tx.toFixed(1)}px ${ty.toFixed(1)}px`, rotate: `${theta.toFixed(2)}deg`, scale: scale.toFixed(3) };
+  };
+  const s0 = Math.max(0.2, Math.min(3, (from.w / (to.w || 1)) * restScale));
+  const frames: Keyframe[] = [{ ...place(from.x, from.y, from.turn, s0), easing: 'cubic-bezier(.3,.1,.4,1)' }];
+  if (opts.lift || opts.arc) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const arc = opts.arc ?? 0;
+    const lift = opts.lift ?? 0;
+    const mx = from.x + dx * 0.5 + (-dy / len) * arc;
+    const my = from.y + dy * 0.5 + (dx / len) * arc - lift;
+    const ms = Math.max(s0, restScale) * (1 + Math.min(0.12, lift / 200));
+    frames.push({ ...place(mx, my, (from.turn + to.turn) / 2 + Math.sign(arc || dx) * 4, ms), offset: 0.5, easing: 'cubic-bezier(.4,0,.3,1)' });
+  }
+  frames.push({ translate: `${restTr.x}px ${restTr.y}px`, rotate: `${restRot}deg`, scale: String(restScale) });
+  if (opts.above) for (const f of frames) f.zIndex = '20';
+  const delay = dur(opts.delay ?? 0);
+  const anim = track(el.animate(frames, { duration, delay, fill: 'backwards' }));
+  anim.id = 'glide';
+  if (opts.cover !== undefined) {
+    // Turned over half way: the cover narrows to an edge, the other side widens.
+    const cover = document.createElement('span');
+    cover.className = 'flip-cover';
+    cover.setAttribute('aria-hidden', 'true');
+    cover.innerHTML = opts.cover;
+    el.appendChild(cover);
+    if (opts.turn === false) {
+      const fade = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration, delay, fill: 'both' }));
+      const gone = (): void => cover.remove();
+      fade.finished.then(gone, gone);
+      return anim;
+    }
+    track(
+      el.animate(
+        [
+          { transform: 'scaleX(1)', offset: 0 },
+          { transform: 'scaleX(1)', offset: 0.2 },
+          { transform: 'scaleX(0.05)', offset: 0.45 },
+          { transform: 'scaleX(1)', offset: 0.7 },
+          { transform: 'scaleX(1)', offset: 1 },
+        ],
+        { duration, delay, composite: 'add' },
+      ),
+    );
+    const hide = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: 0.45 }, { opacity: 0, offset: 0.45 }, { opacity: 0 }], { duration, delay, fill: 'both' }));
+    const gone = (): void => cover.remove();
+    hide.finished.then(gone, gone);
+  }
+  return anim;
+}
+
+/**
+ * FLIP for a row of cards laid out anew: each found in `before` (by
+ * `data-id`) glides from there into its new place; `skip` are left to the
+ * caller (the card picked up flies its own way).
+ */
+export function glideAll(els: HTMLElement[], before: Map<string, Spot>, opts: { ms?: number; skip?: Set<string> } = {}): void {
+  if (!motionOn()) return;
+  for (const el of els) {
+    const id = el.dataset.id;
+    if (id === undefined || opts.skip?.has(id)) continue;
+    const from = before.get(id);
+    if (!from) continue;
+    const flying = el.getAnimations().some((a) => a.id === 'glide');
+    const now = spotOf(el);
+    if (!flying && Math.abs(now.x - from.x) < 1 && Math.abs(now.y - from.y) < 1 && Math.abs(now.turn - from.turn) < 0.5 && Math.abs(now.w - from.w) < 1) continue;
+    glide(el, from, { ms: opts.ms ?? 240 });
   }
 }
