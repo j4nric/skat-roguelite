@@ -1047,7 +1047,13 @@ mod tests {
             serde_json::from_str(&session.view().expect("view")).expect("json");
         assert!(view["upcoming_boss"]["id"].is_string());
         assert!(view["upcoming_boss"]["text"].is_string());
-        assert_eq!(view["upcoming_boss"]["target_factor"], 1.0);
+        assert!(view["upcoming_boss"]["target_factor"].is_number());
+        // ADR 0017: two boss players with names.
+        let figures = view["upcoming_boss"]["figures"]
+            .as_array()
+            .expect("figures");
+        assert_eq!(figures.len(), 2);
+        assert!(figures.iter().all(|f| f["name"].is_string()));
         assert_eq!(view["next_series"]["index"], 1);
         assert_eq!(view["next_series"]["is_boss"], false);
         assert!(view["next_series"]["target"].is_u64());
@@ -1358,7 +1364,7 @@ mod tests {
             }
             for event in &events {
                 if let Some(payout) = event.get("SeriesWon").map(|w| &w["payout"]) {
-                    let sum = ["base", "games_left", "interest"]
+                    let sum = ["base", "games_left", "interest", "bonus", "boss"]
                         .iter()
                         .filter_map(|k| payout[k].as_u64())
                         .sum::<u64>();

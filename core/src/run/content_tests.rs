@@ -163,8 +163,12 @@ fn every_content_item_loads_with_german_texts() {
     ] {
         assert!(content.card_mod(&CardModId::new(id)).is_some(), "{id}");
     }
-    for id in ["the_pusher", "kontra_hans", "grandma"] {
+    for id in ["the_pusher", "grandma", "twins", "ramscher", "black_peter"] {
         assert!(content.boss(&BossId::new(id)).is_some(), "{id}");
+    }
+    // ADR 0017: three bosses left the pub.
+    for id in ["kontra_hans", "revolutionary", "kibitz_killer"] {
+        assert!(content.boss(&BossId::new(id)).is_none(), "{id}");
     }
     for id in ["fresh_deck", "ink_pad", "herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
@@ -668,56 +672,61 @@ fn the_pusher_forces_hand_games() {
 }
 
 #[test]
-fn kontra_hans_enables_kontra_without_the_house_rule() {
-    let content = content();
-    let mut run = boss_run(&content, "kontra_hans");
-    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
-    let events = run
-        .apply(&content, RunAction::Declare(hand_game(CLUBS)))
-        .expect("declare");
-    assert!(events.iter().any(|e| matches!(e, RunEvent::Kontra { .. })));
-    assert_eq!(
-        run.game().and_then(|a| a.rules.kontra_source.clone()),
-        Some(Source::Boss(BossId::new("kontra_hans")))
-    );
-    run.apply(&content, RunAction::AnswerKontra { re: false })
-        .expect("no re");
-    let mut guard = 0;
-    while run.last_score().is_none() && guard < 100 {
-        let action = RunBot.next_action(&run, &content).expect("action");
-        run.apply(&content, action).expect("legal");
-        guard += 1;
-    }
-    let b = run.last_score().expect("scored");
-    assert_eq!(b.multiplier, Factor::from_int(2));
-}
-
-#[test]
-fn grandma_turns_all_jacks_into_blanks() {
+fn grandma_curses_half_the_edition_for_the_pub_only() {
     let content = content();
     let mut run = boss_run(&content, "grandma");
+    // Every card carries "Augen +2", so every curse takes a modification's
+    // place; a special card stays.
+    let augen = CardModId::new("points");
+    for id in 0..32 {
+        run.edition.add_mod(&content, id, &augen, 2).expect("augen");
+    }
+    let wild = CardModId::new("wild_card");
+    run.edition.add_mod(&content, 9, &wild, 1).expect("wild");
+    let before = run.edition.clone();
+    let coins = run.coins();
     let mut events = Vec::new();
     run.deal(&content, true, &mut events).expect("deal");
-    let game = &run.game().expect("game").game;
-    let in_play = game.cards_in_play();
-    assert_eq!(in_play.iter().filter(|c| c.is_blank()).count(), 4);
+    let laid = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::BossCursesLaid { boss, cards } => Some((boss.clone(), cards.clone())),
+            _ => None,
+        })
+        .expect("curses laid");
+    assert_eq!(laid.0, BossId::new("grandma"));
+    assert_eq!(laid.1.len(), 16);
+    let curses = ["transparent", "battered", "stained"].map(CardModId::new);
+    for (id, curse) in &laid.1 {
+        assert!(curses.contains(curse), "{curse}");
+        let card = run.edition().get(*id).expect("card");
+        assert!(card.mods.contains(curse));
+        assert!(!card.mods.contains(&augen), "the curse replaces Augen +2");
+        assert_eq!(card.mods.contains(&wild), *id == 9);
+    }
+    let untouched = before
+        .cards()
+        .iter()
+        .filter(|c| run.edition().get(c.id) == Some(c))
+        .count();
+    assert_eq!(untouched, 16);
+    // No Groschen for these curses, and only once per pub.
+    assert_eq!(run.coins(), coins);
+    let mut again = Vec::new();
+    run.deal(&content, true, &mut again).expect("deal");
     assert!(
-        !in_play
+        !again
             .iter()
-            .any(|c| c.face().is_some_and(|f| f.is_jack()))
+            .any(|e| matches!(e, RunEvent::BossCursesLaid { .. }))
     );
-    // Matadors start below the missing jacks: the declarer holding the
-    // trump ace is "mit 1" at least.
-    let decl = Declaration::new(DIAMONDS, RiskLevel::Normal).expect("suit or grand");
-    let ace = in_play.iter().copied().find(|c| c.id == 7).expect("DA");
-    let m = crate::rules::matadors_in(decl.game(), &[ace], in_play);
-    assert!(m.with && m.count >= 1);
-    // The edition itself keeps its jacks.
+    // When the pub ends, the edition is exactly as before.
+    let mut ended = Vec::new();
+    run.end_pub(&content, &mut ended);
+    assert_eq!(run.edition(), &before);
     assert!(
-        run.edition()
-            .cards()
+        ended
             .iter()
-            .all(|c| c.kind != CardKind::Blank)
+            .any(|e| matches!(e, RunEvent::BossCursesLifted { cards } if cards.len() == 16))
     );
 }
 
@@ -1109,6 +1118,7 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
             character: Character::Declarer,
             length: RunLength::Full,
             stake: 0,
+            boss: None,
         })
         .collect();
     let earned = meta.observe(&content, &lost);

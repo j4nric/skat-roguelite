@@ -41,7 +41,8 @@ pub fn game_seed(run: &Run) -> u64 {
 }
 
 /// Completed tricks at each swap of the defenders' hands (boss "Der
-/// Revolutionär"), read from the game's public log.
+/// Revolutionär", removed by ADR 0017; only logs saved before have one),
+/// read from the game's public log.
 #[must_use]
 pub fn defender_swaps<C>(log: &[Event<C>]) -> Vec<usize> {
     let mut tricks = 0;
@@ -79,8 +80,8 @@ pub(super) fn defender_card(
 
 /// What the defenders know beyond their seat's view: the swaps of their
 /// hands and, effects v2 (DESIGN 7.2), every "Durchsichtig" card the
-/// player holds, in his hand or in the skat (`DealtCard::revealed`, off
-/// under "Der Kiebitz-Mörder"). The cards are taken from the view, so
+/// player holds, in his hand or in the skat (`DealtCard::revealed`). The
+/// cards are taken from the view, so
 /// they match the view's copies.
 #[must_use]
 pub fn defender_hints(active: &ActiveGame, view: &SeatView<'_, DealtCard>) -> Hints<DealtCard> {

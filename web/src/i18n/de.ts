@@ -1126,7 +1126,7 @@ export const de = {
     crib_sheet: 'Nach der Ansage eines Handspiels liegen beide Skatkarten offen neben dem Stich. Nur zum Wissen, sie zählen wie immer.',
     kitty: 'Die Kasse füllt sich nach jeder gewonnenen Kneipe mit 2 Groschen aus der Belohnung. Am nächsten Tresen bekommst du alles zurück und die Hälfte dazu, abgerundet.',
     slate: 'Einmal pro Stadtteil kaufst du am Tresen über dein Geld hinaus, bis 5 Groschen ins Minus. Jede Einnahme danach (Kneipe, Verkauf, Groschen) zahlt zuerst die Schulden.',
-    guardian_angel: 'Die erste verlorene Kneipe eines Stadtteils kostet kein Leben, auch eine Boss-Kneipe (die du dann noch einmal spielst).',
+    guardian_angel: 'Die erste verlorene Kneipe eines Stadtteils kostet kein Leben. In der Boss-Kneipe hilft er nicht: Wer sie verliert, hat den Abend verloren.',
     dive_expert: 'Führt ein Weg in eine Spelunke, zeigt er dir zwei Mali. Du wählst bei der Routenwahl, welcher gilt; sonst der erste.',
   } as Record<string, string>,
 
@@ -1147,11 +1147,7 @@ export const de = {
     relics: {
     },
     card_mods: {},
-    bosses: {
-      grandma: {
-        text: 'Die Oma hat alle Unter eingesteckt. In dieser Kneipe sind sie Blankos.',
-      },
-    },
+    bosses: {},
     consumables: {
     },
     characters: {},

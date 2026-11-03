@@ -401,8 +401,8 @@
     ),
     // Lever Zählen (information): after a hand declaration the untouched
     // skat is shown, since the item review of 02.11.2026 both cards (before:
-    // one). Not in the Ramsch (nobody declares a hand game there), off
-    // against "Der Kiebitz-Mörder". Price provisional (5, before 4).
+    // one). Not in the Ramsch (nobody declares a hand game there). Price
+    // provisional (5, before 4).
     (
         id: "crib_sheet",
         group: Control,
@@ -474,7 +474,7 @@
         id: "guardian_angel",
         group: Tour,
         name: "Schutzengel",
-        text: "Einmal pro Stadtteil: Die erste verlorene Kneipe kostet kein Leben.",
+        text: "Einmal pro Stadtteil: Die erste verlorene Kneipe kostet kein Leben. Nicht in der Boss-Kneipe.",
         rarity: Rare,
         price: 8,
         passive: [SpareLife],

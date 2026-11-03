@@ -293,9 +293,6 @@ pub enum Effect {
     /// Lever Zählen: the player sees who holds this card. Card
     /// modifications only, passive only.
     RevealHolder,
-    /// Lever Spitzen: matching cards become blanks for this game (boss
-    /// "Die Oma" takes out the jacks). Passive only.
-    BlankOut(CardFilter),
     /// Lever Gewinnschwelle: the declarer wins from this many Augen. The
     /// lowest active threshold counts. Before the result only.
     WinThreshold(u32),
@@ -373,17 +370,25 @@ pub enum Effect {
     /// with that knowledge (boss "Die Zwillinge"). Cheating. Passive or on
     /// deal.
     DefendersSeeEachOther,
-    /// Lever Zählen: the two defenders swap their hands (boss "Der
-    /// Revolutionär", after the fifth trick). Cheating. On trick end only.
-    SwapDefenderHands,
-    /// Own scoring: the first game dealt in the series while this rule is
-    /// active is a Ramsch, declared by nobody and not to be passed (boss
-    /// "Der Ramscher"; see [`crate::rules::ramsch_value_parts`]). Passive
-    /// only.
-    RamschOnce,
-    /// Every information effect ([`Effect::is_information`]) is off,
-    /// also "Durchsichtig" (boss "Der Kiebitz-Mörder"). Passive only.
-    DisableInformation,
+    /// Own scoring: every game dealt while this rule is active is a
+    /// Ramsch, declared by nobody and not to be passed (boss "Der
+    /// Ramscher" since ADR 0017; until then only the first game of the
+    /// pub, which is why saves call it `RamschOnce`; see
+    /// [`crate::rules::ramsch_value_parts`]). Passive only.
+    #[serde(alias = "RamschOnce")]
+    Ramsch,
+    /// Lever Flüche (boss "Die Oma", ADR 0017): when the first game under
+    /// this rule is dealt, `cards` random cards of the player's edition
+    /// each get one of `curses` (drawn per card, with the curse's default
+    /// value) until the pub ends. A temporary curse takes the place of the
+    /// card's normal modification while it lasts; afterwards the edition
+    /// is exactly as before. No Groschen, no `OnAttach`. Passive only.
+    CurseForPub {
+        /// How many cards of the player's edition.
+        cards: u32,
+        /// The curses drawn from, one per card.
+        curses: Vec<CardModId>,
+    },
     /// Lever Groschen: the player gains this many Groschen (fewer if
     /// negative, never below 0). In every stage but `Passive`: on score,
     /// after a won series, or on a card modification when it is attached
@@ -470,7 +475,8 @@ pub enum Effect {
     /// debt first. Passive only; the largest limit counts.
     Credit(u32),
     /// Lever Leben ("Schutzengel"): once per Stadtteil the first lost pub
-    /// costs no life. Passive only.
+    /// costs no life; never a boss pub, whose loss ends the run (ADR
+    /// 0017). Passive only.
     SpareLife,
     /// Lever Spelunke ("Spelunkenkenner"): a Spelunke offers this many
     /// maluses and the player picks one at the route choice. Passive only;
@@ -503,8 +509,7 @@ impl Effect {
             | Effect::Wild
             | Effect::Demote
             | Effect::Undead
-            | Effect::AlwaysForehand
-            | Effect::BlankOut(_) => stage == Stage::Passive,
+            | Effect::AlwaysForehand => stage == Stage::Passive,
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
             }
@@ -528,20 +533,18 @@ impl Effect {
             | Effect::ShopDiscount(_)
             | Effect::SeriesSkatSwap(_)
             | Effect::NoCheating
-            | Effect::RamschOnce
-            | Effect::DisableInformation => stage == Stage::Passive,
+            | Effect::Ramsch
+            | Effect::CurseForPub { .. } => stage == Stage::Passive,
             Effect::PeekDefenderCards(_)
             | Effect::RevealDefenderHand(_)
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
-            Effect::SwapDefenderHands => stage == Stage::OnTrickEnd,
             Effect::StashCoins { .. } => stage == Stage::OnSeriesWon,
             Effect::PayOutCounter { .. } => stage == Stage::OnShopOpened,
         }
     }
 
-    /// Whether this effect gives the player information (switched off by
-    /// [`Effect::DisableInformation`]).
+    /// Whether this effect gives the player information.
     #[must_use]
     pub const fn is_information(&self) -> bool {
         matches!(
@@ -558,10 +561,7 @@ impl Effect {
     /// (switched off by [`Effect::NoCheating`]).
     #[must_use]
     pub const fn is_cheat(&self) -> bool {
-        matches!(
-            self,
-            Effect::DefendersSeeEachOther | Effect::SwapDefenderHands
-        )
+        matches!(self, Effect::DefendersSeeEachOther)
     }
 
     /// Whether this effect needs "this card" and so only works on card

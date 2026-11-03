@@ -164,12 +164,6 @@ fn shot_works_only_with_ten_cards_and_not_against_the_kibitz_killer() {
     run.apply(&content, RunAction::Declare(hand(DIAMONDS)))
         .expect("hand");
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
-    // Not against "Der Kiebitz-Mörder" (information is off).
-    let mut run = run_with(&content, &["shot"]);
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    run.game.as_mut().expect("game").rules.no_information = true;
-    assert!(!run.view(&content).consumables[0].can_use);
-    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
 }
 
 #[test]

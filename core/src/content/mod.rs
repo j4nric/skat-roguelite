@@ -978,6 +978,28 @@ impl<'de> Deserialize<'de> for Factor {
     }
 }
 
+/// Figures of every boss: two boss players, both defender seats (ADR
+/// 0017). The first sits left of the player ([`crate::run::BOSS_SEAT`]),
+/// the second right.
+pub const BOSS_FIGURES: usize = 2;
+
+/// One of the two boss players at the boss table (ADR 0017): a name, an
+/// edition and optionally an own back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BossFigure {
+    /// German display name ("Der Schieber", "Sein Kumpan").
+    pub name: String,
+    /// The figure's boss edition (ADR 0015, DESIGN 11): modifications on
+    /// every card that matches the filter, with their value. The cards
+    /// this figure holds carry them. Empty for the figures of a rotating
+    /// boss ("Der Alte"): they play the editions of the rule in force.
+    #[serde(default)]
+    pub edition: Vec<(CardFilter, CardModId, i32)>,
+    /// Card back of this figure's cards; the boss's back if not set.
+    #[serde(default)]
+    pub back: Option<String>,
+}
+
 /// A boss: the special rule of a boss series.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BossDef {
@@ -1011,12 +1033,12 @@ pub struct BossDef {
     /// (a boss may hit one character harder than another).
     #[serde(default)]
     pub character_factors: BTreeMap<Character, Factor>,
-    /// The boss edition (ADR 0015, DESIGN 11): modifications on every card
-    /// that matches the filter, with their value. The cards the boss holds
-    /// carry them; the Stammgast next to him plays the plain edition.
-    #[serde(default)]
-    pub edition: Vec<(CardFilter, CardModId, i32)>,
-    /// Card back of his cards; the shared opponent back if not set.
+    /// The two boss players at the table, left and right of the player
+    /// (ADR 0017), each with a name and an edition. Exactly
+    /// [`BOSS_FIGURES`].
+    pub figures: Vec<BossFigure>,
+    /// Card back of both figures' cards (a figure may name its own); the
+    /// shared opponent back if not set.
     #[serde(default)]
     pub back: Option<String>,
 }
@@ -1067,7 +1089,7 @@ pub enum ConsumableAction {
     UndoRedeal,
     /// Look at the two skat cards before choosing Skat or Hand ("Kurzer").
     /// Only while the ten cards are held and the skat is untouched; the
-    /// choice stays open. Information: off against "Der Kiebitz-Mörder".
+    /// choice stays open.
     PeekSkat,
     /// Change the next declared game ("Doppelkorn", "Magenbitter"). Used at
     /// the Tresen or before the declaration of the dealt game; used up by
@@ -1284,6 +1306,24 @@ pub struct SpelunkeConfig {
     pub target_factor: Factor,
 }
 
+/// The relic pick of a won boss pub (ADR 0017).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BossRewardConfig {
+    /// Relics on offer.
+    pub relics: u32,
+    /// Lowest rarity on offer.
+    pub min_rarity: Rarity,
+}
+
+impl Default for BossRewardConfig {
+    fn default() -> BossRewardConfig {
+        BossRewardConfig {
+            relics: 3,
+            min_rarity: Rarity::Uncommon,
+        }
+    }
+}
+
 /// Run structure as data: target values, limits, slots, economy, bosses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunConfig {
@@ -1317,6 +1357,9 @@ pub struct RunConfig {
     /// Boss of the last Stadtteil's boss pub (Endboss), not drawn.
     #[serde(default)]
     pub final_boss: Option<BossId>,
+    /// The relic pick after a won boss pub (ADR 0017).
+    #[serde(default)]
+    pub boss_reward: BossRewardConfig,
     /// The defenders' card play per Stadtteil (DESIGN 10.3): heuristic or
     /// PIMC with its strength. Later Stadtteile take the last entry; an
     /// empty list means the heuristic everywhere.
@@ -1648,14 +1691,29 @@ impl Content {
             }
         }
         for boss in self.bosses.values() {
-            if !boss.rotation.is_empty() && !boss.edition.is_empty() {
+            if boss.figures.len() != BOSS_FIGURES {
                 return Err(ContentError(format!(
-                    "boss {}: a rotating boss plays the edition of the rule in force",
+                    "boss {}: needs {BOSS_FIGURES} figures",
                     boss.id
                 )));
             }
-            crate::deck::Edition::with_mods(&boss.edition, self)
-                .map_err(|e| ContentError(format!("boss {}: edition: {e}", boss.id)))?;
+            for figure in &boss.figures {
+                if figure.name.trim().is_empty() {
+                    return Err(ContentError(format!(
+                        "boss {}: figure without name",
+                        boss.id
+                    )));
+                }
+                if !boss.rotation.is_empty() && !figure.edition.is_empty() {
+                    return Err(ContentError(format!(
+                        "boss {}: a rotating boss plays the editions of the rule in force",
+                        boss.id
+                    )));
+                }
+                crate::deck::Edition::with_mods(&figure.edition, self).map_err(|e| {
+                    ContentError(format!("boss {} ({}): edition: {e}", boss.id, figure.name))
+                })?;
+            }
             for sub in &boss.rotation {
                 let known = self.bosses.get(sub);
                 if known.is_none_or(|b| !b.rotation.is_empty()) {

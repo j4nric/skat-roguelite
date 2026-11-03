@@ -112,10 +112,12 @@
         rewards: [Relic("blank_king")],
     ),
     (
+        // Bis ADR 0017 „Trocken gekontert“ gegen den Kontra-Hans; die Id
+        // bleibt, damit verdiente Stände die Stammfarbe behalten.
         id: "beat_kontra_hans",
-        name: "Trocken gekontert",
-        text: "Schlage den Boss Der Kontra-Hans.",
-        condition: BeatBoss(boss: Some("kontra_hans")),
+        name: "Doppelt gesehen",
+        text: "Schlage den Boss Die Zwillinge.",
+        condition: BeatBoss(boss: Some("twins")),
         rewards: [Relic("home_suit")],
     ),
     (

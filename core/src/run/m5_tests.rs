@@ -120,22 +120,32 @@ fn a_ramsch_reports_augen_and_tricks_per_seat() {
     assert!(seen_tricks);
     assert!(breakdown.declaration.is_ramsch());
     let seats = breakdown.seats.expect("seats");
-    // "Der Ramscher": his Daus count 6 Augen less (his edition, ADR 0015).
-    let boss_aces = events
-        .iter()
-        .find_map(|e| match e {
-            RunEvent::Game(Event::Dealt { hands, .. }) => Some(
-                hands[1]
-                    .iter()
-                    .filter(|c| c.face().is_some_and(|f| f.rank == crate::cards::Rank::Ace))
-                    .count(),
-            ),
-            _ => None,
-        })
-        .expect("dealt");
+    // "Der Ramscher": his Daus count 6 Augen less, the Zehnen of "Die
+    // Ramscherin" 5 (their editions, ADR 0015, ADR 0017).
+    let count = |seat: usize, rank: crate::cards::Rank| {
+        events
+            .iter()
+            .find_map(|e| match e {
+                RunEvent::Game(Event::Dealt { hands, .. }) => Some(
+                    hands[seat]
+                        .iter()
+                        .filter(|c| c.face().is_some_and(|f| f.rank == rank))
+                        .count(),
+                ),
+                _ => None,
+            })
+            .expect("dealt")
+    };
+    let boss_aces = count(1, crate::cards::Rank::Ace);
+    let her_tens = count(2, crate::cards::Rank::Ten);
     let total = seats.card_points.iter().sum::<u32>();
-    let lowest = 120 - 6 * u32::try_from(boss_aces).expect("count");
-    assert!((lowest..=120).contains(&total), "{total}, {boss_aces} aces");
+    let lowest = 120
+        - 6 * u32::try_from(boss_aces).expect("count")
+        - 5 * u32::try_from(her_tens).expect("count");
+    assert!(
+        (lowest..=120).contains(&total),
+        "{total}, {boss_aces} aces, {her_tens} tens"
+    );
     assert_eq!(seats.tricks.iter().sum::<u32>(), 10);
     let most = seats.card_points.iter().copied().max().expect("max");
     assert_eq!(breakdown.won, seats.card_points[0] < most);

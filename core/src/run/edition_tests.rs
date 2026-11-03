@@ -109,12 +109,12 @@ fn plain_deck_deals_and_plays_as_before_editions() {
 // ---------------------------------------------------------------------------
 
 use super::content_tests::fixed_deal;
-use super::{BOSS_SEAT, RunAction};
+use super::{BOSS_SEAT, PARTNER_SEAT};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{BossId, CardModId};
 use crate::deck::{DealtCard, Owner};
 use crate::game::Seat;
-use crate::rules::{self, Declaration, GameType, RiskLevel};
+use crate::rules::{self, GameType};
 
 fn content() -> Content {
     Content::load().expect("content")
@@ -237,11 +237,18 @@ fn a_boss_edition_applies_only_on_the_boss_seat() {
         let c = find(game.hand(Seat::DECLARER), s);
         assert_eq!((c.owner, c.card_points), (Owner::Player, 0), "{s}");
     }
+    // ADR 0017: the second figure on the right, "Die Hehlerin" with her
+    // eights at three Augen more.
+    assert_eq!(run.owner_of_seat(PARTNER_SEAT), Owner::BossPartner);
     assert!(
-        game.hand(Seat::DEFENDERS[1])
+        game.hand(PARTNER_SEAT)
             .iter()
-            .all(|c| c.owner == Owner::Guest)
+            .all(|c| c.owner == Owner::BossPartner)
     );
+    let s8 = find(game.hand(PARTNER_SEAT), "S8");
+    assert_eq!(s8.card_points, 3);
+    let d8 = find(game.hand(Seat::DECLARER), "D8");
+    assert_eq!(d8.card_points, 0);
     // The Augen are in the breakdown under the boss's cards.
     let active = run.game().expect("game");
     assert_eq!(
@@ -252,32 +259,61 @@ fn a_boss_edition_applies_only_on_the_boss_seat() {
             .count(),
         2
     );
+    assert_eq!(
+        active
+            .point_changes
+            .iter()
+            .filter(|(_, s, d)| matches!(s, crate::content::Source::CardMod { .. }) && *d == 3)
+            .count(),
+        1
+    );
     // The view names the boss edition before and during the series.
     let view = run.view(&content);
     let rule = view.game.expect("game").boss_rule.expect("boss rule");
-    assert_eq!(rule.edition.len(), 1);
-    assert_eq!(rule.edition[0].card_mod.id, CardModId::new("points"));
-    assert_eq!(rule.edition[0].filter.rank, Some(Rank::Seven));
+    let names: Vec<&str> = rule.figures.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, ["Der Schieber", "Die Hehlerin"]);
+    let edition = &rule.figures[0].edition;
+    assert_eq!(edition.len(), 1);
+    assert_eq!(edition[0].card_mod.id, CardModId::new("points"));
+    assert_eq!(edition[0].filter.rank, Some(Rank::Seven));
+    assert_eq!(rule.figures[1].edition[0].filter.rank, Some(Rank::Eight));
+    // Both figures show the boss's back.
+    assert!(rule.figures.iter().all(|f| f.back == "the_pusher"));
 }
 
 #[test]
-fn every_boss_but_the_old_man_and_the_kibitz_killer_has_one_group_of_four() {
+fn every_boss_figure_but_the_old_couple_has_one_group_of_four() {
     let content = content();
     for boss in content.bosses.values() {
-        let edition = crate::deck::Edition::with_mods(&boss.edition, &content).expect("edition");
-        let modified = edition
-            .cards()
-            .iter()
-            .filter(|c| !c.mods.is_empty())
-            .count();
-        match boss.id.as_str() {
-            "the_old_man" | "kibitz_killer" => assert_eq!(modified, 0, "{}", boss.id),
-            "black_peter" => assert_eq!(modified, 2, "{}", boss.id),
-            _ => assert_eq!(modified, 4, "{}", boss.id),
+        assert_eq!(
+            boss.figures.len(),
+            crate::content::BOSS_FIGURES,
+            "{}",
+            boss.id
+        );
+        for figure in &boss.figures {
+            let edition =
+                crate::deck::Edition::with_mods(&figure.edition, &content).expect("edition");
+            let modified = edition
+                .cards()
+                .iter()
+                .filter(|c| !c.mods.is_empty())
+                .count();
+            match boss.id.as_str() {
+                "the_old_man" => assert_eq!(modified, 0, "{}", figure.name),
+                "black_peter" => assert_eq!(modified, 2, "{}", figure.name),
+                _ => assert_eq!(modified, 4, "{}", figure.name),
+            }
+        }
+        // Themed, but not the same: the two editions differ.
+        if boss.rotation.is_empty() {
+            assert_ne!(
+                boss.figures[0].edition, boss.figures[1].edition,
+                "{}",
+                boss.id
+            );
         }
     }
-    let killer = content.boss(&BossId::new("kibitz_killer")).expect("boss");
-    assert_eq!(killer.back.as_deref(), Some("kibitz_killer"));
 }
 
 #[test]
@@ -303,56 +339,16 @@ fn the_old_man_plays_the_edition_of_the_rule_in_force() {
         let eight = c.face().is_some_and(|f| f.rank == Rank::Eight);
         assert_eq!(c.rank_bonus, if eight { 2 } else { 0 }, "{c}");
     }
+    // "Die Alte" on the right plays the second twin: nines two steps up.
+    for c in active.game.hand(PARTNER_SEAT) {
+        let nine = c.face().is_some_and(|f| f.rank == Rank::Nine);
+        assert_eq!(c.rank_bonus, if nine { 2 } else { 0 }, "{c}");
+    }
     let view = run.view(&content);
     // Der Alte shows his own back, not the one of the boss whose rule is on.
-    assert_eq!(
-        view.game.expect("game").backs[1],
-        Some("the_old_man".to_owned())
-    );
-}
-
-#[test]
-fn the_revolutionary_swap_leaves_the_editions_with_the_seats() {
-    let content = content();
-    let mut run = boss_run(&content, "revolutionary");
-    fixed_deal(
-        &mut run,
-        &content,
-        [
-            "CJ SJ HJ DJ HA HT HK HQ H9 H8",
-            "DT ST DA DK DQ D9 D8 D7 SA SK",
-            "CT H7 CA CK CQ C9 C8 C7 SQ S9",
-        ],
-        "S8 S7",
-    );
-    let tens = |run: &Run, seat: Seat| -> Vec<u8> {
-        run.game()
-            .expect("game")
-            .game
-            .hand(seat)
-            .iter()
-            .filter(|c| c.face().is_some_and(|f| f.rank == Rank::Ten))
-            .map(|c| c.rank_bonus)
-            .collect()
-    };
-    assert_eq!(tens(&run, BOSS_SEAT), vec![1, 1]);
-    assert_eq!(tens(&run, Seat::DEFENDERS[1]), vec![0]);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::suit(Suit::Hearts, RiskLevel::Hand)),
-    )
-    .expect("declare");
-    let active = run.game.as_mut().expect("game");
-    let events = active.game.swap_defender_hands().expect("swap");
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, Event::CardChangedHands { seat, .. } if *seat == BOSS_SEAT))
-    );
-    // The boss's tens went to the Stammgast and are plain there; the
-    // Stammgast's ten came to the boss and climbs.
-    assert_eq!(tens(&run, BOSS_SEAT), vec![1]);
-    assert_eq!(tens(&run, Seat::DEFENDERS[1]), vec![0, 0]);
+    let backs = view.game.expect("game").backs;
+    assert_eq!(backs[1], Some("the_old_man".to_owned()));
+    assert_eq!(backs[2], Some("the_old_man".to_owned()));
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +431,15 @@ fn black_peter_shows_his_black_unter_only_while_he_holds_them() {
         .iter()
         .filter_map(|r| r.card.card.face().map(|f| (f, r.holder)))
         .collect();
-    assert_eq!(revealed, vec![(card("CJ"), Some(BOSS_SEAT))]);
+    // His black Unter while he holds them, the black Oberinnen of "Die
+    // Schwarze Grete" on the right (his own Grün-Oberin is plain).
+    assert_eq!(
+        revealed,
+        vec![
+            (card("CJ"), Some(BOSS_SEAT)),
+            (card("CQ"), Some(PARTNER_SEAT))
+        ]
+    );
 }
 
 // ---------------------------------------------------------------------------

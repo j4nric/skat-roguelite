@@ -7,7 +7,7 @@ use super::content_tests::{content, fixed_deal, relic_run};
 use super::view::RevealSource;
 use super::*;
 use crate::cards::Suit;
-use crate::rules::{NullRisk, RiskLevel, discardable_of, returned_discard, valid_discard_of};
+use crate::rules::{RiskLevel, discardable_of, returned_discard, valid_discard_of};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat).
 const STRONG: [&str; 3] = [
@@ -333,7 +333,7 @@ fn crib_sheet_shows_both_skat_cards_after_a_hand_declaration() {
 }
 
 #[test]
-fn crib_sheet_shows_nothing_after_the_skat_or_against_the_kibitz_killer() {
+fn crib_sheet_shows_nothing_after_the_skat() {
     let content = content();
     let mut run = relic_run(&content, &["crib_sheet"]);
     deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -349,21 +349,6 @@ fn crib_sheet_shows_nothing_after_the_skat_or_against_the_kibitz_killer() {
             .any(|e| matches!(e, RunEvent::SkatCardShown { .. }))
     );
     assert!(run.game().expect("game").skat_shown.is_empty());
-
-    let mut run = relic_run(&content, &["crib_sheet"]);
-    deal(&mut run, &content, STRONG, STRONG_SKAT);
-    run.game.as_mut().expect("game").rules.no_information = true;
-    let events = run
-        .apply(
-            &content,
-            RunAction::Declare(Declaration::null(NullRisk::Hand)),
-        )
-        .expect("null hand");
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::SkatCardShown { .. }))
-    );
 }
 
 #[test]
