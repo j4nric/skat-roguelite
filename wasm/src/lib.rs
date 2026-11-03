@@ -35,8 +35,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
-    Change, Character, ConsumableAction, ConsumableCategory, Content, Effect, Hook, Lever, ModKind,
-    Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
+    CardModId, Change, Character, ConsumableAction, ConsumableCategory, Content, Effect, Hook,
+    Lever, ModKind, Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -576,11 +576,13 @@ struct MetaSave {
     meta: MetaState,
 }
 
-/// Result of feeding events to the meta state: the unlocks just earned
-/// and the new meta view.
+/// Result of feeding events to the meta state: the unlocks just earned,
+/// the special cards received for the first time in this save (explained
+/// once, DESIGN 7.2) and the new meta view.
 #[derive(Serialize)]
 struct MetaStep {
     earned: Vec<UnlockId>,
+    first_specials: Vec<CardModId>,
     view: MetaView,
 }
 
@@ -637,9 +639,11 @@ impl MetaSession {
     pub fn observe(&mut self, events: &str) -> Result<String, String> {
         let events: Vec<PlayerEvent> =
             serde_json::from_str(events).map_err(|e| error_json("InvalidEvents", e))?;
+        let before = self.meta.clone();
         let earned = self.meta.observe(self.content, &events);
         serde_json::to_string(&MetaStep {
             earned,
+            first_specials: self.meta.new_specials(&before),
             view: self.meta.view(self.content),
         })
         .map_err(internal)

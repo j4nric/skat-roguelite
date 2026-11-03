@@ -1106,6 +1106,22 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Its value.
         value: i32,
     },
+    /// A Totenmarke or Narrenmarke was redeemed while another card of the
+    /// edition is that special card already (at most one Untot and one
+    /// Wandelkarte, DESIGN 7.2): the card stays as it is, the voucher pays
+    /// Groschen instead (`CoinsGained` follows).
+    VoucherCapped {
+        /// Instance id of the card that went into the skat.
+        card: u32,
+        /// The voucher.
+        card_mod: CardModId,
+        /// The special card it would have made.
+        special: CardModId,
+        /// The card that is that special card.
+        holder: u32,
+        /// Groschen paid instead.
+        coins: u32,
+    },
     /// "Der Drückeberger" (DESIGN 9.4): a voucher redeemed in the pub
     /// that just ended is back on its card.
     VoucherReturned {
@@ -1533,6 +1549,9 @@ pub enum RunErrorCode {
     AlreadyUsed,
     /// The character's curses cannot be cleansed ("Bruderherz").
     CurseStays,
+    /// Another card of the edition is this special card already (at most
+    /// one Untot and one Wandelkarte, DESIGN 7.2).
+    SpecialTaken,
 }
 
 impl RunErrorCode {
@@ -1590,6 +1609,7 @@ impl RunErrorCode {
             RunErrorCode::PainterPending => "PainterPending",
             RunErrorCode::AlreadyUsed => "AlreadyUsed",
             RunErrorCode::CurseStays => "CurseStays",
+            RunErrorCode::SpecialTaken => "SpecialTaken",
         }
     }
 }
@@ -1631,6 +1651,7 @@ impl RunError {
                 DeckError::AtMaximum(_) => RunErrorCode::ModAtMaximum,
                 DeckError::UnknownMod(_) => RunErrorCode::UnknownContent,
                 DeckError::MissingCard(_) => RunErrorCode::MissingCard,
+                DeckError::SpecialTaken(_) => RunErrorCode::SpecialTaken,
             },
             RunError::TargetRequired => RunErrorCode::TargetRequired,
             RunError::NoModAvailable => RunErrorCode::NoModAvailable,
@@ -4644,6 +4665,7 @@ impl Run {
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| self.offer_open(content, m))
             // Only what some card of the deck may still take.
             .filter(|m| {
                 self.edition
@@ -4787,15 +4809,46 @@ impl Run {
                     }
                     for effect in hook.then() {
                         if let Effect::TurnInto(special) = effect {
-                            if let Ok(change) = self.edition.add_mod(content, card, special, 1) {
-                                events.push(RunEvent::DeckChanged(change));
-                            }
+                            self.turn_into(content, card, &card_mod, special, &source, events);
                         } else {
                             self.apply_effect(&source, &effect.scaled(value), events);
                         }
                     }
                 }
             }
+        }
+    }
+
+    /// A redeemed voucher makes `card` the special card `special`
+    /// (`TurnInto`). If another card is that special card already (at most
+    /// one Untot and one Wandelkarte, DESIGN 7.2), the card stays as it is
+    /// and the voucher pays [`crate::content::ZinkenConfig::capped_voucher_coins`]
+    /// instead. A card that is the special card already stays so, nothing
+    /// paid (the Drückeberger's returned Totenmarke, DESIGN 9.4).
+    fn turn_into(
+        &mut self,
+        content: &Content,
+        card: u32,
+        voucher: &CardModId,
+        special: &CardModId,
+        source: &Source,
+        events: &mut Vec<RunEvent>,
+    ) {
+        match self.edition.add_mod(content, card, special, 1) {
+            Ok(change) => events.push(RunEvent::DeckChanged(change)),
+            Err(DeckError::SpecialTaken(_)) => {
+                let coins = content.run.shop.zinken.capped_voucher_coins;
+                events.push(RunEvent::VoucherCapped {
+                    card,
+                    card_mod: voucher.clone(),
+                    special: special.clone(),
+                    holder: self.edition.holder_of(special).unwrap_or(card),
+                    coins,
+                });
+                let amount = i32::try_from(coins).unwrap_or(i32::MAX);
+                self.apply_effect(source, &Effect::GainCoins(amount), events);
+            }
+            Err(_) => {}
         }
     }
 
@@ -4841,8 +4894,14 @@ impl Run {
                 // The modification is known before the choice: named by the
                 // encounter or drawn now from the character's pool (a curse
                 // only if the encounter announces one).
+                // Never a voucher for a special card the edition may not
+                // get any more (DESIGN 7.2): then the encounter offers
+                // nothing.
                 let card_mod = match card_mod {
-                    Some(id) => Some(id.clone()),
+                    Some(id) => content
+                        .card_mod(id)
+                        .is_none_or(|def| self.offer_open(content, def))
+                        .then(|| id.clone()),
                     None => {
                         let pool = self.mod_pool(content, *curse);
                         draw_weighted(&mut self.encounter_rng, pool, 1).pop()
@@ -4918,8 +4977,15 @@ impl Run {
                 options.push(free(EncounterChoice::TakeCoins(*coins)));
             }
             EncounterKind::Gamble { price, offers, .. } => {
-                let pool: Vec<((CardModId, i32), u32)> =
-                    offers.iter().map(|o| (o.clone(), 1)).collect();
+                let pool: Vec<((CardModId, i32), u32)> = offers
+                    .iter()
+                    .filter(|(m, _)| {
+                        content
+                            .card_mod(m)
+                            .is_none_or(|def| self.offer_open(content, def))
+                    })
+                    .map(|o| (o.clone(), 1))
+                    .collect();
                 if let Some((card_mod, value)) =
                     draw_weighted(&mut self.encounter_rng, pool, 1).pop()
                 {
@@ -4968,7 +5034,17 @@ impl Run {
                 }));
             }
             EncounterKind::OldCards { vouchers } => {
-                let pool: Vec<(CardModId, u32)> = vouchers.iter().map(|v| (v.clone(), 1)).collect();
+                // Only a voucher for a special card the edition may still
+                // get (DESIGN 7.2); with none the encounter offers nothing.
+                let pool: Vec<(CardModId, u32)> = vouchers
+                    .iter()
+                    .filter(|v| {
+                        content
+                            .card_mod(v)
+                            .is_some_and(|def| self.offer_open(content, def))
+                    })
+                    .map(|v| (v.clone(), 1))
+                    .collect();
                 let voucher = draw_weighted(&mut self.encounter_rng, pool, 1).pop();
                 let curses = self.mod_pool(content, true);
                 let curse = draw_weighted(&mut self.encounter_rng, curses, 1).pop();
@@ -5650,6 +5726,8 @@ mod schnapps_tests;
 mod settle_tests;
 #[cfg(test)]
 mod skat_order_tests;
+#[cfg(test)]
+mod special_tests;
 #[cfg(test)]
 mod stake_tests;
 #[cfg(test)]
