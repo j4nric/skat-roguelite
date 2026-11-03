@@ -1305,6 +1305,7 @@ skat-roguelite/
 - Wahrscheinlichkeit, eine Serie mit Zielwert X in N Spielen zu schaffen
 - Einfluss jeder einzelnen Modifikation und jeder Hausregel auf die obigen Werte
 - Laufzeit pro Spiel (Ziel: unter 1 ms mit Heuristik-KI)
+- Seit 03.11.2026 im ganzen Abend (`--runs N`): je Kneipe Spiele und Einmischen, Leben und Relikte beim Betreten, Groschen je gewonnener Kneipe, Spelunken in eigenen Zeilen; je Stadtteil Leben und Relikte zu Beginn und vor dem Boss, verlorene Kneipen je Run, wo die verlorenen Runs enden (normale Kneipe, Spelunke, Boss-Kneipe); Groschen nach Herkunft und Ausgaben nach Art (Relikte, Schnäpse, Zinken, Kartenmaler, reinigen, neu auslosen, Neuauslage). `--curve` und `--curve --boss <id>` messen mit `--district 1|2|3` im gewählten Stadtteil (dessen Gegner aus `run.ron`).
 
 ---
 
