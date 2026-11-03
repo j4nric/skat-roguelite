@@ -15,9 +15,10 @@
         [46, 48, 50, 52, 60],
     ],
     // Leben (ADR 0016): Start 3, eine verlorene Kneipe kostet eins, eine
-    // gewonnene Boss-Kneipe bringt eins, höchstens 5. Eine verlorene
-    // Boss-Kneipe beendet den Run (ADR 0017). Vorläufig.
-    lives: (start: 3, max: 5, boss_bonus: 1),
+    // gewonnene Boss-Kneipe bringt eins, höchstens 4 (bis 03.11.2026 5: Rast
+    // und Konterbier bauten den Vorrat über den Abend auf). Eine verlorene
+    // Boss-Kneipe beendet den Run (ADR 0017).
+    lives: (start: 3, max: 4, boss_bonus: 1),
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
     // deren Kategorie je Weg gewürfelt und angezeigt wird, nichts kostet
@@ -40,11 +41,11 @@
     relic_slots: 5,
     consumable_slots: 2,
     // series_reward: Groschen je gewonnener Kneipe; per_game_left: je
-    // übrigem Spiel (seit ADR 0016 vorläufig 3 statt 1: eine früh
-    // gewonnene Kneipe soll sich lohnen).
+    // übrigem Spiel (seit 03.11.2026 2; ADR 0016 setzte 3: die fünf
+    // Relikt-Plätze waren schon zu Beginn von Stadtteil 2 voll).
     economy: (
         series_reward: 3,
-        per_game_left: 3,
+        per_game_left: 2,
         interest_step: 5,
         interest_max: 5,
         reroll_cost: 2,
