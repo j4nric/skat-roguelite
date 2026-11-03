@@ -193,9 +193,10 @@ Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben, Groschen je übrigem S
 |---|---|---|
 | Stadtteile, Kneipen je Stadtteil | 3, 4 + Boss-Kneipe | `targets` in `run.ron`, `PUBS_PER_DISTRICT` |
 | Zielwerte Alleinspieler (seit 03.11.2026, gemessen) | 45 / 55 / 65 / 75 / Boss 60 · 90 / 105 / 120 / 135 / Boss 100 · 145 / 170 / 195 / 205 / Boss 140 (bis dahin 33 / 36 / 38 / 40 / 45 · 40 / 42 / 44 / 46 / 52 · 46 / 48 / 50 / 52 / 60) | `run.ron` |
-| Zielwerte Nullspieler | 18 / 20 / 20 / 23 / 23 · 20 / 23 / 23 / 27 / 27 · 23 / 27 / 27 / 30 / 30, nicht neu gemessen (mit der steilen Kurve des Alleinspielers vermutlich viel zu leicht, 17) | `characters.ron` |
-| Zielwerte Drückeberger, Schneiderin, Bruderherz (seit 03.11.2026, 9.4 bis 9.6) | wie der Alleinspieler (`targets` fehlt), also seit 03.11.2026 die steile Kurve, für diese Charaktere nicht gemessen | `characters.ron` |
-| Boss-Faktoren | Alleinspieler gemessen am 03.11.2026 (11.1), Nullspieler nach Augenmaß | `bosses.ron` |
+| Zielwerte Nullspieler (seit 03.11.2026, gemessen) | 50 / 65 / 75 / 85 / Boss 70 · 110 / 125 / 145 / 160 / Boss 120 · 180 / 210 / 245 / 255 / Boss 175, die Kurve des Alleinspielers × 1,15 / 1,2 / 1,25 (bis dahin 18 bis 30: Stadtteil 2 in 60 %, 30 % gewonnen) | `characters.ron` |
+| Zielwerte Schneiderin (seit 03.11.2026, gemessen) | 50 / 65 / 75 / 90 / Boss 75 · 105 / 120 / 140 / 155 / Boss 115 · 165 / 195 / 225 / 235 / Boss 160, rund × 1,15 (mit der Kurve des Alleinspielers 47 % Stadtteil 2, 7,9 % gewonnen) | `characters.ron` |
+| Zielwerte Drückeberger, Bruderherz | wie der Alleinspieler (`targets` fehlt), gemessen am 03.11.2026 im Zielbild | `characters.ron` |
+| Boss-Faktoren | gemessen am 03.11.2026 (11.1): Alleinspieler in der großen Runde, Nullspieler in der Runde der Charaktere (Schieber 0,2, Ramscher 2,0, Oma 0,9, Peter 0,2) | `bosses.ron` |
 | Boss-Belohnung | Auszahlung wie mit zwei übrigen Spielen, × 2 (im Mittel 14,6 Groschen), +1 Leben, 1 aus 3 Relikten ab Ungewöhnlich | `economy`, `lives.boss_bonus`, `boss_reward` |
 | Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
 | Leben | Start 2, höchstens 4, Boss +1 (bis 03.11.2026 3, 5, +1) | `lives` |
@@ -206,7 +207,7 @@ Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben, Groschen je übrigem S
 | Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast mit fehlendem Leben; Spelunke nur mit 3 Leben und 3 Relikten | `RunBot::route_action` |
 | Bot-Boss-Relikt | das wertvollste in einen freien Platz, bei vollen Plätzen statt des schwächsten, wenn es mindestens `SWAP_MARGIN` mehr wert ist, sonst keins | `RunBot::boss_reward_action` |
 
-Gemessen am 03.11.2026 nur für den Alleinspieler. Noch zu messen: die anderen Charaktere (Nullspieler mit eigener Kurve, die übrigen mit der des Alleinspielers), die Gewichte der Stationen und die Spelunke selbst (mit der steilen Kurve in Stadtteil 3 nur noch 20 bis 36 % gewonnen, 17).
+Gemessen am 03.11.2026 für den Alleinspieler (große Runde) und für die anderen vier Charaktere (je 3 × 300 Runs, `docs/balance/2026-11-03-charaktere.md`, Tabelle in 9). Noch zu messen: die Gewichte der Stationen und die Spelunke selbst (mit der steilen Kurve in Stadtteil 3 nur noch 20 bis 36 % gewonnen, 17).
 
 ### 5.1 Die Serie (seit ADR 0016: die Kneipe)
 
@@ -894,6 +895,18 @@ Tests: `core/src/run/rescue_tests.rs`. Zu messen, sobald der Simulator wieder l�
 
 Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin und Bruderherz (je über eine Freischaltung, 9.3). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
 
+**Zielwerte je Charakter** (Kneipentour, gemessen am 03.11.2026 gegen den PIMC-Spieler, je 3 × 300 Runs, Seeds 42 bis 44, `docs/balance/2026-11-03-charaktere.md`; Alleinspieler aus der großen Runde mit 3 × 2000 Runs, `docs/balance/2026-11-03-grosse-runde.md`). Je Stadtteil vier Kneipen / Boss-Kneipe vor dem Boss-Faktor. Zielbild für jeden Charakter: Stadtteil 2 in 35 bis 40 %, Stadtteil 3 in 12 bis 18 %, 3 bis 5 % gewonnen, ein Viertel bis ein Drittel der verlorenen Runs endet in normalen Kneipen.
+
+| Charakter | Stadtteil 1 | Stadtteil 2 | Stadtteil 3 | Ort | Stadtteil 2 | Stadtteil 3 | gewonnen | Kneipen-Ende |
+|---|---|---|---|---|---|---|---|---|
+| Alleinspieler | 45 / 55 / 65 / 75 / 60 | 90 / 105 / 120 / 135 / 100 | 145 / 170 / 195 / 205 / 140 | `run.ron` | 42,3 % (40,6 % auf 3 × 300) | 17,4 % (16,1 %) | 5,2 % (6,0 %) | 36,1 % (35,6 %) |
+| Nullspieler | 50 / 65 / 75 / 85 / 70 | 110 / 125 / 145 / 160 / 120 | 180 / 210 / 245 / 255 / 175 | `characters.ron` | 38,7 % (vorher 59,9 %) | 17,6 % (39,3 %) | 6,1 % (29,7 %) | 39,6 % (18,8 %) |
+| Drückeberger | wie der Alleinspieler | | | `run.ron` | 44,6 % | 17,3 % | 5,3 % | 31,5 % |
+| Schneiderin | 50 / 65 / 75 / 90 / 75 | 105 / 120 / 140 / 155 / 115 | 165 / 195 / 225 / 235 / 160 | `characters.ron` | 39,6 % (vorher 47,2 %) | 16,1 % (20,9 %) | 4,4 % (7,9 %) | 37,1 % (30,8 %) |
+| Bruderherz | wie der Alleinspieler | | | `run.ron` | 36,3 % | 15,3 % | 4,6 % | 38,8 % |
+
+Der Bot nutzt die Regeln der neuen Charaktere nicht gezielt (er sagt bei Bruderherz nicht öfter Rot an, meidet beim Drückeberger keine Handspiele); für einen Spieler, der das tut, sind beide vermutlich etwas leichter als gemessen.
+
 ### 9.1 Der Alleinspieler (Standard)
 
 Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null. Null zählt seit dem 01.11.2026 für alle Charaktere nach der Formel mit Stilbonus (9.2); vorher galt beim Alleinspieler die Skatordnung (23, 35, 46, 59). Startrelikt: **Der Zähler**. Dieser Charakter ist der Maßstab für alles Balancing.
@@ -904,7 +917,7 @@ Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichun
 
 ### 9.2 Der Nullspieler
 
-Seit ADR 0012 ein Null-Spezialist, der auch Farbe und Grand ansagen darf (siehe „Null für alle“ am Ende dieses Abschnitts). Seit dem 02.11.2026 mischt er dreimal statt zweimal pro Spiel ein, weil sein Blatt ohne Unter sonst zu selten einen ganzen Abend trägt (5.2). Ursprünglicher Entwurf (ADR 0003): Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
+Seit ADR 0012 ein Null-Spezialist, der auch Farbe und Grand ansagen darf (siehe „Null für alle“ am Ende dieses Abschnitts). Seit dem 02.11.2026 mischt er dreimal statt zweimal pro Spiel ein, weil sein Blatt ohne Unter sonst zu selten einen ganzen Abend trägt (5.2). Seit dem 03.11.2026 liegen seine Zielwerte über denen des Alleinspielers (dessen Kurve × 1,15 bis 1,25, Tabelle in 9): Mit den alten 18 bis 30 gewann er 30 % der Runs, mit der Kurve des Alleinspielers noch 9,5 %; ein gewonnenes Null bringt im Run im Mittel 113 Punkte. Ursprünglicher Entwurf (ADR 0003): Spielt ausschließlich Null. Rangfolge 7, 8, 9, 10, B, D, K, A ohne Trumpf. Ziel: keinen einzigen Stich machen.
 
 **Die Formel muss hier neu gebaut werden**, denn Null hat im echten Skat feste Werte (23, 35, 46, 59) statt Grundwert × Stufen. Vorschlag:
 
@@ -1049,7 +1062,7 @@ Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem
 - **Regel, Teil 2: kein Hand-Multiplikator.** Ein Handspiel zählt ohne die Stufe „Hand“: ein Hook `OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(-1)])`, gewonnen wie verloren, auch Null Hand und Null Ouvert Hand. In der Wertung steht „Hand +1“ und die Zeile des Charakters −1. Unter der Spelunke „Kein Skat“ (alles Hand) bekommt er nie Hand, sie bleibt für ihn ziehbar.
 - **Startrelikt**: Skatpfleger (gedrückte Augen zählen doppelt).
 - **Freischaltung**: `full_skat` (9.3). **Rückseite**: Briefmarke und Poststempel.
-- **Zahlen** (vorläufig, nach Augenmaß): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50.
+- **Zahlen**: Zielwerte wie der Alleinspieler (gemessen am 03.11.2026 im Zielbild, Tabelle in 9), `focus_weights` Trump 100, Null 50 (nach Augenmaß). Gemessen: Er löst je Run 4,7 Pfandmarken (9,7 Groschen), 1,1 Toten- und 1,1 Narrenmarken ein, fast alle kehren zurück (6,9 je Run); das sind gut 9 Groschen mehr als beim Alleinspieler, im Ergebnis liegt er nur knapp darüber.
 
 ### 9.5 Die Schneiderin
 
@@ -1060,7 +1073,7 @@ Entschieden vom Nutzer am 03.11.2026. Nimmt Maß und macht die Gegner Schneider.
 - **Auslegung (Claude)**: Null ist ausgenommen, weil es dort keinen Schneider gibt; sonst zählte jedes gewonnene Null eine Stufe weniger, und die Schneiderin könnte praktisch kein Null spielen. Verlorene Spiele bleiben unverändert, auch ein verlorenes Spiel, in dem sie selbst Schneider ist.
 - **Startrelikt**: Stichfest (erster Stich zählt für die Schneider-Grenze doppelt).
 - **Freischaltung**: `three_schneider` (9.3). **Rückseite**: Schere und Maßband auf Stoff.
-- **Zahlen** (vorläufig): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50.
+- **Zahlen**: eigene Zielwerte seit 03.11.2026, rund die Kurve des Alleinspielers × 1,15 (Tabelle in 9); mit dessen Kurve erreichte sie Stadtteil 2 in 47 % und gewann 7,9 % der Runs. Sie gewinnt 50 % ihrer Farbspiele und Grands mit Schneider (Alleinspieler 39 %), die andere Hälfte zählt eine Stufe weniger. `focus_weights` Trump 100, Null 50 (nach Augenmaß).
 
 ### 9.6 Bruderherz
 
@@ -1072,7 +1085,7 @@ Entschieden vom Nutzer am 03.11.2026. Sein Herz schlägt für Rot.
 - **Regel, Teil 2: Zinken auf Rot kosten die Hälfte.** `CharacterRule::zinken_discount: Some((cards: (suit: Some(Hearts)), percent: 50))`. `Run::zinken_price(karte, preis)` rechnet den Preis einer Zinke, die für Groschen auf eine Karte seiner Wahl kommt: die Hälfte, kaufmännisch gerundet, mindestens 1 Groschen. Heute gilt das für die bezahlten Zinken auf einer gewählten Karte: den Kartengeber und seine Verwandten (`MarkChosenCard` mit Preis) und den Falschspieler (`Gamble`). Die Sicht nennt den Preis je Ziel (`EncounterOptionView::target_costs`), die Web-App zeigt „4 Gr., auf Rot 2 Gr.“. **Für feat/zinken:** Die Auslage und der Kartenmaler am Tresen müssen jeden Preis einer Zinke auf einer bekannten Karte über `Run::zinken_price` berechnen (nach dem Tresen-Rabatt `shop_price` oder davor, dort zu entscheiden); die heutigen Zinken-Schnäpse am Tresen kennen ihre Karte beim Kauf nicht und bleiben unverbilligt.
 - **Startrelikt**: Stammfarbe (dreimal hintereinander dieselbe Trumpffarbe ×1,5).
 - **Freischaltung**: `true_colours` (9.3). **Rückseite**: ein großes rotes Herz.
-- **Zahlen** (vorläufig): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50. Seine Ausgabe ist im Rot-Spiel deutlich stärker (Grundwert 10 + 4 × 2 = 18) und in jeder anderen Trumpffarbe schwächer (Grundwert −4); gemessen wird, wenn die Simulationen wieder laufen.
+- **Zahlen**: Zielwerte wie der Alleinspieler (gemessen am 03.11.2026 im Zielbild, Tabelle in 9), `focus_weights` Trump 100, Null 50 (nach Augenmaß). Seine Ausgabe ist im Rot-Spiel deutlich stärker (Grundwert 10 + 4 × 2 = 18) und in jeder anderen Trumpffarbe schwächer (Grundwert −4). Gemessen: Ein gewonnenes Rot-Spiel bringt 55 statt 39 Punkte, aber der Bot sagt Rot nicht öfter an (8,7 % der Spiele wie beim Alleinspieler). Die Flüche kosten ihn 6 Punkte „Stadtteil 2“ (42 % ohne, 36 % mit).
 
 ### 9.6a Bis 03.11.2026: Grandspieler, Zaungast, Wirtin
 
@@ -1171,10 +1184,10 @@ Die Sonderregel gilt für die ganze Boss-Kneipe und wird vorher angezeigt, damit
 
 | Boss | Regel | Figuren (links, rechts) | Ausgaben | Thema | Faktor (vorläufig) |
 |---|---|---|---|---|---|
-| **Der Schieber** | Jedes Spiel ist ein Handspiel (`RequireHand`) | Der Schieber, Die Hehlerin | Siebenen Augen +4; Achten Augen +3 | Schmuggelware: Luschen, die doch etwas wert sind | 0,5 (Nullspieler 0,35) |
+| **Der Schieber** | Jedes Spiel ist ein Handspiel (`RequireHand`) | Der Schieber, Die Hehlerin | Siebenen Augen +4; Achten Augen +3 | Schmuggelware: Luschen, die doch etwas wert sind | 0,5 (Nullspieler 0,2) |
 | **Die Oma** | Zu Beginn ihrer Kneipe tragen 16 der 32 Karten der Ausgabe des Spielers je einen zufälligen Fluch (Durchsichtig, Ramponiert, Fleckig, Standardwert), nur für diese Kneipe (`CurseForPub`) | Die Oma, Der Opa | Oberinnen Augen +3 (6 statt 3); Könige Augen +2 (6 statt 4) | aus der alten Zeit: die alte Oberin, der alte König | 1,0 (Nullspieler 0,9) |
 | **Die Zwillinge** | Die Gegner sehen gegenseitig ihre Blätter und spielen danach (`DefendersSeeEachOther`, Schummeln) | Fritz, Franz | Achten Rang 2; Neunen Rang 2 | sie sehen doppelt: zwei Nullen übereinander, die Neun gleich mit | 1,2 |
-| **Der Ramscher** | Jedes Spiel ist ein Ramsch (`Ramsch`, bis ADR 0017 nur das erste); ein verlorener Ramsch zählt einfach statt doppelt gegen den Spieler (`SingleLoss`, seit 03.11.2026) | Der Ramscher, Die Ramscherin | Daus Ramponiert 6; Zehnen Ramponiert 5 | sie lassen laufen | 1,0 |
+| **Der Ramscher** | Jedes Spiel ist ein Ramsch (`Ramsch`, bis ADR 0017 nur das erste); ein verlorener Ramsch zählt einfach statt doppelt gegen den Spieler (`SingleLoss`, seit 03.11.2026) | Der Ramscher, Die Ramscherin | Daus Ramponiert 6; Zehnen Ramponiert 5 | sie lassen laufen | 1,0 (Nullspieler 2,0) |
 | **Der Schwarze Peter** | Ein gewonnenes Spiel ohne Schneider zählt halb | Der Schwarze Peter, Die Schwarze Grete | Eichel- und Grün-Unter Durchsichtig; Eichel- und Grün-Oberin Durchsichtig | Ruß an den Fingern: eine Hilfe beim schwersten Boss | 0,7 (Nullspieler 0,2) |
 | **Der Alte** (Endboss) | legt die fünf Regeln oben der Reihe nach auf, eine pro Blatt (Schieber, Zwillinge, Ramscher, Oma, Schwarzer Peter) | Der Alte, Die Alte | die Ausgaben der Figuren des Bosses, dessen Regel gerade gilt (links die erste, rechts die zweite) | das alte Paar | 1,0 |
 
@@ -1185,7 +1198,8 @@ Leitlinien und Auslegungen (Claude, 03.11.2026):
 - **Ausgaben**: je Figur eine Gruppe von vier Karten (der Peter und die Grete je zwei), eine Modifikation je Karte, wie die milde Stufe von ADR 0015. Beide Figuren teilen das Thema, unterscheiden sich aber in der Kartengruppe oder im Wert. Beide zeigen die Rückseite des Bosses (`back`; eine Figur darf eine eigene haben, `figures[].back`). Die Figuren des Alten haben keine eigene Ausgabe (Ladefehler sonst), ihre Rückseite ist seine.
 - **Die Oma**: Die Flüche zieht der Generator der Route (`tour_rng`), Karte und Fluch je Karte; ein Fluch, der nicht auf die Karte passt (Fleckig nur auf Farbkarten), wird nicht gelegt. Er tritt an die Stelle der normalen Modifikation, eine Spezialkarte (Untot, Wandelkarte, Abgestuft) bleibt. Jede Karte wird vorher gemerkt (`Series::boss_curses`) und am Ende der Kneipe genau so zurückgelegt; keine Groschen, kein `OnAttach`. Unter dem Alten legt sie die Flüche beim ersten Blatt mit ihrer Regel, und sie bleiben bis zum Ende der Kneipe. Seit ADR 0017 trifft sie jeden Charakter (bis dahin nur den Alleinspieler).
 - **Der Ramscher**: Jedes Spiel unter seiner Regel ist ein Ramsch. Mit drei Ramsch-Spielen entschied vor allem, ob einer verloren ging (doppelt gegen den Spieler); der Faktor wirkt kaum. **Entschieden von Claude am 03.11.2026 (17 a)**: In seiner Kneipe (und unter seiner Regel beim Alten) zählt ein verlorener Ramsch nur einfach. Das ist eine eigene Wirkung der Boss-Regel (`SingleLoss` in `passive`, dieselbe Zeile `LossFactor` wie beim Magenbitter), kein Sonderfall im Code. Gemessen vorher ohne Relikte 45 % (Stadtteil 1) und 37 % (Stadtteil 3), gegengerechnet mit einfacher Wertung 64 und 56 % (`docs/balance/2026-11-03-kleine-runde.md`, Abschnitt 3). Der Faktor bleibt 1,0.
-- **Faktoren** (Alleinspieler, gemessen am 03.11.2026, `docs/balance/2026-11-03-kleine-runde.md` und `2026-11-03-grosse-runde.md`; die des Nullspielers weiter nach Augenmaß): Schieber 0,8 → 0,5, Oma 0,7 → 1,0, Zwillinge 0,85 → 1,2, Schwarzer Peter 0,5 → 0,7, Ramscher und der Alte 1,0. Die Boss-Kurven sind flach (0,15 bis 0,25 Punkte je Zielwert-Punkt, ohne Relikte Obergrenze 51 bis 76 % bei Zielwert 1); wie schwer ein Boss ist, entscheidet seine Regel, der Faktor stellt nur fein nach. Boss-Kneipe gewonnen im Run (Stadtteil 1 / 2 und 3):
+- **Faktoren des Nullspielers** (gemessen am 03.11.2026 mit seiner neuen Kurve, `docs/balance/2026-11-03-charaktere.md`): Schieber 0,35 → 0,2, Ramscher 1,0 → 2,0, Oma 0,9 und Schwarzer Peter 0,2 bleiben. Boss-Kneipe gewonnen: Ramscher 66 % (bei 1,0 87 %: mit abgestuften Untern hat er im Ramsch keinen Trumpf), Schieber 32 % (fast unabhängig vom Faktor, der Bot spielt unter „nur Hand“ selten Null), Peter 52 %, Oma 61 %, Zwillinge 59 %, der Alte 43 %.
+- **Faktoren** (Alleinspieler, gemessen am 03.11.2026, `docs/balance/2026-11-03-kleine-runde.md` und `2026-11-03-grosse-runde.md`): Schieber 0,8 → 0,5, Oma 0,7 → 1,0, Zwillinge 0,85 → 1,2, Schwarzer Peter 0,5 → 0,7, Ramscher und der Alte 1,0. Die Boss-Kurven sind flach (0,15 bis 0,25 Punkte je Zielwert-Punkt, ohne Relikte Obergrenze 51 bis 76 % bei Zielwert 1); wie schwer ein Boss ist, entscheidet seine Regel, der Faktor stellt nur fein nach. Boss-Kneipe gewonnen im Run (Stadtteil 1 / 2 und 3):
 
 | Boss | vorher (kleine Runde) | jetzt (große Runde, Zielwerte 60 / 100 / 140) |
 |---|---|---|

@@ -1428,9 +1428,53 @@ button.card {
   align-items: flex-end;
 }
 
-/* The corners: the button on the left edge, the pressed skat on the right. */
+/* The corners: the boss rule top left, "Letzter Stich" bottom left, the
+   pressed skat bottom right. */
 .trick-side.is-left {
+  align-self: stretch;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: flex-start;
+  gap: 6px;
+}
+
+.trick-side.is-left .last-trick-btn {
+  margin-top: auto;
+}
+
+/* The boss rule during play: a coaster with a label in the felt's corner,
+   so it takes no height from the trick. A tap opens the rule. */
+.rule-chip {
+  display: inline-flex;
+  width: 100%;
+  max-width: 64px;
+  min-height: var(--touch);
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 2px;
+  border: 2px solid var(--rot);
+  background: #2c2326;
+  color: var(--rot-light);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 0.95;
+  text-align: center;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rule-chip-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.rule-chip:hover,
+.rule-chip:focus-visible {
+  color: var(--text);
 }
 
 .trick-side.is-right {

@@ -672,33 +672,67 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
  * bottom left corner, the pressed skat face down in the bottom right one.
  * During play the felt takes a hand card thrown onto it (`data-drop`).
  */
-function trickRow(game: GameView, ui: UiState, peek: TrickView | null): string {
+function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
   const slots = (cards: PlayedCard[], you: boolean, winner: Seat | null, risen: UiState['risen']): string =>
     `${trickSlot(cards, 1, false, winner, risen)}${trickSlot(cards, 2, false, winner, risen)}${trickSlot(cards, 0, you, winner, risen)}`;
   const trick = peek
     ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${slots(peek.cards, false, peek.winner, ui.risen)}</div>`
     : `<div class="trick" data-action="fast" data-testid="trick">${slots(ui.anim ? ui.anim.trick : game.trick, !ui.anim && !ui.busy && game.your_turn, null, ui.anim ? ui.risen : null)}</div>`;
-  return `<div class="trick-row"><div class="trick-side is-left">${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${pressedStack(game)}</div></div>`;
+  return `<div class="trick-row"><div class="trick-side is-left">${ruleChip(view, game)}${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${pressedStack(game)}</div></div>`;
 }
 
 /**
- * The boss rule in force in this game. "Der Alte" lays another boss's rule
- * on every game; then the strip names him and the rule of this game.
+ * The boss rule in force in this game, if the table shows it: "Der Alte"
+ * lays another boss's rule on every game (`laidOn`). In a Ramsch the
+ * Ramsch notice speaks; only "Der Alte" still needs the rule then.
+ */
+function shownRule(view: RunView, game: GameView): { rule: BossInfo; laidOn: boolean } | null {
+  const rule: BossInfo | null = game.boss_rule;
+  if (!rule) return null;
+  const boss = view.series.boss;
+  const laidOn = Boolean(boss && boss.id !== rule.id);
+  if (game.declaration?.game === 'Ramsch' && !laidOn) return null;
+  return { rule, laidOn };
+}
+
+/**
+ * The boss rule written out, above the middle while the game is being
+ * chosen (before the first card). During play it shrinks to the chip in
+ * the felt's corner (`ruleChip`), so the trick is as big as in any pub.
  */
 function ruleStrip(view: RunView, game: GameView): string {
-  const rule: BossInfo | null = game.boss_rule;
-  if (!rule) return '';
+  const shown = shownRule(view, game);
+  if (!shown) return '';
+  const { rule, laidOn } = shown;
   const boss = view.series.boss;
-  const laidOn = boss && boss.id !== rule.id;
-  // The Ramsch has its own notice; only "Der Alte" needs the strip then.
-  if (game.declaration?.game === 'Ramsch' && !laidOn) return '';
-  const head = laidOn ? t(de.table.oldMan, { name: contentName('bosses', boss.id) }) : de.table.bossRule;
+  const head = laidOn && boss ? t(de.table.oldMan, { name: contentName('bosses', boss.id) }) : de.table.bossRule;
   return `<button class="rule-strip ${laidOn ? 'is-laid-on' : ''}" ${attrs({ 'data-action': 'info-rule', 'data-testid': 'boss-rule', 'data-info': `rule:${rule.id}` })}>
-    ${bossCoaster(laidOn ? boss.id : rule.id, { size: 34 })}
+    ${bossCoaster(laidOn && boss ? boss.id : rule.id, { size: 34 })}
     <span class="rule-head">${esc(head)}</span>
     <b class="rule-name">${esc(contentName('bosses', rule.id))}</b>
     <span class="rule-text">${esc(contentText('bosses', rule.id) || rule.text)}</span>
   </button>`;
+}
+
+/**
+ * The boss rule during play: a small coaster with a label in the top left
+ * corner of the felt, beside the trick. A tap opens the rule on the info
+ * card, like the strip it replaces.
+ */
+function ruleChip(view: RunView, game: GameView): string {
+  const shown = shownRule(view, game);
+  if (!shown) return '';
+  const { rule, laidOn } = shown;
+  const boss = view.series.boss;
+  // The coaster is the rule in force; under "Der Alte" the label names him.
+  const label = laidOn && boss ? contentName('bosses', boss.id) : de.table.bossRule;
+  const name = contentName('bosses', rule.id);
+  return `<button class="rule-chip ${laidOn ? 'is-laid-on' : ''}" ${attrs({
+    'data-action': 'info-rule',
+    'data-testid': 'boss-rule',
+    'data-info': `rule:${rule.id}`,
+    title: `${label}: ${name}`,
+  })}>${bossCoaster(rule.id, { size: 34 })}<span class="rule-chip-label">${esc(label)}</span></button>`;
 }
 
 /** The count of "Der Zähler": one small row under the trick. */
@@ -749,7 +783,9 @@ export function renderTable(view: RunView, ui: UiState): string {
       ? declarePanel(game.declare, game, ui, view.series.redeals_left)
       : game.phase === 'Discarding'
         ? `${gameLine(view, game, null)}${skatZone(view, game, ui)}`
-        : `${gameLine(view, game, peek)}${trickRow(game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
+        : `${gameLine(view, game, peek)}${trickRow(view, game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
+  // Once the cards are played the boss rule moves onto the felt as a chip.
+  const onFelt = !declaring && game.phase !== 'Discarding';
   const ramsch = game.declaration?.game === 'Ramsch';
   const choice = Boolean(declaring && game.declare && game.phase === 'Declaring' && game.declare.can_pick_up_skat && !ui.handGame);
   const cols = Math.max(5, Math.ceil(shownHand(game, ui).length / 2));
@@ -758,7 +794,7 @@ export function renderTable(view: RunView, ui: UiState): string {
   const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
   return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">
     <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
-    ${ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
+    ${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
     <div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>
     ${handCards(view, game, ui)}
     ${statusLine(view, game, ui)}
