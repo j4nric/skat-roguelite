@@ -190,6 +190,13 @@
 //   Untot, and the first Untot of the save opens its explanation sheet.
 // - special.json: zinken.json without special cards, its Auslage set to
 //   "wird Untot", "wird Wandelkarte" and a plain Zinke (specialPass).
+// - zinken.json patched in the browser (tradePass, curses as trade,
+//   DESIGN 8.8, at 390 × 844 and 1280 × 800): the relics on offer as a row
+//   of three tiles like the Auslage, Pechvogel as "Hehlerware" and a
+//   "Schnäppchen" in the Auslage with badge, struck price and note; buying
+//   either curses a card (toast, the curse pays). wave3-mods.json with a
+//   Fusel in the bag: drunk before Skat oder Hand it waits in the head and
+//   a toast names the cursed card.
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
 //   the Grün-König (22), both with their Untot look. In an Eichel Hand
 //   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
@@ -2880,6 +2887,130 @@ async function specialPass(browser, errors, reducedMotion) {
 }
 
 /**
+ * Curses as trade (DESIGN 8.8, 03.11.2026), on `viewport`. The Tresen of
+ * zinken.json with three relics (Pechvogel as "Hehlerware" in slot 0) and a
+ * "Schnäppchen" in the Auslage (slot 1, Aufdruck +3 for 1 instead of 3):
+ * the relics lie as a row of three tiles like the Auslage (one row, also
+ * at 390 × 844, nothing scrolls sideways), Hehlerware and Schnäppchen wear
+ * their badge, the full price struck through and the line that says what
+ * the curse is; the info card of the Hehlerware explains the trade. Buying
+ * either curses a card (a toast says so, the curse pays 3 Groschen).
+ * Then Fusel before Skat oder Hand (wave3-mods.json): the HUD shows it
+ * waiting, a toast names the cursed card.
+ */
+async function tradePass(browser, errors, reducedMotion, viewport) {
+  const size = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const run = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const shot = (name) => page.screenshot({ path: join(screens, `trade-${name}-${size}.png`) });
+  const save = JSON.parse(fixture('zinken.json'));
+  save.run.shop.relics = ['jinx', 'virgin', 'skat_redraw'];
+  save.run.shop.fence = 0;
+  save.run.shop.card_offers[1] = { card: 3, card_mod: 'points', value: 3, price: 1, bargain: 2 };
+  save.run.coins = 20;
+  await resumeFixture(page, 'trade.json', JSON.stringify(save));
+  await page.waitForSelector('[data-testid="relic-offers"]');
+  const tiles = await page.locator('[data-testid="relic-offer"]').evaluateAll((els) => els.map((e) => ({ ...e.getBoundingClientRect().toJSON(), relic: e.dataset.relic, fence: e.dataset.fence ?? '' })));
+  if (tiles.length !== 3) fail(`trade: ${tiles.length} relic tiles, expected 3`);
+  if (tiles.map((t) => t.relic).join(' ') !== 'jinx virgin skat_redraw') fail(`trade: relic tiles ${tiles.map((t) => t.relic).join(' ')}`);
+  const row = await page.locator('[data-testid="relic-offers"]').evaluate((e) => e.getBoundingClientRect().toJSON());
+  for (const t of tiles) {
+    if (Math.abs(t.top - tiles[0].top) > 6) fail(`trade: the relic tiles are not in one row at ${size} (${tiles.map((x) => Math.round(x.top)).join(', ')})`);
+    if (t.width > row.width / 3 + 1) fail(`trade: a relic tile is wider than a third at ${size}`);
+  }
+  // Like the Auslage: tiles of the same width.
+  const zinke = await page.locator('[data-testid="zinke"]').first().evaluate((e) => e.getBoundingClientRect().width);
+  if (Math.abs(zinke - tiles[0].width) > 2) fail(`trade: relic tile ${tiles[0].width} px wide, Auslage tile ${zinke} px`);
+  if (tiles[0].fence !== 'true' || tiles[1].fence) fail('trade: Hehlerware not on slot 0 only');
+  const fence = page.locator('[data-testid="relic-offer"][data-slot="0"]');
+  if ((await fence.locator('[data-testid="fence-badge"]').textContent())?.trim() !== 'Hehlerware') fail('trade: no "Hehlerware" badge');
+  const fencePrice = (await fence.locator('.price-tag .price').textContent())?.trim();
+  if (fencePrice !== '4 Gr.') fail(`trade: Hehlerware costs "${fencePrice}"`);
+  if ((await fence.locator('.price-was').textContent()) !== '9') fail('trade: the full price is not struck through');
+  const fenceNote = (await fence.locator('.zinke-note').textContent())?.trim();
+  if (fenceNote !== 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte') fail(`trade: Hehlerware note says "${fenceNote}"`);
+  if (await page.locator('[data-testid="relic-offer"][data-slot="1"] [data-testid="fence-badge"]').count()) fail('trade: a normal relic wears the Hehlerware badge');
+  const bargain = page.locator('[data-testid="zinke"][data-slot="1"]');
+  if ((await bargain.getAttribute('data-bargain')) !== 'true') fail('trade: the Schnäppchen is not marked');
+  if ((await bargain.locator('[data-testid="bargain-badge"]').textContent())?.trim() !== 'Schnäppchen') fail('trade: no "Schnäppchen" badge');
+  const bargainNote = (await bargain.locator('.zinke-note').last().textContent())?.trim();
+  if (bargainNote !== 'Schnäppchen: dafür ein Fluch auf einer anderen Karte') fail(`trade: Schnäppchen note says "${bargainNote}"`);
+  if ((await bargain.locator('.price-was').textContent()) !== '2') fail('trade: the Schnäppchen does not strike its full price through');
+  if (await page.locator('[data-testid="zinke"][data-slot="0"] [data-testid="bargain-badge"]').count()) fail('trade: a normal offer wears the Schnäppchen badge');
+  await assertNoSideScroll(page, `trade Tresen ${size}`);
+  await page.locator('[data-testid="relic-offers"]').scrollIntoViewIfNeeded();
+  await shot('tresen');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await shot('auslage');
+  // The info card of the Hehlerware explains the trade.
+  await page.locator('[data-testid="relic-offers"]').scrollIntoViewIfNeeded();
+  await fence.locator('.coaster-cover').click();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key="offer-relic:0"]', { timeout: 5000 }).catch(() => fail('trade: no info card for the Hehlerware'));
+  const info = (await page.locator('[data-testid="info-card"]').textContent()) ?? '';
+  if (!info.includes('Hehlerware: Du zahlst den halben Preis')) fail('trade: the info card does not explain the Hehlerware');
+  await shot('info');
+  const close = page.locator('[data-testid="info-card"] [data-info-close]');
+  if (await close.count()) await close.click();
+  else await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached', timeout: 5000 }).catch(() => fail('trade: the info card does not close'));
+  // Buy the Hehlerware: half price, a curse that pays 3.
+  const cursedBefore = (await run()).edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
+  await page.click('[data-action="buy-relic"][data-slot="0"]');
+  await page
+    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.relics?.includes('jinx'), null, { timeout: 5000 })
+    .catch(() => fail('trade: Pechvogel not bought'));
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent?.startsWith('Hehlerware:') && t.textContent.includes('verflucht')), null, { timeout: 8000 }).catch(() => fail('trade: no toast for the Hehlerware curse'));
+  await shot('fence-bought');
+  let after = await run();
+  if (after.coins !== 20 - 4 + 3) fail(`trade: ${after.coins} Groschen after the Hehlerware, expected 19`);
+  const cursedAfter = after.edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
+  if (cursedAfter !== cursedBefore + 1) fail(`trade: ${cursedAfter - cursedBefore} cards cursed by the Hehlerware`);
+  // Buy the Schnäppchen (Aufdruck +3 on the Schellen-Zehn raises +4 → +7: confirm).
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
+  const confirm = page.locator('[data-testid="mod-confirm-go"]');
+  await confirm.waitFor({ timeout: 3000 }).then(() => confirm.click()).catch(() => {});
+  await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent?.startsWith('Schnäppchen:')), null, { timeout: 8000 }).catch(() => fail('trade: no toast for the Schnäppchen curse'));
+  after = await run();
+  if (after.coins !== 19 - 1 + 3) fail(`trade: ${after.coins} Groschen after the Schnäppchen, expected 21`);
+  const cursedLast = after.edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
+  if (cursedLast !== cursedAfter + 1) fail('trade: the Schnäppchen cursed no card');
+  if (after.edition.cards.find((c) => c.id === 3)?.mod_values?.points !== 7) fail('trade: the Schnäppchen did not raise the Schellen-Zehn');
+  await shot('bargain-bought');
+  await context.close();
+
+  // Fusel before Skat oder Hand.
+  const game = await quietContext(browser, { viewport, reducedMotion });
+  const gamePage = await game.newPage();
+  watch(gamePage, errors);
+  const table = JSON.parse(fixture('wave3-mods.json'));
+  table.run.consumables = ['rotgut'];
+  await resumeFixture(gamePage, 'fusel.json', JSON.stringify(table));
+  await gamePage.waitForSelector('.hud .item-chip[data-slot="0"]');
+  if (!(await gamePage.locator('.hud .item-chip[data-slot="0"] svg').count())) fail('Fusel: no motif in the head');
+  await gamePage.click('.hud .item-chip[data-slot="0"]');
+  await gamePage.waitForSelector('[data-testid="info-card"]');
+  const fuselInfo = (await gamePage.locator('[data-testid="info-card"]').textContent()) ?? '';
+  if (!fuselInfo.includes('Fusel')) fail('Fusel: the info card does not name it');
+  await gamePage.screenshot({ path: join(screens, `trade-fusel-info-${size}.png`) });
+  await gamePage.click('[data-action="use-item"][data-slot="0"]');
+  await gamePage.waitForSelector('[data-testid="pending-schnaps"]', { timeout: 8000 }).catch(() => fail('Fusel: the HUD does not show it waiting'));
+  const waiting = await text(gamePage, 'pending-schnaps');
+  if (!waiting.startsWith('Fusel')) fail(`Fusel: the HUD says "${waiting}"`);
+  await gamePage
+    .waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent?.startsWith('Fusel:') && t.textContent.includes('verflucht')), null, { timeout: 10000 })
+    .catch(() => fail('Fusel: no toast names the cursed card'));
+  await gamePage.screenshot({ path: join(screens, `trade-fusel-${size}.png`) });
+  const drunk = await gamePage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (drunk.consumables.length !== 0) fail('Fusel: still in the bag');
+  if (!drunk.pending_next_game?.some(([id]) => id === 'rotgut')) fail('Fusel: not waiting for the next game');
+  await game.close();
+  log(`curses as trade at ${size}`);
+}
+
+/**
  * Zinken at the Tresen (DESIGN 8.6, zinken.json: frames.json with an
  * Auslage of three set offers, nothing in the bag, 20 Groschen). The
  * Auslage shows three cards drawn with their new Zinke. Aufdruck +3 on the
@@ -4013,6 +4144,8 @@ async function run() {
     await wildSettlePass(browser, errors);
     await framesPass(browser, errors, reducedMotion);
     await zinkenPass(browser, errors, reducedMotion);
+    await tradePass(browser, errors, reducedMotion, PHONE);
+    await tradePass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);
     await rescuePass(browser, errors, reducedMotion, DESKTOP);
     await workshopPass(browser, errors, reducedMotion);

@@ -495,6 +495,12 @@ export const de = {
     nextDoubled: 'Letzte Runde! Das nächste Spiel zählt ×{factor}.',
     cardMarked: '{card} gezinkt: {mod}.',
     cardCleansed: '{card} ist wieder wie neu.',
+    /** Curses as trade (03.11.2026): what the curse was the price of. */
+    tradeCurse: {
+      Bargain: 'Schnäppchen: {card} ist jetzt verflucht ({curse}).',
+      Fence: 'Hehlerware: {card} ist jetzt verflucht ({curse}).',
+      Schnapps: 'Fusel: {card} ist jetzt verflucht ({curse}), für immer.',
+    },
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
     bossCursed: '{name} kramt in deinen Karten: {n} tragen in dieser Kneipe einen Fluch.',
     bossCursesLifted: 'Die Flüche der Boss-Kneipe sind weg, deine Karten sind wie vorher.',
@@ -677,6 +683,13 @@ export const de = {
     cleanseNone: 'Keine deiner Karten trägt etwas.',
     cleansePick: 'Welche Karte soll wieder wie neu werden?',
     cheaperOn: 'Auf manchen Karten billiger: ab {price} Gr.',
+    /** Curses as trade (03.11.2026): half price for a curse. */
+    bargain: 'Schnäppchen',
+    bargainNote: 'Schnäppchen: dafür ein Fluch auf einer anderen Karte',
+    fence: 'Hehlerware',
+    fenceNote: 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte',
+    fenceRule: 'Hehlerware: Du zahlst den halben Preis (abgerundet). Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer.',
+    tradeWas: 'statt {price}',
   },
 
   rarity: {

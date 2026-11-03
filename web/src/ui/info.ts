@@ -140,7 +140,7 @@ function relicModel(
   ui: UiState,
   relic: { id: string; kind: RelicKind; rarity: Rarity },
   label: string,
-  buy?: { slot: number; price: number; ok: boolean },
+  buy?: { slot: number; price: number; ok: boolean; fence?: boolean },
 ): InfoModel {
   const id = relic.id;
   const status: InfoStatus[] = relicCounters(id)
@@ -159,7 +159,11 @@ function relicModel(
     kind: `${label} · ${de.rarity[relic.rarity]}`,
     art: `<span class="info-emblem">${relicCoaster(relic, { size: 72 })}</span>`,
     facts: [],
-    sections: [{ text: contentText('relics', id), status }, ...(de.relicRules[id] ? [{ text: de.relicRules[id] ?? '', status: [] }] : [])],
+    sections: [
+      { text: contentText('relics', id), status },
+      ...(de.relicRules[id] ? [{ text: de.relicRules[id] ?? '', status: [] }] : []),
+      ...(buy?.fence ? [{ text: de.shop.fenceRule, status: [] }] : []),
+    ],
     ...(actions ? { actions } : {}),
   };
 }
@@ -299,7 +303,7 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
     }
     case 'offer-relic': {
       const o = view.shop?.relics.find((x) => x?.slot === n);
-      return o ? relicModel(key, view, ui, o.relic, de.relicKind[o.relic.kind], { slot: o.slot, price: o.price, ok: o.can_buy }) : null;
+      return o ? relicModel(key, view, ui, o.relic, de.relicKind[o.relic.kind], { slot: o.slot, price: o.price, ok: o.can_buy, fence: o.fence === true }) : null;
     }
     case 'item': {
       const c = view.consumables.find((x) => x.slot === n);

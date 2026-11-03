@@ -4945,6 +4945,83 @@ button.card {
   margin-top: auto;
 }
 
+/*
+ * The relics on offer at the Tresen (03.11.2026): a row of three tiles
+ * like the Auslage, on the phone too. The whole tile opens the full text,
+ * the buy button stays on top.
+ */
+.relic-tile {
+  padding-top: 12px;
+}
+
+.relic-tile > :not(.coaster-cover) {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.relic-tile > .price-tag {
+  position: absolute;
+  z-index: 2;
+}
+
+.relic-tile .btn,
+.relic-tile .good-foot {
+  pointer-events: auto;
+}
+
+.relic-tile-emblem {
+  display: inline-flex;
+  margin-top: -2px;
+}
+
+.relic-tile-text {
+  display: -webkit-box;
+  /* clip, not hidden: centred clamped text must not count as a scroller. */
+  overflow: clip;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.relic-tile.rarity-Rare {
+  border-color: #c9a23a;
+}
+
+.relic-tile.rarity-Legendary {
+  border-color: #b06ad6;
+}
+
+/* Curses as trade: Schnäppchen and Hehlerware, half price for a curse. */
+.zinke.is-trade {
+  border-style: dashed;
+  border-color: #a8322a;
+  background: linear-gradient(200deg, #3a2426, var(--panel) 55%);
+}
+
+.trade-badge {
+  /* In the flow under the price tag, so that both fit on a narrow tile. */
+  align-self: center;
+  margin: 6px 0 2px;
+  padding: 1px 5px;
+  border: 2px solid var(--line);
+  background: #a8322a;
+  color: #f4ece0;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+}
+
+.zinke.is-trade .zinke-note {
+  color: #ff8f80;
+}
+
+.price-was {
+  margin-right: 4px;
+  color: #6a3b33;
+  font-size: var(--fs-s);
+}
+
 .zinken-reroll {
   align-self: center;
 }
