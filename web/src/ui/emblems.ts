@@ -1,24 +1,23 @@
-// Bierdeckel emblems (style "R1 Bierdeckel", variant "B3 Form und
-// Pappfarbe"): every relic, consumable and boss is a small beer mat with
-// its own 16 × 16 pixel motif. The kind picks shape and paper colour
-// (house rule round and cream, Stammtisch figure rounded square in
-// blue-grey, Schnaps with a crown-cork edge in mint, other items octagonal
-// in ochre, boss torn and dark), the rarity a dashed ring along the edge.
-// Each mat is tilted a little, by its id, and casts a hard shadow.
+// Emblems (style "R1 Bierdeckel", v2 "Deckel v2"): every relic, consumable
+// and boss is drawn as a small object with its own 16 × 16 pixel motif.
+// - Relics are beer mats whose shape and paper follow their category
+//   (RelicGroup): Grundwert round, Multiplikator a sunburst, Kontrolle a
+//   rounded square, Tresen und Tour an inn sign shield.
+// - Schnäpse are no mats but consumables at first sight: a bottle, a label
+//   or a shot glass (SchnapsStyle). Other items keep an octagonal mat.
+// - Bosses keep their torn dark mat with a red dashed ring.
+// - The rarity has one ink per tier on every form (RARITY_INK), drawn as a
+//   rim band, a corner gem or a ring with pips (RarityStyle).
+// Each emblem is tilted a little, by its id, and casts a hard shadow.
 //
 // Sprites are rows of palette keys ('.' is empty); a dark outline is drawn
 // around every motif. Rows may be ragged: the motif is centred by its
-// bounding box. Relics and consumables have three motif variants each, the
-// one shown is picked in CHOSEN; bosses have one. Unknown ids get a
+// bounding box. Relics and consumables have up to three motif variants,
+// the one shown is picked in CHOSEN; bosses have one. Unknown ids get a
 // generic motif of their kind. Pure presentation, no game logic; this
 // module has no runtime imports so scripts can load it directly.
 
 import type { ConsumableCategory, Rarity, RelicKind } from '../types';
-
-/** Shape and paper of a mat. */
-export type CoasterKind = 'HouseRule' | 'Regular' | 'Schnapps' | 'Item' | 'Boss';
-/** Colour of the dashed ring: a rarity, or the boss red. */
-export type CoasterRing = Rarity | 'Boss' | 'Legendary';
 
 /** One motif: German label (for the art vote only), rows, palette overrides. */
 export interface Sprite {
@@ -58,6 +57,9 @@ const PALETTE: Record<string, string> = {
 };
 
 const OUTLINE = '#1b1e21';
+
+/** Bright blue of Blue Curaçao (u light, U dark), only for its motifs. */
+const CURACAO = { u: '#1fa8f0', U: '#0d6fb5' };
 
 const sp = (label: string, art: string, pal?: Record<string, string>): Sprite => (pal ? { label, art, pal } : { label, art });
 
@@ -1848,38 +1850,205 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       nnnnnnnnn
       .nnnnnnn`),
   ],
-  chalk: [
-    sp('Kreidestück', `
-      ...........www
-      ..........www
-      .........www
-      ........www
-      .......www
-      ......www
-      .....www
-      ....ggg
-      ...g.g
-      ..........
-      ...wwwwww
-      ..........
-      .g`),
-    sp('Kreideschachtel', `
-      .ww.ww.ww
-      .ww.ww.ww
-      oooooooooo
-      owwwwwwwwo
-      oooooooooo
-      oooooooooo
-      oooooooooo`),
-    sp('Umgemalte Karte', `
-      wwwwwwwwwww
-      wwwwwwwwwww
-      wrrwwwoweew
-      wrrwooooeew
-      wrrwwwoweew
-      wwwwwwwwwww
-      wwwwwwwwwww
-      wwwwwwwwwww`),
+  blue_curacao: [
+    sp('Blaue Likörflasche', `
+      .......kk
+      .......uu
+      .......uu
+      ......uuuu
+      .....uuuuuu
+      ....uuuuuuuu
+      ....uhuuuuuu
+      ....wwwwwwww
+      ....wwwoowww
+      ....wwolloww
+      ....wwwoowww
+      ....wwwwwwww
+      ....uhuuuuuu
+      ....uuuuuuuu
+      ....UUUUUUUU`, CURACAO),
+    sp('Cocktailglas mit Orangenscheibe', `
+      ...........ooo
+      ..........olllo
+      cccccccccccolo
+      .cuhuuuuuuuuuc
+      ..cuhuuuuuuuc
+      ...cuuuuuuuc
+      ....cuuuuuc
+      .....cuuuc
+      ......ccc
+      .......c
+      .......c
+      .......c
+      .....ccccc`, CURACAO),
+  ],
+  // ---- motifs of the Kneipentour relics and Schnäpse (emblems v2, picked
+  // by the user in the art vote "Deckel v2"; counter_beer and snifter
+  // still have two variants for the vote)
+  feierabend: [
+    sp('Garderobe mit Hut', `
+      .....nnnnn
+      .....nnnnn
+      .....rrrrr
+      ...nnnnnnnnn
+      ......gbg
+      .....g.b.g
+      .......b.JJ
+      .......b.JJJ
+      .......b.JJJ
+      .......b..J
+      .......b
+      .......b
+      .....bbbbb
+      ....bb...bb`),
+  ],
+  monthly_ticket: [
+    sp('Fahrkarte mit Foto', `
+      JJJJJJJJJJJJJJ
+      JJwJwJwJJJJLLJ
+      JJJJJJJJJJJJJJ
+      wwwwwwwwwwwwww
+      wnnnnwwwwwwwww
+      wsssswwggggggw
+      wskskwwwwwwwww
+      wsssswwggggwww
+      wJJJJwwwwwwwww
+      wJJJJwwrrwrrww
+      wwwwwwwwwwwwww`),
+  ],
+  kitty: [
+    sp('Sparschwein', `
+      ........YYY
+      ........YyY
+      ..p.....kkk
+      .ppppppppppp
+      .pkpppppppppp
+      RRppppppppppppp
+      RRpppppppppppp.p
+      .pppppppppppp
+      ..ppppppppppp
+      ..pp.....pp
+      ..RR.....RR`),
+  ],
+  tab: [
+    sp('Schiefertafel mit Strichen', `
+      bbbbbbbbbbbbbb
+      bddddddddddddb
+      bdwdwdwdwddddb
+      bdwdwdwdwddddb
+      bdwwwwwwwwdddb
+      bdwdwdwdwddddb
+      bddddddddddddb
+      bdwdwdwddaaddb
+      bdwdwdwddahddb
+      bddddddddaaddb
+      bbbbbbbbbbbbbb`),
+  ],
+  guardian_angel: [
+    sp('Herz mit Flügeln', `
+      ....YYYYYYY
+      ...Y.......Y
+      ....YYYYYYY
+      ...............
+      ww..rrr.rrr..ww
+      www.rRrrrrr.www
+      wwwwrrrrrrrwwww
+      .wwwrrrrrrrwww
+      ..wwwrrrrrwww
+      ...ww.rrr.ww
+      .......r`),
+  ],
+  dive_expert: [
+    sp('Lupe vor schiefer Tür', `
+      ...bbbbb
+      ...bnnnb
+      ..bbnnnb
+      ..bnnnnb.GGGG
+      ..bnnnnbGccccG
+      ..bnnnLGchccccG
+      .bnnnnbGchccccG
+      .bnnnnbGccccccG
+      .bnnnnbGccccccG
+      .bnnnnb.GccccG
+      bnnnnnb..GGGGgg
+      bnnnnnb......ggg
+      bnnnnnb.......gg
+      bbbbbbb`),
+  ],
+  counter_beer: [
+    sp('Krug mit Eisbeutel', `
+      .....gg
+      ....cccc
+      ...cchccc
+      ..ccccccccc
+      ...wwwwwwwww
+      ..wwwwwwwwwww
+      ..aaaaaaaaaaggg
+      ..ahaaaaaaaa..g
+      ..ahaaaaaaaa..g
+      ..ahaaaaaaaa..g
+      ..aaaaaaaaaaggg
+      ..aaaaaaaaaa
+      ..gggggggggg`),
+    sp('Schäumender Krug mit Herz', `
+      ...w..ww
+      ..wwwwwwww
+      .wwwwwwwwwww
+      .wwwwwwwwwwww
+      .waaaaaaaaaaggg
+      ..aharrarraa..g
+      ..aharrrrraa..g
+      ..ahaarrraaa..g
+      ..ahaaaraaaa..g
+      ..aaaaaaaaaaggg
+      ..aaaaaaaaaa
+      ..gggggggggg`),
+  ],
+  snifter: [
+    sp('Schwenker mit Wirbel', `
+      ....ccccc
+      ...chccccc
+      ..chccccccc
+      .chooooooooc
+      choYYYooooooc
+      cooooooooYooc
+      .coYoooooYoc
+      ..coYYYYYoc
+      ...ccccccc
+      ......c
+      ......c
+      ....ccccc`),
+    sp('Schwenker mit Wendepfeil', `
+      ....rrrrr
+      ..rr.....rr
+      .r.........r
+      rrr........r
+      .r..ccccc
+      ...chccccc
+      ..chooooooc
+      ..cooYYYooc
+      ..coooooooc
+      ...ccccccc
+      ......c
+      ....ccccc`),
+  ],
+  road_beer: [
+    sp('Flasche in der Hand', `
+      .....YY
+      .....ll
+      .....bb
+      ....bbbb
+      ...bbbbbb
+      ...blbbbb
+      ...bwwwwb
+      ...bwrrwb
+      ..sssssssss
+      ..kkkkkksss
+      ..sssssssss
+      ..kkkkkksss
+      ..ssssssssss
+      ...bbbbb.ssss
+      ...bbbbb..sss`),
   ],
 };
 
@@ -2005,7 +2174,7 @@ export const BOSS_ART: Record<string, Sprite> = {
 };
 
 /** A generic motif per kind, for ids without their own. */
-const FALLBACK: Record<CoasterKind, Sprite> = {
+const FALLBACK: Record<RelicKind | 'Schnapps' | 'Item' | 'Boss', Sprite> = {
   HouseRule: sp('Paragraf', `
     ......GGGG
     .....GG..GG
@@ -2110,7 +2279,14 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   double_grain: 1,
   herbal: 0,
   bitters: 0,
-  chalk: 1,
+  // Deckel v2 (02.11.2026): one variant kept each.
+  feierabend: 0,
+  monthly_ticket: 0,
+  kitty: 0,
+  tab: 0,
+  guardian_angel: 0,
+  dive_expert: 0,
+  road_beer: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -2191,24 +2367,166 @@ export function spriteMarkup(s: Sprite): string {
 }
 
 // ---------------------------------------------------------------------------
-// Coaster shapes (viewBox 0 0 100 100, centre 50 48)
+// Forms (viewBox 0 0 100 100, centre 50 48)
 // ---------------------------------------------------------------------------
+
+type Pt = [number, number];
 
 const CX = 50;
 const CY = 48;
 
-function poly(points: [number, number][]): string {
-  return 'M' + points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L') + 'Z';
+function poly(points: Pt[]): string {
+  return points.length ? 'M' + points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L') + 'Z' : '';
 }
 
-function radial(n: number, radius: (k: number, a: number) => number, phase = 0): string {
-  const pts: [number, number][] = [];
+function radialPts(n: number, radius: (k: number) => number, phase = 0): Pt[] {
+  const pts: Pt[] = [];
   for (let k = 0; k < n; k++) {
     const a = phase + (k * 2 * Math.PI) / n;
-    const r = radius(k, a);
+    const r = radius(k);
     pts.push([CX + r * Math.cos(a), CY + r * Math.sin(a)]);
   }
-  return poly(pts);
+  return pts;
+}
+
+/** Points of a circular arc from angle a0 to a1 (radians), both ends included. */
+function arcPts(cx: number, cy: number, r: number, a0: number, a1: number, n: number): Pt[] {
+  return Array.from({ length: n + 1 }, (_, k): Pt => {
+    const a = a0 + ((a1 - a0) * k) / n;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+}
+
+/** Points of a quadratic Bézier from p0 over c to p1, without p0. */
+function quadPts(p0: Pt, c: Pt, p1: Pt, n: number): Pt[] {
+  return Array.from({ length: n }, (_, k): Pt => {
+    const t = (k + 1) / n;
+    const u = 1 - t;
+    return [u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1]];
+  });
+}
+
+function signedArea(pts: Pt[]): number {
+  let s = 0;
+  pts.forEach(([x0, y0], i) => {
+    const [x1, y1] = pts[(i + 1) % pts.length] as Pt;
+    s += x0 * y1 - x1 * y0;
+  });
+  return s / 2;
+}
+
+/**
+ * The outline moved inward by d (mitred corners). Good for the small
+ * insets of rim, band and ring; the forms have no features thinner than
+ * twice the largest inset.
+ */
+function insetPts(pts: Pt[], d: number): Pt[] {
+  if (d === 0) return pts;
+  const s = Math.sign(signedArea(pts)) || 1;
+  const n = pts.length;
+  const normal = (a: Pt, b: Pt): Pt => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [(-dy / len) * s, (dx / len) * s];
+  };
+  return pts.map((p, i): Pt => {
+    const prev = pts[(i - 1 + n) % n] as Pt;
+    const next = pts[(i + 1) % n] as Pt;
+    const n1 = normal(prev, p);
+    const n2 = normal(p, next);
+    const k = Math.max(0.3, 1 + n1[0] * n2[0] + n1[1] * n2[1]);
+    return [p[0] + (d * (n1[0] + n2[0])) / k, p[1] + (d * (n1[1] + n2[1])) / k];
+  });
+}
+
+/** Clip a polygon to one side of a line x = v (axis 0) or y = v (axis 1). */
+function clipPts(pts: Pt[], axis: 0 | 1, v: number, keepAbove: boolean): Pt[] {
+  const inside = (p: Pt): boolean => (keepAbove ? p[axis] >= v : p[axis] <= v);
+  const out: Pt[] = [];
+  pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length] as Pt;
+    if (inside(p)) out.push(p);
+    if (inside(p) !== inside(q)) {
+      const t = (v - p[axis]) / (q[axis] - p[axis]);
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+    }
+  });
+  return out;
+}
+
+/** Clip a polygon to the box x0..x1, y0..y1. */
+function clipBox(pts: Pt[], x0: number, y0: number, x1: number, y1: number): Pt[] {
+  return clipPts(clipPts(clipPts(clipPts(pts, 0, x0, true), 0, x1, false), 1, y0, true), 1, y1, false);
+}
+
+function roundedSquarePts(): Pt[] {
+  const [x0, y0, x1, y1, r] = [6, 4, 94, 92, 16];
+  const q = Math.PI / 2;
+  return [
+    ...arcPts(x1 - r, y0 + r, r, -q, 0, 6),
+    ...arcPts(x1 - r, y1 - r, r, 0, q, 6),
+    ...arcPts(x0 + r, y1 - r, r, q, 2 * q, 6),
+    ...arcPts(x0 + r, y0 + r, r, 2 * q, 3 * q, 6),
+  ];
+}
+
+function shieldPts(): Pt[] {
+  return [
+    [14, 6],
+    [86, 6],
+    [90, 10],
+    [90, 50],
+    ...quadPts([90, 50], [90, 80], [50, 94], 8),
+    ...quadPts([50, 94], [10, 80], [10, 50], 8),
+    [10, 10],
+  ];
+}
+
+function bottlePts(): Pt[] {
+  return [
+    [40, 3],
+    [60, 3],
+    [60, 22],
+    ...quadPts([60, 22], [86, 24], [86, 44], 6),
+    [86, 89],
+    ...quadPts([86, 89], [86, 95], [80, 95], 3),
+    [20, 95],
+    ...quadPts([20, 95], [14, 95], [14, 89], 3),
+    [14, 44],
+    ...quadPts([14, 44], [14, 24], [40, 22], 6),
+  ];
+}
+
+/**
+ * A Schnaps label: portrait, with concave cut corners and a cork tab on
+ * top, so it reads as a bottle label and not as a mat even at 40 px.
+ */
+function labelPts(): Pt[] {
+  const [x0, y0, x1, y1, r] = [18, 24, 82, 97, 10];
+  const [n0, n1, top] = [36, 64, 2];
+  const q = Math.PI / 2;
+  return [
+    [n0, top],
+    [n1, top],
+    [n1, y0],
+    ...arcPts(x1, y0, r, 2 * q, q, 5),
+    ...arcPts(x1, y1, r, 3 * q, 2 * q, 5),
+    ...arcPts(x0, y1, r, 4 * q, 3 * q, 5),
+    ...arcPts(x0, y0, r, q, 0, 5),
+    [n0, y0],
+  ];
+}
+
+function shotGlassPts(): Pt[] {
+  return [
+    [8, 8],
+    [92, 8],
+    [81, 84],
+    [83, 94],
+    [17, 94],
+    [19, 84],
+  ];
 }
 
 /** Fixed jitter of the torn boss edge (a small seeded generator, looks only). */
@@ -2220,60 +2538,299 @@ const TORN_JITTER: number[] = (() => {
   });
 })();
 
-function roundedSquare(i: number): string {
-  const x = 6 + i;
-  const y = 4 + i;
-  const w = 88 - 2 * i;
-  const r = Math.max(4, 16 - i);
-  return `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + w - r}Q${x + w} ${y + w} ${x + w - r} ${y + w}H${x + r}Q${x} ${y + w} ${x} ${y + w - r}V${y + r}Q${x} ${y} ${x + r} ${y}Z`;
-}
+/**
+ * Category of a relic, for the shape of its mat. The core is getting a
+ * `group` field on relics; until every relic carries it, RELIC_GROUP is
+ * the fallback by id.
+ */
+export type RelicGroup = 'Value' | 'Multiplier' | 'Control' | 'Tour';
 
-const SHAPES: Record<CoasterKind, (inset: number) => string> = {
-  HouseRule: (i) => radial(72, () => 44 - i),
-  Regular: roundedSquare,
-  Schnapps: (i) => radial(140, (_, a) => 41.5 - i + 3 * Math.cos(14 * a)),
-  Item: (i) => radial(8, () => 47 - i, Math.PI / 8),
-  Boss: (i) => radial(48, (k) => 43 - i + (i === 0 ? (TORN_JITTER[k] ?? 0) : 0)),
+/** How a Schnaps is drawn: S1 bottle, S2 label, S3 shot glass (art vote "Deckel v2"). */
+export type SchnapsStyle = 'Bottle' | 'Label' | 'Glass';
+
+/** How the rarity is marked: R1 rim band, R2 corner gem, R3 ring and pips. */
+export type RarityStyle = 'Band' | 'Gem' | 'Pips';
+
+/** The style in use; the board of the art vote overrides it per call. */
+export const EMBLEM_STYLE: { rarity: RarityStyle; schnaps: SchnapsStyle } = {
+  rarity: 'Band',
+  schnaps: 'Label',
 };
 
-const shapeCache = new Map<string, string>();
-function shape(kind: CoasterKind, inset: number): string {
-  const key = `${kind}:${inset}`;
-  let d = shapeCache.get(key);
-  if (d === undefined) shapeCache.set(key, (d = SHAPES[kind](inset)));
+/** Fallback category per relic id (see RelicGroup). */
+export const RELIC_GROUP: Record<string, RelicGroup> = {
+  // Grundwert and Kartenwerte
+  all_rounder: 'Value',
+  beer_mat: 'Value',
+  tour: 'Value',
+  null_eight_fifteen: 'Value',
+  every_bit_counts: 'Value',
+  fat_sow: 'Value',
+  old_lady: 'Value',
+  skat_keeper: 'Value',
+  tuition: 'Value',
+  tally_stick: 'Value',
+  seven_sleeper: 'Value',
+  old_deck: 'Value',
+  jack_parade: 'Value',
+  // Multiplikator, Gewinngrenze and Schneider
+  blank_king: 'Multiplier',
+  last_trick_seven: 'Multiplier',
+  with_four: 'Multiplier',
+  skat_god: 'Multiplier',
+  home_suit: 'Multiplier',
+  lucky_streak: 'Multiplier',
+  blind_eye: 'Multiplier',
+  tailor: 'Multiplier',
+  virgin: 'Multiplier',
+  watertight: 'Multiplier',
+  concede: 'Multiplier',
+  bock_round: 'Multiplier',
+  kontra: 'Multiplier',
+  ouvert_bonus: 'Multiplier',
+  march_through: 'Multiplier',
+  blind_flight: 'Multiplier',
+  show_off: 'Multiplier',
+  high_and_dry: 'Multiplier',
+  schneider_bock: 'Multiplier',
+  regular_guest: 'Multiplier',
+  safety_net: 'Multiplier',
+  glass_house: 'Multiplier',
+  clean_slate: 'Multiplier',
+  changeling: 'Multiplier',
+  // Geben, Skat and Durchblick
+  skat_redraw: 'Control',
+  three_discard: 'Control',
+  crib_sheet: 'Control',
+  honorary_chair: 'Control',
+  card_counter: 'Control',
+  kibitzer: 'Control',
+  granny: 'Control',
+  grandpa: 'Control',
+  referee: 'Control',
+  // Tresen and Tour
+  landlord: 'Tour',
+  feierabend: 'Tour',
+  monthly_ticket: 'Tour',
+  kitty: 'Tour',
+  tab: 'Tour',
+  guardian_angel: 'Tour',
+  dive_expert: 'Tour',
+};
+
+/** German names of the categories, for the art vote board only. */
+export const GROUP_LABEL: Record<RelicGroup, string> = {
+  Value: 'Grundwert und Kartenwerte',
+  Multiplier: 'Multiplikator und Gewinngrenze',
+  Control: 'Geben, Skat und Durchblick',
+  Tour: 'Tresen und Tour',
+};
+
+/** Every drawn form: four relic mats, the item mat, the boss mat and three Schnaps styles. */
+export type Form = RelicGroup | 'Item' | 'Boss' | SchnapsStyle;
+
+interface FormSpec {
+  /** Outer silhouette. */
+  pts: Pt[];
+  paper: string;
+  /** Motif box: left, top, scale of the 16-pixel grid. */
+  motif: [number, number, number];
+  /** Where the rarity pips sit on the rim. */
+  pips: 'top' | 'bottom';
+  /** Fixed spot of the rarity gem; default: the corner top right. */
+  gem?: Pt;
+  /** Bottom of a cork drawn inside the paper above this y. */
+  cork?: number;
+  /** Glass: level of the spirit, start of a thick base, highlight stripe x. */
+  glass?: { liquid: number; base?: number; shine: [number, number, number, number] };
+}
+
+const GLASS = '#d3eaf0';
+const SPIRIT = '#f4e9bf';
+
+const FORMS: Record<Exclude<Form, 'Boss'>, FormSpec> = {
+  // Grundwert: the plain round beer mat.
+  Value: { pts: radialPts(72, () => 44), paper: '#ecebe4', motif: [22, 20, 3.5], pips: 'bottom' },
+  // Multiplikator: a sunburst with twelve points.
+  Multiplier: {
+    pts: radialPts(24, (k) => (k % 2 ? 39.5 : 47), -Math.PI / 2),
+    paper: '#f1dfb8',
+    motif: [22, 20, 3.5],
+    pips: 'bottom',
+    gem: [80, 18],
+  },
+  // Kontrolle: a rounded square like a card table.
+  Control: { pts: roundedSquarePts(), paper: '#d6e2ec', motif: [22, 20, 3.5], pips: 'bottom' },
+  // Tour: an inn sign shield.
+  Tour: { pts: shieldPts(), paper: '#d8ebdf', motif: [22, 16, 3.5], pips: 'top' },
+  // Other consumables (not Schnaps): the octagonal mat.
+  Item: { pts: radialPts(8, () => 47, Math.PI / 8), paper: '#e4d2bd', motif: [22, 20, 3.5], pips: 'bottom' },
+  // S1: a bottle, the motif on its belly.
+  Bottle: {
+    pts: bottlePts(),
+    paper: GLASS,
+    motif: [24, 39, 3.25],
+    pips: 'bottom',
+    gem: [77, 36],
+    glass: { liquid: 48, shine: [19, 44, 23, 86] },
+  },
+  // S2: a portrait paper label with cut corners and a cork on top.
+  Label: { pts: labelPts(), paper: '#f7f0dc', motif: [26, 36, 3], pips: 'bottom', gem: [74, 33], cork: 22 },
+  // S3: a shot glass with a thick base.
+  Glass: {
+    pts: shotGlassPts(),
+    paper: GLASS,
+    motif: [23, 15, 3.4],
+    pips: 'bottom',
+    gem: [84, 14],
+    glass: { liquid: 22, base: 84, shine: [16, 14, 20, 72] },
+  },
+};
+
+const pathCache = new Map<string, string>();
+const ptsCache = new Map<string, Pt[]>();
+
+function formPts(form: Exclude<Form, 'Boss'>, inset: number): Pt[] {
+  const key = `${form}:${inset}`;
+  let p = ptsCache.get(key);
+  if (p === undefined) ptsCache.set(key, (p = insetPts(FORMS[form].pts, inset)));
+  return p;
+}
+
+function formPath(form: Form, inset: number): string {
+  const key = `${form}:${inset}`;
+  let d = pathCache.get(key);
+  if (d === undefined) {
+    d =
+      form === 'Boss'
+        ? poly(radialPts(48, (k) => 43 - inset + (inset === 0 ? (TORN_JITTER[k] ?? 0) : 0)))
+        : poly(formPts(form, inset));
+    pathCache.set(key, d);
+  }
   return d;
 }
 
-const PAPER: Record<CoasterKind, string> = {
-  HouseRule: '#ecebe4',
-  Regular: '#d6e2ec',
-  Schnapps: '#d8ebdf',
-  Item: '#f1dfb8',
-  Boss: '#3a3330',
-};
+/**
+ * The point of an outline farthest in a direction; among nearly equal
+ * ones (a flat edge) the one closest to the axis through the centre.
+ */
+function extreme(pts: Pt[], dx: number, dy: number): Pt {
+  const score = ([x, y]: Pt): number => Math.round((x * dx + y * dy) * 2) * 1000 - Math.abs((x - CX) * dy - (y - CY) * dx);
+  let best = pts[0] ?? [CX, CY];
+  for (const p of pts) if (score(p) > score(best)) best = p;
+  return best;
+}
 
-const RING: Record<string, string> = {
-  Common: '#a4adb3',
-  Uncommon: '#8fc7a8',
-  Rare: '#d1773f',
-  Boss: '#bd3b32',
-  Legendary: '#e3b24c',
-};
+// ---------------------------------------------------------------------------
+// Rarity
+// ---------------------------------------------------------------------------
 
 /**
- * Legendär: a second, solid gold ring inside the dashed one and four
- * pixel sparkles on the rim, so the tier reads at a glance next to Rare.
+ * One ink per rarity, the same on every form: silver, teal, violet,
+ * orange. Chosen apart from the suit inks (Eichel blue, Grün, Rot,
+ * Schellen yellow) and light enough for the dark felt.
  */
-function legendaryRing(kind: CoasterKind): string {
-  const sparkles = [
-    [CX, CY - 45],
-    [CX + 45, CY],
-    [CX, CY + 45],
-    [CX - 45, CY],
-  ]
-    .map(([x = 0, y = 0]) => `<path d="M${x - 1.5} ${y - 5}h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z" fill="#fff4c8" stroke="#8a6512" stroke-width=".8"/>`)
-    .join('');
-  return `<path d="${shape(kind, 10)}" fill="none" stroke="#e3b24c" stroke-width="2"/>${sparkles}`;
+export const RARITY_INK: Record<Rarity, { main: string; light: string; dark: string }> = {
+  Common: { main: '#a9b4bc', light: '#eef2f4', dark: '#5f6a72' },
+  Uncommon: { main: '#2ec4b6', light: '#a6f0e7', dark: '#16766d' },
+  Rare: { main: '#a868ec', light: '#dec6ff', dark: '#5b2c9c' },
+  Legendary: { main: '#ff8a1c', light: '#ffd49c', dark: '#a24e06' },
+};
+
+/** Number of pips per rarity (R3). */
+const PIPS: Record<Rarity, number> = { Common: 1, Uncommon: 2, Rare: 3, Legendary: 4 };
+
+/** Width of the rim band of R1. */
+const BAND = 8;
+
+function sparkle(x: number, y: number, edge: string): string {
+  return `<path d="M${x - 1.5} ${y - 5}h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z" fill="#fff8e0" stroke="${edge}" stroke-width=".9"/>`;
+}
+
+/** Pixel rows of the gem: k outline, X ink, H light, D dark. */
+const GEM_ROWS = ['....k....', '...kXk...', '..kHXXk..', '.kHHXXXk.', 'kXHXXXXDk', '.kXXXXDk.', '..kXXDk..', '...kDk...', '....k....'];
+
+function gem(x: number, y: number, rarity: Rarity): string {
+  const ink = RARITY_INK[rarity];
+  const fill: Record<string, string> = { k: OUTLINE, X: ink.main, H: ink.light, D: ink.dark };
+  const cell = 2.8;
+  const ox = x - (GEM_ROWS.length * cell) / 2;
+  const oy = y - (GEM_ROWS.length * cell) / 2;
+  let out = '';
+  GEM_ROWS.forEach((row, j) =>
+    [...row].forEach((ch, i) => {
+      const f = fill[ch];
+      if (f) out += `<rect x="${(ox + i * cell).toFixed(1)}" y="${(oy + j * cell).toFixed(1)}" width="${cell}" height="${cell}" fill="${f}"/>`;
+    }),
+  );
+  if (rarity === 'Legendary') out += sparkle(x + 11, y - 10, ink.dark);
+  return out;
+}
+
+function pips(form: Exclude<Form, 'Boss'>, rarity: Rarity): string {
+  const spec = FORMS[form];
+  const outer = formPts(form, 0);
+  const top = spec.pips === 'top';
+  const edgeY = extreme(outer, 0, top ? -1 : 1)[1];
+  const n = PIPS[rarity];
+  const size = 8;
+  const gap = 3;
+  const pad = 2.5;
+  const w = n * size + (n - 1) * gap + 2 * pad;
+  const h = size + 2 * pad;
+  const cy = top ? edgeY + 3 : edgeY - 3;
+  const x0 = CX - w / 2;
+  const y0 = cy - h / 2;
+  const ink = RARITY_INK[rarity];
+  let out = `<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="2" fill="${OUTLINE}"/>`;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + pad + i * (size + gap);
+    out += `<rect x="${x.toFixed(1)}" y="${(y0 + pad).toFixed(1)}" width="${size}" height="${size}" fill="${ink.main}"/>`;
+    out += `<rect x="${x.toFixed(1)}" y="${(y0 + pad).toFixed(1)}" width="3" height="3" fill="${ink.light}"/>`;
+  }
+  return out;
+}
+
+/** Inside the paper: the cork of the label, or spirit, thick base and highlight of a glass. */
+function glassMarkup(form: Exclude<Form, 'Boss'>, paperInset: number): string {
+  const { glass: g, cork } = FORMS[form];
+  const inner = formPts(form, paperInset);
+  if (cork !== undefined) {
+    const d = poly(clipPts(inner, 1, cork, false));
+    return `<path d="${d}" fill="#b07a44"/><path d="${poly(clipBox(inner, 0, 0, 46, cork))}" fill="#d29a5c"/>`;
+  }
+  if (!g) return '';
+  const bottom = g.base ?? 100;
+  let out = `<path d="${poly(clipBox(inner, 0, g.liquid, 100, bottom))}" fill="${SPIRIT}"/>`;
+  out += `<path d="${poly(clipPts(clipPts(inner, 1, g.liquid, true), 1, g.liquid + 2, false))}" fill="#e6d391"/>`;
+  if (g.base !== undefined) out += `<path d="${poly(clipPts(inner, 1, g.base, true))}" fill="#a9cfdb"/>`;
+  const [x0, y0, x1, y1] = g.shine;
+  out += `<path d="${poly(clipBox(inner, x0, y0, x1, y1))}" fill="#ffffff" opacity=".75"/>`;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Mats
+// ---------------------------------------------------------------------------
+
+/** Shape and paper of a mat: a relic group, Schnapps, Item or Boss; HouseRule and Regular (older callers) mean a relic. */
+export type CoasterKind = RelicGroup | RelicKind | 'Schnapps' | 'Item' | 'Boss';
+/** A rarity, or the boss red. */
+export type CoasterRing = Rarity | 'Boss';
+
+const isGroup = (k: string): k is RelicGroup => k === 'Value' || k === 'Multiplier' || k === 'Control' || k === 'Tour';
+
+/** The category of a relic: its own group, else the fallback by id, else Value. */
+export function relicGroupOf(id: string, group?: RelicGroup | null): RelicGroup {
+  return group ?? RELIC_GROUP[id] ?? 'Value';
+}
+
+/** The form an item is drawn in. */
+export function formOf(id: string, kind: CoasterKind, opts: { group?: RelicGroup | null; schnapsStyle?: SchnapsStyle } = {}): Form {
+  if (kind === 'Boss' || kind === 'Item') return kind;
+  if (kind === 'Schnapps') return opts.schnapsStyle ?? EMBLEM_STYLE.schnaps;
+  if (isGroup(kind)) return kind;
+  return relicGroupOf(id, opts.group);
 }
 
 /** A small tilt between -5 and 5 degrees, fixed per id. */
@@ -2283,11 +2840,11 @@ export function tiltOf(id: string): number {
   return ((h >>> 0) % 11) - 5;
 }
 
-/** The motif of an item: its chosen variant, a boss motif or the fallback of its kind. */
+/** The motif of an item: its chosen variant, a boss motif or the generic motif of its kind. */
 export function spriteFor(id: string, kind: CoasterKind, variant?: number): Sprite {
   if (kind === 'Boss') return BOSS_ART[id] ?? FALLBACK.Boss;
   const set = SHOP_ART[id];
-  if (!set) return FALLBACK[kind];
+  if (!set) return FALLBACK[kind === 'Schnapps' || kind === 'Item' || kind === 'Regular' ? kind : 'HouseRule'];
   return set[variant ?? CHOSEN[id] ?? 0] ?? set[0];
 }
 
@@ -2306,40 +2863,110 @@ export interface CoasterOpts {
   variant?: number;
   /** Add the SVG namespace, for a file of its own. */
   standalone?: boolean;
+  /** Category of a relic, if the caller knows it (else RELIC_GROUP). */
+  group?: RelicGroup | null;
+  /** Override EMBLEM_STYLE.rarity. */
+  rarityStyle?: RarityStyle;
+  /** Override EMBLEM_STYLE.schnaps. */
+  schnapsStyle?: SchnapsStyle;
 }
 
 function attr(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** The inner drawing of a mat (in viewBox units), without the svg element. */
-export function coasterInner(id: string, kind: CoasterKind, ring: CoasterRing, variant?: number): string {
-  const d0 = shape(kind, 0);
-  const rim = kind === 'Boss' ? `<path d="${d0}" fill="none" stroke="#1f1714" stroke-width="3"/>` : '';
+function motifMarkup(sprite: Sprite, [x, y, s]: [number, number, number]): string {
+  return `<g transform="translate(${x} ${y}) scale(${s})">${spriteMarkup(sprite)}</g>`;
+}
+
+/** The torn dark boss mat with its red dashed ring (unchanged from v1). */
+function bossInner(sprite: Sprite): string {
+  const d0 = formPath('Boss', 0);
   return (
-    `<g transform="rotate(${tiltOf(id)} ${CX} ${CY})">` +
     `<path d="${d0}" fill="#0b0c0e" transform="translate(0 4)"/>` +
-    `<path d="${d0}" fill="${PAPER[kind]}"/>${rim}` +
-    `<path d="${shape(kind, 5)}" fill="none" stroke="${RING[ring] ?? RING.Common}" stroke-width="4" stroke-dasharray="6 3"/>` +
-    (ring === 'Legendary' ? legendaryRing(kind) : '') +
-    `<g transform="translate(22 20) scale(3.5)">${spriteMarkup(spriteFor(id, kind, variant))}</g></g>`
+    `<path d="${d0}" fill="#3a3330"/><path d="${d0}" fill="none" stroke="#1f1714" stroke-width="3"/>` +
+    `<path d="${formPath('Boss', 5)}" fill="none" stroke="#bd3b32" stroke-width="4" stroke-dasharray="6 3"/>` +
+    motifMarkup(sprite, [22, 20, 3.5])
   );
 }
 
-/** A beer mat as an SVG element. */
+/** A mat of any form but Boss, with the rarity drawn in the given style. */
+function matInner(form: Exclude<Form, 'Boss'>, rarity: Rarity, style: RarityStyle, sprite: Sprite): string {
+  const spec = FORMS[form];
+  const ink = RARITY_INK[rarity];
+  const d0 = formPath(form, 0);
+  const paperInset = style === 'Band' ? BAND : 0;
+  let out = `<path d="${d0}" fill="#0b0c0e" transform="translate(0 4)"/>`;
+  if (paperInset) {
+    out += `<path d="${d0}" fill="${ink.main}" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    out += `<path d="${formPath(form, paperInset)}" fill="${spec.paper}" stroke="${OUTLINE}" stroke-width="1.5"/>`;
+  } else {
+    out += `<path d="${d0}" fill="${spec.paper}" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>`;
+  }
+  out += glassMarkup(form, paperInset);
+  if (style === 'Gem') out += `<path d="${formPath(form, 5)}" fill="none" stroke="${ink.main}" stroke-width="3"/>`;
+  if (style === 'Pips') out += `<path d="${formPath(form, 3)}" fill="none" stroke="${ink.main}" stroke-width="5"/>`;
+  out += motifMarkup(sprite, spec.motif);
+  if (style === 'Gem') {
+    const [gx, gy] = spec.gem ?? extreme(formPts(form, 9), 1, -1);
+    out += gem(gx, gy, rarity);
+  } else if (style === 'Pips') {
+    out += pips(form, rarity);
+  } else if (rarity === 'Legendary') {
+    const mid = formPts(form, BAND / 2);
+    for (const [dx, dy] of [
+      [0, -1],
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+    ] as const) {
+      const [x, y] = extreme(mid, dx, dy);
+      out += sparkle(x, y, ink.dark);
+    }
+  }
+  return out;
+}
+
+export interface InnerOpts {
+  variant?: number;
+  group?: RelicGroup | null;
+  rarityStyle?: RarityStyle;
+  schnapsStyle?: SchnapsStyle;
+}
+
+/** The inner drawing of a mat (in viewBox units), without the svg element. */
+export function coasterInner(id: string, kind: CoasterKind, ring: CoasterRing, opts: InnerOpts = {}): string {
+  const form = formOf(id, kind, opts);
+  const sprite = spriteFor(id, kind, opts.variant);
+  const body =
+    form === 'Boss'
+      ? bossInner(sprite)
+      : matInner(form, ring === 'Boss' ? 'Common' : ring, opts.rarityStyle ?? EMBLEM_STYLE.rarity, sprite);
+  return `<g transform="rotate(${tiltOf(id)} ${CX} ${CY})">${body}</g>`;
+}
+
+/** A mat as an SVG element. */
 export function coasterSvg(id: string, kind: CoasterKind, ring: CoasterRing, opts: CoasterOpts = {}): string {
   const size = opts.size ?? 44;
   const a11y = opts.label ? `role="img" aria-label="${attr(opts.label)}"` : 'aria-hidden="true"';
   const ns = opts.standalone ? ' xmlns="http://www.w3.org/2000/svg"' : '';
-  return `<svg${ns} class="deckel ${opts.cls ?? ''}" viewBox="0 0 100 100" width="${size}" height="${size}" shape-rendering="crispEdges" ${a11y} data-deckel="${attr(id)}">${coasterInner(id, kind, ring, opts.variant)}</svg>`;
+  const data = `data-deckel="${attr(id)}" data-form="${formOf(id, kind, opts)}"`;
+  return (
+    `<svg${ns} class="deckel ${opts.cls ?? ''}" viewBox="0 0 100 100" width="${size}" height="${size}" shape-rendering="crispEdges" ${a11y} ${data}>` +
+    `${coasterInner(id, kind, ring, opts)}</svg>`
+  );
 }
 
-/** The mat of a relic: house rule or Stammtisch figure. */
-export function relicCoaster(relic: { id: string; kind?: RelicKind | null; rarity?: Rarity | null }, opts: CoasterOpts = {}): string {
-  return coasterSvg(relic.id, relic.kind === 'Regular' ? 'Regular' : 'HouseRule', relic.rarity ?? 'Common', opts);
+/** The mat of a relic, shaped by its category (group, else the fallback map). */
+export function relicCoaster(
+  relic: { id: string; kind?: RelicKind | null; rarity?: Rarity | null; group?: RelicGroup | null },
+  opts: CoasterOpts = {},
+): string {
+  const group = relicGroupOf(relic.id, opts.group ?? relic.group);
+  return coasterSvg(relic.id, group, relic.rarity ?? 'Common', opts);
 }
 
-/** The mat of a consumable: a Schnaps or another item. */
+/** The drawing of a consumable: a Schnaps (bottle, label or glass) or the mat of another item. */
 export function consumableCoaster(
   item: { id: string; category?: ConsumableCategory | null; rarity?: Rarity | null },
   opts: CoasterOpts = {},
