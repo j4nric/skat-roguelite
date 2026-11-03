@@ -489,7 +489,10 @@ async function assertTriangle(page, label, sizes = [PHONE, { width: 360, height:
       const cards = [...document.querySelectorAll('.trick .trick-card')].map((c) => {
         const slot = c.closest('.slot')?.getBoundingClientRect();
         const b = c.getBoundingClientRect();
-        return { seat: c.dataset.trickSeat ?? c.dataset.lastSeat, slot: c.closest('.slot')?.dataset.slot, dx: slot ? Math.abs(b.left - slot.left) + Math.abs(b.top - slot.top) : 99 };
+        // Once the trick sweeps off to its winner (slow tempo, a slow screenshot) the card's own place is its layout box.
+        const sweeping = c.getAnimations().some((a) => a.id === 'sweep');
+        const dx = sweeping ? Math.abs(c.offsetLeft) + Math.abs(c.offsetTop) : slot ? Math.abs(b.left - slot.left) + Math.abs(b.top - slot.top) : 99;
+        return { seat: c.dataset.trickSeat ?? c.dataset.lastSeat, slot: c.closest('.slot')?.dataset.slot, dx };
       });
       return { s0: rect('.trick .slot-0'), s1: rect('.trick .slot-1'), s2: rect('.trick .slot-2'), cards };
     });
@@ -2250,9 +2253,10 @@ async function motionPass(browser, errors) {
     const sweep = await page
       .waitForFunction(
         () => {
-          const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+          const a = document.getAnimations().find((x) => x.id === 'sweep' && x.effect?.target?.classList?.contains('trick-card'));
           if (!a) return null;
-          const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(a.effect.getKeyframes()[2].transform));
+          const k = a.effect.getKeyframes();
+          const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(k[k.length - 1].transform));
           return m ? { x: Number(m[1]), y: Number(m[2]), status: document.querySelector('.status')?.textContent?.trim() ?? '' } : null;
         },
         null,
@@ -2265,7 +2269,7 @@ async function motionPass(browser, errors) {
     if (!seen[winner]) {
       // Half way off the table.
       await page.waitForFunction(() => {
-        const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+        const a = document.getAnimations().find((x) => x.id === 'sweep' && x.effect?.target?.classList?.contains('trick-card'));
         return !a || a.currentTime > a.effect.getTiming().duration * 0.7;
       }, null, { polling: 16 });
       await page.screenshot({ path: join(screens, `trick-leaves-${winner}-390x844.png`) });

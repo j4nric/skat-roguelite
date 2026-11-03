@@ -200,6 +200,7 @@ export async function sweepAway(els: Element[], to: { x: number; y: number }, ms
       ),
     );
   });
+  for (const a of anims) a.id = 'sweep';
   await Promise.all(anims.map((a) => a.finished.catch(() => undefined)));
 }
 
