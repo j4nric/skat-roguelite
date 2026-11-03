@@ -1,11 +1,13 @@
 // The Tresen: the Wirt behind the counter, relics as little paper cards,
-// items as things on the counter, owned relics and items, Neuauslage. What can be
+// items as things on the counter, owned relics and items, Neuauslage. The
+// Zinken (DESIGN 8.6): the Auslage of three cards drawn with their new
+// Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". What can be
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
-import { de, bossEditionText, bossFiguresText, contentName, contentText, t } from '../i18n';
-import type { ConsumableInfo, OwnedRelic, RelicInfo, RunView } from '../types';
+import { de, bossEditionText, bossFiguresText, cardName, contentName, contentText, modText, t } from '../i18n';
+import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RunView, ServiceView, ShopView } from '../types';
 import { backDesign } from './backs';
-import { cardBack } from './cards';
+import { cardBack, cardSvg, modValueText } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
@@ -61,6 +63,70 @@ function good(item: ConsumableInfo, more: Record<string, string | number>, foote
     <p class="good-text">${esc(contentText('consumables', id))}</p>
     <div class="good-foot">${footer}</div>
   </article>`;
+}
+
+/** "Siegel +2": the name of a Zinke with its value, as printed on the card. */
+export function zinkeName(mod: CardModInfo): string {
+  const name = contentName('card_mods', mod.id) || mod.name;
+  return mod.value == null ? name : `${name} ${modValueText(mod.id, { [mod.id]: mod.value })}`;
+}
+
+/** One offer of the Auslage: the card as it will be, the Zinke, the price. */
+function zinkenOffer(o: CardOfferView | null, i: number): string {
+  if (!o) return `<div class="zinke is-sold" style="--i:${i}"><span>${esc(de.shop.soldOut)}</span></div>`;
+  const mod = o.card_mod;
+  const card = cardName(o.card.kind);
+  const note = o.replaces
+    ? t(de.shop.zinkeReplaces, { old: contentName('card_mods', o.replaces) })
+    : o.raises
+      ? t(de.shop.zinkeRaises, { mod: contentName('card_mods', mod.id) })
+      : '';
+  return `<article class="zinke" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id })}>
+    <span class="price-tag">${price(o.price)}</span>
+    <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
+    <h4 class="zinke-name">${esc(zinkeName(mod))}</h4>
+    <p class="zinke-on">${esc(t(de.shop.zinkeOn, { card }))}${note ? ` · <span class="zinke-note">${esc(note)}</span>` : ''}</p>
+    <p class="zinke-text">${esc(modText(mod.id, mod.value ?? 1) || mod.text)}</p>
+    <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-zinke', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
+  </article>`;
+}
+
+/** Kartenmaler or Karte reinigen: a little sign with price and button. */
+function service(kind: 'painter' | 'cleanse', s: ServiceView | undefined): string {
+  if (!s) return '';
+  const painter = kind === 'painter';
+  const title = painter ? de.shop.painter : de.shop.cleanse;
+  const hint = s.used ? (painter ? de.shop.painterUsed : de.shop.cleanseUsed) : !painter && !s.targets.length ? de.shop.cleanseNone : painter ? de.shop.painterHint : de.shop.cleanseHint;
+  const go = t(painter ? de.shop.painterGo : de.shop.cleanseGo, { price: s.price });
+  return `<article class="service ${s.used ? 'is-used' : ''}" data-testid="service-${kind}">
+    <span class="service-pic" aria-hidden="true">${painter ? brush() : sponge()}</span>
+    <div class="service-body"><h4>${esc(title)}</h4><p class="small">${esc(hint)}</p>
+    <button class="btn btn-small" ${attrs({ 'data-action': kind, 'data-testid': `${kind}-go`, disabled: !s.can_use })}>${esc(go)}</button></div>
+  </article>`;
+}
+
+/** A painter's brush. */
+function brush(): string {
+  return `<svg viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges"><path d="M22 3 L29 10 L15 22 L10 17 Z" fill="#8a5a2b" stroke="#2b1a0e" stroke-width="2"/><path d="M10 17 L15 22 L9 28 C6 30 3 29 3 26 C3 23 6 22 7 20 Z" fill="#5e3796" stroke="#2b1a0e" stroke-width="2"/></svg>`;
+}
+
+/** A sponge with a drop. */
+function sponge(): string {
+  return `<svg viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges"><rect x="4" y="12" width="24" height="14" rx="3" fill="#e8c56a" stroke="#2b1a0e" stroke-width="2"/><circle cx="10" cy="18" r="1.6" fill="#b8902e"/><circle cx="17" cy="21" r="1.6" fill="#b8902e"/><circle cx="23" cy="17" r="1.6" fill="#b8902e"/><path d="M16 2 C19 6 20 8 16 10 C12 8 13 6 16 2 Z" fill="#7fb2d9" stroke="#2b1a0e" stroke-width="1.5"/></svg>`;
+}
+
+/** The Zinken at the counter: Auslage, Neu auslosen, Kartenmaler, Karte reinigen. */
+function zinkenBlock(shop: ShopView): string {
+  const offers = shop.card_offers;
+  if (!offers) return '';
+  const row = offers.length ? offers.map(zinkenOffer).join('') : `<p class="small">${esc(de.shop.noOffers)}</p>`;
+  return `<section class="zinken" data-testid="zinken">
+      <h3 id="shop-zinken">${esc(de.shop.zinken)}</h3>
+      <div class="zinken-head"><b>${esc(de.shop.auslage)}</b><span class="small">${esc(de.shop.auslageHint)}</span></div>
+      <div class="zinken-row" data-testid="auslage">${row}</div>
+      <button class="btn btn-small zinken-reroll" ${attrs({ 'data-action': 'reroll-zinken', 'data-testid': 'reroll-zinken', disabled: !shop.can_reroll_cards })}>${esc(t(de.shop.rerollCards, { cost: shop.card_reroll_cost ?? 0 }))}</button>
+      <div class="services">${service('painter', shop.painter)}${service('cleanse', shop.cleanse)}</div>
+    </section>`;
 }
 
 /** The chalk board on the back wall: the next series and the boss ahead. */
@@ -119,7 +185,8 @@ export function renderShop(view: RunView): string {
       ),
     )
     .join('');
-  const anyAffordable = shop.relics.some((o) => o?.can_buy) || shop.consumables.some((o) => o?.can_buy);
+  const anyAffordable =
+    shop.relics.some((o) => o?.can_buy) || shop.consumables.some((o) => o?.can_buy) || (shop.card_offers ?? []).some((o) => o?.can_buy) || shop.painter?.can_use === true;
   return `<main class="shop" data-testid="shop">
     <div class="backbar">
       <div class="wirt">${portrait('p-wirt', 'portrait-wirt')}</div>
@@ -132,6 +199,7 @@ export function renderShop(view: RunView): string {
       <div class="coasters">${relicOffers}</div>
       <h3 id="shop-goods">${esc(de.shop.consumables)}</h3>
       <div class="goods" data-goods>${itemOffers}</div>
+      ${zinkenBlock(shop)}
     </div>
     <section class="shop-owned">
       <h3>${esc(t(de.shop.owned, { count: view.relics.length, slots: view.relic_slots }))}</h3>
@@ -166,7 +234,8 @@ let goodsWatch: IntersectionObserver | null = null;
 export function watchShop(root: HTMLElement): void {
   goodsWatch?.disconnect();
   goodsWatch = null;
-  const goods = root.querySelector('[data-goods]');
+  // The last thing on the counter: the Zinken services, else the goods.
+  const goods = root.querySelector('.services') ?? root.querySelector('[data-goods]');
   const hint = root.querySelector<HTMLElement>('.more-hint');
   const bar = root.querySelector<HTMLElement>('.shop-bar');
   if (!goods || !hint || !bar || typeof IntersectionObserver === 'undefined') return;

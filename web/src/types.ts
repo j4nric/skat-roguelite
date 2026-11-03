@@ -294,6 +294,59 @@ export interface ShopView {
   reroll_cost: number;
   can_reroll: boolean;
   rerolls: number;
+  /** Zinken (DESIGN 8.6): the Auslage, null once bought. Absent in old cores. */
+  card_offers?: (CardOfferView | null)[];
+  /** Price of the next "Neu auslosen". */
+  card_reroll_cost?: number;
+  can_reroll_cards?: boolean;
+  card_rerolls?: number;
+  /** The Kartenmaler. */
+  painter?: ServiceView;
+  /** "Karte reinigen". */
+  cleanse?: ServiceView;
+}
+
+/** An offer of the Auslage: a card of the edition with a Zinke. */
+export interface CardOfferView {
+  slot: number;
+  /** The card now. */
+  card: DeckCard;
+  /** The card after buying. */
+  result: DeckCard;
+  card_mod: CardModInfo;
+  price: number;
+  can_buy: boolean;
+  /** The modification it would replace (ask first). */
+  replaces: string | null;
+  /** It would raise the same modification. */
+  raises: boolean;
+}
+
+/** A card service of the Tresen (Kartenmaler, Karte reinigen), once per visit. */
+export interface ServiceView {
+  price: number;
+  used: boolean;
+  can_use: boolean;
+  /** Cards it can work on now. */
+  targets: number[];
+  /** Its price on each target, same order (Bruderherz: half on Rot). */
+  target_prices?: number[];
+}
+
+/** The Kartenmaler's choice, waiting for the player. */
+export interface PainterView {
+  card: DeckCard;
+  options: PainterOptionView[];
+  /** Hired at the Werkstatt. */
+  encounter: boolean;
+}
+
+export interface PainterOptionView {
+  index: number;
+  card_mod: CardModInfo;
+  result: DeckCard;
+  replaces: string | null;
+  raises: boolean;
 }
 
 export interface PlayedCard {
@@ -580,6 +633,8 @@ export type EncounterChoice =
   | { Heal: number }
   /** Werkstatt: every modification off a chosen card. */
   | 'CleanseChosenCard'
+  /** Werkstatt (Zinken, DESIGN 8.6): the Kartenmaler for free on a chosen card. */
+  | 'Painter'
   /** Loot of a Spelunke: the relic into a free slot, or Groschen instead. */
   | { TakeRelic: string }
   | { TakeCoins: number }
@@ -660,6 +715,8 @@ export interface RunView {
   encounter: EncounterView | null;
   /** The relic pick after a won boss pub (ADR 0017). */
   boss_reward?: BossRewardView | null;
+  /** The Kartenmaler's choice, waiting (Tresen or Werkstatt). */
+  painter?: PainterView | null;
   /** House rules of the evening (Stammtisch-Streit), until the section ends. */
   evening_relics: RelicInfo[];
   /** Factor waiting for the next declared game ("Letzte Runde"). */
@@ -827,7 +884,7 @@ export type GameEvent =
 export type DeckChange =
   | { Modified: { card: number; card_mod: string; value?: number; replaced?: string | null } }
   | { Unmodified: { card: number; card_mod: string } }
-  /** "Frisches Deck": every modification fell off the card. */
+  /** Reinigen ("Karte reinigen", Werkstatt): every modification fell off the card. */
   | { Cleansed: { card: number; removed: string[] } };
 
 export type RunEvent =
@@ -864,6 +921,12 @@ export type RunEvent =
   | { RelicSold: { relic: string; price: number } }
   | { ConsumableSold: { consumable: string; price: number } }
   | { ShopRerolled: { cost: number } }
+  | { CardOffersDrawn: { offers: ({ card: number; card_mod: string; value: number; price: number } | null)[] } }
+  | { CardOfferBought: { slot: number; card: number; card_mod: string; value: number; price: number } }
+  | { CardOffersRerolled: { cost: number } }
+  | { PainterHired: { card: number; options: [string, number][]; price: number } }
+  | { PainterChosen: { card: number; card_mod: string; value: number } }
+  | { CardCleansed: { card: number; price: number } }
   | { ConsumableUsed: { consumable: string } }
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
@@ -921,7 +984,13 @@ export type RunAction =
   | { ChooseEncounter: { option: number; target: number | null } }
   | { ChooseRoute: number }
   | { ChooseMalus: { option: number; malus: number } }
-  | { ChooseBossRelic: { offer: number | null; replace: number | null } };
+  | { ChooseBossRelic: { offer: number | null; replace: number | null } }
+  /** Zinken (DESIGN 8.6). */
+  | { BuyCardOffer: number }
+  | 'RerollCardOffers'
+  | { HirePainter: number }
+  | { ChoosePaint: number }
+  | { CleanseCard: number };
 
 export interface Step {
   events: RunEvent[];
@@ -969,7 +1038,7 @@ export interface ConsumableEntry extends CatalogEntry {
   category?: ConsumableCategory;
   /** The card modification it puts on a card, if the content names one. */
   card_mod?: string | null;
-  /** It puts a modification drawn at random on a card ("Stempelkissen"). */
+  /** It puts a modification drawn at random on a card (no content since the Zinken, DESIGN 8.6). */
   random_card_mod?: boolean;
 }
 

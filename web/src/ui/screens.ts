@@ -3,7 +3,7 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, relicLook, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
@@ -19,6 +19,7 @@ import { renderOverview } from './overview';
 import { renderRules } from './rules';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
+import { zinkeName } from './shop';
 import type { ModQuestion, Overlay, UiState } from './state';
 
 export { lockIcon };
@@ -573,6 +574,49 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     }
     case 'mod-confirm':
       return renderModConfirm(overlay.ask);
+    case 'zinken-card': {
+      // Zinken (DESIGN 8.6): the card for the Kartenmaler or "Karte reinigen".
+      const s = overlay.service === 'painter' ? view?.shop?.painter : view?.shop?.cleanse;
+      if (!view || !s) return '';
+      const cards = view.edition.map((c) => targetCard(c, s.targets.includes(c.id), 'zinken-card', overlay.reasons?.[c.id])).join('');
+      const painter = overlay.service === 'painter';
+      const cheaper = Math.min(s.price, ...(s.target_prices ?? []));
+      return sheet(
+        `<h2>${esc(painter ? de.shop.painterPick : de.shop.cleansePick)}</h2>
+         <p class="small">${esc(t(painter ? de.shop.painterGo : de.shop.cleanseGo, { price: s.price }))} · ${esc(painter ? de.shop.painterHint : de.shop.cleanseHint)}</p>
+         ${cheaper < s.price ? `<p class="small" data-testid="zinken-cheaper">${esc(t(de.shop.cheaperOn, { price: cheaper }))}</p>` : ''}
+         ${oddsLine(view.deal_odds)}
+         <div class="target-grid" data-testid="zinken-cards">${cards}</div>
+         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
+      );
+    }
+    case 'painter': {
+      const painter = view?.painter;
+      if (!painter) return '';
+      const options = painter.options
+        .map((o) => {
+          const note = o.replaces
+            ? t(de.shop.zinkeReplaces, { old: contentName('card_mods', o.replaces) })
+            : o.raises
+              ? t(de.shop.zinkeRaises, { mod: contentName('card_mods', o.card_mod.id) })
+              : '';
+          return `<button class="painter-option" ${attrs({ 'data-action': 'paint', 'data-index': o.index, 'data-testid': `paint-${o.index}`, 'data-card-mod': o.card_mod.id })}>
+            <span class="card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
+            <b class="zinke-name">${esc(zinkeName(o.card_mod))}</b>
+            <span class="zinke-text">${esc(modText(o.card_mod.id, o.card_mod.value ?? 1) || o.card_mod.text)}</span>
+            ${note ? `<span class="zinke-note">${esc(note)}</span>` : ''}
+            <span class="btn btn-small btn-buy">${esc(de.shop.painterTake)}</span>
+          </button>`;
+        })
+        .join('');
+      return sheet(
+        `<h2>${esc(de.shop.painterTitle)}</h2>
+         <p class="small">${esc(t(de.shop.painterChoose, { card: cardName(painter.card.kind) }))}${painter.encounter ? ` ${esc(de.shop.painterFree)}` : ''}</p>
+         <div class="painter-grid" data-testid="painter-options">${options}</div>`,
+        false,
+        'sheet-painter',
+      );
+    }
     case 'book':
       return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger', 'overlay-book') : '';
     case 'confirm-new':

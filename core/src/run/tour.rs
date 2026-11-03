@@ -853,6 +853,7 @@ impl Run {
                     consumables: shop.consumables.clone(),
                 });
                 self.shop = Some(shop);
+                self.draw_card_offers(content, events);
                 self.fire(
                     content,
                     crate::content::Stage::OnShopOpened,

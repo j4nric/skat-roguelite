@@ -111,7 +111,7 @@
         group: Tour,
         kind: Regular,
         name: "Der Wirt",
-        text: "Alles am Tresen ist 20 % billiger, auch die Neuauslage.",
+        text: "Alles am Tresen ist 20 % billiger, auch Neuauslage, Zinken, Neu auslosen, Kartenmaler und Karte reinigen.",
         rarity: Uncommon,
         price: 7,
         passive: [ShopDiscount(20)],

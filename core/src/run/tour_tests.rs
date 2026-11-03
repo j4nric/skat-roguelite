@@ -780,10 +780,10 @@ fn a_save_with_a_removed_boss_meets_its_stand_in() {
     let saved = serde_json::to_string(&run).expect("save");
     let mut loaded: Run = serde_json::from_str(&saved).expect("load");
     loaded.drop_unknown_content(&content);
-    let pusher = Some(BossId::new("the_pusher"));
-    assert_eq!(loaded.section_boss(), pusher.as_ref());
-    assert_eq!(loaded.series().boss, pusher);
-    assert_eq!(loaded.game().and_then(|a| a.boss_rule.clone()), pusher);
+    let twins = Some(BossId::new("twins"));
+    assert_eq!(loaded.section_boss(), twins.as_ref());
+    assert_eq!(loaded.series().boss, twins);
+    assert_eq!(loaded.game().and_then(|a| a.boss_rule.clone()), twins);
     for (old, new) in RETIRED_BOSSES {
         assert!(content.boss(&BossId::new(old)).is_none(), "{old}");
         assert!(content.boss(&BossId::new(new)).is_some(), "{new}");
@@ -791,7 +791,10 @@ fn a_save_with_a_removed_boss_meets_its_stand_in() {
     // The run goes on; the next deal follows the stand-in's rule.
     assert!(loaded.view(&content).series.boss.is_some());
     loaded.deal(&content, true, &mut Vec::new()).expect("deal");
-    assert!(loaded.requires_hand());
+    assert_eq!(
+        loaded.game().and_then(|a| a.boss_rule.clone()),
+        Some(BossId::new("twins"))
+    );
 }
 
 /// A run at the table of the boss pub of district 1 against `boss`, at the

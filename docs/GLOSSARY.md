@@ -15,10 +15,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Boss-Spieler, Figur eines Bosses (ADR 0017; bis dahin offen als „Sekundant“) | `BossFigure` | Zwei je Boss (`BOSS_FIGURES`), `figures` in `bosses.ron`: Name, Ausgabe, optional Rückseite; die erste links (`Owner::Boss`), die zweite rechts (`Owner::BossPartner`). Sicht `BossInfo::figures` (`BossFigureInfo`) |
 | Boss-Belohnung, Relikt-Wahl (ADR 0017) | `BossReward` | Nach einer gewonnenen Boss-Kneipe (nicht der letzten): `RunPhase::BossReward`, `RunAction::ChooseBossRelic { offer, replace }`, Ereignisse `BossRewardOffered`, `BossRewardDeclined`, Sicht `RunView::boss_reward` (`BossRewardView`), Daten `boss_reward` in `run.ron` (`BossRewardConfig`); dazu doppelte Auszahlung `Payout::boss` |
 | Fluch für die Kneipe (Die Oma, ADR 0017) | `CurseForPub` | Wirkung `CurseForPub { cards, curses }`; gemerkte Karten `Series::boss_curses`, Ereignisse `BossCursesLaid`, `BossCursesLifted`; `Edition::lay_temp_curse`, `Edition::restore` |
-| Ersatz für einen entfernten Boss (Spielstände) | `RETIRED_BOSSES` | Kontra-Hans → Schieber, Revolutionär → Zwillinge, Kiebitz-Mörder → Schwarzer Peter (`Run::drop_unknown_content`) |
+| Ersatz für einen entfernten Boss (Spielstände) | `RETIRED_BOSSES` | Kontra-Hans und Revolutionär → Zwillinge, Kiebitz-Mörder → Schwarzer Peter (`Run::drop_unknown_content`) |
 | Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Nicht umgesetzt (der Glasdaus ist mit Effekte v2 gestrichen) |
 | Abgestuft (Nullspieler, ADR 0015) | `demoted` | Spezialkarte, die ein Fluch ist (`ModKind::SpecialCurse`), Wirkung `Demote`, `PlayingCard::demoted`, `DealtCard::demoted`: ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe ohne Augen (`rules::is_demoted_jack`), jede andere Karte sticht eine Stufe tiefer |
-| Reinigen (Frisches Deck, ADR 0015) | `cleanse` | Alle Modifikationen einer Karte der Ausgabe fallen ab: Aktion `ConsumableAction::CleanseCard`, `Edition::cleanse`, `DeckChange::Cleansed`, Fehler `DeckError::NothingToCleanse` |
+| Reinigen (ADR 0015; bis 02.11.2026 der Gegenstand Frisches Deck) | `cleanse` | Alle Modifikationen einer Karte der Ausgabe fallen ab: `Edition::cleanse`, `DeckChange::Cleansed`, Fehler `DeckError::NothingToCleanse`; am Tresen „Karte reinigen“, in der Werkstatt `CleanseChosenCard`. Die Aktion `ConsumableAction::CleanseCard` ruht (kein Inhalt nutzt sie) |
 | Alter Spielstand (vor ADR 0015 oder 0016) | `OutdatedSave` | Fehler beim Laden eines laufenden Runs der Spielstand-Version 1 oder 2; der Run wird verworfen (`SAVE_VERSION` 3 seit ADR 0016) |
 | Blatt (die Karten eines Spielers) | `hand` | |
 | Karte | `Card` | |
@@ -46,6 +46,12 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Skat (die zwei Karten) | `skat` | nie `talon`, siehe unten |
 | Talon (Roguelike: Karten über 32, nicht im Spiel) | `talon` | entfallen mit ADR 0015 (M9), im Code gestrichen |
 | Gezinkte Karte / Kartenmodifikation | `CardMod` | Definition `CardModDef`, Id `CardModId` |
+| Zinken (Kategorie am Tresen, „Karte zinken“, seit 02.11.2026) | `zinken` | Die Kartenmodifikationen, wie der Tresen sie verkauft (Auslage, Kartenmaler); Modul `core/src/run/zinken.rs`, Einstellungen `ZinkenConfig` (`zinken` in `run.ron`); eine einzelne heißt Zinke |
+| Auslage (Zinken am Tresen) | `CardOffer`, `Shop::card_offers` | Drei Angebote, je Karte der Ausgabe und Zinke mit Wert; Aktion `RunAction::BuyCardOffer(slot)`, Ereignisse `CardOffersDrawn`, `CardOfferBought`; Sicht `ShopView::card_offers` (`CardOfferView` mit `card`, `result`, `replaces`, `raises`) |
+| Wert in der Auslage | `CardModDef::shop_value`, `offer_value` | Ohne Angabe der erste aus `values` |
+| Neu auslosen (Auslage) | `RerollCardOffers` | Preis `ZinkenConfig::reroll_cost`, jedes weitere Mal am selben Tresen `reroll_step` mehr (`Run::card_reroll_price`, `Shop::card_rerolls`); Ereignis `CardOffersRerolled`. Nicht verwechseln mit der Neuauslage (`reroll`, Relikte und Gegenstände) |
+| Kartenmaler | `painter` | Einmal je Tresen: `RunAction::HirePainter(card)`, dann eine von zwei Zinken `RunAction::ChoosePaint(i)`; wartend `Run::painter` (`PainterChoice`), Sicht `RunView::painter` (`PainterView`), `ShopView::painter` (`ServiceView`); Ereignisse `PainterHired`, `PainterChosen`; Fehler `PainterPending`, `AlreadyUsed`. In der Werkstatt gratis (`EncounterChoice::Painter`) |
+| Karte reinigen (Tresen-Dienst) | `CleanseCard` | Einmal je Tresen, `RunAction::CleanseCard(card)`, Ereignis `CardCleansed`, Sicht `ShopView::cleanse` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | immer alle 32 Karten (kein Talon seit ADR 0015) |
 | Wandelkarte (nimmt bei Spielbeginn die längste Farbe der Hand an) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers, solange sie noch offen ist), Effekt `Wild`. Farbe: `rules::settled_wild_suit` (meiste Karten nach gedruckter Farbe, ohne Unter und Wandelkarten; Gleichstand Eichel, Grün, Rot, Schellen); Sicht `CardView::unsettled` (noch offen), `CardView::named` (gedruckte Farbe), `ActiveGame::named` |
 | festlegen (Wandelkarte: ihre Farbe bei Spielbeginn) | `settle` | `Game::declare` legt fest, `PlayingCard::settle_wild`; Ereignis `WildCardSettled { old, new }` (Spielebene, auch `PlayerGameEvent`) |
@@ -152,7 +158,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
 | Ansicht des Stadtteils (Altstadt, Hafen, Bahnhof) | `DistrictLook` (`OldTown`, `Harbour`, `Station`) | Daten je Stadtteilname in `tour.ron` (`DistrictName::look`); jeder Abend hat einen Stadtteil jeder Ansicht, Reihenfolge per Seed; Sicht `DistrictView::look`. Nur Anzeige |
 | Rast (Leben zurück) | `EncounterKind::Rest` | Wahl `EncounterChoice::Heal(n)` |
-| Werkstatt (Upgrade) | `EncounterKind::Workshop` | Modifikation auf eine gewählte Karte oder `EncounterChoice::CleanseChosenCard` |
+| Werkstatt (Upgrade) | `EncounterKind::Workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterChoice::Painter`) oder `EncounterChoice::CleanseChosenCard` |
 | Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Seit ADR 0016 nur noch der ganze Abend; `Short` bleibt für alte Meta-Stände lesbar (`MetaStats::lengths`, `MetaState::stakes`), ein Run kann so nicht mehr starten (`InvalidStart`, in der Web-Schicht `InvalidLength`). Alte Links mit `-kurz` spielen den ganzen Abend |
 | Einsatz, Einsatz-Leiter | `stake` | Gewinngrenze `61 + stake` für Farbspiel und Grand (`RunStart::stake`, `Run::stake`). Höchster freigeschalteter Einsatz je Charakter und Länge: `MetaState::stakes`, `MetaState::max_stake`, in der Sicht `CharacterEntry::max_stakes`. Im Link `-einsatz<n>` |
 | Zielwert | `target` | |
@@ -179,7 +185,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Multiplikator je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für den Multiplikator |
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
-| Neuauslage (Tresen) | `reroll` | |
+| Neuauslage (Tresen) | `reroll` | Relikte und Gegenstände neu; die Auslage bleibt |
 | Grundbetrag (gewonnene Kneipe) | `series_reward` | |
 | Zinsen | `interest` | |
 | Auszahlung einer Kneipe | `Payout` | Grundbetrag, Bonus für übrige Spiele (`per_game_left`), Zinsen; eine verlorene Kneipe zahlt nichts |
@@ -286,25 +292,20 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Jungfrau | `virgin` |
 | Alte Oberin (bis 02.11.2026 im Code „Alte Dame“) | `old_lady` |
 | Tournee | `tour` |
-| Augen (Modifikation) | `points` (nicht verwechseln mit Augen = `card_points`) |
-| Rang (Modifikation) | `rank` |
-| Trumpf (Modifikation) | `trump_bonus` |
-| Letzter Stich (Modifikation, bis Effekte v2 „Spitze“) | `last_trick` |
-| Erster Stich (Modifikation) | `first_trick` |
-| Gutschein | `voucher_coins` |
-| Gutschein Untot | `voucher_undead` |
-| Gutschein Wandelkarte | `voucher_wild` |
+| Aufdruck (Zinke Augen; bis 02.11.2026 „Augen“) | `points` (nicht verwechseln mit Augen = `card_points`) |
+| Winkel (Zinke Rang; bis 02.11.2026 „Rang“) | `rank` |
+| Siegel (Zinke Trumpf; bis 02.11.2026 „Trumpf“) | `trump_bonus` |
+| Kerbe (Zinke Letzter Stich; bis Effekte v2 „Spitze“, bis 02.11.2026 „Letzter Stich“) | `last_trick` |
+| Eselsohr (Zinke Erster Stich; bis 02.11.2026 „Erster Stich“) | `first_trick` |
+| Pfandmarke (Gutschein Groschen; bis 02.11.2026 „Gutschein“) | `voucher_coins` |
+| Totenmarke (bis 02.11.2026 „Gutschein Untot“) | `voucher_undead` |
+| Narrenmarke (bis 02.11.2026 „Gutschein Wandelkarte“) | `voucher_wild` |
 | Durchsichtig (Fluch seit Effekte v2) | `transparent` |
 | Fleckig (Fluch, bis Effekte v2 „Schwarze Katze“) | `stained` |
-| Augen +3 (Verbrauchsgegenstand) | `points_3` |
-| Trumpf +2 (Verbrauchsgegenstand) | `trump_2` |
-| Rang +1 (Verbrauchsgegenstand) | `rank_1` |
 | Gestrichen mit Effekte v2 (alte Ids, nur noch beim Umrechnen) | `fat`, `marked`, `stamp`, `invisible`, `gold_rim`, `double_marked`, `crown`, `seal`, `horseshoe`, `tape_measure`, `lucky_penny`, `beer_stain`, `cracked`, `black_cat`, `lead_weight`, `tail_light`, `dressed_up`, `dummy`, `honorary_jack`, `glass_ace`, `homesick` |
 | Der Schieber (mit Die Hehlerin) | `the_pusher` |
 | Der Kontra-Hans (entfernt, ADR 0017) | `kontra_hans` |
 | Die Oma (Boss, mit Der Opa; bis 02.11.2026 auch eine Figur `granny`) | `grandma` |
-| Frisches Deck | `fresh_deck` |
-| Stempelkissen | `ink_pad` |
 | Kurzer | `shot` |
 | Doppelkorn | `double_grain` |
 | Kräuter | `herbal` |
@@ -364,6 +365,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Alte Karten im Schrank | `old_cards` |
 | Kiebitz am Fenster | `lookout` |
 | Entfernt im Gegenstands-Review (02.11.2026; alte Ids fallen beim Laden weg, Definitionen nur noch für Tests in `core/src/run/legacy_*.ron`) | Relikte `bock_round`, `kontra`, `ouvert_bonus`, `march_through`, `blind_flight`, `granny`, `grandpa`, `referee`, `show_off`, `regular_guest`, `tuition`, `high_and_dry`, `schneider_bock`, `safety_net`, `glass_house`, `tally_stick`, `seven_sleeper`, `clean_slate`, `old_deck`, `changeling`, `jack_parade`, `decoy`; Verbrauchsgegenstände `beer`, `new_deal`, `bitters`, `regret`, `points_5`, `trump_4` |
+| Entfernt mit den Zinken am Tresen (02.11.2026; alte Ids fallen beim Laden weg, Definitionen nur noch für Tests in `core/src/run/legacy_consumables.ron`) | Verbrauchsgegenstände `fresh_deck` (Frisches Deck, jetzt „Karte reinigen“), `ink_pad` (Stempelkissen), `points_3` (Augen +3), `trump_2` (Trumpf +2), `rank_1` (Rang +1) |
 
 ## Kartennotation
 
