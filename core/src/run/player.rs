@@ -134,10 +134,29 @@ pub enum PlayerGameEvent {
     CardRose {
         /// Who played the card (the player).
         seat: Seat,
-        /// The card back in the hand.
+        /// The card as it was played.
         card: DealtCard,
         /// The card in the trick now.
         substitute: DealtCard,
+        /// The card as it came back into the hand: a copy of the card that
+        /// won the trick (03.11.2026). `None` in logs from before.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        risen: Option<DealtCard>,
+    },
+    /// "Doppelgänger" (DESIGN 7.2): `seat` played `card`, `stolen` from
+    /// the hand of `from` lies in the trick instead, and `from` holds
+    /// `given` now. Every card of it is open on the table.
+    DoppelgangerSwapped {
+        /// Who played the Doppelgänger.
+        seat: Seat,
+        /// The Doppelgänger as it was played.
+        card: DealtCard,
+        /// The robbed seat.
+        from: Seat,
+        /// The card taken from him into the trick.
+        stolen: DealtCard,
+        /// The Doppelgänger in his hand, in his edition.
+        given: DealtCard,
     },
     /// A card changed its holder and shows the new holder's edition (ADR
     /// 0015). The card only when the player knows it: it came to him, or
@@ -212,10 +231,25 @@ impl PlayerGameEvent {
                 seat,
                 card,
                 substitute,
+                risen,
             } => PlayerGameEvent::CardRose {
                 seat,
                 card,
                 substitute,
+                risen,
+            },
+            Event::DoppelgangerSwapped {
+                seat,
+                card,
+                from,
+                stolen,
+                given,
+            } => PlayerGameEvent::DoppelgangerSwapped {
+                seat,
+                card,
+                from,
+                stolen,
+                given,
             },
             Event::GameFinished {
                 outcome,
@@ -239,6 +273,16 @@ impl RunEvent {
     pub fn for_player(self) -> PlayerEvent {
         match self {
             RunEvent::Game(event) => RunEvent::Game(PlayerGameEvent::from_event(event)),
+            RunEvent::DoppelgangerUnmatched { card } => RunEvent::DoppelgangerUnmatched { card },
+            RunEvent::RiseChoice {
+                card,
+                becomes,
+                pick,
+            } => RunEvent::RiseChoice {
+                card,
+                becomes,
+                pick,
+            },
             RunEvent::BossAnnounced { section, boss } => RunEvent::BossAnnounced { section, boss },
             RunEvent::SeriesStarted {
                 section,

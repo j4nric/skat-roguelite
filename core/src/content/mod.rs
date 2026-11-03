@@ -958,9 +958,35 @@ impl CardModDef {
     /// Whether this modification may sit on `card` (a normal card; blanks
     /// never carry modifications).
     #[must_use]
+    ///
+    /// A modification that promotes the card ("Winkel", [`Effect::Promote`])
+    /// fits no Unter and no Daus: they cannot rise.
     pub fn fits(&self, card: crate::cards::CardKind) -> bool {
-        card.face()
-            .is_some_and(|face| self.only_on.is_none_or(|f| f.matches(face)))
+        card.face().is_some_and(|face| {
+            self.only_on.is_none_or(|f| f.matches(face))
+                && (!self.promotes() || face.rank.promotion_room() > 0)
+        })
+    }
+
+    /// Whether it promotes the card ("Winkel", [`Effect::Promote`]).
+    #[must_use]
+    pub fn promotes(&self) -> bool {
+        self.passive.iter().any(|e| matches!(e, Effect::Promote(_)))
+    }
+
+    /// The highest value it may reach on `card`: [`CardModDef::max`], for
+    /// "Winkel" also no more steps than the printed rank can rise (a 10
+    /// rises once, to the Daus). `None`: no limit.
+    #[must_use]
+    pub fn max_on(&self, card: crate::cards::CardKind) -> Option<i32> {
+        let room = card
+            .face()
+            .map(|face| i32::from(face.rank.promotion_room()))
+            .filter(|&room| self.promotes() && room > 0);
+        match (self.max, room) {
+            (Some(max), Some(room)) => Some(max.min(room)),
+            (max, room) => max.or(room),
+        }
     }
 }
 

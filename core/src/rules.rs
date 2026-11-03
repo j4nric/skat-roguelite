@@ -216,13 +216,16 @@ pub fn trump_order_key<C: PlayingCard>(game: GameType, card: C) -> Option<(u8, u
 }
 
 /// Strength of a non-trump card within its suit, including the rank bonus.
-/// Null games use the natural rank order. Blanks have strength 0.
+/// Null games use the natural rank order; there a card "Blei"
+/// ([`PlayingCard::leaden`]) is the lowest of its suit, below the Seven
+/// (strength 0). Blanks have strength 0.
 #[must_use]
 pub fn suit_strength<C: PlayingCard>(game: GameType, card: C) -> u8 {
     let Some(face) = card.face() else {
         return 0;
     };
     let base = match game {
+        GameType::Null if card.leaden() => return 0,
         GameType::Null => face.rank as u8 + 1,
         _ => face.rank.suit_game_strength(),
     };

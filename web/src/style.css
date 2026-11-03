@@ -8247,3 +8247,87 @@ button.skat-card {
 .route.is-travelling .map-pos .map-pin {
   visibility: hidden;
 }
+
+/* "Doppelgänger" swap scene (ui/scenes.ts): the mirror shimmer, the reach, the word. */
+.fx-doppel-card {
+  overflow: hidden;
+}
+
+.fx-doppel-sweep {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: repeating-linear-gradient(90deg, transparent 0 4px, #e4def5cc 4px 8px, transparent 8px 12px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.fx-doppel-dot {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: #a493d6;
+  box-shadow: 0 0 0 1px #3d2f5e;
+}
+
+.fx-doppel-word {
+  font-family: 'VT323', monospace;
+  font-size: 26px;
+  line-height: 1;
+  color: #e4def5;
+  white-space: nowrap;
+  text-shadow: 2px 0 0 #3d2f5e, -2px 0 0 #3d2f5e, 0 2px 0 #3d2f5e, 0 -2px 0 #3d2f5e, 0 4px 0 #1e1630;
+}
+
+/* "Untot": the pick of three hand cards. */
+.sheet-rise .rise-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sheet-rise .rise-becomes {
+  flex: none;
+  width: 66px;
+  height: 99px;
+}
+
+.sheet-rise h2 {
+  margin: 0 0 4px;
+}
+
+.rise-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.rise-card {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: transform 0.12s steps(2);
+}
+
+.rise-card .card {
+  display: block;
+  width: 52px;
+  height: 78px;
+}
+
+.rise-card.is-picked {
+  transform: translateY(-6px);
+  outline: 3px solid #f2c230;
+  outline-offset: 1px;
+}
+
+/* Werte-Icons beside the score box labels (Grundwert, Multiplikator). */
+.fbox span .value-icon {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+}

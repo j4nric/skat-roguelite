@@ -99,6 +99,8 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     facts.push(t(card.card_points === 1 ? de.info.pointsOne : de.info.points, { n: card.card_points }));
     if (card.rank_bonus > 0) facts.push(t(card.rank_bonus === 1 ? de.info.rankBonus : de.info.rankBonusMany, { n: card.rank_bonus }));
     if (card.never_wins) facts.push(de.info.neverWins);
+    if (card.promoted) facts.push(t(card.promoted === 1 ? de.card.promotedOne : de.card.promotedMany, { n: card.promoted }));
+    if (card.leaden) facts.push(de.card.leaden);
     if (card.demoted) facts.push(face(card.kind)?.rank === 'J' ? de.info.demotedJack : de.info.demoted);
     // ADR 0015: an opponent's card shows his edition.
     if (card.owner === 'Guest') facts.push(de.info.ownerGuest);

@@ -96,6 +96,38 @@ function smallBody(rank: Rank, ink: string, sign: string[]): string {
   return gridPaths(glyph, same, (CARD_W - gw) / 2, 4, 4) + gridPaths(sign, same, (CARD_W - sw) / 2, 41 - sign.length * 2, 2);
 }
 
+// ------------------------------------------------------------ Doppelgänger
+
+const hexRgb = (c: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) as [number, number, number];
+const rgbHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+/** Violet shades from dark to light, the mirror image's palette. */
+const MIRROR_RAMP = ['#1e1630', '#3d2f5e', '#6a58a0', '#a493d6', '#e4def5'].map(hexRgb);
+
+/** A colour of the deck's palette as the violet shade of its lightness. */
+function mirrorShade(colour: string): string {
+  const [r, g, b] = hexRgb(colour);
+  const t = ((0.3 * r + 0.59 * g + 0.11 * b) / 255) * (MIRROR_RAMP.length - 1);
+  const i = Math.min(MIRROR_RAMP.length - 2, Math.floor(t));
+  const f = t - i;
+  const a = MIRROR_RAMP[i] ?? [0, 0, 0];
+  const c = MIRROR_RAMP[i + 1] ?? [0, 0, 0];
+  return rgbHex(a[0] + (c[0] - a[0]) * f, a[1] + (c[1] - a[1]) * f, a[2] + (c[2] - a[2]) * f);
+}
+
+/**
+ * "Doppelgänger" (DG-A, 03.11.2026): the left half of the picture as
+ * printed, the right half its mirror image in violet shades on lavender
+ * paper, a dashed mirror edge in the middle.
+ */
+function mirrorBody(rows: string[]): string {
+  const left = rows.map((r) => [...r].map((c, x) => (x < 16 ? c : '.')).join(''));
+  const right = rows.map((r) => [...r].map((_c, x) => (x >= 17 ? (r[32 - x] ?? '.') : '.')).join(''));
+  const shaded = gridPaths(right, lower).replace(/fill="(#[0-9a-fA-F]{6})"/g, (_m, c: string) => `fill="${mirrorShade(c)}"`);
+  let seam = '';
+  for (let y = 0; y < 49; y++) if (y % 4 !== 3) seam += `M16 ${y}h1v1h-1z`;
+  return `<rect x="17" y="0" width="16" height="${CARD_H}" fill="#e9e5f4"/>${gridPaths(left, lower)}${shaded}<path d="${seam}" fill="#8a7fb0"/>`;
+}
+
 // ------------------------------------------------------------- other faces
 
 function blankBody(): string {
@@ -131,7 +163,8 @@ export function spriteSvg(): string {
         `<symbol id="f-${id}" ${box}>${gridPaths(rows, lower)}</symbol>` +
         `<symbol id="x-${id}" ${box} data-rank="${de.rankShort[r]}">${gridPaths(rows, upper)}</symbol>` +
         `<symbol id="t-${id}" ${box}>${smallFace(s, r)}</symbol>` +
-        (ART_UNDEAD[id] ? `<symbol id="u-${id}" ${box}>${gridPaths(ART_UNDEAD[id] ?? [], lower)}</symbol>` : '')
+        (ART_UNDEAD[id] ? `<symbol id="u-${id}" ${box}>${gridPaths(ART_UNDEAD[id] ?? [], lower)}</symbol>` : '') +
+        `<symbol id="d-${id}" ${box}>${mirrorBody(rows)}</symbol>`
       );
     }),
   ).join('');
@@ -178,6 +211,11 @@ export function smallFaceId(suit: Suit, rank: Rank): string {
 export function undeadFaceId(suit: Suit, rank: Rank): string | null {
   const id = `${CODE[suit]}${rank}`;
   return ART_UNDEAD[id] ? `u-${id}` : null;
+}
+
+/** Symbol id of the "Doppelgänger" picture of a card (its mirror image, DG-A). */
+export function mirrorFaceId(suit: Suit, rank: Rank): string {
+  return `d-${CODE[suit]}${rank}`;
 }
 
 /**

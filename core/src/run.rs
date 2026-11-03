@@ -97,6 +97,11 @@ pub const SERIES_PER_SECTION: u32 = PUBS_PER_DISTRICT;
 /// the draw is independent of the PIMC samples of the same game.
 const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 
+/// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
+/// his hand, one of them is drawn to take the rising card's place in the
+/// trick ([`RunAction::ChooseRiseCards`]).
+pub const UNDEAD_PICK: usize = 3;
+
 /// Consumables renamed by the item review of 02.11.2026: old id, new id.
 /// A loaded run reads the old ids as the new ones
 /// ([`Run::drop_unknown_content`]).
@@ -457,6 +462,15 @@ pub struct ActiveGame {
     /// once per game ([`Effect::Undead`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub risen: Vec<u32>,
+    /// An "Untot" card (instance id) that lies in the last trick and waits
+    /// for the player's three cards ([`RunAction::ChooseRiseCards`]) before
+    /// it rises. `None` otherwise and in saves from before 03.11.2026.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_rise: Option<u32>,
+    /// Generator that draws the card a "Doppelgänger" takes among several,
+    /// derived from the run's seed when first needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doppel_rng: Option<Rng>,
     /// Generator that draws the substitute of a rising "Untot" card, forked
     /// from the game's own generator at the deal if an "Untot" card is in
     /// play. Saves from before it derive one from the run's seed.
@@ -806,6 +820,10 @@ pub enum RunAction {
     DiscardThree([u32; 3]),
     /// Play a card (instance id).
     Play(u32),
+    /// "Untot" (DESIGN 7.2): the three cards of the hand (instance ids) of
+    /// which one is drawn to take the place of the rising card in the
+    /// trick, while [`Run::rise_pending`] waits for them.
+    ChooseRiseCards([u32; 3]),
     /// Use a consumable from the given slot, with a target card and a suit
     /// if needed.
     UseConsumable {
@@ -961,6 +979,25 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// An event of the game in progress.
     Game(G),
+    /// "Doppelgänger" (DESIGN 7.2): the player played this Doppelgänger,
+    /// and no opponent held a card of its rank in another suit: it is
+    /// played as itself ([`Event::DoppelgangerSwapped`] otherwise).
+    DoppelgangerUnmatched {
+        /// The card as played.
+        card: DealtCard,
+    },
+    /// "Untot" (DESIGN 7.2): the player's card rises from the trick just
+    /// completed as soon as he picks `pick` cards of his hand
+    /// ([`RunAction::ChooseRiseCards`]); one of them is drawn and takes its
+    /// place. Then [`Event::CardRose`] follows.
+    RiseChoice {
+        /// The card as it lies in the trick.
+        card: DealtCard,
+        /// The card it comes back as: a copy of the trick's winning card.
+        becomes: DealtCard,
+        /// How many cards to pick.
+        pick: usize,
+    },
     /// A defender said Kontra.
     Kontra {
         /// Who said it.
@@ -1585,6 +1622,12 @@ pub enum RunError {
     /// The Kartenmaler waits for the player's choice
     /// ([`RunAction::ChoosePaint`]); nothing else goes before it.
     PainterPending,
+    /// An "Untot" card waits for the player's three cards
+    /// ([`RunAction::ChooseRiseCards`]); nothing else goes before it.
+    RisePending,
+    /// The cards for an "Untot" card are not three different cards of the
+    /// player's hand, or no "Untot" card waits for them.
+    InvalidRiseCards,
     /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
     AlreadyUsed,
     /// "Bruderherz": a curse on his edition cannot be cleansed.
@@ -1708,6 +1751,10 @@ pub enum RunErrorCode {
     LivesFull,
     /// The Kartenmaler waits for the player's choice.
     PainterPending,
+    /// An "Untot" card waits for the player's three cards.
+    RisePending,
+    /// Not three different cards of the hand, or nothing waits for them.
+    InvalidRiseCards,
     /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
     AlreadyUsed,
     /// The character's curses cannot be cleansed ("Bruderherz").
@@ -1778,6 +1825,8 @@ impl RunErrorCode {
             RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
             RunErrorCode::LivesFull => "LivesFull",
             RunErrorCode::PainterPending => "PainterPending",
+            RunErrorCode::RisePending => "RisePending",
+            RunErrorCode::InvalidRiseCards => "InvalidRiseCards",
             RunErrorCode::AlreadyUsed => "AlreadyUsed",
             RunErrorCode::CurseStays => "CurseStays",
             RunErrorCode::SpecialTaken => "SpecialTaken",
@@ -1844,6 +1893,8 @@ impl RunError {
             RunError::ConsumablesLocked => RunErrorCode::ConsumablesLocked,
             RunError::LivesFull => RunErrorCode::LivesFull,
             RunError::PainterPending => RunErrorCode::PainterPending,
+            RunError::RisePending => RunErrorCode::RisePending,
+            RunError::InvalidRiseCards => RunErrorCode::InvalidRiseCards,
             RunError::AlreadyUsed => RunErrorCode::AlreadyUsed,
             RunError::CurseStays => RunErrorCode::CurseStays,
             RunError::ConditionNotMet => RunErrorCode::ConditionNotMet,
@@ -1886,6 +1937,10 @@ impl fmt::Display for RunError {
             RunError::ConsumablesLocked => f.write_str("the Schnäpse are locked in this pub"),
             RunError::LivesFull => f.write_str("no life is missing"),
             RunError::PainterPending => f.write_str("the Kartenmaler waits for a choice"),
+            RunError::RisePending => f.write_str("an undead card waits for three cards"),
+            RunError::InvalidRiseCards => {
+                f.write_str("not three different cards of the hand for an undead card")
+            }
             RunError::AlreadyUsed => f.write_str("already used at this Tresen"),
             RunError::CurseStays => f.write_str("the character's curses cannot be cleansed"),
             RunError::ConditionNotMet => f.write_str("the consumable would do nothing now"),
@@ -2592,7 +2647,10 @@ impl Run {
             return None;
         }
         let active = self.game.as_ref()?;
-        if active.awaiting_re || active.game.phase() != Phase::Playing {
+        if active.awaiting_re
+            || active.pending_rise.is_some()
+            || active.game.phase() != Phase::Playing
+        {
             return None;
         }
         active
@@ -2656,6 +2714,9 @@ impl Run {
         if self.painter.is_some() && !matches!(action, RunAction::ChoosePaint(_)) {
             return Err(RunError::PainterPending);
         }
+        if self.rise_pending().is_some() && !matches!(action, RunAction::ChooseRiseCards(_)) {
+            return Err(RunError::RisePending);
+        }
         if self.schnapps_reward.is_some()
             && !matches!(action, RunAction::ChooseSchnappsReward { .. })
         {
@@ -2681,6 +2742,7 @@ impl Run {
             RunAction::RerollCardOffers => self.reroll_card_offers(content, events),
             RunAction::HirePainter(card) => self.hire_painter(content, card, events),
             RunAction::ChoosePaint(option) => self.choose_paint(content, option, events),
+            RunAction::ChooseRiseCards(ids) => self.choose_rise_cards(content, ids, events),
             RunAction::CleanseCard(card) => self.cleanse_at_tresen(content, card, events),
             RunAction::LeaveShop => self.leave_shop(content, events),
             RunAction::GiveUpPub => self.give_up_pub(content, events),
@@ -3074,8 +3136,76 @@ impl Run {
             return Err(RunError::AwaitingKontraAnswer);
         }
         let card = Run::declarer_card(active, id)?;
+        if let Some((from, stolen)) = self.doppelganger_match(content, card) {
+            let active = self.active_mut()?;
+            let game_events = active
+                .game
+                .play_swapped(Seat::DECLARER, card, from, stolen)?;
+            let trick_done = game_events
+                .iter()
+                .any(|e| matches!(e, Event::TrickWon { .. }));
+            events.extend(game_events.into_iter().map(RunEvent::Game));
+            self.after_card(content, Seat::DECLARER, stolen, trick_done, events);
+            return self.settle(content, events);
+        }
+        if self.is_doppelganger(content, card) {
+            events.push(RunEvent::DoppelgangerUnmatched { card });
+        }
         self.play_card(content, Seat::DECLARER, card, events)?;
         self.settle(content, events)
+    }
+
+    /// Whether the player's `card` is a "Doppelgänger" that may swap in
+    /// this game: a suit game, Grand or Null, not a Ramsch.
+    pub(crate) fn is_doppelganger(&self, content: &Content, card: DealtCard) -> bool {
+        let Some(active) = self.game.as_ref() else {
+            return false;
+        };
+        active.game.declaration().is_some_and(|d| !d.is_ramsch())
+            && !card.is_blank()
+            && self.has_card_effect(content, card, &Effect::Doppelganger)
+    }
+
+    /// "Doppelgänger" (DESIGN 7.2, 03.11.2026): the card it takes when the
+    /// player plays `card` now, and from whom: a card of the same rank and
+    /// another suit from the next opponent in play order, else from the
+    /// other; of several one drawn with the game's generator. `None` if
+    /// `card` is no Doppelgänger, is no legal play, or nobody holds such a
+    /// card.
+    fn doppelganger_match(
+        &mut self,
+        content: &Content,
+        card: DealtCard,
+    ) -> Option<(Seat, DealtCard)> {
+        if !self.is_doppelganger(content, card) {
+            return None;
+        }
+        let face = card.face()?;
+        let fallback = opponents::game_seed(self) ^ 0x0D0B_B1E0_0000_0005;
+        let active = self.game.as_mut()?;
+        let game = &active.game;
+        if !game.legal_moves(Seat::DECLARER).contains(&card) {
+            return None;
+        }
+        let first = Seat::DECLARER.next();
+        let (from, candidates) = [first, first.next()].into_iter().find_map(|seat| {
+            let candidates: Vec<DealtCard> = game
+                .hand(seat)
+                .iter()
+                .copied()
+                .filter(|c| {
+                    c.face()
+                        .is_some_and(|f| f.rank == face.rank && f.suit != face.suit)
+                })
+                .collect();
+            (!candidates.is_empty()).then_some((seat, candidates))
+        })?;
+        let rng = active
+            .doppel_rng
+            .get_or_insert_with(|| Rng::from_seed(fallback));
+        let roll = rng.gen_range(0..u64::try_from(candidates.len()).unwrap_or(1));
+        let stolen = usize::try_from(roll).ok().and_then(|i| candidates.get(i))?;
+        Some((from, *stolen))
     }
 
     /// Play one card and fire the in-play hooks.
@@ -3141,11 +3271,15 @@ impl Run {
             && self.has_card_effect(content, card, &Effect::Undead)
     }
 
-    /// "Untot" (DESIGN 7.2): after the `OnTrickEnd` hooks of a completed
-    /// trick, the player's card in it rises back into his hand if it may
-    /// ([`Run::can_rise`], judged as if it were still in the hand), and a
-    /// card of his hand drawn with the game's generator takes its place in
-    /// the trick.
+    /// "Untot" (DESIGN 7.2, reworked 03.11.2026): after the `OnTrickEnd`
+    /// hooks of a completed trick, the player's card in it rises back into
+    /// his hand if it may ([`Run::can_rise`], judged as if it were still in
+    /// the hand), as a copy of the card that won the trick
+    /// ([`Game::raise`]). One of [`UNDEAD_PICK`] cards of his hand, drawn
+    /// with the game's generator, takes its place in the trick: with more
+    /// cards in his hand he picks them first, and the run waits
+    /// ([`Run::rise_pending`], [`RunEvent::RiseChoice`]); with as many or
+    /// fewer, all of them are the candidates and it rises at once.
     fn raise_undead(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let Some(active) = self.game.as_ref() else {
             return;
@@ -3175,6 +3309,30 @@ impl Run {
         {
             return;
         }
+        if hand.len() > UNDEAD_PICK {
+            let winning = trick.winning_card();
+            let becomes = if winning == card {
+                card
+            } else {
+                card.risen_as(winning)
+            };
+            if let Some(active) = self.game.as_mut() {
+                active.pending_rise = Some(card.id);
+            }
+            events.push(RunEvent::RiseChoice {
+                card,
+                becomes,
+                pick: UNDEAD_PICK,
+            });
+            return;
+        }
+        self.rise_with(card, &hand, events);
+    }
+
+    /// Let the "Untot" `card` of the last trick rise, one of `candidates`
+    /// (cards of the player's hand) drawn with the game's generator taking
+    /// its place.
+    fn rise_with(&mut self, card: DealtCard, candidates: &[DealtCard], events: &mut Vec<RunEvent>) {
         let fallback = opponents::game_seed(self) ^ 0x0DEA_D0DE_AD00;
         let Some(active) = self.game.as_mut() else {
             return;
@@ -3182,14 +3340,56 @@ impl Run {
         let rng = active
             .undead_rng
             .get_or_insert_with(|| Rng::from_seed(fallback));
-        let roll = rng.gen_range(0..u64::try_from(hand.len()).unwrap_or(1));
-        let Some(&substitute) = usize::try_from(roll).ok().and_then(|i| hand.get(i)) else {
+        let roll = rng.gen_range(0..u64::try_from(candidates.len()).unwrap_or(1));
+        let Some(&substitute) = usize::try_from(roll).ok().and_then(|i| candidates.get(i)) else {
             return;
         };
         if let Ok(game_events) = active.game.raise(Seat::DECLARER, card, substitute) {
             active.risen.push(card.id);
+            active.pending_rise = None;
             events.extend(game_events.into_iter().map(RunEvent::Game));
         }
+    }
+
+    /// The "Untot" card waiting for the player's three cards
+    /// ([`RunAction::ChooseRiseCards`]), as it lies in the last trick.
+    #[must_use]
+    pub fn rise_pending(&self) -> Option<DealtCard> {
+        let active = self.game.as_ref()?;
+        let id = active.pending_rise?;
+        active
+            .game
+            .tricks()
+            .last()
+            .and_then(|t| t.cards.iter().copied().find(|c| c.id == id))
+    }
+
+    /// [`RunAction::ChooseRiseCards`]: three different cards of the hand,
+    /// sorted by id so the draw does not depend on their order; one of
+    /// them is drawn and the waiting card rises.
+    fn choose_rise_cards(
+        &mut self,
+        content: &Content,
+        ids: [u32; UNDEAD_PICK],
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let card = self.rise_pending().ok_or(RunError::InvalidRiseCards)?;
+        let active = self.active_mut()?;
+        let mut sorted = ids;
+        sorted.sort_unstable();
+        if sorted.windows(2).any(|w| w[0] == w[1]) {
+            return Err(RunError::InvalidRiseCards);
+        }
+        let hand = active.game.hand(Seat::DECLARER);
+        let candidates: Vec<DealtCard> = sorted
+            .iter()
+            .filter_map(|id| hand.iter().copied().find(|c| c.id == *id))
+            .collect();
+        if candidates.len() != UNDEAD_PICK {
+            return Err(RunError::InvalidRiseCards);
+        }
+        self.rise_with(card, &candidates, events);
+        self.settle(content, events)
     }
 
     /// Score a finished game (which deals the next one or ends the
@@ -3596,6 +3796,8 @@ impl Run {
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)
+            | Effect::Promote(_)
+            | Effect::NullLowest
             | Effect::RevealHolder
             | Effect::NeverWins
             | Effect::HonoraryJack
@@ -3604,6 +3806,7 @@ impl Run {
             | Effect::Demote
             | Effect::TurnInto(_)
             | Effect::Undead
+            | Effect::Doppelganger
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
             | Effect::CurseForPub { .. }
@@ -3913,10 +4116,18 @@ impl Run {
         let global = self.sources(content, false);
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let editions = resolved.clone().map(|r| r.cards);
+        // By the printed card: "Winkel" changes the kind of a dealt card.
+        let printed = Edition::standard();
         let pick = |seat: usize, kind: CardKind| -> DealtCard {
-            *editions[seat]
+            let id = printed
+                .cards()
                 .iter()
                 .find(|c| c.kind == kind)
+                .expect("printed card")
+                .id;
+            *editions[seat]
+                .iter()
+                .find(|c| c.id == id)
                 .expect("card in the deck")
         };
         let hands = [0, 1, 2].map(|seat| hands[seat].iter().map(|&k| pick(seat, k)).collect());
@@ -4005,6 +4216,8 @@ impl Run {
             named: Vec::new(),
             skat_shown: Vec::new(),
             risen: Vec::new(),
+            pending_rise: None,
+            doppel_rng: None,
             undead_rng: None,
             boss_edition: None,
             partner_edition: None,
@@ -5701,3 +5914,5 @@ mod wave2b_tests;
 mod wave3_tests;
 #[cfg(test)]
 mod zinken_tests;
+#[cfg(test)]
+mod zinken_v2_tests;

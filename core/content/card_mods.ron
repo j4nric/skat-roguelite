@@ -20,7 +20,9 @@
 // shop_value ist der Wert in der Auslage und beim Kartenmaler (ohne: der
 // erste aus values), price der Preis in der Auslage vor dem Zuschlag für
 // Unter und Daus (run.ron, zinken). Die Auslage zieht nach Seltenheit,
-// Gutscheine seltener. Namen seit dem 02.11.2026: Aufdruck, Winkel,
+// Gutscheine seltener. Zinken v2 (03.11.2026): Blei, Goldkante,
+// Fadenkreuz, Schneiderkreide neu, Winkel mit neuer Bedeutung, Untot
+// umgebaut. Namen seit dem 02.11.2026: Aufdruck, Winkel,
 // Siegel, Eselsohr, Kerbe, Pfandmarke, Totenmarke, Narrenmarke; der Text
 // beginnt mit der Wirkung, damit Infokarten sie neben dem Namen zeigen.
 // Werte, Preise und Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung.
@@ -41,20 +43,51 @@
         values: [4, 3, 5],
         passive: [AddCardPoints(1)],
     ),
-    // Lever Stichgewinn. Winkel nach oben statt einer Zahl.
+    // Lever Stichgewinn. Neue Bedeutung seit dem 03.11.2026 (Zinken v2):
+    // die Karte WIRD die nächsthöhere Karte ihrer Farbe (7, 8, 9, Oberin,
+    // König, 10, Daus), in jedem Spiel, und behält ihre eigenen Augen.
+    // Unter steigen nie und werden nie erreicht, ein Daus kann nicht
+    // steigen (der Kern bietet ihn dort nicht an). Bild: dicker schwarzer
+    // Filzstift kritzelt den Rang im Eckzeichen weg.
     (
         id: "rank",
         kind: Edge,
         focus: Trump,
         name: "Winkel",
-        text: "Rang {+n}: Diese Karte sticht so viele Stufen höher, höchstens um 2.",
+        text: "Rang {+n}: Diese Karte wird die nächsthöhere Karte ihrer Farbe (7, 8, 9, Oberin, König, 10, Daus), je Stufe eine, höchstens 2. Ihre Augen bleiben. Nicht auf Unter und Daus.",
         rarity: Common,
         price: 3,
         values: [1],
         // Antwort im Cockpit (02.11.2026): höchstens 2 statt 3. Alte
         // Spielstände kappt der Kern beim Laden (deck::RANK_MAX).
         max: Some(2),
-        passive: [RankBonus(1)],
+        passive: [Promote(1)],
+    ),
+    // Lever Stichgewinn im Null (Zinken v2, 03.11.2026): die Karte ist im
+    // Null die niedrigste ihrer Farbe, unter der Sieben.
+    (
+        id: "lead",
+        kind: Edge,
+        focus: Null,
+        name: "Blei",
+        text: "Null: Im Nullspiel ist diese Karte die niedrigste ihrer Farbe, noch unter der Sieben.",
+        rarity: Uncommon,
+        price: 3,
+        passive: [NullLowest],
+    ),
+    // Lever Groschen (Zinken v2, 03.11.2026): je Stich, den der Spieler
+    // mit dieser Karte macht. Eine Untote kann zweimal stechen.
+    (
+        id: "gilt_edge",
+        kind: Edge,
+        name: "Goldkante",
+        text: "Stich: Machst du mit dieser Karte einen Stich, {n} Groschen.",
+        rarity: Common,
+        price: 3,
+        values: [1],
+        hooks: [
+            OnTrickEnd(when: ThisCardWinsTrick, then: [GainCoins(1)]),
+        ],
     ),
     // Lever Grundwert. Streng nach ADR 0015: nur, wenn der Spieler die
     // Karte hält (ein Schalter im Kern, TRUMP_MODS_NEED_PLAYER).
@@ -104,6 +137,39 @@
         max: Some(2),
         hooks: [
             OnTrickEnd(when: ThisCardWinsFirstTrick, then: [MultiplyTrickPoints(1)]),
+        ],
+    ),
+    // Lever Gewinnstufen (Zinken v2, 03.11.2026): sticht diese Karte einen
+    // Daus eines Gegners (gespielt von einem Gegner, egal aus welcher
+    // Ausgabe), +1 Multiplikator für dieses Spiel, je solchem Stich.
+    (
+        id: "crosshair",
+        kind: Moment,
+        focus: Trump,
+        name: "Fadenkreuz",
+        text: "Daus: Sticht diese Karte einen Daus eines Gegners, +{n} Multiplikator.",
+        rarity: Uncommon,
+        price: 4,
+        values: [1],
+        max: Some(1),
+        hooks: [
+            OnTrickEnd(when: ThisCardBeatsDefenderCard((rank: Some(Ace))), then: [AddLevels(1)]),
+        ],
+    ),
+    // Lever Gewinnstufen (Zinken v2, 03.11.2026): gewinnt der Spieler mit
+    // Schneider und hat diese Karte in einen Stich gespielt.
+    (
+        id: "tailors_chalk",
+        kind: Moment,
+        focus: Trump,
+        name: "Schneiderkreide",
+        text: "Schneider: Gewinnst du mit Schneider und hast diese Karte gespielt, +{n} Multiplikator.",
+        rarity: Uncommon,
+        price: 3,
+        values: [1],
+        max: Some(1),
+        hooks: [
+            OnScore(when: All([WonSchneider, ThisCardPlayed]), then: [AddLevels(1)]),
         ],
     ),
     // ---------------------------------------------------------------------
@@ -228,15 +294,32 @@
         price: 1,
         passive: [Demote],
     ),
-    // Lever Stichgewinn and Augen (user idea, 02.11.2026): played by the
-    // player in a suit game or Grand, the card comes back into his hand
-    // once per game, a random other card of his hand takes its place.
+    // Lever Stichgewinn (Zinken v2, user decision 03.11.2026, Cockpit
+    // q17): played as printed (it must be a legal play), it takes a card
+    // of the same rank and another suit from the next opponent, else from
+    // the other one (drawn among several); that card lies in the trick,
+    // the robbed opponent gets this card for the rest of the game. Without
+    // a match it plays as itself. Suit games, Grand and Null.
+    (
+        id: "doppelganger",
+        kind: Special,
+        name: "Doppelgänger",
+        text: "Spielst du sie, nimmt sie dem nächsten Gegner eine Karte gleichen Rangs aus einer anderen Farbe ab (sonst dem anderen). Die liegt im Stich, er bekommt diese Karte. Ohne Gegenstück zählt sie als sie selbst. Nicht im Ramsch.",
+        rarity: Rare,
+        price: 5,
+        passive: [Doppelganger],
+    ),
+    // Lever Stichgewinn and Augen (user idea, 02.11.2026; reworked by the
+    // user on 03.11.2026): played by the player in a suit game or Grand,
+    // the card comes back into his hand once per game as the card that won
+    // the trick; he picks three cards of his hand, one of them is drawn
+    // and takes its place in the trick.
     (
         id: "undead",
         kind: Special,
         focus: Trump,
         name: "Untot",
-        text: "Karte wird gespielt, dann aber wieder auf die Hand genommen und eine zufällige Karte abgeworfen. Einmal pro Spiel, nur im Farbspiel und Grand.",
+        text: "Nach dem Stich kehrt sie als die Karte auf die Hand zurück, die den Stich gemacht hat. Du wählst 3 Karten, eine davon geht für sie in den Stich. Einmal pro Spiel, nur im Farbspiel und Grand.",
         rarity: Rare,
         price: 5,
         passive: [Undead],

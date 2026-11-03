@@ -19,7 +19,7 @@
 // drawing: which modification a card carries and its value come from the
 // core.
 
-import { ART_H, ART_W } from './pixelcards.gen';
+import { ART_GLYPHS, ART_H, ART_W } from './pixelcards.gen';
 
 export const W = ART_W;
 export const H = ART_H + 0.5;
@@ -125,7 +125,6 @@ export function ring(k: number, notch = true): Cells {
 
 export const GOLD = '#d98e0b';
 const GOLD_L = '#ffe08a';
-const WINE = '#8e2430';
 export const PURPLE = '#6a3fa8';
 const TEAL = '#16707a';
 const PLAY = '#d2552a';
@@ -138,6 +137,21 @@ const STAMP_L = '#bfe3d6';
 const STAMP_REDEEM = '#3fae90';
 const WHITE = '#ffffff';
 const ZOMBIE = '#5e7a3c';
+// Zinken v2 (board Zinken-v2, 03.11.2026).
+const LEAD = '#5f6870';
+const LEAD_L = '#b9c0c7';
+const LEAD_D = '#353b42';
+const GILT = '#f7c21a';
+const GILT_D = '#a87800';
+const GILT_BAND = '#7a5210';
+const XH = '#c0263a';
+const XH_L = '#f4a3ae';
+const TAILOR = '#3d78b0';
+const TAILOR_L = '#cfe3f3';
+/** The black marker of "Winkel" (W-C in black ink). */
+export const MARKER = '#1c1a1a';
+/** "Doppelgänger": its violet mirror half and the seam. */
+export const MIRROR = '#6a58a0';
 
 /** The band's dark bottom row: each channel × 0.62 (fx3.py `shade`). */
 function shade(c: string): string {
@@ -169,6 +183,16 @@ const G: Record<string, string[]> = {
   rang1: ['...', '.#.', '#.#', '...', '...'],
   rang2: ['.#.', '#.#', '...', '.#.', '#.#'],
   rang3: ['...........', '.#...#...#.', '#.#.#.#.#.#', '...........', '...........'],
+  plumb: ['..#..', '.#.#.', '.###.', '#####', '#####'],
+  xhair: ['.###.', '#.#.#', '##.##', '#.#.#', '.###.'],
+  chalk: ['.....', '#####', '.###.', '..#..', '.....'],
+  scissor: ['#...#', '.#.#.', '..#..', '##.##', '##.##'],
+  daus: ['.#.', '#.#', '###', '#.#', '#.#'],
+  mirror: ['##.##', '#...#', '#...#', '#...#', '##.##'],
+  // Werte-Icons (user decision 03.11.2026): G-B "Grundstein" for the
+  // Grundwert, M-D "Steilpfeil" for the Multiplikator (Gewinnstufen).
+  base: ['..###..', '..###..', '.......', '###.###', '###.###'],
+  mult: ['..###', '...##', '..#.#', '.#...', '#....'],
 };
 
 /** One item of a band: a number text ("+4", "−2", "×2") or a named glyph. */
@@ -192,6 +216,12 @@ function glyphCells(item: BandItem, x: number, y: number): { parts: [Cells, stri
     ];
     dia.forEach(([row, c], j) => parts.push([shape([row], x, y + j), c]));
     return { parts, w: 5 };
+  }
+  if (item === 'pips') {
+    // Augen (A-C "Würfelauge", 03.11.2026): a white die face with five dark pips.
+    const face = shape(['#####', '#.#.#', '##.##', '#.#.#', '#####'], x, y);
+    const pips = shape(['.....', '.#.#.', '..#..', '.#.#.', '.....'], x, y);
+    return { parts: [[face, WHITE], [pips, '#2b2f33']], w: 5 };
   }
   if (item === 'coin') return { parts: [[shape(G.coin ?? [], x, y), '#f7c21a'], [new Set([key(x + 2, y + 2)]), '#8a5a0a']], w: 5 };
   const named = G[item];
@@ -225,7 +255,8 @@ export function band(items: BandItem[], col: string, paper: string, y = 41): str
   let out = draw(minus(halo(body), body), paper) + draw(body, col) + draw(rects(`${bx0} ${y + 7} ${bw} 1`), shade(col));
   let x = x0;
   items.forEach((it, i) => {
-    for (const [cells, c] of glyphCells(it, x, y + 2).parts) out += draw(cells, c ?? WHITE);
+    // Centred in the seven rows above the dark bottom row: one row free above and below.
+    for (const [cells, c] of glyphCells(it, x, y + 1).parts) out += draw(cells, c ?? WHITE);
     x += (widths[i] ?? 0) + 2;
   });
   return out;
@@ -244,6 +275,17 @@ function frameDashed(col: string): string {
     filter(ring(1), (x, y) => Math.floor((x + y) / 2) % 2 === 0),
     col,
   );
+}
+
+/** Goldkante (GK-A): the outermost ring bright gold with glints, dark gold inside. */
+function frameGilt(): string {
+  const r0 = ring(0, false);
+  return draw(r0, GILT) + draw(filter(r0, (x, y) => (x * 3 + y) % 7 === 0), WHITE) + draw(ring(1), GILT_D);
+}
+
+/** Schneiderkreide (SK-B): a light edge with a seam of short stitches. */
+function frameSeam(): string {
+  return draw(ring(1), TAILOR_L) + draw(filter(ring(2), (x, y) => (x + y) % 3 !== 0), TAILOR);
 }
 
 /** Gutschein: a light stamp margin with white perforation dots and a dashed tear line. */
@@ -346,12 +388,17 @@ export interface ModDraw {
 /** The design of each modification id (core/content/card_mods.ron). */
 export const MOD_DRAW: Record<string, ModDraw> = {
   // Rand: always (no mark).
-  points: { band: (t) => [t], col: GOLD, art: () => frameDouble(GOLD, GOLD_L) },
-  rank: { band: (_t, v) => [`rang${Math.max(1, Math.min(3, v))}`], col: WINE, art: () => '' },
-  trump_bonus: { band: (t) => [t], col: PURPLE, art: () => frameDashed(PURPLE) },
+  points: { band: (t) => [t, 'pips'], col: GOLD, art: () => frameDouble(GOLD, GOLD_L) },
+  // Winkel (Zinken v2): no band, the marker scribble on the index (winkelScribble).
+  rank: { band: () => [], col: MARKER, art: () => '' },
+  lead: { band: () => ['plumb'], col: LEAD, art: () => frameDouble(LEAD_D, LEAD_L) },
+  gilt_edge: { band: (t) => [t, 'coin'], col: GILT_BAND, art: () => frameGilt() },
+  trump_bonus: { band: (t) => [t, 'base'], col: PURPLE, art: () => frameDashed(PURPLE) },
   // Moment: the mark top right says when.
-  last_trick: { band: (t) => [t, 'step'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
-  first_trick: { band: (t) => [t], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
+  last_trick: { band: (t) => [t, 'mult'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
+  first_trick: { band: (t) => [t, 'pips'], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
+  crosshair: { band: (t) => [t, 'mult'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
+  tailors_chalk: { band: (t) => [t, 'mult'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
   // Gutschein: when discarded; the band shows the reward.
   voucher_coins: { band: (t) => ['coin', t], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
   voucher_undead: { band: () => ['skull'], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
@@ -373,7 +420,68 @@ export function modLayer(mod: string, text: string, value: number, paper: string
   const d = MOD_DRAW[mod];
   if (!d) return '';
   const col = redeeming && mod.startsWith('voucher_') ? STAMP_REDEEM : d.col;
-  return d.art(paper, redeeming) + band(d.band(text, value), col, paper);
+  const items = d.band(text, value);
+  return d.art(paper, redeeming) + (items.length ? band(items, col, paper) : '');
+}
+
+// ------------------------------------------------------------ Winkel scribble
+
+/** A rank glyph in "hand" style: the top two rows one pixel to the right. */
+function handGlyph(rank: string, x: number, y: number): Cells {
+  const out: Cells = new Set();
+  (ART_GLYPHS[rank] ?? []).forEach((row, j) =>
+    [...row].forEach((ch, i) => {
+      if (ch === 'x') out.add(key(x + i + (j < 2 ? 1 : 0), y + j));
+    }),
+  );
+  return out;
+}
+
+const glyphW = (rank: string): number => ART_GLYPHS[rank]?.[0]?.length ?? 3;
+
+/** A fat marker zigzag over a glyph box (w × 5 at x, y). */
+function strike(x: number, y: number, w: number): Cells {
+  const out: Cells = new Set();
+  for (let j = -1; j <= 5; j++) for (let i = -1; i <= w; i++) if ((i + j) % 3 !== 0 || j === -1 || j === 5) out.add(key(x + i, y + j));
+  return filter(out, (xx, yy) => !((xx === x - 1 || xx === x + w) && (yy === y - 1 || yy === y + 5)));
+}
+
+/**
+ * "Winkel" (W-C in black ink, 03.11.2026): on both corner indices the
+ * printed rank is scribbled out with a thick black marker and each higher
+ * rank written beside it, all but the last scribbled out too. `chain` is
+ * the printed rank code first, e.g. ['8', '9', 'Q'].
+ */
+export function winkelScribble(chain: string[], paper: string): string {
+  if (chain.length < 2) return '';
+  let marks: Cells = new Set();
+  let paperHalo: Cells = new Set();
+  // Top left: the index at x 2, y 2; new ranks to the right.
+  let x = 2;
+  chain.forEach((r, i) => {
+    const w = glyphW(r);
+    if (i > 0) {
+      const g = handGlyph(r, x, 2);
+      paperHalo = union(paperHalo, halo(g));
+      marks = union(marks, g);
+    }
+    if (i < chain.length - 1) marks = union(marks, strike(x, 2, w));
+    x += w + (i === 0 ? 2 : 3);
+  });
+  // Bottom right: the index ends at x 30, y 42; new ranks to the left.
+  let xr = 31;
+  chain.forEach((r, i) => {
+    const w = glyphW(r);
+    const x0 = xr - w;
+    if (i > 0) {
+      const g = handGlyph(r, x0 - 1, 42);
+      paperHalo = union(paperHalo, halo(g));
+      marks = union(marks, g);
+    }
+    if (i < chain.length - 1) marks = union(marks, strike(x0, 42, w));
+    xr = x0 - (i === 0 ? 2 : 3);
+  });
+  return draw(minus(paperHalo, marks), paper, 0.9) + draw(marks, MARKER);
 }
 
 /** Ring 0 and 1 of a tiny card in the colour of its state (curse anthracite, Untot green). */
@@ -391,10 +499,15 @@ export function smallState(curse: boolean, undead: boolean): string {
 
 /** The glyphs of each modification's icon: its band without the card's value. */
 const ICON: Record<string, { items: BandItem[]; col: string }> = {
-  points: { items: ['+'], col: GOLD },
-  rank: { items: ['rang1'], col: WINE },
-  trump_bonus: { items: ['+'], col: PURPLE },
-  last_trick: { items: ['step'], col: TEAL },
+  points: { items: ['pips'], col: GOLD },
+  rank: { items: ['rang1'], col: MARKER },
+  lead: { items: ['plumb'], col: LEAD },
+  gilt_edge: { items: ['coin'], col: GILT_BAND },
+  crosshair: { items: ['xhair'], col: XH },
+  tailors_chalk: { items: ['scissor'], col: TAILOR },
+  doppelganger: { items: ['mirror'], col: MIRROR },
+  trump_bonus: { items: ['base'], col: PURPLE },
+  last_trick: { items: ['mult'], col: TEAL },
   first_trick: { items: ['×2'], col: PLAY },
   voucher_coins: { items: ['coin'], col: STAMP },
   voucher_undead: { items: ['skull'], col: STAMP },
@@ -431,4 +544,50 @@ export function modIconBody(mod: string): string | null {
     x += (widths[i] ?? 0) + 2;
   });
   return out;
+}
+
+// ---------------------------------------------------------- value icons, large
+
+/** The large Werte-Icons (board "Werte-Icons", G-B, M-D and A-C): grid and palette, before the outline. */
+const VALUE_ICONS: Record<'base' | 'mult' | 'pips', { rows: string[]; pal: Record<string, string> }> = {
+  pips: {
+    rows: ['.pppppppp.', 'ppppppppps', 'ppddppddps', 'ppddppddps', 'ppppddppps', 'ppppddppps', 'ppddppddps', 'ppddppddps', 'ppppppppps', '.ssssssss.'],
+    pal: { p: '#fdfdfb', s: '#c9cfd2', d: '#2b2f33' },
+  },
+  base: {
+    rows: ['...www...', '...sss...', '.........', '.www.www.', '.sss.sss.', '.........', 'ww.www.ww', 'ss.sss.ss'],
+    pal: { w: '#e4ede8', s: '#93aea2' },
+  },
+  mult: {
+    rows: ['...llllll', '....ccccc', '.....cccc', '.....cccc', '....lc.cc', '...lc...c', '..lc.....', '.lc......', 'lc.......'],
+    pal: { c: '#d1773f', l: '#f1b48a' },
+  },
+};
+
+/**
+ * The Grundwert, Multiplikator or Augen icon in its large form (stone
+ * bricks, copper arrow, a die) with a dark one-pixel outline, as inline SVG `height` px
+ * high: beside the labels of the score boxes.
+ */
+export function valueIcon(kind: 'base' | 'mult' | 'pips', height = 14): string {
+  const { rows, pal } = VALUE_ICONS[kind];
+  const h = rows.length + 2;
+  const w = (rows[0]?.length ?? 0) + 2;
+  const at = (x: number, y: number): string => rows[y - 1]?.[x - 1] ?? '.';
+  let d = '';
+  const fills = new Map<string, string>();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = at(x, y);
+      if (c !== '.') {
+        fills.set(c, (fills.get(c) ?? '') + `M${x} ${y}h1v1h-1z`);
+        continue;
+      }
+      let near = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== '.') near = true;
+      if (near) d += `M${x} ${y}h1v1h-1z`;
+    }
+  }
+  const paths = `<path d="${d}" fill="#0b0c0e"/>` + [...fills].map(([c, p]) => `<path d="${p}" fill="${pal[c] ?? '#fff'}"/>`).join('');
+  return `<svg class="value-icon" viewBox="0 0 ${w} ${h}" width="${Math.round((height * w) / h)}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">${paths}</svg>`;
 }

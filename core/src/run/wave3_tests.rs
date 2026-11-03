@@ -505,7 +505,7 @@ fn a_settled_wild_card_follows_its_new_suit() {
 }
 
 #[test]
-fn an_undead_wild_card_rises_as_its_settled_card() {
+fn an_undead_wild_card_rises_as_the_card_that_won_the_trick() {
     // One card that is both (a deck from before effects v2 keeps both
     // special cards, `migrate_legacy_mods`).
     let mut content = content();
@@ -536,14 +536,24 @@ fn an_undead_wild_card_rises_as_its_settled_card() {
     run.apply_step(&content, RunAction::Play(id_of("D7")))
         .expect("lead");
     defender_plays(&mut run, &content, Seat::DEFENDERS[0], "H8");
-    let events = defender_plays(&mut run, &content, Seat::DEFENDERS[1], "C8");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "C8");
+    // Since 03.11.2026 the player picks three cards first.
+    let hand = run.game().expect("game").game.hand(Seat::DECLARER);
+    let pick = [hand[0].id, hand[1].id, hand[2].id];
+    let events = run
+        .apply_step(&content, RunAction::ChooseRiseCards(pick))
+        .expect("pick");
     let rose = events.iter().find_map(|e| match e {
-        RunEvent::Game(Event::CardRose { card, .. }) => Some(*card),
+        RunEvent::Game(Event::CardRose { card, risen, .. }) => Some((*card, *risen)),
         _ => None,
     });
-    assert_eq!(rose, Some(wild), "it rises as the Kreuz-Sieben");
-    assert_eq!(held(&run, id_of("D7")), wild, "and stays it");
-    assert!(!wild.wild);
+    let (card, risen) = rose.expect("rose");
+    assert_eq!(card, wild, "it was played as the Kreuz-Sieben");
+    // The Kreuz-Acht won the trick: it comes back as a copy of it.
+    let back = risen.expect("risen");
+    assert_eq!(back.kind, kind("C8"));
+    assert_eq!(held(&run, id_of("D7")), back, "and stays it");
+    assert!(!back.wild);
 }
 
 #[test]

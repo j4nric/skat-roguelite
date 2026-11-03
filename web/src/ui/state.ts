@@ -145,6 +145,8 @@ export interface UiState {
   risen: { substitute: number; card: string } | null;
   /** "Untot": the card climbing back into the hand right now (CardRose), drawn with a green glow. */
   rising: number | null;
+  /** "Untot": the hand cards picked so far for the rising card (core `rise_choice`). */
+  risePick: number[];
   /** The opponent whose move the core is computing (thought bubble). */
   thinking: Seat | null;
   /** A Stammgast's speech bubble on the table, at most one at a time. */

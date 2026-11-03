@@ -125,6 +125,41 @@ impl Rank {
         }
     }
 
+    /// The rank `steps` steps higher in the order of a suit (7, 8, 9,
+    /// Ober, König, 10, Daus), for "Winkel" (DESIGN 7.2): the card becomes
+    /// that card. A Daus stays a Daus, and a Unter never rises and is never
+    /// reached.
+    #[must_use]
+    pub const fn promoted(self, steps: u8) -> Rank {
+        if matches!(self, Rank::Jack) {
+            return self;
+        }
+        let mut rank = self;
+        let mut left = steps;
+        while left > 0 {
+            rank = match rank {
+                Rank::Seven => Rank::Eight,
+                Rank::Eight => Rank::Nine,
+                Rank::Nine => Rank::Queen,
+                Rank::Queen => Rank::King,
+                Rank::King => Rank::Ten,
+                Rank::Ten | Rank::Ace | Rank::Jack => Rank::Ace,
+            };
+            left -= 1;
+        }
+        rank
+    }
+
+    /// How many steps this rank can rise with "Winkel" ([`Rank::promoted`]):
+    /// 0 for the Unter and the Daus.
+    #[must_use]
+    pub const fn promotion_room(self) -> u8 {
+        match self {
+            Rank::Jack | Rank::Ace => 0,
+            _ => 7 - self.suit_game_strength(),
+        }
+    }
+
     /// One-character symbol used in the card notation.
     #[must_use]
     pub const fn symbol(self) -> char {
@@ -354,6 +389,22 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
     /// [`crate::rules::trump_strength`]). `false` for plain cards.
     fn demoted(self) -> bool {
         false
+    }
+
+    /// Whether this card is "Blei" (DESIGN 7.2): in a Null game it is the
+    /// lowest card of its suit, below the Seven (see
+    /// [`crate::rules::suit_strength`]). `false` for plain cards.
+    fn leaden(self) -> bool {
+        false
+    }
+
+    /// "Untot" (DESIGN 7.2): this card as it rises from a trick that
+    /// `winner` won, a copy of the winning card that keeps the identity of
+    /// this one (its instance, owner and whether its holder is shown).
+    /// Plain cards have no identity of their own: the winner itself.
+    #[must_use]
+    fn risen_as(self, winner: Self) -> Self {
+        winner
     }
 
     /// The identity of this card instance across editions (ADR 0015): the

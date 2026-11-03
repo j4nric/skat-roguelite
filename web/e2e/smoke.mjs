@@ -200,8 +200,17 @@
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
 //   the Grün-König (22), both with their Untot look. In an Eichel Hand
 //   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
-//   complete (toast "Untot"), the last trick shows the substitute with its
-//   note "Ersatz" and not the Daus, and the Daus has no plaque any more.
+//   complete (toast "Untot") after the sheet "Wähle 3 Karten" took three
+//   hand cards (the button waits for three, a fourth is not taken), the
+//   last trick shows the substitute with its note "Ersatz" and not the
+//   Daus, and the Daus has no plaque any more.
+// - Zinken v2 (zinkenV2Pass, undead.json patched): Blei, Goldkante,
+//   Fadenkreuz, Schneiderkreide and Winkel (the Grün-Acht with Winkel 2
+//   shows the Oberin picture and its scribbled Acht index) in the hand, the
+//   Doppelgänger on the Grün-König with its mirror picture; played with
+//   full motion it shimmers, reaches to Tante Erna, both cards fly (the
+//   stolen Rot-König into the trick, the König to her) and "Getauscht!"
+//   pops up. Mid-animation screenshots on phone and desktop.
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
@@ -2743,9 +2752,12 @@ async function framesPass(browser, errors, reducedMotion) {
   // when, band at the bottom middle = how much (its colour per
   // modification), curses anthracite; Untot and Wandelkarte change the
   // picture; one normal modification per card, a special card one more.
-  const band = { Augen: '#d98e0b', Rang: '#8e2430', Trumpf: '#6a3fa8', 'Letzter Stich': '#16707a', 'Erster Stich': '#d2552a', Gutschein: '#2f7d6a', Durchsichtig: '#33363b', Ramponiert: '#33363b', Fleckig: '#33363b' };
+  const band = { Augen: '#d98e0b', Trumpf: '#6a3fa8', 'Letzter Stich': '#16707a', 'Erster Stich': '#d2552a', Gutschein: '#2f7d6a', Durchsichtig: '#33363b', Ramponiert: '#33363b', Fleckig: '#33363b' };
   expect('Schellen-Zehn', (c) => c.fills.includes(band.Augen) && c.fills.includes('#ffe08a'), 'has no gold Augen frame and band');
-  expect('Schellen-Unter', (c) => c.fills.includes(band.Rang), 'has no wine Rang band');
+  // Winkel since 03.11.2026: the save's Winkel on the Schellen-Unter became Aufdruck (no Winkel on a Unter),
+  // its Winkel 2 on the Schellen-Oberin shows the Zehn's picture and a black scribble over the printed index.
+  expect('Schellen-Unter', (c) => c.label.includes('Aufdruck') && c.fills.includes(band.Augen), 'was not converted to Aufdruck');
+  expect('Schellen-Oberin', (c) => c.picture.includes('#f-DT') && c.picture.includes('#x-DQ') && c.fills.includes('#1c1a1a'), 'shows no Winkel scribble with the Zehn picture');
   expect('Schellen-König', (c) => c.fills.includes(band.Trumpf), 'has no purple Trumpf frame');
   expect('Schellen-Daus', (c) => c.fills.includes(band['Letzter Stich']), 'has no petrol Letzter-Stich frame');
   expect('Rot-Sieben', (c) => c.fills.includes(band['Erster Stich']), 'has no rust Erster-Stich frame');
@@ -3628,6 +3640,8 @@ async function undeadPass(browser, errors, reducedMotion) {
     }).observe(document.body, { childList: true, subtree: true });
   });
   await page.click('[data-action="play"][data-id="31"]');
+  // Since 03.11.2026 the player picks three cards first; one of them goes into the trick.
+  await pickRiseCards(page, 'Untot', 'undead-pick');
   await page.waitForFunction(() => window.__toasts.some((t) => t.startsWith('Untot:')), null, { timeout: 30000 });
   await page.waitForFunction(() => window.__rising, null, { timeout: 5000 }).catch(() => fail('Untot: the risen Daus does not glow'));
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
@@ -3643,6 +3657,25 @@ async function undeadPass(browser, errors, reducedMotion) {
   log(`Untot: ${toast}`);
   await shoot(page, 'undead-last-trick');
   await context.close();
+}
+
+/**
+ * "Untot" (03.11.2026): after the trick a sheet asks for three cards of
+ * the hand; the button only works with three picked.
+ */
+async function pickRiseCards(page, label, shot = null) {
+  await page.waitForSelector('[data-testid="rise-choice"]', { timeout: 30000 }).catch(() => fail(`${label}: no sheet to pick three cards`));
+  const title = await page.locator('.sheet-rise h2').textContent();
+  if (!title?.includes('Wähle 3 Karten')) fail(`${label}: the pick sheet says "${title}"`);
+  if (!(await page.locator('[data-testid="rise-go"][disabled]').count())) fail(`${label}: the button works before three cards are picked`);
+  const cards = page.locator('[data-testid="rise-choice"] .rise-card');
+  for (let i = 0; i < 3; i++) await cards.nth(i).click();
+  if ((await page.locator('[data-testid="rise-choice"] .rise-card.is-picked').count()) !== 3) fail(`${label}: three cards are not marked`);
+  await cards.nth(3).click();
+  if ((await page.locator('[data-testid="rise-choice"] .rise-card.is-picked').count()) !== 3) fail(`${label}: a fourth card could be picked`);
+  if (shot) await shoot(page, shot);
+  await page.click('[data-testid="rise-go"]');
+  await page.waitForSelector('[data-testid="rise-choice"]', { state: 'detached', timeout: 30000 });
 }
 
 /**
@@ -3668,12 +3701,117 @@ async function undeadGlowPass(browser, errors) {
   await page.waitForSelector('.declare', { state: 'detached' });
   await page.waitForSelector('[data-action="play"][data-id="31"]', { timeout: 30000 });
   await page.click('[data-action="play"][data-id="31"]');
+  await pickRiseCards(page, 'Untot glow');
   // Out of the way, so no info card opens over the hand.
   await page.mouse.move(380, 20);
   await page.waitForSelector('.hand-card.is-rising[data-id="31"]', { state: 'attached', timeout: 30000 }).catch(() => fail('Untot: no glow with full motion'));
   await page.waitForTimeout(380);
   await page.screenshot({ path: join(screens, 'undead-rising-390x844.png') });
   log('screenshot undead-rising');
+  await context.close();
+}
+
+/**
+ * Zinken v2 (03.11.2026) on undead.json: the new Zinken on hand cards
+ * (Blei, Goldkante, Fadenkreuz, Schneiderkreide, Winkel 1 and 2 with the
+ * black scribble) and the Doppelgänger on the Grün-König (22), in place
+ * of its Untot.
+ */
+function zinkenV2Save() {
+  return patched('undead.json', (save) => {
+    const put = (id, mods, values = {}) => {
+      const card = save.run.edition.cards.find((c) => c.id === id);
+      card.mods = mods;
+      card.mod_values = values;
+    };
+    put(16, ['lead']);
+    put(17, ['rank'], { rank: 2 });
+    put(2, ['rank'], { rank: 1 });
+    put(19, ['gilt_edge'], { gilt_edge: 1 });
+    put(23, ['crosshair'], { crosshair: 1 });
+    put(27, ['tailors_chalk'], { tailors_chalk: 1 });
+    put(22, ['doppelganger']);
+  });
+}
+
+/** Declare Eichel Hand on the undead.json deal. */
+async function declareClubsHand(page) {
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+}
+
+/**
+ * Zinken v2: the new looks in the hand and the Doppelgänger's swap scene
+ * with full motion and the slow tempo: the mirror shimmer, the reach to
+ * the robbed Stammgast, both cards crossing ("Getauscht!"). Mid-animation
+ * screenshots per viewport.
+ */
+async function zinkenV2Pass(browser, errors, viewport) {
+  const size = `${viewport.width}x${viewport.height}`;
+  const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    if (!localStorage.getItem('stammtisch.settings')) {
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ tempo: 'slow', sound: false, thinking: false, hints: false }));
+    }
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeState(page, 'zinken v2', zinkenV2Save());
+  await page.waitForSelector('.declare');
+  const looks = {
+    16: 'lead',
+    19: 'gilt_edge',
+    23: 'crosshair',
+    27: 'tailors_chalk',
+  };
+  for (const [id, mod] of Object.entries(looks)) {
+    if (!(await page.locator(`.hand-card[data-id="${id}"] svg[aria-label*="${mod === 'lead' ? 'Blei' : mod === 'gilt_edge' ? 'Goldkante' : mod === 'crosshair' ? 'Fadenkreuz' : 'Schneiderkreide'}"]`).count())) fail(`Zinken v2: card ${id} does not carry ${mod}`);
+  }
+  // Winkel 2 on the Grün-Acht: the picture of the Grün-Oberin, the Acht scribbled out.
+  if (!(await page.locator('.hand-card[data-id="17"] use.face-pic[href="#f-SQ"]').count())) fail('Winkel: the Grün-Acht does not show the Oberin picture');
+  if (!(await page.locator('.hand-card[data-id="17"] use.face-idx[href="#x-S8"]').count())) fail('Winkel: the printed index is not the Acht');
+  if (!(await page.locator('.hand-card[data-id="22"] svg[data-special="doppelganger"] use.face-pic[href="#d-SK"]').count())) fail('Doppelgänger: the Grün-König shows no mirror picture');
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'), null, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: join(screens, `zinken-v2-hand-${size}.png`) });
+  await page.locator('.hand').screenshot({ path: join(screens, `zinken-v2-cards-${size}.png`) });
+  await declareClubsHand(page);
+  await page.waitForSelector('[data-action="play"][data-id="22"]', { timeout: 30000 });
+  await page.evaluate(() => {
+    window.__doppel = { given: false, stolen: false, reach: false, word: false, shimmer: false };
+    new MutationObserver(() => {
+      const d = window.__doppel;
+      if (document.querySelector('[data-testid="doppel-flight-given"]')) d.given = true;
+      if (document.querySelector('[data-testid="doppel-flight-stolen"]')) d.stolen = true;
+      if (document.querySelector('[data-testid="doppel-reach"]')) d.reach = true;
+      if (document.querySelector('[data-testid="doppel-word"]')) d.word = true;
+      if (document.querySelector('[data-testid="doppel-shimmer"]')) d.shimmer = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await page.click('[data-action="play"][data-id="22"]');
+  await page.mouse.move(viewport.width - 10, 10);
+  await page.waitForSelector('[data-testid="doppel-shimmer"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no mirror shimmer'));
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: join(screens, `doppel-shimmer-${size}.png`) });
+  await page.waitForSelector('[data-testid="doppel-flight-stolen"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: the stolen card does not fly'));
+  await page.waitForTimeout(380);
+  await page.screenshot({ path: join(screens, `doppel-cross-${size}.png`) });
+  await page.waitForSelector('[data-testid="doppel-word"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no "Getauscht!"'));
+  await page.screenshot({ path: join(screens, `doppel-word-${size}.png`) });
+  const seen = await page.evaluate(() => window.__doppel);
+  if (!seen.given || !seen.stolen) fail(`Doppelgänger: both flights must happen (${JSON.stringify(seen)})`);
+  if (!seen.reach) fail('Doppelgänger: no reach to the robbed Stammgast');
+  const word = await page.locator('[data-testid="doppel-word"]').first().textContent().catch(() => '');
+  if (word && word !== 'Getauscht!') fail(`Doppelgänger: the word says "${word}"`);
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'), null, { timeout: 30000 });
+  // The Grün-König is with the Stammgast now, the Rot-König lay in the trick.
+  if (await page.locator('.hand-card[data-id="22"]').count()) fail('Doppelgänger: the card is still in the hand');
+  log(`Doppelgänger: ${JSON.stringify(seen)}`);
   await context.close();
 }
 
@@ -4501,6 +4639,8 @@ async function run() {
     await specialPass(browser, errors, reducedMotion);
     await undeadPass(browser, errors, reducedMotion);
     await undeadGlowPass(browser, errors);
+    await zinkenV2Pass(browser, errors, PHONE);
+    await zinkenV2Pass(browser, errors, DESKTOP);
     await shortEvening(browser, errors, reducedMotion);
     await charactersPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);

@@ -152,7 +152,13 @@ impl Run {
     /// it fits the printed card and the rules of [`crate::deck::Edition`]
     /// take it (not on a cursed card, not past its maximum). Tried on a
     /// copy of the edition.
-    fn takes(&self, content: &Content, card: u32, card_mod: &CardModId, value: i32) -> bool {
+    pub(super) fn takes(
+        &self,
+        content: &Content,
+        card: u32,
+        card_mod: &CardModId,
+        value: i32,
+    ) -> bool {
         let Some(def) = content.card_mod(card_mod) else {
             return false;
         };

@@ -310,14 +310,19 @@ pub const MAX_REROLLS: u32 = 2;
 /// | Zinke | Value | Why |
 /// |---|---|---|
 /// | `trump_bonus` (Siegel) | 3 | Grundwert, on an ace often in the trump suit |
-/// | `rank` (Winkel) | 3 | wins tricks |
+/// | `rank` (Winkel) | 3 | the card becomes the next higher one, wins tricks |
 /// | `points` (Aufdruck) | 2 | Augen |
 /// | `first_trick` (Eselsohr) | 2 | an ace often wins the first trick |
 /// | `last_trick` (Kerbe) | 1 | the last trick is rarely the ace's |
 /// | `voucher_coins` (Pfandmarke) | 1 | Groschen, if discarded |
 /// | `undead` (Untot, rare in the Auslage) | 2 | a strong card comes back once per game |
 /// | `wild_card` (Wandelkarte, rare in the Auslage) | 1 | helps to follow suit, hard to judge |
-pub const ZINKEN_VALUES: [(&str, u32); 8] = [
+/// | `gilt_edge` (Goldkante) | 2 | a Groschen per trick the card takes |
+/// | `crosshair` (Fadenkreuz) | 1 | only when it beats a defender's Daus |
+/// | `tailors_chalk` (Schneiderkreide) | 1 | only in a won Schneider game |
+/// | `lead` (Blei) | 1 | only in Null, which the bot rarely plays |
+/// | `doppelganger` (Doppelgänger, rare in the Auslage) | 1 | a swap at random, hard to judge |
+pub const ZINKEN_VALUES: [(&str, u32); 13] = [
     ("trump_bonus", 3),
     ("rank", 3),
     ("points", 2),
@@ -326,6 +331,11 @@ pub const ZINKEN_VALUES: [(&str, u32); 8] = [
     ("voucher_coins", 1),
     ("undead", 2),
     ("wild_card", 1),
+    ("gilt_edge", 2),
+    ("crosshair", 1),
+    ("tailors_chalk", 1),
+    ("lead", 1),
+    ("doppelganger", 1),
 ];
 
 /// A trade offer ("Hehlerware", "Schnäppchen", curses as trade) is worth
@@ -1195,6 +1205,9 @@ impl RunBot {
             let re = RunBot::says_re(game.hand(Seat::DECLARER), declaration.game());
             return Some(RunAction::AnswerKontra { re });
         }
+        if let Some(cards) = Self::rise_cards(run) {
+            return Some(RunAction::ChooseRiseCards(cards));
+        }
         match game.phase() {
             Phase::Declaring => {
                 if let Some(rescue) = Self::rescue_schnapps(run, content) {
@@ -1249,6 +1262,29 @@ impl RunBot {
                 Some(RunAction::Play(chosen.id))
             }
             Phase::Finished(_) => None,
+        }
+    }
+
+    /// The three cards the bot offers for a rising "Untot" card
+    /// ([`Run::rise_pending`]; simple rule, not tuned): the weakest of his
+    /// hand, fewest Augen first, then the lowest strength in the game, then
+    /// the id. `None` if nothing waits.
+    #[must_use]
+    pub fn rise_cards(run: &Run) -> Option<[u32; 3]> {
+        run.rise_pending()?;
+        let game = &run.game()?.game;
+        let declaration = game.declaration()?;
+        let mut hand: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
+        hand.sort_by_key(|&c| {
+            (
+                c.signed_points(),
+                crate::ai::solver::card_strength(declaration.game(), c),
+                c.id,
+            )
+        });
+        match hand.as_slice() {
+            [a, b, c, ..] => Some([a.id, b.id, c.id]),
+            _ => None,
         }
     }
 

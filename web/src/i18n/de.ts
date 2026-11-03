@@ -31,6 +31,8 @@ export const de = {
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
       LivesFull: 'Dir fehlt kein Leben.',
       PainterPending: 'Erst eine Zinke des Kartenmalers wählen.',
+      RisePending: 'Erst die drei Karten für die untote Karte wählen.',
+      InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',
       SchnappsRewardPending: 'Erst entscheiden, was mit dem neuen Schnaps passiert.',
       AlreadyUsed: 'Das gibt es an diesem Tresen nur einmal.',
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
@@ -223,6 +225,9 @@ export const de = {
     chalked: 'mit Blue Curaçao umgefärbt, eigentlich {suit}',
     noDiscard: 'darf nicht gedrückt werden',
     canRise: 'Untot: steht in diesem Spiel noch einmal auf',
+    promotedOne: 'Winkel: eine Stufe höher, ihre Augen bleiben',
+    promotedMany: 'Winkel: {n} Stufen höher, ihre Augen bleiben',
+    leaden: 'Blei: im Null die niedrigste ihrer Farbe',
     named: 'Wandelkarte, eigentlich {suit}',
   },
 
@@ -458,6 +463,20 @@ export const de = {
     you: 'Du',
   },
 
+  /** "Untot" (DESIGN 7.2, 03.11.2026): the pick of three hand cards. */
+  rise: {
+    title: 'Wähle {n} Karten – eine davon geht in den Stich',
+    text: '{card} steht wieder auf und kommt als {becomes} zurück. Eine der Karten, die du wählst, wird gezogen und liegt für sie im Stich.',
+    go: 'Los',
+    more: 'Noch {n} wählen',
+  },
+
+  /** "Doppelgänger": the words of its swap scene. */
+  doppel: {
+    swapped: 'Getauscht!',
+    unmatched: 'Kein Gegenstück',
+  },
+
   kontra: {
     title: 'Kontra!',
     text: '{name} sagt Kontra. Der Spielwert verdoppelt sich.',
@@ -508,7 +527,9 @@ export const de = {
     relicGained: '{name} gehört jetzt dir.',
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
     cardDrawn: 'Drei drücken: {card} von {name} kommt dazu.',
-    cardRose: 'Untot: {card} steht wieder auf und kehrt auf die Hand zurück. {substitute} liegt im Stich.',
+    cardRose: 'Untot: {card} steht wieder auf und kehrt als {risen} auf die Hand zurück. {substitute} liegt im Stich.',
+    doppelSwapped: 'Doppelgänger: {card} nimmt {name} {stolen} ab. {name} bekommt {card}.',
+    doppelUnmatched: 'Doppelgänger: niemand hat ein Gegenstück, {card} zählt als sie selbst.',
     cardReturned: '{card} geht an {name} zurück.',
     skatShown: 'Spickzettel: {card} liegt im Skat.',
     debt: 'Angeschrieben: {debt} Groschen Schulden.',
@@ -885,16 +906,21 @@ export const de = {
     title: 'Neu in deiner Ausgabe',
     lead: '{card} ist jetzt {special}.',
     undead: [
-      'Spielst du sie im Farbspiel oder Grand, steht sie nach dem Stich wieder auf und kehrt auf deine Hand zurück.',
-      'Eine zufällige andere Karte deiner Hand nimmt ihren Platz im Stich ein, der Stich bleibt, wer ihn hat.',
+      'Spielst du sie im Farbspiel oder Grand, steht sie nach dem Stich wieder auf und kehrt als die Karte auf deine Hand zurück, die den Stich gemacht hat.',
+      'Du wählst drei Karten deiner Hand, eine davon wird gezogen und nimmt ihren Platz im Stich ein. Der Stich bleibt, wer ihn hat.',
       'Einmal pro Spiel, nie als letzte Karte. Im Null und im Ramsch ist sie eine normale Karte.',
+    ],
+    doppelganger: [
+      'Spielst du sie, nimmt sie dem nächsten Gegner eine Karte gleichen Rangs aus einer anderen Farbe ab, sonst dem anderen Gegner.',
+      'Die abgenommene Karte liegt im Stich, der Gegner bekommt deine Karte für den Rest des Spiels.',
+      'Bedienen musst du mit ihrer gedruckten Farbe. Ohne Gegenstück zählt sie als sie selbst; im Ramsch immer.',
     ],
     wild_card: [
       'Bei Spielbeginn nimmt sie die Farbe an, von der du die meisten Karten hältst (ohne Unter).',
       'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
       'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
     ],
-    cap: 'Höchstens ein Untot und eine Wandelkarte je Ausgabe. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Ausgabe. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
     go: 'Verstanden',
   },
 

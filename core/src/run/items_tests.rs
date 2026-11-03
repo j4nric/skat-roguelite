@@ -29,6 +29,8 @@ const WEAK_SKAT: &str = "C8 C9";
 
 /// Kreuz-Daus in the standard deck.
 const CLUBS_ACE: u32 = 31;
+/// The König next to it: "Winkel" fits no Daus (03.11.2026).
+const KING_BESIDE: u32 = 30;
 
 fn diamonds_hand() -> Declaration {
     Declaration::suit(Suit::Diamonds, RiskLevel::Hand)
@@ -737,8 +739,8 @@ fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
         };
         let view = run.view(&content).encounter.expect("view");
         assert_eq!(view.options[0].target, OptionTarget::Card);
-        assert!(view.options[0].targets.contains(&CLUBS_ACE));
-        let events = choose(&mut run, &content, 0, Some(CLUBS_ACE));
+        assert!(view.options[0].targets.contains(&KING_BESIDE));
+        let events = choose(&mut run, &content, 0, Some(KING_BESIDE));
         let curse = events
             .iter()
             .find_map(|e| match e {
@@ -746,7 +748,7 @@ fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
                 _ => None,
             })
             .expect("resolved");
-        let card = run.edition().get(CLUBS_ACE).expect("card");
+        let card = run.edition().get(KING_BESIDE).expect("card");
         if curse {
             cursed += 1;
             assert!(card.mods.iter().any(|m| {
@@ -832,14 +834,14 @@ fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
         ),
         Err(RunError::TargetRequired)
     );
-    let events = choose(&mut run, &content, 0, Some(CLUBS_ACE));
+    let events = choose(&mut run, &content, 0, Some(KING_BESIDE));
     assert!(events.contains(&RunEvent::NextPubPlanned {
         redeals: -1,
         target: 0
     }));
     assert!(
         run.edition()
-            .get(CLUBS_ACE)
+            .get(KING_BESIDE)
             .expect("card")
             .mods
             .contains(&CardModId::new("rank"))

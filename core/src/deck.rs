@@ -127,6 +127,15 @@ pub struct DealtCard {
     /// Whose edition this copy is.
     #[serde(default)]
     pub owner: Owner,
+    /// "Winkel" (DESIGN 7.2): how many steps the card rose; `kind` is the
+    /// card it became, the printed rank lies this many steps below
+    /// ([`crate::cards::Rank::promoted`]). Its Augen stay those of the
+    /// printed card. For the view; the rules only look at `kind`.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub promoted: u8,
+    /// "Blei" (DESIGN 7.2): see [`PlayingCard::leaden`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leaden: bool,
 }
 
 impl DealtCard {
@@ -146,12 +155,19 @@ impl DealtCard {
             wild: false,
             demoted: false,
             owner: Owner::Player,
+            promoted: 0,
+            leaden: false,
         }
     }
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u8(n: &u8) -> bool {
     *n == 0
 }
 
@@ -190,6 +206,20 @@ impl PlayingCard for DealtCard {
 
     fn demoted(self) -> bool {
         self.demoted
+    }
+
+    fn leaden(self) -> bool {
+        self.leaden
+    }
+
+    fn risen_as(self, winner: DealtCard) -> DealtCard {
+        DealtCard {
+            id: self.id,
+            owner: self.owner,
+            revealed: self.revealed,
+            wild: false,
+            ..winner
+        }
     }
 
     fn instance(self) -> Option<u32> {
@@ -372,10 +402,42 @@ const fn one() -> i32 {
 }
 
 /// The version of the card modifications in a saved deck: 2 is effects v2
-/// (DESIGN 7.2), 3 caps "Rang" at [`RANK_MAX`] (02.11.2026). A deck without
-/// it is converted when it is loaded ([`migrate_legacy_mods`]), a deck of
+/// (DESIGN 7.2), 3 caps "Rang" at [`RANK_MAX`] (02.11.2026), 4 is the new
+/// "Winkel" (03.11.2026, [`migrate_winkel`]). A deck without it is
+/// converted when it is loaded ([`migrate_legacy_mods`]), a deck of
 /// version 2 gets its Rang capped.
-pub const MODS_VERSION: u32 = 3;
+pub const MODS_VERSION: u32 = 4;
+
+/// Augen per step of an old "Winkel" on a Unter or Daus, which the new
+/// Winkel does not fit: it becomes "Aufdruck" with this many Augen per
+/// step (the Aufdruck of the Auslage, DESIGN 7.2, 03.11.2026).
+pub const WINKEL_TO_AUGEN: i32 = 3;
+
+/// Convert an old "Winkel" (`rank`, "sticht so viele Stufen höher") to the
+/// new one (03.11.2026: the card becomes the next higher card): on a Unter
+/// or Daus, which cannot rise, it becomes [`AUGEN`] with
+/// [`WINKEL_TO_AUGEN`] per step; elsewhere it keeps its value, at most the
+/// steps the printed rank can rise (a Zehn once). Everything else stays.
+pub fn migrate_winkel(card: &mut DeckCard) {
+    let rank = CardModId::new("rank");
+    let Some(face) = card.kind.face() else {
+        return;
+    };
+    if !card.mods.contains(&rank) {
+        return;
+    }
+    let value = card.mod_value(&rank);
+    let room = i32::from(face.rank.promotion_room());
+    if room == 0 {
+        card.drop_mod(&rank);
+        let augen = CardModId::new(AUGEN);
+        card.mods.push(augen.clone());
+        card.mod_values
+            .insert(augen, value.saturating_mul(WINKEL_TO_AUGEN));
+    } else if value > room {
+        card.mod_values.insert(rank, room);
+    }
+}
 
 /// The highest value of "Rang" (`rank`), the same as `max` in
 /// `card_mods.ron` (a test checks it). Saves are migrated without content,
@@ -419,6 +481,11 @@ impl<'de> Deserialize<'de> for Edition {
                 if let Some(value) = card.mod_values.get_mut(&rank) {
                     *value = (*value).min(RANK_MAX);
                 }
+            }
+        }
+        if deck.mods_version < 4 {
+            for card in &mut deck.cards {
+                migrate_winkel(card);
             }
         }
         deck.mods_version = MODS_VERSION;
@@ -715,7 +782,8 @@ impl Edition {
             .iter()
             .find(|m| special(m) == def.is_special())
             .cloned();
-        let limit = |v: i32| def.max.map_or(v, |max| v.min(max));
+        let max = def.max_on(card.kind);
+        let limit = |v: i32| max.map_or(v, |max| v.min(max));
         let mut replaced = None;
         let new_value = match current {
             Some(old) if old == *card_mod => {
