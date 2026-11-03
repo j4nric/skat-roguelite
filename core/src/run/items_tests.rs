@@ -4,6 +4,7 @@
 
 use super::content_tests::{content, fixed_deal, play, relic_run};
 use super::tour::{RouteStop, Transport};
+use super::view::OptionTarget;
 use super::*;
 use crate::cards::Suit;
 use crate::content::{ConsumableCategory, Factor, MalusId, RelicGroup, StopCategory};
@@ -233,34 +234,22 @@ fn an_old_save_drops_the_removed_relics_and_items_on_load() {
     let shop = run.shop().expect("shop");
     assert_eq!(shop.relics[0], None);
     assert_eq!(shop.consumables[0], None);
+    // An encounter option naming a removed relic stays, without it.
     let mut run = relic_run(&content, &["old_lady"]);
-    run.game = None;
-    run.phase = RunPhase::Encounter;
-    run.encounter = Some(ActiveEncounter {
-        id: EncounterId::new("stammtisch_dispute"),
-        options: vec![
-            EncounterOption {
-                choice: EncounterChoice::TakeRule(RelicId::new("bock_round")),
-                cost: 0,
-                card_mod: None,
-                value: None,
-            },
-            EncounterOption {
-                choice: EncounterChoice::TakeRule(RelicId::new("blind_eye")),
-                cost: 0,
-                card_mod: None,
-                value: None,
-            },
-            EncounterOption {
-                choice: EncounterChoice::Leave,
-                cost: 0,
-                card_mod: None,
-                value: None,
-            },
-        ],
-    });
+    let encounter = run.test_encounter(&content, "stammtisch_dispute");
+    encounter.options[0].effects = vec![EncounterEffect::EveningRule(Some(RelicId::new(
+        "bock_round",
+    )))];
+    encounter.options[1].effects =
+        vec![EncounterEffect::EveningRule(Some(RelicId::new("show_off")))];
     run.drop_unknown_content(&content);
-    assert_eq!(run.encounter().expect("open").options.len(), 2);
+    let options = &run.encounter().expect("open").options;
+    assert_eq!(options.len(), 3);
+    assert_eq!(options[1].effects, vec![EncounterEffect::EveningRule(None)]);
+    assert_eq!(
+        run.encounter_option_block(&content, 1),
+        Some(OptionBlock::NothingLeft)
+    );
     // A renamed Schnaps keeps its slot: "Kreide" is "Blue Curaçao".
     let mut run = relic_run(&content, &[]);
     run.consumables = vec![ConsumableId::new("chalk"), ConsumableId::new("bitters")];
@@ -669,33 +658,56 @@ fn dive_expert_offers_two_maluses_to_choose_from() {
 // New encounters
 // ---------------------------------------------------------------------------
 
+/// The effects of option `i`.
+fn effects(options: &[EncounterOption], i: usize) -> &[EncounterEffect] {
+    &options[i].effects
+}
+
 #[test]
 fn the_landlord_treats_to_a_schnaps_or_groschen() {
     let content = content();
     let mut run = at_route(&content, &[]);
     run.consumables.clear();
     let options = open(&mut run, &content, "landlord_treat");
-    assert_eq!(options.len(), 5, "three Schnäpse, Groschen, walk on");
-    let schnaps = match &options[0].choice {
-        EncounterChoice::TakeConsumable(id) => id.clone(),
+    assert_eq!(options.len(), 3, "two Schnäpse, Groschen");
+    let schnaps = |i: usize| match effects(&options, i) {
+        [EncounterEffect::Schnapps(Some(id))] => id.clone(),
         other => panic!("{other:?}"),
     };
-    let def = content.consumable(&schnaps).expect("known");
+    let (first, second) = (schnaps(0), schnaps(1));
+    assert_ne!(first, second);
+    let def = content.consumable(&first).expect("known");
     assert_eq!(def.category, ConsumableCategory::Schnapps);
-    assert_eq!(options[3].choice, EncounterChoice::TakeCoins(5));
+    assert_eq!(effects(&options, 2), [EncounterEffect::Coins(5)]);
     let view = run.view(&content).encounter.expect("view");
-    assert!(view.options[0].consumable.is_some());
+    assert!(view.options[0].effects[0].consumable.is_some());
+    assert_eq!(view.options[0].effects[0].coins_instead, None);
     let events = choose(&mut run, &content, 0, None);
     assert!(events.contains(&RunEvent::ConsumableGained {
-        consumable: schnaps.clone()
+        consumable: first.clone()
     }));
-    assert_eq!(run.consumables(), &[schnaps]);
+    assert_eq!(run.consumables(), &[first]);
     // Or the Groschen.
     let mut run = at_route(&content, &[]);
     let coins = run.coins();
     open(&mut run, &content, "landlord_treat");
-    choose(&mut run, &content, 3, None);
+    choose(&mut run, &content, 2, None);
     assert_eq!(run.coins(), coins + 5);
+    // Every slot full: the Schnaps pays its price instead.
+    let mut run = at_route(&content, &[]);
+    run.consumables = vec![ConsumableId::new("shot"), ConsumableId::new("herbal")];
+    let coins = run.coins();
+    let options = open(&mut run, &content, "landlord_treat");
+    let price = match effects(&options, 0) {
+        [EncounterEffect::Schnapps(Some(id))] => content.consumable(id).expect("known").price,
+        other => panic!("{other:?}"),
+    };
+    let view = run.view(&content).encounter.expect("view");
+    assert_eq!(view.options[0].effects[0].coins_instead, Some(price));
+    assert!(view.options[0].can_choose);
+    choose(&mut run, &content, 0, None);
+    assert_eq!(run.coins(), coins + price);
+    assert_eq!(run.consumables().len(), 2);
 }
 
 #[test]
@@ -707,12 +719,20 @@ fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
         run.encounter_rng = crate::rng::Rng::from_seed(seed);
         run.coins = 5;
         let options = open(&mut run, &content, "card_sharp");
-        assert_eq!(options.len(), 2);
-        assert_eq!(options[0].choice, EncounterChoice::Gamble);
+        assert_eq!(options.len(), 3);
         assert_eq!(options[0].cost, 2);
-        let offer = options[0].card_mod.clone().expect("named");
+        let offer = match effects(&options, 0) {
+            [
+                EncounterEffect::Mark {
+                    card_mod: Some(m),
+                    curse_percent: 50,
+                    ..
+                },
+            ] => m.clone(),
+            other => panic!("{other:?}"),
+        };
         let view = run.view(&content).encounter.expect("view");
-        assert!(view.options[0].needs_target);
+        assert_eq!(view.options[0].target, OptionTarget::Card);
         assert!(view.options[0].targets.contains(&CLUBS_ACE));
         let events = choose(&mut run, &content, 0, Some(CLUBS_ACE));
         let curse = events
@@ -739,20 +759,31 @@ fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
         }
     }
     assert!(good > 5 && cursed > 5, "{good} good, {cursed} cursed");
+    // Exposed: 4 Groschen hush money; or played against: double stakes.
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    open(&mut run, &content, "card_sharp");
+    choose(&mut run, &content, 1, None);
+    assert_eq!(run.coins(), coins + 4);
+    let mut run = at_route(&content, &[]);
+    open(&mut run, &content, "card_sharp");
+    choose(&mut run, &content, 2, None);
+    assert_eq!(run.pending_factor(), Some(2));
 }
 
 #[test]
-fn the_lost_wallet_pays_with_a_curse_or_a_life() {
+fn the_lost_wallet_pays_with_a_curse_a_life_or_a_finders_fee() {
     let content = content();
     let mut run = at_route(&content, &[]);
     let coins = run.coins();
     let options = open(&mut run, &content, "lost_wallet");
     assert_eq!(options.len(), 3);
-    assert!(
-        run.view(&content).encounter.expect("view").options[0]
-            .curse
-            .is_some()
-    );
+    let view = run.view(&content).encounter.expect("view");
+    assert!(view.options[0].effects.iter().any(|e| {
+        e.card_mod
+            .as_ref()
+            .is_some_and(|m| m.id.as_str() == "transparent")
+    }));
     choose(&mut run, &content, 0, None);
     // 8 from the wallet, 3 for the curse (every curse pays when attached).
     assert_eq!(run.coins(), coins + 8 + 3);
@@ -763,20 +794,30 @@ fn the_lost_wallet_pays_with_a_curse_or_a_life() {
         .filter(|c| c.mods.contains(&CardModId::new("transparent")))
         .count();
     assert_eq!(transparent, 1);
-    // Handed in: a life back.
+    // Handed in: a life back; with every life there it is not offered.
     let mut run = at_route(&content, &[]);
-    run.lives = 2;
+    run.lives = 1;
     open(&mut run, &content, "lost_wallet");
     choose(&mut run, &content, 1, None);
-    assert_eq!(run.lives(), 3);
+    assert_eq!(run.lives(), 2);
+    let mut run = at_route(&content, &[]);
+    run.lives = content.run.lives.max;
+    open(&mut run, &content, "lost_wallet");
+    assert_eq!(
+        run.encounter_option_block(&content, 1),
+        Some(OptionBlock::LivesFull)
+    );
+    // The finder's fee, no curse.
+    let coins = run.coins();
+    choose(&mut run, &content, 2, None);
+    assert_eq!(run.coins(), coins + 4);
 }
 
 #[test]
 fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
     let content = content();
     let mut run = at_route(&content, &[]);
-    let options = open(&mut run, &content, "skat_teacher");
-    assert_eq!(options[0].choice, EncounterChoice::Lesson { redeals: 1 });
+    open(&mut run, &content, "skat_teacher");
     assert_eq!(
         run.apply(
             &content,
@@ -806,15 +847,33 @@ fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
     assert_eq!(run.redeals_left(&content), own - 1);
     run.series.games_played = 1;
     assert_eq!(run.redeals_left(&content), own);
+    // The theory: both skat cards in the next game, from every deal until
+    // a game is declared.
+    let mut run = at_route(&content, &[]);
+    open(&mut run, &content, "skat_teacher");
+    let events = choose(&mut run, &content, 1, None);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::SkatPeeked { .. }))
+    );
+    let view = run.view(&content);
+    assert!(view.game.expect("game").skat_peek.is_some());
+    // Or a Kurzer.
+    let mut run = at_route(&content, &[]);
+    run.consumables.clear();
+    open(&mut run, &content, "skat_teacher");
+    choose(&mut run, &content, 2, None);
+    assert_eq!(run.consumables(), &[ConsumableId::new("shot")]);
 }
 
 #[test]
-fn the_bet_pays_double_for_a_won_schneider_and_is_lost_otherwise() {
+fn the_bet_pays_for_schneider_or_a_win_and_is_lost_otherwise() {
     let content = content();
     let mut run = at_route(&content, &[]);
     run.coins = 10;
     let options = open(&mut run, &content, "the_bet");
-    assert_eq!(options.len(), 3, "two stakes, walk on");
+    assert_eq!(options.len(), 3, "two stakes on Schneider, one on a win");
     assert_eq!(options[0].cost, 3);
     let events = choose(&mut run, &content, 0, None);
     assert!(events.contains(&RunEvent::WagerPlaced { stake: 3 }));
@@ -844,6 +903,18 @@ fn the_bet_pays_double_for_a_won_schneider_and_is_lost_otherwise() {
         payout: 0
     }));
     assert_eq!(run.coins(), coins);
+    // On a win: 2 staked, 3 back.
+    let mut run = at_route(&content, &[]);
+    run.coins = 10;
+    open(&mut run, &content, "the_bet");
+    choose(&mut run, &content, 2, None);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (events, _) = play(&mut run, &content, diamonds_hand());
+    assert!(events.contains(&RunEvent::WagerSettled {
+        stake: 2,
+        won: true,
+        payout: 3
+    }));
     // Not affordable: not chosen.
     let mut run = at_route(&content, &[]);
     run.coins = 2;
@@ -861,19 +932,31 @@ fn the_bet_pays_double_for_a_won_schneider_and_is_lost_otherwise() {
 }
 
 #[test]
-fn old_cards_give_a_voucher_and_a_curse() {
+fn old_cards_give_a_voucher_and_a_curse_or_groschen() {
     let content = content();
     let mut run = at_route(&content, &[]);
     let coins = run.coins();
     let options = open(&mut run, &content, "old_cards");
-    let (voucher, curse) = match &options[0].choice {
-        EncounterChoice::OldCards { voucher, curse } => (voucher.clone(), curse.clone()),
+    let (voucher, curse) = match effects(&options, 0) {
+        [
+            EncounterEffect::Mark {
+                card_mod: Some(voucher),
+                ..
+            },
+            EncounterEffect::Mark {
+                card_mod: Some(curse),
+                ..
+            },
+        ] => (voucher.clone(), curse.clone()),
         other => panic!("{other:?}"),
     };
-    assert!(["voucher_undead", "voucher_wild"].contains(&voucher.as_str()));
+    assert_eq!(voucher.as_str(), "voucher_undead");
     let view = run.view(&content).encounter.expect("view");
-    assert!(view.options[0].needs_target);
-    assert_eq!(view.options[0].curse.as_ref().map(|c| &c.id), Some(&curse));
+    assert_eq!(view.options[0].target, OptionTarget::Card);
+    assert_eq!(
+        view.options[0].effects[1].card_mod.as_ref().map(|c| &c.id),
+        Some(&curse)
+    );
     choose(&mut run, &content, 0, Some(CLUBS_ACE));
     assert!(
         run.edition()
@@ -892,6 +975,12 @@ fn old_cards_give_a_voucher_and_a_curse() {
     assert_eq!(cursed.len(), 1);
     assert_ne!(cursed[0], CLUBS_ACE, "another card");
     assert_eq!(run.coins(), coins + 3, "the curse pays");
+    // Or the old deck sold.
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    open(&mut run, &content, "old_cards");
+    choose(&mut run, &content, 2, None);
+    assert_eq!(run.coins(), coins + 4);
 }
 
 #[test]
@@ -927,4 +1016,10 @@ fn the_lookout_shows_the_next_stops_or_adds_an_einmischen() {
     open(&mut run, &content, "lookout");
     choose(&mut run, &content, 1, None);
     assert_eq!(run.series().extra_redeals, 1);
+    // Or 2 Groschen.
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    open(&mut run, &content, "lookout");
+    choose(&mut run, &content, 2, None);
+    assert_eq!(run.coins(), coins + 2);
 }

@@ -4931,11 +4931,86 @@ button.card {
   cursor: default;
 }
 
-.enc-option.is-leave {
-  background: transparent;
+.enc-option.is-blocked {
   border-style: dashed;
-  border-color: var(--dot);
   box-shadow: none;
+}
+
+.enc-option.has-curse {
+  border-left-color: var(--rot);
+}
+
+.enc-sign-icon {
+  display: inline-flex;
+}
+
+.enc-sign-icon .map-icon {
+  image-rendering: pixelated;
+}
+
+.enc-must {
+  color: var(--muted);
+}
+
+.enc-line {
+  font-size: var(--fs-s);
+  line-height: 1.08;
+  color: var(--muted);
+}
+
+.enc-blocked {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--rot-light);
+  color: var(--rot-light);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+}
+
+.enc-relics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+/* Kiosk (03.11.2026): a stand with two Schnäpse. */
+.kiosk-stand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+}
+
+.kiosk-was {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+@media (min-width: 900px) {
+  .enc-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    align-items: stretch;
+  }
+
+  .enc-options .enc-option {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    justify-items: center;
+    align-content: start;
+    text-align: center;
+  }
+
+  .enc-options .enc-body {
+    align-items: center;
+  }
+
+  .enc-options .enc-mod {
+    text-align: left;
+  }
 }
 
 .enc-pic {

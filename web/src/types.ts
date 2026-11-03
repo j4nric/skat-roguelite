@@ -304,6 +304,10 @@ export interface ShopView {
   painter?: ServiceView;
   /** "Karte reinigen". */
   cleanse?: ServiceView;
+  /** A Kiosk (03.11.2026), not the Tresen: two Schnäpse, one may be bought. */
+  kiosk?: boolean;
+  /** At a Kiosk: Groschen off each Schnaps against the Tresen. */
+  kiosk_discount?: number;
 }
 
 /** An offer of the Auslage: a card of the edition with a Zinke. */
@@ -622,60 +626,88 @@ export interface CharacterInfo {
   back?: string;
 }
 
-/** What an encounter option does. */
-export type EncounterChoice =
-  | { TakeRule: string }
-  | 'MarkRandomCard'
-  | 'MarkChosenCard'
-  | { SwapRelic: { index: number; relic: string; new?: string | null } }
-  | { DoubleNextGame: number }
-  /** Rast (ADR 0016): lives back. */
-  | { Heal: number }
-  /** Werkstatt: every modification off a chosen card. */
-  | 'CleanseChosenCard'
-  /** Werkstatt (Zinken, DESIGN 8.6): the Kartenmaler for free on a chosen card. */
-  | 'Painter'
-  /** Loot of a Spelunke: the relic into a free slot, or Groschen instead. */
-  | { TakeRelic: string }
-  | { TakeCoins: number }
-  /** Item review (02.11.2026). */
-  | { TakeConsumable: string }
-  | 'Gamble'
-  | { KeepWallet: { coins: number; curse: string } }
-  | { Lesson: { redeals: number } }
-  | { Wager: { factor: number } }
-  | { OldCards: { voucher: string; curse: string } }
-  | { Scout: number }
+/** Which card a Mark effect goes on. */
+export type CardPick = 'Random' | 'Chosen';
+
+/**
+ * One effect of an encounter option (DESIGN 13, "Wege und Begegnungen v2",
+ * 03.11.2026). Draws are filled in when the encounter opens (`null`: nothing
+ * was left to draw; the option is blocked then).
+ */
+export type EncounterEffect =
+  | { Coins: number }
+  | { EveningRule: string | null }
+  | {
+      Mark: {
+        card: CardPick;
+        card_mod: string | null;
+        value: number | null;
+        offers?: [string, number][];
+        curse?: boolean;
+        curse_percent?: number;
+      };
+    }
+  | { SwapRelic: string | null }
+  | { SellRelic: number }
+  | { Relic: string | null }
+  | { RelicCoins: number }
+  | { NextGameFactor: number }
   | { NextPubRedeals: number }
-  | 'Leave';
+  | 'SeeSkat'
+  | { Schnapps: string | null }
+  | { Lives: number }
+  | { Scout: number }
+  | { Bet: { on: 'Schneider' | 'Win'; percent: number } }
+  | { Dice: { chance: number; percent: number } }
+  | 'Painter'
+  | 'Cleanse';
+
+/** Why an option cannot be taken now (stable names). */
+export type OptionBlock =
+  | 'NotEnoughCoins'
+  | 'NothingLeft'
+  | 'SpecialCardCap'
+  | 'NoFittingCard'
+  | 'NoRelic'
+  | 'RelicSlotsFull'
+  | 'LivesFull'
+  | 'BetOpen'
+  | 'NotNeeded';
+
+/** One effect as the player sees it, with what was drawn for it. */
+export interface EncounterEffectView {
+  effect: EncounterEffect;
+  relic: RelicInfo | null;
+  card_mod: CardModInfo | null;
+  consumable: ConsumableInfo | null;
+  /** A Schnaps with every slot full: these Groschen instead. */
+  coins_instead: number | null;
+}
 
 export interface EncounterOptionView {
   index: number;
-  choice: EncounterChoice;
+  /** German title from the content. */
+  label: string;
+  /** Groschen it costs (the stake of a bet or a throw of the dice). */
   cost: number;
-  relic: RelicInfo | null;
-  /** The relic received by a swap, known before the choice. */
-  new_relic: RelicInfo | null;
-  /** The modification a card gets, known before the choice. */
-  card_mod: CardModInfo | null;
-  /** The curse that comes with it (Alte Karten, Portemonnaie). */
-  curse?: CardModInfo | null;
-  /** The Schnaps it gives (Der Wirt spendiert). */
-  consumable?: ConsumableInfo | null;
-  /** What the option gives is only drawn when it is chosen. */
-  random_gain: boolean;
+  effects: EncounterEffectView[];
+  /** Offered only when no other option can be taken ("Zuschauen"). */
+  fallback: boolean;
   can_choose: boolean;
-  needs_target: boolean;
+  blocked: OptionBlock | null;
+  /** What it needs as target: a card of the edition or an owned relic (its index). */
+  target: 'None' | 'Card' | 'Relic';
   targets: number[];
-  /** Cost on each of `targets` (a Zinke on Rot is cheaper for Bruderherz); absent in an older core. */
+  /** Cost on each of `targets` (a Zinke on Rot is cheaper for Bruderherz). */
   target_costs?: number[];
 }
 
-/** The open encounter (Ereignis). */
+/** The open encounter (Ereignis); one option must be taken. */
 export interface EncounterView {
   id: string;
   name: string;
   text: string;
+  category: StopCategory;
   options: EncounterOptionView[];
 }
 
@@ -731,7 +763,7 @@ export interface RunView {
   /** How far the Tresen sells on credit now. */
   credit_left?: number;
   /** The bet on the next declared game ("Die Wette"). */
-  wager?: { encounter: string; stake: number; factor: number } | null;
+  wager?: { encounter: string; stake: number; factor: number; on?: 'Schneider' | 'Win'; percent?: number } | null;
   /** Route choices still to come whose stops are shown (Kiebitz am Fenster). */
   scout_legs?: number;
   last_score: ScoreView | null;
@@ -751,7 +783,7 @@ export interface RunView {
 /** How the player goes to the next pub; flavour only, every way is alike. */
 export type Transport = 'Walk' | 'Train' | 'Bike';
 /** The kind of a stop on the way. */
-export type StopCategory = 'Tresen' | 'Event' | 'Upgrade' | 'Rest';
+export type StopCategory = 'Tresen' | 'Event' | 'Upgrade' | 'Rest' | 'FoundCoins' | 'Kiosk' | 'DiceStall';
 export type PubState = 'Won' | 'Lost' | 'Current' | 'Ahead' | 'Skipped';
 
 export interface MalusInfo {
@@ -956,7 +988,13 @@ export type RunEvent =
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
-  | { EncounterResolved: { encounter: string; choice: EncounterChoice } }
+  | { EncounterResolved: { encounter: string; option: number } }
+  /** The dice fell at the Würfelbude. */
+  | { DiceThrown: { stake: number; won: boolean; payout: number } }
+  /** Both skat cards of the next game will be shown. */
+  | 'SkatPeekPlanned'
+  /** A Kiosk opened on the way. */
+  | { KioskOpened: unknown }
   | { EveningRuleAdded: string }
   | { RelicSwapped: { old: string; new: string } }
   | { NextGameDoubled: { factor: number } }

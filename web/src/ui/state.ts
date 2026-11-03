@@ -72,6 +72,7 @@ export type Overlay =
   | { kind: 'chalk'; slot: number; card: number | null }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
+  | { kind: 'encounter-relic'; option: number }
   /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back (null: the screen). */
   | { kind: 'mod-confirm'; action: RunAction; back: Overlay | null; ask: ModQuestion }
   /** Zinken (DESIGN 8.6): pick the card for the Kartenmaler or "Karte reinigen". */

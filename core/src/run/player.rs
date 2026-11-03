@@ -473,9 +473,14 @@ impl RunEvent {
             RunEvent::EncounterOpened { encounter, options } => {
                 RunEvent::EncounterOpened { encounter, options }
             }
-            RunEvent::EncounterResolved { encounter, choice } => {
-                RunEvent::EncounterResolved { encounter, choice }
+            RunEvent::EncounterResolved { encounter, option } => {
+                RunEvent::EncounterResolved { encounter, option }
             }
+            RunEvent::DiceThrown { stake, won, payout } => {
+                RunEvent::DiceThrown { stake, won, payout }
+            }
+            RunEvent::SkatPeekPlanned => RunEvent::SkatPeekPlanned,
+            RunEvent::KioskOpened { consumables } => RunEvent::KioskOpened { consumables },
             RunEvent::EveningRuleAdded(relic) => RunEvent::EveningRuleAdded(relic),
             RunEvent::EveningRulesEnded => RunEvent::EveningRulesEnded,
             RunEvent::RelicSwapped { old, new } => RunEvent::RelicSwapped { old, new },

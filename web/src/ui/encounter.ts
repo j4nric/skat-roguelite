@@ -1,142 +1,200 @@
-// An encounter (Ereignis) between two series, in the style of the pub: a
-// chalk sign, the people who speak, the story from the content and the
-// options as cards on the table. What each option does, what it costs and
-// whether it can be chosen all come from the core (EncounterView), also
-// which modification a card gets or which relic a swap brings, when the
-// core drew them in advance.
+// An encounter (Ereignis) on the way, in the style of the pub: a chalk
+// sign, the people who speak, the story from the content and the two or
+// three options as cards on the table (DESIGN 13, "Wege und Begegnungen
+// v2", 03.11.2026). One must be taken: there is no "Weitergehen". What each
+// option does (its effects, with what was drawn for them), what it costs
+// and whether it can be chosen, with the reason if not, all come from the
+// core (EncounterView). Fundgroschen and Würfelbude are encounters too.
 
 import { de, contentName, contentText, isCurse, relicLook, t } from '../i18n';
-import type { EncounterOptionView, RunView } from '../types';
+import type { EncounterEffectView, EncounterOptionView, RunView } from '../types';
 import { modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { coinIcon, heart } from './hud';
 import { consumableCoaster, relicCoaster } from './emblems';
+import { mapIcon } from './mapicons';
 import { encounterFaces, portrait } from './people';
+import { categoryIcon } from './route';
 
-/** A beer glass, for "Letzte Runde". */
+/** A beer glass, for higher stakes and rounds. */
 function glass(): string {
   return `<svg class="enc-glass" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><path d="M7 10 L33 10 L30 48 L10 48 Z" fill="#e8a417" stroke="#2b1a0e" stroke-width="2"/><path d="M5 10 C5 3 12 2 15 5 C18 1 25 1 27 5 C31 2 36 5 35 10 Z" fill="#fffaf0" stroke="#2b1a0e" stroke-width="2"/><path d="M33 18 C40 18 40 34 32 34" fill="none" stroke="#2b1a0e" stroke-width="2.4"/><path d="M14 18 L13 42 M20 18 L20 42" stroke="#fff" stroke-width="1.6" opacity=".45"/></svg>`;
 }
 
-/** A marked card, for the Kartengeber. */
+/** A marked card, for a Zinke. */
 function markedCard(chosen: boolean): string {
   return `<svg class="enc-card" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><rect x="5" y="3" width="30" height="45" rx="4" fill="#fbf3e2" stroke="#2b1a0e" stroke-width="2"/><path d="M12 10 L28 10 M12 15 L22 15" stroke="#c9b78f" stroke-width="2"/><circle cx="20" cy="30" r="8" fill="none" stroke="#5e3796" stroke-width="2.4"/><path d="M20 24 L22 29 L27 29 L23 32 L24.5 37 L20 34 L15.5 37 L17 32 L13 29 L18 29 Z" fill="#5e3796"/>${chosen ? '<path d="M29 40 L37 48" stroke="#2b1a0e" stroke-width="3" stroke-linecap="round"/>' : '<text x="31" y="47" font-size="16" fill="#2b1a0e" text-anchor="middle">?</text>'}</svg>`;
 }
 
-/** A door, for walking on. */
+/** Two skat cards face up, for the card trick. */
+function skatPair(): string {
+  return `<svg class="enc-card" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><rect x="3" y="8" width="22" height="34" rx="3" fill="#fbf3e2" stroke="#2b1a0e" stroke-width="2" transform="rotate(-10 14 25)"/><rect x="15" y="10" width="22" height="34" rx="3" fill="#fbf3e2" stroke="#2b1a0e" stroke-width="2" transform="rotate(8 26 27)"/><circle cx="26" cy="27" r="4" fill="#a3263a"/><circle cx="13" cy="24" r="4" fill="#2f6f3a"/></svg>`;
+}
+
+/** A door, for watching. */
 function door(): string {
   return `<svg class="enc-door" viewBox="0 0 40 52" width="34" height="44" aria-hidden="true"><rect x="7" y="3" width="26" height="46" rx="2" fill="#6b4427" stroke="#2b1a0e" stroke-width="2"/><rect x="11" y="8" width="18" height="16" fill="#e8c56a" opacity=".7"/><circle cx="27" cy="31" r="2" fill="#e2b04a"/></svg>`;
 }
 
+/** A die showing as many pips as Groschen are staked (2, 4, 6). */
+function die(pips: number): string {
+  const spots: Record<number, [number, number][]> = {
+    1: [[20, 26]],
+    2: [
+      [13, 19],
+      [27, 33],
+    ],
+    3: [
+      [13, 19],
+      [20, 26],
+      [27, 33],
+    ],
+    4: [
+      [13, 19],
+      [27, 19],
+      [13, 33],
+      [27, 33],
+    ],
+    5: [
+      [13, 19],
+      [27, 19],
+      [20, 26],
+      [13, 33],
+      [27, 33],
+    ],
+    6: [
+      [13, 17],
+      [27, 17],
+      [13, 26],
+      [27, 26],
+      [13, 35],
+      [27, 35],
+    ],
+  };
+  const dots = (spots[Math.max(1, Math.min(6, pips))] ?? []).map(([x, y]) => `<rect x="${x - 2.5}" y="${y - 2.5}" width="5" height="5" fill="#fbf3e2"/>`).join('');
+  return `<svg class="enc-die" viewBox="0 0 40 52" width="34" height="44" shape-rendering="crispEdges" aria-hidden="true"><rect x="4" y="8" width="32" height="36" rx="4" fill="#6e2f4f" stroke="#2b1a0e" stroke-width="2"/>${dots}</svg>`;
+}
+
+/** Payout of a stake at this percentage, as the core counts it. */
+function payout(stake: number, percent: number): number {
+  return Math.floor((stake * percent) / 100);
+}
+
+function isStake(o: EncounterOptionView): boolean {
+  return o.effects.some((e) => typeof e.effect === 'object' && ('Bet' in e.effect || 'Dice' in e.effect));
+}
+
+/** The cost tag: free, a price (cheaper on some cards) or a stake. */
 function costTag(o: EncounterOptionView): string {
   if (!o.cost) return `<span class="enc-cost is-free">${esc(de.encounter.free)}</span>`;
   // A Zinke may cost less on some cards ("Bruderherz": half on Rot).
   const lowest = Math.min(o.cost, ...(o.target_costs ?? []));
-  const text = lowest < o.cost ? t(de.encounter.costFrom, { cost: o.cost, low: lowest }) : t(de.encounter.cost, { cost: o.cost });
+  const text = isStake(o)
+    ? t(de.encounter.stake, { cost: o.cost })
+    : lowest < o.cost
+      ? t(de.encounter.costFrom, { cost: o.cost, low: lowest })
+      : t(de.encounter.cost, { cost: o.cost });
   return `<span class="enc-cost">${coinIcon(14)}${esc(text)}</span>`;
 }
 
-/** The modification an option puts on a card: badge, name, curse mark and text. */
-function modLine(o: EncounterOptionView): string {
-  const mod = o.card_mod;
-  if (!mod) return o.random_gain ? `<span class="enc-mod is-random">${esc(de.encounter.randomMod)}</span>` : '';
-  const curse = mod.curse || isCurse(mod.id);
-  return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.cardMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span></span></span>`;
-}
-
-/** The curse that comes with an option (Alte Karten, Portemonnaie). */
-function curseLine(o: EncounterOptionView): string {
-  const mod = o.curse;
+/** A Zinke or curse: badge, name, curse mark, text and where it goes. */
+function modLine(e: EncounterEffectView, where: string): string {
+  const mod = e.card_mod;
   if (!mod) return '';
-  return `<span class="enc-mod is-curse" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.curseMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b><span class="curse-tag">${esc(de.card.curse)}</span><span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span></span></span>`;
+  const curse = mod.curse || isCurse(mod.id);
+  const name = contentName('card_mods', mod.id) || mod.name;
+  const head = t(curse ? de.encounter.curseMod : de.encounter.cardMod, { mod: name });
+  return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(head)}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span><span class="enc-mod-text">${esc(where)}</span></span></span>`;
 }
 
-/** Title, hint and picture of one option. */
-function optionParts(o: EncounterOptionView): { title: string; hint: string; pic: string; cls: string; extra: string } {
-  const c = o.choice;
-  if (c === 'Leave') return { title: de.encounter.leave, hint: de.encounter.leaveHint, pic: door(), cls: 'is-leave', extra: '' };
-  if (c === 'MarkRandomCard') return { title: de.encounter.markRandom, hint: de.encounter.markRandomHint, pic: markedCard(false), cls: '', extra: modLine(o) };
-  if (c === 'MarkChosenCard') return { title: de.encounter.markChosen, hint: de.encounter.markChosenHint, pic: markedCard(true), cls: '', extra: modLine(o) };
-  if (c === 'CleanseChosenCard') return { title: de.encounter.cleanse, hint: de.encounter.cleanseHint, pic: markedCard(true), cls: '', extra: '' };
-  if (c === 'Painter') return { title: de.encounter.painter, hint: de.encounter.painterHint, pic: markedCard(true), cls: '', extra: '' };
-  if (c === 'Gamble') return { title: de.encounter.gamble, hint: de.encounter.gambleHint, pic: markedCard(true), cls: '', extra: modLine(o) };
-  if ('DoubleNextGame' in c) {
-    return { title: de.encounter.double, hint: t(de.encounter.doubleHint, { factor: c.DoubleNextGame }), pic: glass(), cls: '', extra: '' };
+/** Most lives a player can hold, for the lines (set per render). */
+let maxLives = 4;
+
+/** One line per effect; a second Zinke of an option goes on "another" card. */
+function effectLine(e: EncounterEffectView, o: EncounterOptionView, i: number): string {
+  const f = e.effect;
+  const line = (text: string): string => `<span class="enc-line">${esc(text)}</span>`;
+  if (f === 'SeeSkat') return line(de.encounter.seeSkat);
+  if (f === 'Painter') return line(de.encounter.painter);
+  if (f === 'Cleanse') return line(de.encounter.cleanse);
+  if ('Coins' in f) return line(t(de.encounter.coins, { n: f.Coins }));
+  if ('EveningRule' in f) {
+    const id = f.EveningRule;
+    return id ? line(t(de.encounter.rule, { name: contentName('relics', id), text: contentText('relics', id) })) : '';
   }
-  if ('Heal' in c) {
-    return { title: de.encounter.heal, hint: t(de.encounter.healHint, { n: c.Heal, max: maxLives }), pic: heart(true, 34), cls: 'is-heal', extra: '' };
+  if ('Mark' in f) {
+    const earlier = o.effects.slice(0, i).some((x) => typeof x.effect === 'object' && 'Mark' in x.effect);
+    const where = f.Mark.card === 'Chosen' ? de.encounter.onChosen : earlier ? de.encounter.onRandomCurse : de.encounter.onRandom;
+    const gamble = f.Mark.curse_percent ? line(t(de.encounter.cursePercent, { n: Math.round(100 / f.Mark.curse_percent) })) : '';
+    return modLine(e, where) + gamble;
   }
-  if ('TakeCoins' in c) {
-    const hint = encounterId === 'landlord_treat' ? de.encounter.treatCoinsHint : de.encounter.takeCoinsHint;
-    return { title: t(de.encounter.takeCoins, { coins: c.TakeCoins }), hint, pic: coinIcon(34), cls: '', extra: '' };
+  if ('SwapRelic' in f) {
+    const id = f.SwapRelic;
+    return id ? line(t(de.encounter.swapFor, { name: contentName('relics', id) || e.relic?.name || id, text: contentText('relics', id) })) : '';
   }
-  if ('TakeConsumable' in c) {
-    const id = c.TakeConsumable;
-    const item = o.consumable ?? { id, category: 'Schnapps' as const };
-    return {
-      title: t(de.encounter.takeConsumable, { name: contentName('consumables', id) }),
-      hint: o.can_choose ? contentText('consumables', id) : de.encounter.takeConsumableFull,
-      pic: `<span class="enc-coaster">${consumableCoaster(item, { size: 44 })}</span>`,
-      cls: 'is-rule',
-      extra: '',
-    };
+  if ('SellRelic' in f) return line(f.SellRelic >= 100 ? de.encounter.sellRelic : t(de.encounter.sellRelicPart, { percent: f.SellRelic }));
+  if ('Relic' in f) {
+    const id = f.Relic;
+    return id ? line(t(de.encounter.takeRelic, { name: contentName('relics', id), text: contentText('relics', id) })) : '';
   }
-  if ('KeepWallet' in c) {
-    return { title: t(de.encounter.keepWallet, { coins: c.KeepWallet.coins }), hint: de.encounter.keepWalletHint, pic: coinIcon(34), cls: '', extra: curseLine(o) };
+  if ('RelicCoins' in f) return '';
+  if ('NextGameFactor' in f) return line(t(de.encounter.factor, { n: f.NextGameFactor }));
+  if ('NextPubRedeals' in f) {
+    const n = f.NextPubRedeals;
+    return line(n >= 0 ? t(de.encounter.redealsMore, { n }) : t(de.encounter.redealsFewer, { n: -n }));
   }
-  if ('Lesson' in c) {
-    return { title: de.encounter.lesson, hint: t(de.encounter.lessonHint, { n: c.Lesson.redeals }), pic: markedCard(true), cls: '', extra: modLine(o) };
+  if ('Schnapps' in f) {
+    const id = f.Schnapps;
+    if (!id) return '';
+    const text = line(t(de.encounter.schnapps, { name: contentName('consumables', id), text: contentText('consumables', id) }));
+    return e.coins_instead != null ? text + line(t(de.encounter.schnappsFull, { n: e.coins_instead })) : text;
   }
-  if ('Wager' in c) {
-    return { title: t(de.encounter.wager, { stake: o.cost }), hint: t(de.encounter.wagerHint, { payout: o.cost * c.Wager.factor }), pic: coinIcon(34), cls: '', extra: '' };
+  if ('Lives' in f) return line(t(de.encounter.lives, { n: f.Lives, max: maxLives }));
+  if ('Scout' in f) return line(t(de.encounter.scout, { n: f.Scout }));
+  if ('Bet' in f) {
+    const text = f.Bet.on === 'Win' ? de.encounter.betWin : de.encounter.betSchneider;
+    return line(t(text, { payout: payout(o.cost, f.Bet.percent) }));
   }
-  if ('OldCards' in c) {
-    return { title: de.encounter.oldCards, hint: de.encounter.oldCardsHint, pic: markedCard(true), cls: '', extra: modLine(o) + curseLine(o) };
-  }
-  if ('Scout' in c) return { title: de.encounter.scout, hint: t(de.encounter.scoutHint, { n: c.Scout }), pic: door(), cls: '', extra: '' };
-  if ('NextPubRedeals' in c) {
-    return { title: de.encounter.nextPubRedeals, hint: t(de.encounter.nextPubRedealsHint, { n: c.NextPubRedeals }), pic: glass(), cls: '', extra: '' };
-  }
-  const relic = o.relic;
-  const id = relic?.id ?? ('TakeRule' in c ? c.TakeRule : 'TakeRelic' in c ? c.TakeRelic : c.SwapRelic.relic);
-  const name = contentName('relics', id);
-  const shown = relic ?? relicLook(id);
-  const pic = `<span class="enc-coaster">${relicCoaster(shown, { size: 44 })}</span>`;
-  if ('TakeRule' in c) return { title: name, hint: contentText('relics', id), pic, cls: 'is-rule', extra: '' };
-  if ('TakeRelic' in c) {
-    return { title: t(de.encounter.takeRelic, { name }), hint: o.can_choose ? contentText('relics', id) : de.encounter.takeRelicFull, pic, cls: 'is-rule', extra: '' };
-  }
-  const fresh = o.new_relic;
-  if (fresh) {
-    const newName = contentName('relics', fresh.id) || fresh.name;
-    return {
-      title: t(de.encounter.swapFor, { old: name, new: newName }),
-      hint: t(de.encounter.swapForHint, { old: name, new: newName, text: contentText('relics', fresh.id) || fresh.text }),
-      pic,
-      cls: 'is-swap',
-      extra: '',
-    };
-  }
-  return { title: t(de.encounter.swapRelic, { name }), hint: de.encounter.swapHint, pic, cls: 'is-swap', extra: '' };
+  if ('Dice' in f) return line(t(de.encounter.dice, { chance: f.Dice.chance, payout: payout(o.cost, f.Dice.percent) }));
+  return '';
 }
 
-/** Most lives a player can hold, for the Rast's hint (set per render). */
-let maxLives = 5;
-/** The open encounter's id (set per render). */
-let encounterId = '';
+/** The picture of an option: what its first effect gives. */
+function optionPic(o: EncounterOptionView): string {
+  const first = o.effects[0];
+  if (!first) return o.fallback ? door() : coinIcon(34);
+  const f = first.effect;
+  if (f === 'SeeSkat') return skatPair();
+  if (f === 'Painter' || f === 'Cleanse') return markedCard(true);
+  if ('Mark' in f) return markedCard(f.Mark.card === 'Chosen');
+  if ('Dice' in f) return die(o.cost);
+  if ('Lives' in f) return heart(true, 34);
+  if ('Scout' in f) return mapIcon('position', 34);
+  if ('NextGameFactor' in f || 'NextPubRedeals' in f) return glass();
+  if ('Schnapps' in f && first.consumable) return `<span class="enc-coaster">${consumableCoaster(first.consumable, { size: 44 })}</span>`;
+  const relic = 'EveningRule' in f ? f.EveningRule : 'SwapRelic' in f ? f.SwapRelic : 'Relic' in f ? f.Relic : null;
+  if (relic) return `<span class="enc-coaster">${relicCoaster(first.relic ?? relicLook(relic), { size: 44 })}</span>`;
+  return coinIcon(34);
+}
 
 function optionCard(o: EncounterOptionView, i: number): string {
-  const p = optionParts(o);
-  const tag = p.cls === 'is-rule' ? `<span class="enc-tag">${esc(de.encounter.takeRule)}</span>` : '';
-  return `<button class="enc-option ${p.cls}" style="--i:${i}" ${attrs({
+  const rule = o.effects.some((e) => typeof e.effect === 'object' && 'EveningRule' in e.effect);
+  const tag = rule ? `<span class="enc-tag">${esc(de.encounter.takeRule)}</span>` : '';
+  const lines = o.effects.map((e, k) => effectLine(e, o, k)).join('');
+  const empty = o.effects.length ? '' : `<span class="enc-line">${esc(o.fallback ? de.encounter.watch : de.encounter.nothing)}</span>`;
+  const reason = o.blocked ? `<span class="enc-blocked" data-testid="enc-blocked">${esc(de.encounter.blocked[o.blocked] ?? '')}</span>` : '';
+  const curse = o.effects.some((e) => e.card_mod && (e.card_mod.curse || isCurse(e.card_mod.id)));
+  const cls = [rule ? 'is-rule' : '', curse ? 'has-curse' : '', o.can_choose ? '' : 'is-blocked'].filter(Boolean).join(' ');
+  return `<button class="enc-option ${cls}" style="--i:${i}" ${attrs({
     'data-action': 'choose-encounter',
     'data-option': o.index,
-    'data-target': o.needs_target ? 'true' : 'false',
+    'data-target': o.target,
+    'data-testid': 'enc-option',
     disabled: !o.can_choose,
   })}>
-    <span class="enc-pic">${p.pic}</span>
-    <span class="enc-body"><b class="enc-title">${esc(p.title)}</b>${tag}<span class="enc-hint">${esc(p.hint)}</span>${p.extra}</span>
-    ${o.choice === 'Leave' ? '' : costTag(o)}
+    <span class="enc-pic">${optionPic(o)}</span>
+    <span class="enc-body"><b class="enc-title">${esc(o.label)}</b>${tag}${lines}${empty}${reason}</span>
+    ${costTag(o)}
   </button>`;
 }
 
@@ -147,17 +205,46 @@ export function renderEncounter(view: RunView): string {
     .map((f) => portrait(f, 'portrait-enc'))
     .join('');
   maxLives = view.tour.max_lives;
-  encounterId = e.id;
-  const options = e.options.map(optionCard).join('');
-  return `<main class="encounter" data-testid="encounter" ${attrs({ 'data-encounter': e.id })}>
+  // A fallback ("Zuschauen") shows only when nothing else can be taken.
+  const options = e.options
+    .filter((o) => o.blocked !== 'NotNeeded')
+    .map(optionCard)
+    .join('');
+  const category = e.category ?? 'Event';
+  const kicker = category === 'Event' ? de.encounter.kicker : (de.route.categories[category] ?? de.encounter.kicker);
+  return `<main class="encounter enc-${esc(category.toLowerCase())}" data-testid="encounter" ${attrs({ 'data-encounter': e.id, 'data-category': category })}>
     <div class="enc-wall">
-      <div class="enc-sign"><span class="enc-kicker">${esc(de.encounter.kicker)}</span><span class="enc-sub">${esc(de.encounter.sign)}</span></div>
+      <div class="enc-sign"><span class="enc-sign-icon">${categoryIcon(category, 22)}</span><span class="enc-kicker">${esc(kicker)}</span><span class="enc-sub">${esc(de.encounter.sign)}</span></div>
       <div class="enc-faces">${faces}</div>
     </div>
     <section class="enc-story">
       <h2>${esc(contentName('encounters', e.id) || e.name)}</h2>
       <p>${esc(contentText('encounters', e.id) || e.text)}</p>
+      ${e.options.length > 1 ? `<p class="enc-must small">${esc(de.encounter.mustChoose)}</p>` : ''}
     </section>
     <div class="enc-options">${options}</div>
   </main>`;
+}
+
+/** The sheet body to pick an owned relic for a swap or a sale. */
+export function renderRelicPick(view: RunView, option: EncounterOptionView): string {
+  const swap = option.effects.find((e) => typeof e.effect === 'object' && 'SwapRelic' in e.effect);
+  const sellEffect = option.effects.map((e) => e.effect).find((f) => typeof f === 'object' && 'SellRelic' in f);
+  const sellPercent = sellEffect && typeof sellEffect === 'object' && 'SellRelic' in sellEffect ? sellEffect.SellRelic : 0;
+  const hint = swap ? t(de.encounter.pickRelicSwap, { new: swap.relic ? contentName('relics', swap.relic.id) || swap.relic.name : '' }) : t(de.encounter.pickRelicSell, { percent: sellPercent });
+  const relics = view.relics
+    .map((r) => {
+      const ok = option.targets.includes(r.index);
+      const price = sellEffect ? `<span class="enc-cost">${coinIcon(14)}${esc(t(de.encounter.relicPrice, { price: payout(r.relic.price, sellPercent) }))}</span>` : '';
+      return `<button class="enc-option enc-relic" ${attrs({ 'data-action': 'encounter-relic', 'data-index': r.index, 'data-testid': 'enc-relic', disabled: !ok })}>
+        <span class="enc-pic"><span class="enc-coaster">${relicCoaster(r.relic, { size: 44 })}</span></span>
+        <span class="enc-body"><b class="enc-title">${esc(contentName('relics', r.relic.id))}</b><span class="enc-line">${esc(contentText('relics', r.relic.id))}</span></span>
+        ${price}
+      </button>`;
+    })
+    .join('');
+  return `<h2>${esc(de.encounter.pickRelic)}</h2>
+    <p class="small">${esc(hint)}</p>
+    <div class="enc-relics" data-testid="enc-relics">${relics}</div>
+    <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`;
 }

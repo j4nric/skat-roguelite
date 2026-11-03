@@ -230,13 +230,14 @@ fn old_cards_offer_only_a_voucher_the_edition_may_still_use() {
             .add_mod(&content, 9, &id("undead"), 1)
             .expect("Untot");
         assert!(open(&mut run, &content, "old_cards"));
-        let voucher = match &run.encounter().expect("open").options[0].choice {
-            EncounterChoice::OldCards { voucher, .. } => voucher.clone(),
-            other => panic!("{other:?}"),
-        };
-        assert_eq!(voucher, id("voucher_wild"), "seed {seed}");
+        assert_eq!(
+            run.encounter_option_block(&content, 0),
+            Some(OptionBlock::SpecialCardCap),
+            "seed {seed}"
+        );
+        assert_eq!(run.encounter_option_block(&content, 1), None);
     }
-    // Both closed: the encounter has nothing to offer.
+    // Both closed: only the Groschen for the old deck are left.
     let mut run = at_route(&content, 1, 0);
     run.edition
         .add_mod(&content, 9, &id("undead"), 1)
@@ -244,7 +245,18 @@ fn old_cards_offer_only_a_voucher_the_edition_may_still_use() {
     run.edition
         .add_mod(&content, 10, &id("voucher_wild"), 1)
         .expect("Narrenmarke");
-    assert!(!open(&mut run, &content, "old_cards"));
+    assert!(open(&mut run, &content, "old_cards"));
+    let blocks: Vec<Option<OptionBlock>> = (0..3)
+        .map(|i| run.encounter_option_block(&content, i))
+        .collect();
+    assert_eq!(
+        blocks,
+        [
+            Some(OptionBlock::SpecialCardCap),
+            Some(OptionBlock::SpecialCardCap),
+            None
+        ]
+    );
 }
 
 #[test]
@@ -256,7 +268,13 @@ fn the_conjurer_stays_away_while_the_wandelkarte_is_taken() {
     run.edition
         .add_mod(&content, 9, &id("wild_card"), 1)
         .expect("Wandelkarte");
-    assert!(!open(&mut run, &content, "conjurer"));
+    // Only the card trick is left.
+    assert!(open(&mut run, &content, "conjurer"));
+    assert_eq!(
+        run.encounter_option_block(&content, 0),
+        Some(OptionBlock::SpecialCardCap)
+    );
+    assert_eq!(run.encounter_option_block(&content, 2), None);
 }
 
 // ---------------------------------------------------------------------------

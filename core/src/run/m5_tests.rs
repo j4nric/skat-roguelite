@@ -10,7 +10,7 @@ use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
-use crate::content::{Condition, EncounterId, Rarity, Reward, UnlockId};
+use crate::content::{Condition, Rarity, Reward, UnlockId};
 use crate::rules::{NullRisk, RiskLevel};
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).
@@ -507,6 +507,17 @@ fn only_encounter(id: &str) -> Content {
     content
 }
 
+/// The modification option `i` of the open encounter names.
+fn named_mod(run: &Run, i: usize) -> Option<CardModId> {
+    run.encounter()?.options[i]
+        .effects
+        .iter()
+        .find_map(|e| match e {
+            EncounterEffect::Mark { card_mod, .. } => card_mod.clone(),
+            _ => None,
+        })
+}
+
 #[test]
 fn the_card_dealer_names_the_modification_before_the_choice() {
     let content = only_encounter("card_dealer");
@@ -514,15 +525,14 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
     run.coins = 10;
     let mut events = Vec::new();
     assert!(run.open_random_encounter(&content, &mut events));
-    let encounter = run.encounter().expect("open").clone();
-    let named = encounter.options[0].card_mod.clone().expect("named");
-    assert_eq!(encounter.options[1].card_mod.as_ref(), Some(&named));
+    let named = named_mod(&run, 0).expect("named");
+    // The same Zinke for the random and the chosen card.
+    assert_eq!(named_mod(&run, 1).as_ref(), Some(&named));
     let view = run.view(&content).encounter.expect("view");
-    let info = view.options[0].card_mod.as_ref().expect("info");
+    let info = view.options[0].effects[0].card_mod.as_ref().expect("info");
     assert_eq!(info.id, named);
     assert!(!info.name.is_empty());
-    assert!(!view.options[0].random_gain);
-    assert!(view.options.last().expect("leave").card_mod.is_none());
+    assert!(view.options[2].effects[0].card_mod.is_none());
     let target = *view.options[1].targets.first().expect("target");
     run.apply(
         &content,
@@ -545,19 +555,22 @@ fn the_old_friend_names_the_relic_received() {
     let mut events = Vec::new();
     assert!(run.open_random_encounter(&content, &mut events));
     let encounter = run.encounter().expect("open").clone();
-    let EncounterChoice::SwapRelic { new: Some(new), .. } = &encounter.options[1].choice else {
+    let [EncounterEffect::SwapRelic(Some(new))] = &encounter.options[0].effects[..] else {
         panic!("swap with a known relic: {:?}", encounter.options);
     };
     let view = run.view(&content).encounter.expect("view");
-    assert_eq!(view.options[1].new_relic.as_ref().map(|r| &r.id), Some(new));
-    assert!(!view.options[1].random_gain);
+    assert_eq!(
+        view.options[0].effects[0].relic.as_ref().map(|r| &r.id),
+        Some(new)
+    );
+    assert_eq!(view.options[0].targets, vec![0, 1]);
     let new = new.clone();
     let events = run
         .apply(
             &content,
             RunAction::ChooseEncounter {
-                option: 1,
-                target: None,
+                option: 0,
+                target: Some(1),
             },
         )
         .expect("swap");
@@ -566,26 +579,6 @@ fn the_old_friend_names_the_relic_received() {
         new: new.clone(),
     }));
     assert_eq!(run.relics(), &[RelicId::new("kontra"), new]);
-    // An option of an old save (no relic named) says it is random.
-    let mut old = relic_run(&content, &["kontra"]);
-    old.game = None;
-    old.phase = RunPhase::Encounter;
-    old.encounter = Some(ActiveEncounter {
-        id: EncounterId::new("old_friend"),
-        options: vec![EncounterOption {
-            choice: EncounterChoice::SwapRelic {
-                index: 0,
-                relic: RelicId::new("kontra"),
-                new: None,
-            },
-            cost: 0,
-            card_mod: None,
-            value: None,
-        }],
-    });
-    let view = old.view(&content).encounter.expect("view");
-    assert!(view.options[0].random_gain);
-    assert!(view.options[0].new_relic.is_none());
 }
 
 // ---------------------------------------------------------------------------

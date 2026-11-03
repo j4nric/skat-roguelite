@@ -81,19 +81,22 @@ fn an_encounter_gives_a_relic_whatever_is_owned() {
         id: EncounterId::new("spelunke_loot"),
         options: vec![
             EncounterOption {
-                choice: EncounterChoice::TakeRelic(new.clone()),
                 cost: 0,
-                card_mod: None,
-                value: None,
+                effects: vec![EncounterEffect::Relic(Some(new.clone()))],
+                fallback: false,
             },
             EncounterOption {
-                choice: EncounterChoice::TakeCoins(3),
                 cost: 0,
-                card_mod: None,
-                value: None,
+                effects: vec![EncounterEffect::Coins(3)],
+                fallback: false,
             },
         ],
+        chosen: None,
     });
+    assert_eq!(
+        run.view(&content).encounter.expect("open").options[0].blocked,
+        None
+    );
     // The bot takes it too: there is always a free slot.
     let action = RunBot.encounter_action(&run, &content);
     assert_eq!(
@@ -161,7 +164,24 @@ fn a_character_cap_still_limits_the_relics() {
     assert_eq!(
         run.apply(&content, RunAction::BuyRelic(0)),
         Err(RunError::NoFreeSlot)
-    );
+    ); // An encounter relic is blocked, and the bot does not count on it.
+    let new = RelicId::new("old_lady");
+    run.relics = many_relics(&content, 2, false, std::slice::from_ref(&new));
+    run.shop = None;
+    run.phase = RunPhase::Encounter;
+    let option = EncounterOption {
+        cost: 0,
+        effects: vec![EncounterEffect::Relic(Some(new))],
+        fallback: false,
+    };
+    assert_eq!(RunBot::option_value(&run, &content, &option), 0);
+    run.encounter = Some(ActiveEncounter {
+        id: EncounterId::new("spelunke_loot"),
+        options: vec![option],
+        chosen: None,
+    });
+    let view = run.view(&content).encounter.expect("open");
+    assert_eq!(view.options[0].blocked, Some(OptionBlock::RelicSlotsFull));
 }
 
 #[test]
@@ -188,41 +208,56 @@ fn selling_the_kitty_pays_out_its_pot_first() {
     assert_eq!(paid_out(&events), None);
 }
 
-#[test]
-fn swapping_or_replacing_the_kitty_pays_out_its_pot() {
-    let content = content();
-    let kitty = RelicId::new("kitty");
-    // "Der alte Freund" swaps it away.
-    let mut run = relic_run(&content, &["kitty", "kontra"]);
-    run.counters.insert("kitty".into(), 6);
+/// A run at "Der alte Bekannte" owning `relics`, `pot` Groschen in the
+/// kitty, with a single option doing `effect`.
+fn at_old_friend(content: &Content, relics: &[&str], pot: u32, effect: EncounterEffect) -> Run {
+    let mut run = relic_run(content, relics);
+    run.counters.insert("kitty".into(), pot);
     run.game = None;
     run.phase = RunPhase::Encounter;
     run.encounter = Some(ActiveEncounter {
         id: EncounterId::new("old_friend"),
         options: vec![EncounterOption {
-            choice: EncounterChoice::SwapRelic {
-                index: 0,
-                relic: kitty.clone(),
-                new: Some(RelicId::new("old_lady")),
-            },
             cost: 0,
-            card_mod: None,
-            value: None,
+            effects: vec![effect],
+            fallback: false,
         }],
+        chosen: None,
     });
+    run
+}
+
+#[test]
+fn swapping_selling_or_replacing_the_kitty_pays_out_its_pot() {
+    let content = content();
+    let kitty = RelicId::new("kitty");
+    let pick_kitty = RunAction::ChooseEncounter {
+        option: 0,
+        target: Some(0),
+    };
+    // "Der alte Bekannte" swaps it away.
+    let swap = EncounterEffect::SwapRelic(Some(RelicId::new("old_lady")));
+    let mut run = at_old_friend(&content, &["kitty", "kontra"], 6, swap);
     let coins = run.coins();
-    let events = run
-        .apply(
-            &content,
-            RunAction::ChooseEncounter {
-                option: 0,
-                target: None,
-            },
-        )
-        .expect("swap");
+    let events = run.apply(&content, pick_kitty.clone()).expect("swap");
     assert_eq!(paid_out(&events), Some((kitty.clone(), 6)));
     assert_eq!(run.coins(), coins + 6);
     assert!(!run.counters.contains_key("kitty"));
+    assert_eq!(run.relics()[0], RelicId::new("old_lady"));
+    // ... or buys it at full price.
+    let mut run = at_old_friend(
+        &content,
+        &["kitty", "kontra"],
+        7,
+        EncounterEffect::SellRelic(100),
+    );
+    let coins = run.coins();
+    let price = content.relic(&kitty).expect("kitty").price;
+    let events = run.apply(&content, pick_kitty).expect("sell");
+    assert_eq!(paid_out(&events), Some((kitty.clone(), 7)));
+    assert_eq!(run.coins(), coins + 7 + price);
+    assert!(!run.counters.contains_key("kitty"));
+    assert!(!run.relics().contains(&kitty));
     // The boss pick replaces it.
     let mut run = relic_run(&content, &["kontra", "kitty"]);
     run.counters.insert("kitty".into(), 5);

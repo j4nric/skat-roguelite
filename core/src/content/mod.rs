@@ -420,124 +420,164 @@ impl CharacterDef {
     }
 }
 
-/// What an encounter (Ereignis, DESIGN 13) offers. The concrete options
-/// are drawn when the encounter opens ([`crate::run::EncounterOption`]).
+/// Which card a [`EncounterEffect::Mark`] goes on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum CardPick {
+    /// A random card the modification may go on (a card without
+    /// modification first, never one this option marked already).
+    #[default]
+    Random,
+    /// A card of the player's choice (the option needs a target card).
+    Chosen,
+}
+
+/// What a bet ([`EncounterEffect::Bet`]) is on: the next declared game
+/// (the Ramsch does not count).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BetOn {
+    /// Won with the defenders Schneider.
+    #[default]
+    Schneider,
+    /// Won.
+    Win,
+}
+
+/// One effect of an encounter option (DESIGN 13, "Wege und Begegnungen
+/// v2", 03.11.2026). An option is a small list of these, applied in order.
+/// What an effect leaves open (`None`) is drawn when the encounter opens,
+/// so the player sees it before choosing; the open encounter
+/// ([`crate::run::ActiveEncounter`]) holds the effects with every draw
+/// filled in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EncounterKind {
-    /// Stammtisch-Streit: choose one of `offers` house rules (not owned,
-    /// unlocked, for the character); it applies until the end of the
-    /// section (Abend) without taking a slot.
-    EveningRule {
-        /// House rules on offer.
-        offers: u32,
-    },
-    /// Der Kartengeber: a random card of the deck gets a card modification
-    /// for free, or for `price` Groschen the player chooses the card. The
-    /// modification is `card_mod`, or random from the character's pool.
-    /// A random draw never gives a curse unless `curse` asks for one
-    /// (DESIGN 7.2: curses only where announced).
-    MarkCard {
-        /// Price for choosing the card.
-        price: u32,
-        /// The modification; `None` draws one.
+pub enum EncounterEffect {
+    /// Groschen for the player.
+    Coins(u32),
+    /// A house rule that applies until the end of the district without
+    /// taking a slot (not owned, unlocked, for the character). `None`:
+    /// drawn, never the same as another option's.
+    EveningRule(Option<RelicId>),
+    /// A card modification on a card of the player's edition.
+    Mark {
+        /// Which card.
+        #[serde(default)]
+        card: CardPick,
+        /// The modification; `None`: one of `offers`, or (without offers)
+        /// drawn from the character's pool, a curse only with `curse`.
         #[serde(default)]
         card_mod: Option<CardModId>,
-        /// Its value; `None`: the first value on offer
-        /// ([`CardModDef::default_value`]).
+        /// Its value; `None`: the modification's first value.
         #[serde(default)]
         value: Option<i32>,
-        /// With `card_mod: None`: draw a curse instead of a modification
-        /// without drawback. The encounter's text must announce it.
-        #[serde(default)]
-        curse: bool,
-    },
-    /// Alter Bekannter: swap an owned relic for a random other one (not
-    /// owned, unlocked, for the character).
-    SwapRelic,
-    /// Letzte Runde: the next game declared counts `factor` times, won or
-    /// lost.
-    DoubleNextGame {
-        /// Factor on the Spielwert.
-        factor: u32,
-    },
-    /// Rast (ADR 0016): win back lives, up to the maximum.
-    Rest {
-        /// Lives gained.
-        lives: u32,
-    },
-    /// Werkstatt (Upgrade, ADR 0016): a modification drawn from the
-    /// character's pool (never a curse) on a card of the player's choice,
-    /// or every modification off a chosen card, both free.
-    Workshop,
-    /// The loot of a won Spelunke (ADR 0016): a relic drawn now, taken
-    /// into a free slot or turned into Groschen (half its price). Never
-    /// drawn on a route.
-    RelicReward,
-    /// Der Wirt spendiert (02.11.2026): one of `offers` Schnäpse (drawn
-    /// now) into a free slot for free, or `coins` Groschen.
-    FreeSchnapps {
-        /// Schnäpse on offer.
-        offers: u32,
-        /// Groschen instead.
-        coins: u32,
-    },
-    /// Falschspieler am Nebentisch (02.11.2026): for `price` Groschen one
-    /// of `offers` (drawn now) on a card of the player's choice; with
-    /// `curse_percent` percent a random curse lands there instead. The
-    /// text must say "Fluch".
-    Gamble {
-        /// Price.
-        price: u32,
-        /// Modifications with their value, one drawn.
+        /// Modifications with their value, one drawn when it opens.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         offers: Vec<(CardModId, i32)>,
-        /// Chance of the curse, in percent.
+        /// Without `card_mod` and `offers`: draw a curse. The encounter's
+        /// text must say "Fluch".
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        curse: bool,
+        /// With this chance (percent) a random curse lands on the card
+        /// instead. The encounter's text must say "Fluch".
+        #[serde(default, skip_serializing_if = "is_zero")]
         curse_percent: u32,
     },
-    /// Verlorenes Portemonnaie (02.11.2026): keep it (`coins` Groschen and
-    /// the curse `curse` on a random card) or hand it in (`lives` back).
-    Wallet {
-        /// Groschen in the wallet.
-        coins: u32,
-        /// The curse that comes with keeping it.
-        curse: CardModId,
-        /// Lives for handing it in.
-        lives: u32,
+    /// Swap an owned relic (the target, an index into the owned relics)
+    /// for this one; `None`: drawn.
+    SwapRelic(Option<RelicId>),
+    /// Sell an owned relic (the target) for this percentage of its price
+    /// (100: the full price).
+    SellRelic(u32),
+    /// This relic into a free slot; `None`: drawn, the same for every
+    /// option of the encounter.
+    Relic(Option<RelicId>),
+    /// Groschen worth this percentage of the encounter's relic
+    /// ([`EncounterEffect::Relic`]); becomes [`EncounterEffect::Coins`]
+    /// when it opens.
+    RelicCoins(u32),
+    /// The next declared game counts this many times, won or lost.
+    NextGameFactor(u32),
+    /// Einmischen in the next pub: more, or (negative) fewer in its first
+    /// game.
+    NextPubRedeals(i32),
+    /// The player sees both skat cards in the next game, as with the
+    /// "Kurzer" (from every deal until a game is declared).
+    SeeSkat,
+    /// A Schnaps into a free slot; `None`: drawn, never the same as
+    /// another option's. With every slot full the player gets its price
+    /// in Groschen instead.
+    Schnapps(Option<ConsumableId>),
+    /// Lives back, up to the maximum.
+    Lives(u32),
+    /// The exact stops of the next route choices are shown.
+    Scout(u32),
+    /// Bet the option's cost on the next declared game: paid back with
+    /// `percent` percent (200: double) if it goes as bet, else gone.
+    Bet {
+        /// What the bet is on.
+        on: BetOn,
+        /// Payout in percent of the stake.
+        percent: u32,
     },
-    /// Der Skatlehrer (02.11.2026): `card_mod` with `value` on a card of
-    /// the player's choice for free; the first game of the next pub allows
-    /// `redeals` Einmischen fewer.
-    Lesson {
-        /// The modification.
-        card_mod: CardModId,
-        /// Its value.
-        value: i32,
-        /// Einmischen fewer in the next pub.
-        redeals: u32,
+    /// Throw the dice for the option's cost: with `chance` percent the
+    /// stake comes back with `percent` percent (200: double), else it is
+    /// gone. Drawn with the encounter generator.
+    Dice {
+        /// Chance to win, in percent.
+        chance: u32,
+        /// Payout in percent of the stake.
+        percent: u32,
     },
-    /// Die Wette (02.11.2026): stake one of `stakes` Groschen on the next
-    /// declared game (the Ramsch does not count); won with Schneider it
-    /// pays the stake `factor` times, otherwise it is gone.
-    Wager {
-        /// The stakes on offer.
-        stakes: Vec<u32>,
-        /// Payout factor (2: the stake doubles).
-        factor: u32,
-    },
-    /// Alte Karten im Schrank (02.11.2026): one of `vouchers` (drawn now)
-    /// on a card of the player's choice, a random curse (drawn now) on
-    /// another card. The text must say "Fluch".
-    OldCards {
-        /// Vouchers, one drawn.
-        vouchers: Vec<CardModId>,
-    },
-    /// Kiebitz am Fenster (02.11.2026): see the exact stops of the next
-    /// `legs` route choices, or `redeals` Einmischen more in the next pub.
-    Lookout {
-        /// Route choices whose stops are shown.
-        legs: u32,
-        /// Einmischen more in the next pub.
-        redeals: u32,
-    },
+    /// The Kartenmaler for free on a card of the player's choice; the
+    /// encounter waits for [`crate::run::RunAction::ChoosePaint`]. Always
+    /// the last effect of its option.
+    Painter,
+    /// Every modification off a card of the player's choice.
+    Cleanse,
+}
+
+impl EncounterEffect {
+    /// Whether it needs a card of the player's choice.
+    #[must_use]
+    pub const fn needs_card(&self) -> bool {
+        matches!(
+            self,
+            EncounterEffect::Mark {
+                card: CardPick::Chosen,
+                ..
+            } | EncounterEffect::Painter
+                | EncounterEffect::Cleanse
+        )
+    }
+
+    /// Whether it needs an owned relic of the player's choice.
+    #[must_use]
+    pub const fn needs_relic(&self) -> bool {
+        matches!(
+            self,
+            EncounterEffect::SwapRelic(_) | EncounterEffect::SellRelic(_)
+        )
+    }
+}
+
+/// One option of an encounter as data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncounterOptionDef {
+    /// German title on its card or button.
+    pub label: String,
+    /// Groschen it costs (the stake of a bet or a throw of the dice).
+    #[serde(default)]
+    pub cost: u32,
+    /// What it does, in order.
+    #[serde(default)]
+    pub effects: Vec<EncounterEffect>,
+    /// Offered only when no other option can be taken ("Zuschauen" at the
+    /// Würfelbude).
+    #[serde(default)]
+    pub fallback: bool,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// The kind of a stop on a route between two pubs (ADR 0016): the
@@ -555,6 +595,32 @@ pub enum StopCategory {
     Upgrade,
     /// Rast: lives back.
     Rest,
+    /// Fundgroschen: a few Groschen on the way (03.11.2026).
+    FoundCoins,
+    /// Kiosk: a small shop with two Schnäpse, cheaper than at the Tresen
+    /// (03.11.2026). No encounter.
+    Kiosk,
+    /// Würfelbude: a throw of the dice for Groschen (03.11.2026).
+    DiceStall,
+}
+
+impl StopCategory {
+    /// Every category in a fixed order.
+    pub const ALL: [StopCategory; 7] = [
+        StopCategory::Tresen,
+        StopCategory::Event,
+        StopCategory::Upgrade,
+        StopCategory::Rest,
+        StopCategory::FoundCoins,
+        StopCategory::Kiosk,
+        StopCategory::DiceStall,
+    ];
+
+    /// Whether its stop is a shop rather than an encounter.
+    #[must_use]
+    pub const fn is_shop(self) -> bool {
+        matches!(self, StopCategory::Tresen | StopCategory::Kiosk)
+    }
 }
 
 /// An encounter (Ereignis / Rast, DESIGN 13): a stop on a route between
@@ -567,8 +633,9 @@ pub struct EncounterDef {
     pub name: String,
     /// German description.
     pub text: String,
-    /// What it offers.
-    pub kind: EncounterKind,
+    /// Its options (two or three on a route since 03.11.2026); one must be
+    /// taken, there is no walking on.
+    pub options: Vec<EncounterOptionDef>,
     /// Weight when drawn (default 1); 0: never drawn on a route.
     #[serde(default = "one")]
     pub weight: u32,
@@ -1339,28 +1406,60 @@ pub struct LivesConfig {
     pub boss_bonus: u32,
 }
 
-/// Draw weights of the stop categories on a route.
+/// Draw weights of the stop categories on a route. The Tresen has none:
+/// since 03.11.2026 one of the three ways always leads to it, and the
+/// other two draw two different categories by these weights.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StopWeights {
-    /// The Tresen.
-    pub tresen: u32,
     /// Begegnung.
     pub event: u32,
     /// Upgrade.
     pub upgrade: u32,
     /// Rast (only drawn while a life is missing).
     pub rest: u32,
+    /// Fundgroschen.
+    #[serde(default)]
+    pub found_coins: u32,
+    /// Kiosk.
+    #[serde(default)]
+    pub kiosk: u32,
+    /// Würfelbude.
+    #[serde(default)]
+    pub dice_stall: u32,
 }
 
 impl StopWeights {
-    /// The weight of one category.
+    /// The weight of one category (0 for the Tresen).
     #[must_use]
     pub const fn of(&self, category: StopCategory) -> u32 {
         match category {
-            StopCategory::Tresen => self.tresen,
+            StopCategory::Tresen => 0,
             StopCategory::Event => self.event,
             StopCategory::Upgrade => self.upgrade,
             StopCategory::Rest => self.rest,
+            StopCategory::FoundCoins => self.found_coins,
+            StopCategory::Kiosk => self.kiosk,
+            StopCategory::DiceStall => self.dice_stall,
+        }
+    }
+}
+
+/// The Kiosk (03.11.2026): a stop with a few Schnäpse, each cheaper than
+/// at the Tresen. One may be bought.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KioskConfig {
+    /// Schnäpse on offer.
+    pub offers: u32,
+    /// Groschen off the Tresen price (after the Tresen discount), at
+    /// least 1 Groschen is left.
+    pub discount: u32,
+}
+
+impl Default for KioskConfig {
+    fn default() -> Self {
+        KioskConfig {
+            offers: 2,
+            discount: 1,
         }
     }
 }
@@ -1370,6 +1469,9 @@ impl StopWeights {
 pub struct RouteConfig {
     /// How often each stop category is drawn.
     pub weights: StopWeights,
+    /// The Kiosk.
+    #[serde(default)]
+    pub kiosk: KioskConfig,
 }
 
 /// The Spelunke (elite pub, ADR 0016).
@@ -1380,6 +1482,15 @@ pub struct SpelunkeConfig {
     pub chance: Factor,
     /// Factor on the Zielwert of the pub it replaces.
     pub target_factor: Factor,
+    /// The encounter of its loot (never on a route).
+    #[serde(default = "SpelunkeConfig::default_loot")]
+    pub loot: EncounterId,
+}
+
+impl SpelunkeConfig {
+    fn default_loot() -> EncounterId {
+        EncounterId::new("spelunke_loot")
+    }
 }
 
 /// The relic pick of a won boss pub (ADR 0017).
@@ -1941,93 +2052,13 @@ impl Content {
 
     fn validate_encounters(&self) -> Result<(), ContentError> {
         for def in self.encounters.values() {
-            let (mods, curse): (Vec<&CardModId>, bool) = match &def.kind {
-                EncounterKind::Gamble { offers, .. } => {
-                    (offers.iter().map(|(m, _)| m).collect(), true)
-                }
-                EncounterKind::Wallet { curse, .. } => (vec![curse], true),
-                EncounterKind::Lesson { card_mod, .. } => (vec![card_mod], false),
-                EncounterKind::OldCards { vouchers } => (vouchers.iter().collect(), true),
-                _ => continue,
-            };
-            for id in &mods {
-                if !self.card_mods.contains_key(*id) {
-                    return Err(ContentError(format!(
-                        "encounter {}: unknown card mod {id}",
-                        def.id
-                    )));
-                }
-            }
-            if let EncounterKind::Wallet { curse: id, .. } = &def.kind {
-                if !self.card_mods.get(id).is_some_and(CardModDef::is_curse) {
-                    return Err(ContentError(format!(
-                        "encounter {}: {id} is no curse",
-                        def.id
-                    )));
-                }
-            }
-            if mods.is_empty() {
-                return Err(ContentError(format!(
-                    "encounter {}: nothing on offer",
-                    def.id
-                )));
-            }
-            if curse && !def.text.contains("Fluch") {
-                return Err(ContentError(format!(
-                    "encounter {}: gives a curse, its text must say \"Fluch\"",
-                    def.id
-                )));
-            }
+            self.validate_encounter(def)?;
         }
-        for def in self.encounters.values() {
-            let EncounterKind::MarkCard {
-                card_mod, curse, ..
-            } = &def.kind
-            else {
-                continue;
-            };
-            let gives_curse = match card_mod {
-                Some(id) => {
-                    let Some(named) = self.card_mods.get(id) else {
-                        return Err(ContentError(format!(
-                            "encounter {}: unknown card mod {id}",
-                            def.id
-                        )));
-                    };
-                    if *curse && !named.is_curse() {
-                        return Err(ContentError(format!(
-                            "encounter {}: curse: true names {id}, which is no curse",
-                            def.id
-                        )));
-                    }
-                    named.is_curse()
-                }
-                None => *curse,
-            };
-            // Curses come only where announced (DESIGN 7.2).
-            if gives_curse && !def.text.contains("Fluch") {
-                return Err(ContentError(format!(
-                    "encounter {}: gives a curse, its text must say \"Fluch\"",
-                    def.id
-                )));
-            }
-        }
-        for def in self.encounters.values() {
-            if def.category == StopCategory::Tresen {
-                return Err(ContentError(format!(
-                    "encounter {}: the Tresen is no encounter category",
-                    def.id
-                )));
-            }
-        }
-        // Every category a route may draw needs an encounter for everyone.
+        // Every category a route may draw needs an encounter for everyone
+        // (the Kiosk is a shop).
         let weights = &self.run.route.weights;
-        for category in [
-            StopCategory::Event,
-            StopCategory::Upgrade,
-            StopCategory::Rest,
-        ] {
-            if weights.of(category) == 0 {
+        for category in StopCategory::ALL {
+            if category.is_shop() || weights.of(category) == 0 {
                 continue;
             }
             for character in self.characters.keys() {
@@ -2041,14 +2072,126 @@ impl Content {
                 }
             }
         }
-        if !self
-            .encounters
-            .values()
-            .any(|e| e.kind == EncounterKind::RelicReward)
-        {
-            return Err(ContentError(
-                "encounters: the Spelunke needs a RelicReward encounter".into(),
-            ));
+        let loot = &self.run.spelunke.loot;
+        let has_relic = self.encounters.get(loot).is_some_and(|e| {
+            e.options
+                .iter()
+                .flat_map(|o| &o.effects)
+                .any(|f| matches!(f, EncounterEffect::Relic(_)))
+        });
+        if !has_relic {
+            return Err(ContentError(format!(
+                "run: the Spelunke's loot {loot} must be an encounter with a relic"
+            )));
+        }
+        Ok(())
+    }
+
+    /// One encounter: its options and what they name.
+    fn validate_encounter(&self, def: &EncounterDef) -> Result<(), ContentError> {
+        let err = |what: String| Err(ContentError(format!("encounter {}: {what}", def.id)));
+        if def.category.is_shop() {
+            return err(format!("{:?} is no encounter category", def.category));
+        }
+        let regular = def.options.iter().filter(|o| !o.fallback).count();
+        if regular == 0 || regular > 3 {
+            return err("needs one to three options besides a fallback".into());
+        }
+        // One option is always there to take: one that costs nothing, or
+        // a fallback. Only bets stake every option (they are put on a
+        // route only when the smallest stake is affordable).
+        let all_bets = def.options.iter().all(|o| {
+            o.effects
+                .iter()
+                .any(|e| matches!(e, EncounterEffect::Bet { .. }))
+        });
+        if !all_bets && !def.options.iter().any(|o| o.cost == 0 || o.fallback) {
+            return err("needs an option that costs nothing".into());
+        }
+        let has_relic = def
+            .options
+            .iter()
+            .flat_map(|o| &o.effects)
+            .any(|e| matches!(e, EncounterEffect::Relic(_)));
+        let mut gives_curse = false;
+        for option in &def.options {
+            let card = option.effects.iter().any(EncounterEffect::needs_card);
+            let relic = option.effects.iter().any(EncounterEffect::needs_relic);
+            if card && relic {
+                return err(format!("{}: a card and a relic target", option.label));
+            }
+            let painter = option
+                .effects
+                .iter()
+                .position(|e| *e == EncounterEffect::Painter);
+            if painter.is_some_and(|i| i + 1 != option.effects.len()) {
+                return err(format!("{}: the Kartenmaler must come last", option.label));
+            }
+            let stakes = option.effects.iter().any(|e| {
+                matches!(
+                    e,
+                    EncounterEffect::Bet { .. } | EncounterEffect::Dice { .. }
+                )
+            });
+            if stakes && option.cost == 0 {
+                return err(format!("{}: a stake of 0", option.label));
+            }
+            for effect in &option.effects {
+                match effect {
+                    EncounterEffect::Mark {
+                        card_mod,
+                        offers,
+                        curse,
+                        curse_percent,
+                        ..
+                    } => {
+                        let mut named: Vec<&CardModId> = offers.iter().map(|(m, _)| m).collect();
+                        named.extend(card_mod.iter());
+                        for id in named {
+                            let Some(m) = self.card_mods.get(id) else {
+                                return err(format!("unknown card mod {id}"));
+                            };
+                            if *curse && !m.is_curse() {
+                                return err(format!("curse: true names {id}, which is no curse"));
+                            }
+                            gives_curse |= m.is_curse();
+                        }
+                        gives_curse |= (*curse && card_mod.is_none() && offers.is_empty())
+                            || *curse_percent > 0;
+                    }
+                    EncounterEffect::EveningRule(Some(id)) => {
+                        if !self
+                            .relics
+                            .get(id)
+                            .is_some_and(|r| r.kind == RelicKind::HouseRule)
+                        {
+                            return err(format!("{id} is no house rule"));
+                        }
+                    }
+                    EncounterEffect::Relic(Some(id)) | EncounterEffect::SwapRelic(Some(id)) => {
+                        if !self.relics.contains_key(id) {
+                            return err(format!("unknown relic {id}"));
+                        }
+                    }
+                    EncounterEffect::Schnapps(Some(id)) => {
+                        if !self
+                            .consumables
+                            .get(id)
+                            .is_some_and(|c| c.category == ConsumableCategory::Schnapps)
+                        {
+                            return err(format!("{id} is no Schnaps"));
+                        }
+                    }
+                    EncounterEffect::RelicCoins(_) if !has_relic => {
+                        return err("Groschen for a relic, but no relic".into());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Curses come only where announced (DESIGN 7.2).
+        if gives_curse && !def.text.contains("Fluch") {
+            return err("gives a curse, its text must say \"Fluch\"".into());
         }
         Ok(())
     }

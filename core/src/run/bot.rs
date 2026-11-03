@@ -54,11 +54,12 @@
 //! come from [`relic_value`], [`consumable_value`] and [`zinken_value`].
 //! The bot never pays on credit for Zinken.
 //!
-//! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
-//! of a Stammtisch-Streit, the free card of the Kartengeber, a swap for a
-//! relic worth at least [`SWAP_MARGIN`] more (or, in saves where the new
-//! relic is unknown, of a relic worth less than an average one), never the
-//! double stakes of "Letzte Runde".
+//! Encounters ([`RunBot::encounter_action`], since 03.11.2026 one option
+//! must be taken): the option with the best value ([`RunBot::option_value`],
+//! simple rules in rough Groschen, not tuned), among those that can be
+//! taken. A swap only for a relic worth at least [`SWAP_MARGIN`] more than
+//! the weakest owned one; double stakes are never sought. At a Kiosk the
+//! most valuable Schnaps, if any.
 //!
 //! Kneipentour (ADR 0016, simple rules, not tuned, not measured): at a
 //! Rast the life, at the Werkstatt the cursed card cleansed (else the free
@@ -94,11 +95,12 @@
 //! It lives in the core (not in `sim/`) so that core tests can drive whole
 //! runs with it; a frontend could use it for an "auto play" button.
 
-use super::{EncounterChoice, Run, RunAction, RunPhase};
+use super::{EncounterOption, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{
-    CardModId, ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId, StopCategory,
+    BetOn, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content,
+    EncounterEffect, NextGameEffect, RelicId, StopCategory,
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
@@ -703,6 +705,9 @@ impl RunBot {
                         _ => 1,
                     },
                     StopCategory::Event => 1,
+                    StopCategory::FoundCoins => 2,
+                    StopCategory::Kiosk => 1,
+                    StopCategory::DiceStall => 0,
                 };
             }
             if option.spelunke.is_some() {
@@ -715,7 +720,9 @@ impl RunBot {
         RunAction::ChooseRoute(best.map_or(0, |(_, i)| i))
     }
 
-    /// The encounter policy, see the module docs.
+    /// The encounter policy, see the module docs: the option with the best
+    /// value ([`RunBot::option_value`]) among those that can be taken, the
+    /// first on a tie. One is always taken.
     #[must_use]
     pub fn encounter_action(&self, run: &Run, content: &Content) -> RunAction {
         if let Some(action) = Self::paint_choice(run) {
@@ -724,75 +731,192 @@ impl RunBot {
         let Some(encounter) = run.encounter() else {
             return RunAction::LeaveShop;
         };
-        let leave = encounter.options.len().saturating_sub(1);
-        let choose = |option| RunAction::ChooseEncounter {
-            option,
-            target: None,
+        let mut best: Option<(i64, RunAction)> = None;
+        for (i, option) in encounter.options.iter().enumerate() {
+            if run.encounter_option_block(content, i).is_some() {
+                continue;
+            }
+            let Some(target) = Self::option_target(run, content, i, option) else {
+                continue;
+            };
+            let value = Self::option_value(run, content, option);
+            if best.as_ref().is_none_or(|(v, _)| value > *v) {
+                best = Some((value, RunAction::ChooseEncounter { option: i, target }));
+            }
+        }
+        best.map_or(
+            RunAction::ChooseEncounter {
+                option: 0,
+                target: None,
+            },
+            |(_, action)| action,
+        )
+    }
+
+    /// The target the bot uses for an option: `Some(None)` without one,
+    /// `None` if no target is accepted. Cleansing aims at a cursed card, a
+    /// curse at a low card without modification, everything else at an
+    /// ace; a relic option at the weakest relic.
+    #[allow(clippy::option_option)]
+    fn option_target(
+        run: &Run,
+        content: &Content,
+        index: usize,
+        option: &EncounterOption,
+    ) -> Option<Option<u32>> {
+        let accepted = |target: u32| {
+            run.accepts(
+                content,
+                RunAction::ChooseEncounter {
+                    option: index,
+                    target: Some(target),
+                },
+            )
         };
+        if option.needs_relic() {
+            let weakest = run
+                .relics()
+                .iter()
+                .enumerate()
+                .min_by_key(|(i, id)| (relic_value(id), *i))
+                .and_then(|(i, _)| u32::try_from(i).ok())?;
+            return accepted(weakest).then_some(Some(weakest));
+        }
+        if !option.needs_card() {
+            return Some(None);
+        }
+        let cleanse = option.effects.contains(&EncounterEffect::Cleanse);
+        let curse = option.effects.iter().any(|e| match e {
+            EncounterEffect::Mark {
+                card: CardPick::Chosen,
+                card_mod: Some(m),
+                ..
+            } => content.card_mod(m).is_some_and(CardModDef::is_curse),
+            _ => false,
+        });
+        let mut candidates: Vec<u32> = if cleanse {
+            Self::cursed_card(run, content).into_iter().collect()
+        } else if curse {
+            Self::low_targets(run)
+        } else {
+            Self::ace_targets(run)
+        };
+        if !cleanse {
+            candidates.extend(run.edition().cards().iter().map(|c| c.id));
+        }
+        candidates.into_iter().find(|&c| accepted(c)).map(Some)
+    }
+
+    /// Deck ids of sevens, eights and nines without modification.
+    fn low_targets(run: &Run) -> Vec<u32> {
+        run.edition()
+            .cards()
+            .iter()
+            .filter(|c| c.mods.is_empty())
+            .filter_map(|c| match c.kind {
+                CardKind::Normal(card)
+                    if matches!(card.rank, Rank::Seven | Rank::Eight | Rank::Nine) =>
+                {
+                    Some(c.id)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The bot's value of an encounter option, in rough Groschen: what its
+    /// effects bring minus what it costs. Simple rules, not tuned: Groschen
+    /// count as they are, a house rule or relic as [`relic_value`] + 1, a
+    /// Schnaps as [`consumable_value`] + 1 (its price with every slot full),
+    /// a life 100 when one is missing, a Zinke 1 on a random and 2 on a
+    /// chosen card, a curse -2, a swap the gain in value when it is at
+    /// least [`SWAP_MARGIN`], higher stakes -1 (the bot never seeks them),
+    /// a bet its expected payout (Schneider a quarter of the time, a win
+    /// three in five), a throw of the dice its expected payout.
+    #[must_use]
+    pub fn option_value(run: &Run, content: &Content, option: &EncounterOption) -> i64 {
         let free_slot = content.relic_slot_free(run.character(), run.relics().len());
         let item_slot =
             run.consumables().len() < usize::try_from(content.run.consumable_slots).unwrap_or(0);
-        let cursed = Self::cursed_card(run, content);
-        // The Werkstatt and the Skatlehrer (free choices with a target).
-        for (i, option) in encounter.options.iter().enumerate() {
-            let target = match option.choice {
-                EncounterChoice::CleanseChosenCard => cursed,
-                EncounterChoice::MarkChosenCard
-                | EncounterChoice::Lesson { .. }
-                | EncounterChoice::Painter
-                    if option.cost == 0 && cursed.is_none() =>
-                {
-                    Self::ace_targets(run).into_iter().find(|&card| {
-                        run.accepts(
-                            content,
-                            RunAction::ChooseEncounter {
-                                option: i,
-                                target: Some(card),
-                            },
-                        )
-                    })
+        let weakest = run.relics().iter().map(relic_value).min().unwrap_or(0);
+        let stake = i64::from(option.cost);
+        let mut value: i64 = -stake;
+        for effect in &option.effects {
+            value += match effect {
+                EncounterEffect::Coins(n) => i64::from(*n),
+                EncounterEffect::EveningRule(Some(id)) => i64::from(relic_value(id)) + 1,
+                EncounterEffect::Relic(Some(id)) if free_slot => i64::from(relic_value(id)) + 1,
+                EncounterEffect::SwapRelic(Some(new)) => {
+                    let gain = i64::from(relic_value(new)) - i64::from(weakest);
+                    if gain >= i64::from(SWAP_MARGIN) {
+                        gain
+                    } else {
+                        -1
+                    }
                 }
-                _ => None,
-            };
-            if target.is_some() {
-                return RunAction::ChooseEncounter { option: i, target };
-            }
-        }
-        let mut best: Option<(u32, usize)> = None;
-        for (i, option) in encounter.options.iter().enumerate() {
-            if option.cost > run.coins() {
-                continue;
-            }
-            let value = match &option.choice {
-                EncounterChoice::TakeRule(id) => relic_value(id) + 1,
-                EncounterChoice::TakeRelic(id) if free_slot => relic_value(id) + 1,
-                EncounterChoice::TakeCoins(n) => (*n).max(1),
-                EncounterChoice::Heal(_) if run.lives() < content.run.lives.max => 100,
-                EncounterChoice::TakeConsumable(id) if item_slot => consumable_value(id) + 1,
-                EncounterChoice::KeepWallet { coins, .. } => coins / 2,
-                EncounterChoice::NextPubRedeals(_) => 2,
-                EncounterChoice::Scout(_) => 1,
-                EncounterChoice::MarkRandomCard => 1,
-                // The relic received is known: swap for a clearly better one.
-                EncounterChoice::SwapRelic {
-                    relic,
-                    new: Some(new),
+                EncounterEffect::Mark {
+                    card,
+                    card_mod: Some(m),
+                    curse_percent,
                     ..
-                } if relic_value(new) >= relic_value(relic) + SWAP_MARGIN => {
-                    relic_value(new) - relic_value(relic)
+                } => {
+                    let good = match card {
+                        CardPick::Random => 1,
+                        CardPick::Chosen => 2,
+                    };
+                    let base = if content.card_mod(m).is_some_and(CardModDef::is_curse) {
+                        -2
+                    } else {
+                        good
+                    };
+                    let p = i64::from(*curse_percent);
+                    (base * (100 - p) - 2 * p) / 100
                 }
-                EncounterChoice::SwapRelic {
-                    relic, new: None, ..
-                } if relic_value(relic) < DEFAULT_RELIC_VALUE => {
-                    DEFAULT_RELIC_VALUE - relic_value(relic)
+                EncounterEffect::Schnapps(Some(id)) => {
+                    if item_slot {
+                        i64::from(consumable_value(id)) + 1
+                    } else {
+                        content.consumable(id).map_or(0, |c| i64::from(c.price))
+                    }
                 }
+                EncounterEffect::Lives(_) if run.lives() < content.run.lives.max => 100,
+                EncounterEffect::NextPubRedeals(n) => 2 * i64::from(*n),
+                EncounterEffect::SeeSkat | EncounterEffect::Scout(_) => 1,
+                EncounterEffect::NextGameFactor(_) => -1,
+                EncounterEffect::Bet { on, percent } => {
+                    let chance = match on {
+                        BetOn::Schneider => 25,
+                        BetOn::Win => 60,
+                    };
+                    stake * i64::from(*percent) * chance / 10_000
+                }
+                EncounterEffect::Dice { chance, percent } => {
+                    stake * i64::from(*percent) * i64::from(*chance) / 10_000
+                }
+                EncounterEffect::Painter => 3,
+                EncounterEffect::Cleanse => 5,
                 _ => 0,
             };
-            if value > 0 && best.is_none_or(|(v, _)| value > v) {
-                best = Some((value, i));
-            }
         }
-        choose(best.map_or(leave, |(_, i)| i))
+        value
+    }
+
+    /// At a Kiosk: the most valuable Schnaps ([`consumable_value`]) if it
+    /// can be bought, else on.
+    fn kiosk_action(run: &Run, content: &Content) -> RunAction {
+        let Some(shop) = run.shop() else {
+            return RunAction::LeaveShop;
+        };
+        shop.consumables
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, id)| Some((slot, consumable_value(id.as_ref()?))))
+            .filter(|&(_, value)| value > 0)
+            .filter(|&(slot, _)| run.accepts(content, RunAction::BuyConsumable(slot)))
+            .max_by_key(|&(slot, value)| (value, std::cmp::Reverse(slot)))
+            .map_or(RunAction::LeaveShop, |(slot, _)| {
+                RunAction::BuyConsumable(slot)
+            })
     }
 
     /// Slot of an owned consumable with this action, if usable now.
@@ -822,6 +946,9 @@ impl RunBot {
         };
         if let Some(action) = Self::paint_choice(run) {
             return action;
+        }
+        if shop.kiosk {
+            return Self::kiosk_action(run, content);
         }
         let coins = run.coins();
         let price = |p: u32| run.shop_price(content, p);
