@@ -21,7 +21,7 @@ export interface Trigger {
 }
 
 /** The elements on screen that stand for a source: its relic chip, its card. */
-function targetsOf(screen: HTMLElement, source: Source): Element[] {
+export function targetsOf(screen: HTMLElement, source: Source): Element[] {
   if (typeof source !== 'object') return [];
   if ('Relic' in source) return Array.from(screen.querySelectorAll(`[data-info="relic:${CSS.escape(source.Relic)}"], [data-info="evening:${CSS.escape(source.Relic)}"]`));
   if ('CardMod' in source) return Array.from(screen.querySelectorAll(`[data-info="card:${source.CardMod.card}"]`));
