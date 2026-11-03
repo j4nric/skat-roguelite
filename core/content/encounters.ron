@@ -63,15 +63,6 @@
         text: "Im Nebenzimmer läuft ein Preisskat. Spielst du mit, zählt das nächste Spiel dreifach, gewonnen wie verloren.",
         kind: DoubleNextGame(factor: 3),
     ),
-    // M7: curses only where announced. The curse is drawn when the
-    // encounter opens and both options name it; it pays 3 Groschen when
-    // attached, choosing the card costs 1 more than that.
-    (
-        id: "card_sharp",
-        name: "Der Falschspieler",
-        text: "Ein Falschspieler zahlt dir 3 Groschen, wenn er eine zufällige Karte deines Blatts präparieren darf. Das ist ein Fluch, welcher, siehst du vorher. Für 4 Groschen suchst du die Karte selbst aus.",
-        kind: MarkCard(price: 4, curse: true),
-    ),
     (
         id: "guest_from_altenburg",
         name: "Gast aus Altenburg",
@@ -100,5 +91,51 @@
         text: "Der Wirt der Spelunke schiebt dir über den Tresen, was er unter der Theke hatte. Nimm es mit oder lass es dir in Groschen auszahlen.",
         kind: RelicReward,
         weight: 0,
+    ),
+    // Gegenstands-Review (02.11.2026, Entscheidung des Nutzers): sieben
+    // Begegnungen. Der Falschspieler am Nebentisch ersetzt den alten
+    // Falschspieler (Fluch gegen Groschen); die Id bleibt, damit offene
+    // Spielstände ihn finden. Werte VORLÄUFIG, ohne Messung (DESIGN 13).
+    (
+        id: "landlord_treat",
+        name: "Der Wirt spendiert",
+        text: "Der Wirt ist bester Laune und gibt einen aus: Such dir einen Schnaps aus, oder er drückt dir 5 Groschen in die Hand.",
+        kind: FreeSchnapps(offers: 3, coins: 5),
+    ),
+    (
+        id: "card_sharp",
+        name: "Falschspieler am Nebentisch",
+        text: "Am Nebentisch bietet dir ein Falschspieler für 2 Groschen einen starken Kartentrick an, auf eine Karte deiner Wahl. Mit etwas Pech ist es Schund: Jedes zweite Mal landet stattdessen ein Fluch auf der Karte.",
+        kind: Gamble(price: 2, offers: [("rank", 1), ("trump_bonus", 4), ("points", 6)], curse_percent: 50),
+    ),
+    (
+        id: "lost_wallet",
+        name: "Verlorenes Portemonnaie",
+        text: "Unter dem Tisch liegt ein Portemonnaie mit 8 Groschen. Behältst du es, wird eine zufällige Karte durchsichtig, ein Fluch: Das schlechte Gewissen sieht man dir an. Gibst du es am Tresen ab, bekommst du ein Leben zurück.",
+        kind: Wallet(coins: 8, curse: "transparent", lives: 1),
+    ),
+    (
+        id: "skat_teacher",
+        name: "Der Skatlehrer",
+        text: "Ein alter Skatlehrer zeigt dir einen Kniff: Eine Karte deiner Wahl sticht eine Stufe höher (Rang +1), umsonst. Dafür redet er so lange, dass du im ersten Spiel der nächsten Kneipe einmal weniger einmischen darfst.",
+        kind: Lesson(card_mod: "rank", value: 1, redeals: 1),
+    ),
+    (
+        id: "the_bet",
+        name: "Die Wette",
+        text: "Ein Gast wettet, dass du das nächste Spiel nicht mit Schneider gewinnst. Setzt du dagegen und gewinnst mit Schneider, bekommst du den doppelten Einsatz zurück; sonst ist er weg. Der Ramsch zählt nicht.",
+        kind: Wager(stakes: [3, 6], factor: 2),
+    ),
+    (
+        id: "old_cards",
+        name: "Alte Karten im Schrank",
+        text: "Im Schrank liegt ein altes Blatt mit Gutscheinen. Einer kommt auf eine Karte deiner Wahl, aber das alte Blatt bringt auch einen Fluch mit, auf eine zufällige andere Karte.",
+        kind: OldCards(vouchers: ["voucher_undead", "voucher_wild"]),
+    ),
+    (
+        id: "lookout",
+        name: "Kiebitz am Fenster",
+        text: "Ein Kiebitz am Fenster kennt die Gegend: Er verrät dir, was auf den nächsten zwei Wegen genau wartet. Oder er hält dir in der nächsten Kneipe den Rücken frei, und du darfst dort einmal mehr einmischen.",
+        kind: Lookout(legs: 2, redeals: 1),
     ),
 ]

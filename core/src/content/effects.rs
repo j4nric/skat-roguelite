@@ -37,6 +37,11 @@ pub enum Stage {
     /// progress: only run state (Groschen, the deck). Card modifications
     /// only.
     OnDiscard,
+    /// When the player takes a route to the next pub (no game in
+    /// progress, ADR 0016). Condition [`Condition::TransportIs`].
+    OnRouteChosen,
+    /// When the Tresen opens (no game in progress).
+    OnShopOpened,
 }
 
 impl Stage {
@@ -45,7 +50,11 @@ impl Stage {
     pub const fn in_game(self) -> bool {
         !matches!(
             self,
-            Stage::OnSeriesWon | Stage::OnAttach | Stage::OnDiscard
+            Stage::OnSeriesWon
+                | Stage::OnAttach
+                | Stage::OnDiscard
+                | Stage::OnRouteChosen
+                | Stage::OnShopOpened
         )
     }
 
@@ -133,6 +142,22 @@ pub enum Hook {
         /// Effects, applied in order.
         then: Vec<Effect>,
     },
+    /// When the player takes a route to the next pub.
+    OnRouteChosen {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
+    /// When the Tresen opens.
+    OnShopOpened {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
 }
 
 impl Hook {
@@ -148,6 +173,8 @@ impl Hook {
             Hook::OnSeriesWon { .. } => Stage::OnSeriesWon,
             Hook::OnAttach { .. } => Stage::OnAttach,
             Hook::OnDiscard { .. } => Stage::OnDiscard,
+            Hook::OnRouteChosen { .. } => Stage::OnRouteChosen,
+            Hook::OnShopOpened { .. } => Stage::OnShopOpened,
         }
     }
 
@@ -162,7 +189,9 @@ impl Hook {
             | Hook::OnScore { when, .. }
             | Hook::OnSeriesWon { when, .. }
             | Hook::OnAttach { when, .. }
-            | Hook::OnDiscard { when, .. } => when,
+            | Hook::OnDiscard { when, .. }
+            | Hook::OnRouteChosen { when, .. }
+            | Hook::OnShopOpened { when, .. } => when,
         }
     }
 
@@ -177,7 +206,9 @@ impl Hook {
             | Hook::OnScore { then, .. }
             | Hook::OnSeriesWon { then, .. }
             | Hook::OnAttach { then, .. }
-            | Hook::OnDiscard { then, .. } => then,
+            | Hook::OnDiscard { then, .. }
+            | Hook::OnRouteChosen { then, .. }
+            | Hook::OnShopOpened { then, .. } => then,
         }
     }
 }
@@ -401,8 +432,9 @@ pub enum Effect {
     /// Null and Ramsch keep the printed card (DESIGN 4.4). Card
     /// modifications only, passive only.
     HonoraryJack,
-    /// Lever Augen and Spitzen ("Drei drücken", DESIGN 8.1): once per
-    /// series, at the first pickup of the skat, the player also draws a
+    /// Lever Augen and Spitzen ("Drei drücken", DESIGN 8.1): in the first
+    /// game of each pub (since 02.11.2026), when he picks up the skat, the
+    /// player also draws a
     /// random card from the hand of the left defender, holds thirteen
     /// cards and discards three. The lowest
     /// of the three goes back to that defender
@@ -414,11 +446,35 @@ pub enum Effect {
     /// An information effect. On declare only; nothing once the skat is
     /// picked up.
     RevealSkatCard(u32),
-    /// Lever Stichgewinn ("Lockvogel"): this many times per game the
-    /// player may name what the next defender who leads must lead, a suit
-    /// or trump, if he can ([`crate::rules::LeadSuit`]). Passive only;
-    /// several sources add up.
-    DemandLead(u32),
+    /// Lever Groschen (savings, "Stammtischkasse"): move up to `amount`
+    /// of the player's Groschen into the run counter `counter` (a pot).
+    /// After a won series only, so it takes from the pub's reward.
+    StashCoins {
+        /// The pot.
+        counter: String,
+        /// Groschen moved at most.
+        amount: u32,
+    },
+    /// Lever Groschen (savings, "Stammtischkasse"): pay the pot `counter`
+    /// out at `percent` (150: half on top, rounded down) and empty it. When
+    /// the Tresen opens only.
+    PayOutCounter {
+        /// The pot.
+        counter: String,
+        /// Percent of the pot paid.
+        percent: u32,
+    },
+    /// Lever Groschen (credit, "Deckel anschreiben"): once per Stadtteil the
+    /// Tresen sells down to minus this many Groschen; later income pays the
+    /// debt first. Passive only; the largest limit counts.
+    Credit(u32),
+    /// Lever Leben ("Schutzengel"): once per Stadtteil the first lost pub
+    /// costs no life. Passive only.
+    SpareLife,
+    /// Lever Spelunke ("Spelunkenkenner"): a Spelunke offers this many
+    /// maluses and the player picks one at the route choice. Passive only;
+    /// the largest number counts.
+    ChooseMalus(u32),
 }
 
 impl Effect {
@@ -464,7 +520,9 @@ impl Effect {
             | Effect::NoDiscard
             | Effect::HonoraryJack
             | Effect::DiscardThree
-            | Effect::DemandLead(_)
+            | Effect::Credit(_)
+            | Effect::SpareLife
+            | Effect::ChooseMalus(_)
             | Effect::ShowCount
             | Effect::ShopDiscount(_)
             | Effect::SeriesSkatSwap(_)
@@ -476,6 +534,8 @@ impl Effect {
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
             Effect::SwapDefenderHands => stage == Stage::OnTrickEnd,
+            Effect::StashCoins { .. } => stage == Stage::OnSeriesWon,
+            Effect::PayOutCounter { .. } => stage == Stage::OnShopOpened,
         }
     }
 
@@ -642,6 +702,9 @@ pub enum Condition {
     /// The won series had at least this many games left. On series won
     /// only.
     GamesLeftAtLeast(u32),
+    /// The route just taken goes by this means of transport. On route
+    /// chosen only.
+    TransportIs(crate::run::tour::Transport),
     /// A Null game. From the declaration on.
     NullGame,
     /// A Null game with at least this Null-Risikostufe (order Normal,
@@ -707,6 +770,7 @@ impl Condition {
             | Condition::FirstTrickOfDeclarer
             | Condition::ThisCardWinsFirstTrick => stage == Stage::OnTrickEnd,
             Condition::GamesLeftAtLeast(_) => stage == Stage::OnSeriesWon,
+            Condition::TransportIs(_) => stage == Stage::OnRouteChosen,
             Condition::NullGame
             | Condition::NullRiskAtLeast(_)
             | Condition::RamschGame

@@ -105,8 +105,8 @@
 // Card backs (ADR 0015): every back of tools/cardart/backs.py is in the
 // sprite; the Stammgäste show "regulars" on their fans, a boss series the
 // boss's back (Kontra-Hans in the boss dialog and on the fan).
-// - oma.json: seed 1720 up to a hand game in which "Die Oma" can take a
-//   Unter from the skat; giving a card for it must use her up.
+// - oma.json: seed 1720 up to a hand game with "Die Oma" (removed on
+//   02.11.2026); kept for the core's load test (the relic drops on load).
 // - meta-null.json: a meta state (not a run) with four unlocks, among them
 //   the Nullspieler. With it the hand Ansage offers Null Hand and Null Ouvert
 //   Hand; after picking up the skat Null and Null Ouvert; a Null is played.
@@ -130,7 +130,8 @@
 //   relics of wave 2a in the head with their own beer mats, and
 //   "Stammfarbe" two suit games into its streak (every trump suit flagged).
 //   A suit game after the skat shows "× 1,5" in the score line and the
-//   Abrechnung names Stammfarbe, Allrounder and Altes Blatt, the factor box
+//   Abrechnung names Stammfarbe and Allrounder (Altes Blatt, removed on
+//   02.11.2026, drops from the save on load), the factor box
 //   showing 1,5.
 // - the Ramsch (ramsch.json) score shows Augen and tricks per seat and
 //   marks the most.
@@ -163,16 +164,14 @@
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
-// - "Drei drücken" (once per pub, "1×/Kneipe" on its chip, dimmed once
-//   used): picking up lays three cards on the table (the skat
+// - "Drei drücken" (first game of each pub, "1. Spiel" on its chip, dimmed
+//   once used): picking up lays three cards on the table (the skat
 //   and the card drawn from the left Stammgast, tagged with his name),
 //   Drücken waits for three, a card tapped back into the hand and another
 //   tapped out works as with two; after Drücken the Ansage shows two
 //   pressed cards and the Stammgast holds the card given back (revealed).
-// - "Lockvogel": on the player's turn a small button opens the choices of
-//   the core; one tapped, the badge names it and the button is gone.
-// - "Spickzettel" (second run): after "Hand spielen" and a Grand Hand one
-//   skat card lies face up beside the trick, the other face down.
+// - "Spickzettel" (second run): after "Hand spielen" and a Grand Hand both
+//   skat cards lie face up beside the trick (since 02.11.2026).
 // Save code (menu "Spielstand sichern" / "Spielstand laden"), at 390 × 844
 // and at 1280 × 800: a run with seed 64 is played into its first game, the
 // code is exported from the menu (and copied), localStorage is cleared, a
@@ -1173,21 +1172,6 @@ async function m4(browser, errors, reducedMotion) {
   log(`Ramsch seats: ${seatsText}`);
   await shoot(page, 'ramsch-score');
 
-  // Die Oma: a Unter from the skat for a card of the hand.
-  await resumeFixture(page, 'oma.json');
-  await page.waitForSelector('[data-action="oma"]');
-  await page.click('[data-action="oma"]');
-  await page.waitForSelector('.hand.is-oma [data-action="oma-give"]');
-  await shoot(page, 'oma');
-  await assertFits(page, 'Die Oma');
-  const handBefore = await page.locator('.hand-card').count();
-  await page.locator('[data-action="oma-give"]').last().click();
-  await page.waitForSelector('[data-action="oma"]', { state: 'detached' });
-  await page.waitForSelector('.hand.is-oma', { state: 'detached' });
-  const handAfter = await page.locator('.hand-card').count();
-  if (handAfter !== handBefore) fail(`hand changed size after the Oma: ${handBefore} -> ${handAfter}`);
-  log('Die Oma: card taken from the skat');
-
   // Der Alte lays another boss's rule on every game.
   await resumeFixture(page, 'old-man.json');
   await page.waitForSelector('[data-testid="boss-rule"]');
@@ -1391,7 +1375,8 @@ async function m5(browser, errors, reducedMotion) {
   // M9 (ADR 0015): the Stammgäste's cards show their back, the player's
   // stay the Distel.
   await expectBacks(page, 'Stammgäste', 'regulars', 'regulars');
-  for (const id of ['home_suit', 'all_rounder', 'old_deck', 'skat_keeper', 'watertight']) {
+  // "Altes Blatt" was removed on 02.11.2026 and drops from the old save.
+  for (const id of ['home_suit', 'all_rounder', 'skat_keeper', 'watertight']) {
     if (!(await page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`).count())) fail(`relic ${id} has no beer mat in the head`);
   }
   await pickUpAndDiscard(page, 'wave 2a');
@@ -1403,7 +1388,7 @@ async function m5(browser, errors, reducedMotion) {
   await shoot(page, 'wave2-table');
   await playOut(page, 'wave 2a');
   const board = ((await page.locator('.score-sheet').textContent()) ?? '').replace(/\s+/g, ' ');
-  for (const want of ['Stammfarbe', 'Spielwert ×1,5', 'Allrounder', 'Altes Blatt']) {
+  for (const want of ['Stammfarbe', 'Spielwert ×1,5', 'Allrounder']) {
     if (!board.includes(want)) fail(`wave 2a: the Abrechnung does not say "${want}"`);
   }
   const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
@@ -1454,19 +1439,16 @@ async function patchedRun(page, seed, relics, rules = []) {
   }
 }
 
-/** M8 wave 2b: Drei drücken, Lockvogel and Spickzettel at the table. */
+/** M8 wave 2b: Drei drücken and Spickzettel at the table. */
 async function wave2b(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
   watch(page, errors);
 
-  // Drei drücken and Lockvogel.
-  await patchedRun(page, SEED, ['three_discard', 'decoy'], [
-    ['"discard_three":null', '"discard_three":{"Relic":"three_discard"}'],
-    ['"lead_demands":0', '"lead_demands":1'],
-  ]);
+  // Drei drücken.
+  await patchedRun(page, SEED, ['three_discard'], [['"discard_three":null', '"discard_three":{"Relic":"three_discard"}']]);
   const note = (await page.locator('[data-testid="once-three_discard"]').textContent())?.trim();
-  if (note !== '1×/Kneipe') fail(`Drei drücken: the chip says "${note}"`);
+  if (note !== '1. Spiel') fail(`Drei drücken: the chip says "${note}"`);
   if (await page.locator('.coaster-chip.is-used').count()) fail('Drei drücken: marked used before the skat');
   await shoot(page, 'wave2b-chip');
   await page.click('[data-action="pick-up-skat"]');
@@ -1478,7 +1460,7 @@ async function wave2b(browser, errors, reducedMotion) {
   const drawnTag = ((await page.locator(`${zone} .skat-tag.is-drawn`).textContent()) ?? '').trim();
   if (!drawnTag.startsWith('von ')) fail(`Drei drücken: the drawn card is tagged "${drawnTag}"`);
   const label = ((await page.locator(`${zone} .skat-zone-label`).textContent()) ?? '').trim();
-  if (label !== 'Drei drücken (1×/Kneipe) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
+  if (label !== 'Drei drücken (1. Spiel) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
   // Its toast stands above the Stammgäste, never over the cards on the table.
   const toast = await page
     .waitForSelector('.toast-layer.is-top .toast', { timeout: 3000 })
@@ -1487,7 +1469,7 @@ async function wave2b(browser, errors, reducedMotion) {
   const table = await page.locator(zone).boundingBox();
   if (!toast) fail('Drei drücken: no toast above the Stammgäste');
   if (toast.y + toast.height > table.y) fail(`Drei drücken: the toast (bottom ${Math.round(toast.y + toast.height)}) covers the table zone (top ${Math.round(table.y)})`);
-  if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1×/Kneipe" as used');
+  if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1. Spiel" as used');
   if (await page.locator('[data-action="discard"]').isDisabled()) fail('Drei drücken: Drücken not possible with three on the table');
   await shoot(page, 'wave2b-three-discard');
   await assertFits(page, 'Drei drücken', [PHONE, { width: 375, height: 667 }, DESKTOP]);
@@ -1508,23 +1490,7 @@ async function wave2b(browser, errors, reducedMotion) {
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
-  await page.waitForSelector('[data-testid="lure"]', { timeout: 30000 });
-  await shoot(page, 'wave2b-lure-button');
-  await page.click('[data-testid="lure"]');
-  await page.waitForSelector('[data-testid="lure-pick"]');
-  const leads = await page.locator('[data-action="lure-suit"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-lead')).join(','));
-  if (leads !== 'Trump,Clubs,Spades,Hearts,Diamonds') fail(`Lockvogel in a Grand offers ${leads}`);
-  await shoot(page, 'wave2b-lure-pick');
-  await assertFits(page, 'Lockvogel picker', [PHONE, { width: 375, height: 667 }]);
-  await page.click('[data-testid="lure-Hearts"]');
-  await page.waitForSelector('[data-testid="lure-badge"]');
-  const badge = await text(page, 'lure-badge');
-  if (badge !== 'Lockvogel: Rot') fail(`Lockvogel badge says "${badge}"`);
-  await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
-  if (await page.locator('[data-testid="lure"]').count()) fail('Lockvogel offered twice in one game');
-  await shoot(page, 'wave2b-lure');
   await playOut(page, 'wave 2b');
-  log(`Lockvogel: picker with ${leads}, badge "${badge}"`);
 
   // Spickzettel.
   await patchedRun(page, '65', ['crib_sheet']);
@@ -1535,10 +1501,10 @@ async function wave2b(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="crib-skat"]', { timeout: 30000 });
   const open = await page.locator('[data-testid="crib-skat"] button.pressed-card').count();
   const hidden = await page.locator('[data-testid="crib-skat"] .pressed-card.is-back').count();
-  if (open !== 1 || hidden !== 1) fail(`Spickzettel: ${open} skat card(s) open, ${hidden} face down`);
+  if (open !== 2 || hidden !== 0) fail(`Spickzettel: ${open} skat card(s) open, ${hidden} face down`);
   await shoot(page, 'wave2b-crib');
   await assertFits(page, 'Spickzettel', [PHONE, { width: 375, height: 667 }]);
-  log('Spickzettel: one skat card face up beside the trick');
+  log('Spickzettel: both skat cards face up beside the trick');
   await context.close();
 }
 
@@ -1830,7 +1796,7 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-testid="rules-open"]');
   await page.waitForSelector('[data-testid="rules"]');
   const rules = ((await page.locator('[data-testid="rules"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  for (const must of ['Skat oder Hand', 'Drücken', 'Grundwert × Gewinnstufen', 'Schellen', 'Eichel', 'Grand', 'Null', 'Kein Reizen', 'Boss', 'Tresen']) {
+  for (const must of ['Skat oder Hand', 'Drücken', 'Grundwert × Multiplikator', 'Schellen', 'Eichel', 'Grand', 'Null', 'Kein Reizen', 'Boss', 'Tresen']) {
     if (!rules.includes(must)) fail(`the Regelkarte lacks "${must}"`);
   }
   await assertMenuFits(page, 'Regelkarte');
@@ -2941,7 +2907,7 @@ async function run() {
       if (await page.locator('.score-sheet').count()) break;
       const dimmed = await page.locator('.hand-card.is-dim').count();
       if (played === 0) {
-        // The value at stake comes from the core: "Grundwert × Stufen".
+        // The value at stake comes from the core: "Grundwert × Multiplikator".
         const worth = await page.locator('[data-testid="value-preview"]').textContent();
         if (!/^\d+ × \d+( × \d+)?$/.test((worth ?? '').trim())) fail(`value preview while playing: "${worth}"`);
         log(`value preview: ${worth}`);

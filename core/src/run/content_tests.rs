@@ -133,16 +133,12 @@ fn has_line(b: &ScoreBreakdown, source: &Source, lever: Lever, change: Change) -
 fn every_content_item_loads_with_german_texts() {
     let content = content();
     for id in [
-        "bock_round",
-        "kontra",
         "last_trick_seven",
         "concede",
-        "ouvert_bonus",
         "skat_redraw",
         "virgin",
         "old_lady",
         "tour",
-        "march_through",
     ] {
         let def = content.relic(&RelicId::new(id)).expect(id);
         assert!(
@@ -170,7 +166,7 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["the_pusher", "kontra_hans", "grandma"] {
         assert!(content.boss(&BossId::new(id)).is_some(), "{id}");
     }
-    for id in ["fresh_deck", "ink_pad", "beer", "new_deal"] {
+    for id in ["fresh_deck", "ink_pad", "herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
     // Curve for series of 3 games (DESIGN 5.2, calibrated 02.11.2026).
@@ -185,7 +181,7 @@ fn every_content_item_loads_with_german_texts() {
 
 #[test]
 fn bock_round_doubles_the_base_value_after_a_lost_game() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["bock_round"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (events, lost) = play(&mut run, &content, hand_game(CLUBS));
@@ -208,7 +204,7 @@ fn bock_round_doubles_the_base_value_after_a_lost_game() {
 
 #[test]
 fn kontra_doubles_and_re_quadruples() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["kontra"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let events = run
@@ -322,7 +318,7 @@ fn concede_ends_the_game_after_five_tricks_as_schneider() {
 
 #[test]
 fn ouvert_bonus_adds_a_second_ouvert_level() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["ouvert_bonus"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(
@@ -484,7 +480,7 @@ fn tour_raises_the_base_value_for_every_series_won_with_games_left() {
 
 #[test]
 fn march_through_doubles_the_game_value_of_a_won_schneider() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["march_through"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
@@ -754,24 +750,14 @@ fn content_validation_rejects_misplaced_effects() {
 #[test]
 fn m4_content_items_load_with_texts_prices_and_pools() {
     let content = content();
-    let null_only = [
-        "null_eight_fifteen",
-        "safety_net",
-        "fat_sow",
-        "glass_house",
-        "tally_stick",
-    ];
-    let declarer_only = ["blind_eye", "high_and_dry", "schneider_bock", "tailor"];
+    let null_only = ["null_eight_fifteen", "fat_sow"];
+    let declarer_only = ["blind_eye", "tailor"];
     for id in [
         "every_bit_counts",
         "blind_eye",
-        "tuition",
         "beer_mat",
-        "high_and_dry",
-        "schneider_bock",
         "lucky_streak",
         "tailor",
-        "regular_guest",
     ]
     .iter()
     .chain(&null_only)
@@ -789,6 +775,7 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
             assert_eq!(def.focus, GameFocus::Trump, "{id}");
         }
     }
+    // Item review of 02.11.2026: 22 relics removed, 6 added.
     assert!(content.relics.len() >= 30);
     // Effekte v2 (DESIGN 7.2): 13 modifications, plus "Abgestuft" of the
     // Nullspieler (ADR 0015).
@@ -868,7 +855,7 @@ fn blind_eye_wins_from_58_augen() {
 
 #[test]
 fn tuition_adds_two_base_value_for_every_lost_game() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["tuition"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, lost) = play(&mut run, &content, hand_game(CLUBS));
@@ -913,7 +900,7 @@ fn beer_mat_counts_won_hand_games() {
 
 #[test]
 fn high_and_dry_adds_a_level_when_the_defenders_are_dry_after_three_tricks() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["high_and_dry"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
@@ -933,7 +920,7 @@ fn high_and_dry_adds_a_level_when_the_defenders_are_dry_after_three_tricks() {
 
 #[test]
 fn schneider_bock_doubles_the_game_after_a_won_schneider() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["schneider_bock"]);
     run.series.target = 1_000_000;
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -1000,7 +987,7 @@ fn the_tailor_counts_80_to_89_augen_as_schneider() {
 
 #[test]
 fn the_regular_guest_doubles_won_games_from_the_fourth_series() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["regular_guest"]);
     run.series.games_played = run.series.game_limit;
     let mut events = Vec::new();
@@ -1097,21 +1084,23 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
     use super::meta::MetaState;
     let content = content();
     let locked = MetaState::new().locked_relics(&content);
+    // Since the item review of 02.11.2026 rewards of removed relics point
+    // to kept or new ones (unlocks.ron).
     for id in [
-        "regular_guest",
-        "tuition",
+        "season_ticket",
+        "dive_expert",
         "lucky_streak",
-        "schneider_bock",
-        "high_and_dry",
+        "blank_king",
+        "home_suit",
         "beer_mat",
         "tailor",
     ] {
         assert!(locked.contains(&RelicId::new(id)), "{id}");
     }
-    for id in ["every_bit_counts", "blind_eye", "tally_stick", "safety_net"] {
+    for id in ["every_bit_counts", "blind_eye", "closing_time", "fat_sow"] {
         assert!(!locked.contains(&RelicId::new(id)), "{id}");
     }
-    // Five finished runs earn the Lehrgeld.
+    // Five finished runs earn the Spelunkenkenner.
     let mut meta = MetaState::new();
     let lost: Vec<RunEvent> = (0..5)
         .map(|_| RunEvent::RunLost {
@@ -1127,7 +1116,7 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
     assert!(
         !meta
             .locked_relics(&content)
-            .contains(&RelicId::new("tuition"))
+            .contains(&RelicId::new("dive_expert"))
     );
 }
 
@@ -1152,6 +1141,7 @@ fn mod_status_of(
         played: None,
         result: None,
         games_left: 0,
+        transport: None,
     };
     let def = content.card_mod(&CardModId::new(card_mod)).expect("mod");
     crate::content::card_mod_status(def, &ctx, card)

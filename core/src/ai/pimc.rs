@@ -337,8 +337,7 @@ impl PimcPolicy {
 
     /// Solve one deal and write what every legal move (`legal`, in the
     /// order of `out`) is worth to `seat` into `out`. The search finds the
-    /// moves by the rules; `legal` may be fewer when a lead is demanded
-    /// ("Lockvogel"), so the results are matched by card. Returns the
+    /// moves by the rules; the results are matched by card. Returns the
     /// nodes searched, `None` if the deal could not be solved.
     #[allow(clippy::too_many_arguments)]
     fn evaluate<C: PlayingCard>(

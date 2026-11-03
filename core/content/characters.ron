@@ -99,7 +99,7 @@
     (
         character: GrandPlayer,
         name: "Der Grandspieler",
-        text: "Lebt für den Grand: Ein Grand zählt eine Gewinnstufe mehr, ein Farbspiel eine weniger. Sein Eichel-Daus hat einen Goldrand (+8 Augen).",
+        text: "Lebt für den Grand: Ein Grand zählt +1 Multiplikator, ein Farbspiel −1. Sein Eichel-Daus hat einen Goldrand (+8 Augen).",
         // Vorne rund 1,4-mal der Alleinspieler, hinten flach: Ein gewonnener
         // Grand bringt viel, seine Erfolgskurve ist flacher (mit der
         // vorläufigen Kurve vom 01.11. Abschnitt 2 in 50 %, Run gewonnen

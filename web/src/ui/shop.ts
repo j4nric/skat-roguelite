@@ -125,6 +125,7 @@ export function renderShop(view: RunView): string {
       <div class="bubble"><h2>${esc(de.shop.title)}</h2><p>${esc(anyAffordable ? de.shop.wirtSays : de.shop.wirtBroke)}</p></div>
     </div>
     ${nextBoard(view)}
+    ${debtLine(view)}
     <div class="counter">
       <h3>${esc(de.shop.relics)}</h3>
       <div class="coasters">${relicOffers}</div>
@@ -143,6 +144,16 @@ export function renderShop(view: RunView): string {
       <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop' })}>${esc(de.shop.leave)}</button>
     </div>
   </main>`;
+}
+
+/** "Deckel anschreiben": debt and credit left, as the core counts them. */
+function debtLine(view: RunView): string {
+  const debt = view.debt ?? 0;
+  const credit = view.credit_left ?? 0;
+  const lines: string[] = [];
+  if (debt > 0) lines.push(t(de.shop.debt, { n: debt }));
+  if (credit > 0) lines.push(t(de.shop.credit, { n: credit }));
+  return lines.length ? `<p class="shop-debt" data-testid="shop-debt">${esc(lines.join(' '))}</p>` : '';
 }
 
 let goodsWatch: IntersectionObserver | null = null;

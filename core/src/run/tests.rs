@@ -507,24 +507,9 @@ fn consumables_change_the_deck_and_the_series() {
     assert_eq!(run.edition().get(31).map(|c| c.mods.len()), Some(1));
     assert!(run.consumables().is_empty());
 
-    // Beer during a series, new deal before declaring.
+    // Kräuter before declaring: a new deal without an Einmischen.
     let (mut run, _) = Run::new(&content, 4).expect("start");
-    run.consumables = vec![ConsumableId::new("beer"), ConsumableId::new("new_deal")];
-    run.apply(
-        &content,
-        RunAction::UseConsumable {
-            slot: 0,
-            target: None,
-            suit: None,
-        },
-    )
-    .expect("beer");
-    // One Einmischen more for the series, on top of the game's own.
-    assert_eq!(run.series().extra_redeals, 1);
-    assert_eq!(
-        run.redeals_left(&content),
-        content.redeals(Character::Declarer) + 1
-    );
+    run.consumables = vec![ConsumableId::new("herbal")];
     let before = run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec());
     let events = run
         .apply(
@@ -535,8 +520,12 @@ fn consumables_change_the_deck_and_the_series() {
                 suit: None,
             },
         )
-        .expect("new deal");
+        .expect("Kräuter");
     assert!(events.contains(&RunEvent::Redealt));
+    assert_eq!(
+        run.redeals_left(&content),
+        content.redeals(Character::Declarer)
+    );
     assert_eq!(run.series().games_played, 0, "a new deal costs no game");
     assert_eq!(run.game().map(|a| a.game.forehand()), Some(Seat::DECLARER));
     assert_ne!(

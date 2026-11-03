@@ -161,11 +161,8 @@ fn every_wave_two_relic_loads_and_is_on_offer() {
     let content = content();
     for id in [
         "skat_keeper",
-        "old_deck",
         "all_rounder",
         "home_suit",
-        "changeling",
-        "jack_parade",
         "blank_king",
         "watertight",
     ] {
@@ -262,7 +259,7 @@ fn skat_keeper_adds_the_skat_once_more_for_the_declarer_only() {
 
 #[test]
 fn old_deck_counts_discarded_cards_until_the_series_ends() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["old_deck"]);
     let line = |n: i64| ScoreLine {
         source: relic("old_deck"),
@@ -415,7 +412,7 @@ fn home_suit_rounds_half_up_and_counts_a_loss_too() {
 
 #[test]
 fn changeling_adds_a_level_when_the_spielart_changes() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["changeling"]);
     let level = vec![ScoreLine {
         source: relic("changeling"),
@@ -449,7 +446,7 @@ fn changeling_adds_a_level_when_the_spielart_changes() {
 
 #[test]
 fn jack_parade_counts_the_jacks_the_declarer_plays() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["jack_parade"]);
     deal(&mut run, &content, STRONG, STRONG_SKAT);
     let events = declare_hand(&mut run, &content, hand_suit(Suit::Diamonds));
@@ -658,11 +655,8 @@ fn wave_two_trigger_statistics() {
     let content = content();
     for id in [
         "skat_keeper",
-        "old_deck",
         "all_rounder",
         "home_suit",
-        "changeling",
-        "jack_parade",
         "blank_king",
         "watertight",
     ] {
