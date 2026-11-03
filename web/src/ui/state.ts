@@ -119,6 +119,8 @@ export interface UiState {
   routeLeg: string;
   /** Route choice: the whole tour as a line plan instead of the map ("−"). */
   routeOverview: boolean;
+  /** Boss relic pick with every slot full: the offer chosen, before the owned relic it replaces. */
+  rewardPick: number | null;
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
   /**

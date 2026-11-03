@@ -86,21 +86,6 @@ ${eyes(45, OUT, 7)}
 <path d="M63 17 L66 20" stroke="#c21d2c" stroke-width="2"/>`;
 }
 
-/** Der Kontra-Hans: red face, angry brows, shouting. */
-function kontraHans(): string {
-  const skin = '#e79a7a';
-  return `${shoulders('#2f4f7a', '<path d="M36 72 L44 82 L50 74 L56 82 L64 72" fill="none" stroke="#1f3456" stroke-width="2.5"/><circle cx="50" cy="90" r="2" fill="#1f3456"/>')}
-${headShape(skin, 21, 22)}
-<path d="M29 38 C27 22 38 16 50 16 C64 16 74 22 71 38 C68 30 62 26 50 26 C40 26 32 30 29 38 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
-<path d="M33 26 L36 18 M42 21 L44 13 M52 20 L54 12 M61 21 L65 14" stroke="#1d1a18" stroke-width="3" stroke-linecap="round"/>
-<circle cx="42" cy="44" r="2.4" fill="${OUT}"/><circle cx="58" cy="44" r="2.4" fill="${OUT}"/>
-<path d="M34 35 L46 40 M66 35 L54 40" stroke="#1d1a18" stroke-width="4.2" stroke-linecap="round"/>
-<path d="M30 50 C32 62 40 66 50 66 C60 66 68 62 70 50" fill="none" stroke="#5a4a40" stroke-width="5" stroke-dasharray="1.2 2.4" opacity=".7"/>
-<ellipse cx="50" cy="57" rx="7" ry="5" fill="#5a1820" stroke="${OUT}" stroke-width="1.6"/>
-<path d="M45 55 L55 55" stroke="#fff" stroke-width="1.6"/>
-<path d="M76 30 L84 24 M78 40 L88 39 M76 20 L80 12" stroke="#c21d2c" stroke-width="2.4" stroke-linecap="round"/>`;
-}
-
 /** Die Oma: grey bun, round glasses, shawl and pearls. */
 function grandma(): string {
   const skin = '#f1caa8';
@@ -259,6 +244,101 @@ ${eyes(46, OUT, 8)}
 <path d="M68 44 L82 36" stroke="#f4efe4" stroke-width="3.2" stroke-linecap="round"/><path d="M80 37 L83 35.5" stroke="#d98c3c" stroke-width="3.2" stroke-linecap="round"/>`;
 }
 
+
+// ---------------------------------------------------------------------------
+// The second boss players (ADR 0017): every boss is a pair.
+// ---------------------------------------------------------------------------
+
+/** Die Hehlerin: the Schieber's fence, dark bob, sunglasses, fur collar. */
+function fence(): string {
+  const skin = '#ecc09c';
+  return `<path d="M28 40 C24 60 28 70 34 72 L66 72 C72 70 76 60 72 40 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+${shoulders('#7a1f2b', '<path d="M18 86 C26 74 40 72 50 78 C60 72 74 74 82 86 C74 90 62 84 50 88 C38 84 26 90 18 86 Z" fill="#c9b08a" stroke="#2b1a0e" stroke-width="1.6"/>')}
+${headShape(skin, 18, 21)}
+<path d="M31 42 C29 22 40 18 50 18 C61 18 71 22 69 42 C64 30 50 28 31 42 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<rect x="35" y="40" width="13" height="8" rx="3" fill="#2e2e33" stroke="${OUT}" stroke-width="1.4"/><rect x="52" y="40" width="13" height="8" rx="3" fill="#2e2e33" stroke="${OUT}" stroke-width="1.4"/>
+<path d="M48 43 L52 43" stroke="${OUT}" stroke-width="1.6"/>
+${lips(57, '#8e2430')}${hoops(55, '#e2b04a')}`;
+}
+
+/** Der Opa: bald with a grey fringe, horn glasses, moustache, cardigan, pipe. */
+function grandpa(): string {
+  const skin = '#ecbf9a';
+  return `${shoulders('#7a6a4a', '<path d="M38 72 L50 92 L62 72" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.5"/><circle cx="50" cy="84" r="1.8" fill="#4a3a22"/><circle cx="50" cy="94" r="1.8" fill="#4a3a22"/>')}
+${headShape(skin, 19, 22)}
+<path d="M31 46 C29 36 31 30 34 28 M69 46 C71 36 69 30 66 28" fill="none" stroke="#d6d0c4" stroke-width="5" stroke-linecap="round"/>
+<path d="M40 24 C46 22 56 22 60 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".35"/>
+${eyes(45, '#d6d0c4', 8)}
+<rect x="35" y="40" width="13" height="10" rx="2" fill="#fff" fill-opacity=".2" stroke="#4a2a12" stroke-width="2"/><rect x="52" y="40" width="13" height="10" rx="2" fill="#fff" fill-opacity=".2" stroke="#4a2a12" stroke-width="2"/>
+<path d="M48 44 L52 44" stroke="#4a2a12" stroke-width="2"/>
+<path d="M38 56 C42 53 47 54 50 56 C53 54 58 53 62 56 C58 59 54 59 50 58 C46 59 42 59 38 56 Z" fill="#d6d0c4" stroke="${OUT}" stroke-width="1.3"/>
+<path d="M56 61 L66 63 L68 58 L74 58 L73 66 C70 68 66 67 66 64" fill="#6b4427" stroke="${OUT}" stroke-width="1.3"/>`;
+}
+
+/** One of Die Zwillinge: the same face, a cap in his own colour. */
+function twin(cap: string, shirt: string): string {
+  const skin = '#ebb990';
+  return `${shoulders(shirt, '<path d="M14 88 L86 88 M18 80 L82 80 M12 96 L88 96" stroke="#f4efe4" stroke-width="3" opacity=".8"/>')}
+${headShape(skin, 18, 21)}
+${eyes(45, OUT, 8)}${cheeks(53)}
+${smile(57, 6)}
+<path d="M30 38 C30 22 40 17 50 17 C62 17 70 22 70 38 Z" fill="${cap}" stroke="${OUT}" stroke-width="2"/>
+<path d="M30 37 C42 34 58 34 70 37 L84 41 C70 43 50 41 30 40 Z" fill="${cap}" stroke="${OUT}" stroke-width="1.8"/>
+<circle cx="50" cy="18" r="2.6" fill="#f4efe4" stroke="${OUT}" stroke-width="1"/>`;
+}
+
+/** Der Schwarze Peter: chimney sweep's top hat, soot on the cheeks. */
+function blackPeter(): string {
+  const skin = '#e2b088';
+  return `${shoulders('#1d1a18', '<circle cx="44" cy="84" r="2.4" fill="#e2b04a"/><circle cx="56" cy="84" r="2.4" fill="#e2b04a"/><circle cx="44" cy="94" r="2.4" fill="#e2b04a"/><circle cx="56" cy="94" r="2.4" fill="#e2b04a"/>')}
+${headShape(skin, 18, 21, 46)}
+${eyes(46, OUT, 7.5)}
+<circle cx="37" cy="54" r="5" fill="#2b2622" opacity=".45"/><circle cx="64" cy="51" r="4" fill="#2b2622" opacity=".45"/>
+<path d="M43 58 C47 61 53 61 57 58" fill="none" stroke="${OUT}" stroke-width="2" stroke-linecap="round"/>
+<rect x="33" y="6" width="34" height="26" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M22 33 C34 29 66 29 78 33 C70 37 30 37 22 33 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M34 12 L66 12" stroke="#4a4642" stroke-width="2"/>`;
+}
+
+/** Die Schwarze Grete: black headscarf, soot on the nose, a broom twig. */
+function blackGrete(): string {
+  const skin = '#efc3a0';
+  return `${shoulders('#2b2622', '<path d="M38 72 L50 84 L62 72" fill="#4a4642" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 18, 21)}
+<path d="M27 46 C24 24 38 14 50 14 C62 14 76 24 73 46 C68 34 60 28 50 28 C40 28 32 34 27 46 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M30 60 C26 70 30 76 40 74 M70 60 C74 70 70 76 60 74" fill="none" stroke="#1d1a18" stroke-width="4" stroke-linecap="round"/>
+${eyes(45, OUT, 8)}${cheeks(54)}
+<circle cx="50" cy="51" r="3" fill="#2b2622" opacity=".5"/>
+${lips(58, '#a83a40')}
+<path d="M74 50 L90 30 M86 34 L94 32 M84 36 L92 40" stroke="#7a5a2a" stroke-width="2" stroke-linecap="round"/>`;
+}
+
+/** Die Ramscherin: red wool cap like his, two blonde braids. */
+function ramscherin(): string {
+  const skin = '#eebd96';
+  return `<path d="M30 46 C26 60 26 72 30 80 M70 46 C74 60 74 72 70 80" fill="none" stroke="#d9a64a" stroke-width="7" stroke-linecap="round"/>
+<circle cx="30" cy="82" r="3" fill="#c0262f"/><circle cx="70" cy="82" r="3" fill="#c0262f"/>
+${shoulders('#3a5a6a', '<path d="M38 72 L50 82 L62 72" fill="#2a4250" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 18, 21, 46)}
+${eyes(46, '#8a6512', 8)}${cheeks(55)}
+${lips(59, '#c0505e')}
+<path d="M29 38 C28 20 40 14 50 14 C60 14 72 20 71 38 Z" fill="#c0262f" stroke="${OUT}" stroke-width="2"/>
+<path d="M28 34 L72 34 L72 40 L28 40 Z" fill="#9e1d26" stroke="${OUT}" stroke-width="1.6"/>
+<circle cx="50" cy="12" r="5" fill="#f4efe4" stroke="${OUT}" stroke-width="1.4"/>`;
+}
+
+/** Die Alte: the final boss's wife, white bun, black shawl, a brooch. */
+function oldWoman(): string {
+  const skin = '#ecc4a4';
+  return `<circle cx="50" cy="15" r="8" fill="#f4f1ea" stroke="${OUT}" stroke-width="2"/>
+${shoulders('#1f2a44', '<path d="M14 90 C30 76 70 76 86 90 L82 101 L18 101 Z" fill="#141c30" stroke="#2b1a0e" stroke-width="1.6"/><circle cx="50" cy="82" r="3.6" fill="#e2b04a" stroke="#8a6512" stroke-width="1"/>')}
+${headShape(skin, 18, 21, 45)}
+<path d="M31 43 C29 27 40 21 50 21 C61 21 71 27 69 43 C66 33 58 30 50 30 C42 30 34 33 31 43 Z" fill="#f4f1ea" stroke="${OUT}" stroke-width="2"/>
+<circle cx="42" cy="46" r="2.2" fill="${OUT}"/><circle cx="58" cy="46" r="2.2" fill="${OUT}"/>
+<path d="M36 41 C39 38 44 39 46 41 M54 41 C56 39 61 38 64 41" fill="none" stroke="#c9c3b8" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M38 52 L40 54 M62 52 L60 54 M40 60 L42 62 M60 60 L58 62" stroke="#c99a7a" stroke-width="1.2"/>
+<path d="M44 57 C47 55 53 55 56 57" fill="none" stroke="${OUT}" stroke-width="1.8" stroke-linecap="round"/>`;
+}
 
 // ---------------------------------------------------------------------------
 // Stammgäste: one face per `look` in core/content/guests.ron. Strong
@@ -476,10 +556,17 @@ const PORTRAITS: Record<string, () => string> = {
   'p-opp-2': regularGlasses,
   'p-wirt': wirt,
   'p-boss-the_pusher': pusher,
-  'p-boss-kontra_hans': kontraHans,
+  'p-boss-the_pusher-2': fence,
   'p-boss-grandma': grandma,
-  'p-boss-the_old_man': oldMan,
+  'p-boss-grandma-2': grandpa,
+  'p-boss-twins': () => twin('#c0262f', '#2f4f7a'),
+  'p-boss-twins-2': () => twin('#2f4f7a', '#c0262f'),
   'p-boss-ramscher': ramscher,
+  'p-boss-ramscher-2': ramscherin,
+  'p-boss-black_peter': blackPeter,
+  'p-boss-black_peter-2': blackGrete,
+  'p-boss-the_old_man': oldMan,
+  'p-boss-the_old_man-2': oldWoman,
   'p-boss': genericBoss,
   'p-char-Declarer': declarer,
   'p-char-NullPlayer': nullPlayer,
@@ -527,9 +614,9 @@ export function guestPortraitId(look: string, seat: 1 | 2 = 1): string {
   return id in PORTRAITS ? id : `p-opp-${seat}`;
 }
 
-/** Symbol id of a boss portrait. */
-export function bossPortraitId(bossId: string): string {
-  const id = `p-boss-${bossId}`;
+/** Symbol id of a boss player's portrait (ADR 0017): figure 0 sits left, 1 right. */
+export function bossPortraitId(bossId: string, figure = 0): string {
+  const id = figure === 0 ? `p-boss-${bossId}` : `p-boss-${bossId}-${figure + 1}`;
   return id in PORTRAITS ? id : 'p-boss';
 }
 

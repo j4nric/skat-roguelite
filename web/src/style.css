@@ -696,11 +696,27 @@ button.card {
   cursor: pointer;
 }
 
-.boss-chip span:last-child {
+.boss-chip-names {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.boss-chip-names > span,
+.boss-chip-names > small {
   overflow: hidden;
-  font-size: var(--fs-s);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.boss-chip-names > span {
+  font-size: var(--fs-s);
+}
+
+.boss-chip-names > small {
+  font-size: var(--fs-xs, 11px);
+  opacity: 0.8;
 }
 
 .hud-board {
@@ -1007,8 +1023,15 @@ button.card {
   text-overflow: ellipsis;
 }
 
+/* ADR 0017: both boss players carry a name plate. */
 .opp.is-boss .opp-name {
-  color: var(--rot-light);
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 3px 5px 2px;
+  border: 1px solid var(--rot-light);
+  background: var(--rot);
+  color: #fff6e6;
+  box-shadow: 1px 1px 0 #00000066;
 }
 
 .opp-pos,
@@ -2426,11 +2449,24 @@ button.card {
 }
 
 .portrait-boss {
-  width: 112px;
-  height: 112px;
+  width: 96px;
+  height: 96px;
   border-color: var(--rot);
   box-shadow: 0 4px 0 var(--line);
 }
+
+/* ADR 0017: both boss players by name, and what is at stake. */
+.boss-figures {
+  font-family: var(--font-label);
+  color: var(--accent);
+}
+
+.boss-stakes {
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+
+
 
 .boss-intro h2 {
   font-size: var(--fs-xl);
@@ -6612,4 +6648,47 @@ button.skat-card {
 .transport-icon {
   flex: none;
   image-rendering: pixelated;
+}
+
+/* ------------------------------------------------ boss reward (ADR 0017) */
+.boss-reward .coasters {
+  padding: 0 4px;
+}
+
+.boss-reward .coaster-wrap .coaster {
+  transform: none;
+}
+
+.boss-reward .coaster.is-picked {
+  outline: 3px solid var(--accent);
+}
+
+.boss-reward-full {
+  color: var(--accent);
+}
+
+.boss-reward-replace {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boss-reward-owned {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.boss-reward .coaster-text,
+.boss-reward .coaster-name {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* The pick is a decision: the whole text, not three lines. */
+.boss-reward .coaster-text {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
 }

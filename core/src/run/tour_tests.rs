@@ -793,3 +793,104 @@ fn a_save_with_a_removed_boss_meets_its_stand_in() {
     loaded.deal(&content, true, &mut Vec::new()).expect("deal");
     assert!(loaded.requires_hand());
 }
+
+/// A run at the table of the boss pub of district 1 against `boss`, at the
+/// player's first decision: pub 4 won, the way taken straight there.
+fn at_boss_table(content: &Content, seed: u64, boss: &str) -> Run {
+    let mut run = start_at(content, seed, 0, 3);
+    run.section_boss = Some(BossId::new(boss));
+    end_pub(&mut run, content, 3, true);
+    run.walk_to_pub(content);
+    let mut events = Vec::new();
+    run.play_ai(content, &mut events).expect("AI");
+    assert_eq!(run.series().boss, Some(BossId::new(boss)));
+    run
+}
+
+#[test]
+fn the_boss_table_seats_both_figures_with_the_boss_back() {
+    let content = content();
+    let run = at_boss_table(&content, 11, "twins");
+    assert_eq!(run.owner_of_seat(BOSS_SEAT), crate::deck::Owner::Boss);
+    assert_eq!(
+        run.owner_of_seat(PARTNER_SEAT),
+        crate::deck::Owner::BossPartner
+    );
+    let view = run.view(&content);
+    let boss = view.series.boss.expect("boss");
+    let names: Vec<&str> = boss.figures.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, ["Fritz", "Franz"]);
+    let backs = view.game.expect("game").backs;
+    assert_eq!(backs[1].as_deref(), Some("twins"));
+    assert_eq!(backs[2].as_deref(), Some("twins"));
+}
+
+#[test]
+fn the_oma_under_the_old_man_curses_once_her_rule_comes() {
+    let content = content();
+    let mut run = start_at(&content, 5, content.run.sections() - 1, 4);
+    let old_man = content.boss(&BossId::new("the_old_man")).expect("old man");
+    let oma = old_man
+        .rotation
+        .iter()
+        .position(|b| b.as_str() == "grandma")
+        .expect("in the rotation");
+    let before = run.edition().clone();
+    assert!(!run.series().boss_cursed, "no curse before her rule");
+    run.series.games_played = u32::try_from(oma).expect("small");
+    run.series.redeals_used = 0;
+    run.deal(&content, true, &mut Vec::new()).expect("deal");
+    assert!(run.series().boss_cursed);
+    assert_eq!(run.series().boss_curses.len(), 16);
+    let mut ended = Vec::new();
+    run.end_pub(&content, &mut ended);
+    assert_eq!(run.edition(), &before);
+}
+
+/// Fixture tool for the e2e test (web/e2e/fixtures/boss-*.json): saves at
+/// the boss pub of ADR 0017. Run with `cargo test -p skat_core
+/// regenerate_boss_fixtures -- --ignored`.
+#[test]
+#[ignore = "rewrites web/e2e/fixtures"]
+fn regenerate_boss_fixtures() {
+    let content = content();
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/e2e/fixtures");
+    let write = |name: &str, run: &Run| {
+        let out = serde_json::json!({ "version": 3, "run": run });
+        let path = dir.join(name);
+        std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
+        println!("wrote {}", path.display());
+    };
+    // The route to the boss pub: both figures named before it.
+    let mut route = start_at(&content, 11, 0, 3);
+    route.section_boss = Some(BossId::new("the_pusher"));
+    end_pub(&mut route, &content, 3, true);
+    assert_eq!(route.phase(), RunPhase::Route);
+    write("boss-route.json", &route);
+    // At the table of Die Zwillinge.
+    write("boss-table.json", &at_boss_table(&content, 11, "twins"));
+    // Die Oma's curses on the table.
+    write("boss-oma.json", &at_boss_table(&content, 12, "grandma"));
+    // The last game of a boss pub that cannot be won any more: lost, the
+    // run ends with lives left.
+    let mut lost = at_boss_table(&content, 13, "the_pusher");
+    lost.series.games_played = 2;
+    lost.series.score = -400;
+    write("boss-lost.json", &lost);
+    // The relic pick after the won boss pub, with a free slot and full.
+    let mut won = at_boss_table(&content, 14, "black_peter");
+    end_pub(&mut won, &content, 3, true);
+    assert_eq!(won.phase(), RunPhase::BossReward);
+    write("boss-reward.json", &won);
+    let offered = won.boss_reward().expect("pick").relics.clone();
+    let slots = usize::try_from(content.relic_slots(won.character())).expect("slots");
+    won.relics = content
+        .relics
+        .values()
+        .filter(|r| !offered.contains(&r.id) && !won.locked.contains(&r.id))
+        .filter(|r| r.kind == RelicKind::HouseRule)
+        .take(slots)
+        .map(|r| r.id.clone())
+        .collect();
+    write("boss-reward-full.json", &won);
+}

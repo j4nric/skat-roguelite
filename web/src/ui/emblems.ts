@@ -1248,20 +1248,6 @@ export const BOSS_ART: Record<string, Sprite> = {
     ....ssssssssoo
     .....ssssss..g
     ......ssss...g`),
-  kontra_hans: sp('Wütender Schreihals', `
-    ...n.n.nn.n.n
-    ...nnnnnnnnnn
-    ...nRRRRRRRRn.y
-    ...RkkRRRRkkR.y
-    ...RRwkRRkwRR.y
-    ...RRRRRRRRRR
-    ...RRRkkkkRRR
-    ...RRkrrrrkRR.y
-    ...RRRkkkkRRR
-    ....RRRRRRRR
-    ......ssss
-    ...GGGGGGGGGG
-    ..GGGGGGGGGGGG`),
   grandma: sp('Handtasche voller Unter', `
     ......bbbb
     .....b....b
@@ -1295,20 +1281,6 @@ export const BOSS_ART: Record<string, Sprite> = {
     ...gGggGggGgg
     ...gGggGggGgg
     ....gggggggg`),
-  revolutionary: sp('Rote Mütze mit Stern', `
-    .......r
-    ...rrrrrrrrr
-    ..rrrrrYrrrrr
-    ..rrrrYYYrrrrr
-    ....ssssssss
-    ....skssssks
-    ....ssssssss
-    ....nnnnnnnn
-    ....nnnnnnnn
-    ....nnnnnnnn
-    .....nnnnnn
-    ..eeeeeeeeeeee
-    ..eeeeeeeeeeee`),
   black_peter: sp('Karte mit schwarzer Katze', `
     ....wwwwwwww
     ...wwwwwwwwww
@@ -1323,19 +1295,6 @@ export const BOSS_ART: Record<string, Sprite> = {
     ...wwwkkkkwww
     ...wwwwwwwwww
     ....wwwwwwww`),
-  kibitz_killer: sp('Durchgestrichenes Auge', `
-    .............rr
-    ............rr
-    .....wwwwwwrr
-    ...wwwGGGGrrw
-    ..wwwGGkkrrwww
-    .wwwwGkkrrGwwww
-    ..wwwGGrrGGwww
-    ...wwwrrGGwww
-    .....rrwwww
-    ....rr
-    ...rr
-    ..rr`),
   the_old_man: sp('Alter König mit Bart', `
     ....y..yy..y
     ....yyyyyyyy

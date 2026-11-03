@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, bossEditionText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
@@ -102,7 +102,11 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     if (card.demoted) facts.push(face(card.kind)?.rank === 'J' ? de.info.demotedJack : de.info.demoted);
     // ADR 0015: an opponent's card shows his edition.
     if (card.owner === 'Guest') facts.push(de.info.ownerGuest);
-    if (card.owner === 'Boss') facts.push(t(de.info.ownerBoss, { name: view.game?.boss_rule?.name ?? view.series.boss?.name ?? '' }));
+    if (card.owner === 'Boss' || card.owner === 'BossPartner') {
+      // The figure at that seat (ADR 0017): for Der Alte his own couple, not the rule's.
+      const figure = view.series.boss?.figures?.[card.owner === 'Boss' ? 0 : 1];
+      facts.push(t(de.info.ownerBoss, { name: figure?.name ?? view.series.boss?.name ?? '' }));
+    }
     if (card.honorary_jack) facts.push(de.card.honoraryJack);
     if (card.no_discard) facts.push(de.card.noDiscard);
     if ('can_rise' in card && card.can_rise) facts.push(de.card.canRise);
@@ -174,16 +178,16 @@ function itemModel(key: string, item: ConsumableInfo, extra: string, actions: st
   };
 }
 
-function bossModel(key: string, view: RunView, id: string, kind: string, face = false): InfoModel {
+function bossModel(key: string, view: RunView, id: string, kind: string, figure: number | null = null): InfoModel {
   const boss = [view.series.boss, view.upcoming_boss, view.next_series?.boss, view.game?.boss_rule].find((b) => b?.id === id) ?? null;
   const facts = boss && boss.target_factor !== 1 && kind === de.info.kinds.boss ? [t(de.info.targetFactor, { factor: boss.target_factor.toLocaleString('de-DE') })] : [];
   return {
     key,
     title: contentName('bosses', id),
     kind,
-    art: `<span class="info-art-pair">${face ? portrait(bossPortraitId(id), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`}${boss?.back ? `<span class="info-back">${cardBack('', backDesign(boss.back))}</span>` : ''}</span>`,
+    art: `<span class="info-art-pair">${figure !== null ? portrait(bossPortraitId(id, figure), 'portrait-sm') : `<span class="info-emblem">${bossCoaster(id, { size: 72 })}</span>`}${boss?.back ? `<span class="info-back">${cardBack('', backDesign(boss.back))}</span>` : ''}</span>`,
     facts,
-    sections: [{ text: [contentText('bosses', id) || boss?.text || '', bossEditionText(boss)].filter(Boolean).join(' '), status: [] }],
+    sections: [{ text: [bossFiguresText(boss) ? `${t(de.info.bossAtTable, { names: bossFiguresText(boss) })}` : '', contentText('bosses', id) || boss?.text || '', bossEditionText(boss)].filter(Boolean).join(' '), status: [] }],
   };
 }
 
@@ -202,8 +206,8 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
     if (size !== undefined) facts.push(t(de.info.handSize, { n: size }));
   }
   if (person.isBoss && view.series.boss) {
-    const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss, true);
-    return { ...m, facts: [...m.facts, ...facts] };
+    const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss, seat - 1);
+    return { ...m, title: person.name, facts: [...m.facts, ...facts] };
   }
   const greet = person.guest ? `„${person.guest.greet}“` : '';
   return {
@@ -283,6 +287,11 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
     case 'relic': {
       const r = view.relics.find((x) => x.relic.id === arg);
       return r ? relicModel(key, view, ui, r.relic, de.relicKind[r.relic.kind]) : null;
+    }
+    case 'reward-relic': {
+      // The relic pick after a won boss pub (ADR 0017).
+      const o = view.boss_reward?.offers.find((x) => x.relic.id === arg);
+      return o ? relicModel(key, view, ui, o.relic, de.relicKind[o.relic.kind]) : null;
     }
     case 'evening': {
       const r = view.evening_relics.find((x) => x.id === arg);

@@ -2,7 +2,7 @@
 // a slate panel with account and target, games and Einmischen left as pips;
 // the collected relics and items as beer mats (./emblems.ts) in one row.
 
-import { de, contentName, t } from '../i18n';
+import { de, bossFiguresText, contentName, t } from '../i18n';
 import type { RunView } from '../types';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -114,8 +114,10 @@ export function renderHud(view: RunView): string {
   const atBossTable = (view.phase === 'Game' || view.phase === 'Lost') && s.is_boss;
   const bossNext = view.phase === 'Route' && tour.route?.next.is_boss;
   const bossInfo = atBossTable ? s.boss : bossNext ? (tour.route?.next.boss ?? null) : null;
+  // ADR 0017: the chip names both boss players.
+  const bossTitle = bossInfo ? `${contentName('bosses', bossInfo.id)}: ${bossFiguresText(bossInfo)}` : '';
   const boss = bossInfo
-    ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': contentName('bosses', bossInfo.id), title: contentName('bosses', bossInfo.id) })}>${bossCoaster(bossInfo.id, { size: 34 })}<span>${esc(contentName('bosses', bossInfo.id))}</span></button>`
+    ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': bossTitle, title: bossTitle })}>${bossCoaster(bossInfo.id, { size: 34 })}<span class="boss-chip-names"><span>${esc(contentName('bosses', bossInfo.id))}</span><small data-testid="hud-boss-figures">${esc(bossFiguresText(bossInfo))}</small></span></button>`
     : '';
   const fill = meterPercent(s.score, s.target);
   const chips = relicChips(view);
