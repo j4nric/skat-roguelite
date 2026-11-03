@@ -142,7 +142,7 @@
 //   Eichel Hand, the Grün-Daus led, then a Schellen lead: the Wandelkarte
 //   opens the suit picker with only Schellen allowed, and played it lies on
 //   the table as the Schellen-Daus with its printed suit as a plaque.
-// Effekte v3 and "Untot" (framesPass, modConfirmPass, voucherPass, undeadPass):
+// Effekte v3 and "Untot" (framesPass, zinkenPass, voucherPass, undeadPass):
 // - frames.json: boss-tresen.json with its deck patched by text (mods_version
 //   2): every modification of effects v2 once, plus Untot with Augen +5,
 //   Wandelkarte with Trumpf +4 and Untot with Ramponiert. On the Kreidetafel
@@ -150,9 +150,10 @@
 //   the board "Effekte v3": its frame, mark and band colour, curses in
 //   anthracite without badge, Untot with its zombie face (rotten pips on a
 //   number card), the Wandelkarte with its joker face.
-// - mods-confirm.json: frames.json with "Augen +3" and "Rang +1" in the bag
-//   and 20 Groschen: the in-app sheet before a modification replaces or
-//   raises another (see modConfirmPass).
+// - zinken.json: frames.json (removed items out of the bag) with an
+//   Auslage of three set offers and 20 Groschen: the Zinken at the Tresen
+//   (DESIGN 8.6), the in-app sheet before a Zinke replaces or raises
+//   another, the Kartenmaler and Karte reinigen (see zinkenPass).
 // - voucher.json: frames.json with "Gutschein" on the Grün-Neun and
 //   "Gutschein Untot" on the Grün-Acht, both dealt to the player in the boss
 //   game: pressed, they are redeemed with their animation (voucherPass).
@@ -2229,7 +2230,8 @@ async function framesPass(browser, errors, reducedMotion) {
     })),
   );
   if (cards.length !== 32) fail(`Kreidetafel shows ${cards.length} cards`);
-  const names = ['Augen', 'Rang', 'Trumpf', 'Letzter Stich', 'Erster Stich', 'Gutschein', 'Gutschein Untot', 'Gutschein Wandelkarte', 'Durchsichtig', 'Ramponiert', 'Fleckig', 'Wandelkarte', 'Untot'];
+  // Display names of the Zinken since 02.11.2026 (DESIGN 8.6).
+  const names = ['Aufdruck', 'Winkel', 'Siegel', 'Kerbe', 'Eselsohr', 'Pfandmarke', 'Totenmarke', 'Narrenmarke', 'Durchsichtig', 'Ramponiert', 'Fleckig', 'Wandelkarte', 'Untot'];
   const missing = names.filter((n) => !cards.some((c) => c.label.includes(n)));
   if (missing.length) fail(`Kreidetafel: no card names ${missing.join(', ')}`);
   const card = (name) => cards.find((c) => c.label.startsWith(`${name},`));
@@ -2328,7 +2330,7 @@ async function voucherPass(browser, errors) {
   const after = Number(await text(page, 'coins'));
   if (after !== coins + 3) fail(`Gutschein: Groschen ${coins} -> ${after}, expected +3`);
   await page
-    .waitForFunction(() => window.__toasts.some((t) => t.startsWith('Gutschein eingelöst')) && window.__toasts.some((t) => t.startsWith('Gutschein Untot eingelöst')), null, { timeout: 15000 })
+    .waitForFunction(() => window.__toasts.some((t) => t.startsWith('Pfandmarke eingelöst')) && window.__toasts.some((t) => t.startsWith('Totenmarke eingelöst')), null, { timeout: 15000 })
     .catch(async () => fail(`Gutschein: no toast per voucher (${(await page.evaluate(() => window.__toasts)).join(' | ')})`));
   log(`Gutschein: margin torn, coin to the counter (${coins} -> ${after}), Grün-Acht turned Untot`);
   await shoot(page, 'voucher-redeemed');
@@ -2336,62 +2338,113 @@ async function voucherPass(browser, errors) {
 }
 
 /**
- * Replace confirm (mods-confirm.json: frames.json with "Augen +3" and "Rang
- * +1" in the bag, 20 Groschen). At the Tresen "Augen +3" on the
- * Schellen-König (Trumpf) asks "ersetzt Trumpf durch Augen" and "Lieber
- * nicht" goes back to the picker; on the Schellen-Zehn (Augen +4) it shows
- * the raise "+4 → +7" and applies it. Cursed cards are dimmed with the
- * reason "Fluch". "Rang +1" refuses the Schellen-Oberin with
- * "Höchstwert": the fixture saved her at Rang 3 (before the cap of
- * 02.11.2026), the core loads her at Rang 2, the maximum. The Stempelkissen bought and used on the Schellen-König
- * only says that the card carries a modification already (drawn at random).
+ * Zinken at the Tresen (DESIGN 8.6, zinken.json: frames.json with an
+ * Auslage of three set offers, nothing in the bag, 20 Groschen). The
+ * Auslage shows three cards drawn with their new Zinke. Aufdruck +3 on the
+ * Schellen-König (Siegel) asks "ersetzt Siegel durch Aufdruck" and "Lieber
+ * nicht" goes back to the Tresen; on the Schellen-Zehn (Aufdruck +4) it
+ * shows the raise "+4 → +7" and applies it. Winkel on the Schellen-Oberin
+ * (Rang 2, the maximum) cannot be bought. "Neu auslosen" costs 1, then 2.
+ * The Kartenmaler: pay, pick a card (cursed ones dimmed with "Fluch"), take
+ * one of two Zinken; once per Tresen. "Karte reinigen" takes the curse off
+ * the Schellen-Sieben; once per Tresen.
  */
-async function modConfirmPass(browser, errors, reducedMotion) {
+async function zinkenPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
   watch(page, errors);
-  await resumeFixture(page, 'mods-confirm.json');
-  await page.waitForSelector('[data-testid="shop"]');
-  await page.click('[data-action="use-item"][data-slot="0"]');
-  await page.waitForSelector('.target-grid');
-  const reasons = await page.locator('.target-card[data-reason]').evaluateAll((els) => els.map((e) => ({ id: e.dataset.id, reason: e.dataset.reason, tag: e.querySelector('.target-reason')?.textContent ?? '' })));
-  for (const id of ['0', '1', '2', '16']) if (!reasons.some((r) => r.id === id && r.reason === 'CardCursed' && r.tag === 'Fluch')) fail(`replace confirm: cursed card ${id} not dimmed with "Fluch" (${JSON.stringify(reasons)})`);
-  await shoot(page, 'mod-picker');
-  await page.click('.target-card[data-id="6"]');
+  const run = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  await resumeFixture(page, 'zinken.json');
+  await page.waitForSelector('[data-testid="auslage"]');
+  if ((await page.locator('[data-testid="zinke"]').count()) !== 3) fail('Auslage: not three offers');
+  const names = await page.locator('[data-testid="zinke"] .zinke-name').allTextContents();
+  if (names.join(' | ') !== 'Aufdruck +3 | Aufdruck +3 | Winkel +1') fail(`Auslage: offers named ${names.join(' | ')}`);
+  if (!(await page.locator('[data-testid="zinke"][data-slot="0"] .card-svg').count())) fail('Auslage: no card face drawn');
+  if (!(await page.locator('[data-action="buy-zinke"][data-slot="2"]').isDisabled())) fail('Auslage: Winkel on the Oberin at Rang 2 can be bought');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await shoot(page, 'zinken-auslage');
+  await page.click('[data-action="buy-zinke"][data-slot="0"]');
   await page.waitForSelector('[data-testid="mod-confirm-text"]');
   const replace = await text(page, 'mod-confirm-text');
-  if (replace !== 'Schellen-König: ersetzt Trumpf durch Augen.') fail(`replace confirm: says "${replace}"`);
+  if (replace !== 'Schellen-König: ersetzt Siegel durch Aufdruck.') fail(`replace confirm: says "${replace}"`);
   if ((await page.locator('[data-testid="mod-confirm-cards"] .card').count()) !== 2) fail('replace confirm: does not show the card now and after');
-  await shoot(page, 'mod-replace');
+  await shoot(page, 'zinken-replace');
   await page.click('[data-testid="mod-confirm-back"]');
-  await page.waitForSelector('.target-grid');
-  await page.click('.target-card[data-id="3"]');
+  await page.waitForSelector('[data-testid="mod-confirm-text"]', { state: 'detached' });
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
   await page.waitForSelector('[data-testid="mod-confirm-text"]');
   const raise = await text(page, 'mod-confirm-text');
-  if (raise !== 'Schellen-Zehn: Augen +4 → +7.') fail(`raise confirm: says "${raise}"`);
-  await shoot(page, 'mod-raise');
+  if (raise !== 'Schellen-Zehn: Aufdruck +4 → +7.') fail(`raise confirm: says "${raise}"`);
   await page.click('[data-testid="mod-confirm-go"]');
   await page.waitForSelector('[data-testid="mod-confirm-text"]', { state: 'detached' });
-  await page.waitForFunction(() => {
-    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run?.edition?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7;
-  }, null, { timeout: 5000 }).catch(() => fail('raise confirm: the Schellen-Zehn does not carry Augen +7 afterwards'));
-  // "Rang +1" (now slot 0): the Oberin (saved at Rang 3, loaded at 2) is at the maximum.
-  await page.click('[data-action="use-item"][data-slot="0"]');
+  await page
+    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7, null, { timeout: 5000 })
+    .catch(() => fail('raise: the Schellen-Zehn does not carry Aufdruck +7 afterwards'));
+  if ((await run()).coins !== 18) fail(`Auslage: paid wrong, ${(await run()).coins} Groschen left`);
+  // Neu auslosen: 1, then 2.
+  const rerollText = await page.locator('[data-testid="reroll-zinken"]').textContent();
+  if (!rerollText?.includes('1 Gr.')) fail(`Neu auslosen: says "${rerollText}"`);
+  await page.click('[data-testid="reroll-zinken"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins === 17, null, { timeout: 5000 }).catch(() => fail('Neu auslosen: did not cost 1'));
+  await page.waitForFunction(() => document.querySelector('[data-testid="reroll-zinken"]')?.textContent?.includes('2 Gr.'), null, { timeout: 5000 }).catch(() => fail('Neu auslosen: the second is not dearer'));
+  if ((await page.locator('[data-testid="zinke"]').count()) !== 3) fail('Neu auslosen: not three offers again');
+  // Kartenmaler.
+  await page.click('[data-testid="painter-go"]');
+  await page.waitForSelector('[data-testid="zinken-cards"]');
+  const reasons = await page.locator('.target-card[data-reason]').evaluateAll((els) => els.map((e) => ({ id: e.dataset.id, reason: e.dataset.reason, tag: e.querySelector('.target-reason')?.textContent ?? '' })));
+  for (const id of ['0', '1', '2', '16']) if (!reasons.some((r) => r.id === id && r.reason === 'CardCursed' && r.tag === 'Fluch')) fail(`Kartenmaler: cursed card ${id} not dimmed with "Fluch" (${JSON.stringify(reasons)})`);
+  await shoot(page, 'zinken-painter-pick');
+  await page.click('.target-card[data-id="31"]');
+  await page.waitForSelector('[data-testid="painter-options"]');
+  if ((await page.locator('.painter-option').count()) !== 2) fail('Kartenmaler: not two Zinken to choose from');
+  await shoot(page, 'zinken-painter');
+  if ((await run()).coins !== 11) fail(`Kartenmaler: paid wrong, ${(await run()).coins} Groschen left`);
+  const pick = await page.getAttribute('[data-testid="paint-0"]', 'data-card-mod');
+  await page.click('[data-testid="paint-0"]');
+  await page.waitForSelector('[data-testid="painter-options"]', { state: 'detached' });
+  await page
+    .waitForFunction((m) => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 31)?.mods?.includes(m), pick, { timeout: 5000 })
+    .catch(() => fail(`Kartenmaler: the Eichel-Daus does not carry ${pick}`));
+  if (!(await page.locator('[data-testid="painter-go"]').isDisabled())) fail('Kartenmaler: can be hired twice at one Tresen');
+  // Karte reinigen.
+  await page.click('[data-testid="cleanse-go"]');
+  await page.waitForSelector('[data-testid="zinken-cards"]');
+  await page.click('.target-card[data-id="0"]');
+  await page
+    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 0)?.mods?.length === 0, null, { timeout: 5000 })
+    .catch(() => fail('Karte reinigen: the Schellen-Sieben is still cursed'));
+  if (!(await page.locator('[data-testid="cleanse-go"]').isDisabled())) fail('Karte reinigen: twice at one Tresen');
+  if ((await run()).coins !== 8) fail(`Karte reinigen: paid wrong, ${(await run()).coins} Groschen left`);
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await shoot(page, 'zinken-done');
+  log(`Zinken: "${replace}" / "${raise}" / Kartenmaler ${pick} / Karte reinigen`);
+  await context.close();
+}
+
+/** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
+async function workshopPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'route-station.json');
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await page.click('[data-action="pick-route"][data-option="1"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="encounter"][data-encounter="workshop"]', { timeout: 15000 });
+  const coins = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins);
+  await page.click('[data-action="choose-encounter"][data-option="0"]');
   await page.waitForSelector('.target-grid');
-  if (!(await page.locator('.target-card[data-id="5"][data-reason="ModAtMaximum"]').count())) fail('Rang +1: the Schellen-Oberin at Rang 2 is not refused as "Höchstwert"');
-  await page.click('.sheet [data-action="close-overlay"]');
-  // Stempelkissen: drawn at random, only the hint that the card carries one.
-  await page.click('[data-action="buy-item"]:not([disabled])');
-  await page.waitForSelector('[data-action="use-item"][data-slot="1"]');
-  await page.click('[data-action="use-item"][data-slot="1"]');
-  await page.waitForSelector('.target-grid');
-  await page.click('.target-card[data-id="6"]');
-  await page.waitForSelector('[data-testid="mod-confirm-text"]');
-  const random = await text(page, 'mod-confirm-text');
-  if (!random.startsWith('Schellen-König trägt schon Trumpf.')) fail(`random confirm: says "${random}"`);
-  await page.click('[data-testid="mod-confirm-back"]');
-  log(`replace confirm: "${replace}" / "${raise}" / "${random}"`);
+  // The Eichel-König carries nothing (the Daus has a Narrenmarke).
+  await page.click('.target-card[data-id="30"]');
+  await page.waitForSelector('[data-testid="painter-options"]');
+  await shoot(page, 'workshop-painter');
+  await page.click('[data-testid="paint-1"]');
+  if (await page.locator('[data-testid="mod-confirm-go"]').count()) fail('Werkstatt: a bare card asks before the Zinke');
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached', timeout: 15000 });
+  const after = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (after.coins !== coins) fail(`Werkstatt: the Kartenmaler was not free (${coins} -> ${after.coins})`);
+  if (!after.edition.cards.find((c) => c.id === 30)?.mods?.length) fail('Werkstatt: the Eichel-König carries nothing');
+  log('Werkstatt: Kartenmaler for free, then on to the next pub');
   await context.close();
 }
 
@@ -2461,7 +2514,7 @@ async function wave3(browser, errors, reducedMotion) {
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
   // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.
-  for (const mod of ['Wandelkarte', 'Augen']) {
+  for (const mod of ['Wandelkarte', 'Aufdruck']) {
     if (!labels.includes(mod)) fail(`wave 3: no hand card names ${mod}: ${labels}`);
   }
   await shoot(page, 'wave3-hand');
@@ -3032,7 +3085,8 @@ async function run() {
     await m5(browser, errors, reducedMotion);
     await wave3(browser, errors, reducedMotion);
     await framesPass(browser, errors, reducedMotion);
-    await modConfirmPass(browser, errors, reducedMotion);
+    await zinkenPass(browser, errors, reducedMotion);
+    await workshopPass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await undeadPass(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);

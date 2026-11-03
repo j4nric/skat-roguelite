@@ -47,7 +47,7 @@
         kind: Edge,
         focus: Trump,
         name: "Winkel",
-        text: "Rang: Diese Karte sticht {n} Stufen höher (höchstens 2).",
+        text: "Rang {+n}: Diese Karte sticht so viele Stufen höher, höchstens um 2.",
         rarity: Common,
         price: 3,
         values: [1],

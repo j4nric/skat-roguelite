@@ -75,7 +75,7 @@ fn the_card_items_are_gone_from_the_tresen() {
     // The names of the user (02.11.2026); the text leads with the effect.
     for (id, name, lead) in [
         ("points", "Aufdruck", "Augen:"),
-        ("rank", "Winkel", "Rang:"),
+        ("rank", "Winkel", "Rang {+n}:"),
         ("trump_bonus", "Siegel", "Trumpf:"),
         ("first_trick", "Eselsohr", "Erster Stich:"),
         ("last_trick", "Kerbe", "Letzter Stich:"),

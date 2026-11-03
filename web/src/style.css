@@ -4285,7 +4285,8 @@ button.card {
 
 .coaster-text {
   display: -webkit-box;
-  overflow: hidden;
+  /* clip, not hidden: centred clamped text must not count as a scroller. */
+  overflow: clip;
   font-size: var(--fs-s);
   line-height: 1.04;
   color: #4b5258;
@@ -4388,7 +4389,8 @@ button.card {
 
 .good-text {
   display: -webkit-box;
-  overflow: hidden;
+  /* clip, not hidden: centred clamped text must not count as a scroller. */
+  overflow: clip;
   font-size: var(--fs-s);
   line-height: 1.04;
   color: var(--muted);
@@ -4403,6 +4405,191 @@ button.card {
   justify-content: center;
   gap: 6px;
   margin-top: auto;
+}
+
+/* Zinken (DESIGN 8.6): the Auslage, three cards with their new Zinke drawn
+   in the frame language, then Neu auslosen, Kartenmaler, Karte reinigen. */
+.zinken {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zinken-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.zinken-head b {
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  text-transform: uppercase;
+}
+
+.zinken-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.zinke {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px 6px;
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.zinke:nth-child(odd) {
+  transform: rotate(-1deg);
+}
+
+.zinke:nth-child(even) {
+  transform: rotate(1deg);
+}
+
+.zinke > .price-tag {
+  top: -10px;
+  right: -4px;
+}
+
+.zinke-card {
+  display: block;
+  width: 66px;
+  height: 99px;
+  flex: none;
+}
+
+.zinke-card .card-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.zinke-name {
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.zinke > * {
+  max-width: 100%;
+}
+
+.zinke-on,
+.zinke-text {
+  overflow-wrap: anywhere;
+  font-size: var(--fs-s);
+  line-height: 1.04;
+  color: var(--muted);
+}
+
+.zinke-note {
+  color: #a8322a;
+}
+
+.zinke.is-sold {
+  min-height: 160px;
+  justify-content: center;
+  border-style: dashed;
+  border-color: var(--dot);
+  box-shadow: none;
+  color: #5d666d;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+}
+
+.zinke .good-foot {
+  margin-top: auto;
+}
+
+.zinken-reroll {
+  align-self: center;
+}
+
+.services {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.service {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: var(--edge) solid var(--line);
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: var(--shadow);
+}
+
+.service.is-used {
+  opacity: 0.7;
+}
+
+.service-pic {
+  flex: none;
+  line-height: 0;
+}
+
+.service-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.service h4 {
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  text-transform: uppercase;
+}
+
+.service .small {
+  color: #4b5258;
+}
+
+/* The Kartenmaler's choice: the card once per Zinke, as it would be. */
+.painter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.painter-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.painter-option .card {
+  display: block;
+  width: 88px;
+  height: 132px;
+}
+
+.painter-option .card-svg {
+  width: 100%;
+  height: 100%;
 }
 
 .shop-bar {
