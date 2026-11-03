@@ -9,7 +9,7 @@ import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
 import { backDesign } from './backs';
-import { cardBack, cardSvg, modIcon, suitIcon } from './cards';
+import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -492,7 +492,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       if (!view) return '';
       return sheet(
         `<h2>${esc(de.overview.title)}</h2>
-         ${renderOverview(view, ui.meta)}
+         ${renderOverview(view, ui.meta, false, view.game ? ui.wildSettled : {})}
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`,
         true,
         'chalkboard sheet-overview',
@@ -504,7 +504,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'target': {
       const item = view?.consumables.find((c) => c.slot === overlay.slot);
       if (!view || !item) return '';
-      const cards = view.edition.map((c) => targetCard(c, item.targets.includes(c.id), 'target', overlay.reasons?.[c.id])).join('');
+      const cards = view.edition.map((c) => targetCard(editionLook(c, view, view.game ? ui.wildSettled : {}), item.targets.includes(c.id), 'target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.shop.pickTarget)}</h2>
          <p class="small">${esc(t(de.shop.pickHint, { name: contentName('consumables', item.consumable.id), text: contentText('consumables', item.consumable.id) }))}</p>
@@ -528,7 +528,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             disabled: !ok,
             'aria-pressed': on ? 'true' : 'false',
             'aria-label': cardName(c.kind),
-          })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</button>`;
+          })}>${lookSvg(c, 'full')}</button>`;
         })
         .join('');
       const own = picked ? face(picked.kind)?.suit : undefined;
@@ -551,7 +551,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'encounter-target': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
-      const cards = view.edition.map((c) => targetCard(c, option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
+      const cards = view.edition.map((c) => targetCard(editionLook(c, view, view.game ? ui.wildSettled : {}), option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.encounter.pickTarget)}</h2>
          <p class="small">${esc(contentText('encounters', view.encounter?.id ?? ''))}</p>
@@ -777,7 +777,7 @@ function renderUnlocks(meta: MetaView, ids: string[]): string {
  * dimmed with the core's reason (its error code from the preview): a
  * short tag on the card, the full reason as its label.
  */
-function targetCard(c: DeckCard, ok: boolean, action: string, reason: string | undefined): string {
+function targetCard(c: DeckCard & CardLook, ok: boolean, action: string, reason: string | undefined): string {
   const curse = c.mods.find(isCurse);
   const why = !ok && reason ? de.modConfirm.reasons[reason] : undefined;
   const tag = !ok && reason ? de.modConfirm.tags[reason] : undefined;
@@ -790,7 +790,7 @@ function targetCard(c: DeckCard, ok: boolean, action: string, reason: string | u
     disabled: !ok,
     title: why ? label : null,
     'aria-label': label,
-  })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}${tag ? `<span class="target-reason">${esc(tag)}</span>` : ''}</button>`;
+  })}>${lookSvg(c, 'full')}${tag ? `<span class="target-reason">${esc(tag)}</span>` : ''}</button>`;
 }
 
 /**

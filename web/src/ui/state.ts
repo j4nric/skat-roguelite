@@ -5,6 +5,7 @@ import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
 import type { RunRecord } from '../storage';
+import type { SettledWild } from './cards';
 import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunLength, RunView, ScoreView, Seat } from '../types';
 
 /** What the table shows while events are being animated. */
@@ -69,7 +70,6 @@ export type Overlay =
   | { kind: 'target'; slot: number; reasons?: Record<number, string> }
   /** "Kreide": pick a card of the hand (`card`), then its new suit. */
   | { kind: 'chalk'; slot: number; card: number | null }
-  /** "Wandelkarte": the suit to name for `card` as it is played. */
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
   /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back. */
@@ -123,6 +123,13 @@ export interface UiState {
   routeOverview: boolean;
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
+  /**
+   * "Wandelkarte": cards the core settled in this game (event
+   * `WildCardSettled`), by id: the card from now on and its printed suit.
+   * For the places that only know the edition (overview, score); cleared
+   * with the next deal.
+   */
+  wildSettled: Record<number, SettledWild>;
   /** "Untot": the card that last rose from a trick in this game and its substitute there (from the CardRose event), for a note in the last trick. */
   risen: { substitute: number; card: string } | null;
   /** The opponent whose move the core is computing (thought bubble). */

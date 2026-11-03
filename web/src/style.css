@@ -1784,10 +1784,31 @@ button.card {
   border-style: dashed;
 }
 
-/* "Wandelkarte": the printed suit of a card named into another one. */
+/* "Wandelkarte": the printed suit of a card settled into another one. */
 .plaque-wild {
   background: #d8ebdf;
   border-color: #2e7d4f;
+}
+
+/* "Wandelkarte": the suit is settled, its colours cycle through the four suits (app.ts). */
+.is-settling {
+  animation: wild-settle 0.8s steps(8) both;
+}
+
+@keyframes wild-settle {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: drop-shadow(0 0 4px #fff8c8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-settling {
+    animation: none;
+  }
 }
 
 /* "Glasdaus": the card cracks, flashes and falls apart before the trick leaves. */
@@ -2648,30 +2669,6 @@ button.card {
 .target-card.is-picked {
   --ring: var(--accent);
   transform: translateY(-4px);
-}
-
-/* "Wandelkarte": the card once per suit, those the core allows lit. */
-.wild-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.wild-option {
-  position: relative;
-  padding-bottom: 22px;
-}
-
-.wild-suit-name {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  font-family: var(--font-label);
-  font-size: var(--fs-s);
 }
 
 /* "Kreide": the hand, then the four suits (the card's own one disabled). */
