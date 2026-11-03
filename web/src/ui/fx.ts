@@ -15,6 +15,11 @@ export function setTempo(factor: number): void {
   tempo = factor;
 }
 
+/** The tempo factor in force (for effects timed outside the Web Animations API). */
+export function tempoFactor(): number {
+  return tempo;
+}
+
 /** Whether flights and count-ups play at all. */
 export function motionOn(): boolean {
   return !reducedMotion();
@@ -33,6 +38,47 @@ function track(anim: Animation): Animation {
   anim.addEventListener('finish', done);
   anim.addEventListener('cancel', done);
   return anim;
+}
+
+/**
+ * Run `frame(p)` every animation frame for `ms` (tempo-scaled), p from 0 to
+ * 1, eased out. Driven by a target-less WAAPI timer, so finishAll() ends it
+ * at once with frame(1). Without motion only frame(1) runs.
+ */
+export function tween(ms: number, frame: (p: number) => void): Promise<void> {
+  const duration = dur(ms);
+  if (!duration) {
+    frame(1);
+    return Promise.resolve();
+  }
+  const timer = track(new Animation(new KeyframeEffect(null, [], duration), document.timeline));
+  timer.play();
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (): void => {
+      if (done) return;
+      done = true;
+      frame(1);
+      resolve();
+    };
+    const tick = (): void => {
+      if (done) return;
+      const p = timer.playState === 'finished' ? 1 : Math.max(0, Math.min(1, Number(timer.currentTime ?? 0) / duration));
+      if (p >= 1) {
+        end();
+        return;
+      }
+      frame(1 - (1 - p) ** 2);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    timer.finished.then(end, end);
+  });
+}
+
+/** Play keyframes on `el` as a tracked effect (finishAll() ends it). */
+export function play(el: Element, frames: Keyframe[], opts: KeyframeAnimationOptions): Animation {
+  return track(el.animate(frames, opts));
 }
 
 /** Jump every running effect to its end. */
