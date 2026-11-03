@@ -138,7 +138,7 @@
 // - wave3-mods.json (M8 wave 3, an old save: "Wandelkarte" on the Rot-Daus,
 //   "Glasdaus" on the Grün-Daus, "Heimweh" on the Eichel-Unter; since
 //   effects v2 converted on load to Wandelkarte, Augen +11 and nothing):
-//   both legendary beer mats with the gold ring, the player is Vorhand.
+//   both legendary beer mats in the orange legendary ink, the player is Vorhand.
 //   Eichel Hand, the Grün-Daus led, then a Schellen lead: the Wandelkarte
 //   opens the suit picker with only Schellen allowed, and played it lies on
 //   the table as the Schellen-Daus with its printed suit as a plaque.
@@ -2457,7 +2457,7 @@ async function wave3(browser, errors, reducedMotion) {
   for (const id of ['skat_god', 'honorary_chair']) {
     const mat = page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`);
     if (!(await mat.count())) fail(`legendary relic ${id} has no beer mat in the head`);
-    if (!(await mat.first().locator('path[stroke="#e3b24c"][stroke-width="2"]').count())) fail(`legendary relic ${id} lacks the gold ring`);
+    if (!(await mat.first().locator('[fill="#ff8a1c"], [stroke="#ff8a1c"]').count())) fail(`legendary relic ${id} lacks the legendary ink`);
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
   // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.

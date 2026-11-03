@@ -768,7 +768,7 @@ function rewardPic(reward: Reward, info?: RewardInfo): string {
   if ('CardMod' in reward) return `<span class="unlock-coaster unlock-mod">${modIcon(reward.CardMod, 46)}</span>`;
   const look = relicLook(reward.Relic);
   const kind = info?.kind === 'Regular' || info?.kind === 'HouseRule' ? info.kind : look.kind;
-  return `<span class="unlock-deckel">${relicCoaster({ id: reward.Relic, kind, rarity: info?.rarity ?? look.rarity }, { size: 72 })}</span>`;
+  return `<span class="unlock-deckel">${relicCoaster({ id: reward.Relic, kind, rarity: info?.rarity ?? look.rarity, group: look.group }, { size: 72 })}</span>`;
 }
 
 /** Festive notice of unlocks just earned. */

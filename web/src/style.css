@@ -4359,12 +4359,11 @@ button.card {
   line-height: 0;
 }
 
-/* The Schnäpse get a small label on the picture. */
+/* The Schnäpse get a small label under the picture (not on it: the
+   bottle is narrower than a beer mat and the tag would hide its motif). */
 .good-tag {
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  white-space: nowrap;
+  display: inline-block;
+  margin-top: 4px;
   padding: 1px 4px;
   border: 2px solid var(--line);
   background: var(--accent);
@@ -4373,7 +4372,7 @@ button.card {
   font-size: var(--fs-s);
   line-height: 1;
   text-transform: uppercase;
-  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .good-pic .deckel {
