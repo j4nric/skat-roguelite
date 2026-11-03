@@ -15,10 +15,12 @@
 //!   passive effects already count in the first game. The deals stay the
 //!   same as without, so the difference is the relic.
 //! - `--without <id>`: the relic is taken out of the pool (repeatable).
-//! - `--boss <id>`: boss series draw only this boss.
+//! - `--boss <id>`: boss pubs draw only this boss (also the last one, the
+//!   Endboss is not set then).
 //! - `--curve`: instead of whole runs, `--runs N` single series (with
-//!   `--boss` boss series); prints the share of series won for every
-//!   Zielwert of `run.ron`.
+//!   `--boss` boss pubs: both boss players, all three games, the account
+//!   after the last counts, ADR 0017); prints the share of series won for
+//!   every Zielwert of `run.ron`.
 //! - `--character declarer|null|shirker|tailoress|heart_brother`: who plays (default: the Alleinspieler).
 //! - `--null-scoring fixed|formula`: override the Null scoring of the
 //!   character that plays (DESIGN 9.2).
