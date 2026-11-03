@@ -67,9 +67,10 @@
 //! each way by the category it shows: the Tresen when rich, an Upgrade
 //! with a cursed card, a Rast with lives missing; a Spelunke only when
 //! strong (three lives and three relics). After a won boss pub (ADR 0017)
-//! the most valuable relic of the pick into a free slot, with every slot
-//! full in place of the weakest owned one if it is worth at least
-//! [`SWAP_MARGIN`] more, else none ([`RunBot::boss_reward_action`]).
+//! the most valuable relic of the pick into a free slot (slots are
+//! unlimited since 03.11.2026), with a cap and every slot full in place of
+//! the weakest owned one if it is worth at least [`SWAP_MARGIN`] more, else
+//! none ([`RunBot::boss_reward_action`]).
 //!
 //! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
 //! skat (the bot does not use what it sees); after the skat, "Blue Curaçao"
@@ -626,8 +627,9 @@ impl RunBot {
 
     /// The relic pick of a won boss pub (ADR 0017): the most valuable
     /// relic on offer ([`relic_value`], the first on a tie) into a free
-    /// slot; with every slot full in place of the weakest owned relic if
-    /// it is worth at least [`SWAP_MARGIN`] more, else none.
+    /// slot (always, unless the slots are capped); with every slot full in
+    /// place of the weakest owned relic if it is worth at least
+    /// [`SWAP_MARGIN`] more, else none.
     #[must_use]
     pub fn boss_reward_action(run: &Run, content: &Content) -> RunAction {
         let none = RunAction::ChooseBossRelic {
@@ -647,8 +649,7 @@ impl RunBot {
         let Some((value, offer)) = best else {
             return none;
         };
-        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
-        if run.relics().len() < slots {
+        if content.relic_slot_free(run.character(), run.relics().len()) {
             return RunAction::ChooseBossRelic {
                 offer: Some(offer),
                 replace: None,
@@ -728,8 +729,7 @@ impl RunBot {
             option,
             target: None,
         };
-        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
-        let free_slot = run.relics().len() < slots;
+        let free_slot = content.relic_slot_free(run.character(), run.relics().len());
         let item_slot =
             run.consumables().len() < usize::try_from(content.run.consumable_slots).unwrap_or(0);
         let cursed = Self::cursed_card(run, content);
@@ -834,8 +834,7 @@ impl RunBot {
                 return action;
             }
         }
-        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
-        let free_slot = run.relics().len() < slots;
+        let free_slot = content.relic_slot_free(run.character(), run.relics().len());
         // Relic offers the bot wants: (value, price, slot).
         let offers: Vec<(u32, u32, usize)> = shop
             .relics
@@ -848,7 +847,8 @@ impl RunBot {
             })
             .filter(|&(value, _, _)| value > 0)
             .collect();
-        // 2. All slots full: sell the weakest relic for a clearly better one.
+        // 2. All slots full (only with a cap): sell the weakest relic for a
+        //    clearly better one.
         if !free_slot {
             let weakest = run
                 .relics()
@@ -1674,7 +1674,9 @@ mod tests {
 
     #[test]
     fn shop_swaps_the_weakest_relic_for_a_clearly_better_one() {
-        let content = Content::load().expect("content");
+        // Only with capped slots (unlimited since 03.11.2026).
+        let mut content = Content::load().expect("content");
+        content.run.relic_slots = Some(5);
         let mut run = open_shop(&content, 6);
         run.relics = ["crib_sheet", "beer_mat", "tour", "virgin", "concede"]
             .iter()

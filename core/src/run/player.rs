@@ -381,6 +381,15 @@ impl RunEvent {
                 pot,
                 coins,
             },
+            RunEvent::StashPaidOut {
+                relic,
+                amount,
+                coins,
+            } => RunEvent::StashPaidOut {
+                relic,
+                amount,
+                coins,
+            },
             RunEvent::RoutesRerolled => RunEvent::RoutesRerolled,
             RunEvent::PubGivenUp {
                 section,

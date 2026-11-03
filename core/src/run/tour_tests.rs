@@ -260,10 +260,12 @@ fn a_won_boss_pub_pays_double_gives_a_life_and_a_pick_of_three_relics() {
 
 #[test]
 fn the_boss_pick_with_full_slots_replaces_a_relic_or_is_passed() {
-    let content = content();
+    // Slots are unlimited since 03.11.2026; `run.ron` may still cap them.
+    let mut content = content();
+    content.run.relic_slots = Some(5);
     let (mut run, _) = win_boss_pub(&content, 6);
     let offered = run.boss_reward().expect("pick").relics.clone();
-    let slots = usize::try_from(content.relic_slots(run.character())).expect("slots");
+    let slots = 5;
     let fillers: Vec<RelicId> = content
         .relics
         .keys()
@@ -893,13 +895,15 @@ fn regenerate_boss_fixtures() {
     lost.series.games_played = 2;
     lost.series.score = -400;
     write("boss-lost.json", &lost);
-    // The relic pick after the won boss pub, with a free slot and full.
+    // The relic pick after the won boss pub, with few and with many relics.
     let mut won = at_boss_table(&content, 14, "black_peter");
     end_pub(&mut won, &content, 3, true);
     assert_eq!(won.phase(), RunPhase::BossReward);
     write("boss-reward.json", &won);
     let offered = won.boss_reward().expect("pick").relics.clone();
-    let slots = usize::try_from(content.relic_slots(won.character())).expect("slots");
+    // Slots are unlimited (03.11.2026): many relics, and the pick still
+    // takes one more without replacing.
+    let slots = 9;
     won.relics = content
         .relics
         .values()

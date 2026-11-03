@@ -20,8 +20,8 @@
 // dabei nicht.
 // rule: die eine eigene Regel (DESIGN 9). passive und hooks wirken wie ein
 // Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
-// der Wertung). redeals (Einmischen pro Spiel) und relic_slots ändern
-// run.ron (nie unter 0),
+// der Wertung). redeals (Einmischen pro Spiel) ändert run.ron (nie unter
+// 0), relic_slots: Some(n) begrenzt die Relikte auf n (sonst beliebig viele),
 // payout_factor vervielfacht die Groschen einer gewonnenen Serie,
 // vouchers_return gibt eingelöste Gutscheine nach jeder Kneipe zurück,
 // keep_curses sperrt das Reinigen verfluchter Karten, zinken_discount

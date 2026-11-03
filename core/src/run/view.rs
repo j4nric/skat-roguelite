@@ -74,8 +74,8 @@ pub struct RunView {
     pub coins: u32,
     /// Owned relics in purchase order.
     pub relics: Vec<OwnedRelic>,
-    /// Slots for relics.
-    pub relic_slots: u32,
+    /// Slots for relics; `None`: any number (DESIGN 8.0).
+    pub relic_slots: Option<u32>,
     /// Owned consumables.
     pub consumables: Vec<OwnedConsumable>,
     /// Slots for consumables.
@@ -305,7 +305,8 @@ pub struct BossRewardView {
     /// [`RunAction::ChooseBossRelic`].
     pub offers: Vec<BossRelicOffer>,
     /// Whether every relic slot is taken: then a relic can only be taken
-    /// for an owned one (sold for half its price, `replace`).
+    /// for an owned one (sold for half its price, `replace`). Never with
+    /// unlimited slots (the default since 03.11.2026).
     pub slots_full: bool,
 }
 
@@ -1357,7 +1358,6 @@ impl Run {
     /// The open relic pick of a won boss pub.
     fn boss_reward_view(&self, content: &Content) -> Option<BossRewardView> {
         let reward = self.boss_reward.as_ref()?;
-        let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
         Some(BossRewardView {
             offers: reward
                 .relics
@@ -1368,7 +1368,7 @@ impl Run {
                     relic: Run::relic_info(content, id),
                 })
                 .collect(),
-            slots_full: self.relics.len() >= slots,
+            slots_full: !content.relic_slot_free(self.character, self.relics.len()),
         })
     }
 
@@ -2206,7 +2206,9 @@ mod tests {
                 for offer in shop.relics.iter().flatten() {
                     // The price after discounts ("Der Wirt").
                     let affordable = offer.price <= view.coins;
-                    let free = view.relics.len() < view.relic_slots as usize;
+                    let free = view
+                        .relic_slots
+                        .is_none_or(|slots| view.relics.len() < slots as usize);
                     assert_eq!(offer.can_buy, affordable && free);
                 }
             }

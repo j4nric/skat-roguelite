@@ -1282,6 +1282,17 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Groschen left to the player.
         coins: u32,
     },
+    /// A relic that stashes Groschen ("Stammtischkasse") left the player
+    /// (sold, swapped, replaced or an evening rule ended): its pot was paid
+    /// out first, as it was, and emptied (DESIGN 8.7).
+    StashPaidOut {
+        /// The relic that left.
+        relic: RelicId,
+        /// Groschen paid out.
+        amount: u32,
+        /// Groschen of the player now.
+        coins: u32,
+    },
     /// The stops of the open route choice were drawn again ("Schwenker").
     RoutesRerolled,
     /// The plan for the next pub changed ("Wegbier", "Der Skatlehrer",
@@ -1964,7 +1975,7 @@ impl Run {
                 relics.push(relic.clone());
             }
         }
-        if relics.len() > usize::try_from(content.relic_slots(start.character)).unwrap_or(0) {
+        if !content.relic_fits(start.character, relics.len()) {
             return Err(RunError::NoFreeSlot);
         }
         for consumable in &character.start_consumables {
@@ -3470,7 +3481,9 @@ impl Run {
             return Err(RunError::WrongPhase);
         }
         if index == 0 && !self.evening_relics.is_empty() {
-            self.evening_relics.clear();
+            for relic in std::mem::take(&mut self.evening_relics) {
+                self.pay_out_stash(content, &relic, events);
+            }
             events.push(RunEvent::EveningRulesEnded);
         }
         if index == 0 || self.section_boss.is_none() {
@@ -4260,6 +4273,48 @@ impl Run {
     }
 
     /// Income pays the debt first ("Deckel anschreiben").
+    /// `relic` has just left the player: every pot it stashes into
+    /// ([`Effect::StashCoins`]) that no relic still held stashes into is
+    /// paid out as it is, without a bonus, and emptied
+    /// ([`RunEvent::StashPaidOut`]).
+    fn pay_out_stash(&mut self, content: &Content, relic: &RelicId, events: &mut Vec<RunEvent>) {
+        let stashes = |id: &RelicId| -> Vec<String> {
+            content.relic(id).map_or_else(Vec::new, |def| {
+                def.hooks
+                    .iter()
+                    .flat_map(Hook::then)
+                    .chain(&def.passive)
+                    .filter_map(|e| match e {
+                        Effect::StashCoins { counter, .. } => Some(counter.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+        };
+        let still_held: BTreeSet<String> = self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .flat_map(stashes)
+            .collect();
+        let mut amount: u32 = 0;
+        for counter in stashes(relic) {
+            if still_held.contains(&counter) {
+                continue;
+            }
+            amount = amount.saturating_add(self.counters.remove(&counter).unwrap_or(0));
+        }
+        if amount > 0 {
+            self.coins = self.coins.saturating_add(amount);
+            events.push(RunEvent::StashPaidOut {
+                relic: relic.clone(),
+                amount,
+                coins: self.coins,
+            });
+            self.settle_debt(events);
+        }
+    }
+
     fn settle_debt(&mut self, events: &mut Vec<RunEvent>) {
         let paid = self.debt.min(self.coins);
         if paid > 0 {
@@ -4414,7 +4469,7 @@ impl Run {
         if price > coins && !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
-        if owned >= usize::try_from(content.relic_slots(self.character)).unwrap_or(0) {
+        if !content.relic_slot_free(self.character, owned) {
             return Err(RunError::NoFreeSlot);
         }
         if let Some(entry) = self.shop_mut()?.relics.get_mut(slot) {
@@ -4477,6 +4532,7 @@ impl Run {
             .ok_or(RunError::InvalidSlot)?;
         let price = content.relic(&id).map_or(0, |d| sell_price(d.price));
         self.relics.remove(index);
+        self.pay_out_stash(content, &id, events);
         self.coins = self.coins.saturating_add(price);
         events.push(RunEvent::RelicSold { relic: id, price });
         self.settle_debt(events);
@@ -5456,6 +5512,7 @@ impl Run {
                     }
                 };
                 self.relics[*index] = new.clone();
+                self.pay_out_stash(content, relic, events);
                 events.push(RunEvent::RelicSwapped {
                     old: relic.clone(),
                     new,
@@ -5479,8 +5536,7 @@ impl Run {
                 return self.start_painter(content, card, chosen.cost, true, events);
             }
             EncounterChoice::TakeRelic(relic) => {
-                let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
-                if self.relics.len() >= slots {
+                if !content.relic_slot_free(self.character, self.relics.len()) {
                     return Err(RunError::NoFreeSlot);
                 }
                 self.relics.push(relic.clone());
@@ -5884,6 +5940,8 @@ mod m4_tests;
 mod m5_tests;
 #[cfg(test)]
 mod m7_tests;
+#[cfg(test)]
+mod relic_slots_tests;
 #[cfg(test)]
 mod rescue_tests;
 #[cfg(test)]
