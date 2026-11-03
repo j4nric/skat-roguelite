@@ -8325,3 +8325,9 @@ button.skat-card {
   outline-offset: 1px;
 }
 
+/* Werte-Icons beside the score box labels (Grundwert, Multiplikator). */
+.fbox span .value-icon {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+}

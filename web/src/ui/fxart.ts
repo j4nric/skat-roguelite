@@ -189,6 +189,10 @@ const G: Record<string, string[]> = {
   scissor: ['#...#', '.#.#.', '..#..', '##.##', '##.##'],
   daus: ['.#.', '#.#', '###', '#.#', '#.#'],
   mirror: ['##.##', '#...#', '#...#', '#...#', '##.##'],
+  // Werte-Icons (user decision 03.11.2026): G-B "Grundstein" for the
+  // Grundwert, M-D "Steilpfeil" for the Multiplikator (Gewinnstufen).
+  base: ['..###..', '..###..', '.......', '###.###', '###.###'],
+  mult: ['..###', '...##', '..#.#', '.#...', '#....'],
 };
 
 /** One item of a band: a number text ("+4", "−2", "×2") or a named glyph. */
@@ -245,7 +249,8 @@ export function band(items: BandItem[], col: string, paper: string, y = 41): str
   let out = draw(minus(halo(body), body), paper) + draw(body, col) + draw(rects(`${bx0} ${y + 7} ${bw} 1`), shade(col));
   let x = x0;
   items.forEach((it, i) => {
-    for (const [cells, c] of glyphCells(it, x, y + 2).parts) out += draw(cells, c ?? WHITE);
+    // Centred in the seven rows above the dark bottom row: one row free above and below.
+    for (const [cells, c] of glyphCells(it, x, y + 1).parts) out += draw(cells, c ?? WHITE);
     x += (widths[i] ?? 0) + 2;
   });
   return out;
@@ -382,12 +387,12 @@ export const MOD_DRAW: Record<string, ModDraw> = {
   rank: { band: () => [], col: MARKER, art: () => '' },
   lead: { band: () => ['plumb'], col: LEAD, art: () => frameDouble(LEAD_D, LEAD_L) },
   gilt_edge: { band: (t) => [t, 'coin'], col: GILT_BAND, art: () => frameGilt() },
-  trump_bonus: { band: (t) => [t], col: PURPLE, art: () => frameDashed(PURPLE) },
+  trump_bonus: { band: (t) => [t, 'base'], col: PURPLE, art: () => frameDashed(PURPLE) },
   // Moment: the mark top right says when.
-  last_trick: { band: (t) => [t, 'step'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
+  last_trick: { band: (t) => [t, 'mult'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
   first_trick: { band: (t) => [t], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
-  crosshair: { band: (t) => [t, 'daus'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
-  tailors_chalk: { band: (t) => [t, 'chalk'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
+  crosshair: { band: (t) => [t, 'mult'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
+  tailors_chalk: { band: (t) => [t, 'mult'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
   // Gutschein: when discarded; the band shows the reward.
   voucher_coins: { band: (t) => ['coin', t], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
   voucher_undead: { band: () => ['skull'], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
@@ -495,8 +500,8 @@ const ICON: Record<string, { items: BandItem[]; col: string }> = {
   crosshair: { items: ['xhair'], col: XH },
   tailors_chalk: { items: ['scissor'], col: TAILOR },
   doppelganger: { items: ['mirror'], col: MIRROR },
-  trump_bonus: { items: ['+'], col: PURPLE },
-  last_trick: { items: ['step'], col: TEAL },
+  trump_bonus: { items: ['base'], col: PURPLE },
+  last_trick: { items: ['mult'], col: TEAL },
   first_trick: { items: ['×2'], col: PLAY },
   voucher_coins: { items: ['coin'], col: STAMP },
   voucher_undead: { items: ['skull'], col: STAMP },
@@ -535,3 +540,44 @@ export function modIconBody(mod: string): string | null {
   return out;
 }
 
+// ---------------------------------------------------------- value icons, large
+
+/** The large Werte-Icons (board "Werte-Icons", G-B and M-D): grid and palette, before the outline. */
+const VALUE_ICONS: Record<'base' | 'mult', { rows: string[]; pal: Record<string, string> }> = {
+  base: {
+    rows: ['...www...', '...sss...', '.........', '.www.www.', '.sss.sss.', '.........', 'ww.www.ww', 'ss.sss.ss'],
+    pal: { w: '#e4ede8', s: '#93aea2' },
+  },
+  mult: {
+    rows: ['...llllll', '....ccccc', '.....cccc', '.....cccc', '....lc.cc', '...lc...c', '..lc.....', '.lc......', 'lc.......'],
+    pal: { c: '#d1773f', l: '#f1b48a' },
+  },
+};
+
+/**
+ * The Grundwert or Multiplikator icon in its large form (stone bricks,
+ * copper arrow) with a dark one-pixel outline, as inline SVG `height` px
+ * high: beside the labels of the score boxes.
+ */
+export function valueIcon(kind: 'base' | 'mult', height = 14): string {
+  const { rows, pal } = VALUE_ICONS[kind];
+  const h = rows.length + 2;
+  const w = (rows[0]?.length ?? 0) + 2;
+  const at = (x: number, y: number): string => rows[y - 1]?.[x - 1] ?? '.';
+  let d = '';
+  const fills = new Map<string, string>();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = at(x, y);
+      if (c !== '.') {
+        fills.set(c, (fills.get(c) ?? '') + `M${x} ${y}h1v1h-1z`);
+        continue;
+      }
+      let near = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== '.') near = true;
+      if (near) d += `M${x} ${y}h1v1h-1z`;
+    }
+  }
+  const paths = `<path d="${d}" fill="#0b0c0e"/>` + [...fills].map(([c, p]) => `<path d="${p}" fill="${pal[c] ?? '#fff'}"/>`).join('');
+  return `<svg class="value-icon" viewBox="0 0 ${w} ${h}" width="${Math.round((height * w) / h)}" height="${height}" shape-rendering="crispEdges" aria-hidden="true">${paths}</svg>`;
+}

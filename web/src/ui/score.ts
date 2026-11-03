@@ -12,6 +12,7 @@ import { de, cardName, consumableLook, contentName, declarationName, factorText,
 import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { lookSvg, modIcon, type CardLook } from './cards';
 import { attrs, esc } from './dom';
+import { valueIcon } from './fxart';
 import { countUp, dur, finishAll, grow, pulse, slam, tempoFactor } from './fx';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon, foamCrown, meterPercent } from './hud';
@@ -197,9 +198,9 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
     </header>
     ${coasterStrip(o)}
     <div class="formula" aria-hidden="true">
-      <div class="fbox fbox-base"><span>${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
+      <div class="fbox fbox-base"><span>${valueIcon('base')}${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
       <span class="fop">×</span>
-      <div class="fbox fbox-levels"><span>${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
+      <div class="fbox fbox-levels"><span>${valueIcon('mult')}${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
       ${hasMul ? `<span class="fop">×</span><div class="fbox fbox-mul"><span>${esc(de.score.boxMul)}</span><b data-num="mul">1</b></div>` : ''}
     </div>
     <ol class="steps">${rows}</ol>
