@@ -5,7 +5,7 @@
 
 import { de, contentName, t } from '../i18n';
 import type { MetaView, RunView } from '../types';
-import { cardSvg } from './cards';
+import { editionLook, lookSvg, type SettledWild } from './cards';
 import { attrs, esc } from './dom';
 import { oddsDetail } from './odds';
 import { bossCoaster, relicCoaster } from './emblems';
@@ -56,7 +56,11 @@ function grid(view: RunView, lost: boolean): string {
   return `<div class="tour-grid" data-testid="tour-grid">${head}${rows.join('')}</div>`;
 }
 
-export function renderOverview(view: RunView, meta: MetaView | null, lost = false): string {
+/**
+ * The tour, this run, all runs and the edition. `settled`: the Wandelkarten
+ * the core settled in the game in progress (the edition shows them settled).
+ */
+export function renderOverview(view: RunView, meta: MetaView | null, lost = false, settled: Readonly<Record<number, SettledWild>> = {}): string {
   const s = view.stats;
   const stats: [string, string][] = [
     [de.end.gamesWon, tally(s.games_won)],
@@ -78,7 +82,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
   const dl = (list: [string, string][]): string =>
     `<dl class="chalk-stats">${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
   const deck = view.edition
-    .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</span>`)
+    .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${lookSvg(editionLook(c, view, settled), 'full')}</span>`)
     .join('');
   const relics =
     view.relics.map((r) => `<span class="mini-coaster rarity-${esc(r.relic.rarity)}">${relicCoaster(r.relic, { size: 26 })}${esc(contentName('relics', r.relic.id))}</span>`).join('') +

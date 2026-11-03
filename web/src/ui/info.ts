@@ -6,9 +6,9 @@
 // Only lookups and labels: every fact comes from the view or the catalog.
 
 import { de, bossEditionText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
-import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source } from '../types';
+import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
-import { cardBack, cardSvg } from './cards';
+import { cardBack, editionLook, lookSvg } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -71,7 +71,7 @@ function modStatusLine(status: CardModStatus | undefined, declaration: Declarati
 }
 
 /** A card of the game or the deck by id, as complete as the view has it. */
-function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mods: string[]; values: Record<string, number>; card: CardView | null; holder: Seat | null } | null {
+function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mods: string[]; values: Record<string, number>; named: Suit | null; card: CardView | null; holder: Seat | null } | null {
   const game = view.game;
   const lists: CardView[][] = [];
   if (ui.anim) lists.push(ui.anim.hand, ui.anim.trick.map((p) => p.card));
@@ -80,18 +80,20 @@ function findCard(view: RunView, ui: UiState, id: number): { kind: CardKind; mod
   }
   for (const list of lists) {
     const c = list.find((x) => x.id === id);
-    if (c) return { kind: c.kind, mods: c.mods, values: c.mod_values ?? {}, card: c, holder: null };
+    if (c) return { kind: c.kind, mods: c.mods, values: c.mod_values ?? {}, named: c.named ?? null, card: c, holder: null };
   }
   const seen = game?.revealed.find((r) => r.card.id === id);
-  if (seen) return { kind: seen.card.kind, mods: seen.card.mods, values: seen.card.mod_values ?? {}, card: seen.card, holder: seen.holder };
-  const deck: DeckCard | undefined = view.edition.find((c) => c.id === id);
-  return deck ? { kind: deck.kind, mods: deck.mods, values: deck.mod_values ?? {}, card: null, holder: null } : null;
+  if (seen) return { kind: seen.card.kind, mods: seen.card.mods, values: seen.card.mod_values ?? {}, named: seen.card.named ?? null, card: seen.card, holder: seen.holder };
+  const printed: DeckCard | undefined = view.edition.find((c) => c.id === id);
+  // "Wandelkarte": settled in the game in progress, the edition shows it so.
+  const deck = printed ? editionLook(printed, view, game ? ui.wildSettled : {}) : undefined;
+  return deck ? { kind: deck.kind, mods: deck.mods, values: deck.mod_values ?? {}, named: deck.named ?? null, card: null, holder: null } : null;
 }
 
 function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoModel | null {
   const found = findCard(view, ui, id);
   if (!found) return null;
-  const { kind, mods, values, card, holder } = found;
+  const { kind, mods, values, named, card, holder } = found;
   const facts: string[] = [];
   if (card) {
     facts.push(t(card.card_points === 1 ? de.info.pointsOne : de.info.points, { n: card.card_points }));
@@ -105,6 +107,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     if (card.no_discard) facts.push(de.card.noDiscard);
     if ('can_rise' in card && card.can_rise) facts.push(de.card.canRise);
   }
+  if (named) facts.push(t(de.card.named, { suit: de.suits[named] }));
   if (holder !== null && holder !== 0) facts.push(t(de.info.holder, { name: seatPerson(view, holder).name }));
   const sections = mods.map((m): InfoSection => {
     const curse = isCurse(m);
@@ -121,7 +124,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     key,
     title: cardName(kind),
     kind: de.info.kinds.card,
-    art: `<span class="card info-card-face">${cardSvg(kind, mods, 'full', values)}</span>`,
+    art: `<span class="card info-card-face">${lookSvg({ kind, mods, mod_values: values, named }, 'full')}</span>`,
     facts,
     sections: sections.length ? sections : [{ text: de.info.noMods, status: [] }],
   };
@@ -252,7 +255,7 @@ function pressedModel(key: string, view: RunView): InfoModel | null {
     key,
     title: de.table.skat,
     kind: de.table.pressedKind,
-    art: `<span class="info-pressed" data-testid="pressed-peek">${skat.map((c) => `<span class="card info-pressed-card" data-card-id="${c.id}">${cardSvg(c.kind, c.mods, 'full', c.mod_values)}</span>`).join('')}</span>`,
+    art: `<span class="info-pressed" data-testid="pressed-peek">${skat.map((c) => `<span class="card info-pressed-card" data-card-id="${c.id}">${lookSvg(c, 'full')}</span>`).join('')}</span>`,
     facts: skat.map((c) => cardName(c.kind)),
     sections: [
       { text: de.table.pressedHint, status: [] },

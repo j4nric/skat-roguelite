@@ -175,6 +175,23 @@ impl Run {
         events.push(RunEvent::CardOffersDrawn { offers });
     }
 
+    /// What an offer of the Auslage costs now: the Tresen discount ("Der
+    /// Wirt", [`Run::shop_price`]), then the character's price for Zinken
+    /// on this card ([`Run::zinken_price`], "Bruderherz": half on Rot).
+    #[must_use]
+    pub fn card_offer_cost(&self, content: &Content, offer: &CardOffer) -> u32 {
+        let price = self.shop_price(content, offer.price);
+        self.zinken_price(content, offer.card, price)
+    }
+
+    /// What the Kartenmaler costs now for `card`: like
+    /// [`Run::card_offer_cost`].
+    #[must_use]
+    pub fn painter_cost(&self, content: &Content, card: u32) -> u32 {
+        let price = self.shop_price(content, content.run.shop.zinken.painter_price);
+        self.zinken_price(content, card, price)
+    }
+
     /// Price of the next "Neu auslosen" before discounts.
     #[must_use]
     pub fn card_reroll_price(&self, content: &Content) -> u32 {
@@ -198,7 +215,7 @@ impl Run {
             .cloned()
             .flatten()
             .ok_or(RunError::InvalidSlot)?;
-        let price = self.shop_price(content, offer.price);
+        let price = self.card_offer_cost(content, &offer);
         if !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
@@ -314,7 +331,7 @@ impl Run {
         if self.shop_mut()?.painter_used {
             return Err(RunError::AlreadyUsed);
         }
-        let price = self.shop_price(content, content.run.shop.zinken.painter_price);
+        let price = self.painter_cost(content, card);
         if !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
@@ -369,9 +386,9 @@ impl Run {
         if !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
-        let mut edition = self.edition.clone();
-        let change = edition.cleanse(card)?;
-        self.edition = edition;
+        let mut next = self.clone();
+        let change = next.cleanse(content, card)?;
+        self.edition = next.edition;
         self.pay(price, events);
         self.shop_mut()?.cleansed = true;
         events.push(RunEvent::CardCleansed { card, price });

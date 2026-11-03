@@ -28,7 +28,7 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    self, Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
     trump_order_key,
 };
 
@@ -165,6 +165,9 @@ pub struct CharacterInfo {
     pub name: String,
     /// German text from the content.
     pub text: String,
+    /// Card back of the player's edition (DESIGN 9.3): the character's,
+    /// the Distel by default.
+    pub back: String,
 }
 
 /// An option of the open encounter.
@@ -200,6 +203,10 @@ pub struct EncounterOptionView {
     pub needs_target: bool,
     /// Deck card ids it can be used on.
     pub targets: Vec<u32>,
+    /// What the option costs on each of `targets`, in the same order: a
+    /// Zinke on a card may cost less than `cost` ("Bruderherz": half on
+    /// Rot, [`Run::zinken_price`]). Empty without targets.
+    pub target_costs: Vec<u32>,
 }
 
 /// The open encounter (Ereignis).
@@ -442,6 +449,10 @@ pub struct ServiceView {
     pub can_use: bool,
     /// Cards of the edition it can work on now.
     pub targets: Vec<u32>,
+    /// What it costs on each of `targets`, in the same order: the
+    /// character's price for Zinken applied ([`Run::painter_cost`],
+    /// "Bruderherz": half on Rot); `price` for "Karte reinigen".
+    pub target_prices: Vec<u32>,
 }
 
 /// The Kartenmaler's choice, waiting for the player.
@@ -550,12 +561,13 @@ pub struct CardView {
     /// the declaration; modifications without a condition ("Fett") are
     /// left out.
     pub mod_status: BTreeMap<CardModId, CardModStatus>,
-    /// A Wandelkarte of the hand the player may play now: the suits he may
-    /// name ([`RunAction::PlayAs`], [`crate::rules::wild_suits`]). Empty
-    /// otherwise.
-    pub wild_suits: Vec<Suit>,
-    /// The printed suit of a Wandelkarte the player played in this game;
-    /// the card's `kind` has the suit he named.
+    /// A Wandelkarte of the player whose suit is still open: before the
+    /// game starts (the card is its printed card until then, DESIGN 7.2).
+    /// Left out of the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unsettled: bool,
+    /// The printed suit of a Wandelkarte settled as this game started; the
+    /// card's `kind` has its settled suit ([`ActiveGame::named`]).
     pub named: Option<Suit>,
     /// An "Untot" card of the hand that would rise if played now
     /// ([`Run::can_rise`]): it comes back once per game in a suit game or
@@ -590,10 +602,21 @@ pub enum RevealSource {
     CardMod(CardModId),
     /// "Der Kiebitz" showed it before the declaration.
     Kibitz,
-    /// "Der Zaungast" sees the whole hand of this defender.
+    /// A character rule (`RevealDefenderHand`) shows the whole hand of this defender.
     Onlooker,
     /// The player gave it back to this defender ("Drei drücken").
     Returned,
+}
+
+/// A Wandelkarte settled in the game in progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SettledWild {
+    /// Instance id.
+    pub card: u32,
+    /// The card it is until the end of the game.
+    pub kind: crate::cards::CardKind,
+    /// Its printed suit.
+    pub printed: Suit,
 }
 
 /// A card whose holder the player knows, and why.
@@ -724,6 +747,9 @@ pub struct GameView {
     /// "Durchsichtig" cards and the cards "Der Kiebitz" showed, with their
     /// holders.
     pub revealed: Vec<RevealedCard>,
+    /// The Wandelkarten settled as this game started (DESIGN 7.2), also
+    /// those already played: for the edition shown during the game.
+    pub wild_settled: Vec<SettledWild>,
     /// The boss rule in force in this game: the series' boss, for the
     /// Endboss "Der Alte" the rule of this game (with its edition).
     pub boss_rule: Option<BossInfo>,
@@ -943,7 +969,11 @@ impl Run {
             drawn_from: None,
             discardable: false,
             mod_status,
-            wild_suits: Vec::new(),
+            unsettled: card.wild
+                && self
+                    .game
+                    .as_ref()
+                    .is_some_and(|a| a.game.declaration().is_none()),
             named,
             can_rise: false,
         }
@@ -1172,6 +1202,9 @@ impl Run {
                 character: self.character,
                 name: character.map_or_else(|| self.character.to_string(), |c| c.name.clone()),
                 text: character.map_or_else(String::new, |c| c.text.clone()),
+                back: character
+                    .map_or(crate::content::PLAYER_BACK, |c| c.back())
+                    .to_owned(),
             },
             phase: self.phase,
             ai_to_move: self.ai_to_move(),
@@ -1368,7 +1401,7 @@ impl Run {
                         result: result.unwrap_or_else(|| card.clone()),
                         card,
                         card_mod: Run::card_mod_info(content, &offer.card_mod, Some(offer.value)),
-                        price: self.shop_price(content, offer.price),
+                        price: self.card_offer_cost(content, offer),
                         can_buy: self.accepts(content, RunAction::BuyCardOffer(slot)),
                         replaces,
                         raises,
@@ -1411,11 +1444,23 @@ impl Run {
                 .filter(|&card| self.accepts(content, action(card)))
                 .collect()
         };
+        let painter = action(0) == RunAction::HirePainter(0);
+        let target_prices = targets
+            .iter()
+            .map(|&card| {
+                if painter {
+                    self.painter_cost(content, card)
+                } else {
+                    self.shop_price(content, price)
+                }
+            })
+            .collect();
         ServiceView {
             price: self.shop_price(content, price),
             used,
             can_use: !targets.is_empty(),
             targets,
+            target_prices,
         }
     }
 
@@ -1669,6 +1714,15 @@ impl Run {
                 } else {
                     Vec::new()
                 };
+                let target_costs: Vec<u32> = targets
+                    .iter()
+                    .map(|&card| match option.choice {
+                        EncounterChoice::MarkChosenCard | EncounterChoice::Gamble => {
+                            self.zinken_price(content, card, option.cost)
+                        }
+                        _ => option.cost,
+                    })
+                    .collect();
                 let can_choose = if needs_target {
                     !targets.is_empty()
                 } else {
@@ -1693,6 +1747,7 @@ impl Run {
                     can_choose,
                     needs_target,
                     targets,
+                    target_costs,
                 }
             })
             .collect();
@@ -1731,17 +1786,10 @@ impl Run {
         let drawn = game.drawn().filter(|_| phase == TablePhase::Discarding);
         let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
-        let lead = rules::effective_lead(game.current_trick());
         let hand = hand
             .into_iter()
             .map(|card| CardView {
                 legal: legal.contains(&card),
-                wild_suits: match declaration {
-                    Some(d) if card.wild && legal.contains(&card) => {
-                        rules::wild_suits(d.game(), held, lead, card)
-                    }
-                    _ => Vec::new(),
-                },
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
                 discardable: discarding && discardable_of(held, card, discard_count),
@@ -1786,7 +1834,7 @@ impl Run {
                 holder,
             })
             .collect();
-        // The hand "Der Zaungast" sees in display order, like the player's.
+        // The hand `RevealDefenderHand` shows, in display order, like the player's.
         let mut peeked = active.peeked.clone();
         peeked.sort_by_key(|(card, seat)| {
             if active.shown_hand == Some(*seat) {
@@ -1868,6 +1916,18 @@ impl Run {
             )
             .then(|| self.declare_options(content)),
             revealed,
+            wild_settled: active
+                .named
+                .iter()
+                .filter_map(|&(card, printed)| {
+                    let kind = game.deck_cards().iter().find(|c| c.id == card)?.kind;
+                    Some(SettledWild {
+                        card,
+                        kind,
+                        printed,
+                    })
+                })
+                .collect(),
             boss_rule: active
                 .boss_rule
                 .as_ref()

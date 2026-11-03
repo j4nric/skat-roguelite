@@ -16,7 +16,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cards::{Card, PlayingCard, standard_deck};
+use crate::cards::{Card, PlayingCard, Rank, standard_deck};
 use crate::rng::Rng;
 use crate::rules::{
     self, Declaration, GameValue, LeadSuit, Matadors, NullStyle, Outcome, SeatTotals,
@@ -286,6 +286,17 @@ pub enum Event<C = Card> {
         /// The card as it was.
         old: C,
         /// The card as it is now.
+        new: C,
+    },
+    /// A Wandelkarte of the declarer's hand took its suit as the game
+    /// started (DESIGN 7.2, [`rules::settled_wild_suit`]): `new` replaces
+    /// `old` in the hand and the deck until the end of the game. A Unter
+    /// stays as it is (`new` differs from `old` only in no longer being
+    /// wild).
+    WildCardSettled {
+        /// The card as printed, still wild.
+        old: C,
+        /// The card with its settled suit.
         new: C,
     },
     /// An "Untot" card rose from the last completed trick back into the
@@ -760,7 +771,7 @@ impl<C: PlayingCard> Game<C> {
     /// Tests and fixture tools: give a game dealt without editions (a save
     /// from before ADR 0015) the editions `editions` and every card the
     /// copy of the seat that holds it, played it, or for the skat the
-    /// declarer. A card "Blue Curaçao" or a Wandelkarte renamed keeps its suit.
+    /// declarer. A card "Blue Curaçao" or a settled Wandelkarte keeps its suit.
     #[cfg(test)]
     pub(crate) fn adopt_editions(&mut self, mut editions: [Vec<C>; 3]) {
         for edition in &mut editions {
@@ -1296,9 +1307,51 @@ impl<C: PlayingCard> Game<C> {
         }
         self.declaration = Some(declaration);
         self.phase = Phase::Playing;
-        let events = vec![Event::Declared { declaration }];
+        let mut events = vec![Event::Declared { declaration }];
+        self.settle_wild_cards(&mut events);
         self.log.extend(events.iter().cloned());
         Ok(events)
+    }
+
+    /// The game starts: every Wandelkarte of the declarer's ten cards
+    /// ([`PlayingCard::wild`]) takes the suit [`rules::settled_wild_suit`]
+    /// of the hand for the rest of the game, a Unter keeps its suit
+    /// (DESIGN 7.2). It is replaced in the hand, the deck and every
+    /// edition (should it change its holder, it keeps the suit); the
+    /// declarer's twelve cards and the cards in play keep the printed
+    /// card, so the Spitzen stay as declared. Cards in the skat stay
+    /// printed. Logs one [`Event::WildCardSettled`] per card.
+    fn settle_wild_cards(&mut self, events: &mut Vec<Event<C>>) {
+        let hand = &self.hands[Seat::DECLARER.index()];
+        if !hand.iter().any(|c| c.wild()) {
+            return;
+        }
+        let suit = rules::settled_wild_suit(hand);
+        let wild: Vec<C> = hand.iter().copied().filter(|c| c.wild()).collect();
+        for old in wild {
+            let new = match old.face() {
+                Some(face) if face.rank == Rank::Jack => old.settle_wild(face.suit),
+                _ => old.settle_wild(suit),
+            };
+            let target = new.face().map(|f| f.suit);
+            let swap = |cards: &mut Vec<C>| {
+                for c in cards.iter_mut().filter(|c| **c == old) {
+                    *c = new;
+                }
+                cards.sort();
+            };
+            swap(&mut self.hands[Seat::DECLARER.index()]);
+            swap(&mut self.deck);
+            if let (Some(id), Some(target)) = (old.instance(), target) {
+                for edition in &mut self.editions {
+                    for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
+                        *c = c.settle_wild(target);
+                    }
+                    edition.sort();
+                }
+            }
+            events.push(Event::WildCardSettled { old, new });
+        }
     }
 
     /// Put two cards from the declarer's twelve back into the skat. Then the
@@ -1332,7 +1385,10 @@ impl<C: PlayingCard> Game<C> {
         } else {
             Phase::DeclaringAfterSkat
         };
-        let events = vec![Event::Discarded { cards }];
+        let mut events = vec![Event::Discarded { cards }];
+        if self.phase == Phase::Playing {
+            self.settle_wild_cards(&mut events);
+        }
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
@@ -1395,6 +1451,9 @@ impl<C: PlayingCard> Game<C> {
             seat: from,
             card: back,
         });
+        if self.phase == Phase::Playing {
+            self.settle_wild_cards(&mut events);
+        }
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
@@ -1449,47 +1508,6 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
-    /// Play the Wandelkarte `card` ([`PlayingCard::wild`]) as a card of
-    /// `suit` (DESIGN 7.2, M8 wave 3): it is that card for the trick and
-    /// stays it on the table. The named suit must be one of
-    /// [`rules::wild_suits`]. The declarer's twelve cards and the cards in
-    /// play keep the printed card, so the Spitzen stay as declared; the
-    /// deck the seats reason about takes the named card, like the table.
-    pub fn play_as(
-        &mut self,
-        seat: Seat,
-        card: C,
-        suit: crate::cards::Suit,
-    ) -> Result<Vec<Event<C>>, GameError<C>> {
-        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
-            return Err(GameError::WrongPhase { phase: self.phase });
-        };
-        let expected = seat_at(self.trick_lead, self.trick.len());
-        if seat != expected {
-            return Err(GameError::NotYourTurn { seat, expected });
-        }
-        if !self.hand(seat).contains(&card) || !card.wild() {
-            return Err(GameError::CardNotInHand { seat, card });
-        }
-        let named = card.with_suit(suit);
-        if let Some(lead) = self.lead_card() {
-            if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), named) {
-                return Err(GameError::MustFollowSuit { card: named, lead });
-            }
-        }
-        if named != card {
-            let swap = |cards: &mut Vec<C>| {
-                for c in cards.iter_mut().filter(|c| **c == card) {
-                    *c = named;
-                }
-                cards.sort();
-            };
-            swap(&mut self.hands[seat.index()]);
-            swap(&mut self.deck);
-        }
-        self.play(seat, named)
-    }
-
     /// "Untot" (DESIGN 7.2): `card`, which `seat` played into the last
     /// completed trick, goes back into that seat's hand, and `substitute`
     /// from the hand takes its place in the trick. The trick keeps its
@@ -1542,8 +1560,7 @@ impl<C: PlayingCard> Game<C> {
     /// A copy of the game with every card passed through `f`: hands, skat,
     /// the editions, the cards in play, the declarer's twelve cards, the trick,
     /// the finished tricks and the cards of "Drei drücken". The log stays as it was. For an AI that should
-    /// see the cards differently ([`PlayingCard::wild`] taken off), never
-    /// for the game itself.
+    /// see the cards differently, never for the game itself.
     #[must_use]
     pub fn map_cards(&self, f: impl Fn(C) -> C) -> Game<C> {
         let list = |cards: &[C]| -> Vec<C> { cards.iter().map(|&c| f(c)).collect() };

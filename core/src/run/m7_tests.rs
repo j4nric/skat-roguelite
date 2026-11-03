@@ -66,6 +66,8 @@ fn the_ink_pad_never_draws_a_curse() {
                 .cards()
                 .iter()
                 .filter(|c| c.kind != CardKind::Blank)
+                // A cursed card ("Bruderherz" starts with some) takes none.
+                .filter(|c| !run.card_is_cursed(&content, c.id))
                 .map(|c| c.id)
                 .collect();
             let target = cards[usize::try_from(seed).expect("seed") % cards.len()];

@@ -16,9 +16,9 @@ import type { Character, RunLength } from './types';
 const SLUGS: Record<Character, string> = {
   Declarer: 'alleinspieler',
   NullPlayer: 'nullspieler',
-  GrandPlayer: 'grandspieler',
-  Onlooker: 'zaungast',
-  Landlady: 'wirtin',
+  Shirker: 'drueckeberger',
+  Tailoress: 'schneiderin',
+  HeartBrother: 'bruderherz',
 };
 
 /** URL token of the short evening; the full evening has none. */

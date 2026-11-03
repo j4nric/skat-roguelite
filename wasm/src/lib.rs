@@ -437,7 +437,7 @@ impl Session {
     }
 
     /// Start a new run with `character` (`"Declarer"`, `"NullPlayer"`,
-    /// `"GrandPlayer"`, `"Onlooker"` or `"Landlady"`) and `length`
+    /// `"Shirker"`, `"Tailoress"` or `"HeartBrother"`) and `length`
     /// (`"Full"`; the short evening is dropped, ADR 0016) at `stake` (Einsatz-Leiter,
     /// DESIGN 9.3) from a meta state: the character and the stake must be
     /// unlocked, locked relics stay off the Tresen.

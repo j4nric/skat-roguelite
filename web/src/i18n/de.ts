@@ -34,6 +34,7 @@ export const de = {
       AlreadyUsed: 'Das gibt es an diesem Tresen nur einmal.',
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
+      CurseStays: 'Bruderherz wird seine Flüche nicht los.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
       NoPassesLeft: 'Du kannst nicht mehr einmischen.',
@@ -201,10 +202,6 @@ export const de = {
     noDiscard: 'darf nicht gedrückt werden',
     canRise: 'Untot: steht in diesem Spiel noch einmal auf',
     named: 'Wandelkarte, eigentlich {suit}',
-    wildTitle: 'Wandelkarte',
-    wildPick: 'Als welche Farbe spielst du {card}?',
-    wildFollow: 'Du musst bedienen: nur {suits} geht.',
-    wildSuit: 'als {card}',
   },
 
   /** Asking before a card modification replaces or raises the one on a card (Tresen, encounters). */
@@ -280,9 +277,9 @@ export const de = {
   characters: {
     Declarer: { short: 'Alleinspieler', role: 'Farbe, Grand und Null' },
     NullPlayer: { short: 'Nullspieler', role: 'Null-Spezialist' },
-    GrandPlayer: { short: 'Grandspieler', role: 'Grand +1 Multiplikator, Farbe −1' },
-    Onlooker: { short: 'Zaungast', role: 'Sieht links ins Blatt' },
-    Landlady: { short: 'Wirtin', role: 'Doppelte Groschen, 4 Plätze' },
+    Shirker: { short: 'Drückeberger', role: 'Marken kommen zurück, Hand ohne Multiplikator' },
+    Tailoress: { short: 'Schneiderin', role: 'Schneider +2, ohne Schneider −1' },
+    HeartBrother: { short: 'Bruderherz', role: 'Rot stark, Flüche bleiben' },
   },
 
   risks: {
@@ -359,9 +356,9 @@ export const de = {
     ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
     kiebitz: 'Kiebitz',
     kiebitzHint: 'vom Kiebitz',
-    onlooker: 'Zaungast',
-    onlookerHint: 'vom Zaungast gesehen',
-    onlookerAria: 'Der Zaungast sieht {count} Karten in diesem Blatt',
+    onlooker: 'Offenes Blatt',
+    onlookerHint: 'offen gesehen',
+    onlookerAria: 'Du siehst {count} Karten in diesem Blatt',
     countTitle: 'Der Zähler',
     countYou: 'Du',
     countThem: 'Gegner',
@@ -492,9 +489,10 @@ export const de = {
     gambleCurse: 'Reingelegt! Statt des Tricks gibt’s einen Fluch.',
     gambleGood: 'Der Trick sitzt.',
     consumableGained: '{name} geschenkt.',
-    wildNamed: 'Wandelkarte: {old} gespielt als {new}.',
+    wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
+    voucherReturned: '{mod} ist zurück: {card}.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -564,7 +562,7 @@ export const de = {
     payoutBase: 'Grundbetrag',
     payoutGames: 'Übrige Spiele',
     payoutInterest: 'Zinsen',
-    payoutBonus: 'Die Wirtin',
+    payoutBonus: 'Charakter',
   },
 
   shop: {
@@ -630,6 +628,7 @@ export const de = {
     cleanseUsed: 'Heute schon gereinigt.',
     cleanseNone: 'Keine deiner Karten trägt etwas.',
     cleansePick: 'Welche Karte soll wieder wie neu werden?',
+    cheaperOn: 'Auf manchen Karten billiger: ab {price} Gr.',
   },
 
   rarity: {
@@ -684,6 +683,7 @@ export const de = {
     takeCoins: '{coins} Groschen nehmen',
     takeCoinsHint: 'Der Wirt zahlt dir den halben Preis aus.',
     cost: '{cost} Gr.',
+    costFrom: '{cost} Gr., auf Rot {low} Gr.',
     free: 'gratis',
     pickTarget: 'Welche Karte soll es treffen?',
     curseMod: 'Fluch: {mod}',

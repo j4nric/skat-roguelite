@@ -150,16 +150,16 @@ pub enum Character {
     /// Der Nullspieler: the unlockable Null specialist (ADR 0012, which
     /// replaces ADR 0003). He may declare every game too.
     NullPlayer,
-    /// Der Grandspieler: a Grand counts one Gewinnstufe more, a suit game
-    /// one less (DESIGN 9.4).
-    GrandPlayer,
-    /// Der Zaungast: sees the hand of the left defender, but may redeal
-    /// (einmischen) once fewer per game (DESIGN 9.5). Not the figure "Der
-    /// Kiebitz".
-    Onlooker,
-    /// Die Wirtin: twice the Groschen for a won series, but one relic slot
-    /// fewer (DESIGN 9.6). Not the figure "Der Wirt".
-    Landlady,
+    /// Der Drückeberger (DESIGN 9.4): vouchers on his edition, redeemed
+    /// vouchers come back after each pub, hand games get no Hand level.
+    Shirker,
+    /// Die Schneiderin (DESIGN 9.5): Schneider and Schwarz count two
+    /// levels each, a win without Schneider one level less.
+    Tailoress,
+    /// Bruderherz (DESIGN 9.6): his Rot cards are strong, the other
+    /// suits cursed; his curses cannot be cleansed, Zinken on Rot cost
+    /// half.
+    HeartBrother,
 }
 
 impl Character {
@@ -167,9 +167,9 @@ impl Character {
     pub const ALL: [Character; 5] = [
         Character::Declarer,
         Character::NullPlayer,
-        Character::GrandPlayer,
-        Character::Onlooker,
-        Character::Landlady,
+        Character::Shirker,
+        Character::Tailoress,
+        Character::HeartBrother,
     ];
 
     /// The id as text, equal to its serialized form.
@@ -178,10 +178,17 @@ impl Character {
         match self {
             Character::Declarer => "Declarer",
             Character::NullPlayer => "NullPlayer",
-            Character::GrandPlayer => "GrandPlayer",
-            Character::Onlooker => "Onlooker",
-            Character::Landlady => "Landlady",
+            Character::Shirker => "Shirker",
+            Character::Tailoress => "Tailoress",
+            Character::HeartBrother => "HeartBrother",
         }
+    }
+
+    /// The character with this id, `None` for an unknown one (a removed
+    /// character of an old save: "GrandPlayer", "Onlooker", "Landlady").
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Character> {
+        Character::ALL.into_iter().find(|c| c.as_str() == id)
     }
 }
 
@@ -318,6 +325,29 @@ pub struct CharacterRule {
     /// The Groschen of a won series (Grundbetrag, übrige Spiele, Zinsen)
     /// count this many times; the extra is [`crate::run::Payout::bonus`].
     pub payout_factor: u32,
+    /// "Der Drückeberger": when a pub ends (won or lost), every voucher
+    /// redeemed from the player's edition during it comes back onto its
+    /// card ([`crate::run::RunEvent::VoucherReturned`]), unless the card
+    /// carries another normal modification or a curse by then.
+    pub vouchers_return: bool,
+    /// "Bruderherz": a card of the player's edition that carries a curse
+    /// cannot be cleansed ([`crate::run::RunErrorCode::CurseStays`]).
+    pub keep_curses: bool,
+    /// "Bruderherz": Zinken (card modifications bought for Groschen on a
+    /// card of the player's choice) on matching cards cost less
+    /// ([`crate::run::Run::zinken_price`]).
+    pub zinken_discount: Option<ZinkenDiscount>,
+}
+
+/// A discount on Zinken for some cards (a character rule, DESIGN 9.6):
+/// cards matching `cards` cost `percent` percent less, rounded to the
+/// nearest Groschen, at least 1 for a priced Zinke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZinkenDiscount {
+    /// Which printed cards.
+    pub cards: CardFilter,
+    /// Discount in percent (1 to 100).
+    pub percent: u32,
 }
 
 impl Default for CharacterRule {
@@ -328,6 +358,9 @@ impl Default for CharacterRule {
             redeals: 0,
             relic_slots: 0,
             payout_factor: 1,
+            vouchers_return: false,
+            keep_curses: false,
+            zinken_discount: None,
         }
     }
 }
@@ -367,6 +400,22 @@ pub struct CharacterDef {
     /// often as any other).
     #[serde(default)]
     pub focus_weights: FocusWeights,
+    /// Card back of the player's edition (ADR 0015, DESIGN 9.3); `None`
+    /// is the Distel ([`PLAYER_BACK`]).
+    #[serde(default)]
+    pub back: Option<String>,
+}
+
+/// The card back of the player's edition unless his character names
+/// another one: the Distel.
+pub const PLAYER_BACK: &str = "distel";
+
+impl CharacterDef {
+    /// The card back of this character's edition.
+    #[must_use]
+    pub fn back(&self) -> &str {
+        self.back.as_deref().unwrap_or(PLAYER_BACK)
+    }
 }
 
 /// What an encounter (Ereignis, DESIGN 13) offers. The concrete options
@@ -557,7 +606,19 @@ pub enum UnlockCondition {
         /// Only with at least this Spielwert (after all modifiers).
         #[serde(default)]
         min_value: u64,
+        /// Only with at least this many Augen discarded into the skat, as
+        /// they count in the game ([`crate::run::RunEvent::GameScored`]).
+        #[serde(default)]
+        min_discarded: u32,
     },
+    /// Win this many suit games or grands with the defenders Schneider in
+    /// one pub.
+    SchneiderWinsInPub(u32),
+    /// Win this many suit games in a row with the same trump suit (any
+    /// suit). The streak runs across pubs within a run; a lost game, a
+    /// grand, a Null or another trump suit starts it over, a Ramsch
+    /// neither counts nor breaks it.
+    SameTrumpStreak(u32),
     /// Win a Null game from this Null-Risikostufe on.
     WinNull(NullRisk),
     /// Reach this section (Stadtteil, from 1).
@@ -1748,6 +1809,13 @@ impl Content {
                 }
             }
             validate_effects(&what, &def.rule.passive, &def.rule.hooks, false)?;
+            if let Some(discount) = &def.rule.zinken_discount {
+                if discount.percent == 0 || discount.percent > 100 {
+                    return Err(ContentError(format!(
+                        "{what}: zinken_discount must be 1 to 100 percent"
+                    )));
+                }
+            }
             if def.rule.payout_factor == 0 {
                 return Err(ContentError(format!(
                     "{what}: payout_factor must be at least 1"

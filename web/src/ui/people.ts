@@ -159,51 +159,46 @@ ${headShape(skin, 16, 23, 44)}
 <path d="M64 28 L80 18" stroke="#e2b04a" stroke-width="4" stroke-linecap="round"/><path d="M80 18 L84 15.5" stroke="#f1caa8" stroke-width="4" stroke-linecap="round"/>`;
 }
 
-/** Der Grandspieler: swept-back grey hair, monocle on a chain, navy suit with a golden tie. */
-function grandPlayer(): string {
-  const skin = '#e8b089';
-  return `${shoulders('#1f3456', '<path d="M38 72 L50 90 L62 72" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.5"/><path d="M47 76 L50 98 L53 76 Z" fill="#e2b04a" stroke="#2b1a0e" stroke-width="1.1"/><path d="M30 74 L40 92 L44 80 Z M70 74 L60 92 L56 80 Z" fill="#162744" stroke="#2b1a0e" stroke-width="1.2"/><path d="M66 82 L70 88 L74 82 L70 85 Z" fill="#e2b04a"/>')}
-${headShape(skin, 19, 22)}
-<path d="M30 40 C28 22 40 15 52 15 C66 15 73 24 70 40 C68 30 62 25 50 25 C40 25 33 30 30 40 Z" fill="#b8b2a6" stroke="${OUT}" stroke-width="2"/>
-<path d="M36 26 C44 20 58 19 66 26 M40 22 C48 18 58 18 62 21" fill="none" stroke="#e4ded2" stroke-width="1.6"/>
-${eyes(44, '#8f877a', 8)}${cheeks(53)}
-<circle cx="58" cy="44" r="6" fill="#fff" fill-opacity=".3" stroke="#c9a24a" stroke-width="2"/>
-<path d="M63 48 C66 56 64 64 68 72" fill="none" stroke="#c9a24a" stroke-width="1.2"/>
-<path d="M38 53 C42 50 47 51 50 53 C53 51 58 50 62 53 C58 57 54 55 50 56 C46 55 42 57 38 53 Z" fill="#c9c3b8" stroke="${OUT}" stroke-width="1.3"/>
-<path d="M44 60 C48 62 54 61 57 58" fill="none" stroke="${OUT}" stroke-width="1.7" stroke-linecap="round"/>`;
+/** Der Drückeberger: collar turned up, cap pulled low, eyes sideways, stamps sticking out of the coat pocket. */
+function shirker(): string {
+  const skin = '#e7b994';
+  return `${shoulders('#6b6a4a', '<path d="M30 70 L40 90 L50 76 L60 90 L70 70 C62 74 38 74 30 70 Z" fill="#5a5a3c" stroke="#2b1a0e" stroke-width="1.6"/><path d="M44 78 L50 84 L56 78" fill="#3b2a1e"/><rect x="62" y="86" width="10" height="9" fill="#fbf6e9" stroke="#2b1a0e" stroke-width="1.2" transform="rotate(-10 67 90)"/><rect x="64" y="88" width="6" height="5" fill="#21585c" transform="rotate(-10 67 90)"/><rect x="70" y="84" width="9" height="8" fill="#fbf6e9" stroke="#2b1a0e" stroke-width="1.2" transform="rotate(12 74 88)"/><rect x="72" y="86" width="5" height="4" fill="#6e2232" transform="rotate(12 74 88)"/>')}
+${headShape(skin, 17, 21, 47)}
+${stubble()}
+<ellipse cx="43" cy="48" rx="4.4" ry="3" fill="#fff" stroke="${OUT}" stroke-width="1.3"/><ellipse cx="58" cy="48" rx="4.4" ry="3" fill="#fff" stroke="${OUT}" stroke-width="1.3"/>
+<circle cx="46" cy="48" r="2" fill="${OUT}"/><circle cx="61" cy="48" r="2" fill="${OUT}"/>
+<path d="M37 43 L48 45 M53 45 L64 43" stroke="#4a3a24" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M45 60 C48 59 53 59 56 61" fill="none" stroke="${OUT}" stroke-width="1.7" stroke-linecap="round"/>
+<path d="M30 38 C30 24 40 19 51 19 C63 19 70 25 70 37 Z" fill="#4a4a36" stroke="${OUT}" stroke-width="2"/>
+<path d="M30 37 C42 33 60 33 72 37 C74 41 70 43 66 42 C56 39 44 39 34 42 C30 43 28 40 30 37 Z" fill="#3a3a2a" stroke="${OUT}" stroke-width="2"/>
+<path d="M40 25 C46 22 56 22 62 25" fill="none" stroke="#66664c" stroke-width="2"/>`;
 }
 
-/** Der Zaungast: flat cap, eyes to the left, leaning on a fence. */
-function onlooker(): string {
-  const skin = '#efc29c';
-  return `${shoulders('#5e7a3a', '<path d="M40 72 L50 82 L60 72" fill="#e9dcc0" stroke="#2b1a0e" stroke-width="1.4"/>')}
+/** Die Schneiderin: dark bun with a pencil, half-moon glasses, a yellow tape measure round her neck, pins on the collar. */
+function tailoress(): string {
+  const skin = '#f0c6a2';
+  return `<circle cx="50" cy="15" r="9" fill="#3a2418" stroke="${OUT}" stroke-width="2"/><path d="M40 10 L60 18" stroke="#e2b04a" stroke-width="2.6" stroke-linecap="round"/>
+${shoulders('#4a3a5a', '<path d="M40 72 L50 82 L60 72" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.4"/><path d="M33 72 C36 84 40 96 38 101 M67 72 C64 84 60 96 62 101" fill="none" stroke="#e2a33a" stroke-width="5"/><path d="M33 72 C36 84 40 96 38 101 M67 72 C64 84 60 96 62 101" fill="none" stroke="#1c1a1a" stroke-width="5" stroke-dasharray="1 4"/><circle cx="26" cy="84" r="1.8" fill="#c0262f"/><circle cx="24" cy="90" r="1.8" fill="#e2b04a"/><path d="M26 84 L30 80 M24 90 L28 87" stroke="#cfc8b8" stroke-width="1.2"/>')}
 ${headShape(skin, 18, 21, 46)}
-<path d="M31 37 C31 22 41 17 52 17 C65 17 71 24 70 35 Z" fill="#8a6a3e" stroke="${OUT}" stroke-width="2"/>
-<path d="M31 36 C26 34 20 36 18 39 C30 41 46 39 60 37 Z" fill="#74572f" stroke="${OUT}" stroke-width="2"/>
-<path d="M40 24 C48 21 58 22 64 26" fill="none" stroke="#a5865a" stroke-width="2"/>
-<ellipse cx="42" cy="47" rx="4.6" ry="4" fill="#fff" stroke="${OUT}" stroke-width="1.4"/><ellipse cx="58" cy="47" rx="4.6" ry="4" fill="#fff" stroke="${OUT}" stroke-width="1.4"/>
-<circle cx="40" cy="47" r="2.2" fill="${OUT}"/><circle cx="56" cy="47" r="2.2" fill="${OUT}"/>
-<path d="M36 40 L46 39 M54 39 L64 41" stroke="#5a4428" stroke-width="2.4" stroke-linecap="round"/>
-${cheeks(56)}
-<ellipse cx="47" cy="61" rx="3.2" ry="2.6" fill="#7a2a1a" stroke="${OUT}" stroke-width="1.2"/>
-<path d="M4 80 L96 80 M4 92 L96 92" stroke="#6b4a2e" stroke-width="5"/>
-<path d="M14 72 L14 101 M38 74 L38 101 M62 74 L62 101 M86 72 L86 101" stroke="#8c6238" stroke-width="9"/>
-<path d="M14 72 L14 101 M38 74 L38 101 M62 74 L62 101 M86 72 L86 101" stroke="${OUT}" stroke-width="9" stroke-opacity=".25" stroke-dasharray="1 6"/>
-<path d="M28 78 C30 74 36 74 38 78 M62 78 C64 74 70 74 72 78" fill="${skin}" stroke="${OUT}" stroke-width="1.6"/>`;
+<path d="M31 42 C29 26 40 21 50 21 C61 21 71 26 69 42 C66 32 58 29 50 29 C42 29 34 32 31 42 Z" fill="#3a2418" stroke="${OUT}" stroke-width="2"/>
+${eyes(46, '#3a2418', 8)}${cheeks(55)}
+<path d="M35 48 C35 53 49 53 49 48 Z M51 48 C51 53 65 53 65 48 Z" fill="#fff" fill-opacity=".3" stroke="#7a5a2a" stroke-width="1.8"/>
+<path d="M49 48 L51 48" stroke="#7a5a2a" stroke-width="1.8"/>
+${lips(59, '#b8485a')}`;
 }
 
-/** Die Wirtin: blonde braided crown, dirndl with a white blouse, golden earrings. */
-function landlady(): string {
-  const skin = '#f2c7a2';
-  return `${shoulders('#f4efe4', '<path d="M30 101 L34 80 C40 84 60 84 66 80 L70 101 Z" fill="#2c5e3c" stroke="#2b1a0e" stroke-width="1.6"/><path d="M38 84 L62 84 L60 101 L40 101 Z" fill="#a8263a" stroke="#2b1a0e" stroke-width="1.4"/><path d="M42 88 L58 92 M42 94 L58 88 M42 98 L58 96" stroke="#e2b04a" stroke-width="1.2"/><path d="M36 74 C42 80 58 80 64 74" fill="none" stroke="#2b1a0e" stroke-width="1.3"/>')}
-<path d="M30 46 C28 30 36 20 50 20 C64 20 72 30 70 46 C66 38 60 34 50 34 C40 34 34 38 30 46 Z" fill="#e0b24e" stroke="${OUT}" stroke-width="2"/>
-${headShape(skin, 18, 21, 46)}
-<path d="M32 40 C32 30 40 26 50 26 C60 26 68 30 68 40 C62 34 56 32 50 33 C44 32 38 34 32 40 Z" fill="#e8c062" stroke="${OUT}" stroke-width="1.8"/>
-<path d="M28 30 C34 18 46 14 50 14 C56 14 66 18 72 30" fill="none" stroke="#c9952e" stroke-width="7" stroke-linecap="round"/>
-<path d="M28 30 C34 18 46 14 50 14 C56 14 66 18 72 30" fill="none" stroke="#f0d27a" stroke-width="7" stroke-linecap="round" stroke-dasharray="4 4"/>
-<path d="M28 30 C34 18 46 14 50 14 C56 14 66 18 72 30" fill="none" stroke="${OUT}" stroke-width="1.2" stroke-dasharray="4 4" opacity=".5"/>
-${eyes(47, '#9a6a1e', 8)}${cheeks(56)}
-${lips(60, '#c0505e')}${hoops(57, '#e2b04a')}`;
+/** Bruderherz: big curly red beard, warm smile, red knitted jumper with a heart. */
+function heartBrother(): string {
+  const skin = '#ecb48c';
+  return `${shoulders('#b8262f', '<path d="M24 82 L30 101 M76 82 L70 101 M38 76 L40 101 M62 76 L60 101" stroke="#8c1d2e" stroke-width="1.4" stroke-dasharray="2 2"/><path d="M50 98 C42 92 38 88 38 84 C38 80 43 78 46 80 C48 81 49 82 50 84 C51 82 52 81 54 80 C57 78 62 80 62 84 C62 88 58 92 50 98 Z" fill="#fbf6e9" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 19, 22, 44)}
+<path d="M30 48 C30 70 40 76 50 76 C60 76 70 70 70 48 C66 56 58 58 50 58 C42 58 34 56 30 48 Z" fill="#a8461e" stroke="${OUT}" stroke-width="1.8"/>
+<path d="M34 60 C36 62 38 62 40 60 M46 66 C48 68 52 68 54 66 M60 60 C62 62 64 62 66 60" fill="none" stroke="#7a2e12" stroke-width="1.4"/>
+<path d="M30 38 C28 22 40 16 51 16 C64 16 72 23 70 38 C66 30 60 27 50 27 C40 27 34 30 30 38 Z" fill="#a8461e" stroke="${OUT}" stroke-width="2"/>
+<path d="M36 26 C38 22 42 22 44 25 M48 22 C50 18 54 18 56 22 M60 25 C62 22 66 23 66 27" fill="none" stroke="#c8662e" stroke-width="2"/>
+${eyes(42, '#7a2e12', 8)}${cheeks(50)}
+<path d="M42 56 C46 61 54 61 58 56" fill="#fff" stroke="${OUT}" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M41 52 C45 50 49 51 50 53 C51 51 55 50 59 52" fill="none" stroke="#7a2e12" stroke-width="2.6" stroke-linecap="round"/>`;
 }
 
 /** Der Kartengeber: green eyeshade, sleeve garters, curled moustache. */
@@ -488,9 +483,9 @@ const PORTRAITS: Record<string, () => string> = {
   'p-boss': genericBoss,
   'p-char-Declarer': declarer,
   'p-char-NullPlayer': nullPlayer,
-  'p-char-GrandPlayer': grandPlayer,
-  'p-char-Onlooker': onlooker,
-  'p-char-Landlady': landlady,
+  'p-char-Shirker': shirker,
+  'p-char-Tailoress': tailoress,
+  'p-char-HeartBrother': heartBrother,
   'p-dealer': dealer,
   'p-friend': oldFriend,
 };

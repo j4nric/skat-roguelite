@@ -19,7 +19,7 @@
 //! - `--curve`: instead of whole runs, `--runs N` single series (with
 //!   `--boss` boss series); prints the share of series won for every
 //!   Zielwert of `run.ron`.
-//! - `--character declarer|null|grand|onlooker|landlady`: who plays (default: the Alleinspieler).
+//! - `--character declarer|null|shirker|tailoress|heart_brother`: who plays (default: the Alleinspieler).
 //! - `--null-scoring fixed|formula`: override the Null scoring of the
 //!   character that plays (DESIGN 9.2).
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
@@ -132,9 +132,9 @@ fn parse_args() -> Result<Args, String> {
                 args.options.character = match value.as_str() {
                     "declarer" => Character::Declarer,
                     "null" => Character::NullPlayer,
-                    "grand" => Character::GrandPlayer,
-                    "onlooker" => Character::Onlooker,
-                    "landlady" => Character::Landlady,
+                    "shirker" => Character::Shirker,
+                    "tailoress" => Character::Tailoress,
+                    "heart_brother" => Character::HeartBrother,
                     other => return Err(format!("--character: unknown {other}")),
                 };
             }
@@ -583,7 +583,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|grand|onlooker|landlady] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

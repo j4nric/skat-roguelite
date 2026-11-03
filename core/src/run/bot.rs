@@ -842,7 +842,7 @@ impl RunBot {
                 let card = run.edition().get(offer.card)?;
                 let bare = card.mods.iter().all(|m| *m == offer.card_mod);
                 let value = zinken_value(&offer.card_mod);
-                let cost = price(offer.price);
+                let cost = run.card_offer_cost(content, offer);
                 (bare && value > 0 && cost <= coins).then_some((value, cost, slot))
             })
             .max_by_key(|&(value, cost, slot)| {
@@ -856,14 +856,13 @@ impl RunBot {
         }
         // 6. The Kartenmaler for an ace without modification, if Groschen
         // are plenty.
-        if coins >= price(zinken.painter_price) + PAINTER_RESERVE {
-            let bare_ace = Self::ace_targets(run).into_iter().find(|&card| {
-                run.edition().get(card).is_some_and(|c| c.mods.is_empty())
-                    && run.accepts(content, RunAction::HirePainter(card))
-            });
-            if let Some(card) = bare_ace {
-                return RunAction::HirePainter(card);
-            }
+        let bare_ace = Self::ace_targets(run).into_iter().find(|&card| {
+            run.edition().get(card).is_some_and(|c| c.mods.is_empty())
+                && coins >= run.painter_cost(content, card) + PAINTER_RESERVE
+                && run.accepts(content, RunAction::HirePainter(card))
+        });
+        if let Some(card) = bare_ace {
+            return RunAction::HirePainter(card);
         }
         // 7. Nothing sensible to buy: a new offer, if Groschen are plenty.
         let cost = price(content.run.economy.reroll_cost);
@@ -889,6 +888,13 @@ impl RunBot {
     /// The first card of the player's edition that carries a curse ("Abgestuft"
     /// stays: it is the Nullspieler's start edition).
     fn cursed_card(run: &Run, content: &Content) -> Option<u32> {
+        // "Bruderherz" cannot cleanse his curses: nothing to aim for.
+        if content
+            .character(run.character())
+            .is_some_and(|c| c.rule.keep_curses)
+        {
+            return None;
+        }
         run.edition()
             .cards()
             .iter()
@@ -972,16 +978,11 @@ impl RunBot {
                 if let Some(card) = Self::undead_card(run, content) {
                     return Some(RunAction::Play(card.id));
                 }
-                // A Wandelkarte is chosen as printed, then named.
-                let tame = super::opponents::tame_game(game);
-                let view = tame.as_ref().unwrap_or(game).view(Seat::DECLARER)?;
+                // A Wandelkarte has its settled suit by now: a card like
+                // any other.
+                let view = game.view(Seat::DECLARER)?;
                 let chosen = declarer.choose(&view)?;
-                let card = game
-                    .hand(Seat::DECLARER)
-                    .iter()
-                    .copied()
-                    .find(|c| c.id == chosen.id)?;
-                Some(RunBot::play_action(run, card))
+                Some(RunAction::Play(chosen.id))
             }
             Phase::Finished(_) => None,
         }
@@ -990,8 +991,7 @@ impl RunBot {
     /// An "Untot" card the bot plays now (simple rule, not tuned): playing
     /// last to the trick, a card of the hand that may rise
     /// ([`Run::can_rise`]), is legal and takes the trick. It comes back,
-    /// and the substitute's Augen go to the player. A Wandelkarte is left
-    /// to the naming rule. `None` otherwise.
+    /// and the substitute's Augen go to the player. `None` otherwise.
     #[must_use]
     pub fn undead_card(run: &Run, content: &Content) -> Option<DealtCard> {
         let active = run.game()?;
@@ -1003,75 +1003,12 @@ impl RunBot {
         }
         game.legal_moves(Seat::DECLARER)
             .into_iter()
-            .filter(|&c| !c.wild && run.can_rise(content, c))
+            .filter(|&c| run.can_rise(content, c))
             .find(|&c| {
                 let mut cards = trick.to_vec();
                 cards.push(c);
                 crate::rules::winning_index(declaration.game(), &cards) == Some(2)
             })
-    }
-
-    /// The action that plays `card` of the player's hand: a Wandelkarte with
-    /// the suit of [`RunBot::wild_suit`], every other card as it is.
-    #[must_use]
-    pub fn play_action(run: &Run, card: DealtCard) -> RunAction {
-        match RunBot::wild_suit(run, card) {
-            Some(suit) => RunAction::PlayAs {
-                card: card.id,
-                suit,
-            },
-            None => RunAction::Play(card.id),
-        }
-    }
-
-    /// The suit the bot names for a Wandelkarte (simple rule, not tuned):
-    /// leading, its printed suit (the card play chose it as printed);
-    /// following, a suit with which it takes the trick so far, the led
-    /// suit first, then trump, then the printed suit, except in Null and
-    /// Ramsch, where it looks for a suit that does not take the trick.
-    /// Without such a suit the printed one if allowed, else the first
-    /// allowed. `None` for a card that is no Wandelkarte or may not be
-    /// played now.
-    #[must_use]
-    pub fn wild_suit(run: &Run, card: DealtCard) -> Option<Suit> {
-        let active = run.game()?;
-        let game = &active.game;
-        let declaration = game.declaration()?;
-        let kind = declaration.game();
-        let trick = game.current_trick();
-        let lead = crate::rules::effective_lead(trick);
-        let suits = crate::rules::wild_suits(kind, game.hand(Seat::DECLARER), lead, card);
-        let printed = card.face()?.suit;
-        if suits.is_empty() {
-            return None;
-        }
-        let fallback = if suits.contains(&printed) {
-            printed
-        } else {
-            suits[0]
-        };
-        let Some(lead) = lead else {
-            return Some(fallback);
-        };
-        let avoid = declaration.is_null() || declaration.is_ramsch();
-        let takes = |suit: Suit| {
-            let mut cards = trick.to_vec();
-            cards.push(card.with_suit(suit));
-            crate::rules::winning_index(kind, &cards) == Some(cards.len() - 1)
-        };
-        let mut order: Vec<Suit> = Vec::new();
-        if let Some(face) = lead.face() {
-            order.push(face.suit);
-        }
-        if let GameType::Suit(trump) = kind {
-            order.push(trump);
-        }
-        order.push(printed);
-        order.extend(Suit::ALL);
-        order
-            .into_iter()
-            .find(|&s| suits.contains(&s) && takes(s) != avoid)
-            .or(Some(fallback))
     }
 
     /// The decision with ten cards (Skatordnung, ADR 0011), for every

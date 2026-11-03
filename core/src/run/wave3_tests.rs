@@ -8,7 +8,7 @@ use super::content_tests::{content, relic_run};
 use super::*;
 use crate::cards::Suit;
 use crate::content::{CardModDef, Factor, Rarity, RarityWeights};
-use crate::rules::{self, RiskLevel};
+use crate::rules::{self, NullRisk, RiskLevel};
 
 const WILD: &str = "wild_card";
 
@@ -178,42 +178,71 @@ fn legendary_relics_are_offered_far_less_often_than_rare_ones() {
 // ---------------------------------------------------------- Wandelkarte
 
 #[test]
-fn a_wild_card_never_obliges_and_may_be_named_to_follow() {
-    let clubs = GameType::Suit(Suit::Clubs);
-    let lead = Some(dealt("SA", false));
-    // Another spade in the hand: the Wandelkarte may only follow as a spade.
-    let hand = [dealt("HA", true), dealt("S7", false), dealt("H7", false)];
+fn a_wild_card_settles_into_the_longest_suit_without_unter() {
+    // Spades and diamonds two each, hearts only the H7: the Wandelkarte
+    // (HA) itself does not count. Spades come first in a tie.
+    let hand = [
+        dealt("HA", true),
+        dealt("S7", false),
+        dealt("S8", false),
+        dealt("D7", false),
+        dealt("D8", false),
+        dealt("H7", false),
+    ];
+    assert_eq!(rules::settled_wild_suit(&hand), Suit::Spades);
+    // The Unter do not count: three clubs Unter lose to two spades.
+    let hand = [
+        dealt("CJ", false),
+        dealt("SJ", false),
+        dealt("HJ", false),
+        dealt("C7", false),
+        dealt("S7", false),
+        dealt("S8", false),
+        dealt("DA", true),
+    ];
+    assert_eq!(rules::settled_wild_suit(&hand), Suit::Spades);
+    // Ties: Eichel, Grün, Rot, Schellen.
+    let tie = |a: &str, b: &str| rules::settled_wild_suit(&[dealt(a, false), dealt(b, false)]);
+    assert_eq!(tie("D7", "C7"), Suit::Clubs);
+    assert_eq!(tie("H7", "S7"), Suit::Spades);
+    assert_eq!(tie("D7", "H7"), Suit::Hearts);
+    // Nothing to count (only Unter and Wandelkarten): Eichel.
     assert_eq!(
-        rules::wild_suits(clubs, &hand, lead, hand[0]),
-        [Suit::Spades]
+        rules::settled_wild_suit(&[dealt("DJ", false), dealt("D7", true)]),
+        Suit::Clubs
     );
-    assert_eq!(rules::legal_moves(clubs, &hand, lead), [hand[0], hand[1]]);
-    // No other spade: every suit, and the other cards are free too.
-    let hand = [dealt("HA", true), dealt("H7", false), dealt("D7", false)];
-    assert_eq!(rules::wild_suits(clubs, &hand, lead, hand[0]).len(), 4);
-    assert_eq!(rules::legal_moves(clubs, &hand, lead).len(), 3);
-    // A printed spade that is wild does not oblige its holder.
-    let hand = [dealt("SK", true), dealt("H7", false)];
-    assert!(rules::may_play(clubs, &hand, lead, hand[1]));
-    // A Unter stays a trump whatever it is named: it cannot follow a suit.
-    let hand = [dealt("DJ", true), dealt("S7", false)];
-    assert!(rules::wild_suits(clubs, &hand, lead, hand[0]).is_empty());
-    assert_eq!(rules::legal_moves(clubs, &hand, lead), [hand[1]]);
-    let trump_lead = Some(dealt("CA", false));
-    assert_eq!(
-        rules::wild_suits(clubs, &hand, trump_lead, hand[0]).len(),
-        4
-    );
-    // Grand: only Unter are trump, a Daus cannot be named into one.
-    let hand = [dealt("HA", true), dealt("DJ", false)];
-    let jack_lead = Some(dealt("CJ", false));
-    assert!(rules::wild_suits(GameType::Grand, &hand, jack_lead, hand[0]).is_empty());
-    // A card that is not wild has no suits to name.
-    assert!(rules::wild_suits(clubs, &hand, lead, hand[1]).is_empty());
+    // A longer suit wins over the tie order.
+    let hand = [dealt("D7", false), dealt("D8", false), dealt("C7", false)];
+    assert_eq!(rules::settled_wild_suit(&hand), Suit::Diamonds);
+}
+
+/// The settled card of instance `id` in the player's hand.
+fn held(run: &Run, id: u32) -> DealtCard {
+    *run.game()
+        .expect("game")
+        .game
+        .hand(Seat::DECLARER)
+        .iter()
+        .find(|c| c.id == id)
+        .expect("held")
+}
+
+fn settled(events: &[RunEvent]) -> Vec<(DealtCard, DealtCard)> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            RunEvent::Game(Event::WildCardSettled { old, new }) => Some((*old, *new)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn kind(notation: &str) -> CardKind {
+    CardKind::Normal(notation.parse().expect("card"))
 }
 
 #[test]
-fn the_player_names_the_suit_of_a_wild_card_as_he_plays_it() {
+fn a_hand_game_settles_the_wild_card_at_the_declaration() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
     with_mod(&content, &mut run, "HA", WILD);
@@ -231,70 +260,185 @@ fn the_player_names_the_suit_of_a_wild_card_as_he_plays_it() {
         Seat::DECLARER,
     );
     let game = &run.game().expect("game").game;
-    assert!(card_in(game.hand(Seat::DECLARER), "HA").wild);
+    assert!(held(&run, id_of("HA")).wild);
     assert!(!card_in(game.hand(Seat::DEFENDERS[0]), "HT").wild);
-    run.apply_step(&content, RunAction::Declare(hand_clubs()))
-        .expect("declare");
+    // Before the game starts it is the printed card, shown as open.
     let view = run.view(&content).game.expect("game view");
-    let wild = view
-        .hand
-        .iter()
-        .find(|c| c.card.id == id_of("HA"))
-        .expect("held");
-    assert_eq!(wild.wild_suits.len(), 4, "he leads: every suit");
+    let wild = view.hand.iter().find(|c| c.card.id == id_of("HA"));
+    let wild = wild.expect("held");
+    assert!(wild.unsettled);
+    assert_eq!(wild.named, None);
+    assert_eq!(wild.card.kind, kind("HA"));
     assert!(
         view.hand
             .iter()
             .filter(|c| c.card.id != id_of("HA"))
-            .all(|c| c.wild_suits.is_empty())
+            .all(|c| !c.unsettled)
     );
-    let before = run.game().expect("game").game.matadors();
-    // Not a Wandelkarte: rejected, nothing changed.
-    let copy = run.clone();
-    assert!(
-        run.apply_step(
-            &content,
-            RunAction::PlayAs {
-                card: id_of("SA"),
-                suit: Suit::Hearts
-            }
-        )
-        .is_err()
-    );
-    assert_eq!(run, copy);
     let events = run
-        .apply_step(
-            &content,
-            RunAction::PlayAs {
-                card: id_of("HA"),
-                suit: Suit::Clubs,
-            },
-        )
-        .expect("named");
-    assert!(events.iter().any(|e| matches!(
+        .apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    // Clubs three (CA CT CK), spades two, diamonds two: a Kreuz-Daus. The
+    // event follows the declaration.
+    let declared = events
+        .iter()
+        .position(|e| matches!(e, RunEvent::Game(Event::Declared { .. })));
+    let at = events
+        .iter()
+        .position(|e| matches!(e, RunEvent::Game(Event::WildCardSettled { .. })));
+    assert!(declared < at);
+    let [(old, new)] = settled(&events)[..] else {
+        panic!("one settled card");
+    };
+    assert_eq!(
+        (old.id, old.kind, old.wild),
+        (id_of("HA"), kind("HA"), true)
+    );
+    assert_eq!(
+        (new.id, new.kind, new.wild),
+        (id_of("HA"), kind("CA"), false)
+    );
+    assert_eq!(new.card_points, old.card_points);
+    assert_eq!(held(&run, id_of("HA")), new);
+    assert!(rules::is_trump(GameType::Suit(Suit::Clubs), new));
+    let active = run.game().expect("game");
+    assert_eq!(active.named, [(id_of("HA"), Suit::Hearts)]);
+    // The Spitzen stay as declared: with CJ SJ, without the HJ, two.
+    let matadors = active.game.matadors().expect("declared");
+    assert_eq!((matadors.with, matadors.count), (true, 2));
+    // The view: the settled suit in `kind`, the printed one in `named`.
+    let view = run.view(&content).game.expect("game view");
+    let wild = view.hand.iter().find(|c| c.card.id == id_of("HA"));
+    let wild = wild.expect("held");
+    assert!(!wild.unsettled);
+    assert_eq!(wild.named, Some(Suit::Hearts));
+    assert_eq!(wild.card.kind, kind("CA"));
+    assert_eq!(
+        view.wild_settled,
+        [view::SettledWild {
+            card: id_of("HA"),
+            kind: kind("CA"),
+            printed: Suit::Hearts,
+        }]
+    );
+    // The player sees the event too.
+    let seen = player::player_events(events);
+    assert!(seen.iter().any(|e| matches!(
         e,
-        RunEvent::WildCardNamed { card, suit: Suit::Clubs } if card.id == id_of("HA")
+        RunEvent::Game(player::PlayerGameEvent::WildCardSettled { new, .. }) if new.kind == kind("CA")
     )));
+    // It plays as the Kreuz-Daus and stays it on the table.
+    let events = run
+        .apply_step(&content, RunAction::Play(id_of("HA")))
+        .expect("plays");
     let played = events.iter().find_map(|e| match e {
         RunEvent::Game(Event::CardPlayed { card, .. }) => Some(*card),
         _ => None,
     });
-    let played = played.expect("played");
-    assert_eq!(played.id, id_of("HA"));
-    assert_eq!(played.kind, CardKind::Normal("CA".parse().expect("card")));
-    let active = run.game().expect("game");
-    assert_eq!(active.named, [(id_of("HA"), Suit::Hearts)]);
-    // The Spitzen stay as declared.
-    assert_eq!(active.game.matadors(), before);
-    // A trump lead: seat 1 must follow with a Unter.
-    assert!(rules::is_trump(GameType::Suit(Suit::Clubs), played));
-    let view = run.view(&content).game.expect("game view");
-    let on_table = view.trick.first().expect("on the table");
-    assert_eq!(on_table.card.named, Some(Suit::Hearts));
+    assert_eq!(played, Some(new));
+}
+
+/// Twelve cards for the player after picking up the skat (ST DT), the
+/// Wandelkarte on HA.
+fn discard_run(content: &Content) -> Run {
+    let (mut run, _) = Run::new(content, 11).expect("start");
+    with_mod(content, &mut run, "HA", WILD);
+    deal_with(
+        &mut run,
+        content,
+        [
+            "CJ HA S7 S8 S9 D7 D8 D9 C7 C8",
+            "C9 CT CQ CK CA SJ SQ SK SA HJ",
+            "H7 H8 H9 HT HQ HK DJ DQ DK DA",
+        ],
+        "ST DT",
+        Seat::DECLARER,
+    );
+    run.apply_step(content, RunAction::PickUpSkat)
+        .expect("pick up");
+    run
 }
 
 #[test]
-fn naming_must_follow_when_another_card_can() {
+fn discarding_the_second_longest_suit_decides_the_wild_suit() {
+    let content = content();
+    let grand = Declaration::grand(RiskLevel::Normal);
+    // While discarding it is the printed card.
+    let mut run = discard_run(&content);
+    assert_eq!(held(&run, id_of("HA")).kind, kind("HA"));
+    // Two spades away: diamonds four, spades two.
+    run.apply_step(&content, RunAction::Discard([id_of("S7"), id_of("S8")]))
+        .expect("discard");
+    assert!(held(&run, id_of("HA")).wild, "not before the declaration");
+    let events = run
+        .apply_step(&content, RunAction::Declare(grand))
+        .expect("declare");
+    assert_eq!(settled(&events).len(), 1);
+    assert_eq!(held(&run, id_of("HA")).kind, kind("DA"));
+    // Two diamonds away instead: spades four, diamonds two.
+    let mut run = discard_run(&content);
+    run.apply_step(&content, RunAction::Discard([id_of("D7"), id_of("D8")]))
+        .expect("discard");
+    run.apply_step(&content, RunAction::Declare(grand))
+        .expect("declare");
+    assert_eq!(held(&run, id_of("HA")).kind, kind("SA"));
+    // A Wandelkarte put into the skat stays the printed card.
+    let mut run = discard_run(&content);
+    run.apply_step(&content, RunAction::Discard([id_of("HA"), id_of("D8")]))
+        .expect("discard");
+    let events = run
+        .apply_step(&content, RunAction::Declare(grand))
+        .expect("declare");
+    assert!(settled(&events).is_empty());
+    let skat = run.game().expect("game").game.skat();
+    assert!(
+        skat.iter()
+            .any(|c| c.id == id_of("HA") && c.kind == kind("HA"))
+    );
+}
+
+#[test]
+fn a_wild_card_settles_in_null_and_a_wild_unter_stays_as_it_is() {
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "H8", WILD);
+    with_mod(&content, &mut run, "HJ", WILD);
+    deal_with(
+        &mut run,
+        &content,
+        [
+            "HJ H8 D7 D8 D9 S7 C7 C8 C9 CT",
+            "CJ SJ DJ HA HT HK HQ H9 H7 DA",
+            "SA ST SK SQ S9 S8 DT DK DQ CA",
+        ],
+        "CQ CK",
+        Seat::DECLARER,
+    );
+    let null = Declaration::Null {
+        risk: NullRisk::Hand,
+    };
+    let events = run
+        .apply_step(&content, RunAction::Declare(null))
+        .expect("declare");
+    // Clubs four: the Herz-Acht becomes the Kreuz-Acht, next to the C8.
+    let settled = settled(&events);
+    assert_eq!(settled.len(), 2, "both Wandelkarten settle");
+    assert_eq!(held(&run, id_of("H8")).kind, kind("C8"));
+    // The Unter keeps its suit; it is settled all the same.
+    let unter = held(&run, id_of("HJ"));
+    assert_eq!((unter.kind, unter.wild), (kind("HJ"), false));
+    let both: Vec<u32> = run
+        .game()
+        .expect("game")
+        .named
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    assert!(both.contains(&id_of("H8")) && both.contains(&id_of("HJ")));
+}
+
+#[test]
+fn a_settled_wild_card_follows_its_new_suit() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
     with_mod(&content, &mut run, "HA", WILD);
@@ -302,48 +446,100 @@ fn naming_must_follow_when_another_card_can() {
         &mut run,
         &content,
         [
-            "CJ SJ HA CA CT CK S8 ST D7 D8",
-            "HJ DJ SA HK HQ H9 H8 H7 DA DT",
-            "SK SQ S9 HT S7 DK DQ D9 CQ C9",
+            "CJ SJ HA S7 S8 S9 ST D7 D8 H7",
+            "HJ DJ SA HK HQ H9 H8 HT DA DT",
+            "SK SQ CA CT CK CQ C9 C8 C7 DK",
         ],
-        "C8 C7",
+        "D9 DQ",
         Seat::DEFENDERS[0],
     );
-    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+    let grand = Declaration::grand(RiskLevel::Hand);
+    run.apply_step(&content, RunAction::Declare(grand))
         .expect("declare");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "SA");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "S7");
-    let view = run.view(&content).game.expect("game view");
-    let wild = view
-        .hand
-        .iter()
-        .find(|c| c.card.id == id_of("HA"))
-        .expect("held");
-    assert_eq!(wild.wild_suits, [Suit::Spades]);
-    let copy = run.clone();
-    let err = run.apply_step(
-        &content,
-        RunAction::PlayAs {
-            card: id_of("HA"),
-            suit: Suit::Clubs,
-        },
-    );
+    // Spades four: the Wandelkarte is the Grün-Daus now.
+    let wild = held(&run, id_of("HA"));
+    assert_eq!(wild.kind, kind("SA"));
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "HK");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "DK");
+    // A heart is led: only the H7 follows, the former Rot-Daus may not.
+    let legal = run.game().expect("game").game.legal_moves(Seat::DECLARER);
     assert_eq!(
-        err.map_err(|e| e.code()),
-        Err(RunErrorCode::MustFollowSuit),
-        "no ruff while a spade is held"
+        legal.iter().map(|c| c.id).collect::<Vec<_>>(),
+        [id_of("H7")]
     );
+    let copy = run.clone();
+    let err = run.apply_step(&content, RunAction::Play(id_of("HA")));
+    assert_eq!(err.map_err(|e| e.code()), Err(RunErrorCode::MustFollowSuit));
     assert_eq!(run, copy);
-    // The bot names the suit that follows; as a Daus of spades it does not
-    // beat the earlier SA (equal strength keeps the trick, 4.4).
-    let card = card_in(run.game().expect("game").game.hand(Seat::DECLARER), "HA");
-    assert_eq!(RunBot::wild_suit(&run, card), Some(Suit::Spades));
-    // Rest abkürzen waits while a Wandelkarte is in the hand.
-    assert!(!run.can_settle(&content));
+    run.apply_step(&content, RunAction::Play(id_of("H7")))
+        .expect("follows");
+    // A spade is led: the Wandelkarte must follow as a spade like the rest.
+    let next = run.game().expect("game").game.current_seat();
+    assert_eq!(next, Some(Seat::DEFENDERS[0]), "the defender took it");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "SA");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "SK");
+    let legal = run.game().expect("game").game.legal_moves(Seat::DECLARER);
+    let spades: Vec<u32> = ["HA", "S7", "S8", "S9", "ST"].map(id_of).to_vec();
+    let mut ids: Vec<u32> = legal.iter().map(|c| c.id).collect();
+    ids.sort_unstable();
+    let mut want = spades;
+    want.sort_unstable();
+    assert_eq!(ids, want);
+    // Nothing is left to settle: the rest may be played out.
+    assert!(
+        !run.game()
+            .expect("game")
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .any(|c| c.wild)
+    );
 }
 
 #[test]
-fn the_bot_names_a_suit_that_takes_the_trick() {
+fn an_undead_wild_card_rises_as_its_settled_card() {
+    // One card that is both (a deck from before effects v2 keeps both
+    // special cards, `migrate_legacy_mods`).
+    let mut content = content();
+    let def = content
+        .card_mods
+        .get_mut(&CardModId::new(WILD))
+        .expect("wild");
+    def.passive.push(Effect::Undead);
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    with_mod(&content, &mut run, "D7", WILD);
+    deal_with(
+        &mut run,
+        &content,
+        [
+            "CJ SJ HJ DJ CA CT CK C9 D7 H7",
+            "HA HT HK HQ H9 H8 SA ST SK SQ",
+            "S9 S8 S7 DA DT DK DQ D9 CQ C8",
+        ],
+        "D8 C7",
+        Seat::DECLARER,
+    );
+    run.apply_step(&content, RunAction::Declare(hand_clubs()))
+        .expect("declare");
+    // Clubs four: the Schellen-Sieben is a Kreuz-Sieben, a trump.
+    let wild = held(&run, id_of("D7"));
+    assert_eq!(wild.kind, kind("C7"));
+    assert!(run.can_rise(&content, wild));
+    run.apply_step(&content, RunAction::Play(id_of("D7")))
+        .expect("lead");
+    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "H8");
+    let events = defender_plays(&mut run, &content, Seat::DEFENDERS[1], "C8");
+    let rose = events.iter().find_map(|e| match e {
+        RunEvent::Game(Event::CardRose { card, .. }) => Some(*card),
+        _ => None,
+    });
+    assert_eq!(rose, Some(wild), "it rises as the Kreuz-Sieben");
+    assert_eq!(held(&run, id_of("D7")), wild, "and stays it");
+    assert!(!wild.wild);
+}
+
+#[test]
+fn the_bot_plays_a_game_with_a_settled_wild_card() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
     with_mod(&content, &mut run, "H7", WILD);
@@ -360,20 +556,14 @@ fn the_bot_names_a_suit_that_takes_the_trick() {
     );
     run.apply_step(&content, RunAction::Declare(hand_clubs()))
         .expect("declare");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "SA");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "S7");
-    // No spade in the hand: the Wandelkarte may be anything; as a trump
-    // (the Kreuz-Sieben) it takes the spade Daus.
-    let card = card_in(run.game().expect("game").game.hand(Seat::DECLARER), "H7");
-    assert_eq!(RunBot::wild_suit(&run, card), Some(Suit::Clubs));
-    let events = run
-        .apply_step(&content, RunBot::play_action(&run, card))
-        .expect("plays");
-    let won = events.iter().find_map(|e| match e {
-        RunEvent::Game(Event::TrickWon { trick, .. }) => Some(trick.winner),
+    // Clubs three, hearts two (HA HT), diamonds two: the Kreuz-Sieben.
+    assert_eq!(held(&run, id_of("H7")).kind, kind("C7"));
+    let (events, _) = bot_to_end(&mut run, &content);
+    let played = events.iter().find_map(|e| match e {
+        RunEvent::Game(Event::CardPlayed { card, .. }) if card.id == id_of("H7") => Some(*card),
         _ => None,
     });
-    assert_eq!(won, Some(Seat::DECLARER));
+    assert_eq!(played.map(|c| c.kind), Some(kind("C7")));
 }
 
 // -------------------------------------------------------------- Glasdaus
@@ -490,39 +680,6 @@ fn honorary_chair_makes_the_player_forehand_in_every_game() {
     );
 }
 
-#[test]
-fn the_bot_does_not_throw_a_wild_card_it_cannot_ruff_with() {
-    let content = content();
-    let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "HA", WILD);
-    deal_with(
-        &mut run,
-        &content,
-        [
-            "CJ SJ HA HT HK HQ DK ST S7 D8",
-            "HJ DJ DA DT H9 H8 S8 SA SK S9",
-            "SQ H7 DQ D9 D7 CA CT CK CQ C9",
-        ],
-        "C8 C7",
-        Seat::DEFENDERS[0],
-    );
-    let hearts = Declaration::suit(Suit::Hearts, RiskLevel::Hand);
-    run.apply_step(&content, RunAction::Declare(hearts))
-        .expect("declare");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[0], "DA");
-    defender_plays(&mut run, &content, Seat::DEFENDERS[1], "D7");
-    // As printed the Rot-Daus is a trump, but the player holds diamonds:
-    // named it could only be a Schellen-Daus and lose to the first one.
-    let action = RunBot.next_action(&run, &content).expect("plays");
-    let hand = hand_of(&run).to_vec();
-    let played = match action {
-        RunAction::Play(id) | RunAction::PlayAs { card: id, .. } => id,
-        other => panic!("{other:?}"),
-    };
-    let card = hand.iter().find(|c| c.id == played).expect("held");
-    assert_eq!(card.face().map(|f| f.suit), Some(Suit::Diamonds), "{card}");
-}
-
 /// Statistics for the balance report (`docs/balance/2026-11-02-welle3.md`):
 /// how often the wave 3 items act in whole runs of the bot (heuristic card
 /// play, no Tresen, 400 runs each, the item from the start).
@@ -577,9 +734,9 @@ fn wave_three_trigger_statistics() {
                                 }
                             }
                         }
-                        RunEvent::WildCardNamed { card, suit } => {
+                        RunEvent::Game(Event::WildCardSettled { old, new }) => {
                             named += 1;
-                            if card.face().is_some_and(|f| f.suit != suit) {
+                            if old.kind != new.kind {
                                 renamed += 1;
                             }
                         }

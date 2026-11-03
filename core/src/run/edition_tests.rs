@@ -35,6 +35,7 @@ fn digest(events: &[RunEvent]) -> String {
             RunEvent::GameScored {
                 breakdown,
                 series_score,
+                ..
             } => {
                 out.push_str(&format!(
                     "S{}:{}:{}:{series_score};",

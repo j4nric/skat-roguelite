@@ -618,3 +618,68 @@ fn the_bot_plays_whole_runs_with_the_zinken() {
     assert!(bought > 0, "the bot buys from the Auslage");
     let _ = painted;
 }
+
+#[test]
+fn bruderherz_pays_half_on_rot_and_keeps_his_curses() {
+    let content = content();
+    let start = RunStart {
+        character: Character::HeartBrother,
+        ..RunStart::default()
+    };
+    let (mut run, _) = Run::new_with(&content, 3, &start).expect("start");
+    run.series.games_played = 1;
+    run.series.score = i64::try_from(run.series.target).expect("small");
+    run.game = None;
+    let mut events = Vec::new();
+    run.after_game(&content, &mut events).expect("after game");
+    run.coins = 40;
+    run.walk_to_tresen(&content);
+    // Rot-Zehn (11) and Grün-Zehn (19), both bare for the test.
+    for card in [11, 19] {
+        let _ = run.edition.cleanse(card);
+    }
+    set_offers(
+        &mut run,
+        vec![offer(11, "points", 3, 4), offer(19, "points", 3, 4)],
+    );
+    let view = run.view(&content).shop.expect("shop");
+    let prices: Vec<u32> = view.card_offers.iter().flatten().map(|o| o.price).collect();
+    assert_eq!(prices, vec![2, 4], "half on Rot");
+    run.apply(&content, RunAction::BuyCardOffer(0))
+        .expect("buy");
+    assert_eq!(run.coins(), 38);
+    // The Kartenmaler: the Wirt first, then half on Rot (6 * 0.8 = 5, half 3).
+    run.relics.push(RelicId::new("landlord"));
+    let painter = &run.view(&content).shop.expect("shop").painter;
+    let at = |card: u32| {
+        painter
+            .targets
+            .iter()
+            .position(|&c| c == card)
+            .map(|i| painter.target_prices[i])
+    };
+    assert_eq!(at(19), Some(5));
+    assert_eq!(at(10), Some(3));
+    run.apply(&content, RunAction::HirePainter(10))
+        .expect("hire");
+    assert_eq!(run.coins(), 35);
+    run.apply(&content, RunAction::ChoosePaint(0))
+        .expect("paint");
+    // His curses stay: Karte reinigen goes through Run::cleanse.
+    let cursed = run
+        .edition()
+        .cards()
+        .iter()
+        .find(|c| {
+            c.mods
+                .iter()
+                .any(|m| content.card_mod(m).is_some_and(|d| d.is_curse()))
+        })
+        .map(|c| c.id)
+        .expect("a cursed card in his edition");
+    assert_eq!(
+        run.apply(&content, RunAction::CleanseCard(cursed)),
+        Err(RunError::CurseStays)
+    );
+    assert_eq!(run.coins(), 35, "nothing paid");
+}

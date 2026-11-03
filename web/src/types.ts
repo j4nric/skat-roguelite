@@ -21,7 +21,7 @@ export interface DealtCard {
   honorary_jack?: boolean;
   /** "Ramponiert": must not be discarded. */
   no_discard?: boolean;
-  /** "Wandelkarte" in the player's hand: he names its suit as he plays it. */
+  /** "Wandelkarte" of the player whose suit is not settled yet (until the game starts). */
   wild?: boolean;
   /** "Abgestuft" (Nullspieler): a Unter is the lowest card of its suit, any other card one step lower. */
   demoted?: boolean;
@@ -57,9 +57,9 @@ export interface CardView extends DealtCard {
    * for views from an older core.
    */
   mod_status?: Partial<Record<string, CardModStatus>>;
-  /** "Wandelkarte" the player may play now: the suits he may name (RunAction `PlayAs`). */
-  wild_suits?: Suit[];
-  /** A Wandelkarte played in this game: its printed suit; `kind` has the suit named. */
+  /** "Wandelkarte" whose suit is still open: before the game starts (left out when false). */
+  unsettled?: boolean;
+  /** A Wandelkarte settled as this game started: its printed suit; `kind` has the settled suit. */
   named?: Suit | null;
   /** "Untot": would rise if played now (left out when false). */
   can_rise?: boolean;
@@ -83,9 +83,9 @@ export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
 /** Spielart in a declaration: a GameType, or Ramsch (forced by "Der Ramscher"). */
 export type DeclaredGame = GameType | 'Ramsch';
 /** Who plays the run. */
-export type Character = 'Declarer' | 'NullPlayer' | 'GrandPlayer' | 'Onlooker' | 'Landlady';
+export type Character = 'Declarer' | 'NullPlayer' | 'Shirker' | 'Tailoress' | 'HeartBrother';
 /** Every character, in the order of the core (`Character::ALL`). */
-export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'GrandPlayer', 'Onlooker', 'Landlady'];
+export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shirker', 'Tailoress', 'HeartBrother'];
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
@@ -313,6 +313,8 @@ export interface ServiceView {
   can_use: boolean;
   /** Cards it can work on now. */
   targets: number[];
+  /** Its price on each target, same order (Bruderherz: half on Rot). */
+  target_prices?: number[];
 }
 
 /** The Kartenmaler's choice, waiting for the player. */
@@ -428,6 +430,8 @@ export interface GameView {
   win_threshold: number;
   declare: DeclareOptions | null;
   revealed: RevealedCard[];
+  /** "Wandelkarte": the cards settled as this game started, played ones too (absent in old views). */
+  wild_settled?: { card: number; kind: CardKind; printed: Suit }[];
   /** The boss rule of this game (for "Der Alte" the rule laid on this game). */
   boss_rule: BossInfo | null;
   /** Card back per seat (ADR 0015): null for the player (his own choice), the opponent's back otherwise. */
@@ -598,6 +602,8 @@ export interface CharacterInfo {
   character: Character;
   name: string;
   text: string;
+  /** Card back of the player's edition (DESIGN 9.3); absent in an older core (Distel). */
+  back?: string;
 }
 
 /** What an encounter option does. */
@@ -645,6 +651,8 @@ export interface EncounterOptionView {
   can_choose: boolean;
   needs_target: boolean;
   targets: number[];
+  /** Cost on each of `targets` (a Zinke on Rot is cheaper for Bruderherz); absent in an older core. */
+  target_costs?: number[];
 }
 
 /** The open encounter (Ereignis). */
@@ -839,6 +847,8 @@ export type GameEvent =
   | { DefenderHandsSwapped: { hand_sizes: number[] } }
   | { SkatSwapped: { took: DealtCard; gave: DealtCard } }
   | { CardChalked: { old: DealtCard; new: DealtCard } }
+  /** "Wandelkarte": its suit was settled as the game started; `new` is the card from now on. */
+  | { WildCardSettled: { old: DealtCard; new: DealtCard } }
   /** "Drei drücken": drawn from a defender with the skat. */
   | { CardDrawn: { seat: Seat; card: DealtCard } }
   /** "Drei drücken": the lowest discard went back to that defender. */
@@ -901,10 +911,9 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
-  /** "Wandelkarte": the player named the suit of `card` (as printed) as he played it. */
-  | { WildCardNamed: { card: DealtCard; suit: Suit } }
   /** Effekte v2: a voucher was redeemed when its card was discarded. */
   | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
+  | { VoucherReturned: { card: number; card_mod: string; value: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
@@ -940,7 +949,6 @@ export type RunAction =
   | { Discard: [number, number] }
   | { DiscardThree: [number, number, number] }
   | { Play: number }
-  | { PlayAs: { card: number; suit: Suit } }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
   | { BuyConsumable: number }
@@ -1032,6 +1040,8 @@ export interface CharacterEntry {
   unlocked_by: string | null;
   /** Highest stake unlocked per run length (Einsatz-Leiter); absent in an older core. */
   max_stakes?: Partial<Record<RunLength, number>>;
+  /** Card back of the character's edition; absent in an older core (Distel). */
+  back?: string;
 }
 
 export type Reward = { Relic: string } | { Character: Character } | { CardMod: string };

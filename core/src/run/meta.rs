@@ -19,11 +19,12 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::{RunEvent, RunStart};
+use crate::cards::Suit;
 use crate::content::{
     CardModId, Character, Content, Rarity, RelicId, RelicKind, Reward, RunLength, ScoreBreakdown,
     UnlockCondition, UnlockId,
 };
-use crate::rules::Declaration;
+use crate::rules::{Declaration, GameType};
 
 /// Version of the serialized meta state. A frontend rejects other versions.
 pub const META_VERSION: u32 = 1;
@@ -56,7 +57,9 @@ pub struct MetaStats {
     pub games_lost: u32,
     /// Highest Spielwert of a won game.
     pub best_game: u64,
-    /// Per character.
+    /// Per character. Entries of removed characters are dropped when an
+    /// old save is read.
+    #[serde(deserialize_with = "known_characters")]
     pub characters: BTreeMap<Character, CharacterStats>,
     /// Per run length (ganzer or kurzer Abend, DESIGN 5.3). Runs finished
     /// before the short evening existed count as ganzer Abend only in the
@@ -96,8 +99,65 @@ pub struct MetaState {
     /// character and run length. Missing entries are 0 (61 Augen). A run
     /// won at stake n unlocks n + 1 for its character and length. Ganzer
     /// and kurzer Abend climb apart because a short win is easier.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "known_characters")]
     pub stakes: BTreeMap<Character, BTreeMap<RunLength, u32>>,
+    /// Suit games won with Schneider in the pub in progress
+    /// ([`UnlockCondition::SchneiderWinsInPub`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub_schneider_wins: u32,
+    /// Trump suit and length of the streak of won suit games in the run in
+    /// progress ([`UnlockCondition::SameTrumpStreak`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    trump_streak: Option<(Suit, u32)>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// A map keyed by character, read from a save: entries of a character the
+/// content no longer has (removed on 03.11.2026: "GrandPlayer",
+/// "Onlooker", "Landlady") are dropped instead of failing the load.
+fn known_characters<'de, D, V>(deserializer: D) -> Result<BTreeMap<Character, V>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    let raw: Vec<(SavedCharacter, V)> = BTreeMap::<SavedCharacter, V>::deserialize(deserializer)?
+        .into_iter()
+        .collect();
+    Ok(raw
+        .into_iter()
+        .filter_map(|(saved, v)| saved.character().map(|c| (c, v)))
+        .collect())
+}
+
+/// A character as a save names it: one of today's, or one removed since
+/// (any other name). Read as an identifier, so it works for JSON strings
+/// and RON names alike.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+enum SavedCharacter {
+    Declarer,
+    NullPlayer,
+    Shirker,
+    Tailoress,
+    HeartBrother,
+    #[serde(other)]
+    Removed,
+}
+
+impl SavedCharacter {
+    const fn character(self) -> Option<Character> {
+        match self {
+            SavedCharacter::Declarer => Some(Character::Declarer),
+            SavedCharacter::NullPlayer => Some(Character::NullPlayer),
+            SavedCharacter::Shirker => Some(Character::Shirker),
+            SavedCharacter::Tailoress => Some(Character::Tailoress),
+            SavedCharacter::HeartBrother => Some(Character::HeartBrother),
+            SavedCharacter::Removed => None,
+        }
+    }
 }
 
 const fn meta_version() -> u32 {
@@ -164,6 +224,8 @@ pub struct CharacterEntry {
     /// Highest stake unlocked per run length (Einsatz-Leiter), every
     /// length listed.
     pub max_stakes: BTreeMap<RunLength, u32>,
+    /// Card back of the character's edition (DESIGN 9.3).
+    pub back: String,
 }
 
 /// What kind of thing a reward is, for the menu.
@@ -392,9 +454,14 @@ impl MetaState {
     fn count<G>(&mut self, event: &RunEvent<G>) {
         let stats = &mut self.stats;
         match event {
-            RunEvent::SeriesStarted { section, .. } => {
+            RunEvent::SeriesStarted { section, index, .. } => {
                 self.current_section = section + 1;
                 stats.best_section = stats.best_section.max(section + 1);
+                self.pub_schneider_wins = 0;
+                if *section == 0 && *index == 0 {
+                    // A new run (also after one that was given up).
+                    self.trump_streak = None;
+                }
             }
             RunEvent::GameScored { breakdown, .. } => {
                 if breakdown.won {
@@ -403,6 +470,24 @@ impl MetaState {
                 } else {
                     stats.games_lost += 1;
                 }
+                let declaration = breakdown.declaration;
+                let trump_game = matches!(
+                    declaration,
+                    Declaration::Suit { .. } | Declaration::Grand { .. }
+                );
+                if breakdown.won && breakdown.schneider && trump_game {
+                    self.pub_schneider_wins += 1;
+                }
+                self.trump_streak = match (declaration.game(), breakdown.won) {
+                    // A Ramsch is nobody's declaration: it neither counts
+                    // nor breaks the streak.
+                    _ if declaration.is_ramsch() => self.trump_streak,
+                    (GameType::Suit(suit), true) => match self.trump_streak {
+                        Some((s, n)) if s == suit => Some((suit, n + 1)),
+                        _ => Some((suit, 1)),
+                    },
+                    _ => None,
+                };
             }
             RunEvent::RunWon {
                 character,
@@ -429,6 +514,8 @@ impl MetaState {
                 by_length.best_section = by_length.best_section.max(self.current_section);
                 stats.best_section = stats.best_section.max(self.current_section);
                 self.current_section = 0;
+                self.trump_streak = None;
+                self.pub_schneider_wins = 0;
             }
             RunEvent::RunLost {
                 section,
@@ -445,6 +532,8 @@ impl MetaState {
                 by_length.best_section = by_length.best_section.max(section + 1);
                 stats.best_section = stats.best_section.max(section + 1);
                 self.current_section = 0;
+                self.trump_streak = None;
+                self.pub_schneider_wins = 0;
             }
             _ => {}
         }
@@ -459,9 +548,23 @@ impl MetaState {
                     schneider,
                     min_risk,
                     min_value,
+                    min_discarded,
                 },
-                RunEvent::GameScored { breakdown, .. },
-            ) => won_game(breakdown, *game, *schneider, *min_risk, *min_value),
+                RunEvent::GameScored {
+                    breakdown,
+                    discarded_points,
+                    ..
+                },
+            ) => {
+                won_game(breakdown, *game, *schneider, *min_risk, *min_value)
+                    && discarded_points >= min_discarded
+            }
+            (UnlockCondition::SchneiderWinsInPub(n), RunEvent::GameScored { .. }) => {
+                self.pub_schneider_wins >= *n
+            }
+            (UnlockCondition::SameTrumpStreak(n), RunEvent::GameScored { .. }) => {
+                self.trump_streak.is_some_and(|(_, k)| k >= *n)
+            }
             (UnlockCondition::WinNull(min), RunEvent::GameScored { breakdown, .. }) => {
                 breakdown.won && breakdown.declaration.null_risk().is_some_and(|r| r >= *min)
             }
@@ -531,6 +634,7 @@ impl MetaState {
                             .into_iter()
                             .map(|length| (length, self.max_stake(def.character, length)))
                             .collect(),
+                        back: def.back().to_owned(),
                     }
                 })
                 .collect(),

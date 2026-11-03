@@ -9,7 +9,8 @@ key), "." is paper, any other key a picture pixel. The web app splits the
 two layers so card modifications can lie between picture and index
 (web/src/ui/art.ts). The "Untot" faces of all 32 cards (untot.py: zombie
 pictures, rotten number cards) and the eight suit-independent faces of the
-"Wandelkarte" (wild.py) follow in the same form; the frames, marks and
+"Wandelkarte" (wild.py, the open harlequin) and its 32 settled faces
+(the palette swap into each suit) follow in the same form; the frames, marks and
 bands of the card modifications are drawn by web/src/ui/cards.ts after
 fx3.py.
 """
@@ -141,7 +142,14 @@ def ts():
         lines.append(f'  {rc}: [')
         lines += [f"    '{r}'," for r in rows('Wild', rank, wild.card(rank))]
         lines.append('  ],')
-    lines += ['};', '', '/** The Wandelkarte\'s rainbow sign: index size (3 wide) and held size (7 wide). */',
+    lines += ['};', '', '/** "Wandelkarte" settled into a suit: the same faces in that suit\'s shades, with its normal index (wild.py). */',
+              'export const ART_WILD_SETTLED: Record<string, string[]> = {']
+    for code, suit in SUITS.items():
+        for rc, rank in RANKS.items():
+            lines.append(f'  {code}{rc}: [')
+            lines += [f"    '{r}'," for r in rows(suit, rank, wild.settled(suit, rank))]
+            lines.append('  ],')
+    lines += ['};', '', '/** The open Wandelkarte\'s signs: four suit pips in the index (4 wide), the rainbow held sign (7 wide). */',
               'export const ART_WILD_SIGN: string[] = [' + ', '.join(f"'{r}'" for r in SIGN['Wild']) + '];',
               'export const ART_WILD_BIG: string[] = [' + ', '.join(f"'{r}'" for r in BIG['Wild']) + '];',
               f"export const ART_WILD_INK = '{INK['Wild']}';", '']
