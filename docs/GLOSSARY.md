@@ -198,6 +198,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Flagge (Relikt-Zustand, z. B. Bock) | `flag` | Pro Run |
 | Zähler (Relikt-Zustand, z. B. Tournee) | `counter` | Pro Run. Zähler einer Serie setzt `ResetCounter` nach der gewonnenen Serie zurück (Ereignis `CounterReset`); `AddBaseValuePerCounter { counter, per }` gibt `per` Grundwert je Punkt |
 | Relikt (Oberbegriff) | `Relic` | HouseRule und Regular, Definition `RelicDef` |
+| Relikt-Plätze | `relic_slots` | Seit 03.11.2026 unbegrenzt: `RunConfig::relic_slots: Option<u32>` (ohne Angabe keine Grenze), Obergrenze eines Charakters `CharacterRule::relic_slots`; `Content::relic_slots` (`None` = unbegrenzt), `Content::relic_slot_free`; Sicht `RunView::relic_slots` (`null` = unbegrenzt) |
+| Kasse auszahlen, wenn das Relikt geht (Stammtischkasse) | `StashPaidOut` | Ereignis `StashPaidOut { relic, amount, coins }`: Verkauf, Tausch, Ersatz oder Ende einer Abendregel zahlt den `StashCoins`-Topf des Relikts aus, wie er ist |
 | Tresen | `Shop` | |
 | Groschen | `coins` | Währung |
 | Groschen erhalten (Effekt) | `GainCoins` | Ereignis `CoinsGained { source, amount, coins }`; negativ zieht ab, nie unter 0 |
@@ -207,7 +209,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ereignis / Rast | `Encounter` | Station unterwegs (ADR 0016). Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
 | Hausregel des Stadtteils (Stammtisch-Streit, bis ADR 0016 des Abends) | `evening_relics` | Gilt bis zum Ende des Stadtteils, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `Shirker` (Drückeberger), `Tailoress` (Schneiderin, nicht die Figur „Der Schneider“ `tailor` und nicht Schneider `schneider`), `HeartBrother` (Bruderherz); Daten `CharacterDef`, Id als Text `Character::as_str`, gelesen mit `Character::from_id`. Bis 03.11.2026 auch `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast), `Landlady` (Wirtin); alte Meta-Stände lassen deren Einträge fallen |
-| Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`, `vouchers_return`, `keep_curses`, `zinken_discount`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
+| Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Obergrenze `Some(n)`, die kleinere mit `run.ron` gilt; bis 03.11.2026 ein Zuschlag), `payout_factor`, `vouchers_return`, `keep_curses`, `zinken_discount`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
 | Zuschlag der Auszahlung (bis 03.11.2026 die Wirtin) | `Payout::bonus` | Was `payout_factor` über die einfache Auszahlung hinaus zahlt |
 | Blatt eines Gegners sehen (bis 03.11.2026 der Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
 | Start-Verbrauchsgegenstände | `start_consumables` | Feld in `CharacterDef` |
