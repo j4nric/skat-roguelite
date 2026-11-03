@@ -79,6 +79,8 @@ export type Overlay =
   | { kind: 'zinken-card'; service: 'painter' | 'cleanse'; reasons?: Record<number, string> }
   /** The Kartenmaler waits: take one of his Zinken (not closable). */
   | { kind: 'painter' }
+  /** The Schnaps of a won pub with every slot full: take it for an owned one or sell it (not closable). */
+  | { kind: 'schnapps-reward' }
   /** The Vereinsbuch: characters and unlocks, or the statistics page. */
   | { kind: 'book'; tab: 'book' | 'stats' }
   /** "Kneipe verlassen?" (DESIGN 8.7): give up the pub, then `GiveUpPub`. */

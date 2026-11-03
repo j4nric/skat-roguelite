@@ -1366,6 +1366,22 @@ export class App {
         sound.play(ev.GambleResolved.curse ? 'lose' : 'clink');
         continue;
       }
+      if ('SchnappsRewarded' in ev) {
+        if (!ev.SchnappsRewarded.slots_full) {
+          this.showToast(t(de.toast.schnappsRewarded, { name: contentName('consumables', ev.SchnappsRewarded.consumable) }));
+          sound.play('clink');
+        }
+        continue;
+      }
+      if ('SchnappsRewardTaken' in ev) {
+        this.showToast(
+          t(de.toast.schnappsRewardTaken, {
+            name: contentName('consumables', ev.SchnappsRewardTaken.consumable),
+            old: contentName('consumables', ev.SchnappsRewardTaken.given_up),
+          }),
+        );
+        continue;
+      }
       if ('ConsumableGained' in ev) {
         this.showToast(t(de.toast.consumableGained, { name: contentName('consumables', ev.ConsumableGained.consumable) }));
         sound.play('clink');
@@ -2626,6 +2642,12 @@ export class App {
         void this.act(o.service === 'painter' ? { HirePainter: num('id') } : { CleanseCard: num('id') });
         return;
       }
+      case 'schnapps-swap':
+        if (view.schnapps_reward) void this.act({ ChooseSchnappsReward: { give_up: num('slot') } });
+        return;
+      case 'schnapps-sell':
+        if (view.schnapps_reward) void this.act({ ChooseSchnappsReward: { give_up: null } });
+        return;
       case 'paint': {
         const painter = view.painter;
         const option = painter?.options.find((p) => p.index === num('index'));
@@ -2917,6 +2939,9 @@ export class App {
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
         if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
+        // The Schnaps of a won pub with every slot full: its sheet stays until it is taken or sold.
+        if (view.schnapps_reward && !ui.busy && !ui.anim && !ui.overlay) ui.overlay = { kind: 'schnapps-reward' };
+        if (!view.schnapps_reward && ui.overlay?.kind === 'schnapps-reward') ui.overlay = null;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
         if (kontra) body += renderKontra(view);
         break;

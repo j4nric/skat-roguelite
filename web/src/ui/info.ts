@@ -308,7 +308,7 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
     case 'item': {
       const c = view.consumables.find((x) => x.slot === n);
       if (!c) return null;
-      const use = c.can_use && !ui.busy ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot })}>${esc(de.shop.use)}</button>` : '';
+      const use = c.usable_now && !ui.busy ? `<button class="btn btn-primary" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot })}>${esc(de.shop.use)}</button>` : '';
       return itemModel(key, c.consumable, '', use);
     }
     case 'offer-item': {

@@ -1273,6 +1273,30 @@ pub struct ConsumableDef {
     /// Group for labels ("Schnäpse").
     #[serde(default)]
     pub category: ConsumableCategory,
+    /// What the player pours it on in the frontend (drag and drop); the
+    /// core decides whether it can be used now. Default [`ConsumableTarget::Player`].
+    #[serde(default)]
+    pub target: ConsumableTarget,
+}
+
+/// What a Schnaps is poured on in the frontend (Schnaps-Leiste, DESIGN
+/// 8.9). Presentation only: whether it can be used now is the core's
+/// decision ([`crate::run::view::OwnedConsumable::usable_now`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ConsumableTarget {
+    /// The skat ("Kurzer").
+    Skat,
+    /// The table: the deal or the next game ("Kräuter", "Doppelkorn",
+    /// "Fusel").
+    Table,
+    /// A card of the hand ("Blue Curaçao").
+    Card,
+    /// The player himself, drunk ("Konterbier", "Klarer"); written `Self`.
+    #[default]
+    #[serde(rename = "Self")]
+    Player,
+    /// The city map at the route choice ("Schwenker").
+    Map,
 }
 
 /// Groschen rules (design document 12).

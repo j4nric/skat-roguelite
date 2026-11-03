@@ -245,6 +245,18 @@ export interface ConsumableInfo {
   /** "Blue Curaçao": needs a card of the hand (one of `targets`) and another suit. */
   needs_suit?: boolean;
   category?: ConsumableCategory;
+  /** Where the Schnaps is poured (drag and drop, DESIGN 8.9). Presentation only; see `usable_now`. */
+  target?: ConsumableTarget;
+}
+
+/** What a Schnaps is poured on: the skat, the table, a hand card, the player himself, the city map. */
+export type ConsumableTarget = 'Skat' | 'Table' | 'Card' | 'Self' | 'Map';
+
+/** The Schnaps of a won pub with every slot full (DESIGN 8.9): take it for an owned one or sell it. */
+export interface SchnappsRewardView {
+  consumable: ConsumableInfo;
+  /** Groschen when sold (half its price). */
+  sell_price: number;
 }
 
 /** What a Schnaps does to the next declared game. */
@@ -268,7 +280,8 @@ export interface OwnedConsumable {
   consumable: ConsumableInfo;
   sell_price: number;
   can_sell: boolean;
-  can_use: boolean;
+  /** Whether the core would accept drinking it now (until 03.11.2026 `can_use`). */
+  usable_now: boolean;
   targets: number[];
 }
 
@@ -758,6 +771,8 @@ export interface RunView {
   boss_reward?: BossRewardView | null;
   /** The Kartenmaler's choice, waiting (Tresen or Werkstatt). */
   painter?: PainterView | null;
+  /** The Schnaps of a won pub while every slot is full: nothing but `ChooseSchnappsReward` goes now. */
+  schnapps_reward?: SchnappsRewardView | null;
   /** House rules of the evening (Stammtisch-Streit), until the section ends. */
   evening_relics: RelicInfo[];
   /** Factor waiting for the next declared game ("Letzte Runde"). */
@@ -1017,6 +1032,8 @@ export type RunEvent =
   | { BossCursesLifted: { cards: number[] } }
   | { BossRewardOffered: { relics: string[] } }
   | 'BossRewardDeclined'
+  | { SchnappsRewarded: { consumable: string; slots_full: boolean } }
+  | { SchnappsRewardTaken: { consumable: string; given_up: string } }
   /** Item review (02.11.2026). */
   | 'RoutesRerolled'
   | { DebtChanged: { debt: number } }
@@ -1058,6 +1075,7 @@ export type RunAction =
   | { ChooseEncounter: { option: number; target: number | null } }
   | { ChooseRoute: number }
   | { ChooseMalus: { option: number; malus: number } }
+  | { ChooseSchnappsReward: { give_up: number | null } }
   | { ChooseBossRelic: { offer: number | null; replace: number | null } }
   /** Zinken (DESIGN 8.6). */
   | { BuyCardOffer: number }

@@ -54,6 +54,7 @@ pub mod guests;
 pub mod meta;
 pub mod opponents;
 pub mod player;
+mod schnapps_reward;
 pub mod tour;
 pub mod trade;
 pub mod view;
@@ -904,6 +905,16 @@ pub enum RunAction {
         #[serde(default)]
         replace: Option<usize>,
     },
+    /// The Schnaps of a won pub while every Schnaps slot is full
+    /// ([`view::RunView::schnapps_reward`], DESIGN 8.9): with `give_up`
+    /// it takes the slot of that owned Schnaps, which is gone without
+    /// Groschen; without, it is sold for half its price. Nothing else
+    /// goes before this choice ([`RunError::SchnappsRewardPending`]).
+    ChooseSchnappsReward {
+        /// Slot of the owned Schnaps to give up for it; `None` sells it.
+        #[serde(default)]
+        give_up: Option<usize>,
+    },
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -1481,6 +1492,23 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// The relic pick of a won boss pub was passed without a relic.
     BossRewardDeclined,
+    /// A won pub gave a random Schnaps (DESIGN 8.9). With a free slot it
+    /// is in the slots now; with every slot full the player chooses
+    /// ([`RunAction::ChooseSchnappsReward`]).
+    SchnappsRewarded {
+        /// The Schnaps.
+        consumable: ConsumableId,
+        /// Every slot was full: the choice is open.
+        slots_full: bool,
+    },
+    /// The Schnaps of a won pub took the slot of an owned one, which is
+    /// gone. Sold instead: [`RunEvent::ConsumableSold`].
+    SchnappsRewardTaken {
+        /// The new Schnaps.
+        consumable: ConsumableId,
+        /// The Schnaps given up for it.
+        given_up: ConsumableId,
+    },
 }
 
 /// Why an action was rejected. The run is unchanged.
@@ -1566,6 +1594,9 @@ pub enum RunError {
     ConditionNotMet,
     /// Not in a boss pub ("Absacker").
     NotInBossPub,
+    /// The Schnaps of a won pub waits for the player's choice
+    /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
+    SchnappsRewardPending,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1689,6 +1720,9 @@ pub enum RunErrorCode {
     ConditionNotMet,
     /// Not in a boss pub ("Absacker").
     NotInBossPub,
+    /// The Schnaps of a won pub waits for the player's choice
+    /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
+    SchnappsRewardPending,
 }
 
 impl RunErrorCode {
@@ -1749,6 +1783,7 @@ impl RunErrorCode {
             RunErrorCode::SpecialTaken => "SpecialTaken",
             RunErrorCode::ConditionNotMet => "ConditionNotMet",
             RunErrorCode::NotInBossPub => "NotInBossPub",
+            RunErrorCode::SchnappsRewardPending => "SchnappsRewardPending",
         }
     }
 }
@@ -1813,6 +1848,7 @@ impl RunError {
             RunError::CurseStays => RunErrorCode::CurseStays,
             RunError::ConditionNotMet => RunErrorCode::ConditionNotMet,
             RunError::NotInBossPub => RunErrorCode::NotInBossPub,
+            RunError::SchnappsRewardPending => RunErrorCode::SchnappsRewardPending,
         }
     }
 }
@@ -1854,6 +1890,9 @@ impl fmt::Display for RunError {
             RunError::CurseStays => f.write_str("the character's curses cannot be cleansed"),
             RunError::ConditionNotMet => f.write_str("the consumable would do nothing now"),
             RunError::NotInBossPub => f.write_str("not in a boss pub"),
+            RunError::SchnappsRewardPending => {
+                f.write_str("the Schnaps of the won pub waits for a choice")
+            }
         }
     }
 }
@@ -2025,6 +2064,14 @@ pub struct Run {
     /// Its own generator, so that the other draws stay as they were.
     #[serde(default = "Run::default_trade_rng")]
     trade_rng: Rng,
+    /// The Schnaps after a won pub (Schnaps-Leiste, DESIGN 8.9). Its own
+    /// generator, so that every other draw stays as it was.
+    #[serde(default = "Run::default_schnapps_rng")]
+    schnapps_rng: Rng,
+    /// The Schnaps of a won pub while every slot is full: the player
+    /// takes it for one of his or sells it ([`RunAction::ChooseSchnappsReward`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schnapps_reward: Option<ConsumableId>,
 }
 
 impl Run {
@@ -2146,6 +2193,8 @@ impl Run {
             zinken_rng: master.fork(),
             painter: None,
             trade_rng: master.fork(),
+            schnapps_rng: master.fork(),
+            schnapps_reward: None,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -2237,6 +2286,17 @@ impl Run {
                 }
             }
         }
+        if let Some(id) = self.schnapps_reward.as_mut() {
+            rename(id);
+        }
+        // A pending Schnaps the content no longer knows: nothing to choose.
+        if self
+            .schnapps_reward
+            .as_ref()
+            .is_some_and(|c| !keep_item(c, &mut dropped))
+        {
+            self.schnapps_reward = None;
+        }
         self.drop_unknown_zinken(content);
         self.renew_encounter(content);
         dropped
@@ -2262,6 +2322,12 @@ impl Run {
     /// Trade generator of saves from before curses as trade ("HANDEL").
     fn default_trade_rng() -> Rng {
         Rng::from_seed(0x4841_4E44_454C_0000)
+    }
+
+    /// Schnaps generator of saves from before the Schnaps-Leiste
+    /// ("SCHNAPS").
+    fn default_schnapps_rng() -> Rng {
+        Rng::from_seed(0x5343_484E_4150_5300)
     }
 
     /// Zinken generator of saves from before the Auslage ("ZINKEN").
@@ -2590,6 +2656,11 @@ impl Run {
         if self.painter.is_some() && !matches!(action, RunAction::ChoosePaint(_)) {
             return Err(RunError::PainterPending);
         }
+        if self.schnapps_reward.is_some()
+            && !matches!(action, RunAction::ChooseSchnappsReward { .. })
+        {
+            return Err(RunError::SchnappsRewardPending);
+        }
         match action {
             RunAction::Redeal => self.redeal_action(content, events),
             RunAction::PickUpSkat => self.pick_up_skat(events),
@@ -2624,6 +2695,9 @@ impl Run {
             }
             RunAction::ChooseMalus { option, malus } => {
                 self.choose_malus(content, option, malus, events)
+            }
+            RunAction::ChooseSchnappsReward { give_up } => {
+                self.choose_schnapps_reward(content, give_up, events)
             }
         }
     }
@@ -5597,6 +5671,8 @@ mod m7_tests;
 mod relic_slots_tests;
 #[cfg(test)]
 mod rescue_tests;
+#[cfg(test)]
+mod schnapps_reward_tests;
 #[cfg(test)]
 mod schnapps_tests;
 #[cfg(test)]

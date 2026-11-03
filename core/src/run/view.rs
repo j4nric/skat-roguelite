@@ -21,8 +21,8 @@ use super::{
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
     BossId, CardFilter, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
-    ConsumableId, Content, EncounterEffect, EncounterId, Factor, HookContext, ModKind,
-    NextGameEffect, OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
+    ConsumableId, ConsumableTarget, Content, EncounterEffect, EncounterId, Factor, HookContext,
+    ModKind, NextGameEffect, OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
     ScoreStep, StopCategory, card_mod_status,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
@@ -95,6 +95,11 @@ pub struct RunView {
     /// The Kartenmaler's choice, waiting for the player (Tresen or
     /// Werkstatt): nothing but [`RunAction::ChoosePaint`] goes now.
     pub painter: Option<PainterView>,
+    /// The Schnaps of a won pub while every slot is full (DESIGN 8.9):
+    /// nothing but [`RunAction::ChooseSchnappsReward`] goes now. It comes
+    /// on top of whatever phase follows the pub (route, loot, boss
+    /// reward).
+    pub schnapps_reward: Option<SchnappsRewardView>,
     /// House rules of the evening (encounter "Stammtisch-Streit"), active
     /// until the section ends.
     pub evening_relics: Vec<RelicInfo>,
@@ -317,6 +322,17 @@ pub struct BossFigureInfo {
     pub back: String,
 }
 
+/// The Schnaps of a won pub with every slot full (DESIGN 8.9): take it
+/// for an owned one ([`RunAction::ChooseSchnappsReward`] with `give_up`,
+/// any slot of [`RunView::consumables`]) or sell it for `sell_price`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SchnappsRewardView {
+    /// The Schnaps.
+    pub consumable: ConsumableInfo,
+    /// Groschen when sold instead (half its price).
+    pub sell_price: u32,
+}
+
 /// The relic pick of a won boss pub (ADR 0017).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BossRewardView {
@@ -427,6 +443,10 @@ pub struct ConsumableInfo {
     pub needs_suit: bool,
     /// Group for labels ("Schnäpse").
     pub category: ConsumableCategory,
+    /// What the frontend pours it on (drag and drop, DESIGN 8.9): `Skat`,
+    /// `Table`, `Card`, `Self`, `Map`. Whether it goes now is
+    /// [`OwnedConsumable::usable_now`].
+    pub target: ConsumableTarget,
 }
 
 /// An owned relic.
@@ -462,8 +482,13 @@ pub struct OwnedConsumable {
     pub sell_price: u32,
     /// Whether it can be sold now.
     pub can_sell: bool,
-    /// Whether it can be used now (with one of `targets` if it needs one).
-    pub can_use: bool,
+    /// Whether the core would accept drinking it now (with one of
+    /// `targets` if it needs one): phase, conditions ("Klarer" only in
+    /// the minus), a Spelunke's Schnapsverbot, a choice that waits.
+    /// Tried with the real action on a copy of the run ([`Run::accepts`]),
+    /// so it is exactly what [`RunAction::UseConsumable`] would do. Until
+    /// 03.11.2026 `can_use`.
+    pub usable_now: bool,
     /// Card ids it can be used on now: deck cards, or for "Blue Curaçao" the
     /// cards of the hand.
     pub targets: Vec<u32>,
@@ -1183,6 +1208,7 @@ impl Run {
                 ),
                 needs_suit: def.action == ConsumableAction::ChalkCard,
                 category: def.category,
+                target: def.target,
             },
             None => ConsumableInfo {
                 id: id.clone(),
@@ -1193,6 +1219,7 @@ impl Run {
                 needs_target: false,
                 needs_suit: false,
                 category: ConsumableCategory::Item,
+                target: ConsumableTarget::default(),
             },
         }
     }
@@ -1361,6 +1388,13 @@ impl Run {
             shop: self.shop_view(content),
             encounter: self.encounter_view(content),
             boss_reward: self.boss_reward_view(content),
+            schnapps_reward: self.schnapps_reward().map(|id| {
+                let consumable = Run::consumable_info(content, id);
+                SchnappsRewardView {
+                    sell_price: sell_price(consumable.price),
+                    consumable,
+                }
+            }),
             painter: self.painter_view(content),
             evening_relics: self
                 .evening_relics
@@ -1416,7 +1450,7 @@ impl Run {
         id: &ConsumableId,
     ) -> OwnedConsumable {
         let consumable = Run::consumable_info(content, id);
-        let (can_use, targets) = if consumable.needs_suit {
+        let (usable_now, targets) = if consumable.needs_suit {
             let hand: Vec<DealtCard> = self
                 .game
                 .as_ref()
@@ -1471,7 +1505,7 @@ impl Run {
             sell_price: sell_price(consumable.price),
             consumable,
             can_sell: self.accepts(content, RunAction::SellConsumable(slot)),
-            can_use,
+            usable_now,
             targets,
         }
     }
@@ -2285,23 +2319,23 @@ mod tests {
         run.consumables = vec![ConsumableId::new("fresh_deck"), ConsumableId::new("herbal")];
         let view = run.view(&content);
         // In a game: Kräuter works, the fresh deck only at the Tresen.
-        assert!(!view.consumables[0].can_use);
+        assert!(!view.consumables[0].usable_now);
         assert!(view.consumables[0].consumable.needs_target);
-        assert!(view.consumables[1].can_use);
+        assert!(view.consumables[1].usable_now);
         assert!(!view.consumables[1].can_sell, "selling only at the Tresen");
         run.game = None;
         run.phase = RunPhase::Shop;
         run.shop = Some(run.draw_offer(&content, 0));
         // Frisches Deck cleanses a card that carries a modification.
         let view = run.view(&content);
-        assert!(!view.consumables[0].can_use);
+        assert!(!view.consumables[0].usable_now);
         run.edition
             .add_mod(&content, 7, &CardModId::new("points"), 3)
             .expect("Augen");
         let view = run.view(&content);
-        assert!(view.consumables[0].can_use);
+        assert!(view.consumables[0].usable_now);
         assert_eq!(view.consumables[0].targets, vec![7]);
-        assert!(!view.consumables[1].can_use);
+        assert!(!view.consumables[1].usable_now);
         assert!(view.consumables[1].can_sell);
         assert_eq!(view.consumables[1].sell_price, 1);
         assert!(view.game.is_none());

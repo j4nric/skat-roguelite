@@ -60,7 +60,10 @@
     redeals: 2,
     // relic_slots: seit 03.11.2026 ohne Angabe (Entscheidung des Nutzers):
     // beliebig viele Relikte. Mit Some(n) wieder n Plätze.
-    consumable_slots: 2,
+    // Schnaps-Plätze: seit 03.11.2026 drei (Entscheidung des Nutzers,
+    // Schnaps-Leiste, DESIGN 8.9), vorher zwei. Nach jeder gewonnenen
+    // Kneipe gibt es einen zufälligen Schnaps dazu.
+    consumable_slots: 3,
     // series_reward: Groschen je gewonnener Kneipe; per_game_left: je
     // übrigem Spiel (seit 03.11.2026 2; ADR 0016 setzte 3: die fünf
     // Relikt-Plätze waren schon zu Beginn von Stadtteil 2 voll).

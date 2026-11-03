@@ -354,7 +354,7 @@ fn counter_beer_gives_a_life_outside_a_game() {
     run.consumables = vec![ConsumableId::new("counter_beer")];
     run.lives = content.run.lives.max;
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::LivesFull));
-    assert!(!run.view(&content).consumables[0].can_use);
+    assert!(!run.view(&content).consumables[0].usable_now);
     // With a life missing: one back.
     run.lives = 2;
     let events = run.apply(&content, use_item(0)).expect("drink");
@@ -695,7 +695,11 @@ fn the_landlord_treats_to_a_schnaps_or_groschen() {
     assert_eq!(run.coins(), coins + 5);
     // Every slot full: the Schnaps pays its price instead.
     let mut run = at_route(&content, &[]);
-    run.consumables = vec![ConsumableId::new("shot"), ConsumableId::new("herbal")];
+    run.consumables = vec![
+        ConsumableId::new("shot"),
+        ConsumableId::new("herbal"),
+        ConsumableId::new("eggnog"),
+    ];
     let coins = run.coins();
     let options = open(&mut run, &content, "landlord_treat");
     let price = match effects(&options, 0) {
@@ -707,7 +711,7 @@ fn the_landlord_treats_to_a_schnaps_or_groschen() {
     assert!(view.options[0].can_choose);
     choose(&mut run, &content, 0, None);
     assert_eq!(run.coins(), coins + price);
-    assert_eq!(run.consumables().len(), 2);
+    assert_eq!(run.consumables().len(), 3);
 }
 
 #[test]

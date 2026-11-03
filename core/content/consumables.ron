@@ -1,4 +1,7 @@
-// Verbrauchsgegenstände: einmal nutzbar, höchstens zwei auf der Hand.
+// Verbrauchsgegenstände: einmal nutzbar, höchstens drei auf der Hand
+// (`consumable_slots` in run.ron, seit 03.11.2026; vorher zwei).
+// `target`: worauf die Oberfläche den Schnaps gießt (Skat, Table, Card,
+// Self, Map; ohne Angabe Self), nur Darstellung (DESIGN 8.9).
 // Preise sind Platzhalter (DESIGN 12: 2 bis 4). `category: Schnapps` fasst
 // die Schnäpse zusammen (DESIGN 8.3); Preise und Seltenheit auch dort
 // Platzhalter für `balance`. Entfernt am 02.11.2026 (Gegenstands-Review des
@@ -16,6 +19,7 @@
         price: 2,
         action: PeekSkat,
         category: Schnapps,
+        target: Skat,
     ),
     // Item review of 02.11.2026 (user): drinking it deals again at once
     // (free, no Einmischen used), so it cannot be saved for a known hand;
@@ -29,6 +33,7 @@
         price: 3,
         action: RedealNextGame(Multiply(2)),
         category: Schnapps,
+        target: Table,
     ),
     // Item review of 02.11.2026: what "Neues Blatt" did (now removed).
     // Price provisional (3, before 2).
@@ -40,6 +45,7 @@
         price: 3,
         action: Redeal,
         category: Schnapps,
+        target: Table,
     ),
     // Bis 02.11.2026 "Kreide" (id chalk); alte Spielstände lesen die alte Id
     // (`Run::drop_unknown_content`).
@@ -51,6 +57,7 @@
         price: 3,
         action: ChalkCard,
         category: Schnapps,
+        target: Card,
     ),
     // Gegenstands-Review vom 02.11.2026 (Nutzer): neue Schnäpse. Preise und
     // Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung (DESIGN 8.3, 12).
@@ -62,6 +69,7 @@
         price: 4,
         action: GainLives(1),
         category: Schnapps,
+        target: Self,
     ),
     (
         id: "snifter",
@@ -71,6 +79,7 @@
         price: 2,
         action: RerollRoutes,
         category: Schnapps,
+        target: Map,
     ),
     (
         id: "road_beer",
@@ -80,6 +89,7 @@
         price: 3,
         action: NextPub(redeals: 1, target: -3),
         category: Schnapps,
+        target: Self,
     ),
     // Rettungs-Schnäpse (Entscheidung des Nutzers vom 03.11.2026 über das
     // Cockpit): für Kneipen, deren Konto nach zwei verlorenen Spielen tief
@@ -93,6 +103,7 @@
         price: 3,
         action: ClearAccount,
         category: Schnapps,
+        target: Self,
     ),
     (
         id: "nightcap",
@@ -102,6 +113,7 @@
         price: 4,
         action: ExtraGames(1),
         category: Schnapps,
+        target: Self,
     ),
     (
         id: "eggnog",
@@ -111,6 +123,7 @@
         price: 3,
         action: NextGameIfBehind(MultiplyWin(2)),
         category: Schnapps,
+        target: Self,
     ),
     // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026): billig und
     // auf eine bekannte Hand zu trinken, anders als der Doppelkorn, dafür
@@ -124,5 +137,6 @@
         price: 2,
         action: NextGameCursed(Multiply(2)),
         category: Schnapps,
+        target: Table,
     ),
 ]

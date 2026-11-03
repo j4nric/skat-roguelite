@@ -623,6 +623,25 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         'sheet-painter',
       );
     }
+    case 'schnapps-reward': {
+      // Placeholder (DESIGN 8.9): the core decides, this only offers the two ways.
+      const reward = view?.schnapps_reward;
+      if (!view || !reward) return '';
+      const swaps = view.consumables
+        .map(
+          (c) =>
+            `<button class="btn btn-wide" ${attrs({ 'data-action': 'schnapps-swap', 'data-slot': c.slot, 'data-testid': `schnapps-swap-${c.slot}` })}>${esc(t(de.shop.schnappsRewardSwap, { name: c.consumable.name }))}</button>`,
+        )
+        .join('');
+      return sheet(
+        `<h2>${esc(de.shop.schnappsRewardTitle)}</h2>
+         <p class="small">${esc(t(de.shop.schnappsRewardChoose, { name: reward.consumable.name }))}</p>
+         <p class="small">${esc(reward.consumable.text)}</p>
+         <div data-testid="schnapps-reward">${swaps}
+         <button class="btn btn-wide btn-primary" ${attrs({ 'data-action': 'schnapps-sell', 'data-testid': 'schnapps-sell' })}>${esc(t(de.shop.schnappsRewardSell, { price: reward.sell_price }))}</button></div>`,
+        false,
+      );
+    }
     case 'book':
       return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger', 'overlay-book') : '';
     case 'confirm-new':
