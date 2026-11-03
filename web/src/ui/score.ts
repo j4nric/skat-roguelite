@@ -12,9 +12,11 @@ import { de, cardName, consumableLook, contentName, declarationName, factorText,
 import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
 import { lookSvg, modIcon, type CardLook } from './cards';
 import { attrs, esc } from './dom';
-import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
+import { countUp, dur, finishAll, grow, pulse, slam, tempoFactor } from './fx';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
-import { coinIcon, meterPercent } from './hud';
+import { coinIcon, foamCrown, meterPercent } from './hud';
+import { countAccount } from './juice';
+import { wiggle } from './triggers';
 import { characterPortraitId, encounterFaces, portrait } from './people';
 import type { ScoreOverlay } from './state';
 
@@ -99,6 +101,8 @@ interface Row {
   cls: string;
   icon: string;
   relic: string | null;
+  /** The line has a source of its own (relic, character, card, encounter...): its icon fires with it. */
+  sourced: boolean;
 }
 
 function lineRow(line: ScoreLine, deck: (DeckCard & CardLook)[]): Row {
@@ -109,12 +113,13 @@ function lineRow(line: ScoreLine, deck: (DeckCard & CardLook)[]): Row {
     cls: relic ? 'is-relic' : 'is-line',
     icon: sourceIcon(line.source, deck),
     relic,
+    sourced: true,
   };
 }
 
 /** Label, effect and style of one step. Level amounts come from the core's `rule_levels`. */
 function termRow(term: ScoreTerm, deck: (DeckCard & CardLook)[], parts: LevelParts): Row {
-  const row = (label: string, effect: string, cls: string): Row => ({ label, effect, cls, icon: '', relic: null });
+  const row = (label: string, effect: string, cls: string): Row => ({ label, effect, cls, icon: '', relic: null, sourced: false });
   if (typeof term === 'string') {
     const labels: Record<typeof term, [string, number]> = {
       Game: [de.score.game, parts.game],
@@ -159,13 +164,14 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
   const rows = steps
     .map((step, i) => {
       const r = termRow(step.term, deck, b.rule_levels);
-      return `<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
+      return `<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''} ${r.sourced ? 'data-sourced="true"' : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
     })
     .join('');
   const decl = declarationName(b.declaration);
   const note = gameNote(b);
   const seatsTable = ramschSeats(b, o.seatNames);
   const fill = meterPercent(o.previousScore, o.target);
+  const full = fill >= 100;
   const payout = o.payout
     ? `<div class="payout" data-part="payout">
         <h3>${esc(de.score.seriesWon)}</h3>
@@ -204,7 +210,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
     </div>
     <div class="score-account" data-part="account">
       <div class="account-row"><span>${esc(de.score.accountLabel)}</span><b data-num="account">${esc(plain(o.previousScore))}</b><span>${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
-      <div class="chalk-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div></div>
+      <div class="chalk-meter ${full ? 'is-full' : ''}" data-testid="score-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-score')}</div>
     </div>
     ${payout}
     <div class="score-actions">
@@ -266,11 +272,25 @@ export class ScoreBoard {
   private finished = false;
   private timers: number[] = [];
   private wake: (() => void) | null = null;
+  private paid = false;
 
+  /**
+   * `onPayout(coins, from)`: a won series pays out; the Groschen (the new
+   * total from the core) fly from the payout box `from` into the purse.
+   */
   constructor(
     private readonly root: HTMLElement,
     private readonly o: ScoreOverlay,
+    private readonly onPayout: (coins: number, from: DOMRect | null) => void = () => undefined,
   ) {}
+
+  private pay(): void {
+    if (this.paid || !this.o.payout) return;
+    this.paid = true;
+    const box = this.q('[data-part="payout"]');
+    const rect = box && !box.classList.contains('is-pending') ? box.getBoundingClientRect() : null;
+    this.onPayout(this.o.payout.coins, rect?.height ? rect : null);
+  }
 
   get done(): boolean {
     return this.finished;
@@ -359,10 +379,20 @@ export class ScoreBoard {
       if (box) pulse(box, 1.14, 300);
     }
     const relic = row?.dataset.relic;
-    if (relic) {
-      const coaster = this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`);
-      coaster?.classList.add('is-lit');
-      if (coaster) pulse(coaster, 1.25, 380);
+    if (row?.dataset.sourced) {
+      // The source of the line fires with its step: its icon in the line,
+      // its beer mat in the strip and its chip in the head.
+      const tempo = tempoFactor();
+      const icon = row.querySelector('.step-icon');
+      if (icon) wiggle(icon, tempo);
+      if (relic) {
+        const coaster = this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`);
+        if (coaster) {
+          coaster.classList.add('is-lit');
+          wiggle(coaster, tempo);
+        }
+        document.querySelectorAll(`.hud [data-info="relic:${CSS.escape(relic)}"], .hud [data-info="evening:${CSS.escape(relic)}"]`).forEach((chip) => wiggle(chip, tempo));
+      }
       sound.play('clink');
     } else {
       sound.play('tick', { rate: 1 + Math.min(i, 10) * 0.07 });
@@ -391,18 +421,22 @@ export class ScoreBoard {
     if (this.skipped) return;
     const account = this.q('[data-part="account"]');
     void this.reveal(account, { gap: SHEET_GAP });
-    const fill = this.q('.score-account .chalk-fill');
-    if (fill) fill.style.width = `${meterPercent(this.o.seriesScore, this.o.target).toFixed(1)}%`;
+    // The account counts up while its bar fills; foam when the target is reached.
+    const els = (): { num: HTMLElement | null; meter: HTMLElement | null } => ({ num: null, meter: this.q('.score-account .chalk-meter') });
     const num = this.q('[data-num="account"]');
-    if (num) await countUp(num, this.o.previousScore, this.o.seriesScore, 520, plain);
+    await Promise.all([
+      countAccount(els, this.o.previousScore, this.o.seriesScore, this.o.target, 640, () => !this.skipped),
+      num ? countUp(num, this.o.previousScore, this.o.seriesScore, 640, plain) : Promise.resolve(),
+    ]);
     if (this.skipped) return;
     const payout = this.q('[data-part="payout"]');
     if (payout) {
-      await this.wait(200);
-      void this.reveal(payout, { gap: SHEET_GAP });
+      await this.wait(260);
+      await this.reveal(payout, { gap: SHEET_GAP });
       payout.classList.add('is-in');
       sound.play('coin');
-      await this.wait(300);
+      this.pay();
+      await this.wait(700);
     }
     this.complete();
   }
@@ -429,13 +463,17 @@ export class ScoreBoard {
     set('value', this.o.score.breakdown.value);
     set('account', this.o.seriesScore);
     const fill = this.q('.score-account .chalk-fill');
-    if (fill) fill.style.width = `${meterPercent(this.o.seriesScore, this.o.target).toFixed(1)}%`;
+    const pct = meterPercent(this.o.seriesScore, this.o.target);
+    if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+    this.q('.score-account .chalk-meter')?.classList.toggle('is-full', pct >= 100);
     this.root.querySelectorAll('.is-pending').forEach((el) => el.classList.remove('is-pending'));
     this.root.querySelectorAll('.step[data-relic]').forEach((row) => {
       const relic = (row as HTMLElement).dataset.relic;
       if (relic) this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`)?.classList.add('is-lit');
     });
     this.q('.result-big')?.classList.add('is-landed');
+    this.pay();
+    finishAll();
     this.complete();
   }
 

@@ -433,10 +433,10 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : '', rising ? 'is-rising' : ''].join(' ');
       const skatTag = cardTag(view, c) + plaques(c);
       const label = cardLabel(c);
-      // Slight arc per row, like cards held in the hand (lifted, not turned:
-      // turned pixel art blurs).
-      const off = (i % cols) - (cols - 1) / 2;
-      const style = `--lift:${(off * off * 0.9).toFixed(1)}px`;
+      // Each row fans out gently: -1 at its left end, 1 at its right end.
+      const half = (cols - 1) / 2;
+      const fan = ((i % cols) - half) / half;
+      const style = `--fan:${fan.toFixed(3)};--fan-abs:${Math.abs(fan).toFixed(3)}`;
       if (action) {
         return `<button class="${cls}" style="${style}" ${attrs({
           'data-action': action,
@@ -587,7 +587,7 @@ function gameLine(view: RunView, game: GameView, peek: TrickView | null): string
 function pressedStack(game: GameView): string {
   const skat = game.skat;
   if (!skat?.length) return cribStack(game);
-  const backs = skat.map((_, i) => `<span class="pressed-card is-back" style="--i:${i}">${cardBack()}</span>`).join('');
+  const backs = skat.map((_, i) => `<span class="pressed-card is-back" style="--i:${i}" data-fly="pressed-${i}">${cardBack()}</span>`).join('');
   return `<button class="pressed-stack" ${attrs({
     'data-action': 'info-card',
     'data-info': 'pressed:',

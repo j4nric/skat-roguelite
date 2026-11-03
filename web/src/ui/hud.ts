@@ -25,6 +25,11 @@ export function hearts(lives: number, max: number, size = 16): string {
   return Array.from({ length: n }, (_, i) => heart(i < lives, size)).join('');
 }
 
+/** The foam crown of a full account bar (hidden by CSS until `.is-full`). */
+export function foamCrown(id: string): string {
+  return `<svg class="foam" width="100%" height="10" shape-rendering="crispEdges" aria-hidden="true"><defs><pattern id="${id}" width="12" height="10" patternUnits="userSpaceOnUse"><path d="M0 5h12v5h-12zM1 2h5v3h-5zM2 1h3v1h-3zM7 3h4v2h-4zM8 2h2v1h-2z" fill="#f4ecd8"/><path d="M0 9h12v1h-12zM5 3h1v2h-1zM10 4h1v1h-1z" fill="#cdbb92"/><path d="M2 2h1v1h-1zM8 3h1v1h-1z" fill="#ffffff"/></pattern></defs><rect width="100%" height="10" fill="url(#${id})"/></svg>`;
+}
+
 /** Meter fill in percent: purely the share of score in target. */
 export function meterPercent(score: number, target: number): number {
   return target > 0 ? Math.max(0, Math.min(100, (score / target) * 100)) : 0;
@@ -159,7 +164,7 @@ export function renderHud(view: RunView): string {
         <span class="slate-label">${view.phase === 'Game' ? progress : esc(de.header.accountTarget)}</span>
         <span class="slate-row"><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-sep"> / </span><b class="slate-target">${esc(s.target)}</b></span>
       </div>
-      <div class="chalk-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div></div>
+      <div class="chalk-meter ${fill >= 100 ? 'is-full' : ''}"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-hud')}</div>
     </div>
     <div class="hud-counts">
       <div class="count-row" aria-label="${esc(t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }))}"><span class="count-label">${esc(de.header.games)}</span><span class="pips">${pips(s.games_left, s.game_limit, 'pip-game')}</span><b data-testid="games-left" class="sr-only">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>

@@ -62,8 +62,9 @@ import { hintText, renderHint } from './ui/hint';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
-import { TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, finishAll, finishOn, flip, flyIn, motionOn, noteFlights, pulse, resumeFlights, setTempo, springBack, sweepAway, throwCard } from './ui/fx';
+import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
+import { deal, finishAll, finishOn, flip, flyIn, glide, glideAll, motionOn, noteFlights, resumeFlights, setTempo, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -154,8 +155,28 @@ const DELAY = {
 /** A flick upwards this fast (px per ms) throws a card even if let go over the hand. */
 const FLICK_UP = 0.9;
 
-/** The cards of the open trick, whose flights survive a re-render. */
-const FLYING = '.trick:not(.is-last) .trick-card';
+/**
+ * Cards whose flights survive a re-render: the open trick, the hand, the
+ * cards to press on the table and the pressed stack.
+ */
+const FLYING = '.trick:not(.is-last) .trick-card, .hand-card, .skat-card, .pressed-card[data-fly]';
+
+/** The cards of the hand and those lying on the table to be pressed. */
+const PRESS_CARDS = '.hand-card, .skat-card';
+
+/** A card picked up or laid down: flight (ms at tempo Normal), lift and curve (px). */
+const PICK = { ms: 440, lift: 28, arc: 16 };
+/** The other hand cards making room (FLIP). */
+const MAKE_ROOM_MS = 260;
+
+/** Cards on their way to the pressed skat: where they were seen, and their face. */
+interface PressFlight {
+  cards: { spot: Spot; face: string }[];
+  /** Only the stack in the felt's corner takes them (after the Ansage); else also the Ansage's row. */
+  stackOnly: boolean;
+  /** Dropped when no render showed a target by then (performance.now()). */
+  until: number;
+}
 
 /** How long the cards slide away before a settled game is scored. */
 const SETTLE_MS = 260;
@@ -236,6 +257,8 @@ export class App {
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
+  /** Account, Groschen and lives in the head: how their changes get there. */
+  private readonly hudFx: HudFx;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
   /** "Untot": cards whose rising was already shown with their trick in this game. */
@@ -267,6 +290,10 @@ export class App {
   private specialQueue: string[] = [];
   /** Where the card the player just tapped was. */
   private playedFrom: DOMRect | null = null;
+  /** The face-down skat and the hand, seen when the player picked it up. */
+  private pickupFrom: { pile: Spot[]; hand: Map<string, Spot> } | null = null;
+  /** The pressed cards still to fly onto their place (./ui/table.ts pressedStack). */
+  private pressFlight: PressFlight | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
 
@@ -274,6 +301,8 @@ export class App {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
+    this.hudFx = new HudFx(this.screenEl);
+    watchSprings(root);
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
     this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
     const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;
@@ -773,6 +802,7 @@ export class App {
   }
 
   private enterRun(view: RunView, dealt: boolean): void {
+    this.hudFx.reset();
     this.ui.view = view;
     this.ui.screen = 'run';
     this.ui.anim = null;
@@ -827,11 +857,14 @@ export class App {
     this.ui.busy = true;
     // Any move ends a look at the last trick.
     this.ui.peekTrick = false;
+    this.noteCardSources(action);
     let step;
     try {
       step = this.core.apply(action);
     } catch (err) {
       console.warn('action rejected', action, err);
+      this.pickupFrom = null;
+      this.pressFlight = null;
       this.ui.busy = false;
       this.render();
       this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
@@ -922,6 +955,8 @@ export class App {
         }
         earned = earned.concat(this.observe(step.events));
         await this.playEvents(previous, step.events, view);
+        // A lost run: the pub lights go out before the end screen.
+        if (view.phase === 'Lost') await lightsOut();
         // The table as the core has it now, before the next opponent thinks.
         this.ui.anim = null;
         this.ui.view = view;
@@ -943,9 +978,11 @@ export class App {
         this.ui.screen = 'end';
         this.ui.copy = null;
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
+        if (view.phase === 'Won') this.afterRender.push(() => fireworks());
       }
       this.announceUnlocks(earned);
       this.render();
+      lightsUp();
     }
   }
 
@@ -1217,8 +1254,14 @@ export class App {
           const why = givenUp ? de.lives.givenUp : lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
           this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
           sound.play('lose');
+          this.hudFx.lives(lives);
+          // Time to see the heart break.
+          if (motionOn()) await this.pause(700);
         } else {
           this.showToast(t(de.lives.gained, { lives }), 'top');
+          sound.play('clink');
+          this.hudFx.lives(lives);
+          if (motionOn()) await this.pause(600);
         }
         continue;
       }
@@ -1475,18 +1518,7 @@ export class App {
       }
       this.render();
       if ('SkatPickedUp' in ev && !this.fastForward) {
-        // The two skat cards turn over where they lie; one the core keeps
-        // from the skat ("Ramponiert") slides into the hand instead.
-        const from = this.rectOf('.skat-zone') ?? this.rectOf('.deck-spot');
-        ev.SkatPickedUp.skat.forEach((c, i) => {
-          const onTable = this.screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"]`);
-          if (onTable) {
-            if (!peeked) flip(onTable, cardBack(), { delay: i * 90 });
-            return;
-          }
-          const inHand = this.screenEl.querySelector(`.hand-card[data-id="${c.id}"]`);
-          if (inHand && from) flyIn(inHand, from, { ms: 320 });
-        });
+        this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
         sound.play('card');
         await this.pause(DELAY.flip);
       }
@@ -1503,13 +1535,11 @@ export class App {
     this.wiggleSource(source);
     const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
     this.showToast(t(de.toast.coins, { amount: sign, source: from }));
-    sound.play('coin');
-    const purse = this.screenEl.querySelector<HTMLElement>('[data-testid="coins"]');
-    if (purse) {
-      purse.textContent = String(coins);
-      pulse(purse.closest('.hud-coins') ?? purse, 1.3, 360);
-    }
-    const box = purse?.closest('.hud-coins')?.getBoundingClientRect();
+    // The coins fly from what paid them (its chip or card on screen), else from the last tap.
+    const payer = this.triggerTargets(source)[0]?.getBoundingClientRect() ?? null;
+    if (amount > 0) this.hudFx.gainTo(coins, payer?.width ? payer : null);
+    else this.hudFx.loseTo(coins);
+    const box = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = `coin-pop ${amount < 0 ? 'is-minus' : ''}`;
     pop.dataset.testid = 'coin-pop';
@@ -1628,6 +1658,11 @@ export class App {
     return TEMPO_FACTOR[this.ui.settings.tempo];
   }
 
+  /** What stands for a source on screen (its relic chip, its card). */
+  private triggerTargets(source: Source): Element[] {
+    return targetsOf(this.screenEl, source);
+  }
+
   /** Wiggle what stands for a source on screen (its relic chip, its card). */
   private wiggleSource(source: Source): void {
     if (this.fastForward) return;
@@ -1715,6 +1750,75 @@ export class App {
     this.sayQuip(view, seat, 'lose');
   }
 
+  /**
+   * Before an action goes to the core: where the cards it will move are
+   * seen now (later renders while the core's events play take them away).
+   * Picking up the skat notes the face-down skat and the hand; Drücken the
+   * cards lying on the table; the Ansage after the skat its row of pressed
+   * cards, which then fly into the stack in the felt's corner.
+   */
+  private noteCardSources(action: RunAction): void {
+    this.pickupFrom = null;
+    if (!motionOn()) return;
+    if (action === 'PickUpSkat') {
+      const pile = Array.from(this.screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map(spotOf);
+      this.pickupFrom = { pile, hand: spotsOf(this.screenEl, '.hand-card') };
+      return;
+    }
+    if (typeof action !== 'object') return;
+    const from = 'Discard' in action || 'DiscardThree' in action ? '.skat-zone .skat-card' : 'Declare' in action ? '[data-testid="pressed"] .mini-card' : null;
+    if (!from) return;
+    const cards = Array.from(this.screenEl.querySelectorAll<HTMLElement>(from)).map((el) => ({ spot: spotOf(el), face: el.querySelector('svg')?.outerHTML ?? '' }));
+    if (cards.length) this.pressFlight = { cards, stackOnly: 'Declare' in action, until: performance.now() + 5000 };
+  }
+
+  /**
+   * The skat is picked up: each card is lifted off the face-down pile,
+   * turns face up on the way (not after "Kurzer": it lay face up) and
+   * lands where it goes, on the table to be pressed or, one the core keeps
+   * from the skat ("Ramponiert"), in its sorted place in the hand. The hand
+   * cards glide into their new places meanwhile.
+   */
+  private pickUpFlights(skat: DealtCard[], peeked: boolean): void {
+    const seen = this.pickupFrom;
+    this.pickupFrom = null;
+    const zone = this.rectOf('.skat-zone') ?? this.rectOf('.deck-spot');
+    skat.forEach((c, i) => {
+      const el = this.screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"], .hand-card[data-id="${c.id}"]`);
+      if (!el) return;
+      const at = seen?.pile[i] ?? (zone ? spotOfRect(zone) : null);
+      if (!at) return;
+      glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
+    });
+    if (seen) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand-card')), seen.hand, { ms: 320, skip: new Set(skat.map((c) => String(c.id))) });
+  }
+
+  /**
+   * The pressed cards fly onto their place once a render shows it: after
+   * Drücken into the row of the Ansage (face up), after the Ansage into the
+   * stack in the felt's corner, turning face down on the way.
+   */
+  private flyPressed(): void {
+    const p = this.pressFlight;
+    if (!p) return;
+    if (this.fastForward || performance.now() > p.until || this.ui.screen !== 'run') {
+      this.pressFlight = null;
+      return;
+    }
+    const stack = Array.from(this.screenEl.querySelectorAll<HTMLElement>('[data-testid="pressed-play"] .pressed-card'));
+    const row = p.stackOnly ? [] : Array.from(this.screenEl.querySelectorAll<HTMLElement>('[data-testid="pressed"] .mini-card'));
+    const targets = stack.length ? stack : row;
+    if (!targets.length) return;
+    this.pressFlight = null;
+    p.cards.forEach((c, i) => {
+      const el = targets[i];
+      if (!el) return;
+      // Into the stack it turns face down; into the Ansage's row its full face shrinks onto the small one.
+      const cover = c.face ? { cover: c.face, turn: stack.length > 0 } : {};
+      glide(el, c.spot, { ms: 480, lift: 22, arc: (i % 2 ? -1 : 1) * 12, delay: i * 80, above: true, ...cover });
+    });
+  }
+
   private rectOf(selector: string): DOMRect | null {
     const el = this.screenEl.querySelector(selector);
     return el ? el.getBoundingClientRect() : null;
@@ -1778,6 +1882,12 @@ export class App {
     });
     this.scoreBoard = null;
     this.ui.overlay = null;
+    // The board goes; the account in the head counts to the new value.
+    this.renderLayer();
+    if (previousScore !== seriesScore && this.screenEl.querySelector('.hud [data-testid="account"]')) {
+      void this.hudFx.account(seriesScore, target);
+      if (motionOn()) await this.pause(520);
+    }
   }
 
   /**
@@ -1954,6 +2064,9 @@ export class App {
       return;
     }
     const action = el.dataset.action ?? '';
+    this.hudFx.noteTap(el);
+    // Cards that can be dragged spring here, not with :active (that would shrink a drag).
+    if (el.matches('[data-drag]')) spring(el);
     // A tap on the backdrop of a dialog only counts if it hit the backdrop.
     if (action === 'close-overlay' && el.classList.contains('overlay') && target !== el) {
       return;
@@ -2328,9 +2441,9 @@ export class App {
         const id = num('id');
         const sel = this.ui.selected;
         const need = view.game ? discardNeed(view.game) : 2;
-        if (sel.includes(id)) this.moveCards(sel.filter((x) => x !== id), id, el.getBoundingClientRect());
-        else if (sel.length < need) this.moveCards([...sel, id], id, el.getBoundingClientRect());
-        else this.moveCards([...sel.slice(1), id], id, el.getBoundingClientRect());
+        if (sel.includes(id)) this.moveCards(sel.filter((x) => x !== id), id, null);
+        else if (sel.length < need) this.moveCards([...sel, id], id, null);
+        else this.moveCards([...sel.slice(1), id], id, null);
         return;
       }
       case 'discard': {
@@ -2638,23 +2751,32 @@ export class App {
   }
 
   /**
-   * Lay out the cards to press anew; the moved card (and the one it
-   * replaced) slides from where it was to its new place.
+   * Lay out the cards to press anew. A card changing sides is lifted and
+   * flies in a curve to its new place (into its sorted slot in the hand, or
+   * onto the table); the other cards glide aside to make room (FLIP). Each
+   * starts where it is seen, so taps in quick succession pick the cards up
+   * mid-air and nothing waits for a flight to end. `from`: where a dragged
+   * card was let go.
    */
   private moveCards(selected: number[], moved: number, from: DOMRect | null, swapped: number | null = null): void {
-    const old = swapped === null ? null : this.screenEl.querySelector(`.skat-card[data-id="${swapped}"]`)?.getBoundingClientRect() ?? null;
-    // Cards that change sides, measured before the table changes.
-    const leaving = this.ui.selected.filter((x) => !selected.includes(x) && x !== swapped);
-    const before = new Map(leaving.map((x) => [x, this.screenEl.querySelector(`[data-id="${x}"]`)?.getBoundingClientRect() ?? null]));
+    const before = spotsOf(this.screenEl, PRESS_CARDS);
+    if (from) before.set(String(moved), spotOfRect(from));
+    const was = new Set(this.ui.selected);
+    const now = new Set(selected);
+    const changing = new Set([moved, ...(swapped === null ? [] : [swapped]), ...[...was].filter((x) => !now.has(x)), ...selected.filter((x) => !was.has(x))].map(String));
     this.ui.selected = selected;
     this.render();
-    const land = (id: number, rect: DOMRect | null | undefined): void => {
-      const el = this.screenEl.querySelector(`.skat-card[data-id="${id}"], .hand-card[data-id="${id}"]`);
-      if (el && rect) flyIn(el, rect, { ms: 200 });
-    };
-    land(moved, from);
-    if (swapped !== null) land(swapped, old);
-    for (const [id, rect] of before) land(id, rect);
+    const els = Array.from(this.screenEl.querySelectorAll<HTMLElement>(PRESS_CARDS));
+    let n = 0;
+    for (const el of els) {
+      const id = el.dataset.id ?? '';
+      const at = before.get(id);
+      if (!changing.has(id) || !at) continue;
+      // Into the hand it curves one way, onto the table the other.
+      const toHand = el.classList.contains('hand-card');
+      glide(el, at, { ...PICK, arc: (toHand ? -1 : 1) * PICK.arc, delay: n++ * 60, above: true });
+    }
+    glideAll(els, before, { ms: MAKE_ROOM_MS, skip: changing });
     sound.play('card', { volume: 0.5, rate: 1.05 });
   }
 
@@ -2748,6 +2870,9 @@ export class App {
     const effects = this.afterRender;
     this.afterRender = [];
     for (const fx of effects) fx();
+    if (ui.screen === 'run' && ui.view) this.hudFx.sync(ui.view);
+    else if (ui.screen === 'start') this.hudFx.reset();
+    this.flyPressed();
   }
 
   /** The dialog layer: only rebuilt when the dialog itself changes. */
@@ -2765,7 +2890,7 @@ export class App {
     }
     if (o.kind === 'score') {
       this.layerEl.innerHTML = renderScore(o, (this.ui.view?.edition ?? []).map((c) => editionLook(c, this.ui.view, this.ui.wildSettled)));
-      this.scoreBoard = new ScoreBoard(this.layerEl, o);
+      this.scoreBoard = new ScoreBoard(this.layerEl, o, (coins, from) => this.hudFx.gainTo(coins, from));
       void this.scoreBoard.play();
       return;
     }
