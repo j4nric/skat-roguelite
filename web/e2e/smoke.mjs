@@ -2606,6 +2606,66 @@ async function assertRouteFits(page, label) {
  * "−" shows the whole tour as a line plan, "+" goes back. Fits the phone,
  * the desktop and an installed app without scrolling.
  */
+/**
+ * The characters of 03.11.2026 (DESIGN 9): the picker lists five, the
+ * removed ones (Grandspieler, Zaungast, Wirtin) are gone. An old meta save
+ * that still names a removed character loads, its stored pick falls back
+ * to the Alleinspieler, and a run of Bruderherz shows his card back.
+ */
+async function charactersPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-testid="characters"]');
+  const old = {
+    version: 1,
+    meta: {
+      version: 1,
+      unlocked: ['full_till', 'grand_master', 'tour_won', 'true_colours'],
+      stats: { runs_finished: 4, characters: { Landlady: { runs: 2 }, Declarer: { runs: 2 } } },
+      stakes: { Landlady: { Full: 1 }, Declarer: { Full: 1 } },
+    },
+  };
+  await page.evaluate((meta) => {
+    localStorage.setItem('stammtisch.meta', JSON.stringify(meta));
+    localStorage.setItem('stammtisch.character', 'Landlady');
+    localStorage.removeItem('stammtisch.run');
+  }, old);
+  await page.reload();
+  await page.waitForSelector('[data-action="pick-character"][data-character="Declarer"][aria-pressed="true"]');
+  const text = (await page.textContent('body')) ?? '';
+  if (text.includes('passte nicht zu dieser Version')) fail('the old meta save with a removed character was discarded');
+  const ids = await page.$$eval('[data-testid="characters"] .char-card', (cards) => cards.map((c) => c.dataset.character));
+  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother') fail(`characters on the start screen: ${ids.join(', ')}`);
+  for (const id of ['Shirker', 'Tailoress']) {
+    const card = page.locator(`.char-card.is-locked[data-character="${id}"]`);
+    if (!(await card.count())) fail(`${id} is not shown as locked`);
+    const cond = (await card.textContent()) ?? '';
+    if (!/Gewinne/.test(cond)) fail(`locked ${id} without his condition: ${cond}`);
+  }
+  if (await page.locator('.char-card.is-locked[data-character="HeartBrother"]').count()) fail('Bruderherz should be unlocked by true_colours');
+  await page.click('[data-action="pick-character"][data-character="HeartBrother"]');
+  await page.waitForSelector('[data-testid="char-detail"]');
+  const detail = (await page.textContent('[data-testid="char-detail"]')) ?? '';
+  if (!detail.includes('Bruderherz') || detail.includes('Stufe')) fail(`detail of Bruderherz: ${detail}`);
+  await page.evaluate(() => {
+    const row = document.querySelector('[data-testid="characters"]');
+    if (row) row.scrollLeft = row.scrollWidth;
+  });
+  log('start screen: five characters, old pick of a removed one fell back to the Alleinspieler');
+  await shoot(page, 'start-characters-new');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
+  if (!backs.includes('#bk-heart_brother')) fail(`Bruderherz's back not shown: ${backs.join(', ')}`);
+  if (backs.includes('#bk-distel')) fail(`the Distel still shows for Bruderherz: ${backs.join(', ')}`);
+  log(`Bruderherz plays with his own back (${backs.join(', ')})`);
+  await shoot(page, 'heart-brother-table');
+  await context.close();
+}
+
 async function routePass(page, label) {
   await page.waitForSelector('[data-testid="route"]');
   const options = page.locator('[data-testid="route-option"]');
@@ -2778,7 +2838,7 @@ async function run() {
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
-    const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-GrandPlayer', 'p-char-Onlooker', 'p-char-Landlady', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
+    const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
     // Every Stammgast of the core content has a face drawn in ui/people.ts.
     const looks = guestLooks();
@@ -3036,6 +3096,7 @@ async function run() {
     await voucherPass(browser, errors);
     await undeadPass(browser, errors, reducedMotion);
     await shortEvening(browser, errors, reducedMotion);
+    await charactersPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);

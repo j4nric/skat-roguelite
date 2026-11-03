@@ -63,7 +63,7 @@ import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, finishOn, flip, flyIn, motionOn, noteFlights, pulse, resumeFlights, setTempo, springBack, sweepAway, throwCard } from './ui/fx';
-import { backDesign } from './ui/backs';
+import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, modValueText } from './ui/cards';
 import { watchDrags, type Fling } from './ui/drag';
 import { reshuffle } from './ui/scatter';
@@ -1002,6 +1002,13 @@ export class App {
         if (printed) this.wildNamed.set(card.id, printed);
         const letter = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' } as const;
         if (f) this.showToast(t(de.toast.wildNamed, { old: cardName(card.kind), new: cardName({ Normal: `${letter[suit]}${f.slice(1)}` }) }));
+        continue;
+      }
+      if ('VoucherReturned' in ev) {
+        // "Der Drückeberger": a voucher of the pub just ended is back on its card.
+        const id = ev.VoucherReturned.card;
+        const card = after.edition.find((c) => c.id === id);
+        this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
         continue;
       }
       if ('VoucherRedeemed' in ev) {
@@ -2490,6 +2497,8 @@ export class App {
 
   private render(): void {
     const ui = this.ui;
+    // The player's edition shows his character's back (DESIGN 9.3).
+    setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
     switch (ui.screen) {
       case 'loading':

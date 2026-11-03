@@ -20,7 +20,7 @@
 import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, ModFigure, Suit } from '../types';
 import { faceId, indexId, modIconId, PAPER, smallFaceId, suitId, undeadFaceId, wildFaceIds } from './art';
-import { backId, DEFAULT_BACK, type BackDesign, type BackSize } from './backs';
+import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
 import { fillOf, H, MOD_DRAW, modLayer, smallState, W } from './fxart';
 
@@ -115,6 +115,6 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
  * Back of a card in one of the back designs (a cosmetic setting, ./backs.ts).
  * `size` "small" picks the simplified picture for tiny backs.
  */
-export function cardBack(className = '', design: BackDesign = DEFAULT_BACK, size: BackSize = 'full'): string {
+export function cardBack(className = '', design: BackDesign = currentPlayerBack(), size: BackSize = 'full'): string {
   return `<span class="card-back ${className}" role="img" aria-label="${esc(de.card.back)}"><svg viewBox="0 0 120 180" shape-rendering="crispEdges" aria-hidden="true"><use href="#${backId(design, size)}"/></svg></span>`;
 }
