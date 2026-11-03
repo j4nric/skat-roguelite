@@ -320,8 +320,10 @@ pub struct CharacterRule {
     /// until the Einmischen rule of 01.11.2026).
     #[serde(alias = "passes")]
     pub redeals: i32,
-    /// Relic slots added to `run.ron` (negative: fewer, never below 0).
-    pub relic_slots: i32,
+    /// A cap on the relics a run with this character may hold, below
+    /// `run.ron` if that has one (DESIGN 8.0: unlimited since 03.11.2026).
+    /// `None`: no cap of its own.
+    pub relic_slots: Option<u32>,
     /// The Groschen of a won series (Grundbetrag, übrige Spiele, Zinsen)
     /// count this many times; the extra is [`crate::run::Payout::bonus`].
     pub payout_factor: u32,
@@ -356,7 +358,7 @@ impl Default for CharacterRule {
             passive: Vec::new(),
             hooks: Vec::new(),
             redeals: 0,
-            relic_slots: 0,
+            relic_slots: None,
             payout_factor: 1,
             vouchers_return: false,
             keep_curses: false,
@@ -1535,8 +1537,10 @@ pub struct RunConfig {
     /// read under its old name `passes` (passes per series).
     #[serde(alias = "passes")]
     pub redeals: u32,
-    /// Slots for house rules and figures together.
-    pub relic_slots: u32,
+    /// Slots for house rules and figures together. `None` (the default
+    /// since 03.11.2026): the player may hold any number of relics.
+    #[serde(default)]
+    pub relic_slots: Option<u32>,
     /// Slots for consumables.
     pub consumable_slots: u32,
     /// Groschen rules.
@@ -1991,9 +1995,7 @@ impl Content {
                     return Err(ContentError(format!("{what}: unknown start relic {relic}")));
                 }
             }
-            if def.start_relics.len()
-                > usize::try_from(self.relic_slots(def.character)).unwrap_or(0)
-            {
+            if !self.relic_fits(def.character, def.start_relics.len()) {
                 return Err(ContentError(format!(
                     "{what}: more start relics than slots"
                 )));
@@ -2305,12 +2307,29 @@ impl Content {
         self.characters.get(&character)
     }
 
-    /// Relic slots of a run with `character`: `run.ron` plus the
-    /// character's rule, never below 0.
+    /// Relic slots of a run with `character`: the lower of `run.ron` and
+    /// the character's cap; `None` when neither sets one (unlimited).
     #[must_use]
-    pub fn relic_slots(&self, character: Character) -> u32 {
-        let delta = self.character(character).map_or(0, |c| c.rule.relic_slots);
-        self.run.relic_slots.saturating_add_signed(delta)
+    pub fn relic_slots(&self, character: Character) -> Option<u32> {
+        let cap = self.character(character).and_then(|c| c.rule.relic_slots);
+        match (self.run.relic_slots, cap) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// Whether a run with `character` may hold `count` relics.
+    #[must_use]
+    pub fn relic_fits(&self, character: Character, count: usize) -> bool {
+        self.relic_slots(character)
+            .is_none_or(|slots| count <= usize::try_from(slots).unwrap_or(usize::MAX))
+    }
+
+    /// Whether a run with `character` holding `owned` relics has room for
+    /// one more.
+    #[must_use]
+    pub fn relic_slot_free(&self, character: Character, owned: usize) -> bool {
+        self.relic_fits(character, owned.saturating_add(1))
     }
 
     /// Einmischen per game of a run with `character`: `run.ron` plus the

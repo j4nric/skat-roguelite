@@ -91,8 +91,9 @@
 //   both fans; the boss rule written out before the first card, during
 //   play a chip in the felt's corner that opens the rule, the trick cards
 //   as wide as in a normal pub (within 2 px at 390 × 844, 1280 × 800 and
-//   375 × 667); Die Oma's 16 curses; the relic pick with a free slot, with
-//   every slot full (replace one, Groschen for it) and passed; the last
+//   375 × 667); Die Oma's 16 curses; the relic pick with few relics, with
+//   nine (slots unlimited since 03.11.2026: taken without a replace, the
+//   HUD strip scrolls inside itself) and passed; the last
 //   game of a boss pub that cannot be won ends the run with lives left.
 // - kontra.json: seed 29 played by the RunBot into that boss series, the
 //   Kontra-Hans has just said Kontra. The Kontra dialog must show, and
@@ -1229,19 +1230,21 @@ async function bossesV2(browser, errors, reducedMotion) {
   if (relicsAfter !== relicsBefore + 1) fail(`the relic did not arrive: ${relicsBefore} -> ${relicsAfter} chips`);
   log('boss reward: relic taken, on to the route');
 
-  // All slots full: pick one, then the relic it replaces (sold for half).
+  // Nine relics (slots unlimited since 03.11.2026): no "full" note, the
+  // pick is taken without giving one up, the HUD strip keeps the page.
   await resumeFixture(page, 'boss-reward-full.json');
-  await page.waitForSelector('[data-testid="boss-reward-full"]');
+  await page.waitForSelector('[data-testid="boss-reward"]');
+  if (await page.locator('[data-testid="boss-reward-full"]').count()) fail('boss reward says the slots are full with unlimited slots');
+  const manyBefore = await page.locator('.hud .coaster-chip').count();
+  await shoot(page, 'bosses-reward-many');
+  await assertNoSideScroll(page, 'boss reward, many relics', '.boss-reward');
   await page.locator('[data-testid="boss-relic-take"]').nth(1).click();
-  await page.waitForSelector('[data-testid="boss-relic-replace"] [data-replace]');
-  const coinsBefore = Number(await text(page, 'coins'));
-  await shoot(page, 'bosses-reward-full');
-  await assertNoSideScroll(page, 'boss reward, slots full', '.boss-reward');
-  await page.locator('[data-testid="boss-relic-replace"] [data-replace]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
-  const coinsAfter = Number(await text(page, 'coins'));
-  if (!(coinsAfter > coinsBefore)) fail(`replacing a relic paid nothing: ${coinsBefore} -> ${coinsAfter}`);
-  log(`boss reward with full slots: replaced, ${coinsBefore} -> ${coinsAfter} Groschen`);
+  const manyAfter = await page.locator('.hud .coaster-chip').count();
+  if (manyAfter !== manyBefore + 1) fail(`the tenth relic did not arrive: ${manyBefore} -> ${manyAfter} chips`);
+  const pageWide = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  if (pageWide) fail('many relics widen the page');
+  log(`boss reward with many relics: taken, ${manyBefore} -> ${manyAfter} chips`);
   // Or none at all.
   await resumeFixture(page, 'boss-reward.json');
   await page.waitForSelector('[data-testid="boss-relic-skip"]');

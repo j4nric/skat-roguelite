@@ -58,7 +58,8 @@
     // und 3 (M2).
     game_limit: 3,
     redeals: 2,
-    relic_slots: 5,
+    // relic_slots: seit 03.11.2026 ohne Angabe (Entscheidung des Nutzers):
+    // beliebig viele Relikte. Mit Some(n) wieder n Plätze.
     consumable_slots: 2,
     // series_reward: Groschen je gewonnener Kneipe; per_game_left: je
     // übrigem Spiel (seit 03.11.2026 2; ADR 0016 setzte 3: die fünf

@@ -199,7 +199,6 @@ impl Run {
             }
             Some(i) => {
                 let relic = reward.relics.get(i).cloned().ok_or(RunError::InvalidSlot)?;
-                let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
                 if let Some(index) = replace {
                     let old = self
                         .relics
@@ -208,10 +207,11 @@ impl Run {
                         .ok_or(RunError::InvalidSlot)?;
                     let price = content.relic(&old).map_or(0, |d| sell_price(d.price));
                     self.relics.remove(index);
+                    self.pay_out_stash(content, &old, events);
                     self.coins = self.coins.saturating_add(price);
                     events.push(RunEvent::RelicSold { relic: old, price });
                     self.settle_debt(events);
-                } else if self.relics.len() >= slots {
+                } else if !content.relic_slot_free(self.character, self.relics.len()) {
                     return Err(RunError::NoFreeSlot);
                 }
                 self.relics.push(relic.clone());

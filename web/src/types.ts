@@ -737,7 +737,8 @@ export interface RunView {
   win_threshold: number;
   coins: number;
   relics: OwnedRelic[];
-  relic_slots: number;
+  /** Relic slots; null: any number (unlimited since 03.11.2026). */
+  relic_slots: number | null;
   consumables: OwnedConsumable[];
   consumable_slots: number;
   flags: string[];
@@ -1011,6 +1012,8 @@ export type RunEvent =
   | { DebtChanged: { debt: number } }
   | { LifeSpared: { source: Source } }
   | { CoinsStashed: { source: Source; amount: number; pot: number; coins: number } }
+  /** A relic that stashes Groschen left; its pot was paid out as it was. */
+  | { StashPaidOut: { relic: string; amount: number; coins: number } }
   | { NextPubPlanned: { redeals: number; target: number } }
   | { NextPubApplied: { redeals: number; target: number } }
   | { WagerPlaced: { stake: number } }

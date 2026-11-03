@@ -368,10 +368,9 @@ impl Run {
                 EncounterEffect::SwapRelic(Some(_)) | EncounterEffect::SellRelic(_) => {
                     self.relics.is_empty().then_some(OptionBlock::NoRelic)
                 }
-                EncounterEffect::Relic(Some(_)) => {
-                    let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
-                    (self.relics.len() >= slots).then_some(OptionBlock::RelicSlotsFull)
-                }
+                EncounterEffect::Relic(Some(_)) => (!content
+                    .relic_slot_free(self.character, self.relics.len()))
+                .then_some(OptionBlock::RelicSlotsFull),
                 EncounterEffect::Lives(_) => {
                     (self.lives >= content.run.lives.max).then_some(OptionBlock::LivesFull)
                 }
@@ -587,6 +586,7 @@ impl Run {
                 EncounterEffect::SwapRelic(Some(new)) => {
                     let index = relic.ok_or(RunError::TargetRequired)?;
                     let old = std::mem::replace(&mut self.relics[index], new.clone());
+                    self.pay_out_stash(content, &old, events);
                     events.push(RunEvent::RelicSwapped {
                         old,
                         new: new.clone(),
@@ -595,6 +595,7 @@ impl Run {
                 EncounterEffect::SellRelic(percent) => {
                     let index = relic.ok_or(RunError::TargetRequired)?;
                     let old = self.relics.remove(index);
+                    self.pay_out_stash(content, &old, events);
                     let price = content.relic(&old).map_or(0, |d| d.price);
                     let price =
                         u32::try_from(u64::from(price) * u64::from(*percent) / 100).unwrap_or(0);
@@ -602,8 +603,7 @@ impl Run {
                     events.push(RunEvent::RelicSold { relic: old, price });
                 }
                 EncounterEffect::Relic(Some(new)) => {
-                    let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
-                    if self.relics.len() >= slots {
+                    if !content.relic_slot_free(self.character, self.relics.len()) {
                         return Err(RunError::NoFreeSlot);
                     }
                     self.relics.push(new.clone());

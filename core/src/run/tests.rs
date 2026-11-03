@@ -366,15 +366,23 @@ fn buy_sell_reroll_and_slots() {
     run.apply(&content, RunAction::Reroll).expect("reroll");
     assert_eq!(run.coins(), coins - 2);
     assert_eq!(run.shop().map(|s| s.rerolls), Some(1));
-    // Slots: five relics, two consumables.
+    // Slots: relics unlimited (03.11.2026) unless `run.ron` caps them,
+    // two consumables.
     run.relics = content.relics.keys().take(5).cloned().collect();
     let free = run
         .shop()
         .and_then(|s| s.relics.iter().position(Option::is_some))
         .expect("offer");
+    let mut capped = content.clone();
+    capped.run.relic_slots = Some(5);
     assert_eq!(
-        run.apply(&content, RunAction::BuyRelic(free)),
+        run.clone().apply(&capped, RunAction::BuyRelic(free)),
         Err(RunError::NoFreeSlot)
+    );
+    assert!(
+        run.clone()
+            .apply(&content, RunAction::BuyRelic(free))
+            .is_ok()
     );
     run.apply(&content, RunAction::BuyConsumable(0))
         .expect("buy");
@@ -719,11 +727,16 @@ fn a_run_can_start_with_relics_and_later() {
         }),
         Some(RunError::InvalidStart)
     );
+    // Any number of relics (03.11.2026), unless `run.ron` caps them.
+    let all = RunStart {
+        relics: content.relics.keys().cloned().collect(),
+        ..RunStart::default()
+    };
+    assert_eq!(bad(all.clone()), None);
+    let mut capped = content.clone();
+    capped.run.relic_slots = Some(5);
     assert_eq!(
-        bad(RunStart {
-            relics: content.relics.keys().cloned().collect(),
-            ..RunStart::default()
-        }),
+        Run::new_with(&capped, 1, &all).err(),
         Some(RunError::NoFreeSlot)
     );
     let (later, _) = Run::new_with(
