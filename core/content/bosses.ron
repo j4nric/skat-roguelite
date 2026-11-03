@@ -42,8 +42,13 @@
         // Vorläufig (03.11.2026): drei volle Handspiele gegen zwei
         // Ausgaben mit Augen. Bis ADR 0017 1,0 (Nullspieler 0,4, gemessen
         // mit einem Boss-Platz und frühem Ende).
+        // Nullspieler 0,35 → 0,2 (03.11.2026, docs/balance/
+        // 2026-11-03-charaktere.md): Er gewinnt die Kneipe nur zu 29 bis
+        // 34 %, fast unabhängig vom Zielwert (bei 8 wie bei 21): Unter dem
+        // Schieber spielt der Bot Null Hand nur mit höchstens zwei offenen
+        // Karten, sonst Farbe ohne Unter. Der Faktor hilft kaum.
         target_factor: 0.5,
-        character_factors: {NullPlayer: 0.35},
+        character_factors: {NullPlayer: 0.2},
     ),
     (
         id: "grandma",
@@ -103,7 +108,12 @@
         // des Verlierers (oft 40 bis 60), ein verlorener seit 03.11.2026
         // dasselbe dagegen (vorher das Doppelte). Der Faktor wirkt wenig.
         // Bis ADR 0017 1,25.
+        // Nullspieler 2,0 (03.11.2026, so hoch wie die Obergrenze von
+        // target_factor): Mit seinen abgestuften Untern hat er im Ramsch
+        // keinen Trumpf und gewann die Kneipe bei 1,0 zu 87 bis 88 %, bei
+        // 2,0 noch zu gut 70 %.
         target_factor: 1.0,
+        character_factors: {NullPlayer: 2.0},
     ),
     (
         id: "black_peter",
