@@ -526,7 +526,8 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
     let mut events = Vec::new();
     assert!(run.open_random_encounter(&content, &mut events));
     let named = named_mod(&run, 0).expect("named");
-    let chosen = named_mod(&run, 1).expect("named");
+    // The same Zinke for the random and the chosen card.
+    assert_eq!(named_mod(&run, 1).as_ref(), Some(&named));
     let view = run.view(&content).encounter.expect("view");
     let info = view.options[0].effects[0].card_mod.as_ref().expect("info");
     assert_eq!(info.id, named);
@@ -543,7 +544,7 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
     .expect("chosen");
     assert_eq!(
         run.edition().get(target).map(|c| c.mods.clone()),
-        Some(vec![chosen])
+        Some(vec![named])
     );
 }
 

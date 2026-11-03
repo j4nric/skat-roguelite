@@ -5,9 +5,11 @@
 //! left) the player chooses one of three ways to the next pub
 //! ([`RouteChoice`]), one per [`Transport`] (Zu Fuß, Bahn, Fahrrad). All
 //! three behave the same (decision of the user, 02.11.2026): each leads
-//! over exactly one stop whose category (Tresen, Begegnung, Upgrade, Rast)
-//! is rolled per way and shown; nothing costs extra. They differ only in
-//! the way drawn on the map and the rolled category.
+//! over exactly one stop whose category is rolled per way and shown;
+//! nothing costs extra. Since 03.11.2026 the three show three different
+//! categories, one of them the Tresen (Begegnung, Upgrade, Rast,
+//! Fundgroschen, Kiosk and Würfelbude by weight for the others). They
+//! differ only in the way drawn on the map and the rolled category.
 //!
 //! Sometimes one of the three leads into a Spelunke instead of the next
 //! pub: another place with its own name and node (`d0-p2-s`), standing in

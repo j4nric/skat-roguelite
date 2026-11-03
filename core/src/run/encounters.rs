@@ -20,6 +20,13 @@ use crate::content::{
 };
 use crate::deck::CardKind;
 
+/// What an unnamed modification is drawn from: the offers and whether a
+/// curse.
+type DrawKey = (Vec<(CardModId, i32)>, bool);
+
+/// A drawn modification with its value.
+type DrawnMod = (Option<CardModId>, Option<i32>);
+
 impl Run {
     /// Open the encounter `id` (a stop on the way, or the loot of a
     /// Spelunke): its draws are made now. Returns `false` if no option can
@@ -167,6 +174,9 @@ impl Run {
         } else {
             None
         };
+        // One draw per kind of unnamed modification: the Kartengeber names
+        // the same Zinke for the random and the chosen card.
+        let mut mods: Vec<(DrawKey, DrawnMod)> = Vec::new();
         let mut options = Vec::new();
         for option in &def.options {
             let mut drawn = Vec::new();
@@ -194,9 +204,12 @@ impl Run {
                         curse,
                         curse_percent,
                     } => {
-                        let (card_mod, value) = match card_mod {
-                            Some(id) => (Some(id.clone()), *value),
-                            None if !offers.is_empty() => {
+                        let key = (offers.clone(), *curse);
+                        let known = mods.iter().find(|(k, _)| *k == key).map(|(_, m)| m.clone());
+                        let (card_mod, value) = match (card_mod, known) {
+                            (Some(id), _) => (Some(id.clone()), *value),
+                            (None, Some(known)) => known,
+                            (None, None) if !offers.is_empty() => {
                                 let pool: Vec<((CardModId, i32), u32)> = offers
                                     .iter()
                                     .filter(|(m, _)| {
@@ -210,7 +223,7 @@ impl Run {
                                     .pop()
                                     .map_or((None, None), |(m, v)| (Some(m), Some(v)))
                             }
-                            None => {
+                            (None, None) => {
                                 let pool = self.mod_pool(content, *curse);
                                 (draw_weighted(&mut self.encounter_rng, pool, 1).pop(), None)
                             }
@@ -221,6 +234,9 @@ impl Run {
                                 .and_then(|m| content.card_mod(m))
                                 .map(CardModDef::default_value)
                         });
+                        if effect_names_none(effect) && !mods.iter().any(|(k, _)| *k == key) {
+                            mods.push((key, (card_mod.clone(), value)));
+                        }
                         EncounterEffect::Mark {
                             card: *card,
                             card_mod,
@@ -773,4 +789,9 @@ pub(crate) fn test_option(cost: u32, effects: Vec<EncounterEffect>) -> Encounter
         effects,
         fallback: false,
     }
+}
+
+/// Whether a Mark leaves its modification to the draw.
+fn effect_names_none(effect: &EncounterEffect) -> bool {
+    matches!(effect, EncounterEffect::Mark { card_mod: None, .. })
 }
