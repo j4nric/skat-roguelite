@@ -1259,6 +1259,12 @@ export class App {
         sound.play('coin');
         continue;
       }
+      if ('StashPaidOut' in ev) {
+        const { relic, amount } = ev.StashPaidOut;
+        this.showToast(t(de.toast.stashPaidOut, { name: contentName('relics', relic), amount }));
+        sound.play('coin');
+        continue;
+      }
       if ('NextPubPlanned' in ev) {
         const { redeals, target } = ev.NextPubPlanned;
         const parts: string[] = [];

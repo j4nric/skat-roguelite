@@ -208,7 +208,7 @@ export function renderShop(view: RunView): string {
       ${zinkenBlock(shop)}
     </div>
     <section class="shop-owned">
-      <h3>${esc(t(de.shop.owned, { count: view.relics.length, slots: view.relic_slots }))}</h3>
+      <h3>${esc(view.relic_slots === null ? t(de.shop.owned, { count: view.relics.length }) : t(de.shop.ownedCapped, { count: view.relics.length, slots: view.relic_slots }))}</h3>
       ${owned ? `<div class="coasters coasters-owned">${owned}</div>` : `<p class="small">${esc(de.shop.noRelics)}</p>`}
       <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
       ${items ? `<div class="goods">${items}</div>` : `<p class="small">${esc(de.shop.noItems)}</p>`}
