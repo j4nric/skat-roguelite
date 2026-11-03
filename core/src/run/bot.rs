@@ -39,11 +39,15 @@
 //!   ([`RunBot::says_re`]).
 //!
 //! Tresen ([`RunBot::shop_action`]): one action per call, in this order:
-//! use "Stempelkissen" on an ace, sell the weakest relic for a clearly
-//! better one when all slots are full, buy the most valuable relic, buy the
-//! most valuable consumable, draw a new offer when nothing sensible can be
-//! bought and Groschen are plenty, leave. Values come from
-//! [`relic_value`] and [`consumable_value`].
+//! take the Kartenmaler's best modification while he waits, "Karte
+//! reinigen" on a cursed card, sell the weakest relic for a clearly better
+//! one when all slots are full, buy the most valuable relic, buy the most
+//! valuable consumable, buy the best offer of the Auslage on a card that
+//! carries nothing else (never replacing), hire the Kartenmaler for an ace
+//! without modification when Groschen are plenty, draw a new offer when
+//! nothing sensible can be bought and Groschen are plenty, leave. Values
+//! come from [`relic_value`], [`consumable_value`] and [`zinken_value`].
+//! The bot never pays on credit for Zinken.
 //!
 //! Encounters ([`RunBot::encounter_action`]): the most valuable house rule
 //! of a Stammtisch-Streit, the free card of the Kartengeber, a swap for a
@@ -53,7 +57,7 @@
 //!
 //! Kneipentour (ADR 0016, simple rules, not tuned, not measured): at a
 //! Rast the life, at the Werkstatt the cursed card cleansed (else the free
-//! modification on an ace), from a Spelunke's loot the relic into a free
+//! Kartenmaler on an ace, his best modification taken), from a Spelunke's loot the relic into a free
 //! slot (else the Groschen). The route ([`RunBot::route_action`]) scores
 //! each way by the category it shows: the Tresen when rich, an Upgrade
 //! with a cursed card, a Rast with lives missing; a Spelunke only when
@@ -85,7 +89,7 @@ use super::{EncounterChoice, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{
-    ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId, StopCategory,
+    CardModId, ConsumableAction, ConsumableId, Content, NextGameEffect, RelicId, StopCategory,
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
@@ -229,8 +233,6 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | Consumable | Value | Use |
 /// |---|---|---|
 /// | `herbal` | 2 | "Kräuter" (since 02.11.2026 what "Neues Blatt" did): throws a weak hand in once the game's Einmischen are used up |
-/// | `ink_pad` | 2 | a random modification on an ace; "Fett" and "Stempel" help the declarer |
-/// | `fresh_deck` | 0, 2 with a cursed card | ADR 0015: cleanses a card of the player's edition; the bot buys it only while a card carries a curse (not "Abgestuft") and uses it on that card at once |
 /// | `double_grain` | 2 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
 /// | `blue_curacao` | 2 | "Blue Curaçao": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
@@ -239,27 +241,21 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
 ///
 /// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
-/// `new_deal`, `beer`, `bitters`, `regret`, `points_5`, `trump_4`. "Neues
+/// `new_deal`, `beer`, `bitters`, `regret`, `points_5`, `trump_4`, and with
+/// the Zinken at the Tresen (DESIGN 8.6) `fresh_deck` (now "Karte
+/// reinigen"), `ink_pad`, `points_3`, `trump_2`, `rank_1` (now the Auslage
+/// and the Kartenmaler, [`ZINKEN_VALUES`]). "Neues
 /// Blatt", "Ein Bier" and "Kräuter" only help once the two Einmischen of a game are used up:
 /// the bot throws in about every second deal (0.75 Einmischen per game in
 /// the run measurement of 01.11.2026, DESIGN 5.2), so three weak deals in
 /// a row come in about one game of eight, once every three series. Before the
 /// Einmischen rule they were worth 4, 3 and 3 and were bought far more
 /// often than used.
-///
-/// Effects v2 (DESIGN 7.2, 12): the card modifications with a value at the
-/// Tresen are placeholders, not measured; the bot puts them on a Daus
-/// without modification like the Stempelkissen.
-pub const CONSUMABLE_VALUES: [(&str, u32); 12] = [
+pub const CONSUMABLE_VALUES: [(&str, u32); 7] = [
     ("herbal", 2),
-    ("ink_pad", 2),
     ("double_grain", 2),
     ("blue_curacao", 2),
     ("shot", 1),
-    ("fresh_deck", 0),
-    ("points_3", 1),
-    ("trump_2", 1),
-    ("rank_1", 1),
     ("counter_beer", 2),
     ("road_beer", 2),
     ("snifter", 0),
@@ -271,6 +267,31 @@ pub const REROLL_RESERVE: u32 = 6;
 
 /// At most this many Neuauslagen per Tresen visit.
 pub const MAX_REROLLS: u32 = 2;
+
+/// How much the bot wants each Zinke (Zinken at the Tresen, DESIGN 8.6;
+/// simple rules, not measured). Not listed: 0 (never bought). The
+/// Kartenmaler's choice takes the most valuable, the first on a tie.
+///
+/// | Zinke | Value | Why |
+/// |---|---|---|
+/// | `trump_bonus` (Siegel) | 3 | Grundwert, on an ace often in the trump suit |
+/// | `rank` (Winkel) | 3 | wins tricks |
+/// | `points` (Aufdruck) | 2 | Augen |
+/// | `first_trick` (Eselsohr) | 2 | an ace often wins the first trick |
+/// | `last_trick` (Kerbe) | 1 | the last trick is rarely the ace's |
+/// | `voucher_coins` (Pfandmarke) | 1 | Groschen, if discarded |
+pub const ZINKEN_VALUES: [(&str, u32); 6] = [
+    ("trump_bonus", 3),
+    ("rank", 3),
+    ("points", 2),
+    ("first_trick", 2),
+    ("last_trick", 1),
+    ("voucher_coins", 1),
+];
+
+/// The Kartenmaler needs at least this many Groschen left over after
+/// paying for him (not measured).
+pub const PAINTER_RESERVE: u32 = 4;
 
 /// Groschen from which the route policy heads for the Tresen (Kneipentour,
 /// not measured).
@@ -284,6 +305,15 @@ pub fn relic_value(id: &RelicId) -> u32 {
         .chain(LEGENDARY_VALUES.iter())
         .find(|(name, _)| *name == id.as_str())
         .map_or(DEFAULT_RELIC_VALUE, |&(_, v)| v)
+}
+
+/// The bot's value of a Zinke ([`ZINKEN_VALUES`]).
+#[must_use]
+pub fn zinken_value(id: &CardModId) -> u32 {
+    ZINKEN_VALUES
+        .iter()
+        .find(|(name, _)| *name == id.as_str())
+        .map_or(0, |&(_, v)| v)
 }
 
 /// The bot's value of a consumable.
@@ -620,6 +650,9 @@ impl RunBot {
     /// The encounter policy, see the module docs.
     #[must_use]
     pub fn encounter_action(&self, run: &Run, content: &Content) -> RunAction {
+        if let Some(action) = Self::paint_choice(run) {
+            return action;
+        }
         let Some(encounter) = run.encounter() else {
             return RunAction::LeaveShop;
         };
@@ -637,7 +670,9 @@ impl RunBot {
         for (i, option) in encounter.options.iter().enumerate() {
             let target = match option.choice {
                 EncounterChoice::CleanseChosenCard => cursed,
-                EncounterChoice::MarkChosenCard | EncounterChoice::Lesson { .. }
+                EncounterChoice::MarkChosenCard
+                | EncounterChoice::Lesson { .. }
+                | EncounterChoice::Painter
                     if option.cost == 0 && cursed.is_none() =>
                 {
                     Self::ace_targets(run).into_iter().find(|&card| {
@@ -718,35 +753,17 @@ impl RunBot {
         let Some(shop) = run.shop() else {
             return RunAction::LeaveShop;
         };
+        if let Some(action) = Self::paint_choice(run) {
+            return action;
+        }
         let coins = run.coins();
         let price = |p: u32| run.shop_price(content, p);
         let cursed = Self::cursed_card(run, content);
-        // 0. "Frisches Deck" on a cursed card (ADR 0015).
+        let zinken = &content.run.shop.zinken;
+        // 1. "Karte reinigen" on a cursed card (ADR 0015).
         if let Some(target) = cursed {
-            if let Some(action) = Self::usable(
-                run,
-                content,
-                |a| matches!(a, ConsumableAction::CleanseCard),
-                Some(target),
-            ) {
-                return action;
-            }
-        }
-        // 1. Stempelkissen and the modifications with a value: on an ace,
-        // Kreuz first, one without modification first (effects v2: another
-        // modification would replace it).
-        for target in Self::ace_targets(run) {
-            if let Some(action) = Self::usable(
-                run,
-                content,
-                |a| {
-                    matches!(
-                        a,
-                        ConsumableAction::AddCardMod(_) | ConsumableAction::ApplyCardMod { .. }
-                    )
-                },
-                Some(target),
-            ) {
+            let action = RunAction::CleanseCard(target);
+            if price(zinken.cleanse_price) <= coins && run.accepts(content, action.clone()) {
                 return action;
             }
         }
@@ -805,10 +822,7 @@ impl RunBot {
                 .filter_map(|(slot, id)| {
                     let id = id.as_ref()?;
                     let def = content.consumable(id)?;
-                    let value = match def.action {
-                        ConsumableAction::CleanseCard if cursed.is_some() => 2,
-                        _ => consumable_value(id),
-                    };
+                    let value = consumable_value(id);
                     let cost = price(def.price);
                     (value > 0 && cost <= coins).then_some((value, cost, slot))
                 })
@@ -817,12 +831,58 @@ impl RunBot {
                 return RunAction::BuyConsumable(slot);
             }
         }
-        // 5. Nothing sensible to buy: a new offer, if Groschen are plenty.
+        // 5. The Auslage: the best Zinke on a card that carries nothing
+        // else (the same one raised is fine), never replacing.
+        let best = shop
+            .card_offers
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, offer)| {
+                let offer = offer.as_ref()?;
+                let card = run.edition().get(offer.card)?;
+                let bare = card.mods.iter().all(|m| *m == offer.card_mod);
+                let value = zinken_value(&offer.card_mod);
+                let cost = run.card_offer_cost(content, offer);
+                (bare && value > 0 && cost <= coins).then_some((value, cost, slot))
+            })
+            .max_by_key(|&(value, cost, slot)| {
+                (value, std::cmp::Reverse(cost), std::cmp::Reverse(slot))
+            });
+        if let Some((_, _, slot)) = best {
+            let action = RunAction::BuyCardOffer(slot);
+            if run.accepts(content, action.clone()) {
+                return action;
+            }
+        }
+        // 6. The Kartenmaler for an ace without modification, if Groschen
+        // are plenty.
+        let bare_ace = Self::ace_targets(run).into_iter().find(|&card| {
+            run.edition().get(card).is_some_and(|c| c.mods.is_empty())
+                && coins >= run.painter_cost(content, card) + PAINTER_RESERVE
+                && run.accepts(content, RunAction::HirePainter(card))
+        });
+        if let Some(card) = bare_ace {
+            return RunAction::HirePainter(card);
+        }
+        // 7. Nothing sensible to buy: a new offer, if Groschen are plenty.
         let cost = price(content.run.economy.reroll_cost);
         if shop.rerolls < MAX_REROLLS && coins >= cost + REROLL_RESERVE {
             return RunAction::Reroll;
         }
         RunAction::LeaveShop
+    }
+
+    /// The Kartenmaler waits: take his most valuable modification, the
+    /// first on a tie.
+    fn paint_choice(run: &Run) -> Option<RunAction> {
+        let painter = run.painter()?;
+        let best = painter
+            .options
+            .iter()
+            .enumerate()
+            .max_by_key(|(i, (m, _))| (zinken_value(m), std::cmp::Reverse(*i)))
+            .map_or(0, |(i, _)| i);
+        Some(RunAction::ChoosePaint(best))
     }
 
     /// The first card of the player's edition that carries a curse ("Abgestuft"
@@ -1539,57 +1599,86 @@ mod tests {
     }
 
     #[test]
-    fn shop_buys_consumables_and_puts_the_ink_pad_on_an_ace() {
+    fn shop_buys_a_schnaps_and_cleanses_a_cursed_card() {
         let content = Content::load().expect("content");
         let mut run = open_shop(&content, 10);
-        offer(&mut run, &[], &["shot", "ink_pad"]);
-        // The ink pad (2) comes before the Kurzer (1).
+        run.shop.as_mut().expect("shop").card_offers.clear();
+        offer(&mut run, &[], &["shot", "herbal"]);
+        // Kräuter (2) before the Kurzer (1).
         assert_eq!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(1)
         );
-        run.apply(&content, RunAction::BuyConsumable(1))
-            .expect("ink");
-        let kreuz_ass = 31;
-        let ink = RunAction::UseConsumable {
-            slot: 0,
-            target: Some(kreuz_ass),
-            suit: None,
-        };
-        assert_eq!(RunBot.shop_action(&run, &content), ink);
-        run.apply(&content, ink).expect("ink on the ace");
-        assert_eq!(
-            RunBot.shop_action(&run, &content),
-            RunAction::BuyConsumable(0)
-        );
-        run.apply(&content, RunAction::BuyConsumable(0))
-            .expect("shot");
-        // "Frisches Deck" only with a cursed card, then used on it.
-        let mut run = open_shop(&content, 10);
-        offer(&mut run, &[], &["fresh_deck"]);
-        assert_ne!(
-            RunBot.shop_action(&run, &content),
-            RunAction::BuyConsumable(0)
-        );
+        // "Karte reinigen" with a cursed card, before anything else.
         run.edition
-            .add_mod(&content, 9, &crate::content::CardModId::new("battered"), 5)
+            .add_mod(&content, 9, &CardModId::new("battered"), 5)
             .expect("curse");
         assert_eq!(
             RunBot.shop_action(&run, &content),
-            RunAction::BuyConsumable(0)
+            RunAction::CleanseCard(9)
         );
-        run.apply(&content, RunAction::BuyConsumable(0))
-            .expect("fresh deck");
-        let cleanse = RunBot.shop_action(&run, &content);
-        assert!(matches!(
-            cleanse,
-            RunAction::UseConsumable {
-                target: Some(9),
-                ..
-            }
-        ));
-        run.apply(&content, cleanse).expect("cleanse");
+        run.apply(&content, RunAction::CleanseCard(9))
+            .expect("cleanse");
         assert!(run.edition().get(9).is_some_and(|c| c.mods.is_empty()));
+    }
+
+    #[test]
+    fn shop_buys_zinken_on_bare_cards_and_hires_the_painter() {
+        let content = Content::load().expect("content");
+        let mut run = open_shop(&content, 7);
+        offer(&mut run, &[], &[]);
+        let kreuz_ass = 31;
+        let offer_on = |card: u32, card_mod: &str, price: u32| {
+            Some(super::super::zinken::CardOffer {
+                card,
+                card_mod: CardModId::new(card_mod),
+                value: 1,
+                price,
+            })
+        };
+        run.edition
+            .add_mod(&content, 0, &CardModId::new("rank"), 1)
+            .expect("rank");
+        {
+            let shop = run.shop.as_mut().expect("shop");
+            // Siegel would replace Winkel on card 0: never; Kerbe (1) on a
+            // bare card loses to Aufdruck (2).
+            shop.card_offers = vec![
+                offer_on(0, "trump_bonus", 3),
+                offer_on(5, "last_trick", 3),
+                offer_on(kreuz_ass, "points", 3),
+            ];
+        }
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyCardOffer(2)
+        );
+        run.apply(&content, RunAction::BuyCardOffer(2))
+            .expect("buy");
+        assert_eq!(run.coins(), 4);
+        // Kerbe next; then 1 Groschen is left, no Kartenmaler.
+        assert_eq!(
+            RunBot.shop_action(&run, &content),
+            RunAction::BuyCardOffer(1)
+        );
+        run.shop.as_mut().expect("shop").card_offers.clear();
+        run.coins = content.run.shop.zinken.painter_price + PAINTER_RESERVE;
+        let hire = RunBot.shop_action(&run, &content);
+        let RunAction::HirePainter(card) = hire else {
+            panic!("painter: {hire:?}");
+        };
+        assert!(run.edition().get(card).is_some_and(|c| c.mods.is_empty()));
+        run.apply(&content, hire).expect("hire");
+        let choice = RunBot.shop_action(&run, &content);
+        assert!(matches!(choice, RunAction::ChoosePaint(_)));
+        run.apply(&content, choice).expect("paint");
+        assert!(run.painter().is_none());
+        assert!(run.edition().get(card).is_some_and(|c| c.mods.len() == 1));
+        // Once per Tresen.
+        assert!(!matches!(
+            RunBot.shop_action(&run, &content),
+            RunAction::HirePainter(_)
+        ));
     }
 
     #[test]

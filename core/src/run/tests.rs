@@ -451,7 +451,9 @@ fn leaving_the_shop_starts_the_next_series() {
 
 #[test]
 fn consumables_change_the_deck_and_the_series() {
-    let content = content();
+    // Frisches Deck and Stempelkissen were removed with the Zinken at the
+    // Tresen (DESIGN 8.6); their dormant actions stay under test.
+    let content = crate::run::legacy_content();
     let mut run = open_shop(&content, 9, 0);
     run.consumables = vec![
         ConsumableId::new("fresh_deck"),

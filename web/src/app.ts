@@ -1128,6 +1128,16 @@ export class App {
         sound.play('card');
         continue;
       }
+      if ('CardOffersRerolled' in ev) {
+        this.showToast(de.toast.cardsRerolled);
+        sound.play('card');
+        continue;
+      }
+      if ('CardOfferBought' in ev || 'PainterHired' in ev || 'CardCleansed' in ev) {
+        // The card itself is told by the DeckChanged that follows (or the painter's sheet).
+        if (!('PainterHired' in ev) || ev.PainterHired.price > 0) sound.play('coin');
+        continue;
+      }
       if ('CounterRaised' in ev) {
         this.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
         continue;
@@ -2285,6 +2295,39 @@ export class App {
       case 'reroll':
         void this.act('Reroll');
         return;
+      case 'buy-zinke': {
+        // Zinken (DESIGN 8.6): the card is fixed; ask first if it replaces or raises.
+        const offer = view.shop?.card_offers?.find((o) => o?.slot === num('slot'));
+        if (!offer) return;
+        this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null);
+        return;
+      }
+      case 'reroll-zinken':
+        void this.act('RerollCardOffers');
+        return;
+      case 'painter':
+      case 'cleanse': {
+        const service: 'painter' | 'cleanse' = action === 'painter' ? 'painter' : 'cleanse';
+        const s = service === 'painter' ? view.shop?.painter : view.shop?.cleanse;
+        if (!s) return;
+        const reasons = this.refusals(view, s.targets, (id) => (service === 'painter' ? { HirePainter: id } : { CleanseCard: id }));
+        this.ui.overlay = { kind: 'zinken-card', service, reasons };
+        this.render();
+        return;
+      }
+      case 'zinken-card': {
+        const o = this.ui.overlay;
+        if (o?.kind !== 'zinken-card') return;
+        void this.act(o.service === 'painter' ? { HirePainter: num('id') } : { CleanseCard: num('id') });
+        return;
+      }
+      case 'paint': {
+        const painter = view.painter;
+        const option = painter?.options.find((p) => p.index === num('index'));
+        if (!painter || !option) return;
+        this.applyMod(view, { ChoosePaint: option.index }, painter.card.id, option.card_mod.id, false, { kind: 'painter' });
+        return;
+      }
       case 'leave-shop':
         void this.act('LeaveShop');
         return;
@@ -2317,7 +2360,7 @@ export class App {
    * sheet); otherwise apply it at once. One drawn at random is not
    * previewed: the sheet only says that the card carries one already.
    */
-  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay): void {
+  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay | null): void {
     const card = view.edition.find((c) => c.id === id);
     const ask = card ? this.modQuestion(card, action, mod, random) : null;
     if (!ask) {
@@ -2549,6 +2592,9 @@ export class App {
               : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
+        // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
+        if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
+        if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
         if (kontra) body += renderKontra(view);
         break;

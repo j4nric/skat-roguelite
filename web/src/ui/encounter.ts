@@ -58,6 +58,7 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
   if (c === 'MarkRandomCard') return { title: de.encounter.markRandom, hint: de.encounter.markRandomHint, pic: markedCard(false), cls: '', extra: modLine(o) };
   if (c === 'MarkChosenCard') return { title: de.encounter.markChosen, hint: de.encounter.markChosenHint, pic: markedCard(true), cls: '', extra: modLine(o) };
   if (c === 'CleanseChosenCard') return { title: de.encounter.cleanse, hint: de.encounter.cleanseHint, pic: markedCard(true), cls: '', extra: '' };
+  if (c === 'Painter') return { title: de.encounter.painter, hint: de.encounter.painterHint, pic: markedCard(true), cls: '', extra: '' };
   if (c === 'Gamble') return { title: de.encounter.gamble, hint: de.encounter.gambleHint, pic: markedCard(true), cls: '', extra: modLine(o) };
   if ('DoubleNextGame' in c) {
     return { title: de.encounter.double, hint: t(de.encounter.doubleHint, { factor: c.DoubleNextGame }), pic: glass(), cls: '', extra: '' };

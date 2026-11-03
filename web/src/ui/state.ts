@@ -72,8 +72,12 @@ export type Overlay =
   | { kind: 'chalk'; slot: number; card: number | null }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
-  /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back. */
-  | { kind: 'mod-confirm'; action: RunAction; back: Overlay; ask: ModQuestion }
+  /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back (null: the screen). */
+  | { kind: 'mod-confirm'; action: RunAction; back: Overlay | null; ask: ModQuestion }
+  /** Zinken (DESIGN 8.6): pick the card for the Kartenmaler or "Karte reinigen". */
+  | { kind: 'zinken-card'; service: 'painter' | 'cleanse'; reasons?: Record<number, string> }
+  /** The Kartenmaler waits: take one of his Zinken (not closable). */
+  | { kind: 'painter' }
   /** The Vereinsbuch: characters and unlocks, or the statistics page. */
   | { kind: 'book'; tab: 'book' | 'stats' }
   /** Give up the running run for a new one? */

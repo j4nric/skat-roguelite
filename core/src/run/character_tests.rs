@@ -9,7 +9,7 @@ use super::meta::MetaState;
 use super::view::RevealSource;
 use super::*;
 use crate::cards::Suit;
-use crate::content::{CardModId, ConsumableId, Effect, UnlockId};
+use crate::content::{CardModId, Effect, UnlockId};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
 /// Declarer holds the four jacks and six diamonds; the defenders hold no
@@ -320,12 +320,9 @@ fn heart_brother_cannot_cleanse_a_curse() {
     run.game = None;
     run.phase = RunPhase::Shop;
     run.shop = Some(run.draw_offer(&content, 0));
-    run.consumables = vec![ConsumableId::new("fresh_deck")];
-    let use_on = |target| RunAction::UseConsumable {
-        slot: 0,
-        target: Some(target),
-        suit: None,
-    };
+    run.coins = 20;
+    // "Karte reinigen" at the Tresen (since the Zinken, DESIGN 8.6).
+    let use_on = RunAction::CleanseCard;
     let ck = id_of(&run, "CK");
     let err = run.clone().apply(&content, use_on(ck));
     assert_eq!(err, Err(RunError::CurseStays));
@@ -343,7 +340,7 @@ fn heart_brother_cannot_cleanse_a_curse() {
     plain.game = None;
     plain.phase = RunPhase::Shop;
     plain.shop = Some(plain.draw_offer(&content, 0));
-    plain.consumables = vec![ConsumableId::new("fresh_deck")];
+    plain.coins = 20;
     plain.apply(&content, use_on(ck)).expect("cleanse");
 }
 

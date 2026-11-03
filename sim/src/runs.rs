@@ -75,8 +75,8 @@ pub struct Options {
     pub card_mods: Vec<(Card, CardModId, Option<i32>)>,
 }
 
-/// Price of the Neuauslage under `--consumable`: never affordable, so
-/// the bot keeps its Groschen as under `--no-shop`.
+/// Price of the Neuauslage and the Zinken under `--consumable`: never
+/// affordable, so the bot keeps its Groschen as under `--no-shop`.
 const NO_REROLL: u32 = 1_000;
 
 /// The Null formula of DESIGN 9.2 with the values of `characters.ron`, for
@@ -165,6 +165,12 @@ impl Options {
             content.run.shop.relic_offers = 0;
             content.run.shop.consumable_offers = 1;
             content.run.economy.reroll_cost = NO_REROLL;
+            // No Zinken either (DESIGN 8.6): only that consumable is bought.
+            let zinken = &mut content.run.shop.zinken;
+            zinken.offers = 0;
+            zinken.reroll_cost = NO_REROLL;
+            zinken.painter_price = NO_REROLL;
+            zinken.cleanse_price = NO_REROLL;
             let slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
             if let Some(def) = content.characters.get_mut(&self.character) {
                 if def.start_consumables.len() < slots {
@@ -424,7 +430,13 @@ fn play_run(
                     stats.encounters.entry(encounter.clone()).or_default().1 += 1;
                 }
             }
-            RunEvent::ShopRerolled { cost } => stats.coins_spent += u64::from(*cost),
+            RunEvent::ShopRerolled { cost } | RunEvent::CardOffersRerolled { cost } => {
+                stats.coins_spent += u64::from(*cost);
+            }
+            // Zinken at the Tresen (DESIGN 8.6).
+            RunEvent::CardOfferBought { price, .. }
+            | RunEvent::PainterHired { price, .. }
+            | RunEvent::CardCleansed { price, .. } => stats.coins_spent += u64::from(*price),
             _ => {}
         }
     }

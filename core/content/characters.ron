@@ -10,7 +10,7 @@
 // null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
 // oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2). Ohne
 // Angabe Fixed.
-// focus_weights: Gewicht in Prozent, mit dem Tresen, Stempelkissen und
+// focus_weights: Gewicht in Prozent, mit dem Tresen (samt Zinken) und
 // Ereignisse Relikte und Modifikationen für Farbspiel und Grand (trump) und
 // für Null (null) anbieten, gemessen an der Seltenheit. Relikte für jedes
 // Spiel zählen immer 100. Ohne Angabe 100 und 100.

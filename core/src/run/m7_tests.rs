@@ -53,7 +53,9 @@ fn only_encounter(id: &str) -> Content {
 
 #[test]
 fn the_ink_pad_never_draws_a_curse() {
-    let content = content();
+    // Removed with the Zinken at the Tresen (DESIGN 8.6); the dormant
+    // action stays under test.
+    let content = crate::run::legacy_content();
     for character in Character::ALL {
         let mut seen = BTreeSet::new();
         for seed in 0..300 {

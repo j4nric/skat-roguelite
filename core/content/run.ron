@@ -53,6 +53,32 @@
         relic_offers: 3,
         consumable_offers: 2,
         rarity_weights: (common: 6, uncommon: 3, rare: 1),
+        // Zinken am Tresen (Entscheidung des Nutzers, 02.11.2026, DESIGN
+        // 8.6). Die Auslage: offers Angebote, je eine Karte der Ausgabe mit
+        // einer Zinke (Wert shop_value aus card_mods.ron), nie ein Fluch,
+        // nie eine Zinke, die nicht auf die Karte passt. Karten ohne
+        // Modifikation zählen bare_weight, andere modded_weight;
+        // Gutscheine (Pfandmarke, Totenmarke, Narrenmarke) wiegen
+        // voucher_percent Prozent ihrer Seltenheit. Preis: price der Zinke,
+        // auf premium_ranks premium mehr. Neu auslosen kostet reroll_cost,
+        // jedes weitere Mal am selben Tresen reroll_step mehr. Der
+        // Kartenmaler (einmal je Tresen) setzt auf eine gewählte Karte eine
+        // von painter_choices gezogenen Zinken; Karte reinigen (einmal je
+        // Tresen) nimmt alle Modifikationen ab, auch Flüche. Alle Zahlen
+        // VORLÄUFIG, nach Augenmaß ohne Messung.
+        zinken: (
+            offers: 3,
+            bare_weight: 3,
+            modded_weight: 1,
+            voucher_percent: 50,
+            premium_ranks: [Jack, Ace],
+            premium: 1,
+            reroll_cost: 1,
+            reroll_step: 1,
+            painter_price: 6,
+            painter_choices: 2,
+            cleanse_price: 3,
+        ),
     ),
     bosses: [
         "the_pusher",

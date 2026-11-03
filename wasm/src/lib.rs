@@ -174,7 +174,8 @@ struct ConsumableEntry<'a> {
     category: ConsumableCategory,
     /// The card modification it puts on a card, if the content names one.
     card_mod: Option<&'a str>,
-    /// It puts a modification drawn at random on a card ("Stempelkissen").
+    /// It puts a modification drawn at random on a card (the removed
+    /// "Stempelkissen"; no content since the Zinken, DESIGN 8.6).
     random_card_mod: bool,
 }
 
@@ -1075,15 +1076,18 @@ mod tests {
             catalog["consumables"]["blue_curacao"]["category"],
             "Schnapps"
         );
-        assert_eq!(catalog["consumables"]["fresh_deck"]["category"], "Item");
         assert_eq!(catalog["consumables"]["double_grain"]["rarity"], "Uncommon");
-        assert_eq!(catalog["consumables"]["points_3"]["card_mod"], "points");
-        assert_eq!(catalog["consumables"]["points_3"]["random_card_mod"], false);
         assert_eq!(
-            catalog["consumables"]["ink_pad"]["card_mod"],
+            catalog["consumables"]["shot"]["card_mod"],
             serde_json::Value::Null
         );
-        assert_eq!(catalog["consumables"]["ink_pad"]["random_card_mod"], true);
+        assert_eq!(catalog["consumables"]["shot"]["random_card_mod"], false);
+        // Card items are gone since the Zinken at the Tresen (DESIGN 8.6).
+        for id in ["fresh_deck", "ink_pad", "points_3", "trump_2", "rank_1"] {
+            assert!(catalog["consumables"][id].is_null(), "{id}");
+        }
+        assert_eq!(catalog["card_mods"]["points"]["name"], "Aufdruck");
+        assert_eq!(catalog["card_mods"]["first_trick"]["name"], "Eselsohr");
         assert!(catalog["card_mods"]["points"]["text"].is_string());
         assert_eq!(catalog["card_mods"]["points"]["curse"], false);
         assert_eq!(catalog["card_mods"]["points"]["kind"], "Edge");
