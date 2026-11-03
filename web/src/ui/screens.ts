@@ -356,6 +356,33 @@ function sheet(inner: string, closable = true, cls = '', overlayCls = ''): strin
   return `<div class="overlay ${overlayCls}" ${closable ? attrs({ 'data-action': 'close-overlay' }) : ''}><div class="sheet ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
 }
 
+/**
+ * "Untot" (core `rise_choice`): the card in the trick comes back as
+ * `becomes`; the player picks three cards of his hand, one of them is
+ * drawn and goes into the trick. Not closable: nothing goes before it.
+ */
+export function renderRiseChoice(view: RunView, picked: number[]): string {
+  const choice = view.game?.rise_choice;
+  if (!choice) return '';
+  const hand = view.game?.hand ?? [];
+  const cards = hand
+    .map((c) => {
+      const on = picked.includes(c.id);
+      return `<button class="rise-card${on ? ' is-picked' : ''}" ${attrs({ 'data-action': 'rise-pick', 'data-id': c.id, 'data-testid': `rise-pick-${c.id}`, 'aria-pressed': on ? 'true' : 'false', 'aria-label': cardName(c.kind) })}><span class="card">${lookSvg(c)}</span></button>`;
+    })
+    .join('');
+  const ready = picked.length === choice.pick;
+  return sheet(
+    `<div class="rise-head"><span class="card rise-becomes" data-testid="rise-becomes">${lookSvg(choice.becomes)}</span>
+       <div><h2>${esc(t(de.rise.title, { n: choice.pick }))}</h2>
+       <p class="small">${esc(t(de.rise.text, { card: cardName(choice.card.kind), becomes: cardName(choice.becomes.kind) }))}</p></div></div>
+     <div class="rise-grid" data-testid="rise-choice">${cards}</div>
+     <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'rise-go', 'data-testid': 'rise-go', disabled: ready ? null : 'disabled' })}>${esc(ready ? de.rise.go : t(de.rise.more, { n: choice.pick - picked.length }))}</button>`,
+    false,
+    'sheet-rise',
+  );
+}
+
 export function renderKontra(view: RunView): string {
   const kontra = view.game?.kontra;
   const kontraSeat = typeof kontra === 'object' && 'Kontra' in kontra ? kontra.Kontra : 1;
@@ -860,7 +887,7 @@ function renderSpecials(ids: string[], edition: DeckCard[]): string {
     .map((id) => {
       const card = edition.find((c) => c.mods.includes(id));
       const special = contentName('card_mods', id);
-      const rules = (id === 'undead' ? de.special.undead : id === 'wild_card' ? de.special.wild_card : []).map((r) => `<li>${esc(r)}</li>`).join('');
+      const rules = (id === 'undead' ? de.special.undead : id === 'wild_card' ? de.special.wild_card : id === 'doppelganger' ? de.special.doppelganger : []).map((r) => `<li>${esc(r)}</li>`).join('');
       const lead = card ? t(de.special.lead, { card: cardName(card.kind), special }) : special;
       return `<li class="special-item" ${attrs({ 'data-special': id })}>
         ${card ? `<span class="card special-card">${cardSvg(card.kind, card.mods, 'full', card.mod_values)}</span>` : ''}

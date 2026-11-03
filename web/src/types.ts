@@ -27,6 +27,10 @@ export interface DealtCard {
   demoted?: boolean;
   /** Whose edition this copy is (ADR 0015); absent in old views: the player's. */
   owner?: Owner;
+  /** "Winkel" (03.11.2026): how many steps the card rose; `kind` is the card it became (left out when 0). */
+  promoted?: number;
+  /** "Blei": the lowest card of its suit in Null (left out when false). */
+  leaden?: boolean;
 }
 
 /** Whose edition a card is (ADR 0015): every player owns his own edition of each card. */
@@ -504,6 +508,17 @@ export interface GameView {
   skat_shown?: CardView[];
   /** "Drei drücken" (first game of each pub) draws a card at the next pickup of the skat. */
   discard_three_ready?: boolean;
+  /** "Untot": the card in the last trick waits for three cards of the hand (ChooseRiseCards). */
+  rise_choice?: RiseChoiceView;
+}
+
+/** "Untot" (core `RiseChoiceView`): pick `pick` cards of the hand, one of them goes into the trick. */
+export interface RiseChoiceView {
+  /** The card as it lies in the trick. */
+  card: CardView;
+  /** The card it comes back as: a copy of the trick's winning card. */
+  becomes: CardView;
+  pick: number;
 }
 
 /** The table's score line while playing, computed by the core. */
@@ -936,7 +951,9 @@ export type GameEvent =
   /** "Lockvogel" (removed): only in old saves. */
   | { LeadDemanded: { suit: LeadSuit } }
   /** "Untot": the card rose back into the hand, the substitute lies in the trick. */
-  | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard } }
+  | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard; risen?: DealtCard } }
+  /** "Doppelgänger": `stolen` from `from` lies in the trick for `card`; `from` holds `given` now. CardPlayed (stolen) follows. */
+  | { DoppelgangerSwapped: { seat: Seat; card: DealtCard; from: Seat; stolen: DealtCard; given: DealtCard } }
   /** ADR 0015: a card changed its holder and shows his edition (the card only if the player knows it). */
   | { CardChangedHands: { seat: Seat; card?: DealtCard } }
   | { GameFinished: unknown };
@@ -977,6 +994,10 @@ export type RunEvent =
   | { RelicGained: { relic: string } }
   | { GameDealt: { number: number; forehand: Seat } }
   | { Game: GameEvent }
+  /** "Untot": the card waits in the trick for `pick` cards of the hand; `becomes` is what it comes back as. */
+  | { RiseChoice: { card: DealtCard; becomes: DealtCard; pick: number } }
+  /** "Doppelgänger": nobody held a counterpart; it is played as itself. */
+  | { DoppelgangerUnmatched: { card: DealtCard } }
   | { Kontra: { seat: Seat } }
   | { FlagSet: string }
   | { FlagCleared: string }
@@ -1082,7 +1103,9 @@ export type RunAction =
   | 'RerollCardOffers'
   | { HirePainter: number }
   | { ChoosePaint: number }
-  | { CleanseCard: number };
+  | { CleanseCard: number }
+  /** "Untot": the three cards of the hand of which one goes into the trick. */
+  | { ChooseRiseCards: [number, number, number] };
 
 export interface Step {
   events: RunEvent[];

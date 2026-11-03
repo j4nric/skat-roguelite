@@ -11,8 +11,11 @@
 // (rotten pips on number cards), "Wandelkarte" a fool in a harlequin of all
 // four suit colours while its suit is open (four suit pips in the index),
 // and once the core has settled it the same fool in the new suit's shades
-// with that suit's normal index (DESIGN 7.2). A card carries one normal
-// modification, a special card one more on top.
+// with that suit's normal index (DESIGN 7.2), "Doppelgänger" its mirror
+// image (the right half violet). "Winkel" (Zinken v2) shows the picture of
+// the card it became and a black marker scribble over the printed rank in
+// the corner index. A card carries one normal modification, a special card
+// one more on top.
 //
 // Tiny cards (about 16 to 26 px) use the small face: the index letter and
 // the suit sign, big, with a curse or Untot as a thin ring. Pure drawing,
@@ -21,10 +24,10 @@
 
 import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, CardView, DeckCard, ModFigure, Rank, RunView, Suit } from '../types';
-import { faceId, indexId, modIconId, PAPER, smallFaceId, suitId, undeadFaceId, wildFaceIds } from './art';
+import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitId, undeadFaceId, wildFaceIds } from './art';
 import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
-import { fillOf, H, MOD_DRAW, modLayer, smallState, W } from './fxart';
+import { fillOf, H, MOD_DRAW, modLayer, smallState, W, winkelScribble } from './fxart';
 
 /** A suit sign (the held sign of the deck) as a standalone inline SVG. */
 export function suitIcon(suit: Suit, size = 24, label: string | null = de.suits[suit]): string {
@@ -48,6 +51,27 @@ const PLAIN = `var(--suit-paper, ${PAPER})`;
 export const UNDEAD = 'undead';
 /** The modification "Wandelkarte". */
 export const WILD = 'wild_card';
+/** The modification "Doppelgänger". */
+export const DOPPEL = 'doppelganger';
+/** The modification "Winkel". */
+export const WINKEL = 'rank';
+
+/** The ranks in the order a "Winkel" climbs (core `Rank::promoted`); the Unter is never part of it. */
+const CLIMB: Rank[] = ['7', '8', '9', 'Q', 'K', 'T', 'A'];
+
+/**
+ * "Winkel": the ranks from the printed one to the one the card shows,
+ * printed first. `promoted` (a dealt card, `kind` is already the higher
+ * card) counts the steps down; without it (an edition card, `kind` is
+ * printed) the Winkel's value counts them up, at most to the Daus. Drawing
+ * only: which card it is in a game comes from the core.
+ */
+export function winkelChain(rank: Rank, promoted: number | undefined, value: number): Rank[] {
+  const at = CLIMB.indexOf(rank);
+  if (at < 0) return [rank];
+  if (promoted && promoted > 0) return CLIMB.slice(Math.max(0, at - promoted), at + 1);
+  return CLIMB.slice(at, Math.min(CLIMB.length - 1, at + value) + 1);
+}
 
 /**
  * "+4", "−3", "×2": the printed number of a modification. Formatting
@@ -83,6 +107,8 @@ export interface FaceOptions {
    * open harlequin.
    */
   settled?: boolean;
+  /** "Winkel": the steps a dealt card rose (`DealtCard.promoted`); `kind` is the card it became. */
+  promoted?: number;
 }
 
 /** What a card view needs to be drawn (a CardView, or a DeckCard with a known settled look). */
@@ -92,6 +118,8 @@ export interface CardLook {
   mod_values?: Record<string, number>;
   /** "Wandelkarte": its printed suit once the core settled it (CardView.named). */
   named?: Suit | null;
+  /** "Winkel": the steps a dealt card rose. */
+  promoted?: number;
 }
 
 /** "Wandelkarte": a card the core settled in this game (event `WildCardSettled`). */
@@ -125,7 +153,7 @@ export function editionLook(c: DeckCard, view: RunView | null, settled: Readonly
 
 /** The face of a card view: `cardSvg` with the settled look of a Wandelkarte the core settled. */
 export function lookSvg(c: CardLook, size: FaceSize = 'full', opts: FaceOptions = {}): string {
-  return cardSvg(c.kind, c.mods, size, c.mod_values ?? {}, { settled: c.named != null, ...opts });
+  return cardSvg(c.kind, c.mods, size, c.mod_values ?? {}, { settled: c.named != null, ...(c.promoted ? { promoted: c.promoted } : {}), ...opts });
 }
 
 /**
@@ -141,25 +169,32 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   const curse = mods.some(isCurse);
   const undead = mods.includes(UNDEAD);
   const wild = mods.includes(WILD);
+  const doppel = mods.includes(DOPPEL);
   const settled = wild && opts.settled === true;
   const paper = `<rect class="paper" width="${W}" height="${H}" ${fillOf(PLAIN)}/>`;
   const suit = f && (!wild || settled) ? ` data-suit="${f.suit}"` : '';
   const state = undead || curse ? ` data-state="${undead && curse ? 'both' : undead ? 'undead' : 'curse'}"` : '';
-  const special = wild ? ` data-special="wild" data-wild="${settled ? 'settled' : 'open'}"` : undead ? ' data-special="undead"' : '';
+  const special = wild ? ` data-special="wild" data-wild="${settled ? 'settled' : 'open'}"` : undead ? ' data-special="undead"' : doppel ? ' data-special="doppelganger"' : '';
   const ids = f && wild ? wildFaceIds(f.rank, settled ? f.suit : null) : null;
+  // "Winkel": printed rank first, the card it is (or becomes) last.
+  const chain = f && (opts.promoted || mods.includes(WINKEL)) ? winkelChain(f.rank, opts.promoted, values[WINKEL] ?? 1) : null;
+  const shown = f && chain ? (chain[chain.length - 1] ?? f.rank) : f?.rank;
+  const printed = f && chain ? (chain[0] ?? f.rank) : f?.rank;
   let body: string;
   if (!f) body = `<use href="#f-blank"/>`;
   else if (size === 'small') {
-    body = `${paper}<use class="face-small" href="#${ids ? ids.small : smallFaceId(f.suit, f.rank)}"/>${smallState(curse, undead)}`;
+    body = `${paper}<use class="face-small" href="#${ids ? ids.small : smallFaceId(f.suit, shown ?? f.rank)}"/>${smallState(curse, undead)}`;
   } else {
-    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, f.rank) ?? faceId(f.suit, f.rank)) : faceId(f.suit, f.rank);
-    const index = ids ? ids.index : indexId(f.suit, f.rank);
+    const top = shown ?? f.rank;
+    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, top) ?? faceId(f.suit, top)) : doppel ? mirrorFaceId(f.suit, top) : faceId(f.suit, top);
+    const index = ids ? ids.index : indexId(f.suit, printed ?? f.rank);
     // One normal modification (the core allows no more); a special card changes the picture only.
     const over = mods
       .filter((m) => MOD_DRAW[m])
       .map((m) => modLayer(m, modValueText(m, values), values[m] ?? 1, PLAIN, opts.redeeming === true))
       .join('');
-    body = `${paper}<use class="face-pic" href="#${picture}"/>${over}<use class="face-idx" href="#${index}"/>`;
+    const scribble = chain && !ids ? winkelScribble(chain, PLAIN) : '';
+    body = `${paper}<use class="face-pic" href="#${picture}"/>${over}<use class="face-idx" href="#${index}"/>${scribble}`;
   }
   return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${state}${special}>${body}</svg>`;
 }
