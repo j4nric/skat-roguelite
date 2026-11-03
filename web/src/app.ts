@@ -62,8 +62,9 @@ import { hintText, renderHint } from './ui/hint';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
-import { TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, finishAll, finishOn, flip, flyIn, glide, glideAll, motionOn, noteFlights, pulse, resumeFlights, setTempo, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
+import { deal, finishAll, finishOn, flip, flyIn, glide, glideAll, motionOn, noteFlights, resumeFlights, setTempo, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -256,6 +257,8 @@ export class App {
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
+  /** Account, Groschen and lives in the head: how their changes get there. */
+  private readonly hudFx: HudFx;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
   /** "Untot": cards whose rising was already shown with their trick in this game. */
@@ -298,6 +301,8 @@ export class App {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
+    this.hudFx = new HudFx(this.screenEl);
+    watchSprings(root);
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
     this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
     const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;
@@ -797,6 +802,7 @@ export class App {
   }
 
   private enterRun(view: RunView, dealt: boolean): void {
+    this.hudFx.reset();
     this.ui.view = view;
     this.ui.screen = 'run';
     this.ui.anim = null;
@@ -949,6 +955,8 @@ export class App {
         }
         earned = earned.concat(this.observe(step.events));
         await this.playEvents(previous, step.events, view);
+        // A lost run: the pub lights go out before the end screen.
+        if (view.phase === 'Lost') await lightsOut();
         // The table as the core has it now, before the next opponent thinks.
         this.ui.anim = null;
         this.ui.view = view;
@@ -970,9 +978,11 @@ export class App {
         this.ui.screen = 'end';
         this.ui.copy = null;
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
+        if (view.phase === 'Won') this.afterRender.push(() => fireworks());
       }
       this.announceUnlocks(earned);
       this.render();
+      lightsUp();
     }
   }
 
@@ -1243,8 +1253,14 @@ export class App {
           const why = givenUp ? de.lives.givenUp : lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
           this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
           sound.play('lose');
+          this.hudFx.lives(lives);
+          // Time to see the heart break.
+          if (motionOn()) await this.pause(700);
         } else {
           this.showToast(t(de.lives.gained, { lives }), 'top');
+          sound.play('clink');
+          this.hudFx.lives(lives);
+          if (motionOn()) await this.pause(600);
         }
         continue;
       }
@@ -1510,13 +1526,11 @@ export class App {
     this.wiggleSource(source);
     const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
     this.showToast(t(de.toast.coins, { amount: sign, source: from }));
-    sound.play('coin');
-    const purse = this.screenEl.querySelector<HTMLElement>('[data-testid="coins"]');
-    if (purse) {
-      purse.textContent = String(coins);
-      pulse(purse.closest('.hud-coins') ?? purse, 1.3, 360);
-    }
-    const box = purse?.closest('.hud-coins')?.getBoundingClientRect();
+    // The coins fly from what paid them (its chip or card on screen), else from the last tap.
+    const payer = this.triggerTargets(source)[0]?.getBoundingClientRect() ?? null;
+    if (amount > 0) this.hudFx.gainTo(coins, payer?.width ? payer : null);
+    else this.hudFx.loseTo(coins);
+    const box = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = `coin-pop ${amount < 0 ? 'is-minus' : ''}`;
     pop.dataset.testid = 'coin-pop';
@@ -1633,6 +1647,11 @@ export class App {
   /** Tempo factor of the settings, for effects outside ./ui/fx.ts. */
   private tempo(): number {
     return TEMPO_FACTOR[this.ui.settings.tempo];
+  }
+
+  /** What stands for a source on screen (its relic chip, its card). */
+  private triggerTargets(source: Source): Element[] {
+    return targetsOf(this.screenEl, source);
   }
 
   /** Wiggle what stands for a source on screen (its relic chip, its card). */
@@ -1854,6 +1873,12 @@ export class App {
     });
     this.scoreBoard = null;
     this.ui.overlay = null;
+    // The board goes; the account in the head counts to the new value.
+    this.renderLayer();
+    if (previousScore !== seriesScore && this.screenEl.querySelector('.hud [data-testid="account"]')) {
+      void this.hudFx.account(seriesScore, target);
+      if (motionOn()) await this.pause(520);
+    }
   }
 
   /**
@@ -2030,6 +2055,9 @@ export class App {
       return;
     }
     const action = el.dataset.action ?? '';
+    this.hudFx.noteTap(el);
+    // Cards that can be dragged spring here, not with :active (that would shrink a drag).
+    if (el.matches('[data-drag]')) spring(el);
     // A tap on the backdrop of a dialog only counts if it hit the backdrop.
     if (action === 'close-overlay' && el.classList.contains('overlay') && target !== el) {
       return;
@@ -2821,6 +2849,8 @@ export class App {
     const effects = this.afterRender;
     this.afterRender = [];
     for (const fx of effects) fx();
+    if (ui.screen === 'run' && ui.view) this.hudFx.sync(ui.view);
+    else if (ui.screen === 'start') this.hudFx.reset();
     this.flyPressed();
   }
 
@@ -2839,7 +2869,7 @@ export class App {
     }
     if (o.kind === 'score') {
       this.layerEl.innerHTML = renderScore(o, (this.ui.view?.edition ?? []).map((c) => editionLook(c, this.ui.view, this.ui.wildSettled)));
-      this.scoreBoard = new ScoreBoard(this.layerEl, o);
+      this.scoreBoard = new ScoreBoard(this.layerEl, o, (coins, from) => this.hudFx.gainTo(coins, from));
       void this.scoreBoard.play();
       return;
     }

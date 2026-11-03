@@ -48,6 +48,13 @@
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
 //   and 360 × 740: the page is no wider than the viewport, no element leaves it.
+// - with full motion (rewardFxPass, 390 × 844 and 1280 × 800): the score
+//   board counts the account up with its bar, foam crowns the full bar, the
+//   payout's and an encounter's Groschen fly into the purse; a lost heart
+//   breaks, the lights go out before the end of a lost run; a won run (the
+//   last boss pub, patched from boss-table.json) pops a heart in and gets a
+//   firework; a pressed button gives way and springs back; nothing scrolls
+//   sideways.
 // The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
 // The opponents are Stammgäste with names of their own (two different
@@ -880,8 +887,8 @@ async function skatThenGrand(page, label, shot = null) {
 }
 
 /** Open the app with a saved run from e2e/fixtures and resume it. */
-async function resumeFixture(page, name) {
-  const state = fixture(name);
+async function resumeFixture(page, name, raw = null) {
+  const state = raw ?? fixture(name);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
@@ -2267,6 +2274,135 @@ async function motionPass(browser, errors) {
   }
   if (Object.keys(seen).length < 2) fail(`motion: tricks left the table only towards ${Object.keys(seen).join(', ')}`);
   log(`motion: tricks slide off towards ${Object.keys(seen).join(', ')}`);
+  await context.close();
+}
+
+/**
+ * Reward effects with full motion (animation package A), at one viewport:
+ * the score board counts the account up while its bar fills, foam crowns
+ * the bar when the target is reached and Groschen of the payout fly into
+ * the purse (a copy of it above the board counts them in); an encounter's
+ * Groschen fly there too; a lost life breaks its heart into shards and the
+ * pub lights go out before the end screen of a lost run; a won run (the
+ * last boss pub, patched from boss-table.json) gets a firework and a heart
+ * that pops in. Buttons give way when pressed and spring back. Every
+ * effect ends in the state the core reports, nothing scrolls sideways.
+ */
+async function rewardFxPass(browser, errors, viewport) {
+  const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  const sideways = async (where) => {
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (wide) fail(`reward fx ${tag}: ${where} scrolls sideways`);
+  };
+
+  // The first series of SEED: won with the payout.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.waitForTimeout(1200);
+  // A button gives way while pressed and springs back on release.
+  const deck = await page.locator('[data-action="menu"]').first().boundingBox();
+  if (deck) {
+    await page.mouse.move(deck.x + deck.width / 2, deck.y + deck.height / 2);
+    await page.mouse.down();
+    const pressed = await page.evaluate(() => getComputedStyle(document.querySelector('[data-action="menu"]')).scale);
+    // Released (a pointerup alone, before the click draws the screen anew).
+    const springs = await page.evaluate(() => {
+      const btn = document.querySelector('[data-action="menu"]');
+      btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      return btn.getAnimations().some((a) => a.effect.getKeyframes().some((k) => k.scale));
+    });
+    await page.mouse.up();
+    if (pressed !== '0.95' || !springs) fail(`reward fx ${tag}: a pressed button scales ${pressed}, springs back: ${springs}`);
+    await page.waitForSelector('.sheet [data-action="close-overlay"]');
+    await page.click('.sheet [data-action="close-overlay"]');
+  }
+  await mixIn(page);
+  await page.waitForTimeout(1200);
+  await skatThenGrand(page, `reward fx ${tag}`);
+  for (let n = 0; n < 12 && !(await page.locator('.score-sheet').count()); n++) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    await page.locator('[data-action="play"]').first().click();
+  }
+  await page.waitForSelector('[data-part="account"]:not(.is-pending)', { timeout: 20000 });
+  const counting = await page.evaluate(() => Number(document.querySelector('[data-num="account"]')?.textContent));
+  await page.waitForSelector('[data-testid="score-meter"][data-bubbling]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no foam on the full account bar`));
+  await snap('fx-score-foam');
+  await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the payout`));
+  await page.waitForTimeout(150);
+  await snap('fx-payout-coins');
+  await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
+  const paid = await page.evaluate(() => ({
+    account: Number(document.querySelector('[data-num="account"]')?.textContent),
+    coins: Number(document.querySelector('.hud [data-testid="coins"]')?.textContent),
+    payout: Number(document.querySelector('.payout dd:last-of-type b')?.textContent?.trim()),
+    full: document.querySelector('[data-testid="score-meter"]')?.classList.contains('is-full'),
+  }));
+  if (!(counting < paid.account)) fail(`reward fx ${tag}: the account does not count up (${counting} -> ${paid.account})`);
+  if (paid.coins !== paid.payout || !paid.full) fail(`reward fx ${tag}: after the payout ${JSON.stringify(paid)}`);
+  await sideways('the score board');
+  log(`reward fx ${tag}: account counts ${counting} -> ${paid.account}, foam, ${paid.coins} Groschen in the purse`);
+  await page.click('[data-action="score-continue"]');
+
+  // An encounter's Groschen fly into the purse.
+  await resumeFixture(page, 'coins-curse.json');
+  await page.waitForSelector('[data-testid="encounter"]');
+  const before = Number(await text(page, 'coins'));
+  await page.click('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the encounter`));
+  await snap('fx-encounter-coins');
+  await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
+  await page.waitForSelector('.declare, [data-action="boss-go"]');
+  const after = Number(await text(page, 'coins'));
+  if (after !== before + 3) fail(`reward fx ${tag}: Groschen ${before} -> ${after} after the encounter`);
+  await sideways('the encounter');
+
+  // A lost run: the heart breaks, the lights go out, then the end screen.
+  await resumeFixture(page, 'run-end.json');
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `reward fx ${tag}, lost run`);
+  await playOut(page, `reward fx ${tag}, lost run`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="heart-shard"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lost heart does not break`));
+  await snap('fx-heart-break');
+  const left = await page.locator('.hud [data-testid="lives"] .heart.is-full').count();
+  if (left !== 0) fail(`reward fx ${tag}: ${left} full hearts after the last life`);
+  await page.waitForSelector('[data-testid="lights-out"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lights do not go out`));
+  await page.waitForTimeout(700);
+  await snap('fx-lights-out');
+  await page.waitForSelector('[data-testid="end"]');
+  await page.waitForSelector('[data-testid="lights-out"]', { state: 'detached', timeout: 5000 });
+  await sideways('the end screen');
+  log(`reward fx ${tag}: heart breaks, lights go out, end screen`);
+
+  // A won run: the last boss pub, its target already reached.
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  won.run.lives = 2;
+  await resumeFixture(page, null, JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `reward fx ${tag}, won run`);
+  await playOut(page, `reward fx ${tag}, won run`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('.hud .heart.is-popping', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the life won does not pop in`));
+  await snap('fx-heart-pop');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForSelector('[data-testid="fireworks"] .fx-spark', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no firework for a won run`));
+  await page.waitForTimeout(900);
+  await snap('fx-fireworks');
+  await page.waitForSelector('[data-testid="fireworks"]', { state: 'detached', timeout: 10000 });
+  await sideways('the firework');
+  log(`reward fx ${tag}: a life pops in, firework over the won run`);
   await context.close();
 }
 
@@ -3705,6 +3841,8 @@ async function run() {
     await motionPass(browser, errors);
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
+    await rewardFxPass(browser, errors, PHONE);
+    await rewardFxPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();
