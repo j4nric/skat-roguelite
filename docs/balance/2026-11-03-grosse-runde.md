@@ -190,3 +190,12 @@ Je Run (6000 Runs):
 ## Schlussfolgerung
 
 Die Kneipentour liegt für den guten Spieler im Zielbild (42 / 17 / 5,2 %, ein gutes Drittel der Verluste in normalen Kneipen statt 3 %). Dafür brauchte es eine viel steilere Kurve als vorgeschlagen (bis 205 statt 108) und zwei Startleben; die Bosse liegen nach Ramscher-Regel und Faktoren eng beieinander (51 bis 58 %, der Alte 36 %).
+
+## Nachtrag (Claude, 03.11.2026, nicht gemessen)
+
+Nach der großen Runde zwei kleine Schritte aus den offenen Punkten:
+
+- **Schutzengel** 6 → 8 Groschen: Mit 2 Leben ab Start ist er das zweitstärkste Relikt (allein ohne Tresen +14,8 Punkte auf Stadtteil 2).
+- **Spelunke** `target_factor` 1,25 → 1,1: Auf der steilen Kurve gewann der Bot sie in Stadtteil 3 nur zu 20–36 %.
+
+Beide sind in der nächsten Messung zu prüfen.

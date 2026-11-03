@@ -37,7 +37,7 @@
     // Spelunke (Elite): Mit chance führt eine der drei Routen statt zur
     // nächsten Kneipe in eine Spelunke. Zielwert × target_factor, ein
     // Malus aus tour.ron, Belohnung ein Relikt zusätzlich. Vorläufig.
-    spelunke: (chance: 0.3, target_factor: 1.25),
+    spelunke: (chance: 0.3, target_factor: 1.1),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
     // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach

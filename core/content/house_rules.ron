@@ -478,7 +478,7 @@
         name: "Schutzengel",
         text: "Einmal pro Stadtteil: Die erste verlorene Kneipe kostet kein Leben. Nicht in der Boss-Kneipe.",
         rarity: Rare,
-        price: 6,
+        price: 8,
         passive: [SpareLife],
     ),
     // Lever Spelunke: two maluses on offer, the player picks one.
