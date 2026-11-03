@@ -37,7 +37,11 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Karte einer Ausgabe | `DeckCard` | `id`, `kind`, `mods`, `mod_values` (Wert je Modifikation, ohne Eintrag 1; Effekte v2) |
 | Karteninstanz in einem Spiel | `DealtCard` | Mit aufgelösten Augen, Rangbonus und Sichtbarkeit, in der Ausgabe ihres Halters (`owner`) |
 | Karte im Spiel (Regel-Sicht) | `PlayingCard` (Trait) | Von `Card` und `DealtCard` implementiert |
-| Rangbonus (Modifikation Rang, bis Effekte v2 Gezinkt) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich |
+| Rangbonus (bis Effekte v2 Gezinkt, bis 03.11.2026 Winkel) | `rank_bonus` | Stufen höher innerhalb von Trumpf oder Farbe; bei Gleichstand behält die frühere Karte den Stich. Kein Inhalt nutzt ihn mehr (Effekt `RankBonus` ruht) |
+| Winkel: steigen (die Karte wird die nächsthöhere ihrer Farbe, seit 03.11.2026) | `promote` | Effekt `Promote`, `Rank::promoted`, `Rank::promotion_room`, `DealtCard::promoted` (Stufen), `CardModDef::max_on`; Umrechnung alter Spielstände `deck::migrate_winkel`, `WINKEL_TO_AUGEN` |
+| Blei (im Null die niedrigste Karte ihrer Farbe) | `leaden` | Effekt `NullLowest`, `PlayingCard::leaden`, `DealtCard::leaden` |
+| Doppelgänger (Spezialkarte: tauscht beim Spielen mit einer Karte gleichen Rangs eines Gegners) | `doppelganger` | Effekt `Doppelganger`, `Game::play_swapped`, Ereignisse `DoppelgangerSwapped { seat, card, from, stolen, given }`, `RunEvent::DoppelgangerUnmatched`; Zufall `ActiveGame::doppel_rng` |
+| Gegenstück (Doppelgänger: die Karte gleichen Rangs, die er nimmt) | `stolen` | Feld von `DoppelgangerSwapped`; der Gegner bekommt `given` |
 | Bube ehrenhalber | `honorary_jack` | `PlayingCard::honorary_jack`, Effekt `HonoraryJack`: im Farbspiel Trumpf eine halbe Stufe unter dem Karo-Buben, keine Spitze (DESIGN 4.4). In der Anzeige „Unter ehrenhalber“. Seit Effekte v2 ohne Inhalt, die Wirkung ruht |
 | Platz in der Trumpfordnung | `trump_order_key` | Stärke, dann 0 für den Buben ehrenhalber, 1 für gedruckte Trümpfe |
 | Darf nicht gedrückt werden (bis Effekte v2 der Fluch Ramponiert, seitdem ruhend) | `no_discard` | `PlayingCard::no_discard`, Effekt `NoDiscard`, Prüfung `valid_discard`, Fehler `DiscardForbidden`; je Handkarte `discardable` (`rules::discardable`, `CardView::discardable`) |
@@ -57,13 +61,16 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | festlegen (Wandelkarte: ihre Farbe bei Spielbeginn) | `settle` | `Game::declare` legt fest, `PlayingCard::settle_wild`; Ereignis `WildCardSettled { old, new }` (Spielebene, auch `PlayerGameEvent`) |
 | Untot (Karte steigt aus dem Stich zurück in die Hand) | `undead` | Effekt `Undead`, Prüfung `Run::can_rise`, verbraucht `ActiveGame::risen` (einmal pro Spiel), Zufall `ActiveGame::undead_rng`; Spielebene `Game::raise`, Ereignis `CardRose` (`card` zurück in der Hand, `substitute` im Stich); Sicht `CardView::can_rise`; Bot `RunBot::undead_card` |
 | Ersatzkarte (Untot: die Karte, die an ihrer Stelle im Stich liegt) | `substitute` | Feld von `CardRose` |
+| Untot: zurück als die Karte, die den Stich gemacht hat (seit 03.11.2026) | `risen` | `PlayingCard::risen_as`, Feld `CardRose::risen` |
+| Untot: Wahl der drei Karten | `rise_choice` | `UNDEAD_PICK` (3), wartend `ActiveGame::pending_rise`, `Run::rise_pending`; Ereignis `RunEvent::RiseChoice { card, becomes, pick }`; Sicht `GameView::rise_choice` (`RiseChoiceView`); Aktion `RunAction::ChooseRiseCards([a, b, c])`; Fehler `RisePending`, `InvalidRiseCards`; Bot `RunBot::rise_cards` |
+| Diese Karte sticht (Bedingungen der Zinken v2) | `ThisCardWinsTrick`, `ThisCardBeatsDefenderCard`, `ThisCardPlayed` | Goldkante, Fadenkreuz (Filter: Daus eines Gegners), Schneiderkreide (gespielt) |
 | Nur auf (Modifikation passt nur auf bestimmte Karten) | `only_on` | Feld `CardModDef::only_on` (`CardFilter`), Prüfung `CardModDef::fits` |
 | Effekte v2 (System der Kartenmodifikationen seit 02.11.2026) | – | DESIGN 7.2 |
 | Art einer Modifikation | `ModKind` | `Edge` (Rand: immer aktiv), `Moment` (Markierung oben rechts), `Voucher` (Gutschein), `Curse` (Fluch), `Special` (Spezialkarte); Feld `CardModDef::kind` |
-| Rand-Modifikation | `ModKind::Edge` | Augen, Rang, Trumpf |
-| Moment-Modifikation | `ModKind::Moment` | Letzter Stich, Erster Stich |
+| Rand-Modifikation | `ModKind::Edge` | Augen, Rang (Winkel), Trumpf, Blei, Goldkante |
+| Moment-Modifikation | `ModKind::Moment` | Letzter Stich, Erster Stich, Fadenkreuz, Schneiderkreide |
 | Gutschein (wenn gedrückt) | `ModKind::Voucher` | Auslöser `OnDiscard`, Ereignis `VoucherRedeemed { card, card_mod, value }`, Wirkung `TurnInto` (wird Spezialkarte) |
-| Spezialkarte | `ModKind::Special` | Untot, Wandelkarte; darf zusätzlich eine normale Modifikation tragen. Höchstens eine Karte je Ausgabe trägt dieselbe Spezialkarte (seit 03.11.2026, Fehler `DeckError::SpecialTaken`, Code `SpecialTaken`; `Edition::holder_of`) |
+| Spezialkarte | `ModKind::Special` | Untot, Wandelkarte, Doppelgänger; darf zusätzlich eine normale Modifikation tragen. Höchstens eine Karte je Ausgabe trägt dieselbe Spezialkarte (seit 03.11.2026, Fehler `DeckError::SpecialTaken`, Code `SpecialTaken`; `Edition::holder_of`) |
 | Spezialkarte noch frei (Obergrenze, Angebote) | `Run::special_open` | Keine Karte ist sie und keine trägt die Marke dafür; sonst bietet nichts sie oder ihre Marke an. Ziel einer Marke oder Spezialkarte: `zinken::special_target` |
 | Marke zahlt statt dessen (Obergrenze der Spezialkarten) | `VoucherCapped` | Ereignis `RunEvent::VoucherCapped { card, card_mod, special, holder, coins }`: eine Toten- oder Narrenmarke, deren Spezialkarte eine andere Karte schon ist, zahlt `ZinkenConfig::capped_voucher_coins` |
 | Spezialkarte in der Auslage („wird untot“, „wird Wandelkarte“) | `Run::special_offers` | Ein `CardOffer` mit `undead` oder `wild_card`; Anteil `ZinkenConfig::special_percent`, Preis `special_price` |
@@ -320,7 +327,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Alte Oberin (bis 02.11.2026 im Code „Alte Dame“) | `old_lady` |
 | Tournee | `tour` |
 | Aufdruck (Zinke Augen; bis 02.11.2026 „Augen“) | `points` (nicht verwechseln mit Augen = `card_points`) |
-| Winkel (Zinke Rang; bis 02.11.2026 „Rang“) | `rank` |
+| Winkel (Zinke Rang; bis 02.11.2026 „Rang“; seit 03.11.2026: wird die höhere Karte) | `rank` |
+| Blei | `lead` |
+| Goldkante | `gilt_edge` |
+| Fadenkreuz | `crosshair` |
+| Schneiderkreide | `tailors_chalk` |
+| Doppelgänger | `doppelganger` |
 | Siegel (Zinke Trumpf; bis 02.11.2026 „Trumpf“) | `trump_bonus` |
 | Kerbe (Zinke Letzter Stich; bis Effekte v2 „Spitze“, bis 02.11.2026 „Letzter Stich“) | `last_trick` |
 | Eselsohr (Zinke Erster Stich; bis 02.11.2026 „Erster Stich“) | `first_trick` |
