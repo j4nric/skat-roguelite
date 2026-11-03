@@ -11,7 +11,7 @@
 // Pure input handling: what a drop means is decided by the app (and what
 // is allowed by the core).
 
-import { motionOn } from './fx';
+import { boxOf, motionOn } from './fx';
 import { swallowClick } from './press';
 
 /** Movement that turns a press into a drag (as for the long-press). */
@@ -109,7 +109,7 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
         end();
         return;
       }
-      const r = d.el.getBoundingClientRect();
+      const r = boxOf(d.el);
       const ghost = d.el.cloneNode(true) as HTMLElement;
       ghost.removeAttribute('data-testid');
       ghost.removeAttribute('data-drag');
@@ -149,7 +149,7 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
     const el = d.el;
     const ghost = d.ghost;
     // The copy's box without its turn and lift: where the card itself is.
-    const r0 = d.el.getBoundingClientRect();
+    const r0 = boxOf(d.el);
     const at = new DOMRect(r0.left + e.clientX - d.x0, r0.top + e.clientY - d.y0, r0.width, r0.height);
     const fling = speedOf(d, e);
     if (zone?.hasAttribute('data-swipe') && motionOn()) {

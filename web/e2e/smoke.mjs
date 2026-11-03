@@ -36,7 +36,11 @@
 //   thrown with a flick flies with a turn, comes down askew and off its
 //   place, lies there a moment and slides onto it; an opponent's card
 //   flies in from his seat; a card let go over the hand goes back unplayed;
-//   one the core does not let go springs back and shakes,
+//   one the core does not let go springs back and shakes; a skat card
+//   tapped on the table is lifted and flies into its sorted slot in the
+//   hand (sampled every frame), a hand card tapped flies onto the table,
+//   on Drücken both fly into the Ansage and after it into the stack in
+//   the felt's corner, turning face down,
 // - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
@@ -44,6 +48,13 @@
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
 //   and 360 × 740: the page is no wider than the viewport, no element leaves it.
+// - with full motion (rewardFxPass, 390 × 844 and 1280 × 800): the score
+//   board counts the account up with its bar, foam crowns the full bar, the
+//   payout's and an encounter's Groschen fly into the purse; a lost heart
+//   breaks, the lights go out before the end of a lost run; a won run (the
+//   last boss pub, patched from boss-table.json) pops a heart in and gets a
+//   firework; a pressed button gives way and springs back; nothing scrolls
+//   sideways.
 // The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
 // The opponents are Stammgäste with names of their own (two different
@@ -877,8 +888,8 @@ async function skatThenGrand(page, label, shot = null) {
 }
 
 /** Open the app with a saved run from e2e/fixtures and resume it. */
-async function resumeFixture(page, name) {
-  const state = fixture(name);
+async function resumeFixture(page, name, raw = null) {
+  const state = raw ?? fixture(name);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
@@ -2270,6 +2281,135 @@ async function motionPass(browser, errors) {
 }
 
 /**
+ * Reward effects with full motion (animation package A), at one viewport:
+ * the score board counts the account up while its bar fills, foam crowns
+ * the bar when the target is reached and Groschen of the payout fly into
+ * the purse (a copy of it above the board counts them in); an encounter's
+ * Groschen fly there too; a lost life breaks its heart into shards and the
+ * pub lights go out before the end screen of a lost run; a won run (the
+ * last boss pub, patched from boss-table.json) gets a firework and a heart
+ * that pops in. Buttons give way when pressed and spring back. Every
+ * effect ends in the state the core reports, nothing scrolls sideways.
+ */
+async function rewardFxPass(browser, errors, viewport) {
+  const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  const sideways = async (where) => {
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (wide) fail(`reward fx ${tag}: ${where} scrolls sideways`);
+  };
+
+  // The first series of SEED: won with the payout.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.waitForTimeout(1200);
+  // A button gives way while pressed and springs back on release.
+  const deck = await page.locator('[data-action="menu"]').first().boundingBox();
+  if (deck) {
+    await page.mouse.move(deck.x + deck.width / 2, deck.y + deck.height / 2);
+    await page.mouse.down();
+    const pressed = await page.evaluate(() => getComputedStyle(document.querySelector('[data-action="menu"]')).scale);
+    // Released (a pointerup alone, before the click draws the screen anew).
+    const springs = await page.evaluate(() => {
+      const btn = document.querySelector('[data-action="menu"]');
+      btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      return btn.getAnimations().some((a) => a.effect.getKeyframes().some((k) => k.scale));
+    });
+    await page.mouse.up();
+    if (pressed !== '0.95' || !springs) fail(`reward fx ${tag}: a pressed button scales ${pressed}, springs back: ${springs}`);
+    await page.waitForSelector('.sheet [data-action="close-overlay"]');
+    await page.click('.sheet [data-action="close-overlay"]');
+  }
+  await mixIn(page);
+  await page.waitForTimeout(1200);
+  await skatThenGrand(page, `reward fx ${tag}`);
+  for (let n = 0; n < 12 && !(await page.locator('.score-sheet').count()); n++) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    await page.locator('[data-action="play"]').first().click();
+  }
+  await page.waitForSelector('[data-part="account"]:not(.is-pending)', { timeout: 20000 });
+  const counting = await page.evaluate(() => Number(document.querySelector('[data-num="account"]')?.textContent));
+  await page.waitForSelector('[data-testid="score-meter"][data-bubbling]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no foam on the full account bar`));
+  await snap('fx-score-foam');
+  await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the payout`));
+  await page.waitForTimeout(150);
+  await snap('fx-payout-coins');
+  await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
+  const paid = await page.evaluate(() => ({
+    account: Number(document.querySelector('[data-num="account"]')?.textContent),
+    coins: Number(document.querySelector('.hud [data-testid="coins"]')?.textContent),
+    payout: Number(document.querySelector('.payout dd:last-of-type b')?.textContent?.trim()),
+    full: document.querySelector('[data-testid="score-meter"]')?.classList.contains('is-full'),
+  }));
+  if (!(counting < paid.account)) fail(`reward fx ${tag}: the account does not count up (${counting} -> ${paid.account})`);
+  if (paid.coins !== paid.payout || !paid.full) fail(`reward fx ${tag}: after the payout ${JSON.stringify(paid)}`);
+  await sideways('the score board');
+  log(`reward fx ${tag}: account counts ${counting} -> ${paid.account}, foam, ${paid.coins} Groschen in the purse`);
+  await page.click('[data-action="score-continue"]');
+
+  // An encounter's Groschen fly into the purse.
+  await resumeFixture(page, 'coins-curse.json');
+  await page.waitForSelector('[data-testid="encounter"]');
+  const before = Number(await text(page, 'coins'));
+  await page.click('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the encounter`));
+  await snap('fx-encounter-coins');
+  await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
+  await page.waitForSelector('.declare, [data-action="boss-go"]');
+  const after = Number(await text(page, 'coins'));
+  if (after !== before + 3) fail(`reward fx ${tag}: Groschen ${before} -> ${after} after the encounter`);
+  await sideways('the encounter');
+
+  // A lost run: the heart breaks, the lights go out, then the end screen.
+  await resumeFixture(page, 'run-end.json');
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `reward fx ${tag}, lost run`);
+  await playOut(page, `reward fx ${tag}, lost run`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="heart-shard"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lost heart does not break`));
+  await snap('fx-heart-break');
+  const left = await page.locator('.hud [data-testid="lives"] .heart.is-full').count();
+  if (left !== 0) fail(`reward fx ${tag}: ${left} full hearts after the last life`);
+  await page.waitForSelector('[data-testid="lights-out"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lights do not go out`));
+  await page.waitForTimeout(700);
+  await snap('fx-lights-out');
+  await page.waitForSelector('[data-testid="end"]');
+  await page.waitForSelector('[data-testid="lights-out"]', { state: 'detached', timeout: 5000 });
+  await sideways('the end screen');
+  log(`reward fx ${tag}: heart breaks, lights go out, end screen`);
+
+  // A won run: the last boss pub, its target already reached.
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  won.run.lives = 2;
+  await resumeFixture(page, null, JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `reward fx ${tag}, won run`);
+  await playOut(page, `reward fx ${tag}, won run`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('.hud .heart.is-popping', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the life won does not pop in`));
+  await snap('fx-heart-pop');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForSelector('[data-testid="fireworks"] .fx-spark', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no firework for a won run`));
+  await page.waitForTimeout(900);
+  await snap('fx-fireworks');
+  await page.waitForSelector('[data-testid="fireworks"]', { state: 'detached', timeout: 10000 });
+  await sideways('the firework');
+  log(`reward fx ${tag}: a life pops in, firework over the won run`);
+  await context.close();
+}
+
+/**
  * The feel of the table with full motion (play-test feedback), at one
  * viewport: cards are thrown onto the felt with a turn, come down askew
  * and off their place, lie there a moment and slide onto it; a hand card
@@ -2279,6 +2419,78 @@ async function motionPass(browser, errors) {
  * Screenshots: the throw in flight, an opponent's card in flight, the
  * trick with all three cards, the pressed skat and its look.
  */
+/**
+ * Drücken with full motion: a skat card tapped on the table is lifted and
+ * flies into its slot in the hand. Its place is sampled every frame: it
+ * starts up at the table, moves over several frames and comes to rest in
+ * the hand, in the place of the core's order (the hand with both skat
+ * cards back holds it in the same order), with the other cards in reading
+ * order around it. Tapping it again sends it back onto the table, the
+ * same way. Leaves the skat on the table as it was.
+ */
+async function assertPickupFlight(page, tag, snap) {
+  const zone = '[data-testid="skat-zone"] .skat-card';
+  const [first, second] = await page.locator(zone).evaluateAll((els) => els.map((e) => e.dataset.id));
+  if (!first || !second) fail(`feel ${tag}: the skat does not lie on the table`);
+  const flight = page.evaluate(
+    (id) =>
+      new Promise((resolve) => {
+        const start = document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`).getBoundingClientRect();
+        document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`).click();
+        const track = [];
+        const t0 = performance.now();
+        const frame = () => {
+          const el = document.querySelector(`.hand-card[data-id="${id}"]`);
+          const r = el?.getBoundingClientRect();
+          if (r) track.push({ t: Math.round(performance.now() - t0), x: r.left + r.width / 2, y: r.top + r.height / 2, flying: el.getAnimations().some((a) => a.id === 'glide') });
+          if (performance.now() - t0 < 1400) requestAnimationFrame(frame);
+          else resolve({ start: { x: start.left + start.width / 2, y: start.top + start.height / 2 }, track });
+        };
+        requestAnimationFrame(frame);
+      }),
+    first,
+  );
+  await page.waitForTimeout(160);
+  await snap('feel-pickup-flight');
+  const { start, track } = await flight;
+  const moving = track.filter((p) => p.flying);
+  const end = track[track.length - 1];
+  if (!end || end.flying) fail(`feel ${tag}: the skat card picked up is still flying after 1.4 s (${JSON.stringify(end)})`);
+  if (moving.length < 4) fail(`feel ${tag}: the skat card jumps into the hand (${moving.length} frames in flight)`);
+  const way = new Set(moving.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+  if (way.size < 4) fail(`feel ${tag}: the skat card does not move over time: ${JSON.stringify(moving)}`);
+  const firstSeen = moving[0];
+  if (Math.hypot(firstSeen.x - start.x, firstSeen.y - start.y) > Math.hypot(end.x - start.x, end.y - start.y) * 0.35) fail(`feel ${tag}: the flight does not start at the table (${JSON.stringify(start)} -> ${JSON.stringify(firstSeen)})`);
+  const hand = await page.evaluate(() =>
+    [...document.querySelectorAll('.hand-card')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { id: e.dataset.id, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }),
+  );
+  const mine = hand.find((c) => c.id === first);
+  if (!mine || Math.hypot(mine.x - end.x, mine.y - end.y) > 1) fail(`feel ${tag}: the card picked up does not rest where it landed`);
+  // Reading order (row by row, left to right) is the hand's order.
+  const rows = [...new Set(hand.map((c) => Math.round(c.y / 20)))].sort((a, b) => a - b);
+  const reading = [...hand].sort((a, b) => rows.indexOf(Math.round(a.y / 20)) - rows.indexOf(Math.round(b.y / 20)) || a.x - b.x).map((c) => c.id);
+  if (reading.join() !== hand.map((c) => c.id).join()) fail(`feel ${tag}: the hand is not laid out in its order after the flight: ${reading.join()} vs ${hand.map((c) => c.id).join()}`);
+  // The other skat card too: the hand then holds all twelve in the core's order.
+  await page.locator(`${zone}[data-id="${second}"]`).click();
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
+  const twelve = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.dataset.id));
+  const eleven = hand.map((c) => c.id);
+  if (twelve.filter((x) => x !== second).join() !== eleven.join()) fail(`feel ${tag}: the card picked up did not land in its sorted slot (${eleven.join()} within ${twelve.join()})`);
+  // Back onto the table, the way it came.
+  await page.locator(`.hand-card[data-id="${first}"]`).click();
+  await page
+    .waitForFunction((id) => document.querySelector(`[data-testid="skat-zone"] .skat-card[data-id="${id}"]`)?.getAnimations().some((a) => a.id === 'glide'), first, { timeout: 3000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: a hand card tapped onto the table does not fly there`));
+  await page.locator(`.hand-card[data-id="${second}"]`).click();
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
+  const back = await page.locator(zone).evaluateAll((els) => els.map((e) => e.dataset.id));
+  if (back.join() !== [first, second].join()) fail(`feel ${tag}: the skat is not back on the table (${back.join()})`);
+  log(`feel ${tag}: a skat card picked up flies into its slot in the hand (${moving.length} frames, ${way.size} places), the others make room`);
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -2298,10 +2510,22 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   await page.waitForTimeout(700);
+  await assertPickupFlight(page, tag, snap);
   await page.click('[data-action="discard"]');
+  // Drücken: the two cards fly from the table into the Ansage's row.
+  await page
+    .waitForFunction(() => [...document.querySelectorAll('[data-testid="pressed"] .mini-card')].filter((el) => el.getAnimations().some((a) => a.id === 'glide')).length === 2, null, { timeout: 5000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: the pressed cards do not fly into the Ansage`));
+  await snap('feel-discard-flight');
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
+  // After the Ansage they fly on into the stack in the felt's corner, turning face down.
+  await page
+    .waitForFunction(() => [...document.querySelectorAll('[data-testid="pressed-play"] .pressed-card')].filter((el) => el.querySelector('.flip-cover') && el.getAnimations().some((a) => a.id === 'glide')).length === 2, null, { timeout: 5000, polling: 16 })
+    .catch(() => fail(`feel ${tag}: the pressed cards do not fly into the stack turning face down`));
+  await snap('feel-press-flight');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect?.target?.closest?.('.trick, .hand')));
 
@@ -3620,6 +3844,8 @@ async function run() {
     await motionPass(browser, errors);
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
+    await rewardFxPass(browser, errors, PHONE);
+    await rewardFxPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();
