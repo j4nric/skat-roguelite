@@ -77,7 +77,10 @@
 //   boss-reward-full.json, boss-lost.json (ADR 0017, written by the core's
 //   `regenerate_boss_fixtures`, bossesV2): the route to the boss pub names
 //   both players; Fritz and Franz with name plates and the twins' back on
-//   both fans; Die Oma's 16 curses; the relic pick with a free slot, with
+//   both fans; the boss rule written out before the first card, during
+//   play a chip in the felt's corner that opens the rule, the trick cards
+//   as wide as in a normal pub (within 2 px at 390 × 844, 1280 × 800 and
+//   375 × 667); Die Oma's 16 curses; the relic pick with a free slot, with
 //   every slot full (replace one, Groschen for it) and passed; the last
 //   game of a boss pub that cannot be won ends the run with lives left.
 // - kontra.json: seed 29 played by the RunBot into that boss series, the
@@ -1140,6 +1143,8 @@ async function bossesV2(browser, errors, reducedMotion) {
   await expectMusic(page, 'boss', 'boss table');
   await shoot(page, 'bosses-table');
   await assertFits(page, 'boss table with two players');
+  if (!(await page.locator('.rule-strip[data-testid="boss-rule"]').count())) fail('the boss rule is not written out before the first card');
+  await assertBossTrick(page);
 
   // Die Oma's curses lie on half of the player's edition for this pub.
   await resumeFixture(page, 'boss-oma.json');
@@ -1202,6 +1207,58 @@ async function bossesV2(browser, errors, reducedMotion) {
   log(`lost boss pub with ${lives} lives: ${reason}`);
   await shoot(page, 'bosses-lost');
   await context.close();
+}
+
+/** Width of the first trick slot at each size, rounded to 0.1 px. */
+async function trickWidths(page, sizes) {
+  const widths = [];
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(150);
+    const w = await page.locator('[data-testid="trick"] .slot').first().evaluate((e) => e.getBoundingClientRect().width);
+    widths.push(Math.round(w * 10) / 10);
+  }
+  await page.setViewportSize(PHONE);
+  return widths;
+}
+
+/**
+ * The boss rule during play (play-test feedback): the strip above the
+ * middle gives way to a chip in the felt's top left corner, which opens the
+ * rule on a tap, so the trick cards in a boss pub are as big as in a normal
+ * pub (within 2 px) at 390 × 844, 1280 × 800 and 375 × 667. The page is on
+ * the boss table at Skat oder Hand; a normal pub (seed SEED) is measured in
+ * a second page of the same context.
+ */
+async function assertBossTrick(page) {
+  const sizes = [PHONE, DESKTOP, { width: 375, height: 667 }];
+  await skatThenGrand(page, 'boss table');
+  await page.waitForSelector('[data-testid="trick"]');
+  if (await page.locator('.rule-strip').count()) fail('the boss rule strip still stands above the trick during play');
+  const chip = page.locator('.trick-side .rule-chip[data-testid="boss-rule"]');
+  if (!(await chip.count())) fail('no boss rule chip on the felt during play');
+  const boss = await trickWidths(page, sizes);
+  await shoot(page, 'bosses-trick');
+  await chip.click();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key^="rule:"]');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+
+  const normal = await page.context().newPage();
+  await normal.goto(base);
+  await normal.evaluate(() => localStorage.removeItem('stammtisch.run'));
+  await normal.reload();
+  await normal.waitForSelector('[data-action="new-run"]');
+  await normal.fill('#seed', SEED);
+  await normal.click('[data-action="new-run"]');
+  await skatThenGrand(normal, 'normal pub');
+  await normal.waitForSelector('[data-testid="trick"]');
+  const plain = await trickWidths(normal, sizes);
+  await normal.close();
+  sizes.forEach((size, i) => {
+    if (Math.abs(boss[i] - plain[i]) > 2) fail(`trick cards at ${size.width} × ${size.height}: ${boss[i]} px in the boss pub, ${plain[i]} px in a normal pub`);
+  });
+  log(`boss rule as a chip during play; trick card widths boss ${boss.join('/')} px, normal ${plain.join('/')} px`);
 }
 
 /** M4: the Nullspieler, encounters, the Ramsch and "Der Alte". */
