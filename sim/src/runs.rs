@@ -27,12 +27,12 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use skat_core::ai::pimc::Opponents;
-use skat_core::cards::{Card, CardKind};
+use skat_core::cards::{Card, CardKind, Suit};
 use skat_core::content::{
     BossId, CardModId, Character, ConsumableId, Content, EncounterId, RelicId, RunLength, UnlockId,
 };
 use skat_core::rng::Rng;
-use skat_core::rules::{NullFormula, NullScoring};
+use skat_core::rules::{Declaration, NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
 use skat_core::run::meta::MetaState;
 use skat_core::run::{
@@ -432,6 +432,49 @@ pub struct RunStats {
     pub best_game: u64,
     /// Per consumable: (bought, used).
     pub consumables: BTreeMap<ConsumableId, (u64, u64)>,
+    /// Games per Spielart, in the order of [`GAME_KINDS`].
+    pub kinds: [KindStat; 7],
+    /// Vouchers redeemed, by modification id: (times, summed value).
+    pub vouchers_redeemed: BTreeMap<CardModId, (u64, i64)>,
+    /// Vouchers put back on their card (Drückeberger, DESIGN 9.4).
+    pub vouchers_returned: u64,
+}
+
+/// Labels of [`RunStats::kinds`].
+pub const GAME_KINDS: [&str; 7] = [
+    "clubs", "spades", "hearts", "diamonds", "grand", "null", "ramsch",
+];
+
+/// Games of one Spielart.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KindStat {
+    /// Games played.
+    pub games: u64,
+    /// Games won.
+    pub won: u64,
+    /// Won games with the defenders Schneider.
+    pub won_schneider: u64,
+    /// Hand games.
+    pub hand: u64,
+    /// Sum of the series account changes.
+    pub points: i64,
+    /// Sum of the Spielwert of the won games.
+    pub won_value: u64,
+}
+
+/// Index into [`GAME_KINDS`].
+fn kind_index(declaration: Declaration) -> usize {
+    match declaration {
+        Declaration::Suit { suit, .. } => match suit {
+            Suit::Clubs => 0,
+            Suit::Spades => 1,
+            Suit::Hearts => 2,
+            Suit::Diamonds => 3,
+        },
+        Declaration::Grand { .. } => 4,
+        Declaration::Null { .. } => 5,
+        _ => 6,
+    }
 }
 
 /// The pub in progress while a run is observed.
@@ -569,6 +612,15 @@ impl Observer<'_> {
                     if breakdown.won {
                         self.stats.games_won += 1;
                     }
+                    let kind = &mut self.stats.kinds[kind_index(breakdown.declaration)];
+                    kind.games += 1;
+                    kind.points += breakdown.score;
+                    kind.hand += u64::from(breakdown.declaration.hand());
+                    if breakdown.won {
+                        kind.won += 1;
+                        kind.won_value += breakdown.value;
+                        kind.won_schneider += u64::from(breakdown.schneider);
+                    }
                     if breakdown.declaration.is_null() {
                         self.stats.null_games += 1;
                         self.stats.null_won += u64::from(breakdown.won);
@@ -609,6 +661,18 @@ impl Observer<'_> {
                 RunEvent::CoinsGained { amount, .. } => {
                     self.stats.coins_other += i64::from(*amount);
                 }
+                RunEvent::VoucherRedeemed {
+                    card_mod, value, ..
+                } => {
+                    let entry = self
+                        .stats
+                        .vouchers_redeemed
+                        .entry(card_mod.clone())
+                        .or_default();
+                    entry.0 += 1;
+                    entry.1 += i64::from(*value);
+                }
+                RunEvent::VoucherReturned { .. } => self.stats.vouchers_returned += 1,
                 RunEvent::ShopOpened { .. } => self.stats.shops += 1,
                 RunEvent::EncounterOpened { encounter, .. } => {
                     self.stats
@@ -787,6 +851,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         pct(stats.null_games, stats.games),
         pct(stats.null_won, stats.null_games)
     );
+    render_kinds(&mut out, stats, runs);
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
     let _ = write!(out, "encounters (opened/taken):");
     for (id, (opened, taken)) in &stats.encounters {
@@ -834,6 +899,44 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         per_run / 1000.0
     );
     out
+}
+
+/// Games per Spielart (share, win rate, Schneider among the won, hand
+/// games, points) and the vouchers redeemed and returned per run.
+fn render_kinds(out: &mut String, stats: &RunStats, runs: u64) {
+    let _ = writeln!(
+        out,
+        "{:<9} {:>7} {:>7} {:>6} {:>12} {:>6} {:>8} {:>10}",
+        "kind", "games", "share%", "win%", "schneider%", "hand%", "points", "value won"
+    );
+    for (label, k) in GAME_KINDS.iter().zip(&stats.kinds) {
+        let _ = writeln!(
+            out,
+            "{:<9} {:>7} {:>7.1} {:>6.1} {:>12.1} {:>6.1} {:>8.1} {:>10.1}",
+            label,
+            k.games,
+            pct(k.games, stats.games),
+            pct(k.won, k.games),
+            pct(k.won_schneider, k.won),
+            pct(k.hand, k.games),
+            mean_signed(k.points, k.games),
+            mean(k.won_value, k.won)
+        );
+    }
+    let _ = write!(
+        out,
+        "vouchers per run: returned {:.2}",
+        mean(stats.vouchers_returned, runs)
+    );
+    for (id, (n, value)) in &stats.vouchers_redeemed {
+        let _ = write!(
+            out,
+            " {id}={:.2} (value {:.2})",
+            mean(*n, runs),
+            mean_signed(*value, runs)
+        );
+    }
+    out.push('\n');
 }
 
 /// The pub table: normal and boss pubs, then the Spelunken, each row with
@@ -1592,6 +1695,11 @@ mod option_tests {
         let lost: u64 = stats.lost_in_section.iter().sum();
         let ended: u64 = stats.districts.iter().flat_map(|d| d.ended).sum();
         assert_eq!(ended, lost, "every lost run ends in one pub");
+        // Games per Spielart sum to all games.
+        assert_eq!(
+            stats.kinds.iter().map(|k| k.games).sum::<u64>(),
+            stats.games
+        );
         // Spending by kind sums to the whole.
         assert_eq!(stats.spending.iter().sum::<u64>(), stats.coins_spent);
         assert!(stats.spending[0] > 0, "relics are bought");
@@ -1623,6 +1731,8 @@ mod option_tests {
             "runs end:",
             "games per pub:",
             "groschen spent per run",
+            "schneider%",
+            "vouchers per run",
             "sp ",
         ] {
             assert!(text.contains(needle), "{needle} in {text}");
