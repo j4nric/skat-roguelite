@@ -13,6 +13,7 @@ import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLo
 import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
+import { renderRelicPick } from './encounter';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
@@ -571,6 +572,11 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          <div class="target-grid">${cards}</div>
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
       );
+    }
+    case 'encounter-relic': {
+      const option = view?.encounter?.options.find((o) => o.index === overlay.option);
+      if (!view || !option) return '';
+      return sheet(renderRelicPick(view, option));
     }
     case 'mod-confirm':
       return renderModConfirm(overlay.ask);

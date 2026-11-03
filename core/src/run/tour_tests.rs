@@ -519,13 +519,11 @@ fn a_won_spelunke_pays_a_relic_on_top() {
     assert_eq!(run.phase(), RunPhase::Encounter, "the loot");
     let loot = run.encounter().expect("loot").clone();
     assert_eq!(loot.id.as_str(), "spelunke_loot");
-    let EncounterChoice::TakeRelic(relic) = loot.options[0].choice.clone() else {
+    let [EncounterEffect::Relic(Some(relic))] = &loot.options[0].effects[..] else {
         panic!("a relic first: {:?}", loot.options);
     };
-    assert!(matches!(
-        loot.options[1].choice,
-        EncounterChoice::TakeCoins(_)
-    ));
+    let half = content.relic(relic).expect("relic").price / 2;
+    assert_eq!(loot.options[1].effects, [EncounterEffect::Coins(half)]);
     let events = run
         .apply(
             &content,
@@ -538,7 +536,7 @@ fn a_won_spelunke_pays_a_relic_on_top() {
     assert!(events.contains(&RunEvent::RelicGained {
         relic: relic.clone()
     }));
-    assert!(run.relics().contains(&relic));
+    assert!(run.relics().contains(relic));
     assert_eq!(run.phase(), RunPhase::Route);
     assert_eq!(run.route().map(|r| r.index), Some(2));
     assert!(run.pub_results()[1].spelunke.is_some());
@@ -629,7 +627,7 @@ fn the_workshop_cleanses_a_chosen_card() {
     let cleanse = encounter
         .options
         .iter()
-        .position(|o| o.choice == EncounterChoice::CleanseChosenCard)
+        .position(|o| o.effects == [EncounterEffect::Cleanse])
         .expect("cleanse");
     let view = run.view(&content).encounter.expect("view");
     assert!(view.options[cleanse].targets.contains(&card));

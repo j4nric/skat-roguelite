@@ -1039,6 +1039,7 @@ export class App {
           this.showToast(de.toast.routesRerolled);
           sound.play('card');
         }
+        if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
         continue;
       }
       if ('CardPeeked' in ev) {
@@ -1317,8 +1318,16 @@ export class App {
         continue;
       }
       if ('WagerPlaced' in ev) {
-        this.showToast(t(de.toast.wagerPlaced, { stake: ev.WagerPlaced.stake }));
+        const bet = after.wager;
+        const text = bet?.on === 'Win' ? de.toast.wagerPlacedWin : de.toast.wagerPlaced;
+        this.showToast(t(text, { stake: ev.WagerPlaced.stake }));
         sound.play('coin');
+        continue;
+      }
+      if ('DiceThrown' in ev) {
+        const { stake, won, payout } = ev.DiceThrown;
+        this.showToast(won ? t(de.toast.diceWon, { payout }) : t(de.toast.diceLost, { stake }), 'top');
+        sound.play(won ? 'coin' : 'lose');
         continue;
       }
       if ('WagerSettled' in ev) {
@@ -2429,9 +2438,13 @@ export class App {
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
-        if (option.needs_target) {
-          const reasons = option.card_mod || option.random_gain ? this.refusals(view, option.targets, (id) => ({ ChooseEncounter: { option: option.index, target: id } })) : {};
+        if (option.target === 'Card') {
+          const marks = option.effects.some((e) => e.card_mod);
+          const reasons = marks ? this.refusals(view, option.targets, (id) => ({ ChooseEncounter: { option: option.index, target: id } })) : {};
           this.ui.overlay = { kind: 'encounter-target', option: option.index, reasons };
+          this.render();
+        } else if (option.target === 'Relic') {
+          this.ui.overlay = { kind: 'encounter-relic', option: option.index };
           this.render();
         } else {
           void this.act({ ChooseEncounter: { option: option.index, target: null } });
@@ -2443,7 +2456,15 @@ export class App {
         if (o?.kind !== 'encounter-target') return;
         const option = view.encounter?.options.find((x) => x.index === o.option);
         const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id') } };
-        this.applyMod(view, action, num('id'), option?.card_mod?.id ?? null, !option?.card_mod && option?.random_gain === true, o);
+        // The Zinke on the chosen card (a Painter or cleansing names none).
+        const chosen = option?.effects.find((e) => typeof e.effect === 'object' && 'Mark' in e.effect && e.effect.Mark.card === 'Chosen');
+        this.applyMod(view, action, num('id'), chosen?.card_mod?.id ?? null, false, o);
+        return;
+      }
+      case 'encounter-relic': {
+        const o = this.ui.overlay;
+        if (o?.kind !== 'encounter-relic') return;
+        void this.act({ ChooseEncounter: { option: o.option, target: num('index') } });
         return;
       }
       case 'mod-confirm-go': {

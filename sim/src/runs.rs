@@ -36,7 +36,7 @@ use skat_core::rules::{Declaration, NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
 use skat_core::run::meta::MetaState;
 use skat_core::run::{
-    EncounterChoice, PUBS_PER_DISTRICT, Run, RunAction, RunEvent, RunPhase, RunStart, series_target,
+    PUBS_PER_DISTRICT, Run, RunAction, RunEvent, RunPhase, RunStart, series_target,
 };
 
 /// Measurement options of the runs mode.
@@ -425,9 +425,11 @@ pub struct RunStats {
     pub shops: u64,
     /// Per relic.
     pub relics: BTreeMap<RelicId, RelicStat>,
-    /// Encounters opened, by id: (opened, options other than leaving
-    /// taken).
-    pub encounters: BTreeMap<EncounterId, (u64, u64)>,
+    /// Encounters opened, by id: (opened, times each option was taken,
+    /// by index).
+    pub encounters: BTreeMap<EncounterId, (u64, [u64; 4])>,
+    /// Times a Kiosk opened.
+    pub kiosks: u64,
     /// Highest Spielwert of a won game, summed over runs.
     pub best_game: u64,
     /// Per consumable: (bought, used).
@@ -681,15 +683,18 @@ impl Observer<'_> {
                         .or_default()
                         .0 += 1;
                 }
-                RunEvent::EncounterResolved { encounter, choice } => {
-                    if *choice != EncounterChoice::Leave {
-                        self.stats
-                            .encounters
-                            .entry(encounter.clone())
-                            .or_default()
-                            .1 += 1;
+                RunEvent::EncounterResolved { encounter, option } => {
+                    let taken = &mut self
+                        .stats
+                        .encounters
+                        .entry(encounter.clone())
+                        .or_default()
+                        .1;
+                    if let Some(n) = taken.get_mut(*option) {
+                        *n += 1;
                     }
                 }
+                RunEvent::KioskOpened { .. } => self.stats.kiosks += 1,
                 // Zinken at the Tresen (DESIGN 8.6).
                 RunEvent::CardOfferBought { price, .. } => self.spend(2, *price),
                 RunEvent::PainterHired { price, .. } => self.spend(3, *price),
@@ -853,9 +858,10 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     );
     render_kinds(&mut out, stats, runs);
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
-    let _ = write!(out, "encounters (opened/taken):");
+    let _ = write!(out, "encounters (opened/taken per option):");
     for (id, (opened, taken)) in &stats.encounters {
-        let _ = write!(out, " {id}={opened}/{taken}");
+        let taken: Vec<String> = taken.iter().map(u64::to_string).collect();
+        let _ = write!(out, " {id}={opened}/{}", taken.join("+"));
     }
     out.push('\n');
     let _ = writeln!(
@@ -1099,7 +1105,12 @@ fn render_groschen(out: &mut String, stats: &RunStats) {
             pct(amount, stats.coins_spent)
         );
     }
-    let _ = writeln!(out, "; tresen visits={:.2}", mean(stats.shops, runs));
+    let _ = writeln!(
+        out,
+        "; tresen visits={:.2}, kiosk visits={:.2}",
+        mean(stats.shops, runs),
+        mean(stats.kiosks, runs)
+    );
 }
 
 // ---------------------------------------------------------------------------
