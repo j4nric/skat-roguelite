@@ -12,7 +12,8 @@
 //!   modification are preferred ([`ZinkenConfig::bare_weight`] against
 //!   [`ZinkenConfig::modded_weight`]), vouchers are rarer
 //!   ([`ZinkenConfig::voucher_percent`]). One card at most once per
-//!   Auslage.
+//!   Auslage. An offer may be a "Schnäppchen" ([`super::trade`]): half
+//!   price, and a curse on another card.
 //! - **Neu auslosen**: the Auslage drawn again; the price rises by
 //!   [`ZinkenConfig::reroll_step`] with each further time at the same
 //!   Tresen.
@@ -35,7 +36,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Run, RunError, RunEvent, RunPhase, draw_weighted};
-use crate::content::{CardModDef, CardModId, Content, Effect, ModKind, in_pool};
+use crate::content::{CardModDef, CardModId, Content, Effect, ModKind, TradeConfig, in_pool};
 use crate::deck::CardKind;
 
 /// An offer of the Auslage: a card of the player's edition with a card
@@ -49,8 +50,14 @@ pub struct CardOffer {
     /// Its value.
     pub value: i32,
     /// Price before discounts: the modification's price, more on a card of
-    /// [`crate::content::ZinkenConfig::premium_ranks`].
+    /// [`crate::content::ZinkenConfig::premium_ranks`]; half of that for a
+    /// "Schnäppchen".
     pub price: u32,
+    /// A "Schnäppchen" (curses as trade, [`super::trade`]): the price before
+    /// discounts it would have without the trade. Buying it puts a curse
+    /// on another card. `None` for a normal offer and in saves from before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bargain: Option<u32>,
 }
 
 /// The Kartenmaler's choice, waiting for the player.
@@ -182,7 +189,8 @@ impl Run {
     /// [`Run::special_offers`]) while one may still come; otherwise a Zinke
     /// from [`Run::zinken_pool`]. At most one offer per special card, the
     /// voucher for it included, so that buying one never makes another
-    /// offer of the same Auslage void.
+    /// offer of the same Auslage void. A Zinke may be a "Schnäppchen" at
+    /// half price ([`Run::draw_bargain`], curses as trade).
     pub(super) fn draw_card_offers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let config = &content.run.shop.zinken;
         let pool = self.zinken_pool(content);
@@ -226,16 +234,25 @@ impl Run {
             else {
                 continue;
             };
-            let price = if def.kind == ModKind::Special {
+            let special = def.kind == ModKind::Special;
+            let price = if special {
                 config.special_price + Run::premium(content, deck_card.kind)
             } else {
                 Run::card_offer_price(content, def, deck_card.kind)
             };
+            let value = def.offer_value();
+            // A special card is never a Schnäppchen.
+            let bargain = !special && self.draw_bargain(content, card);
             offers.push(Some(CardOffer {
                 card,
-                value: def.offer_value(),
-                price,
+                value,
+                price: if bargain {
+                    TradeConfig::half(price)
+                } else {
+                    price
+                },
                 card_mod,
+                bargain: bargain.then_some(price),
             }));
         }
         if let Some(shop) = self.shop.as_mut() {
@@ -344,7 +361,11 @@ impl Run {
             value: offer.value,
             price,
         });
-        self.attach_mod(content, offer.card, &offer.card_mod, offer.value, events)
+        self.attach_mod(content, offer.card, &offer.card_mod, offer.value, events)?;
+        if offer.bargain.is_some() {
+            self.bargain_curse(content, offer.card, events)?;
+        }
+        Ok(())
     }
 
     pub(super) fn reroll_card_offers(

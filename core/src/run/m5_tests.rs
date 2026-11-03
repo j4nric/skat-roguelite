@@ -203,9 +203,9 @@ fn gain_coins_is_allowed_outside_passive_and_never_drops_below_zero() {
     run.coins = 2;
     let source = Source::Relic(RelicId::new("x"));
     let mut events = Vec::new();
-    run.apply_effect(&source, &Effect::GainCoins(-5), &mut events);
+    run.apply_effect(&content, &source, &Effect::GainCoins(-5), &mut events);
     assert_eq!(run.coins(), 0);
-    run.apply_effect(&source, &Effect::GainCoins(4), &mut events);
+    run.apply_effect(&content, &source, &Effect::GainCoins(4), &mut events);
     assert_eq!(run.coins(), 4);
     assert_eq!(
         events,

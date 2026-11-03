@@ -495,6 +495,12 @@ export const de = {
     nextDoubled: 'Letzte Runde! Das nächste Spiel zählt ×{factor}.',
     cardMarked: '{card} gezinkt: {mod}.',
     cardCleansed: '{card} ist wieder wie neu.',
+    /** Curses as trade (03.11.2026): what the curse was the price of. */
+    tradeCurse: {
+      Bargain: 'Schnäppchen: {card} ist jetzt verflucht ({curse}).',
+      Fence: 'Hehlerware: {card} ist jetzt verflucht ({curse}).',
+      Schnapps: 'Fusel: {card} ist jetzt verflucht ({curse}), für immer.',
+    },
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
     bossCursed: '{name} kramt in deinen Karten: {n} tragen in dieser Kneipe einen Fluch.',
     bossCursesLifted: 'Die Flüche der Boss-Kneipe sind weg, deine Karten sind wie vorher.',
@@ -677,6 +683,13 @@ export const de = {
     cleanseNone: 'Keine deiner Karten trägt etwas.',
     cleansePick: 'Welche Karte soll wieder wie neu werden?',
     cheaperOn: 'Auf manchen Karten billiger: ab {price} Gr.',
+    /** Curses as trade (03.11.2026): half price for a curse. */
+    bargain: 'Schnäppchen',
+    bargainNote: 'Schnäppchen: dafür ein Fluch auf einer anderen Karte, ohne Groschen',
+    fence: 'Hehlerware',
+    fenceNote: 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte, ohne Groschen',
+    fenceRule: 'Hehlerware: Du zahlst den halben Preis (abgerundet). Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer. Der Fluch zahlt keine Groschen.',
+    tradeWas: 'statt {price}',
   },
 
   rarity: {
@@ -1211,7 +1224,7 @@ export const de = {
     Kurzschluss: 'Beim Null: Die Gegner haben nach fünf Stichen schon 61 Augen. Bringt dem Nullspieler Stilbonus.',
     Spitzen: 'Die Trümpfe von oben ab dem Eichel-Unter ohne Lücke: mit oder ohne so viele, je Spitze +1 Multiplikator.',
     Null: 'Du darfst keinen Stich machen. Fester Wert: 23, Hand 35, Ouvert 46, Ouvert Hand 59.',
-    Fluch: 'Eine schlechte Kartenmodifikation mit rot gebrochenem Rahmen. Dafür gibt es beim Erhalt Groschen.',
+    Fluch: 'Eine schlechte Kartenmodifikation mit rot gebrochenem Rahmen. Dafür gibt es beim Erhalt Groschen, nicht aber als Preis eines Handels (Schnäppchen, Hehlerware, Fusel).',
     Groschen: 'Das Geld am Stammtisch. Am Tresen kaufst du davon Hausregeln, Figuren, Schnäpse und Zinken.',
   } as Record<string, string>,
 

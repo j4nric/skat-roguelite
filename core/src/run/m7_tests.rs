@@ -133,7 +133,8 @@ fn the_card_dealer_never_draws_a_curse() {
 
 /// Over whole runs of the bot with an encounter after every series, every
 /// curse that lands in the deck comes from an encounter whose text says
-/// "Fluch", and pays.
+/// "Fluch" and pays, or from a trade that announced it (curses as trade,
+/// 03.11.2026: Schnäppchen, Hehlerware, Fusel) and pays nothing.
 #[test]
 fn in_whole_runs_curses_come_only_from_announcing_encounters() {
     let content = content();
@@ -150,8 +151,10 @@ fn in_whole_runs_curses_come_only_from_announcing_encounters() {
             }
             let mut open: Option<EncounterId> = None;
             let mut malus_curse = false;
+            let mut traded: Option<u32> = None;
             for (i, event) in events.iter().enumerate() {
                 match event {
+                    RunEvent::TradeCurse { card, .. } => traded = Some(*card),
                     RunEvent::EncounterOpened { encounter, .. } => open = Some(encounter.clone()),
                     RunEvent::EncounterResolved { .. } => open = None,
                     // A Spelunke malus curses cards for its pub (ADR 0016),
@@ -162,10 +165,18 @@ fn in_whole_runs_curses_come_only_from_announcing_encounters() {
                         malus_curse = true;
                     }
                     RunEvent::GameDealt { .. } => malus_curse = false,
-                    RunEvent::DeckChanged(DeckChange::Modified { card_mod, .. })
+                    RunEvent::DeckChanged(DeckChange::Modified { card_mod, card, .. })
                         if is_curse(&content, card_mod) && !malus_curse =>
                     {
                         curses += 1;
+                        if traded.take() == Some(*card) {
+                            // The price of a trade: it pays nothing.
+                            assert!(
+                                !matches!(events.get(i + 1), Some(RunEvent::CoinsGained { .. })),
+                                "seed {seed}: traded {card_mod} paid"
+                            );
+                            continue;
+                        }
                         let encounter = open
                             .as_ref()
                             .and_then(|id| content.encounter(id))

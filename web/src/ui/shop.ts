@@ -1,11 +1,14 @@
-// The Tresen: the Wirt behind the counter, relics as little paper cards,
-// items as things on the counter, owned relics and items, Neuauslage. The
+// The Tresen: the Wirt behind the counter, the relics on offer as a row of
+// three tiles like the Auslage (03.11.2026), items as things on the
+// counter, owned relics as little paper cards and items, Neuauslage. The
 // Zinken (DESIGN 8.6): the Auslage of three cards drawn with their new
-// Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". What can be
-// bought, sold or used is decided by the core (can_buy, can_sell, can_use).
+// Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". Curses as
+// trade: "Hehlerware" among the relics, "Schnäppchen" in the Auslage, each
+// with a badge and the price struck through. What can be bought, sold or
+// used is decided by the core (can_buy, can_sell, can_use).
 
 import { de, bossEditionText, bossFiguresText, cardName, contentName, contentText, modText, t } from '../i18n';
-import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RunView, ServiceView, ShopView } from '../types';
+import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RelicOffer, RunView, ServiceView, ShopView } from '../types';
 import { backDesign } from './backs';
 import { cardBack, cardSvg, modValueText } from './cards';
 import { attrs, esc } from './dom';
@@ -16,6 +19,40 @@ import { portrait } from './people';
 
 function price(n: number): string {
   return `<span class="price">${coinIcon(16)}${esc(t(de.shop.price, { price: n }))}</span>`;
+}
+
+/** A price tag; a trade offer (Schnäppchen, Hehlerware) shows the price it would have without the curse struck through. */
+function priceTag(n: number, was?: number | null): string {
+  const old = was != null && was > n ? `<s class="price-was" aria-label="${esc(t(de.shop.tradeWas, { price: was }))}">${esc(String(was))}</s>` : '';
+  return `<span class="price-tag">${old}${price(n)}</span>`;
+}
+
+/** The badge of a trade offer (curses as trade, 03.11.2026). */
+function tradeBadge(text: string, testid: string): string {
+  return `<span class="trade-badge" data-testid="${esc(testid)}">${esc(text)}</span>`;
+}
+
+/**
+ * A relic on offer at the Tresen as a tile of the row of three, like the
+ * Auslage of the Zinken: the coaster's emblem, name, text and the buy
+ * button. The whole tile opens the full text. "Hehlerware" is marked.
+ */
+function relicTile(o: RelicOffer | null, i: number): string {
+  if (!o) return `<div class="zinke relic-tile is-sold" style="--i:${i}"><span>${esc(de.shop.soldOut)}</span></div>`;
+  const relic = o.relic;
+  const name = contentName('relics', relic.id);
+  const label = t(de.shop.moreAbout, { name });
+  const kind = de.relicKind[relic.kind];
+  const fence = o.fence === true;
+  return `<article class="zinke relic-tile rarity-${esc(relic.rarity)}${fence ? ' is-trade' : ''}" style="--i:${i}" data-testid="relic-offer" ${attrs({ 'data-slot': o.slot, 'data-relic': relic.id, 'data-fence': fence ? 'true' : null })}>
+    <button class="coaster-cover" ${attrs({ 'data-action': 'info-offer-relic', 'data-slot': o.slot, 'data-info': `offer-relic:${o.slot}`, 'aria-label': label, title: label })}></button>
+    ${priceTag(o.price, o.was)}${fence ? tradeBadge(de.shop.fence, 'fence-badge') : ''}
+    <span class="relic-tile-emblem" title="${esc(kind)}">${relicCoaster(relic, { size: 56 })}<span class="sr-only">${esc(kind)}</span></span>
+    <h4 class="zinke-name">${esc(name)}</h4>
+    ${fence ? `<p class="zinke-on"><span class="zinke-note">${esc(de.shop.fenceNote)}</span></p>` : ''}
+    <p class="zinke-text relic-tile-text">${esc(contentText('relics', relic.id))}</p>
+    <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
+  </article>`;
 }
 
 /**
@@ -88,11 +125,13 @@ function zinkenOffer(o: CardOfferView | null, i: number): string {
         ? t(de.shop.zinkeKeeps, { mod: contentName('card_mods', kept) })
         : '';
   const name = special ? t(de.shop.zinkeBecomes, { special: contentName('card_mods', mod.id) || mod.name }) : zinkeName(mod);
-  return `<article class="zinke${special ? ' is-special' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null })}>
-    <span class="price-tag">${price(o.price)}</span>${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}
+  const bargain = o.bargain === true;
+  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
+    ${priceTag(o.price, o.was)}${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}${bargain ? tradeBadge(de.shop.bargain, 'bargain-badge') : ''}
     <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
     <h4 class="zinke-name">${esc(name)}</h4>
     <p class="zinke-on">${esc(t(de.shop.zinkeOn, { card }))}${note ? ` · <span class="zinke-note${kept && !o.replaces && !o.raises ? ' is-kept' : ''}">${esc(note)}</span>` : ''}</p>
+    ${bargain ? `<p class="zinke-on"><span class="zinke-note">${esc(de.shop.bargainNote)}</span></p>` : ''}
     <p class="zinke-text">${esc(modText(mod.id, mod.value ?? 1) || mod.text)}</p>
     <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-zinke', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
   </article>`;
@@ -209,17 +248,7 @@ export function renderShop(view: RunView): string {
   const shop = view.shop;
   if (!shop) return '';
   if (shop.kiosk) return renderKiosk(view, shop);
-  const relicOffers = shop.relics
-    .map((o, i) => {
-      if (!o) return `<div class="coaster-wrap" style="--i:${i}"><div class="coaster-ring is-sold"><span>${esc(de.shop.soldOut)}</span></div></div>`;
-      return `<div class="coaster-wrap" style="--i:${i}">${coaster(
-        o.relic,
-        `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
-        { 'data-action': 'info-offer-relic', 'data-slot': o.slot, 'data-info': `offer-relic:${o.slot}` },
-        { price: o.price },
-      )}</div>`;
-    })
-    .join('');
+  const relicOffers = shop.relics.map(relicTile).join('');
   const itemOffers = shop.consumables
     .map((o) => {
       if (!o) return `<div class="good is-sold"><span>${esc(de.shop.soldOut)}</span></div>`;
@@ -253,7 +282,7 @@ export function renderShop(view: RunView): string {
     ${debtLine(view)}
     <div class="counter">
       <h3>${esc(de.shop.relics)}</h3>
-      <div class="coasters">${relicOffers}</div>
+      <div class="zinken-row relic-row" data-testid="relic-offers">${relicOffers}</div>
       <h3 id="shop-goods">${esc(de.shop.consumables)}</h3>
       <div class="goods" data-goods>${itemOffers}</div>
       ${zinkenBlock(shop)}

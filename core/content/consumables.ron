@@ -112,4 +112,17 @@
         action: NextGameIfBehind(MultiplyWin(2)),
         category: Schnapps,
     ),
+    // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026): billig und
+    // auf eine bekannte Hand zu trinken, anders als der Doppelkorn, dafür
+    // ein dauerhafter Fluch auf einer zufälligen Karte ohne Fluch. Preis und
+    // Seltenheit VORLÄUFIG nach Augenmaß (DESIGN 8.3, 12).
+    (
+        id: "rotgut",
+        name: "Fusel",
+        text: "Vor der Wahl zwischen Skat und Hand: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren. Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer und ohne Groschen.",
+        rarity: Common,
+        price: 2,
+        action: NextGameCursed(Multiply(2)),
+        category: Schnapps,
+    ),
 ]

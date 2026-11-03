@@ -873,6 +873,7 @@ impl Run {
                 events.push(RunEvent::ShopOpened {
                     relics: shop.relics.clone(),
                     consumables: shop.consumables.clone(),
+                    fence: shop.fence,
                 });
                 self.shop = Some(shop);
                 self.draw_card_offers(content, events);

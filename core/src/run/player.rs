@@ -320,9 +320,11 @@ impl RunEvent {
             RunEvent::ShopOpened {
                 relics,
                 consumables,
+                fence,
             } => RunEvent::ShopOpened {
                 relics,
                 consumables,
+                fence,
             },
             RunEvent::RelicBought { relic, price } => RunEvent::RelicBought { relic, price },
             RunEvent::ConsumableBought { consumable, price } => {
@@ -367,6 +369,9 @@ impl RunEvent {
                 value,
             },
             RunEvent::CardCleansed { card, price } => RunEvent::CardCleansed { card, price },
+            RunEvent::TradeCurse { card, curse, cause } => {
+                RunEvent::TradeCurse { card, curse, cause }
+            }
             RunEvent::ShopLeft => RunEvent::ShopLeft,
             RunEvent::DebtChanged { debt } => RunEvent::DebtChanged { debt },
             RunEvent::LifeSpared { source } => RunEvent::LifeSpared { source },

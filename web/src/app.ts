@@ -1014,6 +1014,8 @@ export class App {
         turn: null,
       };
     }
+    // Cards a trade cursed: their curse is told by the trade, not again as a Zinke.
+    const tradeCursed = new Set<number>();
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       if (ev === undefined) continue;
@@ -1091,8 +1093,18 @@ export class App {
         sound.play('clink');
         continue;
       }
+      if ('TradeCurse' in ev) {
+        // Curses as trade: Schnäppchen, Hehlerware, Fusel.
+        const { card: id, curse, cause } = ev.TradeCurse;
+        const card = after.edition.find((c) => c.id === id);
+        tradeCursed.add(id);
+        this.showToast(t(de.toast.tradeCurse[cause], { card: card ? cardName(card.kind) : '', curse: contentName('card_mods', curse) }));
+        sound.play('clink');
+        continue;
+      }
       if ('DeckChanged' in ev) {
         const change = ev.DeckChanged;
+        if ('Modified' in change && tradeCursed.delete(change.Modified.card)) continue;
         if ('Modified' in change) {
           const card = after.edition.find((c) => c.id === change.Modified.card);
           if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));

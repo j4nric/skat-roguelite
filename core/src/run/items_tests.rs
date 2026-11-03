@@ -295,7 +295,7 @@ fn groups_of_the_relics_are_data() {
     let groups = [
         (
             RelicGroup::Value,
-            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper",
+            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper jinx",
         ),
         (
             RelicGroup::Multiplier,

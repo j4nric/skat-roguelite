@@ -275,9 +275,13 @@ export interface OwnedConsumable {
 export interface RelicOffer {
   slot: number;
   relic: RelicInfo;
-  /** What it costs now (discounts applied by the core). */
+  /** What it costs now (discounts applied by the core, half for Hehlerware). */
   price: number;
   can_buy: boolean;
+  /** "Hehlerware" (curses as trade): half price, buying it curses a random card. */
+  fence?: boolean;
+  /** For Hehlerware: the price without the trade. */
+  was?: number | null;
 }
 
 export interface ConsumableOffer {
@@ -324,6 +328,10 @@ export interface CardOfferView {
   replaces: string | null;
   /** It would raise the same modification. */
   raises: boolean;
+  /** "Schnäppchen" (curses as trade): half price, buying it curses another card. */
+  bargain?: boolean;
+  /** For a Schnäppchen: the price without the trade. */
+  was?: number | null;
 }
 
 /** A card service of the Tresen (Kartenmaler, Karte reinigen), once per visit. */
@@ -976,6 +984,8 @@ export type RunEvent =
   | { PainterHired: { card: number; options: [string, number][]; price: number } }
   | { PainterChosen: { card: number; card_mod: string; value: number } }
   | { CardCleansed: { card: number; price: number } }
+  /** Curses as trade: a Schnäppchen, Hehlerware or the Schnaps Fusel cursed a card for good. */
+  | { TradeCurse: { card: number; curse: string; cause: 'Bargain' | 'Fence' | 'Schnapps' } }
   | { ConsumableUsed: { consumable: string } }
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }

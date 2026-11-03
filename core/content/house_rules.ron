@@ -492,4 +492,21 @@
         price: 4,
         passive: [ChooseMalus(2)],
     ),
+    // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026): Lever
+    // Grundwert, +1 je verfluchter Karte der Ausgabe beim Ansagen. Zählt
+    // jeden Fluch, auch Abgestuft (Nullspieler: +4 ab Start) und die
+    // Flüche einer Kneipe (Die Oma, Spelunke). Bruderherz startet mit neun
+    // Flüchen und hat damit sofort +9: darum Rare und Preis 9. VORLÄUFIG,
+    // nach Augenmaß ohne Messung.
+    (
+        id: "jinx",
+        group: Value,
+        name: "Pechvogel",
+        text: "+1 Grundwert für jede verfluchte Karte deiner Ausgabe.",
+        rarity: Rare,
+        price: 9,
+        hooks: [
+            OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCursedCard(1)]),
+        ],
+    ),
 ]

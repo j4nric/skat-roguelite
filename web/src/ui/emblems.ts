@@ -1275,6 +1275,48 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ....cccc
       ...cccccc`),
   ],
+  // ---- curses as trade (03.11.2026), one motif each
+  // Pechvogel: a black cat with yellow eyes, on the round Value mat.
+  jinx: [
+    sp('Schwarze Katze', `
+      ..d.......d
+      ..dd.....dd
+      ..ddddddddd
+      .ddddddddddd
+      .ddLLdddLLdd
+      .ddLkdddkLdd
+      .dddddpddddd
+      ..ddddddddd
+      ...ddddddd
+      ..ddddddddd....d
+      .dddGddddddd...d
+      .dddGddddddd..dd
+      .ddddddddddddddd
+      .dddddddddddddd
+      ..dd.ddd.dd`),
+  ],
+  // Fusel: a dirty bottle without a label, murky glass, muddy spirit.
+  rotgut: [
+    sp(
+      'Schmutzige Flasche ohne Etikett',
+      `
+      .......nn
+      .......nn
+      ......gyyg
+      ......gccg
+      .....gcchcg
+      ....gccchccg
+      ...gcOcchcccg
+      ...gccchccccg
+      ...gccchcOccg
+      ...gyfffffffg
+      ...gffOffffyg
+      ...gfffffOffg
+      ...gfffffffyg
+      ....ggggggggg`,
+      { c: '#7d8a5e', f: '#b59b52' },
+    ),
+  ],
 };
 
 /** One motif per boss (core/content/bosses.ron). */
@@ -1453,6 +1495,9 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   clear_spirit: 0,
   nightcap: 0,
   eggnog: 0,
+  // Curses as trade (03.11.2026): one motif each.
+  jinx: 0,
+  rotgut: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
   counter_beer: 0,
@@ -1735,6 +1780,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   fat_sow: 'Value',
   old_lady: 'Value',
   skat_keeper: 'Value',
+  jinx: 'Value',
   // Multiplikator, Gewinngrenze and Schneider
   blank_king: 'Multiplier',
   last_trick_seven: 'Multiplier',
