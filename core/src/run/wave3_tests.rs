@@ -42,6 +42,16 @@ pub(super) fn with_mod(content: &Content, run: &mut Run, card: &str, card_mod: &
         .expect("attach");
 }
 
+/// Several Untot or Wandelkarten on `cards`, as a save from before the cap
+/// of the special cards (DESIGN 7.2, 03.11.2026) may hold them: the game
+/// rules still cope with them.
+pub(super) fn with_old_specials(run: &mut Run, cards: &[&str], card_mod: &str) {
+    for card in cards {
+        run.edition
+            .force_mod(id_of(card), &CardModId::new(card_mod));
+    }
+}
+
 /// Replace the current game by a constructed deal with `forehand`, with
 /// every content effect of a normal deal, and a target the series will not
 /// reach.
@@ -245,9 +255,8 @@ fn kind(notation: &str) -> CardKind {
 fn a_hand_game_settles_the_wild_card_at_the_declaration() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "HA", WILD);
     // Seat 1 holds a Wandelkarte as well: there it is the printed card.
-    with_mod(&content, &mut run, "HT", WILD);
+    with_old_specials(&mut run, &["HA", "HT"], WILD);
     deal_with(
         &mut run,
         &content,
@@ -401,8 +410,7 @@ fn discarding_the_second_longest_suit_decides_the_wild_suit() {
 fn a_wild_card_settles_in_null_and_a_wild_unter_stays_as_it_is() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
-    with_mod(&content, &mut run, "H8", WILD);
-    with_mod(&content, &mut run, "HJ", WILD);
+    with_old_specials(&mut run, &["H8", "HJ"], WILD);
     deal_with(
         &mut run,
         &content,

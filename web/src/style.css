@@ -1774,6 +1774,34 @@ button.card {
   background: var(--rot);
 }
 
+/* "Untot" (CardRose): the card climbs out of the trick back into the hand
+   with a short green glow. */
+.hand-card.is-rising {
+  z-index: 5;
+  animation: undead-rise 1.3s ease-out both;
+}
+
+@keyframes undead-rise {
+  0% {
+    filter: drop-shadow(0 0 0 rgba(126, 220, 110, 0)) brightness(1.5) saturate(0.5);
+  }
+  25%,
+  60% {
+    filter: drop-shadow(0 0 4px #7edc6e) drop-shadow(0 0 16px rgba(126, 220, 110, 0.9)) brightness(1.1);
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(126, 220, 110, 0)) brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-card.is-rising {
+    animation: none;
+    outline: 3px solid #7edc6e;
+    outline-offset: 1px;
+  }
+}
+
 /* "Untot": the card can still rise in this game. */
 .plaque-rise {
   background: #3c5226;
@@ -4526,6 +4554,96 @@ button.card {
 
 .zinke-note {
   color: #a8322a;
+}
+
+.zinke-note.is-kept {
+  color: #7edc6e;
+}
+
+/* Rare: a special card right on a card ("wird untot", "wird Wandelkarte"). */
+.zinke.is-special {
+  border-color: #c9a23a;
+  background: linear-gradient(160deg, #3a3426, var(--panel) 55%);
+  box-shadow: var(--shadow), 0 0 0 2px rgba(201, 162, 58, 0.35);
+}
+
+.zinke.is-special .zinke-card {
+  animation: special-shine 2.6s ease-in-out infinite;
+}
+
+@keyframes special-shine {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgba(240, 206, 110, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 9px rgba(240, 206, 110, 0.9));
+  }
+}
+
+.zinke-rare {
+  position: absolute;
+  top: -9px;
+  left: -4px;
+  padding: 1px 5px;
+  border: 2px solid var(--line);
+  background: #c9a23a;
+  color: #1b1e21;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zinke.is-special .zinke-card {
+    animation: none;
+    filter: drop-shadow(0 0 6px rgba(240, 206, 110, 0.8));
+  }
+}
+
+/* First Untot or Wandelkarte of a save: what it does, once. */
+.special-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.special-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.special-card {
+  display: block;
+  width: 72px;
+  height: 108px;
+  flex: none;
+}
+
+.special-card .card-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.special-name {
+  font-family: var(--font-label);
+  text-transform: uppercase;
+}
+
+.special-rules {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: var(--fs-s);
+  line-height: 1.2;
+}
+
+.special-rules li + li {
+  margin-top: 3px;
 }
 
 .zinke.is-sold {

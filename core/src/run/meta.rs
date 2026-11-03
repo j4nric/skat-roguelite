@@ -109,6 +109,11 @@ pub struct MetaState {
     /// progress ([`UnlockCondition::SameTrumpStreak`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     trump_streak: Option<(Suit, u32)>,
+    /// Special cards (Untot, Wandelkarte) the player's edition has received
+    /// in some run of this save: the web app explains each one once, the
+    /// first time (DESIGN 7.2). Part of the save, not of the browser.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub specials_seen: BTreeSet<CardModId>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -437,6 +442,7 @@ impl MetaState {
         let mut earned = BTreeSet::new();
         for event in events {
             self.count(event);
+            self.see_special(content, event);
             for def in content.unlocks.values() {
                 if self.unlocked.contains(&def.id) || earned.contains(&def.id) {
                     continue;
@@ -448,6 +454,30 @@ impl MetaState {
         }
         self.unlocked.extend(earned.iter().cloned());
         earned.into_iter().collect()
+    }
+
+    /// Remember a special card the edition received
+    /// ([`MetaState::specials_seen`]): a `DeckChanged` that puts a
+    /// [`crate::content::ModKind::Special`] on a card.
+    fn see_special<G>(&mut self, content: &Content, event: &RunEvent<G>) {
+        if let RunEvent::DeckChanged(crate::deck::DeckChange::Modified { card_mod, .. }) = event {
+            if content
+                .card_mod(card_mod)
+                .is_some_and(|d| d.kind == crate::content::ModKind::Special)
+            {
+                self.specials_seen.insert(card_mod.clone());
+            }
+        }
+    }
+
+    /// The special cards in [`MetaState::specials_seen`] that `before`
+    /// had not seen yet, in id order: what to explain now.
+    #[must_use]
+    pub fn new_specials(&self, before: &MetaState) -> Vec<CardModId> {
+        self.specials_seen
+            .difference(&before.specials_seen)
+            .cloned()
+            .collect()
     }
 
     /// Statistics of one event.

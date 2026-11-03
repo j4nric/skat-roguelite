@@ -79,6 +79,13 @@
             painter_price: 6,
             painter_choices: 2,
             cleanse_price: 3,
+            // Spezialkarten (03.11.2026, nach Augenmaß): selten direkt in
+            // der Auslage, etwa ein Angebot von 20, teuer. Eine Toten- oder
+            // Narrenmarke, deren Spezialkarte die Ausgabe schon hat, zahlt
+            // beim Einlösen Groschen statt dessen.
+            special_percent: 5,
+            special_price: 6,
+            capped_voucher_coins: 3,
         ),
     ),
     // Bosse (DESIGN 11). Seit ADR 0017 ohne Kontra-Hans, Revolutionär und

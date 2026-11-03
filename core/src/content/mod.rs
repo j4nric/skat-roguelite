@@ -1297,6 +1297,17 @@ pub struct ZinkenConfig {
     pub painter_choices: u32,
     /// Price of "Karte reinigen".
     pub cleanse_price: u32,
+    /// Chance in percent that an offer of the Auslage is a special card
+    /// right on a card ("wird untot", "wird Wandelkarte"), while the
+    /// edition may still get one (DESIGN 8.6). At most one per Auslage.
+    pub special_percent: u32,
+    /// Price of such an offer before discounts (plus `premium` on a card
+    /// of `premium_ranks`).
+    pub special_price: u32,
+    /// Groschen a Totenmarke or Narrenmarke pays when it is redeemed while
+    /// another card is that special card already (DESIGN 7.2: at most one
+    /// Untot and one Wandelkarte per edition).
+    pub capped_voucher_coins: u32,
 }
 
 /// Lives of the Kneipentour (ADR 0016).

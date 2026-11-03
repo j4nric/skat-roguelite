@@ -11,7 +11,7 @@ fn content() -> Content {
 }
 
 /// A run at the route choice after a won first pub, with `coins`.
-fn at_route(content: &Content, seed: u64, coins: u32) -> Run {
+pub(super) fn at_route(content: &Content, seed: u64, coins: u32) -> Run {
     let (mut run, _) = Run::new(content, seed).expect("start");
     run.series.games_played = 1;
     run.series.score = i64::try_from(run.series.target).expect("small");
@@ -24,14 +24,14 @@ fn at_route(content: &Content, seed: u64, coins: u32) -> Run {
 }
 
 /// A run at a real Tresen (opened the way the route opens it).
-fn tresen(content: &Content, seed: u64, coins: u32) -> (Run, Vec<RunEvent>) {
+pub(super) fn tresen(content: &Content, seed: u64, coins: u32) -> (Run, Vec<RunEvent>) {
     let mut run = at_route(content, seed, coins);
     let events = run.walk_to_tresen(content);
     assert_eq!(run.phase(), RunPhase::Shop);
     (run, events)
 }
 
-fn offers(run: &Run) -> Vec<CardOffer> {
+pub(super) fn offers(run: &Run) -> Vec<CardOffer> {
     run.shop()
         .expect("shop")
         .card_offers
@@ -41,7 +41,7 @@ fn offers(run: &Run) -> Vec<CardOffer> {
         .collect()
 }
 
-fn set_offers(run: &mut Run, offers: Vec<CardOffer>) {
+pub(super) fn set_offers(run: &mut Run, offers: Vec<CardOffer>) {
     run.shop.as_mut().expect("shop").card_offers = offers.into_iter().map(Some).collect();
 }
 
@@ -121,15 +121,20 @@ fn the_tresen_lays_out_three_concrete_offers() {
         assert_eq!(cards.len(), 3, "one card at most once");
         for o in &offers {
             let def = content.card_mod(&o.card_mod).expect("mod");
-            assert!(!def.is_curse() && !def.is_special(), "{}", o.card_mod);
+            // Never a curse; a special card only as the rare special offer
+            // (`special_tests`), at its own price.
+            assert!(!def.is_curse(), "{}", o.card_mod);
+            assert_ne!(def.kind, ModKind::SpecialCurse, "{}", o.card_mod);
             assert_eq!(o.value, def.offer_value());
             let card = run.edition().get(o.card).expect("card");
             let face = card.kind.face().expect("face");
             let premium = zinken.premium_ranks.contains(&face.rank);
-            assert_eq!(
-                o.price,
-                def.price + if premium { zinken.premium } else { 0 }
-            );
+            let base = if def.is_special() {
+                zinken.special_price
+            } else {
+                def.price
+            };
+            assert_eq!(o.price, base + if premium { zinken.premium } else { 0 });
         }
         // Deterministic.
         let (again, _) = tresen(&content, seed, 10);

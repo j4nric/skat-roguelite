@@ -283,13 +283,17 @@ pub const MAX_REROLLS: u32 = 2;
 /// | `first_trick` (Eselsohr) | 2 | an ace often wins the first trick |
 /// | `last_trick` (Kerbe) | 1 | the last trick is rarely the ace's |
 /// | `voucher_coins` (Pfandmarke) | 1 | Groschen, if discarded |
-pub const ZINKEN_VALUES: [(&str, u32); 6] = [
+/// | `undead` (Untot, rare in the Auslage) | 2 | a strong card comes back once per game |
+/// | `wild_card` (Wandelkarte, rare in the Auslage) | 1 | helps to follow suit, hard to judge |
+pub const ZINKEN_VALUES: [(&str, u32); 8] = [
     ("trump_bonus", 3),
     ("rank", 3),
     ("points", 2),
     ("first_trick", 2),
     ("last_trick", 1),
     ("voucher_coins", 1),
+    ("undead", 2),
+    ("wild_card", 1),
 ];
 
 /// The Kartenmaler needs at least this many Groschen left over after

@@ -5,7 +5,7 @@
 use super::bot::RunBot;
 use super::content_tests::content;
 use super::wave3_tests::{
-    bot_to_end, card_in, deal_with, defender_plays, hand_clubs, id_of, with_mod,
+    bot_to_end, card_in, deal_with, defender_plays, hand_clubs, id_of, with_mod, with_old_specials,
 };
 use super::*;
 use crate::content::GameFocus;
@@ -170,9 +170,12 @@ fn the_last_card_stays_and_every_card_ends_in_exactly_one_trick() {
     for seed in 0..12 {
         let content = content();
         let (mut run, _) = Run::new(&content, seed).expect("start");
-        for card in ["CJ", "SJ", "HJ", "CA", "HA", "SA", "DA", "D7"] {
-            with_mod(&content, &mut run, card, UNDEAD);
-        }
+        // Eight Untot, as a save from before the cap may hold them.
+        with_old_specials(
+            &mut run,
+            &["CJ", "SJ", "HJ", "CA", "HA", "SA", "DA", "D7"],
+            UNDEAD,
+        );
         deal_with(&mut run, &content, HANDS, SKAT, Seat::DECLARER);
         run.apply_step(&content, RunAction::Declare(hand_clubs()))
             .expect("declare");
@@ -214,9 +217,7 @@ fn the_last_card_stays_and_every_card_ends_in_exactly_one_trick() {
 fn every_card_is_in_one_place_at_every_step() {
     let content = content();
     let (mut run, _) = Run::new(&content, 5).expect("start");
-    for card in ["CJ", "SJ", "HJ", "DJ", "CA"] {
-        with_mod(&content, &mut run, card, UNDEAD);
-    }
+    with_old_specials(&mut run, &["CJ", "SJ", "HJ", "DJ", "CA"], UNDEAD);
     deal_with(&mut run, &content, HANDS, SKAT, Seat::DECLARER);
     run.apply_step(&content, RunAction::Declare(hand_clubs()))
         .expect("declare");

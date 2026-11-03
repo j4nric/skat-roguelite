@@ -634,6 +634,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'unlock':
       return ui.meta ? sheet(renderUnlocks(ui.meta, overlay.ids), false, 'sheet-unlock', 'overlay-unlock') : '';
+    case 'special':
+      return sheet(renderSpecials(overlay.ids, view?.edition ?? []), false, 'sheet-special', 'overlay-special');
     case 'score':
       return '';
   }
@@ -793,6 +795,29 @@ function rewardPic(reward: Reward, info?: RewardInfo): string {
   const look = relicLook(reward.Relic);
   const kind = info?.kind === 'Regular' || info?.kind === 'HouseRule' ? info.kind : look.kind;
   return `<span class="unlock-deckel">${relicCoaster({ id: reward.Relic, kind, rarity: info?.rarity ?? look.rarity, group: look.group }, { size: 72 })}</span>`;
+}
+
+/**
+ * The first Untot or Wandelkarte of this save (DESIGN 7.2): the card as it
+ * looks now and a short rule summary, once per special card.
+ */
+function renderSpecials(ids: string[], edition: DeckCard[]): string {
+  const items = ids
+    .map((id) => {
+      const card = edition.find((c) => c.mods.includes(id));
+      const special = contentName('card_mods', id);
+      const rules = (id === 'undead' ? de.special.undead : id === 'wild_card' ? de.special.wild_card : []).map((r) => `<li>${esc(r)}</li>`).join('');
+      const lead = card ? t(de.special.lead, { card: cardName(card.kind), special }) : special;
+      return `<li class="special-item" ${attrs({ 'data-special': id })}>
+        ${card ? `<span class="card special-card">${cardSvg(card.kind, card.mods, 'full', card.mod_values)}</span>` : ''}
+        <div class="special-body"><b class="special-name">${esc(special)}</b><p>${esc(lead)}</p><ul class="special-rules">${rules}</ul></div>
+      </li>`;
+    })
+    .join('');
+  return `<h2>${esc(de.special.title)}</h2>
+    <ul class="special-list" data-testid="special-hint">${items}</ul>
+    <p class="small">${esc(de.special.cap)}</p>
+    <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'special-ok' })}>${esc(de.special.go)}</button>`;
 }
 
 /** Festive notice of unlocks just earned. */

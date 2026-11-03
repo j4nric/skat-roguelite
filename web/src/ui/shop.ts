@@ -76,16 +76,22 @@ function zinkenOffer(o: CardOfferView | null, i: number): string {
   if (!o) return `<div class="zinke is-sold" style="--i:${i}"><span>${esc(de.shop.soldOut)}</span></div>`;
   const mod = o.card_mod;
   const card = cardName(o.card.kind);
+  // Rare: a special card right on the card ("wird untot"); its Zinke stays next to it (DESIGN 7.2, 8.6).
+  const special = mod.kind === 'Special';
+  const kept = special ? o.card.mods.find((m) => m !== mod.id) : undefined;
   const note = o.replaces
     ? t(de.shop.zinkeReplaces, { old: contentName('card_mods', o.replaces) })
     : o.raises
       ? t(de.shop.zinkeRaises, { mod: contentName('card_mods', mod.id) })
-      : '';
-  return `<article class="zinke" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id })}>
-    <span class="price-tag">${price(o.price)}</span>
+      : kept
+        ? t(de.shop.zinkeKeeps, { mod: contentName('card_mods', kept) })
+        : '';
+  const name = special ? t(de.shop.zinkeBecomes, { special: contentName('card_mods', mod.id) || mod.name }) : zinkeName(mod);
+  return `<article class="zinke${special ? ' is-special' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null })}>
+    <span class="price-tag">${price(o.price)}</span>${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}
     <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
-    <h4 class="zinke-name">${esc(zinkeName(mod))}</h4>
-    <p class="zinke-on">${esc(t(de.shop.zinkeOn, { card }))}${note ? ` · <span class="zinke-note">${esc(note)}</span>` : ''}</p>
+    <h4 class="zinke-name">${esc(name)}</h4>
+    <p class="zinke-on">${esc(t(de.shop.zinkeOn, { card }))}${note ? ` · <span class="zinke-note${kept && !o.replaces && !o.raises ? ' is-kept' : ''}">${esc(note)}</span>` : ''}</p>
     <p class="zinke-text">${esc(modText(mod.id, mod.value ?? 1) || mod.text)}</p>
     <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-zinke', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
   </article>`;

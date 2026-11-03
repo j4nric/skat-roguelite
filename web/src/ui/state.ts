@@ -84,6 +84,8 @@ export type Overlay =
   | { kind: 'confirm-new'; start: PendingStart }
   /** Unlocks just earned, ids from the meta state. */
   | { kind: 'unlock'; ids: string[] }
+  /** The first Untot or Wandelkarte of this save: what it does (DESIGN 7.2), once per special card. */
+  | { kind: 'special'; ids: string[] }
   | { kind: 'menu' }
   /** "Spielstand": why to keep a copy, then export or import. */
   | { kind: 'save-menu' }
@@ -136,6 +138,8 @@ export interface UiState {
   wildSettled: Record<number, SettledWild>;
   /** "Untot": the card that last rose from a trick in this game and its substitute there (from the CardRose event), for a note in the last trick. */
   risen: { substitute: number; card: string } | null;
+  /** "Untot": the card climbing back into the hand right now (CardRose), drawn with a green glow. */
+  rising: number | null;
   /** The opponent whose move the core is computing (thought bubble). */
   thinking: Seat | null;
   /** A Stammgast's speech bubble on the table, at most one at a time. */

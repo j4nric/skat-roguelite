@@ -934,6 +934,8 @@ export type RunEvent =
   /** Effekte v2: a voucher was redeemed when its card was discarded. */
   | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
   | { VoucherReturned: { card: number; card_mod: string; value: number } }
+  /** A Totenmarke or Narrenmarke whose special card another card is already (one each per edition): Groschen instead. */
+  | { VoucherCapped: { card: number; card_mod: string; special: string; holder: number; coins: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
@@ -1124,5 +1126,7 @@ export interface MetaView {
 /** Result of feeding events to the meta state. */
 export interface MetaStep {
   earned: string[];
+  /** Special cards (Untot, Wandelkarte) received for the first time in this save: explain each once. */
+  first_specials?: string[];
   view: MetaView;
 }
