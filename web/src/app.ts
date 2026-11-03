@@ -1114,8 +1114,24 @@ export class App {
         this.showToast(t(de.toast.passesAdded, { left: ev.RedealsAdded.redeals_left }));
         continue;
       }
+      if ('AccountCleared' in ev) {
+        this.showToast(t(de.toast.accountCleared, { before: ev.AccountCleared.before }));
+        sound.play('clink');
+        continue;
+      }
+      if ('GamesAdded' in ev) {
+        this.showToast(t(de.toast.gamesAdded, { left: ev.GamesAdded.games_left }));
+        sound.play('clink');
+        continue;
+      }
+      if ('PubGivenUp' in ev) {
+        // The toasts of the lost pub follow (life, or the end of the run).
+        continue;
+      }
       if ('ConsumableUsed' in ev) {
         const id = ev.ConsumableUsed.consumable;
+        // Klarer and Absacker have said what they did.
+        if (events.some((e) => typeof e === 'object' && ('AccountCleared' in e || 'GamesAdded' in e))) continue;
         // A Schnaps that changes the next game says so; the others just get used.
         const waiting = after.pending_next_game?.find((p) => p.consumable === id);
         this.showToast(
@@ -1196,7 +1212,8 @@ export class App {
         const { change, lives } = ev.LivesChanged;
         const lostPub = events.find((e): e is Extract<RunEvent, { PubLost: unknown }> => typeof e === 'object' && 'PubLost' in e);
         if (change < 0) {
-          const why = lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
+          const givenUp = events.some((e) => typeof e === 'object' && 'PubGivenUp' in e);
+          const why = givenUp ? de.lives.givenUp : lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
           this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
           sound.play('lose');
         } else {
@@ -2156,6 +2173,15 @@ export class App {
         return;
       case 'pick-up-skat':
         void this.act('PickUpSkat');
+        return;
+      case 'give-up':
+        // "Kneipe verlassen" (DESIGN 8.7): ask first, a boss pub ends the run.
+        this.ui.overlay = { kind: 'confirm-give-up' };
+        this.render();
+        return;
+      case 'confirm-give-up':
+        this.ui.overlay = null;
+        void this.act('GiveUpPub');
         return;
       case 'play-hand':
         this.ui.handGame = true;

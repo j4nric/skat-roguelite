@@ -36,6 +36,8 @@ export const de = {
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
       SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Ausgabe.',
+      ConditionNotMet: 'Der wirkt gerade nicht.',
+      NotInBossPub: 'Nicht in der Boss-Kneipe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
       NoPassesLeft: 'Du kannst nicht mehr einmischen.',
@@ -109,6 +111,18 @@ export const de = {
     sharedStakeLocked: 'Einsatz {stake} hast du hier noch nicht erreicht. Du spielst mit Einsatz {fallback}.',
   },
 
+  /** "Kneipe verlassen?" (DESIGN 8.7). */
+  giveUp: {
+    title: 'Kneipe verlassen?',
+    text: 'Die Kneipe zählt als verloren: Du verlierst ein Leben und bekommst keine Groschen.',
+    lastLife: 'Es ist dein letztes Leben: Danach ist der Abend vorbei.',
+    angel: 'Der Schutzengel verschont dich vielleicht.',
+    boss: 'Aufgeben beendet den Run.',
+    bossText: 'In der Boss-Kneipe ist mit dem Aufgeben der ganze Abend vorbei, egal wie viele Leben du hast.',
+    go: 'Aufgeben',
+    cancel: 'Weiterspielen',
+  },
+
   confirm: {
     title: 'Neuen Run starten?',
     text: 'Dein laufender Run wird dabei aufgegeben und nicht gewertet:',
@@ -157,6 +171,12 @@ export const de = {
     pending: 'Letzte Runde: nächstes Spiel ×{factor}',
     pendingSchnapsMul: '{name} ×{factor}',
     pendingSchnapsLoss: '{name}: einfach',
+    pendingSchnapsWin: '{name}: gewonnen ×{factor}',
+    /** "Noch nötig" before the last game of a pub (DESIGN 8.7). */
+    needed: 'Du brauchst noch {n} Punkte.',
+    neededGame: 'Du brauchst noch {n} Punkte, ab einem Spiel von {value}.',
+    neededDone: 'Ziel erreicht. Jetzt nur nicht verlieren.',
+    neededHopeless: 'Nicht mehr zu schaffen: Dir fehlen {n} Punkte, mehr als {max} bringt kein Spiel.',
   },
 
   suits: {
@@ -375,6 +395,10 @@ export const de = {
     skatPeek: 'Kurzer: Im Skat liegen {cards}.',
     pendingSchnapsMul: '{name}: Dieses Spiel zählt ×{factor}',
     pendingSchnapsLoss: '{name}: Verloren zählt dieses Spiel einfach',
+    pendingSchnapsWin: '{name}: Gewonnen zählt dieses Spiel ×{factor}',
+    /** "Kneipe verlassen" (DESIGN 8.7). */
+    giveUp: 'Kneipe verlassen',
+    giveUpTitle: 'Gib die Kneipe auf: Sie zählt als verloren.',
     skatPeekShort: 'Skat',
     discardHint: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
     discardHintDeclared: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
@@ -454,6 +478,8 @@ export const de = {
     kontra: '{name}: Kontra!',
     re: 'Re!',
     consumableUsed: '{name} benutzt.',
+    accountCleared: 'Klarer: Das Konto steht wieder auf 0 (vorher {before}).',
+    gamesAdded: 'Absacker: ein Spiel mehr. Noch {left} Spiele in dieser Kneipe.',
     schnapsWaiting: 'Prost! {name} wirkt im nächsten angesagten Spiel.',
     chalked: 'Blue Curaçao: {old} ist jetzt {new}.',
     passesAdded: 'Einmal mehr einmischen: jetzt {left}.',
@@ -837,6 +863,7 @@ export const de = {
     lost: 'Ein Leben verloren! Noch {lives}.',
     gained: 'Ein Leben dazu! Jetzt {lives}.',
     pubLost: 'Ziel verfehlt: Die Kneipe kostet ein Leben.',
+    givenUp: 'Kneipe verlassen: Sie kostet ein Leben.',
     bossAgain: 'Ziel verfehlt: Der Boss will Revanche.',
   },
 

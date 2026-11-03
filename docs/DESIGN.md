@@ -868,7 +868,7 @@ Zu messen, sobald der Simulator wieder läuft: Käufe je Tresen (Auslage, Karten
 **D, „noch nötig“** (Sicht `RunView::needed`, `NeededView`, `Run::max_game_value`): Vor dem letzten Spiel einer Kneipe (ein Spiel übrig, noch nicht angesagt) rechnet der Kern
 
 - `points`: Zielwert minus Konto, was ein gewonnenes Spiel bringen muss (0 oder weniger, wenn das Ziel schon steht; die Boss-Kneipe spielt alle Spiele);
-- `smallest_game`: den kleinsten Spielwert der reinen Formel (ohne Relikte und Faktoren), der reicht, z. B. 88 (Pik mit 1, Spiel 2 … ×8) für 87 nötige Punkte;
+- `smallest_game`: den kleinsten Spielwert der reinen Formel (ohne Relikte und Faktoren), der reicht, z. B. 88 (Pik mit Multiplikator 8) für 87 nötige Punkte;
 - `max_value`: eine **Obergrenze** für ein gewonnenes Spiel ohne Wissen über das Blatt: das höchste Spiel der Formel (Grand und jede Farbe Ouvert, Hand, Schwarz angesagt mit allen Trümpfen als Spitzen; Null Ouvert Hand mit allen Stilboni; im Ramsch der Verlierer mit 120 Augen und Jungfrau) mit **jeder** erhöhenden Zeile aller Relikte, Bosse, Charaktere und Karten, als gälte ihre Bedingung, so oft ihr Auslöser feuern kann (Stichende zehnmal, jede Karte dreißigmal), dazu die wartenden Faktoren (Doppelkorn, Eierlikör, Letzte Runde). Kontra und Re zählen nicht: Der Spieler kann keinen Gegner zum Kontra bringen;
 - `reachable`: `points <= max_value`.
 
@@ -1272,7 +1272,7 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 
 **Gegenstands-Review (02.11.2026, 8.5), vorläufig ohne Messung**: Kräuter 3 (Common), Doppelkorn 3 (Uncommon), Konterbier 4 (Uncommon), Schwenker 2 (Common), Wegbier 3 (Common); Spickzettel 5 (bisher 4); Feierabend 5 (Common), Monatskarte 4 (Common), Stammtischkasse 5 (Uncommon), Deckel anschreiben 5 (Uncommon), Schutzengel 8 (Rare), Spelunkenkenner 4 (Uncommon). Neu in der Wirtschaft: Schulden am Tresen (Deckel anschreiben, bis −5, einmal pro Stadtteil), eine Kasse (2 je Kneipe, +50 % beim nächsten Tresen), die Wette (3 oder 6 Groschen) und Groschen aus Begegnungen (Wirt 5, Portemonnaie 8). Der Falschspieler kostet jetzt 2 Groschen, statt 3 zu zahlen.
 
-**Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie der Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
+**Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie das Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
 
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
 - **Einnahmen**: Grundbetrag pro gewonnener Serie, Bonus pro übrigem Spiel, Zinsen auf Guthaben (gedeckelt), Verkauf von Relikten.

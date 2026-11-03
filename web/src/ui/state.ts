@@ -80,6 +80,8 @@ export type Overlay =
   | { kind: 'painter' }
   /** The Vereinsbuch: characters and unlocks, or the statistics page. */
   | { kind: 'book'; tab: 'book' | 'stats' }
+  /** "Kneipe verlassen?" (DESIGN 8.7): give up the pub, then `GiveUpPub`. */
+  | { kind: 'confirm-give-up' }
   /** Give up the running run for a new one? */
   | { kind: 'confirm-new'; start: PendingStart }
   /** Unlocks just earned, ids from the meta state. */

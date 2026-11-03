@@ -632,6 +632,24 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         true,
         'sheet-confirm',
       );
+    case 'confirm-give-up': {
+      const boss = Boolean(view?.series.is_boss);
+      const lastLife = !boss && (view?.tour.lives ?? 0) <= 1;
+      const angel = !boss && Boolean(view?.relics.some((r) => r.relic.id === 'guardian_angel'));
+      const lines = boss
+        ? `<p class="give-up-warning" data-testid="give-up-boss"><b>${esc(de.giveUp.boss)}</b></p><p>${esc(de.giveUp.bossText)}</p>`
+        : `<p>${esc(de.giveUp.text)}</p>${angel ? `<p class="small">${esc(de.giveUp.angel)}</p>` : lastLife ? `<p class="give-up-warning"><b>${esc(de.giveUp.lastLife)}</b></p>` : ''}`;
+      return sheet(
+        `<h2>${esc(de.giveUp.title)}</h2>
+         ${lines}
+         <div class="sheet-actions">
+           <button class="btn btn-danger" ${attrs({ 'data-action': 'confirm-give-up', 'data-testid': 'give-up-confirm' })}>${esc(de.giveUp.go)}</button>
+           <button class="btn btn-primary" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.giveUp.cancel)}</button>
+         </div>`,
+        true,
+        'sheet-confirm',
+      );
+    }
     case 'unlock':
       return ui.meta ? sheet(renderUnlocks(ui.meta, overlay.ids), false, 'sheet-unlock', 'overlay-unlock') : '';
     case 'special':

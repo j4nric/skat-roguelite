@@ -214,7 +214,7 @@ fn needed_shows_only_before_the_last_game() {
     run.series.score = 13;
     let needed = run.view(&content).needed.expect("last game");
     assert_eq!(needed.points, 87);
-    // Pik with Spitzen 1 and Spiel ... 11 × 8 = 88 is the smallest plain
+    // Pik with 8 levels, 11 × 8 = 88, is the smallest plain
     // Spielwert of at least 87.
     assert_eq!(needed.smallest_game, Some(88));
     assert!(needed.reachable);
