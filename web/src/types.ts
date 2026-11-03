@@ -83,9 +83,9 @@ export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
 /** Spielart in a declaration: a GameType, or Ramsch (forced by "Der Ramscher"). */
 export type DeclaredGame = GameType | 'Ramsch';
 /** Who plays the run. */
-export type Character = 'Declarer' | 'NullPlayer' | 'GrandPlayer' | 'Onlooker' | 'Landlady';
+export type Character = 'Declarer' | 'NullPlayer' | 'Shirker' | 'Tailoress' | 'HeartBrother';
 /** Every character, in the order of the core (`Character::ALL`). */
-export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'GrandPlayer', 'Onlooker', 'Landlady'];
+export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shirker', 'Tailoress', 'HeartBrother'];
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
@@ -549,6 +549,8 @@ export interface CharacterInfo {
   character: Character;
   name: string;
   text: string;
+  /** Card back of the player's edition (DESIGN 9.3); absent in an older core (Distel). */
+  back?: string;
 }
 
 /** What an encounter option does. */
@@ -594,6 +596,8 @@ export interface EncounterOptionView {
   can_choose: boolean;
   needs_target: boolean;
   targets: number[];
+  /** Cost on each of `targets` (a Zinke on Rot is cheaper for Bruderherz); absent in an older core. */
+  target_costs?: number[];
 }
 
 /** The open encounter (Ereignis). */
@@ -846,6 +850,7 @@ export type RunEvent =
   | { CardPeeked: { card: DealtCard; seat: Seat } }
   /** Effekte v2: a voucher was redeemed when its card was discarded. */
   | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
+  | { VoucherReturned: { card: number; card_mod: string; value: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
@@ -966,6 +971,8 @@ export interface CharacterEntry {
   unlocked_by: string | null;
   /** Highest stake unlocked per run length (Einsatz-Leiter); absent in an older core. */
   max_stakes?: Partial<Record<RunLength, number>>;
+  /** Card back of the character's edition; absent in an older core (Distel). */
+  back?: string;
 }
 
 export type Reward = { Relic: string } | { Character: Character } | { CardMod: string };

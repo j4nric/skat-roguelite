@@ -344,7 +344,7 @@ pub enum Effect {
     PeekDefenderCards(u32),
     /// Lever Zählen: the player sees the whole hand of one defender, the
     /// seat by index (1: the left neighbour, who plays after him; 2: the
-    /// right one), for the whole game (character "Der Zaungast"). An
+    /// right one), for the whole game (a character rule; "Der Zaungast" until 03.11.2026). An
     /// information effect. Passive or on deal.
     RevealDefenderHand(u8),
     /// Lever Zählen: the player sees the Augen taken so far by each side

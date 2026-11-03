@@ -732,6 +732,7 @@ pub fn curve(
                     RunEvent::GameScored {
                         breakdown,
                         series_score,
+                        ..
                     } => {
                         result.games += 1;
                         result.points += breakdown.score;

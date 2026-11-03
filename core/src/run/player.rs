@@ -294,9 +294,11 @@ impl RunEvent {
             RunEvent::GameScored {
                 breakdown,
                 series_score,
+                discarded_points,
             } => RunEvent::GameScored {
                 breakdown,
                 series_score,
+                discarded_points,
             },
             RunEvent::SeriesWon {
                 section,
@@ -376,6 +378,15 @@ impl RunEvent {
                 card_mod,
                 value,
             } => RunEvent::VoucherRedeemed {
+                card,
+                card_mod,
+                value,
+            },
+            RunEvent::VoucherReturned {
+                card,
+                card_mod,
+                value,
+            } => RunEvent::VoucherReturned {
                 card,
                 card_mod,
                 value,

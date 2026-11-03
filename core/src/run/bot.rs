@@ -828,6 +828,13 @@ impl RunBot {
     /// The first card of the player's edition that carries a curse ("Abgestuft"
     /// stays: it is the Nullspieler's start edition).
     fn cursed_card(run: &Run, content: &Content) -> Option<u32> {
+        // "Bruderherz" cannot cleanse his curses: nothing to aim for.
+        if content
+            .character(run.character())
+            .is_some_and(|c| c.rule.keep_curses)
+        {
+            return None;
+        }
         run.edition()
             .cards()
             .iter()

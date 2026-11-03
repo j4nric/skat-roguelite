@@ -250,10 +250,39 @@ impl Run {
         }
     }
 
-    /// The pub ended: the curses of its malus come off again.
-    fn end_pub(&mut self, events: &mut Vec<RunEvent>) {
+    /// The pub ended: the curses of its malus come off again, and for
+    /// "Der Drückeberger" the vouchers redeemed in it come back.
+    fn end_pub(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         for (card, card_mod) in std::mem::take(&mut self.series.temp_curses) {
             if let Some(change) = self.edition.remove_mod(card, &card_mod) {
+                events.push(RunEvent::DeckChanged(change));
+            }
+        }
+        self.return_vouchers(content, events);
+    }
+
+    /// "Der Drückeberger" (DESIGN 9.4): every voucher redeemed in this pub
+    /// goes back onto its card with its value. A card that carries another
+    /// normal modification or a curse by now keeps it, the voucher stays
+    /// gone; a special card it turned into (Untot, Wandelkarte) stays.
+    fn return_vouchers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        for (card, card_mod, value) in std::mem::take(&mut self.series.returning_vouchers) {
+            let Some(deck_card) = self.edition.get(card) else {
+                continue;
+            };
+            let taken = deck_card
+                .mods
+                .iter()
+                .any(|m| content.card_mod(m).is_none_or(|d| !d.is_special()));
+            if taken {
+                continue;
+            }
+            if let Ok(change) = self.edition.add_mod(content, card, &card_mod, value) {
+                events.push(RunEvent::VoucherReturned {
+                    card,
+                    card_mod,
+                    value,
+                });
                 events.push(RunEvent::DeckChanged(change));
             }
         }
@@ -266,7 +295,7 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        self.end_pub(events);
+        self.end_pub(content, events);
         self.pub_results.push(PubResult {
             section: self.series.section,
             index: self.series.index,
@@ -308,7 +337,7 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        self.end_pub(events);
+        self.end_pub(content, events);
         self.stats.pubs_lost += 1;
         let (section, index) = (self.series.section, self.series.index);
         self.pub_results.push(PubResult {

@@ -63,7 +63,7 @@ import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, finishOn, flip, flyIn, motionOn, noteFlights, pulse, resumeFlights, setTempo, springBack, sweepAway, throwCard } from './ui/fx';
-import { backDesign } from './ui/backs';
+import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
@@ -993,6 +993,13 @@ export class App {
         // no whisper per card.
         if (after.game?.revealed.some((r) => r.card.id === card.id && r.source === 'Onlooker')) continue;
         this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
+        continue;
+      }
+      if ('VoucherReturned' in ev) {
+        // "Der Drückeberger": a voucher of the pub just ended is back on its card.
+        const id = ev.VoucherReturned.card;
+        const card = after.edition.find((c) => c.id === id);
+        this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
         continue;
       }
       if ('VoucherRedeemed' in ev) {
@@ -2505,6 +2512,8 @@ export class App {
 
   private render(): void {
     const ui = this.ui;
+    // The player's edition shows his character's back (DESIGN 9.3).
+    setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
     switch (ui.screen) {
       case 'loading':

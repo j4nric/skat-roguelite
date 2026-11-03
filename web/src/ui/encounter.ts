@@ -30,7 +30,10 @@ function door(): string {
 
 function costTag(o: EncounterOptionView): string {
   if (!o.cost) return `<span class="enc-cost is-free">${esc(de.encounter.free)}</span>`;
-  return `<span class="enc-cost">${coinIcon(14)}${esc(t(de.encounter.cost, { cost: o.cost }))}</span>`;
+  // A Zinke may cost less on some cards ("Bruderherz": half on Rot).
+  const lowest = Math.min(o.cost, ...(o.target_costs ?? []));
+  const text = lowest < o.cost ? t(de.encounter.costFrom, { cost: o.cost, low: lowest }) : t(de.encounter.cost, { cost: o.cost });
+  return `<span class="enc-cost">${coinIcon(14)}${esc(text)}</span>`;
 }
 
 /** The modification an option puts on a card: badge, name, curse mark and text. */

@@ -166,6 +166,11 @@ pub struct Series {
     /// malus), with the curse that landed; taken off when the pub ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub temp_curses: Vec<(u32, CardModId)>,
+    /// Vouchers redeemed in this pub (card, voucher, value) that come
+    /// back when it ends ("Der Drückeberger",
+    /// [`crate::content::CharacterRule::vouchers_return`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub returning_vouchers: Vec<(u32, CardModId, i32)>,
     /// Einmischen the first game of this pub allows fewer ("Der
     /// Skatlehrer", [`NextPubPlan`]).
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -376,7 +381,7 @@ pub struct ActiveGame {
     /// granted it.
     #[serde(default)]
     pub single_loss: Option<Source>,
-    /// The defender whose whole hand the player sees ("Der Zaungast"):
+    /// The defender whose whole hand the player sees (`RevealDefenderHand`):
     /// his cards are in `peeked` with this seat.
     #[serde(default)]
     pub shown_hand: Option<Seat>,
@@ -572,7 +577,7 @@ pub struct Payout {
     pub games_left: u32,
     /// Zinsen on the Groschen held before the payout.
     pub interest: u32,
-    /// Extra from the character's rule ("Die Wirtin": the three parts
+    /// Extra from the character's rule (`payout_factor`: the three parts
     /// once more); 0 for most characters.
     pub bonus: u32,
 }
@@ -853,6 +858,10 @@ pub enum RunEvent<G = Event<DealtCard>> {
         breakdown: ScoreBreakdown,
         /// Series account after this game.
         series_score: i64,
+        /// Augen of the cards the player discarded into the skat (with
+        /// their modifications); 0 in a hand game.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        discarded_points: u32,
     },
     /// The series was won.
     SeriesWon {
@@ -945,6 +954,16 @@ pub enum RunEvent<G = Event<DealtCard>> {
     /// ("wenn gedrückt", DESIGN 7.2). Its effects follow as their own
     /// events (`CoinsGained`, `DeckChanged`), then it falls off the card.
     VoucherRedeemed {
+        /// Instance id of the card.
+        card: u32,
+        /// The voucher.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+    },
+    /// "Der Drückeberger" (DESIGN 9.4): a voucher redeemed in the pub
+    /// that just ended is back on its card.
+    VoucherReturned {
         /// Instance id of the card.
         card: u32,
         /// The voucher.
@@ -1220,6 +1239,8 @@ pub enum RunError {
     ConsumablesLocked,
     /// No life is missing ("Konterbier").
     LivesFull,
+    /// "Bruderherz": a curse on his edition cannot be cleansed.
+    CurseStays,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1329,6 +1350,8 @@ pub enum RunErrorCode {
     ConsumablesLocked,
     /// No life is missing.
     LivesFull,
+    /// The character's curses cannot be cleansed ("Bruderherz").
+    CurseStays,
 }
 
 impl RunErrorCode {
@@ -1383,6 +1406,7 @@ impl RunErrorCode {
             RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
             RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
             RunErrorCode::LivesFull => "LivesFull",
+            RunErrorCode::CurseStays => "CurseStays",
         }
     }
 }
@@ -1441,6 +1465,7 @@ impl RunError {
             RunError::NoLeadDemandLeft => RunErrorCode::NoLeadDemandLeft,
             RunError::ConsumablesLocked => RunErrorCode::ConsumablesLocked,
             RunError::LivesFull => RunErrorCode::LivesFull,
+            RunError::CurseStays => RunErrorCode::CurseStays,
         }
     }
 }
@@ -1477,6 +1502,7 @@ impl fmt::Display for RunError {
             RunError::NoLeadDemandLeft => f.write_str("no lead can be demanded in this game"),
             RunError::ConsumablesLocked => f.write_str("the Schnäpse are locked in this pub"),
             RunError::LivesFull => f.write_str("no life is missing"),
+            RunError::CurseStays => f.write_str("the character's curses cannot be cleansed"),
         }
     }
 }
@@ -1707,6 +1733,7 @@ impl Run {
                 discard_three_used: false,
                 spelunke: None,
                 temp_curses: Vec::new(),
+                returning_vouchers: Vec::new(),
                 redeals_withheld: 0,
             },
             coins: content.run.economy.starting_coins,
@@ -3205,6 +3232,7 @@ impl Run {
             discard_three_used: false,
             spelunke,
             temp_curses: Vec::new(),
+            returning_vouchers: Vec::new(),
             redeals_withheld,
         };
         self.phase = RunPhase::Game;
@@ -3289,7 +3317,7 @@ impl Run {
         let Some(active) = self.game.as_mut() else {
             return;
         };
-        // Cards the player already sees ("Der Zaungast") are not drawn.
+        // Cards the player already sees (`RevealDefenderHand`) are not drawn.
         let shown = active.peeked.clone();
         let mut pool: Vec<(DealtCard, Seat)> = Seat::DEFENDERS
             .iter()
@@ -3589,6 +3617,11 @@ impl Run {
             lines,
         );
         breakdown.seats = Some(active.game.seat_totals());
+        let discarded_points = if active.game.skat_picked_up() {
+            active.game.skat().iter().map(|c| c.card_points).sum()
+        } else {
+            0
+        };
         self.series.score = self.series.score.saturating_add(breakdown.score);
         self.series.games_played += 1;
         if breakdown.won {
@@ -3600,6 +3633,7 @@ impl Run {
         events.push(RunEvent::GameScored {
             breakdown: breakdown.clone(),
             series_score: self.series.score,
+            discarded_points,
         });
         if !declaration.is_ramsch() {
             if let Some(wager) = self.wager.take() {
@@ -3678,7 +3712,7 @@ impl Run {
             interest,
             bonus: 0,
         };
-        // "Die Wirtin": the parts count `payout_factor` times.
+        // `payout_factor`: the parts count `payout_factor` times.
         payout.bonus = payout
             .total()
             .saturating_mul(content.payout_factor(self.character) - 1);
@@ -3899,6 +3933,59 @@ impl Run {
         u32::try_from(paid).unwrap_or(price).max(1)
     }
 
+    /// What a Zinke (a card modification bought for Groschen on a card of
+    /// the player's choice) with this price costs on the card with this
+    /// instance id: the character's [`crate::content::ZinkenDiscount`] for
+    /// matching cards ("Bruderherz": half on Rot), rounded to the nearest
+    /// Groschen, at least 1 for a priced Zinke. The Tresen discount is
+    /// not part of it ([`Run::shop_price`]). Every offer of a Zinke on a
+    /// known card must charge this price.
+    #[must_use]
+    pub fn zinken_price(&self, content: &Content, card: u32, price: u32) -> u32 {
+        let Some(discount) = content
+            .character(self.character)
+            .and_then(|c| c.rule.zinken_discount)
+        else {
+            return price;
+        };
+        let matches = self
+            .edition
+            .get(card)
+            .and_then(|c| c.kind.face())
+            .is_some_and(|c| discount.cards.matches(c));
+        if price == 0 || !matches {
+            return price;
+        }
+        let percent = 100 - discount.percent.min(100);
+        let paid = (u64::from(price) * u64::from(percent) + 50) / 100;
+        u32::try_from(paid).unwrap_or(price).max(1)
+    }
+
+    /// Cleanse a card of the player's edition ("Frisches Deck",
+    /// Werkstatt): every modification falls off. A character with
+    /// [`crate::content::CharacterRule::keep_curses`] ("Bruderherz")
+    /// cannot cleanse a card that carries a curse ([`RunError::CurseStays`]).
+    fn cleanse(&mut self, content: &Content, card: u32) -> Result<DeckChange, RunError> {
+        let keep = content
+            .character(self.character)
+            .is_some_and(|c| c.rule.keep_curses);
+        if keep && self.card_is_cursed(content, card) {
+            return Err(RunError::CurseStays);
+        }
+        Ok(self.edition.cleanse(card)?)
+    }
+
+    /// Whether a card of the player's edition carries a curse (a special
+    /// curse such as "Abgestuft" included).
+    #[must_use]
+    pub fn card_is_cursed(&self, content: &Content, card: u32) -> bool {
+        self.edition.get(card).is_some_and(|c| {
+            c.mods
+                .iter()
+                .any(|m| content.card_mod(m).is_some_and(CardModDef::is_curse))
+        })
+    }
+
     /// How the character's Null games are scored (Fixed if the data says
     /// nothing).
     fn null_scoring(&self, content: &Content) -> NullScoring {
@@ -4091,7 +4178,7 @@ impl Run {
                     return Err(RunError::WrongPhase);
                 }
                 let target = target.ok_or(RunError::TargetRequired)?;
-                let change = self.edition.cleanse(target)?;
+                let change = self.cleanse(content, target)?;
                 events.push(RunEvent::DeckChanged(change));
             }
             ConsumableAction::AddCardMod(card_mod) => {
@@ -4382,6 +4469,9 @@ impl Run {
             return;
         }
         let skat: Vec<u32> = active.game.skat().iter().map(|c| c.id).collect();
+        let vouchers_return = content
+            .character(self.character)
+            .is_some_and(|c| c.rule.vouchers_return);
         for card in skat {
             let Some(deck_card) = self.edition.get(card) else {
                 continue;
@@ -4405,6 +4495,11 @@ impl Run {
                     card_mod: card_mod.clone(),
                     value,
                 });
+                if vouchers_return {
+                    self.series
+                        .returning_vouchers
+                        .push((card, card_mod.clone(), value));
+                }
                 let source = Source::CardMod {
                     card_mod: card_mod.clone(),
                     card,
@@ -4798,7 +4893,16 @@ impl Run {
             .get(option)
             .cloned()
             .ok_or(RunError::InvalidSlot)?;
-        if chosen.cost > self.coins {
+        // The cost of a Zinke on a chosen card may depend on the card
+        // ("Bruderherz"); it is checked again once the card is known.
+        let mut cost = chosen.cost;
+        let lowest = match chosen.choice {
+            EncounterChoice::MarkChosenCard | EncounterChoice::Gamble => {
+                target.map_or(cost, |card| self.zinken_price(content, card, cost))
+            }
+            _ => cost,
+        };
+        if lowest > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
         let (named, named_value) = match &def.kind {
@@ -4854,6 +4958,7 @@ impl Run {
             }
             EncounterChoice::MarkChosenCard => {
                 let card = target.ok_or(RunError::TargetRequired)?;
+                cost = self.zinken_price(content, card, chosen.cost);
                 let card_mod = self.encounter_mod(content, named, card)?;
                 let value = mod_value(content, &card_mod, named_value);
                 self.attach_mod(content, card, &card_mod, value, events)?;
@@ -4886,7 +4991,7 @@ impl Run {
             }
             EncounterChoice::CleanseChosenCard => {
                 let card = target.ok_or(RunError::TargetRequired)?;
-                let change = self.edition.cleanse(card)?;
+                let change = self.cleanse(content, card)?;
                 events.push(RunEvent::DeckChanged(change));
             }
             EncounterChoice::TakeRelic(relic) => {
@@ -4919,6 +5024,7 @@ impl Run {
             }
             EncounterChoice::Gamble => {
                 let card = target.ok_or(RunError::TargetRequired)?;
+                cost = self.zinken_price(content, card, chosen.cost);
                 let card_mod = chosen.card_mod.clone().ok_or(RunError::NoModAvailable)?;
                 let value = mod_value(content, &card_mod, chosen.value);
                 if !self.may_attach(content, card, &card_mod) {
@@ -5003,7 +5109,7 @@ impl Run {
             }
             EncounterChoice::Leave => {}
         }
-        self.coins -= chosen.cost;
+        self.coins -= cost;
         self.settle_debt(events);
         events.push(RunEvent::EncounterResolved {
             encounter: encounter.id.clone(),

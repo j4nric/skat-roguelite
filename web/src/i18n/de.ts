@@ -30,6 +30,7 @@ export const de = {
       UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
       LivesFull: 'Dir fehlt kein Leben.',
+      CurseStays: 'Bruderherz wird seine Flüche nicht los.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
       NoPassesLeft: 'Du kannst nicht mehr einmischen.',
@@ -270,9 +271,9 @@ export const de = {
   characters: {
     Declarer: { short: 'Alleinspieler', role: 'Farbe, Grand und Null' },
     NullPlayer: { short: 'Nullspieler', role: 'Null-Spezialist' },
-    GrandPlayer: { short: 'Grandspieler', role: 'Grand +1 Multiplikator, Farbe −1' },
-    Onlooker: { short: 'Zaungast', role: 'Sieht links ins Blatt' },
-    Landlady: { short: 'Wirtin', role: 'Doppelte Groschen, 4 Plätze' },
+    Shirker: { short: 'Drückeberger', role: 'Marken kommen zurück, Hand ohne Multiplikator' },
+    Tailoress: { short: 'Schneiderin', role: 'Schneider +2, ohne Schneider −1' },
+    HeartBrother: { short: 'Bruderherz', role: 'Rot stark, Flüche bleiben' },
   },
 
   risks: {
@@ -349,9 +350,9 @@ export const de = {
     ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
     kiebitz: 'Kiebitz',
     kiebitzHint: 'vom Kiebitz',
-    onlooker: 'Zaungast',
-    onlookerHint: 'vom Zaungast gesehen',
-    onlookerAria: 'Der Zaungast sieht {count} Karten in diesem Blatt',
+    onlooker: 'Offenes Blatt',
+    onlookerHint: 'offen gesehen',
+    onlookerAria: 'Du siehst {count} Karten in diesem Blatt',
     countTitle: 'Der Zähler',
     countYou: 'Du',
     countThem: 'Gegner',
@@ -484,6 +485,7 @@ export const de = {
     wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
+    voucherReturned: '{mod} ist zurück: {card}.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -553,7 +555,7 @@ export const de = {
     payoutBase: 'Grundbetrag',
     payoutGames: 'Übrige Spiele',
     payoutInterest: 'Zinsen',
-    payoutBonus: 'Die Wirtin',
+    payoutBonus: 'Charakter',
   },
 
   shop: {
@@ -647,6 +649,7 @@ export const de = {
     takeCoins: '{coins} Groschen nehmen',
     takeCoinsHint: 'Der Wirt zahlt dir den halben Preis aus.',
     cost: '{cost} Gr.',
+    costFrom: '{cost} Gr., auf Rot {low} Gr.',
     free: 'gratis',
     pickTarget: 'Welche Karte soll es treffen?',
     curseMod: 'Fluch: {mod}',
