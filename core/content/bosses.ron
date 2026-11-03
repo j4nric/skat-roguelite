@@ -82,9 +82,13 @@
         id: "ramscher",
         name: "Der Ramscher",
         back: Some("ramscher"),
-        text: "Jedes Spiel in der Kneipe ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst doppelt gegen dich.",
-        // ADR 0017: jedes Spiel, nicht nur das erste.
-        passive: [Ramsch],
+        text: "Jedes Spiel in der Kneipe ist ein Ramsch: Unter sind Trumpf, jeder spielt für sich, wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich, sonst einfach gegen dich.",
+        // ADR 0017: jedes Spiel, nicht nur das erste. SingleLoss (Claude,
+        // 03.11.2026, DESIGN 17 a): ein verlorener Ramsch zählt einfach
+        // statt doppelt gegen den Spieler, wie beim Magenbitter. Gemessen
+        // ohne Relikte 45 → 64 % (Stadtteil 1),
+        // docs/balance/2026-11-03-kleine-runde.md.
+        passive: [Ramsch, SingleLoss],
         // Sie lassen laufen: seine Daus zählen 6 Augen weniger, ihre
         // Zehnen 5 (Ramponiert).
         figures: [
@@ -92,9 +96,9 @@
             (name: "Die Ramscherin", edition: [((rank: Some(Ten)), "battered", 5)]),
         ],
         // Vorläufig (03.11.2026): Ein gewonnener Ramsch bringt die Augen
-        // des Verlierers (oft 40 bis 60), ein verlorener das Doppelte
-        // dagegen. Mit drei Ramsch-Spielen entscheidet vor allem, ob einer
-        // verloren geht; der Faktor wirkt wenig. Bis ADR 0017 1,25.
+        // des Verlierers (oft 40 bis 60), ein verlorener seit 03.11.2026
+        // dasselbe dagegen (vorher das Doppelte). Der Faktor wirkt wenig.
+        // Bis ADR 0017 1,25.
         target_factor: 1.0,
     ),
     (

@@ -377,6 +377,11 @@ pub enum Effect {
     /// [`crate::rules::ramsch_value_parts`]). Passive only.
     #[serde(alias = "RamschOnce")]
     Ramsch,
+    /// Lever Spielwert: a lost game counts once against the player instead
+    /// of twice, as "Magenbitter" did (boss "Der Ramscher" since
+    /// 03.11.2026: a lost Ramsch in his pub). Passive or on deal, so it
+    /// holds for every game under the rule.
+    SingleLoss,
     /// Lever Flüche (boss "Die Oma", ADR 0017): when the first game under
     /// this rule is dealt, `cards` random cards of the player's edition
     /// each get one of `curses` (drawn per card, with the curse's default
@@ -513,7 +518,10 @@ impl Effect {
             Effect::WinThreshold(_) | Effect::SchneiderFromDeclarerPoints { .. } => {
                 stage.before_result()
             }
-            Effect::RequireHand | Effect::EnableKontra | Effect::ExtraRedeal => {
+            Effect::RequireHand
+            | Effect::EnableKontra
+            | Effect::ExtraRedeal
+            | Effect::SingleLoss => {
                 matches!(stage, Stage::Passive | Stage::OnDeal)
             }
             Effect::Concede => stage == Stage::OnTrickEnd,

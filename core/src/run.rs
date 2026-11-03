@@ -3355,6 +3355,9 @@ impl Run {
             Effect::RequireOuvert => active.rules.require_ouvert = true,
             Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
             Effect::Ramsch => active.rules.ramsch = true,
+            Effect::SingleLoss => {
+                active.single_loss.get_or_insert_with(|| source.clone());
+            }
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)

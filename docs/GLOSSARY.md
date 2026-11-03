@@ -181,7 +181,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Skat ansehen (Kurzer) | `PeekSkat`, `SkatPeeked` | Feld `ActiveGame::skat_peeked`, Sicht `GameView::skat_peek` |
 | Skatkarte zeigen (Spickzettel) | `skat_shown` | Effekt `RevealSkatCard(n)` (Information, bei der Ansage eines Handspiels), Feld `ActiveGame::skat_shown`, Run-Ereignis `SkatCardShown`, Sicht `GameView::skat_shown` |
 | Umgefärbte Karte (Blue Curaçao, bis 02.11.2026 Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
-| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, `SingleLoss` setzt 1 (ruhend) |
+| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, 1 mit `NextGameEffect::SingleLoss` (ruhend) oder der Boss-Wirkung `Effect::SingleLoss` (Der Ramscher, seit 03.11.2026) |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare`, `Legendary` (Legendär, M8) |
 | Gewicht der Stufe Legendär | `RarityWeights::legendary` | Dezimalzahl (Standard 0,3), `RarityWeights::percent_weight` |
@@ -318,7 +318,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Wirt | `landlord` |
 | Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
 | Die Zwillinge (Fritz und Franz) | `twins` |
-| Der Ramscher (mit Die Ramscherin; jedes Spiel ein Ramsch, Wirkung `Ramsch`, alter Name `RamschOnce`) | `ramscher` |
+| Der Ramscher (mit Die Ramscherin; jedes Spiel ein Ramsch, Wirkung `Ramsch`, alter Name `RamschOnce`; verloren einfach, Wirkung `SingleLoss`) | `ramscher` |
 | Der Revolutionär (entfernt, ADR 0017) | `revolutionary` |
 | Der Schwarze Peter (mit Die Schwarze Grete) | `black_peter` |
 | Der Kiebitz-Mörder (entfernt, ADR 0017) | `kibitz_killer` |
