@@ -71,6 +71,14 @@ export function audioContext(): AudioContext | null {
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
+    // Safari 17+: play Web Audio even with the ring/silent switch on, like
+    // a media player. Older browsers lack the API and keep their default.
+    try {
+      const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+      if (session) session.type = 'playback';
+    } catch {
+      // Ignore.
+    }
     context = new Ctor();
   } catch {
     context = null;
@@ -83,7 +91,8 @@ function resumeContext(): void {
   const ctx = context;
   if (!ctx || pageHidden()) return;
   try {
-    if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+    // iOS also reports 'interrupted' (after a call or the lock screen).
+    if (ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => undefined);
   } catch {
     // Stay silent.
   }

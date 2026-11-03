@@ -316,7 +316,12 @@ export class App {
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // Browsers allow audio only after a user gesture.
-    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    // iOS Safari only counts touchend, pointerup and click as an activation
+    // that may start or resume an AudioContext; pointerdown alone leaves it
+    // suspended for good, so every one of them unlocks and resumes.
+    for (const type of ['pointerdown', 'pointerup', 'touchend', 'click'] as const) {
+      window.addEventListener(type, unlockAudio, { passive: true, capture: true });
+    }
     window.addEventListener('keydown', unlockAudio);
     window.addEventListener('keydown', (e) => {
       const o = this.ui.overlay;
