@@ -34,7 +34,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{EncounterChoice, Run, RunError, RunEvent, RunPhase, draw_weighted};
+use super::{Run, RunError, RunEvent, RunPhase, draw_weighted};
 use crate::content::{CardModDef, CardModId, Content, Effect, ModKind, in_pool};
 use crate::deck::CardKind;
 
@@ -352,7 +352,7 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        self.shop_mut()?;
+        self.tresen_mut()?;
         let cost = self.shop_price(content, self.card_reroll_price(content));
         if !self.can_pay(content, cost) {
             return Err(RunError::NotEnoughCoins);
@@ -436,7 +436,7 @@ impl Run {
         card: u32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if self.shop_mut()?.painter_used {
+        if self.tresen_mut()?.painter_used {
             return Err(RunError::AlreadyUsed);
         }
         let price = self.painter_cost(content, card);
@@ -472,7 +472,7 @@ impl Run {
             if let Some(encounter) = next.encounter.take() {
                 events.push(RunEvent::EncounterResolved {
                     encounter: encounter.id,
-                    choice: EncounterChoice::Painter,
+                    option: encounter.chosen.unwrap_or(0),
                 });
             }
             next.continue_trip(content, events)?;
@@ -487,7 +487,7 @@ impl Run {
         card: u32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if self.shop_mut()?.cleansed {
+        if self.tresen_mut()?.cleansed {
             return Err(RunError::AlreadyUsed);
         }
         let price = self.shop_price(content, content.run.shop.zinken.cleanse_price);

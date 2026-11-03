@@ -15,15 +15,15 @@ use serde::Serialize;
 
 use super::guests::GuestInfo;
 use super::{
-    EncounterChoice, Kontra, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats, sell_price,
+    Kontra, OptionBlock, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats, sell_price,
     series_target,
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
     BossId, CardFilter, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
-    ConsumableId, Content, EncounterId, Factor, HookContext, ModKind, NextGameEffect,
-    OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep,
-    card_mod_status,
+    ConsumableId, Content, EncounterEffect, EncounterId, Factor, HookContext, ModKind,
+    NextGameEffect, OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
+    ScoreStep, StopCategory, card_mod_status,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
@@ -199,38 +199,55 @@ pub struct CharacterInfo {
     pub back: String,
 }
 
+/// What an option of the open encounter needs as target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum OptionTarget {
+    /// Nothing.
+    None,
+    /// A card of the player's edition (its id).
+    Card,
+    /// An owned relic (its index).
+    Relic,
+}
+
+/// One effect of an encounter option as the player sees it, with what
+/// was drawn for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EncounterEffectView {
+    /// The effect (data form, every draw filled in).
+    pub effect: EncounterEffect,
+    /// The relic it names: the house rule, the relic received, the relic
+    /// a swap brings.
+    pub relic: Option<RelicInfo>,
+    /// The modification a card gets (with its curse mark).
+    pub card_mod: Option<CardModInfo>,
+    /// The Schnaps it gives.
+    pub consumable: Option<ConsumableInfo>,
+    /// A Schnaps with every slot full: these Groschen instead.
+    pub coins_instead: Option<u32>,
+}
+
 /// An option of the open encounter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EncounterOptionView {
     /// Index for [`RunAction::ChooseEncounter`].
     pub index: usize,
-    /// What it does.
-    pub choice: EncounterChoice,
-    /// Groschen it costs.
+    /// German title from the content.
+    pub label: String,
+    /// Groschen it costs (the stake of a bet or a throw of the dice).
     pub cost: u32,
-    /// The relic it names (house rule on offer, relic given away).
-    pub relic: Option<RelicInfo>,
-    /// The relic received by a swap ("Alter Bekannter"), known before the
-    /// choice.
-    pub new_relic: Option<RelicInfo>,
-    /// The modification a card gets ("Der Kartengeber" and the like),
-    /// known before the choice.
-    pub card_mod: Option<CardModInfo>,
-    /// The curse that comes with it ("Alte Karten im Schrank", "Verlorenes
-    /// Portemonnaie"), known before the choice.
-    pub curse: Option<CardModInfo>,
-    /// The consumable it gives ("Der Wirt spendiert").
-    pub consumable: Option<ConsumableInfo>,
-    /// Whether what the option gives is only drawn at random when it is
-    /// chosen: a swap or a modification of a save from before they were
-    /// drawn in advance. Then `new_relic` or `card_mod` is `None`.
-    pub random_gain: bool,
+    /// What it does, in order.
+    pub effects: Vec<EncounterEffectView>,
+    /// Offered only when no other option can be taken.
+    pub fallback: bool,
     /// Whether it can be chosen now (with one of `targets` if it needs
     /// one).
     pub can_choose: bool,
-    /// Whether it needs a target card of the deck.
-    pub needs_target: bool,
-    /// Deck card ids it can be used on.
+    /// Why it cannot be chosen now.
+    pub blocked: Option<OptionBlock>,
+    /// What it needs as target.
+    pub target: OptionTarget,
+    /// Deck card ids or relic indices it can be used on.
     pub targets: Vec<u32>,
     /// What the option costs on each of `targets`, in the same order: a
     /// Zinke on a card may cost less than `cost` ("Bruderherz": half on
@@ -247,7 +264,9 @@ pub struct EncounterView {
     pub name: String,
     /// German text from the content.
     pub text: String,
-    /// Its options; the last one is always "Weitergehen".
+    /// Its stop category (Begegnung, Werkstatt, Fundgroschen, ...).
+    pub category: StopCategory,
+    /// Its options; one must be taken.
     pub options: Vec<EncounterOptionView>,
 }
 
@@ -474,6 +493,11 @@ pub struct ShopView {
     pub painter: ServiceView,
     /// "Karte reinigen" ([`RunAction::CleanseCard`]).
     pub cleanse: ServiceView,
+    /// A Kiosk (03.11.2026), not the Tresen: only Schnäpse, one may be
+    /// bought; no Neuauslage, Zinken or selling.
+    pub kiosk: bool,
+    /// At a Kiosk: Groschen off each Schnaps against the Tresen.
+    pub kiosk_discount: u32,
 }
 
 /// An offer of the Auslage.
@@ -1480,7 +1504,7 @@ impl Run {
                         let consumable = Run::consumable_info(content, id);
                         ConsumableOffer {
                             slot,
-                            price: self.shop_price(content, consumable.price),
+                            price: self.consumable_price(content, consumable.price),
                             consumable,
                             can_buy: self.accepts(content, RunAction::BuyConsumable(slot)),
                         }
@@ -1526,6 +1550,12 @@ impl Run {
                 content.run.shop.zinken.cleanse_price,
                 RunAction::CleanseCard,
             ),
+            kiosk: shop.kiosk,
+            kiosk_discount: if shop.kiosk {
+                content.run.route.kiosk.discount
+            } else {
+                0
+            },
         })
     }
 
@@ -1740,115 +1770,106 @@ impl Run {
     fn encounter_view(&self, content: &Content) -> Option<EncounterView> {
         let encounter = self.encounter.as_ref()?;
         let def = content.encounter(&encounter.id);
+        let item_slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
+        let slots_full = self.consumables.len() >= item_slots;
         let options = encounter
             .options
             .iter()
             .enumerate()
             .map(|(index, option)| {
-                let needs_target = matches!(
-                    option.choice,
-                    EncounterChoice::MarkChosenCard
-                        | EncounterChoice::CleanseChosenCard
-                        | EncounterChoice::Painter
-                        | EncounterChoice::Gamble
-                        | EncounterChoice::Lesson { .. }
-                        | EncounterChoice::OldCards { .. }
-                );
-                let relic = match &option.choice {
-                    EncounterChoice::TakeRule(id)
-                    | EncounterChoice::TakeRelic(id)
-                    | EncounterChoice::SwapRelic { relic: id, .. } => {
-                        Some(Run::relic_info(content, id))
-                    }
-                    _ => None,
+                let effects = option
+                    .effects
+                    .iter()
+                    .map(|effect| {
+                        let mut view = EncounterEffectView {
+                            effect: effect.clone(),
+                            relic: None,
+                            card_mod: None,
+                            consumable: None,
+                            coins_instead: None,
+                        };
+                        match effect {
+                            EncounterEffect::EveningRule(Some(id))
+                            | EncounterEffect::Relic(Some(id))
+                            | EncounterEffect::SwapRelic(Some(id)) => {
+                                view.relic = Some(Run::relic_info(content, id));
+                            }
+                            EncounterEffect::Mark {
+                                card_mod: Some(id),
+                                value,
+                                ..
+                            } => view.card_mod = Some(Run::card_mod_info(content, id, *value)),
+                            EncounterEffect::Schnapps(Some(id)) => {
+                                view.consumable = Some(Run::consumable_info(content, id));
+                                if slots_full {
+                                    view.coins_instead =
+                                        Some(content.consumable(id).map_or(0, |c| c.price));
+                                }
+                            }
+                            _ => {}
+                        }
+                        view
+                    })
+                    .collect();
+                let target = if option.needs_card() {
+                    OptionTarget::Card
+                } else if option.needs_relic() {
+                    OptionTarget::Relic
+                } else {
+                    OptionTarget::None
                 };
-                let new_relic = match &option.choice {
-                    EncounterChoice::SwapRelic { new: Some(id), .. } => {
-                        Some(Run::relic_info(content, id))
-                    }
-                    _ => None,
+                let candidates: Vec<u32> = match target {
+                    OptionTarget::Card => self.edition.cards().iter().map(|c| c.id).collect(),
+                    OptionTarget::Relic => (0..self.relics.len())
+                        .filter_map(|i| u32::try_from(i).ok())
+                        .collect(),
+                    OptionTarget::None => Vec::new(),
                 };
-                let marks = matches!(
-                    option.choice,
-                    EncounterChoice::MarkRandomCard | EncounterChoice::MarkChosenCard
-                );
-                let names_mod = marks
-                    || matches!(
-                        option.choice,
-                        EncounterChoice::Gamble
-                            | EncounterChoice::Lesson { .. }
-                            | EncounterChoice::OldCards { .. }
-                    );
-                let card_mod = option
-                    .card_mod
-                    .as_ref()
-                    .filter(|_| names_mod)
-                    .map(|id| Run::card_mod_info(content, id, option.value));
-                let curse = match &option.choice {
-                    EncounterChoice::OldCards { curse, .. }
-                    | EncounterChoice::KeepWallet { curse, .. } => {
-                        Some(Run::card_mod_info(content, curse, None))
-                    }
-                    _ => None,
-                };
-                let consumable = match &option.choice {
-                    EncounterChoice::TakeConsumable(id) => Some(Run::consumable_info(content, id)),
-                    _ => None,
-                };
-                let random_gain = match &option.choice {
-                    EncounterChoice::SwapRelic { new, .. } => new.is_none(),
-                    _ => marks && card_mod.is_none(),
-                };
-                let targets: Vec<u32> = if needs_target {
-                    self.edition
-                        .cards()
-                        .iter()
-                        .map(|c| c.id)
-                        .filter(|&card| {
+                let blocked = self.encounter_option_block(content, index);
+                let targets: Vec<u32> = if blocked.is_some() {
+                    Vec::new()
+                } else {
+                    candidates
+                        .into_iter()
+                        .filter(|&t| {
                             self.accepts(
                                 content,
                                 RunAction::ChooseEncounter {
                                     option: index,
-                                    target: Some(card),
+                                    target: Some(t),
                                 },
                             )
                         })
                         .collect()
-                } else {
-                    Vec::new()
                 };
                 let target_costs: Vec<u32> = targets
                     .iter()
-                    .map(|&card| match option.choice {
-                        EncounterChoice::MarkChosenCard | EncounterChoice::Gamble => {
-                            self.zinken_price(content, card, option.cost)
-                        }
+                    .map(|&t| match target {
+                        OptionTarget::Card => self.option_cost(content, option, Some(t)),
                         _ => option.cost,
                     })
                     .collect();
-                let can_choose = if needs_target {
-                    !targets.is_empty()
-                } else {
-                    self.accepts(
+                let can_choose = match target {
+                    OptionTarget::None => self.accepts(
                         content,
                         RunAction::ChooseEncounter {
                             option: index,
                             target: None,
                         },
-                    )
+                    ),
+                    _ => !targets.is_empty(),
                 };
                 EncounterOptionView {
                     index,
-                    choice: option.choice.clone(),
+                    label: def
+                        .and_then(|d| d.options.get(index))
+                        .map_or_else(String::new, |o| o.label.clone()),
                     cost: option.cost,
-                    relic,
-                    new_relic,
-                    card_mod,
-                    curse,
-                    consumable,
-                    random_gain,
+                    effects,
+                    fallback: option.fallback,
                     can_choose,
-                    needs_target,
+                    blocked,
+                    target,
                     targets,
                     target_costs,
                 }
@@ -1858,6 +1879,7 @@ impl Run {
             id: encounter.id.clone(),
             name: def.map_or_else(|| encounter.id.to_string(), |d| d.name.clone()),
             text: def.map_or_else(String::new, |d| d.text.clone()),
+            category: def.map_or(StopCategory::Event, |d| d.category),
             options,
         })
     }

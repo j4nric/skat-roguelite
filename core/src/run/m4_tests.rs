@@ -570,39 +570,10 @@ fn the_old_man_lays_one_rule_per_game() {
     assert_eq!(rules, expected);
 }
 
-/// Open an encounter with these options by hand.
-fn encounter(run: &mut Run, id: &str, options: Vec<EncounterOption>) {
-    run.game = None;
-    run.shop = None;
-    run.phase = RunPhase::Encounter;
-    run.encounter = Some(ActiveEncounter {
-        id: EncounterId::new(id),
-        options,
-    });
-    // A stop on the way to the next pub (ADR 0016).
-    let (section, index) = run.next_series_position();
-    run.trip = Some(super::tour::Trip {
-        section,
-        index,
-        transport: super::tour::Transport::Walk,
-        stops: Vec::new(),
-        spelunke: None,
-    });
-}
-
-fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
-    EncounterOption {
-        choice,
-        cost,
-        card_mod: None,
-        value: None,
-    }
-}
-
 #[test]
-fn encounters_come_instead_of_the_tresen_and_leave_to_the_next_series() {
+fn encounters_on_the_way_must_be_taken_and_lead_to_the_next_pub() {
     let content = content();
-    for seed in 0..50 {
+    for seed in 0..80 {
         let (mut run, _) = Run::new(&content, seed).expect("run");
         while run.phase() == RunPhase::Game {
             let action = RunBot.next_action(&run, &content).expect("action");
@@ -611,7 +582,6 @@ fn encounters_come_instead_of_the_tresen_and_leave_to_the_next_series() {
         if run.phase() != RunPhase::Route || run.series().index != 0 {
             continue;
         }
-        // A single stop with an encounter (Zu Fuß or Bahn).
         let Some(way) = run.route().expect("route").options.iter().position(|o| {
             o.stops.len() == 1 && o.stops[0].encounter.is_some() && o.spelunke.is_none()
         }) else {
@@ -622,21 +592,27 @@ fn encounters_come_instead_of_the_tresen_and_leave_to_the_next_series() {
         if run.phase() != RunPhase::Encounter {
             continue;
         }
+        // No walking on: every option does something or costs something,
+        // and the bot always takes one.
         let encounter = run.encounter().expect("open").clone();
-        assert_eq!(
-            encounter.options.last().map(|o| &o.choice),
-            Some(&EncounterChoice::Leave)
+        assert!(
+            encounter
+                .options
+                .iter()
+                .all(|o| !o.effects.is_empty() || o.cost > 0 || o.fallback)
         );
-        let leave = encounter.options.len() - 1;
-        let events = run
-            .apply(
-                &content,
-                RunAction::ChooseEncounter {
-                    option: leave,
-                    target: None,
-                },
-            )
-            .expect("leave");
+        let action = RunBot.encounter_action(&run, &content);
+        assert!(matches!(action, RunAction::ChooseEncounter { .. }));
+        let mut events = run.apply(&content, action).expect("take");
+        while run.phase() == RunPhase::Encounter {
+            let action = RunBot.next_action(&run, &content).expect("action");
+            events.extend(run.apply(&content, action).expect("paint"));
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, RunEvent::EncounterResolved { .. }))
+        );
         assert!(
             events
                 .iter()
@@ -645,31 +621,20 @@ fn encounters_come_instead_of_the_tresen_and_leave_to_the_next_series() {
         assert_eq!(run.phase(), RunPhase::Game);
         return;
     }
-    panic!("no series won in 50 seeds");
+    panic!("no encounter in 80 seeds");
 }
 
 #[test]
 fn encounter_choices_change_the_run() {
     let content = content();
+    let choose = |option, target| RunAction::ChooseEncounter { option, target };
     // Stammtisch-Streit: a house rule for the evening, without a slot.
     let mut run = relic_run(&content, &[]);
-    encounter(
-        &mut run,
-        "stammtisch_dispute",
-        vec![
-            option(EncounterChoice::TakeRule(RelicId::new("blind_eye")), 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
-    let events = run
-        .apply(
-            &content,
-            RunAction::ChooseEncounter {
-                option: 0,
-                target: None,
-            },
-        )
-        .expect("take");
+    run.test_encounter(&content, "stammtisch_dispute").options[0].effects =
+        vec![EncounterEffect::EveningRule(Some(RelicId::new(
+            "blind_eye",
+        )))];
+    let events = run.apply(&content, choose(0, None)).expect("take");
     assert!(events.contains(&RunEvent::EveningRuleAdded(RelicId::new("blind_eye"))));
     assert_eq!(run.evening_relics(), &[RelicId::new("blind_eye")]);
     assert!(run.relics().is_empty());
@@ -680,36 +645,15 @@ fn encounter_choices_change_the_run() {
     );
     // The evening ends with the section.
     run.series.index = 4;
-    encounter(
-        &mut run,
-        "last_round",
-        vec![option(EncounterChoice::Leave, 0)],
-    );
-    let events = run
-        .apply(
-            &content,
-            RunAction::ChooseEncounter {
-                option: 0,
-                target: None,
-            },
-        )
-        .expect("leave");
+    run.test_encounter(&content, "last_round");
+    let events = run.apply(&content, choose(2, None)).expect("water");
     assert!(events.contains(&RunEvent::EveningRulesEnded));
     assert!(run.evening_relics().is_empty());
 
-    // Der Kartengeber: pay to choose the card.
+    // Der Kartengeber: pay to choose the card, or watch for 2 Groschen.
     let mut run = relic_run(&content, &[]);
     run.coins = 5;
-    encounter(
-        &mut run,
-        "card_dealer",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::MarkChosenCard, 3),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
-    let choose = |option, target| RunAction::ChooseEncounter { option, target };
+    run.test_encounter(&content, "card_dealer");
     assert_eq!(
         run.clone().apply(&content, choose(1, None)),
         Err(RunError::TargetRequired)
@@ -718,35 +662,28 @@ fn encounter_choices_change_the_run() {
     assert_eq!(run.coins(), 2);
     assert_eq!(run.edition().get(31).map(|c| c.mods.len()), Some(1));
     let mut random = relic_run(&content, &[]);
-    encounter(
-        &mut random,
-        "card_dealer",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    random.test_encounter(&content, "card_dealer");
     let events = random.apply(&content, choose(0, None)).expect("random");
     assert!(events.iter().any(|e| matches!(e, RunEvent::DeckChanged(_))));
-
-    // Alter Bekannter: the relic is swapped for another.
-    let mut run = relic_run(&content, &["kontra"]);
-    encounter(
-        &mut run,
-        "old_friend",
-        vec![
-            option(
-                EncounterChoice::SwapRelic {
-                    index: 0,
-                    relic: RelicId::new("kontra"),
-                    new: None,
-                },
-                0,
-            ),
-            option(EncounterChoice::Leave, 0),
-        ],
+    let mut watch = relic_run(&content, &[]);
+    watch.coins = 0;
+    watch.test_encounter(&content, "card_dealer");
+    assert_eq!(
+        watch.encounter_option_block(&content, 1),
+        Some(OptionBlock::NotEnoughCoins)
     );
-    let events = run.apply(&content, choose(0, None)).expect("swap");
+    watch.apply(&content, choose(2, None)).expect("watch");
+    assert_eq!(watch.coins(), 2);
+
+    // Alter Bekannter: a relic swapped (target: its index), sold at the
+    // full price, or a Schnaps.
+    let mut run = relic_run(&content, &["kontra"]);
+    run.test_encounter(&content, "old_friend");
+    assert_eq!(
+        run.clone().apply(&content, choose(0, None)),
+        Err(RunError::TargetRequired)
+    );
+    let events = run.apply(&content, choose(0, Some(0))).expect("swap");
     assert!(
         events
             .iter()
@@ -754,17 +691,31 @@ fn encounter_choices_change_the_run() {
     );
     assert_eq!(run.relics().len(), 1);
     assert_ne!(run.relics()[0], RelicId::new("kontra"));
+    let mut run = relic_run(&content, &["old_lady"]);
+    run.coins = 0;
+    run.test_encounter(&content, "old_friend");
+    run.apply(&content, choose(1, Some(0))).expect("sell");
+    let price = content
+        .relic(&RelicId::new("old_lady"))
+        .expect("old_lady")
+        .price;
+    assert_eq!(run.coins(), price);
+    assert!(run.relics().is_empty());
+    let mut none = relic_run(&content, &[]);
+    none.test_encounter(&content, "old_friend");
+    assert_eq!(
+        none.encounter_option_block(&content, 0),
+        Some(OptionBlock::NoRelic)
+    );
+    assert_eq!(
+        none.encounter_option_block(&content, 1),
+        Some(OptionBlock::NoRelic)
+    );
+    assert_eq!(none.encounter_option_block(&content, 2), None);
 
     // Letzte Runde: the next declared game counts double.
     let mut run = relic_run(&content, &[]);
-    encounter(
-        &mut run,
-        "last_round",
-        vec![
-            option(EncounterChoice::DoubleNextGame(2), 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "last_round");
     run.apply(&content, choose(0, None)).expect("accept");
     assert_eq!(run.pending_factor(), Some(2));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -778,6 +729,17 @@ fn encounter_choices_change_the_run() {
             && l.change == Change::Multiply(2)
     ));
     assert_eq!(run.pending_factor(), None);
+    // A round for the table: 3 Groschen, one Einmischen more next pub.
+    let mut run = relic_run(&content, &[]);
+    run.coins = 3;
+    run.test_encounter(&content, "last_round");
+    let events = run.apply(&content, choose(1, None)).expect("round");
+    assert_eq!(run.coins(), 0);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::NextPubPlanned { redeals: 1, .. }))
+    );
 }
 
 #[test]
@@ -999,54 +961,32 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
             .filter(|c| c.mods.contains(&CardModId::new(m)))
             .count()
     };
-    // Umgekipptes Bier: for 4 Groschen on a chosen card, else at random.
-    // Since M7 the Bierfleck pays 3 Groschen when attached (DESIGN 7.2).
+    // Umgekipptes Bier: for 4 Groschen on a chosen card, else at random,
+    // or 2 Groschen to mop it up. The curse pays 3 Groschen when attached
+    // (DESIGN 7.2).
     let mut run = relic_run(&content, &[]);
     run.coins = 4;
-    encounter(
-        &mut run,
-        "spilled_beer",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::MarkChosenCard, 4),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "spilled_beer");
     run.apply(&content, choose(1, Some(16))).expect("chosen");
     assert_eq!(run.coins(), 3);
     assert!(has_mod(&run, 16, "battered"));
     let mut run = relic_run(&content, &[]);
-    encounter(
-        &mut run,
-        "spilled_beer",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "spilled_beer");
     run.apply(&content, choose(0, None)).expect("random");
     assert_eq!(marked(&run, "battered"), 1);
+    let mut run = relic_run(&content, &[]);
+    run.coins = 2;
+    run.test_encounter(&content, "spilled_beer");
+    run.apply(&content, choose(2, None)).expect("mop");
+    assert_eq!(run.coins(), 0);
+    assert_eq!(marked(&run, "battered"), 0);
     // Gasthof zur Krone (Alleinspieler) and Der Taschenspieler (Nullspieler).
     let mut run = relic_run(&content, &[]);
-    encounter(
-        &mut run,
-        "crown_inn",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "crown_inn");
     run.apply(&content, choose(0, None)).expect("crown");
     assert_eq!(marked(&run, "trump_bonus"), 1);
     let mut run = null_run(&content, &[]);
-    encounter(
-        &mut run,
-        "conjurer",
-        vec![
-            option(EncounterChoice::MarkRandomCard, 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "conjurer");
     run.apply(&content, choose(0, None)).expect("dummy");
     assert_eq!(marked(&run, "voucher_wild"), 1);
     for (id, character) in [
@@ -1058,14 +998,7 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     }
     // Preisskat: the next game counts three times.
     let mut run = relic_run(&content, &[]);
-    encounter(
-        &mut run,
-        "prize_skat",
-        vec![
-            option(EncounterChoice::DoubleNextGame(3), 0),
-            option(EncounterChoice::Leave, 0),
-        ],
-    );
+    run.test_encounter(&content, "prize_skat");
     run.apply(&content, choose(0, None)).expect("accept");
     assert_eq!(run.pending_factor(), Some(3));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -1078,22 +1011,24 @@ fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
         |l| l.source == Source::Encounter(EncounterId::new("prize_skat"))
             && l.change == Change::Multiply(3)
     ));
-    // Gast aus Altenburg: two house rules on offer, plus leaving.
-    let mut only_guest = content.clone();
-    only_guest
-        .encounters
-        .retain(|id, _| id.as_str() == "guest_from_altenburg");
-    let mut run = relic_run(&only_guest, &[]);
-    run.game = None;
-    let mut events = Vec::new();
-    assert!(run.open_random_encounter(&only_guest, &mut events));
-    let options = &run.encounter().expect("open").options;
+    // Gast aus Altenburg: two different house rules on offer, or a Winkel
+    // on a chosen card.
+    let mut run = relic_run(&content, &[]);
+    run.test_encounter(&content, "guest_from_altenburg");
+    let options = run.encounter().expect("open").options.clone();
     assert_eq!(options.len(), 3);
-    for o in &options[..2] {
-        let EncounterChoice::TakeRule(id) = &o.choice else {
-            panic!("{o:?}");
-        };
+    let rules: Vec<RelicId> = options[..2]
+        .iter()
+        .map(|o| match &o.effects[..] {
+            [EncounterEffect::EveningRule(Some(id))] => id.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_ne!(rules[0], rules[1]);
+    for id in &rules {
         let def = content.relic(id).expect("relic");
         assert_eq!(def.kind, crate::content::RelicKind::HouseRule);
     }
+    run.apply(&content, choose(2, Some(31))).expect("winkel");
+    assert!(has_mod(&run, 31, "rank"));
 }

@@ -1297,14 +1297,21 @@ mod tests {
                 let view: serde_json::Value =
                     serde_json::from_str(&session.view().expect("view")).expect("json");
                 if view["phase"] == "Encounter" {
+                    // One option must be taken (03.11.2026): no walking on.
                     let options = view["encounter"]["options"].as_array().expect("options");
-                    let leave = options.len() - 1;
-                    assert_eq!(options[leave]["choice"], "Leave");
+                    assert!(options.iter().all(|o| o.get("choice").is_none()));
+                    assert!(options.iter().all(|o| o["label"].is_string()));
+                    let Some(pick) = options
+                        .iter()
+                        .position(|o| o["can_choose"] == true && o["target"] == "None")
+                    else {
+                        break;
+                    };
                     let step = play(
                         &mut session,
-                        &format!(r#"{{"ChooseEncounter":{{"option":{leave},"target":null}}}}"#),
+                        &format!(r#"{{"ChooseEncounter":{{"option":{pick},"target":null}}}}"#),
                     )
-                    .expect("leave");
+                    .expect("take");
                     // On to the pub (or, after a Spelunke's loot, the route).
                     let phase = &step["view"]["phase"];
                     assert!(phase == "Game" || phase == "Route", "{phase}");
@@ -1392,8 +1399,8 @@ mod tests {
 
     /// Saves written by the M4 and M5 web app (the e2e fixtures) still
     /// load, show a view and play on: new fields have serde defaults, the
-    /// single skat swap filter of "Die Oma" reads as a list, encounter
-    /// options without a named modification or relic draw it when chosen.
+    /// single skat swap filter of "Die Oma" reads as a list; an encounter
+    /// of the form before 03.11.2026 is opened anew.
     /// A run saved before own editions (save version 1, ADR 0015) is
     /// discarded with `OutdatedSave`, whatever it holds; a new run starts.
     /// The meta state is a separate save and stays.
@@ -1502,10 +1509,11 @@ mod tests {
                 assert!(!removed.contains(&id), "{name}: {id}");
             }
             if name == "encounter" {
+                // Saved in the form before 03.11.2026: opened anew.
                 let options = view["encounter"]["options"].as_array().expect("options");
-                assert_eq!(options[0]["choice"], "MarkRandomCard");
-                assert_eq!(options[0]["random_gain"], true);
-                assert!(options[0]["card_mod"].is_null());
+                assert_eq!(options.len(), 3, "{name}");
+                assert_eq!(options[0]["effects"][0]["effect"]["Mark"]["card"], "Random");
+                assert!(options[0]["effects"][0]["card_mod"].is_object());
                 let step = play(
                     &mut session,
                     r#"{"ChooseEncounter":{"option":0,"target":null}}"#,

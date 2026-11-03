@@ -502,17 +502,20 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
     run.apply(&content, RunAction::ChooseRoute(0))
         .expect("walk");
     let encounter = run.encounter().expect("workshop").clone();
-    let choices: Vec<&EncounterChoice> = encounter.options.iter().map(|o| &o.choice).collect();
+    let effects: Vec<&[EncounterEffect]> =
+        encounter.options.iter().map(|o| &o.effects[..]).collect();
     assert_eq!(
-        choices,
+        effects,
         [
-            &EncounterChoice::Painter,
-            &EncounterChoice::CleanseChosenCard,
-            &EncounterChoice::Leave
+            &[EncounterEffect::Painter][..],
+            &[EncounterEffect::Cleanse][..]
         ]
     );
     let view = run.view(&content).encounter.expect("view");
-    assert!(view.options[0].needs_target && view.options[0].targets.contains(&31));
+    assert!(
+        view.options[0].target == super::view::OptionTarget::Card
+            && view.options[0].targets.contains(&31)
+    );
     let events = run
         .apply(
             &content,
@@ -535,7 +538,7 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
         run.apply(
             &content,
             RunAction::ChooseEncounter {
-                option: 2,
+                option: 1,
                 target: None
             }
         ),
@@ -546,7 +549,7 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
         .expect("paint");
     assert!(events.contains(&RunEvent::EncounterResolved {
         encounter: EncounterId::new("workshop"),
-        choice: EncounterChoice::Painter,
+        option: 0,
     }));
     assert!(run.encounter().is_none() && run.painter().is_none());
     assert_eq!(run.phase(), RunPhase::Game, "on to the next pub");

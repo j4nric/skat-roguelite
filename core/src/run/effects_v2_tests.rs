@@ -459,38 +459,3 @@ fn saves_from_before_rank_two_cap_rank_at_two() {
         Err(DeckError::AtMaximum(id("rank")))
     );
 }
-
-#[test]
-fn an_open_encounter_of_an_old_save_gives_the_converted_modification() {
-    let content = content();
-    let mut run = relic_run(&content, &[]);
-    run.game = None;
-    run.phase = RunPhase::Encounter;
-    run.encounter = Some(ActiveEncounter {
-        id: EncounterId::new("crown_inn"),
-        options: vec![
-            EncounterOption {
-                choice: EncounterChoice::MarkChosenCard,
-                cost: 0,
-                card_mod: Some(id("crown")),
-                value: None,
-            },
-            EncounterOption {
-                choice: EncounterChoice::Leave,
-                cost: 0,
-                card_mod: None,
-                value: None,
-            },
-        ],
-    });
-    run.apply(
-        &content,
-        RunAction::ChooseEncounter {
-            option: 0,
-            target: Some(7),
-        },
-    )
-    .expect("chosen");
-    assert_eq!(card(run.edition(), 7).mods, vec![id("trump_bonus")]);
-    assert_eq!(card(run.edition(), 7).mod_value(&id("trump_bonus")), 6);
-}

@@ -30,8 +30,8 @@ use super::{
     series_target,
 };
 use crate::content::{
-    CityDistrict, Content, DistrictLook, EncounterId, EncounterKind, MalusDef, MalusId, RelicId,
-    StopCategory, in_pool,
+    CityDistrict, Content, DistrictLook, EncounterId, MalusDef, MalusId, RelicId, StopCategory,
+    in_pool,
 };
 use crate::deck::{CardKind, DeckChange};
 
@@ -479,15 +479,9 @@ impl Run {
             }
         }
         if self.series.spelunke.is_some() {
-            let loot = content
-                .encounters
-                .values()
-                .find(|e| e.kind == EncounterKind::RelicReward)
-                .map(|e| e.id.clone());
-            if let Some(loot) = loot {
-                if self.open_encounter(content, &loot, events) {
-                    return Ok(());
-                }
+            let loot = content.run.spelunke.loot.clone();
+            if self.open_encounter(content, &loot, events) {
+                return Ok(());
             }
         }
         self.open_route(content, events)
@@ -556,64 +550,49 @@ impl Run {
         self.open_route(content, events)
     }
 
-    /// Whether an encounter would have something to offer now (checked
-    /// before it is put on a route).
-    fn encounter_available(&self, content: &Content, kind: &EncounterKind) -> bool {
-        match kind {
-            EncounterKind::SwapRelic => {
-                !self.relics.is_empty() && !self.relic_pool(content, false).is_empty()
-            }
-            EncounterKind::EveningRule { .. } => !self.relic_pool(content, true).is_empty(),
-            EncounterKind::Rest { .. } => self.lives < content.run.lives.max,
-            EncounterKind::RelicReward => false,
-            EncounterKind::MarkCard { .. }
-            | EncounterKind::DoubleNextGame { .. }
-            | EncounterKind::Workshop
-            | EncounterKind::FreeSchnapps { .. }
-            | EncounterKind::Gamble { .. }
-            | EncounterKind::Wallet { .. }
-            | EncounterKind::Lesson { .. }
-            | EncounterKind::OldCards { .. }
-            | EncounterKind::Lookout { .. } => true,
-            // A bet waits for its game; one at a time.
-            EncounterKind::Wager { .. } => self.wager.is_none(),
+    /// Whether a stop of this category can be put on a way now: the Rast
+    /// only with a life missing, the Kiosk with a Schnaps to sell, an
+    /// encounter category with an encounter that has an option to take.
+    fn category_open(&self, content: &Content, category: StopCategory) -> bool {
+        match category {
+            StopCategory::Tresen => true,
+            StopCategory::Rest if self.lives >= content.run.lives.max => false,
+            StopCategory::Kiosk => !self.kiosk_pool(content).is_empty(),
+            _ => !self.fitting_encounters(content, category).is_empty(),
         }
     }
 
-    /// Draw one stop: a category by its weight (Rast only with a life
-    /// missing), then an encounter of it not on the choice yet if there is
-    /// one. A category without a fitting encounter becomes the Tresen.
-    fn draw_stop(&mut self, content: &Content, used: &mut Vec<EncounterId>) -> RouteStop {
-        let weights = &content.run.route.weights;
-        let rest_ok = self.lives < content.run.lives.max;
-        let categories: Vec<(StopCategory, u32)> = [
-            StopCategory::Tresen,
-            StopCategory::Event,
-            StopCategory::Upgrade,
-            StopCategory::Rest,
-        ]
-        .into_iter()
-        .filter(|c| *c != StopCategory::Rest || rest_ok)
-        .map(|c| (c, weights.of(c)))
-        .filter(|(_, w)| *w > 0)
-        .collect();
-        let category = draw_weighted(&mut self.tour_rng, categories, 1)
-            .pop()
-            .unwrap_or(StopCategory::Tresen);
-        if category == StopCategory::Tresen {
+    /// Encounters of a category the player may meet now, with their weight.
+    fn fitting_encounters(
+        &self,
+        content: &Content,
+        category: StopCategory,
+    ) -> Vec<(EncounterId, u32)> {
+        content
+            .encounters
+            .values()
+            .filter(|e| e.category == category && e.weight > 0)
+            .filter(|e| in_pool(&e.characters, self.character))
+            .filter(|e| self.encounter_available(content, e))
+            .map(|e| (e.id.clone(), e.weight))
+            .collect()
+    }
+
+    /// The stop of a category: the encounter drawn by weight (one not on
+    /// the choice yet if there is one), none for a shop.
+    fn stop_of(
+        &mut self,
+        content: &Content,
+        category: StopCategory,
+        used: &mut Vec<EncounterId>,
+    ) -> RouteStop {
+        if category.is_shop() {
             return RouteStop {
                 category,
                 encounter: None,
             };
         }
-        let fitting: Vec<(EncounterId, u32)> = content
-            .encounters
-            .values()
-            .filter(|e| e.category == category && e.weight > 0)
-            .filter(|e| in_pool(&e.characters, self.character))
-            .filter(|e| self.encounter_available(content, &e.kind))
-            .map(|e| (e.id.clone(), e.weight))
-            .collect();
+        let fitting = self.fitting_encounters(content, category);
         let fresh: Vec<(EncounterId, u32)> = fitting
             .iter()
             .filter(|(id, _)| !used.contains(id))
@@ -708,22 +687,37 @@ impl Run {
         Ok(())
     }
 
-    /// One stop per way, drawn anew; the Tresen always within reach.
+    /// One stop per way, drawn anew (decision of the user, 03.11.2026):
+    /// the three ways show three different categories, one of them the
+    /// Tresen on a random way; the others are drawn by their weight
+    /// without putting back, among the categories open now.
     fn draw_stops(&mut self, content: &Content, options: &mut [RouteOption]) {
-        let mut used = Vec::new();
-        for option in options.iter_mut() {
-            option.stops = vec![self.draw_stop(content, &mut used)];
+        let ways = options.len();
+        if ways == 0 {
+            return;
         }
-        let tresen = options
-            .iter()
-            .any(|o| o.stops.iter().any(|s| s.category == StopCategory::Tresen));
-        if !tresen {
-            if let Some(stop) = options.first_mut().and_then(|o| o.stops.first_mut()) {
-                *stop = RouteStop {
-                    category: StopCategory::Tresen,
-                    encounter: None,
-                };
-            }
+        let tresen = usize::try_from(self.tour_rng.gen_range(0..ways as u64)).unwrap_or(0);
+        let weights = &content.run.route.weights;
+        let mut pool: Vec<(StopCategory, u32)> = StopCategory::ALL
+            .into_iter()
+            .filter(|c| *c != StopCategory::Tresen)
+            .map(|c| (c, weights.of(c)))
+            .filter(|(c, w)| *w > 0 && self.category_open(content, *c))
+            .collect();
+        let mut used = Vec::new();
+        for (i, option) in options.iter_mut().enumerate() {
+            let category = if i == tresen {
+                StopCategory::Tresen
+            } else {
+                match draw_weighted(&mut self.tour_rng, pool.clone(), 1).pop() {
+                    Some(c) => {
+                        pool.retain(|(p, _)| *p != c);
+                        c
+                    }
+                    None => StopCategory::Tresen,
+                }
+            };
+            option.stops = vec![self.stop_of(content, category, &mut used)];
         }
     }
 
@@ -837,6 +831,28 @@ impl Run {
         }
     }
 
+    /// Schnäpse the Kiosk may sell, with their rarity weight.
+    fn kiosk_pool(&self, content: &Content) -> Vec<(crate::content::ConsumableId, u32)> {
+        self.schnapps_pool(content)
+    }
+
+    /// Open a Kiosk (03.11.2026): a shop with a few Schnäpse, drawn with
+    /// the Tresen's generator.
+    fn open_kiosk(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        self.phase = RunPhase::Shop;
+        let pool = self.kiosk_pool(content);
+        let drawn = draw_weighted(&mut self.shop_rng, pool, content.run.route.kiosk.offers);
+        let shop = Shop {
+            consumables: drawn.into_iter().map(Some).collect(),
+            kiosk: true,
+            ..Shop::default()
+        };
+        events.push(RunEvent::KioskOpened {
+            consumables: shop.consumables.clone(),
+        });
+        self.shop = Some(shop);
+    }
+
     /// Open a stop; `false` if it has nothing to offer.
     fn open_stop(
         &mut self,
@@ -845,6 +861,10 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) -> bool {
         match (&stop.category, &stop.encounter) {
+            (StopCategory::Kiosk, _) => {
+                self.open_kiosk(content, events);
+                true
+            }
             (StopCategory::Tresen, _) | (_, None) => {
                 self.phase = RunPhase::Shop;
                 let shop: Shop = self.draw_offer(content, 0);

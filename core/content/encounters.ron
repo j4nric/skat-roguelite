@@ -1,73 +1,124 @@
 // Ereignisse (DESIGN 13): Stationen auf dem Weg zwischen zwei Kneipen
 // (Kneipentour, ADR 0016). Jedes Ereignis gehört zu einer Kategorie, die
 // die Routenwahl zeigt: Event (Begegnung, Standard), Upgrade (Karten
-// verbessern oder säubern) oder Rest (Rast). Jedes Ereignis bietet
-// Optionen an, eine davon ist immer „Weitergehen“.
+// verbessern oder säubern), Rest (Rast), FoundCoins (Fundgroschen) oder
+// DiceStall (Würfelbude). Tresen und Kiosk sind Läden, keine Ereignisse.
+//
+// Wege und Begegnungen v2 (Entscheidung des Nutzers, 03.11.2026): Jedes
+// Ereignis bietet zwei oder drei Optionen als Daten (`options`), eine
+// davon muss genommen werden; „Weitergehen“ gibt es nicht mehr. Eine
+// Option hat einen Titel (`label`), einen Preis (`cost`, bei Wette und
+// Würfelbude der Einsatz) und eine kleine Liste von Wirkungen
+// (`effects`, EncounterEffect im Code), die nacheinander gelten. Was eine
+// Wirkung offen lässt (None), wird beim Öffnen gezogen und vorher
+// gezeigt. Eine Option, die gerade nicht geht (zu teuer, kein Relikt,
+// keine passende Karte, Spezialkarten-Grenze), ist gesperrt und nennt den
+// Grund. Jedes Ereignis hat eine Option, die nichts kostet (`fallback`:
+// nur angeboten, wenn sonst nichts geht); nur die Wette setzt in jeder
+// Option und liegt deshalb nur auf einem Weg, wenn der kleinste Einsatz
+// bezahlbar ist.
+//
 // weight: wie oft es innerhalb seiner Kategorie gezogen wird (Standard 1;
 // 0 = nie auf einer Route). characters: leer = alle.
 // Flüche (DESIGN 7.2) kommen nur über Ereignisse, deren Text „Fluch“ sagt
 // (geprüft beim Laden); jeder Fluch zahlt beim Erhalt Groschen. Zufällige
 // Modifikationen (card_mod: None) sind nie ein Fluch, außer mit curse: true.
+// Alle Zahlen VORLÄUFIG, nach Augenmaß ohne Messung (03.11.2026).
 [
     (
         id: "stammtisch_dispute",
         name: "Stammtisch-Streit",
         text: "Am Tisch wird gestritten, welche Hausregel gilt. Wähle eine: Sie gilt bis zum Ende des Stadtteils, ohne einen Platz zu belegen.",
-        kind: EveningRule(offers: 3),
+        options: [
+            (label: "Diese Regel", effects: [EveningRule(None)]),
+            (label: "Diese Regel", effects: [EveningRule(None)]),
+            (label: "Diese Regel", effects: [EveningRule(None)]),
+        ],
     ),
     (
         id: "card_dealer",
         name: "Der Kartengeber",
-        text: "Der Kartengeber zinkt dir eine zufällige Karte, nie mit einem Fluch. Trägt sie dieselbe Modifikation, steigt sie; eine andere ersetzt er. Für 3 Groschen darfst du die Karte selbst wählen.",
-        kind: MarkCard(price: 3),
+        text: "Der Kartengeber will dir eine Karte zinken, nie mit einem Fluch. Trägt sie dieselbe Modifikation, steigt sie; eine andere ersetzt er. Lässt du ihn nicht, zahlt er dir fürs Zuschauen.",
+        options: [
+            (label: "Zufällige Karte zinken", effects: [Mark(card: Random)]),
+            (label: "Karte selbst wählen", cost: 3, effects: [Mark(card: Chosen)]),
+            (label: "Nur zuschauen", effects: [Coins(2)]),
+        ],
         category: Upgrade,
     ),
     (
         id: "old_friend",
         name: "Alter Bekannter",
-        text: "Ein alter Bekannter tauscht eines deiner Relikte gegen ein zufälliges anderes.",
-        kind: SwapRelic,
+        text: "Ein alter Bekannter setzt sich zu dir. Er tauscht eines deiner Relikte gegen ein anderes, kauft dir eines zum vollen Preis ab oder gibt einfach einen Schnaps aus.",
+        options: [
+            (label: "Relikt tauschen", effects: [SwapRelic(None)]),
+            (label: "Relikt verkaufen", effects: [SellRelic(100)]),
+            (label: "Einen Schnaps", effects: [Schnapps(None)]),
+        ],
     ),
     (
         id: "last_round",
         name: "Letzte Runde",
-        text: "Der Wirt ruft die letzte Runde aus: Das nächste Spiel zählt doppelt, gewonnen wie verloren.",
-        kind: DoubleNextGame(factor: 2),
+        text: "Der Wirt ruft die letzte Runde aus. Spielst du mit doppeltem Einsatz, gibst du eine Runde aus, oder bleibst du beim Wasser?",
+        options: [
+            (label: "Doppelter Einsatz", effects: [NextGameFactor(2)]),
+            (label: "Eine Runde ausgeben", cost: 3, effects: [NextPubRedeals(1)]),
+            (label: "Nur Wasser", effects: [Coins(1)]),
+        ],
     ),
-    // M4: five more, with the same four kinds.
     (
         id: "spilled_beer",
         name: "Umgekipptes Bier",
-        text: "Ein Bier kippt über das Blatt. Eine zufällige Karte wird ramponiert, ein Fluch: 5 Augen weniger, auch unter 0. Du kassierst 3 Groschen dafür. Für 4 Groschen wischst du es auf eine Karte deiner Wahl.",
-        kind: MarkCard(price: 4, card_mod: Some("battered"), value: Some(5)),
+        text: "Ein Bier kippt über das Blatt. Eine Karte wird ramponiert, ein Fluch: 5 Augen weniger, auch unter 0. Dafür kassierst du 3 Groschen. Für 4 Groschen lenkst du es auf eine Karte deiner Wahl, für 2 wischst du alles auf.",
+        options: [
+            (label: "Zufällige Karte", effects: [Mark(card: Random, card_mod: Some("battered"), value: Some(5))]),
+            (label: "Karte selbst wählen", cost: 4, effects: [Mark(card: Chosen, card_mod: Some("battered"), value: Some(5))]),
+            (label: "Aufwischen", cost: 2),
+        ],
     ),
     (
         id: "crown_inn",
         name: "Gasthof zur Krone",
-        text: "Der Kronenwirt stempelt einer zufälligen Karte seine Krone auf: Trumpf +4, ist ihre Farbe Trumpf und hältst du sie, steigt der Grundwert um 4. Für 4 Groschen wählst du die Karte.",
-        kind: MarkCard(price: 4, card_mod: Some("trump_bonus"), value: Some(4)),
+        text: "Der Kronenwirt stempelt einer Karte sein Siegel auf: Trumpf +4, ist ihre Farbe Trumpf und hältst du sie, steigt der Grundwert um 4. Oder du trinkst ein Kronenbier auf seine Rechnung.",
+        options: [
+            (label: "Zufällige Karte", effects: [Mark(card: Random, card_mod: Some("trump_bonus"), value: Some(4))]),
+            (label: "Karte selbst wählen", cost: 4, effects: [Mark(card: Chosen, card_mod: Some("trump_bonus"), value: Some(4))]),
+            (label: "Kronenbier", effects: [Schnapps(None)]),
+        ],
         characters: [Declarer],
         category: Upgrade,
     ),
     (
         id: "conjurer",
         name: "Der Taschenspieler",
-        text: "Ein Taschenspieler steckt einer zufälligen Karte einen Gutschein zu: Drückst du sie, wird sie zur Wandelkarte. Für 3 Groschen wählst du die Karte.",
-        kind: MarkCard(price: 3, card_mod: Some("voucher_wild")),
+        text: "Ein Taschenspieler steckt einer Karte eine Narrenmarke zu: Drückst du sie, wird sie zur Wandelkarte. Oder er zeigt dir einen Kartentrick, und im nächsten Spiel siehst du beide Skatkarten.",
+        options: [
+            (label: "Zufällige Karte", effects: [Mark(card: Random, card_mod: Some("voucher_wild"))]),
+            (label: "Karte selbst wählen", cost: 3, effects: [Mark(card: Chosen, card_mod: Some("voucher_wild"))]),
+            (label: "Kartentrick", effects: [SeeSkat]),
+        ],
         characters: [NullPlayer],
         category: Upgrade,
     ),
     (
         id: "prize_skat",
         name: "Preisskat",
-        text: "Im Nebenzimmer läuft ein Preisskat. Spielst du mit, zählt das nächste Spiel dreifach, gewonnen wie verloren.",
-        kind: DoubleNextGame(factor: 3),
+        text: "Im Nebenzimmer läuft ein Preisskat. Spielst du mit, zählt das nächste Spiel doppelt oder dreifach, gewonnen wie verloren. Oder du kiebitzt nur und bekommst ein Trinkgeld.",
+        options: [
+            (label: "Dreifacher Einsatz", effects: [NextGameFactor(3)]),
+            (label: "Doppelter Einsatz", effects: [NextGameFactor(2)]),
+            (label: "Nur kiebitzen", effects: [Coins(2)]),
+        ],
     ),
     (
         id: "guest_from_altenburg",
         name: "Gast aus Altenburg",
-        text: "Ein Gast aus Altenburg bringt zwei Hausregeln mit. Wähle eine: Sie gilt bis zum Ende des Stadtteils, ohne einen Platz zu belegen.",
-        kind: EveningRule(offers: 2),
+        text: "Ein Gast aus Altenburg bringt zwei Hausregeln mit; die gewählte gilt bis zum Ende des Stadtteils, ohne einen Platz zu belegen. Oder er zeigt dir einen Kniff: Winkel +1 auf eine Karte deiner Wahl.",
+        options: [
+            (label: "Diese Regel", effects: [EveningRule(None)]),
+            (label: "Diese Regel", effects: [EveningRule(None)]),
+            (label: "Ein Kniff", effects: [Mark(card: Chosen, card_mod: Some("rank"), value: Some(1))]),
+        ],
     ),
     // Kneipentour (ADR 0016, 02.11.2026): Werkstatt (Upgrade), Rast und
     // die Beute einer Spelunke (nie auf einer Route, weight: 0).
@@ -75,67 +126,123 @@
         id: "workshop",
         name: "Die Kartenwerkstatt",
         text: "In der Hinterhofwerkstatt malt ein alter Kartenmaler Karten auf. Er setzt dir umsonst eine Modifikation auf eine Karte deiner Wahl, nie einen Fluch, oder er wäscht eine Karte ganz sauber, Flüche eingeschlossen.",
-        kind: Workshop,
+        options: [
+            (label: "Kartenmaler", effects: [Painter]),
+            (label: "Karte reinigen", effects: [Cleanse]),
+        ],
         category: Upgrade,
     ),
     (
         id: "snack_bar",
         name: "Die Imbissbude",
         text: "Eine Currywurst mit Pommes und ein Wasser dazu: Du kommst wieder zu Kräften und bekommst ein Leben zurück.",
-        kind: Rest(lives: 1),
+        options: [
+            (label: "Currywurst", effects: [Lives(1)]),
+        ],
         category: Rest,
     ),
     (
         id: "spelunke_loot",
         name: "Die Beute",
         text: "Der Wirt der Spelunke schiebt dir über den Tresen, was er unter der Theke hatte. Nimm es mit oder lass es dir in Groschen auszahlen.",
-        kind: RelicReward,
+        options: [
+            (label: "Mitnehmen", effects: [Relic(None)]),
+            (label: "Auszahlen lassen", effects: [RelicCoins(50)]),
+        ],
         weight: 0,
     ),
-    // Gegenstands-Review (02.11.2026, Entscheidung des Nutzers): sieben
-    // Begegnungen. Der Falschspieler am Nebentisch ersetzt den alten
-    // Falschspieler (Fluch gegen Groschen); die Id bleibt, damit offene
-    // Spielstände ihn finden. Werte VORLÄUFIG, ohne Messung (DESIGN 13).
+    // Gegenstands-Review (02.11.2026) und Wege und Begegnungen v2
+    // (03.11.2026, Entscheidung des Nutzers).
     (
         id: "landlord_treat",
         name: "Der Wirt spendiert",
-        text: "Der Wirt ist bester Laune und gibt einen aus: Such dir einen Schnaps aus, oder er drückt dir 5 Groschen in die Hand.",
-        kind: FreeSchnapps(offers: 3, coins: 5),
+        text: "Der Wirt ist bester Laune und gibt einen aus: Such dir einen von zwei Schnäpsen aus, oder er drückt dir 5 Groschen in die Hand.",
+        options: [
+            (label: "Diesen Schnaps", effects: [Schnapps(None)]),
+            (label: "Diesen Schnaps", effects: [Schnapps(None)]),
+            (label: "5 Groschen", effects: [Coins(5)]),
+        ],
     ),
     (
         id: "card_sharp",
         name: "Falschspieler am Nebentisch",
-        text: "Am Nebentisch bietet dir ein Falschspieler für 2 Groschen einen starken Kartentrick an, auf eine Karte deiner Wahl. Mit etwas Pech ist es Schund: Jedes zweite Mal landet stattdessen ein Fluch auf der Karte.",
-        kind: Gamble(price: 2, offers: [("rank", 1), ("trump_bonus", 4), ("points", 6)], curse_percent: 50),
+        text: "Am Nebentisch bietet dir ein Falschspieler für 2 Groschen einen starken Kartentrick an, auf eine Karte deiner Wahl. Jedes zweite Mal ist es Schund, und ein Fluch landet auf der Karte. Du kannst ihn auch auffliegen lassen oder gegen ihn spielen.",
+        options: [
+            (label: "Den Trick kaufen", cost: 2, effects: [Mark(card: Chosen, offers: [("rank", 1), ("trump_bonus", 4), ("points", 6)], curse_percent: 50)]),
+            (label: "Auffliegen lassen", effects: [Coins(4)]),
+            (label: "Gegen ihn spielen", effects: [NextGameFactor(2)]),
+        ],
     ),
     (
         id: "lost_wallet",
         name: "Verlorenes Portemonnaie",
-        text: "Unter dem Tisch liegt ein Portemonnaie mit 8 Groschen. Behältst du es, wird eine zufällige Karte durchsichtig, ein Fluch: Das schlechte Gewissen sieht man dir an. Gibst du es am Tresen ab, bekommst du ein Leben zurück.",
-        kind: Wallet(coins: 8, curse: "transparent", lives: 1),
+        text: "Unter dem Tisch liegt ein Portemonnaie mit 8 Groschen. Behältst du es, wird eine zufällige Karte durchsichtig, ein Fluch: Das schlechte Gewissen sieht man dir an. Gibst du es am Tresen ab, bekommst du ein Leben zurück; der Besitzer zahlt auch Finderlohn.",
+        options: [
+            (label: "Behalten", effects: [Coins(8), Mark(card: Random, card_mod: Some("transparent"))]),
+            (label: "Am Tresen abgeben", effects: [Lives(1)]),
+            (label: "Finderlohn", effects: [Coins(4)]),
+        ],
     ),
     (
         id: "skat_teacher",
         name: "Der Skatlehrer",
-        text: "Ein alter Skatlehrer zeigt dir einen Kniff: Eine Karte deiner Wahl sticht eine Stufe höher (Rang +1), umsonst. Dafür redet er so lange, dass du im ersten Spiel der nächsten Kneipe einmal weniger einmischen darfst.",
-        kind: Lesson(card_mod: "rank", value: 1, redeals: 1),
+        text: "Ein alter Skatlehrer zeigt dir einen Kniff: Winkel +1 auf eine Karte deiner Wahl, aber er redet so lange, dass du im ersten Spiel der nächsten Kneipe einmal weniger einmischen darfst. Oder er erklärt die Theorie, oder er lässt dir einen Kurzen da.",
+        options: [
+            (label: "Der Kniff", effects: [Mark(card: Chosen, card_mod: Some("rank"), value: Some(1)), NextPubRedeals(-1)]),
+            (label: "Die Theorie", effects: [SeeSkat]),
+            (label: "Ein Kurzer", effects: [Schnapps(Some("shot"))]),
+        ],
     ),
     (
         id: "the_bet",
         name: "Die Wette",
-        text: "Ein Gast wettet, dass du das nächste Spiel nicht mit Schneider gewinnst. Setzt du dagegen und gewinnst mit Schneider, bekommst du den doppelten Einsatz zurück; sonst ist er weg. Der Ramsch zählt nicht.",
-        kind: Wager(stakes: [3, 6], factor: 2),
+        text: "Ein Gast wettet, dass du das nächste Spiel nicht mit Schneider gewinnst. Hältst du dagegen und gewinnst mit Schneider, bekommst du den doppelten Einsatz zurück. Oder du wettest nur auf einen Sieg, für das Anderthalbfache. Sonst ist der Einsatz weg; der Ramsch zählt nicht.",
+        options: [
+            (label: "3 auf Schneider", cost: 3, effects: [Bet(on: Schneider, percent: 200)]),
+            (label: "6 auf Schneider", cost: 6, effects: [Bet(on: Schneider, percent: 200)]),
+            (label: "2 auf Sieg", cost: 2, effects: [Bet(on: Win, percent: 150)]),
+        ],
     ),
     (
         id: "old_cards",
         name: "Alte Karten im Schrank",
-        text: "Im Schrank liegt ein altes Blatt mit Gutscheinen. Einer kommt auf eine Karte deiner Wahl, aber das alte Blatt bringt auch einen Fluch mit, auf eine zufällige andere Karte.",
-        kind: OldCards(vouchers: ["voucher_undead", "voucher_wild"]),
+        text: "Im Schrank liegt ein altes Blatt mit Gutscheinen. Einer kommt auf eine Karte deiner Wahl, aber das alte Blatt bringt auch einen Fluch mit, auf eine zufällige andere Karte. Oder du verkaufst das alte Blatt.",
+        options: [
+            (label: "Totenmarke", effects: [Mark(card: Chosen, card_mod: Some("voucher_undead")), Mark(card: Random, curse: true)]),
+            (label: "Narrenmarke", effects: [Mark(card: Chosen, card_mod: Some("voucher_wild")), Mark(card: Random, curse: true)]),
+            (label: "Blatt verkaufen", effects: [Coins(4)]),
+        ],
     ),
     (
         id: "lookout",
         name: "Kiebitz am Fenster",
-        text: "Ein Kiebitz am Fenster kennt die Gegend: Er verrät dir, was auf den nächsten zwei Wegen genau wartet. Oder er hält dir in der nächsten Kneipe den Rücken frei, und du darfst dort einmal mehr einmischen.",
-        kind: Lookout(legs: 2, redeals: 1),
+        text: "Ein Kiebitz am Fenster kennt die Gegend: Er verrät dir, was auf den nächsten zwei Wegen genau wartet. Oder er hält dir in der nächsten Kneipe den Rücken frei, und du darfst dort einmal mehr einmischen. Oder er steckt dir 2 Groschen zu.",
+        options: [
+            (label: "Die Wege", effects: [Scout(2)]),
+            (label: "Rückendeckung", effects: [NextPubRedeals(1)]),
+            (label: "2 Groschen", effects: [Coins(2)]),
+        ],
+    ),
+    // Neue Stationen (Wege und Begegnungen v2, 03.11.2026).
+    (
+        id: "found_coins",
+        name: "Fundgroschen",
+        text: "Auf dem Pflaster glänzt etwas: 2 Groschen, die keiner vermisst.",
+        options: [
+            (label: "Aufheben", effects: [Coins(2)]),
+        ],
+        category: FoundCoins,
+    ),
+    (
+        id: "dice_stall",
+        name: "Die Würfelbude",
+        text: "An der Würfelbude wird um Groschen gewürfelt: Setz 2, 4 oder 6. Mit Glück, jedes zweite Mal, bekommst du den doppelten Einsatz zurück, sonst ist er weg. Wer nicht setzen kann, schaut zu.",
+        options: [
+            (label: "2 setzen", cost: 2, effects: [Dice(chance: 50, percent: 200)]),
+            (label: "4 setzen", cost: 4, effects: [Dice(chance: 50, percent: 200)]),
+            (label: "6 setzen", cost: 6, effects: [Dice(chance: 50, percent: 200)]),
+            (label: "Zuschauen", fallback: true),
+        ],
+        category: DiceStall,
     ),
 ]

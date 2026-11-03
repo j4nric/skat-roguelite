@@ -105,8 +105,11 @@ fn the_card_dealer_never_draws_a_curse() {
                 "seed {seed}"
             );
             let options = &run.encounter().expect("open").options;
-            for option in options {
-                if let Some(m) = &option.card_mod {
+            for effect in options.iter().flat_map(|o| &o.effects) {
+                if let EncounterEffect::Mark {
+                    card_mod: Some(m), ..
+                } = effect
+                {
                     assert!(!is_curse(&content, m), "seed {seed}: {m}");
                     seen.insert(m.clone());
                 }
@@ -125,46 +128,6 @@ fn the_card_dealer_never_draws_a_curse() {
             }
         }
         assert!(seen.len() >= 5, "{character}: {seen:?}");
-    }
-}
-
-#[test]
-fn old_card_dealer_options_without_a_drawn_mod_never_give_a_curse() {
-    // Saves from before M5 drew the modification only when chosen.
-    let content = content();
-    for seed in 0..300 {
-        let mut run = shop_run(&content, seed, Character::Declarer);
-        run.shop = None;
-        run.phase = RunPhase::Encounter;
-        run.encounter = Some(ActiveEncounter {
-            id: EncounterId::new("card_dealer"),
-            options: vec![
-                EncounterOption {
-                    choice: EncounterChoice::MarkRandomCard,
-                    cost: 0,
-                    card_mod: None,
-                    value: None,
-                },
-                EncounterOption {
-                    choice: EncounterChoice::Leave,
-                    cost: 0,
-                    card_mod: None,
-                    value: None,
-                },
-            ],
-        });
-        let events = run
-            .apply(
-                &content,
-                RunAction::ChooseEncounter {
-                    option: 0,
-                    target: None,
-                },
-            )
-            .expect("free card");
-        let mods = attached(&events);
-        assert_eq!(mods.len(), 1);
-        assert!(!is_curse(&content, &mods[0]), "seed {seed}: {}", mods[0]);
     }
 }
 
