@@ -104,6 +104,11 @@
 //   open the card picker and start the next series.
 // - encounter-dispute.json: seed 12 up to "Stammtisch-Streit". Taking a
 //   house rule must show it in the head as a rule of the evening.
+//   Both encounter saves hold the form before 03.11.2026 (options with a
+//   `choice` and "Weitergehen"); the core opens them anew with two or three
+//   options, one of which must be taken. coins-curse.json and
+//   route-station.json are patched in the test (`patched`) to the new
+//   encounter form and to the new stops (Fundgroschen, Kiosk, Würfelbude).
 // - ramsch.json: seed 11 up to the Ramsch of "Der Ramscher". The table
 //   must say so; playing it out must end in a Ramsch score.
 // - old-man.json: seed 98 (content of commit 2259e7a; with the M4 content
@@ -346,20 +351,29 @@ async function assertFits(page, label, sizes = FIT_SIZES) {
       else root.removeProperty('--safe-bottom');
     }, insets);
     await page.waitForTimeout(120);
-    const r = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll('.hand-card')];
-      const last = cards[cards.length - 1];
-      const screen = document.querySelector('.screen');
-      const declare = document.querySelector('.declare');
-      return {
-        scroll: document.scrollingElement.scrollHeight,
-        inner: window.innerHeight,
-        screen: screen ? screen.scrollHeight - screen.clientHeight : 0,
-        declare: declare ? declare.scrollHeight - declare.clientHeight : 0,
-        cards: cards.length,
-        bottom: last ? last.getBoundingClientRect().bottom : null,
-      };
-    });
+    const measure = () =>
+      page.evaluate(() => {
+        const cards = [...document.querySelectorAll('.hand-card')];
+        const last = cards[cards.length - 1];
+        const screen = document.querySelector('.screen');
+        const declare = document.querySelector('.declare');
+        return {
+          scroll: document.scrollingElement.scrollHeight,
+          inner: window.innerHeight,
+          screen: screen ? screen.scrollHeight - screen.clientHeight : 0,
+          declare: declare ? declare.scrollHeight - declare.clientHeight : 0,
+          cards: cards.length,
+          bottom: last ? last.getBoundingClientRect().bottom : null,
+        };
+      });
+    const fits = (m) => m.scroll <= m.inner && m.screen <= 0 && m.declare <= 1 && m.bottom !== null && m.bottom <= m.inner - insets.bottom;
+    // On a loaded machine the layout after a resize may take longer than
+    // the first wait: measure again a few times before failing.
+    let r = await measure();
+    for (let i = 0; i < 5 && !fits(r); i++) {
+      await page.waitForTimeout(300);
+      r = await measure();
+    }
     await page.evaluate(() => {
       document.documentElement.style.removeProperty('--safe-top');
       document.documentElement.style.removeProperty('--safe-bottom');
@@ -886,9 +900,38 @@ async function skatThenGrand(page, label, shot = null) {
   await page.waitForSelector('.declare', { state: 'detached' });
 }
 
+/** A fixture with `change` applied to its parsed save, as JSON again. */
+function patched(name, change) {
+  const save = JSON.parse(fixture(name));
+  change(save);
+  return JSON.stringify(save);
+}
+
+/**
+ * coins-curse.json with its encounter in the form since 03.11.2026:
+ * "Umgekipptes Bier", whose random card gets the curse "Ramponiert" (it
+ * pays 3 Groschen).
+ */
+function spilledBeer() {
+  return patched('coins-curse.json', (save) => {
+    save.run.encounter = {
+      id: 'spilled_beer',
+      options: [
+        { cost: 0, effects: [{ Mark: { card: 'Random', card_mod: 'battered', value: 5 } }] },
+        { cost: 4, effects: [{ Mark: { card: 'Chosen', card_mod: 'battered', value: 5 } }] },
+        { cost: 2, effects: [] },
+      ],
+    };
+  });
+}
+
 /** Open the app with a saved run from e2e/fixtures and resume it. */
 async function resumeFixture(page, name, raw = null) {
-  const state = raw ?? fixture(name);
+  await resumeState(page, name, raw ?? fixture(name));
+}
+
+/** Open the app with this saved run (`name` for messages) and resume it. */
+async function resumeState(page, name, state) {
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
@@ -1334,7 +1377,11 @@ async function m4(browser, errors, reducedMotion) {
   await expectMusic(page, 'shop', 'encounter');
   await shoot(page, 'encounter');
   await assertNoSideScroll(page, 'encounter', '.encounter');
-  await page.click('[data-action="choose-encounter"][data-target="true"]');
+  // Saved in the form before 03.11.2026: the core opens it anew, three
+  // options, one must be taken (no "Weitergehen").
+  if ((await page.locator('[data-testid="enc-option"]').count()) !== 3) fail('Der Kartengeber does not show three options');
+  if (await page.getByText('Weitergehen', { exact: true }).count()) fail('an encounter still offers "Weitergehen"');
+  await page.click('[data-action="choose-encounter"][data-target="Card"]');
   await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
   await shoot(page, 'encounter-target');
   await page.locator('[data-action="encounter-target"]:not([disabled])').first().click();
@@ -1532,11 +1579,12 @@ async function m5(browser, errors, reducedMotion) {
   await shoot(page, 'book-stats');
   await page.click('.ledger > .btn[data-action="close-overlay"]');
 
-  // Der Kartengeber with the curse "Ramponiert": 3 Groschen with their source.
-  await resumeFixture(page, 'coins-curse.json');
+  // "Umgekipptes Bier": the curse "Ramponiert" pays 3 Groschen with their
+  // source. The old save's encounter is replaced by the new form.
+  await resumeState(page, 'coins-curse.json', spilledBeer());
   await page.waitForSelector('[data-testid="encounter"]');
   const coinsBefore = Number(await text(page, 'coins'));
-  const curse = page.locator('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  const curse = page.locator('[data-action="choose-encounter"][data-target="None"]:has([data-card-mod="battered"])');
   if (!(await curse.count())) fail('the encounter does not name the curse it gives');
   await shoot(page, 'encounter-curse');
   await curse.click();
@@ -2352,10 +2400,10 @@ async function rewardFxPass(browser, errors, viewport) {
   await page.click('[data-action="score-continue"]');
 
   // An encounter's Groschen fly into the purse.
-  await resumeFixture(page, 'coins-curse.json');
+  await resumeState(page, 'coins-curse.json', spilledBeer());
   await page.waitForSelector('[data-testid="encounter"]');
   const before = Number(await text(page, 'coins'));
-  await page.click('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  await page.click('[data-action="choose-encounter"][data-target="None"]:has([data-card-mod="battered"])');
   await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the encounter`));
   await snap('fx-encounter-coins');
   await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
@@ -3015,6 +3063,118 @@ async function workshopPass(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/**
+ * Routes and encounters v2 (03.11.2026), from route-station.json with its
+ * stops replaced: the map shows the new stops Fundgroschen, Kiosk and
+ * Würfelbude with their pixel icons; the Fundgroschen give 2 Groschen; the
+ * Kiosk sells one of two cheaper Schnäpse; the Würfelbude takes a stake (and
+ * offers only "Zuschauen" without Groschen); "Alter Bekannter" asks which
+ * relic. No encounter offers "Weitergehen".
+ */
+async function encountersV2Pass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const route = (stops, change = () => {}) =>
+    patched('route-station.json', (save) => {
+      save.run.route.options.forEach((o, i) => {
+        o.stops = [stops[i]];
+        delete o.spelunke;
+      });
+      change(save);
+    });
+  const run = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const stops = [
+    { category: 'FoundCoins', encounter: 'found_coins' },
+    { category: 'Kiosk' },
+    { category: 'DiceStall', encounter: 'dice_stall' },
+  ];
+  // The route: three new stops, each with its own icon.
+  await resumeState(page, 'route (new stops)', route(stops));
+  await page.waitForSelector('[data-testid="map-svg"]');
+  const categories = await page.locator('[data-testid="route-option"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-category')));
+  if (categories.join(',') !== 'FoundCoins,Kiosk,DiceStall') fail(`new stops: ways show ${categories}`);
+  for (const icon of ['stop-foundcoins', 'stop-kiosk', 'stop-dicestall']) {
+    if (!(await page.locator(`.${icon}`).count())) fail(`new stops: no icon .${icon}`);
+  }
+  await shoot(page, 'route-new-stops');
+  await assertNoSideScroll(page, 'route with new stops', '.route');
+  // Fundgroschen: one option, 2 Groschen.
+  const coins = (await run()).coins;
+  await page.click('[data-action="pick-route"][data-option="0"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="encounter"][data-category="FoundCoins"]', { timeout: 15000 });
+  if ((await page.locator('[data-testid="enc-option"]').count()) !== 1) fail('Fundgroschen: not one option');
+  await shoot(page, 'found-coins');
+  await page.click('[data-action="choose-encounter"]');
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached', timeout: 15000 });
+  if ((await run()).coins !== coins + 2) fail(`Fundgroschen: ${coins} -> ${(await run()).coins}`);
+  log('Fundgroschen: +2 Groschen');
+
+  // The Kiosk: two Schnäpse, one may be bought, cheaper than at the Tresen.
+  await resumeState(page, 'kiosk', route([stops[1], stops[1], stops[1]], (save) => (save.run.consumables = [])));
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="kiosk"]', { timeout: 15000 });
+  const buys = page.locator('[data-testid="kiosk-buy"]');
+  if ((await buys.count()) !== 2) fail(`Kiosk: ${await buys.count()} Schnäpse`);
+  if (!(await page.locator('.kiosk-was').count())) fail('Kiosk: the Tresen price is not shown');
+  if (await page.locator('[data-action="reroll"], [data-testid="zinken"]').count()) fail('Kiosk: Tresen services shown');
+  await shoot(page, 'kiosk');
+  await assertNoSideScroll(page, 'kiosk', '.shop');
+  await buys.first().click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.consumables?.length === 1);
+  if (await page.locator('[data-testid="kiosk-buy"]:not([disabled])').count()) fail('Kiosk: a second Schnaps can be bought');
+  await shoot(page, 'kiosk-bought');
+  await page.click('[data-testid="kiosk-leave"]');
+  await page.waitForSelector('[data-testid="kiosk"]', { state: 'detached', timeout: 15000 });
+  log('Kiosk: one of two Schnäpse bought, then on');
+
+  // The Würfelbude: stakes 2, 4, 6; watching only without Groschen.
+  await resumeState(page, 'dice stall', route([stops[2], stops[2], stops[2]], (save) => (save.run.coins = 10)));
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="encounter"][data-category="DiceStall"]', { timeout: 15000 });
+  if ((await page.locator('[data-testid="enc-option"]').count()) !== 3) fail('Würfelbude: not three stakes');
+  if (await page.getByText('Zuschauen', { exact: true }).count()) fail('Würfelbude: "Zuschauen" offered with Groschen');
+  await shoot(page, 'dice-stall');
+  await page.click('[data-action="choose-encounter"][data-option="0"]');
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached', timeout: 15000 });
+  const thrown = (await run()).coins;
+  if (thrown !== 8 && thrown !== 12) fail(`Würfelbude: 10 -> ${thrown} Groschen for a stake of 2`);
+  log(`Würfelbude: stake 2, now ${thrown} Groschen`);
+  await resumeState(page, 'dice stall (broke)', route([stops[2], stops[2], stops[2]], (save) => (save.run.coins = 1)));
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="encounter"][data-category="DiceStall"]', { timeout: 15000 });
+  const open = page.locator('[data-testid="enc-option"]:not([disabled])');
+  if ((await open.count()) !== 1 || !((await open.textContent()) ?? '').includes('Zuschauen')) fail('Würfelbude without Groschen: not only "Zuschauen"');
+  if ((await page.locator('[data-testid="enc-blocked"]').count()) !== 3) fail('Würfelbude without Groschen: the stakes do not say why');
+  await shoot(page, 'dice-stall-broke');
+  await open.click();
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached', timeout: 15000 });
+  log('Würfelbude without Groschen: only watching');
+
+  // "Alter Bekannter": swap or sell asks which relic; the Schnaps is free.
+  const friend = { category: 'Event', encounter: 'old_friend' };
+  await resumeState(page, 'old friend', route([friend, friend, friend]));
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="encounter"][data-encounter="old_friend"]', { timeout: 15000 });
+  await shoot(page, 'encounter-old-friend');
+  await assertNoSideScroll(page, 'encounter old friend', '.encounter');
+  const before = await run();
+  await page.click('[data-action="choose-encounter"][data-option="1"][data-target="Relic"]');
+  await page.waitForSelector('[data-testid="enc-relics"]');
+  await shoot(page, 'encounter-relic-pick');
+  await page.locator('[data-action="encounter-relic"]:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached', timeout: 15000 });
+  const after = await run();
+  if (after.relics.length !== before.relics.length - 1 || after.coins <= before.coins) fail(`Alter Bekannter: sold? ${before.relics} -> ${after.relics}, ${before.coins} -> ${after.coins}`);
+  log(`Alter Bekannter: relic sold at the full price, ${before.coins} -> ${after.coins} Groschen`);
+  await context.close();
+}
+
 /** "Untot": a card rises from the trick back into the hand (undead.json). */
 async function undeadPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -3402,6 +3562,7 @@ async function routePass(page, label) {
   if ((await options.count()) !== 3) fail(`${label}: ${await options.count()} ways, expected 3`);
   const categories = await options.evaluateAll((els) => els.map((e) => e.getAttribute('data-category')));
   if (!categories.includes('Tresen')) fail(`${label}: no way over the Tresen: ${categories}`);
+  if (new Set(categories).size !== 3) fail(`${label}: the ways do not show three different stops: ${categories}`);
   const transports = await options.evaluateAll((els) => els.map((e) => e.getAttribute('data-transport')).join(','));
   if (transports !== 'Walk,Train,Bike') fail(`${label}: ways ${transports}`);
   const next = ((await page.locator('[data-testid="route-next"]').textContent()) ?? '').replace(/\s+/g, ' ');
@@ -3828,6 +3989,7 @@ async function run() {
     await rescuePass(browser, errors, reducedMotion, PHONE);
     await rescuePass(browser, errors, reducedMotion, DESKTOP);
     await workshopPass(browser, errors, reducedMotion);
+    await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);
     await undeadPass(browser, errors, reducedMotion);

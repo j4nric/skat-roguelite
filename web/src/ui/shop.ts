@@ -11,6 +11,7 @@ import { cardBack, cardSvg, modValueText } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
+import { mapIcon } from './mapicons';
 import { portrait } from './people';
 
 function price(n: number): string {
@@ -155,9 +156,59 @@ function nextBoard(view: RunView): string {
   </div>`;
 }
 
+/**
+ * The Kiosk on the way (03.11.2026): two Schnäpse, each cheaper than at
+ * the Tresen; one may be bought. Prices and what can be bought come from
+ * the core.
+ */
+function renderKiosk(view: RunView, shop: ShopView): string {
+  const discount = shop.kiosk_discount ?? 0;
+  const offers = shop.consumables.filter((o) => o !== null);
+  const done = offers.length === 0;
+  const goods = shop.consumables
+    .map((o) => {
+      if (!o) return '';
+      const was = o.price + discount;
+      return good(
+        o.consumable,
+        { 'data-action': 'info-offer-item', 'data-slot': o.slot, 'data-info': `offer-item:${o.slot}` },
+        `${price(o.price)}${discount ? `<span class="kiosk-was">${esc(t(de.shop.kioskWas, { price: was }))}</span>` : ''}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, 'data-testid': 'kiosk-buy', disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+      );
+    })
+    .join('');
+  const items = view.consumables
+    .map((c) =>
+      good(
+        c.consumable,
+        { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
+         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        'good-owned',
+      ),
+    )
+    .join('');
+  return `<main class="shop kiosk" data-testid="kiosk">
+    <div class="backbar kiosk-front">
+      <div class="kiosk-stand">${mapIcon('kiosk', 64)}</div>
+      <div class="bubble"><h2>${esc(de.shop.kioskTitle)}</h2><p>${esc(done ? de.shop.kioskDone : t(de.shop.kioskSays, { n: discount }))}</p></div>
+    </div>
+    <div class="counter kiosk-counter">
+      ${goods ? `<div class="goods kiosk-goods" data-goods>${goods}</div>` : ''}
+    </div>
+    <section class="shop-owned">
+      <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
+      ${items ? `<div class="goods">${items}</div>` : `<p class="small">${esc(de.shop.noItems)}</p>`}
+    </section>
+    <div class="shop-bar">
+      <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop', 'data-testid': 'kiosk-leave' })}>${esc(de.shop.kioskLeave)}</button>
+    </div>
+  </main>`;
+}
+
 export function renderShop(view: RunView): string {
   const shop = view.shop;
   if (!shop) return '';
+  if (shop.kiosk) return renderKiosk(view, shop);
   const relicOffers = shop.relics
     .map((o, i) => {
       if (!o) return `<div class="coaster-wrap" style="--i:${i}"><div class="coaster-ring is-sold"><span>${esc(de.shop.soldOut)}</span></div></div>`;

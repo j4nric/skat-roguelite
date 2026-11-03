@@ -50,7 +50,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Auslage (Zinken am Tresen) | `CardOffer`, `Shop::card_offers` | Drei Angebote, je Karte der Ausgabe und Zinke mit Wert; Aktion `RunAction::BuyCardOffer(slot)`, Ereignisse `CardOffersDrawn`, `CardOfferBought`; Sicht `ShopView::card_offers` (`CardOfferView` mit `card`, `result`, `replaces`, `raises`) |
 | Wert in der Auslage | `CardModDef::shop_value`, `offer_value` | Ohne Angabe der erste aus `values` |
 | Neu auslosen (Auslage) | `RerollCardOffers` | Preis `ZinkenConfig::reroll_cost`, jedes weitere Mal am selben Tresen `reroll_step` mehr (`Run::card_reroll_price`, `Shop::card_rerolls`); Ereignis `CardOffersRerolled`. Nicht verwechseln mit der Neuauslage (`reroll`, Relikte und Gegenstände) |
-| Kartenmaler | `painter` | Einmal je Tresen: `RunAction::HirePainter(card)`, dann eine von zwei Zinken `RunAction::ChoosePaint(i)`; wartend `Run::painter` (`PainterChoice`), Sicht `RunView::painter` (`PainterView`), `ShopView::painter` (`ServiceView`); Ereignisse `PainterHired`, `PainterChosen`; Fehler `PainterPending`, `AlreadyUsed`. In der Werkstatt gratis (`EncounterChoice::Painter`) |
+| Kartenmaler | `painter` | Einmal je Tresen: `RunAction::HirePainter(card)`, dann eine von zwei Zinken `RunAction::ChoosePaint(i)`; wartend `Run::painter` (`PainterChoice`), Sicht `RunView::painter` (`PainterView`), `ShopView::painter` (`ServiceView`); Ereignisse `PainterHired`, `PainterChosen`; Fehler `PainterPending`, `AlreadyUsed`. In der Werkstatt gratis (Wirkung `EncounterEffect::Painter`) |
 | Karte reinigen (Tresen-Dienst) | `CleanseCard` | Einmal je Tresen, `RunAction::CleanseCard(card)`, Ereignis `CardCleansed`, Sicht `ShopView::cleanse` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | immer alle 32 Karten (kein Talon seit ADR 0015) |
 | Wandelkarte (nimmt bei Spielbeginn die längste Farbe der Hand an) | `wild` | `PlayingCard::wild`, `DealtCard::wild` (nur die Karten des Spielers, solange sie noch offen ist), Effekt `Wild`. Farbe: `rules::settled_wild_suit` (meiste Karten nach gedruckter Farbe, ohne Unter und Wandelkarten; Gleichstand Eichel, Grün, Rot, Schellen); Sicht `CardView::unsettled` (noch offen), `CardView::named` (gedruckte Farbe), `ActiveGame::named` |
@@ -156,13 +156,16 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Route, Routenwahl | `route` | `RunPhase::Route`, `tour::RouteChoice` (nächste Kneipe und drei `RouteOption`), Aktion `RunAction::ChooseRoute(i)`, Ereignisse `RouteOpened`, `RouteChosen`; unterwegs `tour::Trip`. Sicht `TourView::route` (`RouteView`, `RouteOptionView`, `minutes` nur Dekoration) |
 | Verkehrsmittel (Zu Fuß, Bahn, Fahrrad) | `Transport` (`Walk`, `Train`, `Bike`) | Seit 02.11.2026 alle gleich: je eine Station, nichts kostet extra; nur Darstellung |
 | Station (unterwegs) | `RouteStop` | `category` und, außer beim Tresen, das gezogene Ereignis (`encounter`, verdeckt) |
-| Stationsart: Tresen, Begegnung, Upgrade (Werkstatt), Rast | `StopCategory` (`Tresen`, `Event`, `Upgrade`, `Rest`) | Je Weg gewürfelt nach `RouteConfig::weights`; Ereignisse tragen ihre Kategorie (`EncounterDef::category`) |
-| Spelunke (Elite-Kneipe) | `Spelunke` | Eigener Ort mit eigenem Namen (`city.spelunken`), steht für eine normale Kneipe; Zielwert × `SpelunkeConfig::target_factor`, ein Malus, Beute ein Relikt (Ereignis `spelunke_loot`, `EncounterKind::RelicReward`, Wahl `TakeRelic`, `TakeCoins`). In `Series::spelunke`, `RouteOption::spelunke`; Knoten-Id `d<S>-p<K>-s`, Sicht `SpelunkeNode` |
+| Stationsart: Tresen, Begegnung, Upgrade (Werkstatt), Rast, Fundgroschen, Kiosk, Würfelbude | `StopCategory` (`Tresen`, `Event`, `Upgrade`, `Rest`, `FoundCoins`, `Kiosk`, `DiceStall`) | Seit 03.11.2026 drei verschiedene je Routenwahl, eine der Tresen; die anderen nach `RouteConfig::weights` ohne Zurücklegen; Ereignisse tragen ihre Kategorie (`EncounterDef::category`) |
+| Spelunke (Elite-Kneipe) | `Spelunke` | Eigener Ort mit eigenem Namen (`city.spelunken`), steht für eine normale Kneipe; Zielwert × `SpelunkeConfig::target_factor`, ein Malus, Beute ein Relikt (Ereignis `spelunke_loot`, `SpelunkeConfig::loot`, Wirkungen `Relic`, `RelicCoins`). In `Series::spelunke`, `RouteOption::spelunke`; Knoten-Id `d<S>-p<K>-s`, Sicht `SpelunkeNode` |
 | Malus (Spelunke) | `MalusDef`, `MalusId` | Daten in `tour.ron`: `passive` (Tischregeln, Quelle `Source::Malus`), `no_redeal`, `lock_schnapps` (Fehler `ConsumablesLocked`), `curse` (`MalusCurse`, Karten nur für diese Kneipe, `Series::temp_curses`) |
 | Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
 | Ansicht des Stadtteils (Altstadt, Hafen, Bahnhof) | `DistrictLook` (`OldTown`, `Harbour`, `Station`) | Daten je Stadtteilname in `tour.ron` (`DistrictName::look`); jeder Abend hat einen Stadtteil jeder Ansicht, Reihenfolge per Seed; Sicht `DistrictView::look`. Nur Anzeige |
-| Rast (Leben zurück) | `EncounterKind::Rest` | Wahl `EncounterChoice::Heal(n)` |
-| Werkstatt (Upgrade) | `EncounterKind::Workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterChoice::Painter`) oder `EncounterChoice::CleanseChosenCard` |
+| Rast (Leben zurück) | `snack_bar` | Wirkung `EncounterEffect::Lives(n)` |
+| Werkstatt (Upgrade) | `workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterEffect::Painter`) oder Karte reinigen (`EncounterEffect::Cleanse`) |
+| Fundgroschen (Station, 03.11.2026) | `StopCategory::FoundCoins`, Ereignis `found_coins` | 2 Groschen auf dem Weg |
+| Kiosk (Station, 03.11.2026) | `StopCategory::Kiosk`, `Shop::kiosk` | Kein Ereignis, ein Laden: `KioskConfig` (`route.kiosk` in `run.ron`), `Run::at_kiosk`, `Run::consumable_price`, Ereignis `KioskOpened`, Sicht `ShopView::kiosk` |
+| Würfelbude (Station, 03.11.2026) | `StopCategory::DiceStall`, Ereignis `dice_stall` | Wirkung `EncounterEffect::Dice`, Ereignis `DiceThrown`; „Zuschauen“ ist eine Rückfall-Option (`fallback`) |
 | Run-Länge: ganzer Abend, kurzer Abend | `RunLength::Full`, `RunLength::Short` | Seit ADR 0016 nur noch der ganze Abend; `Short` bleibt für alte Meta-Stände lesbar (`MetaStats::lengths`, `MetaState::stakes`), ein Run kann so nicht mehr starten (`InvalidStart`, in der Web-Schicht `InvalidLength`). Alte Links mit `-kurz` spielen den ganzen Abend |
 | Einsatz, Einsatz-Leiter | `stake` | Gewinngrenze `61 + stake` für Farbspiel und Grand (`RunStart::stake`, `Run::stake`). Höchster freigeschalteter Einsatz je Charakter und Länge: `MetaState::stakes`, `MetaState::max_stake`, in der Sicht `CharacterEntry::max_stakes`. Im Link `-einsatz<n>` |
 | Zielwert | `target` | |
@@ -204,7 +207,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Beim Erhalt (Kartenmodifikation angebracht) | `OnAttach` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnAttach` |
 | Wenn gedrückt (Gutschein) | `OnDiscard` | Auslöser nur für Kartenmodifikationen, Stufe `Stage::OnDiscard`; die Karte landet beim Drücken im Skat |
 | Fluch (negative Kartenmodifikation) | `curse` | `ModKind::Curse`, Prüfung `CardModDef::is_curse` (in Sicht und Katalog weiter `curse`); Text beginnt mit „Fluch:“. Sperrt die Karte für jede weitere Modifikation (Effekte v2). Nie aus Zufallsziehungen, nur über Ereignisse, deren Text „Fluch“ sagt (`MarkCard { curse: true }` zieht einen Fluch); zahlt beim Erhalt Groschen (M7) |
-| Ereignis / Rast | `Encounter` | Station unterwegs (ADR 0016). Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef`, offen `ActiveEncounter`, Option `EncounterOption`, Wahl `EncounterChoice`, Aktion `RunAction::ChooseEncounter` |
+| Ereignis / Rast | `Encounter` | Station unterwegs (ADR 0016). Nicht `Event` (das sind die Zustandsereignisse). Definition `EncounterDef` mit Optionen `EncounterOptionDef` (`label`, `cost`, `effects`, `fallback`), Wirkung `EncounterEffect`, offen `ActiveEncounter` mit `EncounterOption`, Aktion `RunAction::ChooseEncounter` (Ziel: Karte oder Index eines Relikts), Ereignis `EncounterResolved { option }`. Seit 03.11.2026 ohne „Weitergehen“ (bis dahin `EncounterKind`, `EncounterChoice`) |
+| Option gesperrt (Grund) | `OptionBlock` | `NotEnoughCoins`, `NothingLeft`, `SpecialCardCap`, `NoFittingCard`, `NoRelic`, `RelicSlotsFull`, `LivesFull`, `BetOpen`, `NotNeeded`; `Run::encounter_option_block`, Sicht `EncounterOptionView::blocked` |
+| Zinke auf zufällige oder gewählte Karte (Ereignis) | `CardPick` (`Random`, `Chosen`) | Feld `card` der Wirkung `EncounterEffect::Mark` |
+| Beide Skatkarten sehen (Kartentrick, Theorie) | `SeeSkat`, `Run::peek_next_skat` | Wie der Kurzer bei jedem Geben bis zur Ansage; Ereignisse `SkatPeekPlanned`, `SkatPeeked` |
 | Hausregel des Stadtteils (Stammtisch-Streit, bis ADR 0016 des Abends) | `evening_relics` | Gilt bis zum Ende des Stadtteils, ohne Platz |
 | Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `Shirker` (Drückeberger), `Tailoress` (Schneiderin, nicht die Figur „Der Schneider“ `tailor` und nicht Schneider `schneider`), `HeartBrother` (Bruderherz); Daten `CharacterDef`, Id als Text `Character::as_str`, gelesen mit `Character::from_id`. Bis 03.11.2026 auch `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast), `Landlady` (Wirtin); alte Meta-Stände lassen deren Einträge fallen |
 | Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Zuschlag auf `run.ron`, nie unter 0), `payout_factor`, `vouchers_return`, `keep_curses`, `zinken_discount`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
@@ -273,9 +279,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Konto auf null (Klarer) | `ClearAccount` | Ereignis `AccountCleared`; Fehler `ConditionNotMet` |
 | Ein Spiel mehr (Absacker) | `ExtraGames` | Ereignis `GamesAdded`; Fehler `NotInBossPub` |
 | Nächstes Spiel, wenn zurück (Eierlikör) | `NextGameIfBehind` | Konto unter der Hälfte des Zielwerts; Wirkung `NextGameEffect::MultiplyWin` (nur gewonnen), `ActiveGame::win_factors`; Fehler `ConditionNotMet` |
-| Wette | `Wager` | Die Wette: `Run::wager`, Ereignisse `WagerPlaced`, `WagerSettled` |
-| Wege auskundschaften | `scout_legs` | Kiebitz am Fenster: `EncounterChoice::Scout`, Sicht `StopView::encounter`; Ereignis `StopsRevealed` |
-| Spielerei (Falschspieler am Nebentisch) | `Gamble` | `EncounterKind::Gamble`, `EncounterChoice::Gamble`, Ereignis `GambleResolved` |
+| Wette | `Wager` | Die Wette: `Run::wager`, Ereignisse `WagerPlaced`, `WagerSettled`; worauf: `BetOn` (`Schneider`, `Win`), Auszahlung `Wager::percent` |
+| Wege auskundschaften | `scout_legs` | Kiebitz am Fenster: `EncounterEffect::Scout`, Sicht `StopView::encounter`; Ereignis `StopsRevealed` |
+| Spielerei (Falschspieler am Nebentisch) | `Gamble` | `EncounterEffect::Mark` mit `curse_percent`, Ereignis `GambleResolved` |
 | Entfernte Inhalte beim Laden | `drop_unknown_content` | `Run::drop_unknown_content` (wasm `Session::load`), Umbenennungen `RENAMED_CONSUMABLES` |
 | Effekt | `Effect` | Geschlossener `enum`, jeder Effekt nennt seinen Hebel |
 | Bedingung | `Condition` | Geschlossener `enum` |
@@ -377,6 +383,8 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Die Wette | `the_bet` |
 | Alte Karten im Schrank | `old_cards` |
 | Kiebitz am Fenster | `lookout` |
+| Fundgroschen | `found_coins` |
+| Die Würfelbude | `dice_stall` |
 | Entfernt im Gegenstands-Review (02.11.2026; alte Ids fallen beim Laden weg, Definitionen nur noch für Tests in `core/src/run/legacy_*.ron`) | Relikte `bock_round`, `kontra`, `ouvert_bonus`, `march_through`, `blind_flight`, `granny`, `grandpa`, `referee`, `show_off`, `regular_guest`, `tuition`, `high_and_dry`, `schneider_bock`, `safety_net`, `glass_house`, `tally_stick`, `seven_sleeper`, `clean_slate`, `old_deck`, `changeling`, `jack_parade`, `decoy`; Verbrauchsgegenstände `beer`, `new_deal`, `bitters`, `regret`, `points_5`, `trump_4` |
 | Entfernt mit den Zinken am Tresen (02.11.2026; alte Ids fallen beim Laden weg, Definitionen nur noch für Tests in `core/src/run/legacy_consumables.ron`) | Verbrauchsgegenstände `fresh_deck` (Frisches Deck, jetzt „Karte reinigen“), `ink_pad` (Stempelkissen), `points_3` (Augen +3), `trump_2` (Trumpf +2), `rank_1` (Rang +1) |
 

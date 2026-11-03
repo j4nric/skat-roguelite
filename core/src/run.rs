@@ -49,6 +49,7 @@
 //! ([`RunStart::locked_relics`]).
 
 pub mod bot;
+mod encounters;
 pub mod guests;
 pub mod meta;
 pub mod opponents;
@@ -69,10 +70,11 @@ use serde::{Deserialize, Serialize};
 use crate::ai::DefenderHeuristic;
 use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::content::{
-    ActiveSource, BossId, CardFilter, CardModDef, CardModId, Change, Character, ConsumableAction,
-    ConsumableId, Content, Editions, Effect, EncounterId, EncounterKind, GameFocus, Hook,
-    HookContext, Lever, NextGameEffect, RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreLine,
-    Source, Stage, card_mod_sources, evaluate, in_pool, resolve_edition, score_parts,
+    ActiveSource, BetOn, BossId, CardFilter, CardModDef, CardModId, Change, Character,
+    ConsumableAction, ConsumableId, Content, Editions, Effect, EncounterEffect, EncounterId,
+    GameFocus, Hook, HookContext, Lever, NextGameEffect, RelicId, RelicKind, RunLength,
+    ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool, resolve_edition,
+    score_parts,
 };
 use crate::deck::{CardKind, DealtCard, DeckChange, DeckError, Edition, Owner};
 use crate::game::{Event, Game, GameError, Phase, Seat};
@@ -239,8 +241,28 @@ pub struct Wager {
     pub encounter: EncounterId,
     /// Groschen staked (already paid).
     pub stake: u32,
-    /// Paid back this many times if the game is won with Schneider.
+    /// Saves from before 03.11.2026: paid back this many times if won
+    /// with Schneider (`percent` is 0 then).
+    #[serde(default)]
     pub factor: u32,
+    /// What it is on.
+    #[serde(default)]
+    pub on: BetOn,
+    /// Paid back in percent of the stake if it goes as bet.
+    #[serde(default)]
+    pub percent: u32,
+}
+
+impl Wager {
+    /// Groschen paid back if it goes as bet.
+    #[must_use]
+    pub fn payout(&self) -> u32 {
+        if self.percent == 0 {
+            return self.stake.saturating_mul(self.factor);
+        }
+        let paid = u64::from(self.stake) * u64::from(self.percent) / 100;
+        u32::try_from(paid).unwrap_or(u32::MAX)
+    }
 }
 
 impl Series {
@@ -489,112 +511,126 @@ const fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-/// One choice of an encounter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EncounterChoice {
-    /// Stammtisch-Streit: this house rule applies until the end of the
-    /// section.
-    TakeRule(RelicId),
-    /// Der Kartengeber: a random card gets a modification.
-    MarkRandomCard,
-    /// Der Kartengeber: the player chooses the card (target needed).
-    MarkChosenCard,
-    /// Alter Bekannter: the owned relic at `index` is swapped for a random
-    /// other one.
-    SwapRelic {
-        /// Index into the owned relics.
-        index: usize,
-        /// The relic given away.
-        relic: RelicId,
-        /// The relic received, drawn when the encounter opened. `None`
-        /// (saves from before): drawn at random when chosen.
-        #[serde(default)]
-        new: Option<RelicId>,
-    },
-    /// Letzte Runde: the next game declared counts this many times.
-    DoubleNextGame(u32),
-    /// Rast: this many lives back, up to the maximum (ADR 0016).
-    Heal(u32),
-    /// Werkstatt: every modification off a card of the player's choice
-    /// (target needed).
-    CleanseChosenCard,
-    /// Werkstatt (since the Zinken at the Tresen, DESIGN 8.6): the
-    /// Kartenmaler for free on a card of the player's choice (target
-    /// needed); the encounter waits for [`RunAction::ChoosePaint`].
-    Painter,
-    /// Loot of a Spelunke: take this relic into a free slot.
-    TakeRelic(RelicId),
-    /// Loot of a Spelunke, "Der Wirt spendiert": these Groschen.
-    TakeCoins(u32),
-    /// "Der Wirt spendiert": this consumable into a free slot.
-    TakeConsumable(ConsumableId),
-    /// "Falschspieler am Nebentisch": the option's modification on a card
-    /// of the player's choice (target needed), or with the encounter's
-    /// chance a random curse instead.
-    Gamble,
-    /// "Verlorenes Portemonnaie": keep it, these Groschen and the curse on
-    /// a random card.
-    KeepWallet {
-        /// Groschen.
-        coins: u32,
-        /// The curse.
-        curse: CardModId,
-    },
-    /// "Der Skatlehrer": the option's modification on a card of the
-    /// player's choice (target needed); the first game of the next pub
-    /// allows this many Einmischen fewer.
-    Lesson {
-        /// Einmischen fewer.
-        redeals: u32,
-    },
-    /// "Die Wette": stake the option's cost on the next declared game.
-    Wager {
-        /// Paid back this many times if won with Schneider.
-        factor: u32,
-    },
-    /// "Alte Karten im Schrank": the voucher on a card of the player's
-    /// choice (target needed), the curse on a random other card.
-    OldCards {
-        /// The voucher.
-        voucher: CardModId,
-        /// The curse.
-        curse: CardModId,
-    },
-    /// "Kiebitz am Fenster": the exact stops of the next route choices.
-    Scout(u32),
-    /// "Kiebitz am Fenster": Einmischen more in the next pub.
-    NextPubRedeals(u32),
-    /// Walk on without taking anything.
-    Leave,
-}
-
-/// An option of an open encounter: the choice and its price.
+/// An option of an open encounter: its price and its effects with every
+/// draw filled in (DESIGN 13, "Wege und Begegnungen v2"). Title and text
+/// come from the content ([`crate::content::EncounterOptionDef`], same
+/// index).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncounterOption {
-    /// What it does.
-    pub choice: EncounterChoice,
-    /// Groschen it costs.
+    /// Groschen it costs (the stake of a bet or a throw of the dice).
     pub cost: u32,
-    /// For [`EncounterChoice::MarkRandomCard`] and
-    /// [`EncounterChoice::MarkChosenCard`]: the modification the card gets,
-    /// named by the encounter or drawn when it opened. `None` (saves from
-    /// before): drawn at random when chosen.
-    #[serde(default)]
-    pub card_mod: Option<CardModId>,
-    /// The value of `card_mod` (effects v2, DESIGN 7.2). `None` (saves
-    /// from before): its first value on offer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<i32>,
+    /// What it does, in order.
+    pub effects: Vec<EncounterEffect>,
+    /// Offered only when no other option can be taken.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fallback: bool,
 }
 
-/// The encounter (Ereignis) between two series, while open.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl EncounterOption {
+    /// Whether it needs a card of the player's edition as target.
+    #[must_use]
+    pub fn needs_card(&self) -> bool {
+        self.effects.iter().any(EncounterEffect::needs_card)
+    }
+
+    /// Whether it needs an owned relic (its index) as target.
+    #[must_use]
+    pub fn needs_relic(&self) -> bool {
+        self.effects.iter().any(EncounterEffect::needs_relic)
+    }
+}
+
+/// Why an option of the open encounter cannot be taken now (shown with
+/// the option; stable names for the frontend's texts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OptionBlock {
+    /// Not enough Groschen.
+    NotEnoughCoins,
+    /// Nothing was left to draw (no house rule, relic, Schnaps or
+    /// modification for the character).
+    NothingLeft,
+    /// The edition holds as many special cards of this kind as it may
+    /// (DESIGN 7.2).
+    SpecialCardCap,
+    /// No card of the edition can take it.
+    NoFittingCard,
+    /// No relic owned.
+    NoRelic,
+    /// Every relic slot is taken.
+    RelicSlotsFull,
+    /// No life is missing.
+    LivesFull,
+    /// A bet is open already.
+    BetOpen,
+    /// A fallback: another option can be taken.
+    NotNeeded,
+}
+
+impl OptionBlock {
+    /// The error [`RunAction::ChooseEncounter`] returns for it.
+    #[must_use]
+    pub const fn error(self) -> RunError {
+        match self {
+            OptionBlock::NotEnoughCoins => RunError::NotEnoughCoins,
+            OptionBlock::RelicSlotsFull => RunError::NoFreeSlot,
+            OptionBlock::LivesFull => RunError::LivesFull,
+            OptionBlock::NothingLeft | OptionBlock::SpecialCardCap | OptionBlock::NoFittingCard => {
+                RunError::NoModAvailable
+            }
+            OptionBlock::NoRelic => RunError::InvalidSlot,
+            OptionBlock::BetOpen | OptionBlock::NotNeeded => RunError::ConditionNotMet,
+        }
+    }
+}
+
+/// The encounter (Ereignis) on the way, while open.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActiveEncounter {
     /// Which encounter.
     pub id: EncounterId,
-    /// Its options, drawn when it opened; the last is always
-    /// [`EncounterChoice::Leave`].
+    /// Its options, drawn when it opened; one must be taken. Empty only
+    /// for an encounter of a save from before 03.11.2026, which is opened
+    /// anew when loaded ([`Run::drop_unknown_content`]).
     pub options: Vec<EncounterOption>,
+    /// The option taken while the Kartenmaler waits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen: Option<usize>,
+}
+
+impl<'de> Deserialize<'de> for ActiveEncounter {
+    /// Reads the current form; an encounter of the old form (options with
+    /// a `choice`, before 03.11.2026) keeps only its id.
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Current {
+            id: EncounterId,
+            options: Vec<EncounterOption>,
+            #[serde(default)]
+            chosen: Option<usize>,
+        }
+        #[derive(Deserialize)]
+        struct Old {
+            id: EncounterId,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Either {
+            Current(Current),
+            Old(Old),
+        }
+        Ok(match Either::deserialize(d)? {
+            Either::Current(c) => ActiveEncounter {
+                id: c.id,
+                options: c.options,
+                chosen: c.chosen,
+            },
+            Either::Old(o) => ActiveEncounter {
+                id: o.id,
+                options: Vec::new(),
+                chosen: None,
+            },
+        })
+    }
 }
 
 /// The Tresen between two series. Bought items leave an empty slot.
@@ -623,6 +659,11 @@ pub struct Shop {
     /// "Karte reinigen" was used at this visit (once per Tresen).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cleansed: bool,
+    /// A Kiosk, not the Tresen (03.11.2026): only Schnäpse, each cheaper
+    /// ([`crate::content::KioskConfig`]), one may be bought; no Neuauslage,
+    /// no Zinken, no selling of relics, no credit.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kiosk: bool,
 }
 
 /// Groschen paid for a won series. Serialized with its sum as `total`, so
@@ -985,6 +1026,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         #[serde(default)]
         games_left: u32,
     },
+    /// A Kiosk opened on the way (03.11.2026).
+    KioskOpened {
+        /// Schnäpse on offer.
+        consumables: Vec<Option<ConsumableId>>,
+    },
     /// The Tresen opened.
     ShopOpened {
         /// Relics on offer.
@@ -1162,9 +1208,20 @@ pub enum RunEvent<G = Event<DealtCard>> {
     EncounterResolved {
         /// Which encounter.
         encounter: EncounterId,
-        /// The choice.
-        choice: EncounterChoice,
+        /// Index of the option taken.
+        option: usize,
     },
+    /// The dice fell at the Würfelbude.
+    DiceThrown {
+        /// Groschen staked (already paid).
+        stake: u32,
+        /// Won.
+        won: bool,
+        /// Groschen paid out (0 if lost).
+        payout: u32,
+    },
+    /// The player will see both skat cards in the next game.
+    SkatPeekPlanned,
     /// A house rule applies until the end of the section.
     EveningRuleAdded(RelicId),
     /// The house rules of the evening ended with the section.
@@ -1868,6 +1925,10 @@ pub struct Run {
     /// "Letzte Runde": the next game declared counts this many times.
     #[serde(default)]
     pending_factor: Option<(EncounterId, u32)>,
+    /// An encounter showed the player both skat cards of every deal until
+    /// the next declaration ([`EncounterEffect::SeeSkat`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    peek_next_skat: Option<EncounterId>,
     /// Consumables used for the next declared game ("Doppelkorn",
     /// "Magenbitter"), in the order used.
     #[serde(default)]
@@ -2041,6 +2102,7 @@ impl Run {
             credit_section: None,
             spared_section: None,
             wager: None,
+            peek_next_skat: None,
             scout_legs: 0,
             boss_reward: None,
             zinken_rng: master.fork(),
@@ -2080,8 +2142,10 @@ impl Run {
         }
         if let Some(encounter) = self.encounter.as_mut() {
             for option in &mut encounter.options {
-                if let EncounterChoice::TakeConsumable(id) = &mut option.choice {
-                    rename(id);
+                for effect in &mut option.effects {
+                    if let EncounterEffect::Schnapps(Some(id)) = effect {
+                        rename(id);
+                    }
                 }
             }
         }
@@ -2135,27 +2199,7 @@ impl Run {
             }
         }
         self.drop_unknown_zinken(content);
-        if let Some(encounter) = self.encounter.as_mut() {
-            encounter.options.retain(|o| match &o.choice {
-                EncounterChoice::TakeRule(id) | EncounterChoice::TakeRelic(id) => {
-                    content.relic(id).is_some()
-                }
-                EncounterChoice::SwapRelic { relic, new, .. } => {
-                    content.relic(relic).is_some()
-                        && new.as_ref().is_none_or(|n| content.relic(n).is_some())
-                }
-                EncounterChoice::TakeConsumable(id) => content.consumable(id).is_some(),
-                _ => true,
-            });
-            // Indices of swaps follow the owned relics.
-            for option in &mut encounter.options {
-                if let EncounterChoice::SwapRelic { index, relic, .. } = &mut option.choice {
-                    if let Some(i) = self.relics.iter().position(|r| r == relic) {
-                        *index = i;
-                    }
-                }
-            }
-        }
+        self.renew_encounter(content);
         dropped
     }
 
@@ -2711,6 +2755,7 @@ impl Run {
         let Some(active) = self.game.as_mut() else {
             return;
         };
+        self.peek_next_skat = None;
         if let Some((encounter, factor)) = self.pending_factor.take() {
             active.lines.push(ScoreLine {
                 source: Source::Encounter(encounter),
@@ -3841,6 +3886,17 @@ impl Run {
             }
         }
         self.fire(content, Stage::OnDeal, None, None, events);
+        // An encounter's "Kartentrick": the skat shown as with the Kurzer.
+        if self.peek_next_skat.is_some() {
+            if let Some(active) = self.game.as_mut() {
+                if !active.rules.ramsch && active.game.phase() == Phase::Declaring {
+                    active.skat_peeked = true;
+                    events.push(RunEvent::SkatPeeked {
+                        skat: active.game.skat(),
+                    });
+                }
+            }
+        }
     }
 
     /// Score the finished game and move on.
@@ -3958,12 +4014,8 @@ impl Run {
         });
         if !declaration.is_ramsch() {
             if let Some(wager) = self.wager.take() {
-                let won = breakdown.won && breakdown.schneider;
-                let payout = if won {
-                    wager.stake.saturating_mul(wager.factor)
-                } else {
-                    0
-                };
+                let won = breakdown.won && (wager.on == BetOn::Win || breakdown.schneider);
+                let payout = if won { wager.payout() } else { 0 };
                 events.push(RunEvent::WagerSettled {
                     stake: wager.stake,
                     won,
@@ -4183,6 +4235,7 @@ impl Run {
             card_rerolls: 0,
             painter_used: false,
             cleansed: false,
+            kiosk: false,
         }
     }
 
@@ -4392,6 +4445,34 @@ impl Run {
         self.shop.as_mut().ok_or(RunError::WrongPhase)
     }
 
+    /// The open shop if it is the Tresen (not a Kiosk).
+    fn tresen_mut(&mut self) -> Result<&mut Shop, RunError> {
+        let shop = self.shop_mut()?;
+        if shop.kiosk {
+            return Err(RunError::WrongPhase);
+        }
+        Ok(shop)
+    }
+
+    /// Whether the open shop is a Kiosk.
+    #[must_use]
+    pub fn at_kiosk(&self) -> bool {
+        self.phase == RunPhase::Shop && self.shop.as_ref().is_some_and(|s| s.kiosk)
+    }
+
+    /// What a consumable with this price costs in the open shop: the
+    /// Tresen price ([`Run::shop_price`]), at a Kiosk the Kiosk's discount
+    /// less, at least 1.
+    #[must_use]
+    pub fn consumable_price(&self, content: &Content, price: u32) -> u32 {
+        let paid = self.shop_price(content, price);
+        if self.shop.as_ref().is_some_and(|s| s.kiosk) {
+            paid.saturating_sub(content.run.route.kiosk.discount).max(1)
+        } else {
+            paid
+        }
+    }
+
     fn buy_relic(
         &mut self,
         content: &Content,
@@ -4444,14 +4525,19 @@ impl Run {
         let def = content
             .consumable(&id)
             .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
-        let price = self.shop_price(content, def.price);
-        if price > coins && !self.can_pay(content, price) {
+        let price = self.consumable_price(content, def.price);
+        let kiosk = self.at_kiosk();
+        if price > coins && (kiosk || !self.can_pay(content, price)) {
             return Err(RunError::NotEnoughCoins);
         }
         if owned >= usize::try_from(content.run.consumable_slots).unwrap_or(0) {
             return Err(RunError::NoFreeSlot);
         }
-        if let Some(entry) = self.shop_mut()?.consumables.get_mut(slot) {
+        let shop = self.shop_mut()?;
+        if kiosk {
+            // One Schnaps per Kiosk: the other offers go.
+            shop.consumables.iter_mut().for_each(|c| *c = None);
+        } else if let Some(entry) = shop.consumables.get_mut(slot) {
             *entry = None;
         }
         self.pay(price, events);
@@ -4469,7 +4555,7 @@ impl Run {
         index: usize,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        self.shop_mut()?;
+        self.tresen_mut()?;
         let id = self
             .relics
             .get(index)
@@ -4507,7 +4593,7 @@ impl Run {
     }
 
     fn reroll(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
-        let rerolls = self.shop_mut()?.rerolls;
+        let rerolls = self.tresen_mut()?.rerolls;
         let cost = self.shop_price(content, content.run.economy.reroll_cost);
         if !self.can_pay(content, cost) {
             return Err(RunError::NotEnoughCoins);
@@ -5011,231 +5097,6 @@ impl Run {
     // Encounters (Ereignisse, DESIGN 13)
     // -----------------------------------------------------------------------
 
-    /// Open the encounter `id` (a stop on the way, or the loot of a
-    /// Spelunke): its options are drawn now. Returns `false` if it has
-    /// nothing to offer; then the run is unchanged but for the draws.
-    fn open_encounter(
-        &mut self,
-        content: &Content,
-        id: &EncounterId,
-        events: &mut Vec<RunEvent>,
-    ) -> bool {
-        let Some(def) = content.encounter(id) else {
-            return false;
-        };
-        let mut options: Vec<EncounterOption> = Vec::new();
-        let free = |choice| EncounterOption {
-            choice,
-            cost: 0,
-            card_mod: None,
-            value: None,
-        };
-        match &def.kind {
-            EncounterKind::EveningRule { offers } => {
-                let pool = self.relic_pool(content, true);
-                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers);
-                options.extend(
-                    drawn
-                        .into_iter()
-                        .map(|id| free(EncounterChoice::TakeRule(id))),
-                );
-            }
-            EncounterKind::MarkCard {
-                price,
-                card_mod,
-                value,
-                curse,
-            } => {
-                // The modification is known before the choice: named by the
-                // encounter or drawn now from the character's pool (a curse
-                // only if the encounter announces one).
-                // Never a voucher for a special card the edition may not
-                // get any more (DESIGN 7.2): then the encounter offers
-                // nothing.
-                let card_mod = match card_mod {
-                    Some(id) => content
-                        .card_mod(id)
-                        .is_none_or(|def| self.offer_open(content, def))
-                        .then(|| id.clone()),
-                    None => {
-                        let pool = self.mod_pool(content, *curse);
-                        draw_weighted(&mut self.encounter_rng, pool, 1).pop()
-                    }
-                };
-                if let Some(card_mod) = card_mod {
-                    let value = value
-                        .or_else(|| content.card_mod(&card_mod).map(CardModDef::default_value));
-                    options.push(EncounterOption {
-                        choice: EncounterChoice::MarkRandomCard,
-                        cost: 0,
-                        card_mod: Some(card_mod.clone()),
-                        value,
-                    });
-                    options.push(EncounterOption {
-                        choice: EncounterChoice::MarkChosenCard,
-                        cost: *price,
-                        card_mod: Some(card_mod),
-                        value,
-                    });
-                }
-            }
-            EncounterKind::SwapRelic => {
-                // The relic received is drawn now, so every option names it.
-                let pool = self.relic_pool(content, false);
-                let new = draw_weighted(&mut self.encounter_rng, pool, 1).pop();
-                if let Some(new) = new {
-                    options.extend(self.relics.iter().enumerate().map(|(index, relic)| {
-                        free(EncounterChoice::SwapRelic {
-                            index,
-                            relic: relic.clone(),
-                            new: Some(new.clone()),
-                        })
-                    }));
-                }
-            }
-            EncounterKind::DoubleNextGame { factor } => {
-                options.push(free(EncounterChoice::DoubleNextGame(*factor)));
-            }
-            EncounterKind::Rest { lives } => {
-                options.push(free(EncounterChoice::Heal(*lives)));
-            }
-            EncounterKind::Workshop => {
-                // The Kartenmaler as at the Tresen, but free (DESIGN 8.6).
-                options.push(free(EncounterChoice::Painter));
-                options.push(free(EncounterChoice::CleanseChosenCard));
-            }
-            EncounterKind::RelicReward => {
-                let pool = self.relic_pool(content, false);
-                if let Some(relic) = draw_weighted(&mut self.encounter_rng, pool, 1).pop() {
-                    let coins = content.relic(&relic).map_or(0, |r| sell_price(r.price));
-                    options.push(free(EncounterChoice::TakeRelic(relic)));
-                    options.push(free(EncounterChoice::TakeCoins(coins)));
-                }
-            }
-            EncounterKind::FreeSchnapps { offers, coins } => {
-                let pool: Vec<(ConsumableId, u32)> = content
-                    .consumables
-                    .values()
-                    .filter(|c| c.category == crate::content::ConsumableCategory::Schnapps)
-                    .filter(|c| in_pool(&c.characters, self.character))
-                    .map(|c| {
-                        let weights = &content.run.shop.rarity_weights;
-                        (c.id.clone(), weights.weight(c.rarity))
-                    })
-                    .collect();
-                let drawn = draw_weighted(&mut self.encounter_rng, pool, *offers);
-                options.extend(
-                    drawn
-                        .into_iter()
-                        .map(|id| free(EncounterChoice::TakeConsumable(id))),
-                );
-                options.push(free(EncounterChoice::TakeCoins(*coins)));
-            }
-            EncounterKind::Gamble { price, offers, .. } => {
-                let pool: Vec<((CardModId, i32), u32)> = offers
-                    .iter()
-                    .filter(|(m, _)| {
-                        content
-                            .card_mod(m)
-                            .is_none_or(|def| self.offer_open(content, def))
-                    })
-                    .map(|o| (o.clone(), 1))
-                    .collect();
-                if let Some((card_mod, value)) =
-                    draw_weighted(&mut self.encounter_rng, pool, 1).pop()
-                {
-                    options.push(EncounterOption {
-                        choice: EncounterChoice::Gamble,
-                        cost: *price,
-                        card_mod: Some(card_mod),
-                        value: Some(value),
-                    });
-                }
-            }
-            EncounterKind::Wallet {
-                coins,
-                curse,
-                lives,
-            } => {
-                options.push(EncounterOption {
-                    choice: EncounterChoice::KeepWallet {
-                        coins: *coins,
-                        curse: curse.clone(),
-                    },
-                    cost: 0,
-                    card_mod: Some(curse.clone()),
-                    value: content.card_mod(curse).map(CardModDef::default_value),
-                });
-                options.push(free(EncounterChoice::Heal(*lives)));
-            }
-            EncounterKind::Lesson {
-                card_mod,
-                value,
-                redeals,
-            } => {
-                options.push(EncounterOption {
-                    choice: EncounterChoice::Lesson { redeals: *redeals },
-                    cost: 0,
-                    card_mod: Some(card_mod.clone()),
-                    value: Some(*value),
-                });
-            }
-            EncounterKind::Wager { stakes, factor } => {
-                options.extend(stakes.iter().map(|&stake| EncounterOption {
-                    choice: EncounterChoice::Wager { factor: *factor },
-                    cost: stake,
-                    card_mod: None,
-                    value: None,
-                }));
-            }
-            EncounterKind::OldCards { vouchers } => {
-                // Only a voucher for a special card the edition may still
-                // get (DESIGN 7.2); with none the encounter offers nothing.
-                let pool: Vec<(CardModId, u32)> = vouchers
-                    .iter()
-                    .filter(|v| {
-                        content
-                            .card_mod(v)
-                            .is_some_and(|def| self.offer_open(content, def))
-                    })
-                    .map(|v| (v.clone(), 1))
-                    .collect();
-                let voucher = draw_weighted(&mut self.encounter_rng, pool, 1).pop();
-                let curses = self.mod_pool(content, true);
-                let curse = draw_weighted(&mut self.encounter_rng, curses, 1).pop();
-                if let (Some(voucher), Some(curse)) = (voucher, curse) {
-                    options.push(EncounterOption {
-                        choice: EncounterChoice::OldCards {
-                            voucher: voucher.clone(),
-                            curse,
-                        },
-                        cost: 0,
-                        card_mod: Some(voucher),
-                        value: None,
-                    });
-                }
-            }
-            EncounterKind::Lookout { legs, redeals } => {
-                options.push(free(EncounterChoice::Scout(*legs)));
-                options.push(free(EncounterChoice::NextPubRedeals(*redeals)));
-            }
-        }
-        if options.is_empty() {
-            return false;
-        }
-        options.push(free(EncounterChoice::Leave));
-        self.phase = RunPhase::Encounter;
-        events.push(RunEvent::EncounterOpened {
-            encounter: def.id.clone(),
-            options: options.clone(),
-        });
-        self.encounter = Some(ActiveEncounter {
-            id: def.id.clone(),
-            options,
-        });
-        true
-    }
-
     /// Tests: at the route choice, walk to the next pub over the Tresen
     /// alone (as the Tresen came after every series before ADR 0016).
     #[cfg(test)]
@@ -5294,313 +5155,6 @@ impl Run {
             self.phase = RunPhase::Encounter;
         }
         opened
-    }
-
-    /// A random card of the player's edition `card_mod` may go on now, a
-    /// bare one first, never `except`. Drawn with the encounter generator.
-    fn random_card_for(
-        &mut self,
-        content: &Content,
-        card_mod: &CardModId,
-        except: Option<u32>,
-    ) -> Option<u32> {
-        let fitting: Vec<&crate::deck::DeckCard> = self
-            .edition
-            .cards()
-            .iter()
-            .filter(|c| c.kind != CardKind::Blank && Some(c.id) != except)
-            .filter(|c| self.may_attach(content, c.id, card_mod))
-            .collect();
-        let bare: Vec<u32> = fitting
-            .iter()
-            .filter(|c| c.mods.is_empty())
-            .map(|c| c.id)
-            .collect();
-        let cards: Vec<u32> = if bare.is_empty() {
-            fitting.iter().map(|c| c.id).collect()
-        } else {
-            bare
-        };
-        if cards.is_empty() {
-            return None;
-        }
-        let pick = self
-            .encounter_rng
-            .gen_range(0..u64::try_from(cards.len()).unwrap_or(1));
-        cards.get(usize::try_from(pick).unwrap_or(0)).copied()
-    }
-
-    /// The modification an encounter puts on `card`: the one it names
-    /// (an old id of a save from before effects v2 converted, DESIGN 7.2),
-    /// or (saves from before the draw at opening, or an old id that was
-    /// dropped) a random one from the character's pool, never a curse.
-    fn encounter_mod(
-        &mut self,
-        content: &Content,
-        named: Option<&CardModId>,
-        card: u32,
-    ) -> Result<CardModId, RunError> {
-        let deck_card = self.edition.get(card).ok_or(DeckError::UnknownCard(card))?;
-        if deck_card.kind == CardKind::Blank {
-            return Err(DeckError::BlankCannotBeModified.into());
-        }
-        if let Some(id) = named {
-            return Ok(id.clone());
-        }
-        let options = self.card_mod_pool_for(content, deck_card);
-        draw_weighted(&mut self.encounter_rng, options, 1)
-            .pop()
-            .ok_or(RunError::NoModAvailable)
-    }
-
-    fn choose_encounter(
-        &mut self,
-        content: &Content,
-        option: usize,
-        target: Option<u32>,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        if self.phase != RunPhase::Encounter {
-            return Err(RunError::WrongPhase);
-        }
-        let encounter = self.encounter.clone().ok_or(RunError::WrongPhase)?;
-        let def = content
-            .encounter(&encounter.id)
-            .ok_or_else(|| RunError::UnknownContent(encounter.id.to_string()))?;
-        let chosen = encounter
-            .options
-            .get(option)
-            .cloned()
-            .ok_or(RunError::InvalidSlot)?;
-        // The cost of a Zinke on a chosen card may depend on the card
-        // ("Bruderherz"); it is checked again once the card is known.
-        let mut cost = chosen.cost;
-        let lowest = match chosen.choice {
-            EncounterChoice::MarkChosenCard | EncounterChoice::Gamble => {
-                target.map_or(cost, |card| self.zinken_price(content, card, cost))
-            }
-            _ => cost,
-        };
-        if lowest > self.coins {
-            return Err(RunError::NotEnoughCoins);
-        }
-        let (named, named_value) = match &def.kind {
-            EncounterKind::MarkCard {
-                card_mod, value, ..
-            } => current_mod(
-                content,
-                chosen.card_mod.as_ref().or(card_mod.as_ref()),
-                chosen.value.or(*value),
-            ),
-            _ => (None, None),
-        };
-        let named = named.as_ref();
-        match &chosen.choice {
-            EncounterChoice::TakeRule(id) => {
-                self.evening_relics.push(id.clone());
-                events.push(RunEvent::EveningRuleAdded(id.clone()));
-            }
-            EncounterChoice::MarkRandomCard => {
-                // A random card the modification may go on now: never a
-                // cursed one, and (effects v2) preferably one that carries
-                // no modification yet, so a random draw does not throw away
-                // what the player built.
-                let fitting: Vec<&crate::deck::DeckCard> = self
-                    .edition
-                    .cards()
-                    .iter()
-                    .filter(|c| c.kind != CardKind::Blank)
-                    .filter(|c| match named {
-                        Some(m) => self.may_attach(content, c.id, m),
-                        None => !self.card_mod_pool_for(content, c).is_empty(),
-                    })
-                    .collect();
-                let bare: Vec<u32> = fitting
-                    .iter()
-                    .filter(|c| c.mods.is_empty())
-                    .map(|c| c.id)
-                    .collect();
-                let cards: Vec<u32> = if bare.is_empty() {
-                    fitting.iter().map(|c| c.id).collect()
-                } else {
-                    bare
-                };
-                let pick = self
-                    .encounter_rng
-                    .gen_range(0..u64::try_from(cards.len()).unwrap_or(0));
-                let card = *cards
-                    .get(usize::try_from(pick).unwrap_or(usize::MAX))
-                    .ok_or(RunError::NoModAvailable)?;
-                let card_mod = self.encounter_mod(content, named, card)?;
-                let value = mod_value(content, &card_mod, named_value);
-                self.attach_mod(content, card, &card_mod, value, events)?;
-            }
-            EncounterChoice::MarkChosenCard => {
-                let card = target.ok_or(RunError::TargetRequired)?;
-                cost = self.zinken_price(content, card, chosen.cost);
-                let card_mod = self.encounter_mod(content, named, card)?;
-                let value = mod_value(content, &card_mod, named_value);
-                self.attach_mod(content, card, &card_mod, value, events)?;
-            }
-            EncounterChoice::SwapRelic { index, relic, new } => {
-                if self.relics.get(*index) != Some(relic) {
-                    return Err(RunError::InvalidSlot);
-                }
-                let new = match new {
-                    Some(new) => new.clone(),
-                    None => {
-                        let pool = self.relic_pool(content, false);
-                        draw_weighted(&mut self.encounter_rng, pool, 1)
-                            .pop()
-                            .ok_or(RunError::NoModAvailable)?
-                    }
-                };
-                self.relics[*index] = new.clone();
-                events.push(RunEvent::RelicSwapped {
-                    old: relic.clone(),
-                    new,
-                });
-            }
-            EncounterChoice::DoubleNextGame(factor) => {
-                self.pending_factor = Some((encounter.id.clone(), *factor));
-                events.push(RunEvent::NextGameDoubled { factor: *factor });
-            }
-            EncounterChoice::Heal(lives) => {
-                self.gain_lives(content, *lives, events);
-            }
-            EncounterChoice::CleanseChosenCard => {
-                let card = target.ok_or(RunError::TargetRequired)?;
-                let change = self.cleanse(content, card)?;
-                events.push(RunEvent::DeckChanged(change));
-            }
-            EncounterChoice::Painter => {
-                // The encounter stays open until the player takes one.
-                let card = target.ok_or(RunError::TargetRequired)?;
-                return self.start_painter(content, card, chosen.cost, true, events);
-            }
-            EncounterChoice::TakeRelic(relic) => {
-                let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
-                if self.relics.len() >= slots {
-                    return Err(RunError::NoFreeSlot);
-                }
-                self.relics.push(relic.clone());
-                events.push(RunEvent::RelicGained {
-                    relic: relic.clone(),
-                });
-            }
-            EncounterChoice::TakeCoins(amount) => {
-                self.coins = self.coins.saturating_add(*amount);
-                events.push(RunEvent::CoinsGained {
-                    source: Source::Encounter(encounter.id.clone()),
-                    amount: i32::try_from(*amount).unwrap_or(i32::MAX),
-                    coins: self.coins,
-                });
-            }
-            EncounterChoice::TakeConsumable(id) => {
-                let slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
-                if self.consumables.len() >= slots {
-                    return Err(RunError::NoFreeSlot);
-                }
-                self.consumables.push(id.clone());
-                events.push(RunEvent::ConsumableGained {
-                    consumable: id.clone(),
-                });
-            }
-            EncounterChoice::Gamble => {
-                let card = target.ok_or(RunError::TargetRequired)?;
-                cost = self.zinken_price(content, card, chosen.cost);
-                let card_mod = chosen.card_mod.clone().ok_or(RunError::NoModAvailable)?;
-                let value = mod_value(content, &card_mod, chosen.value);
-                if !self.may_attach(content, card, &card_mod) {
-                    return Err(RunError::NoModAvailable);
-                }
-                let percent = match &def.kind {
-                    EncounterKind::Gamble { curse_percent, .. } => u64::from(*curse_percent),
-                    _ => 0,
-                };
-                let curse = if self.encounter_rng.gen_range(0..100) < percent {
-                    let pool: Vec<(CardModId, u32)> = self
-                        .mod_pool(content, true)
-                        .into_iter()
-                        .filter(|(m, _)| self.may_attach(content, card, m))
-                        .collect();
-                    draw_weighted(&mut self.encounter_rng, pool, 1).pop()
-                } else {
-                    None
-                };
-                events.push(RunEvent::GambleResolved {
-                    curse: curse.is_some(),
-                });
-                match curse {
-                    Some(curse) => {
-                        let value = mod_value(content, &curse, None);
-                        self.attach_mod(content, card, &curse, value, events)?;
-                    }
-                    None => self.attach_mod(content, card, &card_mod, value, events)?,
-                }
-            }
-            EncounterChoice::KeepWallet { coins, curse } => {
-                self.coins = self.coins.saturating_add(*coins);
-                events.push(RunEvent::CoinsGained {
-                    source: Source::Encounter(encounter.id.clone()),
-                    amount: i32::try_from(*coins).unwrap_or(i32::MAX),
-                    coins: self.coins,
-                });
-                if let Some(card) = self.random_card_for(content, curse, None) {
-                    let value = mod_value(content, curse, None);
-                    self.attach_mod(content, card, curse, value, events)?;
-                }
-            }
-            EncounterChoice::Lesson { redeals } => {
-                let card = target.ok_or(RunError::TargetRequired)?;
-                let card_mod = chosen.card_mod.clone().ok_or(RunError::NoModAvailable)?;
-                let value = mod_value(content, &card_mod, chosen.value);
-                self.attach_mod(content, card, &card_mod, value, events)?;
-                let fewer = i32::try_from(*redeals).unwrap_or(i32::MAX);
-                self.plan_next_pub(-fewer, 0, events);
-            }
-            EncounterChoice::Wager { factor } => {
-                if chosen.cost == 0 || self.wager.is_some() {
-                    return Err(RunError::WrongPhase);
-                }
-                self.wager = Some(Wager {
-                    encounter: encounter.id.clone(),
-                    stake: chosen.cost,
-                    factor: *factor,
-                });
-                events.push(RunEvent::WagerPlaced { stake: chosen.cost });
-            }
-            EncounterChoice::OldCards { voucher, curse } => {
-                let card = target.ok_or(RunError::TargetRequired)?;
-                if !self.may_attach(content, card, voucher) {
-                    return Err(RunError::NoModAvailable);
-                }
-                let value = mod_value(content, voucher, None);
-                self.attach_mod(content, card, voucher, value, events)?;
-                if let Some(other) = self.random_card_for(content, curse, Some(card)) {
-                    let value = mod_value(content, curse, None);
-                    self.attach_mod(content, other, curse, value, events)?;
-                }
-            }
-            EncounterChoice::Scout(legs) => {
-                self.scout_legs = self.scout_legs.max(*legs);
-                events.push(RunEvent::StopsRevealed {
-                    legs: self.scout_legs,
-                });
-            }
-            EncounterChoice::NextPubRedeals(n) => {
-                self.plan_next_pub(i32::try_from(*n).unwrap_or(i32::MAX), 0, events);
-            }
-            EncounterChoice::Leave => {}
-        }
-        self.coins -= cost;
-        self.settle_debt(events);
-        events.push(RunEvent::EncounterResolved {
-            encounter: encounter.id.clone(),
-            choice: chosen.choice,
-        });
-        self.encounter = None;
-        self.continue_trip(content, events)
     }
 
     /// District and index of the pub after the current one in the
@@ -5790,27 +5344,6 @@ fn declarer_point_lines(active: &ActiveGame) -> Vec<ScoreLine> {
         .collect()
 }
 
-/// An encounter's modification as of effects v2 (DESIGN 7.2): an id the
-/// content knows stays, an old id of a save from before is converted with
-/// its value ([`crate::deck::legacy_mod`]); a dropped one becomes `None`
-/// (then one is drawn when chosen).
-fn current_mod(
-    content: &Content,
-    named: Option<&CardModId>,
-    value: Option<i32>,
-) -> (Option<CardModId>, Option<i32>) {
-    match named {
-        Some(id) if content.card_mod(id).is_some() => (Some(id.clone()), value),
-        Some(id) => match crate::deck::legacy_mod(id.as_str()) {
-            Some((new, v)) if content.card_mod(&CardModId::new(new)).is_some() => {
-                (Some(CardModId::new(new)), Some(v))
-            }
-            _ => (None, None),
-        },
-        None => (None, None),
-    }
-}
-
 /// The value a modification goes on with: the one named, else the first on
 /// offer only if it is the named modification (a random draw takes its
 /// own first value).
@@ -5876,6 +5409,8 @@ mod content_tests;
 mod edition_tests;
 #[cfg(test)]
 mod effects_v2_tests;
+#[cfg(test)]
+mod encounters_tests;
 #[cfg(test)]
 mod items_tests;
 #[cfg(test)]

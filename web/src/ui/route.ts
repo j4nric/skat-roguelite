@@ -24,7 +24,15 @@ const LINE: Record<Way, { colour: string; pattern: Pattern }> = {
   bahn: { colour: '#1b4a4c', pattern: 'dashed' },
   rad: { colour: '#9a6418', pattern: 'dotted' },
 };
-const STOP_ICON: Record<StopCategory, MapIcon> = { Tresen: 'shop', Event: 'begegnung', Upgrade: 'upgrade', Rest: 'rast' };
+const STOP_ICON: Record<StopCategory, MapIcon> = {
+  Tresen: 'shop',
+  Event: 'begegnung',
+  Upgrade: 'upgrade',
+  Rest: 'rast',
+  FoundCoins: 'fundgroschen',
+  Kiosk: 'kiosk',
+  DiceStall: 'wuerfel',
+};
 
 /** The pixel icon of a stop category. */
 export function categoryIcon(category: StopCategory, size = 28): string {
@@ -334,7 +342,9 @@ export function playTravel(root: HTMLElement, ms: number): Promise<void> {
     root.addEventListener('pointerdown', finish);
     const frame = (now: number): void => {
       if (done) return;
-      const p = Math.min(1, (now - start) / ms);
+      // The frame's time may lie before `start` (taken while the frame ran):
+      // never step before the first cell.
+      const p = Math.min(1, Math.max(0, (now - start) / ms));
       const k = Math.floor((cells.length - 1) * p);
       const [x, y] = cells[k] as [number, number];
       trail.setAttribute('d', cells.slice(0, k + 1).map(([cx, cy]) => `M${cx - 1} ${cy - 1}h2v2h-2z`).join(''));

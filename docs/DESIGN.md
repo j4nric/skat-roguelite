@@ -156,8 +156,9 @@ Run (eine Kneipentour durch eine erfundene Stadt)
 Nach jeder Kneipe, die den Run nicht beendet, wählt der Spieler einen von **drei Wegen** zur nächsten Kneipe (`RunPhase::Route`, `RunAction::ChooseRoute`). Vorher sichtbar: die nächste Kneipe mit Namen, Stadtteil, Zielwert, Spielen und den Stammgästen am Tisch (in der Boss-Kneipe der Boss, sobald bekannt).
 
 - **Verkehrsmittel**: Zu Fuß, Bahn, Fahrrad. Seit der Nachentscheidung des Nutzers vom 02.11.2026 **verhalten sich alle drei gleich**: Jeder Weg führt über genau eine Station, kostet nichts extra, und die Kategorie der Station wird **je Weg gewürfelt** und angezeigt. Das Verkehrsmittel ist Darstellung (Weg auf der Karte, eine dekorative Fahrzeit `minutes`). Der erste Entwurf (Bahn kostet 1 Groschen und zeigt das genaue Ereignis, Fahrrad zwei Stationen mit einer Überraschung) ist verworfen.
-- **Stationen** (`StopCategory`): **Tresen** (der Laden wie bisher), **Begegnung** (die Ereignisse aus 13), **Upgrade** („Werkstatt“, selten: seit den Zinken am Tresen (8.6) der **Kartenmaler gratis** – eine gewählte Karte, dann eine von zwei gezogenen Zinken – oder **Karte reinigen** gratis; dazu der Kartengeber, der Gasthof zur Krone und der Taschenspieler, die Karten aufwerten) und **Rast** (Imbissbude: ein Leben zurück, nur gezogen, solange ein Leben fehlt). Gewichte in `run.ron` (`route.weights`, vorläufig Tresen 40, Begegnung 35, Upgrade 12, Rast 8). Unter den drei Wegen ist immer einer mit Tresen. Das genaue Ereignis ist beim Wählen gezogen, aber verdeckt; die Kategorie ist sichtbar. Jedes Ereignis trägt seine Kategorie als Daten (`category` in `encounters.ron`).
-- **Ein Ereignis ohne Angebot** (etwa „Alter Bekannter“ ohne Relikt) wird nicht auf einen Weg gelegt; geht eines unterwegs doch leer aus, geht es direkt in die Kneipe.
+- **Stationen** (`StopCategory`): **Tresen** (der Laden wie bisher), **Begegnung** (die Ereignisse aus 13), **Upgrade** („Werkstatt“, selten: seit den Zinken am Tresen (8.6) der **Kartenmaler gratis** – eine gewählte Karte, dann eine von zwei gezogenen Zinken – oder **Karte reinigen** gratis; dazu der Kartengeber, der Gasthof zur Krone und der Taschenspieler, die Karten aufwerten), **Rast** (Imbissbude: ein Leben zurück, nur gezogen, solange ein Leben fehlt) und seit dem 03.11.2026 **Fundgroschen** (`FoundCoins`: 2 Groschen liegen auf dem Weg), **Kiosk** (`Kiosk`: ein kleiner Laden mit zwei Schnäpsen, je 1 Groschen billiger als am Tresen nach dem Rabatt des Wirts, mindestens 1; einer darf gekauft werden, Kaufen ist freiwillig; keine Relikte, keine Zinken, keine Neuauslage, kein Verkauf von Relikten, kein Anschreiben) und **Würfelbude** (`DiceStall`: 2, 4 oder 6 Groschen setzen, mit 50 % kommt der doppelte Einsatz zurück; wer keine 2 Groschen hat, darf nur zuschauen). Jedes Ereignis trägt seine Kategorie als Daten (`category` in `encounters.ron`); Fundgroschen und Würfelbude sind Ereignisse (`found_coins`, `dice_stall`), der Kiosk ist ein Laden (`Shop::kiosk`, `RunEvent::KioskOpened`).
+- **Wege und Begegnungen v2 (Entscheidung des Nutzers vom 03.11.2026, Cockpit-Fragen 10 und 11)**: Die drei Wege einer Routenwahl zeigen immer **drei verschiedene Stationsarten**, eine davon der **Tresen** (auf einem zufälligen Weg). Die beiden anderen werden ohne Zurücklegen nach `route.weights` gezogen, vorläufig nach Augenmaß **Begegnung 35, Fundgroschen 30, Kiosk 15, Würfelbude 10, Werkstatt 7, Rast 5** (Rast nur mit fehlendem Leben; der Tresen hat kein Gewicht mehr, bis dahin Tresen 40, Begegnung 35, Upgrade 12, Rast 8 mit „mindestens ein Tresen“). Gezogen wird nur, was gerade etwas zu bieten hat: eine Kategorie mit einem Ereignis, von dem eine Option genommen werden kann, der Kiosk mit einem Schnaps für den Charakter. Die Spelunke bleibt, wie sie ist. Das genaue Ereignis ist beim Wählen gezogen, aber verdeckt; die Kategorie ist sichtbar.
+- **Ein Ereignis ohne Angebot** (keine Option, die gerade genommen werden kann) wird nicht auf einen Weg gelegt; geht eines unterwegs doch leer aus, geht es direkt in die Kneipe.
 - **Zufall**: eigener Generator des Runs für Wege, Spelunken und Mali (`tour_rng`); die Karten der Spiele ändern sich dadurch nicht.
 
 #### 5.0.2 Die Spelunke
@@ -201,10 +202,11 @@ Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben, Groschen je übrigem S
 | Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
 | Leben | Start 2, höchstens 4, Boss +1 (bis 03.11.2026 3, 5, +1) | `lives` |
 | Grundbetrag, je übrigem Spiel | 3, 2 (03.11.2026; ADR 0016 3, davor 1) | `economy` |
-| Gewichte der Stationen | Tresen 40, Begegnung 35, Upgrade 12, Rast 8 (Rast nur mit fehlendem Leben); immer ein Tresen | `route.weights` |
+| Gewichte der Stationen | seit 03.11.2026 drei verschiedene Arten je Routenwahl, eine der Tresen; die anderen ohne Zurücklegen: Begegnung 35, Fundgroschen 30, Kiosk 15, Würfelbude 10, Werkstatt 7, Rast 5 (Rast nur mit fehlendem Leben), vorläufig. Bis dahin Tresen 40, Begegnung 35, Upgrade 12, Rast 8 | `route.weights`, `route.kiosk` |
 | Spelunke | Chance 0,3, Zielwert × 1,1 (bis 03.11.2026 1,25), ein Malus (Gewicht 2, Kein Skat 1, seit 03.11.2026: Kein Skat war 13 bis 23 Punkte schwerer als die anderen) | `spelunke`, `tour.ron` |
 | Rast | +1 Leben | `encounters.ron` (`snack_bar`) |
-| Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast mit fehlendem Leben; Spelunke nur mit 3 Leben und 3 Relikten | `RunBot::route_action` |
+| Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast mit fehlendem Leben, Fundgroschen 2, Kiosk 1, Würfelbude 0; Spelunke nur mit 3 Leben und 3 Relikten | `RunBot::route_action` |
+| Bot-Ereignis (seit 03.11.2026) | eine Option muss genommen werden: die mit dem höchsten Wert in groben Groschen (`RunBot::option_value`, nicht abgestimmt); am Kiosk der wertvollste Schnaps | `RunBot::encounter_action` |
 | Bot-Boss-Relikt | das wertvollste in einen freien Platz, bei vollen Plätzen statt des schwächsten, wenn es mindestens `SWAP_MARGIN` mehr wert ist, sonst keins | `RunBot::boss_reward_action` |
 
 Gemessen am 03.11.2026 für den Alleinspieler (große Runde) und für die anderen vier Charaktere (je 3 × 300 Runs, `docs/balance/2026-11-03-charaktere.md`, Tabelle in 9). Noch zu messen: die Gewichte der Stationen und die Spelunke selbst (mit der steilen Kurve in Stadtteil 3 nur noch 20 bis 36 % gewonnen, 17).
@@ -1286,6 +1288,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 
 **Gegenstands-Review (02.11.2026, 8.5), vorläufig ohne Messung**: Kräuter 3 (Common), Doppelkorn 3 (Uncommon), Konterbier 4 (Uncommon), Schwenker 2 (Common), Wegbier 3 (Common); Spickzettel 5 (bisher 4); Feierabend 5 (Common), Monatskarte 4 (Common), Stammtischkasse 5 (Uncommon), Deckel anschreiben 5 (Uncommon), Schutzengel 8 (Rare), Spelunkenkenner 4 (Uncommon). Neu in der Wirtschaft: Schulden am Tresen (Deckel anschreiben, bis −5, einmal pro Stadtteil), eine Kasse (2 je Kneipe, +50 % beim nächsten Tresen), die Wette (3 oder 6 Groschen) und Groschen aus Begegnungen (Wirt 5, Portemonnaie 8). Der Falschspieler kostet jetzt 2 Groschen, statt 3 zu zahlen.
 
+**Wege und Begegnungen v2 (03.11.2026, 5.0.1 und 13.0), vorläufig ohne Messung**: Neue Einnahmen unterwegs: Fundgroschen 2, die Gratis-Optionen der Ereignisse (Kartengeber 2, Wasser 1, Kiebitzen beim Preisskat 2, Falschspieler auffliegen lassen 4, Finderlohn 4, altes Blatt 4, Kiebitz 2, Wirt 5), ein Relikt zum vollen Preis beim Alten Bekannten, ein Schnaps bei vollen Plätzen sein Tresen-Preis in Groschen. Neue Ausgaben: eine Runde ausgeben 3, aufwischen 2, die Wette auf einen Sieg 2 (zahlt 3), die Würfelbude 2, 4 oder 6 (Erwartungswert 0). Der Kiosk verkauft einen von zwei Schnäpsen 1 Groschen unter dem Tresen-Preis (nach dem Rabatt des Wirts, mindestens 1), ohne Anschreiben.
+
 **Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie das Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
 
 - **Währung**: Groschen. Thematisch Zehntelpfennig, wie am Kneipentisch.
@@ -1306,6 +1310,43 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 ---
 
 ## 13. Ereignisse (Rast)
+
+### 13.0 Wege und Begegnungen v2 (03.11.2026)
+
+**Entscheidung des Nutzers (Cockpit-Fragen 10 und 11)**: Jedes Ereignis bietet **zwei oder drei Optionen**, eine davon **muss** genommen werden; „Weitergehen“ und „Ablehnen“ gibt es nicht mehr. Was unten über „Weitergehen“ steht, ist Geschichte.
+
+**Ereignisse sind Daten.** In `encounters.ron` listet jedes Ereignis seine Optionen (`options`, `EncounterOptionDef`): einen Titel (`label`), einen Preis (`cost`, bei Wette und Würfelbude der Einsatz) und eine kleine Liste von Wirkungen (`effects`, `EncounterEffect`), die nacheinander gelten. Es gibt keine Rust-Variante je Ereignis mehr (bis dahin `EncounterKind` und `EncounterChoice`). Die Wirkungen: Groschen (`Coins`), eine Hausregel des Stadtteils (`EveningRule`), eine Zinke oder ein Fluch auf eine zufällige oder gewählte Karte (`Mark`, mit `card: Random | Chosen`, benannter Zinke, Angeboten zum Ziehen, `curse` und `curse_percent`), ein Relikt tauschen oder verkaufen (`SwapRelic`, `SellRelic(Prozent)`), ein Relikt oder sein Gegenwert (`Relic`, `RelicCoins`, die Beute der Spelunke), das nächste Spiel ×n (`NextGameFactor`), Einmischen in der nächsten Kneipe mehr oder im ersten Spiel weniger (`NextPubRedeals`), beide Skatkarten im nächsten Spiel (`SeeSkat`: wie der Kurzer bei jedem Geben, bis ein Spiel angesagt ist), ein Schnaps (`Schnapps`), Leben (`Lives`), die nächsten Wege (`Scout`), eine Wette (`Bet` auf Schneider oder Sieg, Auszahlung in Prozent des Einsatzes), Würfeln (`Dice`, Gewinnchance und Auszahlung in Prozent), der Kartenmaler und Karte reinigen (`Painter`, `Cleanse`). Was eine Wirkung offen lässt (`None`), wird beim Öffnen mit dem Ereignis-Generator gezogen und vorher gezeigt: Hausregeln und Schnäpse verschieden je Option, ein Relikt für das ganze Ereignis, eine Zinke je Wirkung. Eine Option mit `fallback` („Zuschauen“) gibt es nur, wenn sonst nichts geht.
+
+**Gesperrt statt versteckt.** Eine Option, die gerade nicht geht, bleibt sichtbar und nennt den Grund (`OptionBlock` in der Sicht, `blocked`): zu wenig Groschen, nichts mehr zu ziehen, Spezialkarten-Grenze der Ausgabe (7.2), keine passende Karte, kein Relikt, alle Relikt-Plätze belegt, kein Leben fehlt, eine Wette läuft schon. **Jedes Ereignis hat eine Option, die nichts kostet** (geprüft beim Laden), meist mit Gewinn; nur die Wette setzt in jeder Option und kommt deshalb nur auf einen Weg, wenn der kleinste Einsatz bezahlbar ist. Ein Ereignis, von dem gerade keine Option genommen werden kann, kommt nicht auf einen Weg (5.0.1).
+
+**Schnaps bei vollen Plätzen** (entschieden von Claude): Eine Schnaps-Option bleibt wählbar und zahlt den Tresen-Preis des Schnapses in Groschen (ohne Rabatt), die Sicht sagt es (`coins_instead`). So ist ein Schnaps nie verschenkt, und das Ereignis behält seine Gratis-Option.
+
+**Relikt als Ziel.** Tauschen und Verkaufen fragen nach dem Relikt: Das Ziel von `ChooseEncounter` ist dann der Index des Relikts (Sicht `target: Relic`), sonst eine Karte (`Card`) oder nichts.
+
+**Alte Spielstände**: Ein offenes Ereignis der alten Form (Optionen mit `choice`) behält beim Laden nur seine Id und wird neu geöffnet (`Run::drop_unknown_content`), mit neu gezogenen Angeboten; hat es nichts mehr zu bieten, geht der Weg weiter. Eine laufende Wette der alten Form zahlt wie bisher (`factor`).
+
+| Ereignis | A | B | C |
+|---|---|---|---|
+| Stammtisch-Streit | Hausregel 1 | Hausregel 2 | Hausregel 3 |
+| Der Kartengeber (Upgrade) | Zinke auf zufällige Karte, gratis | gewählte Karte, 3 Gr. | Zuschauen: +2 Gr. |
+| Alter Bekannter | Relikt gegen ein gezogenes tauschen | Relikt zum vollen Preis verkaufen | ein Schnaps |
+| Letzte Runde | nächstes Spiel ×2 | eine Runde ausgeben (3 Gr.), +1 Einmischen in der nächsten Kneipe | nur Wasser: +1 Gr. |
+| Umgekipptes Bier | zufällige Karte ramponiert (Fluch, zahlt 3 Gr.) | gewählte Karte, 4 Gr. | aufwischen, 2 Gr., keine Karte |
+| Gasthof zur Krone (Upgrade, Alleinspieler) | Siegel +4 auf zufällige Karte, gratis | gewählte Karte, 4 Gr. | Kronenbier: ein Schnaps |
+| Der Taschenspieler (Upgrade, Nullspieler) | Narrenmarke auf zufällige Karte, gratis | gewählte Karte, 3 Gr. | Kartentrick: beide Skatkarten im nächsten Spiel |
+| Preisskat | nächstes Spiel ×3 | nächstes Spiel ×2 | kiebitzen: +2 Gr. |
+| Gast aus Altenburg | Hausregel 1 | Hausregel 2 | Winkel +1 auf gewählte Karte |
+| Der Wirt spendiert | Schnaps 1 | Schnaps 2 | 5 Gr. (bis dahin drei Schnäpse oder 5 Gr.) |
+| Falschspieler am Nebentisch | Trick für 2 Gr., jedes zweite Mal ein Fluch | auffliegen lassen: +4 Gr. | gegen ihn spielen: nächstes Spiel ×2 |
+| Verlorenes Portemonnaie | behalten: +8 Gr., Durchsichtig auf zufällige Karte (Fluch) | abgeben: +1 Leben | Finderlohn: +4 Gr. |
+| Der Skatlehrer | Winkel +1 auf gewählte Karte, im ersten Spiel der nächsten Kneipe einmal weniger einmischen | Theorie: beide Skatkarten im nächsten Spiel | ein Kurzer |
+| Die Wette | 3 Gr. auf Schneider (×2 zurück) | 6 Gr. auf Schneider (×2) | 2 Gr. auf Sieg (×1,5, also 3) |
+| Alte Karten im Schrank | Totenmarke auf gewählte Karte, ein Fluch auf eine zufällige andere | Narrenmarke ebenso | altes Blatt verkaufen: +4 Gr. |
+| Kiebitz am Fenster | die nächsten 2 Wege genau sehen | +1 Einmischen in der nächsten Kneipe | +2 Gr. |
+| Fundgroschen (neu, `found_coins`) | Aufheben: +2 Gr. | | |
+| Die Würfelbude (neu, `dice_stall`) | 2 setzen | 4 setzen | 6 setzen; mit 50 % doppelt zurück. Ohne 2 Groschen nur „Zuschauen“ |
+
+Dazu unverändert: die Kartenwerkstatt (Kartenmaler gratis oder Karte reinigen), die Imbissbude (+1 Leben) und die Beute der Spelunke (das Relikt oder sein halber Preis, `RelicCoins(50)`). Der Geburtstag (enc-06) ist nicht gebaut. Alle Zahlen **vorläufig**, nach Augenmaß; der Bot wählt mit einem einfachen Wert je Option (`RunBot::option_value`, 5.0.4). Stichprobe nach dem Umbau (`skat_sim --seed 42 --runs 300 --bot pimc:12:3`, keine Kalibrierung): Stadtteil 2 erreicht 40,3 % (vorher etwa 41 %), Stadtteil 3 16,3 %, Run gewonnen 6,3 % (vorher etwa 6 %); je Run 3,5 Tresen-Besuche (vorher 4,0), 0,2 Kiosk-Besuche und 1,5 Fundgroschen, denn der Bot nimmt den Fundgroschen-Weg gern (Wert 2 gegen 1 für eine Begegnung). Beim Kartengeber und bei der Krone nimmt er fast immer die Groschen oder den Schnaps statt der Zinke.
 
 **Gegenstands-Review (02.11.2026, 8.5)**: neu sind Der Wirt spendiert, Verlorenes Portemonnaie, Der Skatlehrer, Die Wette, Alte Karten im Schrank und Kiebitz am Fenster; der Falschspieler heißt jetzt „Falschspieler am Nebentisch“ und verkauft einen starken Kartentrick, der in der Hälfte der Fälle ein Fluch ist (die alte Form, ein Fluch gegen Groschen, entfällt; `MarkCard { curse: true }` bleibt in den Daten möglich). Alle übrigen Stationen bleiben. Werte und Gewichte (je 1) vorläufig.
 

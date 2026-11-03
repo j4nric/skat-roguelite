@@ -28,11 +28,24 @@
     lives: (start: 2, max: 4, boss_bonus: 1),
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
-    // deren Kategorie je Weg gewürfelt und angezeigt wird, nichts kostet
-    // extra. Gewichte der Kategorien; Rast nur, solange ein Leben fehlt.
-    // Vorläufig.
+    // nichts kostet extra. Seit 03.11.2026 (Wege und Begegnungen v2,
+    // Entscheidung des Nutzers) zeigen die drei Wege immer drei
+    // verschiedene Stationsarten, eine davon der Tresen (auf einem
+    // zufälligen Weg); die beiden anderen werden ohne Zurücklegen nach
+    // diesen Gewichten gezogen. Rast nur, solange ein Leben fehlt.
+    // Kiosk: offers Schnäpse, jeder discount Groschen billiger als am
+    // Tresen (nach dem Rabatt des Wirts, mindestens 1), einer darf gekauft
+    // werden. VORLÄUFIG, nach Augenmaß.
     route: (
-        weights: (tresen: 40, event: 35, upgrade: 12, rest: 8),
+        weights: (
+            event: 35,
+            found_coins: 30,
+            kiosk: 15,
+            dice_stall: 10,
+            upgrade: 7,
+            rest: 5,
+        ),
+        kiosk: (offers: 2, discount: 1),
     ),
     // Spelunke (Elite): Mit chance führt eine der drei Routen statt zur
     // nächsten Kneipe in eine Spelunke. Zielwert × target_factor, ein

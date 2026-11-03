@@ -344,33 +344,6 @@ fn heart_brother_cannot_cleanse_a_curse() {
     plain.apply(&content, use_on(ck)).expect("cleanse");
 }
 
-fn card_dealer(run: &mut Run, options: Vec<EncounterOption>) {
-    run.game = None;
-    run.shop = None;
-    run.phase = RunPhase::Encounter;
-    run.encounter = Some(ActiveEncounter {
-        id: EncounterId::new("card_dealer"),
-        options,
-    });
-    let (section, index) = run.next_series_position();
-    run.trip = Some(super::tour::Trip {
-        section,
-        index,
-        transport: super::tour::Transport::Walk,
-        stops: Vec::new(),
-        spelunke: None,
-    });
-}
-
-fn option(choice: EncounterChoice, cost: u32) -> EncounterOption {
-    EncounterOption {
-        choice,
-        cost,
-        card_mod: Some(CardModId::new("points")),
-        value: Some(3),
-    }
-}
-
 #[test]
 fn heart_brother_pays_half_for_zinken_on_hearts() {
     let content = content();
@@ -391,12 +364,19 @@ fn heart_brother_pays_half_for_zinken_on_hearts() {
     };
     let mut run = character_run(&content, Character::HeartBrother);
     run.coins = 2;
-    card_dealer(
-        &mut run,
-        vec![
-            option(EncounterChoice::MarkChosenCard, 4),
-            option(EncounterChoice::Leave, 0),
-        ],
+    run.set_encounter(
+        "card_dealer",
+        vec![super::encounters::test_option(
+            4,
+            vec![EncounterEffect::Mark {
+                card: crate::content::CardPick::Chosen,
+                card_mod: Some(CardModId::new("points")),
+                value: Some(3),
+                offers: Vec::new(),
+                curse: false,
+                curse_percent: 0,
+            }],
+        )],
     );
     let view = run.view(&content);
     let offer = &view.encounter.expect("encounter").options[0];
