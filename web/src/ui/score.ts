@@ -192,7 +192,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
       ${
         seatsTable
           ? seatsTable
-          : `<div class="score-meta">${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>`
+          : `<div class="score-meta">${valueIcon('pips', 12)} ${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>`
       }
       ${note ? `<p class="score-note" data-testid="score-note">${esc(note)}</p>` : ''}
     </header>

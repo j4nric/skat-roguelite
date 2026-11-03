@@ -217,6 +217,12 @@ function glyphCells(item: BandItem, x: number, y: number): { parts: [Cells, stri
     dia.forEach(([row, c], j) => parts.push([shape([row], x, y + j), c]));
     return { parts, w: 5 };
   }
+  if (item === 'pips') {
+    // Augen (A-C "Würfelauge", 03.11.2026): a white die face with five dark pips.
+    const face = shape(['#####', '#.#.#', '##.##', '#.#.#', '#####'], x, y);
+    const pips = shape(['.....', '.#.#.', '..#..', '.#.#.', '.....'], x, y);
+    return { parts: [[face, WHITE], [pips, '#2b2f33']], w: 5 };
+  }
   if (item === 'coin') return { parts: [[shape(G.coin ?? [], x, y), '#f7c21a'], [new Set([key(x + 2, y + 2)]), '#8a5a0a']], w: 5 };
   const named = G[item];
   if (named && item.length > 1) return { parts: [[shape(named, x, y), null]], w: named[0]?.length ?? 0 };
@@ -382,7 +388,7 @@ export interface ModDraw {
 /** The design of each modification id (core/content/card_mods.ron). */
 export const MOD_DRAW: Record<string, ModDraw> = {
   // Rand: always (no mark).
-  points: { band: (t) => [t], col: GOLD, art: () => frameDouble(GOLD, GOLD_L) },
+  points: { band: (t) => [t, 'pips'], col: GOLD, art: () => frameDouble(GOLD, GOLD_L) },
   // Winkel (Zinken v2): no band, the marker scribble on the index (winkelScribble).
   rank: { band: () => [], col: MARKER, art: () => '' },
   lead: { band: () => ['plumb'], col: LEAD, art: () => frameDouble(LEAD_D, LEAD_L) },
@@ -390,7 +396,7 @@ export const MOD_DRAW: Record<string, ModDraw> = {
   trump_bonus: { band: (t) => [t, 'base'], col: PURPLE, art: () => frameDashed(PURPLE) },
   // Moment: the mark top right says when.
   last_trick: { band: (t) => [t, 'mult'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
-  first_trick: { band: (t) => [t], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
+  first_trick: { band: (t) => [t, 'pips'], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
   crosshair: { band: (t) => [t, 'mult'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
   tailors_chalk: { band: (t) => [t, 'mult'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
   // Gutschein: when discarded; the band shows the reward.
@@ -493,7 +499,7 @@ export function smallState(curse: boolean, undead: boolean): string {
 
 /** The glyphs of each modification's icon: its band without the card's value. */
 const ICON: Record<string, { items: BandItem[]; col: string }> = {
-  points: { items: ['+'], col: GOLD },
+  points: { items: ['pips'], col: GOLD },
   rank: { items: ['rang1'], col: MARKER },
   lead: { items: ['plumb'], col: LEAD },
   gilt_edge: { items: ['coin'], col: GILT_BAND },
@@ -542,8 +548,12 @@ export function modIconBody(mod: string): string | null {
 
 // ---------------------------------------------------------- value icons, large
 
-/** The large Werte-Icons (board "Werte-Icons", G-B and M-D): grid and palette, before the outline. */
-const VALUE_ICONS: Record<'base' | 'mult', { rows: string[]; pal: Record<string, string> }> = {
+/** The large Werte-Icons (board "Werte-Icons", G-B, M-D and A-C): grid and palette, before the outline. */
+const VALUE_ICONS: Record<'base' | 'mult' | 'pips', { rows: string[]; pal: Record<string, string> }> = {
+  pips: {
+    rows: ['.pppppppp.', 'ppppppppps', 'ppddppddps', 'ppddppddps', 'ppppddppps', 'ppppddppps', 'ppddppddps', 'ppddppddps', 'ppppppppps', '.ssssssss.'],
+    pal: { p: '#fdfdfb', s: '#c9cfd2', d: '#2b2f33' },
+  },
   base: {
     rows: ['...www...', '...sss...', '.........', '.www.www.', '.sss.sss.', '.........', 'ww.www.ww', 'ss.sss.ss'],
     pal: { w: '#e4ede8', s: '#93aea2' },
@@ -555,11 +565,11 @@ const VALUE_ICONS: Record<'base' | 'mult', { rows: string[]; pal: Record<string,
 };
 
 /**
- * The Grundwert or Multiplikator icon in its large form (stone bricks,
- * copper arrow) with a dark one-pixel outline, as inline SVG `height` px
+ * The Grundwert, Multiplikator or Augen icon in its large form (stone
+ * bricks, copper arrow, a die) with a dark one-pixel outline, as inline SVG `height` px
  * high: beside the labels of the score boxes.
  */
-export function valueIcon(kind: 'base' | 'mult', height = 14): string {
+export function valueIcon(kind: 'base' | 'mult' | 'pips', height = 14): string {
   const { rows, pal } = VALUE_ICONS[kind];
   const h = rows.length + 2;
   const w = (rows[0]?.length ?? 0) + 2;
