@@ -180,9 +180,7 @@ Gesetzt am 02.11.2026 nach Augenmaß, **ohne Messung** (die Simulationen ruhen a
 | Stadtteile, Kneipen je Stadtteil | 3, 4 + Boss-Kneipe | `targets` in `run.ron`, `PUBS_PER_DISTRICT` |
 | Zielwerte Alleinspieler | 33 / 36 / 38 / 40 / Boss 45 · 40 / 42 / 44 / 46 / Boss 52 · 46 / 48 / 50 / 52 / Boss 60 | `run.ron` |
 | Zielwerte Nullspieler | 18 / 20 / 20 / 23 / 23 · 20 / 23 / 23 / 27 / 27 · 23 / 27 / 27 / 30 / 30 | `characters.ron` |
-| Zielwerte Grandspieler | 48 / 50 / 52 / 54 / 60 · 52 / 54 / 55 / 57 / 60 · 55 / 57 / 59 / 60 / 66 | `characters.ron` |
-| Zielwerte Zaungast | 33 / 35 / 37 / 40 / 45 · 36 / 38 / 40 / 42 / 46 · 40 / 42 / 44 / 44 / 48 | `characters.ron` |
-| Zielwerte Wirtin | 40 / 42 / 44 / 46 / 54 · 44 / 46 / 47 / 48 / 55 · 48 / 50 / 52 / 54 / 60 | `characters.ron` |
+| Zielwerte Drückeberger, Schneiderin, Bruderherz (seit 03.11.2026, 9.4 bis 9.6) | wie der Alleinspieler (`targets` fehlt), vorläufig | `characters.ron` |
 | Boss-Faktoren | unverändert (11) | `bosses.ron` |
 | Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
 | Leben | Start 3, höchstens 5, Boss +1 | `lives` |
@@ -241,6 +239,7 @@ Zur Form:
 
 ```sh
 cargo run --release -p skat_sim -- --seed 42 --runs 800 --bot pimc:12:3 --character declarer|null|grand|onlooker|landlady [--short]
+# seit 03.11.2026: --character declarer|null|shirker|tailoress|heart_brother
 # dasselbe mit --seed 43 und --seed 44
 ```
 
@@ -768,7 +767,7 @@ Tests: `core/src/run/items_tests.rs` (je Gegenstand einer, dazu Entfernung und L
 
 ## 9. Charaktere
 
-Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Grandspieler, der Zaungast und die Wirtin (je über eine Freischaltung, 9.3).
+Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin und Bruderherz (je über eine Freischaltung, 9.3). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
 
 ### 9.1 Der Alleinspieler (Standard)
 
@@ -776,7 +775,7 @@ Normales 32er-Blatt. Spielt Farbe, Grand und seit ADR 0012 auch Null. Null zähl
 
 Charaktere sind Daten in `core/content/characters.ron`: Startblatt als Abweichung vom 32er-Blatt (`remove`, `add`, seit dem 01.11.2026 auch `mods`: Kartenmodifikationen ab Start; seit ADR 0015 nur noch `mods`, der Ladevorgang lehnt `remove` und `add` ab), Startrelikte, Start-Verbrauchsgegenstände (`start_consumables`), optional eigene Zielwerte, Null-Wertung, die Tresen-Gewichte pro Spielart (`focus_weights`, siehe 9.2) und die eigene Regel (`rule`, `CharacterRule`). Jeder Charakter darf jedes Spiel ansagen (ADR 0012, ersetzt 0003); im Code unterscheidet kein Zweig mehr die Charaktere.
 
-**Die eigene Regel** (`rule`) hat zwei Teile, beide Daten: `passive` und `hooks` sind dieselbe Hook-API wie bei Relikten (Abschnitt 8) und wirken wie ein Relikt, das der Charakter immer hat, ohne Platz zu belegen; in der Wertung steht die Zeile mit der Quelle `Source::Character`. `passes`, `relic_slots` und `payout_factor` ändern die Run-Struktur aus `run.ron`: Pässe pro Serie und Relikt-Plätze als Zuschlag (negativ: weniger, nie unter 0), die Groschen einer gewonnenen Serie als Faktor (`Payout::bonus` ist der Zuschlag). Die Einsatz-Leiter (5.4) gilt pro Charakter von selbst (`MetaState::stakes` ist nach Charakter geschlüsselt).
+**Die eigene Regel** (`rule`) hat zwei Teile, beide Daten: `passive` und `hooks` sind dieselbe Hook-API wie bei Relikten (Abschnitt 8) und wirken wie ein Relikt, das der Charakter immer hat, ohne Platz zu belegen; in der Wertung steht die Zeile mit der Quelle `Source::Character`. `passes`, `relic_slots` und `payout_factor` ändern die Run-Struktur aus `run.ron`: Pässe pro Serie und Relikt-Plätze als Zuschlag (negativ: weniger, nie unter 0), die Groschen einer gewonnenen Serie als Faktor (`Payout::bonus` ist der Zuschlag). Seit dem 03.11.2026 kommen drei Schalter dazu, die keine Hook-API brauchen: `vouchers_return` (eingelöste Gutscheine kommen nach der Kneipe zurück, 9.4), `keep_curses` (Flüche der Ausgabe lassen sich nicht reinigen) und `zinken_discount` (Zinken auf passenden Karten billiger, 9.6). Kein Charakter nutzt `relic_slots`, `payout_factor` oder die Wirkung `RevealDefenderHand` mehr; sie bleiben als Datenoption und sind getestet. Dazu `back`: die Kartenrückseite seiner Ausgabe (9.3). Die Einsatz-Leiter (5.4) gilt pro Charakter von selbst (`MetaState::stakes` ist nach Charakter geschlüsselt).
 
 ### 9.2 Der Nullspieler
 
@@ -831,7 +830,7 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 
 ### 9.3 Freischaltungen über Runs hinweg
 
-**Gegenstands-Review (02.11.2026, 8.5)**: Neun Belohnungen zeigten auf entfernte Relikte und zeigen jetzt auf behaltene oder neue; die Ids der Freischaltungen bleiben, wer eine schon verdient hat, hat das neue Relikt frei. Gewählt von Claude nach Thema: Aus der Hand (`hand_won`) → Spickzettel (statt Ouvert-Bonus), Dickes Ding (`big_game`) → Stammtischkasse (statt Kontra), Grand Schneider → Stichfest (statt Durchmarsch), Ohne Einmischen (`boss_without_pass`) → Schutzengel (statt Schiedsrichter), Omas Liebling (`beat_grandma`) → Deckel anschreiben (statt Die Oma), Neues Viertel (`fourth_evening`) → Monatskarte (statt Stammgast), Lehrjahre (`apprenticeship`) → Spelunkenkenner (statt Lehrgeld), Den Peter los (`beat_black_peter`) → Luschenkönig (statt Schneiderbock), Trocken gekontert (`beat_kontra_hans`) → Stammfarbe (statt Auf dem Trockenen). Feierabend ist von Anfang an frei. Folge: Gesperrt sind jetzt 16 von 32 Relikten (bisher etwa ein Drittel), darunter vier bisher freie (Spickzettel, Stichfest, Luschenkönig, Stammfarbe); ob das zu viel ist, zeigt die Messung der Erreichbarkeit (`--unlocks`). Die Startrelikte (Zähler, Kiebitz) und die Start-Verbrauchsgegenstände (Kräuter der Wirtin) bleiben.
+**Gegenstands-Review (02.11.2026, 8.5)**: Neun Belohnungen zeigten auf entfernte Relikte und zeigen jetzt auf behaltene oder neue; die Ids der Freischaltungen bleiben, wer eine schon verdient hat, hat das neue Relikt frei. Gewählt von Claude nach Thema: Aus der Hand (`hand_won`) → Spickzettel (statt Ouvert-Bonus), Dickes Ding (`big_game`) → Stammtischkasse (statt Kontra), Grand Schneider → Stichfest (statt Durchmarsch), Ohne Einmischen (`boss_without_pass`) → Schutzengel (statt Schiedsrichter), Omas Liebling (`beat_grandma`) → Deckel anschreiben (statt Die Oma), Neues Viertel (`fourth_evening`) → Monatskarte (statt Stammgast), Lehrjahre (`apprenticeship`) → Spelunkenkenner (statt Lehrgeld), Den Peter los (`beat_black_peter`) → Luschenkönig (statt Schneiderbock), Trocken gekontert (`beat_kontra_hans`) → Stammfarbe (statt Auf dem Trockenen). Feierabend ist von Anfang an frei. Folge: Gesperrt sind jetzt 16 von 32 Relikten (bisher etwa ein Drittel), darunter vier bisher freie (Spickzettel, Stichfest, Luschenkönig, Stammfarbe); ob das zu viel ist, zeigt die Messung der Erreichbarkeit (`--unlocks`). Die Startrelikte (Zähler, Kiebitz) und die Start-Verbrauchsgegenstände (damals Kräuter der Wirtin) bleiben; seit dem 03.11.2026 starten auch Skatpfleger, Stichfest und Stammfarbe als Startrelikte (9.4 bis 9.6), obwohl Stichfest und Stammfarbe für andere Charaktere gesperrt sein können.
 
 **Seit ADR 0016 (Kneipentour)**: Bedingungen an Abschnitten sind umgeschrieben, die Ids bleiben (verdiente Freischaltungen gelten weiter). Neu ist die Bedingung `ReachPub(n)` (n-te Kneipe des Abends, über die Stadtteile gezählt). Vorläufig, nicht gemessen:
 
@@ -842,7 +841,7 @@ Mit den festen Werten verliert der Nullspieler fast jeden Run: Ein gewonnenes Nu
 | `fourth_evening` („Neues Viertel“, bisher „Vierter Abend“) | Erreiche Abschnitt 4 | Erreiche Stadtteil 2 (`ReachSection(2)`) |
 | `early_finish`, `boss_without_pass`, `full_till` | „Serie“ | „Kneipe“ (Bedingungen unverändert) |
 
-`full_till` (15 Groschen nach einer gewonnenen Kneipe) dürfte mit dem höheren Bonus je übrigem Spiel (3 statt 1) leichter werden; zu messen. `tour_won` verlangt weiter einen gewonnenen ganzen Abend (es gibt nur noch den).
+`full_till` (15 Groschen nach einer gewonnenen Kneipe, gestrichen am 03.11.2026) dürfte mit dem höheren Bonus je übrigem Spiel (3 statt 1) leichter werden; zu messen. `tour_won` verlangt weiter einen gewonnenen ganzen Abend (es gibt nur noch den).
 
 Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschaltet.
 
@@ -898,47 +897,61 @@ Neu gemessen am 02.11.2026 (Serien mit 3 Spielen, Zielwerte aus 5.2, `skat_sim -
 
 Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der Bot sagt fast nie an) und „Serie mit vier Spielen übrig“ für Auf dem Trockenen (1,7 Runs, in Serie 1-1 reicht ein Spiel).
 
-**Freischaltungen der neuen Charaktere** (01.11.2026, zählen in beiden Run-Längen, noch nicht im Simulator gemessen):
+**Freischaltungen der neuen Charaktere** (03.11.2026, Bedingungen vom Nutzer, nicht gemessen):
 
 | Freischaltung | Bedingung | Belohnung |
 |---|---|---|
-| `grand_master` („Großer Grand“) | Grand Schneider gewinnen, der mindestens 144 Punkte zählt (`WinGame(game: Grand, schneider: true, min_value: 144)`: zum Beispiel mit 4, Spiel 5, Schneider 6; bis 01.11.2026 96, im Testlauf nach rund drei Runs erreicht, zu leicht) | Der Grandspieler |
-| `beat_kibitz_killer` („Blinde Kuh“) | Boss Der Kiebitz-Mörder schlagen | Der Zaungast |
-| `full_till` („Volle Kasse“) | Nach einer gewonnenen Serie mindestens 15 Groschen haben (Bedingung `SeriesWonWithCoins(15)`, gemessen nach der Auszahlung; bis 02.11.2026 20, gesenkt nach Antwort im Cockpit) | Die Wirtin |
+| `full_skat` („Voll gedrückt“) | Ein Spiel gewinnen, in dem mindestens 21 Augen gedrückt wurden (`WinGame(min_discarded: 21)`). Gezählt werden die Augen der gedrückten Karten, wie sie im Spiel zählen (mit Aufdruck, Ramponiert und Skatpfleger), aus `RunEvent::GameScored::discarded_points`; ein Handspiel drückt nichts. Nur Farbspiel und Grand wie jedes `WinGame`. | Der Drückeberger |
+| `three_schneider` („Maßarbeit“) | Drei Spiele mit Schneider in einer Kneipe gewinnen (`SchneiderWinsInPub(3)`, Farbspiel und Grand; der Zähler fängt mit jeder Kneipe neu an) | Die Schneiderin |
+| `true_colours` („Farbe bekennen“) | Drei Farbspiele hintereinander mit derselben Trumpffarbe gewinnen, egal welche (`SameTrumpStreak(3)`). Die Serie läuft über Kneipen hinweg im selben Run; ein verlorenes Spiel, ein Grand, ein Null oder eine andere Trumpffarbe dazwischen fängt neu an, ein neuer Run auch. Ein Ramsch ist keine Ansage: Er zählt nicht und unterbricht nicht (wie bei der Stammfarbe). | Bruderherz |
 
-Ein einfacher Grand Schneider ist schon die Freischaltung `grand_schneider` (im Mittel nach 2 Runs, zu leicht); 96 Punkte verlangen eine Stufe mehr. Der Kiebitz-Mörder nimmt jede Information, wer ihn schlägt, verdient den Zaungast, der ohne ihn immer mitschaut. 15 Groschen verlangen Sparen über Zinsen und übrige Spiele (die Messung oben, 34,8 Runs, galt für 20).
+Der Meta-Zustand hält dafür zwei kleine Zähler (`pub_schneider_wins`, `trump_streak`), die wie `current_section` aus den Ereignissen lernen; auch die bereinigten Spieler-Ereignisse tragen `discarded_points`.
+
+**Bis 03.11.2026** schalteten `grand_master` („Großer Grand“, Grand Schneider mit mindestens 144 Punkten) den Grandspieler frei, `beat_kibitz_killer` („Blinde Kuh“, den Kiebitz-Mörder schlagen) den Zaungast und `full_till` („Volle Kasse“, 15 Groschen nach einer gewonnenen Kneipe) die Wirtin. Die drei Freischaltungen sind gestrichen. Wer sie verdient hat, behält ihre Ids im Meta-Zustand; sie schalten nichts mehr frei und stören nicht. Ein Meta-Stand mit Statistik oder Einsatz-Leiter eines gestrichenen Charakters lädt weiter: Diese Einträge fallen beim Laden weg. Hatte die Web-App einen gestrichenen Charakter als Wahl gespeichert, steht wieder der Alleinspieler da.
 
 **Stammkunde** (02.11.2026, Welle 2b): zehn Runs zu Ende spielen (`RunsFinished(10)`, `ten_runs`) schaltet „Drei drücken“ frei (8.1). Damit sind 16 von 46 Hausregeln und Figuren gesperrt. Nicht im Simulator gemessen; zehn beendete Runs sind wie „Lehrjahre“ (fünf) sicher erreichbar.
 
 Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreichbar, weil er Abschnitt 5 kaum schafft; für Menschen ist sie das Ziel des ersten Runs, wie in 9.2 entschieden.
 
-**Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Seit ADR 0015 zeigt die Rückseite, wessen Ausgabe eine Karte ist: Die Distel (oder die gewählte) gehört dem Spieler und dem Skat; die Hände der Gegner zeigen eine Gegner-Rückseite, die als Daten am Gast oder Boss hängt (`back` in `guests.ron` und `bosses.ron`, ohne Angabe eine gemeinsame Rückseite der Stammgäste). Die Gegner-Rückseiten sind keine Freischaltung und nicht wählbar. Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
+**Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Seit dem 03.11.2026 hängt die Rückseite der Ausgabe des Spielers am Charakter (`back` in `characters.ron`, ohne Angabe die Distel; Sicht `CharacterInfo::back` und `CharacterEntry::back`): Alleinspieler und Nullspieler die Distel, der Drückeberger Briefmarke und Poststempel auf Packpapier, die Schneiderin Schere und Maßband auf Aubergine, Bruderherz ein großes rotes Herz auf Creme mit kleinen Herzen. Die drei neuen sind Pixelgrafik im Stil der Gegner-Rückseiten aus `tools/cardart/backs.py`. Seit ADR 0015 zeigt die Rückseite, wessen Ausgabe eine Karte ist: Die Rückseite des Charakters gehört dem Spieler und dem Skat; die Hände der Gegner zeigen eine Gegner-Rückseite, die als Daten am Gast oder Boss hängt (`back` in `guests.ron` und `bosses.ron`, ohne Angabe eine gemeinsame Rückseite der Stammgäste). Die Gegner-Rückseiten sind keine Freischaltung und nicht wählbar. Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
 
-### 9.4 Der Grandspieler
+### 9.4 Der Drückeberger
 
-Entschieden vom Nutzer am 01.11.2026. Lebt für den Grand.
+Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem, was er drückt.
 
-- **Regel**: Ein Grand zählt +1 Multiplikator, ein Farbspiel eine weniger, gewonnen wie verloren. Daten: zwei `OnDeclare`-Hooks mit `AddLevels(1)` bei `GameIs(Grand)` und `AddLevels(-1)` bei `SuitGame`. Null und Ramsch bleiben unverändert. Nie unter eine Stufe: Die Wertung rechnet `Stufen = max(1, Multiplikator nach Regel + Σ Stufen-Zuschläge)` (4.2); ein Farbspiel hat nach der Skatordnung mindestens zwei Stufen (mit oder ohne 1, Spiel 1), nach dem Abzug also mindestens eine, und kommen weitere Abzüge dazu, hält die Formel bei 1.
-- **Startblatt**: das 32er-Blatt, der Eichel-Daus (`CA`) mit Augen +8 (`points`, bis Effekte v2 „Goldrand“). Seit ADR 0015 nur in seiner Ausgabe (9.8). Ursprünglich war ein gezinkter Eichel-Unter geplant; der ist aber ohnehin der höchste Trumpf, die Modifikation hätte kaum gewirkt (geändert am 01.11.2026). Startrelikte: keine.
-- **Tresen**: `focus_weights` Trump 120, Null 50.
-- **Zielwerte**: eigene seit 02.11.2026, vorne rund 1,4-mal der Alleinspieler, hinten flach (5.2).
+- **Ausgabe** (`Shirker`): eine Pfandmarke (`voucher_coins`, 2 Groschen) auf allen vier Siebenern, eine Totenmarke (`voucher_undead`) auf der Schellen-Acht, eine Narrenmarke (`voucher_wild`) auf der Rot-Acht. Die Namen der Marken kommen mit den Zinken (feat/zinken); im Kern heißen sie nach ihrer Id.
+- **Regel, Teil 1: Marken kommen zurück.** Jeder Gutschein, der in einer Kneipe von seiner Ausgabe eingelöst wurde, liegt nach dem Ende dieser Kneipe (gewonnen oder verloren) wieder mit seinem Wert auf seiner Karte (`CharacterRule::vouchers_return`, gemerkt in `Series::returning_vouchers`, Ereignis `RunEvent::VoucherReturned` und `DeckChanged`). Das gilt für jeden Gutschein seiner Ausgabe, auch für einen später dazugekommenen. Trägt die Karte inzwischen eine andere normale Modifikation oder einen Fluch, bleibt der Gutschein weg (die Karte hat nur einen Platz, 7.2). Was die Marke aus der Karte gemacht hat, bleibt: Eine Totenmarke liegt danach neben „Untot“, und wird sie wieder gedrückt, passiert nichts weiter, weil die Karte schon Untot ist. Endet der Run mit der Kneipe, kommt nichts mehr zurück, was keine Rolle spielt.
+- **Regel, Teil 2: kein Hand-Multiplikator.** Ein Handspiel zählt ohne die Stufe „Hand“: ein Hook `OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(-1)])`, gewonnen wie verloren, auch Null Hand und Null Ouvert Hand. In der Wertung steht „Hand +1“ und die Zeile des Charakters −1. Unter der Spelunke „Kein Skat“ (alles Hand) bekommt er nie Hand, sie bleibt für ihn ziehbar.
+- **Startrelikt**: Skatpfleger (gedrückte Augen zählen doppelt).
+- **Freischaltung**: `full_skat` (9.3). **Rückseite**: Briefmarke und Poststempel.
+- **Zahlen** (vorläufig, nach Augenmaß): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50.
 
-### 9.5 Der Zaungast
+### 9.5 Die Schneiderin
 
-Entschieden vom Nutzer am 01.11.2026 (als „Kiebitz“; der Name ist an die Figur „Der Kiebitz“ vergeben, deshalb Zaungast). Der Zaungast schaut mit.
+Entschieden vom Nutzer am 03.11.2026. Nimmt Maß und macht die Gegner Schneider.
 
-- **Regel**: Er sieht das ganze Blatt des linken Gegners (Platz 1, spielt nach ihm), jedes Spiel von der Ausgabe an, dafür darf er nur einmal pro Spiel einmischen statt zweimal (seit 01.11.2026; vorher zwei Pässe weniger pro Serie; nie unter 0). Daten: `passive: [RevealDefenderHand(1)]`, `redeals: -1`. `RevealDefenderHand` ist eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder schaltet sie ab. Die Karten stehen wie die des Kiebitz in `ActiveGame::peeked` (die Sicht nennt sie `RevealSource::Onlooker`, in Anzeige-Reihenfolge), deshalb kennen sie auch Wertvorschau und Bot. Hat er zusätzlich den Kiebitz, zieht dieser nur Karten, die er noch nicht sieht.
-- **Anzeige**: Am linken Gegner liegt sein Blatt als kleiner Fächer mit Auge; ausgespielte Karten verschwinden daraus. Kein Flüster-Hinweis pro Karte.
-- **Start**: Standardblatt, keine Startrelikte (die Regel ist die Information).
-- **Zielwerte**: eigene seit 02.11.2026, Abschnitt 1 wie der Alleinspieler, danach flacher (5.2).
+- **Ausgabe** (`Tailoress`): Aufdruck (`points`) +3 auf allen vier Zehnern.
+- **Regel**: Gewinnt sie ein Farbspiel oder einen Grand mit Schneider, zählt Schneider +2 statt +1 Multiplikator, Schwarz ebenso +2 statt +1. Ein gewonnenes Farbspiel oder ein Grand ohne Schneider zählt 1 Multiplikator weniger, nie unter 1 (die Formel hält den Multiplikator bei mindestens 1, 4.2). Daten: drei `OnScore`-Hooks mit `AddLevels` auf `WonSchneider`, `All([Won, AllTricksWon])` und `All([Won, Not(WonSchneider)])`, je ohne Null und Ramsch.
+- **Auslegung (Claude)**: Null ist ausgenommen, weil es dort keinen Schneider gibt; sonst zählte jedes gewonnene Null eine Stufe weniger, und die Schneiderin könnte praktisch kein Null spielen. Verlorene Spiele bleiben unverändert, auch ein verlorenes Spiel, in dem sie selbst Schneider ist.
+- **Startrelikt**: Stichfest (erster Stich zählt für die Schneider-Grenze doppelt).
+- **Freischaltung**: `three_schneider` (9.3). **Rückseite**: Schere und Maßband auf Stoff.
+- **Zahlen** (vorläufig): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50.
 
-### 9.6 Die Wirtin
+### 9.6 Bruderherz
 
-Entschieden vom Nutzer am 01.11.2026 (als „Wirt“; der Name ist an die Figur „Der Wirt“ vergeben, deshalb Wirtin). Rechnet gut.
+Entschieden vom Nutzer am 03.11.2026. Sein Herz schlägt für Rot.
 
-- **Regel**: Jede gewonnene Serie zahlt doppelt so viele Groschen (Grundbetrag, übrige Spiele und Zinsen, die Verdopplung steht als eigene Zeile „Die Wirtin“ in der Auszahlung), dafür hat sie vier statt fünf Relikt-Plätze. Daten: `payout_factor: 2`, `relic_slots: -1`. Groschen aus Relikten nach der Serie (`OnSeriesWon`) verdoppeln sich nicht.
-- **Start**: Standardblatt, keine Startrelikte, ein Kräuter (einmal mehr einmischen in einer Serie) im Platz für Verbrauchsgegenstände (`start_consumables`).
-- **Zielwerte**: eigene seit 02.11.2026, vorne rund 1,2-mal der Alleinspieler, hinten kaum höher (5.2).
+- **Ausgabe** (`HeartBrother`): Rot ist seine Farbe. Siegel (`trump_bonus`) +2 auf Rot-Daus, -Zehn, -König und -Ober, Winkel (`rank`) 1 auf Rot-Neun, -Acht und -Sieben. Die anderen Farben sind verflucht: Fleckig (`stained`) 2 auf Daus und Zehn von Eichel, Grün und Schellen, Ramponiert (`battered`) 2 auf den drei Königen. Unter unverändert. Die Flüche sind Teil der Start-Ausgabe; „beim Erhalt“ feuert nicht, es gibt keine Groschen dafür. Eine verfluchte Karte nimmt keine weitere Modifikation (7.2).
+- **Heimatfarbe**: Rot ist durch die Ausgabe festgelegt, nicht durch eine eigene Regel. Die Stammfarbe zählt bei ihm wie bei allen jede Trumpffarbe (Auslegung von Claude: Rot gewinnt sich von selbst, die Stammfarbe soll ihn nicht festnageln).
+- **Regel, Teil 1: Flüche bleiben.** Eine Karte seiner Ausgabe mit einem Fluch lässt sich nicht reinigen, weder mit dem Frischen Deck noch in der Werkstatt (`CharacterRule::keep_curses`, Fehler `RunError::CurseStays`, Code `CurseStays`). Das gilt für jeden Fluch seiner Ausgabe, auch für einen, der später dazukommt; Karten ohne Fluch reinigt er normal. Die Liste der Ziele zeigt verfluchte Karten gar nicht erst an, und der Bot zielt nicht auf sie.
+- **Regel, Teil 2: Zinken auf Rot kosten die Hälfte.** `CharacterRule::zinken_discount: Some((cards: (suit: Some(Hearts)), percent: 50))`. `Run::zinken_price(karte, preis)` rechnet den Preis einer Zinke, die für Groschen auf eine Karte seiner Wahl kommt: die Hälfte, kaufmännisch gerundet, mindestens 1 Groschen. Heute gilt das für die bezahlten Zinken auf einer gewählten Karte: den Kartengeber und seine Verwandten (`MarkChosenCard` mit Preis) und den Falschspieler (`Gamble`). Die Sicht nennt den Preis je Ziel (`EncounterOptionView::target_costs`), die Web-App zeigt „4 Gr., auf Rot 2 Gr.“. **Für feat/zinken:** Die Auslage und der Kartenmaler am Tresen müssen jeden Preis einer Zinke auf einer bekannten Karte über `Run::zinken_price` berechnen (nach dem Tresen-Rabatt `shop_price` oder davor, dort zu entscheiden); die heutigen Zinken-Schnäpse am Tresen kennen ihre Karte beim Kauf nicht und bleiben unverbilligt.
+- **Startrelikt**: Stammfarbe (dreimal hintereinander dieselbe Trumpffarbe ×1,5).
+- **Freischaltung**: `true_colours` (9.3). **Rückseite**: ein großes rotes Herz.
+- **Zahlen** (vorläufig): Zielwerte wie der Alleinspieler, `focus_weights` Trump 100, Null 50. Seine Ausgabe ist im Rot-Spiel deutlich stärker (Grundwert 10 + 4 × 2 = 18) und in jeder anderen Trumpffarbe schwächer (Grundwert −4); gemessen wird, wenn die Simulationen wieder laufen.
+
+### 9.6a Bis 03.11.2026: Grandspieler, Zaungast, Wirtin
+
+Gestrichen vom Nutzer am 03.11.2026. Der Grandspieler (Grand +1 Multiplikator, Farbspiel −1, Eichel-Daus mit Augen +8), der Zaungast (sah das Blatt des linken Gegners, einmal weniger einmischen) und die Wirtin (doppelte Groschen, vier Relikt-Plätze, Start mit einem Kräuter) sind aus `characters.ron`, dem `Character`-Enum, der Web-App und dem Simulator entfernt. Ihre Messungen in 5.2 und 11 bleiben als Geschichte stehen.
 
 ### 9.7 Spätere Kandidaten (nicht vor v1)
 
@@ -953,9 +966,10 @@ Seit ADR 0015 unterscheidet sich das Grunddeck eines Charakters nur durch Modifi
 |---|---|---|---|
 | Alleinspieler | 32er-Blatt | normale Ausgabe, keine Modifikationen | keine (Maßstab) |
 | Nullspieler | ohne Unter, vier Siebener mehr | seine vier Unter tragen „Abgestuft“ (Antwort im Cockpit, umgesetzt in M9, Auslegung unten) | im Null etwas leichter, im Farbspiel etwas schwerer, siehe unten |
-| Grandspieler | Eichel-Daus mit Goldrand | Eichel-Daus mit Augen +8 (seit Effekte v2 statt Goldrand), aber nur in seiner Ausgabe | stärker: Die Gegner bekommen die +8 nicht mehr, wenn sie den Daus halten (20 von 32 Spielen); bei Bedarf hebt `balance` seine Zielwerte |
-| Zaungast | 32er-Blatt | normale Ausgabe | keine (seine Eigenart ist die Regel) |
-| Wirtin | 32er-Blatt | normale Ausgabe | keine (ihre Eigenart ist die Regel) |
+| Grandspieler (bis 03.11.2026) | Eichel-Daus mit Goldrand | Eichel-Daus mit Augen +8 (seit Effekte v2 statt Goldrand), aber nur in seiner Ausgabe | stärker: Die Gegner bekommen die +8 nicht mehr, wenn sie den Daus halten (20 von 32 Spielen); bei Bedarf hebt `balance` seine Zielwerte |
+| Zaungast (bis 03.11.2026) | 32er-Blatt | normale Ausgabe | keine (seine Eigenart ist die Regel) |
+| Wirtin (bis 03.11.2026) | 32er-Blatt | normale Ausgabe | keine (ihre Eigenart ist die Regel) |
+| Drückeberger, Schneiderin, Bruderherz (seit 03.11.2026) | – | eigene Ausgabe von Anfang an (9.4 bis 9.6) | nicht gemessen |
 
 **Der Nullspieler: Ersatz für „ohne Unter, vier Siebener mehr“.** Bisher hatte niemand am Tisch einen Unter, und es gab jede Sieben doppelt. Für seine eigene Hand war das ein Blatt aus 32 Karten mit acht Siebenern; für die Gegner hieß es auch: keine Trümpfe aus Untern und mehr niedrige Karten. Varianten:
 
@@ -1325,6 +1339,8 @@ Entschieden am 02.11.2026 (Nutzer):
 | Kartenmodifikationen | **Effekte v2** (7.2): höchstens eine Modifikation je Karte (Spezialkarten zusätzlich eine), Steigerung durch dieselbe, Ersetzen durch eine andere, Flüche sperren die Karte; Rand (Augen, Rang, Trumpf), Moment (Letzter Stich, Erster Stich), Gutschein (wenn gedrückt), Flüche (Durchsichtig, Ramponiert, Fleckig), Spezialkarten (Untot, Wandelkarte). Visuelle Grammatik: Rahmen = was, oben rechts = wann, unten Mitte = wie viel, unten links = Fluch. 18 alte Modifikationen und Heimweh gestrichen, alte Spielstände werden umgerechnet. |
 
 ## 17. Offen
+
+- **Neue Charaktere** (03.11.2026, 9.4 bis 9.6): Drückeberger, Schneiderin und Bruderherz spielen mit den Zielwerten des Alleinspielers und seinen Tresen-Gewichten, nichts gemessen (Simulationen ruhen). Zu messen, sobald sie wieder laufen (`--character shirker|tailoress|heart_brother`): ob die zurückkommenden Marken des Drückebergers zu viele Groschen bringen; ob die Schneiderin mit −1 ohne Schneider überhaupt durch Stadtteil 1 kommt; wie stark Bruderherz im Rot-Spiel ist; Erreichbarkeit der drei Freischaltungen (`--unlocks`, der Bot drückt selten 21 Augen). Für feat/zinken: Auslage und Kartenmaler müssen `Run::zinken_price` nutzen (9.6).
 
 - **Gegenstands-Review** (02.11.2026, 8.5): alle Preise, Seltenheiten und Werte der neuen und geänderten Gegenstände nach Augenmaß, nichts gemessen (Simulationen ruhen). Zu messen: Wirkung von Schutzengel, Kasse, Deckel und Feierabend auf „Stadtteil 2/3 erreicht“, Drei drücken nur im ersten Spiel, Spickzettel mit beiden Karten, Doppelkorn mit Neugeben; Erreichbarkeit der Freischaltungen mit jetzt 16 von 32 gesperrten Relikten; ob der Skatlehrer („im ersten Spiel ein Einmischen weniger“) und die Wette (nur Schneider zählt) so gemeint sind. Offen beim Nutzer: der endgültige Name von „Rang +1“ und die neue Tresen-Mechanik für Kartenverbesserungen; die Form des Bierdeckels nach Anzeige-Gruppe.
 
