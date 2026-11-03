@@ -52,7 +52,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { CHARACTERS, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
@@ -64,7 +64,8 @@ import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, finishAll, finishOn, flip, flyIn, motionOn, noteFlights, pulse, resumeFlights, setTempo, springBack, sweepAway, throwCard } from './ui/fx';
 import { backDesign } from './ui/backs';
-import { cardBack, cardSvg, modValueText } from './ui/cards';
+import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
+import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -207,6 +208,7 @@ export class App {
     routeLeg: '',
     routeOverview: false,
     risen: null,
+    wildSettled: {},
     thinking: null,
     quip: null,
     shared: null,
@@ -233,8 +235,6 @@ export class App {
   private readonly screenEl: HTMLElement;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
-  /** "Wandelkarte": printed suits of the cards named in this game, for the trick on screen. */
-  private readonly wildNamed = new Map<number, Suit>();
   /** "Untot": cards whose rising was already shown with their trick in this game. */
   private readonly riseShown = new Set<number>();
   private readonly hintEl: HTMLElement;
@@ -945,7 +945,7 @@ export class App {
     const mods = own?.mods ?? boss?.mods ?? [];
     const mod_values = own?.mod_values ?? boss?.mod_values ?? {};
     const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'regulars');
-    return { ...card, mods, mod_values, ...(back ? { back } : {}), legal: false, from_skat: false, discardable: false, named: this.wildNamed.get(card.id) ?? null };
+    return { ...card, mods, mod_values, ...(back ? { back } : {}), legal: false, from_skat: false, discardable: false, named: this.ui.wildSettled[card.id]?.printed ?? null };
   }
 
   /** Animate what happened, using only the events and views of the core. */
@@ -993,15 +993,6 @@ export class App {
         // no whisper per card.
         if (after.game?.revealed.some((r) => r.card.id === card.id && r.source === 'Onlooker')) continue;
         this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
-        continue;
-      }
-      if ('WildCardNamed' in ev) {
-        const { card, suit } = ev.WildCardNamed;
-        const f = card.kind === 'Blank' ? null : card.kind.Normal;
-        const printed = face(card.kind)?.suit;
-        if (printed) this.wildNamed.set(card.id, printed);
-        const letter = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' } as const;
-        if (f) this.showToast(t(de.toast.wildNamed, { old: cardName(card.kind), new: cardName({ Normal: `${letter[suit]}${f.slice(1)}` }) }));
         continue;
       }
       if ('VoucherRedeemed' in ev) {
@@ -1066,7 +1057,7 @@ export class App {
         continue;
       }
       if ('GameDealt' in ev) {
-        this.wildNamed.clear();
+        this.ui.wildSettled = {};
         this.ui.risen = null;
         this.riseShown.clear();
         // A new game: from here on the final view tells the story.
@@ -1316,6 +1307,22 @@ export class App {
     if ('CardChalked' in ev) {
       const { old, new: painted } = ev.CardChalked;
       this.showToast(t(de.toast.chalked, { old: cardName(old.kind), new: cardName(painted.kind) }));
+      return;
+    }
+    if ('WildCardSettled' in ev) {
+      // "Wandelkarte": its suit is settled as the game starts.
+      const { old, new: settled } = ev.WildCardSettled;
+      const printed = face(old.kind)?.suit;
+      if (printed) this.ui.wildSettled = { ...this.ui.wildSettled, [old.id]: { kind: settled.kind, printed } };
+      this.showToast(t(de.toast.wildSettled, { old: cardName(old.kind), new: cardName(settled.kind) }));
+      if (anim && printed) {
+        // The hand shows the settled card in the core's order from now on.
+        anim.hand = anim.hand.map((c) => (c.id === old.id ? { ...c, kind: settled.kind, unsettled: false, named: printed } : c));
+        const order = after.game?.hand.map((c) => c.id) ?? [];
+        if (order.length) anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        this.render();
+        await this.cycleWild(old.id, settled.kind);
+      }
       return;
     }
     if ('SkatSwapped' in ev) {
@@ -1685,6 +1692,30 @@ export class App {
     });
     this.scoreBoard = null;
     this.ui.overlay = null;
+  }
+
+  /**
+   * "Wandelkarte": as the core settles its suit, the card in the hand runs
+   * through the four suits' colours (about 0.8 s) and stops on the new one.
+   * Already drawn settled, so reduced motion and hurrying just skip it.
+   */
+  private async cycleWild(id: number, kind: CardKind): Promise<void> {
+    const f = face(kind);
+    const card = this.screenEl.querySelector<HTMLElement>(`.hand [data-id="${id}"]`);
+    const svg = card?.querySelector('svg.card-svg');
+    if (!f || !card || !svg || reducedMotion() || this.fastForward) return;
+    const steps = 8;
+    const last = SUITS.indexOf(f.suit);
+    card.classList.add('is-settling');
+    sound.play('card', { rate: 1.4 });
+    for (let i = 0; i < steps; i++) {
+      const suit = SUITS[(last - (steps - 1 - i) + 4 * steps) % 4] ?? f.suit;
+      showWildSuit(svg, f.rank, suit);
+      if (this.fastForward) break;
+      await this.pause(i === steps - 1 ? 180 : 85);
+    }
+    showWildSuit(svg, f.rank, f.suit);
+    card.classList.remove('is-settling');
   }
 
   /** Wait, unless the player asked to hurry. */
@@ -2191,15 +2222,6 @@ export class App {
       case 'play':
         this.playCard(num('id'), el.getBoundingClientRect(), null);
         return;
-      case 'wild-suit': {
-        const o = this.ui.overlay;
-        const suit = el.dataset.suit as Suit | undefined;
-        if (o?.kind === 'wild' && suit) {
-          this.ui.overlay = null;
-          void this.act({ PlayAs: { card: o.card, suit } });
-        }
-        return;
-      }
       case 'buy-relic':
         void this.act({ BuyRelic: num('slot') });
         return;
@@ -2396,17 +2418,10 @@ export class App {
     this.playCard(Number(el.dataset.id ?? '-1'), at, fling);
   }
 
-  /** Play a hand card (tap or throw); "Wandelkarte" first asks for its suit. */
+  /** Play a hand card (tap or throw). */
   private playCard(id: number, from: DOMRect | null, fling: Fling | null): void {
     this.playedFrom = from;
     this.thrown = fling;
-    // "Wandelkarte": the suit is named first (the core says which).
-    const wild = this.ui.view?.game?.hand.find((c) => c.id === id && (c.wild_suits?.length ?? 0) > 0);
-    if (wild) {
-      this.ui.overlay = { kind: 'wild', card: id };
-      this.render();
-      return;
-    }
     void this.act({ Play: id });
   }
 
@@ -2577,7 +2592,7 @@ export class App {
       return;
     }
     if (o.kind === 'score') {
-      this.layerEl.innerHTML = renderScore(o, this.ui.view?.edition ?? []);
+      this.layerEl.innerHTML = renderScore(o, (this.ui.view?.edition ?? []).map((c) => editionLook(c, this.ui.view, this.ui.wildSettled)));
       this.scoreBoard = new ScoreBoard(this.layerEl, o);
       void this.scoreBoard.play();
       return;

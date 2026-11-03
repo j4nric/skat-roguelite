@@ -190,13 +190,14 @@
     // Spezialkarten: ändern das Grunddesign, dürfen zusätzlich eine normale
     // Modifikation tragen. Sie kommen über die Gutscheine.
     // ---------------------------------------------------------------------
-    // Lever Stichgewinn and Bedienpflicht: in the player's hand it never
-    // obliges him to follow suit, and he names its suit when he plays it.
+    // Lever Stichgewinn and Bedienpflicht: in the player's hand it takes
+    // the suit he holds most of (without Unter) when the game starts
+    // (DESIGN 7.2, decided by the user on 03.11.2026).
     (
         id: "wild_card",
         kind: Special,
         name: "Wandelkarte",
-        text: "Du legst ihre Farbe beim Ausspielen fest.",
+        text: "Bei Spielbeginn nimmt sie die Farbe an, von der du die meisten Karten hältst (ohne Unter). Bei Gleichstand gilt Eichel, Grün, Rot, Schellen.",
         rarity: Rare,
         price: 5,
         passive: [Wild],
