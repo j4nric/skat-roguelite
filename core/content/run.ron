@@ -2,8 +2,10 @@
 // drei Stadtteile mit je vier Kneipen und einer Boss-Kneipe. Zielwerte,
 // Leben, Routen, Spelunke, Spiellimit, Einmischen und Wirtschaft (DESIGN 12).
 // Zielwerte, Leben und Groschen je übrigem Spiel gemessen am 03.11.2026
-// (docs/balance/2026-11-03-grosse-runde.md); Routen und Spelunke weiter
-// nach Augenmaß (02.11.2026).
+// (docs/balance/2026-11-03-grosse-runde.md), nach Schnaps-Leiste,
+// unbegrenzten Relikten und neuen Wegen nachgezogen am selben Tag
+// (docs/balance/2026-11-03-runde-3.md); Routen und Spelunke weiter nach
+// Augenmaß (02.11.2026).
 (
     // Zielwerte je Stadtteil: vier Kneipen und die Boss-Kneipe (vor dem
     // Boss-Faktor). Kurve des Alleinspielers (Drückeberger, Schneiderin und
@@ -13,11 +15,14 @@
     // Relikten wächst ein gewonnenes Spiel in Stadtteil 3 auf im Mittel über
     // 90. Ziel gegen den PIMC-Spieler: Stadtteil 2 in 35 bis 40 %, Stadtteil
     // 3 in 12 bis 18 %, 3 bis 5 % gewonnen, ein Viertel bis ein Drittel der
-    // verlorenen Runs endet in normalen Kneipen.
+    // verlorenen Runs endet in normalen Kneipen. Runde 3 (03.11.2026, nach
+    // Schnaps nach jeder Kneipe und unbegrenzten Relikten): Boss 1 60 → 90,
+    // Stadtteil 2 +5 (Boss 100 → 105), Stadtteil 3 +10 (Boss 140 → 160);
+    // die vier Kneipen von Stadtteil 1 bleiben.
     targets: [
-        [45, 55, 65, 75, 60],
-        [90, 105, 120, 135, 100],
-        [145, 170, 195, 205, 140],
+        [45, 55, 65, 75, 90],
+        [95, 110, 125, 140, 105],
+        [155, 180, 205, 215, 160],
     ],
     // Leben (ADR 0016): Start 2 (bis 03.11.2026 3; mit 3 Leben endeten
     // nur 2 bis 13 % der verlorenen Runs in normalen Kneipen), eine
@@ -65,11 +70,12 @@
     // Kneipe gibt es einen zufälligen Schnaps dazu.
     consumable_slots: 3,
     // series_reward: Groschen je gewonnener Kneipe; per_game_left: je
-    // übrigem Spiel (seit 03.11.2026 2; ADR 0016 setzte 3: die fünf
-    // Relikt-Plätze waren schon zu Beginn von Stadtteil 2 voll).
+    // übrigem Spiel (seit Runde 3 am 03.11.2026 1, vorher 2; ADR 0016
+    // setzte 3). Mit unbegrenzten Relikt-Plätzen wird jeder Groschen zu
+    // einem Relikt: mit 2 hielt der Bot in Stadtteil 3 im Mittel 17.
     economy: (
         series_reward: 3,
-        per_game_left: 2,
+        per_game_left: 1,
         interest_step: 5,
         interest_max: 5,
         reroll_cost: 2,

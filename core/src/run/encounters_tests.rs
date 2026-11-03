@@ -169,7 +169,7 @@ fn a_fresh_run_can_take_an_option_of_every_encounter_it_meets() {
 }
 
 #[test]
-fn the_found_coins_give_two_groschen() {
+fn the_found_coins_give_one_groschen() {
     let content = content();
     let mut run = at_route(&content);
     let coins = run.coins();
@@ -183,7 +183,7 @@ fn the_found_coins_give_two_groschen() {
     assert_eq!(view.category, StopCategory::FoundCoins);
     assert_eq!(view.options.len(), 1);
     choose(&mut run, &content, 0);
-    assert_eq!(run.coins(), coins + 2);
+    assert_eq!(run.coins(), coins + 1);
     assert_eq!(run.phase(), RunPhase::Game);
 }
 

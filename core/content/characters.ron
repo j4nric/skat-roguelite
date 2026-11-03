@@ -58,10 +58,12 @@
         // damalige Kurve des Alleinspielers) erreichte er Stadtteil 2 in 60 %
         // und gewann 30 % der Runs; mit der Kurve des Alleinspielers 47 % und
         // 9,5 %. Ein gewonnenes Null bringt im Run im Mittel 113 Punkte.
+        // Runde 3 (03.11.2026): mit der neuen Kurve des Alleinspielers
+        // mitgezogen, dieselben Faktoren (docs/balance/2026-11-03-runde-3.md).
         targets: Some([
-            [50, 65, 75, 85, 70],
-            [110, 125, 145, 160, 120],
-            [180, 210, 245, 255, 175],
+            [50, 65, 75, 85, 105],
+            [115, 130, 150, 170, 125],
+            [195, 225, 255, 270, 200],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -145,11 +147,13 @@
         // Alleinspielers × 1,15 (Boss in Stadtteil 1 × 1,25). Mit dessen
         // Kurve erreichte sie Stadtteil 2 in 47 % und gewann 7,9 % der Runs:
         // Sie gewinnt die Hälfte ihrer Farbspiele und Grands mit Schneider
-        // (Alleinspieler 39 %) und zählt sie doppelt.
+        // (Alleinspieler 39 %) und zählt sie doppelt. Runde 3 (03.11.2026):
+        // mit der neuen Kurve des Alleinspielers mitgezogen, × 1,15
+        // (docs/balance/2026-11-03-runde-3.md).
         targets: Some([
-            [50, 65, 75, 90, 75],
-            [105, 120, 140, 155, 115],
-            [165, 195, 225, 235, 160],
+            [50, 65, 75, 90, 105],
+            [110, 125, 145, 160, 120],
+            [180, 205, 235, 245, 185],
         ]),
         start_relics: ["watertight"],
         deck: (

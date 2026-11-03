@@ -223,13 +223,15 @@
             (label: "2 Groschen", effects: [Coins(2)]),
         ],
     ),
-    // Neue Stationen (Wege und Begegnungen v2, 03.11.2026).
+    // Neue Stationen (Wege und Begegnungen v2, 03.11.2026). Fundgroschen
+    // seit Runde 3 (03.11.2026, docs/balance/2026-11-03-runde-3.md) 1
+    // statt 2: der Bot nimmt den Weg in 1,6 von rund 6 Routenwahlen.
     (
         id: "found_coins",
         name: "Fundgroschen",
-        text: "Auf dem Pflaster glänzt etwas: 2 Groschen, die keiner vermisst.",
+        text: "Auf dem Pflaster glänzt etwas: 1 Groschen, den keiner vermisst.",
         options: [
-            (label: "Aufheben", effects: [Coins(2)]),
+            (label: "Aufheben", effects: [Coins(1)]),
         ],
         category: FoundCoins,
     ),
