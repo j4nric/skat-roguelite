@@ -13,6 +13,7 @@ import { de, bossFiguresText, bossLine, contentName, t } from '../i18n';
 import type { DistrictView, PubPreview, RouteOptionView, RunView, StopCategory, Transport } from '../types';
 import { MH, MW, INK, cityImageTag, genCity, lookOf, planLeg, stamps, type City, type LegPlan, type Pattern, type Way } from './citymap';
 import { attrs, esc } from './dom';
+import { play } from './fx';
 import { glyph, mapIcon, type MapIcon } from './mapicons';
 import { bossPortraitId, guestPortraitId, portrait } from './people';
 
@@ -92,7 +93,7 @@ function badge(kind: MapIcon, x: number, y: number, frame: string, category: str
 function positionMark(x: number, y: number): string {
   const px = Math.round(x);
   const py = Math.round(y);
-  return `<g class="map-pos" data-testid="map-pos"><rect x="${px - 8}" y="${py - 8}" width="16" height="16" fill="${PAPER}" opacity=".85"/>${glyph('position', px - 8, py - 8, 1)}</g>`;
+  return `<g class="map-pos" data-testid="map-pos"><g class="map-pin"><rect x="${px - 8}" y="${py - 8}" width="16" height="16" fill="${PAPER}" opacity=".85"/>${glyph('position', px - 8, py - 8, 1)}</g></g>`;
 }
 
 interface Leg {
@@ -311,8 +312,11 @@ export function renderRoute(view: RunView, pick: number, overview: boolean): str
 // ---------------------------------------------------------------- travelling
 
 /**
- * The trip: the position walks along the chosen way and leaves a chalk
- * trail. Resolves when it arrives (or at once after a tap on the screen).
+ * The trip: a small pixel walker (the icon of the chosen transport: on
+ * foot, train or bike) goes along the chosen way and leaves a chalk trail;
+ * the walker hops a little on foot and turns to face where it goes.
+ * Resolves when it arrives, at once after a tap on the screen, or when the
+ * table is hurried (finishAll: the trip is timed by a tracked animation).
  */
 export function playTravel(root: HTMLElement, ms: number): Promise<void> {
   const svg = root.querySelector<SVGSVGElement>('.map-svg');
@@ -322,17 +326,30 @@ export function playTravel(root: HTMLElement, ms: number): Promise<void> {
     .split(' ')
     .filter(Boolean)
     .map((c) => c.split(',').map(Number) as [number, number]);
-  if (!svg || !sel || !pos || cells.length < 2 || ms <= 0) return Promise.resolve();
+  if (!svg || !sel || !pos || cells.length < 2 || !(ms > 0)) return Promise.resolve();
   const NS = 'http://www.w3.org/2000/svg';
   const trail = document.createElementNS(NS, 'path');
   trail.setAttribute('fill', PAPER);
   trail.setAttribute('class', 'map-trail');
   pos.before(trail);
   const [x0, y0] = cells[0] as [number, number];
+  // The walker stands on the position, its feet on the way.
+  const way = WAY[(sel.dataset.route ?? 'Walk') as Transport] ?? 'fuss';
+  const walker = document.createElementNS(NS, 'g');
+  walker.setAttribute('class', 'map-walker');
+  walker.dataset.testid = 'map-walker';
+  walker.dataset.way = way;
+  const body = document.createElementNS(NS, 'g');
+  body.innerHTML = `<rect x="${x0 - 11}" y="${y0 - 20}" width="22" height="22" fill="${PAPER}" opacity=".9"/>${glyph(way, x0 - 10, y0 - 19, 1.25)}`;
+  walker.appendChild(body);
+  pos.appendChild(walker);
   root.querySelector('.route')?.classList.add('is-travelling');
+  const hops = way === 'fuss';
+  // Tracked, so finishAll() ends the trip with the rest of the table.
+  const timer = play(trail, [], { duration: ms });
   return new Promise((resolve) => {
     let done = false;
-    const start = performance.now();
+    let facing = 1;
     const finish = (): void => {
       if (done) return;
       done = true;
@@ -340,18 +357,30 @@ export function playTravel(root: HTMLElement, ms: number): Promise<void> {
       resolve();
     };
     root.addEventListener('pointerdown', finish);
-    const frame = (now: number): void => {
-      if (done) return;
-      // The frame's time may lie before `start` (taken while the frame ran):
-      // never step before the first cell.
-      const p = Math.min(1, Math.max(0, (now - start) / ms));
+    const place = (p: number): void => {
       const k = Math.floor((cells.length - 1) * p);
       const [x, y] = cells[k] as [number, number];
+      const [nx] = cells[Math.min(cells.length - 1, k + 1)] as [number, number];
+      if (nx !== x) facing = nx < x ? -1 : 1;
       trail.setAttribute('d', cells.slice(0, k + 1).map(([cx, cy]) => `M${cx - 1} ${cy - 1}h2v2h-2z`).join(''));
       pos.setAttribute('transform', `translate(${x - x0} ${y - y0})`);
-      if (p < 1) requestAnimationFrame(frame);
-      else window.setTimeout(finish, Math.min(400, ms / 4));
+      // A hop every few cells on foot; mirrored around its own middle when going left.
+      const lift = hops && p < 1 && Math.floor(k / 3) % 2 ? -2 : 0;
+      body.setAttribute('transform', `translate(0 ${lift})${facing < 0 ? ` translate(${2 * x0} 0) scale(-1 1)` : ''}`);
     };
+    const frame = (): void => {
+      if (done) return;
+      // Progress from the timer, clamped: never before the first cell, never past the last.
+      const p = timer.playState === 'finished' ? 1 : Math.min(1, Math.max(0, Number(timer.currentTime ?? 0) / ms));
+      place(p);
+      if (p < 1) requestAnimationFrame(frame);
+    };
+    const arrived = (): void => {
+      if (done) return;
+      place(1);
+      window.setTimeout(finish, Math.min(400, ms / 4));
+    };
+    timer.finished.then(arrived, finish);
     requestAnimationFrame(frame);
   });
 }

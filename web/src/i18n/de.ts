@@ -764,6 +764,8 @@ export const de = {
       eggnog: 'Gewonnen ×2',
     } as Record<string, string>,
     ahh: 'Ahh!',
+    /** The cork of a Schnaps just bought pops (./ui/scenes.ts). */
+    plopp: 'Plopp!',
     gluck: 'gluck',
     redeal: 'Neu geben!',
     reroll: 'Wird neu ausgelost …',
