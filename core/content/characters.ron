@@ -22,8 +22,11 @@
 // Relikt, das der Charakter immer hat, ohne Platz (Quelle „Charakter“ in
 // der Wertung). redeals (Einmischen pro Spiel) und relic_slots ändern
 // run.ron (nie unter 0),
-// payout_factor vervielfacht die Groschen einer gewonnenen Serie. Ohne
-// Angabe keine Änderung.
+// payout_factor vervielfacht die Groschen einer gewonnenen Serie,
+// vouchers_return gibt eingelöste Gutscheine nach jeder Kneipe zurück,
+// keep_curses sperrt das Reinigen verfluchter Karten, zinken_discount
+// verbilligt Zinken auf passenden Karten. Ohne Angabe keine Änderung.
+// back: Kartenrückseite seiner Ausgabe, ohne Angabe die Distel.
 [
     (
         character: Declarer,
@@ -91,34 +94,35 @@
         // halb so oft (sein Blatt hat keine Unter).
         focus_weights: (trump: 50, null: 200),
     ),
-    // Neue Charaktere vom 01.11.2026 (DESIGN 9.4 bis 9.6). Eigene Zielwerte
-    // seit 02.11.2026 (DESIGN 5.2, docs/balance/
-    // 2026-11-02-kalibrierung-dreierserie.md), alle auf dasselbe Zielbild
-    // wie der Alleinspieler: Abschnitt 2 in gut einem Drittel der Runs, Run
-    // gewonnen 1 bis 2 %.
+    // Neue Charaktere vom 03.11.2026 (DESIGN 9.4 bis 9.6), entschieden vom
+    // Nutzer; sie ersetzen Grandspieler, Zaungast und Wirtin. Zahlen nach
+    // Augenmaß, vorläufig und nicht gemessen (Simulationen pausiert): Die
+    // Zielwerte sind die des Alleinspielers (targets fehlt, also run.ron),
+    // die Tresen-Gewichte wie bei ihm.
     (
-        character: GrandPlayer,
-        name: "Der Grandspieler",
-        text: "Lebt für den Grand: Ein Grand zählt +1 Multiplikator, ein Farbspiel −1. Sein Eichel-Daus hat einen Goldrand (+8 Augen).",
-        // Vorne rund 1,4-mal der Alleinspieler, hinten flach: Ein gewonnener
-        // Grand bringt viel, seine Erfolgskurve ist flacher (mit der
-        // vorläufigen Kurve vom 01.11. Abschnitt 2 in 50 %, Run gewonnen
-        // 2,9 %).
-        targets: Some([
-            [48, 50, 52, 54, 60],
-            [52, 54, 55, 57, 60],
-            [55, 57, 59, 60, 66],
-        ]),
-        start_relics: [],
+        character: Shirker,
+        name: "Der Drückeberger",
+        text: "Drückt sich, wo er kann: Auf seinen vier Siebenern liegt je eine Pfandmarke (2 Groschen), auf der Schellen-Acht eine Totenmarke, auf der Rot-Acht eine Narrenmarke. Eingelöste Marken kommen nach jeder Kneipe zurück. Handspiele bekommen keinen Multiplikator für Hand. Startet mit dem Skatpfleger.",
+        start_relics: ["skat_keeper"],
         deck: (
-            mods: [("CA", "points", 8)],
+            mods: [
+                ("C7", "voucher_coins", 2),
+                ("S7", "voucher_coins", 2),
+                ("H7", "voucher_coins", 2),
+                ("D7", "voucher_coins", 2),
+                ("D8", "voucher_undead", 1),
+                ("H8", "voucher_wild", 1),
+            ],
         ),
-        // Wirkt auf gewonnene und verlorene Spiele. Die Stufen fallen nie
-        // unter 1 (Stufen = max(1, Regel + Zuschläge), DESIGN 4.2).
+        // Marken, die in einer Kneipe gedrückt wurden, liegen nach ihrem
+        // Ende (gewonnen oder verloren) wieder auf ihrer Karte, solange die
+        // Karte keine andere normale Modifikation und keinen Fluch trägt.
+        // Hand +1 fällt weg: −1 bei jedem Handspiel (auch Null Hand), wie
+        // ein Relikt auf gewonnene und verlorene Spiele.
         rule: (
+            vouchers_return: true,
             hooks: [
-                OnDeclare(when: GameIs(Grand), then: [AddLevels(1)]),
-                OnDeclare(when: SuitGame, then: [AddLevels(-1)]),
+                OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(-1)]),
             ],
         ),
         null_scoring: Some(Formula((
@@ -129,29 +133,30 @@
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
-        focus_weights: (trump: 120, null: 50),
+        focus_weights: (trump: 100, null: 50),
+        back: Some("shirker"),
     ),
     (
-        character: Onlooker,
-        name: "Der Zaungast",
-        text: "Schaut dem linken Gegner immer ins Blatt, darf dafür nur einmal pro Spiel einmischen. Der Kiebitz-Mörder nimmt ihm die Sicht.",
-        // Abschnitt 1 wie der Alleinspieler, danach flacher: Mit nur einem
-        // Einmischen ist er gegen die stärkeren Gegner schwächer (vorläufige
-        // Kurve vom 01.11.: gehalten je Abschnitt 44 / 39 / 35 / 45 / 48 %,
-        // Alleinspieler 43 / 41 / 42 / 47 / 55 %).
-        targets: Some([
-            [33, 35, 37, 40, 45],
-            [36, 38, 40, 42, 46],
-            [40, 42, 44, 44, 48],
-        ]),
-        start_relics: [],
-        // Eine Informations-Wirkung wie der Kiebitz: Der Kiebitz-Mörder
-        // schaltet sie ab.
+        character: Tailoress,
+        name: "Die Schneiderin",
+        text: "Nimmt Maß: Ihre vier Zehner tragen einen Aufdruck (+3 Augen). Gewinnt sie Schneider oder Schwarz, zählt beides je +2 statt +1 Multiplikator; ein gewonnenes Spiel ohne Schneider zählt 1 Multiplikator weniger (nie unter 1, Null ausgenommen). Startet mit Stichfest.",
+        start_relics: ["watertight"],
+        deck: (
+            mods: [
+                ("CT", "points", 3),
+                ("ST", "points", 3),
+                ("HT", "points", 3),
+                ("DT", "points", 3),
+            ],
+        ),
+        // Nur gewonnene Farbspiele und Grands: Ein Null kennt keinen
+        // Schneider, ein verlorenes Spiel bleibt, wie es ist.
         rule: (
-            passive: [RevealDefenderHand(1)],
-            // Einmal statt zweimal einmischen pro Spiel (bis 01.11.2026:
-            // zwei Pässe weniger pro Serie).
-            redeals: -1,
+            hooks: [
+                OnScore(when: All([WonSchneider, Not(NullGame), Not(RamschGame)]), then: [AddLevels(1)]),
+                OnScore(when: All([Won, AllTricksWon, Not(NullGame), Not(RamschGame)]), then: [AddLevels(1)]),
+                OnScore(when: All([Won, Not(WonSchneider), Not(NullGame), Not(RamschGame)]), then: [AddLevels(-1)]),
+            ],
         ),
         null_scoring: Some(Formula((
             base_value: 23,
@@ -161,24 +166,45 @@
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
+        focus_weights: (trump: 100, null: 50),
+        back: Some("tailoress"),
     ),
     (
-        character: Landlady,
-        name: "Die Wirtin",
-        text: "Rechnet gut: Jede gewonnene Kneipe bringt doppelt so viele Groschen, aber sie hat nur vier Plätze für Relikte. Startet mit einem Kräuter.",
-        // Vorne deutlich höher (doppelte Groschen kaufen früh Relikte, mit der
-        // vorläufigen Kurve Abschnitt 2 in 49 %), hinten flach: Mit
-        // vier Plätzen wird sie spät schwächer.
-        targets: Some([
-            [40, 42, 44, 46, 54],
-            [44, 46, 47, 48, 55],
-            [48, 50, 52, 54, 60],
-        ]),
-        start_relics: [],
-        start_consumables: ["herbal"],
+        character: HeartBrother,
+        name: "Bruderherz",
+        text: "Sein Herz schlägt für Rot: Daus, Zehn, König und Ober in Rot tragen ein Siegel (+2), Neun, Acht und Sieben einen Winkel (+1). Daus und Zehn der anderen Farben sind fleckig (als Trumpf Grundwert −2), ihre Könige ramponiert (−2 Augen); seine Flüche lassen sich nicht reinigen. Zinken auf Rot kosten ihn die Hälfte. Startet mit der Stammfarbe.",
+        start_relics: ["home_suit"],
+        // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
+        // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die
+        // Könige kosten immer Augen. Unter unverändert. "Beim Erhalt"
+        // feuert nicht (keine Groschen für die Flüche).
+        deck: (
+            mods: [
+                ("HA", "trump_bonus", 2),
+                ("HT", "trump_bonus", 2),
+                ("HK", "trump_bonus", 2),
+                ("HQ", "trump_bonus", 2),
+                ("H9", "rank", 1),
+                ("H8", "rank", 1),
+                ("H7", "rank", 1),
+                ("CA", "stained", 2),
+                ("CT", "stained", 2),
+                ("SA", "stained", 2),
+                ("ST", "stained", 2),
+                ("DA", "stained", 2),
+                ("DT", "stained", 2),
+                ("CK", "battered", 2),
+                ("SK", "battered", 2),
+                ("DK", "battered", 2),
+            ],
+        ),
+        // Flüche seiner Ausgabe (auch spätere) lassen sich weder mit dem
+        // Frischen Deck noch in der Werkstatt reinigen. Zinken auf Rot (eine
+        // Modifikation für Groschen auf einer Karte seiner Wahl) kosten die
+        // Hälfte, gerundet, mindestens 1.
         rule: (
-            relic_slots: -1,
-            payout_factor: 2,
+            keep_curses: true,
+            zinken_discount: Some((cards: (suit: Some(Hearts)), percent: 50)),
         ),
         null_scoring: Some(Formula((
             base_value: 23,
@@ -188,5 +214,7 @@
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
+        focus_weights: (trump: 100, null: 50),
+        back: Some("heart_brother"),
     ),
 ]

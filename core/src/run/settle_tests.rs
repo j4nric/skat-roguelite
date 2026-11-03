@@ -228,8 +228,8 @@ fn settling_scores_like_playing_out_over_whole_runs() {
     let characters = [
         Character::Declarer,
         Character::NullPlayer,
-        Character::GrandPlayer,
-        Character::Onlooker,
+        Character::Shirker,
+        Character::HeartBrother,
     ];
     for (k, &character) in characters.iter().enumerate() {
         for seed in 0..3u64 {

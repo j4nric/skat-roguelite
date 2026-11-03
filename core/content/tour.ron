@@ -84,7 +84,7 @@
             passive: [RequireHand],
             // Null Hand allein ist für den Nullspieler fast nie zu gewinnen
             // (wie beim Schieber, DESIGN 11).
-            characters: [Declarer, GrandPlayer, Onlooker, Landlady],
+            characters: [Declarer, Shirker, Tailoress, HeartBrother],
         ),
         (
             id: "schnapps_locked",

@@ -162,6 +162,9 @@ pub struct CharacterInfo {
     pub name: String,
     /// German text from the content.
     pub text: String,
+    /// Card back of the player's edition (DESIGN 9.3): the character's,
+    /// the Distel by default.
+    pub back: String,
 }
 
 /// An option of the open encounter.
@@ -197,6 +200,10 @@ pub struct EncounterOptionView {
     pub needs_target: bool,
     /// Deck card ids it can be used on.
     pub targets: Vec<u32>,
+    /// What the option costs on each of `targets`, in the same order: a
+    /// Zinke on a card may cost less than `cost` ("Bruderherz": half on
+    /// Rot, [`Run::zinken_price`]). Empty without targets.
+    pub target_costs: Vec<u32>,
 }
 
 /// The open encounter (Ereignis).
@@ -514,7 +521,7 @@ pub enum RevealSource {
     CardMod(CardModId),
     /// "Der Kiebitz" showed it before the declaration.
     Kibitz,
-    /// "Der Zaungast" sees the whole hand of this defender.
+    /// A character rule (`RevealDefenderHand`) shows the whole hand of this defender.
     Onlooker,
     /// The player gave it back to this defender ("Drei drücken").
     Returned,
@@ -1096,6 +1103,9 @@ impl Run {
                 character: self.character,
                 name: character.map_or_else(|| self.character.to_string(), |c| c.name.clone()),
                 text: character.map_or_else(String::new, |c| c.text.clone()),
+                back: character
+                    .map_or(crate::content::PLAYER_BACK, |c| c.back())
+                    .to_owned(),
             },
             phase: self.phase,
             ai_to_move: self.ai_to_move(),
@@ -1474,6 +1484,15 @@ impl Run {
                 } else {
                     Vec::new()
                 };
+                let target_costs: Vec<u32> = targets
+                    .iter()
+                    .map(|&card| match option.choice {
+                        EncounterChoice::MarkChosenCard | EncounterChoice::Gamble => {
+                            self.zinken_price(content, card, option.cost)
+                        }
+                        _ => option.cost,
+                    })
+                    .collect();
                 let can_choose = if needs_target {
                     !targets.is_empty()
                 } else {
@@ -1498,6 +1517,7 @@ impl Run {
                     can_choose,
                     needs_target,
                     targets,
+                    target_costs,
                 }
             })
             .collect();
@@ -1591,7 +1611,7 @@ impl Run {
                 holder,
             })
             .collect();
-        // The hand "Der Zaungast" sees in display order, like the player's.
+        // The hand `RevealDefenderHand` shows, in display order, like the player's.
         let mut peeked = active.peeked.clone();
         peeked.sort_by_key(|(card, seat)| {
             if active.shown_hand == Some(*seat) {

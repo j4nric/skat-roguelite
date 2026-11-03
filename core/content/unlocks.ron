@@ -132,30 +132,35 @@
         condition: WinGame(game: Some(Suit(Hearts)), schneider: true),
         rewards: [Relic("tailor")],
     ),
-    // Neue Charaktere vom 01.11.2026 (DESIGN 9.3).
+    // Neue Charaktere vom 03.11.2026 (DESIGN 9.3), Bedingungen vom Nutzer.
+    // Sie ersetzen grand_master (Grandspieler), beat_kibitz_killer
+    // (Zaungast) und full_till (Wirtin); wer diese Ids schon verdient hat,
+    // behält sie, sie schalten nichts mehr frei.
     (
-        id: "grand_master",
-        name: "Großer Grand",
-        // 01.11.2026: 96 war nach rund drei Runs erreicht, deshalb 144
-        // (etwa mit 4, Spiel 5, Schneider 6).
-        text: "Gewinne einen Grand Schneider, der mindestens 144 Punkte zählt.",
-        condition: WinGame(game: Some(Grand), schneider: true, min_value: 144),
-        rewards: [Character(GrandPlayer)],
+        id: "full_skat",
+        name: "Voll gedrückt",
+        // Die Augen der zwei gedrückten Karten, wie sie im Spiel zählen
+        // (mit Aufdruck, Ramponiert und Skatpfleger): etwa Daus und Zehn.
+        text: "Gewinne ein Spiel mit mindestens 21 gedrückten Augen.",
+        condition: WinGame(min_discarded: 21),
+        rewards: [Character(Shirker)],
     ),
     (
-        id: "beat_kibitz_killer",
-        name: "Blinde Kuh",
-        text: "Schlage den Boss Der Kiebitz-Mörder.",
-        condition: BeatBoss(boss: Some("kibitz_killer")),
-        rewards: [Character(Onlooker)],
+        id: "three_schneider",
+        name: "Maßarbeit",
+        text: "Gewinne drei Spiele mit Schneider in einer Kneipe.",
+        condition: SchneiderWinsInPub(3),
+        rewards: [Character(Tailoress)],
     ),
     (
-        id: "full_till",
-        name: "Volle Kasse",
-        // Antwort im Cockpit (02.11.2026): 15 statt 20 Groschen.
-        text: "Habe nach einer gewonnenen Kneipe mindestens 15 Groschen.",
-        condition: SeriesWonWithCoins(15),
-        rewards: [Character(Landlady)],
+        id: "true_colours",
+        name: "Farbe bekennen",
+        // Über Kneipen hinweg im selben Run; ein verlorenes Spiel, ein
+        // Grand, ein Null oder eine andere Trumpffarbe dazwischen fängt
+        // neu an. Ein Ramsch zählt nicht und unterbricht nicht.
+        text: "Gewinne drei Farbspiele hintereinander mit derselben Trumpffarbe.",
+        condition: SameTrumpStreak(3),
+        rewards: [Character(HeartBrother)],
     ),
     // Welle 2b (02.11.2026): "Drei drücken" biegt eine Regel und ist
     // selten und teuer; wer es am Tresen sehen will, hat ein paar Abende
