@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { BossInfo, Catalog, CardKind, ConsumableCategory, Rarity, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
+import type { BossInfo, Catalog, CardKind, ConsumableCategory, Rarity, RelicGroup, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -113,10 +113,10 @@ export function relicCounters(relic: string): string[] {
   return catalog?.relics[relic]?.counters ?? [];
 }
 
-/** Kind and rarity of a relic from the core's catalog, for its beer mat. */
-export function relicLook(relic: string): { id: string; kind: RelicKind | null; rarity: Rarity | null } {
+/** Kind, rarity and group of a relic from the core's catalog, for its beer mat. */
+export function relicLook(relic: string): { id: string; kind: RelicKind | null; rarity: Rarity | null; group: RelicGroup | null } {
   const e = catalog?.relics[relic];
-  return { id: relic, kind: e?.kind ?? null, rarity: e?.rarity ?? null };
+  return { id: relic, kind: e?.kind ?? null, rarity: e?.rarity ?? null, group: e?.group ?? null };
 }
 
 /** Group and rarity of a consumable from the core's catalog, for its beer mat. */

@@ -9,7 +9,8 @@ GW, GH = 33, 49          # art grid (the card is 33 x 49.5, the last half row st
 # Suit colours (F3, chosen 02.11.2026): every suit's pictures use only its
 # own core colour (with its own shades) plus neutrals: black, white, skin,
 # greys, hair and wood brown, and a muted metal gold for crowns, chains and
-# sceptres. The Wandelkarte (wild.py) keeps its rainbow.
+# sceptres. The Wandelkarte (wild.py) wears all four suit colours until
+# its suit is settled, then only the colours of that suit.
 PAL = {
     # core colours
     'r': '#e0281e',      # Rot: signal red
@@ -33,7 +34,11 @@ PAL = {
     's': '#f3c9a0',      # skin
     'p': '#c4685c',      # lips
     'h': '#8b4a1c',      # hair and wood of the Eichel cards (becomes 'o', see SUIT_MAP)
-    'b': '#2a63c4',      # royal blue, only in the Wandelkarte's rainbow
+    'b': '#2a63c4',      # royal blue (drawings only; the Wandelkarte shows Eichel 'j' instead)
+    # light shades, only in the costume of a settled Wandelkarte (wild.py)
+    'l': '#9fd3a6',      # Gruen light
+    'n': '#f3a39b',      # Rot light
+    'c': '#fbeea0',      # Schellen light
 }
 BG = '#fdfdfb'
 
@@ -154,8 +159,9 @@ class Grid:
         sg = SIGN[suit]
         self.stamp(g, 2, 2, {'x': col})
         self.stamp(sg, 2, 8)
-        # bottom right, upright: sign above the rank
-        self.stamp(sg, GW - 5, GH - 8 - len(sg))
+        # bottom right, upright: sign above the rank (right-aligned, the
+        # Wandelkarte's four pips are wider than a suit sign)
+        self.stamp(sg, GW - 2 - len(sg[0]), GH - 8 - len(sg))
         self.stamp(g, GW - 2 - w, GH - 7, {'x': col})
         # The index is the last thing every face stamps: its suit colours now.
         suit_colours(self, suit)

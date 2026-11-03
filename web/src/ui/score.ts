@@ -10,7 +10,7 @@
 import { sound } from '../audio';
 import { de, cardName, consumableLook, contentName, declarationName, factorText, gameName, relicLook, t } from '../i18n';
 import type { Change, DeckCard, LevelParts, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source } from '../types';
-import { cardSvg, modIcon } from './cards';
+import { lookSvg, modIcon, type CardLook } from './cards';
 import { attrs, esc } from './dom';
 import { countUp, dur, finishAll, grow, pulse, slam } from './fx';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -30,7 +30,7 @@ function plain(n: number): string {
 }
 
 /** Display name of where a score line (or Groschen) came from. */
-export function sourceName(source: Source, deck: DeckCard[]): string {
+export function sourceName(source: Source, deck: (DeckCard & CardLook)[]): string {
   if (source === 'Kontra') return de.score.kontra;
   if (source === 'Re') return de.score.re;
   if ('Relic' in source) return contentName('relics', source.Relic);
@@ -46,7 +46,7 @@ export function sourceName(source: Source, deck: DeckCard[]): string {
   });
 }
 
-function sourceIcon(source: Source, deck: DeckCard[]): string {
+function sourceIcon(source: Source, deck: (DeckCard & CardLook)[]): string {
   if (source === 'Kontra' || source === 'Re') return `<span class="step-icon icon-kontra">K</span>`;
   if ('Relic' in source) return `<span class="step-icon">${relicCoaster(relicLook(source.Relic), { size: 22 })}</span>`;
   if ('Boss' in source) return `<span class="step-icon">${bossCoaster(source.Boss, { size: 22 })}</span>`;
@@ -56,7 +56,7 @@ function sourceIcon(source: Source, deck: DeckCard[]): string {
   if ('Malus' in source) return `<span class="step-icon icon-kontra">!</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
-    ? `<span class="step-icon icon-card">${cardSvg(card.kind, card.mods, 'small', card.mod_values)}</span>`
+    ? `<span class="step-icon icon-card">${lookSvg(card, 'small')}</span>`
     : `<span class="step-icon">${modIcon(source.CardMod.card_mod, 20)}</span>`;
 }
 
@@ -101,7 +101,7 @@ interface Row {
   relic: string | null;
 }
 
-function lineRow(line: ScoreLine, deck: DeckCard[]): Row {
+function lineRow(line: ScoreLine, deck: (DeckCard & CardLook)[]): Row {
   const relic = typeof line.source === 'object' && 'Relic' in line.source ? line.source.Relic : null;
   return {
     label: sourceName(line.source, deck),
@@ -113,7 +113,7 @@ function lineRow(line: ScoreLine, deck: DeckCard[]): Row {
 }
 
 /** Label, effect and style of one step. Level amounts come from the core's `rule_levels`. */
-function termRow(term: ScoreTerm, deck: DeckCard[], parts: LevelParts): Row {
+function termRow(term: ScoreTerm, deck: (DeckCard & CardLook)[], parts: LevelParts): Row {
   const row = (label: string, effect: string, cls: string): Row => ({ label, effect, cls, icon: '', relic: null });
   if (typeof term === 'string') {
     const labels: Record<typeof term, [string, number]> = {
@@ -152,7 +152,7 @@ function coasterStrip(o: ScoreOverlay): string {
     .join('')}</div>`;
 }
 
-export function renderScore(o: ScoreOverlay, deck: DeckCard[]): string {
+export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): string {
   const b = o.score.breakdown;
   const steps = o.score.steps;
   const hasMul = steps.some((s) => s.multiplier !== 1);

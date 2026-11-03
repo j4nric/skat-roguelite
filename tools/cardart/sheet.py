@@ -3,8 +3,8 @@
     python3 tools/cardart/sheet.py /tmp/deck.png [scale]
 
 Rows: the 32 faces (Eichel, Gruen, Rot, Schellen; columns Daus, Koenig,
-Oberin, Unter, 10 to 7), the same 32 as "Untot", and the eight
-Wandelkarte faces. Drawn from the same grids and palette as the
+Oberin, Unter, 10 to 7), the same 32 as "Untot", the eight open
+Wandelkarte faces and the 32 settled ones. Drawn from the same grids and palette as the
 TypeScript module emit.py writes (corner index included).
 """
 
@@ -47,6 +47,7 @@ if __name__ == '__main__':
     grid = [[image(rows(suit, RANKS[r], face(suit, RANKS[r])), s) for r in ORDER] for suit in SUITS.values()]
     grid += [[image(rows(suit, RANKS[r], undead_face(suit, RANKS[r])), s) for r in ORDER] for suit in SUITS.values()]
     grid += [[image(rows('Wild', RANKS[r], wild.card(RANKS[r])), s) for r in ORDER]]
+    grid += [[image(rows(suit, RANKS[r], wild.settled(suit, RANKS[r])), s) for r in ORDER] for suit in SUITS.values()]
     w, h = grid[0][0].size
     sheet = Image.new('RGB', (8 * (w + 8) + 8, len(grid) * (h + 8) + 8), (31, 77, 43))
     for j, row in enumerate(grid):

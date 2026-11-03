@@ -111,9 +111,10 @@ pub struct DealtCard {
     /// loses this many Augen.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub point_debt: u32,
-    /// Whether this is a "Wandelkarte" in the player's hand: it never
-    /// obliges him to follow suit, and he names its suit when he plays it.
-    /// Only the copies the player holds (hand and skat) carry it.
+    /// Whether this is a "Wandelkarte" of the player whose suit is not
+    /// settled yet ([`PlayingCard::wild`]). Only the player's copies carry
+    /// it; it goes off when the game starts and the card takes its suit
+    /// ([`PlayingCard::settle_wild`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wild: bool,
     /// "Abgestuft" (DESIGN 9.2): see [`PlayingCard::demoted`].
@@ -189,6 +190,13 @@ impl PlayingCard for DealtCard {
 
     fn instance(self) -> Option<u32> {
         Some(self.id)
+    }
+
+    fn settle_wild(self, suit: Suit) -> DealtCard {
+        DealtCard {
+            wild: false,
+            ..self.with_suit(suit)
+        }
     }
 
     fn with_suit(self, suit: Suit) -> DealtCard {

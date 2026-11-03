@@ -7,8 +7,9 @@
 //
 // A face is three layers so card modifications (./cards.ts) can lie in
 // between: paper (drawn by ./cards.ts, some modifications tint it), the
-// picture (f-…; the "Untot" picture u-…, the "Wandelkarte" face w-…) and
-// the corner index (x-…, wx-… for the Wandelkarte). The card's frame (1 px dark
+// picture (f-…; the "Untot" picture u-…, the open "Wandelkarte" w-…, a
+// settled one ws-… per suit) and the corner index (x-…, wx-… for the open
+// Wandelkarte; a settled one uses its suit's x-…). The card's frame (1 px dark
 // line, hard shadow) comes from CSS and lies outside the art, so the art
 // keeps its integer scale.
 
@@ -17,7 +18,7 @@ import type { Rank, Suit } from '../types';
 import { backSymbols } from './backs';
 import { peopleSymbols } from './people';
 import { modIconBody, ICON_MODS } from './fxart';
-import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_W, ART_WILD, ART_WILD_BIG, ART_WILD_INK } from './pixelcards.gen';
+import { ART_FACES, ART_GLYPHS, ART_H, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_W, ART_WILD, ART_WILD_BIG, ART_WILD_INK, ART_WILD_SETTLED } from './pixelcards.gen';
 
 export const SUITS: Suit[] = ['Clubs', 'Spades', 'Hearts', 'Diamonds'];
 export const RANKS: Rank[] = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -134,7 +135,7 @@ export function spriteSvg(): string {
       );
     }),
   ).join('');
-  // "Wandelkarte": eight faces for every suit, with their own index (rank in black, rainbow sign).
+  // "Wandelkarte", open: the harlequin in all four suit colours, its own index (rank in black, four suit pips).
   const wild = RANKS.map((r) => {
     const rows = ART_WILD[r] ?? [];
     return (
@@ -143,12 +144,14 @@ export function spriteSvg(): string {
       `<symbol id="wt-${r}" ${box}>${smallBody(r, ART_WILD_INK, ART_WILD_BIG)}</symbol>`
     );
   }).join('');
+  // "Wandelkarte", settled: the same picture in one suit's shades; index and tiny face are the suit's own.
+  const settled = SUITS.flatMap((s) => RANKS.map((r) => `<symbol id="ws-${CODE[s]}${r}" ${box}>${gridPaths(ART_WILD_SETTLED[`${CODE[s]}${r}`] ?? [], lower)}</symbol>`)).join('');
   return `<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
 <defs>
 <pattern id="blank-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
 <path d="M0 0h4v4h-4z" fill="#cbc7bb"/></pattern>
 </defs>
-${suits}${faces}${wild}
+${suits}${faces}${wild}${settled}
 ${backSymbols()}
 <symbol id="f-blank" viewBox="0 0 120 180" shape-rendering="crispEdges">${blankBody()}</symbol>
 ${modSymbols()}
@@ -177,8 +180,13 @@ export function undeadFaceId(suit: Suit, rank: Rank): string | null {
   return ART_UNDEAD[id] ? `u-${id}` : null;
 }
 
-/** Symbol ids of the "Wandelkarte" face of a rank: picture, corner index, tiny face. */
-export function wildFaceIds(rank: Rank): { picture: string; index: string; small: string } {
+/**
+ * Symbol ids of a "Wandelkarte" face: picture, corner index, tiny face.
+ * Open (no suit): the harlequin; settled into `suit`: the picture in that
+ * suit's shades with the suit's normal index and tiny face.
+ */
+export function wildFaceIds(rank: Rank, suit: Suit | null = null): { picture: string; index: string; small: string } {
+  if (suit) return { picture: `ws-${CODE[suit]}${rank}`, index: indexId(suit, rank), small: smallFaceId(suit, rank) };
   return { picture: `w-${rank}`, index: `wx-${rank}`, small: `wt-${rank}` };
 }
 

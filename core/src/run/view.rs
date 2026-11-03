@@ -28,7 +28,7 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    self, Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
     trump_order_key,
 };
 
@@ -481,12 +481,13 @@ pub struct CardView {
     /// the declaration; modifications without a condition ("Fett") are
     /// left out.
     pub mod_status: BTreeMap<CardModId, CardModStatus>,
-    /// A Wandelkarte of the hand the player may play now: the suits he may
-    /// name ([`RunAction::PlayAs`], [`crate::rules::wild_suits`]). Empty
-    /// otherwise.
-    pub wild_suits: Vec<Suit>,
-    /// The printed suit of a Wandelkarte the player played in this game;
-    /// the card's `kind` has the suit he named.
+    /// A Wandelkarte of the player whose suit is still open: before the
+    /// game starts (the card is its printed card until then, DESIGN 7.2).
+    /// Left out of the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unsettled: bool,
+    /// The printed suit of a Wandelkarte settled as this game started; the
+    /// card's `kind` has its settled suit ([`ActiveGame::named`]).
     pub named: Option<Suit>,
     /// An "Untot" card of the hand that would rise if played now
     /// ([`Run::can_rise`]): it comes back once per game in a suit game or
@@ -525,6 +526,17 @@ pub enum RevealSource {
     Onlooker,
     /// The player gave it back to this defender ("Drei drücken").
     Returned,
+}
+
+/// A Wandelkarte settled in the game in progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SettledWild {
+    /// Instance id.
+    pub card: u32,
+    /// The card it is until the end of the game.
+    pub kind: crate::cards::CardKind,
+    /// Its printed suit.
+    pub printed: Suit,
 }
 
 /// A card whose holder the player knows, and why.
@@ -655,6 +667,9 @@ pub struct GameView {
     /// "Durchsichtig" cards and the cards "Der Kiebitz" showed, with their
     /// holders.
     pub revealed: Vec<RevealedCard>,
+    /// The Wandelkarten settled as this game started (DESIGN 7.2), also
+    /// those already played: for the edition shown during the game.
+    pub wild_settled: Vec<SettledWild>,
     /// The boss rule in force in this game: the series' boss, for the
     /// Endboss "Der Alte" the rule of this game (with its edition).
     pub boss_rule: Option<BossInfo>,
@@ -874,7 +889,11 @@ impl Run {
             drawn_from: None,
             discardable: false,
             mod_status,
-            wild_suits: Vec::new(),
+            unsettled: card.wild
+                && self
+                    .game
+                    .as_ref()
+                    .is_some_and(|a| a.game.declaration().is_none()),
             named,
             can_rise: false,
         }
@@ -1556,17 +1575,10 @@ impl Run {
         let drawn = game.drawn().filter(|_| phase == TablePhase::Discarding);
         let mut hand: Vec<DealtCard> = held.to_vec();
         hand.sort_by_key(|c| display_key(order_game, c));
-        let lead = rules::effective_lead(game.current_trick());
         let hand = hand
             .into_iter()
             .map(|card| CardView {
                 legal: legal.contains(&card),
-                wild_suits: match declaration {
-                    Some(d) if card.wild && legal.contains(&card) => {
-                        rules::wild_suits(d.game(), held, lead, card)
-                    }
-                    _ => Vec::new(),
-                },
                 from_skat: phase == TablePhase::Discarding && skat.contains(&card),
                 drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
                 discardable: discarding && discardable_of(held, card, discard_count),
@@ -1693,6 +1705,18 @@ impl Run {
             )
             .then(|| self.declare_options(content)),
             revealed,
+            wild_settled: active
+                .named
+                .iter()
+                .filter_map(|&(card, printed)| {
+                    let kind = game.deck_cards().iter().find(|c| c.id == card)?.kind;
+                    Some(SettledWild {
+                        card,
+                        kind,
+                        printed,
+                    })
+                })
+                .collect(),
             boss_rule: active
                 .boss_rule
                 .as_ref()

@@ -198,10 +198,6 @@ export const de = {
     noDiscard: 'darf nicht gedrückt werden',
     canRise: 'Untot: steht in diesem Spiel noch einmal auf',
     named: 'Wandelkarte, eigentlich {suit}',
-    wildTitle: 'Wandelkarte',
-    wildPick: 'Als welche Farbe spielst du {card}?',
-    wildFollow: 'Du musst bedienen: nur {suits} geht.',
-    wildSuit: 'als {card}',
   },
 
   /** Asking before a card modification replaces or raises the one on a card (Tresen, encounters). */
@@ -486,7 +482,7 @@ export const de = {
     gambleCurse: 'Reingelegt! Statt des Tricks gibt’s einen Fluch.',
     gambleGood: 'Der Trick sitzt.',
     consumableGained: '{name} geschenkt.',
-    wildNamed: 'Wandelkarte: {old} gespielt als {new}.',
+    wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherReturned: '{mod} ist zurück: {card}.',

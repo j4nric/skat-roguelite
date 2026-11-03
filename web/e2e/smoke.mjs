@@ -138,7 +138,7 @@
 // - wave3-mods.json (M8 wave 3, an old save: "Wandelkarte" on the Rot-Daus,
 //   "Glasdaus" on the Grün-Daus, "Heimweh" on the Eichel-Unter; since
 //   effects v2 converted on load to Wandelkarte, Augen +11 and nothing):
-//   both legendary beer mats with the gold ring, the player is Vorhand.
+//   both legendary beer mats in the orange legendary ink, the player is Vorhand.
 //   Eichel Hand, the Grün-Daus led, then a Schellen lead: the Wandelkarte
 //   opens the suit picker with only Schellen allowed, and played it lies on
 //   the table as the Schellen-Daus with its printed suit as a plaque.
@@ -2440,6 +2440,53 @@ async function undeadPass(browser, errors, reducedMotion) {
   await context.close();
 }
 
+/** A Wandelkarte settled into Grün (the wave 3 fixture's Rot-Daus): the fool in green, the normal Grün index. */
+async function assertSettledWild(svg, where) {
+  if ((await svg.getAttribute('data-wild')) !== 'settled') fail(`the Wandelkarte ${where} is not shown settled`);
+  if ((await svg.getAttribute('data-suit')) !== 'Spades') fail(`the settled Wandelkarte ${where} is not tinted as Grün`);
+  const pic = await svg.locator('use.face-pic').getAttribute('href');
+  const idx = await svg.locator('use.face-idx').getAttribute('href');
+  if (pic !== '#ws-SA' || idx !== '#x-SA') fail(`the settled Wandelkarte ${where} shows ${pic} / ${idx}`);
+}
+
+/**
+ * "Wandelkarte" with motion on: as the game starts its colours run through
+ * the four suits and stop on Grün; a frame from the middle of it.
+ */
+async function wildSettlePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'wave3-mods.json');
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
+  // Note every face the card shows while it settles.
+  await page.evaluate(() => {
+    window.__wildFaces = [];
+    new MutationObserver((list) => {
+      for (const m of list) {
+        const el = m.target;
+        if (el instanceof Element && el.matches('.hand-card[data-id="15"] use.face-pic')) window.__wildFaces.push(el.getAttribute('href'));
+      }
+    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['href'] });
+  });
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.hand-card[data-id="15"].is-settling', { timeout: 15000 });
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: join(screens, 'wild-settling-390x844.png') });
+  await page.locator('.hand-card[data-id="15"]').screenshot({ path: join(screens, 'wild-settling-closeup.png') });
+  await page.waitForSelector('.hand-card[data-id="15"].is-settling', { state: 'detached', timeout: 15000 });
+  const faces = await page.evaluate(() => window.__wildFaces);
+  const suits = new Set(faces);
+  if (suits.size < 4 || faces[faces.length - 1] !== '#ws-SA') fail(`the Wandelkarte did not cycle through the suits: ${faces.join(', ')}`);
+  await assertSettledWild(page.locator('.hand-card[data-id="15"] svg.card-svg'), 'after the cycle');
+  log(`Wandelkarte cycle: ${faces.join(' ')}`);
+  await context.close();
+}
+
 async function wave3(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
@@ -2457,14 +2504,22 @@ async function wave3(browser, errors, reducedMotion) {
   for (const id of ['skat_god', 'honorary_chair']) {
     const mat = page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`);
     if (!(await mat.count())) fail(`legendary relic ${id} has no beer mat in the head`);
-    if (!(await mat.first().locator('path[stroke="#e3b24c"][stroke-width="2"]').count())) fail(`legendary relic ${id} lacks the gold ring`);
+    if (!(await mat.first().locator('[fill="#ff8a1c"], [stroke="#ff8a1c"]').count())) fail(`legendary relic ${id} lacks the legendary ink`);
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
   // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.
   for (const mod of ['Wandelkarte', 'Augen']) {
     if (!labels.includes(mod)) fail(`wave 3: no hand card names ${mod}: ${labels}`);
   }
+  // The Wandelkarte before the game starts: the open harlequin with the four suit pips.
+  const open = page.locator('.hand-card[data-id="15"] svg.card-svg');
+  if ((await open.getAttribute('data-wild')) !== 'open') fail('the Wandelkarte before the declaration is not shown open');
+  if (!(await open.locator('use.face-pic[href="#w-A"]').count()) || !(await open.locator('use.face-idx[href="#wx-A"]').count())) {
+    fail('the open Wandelkarte does not show the harlequin face and index');
+  }
+  if (await open.getAttribute('data-suit')) fail('the open Wandelkarte claims a suit');
   await shoot(page, 'wave3-hand');
+  await page.locator('.hand-card[data-id="15"]').screenshot({ path: join(screens, 'wild-open-closeup.png') });
   // The info card names the tier.
   await page.click('[data-info="relic:skat_god"]');
   await page.waitForSelector('[data-testid="info-card"]');
@@ -2479,20 +2534,34 @@ async function wave3(browser, errors, reducedMotion) {
   if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
-  // "Ehrenvorsitz": the player leads. The Grün-Daus (id 23, a Glasdaus in
-  // the old save, dealt before effects v2) first; it no longer breaks.
-  await page.waitForSelector('[data-action="play"][data-id="23"]', { timeout: 30000 });
-  await page.click('[data-action="play"][data-id="23"]');
-  // The Wandelkarte (Rot-Daus, id 15): a Schellen lead, only Schellen may be named.
+  // The Wandelkarte (Rot-Daus, id 15) settles as the game starts: five
+  // spades in the hand, it is a Grün-Daus now (DESIGN 7.2, 03.11.2026).
+  // "Ehrenvorsitz": the player leads it.
   await page.waitForSelector('[data-action="play"][data-id="15"]', { timeout: 30000 });
+  const settled = (await page.locator('.hand-card[data-id="15"]').first().getAttribute('aria-label')) ?? '';
+  if (!settled.startsWith('Grün-Daus')) fail(`the settled Wandelkarte shows as ${settled}`);
+  await assertSettledWild(page.locator('.hand-card[data-id="15"] svg.card-svg'), 'in the hand');
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  await shoot(page, 'wave3-wild-settled-hand');
+  await page.locator('.hand-card[data-id="15"]').screenshot({ path: join(screens, 'wild-settled-closeup.png') });
+  // The Infokarte shows the settled card, too.
+  await page.locator('.hand-card[data-id="15"]').focus();
+  await page.keyboard.press('i');
+  await page.waitForSelector('[data-testid="info-card"]');
+  {
+    await assertSettledWild(page.locator('[data-testid="info-card"] svg.card-svg').first(), 'on the Infokarte');
+    await page.locator('[data-testid="info-card"]').screenshot({ path: join(screens, 'wild-settled-info.png') });
+    await page.click('[data-testid="info-card"] [data-info-close]');
+    await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  }
+  // The edition on the Kreidetafel shows it settled while the game runs.
+  await page.click('.hud [data-action="overview"]');
+  await page.waitForSelector('.deck-grid');
+  await assertSettledWild(page.locator('.deck-grid [data-info="card:15"] svg.card-svg'), 'in the edition');
+  await page.locator('.deck-grid').screenshot({ path: join(screens, 'wild-settled-edition.png') });
+  await page.click('.sheet [data-action="close-overlay"]');
+  await page.waitForSelector('.deck-grid', { state: 'detached' });
   await page.click('[data-action="play"][data-id="15"]');
-  await page.waitForSelector('[data-testid="wild-suits"]');
-  const allowed = await page.locator('[data-action="wild-suit"]:not([disabled])').evaluateAll((els) => els.map((e) => e.getAttribute('data-suit')).join(','));
-  if (allowed !== 'Diamonds') fail(`Wandelkarte: the picker allows ${allowed}, expected Diamonds`);
-  await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
-  await shoot(page, 'wave3-wild-picker');
-  await page.click('[data-testid="wild-Diamonds"]');
-  await page.waitForSelector('[data-testid="wild-suits"]', { state: 'detached' });
   await page.waitForFunction(() => window.__toasts.some((t) => t.includes('Wandelkarte')), null, { timeout: 30000 });
   // The trick on the table, or once it is finished the "Letzter Stich".
   await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
@@ -2502,9 +2571,10 @@ async function wave3(browser, errors, reducedMotion) {
     await page.waitForSelector('[data-testid="last-trick"]');
   }
   const wild = page.locator('.trick-card[data-card-id="15"]').first();
-  if (!(await wild.locator('.plaque-wild').count())) fail('the named Wandelkarte has no plaque on the table');
+  if (!(await wild.locator('.plaque-wild').count())) fail('the settled Wandelkarte has no plaque on the table');
   const shown = await wild.locator('svg.card-svg').getAttribute('aria-label');
-  if (!(shown ?? '').startsWith('Schellen-Daus')) fail(`the named Wandelkarte shows as ${shown}`);
+  if (!(shown ?? '').startsWith('Grün-Daus')) fail(`the settled Wandelkarte shows as ${shown}`);
+  await assertSettledWild(wild.locator('svg.card-svg'), 'in the trick');
   await page.waitForFunction(() => !document.querySelector('.toast-layer')?.textContent?.trim(), null, { timeout: 15000 });
   await shoot(page, 'wave3-wild-played');
   if (await page.locator('[data-testid="last-trick"]').count()) {
@@ -3091,6 +3161,7 @@ async function run() {
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
     await wave3(browser, errors, reducedMotion);
+    await wildSettlePass(browser, errors);
     await framesPass(browser, errors, reducedMotion);
     await modConfirmPass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);

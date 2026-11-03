@@ -390,8 +390,10 @@ pub struct ActiveGame {
     /// empty. `None` before the first Einmischen and after an undo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous: Option<Box<ActiveGame>>,
-    /// Wandelkarten the player played in this game: instance id and the
-    /// printed suit (the card on the table has the suit he named).
+    /// Wandelkarten of the player settled as this game started (DESIGN
+    /// 7.2, [`Event::WildCardSettled`]): instance id and the printed suit
+    /// (the card has its settled suit now). Saves from before 03.11.2026:
+    /// the Wandelkarten the player named as he played them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub named: Vec<(u32, Suit)>,
     /// Cards of the untouched skat the player was shown after declaring a
@@ -417,6 +419,22 @@ pub struct ActiveGame {
     /// edition also while a defender holds them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_marked: Vec<u32>,
+}
+
+impl ActiveGame {
+    /// Remember the printed suit of every Wandelkarte the game settled in
+    /// `events` ([`Event::WildCardSettled`]), for [`Self::named`].
+    fn note_settled(&mut self, events: &[Event<DealtCard>]) {
+        for event in events {
+            if let Event::WildCardSettled { old, .. } = event {
+                if let Some(face) = old.face() {
+                    if !self.named.iter().any(|(id, _)| *id == old.id) {
+                        self.named.push((old.id, face.suit));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The seat of the boss in a boss series: left of the player (DESIGN
@@ -674,14 +692,6 @@ pub enum RunAction {
     DiscardThree([u32; 3]),
     /// Play a card (instance id).
     Play(u32),
-    /// Play a Wandelkarte (instance id) as a card of `suit` (DESIGN 7.2, M8
-    /// wave 3); the suit must be one of [`view::CardView::wild_suits`].
-    PlayAs {
-        /// The Wandelkarte.
-        card: u32,
-        /// The suit the player names.
-        suit: Suit,
-    },
     /// Use a consumable from the given slot, with a target card and a suit
     /// if needed.
     UseConsumable {
@@ -940,14 +950,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
     /// "Reue": the last Einmischen was taken back; the deal before it is
     /// on the table again.
     RedealUndone,
-    /// The player named the suit of a Wandelkarte as he played it. The
-    /// `CardPlayed` that follows shows the card as named.
-    WildCardNamed {
-        /// The card as printed.
-        card: DealtCard,
-        /// The suit he named.
-        suit: Suit,
-    },
     /// A voucher was redeemed: its card went into the skat by discarding
     /// ("wenn gedrückt", DESIGN 7.2). Its effects follow as their own
     /// events (`CoinsGained`, `DeckChanged`), then it falls off the card.
@@ -2206,7 +2208,6 @@ impl Run {
             RunAction::Discard(ids) => self.discard(content, ids, events),
             RunAction::DiscardThree(ids) => self.discard_three(content, ids, events),
             RunAction::Play(id) => self.play(content, id, events),
-            RunAction::PlayAs { card, suit } => self.play_as(content, card, suit, events),
             RunAction::UseConsumable { slot, target, suit } => {
                 self.use_consumable(content, slot, target, suit, events)
             }
@@ -2372,6 +2373,7 @@ impl Run {
             return Err(RunError::OuvertRequired);
         }
         let game_events = active.game.declare(declaration)?;
+        active.note_settled(&game_events);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.after_declaration(content, events);
         if let Some(active) = self.game.as_mut() {
@@ -2557,6 +2559,7 @@ impl Run {
             Run::declarer_card(active, ids[1])?,
         ];
         let game_events = active.game.discard(cards)?;
+        active.note_settled(&game_events);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.redeem_vouchers(content, events);
         self.settle(content, events)
@@ -2579,6 +2582,7 @@ impl Run {
             Run::declarer_card(active, ids[2])?,
         ];
         let game_events = active.game.discard_three(cards)?;
+        active.note_settled(&game_events);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.redeem_vouchers(content, events);
         self.settle(content, events)
@@ -2596,46 +2600,6 @@ impl Run {
         }
         let card = Run::declarer_card(active, id)?;
         self.play_card(content, Seat::DECLARER, card, events)?;
-        self.settle(content, events)
-    }
-
-    /// Play a Wandelkarte of the player as a card of `suit`.
-    fn play_as(
-        &mut self,
-        content: &Content,
-        id: u32,
-        suit: Suit,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        let active = self.active_mut()?;
-        if active.awaiting_re {
-            return Err(RunError::AwaitingKontraAnswer);
-        }
-        let card = Run::declarer_card(active, id)?;
-        let face = card.face().ok_or(RunError::CannotChalk)?;
-        if !card.wild {
-            return Err(RunError::UnknownCard(id));
-        }
-        let game_events = active.game.play_as(Seat::DECLARER, card, suit)?;
-        if !active.named.iter().any(|(c, _)| *c == id) {
-            active.named.push((id, face.suit));
-        }
-        let trick_done = game_events
-            .iter()
-            .any(|e| matches!(e, Event::TrickWon { .. }));
-        let played = game_events.iter().find_map(|e| match e {
-            Event::CardPlayed { card, .. } => Some(*card),
-            _ => None,
-        });
-        events.push(RunEvent::WildCardNamed { card, suit });
-        events.extend(game_events.into_iter().map(RunEvent::Game));
-        self.after_card(
-            content,
-            Seat::DECLARER,
-            played.unwrap_or(card),
-            trick_done,
-            events,
-        );
         self.settle(content, events)
     }
 
@@ -3381,6 +3345,7 @@ impl Run {
         self.series.ramsch_played = true;
         let active = self.active_mut()?;
         let game_events = active.game.declare(Declaration::Ramsch)?;
+        active.note_settled(&game_events);
         events.push(RunEvent::RamschDealt);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.after_declaration(content, events);

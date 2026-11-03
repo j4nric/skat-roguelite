@@ -172,7 +172,7 @@
     (
         character: HeartBrother,
         name: "Bruderherz",
-        text: "Sein Herz schlägt für Rot: Daus, Zehn, König und Ober in Rot tragen ein Siegel (+2), Neun, Acht und Sieben einen Winkel (+1). Daus und Zehn der anderen Farben sind fleckig (als Trumpf Grundwert −2), ihre Könige ramponiert (−2 Augen); seine Flüche lassen sich nicht reinigen. Zinken auf Rot kosten ihn die Hälfte. Startet mit der Stammfarbe.",
+        text: "Sein Herz schlägt für Rot: Daus, Zehn, König und Oberin in Rot tragen ein Siegel (+2), Neun, Acht und Sieben einen Winkel (+1). Daus und Zehn der anderen Farben sind fleckig (als Trumpf Grundwert −2), ihre Könige ramponiert (−2 Augen); seine Flüche lassen sich nicht reinigen. Zinken auf Rot kosten ihn die Hälfte. Startet mit der Stammfarbe.",
         start_relics: ["home_suit"],
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die

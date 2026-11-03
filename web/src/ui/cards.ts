@@ -8,8 +8,10 @@
 // Effekte v3 (tools/cardart/fx3.py, ./fxart.ts): frame = what, mark top
 // right = when, band at the bottom middle = how much; curses anthracite.
 // The special cards change the picture: "Untot" shows the zombie picture
-// (rotten pips on number cards), "Wandelkarte" one of eight
-// suit-independent faces with a rainbow sign. A card carries one normal
+// (rotten pips on number cards), "Wandelkarte" a fool in a harlequin of all
+// four suit colours while its suit is open (four suit pips in the index),
+// and once the core has settled it the same fool in the new suit's shades
+// with that suit's normal index (DESIGN 7.2). A card carries one normal
 // modification, a special card one more on top.
 //
 // Tiny cards (about 16 to 26 px) use the small face: the index letter and
@@ -18,7 +20,7 @@
 // formatted with the catalog's printed figure.
 
 import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
-import type { CardKind, ModFigure, Suit } from '../types';
+import type { CardKind, CardView, DeckCard, ModFigure, Rank, RunView, Suit } from '../types';
 import { faceId, indexId, modIconId, PAPER, smallFaceId, suitId, undeadFaceId, wildFaceIds } from './art';
 import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
@@ -75,6 +77,55 @@ export type FaceSize = 'full' | 'small';
 export interface FaceOptions {
   /** A voucher being redeemed: its stamp margin torn off (the redeem animation). */
   redeeming?: boolean;
+  /**
+   * "Wandelkarte": the core settled its suit in this game (`CardView.named`
+   * is set), `kind` has the new suit. Without it a Wandelkarte shows the
+   * open harlequin.
+   */
+  settled?: boolean;
+}
+
+/** What a card view needs to be drawn (a CardView, or a DeckCard with a known settled look). */
+export interface CardLook {
+  kind: CardKind;
+  mods: string[];
+  mod_values?: Record<string, number>;
+  /** "Wandelkarte": its printed suit once the core settled it (CardView.named). */
+  named?: Suit | null;
+}
+
+/** "Wandelkarte": a card the core settled in this game (event `WildCardSettled`). */
+export interface SettledWild {
+  /** The card from now on (the settled suit). */
+  kind: CardKind;
+  /** Its printed suit. */
+  printed: Suit;
+}
+
+/**
+ * A card of the edition as the table shows it now: a Wandelkarte the core
+ * settled in the game in progress looks like its settled card (from the
+ * core's `GameView.wild_settled`, the game's card views, else from the
+ * settle events in `settled`, which the
+ * caller passes only while that game counts). Otherwise the edition card
+ * as it is (the open harlequin).
+ */
+export function editionLook(c: DeckCard, view: RunView | null, settled: Readonly<Record<number, SettledWild>>): DeckCard & CardLook {
+  if (!c.mods.includes(WILD)) return c;
+  const game = view?.game;
+  // The core lists every Wandelkarte settled in this game, played ones too.
+  const core = game?.wild_settled?.find((w) => w.card === c.id);
+  if (core) return { ...c, kind: core.kind, named: core.printed };
+  const seen: CardView[] = game ? [...game.hand, ...game.trick.map((p) => p.card), ...(game.last_trick?.cards.map((p) => p.card) ?? [])] : [];
+  const live = seen.find((x) => x.id === c.id && x.named != null);
+  if (live) return { ...c, kind: live.kind, named: live.named ?? null };
+  const s = settled[c.id];
+  return s ? { ...c, kind: s.kind, named: s.printed } : c;
+}
+
+/** The face of a card view: `cardSvg` with the settled look of a Wandelkarte the core settled. */
+export function lookSvg(c: CardLook, size: FaceSize = 'full', opts: FaceOptions = {}): string {
+  return cardSvg(c.kind, c.mods, size, c.mod_values ?? {}, { settled: c.named != null, ...opts });
 }
 
 /**
@@ -90,23 +141,25 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   const curse = mods.some(isCurse);
   const undead = mods.includes(UNDEAD);
   const wild = mods.includes(WILD);
+  const settled = wild && opts.settled === true;
   const paper = `<rect class="paper" width="${W}" height="${H}" ${fillOf(PLAIN)}/>`;
-  const suit = f && !wild ? ` data-suit="${f.suit}"` : '';
+  const suit = f && (!wild || settled) ? ` data-suit="${f.suit}"` : '';
   const state = undead || curse ? ` data-state="${undead && curse ? 'both' : undead ? 'undead' : 'curse'}"` : '';
-  const special = wild ? ' data-special="wild"' : undead ? ' data-special="undead"' : '';
+  const special = wild ? ` data-special="wild" data-wild="${settled ? 'settled' : 'open'}"` : undead ? ' data-special="undead"' : '';
+  const ids = f && wild ? wildFaceIds(f.rank, settled ? f.suit : null) : null;
   let body: string;
   if (!f) body = `<use href="#f-blank"/>`;
   else if (size === 'small') {
-    body = `${paper}<use href="#${wild ? wildFaceIds(f.rank).small : smallFaceId(f.suit, f.rank)}"/>${smallState(curse, undead)}`;
+    body = `${paper}<use class="face-small" href="#${ids ? ids.small : smallFaceId(f.suit, f.rank)}"/>${smallState(curse, undead)}`;
   } else {
-    const picture = wild ? wildFaceIds(f.rank).picture : undead ? (undeadFaceId(f.suit, f.rank) ?? faceId(f.suit, f.rank)) : faceId(f.suit, f.rank);
-    const index = wild ? wildFaceIds(f.rank).index : indexId(f.suit, f.rank);
+    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, f.rank) ?? faceId(f.suit, f.rank)) : faceId(f.suit, f.rank);
+    const index = ids ? ids.index : indexId(f.suit, f.rank);
     // One normal modification (the core allows no more); a special card changes the picture only.
     const over = mods
       .filter((m) => MOD_DRAW[m])
       .map((m) => modLayer(m, modValueText(m, values), values[m] ?? 1, PLAIN, opts.redeeming === true))
       .join('');
-    body = `${paper}<use href="#${picture}"/>${over}<use href="#${index}"/>`;
+    body = `${paper}<use class="face-pic" href="#${picture}"/>${over}<use class="face-idx" href="#${index}"/>`;
   }
   return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${state}${special}>${body}</svg>`;
 }
@@ -117,4 +170,16 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
  */
 export function cardBack(className = '', design: BackDesign = currentPlayerBack(), size: BackSize = 'full'): string {
   return `<span class="card-back ${className}" role="img" aria-label="${esc(de.card.back)}"><svg viewBox="0 0 120 180" shape-rendering="crispEdges" aria-hidden="true"><use href="#${backId(design, size)}"/></svg></span>`;
+}
+
+/**
+ * Show a settled Wandelkarte face (`svg`, drawn by `cardSvg`) in another
+ * suit's look: the colour cycle as its suit is settled. Drawing only.
+ */
+export function showWildSuit(svg: Element, rank: Rank, suit: Suit): void {
+  const ids = wildFaceIds(rank, suit);
+  svg.querySelector('.face-pic')?.setAttribute('href', `#${ids.picture}`);
+  svg.querySelector('.face-idx')?.setAttribute('href', `#${ids.index}`);
+  svg.querySelector('.face-small')?.setAttribute('href', `#${ids.small}`);
+  svg.setAttribute('data-suit', suit);
 }
