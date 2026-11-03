@@ -3232,7 +3232,7 @@ async function run() {
     const progress = await text(page, 'pub-progress');
     if (!/Spiel 1 von 3 · 0 \/ \d+ Augen/.test(progress)) fail(`pub progress in the head: ${progress}`);
     const hearts = await page.locator('[data-testid="lives"] .heart.is-full').count();
-    if (hearts !== 3) fail(`${hearts} hearts in the head, expected 3`);
+    if (hearts !== 2) fail(`${hearts} hearts in the head, expected 2`);
     log(`head: ${progress}, ${hearts} hearts`);
     if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
     await assertChoice(page, seated);

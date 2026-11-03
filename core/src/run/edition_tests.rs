@@ -88,16 +88,18 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // Recorded on main before the editions (53b9d29): the same seeds give
     // the same deals, cards, tricks and scores. The second district's
     // hashes were recorded again with the Kneipentour (ADR 0016): its
-    // opponents (PIMC 8:3 instead of 6:2) and Zielwerte changed.
+    // opponents (PIMC 8:3 instead of 6:2) and Zielwerte changed. Seeds 42
+    // and 99 again with the steep Zielwerte of 03.11.2026: the pub ends
+    // later, the deals are the same.
     assert_eq!(
         hashes,
         vec![
             14_014_214_924_750_367_174,
             3_945_578_528_229_563_393,
-            2_414_107_796_335_042_384,
-            17_652_788_418_728_733_400,
+            10_743_877_141_182_057_974,
+            11_881_650_903_804_866_197,
             8_533_871_236_692_366_623,
-            4_882_658_249_966_581_140,
+            667_397_997_431_229_310,
             13_458_722_017_759_859_422,
             51_271_920_649_180_957,
         ]

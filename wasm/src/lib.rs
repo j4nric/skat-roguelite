@@ -1175,7 +1175,7 @@ mod tests {
             serde_json::from_str(&full.view().expect("view")).expect("json");
         assert_eq!(view["sections"], 3);
         assert_eq!(view["length"], "Full");
-        assert_eq!(view["tour"]["lives"], 3);
+        assert_eq!(view["tour"]["lives"], 2);
         assert_eq!(view["tour"]["districts"].as_array().map(Vec::len), Some(3));
         assert_eq!(view["stake"], 0);
         assert_eq!(view["win_threshold"], 61);

@@ -1,24 +1,31 @@
 // Run-Struktur als Daten. Kneipentour (ADR 0016, DESIGN 5): ein Abend sind
 // drei Stadtteile mit je vier Kneipen und einer Boss-Kneipe. Zielwerte,
 // Leben, Routen, Spelunke, Spiellimit, Einmischen und Wirtschaft (DESIGN 12).
-// Alle Zahlen der Kneipentour sind VORLÄUFIG (02.11.2026, nach Augenmaß,
-// ohne Simulator-Messung; die Simulationen ruhen auf Wunsch des Nutzers).
+// Zielwerte, Leben und Groschen je übrigem Spiel gemessen am 03.11.2026
+// (docs/balance/2026-11-03-grosse-runde.md); Routen und Spelunke weiter
+// nach Augenmaß (02.11.2026).
 (
     // Zielwerte je Stadtteil: vier Kneipen und die Boss-Kneipe (vor dem
-    // Boss-Faktor), Reizwerte. Kurve des Alleinspielers (die anderen
-    // Charaktere haben eigene, characters.ron). Vorläufig aus der
-    // kalibrierten Kurve der Abschnitte (5 × 3 Serien, 02.11.2026)
-    // abgeleitet: die 15 Kneipen laufen über dieselbe Spanne von 33 bis 60.
+    // Boss-Faktor). Kurve des Alleinspielers (Drückeberger, Schneiderin und
+    // Bruderherz spielen sie mit; der Nullspieler hat eigene, characters.ron).
+    // Seit 03.11.2026 steil (bis dahin 33 bis 60): Die Kurve einer Kneipe
+    // ist flach (0,3 Punkte Gewinnquote je Zielwert-Punkt), und mit den
+    // Relikten wächst ein gewonnenes Spiel in Stadtteil 3 auf im Mittel über
+    // 90. Ziel gegen den PIMC-Spieler: Stadtteil 2 in 35 bis 40 %, Stadtteil
+    // 3 in 12 bis 18 %, 3 bis 5 % gewonnen, ein Viertel bis ein Drittel der
+    // verlorenen Runs endet in normalen Kneipen.
     targets: [
-        [33, 36, 38, 40, 45],
-        [40, 42, 44, 46, 52],
-        [46, 48, 50, 52, 60],
+        [45, 55, 65, 75, 60],
+        [90, 105, 120, 135, 100],
+        [145, 170, 195, 205, 140],
     ],
-    // Leben (ADR 0016): Start 3, eine verlorene Kneipe kostet eins, eine
+    // Leben (ADR 0016): Start 2 (bis 03.11.2026 3; mit 3 Leben endeten
+    // nur 2 bis 13 % der verlorenen Runs in normalen Kneipen), eine
+    // verlorene Kneipe kostet eins, eine
     // gewonnene Boss-Kneipe bringt eins, höchstens 4 (bis 03.11.2026 5: Rast
     // und Konterbier bauten den Vorrat über den Abend auf). Eine verlorene
     // Boss-Kneipe beendet den Run (ADR 0017).
-    lives: (start: 3, max: 4, boss_bonus: 1),
+    lives: (start: 2, max: 4, boss_bonus: 1),
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
     // deren Kategorie je Weg gewürfelt und angezeigt wird, nichts kostet

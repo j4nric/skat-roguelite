@@ -173,9 +173,9 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Curve for series of 3 games (DESIGN 5.2, calibrated 02.11.2026).
-    assert_eq!(content.run.targets[0], vec![33, 36, 38, 40, 45]);
-    assert_eq!(content.run.targets[2], vec![46, 48, 50, 52, 60]);
+    // Kneipentour curve (DESIGN 5.0.4, measured 03.11.2026).
+    assert_eq!(content.run.targets[0], vec![45, 55, 65, 75, 60]);
+    assert_eq!(content.run.targets[2], vec![145, 170, 195, 205, 140]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
