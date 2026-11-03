@@ -3972,9 +3972,16 @@ impl Run {
             .checked_div(economy.interest_step)
             .unwrap_or(0)
             .min(economy.interest_max);
+        // A boss pub plays all its games (ADR 0017) and pays as if
+        // `boss_reward.games_left_as` were left.
+        let paid_left = if self.series.is_boss_pub() {
+            games_left.max(content.run.boss_reward.games_left_as)
+        } else {
+            games_left
+        };
         let mut payout = Payout {
             base: economy.series_reward,
-            games_left: games_left * economy.per_game_left,
+            games_left: paid_left * economy.per_game_left,
             interest,
             bonus: 0,
             boss: 0,

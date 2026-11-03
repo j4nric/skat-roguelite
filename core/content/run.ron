@@ -101,8 +101,11 @@
     final_boss: Some("the_old_man"),
     // Belohnung einer gewonnenen Boss-Kneipe (ADR 0017): doppelte
     // Auszahlung, ein Leben (lives.boss_bonus) und ein Relikt aus drei,
-    // Seltenheit Ungewöhnlich oder höher.
-    boss_reward: (relics: 3, min_rarity: Uncommon),
+    // Seltenheit Ungewöhnlich oder höher. games_left_as (03.11.2026): Die
+    // Boss-Kneipe spielt immer alle drei Spiele; ihre Auszahlung rechnet,
+    // als blieben so viele übrig (per_game_left je Spiel), und verdoppelt
+    // dann. Vorher zahlte sie weniger als eine früh geschaffte Kneipe.
+    boss_reward: (relics: 3, min_rarity: Uncommon, games_left_as: 2),
     // Kartenspiel der Gegenspieler je Stadtteil (DESIGN 10.3): Stadtteil 1
     // Heuristik, danach PIMC mit steigender Zahl an Stichproben. `depth`:
     // exakt durchsuchte Stiche je Stichprobe, dahinter eine schnelle

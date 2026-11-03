@@ -1371,6 +1371,11 @@ pub struct BossRewardConfig {
     pub relics: u32,
     /// Lowest rarity on offer.
     pub min_rarity: Rarity,
+    /// A won boss pub plays all its games, so none is left; its payout
+    /// counts this many games left instead (at least the real number),
+    /// before it is doubled. 0: the games really left.
+    #[serde(default)]
+    pub games_left_as: u32,
 }
 
 impl Default for BossRewardConfig {
@@ -1378,6 +1383,7 @@ impl Default for BossRewardConfig {
         BossRewardConfig {
             relics: 3,
             min_rarity: Rarity::Uncommon,
+            games_left_as: 0,
         }
     }
 }

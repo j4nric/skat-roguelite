@@ -184,7 +184,20 @@ fn a_won_boss_pub_pays_double_gives_a_life_and_a_pick_of_three_relics() {
             _ => None,
         })
         .expect("won");
-    assert_eq!(payout.games_left, 0, "no games left in a boss pub");
+    // A boss pub plays all three games, and pays as if
+    // `boss_reward.games_left_as` were left (03.11.2026), then double.
+    let as_left = content.run.boss_reward.games_left_as;
+    assert_eq!(as_left, 2);
+    assert_eq!(
+        payout.games_left,
+        as_left * content.run.economy.per_game_left
+    );
+    assert_eq!(payout.base, content.run.economy.series_reward);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::SeriesWon { games_left: 0, .. }))
+    );
     assert!(payout.boss > 0);
     assert_eq!(payout.total(), 2 * payout.boss, "double");
     assert_eq!(run.phase(), RunPhase::BossReward);
