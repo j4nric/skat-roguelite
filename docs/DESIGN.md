@@ -143,9 +143,9 @@ Run (eine Kneipentour durch eine erfundene Stadt)
 
 ### 5.0 Die Kneipentour (ADR 0016)
 
-- **Kneipe**: Zielwert in Augen (Reizwerte wie bisher die Serie), bis zu drei Spiele gegen zwei Stammgäste. Wer den Zielwert erreicht, ist sofort fertig. Belohnung: Grundbetrag (`series_reward`, 3) plus je übrigem Spiel `per_game_left` (vorläufig 3 statt 1, damit sich eine früh geschaffte Kneipe lohnt), dazu Zinsen wie bisher (die Auszahlung, `Payout`). Im Code bleibt der Typ `Series` (Glossar).
+- **Kneipe**: Zielwert in Augen (Reizwerte wie bisher die Serie), bis zu drei Spiele gegen zwei Stammgäste. Wer den Zielwert erreicht, ist sofort fertig. Belohnung: Grundbetrag (`series_reward`, 3) plus je übrigem Spiel `per_game_left` (2; ADR 0016 setzte 3, gemessen am 03.11.2026 waren damit die fünf Relikt-Plätze schon zu Beginn von Stadtteil 2 voll), dazu Zinsen wie bisher (die Auszahlung, `Payout`). Im Code bleibt der Typ `Series` (Glossar).
 - **Verfehlt** (Zielwert nach dem dritten Spiel nicht erreicht): ein Leben weg, weiter zur Routenwahl ohne Belohnung (`PubLost`, `LivesChanged`). Hooks nach einer gewonnenen Kneipe (`OnSeriesWon`) feuern nicht.
-- **Leben** (`lives` in `run.ron`): Start 3, höchstens 5, eine geschaffte Boss-Kneipe +1. Mit dem letzten Leben ist der Run verloren (`RunLost`). Leben zählen nur in normalen Kneipen (ADR 0017). Die Web-App zeigt sie als Herzen.
+- **Leben** (`lives` in `run.ron`): Start 2, höchstens 4, eine geschaffte Boss-Kneipe +1 (seit 03.11.2026; ADR 0016 setzte Start 3, höchstens 5: Dann endeten nur 2 % der verlorenen Runs in normalen Kneipen, 5.0.4). Mit dem letzten Leben ist der Run verloren (`RunLost`). Leben zählen nur in normalen Kneipen (ADR 0017). Die Web-App zeigt sie als Herzen.
 - **Boss-Kneipe (ADR 0017, Entscheidung des Nutzers vom 03.11.2026)**: letzte Kneipe eines Stadtteils. Am Tisch sitzen **zwei Boss-Spieler**, die beiden Figuren des Bosses (links `BOSS_SEAT`, `Owner::Boss`; rechts `PARTNER_SEAT`, `Owner::BossPartner`), jede mit eigenem Namen, eigener Ausgabe und der Rückseite des Bosses (11). Der Boss wird beim Start des Stadtteils gezogen und ist ab dann sichtbar. **Alle drei Spiele werden gespielt**, der Zielwert zählt nach dem dritten (kein frühes Ende). **Verloren ist der Run vorbei** (`RunLost` mit `boss`), egal wie viele Leben übrig sind; der Schutzengel hilft hier nicht. **Gewonnen**: doppelte Auszahlung (`Payout::boss`), gerechnet, als blieben zwei Spiele übrig (`boss_reward.games_left_as` in `run.ron`, seit 03.11.2026; vorher fiel der Bonus je übrigem Spiel weg, und eine gewonnene Boss-Kneipe zahlte mit 6,45 Groschen weniger als eine früh geschaffte Kneipe mit 7,93, `docs/balance/2026-11-03-kleine-runde.md`), ein Leben und ein Relikt nach Wahl aus drei der Seltenheit Ungewöhnlich oder höher (`RunPhase::BossReward`, `RunAction::ChooseBossRelic`, `boss_reward` in `run.ron`); sind alle Plätze belegt, wird ein eigenes Relikt für den halben Preis verkauft, oder der Spieler verzichtet. Im letzten Stadtteil sitzt der Endboss „Der Alte“ mit „Der Alten“; ihn zu schlagen gewinnt den Run (ohne Wahl). Bis ADR 0017 saß ein Boss links und ein Stammgast rechts, eine verlorene Boss-Kneipe kostete ein Leben und wurde sofort wiederholt.
 - **Hausregeln des Stammtisch-Streits** gelten bis zum Ende des Stadtteils (bisher des Abschnitts).
 - **Einmischen, Schnäpse, Relikte „einmal pro Serie“** zählen je Kneipe.
@@ -171,28 +171,41 @@ Mit der Wahrscheinlichkeit `spelunke.chance` (vorläufig 0,3) führt **einer** d
 
 Stadtteile und Kneipen heißen nach einem **Namensgenerator** mit deutschen Wortlisten in `tour.ron` („Zum Goldenen Hirschen“, „Eckkneipe bei Uschi“, „Bahnhofsklause“, Boss-Kneipen wie „Vereinsheim Gut Blatt“), je Run aus dem Seed, ohne einen anderen Zufallsstrom zu berühren. Namen sind Anzeige. Die **Kartengeometrie** (Straßen, Lage) gehört der Web-App: Die Sicht liefert stabile Knoten-Ids (`d<Stadtteil>-p<Kneipe>`, Spelunke mit `-s`, Wege `…-r<n>`), je Stadtteil und für die Stadt einen Seed (`map_seed`) und den ganzen Plan des Abends (`TourView`: Stadtteile, Kneipen mit Zustand gewonnen, verloren, aktuell, kommend, übergangen, Spelunken, Boss des laufenden Stadtteils), damit die Web-App eine Übersicht und später eine Pixel-Stadtkarte zeichnen kann.
 
-#### 5.0.4 Vorläufige Zahlen der Kneipentour
+#### 5.0.4 Zahlen der Kneipentour
 
-Gesetzt am 02.11.2026 nach Augenmaß, **ohne Messung** (die Simulationen ruhen auf Wunsch des Nutzers). Grundlage: Die 15 Zielwerte der alten Kurve (5 Abschnitte × 3 Serien, 5.2) laufen über dieselbe Spanne auf 15 Kneipen. Mit Leben ist eine einzelne Kneipe weniger tödlich; ob die Kurve steiler werden muss, zeigt erst die Messung.
+Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben, Groschen je übrigem Spiel, Boss-Faktoren und Malus-Gewichte gemessen am 03.11.2026** gegen den PIMC-Spieler (`--bot pimc:12:3`, Alleinspieler). Kleine Runde (Ist-Stand, 3 × 500 Runs): `docs/balance/2026-11-03-kleine-runde.md`; Piloten und große Runde (3 × 2000 Runs, Seeds 42 bis 44): `docs/balance/2026-11-03-grosse-runde.md`.
+
+**Zielbild (03.11.2026)**: Der PIMC-Spieler erreicht Stadtteil 2 in 35 bis 40 % der Runs und Stadtteil 3 in 12 bis 18 %, gewinnt 3 bis 5 % der Abende, und ein Viertel bis ein Drittel der verlorenen Runs endet in normalen Kneipen (Leben aus), der Rest beim Boss.
+
+| Kennzahl | vorher (kleine Runde) | jetzt (große Runde) | Ziel |
+|---|---|---|---|
+| Stadtteil 2 erreicht | 57,4 % | 42,3 % | 35 bis 40 % |
+| Stadtteil 3 erreicht | 34,5 % | 17,4 % | 12 bis 18 % |
+| Run gewonnen | 17,0 % | 5,2 % | 3 bis 5 % |
+| verlorene Runs in normalen Kneipen | 2,6 % | 36,1 % | 25 bis 33 % |
+| normale Kneipen gewonnen | 77 bis 86 % | 38 bis 74 % | |
+| Boss-Kneipen gewonnen | 35 bis 72 % | 36 bis 58 % | |
+
+**Warum so steil**: Die Erfolgskurve einer Kneipe ist flach (0,3 Punkte Gewinnquote je Zielwert-Punkt: gewonnen wird groß, verloren doppelt), und mit fünf Relikten bringt ein im ersten Spiel geschaffter Sieg in Stadtteil 3 im Mittel 92 Punkte. Die vorgeschlagene Kurve 40 bis 108 (Faktor 1,5 bis 2) bewegte „Run gewonnen“ nur von 19 auf 16 %; erst mit Zielwerten bis gut 200 und zwei Startleben beißen die normalen Kneipen.
 
 | Größe | Wert | Ort |
 |---|---|---|
 | Stadtteile, Kneipen je Stadtteil | 3, 4 + Boss-Kneipe | `targets` in `run.ron`, `PUBS_PER_DISTRICT` |
-| Zielwerte Alleinspieler | 33 / 36 / 38 / 40 / Boss 45 · 40 / 42 / 44 / 46 / Boss 52 · 46 / 48 / 50 / 52 / Boss 60 | `run.ron` |
-| Zielwerte Nullspieler | 18 / 20 / 20 / 23 / 23 · 20 / 23 / 23 / 27 / 27 · 23 / 27 / 27 / 30 / 30 | `characters.ron` |
-| Zielwerte Drückeberger, Schneiderin, Bruderherz (seit 03.11.2026, 9.4 bis 9.6) | wie der Alleinspieler (`targets` fehlt), vorläufig | `characters.ron` |
-| Boss-Faktoren | vorläufig nach Augenmaß für drei volle Spiele gegen zwei Boss-Spieler (11, ADR 0017) | `bosses.ron` |
-| Boss-Belohnung | Auszahlung × 2, +1 Leben, 1 aus 3 Relikten ab Ungewöhnlich | `economy`, `lives.boss_bonus`, `boss_reward` |
+| Zielwerte Alleinspieler (seit 03.11.2026, gemessen) | 45 / 55 / 65 / 75 / Boss 60 · 90 / 105 / 120 / 135 / Boss 100 · 145 / 170 / 195 / 205 / Boss 140 (bis dahin 33 / 36 / 38 / 40 / 45 · 40 / 42 / 44 / 46 / 52 · 46 / 48 / 50 / 52 / 60) | `run.ron` |
+| Zielwerte Nullspieler | 18 / 20 / 20 / 23 / 23 · 20 / 23 / 23 / 27 / 27 · 23 / 27 / 27 / 30 / 30, nicht neu gemessen (mit der steilen Kurve des Alleinspielers vermutlich viel zu leicht, 17) | `characters.ron` |
+| Zielwerte Drückeberger, Schneiderin, Bruderherz (seit 03.11.2026, 9.4 bis 9.6) | wie der Alleinspieler (`targets` fehlt), also seit 03.11.2026 die steile Kurve, für diese Charaktere nicht gemessen | `characters.ron` |
+| Boss-Faktoren | Alleinspieler gemessen am 03.11.2026 (11.1), Nullspieler nach Augenmaß | `bosses.ron` |
+| Boss-Belohnung | Auszahlung wie mit zwei übrigen Spielen, × 2 (im Mittel 14,6 Groschen), +1 Leben, 1 aus 3 Relikten ab Ungewöhnlich | `economy`, `lives.boss_bonus`, `boss_reward` |
 | Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
-| Leben | Start 3, höchstens 5, Boss +1 | `lives` |
-| Grundbetrag, je übrigem Spiel | 3, 3 (bisher 1) | `economy` |
+| Leben | Start 2, höchstens 4, Boss +1 (bis 03.11.2026 3, 5, +1) | `lives` |
+| Grundbetrag, je übrigem Spiel | 3, 2 (03.11.2026; ADR 0016 3, davor 1) | `economy` |
 | Gewichte der Stationen | Tresen 40, Begegnung 35, Upgrade 12, Rast 8 (Rast nur mit fehlendem Leben); immer ein Tresen | `route.weights` |
-| Spelunke | Chance 0,3, Zielwert × 1,25, ein Malus (alle Gewicht 1) | `spelunke`, `tour.ron` |
+| Spelunke | Chance 0,3, Zielwert × 1,25, ein Malus (Gewicht 2, Kein Skat 1, seit 03.11.2026: Kein Skat war 13 bis 23 Punkte schwerer als die anderen) | `spelunke`, `tour.ron` |
 | Rast | +1 Leben | `encounters.ron` (`snack_bar`) |
 | Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast mit fehlendem Leben; Spelunke nur mit 3 Leben und 3 Relikten | `RunBot::route_action` |
 | Bot-Boss-Relikt | das wertvollste in einen freien Platz, bei vollen Plätzen statt des schwächsten, wenn es mindestens `SWAP_MARGIN` mehr wert ist, sonst keins | `RunBot::boss_reward_action` |
 
-Zu messen, sobald der Simulator wieder läuft: Stadtteil 2 und 3 erreicht und Run gewonnen je Charakter (Zielbild neu festzulegen, bisher: ein Drittel erreicht die zweite Stufe, 1 bis 2 % gewinnen), mittlere Leben je Stadtteil, Anteil verlorener Kneipen, Wert der Spelunke (Gewinnquote mit und ohne Malus), Groschen je Run mit dem höheren Bonus je Spiel, Erreichbarkeit der umgeschriebenen Freischaltungen.
+Gemessen am 03.11.2026 nur für den Alleinspieler. Noch zu messen: die anderen Charaktere (Nullspieler mit eigener Kurve, die übrigen mit der des Alleinspielers), die Gewichte der Stationen und die Spelunke selbst (mit der steilen Kurve in Stadtteil 3 nur noch 20 bis 36 % gewonnen, 17).
 
 ### 5.1 Die Serie (seit ADR 0016: die Kneipe)
 
@@ -209,7 +222,7 @@ Gilt für die Kneipe weiter: Zielwert, drei Spiele, Einmischen, Auszahlung. Übe
 
 ### 5.2 Zielwert-Progression (Abschnitte und Serien, bis ADR 0016)
 
-Die folgende Kalibrierung galt der alten Struktur aus fünf Abschnitten. Die vorläufigen Zielwerte der Kneipentour stehen in 5.0.4.
+Die folgende Kalibrierung galt der alten Struktur aus fünf Abschnitten. Die Zielwerte der Kneipentour (gemessen am 03.11.2026) stehen in 5.0.4.
 
 
 **Kalibriert am 02.11.2026 für Serien mit 3 Spielen** (zweimal einmischen je Spiel, Ansagen nach dem Skat, Relikte bis Welle 2a), Messung in `docs/balance/2026-11-02-kalibrierung-dreierserie.md`. Zielbild wie in M5: Der PIMC-Spieler (`--bot pimc:12:3`) erreicht Abschnitt 2 in gut einem Drittel der Runs und gewinnt 1 bis 2 % der ganzen Abende, **mit jedem Charakter**. Deshalb hat jeder Charakter außer dem Alleinspieler eigene Zielwerte (`targets` in `characters.ron`), alle Reizwerte. Je Zelle: Serie 1 / Serie 2 / Boss-Serie, die Boss-Serie vor dem Boss-Faktor (11).
@@ -714,7 +727,7 @@ Eine vierte Seltenheit für Relikte, die den Run prägen (`Rarity::Legendary`, A
 
 | Relikt | Effekt | Hebel | Preis |
 |---|---|---|---|
-| **Skatgott** (`skat_god`) | Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3 | Multiplikator (Zähler `skat_god`) | 9 |
+| **Skatgott** (`skat_god`) | Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3 | Multiplikator (Zähler `skat_god`) | 12 (bis 03.11.2026 9) |
 | **Ehrenvorsitz** (`honorary_chair`) | Du bist immer Vorhand | Stichgewinn (Vorhand) | 6 |
 
 - **Skatgott**: Der Zähler steigt nach jedem gewonnenen Spiel mit Schneider (auch Schneider durch Jungfrau, Schenken, Stichfest oder Schwarz). Die Stufen gelten nur für gewonnene Spiele, jede Spielart (Farbspiel, Grand, Null), nie der Ramsch (`AddLevelsPerCounter` bei der Wertung; der Stufen-Hook steht vor dem Zähler, ein Schneiderspiel zählt seinen eigenen Punkt also nicht). Entschieden am 02.11.2026: „auf alles“ heißt „auf jede Spielart“; die erste Fassung zählte auch verlorene Spiele und brachte dem Bot nur +1,3 bei weniger Punkten je Spiel. Abgestimmter Text ergänzt zu „… +1 Multiplikator auf jedes gewonnene Spiel“. **Seit 03.11.2026 höchstens +3** (Entscheidung von Claude nach `docs/balance/2026-11-03-kleine-runde.md`: allein +12 Punkte „Run gewonnen“, alle anderen Relikte höchstens +4): Der Zähler steigt nur, solange er unter 3 steht (`Not(CounterAtLeast(counter: "skat_god", value: 3))`, reine Daten).
@@ -756,11 +769,11 @@ Gemessen (`docs/balance/2026-11-02-welle3.md`, wie Welle 2a): Skatgott +4,7 auf 
 
 | Relikt | Id | Wirkung (Daten) | Seltenheit, Preis (vorläufig) | Freischaltung |
 |---|---|---|---|---|
-| **Feierabend** | `closing_time` | Kneipe im ersten Spiel geschafft: +4 Groschen (`OnSeriesWon` mit `GamesLeftAtLeast(2)`, `GainCoins(4)`) | Common, 5 | frei |
+| **Feierabend** | `closing_time` | Kneipe im ersten Spiel geschafft: +4 Groschen (`OnSeriesWon` mit `GamesLeftAtLeast(2)`, `GainCoins(4)`) | Common, 4 (bis 03.11.2026 5) | frei |
 | **Monatskarte** | `season_ticket` | Jede Bahn: +1 Groschen (neuer Auslöser `OnRouteChosen`, Bedingung `TransportIs(Train)`) | Common, 4 | Neues Viertel |
 | **Stammtischkasse** | `kitty` | Von jeder Belohnung einer Kneipe 2 Groschen in die Kasse (`StashCoins`, Zähler `kitty`, nach der Auszahlung, höchstens was da ist); beim nächsten Tresen alles plus die Hälfte, abgerundet (neuer Auslöser `OnShopOpened`, `PayOutCounter(percent: 150)`) | Uncommon, 5 | Dickes Ding |
 | **Deckel anschreiben** (Figur) | `slate` | Einmal pro Stadtteil darf der Tresen bis 5 Groschen ins Minus verkaufen (`Credit(5)`); spätere Einnahmen zahlen zuerst die Schulden | Uncommon, 5 | Omas Liebling |
-| **Schutzengel** | `guardian_angel` | Einmal pro Stadtteil kostet die erste verlorene Kneipe kein Leben (`SpareLife`, Ereignis `LifeSpared`) | Rare, 8 | Ohne Einmischen |
+| **Schutzengel** | `guardian_angel` | Einmal pro Stadtteil kostet die erste verlorene Kneipe kein Leben (`SpareLife`, Ereignis `LifeSpared`) | Rare, 6 (bis 03.11.2026 8) | Ohne Einmischen |
 | **Spelunkenkenner** (Figur) | `dive_expert` | In einer Spelunke zwei Mali zur Wahl (`ChooseMalus(2)`, Aktion `ChooseMalus`) | Uncommon, 4 | Lehrjahre |
 
 Auslegungen von Claude:
@@ -1120,11 +1133,11 @@ Die Sonderregel gilt für die ganze Boss-Kneipe und wird vorher angezeigt, damit
 
 | Boss | Regel | Figuren (links, rechts) | Ausgaben | Thema | Faktor (vorläufig) |
 |---|---|---|---|---|---|
-| **Der Schieber** | Jedes Spiel ist ein Handspiel (`RequireHand`) | Der Schieber, Die Hehlerin | Siebenen Augen +4; Achten Augen +3 | Schmuggelware: Luschen, die doch etwas wert sind | 0,8 (Nullspieler 0,35) |
-| **Die Oma** | Zu Beginn ihrer Kneipe tragen 16 der 32 Karten der Ausgabe des Spielers je einen zufälligen Fluch (Durchsichtig, Ramponiert, Fleckig, Standardwert), nur für diese Kneipe (`CurseForPub`) | Die Oma, Der Opa | Oberinnen Augen +3 (6 statt 3); Könige Augen +2 (6 statt 4) | aus der alten Zeit: die alte Oberin, der alte König | 0,7 (Nullspieler 0,9) |
-| **Die Zwillinge** | Die Gegner sehen gegenseitig ihre Blätter und spielen danach (`DefendersSeeEachOther`, Schummeln) | Fritz, Franz | Achten Rang 2; Neunen Rang 2 | sie sehen doppelt: zwei Nullen übereinander, die Neun gleich mit | 0,85 |
+| **Der Schieber** | Jedes Spiel ist ein Handspiel (`RequireHand`) | Der Schieber, Die Hehlerin | Siebenen Augen +4; Achten Augen +3 | Schmuggelware: Luschen, die doch etwas wert sind | 0,5 (Nullspieler 0,35) |
+| **Die Oma** | Zu Beginn ihrer Kneipe tragen 16 der 32 Karten der Ausgabe des Spielers je einen zufälligen Fluch (Durchsichtig, Ramponiert, Fleckig, Standardwert), nur für diese Kneipe (`CurseForPub`) | Die Oma, Der Opa | Oberinnen Augen +3 (6 statt 3); Könige Augen +2 (6 statt 4) | aus der alten Zeit: die alte Oberin, der alte König | 1,0 (Nullspieler 0,9) |
+| **Die Zwillinge** | Die Gegner sehen gegenseitig ihre Blätter und spielen danach (`DefendersSeeEachOther`, Schummeln) | Fritz, Franz | Achten Rang 2; Neunen Rang 2 | sie sehen doppelt: zwei Nullen übereinander, die Neun gleich mit | 1,2 |
 | **Der Ramscher** | Jedes Spiel ist ein Ramsch (`Ramsch`, bis ADR 0017 nur das erste); ein verlorener Ramsch zählt einfach statt doppelt gegen den Spieler (`SingleLoss`, seit 03.11.2026) | Der Ramscher, Die Ramscherin | Daus Ramponiert 6; Zehnen Ramponiert 5 | sie lassen laufen | 1,0 |
-| **Der Schwarze Peter** | Ein gewonnenes Spiel ohne Schneider zählt halb | Der Schwarze Peter, Die Schwarze Grete | Eichel- und Grün-Unter Durchsichtig; Eichel- und Grün-Oberin Durchsichtig | Ruß an den Fingern: eine Hilfe beim schwersten Boss | 0,5 (Nullspieler 0,2) |
+| **Der Schwarze Peter** | Ein gewonnenes Spiel ohne Schneider zählt halb | Der Schwarze Peter, Die Schwarze Grete | Eichel- und Grün-Unter Durchsichtig; Eichel- und Grün-Oberin Durchsichtig | Ruß an den Fingern: eine Hilfe beim schwersten Boss | 0,7 (Nullspieler 0,2) |
 | **Der Alte** (Endboss) | legt die fünf Regeln oben der Reihe nach auf, eine pro Blatt (Schieber, Zwillinge, Ramscher, Oma, Schwarzer Peter) | Der Alte, Die Alte | die Ausgaben der Figuren des Bosses, dessen Regel gerade gilt (links die erste, rechts die zweite) | das alte Paar | 1,0 |
 
 Entfallen mit ADR 0017: **Der Kontra-Hans** (Kontra immer erlaubt), **Der Revolutionär** (Handtausch nach dem fünften Stich) und **Der Kiebitz-Mörder** (Informations-Wirkungen aus). Mit ihnen die Wirkungen `SwapDefenderHands`, `DisableInformation` und `BlankOut` (die alte Regel der Oma); `EnableKontra` bleibt für die Hausregel. Ein Spielstand, der einen von ihnen gezogen hat, trifft einen Ersatz (`RETIRED_BOSSES`: Kontra-Hans und Revolutionär die Zwillinge, Kiebitz-Mörder der Schwarze Peter; keiner verlangt Hand, damit ein wartender Stand spielbar bleibt). **Der Totengräber** (Boss mit Sonderkarten) ruht.
@@ -1134,7 +1147,18 @@ Leitlinien und Auslegungen (Claude, 03.11.2026):
 - **Ausgaben**: je Figur eine Gruppe von vier Karten (der Peter und die Grete je zwei), eine Modifikation je Karte, wie die milde Stufe von ADR 0015. Beide Figuren teilen das Thema, unterscheiden sich aber in der Kartengruppe oder im Wert. Beide zeigen die Rückseite des Bosses (`back`; eine Figur darf eine eigene haben, `figures[].back`). Die Figuren des Alten haben keine eigene Ausgabe (Ladefehler sonst), ihre Rückseite ist seine.
 - **Die Oma**: Die Flüche zieht der Generator der Route (`tour_rng`), Karte und Fluch je Karte; ein Fluch, der nicht auf die Karte passt (Fleckig nur auf Farbkarten), wird nicht gelegt. Er tritt an die Stelle der normalen Modifikation, eine Spezialkarte (Untot, Wandelkarte, Abgestuft) bleibt. Jede Karte wird vorher gemerkt (`Series::boss_curses`) und am Ende der Kneipe genau so zurückgelegt; keine Groschen, kein `OnAttach`. Unter dem Alten legt sie die Flüche beim ersten Blatt mit ihrer Regel, und sie bleiben bis zum Ende der Kneipe. Seit ADR 0017 trifft sie jeden Charakter (bis dahin nur den Alleinspieler).
 - **Der Ramscher**: Jedes Spiel unter seiner Regel ist ein Ramsch. Mit drei Ramsch-Spielen entschied vor allem, ob einer verloren ging (doppelt gegen den Spieler); der Faktor wirkt kaum. **Entschieden von Claude am 03.11.2026 (17 a)**: In seiner Kneipe (und unter seiner Regel beim Alten) zählt ein verlorener Ramsch nur einfach. Das ist eine eigene Wirkung der Boss-Regel (`SingleLoss` in `passive`, dieselbe Zeile `LossFactor` wie beim Magenbitter), kein Sonderfall im Code. Gemessen vorher ohne Relikte 45 % (Stadtteil 1) und 37 % (Stadtteil 3), gegengerechnet mit einfacher Wertung 64 und 56 % (`docs/balance/2026-11-03-kleine-runde.md`, Abschnitt 3). Der Faktor bleibt 1,0.
-- **Faktoren**: vorläufig nach Augenmaß für drei volle Spiele gegen zwei Boss-Spieler und das Alles-oder-nichts, ohne Messung (Simulationen ruhen). Die Ausgaben auf beiden Plätzen und das Ende ohne vorzeitigen Gewinn machen jede Boss-Kneipe schwerer als vorher; deshalb liegen Schieber, Zwillinge und der Alte unter ihrem alten Wert. Zu messen mit `--curve --boss <id>` je Charakter.
+- **Faktoren** (Alleinspieler, gemessen am 03.11.2026, `docs/balance/2026-11-03-kleine-runde.md` und `2026-11-03-grosse-runde.md`; die des Nullspielers weiter nach Augenmaß): Schieber 0,8 → 0,5, Oma 0,7 → 1,0, Zwillinge 0,85 → 1,2, Schwarzer Peter 0,5 → 0,7, Ramscher und der Alte 1,0. Die Boss-Kurven sind flach (0,15 bis 0,25 Punkte je Zielwert-Punkt, ohne Relikte Obergrenze 51 bis 76 % bei Zielwert 1); wie schwer ein Boss ist, entscheidet seine Regel, der Faktor stellt nur fein nach. Boss-Kneipe gewonnen im Run (Stadtteil 1 / 2 und 3):
+
+| Boss | vorher (kleine Runde) | jetzt (große Runde, Zielwerte 60 / 100 / 140) |
+|---|---|---|
+| Der Ramscher | 35,5 % (36 / 35) | 51,1 % (57 / 40) |
+| Der Schieber | 52,1 % (52 / 53) | 51,5 % (50 / 54) |
+| Der Schwarze Peter | 63,9 % (63 / 67) | 51,2 % (52 / 50) |
+| Die Oma | 72,4 % (70 / 76) | 57,0 % (60 / 52) |
+| Die Zwillinge | 71,8 % (73 / 70) | 58,3 % (65 / 44) |
+| Der Alte (Endboss) | 49,4 % | 35,7 % |
+
+  Der Ramscher liegt mit der einfachen Wertung (unten) bei den anderen, sein Faktor bleibt 1,0. Der Alte ist als Endboss mit 36 % der schwerste.
 - **Belohnung**: Die Relikt-Wahl zieht der Ereignis-Generator aus dem Relikt-Pool des Charakters (nicht gesperrt, nicht besessen), Seltenheit Ungewöhnlich oder höher (`boss_reward` in `run.ron`); ohne passendes Relikt geht es direkt zur Routenwahl.
 
 ### 11.2 Bis ADR 0017
@@ -1204,7 +1228,9 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 
 ## 12. Wirtschaft
 
-**Seit ADR 0016**: Groschen je gewonnener Kneipe (Grundbetrag 3, je übrigem Spiel vorläufig 3 statt 1, Zinsen wie bisher); eine verlorene Kneipe zahlt nichts. Eine gewonnene Boss-Kneipe zahlt seit 03.11.2026 so, als blieben zwei Spiele übrig, und das doppelt (`boss_reward.games_left_as`, 5.0). Der Tresen kommt nur noch als Station eines Weges (5.0.1), nicht mehr nach jeder Serie; die Spelunke bringt ein Relikt oder seinen halben Preis. Alles vorläufig (5.0.4).
+**Seit ADR 0016**: Groschen je gewonnener Kneipe (Grundbetrag 3, je übrigem Spiel 2 seit 03.11.2026, vorher 3 und vor ADR 0016 1, Zinsen wie bisher); eine verlorene Kneipe zahlt nichts. Eine gewonnene Boss-Kneipe zahlt seit 03.11.2026 so, als blieben zwei Spiele übrig, und das doppelt (`boss_reward.games_left_as`, 5.0). Der Tresen kommt nur noch als Station eines Weges (5.0.1), nicht mehr nach jeder Serie; die Spelunke bringt ein Relikt oder seinen halben Preis.
+
+**Gemessen am 03.11.2026** (Alleinspieler, PIMC-Spieler, `docs/balance/2026-11-03-grosse-runde.md`): Ein Run bringt im Mittel 31,6 Groschen aus Kneipen (vorher 55,8), dazu 4 Startkapital, 2,4 aus Verkäufen und 2,4 aus Inhalten; ausgegeben werden 36,9, davon Relikte 60 %, Zinken 19 %, Schnäpse 19 %, Kartenmaler 1 %, Neuauslage und Reinigen unter 1 %; Neu auslosen der Zinken nutzt der Bot nie. 4,0 Tresen-Besuche je Run. Eine gewonnene normale Kneipe zahlt 4,6 bis 6,0, eine gewonnene Boss-Kneipe 14,5 (vorher 6,45, weniger als eine Kneipe). Die fünf Relikt-Plätze sind beim Boss 1 im Mittel zu 4,0 belegt, ab Stadtteil 2 voll (vorher schon beim Betreten von Stadtteil 2 zu 93 %). **Preise seit 03.11.2026** nach der Einzelmessung ohne Tresen: Skatgott 9 → 12, Ein Auge zudrücken 8 → 7, Schieben 8 → 6, Schenken 8 → 6, Schutzengel 8 → 6, Feierabend 5 → 4.
 
 **Gegenstands-Review (02.11.2026, 8.5), vorläufig ohne Messung**: Kräuter 3 (Common), Doppelkorn 3 (Uncommon), Konterbier 4 (Uncommon), Schwenker 2 (Common), Wegbier 3 (Common); Spickzettel 5 (bisher 4); Feierabend 5 (Common), Monatskarte 4 (Common), Stammtischkasse 5 (Uncommon), Deckel anschreiben 5 (Uncommon), Schutzengel 8 (Rare), Spelunkenkenner 4 (Uncommon). Neu in der Wirtschaft: Schulden am Tresen (Deckel anschreiben, bis −5, einmal pro Stadtteil), eine Kasse (2 je Kneipe, +50 % beim nächsten Tresen), die Wette (3 oder 6 Groschen) und Groschen aus Begegnungen (Wirt 5, Portemonnaie 8). Der Falschspieler kostet jetzt 2 Groschen, statt 3 zu zahlen.
 
@@ -1410,13 +1436,13 @@ Entschieden am 02.11.2026 (Nutzer):
 
 ## 17. Offen
 
-- **Bosse v2 (ADR 0017, 03.11.2026)**: alle Boss-Faktoren vorläufig nach Augenmaß (11.1), nichts gemessen (Simulationen ruhen). Zu messen, sobald sie wieder laufen: jede Boss-Kneipe je Charakter mit `--curve --boss <id>` (Stand nach dem dritten Spiel) und im ganzen Abend, wie oft ein Run an der Boss-Kneipe endet und ob die Kurve der normalen Kneipen dafür milder werden muss; der Wert der Belohnung (Relikt-Wahl, doppelte Groschen). (a) ~~**Der Ramscher**: ob ein verlorener Ramsch in seiner Kneipe nur einfach zählen soll.~~ Entschieden von Claude am 03.11.2026: ja, einfach (`SingleLoss`, 11.1), Faktor bleibt 1,0; im ganzen Abend neu messen. Offen zum Entscheiden: (b) **Die Oma unter dem Alten**: Ihre Flüche bleiben ab ihrem Blatt bis zum Ende der Kneipe (Auslegung von Claude), nicht nur für ein Blatt. (c) Eigene Rückseiten je Figur (heute teilen beide die des Bosses) und weitere Bosse als Daten, zuerst der Totengräber (ruht). (d) Der Bot wählt das Boss-Relikt nach seiner Werttabelle (`relic_value`), nicht nach der Seltenheit.
+- **Bosse v2 (ADR 0017, 03.11.2026)**: Faktoren des Alleinspielers gemessen am 03.11.2026 (11.1), Boss-Kneipen jetzt 51 bis 58 %, der Alte 36 %; die des Nullspielers und der übrigen Charaktere noch nach Augenmaß. Offen: die Zwillinge fallen von 65 % in Stadtteil 1 auf 44 % danach (PIMC-Gegner, die sich gegenseitig sehen), der Ramscher von 57 auf 40 %; ob der Alte als Endboss mit 36 % zu schwer ist, zeigen echte Runs. (a) ~~**Der Ramscher**: ob ein verlorener Ramsch in seiner Kneipe nur einfach zählen soll.~~ Entschieden von Claude am 03.11.2026: ja, einfach (`SingleLoss`, 11.1), Faktor bleibt 1,0; im ganzen Abend neu messen. Offen zum Entscheiden: (b) **Die Oma unter dem Alten**: Ihre Flüche bleiben ab ihrem Blatt bis zum Ende der Kneipe (Auslegung von Claude), nicht nur für ein Blatt. (c) Eigene Rückseiten je Figur (heute teilen beide die des Bosses) und weitere Bosse als Daten, zuerst der Totengräber (ruht). (d) Der Bot wählt das Boss-Relikt nach seiner Werttabelle (`relic_value`), nicht nach der Seltenheit.
 
 - **Neue Charaktere** (03.11.2026, 9.4 bis 9.6): Drückeberger, Schneiderin und Bruderherz spielen mit den Zielwerten des Alleinspielers und seinen Tresen-Gewichten, nichts gemessen (Simulationen ruhen). Zu messen, sobald sie wieder laufen (`--character shirker|tailoress|heart_brother`): ob die zurückkommenden Marken des Drückebergers zu viele Groschen bringen; ob die Schneiderin mit −1 ohne Schneider überhaupt durch Stadtteil 1 kommt; wie stark Bruderherz im Rot-Spiel ist; Erreichbarkeit der drei Freischaltungen (`--unlocks`, der Bot drückt selten 21 Augen). Für feat/zinken: Auslage und Kartenmaler müssen `Run::zinken_price` nutzen (9.6).
 
-- **Gegenstands-Review** (02.11.2026, 8.5): alle Preise, Seltenheiten und Werte der neuen und geänderten Gegenstände nach Augenmaß, nichts gemessen (Simulationen ruhen). Zu messen: Wirkung von Schutzengel, Kasse, Deckel und Feierabend auf „Stadtteil 2/3 erreicht“, Drei drücken nur im ersten Spiel, Spickzettel mit beiden Karten, Doppelkorn mit Neugeben; Erreichbarkeit der Freischaltungen mit jetzt 16 von 32 gesperrten Relikten; ob der Skatlehrer („im ersten Spiel ein Einmischen weniger“) und die Wette (nur Schneider zählt) so gemeint sind. Offen beim Nutzer: der endgültige Name von „Rang +1“ und die neue Tresen-Mechanik für Kartenverbesserungen; die Form des Bierdeckels nach Anzeige-Gruppe.
+- **Gegenstands-Review** (02.11.2026, 8.5): Preise von Skatgott, Ein Auge zudrücken, Schieben, Schenken, Schutzengel und Feierabend am 03.11.2026 nach Messung gesetzt (12). **Offen: Der Schutzengel** ist mit zwei Startleben vom wirkungslosen zum zweitstärksten Relikt geworden (ohne Tresen +14,8 auf „Stadtteil 2“, +9,0 auf „Stadtteil 3“, `docs/balance/2026-11-03-grosse-runde.md`); sein neuer Preis 6 ist zu niedrig, Vorschlag 8 oder 9. Feierabend wirkt beim Bot weiter nicht. Die übrigen Werte nach Augenmaß. Zu messen: Wirkung von Schutzengel, Kasse, Deckel und Feierabend auf „Stadtteil 2/3 erreicht“, Drei drücken nur im ersten Spiel, Spickzettel mit beiden Karten, Doppelkorn mit Neugeben; Erreichbarkeit der Freischaltungen mit jetzt 16 von 32 gesperrten Relikten; ob der Skatlehrer („im ersten Spiel ein Einmischen weniger“) und die Wette (nur Schneider zählt) so gemeint sind. Offen beim Nutzer: der endgültige Name von „Rang +1“ und die neue Tresen-Mechanik für Kartenverbesserungen; die Form des Bierdeckels nach Anzeige-Gruppe.
 
-- **Kneipentour (ADR 0016)**: alle Zahlen vorläufig und ungemessen (5.0.4): Zielwerte je Kneipe und Charakter, Leben (3/5/+1), Bonus je übrigem Spiel (3), Gewichte der Stationen, Spelunke (0,3 und × 1,25), Gegnerstärke je Stadtteil, umgeschriebene Freischaltungen. Auslegungen von Claude: die Spelunke kommt nie vor einer Boss-Kneipe; unter drei Wegen ist immer ein Tresen; Rast nur mit fehlendem Leben; der Malus „Kein Skat“ trifft den Nullspieler nicht. Seit ADR 0017 erledigt: Sekundant des Bosses (zwei Boss-Spieler) und die Wiederholung einer verlorenen Boss-Kneipe (sie beendet jetzt den Run). Offen im Cockpit: die Form des Malus (umgesetzt: einer, zufällig, vorher sichtbar). Die Stadtkarte (Pixel-Stadtplan) wird getrennt entworfen; die Sicht liefert dafür den ganzen Plan, Knoten-Ids und Seeds (5.0.3).
+- **Kneipentour (ADR 0016)**: Zielwerte, Leben (2/4/+1) und Bonus je übrigem Spiel (2) für den Alleinspieler gemessen am 03.11.2026 (5.0.4): Stadtteil 2 42,3 %, Stadtteil 3 17,4 %, gewonnen 5,2 %, 36 % der verlorenen Runs in normalen Kneipen, alles am oberen Rand des Zielbilds. Nächster kleiner Schritt, falls gewünscht: Boss-Zielwert in Stadtteil 1 60 → 70 (weniger Runs in Stadtteil 2, mehr Ende beim Boss). Offen: **alle anderen Charaktere** mit der neuen Kurve und zwei Startleben (der Nullspieler behält seine Zielwerte 18 bis 30 und dürfte jetzt viel zu leicht sein; Drückeberger, Schneiderin, Bruderherz spielen die steile Kurve ungemessen); die **Spelunke** (Zielwert × 1,25 auf der steilen Kurve: in Stadtteil 3 nur 20 bis 36 % gewonnen; Vorschlag `target_factor` 1,25 → 1,1); die Bot-Regel „Spelunke nur mit 3 Leben“ passt nicht mehr zu zwei Startleben; Gewichte der Stationen, Gegnerstärke je Stadtteil. Auslegungen von Claude: die Spelunke kommt nie vor einer Boss-Kneipe; unter drei Wegen ist immer ein Tresen; Rast nur mit fehlendem Leben; der Malus „Kein Skat“ trifft den Nullspieler nicht. Seit ADR 0017 erledigt: Sekundant des Bosses (zwei Boss-Spieler) und die Wiederholung einer verlorenen Boss-Kneipe (sie beendet jetzt den Run). Offen im Cockpit: die Form des Malus (umgesetzt: einer, zufällig, vorher sichtbar). Die Stadtkarte (Pixel-Stadtplan) wird getrennt entworfen; die Sicht liefert dafür den ganzen Plan, Knoten-Ids und Seeds (5.0.3).
 
 - **Effekte v2** (02.11.2026, 7.2): Werte, Preise und Seltenheit sind Platzhalter, nichts gemessen (Simulationen pausiert). Entschieden: Moment-Modifikationen und Spezial-Gutscheine höchstens einmal, Groschen-Gutschein, Augen und Trumpf ohne Obergrenze, Trumpf und Fleckig streng (Cockpit). Mit M9 erledigt: Frisches Deck reinigt (7.3), die Sicht zeigt die Ausgabe des Gegners auf einer durchsichtigen Karte (7.2).
 - **Eigene Ausgaben (ADR 0015)**: beantwortet im Cockpit und umgesetzt in M9 (02.11.2026): Trumpf und Fleckig streng, Boss-Ausgaben mild, Stammgäste normal, Frisches Deck reinigt, Nullspieler mit Abgestuft, laufende Spielstände verworfen. Offen: alle Messungen (18.4, Simulationen pausiert); ob die Gleichstands-Regel bei Abgestuft auf Daus und Zehn (gleiche Stärke, die frühere gewinnt) für Menschen verständlich ist; ob die Web-App vor der Boss-Serie zusätzlich die Reihenfolge der Ausgaben des Alten zeigen soll (heute nur die Ausgabe der Regel im laufenden Blatt).
