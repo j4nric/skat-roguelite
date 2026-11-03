@@ -31,6 +31,7 @@ export const de = {
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
       LivesFull: 'Dir fehlt kein Leben.',
       PainterPending: 'Erst eine Zinke des Kartenmalers wählen.',
+      SchnappsRewardPending: 'Erst entscheiden, was mit dem neuen Schnaps passiert.',
       AlreadyUsed: 'Das gibt es an diesem Tresen nur einmal.',
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
@@ -532,6 +533,8 @@ export const de = {
     gambleCurse: 'Reingelegt! Statt des Tricks gibt’s einen Fluch.',
     gambleGood: 'Der Trick sitzt.',
     consumableGained: '{name} geschenkt.',
+    schnappsRewarded: 'Der Wirt gibt einen aus: {name}.',
+    schnappsRewardTaken: '{name} genommen, {old} abgegeben.',
     wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
@@ -676,6 +679,13 @@ export const de = {
     painterChoose: 'Er malt dir eine davon auf {card}:',
     painterTake: 'Diese nehmen',
     painterFree: 'In der Werkstatt umsonst.',
+    /** The Schnaps of a won pub with every slot full (DESIGN 8.9). */
+    schnappsRewardTitle: 'Der Wirt gibt einen aus',
+    schnappsRewardChoose: 'Deine drei Plätze sind voll. Tausch {name} gegen einen deiner Schnäpse, oder verkauf ihn.',
+    schnappsRewardSwapTitle: 'Dafür abgeben:',
+    schnappsRewardSwap: '{name} abgeben',
+    schnappsRewardGive: 'Abgeben',
+    schnappsRewardSell: 'Verkaufen für {price} Gr.',
     cleanse: 'Karte reinigen',
     cleanseHint: 'Alle Zinken und Flüche einer Karte gehen ab. Einmal je Tresen.',
     cleanseGo: 'Karte wählen · {price} Gr.',
@@ -709,6 +719,55 @@ export const de = {
     oncePerSeries: '1. Spiel',
     onceFree: 'In dieser Kneipe noch frei: beim nächsten Aufnehmen des Skats',
     onceUsed: 'In dieser Kneipe schon genutzt',
+    /** Badge on the beer mat of a once-per-series relic (the Leiste shows no names). */
+    onceBadge: '1.',
+    emptySlot: 'Freier Schnaps-Platz',
+    drinkAria: '{name}: antippen oder auf das Ziel ziehen',
+    notNowAria: '{name}: gerade nicht trinkbar',
+  },
+
+  /** Drinking a Schnaps by drag and drop or by tapping (DESIGN 8.9). */
+  drink: {
+    /** Banner while a Schnaps is dragged, by its target. */
+    dragTo: {
+      Skat: 'Auf den Skat ziehen',
+      Table: 'Über den Tisch gießen',
+      Card: 'Auf eine Handkarte ziehen',
+      Self: 'Zum Mund führen',
+      Map: 'Über den Stadtplan gießen',
+    } as Record<string, string>,
+    /** Banner after a tap lifted a Schnaps. */
+    tapTarget: 'Tippe auf das Ziel',
+    tapCancel: 'Nochmal auf {name} tippen: abbrechen',
+    /** "Kurzer: Skat ansehen …" under the banner. */
+    sub: '{name}: {effect}',
+    /** What each Schnaps does, in a few words (the full text is on its info card). */
+    effect: {
+      shot: 'Skat ansehen, die Wahl bleibt offen',
+      double_grain: 'neu geben, nächstes Spiel ×2',
+      herbal: 'neu mischen und geben',
+      blue_curacao: 'eine Karte umfärben',
+      counter_beer: 'ein Leben zurück',
+      snifter: 'alle Wege neu auslosen',
+      road_beer: 'nächste Kneipe leichter',
+      clear_spirit: 'Konto auf 0',
+      nightcap: 'ein Spiel mehr',
+      eggnog: 'nächstes Spiel gewonnen ×2',
+      rotgut: 'nächstes Spiel ×2, ein Fluch',
+    } as Record<string, string>,
+    /** The little sign after drinking it yourself. */
+    gain: {
+      counter_beer: '+1 Leben',
+      road_beer: 'Nächste Kneipe: Ziel −3',
+      clear_spirit: 'Konto 0',
+      nightcap: '+1 Spiel',
+      eggnog: 'Gewonnen ×2',
+    } as Record<string, string>,
+    ahh: 'Ahh!',
+    gluck: 'gluck',
+    redeal: 'Neu geben!',
+    reroll: 'Wird neu ausgelost …',
+    times: '×{factor}',
   },
 
   evening: {

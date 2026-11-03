@@ -5,7 +5,7 @@
 // Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". Curses as
 // trade: "Hehlerware" among the relics, "Schnäppchen" in the Auslage, each
 // with a badge and the price struck through. What can be bought, sold or
-// used is decided by the core (can_buy, can_sell, can_use).
+// used is decided by the core (can_buy, can_sell, can_use, usable_now).
 
 import { de, bossEditionText, bossFiguresText, cardName, contentName, contentText, modText, t } from '../i18n';
 import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RelicOffer, RunView, ServiceView, ShopView } from '../types';
@@ -220,7 +220,7 @@ function renderKiosk(view: RunView, shop: ShopView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
          <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),
@@ -265,7 +265,7 @@ export function renderShop(view: RunView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.can_use })}>${esc(de.shop.use)}</button>
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
          <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),

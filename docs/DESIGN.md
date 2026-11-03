@@ -701,7 +701,9 @@ Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhal
 
 ### 8.3 Verbrauchsgegenstände
 
-Einmal nutzbare Karten, maximal zwei auf der Hand.
+Einmal nutzbare Karten, maximal zwei auf der Hand (seit dem 03.11.2026 drei, 8.9).
+
+**Seit dem 03.11.2026 (8.9)** bringt jede gewonnene Kneipe einen zufälligen Schnaps, und es gibt drei Schnaps-Plätze.
 
 **Seit 02.11.2026 (8.5)** sind Ein Bier, Neues Blatt, Magenbitter, Reue, Augen +5 und Trumpf +4 entfernt; Kräuter und Doppelkorn wirken anders, Kreide heißt Blue Curaçao, neu sind Konterbier, Schwenker und Wegbier. Was hier über die entfernten steht, ist Geschichte.
 
@@ -929,6 +931,48 @@ Auslegungen von Claude:
 **Oberfläche.** Die Relikte am Tresen liegen seit dem 03.11.2026 als **Reihe aus drei Kacheln** wie die Auslage der Zinken (3 × 1, auch hochkant am Handy): Bierdeckel, Name, Text, Preis, Kaufen; die ganze Kachel öffnet die Infokarte. Schnäppchen und Hehlerware tragen ein rotes Band („Schnäppchen“, „Hehlerware“), einen gestrichelten roten Rand, den vollen Preis durchgestrichen und die Zeile „Schnäppchen: dafür ein Fluch auf einer anderen Karte, ohne Groschen“ bzw. „Hehlerware: dafür ein Fluch auf einer zufälligen Karte, ohne Groschen“; die Infokarte der Hehlerware erklärt den Handel. Motive: Pechvogel eine schwarze Katze auf dem runden Wert-Deckel, Fusel eine schmutzige Flasche ohne Etikett.
 
 **Spielstände.** Keine neue Version: `Shop::fence`, `CardOffer::bargain` und `trade_rng` fehlen in alten Spielständen und kommen leer bzw. aus einer festen Zahl.
+
+### 8.9 Schnaps-Leiste (03.11.2026)
+
+**Entschieden vom Nutzer am 03.11.2026, maßgeblich ab hier.** Schnäpse sollen öfter getrunken werden: Es gibt sie nach jeder gewonnenen Kneipe, und sie liegen in einer Leiste oben, aus der man sie auf ihr Ziel zieht. Code `core/src/run/schnapps_reward.rs`, Tests `core/src/run/schnapps_reward_tests.rs`.
+
+**Ein Schnaps nach jeder gewonnenen Kneipe.** Jede gewonnene Kneipe, die den Run nicht beendet (normale Kneipe, Spelunke, Boss-Kneipe), gibt einen zufälligen Schnaps, nach Seltenheit gewichtet wie am Tresen aus den Schnäpsen des Charakters (`Run::schnapps_pool`, dieselbe Auswahl wie Kiosk und „Der Wirt spendiert“; Schnäpse werden nicht freigeschaltet, alle sind offen). Er kommt nach der Auszahlung und vor der Relikt-Wahl der Boss-Kneipe, der Beute der Spelunke und der Routenwahl; die kommen wie bisher dazu. Die letzte Boss-Kneipe gewinnt den Run und gibt keinen. Ist ein Platz frei, liegt er sofort dort (Ereignis `SchnappsRewarded { slots_full: false }`). Sind alle Plätze voll, wählt der Spieler wie bei der Beute der Spelunke: **neu nehmen und einen abgeben** (der abgegebene ist ohne Groschen weg, der neue nimmt seinen Platz) oder **für den halben Preis verkaufen** (`RunAction::ChooseSchnappsReward { give_up }`, Sicht `RunView::schnapps_reward`). Bis dahin geht nichts anderes (Fehler `SchnappsRewardPending`), auch kein Schnaps: Erst trinken, um Platz zu machen, geht nicht, sonst hätte die Wahl eine dritte Antwort, die die Oberfläche erklären müsste.
+
+**Eigener Zufallsstrom** (`Run::schnapps_rng`, nach allen anderen vom Seed abgeleitet): Deals, Tresen, Begegnungen, Wege und Zinken bleiben mit und ohne den Schnaps gleich (Test `the_reward_leaves_every_other_draw_alone`). Alte Spielstände bekommen ihn aus einer festen Zahl.
+
+**Drei Schnaps-Plätze** (`consumable_slots: 3` in `run.ron`, vorher zwei).
+
+**Ziel und „jetzt trinkbar“ für die Oberfläche.** Jeder Schnaps nennt in `consumables.ron` sein Ziel (`target`, `ConsumableTarget`, ohne Angabe `Self`), nur für das Ziehen und Ablegen in der Oberfläche:
+
+| Ziel | Schnäpse |
+|---|---|
+| `Skat` | Kurzer |
+| `Table` (Tisch) | Kräuter, Doppelkorn, Fusel |
+| `Card` (eine Karte der Hand) | Blue Curaçao |
+| `Self` (der Spieler trinkt selbst) | Konterbier, Klarer, Absacker, Eierlikör, Wegbier |
+| `Map` (Stadtplan) | Schwenker |
+
+Ob ein Schnaps gerade geht, entscheidet allein der Kern: `OwnedConsumable::usable_now` (bis 03.11.2026 `can_use`) probiert die echte Aktion `UseConsumable` auf einer Kopie des Runs (`Run::accepts`), dieselbe Prüfung, die der Run beim Trinken macht; für Blue Curaçao mit jeder Karte der Hand (die passenden in `targets`). Damit stimmen Phase („Vor der Wahl zwischen Skat und Hand“, „Zwischen zwei Spielen“, „Bei der Wahl des Weges“), Bedingungen (Klarer nur im Minus, Konterbier nur mit fehlendem Leben), Schnapsverbot der Spelunke und eine offene Wahl immer mit dem überein, was der Kern annimmt.
+
+**Oberfläche** (Entscheidungen des Nutzers vom 03.11.2026; `web/src/ui/hud.ts`, `web/src/ui/drink.ts`, `web/src/ui/mouth.ts`). Die Leiste im Kopf zeigt die Relikte nur als Bierdeckel (ohne Namen, ein Tipp öffnet die Infokarte); sie scrollt in sich, die Seite nie seitwärts. Daneben, hinter einem Trenner, die drei Schnaps-Plätze: leere gestrichelt, ein Schnaps grau mit Sanduhr, solange `usable_now` falsch ist. Schnäpse erscheinen überall ohne Etikett und ohne Deckel: ihr 16-×-16-Motiv in ganzen Pixeln vergrößert, dazu ein kleiner Punkt in der Farbe der Seltenheit (Leiste, Tresen, Kiosk, Infokarte, Begegnungen, Belohnungen). Getrunken wird durch Ziehen auf das Ziel; nur gültige Ziele leuchten, anderswo losgelassen springt das Glas zurück. Ersatz ohne Ziehen: Tippen hebt den Schnaps an, Tippen aufs Ziel gießt, nochmal Tippen auf ihn legt ihn zurück. Skat: Tropfen auf den Skat, er dreht sich um. Tisch: Kräuter und Doppelkorn spülen die Karten mit einer grünen Welle weg, bevor neu gegeben wird; ein Faktor fürs nächste Spiel knallt als „×2“-Schild auf den Filz. Karte: Blue Curaçao färbt die Karte blau, dann die Farbwahl. Selbst: ein übergroßer Pixel-Mund im Comic-Stil („M-A“) fährt beim Ziehen von unten hoch; abgelegt kippt das Glas hinein, „Ahh!“ und ein kurzer Hinweis auf die Wirkung. Stadtplan: der Schwenker lost die Wege neu aus, die Stationen drehen sich wie Walzen eines Spielautomaten. Alles im eigenen Layer, abbrechbar, nach Tempo und ohne Bewegung bei `prefers-reduced-motion`; die Aktion ist immer `UseConsumable`, wie über „Trinken“ auf der Infokarte. Bei vollen Plätzen zeigt ein Blatt den neuen Schnaps groß, die drei eigenen zum Abgeben und „Verkaufen für N Gr.“.
+
+**Bot** (`RunBot::schnapps_reward_action`, nicht gemessen): Bei vollen Plätzen nimmt er den neuen für den schwächsten eigenen (Kaufwert `CONSUMABLE_VALUES`, der erste bei Gleichstand), wenn er mehr wert ist, sonst verkauft er ihn.
+
+**Spielstände.** Keine neue Version: `schnapps_rng` und `schnapps_reward` fehlen in alten Spielständen und kommen aus einer festen Zahl bzw. leer. Ein wartender Schnaps, den der Inhalt nicht mehr kennt, fällt beim Laden weg.
+
+**Messung** (Alleinspieler, PIMC-Spieler, `cargo run --release -p skat_sim -- --seed 42 --runs 300 --bot pimc:12:3`): gegen `main` vor der Änderung (3af0889, gleicher Seed):
+
+| Größe | vorher | nachher |
+|---|---|---|
+| Stadtteil 2 erreicht | 40,0 % | 48,0 % (+8,0) |
+| Stadtteil 3 erreicht | 14,3 % | 19,7 % (+5,4) |
+| Run gewonnen | 5,3 % | 8,3 % (+3,0) |
+| Runs enden in normalen Kneipen | 36,7 % | 31,7 % (−5,0) |
+| Schnäpse getrunken je Run | 1,6 | 5,6 |
+| Schnäpse gekauft je Run | 1,6 | 1,5 |
+| Groschen für Schnäpse je Run | 4,17 | 3,96 |
+
+Der Bot trinkt dreimal so viel, kauft aber kaum weniger. Alle drei Quoten liegen jetzt über den Zielen aus `run.ron` (Stadtteil 2 in 35 bis 40 %, Stadtteil 3 in 12 bis 18 %, 3 bis 5 % gewonnen): **`balance` muss nachziehen** (Zielwerte, Schnaps-Preise oder die Belohnung selbst). Die Zahlen der Spiele in diesem Abschnitt sind nicht geändert.
 
 ---
 
@@ -1330,6 +1374,8 @@ Seit ADR 0012 gibt es Faktoren pro Charakter (`character_factors`) und der Schie
 **Wege und Begegnungen v2 (03.11.2026, 5.0.1 und 13.0), vorläufig ohne Messung**: Neue Einnahmen unterwegs: Fundgroschen 2, die Gratis-Optionen der Ereignisse (Kartengeber 2, Wasser 1, Kiebitzen beim Preisskat 2, Falschspieler auffliegen lassen 4, Finderlohn 4, altes Blatt 4, Kiebitz 2, Wirt 5), ein Relikt zum vollen Preis beim Alten Bekannten, ein Schnaps bei vollen Plätzen sein Tresen-Preis in Groschen. Neue Ausgaben: eine Runde ausgeben 3, aufwischen 2, die Wette auf einen Sieg 2 (zahlt 3), die Würfelbude 2, 4 oder 6 (Erwartungswert 0). Der Kiosk verkauft einen von zwei Schnäpsen 1 Groschen unter dem Tresen-Preis (nach dem Rabatt des Wirts, mindestens 1), ohne Anschreiben.
 
 **Rettungs-Schnäpse (03.11.2026, 8.7), vorläufig ohne Messung**: Klarer 3 (Common), Absacker 4 (Uncommon, wie das Konterbier: ein Spiel mehr ist fast eine zweite Chance), Eierlikör 3 (Common). Kaufwerte des Bots 1, 2, 1.
+
+**Schnaps-Leiste (03.11.2026, 8.9)**: Jede gewonnene Kneipe (außer der letzten) bringt einen Schnaps; bei vollen Plätzen ist er seinen halben Tresen-Preis wert (1 bis 2 Groschen). Drei statt zwei Schnaps-Plätze. Kiosk und Tresen verkaufen weiter Schnäpse; der Bot kauft kaum weniger (1,5 statt 1,6 je Run, gemessen in 8.9).
 
 **Flüche als Handel (03.11.2026, 8.8), vorläufig ohne Messung**: Pechvogel 9 (Rare; Bruderherz hat ab Start +9 Grundwert), Fusel 2 (Common). Schnäppchen (etwa jedes fünfte Angebot der Auslage) und Hehlerware (etwa jede vierte Auslage der Relikte) kosten die Hälfte, abgerundet, mindestens 1; der Fluch eines Handels zahlt keine Groschen (andere Flüche weiter 3). Kaufwerte des Bots: Pechvogel 4, Fusel 1, ein Handel 1 weniger als ohne Fluch.
 

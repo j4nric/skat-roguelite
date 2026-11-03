@@ -75,6 +75,10 @@
 //! the weakest owned one if it is worth at least [`SWAP_MARGIN`] more, else
 //! none ([`RunBot::boss_reward_action`]).
 //!
+//! The Schnaps of a won pub with every slot full (DESIGN 8.9): taken for
+//! the weakest owned Schnaps if it is worth more ([`consumable_value`]),
+//! else sold ([`RunBot::schnapps_reward_action`]).
+//!
 //! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
 //! skat (the bot does not use what it sees); after the skat, "Blue Curaçao"
 //! paints the cheapest side card (never a jack) into the trump suit of a
@@ -634,6 +638,9 @@ impl RunBot {
     /// The next action, or `None` once the run is over.
     #[must_use]
     pub fn next_action(&self, run: &Run, content: &Content) -> Option<RunAction> {
+        if let Some(action) = Self::schnapps_reward_action(run) {
+            return Some(action);
+        }
         match run.phase() {
             RunPhase::Won | RunPhase::Lost => None,
             RunPhase::Shop => Some(self.shop_action(run, content)),
@@ -688,6 +695,22 @@ impl RunBot {
             }
             _ => none,
         }
+    }
+
+    /// The Schnaps of a won pub with every slot full, if it waits: in
+    /// place of the weakest owned Schnaps (the first on a tie) if it is
+    /// worth more, else sold.
+    #[must_use]
+    pub fn schnapps_reward_action(run: &Run) -> Option<RunAction> {
+        let new = consumable_value(run.schnapps_reward()?);
+        let give_up = run
+            .consumables()
+            .iter()
+            .enumerate()
+            .min_by_key(|(i, id)| (consumable_value(id), *i))
+            .filter(|(_, id)| new > consumable_value(id))
+            .map(|(slot, _)| slot);
+        Some(RunAction::ChooseSchnappsReward { give_up })
     }
 
     /// The route policy, see the module docs: the way with the best

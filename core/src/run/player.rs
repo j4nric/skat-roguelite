@@ -541,6 +541,20 @@ impl RunEvent {
             RunEvent::BossCursesLifted { cards } => RunEvent::BossCursesLifted { cards },
             RunEvent::BossRewardOffered { relics } => RunEvent::BossRewardOffered { relics },
             RunEvent::BossRewardDeclined => RunEvent::BossRewardDeclined,
+            RunEvent::SchnappsRewarded {
+                consumable,
+                slots_full,
+            } => RunEvent::SchnappsRewarded {
+                consumable,
+                slots_full,
+            },
+            RunEvent::SchnappsRewardTaken {
+                consumable,
+                given_up,
+            } => RunEvent::SchnappsRewardTaken {
+                consumable,
+                given_up,
+            },
         }
     }
 }

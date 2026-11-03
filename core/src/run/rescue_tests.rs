@@ -287,9 +287,9 @@ fn clear_spirit_sets_a_minus_to_zero_between_games() {
         Err(RunError::ConditionNotMet),
         "no minus"
     );
-    assert!(!run.view(&content).consumables[0].can_use);
+    assert!(!run.view(&content).consumables[0].usable_now);
     run.series.score = -72;
-    assert!(run.view(&content).consumables[0].can_use);
+    assert!(run.view(&content).consumables[0].usable_now);
     let events = run.apply(&content, use_item(0)).expect("drink");
     assert!(events.contains(&RunEvent::AccountCleared {
         before: -72,
@@ -348,7 +348,7 @@ fn nightcap_is_refused_in_a_boss_pub() {
     let err = run.apply(&content, use_item(0)).expect_err("boss pub");
     assert_eq!(err, RunError::NotInBossPub);
     assert_eq!(err.code(), RunErrorCode::NotInBossPub);
-    assert!(!run.view(&content).consumables[0].can_use);
+    assert!(!run.view(&content).consumables[0].usable_now);
 }
 
 // ---------------------------------------------------------------------------

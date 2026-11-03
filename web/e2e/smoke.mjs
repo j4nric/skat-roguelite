@@ -255,6 +255,14 @@
 // offers and starts a short evening again. An old link without `-kurz`
 // stays a full evening ("Abschnitt 1/5").
 //
+// The Schnaps-Leiste (schnapsPass, DESIGN 8.9, full motion at 390 × 844,
+// 375 × 667, 360 × 740 and 1280 × 800): relics as beer mats only, three
+// Schnaps slots, greyed when the core says not now; a Kurzer dragged onto
+// the skat shows it, a drop on a wrong target springs back, a tap lifts and
+// a tap on the felt pours (Kräuter), the mouth comes up for a Schnaps drunk
+// yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
+// onto the map, and the sheet for a won pub's Schnaps with every slot full.
+//
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
@@ -1704,8 +1712,10 @@ async function wave2b(browser, errors, reducedMotion) {
 
   // Drei drücken.
   await patchedRun(page, SEED, ['three_discard'], [['"discard_three":null', '"discard_three":{"Relic":"three_discard"}']]);
+  // The Leiste shows mats only (03.11.2026): a "1." badge, "1. Spiel" as its title.
   const note = (await page.locator('[data-testid="once-three_discard"]').textContent())?.trim();
-  if (note !== '1. Spiel') fail(`Drei drücken: the chip says "${note}"`);
+  const noteTitle = await page.getAttribute('[data-testid="once-three_discard"]', 'title');
+  if (note !== '1.' || noteTitle !== '1. Spiel') fail(`Drei drücken: the chip says "${note}" ("${noteTitle}")`);
   if (await page.locator('.coaster-chip.is-used').count()) fail('Drei drücken: marked used before the skat');
   await shoot(page, 'wave2b-chip');
   await page.click('[data-action="pick-up-skat"]');
@@ -2990,7 +3000,9 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   await resumeFixture(gamePage, 'fusel.json', JSON.stringify(table));
   await gamePage.waitForSelector('.hud .item-chip[data-slot="0"]');
   if (!(await gamePage.locator('.hud .item-chip[data-slot="0"] svg').count())) fail('Fusel: no motif in the head');
-  await gamePage.click('.hud .item-chip[data-slot="0"]');
+  // A tap lifts a drinkable Schnaps (schnapsPass); "i" opens its info card.
+  await gamePage.focus('.hud .item-chip[data-slot="0"]');
+  await gamePage.keyboard.press('i');
   await gamePage.waitForSelector('[data-testid="info-card"]');
   const fuselInfo = (await gamePage.locator('[data-testid="info-card"]').textContent()) ?? '';
   if (!fuselInfo.includes('Fusel')) fail('Fusel: the info card does not name it');
@@ -3104,6 +3116,255 @@ async function zinkenPass(browser, errors, reducedMotion) {
  * question says that giving up ends the run, and it does. The Tresen
  * shows the three new Schnäpse with their motifs.
  */
+/**
+ * Drink the Schnaps in `slot` by tapping: the tap lifts it, the mouth
+ * slides up from below, a tap on the mouth pours it in (DESIGN 8.9).
+ */
+async function drinkByTap(page, slot) {
+  await page.click(`.hud .schnaps-slot[data-slot="${slot}"]`);
+  await page.waitForSelector(`.hud .schnaps-slot[data-slot="${slot}"].is-lifted`, { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: a tap does not lift it`));
+  await page.waitForSelector('[data-testid="drink-mouth"].is-up', { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: no mouth for a Schnaps drunk yourself`));
+  await page.waitForTimeout(350);
+  const box = await page.locator('[data-testid="drink-mouth"]').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.55);
+}
+
+/** Drag the Schnaps in `slot` with the mouse to (x, y), in small steps, then let go. */
+async function dragSchnaps(page, slot, x, y, { hold = null } = {}) {
+  // A popover of the mouse resting somewhere (the resume button lies over the deck) goes first.
+  await page.mouse.move(2, 2);
+  await page.keyboard.press('Escape');
+  const s = await page.locator(`.hud .schnaps-slot[data-slot="${slot}"]`).boundingBox();
+  const sx = s.x + s.width / 2;
+  const sy = s.y + s.height / 2;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  for (let i = 1; i <= 14; i++) await page.mouse.move(sx + ((x - sx) * i) / 14, sy + ((y - sy) * i) / 14);
+  if (hold) await hold();
+  await page.mouse.up();
+}
+
+/** Centre of the first element matching `selector`. */
+async function centreOf(page, selector) {
+  const b = await page.locator(selector).first().boundingBox();
+  if (!b) fail(`no ${selector} on screen`);
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+
+/**
+ * The Schnaps-Leiste (DESIGN 8.9, user decisions 03.11.2026), with full
+ * motion at 390 × 844, 375 × 667, 360 × 740 and 1280 × 800 (wave3-mods.json
+ * before Skat oder Hand, route-station.json on the route):
+ * - the head shows the relics as beer mats only, scrolling inside
+ *   themselves with nine relics (the page does not scroll sideways), then
+ *   three Schnaps slots, empty ones dashed; Schnäpse as bare motifs with a
+ *   rarity dot; one the core does not let be drunk now (Konterbier at the
+ *   table) is greyed;
+ * - a Kurzer dragged onto the skat turns it face up; dropped on the hand
+ *   (a wrong target) the glass springs back and the Schnaps stays;
+ * - a tap lifts a Schnaps (its targets glow, a banner says what to do), a
+ *   second tap puts it back, a tap on the felt pours Kräuter: the cards
+ *   are washed away and dealt anew;
+ * - a Schnaps drunk yourself (Eierlikör) raises the mouth while dragged;
+ *   dropped on it: "Ahh!";
+ * - Blue Curaçao onto a hand card opens the suit picker for that card;
+ *   Schwenker onto the city map rerolls the ways;
+ * - a won pub's Schnaps with every slot full: the sheet shows the new one
+ *   and the three held ones; taking it for one, or selling it.
+ * Not every check at every size: the smaller phones see the Leiste, the
+ * Kurzer and the mouth.
+ */
+async function schnapsPass(browser, errors) {
+  for (const viewport of [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }, DESKTOP]) {
+    const full = viewport.width === PHONE.width || viewport.width === DESKTOP.width;
+    const tag = `${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    const shot = (name) => page.screenshot({ path: join(screens, `schnaps-${name}-${tag}.png`) });
+    const bag = async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run)).consumables;
+    const table = (items, change = () => {}) =>
+      patched('wave3-mods.json', (save) => {
+        save.run.consumables = items;
+        change(save);
+      });
+
+    // The Leiste: nine relics scroll inside, three slots, one greyed.
+    const many = ['card_counter', 'skat_god', 'honorary_chair', 'beer_mat', 'tailor', 'kibitzer', 'lucky_streak', 'blank_king', 'with_four'];
+    await resumeState(page, 'schnaps leiste', table(['shot', 'counter_beer'], (save) => (save.run.relics = many)));
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    // The deal flies in first; targets are measured where they lie.
+    await page.waitForTimeout(1300);
+    const slots = await page.locator('[data-testid="schnaps-slots"] .schnaps-slot').count();
+    if (slots !== 3) fail(`Leiste at ${tag}: ${slots} Schnaps slots, expected 3`);
+    if ((await page.locator('[data-testid="schnaps-slots"] .schnaps-slot.is-empty').count()) !== 1) fail(`Leiste at ${tag}: the free slot is not shown empty`);
+    if (await page.locator('.leiste .chip-name').count()) fail(`Leiste at ${tag}: relics still carry names`);
+    if ((await page.locator('.leiste .coaster-chip').count()) !== many.length) fail(`Leiste at ${tag}: not every relic in the head`);
+    if ((await page.locator('.hud .schnaps-slot[data-slot="0"] svg[data-form="Bare"] .rarity-dot').count()) !== 1) fail(`Leiste at ${tag}: the Kurzer is not a bare motif with a rarity dot`);
+    if (!(await page.locator('.hud .schnaps-slot[data-slot="0"].is-ready').count())) fail(`Leiste at ${tag}: the Kurzer is not drinkable before Skat oder Hand`);
+    if (!(await page.locator('.hud .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Konterbier at the table is not greyed`);
+    const strip = await page.evaluate(() => {
+      const r = document.querySelector('.leiste-relics');
+      return { scrolls: r.scrollWidth > r.clientWidth, page: document.scrollingElement.scrollWidth - innerWidth, slots: document.querySelector('.leiste-slots').getBoundingClientRect().right - innerWidth };
+    });
+    if (!strip.scrolls) fail(`Leiste at ${tag}: nine relics do not scroll inside the strip`);
+    if (strip.page > 0 || strip.slots > 0) fail(`Leiste at ${tag}: the page is wider than the screen (${strip.page}, slots ${strip.slots})`);
+    await shot('leiste');
+    if (viewport.width < 600) await assertFits(page, `Schnaps-Leiste at ${tag}`, [{ width: viewport.width, height: viewport.height }]);
+    await page.setViewportSize(viewport);
+
+    // Wrong target: the glass springs back, the Schnaps stays.
+    const hand = await centreOf(page, '.hand .hand-card');
+    await dragSchnaps(page, 0, hand.x, hand.y, {
+      hold: async () => {
+        if (!(await page.locator('.skat-pile.drink-target').count())) fail(`Kurzer at ${tag}: the skat does not glow while dragging`);
+        if (await page.locator('.hand-card.drink-target').count()) fail(`Kurzer at ${tag}: hand cards glow for the Kurzer`);
+        await shot('kurzer-drag');
+      },
+    });
+    await page.waitForSelector('[data-testid="drink-spring"]', { timeout: 2000 }).catch(() => fail(`wrong target at ${tag}: the glass does not spring back`));
+    await page.waitForTimeout(600);
+    if ((await bag()).length !== 2) fail(`wrong target at ${tag}: the Schnaps was drunk`);
+    if (await page.locator('[data-testid="drink-glass"]').count()) fail(`wrong target at ${tag}: the glass is left over`);
+
+    // Kurzer onto the skat: it turns face up.
+    const skat = await centreOf(page, '.skat-pile');
+    await dragSchnaps(page, 0, skat.x, skat.y);
+    await page.waitForSelector('[data-testid="skat-peek"]', { timeout: 6000 }).catch(() => fail(`Kurzer at ${tag}: the skat is not shown after the drop`));
+    await page.waitForTimeout(250);
+    await shot('kurzer-pour');
+    if ((await bag()).length !== 1) fail(`Kurzer at ${tag}: still in the bag`);
+    await page.waitForTimeout(1200);
+    log(`Schnaps-Leiste at ${tag}: slots, greyed, Kurzer dragged onto the skat, wrong target springs back`);
+
+    // A Schnaps drunk yourself: the mouth comes up while dragging; "Ahh!".
+    await resumeState(page, 'eggnog', table(['eggnog']));
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    // The deal flies in first; targets are measured where they lie.
+    await page.waitForTimeout(1300);
+    const low = { x: viewport.width / 2, y: viewport.height * 0.82 };
+    await dragSchnaps(page, 0, low.x, low.y, {
+      hold: async () => {
+        await page.waitForSelector('[data-testid="drink-mouth"].is-up', { timeout: 3000 }).catch(() => fail(`Eierlikör at ${tag}: no mouth while dragging`));
+        await page.waitForTimeout(300);
+        await shot('mouth');
+      },
+    });
+    await page.waitForSelector('[data-testid="drink-word-ahh"]', { timeout: 3000 }).catch(() => fail(`Eierlikör at ${tag}: no "Ahh!"`));
+    await page.waitForTimeout(950);
+    await shot('mouth-ahh');
+    await page.waitForSelector('[data-testid="pending-schnaps"]', { timeout: 6000 }).catch(() => fail(`Eierlikör at ${tag}: not waiting for the next game`));
+    if ((await bag()).length !== 0) fail(`Eierlikör at ${tag}: still in the bag`);
+    log(`mouth at ${tag}: up while dragging, Eierlikör drunk`);
+    if (!full) {
+      await context.close();
+      continue;
+    }
+
+    // Tap alternative: lift, put back, lift, pour onto the felt (Kräuter).
+    await resumeState(page, 'herbal', table(['herbal']));
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    // The deal flies in first; targets are measured where they lie.
+    await page.waitForTimeout(1300);
+    const handBefore = await page.evaluate(() => [...document.querySelectorAll('.hand .hand-card')].map((c) => c.dataset.id).join(','));
+    await page.click('.hud .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector('.hud .schnaps-slot.is-lifted');
+    if (!(await page.locator('.felt.drink-target').count())) fail(`Kräuter at ${tag}: the felt does not glow`);
+    const banner = (await page.locator('[data-testid="drink-banner"]').textContent()) ?? '';
+    if (!banner.includes('Tippe auf das Ziel')) fail(`Kräuter at ${tag}: the banner says "${banner}"`);
+    await shot('tap-lifted');
+    await page.click('.hud .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector('.hud .schnaps-slot.is-lifted', { state: 'detached', timeout: 2000 }).catch(() => fail(`Kräuter at ${tag}: a second tap does not put it back`));
+    if (await page.locator('.drink-target').count()) fail(`Kräuter at ${tag}: targets still glow after putting it back`);
+    await page.click('.hud .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector('.hud .schnaps-slot.is-lifted');
+    const felt = await centreOf(page, '.felt');
+    await page.mouse.click(felt.x, felt.y);
+    await page.waitForSelector('[data-testid="wash-wave"]', { timeout: 3000 }).catch(() => fail(`Kräuter at ${tag}: no wave washes the cards away`));
+    await page.waitForTimeout(300);
+    await shot('kraeuter-wash');
+    await page.waitForFunction((before) => [...document.querySelectorAll('.hand .hand-card')].map((c) => c.dataset.id).join(',') !== before, handBefore, { timeout: 6000 }).catch(() => fail(`Kräuter at ${tag}: no new cards`));
+    if ((await bag()).length !== 0) fail(`Kräuter at ${tag}: still in the bag`);
+    await page.waitForTimeout(1200);
+    log(`tap at ${tag}: lift, put back, Kräuter poured onto the felt`);
+
+    // Doppelkorn over the table: "×2" slams.
+    await resumeState(page, 'double grain', table(['double_grain']));
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    // The deal flies in first; targets are measured where they lie.
+    await page.waitForTimeout(1300);
+    const felt2 = await centreOf(page, '.felt');
+    await dragSchnaps(page, 0, felt2.x, felt2.y);
+    await page.waitForSelector('[data-testid="x2-sign"]', { timeout: 4000 }).catch(() => fail(`Doppelkorn at ${tag}: no ×2 sign`));
+    await page.waitForTimeout(250);
+    await shot('doppelkorn');
+    await page.waitForTimeout(1500);
+
+    // Blue Curaçao onto a hand card: dyed, then the suit picker for that card.
+    await resumeState(page, 'curacao', table(['blue_curacao']));
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    // The deal flies in first; targets are measured where they lie.
+    await page.waitForTimeout(1300);
+    const card = page.locator('.hand .hand-card').nth(2);
+    const cardId = await card.getAttribute('data-id');
+    const cb = await card.boundingBox();
+    await dragSchnaps(page, 0, cb.x + cb.width / 2, cb.y + cb.height / 2, {
+      hold: async () => {
+        const glowing = await page.locator('.hand-card.drink-target').count();
+        if (glowing < 1) fail(`Blue Curaçao at ${tag}: no hand card glows`);
+        if (await page.locator('.skat-pile.drink-target').count()) fail(`Blue Curaçao at ${tag}: the skat glows`);
+      },
+    });
+    await page.waitForSelector(`[data-testid="chalk-cards"] [data-id="${cardId}"].is-picked`, { timeout: 4000 }).catch(() => fail(`Blue Curaçao at ${tag}: the suit picker does not open for the dropped card`));
+    await shot('curacao-suit');
+    await page.locator('[data-testid="chalk-suits"] button:not([disabled])').first().click();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run.consumables.length === 0, null, { timeout: 6000 }).catch(() => fail(`Blue Curaçao at ${tag}: not drunk after the suit`));
+    log(`Doppelkorn ×2 and Blue Curaçao on a card at ${tag}`);
+
+    // Schwenker onto the city map: the ways are drawn anew.
+    const station = patched('route-station.json', (save) => (save.run.consumables = ['snifter']));
+    await resumeState(page, 'snifter', station);
+    await page.waitForSelector('[data-testid="map-svg"]');
+    await page.waitForTimeout(800);
+    if (!(await page.locator('.run.is-route [data-testid="schnaps-slots"]').count())) fail(`route at ${tag}: no Schnaps slots on the route`);
+    const map = await centreOf(page, '.route-map');
+    await dragSchnaps(page, 0, map.x, map.y);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run.consumables.length === 0, null, { timeout: 6000 }).catch(() => fail(`Schwenker at ${tag}: not drunk`));
+    await page.waitForTimeout(350);
+    await shot('schwenker');
+    await assertNoSideScroll(page, 'route with the Leiste', '.route');
+    await page.waitForTimeout(1200);
+    log(`Schwenker onto the map at ${tag}`);
+
+    // A won pub's Schnaps with every slot full: take it for one, or sell it.
+    const full3 = (save) => {
+      save.run.consumables = ['snifter', 'counter_beer', 'shot'];
+      save.run.schnapps_reward = 'blue_curacao';
+    };
+    await resumeState(page, 'schnapps reward', patched('route-station.json', full3));
+    await page.waitForSelector('[data-testid="schnapps-reward"]', { timeout: 6000 }).catch(() => fail(`reward at ${tag}: no sheet for a full Leiste`));
+    if ((await page.locator('[data-testid="schnapps-reward"] [data-action="schnapps-swap"]').count()) !== 3) fail(`reward at ${tag}: not three Schnäpse to give up`);
+    if (!(await page.locator('[data-testid="schnapps-reward-new"] svg[data-deckel="blue_curacao"]').count())) fail(`reward at ${tag}: the new Schnaps is not shown`);
+    const sell = (await page.locator('[data-testid="schnapps-sell"]').textContent()) ?? '';
+    if (!/Verkaufen für \d+ Gr\./.test(sell)) fail(`reward at ${tag}: the sell button says "${sell}"`);
+    await page.waitForTimeout(400);
+    await shot('reward-full');
+    await page.click('[data-testid="schnapps-swap-1"]');
+    await page.waitForSelector('[data-testid="schnapps-reward"]', { state: 'detached', timeout: 6000 }).catch(() => fail(`reward at ${tag}: the sheet stays after a swap`));
+    const swapped = await bag();
+    if (swapped.includes('counter_beer') || !swapped.includes('blue_curacao') || swapped.length !== 3) fail(`reward at ${tag}: the bag after the swap is ${swapped.join(', ')}`);
+    await resumeState(page, 'schnapps reward sell', patched('route-station.json', full3));
+    await page.waitForSelector('[data-testid="schnapps-sell"]');
+    const coins = Number(await text(page, 'coins'));
+    await page.click('[data-testid="schnapps-sell"]');
+    await page.waitForSelector('[data-testid="schnapps-reward"]', { state: 'detached', timeout: 6000 });
+    const sold = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+    if (sold.coins <= coins || sold.consumables.includes('blue_curacao')) fail(`reward at ${tag}: selling gave ${coins} -> ${sold.coins} Groschen, bag ${sold.consumables.join(', ')}`);
+    log(`reward with a full Leiste at ${tag}: swapped, sold`);
+    await context.close();
+  }
+}
+
 async function rescuePass(browser, errors, reducedMotion, viewport) {
   const tag = viewport.width < 600 ? 'phone' : 'desktop';
   const context = await quietContext(browser, { viewport, reducedMotion });
@@ -3127,9 +3388,8 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
   await shot('hopeless');
   if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
-  // Klarer from the HUD: account 0, the line tells what is needed.
-  await page.click('.hud .item-chip[data-slot="0"]');
-  await page.click('[data-action="use-item"][data-slot="0"]');
+  // Klarer from the HUD (tapped, then poured into the mouth): account 0, the line tells what is needed.
+  await drinkByTap(page, 0);
   await page.waitForFunction(() => document.querySelector('[data-testid="account"]')?.textContent?.trim() === '0', null, { timeout: 5000 }).catch(() => fail('Klarer: the account is not 0'));
   await page.waitForSelector('[data-testid="needed"][data-reachable="true"]');
   const needed = await text(page, 'needed');
@@ -3137,8 +3397,7 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('.toast');
   await shot('klarer');
   // Eierlikör: waits for the next game, the HUD says so.
-  await page.click('.hud .item-chip[data-slot="0"]');
-  await page.click('[data-action="use-item"][data-slot="0"]');
+  await drinkByTap(page, 0);
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
@@ -4148,6 +4407,7 @@ async function run() {
     await tradePass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);
     await rescuePass(browser, errors, reducedMotion, DESKTOP);
+    await schnapsPass(browser, errors);
     await workshopPass(browser, errors, reducedMotion);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);

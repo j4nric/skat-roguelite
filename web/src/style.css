@@ -928,57 +928,82 @@ button.card {
   text-align: right;
 }
 
-/* Relics and items as beer mats, flags next to them: one row, swiped
-   sideways when it gets long. */
-.chips {
+/* The Leiste (DESIGN 8.9): the relics as beer mats only, scrolling inside
+   themselves (relic slots are unlimited, the page never scrolls
+   sideways), a divider, then the Schnaps slots. */
+.leiste {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  min-width: 0;
   height: 48px;
-  margin: 0 calc(-1 * var(--run-x));
-  padding: 2px var(--run-x);
+  padding: 0 2px 0 0;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 3px 0 var(--line);
+}
+
+.leiste-relics {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 3px;
   overflow-x: auto;
   overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 
-.chips::-webkit-scrollbar {
+.leiste-relics::-webkit-scrollbar {
   display: none;
 }
 
+.leiste-slots {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding-left: 6px;
+  border-left: 2px solid var(--line);
+  box-shadow: inset 1px 0 0 #4f6272;
+}
+
 .coaster-chip {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  width: 40px;
   height: 44px;
-  padding: 0 4px 0 0;
+  padding: 0;
   border: 0;
   background: none;
-  color: var(--text);
-  font-family: var(--font-label);
-  font-size: var(--fs-xs);
-  line-height: 0.85;
-  text-align: left;
-  text-transform: uppercase;
   cursor: pointer;
 }
 
-.chip-name {
-  display: -webkit-box;
-  max-width: 78px;
-  overflow: hidden;
-  hyphens: auto;
-  overflow-wrap: break-word;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+/* "1.": a relic that works once per series. */
+.chip-badge {
+  position: absolute;
+  right: -2px;
+  bottom: 0;
+  padding: 0 2px;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--line);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1;
 }
 
-.coaster-chip small {
-  display: block;
-  font-size: var(--fs-2xs);
-  color: var(--muted);
+/* A house rule of the evening: a dashed frame around its mat. */
+.coaster-chip.is-evening {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 /* A once-per-series relic already used in this series. */
@@ -986,17 +1011,75 @@ button.card {
   opacity: 0.45;
 }
 
-.item-chip {
+/* A Schnaps slot: its bare motif in a dark frame; an empty one dashed. */
+.schnaps-slot {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 46px;
   height: 44px;
   padding: 0;
-  border: 0;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.schnaps-slot.is-empty {
+  border: 2px dashed #4f6272;
   background: none;
+  cursor: default;
+}
+
+.schnaps-slot .schnaps-pic {
+  filter: drop-shadow(0 3px 0 rgba(11, 12, 14, 0.6));
+  transition: transform 0.12s steps(3, end);
+}
+
+/* Not drinkable now (the core's usable_now): grey, with an hourglass. */
+.schnaps-slot.is-off {
   cursor: pointer;
+}
+
+.schnaps-slot.is-off .schnaps-pic {
+  filter: grayscale(1) brightness(0.55);
+  opacity: 0.75;
+}
+
+.slot-wait {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+}
+
+/* Lifted by a tap: it rises out of its slot, the frame lights up. */
+.schnaps-slot.is-lifted {
+  box-shadow:
+    0 0 0 2px var(--line),
+    0 0 0 4px var(--accent),
+    0 0 0 6px var(--line);
+}
+
+.schnaps-slot.is-lifted .schnaps-pic {
+  transform: translateY(-9px) scale(1.15);
+  filter: drop-shadow(0 7px 0 rgba(11, 12, 14, 0.65));
+}
+
+/* Dragged: only a faint ghost stays behind in the slot. */
+.schnaps-slot.is-lifted.is-held {
+  border-style: dashed;
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.schnaps-slot.is-lifted.is-held .schnaps-pic {
+  transform: none;
+  filter: grayscale(1);
+  opacity: 0.22;
 }
 
 /* A beer mat (./ui/emblems.ts): crisp pixels, the shadow is drawn in. */
@@ -5458,19 +5541,21 @@ button.card {
     font-size: var(--fs-body);
   }
 
-  .chips {
+  .leiste {
     height: 44px;
   }
 
-  .coaster-chip,
-  .item-chip {
+  .coaster-chip {
     height: 40px;
   }
 
-  .coaster-chip .deckel,
-  .item-chip .deckel {
-    width: 36px;
-    height: 36px;
+  .coaster-chip .deckel {
+    width: 34px;
+    height: 34px;
+  }
+
+  .schnaps-slot {
+    height: 40px;
   }
 
   .portrait-opp {
@@ -6962,8 +7047,7 @@ button.skat-card {
   padding-bottom: 0;
 }
 
-.run.is-route .hud-board,
-.run.is-route .chips {
+.run.is-route .hud-board {
   display: none;
 }
 
@@ -7684,5 +7768,368 @@ button.skat-card {
   button:not(:disabled):not([data-drag]):active,
   .card[data-action]:not([data-drag]):active {
     scale: 0.95;
+  }
+}
+
+/* ---------------------------------------------------- drinking a Schnaps */
+/* ./ui/drink.ts: the layer never takes a pointer; the screen below keeps
+   its input. Targets of a Schnaps in the hand glow mint, the one under it
+   copper. */
+
+.drink-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.drink-layer > * {
+  pointer-events: none;
+}
+
+.drink-target {
+  position: relative;
+  z-index: 2;
+  box-shadow:
+    0 0 0 2px var(--line),
+    0 0 0 5px var(--cool),
+    0 0 0 7px var(--line),
+    0 0 0 11px rgba(143, 199, 168, 0.3) !important;
+  animation: drink-glow 0.9s steps(3, end) infinite alternate;
+}
+
+.drink-target.is-drink-over {
+  box-shadow:
+    0 0 0 2px var(--line),
+    0 0 0 5px var(--accent-light),
+    0 0 0 7px var(--line),
+    0 0 0 12px rgba(209, 119, 63, 0.5),
+    0 0 26px 10px rgba(241, 180, 138, 0.35) !important;
+  animation: none;
+}
+
+@keyframes drink-glow {
+  from {
+    filter: brightness(1);
+  }
+
+  to {
+    filter: brightness(1.18);
+  }
+}
+
+/* The mouth has its own glowing ring. */
+.drink-mouth.drink-target,
+.drink-mouth.drink-target.is-drink-over {
+  box-shadow: none !important;
+  animation: none;
+}
+
+.drink-glass {
+  position: fixed;
+  z-index: 3;
+  line-height: 0;
+  filter: drop-shadow(0 8px 0 rgba(11, 12, 14, 0.6));
+  will-change: transform, left, top;
+}
+
+.drink-banner {
+  position: fixed;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: min(366px, calc(100vw - 24px));
+  padding: 5px 10px 6px 16px;
+  border: 3px solid var(--line);
+  border-left: 8px solid var(--cool);
+  background: var(--panel);
+  box-shadow: 0 4px 0 var(--line);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.drink-banner small {
+  color: var(--muted);
+  font-size: var(--fs-m);
+}
+
+/* The mouth: slides up from the bottom edge, wide as the phone. */
+.drink-mouth {
+  position: fixed;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, 110%);
+  transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.drink-mouth.is-up {
+  transform: translate(-50%, 0);
+}
+
+.drink-mouth.is-down {
+  transform: translate(-50%, 110%);
+  transition-timing-function: ease-in;
+}
+
+.drink-mouth .mouth-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.drink-drop {
+  position: fixed;
+  z-index: 2;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.8),
+    0 0 0 1px var(--line);
+}
+
+.drink-wet {
+  position: fixed;
+  z-index: 1;
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+  box-shadow: 0 0 22px 8px color-mix(in srgb, var(--ink) 55%, transparent);
+  mix-blend-mode: screen;
+}
+
+.drink-word {
+  position: fixed;
+  z-index: 4;
+  padding: 4px 10px 5px;
+  border: 3px solid var(--accent);
+  outline: 2px solid var(--line);
+  background: #f4efe4;
+  box-shadow: 0 5px 0 2px var(--line);
+  color: var(--bg);
+  font-family: var(--font);
+  font-size: var(--fs-xl);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.drink-word.is-gluck {
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  box-shadow: none;
+  color: #f6e7b0;
+  font-size: var(--fs-h);
+  text-shadow:
+    2px 2px 0 var(--line),
+    -2px -2px 0 var(--line),
+    2px -2px 0 var(--line),
+    -2px 2px 0 var(--line);
+}
+
+.drink-word.is-gain {
+  border-color: var(--line);
+  outline: 0;
+  background: var(--cool);
+  box-shadow: 0 4px 0 var(--line);
+  color: #10261b;
+  font-size: var(--fs-h);
+}
+
+.drink-big {
+  position: fixed;
+  z-index: 4;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-2xl);
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow:
+    3px 0 0 var(--line),
+    -3px 0 0 var(--line),
+    0 3px 0 var(--line),
+    0 -3px 0 var(--line),
+    3px 3px 0 var(--line),
+    -3px -3px 0 var(--line),
+    3px -3px 0 var(--line),
+    -3px 3px 0 var(--line),
+    0 8px 0 var(--line);
+}
+
+.drink-big.is-reroll {
+  font-size: var(--fs-xl);
+  color: #ffd49c;
+}
+
+/* Kräuter: the old cards, washed off by a green pixel wave. */
+.wash-card {
+  position: fixed;
+  z-index: 1;
+  margin: 0;
+  transform-origin: 50% 50%;
+}
+
+.wash-box {
+  position: fixed;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.wash-wave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background:
+    repeating-linear-gradient(180deg, rgba(214, 236, 217, 0.9) 0 4px, transparent 4px 18px),
+    linear-gradient(90deg, rgba(63, 138, 74, 0.85), rgba(95, 174, 90, 0.85) 70%, rgba(169, 220, 185, 0.95));
+  clip-path: polygon(0 0, 88% 0, 100% 8%, 90% 18%, 100% 30%, 92% 42%, 100% 55%, 90% 68%, 100% 80%, 92% 92%, 100% 100%, 0 100%);
+}
+
+/* Blue Curaçao: the card takes on the blue, row by row. */
+.drink-dye {
+  position: fixed;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(180deg, rgba(76, 194, 255, 0.55) 0 3px, rgba(31, 168, 240, 0.7) 3px 6px);
+  mix-blend-mode: multiply;
+  box-shadow: 0 0 0 3px #0d6fb5;
+}
+
+/* Doppelkorn and Fusel: the factor as a big copper sign. */
+.decl-sign .x2-sign b {
+  color: var(--accent-light);
+  font-size: var(--fs-4xl);
+}
+
+/* Schwenker: the ways spin like slot reels and settle one after another. */
+.is-reeling {
+  transform-box: fill-box;
+  animation: reel var(--reel-ms, 620ms) steps(6, end) var(--reel-delay, 0ms) both;
+}
+
+@keyframes reel {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0.2;
+    filter: blur(1px);
+  }
+
+  40% {
+    transform: translateY(30%);
+    opacity: 0.7;
+    filter: blur(1px);
+  }
+
+  70% {
+    transform: translateY(-12%);
+    opacity: 1;
+    filter: none;
+  }
+
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* The Schnaps of a won pub with every slot full: the new one, the held ones to give up. */
+.sheet-schnapps-reward .reward-schnaps {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 6px 0 4px;
+}
+
+.reward-schnaps-pic {
+  display: inline-flex;
+  flex: none;
+  filter: drop-shadow(0 5px 0 rgba(11, 12, 14, 0.6));
+}
+
+.reward-schnaps-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reward-schnaps-text b {
+  font-size: var(--fs-h);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.reward-schnaps-text small {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.swap-title {
+  margin: 8px 0 4px;
+  font-size: var(--fs-l);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.swap-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.swap-schnaps {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  border: 3px solid var(--line);
+  background: var(--panel2);
+  box-shadow: 0 3px 0 var(--line);
+  color: var(--text);
+  font-family: var(--font);
+  cursor: pointer;
+}
+
+.swap-schnaps b {
+  font-size: var(--fs-l);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.swap-schnaps small {
+  min-height: 2em;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  text-align: center;
+}
+
+.swap-schnaps .btn {
+  margin-top: auto;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drink-mouth,
+  .drink-mouth.is-down {
+    transition: none;
+  }
+
+  .drink-target {
+    animation: none;
+  }
+
+  .is-reeling {
+    animation: none;
   }
 }

@@ -127,7 +127,7 @@ fn shot_shows_the_skat_before_skat_or_hand_and_keeps_the_choice_open() {
     let mut run = run_with(&content, &["shot"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let view = run.view(&content);
-    assert!(view.consumables[0].can_use);
+    assert!(view.consumables[0].usable_now);
     assert!(view.game.as_ref().expect("game").skat_peek.is_none());
     let events = run.apply(&content, use_item(0)).expect("peek");
     let skat = run.game().expect("game").game.skat();
@@ -361,7 +361,7 @@ fn chalk_only_before_the_declaration() {
         suit: Some(Suit::Diamonds),
     };
     assert_eq!(run.apply(&content, action), Err(RunError::WrongPhase));
-    assert!(!run.view(&content).consumables[0].can_use);
+    assert!(!run.view(&content).consumables[0].usable_now);
 }
 
 #[test]
@@ -468,13 +468,13 @@ fn regret_brings_back_the_deal_before_the_last_einmischen() {
         run.apply(&content, use_item(0)),
         Err(RunError::NoRedealToUndo)
     );
-    assert!(!run.view(&content).consumables[0].can_use);
+    assert!(!run.view(&content).consumables[0].usable_now);
     let first = run.game().expect("game").clone();
     let left = run.redeals_left(&content);
     run.apply(&content, RunAction::Redeal).expect("einmischen");
     let second = run.game().expect("game").game.clone();
     assert_ne!(second.hand(Seat::DECLARER), first.game.hand(Seat::DECLARER));
-    assert!(run.view(&content).consumables[0].can_use);
+    assert!(run.view(&content).consumables[0].usable_now);
     // A save keeps the deal before.
     let text = ron::to_string(&run).expect("ron");
     let mut run: Run = ron::from_str(&text).expect("load");
