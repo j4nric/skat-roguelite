@@ -1735,10 +1735,24 @@ button.card {
 }
 
 .hand-card {
+  /* The fan: --fan runs from -1 (left end of the row) to 1 (right end),
+     --fan-abs is its size. Each card turns a little about its bottom edge
+     and the middle sits a little higher than the ends, like cards held in
+     the hand. The lower corner of a turned card goes down by about
+     0.061 card widths per 7deg; the card is lifted by as much, so no corner
+     ever reaches below the row (the next row, the bottom of the screen).
+     --rise lifts a card out of the fan (playable, picked) without losing
+     its turn. The individual properties leave `transform` free for
+     flights (./ui/fx.ts). */
+  --dip: round(calc((var(--fan, 0) * var(--fan, 0) - 1) * var(--fan-dip, 4px) - var(--fan-abs, 0) * var(--card-w, 60px) * 0.062), 1px);
+  --rise: 0px;
   width: 100%;
-  /* Lifted along the arc, but never turned: turned pixel art blurs. */
-  transform: translateY(round(calc(var(--lift, 0px) * 0.4), 1px));
-  transition: transform 90ms steps(2), opacity 90ms;
+  transform-origin: 50% 100%;
+  rotate: calc(var(--fan, 0) * var(--fan-turn, 7deg));
+  translate: 0 calc(var(--dip) - var(--rise));
+  transition:
+    translate 90ms steps(2),
+    opacity 90ms;
 }
 
 .hand-card.is-dim {
@@ -1751,18 +1765,18 @@ button.card {
 
 .phase-playing .hand-card.is-active {
   --ring: var(--accent);
-  transform: translateY(-8px);
+  --rise: 8px;
 }
 
 .hand-card.is-selected {
   --ring: var(--accent);
-  transform: translateY(-10px);
+  --rise: 10px;
 }
 
 @media (hover: hover) {
   .phase-playing .hand-card.is-active:hover,
   .phase-discarding .hand-card.is-active:hover {
-    transform: translateY(-12px);
+    --rise: 12px;
   }
 }
 
@@ -6099,6 +6113,9 @@ body > .drag-ghost {
   box-shadow: 0 10px 0 rgba(8, 9, 11, 0.45);
   transition: none;
   transform-origin: 50% 50%;
+  /* A copy of a hand card leaves the fan behind. */
+  rotate: none;
+  translate: none;
 }
 
 .is-dragging {
