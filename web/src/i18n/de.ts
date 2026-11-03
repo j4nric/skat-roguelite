@@ -35,6 +35,7 @@ export const de = {
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
+      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Ausgabe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
       RamschRequired: 'Im Ramsch wird nicht angesagt.',
       NoPassesLeft: 'Du kannst nicht mehr einmischen.',
@@ -232,6 +233,7 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'trägt nichts, was abgehen könnte',
+      SpecialTaken: 'eine andere Karte ist das schon',
     } as Record<string, string>,
     /** Short tag on the card in the picker. */
     tags: {
@@ -241,6 +243,7 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'sauber',
+      SpecialTaken: 'vergeben',
     } as Record<string, string>,
   },
 
@@ -496,6 +499,7 @@ export const de = {
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherReturned: '{mod} ist zurück: {card}.',
+    voucherCapped: '{mod} eingelöst, aber {holder} ist schon {special}. Dafür {coins} Groschen.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -614,6 +618,10 @@ export const de = {
     zinkeOn: 'auf {card}',
     zinkeReplaces: 'ersetzt {old}',
     zinkeRaises: 'steigert {mod}',
+    /** A special card right on a card, rare in the Auslage (DESIGN 8.6). */
+    zinkeSpecial: 'Selten',
+    zinkeBecomes: 'wird {special}',
+    zinkeKeeps: '{mod} bleibt',
     noOffers: 'Gerade passt keine Zinke auf deine Karten.',
     rerollCards: 'Neu auslosen · {cost} Gr.',
     painter: 'Kartenmaler',
@@ -757,6 +765,24 @@ export const de = {
     Regular: 'Figur',
     CardMod: 'Kartenmodifikation',
     Character: 'Charakter',
+  },
+
+  /** The first Untot or Wandelkarte of a save: a one-time explanation (DESIGN 7.2). */
+  special: {
+    title: 'Neu in deiner Ausgabe',
+    lead: '{card} ist jetzt {special}.',
+    undead: [
+      'Spielst du sie im Farbspiel oder Grand, steht sie nach dem Stich wieder auf und kehrt auf deine Hand zurück.',
+      'Eine zufällige andere Karte deiner Hand nimmt ihren Platz im Stich ein, der Stich bleibt, wer ihn hat.',
+      'Einmal pro Spiel, nie als letzte Karte. Im Null und im Ramsch ist sie eine normale Karte.',
+    ],
+    wild_card: [
+      'Bei Spielbeginn nimmt sie die Farbe an, von der du die meisten Karten hältst (ohne Unter).',
+      'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
+      'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
+    ],
+    cap: 'Höchstens ein Untot und eine Wandelkarte je Ausgabe. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    go: 'Verstanden',
   },
 
   unlock: {

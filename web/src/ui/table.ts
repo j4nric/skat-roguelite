@@ -416,7 +416,8 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       else if (playing && c.legal) action = 'play';
       const dim = playing && !c.legal;
       const locked = discarding && !c.discardable;
-      const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : ''].join(' ');
+      const rising = ui.rising === c.id;
+      const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : '', rising ? 'is-rising' : ''].join(' ');
       const skatTag = cardTag(view, c) + plaques(c);
       const label = cardLabel(c);
       // Slight arc per row, like cards held in the hand (lifted, not turned:

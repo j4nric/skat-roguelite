@@ -210,6 +210,7 @@ export class App {
     routeOverview: false,
     rewardPick: null,
     risen: null,
+    rising: null,
     wildSettled: {},
     thinking: null,
     quip: null,
@@ -262,6 +263,8 @@ export class App {
   private scoreBoard: ScoreBoard | null = null;
   /** Effects to run once the next render is in the DOM. */
   private afterRender: (() => void)[] = [];
+  /** Special cards received for the first time in this save, waiting for their explanation sheet. */
+  private specialQueue: string[] = [];
   /** Where the card the player just tapped was. */
   private playedFrom: DOMRect | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
@@ -385,6 +388,8 @@ export class App {
       const step = this.meta.observe(events);
       this.ui.meta = step.view;
       saveMeta(this.meta.save());
+      // The first Untot or Wandelkarte of this save: explained once (DESIGN 7.2), shown by render().
+      for (const id of step.first_specials ?? []) if (!this.specialQueue.includes(id)) this.specialQueue.push(id);
       return step.earned;
     } catch (err) {
       console.warn('meta state did not take the events', err);
@@ -1006,6 +1011,16 @@ export class App {
         this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
         continue;
       }
+      if ('VoucherCapped' in ev) {
+        // One Untot and one Wandelkarte per edition (DESIGN 7.2): the voucher paid Groschen instead.
+        const { card_mod, special, holder, coins } = ev.VoucherCapped;
+        const held = after.edition.find((c) => c.id === holder);
+        this.showToast(
+          t(de.toast.voucherCapped, { mod: contentName('card_mods', card_mod), holder: held ? cardName(held.kind) : '', special: contentName('card_mods', special), coins }),
+          'top',
+        );
+        continue;
+      }
       if ('VoucherRedeemed' in ev) {
         // Effekte v2: a voucher was redeemed when its card was discarded.
         const id = ev.VoucherRedeemed.card;
@@ -1556,10 +1571,12 @@ export class App {
     anim.hand = hand
       ? hand.map((c) => ({ ...c, legal: false }))
       : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(card, after), can_rise: false }];
+    // A short green glow while it climbs back into the hand (style.css; with reduced motion a still outline).
+    this.ui.rising = card.id;
     this.render();
     if (!this.fastForward) {
       const back = this.screenEl.querySelector(`.hand-card[data-id="${card.id}"]`);
-      if (back && from) flyIn(back, from, { ms: 380, arc: -30 });
+      if (back && from) flyIn(back, from, { ms: 520, arc: -46 });
       const sub = this.screenEl.querySelector<HTMLElement>(`.trick-card[data-card-id="${substitute.id}"]`);
       if (sub) {
         if (subFrom) flyIn(sub, subFrom, { ms: 300, delay: 120 });
@@ -1568,6 +1585,7 @@ export class App {
     }
     sound.play('card', { rate: 0.8 });
     await this.pause(DELAY.notice);
+    this.ui.rising = null;
   }
 
   private seatLabel(seat: Seat, view: RunView): string {
@@ -2594,6 +2612,10 @@ export class App {
 
   private render(): void {
     const ui = this.ui;
+    // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
+    if (this.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
+      ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };
+    }
     // The player's edition shows his character's back (DESIGN 9.3).
     setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';

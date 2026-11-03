@@ -165,6 +165,11 @@
 // - voucher.json: frames.json with "Gutschein" on the Grün-Neun and
 //   "Gutschein Untot" on the Grün-Acht, both dealt to the player in the boss
 //   game: pressed, they are redeemed with their animation (voucherPass).
+// - voucher.json (since 03.11.2026 without the other Untot cards of
+//   frames.json, one Untot per edition): the Totenmarke turns the Grün-Acht
+//   Untot, and the first Untot of the save opens its explanation sheet.
+// - special.json: zinken.json without special cards, its Auslage set to
+//   "wird Untot", "wird Wandelkarte" and a plain Zinke (specialPass).
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
 //   the Grün-König (22), both with their Untot look. In an Eichel Hand
 //   both carry the skull plaque (can rise); the Daus led comes back into the hand when the trick is
@@ -2455,7 +2460,66 @@ async function voucherPass(browser, errors) {
     .waitForFunction(() => window.__toasts.some((t) => t.startsWith('Pfandmarke eingelöst')) && window.__toasts.some((t) => t.startsWith('Totenmarke eingelöst')), null, { timeout: 15000 })
     .catch(async () => fail(`Gutschein: no toast per voucher (${(await page.evaluate(() => window.__toasts)).join(' | ')})`));
   log(`Gutschein: margin torn, coin to the counter (${coins} -> ${after}), Grün-Acht turned Untot`);
+  // The first Untot of this save: a one-time sheet with the rules, kept in the meta state (DESIGN 7.2).
+  await page.waitForSelector('[data-testid="special-hint"] [data-special="undead"]', { timeout: 15000 }).catch(() => fail('Untot: no explanation sheet on the first receipt'));
+  if (!(await page.locator('[data-testid="special-hint"] .special-card .card-svg').count())) fail('Untot sheet: the card is not drawn');
+  const seen = (await storedMeta(page))?.meta?.specials_seen ?? [];
+  if (!seen.includes('undead')) fail(`Untot: the meta state does not remember it (${JSON.stringify(seen)})`);
+  await shoot(page, 'special-hint-undead');
+  await page.click('[data-testid="special-ok"]');
+  await page.waitForSelector('[data-testid="special-hint"]', { state: 'detached' });
   await shoot(page, 'voucher-redeemed');
+  await context.close();
+}
+
+/**
+ * Special cards in the Auslage (special.json: zinken.json without any
+ * special card or special voucher, the Auslage set to "wird Untot" on the
+ * Eichel-Daus, "wird Wandelkarte" on the Schellen-Zehn with Aufdruck +4 and
+ * Aufdruck +3 on the Grün-König). The special tiles carry "Selten", their
+ * price and the card with its special look; the Wandelkarte says the
+ * Aufdruck stays. Buying each shows its explanation sheet once (the meta
+ * state remembers both); a reload brings no sheet back.
+ */
+async function specialPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'special.json');
+  await page.waitForSelector('[data-testid="auslage"]');
+  const tiles = await page.locator('[data-testid="zinke"]').evaluateAll((els) =>
+    els.map((e) => ({ special: e.dataset.special ?? '', name: e.querySelector('.zinke-name')?.textContent ?? '', rare: e.querySelector('.zinke-rare')?.textContent ?? '', price: e.querySelector('.price-tag')?.textContent ?? '', on: e.querySelector('.zinke-on')?.textContent ?? '', svg: e.querySelector('.card-svg')?.getAttribute('data-special') ?? '' })),
+  );
+  const [undead, wild, plain] = tiles;
+  if (undead?.special !== 'undead' || undead.name !== 'wird Untot' || undead.rare !== 'Selten' || undead.svg !== 'undead') fail(`Auslage: Untot tile wrong ${JSON.stringify(undead)}`);
+  if (!undead.price.includes('7')) fail(`Auslage: Untot on the Daus does not cost 7 (${undead.price})`);
+  if (wild?.special !== 'wild_card' || wild.svg !== 'wild' || !wild.on.includes('Aufdruck bleibt')) fail(`Auslage: Wandelkarte tile wrong ${JSON.stringify(wild)}`);
+  if (plain?.special || plain?.rare) fail('Auslage: a plain Zinke looks special');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await shoot(page, 'special-auslage');
+  await page.click('[data-action="buy-zinke"][data-slot="0"]');
+  await page.waitForSelector('[data-testid="special-hint"] [data-special="undead"]', { timeout: 10000 }).catch(() => fail('Untot bought: no explanation sheet'));
+  await page.click('[data-testid="special-ok"]');
+  await page.waitForSelector('[data-testid="special-hint"]', { state: 'detached' });
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
+  await page.waitForSelector('[data-testid="special-hint"] [data-special="wild_card"]', { timeout: 10000 }).catch(() => fail('Wandelkarte bought: no explanation sheet'));
+  if (await page.locator('[data-testid="special-hint"] [data-special="undead"]').count()) fail('the Untot sheet came twice');
+  await shoot(page, 'special-hint-wild');
+  await page.click('[data-testid="special-ok"]');
+  await page.waitForSelector('[data-testid="special-hint"]', { state: 'detached' });
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const mods = (id) => stored.edition.cards.find((c) => c.id === id)?.mods ?? [];
+  if (!mods(31).includes('undead')) fail(`the Eichel-Daus is not Untot (${mods(31)})`);
+  if (mods(3).join(',') !== 'points,wild_card') fail(`the Schellen-Zehn did not keep its Aufdruck next to the Wandelkarte (${mods(3)})`);
+  if (stored.coins !== 7) fail(`special offers paid wrong, ${stored.coins} Groschen left`);
+  const seen = (await storedMeta(page))?.meta?.specials_seen ?? [];
+  if (seen.join(',') !== 'undead,wild_card') fail(`meta state: specials_seen ${JSON.stringify(seen)}`);
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="auslage"]');
+  await page.waitForTimeout(300);
+  if (await page.locator('[data-testid="special-hint"]').count()) fail('the explanation sheet came back after a reload');
+  log('Spezialkarten: rare Auslage tiles, one explanation sheet each, remembered in the meta state');
   await context.close();
 }
 
@@ -2598,8 +2662,16 @@ async function undeadPass(browser, errors, reducedMotion) {
     if (!(await page.locator(`.hand-card[data-id="${id}"] .plaque-rise`).count())) fail(`Untot: card ${id} shows no skull plaque in the hand`);
   }
   await shoot(page, 'undead-hand');
+  // It climbs back into the hand with a green glow (a still outline with reduced motion).
+  await page.evaluate(() => {
+    window.__rising = false;
+    new MutationObserver(() => {
+      if (document.querySelector('.hand-card.is-rising[data-id="31"]')) window.__rising = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await page.click('[data-action="play"][data-id="31"]');
   await page.waitForFunction(() => window.__toasts.some((t) => t.startsWith('Untot:')), null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__rising, null, { timeout: 5000 }).catch(() => fail('Untot: the risen Daus does not glow'));
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
   if (!(await page.locator('.hand-card[data-id="31"]').count())) fail('Untot: the Eichel-Daus did not come back into the hand');
@@ -2612,6 +2684,38 @@ async function undeadPass(browser, errors, reducedMotion) {
   const toast = await page.evaluate(() => window.__toasts.find((t) => t.startsWith('Untot:')));
   log(`Untot: ${toast}`);
   await shoot(page, 'undead-last-trick');
+  await context.close();
+}
+
+/**
+ * "Untot" with full motion and the slow tempo (undead.json): the Daus
+ * climbs out of the trick back into the hand and glows green for a moment.
+ */
+async function undeadGlowPass(browser, errors) {
+  const context = await browser.newContext({ viewport: PHONE, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    if (!localStorage.getItem('stammtisch.settings')) {
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ tempo: 'slow', sound: false, thinking: false, hints: false }));
+    }
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'undead.json');
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await page.click('[data-action="pick-game"][data-index="0"]');
+  if (await page.locator('[data-action="pick-risk"][data-risk="Hand"]').count()) await page.click('[data-action="pick-risk"][data-risk="Hand"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForSelector('[data-action="play"][data-id="31"]', { timeout: 30000 });
+  await page.click('[data-action="play"][data-id="31"]');
+  // Out of the way, so no info card opens over the hand.
+  await page.mouse.move(380, 20);
+  await page.waitForSelector('.hand-card.is-rising[data-id="31"]', { state: 'attached', timeout: 30000 }).catch(() => fail('Untot: no glow with full motion'));
+  await page.waitForTimeout(380);
+  await page.screenshot({ path: join(screens, 'undead-rising-390x844.png') });
+  log('screenshot undead-rising');
   await context.close();
 }
 
@@ -3342,7 +3446,9 @@ async function run() {
     await zinkenPass(browser, errors, reducedMotion);
     await workshopPass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
+    await specialPass(browser, errors, reducedMotion);
     await undeadPass(browser, errors, reducedMotion);
+    await undeadGlowPass(browser, errors);
     await shortEvening(browser, errors, reducedMotion);
     await charactersPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
