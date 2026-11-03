@@ -4111,6 +4111,93 @@ async function mapPass(browser, errors) {
   await station.close();
 }
 
+/**
+ * Scenes with full motion (animation package C), at one viewport: a relic
+ * bought at the Tresen slides over the counter and lands in the Leiste, a
+ * Schnaps pops its cork into its slot, a Zinke is stamped onto its card;
+ * a boss pub opens under a spotlight with the plates dropping in (a tap
+ * ends it at once); the pub door swings open onto the route; a walker
+ * goes along the way. Each scene ends in what the core reports.
+ */
+async function scenesPass(browser, errors, viewport) {
+  const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  const sideways = async (where) => {
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    if (wide) fail(`scenes ${tag}: ${where} scrolls sideways`);
+  };
+
+  // The Tresen: a relic into the strip, a Schnaps into its slot, a Zinke stamped on.
+  await resumeFixture(page, 'zinken.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  const relics = await page.locator('.leiste-relics .coaster-chip').count();
+  await page.locator('[data-action="buy-relic"]:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="relic-fly"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: the bought relic does not fly`));
+  await page.waitForTimeout(500);
+  await snap('scene-relic');
+  await page.waitForSelector('[data-testid="relic-fly"]', { state: 'detached', timeout: 5000 });
+  if ((await page.locator('.leiste-relics .coaster-chip').count()) !== relics + 1) fail(`scenes ${tag}: the relic did not land in the Leiste`);
+  await page.locator('[data-action="buy-item"]:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="schnaps-cork"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: the Schnaps pops no cork`));
+  await page.waitForTimeout(350);
+  await snap('scene-schnaps');
+  await page.waitForSelector('[data-testid="schnaps-fly"]', { state: 'detached', timeout: 5000 });
+  if (!(await page.locator('.leiste-slots .schnaps-slot:not(.is-empty)').count())) fail(`scenes ${tag}: the Schnaps is not in its slot`);
+  await page.locator('[data-testid="zinke"] [data-action="buy-zinke"]:not([disabled])').first().click();
+  if (await page.locator('[data-testid="mod-confirm-go"]').count()) await page.click('[data-testid="mod-confirm-go"]');
+  await page.waitForSelector('[data-testid="zinke-stamp"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no stamp comes down for the Zinke`));
+  const faces = [];
+  for (let n = 0; n < 2; n++) {
+    await page.waitForTimeout(n ? 400 : 120);
+    faces.push(await page.evaluate(() => document.querySelector('[data-testid="zinke-stamp-card"]')?.innerHTML ?? ''));
+    if (n) await snap('scene-stamp');
+  }
+  if (!faces[0] || faces[0] === faces[1]) fail(`scenes ${tag}: the stamped card does not change its face`);
+  await page.waitForSelector('[data-testid="zinke-stamp-card"]', { state: 'detached', timeout: 5000 });
+  await sideways('the Tresen');
+  log(`scenes ${tag}: relic into the Leiste, Schnaps cork, Zinke stamped`);
+
+  // The boss pub opens: dark, spotlight, plates; a tap ends it.
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.click('[data-action="boss-go"]');
+  await page.waitForTimeout(300);
+  if (await page.locator('.sheet-unlock [data-action="close-overlay"]').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="boss-entrance"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: the boss pub opens without its entrance`));
+  await page.mouse.move(2, viewport.height - 2);
+  await page.waitForTimeout(600);
+  await snap('scene-boss');
+  const dropping = await page.evaluate(() => document.getAnimations().filter((a) => a.id === 'boss-plate').length);
+  if (dropping < 1) fail(`scenes ${tag}: no name plate drops in`);
+  await page.mouse.click(2, viewport.height - 2);
+  await page.waitForSelector('[data-testid="boss-entrance"]', { state: 'detached', timeout: 400 }).catch(() => fail(`scenes ${tag}: a tap does not end the boss entrance`));
+  await sideways('the boss entrance');
+  log(`scenes ${tag}: boss entrance with ${dropping} plates, ended by a tap`);
+
+  // Out of the boss pub: the door swings open onto the route, then the walk.
+  await resumeFixture(page, 'boss-reward.json');
+  await page.click('[data-action="boss-relic-skip"]');
+  await page.waitForSelector('[data-testid="door-wipe"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no door onto the route`));
+  await page.waitForTimeout(400);
+  await snap('scene-door');
+  await page.waitForSelector('[data-testid="door-wipe"]', { state: 'detached', timeout: 5000 });
+  await page.waitForSelector('[data-testid="route-go"]');
+  const way = await page.getAttribute('[data-testid="route-option"][aria-pressed="true"]', 'data-transport');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-testid="map-walker"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no walker on the way`));
+  const walker = await page.getAttribute('[data-testid="map-walker"]', 'data-way');
+  if ({ Walk: 'fuss', Train: 'bahn', Bike: 'rad' }[way ?? ''] !== walker) fail(`scenes ${tag}: the way ${way} is walked as ${walker}`);
+  await page.waitForTimeout(700);
+  await snap('scene-walker');
+  await page.waitForSelector('[data-testid="route"]', { state: 'detached', timeout: 10000 });
+  log(`scenes ${tag}: door onto the route, ${walker} along the way`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -4425,6 +4512,8 @@ async function run() {
     await tableFeelPass(browser, errors, DESKTOP);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
+    await scenesPass(browser, errors, PHONE);
+    await scenesPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();

@@ -65,6 +65,7 @@ import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
+import { bossEntrance, doorWipe, relicToStrip, sceneRunning, schnapsToSlot, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -304,6 +305,14 @@ export class App {
   private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
+  /** The scene last drawn (a screen, or the kind of run screen): the door opens from a pub onto the route. */
+  private lastScene = '';
+  /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
+  private entrancePending = false;
+  /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
+  private bought: { html: string; rect: DOMRect } | null = null;
+  /** Where the card was that a Zinke goes onto, seen as it was tapped (for its stamp). */
+  private stampAt: { rect: DOMRect; at: number } | null = null;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -358,6 +367,14 @@ export class App {
     });
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
+    // A tap while a scene plays (boss entrance, door, stamp) ends it; the tap still counts.
+    window.addEventListener(
+      'pointerdown',
+      () => {
+        if (sceneRunning()) finishAll();
+      },
+      { capture: true },
+    );
     // Browsers allow audio only after a user gesture.
     // iOS Safari only counts touchend, pointerup and click as an activation
     // that may start or resume an AudioContext; pointerdown alone leaves it
@@ -1027,6 +1044,8 @@ export class App {
     }
     // Cards a trade cursed: their curse is told by the trade, not again as a Zinke.
     const tradeCursed = new Set<number>();
+    // Zinken stamped on in this step, one after another.
+    let stamps = 0;
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       if (ev === undefined) continue;
@@ -1125,6 +1144,9 @@ export class App {
         if ('Modified' in change) {
           const card = after.edition.find((c) => c.id === change.Modified.card);
           if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));
+          // A Zinke put on at the Tresen, by the Kartenmaler or at an encounter: stamped on.
+          const old = before?.edition.find((c) => c.id === change.Modified.card);
+          if (card && old && (before?.phase === 'Shop' || before?.phase === 'Encounter')) this.stampLater(old, card, stamps++);
         }
         if ('Cleansed' in change) {
           const card = after.edition.find((c) => c.id === change.Cleansed.card);
@@ -1224,11 +1246,31 @@ export class App {
       if ('RelicBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('relics', ev.RelicBought.relic) }));
         sound.play('coin');
+        const bought = this.bought;
+        this.bought = null;
+        const relic = ev.RelicBought.relic;
+        if (bought) {
+          this.afterRender.push(() => {
+            const chips = this.screenEl.querySelectorAll<HTMLElement>(`.leiste-relics .coaster-chip[data-relic="${CSS.escape(relic)}"]`);
+            relicToStrip(bought.html, bought.rect, chips[chips.length - 1] ?? null);
+          });
+        }
         continue;
       }
       if ('ConsumableBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('consumables', ev.ConsumableBought.consumable) }));
         sound.play('coin');
+        const bought = this.bought;
+        this.bought = null;
+        // Its slot: the one the core filled with it in this step.
+        const id = ev.ConsumableBought.consumable;
+        const slot = after.consumables.find((c) => c.consumable.id === id && !before?.consumables.some((b) => b.slot === c.slot && b.consumable.id === id))?.slot;
+        if (bought) {
+          this.afterRender.push(() => {
+            const target = slot === undefined ? null : this.screenEl.querySelector<HTMLElement>(`.leiste-slots [data-testid="schnaps-slot-${slot}"]`);
+            schnapsToSlot(bought.html, bought.rect, target);
+          });
+        }
         continue;
       }
       if ('RelicSold' in ev) {
@@ -1424,6 +1466,9 @@ export class App {
           this.render();
         });
         this.ui.overlay = null;
+        // The table opens: lights down, the spotlight onto both boss players
+        // (once no dialog is open any more, see render()).
+        this.entrancePending = true;
       }
     }
   }
@@ -2517,6 +2562,7 @@ export class App {
         if (o?.kind !== 'encounter-target') return;
         const option = view.encounter?.options.find((x) => x.index === o.option);
         const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id') } };
+        this.noteStamp(el);
         // The Zinke on the chosen card (a Painter or cleansing names none).
         const chosen = option?.effects.find((e) => typeof e.effect === 'object' && 'Mark' in e.effect && e.effect.Mark.card === 'Chosen');
         this.applyMod(view, action, num('id'), chosen?.card_mod?.id ?? null, false, o);
@@ -2588,9 +2634,11 @@ export class App {
         this.playCard(num('id'), el.getBoundingClientRect(), null);
         return;
       case 'buy-relic':
+        this.noteBought(el.closest('.relic-tile')?.querySelector('.relic-tile-emblem svg') ?? null);
         void this.act({ BuyRelic: num('slot') });
         return;
       case 'buy-item':
+        this.noteBought(el.closest('.good')?.querySelector('.good-pic svg') ?? null);
         void this.act({ BuyConsumable: num('slot') });
         return;
       case 'sell-relic':
@@ -2625,6 +2673,7 @@ export class App {
         if (o?.kind !== 'target') return;
         const item = view.consumables.find((c) => c.slot === o.slot);
         const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
+        this.noteStamp(el);
         const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
         if (marks.mod || marks.random) this.applyMod(view, action, num('id'), marks.mod, marks.random, o);
         else void this.act(action);
@@ -2651,6 +2700,7 @@ export class App {
         // Zinken (DESIGN 8.6): the card is fixed; ask first if it replaces or raises.
         const offer = view.shop?.card_offers?.find((o) => o?.slot === num('slot'));
         if (!offer) return;
+        this.noteStamp(el.closest('.zinke')?.querySelector('.zinke-card') ?? null);
         this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null);
         return;
       }
@@ -2683,6 +2733,7 @@ export class App {
         const painter = view.painter;
         const option = painter?.options.find((p) => p.index === num('index'));
         if (!painter || !option) return;
+        this.noteStamp(el.querySelector('.card'));
         this.applyMod(view, { ChoosePaint: option.index }, painter.card.id, option.card_mod.id, false, { kind: 'painter' });
         return;
       }
@@ -2894,6 +2945,39 @@ export class App {
       }
     }
     return out;
+  }
+
+  /** The picture of what is being bought at the Tresen and where it is (for its flight into the Leiste). */
+  private noteBought(pic: Element | null): void {
+    const rect = pic?.getBoundingClientRect();
+    this.bought = pic && rect?.width ? { html: pic.outerHTML, rect } : null;
+  }
+
+  /** Where the card is that a Zinke is about to go onto (its stamp comes down there). */
+  private noteStamp(card: Element | null): void {
+    const rect = card?.getBoundingClientRect();
+    this.stampAt = rect?.width ? { rect, at: performance.now() } : null;
+  }
+
+  /**
+   * After the next render, stamp a Zinke onto `card` (as it was: `old`),
+   * where it was tapped, or in the middle of the screen if that place is
+   * gone or out of sight. Only pictures: the faces come from the core's
+   * edition before and after the step.
+   */
+  private stampLater(old: DeckCard, card: DeckCard, order: number): void {
+    const noted = this.stampAt && performance.now() - this.stampAt.at < 60000 ? this.stampAt.rect : null;
+    if (order === 0) this.stampAt = null;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const seen = noted && noted.top >= 0 && noted.bottom <= h && noted.left >= 0 && noted.right <= w;
+    const cw = Math.min(110, Math.round(w * 0.26));
+    const ch = Math.round(cw * 1.5);
+    const shift = order * Math.round(cw * 0.35);
+    const place = seen && order === 0 ? noted : new DOMRect(Math.round(w / 2 - cw / 2 + shift), Math.round(h * 0.42 - ch / 2), cw, ch);
+    const before = cardSvg(old.kind, old.mods, 'full', old.mod_values);
+    const after = cardSvg(card.kind, card.mods, 'full', card.mod_values);
+    this.afterRender.push(() => zinkeStamp(before, after, place, order));
   }
 
   /**
@@ -3113,6 +3197,7 @@ export class App {
     // The player's edition shows his character's back (DESIGN 9.3).
     setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
+    if (ui.screen !== 'run') this.lastScene = ui.screen;
     switch (ui.screen) {
       case 'loading':
         body = renderLoading();
@@ -3150,6 +3235,9 @@ export class App {
                 ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
+        // Out of the pub (or its boss reward) onto the route: the pub door swings open.
+        if (cls === 'is-route' && (this.lastScene === 'is-table' || this.lastScene === 'is-encounter')) this.afterRender.push(() => doorWipe());
+        this.lastScene = cls;
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
@@ -3198,6 +3286,11 @@ export class App {
     if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.drink.refresh();
     else this.drink.cancel();
     this.flyPressed();
+    if (ui.screen !== 'run') this.entrancePending = false;
+    if (this.entrancePending && !ui.overlay && !ui.anim) {
+      this.entrancePending = false;
+      if (ui.view?.series.is_boss && ui.view.phase === 'Game') bossEntrance(this.screenEl);
+    }
   }
 
   /** The dialog layer: only rebuilt when the dialog itself changes. */

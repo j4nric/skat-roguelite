@@ -15,7 +15,7 @@ import { dur, motionOn, play, tween } from './fx';
 import { coinIcon, heart, meterPercent } from './hud';
 
 /** The fixed layer above everything (dialogs too) that holds the flying sprites. */
-function layer(): HTMLElement {
+export function layer(): HTMLElement {
   let el = document.querySelector<HTMLElement>('body > .fx-layer');
   if (!el) {
     el = document.createElement('div');
