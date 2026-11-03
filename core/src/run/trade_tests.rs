@@ -186,8 +186,13 @@ fn rotgut_doubles_the_next_game_and_curses_a_card_for_good() {
     assert!(!content.card_mod(&curse).is_some_and(|d| d.is_special()));
     assert!(run.card_is_cursed(&content, card));
     assert_eq!(run.cursed_cards(&content), 1);
-    // A curse pays when it lands, as everywhere.
-    assert!(run.coins() >= coins);
+    // The curse is the price: it pays nothing (03.11.2026).
+    assert_eq!(run.coins(), coins);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::CoinsGained { .. }))
+    );
     assert_eq!(
         run.pending_next_game(),
         &[(ConsumableId::new("rotgut"), NextGameEffect::Multiply(2))]
@@ -270,7 +275,11 @@ fn a_bargain_costs_half_and_curses_another_card() {
     let events = run
         .apply(&content, RunAction::BuyCardOffer(slot))
         .expect("buy");
-    assert!(run.coins() + tile.price >= coins, "paid the half price");
+    assert_eq!(
+        run.coins() + tile.price,
+        coins,
+        "half price, no Groschen back"
+    );
     let curses = trade_curses(&events);
     assert_eq!(curses.len(), 1);
     let (card, _, cause) = curses[0].clone();
@@ -329,7 +338,7 @@ fn hehlerware_sells_a_relic_at_half_price_for_a_curse() {
         })
         .expect("bought");
     assert_eq!(paid, TradeConfig::half(full));
-    assert!(run.coins() + paid >= coins);
+    assert_eq!(run.coins() + paid, coins, "no Groschen for the curse");
     // A normal relic of the same Tresen curses nothing.
     let other = (0..3).find(|&s| s != fence).expect("other slot");
     let events = run
@@ -454,4 +463,41 @@ fn the_bot_plays_whole_runs_with_trades() {
         assert!(matches!(run.phase(), RunPhase::Won | RunPhase::Lost));
     }
     assert!(traded > 0, "the bot takes trades with Pechvogel");
+}
+
+#[test]
+fn trade_curses_pay_no_groschen_other_curses_do() {
+    let content = content();
+    let (mut run, _) = Run::new(&content, 11).expect("start");
+    run.coins = 5;
+    // A curse from elsewhere (an encounter) pays its 3 Groschen.
+    let mut events = Vec::new();
+    let id = card_id(&run, "C7");
+    run.attach_mod(&content, id, &CardModId::new("battered"), 5, &mut events)
+        .expect("curse");
+    assert_eq!(run.coins(), 8);
+    // As the price of a trade it pays nothing (decided on 03.11.2026).
+    for cause in [CurseCause::Bargain, CurseCause::Fence, CurseCause::Schnapps] {
+        let mut events = Vec::new();
+        let (card, _) = run
+            .trade_curse(&content, &[], cause, &mut events)
+            .expect("trade")
+            .expect("a card");
+        assert!(run.card_is_cursed(&content, card));
+        assert_eq!(run.coins(), 8, "{cause:?}");
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, RunEvent::CoinsGained { .. }))
+        );
+    }
+    // The curses say so.
+    for id in ["transparent", "battered", "stained"] {
+        let def = content.card_mod(&CardModId::new(id)).expect(id);
+        assert!(
+            def.text
+                .ends_with("Beim Erhalt 3 Groschen (nicht bei einem Handel)."),
+            "{id}"
+        );
+    }
 }

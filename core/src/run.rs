@@ -5077,6 +5077,21 @@ impl Run {
         value: i32,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        self.attach_mod_paid(content, card, card_mod, value, true, events)
+    }
+
+    /// [`Run::attach_mod`]; with `paid` false the `OnAttach` hooks pay no
+    /// Groschen (a curse as the price of a trade, [`trade`], decided on
+    /// 03.11.2026: the curse is the price, it pays nothing back).
+    fn attach_mod_paid(
+        &mut self,
+        content: &Content,
+        card: u32,
+        card_mod: &CardModId,
+        value: i32,
+        paid: bool,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
         if let (Some(def), Some(deck_card)) = (content.card_mod(card_mod), self.edition.get(card)) {
             if deck_card.kind != CardKind::Blank && !def.fits(deck_card.kind) {
                 return Err(RunError::NoModAvailable);
@@ -5111,9 +5126,13 @@ impl Run {
                 };
                 evaluate(hook.when(), &ctx, None)
             };
-            // "Beim Erhalt" is not scaled: a curse pays its Groschen once.
+            // "Beim Erhalt" is not scaled: a curse pays its Groschen once,
+            // never as the price of a trade.
             if holds {
                 for effect in hook.then() {
+                    if !paid && matches!(effect, Effect::GainCoins(_)) {
+                        continue;
+                    }
                     self.apply_effect(content, &source, effect, events);
                 }
             }

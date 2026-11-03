@@ -119,7 +119,7 @@
     (
         id: "rotgut",
         name: "Fusel",
-        text: "Vor der Wahl zwischen Skat und Hand: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren. Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer.",
+        text: "Vor der Wahl zwischen Skat und Hand: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren. Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer und ohne Groschen.",
         rarity: Common,
         price: 2,
         action: NextGameCursed(Multiply(2)),

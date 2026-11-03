@@ -3,7 +3,8 @@
 //! A curse is the price of a bargain. Three offers pay with one, each a
 //! permanent random curse on a random card of the player's edition that
 //! carries none (a curse takes the place of the card's normal
-//! modification, a special card keeps its special, DESIGN 7.2):
+//! modification, a special card keeps its special, DESIGN 7.2). A trade
+//! curse pays none of the Groschen a curse pays elsewhere when it lands:
 //!
 //! - **Schnäppchen** ([`super::zinken::CardOffer::bargain`]): an offer of
 //!   the Auslage at half price (rounded down, at least 1); the curse lands
@@ -66,9 +67,10 @@ impl Run {
     /// Put a trade curse on a random card of
     /// [`Run::trade_curse_targets`]: the card drawn evenly, then the curse
     /// by its weight among those that fit it, with its default value. Says
-    /// so ([`RunEvent::TradeCurse`]) before the curse lands (a curse that
-    /// pays when attached pays as everywhere). Returns the card, `None` if
-    /// no card can take a curse (it falls away).
+    /// so ([`RunEvent::TradeCurse`]) before the curse lands. It pays no
+    /// Groschen: the curse is the price of the deal (decided on
+    /// 03.11.2026). Returns the card, `None` if no card can take a curse
+    /// (it falls away).
     pub(super) fn trade_curse(
         &mut self,
         content: &Content,
@@ -98,7 +100,7 @@ impl Run {
             cause,
         });
         let value = mod_value(content, &curse, None);
-        self.attach_mod(content, card, &curse, value, events)?;
+        self.attach_mod_paid(content, card, &curse, value, false, events)?;
         Ok(Some((card, curse)))
     }
 

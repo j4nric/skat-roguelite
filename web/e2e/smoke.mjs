@@ -194,7 +194,7 @@
 //   DESIGN 8.8, at 390 × 844 and 1280 × 800): the relics on offer as a row
 //   of three tiles like the Auslage, Pechvogel as "Hehlerware" and a
 //   "Schnäppchen" in the Auslage with badge, struck price and note; buying
-//   either curses a card (toast, the curse pays). wave3-mods.json with a
+//   either curses a card (toast, no Groschen for the curse). wave3-mods.json with a
 //   Fusel in the bag: drunk before Skat oder Hand it waits in the head and
 //   a toast names the cursed card.
 // - undead.json: wave3-mods.json with "Untot" on the Eichel-Daus (31) and
@@ -2894,7 +2894,7 @@ async function specialPass(browser, errors, reducedMotion) {
  * at 390 × 844, nothing scrolls sideways), Hehlerware and Schnäppchen wear
  * their badge, the full price struck through and the line that says what
  * the curse is; the info card of the Hehlerware explains the trade. Buying
- * either curses a card (a toast says so, the curse pays 3 Groschen).
+ * either curses a card (a toast says so); a trade curse pays no Groschen.
  * Then Fusel before Skat oder Hand (wave3-mods.json): the HUD shows it
  * waiting, a toast names the cursed card.
  */
@@ -2930,13 +2930,13 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   if (fencePrice !== '4 Gr.') fail(`trade: Hehlerware costs "${fencePrice}"`);
   if ((await fence.locator('.price-was').textContent()) !== '9') fail('trade: the full price is not struck through');
   const fenceNote = (await fence.locator('.zinke-note').textContent())?.trim();
-  if (fenceNote !== 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte') fail(`trade: Hehlerware note says "${fenceNote}"`);
+  if (fenceNote !== 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte, ohne Groschen') fail(`trade: Hehlerware note says "${fenceNote}"`);
   if (await page.locator('[data-testid="relic-offer"][data-slot="1"] [data-testid="fence-badge"]').count()) fail('trade: a normal relic wears the Hehlerware badge');
   const bargain = page.locator('[data-testid="zinke"][data-slot="1"]');
   if ((await bargain.getAttribute('data-bargain')) !== 'true') fail('trade: the Schnäppchen is not marked');
   if ((await bargain.locator('[data-testid="bargain-badge"]').textContent())?.trim() !== 'Schnäppchen') fail('trade: no "Schnäppchen" badge');
   const bargainNote = (await bargain.locator('.zinke-note').last().textContent())?.trim();
-  if (bargainNote !== 'Schnäppchen: dafür ein Fluch auf einer anderen Karte') fail(`trade: Schnäppchen note says "${bargainNote}"`);
+  if (bargainNote !== 'Schnäppchen: dafür ein Fluch auf einer anderen Karte, ohne Groschen') fail(`trade: Schnäppchen note says "${bargainNote}"`);
   if ((await bargain.locator('.price-was').textContent()) !== '2') fail('trade: the Schnäppchen does not strike its full price through');
   if (await page.locator('[data-testid="zinke"][data-slot="0"] [data-testid="bargain-badge"]').count()) fail('trade: a normal offer wears the Schnäppchen badge');
   await assertNoSideScroll(page, `trade Tresen ${size}`);
@@ -2955,7 +2955,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   if (await close.count()) await close.click();
   else await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="info-card"]', { state: 'detached', timeout: 5000 }).catch(() => fail('trade: the info card does not close'));
-  // Buy the Hehlerware: half price, a curse that pays 3.
+  // Buy the Hehlerware: half price, a curse that pays nothing.
   const cursedBefore = (await run()).edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
   await page.click('[data-action="buy-relic"][data-slot="0"]');
   await page
@@ -2964,7 +2964,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent?.startsWith('Hehlerware:') && t.textContent.includes('verflucht')), null, { timeout: 8000 }).catch(() => fail('trade: no toast for the Hehlerware curse'));
   await shot('fence-bought');
   let after = await run();
-  if (after.coins !== 20 - 4 + 3) fail(`trade: ${after.coins} Groschen after the Hehlerware, expected 19`);
+  if (after.coins !== 20 - 4) fail(`trade: ${after.coins} Groschen after the Hehlerware, expected 16 (the curse pays nothing)`);
   const cursedAfter = after.edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
   if (cursedAfter !== cursedBefore + 1) fail(`trade: ${cursedAfter - cursedBefore} cards cursed by the Hehlerware`);
   // Buy the Schnäppchen (Aufdruck +3 on the Schellen-Zehn raises +4 → +7: confirm).
@@ -2974,7 +2974,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   await confirm.waitFor({ timeout: 3000 }).then(() => confirm.click()).catch(() => {});
   await page.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent?.startsWith('Schnäppchen:')), null, { timeout: 8000 }).catch(() => fail('trade: no toast for the Schnäppchen curse'));
   after = await run();
-  if (after.coins !== 19 - 1 + 3) fail(`trade: ${after.coins} Groschen after the Schnäppchen, expected 21`);
+  if (after.coins !== 16 - 1) fail(`trade: ${after.coins} Groschen after the Schnäppchen, expected 15 (the curse pays nothing)`);
   const cursedLast = after.edition.cards.filter((c) => c.mods.some((m) => ['transparent', 'battered', 'stained'].includes(m))).length;
   if (cursedLast !== cursedAfter + 1) fail('trade: the Schnäppchen cursed no card');
   if (after.edition.cards.find((c) => c.id === 3)?.mod_values?.points !== 7) fail('trade: the Schnäppchen did not raise the Schellen-Zehn');

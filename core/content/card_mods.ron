@@ -148,7 +148,8 @@
     ),
     // ---------------------------------------------------------------------
     // Flüche: Feld unten links. Nur über Ereignisse, die sie ankündigen;
-    // sie zahlen beim Erhalt 3 Groschen (Platzhalter). Eine verfluchte
+    // sie zahlen beim Erhalt 3 Groschen (Platzhalter), nicht als Preis eines
+    // Handels (Schnäppchen, Hehlerware, Fusel; Entscheidung 03.11.2026). Eine verfluchte
     // Karte nimmt keine andere Modifikation, nur Karte reinigen hilft.
     // ---------------------------------------------------------------------
     // Lever Zählen: das Wissen hängt an der Karte. Beim Spieler kennen die
@@ -157,7 +158,7 @@
         id: "transparent",
         kind: Curse,
         name: "Durchsichtig",
-        text: "Fluch: Hältst du diese Karte, wissen die Gegner das. Hält sie ein Gegner, siehst du, wer. Beim Erhalt 3 Groschen.",
+        text: "Fluch: Hältst du diese Karte, wissen die Gegner das. Hält sie ein Gegner, siehst du, wer. Beim Erhalt 3 Groschen (nicht bei einem Handel).",
         rarity: Common,
         price: 1,
         passive: [RevealHolder],
@@ -170,7 +171,7 @@
         id: "battered",
         kind: Curse,
         name: "Ramponiert",
-        text: "Fluch: Diese Karte zählt {n} Augen weniger, auch unter 0. Beim Erhalt 3 Groschen.",
+        text: "Fluch: Diese Karte zählt {n} Augen weniger, auch unter 0. Beim Erhalt 3 Groschen (nicht bei einem Handel).",
         rarity: Common,
         price: 1,
         values: [5],
@@ -186,7 +187,7 @@
         kind: Curse,
         focus: Trump,
         name: "Fleckig",
-        text: "Fluch: Ist die Farbe dieser Karte Trumpf und hältst du sie, sinkt der Grundwert um {n}. Beim Erhalt 3 Groschen.",
+        text: "Fluch: Ist die Farbe dieser Karte Trumpf und hältst du sie, sinkt der Grundwert um {n}. Beim Erhalt 3 Groschen (nicht bei einem Handel).",
         rarity: Common,
         price: 1,
         values: [3],

@@ -133,8 +133,8 @@ fn the_card_dealer_never_draws_a_curse() {
 
 /// Over whole runs of the bot with an encounter after every series, every
 /// curse that lands in the deck comes from an encounter whose text says
-/// "Fluch" or from a trade that announced it (curses as trade, 03.11.2026:
-/// Schnäppchen, Hehlerware, Fusel), and pays.
+/// "Fluch" and pays, or from a trade that announced it (curses as trade,
+/// 03.11.2026: Schnäppchen, Hehlerware, Fusel) and pays nothing.
 #[test]
 fn in_whole_runs_curses_come_only_from_announcing_encounters() {
     let content = content();
@@ -170,12 +170,10 @@ fn in_whole_runs_curses_come_only_from_announcing_encounters() {
                     {
                         curses += 1;
                         if traded.take() == Some(*card) {
+                            // The price of a trade: it pays nothing.
                             assert!(
-                                matches!(
-                                    events.get(i + 1),
-                                    Some(RunEvent::CoinsGained { amount, .. }) if *amount > 0
-                                ),
-                                "seed {seed}: traded {card_mod} did not pay"
+                                !matches!(events.get(i + 1), Some(RunEvent::CoinsGained { .. })),
+                                "seed {seed}: traded {card_mod} paid"
                             );
                             continue;
                         }
