@@ -2381,6 +2381,16 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
   await page.click('[data-action="pick-game"][data-index="4"]');
+  // The Ansage as a sign slammed onto the felt: noted when it comes and goes.
+  await page.evaluate(() => {
+    const w = window;
+    w.__declSign = { seen: 0, text: '', gone: false };
+    new MutationObserver(() => {
+      const sign = document.querySelector('[data-testid="decl-sign"]');
+      if (sign && !w.__declSign.seen) w.__declSign = { seen: performance.now(), text: sign.querySelector('b')?.textContent ?? '', gone: false };
+      if (!sign && w.__declSign.seen) w.__declSign.gone = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await page.click('[data-action="declare"]');
   // After the Ansage they fly on into the stack in the felt's corner, turning face down.
   await page
@@ -2389,6 +2399,16 @@ async function tableFeelPass(browser, errors, viewport) {
   await snap('feel-press-flight');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect?.target?.closest?.('.trick, .hand')));
+
+  // The sign went again (shrunk into the game line) and never took a tap.
+  await page.waitForFunction(() => window.__declSign?.gone, null, { timeout: 8000 }).catch(() => fail(`feel ${tag}: the Ansage sign does not come or does not go`));
+  const signText = await page.evaluate(() => window.__declSign.text);
+  const lineText = (await page.locator('.gameline .decl').textContent()) ?? '';
+  if (!signText.trim() || !lineText.toLowerCase().includes(signText.trim().toLowerCase())) fail(`feel ${tag}: the sign "${signText}" does not name the game of "${lineText}"`);
+  // The regulars blink: the frame with shut eyes runs its CSS animation.
+  const blinks = await page.evaluate(() => [...document.querySelectorAll('.opp .portrait-blink')].filter((el) => el.getAnimations().some((a) => a.animationName === 'portrait-blink')).length);
+  if (blinks !== 2) fail(`feel ${tag}: ${blinks} of 2 opponent portraits blink`);
+  log(`feel ${tag}: Ansage sign "${signText.trim()}" came and went, both regulars blink`);
 
   // The pressed skat: face down in the corner, a tap shows it.
   await snap('feel-pressed');

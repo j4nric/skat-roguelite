@@ -111,34 +111,46 @@ export function deal(cards: Element[], from: DOMRect, opts: { step?: number; ms?
 
 /**
  * A finished trick leaves the table towards the seat that took it: the
- * cards close up on the middle card, then slide off together to `to` (a
- * point beyond the edge of the table on the winner's side), turning a
- * little and fading at the end. Resolves when done.
+ * cards fly together onto the card that took it (`onto`, an index into
+ * `els`; default the middle one) and are lifted a little as one stack,
+ * then the stack slides off to `to` (the winner's seat, or beyond the
+ * edge of the table on his side), turning and shrinking, fading at the
+ * end. Resolves when done.
  */
-export async function sweepAway(els: Element[], to: { x: number; y: number }, ms = 460): Promise<void> {
+export async function sweepAway(els: Element[], to: { x: number; y: number }, ms = 460, onto?: number): Promise<void> {
   const duration = dur(ms);
   if (!duration || !els.length) return;
   const rects = els.map((el) => el.getBoundingClientRect());
-  const mid = rects[Math.floor(rects.length / 2)] ?? rects[0];
+  const top = onto !== undefined && onto >= 0 && onto < rects.length ? onto : Math.floor(rects.length / 2);
+  const mid = rects[top] ?? rects[0];
   if (!mid) return;
   const g = center(mid);
   const spin = to.x < g.x - 20 ? -1 : to.x > g.x + 20 ? 1 : 0;
+  const lastTilt = spin * 16 + jitter(6);
+  // The stack lies a little fanned: each card a step off, the one that took it on top.
+  let order = 0;
   const anims = els.map((el, i) => {
     const r = rects[i] ?? mid;
     const a = center(r);
-    const gx = g.x - a.x + (i - 1) * 3;
-    const gy = g.y - a.y + (i - 1) * 2;
-    const tilt = jitter(7);
-    const last = spin * 18 + jitter(10);
+    const step = i === top ? 0 : ++order;
+    const gx = g.x - a.x + (step ? (step % 2 ? -1 : 1) * 3 : 0);
+    const gy = g.y - a.y + step * 2;
+    const tilt = step ? jitter(8) : jitter(2);
+    const sx = gx + to.x - g.x;
+    const sy = gy + to.y - g.y;
+    // The slots stack the cards; the one that took the trick goes on top.
+    const slot = el.closest('.slot');
+    if (slot instanceof HTMLElement) slot.style.zIndex = String(i === top ? 9 : 8 - step);
     return track(
       el.animate(
         [
-          // Close up quickly, then slide off with growing speed.
+          // Together quickly, a beat lifted as one stack, then off with growing speed.
           { transform: 'none', opacity: 1, easing: 'cubic-bezier(.2,.7,.3,1)' },
-          { transform: `translate(${gx}px, ${gy}px) rotate(${tilt}deg)`, opacity: 1, offset: 0.26, easing: 'cubic-bezier(.5,0,.85,.5)' },
-          { transform: `translate(${gx + to.x - g.x}px, ${gy + to.y - g.y}px) rotate(${last}deg)`, opacity: 0.15 },
+          { transform: `translate(${gx}px, ${gy}px) rotate(${tilt}deg) scale(1.06)`, opacity: 1, offset: 0.3 },
+          { transform: `translate(${gx}px, ${gy - 3}px) rotate(${tilt}deg) scale(1.06)`, opacity: 1, offset: 0.4, easing: 'cubic-bezier(.55,0,.8,.45)' },
+          { transform: `translate(${sx}px, ${sy}px) rotate(${lastTilt + tilt}deg) scale(0.55)`, opacity: 0 },
         ],
-        { duration, delay: i * dur(20), fill: 'forwards' },
+        { duration, delay: step * dur(16), fill: 'forwards' },
       ),
     );
   });
@@ -689,4 +701,198 @@ export function glideAll(els: HTMLElement[], before: Map<string, Spot>, opts: { 
     if (!flying && Math.abs(now.x - from.x) < 1 && Math.abs(now.y - from.y) < 1 && Math.abs(now.turn - from.turn) < 0.5 && Math.abs(now.w - from.w) < 1) continue;
     glide(el, from, { ms: opts.ms ?? 240 });
   }
+}
+
+/**
+ * The Ansage lands: a pixel sign with the game's name (`html`, from
+ * de.ts) slams onto the felt at the middle of `at`, bounces, raises a
+ * little dust, lies a moment and then shrinks into `into` (the game line,
+ * where the same name stays). It lives in `layer`, outside the table's
+ * re-renders, never takes a tap, and goes when done or hurried
+ * (finishAll); `onHit` runs as it hits the felt (a knock). Returns the
+ * time until it lies on the felt, 0 if not shown.
+ */
+export function declareSign(layer: HTMLElement, html: string, at: DOMRect, into: DOMRect | null, opts: { ms?: number; onHit?: () => void } = {}): number {
+  const duration = dur(opts.ms ?? 1500);
+  if (!duration || !at.width) return 0;
+  const sign = document.createElement('div');
+  sign.className = 'decl-sign';
+  sign.setAttribute('aria-hidden', 'true');
+  sign.dataset.testid = 'decl-sign';
+  sign.innerHTML = html;
+  const c = center(at);
+  sign.style.left = `${c.x.toFixed(1)}px`;
+  sign.style.top = `${c.y.toFixed(1)}px`;
+  layer.appendChild(sign);
+  const box = sign.getBoundingClientRect();
+  // Into the game line: centre onto its centre, as tall as it is.
+  const end = into && into.width ? center(into) : { x: c.x, y: c.y - box.height };
+  const s = into && into.height && box.height ? Math.max(0.15, Math.min(1, into.height / box.height)) : 0.3;
+  const dx = end.x - c.x;
+  const dy = end.y - c.y;
+  const hit = 0.16;
+  const tilt = jitter(3);
+  const anim = track(
+    sign.animate(
+      [
+        { transform: `translateY(-38px) scale(2.3) rotate(${tilt - 7}deg)`, opacity: 0, easing: 'cubic-bezier(.55,0,.9,.4)' },
+        { transform: `translateY(0) scale(0.9, 0.84) rotate(${tilt}deg)`, opacity: 1, offset: hit, easing: 'cubic-bezier(.2,.8,.4,1)' },
+        { transform: `translateY(-7px) scale(1.05) rotate(${tilt * 0.5}deg)`, opacity: 1, offset: 0.24, easing: 'cubic-bezier(.5,0,.7,.4)' },
+        { transform: `translateY(0) scale(1) rotate(${tilt * 0.4}deg)`, opacity: 1, offset: 0.3 },
+        { transform: `translateY(0) scale(1) rotate(${tilt * 0.4}deg)`, opacity: 1, offset: 0.68, easing: 'cubic-bezier(.5,0,.3,1)' },
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${s.toFixed(3)}) rotate(0deg)`, opacity: 0.9, offset: 0.94 },
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${s.toFixed(3)}) rotate(0deg)`, opacity: 0 },
+      ],
+      { duration, fill: 'both' },
+    ),
+  );
+  const gone = (): void => sign.remove();
+  anim.finished.then(gone, gone);
+  if (opts.onHit) {
+    const hitNow = opts.onHit;
+    const timer = window.setTimeout(hitNow, duration * hit);
+    // Hurried before it hit: no knock after the fact.
+    const quiet = (): void => window.clearTimeout(timer);
+    anim.finished.then(quiet, quiet);
+  }
+  // Dust puffs out from under its lower edge as it hits the felt, to both sides.
+  const puffs = 10;
+  for (let i = 0; i < puffs; i++) {
+    const side = i % 2 ? 1 : -1;
+    const dust = document.createElement('span');
+    dust.className = 'decl-dust';
+    dust.setAttribute('aria-hidden', 'true');
+    const x0 = c.x + side * (box.width / 2 - 6 - Math.random() * box.width * 0.25);
+    const y0 = c.y + box.height / 2 + 1 - Math.random() * 6;
+    dust.style.left = `${x0.toFixed(1)}px`;
+    dust.style.top = `${y0.toFixed(1)}px`;
+    layer.appendChild(dust);
+    const fx = side * (16 + Math.random() * 34);
+    const fy = -(Math.random() * 14) + 4;
+    const size = 0.7 + Math.random() * 0.6;
+    const puff = track(
+      dust.animate(
+        [
+          { transform: `translate(0, 0) scale(${size.toFixed(2)})`, opacity: 0, easing: 'steps(1, end)' },
+          { transform: `translate(0, 0) scale(${size.toFixed(2)})`, opacity: 1, offset: 0.01, easing: 'cubic-bezier(.1,.7,.3,1)' },
+          { transform: `translate(${(fx * 0.75).toFixed(1)}px, ${(fy * 0.75).toFixed(1)}px) scale(${size.toFixed(2)})`, opacity: 0.85, offset: 0.55 },
+          { transform: `translate(${fx.toFixed(1)}px, ${fy.toFixed(1)}px) scale(0.3)`, opacity: 0 },
+        ],
+        { duration: duration * 0.34, delay: duration * hit, fill: 'both' },
+      ),
+    );
+    const off = (): void => dust.remove();
+    puff.finished.then(off, off);
+  }
+  return duration * 0.3;
+}
+
+/** Pixel rows of the scissors, open and shut: h handle, b blade, d rivet and edge. */
+const SCISSORS = {
+  open: ['hhh.............', 'h.h.......bbbb..', 'hhhd...bbbb.....', '...dbbbb........', '....dd..........', '...dbbbb........', 'hhhd...bbbb.....', 'h.h.......bbbb..', 'hhh.............'],
+  shut: ['................', 'hhh.............', 'h.h.............', 'hhhd............', '...ddbbbbbbbbbbb', 'hhhd............', 'h.h.............', 'hhh.............', '................'],
+};
+const SCISSOR_INK: Record<string, string> = { h: '#c0262f', b: '#d8dde3', d: '#2b1a0e' };
+
+function pixelRows(rows: string[], cls: string): string {
+  let out = '';
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const ink = SCISSOR_INK[row[x] ?? '.'];
+      if (ink) out += `<rect x="${x}" y="${y}" width="1" height="1" fill="${ink}"/>`;
+    }
+  });
+  return `<g class="${cls}">${out}</g>`;
+}
+
+/**
+ * Schneider: a small pixel scissors snips once across `across` (the
+ * felt), opening and shutting on the way, leaving a cut line that fades.
+ * Cosmetic; it lives in `layer` and goes when done or hurried. Resolves
+ * when it has crossed.
+ */
+export async function snipAcross(layer: HTMLElement, across: DOMRect, ms = 950): Promise<void> {
+  const duration = dur(ms);
+  if (!duration || !across.width) return;
+  const y = across.top + across.height * 0.42;
+  const x0 = across.left - 40;
+  const x1 = across.right + 40;
+  const line = document.createElement('span');
+  line.className = 'snip-line';
+  line.setAttribute('aria-hidden', 'true');
+  line.style.left = `${across.left.toFixed(1)}px`;
+  line.style.top = `${y.toFixed(1)}px`;
+  line.style.width = `${across.width.toFixed(1)}px`;
+  const tool = document.createElement('span');
+  tool.className = 'snip-scissors';
+  tool.setAttribute('aria-hidden', 'true');
+  tool.dataset.testid = 'snip';
+  tool.innerHTML = `<svg viewBox="0 0 16 9" shape-rendering="crispEdges">${pixelRows(SCISSORS.open, 'snip-open')}${pixelRows(SCISSORS.shut, 'snip-shut')}</svg>`;
+  tool.style.left = `${x0.toFixed(1)}px`;
+  tool.style.top = `${y.toFixed(1)}px`;
+  layer.append(line, tool);
+  const span = x1 - x0;
+  const fly = track(
+    tool.animate(
+      [
+        { transform: 'translate(0, 0) rotate(-4deg)', opacity: 1 },
+        { transform: `translate(${(span * 0.5).toFixed(1)}px, 3px) rotate(3deg)`, opacity: 1, offset: 0.5 },
+        { transform: `translate(${span.toFixed(1)}px, 0) rotate(-2deg)`, opacity: 1 },
+      ],
+      { duration, easing: 'cubic-bezier(.35,.1,.65,.9)', fill: 'both' },
+    ),
+  );
+  const cut = track(
+    line.animate(
+      [
+        { transform: 'scaleX(0)', opacity: 0.9 },
+        { transform: 'scaleX(1)', opacity: 0.9, offset: 0.78 },
+        { transform: 'scaleX(1)', opacity: 0 },
+      ],
+      { duration: duration * 1.25, easing: 'linear', fill: 'both' },
+    ),
+  );
+  const gone = (): void => {
+    tool.remove();
+  };
+  fly.finished.then(gone, gone);
+  const off = (): void => line.remove();
+  cut.finished.then(off, off);
+  await fly.finished.catch(() => undefined);
+}
+
+/** An opponent pleased: his portrait nods once and brightens. */
+export function nod(el: Element): void {
+  const duration = dur(520);
+  if (!duration) return;
+  track(
+    el.animate(
+      [
+        { transform: 'translateY(0)', filter: 'brightness(1)' },
+        { transform: 'translateY(3px)', filter: 'brightness(1.35)', offset: 0.3 },
+        { transform: 'translateY(-1px)', filter: 'brightness(1.25)', offset: 0.6 },
+        { transform: 'translateY(0)', filter: 'brightness(1)' },
+      ],
+      { duration, easing: 'ease-out' },
+    ),
+  );
+}
+
+/** An opponent annoyed: his portrait darkens and shakes its head. */
+export function frown(el: Element): void {
+  const duration = dur(560);
+  if (!duration) return;
+  track(
+    el.animate(
+      [
+        { transform: 'translateX(0)', filter: 'brightness(1) saturate(1)' },
+        { transform: 'translateX(-2px)', filter: 'brightness(.72) saturate(.6)', offset: 0.18 },
+        { transform: 'translateX(2px)', filter: 'brightness(.72) saturate(.6)', offset: 0.36 },
+        { transform: 'translateX(-2px)', filter: 'brightness(.75) saturate(.65)', offset: 0.54 },
+        { transform: 'translateX(1px)', filter: 'brightness(.8) saturate(.75)', offset: 0.72 },
+        { transform: 'translateX(0)', filter: 'brightness(1) saturate(1)' },
+      ],
+      { duration, easing: 'ease-in-out' },
+    ),
+  );
 }

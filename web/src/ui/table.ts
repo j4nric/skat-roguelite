@@ -16,7 +16,7 @@
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
+import type { BossInfo, CardView, Declaration, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RiskLevel, RunView, Seat, Suit, TrickView } from '../types';
 import { backDesign } from './backs';
 import { cardBack, lookSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
@@ -103,6 +103,17 @@ function kontraBadge(game: GameView, seat: Seat): string {
   return '';
 }
 
+/**
+ * The blink of an opponent: a long cycle with a few blinks at uneven
+ * points (style.css), a different length per seat so they never blink
+ * together. The phase comes from the clock, so a re-render of the table
+ * carries on where the blink was instead of starting over. Cosmetic only.
+ */
+function blinkRhythm(seat: 1 | 2): { at: number; cycle: number } {
+  const cycle = seat === 1 ? 9700 : 12300;
+  return { at: -((performance.now() + seat * 3100) % cycle), cycle };
+}
+
 function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): string {
   const size = ui.anim ? (ui.anim.handSizes[seat] ?? 0) : (game.hand_sizes[seat] ?? 0);
   const turn = ui.anim ? ui.anim.turn === seat : view.ai_to_move === seat;
@@ -134,7 +145,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
       : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" ${attrs({ 'data-seat': seat, 'data-guest': person.guest?.id ?? null, 'data-face': person.face })}>
     <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: person.name }) })}>
-      ${portrait(person.face, 'portrait-opp')}${thinking ? thinkBubble() : ''}${quip}
+      ${portrait(person.face, 'portrait-opp', blinkRhythm(seat))}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
         <b class="opp-name" ${attrs({ 'data-testid': 'opp-name', 'data-plate': boss ? 'boss' : null })}>${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
@@ -550,6 +561,17 @@ function winFromChip(game: GameView): string {
   if (!d || d.game === 'Null' || d.game === 'Ramsch' || game.win_threshold === BASE_WIN) return '';
   const augen = game.win_threshold;
   return `<span class="worth win-from" ${attrs({ 'data-testid': 'win-from', title: t(de.table.winFromTitle, { augen }) })}>${esc(t(de.table.winFrom, { augen }))}</span>`;
+}
+
+/**
+ * The sign that slams onto the felt when a game is declared (./fx.ts
+ * declareSign): the game's icon, its name big ("Grand", "Rot", "Null
+ * Ouvert") and the level below it ("Hand", "Schneider angesagt").
+ */
+export function declarationSign(d: Declaration): string {
+  const main = d.game === 'Null' ? (de.nullRisks[d.risk as NullRisk] ?? de.games.Null) : gameName(d.game);
+  const sub = d.game === 'Null' || d.game === 'Ramsch' || d.risk === 'Normal' ? '' : (de.risks[d.risk as RiskLevel] ?? '');
+  return `<span class="decl-sign-icon">${gameIcon(d.game, 26)}</span><span class="decl-sign-text"><b>${esc(main)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
 }
 
 /**

@@ -52,7 +52,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
@@ -63,7 +63,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, finishAll, finishOn, flip, flyIn, glide, glideAll, motionOn, noteFlights, pulse, resumeFlights, setTempo, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, pulse, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -74,7 +74,7 @@ import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
-import { discardNeed, renderTable } from './ui/table';
+import { declarationSign, discardNeed, renderTable } from './ui/table';
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
 function errorCode(err: unknown): string | null {
@@ -150,6 +150,9 @@ const DELAY = {
   /** Relics and modifications that fired, before the score board covers them. */
   trigger: 650,
 };
+
+/** A trick with this many Augen or more the player took annoys the regulars (the same bar as their quips). */
+const BIG_TRICK = 10;
 
 /** A flick upwards this fast (px per ms) throws a card even if let go over the hand. */
 const FLICK_UP = 0.9;
@@ -1223,7 +1226,10 @@ export class App {
       }
       if ('GameScored' in ev) {
         // What fired, on the chips and cards still on screen, before the board covers them.
-        if (this.fireTriggers(ev.GameScored.breakdown.lines, after)) await this.pause(DELAY.trigger);
+        // The regulars take the result, a Schneider is cut across the felt; what fired lights up meanwhile.
+        let wait = this.fastForward ? 0 : await this.gameEndEffect(ev.GameScored.breakdown);
+        if (this.fireTriggers(ev.GameScored.breakdown.lines, after)) wait = Math.max(wait, DELAY.trigger);
+        if (wait) await this.pause(wait);
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
         await this.showScore(
@@ -1367,6 +1373,7 @@ export class App {
           : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
       this.trickQuip(after, trick.winner, card_points);
       this.render();
+      if (!this.fastForward) this.reactToTrick(after, trick.winner, card_points);
       await this.pause(DELAY.trickShow);
       if (breaking.length) {
         // "Glasdaus": the card cracks and shatters before the trick leaves.
@@ -1381,7 +1388,9 @@ export class App {
       // A card still sliding onto its place lies there now.
       finishOn(cards);
       sound.play('trick');
-      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly), this.pause(DELAY.trickFly + 200)]);
+      // The stack forms on the card that took the trick.
+      const onto = cards.findIndex((c) => c.getAttribute('data-trick-seat') === String(trick.winner));
+      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly, onto), this.pause(DELAY.trickFly + 200)]);
       anim.trick = [];
       anim.status = '';
       this.render();
@@ -1492,6 +1501,7 @@ export class App {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
       this.render();
+      if ('Declared' in ev && !this.fastForward) await this.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev && !this.fastForward) {
         this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
         sound.play('card');
@@ -1796,10 +1806,63 @@ export class App {
     return el ? el.getBoundingClientRect() : null;
   }
 
+  /** The opponents' portraits on the table, by seat. */
+  private faces(): Map<1 | 2, Element> {
+    const out = new Map<1 | 2, Element>();
+    for (const seat of [1, 2] as const) {
+      const el = this.screenEl.querySelector(`.opp[data-seat="${seat}"] .portrait`);
+      if (el) out.set(seat, el);
+    }
+    return out;
+  }
+
   /**
-   * Where a finished trick goes: off the edge of the table on the side of
-   * the seat that took it, the left or right regular (a little towards his
-   * chair) or down to the player.
+   * The regulars react to a trick: the one who took it nods; a big one
+   * the player took makes both frown. In a Ramsch everyone plays for
+   * himself and a trick is no gain, so nobody reacts.
+   */
+  private reactToTrick(view: RunView, winner: Seat, points: number): void {
+    if (view.game?.declaration?.game === 'Ramsch') return;
+    const faces = this.faces();
+    if (winner !== 0) {
+      const el = faces.get(winner);
+      if (el) nod(el);
+      return;
+    }
+    if (points < BIG_TRICK) return;
+    for (const el of faces.values()) frown(el);
+  }
+
+  /**
+   * The game is scored: the regulars frown when the player won it, nod
+   * when he lost; a win with Schneider is snipped across the felt. Returns
+   * how long to let it show (ms at tempo Normal), 0 if nothing plays.
+   */
+  private async gameEndEffect(b: ScoreBreakdown): Promise<number> {
+    if (!motionOn() || b.declaration.game === 'Ramsch') return 0;
+    for (const el of this.faces().values()) (b.won ? frown : nod)(el);
+    const felt = this.rectOf('.center');
+    if (b.won && b.schneider && felt) {
+      await Promise.race([snipAcross(this.root, felt), this.pause(1100)]);
+      return 250;
+    }
+    return 520;
+  }
+
+  /** The Ansage slams onto the felt as a sign, then shrinks into the game line. */
+  private async declareEffect(d: Declaration): Promise<void> {
+    const felt = this.rectOf('.center');
+    if (!felt || !motionOn()) return;
+    const into = this.rectOf('.gameline .decl');
+    const lands = declareSign(this.root, declarationSign(d), felt, into, { onHit: () => sound.play('knock', { rate: 1.15, volume: 0.5 }) });
+    // Let it land before the first card comes; it shrinks away while play goes on.
+    if (lands) await this.pause(520);
+  }
+
+  /**
+   * Where a finished trick goes: into the portrait of the regular who
+   * took it (his name plate), or down past the hand to the player. Without
+   * a portrait, off the edge of the table on his side.
    */
   private sweepTarget(seat: Seat): { x: number; y: number } | null {
     const table = this.rectOf('.table');
@@ -1807,10 +1870,10 @@ export class App {
     if (!table || !trick) return null;
     const card = trick.height;
     const cy = trick.top + trick.height / 2;
-    if (seat === 0) return { x: trick.left + trick.width / 2, y: table.bottom + card };
-    const opp = this.rectOf(`.opp[data-seat="${seat}"]`);
-    const y = opp ? (opp.top + opp.height / 2 + cy) / 2 : cy;
-    return seat === 1 ? { x: table.left - card, y } : { x: table.right + card, y };
+    if (seat === 0) return { x: trick.left + trick.width / 2, y: table.bottom + card * 0.6 };
+    const face = this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
+    if (face) return { x: face.left + face.width / 2, y: face.top + face.height / 2 };
+    return seat === 1 ? { x: table.left - card, y: cy } : { x: table.right + card, y: cy };
   }
 
   /** Cards fly from the deck to the hands, in turns, then two to the skat. */

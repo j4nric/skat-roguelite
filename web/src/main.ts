@@ -3,7 +3,7 @@
 import './style.css';
 import { App } from './app';
 import { installSprite } from './ui/art';
-import { portraitJobs } from './ui/people';
+import { blinkJobs, portraitJobs } from './ui/people';
 import { preparePixelArt } from './ui/pixelate';
 
 const root = document.getElementById('app');
@@ -25,6 +25,8 @@ async function boot(el: HTMLElement): Promise<void> {
   const timeout = new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
   await Promise.race([preparePixelArt(portraitJobs()), timeout]);
   await new App(el).start();
+  // The frames of the opponents' blink are not needed for the first screen.
+  void preparePixelArt(blinkJobs());
 }
 
 if (root) {
