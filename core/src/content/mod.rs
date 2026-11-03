@@ -1138,6 +1138,19 @@ pub enum ConsumableAction {
         #[serde(default)]
         target: i32,
     },
+    /// Raise a pub account below 0 to 0 ("Klarer"). Only between two
+    /// games of a pub (the dealt game untouched, [`crate::run::Run`]), and
+    /// only while the account is below 0 (else `ConditionNotMet`).
+    ClearAccount,
+    /// More games in the current pub ("Absacker"): the Spiellimit rises by
+    /// this many. Only between two games of a normal pub or a Spelunke,
+    /// never in a boss pub (`NotInBossPub`).
+    ExtraGames(u32),
+    /// Change the next declared game like [`ConsumableAction::NextGame`],
+    /// but only while the pub account is below half its Zielwert
+    /// ("Eierlikör"; else `ConditionNotMet`). Drunk between two games
+    /// only: with ten cards before the skat is touched.
+    NextGameIfBehind(NextGameEffect),
 }
 
 /// What a consumable of [`ConsumableAction::NextGame`] does to the next
@@ -1149,6 +1162,9 @@ pub enum NextGameEffect {
     /// Lost, the game counts once instead of twice ("Magenbitter"). Won,
     /// it does nothing; it is used up by the game either way.
     SingleLoss,
+    /// Won, the Spielwert counts this many times; lost, it counts as
+    /// usual ("Eierlikör"). Used up by the game either way.
+    MultiplyWin(u32),
 }
 
 /// Group of a consumable at the Tresen, for labels only.
@@ -1699,7 +1715,15 @@ impl Content {
             )?;
         }
         for consumable in self.consumables.values() {
-            if consumable.action == ConsumableAction::NextGame(NextGameEffect::Multiply(0)) {
+            let factor_zero = matches!(
+                consumable.action,
+                ConsumableAction::NextGame(
+                    NextGameEffect::Multiply(0) | NextGameEffect::MultiplyWin(0)
+                ) | ConsumableAction::NextGameIfBehind(
+                    NextGameEffect::Multiply(0) | NextGameEffect::MultiplyWin(0)
+                ) | ConsumableAction::ExtraGames(0)
+            );
+            if factor_zero {
                 return Err(ContentError(format!(
                     "consumable {}: factor 0",
                     consumable.id

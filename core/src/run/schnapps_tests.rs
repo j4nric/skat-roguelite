@@ -89,6 +89,9 @@ fn the_schnaepse_load_as_one_group() {
         "counter_beer",
         "snifter",
         "road_beer",
+        "clear_spirit",
+        "nightcap",
+        "eggnog",
     ];
     for id in schnaepse {
         let def = content.consumable(&ConsumableId::new(id)).expect("loaded");

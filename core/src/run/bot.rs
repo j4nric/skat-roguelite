@@ -26,6 +26,11 @@
 //!   measurement of 01.11.2026 showed that the weaker hands lose points on
 //!   average (`docs/balance/2026-11-01-m2-zielwerte.md`). "Reue" is never
 //!   used.
+//! - **Rescue Schnäpse** (`RunBot::rescue_schnapps`, before Skat oder
+//!   Hand): "Klarer" with the account below 0, "Absacker" before the last
+//!   game short of the target, "Eierlikör" whenever it is accepted. The
+//!   bot never gives a pub up ("Kneipe verlassen"): a lost pub costs the
+//!   same life either way.
 //! - **Forced hand** ("Der Schieber", `RunBot::forced_hand`): Null Hand
 //!   only with at most [`NULL_HAND_MAX_EXPOSED`] exposed cards, else the
 //!   suit game or grand with Hand; the better expected score if both fit.
@@ -241,6 +246,9 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
 /// | `counter_beer` | 2 | "Konterbier": at the route choice with a life missing |
 /// | `road_beer` | 2 | "Wegbier": at the route choice, at once |
+/// | `clear_spirit` | 1 | "Klarer": between two games when the account is below 0 |
+/// | `nightcap` | 2 | "Absacker": before the last game of a normal pub when the target is not reached |
+/// | `eggnog` | 1 | "Eierlikör": before Skat oder Hand whenever the account is below half the target |
 /// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
 ///
 /// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
@@ -256,7 +264,7 @@ pub const SWAP_MARGIN: u32 = 3;
 /// often than used. Kräuter and Doppelkorn 2 → 1 on 03.11.2026: about
 /// half of them were never drunk
 /// (`docs/balance/2026-11-03-kleine-runde.md`, 1387 / 772 and 695 / 349).
-pub const CONSUMABLE_VALUES: [(&str, u32); 7] = [
+pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("herbal", 1),
     ("double_grain", 1),
     ("blue_curacao", 2),
@@ -264,6 +272,9 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 7] = [
     ("counter_beer", 2),
     ("road_beer", 2),
     ("snifter", 0),
+    ("clear_spirit", 1),
+    ("nightcap", 2),
+    ("eggnog", 1),
 ];
 
 /// A Neuauslage needs at least this many Groschen left over after paying
@@ -992,6 +1003,9 @@ impl RunBot {
         }
         match game.phase() {
             Phase::Declaring => {
+                if let Some(rescue) = Self::rescue_schnapps(run, content) {
+                    return Some(rescue);
+                }
                 let action = Self::before_skat(run, content)?;
                 if action == RunAction::PickUpSkat {
                     if let Some(peek) = Self::usable(
@@ -1433,6 +1447,41 @@ impl RunBot {
                 (ConsumableAction::NextGame(e), w) => *e == w,
                 _ => false,
             },
+            None,
+        )
+    }
+
+    /// The rescue Schnäpse between two games: "Klarer" with the account
+    /// below 0, "Absacker" before the last game of a pub short of its
+    /// target, "Eierlikör" whenever the run accepts it (account below half
+    /// the target). The run refuses each when it would do nothing, so none
+    /// of them is drunk twice for the same reason.
+    fn rescue_schnapps(run: &Run, content: &Content) -> Option<RunAction> {
+        let series = run.series();
+        if series.score < 0 {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::ClearAccount),
+                None,
+            ) {
+                return Some(action);
+            }
+        }
+        if series.games_left() == 1 && !series.target_reached() {
+            if let Some(action) = Self::usable(
+                run,
+                content,
+                |a| matches!(a, ConsumableAction::ExtraGames(_)),
+                None,
+            ) {
+                return Some(action);
+            }
+        }
+        Self::usable(
+            run,
+            content,
+            |a| matches!(a, ConsumableAction::NextGameIfBehind(_)),
             None,
         )
     }
