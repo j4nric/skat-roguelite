@@ -651,6 +651,38 @@ fn skat_god_adds_a_level_to_every_won_game_after_a_won_schneider() {
     assert_eq!(preview(&run), preview(&without) + 2);
 }
 
+#[test]
+fn skat_god_stops_at_three_levels() {
+    // 03.11.2026: at most +3 in total, as data (the counter stops at 3).
+    let content = content();
+    let mut run = relic_run(&content, &["skat_god"]);
+    let strong = [
+        "CJ SJ HJ DJ DA DT DK DQ D9 D7",
+        "HA HT HK HQ H9 H8 H7 SA ST SK",
+        "SQ S9 S8 S7 CA CT CK CQ C9 C8",
+    ];
+    let diamonds = Declaration::suit(Suit::Diamonds, RiskLevel::Hand);
+    let source = Source::Relic(RelicId::new("skat_god"));
+    let mut levels = Vec::new();
+    for _ in 0..5 {
+        deal_with(&mut run, &content, strong, "D8 C7", Seat::DECLARER);
+        run.apply(&content, RunAction::Declare(diamonds))
+            .expect("declare");
+        let (_, breakdown) = bot_to_end(&mut run, &content);
+        assert!(breakdown.won && breakdown.schneider);
+        let added: i64 = breakdown
+            .lines_of(&source)
+            .filter_map(|l| match l.change {
+                Change::Add(n) => Some(n),
+                _ => None,
+            })
+            .sum();
+        levels.push(added);
+    }
+    assert_eq!(levels, vec![0, 1, 2, 3, 3]);
+    assert_eq!(run.counters().get("skat_god"), Some(&3));
+}
+
 // ---------------------------------------------------------- Ehrenvorsitz
 
 #[test]

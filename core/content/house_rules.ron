@@ -259,17 +259,19 @@
     // counter; from the next game on every won game (Farbspiel, Grand and
     // Null, not the Ramsch) gets one level per point, on score. The level
     // hook comes first, so a Schneider game does not count its own point.
+    // Since 03.11.2026 the counter stops at 3, so at most +3 in total
+    // (docs/balance/2026-11-03-kleine-runde.md: it dominated every relic).
     (
         id: "skat_god",
         group: Multiplier,
         focus: Trump,
         name: "Skatgott",
-        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel.",
+        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3.",
         rarity: Legendary,
         price: 9,
         hooks: [
             OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerCounter(counter: "skat_god", per: 1)]),
-            OnScore(when: WonSchneider, then: [IncrementCounter("skat_god")]),
+            OnScore(when: All([WonSchneider, Not(CounterAtLeast(counter: "skat_god", value: 3))]), then: [IncrementCounter("skat_god")]),
         ],
     ),
     // Lever Stichgewinn (Vorhand): the player leads the first trick of
