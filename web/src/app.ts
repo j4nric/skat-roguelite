@@ -63,12 +63,13 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
+import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
@@ -297,11 +298,15 @@ export class App {
   private pickupFrom: { pile: Spot[]; hand: Map<string, Spot> } | null = null;
   /** The pressed cards still to fly onto their place (./ui/table.ts pressedStack). */
   private pressFlight: PressFlight | null = null;
+  /** Drinking a Schnaps from the Leiste (drag and drop or tap, ./ui/drink.ts). */
+  private readonly drink: Drink;
+  /** The Schnaps just poured, for its effects while its events play: the table's cards washed away. */
+  private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
 
   constructor(private readonly root: HTMLElement) {
-    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div>`;
+    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
@@ -320,12 +325,18 @@ export class App {
       },
       leave: () => this.info.closeHoverSoon(),
       // Only where the run is on screen, and not behind the score board.
-      blocked: () => !this.ui.view || (this.ui.screen !== 'run' && this.ui.screen !== 'end') || this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss',
+      blocked: () => !this.ui.view || (this.ui.screen !== 'run' && this.ui.screen !== 'end') || this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss' || this.drink.quiet,
     });
     // Drag cards between hand and table, the deck into the middle.
     watchDrags(root, {
       drop: (el, zone, over, at, fling) => this.onDrop(el, zone, over, at, fling),
+      blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet' || this.drink.active,
+    });
+    // A Schnaps from the Leiste onto its target (or lifted by a tap).
+    this.drink = new Drink(this.screenEl, root.querySelector<HTMLElement>('.drink-layer') ?? root, {
+      item: (slot) => this.ui.view?.consumables.find((c) => c.slot === slot),
       blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet',
+      pour: (p) => this.pourSchnaps(p),
     });
     // No text selection on the table: a long-press opens the info card and
     // must not mark the page. Inputs (seed, save code) keep theirs.
@@ -1022,6 +1033,11 @@ export class App {
       if (typeof ev === 'string') {
         if (ev === 'Re') this.showToast(de.toast.re);
         if (ev === 'Redealt') {
+          // Kräuter, Doppelkorn: the old cards are washed off the table first.
+          if (this.pouring?.wash.length) {
+            this.washAway(this.pouring.wash);
+            this.pouring.wash = [];
+          }
           this.passedOnce = true;
           this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
           reshuffle();
@@ -1040,6 +1056,7 @@ export class App {
         if (ev === 'RoutesRerolled') {
           this.showToast(de.toast.routesRerolled);
           sound.play('card');
+          this.afterRender.push(() => this.reelRoutes());
         }
         if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
         continue;
@@ -1181,8 +1198,18 @@ export class App {
         // The toasts of the lost pub follow (life, or the end of the run).
         continue;
       }
+      if ('SkatPeeked' in ev) {
+        this.afterRender.push(() => this.revealSkat());
+      }
       if ('ConsumableUsed' in ev) {
         const id = ev.ConsumableUsed.consumable;
+        // Poured over the table: a factor for the next game slams onto the felt.
+        const poured = this.pouring;
+        if (poured?.id === id && poured.kind === 'Table') {
+          const effect = after.pending_next_game?.find((p) => p.consumable === id)?.effect;
+          const factor = effect && typeof effect === 'object' ? ('Multiply' in effect ? effect.Multiply : effect.MultiplyWin) : null;
+          if (factor) this.afterRender.push(() => this.slamFactor(factor));
+        }
         // Klarer and Absacker have said what they did.
         if (events.some((e) => typeof e === 'object' && ('AccountCleared' in e || 'GamesAdded' in e))) continue;
         // A Schnaps that changes the next game says so; the others just get used.
@@ -2572,6 +2599,10 @@ export class App {
       case 'sell-item':
         void this.act({ SellConsumable: num('slot') });
         return;
+      case 'lift-item':
+        // A tap on a drinkable Schnaps lifts it; the next tap on its target pours it (./ui/drink.ts).
+        if (!this.ui.busy) this.drink.lift(num('slot'));
+        return;
       case 'use-item': {
         const slot = num('slot');
         const item = view.consumables.find((c) => c.slot === slot);
@@ -2659,6 +2690,190 @@ export class App {
         void this.act('LeaveShop');
         return;
     }
+  }
+
+  /**
+   * A Schnaps poured on its target (./ui/drink.ts): the same action as
+   * "Trinken" on its info card. Blue Curaçao on a hand card dyes it and
+   * opens the suit picker for that card; on the table the cards are kept
+   * as pictures, to be washed away if the core deals anew.
+   */
+  private pourSchnaps(p: Pour): void {
+    const view = this.ui.view;
+    const item = view?.consumables.find((c) => c.slot === p.slot);
+    if (!view || !item || this.ui.busy) return;
+    const c = item.consumable;
+    if (c.needs_suit) {
+      const card = p.kind === 'Card' ? p.card : null;
+      if (card !== null) this.dyeCard(card, p.at);
+      const open = (): void => {
+        if (this.ui.busy || this.ui.overlay || this.ui.view !== view) return;
+        this.ui.overlay = { kind: 'chalk', slot: p.slot, card };
+        this.render();
+      };
+      if (card !== null && motionOn()) window.setTimeout(open, 480 * this.tempo());
+      else open();
+      return;
+    }
+    if (c.needs_target) {
+      // A Schnaps for a deck card: the card picker, as from the info card.
+      const marks = consumableMod(c.id);
+      const reasons = marks.mod || marks.random ? this.refusals(view, item.targets, (id) => ({ UseConsumable: { slot: p.slot, target: id } })) : {};
+      this.ui.overlay = { kind: 'target', slot: p.slot, reasons };
+      this.render();
+      return;
+    }
+    this.pouring = { id: c.id, kind: p.kind, wash: p.kind === 'Table' ? this.snapshotTable() : [] };
+    void this.act({ UseConsumable: { slot: p.slot, target: null } }).finally(() => {
+      for (const el of this.pouring?.wash ?? []) el.remove();
+      this.pouring = null;
+    });
+  }
+
+  /** Pictures of the cards on the felt and in the hand, laid over them until the table is washed. */
+  private snapshotTable(): HTMLElement[] {
+    if (!motionOn()) return [];
+    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
+    if (!layer) return [];
+    return Array.from(this.screenEl.querySelectorAll<HTMLElement>('.declare-choice .felt .card, .declare-choice .felt .skat-pile, .table .hand .hand-card')).map((el) => {
+      const r = el.getBoundingClientRect();
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.removeAttribute('data-testid');
+      copy.removeAttribute('data-action');
+      copy.removeAttribute('data-drag');
+      copy.removeAttribute('data-info');
+      copy.setAttribute('aria-hidden', 'true');
+      copy.classList.add('wash-card');
+      copy.style.left = `${r.left}px`;
+      copy.style.top = `${r.top}px`;
+      copy.style.width = `${r.width}px`;
+      copy.style.height = `${r.height}px`;
+      layer.appendChild(copy);
+      return copy;
+    });
+  }
+
+  /** Kräuter and Doppelkorn: a green wave washes the old cards off the table to the right. */
+  private washAway(cards: HTMLElement[]): void {
+    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
+    const ms = 760 * this.tempo();
+    if (!layer || !cards.length || !motionOn()) {
+      for (const el of cards) el.remove();
+      return;
+    }
+    const table = this.rectOf('.run .table') ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    // The wave stays on the table (a box that clips it); the cards fly off the screen.
+    const box = document.createElement('div');
+    box.className = 'wash-box';
+    box.style.left = `${table.left}px`;
+    box.style.top = `${table.top}px`;
+    box.style.width = `${table.width}px`;
+    box.style.height = `${table.height}px`;
+    const wave = document.createElement('div');
+    wave.className = 'wash-wave';
+    wave.dataset.testid = 'wash-wave';
+    box.appendChild(wave);
+    layer.appendChild(box);
+    const w = window.innerWidth;
+    const sweep = play(wave, [{ transform: 'translateX(-100%)' }, { transform: `translateX(${(table.width * 1.05).toFixed(0)}px)` }], { duration: ms, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'both' });
+    const done = (): void => box.remove();
+    sweep.finished.then(done, done);
+    for (const el of cards) {
+      const r = el.getBoundingClientRect();
+      const reach = Math.max(0, Math.min(1, (r.left + r.width / 2 - table.left) / table.width));
+      const spin = (Math.random() - 0.3) * 50;
+      const anim = play(el, 
+        [
+          { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+          { transform: `translate(${(w - r.left + 40).toFixed(0)}px, ${(-20 - Math.random() * 60).toFixed(0)}px) rotate(${spin.toFixed(0)}deg)`, opacity: 0.9 },
+        ],
+        { duration: ms * 0.7, delay: ms * reach * 0.5, easing: 'cubic-bezier(.5,0,.8,.6)', fill: 'both' },
+      );
+      const gone = (): void => el.remove();
+      anim.finished.then(gone, gone);
+    }
+    this.bigWord(de.drink.redeal, table, ms * 0.3, 'is-redeal');
+  }
+
+  /** A big pixel word over a box for a moment ("Neu geben!", "Wird neu ausgelost …"). */
+  private bigWord(text: string, over: DOMRect, delay: number, cls: string, at = 0.38): void {
+    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
+    if (!layer || !motionOn()) return;
+    const word = document.createElement('div');
+    word.className = `drink-big ${cls}`;
+    word.dataset.testid = `drink-big-${cls.replace('is-', '')}`;
+    word.textContent = text;
+    word.style.left = `${over.left + over.width / 2}px`;
+    word.style.top = `${over.top + over.height * at}px`;
+    layer.appendChild(word);
+    const ms = 1100 * this.tempo();
+    const anim = play(word, 
+      [
+        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(.3)', opacity: 0 },
+        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1.1)', opacity: 1, offset: 0.15 },
+        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1)', opacity: 1, offset: 0.25 },
+        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1)', opacity: 1, offset: 0.8 },
+        { transform: 'translate(-50%, -60%) rotate(-6deg) scale(1)', opacity: 0 },
+      ],
+      { duration: ms, delay, fill: 'both' },
+    );
+    const gone = (): void => word.remove();
+    anim.finished.then(gone, gone);
+  }
+
+  /** Blue Curaçao on a hand card: the card takes on the blue. */
+  private dyeCard(card: number, at: DOMRect): void {
+    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
+    if (!layer || !motionOn()) return;
+    const dye = document.createElement('div');
+    dye.className = 'drink-dye';
+    dye.dataset.testid = 'drink-dye';
+    dye.dataset.card = String(card);
+    dye.style.left = `${at.left}px`;
+    dye.style.top = `${at.top}px`;
+    dye.style.width = `${at.width}px`;
+    dye.style.height = `${at.height}px`;
+    layer.appendChild(dye);
+    const ms = 1100 * this.tempo();
+    const anim = play(dye, 
+      [
+        { clipPath: 'inset(0 0 100% 0)', opacity: 0.85 },
+        { clipPath: 'inset(0 0 0 0)', opacity: 0.85, offset: 0.4 },
+        { clipPath: 'inset(0 0 0 0)', opacity: 0.6, offset: 0.75 },
+        { clipPath: 'inset(0 0 0 0)', opacity: 0 },
+      ],
+      { duration: ms, fill: 'both', easing: 'steps(8, end)' },
+    );
+    const gone = (): void => dye.remove();
+    anim.finished.then(gone, gone);
+  }
+
+  /** Schwenker: the stops of every way spin like the reels of a slot machine and settle one by one. */
+  private reelRoutes(): void {
+    if (!motionOn()) return;
+    const map = this.rectOf('.route-map');
+    if (map) this.bigWord(de.drink.reroll, map, 0, 'is-reroll', 0.2);
+    const reels = Array.from(this.screenEl.querySelectorAll<HTMLElement | SVGElement>('.route-options > *, .route-map .map-badge, .route-map .map-target'));
+    reels.forEach((el, i) => {
+      el.classList.add('is-reeling');
+      el.style.setProperty('--reel-delay', `${Math.round(i * 90 * this.tempo())}ms`);
+      el.style.setProperty('--reel-ms', `${Math.round(620 * this.tempo())}ms`);
+      el.addEventListener('animationend', () => el.classList.remove('is-reeling'), { once: true });
+    });
+  }
+
+  /** Kurzer: the skat turns face up. */
+  private revealSkat(): void {
+    if (!motionOn()) return;
+    this.screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot').forEach((el, i) => flip(el, cardBack(), { ms: 380, delay: 80 + i * 120 }));
+  }
+
+  /** Doppelkorn and Fusel: "×2" slams onto the felt. */
+  private slamFactor(factor: number): void {
+    const felt = this.rectOf('.run .felt') ?? this.rectOf('.run .table');
+    if (!felt || !motionOn()) return;
+    const html = `<span class="decl-sign-text x2-sign" data-testid="x2-sign"><b>${esc(t(de.drink.times, { factor }))}</b></span>`;
+    declareSign(this.root, html, felt, this.rectOf('.slate'), { ms: 1500, onHit: () => sound.play('knock', { rate: 0.9, volume: 0.6 }) });
   }
 
   /**
@@ -2980,6 +3195,8 @@ export class App {
     for (const fx of effects) fx();
     if (ui.screen === 'run' && ui.view) this.hudFx.sync(ui.view);
     else if (ui.screen === 'start') this.hudFx.reset();
+    if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.drink.refresh();
+    else this.drink.cancel();
     this.flyPressed();
   }
 

@@ -1,6 +1,7 @@
 // Head of the run screen: where we are in the tour, Groschen and the menu;
 // a slate panel with account and target, games and Einmischen left as pips;
-// the collected relics and items as beer mats (./emblems.ts) in one row.
+// the Leiste: the collected relics as beer mats (./emblems.ts), scrolling
+// inside itself, and the Schnaps slots next to them.
 
 import { de, bossFiguresText, contentName, t } from '../i18n';
 import type { RunView } from '../types';
@@ -46,7 +47,7 @@ function pips(left: number, limit: number, cls: string): string {
 const ONCE_PER_SERIES = new Set(['three_discard']);
 
 function onceNote(id: string): string {
-  return ONCE_PER_SERIES.has(id) ? `<small data-testid="once-${esc(id)}">${esc(de.hud.oncePerSeries)}</small>` : '';
+  return ONCE_PER_SERIES.has(id) ? `<small class="chip-badge" data-testid="once-${esc(id)}" ${attrs({ title: de.hud.oncePerSeries })}>${esc(de.hud.onceBadge)}</small>` : '';
 }
 
 /** "Drei drücken" was used in this series (the core's `discard_three_ready` is off). */
@@ -54,30 +55,35 @@ function seriesUsed(view: RunView, id: string): boolean {
   return id === 'three_discard' && Boolean(view.game) && view.game?.discard_three_ready === false;
 }
 
+/** A tiny pixel hourglass: "not now" on a Schnaps that cannot be drunk yet. */
+function hourglass(): string {
+  return `<svg class="slot-wait" viewBox="0 0 7 7" width="14" height="14" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h7v1h-7zM0 6h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM2 3h1v1h-1zM4 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1z" fill="#0b0c0e"/><path d="M1 1h5v1h-5zM2 2h3v1h-3zM3 3h1v1h-1zM2 5h3v1h-3zM3 4h1v1h-1z" fill="#a4adb3"/></svg>`;
+}
+
+/**
+ * The relic part of the Leiste: every relic as its beer mat only (no
+ * name; a tap opens the info card), the house rules of the evening, then
+ * waiting factors, flags and counters. It scrolls inside itself, the page
+ * never sideways (relic slots are unlimited).
+ */
 export function relicChips(view: RunView): string {
   const relics = view.relics
-    .map(
-      (r) =>
-        `<button class="coaster-chip rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}` })}>${relicCoaster(r.relic, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.relic.id))}${onceNote(r.relic.id)}</span></button>`,
-    )
+    .map((r) => {
+      const name = contentName('relics', r.relic.id);
+      return `<button class="coaster-chip rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}`, 'aria-label': name, title: name })}>${relicCoaster(r.relic, { size: 38 })}${onceNote(r.relic.id)}</button>`;
+    })
     .join('');
   const evening = view.evening_relics
-    .map(
-      (r, i) =>
-        `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}` })}>${relicCoaster(r, { size: 40 })}<span class="chip-name">${esc(contentName('relics', r.id))}<small>${esc(de.evening.tag)}</small></span></button>`,
-    )
+    .map((r, i) => {
+      const name = `${contentName('relics', r.id)} (${de.evening.tag})`;
+      return `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}`, 'aria-label': name, title: name })}>${relicCoaster(r, { size: 38 })}</button>`;
+    })
     .join('');
   const pending = view.pending_factor
     ? `<span class="flag-chip is-pending" data-testid="pending-factor">${esc(t(de.header.pending, { factor: view.pending_factor }))}</span>`
     : '';
   const schnaps = schnapsNotes(view, de.header)
     .map((text) => `<span class="flag-chip is-pending is-schnaps" data-testid="pending-schnaps">${esc(text)}</span>`)
-    .join('');
-  const items = view.consumables
-    .map(
-      (c) =>
-        `<button class="item-chip" ${attrs({ 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}`, 'aria-label': contentName('consumables', c.consumable.id) })}>${consumableCoaster(c.consumable, { size: 40 })}</button>`,
-    )
     .join('');
   const flags = view.flags
     .filter((f) => de.flags[f])
@@ -87,7 +93,40 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + evening + items + pending + schnaps + flags + counters;
+  return relics + evening + pending + schnaps + flags + counters;
+}
+
+/**
+ * The Schnaps slots of the Leiste (DESIGN 8.9): one per slot, empty ones
+ * as dashed outlines, a Schnaps as its bare motif, greyed with an
+ * hourglass while the core says it cannot be drunk now (`usable_now`).
+ * A drinkable one is lifted by a tap or dragged onto its target
+ * (./drink.ts); the others open their info card.
+ */
+export function schnapsSlots(view: RunView): string {
+  const n = Math.max(view.consumable_slots, ...view.consumables.map((c) => c.slot + 1));
+  return Array.from({ length: n }, (_, slot) => {
+    const c = view.consumables.find((x) => x.slot === slot);
+    if (!c) return `<span class="schnaps-slot is-empty" ${attrs({ 'data-testid': `schnaps-slot-${slot}`, 'data-empty-slot': slot, title: de.hud.emptySlot })}></span>`;
+    const name = contentName('consumables', c.consumable.id);
+    const ready = c.usable_now;
+    return `<button class="item-chip schnaps-slot ${ready ? 'is-ready' : 'is-off'}" ${attrs({
+      'data-action': ready ? 'lift-item' : 'info-item',
+      'data-slot': slot,
+      'data-schnaps': slot,
+      'data-target': c.consumable.target ?? 'Self',
+      'data-info': `item:${slot}`,
+      'data-testid': `schnaps-slot-${slot}`,
+      'data-usable': ready ? 'true' : 'false',
+      'aria-label': ready ? t(de.hud.drinkAria, { name }) : t(de.hud.notNowAria, { name }),
+      title: name,
+    })}>${consumableCoaster(c.consumable, { size: 40 })}${ready ? '' : hourglass()}</button>`;
+  }).join('');
+}
+
+/** The Leiste: relics (scrolling inside), a divider, the Schnaps slots. */
+export function leiste(view: RunView, malus = ''): string {
+  return `<div class="leiste" data-testid="leiste"><div class="leiste-relics" data-testid="leiste-relics">${malus}${relicChips(view)}</div><div class="leiste-slots" data-testid="schnaps-slots">${schnapsSlots(view)}</div></div>`;
 }
 
 /** "Doppelkorn ×2" and the like, for each Schnaps waiting for the next game, in the given texts. */
@@ -144,7 +183,6 @@ export function renderHud(view: RunView): string {
     ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': bossTitle, title: bossTitle })}>${bossCoaster(bossInfo.id, { size: 34 })}<span class="boss-chip-names"><span>${esc(contentName('bosses', bossInfo.id))}</span><small data-testid="hud-boss-figures">${esc(bossFiguresText(bossInfo))}</small></span></button>`
     : '';
   const fill = meterPercent(s.score, s.target);
-  const chips = relicChips(view);
   return `<header class="hud">
   <div class="hud-top">
     <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
@@ -172,6 +210,6 @@ export function renderHud(view: RunView): string {
     </div>
   </div>
   ${neededLine(view)}
-  ${chips || malus ? `<div class="chips">${malus}${chips}</div>` : ''}
+  ${leiste(view, malus)}
 </header>`;
 }

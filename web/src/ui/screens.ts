@@ -11,7 +11,8 @@ import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo,
 import { backDesign } from './backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
-import { bossCoaster, relicCoaster } from './emblems';
+import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
+import { coinIcon } from './hud';
 import { seatPerson } from './guests';
 import { renderRelicPick } from './encounter';
 import { oddsLine } from './odds';
@@ -624,22 +625,32 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     }
     case 'schnapps-reward': {
-      // Placeholder (DESIGN 8.9): the core decides, this only offers the two ways.
+      // The Schnaps of a won pub with every slot full (DESIGN 8.9): the new
+      // one big, the held ones to give up for it, or sell the new one.
       const reward = view?.schnapps_reward;
       if (!view || !reward) return '';
+      const fresh = reward.consumable;
       const swaps = view.consumables
-        .map(
-          (c) =>
-            `<button class="btn btn-wide" ${attrs({ 'data-action': 'schnapps-swap', 'data-slot': c.slot, 'data-testid': `schnapps-swap-${c.slot}` })}>${esc(t(de.shop.schnappsRewardSwap, { name: c.consumable.name }))}</button>`,
-        )
+        .map((c) => {
+          const name = contentName('consumables', c.consumable.id);
+          return `<button class="swap-schnaps" ${attrs({ 'data-action': 'schnapps-swap', 'data-slot': c.slot, 'data-testid': `schnapps-swap-${c.slot}`, 'aria-label': t(de.shop.schnappsRewardSwap, { name }) })}>
+            ${consumableCoaster(c.consumable, { size: 40 })}<b>${esc(name)}</b><small>${esc(de.drink.effect[c.consumable.id] ?? '')}</small><span class="btn btn-small">${esc(de.shop.schnappsRewardGive)}</span></button>`;
+        })
         .join('');
       return sheet(
-        `<h2>${esc(de.shop.schnappsRewardTitle)}</h2>
-         <p class="small">${esc(t(de.shop.schnappsRewardChoose, { name: reward.consumable.name }))}</p>
-         <p class="small">${esc(reward.consumable.text)}</p>
-         <div data-testid="schnapps-reward">${swaps}
-         <button class="btn btn-wide btn-primary" ${attrs({ 'data-action': 'schnapps-sell', 'data-testid': 'schnapps-sell' })}>${esc(t(de.shop.schnappsRewardSell, { price: reward.sell_price }))}</button></div>`,
+        `<div class="schnapps-reward" data-testid="schnapps-reward">
+         <h2>${esc(de.shop.schnappsRewardTitle)}</h2>
+         <div class="reward-schnaps" data-testid="schnapps-reward-new">
+           <span class="reward-schnaps-pic">${consumableCoaster(fresh, { size: 80 })}</span>
+           <span class="reward-schnaps-text"><b>${esc(contentName('consumables', fresh.id))}</b><small>${esc(de.rarity[fresh.rarity] ?? '')}</small><span>${esc(contentText('consumables', fresh.id))}</span></span>
+         </div>
+         <p class="small">${esc(t(de.shop.schnappsRewardChoose, { name: contentName('consumables', fresh.id) }))}</p>
+         <h3 class="swap-title">${esc(de.shop.schnappsRewardSwapTitle)}</h3>
+         <div class="swap-row">${swaps}</div>
+         <button class="btn btn-wide btn-primary" ${attrs({ 'data-action': 'schnapps-sell', 'data-testid': 'schnapps-sell' })}>${coinIcon(16)}${esc(t(de.shop.schnappsRewardSell, { price: reward.sell_price }))}</button>
+         </div>`,
         false,
+        'sheet-schnapps-reward',
       );
     }
     case 'book':

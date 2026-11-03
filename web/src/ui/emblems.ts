@@ -2158,12 +2158,33 @@ export function relicCoaster(
   return coasterSvg(relic.id, group, relic.rarity ?? 'Common', opts);
 }
 
-/** The drawing of a consumable: a Schnaps (bottle, label or glass) or the mat of another item. */
+/**
+ * A Schnaps without any mat (user decision 03.11.2026): its 16 × 16 motif
+ * enlarged in whole pixels, a small dot in the rarity ink at its foot on
+ * the right. The size is rounded to a multiple of 20 so every motif pixel
+ * is a whole number of screen pixels; the picture is 21 × 18 motif pixels
+ * (the motif with its outline, the dot beside it).
+ */
+export function schnapsIcon(item: { id: string; rarity?: Rarity | null }, opts: CoasterOpts = {}): string {
+  const unit = Math.max(1, Math.round((opts.size ?? 40) / 20));
+  const ink = RARITY_INK[item.rarity ?? 'Common'];
+  const a11y = opts.label ? `role="img" aria-label="${attr(opts.label)}"` : 'aria-hidden="true"';
+  const ns = opts.standalone ? ' xmlns="http://www.w3.org/2000/svg"' : '';
+  const sprite = spriteFor(item.id, 'Schnapps', opts.variant);
+  return (
+    `<svg${ns} class="deckel schnaps-pic ${opts.cls ?? ''}" viewBox="-1 -1 21 18" width="${unit * 21}" height="${unit * 18}" shape-rendering="crispEdges" ${a11y} data-deckel="${attr(item.id)}" data-form="Bare" data-rarity="${item.rarity ?? 'Common'}">` +
+    `<g class="schnaps-motif">${spriteMarkup(sprite)}</g>` +
+    `<g class="rarity-dot"><rect x="16" y="12" width="4" height="4" fill="${OUTLINE}"/><rect x="17" y="13" width="2" height="2" fill="${ink.main}"/><rect x="17" y="13" width="1" height="1" fill="${ink.light}"/></g></svg>`
+  );
+}
+
+/** The drawing of a consumable: a Schnaps as its bare motif (schnapsIcon), another item on its mat. */
 export function consumableCoaster(
   item: { id: string; category?: ConsumableCategory | null; rarity?: Rarity | null },
   opts: CoasterOpts = {},
 ): string {
-  return coasterSvg(item.id, item.category === 'Schnapps' ? 'Schnapps' : 'Item', item.rarity ?? 'Common', opts);
+  if (item.category === 'Schnapps') return schnapsIcon(item, opts);
+  return coasterSvg(item.id, 'Item', item.rarity ?? 'Common', opts);
 }
 
 /** The mat of a boss. */
