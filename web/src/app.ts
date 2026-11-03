@@ -1517,7 +1517,7 @@ export class App {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
       this.render();
-      if ('Declared' in ev && !this.fastForward) await this.declareEffect(ev.Declared.declaration);
+      if ('Declared' in ev && !this.fastForward) this.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev && !this.fastForward) {
         this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
         sound.play('card');
@@ -1868,14 +1868,16 @@ export class App {
     return 520;
   }
 
-  /** The Ansage slams onto the felt as a sign, then shrinks into the game line. */
-  private async declareEffect(d: Declaration): Promise<void> {
+  /**
+   * The Ansage slams onto the felt as a sign, then shrinks into the game
+   * line. Play goes on underneath at once (the sign takes no tap), so the
+   * game is no slower for it.
+   */
+  private declareEffect(d: Declaration): void {
     const felt = this.rectOf('.center');
     if (!felt || !motionOn()) return;
     const into = this.rectOf('.gameline .decl');
-    const lands = declareSign(this.root, declarationSign(d), felt, into, { onHit: () => sound.play('knock', { rate: 1.15, volume: 0.5 }) });
-    // Let it land before the first card comes; it shrinks away while play goes on.
-    if (lands) await this.pause(520);
+    declareSign(this.root, declarationSign(d), felt, into, { onHit: () => sound.play('knock', { rate: 1.15, volume: 0.5 }) });
   }
 
   /**
