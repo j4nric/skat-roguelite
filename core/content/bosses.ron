@@ -6,9 +6,13 @@
 // nach dem dritten. Verloren ist der Run vorbei.
 //
 // target_factor: Faktor auf den Zielwert der Boss-Kneipe (Standard 1.0).
-// VORLÄUFIG: Alle Faktoren sind am 03.11.2026 nach Augenmaß für drei volle
-// Spiele gegen zwei Boss-Spieler gesetzt, ohne Messung (die Simulationen
-// ruhen). Die alten Messungen (M4, M5, Serien mit 3 Spielen) galten einem
+// Faktoren des Alleinspielers seit 03.11.2026 nach der kleinen Runde
+// (docs/balance/2026-11-03-kleine-runde.md, Nachmessung in
+// 2026-11-03-grosse-runde.md): Schieber 0,5, Oma 1,0, Zwillinge 1,2,
+// Schwarzer Peter 0,7, Ramscher und der Alte 1,0. Die Kurven der
+// Boss-Kneipen sind flach (0,15 bis 0,25 Punkte je Zielwert-Punkt), der
+// Faktor stellt nur fein nach. Die Faktoren der Nullspieler-Spalte sind
+// weiter nach Augenmaß. Die alten Messungen (M4, M5, Serien mit 3 Spielen) galten einem
 // Boss-Platz und dem frühen Ende; sie stehen in DESIGN 11.
 // characters: für welche Charaktere der Boss gezogen wird (leer: alle).
 // character_factors: Zielwert-Faktor für einzelne Charaktere statt
@@ -38,7 +42,7 @@
         // Vorläufig (03.11.2026): drei volle Handspiele gegen zwei
         // Ausgaben mit Augen. Bis ADR 0017 1,0 (Nullspieler 0,4, gemessen
         // mit einem Boss-Platz und frühem Ende).
-        target_factor: 0.8,
+        target_factor: 0.5,
         character_factors: {NullPlayer: 0.35},
     ),
     (
@@ -60,7 +64,7 @@
         // (Ramponiert, Fleckig) härter als den Nullspieler (im Null zählt
         // nur Durchsichtig). Seit ADR 0017 für alle Charaktere; bis dahin
         // 0,3 und nur der Alleinspieler (ohne Unter).
-        target_factor: 0.7,
+        target_factor: 1.0,
         character_factors: {NullPlayer: 0.9},
     ),
     (
@@ -76,7 +80,7 @@
             (name: "Franz", edition: [((rank: Some(Nine)), "rank", 2)]),
         ],
         // Vorläufig (03.11.2026), bis ADR 0017 1,0.
-        target_factor: 0.85,
+        target_factor: 1.2,
     ),
     (
         id: "ramscher",
@@ -132,7 +136,7 @@
         // Vorläufig: unverändert seit der Messung mit der alten Regel (ohne
         // Schneider null) und einem Boss-Platz; mit „halb“, zwei Figuren
         // und drei vollen Spielen neu messen.
-        target_factor: 0.5,
+        target_factor: 0.7,
         // ADR 0012: Ein gewonnenes Null ist nie Schneider, der Nullspieler
         // muss hier Farbe spielen (ohne Unter).
         character_factors: {NullPlayer: 0.2},
