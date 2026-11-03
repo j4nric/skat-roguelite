@@ -122,8 +122,8 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
     (peeked ? `<span class="opp-tag kiebitz-tag">${eyeIcon(14)}${esc(de.table.kiebitz)}</span>${peeked}` : '') +
     (returned ? `<span class="opp-tag">${esc(de.table.returned)}</span>${returned}` : '');
   const position = game.positions[seat];
-  // Bosses sit in the left chair with their own figure and name, else the
-  // Stammgast the core seated for this series.
+  // In a boss pub both chairs hold the boss's figures, each with a name
+  // plate (ADR 0017), else the Stammgast the core seated for this series.
   const person = seatPerson(view, seat);
   const boss = person.isBoss;
   const quip = ui.quip?.seat === seat ? quipBubble(ui.quip, person.name) : '';
@@ -136,7 +136,7 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
     <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: person.name }) })}>
       ${portrait(person.face, 'portrait-opp')}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
-        <b class="opp-name" data-testid="opp-name">${esc(person.name)}</b>
+        <b class="opp-name" ${attrs({ 'data-testid': 'opp-name', 'data-plate': boss ? 'boss' : null })}>${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
         <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
       </div>

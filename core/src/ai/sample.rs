@@ -33,7 +33,8 @@ pub struct Hints<C> {
     /// already played are ignored.
     pub pinned: Vec<(C, Option<Seat>)>,
     /// Completed tricks at each swap of the defenders' hands (boss "Der
-    /// Revolutionär"): a void seen before a swap moves to the partner.
+    /// Revolutionär", removed by ADR 0017; only game logs saved before
+    /// have swaps): a void seen before a swap moves to the partner.
     pub defender_swaps: Vec<usize>,
 }
 

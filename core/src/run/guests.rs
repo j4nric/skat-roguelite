@@ -10,8 +10,8 @@
 //! twice in a row.
 //!
 //! Pure presentation: the guests change nothing in play or AI. In a boss
-//! series the frontend seats the boss on the left; the guest drawn for
-//! that seat is not shown.
+//! pub both seats are taken by the boss's two figures (ADR 0017); the
+//! guests drawn for it are not shown.
 
 use serde::Serialize;
 
@@ -249,7 +249,6 @@ mod tests {
             while let Some(action) = RunBot.next_action(&run, &content) {
                 let events = run.apply(&content, action).expect("bot action");
                 let now = (run.series().section, run.series().index);
-                // A lost boss pub starts again in the same place.
                 let started = events
                     .iter()
                     .any(|e| matches!(e, crate::run::RunEvent::SeriesStarted { .. }));

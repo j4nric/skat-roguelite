@@ -70,8 +70,16 @@
 // core state, as the app keeps it in localStorage), because the click
 // strategy does not get far enough on its own:
 // - boss-tresen.json: seed 13 played by the core's RunBot up to the Tresen
-//   before the boss series of Der Kontra-Hans. Leaving the Tresen must show
-//   the boss dialog, then the boss sits at the table.
+//   before the boss series of Der Kontra-Hans (removed by ADR 0017: the save
+//   meets his stand-in Die Zwillinge). Leaving the Tresen must show the boss
+//   dialog with both boss players, then both sit at the table.
+// - boss-route.json, boss-table.json, boss-oma.json, boss-reward.json,
+//   boss-reward-full.json, boss-lost.json (ADR 0017, written by the core's
+//   `regenerate_boss_fixtures`, bossesV2): the route to the boss pub names
+//   both players; Fritz and Franz with name plates and the twins' back on
+//   both fans; Die Oma's 16 curses; the relic pick with a free slot, with
+//   every slot full (replace one, Groschen for it) and passed; the last
+//   game of a boss pub that cannot be won ends the run with lives left.
 // - kontra.json: seed 29 played by the RunBot into that boss series, the
 //   Kontra-Hans has just said Kontra. The Kontra dialog must show, and
 //   "Kein Re" must lead back into the game. The save is from before the
@@ -544,8 +552,8 @@ function guestLooks() {
 
 /**
  * The two opponents are Stammgäste with a name and a face of their own
- * (DESIGN 16, M6), the names differ; in a boss series the boss sits on
- * the left and a Stammgast on the right. A quip, if one shows, stays in
+ * (DESIGN 16, M6), the names differ; in a boss pub both seats are the
+ * boss's two figures (ADR 0017). A quip, if one shows, stays in
  * its opponent's box and covers neither the hand nor a button.
  */
 async function assertGuests(page, label, { boss = false } = {}) {
@@ -577,7 +585,8 @@ async function assertGuests(page, label, { boss = false } = {}) {
     if (!o.boss && (!o.guest || !o.face.startsWith('p-guest-'))) fail(`${where}: seat ${o.seat} is no Stammgast with a face (${JSON.stringify(o)})`);
   }
   if (left.name === right.name) fail(`${where}: both are called ${left.name}`);
-  if (boss && !(left.boss && !right.boss)) fail(`${where}: the boss should sit left, a Stammgast right (${JSON.stringify(r.opps)})`);
+  // ADR 0017: both seats of a boss pub are the boss's two figures.
+  if (boss && !(left.boss && right.boss)) fail(`${where}: both boss players should sit at the table (${JSON.stringify(r.opps)})`);
   if (!boss && (left.boss || right.boss)) fail(`${where}: a boss in a normal series`);
   if (r.quip && !r.quip.inside) fail(`${where}: the quip "${r.quip.text}" leaves its opponent's box`);
   if (r.quip?.covered.length) fail(`${where}: the quip covers ${r.quip.covered.join(', ')}`);
@@ -1020,11 +1029,13 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   const page = await context.newPage();
   watch(page, errors);
 
-  // Tresen before the boss series: the preview names the boss.
+  // Tresen before the boss pub: the preview names the boss and both of his
+  // players. The save drew Der Kontra-Hans, removed by ADR 0017: it meets
+  // the stand-in, Die Zwillinge (Fritz and Franz).
   await resumeFixture(page, 'boss-tresen.json');
   await page.waitForSelector('[data-testid="shop"]');
   const next = await text(page, 'next-series');
-  if (!next.includes('Kontra-Hans')) fail(`the Tresen does not announce the boss: ${next}`);
+  if (!next.includes('Die Zwillinge') || !next.includes('Fritz und Franz')) fail(`the Tresen does not announce the boss and his players: ${next}`);
   await shoot(page, 'shop-boss');
   await assertNoSideScroll(page, 'Tresen before the boss');
   await expectMusic(page, 'shop', 'Tresen before the boss');
@@ -1032,22 +1043,25 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-action="boss-go"]');
   await expectMusic(page, 'boss', 'boss dialog');
   const bossText = (await page.locator('.sheet-boss').textContent()) ?? '';
-  if (!bossText.includes('Kontra-Hans')) fail(`boss dialog without the boss: ${bossText}`);
+  if (!bossText.includes('Fritz und Franz')) fail(`boss dialog without both boss players: ${bossText}`);
+  if (!bossText.includes('Verlierst du, ist der Abend vorbei')) fail(`boss dialog without the stakes: ${bossText}`);
+  if ((await page.locator('.sheet-boss .portrait-boss').count()) !== 2) fail('the boss dialog does not show both boss players');
   const dialogBack = await page.locator('[data-testid="boss-back"]').getAttribute('data-back');
-  if (dialogBack !== 'kontra_hans') fail(`the boss dialog shows the back ${dialogBack}`);
-  log('boss dialog shown with his back');
+  if (dialogBack !== 'twins') fail(`the boss dialog shows the back ${dialogBack}`);
+  log('boss dialog shown with both players and their back');
   await shoot(page, 'boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
   if (!(await page.locator('.hud [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
-  await expectBacks(page, 'Kontra-Hans series', 'kontra_hans', 'regulars');
+  await expectBacks(page, 'boss pub', 'twins', 'twins');
   await expectMusic(page, 'boss', 'boss series');
   await assertGuests(page, 'boss series', { boss: true });
   await shoot(page, 'table-boss');
   await assertFits(page, 'boss at the table');
 
-  // The Kontra-Hans says Kontra: answer without Re, the game goes on.
+  // Kontra said in a save from the Kontra-Hans (removed by ADR 0017): the
+  // dialog still shows, the game goes on.
   await resumeFixture(page, 'kontra.json');
   await page.waitForSelector('[data-action="re"][data-re="false"]');
   const kontraText = (await page.locator('.sheet').textContent()) ?? '';
@@ -1066,7 +1080,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
 
 /**
  * The backs on the opponents' fans (ADR 0015): `left` and `right` are the
- * back ids of seat 1 and 2 (the boss sits left), in their small picture.
+ * back ids of seat 1 and 2 (in a boss pub both the boss's), in their small picture.
  */
 async function expectBacks(page, label, left, right) {
   const seen = await page.evaluate(() =>
@@ -1075,6 +1089,114 @@ async function expectBacks(page, label, left, right) {
   const want = [`#bk-${left}-s`, `#bk-${right}-s`];
   if (seen[0] !== want[0] || seen[1] !== want[1]) fail(`${label}: opponent backs ${JSON.stringify(seen)}, expected ${JSON.stringify(want)}`);
   log(`${label}: backs ${seen.join(', ')}`);
+}
+
+/** Portraits of the boss players (ADR 0017): every boss a pair. */
+const BOSS_FACES = ['the_pusher', 'grandma', 'twins', 'ramscher', 'black_peter', 'the_old_man'].flatMap((b) => [`p-boss-${b}`, `p-boss-${b}-2`]);
+
+/** The names on both opponents' plates, left first. */
+async function oppNames(page) {
+  return page.locator('.opp [data-testid="opp-name"]').evaluateAll((els) => els.map((e) => ({ name: e.textContent?.trim() ?? '', plate: e.getAttribute('data-plate') })));
+}
+
+/**
+ * Bosses v2 (ADR 0017), from saved runs made by the core
+ * (regenerate_boss_fixtures): the route names both boss players, the boss
+ * table seats both with name plates and the boss back, Die Oma's curses,
+ * the relic pick after a won boss pub (a free slot and all slots full) and
+ * a lost boss pub that ends the run with lives left.
+ */
+async function bossesV2(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  // The route to the boss pub: the target card and the boss chip name both.
+  await resumeFixture(page, 'boss-route.json');
+  await page.waitForSelector('[data-testid="route-next"]');
+  const figures = await text(page, 'route-boss-figures');
+  if (!figures.includes('Der Schieber und Die Hehlerin')) fail(`route before the boss pub without both players: ${figures}`);
+  const chip = await text(page, 'hud-boss-figures');
+  if (chip !== 'Der Schieber und Die Hehlerin') fail(`boss chip before the boss pub names ${chip}`);
+  log(`route to the boss pub: ${figures}; chip ${chip}`);
+  await shoot(page, 'bosses-route');
+  await assertRouteFits(page, 'route before the boss pub');
+
+  // At the table of Die Zwillinge: Fritz left, Franz right, both plates, both backs.
+  await resumeFixture(page, 'boss-table.json');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const names = await oppNames(page);
+  if (names.map((n) => n.name).join(',') !== 'Fritz,Franz' || names.some((n) => n.plate !== 'boss')) fail(`boss table seats ${JSON.stringify(names)}`);
+  await assertGuests(page, 'boss table', { boss: true });
+  await expectBacks(page, 'Die Zwillinge', 'twins', 'twins');
+  const faces = await page.locator('.opp').evaluateAll((els) => els.map((e) => e.getAttribute('data-face')));
+  if (faces.join(',') !== 'p-boss-twins,p-boss-twins-2') fail(`boss table faces ${faces.join(',')}`);
+  if ((await text(page, 'hud-boss-figures')) !== 'Fritz und Franz') fail('the boss chip at the table does not name both twins');
+  await expectMusic(page, 'boss', 'boss table');
+  await shoot(page, 'bosses-table');
+  await assertFits(page, 'boss table with two players');
+
+  // Die Oma's curses lie on half of the player's edition for this pub.
+  await resumeFixture(page, 'boss-oma.json');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const oma = await oppNames(page);
+  if (oma.map((n) => n.name).join(',') !== 'Die Oma,Der Opa') fail(`Oma table seats ${JSON.stringify(oma)}`);
+  const cursed = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.series?.boss_curses?.length ?? 0);
+  if (cursed !== 16) fail(`Die Oma cursed ${cursed} cards, expected 16`);
+  await shoot(page, 'bosses-oma');
+  log('Die Oma and Der Opa at the table, 16 cards cursed');
+
+  // The relic pick: three relics, take one into a free slot.
+  await resumeFixture(page, 'boss-reward.json');
+  await page.waitForSelector('[data-testid="boss-reward"]');
+  const offers = await page.locator('[data-testid="boss-relic-take"]').count();
+  if (offers !== 3) fail(`the boss reward offers ${offers} relics`);
+  if (await page.locator('[data-testid="boss-reward-full"]').count()) fail('boss reward says the slots are full with a free one');
+  await expectMusic(page, 'shop', 'boss reward');
+  await shoot(page, 'bosses-reward');
+  await assertNoSideScroll(page, 'boss reward', '.boss-reward');
+  const relicsBefore = await page.locator('.hud .coaster-chip').count();
+  await page.locator('[data-testid="boss-relic-take"]').first().click();
+  await page.waitForSelector('[data-testid="route-next"]');
+  const relicsAfter = await page.locator('.hud .coaster-chip').count();
+  if (relicsAfter !== relicsBefore + 1) fail(`the relic did not arrive: ${relicsBefore} -> ${relicsAfter} chips`);
+  log('boss reward: relic taken, on to the route');
+
+  // All slots full: pick one, then the relic it replaces (sold for half).
+  await resumeFixture(page, 'boss-reward-full.json');
+  await page.waitForSelector('[data-testid="boss-reward-full"]');
+  await page.locator('[data-testid="boss-relic-take"]').nth(1).click();
+  await page.waitForSelector('[data-testid="boss-relic-replace"] [data-replace]');
+  const coinsBefore = Number(await text(page, 'coins'));
+  await shoot(page, 'bosses-reward-full');
+  await assertNoSideScroll(page, 'boss reward, slots full', '.boss-reward');
+  await page.locator('[data-testid="boss-relic-replace"] [data-replace]').first().click();
+  await page.waitForSelector('[data-testid="route-next"]');
+  const coinsAfter = Number(await text(page, 'coins'));
+  if (!(coinsAfter > coinsBefore)) fail(`replacing a relic paid nothing: ${coinsBefore} -> ${coinsAfter}`);
+  log(`boss reward with full slots: replaced, ${coinsBefore} -> ${coinsAfter} Groschen`);
+  // Or none at all.
+  await resumeFixture(page, 'boss-reward.json');
+  await page.waitForSelector('[data-testid="boss-relic-skip"]');
+  await page.click('[data-testid="boss-relic-skip"]');
+  await page.waitForSelector('[data-testid="route-next"]');
+
+  // The last game of a lost boss pub: the run ends with lives left.
+  // Der Schieber demands a hand game: the hand Ansage is open at once.
+  await resumeFixture(page, 'boss-lost.json');
+  await page.waitForSelector('.declare[data-phase="Declaring"]');
+  const lives = Number(await page.locator('[data-testid="lives"]').getAttribute('data-lives'));
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await playOut(page, 'lost boss pub');
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"]');
+  const reason = await text(page, 'end-reason');
+  if (!reason.includes('Boss-Kneipe') || !reason.includes('egal wie viele Leben')) fail(`the end of a lost boss pub says: ${reason}`);
+  log(`lost boss pub with ${lives} lives: ${reason}`);
+  await shoot(page, 'bosses-lost');
+  await context.close();
 }
 
 /** M4: the Nullspieler, encounters, the Ramsch and "Der Alte". */
@@ -1180,7 +1302,7 @@ async function m4(browser, errors, reducedMotion) {
   if (!rule.includes('Der Alte')) fail(`the final boss's rule strip does not name him: ${rule}`);
   log(`Der Alte: ${rule}`);
   // His own back, not the one of the boss whose rule is on.
-  await expectBacks(page, 'Der Alte', 'the_old_man', 'regulars');
+  await expectBacks(page, 'Der Alte', 'the_old_man', 'the_old_man');
   await shoot(page, 'old-man');
   await assertFits(page, 'Der Alte');
   await context.close();
@@ -2943,7 +3065,7 @@ async function run() {
     if (!build) fail('build info missing on the start screen');
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'u-S7', 'u-CA', 'w-A', 'wx-T', 'wt-K', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     // Every opponent back (tools/cardart/backs.py) in both sizes, with a picture.
-    const backIds = ['regulars', 'black_peter', 'grandma', 'the_pusher', 'ramscher', 'kontra_hans', 'revolutionary', 'kibitz_killer', 'twins', 'the_old_man'];
+    const backIds = ['regulars', 'black_peter', 'grandma', 'the_pusher', 'ramscher', 'twins', 'the_old_man'];
     const emptyBacks = await page.evaluate((ids) => ids.flatMap((id) => [`bk-${id}`, `bk-${id}-s`]).filter((id) => !document.getElementById(id)?.childElementCount), backIds);
     if (emptyBacks.length) fail(`card backs missing or empty: ${emptyBacks.join(', ')}`);
     if (sprite.length) fail(`card sprite incomplete, missing: ${sprite.join(', ')}`);
@@ -2961,7 +3083,7 @@ async function run() {
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
-    const portraits = await page.evaluate(() => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-dealer', 'p-boss-the_old_man'].filter((id) => !document.getElementById(id)));
+    const portraits = await page.evaluate((faces) => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-dealer', ...faces].filter((id) => !document.getElementById(id)), BOSS_FACES);
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
     // Every Stammgast of the core content has a face drawn in ui/people.ts.
     const looks = guestLooks();
@@ -3211,6 +3333,7 @@ async function run() {
     await musicPass(browser, errors, reducedMotion);
     await suitTintPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
+    await bossesV2(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
     await m5(browser, errors, reducedMotion);
     await wave3(browser, errors, reducedMotion);

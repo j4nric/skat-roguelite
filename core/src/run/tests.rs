@@ -185,6 +185,7 @@ fn reaching_the_limit_below_target_loses_the_run() {
         character: Character::Declarer,
         length: RunLength::Full,
         stake: 0,
+        boss: None,
     }));
     assert_eq!(
         run.apply(&content, RunAction::Redeal),
@@ -605,25 +606,21 @@ fn a_boss_may_have_its_own_factor_for_a_character() {
         series_target(&content, Character::NullPlayer, 0, 4, Some(&pusher)),
         Some(factor.apply(null_base))
     );
-    // Both bosses that were the Alleinspieler's alone are back for
-    // everyone; the Oma stays his (the Nullspieler has no jacks).
-    for id in ["the_pusher", "black_peter"] {
+    // Every boss is for everyone; since ADR 0017 also the Oma (her curses
+    // replaced the blanked jacks).
+    for id in ["the_pusher", "black_peter", "grandma"] {
         let def = content.boss(&BossId::new(id)).expect(id);
         assert!(crate::content::in_pool(
             &def.characters,
             Character::NullPlayer
         ));
     }
-    let grandma = content.boss(&BossId::new("grandma")).expect("grandma");
-    assert!(!crate::content::in_pool(
-        &grandma.characters,
-        Character::NullPlayer
-    ));
 }
 
 #[test]
 fn the_boss_target_factor_scales_the_boss_series() {
-    let bosses = r#"[(id: "hard", name: "Hart", text: "x", target_factor: 1.4)]"#;
+    let bosses = r#"[(id: "hard", name: "Hart", text: "x", target_factor: 1.4,
+        figures: [(name: "A"), (name: "B")])]"#;
     let hard_def: Vec<crate::content::BossDef> = ron::from_str(bosses).expect("ron");
     let mut content = Content::load().expect("content");
     let hard = BossId::new("hard");
@@ -783,6 +780,7 @@ fn payout_serializes_its_total() {
         games_left: 2,
         interest: 1,
         bonus: 0,
+        boss: 0,
     };
     let text = ron::to_string(&payout).expect("ron");
     assert!(text.contains("total:6"), "{text}");

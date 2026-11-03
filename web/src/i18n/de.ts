@@ -467,6 +467,9 @@ export const de = {
     cardMarked: '{card} gezinkt: {mod}.',
     cardCleansed: '{card} ist wieder wie neu.',
     handsSwapped: 'Die Gegner tauschen ihre Blätter!',
+    bossCursed: '{name} kramt in deinen Karten: {n} tragen in dieser Kneipe einen Fluch.',
+    bossCursesLifted: 'Die Flüche der Boss-Kneipe sind weg, deine Karten sind wie vorher.',
+    relicGained: '{name} gehört jetzt dir.',
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
     cardDrawn: 'Drei drücken: {card} von {name} kommt dazu.',
     cardRose: 'Untot: {card} steht wieder auf und kehrt auf die Hand zurück. {substitute} liegt im Stich.',
@@ -820,9 +823,21 @@ export const de = {
 
   boss: {
     title: 'Boss-Kneipe',
-    intro: 'Am Tisch sitzt jetzt:',
+    intro: 'Am Tisch sitzen jetzt:',
     go: 'Los geht’s',
     unknown: '?',
+    /** ADR 0017: what a boss pub is about. */
+    stakes: 'Alle drei Spiele werden gespielt, der Zielwert zählt nach dem dritten. Verlierst du, ist der Abend vorbei, egal wie viele Leben du hast. Gewinnst du: doppelte Groschen, ein Leben und ein Relikt nach Wahl.',
+    /** The relic pick after a won boss pub. */
+    rewardKicker: 'Boss geschlagen',
+    rewardTitle: 'Such dir ein Relikt aus',
+    rewardText: 'Doppelte Groschen und ein Leben hast du schon. Dazu eins von drei Relikten, mindestens ungewöhnlich.',
+    rewardFull: 'Alle Plätze sind belegt: Wähle ein Relikt und dann, wofür es Platz macht. Das alte verkaufst du für den halben Preis.',
+    rewardTake: 'Nehmen',
+    rewardReplace: 'Statt {name} nehmen (+{coins} Groschen)',
+    rewardReplaceFor: 'Platz machen für {name}:',
+    rewardSkip: 'Kein Relikt, weiter',
+    rewardBack: 'Zurück',
   },
 
   end: {
@@ -830,6 +845,8 @@ export const de = {
     wonText: 'Der ganze Stammtisch zieht den Hut.',
     lost: 'Run verloren',
     lostText: 'Das letzte Leben ging in Stadtteil {section}, Kneipe {series}.',
+    /** ADR 0017: a lost boss pub ends the run whatever lives are left. */
+    lostBoss: '{names} haben dich in der Boss-Kneipe von Stadtteil {section} geschlagen. Eine verlorene Boss-Kneipe beendet den Abend, egal wie viele Leben du noch hast.',
     gamesWon: 'Spiele gewonnen',
     gamesLost: 'Spiele verloren',
     gamesPassed: 'Eingemischt',
@@ -1072,9 +1089,13 @@ export const de = {
     /** Whose edition the card shows (ADR 0015). */
     ownerGuest: 'Ausgabe des Stammgasts',
     ownerBoss: 'Ausgabe von {name}',
-    /** A boss's edition next to his rule. */
-    bossEdition: 'Seine Ausgabe: {entries}',
-    bossEditionEntry: '{cards}: {mod}',
+    /** The editions of a boss's two figures next to his rule (ADR 0017). */
+    bossEdition: 'Ausgaben: {entries}',
+    bossFigureEdition: '{name}: {entries}',
+    bossEditionEntry: '{cards} {mod}',
+    /** The two boss players by name. */
+    bossFigures: '{a} und {b}',
+    bossAtTable: 'Am Tisch: {names}.',
     /** Plural of a rank for a group of a boss edition ("Siebenen"). */
     rankPlural: { Seven: 'Siebenen', Eight: 'Achten', Nine: 'Neunen', Ten: 'Zehnen', Jack: 'Unter', Queen: 'Oberinnen', King: 'Könige', Ace: 'Daus' } as Record<string, string>,
     holder: 'Liegt bei {name}',
@@ -1160,7 +1181,7 @@ export const de = {
     crib_sheet: 'Nach der Ansage eines Handspiels liegen beide Skatkarten offen neben dem Stich. Nur zum Wissen, sie zählen wie immer.',
     kitty: 'Die Kasse füllt sich nach jeder gewonnenen Kneipe mit 2 Groschen aus der Belohnung. Am nächsten Tresen bekommst du alles zurück und die Hälfte dazu, abgerundet.',
     slate: 'Einmal pro Stadtteil kaufst du am Tresen über dein Geld hinaus, bis 5 Groschen ins Minus. Jede Einnahme danach (Kneipe, Verkauf, Groschen) zahlt zuerst die Schulden.',
-    guardian_angel: 'Die erste verlorene Kneipe eines Stadtteils kostet kein Leben, auch eine Boss-Kneipe (die du dann noch einmal spielst).',
+    guardian_angel: 'Die erste verlorene Kneipe eines Stadtteils kostet kein Leben. In der Boss-Kneipe hilft er nicht: Wer sie verliert, hat den Abend verloren.',
     dive_expert: 'Führt ein Weg in eine Spelunke, zeigt er dir zwei Mali. Du wählst bei der Routenwahl, welcher gilt; sonst der erste.',
   } as Record<string, string>,
 
@@ -1181,11 +1202,7 @@ export const de = {
     relics: {
     },
     card_mods: {},
-    bosses: {
-      grandma: {
-        text: 'Die Oma hat alle Unter eingesteckt. In dieser Kneipe sind sie Blankos.',
-      },
-    },
+    bosses: {},
     consumables: {
     },
     characters: {},

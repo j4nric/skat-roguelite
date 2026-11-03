@@ -270,17 +270,6 @@ fn the_kibitzer_and_the_counter_show_only_what_is_allowed() {
     let count = game.count.expect("count");
     let hand: u32 = game.hand.iter().map(|c| c.card.card_points).sum();
     assert_eq!(count.declarer + count.defenders + count.unseen + hand, 120);
-    // The Kiebitz-Mörder switches both off.
-    let mut run = relic_run(&content, &["kibitzer", "card_counter"]);
-    run.series.boss = Some(BossId::new("kibitz_killer"));
-    let mut events = Vec::new();
-    run.deal(&content, true, &mut events).expect("deal");
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::CardPeeked { .. }))
-    );
-    assert!(run.view(&content).game.and_then(|g| g.count).is_none());
 }
 
 #[test]
@@ -391,38 +380,7 @@ fn twins_see_each_other_unless_the_referee_watches() {
 }
 
 #[test]
-fn the_revolutionary_swaps_the_defender_hands_after_five_tricks() {
-    let content = content();
-    let mut run = relic_run(&content, &[]);
-    run.series.boss = Some(BossId::new("revolutionary"));
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    let (events, b) = play(
-        &mut run,
-        &content,
-        Declaration::suit(Suit::Diamonds, RiskLevel::Hand),
-    );
-    assert!(b.won);
-    let swap = events
-        .iter()
-        .position(|e| matches!(e, RunEvent::Game(Event::DefenderHandsSwapped { .. })))
-        .expect("swapped");
-    let tricks_before = events[..swap]
-        .iter()
-        .filter(|e| matches!(e, RunEvent::Game(Event::TrickWon { .. })))
-        .count();
-    assert_eq!(tricks_before, 5);
-    // The player sees only the hand sizes.
-    let player = crate::run::player::player_events(events);
-    assert!(player.iter().any(|e| matches!(
-        e,
-        RunEvent::Game(crate::run::player::PlayerGameEvent::DefenderHandsSwapped {
-            hand_sizes: [5, 5, 5]
-        })
-    )));
-}
-
-#[test]
-fn the_ramscher_makes_the_first_game_a_ramsch() {
+fn the_ramscher_makes_every_game_a_ramsch() {
     let content = content();
     let mut run = relic_run(&content, &[]);
     run.series.boss = Some(BossId::new("ramscher"));
@@ -460,9 +418,10 @@ fn the_ramscher_makes_the_first_game_a_ramsch() {
             .any(|s| matches!(s.term, ScoreTerm::RamschLoser(_)))
     );
     assert!(run.series().ramsch_played);
+    // ADR 0017: the next game is a Ramsch again.
     if run.phase() == RunPhase::Game {
         let game = &run.game().expect("next game").game;
-        assert_ne!(game.declaration(), Some(Declaration::Ramsch));
+        assert_eq!(game.declaration(), Some(Declaration::Ramsch));
     }
 }
 
@@ -550,13 +509,18 @@ fn the_old_man_lays_one_rule_per_game() {
         run.series().target,
         def.target_factor.apply(content.run.targets[2][4])
     );
-    // The Nullspieler never meets the jack boss "Die Oma" in the rotation.
+    // ADR 0017: five rules, every one also for the Nullspieler.
+    assert_eq!(def.rotation.len(), 5);
     let mut null = null_run(&content, &[]);
     null.series.boss = Some(def.id.clone());
-    for game in 0..16 {
-        null.series.games_played = game;
-        assert_ne!(null.boss_rule(&content), Some(BossId::new("grandma")));
-    }
+    let rules: Vec<Option<BossId>> = (0..5)
+        .map(|game| {
+            null.series.games_played = game;
+            null.boss_rule(&content)
+        })
+        .collect();
+    let expected: Vec<Option<BossId>> = def.rotation.iter().cloned().map(Some).collect();
+    assert_eq!(rules, expected);
 }
 
 /// Open an encounter with these options by hand.

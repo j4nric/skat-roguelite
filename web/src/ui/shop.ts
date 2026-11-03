@@ -4,7 +4,7 @@
 // Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". What can be
 // bought, sold or used is decided by the core (can_buy, can_sell, can_use).
 
-import { de, bossEditionText, cardName, contentName, contentText, modText, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, cardName, contentName, contentText, modText, t } from '../i18n';
 import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RunView, ServiceView, ShopView } from '../types';
 import { backDesign } from './backs';
 import { cardBack, cardSvg, modValueText } from './cards';
@@ -139,6 +139,7 @@ function nextBoard(view: RunView): string {
     ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}><span class="next-boss-marks">${bossCoaster(boss.id, { size: 48 })}<span class="next-boss-back">${cardBack('', backDesign(boss.back))}</span></span><div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
         <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
+        <p class="next-boss-text" data-testid="next-boss-figures">${esc(bossFiguresText(boss))}</p>
         <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p>${bossEditionText(boss) ? `<p class="next-boss-text boss-edition">${esc(bossEditionText(boss))}</p>` : ''}</div></div>`
     : '';
   return `<div class="next-board chalkboard" data-testid="next-series">

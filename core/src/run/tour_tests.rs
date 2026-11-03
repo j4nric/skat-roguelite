@@ -1,5 +1,6 @@
-//! The Kneipentour (ADR 0016): pubs won early and lost, lives, boss
-//! replays, the route choice per transport, the Spelunke and the names.
+//! The Kneipentour (ADR 0016): pubs won early and lost, lives, the boss
+//! pub (ADR 0017: all games, lost ends the run, the relic pick), the route
+//! choice per transport, the Spelunke and the names.
 
 use super::tour::{RouteStop, Transport, Trip};
 use super::*;
@@ -124,45 +125,197 @@ fn the_last_life_loses_the_run() {
 }
 
 #[test]
-fn a_lost_boss_pub_costs_a_life_and_is_played_again() {
+fn a_lost_boss_pub_ends_the_run_whatever_lives_are_left() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 4);
     let boss = run.series().boss.clone().expect("boss");
+    // Not even "Schutzengel" helps in a boss pub (ADR 0017).
+    run.relics.push(RelicId::new("guardian_angel"));
     let events = end_pub(&mut run, &content, 3, false);
-    assert_eq!(lives_changes(&events), vec![-1]);
-    assert_eq!(run.phase(), RunPhase::Game, "straight back to the table");
-    assert_eq!((run.series().section, run.series().index), (0, 4));
-    assert_eq!(run.series().boss.as_ref(), Some(&boss));
-    assert_eq!(run.series().games_played, 0);
-    assert_eq!(run.series().score, 0);
+    assert_eq!(run.phase(), RunPhase::Lost);
+    assert_eq!(run.lives(), content.run.lives.start, "lives do not matter");
+    assert!(lives_changes(&events).is_empty());
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::LifeSpared { .. }))
+    );
     assert!(events.iter().any(|e| matches!(
         e,
-        RunEvent::SeriesStarted { index: 4, boss: Some(b), .. } if *b == boss
+        RunEvent::RunLost { section: 0, index: 4, boss: Some(b), .. } if *b == boss
     )));
+    assert!(run.route().is_none());
 }
 
 #[test]
-fn a_won_boss_pub_gives_a_life_up_to_the_maximum() {
+fn a_boss_pub_plays_all_three_games() {
+    let content = content();
+    let mut run = start_at(&content, 5, 0, 4);
+    // At the target after the first game: the second is dealt anyway.
+    let events = end_pub(&mut run, &content, 1, true);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::SeriesWon { .. }))
+    );
+    assert_eq!(run.phase(), RunPhase::Game);
+    assert!(run.game().is_some());
+    assert_eq!(run.series().games_played, 1);
+}
+
+/// Win the boss pub of district 1 after three games.
+fn win_boss_pub(content: &Content, seed: u64) -> (Run, Vec<RunEvent>) {
+    let mut run = start_at(content, seed, 0, 4);
+    let events = end_pub(&mut run, content, 3, true);
+    (run, events)
+}
+
+#[test]
+fn a_won_boss_pub_pays_double_gives_a_life_and_a_pick_of_three_relics() {
     let content = content();
     let max = content.run.lives.max;
-    let mut run = start_at(&content, 5, 0, 4);
-    let events = end_pub(&mut run, &content, 2, true);
+    let (mut run, events) = win_boss_pub(&content, 5);
     assert_eq!(lives_changes(&events), vec![1]);
     assert_eq!(run.lives(), content.run.lives.start + 1);
+    let payout = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::SeriesWon { payout, .. } => Some(*payout),
+            _ => None,
+        })
+        .expect("won");
+    assert_eq!(payout.games_left, 0, "no games left in a boss pub");
+    assert!(payout.boss > 0);
+    assert_eq!(payout.total(), 2 * payout.boss, "double");
+    assert_eq!(run.phase(), RunPhase::BossReward);
+    let offered = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::BossRewardOffered { relics } => Some(relics.clone()),
+            _ => None,
+        })
+        .expect("offered");
+    assert_eq!(offered.len(), 3);
+    for id in &offered {
+        let rarity = content.relic(id).expect("relic").rarity;
+        assert!(rarity >= crate::content::Rarity::Uncommon, "{id}");
+        assert!(!run.relics().contains(id));
+    }
+    let view = run.view(&content).boss_reward.expect("pick view");
+    assert_eq!(view.offers.len(), 3);
+    assert!(!view.slots_full);
+    // Taking one: into a free slot, then the route to the next district.
+    let events = run
+        .apply(
+            &content,
+            RunAction::ChooseBossRelic {
+                offer: Some(1),
+                replace: None,
+            },
+        )
+        .expect("take");
+    assert!(events.contains(&RunEvent::RelicGained {
+        relic: offered[1].clone()
+    }));
+    assert!(run.relics().contains(&offered[1]));
     assert_eq!(run.phase(), RunPhase::Route);
     let route = run.route().expect("route");
     assert_eq!((route.section, route.index), (1, 0), "the next district");
-    // Capped.
+    assert_eq!(
+        run.apply(
+            &content,
+            RunAction::ChooseBossRelic {
+                offer: None,
+                replace: None
+            }
+        ),
+        Err(RunError::WrongPhase)
+    );
+    // Lives capped at the maximum.
     let mut run = start_at(&content, 5, 0, 4);
     run.lives = max;
-    let events = end_pub(&mut run, &content, 2, true);
+    let events = end_pub(&mut run, &content, 3, true);
     assert!(lives_changes(&events).is_empty());
     assert_eq!(run.lives(), max);
-    // The last boss wins the run.
+    // The last boss wins the run, without a pick.
     let mut run = start_at(&content, 5, content.run.sections() - 1, 4);
-    let events = end_pub(&mut run, &content, 2, true);
+    let events = end_pub(&mut run, &content, 3, true);
     assert_eq!(run.phase(), RunPhase::Won);
     assert!(events.iter().any(|e| matches!(e, RunEvent::RunWon { .. })));
+    assert!(run.boss_reward().is_none());
+}
+
+#[test]
+fn the_boss_pick_with_full_slots_replaces_a_relic_or_is_passed() {
+    let content = content();
+    let (mut run, _) = win_boss_pub(&content, 6);
+    let offered = run.boss_reward().expect("pick").relics.clone();
+    let slots = usize::try_from(content.relic_slots(run.character())).expect("slots");
+    let fillers: Vec<RelicId> = content
+        .relics
+        .keys()
+        .filter(|id| !offered.contains(id))
+        .take(slots)
+        .cloned()
+        .collect();
+    run.relics = fillers.clone();
+    assert!(run.view(&content).boss_reward.expect("view").slots_full);
+    let take = RunAction::ChooseBossRelic {
+        offer: Some(0),
+        replace: None,
+    };
+    assert_eq!(run.apply(&content, take), Err(RunError::NoFreeSlot));
+    // Selling the third relic for half its price makes room.
+    let mut replaced = run.clone();
+    let coins = replaced.coins();
+    let price = sell_price(content.relic(&fillers[2]).expect("relic").price);
+    let events = replaced
+        .apply(
+            &content,
+            RunAction::ChooseBossRelic {
+                offer: Some(0),
+                replace: Some(2),
+            },
+        )
+        .expect("replace");
+    assert!(events.contains(&RunEvent::RelicSold {
+        relic: fillers[2].clone(),
+        price
+    }));
+    assert_eq!(replaced.coins(), coins + price);
+    assert_eq!(replaced.relics().len(), slots);
+    assert!(replaced.relics().contains(&offered[0]));
+    assert!(!replaced.relics().contains(&fillers[2]));
+    assert_eq!(replaced.phase(), RunPhase::Route);
+    // Or none at all.
+    let events = run
+        .apply(
+            &content,
+            RunAction::ChooseBossRelic {
+                offer: None,
+                replace: None,
+            },
+        )
+        .expect("pass");
+    assert!(events.contains(&RunEvent::BossRewardDeclined));
+    assert_eq!(run.relics(), fillers.as_slice());
+    assert_eq!(run.phase(), RunPhase::Route);
+}
+
+#[test]
+fn the_bot_picks_a_boss_relic() {
+    let content = content();
+    let (mut run, _) = win_boss_pub(&content, 7);
+    let action = bot::RunBot.next_action(&run, &content).expect("action");
+    assert!(matches!(
+        action,
+        RunAction::ChooseBossRelic {
+            offer: Some(_),
+            replace: None
+        }
+    ));
+    run.apply(&content, action).expect("legal");
+    assert_eq!(run.phase(), RunPhase::Route);
 }
 
 /// A run at the route choice to pub 1 with the given stops per transport.
@@ -613,4 +766,134 @@ fn regenerate_tour_fixtures() {
         std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
         println!("upgraded {}", path.display());
     }
+}
+
+#[test]
+fn a_save_with_a_removed_boss_meets_its_stand_in() {
+    let content = content();
+    let mut run = start_at(&content, 5, 0, 4);
+    run.section_boss = Some(BossId::new("kontra_hans"));
+    run.series.boss = Some(BossId::new("kontra_hans"));
+    if let Some(active) = run.game.as_mut() {
+        active.boss_rule = Some(BossId::new("kontra_hans"));
+    }
+    let saved = serde_json::to_string(&run).expect("save");
+    let mut loaded: Run = serde_json::from_str(&saved).expect("load");
+    loaded.drop_unknown_content(&content);
+    let twins = Some(BossId::new("twins"));
+    assert_eq!(loaded.section_boss(), twins.as_ref());
+    assert_eq!(loaded.series().boss, twins);
+    assert_eq!(loaded.game().and_then(|a| a.boss_rule.clone()), twins);
+    for (old, new) in RETIRED_BOSSES {
+        assert!(content.boss(&BossId::new(old)).is_none(), "{old}");
+        assert!(content.boss(&BossId::new(new)).is_some(), "{new}");
+    }
+    // The run goes on; the next deal follows the stand-in's rule.
+    assert!(loaded.view(&content).series.boss.is_some());
+    loaded.deal(&content, true, &mut Vec::new()).expect("deal");
+    assert_eq!(
+        loaded.game().and_then(|a| a.boss_rule.clone()),
+        Some(BossId::new("twins"))
+    );
+}
+
+/// A run at the table of the boss pub of district 1 against `boss`, at the
+/// player's first decision: pub 4 won, the way taken straight there.
+fn at_boss_table(content: &Content, seed: u64, boss: &str) -> Run {
+    let mut run = start_at(content, seed, 0, 3);
+    run.section_boss = Some(BossId::new(boss));
+    end_pub(&mut run, content, 3, true);
+    run.walk_to_pub(content);
+    let mut events = Vec::new();
+    run.play_ai(content, &mut events).expect("AI");
+    assert_eq!(run.series().boss, Some(BossId::new(boss)));
+    run
+}
+
+#[test]
+fn the_boss_table_seats_both_figures_with_the_boss_back() {
+    let content = content();
+    let run = at_boss_table(&content, 11, "twins");
+    assert_eq!(run.owner_of_seat(BOSS_SEAT), crate::deck::Owner::Boss);
+    assert_eq!(
+        run.owner_of_seat(PARTNER_SEAT),
+        crate::deck::Owner::BossPartner
+    );
+    let view = run.view(&content);
+    let boss = view.series.boss.expect("boss");
+    let names: Vec<&str> = boss.figures.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, ["Fritz", "Franz"]);
+    let backs = view.game.expect("game").backs;
+    assert_eq!(backs[1].as_deref(), Some("twins"));
+    assert_eq!(backs[2].as_deref(), Some("twins"));
+}
+
+#[test]
+fn the_oma_under_the_old_man_curses_once_her_rule_comes() {
+    let content = content();
+    let mut run = start_at(&content, 5, content.run.sections() - 1, 4);
+    let old_man = content.boss(&BossId::new("the_old_man")).expect("old man");
+    let oma = old_man
+        .rotation
+        .iter()
+        .position(|b| b.as_str() == "grandma")
+        .expect("in the rotation");
+    let before = run.edition().clone();
+    assert!(!run.series().boss_cursed, "no curse before her rule");
+    run.series.games_played = u32::try_from(oma).expect("small");
+    run.series.redeals_used = 0;
+    run.deal(&content, true, &mut Vec::new()).expect("deal");
+    assert!(run.series().boss_cursed);
+    assert_eq!(run.series().boss_curses.len(), 16);
+    let mut ended = Vec::new();
+    run.end_pub(&content, &mut ended);
+    assert_eq!(run.edition(), &before);
+}
+
+/// Fixture tool for the e2e test (web/e2e/fixtures/boss-*.json): saves at
+/// the boss pub of ADR 0017. Run with `cargo test -p skat_core
+/// regenerate_boss_fixtures -- --ignored`.
+#[test]
+#[ignore = "rewrites web/e2e/fixtures"]
+fn regenerate_boss_fixtures() {
+    let content = content();
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/e2e/fixtures");
+    let write = |name: &str, run: &Run| {
+        let out = serde_json::json!({ "version": 3, "run": run });
+        let path = dir.join(name);
+        std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
+        println!("wrote {}", path.display());
+    };
+    // The route to the boss pub: both figures named before it.
+    let mut route = start_at(&content, 11, 0, 3);
+    route.section_boss = Some(BossId::new("the_pusher"));
+    end_pub(&mut route, &content, 3, true);
+    assert_eq!(route.phase(), RunPhase::Route);
+    write("boss-route.json", &route);
+    // At the table of Die Zwillinge.
+    write("boss-table.json", &at_boss_table(&content, 11, "twins"));
+    // Die Oma's curses on the table.
+    write("boss-oma.json", &at_boss_table(&content, 12, "grandma"));
+    // The last game of a boss pub that cannot be won any more: lost, the
+    // run ends with lives left.
+    let mut lost = at_boss_table(&content, 13, "the_pusher");
+    lost.series.games_played = 2;
+    lost.series.score = -400;
+    write("boss-lost.json", &lost);
+    // The relic pick after the won boss pub, with a free slot and full.
+    let mut won = at_boss_table(&content, 14, "black_peter");
+    end_pub(&mut won, &content, 3, true);
+    assert_eq!(won.phase(), RunPhase::BossReward);
+    write("boss-reward.json", &won);
+    let offered = won.boss_reward().expect("pick").relics.clone();
+    let slots = usize::try_from(content.relic_slots(won.character())).expect("slots");
+    won.relics = content
+        .relics
+        .values()
+        .filter(|r| !offered.contains(&r.id) && !won.locked.contains(&r.id))
+        .filter(|r| r.kind == RelicKind::HouseRule)
+        .take(slots)
+        .map(|r| r.id.clone())
+        .collect();
+    write("boss-reward-full.json", &won);
 }

@@ -55,6 +55,7 @@ import {
 import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { renderEncounter } from './ui/encounter';
+import { renderBossReward } from './ui/bossreward';
 import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
@@ -114,7 +115,7 @@ function errorText(err: unknown): string {
 /** One line about a saved run: who plays, where, the account. */
 function runLine(view: RunView): string {
   const character = contentName('characters', view.character.character);
-  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop'
+  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop' || view.phase === 'BossReward'
     ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
     : t(de.start.resumeInfo, {
         character,
@@ -207,6 +208,7 @@ export class App {
     routePick: null,
     routeLeg: '',
     routeOverview: false,
+    rewardPick: null,
     risen: null,
     wildSettled: {},
     thinking: null,
@@ -415,7 +417,7 @@ export class App {
     if (ui.screen === 'start' || ui.screen === 'end') return 'table';
     if (ui.screen !== 'run' || !ui.view) return null;
     const view = ui.view;
-    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route') && !ui.anim) return 'shop';
+    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'BossReward') && !ui.anim) return 'shop';
     return view.series.is_boss ? 'boss' : 'table';
   }
 
@@ -941,7 +943,9 @@ export class App {
   private cardOf(card: DealtCard, view: RunView): CardView {
     const owner = card.owner ?? 'Player';
     const own = owner === 'Player' ? view.edition.find((d) => d.id === card.id) : undefined;
-    const boss = owner === 'Boss' ? bossEditionOf(card, view.game?.boss_rule?.edition ?? []) : null;
+    // ADR 0017: each boss player plays the edition of his figure of the rule in force.
+    const figure = owner === 'Boss' ? 0 : owner === 'BossPartner' ? 1 : -1;
+    const boss = figure >= 0 ? bossEditionOf(card, view.game?.boss_rule?.figures?.[figure]?.edition ?? []) : null;
     const mods = own?.mods ?? boss?.mods ?? [];
     const mod_values = own?.mod_values ?? boss?.mod_values ?? {};
     const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'regulars');
@@ -1184,6 +1188,22 @@ export class App {
         const debt = ev.DebtChanged.debt;
         const took = (before?.debt ?? 0) < debt;
         this.showToast(took ? t(de.toast.debt, { debt }) : debt === 0 ? de.toast.debtPaid : t(de.toast.debtLeft, { debt }));
+        continue;
+      }
+      // ADR 0017: "Die Oma" curses half the edition for the pub, and lifts it after.
+      if ('BossCursesLaid' in ev) {
+        const { boss, cards } = ev.BossCursesLaid;
+        this.showToast(t(de.toast.bossCursed, { name: contentName('bosses', boss), n: cards.length }), 'top');
+        sound.play('clink');
+        continue;
+      }
+      if ('BossCursesLifted' in ev) {
+        this.showToast(de.toast.bossCursesLifted);
+        continue;
+      }
+      if ('RelicGained' in ev) {
+        this.showToast(t(de.toast.relicGained, { name: contentName('relics', ev.RelicGained.relic) }));
+        sound.play('clink');
         continue;
       }
       if ('LifeSpared' in ev) {
@@ -2160,6 +2180,25 @@ export class App {
       case 'choose-route':
         void this.travel(num('option'));
         return;
+      // The relic pick after a won boss pub (ADR 0017).
+      case 'boss-relic': {
+        const replace = el.dataset.replace === undefined ? null : num('replace');
+        this.ui.rewardPick = null;
+        void this.act({ ChooseBossRelic: { offer: num('offer'), replace } });
+        return;
+      }
+      case 'boss-relic-pick':
+        this.ui.rewardPick = num('offer');
+        this.render();
+        return;
+      case 'boss-relic-back':
+        this.ui.rewardPick = null;
+        this.render();
+        return;
+      case 'boss-relic-skip':
+        this.ui.rewardPick = null;
+        void this.act({ ChooseBossRelic: { offer: null, replace: null } });
+        return;
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
@@ -2577,6 +2616,8 @@ export class App {
         const inShop = view.phase === 'Shop' && !ui.anim;
         const inEncounter = view.phase === 'Encounter' && !ui.anim;
         const inRoute = view.phase === 'Route' && !ui.anim;
+        const inReward = view.phase === 'BossReward' && !ui.anim;
+        if (!inReward) ui.rewardPick = null;
         if (inRoute && ui.routeLeg !== legKey(view)) {
           // A new leg: the default way, the map in front.
           ui.routeLeg = legKey(view);
@@ -2587,10 +2628,12 @@ export class App {
           ? renderShop(view)
           : inEncounter
             ? renderEncounter(view)
-            : inRoute
-              ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
-              : renderTable(view, ui);
-        const cls = inShop ? 'is-shop' : inEncounter ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
+            : inReward
+              ? renderBossReward(view, ui.rewardPick)
+              : inRoute
+                ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
+                : renderTable(view, ui);
+        const cls = inShop ? 'is-shop' : inEncounter || inReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };

@@ -475,13 +475,19 @@ impl RunEvent {
                 character,
                 length,
                 stake,
+                boss,
             } => RunEvent::RunLost {
                 section,
                 index,
                 character,
                 length,
                 stake,
+                boss,
             },
+            RunEvent::BossCursesLaid { boss, cards } => RunEvent::BossCursesLaid { boss, cards },
+            RunEvent::BossCursesLifted { cards } => RunEvent::BossCursesLifted { cards },
+            RunEvent::BossRewardOffered { relics } => RunEvent::BossRewardOffered { relics },
+            RunEvent::BossRewardDeclined => RunEvent::BossRewardDeclined,
         }
     }
 }

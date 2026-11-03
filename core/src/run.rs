@@ -9,9 +9,13 @@
 //! using up a game; then one of the hands must be played. Won games add
 //! their value to the pub's account, lost games subtract twice their value
 //! including all relic modifiers. A pub is won the moment the account
-//! reaches the target. Missing the target after the last game costs a life
-//! (Leben): a normal pub is left without reward, a boss pub is played
-//! again. The run is lost with the last life. Between two pubs the player
+//! reaches the target; a boss pub plays all its games and counts after the
+//! last (ADR 0017). Missing the target after the last game costs a life
+//! (Leben) and the pub is left without reward; the run is lost with the
+//! last life, and with any lost boss pub (ADR 0017). A won boss pub pays
+//! double, gives a life and a pick of relics ([`tour::BossReward`]). Two
+//! boss players sit at its table, one per defender seat ([`BOSS_SEAT`],
+//! [`PARTNER_SEAT`]). Between two pubs the player
 //! chooses a route ([`tour`]): three ways (Verkehrsmittel), each leading
 //! over one or two stops (Tresen, encounters), sometimes into a Spelunke
 //! instead of the next pub.
@@ -94,6 +98,16 @@ const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 /// ([`Run::drop_unknown_content`]).
 pub const RENAMED_CONSUMABLES: [(&str, &str); 1] = [("chalk", "blue_curacao")];
 
+/// Bosses removed by ADR 0017 and the boss a loaded run meets instead
+/// ([`Run::drop_unknown_content`]): a save that drew one keeps its place
+/// in the tour and meets the stand-in. None of the stand-ins forces a hand
+/// game, so a save waiting at "Skat oder Hand" stays playable as it was.
+pub const RETIRED_BOSSES: [(&str, &str); 3] = [
+    ("kontra_hans", "twins"),
+    ("revolutionary", "twins"),
+    ("kibitz_killer", "black_peter"),
+];
+
 /// What the run is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunPhase {
@@ -106,6 +120,9 @@ pub enum RunPhase {
     Encounter,
     /// The player chooses the way to the next pub ([`tour::RouteChoice`]).
     Route,
+    /// A boss pub was won: the player picks one of the relics on offer or
+    /// none ([`tour::BossReward`], ADR 0017).
+    BossReward,
     /// The last boss pub was won.
     Won,
     /// The last life was lost.
@@ -153,7 +170,8 @@ pub struct Series {
     /// [`Series::skat_swaps_used`] filters count as used.
     #[serde(default)]
     pub skat_swaps_taken: Vec<CardFilter>,
-    /// Whether the Ramsch of this series ("Der Ramscher") was dealt.
+    /// Whether a Ramsch ("Der Ramscher") was dealt in this pub. Since ADR
+    /// 0017 every game under his rule is one; bookkeeping only.
     #[serde(default)]
     pub ramsch_played: bool,
     /// Whether "Drei drücken" drew its card in this series (once per
@@ -167,6 +185,14 @@ pub struct Series {
     /// malus), with the curse that landed; taken off when the pub ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub temp_curses: Vec<(u32, CardModId)>,
+    /// Cards of the player's edition a boss cursed for this pub ("Die
+    /// Oma", [`Effect::CurseForPub`]), each as it was before; put back
+    /// when the pub ends.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boss_curses: Vec<crate::deck::DeckCard>,
+    /// Whether the boss's curses of this pub were laid (once per pub).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub boss_cursed: bool,
     /// Vouchers redeemed in this pub (card, voucher, value) that come
     /// back when it ends ("Der Drückeberger",
     /// [`crate::content::CharacterRule::vouchers_return`]).
@@ -283,8 +309,6 @@ pub struct GameRules {
     pub skat_swaps: Vec<CardFilter>,
     /// This game is the series' Ramsch ("Der Ramscher").
     pub ramsch: bool,
-    /// Information effects are off ("Der Kiebitz-Mörder").
-    pub no_information: bool,
     /// Boss rules that cheat are off ("Der Schiedsrichter").
     pub no_cheating: bool,
     /// Source of the Schneider bonus in the thresholds ("Stichfest").
@@ -410,13 +434,18 @@ pub struct ActiveGame {
     /// play. Saves from before it derive one from the run's seed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undead_rng: Option<Rng>,
-    /// The boss edition of the boss whose rule is on (ADR 0015, DESIGN
-    /// 11), held by the boss seat ([`BOSS_SEAT`]). `None` outside a boss
-    /// series.
+    /// The edition of the boss player on the left ([`BOSS_SEAT`]): the
+    /// first figure of the boss whose rule is on (ADR 0015, ADR 0017,
+    /// DESIGN 11). `None` outside a boss pub.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boss_edition: Option<Edition>,
-    /// Cards the player's edition marks "Durchsichtig" in this game (ids;
-    /// empty under "Der Kiebitz-Mörder"): shown with their holder and his
+    /// The edition of the boss player on the right ([`PARTNER_SEAT`]):
+    /// the second figure (ADR 0017). `None` outside a boss pub and in
+    /// saves from before, when a Stammgast sat there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partner_edition: Option<Edition>,
+    /// Cards the player's edition marks "Durchsichtig" in this game (ids):
+    /// shown with their holder and his
     /// edition also while a defender holds them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_marked: Vec<u32>,
@@ -438,9 +467,17 @@ impl ActiveGame {
     }
 }
 
-/// The seat of the boss in a boss series: left of the player (DESIGN
-/// 10.4). The Stammgast sits right.
+/// The seat of the first boss player in a boss pub: left of the player
+/// (DESIGN 10.4).
 pub const BOSS_SEAT: Seat = Seat::DEFENDERS[0];
+
+/// The seat of the second boss player in a boss pub (ADR 0017): right of
+/// the player.
+pub const PARTNER_SEAT: Seat = Seat::DEFENDERS[1];
+
+/// The editions of the two boss players of a game, left and right; both
+/// `None` outside a boss pub.
+type BossEditions = [Option<Edition>; 2];
 
 /// Whether a counter is zero (fields left out of saves while unused).
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -598,13 +635,16 @@ pub struct Payout {
     /// Extra from the character's rule (`payout_factor`: the three parts
     /// once more); 0 for most characters.
     pub bonus: u32,
+    /// A won boss pub pays double (ADR 0017): everything above once more;
+    /// 0 elsewhere.
+    pub boss: u32,
 }
 
 impl Payout {
     /// Sum of all parts.
     #[must_use]
     pub const fn total(&self) -> u32 {
-        self.base + self.games_left + self.interest + self.bonus
+        self.base + self.games_left + self.interest + self.bonus + self.boss
     }
 }
 
@@ -617,6 +657,8 @@ struct PayoutRepr {
     interest: u32,
     #[serde(default)]
     bonus: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    boss: u32,
     #[serde(default)]
     total: u32,
 }
@@ -628,6 +670,7 @@ impl From<Payout> for PayoutRepr {
             games_left: p.games_left,
             interest: p.interest,
             bonus: p.bonus,
+            boss: p.boss,
             total: p.total(),
         }
     }
@@ -640,6 +683,7 @@ impl From<PayoutRepr> for Payout {
             games_left: p.games_left,
             interest: p.interest,
             bonus: p.bonus,
+            boss: p.boss,
         }
     }
 }
@@ -792,6 +836,18 @@ pub enum RunAction {
     /// Take the route at this index of the open route choice
     /// ([`tour::RouteChoice::options`]).
     ChooseRoute(usize),
+    /// The relic pick of a won boss pub (ADR 0017): take the relic at
+    /// `offer` of [`tour::BossReward::relics`], or none (`None`). With
+    /// `replace` the owned relic at that index is sold for half its price
+    /// first and the new one takes a slot (needed when every slot is
+    /// full). Then the route choice.
+    ChooseBossRelic {
+        /// Index into the relics on offer; `None` takes none.
+        offer: Option<usize>,
+        /// Index of an owned relic to sell for it.
+        #[serde(default)]
+        replace: Option<usize>,
+    },
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -1241,7 +1297,8 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// The run was lost: the last life went.
     RunLost {
-        /// District of the pub that cost the last life.
+        /// District of the pub that cost the last life, or of the boss pub
+        /// that was lost (ADR 0017).
         section: u32,
         /// Pub within the district.
         index: u32,
@@ -1254,7 +1311,33 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Stake of the run (Einsatz-Leiter).
         #[serde(default)]
         stake: u32,
+        /// The boss whose pub was lost: a lost boss pub ends the run
+        /// whatever lives are left (ADR 0017). `None` when the last life
+        /// went in a normal pub.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boss: Option<BossId>,
     },
+    /// "Die Oma" (ADR 0017): cards of the player's edition carry a curse
+    /// until the pub ends; each in place of its normal modification.
+    BossCursesLaid {
+        /// The boss whose rule laid them.
+        boss: BossId,
+        /// The cards (ids) with their curse, in id order.
+        cards: Vec<(u32, CardModId)>,
+    },
+    /// The pub ended: the cards a boss cursed are as before again.
+    BossCursesLifted {
+        /// The cards (ids), in id order.
+        cards: Vec<u32>,
+    },
+    /// A won boss pub (not the last): relics to pick one from (ADR 0017),
+    /// see [`BossReward`].
+    BossRewardOffered {
+        /// The relics on offer.
+        relics: Vec<RelicId>,
+    },
+    /// The relic pick of a won boss pub was passed without a relic.
+    BossRewardDeclined,
 }
 
 /// Why an action was rejected. The run is unchanged.
@@ -1760,6 +1843,9 @@ pub struct Run {
     /// Fenster").
     #[serde(default, skip_serializing_if = "is_zero")]
     scout_legs: u32,
+    /// The relic pick of a won boss pub, while open (ADR 0017).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boss_reward: Option<tour::BossReward>,
     /// The Auslage and the Kartenmaler (Zinken, DESIGN 8.6).
     #[serde(default = "Run::default_zinken_rng")]
     zinken_rng: Rng,
@@ -1843,6 +1929,8 @@ impl Run {
                 discard_three_used: false,
                 spelunke: None,
                 temp_curses: Vec::new(),
+                boss_curses: Vec::new(),
+                boss_cursed: false,
                 returning_vouchers: Vec::new(),
                 redeals_withheld: 0,
             },
@@ -1880,6 +1968,7 @@ impl Run {
             spared_section: None,
             wager: None,
             scout_legs: 0,
+            boss_reward: None,
             zinken_rng: master.fork(),
             painter: None,
         };
@@ -1895,7 +1984,9 @@ impl Run {
     /// owned and evening relics, consumables, Tresen offers, locked
     /// relics, consumables waiting for the next game and encounter options
     /// that name them. Returns the ids dropped, in order, for a note.
-    /// Nothing else changes; a run without such ids stays as it is.
+    /// Bosses removed by ADR 0017 are replaced by their stand-in
+    /// ([`RETIRED_BOSSES`]; a game in progress keeps its deal). Nothing
+    /// else changes; a run without such ids stays as it is.
     pub fn drop_unknown_content(&mut self, content: &Content) -> Vec<String> {
         // Renamed consumables keep their place.
         let rename = |id: &mut ConsumableId| {
@@ -1919,6 +2010,19 @@ impl Run {
                     rename(id);
                 }
             }
+        }
+        // Removed bosses (ADR 0017) give way to their stand-in.
+        let retire = |id: &mut BossId| {
+            if let Some((_, new)) = RETIRED_BOSSES.iter().find(|(old, _)| *old == id.as_str()) {
+                *id = BossId::new(new);
+            }
+        };
+        self.section_boss.iter_mut().for_each(retire);
+        self.series.boss.iter_mut().for_each(retire);
+        let mut next = self.game.as_mut();
+        while let Some(active) = next {
+            active.boss_rule.iter_mut().for_each(retire);
+            next = active.previous.as_deref_mut();
         }
         let mut dropped: Vec<String> = Vec::new();
         let keep_relic = |id: &RelicId, dropped: &mut Vec<String>| {
@@ -2113,19 +2217,23 @@ impl Run {
         Editions {
             player: &self.edition,
             boss: self.game.as_ref().and_then(|a| a.boss_edition.as_ref()),
+            partner: self.game.as_ref().and_then(|a| a.partner_edition.as_ref()),
         }
     }
 
-    /// Whose edition the seat plays (ADR 0015): the player's, the boss's
-    /// (left of the player in a boss series) or a Stammgast's.
+    /// Whose edition the seat plays (ADR 0015): the player's, one of the
+    /// two boss players' (both defender seats in a boss pub, ADR 0017) or
+    /// a Stammgast's.
     #[must_use]
     pub fn owner_of_seat(&self, seat: Seat) -> Owner {
         if seat.is_declarer() {
             Owner::Player
-        } else if seat == BOSS_SEAT && self.series.boss.is_some() {
+        } else if self.series.boss.is_none() {
+            Owner::Guest
+        } else if seat == BOSS_SEAT {
             Owner::Boss
         } else {
-            Owner::Guest
+            Owner::BossPartner
         }
     }
 
@@ -2190,7 +2298,6 @@ impl Run {
     /// such as the black Unter of "Der Schwarze Peter"), and also if the
     /// player's edition marks it while a defender holds it: then the
     /// player sees who holds it and that defender's edition of the card.
-    /// Off under "Der Kiebitz-Mörder".
     #[must_use]
     pub fn revealed_holders(&self) -> Vec<(DealtCard, Option<Seat>)> {
         let Some(active) = &self.game else {
@@ -2349,6 +2456,9 @@ impl Run {
                 self.choose_encounter(content, option, target, events)
             }
             RunAction::ChooseRoute(option) => self.choose_route(content, option, events),
+            RunAction::ChooseBossRelic { offer, replace } => {
+                self.choose_boss_relic(content, offer, replace, events)
+            }
             RunAction::ChooseMalus { option, malus } => {
                 self.choose_malus(content, option, malus, events)
             }
@@ -3076,7 +3186,6 @@ impl Run {
             _ => {}
         }
         let line = score_line(source, effect, &self.counters);
-        let ramsch_played = self.series.ramsch_played;
         let Some(active) = self.game.as_mut() else {
             return;
         };
@@ -3177,14 +3286,12 @@ impl Run {
                 }
             }
             Effect::PeekDefenderCards(n) => {
-                if !active.rules.no_information {
-                    active.rules.peek = active.rules.peek.saturating_add(*n);
-                }
+                active.rules.peek = active.rules.peek.saturating_add(*n);
             }
-            Effect::ShowCount => active.rules.show_count = !active.rules.no_information,
+            Effect::ShowCount => active.rules.show_count = true,
             Effect::RevealDefenderHand(index) => {
                 let seat = Seat::from_index(usize::from(*index)).filter(|s| !s.is_declarer());
-                if let (Some(seat), false) = (seat, active.rules.no_information) {
+                if let Some(seat) = seat {
                     active.shown_hand = Some(seat);
                     for &card in active.game.hand(seat) {
                         if !active.peeked.iter().any(|(c, _)| c.id == card.id) {
@@ -3206,7 +3313,7 @@ impl Run {
                     .game
                     .declaration()
                     .is_some_and(|d| d.hand() && !d.is_ramsch());
-                if untouched && !active.rules.no_information {
+                if untouched {
                     let fresh: Vec<DealtCard> = active
                         .game
                         .skat()
@@ -3226,19 +3333,7 @@ impl Run {
             Effect::NoCheating => active.rules.no_cheating = true,
             Effect::RequireOuvert => active.rules.require_ouvert = true,
             Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
-            Effect::SwapDefenderHands => {
-                if active.game.phase() == Phase::Playing && active.game.current_trick().is_empty() {
-                    if let Ok(game_events) = active.game.swap_defender_hands() {
-                        events.extend(game_events.into_iter().map(RunEvent::Game));
-                    }
-                }
-            }
-            Effect::RamschOnce => active.rules.ramsch = !ramsch_played,
-            Effect::DisableInformation => {
-                active.rules.no_information = true;
-                active.rules.peek = 0;
-                active.rules.show_count = false;
-            }
+            Effect::Ramsch => active.rules.ramsch = true,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
             | Effect::RankBonus(_)
@@ -3252,7 +3347,7 @@ impl Run {
             | Effect::Undead
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
-            | Effect::BlankOut(_)
+            | Effect::CurseForPub { .. }
             | Effect::SetFlag(_)
             | Effect::ClearFlag(_)
             | Effect::IncrementCounter(_)
@@ -3358,6 +3453,8 @@ impl Run {
             discard_three_used: false,
             spelunke,
             temp_curses: Vec::new(),
+            boss_curses: Vec::new(),
+            boss_cursed: false,
             returning_vouchers: Vec::new(),
             redeals_withheld,
         };
@@ -3400,6 +3497,7 @@ impl Run {
         } else {
             self.games_dealt.saturating_sub(1)
         };
+        self.lay_boss_curses(content, events);
         let global = self.sources(content, false);
         // "Ehrenvorsitz": the player always leads; the rotation runs on.
         let always_forehand = global
@@ -3414,10 +3512,10 @@ impl Run {
             self.games_dealt += 1;
             self.series.redeals_in_game = 0;
         }
-        let (resolved, boss_edition) = self.resolve_editions(content, &global);
+        let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let mut rng = self.deal_rng.fork();
         let game = Game::deal_editions(&mut rng, resolved.clone().map(|r| r.cards), forehand)?;
-        self.install_game(content, game, &resolved, boss_edition, events);
+        self.install_game(content, game, &resolved, boss_editions, events);
         self.peek(&mut rng, events);
         // "Untot": the substitutes come from the game's generator, after
         // everything the deal drew from it.
@@ -3485,19 +3583,20 @@ impl Run {
         &self,
         content: &Content,
         global: &[ActiveSource<'_>],
-    ) -> ([crate::content::ResolvedDeck; 3], Option<Edition>) {
-        let boss_edition = self.boss_edition(content);
+    ) -> ([crate::content::ResolvedDeck; 3], BossEditions) {
+        let boss_editions = self.boss_editions(content);
         let plain = Edition::standard();
         let resolved = Seat::ALL.map(|seat| {
             let owner = self.owner_of_seat(seat);
             let edition = match owner {
                 Owner::Player => &self.edition,
-                Owner::Boss => boss_edition.as_ref().unwrap_or(&plain),
+                Owner::Boss => boss_editions[0].as_ref().unwrap_or(&plain),
+                Owner::BossPartner => boss_editions[1].as_ref().unwrap_or(&plain),
                 Owner::Guest => &plain,
             };
             resolve_edition(edition, owner, content, global)
         });
-        (resolved, boss_edition)
+        (resolved, boss_editions)
     }
 
     /// Install a game dealt from [`Run::resolve_editions`]: the Augen
@@ -3508,7 +3607,7 @@ impl Run {
         content: &Content,
         game: Game<DealtCard>,
         resolved: &[crate::content::ResolvedDeck; 3],
-        boss_edition: Option<Edition>,
+        boss_editions: BossEditions,
         events: &mut Vec<RunEvent>,
     ) {
         let mut point_changes: Vec<(u32, Source, i32)> = Vec::new();
@@ -3531,7 +3630,9 @@ impl Run {
             .collect();
         self.set_up_game(content, game, point_changes, events);
         if let Some(active) = self.game.as_mut() {
-            active.boss_edition = boss_edition;
+            let [boss, partner] = boss_editions;
+            active.boss_edition = boss;
+            active.partner_edition = partner;
             active.player_marked = player_marked;
         }
     }
@@ -3549,7 +3650,7 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) {
         let global = self.sources(content, false);
-        let (resolved, boss_edition) = self.resolve_editions(content, &global);
+        let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let editions = resolved.clone().map(|r| r.cards);
         let pick = |seat: usize, kind: CardKind| -> DealtCard {
             *editions[seat]
@@ -3560,7 +3661,7 @@ impl Run {
         let hands = [0, 1, 2].map(|seat| hands[seat].iter().map(|&k| pick(seat, k)).collect());
         let skat = skat.map(|k| pick(0, k));
         let game = Game::with_editions(hands, skat, editions, forehand).expect("valid deal");
-        self.install_game(content, game, &resolved, boss_edition, events);
+        self.install_game(content, game, &resolved, boss_editions, events);
     }
 
     /// Fixture tool: a run saved before ADR 0015 continues with editions
@@ -3568,7 +3669,7 @@ impl Run {
     #[cfg(test)]
     pub(crate) fn adopt_editions(&mut self, content: &Content) {
         let global = self.sources(content, false);
-        let (resolved, boss_edition) = self.resolve_editions(content, &global);
+        let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let player_marked: Vec<u32> = resolved[0]
             .cards
             .iter()
@@ -3579,19 +3680,31 @@ impl Run {
         let mut next = self.game.as_mut();
         while let Some(active) = next {
             active.game.adopt_editions(editions.clone());
-            active.boss_edition.clone_from(&boss_edition);
+            active.boss_edition.clone_from(&boss_editions[0]);
+            active.partner_edition.clone_from(&boss_editions[1]);
             active.player_marked.clone_from(&player_marked);
             next = active.previous.as_deref_mut();
         }
     }
 
-    /// The boss edition of the boss whose rule is on (for "Der Alte" the
-    /// boss of this game's rule), in a boss series only.
-    fn boss_edition(&self, content: &Content) -> Option<Edition> {
-        self.series.boss.as_ref()?;
-        let def = self.boss_rule(content).and_then(|b| content.boss(&b))?;
+    /// The editions of the two boss players (ADR 0017): the figures of
+    /// the boss whose rule is on (for "Der Alte" the boss of this game's
+    /// rule), left and right, in a boss pub only.
+    fn boss_editions(&self, content: &Content) -> BossEditions {
+        let figures = self
+            .series
+            .boss
+            .as_ref()
+            .and_then(|_| self.boss_rule(content))
+            .and_then(|b| content.boss(&b))
+            .map(|def| def.figures.as_slice())
+            .unwrap_or_default();
         // Validated when the content loads.
-        Edition::with_mods(&def.edition, content).ok()
+        [0, 1].map(|i| {
+            figures
+                .get(i)
+                .and_then(|f| Edition::with_mods(&f.edition, content).ok())
+        })
     }
 
     /// Install a freshly dealt game, apply passive effects and fire
@@ -3610,7 +3723,6 @@ impl Run {
         let rules = GameRules {
             thresholds: Thresholds::with_stake(self.stake),
             no_cheating: has(&Effect::NoCheating),
-            no_information: has(&Effect::DisableInformation),
             ..GameRules::default()
         };
         let boss_rule = self.boss_rule(content);
@@ -3633,6 +3745,7 @@ impl Run {
             risen: Vec::new(),
             undead_rng: None,
             boss_edition: None,
+            partner_edition: None,
             player_marked: Vec::new(),
         });
         events.push(RunEvent::GameDealt {
@@ -3809,7 +3922,10 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if self.series.target_reached() {
+        // A boss pub plays all its games (ADR 0017); the target counts
+        // after the last.
+        let early = !self.series.is_boss_pub() || self.series.games_left() == 0;
+        if early && self.series.target_reached() {
             return self.series_won(content, events);
         }
         if self.series.games_left() == 0 {
@@ -3837,11 +3953,16 @@ impl Run {
             games_left: games_left * economy.per_game_left,
             interest,
             bonus: 0,
+            boss: 0,
         };
         // `payout_factor`: the parts count `payout_factor` times.
         payout.bonus = payout
             .total()
             .saturating_mul(content.payout_factor(self.character) - 1);
+        // A won boss pub pays double (ADR 0017).
+        if self.series.is_boss_pub() {
+            payout.boss = payout.total();
+        }
         self.coins = self.coins.saturating_add(payout.total());
         self.stats.series_won += 1;
         events.push(RunEvent::SeriesWon {
@@ -4434,11 +4555,10 @@ impl Run {
     }
 
     /// "Kurzer": show the player the untouched skat while he still holds
-    /// ten cards and has not declared. Once per game; not against "Der
-    /// Kiebitz-Mörder" (information is off).
+    /// ten cards and has not declared. Once per game.
     fn peek_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let active = self.declaring()?;
-        if active.skat_peeked || active.rules.no_information {
+        if active.skat_peeked {
             return Err(RunError::WrongPhase);
         }
         active.skat_peeked = true;

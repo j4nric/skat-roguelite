@@ -30,7 +30,7 @@ export interface DealtCard {
 }
 
 /** Whose edition a card is (ADR 0015): every player owns his own edition of each card. */
-export type Owner = 'Player' | 'Guest' | 'Boss';
+export type Owner = 'Player' | 'Guest' | 'Boss' | 'BossPartner';
 
 export interface CardView extends DealtCard {
   /** Modifications in the edition of the card's owner (its holder). */
@@ -89,7 +89,7 @@ export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shir
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
-export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Route' | 'Won' | 'Lost';
+export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Route' | 'BossReward' | 'Won' | 'Lost';
 /**
  * Phase of the game, in the order of the Skatordnung: ten cards (hand game or
  * pick up the skat), twelve cards (discard two), the Ansage after the skat,
@@ -116,12 +116,28 @@ export interface BossInfo {
   id: string;
   name: string;
   text: string;
-  /** Factor on the Zielwert of the boss series, as a decimal (1.4). */
+  /** Factor on the Zielwert of the boss pub, as a decimal (1.4). */
   target_factor: number;
-  /** His boss edition (ADR 0015): the modifications his cards carry. */
-  edition?: EditionEntry[];
-  /** Card back of his cards (ui/backs.ts). */
+  /** The two boss players (ADR 0017): left of the player, then right. */
+  figures: BossFigure[];
+  /** Card back of the boss's cards (ui/backs.ts). */
   back?: string;
+}
+
+/** One of the two boss players at the boss table (ADR 0017). */
+export interface BossFigure {
+  name: string;
+  /** The figure's edition (ADR 0015): the modifications its cards carry. Empty for Der Alte and Die Alte. */
+  edition: EditionEntry[];
+  /** Card back of the figure's cards. */
+  back: string;
+}
+
+/** The relic pick after a won boss pub (ADR 0017). */
+export interface BossRewardView {
+  offers: { index: number; relic: RelicInfo }[];
+  /** Every relic slot taken: a relic only for an owned one (sold for half its price). */
+  slots_full: boolean;
 }
 
 /** One line of a boss edition: every card matching the filter carries the modification. */
@@ -697,6 +713,8 @@ export interface RunView {
   game: GameView | null;
   shop: ShopView | null;
   encounter: EncounterView | null;
+  /** The relic pick after a won boss pub (ADR 0017). */
+  boss_reward?: BossRewardView | null;
   /** The Kartenmaler's choice, waiting (Tresen or Werkstatt). */
   painter?: PainterView | null;
   /** House rules of the evening (Stammtisch-Streit), until the section ends. */
@@ -826,6 +844,8 @@ export interface Payout {
   interest: number;
   /** Extra from the character ("Die Wirtin": the parts once more); absent in old saves. */
   bonus?: number;
+  /** A won boss pub pays double (ADR 0017): everything above once more. */
+  boss?: number;
   total: number;
 }
 
@@ -924,7 +944,12 @@ export type RunEvent =
   | { SkatPeeked: { skat: DealtCard[] } }
   /** "Spickzettel": a card of the untouched skat after a hand declaration. */
   | { SkatCardShown: { source: Source; card: DealtCard } }
-  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } }
+  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number; boss?: string | null } }
+  /** "Die Oma" (ADR 0017): cards of the player's edition cursed for the pub. */
+  | { BossCursesLaid: { boss: string; cards: [number, string][] } }
+  | { BossCursesLifted: { cards: number[] } }
+  | { BossRewardOffered: { relics: string[] } }
+  | 'BossRewardDeclined'
   /** Item review (02.11.2026). */
   | 'RoutesRerolled'
   | { DebtChanged: { debt: number } }
@@ -959,6 +984,7 @@ export type RunAction =
   | { ChooseEncounter: { option: number; target: number | null } }
   | { ChooseRoute: number }
   | { ChooseMalus: { option: number; malus: number } }
+  | { ChooseBossRelic: { offer: number | null; replace: number | null } }
   /** Zinken (DESIGN 8.6). */
   | { BuyCardOffer: number }
   | 'RerollCardOffers'

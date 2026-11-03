@@ -231,7 +231,9 @@ pub enum Event<C = Card> {
         /// Augen still in the hands.
         card_points: u32,
     },
-    /// The two defenders swapped their hands (boss "Der Revolutionär").
+    /// The two defenders swapped their hands (boss "Der Revolutionär",
+    /// removed by ADR 0017). Nothing deals it any more; kept so that game
+    /// logs saved before still load and the AI still reads them.
     DefenderHandsSwapped {
         /// Hands per seat after the swap.
         hands: [Vec<C>; 3],
@@ -246,7 +248,7 @@ pub enum Event<C = Card> {
     },
     /// A card changed its holder and shows the holder's edition now (ADR
     /// 0015): drawn with "Drei drücken", given back, swapped by "Der
-    /// Revolutionär" (a new deal by "Schieben" logs only
+    /// Revolutionär" until ADR 0017 (a new deal by "Schieben" logs only
     /// [`Event::SkatRedrawn`]). Only when the edition changes the card.
     CardChangedHands {
         /// The new holder (the declarer also for the skat).
@@ -1613,34 +1615,6 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
-    /// The two defenders swap their hands between two tricks (boss "Der
-    /// Revolutionär").
-    pub fn swap_defender_hands(&mut self) -> Result<Vec<Event<C>>, GameError<C>> {
-        if self.phase != Phase::Playing {
-            return Err(GameError::WrongPhase { phase: self.phase });
-        }
-        if !self.trick.is_empty() {
-            return Err(GameError::TrickInProgress);
-        }
-        self.hands.swap(1, 2);
-        // The editions stay with the seats (ADR 0015, DESIGN 7.1 rule 4).
-        let mut events = Vec::new();
-        for seat in Seat::DEFENDERS {
-            let hand = std::mem::take(&mut self.hands[seat.index()]);
-            let mut moved: Vec<C> = hand
-                .into_iter()
-                .map(|card| self.change_holder(card, seat, &mut events))
-                .collect();
-            moved.sort();
-            self.hands[seat.index()] = moved;
-        }
-        events.push(Event::DefenderHandsSwapped {
-            hands: self.hands.clone(),
-        });
-        self.log.extend(events.iter().cloned());
-        Ok(events)
-    }
-
     /// In a hand game before the declarer's first card: take `took` from
     /// the untouched skat into the declarer's hand and put `gave` from the
     /// hand into the skat (figure "Die Oma"). The game stays a hand game;
@@ -2271,8 +2245,6 @@ mod tests {
         assert!(game.skat().iter().all(|c| c.owner == Owner::Player));
         game.declare(Declaration::suit(Suit::Hearts, RiskLevel::Normal))
             .expect("declare");
-        // "Der Revolutionär": the editions stay with the seats.
-        game.swap_defender_hands().expect("swap");
         assert!(game.hand(Seat(1)).iter().all(|c| c.owner == Owner::Boss));
         assert!(game.hand(Seat(2)).iter().all(|c| c.owner == Owner::Guest));
         for seat in Seat::ALL {

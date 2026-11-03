@@ -31,9 +31,6 @@ export type BackDesign =
   | 'grandma'
   | 'the_pusher'
   | 'ramscher'
-  | 'kontra_hans'
-  | 'revolutionary'
-  | 'kibitz_killer'
   | 'twins'
   | 'the_old_man';
 
@@ -419,9 +416,6 @@ const BACKS: Record<BackDesign, BackArt> = {
   grandma: generated('grandma'),
   the_pusher: generated('the_pusher'),
   ramscher: generated('ramscher'),
-  kontra_hans: generated('kontra_hans'),
-  revolutionary: generated('revolutionary'),
-  kibitz_killer: generated('kibitz_killer'),
   twins: generated('twins'),
   the_old_man: generated('the_old_man'),
   distel: {

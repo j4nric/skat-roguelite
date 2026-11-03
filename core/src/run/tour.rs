@@ -12,8 +12,9 @@
 //! Sometimes one of the three leads into a Spelunke instead of the next
 //! pub: another place with its own name and node (`d0-p2-s`), standing in
 //! for that pub in the district's order, with a higher target, a malus
-//! shown in advance and a relic as extra reward. A lost boss pub is played again at
-//! once. Everything is drawn from the run's own route generator, so it
+//! shown in advance and a relic as extra reward. A lost boss pub ends the
+//! run (ADR 0017); a won one pays double, gives a life and a pick of one of
+//! three relics ([`BossReward`]). Everything is drawn from the run's own route generator, so it
 //! never changes the deals.
 //!
 //! The view ([`TourView`]) names every pub of the city and gives stable
@@ -25,10 +26,11 @@ use serde::{Deserialize, Serialize};
 use super::guests::{GuestInfo, seat_guests};
 use super::view::BossInfo;
 use super::{
-    PUBS_PER_DISTRICT, Run, RunError, RunEvent, RunPhase, Shop, draw_weighted, series_target,
+    PUBS_PER_DISTRICT, Run, RunError, RunEvent, RunPhase, Shop, draw_weighted, sell_price,
+    series_target,
 };
 use crate::content::{
-    CityDistrict, Content, DistrictLook, EncounterId, EncounterKind, MalusDef, MalusId,
+    CityDistrict, Content, DistrictLook, EncounterId, EncounterKind, MalusDef, MalusId, RelicId,
     StopCategory, in_pool,
 };
 use crate::deck::{CardKind, DeckChange};
@@ -130,7 +132,94 @@ pub struct PubResult {
     pub spelunke: Option<String>,
 }
 
+/// The relic pick of a won boss pub (ADR 0017): one of these relics, drawn
+/// when the pub was won, or none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BossReward {
+    /// The relics on offer (rarity Uncommon or higher, `boss_reward` in
+    /// `run.ron`).
+    pub relics: Vec<RelicId>,
+}
+
 impl Run {
+    /// The open relic pick of a won boss pub.
+    #[must_use]
+    pub const fn boss_reward(&self) -> Option<&BossReward> {
+        self.boss_reward.as_ref()
+    }
+
+    /// Open the relic pick after a won boss pub: relics the run may draw,
+    /// of the configured rarity or higher, drawn with the encounter
+    /// generator. Returns `false` if none is left; the way goes on then.
+    fn open_boss_reward(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> bool {
+        let config = &content.run.boss_reward;
+        let pool: Vec<(RelicId, u32)> = self
+            .relic_pool(content, false)
+            .into_iter()
+            .filter(|(id, _)| {
+                content
+                    .relic(id)
+                    .is_some_and(|r| r.rarity >= config.min_rarity)
+            })
+            .collect();
+        let relics = draw_weighted(&mut self.encounter_rng, pool, config.relics);
+        if relics.is_empty() {
+            return false;
+        }
+        self.game = None;
+        self.phase = RunPhase::BossReward;
+        events.push(RunEvent::BossRewardOffered {
+            relics: relics.clone(),
+        });
+        self.boss_reward = Some(BossReward { relics });
+        true
+    }
+
+    /// [`RunAction::ChooseBossRelic`]: take one relic of the pick (selling
+    /// an owned one for its slot if asked) or none, then the route choice.
+    pub(super) fn choose_boss_relic(
+        &mut self,
+        content: &Content,
+        offer: Option<usize>,
+        replace: Option<usize>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        if self.phase != RunPhase::BossReward {
+            return Err(RunError::WrongPhase);
+        }
+        let reward = self.boss_reward.clone().ok_or(RunError::WrongPhase)?;
+        match offer {
+            None => {
+                if replace.is_some() {
+                    return Err(RunError::InvalidSlot);
+                }
+                events.push(RunEvent::BossRewardDeclined);
+            }
+            Some(i) => {
+                let relic = reward.relics.get(i).cloned().ok_or(RunError::InvalidSlot)?;
+                let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
+                if let Some(index) = replace {
+                    let old = self
+                        .relics
+                        .get(index)
+                        .cloned()
+                        .ok_or(RunError::InvalidSlot)?;
+                    let price = content.relic(&old).map_or(0, |d| sell_price(d.price));
+                    self.relics.remove(index);
+                    self.coins = self.coins.saturating_add(price);
+                    events.push(RunEvent::RelicSold { relic: old, price });
+                    self.settle_debt(events);
+                } else if self.relics.len() >= slots {
+                    return Err(RunError::NoFreeSlot);
+                }
+                self.relics.push(relic.clone());
+                events.push(RunEvent::RelicGained { relic });
+            }
+        }
+        self.boss_reward = None;
+        self.open_route(content, events)
+    }
+
     /// Lives left (ADR 0016).
     #[must_use]
     pub const fn lives(&self) -> u32 {
@@ -250,13 +339,84 @@ impl Run {
         }
     }
 
-    /// The pub ended: the curses of its malus come off again, and for
-    /// "Der Drückeberger" the vouchers redeemed in it come back.
-    fn end_pub(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+    /// "Die Oma" (ADR 0017, [`crate::content::Effect::CurseForPub`]): when
+    /// the first game under her rule is dealt, random cards of the
+    /// player's edition get a random curse until the pub ends, drawn with
+    /// the route generator. Each card is kept as it was, so the edition is
+    /// exactly the same afterwards; no Groschen, no `OnAttach`.
+    pub(super) fn lay_boss_curses(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        if self.series.boss_cursed {
+            return;
+        }
+        let Some(boss) = self.boss_rule(content).and_then(|b| content.boss(&b)) else {
+            return;
+        };
+        let Some((cards, curses)) = boss.passive.iter().find_map(|e| match e {
+            crate::content::Effect::CurseForPub { cards, curses } => Some((*cards, curses)),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.series.boss_cursed = true;
+        let mut pool: Vec<u32> = self
+            .edition
+            .cards()
+            .iter()
+            .filter(|c| c.kind != CardKind::Blank)
+            .map(|c| c.id)
+            .collect();
+        let mut laid = Vec::new();
+        for _ in 0..cards {
+            if pool.is_empty() {
+                break;
+            }
+            let pick = self.tour_rng.gen_range(0..pool.len() as u64);
+            let card = pool.remove(usize::try_from(pick).unwrap_or(0));
+            let kind = self.edition.get(card).map(|c| c.kind);
+            let fitting: Vec<&crate::content::CardModId> = curses
+                .iter()
+                .filter(|m| {
+                    content
+                        .card_mod(m)
+                        .is_some_and(|d| kind.is_some_and(|k| d.fits(k)))
+                })
+                .collect();
+            if fitting.is_empty() {
+                continue;
+            }
+            let which = self.tour_rng.gen_range(0..fitting.len() as u64);
+            let curse = fitting[usize::try_from(which).unwrap_or(0)].clone();
+            let value = content
+                .card_mod(&curse)
+                .map_or(1, crate::content::CardModDef::default_value);
+            if let Ok(before) = self.edition.lay_temp_curse(content, card, &curse, value) {
+                self.series.boss_curses.push(before);
+                laid.push((card, curse));
+            }
+        }
+        laid.sort();
+        events.push(RunEvent::BossCursesLaid {
+            boss: boss.id.clone(),
+            cards: laid,
+        });
+    }
+
+    /// The pub ended: the curses of its malus and its boss come off again,
+    /// and for "Der Drückeberger" the vouchers redeemed in it come back.
+    pub(super) fn end_pub(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         for (card, card_mod) in std::mem::take(&mut self.series.temp_curses) {
             if let Some(change) = self.edition.remove_mod(card, &card_mod) {
                 events.push(RunEvent::DeckChanged(change));
             }
+        }
+        let restored = std::mem::take(&mut self.series.boss_curses);
+        if !restored.is_empty() {
+            let mut cards: Vec<u32> = restored.iter().map(|c| c.id).collect();
+            cards.sort_unstable();
+            for card in restored {
+                self.edition.restore(card);
+            }
+            events.push(RunEvent::BossCursesLifted { cards });
         }
         self.return_vouchers(content, events);
     }
@@ -289,7 +449,8 @@ impl Run {
     }
 
     /// The pub was won and paid: a boss pub gives a life, the last one wins
-    /// the run; a Spelunke opens its loot; then the route choice.
+    /// the run, the others open the relic pick (ADR 0017); a Spelunke
+    /// opens its loot; then the route choice.
     pub(super) fn pub_won(
         &mut self,
         content: &Content,
@@ -313,6 +474,9 @@ impl Run {
                 });
                 return Ok(());
             }
+            if self.open_boss_reward(content, events) {
+                return Ok(());
+            }
         }
         if self.series.spelunke.is_some() {
             let loot = content
@@ -329,9 +493,10 @@ impl Run {
         self.open_route(content, events)
     }
 
-    /// The pub ended below its target: a life goes. With none left the run
-    /// is lost; a boss pub is played again; otherwise on to the route
-    /// choice without reward.
+    /// The pub ended below its target. A boss pub ends the run whatever
+    /// lives are left (ADR 0017; "Schutzengel" does not help there).
+    /// Otherwise a life goes: with none left the run is lost, else on to
+    /// the route choice without reward.
     pub(super) fn pub_lost(
         &mut self,
         content: &Content,
@@ -351,6 +516,18 @@ impl Run {
             index,
             boss: self.series.boss.clone(),
         });
+        if self.series.is_boss_pub() {
+            self.phase = RunPhase::Lost;
+            events.push(RunEvent::RunLost {
+                section,
+                index,
+                character: self.character,
+                length: self.length,
+                stake: self.stake,
+                boss: self.series.boss.clone(),
+            });
+            return Ok(());
+        }
         let angel = self
             .relic_with(content, |e| *e == crate::content::Effect::SpareLife)
             .filter(|_| self.spared_section != Some(section));
@@ -372,11 +549,9 @@ impl Run {
                 character: self.character,
                 length: self.length,
                 stake: self.stake,
+                boss: None,
             });
             return Ok(());
-        }
-        if self.series.is_boss_pub() {
-            return self.start_pub(content, section, index, None, events);
         }
         self.open_route(content, events)
     }

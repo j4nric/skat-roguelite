@@ -90,6 +90,8 @@ pub struct RunView {
     pub shop: Option<ShopView>,
     /// The encounter (Ereignis), while open.
     pub encounter: Option<EncounterView>,
+    /// The relic pick of a won boss pub, while open (ADR 0017).
+    pub boss_reward: Option<BossRewardView>,
     /// The Kartenmaler's choice, waiting for the player (Tresen or
     /// Werkstatt): nothing but [`RunAction::ChoosePaint`] goes now.
     pub painter: Option<PainterView>,
@@ -152,7 +154,8 @@ pub struct SeriesView {
     /// The boss of a boss series.
     pub boss: Option<BossInfo>,
     /// The Stammgäste at the table, seat 1 (left) and seat 2 (right). In a
-    /// boss series the boss takes the left seat in the frontend.
+    /// boss pub the boss's two figures take both seats in the frontend
+    /// ([`BossInfo::figures`], ADR 0017).
     pub guests: Vec<GuestInfo>,
 }
 
@@ -250,12 +253,43 @@ pub struct BossInfo {
     pub text: String,
     /// Factor on the Zielwert of the boss series (1.0 = unchanged).
     pub target_factor: Factor,
-    /// His boss edition (ADR 0015, DESIGN 11): the modifications his cards
-    /// carry. Empty for "Der Alte" (he plays the edition of the rule in
-    /// force, see [`GameView::boss_rule`]) and the Kiebitz-Mörder.
-    pub edition: Vec<EditionEntry>,
-    /// The card back of his cards.
+    /// The two boss players (ADR 0017), left and right of the player.
+    pub figures: Vec<BossFigureInfo>,
+    /// The card back of the boss's cards (a figure may have its own).
     pub back: String,
+}
+
+/// One of the two boss players.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BossFigureInfo {
+    /// German name from the content.
+    pub name: String,
+    /// The figure's edition (ADR 0015, DESIGN 11): the modifications its
+    /// cards carry. Empty for the figures of "Der Alte" (they play the
+    /// editions of the rule in force, see [`GameView::boss_rule`]).
+    pub edition: Vec<EditionEntry>,
+    /// The card back of the figure's cards.
+    pub back: String,
+}
+
+/// The relic pick of a won boss pub (ADR 0017).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BossRewardView {
+    /// The relics on offer, with the index for
+    /// [`RunAction::ChooseBossRelic`].
+    pub offers: Vec<BossRelicOffer>,
+    /// Whether every relic slot is taken: then a relic can only be taken
+    /// for an owned one (sold for half its price, `replace`).
+    pub slots_full: bool,
+}
+
+/// One relic of the boss reward.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BossRelicOffer {
+    /// Index into the offers.
+    pub index: usize,
+    /// The relic.
+    pub relic: RelicInfo,
 }
 
 /// One line of a boss edition: every card that matches the filter carries
@@ -904,7 +938,8 @@ impl Run {
     fn back_of_seat(&self, content: &Content, seat: Seat) -> Option<String> {
         match self.owner_of_seat(seat) {
             Owner::Player => None,
-            Owner::Boss => Some(self.boss_back(content)),
+            Owner::Boss => Some(self.boss_back(content, 0)),
+            Owner::BossPartner => Some(self.boss_back(content, 1)),
             Owner::Guest => Some(
                 self.guests(content)
                     .iter()
@@ -916,9 +951,18 @@ impl Run {
         }
     }
 
-    /// The back of the boss whose rule is on (for "Der Alte" his own).
-    fn boss_back(&self, content: &Content) -> String {
-        let back = |id: &BossId| content.boss(id).and_then(|b| b.back.clone());
+    /// The back of a boss player (figure 0 left, 1 right): the figure's
+    /// own, else the boss's (for "Der Alte" always his, not that of the
+    /// boss whose rule is on).
+    fn boss_back(&self, content: &Content, figure: usize) -> String {
+        let back = |id: &BossId| {
+            content.boss(id).and_then(|b| {
+                b.figures
+                    .get(figure)
+                    .and_then(|f| f.back.clone())
+                    .or_else(|| b.back.clone())
+            })
+        };
         self.series
             .boss
             .as_ref()
@@ -931,7 +975,8 @@ impl Run {
     fn back_of(&self, content: &Content, owner: Owner) -> Option<String> {
         match owner {
             Owner::Player => None,
-            Owner::Boss => Some(self.boss_back(content)),
+            Owner::Boss => Some(self.boss_back(content, 0)),
+            Owner::BossPartner => Some(self.boss_back(content, 1)),
             // The Stammgast's seat: right of the player (seat 2) holds one
             // in every series.
             Owner::Guest => self.back_of_seat(content, Seat::DEFENDERS[1]),
@@ -1092,30 +1137,41 @@ impl Run {
     /// for that character).
     pub(super) fn boss_info(&self, content: &Content, id: &BossId) -> BossInfo {
         match content.boss(id) {
-            Some(def) => BossInfo {
-                id: id.clone(),
-                name: def.name.clone(),
-                text: def.text.clone(),
-                target_factor: def.target_factor_for(self.character),
-                edition: def
-                    .edition
-                    .iter()
-                    .map(|(filter, card_mod, value)| EditionEntry {
-                        filter: *filter,
-                        card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
-                    })
-                    .collect(),
-                back: def
+            Some(def) => {
+                let back = def
                     .back
                     .clone()
-                    .unwrap_or_else(|| crate::content::OPPONENT_BACK.to_owned()),
-            },
+                    .unwrap_or_else(|| crate::content::OPPONENT_BACK.to_owned());
+                BossInfo {
+                    id: id.clone(),
+                    name: def.name.clone(),
+                    text: def.text.clone(),
+                    target_factor: def.target_factor_for(self.character),
+                    figures: def
+                        .figures
+                        .iter()
+                        .map(|f| BossFigureInfo {
+                            name: f.name.clone(),
+                            edition: f
+                                .edition
+                                .iter()
+                                .map(|(filter, card_mod, value)| EditionEntry {
+                                    filter: *filter,
+                                    card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
+                                })
+                                .collect(),
+                            back: f.back.clone().unwrap_or_else(|| back.clone()),
+                        })
+                        .collect(),
+                    back,
+                }
+            }
             None => BossInfo {
                 id: id.clone(),
                 name: id.to_string(),
                 text: String::new(),
                 target_factor: Factor::ONE,
-                edition: Vec::new(),
+                figures: Vec::new(),
                 back: crate::content::OPPONENT_BACK.to_owned(),
             },
         }
@@ -1168,7 +1224,7 @@ impl Run {
         let boss_ahead = match self.phase {
             RunPhase::Game => true,
             RunPhase::Shop | RunPhase::Encounter | RunPhase::Route => !series.is_boss_pub(),
-            RunPhase::Won | RunPhase::Lost => false,
+            RunPhase::BossReward | RunPhase::Won | RunPhase::Lost => false,
         };
         let upcoming_boss = self
             .section_boss
@@ -1240,6 +1296,7 @@ impl Run {
             game: self.game_view(content),
             shop: self.shop_view(content),
             encounter: self.encounter_view(content),
+            boss_reward: self.boss_reward_view(content),
             painter: self.painter_view(content),
             evening_relics: self
                 .evening_relics
@@ -1267,6 +1324,24 @@ impl Run {
             edition: self.edition.cards().to_vec(),
             stats: self.stats,
         }
+    }
+
+    /// The open relic pick of a won boss pub.
+    fn boss_reward_view(&self, content: &Content) -> Option<BossRewardView> {
+        let reward = self.boss_reward.as_ref()?;
+        let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
+        Some(BossRewardView {
+            offers: reward
+                .relics
+                .iter()
+                .enumerate()
+                .map(|(index, id)| BossRelicOffer {
+                    index,
+                    relic: Run::relic_info(content, id),
+                })
+                .collect(),
+            slots_full: self.relics.len() >= slots,
+        })
     }
 
     fn owned_consumable(
@@ -2052,8 +2127,10 @@ mod tests {
                     .collect();
                 if game.phase == TablePhase::Discarding {
                     saw_discard = true;
-                    assert_eq!(game.hand.len(), 12);
-                    assert_eq!(game.hand.iter().filter(|c| c.from_skat).count(), 2);
+                    // Ten and the skat; with "Drei drücken" (a boss relic
+                    // may bring it, ADR 0017) one card more.
+                    assert_eq!(game.hand.len(), 10 + game.discard_count);
+                    assert!(game.hand.iter().filter(|c| c.from_skat).count() >= 2);
                 }
                 if let Some(options) = &game.declare {
                     saw_declare[usize::from(game.phase == TablePhase::DeclaringAfterSkat)] = true;

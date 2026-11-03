@@ -7,11 +7,15 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
 | Blatt (das ganze Spiel, 32 Karten) | `deck` | Im Roguelike bis ADR 0015 das geteilte, modifizierbare Blatt; seit ADR 0015 immer das normale Skatblatt aus 32 verschiedenen Karten (`Game::deck_cards`: jede Karte in der Ausgabe ihres Halters) |
-| Ausgabe (ADR 0015) | `Edition` | Die Version jeder Karte, die ein Spieler besitzt: je Karte die Modifikationen (`core/src/deck.rs`). Ausgabe des Spielers `Run::edition` (ersetzt `Run::deck`, Sicht `RunView::edition`); Gegner: normal (Stammgast) oder Boss-Ausgabe (`edition` in `bosses.ron`, `Edition::with_mods`, `ActiveGame::boss_edition`); `Editions` bündelt die beiden für die Hooks |
+| Ausgabe (ADR 0015) | `Edition` | Die Version jeder Karte, die ein Spieler besitzt: je Karte die Modifikationen (`core/src/deck.rs`). Ausgabe des Spielers `Run::edition` (ersetzt `Run::deck`, Sicht `RunView::edition`); Gegner: normal (Stammgast) oder Boss-Ausgabe je Figur (`figures[].edition` in `bosses.ron`, `Edition::with_mods`, `ActiveGame::boss_edition` links, `ActiveGame::partner_edition` rechts, ADR 0017); `Editions` bündelt sie für die Hooks (`player`, `boss`, `partner`) |
 | Halter einer Karte | `holder` | Der Platz, der die Karte gerade hält; die Karte zeigt seine Ausgabe. Der Skat gehört dem Alleinspieler. Wechsel nur über `Game::change_holder`, Ereignis `CardChangedHands`; `Game::in_edition_of`, `Game::current` |
-| Besitzer einer Ausgabe | `owner` | `DealtCard::owner` (`Owner`: `Player`, `Guest`, `Boss`): wessen Ausgabe die aufgelöste Karte ist, für Sicht, Rückseite und Hooks; `Run::owner_of_seat`, Platz des Bosses `BOSS_SEAT` |
-| Rückseite | `back` | Kosmetik; Spieler: die Rückseite seines Charakters (`CharacterDef::back`, Standard Distel, `web/src/ui/backs.ts`, `setPlayerBack`), Gegner: `back` in `guests.ron` (Standard `opponent`, `OPPONENT_BACK`) und `bosses.ron` (Kiebitz-Mörder `kibitz_killer`); Sicht `CardView::back`, `GameView::backs`, `BossInfo::back` |
-| Boss-Ausgabe (Zeile) | `EditionEntry` | Kartenfilter und Modifikation, Sicht `BossInfo::edition` |
+| Besitzer einer Ausgabe | `owner` | `DealtCard::owner` (`Owner`: `Player`, `Guest`, `Boss`, seit ADR 0017 `BossPartner`): wessen Ausgabe die aufgelöste Karte ist, für Sicht, Rückseite und Hooks; `Run::owner_of_seat`, Plätze der Boss-Spieler `BOSS_SEAT` (links) und `PARTNER_SEAT` (rechts) |
+| Rückseite | `back` | Kosmetik; Spieler: die Rückseite seines Charakters (`CharacterDef::back`, Standard Distel, `web/src/ui/backs.ts`, `setPlayerBack`), Gegner: `back` in `guests.ron` (Standard `opponent`, `OPPONENT_BACK`) und `bosses.ron` (je Boss eine, eine Figur darf eine eigene haben: `BossFigure::back`); Sicht `CardView::back`, `GameView::backs`, `BossInfo::back` |
+| Boss-Ausgabe (Zeile) | `EditionEntry` | Kartenfilter und Modifikation, Sicht `BossFigureInfo::edition` |
+| Boss-Spieler, Figur eines Bosses (ADR 0017; bis dahin offen als „Sekundant“) | `BossFigure` | Zwei je Boss (`BOSS_FIGURES`), `figures` in `bosses.ron`: Name, Ausgabe, optional Rückseite; die erste links (`Owner::Boss`), die zweite rechts (`Owner::BossPartner`). Sicht `BossInfo::figures` (`BossFigureInfo`) |
+| Boss-Belohnung, Relikt-Wahl (ADR 0017) | `BossReward` | Nach einer gewonnenen Boss-Kneipe (nicht der letzten): `RunPhase::BossReward`, `RunAction::ChooseBossRelic { offer, replace }`, Ereignisse `BossRewardOffered`, `BossRewardDeclined`, Sicht `RunView::boss_reward` (`BossRewardView`), Daten `boss_reward` in `run.ron` (`BossRewardConfig`); dazu doppelte Auszahlung `Payout::boss` |
+| Fluch für die Kneipe (Die Oma, ADR 0017) | `CurseForPub` | Wirkung `CurseForPub { cards, curses }`; gemerkte Karten `Series::boss_curses`, Ereignisse `BossCursesLaid`, `BossCursesLifted`; `Edition::lay_temp_curse`, `Edition::restore` |
+| Ersatz für einen entfernten Boss (Spielstände) | `RETIRED_BOSSES` | Kontra-Hans und Revolutionär → Zwillinge, Kiebitz-Mörder → Schwarzer Peter (`Run::drop_unknown_content`) |
 | Scherben (zerbrochener Glasdaus, ADR 0015) | `shards` | Nicht umgesetzt (der Glasdaus ist mit Effekte v2 gestrichen) |
 | Abgestuft (Nullspieler, ADR 0015) | `demoted` | Spezialkarte, die ein Fluch ist (`ModKind::SpecialCurse`), Wirkung `Demote`, `PlayingCard::demoted`, `DealtCard::demoted`: ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe ohne Augen (`rules::is_demoted_jack`), jede andere Karte sticht eine Stufe tiefer |
 | Reinigen (ADR 0015; bis 02.11.2026 der Gegenstand Frisches Deck) | `cleanse` | Alle Modifikationen einer Karte der Ausgabe fallen ab: `Edition::cleanse`, `DeckChange::Cleansed`, Fehler `DeckError::NothingToCleanse`; am Tresen „Karte reinigen“, in der Werkstatt `CleanseChosenCard`. Die Aktion `ConsumableAction::CleanseCard` ruht (kein Inhalt nutzt sie) |
@@ -143,7 +147,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Run / Kneipentour (bis ADR 0016 Tournee) | `Run` | Ein Abend: drei Stadtteile |
 | Stadtteil (ADR 0016; bis dahin Abschnitt / Skatabend) | `section` | Vier Kneipen und die Boss-Kneipe; im Code weiter `section` (`Series::section`, `RunStart::section`, `Run::sections`, `RunConfig::sections`); Name aus dem Namensgenerator (`DistrictView::name`). Ein Ante |
 | Kneipe (ADR 0016; bis dahin Serie) | `Series` | Ein Blind: Zielwert, 3 Spiele, zwei Stammgäste. Der Typ behält den Namen `Series` (Index `Series::index` 0 bis 4, `PUBS_PER_DISTRICT` = 5, die letzte die Boss-Kneipe, `Series::is_boss_pub`); Run-Ereignisse `SeriesStarted`, `SeriesWon`, neu `PubLost`. Verlauf `Run::pub_results` (`PubResult`). Knoten-Id `d<Stadtteil>-p<Kneipe>` (`tour::pub_id`) |
-| Boss-Kneipe (bis ADR 0016 Boss-Serie) | `is_boss_pub` | Letzte Kneipe eines Stadtteils; verloren wird sie wiederholt |
+| Boss-Kneipe (bis ADR 0016 Boss-Serie) | `is_boss_pub` | Letzte Kneipe eines Stadtteils; seit ADR 0017 zwei Boss-Spieler, alle drei Spiele, verloren endet der Run (`RunLost::boss`); bis dahin wurde sie verloren wiederholt |
 | Leben | `lives` | `Run::lives`, `RunConfig::lives` (`LivesConfig`: `start`, `max`, `boss_bonus`), Ereignis `LivesChanged { change, lives }`, Sicht `TourView::lives`, `max_lives`. In der Anzeige Herzen |
 | Route, Routenwahl | `route` | `RunPhase::Route`, `tour::RouteChoice` (nächste Kneipe und drei `RouteOption`), Aktion `RunAction::ChooseRoute(i)`, Ereignisse `RouteOpened`, `RouteChosen`; unterwegs `tour::Trip`. Sicht `TourView::route` (`RouteView`, `RouteOptionView`, `minutes` nur Dekoration) |
 | Verkehrsmittel (Zu Fuß, Bahn, Fahrrad) | `Transport` (`Walk`, `Train`, `Bike`) | Seit 02.11.2026 alle gleich: je eine Station, nichts kostet extra; nur Darstellung |
@@ -223,7 +227,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Art und Seltenheit einer Belohnung | `RewardInfo`, `RewardKind` | `HouseRule`, `Regular`, `CardMod`, `Character`; Feld `reward_info` im Meta-View |
 | Endboss | `final_boss` | „Der Alte“, Regeln nacheinander: `rotation` |
 | Regel des Bosses in diesem Spiel | `boss_rule` | Beim Alten wechselt sie pro Spiel |
-| Schummeln (Boss-Regel) | `is_cheat` | Zwillinge, Revolutionär; abgeschaltet durch `NoCheating` |
+| Schummeln (Boss-Regel) | `is_cheat` | Zwillinge (bis ADR 0017 auch Revolutionär); abgeschaltet durch `NoCheating` |
 | Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler, Spickzettel; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
@@ -299,9 +303,9 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Durchsichtig (Fluch seit Effekte v2) | `transparent` |
 | Fleckig (Fluch, bis Effekte v2 „Schwarze Katze“) | `stained` |
 | Gestrichen mit Effekte v2 (alte Ids, nur noch beim Umrechnen) | `fat`, `marked`, `stamp`, `invisible`, `gold_rim`, `double_marked`, `crown`, `seal`, `horseshoe`, `tape_measure`, `lucky_penny`, `beer_stain`, `cracked`, `black_cat`, `lead_weight`, `tail_light`, `dressed_up`, `dummy`, `honorary_jack`, `glass_ace`, `homesick` |
-| Der Schieber | `the_pusher` |
-| Der Kontra-Hans | `kontra_hans` |
-| Die Oma | `grandma` |
+| Der Schieber (mit Die Hehlerin) | `the_pusher` |
+| Der Kontra-Hans (entfernt, ADR 0017) | `kontra_hans` |
+| Die Oma (Boss, mit Der Opa; bis 02.11.2026 auch eine Figur `granny`) | `grandma` |
 | Kurzer | `shot` |
 | Doppelkorn | `double_grain` |
 | Kräuter | `herbal` |
@@ -309,12 +313,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Kiebitz | `kibitzer` |
 | Der Wirt | `landlord` |
 | Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
-| Die Zwillinge | `twins` |
-| Der Ramscher | `ramscher` |
-| Der Revolutionär | `revolutionary` |
-| Der Schwarze Peter | `black_peter` |
-| Der Kiebitz-Mörder | `kibitz_killer` |
-| Der Alte | `the_old_man` |
+| Die Zwillinge (Fritz und Franz) | `twins` |
+| Der Ramscher (mit Die Ramscherin; jedes Spiel ein Ramsch, Wirkung `Ramsch`, alter Name `RamschOnce`) | `ramscher` |
+| Der Revolutionär (entfernt, ADR 0017) | `revolutionary` |
+| Der Schwarze Peter (mit Die Schwarze Grete) | `black_peter` |
+| Der Kiebitz-Mörder (entfernt, ADR 0017) | `kibitz_killer` |
+| Der Alte (mit Die Alte) | `the_old_man` |
 | Stammtisch-Streit | `stammtisch_dispute` |
 | Der Kartengeber | `card_dealer` |
 | Alter Bekannter | `old_friend` |

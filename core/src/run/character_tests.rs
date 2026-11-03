@@ -424,7 +424,7 @@ fn a_rule_may_show_a_defender_hand() {
         .get_mut(&Character::Declarer)
         .expect("declarer");
     def.rule.passive.push(Effect::RevealDefenderHand(1));
-    let mut run = character_run(&content, Character::Declarer);
+    let run = character_run(&content, Character::Declarer);
     let left = Seat::DEFENDERS[0];
     assert_eq!(run.game().expect("game").shown_hand, Some(left));
     let game = run.view(&content).game.expect("game");
@@ -434,11 +434,6 @@ fn a_rule_may_show_a_defender_hand() {
         .filter(|r| r.source == RevealSource::Onlooker)
         .count();
     assert_eq!(shown, 10);
-    // The Kiebitz-Mörder takes the sight.
-    run.series.boss = Some(BossId::new("kibitz_killer"));
-    let mut events = Vec::new();
-    run.deal(&content, true, &mut events).expect("deal");
-    assert_eq!(run.game().expect("game").shown_hand, None);
 }
 
 #[test]

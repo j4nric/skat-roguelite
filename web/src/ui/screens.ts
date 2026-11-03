@@ -3,7 +3,7 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, bossEditionText, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
@@ -326,11 +326,20 @@ export function renderStart(ui: UiState, buildInfo: string): string {
   </main>`;
 }
 
+/** Why the run ended: the last life, or a lost boss pub (ADR 0017, whatever lives were left). */
+function lostReason(view: RunView): string {
+  const s = view.series;
+  if (s.is_boss && s.boss) {
+    return t(de.end.lostBoss, { names: bossLine(s.boss), section: s.section + 1 });
+  }
+  return t(de.end.lostText, { section: s.section + 1, series: s.index + 1 });
+}
+
 export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
   return `<main class="end" data-testid="end">
     <div class="sheet chalkboard end-board">
       <h1 class="${won ? 'is-won' : 'is-lost'}">${esc(won ? de.end.won : de.end.lost)}</h1>
-      <p class="chalk-small">${esc(won ? de.end.wonText : t(de.end.lostText, { section: view.series.section + 1, series: view.series.index + 1 }))}</p>
+      <p class="chalk-small" data-testid="end-reason">${esc(won ? de.end.wonText : lostReason(view))}</p>
       ${shareBlock(view.seed, view.character.character, view.length, ui, view.stake ?? 0)}
       ${renderOverview(view, ui.meta, !won)}
     </div>
@@ -456,10 +465,12 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
   switch (overlay.kind) {
     case 'boss':
       return sheet(
-        `<div class="boss-intro"><div class="boss-faces">${portrait(bossPortraitId(overlay.boss.id), 'portrait-boss')}<span class="boss-back" data-testid="boss-back" data-back="${esc(backDesign(overlay.boss.back))}">${cardBack('', backDesign(overlay.boss.back))}</span></div>
+        `<div class="boss-intro"><div class="boss-faces">${portrait(bossPortraitId(overlay.boss.id, 0), 'portrait-boss')}<span class="boss-back" data-testid="boss-back" data-back="${esc(backDesign(overlay.boss.back))}">${cardBack('', backDesign(overlay.boss.back))}</span>${portrait(bossPortraitId(overlay.boss.id, 1), 'portrait-boss')}</div>
          <p class="small boss-kicker">${bossCoaster(overlay.boss.id, { size: 32 })}<span>${esc(de.boss.title)} · ${esc(de.boss.intro)}</span></p>
          <h2>${esc(contentName('bosses', overlay.boss.id))}</h2>
-         <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p>${bossEditionText(overlay.boss) ? `<p class="boss-edition">${esc(bossEditionText(overlay.boss))}</p>` : ''}</div>
+         <p class="boss-figures" data-testid="boss-figures">${esc(bossFiguresText(overlay.boss))}</p>
+         <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p>${bossEditionText(overlay.boss) ? `<p class="boss-edition">${esc(bossEditionText(overlay.boss))}</p>` : ''}
+         <p class="boss-stakes" data-testid="boss-stakes">${esc(de.boss.stakes)}</p></div>
          <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'boss-go' })}>${esc(de.boss.go)}</button>`,
         false,
         'sheet-boss',

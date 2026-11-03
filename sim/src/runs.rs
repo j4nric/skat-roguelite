@@ -649,14 +649,16 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
 /// plays exactly as it would against any target, and a series with
 /// Zielwert T is won exactly when the highest account after a game reaches
 /// T. One sample thus gives the result for every T. With `--boss` the
-/// series is a boss series with that boss.
+/// series is a boss pub with that boss: two boss players, all games
+/// played, won when the account after the last game reaches T (ADR 0017).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Curve {
     /// Base seed.
     pub seed: u64,
     /// Number of series.
     pub series: u32,
-    /// Highest account per series (`None`: never above 0 after a game).
+    /// Highest account per series (`None`: never above 0 after a game);
+    /// for a boss pub the account after its last game.
     pub best: Vec<Option<i64>>,
     /// Games played.
     pub games: u64,
@@ -725,6 +727,7 @@ pub fn curve(
         series,
         ..Curve::default()
     };
+    let boss_pub = options.boss.is_some();
     let mut master = Rng::from_seed(seed);
     for i in 0..series {
         let run_seed = master.next_u64();
@@ -749,7 +752,10 @@ pub fn curve(
                         result.games += 1;
                         result.points += breakdown.score;
                         result.games_won += u64::from(breakdown.won);
-                        best = Some(best.map_or(series_score, |b| b.max(series_score)));
+                        best = Some(match (boss_pub, best) {
+                            (false, Some(b)) => b.max(series_score),
+                            _ => series_score,
+                        });
                     }
                     RunEvent::Redealt => result.redeals += 1,
                     _ => {}
@@ -774,7 +780,7 @@ pub fn render_curve(
 ) -> String {
     let mut out = String::new();
     let kind = if options.boss.is_some() {
-        "boss series"
+        "boss pubs (two boss players, every game played)"
     } else {
         "series"
     };

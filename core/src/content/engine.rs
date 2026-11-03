@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::effects::{Condition, Effect, Hook};
 use super::score::Source;
 use super::{CardModDef, CardModId, Content};
-use crate::cards::{CardKind, PlayingCard};
+use crate::cards::PlayingCard;
 use crate::deck::{DealtCard, Edition, Owner};
 use crate::game::{Game, Seat, TRICKS_PER_GAME, seat_at};
 use crate::rules::{Declaration, GameType, Matadors, ValueParts, acts_as_honorary_jack};
@@ -51,16 +51,13 @@ pub struct ResolvedDeck {
 
 /// Resolve one edition for one game, every card as a copy of `owner`.
 ///
-/// Order per card: `BlankOut` from bosses and relics turns matching cards
-/// into blanks (their modifications are inactive for this game); then
-/// `SetCardPoints` from bosses and relics in source order (rules of the
+/// Order per card: `SetCardPoints` from bosses and relics in source order (rules of the
 /// table, for every edition); then the card's own modifications in the
 /// order they were attached, each scaled by the value the card carries
 /// (`AddCardPoints`, `RankBonus`, `RevealHolder`, `NeverWins`,
 /// `HonoraryJack`, `NoDiscard`, `Wild`, `Demote`). Augen below zero leave
 /// the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). A demoted
-/// Unter has no Augen. `RevealHolder` is off while a global source has
-/// `DisableInformation`.
+/// Unter has no Augen.
 #[must_use]
 pub fn resolve_edition(
     deck: &Edition,
@@ -70,22 +67,8 @@ pub fn resolve_edition(
 ) -> ResolvedDeck {
     let mut cards = Vec::with_capacity(deck.len());
     let mut point_changes = Vec::new();
-    let no_information = global
-        .iter()
-        .any(|s| s.passive.contains(&Effect::DisableInformation));
     for deck_card in deck.cards() {
-        let blanked = deck_card.kind.face().is_some_and(|face| {
-            global.iter().any(|s| {
-                s.passive
-                    .iter()
-                    .any(|e| matches!(e, Effect::BlankOut(f) if f.matches(face)))
-            })
-        });
-        let kind = if blanked {
-            CardKind::Blank
-        } else {
-            deck_card.kind
-        };
+        let kind = deck_card.kind;
         let mut dealt = DealtCard {
             owner,
             ..DealtCard::plain(deck_card.id, kind)
@@ -152,7 +135,7 @@ pub fn resolve_edition(
                     Effect::RankBonus(bonus) => {
                         dealt.rank_bonus = dealt.rank_bonus.saturating_add(bonus);
                     }
-                    Effect::RevealHolder => dealt.revealed = !no_information,
+                    Effect::RevealHolder => dealt.revealed = true,
                     Effect::NeverWins => dealt.never_wins = true,
                     Effect::HonoraryJack => dealt.honorary_jack = true,
                     Effect::NoDiscard => dealt.no_discard = true,
@@ -169,13 +152,16 @@ pub fn resolve_edition(
 }
 
 /// The editions of one game (ADR 0015): the player's and, in a boss
-/// series, the boss's. A Stammgast's edition is plain.
+/// pub, those of the two boss players (ADR 0017). A Stammgast's edition
+/// is plain.
 #[derive(Debug, Clone, Copy)]
 pub struct Editions<'e> {
     /// The player's edition.
     pub player: &'e Edition,
-    /// The boss edition of the boss at the table, if any.
+    /// The edition of the boss player on the left, if any.
     pub boss: Option<&'e Edition>,
+    /// The edition of the boss player on the right, if any.
+    pub partner: Option<&'e Edition>,
 }
 
 impl<'e> Editions<'e> {
@@ -185,6 +171,7 @@ impl<'e> Editions<'e> {
         match owner {
             Owner::Player => Some(self.player),
             Owner::Boss => self.boss,
+            Owner::BossPartner => self.partner,
             Owner::Guest => None,
         }
     }

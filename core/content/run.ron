@@ -15,7 +15,8 @@
         [46, 48, 50, 52, 60],
     ],
     // Leben (ADR 0016): Start 3, eine verlorene Kneipe kostet eins, eine
-    // gewonnene Boss-Kneipe bringt eins, höchstens 5. Vorläufig.
+    // gewonnene Boss-Kneipe bringt eins, höchstens 5. Eine verlorene
+    // Boss-Kneipe beendet den Run (ADR 0017). Vorläufig.
     lives: (start: 3, max: 5, boss_bonus: 1),
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
@@ -80,18 +81,21 @@
             cleanse_price: 3,
         ),
     ),
+    // Bosse (DESIGN 11). Seit ADR 0017 ohne Kontra-Hans, Revolutionär und
+    // Kiebitz-Mörder.
     bosses: [
         "the_pusher",
-        "kontra_hans",
         "grandma",
         "twins",
         "ramscher",
-        "revolutionary",
         "black_peter",
-        "kibitz_killer",
     ],
     // Endboss der Boss-Kneipe im letzten Stadtteil (DESIGN 11).
     final_boss: Some("the_old_man"),
+    // Belohnung einer gewonnenen Boss-Kneipe (ADR 0017): doppelte
+    // Auszahlung, ein Leben (lives.boss_bonus) und ein Relikt aus drei,
+    // Seltenheit Ungewöhnlich oder höher.
+    boss_reward: (relics: 3, min_rarity: Uncommon),
     // Kartenspiel der Gegenspieler je Stadtteil (DESIGN 10.3): Stadtteil 1
     // Heuristik, danach PIMC mit steigender Zahl an Stichproben. `depth`:
     // exakt durchsuchte Stiche je Stichprobe, dahinter eine schnelle

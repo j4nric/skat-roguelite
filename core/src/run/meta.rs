@@ -913,6 +913,7 @@ mod tests {
             character: Character::Declarer,
             length: RunLength::Full,
             stake: 0,
+            boss: None,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 4);

@@ -2,7 +2,7 @@
 // display names. Only translation, no game logic.
 
 import { de } from './de';
-import type { BossInfo, Catalog, CardKind, ConsumableCategory, Rarity, RelicGroup, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
+import type { BossInfo, Catalog, EditionEntry, CardKind, ConsumableCategory, Rarity, RelicGroup, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
 export { de };
 
@@ -83,12 +83,35 @@ export function modText(mod: string, value: number): string {
 }
 
 /**
- * A boss edition in one line (ADR 0015): "Seine Ausgabe: Siebenen: Augen +4".
- * Empty if he has none. Formatting only; the entries come from the core.
+ * The editions of a boss's two figures in one line (ADR 0015, ADR 0017):
+ * "Ausgaben: Der Schieber: Siebenen Augen +4 · Die Hehlerin: Achten Augen +3".
+ * Empty if neither has one. Formatting only; the entries come from the core.
  */
 export function bossEditionText(boss: BossInfo | null | undefined): string {
-  const entries = boss?.edition ?? [];
-  if (!entries.length) return '';
+  const figures = (boss?.figures ?? []).filter((f) => f.edition.length);
+  if (!figures.length) return '';
+  const parts = figures.map((f) => t(de.info.bossFigureEdition, { name: f.name, entries: editionEntries(f.edition) }));
+  return t(de.info.bossEdition, { entries: parts.join(' · ') });
+}
+
+/**
+ * The boss with his players in one line: "Die Zwillinge: Fritz und Franz",
+ * or only the players when the first is the boss ("Der Schieber und Die Hehlerin").
+ */
+export function bossLine(boss: BossInfo): string {
+  const name = contentName('bosses', boss.id) || boss.name;
+  const figures = bossFiguresText(boss);
+  return boss.figures?.[0]?.name === name ? figures : `${name}: ${figures}`;
+}
+
+/** The two boss players by name ("Der Schieber und Die Hehlerin"), else the boss's name. */
+export function bossFiguresText(boss: BossInfo | null | undefined): string {
+  const names = (boss?.figures ?? []).map((f) => f.name);
+  if (names.length < 2) return boss ? contentName('bosses', boss.id) || boss.name : '';
+  return t(de.info.bossFigures, { a: names[0] ?? '', b: names[1] ?? '' });
+}
+
+function editionEntries(entries: EditionEntry[]): string {
   const rankKey: Record<string, Rank> = { Seven: '7', Eight: '8', Nine: '9', Ten: 'T', Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A' };
   const parts = entries.map((e) => {
     const { suit, rank } = e.filter;
@@ -100,7 +123,7 @@ export function bossEditionText(boss: BossInfo | null | undefined): string {
     const mod = counted ? `${name} ${negative ? '−' : '+'}${Math.abs(value)}` : name;
     return t(de.info.bossEditionEntry, { cards, mod });
   });
-  return t(de.info.bossEdition, { entries: parts.join(' · ') });
+  return parts.join(', ');
 }
 
 /** The number a card modification prints on its card, from the core's catalog. */

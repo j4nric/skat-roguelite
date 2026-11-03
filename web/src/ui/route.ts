@@ -9,7 +9,7 @@
 // its stop, its minutes, the targets. The map itself is decoration drawn
 // from the district's map seed and the node ids (./citymap.ts).
 
-import { de, contentName, t } from '../i18n';
+import { de, bossFiguresText, bossLine, contentName, t } from '../i18n';
 import type { DistrictView, PubPreview, RouteOptionView, RunView, StopCategory, Transport } from '../types';
 import { MH, MW, INK, cityImageTag, genCity, lookOf, planLeg, stamps, type City, type LegPlan, type Pattern, type Way } from './citymap';
 import { attrs, esc } from './dom';
@@ -144,18 +144,18 @@ export function mapSvg(view: RunView, pick: number): string {
 // ---------------------------------------------------------------- the target card
 
 function guestFaces(pub: PubPreview): string {
+  // ADR 0017: in a boss pub both seats are the boss's figures.
   return pub.guests
     .map((g, i) => {
-      const face = i === 0 && pub.is_boss && pub.boss ? bossPortraitId(pub.boss.id) : guestPortraitId(g.look, g.seat === 2 ? 2 : 1);
+      const face = pub.is_boss && pub.boss ? bossPortraitId(pub.boss.id, i) : guestPortraitId(g.look, g.seat === 2 ? 2 : 1);
       return portrait(face, 'portrait-sm route-face');
     })
     .join('');
 }
 
 function guestNames(pub: PubPreview): string {
-  const names = pub.guests.map((g) => g.name);
-  if (pub.is_boss && pub.boss) names[0] = contentName('bosses', pub.boss.id);
-  return names.join(', ');
+  if (pub.is_boss && pub.boss) return bossFiguresText(pub.boss);
+  return pub.guests.map((g) => g.name).join(', ');
 }
 
 function targetCard(view: RunView, picked: RouteOptionView | undefined): string {
@@ -178,7 +178,9 @@ function targetCard(view: RunView, picked: RouteOptionView | undefined): string 
       ${pickMalus}<span class="route-reward">${esc(de.route.spelunkeReward)}</span>`;
   } else if (pub.is_boss) {
     const boss = pub.boss ? contentName('bosses', pub.boss.id) : de.route.bossUnknown;
-    extra = `<span class="route-warn"><b class="route-tag is-boss">${esc(de.route.bossTag)}</b><span class="route-boss">${esc(t(de.route.bossEnd, { name: boss }))}</span></span>`;
+    // ADR 0017: both boss players by name.
+    const text = pub.boss ? bossLine(pub.boss) : t(de.route.bossEnd, { name: boss });
+    extra = `<span class="route-warn"><b class="route-tag is-boss">${esc(de.route.bossTag)}</b><span class="route-boss" data-testid="route-boss-figures">${esc(text)}</span></span>`;
   }
   const scouted = picked?.stops[0]?.encounter;
   if (scouted) extra += `<span class="route-scout" data-testid="route-scout">${esc(t(de.route.scouted, { name: contentName('encounters', scouted.id) || scouted.name }))}</span>`;

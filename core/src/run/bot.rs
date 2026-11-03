@@ -61,7 +61,10 @@
 //! slot (else the Groschen). The route ([`RunBot::route_action`]) scores
 //! each way by the category it shows: the Tresen when rich, an Upgrade
 //! with a cursed card, a Rast with lives missing; a Spelunke only when
-//! strong (three lives and three relics).
+//! strong (three lives and three relics). After a won boss pub (ADR 0017)
+//! the most valuable relic of the pick into a free slot, with every slot
+//! full in place of the weakest owned one if it is worth at least
+//! [`SWAP_MARGIN`] more, else none ([`RunBot::boss_reward_action`]).
 //!
 //! Schnäpse (simple rules, not tuned): "Kurzer" right before picking up the
 //! skat (the bot does not use what it sees); after the skat, "Blue Curaçao"
@@ -177,7 +180,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `season_ticket` | 2 | +1 Groschen per Bahn; the route policy does not seek the Bahn |
 /// | `kitty` | 3 | +1 Groschen per pub won, paid at the next Tresen |
 /// | `slate` | 2 | the bot never buys on credit, it only pays the debt back |
-/// | `guardian_angel` | 7 | a life per district at most, like a won boss pub |
+/// | `guardian_angel` | 7 | a life per district at most, never in a boss pub |
 /// | `dive_expert` | 1 | the bot rarely enters a Spelunke |
 pub const RELIC_VALUES: [(&str, u32); 30] = [
     ("every_bit_counts", 10),
@@ -599,7 +602,54 @@ impl RunBot {
             RunPhase::Shop => Some(self.shop_action(run, content)),
             RunPhase::Encounter => Some(self.encounter_action(run, content)),
             RunPhase::Route => Some(self.route_action(run, content)),
+            RunPhase::BossReward => Some(Self::boss_reward_action(run, content)),
             RunPhase::Game => self.game_action(run, content),
+        }
+    }
+
+    /// The relic pick of a won boss pub (ADR 0017): the most valuable
+    /// relic on offer ([`relic_value`], the first on a tie) into a free
+    /// slot; with every slot full in place of the weakest owned relic if
+    /// it is worth at least [`SWAP_MARGIN`] more, else none.
+    #[must_use]
+    pub fn boss_reward_action(run: &Run, content: &Content) -> RunAction {
+        let none = RunAction::ChooseBossRelic {
+            offer: None,
+            replace: None,
+        };
+        let Some(reward) = run.boss_reward() else {
+            return none;
+        };
+        let mut best: Option<(u32, usize)> = None;
+        for (i, id) in reward.relics.iter().enumerate() {
+            let value = relic_value(id);
+            if best.is_none_or(|(b, _)| value > b) {
+                best = Some((value, i));
+            }
+        }
+        let Some((value, offer)) = best else {
+            return none;
+        };
+        let slots = usize::try_from(content.relic_slots(run.character())).unwrap_or(0);
+        if run.relics().len() < slots {
+            return RunAction::ChooseBossRelic {
+                offer: Some(offer),
+                replace: None,
+            };
+        }
+        let weakest = run
+            .relics()
+            .iter()
+            .enumerate()
+            .min_by_key(|(i, id)| (relic_value(id), *i));
+        match weakest {
+            Some((index, id)) if value >= relic_value(id) + SWAP_MARGIN => {
+                RunAction::ChooseBossRelic {
+                    offer: Some(offer),
+                    replace: Some(index),
+                }
+            }
+            _ => none,
         }
     }
 

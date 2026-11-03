@@ -74,8 +74,12 @@ pub enum Owner {
     Player,
     /// A Stammgast: the plain edition.
     Guest,
-    /// The boss: his boss edition (`edition` in `bosses.ron`).
+    /// The boss player on the left: the edition of the first figure
+    /// (`figures` in `bosses.ron`).
     Boss,
+    /// The boss player on the right (ADR 0017): the edition of the
+    /// second figure.
+    BossPartner,
 }
 
 /// A card instance as dealt into one game, with every modification already
@@ -784,6 +788,49 @@ impl Edition {
             value,
             replaced,
         })
+    }
+
+    /// A temporary curse ("Die Oma", ADR 0017): put `curse` with `value` on
+    /// a normal card in place of its normal modification (a special card
+    /// and a special curse stay) and return the card as it was, so that
+    /// [`Edition::restore`] puts it back exactly. Not on blanks.
+    pub fn lay_temp_curse(
+        &mut self,
+        content: &Content,
+        id: u32,
+        curse: &CardModId,
+        value: i32,
+    ) -> Result<DeckCard, DeckError> {
+        let def = content
+            .card_mod(curse)
+            .ok_or_else(|| DeckError::UnknownMod(curse.clone()))?;
+        let card = self
+            .cards
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(DeckError::UnknownCard(id))?;
+        if card.kind == CardKind::Blank {
+            return Err(DeckError::BlankCannotBeModified);
+        }
+        let before = card.clone();
+        let special = |m: &CardModId| content.card_mod(m).is_some_and(|d| d.is_special());
+        let normal: Vec<CardModId> = card.mods.iter().filter(|m| !special(m)).cloned().collect();
+        for old in &normal {
+            card.drop_mod(old);
+        }
+        card.mods.push(curse.clone());
+        if def.has_value() {
+            card.mod_values.insert(curse.clone(), value);
+        }
+        Ok(before)
+    }
+
+    /// Put a card back as it was before [`Edition::lay_temp_curse`].
+    /// Nothing if the edition has no card with its id.
+    pub fn restore(&mut self, card: DeckCard) {
+        if let Some(slot) = self.cards.iter_mut().find(|c| c.id == card.id) {
+            *slot = card;
+        }
     }
 
     /// Take a modification off a card (a redeemed voucher). Nothing if the
