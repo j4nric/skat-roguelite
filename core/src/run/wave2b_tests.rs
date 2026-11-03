@@ -1,13 +1,11 @@
 //! Relics of M8 wave 2b (DESIGN 8.1): "Drei drücken", "Spickzettel" and
-//! "Lockvogel", the new interactions they need, their edge cases, the bot
+//! the new interactions they need, their edge cases, the bot
 //! and old saves.
 
 use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, relic_run};
-use super::view::{RevealSource, TablePhase};
+use super::view::RevealSource;
 use super::*;
-use crate::ai::Policy;
-use crate::ai::pimc::{PimcConfig, PimcPolicy};
 use crate::cards::Suit;
 use crate::rules::{NullRisk, RiskLevel, discardable_of, returned_discard, valid_discard_of};
 
@@ -18,15 +16,6 @@ const STRONG: [&str; 3] = [
     "SQ S9 S8 S7 CA CT CK CQ C9 C8",
 ];
 const STRONG_SKAT: &str = "D8 C7";
-
-/// Declarer holds only Luschen of three suits; both defenders hold
-/// hearts, so whoever takes the first trick can be made to lead one.
-const LURE: [&str; 3] = [
-    "D7 D8 D9 S7 S8 S9 C7 C8 C9 H7",
-    "DA DT DK DQ HA HT SA ST CJ SJ",
-    "HK HQ H9 H8 CA CT CK CQ HJ DJ",
-];
-const LURE_SKAT: &str = "SK SQ";
 
 /// Declarer holds two jacks; the HJ lies first in the skat.
 const JACK_IN_SKAT: [&str; 3] = [
@@ -286,21 +275,11 @@ fn old_saves_load_without_the_new_fields() {
     let mut run = relic_run(&content, &[]);
     deal(&mut run, &content, STRONG, STRONG_SKAT);
     let mut text = ron::to_string(&run).expect("ron");
-    for field in [
-        "drawn:",
-        "returned:",
-        "lead_demand:",
-        "skat_shown:",
-        "lead_demands_used:",
-    ] {
+    for field in ["drawn:", "returned:", "skat_shown:"] {
         assert!(!text.contains(field), "{field} left out while unused");
     }
     // Rules of a save from before have neither of the new rules.
-    for field in [
-        ",discard_three:None",
-        ",lead_demands:0",
-        ",discard_three_used:false",
-    ] {
+    for field in [",discard_three:None", ",discard_three_used:false"] {
         assert!(text.contains(field), "{field}");
         text = text.replacen(field, "", 1);
     }
@@ -313,7 +292,7 @@ fn old_saves_load_without_the_new_fields() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn crib_sheet_shows_a_skat_card_after_a_hand_declaration() {
+fn crib_sheet_shows_both_skat_cards_after_a_hand_declaration() {
     let content = content();
     let mut run = relic_run(&content, &["crib_sheet"]);
     deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -335,15 +314,15 @@ fn crib_sheet_shows_a_skat_card_after_a_hand_declaration() {
         })
         .collect();
     let skat = run.game().expect("game").game.skat();
-    assert_eq!(shown, vec![skat[0]], "one card, the first of the skat");
+    // Since 02.11.2026 both cards.
+    assert_eq!(shown, skat.to_vec(), "both skat cards");
     let view = run.view(&content).game.expect("view");
-    assert_eq!(view.skat_shown.len(), 1);
+    assert_eq!(view.skat_shown.len(), 2);
     assert_eq!(view.skat_shown[0].card.id, skat[0].id);
-    assert!(
-        opponents::player_hints(&run)
-            .pinned
-            .contains(&(skat[0], None))
-    );
+    assert_eq!(view.skat_shown[1].card.id, skat[1].id);
+    for card in skat {
+        assert!(opponents::player_hints(&run).pinned.contains(&(card, None)));
+    }
     // The player's event carries it too.
     let public: Vec<_> = events.into_iter().map(RunEvent::for_player).collect();
     assert!(
@@ -409,332 +388,6 @@ fn crib_sheet_tells_the_value_preview_about_a_jack_in_the_skat() {
     let without = preview(&[]);
     let with = preview(&["crib_sheet"]);
     assert_eq!(with.levels, without.levels + 1, "{with:?} {without:?}");
-}
-
-// ---------------------------------------------------------------------------
-// Lockvogel
-// ---------------------------------------------------------------------------
-
-#[test]
-fn decoy_makes_the_next_defender_lead_the_named_suit() {
-    let content = content();
-    let mut run = relic_run(&content, &["decoy"]);
-    deal(&mut run, &content, LURE, LURE_SKAT);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::grand(RiskLevel::Hand)),
-    )
-    .expect("grand hand");
-    let view = run.view(&content).game.expect("view");
-    assert!(view.can_demand_lead);
-    assert_eq!(
-        view.lead_demand_options,
-        vec![
-            LeadSuit::Trump,
-            LeadSuit::Suit(Suit::Clubs),
-            LeadSuit::Suit(Suit::Spades),
-            LeadSuit::Suit(Suit::Hearts),
-            LeadSuit::Suit(Suit::Diamonds),
-        ]
-    );
-    let events = run
-        .apply_step(
-            &content,
-            RunAction::DemandLead(LeadSuit::Suit(Suit::Hearts)),
-        )
-        .expect("demand");
-    assert!(events.iter().any(|e| matches!(
-        e,
-        RunEvent::Game(Event::LeadDemanded {
-            suit: LeadSuit::Suit(Suit::Hearts)
-        })
-    )));
-    let view = run.view(&content).game.expect("view");
-    assert!(!view.can_demand_lead, "once per game");
-    assert_eq!(view.lead_demand, Some(LeadSuit::Suit(Suit::Hearts)));
-    assert_eq!(
-        run.clone()
-            .apply(&content, RunAction::DemandLead(LeadSuit::Trump))
-            .err(),
-        Some(RunError::NoLeadDemandLeft)
-    );
-    // The declarer leads; the demand waits for a defender's lead.
-    run.apply_step(&content, RunAction::Play(id(&run, "D7")))
-        .expect("lead");
-    while run.game().expect("game").game.tricks().is_empty() {
-        run.advance_ai(&content).expect("defender follows");
-    }
-    let game = &run.game().expect("game").game;
-    let leader = game.trick_lead();
-    assert!(!leader.is_declarer(), "a defender took the D7");
-    assert_eq!(game.lead_demand(), Some(LeadSuit::Suit(Suit::Hearts)));
-    let legal = game.legal_moves(leader);
-    assert!(!legal.is_empty());
-    assert!(
-        legal
-            .iter()
-            .all(|&c| LeadSuit::Suit(Suit::Hearts).matches(GameType::Grand, c)),
-        "{legal:?}"
-    );
-    let events = run.advance_ai(&content).expect("defender leads");
-    let led = events
-        .iter()
-        .find_map(|e| match e {
-            RunEvent::Game(Event::CardPlayed { seat, card }) if *seat == leader => Some(*card),
-            _ => None,
-        })
-        .expect("lead");
-    assert!(LeadSuit::Suit(Suit::Hearts).matches(GameType::Grand, led));
-    assert_eq!(
-        run.game().expect("game").game.lead_demand(),
-        None,
-        "used up"
-    );
-}
-
-#[test]
-fn decoy_leaves_the_lead_free_without_the_suit_and_rejects_wrong_leads() {
-    let mut game = Game::with_cards(
-        [
-            cards("D7 D8 D9 S7 S8 S9 C7 C8 C9 H7"),
-            cards("DA DT DK DQ HA HT SA ST CJ SJ"),
-            cards("HK HQ H9 H8 CA CT CK CQ HJ DJ"),
-        ],
-        [c("SK"), c("SQ")],
-        Seat::DEFENDERS[0],
-    )
-    .expect("deal");
-    game.declare(Declaration::grand(RiskLevel::Hand))
-        .expect("declare");
-    // Seat 1 leads the first trick: with a demand for spades it must lead
-    // SA or ST (the SJ is trump in a grand).
-    game.demand_lead(LeadSuit::Suit(Suit::Spades))
-        .expect("demand");
-    assert_eq!(
-        game.demand_lead(LeadSuit::Trump),
-        Err(GameError::InvalidLeadDemand),
-        "one at a time"
-    );
-    let seat = Seat::DEFENDERS[0];
-    let mut legal = game.legal_moves(seat);
-    legal.sort();
-    let mut spades = cards("SA ST");
-    spades.sort();
-    assert_eq!(legal, spades);
-    assert_eq!(
-        game.play(seat, c("DA")),
-        Err(GameError::MustLeadDemanded {
-            card: c("DA"),
-            suit: LeadSuit::Suit(Suit::Spades)
-        })
-    );
-    game.play(seat, c("SA")).expect("spade lead");
-    assert_eq!(game.lead_demand(), None);
-
-    // A defender without the suit leads freely, and the demand is gone.
-    let mut game = Game::with_cards(
-        [
-            cards("D7 D8 D9 S7 S8 S9 C7 C8 C9 H7"),
-            cards("DA DT DK DQ HA HT SA ST CJ SJ"),
-            cards("HK HQ H9 H8 CA CT CK CQ HJ DJ"),
-        ],
-        [c("SK"), c("SQ")],
-        Seat::DEFENDERS[1],
-    )
-    .expect("deal");
-    game.declare(Declaration::grand(RiskLevel::Hand))
-        .expect("declare");
-    game.demand_lead(LeadSuit::Suit(Suit::Spades))
-        .expect("demand");
-    assert_eq!(game.legal_moves(Seat::DEFENDERS[1]).len(), 10);
-    game.play(Seat::DEFENDERS[1], c("CA")).expect("free lead");
-    assert_eq!(game.lead_demand(), None);
-
-    // No trump in Null.
-    let mut game = Game::with_cards(
-        [
-            cards("D7 D8 D9 S7 S8 S9 C7 C8 C9 H7"),
-            cards("DA DT DK DQ HA HT SA ST CJ SJ"),
-            cards("HK HQ H9 H8 CA CT CK CQ HJ DJ"),
-        ],
-        [c("SK"), c("SQ")],
-        Seat::DECLARER,
-    )
-    .expect("deal");
-    game.declare(Declaration::null(NullRisk::Hand))
-        .expect("declare");
-    assert_eq!(
-        game.demand_lead(LeadSuit::Trump),
-        Err(GameError::InvalidLeadDemand)
-    );
-    assert_eq!(LeadSuit::options(GameType::Null).len(), 4);
-    assert_eq!(
-        LeadSuit::options(GameType::Suit(Suit::Hearts)),
-        vec![
-            LeadSuit::Trump,
-            LeadSuit::Suit(Suit::Clubs),
-            LeadSuit::Suit(Suit::Spades),
-            LeadSuit::Suit(Suit::Diamonds),
-        ]
-    );
-}
-
-#[test]
-fn decoy_needs_the_relic_and_a_game_in_play() {
-    let content = content();
-    let mut run = relic_run(&content, &[]);
-    deal(&mut run, &content, LURE, LURE_SKAT);
-    run.apply(
-        &content,
-        RunAction::Declare(Declaration::grand(RiskLevel::Hand)),
-    )
-    .expect("grand hand");
-    let view = run.view(&content).game.expect("view");
-    assert!(!view.can_demand_lead);
-    assert!(view.lead_demand_options.is_empty());
-    assert_eq!(
-        run.apply(&content, RunAction::DemandLead(LeadSuit::Trump))
-            .err(),
-        Some(RunError::NoLeadDemandLeft)
-    );
-    // Before the declaration nothing can be demanded.
-    let mut run = relic_run(&content, &["decoy"]);
-    deal(&mut run, &content, LURE, LURE_SKAT);
-    assert_eq!(
-        run.view(&content).game.expect("view").phase,
-        TablePhase::Declaring
-    );
-    assert!(!run.accepts(&content, RunAction::DemandLead(LeadSuit::Trump)));
-}
-
-#[test]
-fn pimc_defenders_lead_what_is_demanded() {
-    let mut game = Game::with_cards(
-        [
-            cards("D7 D8 D9 S7 S8 S9 C7 C8 C9 H7"),
-            cards("DA DT DK DQ HA HT SA ST CJ SJ"),
-            cards("HK HQ H9 H8 CA CT CK CQ HJ DJ"),
-        ],
-        [c("SK"), c("SQ")],
-        Seat::DEFENDERS[0],
-    )
-    .expect("deal");
-    game.declare(Declaration::grand(RiskLevel::Hand))
-        .expect("declare");
-    game.demand_lead(LeadSuit::Suit(Suit::Hearts))
-        .expect("demand");
-    let view = game.view(Seat::DEFENDERS[0]).expect("view");
-    let policy = PimcPolicy::new(
-        PimcConfig {
-            samples: 8,
-            depth: 2,
-        },
-        7,
-    );
-    let card = policy.choose(&view).expect("card");
-    assert!([c("HA"), c("HT")].contains(&card), "{card}");
-}
-
-#[test]
-fn decoy_bot_demands_and_defenders_follow_it() {
-    let content = content();
-    let start = RunStart {
-        relics: vec![RelicId::new("decoy")],
-        ..RunStart::default()
-    };
-    let (mut demanded, mut met) = (0, 0);
-    for seed in 0..6 {
-        let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
-        let mut pending: Option<LeadSuit> = None;
-        while run.series().section == 0 {
-            let Some(action) = RunBot.next_action(&run, &content) else {
-                break;
-            };
-            let game_type = run
-                .game()
-                .and_then(|a| a.game.declaration())
-                .map(|d| d.game());
-            if let RunAction::DemandLead(suit) = action {
-                demanded += 1;
-                pending = Some(suit);
-            }
-            let events = run.apply(&content, action).expect("legal");
-            for e in &events {
-                if let RunEvent::Game(Event::TrickWon { trick, .. }) = e {
-                    if let (Some(suit), Some(game)) = (pending, game_type) {
-                        if !trick.lead.is_declarer() {
-                            if suit.matches(game, trick.cards[0]) {
-                                met += 1;
-                            }
-                            pending = None;
-                        }
-                    }
-                }
-                if matches!(e, RunEvent::GameScored { .. }) {
-                    pending = None;
-                }
-            }
-        }
-    }
-    assert!(demanded > 0, "the bot used the decoy");
-    assert!(met > 0, "defenders led the named suit");
-}
-
-/// How often the bot uses the three relics in the first section, for the
-/// balance report (`cargo test --release -p skat_core --lib
-/// wave_two_b_usage -- --ignored --nocapture`).
-#[test]
-#[ignore = "statistics for the balance report"]
-fn wave_two_b_usage() {
-    let content = content();
-    for id in ["three_discard", "crib_sheet", "decoy"] {
-        let start = RunStart {
-            relics: vec![RelicId::new(id)],
-            ..RunStart::default()
-        };
-        let (mut games, mut used, mut met) = (0u32, 0u32, 0u32);
-        for seed in 0..400 {
-            let (mut run, _) = Run::new_with(&content, seed, &start).expect("run");
-            let mut pending: Option<(LeadSuit, GameType)> = None;
-            while run.series().section == 0 {
-                let Some(action) = RunBot.next_action(&run, &content) else {
-                    break;
-                };
-                let game_type = run
-                    .game()
-                    .and_then(|a| a.game.declaration())
-                    .map(|d| d.game());
-                if let (RunAction::DemandLead(suit), Some(game)) = (&action, game_type) {
-                    pending = Some((*suit, game));
-                }
-                let events = run.apply(&content, action).expect("legal");
-                for e in &events {
-                    match e {
-                        RunEvent::Game(Event::CardDrawn { .. })
-                        | RunEvent::SkatCardShown { .. }
-                        | RunEvent::Game(Event::LeadDemanded { .. }) => used += 1,
-                        RunEvent::Game(Event::TrickWon { trick, .. }) => {
-                            if let Some((suit, game)) = pending {
-                                if !trick.lead.is_declarer() {
-                                    met += u32::from(suit.matches(game, trick.cards[0]));
-                                    pending = None;
-                                }
-                            }
-                        }
-                        RunEvent::GameScored { .. } => {
-                            games += 1;
-                            pending = None;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        println!(
-            "{id}: games {games}, used in {:.1} % (lead met {met})",
-            100.0 * f64::from(used) / f64::from(games.max(1)),
-        );
-    }
 }
 
 #[test]

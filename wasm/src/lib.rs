@@ -36,7 +36,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
     Change, Character, ConsumableAction, ConsumableCategory, Content, Effect, Hook, Lever, ModKind,
-    Rarity, RelicKind, RunLength, UnlockId,
+    Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -159,6 +159,8 @@ struct RelicEntry<'a> {
     text: &'a str,
     kind: RelicKind,
     rarity: Rarity,
+    /// Display group (shape of the beer mat).
+    group: RelicGroup,
     counters: Vec<&'a str>,
 }
 
@@ -281,6 +283,7 @@ pub fn catalog_json() -> Result<String, String> {
                         text: &d.text,
                         kind: d.kind,
                         rarity: d.rarity,
+                        group: d.group,
                         counters: relic_counters(&d.passive, &d.hooks),
                     },
                 )
@@ -482,10 +485,12 @@ impl Session {
             ));
         }
         let save: Save = serde_json::from_str(state).map_err(|e| error_json("InvalidSave", e))?;
-        Ok(Session {
-            content: content()?,
-            run: save.run,
-        })
+        let content = content()?;
+        let mut run = save.run;
+        // Relics and consumables removed from the content (item review of
+        // 02.11.2026) fall away; the run goes on without them.
+        run.drop_unknown_content(content);
+        Ok(Session { content, run })
     }
 
     /// The run as JSON, for `localStorage`.
@@ -1060,13 +1065,18 @@ mod tests {
     fn catalog_lists_all_content() {
         let catalog: serde_json::Value =
             serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
-        assert_eq!(catalog["relics"]["old_lady"]["name"], "Alte Dame");
+        assert_eq!(catalog["relics"]["old_lady"]["name"], "Alte Oberin");
         assert_eq!(catalog["relics"]["old_lady"]["kind"], "HouseRule");
         assert_eq!(catalog["relics"]["kibitzer"]["kind"], "Regular");
+        assert_eq!(catalog["relics"]["kibitzer"]["group"], "Control");
+        assert_eq!(catalog["relics"]["kitty"]["group"], "Tour");
         assert_eq!(catalog["relics"]["tour"]["rarity"], "Rare");
-        assert_eq!(catalog["consumables"]["chalk"]["category"], "Schnapps");
-        assert_eq!(catalog["consumables"]["beer"]["category"], "Item");
-        assert_eq!(catalog["consumables"]["new_deal"]["rarity"], "Uncommon");
+        assert_eq!(
+            catalog["consumables"]["blue_curacao"]["category"],
+            "Schnapps"
+        );
+        assert_eq!(catalog["consumables"]["fresh_deck"]["category"], "Item");
+        assert_eq!(catalog["consumables"]["double_grain"]["rarity"], "Uncommon");
         assert_eq!(catalog["consumables"]["points_3"]["card_mod"], "points");
         assert_eq!(catalog["consumables"]["points_3"]["random_card_mod"], false);
         assert_eq!(
@@ -1096,15 +1106,15 @@ mod tests {
         assert!(catalog["card_mods"]["rank"]["figure"].is_null());
         // Counters a relic reads or raises.
         assert_eq!(
-            catalog["relics"]["tally_stick"]["counters"],
-            serde_json::json!(["tally"])
+            catalog["relics"]["beer_mat"]["counters"],
+            serde_json::json!(["beer_mat"])
         );
         assert_eq!(
             catalog["relics"]["old_lady"]["counters"],
             serde_json::json!([])
         );
         assert!(catalog["bosses"]["grandma"]["name"].is_string());
-        assert!(catalog["consumables"]["beer"]["name"].is_string());
+        assert!(catalog["consumables"]["snifter"]["name"].is_string());
     }
 
     #[test]
@@ -1456,6 +1466,26 @@ mod tests {
                 // The single filter of the old save became the list.
                 let rules = &session.run().game().expect("game").rules;
                 assert_eq!(rules.skat_swaps.len(), 1, "{name}");
+                // "Die Oma" was removed on 02.11.2026: the save drops her on
+                // load and plays on.
+                assert!(
+                    !session
+                        .run()
+                        .relics()
+                        .iter()
+                        .any(|r| r.as_str() == "granny"),
+                    "{name}"
+                );
+            }
+            // Relics and consumables removed on 02.11.2026 are gone.
+            let removed = ["bock_round", "kontra", "granny", "beer", "new_deal"];
+            for owned in view["relics"].as_array().expect("relics") {
+                let id = owned["relic"]["id"].as_str().unwrap_or("");
+                assert!(!removed.contains(&id), "{name}: {id}");
+            }
+            for owned in view["consumables"].as_array().expect("consumables") {
+                let id = owned["consumable"]["id"].as_str().unwrap_or("");
+                assert!(!removed.contains(&id), "{name}: {id}");
             }
             if name == "encounter" {
                 let options = view["encounter"]["options"].as_array().expect("options");

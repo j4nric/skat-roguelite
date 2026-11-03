@@ -1,0 +1,930 @@
+//! The item review of 02.11.2026 (DESIGN 8, 12, 13): removed items and
+//! old saves, the changed relics and Schnäpse, the new Schnäpse, relics
+//! and encounters, one test per item.
+
+use super::content_tests::{content, fixed_deal, play, relic_run};
+use super::tour::{RouteStop, Transport};
+use super::*;
+use crate::cards::Suit;
+use crate::content::{ConsumableCategory, Factor, MalusId, RelicGroup, StopCategory};
+use crate::rules::RiskLevel;
+
+/// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
+/// he wins every trick (Schneider and Schwarz).
+const STRONG: [&str; 3] = [
+    "CJ SJ HJ DJ DA DT DK DQ D9 D7",
+    "HA HT HK HQ H9 H8 H7 SA ST SK",
+    "SQ S9 S8 S7 CA CT CK CQ C9 C8",
+];
+const STRONG_SKAT: &str = "D8 C7";
+
+/// Declarer holds only Luschen: he can never reach 61 Augen.
+const WEAK: [&str; 3] = [
+    "D7 D8 D9 H7 H8 H9 S7 S8 S9 C7",
+    "CJ SJ HJ DJ CA CT CK CQ DA DT",
+    "DK DQ HA HT HK HQ SA ST SK SQ",
+];
+const WEAK_SKAT: &str = "C8 C9";
+
+/// Kreuz-Daus in the standard deck.
+const CLUBS_ACE: u32 = 31;
+
+fn diamonds_hand() -> Declaration {
+    Declaration::suit(Suit::Diamonds, RiskLevel::Hand)
+}
+
+fn use_item(slot: usize) -> RunAction {
+    RunAction::UseConsumable {
+        slot,
+        target: None,
+        suit: None,
+    }
+}
+
+/// End the current pub as if its games were played: `games` played, the
+/// account at the target (won) or below (lost).
+fn end_pub(run: &mut Run, content: &Content, games: u32, won: bool) -> Vec<RunEvent> {
+    run.series.games_played = games;
+    let target = i64::try_from(run.series.target).expect("small");
+    run.series.score = if won { target } else { target - 1 };
+    run.game = None;
+    let mut events = Vec::new();
+    run.after_game(content, &mut events).expect("after game");
+    events
+}
+
+/// A run at the route choice after the first pub, won in its first game.
+fn at_route(content: &Content, relics: &[&str]) -> Run {
+    let mut run = relic_run(content, relics);
+    end_pub(&mut run, content, 1, true);
+    assert_eq!(run.phase(), RunPhase::Route);
+    run
+}
+
+/// Set every way of the open route choice to these stops, no Spelunke.
+fn set_stops(run: &mut Run, stops: [RouteStop; 3]) {
+    let route = run.route.as_mut().expect("route");
+    for (option, stop) in route.options.iter_mut().zip(stops) {
+        option.stops = vec![stop];
+        option.spelunke = None;
+    }
+}
+
+fn tresen() -> RouteStop {
+    RouteStop {
+        category: StopCategory::Tresen,
+        encounter: None,
+    }
+}
+
+fn event(id: &str) -> RouteStop {
+    RouteStop {
+        category: StopCategory::Event,
+        encounter: Some(EncounterId::new(id)),
+    }
+}
+
+fn coins_from(events: &[RunEvent], source: &Source) -> i32 {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            RunEvent::CoinsGained {
+                source: s, amount, ..
+            } if s == source => Some(*amount),
+            _ => None,
+        })
+        .sum()
+}
+
+fn relic(id: &str) -> Source {
+    Source::Relic(RelicId::new(id))
+}
+
+/// Open encounter `id` at the route choice's place (on the way).
+fn open(run: &mut Run, content: &Content, id: &str) -> Vec<EncounterOption> {
+    run.route = None;
+    run.trip = Some(tour::Trip {
+        section: 0,
+        index: 1,
+        transport: Transport::Walk,
+        stops: Vec::new(),
+        spelunke: None,
+    });
+    let mut events = Vec::new();
+    assert!(
+        run.open_encounter(content, &EncounterId::new(id), &mut events),
+        "{id} opens"
+    );
+    run.encounter().expect("open").options.clone()
+}
+
+fn choose(run: &mut Run, content: &Content, option: usize, target: Option<u32>) -> Vec<RunEvent> {
+    run.apply(content, RunAction::ChooseEncounter { option, target })
+        .expect("choose")
+}
+
+// ---------------------------------------------------------------------------
+// Removed items and old saves
+// ---------------------------------------------------------------------------
+
+const REMOVED_RELICS: [&str; 22] = [
+    "blind_flight",
+    "bock_round",
+    "changeling",
+    "clean_slate",
+    "glass_house",
+    "grandpa",
+    "granny",
+    "high_and_dry",
+    "jack_parade",
+    "kontra",
+    "march_through",
+    "old_deck",
+    "ouvert_bonus",
+    "referee",
+    "regular_guest",
+    "safety_net",
+    "schneider_bock",
+    "seven_sleeper",
+    "show_off",
+    "tally_stick",
+    "tuition",
+    "decoy",
+];
+
+const REMOVED_ITEMS: [&str; 6] = [
+    "beer", "new_deal", "bitters", "regret", "points_5", "trump_4",
+];
+
+#[test]
+fn removed_items_are_gone_and_every_reward_names_a_relic() {
+    let content = content();
+    for id in REMOVED_RELICS {
+        assert!(content.relic(&RelicId::new(id)).is_none(), "{id}");
+    }
+    for id in REMOVED_ITEMS.into_iter().chain(["lure"]) {
+        assert!(content.consumable(&ConsumableId::new(id)).is_none(), "{id}");
+    }
+    for unlock in content.unlocks.values() {
+        for reward in &unlock.rewards {
+            if let crate::content::Reward::Relic(id) = reward {
+                assert!(content.relic(id).is_some(), "{}: {id}", unlock.id);
+            }
+        }
+    }
+    for def in content.characters.values() {
+        for id in &def.start_relics {
+            assert!(content.relic(id).is_some(), "{id}");
+        }
+        for id in &def.start_consumables {
+            assert!(content.consumable(id).is_some(), "{id}");
+        }
+    }
+    // The bot knows every item.
+    for id in content.consumables.keys() {
+        assert!(
+            super::bot::CONSUMABLE_VALUES
+                .iter()
+                .any(|(name, _)| *name == id.as_str()),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn an_old_save_drops_the_removed_relics_and_items_on_load() {
+    let content = content();
+    let mut run = relic_run(&content, &["bock_round", "old_lady", "kontra"]);
+    run.evening_relics = vec![RelicId::new("tuition")];
+    run.consumables = vec![ConsumableId::new("beer"), ConsumableId::new("herbal")];
+    run.pending_next_game = vec![(ConsumableId::new("bitters"), NextGameEffect::SingleLoss)];
+    run.locked = [RelicId::new("granny"), RelicId::new("tour")]
+        .into_iter()
+        .collect();
+    // An old save: written with the removed ids, read again.
+    let text = serde_json::to_string(&run).expect("json");
+    let mut loaded: Run = serde_json::from_str(&text).expect("old save reads");
+    let dropped = loaded.drop_unknown_content(&content);
+    assert_eq!(
+        dropped,
+        ["bock_round", "kontra", "tuition", "beer", "bitters"]
+    );
+    assert_eq!(loaded.relics(), &[RelicId::new("old_lady")]);
+    assert!(loaded.evening_relics().is_empty());
+    assert_eq!(loaded.consumables(), &[ConsumableId::new("herbal")]);
+    assert!(loaded.pending_next_game().is_empty());
+    assert_eq!(
+        loaded.locked.iter().cloned().collect::<Vec<_>>(),
+        vec![RelicId::new("tour")]
+    );
+    // The view and the bot work on it.
+    let view = loaded.view(&content);
+    assert_eq!(view.relics.len(), 1);
+    assert!(super::bot::RunBot.next_action(&loaded, &content).is_some());
+    // A Tresen offer and an encounter option of a removed relic go too.
+    let mut run = relic_run(&content, &[]);
+    run.game = None;
+    run.phase = RunPhase::Shop;
+    let mut shop = run.draw_offer(&content, 0);
+    shop.relics[0] = Some(RelicId::new("show_off"));
+    shop.consumables[0] = Some(ConsumableId::new("regret"));
+    run.shop = Some(shop);
+    run.drop_unknown_content(&content);
+    let shop = run.shop().expect("shop");
+    assert_eq!(shop.relics[0], None);
+    assert_eq!(shop.consumables[0], None);
+    let mut run = relic_run(&content, &["old_lady"]);
+    run.game = None;
+    run.phase = RunPhase::Encounter;
+    run.encounter = Some(ActiveEncounter {
+        id: EncounterId::new("stammtisch_dispute"),
+        options: vec![
+            EncounterOption {
+                choice: EncounterChoice::TakeRule(RelicId::new("bock_round")),
+                cost: 0,
+                card_mod: None,
+                value: None,
+            },
+            EncounterOption {
+                choice: EncounterChoice::TakeRule(RelicId::new("blind_eye")),
+                cost: 0,
+                card_mod: None,
+                value: None,
+            },
+            EncounterOption {
+                choice: EncounterChoice::Leave,
+                cost: 0,
+                card_mod: None,
+                value: None,
+            },
+        ],
+    });
+    run.drop_unknown_content(&content);
+    assert_eq!(run.encounter().expect("open").options.len(), 2);
+    // A renamed Schnaps keeps its slot: "Kreide" is "Blue Curaçao".
+    let mut run = relic_run(&content, &[]);
+    run.consumables = vec![ConsumableId::new("chalk"), ConsumableId::new("bitters")];
+    assert_eq!(run.drop_unknown_content(&content), ["bitters"]);
+    assert_eq!(run.consumables(), &[ConsumableId::new("blue_curacao")]);
+    // Nothing to drop: nothing changes.
+    let (mut run, _) = Run::new(&content, 3).expect("run");
+    let before = run.clone();
+    assert!(run.drop_unknown_content(&content).is_empty());
+    assert_eq!(run, before);
+}
+
+// ---------------------------------------------------------------------------
+// Changed relics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn three_discard_works_only_in_the_first_game_of_a_pub() {
+    let content = content();
+    let mut run = relic_run(&content, &["three_discard"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    assert!(run.discard_three_ready(), "first game");
+    run.series.games_played = 1;
+    assert!(!run.discard_three_ready(), "second game");
+    run.series.games_played = 0;
+    run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+    assert_eq!(
+        run.game().expect("game").game.hand(Seat::DECLARER).len(),
+        13,
+        "a card of the left defender joins"
+    );
+    // A hand game in the first game lets it lapse for the pub.
+    let mut run = relic_run(&content, &["three_discard"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    play(&mut run, &content, diamonds_hand());
+    assert!(run.series.games_played >= 1 || run.phase() != RunPhase::Game);
+    assert!(!run.discard_three_ready());
+}
+
+#[test]
+fn groups_of_the_relics_are_data() {
+    let content = content();
+    let groups = [
+        (
+            RelicGroup::Value,
+            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper",
+        ),
+        (
+            RelicGroup::Multiplier,
+            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede",
+        ),
+        (
+            RelicGroup::Control,
+            "skat_redraw three_discard crib_sheet honorary_chair card_counter kibitzer",
+        ),
+        (
+            RelicGroup::Tour,
+            "landlord closing_time season_ticket kitty slate guardian_angel dive_expert",
+        ),
+    ];
+    let mut named = 0;
+    for (group, ids) in groups {
+        for id in ids.split_whitespace() {
+            let def = content.relic(&RelicId::new(id)).expect(id);
+            assert_eq!(def.group, group, "{id}");
+            named += 1;
+        }
+    }
+    assert_eq!(named, content.relics.len(), "every relic has its group");
+    let run = relic_run(&content, &["kitty"]);
+    assert_eq!(run.view(&content).relics[0].relic.group, RelicGroup::Tour);
+    // Without the field: Value.
+    let def: crate::content::RelicDef =
+        ron::from_str(r#"(id: "x", name: "X", text: "X.", rarity: Common, price: 1)"#)
+            .expect("relic");
+    assert_eq!(def.group, RelicGroup::Value);
+}
+
+// ---------------------------------------------------------------------------
+// New Schnäpse
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_new_schnaepse_are_schnaepse() {
+    let content = content();
+    for id in ["counter_beer", "snifter", "road_beer"] {
+        let def = content.consumable(&ConsumableId::new(id)).expect(id);
+        assert_eq!(def.category, ConsumableCategory::Schnapps, "{id}");
+    }
+}
+
+#[test]
+fn counter_beer_gives_a_life_outside_a_game() {
+    let content = content();
+    // Not in a game.
+    let mut run = relic_run(&content, &[]);
+    run.consumables = vec![ConsumableId::new("counter_beer")];
+    run.lives = 1;
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
+    // At the route choice with all lives: nothing to win back.
+    let mut run = at_route(&content, &[]);
+    run.consumables = vec![ConsumableId::new("counter_beer")];
+    run.lives = content.run.lives.max;
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::LivesFull));
+    assert!(!run.view(&content).consumables[0].can_use);
+    // With a life missing: one back.
+    run.lives = 2;
+    let events = run.apply(&content, use_item(0)).expect("drink");
+    assert!(events.contains(&RunEvent::LivesChanged {
+        change: 1,
+        lives: 3
+    }));
+    assert!(run.consumables().is_empty());
+}
+
+#[test]
+fn snifter_draws_the_stops_of_the_route_choice_again() {
+    let content = content();
+    let mut changed = false;
+    for seed in 0..12 {
+        let mut run = at_route(&content, &[]);
+        run.tour_rng = crate::rng::Rng::from_seed(seed);
+        run.consumables = vec![ConsumableId::new("snifter")];
+        let before = run.route().expect("route").clone();
+        let events = run.apply(&content, use_item(0)).expect("snifter");
+        assert!(events.contains(&RunEvent::RoutesRerolled));
+        let after = run.route().expect("route");
+        assert_eq!((after.section, after.index), (before.section, before.index));
+        assert!(
+            after
+                .options
+                .iter()
+                .any(|o| o.stops.iter().any(|s| s.category == StopCategory::Tresen)),
+            "the Tresen stays within reach"
+        );
+        for (a, b) in after.options.iter().zip(&before.options) {
+            assert_eq!(a.spelunke, b.spelunke, "Spelunken stay");
+        }
+        changed |= after.options != before.options;
+    }
+    assert!(changed, "new stops");
+    // Only at the route choice.
+    let mut run = relic_run(&content, &[]);
+    run.consumables = vec![ConsumableId::new("snifter")];
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
+}
+
+#[test]
+fn road_beer_lowers_the_next_target_and_adds_an_einmischen() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    run.consumables = vec![ConsumableId::new("road_beer")];
+    let target = run.view(&content).tour.route.expect("route").next.target;
+    let events = run.apply(&content, use_item(0)).expect("drink");
+    assert!(events.contains(&RunEvent::NextPubPlanned {
+        redeals: 1,
+        target: -3
+    }));
+    let view = run.view(&content);
+    assert_eq!(
+        view.next_pub,
+        NextPubPlan {
+            redeals: 1,
+            target: -3
+        }
+    );
+    assert_eq!(view.tour.route.expect("route").next.target, target - 3);
+    run.apply(&content, RunAction::ChooseRoute(0))
+        .expect("route");
+    let events = run.apply(&content, RunAction::LeaveShop).expect("on");
+    assert!(events.contains(&RunEvent::NextPubApplied {
+        redeals: 1,
+        target: -3
+    }));
+    assert_eq!(run.series().target, target - 3);
+    assert_eq!(run.series().extra_redeals, 1);
+    assert_eq!(
+        run.redeals_left(&content),
+        content.redeals(Character::Declarer) + 1
+    );
+    assert!(run.next_pub_plan().is_empty(), "used up");
+    // Not during a game.
+    let mut run = relic_run(&content, &[]);
+    run.consumables = vec![ConsumableId::new("road_beer")];
+    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
+}
+
+// ---------------------------------------------------------------------------
+// New relics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn closing_time_pays_for_a_pub_won_in_its_first_game() {
+    let content = content();
+    let mut run = relic_run(&content, &["closing_time"]);
+    let events = end_pub(&mut run, &content, 1, true);
+    assert_eq!(coins_from(&events, &relic("closing_time")), 4);
+    let mut run = relic_run(&content, &["closing_time"]);
+    let events = end_pub(&mut run, &content, 2, true);
+    assert_eq!(coins_from(&events, &relic("closing_time")), 0);
+}
+
+#[test]
+fn season_ticket_pays_for_the_train() {
+    let content = content();
+    let walk = Transport::ALL
+        .iter()
+        .position(|t| *t == Transport::Walk)
+        .expect("walk");
+    let train = Transport::ALL
+        .iter()
+        .position(|t| *t == Transport::Train)
+        .expect("train");
+    let mut run = at_route(&content, &["season_ticket"]);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    let events = run
+        .apply(&content, RunAction::ChooseRoute(train))
+        .expect("train");
+    assert_eq!(coins_from(&events, &relic("season_ticket")), 1);
+    let mut run = at_route(&content, &["season_ticket"]);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    let events = run
+        .apply(&content, RunAction::ChooseRoute(walk))
+        .expect("walk");
+    assert_eq!(coins_from(&events, &relic("season_ticket")), 0);
+}
+
+#[test]
+fn kitty_saves_two_of_every_reward_and_pays_half_on_top_at_the_tresen() {
+    let content = content();
+    let mut run = relic_run(&content, &["kitty"]);
+    let coins = run.coins();
+    let events = end_pub(&mut run, &content, 1, true);
+    let payout = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::SeriesWon { payout, .. } => Some(payout.total()),
+            _ => None,
+        })
+        .expect("won");
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RunEvent::CoinsStashed {
+            amount: 2,
+            pot: 2,
+            ..
+        }
+    )));
+    assert_eq!(run.coins(), coins + payout - 2);
+    assert_eq!(run.counters.get("kitty"), Some(&2));
+    // A second pub fills the pot to 4; the Tresen pays 6.
+    run.counters.insert("kitty".into(), 4);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    let before = run.coins();
+    let events = run
+        .apply(&content, RunAction::ChooseRoute(0))
+        .expect("route");
+    assert_eq!(coins_from(&events, &relic("kitty")), 6);
+    assert_eq!(run.coins(), before + 6);
+    assert!(!run.counters.contains_key("kitty"), "the pot is empty");
+}
+
+#[test]
+fn slate_sells_on_credit_once_per_district_and_income_pays_it_back() {
+    let content = content();
+    let mut run = at_route(&content, &["slate"]);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    run.apply(&content, RunAction::ChooseRoute(0))
+        .expect("route");
+    run.coins = 1;
+    let shop = run.shop.as_mut().expect("shop");
+    shop.relics[0] = Some(RelicId::new("crib_sheet"));
+    shop.relics[1] = Some(RelicId::new("old_lady"));
+    let price = run.shop_price(&content, 5);
+    assert!(
+        run.view(&content).shop.expect("shop").relics[0]
+            .as_ref()
+            .expect("offer")
+            .can_buy
+    );
+    assert_eq!(run.view(&content).credit_left, 5);
+    let events = run
+        .apply(&content, RunAction::BuyRelic(0))
+        .expect("on credit");
+    assert!(events.contains(&RunEvent::DebtChanged { debt: price - 1 }));
+    assert_eq!((run.coins(), run.debt()), (0, price - 1));
+    // Not beyond the limit.
+    assert_eq!(
+        run.apply(&content, RunAction::BuyRelic(1)),
+        Err(RunError::NotEnoughCoins)
+    );
+    // Income pays the debt first.
+    let events = run.apply(&content, RunAction::SellRelic(1)).expect("sell");
+    let refund = sell_price(5);
+    assert!(events.contains(&RunEvent::DebtChanged {
+        debt: price - 1 - refund
+    }));
+    assert_eq!(run.coins(), 0);
+    // The next Tresen of the same district: no credit.
+    run.apply(&content, RunAction::LeaveShop).expect("leave");
+    end_pub(&mut run, &content, 3, false);
+    assert_eq!(run.view(&content).credit_left, 0);
+    // Pub income pays off what is left.
+    let mut run2 = relic_run(&content, &["slate"]);
+    run2.debt = 2;
+    let coins = run2.coins();
+    let events = end_pub(&mut run2, &content, 1, true);
+    assert!(events.contains(&RunEvent::DebtChanged { debt: 0 }));
+    let payout = events
+        .iter()
+        .find_map(|e| match e {
+            RunEvent::SeriesWon { payout, .. } => Some(payout.total()),
+            _ => None,
+        })
+        .expect("won");
+    assert_eq!(run2.coins(), coins + payout - 2);
+    // Without the relic there is no credit.
+    let mut run = at_route(&content, &[]);
+    set_stops(&mut run, [tresen(), tresen(), tresen()]);
+    run.apply(&content, RunAction::ChooseRoute(0))
+        .expect("route");
+    run.coins = 0;
+    run.shop.as_mut().expect("shop").relics[0] = Some(RelicId::new("crib_sheet"));
+    assert_eq!(
+        run.apply(&content, RunAction::BuyRelic(0)),
+        Err(RunError::NotEnoughCoins)
+    );
+}
+
+#[test]
+fn guardian_angel_spares_the_first_lost_pub_of_a_district() {
+    let content = content();
+    let mut run = relic_run(&content, &["guardian_angel"]);
+    let lives = run.lives();
+    let events = end_pub(&mut run, &content, 3, false);
+    assert!(events.contains(&RunEvent::LifeSpared {
+        source: relic("guardian_angel")
+    }));
+    assert_eq!(run.lives(), lives);
+    // The second lost pub of the district costs a life.
+    run.apply(&content, RunAction::ChooseRoute(0)).ok();
+    let mut run = relic_run(&content, &["guardian_angel"]);
+    run.spared_section = Some(0);
+    end_pub(&mut run, &content, 3, false);
+    assert_eq!(run.lives(), lives - 1);
+    // The next district has a new angel.
+    let mut run = relic_run(&content, &["guardian_angel"]);
+    run.spared_section = Some(0);
+    run.series.section = 1;
+    end_pub(&mut run, &content, 3, false);
+    assert_eq!(run.lives(), lives);
+}
+
+#[test]
+fn dive_expert_offers_two_maluses_to_choose_from() {
+    let mut content = content();
+    content.run.spelunke.chance = Factor::ONE;
+    let mut run = at_route(&content, &["dive_expert"]);
+    // The route choice of the second pub had its Spelunke drawn with the
+    // relic owned.
+    let (option, spelunke) = run
+        .route()
+        .expect("route")
+        .options
+        .iter()
+        .enumerate()
+        .find_map(|(i, o)| o.spelunke.clone().map(|s| (i, s)))
+        .expect("a Spelunke");
+    assert_eq!(spelunke.malus_options.len(), 2);
+    assert_eq!(spelunke.malus, spelunke.malus_options[0]);
+    assert_ne!(spelunke.malus_options[0], spelunke.malus_options[1]);
+    let view = run.view(&content).tour.route.expect("route");
+    assert_eq!(view.options[option].malus_options.len(), 2);
+    let events = run
+        .apply(&content, RunAction::ChooseMalus { option, malus: 1 })
+        .expect("choose");
+    assert!(events.contains(&RunEvent::MalusChosen {
+        option,
+        malus: spelunke.malus_options[1].clone()
+    }));
+    let chosen: MalusId = run.route().expect("route").options[option]
+        .spelunke
+        .as_ref()
+        .expect("spelunke")
+        .malus
+        .clone();
+    assert_eq!(chosen, spelunke.malus_options[1]);
+    assert_eq!(
+        run.apply(&content, RunAction::ChooseMalus { option, malus: 2 }),
+        Err(RunError::InvalidSlot)
+    );
+    // Without the relic: one malus, no choice.
+    let run = at_route(&content, &[]);
+    let spelunke = run
+        .route()
+        .expect("route")
+        .options
+        .iter()
+        .find_map(|o| o.spelunke.clone())
+        .expect("a Spelunke");
+    assert!(spelunke.malus_options.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// New encounters
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_landlord_treats_to_a_schnaps_or_groschen() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    run.consumables.clear();
+    let options = open(&mut run, &content, "landlord_treat");
+    assert_eq!(options.len(), 5, "three Schnäpse, Groschen, walk on");
+    let schnaps = match &options[0].choice {
+        EncounterChoice::TakeConsumable(id) => id.clone(),
+        other => panic!("{other:?}"),
+    };
+    let def = content.consumable(&schnaps).expect("known");
+    assert_eq!(def.category, ConsumableCategory::Schnapps);
+    assert_eq!(options[3].choice, EncounterChoice::TakeCoins(5));
+    let view = run.view(&content).encounter.expect("view");
+    assert!(view.options[0].consumable.is_some());
+    let events = choose(&mut run, &content, 0, None);
+    assert!(events.contains(&RunEvent::ConsumableGained {
+        consumable: schnaps.clone()
+    }));
+    assert_eq!(run.consumables(), &[schnaps]);
+    // Or the Groschen.
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    open(&mut run, &content, "landlord_treat");
+    choose(&mut run, &content, 3, None);
+    assert_eq!(run.coins(), coins + 5);
+}
+
+#[test]
+fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
+    let content = content();
+    let (mut good, mut cursed) = (0, 0);
+    for seed in 0..40 {
+        let mut run = at_route(&content, &[]);
+        run.encounter_rng = crate::rng::Rng::from_seed(seed);
+        run.coins = 5;
+        let options = open(&mut run, &content, "card_sharp");
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0].choice, EncounterChoice::Gamble);
+        assert_eq!(options[0].cost, 2);
+        let offer = options[0].card_mod.clone().expect("named");
+        let view = run.view(&content).encounter.expect("view");
+        assert!(view.options[0].needs_target);
+        assert!(view.options[0].targets.contains(&CLUBS_ACE));
+        let events = choose(&mut run, &content, 0, Some(CLUBS_ACE));
+        let curse = events
+            .iter()
+            .find_map(|e| match e {
+                RunEvent::GambleResolved { curse } => Some(*curse),
+                _ => None,
+            })
+            .expect("resolved");
+        let card = run.edition().get(CLUBS_ACE).expect("card");
+        if curse {
+            cursed += 1;
+            assert!(card.mods.iter().any(|m| {
+                content
+                    .card_mod(m)
+                    .is_some_and(crate::content::CardModDef::is_curse)
+            }));
+            // Paid 2, the curse pays 3.
+            assert_eq!(run.coins(), 5 - 2 + 3);
+        } else {
+            good += 1;
+            assert!(card.mods.contains(&offer));
+            assert_eq!(run.coins(), 3);
+        }
+    }
+    assert!(good > 5 && cursed > 5, "{good} good, {cursed} cursed");
+}
+
+#[test]
+fn the_lost_wallet_pays_with_a_curse_or_a_life() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    let options = open(&mut run, &content, "lost_wallet");
+    assert_eq!(options.len(), 3);
+    assert!(
+        run.view(&content).encounter.expect("view").options[0]
+            .curse
+            .is_some()
+    );
+    choose(&mut run, &content, 0, None);
+    // 8 from the wallet, 3 for the curse (every curse pays when attached).
+    assert_eq!(run.coins(), coins + 8 + 3);
+    let transparent = run
+        .edition()
+        .cards()
+        .iter()
+        .filter(|c| c.mods.contains(&CardModId::new("transparent")))
+        .count();
+    assert_eq!(transparent, 1);
+    // Handed in: a life back.
+    let mut run = at_route(&content, &[]);
+    run.lives = 2;
+    open(&mut run, &content, "lost_wallet");
+    choose(&mut run, &content, 1, None);
+    assert_eq!(run.lives(), 3);
+}
+
+#[test]
+fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    let options = open(&mut run, &content, "skat_teacher");
+    assert_eq!(options[0].choice, EncounterChoice::Lesson { redeals: 1 });
+    assert_eq!(
+        run.apply(
+            &content,
+            RunAction::ChooseEncounter {
+                option: 0,
+                target: None
+            }
+        ),
+        Err(RunError::TargetRequired)
+    );
+    let events = choose(&mut run, &content, 0, Some(CLUBS_ACE));
+    assert!(events.contains(&RunEvent::NextPubPlanned {
+        redeals: -1,
+        target: 0
+    }));
+    assert!(
+        run.edition()
+            .get(CLUBS_ACE)
+            .expect("card")
+            .mods
+            .contains(&CardModId::new("rank"))
+    );
+    // The next pub started: its first game allows one Einmischen fewer,
+    // the second the usual number.
+    assert_eq!(run.phase(), RunPhase::Game);
+    let own = content.redeals(Character::Declarer);
+    assert_eq!(run.redeals_left(&content), own - 1);
+    run.series.games_played = 1;
+    assert_eq!(run.redeals_left(&content), own);
+}
+
+#[test]
+fn the_bet_pays_double_for_a_won_schneider_and_is_lost_otherwise() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    run.coins = 10;
+    let options = open(&mut run, &content, "the_bet");
+    assert_eq!(options.len(), 3, "two stakes, walk on");
+    assert_eq!(options[0].cost, 3);
+    let events = choose(&mut run, &content, 0, None);
+    assert!(events.contains(&RunEvent::WagerPlaced { stake: 3 }));
+    assert_eq!(run.coins(), 7);
+    assert_eq!(run.wager().map(|w| w.stake), Some(3));
+    // The next pub: a won game with Schneider (and Schwarz).
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (events, b) = play(&mut run, &content, diamonds_hand());
+    assert!(b.won && b.schneider);
+    assert!(events.contains(&RunEvent::WagerSettled {
+        stake: 3,
+        won: true,
+        payout: 6
+    }));
+    assert!(run.wager().is_none());
+    // Lost: the stake is gone.
+    let mut run = at_route(&content, &[]);
+    run.coins = 10;
+    open(&mut run, &content, "the_bet");
+    choose(&mut run, &content, 1, None);
+    let coins = run.coins();
+    fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+    let (events, _) = play(&mut run, &content, diamonds_hand());
+    assert!(events.contains(&RunEvent::WagerSettled {
+        stake: 6,
+        won: false,
+        payout: 0
+    }));
+    assert_eq!(run.coins(), coins);
+    // Not affordable: not chosen.
+    let mut run = at_route(&content, &[]);
+    run.coins = 2;
+    open(&mut run, &content, "the_bet");
+    assert_eq!(
+        run.apply(
+            &content,
+            RunAction::ChooseEncounter {
+                option: 0,
+                target: None
+            }
+        ),
+        Err(RunError::NotEnoughCoins)
+    );
+}
+
+#[test]
+fn old_cards_give_a_voucher_and_a_curse() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    let coins = run.coins();
+    let options = open(&mut run, &content, "old_cards");
+    let (voucher, curse) = match &options[0].choice {
+        EncounterChoice::OldCards { voucher, curse } => (voucher.clone(), curse.clone()),
+        other => panic!("{other:?}"),
+    };
+    assert!(["voucher_undead", "voucher_wild"].contains(&voucher.as_str()));
+    let view = run.view(&content).encounter.expect("view");
+    assert!(view.options[0].needs_target);
+    assert_eq!(view.options[0].curse.as_ref().map(|c| &c.id), Some(&curse));
+    choose(&mut run, &content, 0, Some(CLUBS_ACE));
+    assert!(
+        run.edition()
+            .get(CLUBS_ACE)
+            .expect("card")
+            .mods
+            .contains(&voucher)
+    );
+    let cursed: Vec<u32> = run
+        .edition()
+        .cards()
+        .iter()
+        .filter(|c| c.mods.contains(&curse))
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(cursed.len(), 1);
+    assert_ne!(cursed[0], CLUBS_ACE, "another card");
+    assert_eq!(run.coins(), coins + 3, "the curse pays");
+}
+
+#[test]
+fn the_lookout_shows_the_next_stops_or_adds_an_einmischen() {
+    let content = content();
+    let mut run = at_route(&content, &[]);
+    open(&mut run, &content, "lookout");
+    let events = choose(&mut run, &content, 0, None);
+    assert!(events.contains(&RunEvent::StopsRevealed { legs: 2 }));
+    // The next pub: the route choice after it shows its encounters.
+    assert_eq!(run.phase(), RunPhase::Game);
+    end_pub(&mut run, &content, 1, true);
+    set_stops(&mut run, [event("last_round"), tresen(), tresen()]);
+    let view = run.view(&content).tour.route.expect("route");
+    assert_eq!(
+        view.options[0].stops[0]
+            .encounter
+            .as_ref()
+            .map(|e| e.id.as_str()),
+        Some("last_round")
+    );
+    assert!(view.options[1].stops[0].encounter.is_none(), "a Tresen");
+    run.apply(&content, RunAction::ChooseRoute(1))
+        .expect("route");
+    assert_eq!(run.scout_legs(), 1);
+    // Without the lookout the encounter stays hidden.
+    let mut run = at_route(&content, &[]);
+    set_stops(&mut run, [event("last_round"), tresen(), tresen()]);
+    let view = run.view(&content).tour.route.expect("route");
+    assert!(view.options[0].stops[0].encounter.is_none());
+    // Or one more Einmischen in the next pub.
+    let mut run = at_route(&content, &[]);
+    open(&mut run, &content, "lookout");
+    choose(&mut run, &content, 1, None);
+    assert_eq!(run.series().extra_redeals, 1);
+}

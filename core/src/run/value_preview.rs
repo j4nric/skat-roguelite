@@ -96,6 +96,7 @@ impl Run {
             played: None,
             result: Some(&parts),
             games_left: self.series.games_left(),
+            transport: None,
         };
         for source in self.sources(content, true) {
             if !knowledge.counts(&source.source) {
@@ -357,7 +358,7 @@ mod tests {
 
     #[test]
     fn grand_counts_certain_relic_levels_and_base_value() {
-        let content = content();
+        let content = crate::run::legacy_content();
         // Mit 4, Spiel, Hand: 24 × 6.
         let mut run = relic_run(&content, &[]);
         fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -402,7 +403,7 @@ mod tests {
 
     #[test]
     fn ouvert_bonus_and_kontra_count_at_once() {
-        let content = content();
+        let content = crate::run::legacy_content();
         let mut run = relic_run(&content, &["ouvert_bonus"]);
         fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
         run.apply(
@@ -423,7 +424,7 @@ mod tests {
 
     #[test]
     fn null_counts_the_risk_and_certain_relics_without_style() {
-        let content = content();
+        let content = crate::run::legacy_content();
         let start = RunStart {
             character: Character::NullPlayer,
             ..RunStart::default()
@@ -447,7 +448,7 @@ mod tests {
 
     #[test]
     fn a_ramsch_has_no_preview() {
-        let content = content();
+        let content = crate::run::legacy_content();
         let mut run = relic_run(&content, &[]);
         run.series.boss = Some(BossId::new("ramscher"));
         let mut events = Vec::new();

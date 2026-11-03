@@ -261,7 +261,7 @@ fn landlady_starts_with_herbal_and_four_relic_slots() {
     assert_eq!(run.view(&content).relic_slots, 4);
     // A fifth relic does not fit.
     let start = RunStart {
-        relics: ["tour", "kontra", "virgin", "landlord", "tuition"]
+        relics: ["tour", "concede", "virgin", "landlord", "beer_mat"]
             .into_iter()
             .map(RelicId::new)
             .collect(),
@@ -277,7 +277,7 @@ fn landlady_starts_with_herbal_and_four_relic_slots() {
 fn landlady_cannot_buy_a_fifth_relic() {
     let content = content();
     let mut run = character_run(&content, Character::Landlady);
-    run.relics = ["tour", "kontra", "virgin", "landlord"]
+    run.relics = ["tour", "concede", "virgin", "landlord"]
         .into_iter()
         .map(RelicId::new)
         .collect();
@@ -285,9 +285,10 @@ fn landlady_cannot_buy_a_fifth_relic() {
     run.phase = RunPhase::Shop;
     run.game = None;
     run.shop = Some(Shop {
-        relics: vec![Some(RelicId::new("tuition"))],
+        relics: vec![Some(RelicId::new("blind_eye"))],
         consumables: Vec::new(),
         rerolls: 0,
+        on_credit: false,
     });
     assert_eq!(
         run.apply(&content, RunAction::BuyRelic(0)),
