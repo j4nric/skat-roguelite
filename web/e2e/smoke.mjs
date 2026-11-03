@@ -503,7 +503,10 @@ async function assertTriangle(page, label, sizes = [PHONE, { width: 360, height:
       const cards = [...document.querySelectorAll('.trick .trick-card')].map((c) => {
         const slot = c.closest('.slot')?.getBoundingClientRect();
         const b = c.getBoundingClientRect();
-        return { seat: c.dataset.trickSeat ?? c.dataset.lastSeat, slot: c.closest('.slot')?.dataset.slot, dx: slot ? Math.abs(b.left - slot.left) + Math.abs(b.top - slot.top) : 99 };
+        // Once the trick sweeps off to its winner (slow tempo, a slow screenshot) the card's own place is its layout box.
+        const sweeping = c.getAnimations().some((a) => a.id === 'sweep');
+        const dx = sweeping ? Math.abs(c.offsetLeft) + Math.abs(c.offsetTop) : slot ? Math.abs(b.left - slot.left) + Math.abs(b.top - slot.top) : 99;
+        return { seat: c.dataset.trickSeat ?? c.dataset.lastSeat, slot: c.closest('.slot')?.dataset.slot, dx };
       });
       return { s0: rect('.trick .slot-0'), s1: rect('.trick .slot-1'), s2: rect('.trick .slot-2'), cards };
     });
@@ -2298,9 +2301,10 @@ async function motionPass(browser, errors) {
     const sweep = await page
       .waitForFunction(
         () => {
-          const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+          const a = document.getAnimations().find((x) => x.id === 'sweep' && x.effect?.target?.classList?.contains('trick-card'));
           if (!a) return null;
-          const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(a.effect.getKeyframes()[2].transform));
+          const k = a.effect.getKeyframes();
+          const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(String(k[k.length - 1].transform));
           return m ? { x: Number(m[1]), y: Number(m[2]), status: document.querySelector('.status')?.textContent?.trim() ?? '' } : null;
         },
         null,
@@ -2313,7 +2317,7 @@ async function motionPass(browser, errors) {
     if (!seen[winner]) {
       // Half way off the table.
       await page.waitForFunction(() => {
-        const a = document.getAnimations().find((x) => x.effect?.target?.classList?.contains('trick-card') && x.effect.getKeyframes().length === 3);
+        const a = document.getAnimations().find((x) => x.id === 'sweep' && x.effect?.target?.classList?.contains('trick-card'));
         return !a || a.currentTime > a.effect.getTiming().duration * 0.7;
       }, null, { polling: 16 });
       await page.screenshot({ path: join(screens, `trick-leaves-${winner}-390x844.png`) });
@@ -2565,6 +2569,16 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.id === 'glide'));
   await page.click('[data-action="pick-game"][data-index="4"]');
+  // The Ansage as a sign slammed onto the felt: noted when it comes and goes.
+  await page.evaluate(() => {
+    const w = window;
+    w.__declSign = { seen: 0, text: '', gone: false };
+    new MutationObserver(() => {
+      const sign = document.querySelector('[data-testid="decl-sign"]');
+      if (sign && !w.__declSign.seen) w.__declSign = { seen: performance.now(), text: sign.querySelector('b')?.textContent ?? '', gone: false };
+      if (!sign && w.__declSign.seen) w.__declSign.gone = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await page.click('[data-action="declare"]');
   // After the Ansage they fly on into the stack in the felt's corner, turning face down.
   await page
@@ -2573,6 +2587,16 @@ async function tableFeelPass(browser, errors, viewport) {
   await snap('feel-press-flight');
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.getAnimations().some((a) => a.playState === 'running' && a.effect?.target?.closest?.('.trick, .hand')));
+
+  // The sign went again (shrunk into the game line) and never took a tap.
+  await page.waitForFunction(() => window.__declSign?.gone, null, { timeout: 8000 }).catch(() => fail(`feel ${tag}: the Ansage sign does not come or does not go`));
+  const signText = await page.evaluate(() => window.__declSign.text);
+  const lineText = (await page.locator('.gameline .decl').textContent()) ?? '';
+  if (!signText.trim() || !lineText.toLowerCase().includes(signText.trim().toLowerCase())) fail(`feel ${tag}: the sign "${signText}" does not name the game of "${lineText}"`);
+  // The regulars blink: the frame with shut eyes runs its CSS animation.
+  const blinks = await page.evaluate(() => [...document.querySelectorAll('.opp .portrait-blink')].filter((el) => el.getAnimations().some((a) => a.animationName === 'portrait-blink')).length);
+  if (blinks !== 2) fail(`feel ${tag}: ${blinks} of 2 opponent portraits blink`);
+  log(`feel ${tag}: Ansage sign "${signText.trim()}" came and went, both regulars blink`);
 
   // The pressed skat: face down in the corner, a tap shows it.
   await snap('feel-pressed');

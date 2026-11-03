@@ -19,7 +19,14 @@ function headShape(skin: string, rx = 19, ry = 22, cy = 44): string {
 <ellipse cx="${50 + rx}" cy="${cy + 2}" rx="4" ry="6" fill="${skin}" stroke="${OUT}" stroke-width="1.6"/>`;
 }
 
+/** While true, eyes() draws them shut: the frame of a blink (blinkJobs). */
+let shut = false;
+
 function eyes(y = 43, brow = OUT, dx = 8): string {
+  if (shut) {
+    return `<path d="M${50 - dx - 3.5} ${y + 0.5} L${50 - dx + 3.5} ${y + 0.5} M${50 + dx - 3.5} ${y + 0.5} L${50 + dx + 3.5} ${y + 0.5}" stroke="${OUT}" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M${50 - dx - 5} ${y - 5} L${50 - dx + 4} ${y - 6} M${50 + dx - 4} ${y - 6} L${50 + dx + 5} ${y - 5}" stroke="${brow}" stroke-width="2.6" stroke-linecap="round"/>`;
+  }
   return `<circle cx="${50 - dx}" cy="${y}" r="2.3" fill="${OUT}"/><circle cx="${50 + dx}" cy="${y}" r="2.3" fill="${OUT}"/>
 <path d="M${50 - dx - 5} ${y - 6} L${50 - dx + 4} ${y - 7} M${50 + dx - 4} ${y - 7} L${50 + dx + 5} ${y - 6}" stroke="${brow}" stroke-width="2.6" stroke-linecap="round"/>`;
 }
@@ -625,12 +632,43 @@ export function portraitJobs(): PixelJob[] {
   return Object.entries(PORTRAITS).map(([id, draw]) => ({ key: id, markup: draw(), size: 30 }));
 }
 
+/** The pixel key of a portrait's frame with its eyes shut. */
+function blinkKey(id: string): string {
+  return `${id}:blink`;
+}
+
+/**
+ * Jobs for ./pixelate.ts: the portraits with their eyes shut, for the
+ * opponents' blink. Only faces drawn with eyes() have one; the others
+ * (sunglasses, a hat over the eyes) do not blink.
+ */
+export function blinkJobs(): PixelJob[] {
+  const jobs: PixelJob[] = [];
+  for (const [id, draw] of Object.entries(PORTRAITS)) {
+    const open = draw();
+    shut = true;
+    let closed = '';
+    try {
+      closed = draw();
+    } finally {
+      shut = false;
+    }
+    if (closed !== open) jobs.push({ key: blinkKey(id), markup: closed, size: 30 });
+  }
+  return jobs;
+}
+
 /**
  * A portrait, the frame comes from CSS: the pixel image once it is
- * prepared, else the vector drawing.
+ * prepared, else the vector drawing. `blink` lays the frame with shut
+ * eyes over it, shown for a moment now and then by CSS (`--blink-at`
+ * keeps its rhythm across re-renders, `--blink-cycle` its length).
  */
-export function portrait(id: string, className = ''): string {
+export function portrait(id: string, className = '', blink: { at: number; cycle: number } | null = null): string {
   const url = pixelUrl(id);
   const inner = url ? `<img class="px" src="${url}" alt="" draggable="false">` : `<svg viewBox="0 0 100 100"><use href="#${id}"/></svg>`;
-  return `<span class="portrait ${className}" aria-hidden="true">${inner}</span>`;
+  const shutUrl = blink && url ? pixelUrl(blinkKey(id)) : null;
+  if (!shutUrl || !blink) return `<span class="portrait ${className}" aria-hidden="true">${inner}</span>`;
+  const lid = `<img class="px portrait-blink" src="${shutUrl}" alt="" draggable="false">`;
+  return `<span class="portrait can-blink ${className}" style="--blink-at:${Math.round(blink.at)}ms;--blink-cycle:${Math.round(blink.cycle)}ms" aria-hidden="true">${inner}${lid}</span>`;
 }

@@ -128,6 +128,80 @@ body::after {
   background: radial-gradient(ellipse 90% 75% at 50% 45%, transparent 55%, rgba(4, 5, 7, 0.6) 100%);
 }
 
+/* The pub's air over the table (only while a game is on the table):
+   smoke drifting slowly through and the lamp's light flickering a little.
+   Low contrast and behind everything (fixed, before .app in the paint
+   order), compositor-only animations; a hidden tab paints nothing. Off
+   with reduced motion. */
+html:has(.run.is-table)::before,
+body:has(.run.is-table)::before {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+}
+
+html:has(.run.is-table)::before {
+  inset: -30% -40%;
+  background:
+    radial-gradient(ellipse 34% 14% at 30% 40%, rgba(196, 204, 208, 0.07), transparent 70%),
+    radial-gradient(ellipse 28% 11% at 68% 58%, rgba(196, 204, 208, 0.06), transparent 70%),
+    radial-gradient(ellipse 40% 16% at 52% 26%, rgba(196, 204, 208, 0.05), transparent 72%);
+  animation: smoke-drift 46s ease-in-out infinite alternate;
+}
+
+body:has(.run.is-table)::before {
+  inset: 0;
+  background: radial-gradient(ellipse 70% 52% at 50% 40%, rgba(241, 180, 138, 0.075), transparent 70%);
+  animation: lamp-flicker 7.3s steps(1, end) infinite;
+}
+
+@keyframes smoke-drift {
+  0% {
+    transform: translate(-6%, 2%) scale(1);
+  }
+  50% {
+    transform: translate(2%, -2%) scale(1.06);
+  }
+  100% {
+    transform: translate(7%, 1%) scale(1.02);
+  }
+}
+
+@keyframes lamp-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  31% {
+    opacity: 0.86;
+  }
+  32% {
+    opacity: 1;
+  }
+  58% {
+    opacity: 0.92;
+  }
+  59.5% {
+    opacity: 0.8;
+  }
+  61% {
+    opacity: 1;
+  }
+  83% {
+    opacity: 0.9;
+  }
+  84% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.run.is-table)::before,
+  body:has(.run.is-table)::before {
+    content: none;
+  }
+}
+
 .app {
   position: relative;
   width: 100%;
@@ -1006,6 +1080,58 @@ button.card {
   height: 40px;
 }
 
+/* An opponent blinks now and then: the frame with shut eyes (people.ts
+   blinkJobs) lies over the portrait and shows for a moment at uneven
+   points of a long cycle; --blink-at (negative, from the clock) keeps the
+   rhythm across re-renders of the table. */
+.portrait.can-blink {
+  position: relative;
+}
+
+.portrait .portrait-blink {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: portrait-blink var(--blink-cycle, 9s) steps(1, end) var(--blink-at, 0ms) infinite;
+}
+
+@keyframes portrait-blink {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  17% {
+    opacity: 1;
+  }
+  18.4% {
+    opacity: 0;
+  }
+  52% {
+    opacity: 1;
+  }
+  53.3% {
+    opacity: 0;
+  }
+  55.2% {
+    opacity: 1;
+  }
+  56.5% {
+    opacity: 0;
+  }
+  84% {
+    opacity: 1;
+  }
+  85.5% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portrait .portrait-blink {
+    animation: none;
+  }
+}
+
 .opp-info {
   display: flex;
   flex: 1;
@@ -1344,6 +1470,106 @@ button.card {
   width: 40px;
   height: 60px;
   margin: -30px 0 0 -20px;
+  pointer-events: none;
+}
+
+/* The Ansage as a pixel sign slammed onto the felt (fx.ts declareSign),
+   and the Schneider scissors (fx.ts snipAcross). Both lie above the
+   table, below dialogs, and never take a tap. */
+.decl-sign {
+  position: fixed;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 9px;
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  box-shadow:
+    inset 0 0 0 2px var(--accent-dark),
+    0 5px 0 var(--line);
+  color: var(--accent-light);
+  font-family: var(--font);
+  line-height: 0.9;
+  text-transform: uppercase;
+  white-space: nowrap;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+.decl-sign-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.decl-sign-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.decl-sign b {
+  font-size: var(--fs-2xl);
+  font-weight: 400;
+  text-shadow: 3px 3px 0 var(--line);
+}
+
+.decl-sign small {
+  font-size: var(--fs-l);
+  color: var(--muted);
+}
+
+.decl-dust {
+  position: fixed;
+  z-index: 16;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  background: #b9b1a2;
+  box-shadow: 6px 2px 0 -1px #8f887b;
+  pointer-events: none;
+}
+
+.snip-scissors {
+  position: fixed;
+  z-index: 16;
+  width: 64px;
+  height: 36px;
+  margin: -18px 0 0 -32px;
+  pointer-events: none;
+}
+
+.snip-scissors svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(2px 2px 0 var(--line));
+}
+
+.snip-scissors .snip-shut {
+  animation: snip-blades 0.24s steps(1, end) infinite;
+}
+
+.snip-scissors .snip-open {
+  animation: snip-blades 0.24s steps(1, end) -0.12s infinite;
+}
+
+@keyframes snip-blades {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.snip-line {
+  position: fixed;
+  z-index: 15;
+  height: 0;
+  border-top: 3px dashed var(--accent-light);
+  transform-origin: left center;
   pointer-events: none;
 }
 
