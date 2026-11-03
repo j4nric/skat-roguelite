@@ -51,17 +51,17 @@
         character: NullPlayer,
         name: "Der Nullspieler",
         text: "Der Null-Spezialist: Seine Unter sind abgestuft (die niedrigste Karte ihrer Farbe), und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
-        // Eigene Zielwerte (DESIGN 5.2), seit 02.11.2026 rund die Hälfte des
-        // Alleinspielers: Sein Blatt ohne Unter gewinnt eine Serie mit drei
-        // Spielen auch bei Zielwert 1 nur zu 76 % (Alleinspieler 86 %). Mit
-        // der vorläufigen Kurve (eine Zeile später als run.ron, 24/30/36 bis
-        // 42/48/54) erreichte er Abschnitt 2 in 32 % und gewann 0,4 % der
-        // Runs; 23 ist ein einfaches gewonnenes Null. Ab Abschnitt 3 flach,
-        // weil er gegen die stärkeren Gegner kaum zulegt.
+        // Eigene Zielwerte (DESIGN 5.0.4 und 9), gemessen am 03.11.2026
+        // (docs/balance/2026-11-03-charaktere.md): die Kurve des
+        // Alleinspielers, Stadtteil 1 × 1,15, Stadtteil 2 × 1,2, Stadtteil 3
+        // × 1,25. Mit den alten 18 bis 30 (02.11.2026, halb so hoch wie die
+        // damalige Kurve des Alleinspielers) erreichte er Stadtteil 2 in 60 %
+        // und gewann 30 % der Runs; mit der Kurve des Alleinspielers 47 % und
+        // 9,5 %. Ein gewonnenes Null bringt im Run im Mittel 113 Punkte.
         targets: Some([
-            [18, 20, 20, 23, 23],
-            [20, 23, 23, 27, 27],
-            [23, 27, 27, 30, 30],
+            [50, 65, 75, 85, 70],
+            [110, 125, 145, 160, 120],
+            [180, 210, 245, 255, 175],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -95,10 +95,11 @@
         focus_weights: (trump: 50, null: 200),
     ),
     // Neue Charaktere vom 03.11.2026 (DESIGN 9.4 bis 9.6), entschieden vom
-    // Nutzer; sie ersetzen Grandspieler, Zaungast und Wirtin. Zahlen nach
-    // Augenmaß, vorläufig und nicht gemessen (Simulationen pausiert): Die
-    // Zielwerte sind die des Alleinspielers (targets fehlt, also run.ron),
-    // die Tresen-Gewichte wie bei ihm.
+    // Nutzer; sie ersetzen Grandspieler, Zaungast und Wirtin. Gemessen am
+    // 03.11.2026 (docs/balance/2026-11-03-charaktere.md): Drückeberger und
+    // Bruderherz liegen mit der Kurve des Alleinspielers (targets fehlt,
+    // also run.ron) im Zielbild, die Schneiderin hat eigene Zielwerte. Die
+    // Tresen-Gewichte wie beim Alleinspieler (nach Augenmaß).
     (
         character: Shirker,
         name: "Der Drückeberger",
@@ -140,6 +141,16 @@
         character: Tailoress,
         name: "Die Schneiderin",
         text: "Nimmt Maß: Ihre vier Zehner tragen einen Aufdruck (+3 Augen). Gewinnt sie Schneider oder Schwarz, zählt beides je +2 statt +1 Multiplikator; ein gewonnenes Spiel ohne Schneider zählt 1 Multiplikator weniger (nie unter 1, Null ausgenommen). Startet mit Stichfest.",
+        // Eigene Zielwerte, gemessen am 03.11.2026: rund die Kurve des
+        // Alleinspielers × 1,15 (Boss in Stadtteil 1 × 1,25). Mit dessen
+        // Kurve erreichte sie Stadtteil 2 in 47 % und gewann 7,9 % der Runs:
+        // Sie gewinnt die Hälfte ihrer Farbspiele und Grands mit Schneider
+        // (Alleinspieler 39 %) und zählt sie doppelt.
+        targets: Some([
+            [50, 65, 75, 90, 75],
+            [105, 120, 140, 155, 115],
+            [165, 195, 225, 235, 160],
+        ]),
         start_relics: ["watertight"],
         deck: (
             mods: [

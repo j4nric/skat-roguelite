@@ -176,6 +176,17 @@ fn every_content_item_loads_with_german_texts() {
     // Kneipentour curve (DESIGN 5.0.4, measured 03.11.2026).
     assert_eq!(content.run.targets[0], vec![45, 55, 65, 75, 60]);
     assert_eq!(content.run.targets[2], vec![145, 170, 195, 205, 140]);
+    // Own curves of the Nullspieler and the Schneiderin; Drückeberger and
+    // Bruderherz play the one of run.ron (measured 03.11.2026, DESIGN 9).
+    let targets = |c: Character| content.characters[&c].targets.clone();
+    let null = targets(Character::NullPlayer).expect("null targets");
+    assert_eq!(null[0], vec![50, 65, 75, 85, 70]);
+    assert_eq!(null[2], vec![180, 210, 245, 255, 175]);
+    let tailoress = targets(Character::Tailoress).expect("tailoress targets");
+    assert_eq!(tailoress[0], vec![50, 65, 75, 90, 75]);
+    assert_eq!(tailoress[2], vec![165, 195, 225, 235, 160]);
+    assert!(targets(Character::Shirker).is_none());
+    assert!(targets(Character::HeartBrother).is_none());
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
