@@ -3,24 +3,11 @@
 // die Schnäpse zusammen (DESIGN 8.3); Preise und Seltenheit auch dort
 // Platzhalter für `balance`. Entfernt am 02.11.2026 (Gegenstands-Review des
 // Nutzers): Ein Bier, Neues Blatt, Magenbitter, Reue, Augen +5, Trumpf +4;
-// alte Spielstände verlieren sie beim Laden.
+// alte Spielstände verlieren sie beim Laden. Entfernt am 02.11.2026 mit den
+// Zinken am Tresen (Entscheidung des Nutzers, DESIGN 8.6): Frisches Deck
+// (jetzt der Tresen-Dienst „Karte reinigen“), Stempelkissen, Augen +3,
+// Trumpf +2, Rang +1 (jetzt Auslage und Kartenmaler).
 [
-    (
-        id: "fresh_deck",
-        name: "Frisches Deck",
-        text: "Reinigt eine Karte deiner Ausgabe: Alle Effekte fallen ab, auch Flüche.",
-        rarity: Common,
-        price: 3,
-        action: CleanseCard,
-    ),
-    (
-        id: "ink_pad",
-        name: "Stempelkissen",
-        text: "Verpasse einer Karte eine zufällige Modifikation, nie einen Fluch. Dieselbe steigt, eine andere ersetzt die alte.",
-        rarity: Common,
-        price: 3,
-        action: AddCardMod(None),
-    ),
     (
         id: "shot",
         name: "Kurzer",
@@ -93,32 +80,5 @@
         price: 3,
         action: NextPub(redeals: 1, target: -3),
         category: Schnapps,
-    ),
-    // Effekte v2 (DESIGN 7.2, 12): Modifikationen mit festem Wert am
-    // Tresen. Dieselbe auf derselben Karte steigt, eine andere ersetzt.
-    // Preise und Seltenheit Platzhalter für `balance`.
-    (
-        id: "points_3",
-        name: "Augen +3",
-        text: "Eine Karte zählt 3 Augen mehr. Trägt sie schon Augen, kommen sie dazu.",
-        rarity: Common,
-        price: 2,
-        action: ApplyCardMod(card_mod: "points", value: 3),
-    ),
-    (
-        id: "trump_2",
-        name: "Trumpf +2",
-        text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 2.",
-        rarity: Common,
-        price: 3,
-        action: ApplyCardMod(card_mod: "trump_bonus", value: 2),
-    ),
-    (
-        id: "rank_1",
-        name: "Rang +1",
-        text: "Eine Karte sticht eine Stufe höher, höchstens zwei.",
-        rarity: Common,
-        price: 3,
-        action: ApplyCardMod(card_mod: "rank", value: 1),
     ),
 ]

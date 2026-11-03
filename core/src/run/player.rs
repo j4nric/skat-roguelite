@@ -322,6 +322,40 @@ impl RunEvent {
                 RunEvent::ConsumableSold { consumable, price }
             }
             RunEvent::ShopRerolled { cost } => RunEvent::ShopRerolled { cost },
+            RunEvent::CardOffersDrawn { offers } => RunEvent::CardOffersDrawn { offers },
+            RunEvent::CardOfferBought {
+                slot,
+                card,
+                card_mod,
+                value,
+                price,
+            } => RunEvent::CardOfferBought {
+                slot,
+                card,
+                card_mod,
+                value,
+                price,
+            },
+            RunEvent::CardOffersRerolled { cost } => RunEvent::CardOffersRerolled { cost },
+            RunEvent::PainterHired {
+                card,
+                options,
+                price,
+            } => RunEvent::PainterHired {
+                card,
+                options,
+                price,
+            },
+            RunEvent::PainterChosen {
+                card,
+                card_mod,
+                value,
+            } => RunEvent::PainterChosen {
+                card,
+                card_mod,
+                value,
+            },
+            RunEvent::CardCleansed { card, price } => RunEvent::CardCleansed { card, price },
             RunEvent::ShopLeft => RunEvent::ShopLeft,
             RunEvent::DebtChanged { debt } => RunEvent::DebtChanged { debt },
             RunEvent::LifeSpared { source } => RunEvent::LifeSpared { source },

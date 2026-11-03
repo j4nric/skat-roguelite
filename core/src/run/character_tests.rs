@@ -287,8 +287,7 @@ fn landlady_cannot_buy_a_fifth_relic() {
     run.shop = Some(Shop {
         relics: vec![Some(RelicId::new("blind_eye"))],
         consumables: Vec::new(),
-        rerolls: 0,
-        on_credit: false,
+        ..Shop::default()
     });
     assert_eq!(
         run.apply(&content, RunAction::BuyRelic(0)),

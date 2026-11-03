@@ -13,10 +13,17 @@
 // steigern.
 // text: {n} ist der Betrag, {+n} der Wert mit Vorzeichen.
 // focus: für welche Spielart (All, Trump für Farbspiel und Grand, Null).
-// Zufallsziehungen (Stempelkissen, Kartengeber) gewichten damit nach
-// focus_weights (characters.ron); sie ziehen nie Flüche und nie
-// Spezialkarten. Werte, Preise und Seltenheit sind Platzhalter für
-// `balance`.
+// Zufallsziehungen (Auslage und Kartenmaler am Tresen, Kartengeber,
+// Werkstatt) gewichten damit nach focus_weights (characters.ron); sie
+// ziehen nie Flüche und nie Spezialkarten.
+// Zinken am Tresen (Entscheidung des Nutzers, 02.11.2026, DESIGN 8.6):
+// shop_value ist der Wert in der Auslage und beim Kartenmaler (ohne: der
+// erste aus values), price der Preis in der Auslage vor dem Zuschlag für
+// Unter und Daus (run.ron, zinken). Die Auslage zieht nach Seltenheit,
+// Gutscheine seltener. Namen seit dem 02.11.2026: Aufdruck, Winkel,
+// Siegel, Eselsohr, Kerbe, Pfandmarke, Totenmarke, Narrenmarke; der Text
+// beginnt mit der Wirkung, damit Infokarten sie neben dem Namen zeigen.
+// Werte, Preise und Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung.
 [
     // ---------------------------------------------------------------------
     // Rand: immer aktiv, die Zahl im Band unten.
@@ -26,10 +33,11 @@
         id: "points",
         kind: Edge,
         focus: Trump,
-        name: "Augen",
-        text: "Diese Karte zählt {+n} Augen.",
+        name: "Aufdruck",
+        text: "Augen: Diese Karte zählt {+n} Augen.",
         rarity: Common,
-        price: 3,
+        price: 2,
+        shop_value: Some(3),
         values: [4, 3, 5],
         passive: [AddCardPoints(1)],
     ),
@@ -38,8 +46,8 @@
         id: "rank",
         kind: Edge,
         focus: Trump,
-        name: "Rang",
-        text: "Diese Karte sticht {n} Stufen höher (höchstens 2).",
+        name: "Winkel",
+        text: "Rang: Diese Karte sticht {n} Stufen höher (höchstens 2).",
         rarity: Common,
         price: 3,
         values: [1],
@@ -54,10 +62,11 @@
         id: "trump_bonus",
         kind: Edge,
         focus: Trump,
-        name: "Trumpf",
-        text: "Ist die Farbe dieser Karte Trumpf und hältst du sie, steigt der Grundwert um {n}.",
+        name: "Siegel",
+        text: "Trumpf: Ist die Farbe dieser Karte Trumpf und hältst du sie, steigt der Grundwert um {n}.",
         rarity: Uncommon,
-        price: 4,
+        price: 3,
+        shop_value: Some(2),
         values: [3, 2, 4],
         hooks: [
             OnDeclare(when: ThisCardIsTrumpSuit, then: [AddBaseValue(1)]),
@@ -71,10 +80,10 @@
         id: "last_trick",
         kind: Moment,
         focus: Trump,
-        name: "Letzter Stich",
-        text: "Macht diese Karte den letzten Stich: +1 Multiplikator.",
+        name: "Kerbe",
+        text: "Letzter Stich: Macht diese Karte den letzten Stich, +1 Multiplikator.",
         rarity: Uncommon,
-        price: 4,
+        price: 3,
         values: [1],
         max: Some(1),
         hooks: [
@@ -87,10 +96,10 @@
         id: "first_trick",
         kind: Moment,
         focus: Trump,
-        name: "Erster Stich",
-        text: "Gewinnt diese Karte den ersten Stich, zählen seine Augen ×{n}.",
+        name: "Eselsohr",
+        text: "Erster Stich: Gewinnt diese Karte den ersten Stich, zählen seine Augen ×{n}.",
         rarity: Uncommon,
-        price: 4,
+        price: 3,
         values: [2],
         max: Some(2),
         hooks: [
@@ -105,8 +114,8 @@
     (
         id: "voucher_coins",
         kind: Voucher,
-        name: "Gutschein",
-        text: "Wenn gedrückt: {n} Groschen. Danach ist der Gutschein weg.",
+        name: "Pfandmarke",
+        text: "Gutschein: Wenn gedrückt, {n} Groschen. Danach ist die Marke weg.",
         rarity: Common,
         price: 2,
         values: [3],
@@ -118,10 +127,10 @@
         id: "voucher_undead",
         kind: Voucher,
         focus: Trump,
-        name: "Gutschein Untot",
-        text: "Wenn gedrückt: Die Karte wird Untot. Danach ist der Gutschein weg.",
+        name: "Totenmarke",
+        text: "Gutschein: Wenn gedrückt, wird die Karte Untot. Danach ist die Marke weg.",
         rarity: Rare,
-        price: 5,
+        price: 4,
         hooks: [
             OnDiscard(then: [TurnInto("undead")]),
         ],
@@ -129,10 +138,10 @@
     (
         id: "voucher_wild",
         kind: Voucher,
-        name: "Gutschein Wandelkarte",
-        text: "Wenn gedrückt: Die Karte wird Wandelkarte. Danach ist der Gutschein weg.",
+        name: "Narrenmarke",
+        text: "Gutschein: Wenn gedrückt, wird die Karte Wandelkarte. Danach ist die Marke weg.",
         rarity: Rare,
-        price: 5,
+        price: 4,
         hooks: [
             OnDiscard(then: [TurnInto("wild_card")]),
         ],
@@ -140,7 +149,7 @@
     // ---------------------------------------------------------------------
     // Flüche: Feld unten links. Nur über Ereignisse, die sie ankündigen;
     // sie zahlen beim Erhalt 3 Groschen (Platzhalter). Eine verfluchte
-    // Karte nimmt keine andere Modifikation, nur Frisches Deck hilft.
+    // Karte nimmt keine andere Modifikation, nur Karte reinigen hilft.
     // ---------------------------------------------------------------------
     // Lever Zählen: das Wissen hängt an der Karte. Beim Spieler kennen die
     // KI-Gegner sie, beim Gegner sieht der Spieler, wer sie hat.
@@ -206,8 +215,8 @@
     // ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe
     // (unter der Sieben, ohne Augen, keine Spitze), jede andere Karte
     // sticht eine Stufe tiefer. Darf eine normale Modifikation tragen,
-    // keine andere Spezialkarte ersetzt sie, nur Frisches Deck nimmt sie
-    // ab. Nur im Grunddeck des Nullspielers, nie zufällig.
+    // keine andere Spezialkarte ersetzt sie, nur Karte reinigen nimmt
+    // sie ab. Nur im Grunddeck des Nullspielers, nie zufällig.
     (
         id: "demoted",
         kind: SpecialCurse,

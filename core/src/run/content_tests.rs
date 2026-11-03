@@ -166,7 +166,7 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["the_pusher", "kontra_hans", "grandma"] {
         assert!(content.boss(&BossId::new(id)).is_some(), "{id}");
     }
-    for id in ["fresh_deck", "ink_pad", "herbal", "double_grain"] {
+    for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
     // Curve for series of 3 games (DESIGN 5.2, calibrated 02.11.2026).

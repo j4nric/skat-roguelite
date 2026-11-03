@@ -102,8 +102,8 @@ fn the_schnaepse_load_as_one_group() {
         .filter(|d| d.category == ConsumableCategory::Item)
         .count();
     assert_eq!(
-        items, 5,
-        "Frisches Deck, Stempelkissen and the three of effects v2 are items"
+        items, 0,
+        "since the Zinken at the Tresen (DESIGN 8.6) every consumable is a Schnaps"
     );
     // They come to the Tresen like every other consumable.
     let mut seen = BTreeSet::new();

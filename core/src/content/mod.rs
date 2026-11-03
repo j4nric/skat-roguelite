@@ -362,8 +362,8 @@ pub struct CharacterDef {
     /// Skatordnung ([`NullScoring::Fixed`]).
     #[serde(default)]
     pub null_scoring: Option<NullScoring>,
-    /// How often the Tresen, the Stempelkissen and the encounters offer
-    /// relics and card modifications made for one Spielart (default: as
+    /// How often the Tresen (offers, Auslage, Kartenmaler) and the
+    /// encounters offer relics and card modifications made for one Spielart (default: as
     /// often as any other).
     #[serde(default)]
     pub focus_weights: FocusWeights,
@@ -600,7 +600,7 @@ pub enum Reward {
     Relic(RelicId),
     /// A character can be chosen.
     Character(Character),
-    /// A card modification joins the random draws (Stempelkissen,
+    /// A card modification joins the random draws (Auslage, Kartenmaler,
     /// Kartengeber).
     CardMod(CardModId),
 }
@@ -711,7 +711,8 @@ pub enum ModKind {
     Special,
     /// Spezialkarte that is a curse ("Abgestuft", DESIGN 9.2): it holds the
     /// special slot, may sit next to one normal modification, and no
-    /// other special card replaces it; only Frisches Deck takes it off.
+    /// other special card replaces it; only cleansing takes it off ("Karte
+    /// reinigen", the Werkstatt).
     SpecialCurse,
 }
 
@@ -768,6 +769,10 @@ pub struct CardModDef {
     /// The highest value a raise may reach ("Rang": 2). `None`: no limit.
     #[serde(default)]
     pub max: Option<i32>,
+    /// The value it comes with in the Auslage and from the Kartenmaler
+    /// (DESIGN 8.6). `None`: [`CardModDef::default_value`].
+    #[serde(default)]
+    pub shop_value: Option<i32>,
     /// Only cards whose printed card matches may carry it ("Glasdaus":
     /// only a Daus). `None`: every normal card.
     #[serde(default)]
@@ -797,6 +802,13 @@ impl CardModDef {
     #[must_use]
     pub fn default_value(&self) -> i32 {
         self.values.first().copied().unwrap_or(1)
+    }
+
+    /// The value at the Tresen (Auslage, Kartenmaler): `shop_value`, else
+    /// the value of a random draw.
+    #[must_use]
+    pub fn offer_value(&self) -> i32 {
+        self.shop_value.unwrap_or_else(|| self.default_value())
     }
 
     /// The text with its value filled in: `{n}` is the amount, `{+n}` the
@@ -1167,6 +1179,41 @@ pub struct ShopConfig {
     pub consumable_offers: u32,
     /// How likely each rarity is.
     pub rarity_weights: RarityWeights,
+    /// Zinken at the Tresen: the Auslage, its reroll, the Kartenmaler and
+    /// "Karte reinigen" (DESIGN 8.6).
+    pub zinken: ZinkenConfig,
+}
+
+/// Zinken at the Tresen (DESIGN 8.6, decided by the user on 02.11.2026):
+/// the Auslage of concrete card modifications on concrete cards, "Neu
+/// auslosen", the Kartenmaler and "Karte reinigen". Every number is
+/// provisional.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZinkenConfig {
+    /// Offers in the Auslage per visit.
+    pub offers: u32,
+    /// Draw weight of a card without modification.
+    pub bare_weight: u32,
+    /// Draw weight of a card that carries a modification already.
+    pub modded_weight: u32,
+    /// Vouchers weigh this many percent of their rarity weight.
+    pub voucher_percent: u32,
+    /// Ranks whose cards cost `premium` more in the Auslage.
+    #[serde(default)]
+    pub premium_ranks: Vec<crate::cards::Rank>,
+    /// Groschen more for a card of `premium_ranks`.
+    #[serde(default)]
+    pub premium: u32,
+    /// Price of the first "Neu auslosen" at a Tresen.
+    pub reroll_cost: u32,
+    /// Groschen more for every further "Neu auslosen" at the same Tresen.
+    pub reroll_step: u32,
+    /// Price of the Kartenmaler.
+    pub painter_price: u32,
+    /// Modifications the Kartenmaler offers to choose from.
+    pub painter_choices: u32,
+    /// Price of "Karte reinigen".
+    pub cleanse_price: u32,
 }
 
 /// Lives of the Kneipentour (ADR 0016).

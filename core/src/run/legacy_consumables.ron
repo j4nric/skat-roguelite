@@ -1,6 +1,8 @@
 // Tests only: the consumables removed by the item review of 02.11.2026,
 // as they were (dormant actions ExtraRedeals, Redeal, UndoRedeal,
-// NextGame(SingleLoss)); never loaded by a run.
+// NextGame(SingleLoss)), and the card items removed with the Zinken at the
+// Tresen (02.11.2026: CleanseCard, AddCardMod, ApplyCardMod); never loaded
+// by a run.
 [
     (
         id: "beer",
@@ -51,5 +53,45 @@
         rarity: Uncommon,
         price: 4,
         action: ApplyCardMod(card_mod: "trump_bonus", value: 4),
+    ),
+    (
+        id: "fresh_deck",
+        name: "Frisches Deck",
+        text: "Reinigt eine Karte deiner Ausgabe: Alle Effekte fallen ab, auch Flüche.",
+        rarity: Common,
+        price: 3,
+        action: CleanseCard,
+    ),
+    (
+        id: "ink_pad",
+        name: "Stempelkissen",
+        text: "Verpasse einer Karte eine zufällige Modifikation, nie einen Fluch. Dieselbe steigt, eine andere ersetzt die alte.",
+        rarity: Common,
+        price: 3,
+        action: AddCardMod(None),
+    ),
+    (
+        id: "points_3",
+        name: "Augen +3",
+        text: "Eine Karte zählt 3 Augen mehr. Trägt sie schon Augen, kommen sie dazu.",
+        rarity: Common,
+        price: 2,
+        action: ApplyCardMod(card_mod: "points", value: 3),
+    ),
+    (
+        id: "trump_2",
+        name: "Trumpf +2",
+        text: "Ist die Farbe der Karte Trumpf und hältst du sie, steigt der Grundwert um 2.",
+        rarity: Common,
+        price: 3,
+        action: ApplyCardMod(card_mod: "trump_bonus", value: 2),
+    ),
+    (
+        id: "rank_1",
+        name: "Rang +1",
+        text: "Eine Karte sticht eine Stufe höher, höchstens zwei.",
+        rarity: Common,
+        price: 3,
+        action: ApplyCardMod(card_mod: "rank", value: 1),
     ),
 ]

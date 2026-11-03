@@ -90,6 +90,9 @@ pub struct RunView {
     pub shop: Option<ShopView>,
     /// The encounter (Ereignis), while open.
     pub encounter: Option<EncounterView>,
+    /// The Kartenmaler's choice, waiting for the player (Tresen or
+    /// Werkstatt): nothing but [`RunAction::ChoosePaint`] goes now.
+    pub painter: Option<PainterView>,
     /// House rules of the evening (encounter "Stammtisch-Streit"), active
     /// until the section ends.
     pub evening_relics: Vec<RelicInfo>,
@@ -392,6 +395,79 @@ pub struct ShopView {
     pub can_reroll: bool,
     /// Neuauslagen bought during this visit.
     pub rerolls: u32,
+    /// The Auslage (Zinken, DESIGN 8.6); `None` once bought.
+    pub card_offers: Vec<Option<CardOfferView>>,
+    /// Price of the next "Neu auslosen" (after discounts).
+    pub card_reroll_cost: u32,
+    /// Whether "Neu auslosen" is possible now.
+    pub can_reroll_cards: bool,
+    /// "Neu auslosen" bought during this visit.
+    pub card_rerolls: u32,
+    /// The Kartenmaler ([`RunAction::HirePainter`]).
+    pub painter: ServiceView,
+    /// "Karte reinigen" ([`RunAction::CleanseCard`]).
+    pub cleanse: ServiceView,
+}
+
+/// An offer of the Auslage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CardOfferView {
+    /// Slot for [`RunAction::BuyCardOffer`].
+    pub slot: usize,
+    /// The card as it is now.
+    pub card: DeckCard,
+    /// The card as it would be after buying.
+    pub result: DeckCard,
+    /// The modification with its value.
+    pub card_mod: CardModInfo,
+    /// What it costs now (after discounts).
+    pub price: u32,
+    /// Whether it can be bought now.
+    pub can_buy: bool,
+    /// The modification on the card it would replace (ask first).
+    pub replaces: Option<CardModId>,
+    /// Whether it would raise the same modification on the card.
+    pub raises: bool,
+}
+
+/// A service of the Tresen that works on a card of the player's choice
+/// (Kartenmaler, "Karte reinigen"), once per visit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ServiceView {
+    /// What it costs now (after discounts).
+    pub price: u32,
+    /// Used at this visit already.
+    pub used: bool,
+    /// Whether it can be used now on one of `targets`.
+    pub can_use: bool,
+    /// Cards of the edition it can work on now.
+    pub targets: Vec<u32>,
+}
+
+/// The Kartenmaler's choice, waiting for the player.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PainterView {
+    /// The card as it is now.
+    pub card: DeckCard,
+    /// The modifications to take one of.
+    pub options: Vec<PainterOptionView>,
+    /// Hired at the Werkstatt (an encounter) rather than the Tresen.
+    pub encounter: bool,
+}
+
+/// One modification of the Kartenmaler's choice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PainterOptionView {
+    /// Index for [`RunAction::ChoosePaint`].
+    pub index: usize,
+    /// The modification with its value.
+    pub card_mod: CardModInfo,
+    /// The card as it would be after taking it.
+    pub result: DeckCard,
+    /// The modification on the card it would replace (ask first).
+    pub replaces: Option<CardModId>,
+    /// Whether it would raise the same modification on the card.
+    pub raises: bool,
 }
 
 /// A relic on offer.
@@ -1131,6 +1207,7 @@ impl Run {
             game: self.game_view(content),
             shop: self.shop_view(content),
             encounter: self.encounter_view(content),
+            painter: self.painter_view(content),
             evening_relics: self
                 .evening_relics
                 .iter()
@@ -1277,6 +1354,123 @@ impl Run {
             reroll_cost: self.shop_price(content, content.run.economy.reroll_cost),
             can_reroll: self.accepts(content, RunAction::Reroll),
             rerolls: shop.rerolls,
+            card_offers: shop
+                .card_offers
+                .iter()
+                .enumerate()
+                .map(|(slot, offer)| {
+                    let offer = offer.as_ref()?;
+                    let card = self.edition.get(offer.card)?.clone();
+                    let (result, replaces, raises) =
+                        self.mod_result(content, offer.card, &offer.card_mod, offer.value);
+                    Some(CardOfferView {
+                        slot,
+                        result: result.unwrap_or_else(|| card.clone()),
+                        card,
+                        card_mod: Run::card_mod_info(content, &offer.card_mod, Some(offer.value)),
+                        price: self.shop_price(content, offer.price),
+                        can_buy: self.accepts(content, RunAction::BuyCardOffer(slot)),
+                        replaces,
+                        raises,
+                    })
+                })
+                .collect(),
+            card_reroll_cost: self.shop_price(content, self.card_reroll_price(content)),
+            can_reroll_cards: self.accepts(content, RunAction::RerollCardOffers),
+            card_rerolls: shop.card_rerolls,
+            painter: self.service_view(
+                content,
+                shop.painter_used,
+                content.run.shop.zinken.painter_price,
+                RunAction::HirePainter,
+            ),
+            cleanse: self.service_view(
+                content,
+                shop.cleansed,
+                content.run.shop.zinken.cleanse_price,
+                RunAction::CleanseCard,
+            ),
+        })
+    }
+
+    /// A card service of the Tresen: its price and the cards it takes now.
+    fn service_view(
+        &self,
+        content: &Content,
+        used: bool,
+        price: u32,
+        action: fn(u32) -> RunAction,
+    ) -> ServiceView {
+        let targets: Vec<u32> = if used {
+            Vec::new()
+        } else {
+            self.edition
+                .cards()
+                .iter()
+                .map(|c| c.id)
+                .filter(|&card| self.accepts(content, action(card)))
+                .collect()
+        };
+        ServiceView {
+            price: self.shop_price(content, price),
+            used,
+            can_use: !targets.is_empty(),
+            targets,
+        }
+    }
+
+    /// What `card_mod` with `value` would make of `card`: the card after,
+    /// the modification it replaces and whether it raises one. Tried on a
+    /// copy of the edition; `None` if the rules refuse it.
+    fn mod_result(
+        &self,
+        content: &Content,
+        card: u32,
+        card_mod: &CardModId,
+        value: i32,
+    ) -> (Option<DeckCard>, Option<CardModId>, bool) {
+        let before = self
+            .edition
+            .get(card)
+            .map(|c| c.mods.clone())
+            .unwrap_or_default();
+        let mut edition = self.edition.clone();
+        match edition.add_mod(content, card, card_mod, value) {
+            Ok(change) => {
+                let replaced = match change {
+                    crate::deck::DeckChange::Modified { replaced, .. } => replaced,
+                    _ => None,
+                };
+                let raises = replaced.is_none() && before.contains(card_mod);
+                (edition.get(card).cloned(), replaced, raises)
+            }
+            Err(_) => (None, None, false),
+        }
+    }
+
+    fn painter_view(&self, content: &Content) -> Option<PainterView> {
+        let painter = self.painter.as_ref()?;
+        let card = self.edition.get(painter.card)?.clone();
+        let options = painter
+            .options
+            .iter()
+            .enumerate()
+            .map(|(index, (card_mod, value))| {
+                let (result, replaces, raises) =
+                    self.mod_result(content, painter.card, card_mod, *value);
+                PainterOptionView {
+                    index,
+                    card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
+                    result: result.unwrap_or_else(|| card.clone()),
+                    replaces,
+                    raises,
+                }
+            })
+            .collect();
+        Some(PainterView {
+            card,
+            options,
+            encounter: painter.encounter,
         })
     }
 
@@ -1407,6 +1601,7 @@ impl Run {
                     option.choice,
                     EncounterChoice::MarkChosenCard
                         | EncounterChoice::CleanseChosenCard
+                        | EncounterChoice::Painter
                         | EncounterChoice::Gamble
                         | EncounterChoice::Lesson { .. }
                         | EncounterChoice::OldCards { .. }
@@ -1871,7 +2066,8 @@ mod tests {
 
     #[test]
     fn consumables_report_their_targets() {
-        let content = content();
+        // Frisches Deck is a legacy item since the Zinken (DESIGN 8.6).
+        let content = crate::run::legacy_content();
         let (mut run, _) = Run::new(&content, 5).expect("start");
         run.consumables = vec![ConsumableId::new("fresh_deck"), ConsumableId::new("herbal")];
         let view = run.view(&content);

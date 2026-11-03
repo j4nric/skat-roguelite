@@ -51,6 +51,7 @@ pub mod opponents;
 pub mod player;
 pub mod tour;
 pub mod view;
+pub mod zinken;
 
 mod settle;
 
@@ -453,6 +454,10 @@ pub enum EncounterChoice {
     /// Werkstatt: every modification off a card of the player's choice
     /// (target needed).
     CleanseChosenCard,
+    /// Werkstatt (since the Zinken at the Tresen, DESIGN 8.6): the
+    /// Kartenmaler for free on a card of the player's choice (target
+    /// needed); the encounter waits for [`RunAction::ChoosePaint`].
+    Painter,
     /// Loot of a Spelunke: take this relic into a free slot.
     TakeRelic(RelicId),
     /// Loot of a Spelunke, "Der Wirt spendiert": these Groschen.
@@ -529,7 +534,7 @@ pub struct ActiveEncounter {
 }
 
 /// The Tresen between two series. Bought items leave an empty slot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Shop {
     /// Relics on offer.
     pub relics: Vec<Option<RelicId>>,
@@ -541,6 +546,19 @@ pub struct Shop {
     /// down to the limit.
     #[serde(default)]
     pub on_credit: bool,
+    /// The Auslage (Zinken, DESIGN 8.6): concrete modifications on concrete
+    /// cards. Empty in saves from before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub card_offers: Vec<Option<zinken::CardOffer>>,
+    /// "Neu auslosen" of the Auslage bought during this visit.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub card_rerolls: u32,
+    /// The Kartenmaler worked at this visit (once per Tresen).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub painter_used: bool,
+    /// "Karte reinigen" was used at this visit (once per Tresen).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cleansed: bool,
 }
 
 /// Groschen paid for a won series. Serialized with its sum as `total`, so
@@ -706,8 +724,26 @@ pub enum RunAction {
     SellRelic(usize),
     /// Sell an owned consumable for half its price.
     SellConsumable(usize),
-    /// Neuauslage: draw a new offer.
+    /// Neuauslage: draw a new offer of relics and consumables (the
+    /// Auslage stays).
     Reroll,
+    /// Buy the offer of the Auslage in this slot (Zinken, DESIGN 8.6): its
+    /// modification with its value goes on its card. The same modification
+    /// on the card is raised, another one replaced.
+    BuyCardOffer(usize),
+    /// "Neu auslosen": draw the Auslage again. The price rises with every
+    /// further time at the same Tresen.
+    RerollCardOffers,
+    /// Hire the Kartenmaler (once per Tresen) for this card of the player's
+    /// edition (instance id): he draws modifications that fit it, the
+    /// player takes one ([`RunAction::ChoosePaint`]).
+    HirePainter(u32),
+    /// Take this option of the Kartenmaler's choice ([`Run::painter`]), at
+    /// the Tresen or the Werkstatt.
+    ChoosePaint(usize),
+    /// "Karte reinigen" (once per Tresen): every modification falls off
+    /// this card of the player's edition (instance id), curses included.
+    CleanseCard(u32),
     /// Leave the Tresen and start the next series.
     LeaveShop,
     /// "Die Oma" (and every other skat swap): in a hand game before the
@@ -904,6 +940,59 @@ pub enum RunEvent<G = Event<DealtCard>> {
     ShopRerolled {
         /// Price paid.
         cost: u32,
+    },
+    /// The Auslage was drawn (Zinken, DESIGN 8.6): when the Tresen opens
+    /// and after "Neu auslosen".
+    CardOffersDrawn {
+        /// The offers, by slot.
+        offers: Vec<Option<zinken::CardOffer>>,
+    },
+    /// An offer of the Auslage was bought. The `DeckChanged` that follows
+    /// shows the card.
+    CardOfferBought {
+        /// Slot of the Auslage.
+        slot: usize,
+        /// The card (instance id).
+        card: u32,
+        /// The modification.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+        /// Price paid.
+        price: u32,
+    },
+    /// "Neu auslosen" was paid; `CardOffersDrawn` follows.
+    CardOffersRerolled {
+        /// Price paid.
+        cost: u32,
+    },
+    /// The Kartenmaler took a card and drew the modifications to choose
+    /// from (at the Tresen, or free at the Werkstatt).
+    PainterHired {
+        /// The card (instance id).
+        card: u32,
+        /// The modifications with their values.
+        options: Vec<(CardModId, i32)>,
+        /// Price paid.
+        price: u32,
+    },
+    /// The player took a modification of the Kartenmaler. The
+    /// `DeckChanged` that follows shows the card.
+    PainterChosen {
+        /// The card (instance id).
+        card: u32,
+        /// The modification.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+    },
+    /// "Karte reinigen" at the Tresen was paid. The `DeckChanged` that
+    /// follows shows the card.
+    CardCleansed {
+        /// The card (instance id).
+        card: u32,
+        /// Price paid.
+        price: u32,
     },
     /// The player left the Tresen.
     ShopLeft,
@@ -1218,6 +1307,11 @@ pub enum RunError {
     ConsumablesLocked,
     /// No life is missing ("Konterbier").
     LivesFull,
+    /// The Kartenmaler waits for the player's choice
+    /// ([`RunAction::ChoosePaint`]); nothing else goes before it.
+    PainterPending,
+    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    AlreadyUsed,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1327,6 +1421,10 @@ pub enum RunErrorCode {
     ConsumablesLocked,
     /// No life is missing.
     LivesFull,
+    /// The Kartenmaler waits for the player's choice.
+    PainterPending,
+    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    AlreadyUsed,
 }
 
 impl RunErrorCode {
@@ -1381,6 +1479,8 @@ impl RunErrorCode {
             RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
             RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
             RunErrorCode::LivesFull => "LivesFull",
+            RunErrorCode::PainterPending => "PainterPending",
+            RunErrorCode::AlreadyUsed => "AlreadyUsed",
         }
     }
 }
@@ -1439,6 +1539,8 @@ impl RunError {
             RunError::NoLeadDemandLeft => RunErrorCode::NoLeadDemandLeft,
             RunError::ConsumablesLocked => RunErrorCode::ConsumablesLocked,
             RunError::LivesFull => RunErrorCode::LivesFull,
+            RunError::PainterPending => RunErrorCode::PainterPending,
+            RunError::AlreadyUsed => RunErrorCode::AlreadyUsed,
         }
     }
 }
@@ -1475,6 +1577,8 @@ impl fmt::Display for RunError {
             RunError::NoLeadDemandLeft => f.write_str("no lead can be demanded in this game"),
             RunError::ConsumablesLocked => f.write_str("the Schnäpse are locked in this pub"),
             RunError::LivesFull => f.write_str("no life is missing"),
+            RunError::PainterPending => f.write_str("the Kartenmaler waits for a choice"),
+            RunError::AlreadyUsed => f.write_str("already used at this Tresen"),
         }
     }
 }
@@ -1628,6 +1732,12 @@ pub struct Run {
     /// Fenster").
     #[serde(default, skip_serializing_if = "is_zero")]
     scout_legs: u32,
+    /// The Auslage and the Kartenmaler (Zinken, DESIGN 8.6).
+    #[serde(default = "Run::default_zinken_rng")]
+    zinken_rng: Rng,
+    /// The Kartenmaler's choice, waiting for the player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    painter: Option<zinken::PainterChoice>,
 }
 
 impl Run {
@@ -1741,6 +1851,8 @@ impl Run {
             spared_section: None,
             wager: None,
             scout_legs: 0,
+            zinken_rng: master.fork(),
+            painter: None,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -1815,6 +1927,7 @@ impl Run {
                 }
             }
         }
+        self.drop_unknown_zinken(content);
         if let Some(encounter) = self.encounter.as_mut() {
             encounter.options.retain(|o| match &o.choice {
                 EncounterChoice::TakeRule(id) | EncounterChoice::TakeRelic(id) => {
@@ -1854,6 +1967,11 @@ impl Run {
     /// Route generator of saves from before the Kneipentour.
     fn default_tour_rng() -> Rng {
         Rng::from_seed(0x4B4E_4549_5045_4E54)
+    }
+
+    /// Zinken generator of saves from before the Auslage ("ZINKEN").
+    fn default_zinken_rng() -> Rng {
+        Rng::from_seed(0x5A49_4E4B_454E_0000)
     }
 
     // -----------------------------------------------------------------------
@@ -2171,6 +2289,9 @@ impl Run {
         if self.ai_to_move().is_some() {
             return Err(RunError::AiToMove);
         }
+        if self.painter.is_some() && !matches!(action, RunAction::ChoosePaint(_)) {
+            return Err(RunError::PainterPending);
+        }
         match action {
             RunAction::Redeal => self.redeal_action(content, events),
             RunAction::PickUpSkat => self.pick_up_skat(events),
@@ -2188,6 +2309,11 @@ impl Run {
             RunAction::SellRelic(index) => self.sell_relic(content, index, events),
             RunAction::SellConsumable(index) => self.sell_consumable(content, index, events),
             RunAction::Reroll => self.reroll(content, events),
+            RunAction::BuyCardOffer(slot) => self.buy_card_offer(content, slot, events),
+            RunAction::RerollCardOffers => self.reroll_card_offers(content, events),
+            RunAction::HirePainter(card) => self.hire_painter(content, card, events),
+            RunAction::ChoosePaint(option) => self.choose_paint(content, option, events),
+            RunAction::CleanseCard(card) => self.cleanse_at_tresen(content, card, events),
             RunAction::LeaveShop => self.leave_shop(content, events),
             RunAction::TakeFromSkat { give, take } => self.take_from_skat(give, take, events),
             RunAction::SettleGame => self.settle_game(content, events),
@@ -3794,6 +3920,10 @@ impl Run {
             consumables: consumables.into_iter().map(Some).collect(),
             rerolls,
             on_credit: false,
+            card_offers: Vec::new(),
+            card_rerolls: 0,
+            painter_used: false,
+            cleansed: false,
         }
     }
 
@@ -4071,9 +4201,15 @@ impl Run {
             return Err(RunError::NotEnoughCoins);
         }
         self.pay(cost, events);
-        let on_credit = self.shop.as_ref().is_some_and(|s| s.on_credit);
+        let old = self.shop.take();
         let mut shop = self.draw_offer(content, rerolls + 1);
-        shop.on_credit = on_credit;
+        if let Some(old) = old {
+            shop.on_credit = old.on_credit;
+            shop.card_offers = old.card_offers;
+            shop.card_rerolls = old.card_rerolls;
+            shop.painter_used = old.painter_used;
+            shop.cleansed = old.cleansed;
+        }
         events.push(RunEvent::ShopRerolled { cost });
         events.push(RunEvent::ShopOpened {
             relics: shop.relics.clone(),
@@ -4570,16 +4706,8 @@ impl Run {
                 options.push(free(EncounterChoice::Heal(*lives)));
             }
             EncounterKind::Workshop => {
-                let pool = self.mod_pool(content, false);
-                if let Some(card_mod) = draw_weighted(&mut self.encounter_rng, pool, 1).pop() {
-                    let value = content.card_mod(&card_mod).map(CardModDef::default_value);
-                    options.push(EncounterOption {
-                        choice: EncounterChoice::MarkChosenCard,
-                        cost: 0,
-                        card_mod: Some(card_mod),
-                        value,
-                    });
-                }
+                // The Kartenmaler as at the Tresen, but free (DESIGN 8.6).
+                options.push(free(EncounterChoice::Painter));
                 options.push(free(EncounterChoice::CleanseChosenCard));
             }
             EncounterKind::RelicReward => {
@@ -4923,6 +5051,11 @@ impl Run {
                 let card = target.ok_or(RunError::TargetRequired)?;
                 let change = self.edition.cleanse(card)?;
                 events.push(RunEvent::DeckChanged(change));
+            }
+            EncounterChoice::Painter => {
+                // The encounter stays open until the player takes one.
+                let card = target.ok_or(RunError::TargetRequired)?;
+                return self.start_painter(content, card, chosen.cost, true, events);
             }
             EncounterChoice::TakeRelic(relic) => {
                 let slots = usize::try_from(content.relic_slots(self.character)).unwrap_or(0);
@@ -5342,3 +5475,5 @@ mod wave2_tests;
 mod wave2b_tests;
 #[cfg(test)]
 mod wave3_tests;
+#[cfg(test)]
+mod zinken_tests;
