@@ -205,7 +205,7 @@ fn null_ouvert_shows_the_hand() {
 
 #[test]
 fn the_show_off_demands_ouvert() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = null_run(&content, &["show_off"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let mut probe = run.clone();
@@ -309,7 +309,7 @@ fn the_landlord_lowers_tresen_prices() {
 
 #[test]
 fn granny_lets_the_player_take_a_jack_from_the_skat_once() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["granny"]);
     fixed_deal(&mut run, &content, JACKS_IN_SKAT, JACKS_IN_SKAT_SKAT);
     run.apply(
@@ -372,7 +372,7 @@ fn granny_lets_the_player_take_a_jack_from_the_skat_once() {
 
 #[test]
 fn twins_see_each_other_unless_the_referee_watches() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &[]);
     run.series.boss = Some(BossId::new("twins"));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -646,7 +646,7 @@ fn encounter_choices_change_the_run() {
         &mut run,
         "stammtisch_dispute",
         vec![
-            option(EncounterChoice::TakeRule(RelicId::new("bock_round")), 0),
+            option(EncounterChoice::TakeRule(RelicId::new("blind_eye")), 0),
             option(EncounterChoice::Leave, 0),
         ],
     );
@@ -659,13 +659,13 @@ fn encounter_choices_change_the_run() {
             },
         )
         .expect("take");
-    assert!(events.contains(&RunEvent::EveningRuleAdded(RelicId::new("bock_round"))));
-    assert_eq!(run.evening_relics(), &[RelicId::new("bock_round")]);
+    assert!(events.contains(&RunEvent::EveningRuleAdded(RelicId::new("blind_eye"))));
+    assert_eq!(run.evening_relics(), &[RelicId::new("blind_eye")]);
     assert!(run.relics().is_empty());
     assert!(
         run.sources(&content, false)
             .iter()
-            .any(|s| s.source == Source::Relic(RelicId::new("bock_round")))
+            .any(|s| s.source == Source::Relic(RelicId::new("blind_eye")))
     );
     // The evening ends with the section.
     run.series.index = 4;
@@ -773,7 +773,7 @@ fn encounter_choices_change_the_run() {
 fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
     let content = content();
     let start = RunStart {
-        locked_relics: vec![RelicId::new("bock_round"), RelicId::new("old_lady")],
+        locked_relics: vec![RelicId::new("all_rounder"), RelicId::new("old_lady")],
         ..RunStart::default()
     };
     let mut null_offered = false;
@@ -785,7 +785,7 @@ fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
             let shop = run.draw_offer(&content, rerolls);
             for id in shop.relics.iter().flatten() {
                 assert!(!start.locked_relics.contains(id));
-                null_offered |= id.as_str() == "blind_flight";
+                null_offered |= id.as_str() == "fat_sow";
             }
         }
     }
@@ -799,14 +799,14 @@ fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
     };
     let (declarer, _) = Run::new(&content, 1).expect("run");
     let pool = declarer.relic_pool(&content, false);
-    assert_eq!(weight(&pool, "blind_flight"), Some(300));
+    assert_eq!(weight(&pool, "fat_sow"), Some(300));
     assert_eq!(weight(&pool, "old_lady"), Some(300));
-    assert_eq!(weight(&pool, "bock_round"), Some(300));
+    assert_eq!(weight(&pool, "all_rounder"), Some(300));
     let run = null_run(&content, &[]);
     let pool = run.relic_pool(&content, false);
-    assert_eq!(weight(&pool, "blind_flight"), Some(1200));
+    assert_eq!(weight(&pool, "fat_sow"), Some(1200));
     assert_eq!(weight(&pool, "old_lady"), Some(150));
-    assert_eq!(weight(&pool, "bock_round"), Some(300));
+    assert_eq!(weight(&pool, "all_rounder"), Some(300));
     let mods = run.card_mod_pool(&content);
     let mod_weight = |id: &str| mods.iter().find(|(m, _)| m.as_str() == id).map(|&(_, w)| w);
     assert_eq!(mod_weight("points"), Some(50));
@@ -901,7 +901,7 @@ fn null_eight_fifteen_adds_eight_to_every_null() {
 
 #[test]
 fn safety_net_adds_a_level_to_a_won_null_with_the_skat() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = null_run(&content, &["safety_net"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Normal));
@@ -937,7 +937,7 @@ fn fat_sow_makes_every_ace_worth_sixteen() {
 
 #[test]
 fn glass_house_doubles_a_won_null_ouvert() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = null_run(&content, &["glass_house"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::OuvertHand));
@@ -957,7 +957,7 @@ fn glass_house_doubles_a_won_null_ouvert() {
 
 #[test]
 fn tally_stick_adds_two_base_value_per_won_null() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = null_run(&content, &["tally_stick"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));

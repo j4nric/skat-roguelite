@@ -28,8 +28,8 @@ use crate::content::{
 use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
-    Declaration, GameType, LeadSuit, NullRisk, NullScoring, RiskLevel, discardable_of,
-    suit_strength, trump_order_key,
+    Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
+    trump_order_key,
 };
 
 /// Everything a frontend shows of a run.
@@ -98,6 +98,21 @@ pub struct RunView {
     /// Consumables used for the next declared game ("Doppelkorn",
     /// "Magenbitter"), in the order used.
     pub pending_next_game: Vec<PendingNextGame>,
+    /// Changes waiting for the next pub ("Wegbier", "Der Skatlehrer",
+    /// "Kiebitz am Fenster").
+    pub next_pub: super::NextPubPlan,
+    /// Groschen owed at the Tresen ("Deckel anschreiben"), paid from the
+    /// next income.
+    pub debt: u32,
+    /// How far the Tresen would sell on credit now ("Deckel anschreiben"):
+    /// the limit minus the debt, 0 without credit or once used in this
+    /// district.
+    pub credit_left: u32,
+    /// The bet waiting for the next declared game ("Die Wette").
+    pub wager: Option<super::Wager>,
+    /// Route choices still to come whose exact stops are shown ("Kiebitz am
+    /// Fenster").
+    pub scout_legs: u32,
     /// The last scored game.
     pub last_score: Option<ScoreView>,
     /// The player's edition of the 32 cards (ADR 0015), in id order.
@@ -166,6 +181,11 @@ pub struct EncounterOptionView {
     /// The modification a card gets ("Der Kartengeber" and the like),
     /// known before the choice.
     pub card_mod: Option<CardModInfo>,
+    /// The curse that comes with it ("Alte Karten im Schrank", "Verlorenes
+    /// Portemonnaie"), known before the choice.
+    pub curse: Option<CardModInfo>,
+    /// The consumable it gives ("Der Wirt spendiert").
+    pub consumable: Option<ConsumableInfo>,
     /// Whether what the option gives is only drawn at random when it is
     /// chosen: a swap or a modification of a save from before they were
     /// drawn in advance. Then `new_relic` or `card_mod` is `None`.
@@ -272,6 +292,8 @@ pub struct RelicInfo {
     pub rarity: Rarity,
     /// Price at the Tresen.
     pub price: u32,
+    /// Display group (shape of the beer mat).
+    pub group: crate::content::RelicGroup,
 }
 
 /// A card modification as the player sees it.
@@ -309,7 +331,7 @@ pub struct ConsumableInfo {
     pub price: u32,
     /// Whether using it needs a target card of the deck (at the Tresen).
     pub needs_target: bool,
-    /// Whether using it needs a card of the hand and a suit ("Kreide"):
+    /// Whether using it needs a card of the hand and a suit ("Blue Curaçao"):
     /// one of [`OwnedConsumable::targets`] and any other suit than the
     /// card's own.
     pub needs_suit: bool,
@@ -352,7 +374,7 @@ pub struct OwnedConsumable {
     pub can_sell: bool,
     /// Whether it can be used now (with one of `targets` if it needs one).
     pub can_use: bool,
-    /// Card ids it can be used on now: deck cards, or for "Kreide" the
+    /// Card ids it can be used on now: deck cards, or for "Blue Curaçao" the
     /// cards of the hand.
     pub targets: Vec<u32>,
 }
@@ -439,7 +461,7 @@ pub struct CardView {
     /// The defender it was drawn from with the skat ("Drei drücken"),
     /// while discarding.
     pub drawn_from: Option<Seat>,
-    /// The printed suit of a card "Kreide" repainted for this game; the
+    /// The printed suit of a card "Blue Curaçao" repainted for this game; the
     /// card's `kind` is the suit it has now.
     pub chalked: Option<Suit>,
     /// Whether the player may put it into the skat now: only for hand
@@ -497,6 +519,17 @@ pub enum RevealSource {
     Onlooker,
     /// The player gave it back to this defender ("Drei drücken").
     Returned,
+}
+
+/// A Wandelkarte settled in the game in progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SettledWild {
+    /// Instance id.
+    pub card: u32,
+    /// The card it is until the end of the game.
+    pub kind: crate::cards::CardKind,
+    /// Its printed suit.
+    pub printed: Suit,
 }
 
 /// A card whose holder the player knows, and why.
@@ -627,6 +660,9 @@ pub struct GameView {
     /// "Durchsichtig" cards and the cards "Der Kiebitz" showed, with their
     /// holders.
     pub revealed: Vec<RevealedCard>,
+    /// The Wandelkarten settled as this game started (DESIGN 7.2), also
+    /// those already played: for the edition shown during the game.
+    pub wild_settled: Vec<SettledWild>,
     /// The boss rule in force in this game: the series' boss, for the
     /// Endboss "Der Alte" the rule of this game (with its edition).
     pub boss_rule: Option<BossInfo>,
@@ -665,15 +701,6 @@ pub struct GameView {
     /// Cards of the untouched skat the player was shown after declaring a
     /// hand game ("Spickzettel"), as long as they lie in the skat.
     pub skat_shown: Vec<CardView>,
-    /// Whether the player may name the next defender lead now
-    /// ([`RunAction::DemandLead`], "Lockvogel"), with one of
-    /// `lead_demand_options`.
-    pub can_demand_lead: bool,
-    /// What may be demanded in this game: trump (not in Null), then the
-    /// suits without the trump suit. Empty when no lead can be demanded.
-    pub lead_demand_options: Vec<LeadSuit>,
-    /// The demand waiting for the next defender lead, if any.
-    pub lead_demand: Option<LeadSuit>,
     /// Whether "Drei drücken" draws a card at the next pickup of the skat
     /// (once per series; [`Run::discard_three_ready`]).
     pub discard_three_ready: bool,
@@ -883,6 +910,7 @@ impl Run {
             played: None,
             result: None,
             games_left: self.series.games_left(),
+            transport: None,
         };
         mods.iter()
             .filter_map(|id| {
@@ -901,6 +929,7 @@ impl Run {
                 text: def.text.clone(),
                 rarity: def.rarity,
                 price: def.price,
+                group: def.group,
             },
             None => RelicInfo {
                 id: id.clone(),
@@ -909,6 +938,7 @@ impl Run {
                 text: String::new(),
                 rarity: Rarity::Common,
                 price: 0,
+                group: crate::content::RelicGroup::Value,
             },
         }
     }
@@ -1134,6 +1164,11 @@ impl Run {
                     effect: *effect,
                 })
                 .collect(),
+            next_pub: self.next_pub,
+            debt: self.debt,
+            credit_left: self.credit_left(content),
+            wager: self.wager.clone(),
+            scout_legs: self.scout_legs,
             last_score: self.last_score.as_ref().map(|b| ScoreView {
                 breakdown: b.clone(),
                 steps: b.steps(),
@@ -1207,6 +1242,19 @@ impl Run {
             can_sell: self.accepts(content, RunAction::SellConsumable(slot)),
             can_use,
             targets,
+        }
+    }
+
+    /// How far the Tresen would sell on credit now: the limit minus the
+    /// debt, 0 once the credit of this district is used up.
+    fn credit_left(&self, content: &Content) -> u32 {
+        let limit = self.credit_limit(content);
+        let open = self.shop.as_ref().is_some_and(|s| s.on_credit)
+            || self.credit_section != Some(self.way_section());
+        if open {
+            limit.saturating_sub(self.debt)
+        } else {
+            0
         }
     }
 
@@ -1376,7 +1424,11 @@ impl Run {
             .map(|(index, option)| {
                 let needs_target = matches!(
                     option.choice,
-                    EncounterChoice::MarkChosenCard | EncounterChoice::CleanseChosenCard
+                    EncounterChoice::MarkChosenCard
+                        | EncounterChoice::CleanseChosenCard
+                        | EncounterChoice::Gamble
+                        | EncounterChoice::Lesson { .. }
+                        | EncounterChoice::OldCards { .. }
                 );
                 let relic = match &option.choice {
                     EncounterChoice::TakeRule(id)
@@ -1396,11 +1448,29 @@ impl Run {
                     option.choice,
                     EncounterChoice::MarkRandomCard | EncounterChoice::MarkChosenCard
                 );
+                let names_mod = marks
+                    || matches!(
+                        option.choice,
+                        EncounterChoice::Gamble
+                            | EncounterChoice::Lesson { .. }
+                            | EncounterChoice::OldCards { .. }
+                    );
                 let card_mod = option
                     .card_mod
                     .as_ref()
-                    .filter(|_| marks)
+                    .filter(|_| names_mod)
                     .map(|id| Run::card_mod_info(content, id, option.value));
+                let curse = match &option.choice {
+                    EncounterChoice::OldCards { curse, .. }
+                    | EncounterChoice::KeepWallet { curse, .. } => {
+                        Some(Run::card_mod_info(content, curse, None))
+                    }
+                    _ => None,
+                };
+                let consumable = match &option.choice {
+                    EncounterChoice::TakeConsumable(id) => Some(Run::consumable_info(content, id)),
+                    _ => None,
+                };
                 let random_gain = match &option.choice {
                     EncounterChoice::SwapRelic { new, .. } => new.is_none(),
                     _ => marks && card_mod.is_none(),
@@ -1441,6 +1511,8 @@ impl Run {
                     relic,
                     new_relic,
                     card_mod,
+                    curse,
+                    consumable,
                     random_gain,
                     can_choose,
                     needs_target,
@@ -1613,6 +1685,18 @@ impl Run {
             )
             .then(|| self.declare_options(content)),
             revealed,
+            wild_settled: active
+                .named
+                .iter()
+                .filter_map(|&(card, printed)| {
+                    let kind = game.deck_cards().iter().find(|c| c.id == card)?.kind;
+                    Some(SettledWild {
+                        card,
+                        kind,
+                        printed,
+                    })
+                })
+                .collect(),
             boss_rule: active
                 .boss_rule
                 .as_ref()
@@ -1633,30 +1717,8 @@ impl Run {
                 .filter(|c| skat.contains(c))
                 .map(|&c| self.card_view(content, c))
                 .collect(),
-            can_demand_lead: self.can_demand_lead(content),
-            lead_demand_options: if active.rules.lead_demands > 0 {
-                declaration.map_or_else(Vec::new, |d| LeadSuit::options(d.game()))
-            } else {
-                Vec::new()
-            },
-            lead_demand: game.lead_demand(),
             discard_three_ready: self.discard_three_ready(),
         })
-    }
-
-    /// Whether some lead can be demanded now ("Lockvogel"): tried with
-    /// each option on a copy of the run.
-    fn can_demand_lead(&self, content: &Content) -> bool {
-        let Some(active) = &self.game else {
-            return false;
-        };
-        let Some(declaration) = active.game.declaration() else {
-            return false;
-        };
-        active.rules.lead_demands > active.lead_demands_used
-            && LeadSuit::options(declaration.game())
-                .into_iter()
-                .any(|suit| self.accepts(content, RunAction::DemandLead(suit)))
     }
 
     /// The modification that shows the holder of `card` ("Durchsichtig"):
@@ -1835,9 +1897,9 @@ mod tests {
     fn consumables_report_their_targets() {
         let content = content();
         let (mut run, _) = Run::new(&content, 5).expect("start");
-        run.consumables = vec![ConsumableId::new("fresh_deck"), ConsumableId::new("beer")];
+        run.consumables = vec![ConsumableId::new("fresh_deck"), ConsumableId::new("herbal")];
         let view = run.view(&content);
-        // In a game: the beer works, the fresh deck only at the Tresen.
+        // In a game: Kräuter works, the fresh deck only at the Tresen.
         assert!(!view.consumables[0].can_use);
         assert!(view.consumables[0].consumable.needs_target);
         assert!(view.consumables[1].can_use);

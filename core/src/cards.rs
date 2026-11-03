@@ -364,7 +364,7 @@ pub trait PlayingCard: Copy + Eq + Ord + Hash + fmt::Debug + fmt::Display {
     }
 
     /// The same card with another suit and the same rank, everything else
-    /// kept ("Kreide", "Wandelkarte"). A blank stays a blank.
+    /// kept ("Blue Curaçao", "Wandelkarte"). A blank stays a blank.
     #[must_use]
     fn with_suit(self, suit: Suit) -> Self;
 

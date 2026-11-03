@@ -4361,6 +4361,7 @@ button.card {
   position: absolute;
   bottom: -4px;
   left: 50%;
+  white-space: nowrap;
   padding: 1px 4px;
   border: 2px solid var(--line);
   background: var(--accent);
@@ -6341,6 +6342,40 @@ button.skat-card {
 .route-reward {
   font-size: var(--fs-xs);
   color: #1b4a4c;
+}
+
+/* Item review (02.11.2026): what the Kiebitz am Fenster saw, what is
+   prepared for the next pub, the malus choice of the Spelunkenkenner. */
+.route-scout,
+.route-plan-note,
+.route-malus-pick {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  line-height: 1.1;
+  color: #1b4a4c;
+}
+
+.route-malus-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.route-malus-pick small {
+  flex-basis: 100%;
+  color: #2a2320;
+}
+
+.route-malus-pick .btn.is-picked {
+  background: #7a2232;
+  color: #fbf6e8;
+}
+
+.shop-debt {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  color: #f1b48a;
 }
 
 .route-faces {

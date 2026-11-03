@@ -2,6 +2,14 @@
 // Jedes Relikt und jeder Charakter, der hier als Belohnung steht, ist bis
 // dahin gesperrt; der Tresen bietet nur Freigeschaltetes an. Der Simulator
 // prüft die Erreichbarkeit mit `--unlocks`.
+//
+// Gegenstands-Review (02.11.2026): Neun Belohnungen zeigten auf entfernte
+// Relikte und zeigen jetzt auf behaltene oder neue (DESIGN 9.3): Aus der
+// Hand → Spickzettel, Dickes Ding → Stammtischkasse, Grand Schneider →
+// Stichfest, Ohne Einmischen → Schutzengel, Omas Liebling → Deckel
+// anschreiben, Neues Viertel → Monatskarte, Lehrjahre → Spelunkenkenner,
+// Den Peter los → Luschenkönig, Trocken gekontert → Stammfarbe. Wer eine
+// davon schon verdient hat, hat das neue Relikt frei.
 [
     (
         id: "second_evening",
@@ -25,21 +33,21 @@
         name: "Aus der Hand",
         text: "Gewinne ein Handspiel.",
         condition: WinGame(min_risk: Some(Hand)),
-        rewards: [Relic("ouvert_bonus")],
+        rewards: [Relic("crib_sheet")],
     ),
     (
         id: "big_game",
         name: "Dickes Ding",
         text: "Gewinne ein Spiel, das mindestens 96 Punkte zählt.",
         condition: WinGame(min_value: 96),
-        rewards: [Relic("kontra")],
+        rewards: [Relic("kitty")],
     ),
     (
         id: "grand_schneider",
         name: "Grand Schneider",
         text: "Gewinne einen Grand Schneider.",
         condition: WinGame(game: Some(Grand), schneider: true),
-        rewards: [Relic("march_through")],
+        rewards: [Relic("watertight")],
     ),
     (
         id: "early_finish",
@@ -56,14 +64,14 @@
         name: "Ohne Einmischen",
         text: "Schlage einen Boss, ohne in seiner Kneipe einzumischen.",
         condition: BeatBoss(without_redeal: true),
-        rewards: [Relic("referee")],
+        rewards: [Relic("guardian_angel")],
     ),
     (
         id: "beat_grandma",
         name: "Omas Liebling",
         text: "Schlage den Boss Die Oma.",
         condition: BeatBoss(boss: Some("grandma")),
-        rewards: [Relic("granny")],
+        rewards: [Relic("slate")],
     ),
     (
         id: "tour_won",
@@ -80,14 +88,14 @@
         name: "Neues Viertel",
         text: "Erreiche Stadtteil 2.",
         condition: ReachSection(2),
-        rewards: [Relic("regular_guest")],
+        rewards: [Relic("season_ticket")],
     ),
     (
         id: "apprenticeship",
         name: "Lehrjahre",
         text: "Spiele fünf Runs zu Ende, gewonnen oder verloren.",
         condition: RunsFinished(5),
-        rewards: [Relic("tuition")],
+        rewards: [Relic("dive_expert")],
     ),
     (
         id: "big_win",
@@ -101,14 +109,14 @@
         name: "Den Peter los",
         text: "Schlage den Boss Der Schwarze Peter.",
         condition: BeatBoss(boss: Some("black_peter")),
-        rewards: [Relic("schneider_bock")],
+        rewards: [Relic("blank_king")],
     ),
     (
         id: "beat_kontra_hans",
         name: "Trocken gekontert",
         text: "Schlage den Boss Der Kontra-Hans.",
         condition: BeatBoss(boss: Some("kontra_hans")),
-        rewards: [Relic("high_and_dry")],
+        rewards: [Relic("home_suit")],
     ),
     (
         id: "grand_hand",

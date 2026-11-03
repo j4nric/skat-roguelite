@@ -1025,12 +1025,12 @@ mod option_tests {
         assert_eq!(stats.coins_spent, 0);
         assert!(stats.relics.values().all(|r| r.bought == 0));
         let options = Options {
-            without: vec![RelicId::new("bock_round")],
+            without: vec![RelicId::new("old_lady")],
             ..Options::default()
         };
         let content = options.content(&base).expect("content");
         let stats = simulate(&content, &options, 3, 40).expect("runs");
-        assert!(!stats.relics.contains_key(&RelicId::new("bock_round")));
+        assert!(!stats.relics.contains_key(&RelicId::new("old_lady")));
         let bad = Options {
             without: vec![RelicId::new("nope")],
             ..Options::default()
@@ -1096,13 +1096,13 @@ mod option_tests {
         let base = content();
         let plain = simulate(&base, &Options::default(), 8, 20).expect("runs");
         let options = Options {
-            relics: vec![RelicId::new("ouvert_bonus")],
+            relics: vec![RelicId::new("crib_sheet")],
             no_shop: true,
             ..Options::default()
         };
         let with = simulate(&base, &options, 8, 20).expect("runs");
         assert_eq!(with.runs, plain.runs);
-        assert!(render(&with, &base, &options, 0).contains("relic=ouvert_bonus"));
+        assert!(render(&with, &base, &options, 0).contains("relic=crib_sheet"));
     }
 
     #[test]

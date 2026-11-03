@@ -10,7 +10,7 @@ import type { EncounterOptionView, RunView } from '../types';
 import { modIcon } from './cards';
 import { attrs, esc } from './dom';
 import { coinIcon, heart } from './hud';
-import { relicCoaster } from './emblems';
+import { consumableCoaster, relicCoaster } from './emblems';
 import { encounterFaces, portrait } from './people';
 
 /** A beer glass, for "Letzte Runde". */
@@ -41,6 +41,13 @@ function modLine(o: EncounterOptionView): string {
   return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.cardMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span></span></span>`;
 }
 
+/** The curse that comes with an option (Alte Karten, Portemonnaie). */
+function curseLine(o: EncounterOptionView): string {
+  const mod = o.curse;
+  if (!mod) return '';
+  return `<span class="enc-mod is-curse" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(t(de.encounter.curseMod, { mod: contentName('card_mods', mod.id) || mod.name }))}</b><span class="curse-tag">${esc(de.card.curse)}</span><span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span></span></span>`;
+}
+
 /** Title, hint and picture of one option. */
 function optionParts(o: EncounterOptionView): { title: string; hint: string; pic: string; cls: string; extra: string } {
   const c = o.choice;
@@ -48,6 +55,7 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
   if (c === 'MarkRandomCard') return { title: de.encounter.markRandom, hint: de.encounter.markRandomHint, pic: markedCard(false), cls: '', extra: modLine(o) };
   if (c === 'MarkChosenCard') return { title: de.encounter.markChosen, hint: de.encounter.markChosenHint, pic: markedCard(true), cls: '', extra: modLine(o) };
   if (c === 'CleanseChosenCard') return { title: de.encounter.cleanse, hint: de.encounter.cleanseHint, pic: markedCard(true), cls: '', extra: '' };
+  if (c === 'Gamble') return { title: de.encounter.gamble, hint: de.encounter.gambleHint, pic: markedCard(true), cls: '', extra: modLine(o) };
   if ('DoubleNextGame' in c) {
     return { title: de.encounter.double, hint: t(de.encounter.doubleHint, { factor: c.DoubleNextGame }), pic: glass(), cls: '', extra: '' };
   }
@@ -55,7 +63,35 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
     return { title: de.encounter.heal, hint: t(de.encounter.healHint, { n: c.Heal, max: maxLives }), pic: heart(true, 34), cls: 'is-heal', extra: '' };
   }
   if ('TakeCoins' in c) {
-    return { title: t(de.encounter.takeCoins, { coins: c.TakeCoins }), hint: de.encounter.takeCoinsHint, pic: coinIcon(34), cls: '', extra: '' };
+    const hint = encounterId === 'landlord_treat' ? de.encounter.treatCoinsHint : de.encounter.takeCoinsHint;
+    return { title: t(de.encounter.takeCoins, { coins: c.TakeCoins }), hint, pic: coinIcon(34), cls: '', extra: '' };
+  }
+  if ('TakeConsumable' in c) {
+    const id = c.TakeConsumable;
+    const item = o.consumable ?? { id, category: 'Schnapps' as const };
+    return {
+      title: t(de.encounter.takeConsumable, { name: contentName('consumables', id) }),
+      hint: o.can_choose ? contentText('consumables', id) : de.encounter.takeConsumableFull,
+      pic: `<span class="enc-coaster">${consumableCoaster(item, { size: 44 })}</span>`,
+      cls: 'is-rule',
+      extra: '',
+    };
+  }
+  if ('KeepWallet' in c) {
+    return { title: t(de.encounter.keepWallet, { coins: c.KeepWallet.coins }), hint: de.encounter.keepWalletHint, pic: coinIcon(34), cls: '', extra: curseLine(o) };
+  }
+  if ('Lesson' in c) {
+    return { title: de.encounter.lesson, hint: t(de.encounter.lessonHint, { n: c.Lesson.redeals }), pic: markedCard(true), cls: '', extra: modLine(o) };
+  }
+  if ('Wager' in c) {
+    return { title: t(de.encounter.wager, { stake: o.cost }), hint: t(de.encounter.wagerHint, { payout: o.cost * c.Wager.factor }), pic: coinIcon(34), cls: '', extra: '' };
+  }
+  if ('OldCards' in c) {
+    return { title: de.encounter.oldCards, hint: de.encounter.oldCardsHint, pic: markedCard(true), cls: '', extra: modLine(o) + curseLine(o) };
+  }
+  if ('Scout' in c) return { title: de.encounter.scout, hint: t(de.encounter.scoutHint, { n: c.Scout }), pic: door(), cls: '', extra: '' };
+  if ('NextPubRedeals' in c) {
+    return { title: de.encounter.nextPubRedeals, hint: t(de.encounter.nextPubRedealsHint, { n: c.NextPubRedeals }), pic: glass(), cls: '', extra: '' };
   }
   const relic = o.relic;
   const id = relic?.id ?? ('TakeRule' in c ? c.TakeRule : 'TakeRelic' in c ? c.TakeRelic : c.SwapRelic.relic);
@@ -82,6 +118,8 @@ function optionParts(o: EncounterOptionView): { title: string; hint: string; pic
 
 /** Most lives a player can hold, for the Rast's hint (set per render). */
 let maxLives = 5;
+/** The open encounter's id (set per render). */
+let encounterId = '';
 
 function optionCard(o: EncounterOptionView, i: number): string {
   const p = optionParts(o);
@@ -105,6 +143,7 @@ export function renderEncounter(view: RunView): string {
     .map((f) => portrait(f, 'portrait-enc'))
     .join('');
   maxLives = view.tour.max_lives;
+  encounterId = e.id;
   const options = e.options.map(optionCard).join('');
   return `<main class="encounter" data-testid="encounter" ${attrs({ 'data-encounter': e.id })}>
     <div class="enc-wall">

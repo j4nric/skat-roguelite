@@ -73,7 +73,7 @@ import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
-import { discardNeed, leadSuitName, renderTable } from './ui/table';
+import { discardNeed, renderTable } from './ui/table';
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
 function errorCode(err: unknown): string | null {
@@ -203,7 +203,6 @@ export class App {
     pickNullRisk: null,
     omaPick: false,
     swapTake: null,
-    lurePick: false,
     peekTrick: false,
     routePick: null,
     routeLeg: '',
@@ -786,7 +785,6 @@ export class App {
     this.ui.pickNullRisk = null;
     this.ui.omaPick = false;
     this.ui.swapTake = null;
-    this.ui.lurePick = false;
     this.ui.peekTrick = false;
   }
 
@@ -983,6 +981,10 @@ export class App {
           sound.play('knock');
         }
         if (ev === 'EveningRulesEnded') this.showToast(de.toast.eveningEnded);
+        if (ev === 'RoutesRerolled') {
+          this.showToast(de.toast.routesRerolled);
+          sound.play('card');
+        }
         continue;
       }
       if ('CardPeeked' in ev) {
@@ -1161,6 +1163,64 @@ export class App {
         }
         continue;
       }
+      if ('DebtChanged' in ev) {
+        const debt = ev.DebtChanged.debt;
+        const took = (before?.debt ?? 0) < debt;
+        this.showToast(took ? t(de.toast.debt, { debt }) : debt === 0 ? de.toast.debtPaid : t(de.toast.debtLeft, { debt }));
+        continue;
+      }
+      if ('LifeSpared' in ev) {
+        const src = ev.LifeSpared.source;
+        const name = typeof src === 'object' && 'Relic' in src ? contentName('relics', src.Relic) : '';
+        this.wiggleSource(src);
+        this.showToast(t(de.toast.lifeSpared, { name }), 'top');
+        sound.play('clink');
+        continue;
+      }
+      if ('CoinsStashed' in ev) {
+        const { source, amount, pot } = ev.CoinsStashed;
+        const name = typeof source === 'object' && 'Relic' in source ? contentName('relics', source.Relic) : '';
+        this.wiggleSource(source);
+        this.showToast(t(de.toast.stashed, { name, amount, pot }));
+        sound.play('coin');
+        continue;
+      }
+      if ('NextPubPlanned' in ev) {
+        const { redeals, target } = ev.NextPubPlanned;
+        const parts: string[] = [];
+        if (redeals) parts.push(t(de.toast.nextPubRedeals, { n: redeals > 0 ? `+${redeals}` : `−${-redeals}` }));
+        if (target) parts.push(t(de.toast.nextPubTarget, { n: target > 0 ? `+${target}` : `−${-target}` }));
+        if (parts.length) this.showToast(t(de.toast.nextPub, { parts: parts.join(', ') }));
+        continue;
+      }
+      if ('WagerPlaced' in ev) {
+        this.showToast(t(de.toast.wagerPlaced, { stake: ev.WagerPlaced.stake }));
+        sound.play('coin');
+        continue;
+      }
+      if ('WagerSettled' in ev) {
+        const { stake, won, payout } = ev.WagerSettled;
+        this.showToast(won ? t(de.toast.wagerWon, { payout }) : t(de.toast.wagerLost, { stake }), 'top');
+        continue;
+      }
+      if ('StopsRevealed' in ev) {
+        this.showToast(t(de.toast.stopsRevealed, { n: ev.StopsRevealed.legs }));
+        continue;
+      }
+      if ('MalusChosen' in ev) {
+        this.showToast(t(de.toast.malusChosen, { name: contentName('maluses', ev.MalusChosen.malus) }));
+        continue;
+      }
+      if ('GambleResolved' in ev) {
+        this.showToast(ev.GambleResolved.curse ? de.toast.gambleCurse : de.toast.gambleGood, 'top');
+        sound.play(ev.GambleResolved.curse ? 'lose' : 'clink');
+        continue;
+      }
+      if ('ConsumableGained' in ev) {
+        this.showToast(t(de.toast.consumableGained, { name: contentName('consumables', ev.ConsumableGained.consumable) }));
+        sound.play('clink');
+        continue;
+      }
       if ('SeriesStarted' in ev && ev.SeriesStarted.boss && after.series.boss) {
         this.ui.view = after;
         this.ui.anim = null;
@@ -1304,11 +1364,6 @@ export class App {
         this.render();
       }
       this.showToast(t(de.toast.cardReturned, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
-      return;
-    }
-    if ('LeadDemanded' in ev) {
-      this.showToast(t(de.toast.leadDemanded, { suit: leadSuitName(ev.LeadDemanded.suit) }), 'top');
-      sound.play('knock');
       return;
     }
     if ('Discarded' in ev && anim) {
@@ -2161,21 +2216,9 @@ export class App {
         else void this.act({ Discard: [a, b] });
         return;
       }
-      case 'lure':
-        this.ui.lurePick = true;
-        this.render();
+      case 'choose-malus':
+        void this.act({ ChooseMalus: { option: num('option'), malus: num('malus') } });
         return;
-      case 'lure-cancel':
-        this.ui.lurePick = false;
-        this.render();
-        return;
-      case 'lure-suit': {
-        const lead = el.dataset.lead;
-        const suit = view.game?.lead_demand_options?.find((o) => (o === 'Trump' ? 'Trump' : o.Suit) === lead);
-        this.ui.lurePick = false;
-        if (suit) void this.act({ DemandLead: suit });
-        return;
-      }
       case 'play':
         this.playCard(num('id'), el.getBoundingClientRect(), null);
         return;

@@ -245,43 +245,8 @@ fn every_curse_pays_groschen_when_attached() {
 
 #[test]
 fn announced_curses_name_the_curse_and_pay() {
-    // Der Falschspieler: the curse is drawn when it opens, both options
-    // name it, the random card pays 3 Groschen.
-    let content = only_encounter("card_sharp");
-    for character in Character::ALL {
-        let mut seen = BTreeSet::new();
-        for seed in 0..60 {
-            let mut run = shop_run(&content, seed, character);
-            run.shop = None;
-            let mut events = Vec::new();
-            assert!(run.open_random_encounter(&content, &mut events));
-            let options = run.encounter().expect("open").options.clone();
-            assert_eq!(options.len(), 3);
-            let curse = options[0].card_mod.clone().expect("named");
-            assert!(is_curse(&content, &curse), "{curse}");
-            assert_eq!(options[1].card_mod.as_ref(), Some(&curse));
-            assert_eq!(options[1].cost, 4);
-            seen.insert(curse.clone());
-            let events = run
-                .apply(
-                    &content,
-                    RunAction::ChooseEncounter {
-                        option: 0,
-                        target: None,
-                    },
-                )
-                .expect("random card");
-            assert_eq!(attached(&events), vec![curse]);
-            assert_eq!(run.coins(), 3, "seed {seed}");
-        }
-        // Every curse of the character's pool can come.
-        let pool: Vec<CardModId> = shop_run(&content, 0, character)
-            .mod_pool(&content, true)
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
-        assert_eq!(seen.into_iter().collect::<Vec<_>>(), pool, "{character}");
-    }
+    // The Falschspieler (since 02.11.2026 "am Nebentisch", a gamble) is
+    // tested in `items_tests`.
     // Umgekipptes Bier: the Bierfleck on a random card pays 3 Groschen.
     let content = only_encounter("spilled_beer");
     let mut run = shop_run(&content, 5, Character::Declarer);

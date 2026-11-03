@@ -19,15 +19,13 @@ import { swallowClick } from './press';
 export type InfoMode = 'sheet' | 'popover';
 
 /**
- * Matches the glossary terms of `de.keywordForms` as whole words. Two terms
- * have an everyday sense that is no keyword: "Stufe höher" of a card's rank
- * (Gezinkt) and "deine Hand" (the cards held).
+ * Matches the glossary terms of `de.keywordForms` as whole words. "Hand"
+ * has an everyday sense that is no keyword: "deine Hand" (the cards held).
  */
 function keywordPattern(): RegExp {
   const forms = Object.keys(de.keywordForms)
     .sort((a, b) => b.length - a.length)
     .map((w) => {
-      if (/^Stufen?$/.test(w)) return `${w}(?! höher)`;
       if (w === 'Hand') return `(?<!deine |seine |meine |ihre |die |der )Hand`;
       return w;
     });

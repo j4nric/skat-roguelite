@@ -48,7 +48,7 @@ export interface CardView extends DealtCard {
    * a "Ramponiert" card only when fewer than two others are left).
    */
   discardable: boolean;
-  /** "Kreide": the printed suit of a card repainted for this game; `kind` is the suit it has now. */
+  /** "Blue Curaçao": the printed suit of a card repainted for this game; `kind` is the suit it has now. */
   chalked?: Suit | null;
   /**
    * Once the game is declared: whether each conditional modification on
@@ -189,6 +189,9 @@ export interface GuestInfo {
   back?: string;
 }
 
+/** Display group of a relic (shape of its beer mat), from the content. */
+export type RelicGroup = 'Value' | 'Multiplier' | 'Control' | 'Tour';
+
 export interface RelicInfo {
   id: string;
   kind: RelicKind;
@@ -196,6 +199,8 @@ export interface RelicInfo {
   text: string;
   rarity: Rarity;
   price: number;
+  /** Absent in an older core: Value. */
+  group?: RelicGroup;
 }
 
 export interface CardModInfo {
@@ -221,7 +226,7 @@ export interface ConsumableInfo {
   price: number;
   /** Needs a deck card (at the Tresen). */
   needs_target: boolean;
-  /** "Kreide": needs a card of the hand (one of `targets`) and another suit. */
+  /** "Blue Curaçao": needs a card of the hand (one of `targets`) and another suit. */
   needs_suit?: boolean;
   category?: ConsumableCategory;
 }
@@ -372,6 +377,8 @@ export interface GameView {
   win_threshold: number;
   declare: DeclareOptions | null;
   revealed: RevealedCard[];
+  /** "Wandelkarte": the cards settled as this game started, played ones too (absent in old views). */
+  wild_settled?: { card: number; kind: CardKind; printed: Suit }[];
   /** The boss rule of this game (for "Der Alte" the rule laid on this game). */
   boss_rule: BossInfo | null;
   /** Card back per seat (ADR 0015): null for the player (his own choice), the opponent's back otherwise. */
@@ -401,13 +408,7 @@ export interface GameView {
   discard_count?: number;
   /** Skat cards "Spickzettel" showed after a hand declaration, while they lie in the skat. */
   skat_shown?: CardView[];
-  /** "Lockvogel": the player may name the next defender lead now (RunAction `DemandLead`). */
-  can_demand_lead?: boolean;
-  /** "Lockvogel": what may be named in this game; empty without the relic. */
-  lead_demand_options?: LeadSuit[];
-  /** "Lockvogel": the demand waiting for the next defender lead. */
-  lead_demand?: LeadSuit | null;
-  /** "Drei drücken" (once per series) draws a card at the next pickup of the skat. */
+  /** "Drei drücken" (first game of each pub) draws a card at the next pickup of the skat. */
   discard_three_ready?: boolean;
 }
 
@@ -564,6 +565,15 @@ export type EncounterChoice =
   /** Loot of a Spelunke: the relic into a free slot, or Groschen instead. */
   | { TakeRelic: string }
   | { TakeCoins: number }
+  /** Item review (02.11.2026). */
+  | { TakeConsumable: string }
+  | 'Gamble'
+  | { KeepWallet: { coins: number; curse: string } }
+  | { Lesson: { redeals: number } }
+  | { Wager: { factor: number } }
+  | { OldCards: { voucher: string; curse: string } }
+  | { Scout: number }
+  | { NextPubRedeals: number }
   | 'Leave';
 
 export interface EncounterOptionView {
@@ -575,6 +585,10 @@ export interface EncounterOptionView {
   new_relic: RelicInfo | null;
   /** The modification a card gets, known before the choice. */
   card_mod: CardModInfo | null;
+  /** The curse that comes with it (Alte Karten, Portemonnaie). */
+  curse?: CardModInfo | null;
+  /** The Schnaps it gives (Der Wirt spendiert). */
+  consumable?: ConsumableInfo | null;
   /** What the option gives is only drawn when it is chosen. */
   random_gain: boolean;
   can_choose: boolean;
@@ -628,8 +642,18 @@ export interface RunView {
   evening_relics: RelicInfo[];
   /** Factor waiting for the next declared game ("Letzte Runde"). */
   pending_factor: number | null;
-  /** Schnäpse waiting for the next declared game ("Doppelkorn", "Magenbitter"). */
+  /** Schnäpse waiting for the next declared game ("Doppelkorn"). */
   pending_next_game?: PendingNextGame[];
+  /** Changes waiting for the next pub (Wegbier, Skatlehrer, Kiebitz am Fenster). */
+  next_pub?: NextPubPlan;
+  /** Groschen owed at the Tresen ("Deckel anschreiben"). */
+  debt?: number;
+  /** How far the Tresen sells on credit now. */
+  credit_left?: number;
+  /** The bet on the next declared game ("Die Wette"). */
+  wager?: { encounter: string; stake: number; factor: number } | null;
+  /** Route choices still to come whose stops are shown (Kiebitz am Fenster). */
+  scout_legs?: number;
   last_score: ScoreView | null;
   /** The player's edition of the 32 cards (ADR 0015). */
   edition: DeckCard[];
@@ -669,6 +693,12 @@ export interface PubPreview {
   malus: MalusInfo | null;
 }
 
+/** Changes waiting for the next pub. */
+export interface NextPubPlan {
+  redeals: number;
+  target: number;
+}
+
 export interface RouteOptionView {
   /** Stable node id of the way (`d0-p3-r1`). */
   id: string;
@@ -677,9 +707,12 @@ export interface RouteOptionView {
   /** Decorative travel time. */
   minutes: number;
   can_choose: boolean;
-  stops: { category: StopCategory }[];
+  /** `encounter` only while "Kiebitz am Fenster" scouts. */
+  stops: { category: StopCategory; encounter?: { id: string; name: string } | null }[];
   /** The Spelunke it leads into instead of the next pub. */
   spelunke: PubPreview | null;
+  /** "Spelunkenkenner": maluses to choose from (RunAction `ChooseMalus`); empty without. */
+  malus_options?: MalusInfo[];
 }
 
 export interface RouteView {
@@ -759,7 +792,7 @@ export type GameEvent =
   | { CardDrawn: { seat: Seat; card: DealtCard } }
   /** "Drei drücken": the lowest discard went back to that defender. */
   | { CardReturned: { seat: Seat; card: DealtCard } }
-  /** "Lockvogel": the next defender lead must be this. */
+  /** "Lockvogel" (removed): only in old saves. */
   | { LeadDemanded: { suit: LeadSuit } }
   /** "Untot": the card rose back into the hand, the substitute lies in the trick. */
   | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard } }
@@ -823,7 +856,20 @@ export type RunEvent =
   | { SkatPeeked: { skat: DealtCard[] } }
   /** "Spickzettel": a card of the untouched skat after a hand declaration. */
   | { SkatCardShown: { source: Source; card: DealtCard } }
-  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } };
+  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number } }
+  /** Item review (02.11.2026). */
+  | 'RoutesRerolled'
+  | { DebtChanged: { debt: number } }
+  | { LifeSpared: { source: Source } }
+  | { CoinsStashed: { source: Source; amount: number; pot: number; coins: number } }
+  | { NextPubPlanned: { redeals: number; target: number } }
+  | { NextPubApplied: { redeals: number; target: number } }
+  | { WagerPlaced: { stake: number } }
+  | { WagerSettled: { stake: number; won: boolean; payout: number } }
+  | { StopsRevealed: { legs: number } }
+  | { MalusChosen: { option: number; malus: string } }
+  | { GambleResolved: { curse: boolean } }
+  | { ConsumableGained: { consumable: string } };
 
 export type RunAction =
   | 'Redeal'
@@ -834,7 +880,6 @@ export type RunAction =
   | { AnswerKontra: { re: boolean } }
   | { Discard: [number, number] }
   | { DiscardThree: [number, number, number] }
-  | { DemandLead: LeadSuit }
   | { Play: number }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
@@ -844,7 +889,8 @@ export type RunAction =
   | { TakeFromSkat: { give: number; take: number | null } }
   | 'SettleGame'
   | { ChooseEncounter: { option: number; target: number | null } }
-  | { ChooseRoute: number };
+  | { ChooseRoute: number }
+  | { ChooseMalus: { option: number; malus: number } };
 
 export interface Step {
   events: RunEvent[];
@@ -883,6 +929,7 @@ export interface RelicEntry extends CatalogEntry {
   /** Absent in an older core. */
   kind?: RelicKind;
   rarity?: Rarity;
+  group?: RelicGroup;
 }
 
 /** A consumable in the catalog, with rarity and group (absent in an older core). */

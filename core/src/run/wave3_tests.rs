@@ -313,6 +313,14 @@ fn a_hand_game_settles_the_wild_card_at_the_declaration() {
     assert!(!wild.unsettled);
     assert_eq!(wild.named, Some(Suit::Hearts));
     assert_eq!(wild.card.kind, kind("CA"));
+    assert_eq!(
+        view.wild_settled,
+        [view::SettledWild {
+            card: id_of("HA"),
+            kind: kind("CA"),
+            printed: Suit::Hearts,
+        }]
+    );
     // The player sees the event too.
     let seen = player::player_events(events);
     assert!(seen.iter().any(|e| matches!(

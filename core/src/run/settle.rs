@@ -184,6 +184,7 @@ fn on_score(
         | Condition::RiskAtLeast(_)
         | Condition::ThisCardIsTrumpSuit
         | Condition::GamesLeftAtLeast(_)
+        | Condition::TransportIs(_)
         | Condition::NullGame
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
@@ -284,6 +285,7 @@ fn during_play(
         | Condition::RiskAtLeast(_)
         | Condition::ThisCardIsTrumpSuit
         | Condition::GamesLeftAtLeast(_)
+        | Condition::TransportIs(_)
         | Condition::NullGame
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
@@ -393,6 +395,7 @@ impl Run {
             played: None,
             result: None,
             games_left: self.series.games_left(),
+            transport: None,
         };
         let mut last_trick = false;
         for source in &sources {

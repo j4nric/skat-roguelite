@@ -16,7 +16,7 @@
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
 import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
-import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, LeadSuit, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
+import type { BossInfo, CardView, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RunView, Seat, Suit, TrickView } from '../types';
 import { backDesign } from './backs';
 import { cardBack, lookSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
@@ -67,7 +67,7 @@ function thinkBubble(): string {
   return `<span class="think-bubble" data-testid="think" role="status" aria-label="${esc(de.table.thinking)}"><i></i><i></i><i></i></span>`;
 }
 
-/** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert", "Kreide". */
+/** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert", "Blue Curaçao". */
 function plaques(c: CardView): string {
   const out: string[] = [];
   if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
@@ -78,7 +78,7 @@ function plaques(c: CardView): string {
   return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
 }
 
-/** "Kreide, eigentlich Rot". */
+/** "Blue Curaçao, eigentlich Rot". */
 function chalkLabel(printed: Suit): string {
   return t(de.card.chalked, { suit: de.suits[printed] });
 }
@@ -291,25 +291,8 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     ${declareWarnings(options, false)}
     <div class="declare-actions choice-actions">
       <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
-      ${regretButton(view)}
     </div>
   </section>`;
-}
-
-/**
- * "Reue" right after an Einmischen: takes it back, the deal before is on
- * the table again. Only while the core says it can be used; its info card
- * carries the text from the content.
- */
-function regretButton(view: RunView): string {
-  const item = view.consumables.find((c) => c.consumable.id === 'regret' && c.can_use);
-  if (!item) return '';
-  return `<button class="btn btn-regret" ${attrs({
-    'data-action': 'use-item',
-    'data-slot': item.slot,
-    'data-info': `item:${item.slot}`,
-    'data-testid': 'regret',
-  })}>${esc(t(de.table.regret, { name: item.consumable.name }))}</button>`;
 }
 
 /**
@@ -470,32 +453,6 @@ function cardTag(view: RunView, c: CardView): string {
   return c.from_skat ? `<span class="skat-tag">${esc(de.card.fromSkat)}</span>` : '';
 }
 
-/** "Lockvogel": the name of a demand, "Trumpf" or the suit. */
-export function leadSuitName(suit: LeadSuit): string {
-  return suit === 'Trump' ? de.table.lureTrump : de.suits[suit.Suit];
-}
-
-/**
- * "Lockvogel" in the status line: a small button while the core allows a
- * demand; tapped, the options of the core (trump, the suits) as buttons.
- */
-function lureControl(game: GameView, ui: UiState): string {
-  if (!game.can_demand_lead || ui.anim || ui.busy) return '';
-  const options = game.lead_demand_options ?? [];
-  if (!options.length) return '';
-  if (!ui.lurePick) {
-    return `<button class="btn btn-lure" ${attrs({ 'data-action': 'lure', 'data-testid': 'lure', title: de.table.lureTitle })}>${esc(de.table.lure)}</button>`;
-  }
-  const buttons = options
-    .map((o) => {
-      const icon = o === 'Trump' ? '' : suitIcon(o.Suit, 16);
-      const key = o === 'Trump' ? 'Trump' : o.Suit;
-      return `<button class="btn btn-lure-suit" ${attrs({ 'data-action': 'lure-suit', 'data-lead': key, 'data-testid': `lure-${key}`, 'aria-label': leadSuitName(o) })}>${icon}<span>${esc(leadSuitName(o))}</span></button>`;
-    })
-    .join('');
-  return `<span class="lure-pick" role="group" ${attrs({ 'aria-label': de.table.lurePick, 'data-testid': 'lure-pick' })}><span class="lure-q">${esc(de.table.lurePick)}</span>${buttons}<button class="btn" ${attrs({ 'data-action': 'lure-cancel' })}>${esc(de.table.lureCancel)}</button></span>`;
-}
-
 /** Whether the player plays with open cards (Ouvert, also Null Ouvert). */
 function isOpen(game: GameView): boolean {
   const risk = game.declaration?.risk;
@@ -547,9 +504,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
         return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
           <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${lookSvg(take, 'small')}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
-      const lure = lureControl(game, ui);
-      if (lure && ui.lurePick) return `<div class="status status-lure">${lure}</div>`;
-      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>${lure}</div>`;
+      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span></div>`;
     }
     default:
       return `<div class="status"></div>`;
@@ -598,10 +553,9 @@ function gameLine(view: RunView, game: GameView, peek: TrickView | null): string
         ? `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span><span class="badge badge-kontra">${esc(de.table.reBadge)}</span>`
         : `<span class="badge badge-kontra">${esc(de.table.kontraBadge)}</span>`;
   const special = d.game === 'Null' ? `<span class="badge badge-null">${esc(de.table.noTrick)}</span>` : '';
-  const lure = game.lead_demand ? `<span class="badge badge-lure" data-testid="lure-badge">${esc(t(de.table.lureBadge, { suit: leadSuitName(game.lead_demand) }))}</span>` : '';
   return `<div class="gameline ${peek ? 'is-peek' : ''}">
     <span class="decl">${gameIcon(d.game, 14)}<span>${esc(declarationName(d))}</span></span>
-    ${special}${kontra}${lure}
+    ${special}${kontra}
     <span class="tricks" data-tricks>${esc(
       d.game === 'Ramsch'
         ? t(de.table.seatTricks, { a: game.seat_tricks[0], b: game.seat_tricks[1], c: game.seat_tricks[2] })

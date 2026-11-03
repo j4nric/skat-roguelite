@@ -105,13 +105,17 @@ export interface SettledWild {
 /**
  * A card of the edition as the table shows it now: a Wandelkarte the core
  * settled in the game in progress looks like its settled card (from the
- * game's card views, else from the settle events in `settled`, which the
+ * core's `GameView.wild_settled`, the game's card views, else from the
+ * settle events in `settled`, which the
  * caller passes only while that game counts). Otherwise the edition card
  * as it is (the open harlequin).
  */
 export function editionLook(c: DeckCard, view: RunView | null, settled: Readonly<Record<number, SettledWild>>): DeckCard & CardLook {
   if (!c.mods.includes(WILD)) return c;
   const game = view?.game;
+  // The core lists every Wandelkarte settled in this game, played ones too.
+  const core = game?.wild_settled?.find((w) => w.card === c.id);
+  if (core) return { ...c, kind: core.kind, named: core.printed };
   const seen: CardView[] = game ? [...game.hand, ...game.trick.map((p) => p.card), ...(game.last_trick?.cards.map((p) => p.card) ?? [])] : [];
   const live = seen.find((x) => x.id === c.id && x.named != null);
   if (live) return { ...c, kind: live.kind, named: live.named ?? null };

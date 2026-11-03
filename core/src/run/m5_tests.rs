@@ -242,7 +242,7 @@ fn gain_coins_is_allowed_outside_passive_and_never_drops_below_zero() {
 
 #[test]
 fn granny_and_grandpa_swap_once_each_and_the_view_names_the_card() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = relic_run(&content, &["granny", "grandpa"]);
     fixed_deal(&mut run, &content, JACK_AND_ACE, JACK_AND_ACE_SKAT);
     run.apply(
@@ -346,6 +346,7 @@ fn matadors_at_least_counts_mit_and_ohne() {
             played: None,
             result: None,
             games_left: 0,
+            transport: None,
         };
         evaluate(c, &ctx, None)
     };
@@ -415,7 +416,7 @@ fn matadors_at_least_counts_mit_and_ohne() {
 
 #[test]
 fn null_style_conditions_and_house_rules() {
-    let content = content();
+    let content = crate::run::legacy_content();
     let mut run = null_run(&content, &["seven_sleeper", "clean_slate"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
@@ -446,6 +447,7 @@ fn null_style_conditions_and_house_rules() {
         played: None,
         result: None,
         games_left: 0,
+        transport: None,
     };
     assert!(!evaluate(&Condition::NeverFollowedSuit, &ctx, None));
     assert!(!evaluate(&Condition::SevenDucked, &ctx, None));
@@ -591,15 +593,15 @@ fn rewards_show_kind_and_rarity_and_card_mods_can_be_locked() {
         .expect("tour_won");
     assert_eq!(tour_won.reward_info[0].kind, RewardKind::Character);
     assert!(tour_won.reward_info[0].rarity.is_none());
-    let granny = view
+    let slate = view
         .unlocks
         .iter()
         .flat_map(|u| &u.reward_info)
-        .find(|r| r.reward == Reward::Relic(RelicId::new("granny")))
-        .expect("granny");
-    assert_eq!(granny.kind, RewardKind::Regular);
-    assert_eq!(granny.rarity, Some(Rarity::Rare));
-    assert_eq!(granny.name, "Die Oma");
+        .find(|r| r.reward == Reward::Relic(RelicId::new("slate")))
+        .expect("slate");
+    assert_eq!(slate.kind, RewardKind::Regular);
+    assert_eq!(slate.rarity, Some(Rarity::Uncommon));
+    assert_eq!(slate.name, "Deckel anschreiben");
     for unlock in &view.unlocks {
         assert_eq!(unlock.rewards.len(), unlock.reward_info.len());
     }
@@ -641,7 +643,7 @@ fn the_bot_plays_whole_runs_with_the_new_content() {
     let content = content();
     for seed in 0..6 {
         let start = RunStart {
-            relics: ["granny", "grandpa", "with_four"]
+            relics: ["kitty", "guardian_angel", "dive_expert", "with_four"]
                 .iter()
                 .map(|r| RelicId::new(r))
                 .collect(),

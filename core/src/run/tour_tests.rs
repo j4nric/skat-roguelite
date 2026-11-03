@@ -277,6 +277,7 @@ fn spelunke_run(content: &Content, malus: &str) -> Run {
     route.options[0].spelunke = Some(Spelunke {
         name: "Spelunke Zum Test".into(),
         malus: MalusId::new(malus),
+        malus_options: Vec::new(),
     });
     run
 }

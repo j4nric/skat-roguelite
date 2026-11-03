@@ -68,7 +68,7 @@ export type Overlay =
   | { kind: 'boss'; boss: BossInfo; resolve: () => void }
   /** Pick the card for a consumable; `reasons`: the core's error code per card it cannot take. */
   | { kind: 'target'; slot: number; reasons?: Record<number, string> }
-  /** "Kreide": pick a card of the hand (`card`), then its new suit. */
+  /** "Blue Curaçao": pick a card of the hand (`card`), then its new suit. */
   | { kind: 'chalk'; slot: number; card: number | null }
   /** Pick the card for an encounter option that needs one. */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
@@ -114,8 +114,6 @@ export interface UiState {
   omaPick: boolean;
   /** Skat card picked to take in a skat swap; null takes the core's first. */
   swapTake: number | null;
-  /** "Lockvogel": the suit picker is open. */
-  lurePick: boolean;
   /** Route choice: the way highlighted on the map (by option index) for the leg `routeLeg`. */
   routePick: number | null;
   routeLeg: string;

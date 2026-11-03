@@ -84,9 +84,9 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Hand (Skat nicht aufnehmen) | `hand` (bool) | |
 | Skat aufnehmen | `pick_up_skat` | |
 | Drücken | `discard` | Die zwei Karten, die in den Skat gelegt werden |
-| Drei drücken (dritte Karte vom linken Gegner, drei drücken, einmal pro Serie) | `discard_three` | Effekt `DiscardThree`, Regel `GameRules::discard_three`, verbraucht `Series::discard_three_used`, frei `Run::discard_three_ready` (Sicht `discard_three_ready`); `Game::pick_up_skat_drawing`, `Game::discard_three`, `Game::drawn`, `Game::returned`, `Game::discard_count`; Ereignisse `CardDrawn`, `CardReturned`; Aktion `RunAction::DiscardThree`; Sicht `GameView::discard_count`, `CardView::drawn_from`, `RevealSource::Returned`. Welche Karte zurückgeht: `rules::returned_discard`; Ramponiert bei drei: `valid_discard_of`, `discardable_of` |
-| Ausspiel vorgeben (Lockvogel) | `lead_demand` | `rules::LeadSuit` (`Trump` oder `Suit(Suit)`, `options`, `matches`), `rules::legal_leads`; Effekt `DemandLead(n)`, Regel `GameRules::lead_demands`, gezählt `ActiveGame::lead_demands_used`; `Game::demand_lead`, `Game::lead_demand`; Ereignis `LeadDemanded`; Aktion `RunAction::DemandLead`; Sicht `can_demand_lead`, `lead_demand_options`, `lead_demand`; Fehler `MustLeadDemanded`, `InvalidLeadDemand`, `NoLeadDemandLeft` |
-| Skattausch (Oma, Opa) | `skat_swap` | `GameRules::skat_swaps` (Liste von Filtern, je einer pro Figur und Serie), `Series::skat_swaps_taken`, Sicht `skat_swap_cards`, Aktion `TakeFromSkat { give, take }` |
+| Drei drücken (dritte Karte vom linken Gegner, drei drücken, im ersten Spiel jeder Kneipe seit 02.11.2026) | `discard_three` | Effekt `DiscardThree`, Regel `GameRules::discard_three`, verbraucht `Series::discard_three_used`, frei `Run::discard_three_ready` (Sicht `discard_three_ready`); `Game::pick_up_skat_drawing`, `Game::discard_three`, `Game::drawn`, `Game::returned`, `Game::discard_count`; Ereignisse `CardDrawn`, `CardReturned`; Aktion `RunAction::DiscardThree`; Sicht `GameView::discard_count`, `CardView::drawn_from`, `RevealSource::Returned`. Welche Karte zurückgeht: `rules::returned_discard`; Ramponiert bei drei: `valid_discard_of`, `discardable_of` |
+| Ausspiel vorgeben (Lockvogel, entfernt am 02.11.2026) | `LeadSuit` | Nur noch zum Lesen alter Spielstände: `rules::LeadSuit`, Spielereignis `LeadDemanded`; Fehlercodes `MustLeadDemanded`, `InvalidLeadDemand`, `NoLeadDemandLeft` bleiben stehen, kommen aber nicht mehr vor |
+| Skattausch (Oma, Opa; ruhend seit 02.11.2026, kein Inhalt nutzt ihn) | `skat_swap` | `GameRules::skat_swaps` (Liste von Filtern, je einer pro Figur und Serie), `Series::skat_swaps_taken`, Sicht `skat_swap_cards`, Aktion `TakeFromSkat { give, take }` |
 | Ausspielen | `lead` | Erste Karte eines Stichs |
 | Bedienen | `follow_suit` | |
 | Stechen | `ruff` / `trump` (verb) | Mit Trumpf übernehmen |
@@ -95,23 +95,22 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stich | `Trick` | |
 | Stichgewinner | `trick_winner` | |
 | Passen / Einpassen | entfällt | Bis 01.11.2026: ein Spiel auslassen, kostete ein Spiel der Serie. Ersetzt durch Einmischen. Alte Namen werden noch gelesen (`Pass`, `passes`, `games_passed`, `passes_used`, `PassesAdded`, `ExtraPasses`, `without_pass`); Fehlercode `NoPassesLeft` bleibt stehen, kommt aber nicht mehr vor |
-| Einmischen (Blatt zurückgeben, neu geben) | `redeal` | `RunAction::Redeal`. Bis zu `RunConfig::redeals` (2) mal pro Spiel vor der Ansage, kostet kein Spiel; danach muss eines der Blätter gespielt werden. Pro Spiel: `Content::redeals` (mit `CharacterRule::redeals`) plus `GameRules::extra_redeals` (Effekt `ExtraRedeal`, Schieben); für die Serie: `Series::extra_redeals` (`ConsumableAction::ExtraRedeals`, Ein Bier, Kräuter). Zähler `Series::redeals_in_game`, `Series::redeals_used`, `RunStats::redeals`; übrig `Run::redeals_left`, Sicht `SeriesView::redeals_left`, `DeclareOptions::can_redeal`; Ereignis `Redealt`, `RedealsAdded`; Fehler `NoRedealLeft` |
-| Reue (Einmischen zurücknehmen) | `undo_redeal` | Schnaps `regret`, `ConsumableAction::UndoRedeal`: das Blatt vor dem letzten Einmischen kommt zurück (`ActiveGame::previous`), Ereignis `RedealUndone`, Fehler `NoRedealToUndo` |
-| Kontra | `kontra` | Gegenspieler verdoppeln (Hausregel, Boss) |
+| Einmischen (Blatt zurückgeben, neu geben) | `redeal` | `RunAction::Redeal`. Bis zu `RunConfig::redeals` (2) mal pro Spiel vor der Ansage, kostet kein Spiel; danach muss eines der Blätter gespielt werden. Pro Spiel: `Content::redeals` (mit `CharacterRule::redeals`) plus `GameRules::extra_redeals` (Effekt `ExtraRedeal`, Schieben); für die Kneipe: `Series::extra_redeals` (Wegbier, Kiebitz am Fenster, ruhend `ConsumableAction::ExtraRedeals`), weniger im ersten Spiel: `Series::redeals_withheld` (Skatlehrer). Zähler `Series::redeals_in_game`, `Series::redeals_used`, `RunStats::redeals`; übrig `Run::redeals_left`, Sicht `SeriesView::redeals_left`, `DeclareOptions::can_redeal`; Ereignis `Redealt`, `RedealsAdded`; Fehler `NoRedealLeft` |
+| Reue (Einmischen zurücknehmen, entfernt am 02.11.2026, Aktion ruhend) | `undo_redeal` | Früher Schnaps `regret`, `ConsumableAction::UndoRedeal`: das Blatt vor dem letzten Einmischen kommt zurück (`ActiveGame::previous`), Ereignis `RedealUndone`, Fehler `NoRedealToUndo` |
 | Re | `re` | Antwort des Alleinspielers auf Kontra |
 | Schenken (Gegner geben auf) | `concede` | Rest der Stiche und Augen geht an den Alleinspieler |
 | Rest abkürzen (entschiedenes Spiel beenden) | `settle` | `RunAction::SettleGame`, Sicht `can_settle`, `Run::can_settle`; Schranken der Reststiche in `endgame` (`Reach`, `Span`). Nicht verwechseln mit `Run::settle` (ein fertiges Spiel werten) |
 | Schieben (Hausregel: einmal mehr einmischen) | `skat_redraw` | Effekt `ExtraRedeal` (liest auch `SeriesRedeal`): ein Einmischen mehr in jedem Spiel (DESIGN 8.1) |
-| Neu geben (Einmischen, „Neues Blatt“) | `redeal` | Ereignis `Redealt` |
+| Neu geben (Einmischen, Kräuter, Doppelkorn) | `redeal` | Ereignis `Redealt`; `ConsumableAction::Redeal` (Kräuter), `ConsumableAction::RedealNextGame` (Doppelkorn: neu geben und das nächste angesagte Spiel ändern) |
 | Skat neu ziehen (nur Spielebene) | `redraw_skat` | `Game::redraw_skat`: Gegner und Skat neu, eigene Hand bleibt. Von keinem Inhalt mehr genutzt |
 
 ## Wertung
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Spielwert | `game_value` | Grundwert × Gewinnstufen |
+| Spielwert | `game_value` | Grundwert × Multiplikator (bisher „Gewinnstufen“) |
 | Grundwert | `base_value` | Karo 9, Herz 10, Pik 11, Kreuz 12, Grand 24 |
-| Gewinnstufen | `levels` | Spitzen + 1 + Hand + Schneider + … |
+| Multiplikator (bisher Gewinnstufen) | `levels` | Spitzen + 1 + Hand + Schneider + … |
 | Spielwert-Faktor (auch gebrochen, ×1,5) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekt `ScaleGameValue`). Der Spielwert wird am Ende halb aufgerundet |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
@@ -164,16 +163,16 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`: `greet`, `win`, `lose`), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
 | Verbrauchsgegenstand | `Consumable` | Definition `ConsumableDef` |
 | Schnaps (Gruppe von Verbrauchsgegenständen) | `ConsumableCategory::Schnapps` | Feld `category` an `ConsumableDef` und `ConsumableInfo`; sonst `Item` |
-| Wirkung aufs nächste angesagte Spiel (Doppelkorn, Magenbitter) | `NextGameEffect` | `Multiply(n)`, `SingleLoss`; Aktion `ConsumableAction::NextGame`, wartend `Run::pending_next_game` |
+| Wirkung aufs nächste angesagte Spiel (Doppelkorn) | `NextGameEffect` | `Multiply(n)`, `SingleLoss` (ruhend, früher Magenbitter); Aktionen `ConsumableAction::RedealNextGame`, `ConsumableAction::NextGame` (ruhend), wartend `Run::pending_next_game` |
 | Skat ansehen (Kurzer) | `PeekSkat`, `SkatPeeked` | Feld `ActiveGame::skat_peeked`, Sicht `GameView::skat_peek` |
 | Skatkarte zeigen (Spickzettel) | `skat_shown` | Effekt `RevealSkatCard(n)` (Information, bei der Ansage eines Handspiels), Feld `ActiveGame::skat_shown`, Run-Ereignis `SkatCardShown`, Sicht `GameView::skat_shown` |
-| Umgemalte Karte (Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
-| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, Magenbitter setzt 1 |
+| Umgefärbte Karte (Blue Curaçao, bis 02.11.2026 Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
+| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, `SingleLoss` setzt 1 (ruhend) |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare`, `Legendary` (Legendär, M8) |
 | Gewicht der Stufe Legendär | `RarityWeights::legendary` | Dezimalzahl (Standard 0,3), `RarityWeights::percent_weight` |
 | Immer Vorhand (Ehrenvorsitz) | `AlwaysForehand` | Effekt, nur passiv |
-| Stufen je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für Gewinnstufen |
+| Multiplikator je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für den Multiplikator |
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
 | Neuauslage (Tresen) | `reroll` | |
@@ -184,7 +183,6 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Run-Ereignis | `RunEvent` | |
 | Flagge (Relikt-Zustand, z. B. Bock) | `flag` | Pro Run |
 | Zähler (Relikt-Zustand, z. B. Tournee) | `counter` | Pro Run. Zähler einer Serie setzt `ResetCounter` nach der gewonnenen Serie zurück (Ereignis `CounterReset`); `AddBaseValuePerCounter { counter, per }` gibt `per` Grundwert je Punkt |
-| Bock | `bock` | Flagge der Bockrunde |
 | Relikt (Oberbegriff) | `Relic` | HouseRule und Regular, Definition `RelicDef` |
 | Tresen | `Shop` | |
 | Groschen | `coins` | Währung |
@@ -238,7 +236,20 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Auslöser (Zeitpunkt) | `Hook`, `Stage` | `OnDeal`, `OnDeclare`, `OnCardPlayed`, `OnTrickEnd`, `OnScore`, `OnSeriesWon`, dazu `Passive` |
+| Auslöser (Zeitpunkt) | `Hook`, `Stage` | `OnDeal`, `OnDeclare`, `OnCardPlayed`, `OnTrickEnd`, `OnScore`, `OnSeriesWon`, `OnRouteChosen` (Weg gewählt, Bedingung `TransportIs`), `OnShopOpened` (Tresen geöffnet), dazu `Passive` |
+| Multiplikator (bisher Stufe/Gewinnstufe) | `levels` | Spieltexte sagen seit 02.11.2026 „Multiplikator“ („+1 Multiplikator“); im Code bleiben `levels`, `AddLevels`, `Lever::Levels`, `LevelParts`. Nicht verwechseln mit dem Faktor (`multiplier`, ×1,5) und der Risikostufe |
+| Anzeige-Gruppe eines Relikts | `RelicGroup` | `Value` (Wert), `Multiplier` (Multiplikator), `Control` (Kontrolle), `Tour`; Feld `group` in `house_rules.ron`, Standard `Value`; Sicht `RelicInfo::group`, Katalog `group`. Nur Anzeige (Form des Bierdeckels) |
+| Plan für die nächste Kneipe | `NextPubPlan` | `redeals`, `target`; Wegbier, Skatlehrer, Kiebitz am Fenster; `Run::next_pub_plan`, Sicht `next_pub`; Ereignisse `NextPubPlanned`, `NextPubApplied`; Aktion `ConsumableAction::NextPub` |
+| Anschreiben (Schulden am Tresen) | `debt`, `Credit` | Effekt `Credit(n)` (Deckel anschreiben), `Run::debt`, Sicht `debt`, `credit_left`, `Shop::on_credit`; Ereignis `DebtChanged`; Einnahmen zahlen zuerst die Schulden |
+| Kasse (Topf aus Groschen) | `StashCoins`, `PayOutCounter` | Stammtischkasse: Zähler `kitty`; Ereignis `CoinsStashed` |
+| Leben verschonen | `SpareLife` | Schutzengel, einmal pro Stadtteil (`Run::spared_section`); Ereignis `LifeSpared` |
+| Malus wählen | `ChooseMalus` | Effekt `ChooseMalus(n)` (Spelunkenkenner), `Spelunke::malus_options`, Aktion `RunAction::ChooseMalus { option, malus }`, Ereignis `MalusChosen` |
+| Wege neu auslosen | `RerollRoutes` | Schwenker; Ereignis `RoutesRerolled` |
+| Leben trinken | `GainLives` | Konterbier; Fehler `LivesFull` |
+| Wette | `Wager` | Die Wette: `Run::wager`, Ereignisse `WagerPlaced`, `WagerSettled` |
+| Wege auskundschaften | `scout_legs` | Kiebitz am Fenster: `EncounterChoice::Scout`, Sicht `StopView::encounter`; Ereignis `StopsRevealed` |
+| Spielerei (Falschspieler am Nebentisch) | `Gamble` | `EncounterKind::Gamble`, `EncounterChoice::Gamble`, Ereignis `GambleResolved` |
+| Entfernte Inhalte beim Laden | `drop_unknown_content` | `Run::drop_unknown_content` (wasm `Session::load`), Umbenennungen `RENAMED_CONSUMABLES` |
 | Effekt | `Effect` | Geschlossener `enum`, jeder Effekt nennt seinen Hebel |
 | Bedingung | `Condition` | Geschlossener `enum` |
 | Stich gewonnen mit (Luschenkönig) | `TrickWinnerMatches` | `filter`, `by_declarer`: der eben beendete Stich, nur bei Stichende |
@@ -248,8 +259,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Herkunft eines Zuschlags | `Source` | Relikt, Kartenmodifikation, Boss, Kontra, Re, Ereignis, Verbrauchsgegenstand (`Consumable`) |
 | Zeile der Abrechnung | `ScoreLine` | Herkunft, Hebel, Änderung |
 | Abrechnung (Spielwert mit allen Zuschlägen) | `ScoreBreakdown` | |
-| Gewinnstufen Term für Term | `LevelParts` | |
-| Schritt der Abrechnung | `ScoreStep` | Ein Term mit laufendem Grundwert, Stufen und Faktor, für die schrittweise Anzeige |
+| Multiplikator Term für Term | `LevelParts` | |
+| Schritt der Abrechnung | `ScoreStep` | Ein Term mit laufendem Grundwert, Multiplikator und Faktor, für die schrittweise Anzeige |
 | Term der Abrechnung | `ScoreTerm` | Grundwert, Spitzen, Spiel, Hand, …, oder eine `ScoreLine` |
 
 ## Content-IDs
@@ -258,16 +269,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 
 | Deutsch | ID |
 |---|---|
-| Bockrunde | `bock_round` |
-| Kontra | `kontra` |
 | Spitze (Hausregel, letzter Stich mit einer Sieben) | `last_trick_seven` (nicht verwechseln mit Spitzen = `matadors`) |
 | Schenken | `concede` |
-| Ouvert-Bonus | `ouvert_bonus` |
 | Schieben | `skat_redraw` |
 | Jungfrau | `virgin` |
-| Alte Dame | `old_lady` |
+| Alte Oberin (bis 02.11.2026 im Code „Alte Dame“) | `old_lady` |
 | Tournee | `tour` |
-| Durchmarsch | `march_through` |
 | Augen (Modifikation) | `points` (nicht verwechseln mit Augen = `card_points`) |
 | Rang (Modifikation) | `rank` |
 | Trumpf (Modifikation) | `trump_bonus` |
@@ -278,8 +285,8 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Gutschein Wandelkarte | `voucher_wild` |
 | Durchsichtig (Fluch seit Effekte v2) | `transparent` |
 | Fleckig (Fluch, bis Effekte v2 „Schwarze Katze“) | `stained` |
-| Augen +3, Augen +5 (Verbrauchsgegenstand) | `points_3`, `points_5` |
-| Trumpf +2, Trumpf +4 (Verbrauchsgegenstand) | `trump_2`, `trump_4` |
+| Augen +3 (Verbrauchsgegenstand) | `points_3` |
+| Trumpf +2 (Verbrauchsgegenstand) | `trump_2` |
 | Rang +1 (Verbrauchsgegenstand) | `rank_1` |
 | Gestrichen mit Effekte v2 (alte Ids, nur noch beim Umrechnen) | `fat`, `marked`, `stamp`, `invisible`, `gold_rim`, `double_marked`, `crown`, `seal`, `horseshoe`, `tape_measure`, `lucky_penny`, `beer_stain`, `cracked`, `black_cat`, `lead_weight`, `tail_light`, `dressed_up`, `dummy`, `honorary_jack`, `glass_ace`, `homesick` |
 | Der Schieber | `the_pusher` |
@@ -287,20 +294,12 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Die Oma | `grandma` |
 | Frisches Deck | `fresh_deck` |
 | Stempelkissen | `ink_pad` |
-| Ein Bier | `beer` |
-| Neues Blatt | `new_deal` |
 | Kurzer | `shot` |
 | Doppelkorn | `double_grain` |
 | Kräuter | `herbal` |
-| Magenbitter | `bitters` |
-| Kreide | `chalk` |
-| Reue | `regret` |
-| Blindflug | `blind_flight` |
+| Blue Curaçao (bis 02.11.2026 Kreide) | `blue_curacao` (alte Id `chalk` wird beim Laden umbenannt) |
 | Der Kiebitz | `kibitzer` |
 | Der Wirt | `landlord` |
-| Die Oma (Figur) | `granny` (nicht verwechseln mit dem Boss `grandma`) |
-| Der Schiedsrichter | `referee` |
-| Der Angeber | `show_off` |
 | Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
 | Die Zwillinge | `twins` |
 | Der Ramscher | `ramscher` |
@@ -314,43 +313,46 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Letzte Runde | `last_round` |
 | Kleinvieh | `every_bit_counts` |
 | Ein Auge zudrücken | `blind_eye` |
-| Lehrgeld | `tuition` (Zähler `tuition`) |
 | Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
-| Auf dem Trockenen | `high_and_dry` |
-| Schneiderbock | `schneider_bock` (Flagge `schneider_bock`) |
 | Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
 | Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |
-| Der Stammgast | `regular_guest` (Zähler `regular`) |
 | Nullachtfuffzehn | `null_eight_fifteen` |
-| Doppelter Boden | `safety_net` |
 | Dicke Sau | `fat_sow` |
-| Glashaus | `glass_house` |
-| Kerbholz | `tally_stick` (Zähler `tally`) |
 | Umgekipptes Bier | `spilled_beer` |
 | Gasthof zur Krone | `crown_inn` |
 | Der Taschenspieler | `conjurer` |
 | Preisskat | `prize_skat` |
 | Gast aus Altenburg | `guest_from_altenburg` |
 | Ramponiert (Fluch, seit Effekte v2 −X Augen: Augen mit negativem Wert, Konstante `deck::RAMPONIERT` neben `deck::AUGEN`) | `battered` |
-| Der Opa (Figur) | `grandpa` (nicht verwechseln mit `granny`) |
 | Mit Vieren | `with_four` |
-| Siebenschläfer | `seven_sleeper` |
-| Saubere Weste | `clean_slate` |
 | Skatpfleger | `skat_keeper` |
-| Altes Blatt | `old_deck` (Zähler `old_deck`) |
 | Allrounder | `all_rounder` (Zähler `all_rounder`, Flaggen `all_rounder_suit`, `_grand`, `_null`) |
 | Stammfarbe | `home_suit` (Zähler `home_suit`, Flaggen `home_suit_clubs`, `_spades`, `_hearts`, `_diamonds`) |
-| Wechselbalg | `changeling` (Flaggen `changeling_suit`, `_grand`, `_null`) |
-| Bubenparade | `jack_parade` |
 | Luschenkönig | `blank_king` (Lusche = `blank`, nicht Blanko) |
 | Stichfest | `watertight` |
 | Drei drücken | `three_discard` (Freischaltung `ten_runs`, „Stammkunde“) |
 | Spickzettel | `crib_sheet` |
-| Lockvogel | `decoy` |
 | Wandelkarte | `wild_card` |
 | Untot | `undead` |
 | Skatgott | `skat_god` (Zähler `skat_god`) |
 | Ehrenvorsitz | `honorary_chair` |
+| Konterbier | `counter_beer` |
+| Schwenker | `snifter` |
+| Wegbier | `road_beer` |
+| Feierabend | `closing_time` |
+| Monatskarte | `season_ticket` |
+| Stammtischkasse | `kitty` (Zähler `kitty`) |
+| Deckel anschreiben (Figur) | `slate` |
+| Schutzengel | `guardian_angel` |
+| Spelunkenkenner (Figur) | `dive_expert` |
+| Der Wirt spendiert | `landlord_treat` |
+| Falschspieler am Nebentisch (bis 02.11.2026 „Der Falschspieler“) | `card_sharp` |
+| Verlorenes Portemonnaie | `lost_wallet` |
+| Der Skatlehrer | `skat_teacher` |
+| Die Wette | `the_bet` |
+| Alte Karten im Schrank | `old_cards` |
+| Kiebitz am Fenster | `lookout` |
+| Entfernt im Gegenstands-Review (02.11.2026; alte Ids fallen beim Laden weg, Definitionen nur noch für Tests in `core/src/run/legacy_*.ron`) | Relikte `bock_round`, `kontra`, `ouvert_bonus`, `march_through`, `blind_flight`, `granny`, `grandpa`, `referee`, `show_off`, `regular_guest`, `tuition`, `high_and_dry`, `schneider_bock`, `safety_net`, `glass_house`, `tally_stick`, `seven_sleeper`, `clean_slate`, `old_deck`, `changeling`, `jack_parade`, `decoy`; Verbrauchsgegenstände `beer`, `new_deal`, `bitters`, `regret`, `points_5`, `trump_4` |
 
 ## Kartennotation
 

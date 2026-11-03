@@ -67,85 +67,6 @@ const sp = (label: string, art: string, pal?: Record<string, string>): Sprite =>
  */
 export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
   // ---- house rules and Stammtisch figures (core/content/house_rules.ron)
-  bock_round: [
-    sp('Ziegenkopf', `
-      ..b..........b
-      ..bb........bb
-      ...bb......bb
-      ....bwwwwwwb
-      ...wwwwwwwwww
-      ...wwkwwwwkww
-      ....wwwwwwww
-      .....wwwwww
-      .....wwppww
-      ......wwww
-      ......wwww
-      .......ww
-      ......wwww
-      .......ww`),
-    sp('Ganze Ziege', `
-      ..........b..b
-      ...........bb
-      ..........wwww
-      ..........wkwwp
-      .w.......wwwwww
-      .wwwwwwwwwww.w
-      .wwgwwwwwwww
-      ..wwwgwwwww
-      ..wwwwwwwww
-      ..w.w....w.w
-      ..w.w....w.w
-      ..n.n....n.n`),
-    sp('Bierkrug mit Hörnern', `
-      b..........b
-      bb........bb
-      .bb.wwww.bb
-      ..bwwwwwwb
-      ..wwwwwwww
-      ..aaaaaaaaggg
-      ..ahaaaaaa..g
-      ..ahaaaaaa..g
-      ..ahaaaaaa..g
-      ..aaaaaaaaggg
-      ..aaaaaaaa
-      ..gggggggg`),
-  ],
-  kontra: [
-    sp('Sprechblase „Re!“', `
-      ..wwwwwwwwwwww
-      .wwwwwwwwwwwwww
-      .wwrrwwrrrwrwww
-      .wwrwrwrwwwrwww
-      .wwrrwwrrwwrwww
-      .wwrwrwrwwwwwww
-      .wwrwrwrrrwrwww
-      .wwwwwwwwwwwwww
-      ..wwwwwwwwwwww
-      ...www
-      ..ww`),
-    sp('Faust', `
-      ..sssssss
-      .sskskskss
-      .sskskskss
-      .sssssssss
-      .ssssssssss
-      .skkkkkksss
-      .sssssssss
-      ..sssssss
-      ...sssss
-      ...rrrrr
-      ...rrrrr
-      ...rrrrr`),
-    sp('Mal zwei', `
-      ..........rrrr
-      .........rr..rr
-      rr...rr......rr
-      .rr.rr......rr
-      ..rrr......rr
-      .rr.rr....rr
-      rr...rr..rr
-      ........rrrrrrr`),
-  ],
   last_trick_seven: [
     sp('Karte mit Sieben', `
       ....wwwwwwww
@@ -222,42 +143,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ...rr...rr
       ..rr.....rr
       .rr.......rr`),
-  ],
-  ouvert_bonus: [
-    sp('Drei offene Karten', `
-      ...wwwwwwwwww
-      ...wwwwwwwwww
-      .wwkwwwrrwwwkww
-      .wwkwwwrrwwwkww
-      .eekwwwwwwwwkyy
-      .eekwwwwwwwwkyy
-      .wwkwwwwwwwwkww
-      .wwkwwwwwwwwkww
-      .wwkwwwwwwwwkww
-      .wwkkkkkkkkkkww
-      .ww..........ww
-      .ww..........ww`),
-    sp('Offenes Auge', `
-      ..k..k...k..k
-      .....wwwww
-      ...wwwcccwww
-      .wwwwcckccwwww
-      wwwwcckkkccwwww
-      .wwwwcckccwwww
-      ...wwwcccwww
-      .....wwwww`),
-    sp('Lupe', `
-      ..GGGGG
-      .GhccccG
-      GhccccccG
-      GhccccccG
-      GcccccccG
-      .GcccccG
-      ..GGGGG.b
-      ........bb
-      .........bb
-      ..........bb
-      ...........bb`),
   ],
   skat_redraw: [
     sp('Hand schiebt Karten', `
@@ -409,70 +294,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       wwwwwfffffwwww
       wrwwwfffffwwww`),
   ],
-  march_through: [
-    sp('Trommel mit Schlegeln', `
-      ..y..........y
-      ...b........b
-      ....b......b
-      .....b....b
-      ...wwwwwwwwww
-      ..wwwwwwwwwwww
-      ..yyyyyyyyyyyy
-      ..wrrrrwwrrrrw
-      ..rwrrwrrwrrwr
-      ..rrwwrrrrwwrr
-      ..rrrrrrrrrrrr
-      ..yyyyyyyyyyyy`),
-    sp('Marschstiefel', `
-      ...bbbbb
-      ...nnnnn
-      ...nnnnn
-      ...nnnnn
-      ...nnnnn
-      ...nnnnnn
-      oo.nnnnnnnn
-      ...nnnnnnnnnn
-      oo.nnnnnnnnnnn
-      ...kkkkkkkkkkk`),
-    sp('Fanfare', `
-      ..........YY
-      .........YYY
-      Y.......YYYY
-      YYYYYYYYYYYY
-      Y.......YYYY
-      ...YY....YYY
-      ...Y......YY`),
-  ],
-  blind_flight: [
-    sp('Papierflieger', `
-      .............w
-      ...........wwg
-      .........wwwgg
-      .......wwwwwgg
-      .....wwwwwwgg
-      ...wwwwwwwwgg
-      ..wwwwwwwwgg
-      .......wwggg
-      ...oo...wgg
-      ........gg
-      ..oo....g`),
-    sp('Schlafmaske', `
-      .vvvvv..vvvvv
-      vvvvvvvvvvvvvv
-      vkvvvkvvkvvvkv
-      vvkkkvvvvkkkvv
-      vvvvvvvvvvvvvv
-      .vvvvv..vvvvv`),
-    sp('Fledermaus', `
-      ......G.G
-      ......GGG
-      .G...GRGRG...G
-      GG..GGGGGGG..GG
-      GGGGGGGGGGGGGGG
-      GGGGGGGGGGGGGGG
-      .GG.GGGGGGG.GG
-      ..G..G.G.G..G`),
-  ],
   kibitzer: [
     sp('Kiebitz', `
       .........kk
@@ -545,158 +366,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       .ooooookookkooo
       ..ooookoookkooo
       ...oooooooooooo`),
-  ],
-  granny: [
-    sp('Oma mit Brille', `
-      ......ggg
-      .....ggggg
-      ....gggggggg
-      ...gggggggggg
-      ...gssssssssg
-      ...gkkksskkkg
-      ...gkckkkkckg
-      ...gkkksskkkg
-      ...gpsssssspg
-      ....ssskksss
-      .....ssssss
-      ....pppwwppp
-      ...pppppppppp
-      ...pppppppppp`),
-    sp('Wollknäuel mit Nadeln', `
-      .g.......g
-      ..g.....g
-      ...g...g
-      ...rrrrrr
-      ..rRrrrRrr
-      .rrRrrrRrrr
-      .rrrRrRrrrr
-      .rrrRrRrrrr
-      .rrRrrrRrrr
-      ..rRrrrRrr
-      ...rrrrrr.R
-      ..........RR`),
-    sp('Gugelhupf', `
-      ....wwwww
-      ..wwwwwwwww
-      .wwwbwwwbwww
-      .bwbbbwbbbwb
-      bbbbbbbbbbbbb
-      bObbObbObbObb
-      bObbObbObbObb
-      .bbbbbbbbbbb
-      .ggggggggggg`),
-  ],
-  grandpa: [
-    sp('Opa mit Mütze und Pfeife', `
-      ....bbbbbbb
-      ...bbbbbbbbbb
-      ..nnnnnnnnnnnnn
-      ...gssssssssg
-      ...gskssssksg
-      ...gsssppsssg
-      ...wwwwwwwwww
-      ....ssssssskkbb
-      .....sssss...bb
-      ....eeeeeee
-      ...eeeeeeeee
-      ..eeeeeeeeeee`),
-    sp('Pfeife', `
-      ..........g
-      .........g
-      ..........g
-      .........g
-      .......bbbb
-      .......bnnb
-      .......bbbb
-      nnnnnnnbbb
-      .......bb`),
-    sp('Taschenuhr', `
-      ....YY
-      ...Y..Y
-      ....YY
-      ..YYYYYY
-      .YwwwwwwY
-      YwwwkwwwwY
-      YwwwkwwwwY
-      YwwwkkkwwY
-      YwwwwwwwwY
-      .YwwwwwwY
-      ..YYYYYY`),
-  ],
-  referee: [
-    sp('Gelbe und Rote Karte', `
-      ....yyyyyy
-      ....yyyyyy
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      ....yyyrrrrrr
-      .......rrrrrr
-      .......rrrrrr`),
-    sp('Trillerpfeife', `
-      ..gggg
-      .gggggggggg
-      gghgggggggg
-      gggggg
-      gggggg
-      .gggg
-      ..rr
-      .r..r
-      ..rr`),
-    sp('Schiri-Trikot', `
-      ..wwkk..wwkk
-      kkwwkkwwkkwwkk
-      kkwwkkwwkkwwkk
-      kkwwkkwwkkwwkk
-      ..wwkkwwkkww
-      ..wwkkwwkkww
-      ..wwkkwwkkww
-      ..wwkkwwkkww
-      ..wwkkwwkkww
-      ..wwkkwwkkww`),
-  ],
-  show_off: [
-    sp('Angeber mit Sonnenbrille', `
-      ......nnnnnn
-      ....nnnnnnnnn
-      ...nnnnnnnnnn
-      ...nssssssssn
-      ...kkkkkkkkkk
-      ...hkkksshkkk
-      ....ssssssss
-      ....sswywwss
-      .....ssssss
-      ....rryssyrr
-      ...rrrryyrrrr
-      ..rrrrrrrrrrrr
-      ..rrrrrrrrrrrr`),
-    sp('Pfau', `
-      ....eeeee
-      ..eeveeevee
-      .eveeeveeeve
-      .eeeeeeeeeee
-      eveeeccceeeve
-      eeeeccckceeee
-      ....ccccc
-      .....ccc
-      .....ccc
-      ....cc.cc
-      ....Y...Y`),
-    sp('Pokal', `
-      ..YYYYYYYYY
-      Y.YwYYYYYYY.Y
-      Y.YwYYYYYYY.Y
-      .YYYYYYYYYYY
-      ...YYYYYYY
-      .....YYY
-      ......Y
-      ......Y
-      ....YYYYY
-      ...bbbbbbb
-      ...bbbbbbb`),
   ],
   card_counter: [
     sp('Abakus', `
@@ -812,43 +481,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ...wwwGGGGwww
       .....wwwwww`),
   ],
-  tuition: [
-    sp('Doktorhut auf Groschen', `
-      ......GGGG
-      ....GGGGGGGG
-      ..GGGGGGGGGGGG
-      ....GGGGGGGGr
-      .....kkkkkk.r
-      .....kkkkkk.rr
-      .....YYYYYY
-      ....YYYYYYYY
-      ....YYyyyyYY
-      ....YYyyyyYY
-      ....YYYYYYYY
-      .....YYYYYY`),
-    sp('Lehrbuch mit Groschen', `
-      ..wwww...wwww
-      .wwwwwwkwwwwww
-      wGGGGwwkwwGGGGw
-      wwwwwwwkwwwwwww
-      wGGGwwwkwwYYYww
-      wwwwwwwkwYyyYww
-      wGGGGwwkwwYYYww
-      wwwwwwwkwwwwwww
-      bbbbbbbbbbbbbbb
-      .bbbbbb.bbbbbb`),
-    sp('Groschenstapel', `
-      ..YYYYYYYY
-      .yyyyyyyyyy
-      .YYYYYYYYYY
-      .yyyyyyyyyy
-      .YYYYYYYYYY
-      .yyyyyyyyyy
-      .YYYYYYYYYY
-      .yyyyyyyyyy
-      .YYYYYYYYYY
-      ..yyyyyyyy`),
-  ],
   beer_mat: [
     sp('Deckel mit Strichen', `
       .....wwwwww
@@ -888,80 +520,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       G.GGG.G
       GGG.G.G
       G.G.G.G`),
-  ],
-  high_and_dry: [
-    sp('Fisch auf dem Trockenen', `
-      ...........YY
-      ..........YYYY
-      ...........YY
-      ....ccccccc
-      .c.ccccccckcc
-      .ccccccccccccc
-      .c.wwwwwwwwwc
-      ....wwwwwwww
-      .yyyyyyyyyyyyyy`),
-    sp('Leeres Glas', `
-      c......c
-      chhhhhhc
-      chhhhhhc
-      chhhhhhc
-      chhhhhhc
-      .chhhhc
-      .chhhhc
-      .chaahc
-      .cccccc`),
-    sp('Kaktus in der Sonne', `
-      .........YY
-      ........YYYY
-      ....e....YY
-      ...eee
-      .e.eee
-      .e.eee.e
-      .eeeee.e
-      ...eeeeee
-      ...eee
-      ...eee
-      yyyyyyyyyyy`),
-  ],
-  schneider_bock: [
-    sp('Bock mit Maßband', `
-      ..n..........n
-      ..nn........nn
-      ...nn......nn
-      ....nllllllln
-      ...llllllllll
-      ...llkllllkll
-      ....llllllll
-      .....llllll
-      .....llppll
-      ....ykyykyyk
-      ......llll
-      .......ll
-      ......llll
-      .......ll`),
-    sp('Ganzer Bock auf Maßband', `
-      ..........n..n
-      ...........nn
-      ..........llll
-      ..........lkllp
-      .l.......llllll
-      .lllllllllll.l
-      .llblllllllll
-      ..llllblllll
-      ..lllllllll
-      ..l.l....l.l
-      ..l.l....l.l
-      YkYYkYYkYYkYYkY`),
-    sp('Maßband-Rolle', `
-      ...YYYYY
-      ..YYYYYYY
-      .YYYkkkYYY
-      .YYkgggkYY
-      .YYkgkgkYY
-      .YYkgggkYY
-      .YYYkkkYYYYYYY
-      ..YYYYYYYkYkYk
-      ...YYYYYYYYYYY`),
   ],
   lucky_streak: [
     sp('Kleeblatt', `
@@ -1038,45 +596,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ....b
       ..bbbbb`),
   ],
-  regular_guest: [
-    sp('Stammkrug mit Deckel', `
-      ...ggggggggg
-      ..gggggggggg
-      ...wwwwwwww
-      ...wwwwwwwwggg
-      ...GGGGGGGG..g
-      ...wGwwGwwG..g
-      ...wwwwwwww..g
-      ...GGGGGGGG..g
-      ...wwwwwwwwggg
-      ...wwwwwwww
-      ...wwwwwwww
-      ..gggggggggg`),
-    sp('Stammtisch-Schild', `
-      G
-      GGGGGGGGGGGG
-      G..k......k
-      G.bbbbbbbbbb
-      G.bwwbwwbwwb
-      G.bbbbbbbbbb
-      G
-      G
-      G
-      GGG`),
-    sp('Gast mit Bier', `
-      ...nnnn
-      ..nnnnnn
-      ..ssssss
-      ..skssks
-      ..ssssss
-      ..snnnns
-      ...ssss
-      .GGGGGG.www
-      GGGGGGGGaaag
-      GGGGGGGGaaag
-      GGGGGGGGaaa
-      GGGGGGGG`),
-  ],
   null_eight_fifteen: [
     sp('Schild 08/15', `
       ..wwwwwwwwwwww
@@ -1115,39 +634,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       .GGGGGGG
       ..GGGGG`),
   ],
-  safety_net: [
-    sp('Sicherheitsnetz', `
-      ..b..........b
-      ..brrrrrrrrrrb
-      ..bw.w.w.w.w.b
-      ..b.w.w.w.w.wb
-      ..bw.w.w.w.w.b
-      ..b.w.w.w.w.wb
-      ..brw.w.w.w.rb
-      ..b.rrrrrrrr.b
-      ..b..........b
-      .bbb........bbb`),
-    sp('Fallschirm', `
-      ....rrrrrr
-      ..rrwwrrwwrr
-      .rrwwwrrwwwrr
-      rrwwwwrrwwwwrr
-      .k....kk....k
-      ..k...kk...k
-      ...k..kk..k
-      ....k.kk.k
-      .....bbbb
-      .....bbbb`),
-    sp('Kiste mit doppeltem Boden', `
-      bbbbbbbbbbbb
-      bddddddddddb
-      bdwwddrrdddb
-      bdwwddrrdddb
-      bddddddddddb
-      bbbbbbbbbbbb
-      bdYYddYYdddb
-      bbbbbbbbbbbb`),
-  ],
   fat_sow: [
     sp('Dickes Schwein', `
       ..........p
@@ -1185,76 +671,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       wwwwwwwwYw
       .wwwwwwww`),
   ],
-  glass_house: [
-    sp('Glashaus', `
-      .......gg
-      ......gccg
-      .....gccccg
-      ....gccccccg
-      ...gccccccccg
-      ..gggggggggggg
-      ..gchccggchccg
-      ..gcchcggcchcg
-      ..gccccggccccg
-      ..gggggggggggg
-      ..gccccggccccg
-      ..gcckcggccccg
-      ..gggggggggggg`),
-    sp('Fenster mit Sprung', `
-      GGGGGGGGGGG
-      GhcccGhcccG
-      GccccGcckcG
-      GccccGckccG
-      GGGGGGGGGGG
-      GhcccGckkcG
-      GccccGkcccG
-      GccccGccccG
-      GGGGGGGGGGG`),
-    sp('Glasglocke über einer Karte', `
-      ....cccc
-      ..cccccccc
-      .chcccccccc
-      .chccwwwccc
-      chcccwrwcccc
-      chcccwrwcccc
-      cccccwwwcccc
-      gggggggggggg`),
-  ],
-  tally_stick: [
-    sp('Kerbholz mit Messer', `
-      .ll.ll.ll.ll.ll
-      .bbkbbkbbkbbkbb
-      .bbbbbbbbbbbbbb
-      .bbbbbbbbbbbbbb
-      .nnnnnnnnnnnnnn
-      ...............
-      ...............
-      ...gggggg
-      ..gggggggbbbbb`),
-    sp('Gespaltenes Kerbholz', `
-      .lbb.bbl
-      .lbb.bbl
-      .kbb.bbk
-      .lbb.bbl
-      .kbb.bbk
-      .lbb.bbl
-      .kbb.bbk
-      .lbb.bbl
-      .kbb.bbk
-      .lbb.bbl
-      .lbb.bbl
-      .nnn.nnn`),
-    sp('Steintafel mit Kerben', `
-      .gggggggggg
-      gggggggggggg
-      ggGgGgGgGggg
-      ggGgGgGGGggg
-      ggGgGGGgGggg
-      ggGGGgGgGggg
-      ggGgGgGgGggg
-      gggggggggggg
-      .gggggggggg`),
-  ],
   with_four: [
     sp('Große Vier mit Farben', `
       .JJ..........ee
@@ -1290,80 +706,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ..ssssss
       ..rrrrrr
       ..rrrrrr`),
-  ],
-  seven_sleeper: [
-    sp('Siebenschläfer', `
-      ..........GGGG
-      ............G
-      ...........G
-      ..........GGGG
-      ...gg
-      ..gpgggggggg
-      .ggggggggggggg
-      .gkkgggggggwwgg
-      .pgggggggggwwgg
-      ..gggggggggwwgg
-      ...gggggggwwwg
-      .....wwwwwwww`),
-    sp('Bett mit Schläfer', `
-      ...........GGG
-      ............G
-      b..........GGG
-      b
-      bwwss
-      bwwssoooooooob
-      bbooooooooooob
-      bbbbbbbbbbbbbb
-      b............b`),
-    sp('Mond und Sterne', `
-      ....YYY
-      ..YYYY....Y
-      .YYY.....YYY
-      .YY.......Y
-      YYY
-      YYY......Y
-      YYY.....YYY
-      .YY......Y
-      .YYY
-      ..YYYY
-      ....YYY`),
-  ],
-  clean_slate: [
-    sp('Weiße Weste', `
-      ...ww......ww
-      ...www....www
-      ..wwww....wwww
-      ..wwwww..wwwww
-      ..wwwwwkywwwww
-      ..wwwwwkwwwwww
-      ..wwwwwkywwwww
-      ..wgggwkwgggww
-      ..wwwwwkywwwww
-      ..wwwwwkwwwwww
-      ..wwwww..wwwww
-      ..www......www`),
-    sp('Seife mit Blasen', `
-      ........hh
-      .......hhhh
-      ..hh....hh
-      .hhhh
-      ..hh..hh
-      ...pppppppp
-      ..pppppppppp
-      .pphhppppppp
-      .pppppppppp
-      ..pppppppp`),
-    sp('Leere Tafel', `
-      bbbbbbbbbbbb
-      bMMMMMMMMwMb
-      bMMMMMMMwwwb
-      bMMMMMMMMwMb
-      bMMMMMMMMMMb
-      bMMMMMMMMMMb
-      bMMMMMMMMMMb
-      bMMMMMMMMMMb
-      bbbbbbbbbbbb
-      ...YYYY`),
   ],
   // ---- M8 wave 3, Legendär (one motif each, drawn for the wave, not voted)
   skat_god: [
@@ -1413,20 +755,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ........wwwwwww
       ........wwwwwww`),
   ],
-  old_deck: [
-    sp('Vergilbte Karte mit Eselsohr', `
-      YYYYYYY
-      YfffffYY
-      YfnfffYfY
-      YfffffYYYY
-      YffffffffY
-      YffnfffffY
-      YffffffnfY
-      YffffffffY
-      YfnffffffY
-      YffffffffY
-      YYYYYYYYYY`),
-  ],
   all_rounder: [
     sp('Taschenmesser', `
       gggggggg
@@ -1453,28 +781,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ..wwrrrwwnnw
       ..wwwrwwwnnw
       ..wwwwwwwnnw`),
-  ],
-  changeling: [
-    sp('Halb grünes, halb violettes Gesicht', `
-      ...eeevvv
-      ..eeeevvvv
-      .eeeeevvvvv
-      .eekeeevkvv
-      .eeeeevvvvv
-      .eeeeevvvvv
-      .eekkkkkkvv
-      ..eeeevvvv
-      ...eeevvv`),
-  ],
-  jack_parade: [
-    sp('Vier Unter in einer Reihe', `
-      .G...G...G...G.
-      GGG.GGG.GGG.GGG
-      sss.sss.sss.sss
-      JJJ.eee.rrr.LLL
-      JJJ.eee.rrr.LLL
-      JJJ.eee.rrr.LLL
-      J.J.e.e.r.r.L.L`),
   ],
   blank_king: [
     sp('Sieben mit Krone', `
@@ -1533,18 +839,136 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       wwwwwwwwlyy
       ........nl`),
   ],
-  decoy: [
-    sp('Holzente auf dem Wasser', `
-      ......bbb
-      .....bbkbb
-      .....bbbbll
-      ......bbb
-      ..bbbbbbbbb
-      .bbbbbbbbbbb
-      bbbYYYbbbbbb
-      .bbbbbbbbbb
-      ..ccccccccc
-      .ccccccccccc`),
+  // ---- Item review 02.11.2026 (one motif each, not voted)
+  closing_time: [
+    sp('Mondsichel mit Stern über der Kneipentür', `
+      .....YYY......Y
+      ...YYYY......YYY
+      ..YYY.........Y
+      ..YY
+      ..YY.....nnnnnn
+      ..YYY....nYYYYn
+      ...YYYY..nYYYYn
+      .....YYY.nnnnnn
+      .........nbbbbn
+      .........nbbYbn
+      .........nbbbbn
+      .........nbbbbn`),
+  ],
+  season_ticket: [
+    sp('Fahrkarte mit Lochung', `
+      mmmmmmmmmmmmmm
+      mMMMMMMMMMMMMm
+      mwwwwwwwwwwwwm
+      mwGGGGww.wwwwm
+      mwwwwwwwwwwwwm
+      mwGGGwwwGGGwwm
+      mwwwwwwwwwwwwm
+      mwGGGGGwwwwwwm
+      mwwwwwwwwwwwwm
+      mmmmmmmmmmmmmm`),
+  ],
+  kitty: [
+    sp('Blechkasse mit Münzschlitz', `
+      ....YYYY
+      ....YyyY
+      ..GGGGGGGGGG
+      .GggggggggggG
+      .GgkkkkkkkkgG
+      .GggggggggggG
+      .GgGGGGGGGGgG
+      .GgGyyyyyyGgG
+      .GgGyYYYYyGgG
+      .GgGyyyyyyGgG
+      .GggggggggggG
+      ..GGGGGGGGGG`),
+  ],
+  slate: [
+    sp('Bierdeckel mit Kreidestrichen', `
+      ....wwwwww
+      ..wwwwwwwwww
+      .wwGwGwGwGwww
+      .wwGwGwGwGwww
+      wwwGwGwGwGwwww
+      wwwGGGGGGGGwww
+      wwwGwGwGwGwwww
+      .wwGwGwGwGwww
+      .wwwwwwwwwwww
+      ..wwwwwwwwww
+      ....wwwwww`),
+  ],
+  guardian_angel: [
+    sp('Heiligenschein mit Flügeln', `
+      .....YYYYYY
+      ....Y......Y
+      .....YYYYYY
+      ......ssss
+      hh....ssss....hh
+      hhh..wwwwww..hhh
+      hhhhwwwwwwwwhhhh
+      .hhhwwwwwwwwhhh
+      ..hhwwwwwwwwhh
+      ....wwwwwwww
+      ....wwwwwwww`),
+  ],
+  dive_expert: [
+    sp('Lupe über einer dunklen Kellertür', `
+      ..dddddd
+      .dddddddd
+      .ddaddddd
+      .dddddddd....GG
+      .dddddddd..GGccGG
+      .dddddddd.GcccccG
+      .dddddddd.GcchccG
+      .dddddddd.GcccccG
+      ...........GGGGG
+      ..........bb
+      .........bb
+      ........bb`),
+  ],
+  counter_beer: [
+    sp('Bierkrug mit Schaumkrone', `
+      ..wwwwwwww
+      .wwwwwwwwww
+      .waaaaaaaaw
+      .aaaaaaaaaaGGG
+      .aaaaaaaaaa..G
+      .aafaaaaaaa..G
+      .aafaaaaaaa..G
+      .aafaaaaaaa..G
+      .aaaaaaaaaaGGG
+      .aaaaaaaaaa
+      .GGGGGGGGGG`),
+  ],
+  snifter: [
+    sp('Cognacschwenker', `
+      ...cccccccc
+      ..c........c
+      .c..........c
+      .c..........c
+      .cOOOOOOOOOOc
+      .cOOlOOOOOOOc
+      ..cOOOOOOOOc
+      ...cOOOOOOc
+      .....cccc
+      ......cc
+      ......cc
+      ...cccccccc`),
+  ],
+  road_beer: [
+    sp('Bierflasche für unterwegs', `
+      ......gg
+      ......nn
+      ......nn
+      .....nnnn
+      ....nnnnnn
+      ....nwwwwn
+      ....nwrrwn
+      ....nwwwwn
+      ....nnnnnn
+      ....nnnnnn
+      ....nnnnnn
+      .....nnnn`),
   ],
   // ---- consumables (core/content/consumables.ron)
   fresh_deck: [
@@ -1621,83 +1045,6 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       wwwwwwwww
       wwwwwwwrw
       wwwwwwwww`),
-  ],
-  beer: [
-    sp('Bierkrug', `
-      ....ww..ww
-      ...wwwwwwwww
-      ..wwwwwwwwww
-      ...aaaaaaaa
-      ...ahaaaaaaccc
-      ...ahaaaaaac..c
-      ...ahaaaaaac..c
-      ...ahaaaaaac..c
-      ...aaaaaaaaccc
-      ...aaaaaYaa
-      ...aaaaaaaa
-      ...cccccccc`),
-    sp('Bierflasche', `
-      ..YY
-      ..nn
-      ..nn
-      .bbbb
-      bbbbbb
-      bwwwwb
-      bwrrwb
-      bwwwwb
-      bbbbbb
-      bbbbbb
-      bbbbbb`),
-    sp('Pilstulpe', `
-      ..wwwwww
-      .wwwwwwww
-      .aaaaaaaa
-      .ahaaaaaa
-      ..ahaaaa
-      ...aaaa
-      ....aa
-      ....cc
-      ....cc
-      ..cccccc`),
-  ],
-  new_deal: [
-    sp('Karte mit Pfeilen', `
-      .....oooooo
-      ...oo......oo
-      ..o..wwwwwwooo
-      ..o..wwwwww.o
-      .....wwrrww
-      .....wrrrrw
-      .....wrrrrw
-      .....wwrrww
-      .....wwwwww
-      ...o.wwwwww..o
-      ..ooowwwwww..o
-      ...oo......oo
-      .....oooooo`),
-    sp('Kartenfächer', `
-      ....wwwwww
-      ....wrrrrw
-      wwwwwrrrrwwwww
-      wrrrwrYYrwrrrw
-      wrrrwrYYrwrrrw
-      wrYrwrrrrwrYrw
-      wrrrwrrrrwrrrw
-      wrrrwwwwwwrrrw
-      wrrrw....wrrrw
-      wwwww....wwwww`),
-    sp('Austeilende Hand', `
-      ..........www
-      ..........rrw
-      .......www
-      .......rrw
-      ....www
-      ....rrw
-      sss
-      sssss
-      ssssss
-      sssss
-      rr`),
   ],
   shot: [
     sp('Schnapsglas', `
@@ -1810,76 +1157,20 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ....lnnl
       .....ll`),
   ],
-  bitters: [
-    sp('Bauchige braune Flasche', `
-      .......ll
-      .......nn
-      .......nn
-      ......nnnn
-      ....nnnnnnnn
-      ...nbnnnnnnnn
-      ...nrrrrrrrrn
-      ...nrwwwwwwrn
-      ...nrrrrrrrrn
-      ...nnnnnnnnnn
-      ...nbnnnnnnnn
-      ....nnnnnnnn`),
-    sp('Gläschen Magenbitter', `
-      c......c
-      chnnnnnc
-      chnnnnnc
-      .cnnnnc
-      .cnnnnc
-      ..cnnc
-      ...cc
-      ...cc
-      .cccccc`),
-    sp('Apothekerflasche', `
-      ...lll
-      ...lll
-      ...nnn
-      ..nnnnn
-      .nnnnnnn
-      nwwwwwwwn
-      nwwwrwwwn
-      nwwrrrwwn
-      nwwwrwwwn
-      nwwwwwwwn
-      nnnnnnnnn
-      .nnnnnnn`),
-  ],
-  chalk: [
-    sp('Kreidestück', `
-      ...........www
-      ..........www
-      .........www
-      ........www
-      .......www
-      ......www
-      .....www
-      ....ggg
-      ...g.g
-      ..........
-      ...wwwwww
-      ..........
-      .g`),
-    sp('Kreideschachtel', `
-      .ww.ww.ww
-      .ww.ww.ww
-      oooooooooo
-      owwwwwwwwo
-      oooooooooo
-      oooooooooo
-      oooooooooo`),
-    sp('Umgemalte Karte', `
-      wwwwwwwwwww
-      wwwwwwwwwww
-      wrrwwwoweew
-      wrrwooooeew
-      wrrwwwoweew
-      wwwwwwwwwww
-      wwwwwwwwwww
-      wwwwwwwwwww`),
+  blue_curacao: [
+    sp('Blaues Cocktailglas mit Zitronenscheibe', `
+      ..............LL
+      cccccccccccccLLL
+      .cJJJJJJJJJJJcL
+      ..cJJhJJJJJJc
+      ...cJJJJJJJc
+      ....cJJJJJc
+      .....cJJJc
+      ......cJc
+      .......c
+      .......c
+      .......c
+      ....ccccccc`),
   ],
 };
 
@@ -2067,50 +1358,29 @@ const FALLBACK: Record<CoasterKind, Sprite> = {
  */
 // Chosen by the user in the cockpit on 01.11.2026 (Tresen-Grafiken).
 export const CHOSEN: Record<string, 0 | 1 | 2> = {
-  bock_round: 1,
-  kontra: 0,
   last_trick_seven: 1,
   concede: 0,
-  ouvert_bonus: 1,
   skat_redraw: 2,
   virgin: 0,
   old_lady: 0,
   tour: 1,
-  march_through: 2,
-  blind_flight: 2,
   kibitzer: 0,
   landlord: 0,
-  granny: 0,
-  grandpa: 0,
-  referee: 2,
-  show_off: 0,
   card_counter: 2,
   every_bit_counts: 0,
   blind_eye: 1,
-  tuition: 0,
   beer_mat: 0,
-  high_and_dry: 0,
-  schneider_bock: 1,
   lucky_streak: 0,
   tailor: 0,
-  regular_guest: 2,
   null_eight_fifteen: 0,
-  safety_net: 0,
   fat_sow: 1,
-  glass_house: 0,
-  tally_stick: 1,
   with_four: 1,
-  seven_sleeper: 1,
-  clean_slate: 2,
   fresh_deck: 0,
   ink_pad: 0,
-  beer: 0,
-  new_deal: 1,
   shot: 0,
   double_grain: 1,
   herbal: 0,
-  bitters: 0,
-  chalk: 1,
+  blue_curacao: 0,
 };
 
 // ---------------------------------------------------------------------------
