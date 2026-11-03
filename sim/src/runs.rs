@@ -1,13 +1,19 @@
 //! Runs mode: complete runs with the simple run policy.
 //!
 //! Statistics: section reached, win rate per series, Groschen, and for
-//! every relic how often it was bought and how runs with it went.
+//! every relic how often it was bought and how runs with it went. Per pub
+//! (Spelunken in their own rows): games and Einmischen per pub, lives and
+//! relics on entering, Groschen per won pub. Per district: lives and
+//! relics at its start and before the boss, lost pubs per run, where the
+//! lost runs ended (normal pub, Spelunke, boss pub). Groschen: income by
+//! source and spending by kind ([`SPENDING`]).
 //!
 //! Options (all reproducible with the same seed, see [`Options`]):
 //! `--no-shop`, `--relic <id>` (repeatable), `--without <id>`
 //! (repeatable), `--boss <id>`, `--character declarer|null`,
 //! `--null-scoring fixed|formula`, `--curve` (success curve of a single
-//! series instead of whole runs, see [`curve`]), `--unlocks`
+//! series instead of whole runs, see [`curve`]; `--district N` places it
+//! in district N), `--unlocks`
 //! (reachability of every unlock, see [`unlocks`]) and `--consumable <id>` (a steady supply of one
 //! consumable, see [`Options::consumable`]).
 //!
@@ -73,6 +79,11 @@ pub struct Options {
     /// card with its value (default: its first value on offer), like
     /// [`skat_core::content::DeckSpec::mods`].
     pub card_mods: Vec<(Card, CardModId, Option<i32>)>,
+    /// District of the measured pub under `--curve` (`--district N`, from
+    /// 1): the pub starts there, so the defenders are that district's
+    /// (`run.ron`'s `opponents`) unless `--defenders` overrides them.
+    /// `None`: district 1.
+    pub district: Option<u32>,
 }
 
 /// Price of the Neuauslage and the Zinken under `--consumable`: never
@@ -138,6 +149,17 @@ impl Options {
             let value = value.unwrap_or_else(|| def.default_value());
             if let Some(def) = content.characters.get_mut(&self.character) {
                 def.deck.mods.push((*card, id.clone(), value));
+            }
+        }
+        if let Some(district) = self.district {
+            if !self.curve {
+                return Err("--district needs --curve".into());
+            }
+            if district == 0 || district > content.run.sections() {
+                return Err(format!(
+                    "--district: {district} is not a district (1 to {})",
+                    content.run.sections()
+                ));
             }
         }
         if let Some(defenders) = self.defenders {
@@ -240,6 +262,9 @@ impl Options {
                 None => parts.push(format!("card-mod={card}:{id}")),
             }
         }
+        if let Some(district) = self.district {
+            parts.push(format!("district={district}"));
+        }
         if parts.is_empty() {
             "standard".to_string()
         } else {
@@ -284,6 +309,69 @@ pub struct RelicStat {
     pub sections: u64,
 }
 
+/// How one pub slot went over all runs: a normal pub, a boss pub, or a
+/// Spelunke in its place.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PubStat {
+    /// Pubs entered.
+    pub attempts: u64,
+    /// Pubs won.
+    pub wins: u64,
+    /// Games played in them, summed.
+    pub games: u64,
+    /// Einmischen in them, summed.
+    pub redeals: u64,
+    /// Lives on entering, summed.
+    pub lives: u64,
+    /// Relics owned on entering, summed.
+    pub relics: u64,
+    /// Groschen paid by the won ones, summed.
+    pub payout: u64,
+}
+
+/// Where a lost run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RunEnd {
+    /// A normal pub cost the last life.
+    Pub,
+    /// A Spelunke cost the last life.
+    Spelunke,
+    /// A boss pub was lost (ADR 0017).
+    Boss,
+}
+
+/// What the bot spends Groschen on, in report order.
+pub const SPENDING: [&str; 7] = [
+    "relics",
+    "schnaps",
+    "zinken",
+    "painter",
+    "cleanse",
+    "zinken_reroll",
+    "reroll",
+];
+
+/// Per district, over all runs that reached it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DistrictStat {
+    /// Runs that started the district.
+    pub runs: u64,
+    /// Lives when the district started, summed.
+    pub lives_start: u64,
+    /// Boss pubs entered.
+    pub boss_runs: u64,
+    /// Lives before the boss pub, summed.
+    pub lives_boss: u64,
+    /// Relics owned when the district started, summed.
+    pub relics_start: u64,
+    /// Relics owned before the boss pub, summed.
+    pub relics_boss: u64,
+    /// Normal pubs and Spelunken lost (each cost a life or the run).
+    pub lost_pubs: u64,
+    /// Lost runs that ended in a normal pub, a Spelunke or the boss pub.
+    pub ended: [u64; 3],
+}
+
 /// Aggregate over all runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunStats {
@@ -295,8 +383,13 @@ pub struct RunStats {
     pub lost_in_section: Vec<u64>,
     /// Runs won.
     pub won: u64,
-    /// Attempts and wins per (section, series).
-    pub series: Vec<[(u64, u64); 5]>,
+    /// Normal and boss pubs per (section, pub); Spelunken are in
+    /// [`RunStats::spelunken`].
+    pub series: Vec<[PubStat; 5]>,
+    /// Spelunken per (section, pub they replace).
+    pub spelunken: Vec<[PubStat; 5]>,
+    /// Per district: lives, relics, lost pubs, where runs ended.
+    pub districts: Vec<DistrictStat>,
     /// Attempts and wins per boss in section 1.
     pub bosses: BTreeMap<BossId, (u64, u64)>,
     /// Attempts and wins per boss from section 2 on.
@@ -315,10 +408,21 @@ pub struct RunStats {
     pub redeals: u64,
     /// Groschen held at the end of each run, summed.
     pub coins_end: u64,
+    /// Groschen held at the start of each run, summed.
+    pub coins_start: u64,
     /// Groschen earned from series, summed.
     pub coins_earned: u64,
+    /// Groschen from selling relics and consumables, summed.
+    pub coins_sold: u64,
+    /// Groschen paid or taken by content (`CoinsGained`: curses, vouchers,
+    /// relics, encounters, the pot), summed with sign.
+    pub coins_other: i64,
     /// Groschen spent at the Tresen, summed.
     pub coins_spent: u64,
+    /// Groschen spent per kind, in the order of [`SPENDING`].
+    pub spending: [u64; 7],
+    /// Times the Tresen opened.
+    pub shops: u64,
     /// Per relic.
     pub relics: BTreeMap<RelicId, RelicStat>,
     /// Encounters opened, by id: (opened, options other than leaving
@@ -330,6 +434,210 @@ pub struct RunStats {
     pub consumables: BTreeMap<ConsumableId, (u64, u64)>,
 }
 
+/// The pub in progress while a run is observed.
+#[derive(Debug, Clone)]
+struct OpenPub {
+    section: usize,
+    index: usize,
+    spelunke: bool,
+    boss: Option<BossId>,
+}
+
+/// Follows one run's events into the statistics.
+struct Observer<'a> {
+    stats: &'a mut RunStats,
+    open: Option<OpenPub>,
+    /// The last pub entered, kept after it ends (where a run ended).
+    last: Option<OpenPub>,
+    bought: BTreeSet<RelicId>,
+}
+
+impl Observer<'_> {
+    /// The stats of the open pub.
+    fn pub_stat(&mut self) -> Option<&mut PubStat> {
+        let open = self.open.as_ref()?;
+        let table = if open.spelunke {
+            &mut self.stats.spelunken
+        } else {
+            &mut self.stats.series
+        };
+        table.get_mut(open.section)?.get_mut(open.index)
+    }
+
+    fn spend(&mut self, kind: usize, amount: u32) {
+        self.stats.coins_spent += u64::from(amount);
+        self.stats.spending[kind] += u64::from(amount);
+    }
+
+    /// One batch of events, with the run as it is after them (lives and
+    /// relics when a pub starts: nothing changes them later in the batch
+    /// that starts it).
+    fn observe(&mut self, run: &Run, events: &[RunEvent]) {
+        let boss_slot = usize::try_from(PUBS_PER_DISTRICT - 1).unwrap_or(4);
+        for event in events {
+            match event {
+                RunEvent::SeriesStarted {
+                    section,
+                    index,
+                    boss,
+                    malus,
+                    ..
+                } => {
+                    let open = OpenPub {
+                        section: usize::try_from(*section).unwrap_or(usize::MAX),
+                        index: usize::try_from(*index).unwrap_or(usize::MAX),
+                        spelunke: malus.is_some(),
+                        boss: boss.clone(),
+                    };
+                    let lives = u64::from(run.lives());
+                    let relics = u64::try_from(run.relics().len()).unwrap_or(0);
+                    if let Some(d) = self.stats.districts.get_mut(open.section) {
+                        if open.index == 0 {
+                            d.runs += 1;
+                            d.lives_start += lives;
+                            d.relics_start += relics;
+                        } else if open.index == boss_slot {
+                            d.boss_runs += 1;
+                            d.lives_boss += lives;
+                            d.relics_boss += relics;
+                        }
+                    }
+                    if let Some(boss) = boss {
+                        let table = if *section == 0 {
+                            &mut self.stats.bosses
+                        } else {
+                            &mut self.stats.bosses_later
+                        };
+                        table.entry(boss.clone()).or_default().0 += 1;
+                    }
+                    self.open = Some(open.clone());
+                    self.last = Some(open);
+                    if let Some(p) = self.pub_stat() {
+                        p.attempts += 1;
+                        p.lives += lives;
+                        p.relics += relics;
+                    }
+                }
+                RunEvent::SeriesWon { payout, .. } => {
+                    if let Some(p) = self.pub_stat() {
+                        p.wins += 1;
+                        p.payout += u64::from(payout.total());
+                    }
+                    if let Some(OpenPub {
+                        section,
+                        boss: Some(boss),
+                        ..
+                    }) = &self.open
+                    {
+                        let table = if *section == 0 {
+                            &mut self.stats.bosses
+                        } else {
+                            &mut self.stats.bosses_later
+                        };
+                        table.entry(boss.clone()).or_default().1 += 1;
+                    }
+                    self.stats.coins_earned += u64::from(payout.total());
+                    self.open = None;
+                }
+                RunEvent::PubLost { boss, .. } => {
+                    if boss.is_none() {
+                        if let Some(d) = self
+                            .open
+                            .as_ref()
+                            .and_then(|o| self.stats.districts.get_mut(o.section))
+                        {
+                            d.lost_pubs += 1;
+                        }
+                    }
+                    self.open = None;
+                }
+                RunEvent::RunLost { .. } => {
+                    if let Some(last) = &self.last {
+                        let end = match (&last.boss, last.spelunke) {
+                            (Some(_), _) => RunEnd::Boss,
+                            (None, true) => RunEnd::Spelunke,
+                            (None, false) => RunEnd::Pub,
+                        };
+                        if let Some(d) = self.stats.districts.get_mut(last.section) {
+                            d.ended[end as usize] += 1;
+                        }
+                    }
+                }
+                RunEvent::GameScored { breakdown, .. } => {
+                    self.stats.games += 1;
+                    self.stats.points += breakdown.score;
+                    if breakdown.won {
+                        self.stats.games_won += 1;
+                    }
+                    if breakdown.declaration.is_null() {
+                        self.stats.null_games += 1;
+                        self.stats.null_won += u64::from(breakdown.won);
+                    }
+                    if let Some(p) = self.pub_stat() {
+                        p.games += 1;
+                    }
+                }
+                RunEvent::Redealt => {
+                    self.stats.redeals += 1;
+                    if let Some(p) = self.pub_stat() {
+                        p.redeals += 1;
+                    }
+                }
+                RunEvent::RelicBought { relic, price } => {
+                    self.stats.relics.entry(relic.clone()).or_default().bought += 1;
+                    self.spend(0, *price);
+                    self.bought.insert(relic.clone());
+                }
+                RunEvent::ConsumableBought { consumable, price } => {
+                    self.spend(1, *price);
+                    self.stats
+                        .consumables
+                        .entry(consumable.clone())
+                        .or_default()
+                        .0 += 1;
+                }
+                RunEvent::ConsumableUsed { consumable } => {
+                    self.stats
+                        .consumables
+                        .entry(consumable.clone())
+                        .or_default()
+                        .1 += 1;
+                }
+                RunEvent::RelicSold { price, .. } | RunEvent::ConsumableSold { price, .. } => {
+                    self.stats.coins_sold += u64::from(*price);
+                }
+                RunEvent::CoinsGained { amount, .. } => {
+                    self.stats.coins_other += i64::from(*amount);
+                }
+                RunEvent::ShopOpened { .. } => self.stats.shops += 1,
+                RunEvent::EncounterOpened { encounter, .. } => {
+                    self.stats
+                        .encounters
+                        .entry(encounter.clone())
+                        .or_default()
+                        .0 += 1;
+                }
+                RunEvent::EncounterResolved { encounter, choice } => {
+                    if *choice != EncounterChoice::Leave {
+                        self.stats
+                            .encounters
+                            .entry(encounter.clone())
+                            .or_default()
+                            .1 += 1;
+                    }
+                }
+                // Zinken at the Tresen (DESIGN 8.6).
+                RunEvent::CardOfferBought { price, .. } => self.spend(2, *price),
+                RunEvent::PainterHired { price, .. } => self.spend(3, *price),
+                RunEvent::CardCleansed { price, .. } => self.spend(4, *price),
+                RunEvent::CardOffersRerolled { cost } => self.spend(5, *cost),
+                RunEvent::ShopRerolled { cost } => self.spend(6, *cost),
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Play one run to the end and add it to the statistics.
 fn play_run(
     content: &Content,
@@ -338,108 +646,26 @@ fn play_run(
     stats: &mut RunStats,
 ) -> Result<(), String> {
     let start = options.start();
-    let (mut run, mut events) = Run::new_with(content, seed, &start).map_err(|e| e.to_string())?;
+    let (mut run, events) = Run::new_with(content, seed, &start).map_err(|e| e.to_string())?;
+    stats.coins_start += u64::from(run.coins());
+    let mut observer = Observer {
+        stats,
+        open: None,
+        last: None,
+        bought: BTreeSet::new(),
+    };
+    observer.observe(&run, &events);
     let mut actions = 0;
     while let Some(action) = options.next_action(&run, content) {
-        events.extend(run.apply(content, action).map_err(|e| e.to_string())?);
+        let events = run.apply(content, action).map_err(|e| e.to_string())?;
+        observer.observe(&run, &events);
         actions += 1;
         if actions > MAX_ACTIONS {
             return Err("run does not end".into());
         }
     }
+    let bought = std::mem::take(&mut observer.bought);
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
-    let mut bought: BTreeSet<RelicId> = BTreeSet::new();
-    let mut current_boss: Option<(BossId, u32)> = None;
-    for event in &events {
-        match event {
-            RunEvent::SeriesStarted {
-                section,
-                index,
-                boss,
-                ..
-            } => {
-                if let Some(entry) = stats
-                    .series
-                    .get_mut(usize::try_from(*section).unwrap_or(usize::MAX))
-                    .and_then(|s| s.get_mut(usize::try_from(*index).unwrap_or(usize::MAX)))
-                {
-                    entry.0 += 1;
-                }
-                current_boss = boss.clone().map(|b| (b, *section));
-                if let Some(boss) = boss {
-                    let table = if *section == 0 {
-                        &mut stats.bosses
-                    } else {
-                        &mut stats.bosses_later
-                    };
-                    table.entry(boss.clone()).or_default().0 += 1;
-                }
-            }
-            RunEvent::SeriesWon {
-                section,
-                index,
-                payout,
-                ..
-            } => {
-                if let Some(entry) = stats
-                    .series
-                    .get_mut(usize::try_from(*section).unwrap_or(usize::MAX))
-                    .and_then(|s| s.get_mut(usize::try_from(*index).unwrap_or(usize::MAX)))
-                {
-                    entry.1 += 1;
-                }
-                if let Some((boss, section)) = &current_boss {
-                    let table = if *section == 0 {
-                        &mut stats.bosses
-                    } else {
-                        &mut stats.bosses_later
-                    };
-                    table.entry(boss.clone()).or_default().1 += 1;
-                }
-                stats.coins_earned += u64::from(payout.total());
-            }
-            RunEvent::GameScored { breakdown, .. } => {
-                stats.games += 1;
-                stats.points += breakdown.score;
-                if breakdown.won {
-                    stats.games_won += 1;
-                }
-                if breakdown.declaration.is_null() {
-                    stats.null_games += 1;
-                    stats.null_won += u64::from(breakdown.won);
-                }
-            }
-            RunEvent::Redealt => stats.redeals += 1,
-            RunEvent::RelicBought { relic, price } => {
-                stats.relics.entry(relic.clone()).or_default().bought += 1;
-                stats.coins_spent += u64::from(*price);
-                bought.insert(relic.clone());
-            }
-            RunEvent::ConsumableBought { consumable, price } => {
-                stats.coins_spent += u64::from(*price);
-                stats.consumables.entry(consumable.clone()).or_default().0 += 1;
-            }
-            RunEvent::ConsumableUsed { consumable } => {
-                stats.consumables.entry(consumable.clone()).or_default().1 += 1;
-            }
-            RunEvent::EncounterOpened { encounter, .. } => {
-                stats.encounters.entry(encounter.clone()).or_default().0 += 1;
-            }
-            RunEvent::EncounterResolved { encounter, choice } => {
-                if *choice != EncounterChoice::Leave {
-                    stats.encounters.entry(encounter.clone()).or_default().1 += 1;
-                }
-            }
-            RunEvent::ShopRerolled { cost } | RunEvent::CardOffersRerolled { cost } => {
-                stats.coins_spent += u64::from(*cost);
-            }
-            // Zinken at the Tresen (DESIGN 8.6).
-            RunEvent::CardOfferBought { price, .. }
-            | RunEvent::PainterHired { price, .. }
-            | RunEvent::CardCleansed { price, .. } => stats.coins_spent += u64::from(*price),
-            _ => {}
-        }
-    }
     let won = run.phase() == RunPhase::Won;
     let section = usize::try_from(run.series().section).unwrap_or(0);
     if won {
@@ -471,7 +697,9 @@ pub fn simulate(
         seed,
         runs,
         lost_in_section: vec![0; sections],
-        series: vec![[(0, 0); 5]; sections],
+        series: vec![[PubStat::default(); 5]; sections],
+        spelunken: vec![[PubStat::default(); 5]; sections],
+        districts: vec![DistrictStat::default(); sections],
         ..RunStats::default()
     };
     // Every relic appears in the table, also if it was never bought.
@@ -528,38 +756,8 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         let _ = write!(out, " {}={:.1}%", section + 1, pct(later, runs));
     }
     out.push('\n');
-    let _ = writeln!(
-        out,
-        "{:<8} {:>7} {:>9} {:>7}",
-        "series", "target", "attempts", "win%"
-    );
-    for (section, row) in stats.series.iter().enumerate() {
-        for (index, (attempts, wins)) in row.iter().enumerate() {
-            let row = section;
-            // The character's own Zielwerte if it has some, before boss
-            // factors.
-            let target = u32::try_from(row)
-                .ok()
-                .zip(u32::try_from(index).ok())
-                .and_then(|(row, index)| {
-                    series_target(content, options.character, row, index, None)
-                })
-                .unwrap_or(0);
-            let label = if index + 1 == usize::try_from(PUBS_PER_DISTRICT).unwrap_or(5) {
-                format!("{}-boss", section + 1)
-            } else {
-                format!("{}-{}", section + 1, index + 1)
-            };
-            let _ = writeln!(
-                out,
-                "{:<8} {:>7} {:>9} {:>7.1}",
-                label,
-                target,
-                attempts,
-                pct(*wins, *attempts)
-            );
-        }
-    }
+    render_pubs(&mut out, stats, content, options);
+    render_districts(&mut out, stats);
     for (label, table) in [
         ("bosses section 1:", &stats.bosses),
         ("bosses section 2+:", &stats.bosses_later),
@@ -602,6 +800,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         mean(stats.coins_spent, runs),
         mean(stats.coins_end, runs)
     );
+    render_groschen(&mut out, stats);
     let _ = write!(out, "consumables (bought/used):");
     for (id, (bought, used)) in &stats.consumables {
         let _ = write!(out, " {id}={bought}/{used}");
@@ -635,6 +834,169 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         per_run / 1000.0
     );
     out
+}
+
+/// The pub table: normal and boss pubs, then the Spelunken, each row with
+/// attempts, wins, games and Einmischen per pub, lives and relics on
+/// entering and the payout of a won one; then the games per pub by kind.
+fn render_pubs(out: &mut String, stats: &RunStats, content: &Content, options: &Options) {
+    let _ = writeln!(
+        out,
+        "{:<10} {:>7} {:>9} {:>7} {:>6} {:>8} {:>6} {:>7} {:>9}",
+        "pub", "target", "attempts", "win%", "games", "redeals", "lives", "relics", "groschen"
+    );
+    let boss_slot = usize::try_from(PUBS_PER_DISTRICT - 1).unwrap_or(4);
+    let factor = content.run.spelunke.target_factor;
+    let mut kinds = [
+        (PubStat::default(), "normal"),
+        (PubStat::default(), "boss"),
+        (PubStat::default(), "spelunke"),
+    ];
+    for (spelunke, table) in [(false, &stats.series), (true, &stats.spelunken)] {
+        for (section, row) in table.iter().enumerate() {
+            for (index, p) in row.iter().enumerate() {
+                if spelunke && p.attempts == 0 {
+                    continue;
+                }
+                // The character's own Zielwerte if it has some, before boss
+                // factors; a Spelunke's with its factor, without Wegbier.
+                let target = u32::try_from(section)
+                    .ok()
+                    .zip(u32::try_from(index).ok())
+                    .and_then(|(row, index)| {
+                        series_target(content, options.character, row, index, None)
+                    })
+                    .unwrap_or(0);
+                let target = if spelunke {
+                    factor.apply(target)
+                } else {
+                    target
+                };
+                let label = match (spelunke, index == boss_slot) {
+                    (true, _) => format!("{}-{} sp", section + 1, index + 1),
+                    (false, true) => format!("{}-boss", section + 1),
+                    (false, false) => format!("{}-{}", section + 1, index + 1),
+                };
+                let n = p.attempts;
+                let _ = writeln!(
+                    out,
+                    "{:<10} {:>7} {:>9} {:>7.1} {:>6.2} {:>8.2} {:>6.2} {:>7.2} {:>9.2}",
+                    label,
+                    target,
+                    n,
+                    pct(p.wins, n),
+                    mean(p.games, n),
+                    mean(p.redeals, n),
+                    mean(p.lives, n),
+                    mean(p.relics, n),
+                    mean(p.payout, p.wins)
+                );
+                let kind = match (spelunke, index == boss_slot) {
+                    (true, _) => 2,
+                    (false, true) => 1,
+                    (false, false) => 0,
+                };
+                let k = &mut kinds[kind].0;
+                k.attempts += p.attempts;
+                k.wins += p.wins;
+                k.games += p.games;
+                k.payout += p.payout;
+            }
+        }
+    }
+    let _ = write!(out, "games per pub:");
+    for (k, name) in &kinds {
+        let _ = write!(
+            out,
+            " {name}={:.2} (win%={:.1}, groschen per won={:.2})",
+            mean(k.games, k.attempts),
+            pct(k.wins, k.attempts),
+            mean(k.payout, k.wins)
+        );
+    }
+    out.push('\n');
+}
+
+/// Per district: lives and relics at its start and before the boss, lost
+/// pubs per run in it, and where the lost runs ended.
+fn render_districts(out: &mut String, stats: &RunStats) {
+    let runs = u64::from(stats.runs);
+    let _ = writeln!(
+        out,
+        "{:<9} {:>6} {:>12} {:>12} {:>13} {:>13} {:>10} {:>9} {:>9} {:>9}",
+        "district",
+        "runs",
+        "lives start",
+        "lives boss",
+        "relics start",
+        "relics boss",
+        "lost pubs",
+        "end pub",
+        "end sp",
+        "end boss"
+    );
+    let mut ended = [0u64; 3];
+    for (i, d) in stats.districts.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "{:<9} {:>6} {:>12.2} {:>12.2} {:>13.2} {:>13.2} {:>10.2} {:>9} {:>9} {:>9}",
+            i + 1,
+            d.runs,
+            mean(d.lives_start, d.runs),
+            mean(d.lives_boss, d.boss_runs),
+            mean(d.relics_start, d.runs),
+            mean(d.relics_boss, d.boss_runs),
+            mean(d.lost_pubs, d.runs),
+            d.ended[RunEnd::Pub as usize],
+            d.ended[RunEnd::Spelunke as usize],
+            d.ended[RunEnd::Boss as usize]
+        );
+        for (sum, n) in ended.iter_mut().zip(d.ended) {
+            *sum += n;
+        }
+    }
+    let _ = writeln!(
+        out,
+        "runs end: normal pub={} ({:.1}%) spelunke={} ({:.1}%) boss pub={} ({:.1}%) won={} ({:.1}%)",
+        ended[0],
+        pct(ended[0], runs),
+        ended[1],
+        pct(ended[1], runs),
+        ended[2],
+        pct(ended[2], runs),
+        stats.won,
+        pct(stats.won, runs)
+    );
+}
+
+/// Groschen income and spending per run, spending by kind with its share.
+fn render_groschen(out: &mut String, stats: &RunStats) {
+    let runs = u64::from(stats.runs);
+    let income = i64::try_from(stats.coins_start + stats.coins_earned + stats.coins_sold)
+        .unwrap_or(i64::MAX)
+        + stats.coins_other;
+    // What is neither Tresen nor held at the end: encounter costs, wagers,
+    // debt.
+    let rest = income - i64::try_from(stats.coins_spent + stats.coins_end).unwrap_or(i64::MAX);
+    let _ = writeln!(
+        out,
+        "groschen income per run: start {:.2}, pubs {:.2}, sold {:.2}, content {:.2}; paid outside the Tresen (encounters, debt) {:.2}",
+        mean(stats.coins_start, runs),
+        mean(stats.coins_earned, runs),
+        mean(stats.coins_sold, runs),
+        mean_signed(stats.coins_other, runs),
+        mean_signed(rest, runs)
+    );
+    let _ = write!(out, "groschen spent per run (share):");
+    for (name, amount) in SPENDING.iter().zip(stats.spending) {
+        let _ = write!(
+            out,
+            " {name}={:.2} ({:.1}%)",
+            mean(amount, runs),
+            pct(amount, stats.coins_spent)
+        );
+    }
+    let _ = writeln!(out, "; tresen visits={:.2}", mean(stats.shops, runs));
 }
 
 // ---------------------------------------------------------------------------
@@ -715,6 +1077,7 @@ pub fn curve(
         }
     }
     let start = RunStart {
+        section: options.district.map_or(0, |d| d.saturating_sub(1)),
         index: if options.boss.is_some() {
             PUBS_PER_DISTRICT - 1
         } else {
@@ -998,7 +1361,10 @@ mod tests {
         let stats = simulate(&content, &Options::default(), 7, 25).expect("runs");
         let ended: u64 = stats.lost_in_section.iter().sum::<u64>() + stats.won;
         assert_eq!(ended, 25);
-        assert_eq!(stats.series[0][0].0, 25, "every run starts with series 1-1");
+        assert_eq!(
+            stats.series[0][0].attempts, 25,
+            "every run starts with series 1-1"
+        );
     }
 }
 
@@ -1190,7 +1556,7 @@ mod option_tests {
         // The same seed in the runs mode wins series 1-1 exactly when the
         // curve reaches its Zielwert.
         let runs = simulate(&base, &options, 42, 200).expect("runs");
-        let won_1_1 = runs.series[0][0].1;
+        let won_1_1 = runs.series[0][0].wins;
         let first = base.run.targets[0][0];
         let from_curve = a
             .best
@@ -1216,6 +1582,101 @@ mod option_tests {
         let limit = u64::from(base.run.game_limit);
         assert_eq!(n.games, 100 * limit);
         assert_eq!(a.games, 200 * limit);
+    }
+
+    #[test]
+    fn run_metrics_add_up() {
+        let base = content();
+        let options = Options::default();
+        let stats = simulate(&base, &options, 9, 40).expect("runs");
+        let lost: u64 = stats.lost_in_section.iter().sum();
+        let ended: u64 = stats.districts.iter().flat_map(|d| d.ended).sum();
+        assert_eq!(ended, lost, "every lost run ends in one pub");
+        // Spending by kind sums to the whole.
+        assert_eq!(stats.spending.iter().sum::<u64>(), stats.coins_spent);
+        assert!(stats.spending[0] > 0, "relics are bought");
+        // Every run starts district 1 with the starting lives.
+        let d1 = stats.districts[0];
+        assert_eq!(d1.runs, 40);
+        assert_eq!(d1.lives_start, 40 * u64::from(base.run.lives.start));
+        assert!(d1.relics_start >= 40, "the Zähler from the start");
+        assert_eq!(d1.boss_runs, stats.series[0][4].attempts);
+        // Spelunken are counted apart from the pubs they replace: a slot is
+        // entered once per run that gets there.
+        for (section, (row, sp)) in stats.series.iter().zip(&stats.spelunken).enumerate() {
+            for (index, (p, s)) in row.iter().zip(sp).enumerate() {
+                if index == 0 {
+                    assert_eq!(p.attempts + s.attempts, stats.districts[section].runs);
+                }
+                assert!(p.games >= p.attempts, "at least one game per pub");
+                assert!(s.wins <= s.attempts && p.wins <= p.attempts);
+            }
+            assert_eq!(sp[4].attempts, 0, "never a Spelunke before the boss");
+        }
+        assert!(
+            stats.spelunken.iter().flatten().any(|s| s.attempts > 0),
+            "40 runs meet a Spelunke"
+        );
+        let text = render(&stats, &base, &options, 0);
+        for needle in [
+            "lives start",
+            "runs end:",
+            "games per pub:",
+            "groschen spent per run",
+            "sp ",
+        ] {
+            assert!(text.contains(needle), "{needle} in {text}");
+        }
+    }
+
+    #[test]
+    fn the_curve_can_measure_a_later_district() {
+        // The defenders of run.ron per district, made cheap: heuristic in
+        // districts 1 and 2, a small PIMC in district 3.
+        let mut base = Content::load().expect("content");
+        base.run.opponents = vec![
+            Opponents::Heuristic,
+            Opponents::Heuristic,
+            Opponents::Pimc {
+                samples: 1,
+                depth: 1,
+            },
+        ];
+        let options = Options {
+            curve: true,
+            district: Some(3),
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let a = curve(&content, &options, 42, 30).expect("curve");
+        assert_eq!(a, curve(&content, &options, 42, 30).expect("curve"));
+        assert!(render_curve(&a, &content, &options, 0).contains("district=3"));
+        // Same seeds in district 2: other defenders, other games.
+        let two = Options {
+            district: Some(2),
+            ..options.clone()
+        };
+        let c = curve(&two.content(&base).expect("content"), &two, 42, 30).expect("curve");
+        assert_ne!((a.points, a.games_won), (c.points, c.games_won));
+        let boss = Options {
+            boss: Some(BossId::new("the_old_man")),
+            ..options.clone()
+        };
+        let content = boss.content(&base).expect("content");
+        let b = curve(&content, &boss, 42, 10).expect("boss curve");
+        assert_eq!(b.games, 10 * u64::from(base.run.game_limit));
+        for bad in [Some(0), Some(4)] {
+            let wrong = Options {
+                district: bad,
+                ..options.clone()
+            };
+            assert!(wrong.content(&base).is_err());
+        }
+        let runs = Options {
+            district: Some(2),
+            ..Options::default()
+        };
+        assert!(runs.content(&base).is_err(), "--district needs --curve");
     }
 
     #[test]

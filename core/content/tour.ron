@@ -64,16 +64,20 @@
             "water": ["Kanal", "Kai", "Pegel", "Schlachthof", "Güterbahnhof"],
         },
     ),
+    // Gewichte (03.11.2026, docs/balance/2026-11-03-kleine-runde.md): Kein
+    // Skat ist rund 15 Punkte schwerer als die anderen und kommt halb so oft.
     maluses: [
         (
             id: "no_redeal",
             name: "Kein Einmischen",
+            weight: 2,
             text: "Hier wird jedes Blatt gespielt, wie es kommt: In dieser Kneipe darfst du nicht einmischen.",
             no_redeal: true,
         ),
         (
             id: "cursed_cards",
             name: "Klebrige Karten",
+            weight: 2,
             text: "Die Karten kleben vom Bier: Zwei zufällige Karten deiner Ausgabe ohne Modifikation sind hier ramponiert (Augen −5), ein Fluch nur für diese Kneipe. Danach sind sie wieder sauber.",
             curse: Some((card_mod: "battered", value: 5, cards: 2)),
         ),
@@ -89,6 +93,7 @@
         (
             id: "schnapps_locked",
             name: "Schnapsverbot",
+            weight: 2,
             text: "Hier wird nur Bier ausgeschenkt: In dieser Kneipe kannst du keine Schnäpse trinken.",
             lock_schnapps: true,
         ),

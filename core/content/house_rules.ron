@@ -45,7 +45,7 @@
         name: "Schenken",
         text: "Haben die Gegner nach fünf Stichen unter 15 Augen, geben sie auf. Der Rest gehört dir, das Spiel ist mindestens Schneider. Nicht beim Null.",
         rarity: Uncommon,
-        price: 8,
+        price: 6,
         hooks: [
             // Im Null hieße Aufgeben, dass der Alleinspieler die übrigen
             // Stiche bekommt und verliert.
@@ -58,7 +58,7 @@
         name: "Schieben",
         text: "In jedem Spiel darfst du einmal mehr einmischen.",
         rarity: Common,
-        price: 8,
+        price: 6,
         // DESIGN 8.1: neu geben statt Skat neu ziehen, Begründung dort.
         // Seit dem Einmischen (01.11.2026) ein Einmischen mehr pro Spiel.
         passive: [ExtraRedeal],
@@ -157,7 +157,7 @@
         name: "Ein Auge zudrücken",
         text: "Der Wirt drückt ein Auge zu: Du gewinnst schon mit 3 Augen weniger (58 statt 61).",
         rarity: Common,
-        price: 8,
+        price: 7,
         passive: [WinThreshold(58)],
     ),
     // Lever Grundwert (counter, grows over the run): +1 per won hand game.
@@ -259,17 +259,19 @@
     // counter; from the next game on every won game (Farbspiel, Grand and
     // Null, not the Ramsch) gets one level per point, on score. The level
     // hook comes first, so a Schneider game does not count its own point.
+    // Since 03.11.2026 the counter stops at 3, so at most +3 in total
+    // (docs/balance/2026-11-03-kleine-runde.md: it dominated every relic).
     (
         id: "skat_god",
         group: Multiplier,
         focus: Trump,
         name: "Skatgott",
-        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel.",
+        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3.",
         rarity: Legendary,
-        price: 9,
+        price: 12,
         hooks: [
             OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerCounter(counter: "skat_god", per: 1)]),
-            OnScore(when: WonSchneider, then: [IncrementCounter("skat_god")]),
+            OnScore(when: All([WonSchneider, Not(CounterAtLeast(counter: "skat_god", value: 3))]), then: [IncrementCounter("skat_god")]),
         ],
     ),
     // Lever Stichgewinn (Vorhand): the player leads the first trick of
@@ -426,7 +428,7 @@
         name: "Feierabend",
         text: "Schaffst du eine Kneipe gleich im ersten Spiel, gibt es 4 Groschen extra.",
         rarity: Common,
-        price: 5,
+        price: 4,
         hooks: [
             OnSeriesWon(when: GamesLeftAtLeast(2), then: [GainCoins(4)]),
         ],

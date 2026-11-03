@@ -480,6 +480,53 @@ fn black_peter_pays_won_games_without_schneider_half() {
 }
 
 #[test]
+fn a_lost_ramsch_counts_once_in_the_ramschers_pub() {
+    // 03.11.2026 (DESIGN 17a): the boss rule `SingleLoss`, data in
+    // bosses.ron, not a branch on the boss id.
+    let content = content();
+    let ramscher = BossId::new("ramscher");
+    let def = content.boss(&ramscher).expect("ramscher");
+    assert!(def.passive.contains(&Effect::SingleLoss));
+    for seed in 0..200 {
+        let (mut run, _) = Run::new(&content, seed).expect("run");
+        run.series.boss = Some(ramscher.clone());
+        let mut events = Vec::new();
+        run.deal(&content, true, &mut events).expect("deal");
+        run.play_ai(&content, &mut events).expect("AI");
+        for _ in 0..40 {
+            let Some(action) = RunBot.next_action(&run, &content) else {
+                break;
+            };
+            for event in run.apply(&content, action).expect("legal") {
+                let RunEvent::GameScored { breakdown, .. } = event else {
+                    continue;
+                };
+                assert_eq!(breakdown.declaration, Declaration::Ramsch);
+                if breakdown.won {
+                    assert!(breakdown.lines.iter().all(|l| l.lever != Lever::LossFactor));
+                    continue;
+                }
+                let once = ScoreLine {
+                    source: Source::Boss(ramscher.clone()),
+                    lever: Lever::LossFactor,
+                    change: Change::Set(1),
+                };
+                assert!(breakdown.lines.contains(&once), "{breakdown:?}");
+                assert_eq!(
+                    breakdown.score,
+                    -i64::try_from(breakdown.value).expect("small")
+                );
+                return;
+            }
+            if run.series().boss.as_ref() != Some(&ramscher) {
+                break;
+            }
+        }
+    }
+    panic!("no lost Ramsch in 200 seeds");
+}
+
+#[test]
 fn the_old_man_lays_one_rule_per_game() {
     let content = content();
     let def = content.boss(&BossId::new("the_old_man")).expect("old man");

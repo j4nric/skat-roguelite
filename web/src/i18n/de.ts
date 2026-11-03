@@ -521,7 +521,7 @@ export const de = {
     seatTrick: '{n} Stich',
     most: 'meiste Augen',
     ramschWon: 'Ein anderer hat die meisten Augen. Seine Augen zählen für dich.',
-    ramschLost: 'Du hast die meisten Augen. Das zählt doppelt gegen dich.',
+    ramschLost: 'Du hast die meisten Augen. Das zählt gegen dich.',
     nullWon: 'Keinen Stich gemacht.',
     nullLost: 'Einen Stich bekommen.',
     with: 'mit {count}',

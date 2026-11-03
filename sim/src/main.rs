@@ -21,6 +21,9 @@
 //!   `--boss` boss pubs: both boss players, all three games, the account
 //!   after the last counts, ADR 0017); prints the share of series won for
 //!   every Zielwert of `run.ron`.
+//! - `--district 1|2|3` (with `--curve`): the measured pub lies in this
+//!   district, so the defenders are that district's (`run.ron`'s
+//!   `opponents`; `--defenders` still overrides them). Default 1.
 //! - `--character declarer|null|shirker|tailoress|heart_brother`: who plays (default: the Alleinspieler).
 //! - `--null-scoring fixed|formula`: override the Null scoring of the
 //!   character that plays (DESIGN 9.2).
@@ -189,6 +192,11 @@ fn parse_args() -> Result<Args, String> {
                 args.options
                     .card_mods
                     .push((card, CardModId::new(id), value));
+            }
+            "--district" => {
+                let value = it.next().ok_or("missing value for --district")?;
+                args.options.district =
+                    Some(value.parse().map_err(|e| format!("--district: {e}"))?);
             }
             "--stake" => {
                 let value = it.next().ok_or("missing value for --stake")?;
@@ -585,7 +593,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve [--district N] | --unlocks]]"
             );
             return ExitCode::FAILURE;
         }

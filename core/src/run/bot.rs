@@ -235,8 +235,8 @@ pub const SWAP_MARGIN: u32 = 3;
 ///
 /// | Consumable | Value | Use |
 /// |---|---|---|
-/// | `herbal` | 2 | "Kräuter" (since 02.11.2026 what "Neues Blatt" did): throws a weak hand in once the game's Einmischen are used up |
-/// | `double_grain` | 2 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
+/// | `herbal` | 1 | "Kräuter" (since 02.11.2026 what "Neues Blatt" did): throws a weak hand in once the game's Einmischen are used up |
+/// | `double_grain` | 1 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
 /// | `blue_curacao` | 2 | "Blue Curaçao": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
 /// | `counter_beer` | 2 | "Konterbier": at the route choice with a life missing |
@@ -253,10 +253,12 @@ pub const SWAP_MARGIN: u32 = 3;
 /// the run measurement of 01.11.2026, DESIGN 5.2), so three weak deals in
 /// a row come in about one game of eight, once every three series. Before the
 /// Einmischen rule they were worth 4, 3 and 3 and were bought far more
-/// often than used.
+/// often than used. Kräuter and Doppelkorn 2 → 1 on 03.11.2026: about
+/// half of them were never drunk
+/// (`docs/balance/2026-11-03-kleine-runde.md`, 1387 / 772 and 695 / 349).
 pub const CONSUMABLE_VALUES: [(&str, u32); 7] = [
-    ("herbal", 2),
-    ("double_grain", 2),
+    ("herbal", 1),
+    ("double_grain", 1),
     ("blue_curacao", 2),
     ("shot", 1),
     ("counter_beer", 2),
@@ -1657,8 +1659,8 @@ mod tests {
         let content = Content::load().expect("content");
         let mut run = open_shop(&content, 10);
         run.shop.as_mut().expect("shop").card_offers.clear();
-        offer(&mut run, &[], &["shot", "herbal"]);
-        // Kräuter (2) before the Kurzer (1).
+        offer(&mut run, &[], &["herbal", "road_beer"]);
+        // Wegbier (2) before Kräuter (1).
         assert_eq!(
             RunBot.shop_action(&run, &content),
             RunAction::BuyConsumable(1)
