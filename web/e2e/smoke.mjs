@@ -907,6 +907,24 @@ function patched(name, change) {
   return JSON.stringify(save);
 }
 
+/**
+ * coins-curse.json with its encounter in the form since 03.11.2026:
+ * "Umgekipptes Bier", whose random card gets the curse "Ramponiert" (it
+ * pays 3 Groschen).
+ */
+function spilledBeer() {
+  return patched('coins-curse.json', (save) => {
+    save.run.encounter = {
+      id: 'spilled_beer',
+      options: [
+        { cost: 0, effects: [{ Mark: { card: 'Random', card_mod: 'battered', value: 5 } }] },
+        { cost: 4, effects: [{ Mark: { card: 'Chosen', card_mod: 'battered', value: 5 } }] },
+        { cost: 2, effects: [] },
+      ],
+    };
+  });
+}
+
 /** Open the app with a saved run from e2e/fixtures and resume it. */
 async function resumeFixture(page, name, raw = null) {
   await resumeState(page, name, raw ?? fixture(name));
@@ -1563,20 +1581,7 @@ async function m5(browser, errors, reducedMotion) {
 
   // "Umgekipptes Bier": the curse "Ramponiert" pays 3 Groschen with their
   // source. The old save's encounter is replaced by the new form.
-  await resumeState(
-    page,
-    'coins-curse.json',
-    patched('coins-curse.json', (save) => {
-      save.run.encounter = {
-        id: 'spilled_beer',
-        options: [
-          { cost: 0, effects: [{ Mark: { card: 'Random', card_mod: 'battered', value: 5 } }] },
-          { cost: 4, effects: [{ Mark: { card: 'Chosen', card_mod: 'battered', value: 5 } }] },
-          { cost: 2, effects: [] },
-        ],
-      };
-    }),
-  );
+  await resumeState(page, 'coins-curse.json', spilledBeer());
   await page.waitForSelector('[data-testid="encounter"]');
   const coinsBefore = Number(await text(page, 'coins'));
   const curse = page.locator('[data-action="choose-encounter"][data-target="None"]:has([data-card-mod="battered"])');
@@ -2395,10 +2400,10 @@ async function rewardFxPass(browser, errors, viewport) {
   await page.click('[data-action="score-continue"]');
 
   // An encounter's Groschen fly into the purse.
-  await resumeFixture(page, 'coins-curse.json');
+  await resumeState(page, 'coins-curse.json', spilledBeer());
   await page.waitForSelector('[data-testid="encounter"]');
   const before = Number(await text(page, 'coins'));
-  await page.click('[data-action="choose-encounter"][data-target="false"]:has([data-card-mod="battered"])');
+  await page.click('[data-action="choose-encounter"][data-target="None"]:has([data-card-mod="battered"])');
   await page.waitForSelector('[data-testid="coin-fly"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no Groschen fly from the encounter`));
   await snap('fx-encounter-coins');
   await page.waitForSelector('[data-testid="purse-ghost"]', { state: 'detached', timeout: 5000 });
