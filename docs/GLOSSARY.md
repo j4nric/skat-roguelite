@@ -63,7 +63,11 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Rand-Modifikation | `ModKind::Edge` | Augen, Rang, Trumpf |
 | Moment-Modifikation | `ModKind::Moment` | Letzter Stich, Erster Stich |
 | Gutschein (wenn gedrückt) | `ModKind::Voucher` | Auslöser `OnDiscard`, Ereignis `VoucherRedeemed { card, card_mod, value }`, Wirkung `TurnInto` (wird Spezialkarte) |
-| Spezialkarte | `ModKind::Special` | Untot, Wandelkarte; darf zusätzlich eine normale Modifikation tragen |
+| Spezialkarte | `ModKind::Special` | Untot, Wandelkarte; darf zusätzlich eine normale Modifikation tragen. Höchstens eine Karte je Ausgabe trägt dieselbe Spezialkarte (seit 03.11.2026, Fehler `DeckError::SpecialTaken`, Code `SpecialTaken`; `Edition::holder_of`) |
+| Spezialkarte noch frei (Obergrenze, Angebote) | `Run::special_open` | Keine Karte ist sie und keine trägt die Marke dafür; sonst bietet nichts sie oder ihre Marke an. Ziel einer Marke oder Spezialkarte: `zinken::special_target` |
+| Marke zahlt statt dessen (Obergrenze der Spezialkarten) | `VoucherCapped` | Ereignis `RunEvent::VoucherCapped { card, card_mod, special, holder, coins }`: eine Toten- oder Narrenmarke, deren Spezialkarte eine andere Karte schon ist, zahlt `ZinkenConfig::capped_voucher_coins` |
+| Spezialkarte in der Auslage („wird untot“, „wird Wandelkarte“) | `Run::special_offers` | Ein `CardOffer` mit `undead` oder `wild_card`; Anteil `ZinkenConfig::special_percent`, Preis `special_price` |
+| Hinweis zur ersten Spezialkarte | `MetaState::specials_seen` | Im Meta-Spielstand; `MetaState::new_specials`, in der Web-App `MetaStep::first_specials` und das Blatt „Neu in deiner Ausgabe“ |
 | Wert einer Modifikation | `value` | An der Karte `DeckCard::mod_values`, angeboten `CardModDef::values`, Obergrenze `CardModDef::max`, Wirkung je Einheit mal Wert `Effect::scaled` |
 | Steigerung (dieselbe Modifikation noch einmal) | `upgrade` | Werte addieren, Rang bis 3; Ergebnis `DeckChange::Modified { value, replaced: None }` |
 | Ersetzen (andere Modifikation) | `replace` | `DeckChange::Modified.replaced` nennt die alte |
