@@ -206,7 +206,7 @@
 //   Daus, and the Daus has no plaque any more.
 // - Zinken v2 (zinkenV2Pass, undead.json patched): Blei, Goldkante,
 //   Fadenkreuz, Schneiderkreide and Winkel (the Grün-Acht with Winkel 2
-//   shows the Oberin picture and its scribbled Acht index) in the hand, the
+//   keeps its printed picture under violet sketches, Winkel v2) in the hand, the
 //   Doppelgänger on the Grün-König with its mirror picture; played with
 //   full motion it shimmers, reaches to Tante Erna, both cards fly (the
 //   stolen Rot-König into the trick, the König to her) and "Getauscht!"
@@ -2877,9 +2877,10 @@ async function framesPass(browser, errors, reducedMotion) {
   const band = { Augen: '#d98e0b', Trumpf: '#6a3fa8', 'Letzter Stich': '#16707a', 'Erster Stich': '#d2552a', Gutschein: '#2f7d6a', Durchsichtig: '#33363b', Ramponiert: '#33363b', Fleckig: '#33363b' };
   expect('Schellen-Zehn', (c) => c.fills.includes(band.Augen) && c.fills.includes('#ffe08a'), 'has no gold Augen frame and band');
   // Winkel since 03.11.2026: the save's Winkel on the Schellen-Unter became Aufdruck (no Winkel on a Unter),
-  // its Winkel 2 on the Schellen-Oberin shows the Zehn's picture and a black scribble over the printed index.
+  // Winkel v2 (04.11.2026): its Winkel 2 on the Schellen-Oberin keeps the printed picture and index, with the
+  // violet copying pencil's sketches and corner scribble on top.
   expect('Schellen-Unter', (c) => c.label.includes('Aufdruck') && c.fills.includes(band.Augen), 'was not converted to Aufdruck');
-  expect('Schellen-Oberin', (c) => c.picture.includes('#f-DT') && c.picture.includes('#x-DQ') && c.fills.includes('#1c1a1a'), 'shows no Winkel scribble with the Zehn picture');
+  expect('Schellen-Oberin', (c) => c.picture.includes('#f-DQ') && c.picture.includes('#x-DQ') && c.fills.includes('#5b2a86'), 'shows no violet Winkel sketch on the printed Oberin');
   expect('Schellen-König', (c) => c.fills.includes(band.Trumpf), 'has no purple Trumpf frame');
   expect('Schellen-Daus', (c) => c.fills.includes(band['Letzter Stich']), 'has no petrol Letzter-Stich frame');
   expect('Rot-Sieben', (c) => c.fills.includes(band['Erster Stich']), 'has no rust Erster-Stich frame');
@@ -3900,8 +3901,9 @@ async function zinkenV2Pass(browser, errors, viewport) {
   for (const [id, mod] of Object.entries(looks)) {
     if (!(await page.locator(`.hand-card[data-id="${id}"] svg[aria-label*="${mod === 'lead' ? 'Blei' : mod === 'gilt_edge' ? 'Goldkante' : mod === 'crosshair' ? 'Fadenkreuz' : 'Schneiderkreide'}"]`).count())) fail(`Zinken v2: card ${id} does not carry ${mod}`);
   }
-  // Winkel 2 on the Grün-Acht: the picture of the Grün-Oberin, the Acht scribbled out.
-  if (!(await page.locator('.hand-card[data-id="17"] use.face-pic[href="#f-SQ"]').count())) fail('Winkel: the Grün-Acht does not show the Oberin picture');
+  // Winkel v2 on the Grün-Acht (Winkel 2): the printed Acht stays, sketched over in violet, the Acht scribbled out.
+  if (!(await page.locator('.hand-card[data-id="17"] use.face-pic[href="#f-S8"]').count())) fail('Winkel: the Grün-Acht does not keep its printed picture');
+  if (!(await page.locator('.hand-card[data-id="17"] path[fill="#5b2a86"]').count())) fail('Winkel: the Grün-Acht shows no violet sketch');
   if (!(await page.locator('.hand-card[data-id="17"] use.face-idx[href="#x-S8"]').count())) fail('Winkel: the printed index is not the Acht');
   if (!(await page.locator('.hand-card[data-id="22"] svg[data-special="doppelganger"] use.face-pic[href="#d-SK"]').count())) fail('Doppelgänger: the Grün-König shows no mirror picture');
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'), null, { timeout: 30000 });

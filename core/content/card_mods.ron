@@ -47,8 +47,9 @@
     // die Karte WIRD die nächsthöhere Karte ihrer Farbe (7, 8, 9, Oberin,
     // König, 10, Daus), in jedem Spiel, und behält ihre eigenen Augen.
     // Unter steigen nie und werden nie erreicht, ein Daus kann nicht
-    // steigen (der Kern bietet ihn dort nicht an). Bild: dicker schwarzer
-    // Filzstift kritzelt den Rang im Eckzeichen weg.
+    // steigen (der Kern bietet ihn dort nicht an). Bild (Winkel v2,
+    // 04.11.2026): violetter Kopierstift malt über das gedruckte Bild und
+    // kritzelt den Rang im Eckzeichen weg.
     (
         id: "rank",
         kind: Edge,

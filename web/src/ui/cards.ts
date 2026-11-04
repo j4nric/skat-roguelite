@@ -12,10 +12,11 @@
 // four suit colours while its suit is open (four suit pips in the index),
 // and once the core has settled it the same fool in the new suit's shades
 // with that suit's normal index (DESIGN 7.2), "Doppelgänger" its mirror
-// image (the right half violet). "Winkel" (Zinken v2) shows the picture of
-// the card it became and a black marker scribble over the printed rank in
-// the corner index. A card carries one normal modification, a special card
-// one more on top.
+// image (the right half violet). "Winkel" (Winkel v2, 04.11.2026) keeps
+// the printed picture and draws over it by hand in violet copying pencil:
+// an extra pip, a sketched figure or a big Daus pip per step, and in the
+// corner the printed rank blotted out with the new one written beside it.
+// A card carries one normal modification, a special card one more on top.
 //
 // Tiny cards (about 16 to 26 px) use the small face: the index letter and
 // the suit sign, big, with a curse or Untot as a thin ring. Pure drawing,
@@ -24,10 +25,10 @@
 
 import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, CardView, DeckCard, ModFigure, Rank, RunView, Suit } from '../types';
-import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitId, undeadFaceId, wildFaceIds } from './art';
+import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitCode, suitId, undeadFaceId, wildFaceIds } from './art';
 import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
-import { fillOf, H, MOD_DRAW, modLayer, smallState, W, winkelScribble } from './fxart';
+import { fillOf, H, MOD_DRAW, modLayer, smallState, W, winkelScribble, winkelSketch } from './fxart';
 
 /** A suit sign (the held sign of the deck) as a standalone inline SVG. */
 export function suitIcon(suit: Suit, size = 24, label: string | null = de.suits[suit]): string {
@@ -185,16 +186,18 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   else if (size === 'small') {
     body = `${paper}<use class="face-small" href="#${ids ? ids.small : smallFaceId(f.suit, shown ?? f.rank)}"/>${smallState(curse, undead)}`;
   } else {
-    const top = shown ?? f.rank;
-    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, top) ?? faceId(f.suit, top)) : doppel ? mirrorFaceId(f.suit, top) : faceId(f.suit, top);
-    const index = ids ? ids.index : indexId(f.suit, printed ?? f.rank);
+    // Winkel v2: the printed picture stays, the hand sketches lie on it.
+    const base = printed ?? f.rank;
+    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, base) ?? faceId(f.suit, base)) : doppel ? mirrorFaceId(f.suit, base) : faceId(f.suit, base);
+    const index = ids ? ids.index : indexId(f.suit, base);
+    const sketch = chain && !ids ? winkelSketch(suitCode(f.suit), chain, PLAIN) : '';
     // One normal modification (the core allows no more); a special card changes the picture only.
     const over = mods
       .filter((m) => MOD_DRAW[m])
       .map((m) => modLayer(m, modValueText(m, values), values[m] ?? 1, PLAIN, opts.redeeming === true))
       .join('');
     const scribble = chain && !ids ? winkelScribble(chain, PLAIN) : '';
-    body = `${paper}<use class="face-pic" href="#${picture}"/>${over}<use class="face-idx" href="#${index}"/>${scribble}`;
+    body = `${paper}<use class="face-pic" href="#${picture}"/>${sketch}${over}<use class="face-idx" href="#${index}"/>${scribble}`;
   }
   return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${state}${special}>${body}</svg>`;
 }

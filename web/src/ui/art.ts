@@ -25,6 +25,11 @@ export const RANKS: Rank[] = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 
 const CODE: Record<Suit, string> = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' };
 
+/** The art code of a suit (C, S, H, D), as in the generated art. */
+export function suitCode(suit: Suit): string {
+  return CODE[suit];
+}
+
 /** The card in art pixels: 33 wide, 49.5 high (the last half row is paper). */
 export const CARD_W = ART_W;
 export const CARD_H = ART_H + 0.5;
