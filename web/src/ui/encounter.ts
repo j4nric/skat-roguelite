@@ -6,9 +6,10 @@
 // and whether it can be chosen, with the reason if not, all come from the
 // core (EncounterView). Fundgroschen and Würfelbude are encounters too.
 
-import { de, contentName, contentText, isCurse, relicLook, t } from '../i18n';
+import { de, contentName, contentText, isCurse, modText, relicLook, t } from '../i18n';
 import type { EncounterEffectView, EncounterOptionView, RunView } from '../types';
 import { modIcon } from './cards';
+import { glossarySample } from './glossary';
 import { attrs, esc } from './dom';
 import { coinIcon, heart } from './hud';
 import { consumableCoaster, relicCoaster } from './emblems';
@@ -128,6 +129,26 @@ function effectLine(e: EncounterEffectView, o: EncounterOptionView, i: number): 
     const gamble = f.Mark.curse_percent ? line(t(de.encounter.cursePercent, { n: Math.round(100 / f.Mark.curse_percent) })) : '';
     return modLine(e, where) + gamble;
   }
+  if ('Marke' in f) {
+    // A Marke (04.11.2026): which form, then the Marken with their chance or as a choice.
+    const { card, marke } = f.Marke;
+    const text =
+      marke === 'Random'
+        ? card === 'Chosen'
+          ? de.encounter.markeRandomChosen
+          : de.encounter.markeRandomRandom
+        : card === 'Chosen'
+          ? de.encounter.markeChosenChosen
+          : de.encounter.markeChosenRandom;
+    const marken = (o.marken ?? [])
+      .map((m) => {
+        const name = contentName('card_mods', m.card_mod.id) || m.card_mod.name;
+        const label = marke === 'Random' && m.percent > 0 ? t(de.encounter.markeChance, { name, percent: m.percent }) : name;
+        return `<span class="enc-marke ${m.can_choose ? '' : 'is-off'}" ${attrs({ 'data-card-mod': m.card_mod.id })}>${modIcon(m.card_mod.id, 18)}<span>${esc(label)}</span></span>`;
+      })
+      .join('');
+    return line(text) + (marken ? `<span class="enc-marken" data-testid="enc-marken">${marken}</span>` : '');
+  }
   if ('SwapRelic' in f) {
     const id = f.SwapRelic;
     return id ? line(t(de.encounter.swapFor, { name: contentName('relics', id) || e.relic?.name || id, text: contentText('relics', id) })) : '';
@@ -167,6 +188,7 @@ function optionPic(o: EncounterOptionView): string {
   if (f === 'SeeSkat') return skatPair();
   if (f === 'Painter' || f === 'Cleanse') return markedCard(true);
   if ('Mark' in f) return markedCard(f.Mark.card === 'Chosen');
+  if ('Marke' in f) return markedCard(f.Marke.card === 'Chosen');
   if ('Dice' in f) return die(o.cost);
   if ('Lives' in f) return heart(true, 34);
   if ('Scout' in f) return mapIcon('position', 34);
@@ -224,6 +246,42 @@ export function renderEncounter(view: RunView): string {
     </section>
     <div class="enc-options">${options}</div>
   </main>`;
+}
+
+/** The Marke effect of an option, if it has one (04.11.2026). */
+export function markeEffect(o: EncounterOptionView): { card: 'Random' | 'Chosen'; marke: 'Random' | 'Chosen' } | null {
+  for (const e of o.effects) {
+    if (typeof e.effect === 'object' && 'Marke' in e.effect) return e.effect.Marke;
+  }
+  return null;
+}
+
+/**
+ * The sheet body to pick the Marke of a Marke option: the three Marken on
+ * a sample card with their text; one that cannot be taken is greyed with
+ * its reason. Then the card picker (a chosen card) or the core draws it.
+ */
+export function renderMarkePick(o: EncounterOptionView): string {
+  const random = markeEffect(o)?.card === 'Random';
+  const marken = (o.marken ?? [])
+    .map((m) => {
+      const id = m.card_mod.id;
+      const name = contentName('card_mods', id) || m.card_mod.name;
+      // The text with its value filled in ("3 Groschen").
+      const text = modText(id, m.card_mod.value ?? 1) || m.card_mod.text;
+      return `<button class="painter-option marke-option" ${attrs({ 'data-action': 'encounter-marke', 'data-card-mod': id, 'data-testid': `marke-${id}`, disabled: !m.can_choose })}>
+        <span class="card">${glossarySample(id)}</span>
+        <b class="zinke-name">${esc(name)}</b>
+        <span class="zinke-text">${esc(text)}</span>
+        ${m.can_choose ? '' : `<span class="zinke-note">${esc(de.encounter.markeBlocked)}</span>`}
+        <span class="btn btn-small btn-buy">${esc(de.encounter.markeTake)}</span>
+      </button>`;
+    })
+    .join('');
+  return `<h2>${esc(de.encounter.pickMarke)}</h2>
+    <p class="small">${esc(random ? de.encounter.pickMarkeHintRandom : de.encounter.pickMarkeHint)}</p>
+    <div class="painter-grid" data-testid="marke-options">${marken}</div>
+    <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`;
 }
 
 /** The sheet body to pick an owned relic for a swap or a sale. */

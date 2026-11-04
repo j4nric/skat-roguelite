@@ -683,6 +683,8 @@ export type EncounterEffect =
         curse_percent?: number;
       };
     }
+  /** A Marke on a card (04.11.2026): random or chosen card, Marke drawn when taken or chosen. */
+  | { Marke: { card: CardPick; marke: CardPick } }
   | { SwapRelic: string | null }
   | { SellRelic: number }
   | { Relic: string | null }
@@ -736,6 +738,17 @@ export interface EncounterOptionView {
   targets: number[];
   /** Cost on each of `targets` (a Zinke on Rot is cheaper for Bruderherz). */
   target_costs?: number[];
+  /** A Marke option (04.11.2026): the Marken to choose, or that may be drawn. */
+  marken?: MarkeChoiceView[];
+}
+
+/** One Marke of a Marke option: can it be taken, on which cards (chosen card), its chance (drawn). */
+export interface MarkeChoiceView {
+  card_mod: CardModInfo;
+  can_choose: boolean;
+  targets: number[];
+  target_costs: number[];
+  percent: number;
 }
 
 /** The open encounter (Ereignis); one option must be taken. */
@@ -1028,6 +1041,8 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
+  /** An encounter put a Marke on a card (04.11.2026); `drawn`: the Marke was drawn, `random_card`: the card was. */
+  | { MarkeGiven: { card: number; card_mod: string; drawn: boolean; random_card: boolean } }
   /** "Glasauge" (04.11.2026): a defender's card is Durchsichtig for this game only. */
   | { CardMadeTransparent: { source: Source; card: DealtCard; seat: Seat } }
   /** Effekte v2: a voucher was redeemed when its card was discarded; `via_hand`: by declaring a hand game (04.11.2026), the card stays in the hand. */
@@ -1097,7 +1112,7 @@ export type RunAction =
   | { SellConsumable: number }
   | { TakeFromSkat: { give: number; take: number | null } }
   | 'SettleGame'
-  | { ChooseEncounter: { option: number; target: number | null } }
+  | { ChooseEncounter: { option: number; target: number | null; marke?: string | null } }
   | { ChooseRoute: number }
   | { ChooseMalus: { option: number; malus: number } }
   | { ChooseSchnappsReward: { give_up: number | null } }

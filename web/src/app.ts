@@ -54,7 +54,7 @@ import {
 } from './storage';
 import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
-import { renderEncounter } from './ui/encounter';
+import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
@@ -1094,6 +1094,16 @@ export class App {
           this.afterRender.push(() => this.reelRoutes());
         }
         if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
+        continue;
+      }
+      if ('MarkeGiven' in ev) {
+        // A Marke from an encounter (04.11.2026): say which, and where, when drawn.
+        const g = ev.MarkeGiven;
+        if (g.drawn || g.random_card) {
+          const card = after.edition.find((c) => c.id === g.card);
+          const text = g.drawn ? de.toast.markeGivenDrawn : de.toast.markeGiven;
+          this.showToast(t(text, { mod: contentName('card_mods', g.card_mod), card: card ? cardName(card.kind) : '' }));
+        }
         continue;
       }
       if ('CardMadeTransparent' in ev) {
@@ -2670,7 +2680,11 @@ export class App {
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
-        if (option.target === 'Card') {
+        if (markeEffect(option)?.marke === 'Chosen') {
+          // A Marke of the player's choice first (04.11.2026), then the card or the draw.
+          this.ui.overlay = { kind: 'encounter-marke', option: option.index };
+          this.render();
+        } else if (option.target === 'Card') {
           const marks = option.effects.some((e) => e.card_mod);
           const reasons = marks ? this.refusals(view, option.targets, (id) => ({ ChooseEncounter: { option: option.index, target: id } })) : {};
           this.ui.overlay = { kind: 'encounter-target', option: option.index, reasons };
@@ -2687,12 +2701,36 @@ export class App {
         const o = this.ui.overlay;
         if (o?.kind !== 'encounter-target') return;
         const option = view.encounter?.options.find((x) => x.index === o.option);
-        const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id') } };
+        const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id'), marke: o.marke ?? null } };
         this.noteStamp(el);
-        // The Zinke on the chosen card (a Painter or cleansing names none).
+        // The Zinke on the chosen card (a Painter or cleansing names none); a chosen Marke.
         const chosen = option?.effects.find((e) => typeof e.effect === 'object' && 'Mark' in e.effect && e.effect.Mark.card === 'Chosen');
+        // A Marke drawn when taken: no preview of the card afterwards (04.11.2026).
+        const drawn = option ? markeEffect(option)?.marke === 'Random' : false;
+        if (drawn && option) {
+          const marken = (option.marken ?? []).filter((m) => m.can_choose).map((m) => contentName('card_mods', m.card_mod.id) || m.card_mod.name);
+          const names = marken.length > 1 ? `${marken.slice(0, -1).join(', ')} ${de.encounter.or} ${marken[marken.length - 1]}` : (marken[0] ?? '');
+          this.applyRandomMarke(view, action, num('id'), names, o);
+          return;
+        }
         // The card before and after, then "Anbringen" (playtest 04.11.2026).
-        this.applyMod(view, action, num('id'), chosen?.card_mod?.id ?? null, false, o, 'apply');
+        this.applyMod(view, action, num('id'), o.marke ?? chosen?.card_mod?.id ?? null, false, o, 'apply');
+        return;
+      }
+      case 'encounter-marke': {
+        const o = this.ui.overlay;
+        if (o?.kind !== 'encounter-marke') return;
+        const option = view.encounter?.options.find((x) => x.index === o.option);
+        const marke = el.dataset.cardMod;
+        if (!option || !marke) return;
+        if (option.target === 'Card') {
+          // Then the card picker, with the cards this Marke may go on.
+          const reasons = this.refusals(view, option.marken?.find((m) => m.card_mod.id === marke)?.targets ?? [], (id) => ({ ChooseEncounter: { option: option.index, target: id, marke } }));
+          this.ui.overlay = { kind: 'encounter-target', option: option.index, reasons, marke };
+          this.render();
+        } else {
+          void this.act({ ChooseEncounter: { option: option.index, target: null, marke } });
+        }
         return;
       }
       case 'encounter-relic': {
@@ -3140,6 +3178,22 @@ export class App {
       void this.act(action);
       return;
     }
+    this.ui.overlay = { kind: 'mod-confirm', action, back, ask };
+    this.render();
+  }
+
+  /**
+   * A Marke drawn when the option is taken goes on the chosen card
+   * (Kartenwerkstatt, 04.11.2026): the card now, the Marken that may come
+   * and "Ziehen". The core is not asked for a preview, which would tell the
+   * draw. With another Zinke on the card the sheet says it may go.
+   */
+  private applyRandomMarke(view: RunView, action: RunAction, id: number, marken: string, back: Overlay): void {
+    const card = view.edition.find((c) => c.id === id);
+    if (!card) return;
+    const old = card.mods.find((m) => modKind(m) !== 'Special' && modKind(m) !== 'SpecialCurse') ?? null;
+    const blank = { card, after: null, mod: null, from: '', to: '' };
+    const ask: ModQuestion = old ? { ...blank, type: 'random', old } : { ...blank, type: 'randomMarke', old: null, marken };
     this.ui.overlay = { kind: 'mod-confirm', action, back, ask };
     this.render();
   }
