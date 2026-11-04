@@ -8399,13 +8399,7 @@ button.skat-card {
   flex: none;
 }
 
-/* The Faktor box stays grey while the game has no factor (×1). */
-.fbox-mul.is-one {
-  opacity: 0.45;
-  filter: grayscale(1);
-}
-
-/* Werte-Icons beside the score box labels (Grundwert, Multiplikator, Faktor). */
+/* Werte-Icons beside the score box labels (Grundwert, Stufen, Faktor). */
 .fbox span .value-icon {
   display: inline-block;
   margin-right: 4px;
