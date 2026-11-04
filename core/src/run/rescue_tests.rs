@@ -95,7 +95,6 @@ fn giving_up_a_pub_loses_it_without_reward() {
     run.series.games_played = 1;
     run.series.score = -40;
     let coins = run.coins();
-    let lives = run.lives();
     let events = run.apply(&content, RunAction::GiveUpPub).expect("give up");
     assert_eq!(
         events[0],
@@ -110,35 +109,21 @@ fn giving_up_a_pub_loses_it_without_reward() {
         index: 1,
         boss: None
     }));
-    assert!(events.contains(&RunEvent::LivesChanged {
-        change: -1,
-        lives: lives - 1
-    }));
     assert!(
         !events
             .iter()
             .any(|e| matches!(e, RunEvent::SeriesWon { .. }))
     );
     assert_eq!(run.coins(), coins, "no payout");
-    assert_eq!(run.phase(), RunPhase::Route);
-    assert!(run.game().is_none());
-    assert_eq!(run.stats().pubs_lost, 1);
-    assert!(!run.pub_results()[0].won);
-}
-
-#[test]
-fn giving_up_with_the_last_life_ends_the_run() {
-    let content = content();
-    let mut run = start_at(&content, 0, 1);
-    run.series.games_played = 2;
-    run.lives = 1;
-    let events = run.apply(&content, RunAction::GiveUpPub).expect("give up");
+    // No lives since ADR 0019: the run is over.
     assert_eq!(run.phase(), RunPhase::Lost);
     assert!(
         events
             .iter()
             .any(|e| matches!(e, RunEvent::RunLost { boss: None, .. }))
     );
+    assert_eq!(run.stats().pubs_lost, 1);
+    assert!(!run.pub_results()[0].won);
 }
 
 #[test]
@@ -154,21 +139,24 @@ fn giving_up_a_boss_pub_ends_the_run() {
         e,
         RunEvent::RunLost { boss: Some(b), .. } if *b == boss
     )));
-    assert_eq!(run.lives(), content.run.lives.start, "lives do not matter");
 }
 
 #[test]
-fn guardian_angel_spares_a_pub_given_up() {
+fn guardian_angel_plays_a_pub_given_up_again() {
     let content = content();
     let mut run = start_at(&content, 0, 1);
     run.relics.push(RelicId::new("guardian_angel"));
     run.series.games_played = 1;
-    let lives = run.lives();
     let events = run.apply(&content, RunAction::GiveUpPub).expect("give up");
-    assert!(events.contains(&RunEvent::LifeSpared {
-        source: Source::Relic(RelicId::new("guardian_angel"))
+    assert!(events.contains(&RunEvent::SecondChance {
+        relic: RelicId::new("guardian_angel"),
+        section: 0,
+        index: 1,
     }));
-    assert_eq!(run.lives(), lives);
+    assert_eq!(run.phase(), RunPhase::Game);
+    assert_eq!(run.series().index, 1);
+    assert_eq!(run.series().games_played, 0);
+    assert!(!run.relics().contains(&RelicId::new("guardian_angel")));
 }
 
 #[test]
@@ -181,10 +169,13 @@ fn a_pub_given_up_on_the_way_to_a_spelunke_counts_like_a_normal_pub() {
         malus_options: Vec::new(),
     });
     run.series.games_played = 1;
-    let lives = run.lives();
-    run.apply(&content, RunAction::GiveUpPub).expect("give up");
-    assert_eq!(run.lives(), lives - 1);
-    assert_eq!(run.phase(), RunPhase::Route);
+    let events = run.apply(&content, RunAction::GiveUpPub).expect("give up");
+    assert_eq!(run.phase(), RunPhase::Lost);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::RunLost { boss: None, .. }))
+    );
 }
 
 #[test]

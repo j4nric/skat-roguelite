@@ -418,7 +418,15 @@ impl RunEvent {
             }
             RunEvent::ShopLeft => RunEvent::ShopLeft,
             RunEvent::DebtChanged { debt } => RunEvent::DebtChanged { debt },
-            RunEvent::LifeSpared { source } => RunEvent::LifeSpared { source },
+            RunEvent::SecondChance {
+                relic,
+                section,
+                index,
+            } => RunEvent::SecondChance {
+                relic,
+                section,
+                index,
+            },
             RunEvent::CoinsStashed {
                 source,
                 amount,
@@ -571,7 +579,6 @@ impl RunEvent {
                 index,
                 boss,
             },
-            RunEvent::LivesChanged { change, lives } => RunEvent::LivesChanged { change, lives },
             RunEvent::RelicGained { relic } => RunEvent::RelicGained { relic },
             RunEvent::RunWon {
                 character,

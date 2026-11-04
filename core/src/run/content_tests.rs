@@ -15,21 +15,21 @@ pub(super) fn content() -> Content {
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
 /// he wins every trick, the last one with the D7. Instance ids follow the
 /// standard deck: D7 = 0, DA = 7, HA = 15, SK = 22, ST = 19.
-const STRONG: [&str; 3] = [
+pub(super) const STRONG: [&str; 3] = [
     "CJ SJ HJ DJ DA DT DK DQ D9 D7",
     "HA HT HK HQ H9 H8 H7 SA ST SK",
     "SQ S9 S8 S7 CA CT CK CQ C9 C8",
 ];
-const STRONG_SKAT: &str = "D8 C7";
+pub(super) const STRONG_SKAT: &str = "D8 C7";
 
 /// Declarer holds only Luschen: he can never reach 61 Augen. Seat 1 holds
 /// eight trumps of a clubs game and says Kontra.
-const WEAK: [&str; 3] = [
+pub(super) const WEAK: [&str; 3] = [
     "D7 D8 D9 H7 H8 H9 S7 S8 S9 C7",
     "CJ SJ HJ DJ CA CT CK CQ DA DT",
     "DK DQ HA HT HK HQ SA ST SK SQ",
 ];
-const WEAK_SKAT: &str = "C8 C9";
+pub(super) const WEAK_SKAT: &str = "C8 C9";
 
 /// Declarer holds ten hearts trumps without the H8 (in the skat) and leads:
 /// he takes every trick, the last one with the H7.
@@ -111,19 +111,19 @@ pub(super) fn play(
     }
 }
 
-fn hand_game(game: GameType) -> Declaration {
+pub(super) fn hand_game(game: GameType) -> Declaration {
     Declaration::new(game, RiskLevel::Hand).expect("suit or grand")
 }
 
-const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
-const CLUBS: GameType = GameType::Suit(Suit::Clubs);
+pub(super) const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
+pub(super) const CLUBS: GameType = GameType::Suit(Suit::Clubs);
 const HEARTS: GameType = GameType::Suit(Suit::Hearts);
 
-fn relic(id: &str) -> Source {
+pub(super) fn relic(id: &str) -> Source {
     Source::Relic(RelicId::new(id))
 }
 
-fn has_line(b: &ScoreBreakdown, source: &Source, lever: Lever, change: Change) -> bool {
+pub(super) fn has_line(b: &ScoreBreakdown, source: &Source, lever: Lever, change: Change) -> bool {
     b.lines
         .iter()
         .any(|l| &l.source == source && l.lever == lever && l.change == change)
@@ -1352,26 +1352,44 @@ fn a_last_trick_mod_is_open_until_its_card_falls() {
     );
 }
 
-/// Whatever gives a life back says how many lives one can hold at most
-/// (playtest 04.11.2026): the head shows no empty hearts above the start,
-/// so the maximum is told only where a life is given.
+/// No lives since ADR 0019: no text of a relic, Schnaps, encounter or
+/// malus speaks of one, and no encounter gives one.
 #[test]
-fn every_consumable_giving_lives_names_the_maximum() {
+fn no_content_speaks_of_lives() {
     let content = content();
-    let max = format!("höchstens {}", content.run.lives.max);
-    let mut seen = 0;
-    for def in content.consumables.values() {
-        if matches!(def.action, crate::content::ConsumableAction::GainLives(_)) {
-            seen += 1;
-            assert!(
-                def.text.contains(&max),
-                "{}: \"{}\" does not say \"{max}\"",
-                def.id,
-                def.text
-            );
-        }
+    let texts = content
+        .relics
+        .values()
+        .map(|d| (d.id.as_str(), d.text.as_str()))
+        .chain(
+            content
+                .consumables
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        )
+        .chain(
+            content
+                .encounters
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        )
+        .chain(
+            content
+                .maluses
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        );
+    for (id, text) in texts {
+        assert!(!text.contains("Leben"), "{id}: {text}");
     }
-    assert!(seen > 0, "no consumable gives a life");
+    assert!(
+        content
+            .encounters
+            .values()
+            .flat_map(|e| &e.options)
+            .flat_map(|o| &o.effects)
+            .all(|e| !matches!(e, EncounterEffect::Lives(_)))
+    );
 }
 
 /// Since 04.11.2026 every lost game counts once against the pub's account

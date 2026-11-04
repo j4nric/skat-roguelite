@@ -11,10 +11,10 @@
 //! (since 04.11.2026, [`crate::content::RUN_LOSS_FACTOR`]; the Skatordnung
 //! says twice) including all relic modifiers. A pub is won the moment the account
 //! reaches the target; a boss pub plays all its games and counts after the
-//! last (ADR 0017). Missing the target after the last game costs a life
-//! (Leben) and the pub is left without reward; the run is lost with the
-//! last life, and with any lost boss pub (ADR 0017). A won boss pub pays
-//! double, gives a life and a pick of relics ([`tour::BossReward`]). Two
+//! last (ADR 0017). Missing the target after the last game loses the
+//! run, in every pub (ADR 0019: no lives); only the "Schutzengel" has the
+//! pub played once more ([`crate::content::Effect::SecondChance`]). A won
+//! boss pub pays double and gives a pick of relics ([`tour::BossReward`]). Two
 //! boss players sit at its table, one per defender seat ([`BOSS_SEAT`],
 //! [`PARTNER_SEAT`]). Between two pubs the player
 //! chooses a route ([`tour`]): three ways (Verkehrsmittel), each leading
@@ -117,6 +117,11 @@ pub const UNDEAD_PICK: usize = 3;
 /// ([`Run::drop_unknown_content`]).
 pub const RENAMED_CONSUMABLES: [(&str, &str); 1] = [("chalk", "blue_curacao")];
 
+/// Consumables removed with their price paid back to a loaded run that
+/// still holds them ([`Run::drop_unknown_content`]): "Konterbier" gave a
+/// life until ADR 0019 (no lives).
+pub const REFUNDED_CONSUMABLES: [(&str, u32); 1] = [("counter_beer", 4)];
+
 /// Bosses removed by ADR 0017 and the boss a loaded run meets instead
 /// ([`Run::drop_unknown_content`]): a save that drew one keeps its place
 /// in the tour and meets the stand-in. None of the stand-ins forces a hand
@@ -144,7 +149,7 @@ pub enum RunPhase {
     BossReward,
     /// The last boss pub was won.
     Won,
-    /// The last life was lost.
+    /// A pub was lost (ADR 0019: any lost pub ends the run).
     Lost,
 }
 
@@ -603,8 +608,6 @@ pub enum OptionBlock {
     NoRelic,
     /// Every relic slot is taken.
     RelicSlotsFull,
-    /// No life is missing.
-    LivesFull,
     /// A bet is open already.
     BetOpen,
     /// A fallback: another option can be taken.
@@ -618,7 +621,6 @@ impl OptionBlock {
         match self {
             OptionBlock::NotEnoughCoins => RunError::NotEnoughCoins,
             OptionBlock::RelicSlotsFull => RunError::NoFreeSlot,
-            OptionBlock::LivesFull => RunError::LivesFull,
             OptionBlock::NothingLeft | OptionBlock::SpecialCardCap | OptionBlock::NoFittingCard => {
                 RunError::NoModAvailable
             }
@@ -799,7 +801,8 @@ pub struct RunStats {
     pub series_won: u32,
     /// Highest Spielwert of a won game.
     pub best_game: u64,
-    /// Pubs lost (each cost a life).
+    /// Pubs lost (until ADR 0019 each cost a life; since then the run ends
+    /// with one, unless the "Schutzengel" has it played again).
     #[serde(default)]
     pub pubs_lost: u32,
 }
@@ -906,8 +909,8 @@ pub enum RunAction {
     LeaveShop,
     /// "Kneipe verlassen": give up the current pub between two games, from
     /// its second game on ([`view::RunView::can_give_up`]). It counts as
-    /// lost: a life goes ("Schutzengel" may spare it), nothing is paid,
-    /// `OnSeriesWon` does not fire; in a boss pub the run ends (ADR 0017).
+    /// lost: nothing is paid, `OnSeriesWon` does not fire, and the run
+    /// ends (ADR 0019) unless the "Schutzengel" has the pub played again.
     GiveUpPub,
     /// "Die Oma" (and every other skat swap): in a hand game before the
     /// first card, take a matching card from the skat and put this card
@@ -1411,8 +1414,8 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// The player gave up the pub ("Kneipe verlassen",
     /// [`RunAction::GiveUpPub`]). It counts as lost: `PubLost` and what a
-    /// lost pub brings follow (a life, or the end of the run in a boss
-    /// pub).
+    /// lost pub brings follow (the end of the run, or the second chance of
+    /// the "Schutzengel").
     PubGivenUp {
         /// District.
         section: u32,
@@ -1437,13 +1440,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Games left now.
         games_left: u32,
     },
-    /// Lives changed (ADR 0016).
-    LivesChanged {
-        /// Gained (positive) or lost (negative).
-        change: i32,
-        /// Lives now.
-        lives: u32,
-    },
     /// A relic was gained without paying (loot of a Spelunke).
     RelicGained {
         /// The relic.
@@ -1455,10 +1451,16 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Groschen owed now.
         debt: u32,
     },
-    /// A lost pub cost no life ("Schutzengel").
-    LifeSpared {
-        /// Who spared it.
-        source: Source,
+    /// Second chance (ADR 0019): the "Schutzengel" has the lost pub
+    /// played again from the start and is used up; `SeriesStarted` of the
+    /// same pub follows.
+    SecondChance {
+        /// The relic used up.
+        relic: RelicId,
+        /// District of the pub played again.
+        section: u32,
+        /// Pub within the district.
+        index: u32,
     },
     /// Content put Groschen into a pot ("Stammtischkasse").
     CoinsStashed {
@@ -1548,10 +1550,9 @@ pub enum RunEvent<G = Event<DealtCard>> {
         #[serde(default)]
         stake: u32,
     },
-    /// The run was lost: the last life went.
+    /// The run was lost: a pub was lost (ADR 0019).
     RunLost {
-        /// District of the pub that cost the last life, or of the boss pub
-        /// that was lost (ADR 0017).
+        /// District of the pub that was lost.
         section: u32,
         /// Pub within the district.
         index: u32,
@@ -1564,9 +1565,8 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Stake of the run (Einsatz-Leiter).
         #[serde(default)]
         stake: u32,
-        /// The boss whose pub was lost: a lost boss pub ends the run
-        /// whatever lives are left (ADR 0017). `None` when the last life
-        /// went in a normal pub.
+        /// The boss whose pub was lost (ADR 0017). `None` for a normal pub
+        /// or a Spelunke.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         boss: Option<BossId>,
     },
@@ -1679,7 +1679,8 @@ pub enum RunError {
     NoLeadDemandLeft,
     /// A Spelunke's malus locks the Schnäpse in this pub (ADR 0016).
     ConsumablesLocked,
-    /// No life is missing ("Konterbier").
+    /// "Konterbier" until ADR 0019 (never returned since, kept for stable
+    /// codes): no life was missing.
     LivesFull,
     /// The Kartenmaler waits for the player's choice
     /// ([`RunAction::ChoosePaint`]); nothing else goes before it.
@@ -1809,7 +1810,7 @@ pub enum RunErrorCode {
     NoLeadDemandLeft,
     /// A Spelunke's malus locks the Schnäpse.
     ConsumablesLocked,
-    /// No life is missing.
+    /// No life was missing (never returned since ADR 0019).
     LivesFull,
     /// The Kartenmaler waits for the player's choice.
     PainterPending,
@@ -2132,9 +2133,8 @@ pub struct Run {
     /// Stake of the Einsatz-Leiter (saves from before: 0).
     #[serde(default)]
     stake: u32,
-    /// Lives (Leben, ADR 0016).
-    #[serde(default = "Run::default_lives")]
-    lives: u32,
+    // `lives` (Leben, ADR 0016) and `spared_section` ("Schutzengel" once
+    // per Stadtteil) of saves from before ADR 0019 are read and ignored.
     /// Routes, Spelunken, maluses (ADR 0016).
     #[serde(default = "Run::default_tour_rng")]
     tour_rng: Rng,
@@ -2157,9 +2157,6 @@ pub struct Run {
     /// The district in which the Tresen sold on credit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     credit_section: Option<u32>,
-    /// The district in which "Schutzengel" spared a life.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    spared_section: Option<u32>,
     /// The bet on the next declared game ("Die Wette").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     wager: Option<Wager>,
@@ -2294,7 +2291,6 @@ impl Run {
             guests: Vec::new(),
             length: start.length,
             stake: start.stake,
-            lives: content.run.lives.start,
             tour_rng: master.fork(),
             route: None,
             trip: None,
@@ -2302,7 +2298,6 @@ impl Run {
             next_pub: NextPubPlan::default(),
             debt: 0,
             credit_section: None,
-            spared_section: None,
             wager: None,
             peek_next_skat: None,
             scout_legs: 0,
@@ -2326,8 +2321,10 @@ impl Run {
     /// relics, consumables waiting for the next game and encounter options
     /// that name them. Returns the ids dropped, in order, for a note.
     /// Bosses removed by ADR 0017 are replaced by their stand-in
-    /// ([`RETIRED_BOSSES`]; a game in progress keeps its deal). Nothing
-    /// else changes; a run without such ids stays as it is.
+    /// ([`RETIRED_BOSSES`]; a game in progress keeps its deal). A held
+    /// consumable of [`REFUNDED_CONSUMABLES`] the content no longer knows
+    /// pays its price back in Groschen. Nothing else changes; a run
+    /// without such ids stays as it is.
     pub fn drop_unknown_content(&mut self, content: &Content) -> Vec<String> {
         // Renamed consumables keep their place.
         let rename = |id: &mut ConsumableId| {
@@ -2385,6 +2382,17 @@ impl Run {
             }
             known
         };
+        for id in &self.consumables {
+            if content.consumable(id).is_some() {
+                continue;
+            }
+            if let Some((_, price)) = REFUNDED_CONSUMABLES
+                .iter()
+                .find(|(old, _)| *old == id.as_str())
+            {
+                self.coins = self.coins.saturating_add(*price);
+            }
+        }
         self.consumables.retain(|c| keep_item(c, &mut dropped));
         self.pending_next_game
             .retain(|(c, _)| keep_item(c, &mut dropped));
@@ -2424,11 +2432,6 @@ impl Run {
     /// deterministic.
     fn default_encounter_rng() -> Rng {
         Rng::from_seed(0x5354_414D_4D54_4953)
-    }
-
-    /// Lives of a save from before the Kneipentour.
-    const fn default_lives() -> u32 {
-        3
     }
 
     /// Route generator of saves from before the Kneipentour.
@@ -3732,7 +3735,8 @@ impl Run {
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
-            | Effect::ScaleGameValue(_) => active.lines.extend(line),
+            | Effect::ScaleGameValue(_)
+            | Effect::ScaleGameValuePerCounter { .. } => active.lines.extend(line),
             Effect::MultiplyTrickPoints(factor) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let points = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
@@ -3902,7 +3906,7 @@ impl Run {
             | Effect::StashCoins { .. }
             | Effect::PayOutCounter { .. }
             | Effect::Credit(_)
-            | Effect::SpareLife
+            | Effect::SecondChance
             | Effect::ChooseMalus(_) => {}
         }
     }
@@ -3931,18 +3935,47 @@ impl Run {
         spelunke: Option<tour::Spelunke>,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        self.open_pub(content, section, index, spelunke, false, events)
+    }
+
+    /// Play a lost pub again from the start ("Schutzengel", ADR 0019): the
+    /// same pub (or Spelunke with its malus) and boss, a fresh account and
+    /// a fresh deal; the house rules of the evening stay, the boss is not
+    /// drawn again. Its Zielwert is the pub's own, without changes planned
+    /// for it on the way ("Wegbier": they were used up by the first try).
+    fn replay_pub(
+        &mut self,
+        content: &Content,
+        section: u32,
+        index: u32,
+        spelunke: Option<tour::Spelunke>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        self.open_pub(content, section, index, spelunke, true, events)
+    }
+
+    /// [`Run::start_pub`], or with `replay` [`Run::replay_pub`].
+    fn open_pub(
+        &mut self,
+        content: &Content,
+        section: u32,
+        index: u32,
+        spelunke: Option<tour::Spelunke>,
+        replay: bool,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
         let config = &content.run;
         let sections = config.sections();
         if section >= sections || index >= PUBS_PER_DISTRICT {
             return Err(RunError::WrongPhase);
         }
-        if index == 0 && !self.evening_relics.is_empty() {
+        if index == 0 && !replay && !self.evening_relics.is_empty() {
             for relic in std::mem::take(&mut self.evening_relics) {
                 self.pay_out_stash(content, &relic, events);
             }
             events.push(RunEvent::EveningRulesEnded);
         }
-        if index == 0 || self.section_boss.is_none() {
+        if (index == 0 && !replay) || self.section_boss.is_none() {
             let last = section + 1 == sections;
             self.section_boss = match (&config.final_boss, last) {
                 (Some(boss), true) => Some(boss.clone()),
@@ -4717,17 +4750,6 @@ impl Run {
             .collect()
     }
 
-    /// The Source of the first owned relic with a passive effect matching
-    /// `wanted`.
-    fn relic_with(&self, content: &Content, wanted: impl Fn(&Effect) -> bool) -> Option<Source> {
-        self.relics
-            .iter()
-            .chain(&self.evening_relics)
-            .filter_map(|r| content.relic(r))
-            .find(|def| def.passive.iter().any(&wanted))
-            .map(|def| Source::Relic(def.id.clone()))
-    }
-
     /// The credit limit at the Tresen ("Deckel anschreiben"): the largest
     /// granted, 0 without.
     fn credit_limit(&self, content: &Content) -> u32 {
@@ -5273,18 +5295,6 @@ impl Run {
             ConsumableAction::RedealNextGame(effect) => {
                 self.redeal(content, events)?;
                 self.pending_next_game.push((id.clone(), *effect));
-            }
-            ConsumableAction::GainLives(n) => {
-                if !matches!(
-                    self.phase,
-                    RunPhase::Shop | RunPhase::Encounter | RunPhase::Route
-                ) {
-                    return Err(RunError::WrongPhase);
-                }
-                if self.lives >= content.run.lives.max {
-                    return Err(RunError::LivesFull);
-                }
-                self.gain_lives(content, *n, events);
             }
             ConsumableAction::RerollRoutes => {
                 if self.phase != RunPhase::Route {
@@ -5926,6 +5936,18 @@ fn score_line(
         }
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
         Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
+        Effect::ScaleGameValuePerCounter { counter, per } => {
+            let value = counters.get(counter).copied().unwrap_or(0);
+            if value == 0 || per.permille() == 0 {
+                return None;
+            }
+            let permille = u64::from(per.permille())
+                .saturating_mul(u64::from(value))
+                .saturating_add(1000);
+            let factor =
+                crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
+            (Lever::GameValue, Change::Scale(factor))
+        }
         _ => return None,
     };
     Some(ScoreLine {
@@ -6059,6 +6081,8 @@ mod edition_tests;
 mod effects_v2_tests;
 #[cfg(test)]
 mod encounters_tests;
+#[cfg(test)]
+mod factor_tests;
 #[cfg(test)]
 mod hand_voucher_tests;
 #[cfg(test)]

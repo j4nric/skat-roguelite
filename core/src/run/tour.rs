@@ -1,8 +1,10 @@
-//! The Kneipentour (ADR 0016, DESIGN 5): lives, the route choice between
-//! two pubs, the Spelunke and the city's names.
+//! The Kneipentour (ADR 0016, DESIGN 5): the route choice between two
+//! pubs, the Spelunke, the end of a pub and the city's names.
 //!
-//! After every pub that does not end the run (won, or lost with a life
-//! left) the player chooses one of three ways to the next pub
+//! Since ADR 0019 there are no lives: any lost pub ends the run, unless the
+//! "Schutzengel" ([`crate::content::Effect::SecondChance`]) has it played
+//! once more. After every won pub the player chooses one of three ways to
+//! the next pub
 //! ([`RouteChoice`]), one per [`Transport`] (Zu Fuß, Bahn, Fahrrad). All
 //! three behave the same (decision of the user, 02.11.2026): each leads
 //! over exactly one stop whose category is rolled per way and shown;
@@ -14,9 +16,9 @@
 //! Sometimes one of the three leads into a Spelunke instead of the next
 //! pub: another place with its own name and node (`d0-p2-s`), standing in
 //! for that pub in the district's order, with a higher target, a malus
-//! shown in advance and a relic as extra reward. A lost boss pub ends the
-//! run (ADR 0017); a won one pays double, gives a life and a pick of one of
-//! three relics ([`BossReward`]). Everything is drawn from the run's own route generator, so it
+//! shown in advance and a relic as extra reward. A won boss pub pays
+//! double and gives a pick of one of three relics ([`BossReward`], ADR
+//! 0017). Everything is drawn from the run's own route generator, so it
 //! never changes the deals.
 //!
 //! The view ([`TourView`]) names every pub of the city and gives stable
@@ -222,12 +224,6 @@ impl Run {
         self.open_route(content, events)
     }
 
-    /// Lives left (ADR 0016).
-    #[must_use]
-    pub const fn lives(&self) -> u32 {
-        self.lives
-    }
-
     /// The open route choice.
     #[must_use]
     pub const fn route(&self) -> Option<&RouteChoice> {
@@ -290,20 +286,6 @@ impl Run {
         let mixed = (u64::from(self.map_seed(Some(section))) ^ salt.wrapping_mul(0x9E37_79B9))
             .wrapping_mul(0xBF58_476D_1CE4_E5B9);
         base + u32::try_from((mixed >> 40) % spread).unwrap_or(0)
-    }
-
-    /// Lives up by `n`, at most to the maximum.
-    pub(super) fn gain_lives(&mut self, content: &Content, n: u32, events: &mut Vec<RunEvent>) {
-        let max = content.run.lives.max;
-        let new = self.lives.saturating_add(n).min(max).max(self.lives);
-        let change = new - self.lives;
-        if change > 0 {
-            self.lives = new;
-            events.push(RunEvent::LivesChanged {
-                change: i32::try_from(change).unwrap_or(i32::MAX),
-                lives: new,
-            });
-        }
     }
 
     /// A Spelunke malus with a curse: random cards of the player's edition
@@ -457,8 +439,8 @@ impl Run {
         }
     }
 
-    /// The pub was won and paid: a boss pub gives a life, the last one wins
-    /// the run; every other gives a random Schnaps (DESIGN 8.9), then the
+    /// The pub was won and paid: the last boss pub wins the run; every
+    /// other gives a random Schnaps (DESIGN 8.9), then the
     /// boss pub opens the relic pick (ADR 0017), a Spelunke its loot; then
     /// the route choice.
     pub(super) fn pub_won(
@@ -473,17 +455,14 @@ impl Run {
             won: true,
             spelunke: self.series.spelunke.as_ref().map(|s| s.name.clone()),
         });
-        if self.series.is_boss_pub() {
-            self.gain_lives(content, content.run.lives.boss_bonus, events);
-            if self.series.section + 1 >= content.run.sections() {
-                self.phase = RunPhase::Won;
-                events.push(RunEvent::RunWon {
-                    character: self.character,
-                    length: self.length,
-                    stake: self.stake,
-                });
-                return Ok(());
-            }
+        if self.series.is_boss_pub() && self.series.section + 1 >= content.run.sections() {
+            self.phase = RunPhase::Won;
+            events.push(RunEvent::RunWon {
+                character: self.character,
+                length: self.length,
+                stake: self.stake,
+            });
+            return Ok(());
         }
         self.reward_schnapps(content, events);
         if self.series.is_boss_pub() && self.open_boss_reward(content, events) {
@@ -498,10 +477,10 @@ impl Run {
         self.open_route(content, events)
     }
 
-    /// The pub ended below its target. A boss pub ends the run whatever
-    /// lives are left (ADR 0017; "Schutzengel" does not help there).
-    /// Otherwise a life goes: with none left the run is lost, else on to
-    /// the route choice without reward.
+    /// The pub ended below its target, or was given up. Since ADR 0019
+    /// that ends the run, in every pub: normal, Spelunke or boss. Only the
+    /// "Schutzengel" ([`Effect::SecondChance`]) has it played again from
+    /// the start, once in the run, a boss pub included; it is used up.
     pub(super) fn pub_lost(
         &mut self,
         content: &Content,
@@ -510,64 +489,60 @@ impl Run {
         self.end_pub(content, events);
         self.stats.pubs_lost += 1;
         let (section, index) = (self.series.section, self.series.index);
+        events.push(RunEvent::PubLost {
+            section,
+            index,
+            boss: self.series.boss.clone(),
+        });
+        if let Some(relic) = self.second_chance(content) {
+            self.relics.retain(|r| *r != relic);
+            self.evening_relics.retain(|r| *r != relic);
+            events.push(RunEvent::SecondChance {
+                relic,
+                section,
+                index,
+            });
+            let spelunke = self.series.spelunke.clone();
+            return self.replay_pub(content, section, index, spelunke, events);
+        }
         self.pub_results.push(PubResult {
             section,
             index,
             won: false,
             spelunke: self.series.spelunke.as_ref().map(|s| s.name.clone()),
         });
-        events.push(RunEvent::PubLost {
+        self.phase = RunPhase::Lost;
+        events.push(RunEvent::RunLost {
             section,
             index,
+            character: self.character,
+            length: self.length,
+            stake: self.stake,
             boss: self.series.boss.clone(),
         });
-        if self.series.is_boss_pub() {
-            self.phase = RunPhase::Lost;
-            events.push(RunEvent::RunLost {
-                section,
-                index,
-                character: self.character,
-                length: self.length,
-                stake: self.stake,
-                boss: self.series.boss.clone(),
-            });
-            return Ok(());
-        }
-        let angel = self
-            .relic_with(content, |e| *e == crate::content::Effect::SpareLife)
-            .filter(|_| self.spared_section != Some(section));
-        if let Some(source) = angel {
-            self.spared_section = Some(section);
-            events.push(RunEvent::LifeSpared { source });
-        } else {
-            self.lives = self.lives.saturating_sub(1);
-            events.push(RunEvent::LivesChanged {
-                change: -1,
-                lives: self.lives,
-            });
-        }
-        if self.lives == 0 {
-            self.phase = RunPhase::Lost;
-            events.push(RunEvent::RunLost {
-                section,
-                index,
-                character: self.character,
-                length: self.length,
-                stake: self.stake,
-                boss: None,
-            });
-            return Ok(());
-        }
-        self.open_route(content, events)
+        Ok(())
     }
 
-    /// Whether a stop of this category can be put on a way now: the Rast
-    /// only with a life missing, the Kiosk with a Schnaps to sell, an
+    /// The relic that gives a second chance, an owned one before a house
+    /// rule of the evening.
+    fn second_chance(&self, content: &Content) -> Option<RelicId> {
+        self.relics
+            .iter()
+            .chain(&self.evening_relics)
+            .find(|r| {
+                content
+                    .relic(r)
+                    .is_some_and(|d| d.passive.contains(&Effect::SecondChance))
+            })
+            .cloned()
+    }
+
+    /// Whether a stop of this category can be put on a way now: the Kiosk
+    /// with a Schnaps to sell, an
     /// encounter category with an encounter that has an option to take.
     fn category_open(&self, content: &Content, category: StopCategory) -> bool {
         match category {
             StopCategory::Tresen => true,
-            StopCategory::Rest if self.lives >= content.run.lives.max => false,
             StopCategory::Kiosk => !self.kiosk_pool(content).is_empty(),
             _ => !self.fitting_encounters(content, category).is_empty(),
         }
@@ -1096,9 +1071,6 @@ impl Run {
             })
         };
         TourView {
-            lives: self.lives,
-            start_lives: content.run.lives.start,
-            max_lives: content.run.lives.max,
             map_seed: self.map_seed(None),
             districts,
             current: current_pub,
@@ -1299,13 +1271,6 @@ pub struct DistrictView {
 /// Everything of the Kneipentour a frontend shows (ADR 0016).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TourView {
-    /// Lives left.
-    pub lives: u32,
-    /// Lives at the start of a run: the HUD shows a lost one of these
-    /// greyed, never an empty slot above them (playtest 04.11.2026).
-    pub start_lives: u32,
-    /// Most lives a player can hold.
-    pub max_lives: u32,
     /// Seed for drawing the whole city.
     pub map_seed: u32,
     /// The districts with their pubs.

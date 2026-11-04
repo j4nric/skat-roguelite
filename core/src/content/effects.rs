@@ -249,6 +249,17 @@ pub enum Effect {
     /// need not be whole, written as a decimal (`ScaleGameValue(1.5)`,
     /// "Stammfarbe"). The Spielwert is rounded half up at the end.
     ScaleGameValue(Factor),
+    /// Lever Spielwert (Faktor, ADR 0018): multiply the whole game value
+    /// by `1 + per × counter`, with the value the run counter has when the
+    /// effect fires ("Zapfhahn": +×0,1 per pub won). Nothing while the
+    /// counter is 0. Like [`Effect::ScaleGameValue`] the factor need not
+    /// be whole; the Spielwert is rounded half up at the end.
+    ScaleGameValuePerCounter {
+        /// Counter name.
+        counter: String,
+        /// Factor added per point of the counter, as a decimal (`0.1`).
+        per: Factor,
+    },
     /// Lever Grundwert: add `per` times the current value of a run counter
     /// ("Allrounder": +3 per Spielart of the series).
     AddBaseValuePerCounter {
@@ -514,10 +525,13 @@ pub enum Effect {
     /// Tresen sells down to minus this many Groschen; later income pays the
     /// debt first. Passive only; the largest limit counts.
     Credit(u32),
-    /// Lever Leben ("Schutzengel"): once per Stadtteil the first lost pub
-    /// costs no life; never a boss pub, whose loss ends the run (ADR
-    /// 0017). Passive only.
-    SpareLife,
+    /// Second chance ("Schutzengel", ADR 0019): once in the run a lost
+    /// pub, a boss pub or a Spelunke included, is played again from the
+    /// start instead of ending the run; the relic is used up by it. Saves
+    /// and content from before call it `SpareLife` (once per Stadtteil a
+    /// lost pub cost no life). Passive only.
+    #[serde(alias = "SpareLife")]
+    SecondChance,
     /// Lever Spelunke ("Spelunkenkenner"): a Spelunke offers this many
     /// maluses and the player picks one at the route choice. Passive only;
     /// the largest number counts.
@@ -537,7 +551,8 @@ impl Effect {
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
-            | Effect::ScaleGameValue(_) => stage.in_game(),
+            | Effect::ScaleGameValue(_)
+            | Effect::ScaleGameValuePerCounter { .. } => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
             Effect::SchneiderBonusFromTrick | Effect::MultiplyTrickPoints(_) => {
                 stage == Stage::OnTrickEnd
@@ -574,7 +589,7 @@ impl Effect {
             | Effect::HonoraryJack
             | Effect::DiscardThree
             | Effect::Credit(_)
-            | Effect::SpareLife
+            | Effect::SecondChance
             | Effect::ChooseMalus(_)
             | Effect::ShowCount
             | Effect::ShopDiscount(_)

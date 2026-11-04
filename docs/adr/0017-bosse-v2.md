@@ -1,6 +1,6 @@
 # 0017: Bosse v2: zwei Boss-Spieler, alles oder nichts
 
-Datum: 2026-11-03 · Status: Angenommen · Ersetzt den Boss-Teil von ADR 0016 (Punkt 2: „Eine verfehlte Boss-Kneipe kostet ein Leben und wird wiederholt“; Punkt 5: ein Boss-Platz, Sekundant offen)
+Datum: 2026-11-03 · Status: Angenommen, Leben (Punkte 3 und 4) entfallen durch [0019](0019-keine-leben.md) · Ersetzt den Boss-Teil von ADR 0016 (Punkt 2: „Eine verfehlte Boss-Kneipe kostet ein Leben und wird wiederholt“; Punkt 5: ein Boss-Platz, Sekundant offen)
 
 ## Kontext
 

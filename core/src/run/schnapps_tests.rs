@@ -86,7 +86,6 @@ fn the_schnaepse_load_as_one_group() {
         "double_grain",
         "herbal",
         "blue_curacao",
-        "counter_beer",
         "snifter",
         "road_beer",
         "clear_spirit",

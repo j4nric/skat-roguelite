@@ -193,6 +193,9 @@ const G: Record<string, string[]> = {
   // Grundwert, M-D "Steilpfeil" for the Multiplikator (Gewinnstufen).
   base: ['..###..', '..###..', '.......', '###.###', '###.###'],
   mult: ['..###', '...##', '..#.#', '.#...', '#....'],
+  // Faktor (ADR 0018, provisional until the user picks one): a "×" with a
+  // superscript caret, "× hoch": the whole Spielwert multiplied.
+  factor: ['....#.', '...#.#', '#.#...', '.#....', '#.#...'],
 };
 
 /** One item of a band: a number text ("+4", "−2", "×2") or a named glyph. */
@@ -643,8 +646,11 @@ export function modIconBody(mod: string): string | null {
 
 // ---------------------------------------------------------- value icons, large
 
+/** Kinds of the value icons: Augen, Grundwert, Multiplikator, Faktor. */
+export type ValueIconKind = 'base' | 'mult' | 'pips' | 'factor';
+
 /** The large Werte-Icons (board "Werte-Icons", G-B, M-D and A-C): grid and palette, before the outline. */
-const VALUE_ICONS: Record<'base' | 'mult' | 'pips', { rows: string[]; pal: Record<string, string> }> = {
+const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, string> }> = {
   pips: {
     rows: ['.pppppppp.', 'ppppppppps', 'ppddppddps', 'ppddppddps', 'ppppddppps', 'ppppddppps', 'ppddppddps', 'ppddppddps', 'ppppppppps', '.ssssssss.'],
     pal: { p: '#fdfdfb', s: '#c9cfd2', d: '#2b2f33' },
@@ -657,14 +663,20 @@ const VALUE_ICONS: Record<'base' | 'mult' | 'pips', { rows: string[]; pal: Recor
     rows: ['...llllll', '....ccccc', '.....cccc', '.....cccc', '....lc.cc', '...lc...c', '..lc.....', '.lc......', 'lc.......'],
     pal: { c: '#d1773f', l: '#f1b48a' },
   },
+  // Faktor (ADR 0018), provisional: an amber "×" with a gold caret above
+  // it to the right, the exponent mark of "multiplied as a whole".
+  factor: {
+    rows: ['......gg..', '.....g..g.', '....g....g', 'cl..lc....', '.cllc.....', '..cc......', '.clcl.....', 'cl..cl....'],
+    pal: { c: '#c98a12', l: '#ffd25e', g: '#f7c21a' },
+  },
 };
 
 /**
- * The Grundwert, Multiplikator or Augen icon in its large form (stone
- * bricks, copper arrow, a die) with a dark one-pixel outline, as inline SVG `height` px
+ * The Grundwert, Multiplikator, Faktor or Augen icon in its large form
+ * (stone bricks, copper arrow, amber "×" with a caret, a die) with a dark one-pixel outline, as inline SVG `height` px
  * high: beside the labels of the score boxes.
  */
-export function valueIcon(kind: 'base' | 'mult' | 'pips', height = 14): string {
+export function valueIcon(kind: ValueIconKind, height = 14): string {
   const { rows, pal } = VALUE_ICONS[kind];
   const h = rows.length + 2;
   const w = (rows[0]?.length ?? 0) + 2;

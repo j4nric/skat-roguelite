@@ -62,7 +62,7 @@ pub struct RunView {
     pub sections: u32,
     /// Always the ganzer Abend since ADR 0016.
     pub length: RunLength,
-    /// The Kneipentour: lives, the city, the route choice (ADR 0016).
+    /// The Kneipentour: the city and the route choice (ADR 0016).
     pub tour: super::tour::TourView,
     /// Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game.
     pub stake: u32,

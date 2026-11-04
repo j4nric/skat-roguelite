@@ -9,7 +9,6 @@ import { editionLook, lookSvg, type SettledWild } from './cards';
 import { attrs, esc } from './dom';
 import { oddsDetail } from './odds';
 import { bossCoaster, relicCoaster } from './emblems';
-import { hearts } from './hud';
 
 /** Tally marks in groups of five, drawn in chalk; large numbers as digits. */
 export function tally(n: number): string {
@@ -67,7 +66,6 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     [de.end.gamesLost, tally(s.games_lost)],
     [de.end.gamesPassed, tally(s.redeals)],
     [de.end.seriesWon, tally(s.series_won)],
-    [de.lives.label, hearts(view.tour.lives, view.tour.start_lives, 14)],
     [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
     [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],
   ];

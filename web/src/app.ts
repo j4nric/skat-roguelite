@@ -263,7 +263,7 @@ export class App {
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
-  /** Account, Groschen and lives in the head: how their changes get there. */
+  /** Account and Groschen in the head: how their changes get there. */
   private readonly hudFx: HudFx;
   private readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
@@ -1374,37 +1374,17 @@ export class App {
         if (wait) await this.pause(wait);
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
-        // One loss sound per chain (playtest 04.11.2026): when this lost game also costs a
-        // heart, the heart (or, ending the run, the end screen) sounds it, not the board.
-        const heartLost = rest.some((e) => typeof e === 'object' && 'LivesChanged' in e && e.LivesChanged.change < 0);
+        // One loss sound per chain (playtest 04.11.2026): when this lost game ends the run
+        // (ADR 0019), the end screen sounds it, not the board.
+        const runEnds = rest.some((e) => typeof e === 'object' && 'RunLost' in e);
         await this.showScore(
           before?.series.score ?? 0,
           ev.GameScored.series_score,
           before?.series.target ?? after.series.target,
           after,
           won ? { payout: won.SeriesWon.payout, coins: won.SeriesWon.coins } : null,
-          heartLost,
+          runEnds,
         );
-        continue;
-      }
-      if ('LivesChanged' in ev) {
-        const { change, lives } = ev.LivesChanged;
-        const lostPub = events.find((e): e is Extract<RunEvent, { PubLost: unknown }> => typeof e === 'object' && 'PubLost' in e);
-        if (change < 0) {
-          const givenUp = events.some((e) => typeof e === 'object' && 'PubGivenUp' in e);
-          const why = givenUp ? de.lives.givenUp : lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
-          this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
-          // A lost run sounds once, on the end screen; otherwise the heart carries the loss.
-          if (after.phase !== 'Lost') sound.play('lose');
-          this.hudFx.lives(lives);
-          // Time to see the heart break.
-          if (motionOn()) await this.pause(700);
-        } else {
-          this.showToast(t(de.lives.gained, { lives }), 'top');
-          sound.play('clink');
-          this.hudFx.lives(lives);
-          if (motionOn()) await this.pause(600);
-        }
         continue;
       }
       if ('DebtChanged' in ev) {
@@ -1429,12 +1409,12 @@ export class App {
         sound.play('clink');
         continue;
       }
-      if ('LifeSpared' in ev) {
-        const src = ev.LifeSpared.source;
-        const name = typeof src === 'object' && 'Relic' in src ? contentName('relics', src.Relic) : '';
-        this.wiggleSource(src);
-        this.showToast(t(de.toast.lifeSpared, { name }), 'top');
+      if ('SecondChance' in ev) {
+        // ADR 0019: the Schutzengel has the lost pub played again and goes.
+        const name = contentName('relics', ev.SecondChance.relic);
+        this.showToast(t(de.toast.secondChance, { name }), 'top');
         sound.play('clink');
+        if (motionOn()) await this.pause(900);
         continue;
       }
       if ('CoinsStashed' in ev) {

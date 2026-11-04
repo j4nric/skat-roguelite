@@ -892,3 +892,71 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
     );
     assert_eq!((schneider.schneider, schneider.value), (true, 36));
 }
+
+/// ADR 0018, worked out by hand: Spielwert = Grundwert × Multiplikator ×
+/// Faktor. Factors multiply (two ×1,5 are ×2,25, a growing ×1,3 on top
+/// ×2,925), the Spielwert is rounded half up once at the end. The relics
+/// of the family "Faktor" only act on won games, so a lost game carries no
+/// such line and counts −Grundwert × Multiplikator.
+#[test]
+fn factor_as_third_stage_vectors() {
+    use skat_core::content::{Change, Factor, Lever, RelicId, ScoreLine, Source, score_game};
+    use skat_core::rules::Thresholds;
+
+    let line = |relic: &str, permille: u32| ScoreLine {
+        source: Source::Relic(RelicId::new(relic)),
+        lever: Lever::GameValue,
+        change: Change::Scale(Factor::from_permille(permille)),
+    };
+    let outcome = |declarer: u32, tricks: u32| Outcome {
+        declarer_card_points: declarer,
+        defender_card_points: TOTAL_CARD_POINTS - declarer,
+        declarer_tricks: tricks,
+        defender_tricks: 10 - tricks,
+    };
+    let mit_2 = Matadors {
+        with: true,
+        count: 2,
+    };
+    let thresholds = Thresholds::default();
+    // Karo mit 2, Spiel 3: 9 × 3 = 27; Schellenbaum ×1,5 and Zapfhahn
+    // after five pubs ×1,5: × 2,25 = 60,75 → 61.
+    let karo = Declaration::suit(Suit::Diamonds, RiskLevel::Normal);
+    let won = score_game(
+        karo,
+        mit_2,
+        &outcome(70, 6),
+        &thresholds,
+        vec![line("bell_tree", 1500), line("tap", 1500)],
+    );
+    assert_eq!(won.multiplier, Factor::from_permille(2250));
+    assert_eq!((won.base_value, won.levels), (9, 3));
+    assert_eq!((won.value, won.score), (61, 61));
+    // Grand mit 2, Spiel 3: 24 × 3 = 72; Grandseigneur ×2, Heiße Hand
+    // after two wins ×1,4, Zapfhahn after three pubs ×1,3:
+    // × 3,64 = 262,08 → 262.
+    let grand = Declaration::grand(RiskLevel::Normal);
+    let won = score_game(
+        grand,
+        mit_2,
+        &outcome(70, 6),
+        &thresholds,
+        vec![
+            ScoreLine {
+                source: Source::Relic(RelicId::new("grand_seigneur")),
+                lever: Lever::GameValue,
+                change: Change::Multiply(2),
+            },
+            line("hot_hand", 1400),
+            line("tap", 1300),
+        ],
+    );
+    assert_eq!(won.multiplier, Factor::from_permille(3640));
+    assert_eq!((won.value, won.score), (262, 262));
+    // Lost: no relic factor, −27.
+    let lost = score_game(karo, mit_2, &outcome(50, 4), &thresholds, Vec::new());
+    assert_eq!(
+        (lost.multiplier, lost.value, lost.score),
+        (Factor::ONE, 27, -27)
+    );
+}

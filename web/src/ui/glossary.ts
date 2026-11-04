@@ -63,6 +63,7 @@ function legend(): string {
     [valueIcon('pips', 18), v.pips],
     [valueIcon('base', 18), v.base],
     [valueIcon('mult', 18), v.mult],
+    [valueIcon('factor', 18), v.factor],
   ];
   return `<ul class="glossary-values" data-testid="glossary-values">${rows
     .map(([icon, [name, line]]) => `<li><span class="glossary-icon">${icon}</span><b>${esc(name ?? '')}</b><span>${esc(line ?? '')}</span></li>`)

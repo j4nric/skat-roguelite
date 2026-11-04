@@ -329,7 +329,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
   </main>`;
 }
 
-/** Why the run ended: the last life, or a lost boss pub (ADR 0017, whatever lives were left). */
+/** Why the run ended: a lost pub (ADR 0019), a lost boss pub naming its boss players (ADR 0017). */
 function lostReason(view: RunView): string {
   const s = view.series;
   if (s.is_boss && s.boss) {
@@ -725,11 +725,11 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'confirm-give-up': {
       const boss = Boolean(view?.series.is_boss);
-      const lastLife = !boss && (view?.tour.lives ?? 0) <= 1;
-      const angel = !boss && Boolean(view?.relics.some((r) => r.relic.id === 'guardian_angel'));
-      const lines = boss
-        ? `<p class="give-up-warning" data-testid="give-up-boss"><b>${esc(de.giveUp.boss)}</b></p><p>${esc(de.giveUp.bossText)}</p>`
-        : `<p>${esc(de.giveUp.text)}</p>${angel ? `<p class="small">${esc(de.giveUp.angel)}</p>` : lastLife ? `<p class="give-up-warning"><b>${esc(de.giveUp.lastLife)}</b></p>` : ''}`;
+      // ADR 0019: giving up ends the run, unless the Schutzengel has the pub played again.
+      const angel = Boolean(view?.relics.some((r) => r.relic.id === 'guardian_angel'));
+      const lines = angel
+        ? `<p>${esc(boss ? de.giveUp.bossText : de.giveUp.text)}</p><p class="small" data-testid="give-up-angel">${esc(de.giveUp.angel)}</p>`
+        : `<p class="give-up-warning" ${attrs({ 'data-testid': boss ? 'give-up-boss' : 'give-up-end' })}><b>${esc(de.giveUp.boss)}</b></p><p>${esc(boss ? de.giveUp.bossText : de.giveUp.text)}</p>`;
       return sheet(
         `<h2>${esc(de.giveUp.title)}</h2>
          ${lines}

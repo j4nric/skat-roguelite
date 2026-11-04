@@ -21,8 +21,8 @@
 // aus (Not(NullGame)).
 // characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
 // group: Anzeige-Gruppe für die Form des Bierdeckels (Value: Wert,
-// Multiplier: Multiplikator, Control: Kontrolle, Tour: Groschen, Tresen,
-// Leben und Wege; ohne Angabe Value). Nur Anzeige.
+// Multiplier: Multiplikator, Control: Kontrolle, Tour: Groschen, Tresen
+// und Wege, Factor: Faktor; ohne Angabe Value). Nur Anzeige.
 // Gesperrte Relikte stehen als Belohnung in unlocks.ron.
 [
     (
@@ -486,15 +486,18 @@
         price: 5,
         passive: [Credit(5)],
     ),
-    // Lever Leben: once per Stadtteil the first lost pub costs no life.
+    // Zweite Chance (ADR 0019, 04.11.2026): einmal im Run wird eine
+    // verlorene Kneipe neu gespielt, auch eine Boss-Kneipe oder Spelunke;
+    // danach ist der Schutzengel weg. Bis dahin: einmal pro Stadtteil kostet
+    // die erste verlorene Kneipe kein Leben. Preis VORLÄUFIG (wie bisher 8).
     (
         id: "guardian_angel",
         group: Tour,
         name: "Schutzengel",
-        text: "Einmal pro Stadtteil: Die erste verlorene Kneipe kostet kein Leben. Nicht in der Boss-Kneipe.",
+        text: "Einmal im Run: Verlierst du eine Kneipe, spielst du sie noch einmal, auch die Boss-Kneipe. Danach ist der Schutzengel weg.",
         rarity: Rare,
         price: 8,
-        passive: [SpareLife],
+        passive: [SecondChance],
     ),
     // Lever Spelunke: two maluses on offer, the player picks one.
     (
@@ -522,6 +525,116 @@
         price: 9,
         hooks: [
             OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCursedCard(1)]),
+        ],
+    ),
+    // Faktor (ADR 0018, 04.11.2026): Relikte, die den ganzen Spielwert
+    // multiplizieren. Faktoren werden multipliziert, nie addiert (zwei
+    // ×1,5 ergeben ×2,25), und gelten nur für gewonnene Spiele (ADR 0018
+    // Punkt 4). Je Trumpffarbe eines (Wunsch des Nutzers), eines für Grand
+    // und eines für Null, dazu zwei wachsende mit Zähler. Seltenheit,
+    // Preise und Faktoren VORLÄUFIG nach Augenmaß, bis die Messung sie
+    // festlegt (ADR 0018 Punkt 6).
+    (
+        id: "jay",
+        group: Factor,
+        focus: Trump,
+        name: "Eichelhäher",
+        text: "×1,5, wenn du ein Eichel-Spiel gewinnst.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: All([Won, GameIs(Suit(Clubs))]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    (
+        id: "tree_frog",
+        group: Factor,
+        focus: Trump,
+        name: "Laubfrosch",
+        text: "×1,5, wenn du ein Grün-Spiel gewinnst.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: All([Won, GameIs(Suit(Spades))]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    (
+        id: "robin",
+        group: Factor,
+        focus: Trump,
+        name: "Rotkehlchen",
+        text: "×1,5, wenn du ein Rot-Spiel gewinnst.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: All([Won, GameIs(Suit(Hearts))]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    (
+        id: "bell_tree",
+        group: Factor,
+        focus: Trump,
+        name: "Schellenbaum",
+        text: "×1,5, wenn du ein Schellen-Spiel gewinnst.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: All([Won, GameIs(Suit(Diamonds))]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    (
+        id: "grand_seigneur",
+        group: Factor,
+        focus: Trump,
+        kind: Regular,
+        name: "Der Grandseigneur",
+        text: "×2, wenn du einen Grand gewinnst.",
+        rarity: Legendary,
+        price: 9,
+        hooks: [
+            OnScore(when: All([Won, GameIs(Grand)]), then: [MultiplyGameValue(2)]),
+        ],
+    ),
+    (
+        id: "black_zero",
+        group: Factor,
+        focus: Null,
+        name: "Schwarze Null",
+        text: "×1,5, wenn du ein Null-Spiel gewinnst.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: All([Won, NullGame]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    // Wächst mit jeder gewonnenen Kneipe (auch Spelunke und Boss-Kneipe),
+    // für den Rest des Runs; die Kneipe, die den Zähler hebt, hat ihn schon
+    // hinter sich.
+    (
+        id: "tap",
+        group: Factor,
+        name: "Zapfhahn",
+        text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
+        rarity: Rare,
+        price: 8,
+        hooks: [
+            OnSeriesWon(then: [IncrementCounter("tap")]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "tap", per: 0.1)]),
+        ],
+    ),
+    // Das Risiko: Der Faktor zählt die gewonnenen Spiele vor diesem (der
+    // Faktor-Hook steht vor dem Zähler), ein verlorenes Spiel setzt ihn
+    // zurück. Einmischen bricht die Folge nicht.
+    (
+        id: "hot_hand",
+        group: Factor,
+        name: "Heiße Hand",
+        text: "Jedes gewonnene Spiel in Folge gibt +×0,2 Faktor auf die nächsten gewonnenen Spiele. Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
+        rarity: Rare,
+        price: 7,
+        hooks: [
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.2), IncrementCounter("hot_hand")]),
+            OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
         ],
     ),
 ]

@@ -318,6 +318,10 @@ fn groups_of_the_relics_are_data() {
             RelicGroup::Tour,
             "landlord closing_time season_ticket kitty slate guardian_angel dive_expert",
         ),
+        (
+            RelicGroup::Factor,
+            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand",
+        ),
     ];
     let mut named = 0;
     for (group, ids) in groups {
@@ -344,34 +348,34 @@ fn groups_of_the_relics_are_data() {
 #[test]
 fn the_new_schnaepse_are_schnaepse() {
     let content = content();
-    for id in ["counter_beer", "snifter", "road_beer"] {
+    for id in ["snifter", "road_beer"] {
         let def = content.consumable(&ConsumableId::new(id)).expect(id);
         assert_eq!(def.category, ConsumableCategory::Schnapps, "{id}");
     }
 }
 
+/// "Konterbier" gave a life until ADR 0019; a save that still holds one
+/// gets its price back in Groschen, the other Schnäpse stay.
 #[test]
-fn counter_beer_gives_a_life_outside_a_game() {
+fn an_old_counter_beer_pays_its_price_back_when_loaded() {
     let content = content();
-    // Not in a game.
-    let mut run = relic_run(&content, &[]);
-    run.consumables = vec![ConsumableId::new("counter_beer")];
-    run.lives = 1;
-    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
-    // At the route choice with all lives: nothing to win back.
+    assert!(
+        content
+            .consumable(&ConsumableId::new("counter_beer"))
+            .is_none()
+    );
     let mut run = at_route(&content, &[]);
-    run.consumables = vec![ConsumableId::new("counter_beer")];
-    run.lives = content.run.lives.max;
-    assert_eq!(run.apply(&content, use_item(0)), Err(RunError::LivesFull));
-    assert!(!run.view(&content).consumables[0].usable_now);
-    // With a life missing: one back.
-    run.lives = 2;
-    let events = run.apply(&content, use_item(0)).expect("drink");
-    assert!(events.contains(&RunEvent::LivesChanged {
-        change: 1,
-        lives: 3
-    }));
-    assert!(run.consumables().is_empty());
+    run.consumables = vec![
+        ConsumableId::new("counter_beer"),
+        ConsumableId::new("snifter"),
+    ];
+    let coins = run.coins();
+    let json = serde_json::to_string(&run).expect("save");
+    let mut loaded: Run = serde_json::from_str(&json).expect("load");
+    let dropped = loaded.drop_unknown_content(&content);
+    assert_eq!(dropped, vec!["counter_beer".to_string()]);
+    assert_eq!(loaded.coins(), coins + 4);
+    assert_eq!(loaded.consumables(), &[ConsumableId::new("snifter")]);
 }
 
 #[test]
@@ -589,28 +593,72 @@ fn slate_sells_on_credit_once_per_district_and_income_pays_it_back() {
     );
 }
 
+/// ADR 0019: the "Schutzengel" has a lost pub played again, once in the
+/// run, and goes; the next lost pub ends the run.
 #[test]
-fn guardian_angel_spares_the_first_lost_pub_of_a_district() {
+fn guardian_angel_plays_a_lost_pub_again_once() {
+    let content = content();
+    let mut run = relic_run(&content, &["guardian_angel", "kibitzer"]);
+    let target = run.series().target;
+    let events = end_pub(&mut run, &content, 3, false);
+    assert!(events.contains(&RunEvent::SecondChance {
+        relic: RelicId::new("guardian_angel"),
+        section: 0,
+        index: 0,
+    }));
+    assert!(!events.iter().any(|e| matches!(e, RunEvent::RunLost { .. })));
+    // The same pub from the start: fresh account, fresh deal.
+    assert_eq!(run.phase(), RunPhase::Game);
+    assert_eq!((run.series().section, run.series().index), (0, 0));
+    assert_eq!(run.series().target, target);
+    assert_eq!((run.series().score, run.series().games_played), (0, 0));
+    assert!(run.game().is_some());
+    assert_eq!(run.relics(), &[RelicId::new("kibitzer")]);
+    assert!(run.pub_results().is_empty());
+    // Lost again: the run is over.
+    let events = end_pub(&mut run, &content, 3, false);
+    assert!(events.iter().any(|e| matches!(e, RunEvent::RunLost { .. })));
+    assert_eq!(run.phase(), RunPhase::Lost);
+    // Without the angel a lost pub ends the run at once.
+    let mut run = relic_run(&content, &[]);
+    let events = end_pub(&mut run, &content, 3, false);
+    assert!(events.contains(&RunEvent::RunLost {
+        section: 0,
+        index: 0,
+        character: Character::Declarer,
+        length: RunLength::Full,
+        stake: 0,
+        boss: None,
+    }));
+}
+
+/// The second chance also holds in a boss pub (ADR 0019): the same boss,
+/// not drawn again, and the house rules of the evening stay.
+#[test]
+fn guardian_angel_plays_a_boss_pub_again() {
     let content = content();
     let mut run = relic_run(&content, &["guardian_angel"]);
-    let lives = run.lives();
+    run.series.index = PUBS_PER_DISTRICT - 1;
+    let boss = run.section_boss.clone().expect("boss drawn");
+    run.series.boss = Some(boss.clone());
+    run.evening_relics = vec![RelicId::new("kibitzer")];
     let events = end_pub(&mut run, &content, 3, false);
-    assert!(events.contains(&RunEvent::LifeSpared {
-        source: relic("guardian_angel")
-    }));
-    assert_eq!(run.lives(), lives);
-    // The second lost pub of the district costs a life.
-    run.apply(&content, RunAction::ChooseRoute(0)).ok();
-    let mut run = relic_run(&content, &["guardian_angel"]);
-    run.spared_section = Some(0);
-    end_pub(&mut run, &content, 3, false);
-    assert_eq!(run.lives(), lives - 1);
-    // The next district has a new angel.
-    let mut run = relic_run(&content, &["guardian_angel"]);
-    run.spared_section = Some(0);
-    run.series.section = 1;
-    end_pub(&mut run, &content, 3, false);
-    assert_eq!(run.lives(), lives);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::SecondChance { .. }))
+    );
+    assert_eq!(run.phase(), RunPhase::Game);
+    assert_eq!(run.series().index, PUBS_PER_DISTRICT - 1);
+    assert_eq!(run.series().boss, Some(boss.clone()));
+    assert_eq!(run.section_boss, Some(boss));
+    assert_eq!(run.evening_relics, vec![RelicId::new("kibitzer")]);
+    assert!(run.relics().is_empty());
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::BossAnnounced { .. }))
+    );
 }
 
 #[test]
@@ -785,7 +833,7 @@ fn the_card_sharp_sells_a_strong_trick_that_is_a_curse_half_the_time() {
 }
 
 #[test]
-fn the_lost_wallet_pays_with_a_curse_a_life_or_a_finders_fee() {
+fn the_lost_wallet_pays_with_a_curse_a_schnaps_or_a_finders_fee() {
     let content = content();
     let mut run = at_route(&content, &[]);
     let coins = run.coins();
@@ -807,20 +855,19 @@ fn the_lost_wallet_pays_with_a_curse_a_life_or_a_finders_fee() {
         .filter(|c| c.mods.contains(&CardModId::new("transparent")))
         .count();
     assert_eq!(transparent, 1);
-    // Handed in: a life back; with every life there it is not offered.
+    // Handed in: the owner gives a Schnaps (a life until ADR 0019).
     let mut run = at_route(&content, &[]);
-    run.lives = 1;
-    open(&mut run, &content, "lost_wallet");
+    let options = open(&mut run, &content, "lost_wallet");
+    assert!(matches!(
+        options[1].effects.as_slice(),
+        [EncounterEffect::Schnapps(Some(_))]
+    ));
+    let held = run.consumables().len();
     choose(&mut run, &content, 1, None);
-    assert_eq!(run.lives(), 2);
-    let mut run = at_route(&content, &[]);
-    run.lives = content.run.lives.max;
-    open(&mut run, &content, "lost_wallet");
-    assert_eq!(
-        run.encounter_option_block(&content, 1),
-        Some(OptionBlock::LivesFull)
-    );
+    assert_eq!(run.consumables().len(), held + 1);
     // The finder's fee, no curse.
+    let mut run = at_route(&content, &[]);
+    open(&mut run, &content, "lost_wallet");
     let coins = run.coins();
     choose(&mut run, &content, 2, None);
     assert_eq!(run.coins(), coins + 4);

@@ -523,7 +523,10 @@ pub enum EncounterEffect {
     /// another option's. With every slot full the player gets its price
     /// in Groschen instead.
     Schnapps(Option<ConsumableId>),
-    /// Lives back, up to the maximum.
+    /// Lives back (ADR 0016). Gone with the lives (ADR 0019): no content
+    /// may name it; an encounter open in a save from before offers this
+    /// many times [`LEGACY_LIFE_COINS`] Groschen instead
+    /// ([`crate::run::Run::drop_unknown_content`]).
     Lives(u32),
     /// The exact stops of the next route choices are shown.
     Scout(u32),
@@ -627,7 +630,8 @@ pub enum StopCategory {
     Event,
     /// Upgrade: modifications on, curses off.
     Upgrade,
-    /// Rast: lives back.
+    /// Rast (Imbissbude): a rest before the next pub (ADR 0019: since the
+    /// lives are gone, one Einmischen more or a card cleansed).
     Rest,
     /// Fundgroschen: a few Groschen on the way (03.11.2026).
     FoundCoins,
@@ -820,8 +824,10 @@ pub enum RelicGroup {
     Multiplier,
     /// Kontrolle: Blatt, Skat, Information, Vorhand.
     Control,
-    /// Tour: Groschen, Tresen, Leben, Wege.
+    /// Tour: Groschen, Tresen, Wege.
     Tour,
+    /// Faktor (ADR 0018): the Spielwert as a whole, multiplied.
+    Factor,
 }
 
 /// A relic: house rule or Stammtisch figure.
@@ -1248,9 +1254,6 @@ pub enum ConsumableAction {
     /// it cannot be drunk on a hand already known. Only with ten cards
     /// before the skat is touched.
     RedealNextGame(NextGameEffect),
-    /// Lives back, at most to the maximum ("Konterbier"). Outside a
-    /// game only, and only with a life missing.
-    GainLives(u32),
     /// Draw the stops of the open route choice again ("Schwenker"): every way
     /// gets a new stop, the Tresen stays within reach, a Spelunke stays
     /// where it is. At the route choice only.
@@ -1516,16 +1519,10 @@ pub struct ZinkenConfig {
     pub capped_voucher_coins: u32,
 }
 
-/// Lives of the Kneipentour (ADR 0016).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LivesConfig {
-    /// Lives at the start of a run.
-    pub start: u32,
-    /// Most lives a player can hold.
-    pub max: u32,
-    /// Lives gained for a won boss pub.
-    pub boss_bonus: u32,
-}
+/// Groschen per life of an encounter option from before ADR 0019 (no
+/// lives): an open encounter of an old save that offered a life offers
+/// these instead.
+pub const LEGACY_LIFE_COINS: u32 = 3;
 
 /// Draw weights of the stop categories on a route. The Tresen has none:
 /// since 03.11.2026 one of the three ways always leads to it, and the
@@ -1536,7 +1533,7 @@ pub struct StopWeights {
     pub event: u32,
     /// Upgrade.
     pub upgrade: u32,
-    /// Rast (only drawn while a life is missing).
+    /// Rast.
     pub rest: u32,
     /// Fundgroschen.
     #[serde(default)]
@@ -1645,8 +1642,6 @@ pub struct RunConfig {
     /// is the boss pub (before the boss's factor). Every row has
     /// [`crate::run::PUBS_PER_DISTRICT`] values.
     pub targets: Vec<Vec<u64>>,
-    /// Lives (ADR 0016).
-    pub lives: LivesConfig,
     /// The route choice between two pubs.
     pub route: RouteConfig,
     /// The Spelunke.
@@ -1993,12 +1988,6 @@ impl Content {
         if self.run.game_limit == 0 {
             return Err(ContentError("run: game limit 0".into()));
         }
-        let lives = &self.run.lives;
-        if lives.start == 0 || lives.start > lives.max {
-            return Err(ContentError(
-                "run: lives must start above 0 and at most at the maximum".into(),
-            ));
-        }
         if self.run.spelunke.chance > Factor::ONE {
             return Err(ContentError("run: Spelunke chance above 1".into()));
         }
@@ -2215,6 +2204,14 @@ impl Content {
         let err = |what: String| Err(ContentError(format!("encounter {}: {what}", def.id)));
         if def.category.is_shop() {
             return err(format!("{:?} is no encounter category", def.category));
+        }
+        if def
+            .options
+            .iter()
+            .flat_map(|o| &o.effects)
+            .any(|e| matches!(e, EncounterEffect::Lives(_)))
+        {
+            return err("there are no lives any more (ADR 0019)".into());
         }
         let regular = def.options.iter().filter(|o| !o.fallback).count();
         if regular == 0 || regular > 3 {

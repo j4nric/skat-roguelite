@@ -81,10 +81,6 @@ fn every_route_choice_shows_three_categories_one_of_them_the_tresen() {
                 .expect("a Tresen");
             tresen_ways.insert(tresen);
             seen.extend(categories);
-            // A Rast only with a life missing.
-            if run.lives() >= content.run.lives.max {
-                assert!(!distinct.contains(&StopCategory::Rest));
-            }
             run.reroll_routes(&content);
         }
     }
@@ -93,6 +89,7 @@ fn every_route_choice_shows_three_categories_one_of_them_the_tresen() {
     for category in [
         StopCategory::Event,
         StopCategory::Upgrade,
+        StopCategory::Rest,
         StopCategory::FoundCoins,
         StopCategory::Kiosk,
         StopCategory::DiceStall,
@@ -104,7 +101,7 @@ fn every_route_choice_shows_three_categories_one_of_them_the_tresen() {
 #[test]
 fn every_encounter_has_two_or_three_options_and_one_for_nothing() {
     let content = content();
-    let single = ["snack_bar", "found_coins"];
+    let single = ["found_coins"];
     for def in content.encounters.values() {
         let regular: Vec<_> = def.options.iter().filter(|o| !o.fallback).collect();
         if single.contains(&def.id.as_str()) {
@@ -144,7 +141,6 @@ fn a_fresh_run_can_take_an_option_of_every_encounter_it_meets() {
         let (mut run, _) = Run::new_with(&content, 5, &start).expect("run");
         win_pub(&mut run, &content);
         run.coins = 0;
-        run.lives = 1;
         let met: Vec<&EncounterDef> = content
             .encounters
             .values()
@@ -326,17 +322,34 @@ fn an_open_encounter_of_an_old_save_is_opened_anew() {
     let action = RunBot.encounter_action(&loaded, &content);
     loaded.apply(&content, action).expect("take");
     assert_eq!(loaded.phase(), RunPhase::Game);
-    // An old encounter with nothing left to offer is passed by.
+    // The old Rast (a life) opens anew as the Rast of ADR 0019.
     let mut save = serde_json::to_value(&run).expect("json");
     save["encounter"] = serde_json::json!({
         "id": "snack_bar",
         "options": [{ "choice": { "Heal": 1 }, "cost": 0 }]
     });
     let mut loaded: Run = serde_json::from_value(save).expect("old save loads");
-    loaded.lives = content.run.lives.max;
     loaded.drop_unknown_content(&content);
-    assert!(loaded.encounter().is_none());
-    assert_eq!(loaded.phase(), RunPhase::Game);
+    let rest = loaded.encounter().expect("opened anew");
+    assert_eq!(rest.id.as_str(), "snack_bar");
+    assert!(
+        rest.options
+            .iter()
+            .flat_map(|o| &o.effects)
+            .all(|e| !matches!(e, EncounterEffect::Lives(_)))
+    );
+    // A life offered in the form of 03.11.2026 becomes Groschen.
+    let mut old = run.clone();
+    if let Some(encounter) = old.encounter.as_mut() {
+        encounter.options[0].effects = vec![EncounterEffect::Lives(1)];
+    }
+    let json = serde_json::to_string(&old).expect("json");
+    let mut loaded: Run = serde_json::from_str(&json).expect("old save loads");
+    loaded.drop_unknown_content(&content);
+    assert_eq!(
+        loaded.encounter().expect("kept").options[0].effects,
+        vec![EncounterEffect::Coins(crate::content::LEGACY_LIFE_COINS)]
+    );
     // The new form survives a round trip.
     let json = serde_json::to_string(&run).expect("json");
     let back: Run = serde_json::from_str(&json).expect("load");

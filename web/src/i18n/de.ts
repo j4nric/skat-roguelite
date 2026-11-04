@@ -29,7 +29,6 @@ export const de = {
       InvalidCharacter: 'Diesen Charakter gibt es nicht.',
       UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
-      LivesFull: 'Dir fehlt kein Leben.',
       PainterPending: 'Erst eine Zinke des Kartenmalers wählen.',
       RisePending: 'Erst die drei Karten für die untote Karte wählen.',
       InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',
@@ -63,13 +62,13 @@ export const de = {
     resumeEncounter: '{character} · Stadtteil {section} · unterwegs zur nächsten Kneipe',
     resumeFailed: 'Der gespeicherte Run passt nicht mehr zu dieser Version und wurde verworfen.',
     /** A run saved before the Kneipentour (ADR 0016) is discarded once. */
-    newRules: 'Neue Regeln: Der Abend ist jetzt eine Kneipentour durch drei Stadtteile, mit Leben und Routenwahl. Dein laufender Abend wurde beendet; Freischaltungen, Statistik und Einsätze bleiben.',
+    newRules: 'Neue Regeln: Der Abend ist jetzt eine Kneipentour durch drei Stadtteile, mit Routenwahl. Dein laufender Abend wurde beendet; Freischaltungen, Statistik und Einsätze bleiben.',
     seedLabel: 'Seed (leer lassen für Zufall)',
     seedPlaceholder: 'zufällig',
     seedInvalid: 'Der Seed muss eine ganze Zahl sein.',
     noRecord: 'Noch kein Run gespielt.',
     howTo:
-      'Zieh durch drei Stadtteile: In jeder Kneipe hast du drei Spiele für den Zielwert. Verfehlst du ihn, kostet es ein Leben. Unterwegs wählst du deinen Weg: Tresen, Begegnung, Werkstatt oder Rast.',
+      'Zieh durch drei Stadtteile: In jeder Kneipe hast du drei Spiele für den Zielwert. Verfehlst du ihn, ist der Abend vorbei. Unterwegs wählst du deinen Weg: Tresen, Begegnung, Werkstatt oder Rast.',
     whoPlays: 'Wer spielt heute?',
     locked: 'Gesperrt',
     lockedBy: 'Freischalten: {text}',
@@ -117,11 +116,10 @@ export const de = {
   /** "Kneipe verlassen?" (DESIGN 8.7). */
   giveUp: {
     title: 'Kneipe verlassen?',
-    text: 'Die Kneipe zählt als verloren: Du verlierst ein Leben und bekommst keine Groschen.',
-    lastLife: 'Es ist dein letztes Leben: Danach ist der Abend vorbei.',
-    angel: 'Der Schutzengel verschont dich vielleicht.',
+    text: 'Die Kneipe zählt als verloren: Der Abend ist vorbei, Groschen gibt es keine.',
+    angel: 'Dein Schutzengel lässt dich die Kneipe noch einmal von vorn spielen. Danach ist er weg.',
     boss: 'Aufgeben beendet den Run.',
-    bossText: 'In der Boss-Kneipe ist mit dem Aufgeben der ganze Abend vorbei, egal wie viele Leben du hast.',
+    bossText: 'Die Boss-Kneipe zählt als verloren: Der Abend ist vorbei.',
     go: 'Aufgeben',
     cancel: 'Weiterspielen',
   },
@@ -551,7 +549,7 @@ export const de = {
     debt: 'Angeschrieben: {debt} Groschen Schulden.',
     debtPaid: 'Deckel bezahlt. Keine Schulden mehr.',
     debtLeft: 'Abgestottert: noch {debt} Groschen Schulden.',
-    lifeSpared: '{name}: Diese Kneipe kostet kein Leben.',
+    secondChance: '{name}: Du spielst die Kneipe noch einmal von vorn. Der Schutzengel ist weg.',
     stashed: '{name}: {amount} Groschen in die Kasse (jetzt {pot}).',
     stashPaidOut: '{name}: {amount} Groschen ausgezahlt',
     routesRerolled: 'Schwenker! Die Wege sind neu ausgelost.',
@@ -617,7 +615,7 @@ export const de = {
     baseAdd: 'Grundwert +{n}',
     baseSub: 'Grundwert {n}',
     baseMul: 'Grundwert ×{n}',
-    valueMul: 'Spielwert ×{n}',
+    valueMul: 'Faktor ×{n}',
     pointsAdd: 'Augen +{n}',
     pointsSub: 'Augen {n}',
     threshold: 'Gewonnen ab {n} Augen',
@@ -784,7 +782,6 @@ export const de = {
       double_grain: 'neu geben, nächstes Spiel ×2',
       herbal: 'neu mischen und geben',
       blue_curacao: 'eine Karte umfärben',
-      counter_beer: 'ein Leben zurück',
       snifter: 'alle Wege neu auslosen',
       road_beer: 'nächste Kneipe leichter',
       clear_spirit: 'Konto auf 0',
@@ -794,7 +791,6 @@ export const de = {
     } as Record<string, string>,
     /** The little sign after drinking it yourself. */
     gain: {
-      counter_beer: '+1 Leben',
       road_beer: 'Nächste Kneipe: Ziel −3',
       clear_spirit: 'Konto 0',
       nightcap: '+1 Spiel',
@@ -846,7 +842,6 @@ export const de = {
     seeSkat: 'Im nächsten Spiel siehst du beide Skatkarten, vor der Wahl zwischen Skat und Hand.',
     schnapps: '{name}: {text}',
     schnappsFull: 'Kein Platz frei: {n} Groschen statt dessen.',
-    lives: '+{n} Leben (höchstens {max}).',
     scout: 'Bei den nächsten {n} Routenwahlen siehst du, was auf jedem Weg genau wartet.',
     betSchneider: 'Gewinnst du das nächste Spiel mit Schneider, bekommst du {payout} Groschen; sonst ist der Einsatz weg.',
     betWin: 'Gewinnst du das nächste Spiel, bekommst du {payout} Groschen; sonst ist der Einsatz weg.',
@@ -874,7 +869,6 @@ export const de = {
       NoFittingCard: 'Keine Karte deiner Ausgabe passt.',
       NoRelic: 'Du hast kein Relikt.',
       RelicSlotsFull: 'Alle Relikt-Plätze sind belegt.',
-      LivesFull: 'Dir fehlt kein Leben.',
       BetOpen: 'Eine Wette läuft schon.',
       NotNeeded: 'Nur, wenn du nichts setzen kannst.',
     } as Record<string, string>,
@@ -1002,21 +996,11 @@ export const de = {
       Tresen: 'Hausregeln, Figuren, Schnäpse und Zinken kaufen.',
       Event: 'Eine Begegnung unterwegs, mit Chancen und Risiken.',
       Upgrade: 'Karten aufwerten oder Flüche loswerden.',
-      Rest: 'Durchatmen: ein Leben zurück, höchstens {max}.',
+      Rest: 'Durchatmen: in der nächsten Kneipe einmal mehr einmischen, oder eine Karte sauber waschen.',
       FoundCoins: 'Auf dem Weg liegen ein paar Groschen.',
       Kiosk: 'Zwei Schnäpse, billiger als am Tresen. Einer darf mit.',
       DiceStall: 'Um Groschen würfeln: doppelt oder nichts.',
     } as Record<string, string>,
-  },
-
-  lives: {
-    label: 'Leben',
-    aria: 'Noch {lives} Leben',
-    lost: 'Ein Leben verloren! Noch {lives}.',
-    gained: 'Ein Leben dazu! Jetzt {lives}.',
-    pubLost: 'Ziel verfehlt: Die Kneipe kostet ein Leben.',
-    givenUp: 'Kneipe verlassen: Sie kostet ein Leben.',
-    bossAgain: 'Ziel verfehlt: Der Boss will Revanche.',
   },
 
   pub: {
@@ -1032,11 +1016,11 @@ export const de = {
     go: 'Los geht’s',
     unknown: '?',
     /** ADR 0017: what a boss pub is about. */
-    stakes: 'Alle drei Spiele werden gespielt, der Zielwert zählt nach dem dritten. Verlierst du, ist der Abend vorbei, egal wie viele Leben du hast. Gewinnst du: doppelte Groschen, ein Leben und ein Relikt nach Wahl.',
+    stakes: 'Alle drei Spiele werden gespielt, der Zielwert zählt nach dem dritten. Verlierst du, ist der Abend vorbei. Gewinnst du: doppelte Groschen und ein Relikt nach Wahl.',
     /** The relic pick after a won boss pub. */
     rewardKicker: 'Boss geschlagen',
     rewardTitle: 'Such dir ein Relikt aus',
-    rewardText: 'Doppelte Groschen und ein Leben hast du schon. Dazu eins von drei Relikten, mindestens ungewöhnlich.',
+    rewardText: 'Doppelte Groschen hast du schon. Dazu eins von drei Relikten, mindestens ungewöhnlich.',
     rewardFull: 'Alle Plätze sind belegt: Wähle ein Relikt und dann, wofür es Platz macht. Das alte verkaufst du für den halben Preis.',
     rewardTake: 'Nehmen',
     rewardReplace: 'Statt {name} nehmen (+{coins} Groschen)',
@@ -1049,9 +1033,9 @@ export const de = {
     won: 'Kneipentour gewonnen!',
     wonText: 'Der ganze Stammtisch zieht den Hut.',
     lost: 'Run verloren',
-    lostText: 'Das letzte Leben ging in Stadtteil {section}, Kneipe {series}.',
-    /** ADR 0017: a lost boss pub ends the run whatever lives are left. */
-    lostBoss: '{names} haben dich in der Boss-Kneipe von Stadtteil {section} geschlagen. Eine verlorene Boss-Kneipe beendet den Abend, egal wie viele Leben du noch hast.',
+    /** ADR 0019: any lost pub ends the run. */
+    lostText: 'Ziel verfehlt in Stadtteil {section}, Kneipe {series}: Eine verlorene Kneipe beendet den Abend.',
+    lostBoss: '{names} haben dich in der Boss-Kneipe von Stadtteil {section} geschlagen.',
     gamesWon: 'Spiele gewonnen',
     gamesLost: 'Spiele verloren',
     gamesPassed: 'Eingemischt',
@@ -1102,7 +1086,8 @@ export const de = {
       coins: ['Groschen', 'Dein Geld am Tresen, beim Kartenmaler und unterwegs.'],
       pips: ['Augen', 'Was die Karten im Stich zählen.'],
       base: ['Grundwert', 'Der Wert der Spielart, die Basis des Spielwerts.'],
-      mult: ['Multiplikator', 'Grundwert mal Multiplikator ergibt den Spielwert.'],
+      mult: ['Multiplikator', 'Spitzen, Spiel, Hand, Schneider: Grundwert mal Multiplikator.'],
+      factor: ['Faktor', 'Multipliziert den ganzen Spielwert: Grundwert × Multiplikator × Faktor. Mehrere Faktoren werden malgenommen.'],
     },
     groups: {
       Edge: ['Rand · immer', 'Ein Rahmen ums Bild, kein Zeichen in der Ecke: wirkt in jedem Spiel.'],
@@ -1120,7 +1105,7 @@ export const de = {
   hints: {
     speaker: 'Der Wirt',
     dismiss: 'Antippen zum Schließen',
-    welcome: 'Na, Neuer? Oben siehst du Konto und Ziel: Schaff das Ziel in drei Spielen, sonst kostet die Kneipe ein Leben. Die Herzen oben sind deine Leben.',
+    welcome: 'Na, Neuer? Oben siehst du Konto und Ziel: Schaff das Ziel in drei Spielen, sonst ist der Abend vorbei.',
     skatOrHand:
       'Gereizt wird hier nicht, du bist immer der Alleinspieler. Lässt du den Skat liegen und spielst Hand, gibt’s +1 Multiplikator.',
     afterSkat:
@@ -1157,7 +1142,7 @@ export const de = {
       ['Abrechnung', 'Der Spielwert kommt aufs Konto der Kneipe.'],
     ] as [string, string][],
     valueTitle: 'Spielwert',
-    valueFormula: 'Grundwert × Multiplikator',
+    valueFormula: 'Grundwert × Multiplikator × Faktor',
     baseTitle: 'Grundwerte',
     /** Game (suit code, `Grand`, `Null`) and its Grundwert as printed; names from `suits` and `games`. */
     bases: [
@@ -1178,6 +1163,7 @@ export const de = {
       'Schwarz +1, angesagt +1',
       'Ouvert +1',
     ],
+    factorNote: 'Der Faktor ist ×1, bis Relikte ihn heben. Mehrere Faktoren werden malgenommen (×1,5 und ×1,5 sind ×2,25). Die Faktoren deiner Relikte zählen nur in gewonnenen Spielen.',
     lostNote: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab (im echten Skat doppelt).',
     bentTitle: 'Was hier anders ist',
     bent: [
@@ -1192,13 +1178,13 @@ export const de = {
     runTitle: 'Die Tournee',
     run: [
       ['Stadtteil', 'Vier Kneipen und am Ende die Boss-Kneipe. Ein Abend sind drei Stadtteile.'],
-      ['Kneipe', 'Drei Spiele gegen zwei Stammgäste. Erreichst du den Zielwert früher, ist die Kneipe sofort geschafft; übrige Spiele bringen Groschen. Sonst kostet sie ein Leben.'],
-      ['Leben', 'Du startest mit drei Herzen, höchstens fünf. Eine verpasste Kneipe kostet eins, eine geschaffte Boss-Kneipe bringt eins. Das letzte Herz beendet den Run.'],
+      ['Kneipe', 'Drei Spiele gegen zwei Stammgäste. Erreichst du den Zielwert früher, ist die Kneipe sofort geschafft; übrige Spiele bringen Groschen. Verfehlst du ihn, ist der Run vorbei.'],
+      ['Zweite Chance', 'Leben gibt es nicht. Nur der seltene Schutzengel lässt dich eine verlorene Kneipe einmal noch von vorn spielen, auch die Boss-Kneipe.'],
       ['Route', 'Zwischen zwei Kneipen wählst du einen von drei Wegen. Jeder führt über eine Station, deren Art du siehst: Tresen, Begegnung, Werkstatt oder Rast.'],
       ['Spelunke', 'Manchmal führt ein Weg in eine Spelunke statt in die nächste Kneipe: höherer Zielwert und ein Malus, dafür ein Relikt dazu.'],
-      ['Boss', 'Biegt in seiner Kneipe eine Regel. Verlierst du gegen ihn, spielst du noch einmal gegen ihn, solange du Herzen hast.'],
+      ['Boss', 'Zwei Boss-Spieler biegen in ihrer Kneipe eine Regel. Alle drei Spiele zählen; verlierst du, ist der Run vorbei.'],
       ['Tresen', 'Eine Station unterwegs: Groschen ausgeben für Hausregeln, Figuren, Schnäpse und Zinken.'],
-      ['Rast', 'Manchmal statt des Tresens ein Ereignis mit einer Wahl.'],
+      ['Rast', 'Die Imbissbude: einmal mehr einmischen in der nächsten Kneipe, oder eine Karte sauber waschen.'],
       ['Danach', 'Freischaltungen und Statistik bleiben im Vereinsbuch, auch wenn der Run verloren ist.'],
       ['Einsatz', 'Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge: 61, 62, 63 … Schneider bleibt bei 90, Null zählt keine Augen. Den Einsatz wählst du vor dem Run, je Charakter und für den ganzen und kurzen Abend getrennt.'],
     ] as [string, string][],
@@ -1357,6 +1343,7 @@ export const de = {
     Augen: 'Die Punkte der Karten im Stich: Daus 11, Zehn 10, König 4, Oberin 3, Unter 2. Ab 61 von 120 hast du gewonnen.',
     Multiplikator: 'Bisher Gewinnstufe: Spitzen, Spiel, Hand, Schneider und mehr. Spielwert ist Grundwert mal Multiplikator.',
     Grundwert: 'Der Wert der Spielart: Schellen 9, Rot 10, Grün 11, Eichel 12, Grand 24. Er wird mit dem Multiplikator malgenommen.',
+    Faktor: 'Multipliziert den ganzen Spielwert: Grundwert × Multiplikator × Faktor. Startet bei ×1; mehrere Faktoren werden malgenommen, die der Relikte nur in gewonnenen Spielen.',
     Trumpf: 'Die Karten, die jede andere Farbe stechen: im Farbspiel die Unter und die angesagte Farbe, im Grand nur die Unter.',
     Schneider: 'Die Gegner haben höchstens 30 Augen. Bringt +1 Multiplikator, angesagt noch +1.',
     Schwarz: 'Die Gegner bekommen keinen Stich. Bringt +1 Multiplikator, angesagt noch +1.',
@@ -1376,6 +1363,7 @@ export const de = {
     Multiplikator: 'Multiplikator',
     Grundwert: 'Grundwert',
     Grundwerts: 'Grundwert',
+    Faktor: 'Faktor',
     Trumpf: 'Trumpf',
     Trümpfe: 'Trumpf',
     Schneider: 'Schneider',
@@ -1412,7 +1400,9 @@ export const de = {
     crib_sheet: 'Nach der Ansage eines Handspiels liegen beide Skatkarten offen neben dem Stich. Nur zum Wissen, sie zählen wie immer.',
     kitty: 'Die Kasse füllt sich nach jeder gewonnenen Kneipe mit 2 Groschen aus der Belohnung. Am nächsten Tresen bekommst du alles zurück und die Hälfte dazu, abgerundet.',
     slate: 'Einmal pro Stadtteil kaufst du am Tresen über dein Geld hinaus, bis 5 Groschen ins Minus. Jede Einnahme danach (Kneipe, Verkauf, Groschen) zahlt zuerst die Schulden.',
-    guardian_angel: 'Die erste verlorene Kneipe eines Stadtteils kostet kein Leben. In der Boss-Kneipe hilft er nicht: Wer sie verliert, hat den Abend verloren.',
+    guardian_angel: 'Verlierst du eine Kneipe, auch eine Spelunke oder die Boss-Kneipe, spielst du sie gleich noch einmal von vorn: gleicher Zielwert, frisches Konto, neue Karten. Das geht einmal, dann ist der Schutzengel weg. Auch eine verlassene Kneipe zählt.',
+    tap: 'Nach jeder gewonnenen Kneipe, auch Spelunke und Boss-Kneipe, wächst der Faktor um ×0,1, für den Rest des Runs. Er wirkt auf jedes gewonnene Spiel und wird mit anderen Faktoren malgenommen.',
+    hot_hand: 'Der Faktor zählt die Spiele, die du vor diesem in Folge gewonnen hast: ×1, dann ×1,2, ×1,4 … Ein verlorenes Spiel setzt ihn auf ×1 zurück. Einmischen bricht die Folge nicht.',
     dive_expert: 'Führt ein Weg in eine Spelunke, zeigt er dir zwei Mali. Du wählst bei der Routenwahl, welcher gilt; sonst der erste.',
   } as Record<string, string>,
 
@@ -1422,6 +1412,8 @@ export const de = {
     kitty: 'Stammtischkasse: {value} Groschen',
     all_rounder: 'Allrounder: {value} von 3 Spielarten in dieser Kneipe',
     home_suit: 'Stammfarbe: {value}× dieselbe Trumpffarbe',
+    tap: 'Zapfhahn: {value} Kneipen, +×0,1 je Kneipe',
+    hot_hand: 'Heiße Hand: {value} Siege in Folge, +×0,2 je Sieg',
   } as Record<string, string>,
 
   /**

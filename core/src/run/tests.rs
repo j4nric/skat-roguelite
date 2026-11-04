@@ -175,10 +175,8 @@ fn reaching_the_limit_below_target_loses_the_run() {
     let (mut run, _) = Run::new(&content, 3).expect("start");
     run.series.game_limit = 1;
     run.series.target = 100_000;
-    run.lives = 1;
     let events = play_out_game(&mut run, &content);
     assert_eq!(run.phase(), RunPhase::Lost);
-    assert_eq!(run.lives(), 0);
     assert!(events.contains(&RunEvent::RunLost {
         section: 0,
         index: 0,

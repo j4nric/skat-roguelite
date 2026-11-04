@@ -138,7 +138,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Spielwert | `game_value` | Grundwert × Multiplikator (bisher „Gewinnstufen“) |
 | Grundwert | `base_value` | Karo 9, Herz 10, Pik 11, Kreuz 12, Grand 24 |
 | Multiplikator (bisher Gewinnstufen) | `levels` | Spitzen + 1 + Hand + Schneider + … |
-| Spielwert-Faktor (auch gebrochen, ×1,5) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekt `ScaleGameValue`). Der Spielwert wird am Ende halb aufgerundet |
+| Faktor (Spielwert-Faktor, auch gebrochen, ×1,5; seit ADR 0018 die dritte Stufe: Grundwert × Multiplikator × Faktor) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekte `ScaleGameValue`, `ScaleGameValuePerCounter`). Faktoren werden multipliziert, der Spielwert wird am Ende halb aufgerundet. Anzeige-Gruppe der Relikte `RelicGroup::Factor` |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
 | Schneider | `schneider` | Eine Seite mit höchstens 30 Augen (`SCHNEIDER_LIMIT`). Gemessen an der verlierenden Seite, damit es auch bei veränderten Blättern gilt. Schwarz schließt Schneider immer ein. |
@@ -165,7 +165,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stadtteil (ADR 0016; bis dahin Abschnitt / Skatabend) | `section` | Vier Kneipen und die Boss-Kneipe; im Code weiter `section` (`Series::section`, `RunStart::section`, `Run::sections`, `RunConfig::sections`); Name aus dem Namensgenerator (`DistrictView::name`). Ein Ante |
 | Kneipe (ADR 0016; bis dahin Serie) | `Series` | Ein Blind: Zielwert, 3 Spiele, zwei Stammgäste. Der Typ behält den Namen `Series` (Index `Series::index` 0 bis 4, `PUBS_PER_DISTRICT` = 5, die letzte die Boss-Kneipe, `Series::is_boss_pub`); Run-Ereignisse `SeriesStarted`, `SeriesWon`, neu `PubLost`. Verlauf `Run::pub_results` (`PubResult`). Knoten-Id `d<Stadtteil>-p<Kneipe>` (`tour::pub_id`) |
 | Boss-Kneipe (bis ADR 0016 Boss-Serie) | `is_boss_pub` | Letzte Kneipe eines Stadtteils; seit ADR 0017 zwei Boss-Spieler, alle drei Spiele, verloren endet der Run (`RunLost::boss`); bis dahin wurde sie verloren wiederholt |
-| Leben | `lives` | `Run::lives`, `RunConfig::lives` (`LivesConfig`: `start`, `max`, `boss_bonus`), Ereignis `LivesChanged { change, lives }`, Sicht `TourView::lives`, `max_lives`. In der Anzeige Herzen |
+| Leben (bis ADR 0019) | `lives` | entfallen am 04.11.2026: alte Spielstände lesen `lives` und übergehen es; `LivesConfig`, `LivesChanged`, `TourView::lives` gibt es nicht mehr |
 | Route, Routenwahl | `route` | `RunPhase::Route`, `tour::RouteChoice` (nächste Kneipe und drei `RouteOption`), Aktion `RunAction::ChooseRoute(i)`, Ereignisse `RouteOpened`, `RouteChosen`; unterwegs `tour::Trip`. Sicht `TourView::route` (`RouteView`, `RouteOptionView`, `minutes` nur Dekoration) |
 | Verkehrsmittel (Zu Fuß, Bahn, Fahrrad) | `Transport` (`Walk`, `Train`, `Bike`) | Seit 02.11.2026 alle gleich: je eine Station, nichts kostet extra; nur Darstellung |
 | Station (unterwegs) | `RouteStop` | `category` und, außer beim Tresen, das gezogene Ereignis (`encounter`, verdeckt) |
@@ -174,7 +174,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Malus (Spelunke) | `MalusDef`, `MalusId` | Daten in `tour.ron`: `passive` (Tischregeln, Quelle `Source::Malus`), `no_redeal`, `lock_schnapps` (Fehler `ConsumablesLocked`), `curse` (`MalusCurse`, Karten nur für diese Kneipe, `Series::temp_curses`) |
 | Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
 | Ansicht des Stadtteils (Altstadt, Hafen, Bahnhof) | `DistrictLook` (`OldTown`, `Harbour`, `Station`) | Daten je Stadtteilname in `tour.ron` (`DistrictName::look`); jeder Abend hat einen Stadtteil jeder Ansicht, Reihenfolge per Seed; Sicht `DistrictView::look`. Nur Anzeige |
-| Rast (Leben zurück) | `snack_bar` | Wirkung `EncounterEffect::Lives(n)` |
+| Rast (Imbissbude) | `snack_bar` | seit ADR 0019 `NextPubRedeals(1)` (Currywurst) oder `Cleanse` (Karte waschen); bis dahin `EncounterEffect::Lives(n)`, das nur noch alte Spielstände lesen (als `LEGACY_LIFE_COINS` Groschen) |
 | Werkstatt (Upgrade) | `workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterEffect::Painter`) oder Karte reinigen (`EncounterEffect::Cleanse`); seit 04.11.2026 auch der Griff in die Markenkiste (`EncounterEffect::Marke`) |
 | Marke aus einer Begegnung (zufällige oder gewählte Marke auf zufälliger oder gewählter Karte) | `EncounterEffect::Marke { card, marke }` | `card`, `marke`: `CardPick::Random` oder `Chosen`; die gewählte Marke in `RunAction::ChooseEncounter { marke }`; Sicht `EncounterOptionView::marken` (`MarkeChoiceView`); Ereignis `MarkeGiven`; alle Marken `Run::marken` |
 | Fundgroschen (Station, 03.11.2026) | `StopCategory::FoundCoins`, Ereignis `found_coins` | 2 Groschen auf dem Weg |
@@ -290,10 +290,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Plan für die nächste Kneipe | `NextPubPlan` | `redeals`, `target`; Wegbier, Skatlehrer, Kiebitz am Fenster; `Run::next_pub_plan`, Sicht `next_pub`; Ereignisse `NextPubPlanned`, `NextPubApplied`; Aktion `ConsumableAction::NextPub` |
 | Anschreiben (Schulden am Tresen) | `debt`, `Credit` | Effekt `Credit(n)` (Deckel anschreiben), `Run::debt`, Sicht `debt`, `credit_left`, `Shop::on_credit`; Ereignis `DebtChanged`; Einnahmen zahlen zuerst die Schulden |
 | Kasse (Topf aus Groschen) | `StashCoins`, `PayOutCounter` | Stammtischkasse: Zähler `kitty`; Ereignis `CoinsStashed` |
-| Leben verschonen | `SpareLife` | Schutzengel, einmal pro Stadtteil (`Run::spared_section`); Ereignis `LifeSpared` |
+| Zweite Chance | `SecondChance` | Schutzengel seit ADR 0019: einmal im Run eine verlorene Kneipe neu spielen (`Run::replay_pub`), Ereignis `SecondChance { relic, section, index }`. Alter Name `SpareLife` (einmal pro Stadtteil kein Leben) wird gelesen |
 | Malus wählen | `ChooseMalus` | Effekt `ChooseMalus(n)` (Spelunkenkenner), `Spelunke::malus_options`, Aktion `RunAction::ChooseMalus { option, malus }`, Ereignis `MalusChosen` |
 | Wege neu auslosen | `RerollRoutes` | Schwenker; Ereignis `RoutesRerolled` |
-| Leben trinken | `GainLives` | Konterbier; Fehler `LivesFull` |
+| Leben trinken (bis ADR 0019) | `GainLives` | Konterbier, entfallen; Spielstände bekommen den Preis zurück (`REFUNDED_CONSUMABLES`). Fehlercode `LivesFull` bleibt stehen |
 | Kneipe verlassen (aufgeben) | `GiveUpPub` | `RunAction::GiveUpPub`, Ereignis `PubGivenUp` (dann `PubLost`), `Run::can_give_up`, Sicht `RunView::can_give_up`; nur `Run::between_games` und ab dem zweiten Spiel (DESIGN 8.7) |
 | Zwischen zwei Spielen | `between_games` | `Run::between_games`: das gegebene Spiel ist unberührt (zehn Karten, Skat zu, nichts angesagt, keine Karte gespielt) |
 | Noch nötig | `needed` | Sicht `RunView::needed` (`NeededView`: `points`, `smallest_game`, `max_value`, `reachable`) vor dem letzten Spiel; Obergrenze `Run::max_game_value` |
@@ -368,6 +368,14 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Kleinvieh | `every_bit_counts` |
 | Ein Auge zudrücken | `blind_eye` |
 | Glasauge (Hausregel: je Gegner eine Karte für ein Spiel durchsichtig; Effekt `RevealDefenderCards`, Ereignis `CardMadeTransparent`, `ActiveGame::transparent_for_game`) | `glass_eye` |
+| Eichelhäher (Faktor ×1,5 auf gewonnene Eichel-Spiele, ADR 0018) | `jay` |
+| Laubfrosch (Faktor ×1,5 auf gewonnene Grün-Spiele) | `tree_frog` |
+| Rotkehlchen (Faktor ×1,5 auf gewonnene Rot-Spiele) | `robin` |
+| Schellenbaum (Faktor ×1,5 auf gewonnene Schellen-Spiele) | `bell_tree` |
+| Der Grandseigneur (Figur, Faktor ×2 auf gewonnene Grands) | `grand_seigneur` |
+| Schwarze Null (Faktor ×1,5 auf gewonnene Null-Spiele) | `black_zero` |
+| Zapfhahn (+×0,1 je gewonnener Kneipe; Zähler `tap`) | `tap` |
+| Heiße Hand (+×0,2 je Sieg in Folge, zurück auf ×1 nach einer Niederlage; Zähler `hot_hand`) | `hot_hand` |
 | Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
 | Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
 | Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |
@@ -391,7 +399,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Untot | `undead` |
 | Skatgott | `skat_god` (Zähler `skat_god`) |
 | Ehrenvorsitz | `honorary_chair` |
-| Konterbier | `counter_beer` |
+| Konterbier (entfallen mit ADR 0019) | `counter_beer` |
 | Schwenker | `snifter` |
 | Wegbier | `road_beer` |
 | Klarer | `clear_spirit` |
@@ -401,7 +409,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Monatskarte | `season_ticket` |
 | Stammtischkasse | `kitty` (Zähler `kitty`) |
 | Deckel anschreiben (Figur) | `slate` |
-| Schutzengel | `guardian_angel` |
+| Schutzengel (seit ADR 0019 die zweite Chance) | `guardian_angel` |
 | Spelunkenkenner (Figur) | `dive_expert` |
 | Der Wirt spendiert | `landlord_treat` |
 | Falschspieler am Nebentisch (bis 02.11.2026 „Der Falschspieler“) | `card_sharp` |

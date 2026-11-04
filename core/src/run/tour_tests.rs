@@ -1,6 +1,6 @@
-//! The Kneipentour (ADR 0016): pubs won early and lost, lives, the boss
-//! pub (ADR 0017: all games, lost ends the run, the relic pick), the route
-//! choice per transport, the Spelunke and the names.
+//! The Kneipentour (ADR 0016): pubs won early and lost (ADR 0019: a lost
+//! pub ends the run), the boss pub (ADR 0017: all games, the relic pick),
+//! the route choice per transport, the Spelunke and the names.
 
 use super::tour::{RouteStop, Transport, Trip};
 use super::*;
@@ -31,16 +31,6 @@ fn end_pub(run: &mut Run, content: &Content, games: u32, won: bool) -> Vec<RunEv
     events
 }
 
-fn lives_changes(events: &[RunEvent]) -> Vec<i32> {
-    events
-        .iter()
-        .filter_map(|e| match e {
-            RunEvent::LivesChanged { change, .. } => Some(*change),
-            _ => None,
-        })
-        .collect()
-}
-
 #[test]
 fn a_pub_won_early_pays_for_the_games_left_and_opens_the_route_choice() {
     let content = content();
@@ -62,7 +52,6 @@ fn a_pub_won_early_pays_for_the_games_left_and_opens_the_route_choice() {
     assert_eq!(payout.0.games_left, 2 * economy.per_game_left);
     assert_eq!(run.coins(), coins + payout.0.total());
     assert_eq!(run.phase(), RunPhase::Route);
-    assert_eq!(run.lives(), content.run.lives.start, "no life lost");
     let route = run.route().expect("route");
     assert_eq!((route.section, route.index), (0, 1));
     let transports: Vec<Transport> = route.options.iter().map(|o| o.transport).collect();
@@ -82,7 +71,7 @@ fn a_pub_won_early_pays_for_the_games_left_and_opens_the_route_choice() {
 }
 
 #[test]
-fn a_lost_pub_costs_a_life_and_moves_on_without_reward() {
+fn a_lost_pub_ends_the_run_without_reward() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 1);
     let coins = run.coins();
@@ -97,23 +86,14 @@ fn a_lost_pub_costs_a_life_and_moves_on_without_reward() {
         index: 1,
         boss: None
     }));
-    assert_eq!(lives_changes(&events), vec![-1]);
-    assert_eq!(run.lives(), content.run.lives.start - 1);
     assert_eq!(run.coins(), coins, "no reward");
-    assert_eq!(run.phase(), RunPhase::Route);
-    let route = run.route().expect("route");
-    assert_eq!((route.section, route.index), (0, 2), "on to the next pub");
+    // No lives since ADR 0019: the run is over.
+    assert_eq!(run.phase(), RunPhase::Lost);
+    assert!(run.route().is_none());
     assert_eq!(run.stats().pubs_lost, 1);
-}
-
-#[test]
-fn the_last_life_loses_the_run() {
-    let content = content();
     let mut run = start_at(&content, 5, 1, 2);
-    run.lives = 1;
     let events = end_pub(&mut run, &content, 3, false);
     assert_eq!(run.phase(), RunPhase::Lost);
-    assert_eq!(run.lives(), 0);
     assert!(events.iter().any(|e| matches!(
         e,
         RunEvent::RunLost {
@@ -125,21 +105,12 @@ fn the_last_life_loses_the_run() {
 }
 
 #[test]
-fn a_lost_boss_pub_ends_the_run_whatever_lives_are_left() {
+fn a_lost_boss_pub_ends_the_run() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 4);
     let boss = run.series().boss.clone().expect("boss");
-    // Not even "Schutzengel" helps in a boss pub (ADR 0017).
-    run.relics.push(RelicId::new("guardian_angel"));
     let events = end_pub(&mut run, &content, 3, false);
     assert_eq!(run.phase(), RunPhase::Lost);
-    assert_eq!(run.lives(), content.run.lives.start, "lives do not matter");
-    assert!(lives_changes(&events).is_empty());
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::LifeSpared { .. }))
-    );
     assert!(events.iter().any(|e| matches!(
         e,
         RunEvent::RunLost { section: 0, index: 4, boss: Some(b), .. } if *b == boss
@@ -171,12 +142,9 @@ fn win_boss_pub(content: &Content, seed: u64) -> (Run, Vec<RunEvent>) {
 }
 
 #[test]
-fn a_won_boss_pub_pays_double_gives_a_life_and_a_pick_of_three_relics() {
+fn a_won_boss_pub_pays_double_and_gives_a_pick_of_three_relics() {
     let content = content();
-    let max = content.run.lives.max;
     let (mut run, events) = win_boss_pub(&content, 5);
-    assert_eq!(lives_changes(&events), vec![1]);
-    assert_eq!(run.lives(), content.run.lives.start + 1);
     let payout = events
         .iter()
         .find_map(|e| match e {
@@ -244,12 +212,6 @@ fn a_won_boss_pub_pays_double_gives_a_life_and_a_pick_of_three_relics() {
         ),
         Err(RunError::WrongPhase)
     );
-    // Lives capped at the maximum.
-    let mut run = start_at(&content, 5, 0, 4);
-    run.lives = max;
-    let events = end_pub(&mut run, &content, 3, true);
-    assert!(lives_changes(&events).is_empty());
-    assert_eq!(run.lives(), max);
     // The last boss wins the run, without a pick.
     let mut run = start_at(&content, 5, content.run.sections() - 1, 4);
     let events = end_pub(&mut run, &content, 3, true);
@@ -387,7 +349,6 @@ fn every_transport_leads_over_one_shown_stop_for_free() {
     assert_eq!(train.coins(), 0);
     assert_eq!(train.encounter().map(|e| e.id.as_str()), Some("workshop"));
     // Fahrrad: the Rast, then the pub.
-    run.lives = 2;
     let events = run
         .apply(&content, RunAction::ChooseRoute(2))
         .expect("bike");
@@ -410,8 +371,11 @@ fn every_transport_leads_over_one_shown_stop_for_free() {
             },
         )
         .expect("rest");
-    assert_eq!(lives_changes(&events), vec![1]);
-    assert_eq!(run.lives(), 3);
+    // The Currywurst (ADR 0019): one Einmischen more in the next pub.
+    assert!(events.contains(&RunEvent::NextPubApplied {
+        redeals: 1,
+        target: 0
+    }));
     assert!(events.iter().any(|e| matches!(
         e,
         RunEvent::SeriesStarted {
@@ -607,7 +571,8 @@ fn spelunke_maluses_bite_for_their_pub_only() {
             "clean again after the pub"
         );
     }
-    assert_eq!(run.phase(), RunPhase::Route);
+    // A lost Spelunke ends the run (ADR 0019).
+    assert_eq!(run.phase(), RunPhase::Lost);
 }
 
 #[test]
@@ -677,9 +642,6 @@ fn the_city_is_named_by_the_seed() {
         );
     }
     let view = a.view(&content).tour;
-    assert_eq!(view.lives, content.run.lives.start);
-    assert_eq!(view.max_lives, content.run.lives.max);
-    assert_eq!(view.start_lives, content.run.lives.start);
     assert_eq!(view.districts[0].pubs[0].id, "d0-p0");
     assert_eq!(
         view.districts[0].pubs[0].state,
@@ -892,7 +854,7 @@ fn regenerate_boss_fixtures() {
     // Die Oma's curses on the table.
     write("boss-oma.json", &at_boss_table(&content, 12, "grandma"));
     // The last game of a boss pub that cannot be won any more: lost, the
-    // run ends with lives left.
+    // run ends.
     let mut lost = at_boss_table(&content, 13, "the_pusher");
     lost.series.games_played = 2;
     lost.series.score = -400;

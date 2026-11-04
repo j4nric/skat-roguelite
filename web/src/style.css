@@ -7118,20 +7118,8 @@ button.skat-card {
 }
 
 /* ---------------------------------------------------------------------------
-   Kneipentour (ADR 0016): hearts, pub progress, route choice
+   Kneipentour (ADR 0016): pub progress, route choice
    --------------------------------------------------------------------------- */
-
-.hud-lives {
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  flex: none;
-}
-
-.heart {
-  display: block;
-  image-rendering: pixelated;
-}
 
 .flag-chip.is-malus {
   border-color: var(--rot);
@@ -7801,33 +7789,6 @@ button.skat-card {
   box-shadow: 1px 1px 0 #a86a1c;
 }
 
-.fx-shard {
-  width: 3px;
-  height: 3px;
-}
-
-.fx-heart-half {
-  line-height: 0;
-}
-
-.fx-heart-half svg {
-  display: block;
-}
-
-.fx-heart-half.is-left {
-  clip-path: inset(0 50% 0 0);
-}
-
-.fx-heart-half.is-right {
-  clip-path: inset(0 0 0 50%);
-}
-
-.fx-ring {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #f4a39c;
-}
-
 .fx-fireworks {
   position: absolute;
   inset: 0;
@@ -8423,7 +8384,28 @@ button.skat-card {
   outline-offset: 1px;
 }
 
-/* Werte-Icons beside the score box labels (Grundwert, Multiplikator). */
+/* Three boxes since the Faktor (ADR 0018): they share the width of a phone. */
+.formula {
+  gap: 6px;
+}
+
+.formula .fbox {
+  min-width: 0;
+  flex: 0 1 112px;
+  padding: 6px 6px 4px;
+}
+
+.formula .fop {
+  flex: none;
+}
+
+/* The Faktor box stays grey while the game has no factor (×1). */
+.fbox-mul.is-one {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+/* Werte-Icons beside the score box labels (Grundwert, Multiplikator, Faktor). */
 .fbox span .value-icon {
   display: inline-block;
   margin-right: 4px;
