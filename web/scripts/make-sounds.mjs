@@ -50,6 +50,24 @@ function bandpass(data, freqAt, q) {
   return data;
 }
 
+/** RBJ biquad high-pass, processed in place. */
+function highpass(data, freq, q) {
+  const w = (2 * Math.PI * freq) / RATE;
+  const alpha = Math.sin(w) / (2 * q);
+  const cos = Math.cos(w);
+  const a0 = 1 + alpha;
+  const b0 = (1 + cos) / 2 / a0, b1 = -(1 + cos) / a0, b2 = (1 + cos) / 2 / a0;
+  const a1 = (-2 * cos) / a0, a2 = (1 - alpha) / a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < data.length; i++) {
+    const x = data[i];
+    const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    data[i] = y;
+  }
+  return data;
+}
+
 /** One-pole low-pass, in place. */
 function lowpass(data, freq) {
   const k = 1 - Math.exp((-2 * Math.PI * freq) / RATE);
@@ -106,13 +124,28 @@ function burst(seconds, decay, attack = 0.0015) {
 
 // ---------------------------------------------------------------- sounds
 
-/** A card laid on the felt: a soft slap and a low thump. */
+/**
+ * A card snapped onto the table: a short, bright, papery "schnipp". A
+ * high-passed noise flick with a near-instant attack, a faint crisp paper
+ * tail and a tiny pitched click of the card edge; no low thump.
+ */
 function card() {
-  const out = buffer(0.16);
-  mix(out, bandpass(burst(0.12, 0.014), 2600, 0.9), 0, 1);
-  mix(out, bandpass(burst(0.12, 0.03, 0.004), 900, 0.7), 0.002, 0.5);
-  mix(out, partials(0.1, [[150, 0.5, 0.018]]), 0, 1);
-  return normalize(lowpass(out, 9000), 0.8);
+  const start = seed;
+  const out = buffer(0.09);
+  // The flick: very fast attack, ~5 ms decay, nothing below ~1.8 kHz.
+  const flick = highpass(highpass(burst(0.06, 0.0045, 0.0003), 1800, 0.7), 1800, 0.7);
+  mix(out, bandpass(flick, 4300, 0.6), 0, 1);
+  // Paper: a softer, slightly longer rustle up high.
+  mix(out, bandpass(burst(0.08, 0.016, 0.0008), 6800, 1.3), 0.001, 0.22);
+  // The card edge: a tiny pitched click.
+  mix(out, partials(0.03, [[2950, 0.22, 0.0035], [5300, 0.1, 0.002]], 0.0003), 0, 1);
+  // A hint of body so it is not only hiss.
+  mix(out, partials(0.03, [[640, 0.08, 0.006]], 0.0005), 0, 1);
+  // Leave the shared noise sequence where the earlier card sound left it,
+  // so the other sounds stay byte for byte as shipped.
+  seed = start;
+  for (let i = 0; i < 10585; i++) noise();
+  return normalize(lowpass(out, 12000), 0.8);
 }
 
 /** A trick swept together: three quick slides and a tap. */
