@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
@@ -242,7 +242,12 @@ function choiceModel(key: string, view: RunView, arg: string): InfoModel | null 
     case 'skat':
       return { ...base, title: de.table.pickUpSkat, art: art(2), sections: [{ text: de.table.pickUpSkatHint, status: [{ text: de.table.pickUpSkatTap, on: null }] }] };
     case 'hand':
-      return { ...base, title: de.table.playHand, art: art(1), sections: [{ text: de.table.playHandHint, status: [] }] };
+      return {
+        ...base,
+        title: de.table.playHand,
+        art: art(1),
+        sections: [{ text: holdsVoucher(game.hand) ? `${de.table.playHandHint} ${de.table.handVoucherHint}` : de.table.playHandHint, status: [] }],
+      };
     case 'pass':
       return {
         ...base,
