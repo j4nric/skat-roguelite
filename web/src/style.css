@@ -8120,13 +8120,11 @@ button.skat-card {
 }
 
 /* ---------------------------------------------------------------------------
-   Scenes (./ui/scenes.ts): the boss entrance under a spotlight, the pub
-   door onto the route, buying at the Tresen, the Zinke stamp. None of it
+   Scenes (./ui/scenes.ts): the boss entrance under a spotlight, buying at the Tresen, the Zinke stamp. None of it
    takes a tap.
    --------------------------------------------------------------------------- */
 
-.fx-spot,
-.fx-door {
+.fx-spot {
   position: fixed;
   inset: 0;
   z-index: 45;
@@ -8141,31 +8139,6 @@ button.skat-card {
 
 .fx-spot svg {
   display: block;
-}
-
-.fx-door {
-  display: flex;
-}
-
-.fx-door-leaf {
-  flex: 1 1 50%;
-  height: 100%;
-  line-height: 0;
-  backface-visibility: hidden;
-}
-
-.fx-door-leaf.is-left {
-  transform-origin: 0 50%;
-}
-
-.fx-door-leaf.is-right {
-  transform-origin: 100% 50%;
-}
-
-.fx-door-leaf svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 .fx-buy {

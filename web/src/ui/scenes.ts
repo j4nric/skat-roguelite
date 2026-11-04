@@ -1,5 +1,5 @@
 // Scene effects (animation package C): the boss entrance under a
-// spotlight, the pub door swinging open onto the route, a relic sliding
+// spotlight, a relic sliding
 // over the counter into the Leiste, a Schnaps popping its cork on the way
 // into its slot, and the Zinke stamp coming down on a card.
 //
@@ -168,63 +168,6 @@ export function bossEntrance(screen: HTMLElement): void {
     anim.id = 'boss-plate';
     at(anim, delay + D * 0.2, () => sound.play('knock', { volume: 0.45, rate: 1.15 + i * 0.1 }));
   });
-}
-
-// ---------------------------------------------------------------- the pub door
-
-/** One leaf of the pub door, 24 × 64 pixels: planks, a lit window, the handle. */
-function doorLeaf(mirror: boolean): string {
-  const art =
-    // Planks and their seams.
-    `<path d="M0 0h24v64h-24z" fill="#6b3e1f"/>` +
-    `<path d="M6 0h1v64h-1zM12 0h1v64h-1zM18 0h1v64h-1z" fill="#4e2c15"/>` +
-    `<path d="M1 1h1v62h-1zM7 1h1v62h-1zM13 1h1v62h-1zM19 1h1v62h-1z" fill="#7d4c27"/>` +
-    // Rails.
-    `<path d="M1 30h22v2h-22zM1 52h22v2h-22z" fill="#57321a"/><path d="M1 30h22v1h-22zM1 52h22v1h-22z" fill="#875530"/>` +
-    // The lit window with its bars.
-    `<path d="M4 6h16v20h-16z" fill="#2b1a0e"/><path d="M5 7h14v18h-14z" fill="#e9b949"/><path d="M5 7h6v1h-6zM5 8h1v5h-1z" fill="#f8dc8a"/><path d="M11 7h2v18h-2zM5 15h14v2h-14z" fill="#2b1a0e"/>` +
-    // Handle near the middle of the door, kick plate.
-    `<path d="M19 36h3v4h-3z" fill="#2b1a0e"/><path d="M19 36h2v3h-2z" fill="#d9a441"/>` +
-    `<path d="M1 58h22v5h-22z" fill="#8a5a1c"/><path d="M1 58h22v1h-22z" fill="#c08a3c"/>` +
-    // Frame.
-    `<path d="M0 0h24v1h-24zM0 63h24v1h-24zM0 0h1v64h-1zM23 0h1v64h-1z" fill="#2b1a0e"/>`;
-  const g = mirror ? `<g transform="translate(24 0) scale(-1 1)">${art}</g>` : art;
-  return `<svg viewBox="0 0 24 64" preserveAspectRatio="none" shape-rendering="crispEdges">${g}</svg>`;
-}
-
-/**
- * Out of the pub: its double door stands shut over the route screen for a
- * moment, then both leaves swing open in pixel steps and the city map is
- * there. A tap ends it.
- */
-export function doorWipe(): void {
-  const D = dur(800);
-  if (!D) return;
-  document.querySelector('body > .fx-door')?.remove();
-  const el = document.createElement('div');
-  el.className = 'fx-door';
-  el.dataset.testid = 'door-wipe';
-  el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = `<div class="fx-door-leaf is-left">${doorLeaf(false)}</div><div class="fx-door-leaf is-right">${doorLeaf(true)}</div>`;
-  document.body.appendChild(el);
-  const leaves = Array.from(el.querySelectorAll<HTMLElement>('.fx-door-leaf'));
-  leaves.forEach((leaf, i) => {
-    const turn = i === 0 ? -1 : 1;
-    play(
-      leaf,
-      [
-        { transform: 'perspective(1200px) rotateY(0deg)', filter: 'brightness(1)' },
-        { transform: 'perspective(1200px) rotateY(0deg)', filter: 'brightness(1)', offset: 0.22, easing: 'steps(1, end)' },
-        { transform: `perspective(1200px) rotateY(${turn * 6}deg)`, filter: 'brightness(1.05)', offset: 0.3, easing: 'steps(7, end)' },
-        { transform: `perspective(1200px) rotateY(${turn * 96}deg)`, filter: 'brightness(.45)' },
-      ],
-      { duration: D, fill: 'forwards' },
-    );
-  });
-  // Wide open, the door fades out at the very end.
-  const timer = play(el, [{ opacity: 1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }], { duration: D, fill: 'forwards' });
-  scene(timer, () => el.remove());
-  at(timer, D * 0.2, () => sound.play('knock', { volume: 0.3, rate: 0.8 }));
 }
 
 // ---------------------------------------------------------------- the Tresen

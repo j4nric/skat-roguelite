@@ -65,7 +65,7 @@ import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
-import { bossEntrance, doorWipe, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
+import { bossEntrance, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -308,8 +308,6 @@ export class App {
   private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
-  /** The scene last drawn (a screen, or the kind of run screen): the door opens from a pub onto the route. */
-  private lastScene = '';
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
   private entrancePending = false;
   /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
@@ -370,7 +368,7 @@ export class App {
     });
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
-    // A tap while a scene plays (boss entrance, door, stamp) ends it; the tap still counts.
+    // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
     window.addEventListener(
       'pointerdown',
       () => {
@@ -3327,7 +3325,6 @@ export class App {
     // The player's edition shows his character's back (DESIGN 9.3).
     setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
-    if (ui.screen !== 'run') this.lastScene = ui.screen;
     switch (ui.screen) {
       case 'loading':
         body = renderLoading();
@@ -3365,9 +3362,6 @@ export class App {
                 ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        // Out of the pub (or its boss reward) onto the route: the pub door swings open.
-        if (cls === 'is-route' && (this.lastScene === 'is-table' || this.lastScene === 'is-encounter')) this.afterRender.push(() => doorWipe());
-        this.lastScene = cls;
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };

@@ -4382,8 +4382,8 @@ async function mapPass(browser, errors) {
  * bought at the Tresen slides over the counter and lands in the Leiste, a
  * Schnaps pops its cork into its slot, a Zinke is stamped onto its card;
  * a boss pub opens under a spotlight with the plates dropping in (a tap
- * ends it at once); the pub door swings open onto the route; a walker
- * goes along the way. Each scene ends in what the core reports.
+ * ends it at once); out of the pub straight onto the route (no door,
+ * playtest 04.11.2026); a walker goes along the way. Each scene ends in what the core reports.
  */
 async function scenesPass(browser, errors, viewport) {
   const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
@@ -4444,14 +4444,11 @@ async function scenesPass(browser, errors, viewport) {
   await sideways('the boss entrance');
   log(`scenes ${tag}: boss entrance with ${dropping} plates, ended by a tap`);
 
-  // Out of the boss pub: the door swings open onto the route, then the walk.
+  // Out of the boss pub straight onto the route (the door scene is gone, playtest 04.11.2026), then the walk.
   await resumeFixture(page, 'boss-reward.json');
   await page.click('[data-action="boss-relic-skip"]');
-  await page.waitForSelector('[data-testid="door-wipe"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no door onto the route`));
-  await page.waitForTimeout(400);
-  await snap('scene-door');
-  await page.waitForSelector('[data-testid="door-wipe"]', { state: 'detached', timeout: 5000 });
   await page.waitForSelector('[data-testid="route-go"]');
+  if (await page.locator('.fx-door, [data-testid="door-wipe"]').count()) fail(`scenes ${tag}: a door still swings open onto the route`);
   const way = await page.getAttribute('[data-testid="route-option"][aria-pressed="true"]', 'data-transport');
   await page.click('[data-testid="route-go"]');
   await page.waitForSelector('[data-testid="map-walker"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no walker on the way`));
@@ -4462,7 +4459,7 @@ async function scenesPass(browser, errors, viewport) {
   await page.waitForTimeout(700);
   await snap('scene-walker');
   await page.waitForSelector('[data-testid="route"]', { state: 'detached', timeout: 10000 });
-  log(`scenes ${tag}: door onto the route, ${walker} along the way`);
+  log(`scenes ${tag}: straight onto the route, ${walker} along the way`);
   await context.close();
 }
 
