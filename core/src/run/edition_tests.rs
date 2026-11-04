@@ -359,13 +359,20 @@ fn the_old_man_plays_the_edition_of_the_rule_in_force() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_transparent_card_with_a_defender_shows_who_holds_it_in_his_edition() {
+fn a_transparent_card_of_the_player_never_shows_the_defenders_copy() {
+    // Until 04.11.2026 a "Durchsichtig" on the player's S7 showed the
+    // boss's own S7 (holder and edition) to the player. Since ADR 0015 each
+    // seat plays its own edition: the curse on the player's copy says
+    // "the defenders see this card of yours", nothing about theirs.
     let content = content();
     let mut run = boss_run(&content, "the_pusher");
     let s7 = run.edition.id_of(card("S7")).expect("S7");
-    run.edition
-        .add_mod(&content, s7, &CardModId::new("transparent"), 1)
-        .expect("curse");
+    let d7 = run.edition.id_of(card("D7")).expect("D7");
+    for id in [s7, d7] {
+        run.edition
+            .add_mod(&content, id, &CardModId::new("transparent"), 1)
+            .expect("curse");
+    }
     fixed_deal(
         &mut run,
         &content,
@@ -378,37 +385,37 @@ fn a_transparent_card_with_a_defender_shows_who_holds_it_in_his_edition() {
     );
     let view = run.view(&content);
     let game = view.game.expect("game");
+    assert!(
+        game.revealed.iter().all(|r| r.card.card.id != s7),
+        "the boss's S7 stays hidden: {:?}",
+        game.revealed
+    );
+    assert!(
+        game.revealed
+            .iter()
+            .all(|r| r.holder.is_none_or(|h| h == Seat::DECLARER)),
+        "no defender card is shown"
+    );
+    // The boss's copy carries no mark, the player's D7 does: the
+    // defenders know the player holds it.
+    let active = run.game().expect("game");
+    assert!(!active.game.hand(BOSS_SEAT).iter().any(|c| c.revealed));
+    assert!(
+        active
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .any(|c| c.id == d7 && c.revealed)
+    );
     let shown = game
         .revealed
         .iter()
-        .find(|r| r.card.card.id == s7)
-        .expect("the player sees who holds his Durchsichtig card");
-    assert_eq!(shown.holder, Some(BOSS_SEAT));
-    // ... and the boss's edition of it: Augen +4, the boss's back.
-    assert_eq!(shown.card.card.owner, Owner::Boss);
-    assert_eq!(shown.card.card.card_points, 4);
-    assert_eq!(shown.card.mods, vec![CardModId::new("points")]);
-    assert_eq!(shown.card.back.as_deref(), Some("the_pusher"));
+        .find(|r| r.card.card.id == d7)
+        .expect("the own Durchsichtig card is listed with its holder");
+    assert_eq!(shown.holder, Some(Seat::DECLARER));
     assert_eq!(
         shown.source,
         super::view::RevealSource::CardMod(CardModId::new("transparent"))
-    );
-    // The boss's copy carries no mark: the defenders' samples learn
-    // nothing from it, and no other card is shown.
-    assert!(
-        !run.game()
-            .expect("game")
-            .game
-            .hand(BOSS_SEAT)
-            .iter()
-            .any(|c| c.revealed)
-    );
-    assert_eq!(
-        game.revealed
-            .iter()
-            .filter(|r| matches!(r.source, super::view::RevealSource::CardMod(_)))
-            .count(),
-        1
     );
 }
 

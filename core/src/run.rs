@@ -493,9 +493,10 @@ pub struct ActiveGame {
     /// saves from before, when a Stammgast sat there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partner_edition: Option<Edition>,
-    /// Cards the player's edition marks "Durchsichtig" in this game (ids):
-    /// shown with their holder and his
-    /// edition also while a defender holds them.
+    /// Until 04.11.2026: cards the player's edition marks "Durchsichtig"
+    /// in this game (ids), which showed a defender's own copy of the same
+    /// card to the player (a bug since ADR 0015, DESIGN 7.2). No longer
+    /// filled or read; kept so that old saves load.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_marked: Vec<u32>,
 }
@@ -2588,23 +2589,23 @@ impl Run {
 
     /// Cards marked "Durchsichtig" in the current game and who holds them
     /// (`None`: in the skat or already played), each as its holder holds
-    /// it. The knowledge hangs on the card (DESIGN 7.2): a card is shown
-    /// if its holder's copy is marked (the player's own, or a boss card
-    /// such as the black Unter of "Der Schwarze Peter"), and also if the
-    /// player's edition marks it while a defender holds it: then the
-    /// player sees who holds it and that defender's edition of the card.
+    /// it. The knowledge hangs on the copy (DESIGN 7.2, ADR 0015): a card
+    /// is shown only if the copy in play is marked, i.e. its owner's
+    /// edition (the player's own, a boss card such as the black Unter of
+    /// "Der Schwarze Peter") or a mark for this game ("Glasauge"). A
+    /// "Durchsichtig" on the player's copy never shows a defender's copy
+    /// of the same card (fixed 04.11.2026).
     #[must_use]
     pub fn revealed_holders(&self) -> Vec<(DealtCard, Option<Seat>)> {
         let Some(active) = &self.game else {
             return Vec::new();
         };
-        let marked_by_player = |c: &DealtCard| active.player_marked.contains(&c.id);
         active
             .game
             .cards_in_play()
             .iter()
             .map(|&c| active.game.current(c))
-            .filter(|c| c.revealed || marked_by_player(c))
+            .filter(|c| c.revealed)
             .map(|c| (c, active.game.holder_of(c)))
             .collect()
     }
@@ -4104,18 +4105,11 @@ impl Run {
             );
         }
         point_changes.sort_by_key(|(id, _, _)| *id);
-        let player_marked = resolved[Seat::DECLARER.index()]
-            .cards
-            .iter()
-            .filter(|c| c.revealed)
-            .map(|c| c.id)
-            .collect();
         self.set_up_game(content, game, point_changes, events);
         if let Some(active) = self.game.as_mut() {
             let [boss, partner] = boss_editions;
             active.boss_edition = boss;
             active.partner_edition = partner;
-            active.player_marked = player_marked;
         }
     }
 
@@ -4160,19 +4154,12 @@ impl Run {
     pub(crate) fn adopt_editions(&mut self, content: &Content) {
         let global = self.sources(content, false);
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
-        let player_marked: Vec<u32> = resolved[0]
-            .cards
-            .iter()
-            .filter(|c| c.revealed)
-            .map(|c| c.id)
-            .collect();
         let editions = resolved.map(|r| r.cards);
         let mut next = self.game.as_mut();
         while let Some(active) = next {
             active.game.adopt_editions(editions.clone());
             active.boss_edition.clone_from(&boss_editions[0]);
             active.partner_edition.clone_from(&boss_editions[1]);
-            active.player_marked.clone_from(&player_marked);
             next = active.previous.as_deref_mut();
         }
     }

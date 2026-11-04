@@ -2175,7 +2175,9 @@ impl Run {
     }
 
     /// The modification that shows the holder of `card` ("Durchsichtig"):
-    /// on the copy's own edition, else on the player's edition.
+    /// on the copy's own edition, else "Durchsichtig" (a mark for this game
+    /// only, "Glasauge"). Never the player's edition for a defender's copy
+    /// (ADR 0015).
     fn reveal_mod(&self, content: &Content, card: DealtCard) -> CardModId {
         let editions = self.editions();
         let reveals = |m: &&CardModId| {
@@ -2183,9 +2185,9 @@ impl Run {
                 .card_mod(m)
                 .is_some_and(|def| def.passive.contains(&crate::content::Effect::RevealHolder))
         };
-        [editions.of(card.owner), Some(editions.player)]
+        editions
+            .of(card.owner)
             .into_iter()
-            .flatten()
             .filter_map(|e| e.get(card.id))
             .find_map(|d| d.mods.iter().find(reveals))
             .cloned()

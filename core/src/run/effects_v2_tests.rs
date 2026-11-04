@@ -187,22 +187,11 @@ fn transparent_cards_of_the_player_are_known_to_the_defenders() {
     assert_eq!(hints.pinned.len(), 1);
     assert_eq!(hints.pinned[0].0.id, 7);
     assert_eq!(hints.pinned[0].1, Some(Seat::DECLARER));
-    // On a defender's card the player sees who holds it.
+    // A "Durchsichtig" on the player's HA (id 15) says nothing about the
+    // defender's own HA (ADR 0015, fixed 04.11.2026).
     let mut run = card_mod_run_with(&content, 15, "transparent", 1);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    assert_eq!(
-        run.revealed_holders(),
-        vec![(
-            *run.game()
-                .expect("game")
-                .game
-                .hand(Seat::DEFENDERS[0])
-                .iter()
-                .find(|c| c.id == 15)
-                .expect("HA"),
-            Some(Seat::DEFENDERS[0])
-        )]
-    );
+    assert!(run.revealed_holders().is_empty());
 }
 
 // ---------------------------------------------------------------------------

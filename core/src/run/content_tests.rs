@@ -640,15 +640,20 @@ fn last_trick_mod_adds_a_level_when_its_card_wins_the_last_trick() {
 }
 
 #[test]
-fn transparent_card_shows_its_holder() {
+fn transparent_card_shows_only_the_marked_copy() {
     let content = content();
-    // HA (id 15) lies with seat 1.
-    let mut run = card_mod_run(&content, 15, "transparent");
+    // The player's DA (id 7) is in his hand: listed with him as holder.
+    let mut run = card_mod_run(&content, 7, "transparent");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let revealed = run.revealed_holders();
     assert_eq!(revealed.len(), 1);
-    assert_eq!(revealed[0].0.id, 15);
-    assert_eq!(revealed[0].1, Some(Seat::DEFENDERS[0]));
+    assert_eq!(revealed[0].0.id, 7);
+    assert_eq!(revealed[0].1, Some(Seat::DECLARER));
+    // The player's HA (id 15) is marked, but seat 1 holds his own HA:
+    // nothing is shown (ADR 0015, fixed 04.11.2026).
+    let mut run = card_mod_run(&content, 15, "transparent");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    assert!(run.revealed_holders().is_empty());
 }
 
 // ---------------------------------------------------------------------------
