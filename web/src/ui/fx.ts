@@ -366,6 +366,9 @@ export interface ThrowOpts {
   back?: string;
 }
 
+/** The easing of a thrown card's flight (an ease-out quad, see throwCard). */
+export const THROW_EASE = 'cubic-bezier(.25,.46,.45,.94)';
+
 /**
  * Throw a card onto the felt: it flies in from `from`, turning, comes down
  * a little askew and off its place (or where a flick sent it), lies there
@@ -390,8 +393,13 @@ export function throwCard(el: HTMLElement, o: ThrowOpts): Animation | null {
   const f2 = (flight + hold) / total;
   const at = (x: number, y: number, r: number, s: number): string => `translate(${(x - b.x).toFixed(1)}px, ${(y - b.y).toFixed(1)}px) rotate(${r.toFixed(1)}deg) scale(${s.toFixed(3)})`;
   const frames: Keyframe[] = [
-    // Fast off the hand, slowing down on the felt.
-    { transform: at(a.x, a.y, lean + (o.fromRotate ?? 0) - o.spin, scale), offset: 0, easing: 'cubic-bezier(.15,.65,.3,1)' },
+    // Off the hand, slowing down on the felt. The start must not be too
+    // steep: with cubic-bezier(.15,.65,.3,1) the first frame (two, when the
+    // render after the play drops one) already covered a third to a half of
+    // the way at tempo Normal, and the card seemed to jump to the middle of
+    // its path (playtest 04.11.2026). An ease-out quad starts at about
+    // twice the linear speed.
+    { transform: at(a.x, a.y, lean + (o.fromRotate ?? 0) - o.spin, scale), offset: 0, easing: THROW_EASE },
     { transform: at(land.x, land.y, lean, 1), offset: f1, easing: 'linear' },
     { transform: at(land.x, land.y, lean, 1), offset: f2, easing: 'cubic-bezier(.45,0,.25,1)' },
     { transform: at(b.x, b.y, 0, 1), offset: 1 },
