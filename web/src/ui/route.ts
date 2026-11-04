@@ -179,11 +179,11 @@ function targetCard(view: RunView, picked: RouteOptionView | undefined): string 
       ? `<span class="route-malus-pick" role="group" data-testid="malus-pick" ${attrs({ 'aria-label': de.route.malusPick })}><small>${esc(de.route.malusPick)}</small>${options
           .map(
             (m, i) =>
-              `<button class="btn btn-small ${m.id === pub.malus?.id ? 'is-picked' : ''}" ${attrs({ 'data-action': 'choose-malus', 'data-option': picked?.index ?? 0, 'data-malus': i, 'aria-pressed': m.id === pub.malus?.id ? 'true' : 'false' })}>${esc(contentName('maluses', m.id) || m.name)}</button>`,
+              `<button class="btn btn-small ${m.id === pub.malus?.id ? 'is-picked' : ''}" ${attrs({ 'data-action': 'choose-malus', 'data-option': picked?.index ?? 0, 'data-malus': i, 'data-info': `malus:${m.id}`, 'aria-pressed': m.id === pub.malus?.id ? 'true' : 'false' })}>${esc(contentName('maluses', m.id) || m.name)}</button>`,
           )
           .join('')}</span>`
       : '';
-    extra = `<span class="route-malus" data-testid="route-malus"><b>${esc(t(de.route.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}:</b> ${esc(pub.malus.text)}</span>
+    extra = `<span class="route-malus" data-testid="route-malus" ${attrs({ 'data-info': `malus:${pub.malus.id}` })}><b>${esc(t(de.route.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}:</b> ${esc(pub.malus.text)}</span>
       ${pickMalus}<span class="route-reward">${esc(de.route.spelunkeReward)}</span>`;
   } else if (pub.is_boss) {
     const boss = pub.boss ? contentName('bosses', pub.boss.id) : de.route.bossUnknown;

@@ -40,6 +40,16 @@ const VOLUME: Record<SoundName, number> = {
   lose: 0.6,
 };
 
+/**
+ * Random spread per play: the rate varies by up to this fraction either
+ * way, the volume only downward by up to twice it (never louder than set),
+ * so a sound heard many times in a row does not sound machine-made. Decoration
+ * only, hence Math.random and not the core's seeded RNG.
+ */
+const SPREAD: Partial<Record<SoundName, { rate: number; volume: number }>> = {
+  card: { rate: 0.06, volume: 0.12 },
+};
+
 
 // ------------------------------------------------------------ shared context
 
@@ -193,9 +203,11 @@ class Sound {
     try {
       const src = ctx.createBufferSource();
       src.buffer = buffer;
-      src.playbackRate.value = opts.rate ?? 1;
+      const spread = SPREAD[name];
+      const wobble = (amount: number): number => 1 + (Math.random() * 2 - 1) * amount;
+      src.playbackRate.value = (opts.rate ?? 1) * (spread ? wobble(spread.rate) : 1);
       const gain = ctx.createGain();
-      gain.gain.value = VOLUME[name] * (opts.volume ?? 1);
+      gain.gain.value = VOLUME[name] * (opts.volume ?? 1) * (spread ? wobble(spread.volume) - spread.volume : 1);
       src.connect(gain).connect(this.master);
       src.start(ctx.currentTime + (opts.delay ?? 0) / 1000);
     } catch {

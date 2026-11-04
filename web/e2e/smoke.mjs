@@ -4332,10 +4332,46 @@ async function mapPass(browser, errors) {
   const card = await page.getAttribute('[data-testid="route-next"]', 'data-node');
   if (card !== map.spelunke.node || !/^d\d-p\d-s$/.test(card ?? '')) fail(`Spelunke: the card shows ${card}, the map's Spelunke is ${map.spelunke.node}`);
   if (!(await page.locator('[data-testid="route-malus"]').count())) fail('Spelunke: the card shows no malus');
+  // The malus has an info card like relics and Schnäpse; a long press opens
+  // it and marks no text, the page allows no selection (playtest 04.11.2026).
+  const malusBox = await page.locator('[data-testid="route-malus"]').boundingBox();
+  await page.mouse.move(malusBox.x + 20, malusBox.y + malusBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key^="malus:"]', { timeout: 3000 }).catch(() => fail('Spelunke: a long press on the malus opens no info card'));
+  const malusMarked = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+  if (malusMarked) fail(`Spelunke: a long press on the malus marked text: "${malusMarked.slice(0, 60)}"`);
+  const selectable = await page.evaluate(() => getComputedStyle(document.body).userSelect);
+  if (selectable !== 'none') fail(`the page allows text selection (user-select: ${selectable})`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
   const end = (await mapState(page)).cells.split(' ').pop();
   log(`Spelunke ${card} ${Math.round(apart)}px from the next pub; its way ends at ${end}`);
   await shoot(page, 'route-spelunke');
   await assertRouteFits(page, 'route with a Spelunke picked');
+  // Into the Spelunke (the stop on the way is an encounter: swap a relic):
+  // at its table the malus chip in the Leiste opens its info card on a
+  // long press and on a tap (playtest 04.11.2026).
+  await page.click('[data-testid="route-go"]');
+  await page.locator('[data-action="choose-encounter"]').first().click({ timeout: 10000 });
+  await page.locator('[data-action="encounter-relic"]').first().click({ timeout: 5000 });
+  await page.waitForSelector('[data-testid="pub-malus"]', { timeout: 10000 }).catch(() => fail('Spelunke: its table shows no malus chip'));
+  if (await page.locator('[data-action="hint-dismiss"]').count()) await page.click('[data-action="hint-dismiss"]');
+  const chip = await page.locator('[data-testid="pub-malus"]').boundingBox();
+  await page.mouse.move(chip.x + chip.width / 2, chip.y + chip.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key^="malus:"]', { timeout: 3000 }).catch(() => fail('Spelunke: a long press on the malus chip opens no info card'));
+  const chipMarked = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+  if (chipMarked) fail(`Spelunke: a long press on the malus chip marked text: "${chipMarked.slice(0, 60)}"`);
+  await shoot(page, 'spelunke-malus-info');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  await page.click('[data-testid="pub-malus"]');
+  await page.waitForSelector('[data-testid="info-card"][data-info-key^="malus:"]', { timeout: 3000 }).catch(() => fail('Spelunke: a tap on the malus chip opens no info card'));
+  log('Spelunke: the malus opens its info card on the route and at the table, no text marked');
   await context.close();
 
   const station = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
@@ -4382,8 +4418,8 @@ async function mapPass(browser, errors) {
  * bought at the Tresen slides over the counter and lands in the Leiste, a
  * Schnaps pops its cork into its slot, a Zinke is stamped onto its card;
  * a boss pub opens under a spotlight with the plates dropping in (a tap
- * ends it at once); the pub door swings open onto the route; a walker
- * goes along the way. Each scene ends in what the core reports.
+ * ends it at once); out of the pub straight onto the route (no door,
+ * playtest 04.11.2026); a walker goes along the way. Each scene ends in what the core reports.
  */
 async function scenesPass(browser, errors, viewport) {
   const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
@@ -4444,14 +4480,11 @@ async function scenesPass(browser, errors, viewport) {
   await sideways('the boss entrance');
   log(`scenes ${tag}: boss entrance with ${dropping} plates, ended by a tap`);
 
-  // Out of the boss pub: the door swings open onto the route, then the walk.
+  // Out of the boss pub straight onto the route (the door scene is gone, playtest 04.11.2026), then the walk.
   await resumeFixture(page, 'boss-reward.json');
   await page.click('[data-action="boss-relic-skip"]');
-  await page.waitForSelector('[data-testid="door-wipe"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no door onto the route`));
-  await page.waitForTimeout(400);
-  await snap('scene-door');
-  await page.waitForSelector('[data-testid="door-wipe"]', { state: 'detached', timeout: 5000 });
   await page.waitForSelector('[data-testid="route-go"]');
+  if (await page.locator('.fx-door, [data-testid="door-wipe"]').count()) fail(`scenes ${tag}: a door still swings open onto the route`);
   const way = await page.getAttribute('[data-testid="route-option"][aria-pressed="true"]', 'data-transport');
   await page.click('[data-testid="route-go"]');
   await page.waitForSelector('[data-testid="map-walker"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no walker on the way`));
@@ -4462,7 +4495,7 @@ async function scenesPass(browser, errors, viewport) {
   await page.waitForTimeout(700);
   await snap('scene-walker');
   await page.waitForSelector('[data-testid="route"]', { state: 'detached', timeout: 10000 });
-  log(`scenes ${tag}: door onto the route, ${walker} along the way`);
+  log(`scenes ${tag}: straight onto the route, ${walker} along the way`);
   await context.close();
 }
 

@@ -6,13 +6,14 @@
 // Only lookups and labels: every fact comes from the view or the catalog.
 
 import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, isCurse, modText, relicCounters, t } from '../i18n';
-import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
+import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
 import { oddsLine } from './odds';
+import { mapIcon } from './mapicons';
 import { bossPortraitId, portrait } from './people';
 import { changeText } from './score';
 import type { UiState } from './state';
@@ -282,6 +283,29 @@ function pressedModel(key: string, view: RunView): InfoModel | null {
   };
 }
 
+/** Every malus the view shows: the current Spelunke, the next pub, the ways into a Spelunke and their choices. */
+function findMalus(view: RunView, id: string): MalusInfo | null {
+  const tour = view.tour;
+  const route = tour.route;
+  const all = [tour.current?.malus, route?.next.malus, ...(route?.options ?? []).flatMap((o) => [o.spelunke?.malus, ...(o.malus_options ?? [])])];
+  return all.find((m): m is MalusInfo => Boolean(m) && m?.id === id) ?? null;
+}
+
+/** The malus of a Spelunke (ADR 0016): its name and what it does. */
+function malusModel(key: string, view: RunView, id: string): InfoModel | null {
+  const malus = findMalus(view, id);
+  if (!malus) return null;
+  return {
+    key,
+    title: contentName('maluses', id) || malus.name,
+    kind: de.info.kinds.malus,
+    // The Spelunke's sign in the malus red (--rot-light), lighter than on the map.
+    art: `<span class="info-emblem">${mapIcon('spelunke', 72, '#e5776d')}</span>`,
+    facts: [],
+    sections: [{ text: contentText('maluses', id) || malus.text, status: lastGameStatus(lastLines(view, (s) => 'Malus' in s && s.Malus === id)) }],
+  };
+}
+
 /** The content of the info card for a key, or null if it is not on screen any more. */
 export function infoModel(key: string, view: RunView | null, ui: UiState): InfoModel | null {
   if (!view) return null;
@@ -329,6 +353,8 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       return choiceModel(key, view, arg);
     case 'pressed':
       return pressedModel(key, view);
+    case 'malus':
+      return malusModel(key, view, arg);
     default:
       return null;
   }
