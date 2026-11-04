@@ -577,6 +577,12 @@ impl EncounterOption {
     pub fn needs_relic(&self) -> bool {
         self.effects.iter().any(EncounterEffect::needs_relic)
     }
+
+    /// Whether it needs a Marke of the player's choice.
+    #[must_use]
+    pub fn needs_marke(&self) -> bool {
+        self.effects.iter().any(EncounterEffect::needs_marke)
+    }
 }
 
 /// Why an option of the open encounter cannot be taken now (shown with
@@ -927,9 +933,14 @@ pub enum RunAction {
     ChooseEncounter {
         /// Index into [`ActiveEncounter::options`].
         option: usize,
-        /// Deck card id for [`EncounterChoice::MarkChosenCard`] and
-        /// [`EncounterChoice::CleanseChosenCard`].
+        /// Deck card id for an option on a card of the player's choice
+        /// (a Zinke, a Marke, the Kartenmaler, Karte reinigen), or the
+        /// index of an owned relic for a relic option.
         target: Option<u32>,
+        /// The Marke of the player's choice for
+        /// [`EncounterEffect::Marke`] with `marke: Chosen` (04.11.2026).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        marke: Option<CardModId>,
     },
     /// Take the route at this index of the open route choice
     /// ([`tour::RouteChoice::options`]).
@@ -1284,6 +1295,19 @@ pub enum RunEvent<G = Event<DealtCard>> {
         card_mod: CardModId,
         /// Its value.
         value: i32,
+    },
+    /// An encounter put a Marke on a card of the player's edition
+    /// ([`EncounterEffect::Marke`], 04.11.2026); followed by the
+    /// `DeckChanged` of the card.
+    MarkeGiven {
+        /// Deck card id.
+        card: u32,
+        /// The Marke.
+        card_mod: CardModId,
+        /// Whether the Marke was drawn (not chosen).
+        drawn: bool,
+        /// Whether the card was drawn (not chosen).
+        random_card: bool,
     },
     /// "Glasauge": a defender's card is "Durchsichtig" for this game; the
     /// player sees it with its holder until it is played.
@@ -2792,9 +2816,11 @@ impl Run {
             RunAction::GiveUpPub => self.give_up_pub(content, events),
             RunAction::TakeFromSkat { give, take } => self.take_from_skat(give, take, events),
             RunAction::SettleGame => self.settle_game(content, events),
-            RunAction::ChooseEncounter { option, target } => {
-                self.choose_encounter(content, option, target, events)
-            }
+            RunAction::ChooseEncounter {
+                option,
+                target,
+                marke,
+            } => self.choose_encounter(content, option, target, marke.as_ref(), events),
             RunAction::ChooseRoute(option) => self.choose_route(content, option, events),
             RunAction::ChooseBossRelic { offer, replace } => {
                 self.choose_boss_relic(content, offer, replace, events)
@@ -6043,6 +6069,8 @@ mod m4_tests;
 mod m5_tests;
 #[cfg(test)]
 mod m7_tests;
+#[cfg(test)]
+mod marke_encounter_tests;
 #[cfg(test)]
 mod relic_slots_tests;
 #[cfg(test)]

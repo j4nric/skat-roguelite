@@ -16,7 +16,7 @@ use super::{
 };
 use crate::content::{
     CardModDef, CardModId, CardPick, ConsumableCategory, ConsumableId, Content, EncounterDef,
-    EncounterEffect, EncounterId, Source, in_pool,
+    EncounterEffect, EncounterId, ModKind, Source, in_pool,
 };
 use crate::deck::CardKind;
 
@@ -26,6 +26,15 @@ type DrawKey = (Vec<(CardModId, i32)>, bool);
 
 /// A drawn modification with its value.
 type DrawnMod = (Option<CardModId>, Option<i32>);
+
+/// What the player chose for an option: a card of the edition, an owned
+/// relic (index), a Marke.
+#[derive(Debug, Clone, Copy)]
+struct Target<'a> {
+    card: Option<u32>,
+    relic: Option<usize>,
+    marke: Option<&'a CardModId>,
+}
 
 impl Run {
     /// Open the encounter `id` (a stop on the way, or the loot of a
@@ -300,6 +309,10 @@ impl Run {
                         card_mod: Some(m),
                         ..
                     } => self.may_attach(content, card, m),
+                    EncounterEffect::Marke {
+                        card: CardPick::Chosen,
+                        ..
+                    } => self.marken_for(content, Some(card)).next().is_some(),
                     EncounterEffect::Cleanse => {
                         self.edition.get(card).is_some_and(|c| !c.mods.is_empty())
                     }
@@ -307,6 +320,74 @@ impl Run {
                 })
             })
             .collect()
+    }
+
+    /// Every Marke (card modification of kind [`ModKind::Voucher`]) for the
+    /// character, unlocked, in the order of their ids, whether or not one
+    /// may go on a card now: what a Marke option shows.
+    #[must_use]
+    pub fn marken<'c>(&self, content: &'c Content) -> Vec<&'c CardModDef> {
+        content
+            .card_mods
+            .values()
+            .filter(|m| m.kind == ModKind::Voucher)
+            .filter(|m| in_pool(&m.characters, self.character))
+            .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .collect()
+    }
+
+    /// The Marken that may go on a card now: on `card`, or (`None`) on
+    /// some card of the edition. A Toten- or Narrenmarke only while the
+    /// edition may still get its special card (DESIGN 7.2).
+    fn marken_for<'c>(
+        &'c self,
+        content: &'c Content,
+        card: Option<u32>,
+    ) -> impl Iterator<Item = &'c CardModDef> + 'c {
+        self.marken(content)
+            .into_iter()
+            .filter(|m| self.offer_open(content, m))
+            .filter(move |m| match card {
+                Some(card) => self.may_attach(content, card, &m.id),
+                None => self
+                    .edition
+                    .cards()
+                    .iter()
+                    .any(|c| c.kind != CardKind::Blank && self.may_attach(content, c.id, &m.id)),
+            })
+    }
+
+    /// Whether the Marke `marke` may go on `card` now (special card caps
+    /// included).
+    #[must_use]
+    pub fn marke_fits_card(&self, content: &Content, card: u32, marke: &CardModId) -> bool {
+        self.marken_for(content, Some(card)).any(|m| &m.id == marke)
+    }
+
+    /// Whether the Marke `marke` may be taken for `option` on `card` (the
+    /// chosen card, `None` for a random one): a Marke of the content that
+    /// fits.
+    #[must_use]
+    pub fn marke_fits(
+        &self,
+        content: &Content,
+        option: &EncounterOption,
+        marke: &CardModId,
+        card: Option<u32>,
+    ) -> bool {
+        option.effects.iter().all(|e| match e {
+            EncounterEffect::Marke {
+                card: pick,
+                marke: CardPick::Chosen,
+            } => {
+                let on = match pick {
+                    CardPick::Chosen => card,
+                    CardPick::Random => None,
+                };
+                self.marken_for(content, on).any(|m| &m.id == marke)
+            }
+            _ => true,
+        })
     }
 
     /// What the option costs on `card`: a Zinke on a chosen card may cost
@@ -321,6 +402,9 @@ impl Run {
             matches!(
                 e,
                 EncounterEffect::Mark {
+                    card: CardPick::Chosen,
+                    ..
+                } | EncounterEffect::Marke {
                     card: CardPick::Chosen,
                     ..
                 }
@@ -361,6 +445,26 @@ impl Run {
                         (!fits).then_some(OptionBlock::NoFittingCard)
                     }
                 },
+                EncounterEffect::Marke { card, .. } => {
+                    if self.marken(content).is_empty() {
+                        Some(OptionBlock::NothingLeft)
+                    } else {
+                        let fits = match card {
+                            CardPick::Random => self.marken_for(content, None).next().is_some(),
+                            CardPick::Chosen => !self.fitting_cards(content, option).is_empty(),
+                        };
+                        let capped = !fits
+                            && self
+                                .marken(content)
+                                .iter()
+                                .all(|m| !self.offer_open(content, m));
+                        if capped {
+                            Some(OptionBlock::SpecialCardCap)
+                        } else {
+                            (!fits).then_some(OptionBlock::NoFittingCard)
+                        }
+                    }
+                }
                 EncounterEffect::Cleanse => self
                     .fitting_cards(content, option)
                     .is_empty()
@@ -430,13 +534,15 @@ impl Run {
 
     /// [`super::RunAction::ChooseEncounter`]: take option `option`, with a
     /// card of the edition (or, for a relic option, the index of an owned
-    /// relic) as `target` if it needs one. All or nothing: on an error the
-    /// run is unchanged.
+    /// relic) as `target` if it needs one, and the Marke `marke` if it lets
+    /// the player choose one. All or nothing: on an error the run is
+    /// unchanged.
     pub(super) fn choose_encounter(
         &mut self,
         content: &Content,
         option: usize,
         target: Option<u32>,
+        marke: Option<&CardModId>,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         if self.phase != RunPhase::Encounter {
@@ -480,6 +586,15 @@ impl Run {
         } else {
             None
         };
+        let marke = if chosen.needs_marke() {
+            let marke = marke.ok_or(RunError::TargetRequired)?;
+            if !self.marke_fits(content, &chosen, marke, card) {
+                return Err(RunError::NoModAvailable);
+            }
+            Some(marke)
+        } else {
+            None
+        };
         let cost = self.option_cost(content, &chosen, card);
         if cost > self.coins {
             return Err(RunError::NotEnoughCoins);
@@ -487,8 +602,8 @@ impl Run {
         let mut next = self.clone();
         let mut out = Vec::new();
         next.coins -= cost;
-        let painter =
-            next.apply_option(content, &encounter.id, &chosen, card, relic, cost, &mut out)?;
+        let target = Target { card, relic, marke };
+        let painter = next.apply_option(content, &encounter.id, &chosen, target, cost, &mut out)?;
         if painter {
             let card = card.ok_or(RunError::TargetRequired)?;
             if let Some(open) = next.encounter.as_mut() {
@@ -511,17 +626,17 @@ impl Run {
 
     /// Apply the effects of an option in order. Returns `true` if it ends
     /// with the Kartenmaler (the encounter waits for his choice).
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     fn apply_option(
         &mut self,
         content: &Content,
         id: &EncounterId,
         option: &EncounterOption,
-        card: Option<u32>,
-        relic: Option<usize>,
+        target: Target<'_>,
         stake: u32,
         events: &mut Vec<RunEvent>,
     ) -> Result<bool, RunError> {
+        let Target { card, relic, marke } = target;
         let source = Source::Encounter(id.clone());
         let mut marked: Vec<u32> = Vec::new();
         for effect in &option.effects {
@@ -581,6 +696,46 @@ impl Run {
                             self.attach_mod(content, target, card_mod, value, events)?;
                         }
                     }
+                    marked.push(target);
+                }
+                EncounterEffect::Marke {
+                    card: card_pick,
+                    marke: marke_pick,
+                } => {
+                    let on = match card_pick {
+                        CardPick::Chosen => Some(card.ok_or(RunError::TargetRequired)?),
+                        CardPick::Random => None,
+                    };
+                    let chosen_marke = match marke_pick {
+                        CardPick::Chosen => marke.ok_or(RunError::TargetRequired)?.clone(),
+                        CardPick::Random => {
+                            let weights = &content.run.shop.rarity_weights;
+                            let pool: Vec<(CardModId, u32)> = self
+                                .marken_for(content, on)
+                                .map(|m| (m.id.clone(), weights.weight(m.rarity)))
+                                .collect();
+                            draw_weighted(&mut self.encounter_rng, pool, 1)
+                                .pop()
+                                .ok_or(RunError::NoModAvailable)?
+                        }
+                    };
+                    let target = match on {
+                        Some(card) => card,
+                        None => self
+                            .random_card_for(content, &chosen_marke, &marked)
+                            .ok_or(RunError::NoModAvailable)?,
+                    };
+                    if !self.may_attach(content, target, &chosen_marke) {
+                        return Err(RunError::NoModAvailable);
+                    }
+                    let value = mod_value(content, &chosen_marke, None);
+                    events.push(RunEvent::MarkeGiven {
+                        card: target,
+                        card_mod: chosen_marke.clone(),
+                        drawn: *marke_pick == CardPick::Random,
+                        random_card: *card_pick == CardPick::Random,
+                    });
+                    self.attach_mod(content, target, &chosen_marke, value, events)?;
                     marked.push(target);
                 }
                 EncounterEffect::SwapRelic(Some(new)) => {

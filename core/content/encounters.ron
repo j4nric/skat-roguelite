@@ -125,10 +125,13 @@
     (
         id: "workshop",
         name: "Die Kartenwerkstatt",
-        text: "In der Hinterhofwerkstatt malt ein alter Kartenmaler Karten auf. Er setzt dir umsonst eine Modifikation auf eine Karte deiner Wahl, nie einen Fluch, oder er wäscht eine Karte ganz sauber, Flüche eingeschlossen.",
+        text: "In der Hinterhofwerkstatt malt ein alter Kartenmaler Karten auf. Er setzt dir umsonst eine Modifikation auf eine Karte deiner Wahl, nie einen Fluch, oder er wäscht eine Karte ganz sauber, Flüche eingeschlossen. Oder er greift blind in seine Markenkiste und klebt, was er zieht, auf eine Karte deiner Wahl.",
         options: [
             (label: "Kartenmaler", effects: [Painter]),
             (label: "Karte reinigen", effects: [Cleanse]),
+            // 04.11.2026 (Wunsch des Nutzers): eine zufällige Marke auf eine
+            // gewählte Karte, gezogen nach Seltenheit beim Nehmen.
+            (label: "Griff in die Markenkiste", effects: [Marke(card: Chosen, marke: Random)]),
         ],
         category: Upgrade,
     ),
@@ -221,6 +224,31 @@
             (label: "Die Wege", effects: [Scout(2)]),
             (label: "Rückendeckung", effects: [NextPubRedeals(1)]),
             (label: "2 Groschen", effects: [Coins(2)]),
+        ],
+    ),
+    // Mehr Wege zu Marken (04.11.2026, Wunsch des Nutzers). Preise
+    // vorläufig nach Augenmaß: eine Marke auf einer zufälligen Karte wie
+    // der Kartengeber (der dort gratis zinkt) für 2 Groschen, weil man die
+    // Marke wählt; Marke und Karte wählen 5 Groschen (eine Totenmarke kostet
+    // in der Auslage 4 bis 5) oder umsonst mit einem Fluch wie die Alten
+    // Karten im Schrank.
+    (
+        id: "pawnbroker",
+        name: "Der Pfandleiher",
+        text: "Im Hinterzimmer sitzt ein Pfandleiher über seiner Markenkiste. Für 2 Groschen suchst du dir eine Marke aus, er klebt sie auf eine zufällige Karte deiner Ausgabe. Oder du löst bei ihm einen alten Pfandschein ein.",
+        options: [
+            (label: "Marke aussuchen", cost: 2, effects: [Marke(card: Random, marke: Chosen)]),
+            (label: "Pfandschein einlösen", effects: [Coins(3)]),
+        ],
+    ),
+    (
+        id: "stamp_collector",
+        name: "Die Markensammlerin",
+        text: "Eine Markensammlerin breitet ihr Album auf dem Tresen aus: Such dir eine Marke und eine Karte aus. Für 5 Groschen bekommst du sie sauber; umsonst nur im Tausch, dann landet ein Fluch auf einer zufälligen anderen Karte. Oder du schaust nur und sie gibt dir einen aus.",
+        options: [
+            (label: "Marke kaufen", cost: 5, effects: [Marke(card: Chosen, marke: Chosen)]),
+            (label: "Marke tauschen", effects: [Marke(card: Chosen, marke: Chosen), Mark(card: Random, curse: true)]),
+            (label: "Nur schauen", effects: [Coins(1)]),
         ],
     ),
     // Neue Stationen (Wege und Begegnungen v2, 03.11.2026).

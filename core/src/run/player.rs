@@ -520,6 +520,17 @@ impl RunEvent {
                 value,
             },
             RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
+            RunEvent::MarkeGiven {
+                card,
+                card_mod,
+                drawn,
+                random_card,
+            } => RunEvent::MarkeGiven {
+                card,
+                card_mod,
+                drawn,
+                random_card,
+            },
             RunEvent::CardMadeTransparent { source, card, seat } => {
                 RunEvent::CardMadeTransparent { source, card, seat }
             }

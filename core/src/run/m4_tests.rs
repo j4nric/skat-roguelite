@@ -626,7 +626,11 @@ fn encounters_on_the_way_must_be_taken_and_lead_to_the_next_pub() {
 #[test]
 fn encounter_choices_change_the_run() {
     let content = content();
-    let choose = |option, target| RunAction::ChooseEncounter { option, target };
+    let choose = |option, target| RunAction::ChooseEncounter {
+        option,
+        target,
+        marke: None,
+    };
     // Stammtisch-Streit: a house rule for the evening, without a slot.
     let mut run = relic_run(&content, &[]);
     run.test_encounter(&content, "stammtisch_dispute").options[0].effects =
@@ -949,7 +953,11 @@ fn tally_stick_adds_two_base_value_per_won_null() {
 #[test]
 fn m4_encounters_mark_cards_raise_stakes_and_offer_rules() {
     let content = content();
-    let choose = |option, target| RunAction::ChooseEncounter { option, target };
+    let choose = |option, target| RunAction::ChooseEncounter {
+        option,
+        target,
+        marke: None,
+    };
     let has_mod = |run: &Run, id: u32, m: &str| {
         run.edition()
             .get(id)

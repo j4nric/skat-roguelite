@@ -406,6 +406,7 @@ fn every_transport_leads_over_one_shown_stop_for_free() {
             RunAction::ChooseEncounter {
                 option: 0,
                 target: None,
+                marke: None,
             },
         )
         .expect("rest");
@@ -532,6 +533,7 @@ fn a_won_spelunke_pays_a_relic_on_top() {
             RunAction::ChooseEncounter {
                 option: 0,
                 target: None,
+                marke: None,
             },
         )
         .expect("take");
@@ -638,6 +640,7 @@ fn the_workshop_cleanses_a_chosen_card() {
         RunAction::ChooseEncounter {
             option: cleanse,
             target: Some(card),
+            marke: None,
         },
     )
     .expect("cleanse");

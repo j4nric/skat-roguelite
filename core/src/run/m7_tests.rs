@@ -120,6 +120,7 @@ fn the_card_dealer_never_draws_a_curse() {
                     RunAction::ChooseEncounter {
                         option: 0,
                         target: None,
+                        marke: None,
                     },
                 )
                 .expect("free card");
@@ -236,6 +237,7 @@ fn announced_curses_name_the_curse_and_pay() {
         RunAction::ChooseEncounter {
             option: 0,
             target: None,
+            marke: None,
         },
     )
     .expect("random card");

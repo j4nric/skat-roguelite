@@ -804,21 +804,55 @@ impl RunBot {
             if run.encounter_option_block(content, i).is_some() {
                 continue;
             }
-            let Some(target) = Self::option_target(run, content, i, option) else {
+            let Some((target, marke)) = Self::option_choice(run, content, i, option) else {
                 continue;
             };
             let value = Self::option_value(run, content, option);
             if best.as_ref().is_none_or(|(v, _)| value > *v) {
-                best = Some((value, RunAction::ChooseEncounter { option: i, target }));
+                best = Some((
+                    value,
+                    RunAction::ChooseEncounter {
+                        option: i,
+                        target,
+                        marke,
+                    },
+                ));
             }
         }
         best.map_or(
             RunAction::ChooseEncounter {
                 option: 0,
                 target: None,
+                marke: None,
             },
             |(_, action)| action,
         )
+    }
+
+    /// Target and Marke the bot uses for an option, `None` if none is
+    /// accepted. With a Marke to choose (04.11.2026), the most valuable
+    /// one by [`zinken_value`] (the Pfandmarke, then the first by id)
+    /// that some target accepts, on the target [`RunBot::option_target`]
+    /// would pick for it.
+    #[allow(clippy::type_complexity)]
+    fn option_choice(
+        run: &Run,
+        content: &Content,
+        index: usize,
+        option: &EncounterOption,
+    ) -> Option<(Option<u32>, Option<CardModId>)> {
+        if !option.needs_marke() {
+            return Self::option_target(run, content, index, option, None).map(|t| (t, None));
+        }
+        let mut marken: Vec<CardModId> = run
+            .marken(content)
+            .into_iter()
+            .map(|m| m.id.clone())
+            .collect();
+        marken.sort_by_key(|m| std::cmp::Reverse(zinken_value(m)));
+        marken.into_iter().find_map(|marke| {
+            Self::option_target(run, content, index, option, Some(&marke)).map(|t| (t, Some(marke)))
+        })
     }
 
     /// The target the bot uses for an option: `Some(None)` without one,
@@ -831,6 +865,7 @@ impl RunBot {
         content: &Content,
         index: usize,
         option: &EncounterOption,
+        marke: Option<&CardModId>,
     ) -> Option<Option<u32>> {
         let accepted = |target: u32| {
             run.accepts(
@@ -838,6 +873,7 @@ impl RunBot {
                 RunAction::ChooseEncounter {
                     option: index,
                     target: Some(target),
+                    marke: marke.cloned(),
                 },
             )
         };
@@ -851,7 +887,15 @@ impl RunBot {
             return accepted(weakest).then_some(Some(weakest));
         }
         if !option.needs_card() {
-            return Some(None);
+            let ok = run.accepts(
+                content,
+                RunAction::ChooseEncounter {
+                    option: index,
+                    target: None,
+                    marke: marke.cloned(),
+                },
+            );
+            return (ok || marke.is_none()).then_some(None);
         }
         let cleanse = option.effects.contains(&EncounterEffect::Cleanse);
         let curse = option.effects.iter().any(|e| match e {
@@ -940,6 +984,11 @@ impl RunBot {
                     let p = i64::from(*curse_percent);
                     (base * (100 - p) - 2 * p) / 100
                 }
+                // A Marke like a Zinke: 1 on a random, 2 on a chosen card.
+                EncounterEffect::Marke { card, .. } => match card {
+                    CardPick::Random => 1,
+                    CardPick::Chosen => 2,
+                },
                 EncounterEffect::Schnapps(Some(id)) => {
                     if item_slot {
                         i64::from(consumable_value(id)) + 1

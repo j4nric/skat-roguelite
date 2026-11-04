@@ -122,8 +122,15 @@ fn open(run: &mut Run, content: &Content, id: &str) -> Vec<EncounterOption> {
 }
 
 fn choose(run: &mut Run, content: &Content, option: usize, target: Option<u32>) -> Vec<RunEvent> {
-    run.apply(content, RunAction::ChooseEncounter { option, target })
-        .expect("choose")
+    run.apply(
+        content,
+        RunAction::ChooseEncounter {
+            option,
+            target,
+            marke: None,
+        },
+    )
+    .expect("choose")
 }
 
 // ---------------------------------------------------------------------------
@@ -829,7 +836,8 @@ fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
             &content,
             RunAction::ChooseEncounter {
                 option: 0,
-                target: None
+                target: None,
+                marke: None
             }
         ),
         Err(RunError::TargetRequired)
@@ -930,7 +938,8 @@ fn the_bet_pays_for_schneider_or_a_win_and_is_lost_otherwise() {
             &content,
             RunAction::ChooseEncounter {
                 option: 0,
-                target: None
+                target: None,
+                marke: None
             }
         ),
         Err(RunError::NotEnoughCoins)

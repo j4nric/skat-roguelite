@@ -541,6 +541,7 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
         RunAction::ChooseEncounter {
             option: 1,
             target: Some(target),
+            marke: None,
         },
     )
     .expect("chosen");
@@ -573,6 +574,7 @@ fn the_old_friend_names_the_relic_received() {
             RunAction::ChooseEncounter {
                 option: 0,
                 target: Some(1),
+                marke: None,
             },
         )
         .expect("swap");

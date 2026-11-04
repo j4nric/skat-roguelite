@@ -15,17 +15,17 @@ use serde::Serialize;
 
 use super::guests::GuestInfo;
 use super::{
-    Kontra, OptionBlock, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats, sell_price,
-    series_target,
+    EncounterOption, Kontra, OptionBlock, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats,
+    sell_price, series_target,
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
-    BossId, CardFilter, CardModId, CardModStatus, Character, ConsumableAction, ConsumableCategory,
-    ConsumableId, ConsumableTarget, Content, EncounterEffect, EncounterId, Factor, HookContext,
-    ModKind, NextGameEffect, OPPONENT_BACK, Rarity, RelicId, RelicKind, RunLength, ScoreBreakdown,
-    ScoreStep, StopCategory, card_mod_status,
+    BossId, CardFilter, CardModId, CardModStatus, CardPick, Character, ConsumableAction,
+    ConsumableCategory, ConsumableId, ConsumableTarget, Content, EncounterEffect, EncounterId,
+    Factor, HookContext, ModKind, NextGameEffect, OPPONENT_BACK, Rarity, RelicId, RelicKind,
+    RunLength, ScoreBreakdown, ScoreStep, StopCategory, card_mod_status,
 };
-use crate::deck::{DealOdds, DealtCard, DeckCard, Owner};
+use crate::deck::{CardKind, DealOdds, DealtCard, DeckCard, Owner};
 use crate::game::{Phase, Position, Seat, seat_at};
 use crate::rules::{
     Declaration, GameType, NullRisk, NullScoring, RiskLevel, discardable_of, suit_strength,
@@ -258,6 +258,31 @@ pub struct EncounterOptionView {
     /// Zinke on a card may cost less than `cost` ("Bruderherz": half on
     /// Rot, [`Run::zinken_price`]). Empty without targets.
     pub target_costs: Vec<u32>,
+    /// The Marken of a Marke option ([`EncounterEffect::Marke`],
+    /// 04.11.2026): with `marke: Chosen` the choice for
+    /// [`RunAction::ChooseEncounter`] `marke`, with `Random` what may come.
+    /// Empty for every other option.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub marken: Vec<MarkeChoiceView>,
+}
+
+/// One Marke of a Marke option of an encounter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MarkeChoiceView {
+    /// The Marke with its value and text.
+    pub card_mod: CardModInfo,
+    /// Whether it can be taken now (some card fits; for a Toten- or
+    /// Narrenmarke the edition may still get its special card).
+    pub can_choose: bool,
+    /// For a chosen Marke on a chosen card: the deck card ids it may go on
+    /// now; empty otherwise.
+    pub targets: Vec<u32>,
+    /// What the option costs on each of `targets`, in the same order.
+    pub target_costs: Vec<u32>,
+    /// Chance in percent to be drawn for a random Marke on any card
+    /// (rarity weights among those that fit some card); 0 for a chosen
+    /// Marke or one that cannot come.
+    pub percent: u32,
 }
 
 /// The open encounter (Ereignis).
@@ -1920,19 +1945,29 @@ impl Run {
                     OptionTarget::None => Vec::new(),
                 };
                 let blocked = self.encounter_option_block(content, index);
+                let marken = self.marke_choices(content, index, option, blocked.is_some());
+                // With a Marke to choose: a card any Marke may go on.
+                let marke_ids: Vec<Option<CardModId>> = if option.needs_marke() {
+                    marken.iter().map(|m| Some(m.card_mod.id.clone())).collect()
+                } else {
+                    vec![None]
+                };
                 let targets: Vec<u32> = if blocked.is_some() {
                     Vec::new()
                 } else {
                     candidates
                         .into_iter()
                         .filter(|&t| {
-                            self.accepts(
-                                content,
-                                RunAction::ChooseEncounter {
-                                    option: index,
-                                    target: Some(t),
-                                },
-                            )
+                            marke_ids.iter().any(|marke| {
+                                self.accepts(
+                                    content,
+                                    RunAction::ChooseEncounter {
+                                        option: index,
+                                        target: Some(t),
+                                        marke: marke.clone(),
+                                    },
+                                )
+                            })
                         })
                         .collect()
                 };
@@ -1944,13 +1979,16 @@ impl Run {
                     })
                     .collect();
                 let can_choose = match target {
-                    OptionTarget::None => self.accepts(
-                        content,
-                        RunAction::ChooseEncounter {
-                            option: index,
-                            target: None,
-                        },
-                    ),
+                    OptionTarget::None => marke_ids.iter().any(|marke| {
+                        self.accepts(
+                            content,
+                            RunAction::ChooseEncounter {
+                                option: index,
+                                target: None,
+                                marke: marke.clone(),
+                            },
+                        )
+                    }),
                     _ => !targets.is_empty(),
                 };
                 EncounterOptionView {
@@ -1966,6 +2004,7 @@ impl Run {
                     target,
                     targets,
                     target_costs,
+                    marken,
                 }
             })
             .collect();
@@ -1976,6 +2015,89 @@ impl Run {
             category: def.map_or(StopCategory::Event, |d| d.category),
             options,
         })
+    }
+
+    /// The Marken of option `index` if it gives one
+    /// ([`EncounterEffect::Marke`]), see [`MarkeChoiceView`].
+    fn marke_choices(
+        &self,
+        content: &Content,
+        index: usize,
+        option: &EncounterOption,
+        blocked: bool,
+    ) -> Vec<MarkeChoiceView> {
+        let Some((card_pick, marke_pick)) = option.effects.iter().find_map(|e| match e {
+            EncounterEffect::Marke { card, marke } => Some((*card, *marke)),
+            _ => None,
+        }) else {
+            return Vec::new();
+        };
+        let marken = self.marken(content);
+        let weights = &content.run.shop.rarity_weights;
+        let fits_some = |id: &CardModId| {
+            self.edition
+                .cards()
+                .iter()
+                .any(|c| c.kind != CardKind::Blank && self.marke_fits_card(content, c.id, id))
+        };
+        let total: u32 = marken
+            .iter()
+            .filter(|m| fits_some(&m.id))
+            .map(|m| weights.weight(m.rarity))
+            .sum();
+        marken
+            .into_iter()
+            .map(|m| {
+                let info = Run::card_mod_info(content, &m.id, None);
+                let fits = fits_some(&m.id);
+                let mut targets = Vec::new();
+                let mut target_costs = Vec::new();
+                let can_choose = match marke_pick {
+                    CardPick::Chosen if !blocked => match card_pick {
+                        CardPick::Chosen => {
+                            for card in self.edition.cards().iter().map(|c| c.id) {
+                                let action = RunAction::ChooseEncounter {
+                                    option: index,
+                                    target: Some(card),
+                                    marke: Some(m.id.clone()),
+                                };
+                                if self.accepts(content, action) {
+                                    targets.push(card);
+                                    target_costs.push(self.option_cost(
+                                        content,
+                                        option,
+                                        Some(card),
+                                    ));
+                                }
+                            }
+                            !targets.is_empty()
+                        }
+                        CardPick::Random => self.accepts(
+                            content,
+                            RunAction::ChooseEncounter {
+                                option: index,
+                                target: None,
+                                marke: Some(m.id.clone()),
+                            },
+                        ),
+                    },
+                    CardPick::Chosen => false,
+                    CardPick::Random => fits,
+                };
+                let percent = if marke_pick == CardPick::Random && fits && total > 0 {
+                    weights.weight(m.rarity) * 100 / total
+                } else {
+                    0
+                };
+                MarkeChoiceView {
+                    card_mod: info,
+                    can_choose,
+                    targets,
+                    target_costs,
+                    percent,
+                }
+            })
+            .collect()
     }
 
     fn game_view(&self, content: &Content) -> Option<GameView> {
