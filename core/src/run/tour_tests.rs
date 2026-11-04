@@ -676,6 +676,7 @@ fn the_city_is_named_by_the_seed() {
     let view = a.view(&content).tour;
     assert_eq!(view.lives, content.run.lives.start);
     assert_eq!(view.max_lives, content.run.lives.max);
+    assert_eq!(view.start_lives, content.run.lives.start);
     assert_eq!(view.districts[0].pubs[0].id, "d0-p0");
     assert_eq!(
         view.districts[0].pubs[0].state,

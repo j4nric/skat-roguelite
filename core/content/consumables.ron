@@ -64,7 +64,7 @@
     (
         id: "counter_beer",
         name: "Konterbier",
-        text: "Außerhalb eines Spiels: Du bekommst ein Leben zurück, höchstens bis zum Maximum.",
+        text: "Außerhalb eines Spiels: Du bekommst ein Leben zurück, höchstens 4.",
         rarity: Uncommon,
         price: 4,
         action: GainLives(1),
