@@ -9,6 +9,7 @@ import { de, bossEditionText, bossFiguresText, cardName, face, contentName, cont
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
+import { glossaryGroup, glossarySample, glossaryText } from './glossary';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
@@ -311,10 +312,27 @@ function malusModel(key: string, view: RunView, id: string): InfoModel | null {
   };
 }
 
+/** A Zinke of the Glossar: its sample card, group and effect text from the catalog. */
+function modModel(key: string, mod: string): InfoModel | null {
+  const name = contentName('card_mods', mod);
+  if (!mod || name === mod) return null;
+  const curse = isCurse(mod);
+  return {
+    key,
+    title: name,
+    kind: glossaryGroup(mod),
+    art: `<span class="card info-card-face">${glossarySample(mod)}</span>`,
+    facts: [],
+    sections: [{ tag: curse ? de.info.kinds.curse : de.info.kinds.cardMod, curse, text: glossaryText(mod) || de.info.unknownMod, status: [] }],
+  };
+}
+
 /** The content of the info card for a key, or null if it is not on screen any more. */
 export function infoModel(key: string, view: RunView | null, ui: UiState): InfoModel | null {
-  if (!view) return null;
   const [kind, arg] = splitKey(key);
+  // The Glossar's entries need no run.
+  if (kind === 'mod') return modModel(key, arg);
+  if (!view) return null;
   const n = Number(arg);
   switch (kind) {
     case 'card':

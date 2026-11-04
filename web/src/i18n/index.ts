@@ -148,6 +148,16 @@ export function consumableLook(item: string): { id: string; category: Consumable
   return { id: item, category: e?.category ?? null, rarity: e?.rarity ?? null };
 }
 
+/** Ids of every card modification in the core's catalog. */
+export function cardModIds(): string[] {
+  return Object.keys(catalog?.card_mods ?? {});
+}
+
+/** The first value a card modification is offered with (1 without values), from the core's catalog. */
+export function modFirstValue(mod: string): number {
+  return catalog?.card_mods[mod]?.values?.[0] ?? 1;
+}
+
 /** Whether a card modification is a curse (Fluch), from the core's catalog. */
 /** Rand, Moment, Gutschein, Fluch or Spezialkarte, from the core's catalog. */
 export function modKind(mod: string): ModKind | null {

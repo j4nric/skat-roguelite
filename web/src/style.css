@@ -6117,6 +6117,117 @@ button.card {
   color: var(--text);
 }
 
+/* --------------------------------------------------------------- Glossar */
+
+/* The Zinken in groups of the frame language: a compact list, each entry
+   its sample card at hand size (66 × 99, art scale 2) beside name and
+   text. Scrolls inside the sheet like the Regelkarte. */
+.glossary-values {
+  display: grid;
+  grid-template-columns: 22px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-m);
+}
+
+.glossary-values li {
+  display: contents;
+}
+
+.glossary-icon {
+  display: grid;
+  place-items: center;
+}
+
+.glossary-values b {
+  font-weight: 400;
+  color: var(--accent-light);
+}
+
+.glossary-values span:last-child {
+  color: var(--text);
+}
+
+.glossary-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossary-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-m);
+}
+
+.glossary-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glossary-entry {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  grid-template-columns: 66px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 8px 6px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.glossary-entry:hover,
+.glossary-entry:focus-visible {
+  border-color: var(--accent);
+}
+
+.glossary-card {
+  width: 66px;
+  height: 99px;
+}
+
+.glossary-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-m);
+  line-height: 1.1;
+}
+
+.glossary-text b {
+  font-weight: 400;
+  font-size: var(--fs-body);
+  color: var(--accent-light);
+}
+
+.glossary-text span {
+  overflow-wrap: anywhere;
+}
+
+/* Desktop: two entries side by side. */
+@media (min-width: 720px) {
+  .sheet-glossary {
+    max-width: 720px;
+  }
+
+  .glossary-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* At the Tresen the Wirt stands right above: no second portrait, the tail
    points up to him. */
 .hint-shop .portrait-hint {

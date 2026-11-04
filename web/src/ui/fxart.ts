@@ -19,7 +19,7 @@
 // drawing: which modification a card carries and its value come from the
 // core.
 
-import { ART_GLYPHS, ART_H, ART_W } from './pixelcards.gen';
+import { ART_GLYPHS, ART_H, ART_SIGNS, ART_W } from './pixelcards.gen';
 
 export const W = ART_W;
 export const H = ART_H + 0.5;
@@ -148,8 +148,8 @@ const XH = '#c0263a';
 const XH_L = '#f4a3ae';
 const TAILOR = '#3d78b0';
 const TAILOR_L = '#cfe3f3';
-/** The black marker of "Winkel" (W-C in black ink). */
-export const MARKER = '#1c1a1a';
+/** The violet copying pencil of "Winkel" (Winkel v2, ink of WK-B). */
+export const MARKER = '#5b2a86';
 /** "Doppelgänger": its violet mirror half and the seam. */
 export const MIRROR = '#6a58a0';
 
@@ -389,7 +389,7 @@ export interface ModDraw {
 export const MOD_DRAW: Record<string, ModDraw> = {
   // Rand: always (no mark).
   points: { band: (t) => [t, 'pips'], col: GOLD, art: () => frameDouble(GOLD, GOLD_L) },
-  // Winkel (Zinken v2): no band, the marker scribble on the index (winkelScribble).
+  // Winkel (Winkel v2): no band, hand sketches on the face and the index (winkelSketch, winkelScribble).
   rank: { band: () => [], col: MARKER, art: () => '' },
   lead: { band: () => ['plumb'], col: LEAD, art: () => frameDouble(LEAD_D, LEAD_L) },
   gilt_edge: { band: (t) => [t, 'coin'], col: GILT_BAND, art: () => frameGilt() },
@@ -426,20 +426,36 @@ export function modLayer(mod: string, text: string, value: number, paper: string
 
 // ------------------------------------------------------------ Winkel scribble
 
-/** A rank glyph in "hand" style: the top two rows one pixel to the right. */
-function handGlyph(rank: string, x: number, y: number): Cells {
+// "Winkel v2" (user decision 04.11.2026, board Winkel-v2, gen-winkel.ts):
+// the printed picture stays and is drawn over by hand in a violet copying
+// pencil (WK-B's ink). Each step adds a layer: a hand-drawn outline pip
+// when the number rises, a sketched figure when it becomes a picture card
+// (Oberin with a bun, König with crown and beard), a big pip for the Daus;
+// sketches are filled with paper (WK-A). In the corner the printed rank is
+// scribbled out with a thick blot (WK-C) and each higher rank written
+// beside it in a round hand font, all but the last blotted out too.
+
+/** The hand font of the corner: 5 rows high, upright, round corners. */
+const HAND: Record<string, string[]> = {
+  '7': ['####', '...#', '.###', '..#.', '..#.'],
+  '8': ['.##.', '#..#', '.##.', '#..#', '.##.'],
+  '9': ['.##.', '#..#', '.###', '...#', '..#.'],
+  T: ['.#..##.', '##.#..#', '.#.#..#', '.#.#..#', '.#..##.'],
+  Q: ['.##.', '#..#', '#..#', '#..#', '.##.'],
+  K: ['#..#', '#.#.', '##..', '#.#.', '#..#'],
+  A: ['.##.', '#..#', '####', '#..#', '#..#'],
+};
+const handW = (rank: string): number => HAND[rank]?.[0]?.length ?? 4;
+const printedW = (rank: string): number => ART_GLYPHS[rank]?.[0]?.length ?? 3;
+
+/** Cells of `ch` in rows, top left at (x, y). */
+function cellsOf(rows: string[], ch: string, x: number, y: number): Cells {
   const out: Cells = new Set();
-  (ART_GLYPHS[rank] ?? []).forEach((row, j) =>
-    [...row].forEach((ch, i) => {
-      if (ch === 'x') out.add(key(x + i + (j < 2 ? 1 : 0), y + j));
-    }),
-  );
+  rows.forEach((row, j) => [...row].forEach((c, i) => c === ch && out.add(key(x + i, y + j))));
   return out;
 }
 
-const glyphW = (rank: string): number => ART_GLYPHS[rank]?.[0]?.length ?? 3;
-
-/** A fat marker zigzag over a glyph box (w × 5 at x, y). */
+/** A thick blot scribble over a glyph box (w × 5 at x, y). */
 function strike(x: number, y: number, w: number): Cells {
   const out: Cells = new Set();
   for (let j = -1; j <= 5; j++) for (let i = -1; i <= w; i++) if ((i + j) % 3 !== 0 || j === -1 || j === 5) out.add(key(x + i, y + j));
@@ -447,41 +463,120 @@ function strike(x: number, y: number, w: number): Cells {
 }
 
 /**
- * "Winkel" (W-C in black ink, 03.11.2026): on both corner indices the
- * printed rank is scribbled out with a thick black marker and each higher
- * rank written beside it, all but the last scribbled out too. `chain` is
- * the printed rank code first, e.g. ['8', '9', 'Q'].
+ * "Winkel" on both corner indices: the printed rank blotted out, each
+ * higher rank hand-written beside it, all but the last blotted out too.
+ * `chain` is the printed rank code first, e.g. ['8', '9', 'Q'].
  */
 export function winkelScribble(chain: string[], paper: string): string {
   if (chain.length < 2) return '';
   let marks: Cells = new Set();
   let paperHalo: Cells = new Set();
-  // Top left: the index at x 2, y 2; new ranks to the right.
+  // Top left: the printed index at x 2, y 2; new ranks to the right.
   let x = 2;
   chain.forEach((r, i) => {
-    const w = glyphW(r);
+    const w = i === 0 ? printedW(r) : handW(r);
     if (i > 0) {
-      const g = handGlyph(r, x, 2);
+      const g = cellsOf(HAND[r] ?? [], '#', x, 2);
       paperHalo = union(paperHalo, halo(g));
       marks = union(marks, g);
     }
     if (i < chain.length - 1) marks = union(marks, strike(x, 2, w));
-    x += w + (i === 0 ? 2 : 3);
+    x += w + 2;
   });
-  // Bottom right: the index ends at x 30, y 42; new ranks to the left.
+  // Bottom right: the printed index ends at x 30, y 42; new ranks to the left.
   let xr = 31;
   chain.forEach((r, i) => {
-    const w = glyphW(r);
+    const w = i === 0 ? printedW(r) : handW(r);
     const x0 = xr - w;
     if (i > 0) {
-      const g = handGlyph(r, x0 - 1, 42);
+      const g = cellsOf(HAND[r] ?? [], '#', x0, 42);
       paperHalo = union(paperHalo, halo(g));
       marks = union(marks, g);
     }
     if (i < chain.length - 1) marks = union(marks, strike(x0, 42, w));
-    xr = x0 - (i === 0 ? 2 : 3);
+    xr = x0 - 2;
   });
-  return draw(minus(paperHalo, marks), paper, 0.9) + draw(marks, MARKER);
+  return draw(minus(paperHalo, marks), paper) + draw(marks, MARKER);
+}
+
+/** A sketch on the face: "k" pencil stroke, "p" inside (paper). */
+interface Sketch {
+  rows: string[];
+  x: number;
+  y: number;
+}
+
+/** The suit sign as an outline sketch (`scale` 2 for the Daus), with a pen tail. */
+function pipRows(suit: string, scale = 1): string[] {
+  const s = (ART_SIGNS[suit] ?? []).flatMap((r) =>
+    Array.from({ length: scale }, () => [...r].flatMap((c) => Array.from({ length: scale }, () => (c === '.' ? '.' : '#'))).join('')),
+  );
+  const h = s.length;
+  const w = s[0]?.length ?? 0;
+  const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && s[y]?.[x] === '#';
+  const out = s.map((r, y) => [...r].map((c, x) => (c !== '#' ? '.' : on(x - 1, y) && on(x + 1, y) && on(x, y - 1) && on(x, y + 1) ? 'p' : 'k')));
+  const lx = out[h - 1]?.lastIndexOf('k') ?? -1;
+  out.push(Array.from({ length: w }, (_, i) => (i === lx + 1 ? 'k' : '.')));
+  return out.map((r) => r.join(''));
+}
+
+const OBERIN = [
+  '.....kkk.....',
+  '....kpppk....',
+  '.....kkk.....',
+  '....kkkkk....',
+  '...kpppppk...',
+  '..kpkpppkpk..',
+  '..kpppppppk..',
+  '..kppkkkppk..',
+  '...kpppppk...',
+  '....kkkkk....',
+  '.....kpk.....',
+  '...kkkkkkk...',
+  '..kpppppppk..',
+  '.kpppppppppk.',
+  'kpppppppppppk',
+  'kkkkkkkkkkkkk',
+];
+const CROWN = ['k...k...k', 'kk.kkk.kk', 'kpkpppkpk', 'kpppppppk', 'kkkkkkkkk'];
+const BEARD = ['k.k.k', 'kkkkk', '.kpk.', '..k..'];
+
+/** What is sketched on the printed face for each step of the chain. */
+function sketches(suit: string, chain: string[]): Sketch[] {
+  const printed = chain[0] ?? '';
+  const out: Sketch[] = [];
+  const pip = (x: number, y: number): void => {
+    out.push({ rows: pipRows(suit), x, y });
+  };
+  const two = chain.length === 3;
+  for (let i = 1; i < chain.length; i++) {
+    const to = chain[i];
+    if (to === '8' || to === '9') {
+      if (printed === '7') pip(i === 1 ? 13 : 23, 29);
+      else pip(13, two ? 13 : 21);
+    } else if (to === 'Q') {
+      out.push({ rows: OBERIN, x: 10, y: printed === '8' ? 26 : 16 });
+    } else if (to === 'K') {
+      const y = printed === 'Q' ? 1 : 11;
+      out.push({ rows: CROWN, x: 12, y }, { rows: BEARD, x: 14, y: y + 12 });
+    } else if (to === 'T') {
+      pip(13, printed === 'K' ? (two ? 16 : 22) : 24);
+    } else if (to === 'A') {
+      out.push({ rows: pipRows(suit, 2), x: 9, y: printed === 'T' ? 16 : 26 });
+    }
+  }
+  return out;
+}
+
+/**
+ * "Winkel" on the face: the hand sketches over the printed picture, one
+ * layer per step. `suit` is the art code (C, S, H, D).
+ */
+export function winkelSketch(suit: string, chain: string[], paper: string): string {
+  if (chain.length < 2) return '';
+  return sketches(suit, chain)
+    .map((s) => draw(cellsOf(s.rows, 'p', s.x, s.y), paper) + draw(cellsOf(s.rows, 'k', s.x, s.y), MARKER))
+    .join('');
 }
 
 /** Ring 0 and 1 of a tiny card in the colour of its state (curse anthracite, Untot green). */

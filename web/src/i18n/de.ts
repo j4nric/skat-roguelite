@@ -1068,6 +1068,31 @@ export const de = {
     hintsResetAria: 'Hinweise des Wirts zurücksetzen',
     hintsResetDone: 'Der Wirt erklärt dir alles noch mal.',
     rules: 'Regelkarte',
+    glossary: 'Glossar',
+  },
+
+  /**
+   * The Glossar in the menu: the Zinken grouped like the frame language
+   * of the cards. Names and effect texts come from the content (catalog);
+   * here only the headings and the one line per group and value icon.
+   */
+  glossary: {
+    title: 'Glossar',
+    intro: 'Zinken verändern deine Karten. Der Rahmen sagt, was eine Zinke tut, das Zeichen oben rechts, wann, das Band unten, wie viel. Tipp auf einen Eintrag für die Infokarte.',
+    valuesTitle: 'Werte',
+    values: {
+      coins: ['Groschen', 'Dein Geld am Tresen, beim Kartenmaler und unterwegs.'],
+      pips: ['Augen', 'Was die Karten im Stich zählen.'],
+      base: ['Grundwert', 'Der Wert der Spielart, die Basis des Spielwerts.'],
+      mult: ['Multiplikator', 'Grundwert mal Multiplikator ergibt den Spielwert.'],
+    },
+    groups: {
+      Edge: ['Rand · immer', 'Ein Rahmen ums Bild, kein Zeichen in der Ecke: wirkt in jedem Spiel.'],
+      Moment: ['Ecke · Moment', 'Ein Zeichen oben rechts: wirkt nur in einem bestimmten Moment des Spiels.'],
+      Voucher: ['Marke · Gutschein', 'Ein Briefmarkenrand: wird einmal eingelöst, dann ist die Marke weg.'],
+      Special: ['Spezialkarten', 'Ändern das Bild der Karte und dürfen noch eine Zinke tragen.'],
+      Curse: ['Flüche', 'Anthrazit gefärbt: Sie arbeiten gegen dich.'],
+    },
   },
 
   /**
