@@ -348,11 +348,17 @@ export class App {
       blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet',
       pour: (p) => this.pourSchnaps(p),
     });
-    // No text selection on the table: a long-press opens the info card and
-    // must not mark the page. Inputs (seed, save code) keep theirs.
-    root.addEventListener('selectstart', (e) => {
-      const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (el?.closest('.run, .info-layer') && !el.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+    // No text selection and no browser callout anywhere in the game: a
+    // long-press opens the info card and must not mark the page. Text
+    // fields (seed, save code) and the shown seed keep theirs; links keep
+    // their menu.
+    const selectable = 'input, textarea, [contenteditable="true"], .seed-num';
+    const elementOf = (t: EventTarget | null): Element | null => (t instanceof Element ? t : t instanceof Node ? t.parentElement : null);
+    document.addEventListener('selectstart', (e) => {
+      if (!elementOf(e.target)?.closest(selectable)) e.preventDefault();
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (!elementOf(e.target)?.closest(`${selectable}, a[href]`)) e.preventDefault();
     });
     // A press anywhere else closes the popover of the mouse.
     root.addEventListener('pointerdown', (e) => {

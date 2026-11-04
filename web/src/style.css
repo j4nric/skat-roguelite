@@ -6557,21 +6557,29 @@ button.card {
   margin-top: 2px;
 }
 
-/* ------------------------------------------------- no selection on the table */
+/* ----------------------------------------------------- no selection anywhere */
 
-/* A long touch on the table opens the info card; it must not mark text of
-   the page. Text fields keep their selection. */
-.run {
+/* A long touch opens the info card (on the table, in the Leiste, on the
+   route, in sheets); it must never mark text of the page or bring up the
+   browser's callout (playtest 04.11.2026). The whole game UI is a game, not
+   a document: only text fields keep their selection, and the seed stays
+   copyable. */
+body {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.run input,
-.run textarea {
+input,
+textarea,
+[contenteditable='true'] {
   -webkit-touch-callout: default;
   -webkit-user-select: text;
   user-select: text;
+}
+
+.seed-num {
+  -webkit-user-select: all;
 }
 
 /* ------------------------------------------------------------ dragging */
