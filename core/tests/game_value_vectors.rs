@@ -10,9 +10,10 @@
 
 use skat_core::cards::Suit;
 use skat_core::cards::parse_cards;
+use skat_core::content::{RUN_LOSS_FACTOR, score_game};
 use skat_core::rules::{
     Declaration, GameType, Matadors, NullRisk, Outcome, RiskLevel, SCHNEIDER_THRESHOLD,
-    TOTAL_CARD_POINTS, WIN_THRESHOLD, game_value, matadors, null_game_value,
+    TOTAL_CARD_POINTS, Thresholds, WIN_THRESHOLD, game_value, matadors, null_game_value,
 };
 
 struct Vector {
@@ -429,6 +430,42 @@ fn vectors_lost_score_double_negative() {
     }
 }
 
+/// The run account (Konto of a pub) counts a lost game single since the
+/// user's decision of 04.11.2026 (DESIGN 4.3), while the Skatordnung above
+/// stays at −2 × Spielwert: `score_game` without lines gives the same
+/// Spielwert as the rules and `−1 ×` it when lost, `+1 ×` when won.
+#[test]
+fn vectors_run_account_counts_a_lost_game_single() {
+    assert_eq!(RUN_LOSS_FACTOR, 1);
+    for v in VECTORS {
+        let Some(declaration) = declaration_from_vector(v) else {
+            continue;
+        };
+        if v.schneider != v.schneider_declared || v.schwarz != v.schwarz_declared {
+            continue;
+        }
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let lost = Outcome {
+            declarer_card_points: 60,
+            defender_card_points: 60,
+            declarer_tricks: 1,
+            defender_tricks: 9,
+        };
+        let m = matadors(v.game, &cards);
+        let rules = game_value(declaration, m, &lost);
+        let run = score_game(declaration, m, &lost, &Thresholds::default(), Vec::new());
+        assert!(!run.won, "{}", v.name);
+        assert_eq!(run.value, u64::from(v.value), "{}: run value", v.name);
+        assert_eq!(
+            i64::from(rules.score),
+            -2 * i64::from(v.value),
+            "{}",
+            v.name
+        );
+        assert_eq!(run.score, -i64::from(v.value), "{}: run score", v.name);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Lost games and boundary cases (Skatordnung, Spielwert / verlorene Spiele)
 // ---------------------------------------------------------------------------
@@ -741,7 +778,8 @@ fn relic_schneider_bonus_and_fractional_factor_vectors() {
     );
     assert_eq!((won.value, won.score), (41, 41));
     let lost = score_game(karo, mit_2, &outcome(50, 4), &Thresholds::default(), scale);
-    assert_eq!((lost.value, lost.score), (41, -82));
+    // The run counts a lost game once since 04.11.2026 (before: −82).
+    assert_eq!((lost.value, lost.score), (41, -41));
 }
 
 /// Boss "Der Schwarze Peter" (DESIGN 11): a won game without Schneider
@@ -829,7 +867,8 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
         &Thresholds::default(),
         Vec::new(),
     );
-    assert_eq!((lost.levels, lost.value, lost.score), (3, 72, -144));
+    // The run counts a lost game once since 04.11.2026 (before: −144).
+    assert_eq!((lost.levels, lost.value, lost.score), (3, 72, -72));
 
     // Kreuz mit 1 with a glass Daus among the declarer's tricks: 50
     // printed Augen + 11 = 61 is won, 12 × 2 = 24 (without it 50, lost).

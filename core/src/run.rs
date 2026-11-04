@@ -7,8 +7,9 @@
 //! against two Stammgäste. Before declaring, the player may have each game
 //! dealt again a few times (einmischen, [`RunAction::Redeal`]) without
 //! using up a game; then one of the hands must be played. Won games add
-//! their value to the pub's account, lost games subtract twice their value
-//! including all relic modifiers. A pub is won the moment the account
+//! their value to the pub's account, lost games subtract their value once
+//! (since 04.11.2026, [`crate::content::RUN_LOSS_FACTOR`]; the Skatordnung
+//! says twice) including all relic modifiers. A pub is won the moment the account
 //! reaches the target; a boss pub plays all its games and counts after the
 //! last (ADR 0017). Missing the target after the last game costs a life
 //! (Leben) and the pub is left without reward; the run is lost with the
@@ -437,7 +438,8 @@ pub struct ActiveGame {
     #[serde(default)]
     pub chalked: Vec<(u32, Suit)>,
     /// Lost, this game counts once instead of twice ("Magenbitter"): who
-    /// granted it.
+    /// granted it. Dormant since 04.11.2026: every lost game counts once
+    /// ([`crate::content::RUN_LOSS_FACTOR`]); kept for old saves.
     #[serde(default)]
     pub single_loss: Option<Source>,
     /// Won, this game counts that many times more ("Eierlikör",
@@ -4340,15 +4342,10 @@ impl Run {
         }
         lines.extend(active.lines.iter().cloned());
         lines.extend(kontra_lines(active.kontra));
-        if !parts.won {
-            if let Some(source) = &active.single_loss {
-                lines.push(ScoreLine {
-                    source: source.clone(),
-                    lever: Lever::LossFactor,
-                    change: Change::Set(1),
-                });
-            }
-        } else {
+        // A lost game counts single since 04.11.2026 (`RUN_LOSS_FACTOR`):
+        // `single_loss` ("Magenbitter", the Ramscher) changes nothing any
+        // more and adds no line.
+        if parts.won {
             lines.extend(win_factor_lines(active));
         }
         let mut breakdown = score_parts(

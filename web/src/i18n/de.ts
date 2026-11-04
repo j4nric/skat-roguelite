@@ -623,8 +623,7 @@ export const de = {
     formulaMul: '{base} × {levels} × {mul}',
     value: 'Spielwert',
     result: 'Ergebnis',
-    lostDouble: 'Verlorene Spiele zählen doppelt.',
-    lostSingle: '{name}: Dieses verlorene Spiel zählt nur einfach.',
+    lostOnce: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab.',
     lossSingle: 'verloren nur einfach',
     lossFactor: 'verloren ×{n}',
     account: 'Konto {score} / {target}',
@@ -1110,10 +1109,10 @@ export const de = {
     afterSkatNull:
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
-      'Die {base} × {levels} über dem Stich ist Grundwert mal Multiplikator, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, zahlst du das Doppelte.',
+      'Die {base} × {levels} über dem Stich ist Grundwert mal Multiplikator, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das vom Konto ab.',
     pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, dann wird gespielt.',
     score:
-      'Abgerechnet wird wie im Verein: Grundwert mal Multiplikator, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht doppelt runter.',
+      'Abgerechnet wird wie im Verein: Grundwert mal Multiplikator, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht es wieder runter.',
     route: 'Weiter geht’s! Drei Wege führen zur nächsten Kneipe, auf jedem wartet was anderes: Tresen, Begegnung, Werkstatt oder Rast. Führt einer in eine Spelunke, lies vorher den Malus.',
     shop: 'Für jede geschaffte Kneipe gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Schnäpse helfen im Spiel, und mit Zinken (Auslage, Kartenmaler) machst du deine Karten stärker.',
     boss: 'Obacht, ein Boss! Der biegt in seiner Kneipe eine Regel, also lies genau, was er vorhat.',
@@ -1160,7 +1159,7 @@ export const de = {
       'Schwarz +1, angesagt +1',
       'Ouvert +1',
     ],
-    lostNote: 'Verloren zählt doppelt: Der Spielwert geht zweimal vom Konto ab.',
+    lostNote: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab (im echten Skat doppelt).',
     bentTitle: 'Was hier anders ist',
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',

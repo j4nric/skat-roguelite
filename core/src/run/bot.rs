@@ -454,8 +454,8 @@ fn percent(table: &[i64], index: usize) -> i64 {
 }
 
 /// Expected score of a Null with these ten cards, in hundredths of a point
-/// (won: the value; lost: minus twice the value, as in the series
-/// account), without relics. `exposed` counts the exposed cards
+/// (won: the value; lost: minus the value times
+/// [`crate::content::RUN_LOSS_FACTOR`], as in the series account), without relics. `exposed` counts the exposed cards
 /// ([`null_unsafe_cards`]). The Null formula (DESIGN 9.2) counts the
 /// expected style bonus, each seven held as one ducked trick.
 #[must_use]
@@ -472,14 +472,17 @@ pub fn null_expected_score(
     let (won, lost) = match scoring {
         NullScoring::Fixed => {
             let value = i64::from(crate::rules::null_value(risk.hand(), risk.ouvert())) * 100;
-            (value, 2 * value)
+            (value, crate::content::RUN_LOSS_FACTOR * value)
         }
         NullScoring::Formula(f) => {
             let base = i64::from(f.base_value);
             let step = i64::from(risk.step()) * 100;
             let sevens = i64::try_from(count_rank(hand, Rank::Seven)).unwrap_or(0);
             let style = sevens * i64::from(f.per_seven_ducked) * 100 + NULL_STYLE_EXTRA;
-            (base * (step + style), 2 * base * step)
+            (
+                base * (step + style),
+                crate::content::RUN_LOSS_FACTOR * base * step,
+            )
         }
     };
     (win * won - (100 - win) * lost) / 100
@@ -488,7 +491,8 @@ pub fn null_expected_score(
 /// Expected score of a suit game or grand with these ten cards, in
 /// hundredths of a point, without relics: the Spielwert with the Spitzen
 /// of `all_cards` (the ten plus the skat, which counts for the Spitzen),
-/// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost twice.
+/// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost
+/// [`crate::content::RUN_LOSS_FACTOR`] times (once since 04.11.2026).
 /// `deck` is every card of the game (for trumps missing from the deck).
 ///
 /// `win_threshold` is the Augen the game needs (`61 + stake`, lowered by
@@ -529,7 +533,7 @@ pub fn suit_expected_score(
     let matadors = crate::rules::matadors(game, &faces).count;
     let levels = matadors + 1 + u32::from(declaration.hand());
     let value = i64::from(base) * i64::from(levels) * 100;
-    (win * value - (100 - win) * 2 * value) / 100
+    (win * value - (100 - win) * crate::content::RUN_LOSS_FACTOR * value) / 100
 }
 
 /// The simple run policy.
@@ -2173,13 +2177,14 @@ mod tests {
         });
         let null = Declaration::null(NullRisk::Normal);
         let sevens = hand("C7 S7 H7 C8 S8 H9 D8 D9 DT DQ");
-        // 76 % of 23 × 4.3, minus 24 % of 46.
-        assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6412);
-        assert!(null_expected_score(&sevens, 4, null, &formula) < 0);
-        // Fixed: 76 % of 23, minus 24 % of 46.
+        // 76 % of 23 × 4.3, minus 24 % of 23 (a lost game counts once
+        // since 04.11.2026).
+        assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6964);
+        assert!(null_expected_score(&sevens, 7, null, &formula) < 0);
+        // Fixed: 76 % of 23, minus 24 % of 23.
         assert_eq!(
             null_expected_score(&sevens, 1, null, &NullScoring::Fixed),
-            644
+            1196
         );
         let hearts = suit(Suit::Hearts);
         let deck: Vec<DealtCard> = crate::deck::Edition::standard()
@@ -2192,8 +2197,8 @@ mod tests {
             .collect();
         let five = hand("HJ HA HT H9 H8 SA S9 C8 D7 D8");
         let seven = hand("CJ HJ HA HT HK H9 H8 SA S9 C8");
-        // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 60.
-        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), -1320);
+        // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 30.
+        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), 120);
         assert!(suit_expected_score(&seven, &seven, &deck, hearts, 61) > 0);
         assert!(
             null_expected_score(&sevens, 1, null, &formula)

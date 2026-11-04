@@ -178,8 +178,8 @@ fn a_null_ends_with_the_declarers_first_trick() {
         .filter(|e| matches!(e, RunEvent::Game(Event::TrickWon { .. })))
         .count();
     assert!(tricks < 10, "the game stops at the first trick taken");
-    // Lost: −2 × 23 × Risikostufe, no style bonus.
-    assert_eq!(b.score, -2 * 23);
+    // Lost: −23 × Risikostufe, no style bonus (once since 04.11.2026).
+    assert_eq!(b.score, -23);
 }
 
 #[test]
@@ -481,12 +481,13 @@ fn black_peter_pays_won_games_without_schneider_half() {
 
 #[test]
 fn a_lost_ramsch_counts_once_in_the_ramschers_pub() {
-    // 03.11.2026 (DESIGN 17a): the boss rule `SingleLoss`, data in
-    // bosses.ron, not a branch on the boss id.
+    // 03.11.2026 (DESIGN 17a) the boss rule `SingleLoss`; since 04.11.2026
+    // every lost game counts once, the rule is gone from the data and no
+    // line is added.
     let content = content();
     let ramscher = BossId::new("ramscher");
     let def = content.boss(&ramscher).expect("ramscher");
-    assert!(def.passive.contains(&Effect::SingleLoss));
+    assert!(!def.passive.contains(&Effect::SingleLoss));
     for seed in 0..200 {
         let (mut run, _) = Run::new(&content, seed).expect("run");
         run.series.boss = Some(ramscher.clone());
@@ -506,12 +507,10 @@ fn a_lost_ramsch_counts_once_in_the_ramschers_pub() {
                     assert!(breakdown.lines.iter().all(|l| l.lever != Lever::LossFactor));
                     continue;
                 }
-                let once = ScoreLine {
-                    source: Source::Boss(ramscher.clone()),
-                    lever: Lever::LossFactor,
-                    change: Change::Set(1),
-                };
-                assert!(breakdown.lines.contains(&once), "{breakdown:?}");
+                assert!(
+                    breakdown.lines.iter().all(|l| l.lever != Lever::LossFactor),
+                    "{breakdown:?}"
+                );
                 assert_eq!(
                     breakdown.score,
                     -i64::try_from(breakdown.value).expect("small")
@@ -859,7 +858,7 @@ fn null_eight_fifteen_adds_eight_to_every_null() {
         Change::Add(8)
     ));
     assert_eq!(b.base_value, 31);
-    // Lost too: −2 × 31.
+    // Lost too: −31 (a lost game counts once since 04.11.2026).
     let mut run = null_run(&content, &["null_eight_fifteen"]);
     fixed_deal(
         &mut run,
@@ -869,7 +868,7 @@ fn null_eight_fifteen_adds_eight_to_every_null() {
     );
     let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Normal));
     assert!(!b.won);
-    assert_eq!(b.score, -2 * 31);
+    assert_eq!(b.score, -31);
 }
 
 #[test]

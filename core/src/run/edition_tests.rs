@@ -90,18 +90,19 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // hashes were recorded again with the Kneipentour (ADR 0016): its
     // opponents (PIMC 8:3 instead of 6:2) and Zielwerte changed. Seeds 42
     // and 99 again with the steep Zielwerte of 03.11.2026: the pub ends
-    // later, the deals are the same.
+    // later, the deals are the same. All again on 04.11.2026: a lost game
+    // counts once, which changes the scores and the bot's choices.
     assert_eq!(
         hashes,
         vec![
-            14_014_214_924_750_367_174,
-            3_945_578_528_229_563_393,
-            10_743_877_141_182_057_974,
-            11_881_650_903_804_866_197,
+            8_372_553_221_233_023_206,
+            12_912_900_704_559_812_833,
+            2_311_626_695_843_553_887,
+            4_391_168_479_812_042_796,
             8_533_871_236_692_366_623,
-            667_397_997_431_229_310,
-            13_458_722_017_759_859_422,
-            51_271_920_649_180_957,
+            1_970_303_883_358_432_031,
+            11_370_352_877_980_222_910,
+            2_884_972_791_164_610_454,
         ]
     );
 }

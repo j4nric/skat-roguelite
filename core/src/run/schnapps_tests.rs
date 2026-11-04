@@ -5,7 +5,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play};
 use super::*;
 use crate::cards::Suit;
-use crate::content::{ConsumableCategory, ConsumableId, Factor, ScoreTerm};
+use crate::content::{ConsumableCategory, ConsumableId, Factor};
 use crate::rules::{GameType, RiskLevel, is_trump};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
@@ -197,14 +197,15 @@ fn double_grain_deals_again_and_doubles_the_next_declared_game() {
     }));
     assert_eq!(won.value, 2 * base.value);
     assert!(run.pending_next_game().is_empty(), "used up");
-    // Lost, it counts double as well: −2 × doubled value.
+    // Lost, it counts double as well: −1 × doubled value (a lost game
+    // counts once since 04.11.2026).
     let mut run = run_with(&content, &["double_grain"]);
     run.apply(&content, use_item(0)).expect("drink");
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, lost) = play(&mut run, &content, hand(CLUBS));
     assert!(!lost.won);
     assert_eq!(lost.multiplier, Factor::from_int(2));
-    assert_eq!(lost.score, -2 * i64::try_from(lost.value).expect("value"));
+    assert_eq!(lost.score, -i64::try_from(lost.value).expect("value"));
     // Not at the Tresen (no hand to deal again), not after the
     // declaration, not after picking up the skat.
     let mut run = run_with(&content, &["double_grain"]);
@@ -256,7 +257,9 @@ fn herbal_deals_again_without_an_einmischen() {
 }
 
 #[test]
-fn bitters_makes_the_next_lost_game_count_single() {
+fn bitters_is_dormant_since_every_lost_game_counts_single() {
+    // "Magenbitter" made a lost game count once; since 04.11.2026 every
+    // lost game does, so it adds no line any more.
     let content = crate::run::legacy_content();
     let mut run = run_with(&content, &["bitters", "bitters"]);
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
@@ -265,23 +268,8 @@ fn bitters_makes_the_next_lost_game_count_single() {
     assert_eq!(run.apply(&content, use_item(0)), Err(RunError::WrongPhase));
     let (_, lost) = play(&mut run, &content, hand(CLUBS));
     assert!(!lost.won);
-    let line = ScoreLine {
-        source: source("bitters"),
-        lever: Lever::LossFactor,
-        change: Change::Set(1),
-    };
-    assert!(lost.lines.contains(&line));
+    assert!(lost.lines.iter().all(|l| l.lever != Lever::LossFactor));
     assert_eq!(lost.score, -i64::try_from(lost.value).expect("value"));
-    let last = lost.steps().pop().expect("steps");
-    assert_eq!(last.term, ScoreTerm::Line(line));
-    assert_eq!(last.multiplier, lost.multiplier);
-    // Won, it does nothing and is used up by the game anyway.
-    let mut run = run_with(&content, &["bitters"]);
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    run.apply(&content, use_item(0)).expect("drink");
-    let (_, won) = play(&mut run, &content, hand(DIAMONDS));
-    assert!(won.won);
-    assert!(won.lines.iter().all(|l| l.lever != Lever::LossFactor));
     assert!(run.pending_next_game().is_empty());
 }
 

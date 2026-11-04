@@ -9,8 +9,14 @@
 //! Stufen     = max(1, Gewinnstufen nach Regel + Σ Stufen-Zuschläge)
 //! Spielwert  = Grundwert × Stufen × Π Spielwert-Faktoren (Kontra, Re, ×1,5 …),
 //!              auf ganze Zahlen gerundet (halbe auf)
-//! Ergebnis   = Spielwert, verloren −2 × Spielwert ("Magenbitter": −1 ×)
+//! Ergebnis   = Spielwert, verloren −1 × Spielwert (RUN_LOSS_FACTOR)
 //! ```
+//!
+//! The run account counts a lost game single (user decision 04.11.2026),
+//! unlike the Skatordnung, which subtracts twice the Spielwert. The pure
+//! rules ([`crate::rules::game_value`]) keep the Skatordnung's `−2 ×`
+//! and are tested against it in `core/tests/game_value_vectors.rs`; only
+//! the score of the run ([`score_parts`]) applies [`RUN_LOSS_FACTOR`].
 //!
 //! Additions come before multiplications, as in Balatro. Lines on the
 //! levers Augen, Gewinnschwelle and Schneider are informational: they
@@ -23,6 +29,11 @@ use crate::rules::{
     Declaration, GameType, LevelParts, Matadors, Outcome, SeatTotals, Thresholds, ValueParts,
     game_value_parts,
 };
+
+/// How often a lost game's Spielwert is subtracted from the run account
+/// (the pub's Konto). The Skatordnung says 2; the run counts a lost game
+/// single since the user's decision of 04.11.2026 (DESIGN 4.3).
+pub const RUN_LOSS_FACTOR: i64 = 1;
 
 /// Where a modification comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -67,8 +78,11 @@ pub enum Lever {
     WinThreshold,
     /// Schneider (informational).
     Schneider,
-    /// Factor of a lost game against the series account: 2 by the rules
-    /// of the run, `Set(n)` by "Magenbitter" (1). Only on lost games.
+    /// Factor of a lost game against the series account:
+    /// [`RUN_LOSS_FACTOR`] (1) by the rules of the run, `Set(n)` by a line.
+    /// Only on lost games. Since 04.11.2026 no content sets it (the old
+    /// `SingleLoss` lines of "Magenbitter" and the Ramscher are dormant,
+    /// every lost game counts single anyway).
     LossFactor,
 }
 
@@ -130,8 +144,9 @@ pub struct ScoreBreakdown {
     /// Spielwert after modifiers: `base_value × levels × multiplier`,
     /// rounded half up.
     pub value: u64,
-    /// Signed result for the series account: `value` or `-2 × value` (a
-    /// [`Lever::LossFactor`] line sets the 2).
+    /// Signed result for the series account: `value` or
+    /// `-RUN_LOSS_FACTOR × value`, i.e. `-value` (a [`Lever::LossFactor`]
+    /// line sets the factor).
     pub score: i64,
     /// Augen and tricks per seat, set by the run (who has the most Augen
     /// in a Ramsch); `None` when scored from an [`Outcome`] alone.
@@ -366,7 +381,7 @@ pub fn score_parts(
     let mut base_mul: u64 = 1;
     let mut level_add: i64 = 0;
     let mut value_mul = Factor::ONE;
-    let mut loss_factor: i64 = 2;
+    let mut loss_factor: i64 = RUN_LOSS_FACTOR;
     for line in &lines {
         match (line.lever, line.change) {
             (Lever::LossFactor, Change::Set(n)) => loss_factor = n.max(0),
@@ -449,8 +464,14 @@ mod tests {
                 let rules = game_value(decl, MIT_2, &o);
                 let b = score_game(decl, MIT_2, &o, &Thresholds::default(), Vec::new());
                 assert_eq!(b.value, u64::from(rules.value));
-                assert_eq!(b.score, i64::from(rules.score));
                 assert_eq!(b.won, rules.won);
+                // The rules subtract twice (Skatordnung), the run once.
+                if rules.won {
+                    assert_eq!(b.score, i64::from(rules.score));
+                } else {
+                    assert_eq!(i64::from(rules.score), -2 * i64::from(rules.value));
+                    assert_eq!(b.score, -i64::from(rules.value));
+                }
             }
         }
     }
@@ -548,7 +569,7 @@ mod tests {
         assert_eq!(b.value, 240);
         assert_eq!(b.score, 240);
         assert_eq!(b.lines_of(&relic).count(), 4);
-        // Lost: −2 × value including modifiers.
+        // Lost: −1 × value including modifiers (the run counts single).
         let b = score_game(
             decl,
             MIT_2,
@@ -556,7 +577,7 @@ mod tests {
             &Thresholds::default(),
             vec![line(Lever::GameValue, Change::Multiply(2))],
         );
-        assert_eq!(b.score, -2 * 36 * 2);
+        assert_eq!(b.score, -36 * 2);
     }
 
     #[test]
@@ -597,6 +618,6 @@ mod tests {
             vec![scale(1500), kontra, scale(1500)],
         );
         assert_eq!(b.multiplier, Factor::from_permille(4500));
-        assert_eq!((b.value, b.score), (122, -244));
+        assert_eq!((b.value, b.score), (122, -122));
     }
 }

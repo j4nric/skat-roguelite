@@ -29,7 +29,8 @@ pub use engine::{
     owns_card_points, resolve_edition,
 };
 pub use score::{
-    Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
+    Change, Lever, RUN_LOSS_FACTOR, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source,
+    score_game, score_parts,
 };
 
 macro_rules! content_id {
@@ -1261,7 +1262,9 @@ pub enum NextGameEffect {
     /// The Spielwert counts this many times, won or lost ("Doppelkorn").
     Multiply(u32),
     /// Lost, the game counts once instead of twice ("Magenbitter"). Won,
-    /// it does nothing; it is used up by the game either way.
+    /// it does nothing; it is used up by the game either way. Dormant
+    /// since 04.11.2026: every lost game counts once
+    /// ([`RUN_LOSS_FACTOR`]).
     SingleLoss,
     /// Won, the Spielwert counts this many times; lost, it counts as
     /// usual ("Eierlikör"). Used up by the game either way.

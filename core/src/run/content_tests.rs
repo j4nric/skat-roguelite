@@ -260,7 +260,7 @@ fn kontra_doubles_and_re_quadruples() {
     ));
     assert_eq!(
         breakdown.score,
-        -2 * i64::try_from(breakdown.base_value * breakdown.levels * 4).expect("small")
+        -i64::try_from(breakdown.base_value * breakdown.levels * 4).expect("small")
     );
     // Without the house rule nobody says Kontra.
     let mut run = relic_run(&content, &[]);
@@ -1367,4 +1367,44 @@ fn every_consumable_giving_lives_names_the_maximum() {
         }
     }
     assert!(seen > 0, "no consumable gives a life");
+}
+
+/// Since 04.11.2026 every lost game counts once against the pub's account
+/// (`RUN_LOSS_FACTOR`), for every character, in a normal pub and under
+/// every boss rule (the Ramscher's Ramsch: `m4_tests`), with Kontra and Re
+/// (`kontra_doubles_and_re_quadruples`) and in the Null (`m4_tests`).
+#[test]
+fn a_lost_game_counts_once_for_every_character_and_boss() {
+    let content = content();
+    let mut bosses: Vec<Option<BossId>> = vec![None];
+    bosses.extend(
+        content
+            .bosses
+            .keys()
+            .filter(|b| b.as_str() != "ramscher")
+            .cloned()
+            .map(Some),
+    );
+    for character in crate::content::Character::ALL {
+        let start = RunStart {
+            character,
+            ..RunStart::default()
+        };
+        for boss in &bosses {
+            let (mut run, _) = Run::new_with(&content, 11, &start).expect("start");
+            run.series.boss = boss.clone();
+            fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+            let before = run.series.score;
+            let (_, b) = play(&mut run, &content, hand_game(CLUBS));
+            let name = format!("{character:?} {boss:?}");
+            assert!(!b.won, "{name}");
+            assert!(
+                b.lines.iter().all(|l| l.lever != Lever::LossFactor),
+                "{name}"
+            );
+            let value = i64::try_from(b.value).expect("small");
+            assert_eq!(b.score, -value, "{name}");
+            assert_eq!(run.series.score, before - value, "{name}");
+        }
+    }
 }

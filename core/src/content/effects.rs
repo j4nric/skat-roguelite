@@ -397,9 +397,10 @@ pub enum Effect {
     #[serde(alias = "RamschOnce")]
     Ramsch,
     /// Lever Spielwert: a lost game counts once against the player instead
-    /// of twice, as "Magenbitter" did (boss "Der Ramscher" since
-    /// 03.11.2026: a lost Ramsch in his pub). Passive or on deal, so it
-    /// holds for every game under the rule.
+    /// of twice, as "Magenbitter" did (boss "Der Ramscher" from 03.11.2026
+    /// to 04.11.2026). Dormant since 04.11.2026: every lost game counts
+    /// once ([`super::RUN_LOSS_FACTOR`]), so it changes nothing; it stays
+    /// readable for old data.
     SingleLoss,
     /// Lever Flüche (boss "Die Oma", ADR 0017): when the first game under
     /// this rule is dealt, `cards` random cards of the player's edition
