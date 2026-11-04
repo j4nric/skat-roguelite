@@ -1,6 +1,6 @@
 # 0016: Die Kneipentour statt Abschnitten und Serien
 
-Datum: 2026-11-02 · Status: Angenommen, Boss-Kneipe geändert durch [0017](0017-bosse-v2.md) (verloren beendet sie den Run, zwei Boss-Spieler) · Ersetzt die Run-Struktur aus Abschnitten und Serien (DESIGN 5, 5.1, 5.3 bis 02.11.2026)
+Datum: 2026-11-02 · Status: Angenommen, Boss-Kneipe geändert durch [0017](0017-bosse-v2.md) (verloren beendet sie den Run, zwei Boss-Spieler), Leben entfallen durch [0019](0019-keine-leben.md) · Ersetzt die Run-Struktur aus Abschnitten und Serien (DESIGN 5, 5.1, 5.3 bis 02.11.2026)
 
 ## Kontext
 
