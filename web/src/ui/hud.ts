@@ -173,7 +173,7 @@ export function renderHud(view: RunView): string {
   // the slate, written out for screen readers.
   const progress = `<span class="pub-progress" data-testid="pub-progress">${esc(t(de.pub.game, { game, limit: s.game_limit }))}<span class="sr-only"> · ${esc(t(de.pub.points, { score: s.score, target: s.target }))}</span></span>`;
   const malus = pub?.malus
-    ? `<span class="flag-chip is-malus" data-testid="pub-malus" ${attrs({ title: pub.malus.text })}>${esc(t(de.pub.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}</span>`
+    ? `<button class="flag-chip is-malus" data-testid="pub-malus" ${attrs({ 'data-action': 'info-malus', 'data-info': `malus:${pub.malus.id}`, title: pub.malus.text })}>${esc(t(de.pub.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}</button>`
     : '';
   // The boss chip only while the boss pub is the one at hand: at its
   // table, or on the route when it is the next target. After the boss pub

@@ -2509,6 +2509,7 @@ export class App {
       case 'info-offer-relic':
       case 'info-offer-item':
       case 'info-item':
+      case 'info-malus':
       case 'info-card': {
         // A tap on these opens their info card (the same as a long-press).
         const key = el.dataset.info;
