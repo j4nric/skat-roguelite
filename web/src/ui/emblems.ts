@@ -2,7 +2,8 @@
 // and boss is drawn as a small object with its own 16 × 16 pixel motif.
 // - Relics are beer mats whose shape and paper follow their category
 //   (RelicGroup): Grundwert round, Multiplikator a sunburst, Kontrolle a
-//   rounded square, Tresen und Tour an inn sign shield.
+//   rounded square, Tresen und Tour an inn sign shield, Faktor an amber
+//   hexagon (ADR 0018, provisional).
 // - Schnäpse are no mats but consumables at first sight: a bottle, a label
 //   or a shot glass (SchnapsStyle). Other items keep an octagonal mat.
 // - Bosses keep their torn dark mat with a red dashed ring.
@@ -1123,6 +1124,109 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       bddddddddaaddb
       bbbbbbbbbbbbbb`),
   ],
+  // ---- Faktor (ADR 0018, 04.11.2026): one motif each, provisional.
+  jay: [
+    sp('Eichelhäher mit Eichel', `
+      ....nnn....
+      ...nwkwn...
+      ..nnnnnnoo.
+      .ppppppp...
+      ppppJJJpp..
+      .ppJwJwJpk.
+      ..pppppppkk
+      ...yy....kk
+      ..bbbb.....
+      ..yyyy.....
+      ...yy......`),
+  ],
+  tree_frog: [
+    sp('Laubfrosch', `
+      ..ww....ww..
+      .wkw....wkw.
+      .eeeeeeeeee.
+      eeeeeeeeeeee
+      eemmmmmmmmee
+      eeeeeeeeeeee
+      .eeMeeeeMee.
+      ee.ee..ee.ee`),
+  ],
+  robin: [
+    sp('Rotkehlchen', `
+      ....bbbb....
+      ...bbkbbb...
+      ..bbbbbbbO..
+      ..rrrrbbb...
+      .rrrrrrbbb..
+      .rrrrrrbbbb.
+      ..rrrrbbbbbb
+      ...wwwbbb..b
+      ....k..k....`),
+  ],
+  bell_tree: [
+    sp('Schellenbaum', `
+      .....YY.....
+      ....YkkY....
+      .....yy.....
+      ..L..yy..L..
+      .LLL.yy.LLL.
+      .LkL.yy.LkL.
+      ..L..yy..L..
+      .....yy.....
+      .....yy.....
+      ....yyyy....`),
+  ],
+  grand_seigneur: [
+    sp('Zylinder und Monokel', `
+      ...kkkkkk...
+      ...kkkkkk...
+      ...kkkkkk...
+      ...rrrrrr...
+      .kkkkkkkkkk.
+      ..ssssssss..
+      ..sYYsskss..
+      ..sYYsssss..
+      ..ssssssss..
+      ...snnnns...`),
+  ],
+  black_zero: [
+    sp('Schwarze Null', `
+      ...ddddd...
+      ..ddgggdd..
+      .ddd...ddd.
+      .dd.....dd.
+      .dd.....dd.
+      .dd.....dd.
+      .ddd...ddd.
+      ..ddddddd..
+      ...ddddd...`),
+  ],
+  tap: [
+    sp('Zapfhahn', `
+      ..yyyyyyyy..
+      ..yYYYYYYy..
+      .....yy.....
+      ...yyyyyy...
+      ...yYYYYy...
+      ...yyyyyyyyy
+      .........yyy
+      .........yy.
+      ..........a.
+      .........aaa
+      ..........a.`),
+  ],
+  hot_hand: [
+    sp('Hand mit Flamme', `
+      ....r..o....
+      ...rro.oo...
+      ..roooolo...
+      ..rolllllo..
+      ...ollllo...
+      ..ss.ss.ss..
+      ..ss.ss.ss.s
+      ..ssssssssss
+      ..sssssssss.
+      ...sssssss..`),
+  ],
   guardian_angel: [
     sp('Herz mit Flügeln', `
       ....YYYYYYY
@@ -1518,6 +1622,15 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   jinx: 0,
   // Glasauge (04.11.2026): one motif.
   glass_eye: 0,
+  // Faktor (04.11.2026): one motif each, provisional.
+  jay: 0,
+  tree_frog: 0,
+  robin: 0,
+  bell_tree: 0,
+  grand_seigneur: 0,
+  black_zero: 0,
+  tap: 0,
+  hot_hand: 0,
   rotgut: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
@@ -1830,6 +1943,15 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   slate: 'Tour',
   guardian_angel: 'Tour',
   dive_expert: 'Tour',
+  // Faktor (ADR 0018)
+  jay: 'Factor',
+  tree_frog: 'Factor',
+  robin: 'Factor',
+  bell_tree: 'Factor',
+  grand_seigneur: 'Factor',
+  black_zero: 'Factor',
+  tap: 'Factor',
+  hot_hand: 'Factor',
 };
 
 /** German names of the categories, for the art vote board only. */
@@ -1838,6 +1960,7 @@ export const GROUP_LABEL: Record<RelicGroup, string> = {
   Multiplier: 'Multiplikator und Gewinngrenze',
   Control: 'Geben, Skat und Durchblick',
   Tour: 'Tresen und Tour',
+  Factor: 'Faktor',
 };
 
 /** Every drawn form: four relic mats, the item mat, the boss mat and three Schnaps styles. */
@@ -1877,6 +2000,8 @@ const FORMS: Record<Exclude<Form, 'Boss'>, FormSpec> = {
   Control: { pts: roundedSquarePts(), paper: '#d6e2ec', motif: [22, 20, 3.5], pips: 'bottom' },
   // Tour: an inn sign shield.
   Tour: { pts: shieldPts(), paper: '#d8ebdf', motif: [22, 16, 3.5], pips: 'top' },
+  // Faktor (ADR 0018, provisional): an amber hexagon.
+  Factor: { pts: radialPts(6, () => 47, 0), paper: '#f3dfa0', motif: [22, 20, 3.5], pips: 'bottom' },
   // Other consumables (not Schnaps): the octagonal mat.
   Item: { pts: radialPts(8, () => 47, Math.PI / 8), paper: '#e4d2bd', motif: [22, 20, 3.5], pips: 'bottom' },
   // S1: a bottle, the motif on its belly.
@@ -2032,7 +2157,7 @@ export type CoasterKind = RelicGroup | RelicKind | 'Schnapps' | 'Item' | 'Boss';
 /** A rarity, or the boss red. */
 export type CoasterRing = Rarity | 'Boss';
 
-const isGroup = (k: string): k is RelicGroup => k === 'Value' || k === 'Multiplier' || k === 'Control' || k === 'Tour';
+const isGroup = (k: string): k is RelicGroup => k === 'Value' || k === 'Multiplier' || k === 'Control' || k === 'Tour' || k === 'Factor';
 
 /** The category of a relic: the group from the core, else the fallback by id, else Value. */
 export function relicGroupOf(id: string, group?: RelicGroup | null): RelicGroup {

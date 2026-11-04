@@ -43,6 +43,7 @@ export function renderRules(): string {
       <p class="rules-note">${esc(r.nullNote)}</p>
       <h4 class="rules-sub">${esc(r.levelsTitle)}</h4>
       <ul class="rules-list">${list(r.levels)}</ul>
+      <p class="rules-note" data-testid="rules-factor">${esc(r.factorNote)}</p>
       <p class="rules-note is-warn">${esc(r.lostNote)}</p>
       <h3 class="rules-h">${esc(r.bentTitle)}</h3>
       <ul class="rules-list">${list(r.bent)}</ul>

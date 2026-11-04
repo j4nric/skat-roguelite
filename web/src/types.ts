@@ -210,7 +210,7 @@ export interface GuestInfo {
 }
 
 /** Display group of a relic (shape of its beer mat), from the content. */
-export type RelicGroup = 'Value' | 'Multiplier' | 'Control' | 'Tour';
+export type RelicGroup = 'Value' | 'Multiplier' | 'Control' | 'Tour' | 'Factor';
 
 export interface RelicInfo {
   id: string;
@@ -693,6 +693,7 @@ export type EncounterEffect =
   | { NextPubRedeals: number }
   | 'SeeSkat'
   | { Schnapps: string | null }
+  /** A life (until ADR 0019); an old save offers Groschen instead. */
   | { Lives: number }
   | { Scout: number }
   | { Bet: { on: 'Schneider' | 'Win'; percent: number } }
@@ -708,7 +709,6 @@ export type OptionBlock =
   | 'NoFittingCard'
   | 'NoRelic'
   | 'RelicSlotsFull'
-  | 'LivesFull'
   | 'BetOpen'
   | 'NotNeeded';
 
@@ -778,7 +778,7 @@ export interface RunView {
   sections: number;
   /** Always the ganzer Abend since ADR 0016. */
   length: RunLength;
-  /** The Kneipentour: lives, the city, the route choice (ADR 0016). */
+  /** The Kneipentour: the city, the route choice (ADR 0016). */
   tour: TourView;
   /** Stake of the Einsatz-Leiter (DESIGN 9.3), 0 for the normal game. */
   stake: number;
@@ -917,10 +917,6 @@ export interface DistrictView {
 }
 
 export interface TourView {
-  lives: number;
-  /** Lives at the start of a run: the head never shows an empty heart above them. */
-  start_lives: number;
-  max_lives: number;
   map_seed: number;
   districts: DistrictView[];
   current: PubPreview | null;
@@ -1005,7 +1001,6 @@ export type RunEvent =
   | { RouteOpened: { section: number; index: number } }
   | { RouteChosen: { option: number; transport: Transport; spelunke: boolean } }
   | { PubLost: { section: number; index: number; boss: string | null } }
-  | { LivesChanged: { change: number; lives: number } }
   | { RelicGained: { relic: string } }
   | { GameDealt: { number: number; forehand: Seat } }
   | { Game: GameEvent }
@@ -1077,7 +1072,8 @@ export type RunEvent =
   /** Item review (02.11.2026). */
   | 'RoutesRerolled'
   | { DebtChanged: { debt: number } }
-  | { LifeSpared: { source: Source } }
+  /** "Schutzengel" (ADR 0019): the lost pub is played again, the relic is gone. */
+  | { SecondChance: { relic: string; section: number; index: number } }
   | { CoinsStashed: { source: Source; amount: number; pot: number; coins: number } }
   /** A relic that stashes Groschen left; its pot was paid out as it was. */
   | { StashPaidOut: { relic: string; amount: number; coins: number } }

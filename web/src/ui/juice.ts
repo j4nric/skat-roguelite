@@ -12,7 +12,7 @@
 import { sound } from '../audio';
 import type { RunView } from '../types';
 import { dur, motionOn, play, tween } from './fx';
-import { coinIcon, heart, meterPercent } from './hud';
+import { coinIcon, meterPercent } from './hud';
 
 /** The fixed layer above everything (dialogs too) that holds the flying sprites. */
 export function layer(): HTMLElement {
@@ -159,14 +159,13 @@ function clink(i: number): void {
 }
 
 /**
- * What the head of the run shows of the account, the Groschen and the
- * lives, and how changes get there: the account counts up, coins fly into
- * the purse, a lost heart breaks. The head is drawn anew on every render;
+ * What the head of the run shows of the account and the Groschen, and how
+ * changes get there: the account counts up, coins fly into the purse. The head is drawn anew on every render;
  * `sync` compares the view with what was shown last and animates the
  * difference.
  */
 export class HudFx {
-  private shown: { run: string; series: string; score: number; target: number; coins: number; lives: number } | null = null;
+  private shown: { run: string; series: string; score: number; target: number; coins: number } | null = null;
   /** Bumped when a count of the account must stop (new series, new run). */
   private token = 0;
   /** The account value a running count shows right now (repainted after a render). */
@@ -205,7 +204,7 @@ export class HudFx {
   sync(view: RunView): void {
     const run = `${view.seed}|${view.character.character}|${view.length}|${view.stake ?? 0}`;
     const series = `${view.series.section}|${view.series.index}`;
-    const now = { run, series, score: view.series.score, target: view.series.target, coins: view.coins, lives: view.tour.lives };
+    const now = { run, series, score: view.series.score, target: view.series.target, coins: view.coins };
     const s = this.shown;
     if (!s || s.run !== run) {
       this.reset();
@@ -231,7 +230,6 @@ export class HudFx {
     } else if (this.ghost) {
       this.placeGhost();
     }
-    if (s.lives !== now.lives) this.lives(now.lives);
   }
 
   /** Count the account in the head up (or down) to `to`. */
@@ -381,116 +379,6 @@ export class HudFx {
     );
     const b = purse.querySelector('b');
     if (b) play(b, [{ color: '#e0675c' }, { color: '#e0675c', offset: 0.6 }, {}], { duration: dur(600), easing: 'steps(3)' });
-  }
-
-  /**
-   * The lives changed (LivesChanged, or seen on a render): a lost heart in
-   * the head breaks into pixel shards that fall and fade; a new one pops in
-   * with a pulse. Works on the head as it is on screen right now.
-   */
-  lives(lives: number): void {
-    const s = this.shown;
-    const before = s?.lives ?? lives;
-    if (s) s.lives = lives;
-    const box = this.screen.querySelector<HTMLElement>('.hud [data-testid="lives"]');
-    if (!box || before === lives) return;
-    const hearts = Array.from(box.querySelectorAll<SVGElement>('.heart'));
-    const size = Number(hearts[0]?.getAttribute('width') ?? 14);
-    const swap = (i: number, full: boolean): Element | null => {
-      const tpl = document.createElement('template');
-      tpl.innerHTML = heart(full, size);
-      const fresh = tpl.content.firstElementChild;
-      if (!fresh) return null;
-      const old = hearts[i];
-      if (old) old.replaceWith(fresh);
-      else box.appendChild(fresh);
-      return fresh;
-    };
-    box.dataset.lives = String(lives);
-    if (lives < before) {
-      for (let i = lives; i < before; i++) {
-        const old = hearts[i];
-        if (!old) continue;
-        const r = old.getBoundingClientRect();
-        swap(i, false);
-        if (motionOn()) this.shatter(r, i - lives);
-      }
-      return;
-    }
-    for (let i = before; i < lives; i++) {
-      const fresh = swap(i, true);
-      if (!fresh || !motionOn()) continue;
-      fresh.classList.add('is-popping');
-      const anim = play(
-        fresh,
-        [
-          { transform: 'scale(0)', opacity: 0 },
-          { transform: 'scale(1.7)', opacity: 1, offset: 0.45 },
-          { transform: 'scale(0.85)', offset: 0.7 },
-          { transform: 'scale(1.25)', offset: 0.85 },
-          { transform: 'scale(1)' },
-        ],
-        { duration: dur(620), delay: dur((i - before) * 180), easing: 'steps(8)', fill: 'backwards' },
-      );
-      const off = (): void => fresh.classList.remove('is-popping');
-      anim.finished.then(off, off);
-      // A ring of light around it, a pixel square that grows and fades.
-      const r = fresh.getBoundingClientRect();
-      const ring = sprite('fx-ring', '', r.left + r.width / 2, r.top + r.height / 2);
-      gone(
-        play(ring, [{ transform: 'translate(-50%, -50%) scale(0.4)', opacity: 1 }, { transform: 'translate(-50%, -50%) scale(2.2)', opacity: 0 }], {
-          duration: dur(520),
-          delay: dur((i - before) * 180 + 200),
-          easing: 'steps(6)',
-          fill: 'backwards',
-        }),
-        ring,
-      );
-    }
-  }
-
-  /** A heart at `r` breaks: two halves tilt apart, pixel shards fall and fade. */
-  private shatter(r: DOMRect, order: number): void {
-    const c = mid(r);
-    const delay = order * 160;
-    const half = (side: -1 | 1): void => {
-      const el = sprite(`fx-heart-half ${side < 0 ? 'is-left' : 'is-right'}`, heart(true, Math.round(r.width)), c.x, c.y);
-      el.dataset.testid = 'heart-shard';
-      gone(
-        play(
-          el,
-          [
-            { transform: 'translate(-50%, -50%)', opacity: 1 },
-            { transform: `translate(calc(-50% + ${side * 2}px), -50%) rotate(${side * 12}deg)`, opacity: 1, offset: 0.25 },
-            { transform: `translate(calc(-50% + ${side * 9}px), calc(-50% + 34px)) rotate(${side * 40}deg)`, opacity: 0 },
-          ],
-          { duration: dur(820), delay: dur(delay), easing: 'steps(10)', fill: 'backwards' },
-        ),
-        el,
-      );
-    };
-    half(-1);
-    half(1);
-    const colours = ['#c8312b', '#c8312b', '#6e1410', '#f4a39c'];
-    for (let k = 0; k < 8; k++) {
-      const el = sprite('fx-shard', '', c.x + jitter(r.width / 3), c.y + jitter(r.height / 3));
-      el.style.background = colours[k % colours.length] ?? '#c8312b';
-      el.dataset.testid = 'heart-shard';
-      const dx = jitter(16);
-      const fall = 26 + Math.random() * 22;
-      gone(
-        play(
-          el,
-          [
-            { transform: 'translate(0, 0)', opacity: 1 },
-            { transform: `translate(${dx * 0.5}px, -6px)`, opacity: 1, offset: 0.2 },
-            { transform: `translate(${dx}px, ${fall}px)`, opacity: 0 },
-          ],
-          { duration: dur(700 + Math.random() * 300), delay: dur(delay + 120), easing: 'steps(9)', fill: 'backwards' },
-        ),
-        el,
-      );
-    }
   }
 }
 

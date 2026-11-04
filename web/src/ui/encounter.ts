@@ -11,7 +11,7 @@ import type { EncounterEffectView, EncounterOptionView, RunView } from '../types
 import { modIcon } from './cards';
 import { glossarySample } from './glossary';
 import { attrs, esc } from './dom';
-import { coinIcon, heart } from './hud';
+import { coinIcon } from './hud';
 import { consumableCoaster, relicCoaster } from './emblems';
 import { mapIcon } from './mapicons';
 import { encounterFaces, portrait } from './people';
@@ -108,9 +108,6 @@ function modLine(e: EncounterEffectView, where: string): string {
   return `<span class="enc-mod ${curse ? 'is-curse' : ''}" ${attrs({ 'data-card-mod': mod.id })}>${modIcon(mod.id, 22)}<span><b>${esc(head)}</b>${curse ? `<span class="curse-tag">${esc(de.card.curse)}</span>` : ''}<span class="enc-mod-text">${esc(mod.text || contentText('card_mods', mod.id))}</span><span class="enc-mod-text">${esc(where)}</span></span></span>`;
 }
 
-/** Most lives a player can hold, for the lines (set per render). */
-let maxLives = 4;
-
 /** One line per effect; a second Zinke of an option goes on "another" card. */
 function effectLine(e: EncounterEffectView, o: EncounterOptionView, i: number): string {
   const f = e.effect;
@@ -170,7 +167,6 @@ function effectLine(e: EncounterEffectView, o: EncounterOptionView, i: number): 
     const text = line(t(de.encounter.schnapps, { name: contentName('consumables', id), text: contentText('consumables', id) }));
     return e.coins_instead != null ? text + line(t(de.encounter.schnappsFull, { n: e.coins_instead })) : text;
   }
-  if ('Lives' in f) return line(t(de.encounter.lives, { n: f.Lives, max: maxLives }));
   if ('Scout' in f) return line(t(de.encounter.scout, { n: f.Scout }));
   if ('Bet' in f) {
     const text = f.Bet.on === 'Win' ? de.encounter.betWin : de.encounter.betSchneider;
@@ -190,7 +186,6 @@ function optionPic(o: EncounterOptionView): string {
   if ('Mark' in f) return markedCard(f.Mark.card === 'Chosen');
   if ('Marke' in f) return markedCard(f.Marke.card === 'Chosen');
   if ('Dice' in f) return die(o.cost);
-  if ('Lives' in f) return heart(true, 34);
   if ('Scout' in f) return mapIcon('position', 34);
   if ('NextGameFactor' in f || 'NextPubRedeals' in f) return glass();
   if ('Schnapps' in f && first.consumable) return `<span class="enc-coaster">${consumableCoaster(first.consumable, { size: 44 })}</span>`;
@@ -226,7 +221,6 @@ export function renderEncounter(view: RunView): string {
   const faces = encounterFaces(e.id)
     .map((f) => portrait(f, 'portrait-enc'))
     .join('');
-  maxLives = view.tour.max_lives;
   // A fallback ("Zuschauen") shows only when nothing else can be taken.
   const options = e.options
     .filter((o) => o.blocked !== 'NotNeeded')

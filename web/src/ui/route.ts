@@ -220,7 +220,7 @@ function lineSample(way: Way): string {
   return `<span class="route-line" style="border-top: 4px ${pattern} ${colour}"></span>`;
 }
 
-function wayButton(o: RouteOptionView, picked: boolean, i: number, maxLives: number): string {
+function wayButton(o: RouteOptionView, picked: boolean, i: number): string {
   const stop = o.stops[0]?.category ?? 'Tresen';
   const way = WAY[o.transport];
   const label = de.route.transportsShort[o.transport] ?? o.transport;
@@ -235,7 +235,7 @@ function wayButton(o: RouteOptionView, picked: boolean, i: number, maxLives: num
     'data-spelunke': o.spelunke ? 'true' : 'false',
     'aria-pressed': picked ? 'true' : 'false',
     'aria-label': aria,
-    title: t(de.route.categoryHints[stop] ?? '', { max: maxLives }),
+    title: de.route.categoryHints[stop] ?? '',
     disabled: !o.can_choose,
   })}>
     <span class="route-way">${mapIcon(way, 30, undefined, 'transport-icon')}<b>${esc(label)}</b></span>
@@ -294,7 +294,7 @@ export function renderRoute(view: RunView, pick: number, overview: boolean): str
   if (!route) return '';
   const picked = route.options.find((o) => o.index === pick && o.can_choose) ?? route.options.find((o) => o.index === defaultPick(view));
   const sel = picked?.index ?? 0;
-  const buttons = route.options.map((o, i) => wayButton(o, o.index === sel, i, view.tour.max_lives)).join('');
+  const buttons = route.options.map((o, i) => wayButton(o, o.index === sel, i)).join('');
   const body = overview ? tourPlan(view) : `${mapSvg(view, sel)}${targetCard(view, picked)}`;
   const go = picked ? t(de.route.go, { way: de.route.transportsShort[picked.transport] ?? '' }) : de.route.goShort;
   return `<main class="route ${overview ? 'is-overview' : ''}" data-testid="route" ${attrs({ 'aria-label': de.route.title })}>

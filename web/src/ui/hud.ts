@@ -13,23 +13,6 @@ export function coinIcon(size = 18): string {
   return `<svg class="coin" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h4v1h-4zM1 1h6v1h-6zM0 2h8v4h-8zM1 6h6v1h-6zM2 7h4v1h-4z" fill="#d1773f"/><path d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v4h-1zM7 2h1v4h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z" fill="#8a4a22"/><path d="M3 2h2v1h-2zM3 3h1v2h-1zM3 5h2v1h-2z" fill="#f1b48a"/></svg>`;
 }
 
-/** A heart as an 8 × 7 pixel icon: full in red, empty as an outline. */
-export function heart(full: boolean, size = 16): string {
-  const fill = full ? '#c8312b' : 'none';
-  const edge = full ? '#6e1410' : '#8a7a66';
-  return `<svg class="heart ${full ? 'is-full' : 'is-empty'}" viewBox="0 0 8 7" width="${size}" height="${Math.round((size * 7) / 8)}" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 0h2v1h2v-1h2v1h1v3h-1v1h-1v1h-1v1h-2v-1h-1v-1h-1v-1h-1v-3h1z" fill="${fill}" stroke="${edge}" stroke-width=".6"/>${full ? '<path d="M1 1h1v1h-1z" fill="#f4a39c"/>' : ''}</svg>`;
-}
-
-/**
- * The lives as a row of hearts: filled for each left, a lost one of the
- * lives the run started with greyed. Never an empty slot above them: the
- * maximum is told only where a life is given (playtest 04.11.2026).
- */
-export function hearts(lives: number, start: number, size = 16): string {
-  const n = Math.max(lives, start);
-  return Array.from({ length: n }, (_, i) => heart(i < lives, size)).join('');
-}
-
 /** The foam crown of a full account bar (hidden by CSS until `.is-full`). */
 export function foamCrown(id: string): string {
   return `<svg class="foam" width="100%" height="10" shape-rendering="crispEdges" aria-hidden="true"><defs><pattern id="${id}" width="12" height="10" patternUnits="userSpaceOnUse"><path d="M0 5h12v5h-12zM1 2h5v3h-5zM2 1h3v1h-3zM7 3h4v2h-4zM8 2h2v1h-2z" fill="#f4ecd8"/><path d="M0 9h12v1h-12zM5 3h1v2h-1zM10 4h1v1h-1z" fill="#cdbb92"/><path d="M2 2h1v1h-1zM8 3h1v1h-1z" fill="#ffffff"/></pattern></defs><rect width="100%" height="10" fill="url(#${id})"/></svg>`;
@@ -167,7 +150,6 @@ export function renderHud(view: RunView): string {
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const tour = view.tour;
   const pub = tour.current;
-  const lives = `<span class="hud-lives" data-testid="lives" ${attrs({ 'data-lives': tour.lives, 'aria-label': t(de.lives.aria, { lives: tour.lives }), title: t(de.lives.aria, { lives: tour.lives }) })}>${hearts(tour.lives, tour.start_lives, 14)}</span>`;
   const game = Math.min(s.games_played + 1, s.game_limit);
   // "Spiel 2 von 3" as the slate's label; the account follows visibly in
   // the slate, written out for screen readers.
@@ -196,7 +178,6 @@ export function renderHud(view: RunView): string {
       }</span>
     </button>
     ${boss}
-    ${lives}
     <span class="hud-coins" aria-label="${esc(de.header.coins)}">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b></span>
     <button class="icon-btn" ${attrs({ 'data-action': 'menu', 'aria-label': de.header.menu })}><span class="burger"></span></button>
   </div>
