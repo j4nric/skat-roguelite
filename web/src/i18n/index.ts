@@ -160,6 +160,11 @@ export function consumableMod(id: string): { mod: string | null; random: boolean
   return { mod: entry?.card_mod ?? null, random: entry?.random_card_mod === true };
 }
 
+/** Whether one of the cards carries a Marke (Gutschein): a hand game would redeem one (DESIGN 7.2). */
+export function holdsVoucher(cards: { mods: string[] }[]): boolean {
+  return cards.some((c) => c.mods.some((m) => modKind(m) === 'Voucher'));
+}
+
 export function isCurse(mod: string): boolean {
   return catalog?.card_mods[mod]?.curse === true;
 }

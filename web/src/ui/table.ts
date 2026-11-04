@@ -15,7 +15,7 @@
 // Opa", all from the view. Card flags the core resolved ("Unter
 // ehrenhalber", "Ramponiert") show as plaques on the hand cards.
 
-import { de, cardName, contentName, contentText, declarationName, factorText, gameName, t } from '../i18n';
+import { de, cardName, contentName, contentText, declarationName, factorText, gameName, holdsVoucher, t } from '../i18n';
 import type { BossInfo, CardView, Declaration, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RiskLevel, RunView, Seat, Suit, TrickView } from '../types';
 import { backDesign } from './backs';
 import { cardBack, lookSvg, modIcon, suitIcon } from './cards';
@@ -390,6 +390,7 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
     <div class="declare-label">${esc(de.table.gameType)}</div>
     <div class="games">${games}</div>
     ${levels}
+    ${!afterSkat && holdsVoucher(game.hand) ? `<p class="declare-hint hand-voucher-hint" data-testid="hand-voucher-hint">${esc(de.table.handVoucherHint)}</p>` : ''}
     ${declareWarnings(options, afterSkat)}
     ${declareActions(options, afterSkat, passesLeft, declare, ui.view && !afterSkat ? giveUpButton(ui.view) : '')}
   </section>`;
