@@ -78,7 +78,7 @@ fn a_suit_relic_scales_a_won_game_of_its_trump_suit_only() {
     ));
     assert!(b.lines_of(&relic("jay")).next().is_none());
     assert_eq!(b.multiplier, Factor::from_permille(1500));
-    // Grundwert × Multiplikator × 1,5, rounded half up once at the end.
+    // Grundwert × Stufen × 1,5, rounded half up once at the end.
     let plain = b.base_value * b.levels;
     assert_eq!(b.value, (plain * 1500 + 500) / 1000);
 

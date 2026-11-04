@@ -135,10 +135,10 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
-| Spielwert | `game_value` | Grundwert × Multiplikator (bisher „Gewinnstufen“) |
+| Spielwert | `game_value` | Grundwert × Stufen × Faktor |
 | Grundwert | `base_value` | Karo 9, Herz 10, Pik 11, Kreuz 12, Grand 24 |
-| Multiplikator (bisher Gewinnstufen) | `levels` | Spitzen + 1 + Hand + Schneider + … |
-| Faktor (Spielwert-Faktor, auch gebrochen, ×1,5; seit ADR 0018 die dritte Stufe: Grundwert × Multiplikator × Faktor) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekte `ScaleGameValue`, `ScaleGameValuePerCounter`). Faktoren werden multipliziert, der Spielwert wird am Ende halb aufgerundet. Anzeige-Gruppe der Relikte `RelicGroup::Factor` |
+| Stufen (Gewinnstufen; 02.11. bis 04.11.2026 „Multiplikator“) | `levels` | Spitzen + 1 + Hand + Schneider + … |
+| Faktor (Spielwert-Faktor, auch gebrochen, ×1,5; seit ADR 0018 die dritte Größe: Grundwert × Stufen × Faktor; das einzige Wort für Malnehmen in Spieltexten) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekte `ScaleGameValue`, `ScaleGameValuePerCounter`). Faktoren werden multipliziert, der Spielwert wird am Ende halb aufgerundet. Anzeige-Gruppe der Relikte `RelicGroup::Factor` |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
 | Schneider | `schneider` | Eine Seite mit höchstens 30 Augen (`SCHNEIDER_LIMIT`). Gemessen an der verlierenden Seite, damit es auch bei veränderten Blättern gilt. Schwarz schließt Schneider immer ein. |
@@ -207,7 +207,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare`, `Legendary` (Legendär, M8) |
 | Gewicht der Stufe Legendär | `RarityWeights::legendary` | Dezimalzahl (Standard 0,3), `RarityWeights::percent_weight` |
 | Immer Vorhand (Ehrenvorsitz) | `AlwaysForehand` | Effekt, nur passiv |
-| Multiplikator je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für den Multiplikator |
+| Stufen je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für die Stufen |
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
 | Neuauslage (Tresen) | `reroll` | Relikte und Gegenstände neu; die Auslage bleibt |
@@ -285,8 +285,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Deutsch | Bezeichner | Anmerkung |
 |---|---|---|
 | Auslöser (Zeitpunkt) | `Hook`, `Stage` | `OnDeal`, `OnDeclare`, `OnCardPlayed`, `OnTrickEnd`, `OnScore`, `OnSeriesWon`, `OnRouteChosen` (Weg gewählt, Bedingung `TransportIs`), `OnShopOpened` (Tresen geöffnet), dazu `Passive` |
-| Multiplikator (bisher Stufe/Gewinnstufe) | `levels` | Spieltexte sagen seit 02.11.2026 „Multiplikator“ („+1 Multiplikator“); im Code bleiben `levels`, `AddLevels`, `Lever::Levels`, `LevelParts`. Nicht verwechseln mit dem Faktor (`multiplier`, ×1,5) und der Risikostufe |
-| Anzeige-Gruppe eines Relikts | `RelicGroup` | `Value` (Wert), `Multiplier` (Multiplikator), `Control` (Kontrolle), `Tour`; Feld `group` in `house_rules.ron`, Standard `Value`; Sicht `RelicInfo::group`, Katalog `group`. Nur Anzeige (Form des Bierdeckels) |
+| Stufen (Stufe, Gewinnstufe) | `levels` | Spieltexte sagen seit 04.11.2026 wieder „Stufen“ („+1 Stufe“, „+2 Stufen“, Box „Stufen“, Formel „Grundwert × Stufen × Faktor“); vom 02.11. bis 04.11.2026 hieß es „Multiplikator“. Im Code bleiben `levels`, `AddLevels`, `Lever::Levels`, `LevelParts`. Zeichen: eine Treppe aus drei Stufen (Band-Glyphe und großes Werte-Icon `levels`, kupferfarben). Nicht verwechseln mit dem Faktor (`multiplier`, ×1,5), der Risikostufe und dem Rang einer Karte (Winkel: „sticht einen Rang höher“) |
+| Anzeige-Gruppe eines Relikts | `RelicGroup` | `Value` (Wert), `Multiplier` (Stufen), `Control` (Kontrolle), `Tour`; Feld `group` in `house_rules.ron`, Standard `Value`; Sicht `RelicInfo::group`, Katalog `group`. Nur Anzeige (Form des Bierdeckels) |
 | Plan für die nächste Kneipe | `NextPubPlan` | `redeals`, `target`; Wegbier, Skatlehrer, Kiebitz am Fenster; `Run::next_pub_plan`, Sicht `next_pub`; Ereignisse `NextPubPlanned`, `NextPubApplied`; Aktion `ConsumableAction::NextPub` |
 | Anschreiben (Schulden am Tresen) | `debt`, `Credit` | Effekt `Credit(n)` (Deckel anschreiben), `Run::debt`, Sicht `debt`, `credit_left`, `Shop::on_credit`; Ereignis `DebtChanged`; Einnahmen zahlen zuerst die Schulden |
 | Kasse (Topf aus Groschen) | `StashCoins`, `PayOutCounter` | Stammtischkasse: Zähler `kitty`; Ereignis `CoinsStashed` |
@@ -313,8 +313,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Herkunft eines Zuschlags | `Source` | Relikt, Kartenmodifikation, Boss, Kontra, Re, Ereignis, Verbrauchsgegenstand (`Consumable`) |
 | Zeile der Abrechnung | `ScoreLine` | Herkunft, Hebel, Änderung |
 | Abrechnung (Spielwert mit allen Zuschlägen) | `ScoreBreakdown` | |
-| Multiplikator Term für Term | `LevelParts` | |
-| Schritt der Abrechnung | `ScoreStep` | Ein Term mit laufendem Grundwert, Multiplikator und Faktor, für die schrittweise Anzeige |
+| Stufen Term für Term | `LevelParts` | |
+| Schritt der Abrechnung | `ScoreStep` | Ein Term mit laufendem Grundwert, Stufen und Faktor, für die schrittweise Anzeige |
 | Term der Abrechnung | `ScoreTerm` | Grundwert, Spitzen, Spiel, Hand, …, oder eine `ScoreLine` |
 
 ## Content-IDs

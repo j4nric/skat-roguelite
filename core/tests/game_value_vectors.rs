@@ -893,11 +893,11 @@ fn skat_god_levels_and_glass_ace_augen_vectors() {
     assert_eq!((schneider.schneider, schneider.value), (true, 36));
 }
 
-/// ADR 0018, worked out by hand: Spielwert = Grundwert × Multiplikator ×
+/// ADR 0018, worked out by hand: Spielwert = Grundwert × Stufen ×
 /// Faktor. Factors multiply (two ×1,5 are ×2,25, a growing ×1,3 on top
 /// ×2,925), the Spielwert is rounded half up once at the end. The relics
 /// of the family "Faktor" only act on won games, so a lost game carries no
-/// such line and counts −Grundwert × Multiplikator.
+/// such line and counts −Grundwert × Stufen.
 #[test]
 fn factor_as_third_stage_vectors() {
     use skat_core::content::{Change, Factor, Lever, RelicId, ScoreLine, Source, score_game};
