@@ -179,9 +179,26 @@ Stadtteile und Kneipen heißen nach einem **Namensgenerator** mit deutschen Wort
 
 #### 5.0.4 Zahlen der Kneipentour
 
-Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben (seit ADR 0019 entfallen), Groschen je übrigem Spiel, Boss-Faktoren und Malus-Gewichte gemessen am 03.11.2026** gegen den PIMC-Spieler (`--bot pimc:12:3`, Alleinspieler). Kleine Runde (Ist-Stand, 3 × 500 Runs): `docs/balance/2026-11-03-kleine-runde.md`; Piloten und große Runde (3 × 2000 Runs, Seeds 42 bis 44): `docs/balance/2026-11-03-grosse-runde.md`.
+Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben (seit ADR 0019 entfallen), Groschen je übrigem Spiel, Boss-Faktoren und Malus-Gewichte gemessen am 03.11.2026** gegen den PIMC-Spieler (`--bot pimc:12:3`, Alleinspieler). **Zielwerte und Spelunken-Faktor ohne Leben neu gesetzt am 04.11.2026** (Runde 1 von 3, `docs/balance/2026-11-04-runde1.md`). Kleine Runde (Ist-Stand, 3 × 500 Runs): `docs/balance/2026-11-03-kleine-runde.md`; Piloten und große Runde (3 × 2000 Runs, Seeds 42 bis 44): `docs/balance/2026-11-03-grosse-runde.md`.
 
-**Zielbild (03.11.2026)**: Der PIMC-Spieler erreicht Stadtteil 2 in 35 bis 40 % der Runs und Stadtteil 3 in 12 bis 18 %, gewinnt 3 bis 5 % der Abende, und ein Viertel bis ein Drittel der verlorenen Runs endet in normalen Kneipen (Leben aus), der Rest beim Boss. **Seit ADR 0019 (keine Leben) ist das Zielbild überholt**: Jede verlorene Kneipe beendet den Run; Kurve und Zielbild müssen neu gemessen und gesetzt werden (17).
+**Zielbild (03.11.2026)**: Der PIMC-Spieler erreicht Stadtteil 2 in 35 bis 40 % der Runs und Stadtteil 3 in 12 bis 18 %, gewinnt 3 bis 5 % der Abende, und ein Viertel bis ein Drittel der verlorenen Runs endet in normalen Kneipen (Leben aus), der Rest beim Boss. **Seit ADR 0019 (keine Leben)** gilt der Teil „verlorene Runs in normalen Kneipen“ nicht mehr. Vorschlag aus Runde 1 (04.11.2026, Augenmaß, nicht entschieden): Stadtteil 2 / 3 / gewonnen wie oben; von den verlorenen Runs enden 55 bis 70 % in normalen Kneipen, 25 bis 40 % beim Boss, höchstens 10 % in einer Spelunke; höchstens ein Viertel aller Runs endet in den ersten beiden Kneipen.
+
+**Runde 1 ohne Leben** (04.11.2026, Alleinspieler, 3 × 300 Runs, Seeds 42 bis 44; „verloren zählt einfach“, Faktor-Relikte):
+
+| Kennzahl | Kurve vom 03.11. ohne Leben | neue Kurve | Ziel |
+|---|---|---|---|
+| Stadtteil 2 erreicht | 29,0 % | 33,4 % | 35 bis 40 % |
+| Stadtteil 3 erreicht | 5,9 % | 12,2 % | 12 bis 18 % |
+| Run gewonnen | 1,9 % | 5,1 % | 3 bis 5 % |
+| Ende normale Kneipe / Spelunke / Boss (alle Runs) | 72,6 / 9,2 / 16,3 % | 65,7 / 7,6 / 21,7 % | |
+| Ende in Kneipe 1-1 oder 1-2 | 34,4 % | 29,6 % | höchstens 25 % |
+| normale Kneipen gewonnen | 71 bis 85 % | 81 bis 88 % | |
+| Spelunken gewonnen (Stadtteil 2) | 59 % | 77 % | |
+| Boss-Kneipen gewonnen (Stadtteil 1 / 2 / 3) | 67 / 65 / 77 % | 67 / 70 / 73 % | |
+
+Die Erfolgskurve einer Kneipe ohne Relikte ist mit einfacher Wertung steiler (rund 0,45 Punkte je Zielwert-Punkt zwischen 45 und 120), ihre Obergrenze bei Zielwert 1 liegt bei 88 bis 92 %. Offen für Runde 2: Stadtteil 1 hält mit 33 % noch zu wenig, Stadtteil 3 mit 42 % zu viel (17).
+
+Bis Runde 1 (03.11.2026, mit zwei Startleben):
 
 | Kennzahl | vorher (kleine Runde) | jetzt (große Runde) | Ziel |
 |---|---|---|---|
@@ -197,17 +214,18 @@ Gesetzt am 02.11.2026 nach Augenmaß; **Zielwerte, Leben (seit ADR 0019 entfalle
 | Größe | Wert | Ort |
 |---|---|---|
 | Stadtteile, Kneipen je Stadtteil | 3, 4 + Boss-Kneipe | `targets` in `run.ron`, `PUBS_PER_DISTRICT` |
-| Zielwerte Alleinspieler (seit 03.11.2026, gemessen) | 45 / 55 / 65 / 75 / Boss 60 · 90 / 105 / 120 / 135 / Boss 100 · 145 / 170 / 195 / 205 / Boss 140 (bis dahin 33 / 36 / 38 / 40 / 45 · 40 / 42 / 44 / 46 / 52 · 46 / 48 / 50 / 52 / 60) | `run.ron` |
-| Zielwerte Nullspieler (seit 03.11.2026, gemessen) | 50 / 65 / 75 / 85 / Boss 70 · 110 / 125 / 145 / 160 / Boss 120 · 180 / 210 / 245 / 255 / Boss 175, die Kurve des Alleinspielers × 1,15 / 1,2 / 1,25 (bis dahin 18 bis 30: Stadtteil 2 in 60 %, 30 % gewonnen) | `characters.ron` |
-| Zielwerte Schneiderin (seit 03.11.2026, gemessen) | 50 / 65 / 75 / 90 / Boss 75 · 105 / 120 / 140 / 155 / Boss 115 · 165 / 195 / 225 / 235 / Boss 160, rund × 1,15 (mit der Kurve des Alleinspielers 47 % Stadtteil 2, 7,9 % gewonnen) | `characters.ron` |
-| Zielwerte Drückeberger, Bruderherz | wie der Alleinspieler (`targets` fehlt), gemessen am 03.11.2026 im Zielbild | `characters.ron` |
+| Zielwerte Alleinspieler (seit 04.11.2026, Runde 1, gemessen) | 35 / 45 / 55 / 60 / Boss 60 · 70 / 80 / 90 / 100 / Boss 80 · 135 / 155 / 175 / 190 / Boss 130 (03.11.2026: 45 / 55 / 65 / 75 / 60 · 90 / 105 / 120 / 135 / 100 · 145 / 170 / 195 / 205 / 140; bis dahin 33 / 36 / 38 / 40 / 45 · 40 / 42 / 44 / 46 / 52 · 46 / 48 / 50 / 52 / 60) | `run.ron` |
+| Zielwerte Nullspieler (seit 04.11.2026, Vorschlag, ungemessen) | 40 / 50 / 60 / 65 / Boss 65 · 75 / 90 / 100 / 110 / Boss 90 · 150 / 170 / 195 / 210 / Boss 145, rund die neue Kurve des Alleinspielers × 1,1 (03.11.2026: 50 / 65 / 75 / 85 / 70 · 110 / 125 / 145 / 160 / 120 · 180 / 210 / 245 / 255 / 175, ohne Leben Stadtteil 2 in 26,9 %; bis dahin 18 bis 30) | `characters.ron` |
+| Zielwerte Schneiderin (seit 04.11.2026, Vorschlag, ungemessen) | 35 / 45 / 55 / 60 / Boss 60 · 75 / 90 / 100 / 110 / Boss 90 · 150 / 170 / 195 / 210 / Boss 145, Stadtteil 1 wie der Alleinspieler, danach rund × 1,1 (03.11.2026: 50 / 65 / 75 / 90 / 75 · 105 / 120 / 140 / 155 / 115 · 165 / 195 / 225 / 235 / 160, ohne Leben Stadtteil 2 in 22,4 %) | `characters.ron` |
+| Zielwerte Bruderherz (seit 04.11.2026, Vorschlag, ungemessen) | 30 / 40 / 50 / 55 / Boss 55 · 65 / 75 / 80 / 90 / Boss 75 · 125 / 140 / 160 / 170 / Boss 120, rund × 0,9 (mit der Kurve des Alleinspielers ohne Leben Stadtteil 2 in 20,9 %) | `characters.ron` |
+| Zielwerte Drückeberger | wie der Alleinspieler (`targets` fehlt); ohne Leben mit der Kurve vom 03.11.2026 Stadtteil 2 in 31,6 % (Alleinspieler 29,0 %) | `characters.ron` |
 | Boss-Faktoren | gemessen am 03.11.2026 (11.1): Alleinspieler in der großen Runde, Nullspieler in der Runde der Charaktere (Schieber 0,2, Ramscher 2,0, Oma 0,9, Peter 0,2) | `bosses.ron` |
 | Boss-Belohnung | Auszahlung wie mit zwei übrigen Spielen, × 2 (im Mittel 14,6 Groschen), 1 aus 3 Relikten ab Ungewöhnlich (bis ADR 0019 auch +1 Leben) | `economy`, `boss_reward` |
 | Gegner je Stadtteil | Heuristik, PIMC 8:3, PIMC 12:3 (die alten Abschnitte 1, 3, 4) | `opponents` |
 | Leben | entfallen seit ADR 0019 (bis dahin Start 2, höchstens 4, Boss +1; bis 03.11.2026 3, 5, +1) | – |
 | Grundbetrag, je übrigem Spiel | 3, 2 (03.11.2026; ADR 0016 3, davor 1) | `economy` |
 | Gewichte der Stationen | seit 03.11.2026 drei verschiedene Arten je Routenwahl, eine der Tresen; die anderen ohne Zurücklegen: Begegnung 35, Fundgroschen 30, Kiosk 15, Würfelbude 10, Werkstatt 7, Rast 5 (bis ADR 0019 nur mit fehlendem Leben), vorläufig. Bis dahin Tresen 40, Begegnung 35, Upgrade 12, Rast 8 | `route.weights`, `route.kiosk` |
-| Spelunke | Chance 0,3, Zielwert × 1,1 (bis 03.11.2026 1,25), ein Malus (Gewicht 2, Kein Skat 1, seit 03.11.2026: Kein Skat war 13 bis 23 Punkte schwerer als die anderen) | `spelunke`, `tour.ron` |
+| Spelunke | Chance 0,3, Zielwert × 0,9 (seit Runde 1, 04.11.2026: ohne Leben mit × 1,1 nur 59 % gewonnen gegen 71 bis 83 % in normalen Kneipen, jeder vierte Run in Stadtteil 2 endete dort; nachher 77 %; bis 03.11.2026 1,25), ein Malus (Gewicht 2, Kein Skat 1, seit 03.11.2026: Kein Skat war 13 bis 23 Punkte schwerer als die anderen) | `spelunke`, `tour.ron` |
 | Rast | seit ADR 0019: Currywurst (ein Einmischen mehr in der nächsten Kneipe) oder eine Karte waschen; bis dahin +1 Leben | `encounters.ron` (`snack_bar`) |
 | Bot-Route | Tresen ab 8 Groschen, Upgrade mit verfluchter Karte, Rast 2 (3 mit verfluchter Karte), Fundgroschen 2, Kiosk 1, Würfelbude 0; Spelunke seit ADR 0019 nur mit vier Relikten oder drei und dem Schutzengel (bis dahin 3 Leben und 3 Relikte) | `RunBot::route_action` |
 | Bot-Ereignis (seit 03.11.2026) | eine Option muss genommen werden: die mit dem höchsten Wert in groben Groschen (`RunBot::option_value`, nicht abgestimmt); am Kiosk der wertvollste Schnaps | `RunBot::encounter_action` |
@@ -1023,11 +1041,14 @@ Relikte der Anzeige-Gruppe `Factor` (Bierdeckel: ein bernsteinfarbenes Sechseck,
 - **Zapfhahn**: Der Zähler steigt nach jeder gewonnenen Kneipe (`OnSeriesWon`, auch Spelunke und Boss-Kneipe); er wirkt ab dem nächsten gewonnenen Spiel. Faktor 1 + 0,1 × Zähler.
 - **Heiße Hand**: Der Faktor zählt die Siege *vor* diesem Spiel (der Faktor-Hook steht vor dem Zähler): ×1, ×1,2, ×1,4 …; die Vorschau beim Spielen zeigt so genau den Faktor, den ein Sieg bekommt. Ein verlorenes Spiel (auch ein Ramsch) setzt den Zähler zurück, Einmischen nicht.
 - **Zähler** liegen wie alle Run-Zähler im Spielstand (`counters`) und stehen in der Relikt-Leiste.
+- **Gemessen in Runde 1** (04.11.2026, `docs/balance/2026-11-04-runde1.md`, alle fünf Charaktere): Gewonnene Spiele haben im Mittel ×1,15 bis ×1,25 (Alleinspieler nachher ×1,25), ein Fünftel hat einen Faktor über 1; der höchste Faktor je Run im Mittel ×1,4 bis ×1,7, der höchste überhaupt ×13,2 (Heiße Hand mit Farb-Relikt und Glückssträhne). 15 bis 27 % der Runs enden mit einem Faktor-Relikt, gekauft wird jedes in 4 bis 6 % der Runs (Grandseigneur und Schwarze Null beim Alleinspieler je 1,6 %). Keines dominiert; Seltenheit, Preise und Faktoren bleiben. Einzelmessung ohne Tresen in Runde 2.
 - **Glückssträhne** (×2 ab dem dritten Sieg in Folge) war schon ein Faktor-Relikt und bleibt in der Gruppe Multiplikator; Stammfarbe, Bock, Einsatz und Schnäpse zählen weiter auch verloren (ADR 0018 Punkt 4).
 
 ## 9. Charaktere
 
 Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin und Bruderherz (je über eine Freischaltung, 9.3). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
+
+**Seit Runde 1 ohne Leben (04.11.2026)** gelten neue Kurven (5.0.4); ohne Leben mit den Kurven vom 03.11.2026 erreichten Stadtteil 2: Alleinspieler 29,0 %, Nullspieler 26,9 %, Drückeberger 31,6 %, Schneiderin 22,4 %, Bruderherz 20,9 % (je 3 × 150 Runs, Alleinspieler 3 × 300; `docs/balance/2026-11-04-runde1.md`). Gemessen ist danach nur der Alleinspieler (33,4 / 12,2 / 5,1 %); die neuen Kurven von Nullspieler (× 1,1), Schneiderin (Stadtteil 1 wie der Alleinspieler, danach × 1,1) und Bruderherz (× 0,9, jetzt eigene) sind Vorschläge für Runde 2. Die Tabelle unten ist der Stand vom 03.11.2026 mit Leben.
 
 **Zielwerte je Charakter** (Kneipentour, gemessen am 03.11.2026 gegen den PIMC-Spieler, je 3 × 300 Runs, Seeds 42 bis 44, `docs/balance/2026-11-03-charaktere.md`; Alleinspieler aus der großen Runde mit 3 × 2000 Runs, `docs/balance/2026-11-03-grosse-runde.md`). Je Stadtteil vier Kneipen / Boss-Kneipe vor dem Boss-Faktor. Zielbild für jeden Charakter: Stadtteil 2 in 35 bis 40 %, Stadtteil 3 in 12 bis 18 %, 3 bis 5 % gewonnen, ein Viertel bis ein Drittel der verlorenen Runs endet in normalen Kneipen.
 
@@ -1345,6 +1366,8 @@ Leitlinien und Auslegungen (Claude, 03.11.2026):
 | Der Alte (Endboss) | 49,4 % | 35,7 % |
 
   Der Ramscher liegt mit der einfachen Wertung (unten) bei den anderen, sein Faktor bleibt 1,0. Der Alte ist als Endboss mit 36 % der schwerste.
+
+  **Runde 1 ohne Leben** (04.11.2026, „verloren zählt einfach“, `docs/balance/2026-11-04-runde1.md`), Alleinspieler mit der neuen Kurve (Boss 60 / 80 / 130), Boss-Kneipe gewonnen in Stadtteil 1 (je 76 bis 97 Kneipen) und ab Stadtteil 2 (26 bis 60): Zwillinge 74 / 74 %, Schieber 73 / 80 %, Oma 71 / 88 %, Schwarzer Peter 67 / 77 %, Ramscher 56 / 52 %, der Alte 77 %. In Stadtteil 1 ist die Reihenfolge bei allen fünf Charakteren ähnlich (Zwillinge am leichtesten, Ramscher am schwersten); der Schieber beim Nullspieler bleibt mit 43 % der Ausreißer. **Faktoren unverändert**; der Alte ist als Endboss mit 77 % eher zu leicht (Runde 2).
 - **Belohnung**: Die Relikt-Wahl zieht der Ereignis-Generator aus dem Relikt-Pool des Charakters (nicht gesperrt, nicht besessen), Seltenheit Ungewöhnlich oder höher (`boss_reward` in `run.ron`); ohne passendes Relikt geht es direkt zur Routenwahl. Seit dem 03.11.2026 passt das gewählte immer dazu (unbegrenzte Plätze, 8.0); ein eigenes dafür herzugeben ist möglich, aber nie nötig.
 
 ### 11.2 Bis ADR 0017
@@ -1677,9 +1700,10 @@ Entschieden am 02.11.2026 (Nutzer):
 
 ## 17. Offen
 
-- **Keine Leben und Faktor (ADR 0019 und 0018, 04.11.2026)**: nichts gemessen. Die nächste Runde im Simulator muss messen: (a) die Zielkurve ohne Leben (Stadtteil 2 und 3 erreicht, Run gewonnen, wo die Runs enden; die Kurve aus 5.0.4 war für zwei Startleben gesetzt, ohne sie endet jede verlorene Kneipe den Run, also deutlich härter), daraus ein neues Zielbild; (b) den Schutzengel als zweite Chance (Wirkung auf „Stadtteil 2/3 erreicht“, Preis 8 vorläufig, wie oft er greift: Spalte `again`); (c) die neue Rast (Currywurst oder Karte waschen) und das Portemonnaie mit Schnaps; (d) die acht Faktor-Relikte einzeln und im vollen Run (Zeile `faktor` im Simulator: mittlerer und höchster Faktor, Anteil der Runs mit einem Faktor-Relikt, Faktor von Zapfhahn und Heißer Hand am Ende), ihre Preise, Seltenheit und Bot-Werte; (e) die Bot-Regel für die Spelunke (vier Relikte oder drei und der Schutzengel). Das Faktor-Zeichen in der Oberfläche ist vorläufig, der Nutzer wählt.
+- **Runde 1 ohne Leben** (04.11.2026, `docs/balance/2026-11-04-runde1.md`): (a) und (d) unten gemessen; Kurve des Alleinspielers, Spelunke × 0,9 und die Kurven von Nullspieler, Schneiderin und Bruderherz neu gesetzt (5.0.4). Alleinspieler danach 33,4 / 12,2 / 5,1 %. **Offen für Runde 2** (3 × 500 / 3 × 300): Stadtteil 1 etwas leichter (Vorschlag 1-4 und Boss 60 → 55), Stadtteil 3 wieder schwerer (Vorschlag 145 / 165 / 185 / 200 / 145; gehalten 42 % statt rund 27 %, der Alte 77 %); die Kurven der anderen Charaktere messen; Spelunke 0,9 oder 1,0; Schutzengel und Faktor-Relikte einzeln ohne Tresen. Ein Drittel der Runs endet in den ersten beiden Kneipen, und die erste Kneipe kommt über den Zielwert kaum über 90 %: Ob dort ein anderer Hebel nötig ist (ein Einmischen mehr in Stadtteil 1, Start-Currywurst), ist eine Design-Frage. An `core-dev`: Die Bot-Regel für die Spelunke (ab vier Relikten) heißt bei 8 Relikten zu Beginn von Stadtteil 2 praktisch „immer“; der Simulator meldet nicht, wie oft die Schutzengel-Wiederholung gewonnen wird, und nicht die Rast-Wahl.
+- **Keine Leben und Faktor (ADR 0019 und 0018, 04.11.2026)**: bis Runde 1 nichts gemessen. Die nächste Runde im Simulator muss messen: (a) die Zielkurve ohne Leben (Stadtteil 2 und 3 erreicht, Run gewonnen, wo die Runs enden; die Kurve aus 5.0.4 war für zwei Startleben gesetzt, ohne sie endet jede verlorene Kneipe den Run, also deutlich härter), daraus ein neues Zielbild; (b) den Schutzengel als zweite Chance (Wirkung auf „Stadtteil 2/3 erreicht“, Preis 8 vorläufig, wie oft er greift: Spalte `again`); (c) die neue Rast (Currywurst oder Karte waschen) und das Portemonnaie mit Schnaps; (d) die acht Faktor-Relikte einzeln und im vollen Run (Zeile `faktor` im Simulator: mittlerer und höchster Faktor, Anteil der Runs mit einem Faktor-Relikt, Faktor von Zapfhahn und Heißer Hand am Ende), ihre Preise, Seltenheit und Bot-Werte; (e) die Bot-Regel für die Spelunke (vier Relikte oder drei und der Schutzengel). Das Faktor-Zeichen in der Oberfläche ist vorläufig, der Nutzer wählt.
 
-- **Verloren zählt einfach** (04.11.2026, 4.3): Mit −1 statt −2 × Spielwert sind alle Zielwerte, Boss-Faktoren und die Kurve aus 5.0.4 ungemessen zu leicht (die Erfolgskurve einer Kneipe war „gewonnen wird groß, verloren doppelt“). Neu zu messen, sobald die Simulationen wieder laufen (`balance`).
+- **Verloren zählt einfach** (04.11.2026, 4.3): gemessen in Runde 1 zusammen mit „keine Leben“. Die Erfolgskurve einer Kneipe ist steiler (0,45 statt 0,3 Punkte je Zielwert-Punkt), die Boss-Kneipen leichter (56 bis 74 % in Stadtteil 1 statt 51 bis 58 %); zusammen mit dem Wegfall der Leben war die Kurve vom 03.11. trotzdem viel zu schwer (5.0.4).
 
 - **Bosse v2 (ADR 0017, 03.11.2026)**: Faktoren des Alleinspielers gemessen am 03.11.2026 (11.1), Boss-Kneipen jetzt 51 bis 58 %, der Alte 36 %; die des Nullspielers und der übrigen Charaktere noch nach Augenmaß. Offen: die Zwillinge fallen von 65 % in Stadtteil 1 auf 44 % danach (PIMC-Gegner, die sich gegenseitig sehen), der Ramscher von 57 auf 40 %; ob der Alte als Endboss mit 36 % zu schwer ist, zeigen echte Runs. (a) ~~**Der Ramscher**: ob ein verlorener Ramsch in seiner Kneipe nur einfach zählen soll.~~ Entschieden von Claude am 03.11.2026: ja, einfach (`SingleLoss`, 11.1), Faktor bleibt 1,0; im ganzen Abend neu messen. Offen zum Entscheiden: (b) **Die Oma unter dem Alten**: Ihre Flüche bleiben ab ihrem Blatt bis zum Ende der Kneipe (Auslegung von Claude), nicht nur für ein Blatt. (c) Eigene Rückseiten je Figur (heute teilen beide die des Bosses) und weitere Bosse als Daten, zuerst der Totengräber (ruht). (d) Der Bot wählt das Boss-Relikt nach seiner Werttabelle (`relic_value`), nicht nach der Seltenheit.
 
