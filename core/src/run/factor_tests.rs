@@ -227,3 +227,23 @@ fn the_value_preview_shows_the_factor_of_a_win() {
         Factor::from_permille(2100).scale(preview.base_value * preview.levels)
     );
 }
+
+/// Write `web/e2e/fixtures/factor-win.json`: the first game of a run with
+/// Schellenbaum, Zapfhahn (three pubs) and Heiße Hand (two wins in a row),
+/// dealt so that a Schellen Hand takes every trick; the smoke test plays
+/// it and checks the Faktor box (×1,5 × ×1,3 × ×1,4). Run by hand: `cargo
+/// test -p skat_core regenerate_factor_fixture -- --ignored`.
+#[test]
+#[ignore = "rewrites web/e2e/fixtures/factor-win.json"]
+fn regenerate_factor_fixture() {
+    let content = content();
+    let mut run = relic_run(&content, &["bell_tree", "tap", "hot_hand"]);
+    run.counters.insert("tap".into(), 3);
+    run.counters.insert("hot_hand".into(), 2);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../web/e2e/fixtures/factor-win.json");
+    let out = serde_json::json!({ "version": 3, "run": run });
+    std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
+    println!("wrote {}", path.display());
+}

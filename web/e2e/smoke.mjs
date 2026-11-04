@@ -50,10 +50,9 @@
 //   and 360 × 740: the page is no wider than the viewport, no element leaves it.
 // - with full motion (rewardFxPass, 390 × 844 and 1280 × 800): the score
 //   board counts the account up with its bar, foam crowns the full bar, the
-//   payout's and an encounter's Groschen fly into the purse; a lost heart
-//   breaks, the lights go out before the end of a lost run; a won run (the
-//   last boss pub, patched from boss-table.json) pops a heart in and gets a
-//   firework; a pressed button gives way and springs back; nothing scrolls
+//   payout's and an encounter's Groschen fly into the purse; the lights go
+//   out before the end of a lost run (ADR 0019: a lost pub ends it); a won
+//   run (the last boss pub, patched from boss-table.json) gets a firework; a pressed button gives way and springs back; nothing scrolls
 //   sideways.
 // The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
@@ -94,7 +93,7 @@
 //   375 × 667); Die Oma's 16 curses; the relic pick with few relics, with
 //   nine (slots unlimited since 03.11.2026: taken without a replace, the
 //   HUD strip scrolls inside itself) and passed; the last
-//   game of a boss pub that cannot be won ends the run with lives left.
+//   game of a boss pub that cannot be won ends the run.
 // - kontra.json: seed 29 played by the RunBot into that boss series, the
 //   Kontra-Hans has just said Kontra. The Kontra dialog must show, and
 //   "Kein Re" must lead back into the game. The save is from before the
@@ -1287,7 +1286,7 @@ async function oppNames(page) {
  * (regenerate_boss_fixtures): the route names both boss players, the boss
  * table seats both with name plates and the boss back, Die Oma's curses,
  * the relic pick after a won boss pub (a free slot and all slots full) and
- * a lost boss pub that ends the run with lives left.
+ * a lost boss pub that ends the run.
  */
 async function bossesV2(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -1368,11 +1367,11 @@ async function bossesV2(browser, errors, reducedMotion) {
   await page.click('[data-testid="boss-relic-skip"]');
   await page.waitForSelector('[data-testid="route-next"]');
 
-  // The last game of a lost boss pub: the run ends with lives left.
+  // The last game of a lost boss pub: the run ends. No hearts in the head (ADR 0019).
   // Der Schieber demands a hand game: the hand Ansage is open at once.
   await resumeFixture(page, 'boss-lost.json');
   await page.waitForSelector('.declare[data-phase="Declaring"]');
-  const lives = Number(await page.locator('[data-testid="lives"]').getAttribute('data-lives'));
+  if (await page.locator('[data-testid="lives"], .hud .heart').count()) fail('hearts in the head (ADR 0019: no lives)');
   await page.click('[data-action="pick-game"][data-index="4"]');
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
@@ -1380,9 +1379,40 @@ async function bossesV2(browser, errors, reducedMotion) {
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('[data-testid="end"]');
   const reason = await text(page, 'end-reason');
-  if (!reason.includes('Boss-Kneipe') || !reason.includes('egal wie viele Leben')) fail(`the end of a lost boss pub says: ${reason}`);
-  log(`lost boss pub with ${lives} lives: ${reason}`);
+  if (!reason.includes('Boss-Kneipe') || reason.includes('Leben')) fail(`the end of a lost boss pub says: ${reason}`);
+  log(`lost boss pub: ${reason}`);
   await shoot(page, 'bosses-lost');
+  await context.close();
+}
+
+/**
+ * The Faktor (ADR 0018), from factor-win.json (made by the core,
+ * regenerate_factor_fixture): Schellenbaum, Zapfhahn after three pubs and
+ * Heiße Hand after two wins; a Schellen Hand that takes every trick. The
+ * value preview names the factor, the score board shows the third box
+ * "Faktor" with ×1,5 × ×1,3 × ×1,4 = 2,73, not greyed; the Glossar legend
+ * has five value icons (checked in hintsAndRules).
+ */
+async function factorPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'factor-win.json');
+  await page.waitForSelector('[data-action="play-hand"]');
+  await page.click('[data-action="play-hand"]');
+  const schellen = page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) });
+  await schellen.click();
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  const worth = await text(page, 'value-preview');
+  if (!worth.includes('2,73')) fail(`Faktor: the value preview says "${worth}"`);
+  await playOut(page, 'Faktor');
+  const box = page.locator('[data-testid="score-factor"]');
+  const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
+  if (mul !== '2,73') fail(`Faktor: the box shows "${mul}"`);
+  if ((await box.getAttribute('class'))?.includes('is-one')) fail('Faktor: the box is greyed on ×2,73');
+  await shoot(page, 'factor-score');
+  log(`Faktor: preview "${worth}", box ${mul}`);
   await context.close();
 }
 
@@ -1792,11 +1822,12 @@ async function m5(browser, errors, reducedMotion) {
   await shoot(page, 'wave2-table');
   await playOut(page, 'wave 2a');
   const board = ((await page.locator('.score-sheet').textContent()) ?? '').replace(/\s+/g, ' ');
-  for (const want of ['Stammfarbe', 'Spielwert ×1,5', 'Allrounder']) {
+  for (const want of ['Stammfarbe', 'Faktor ×1,5', 'Allrounder']) {
     if (!board.includes(want)) fail(`wave 2a: the Abrechnung does not say "${want}"`);
   }
   const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
   if (mul !== '1,5') fail(`wave 2a: the factor box shows "${mul}"`);
+  if (await page.locator('[data-testid="score-factor"].is-one').count()) fail('wave 2a: the Faktor box is greyed at ×1,5');
   await shoot(page, 'wave2-score');
   log(`wave 2a: score line ${worth}, Abrechnung with Stammfarbe ×1,5`);
   await context.close();
@@ -2218,7 +2249,7 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-action="settings"]');
   await page.click('[data-testid="glossary-open"]');
   await page.waitForSelector('[data-testid="glossary"]');
-  if ((await page.locator('[data-testid="glossary-values"] li').count()) !== 4) fail('Glossar: not four value icons');
+  if ((await page.locator('[data-testid="glossary-values"] li').count()) !== 5) fail('Glossar: not five value icons (Faktor since ADR 0018)');
   for (const [group, must] of [['Edge', ['Aufdruck', 'Winkel']], ['Moment', ['Eselsohr', 'Kerbe']], ['Voucher', ['Pfandmarke']], ['Special', ['Wandelkarte', 'Untot', 'Doppelgänger']], ['Curse', ['Ramponiert', 'Fleckig']]]) {
     const box = page.locator(`[data-testid="glossary-${group}"]`);
     if (!(await box.count())) fail(`Glossar: no group ${group}`);
@@ -2534,10 +2565,9 @@ async function motionPass(browser, errors) {
  * the score board counts the account up while its bar fills, foam crowns
  * the bar when the target is reached and Groschen of the payout fly into
  * the purse (a copy of it above the board counts them in); an encounter's
- * Groschen fly there too; a lost life breaks its heart into shards and the
- * pub lights go out before the end screen of a lost run; a won run (the
- * last boss pub, patched from boss-table.json) gets a firework and a heart
- * that pops in. Buttons give way when pressed and spring back. Every
+ * Groschen fly there too; the pub lights go out before the end screen of a
+ * lost run (ADR 0019: no lives, no hearts); a won run (the last boss pub,
+ * patched from boss-table.json) gets a firework. Buttons give way when pressed and spring back. Every
  * effect ends in the state the core reports, nothing scrolls sideways.
  */
 async function rewardFxPass(browser, errors, viewport) {
@@ -2601,6 +2631,8 @@ async function rewardFxPass(browser, errors, viewport) {
   if (!(counting < paid.account)) fail(`reward fx ${tag}: the account does not count up (${counting} -> ${paid.account})`);
   if (paid.coins !== paid.payout || !paid.full) fail(`reward fx ${tag}: after the payout ${JSON.stringify(paid)}`);
   await sideways('the score board');
+  // The Faktor box (ADR 0018) is always there, greyed at ×1.
+  if (!(await page.locator('[data-testid="score-factor"]').count())) fail(`reward fx ${tag}: no Faktor box on the score board`);
   log(`reward fx ${tag}: account counts ${counting} -> ${paid.account}, foam, ${paid.coins} Groschen in the purse`);
   await page.click('[data-action="score-continue"]');
 
@@ -2617,31 +2649,27 @@ async function rewardFxPass(browser, errors, viewport) {
   if (after !== before + 3) fail(`reward fx ${tag}: Groschen ${before} -> ${after} after the encounter`);
   await sideways('the encounter');
 
-  // A lost run: the heart breaks, the lights go out, then the end screen.
+  // A lost run: the lights go out, then the end screen.
   await resumeFixture(page, 'run-end.json');
   await page.waitForSelector('.declare');
   await page.evaluate(() => (window.__sounds = []));
   await skatThenGrand(page, `reward fx ${tag}, lost run`);
   await playOut(page, `reward fx ${tag}, lost run`);
   await page.click('[data-action="score-continue"]');
-  await page.waitForSelector('[data-testid="heart-shard"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lost heart does not break`));
-  await snap('fx-heart-break');
-  const left = await page.locator('.hud [data-testid="lives"] .heart.is-full').count();
-  if (left !== 0) fail(`reward fx ${tag}: ${left} full hearts after the last life`);
   await page.waitForSelector('[data-testid="lights-out"]', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the lights do not go out`));
   await page.waitForTimeout(700);
   await snap('fx-lights-out');
   await page.waitForSelector('[data-testid="end"]');
   await page.waitForSelector('[data-testid="lights-out"]', { state: 'detached', timeout: 5000 });
   await sideways('the end screen');
-  // One loss sound for the lost game, the heart and the run together (playtest 04.11.2026).
+  // One loss sound for the lost game and the run together (playtest 04.11.2026).
   await page.waitForTimeout(600);
   const sounds = await page.evaluate(() => window.__sounds);
   const losses = sounds.filter((n) => n === 'lose').length;
   if (sounds.length && losses !== 1) fail(`reward fx ${tag}: the lost run sounds "lose" ${losses} times (${sounds.join(' ')})`);
   if (!sounds.length) log(`reward fx ${tag}: no sounds heard (audio locked?), loss sound not checked`);
   await assertEndButtons(page, `reward fx ${tag}, lost run`);
-  log(`reward fx ${tag}: heart breaks, lights go out, end screen with working buttons`);
+  log(`reward fx ${tag}: lights go out, end screen with working buttons`);
 
   // A won run: the last boss pub, its target already reached.
   const won = JSON.parse(fixture('boss-table.json'));
@@ -2649,14 +2677,11 @@ async function rewardFxPass(browser, errors, viewport) {
   won.run.series.target = 1;
   won.run.series.score = 1000;
   won.run.series.games_played = 2;
-  won.run.lives = 2;
   await resumeFixture(page, null, JSON.stringify(won));
   await page.waitForSelector('.declare');
   await skatThenGrand(page, `reward fx ${tag}, won run`);
   await playOut(page, `reward fx ${tag}, won run`);
   await page.click('[data-action="score-continue"]');
-  await page.waitForSelector('.hud .heart.is-popping', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: the life won does not pop in`));
-  await snap('fx-heart-pop');
   await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
   await page.waitForSelector('[data-testid="fireworks"] .fx-spark', { timeout: 5000 }).catch(() => fail(`reward fx ${tag}: no firework for a won run`));
   await page.waitForTimeout(900);
@@ -2664,7 +2689,7 @@ async function rewardFxPass(browser, errors, viewport) {
   await page.waitForSelector('[data-testid="fireworks"]', { state: 'detached', timeout: 10000 });
   await sideways('the firework');
   await assertEndButtons(page, `reward fx ${tag}, won run`);
-  log(`reward fx ${tag}: a life pops in, firework over the won run`);
+  log(`reward fx ${tag}: firework over the won run`);
   await context.close();
 }
 
@@ -3384,7 +3409,7 @@ async function centreOf(page, selector) {
  * - the head shows the relics as beer mats only, scrolling inside
  *   themselves with nine relics (the page does not scroll sideways), then
  *   three Schnaps slots, empty ones dashed; Schnäpse as bare motifs with a
- *   rarity dot; one the core does not let be drunk now (Konterbier at the
+ *   rarity dot; one the core does not let be drunk now (Wegbier at the
  *   table) is greyed;
  * - a Kurzer dragged onto the skat turns it face up; dropped on the hand
  *   (a wrong target) the glass springs back and the Schnaps stays;
@@ -3417,7 +3442,7 @@ async function schnapsPass(browser, errors) {
 
     // The Leiste: nine relics scroll inside, three slots, one greyed.
     const many = ['card_counter', 'skat_god', 'honorary_chair', 'beer_mat', 'tailor', 'kibitzer', 'lucky_streak', 'blank_king', 'with_four'];
-    await resumeState(page, 'schnaps leiste', table(['shot', 'counter_beer'], (save) => (save.run.relics = many)));
+    await resumeState(page, 'schnaps leiste', table(['shot', 'road_beer'], (save) => (save.run.relics = many)));
     await page.waitForSelector('[data-testid="skat-choice"]');
     // The deal flies in first; targets are measured where they lie.
     await page.waitForTimeout(1300);
@@ -3428,7 +3453,7 @@ async function schnapsPass(browser, errors) {
     if ((await page.locator('.leiste .coaster-chip').count()) !== many.length) fail(`Leiste at ${tag}: not every relic in the head`);
     if ((await page.locator('.hud .schnaps-slot[data-slot="0"] svg[data-form="Bare"] .rarity-dot').count()) !== 1) fail(`Leiste at ${tag}: the Kurzer is not a bare motif with a rarity dot`);
     if (!(await page.locator('.hud .schnaps-slot[data-slot="0"].is-ready').count())) fail(`Leiste at ${tag}: the Kurzer is not drinkable before Skat oder Hand`);
-    if (!(await page.locator('.hud .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Konterbier at the table is not greyed`);
+    if (!(await page.locator('.hud .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Wegbier at the table is not greyed`);
     const strip = await page.evaluate(() => {
       const r = document.querySelector('.leiste-relics');
       return { scrolls: r.scrollWidth > r.clientWidth, page: document.scrollingElement.scrollWidth - innerWidth, slots: document.querySelector('.leiste-slots').getBoundingClientRect().right - innerWidth };
@@ -3564,7 +3589,7 @@ async function schnapsPass(browser, errors) {
 
     // A won pub's Schnaps with every slot full: take it for one, or sell it.
     const full3 = (save) => {
-      save.run.consumables = ['snifter', 'counter_beer', 'shot'];
+      save.run.consumables = ['snifter', 'road_beer', 'shot'];
       save.run.schnapps_reward = 'blue_curacao';
     };
     await resumeState(page, 'schnapps reward', patched('route-station.json', full3));
@@ -3578,7 +3603,7 @@ async function schnapsPass(browser, errors) {
     await page.click('[data-testid="schnapps-swap-1"]');
     await page.waitForSelector('[data-testid="schnapps-reward"]', { state: 'detached', timeout: 6000 }).catch(() => fail(`reward at ${tag}: the sheet stays after a swap`));
     const swapped = await bag();
-    if (swapped.includes('counter_beer') || !swapped.includes('blue_curacao') || swapped.length !== 3) fail(`reward at ${tag}: the bag after the swap is ${swapped.join(', ')}`);
+    if (swapped.includes('road_beer') || !swapped.includes('blue_curacao') || swapped.length !== 3) fail(`reward at ${tag}: the bag after the swap is ${swapped.join(', ')}`);
     await resumeState(page, 'schnapps reward sell', patched('route-station.json', full3));
     await page.waitForSelector('[data-testid="schnapps-sell"]');
     const coins = Number(await text(page, 'coins'));
@@ -3627,16 +3652,29 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
-  // Give up: asked first, then a life goes.
-  const lives = Number(await page.getAttribute('[data-testid="lives"]', 'data-lives'));
+  // Give up: asked first; with the Schutzengel the pub is played again (ADR 0019).
+  const angelSave = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}'));
   await page.click('[data-testid="give-up"]');
   await page.waitForSelector('[data-testid="give-up-confirm"]');
+  if (!(await page.locator('[data-testid="give-up-end"]').count())) fail('give up: the question does not say the run ends');
   await shot('confirm');
   await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForSelector('[data-testid="map-target"]', { timeout: 15000 }).catch(() => fail('give up: no route choice afterwards'));
-  const after = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
-  if (after.lives !== lives - 1) fail(`give up: ${after.lives} lives, expected ${lives - 1}`);
+  await page.waitForSelector('[data-testid="end"]', { timeout: 15000 }).catch(() => fail('give up: the run does not end'));
   await shot('given-up');
+  angelSave.run.relics = ['guardian_angel'];
+  await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(angelSave));
+  await page.goto(base);
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="give-up"]');
+  await page.click('[data-testid="give-up"]');
+  await page.waitForSelector('[data-testid="give-up-angel"]');
+  await page.click('[data-testid="give-up-confirm"]');
+  await page.waitForFunction(() => {
+    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
+    return run && run.series.games_played === 0 && !run.relics.includes('guardian_angel');
+  }, null, { timeout: 15000 }).catch(() => fail('Schutzengel: the pub is not played again'));
+  if (await page.locator('[data-testid="end"]').count()) fail('Schutzengel: the run ended anyway');
+  await shot('second-chance');
   await context.close();
 
   // Boss pub: giving up ends the run.
@@ -4342,7 +4380,7 @@ async function routePass(page, label) {
   if (!/Ziel \d+ Augen in 3 Spielen/.test(next) || !next.includes('Am Tisch:')) fail(`${label}: next pub ${next}`);
   const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
   if (!/^d\d-p\d$/.test(node ?? '')) fail(`${label}: node id ${node}`);
-  if ((await page.locator('.hud .heart').count()) < 1) fail(`${label}: no hearts in the head of the route screen`);
+  if (await page.locator('.hud .heart, [data-testid="lives"]').count()) fail(`${label}: hearts in the head of the route screen (ADR 0019: no lives)`);
   if (!(await page.locator('.hud [data-testid="coins"]').count())) fail(`${label}: no Groschen in the head of the route screen`);
   // The map: the city as an image, three ways, one highlighted with its stop.
   const map = await mapState(page);
@@ -4668,12 +4706,9 @@ async function run() {
     const seated = await assertGuests(page, 'first series');
     const progress = await text(page, 'pub-progress');
     if (!/Spiel 1 von 3 · 0 \/ \d+ Augen/.test(progress)) fail(`pub progress in the head: ${progress}`);
-    const hearts = await page.locator('[data-testid="lives"] .heart.is-full').count();
-    if (hearts !== 2) fail(`${hearts} hearts in the head, expected 2`);
-    // No empty heart above the start (playtest 04.11.2026): the maximum is not shown.
-    const emptyHearts = await page.locator('[data-testid="lives"] .heart.is-empty').count();
-    if (emptyHearts) fail(`${emptyHearts} empty hearts in the head at the start of a run`);
-    log(`head: ${progress}, ${hearts} hearts`);
+    // No lives since ADR 0019: no hearts in the head.
+    if (await page.locator('[data-testid="lives"], .hud .heart').count()) fail('hearts in the head (ADR 0019: no lives)');
+    log(`head: ${progress}`);
     if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
     await assertChoice(page, seated);
     await shoot(page, 'table-declare');
@@ -4814,7 +4849,7 @@ async function run() {
     log(`account ${accountBefore} -> ${accountAfter}`);
 
     // Kneipentour (ADR 0016): the pub was won in its first game, so the
-    // route choice to the next pub opens: lives as hearts, the next pub
+    // route choice to the next pub opens: no hearts (ADR 0019), the next pub
     // with name, target and guests, three ways each with its stop.
     await routePass(page, 'first route');
     await takeRoute(page, 'Tresen');
@@ -4874,6 +4909,7 @@ async function run() {
     await context.close();
 
     await mapPass(browser, errors);
+    await factorPass(browser, errors, reducedMotion);
     await musicPass(browser, errors, reducedMotion);
     await suitTintPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
