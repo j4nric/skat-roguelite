@@ -1594,7 +1594,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 
 | Frage | Entscheidung |
 |---|---|
-| Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü. Skat selbst wird nicht von Grund auf gelehrt. |
+| Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü und ein Glossar der Zinken (seit dem 04.11.2026: nach Rahmensprache gruppiert, Rand, Ecke, Marke, Spezialkarten, Flüche, je mit Beispielkarte und Text aus dem Content, oben die Werte-Icons). Skat selbst wird nicht von Grund auf gelehrt. |
 | Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). Umgesetzt: 5.3, Abschnitt 1 bis 3 mit dem Alten am Ende. |
 | Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). Umgesetzt: 5.4, je Charakter und Länge getrennt. |
 | Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). |
