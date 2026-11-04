@@ -260,6 +260,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler, Spickzettel; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
+| Für ein Spiel durchsichtig (Glasauge) | `RevealDefenderCards`, `transparent_for_game`, `CardMadeTransparent` | nur Karten der Gegner, nie die Ausgabe |
 | Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig) oder `Kibitz`; Feld `RevealedCard::source` |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert; die drei Ansagen auch nach dem Skat (ADR 0013) |
 | Statistik eines Runs | `RunStats` | Gewonnene und verlorene Spiele, Einmischen (`redeals`), Serien, bestes Spiel |
@@ -365,6 +366,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Letzte Runde | `last_round` |
 | Kleinvieh | `every_bit_counts` |
 | Ein Auge zudrücken | `blind_eye` |
+| Glasauge (Hausregel: je Gegner eine Karte für ein Spiel durchsichtig; Effekt `RevealDefenderCards`, Ereignis `CardMadeTransparent`, `ActiveGame::transparent_for_game`) | `glass_eye` |
 | Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
 | Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
 | Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |

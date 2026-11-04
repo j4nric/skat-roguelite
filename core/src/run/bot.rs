@@ -210,7 +210,13 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | Relic | Value | Why |
 /// |---|---|---|
 /// | `jinx` | 4 | +1 Grundwert per cursed card: +9 for "Bruderherz" from the start, +4 for the Nullspieler, little for the Alleinspieler |
-pub const RELIC_VALUES: [(&str, u32); 31] = [
+///
+/// New on 04.11.2026, by judgement, not measured:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `glass_eye` | 3 | like `kibitzer`: two defender cards known for the whole game, the PIMC samples pin them |
+pub const RELIC_VALUES: [(&str, u32); 32] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -242,6 +248,7 @@ pub const RELIC_VALUES: [(&str, u32); 31] = [
     ("guardian_angel", 7),
     ("dive_expert", 1),
     ("jinx", 4),
+    ("glass_eye", 3),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,

@@ -1028,6 +1028,8 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
+  /** "Glasauge" (04.11.2026): a defender's card is Durchsichtig for this game only. */
+  | { CardMadeTransparent: { source: Source; card: DealtCard; seat: Seat } }
   /** Effekte v2: a voucher was redeemed when its card was discarded; `via_hand`: by declaring a hand game (04.11.2026), the card stays in the hand. */
   | { VoucherRedeemed: { card: number; card_mod: string; value: number; via_hand?: boolean } }
   | { VoucherReturned: { card: number; card_mod: string; value: number } }

@@ -305,7 +305,7 @@ fn groups_of_the_relics_are_data() {
         ),
         (
             RelicGroup::Control,
-            "skat_redraw three_discard crib_sheet honorary_chair card_counter kibitzer",
+            "skat_redraw three_discard crib_sheet honorary_chair card_counter kibitzer glass_eye",
         ),
         (
             RelicGroup::Tour,

@@ -1096,6 +1096,20 @@ export class App {
         if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
         continue;
       }
+      if ('CardMadeTransparent' in ev) {
+        // "Glasauge": one toast for all cards of this deal, at the first one.
+        const prev = events[i - 1];
+        if (prev !== undefined && typeof prev === 'object' && 'CardMadeTransparent' in prev) continue;
+        const cards: string[] = [];
+        for (let j = i; j < events.length; j++) {
+          const e = events[j];
+          if (e === undefined || typeof e !== 'object' || !('CardMadeTransparent' in e)) break;
+          const { card, seat } = e.CardMadeTransparent;
+          cards.push(t(de.toast.transparentCard, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
+        }
+        this.showToast(t(de.toast.glassEye, { cards: cards.join(', ') }));
+        continue;
+      }
       if ('CardPeeked' in ev) {
         const { card, seat } = ev.CardPeeked;
         // "Der Zaungast" sees the whole left hand at the table every game:

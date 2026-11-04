@@ -103,6 +103,10 @@ const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 /// so the deal and every other draw stay the same.
 const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
 
+/// Salt of the draw of the defender cards "Glasauge" makes "Durchsichtig"
+/// for a game ([`Effect::RevealDefenderCards`]).
+const TRANSPARENT_SEED: u64 = 0x61A5_5E7E_0000_0005;
+
 /// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
 /// his hand, one of them is drawn to take the rising card's place in the
 /// trick ([`RunAction::ChooseRiseCards`]).
@@ -334,6 +338,12 @@ pub struct GameRules {
     /// Cards of the defenders the player sees before declaring ("Der
     /// Kiebitz").
     pub peek: u32,
+    /// Cards of each defender made "Durchsichtig" for this game when it is
+    /// dealt ("Glasauge", [`Effect::RevealDefenderCards`]), and the first
+    /// source that granted it.
+    pub transparent_per_defender: u32,
+    /// Who granted [`Self::transparent_per_defender`].
+    pub transparent_source: Option<Source>,
     /// The player sees the count of Augen ("Der Zähler").
     pub show_count: bool,
     /// Skat swaps the content grants, one filter per granting effect
@@ -426,6 +436,11 @@ pub struct ActiveGame {
     /// them at the deal.
     #[serde(default)]
     pub peeked: Vec<(DealtCard, Seat)>,
+    /// Defender cards (ids) "Durchsichtig" for this game only
+    /// ("Glasauge", [`Effect::RevealDefenderCards`]): drawn from the
+    /// defenders' hands at the deal, never a card of the player's edition.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transparent_for_game: Vec<u32>,
     /// The boss whose rule is on in this game: the series' boss, or for the
     /// Endboss "Der Alte" the rule of this game.
     #[serde(default)]
@@ -1269,6 +1284,16 @@ pub enum RunEvent<G = Event<DealtCard>> {
         card_mod: CardModId,
         /// Its value.
         value: i32,
+    },
+    /// "Glasauge": a defender's card is "Durchsichtig" for this game; the
+    /// player sees it with its holder until it is played.
+    CardMadeTransparent {
+        /// Who granted it.
+        source: Source,
+        /// The card, in the defender's edition.
+        card: DealtCard,
+        /// Who holds it.
+        seat: Seat,
     },
     /// "Der Kiebitz" showed the player a defender's card.
     CardPeeked {
@@ -2600,12 +2625,18 @@ impl Run {
         let Some(active) = &self.game else {
             return Vec::new();
         };
+        // "Glasauge" marks defender cards for this game by id: a card of
+        // the defenders' editions, never shown while the player holds it.
+        let for_game = |c: &DealtCard| {
+            active.transparent_for_game.contains(&c.id)
+                && active.game.holder_of(*c) != Some(Seat::DECLARER)
+        };
         active
             .game
             .cards_in_play()
             .iter()
             .map(|&c| active.game.current(c))
-            .filter(|c| c.revealed)
+            .filter(|c| c.revealed || for_game(c))
             .map(|c| (c, active.game.holder_of(c)))
             .collect()
     }
@@ -3763,6 +3794,14 @@ impl Run {
             Effect::PeekDefenderCards(n) => {
                 active.rules.peek = active.rules.peek.saturating_add(*n);
             }
+            Effect::RevealDefenderCards(n) => {
+                active.rules.transparent_per_defender =
+                    active.rules.transparent_per_defender.saturating_add(*n);
+                active
+                    .rules
+                    .transparent_source
+                    .get_or_insert_with(|| source.clone());
+            }
             Effect::ShowCount => active.rules.show_count = true,
             Effect::RevealDefenderHand(index) => {
                 let seat = Seat::from_index(usize::from(*index)).filter(|s| !s.is_declarer());
@@ -4111,6 +4150,54 @@ impl Run {
             active.boss_edition = boss;
             active.partner_edition = partner;
         }
+        self.mark_defender_cards(events);
+    }
+
+    /// "Glasauge" ([`Effect::RevealDefenderCards`]): make random cards of
+    /// each defender's hand "Durchsichtig" for this game, drawn with an
+    /// own generator from the game's seed and the Einmischen of the game
+    /// ([`TRANSPARENT_SEED`]), so the deal and every other draw stay the
+    /// same. Candidates in the order of the hand sorted by id; the left
+    /// defender first.
+    fn mark_defender_cards(&mut self, events: &mut Vec<RunEvent>) {
+        let seed = opponents::game_seed(self)
+            ^ TRANSPARENT_SEED
+            ^ u64::from(self.series.redeals_in_game).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let Some(active) = self.game.as_mut() else {
+            return;
+        };
+        let n = active.rules.transparent_per_defender;
+        let Some(source) = active.rules.transparent_source.clone() else {
+            return;
+        };
+        if n == 0 {
+            return;
+        }
+        let mut rng = Rng::from_seed(seed);
+        for seat in Seat::DEFENDERS {
+            let mut pool: Vec<DealtCard> = active
+                .game
+                .hand(seat)
+                .iter()
+                .filter(|c| !c.revealed)
+                .copied()
+                .collect();
+            pool.sort_by_key(|c| c.id);
+            for _ in 0..n {
+                if pool.is_empty() {
+                    break;
+                }
+                let len = u64::try_from(pool.len()).unwrap_or(1);
+                let pick = usize::try_from(rng.gen_range(0..len)).unwrap_or(0);
+                let card = pool.remove(pick.min(pool.len() - 1));
+                active.transparent_for_game.push(card.id);
+                events.push(RunEvent::CardMadeTransparent {
+                    source: source.clone(),
+                    card,
+                    seat,
+                });
+            }
+        }
     }
 
     /// Tests: replace the current game by a constructed deal, every card
@@ -4211,6 +4298,7 @@ impl Run {
             kontra: Kontra::None,
             awaiting_re: false,
             peeked: Vec::new(),
+            transparent_for_game: Vec::new(),
             boss_rule,
             skat_peeked: false,
             chalked: Vec::new(),

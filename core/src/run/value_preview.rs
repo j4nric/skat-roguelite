@@ -401,6 +401,8 @@ impl Knowledge {
                 .map(|c| c.id),
         );
         known.extend(active.peeked.iter().map(|(c, _)| c.id));
+        // Defender cards "Durchsichtig" for this game ("Glasauge").
+        known.extend(active.transparent_for_game.iter().copied());
         // A skat card shown after a hand declaration ("Spickzettel") and the
         // card given back to a defender ("Drei drücken").
         known.extend(active.skat_shown.iter().map(|c| c.id));

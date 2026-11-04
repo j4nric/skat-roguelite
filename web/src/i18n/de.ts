@@ -517,6 +517,8 @@ export const de = {
     rerolled: 'Neue Ware auf dem Tresen.',
     cardsRerolled: 'Die Auslage ist neu ausgelost.',
     peeked: 'Der Kiebitz flüstert: {name} hält {card}.',
+    glassEye: 'Glasauge: Durchsichtig sind {cards}.',
+    transparentCard: '{card} bei {name}',
     ramsch: 'Ramsch! Der Ramscher lässt nicht ansagen.',
     eveningRule: 'Heute Abend gilt: {name}.',
     eveningEnded: 'Die Hausregeln des Abends sind vorbei.',

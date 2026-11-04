@@ -1413,3 +1413,81 @@ fn a_lost_game_counts_once_for_every_character_and_boss() {
         }
     }
 }
+
+/// "Glasauge" (04.11.2026): one random card of each defender is
+/// Durchsichtig for this game only, drawn with the run's seed.
+#[test]
+fn glass_eye_shows_one_card_of_each_defender_for_one_game() {
+    let content = content();
+    let def = content
+        .relic(&RelicId::new("glass_eye"))
+        .expect("glass_eye");
+    assert!(def.passive.contains(&Effect::RevealDefenderCards(1)));
+    let mut run = relic_run(&content, &["glass_eye"]);
+    let events = fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let marked: Vec<(DealtCard, Seat)> = events
+        .iter()
+        .filter_map(|e| match e {
+            RunEvent::CardMadeTransparent { source, card, seat } => {
+                assert_eq!(source, &relic("glass_eye"));
+                Some((*card, *seat))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        marked.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+        Seat::DEFENDERS.to_vec()
+    );
+    let active = run.game().expect("game");
+    for (card, seat) in &marked {
+        assert!(active.game.hand(*seat).iter().any(|c| c.id == card.id));
+        // Only for this game: no edition changes, no mark on the copy.
+        assert!(!card.revealed);
+    }
+    assert!(run.edition().cards().iter().all(|c| c.mods.is_empty()));
+    let mut revealed = run.revealed_holders();
+    revealed.sort_by_key(|(c, _)| c.id);
+    let mut expected: Vec<(DealtCard, Option<Seat>)> =
+        marked.iter().map(|(c, s)| (*c, Some(*s))).collect();
+    expected.sort_by_key(|(c, _)| c.id);
+    assert_eq!(revealed, expected);
+    // The view shows them like a Durchsichtig card.
+    let game = run.view(&content).game.expect("game");
+    assert_eq!(game.revealed.len(), 2);
+    assert!(
+        game.revealed
+            .iter()
+            .all(|r| r.source == super::view::RevealSource::CardMod(CardModId::new("transparent")))
+    );
+    // Deterministic: the same run deals the same marks.
+    let mut again = relic_run(&content, &["glass_eye"]);
+    let events_again = fixed_deal(&mut again, &content, STRONG, STRONG_SKAT);
+    assert_eq!(events, events_again);
+    // The next game draws again, the marks of this one are gone.
+    let (_, _) = play(&mut run, &content, hand_game(DIAMONDS));
+    let mut events = Vec::new();
+    run.deal(&content, true, &mut events).expect("deal");
+    let next: Vec<u32> = events
+        .iter()
+        .filter_map(|e| match e {
+            RunEvent::CardMadeTransparent { card, .. } => Some(card.id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(next.len(), 2);
+    assert_eq!(
+        run.game().expect("game").transparent_for_game,
+        next,
+        "only the marks of the new game"
+    );
+    // Without the relic nothing is marked.
+    let mut plain = relic_run(&content, &[]);
+    let events = fixed_deal(&mut plain, &content, STRONG, STRONG_SKAT);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::CardMadeTransparent { .. }))
+    );
+    assert!(plain.revealed_holders().is_empty());
+}
