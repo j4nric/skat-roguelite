@@ -2417,6 +2417,10 @@ export class App {
         this.ui.overlay = { kind: 'rules' };
         this.render();
         return;
+      case 'glossary':
+        this.ui.overlay = { kind: 'glossary' };
+        this.render();
+        return;
       case 'to-start':
         this.toStart();
         return;

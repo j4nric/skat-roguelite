@@ -19,6 +19,7 @@ import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
 import { renderRules } from './rules';
+import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import { zinkeName } from './shop';
@@ -528,6 +529,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, view.length, ui, view.stake ?? 0) : ''}
          <div class="menu-list menu-grid">
            <button class="btn" ${attrs({ 'data-action': 'rules', 'data-testid': 'rules-open' })}>${esc(de.menu.rules)}</button>
+           <button class="btn" ${attrs({ 'data-action': 'glossary', 'data-testid': 'glossary-open' })}>${esc(de.menu.glossary)}</button>
            ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
@@ -559,6 +561,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(credits(), true, 'sheet-credits');
     case 'rules':
       return sheet(renderRules(), true, 'sheet-rules');
+    case 'glossary':
+      return sheet(renderGlossary(), true, 'sheet-rules sheet-glossary');
     case 'target': {
       const item = view?.consumables.find((c) => c.slot === overlay.slot);
       if (!view || !item) return '';

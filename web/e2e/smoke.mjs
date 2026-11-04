@@ -247,7 +247,9 @@
 // reload, Klänge on does not bring it back; the menu still fits.
 //
 // M6 "Geführter erster Abend" (hintsAndRules), with a fresh profile: the
-// Regelkarte opens from the menu and closes; the Wirt's hints come one at a
+// Regelkarte opens from the menu and closes, so does the Glossar (each group of
+// Zinken with sample cards, the value icons, an entry's info card, no
+// sideways scrolling at 390, 375, 360); the Wirt's hints come one at a
 // time (welcome, Skat oder Hand, pass, Ansage after the skat, value line,
 // score, Tresen, boss, encounter, lost run), a dismissed hint stays away
 // after a reload, the menu switch "Hinweise des Wirts" hides them and the
@@ -2163,6 +2165,47 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-testid="rules-close"]');
   await page.waitForSelector('[data-testid="rules"]', { state: 'detached' });
   log('Regelkarte opened and closed');
+
+  // The Glossar from the same menu: every group of the frame language with
+  // its Zinken (sample card, name and text from the catalog), the value
+  // icons on top, no sideways scrolling at 390, 375 and 360; a tap opens the
+  // entry's info card; "Schließen" closes it.
+  await page.click('[data-action="settings"]');
+  await page.click('[data-testid="glossary-open"]');
+  await page.waitForSelector('[data-testid="glossary"]');
+  if ((await page.locator('[data-testid="glossary-values"] li').count()) !== 4) fail('Glossar: not four value icons');
+  for (const [group, must] of [['Edge', ['Aufdruck', 'Winkel']], ['Moment', ['Eselsohr', 'Kerbe']], ['Voucher', ['Pfandmarke']], ['Special', ['Wandelkarte', 'Untot', 'Doppelgänger']], ['Curse', ['Ramponiert', 'Fleckig']]]) {
+    const box = page.locator(`[data-testid="glossary-${group}"]`);
+    if (!(await box.count())) fail(`Glossar: no group ${group}`);
+    const entries = box.locator('.glossary-entry');
+    const n = await entries.count();
+    if (!n) fail(`Glossar: group ${group} is empty`);
+    if ((await box.locator('.glossary-entry .card-svg').count()) !== n) fail(`Glossar: an entry of ${group} has no card`);
+    if (!(await entries.first().isVisible())) {
+      await entries.first().scrollIntoViewIfNeeded();
+    }
+    const text = ((await box.textContent()) ?? '').replace(/\s+/g, ' ');
+    for (const name of must) if (!text.includes(name)) fail(`Glossar: ${group} lacks ${name}`);
+    if (text.includes('{n}') || text.includes('{+n}')) fail(`Glossar: ${group} shows a raw placeholder`);
+  }
+  await assertMenuFits(page, 'Glossar');
+  for (const size of [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }]) {
+    await page.setViewportSize(size);
+    const wide = await page.evaluate(() => ({
+      page: document.documentElement.scrollWidth - innerWidth,
+      out: [...document.querySelectorAll('.sheet-glossary *')].filter((e) => e.getBoundingClientRect().right > innerWidth + 0.5).length,
+    }));
+    if (wide.page > 0 || wide.out) fail(`Glossar at ${size.width}x${size.height}: scrolls sideways (${JSON.stringify(wide)})`);
+  }
+  await page.setViewportSize(PHONE);
+  await shoot(page, 'glossary');
+  await page.locator('.glossary-entry[data-mod="rank"]').click();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key="mod:rank"]');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
+  await page.click('[data-testid="glossary-close"]');
+  await page.waitForSelector('[data-testid="glossary"]', { state: 'detached' });
+  log('Glossar: every group with its Zinken, the value icons, an info card; fits 390, 375 and 360');
 
   // First run: the welcome, then Skat oder Hand.
   await page.fill('#seed', SEED);

@@ -106,6 +106,8 @@ export type Overlay =
   | { kind: 'overview' }
   /** The Regelkarte: what is different here from the Skatordnung. */
   | { kind: 'rules' }
+  /** The Glossar: every Zinke grouped by the frame language, with the value icons. */
+  | { kind: 'glossary' }
   | { kind: 'credits' };
 
 export interface UiState {
