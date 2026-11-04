@@ -33,8 +33,8 @@
 //! - **Rescue Schnäpse** (`RunBot::rescue_schnapps`, before Skat oder
 //!   Hand): "Klarer" with the account below 0, "Absacker" before the last
 //!   game short of the target, "Eierlikör" whenever it is accepted. The
-//!   bot never gives a pub up ("Kneipe verlassen"): a lost pub costs the
-//!   same life either way.
+//!   bot never gives a pub up ("Kneipe verlassen"): a lost pub ends the
+//!   run either way (ADR 0019), and played a miracle may still help.
 //! - **Forced hand** ("Der Schieber", `RunBot::forced_hand`): Null Hand
 //!   only with at most [`NULL_HAND_MAX_EXPOSED`] exposed cards, else the
 //!   suit game or grand with Hand; the better expected score if both fit.
@@ -68,12 +68,14 @@
 //! most valuable Schnaps, if any.
 //!
 //! Kneipentour (ADR 0016, simple rules, not tuned, not measured): at a
-//! Rast the life, at the Werkstatt the cursed card cleansed (else the free
+//! Rast the cursed card cleansed, else one Einmischen more in the next pub
+//! (ADR 0019), at the Werkstatt the cursed card cleansed (else the free
 //! Kartenmaler on an ace, his best modification taken), from a Spelunke's loot the relic into a free
 //! slot (else the Groschen). The route ([`RunBot::route_action`]) scores
 //! each way by the category it shows: the Tresen when rich, an Upgrade
-//! with a cursed card, a Rast with lives missing; a Spelunke only when
-//! strong (three lives and three relics). After a won boss pub (ADR 0017)
+//! with a cursed card, a Rast a little; a Spelunke only when strong
+//! (since ADR 0019 a lost Spelunke ends the run: four relics, or three
+//! and the "Schutzengel"). After a won boss pub (ADR 0017)
 //! the most valuable relic of the pick into a free slot (slots are
 //! unlimited since 03.11.2026), with a cap and every slot full in place of
 //! the weakest owned one if it is worth at least [`SWAP_MARGIN`] more, else
@@ -202,7 +204,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `season_ticket` | 2 | +1 Groschen per Bahn; the route policy does not seek the Bahn |
 /// | `kitty` | 3 | +1 Groschen per pub won, paid at the next Tresen |
 /// | `slate` | 2 | the bot never buys on credit, it only pays the debt back |
-/// | `guardian_angel` | 7 | a life per district at most, never in a boss pub |
+/// | `guardian_angel` | 7 | since ADR 0019 one lost pub played again, a boss pub included; not re-measured |
 /// | `dive_expert` | 1 | the bot rarely enters a Spelunke |
 ///
 /// Curses as trade (03.11.2026), by judgement, not measured:
@@ -297,15 +299,15 @@ pub const SWAP_MARGIN: u32 = 3;
 /// | `double_grain` | 1 | "Doppelkorn" (since 02.11.2026 it deals again): throws a weak hand in after "Kräuter", the new game counts double |
 /// | `blue_curacao` | 2 | "Blue Curaçao": the cheapest side card into trump |
 /// | `shot` | 1 | "Kurzer": before picking up the skat; the bot does not use what it sees |
-/// | `counter_beer` | 2 | "Konterbier": at the route choice with a life missing |
 /// | `road_beer` | 2 | "Wegbier": at the route choice, at once |
 /// | `clear_spirit` | 1 | "Klarer": between two games when the account is below 0 |
 /// | `nightcap` | 2 | "Absacker": before the last game of a normal pub when the target is not reached |
 /// | `eggnog` | 1 | "Eierlikör": before Skat oder Hand whenever the account is below half the target |
 /// | `rotgut` | 1 | "Fusel": before Skat oder Hand with a hand that is not weak; the curse costs a card |
-/// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade with a cursed card, a Rast with at most two lives) |
+/// | `snifter` | 0 | "Schwenker": never bought; from "Der Wirt spendiert" used at the route choice when no way has what the route policy wants most (an Upgrade or a Rast with a cursed card) |
 ///
-/// The Schnäpse are placeholders, not measured. Removed on 02.11.2026:
+/// The Schnäpse are placeholders, not measured. "Konterbier"
+/// (`counter_beer`, a life) went with the lives (ADR 0019). Removed on 02.11.2026:
 /// `new_deal`, `beer`, `bitters`, `regret`, `points_5`, `trump_4`, and with
 /// the Zinken at the Tresen (DESIGN 8.6) `fresh_deck` (now "Karte
 /// reinigen"), `ink_pad`, `points_3`, `trump_2`, `rank_1` (now the Auslage
@@ -318,12 +320,11 @@ pub const SWAP_MARGIN: u32 = 3;
 /// often than used. Kräuter and Doppelkorn 2 → 1 on 03.11.2026: about
 /// half of them were never drunk
 /// (`docs/balance/2026-11-03-kleine-runde.md`, 1387 / 772 and 695 / 349).
-pub const CONSUMABLE_VALUES: [(&str, u32); 11] = [
+pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("herbal", 1),
     ("double_grain", 1),
     ("blue_curacao", 2),
     ("shot", 1),
-    ("counter_beer", 2),
     ("road_beer", 2),
     ("snifter", 0),
     ("clear_spirit", 1),
@@ -776,9 +777,14 @@ impl RunBot {
         if let Some(action) = Self::malus_choice(run) {
             return action;
         }
-        let max_lives = content.run.lives.max;
         let cursed = Self::cursed_card(run, content).is_some();
-        let strong = run.lives() >= 3 && run.relics().len() >= 3;
+        let angel = run.relics().iter().any(|r| {
+            content
+                .relic(r)
+                .is_some_and(|d| d.passive.contains(&Effect::SecondChance))
+        });
+        let relics = run.relics().len();
+        let strong = relics >= 4 || (relics >= 3 && angel);
         let mut best: Option<(i64, usize)> = None;
         for (i, option) in route.options.iter().enumerate() {
             let mut score: i64 = 0;
@@ -788,12 +794,8 @@ impl RunBot {
                     StopCategory::Tresen => 1,
                     StopCategory::Upgrade if cursed => 5,
                     StopCategory::Upgrade => 2,
-                    StopCategory::Rest => match max_lives.saturating_sub(run.lives()) {
-                        0 => 0,
-                        _ if run.lives() <= 1 => 6,
-                        _ if run.lives() <= 2 => 3,
-                        _ => 1,
-                    },
+                    StopCategory::Rest if cursed => 3,
+                    StopCategory::Rest => 2,
                     StopCategory::Event => 1,
                     StopCategory::FoundCoins => 2,
                     StopCategory::Kiosk => 1,
@@ -962,7 +964,7 @@ impl RunBot {
     /// effects bring minus what it costs. Simple rules, not tuned: Groschen
     /// count as they are, a house rule or relic as [`relic_value`] + 1, a
     /// Schnaps as [`consumable_value`] + 1 (its price with every slot full),
-    /// a life 100 when one is missing, a Zinke 1 on a random and 2 on a
+    /// a life of an old save its Groschen, a Zinke 1 on a random and 2 on a
     /// chosen card, a curse -2, a swap the gain in value when it is at
     /// least [`SWAP_MARGIN`], higher stakes -1 (the bot never seeks them),
     /// a bet its expected payout (Schneider a quarter of the time, a win
@@ -1018,7 +1020,9 @@ impl RunBot {
                         content.consumable(id).map_or(0, |c| i64::from(c.price))
                     }
                 }
-                EncounterEffect::Lives(_) if run.lives() < content.run.lives.max => 100,
+                EncounterEffect::Lives(n) => {
+                    i64::from(*n) * i64::from(crate::content::LEGACY_LIFE_COINS)
+                }
                 EncounterEffect::NextPubRedeals(n) => 2 * i64::from(*n),
                 EncounterEffect::SeeSkat | EncounterEffect::Scout(_) => 1,
                 EncounterEffect::NextGameFactor(_) => -1,
@@ -1851,19 +1855,9 @@ impl RunBot {
         )
     }
 
-    /// Schnäpse at the route choice: "Konterbier" with a life missing,
-    /// "Wegbier" at once, "Schwenker" when no way has what the bot wants most.
+    /// Schnäpse at the route choice: "Wegbier" at once, "Schwenker" when
+    /// no way has what the bot wants most.
     fn route_schnapps(run: &Run, content: &Content) -> Option<RunAction> {
-        if run.lives() < content.run.lives.max {
-            if let Some(action) = Self::usable(
-                run,
-                content,
-                |a| matches!(a, ConsumableAction::GainLives(_)),
-                None,
-            ) {
-                return Some(action);
-            }
-        }
         if let Some(action) = Self::usable(
             run,
             content,
@@ -1879,11 +1873,10 @@ impl RunBot {
                 .iter()
                 .any(|o| o.stops.iter().any(|s| s.category == category))
         };
-        let wants_upgrade =
-            Self::cursed_card(run, content).is_some() && !has(StopCategory::Upgrade);
-        let wants_rest =
-            run.lives() <= 2 && run.lives() < content.run.lives.max && !has(StopCategory::Rest);
-        if wants_upgrade || wants_rest {
+        let wants_upgrade = Self::cursed_card(run, content).is_some()
+            && !has(StopCategory::Upgrade)
+            && !has(StopCategory::Rest);
+        if wants_upgrade {
             return Self::usable(
                 run,
                 content,

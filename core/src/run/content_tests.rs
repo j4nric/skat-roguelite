@@ -1352,26 +1352,44 @@ fn a_last_trick_mod_is_open_until_its_card_falls() {
     );
 }
 
-/// Whatever gives a life back says how many lives one can hold at most
-/// (playtest 04.11.2026): the head shows no empty hearts above the start,
-/// so the maximum is told only where a life is given.
+/// No lives since ADR 0019: no text of a relic, Schnaps, encounter or
+/// malus speaks of one, and no encounter gives one.
 #[test]
-fn every_consumable_giving_lives_names_the_maximum() {
+fn no_content_speaks_of_lives() {
     let content = content();
-    let max = format!("höchstens {}", content.run.lives.max);
-    let mut seen = 0;
-    for def in content.consumables.values() {
-        if matches!(def.action, crate::content::ConsumableAction::GainLives(_)) {
-            seen += 1;
-            assert!(
-                def.text.contains(&max),
-                "{}: \"{}\" does not say \"{max}\"",
-                def.id,
-                def.text
-            );
-        }
+    let texts = content
+        .relics
+        .values()
+        .map(|d| (d.id.as_str(), d.text.as_str()))
+        .chain(
+            content
+                .consumables
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        )
+        .chain(
+            content
+                .encounters
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        )
+        .chain(
+            content
+                .maluses
+                .values()
+                .map(|d| (d.id.as_str(), d.text.as_str())),
+        );
+    for (id, text) in texts {
+        assert!(!text.contains("Leben"), "{id}: {text}");
     }
-    assert!(seen > 0, "no consumable gives a life");
+    assert!(
+        content
+            .encounters
+            .values()
+            .flat_map(|e| &e.options)
+            .flat_map(|o| &o.effects)
+            .all(|e| !matches!(e, EncounterEffect::Lives(_)))
+    );
 }
 
 /// Since 04.11.2026 every lost game counts once against the pub's account

@@ -2,11 +2,13 @@
 //!
 //! Statistics: section reached, win rate per series, Groschen, and for
 //! every relic how often it was bought and how runs with it went. Per pub
-//! (Spelunken in their own rows): games and Einmischen per pub, lives and
-//! relics on entering, Groschen per won pub. Per district: lives and
-//! relics at its start and before the boss, lost pubs per run, where the
-//! lost runs ended (normal pub, Spelunke, boss pub). Groschen: income by
-//! source and spending by kind ([`SPENDING`]).
+//! (Spelunken in their own rows): games and Einmischen per pub, relics on
+//! entering, Groschen per won pub. Per district: relics at its start and
+//! before the boss, lost pubs per run, where the lost runs ended (normal
+//! pub, Spelunke, boss pub; since ADR 0019 every lost pub ends the run)
+//! and pubs played again by the "Schutzengel". The Faktor (ADR 0018): the
+//! factor of won games, the highest per run, runs with a Faktor relic.
+//! Groschen: income by source and spending by kind ([`SPENDING`]).
 //!
 //! Options (all reproducible with the same seed, see [`Options`]):
 //! `--no-shop`, `--relic <id>` (repeatable), `--without <id>`
@@ -29,7 +31,8 @@ use std::time::Instant;
 use skat_core::ai::pimc::Opponents;
 use skat_core::cards::{Card, CardKind, Suit};
 use skat_core::content::{
-    BossId, CardModId, Character, ConsumableId, Content, EncounterId, RelicId, RunLength, UnlockId,
+    BossId, CardModId, Character, ConsumableId, Content, Effect, EncounterId, Hook, RelicGroup,
+    RelicId, RunLength, UnlockId,
 };
 use skat_core::rng::Rng;
 use skat_core::rules::{Declaration, NullFormula, NullScoring};
@@ -321,8 +324,8 @@ pub struct PubStat {
     pub games: u64,
     /// Einmischen in them, summed.
     pub redeals: u64,
-    /// Lives on entering, summed.
-    pub lives: u64,
+    /// Of the attempts, pubs played again ("Schutzengel", ADR 0019).
+    pub replays: u64,
     /// Relics owned on entering, summed.
     pub relics: u64,
     /// Groschen paid by the won ones, summed.
@@ -332,9 +335,9 @@ pub struct PubStat {
 /// Where a lost run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RunEnd {
-    /// A normal pub cost the last life.
+    /// A normal pub was lost (ADR 0019: no lives).
     Pub,
-    /// A Spelunke cost the last life.
+    /// A Spelunke was lost.
     Spelunke,
     /// A boss pub was lost (ADR 0017).
     Boss,
@@ -356,18 +359,17 @@ pub const SPENDING: [&str; 7] = [
 pub struct DistrictStat {
     /// Runs that started the district.
     pub runs: u64,
-    /// Lives when the district started, summed.
-    pub lives_start: u64,
-    /// Boss pubs entered.
+    /// Boss pubs entered (a boss pub played again counts once).
     pub boss_runs: u64,
-    /// Lives before the boss pub, summed.
-    pub lives_boss: u64,
     /// Relics owned when the district started, summed.
     pub relics_start: u64,
     /// Relics owned before the boss pub, summed.
     pub relics_boss: u64,
-    /// Normal pubs and Spelunken lost (each cost a life or the run).
+    /// Pubs lost, the boss pub included (since ADR 0019 each ends the run
+    /// unless the "Schutzengel" has it played again).
     pub lost_pubs: u64,
+    /// Pubs played again by the "Schutzengel" (ADR 0019).
+    pub second_chances: u64,
     /// Lost runs that ended in a normal pub, a Spelunke or the boss pub.
     pub ended: [u64; 3],
 }
@@ -388,7 +390,7 @@ pub struct RunStats {
     pub series: Vec<[PubStat; 5]>,
     /// Spelunken per (section, pub they replace).
     pub spelunken: Vec<[PubStat; 5]>,
-    /// Per district: lives, relics, lost pubs, where runs ended.
+    /// Per district: relics, lost pubs, second chances, where runs ended.
     pub districts: Vec<DistrictStat>,
     /// Attempts and wins per boss in section 1.
     pub bosses: BTreeMap<BossId, (u64, u64)>,
@@ -440,6 +442,35 @@ pub struct RunStats {
     pub vouchers_redeemed: BTreeMap<CardModId, (u64, i64)>,
     /// Vouchers put back on their card (Drückeberger, DESIGN 9.4).
     pub vouchers_returned: u64,
+    /// The Faktor (ADR 0018) of the games won.
+    pub factor: FactorStat,
+}
+
+/// The Faktor (ADR 0018, `ScoreBreakdown::multiplier`) over all runs, for
+/// the balance round: how often it is above ×1 and how far it grows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FactorStat {
+    /// Games won.
+    pub won_games: u64,
+    /// Their factors in thousandths, summed.
+    pub won_permille: u64,
+    /// Won games with a factor above ×1.
+    pub won_above_one: u64,
+    /// The highest factor of a won game per run, in thousandths, summed
+    /// over the runs (×1 for a run without a won game).
+    pub run_max_permille: u64,
+    /// The highest factor of a won game in any run, in thousandths.
+    pub max_permille: u64,
+    /// Runs that ended holding at least one relic of the group Faktor.
+    pub runs_with_relic: u64,
+    /// Relics of the group Faktor held at the end, summed over runs.
+    pub relics_end: u64,
+    /// The factor a won game would get at the end of the run from the
+    /// growing relics alone ("Zapfhahn", "Heiße Hand"), in thousandths,
+    /// summed over the runs that hold one.
+    pub growing_permille: u64,
+    /// Runs that ended holding a growing Faktor relic.
+    pub growing_runs: u64,
 }
 
 /// Labels of [`RunStats::kinds`].
@@ -495,6 +526,10 @@ struct Observer<'a> {
     /// The last pub entered, kept after it ends (where a run ended).
     last: Option<OpenPub>,
     bought: BTreeSet<RelicId>,
+    /// The next pub started is a pub played again ("Schutzengel").
+    replay: bool,
+    /// The highest factor of a won game in this run, in thousandths.
+    max_factor: u32,
 }
 
 impl Observer<'_> {
@@ -514,9 +549,9 @@ impl Observer<'_> {
         self.stats.spending[kind] += u64::from(amount);
     }
 
-    /// One batch of events, with the run as it is after them (lives and
-    /// relics when a pub starts: nothing changes them later in the batch
-    /// that starts it).
+    /// One batch of events, with the run as it is after them (relics when
+    /// a pub starts: nothing changes them later in the batch that starts
+    /// it).
     fn observe(&mut self, run: &Run, events: &[RunEvent]) {
         let boss_slot = usize::try_from(PUBS_PER_DISTRICT - 1).unwrap_or(4);
         for event in events {
@@ -534,20 +569,23 @@ impl Observer<'_> {
                         spelunke: malus.is_some(),
                         boss: boss.clone(),
                     };
-                    let lives = u64::from(run.lives());
                     let relics = u64::try_from(run.relics().len()).unwrap_or(0);
-                    if let Some(d) = self.stats.districts.get_mut(open.section) {
+                    let replay = std::mem::take(&mut self.replay);
+                    if let Some(d) = self
+                        .stats
+                        .districts
+                        .get_mut(open.section)
+                        .filter(|_| !replay)
+                    {
                         if open.index == 0 {
                             d.runs += 1;
-                            d.lives_start += lives;
                             d.relics_start += relics;
                         } else if open.index == boss_slot {
                             d.boss_runs += 1;
-                            d.lives_boss += lives;
                             d.relics_boss += relics;
                         }
                     }
-                    if let Some(boss) = boss {
+                    if let Some(boss) = boss.as_ref().filter(|_| !replay) {
                         let table = if *section == 0 {
                             &mut self.stats.bosses
                         } else {
@@ -559,7 +597,7 @@ impl Observer<'_> {
                     self.last = Some(open);
                     if let Some(p) = self.pub_stat() {
                         p.attempts += 1;
-                        p.lives += lives;
+                        p.replays += u64::from(replay);
                         p.relics += relics;
                     }
                 }
@@ -584,17 +622,22 @@ impl Observer<'_> {
                     self.stats.coins_earned += u64::from(payout.total());
                     self.open = None;
                 }
-                RunEvent::PubLost { boss, .. } => {
-                    if boss.is_none() {
-                        if let Some(d) = self
-                            .open
-                            .as_ref()
-                            .and_then(|o| self.stats.districts.get_mut(o.section))
-                        {
-                            d.lost_pubs += 1;
-                        }
+                RunEvent::PubLost { .. } => {
+                    if let Some(d) = self
+                        .open
+                        .as_ref()
+                        .and_then(|o| self.stats.districts.get_mut(o.section))
+                    {
+                        d.lost_pubs += 1;
                     }
                     self.open = None;
+                }
+                RunEvent::SecondChance { section, .. } => {
+                    let section = usize::try_from(*section).unwrap_or(usize::MAX);
+                    if let Some(d) = self.stats.districts.get_mut(section) {
+                        d.second_chances += 1;
+                    }
+                    self.replay = true;
                 }
                 RunEvent::RunLost { .. } => {
                     if let Some(last) = &self.last {
@@ -619,6 +662,13 @@ impl Observer<'_> {
                     kind.points += breakdown.score;
                     kind.hand += u64::from(breakdown.declaration.hand());
                     if breakdown.won {
+                        let factor = breakdown.multiplier.permille();
+                        let f = &mut self.stats.factor;
+                        f.won_games += 1;
+                        f.won_permille += u64::from(factor);
+                        f.won_above_one += u64::from(factor > 1000);
+                        f.max_permille = f.max_permille.max(u64::from(factor));
+                        self.max_factor = self.max_factor.max(factor);
                         kind.won += 1;
                         kind.won_value += breakdown.value;
                         kind.won_schneider += u64::from(breakdown.schneider);
@@ -722,6 +772,8 @@ fn play_run(
         open: None,
         last: None,
         bought: BTreeSet::new(),
+        replay: false,
+        max_factor: 1000,
     };
     observer.observe(&run, &events);
     let mut actions = 0;
@@ -734,6 +786,8 @@ fn play_run(
         }
     }
     let bought = std::mem::take(&mut observer.bought);
+    let max_factor = observer.max_factor;
+    observe_factor_relics(&run, content, max_factor, &mut stats.factor);
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let won = run.phase() == RunPhase::Won;
     let section = usize::try_from(run.series().section).unwrap_or(0);
@@ -751,6 +805,38 @@ fn play_run(
         entry.sections += u64::try_from(section + 1).unwrap_or(0);
     }
     Ok(())
+}
+
+/// The Faktor relics a run ends with (ADR 0018): how many, and the factor
+/// the growing ones ("Zapfhahn", "Heiße Hand": `ScaleGameValuePerCounter`
+/// on a won game) would give the next won game.
+fn observe_factor_relics(run: &Run, content: &Content, max_factor: u32, stat: &mut FactorStat) {
+    stat.run_max_permille += u64::from(max_factor);
+    let defs: Vec<_> = run
+        .relics()
+        .iter()
+        .filter_map(|id| content.relic(id))
+        .filter(|d| d.group == RelicGroup::Factor)
+        .collect();
+    stat.relics_end += u64::try_from(defs.len()).unwrap_or(0);
+    stat.runs_with_relic += u64::from(!defs.is_empty());
+    let mut growing = false;
+    let mut permille: u64 = 1000;
+    for effect in defs
+        .iter()
+        .flat_map(|d| d.hooks.iter().flat_map(Hook::then))
+    {
+        if let Effect::ScaleGameValuePerCounter { counter, per } = effect {
+            growing = true;
+            let value = u64::from(run.counters().get(counter).copied().unwrap_or(0));
+            let factor = 1000 + u64::from(per.permille()) * value;
+            permille = (permille * factor + 500) / 1000;
+        }
+    }
+    if growing {
+        stat.growing_runs += 1;
+        stat.growing_permille += permille;
+    }
 }
 
 /// Play `runs` runs. Run seeds come from one master generator, so the same
@@ -857,6 +943,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         pct(stats.null_won, stats.null_games)
     );
     render_kinds(&mut out, stats, runs);
+    render_factor(&mut out, stats, runs);
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
     let _ = write!(out, "encounters (opened/taken per option):");
     for (id, (opened, taken)) in &stats.encounters {
@@ -907,6 +994,27 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     out
 }
 
+/// The Faktor (ADR 0018): mean factor of the won games, the share above
+/// ×1, the highest per run and overall, runs with a Faktor relic at the
+/// end and the factor of the growing ones.
+fn render_factor(out: &mut String, stats: &RunStats, runs: u64) {
+    let f = &stats.factor;
+    let _ = writeln!(
+        out,
+        "faktor: won games mean x{:.3}, above x1 {:.1}%, max per run mean x{:.3}, max x{:.3}; \
+         runs with a faktor relic at the end {:.1}% ({:.2} relics per run), \
+         growing relics at the end x{:.3} in {} runs",
+        mean(f.won_permille, f.won_games) / 1000.0,
+        pct(f.won_above_one, f.won_games),
+        mean(f.run_max_permille, runs) / 1000.0,
+        f.max_permille as f64 / 1000.0,
+        pct(f.runs_with_relic, runs),
+        mean(f.relics_end, runs),
+        mean(f.growing_permille, f.growing_runs) / 1000.0,
+        f.growing_runs
+    );
+}
+
 /// Games per Spielart (share, win rate, Schneider among the won, hand
 /// games, points) and the vouchers redeemed and returned per run.
 fn render_kinds(out: &mut String, stats: &RunStats, runs: u64) {
@@ -946,13 +1054,14 @@ fn render_kinds(out: &mut String, stats: &RunStats, runs: u64) {
 }
 
 /// The pub table: normal and boss pubs, then the Spelunken, each row with
-/// attempts, wins, games and Einmischen per pub, lives and relics on
-/// entering and the payout of a won one; then the games per pub by kind.
+/// attempts (pubs played again by the "Schutzengel" included and shown
+/// apart), wins, games and Einmischen per pub, relics on entering and the
+/// payout of a won one; then the games per pub by kind.
 fn render_pubs(out: &mut String, stats: &RunStats, content: &Content, options: &Options) {
     let _ = writeln!(
         out,
         "{:<10} {:>7} {:>9} {:>7} {:>6} {:>8} {:>6} {:>7} {:>9}",
-        "pub", "target", "attempts", "win%", "games", "redeals", "lives", "relics", "groschen"
+        "pub", "target", "attempts", "win%", "games", "redeals", "again", "relics", "groschen"
     );
     let boss_slot = usize::try_from(PUBS_PER_DISTRICT - 1).unwrap_or(4);
     let factor = content.run.spelunke.target_factor;
@@ -989,14 +1098,14 @@ fn render_pubs(out: &mut String, stats: &RunStats, content: &Content, options: &
                 let n = p.attempts;
                 let _ = writeln!(
                     out,
-                    "{:<10} {:>7} {:>9} {:>7.1} {:>6.2} {:>8.2} {:>6.2} {:>7.2} {:>9.2}",
+                    "{:<10} {:>7} {:>9} {:>7.1} {:>6.2} {:>8.2} {:>6} {:>7.2} {:>9.2}",
                     label,
                     target,
                     n,
                     pct(p.wins, n),
                     mean(p.games, n),
                     mean(p.redeals, n),
-                    mean(p.lives, n),
+                    p.replays,
                     mean(p.relics, n),
                     mean(p.payout, p.wins)
                 );
@@ -1026,20 +1135,20 @@ fn render_pubs(out: &mut String, stats: &RunStats, content: &Content, options: &
     out.push('\n');
 }
 
-/// Per district: lives and relics at its start and before the boss, lost
-/// pubs per run in it, and where the lost runs ended.
+/// Per district: relics at its start and before the boss, lost pubs per
+/// run in it, pubs played again ("Schutzengel"), and where the lost runs
+/// ended.
 fn render_districts(out: &mut String, stats: &RunStats) {
     let runs = u64::from(stats.runs);
     let _ = writeln!(
         out,
-        "{:<9} {:>6} {:>12} {:>12} {:>13} {:>13} {:>10} {:>9} {:>9} {:>9}",
+        "{:<9} {:>6} {:>13} {:>13} {:>10} {:>8} {:>9} {:>9} {:>9}",
         "district",
         "runs",
-        "lives start",
-        "lives boss",
         "relics start",
         "relics boss",
         "lost pubs",
+        "again",
         "end pub",
         "end sp",
         "end boss"
@@ -1048,14 +1157,13 @@ fn render_districts(out: &mut String, stats: &RunStats) {
     for (i, d) in stats.districts.iter().enumerate() {
         let _ = writeln!(
             out,
-            "{:<9} {:>6} {:>12.2} {:>12.2} {:>13.2} {:>13.2} {:>10.2} {:>9} {:>9} {:>9}",
+            "{:<9} {:>6} {:>13.2} {:>13.2} {:>10.2} {:>8} {:>9} {:>9} {:>9}",
             i + 1,
             d.runs,
-            mean(d.lives_start, d.runs),
-            mean(d.lives_boss, d.boss_runs),
             mean(d.relics_start, d.runs),
             mean(d.relics_boss, d.boss_runs),
             mean(d.lost_pubs, d.runs),
+            d.second_chances,
             d.ended[RunEnd::Pub as usize],
             d.ended[RunEnd::Spelunke as usize],
             d.ended[RunEnd::Boss as usize]
@@ -1714,18 +1822,21 @@ mod option_tests {
         // Spending by kind sums to the whole.
         assert_eq!(stats.spending.iter().sum::<u64>(), stats.coins_spent);
         assert!(stats.spending[0] > 0, "relics are bought");
-        // Every run starts district 1 with the starting lives.
+        // Every run starts district 1.
         let d1 = stats.districts[0];
         assert_eq!(d1.runs, 40);
-        assert_eq!(d1.lives_start, 40 * u64::from(base.run.lives.start));
         assert!(d1.relics_start >= 40, "the Zähler from the start");
         assert_eq!(d1.boss_runs, stats.series[0][4].attempts);
         // Spelunken are counted apart from the pubs they replace: a slot is
-        // entered once per run that gets there.
+        // entered once per run that gets there, and again when the
+        // "Schutzengel" has it played once more.
         for (section, (row, sp)) in stats.series.iter().zip(&stats.spelunken).enumerate() {
             for (index, (p, s)) in row.iter().zip(sp).enumerate() {
                 if index == 0 {
-                    assert_eq!(p.attempts + s.attempts, stats.districts[section].runs);
+                    assert_eq!(
+                        p.attempts + s.attempts - p.replays - s.replays,
+                        stats.districts[section].runs
+                    );
                 }
                 assert!(p.games >= p.attempts, "at least one game per pub");
                 assert!(s.wins <= s.attempts && p.wins <= p.attempts);
@@ -1737,8 +1848,17 @@ mod option_tests {
             "40 runs meet a Spelunke"
         );
         let text = render(&stats, &base, &options, 0);
+        // Without lives (ADR 0019) every lost pub ends the run, unless the
+        // "Schutzengel" has it played again.
+        let lost_pubs: u64 = stats.districts.iter().map(|d| d.lost_pubs).sum();
+        let again: u64 = stats.districts.iter().map(|d| d.second_chances).sum();
+        assert_eq!(lost_pubs, lost + again);
+        // The Faktor of the won games is at least ×1 without a factor below.
+        assert_eq!(stats.factor.won_games, stats.games_won);
+        assert!(stats.factor.run_max_permille >= 40 * 1000);
         for needle in [
-            "lives start",
+            "relics start",
+            "faktor: won games mean",
             "runs end:",
             "games per pub:",
             "groschen spent per run",

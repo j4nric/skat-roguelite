@@ -525,10 +525,13 @@ pub enum Effect {
     /// Tresen sells down to minus this many Groschen; later income pays the
     /// debt first. Passive only; the largest limit counts.
     Credit(u32),
-    /// Lever Leben ("Schutzengel"): once per Stadtteil the first lost pub
-    /// costs no life; never a boss pub, whose loss ends the run (ADR
-    /// 0017). Passive only.
-    SpareLife,
+    /// Second chance ("Schutzengel", ADR 0019): once in the run a lost
+    /// pub, a boss pub or a Spelunke included, is played again from the
+    /// start instead of ending the run; the relic is used up by it. Saves
+    /// and content from before call it `SpareLife` (once per Stadtteil a
+    /// lost pub cost no life). Passive only.
+    #[serde(alias = "SpareLife")]
+    SecondChance,
     /// Lever Spelunke ("Spelunkenkenner"): a Spelunke offers this many
     /// maluses and the player picks one at the route choice. Passive only;
     /// the largest number counts.
@@ -586,7 +589,7 @@ impl Effect {
             | Effect::HonoraryJack
             | Effect::DiscardThree
             | Effect::Credit(_)
-            | Effect::SpareLife
+            | Effect::SecondChance
             | Effect::ChooseMalus(_)
             | Effect::ShowCount
             | Effect::ShopDiscount(_)

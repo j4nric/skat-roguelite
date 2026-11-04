@@ -1176,7 +1176,8 @@ mod tests {
             serde_json::from_str(&full.view().expect("view")).expect("json");
         assert_eq!(view["sections"], 3);
         assert_eq!(view["length"], "Full");
-        assert_eq!(view["tour"]["lives"], 2);
+        // No lives since ADR 0019.
+        assert!(view["tour"].get("lives").is_none());
         assert_eq!(view["tour"]["districts"].as_array().map(Vec::len), Some(3));
         assert_eq!(view["stake"], 0);
         assert_eq!(view["win_threshold"], 61);
@@ -1359,8 +1360,26 @@ mod tests {
     #[test]
     fn a_whole_run_through_json() {
         let content = content().expect("content");
-        let mut session = Session::new("7").expect("new");
+        // Since ADR 0019 a lost pub ends the run: whole runs until one
+        // wins a pub.
         let mut payouts = 0;
+        for seed in 7..20 {
+            let session = whole_run(content, &seed.to_string(), &mut payouts);
+            assert!(matches!(
+                session.run().phase(),
+                RunPhase::Won | RunPhase::Lost
+            ));
+            if payouts > 0 {
+                break;
+            }
+        }
+        assert!(payouts > 0, "a run wins a pub");
+    }
+
+    /// Play a whole run with the bot through JSON, saved and loaded after
+    /// every step; checks every payout and counts them.
+    fn whole_run(content: &Content, seed: &str, payouts: &mut u32) -> Session {
+        let mut session = Session::new(seed).expect("new");
         for _ in 0..5_000 {
             let Some(action) = RunBot.next_action(session.run(), content) else {
                 break;
@@ -1385,17 +1404,13 @@ mod tests {
                         .filter_map(|k| payout[k].as_u64())
                         .sum::<u64>();
                     assert_eq!(payout["total"].as_u64(), Some(sum));
-                    payouts += 1;
+                    *payouts += 1;
                 }
             }
             let saved = session.save().expect("save");
             session = Session::load(&saved).expect("load");
         }
-        assert!(payouts > 0, "seed 7 wins a series");
-        assert!(matches!(
-            session.run().phase(),
-            RunPhase::Won | RunPhase::Lost
-        ));
+        session
     }
 
     /// Saves written by the M4 and M5 web app (the e2e fixtures) still

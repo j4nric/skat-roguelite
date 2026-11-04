@@ -61,16 +61,9 @@
     ),
     // Gegenstands-Review vom 02.11.2026 (Nutzer): neue Schnäpse. Preise und
     // Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung (DESIGN 8.3, 12).
-    (
-        id: "counter_beer",
-        name: "Konterbier",
-        text: "Außerhalb eines Spiels: Du bekommst ein Leben zurück, höchstens 4.",
-        rarity: Uncommon,
-        price: 4,
-        action: GainLives(1),
-        category: Schnapps,
-        target: Self,
-    ),
+    // Konterbier (counter_beer, ein Leben zurück) entfällt mit den Leben
+    // (ADR 0019); alte Spielstände bekommen seinen Preis in Groschen
+    // (REFUNDED_CONSUMABLES).
     (
         id: "snifter",
         name: "Schwenker",

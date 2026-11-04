@@ -475,9 +475,6 @@ impl Run {
                 EncounterEffect::Relic(Some(_)) => (!content
                     .relic_slot_free(self.character, self.relics.len()))
                 .then_some(OptionBlock::RelicSlotsFull),
-                EncounterEffect::Lives(_) => {
-                    (self.lives >= content.run.lives.max).then_some(OptionBlock::LivesFull)
-                }
                 EncounterEffect::Bet { .. } => self.wager.is_some().then_some(OptionBlock::BetOpen),
                 _ => None,
             };
@@ -786,7 +783,12 @@ impl Run {
                         self.gain_coins(&source, price, events);
                     }
                 }
-                EncounterEffect::Lives(n) => self.gain_lives(content, *n, events),
+                // Converted to Groschen when a save is loaded (ADR 0019).
+                EncounterEffect::Lives(n) => self.gain_coins(
+                    &source,
+                    n.saturating_mul(crate::content::LEGACY_LIFE_COINS),
+                    events,
+                ),
                 EncounterEffect::Scout(legs) => {
                     self.scout_legs = self.scout_legs.max(*legs);
                     events.push(RunEvent::StopsRevealed {
@@ -861,6 +863,11 @@ impl Run {
         };
         for option in &mut encounter.options {
             for effect in &mut option.effects {
+                // No lives since ADR 0019: Groschen instead.
+                if let EncounterEffect::Lives(n) = effect {
+                    *effect =
+                        EncounterEffect::Coins(n.saturating_mul(crate::content::LEGACY_LIFE_COINS));
+                }
                 let unknown = match effect {
                     EncounterEffect::EveningRule(Some(id))
                     | EncounterEffect::Relic(Some(id))

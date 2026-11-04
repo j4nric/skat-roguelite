@@ -486,15 +486,18 @@
         price: 5,
         passive: [Credit(5)],
     ),
-    // Lever Leben: once per Stadtteil the first lost pub costs no life.
+    // Zweite Chance (ADR 0019, 04.11.2026): einmal im Run wird eine
+    // verlorene Kneipe neu gespielt, auch eine Boss-Kneipe oder Spelunke;
+    // danach ist der Schutzengel weg. Bis dahin: einmal pro Stadtteil kostet
+    // die erste verlorene Kneipe kein Leben. Preis VORLÄUFIG (wie bisher 8).
     (
         id: "guardian_angel",
         group: Tour,
         name: "Schutzengel",
-        text: "Einmal pro Stadtteil: Die erste verlorene Kneipe kostet kein Leben. Nicht in der Boss-Kneipe.",
+        text: "Einmal im Run: Verlierst du eine Kneipe, spielst du sie noch einmal, auch die Boss-Kneipe. Danach ist der Schutzengel weg.",
         rarity: Rare,
         price: 8,
-        passive: [SpareLife],
+        passive: [SecondChance],
     ),
     // Lever Spelunke: two maluses on offer, the player picks one.
     (

@@ -337,14 +337,14 @@ fn the_bot_keeps_the_better_schnaps() {
     let mut run = start_at(&content, 5, 0, 0);
     // Schwenker (bot value 0) is the weakest: anything worth more takes
     // its slot.
-    run.consumables = ids(&["counter_beer", "snifter", "nightcap"]);
+    run.consumables = ids(&["road_beer", "snifter", "nightcap"]);
     run.schnapps_reward = Some(ConsumableId::new("shot"));
     assert_eq!(
         RunBot::schnapps_reward_action(&run),
         Some(RunAction::ChooseSchnappsReward { give_up: Some(1) })
     );
     // Not worth more than the weakest: sold.
-    run.consumables = ids(&["counter_beer", "road_beer", "nightcap"]);
+    run.consumables = ids(&["road_beer", "road_beer", "nightcap"]);
     assert_eq!(
         RunBot::schnapps_reward_action(&run),
         Some(RunAction::ChooseSchnappsReward { give_up: None })
@@ -362,7 +362,6 @@ fn every_schnaps_names_where_it_is_poured() {
         ("double_grain", ConsumableTarget::Table),
         ("rotgut", ConsumableTarget::Table),
         ("blue_curacao", ConsumableTarget::Card),
-        ("counter_beer", ConsumableTarget::Player),
         ("clear_spirit", ConsumableTarget::Player),
         ("nightcap", ConsumableTarget::Player),
         ("eggnog", ConsumableTarget::Player),

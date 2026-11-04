@@ -135,12 +135,17 @@
         ],
         category: Upgrade,
     ),
+    // Rast seit ADR 0019 (keine Leben mehr, 04.11.2026): gestärkt in die
+    // nächste Kneipe (ein Einmischen mehr, wie die Rückendeckung des
+    // Kiebitz) oder eine Karte am Waschbecken sauber gewaschen, wie
+    // „Karte reinigen“ der Werkstatt. Bis dahin ein Leben zurück. VORLÄUFIG.
     (
         id: "snack_bar",
         name: "Die Imbissbude",
-        text: "Eine Currywurst mit Pommes und ein Wasser dazu: Du kommst wieder zu Kräften und bekommst ein Leben zurück.",
+        text: "Eine Currywurst mit Pommes stärkt dich: In der nächsten Kneipe darfst du einmal mehr einmischen. Oder du wäschst dir am Waschbecken die Finger und eine Karte deiner Wahl gleich mit: Alle Modifikationen gehen ab, Flüche eingeschlossen.",
         options: [
-            (label: "Currywurst", effects: [Lives(1)]),
+            (label: "Currywurst", effects: [NextPubRedeals(1)]),
+            (label: "Karte waschen", effects: [Cleanse]),
         ],
         category: Rest,
     ),
@@ -179,10 +184,11 @@
     (
         id: "lost_wallet",
         name: "Verlorenes Portemonnaie",
-        text: "Unter dem Tisch liegt ein Portemonnaie mit 8 Groschen. Behältst du es, wird eine zufällige Karte durchsichtig, ein Fluch: Das schlechte Gewissen sieht man dir an. Gibst du es am Tresen ab, bekommst du ein Leben zurück; der Besitzer zahlt auch Finderlohn.",
+        text: "Unter dem Tisch liegt ein Portemonnaie mit 8 Groschen. Behältst du es, wird eine zufällige Karte durchsichtig, ein Fluch: Das schlechte Gewissen sieht man dir an. Gibst du es am Tresen ab, gibt der Besitzer dir einen aus, oder er zahlt Finderlohn.",
         options: [
             (label: "Behalten", effects: [Coins(8), Mark(card: Random, card_mod: Some("transparent"))]),
-            (label: "Am Tresen abgeben", effects: [Lives(1)]),
+            // Bis ADR 0019 ein Leben.
+            (label: "Am Tresen abgeben", effects: [Schnapps(None)]),
             (label: "Finderlohn", effects: [Coins(4)]),
         ],
     ),
