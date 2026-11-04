@@ -69,7 +69,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Art einer Modifikation | `ModKind` | `Edge` (Rand: immer aktiv), `Moment` (Markierung oben rechts), `Voucher` (Gutschein), `Curse` (Fluch), `Special` (Spezialkarte); Feld `CardModDef::kind` |
 | Rand-Modifikation | `ModKind::Edge` | Augen, Rang (Winkel), Trumpf, Blei, Goldkante |
 | Moment-Modifikation | `ModKind::Moment` | Letzter Stich, Erster Stich, Fadenkreuz, Schneiderkreide |
-| Gutschein (wenn gedrückt) | `ModKind::Voucher` | Auslöser `OnDiscard`, Ereignis `VoucherRedeemed { card, card_mod, value }`, Wirkung `TurnInto` (wird Spezialkarte) |
+| Gutschein (wenn gedrückt) | `ModKind::Voucher` | Auslöser `OnDiscard`, Ereignis `VoucherRedeemed { card, card_mod, value, via_hand }`, Wirkung `TurnInto` (wird Spezialkarte) |
+| Marke im Handspiel (eine zufällige Marke der Hand wird bei der Ansage eingelöst, 04.11.2026) | `redeem_hand_voucher` | `Run::redeem_hand_voucher`, eigener Zufall `HAND_VOUCHER_SEED`, Ereignis `VoucherRedeemed { via_hand: true }`; Spielebene `Game::replace_declarer_card` (die Karte wird vor der Ansage Wandelkarte) |
 | Spezialkarte | `ModKind::Special` | Untot, Wandelkarte, Doppelgänger; darf zusätzlich eine normale Modifikation tragen. Höchstens eine Karte je Ausgabe trägt dieselbe Spezialkarte (seit 03.11.2026, Fehler `DeckError::SpecialTaken`, Code `SpecialTaken`; `Edition::holder_of`) |
 | Spezialkarte noch frei (Obergrenze, Angebote) | `Run::special_open` | Keine Karte ist sie und keine trägt die Marke dafür; sonst bietet nichts sie oder ihre Marke an. Ziel einer Marke oder Spezialkarte: `zinken::special_target` |
 | Marke zahlt statt dessen (Obergrenze der Spezialkarten) | `VoucherCapped` | Ereignis `RunEvent::VoucherCapped { card, card_mod, special, holder, coins }`: eine Toten- oder Narrenmarke, deren Spezialkarte eine andere Karte schon ist, zahlt `ZinkenConfig::capped_voucher_coins` |

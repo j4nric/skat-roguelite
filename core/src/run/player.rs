@@ -490,10 +490,12 @@ impl RunEvent {
                 card,
                 card_mod,
                 value,
+                via_hand,
             } => RunEvent::VoucherRedeemed {
                 card,
                 card_mod,
                 value,
+                via_hand,
             },
             RunEvent::VoucherCapped {
                 card,
