@@ -20,9 +20,13 @@ export function heart(full: boolean, size = 16): string {
   return `<svg class="heart ${full ? 'is-full' : 'is-empty'}" viewBox="0 0 8 7" width="${size}" height="${Math.round((size * 7) / 8)}" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 0h2v1h2v-1h2v1h1v3h-1v1h-1v1h-1v1h-2v-1h-1v-1h-1v-1h-1v-3h1z" fill="${fill}" stroke="${edge}" stroke-width=".6"/>${full ? '<path d="M1 1h1v1h-1z" fill="#f4a39c"/>' : ''}</svg>`;
 }
 
-/** The lives as a row of hearts (filled for each left, empty up to the maximum). */
-export function hearts(lives: number, max: number, size = 16): string {
-  const n = Math.max(lives, max);
+/**
+ * The lives as a row of hearts: filled for each left, a lost one of the
+ * lives the run started with greyed. Never an empty slot above them: the
+ * maximum is told only where a life is given (playtest 04.11.2026).
+ */
+export function hearts(lives: number, start: number, size = 16): string {
+  const n = Math.max(lives, start);
   return Array.from({ length: n }, (_, i) => heart(i < lives, size)).join('');
 }
 
@@ -163,7 +167,7 @@ export function renderHud(view: RunView): string {
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const tour = view.tour;
   const pub = tour.current;
-  const lives = `<span class="hud-lives" data-testid="lives" ${attrs({ 'data-lives': tour.lives, 'aria-label': t(de.lives.aria, { lives: tour.lives, max: tour.max_lives }), title: t(de.lives.aria, { lives: tour.lives, max: tour.max_lives }) })}>${hearts(tour.lives, tour.max_lives, 14)}</span>`;
+  const lives = `<span class="hud-lives" data-testid="lives" ${attrs({ 'data-lives': tour.lives, 'aria-label': t(de.lives.aria, { lives: tour.lives }), title: t(de.lives.aria, { lives: tour.lives }) })}>${hearts(tour.lives, tour.start_lives, 14)}</span>`;
   const game = Math.min(s.games_played + 1, s.game_limit);
   // "Spiel 2 von 3" as the slate's label; the account follows visibly in
   // the slate, written out for screen readers.

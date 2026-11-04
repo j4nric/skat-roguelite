@@ -29,6 +29,8 @@ export interface ScoreOverlay {
   relics: OwnedRelic[];
   /** Display names of the seats (a boss sits in seat 1). */
   seatNames: string[];
+  /** A lost game whose loss a lost heart (or the end screen) sounds: the board stays quiet. */
+  quietLoss?: boolean;
   resolve: () => void;
 }
 
@@ -50,7 +52,8 @@ export interface PendingStart {
  * maybe replace.
  */
 export interface ModQuestion {
-  type: 'replace' | 'raise' | 'change' | 'drop' | 'random';
+  /** `apply`: a plain new Zinke (or effect) from a card picker, shown before and after (playtest 04.11.2026); `cleanse`: "Karte reinigen". */
+  type: 'replace' | 'raise' | 'change' | 'drop' | 'random' | 'apply' | 'cleanse';
   /** The card now and, from the preview's view, afterwards (null when drawn at random). */
   card: DeckCard;
   after: DeckCard | null;
@@ -114,8 +117,6 @@ export interface UiState {
   selected: number[];
   /** The player chose "Hand spielen" before the skat: show the hand Ansage. */
   handGame: boolean;
-  /** One tap on the deck while choosing: "Einmischen" waits for a confirmation. */
-  mixArmed: boolean;
   /** Index into the declare options' games. */
   pickGame: number | null;
   pickRisk: RiskLevel | null;

@@ -74,7 +74,7 @@ import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
 import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
-import { renderEnd, renderError, renderKontra, renderRiseChoice, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
+import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { declarationSign, discardNeed, renderTable } from './ui/table';
@@ -226,7 +226,6 @@ export class App {
     selected: [],
     risePick: [],
     handGame: false,
-    mixArmed: false,
     pickGame: null,
     pickRisk: null,
     pickNullRisk: null,
@@ -856,7 +855,6 @@ export class App {
   private resetTableChoices(): void {
     this.ui.selected = this.skatOnTable();
     this.ui.handGame = false;
-    this.ui.mixArmed = false;
     this.ui.pickGame = null;
     this.ui.pickRisk = null;
     this.ui.pickNullRisk = null;
@@ -1016,9 +1014,18 @@ export class App {
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
         if (view.phase === 'Won') this.afterRender.push(() => fireworks());
       }
-      this.announceUnlocks(earned);
-      this.render();
-      lightsUp();
+      // The end screen must come whatever went wrong before it (playtest
+      // 04.11.2026: stuck on a lost board without a working button).
+      try {
+        this.announceUnlocks(earned);
+      } catch (err) {
+        console.warn('unlocks not shown', err);
+      }
+      try {
+        this.render();
+      } finally {
+        lightsUp();
+      }
     }
   }
 
@@ -1337,12 +1344,16 @@ export class App {
         if (wait) await this.pause(wait);
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
+        // One loss sound per chain (playtest 04.11.2026): when this lost game also costs a
+        // heart, the heart (or, ending the run, the end screen) sounds it, not the board.
+        const heartLost = rest.some((e) => typeof e === 'object' && 'LivesChanged' in e && e.LivesChanged.change < 0);
         await this.showScore(
           before?.series.score ?? 0,
           ev.GameScored.series_score,
           before?.series.target ?? after.series.target,
           after,
           won ? { payout: won.SeriesWon.payout, coins: won.SeriesWon.coins } : null,
+          heartLost,
         );
         continue;
       }
@@ -1353,7 +1364,8 @@ export class App {
           const givenUp = events.some((e) => typeof e === 'object' && 'PubGivenUp' in e);
           const why = givenUp ? de.lives.givenUp : lostPub?.PubLost.boss ? de.lives.bossAgain : de.lives.pubLost;
           this.showToast(`${why} ${t(de.lives.lost, { lives })}`, 'top');
-          sound.play('lose');
+          // A lost run sounds once, on the end screen; otherwise the heart carries the loss.
+          if (after.phase !== 'Lost') sound.play('lose');
           this.hudFx.lives(lives);
           // Time to see the heart break.
           if (motionOn()) await this.pause(700);
@@ -2129,12 +2141,13 @@ export class App {
     target: number,
     after: RunView,
     payout: ScoreOverlay['payout'],
+    quietLoss = false,
   ): Promise<void> {
     const score = after.last_score;
     if (!score) return;
     await new Promise<void>((resolve) => {
       const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
-      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, resolve };
+      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve };
       this.render();
     });
     this.scoreBoard = null;
@@ -2524,10 +2537,12 @@ export class App {
         this.render();
         return;
       case 'score-skip':
-        if (overlay?.kind === 'score') this.scoreBoard?.skip();
+        if (overlay?.kind === 'score' && this.scoreBoard) this.scoreBoard.skip();
+        else this.redrawLayer();
         return;
       case 'score-continue':
         if (overlay?.kind === 'score') overlay.resolve();
+        else this.redrawLayer();
         return;
       case 'boss-go':
         if (overlay?.kind === 'boss') overlay.resolve();
@@ -2651,7 +2666,8 @@ export class App {
         this.noteStamp(el);
         // The Zinke on the chosen card (a Painter or cleansing names none).
         const chosen = option?.effects.find((e) => typeof e.effect === 'object' && 'Mark' in e.effect && e.effect.Mark.card === 'Chosen');
-        this.applyMod(view, action, num('id'), chosen?.card_mod?.id ?? null, false, o);
+        // The card before and after, then "Anbringen" (playtest 04.11.2026).
+        this.applyMod(view, action, num('id'), chosen?.card_mod?.id ?? null, false, o, 'apply');
         return;
       }
       case 'encounter-relic': {
@@ -2662,6 +2678,8 @@ export class App {
       }
       case 'mod-confirm-go': {
         const o = this.ui.overlay;
+        // The Zinke comes down on the card shown "Danach".
+        if (o?.kind === 'mod-confirm') this.noteStamp(this.layerEl.querySelector('.mod-confirm-card:last-of-type .card'));
         if (o?.kind === 'mod-confirm') void this.act(o.action);
         return;
       }
@@ -2681,14 +2699,8 @@ export class App {
         void this.act({ Declare: { game: game.game, risk } });
         return;
       }
-      case 'pass-arm':
-        // One tap on the deck: the middle offers "Einmischen"; a second tap undoes it.
-        this.ui.mixArmed = !this.ui.mixArmed;
-        this.render();
-        return;
       case 'pass':
-        // Einmischen (deck tap fallback; the button keeps its old action name).
-        this.ui.mixArmed = false;
+        // Einmischen: one tap on the deck (or the button) mixes in at once.
         void this.act('Redeal');
         return;
       case 're':
@@ -2700,7 +2712,10 @@ export class App {
         const need = view.game?.rise_choice?.pick ?? 3;
         const pick = this.ui.risePick;
         this.ui.risePick = pick.includes(id) ? pick.filter((x) => x !== id) : pick.length < need ? [...pick, id] : pick;
-        this.render();
+        // Only the tapped card and the button change: no re-render, the sheet does not enter again.
+        const sheetEl = this.screenEl.querySelector<HTMLElement>('.sheet-rise');
+        if (sheetEl) updateRiseChoice(sheetEl, this.ui.risePick, need);
+        else this.render();
         return;
       }
       case 'rise-go': {
@@ -2777,7 +2792,7 @@ export class App {
         const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
         this.noteStamp(el);
         const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
-        if (marks.mod || marks.random) this.applyMod(view, action, num('id'), marks.mod, marks.random, o);
+        if (marks.mod || marks.random) this.applyMod(view, action, num('id'), marks.mod, marks.random, o, 'apply');
         else void this.act(action);
         return;
       }
@@ -2822,7 +2837,12 @@ export class App {
       case 'zinken-card': {
         const o = this.ui.overlay;
         if (o?.kind !== 'zinken-card') return;
-        void this.act(o.service === 'painter' ? { HirePainter: num('id') } : { CleanseCard: num('id') });
+        // The Kartenmaler's sheet shows each Zinke on the card; cleansing shows the card before and after first.
+        if (o.service === 'painter') void this.act({ HirePainter: num('id') });
+        else {
+          this.noteStamp(el);
+          this.applyMod(view, { CleanseCard: num('id') }, num('id'), null, false, o, 'cleanse');
+        }
         return;
       }
       case 'schnapps-swap':
@@ -3088,9 +3108,9 @@ export class App {
    * sheet); otherwise apply it at once. One drawn at random is not
    * previewed: the sheet only says that the card carries one already.
    */
-  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay | null): void {
+  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay | null, always: 'apply' | 'cleanse' | null = null): void {
     const card = view.edition.find((c) => c.id === id);
-    const ask = card ? this.modQuestion(card, action, mod, random) : null;
+    const ask = card ? this.modQuestion(card, action, mod, random, always) : null;
     if (!ask) {
       void this.act(action);
       return;
@@ -3099,7 +3119,12 @@ export class App {
     this.render();
   }
 
-  private modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean): ModQuestion | null {
+  /**
+   * `always` (a card picker): with nothing to warn about, still show the
+   * card before and after, from the core's preview, and wait for
+   * "Anbringen" (or "Reinigen").
+   */
+  private modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean, always: 'apply' | 'cleanse' | null = null): ModQuestion | null {
     const blank = { card, after: null, old: null, mod: null, from: '', to: '' };
     if (random) {
       const old = card.mods.find((m) => modKind(m) !== 'Special' && modKind(m) !== 'SpecialCurse');
@@ -3113,6 +3138,10 @@ export class App {
       return null;
     }
     const after = step.view.edition.find((c) => c.id === card.id) ?? null;
+    // Only a card the step changes is shown (the Kartenmaler's offers open his own sheet).
+    const changed = after !== null && JSON.stringify(after) !== JSON.stringify(card);
+    if (always === 'cleanse' && changed) return { ...blank, after, type: 'cleanse' };
+    const plain = always && changed ? { ...blank, after, type: always, mod } : null;
     for (const ev of step.events) {
       if (typeof ev !== 'object' || !('DeckChanged' in ev)) continue;
       const change = ev.DeckChanged;
@@ -3125,13 +3154,13 @@ export class App {
           if (mod && mod !== m.card_mod) return { ...blank, ...values, after, type: 'change', old: m.card_mod, mod };
           return { ...blank, ...values, after, type: 'raise', mod: m.card_mod };
         }
-        return null;
+        return plain ? { ...plain, mod: m.card_mod } : null;
       }
       if ('Unmodified' in change && change.Unmodified.card === card.id) {
         return { ...blank, after, type: 'drop', old: change.Unmodified.card_mod, mod };
       }
     }
-    return null;
+    return plain;
   }
 
   /**
@@ -3150,8 +3179,7 @@ export class App {
     }
     if (kind === 'deck') {
       if (where === 'mix' && this.ui.view.game.declare?.can_redeal) {
-        this.ui.mixArmed = false;
-        void this.act('Redeal');
+            void this.act('Redeal');
       }
       return;
     }
@@ -3363,7 +3391,10 @@ export class App {
     const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
     // Cards flying onto the felt keep flying through the re-render.
     const flights = noteFlights(this.screenEl, FLYING);
+    // A sheet on the screen that is drawn again (the Untot pick) does not enter again.
+    const riseShown = this.screenEl.querySelector('.sheet-rise') !== null;
     this.screenEl.innerHTML = body;
+    if (riseShown) this.screenEl.querySelector('.sheet-rise')?.closest('.overlay')?.classList.add('is-still');
     if (flights.length) resumeFlights(this.screenEl, FLYING, flights);
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
@@ -3399,6 +3430,16 @@ export class App {
     }
   }
 
+  /**
+   * A button of a dialog that is not the one in force (a board left on the
+   * layer): draw the layer and the screen anew from the state, so nothing
+   * stale stays under the finger.
+   */
+  private redrawLayer(): void {
+    this.overlayDirty = true;
+    this.render();
+  }
+
   /** The dialog layer: only rebuilt when the dialog itself changes. */
   private renderLayer(): void {
     const o = this.ui.overlay;
@@ -3414,8 +3455,13 @@ export class App {
     }
     if (o.kind === 'score') {
       this.layerEl.innerHTML = renderScore(o, (this.ui.view?.edition ?? []).map((c) => editionLook(c, this.ui.view, this.ui.wildSettled)));
-      this.scoreBoard = new ScoreBoard(this.layerEl, o, (coins, from) => this.hudFx.gainTo(coins, from));
-      void this.scoreBoard.play();
+      const board = new ScoreBoard(this.layerEl, o, (coins, from) => this.hudFx.gainTo(coins, from));
+      this.scoreBoard = board;
+      // Whatever breaks in the show, the board ends with its "Weiter" button.
+      board.play().catch((err: unknown) => {
+        console.warn('score board', err);
+        board.skip();
+      });
       return;
     }
     const view = this.ui.screen === 'run' || this.ui.screen === 'end' ? this.ui.view : null;

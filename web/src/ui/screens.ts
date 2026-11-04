@@ -383,6 +383,23 @@ export function renderRiseChoice(view: RunView, picked: number[]): string {
   );
 }
 
+/**
+ * "Untot": a tap picked or dropped a card. Only that card's state and the
+ * button change in place (no re-render, so the sheet does not enter again).
+ */
+export function updateRiseChoice(sheetEl: HTMLElement, picked: number[], need: number): void {
+  sheetEl.querySelectorAll<HTMLElement>('.rise-card').forEach((el) => {
+    const on = picked.includes(Number(el.dataset.id));
+    el.classList.toggle('is-picked', on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const go = sheetEl.querySelector<HTMLButtonElement>('[data-action="rise-go"]');
+  if (!go) return;
+  const ready = picked.length === need;
+  go.disabled = !ready;
+  go.textContent = ready ? de.rise.go : t(de.rise.more, { n: need - picked.length });
+}
+
 export function renderKontra(view: RunView): string {
   const kontra = view.game?.kontra;
   const kontraSeat = typeof kontra === 'object' && 'Kontra' in kontra ? kontra.Kontra : 1;
@@ -971,7 +988,13 @@ function renderModConfirm(ask: ModQuestion): string {
           ? [c.changeTitle, t(c.change, { card, old: name(ask.old), new: name(ask.mod), from: ask.from, to: ask.to }), c.changeGo]
         : ask.type === 'drop'
           ? [c.dropTitle, t(c.drop, { card, old: name(ask.old), new: name(ask.mod) }), c.dropGo]
-          : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
+          : ask.type === 'apply'
+            ? [c.applyTitle, ask.mod ? t(c.apply, { card, new: name(ask.mod) }) : t(c.applyPlain, { card }), c.applyGo]
+            : ask.type === 'cleanse'
+              ? [c.cleanseTitle, t(c.cleanse, { card }), c.cleanseGo]
+              : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
+  // From a card picker the way back is another card; otherwise keep the card as it is.
+  const back = ask.type === 'apply' || ask.type === 'cleanse' ? c.back : c.keep;
   const face = (d: DeckCard, label: string): string =>
     `<figure class="mod-confirm-card"><span class="card">${cardSvg(d.kind, d.mods, 'full', d.mod_values)}</span><figcaption>${esc(label)}</figcaption></figure>`;
   const cards = ask.after
@@ -980,10 +1003,10 @@ function renderModConfirm(ask: ModQuestion): string {
   return sheet(
     `<h2>${esc(title)}</h2>
      <p data-testid="mod-confirm-text">${esc(text)}</p>
-     <div class="mod-confirm-cards" data-testid="mod-confirm-cards">${cards}</div>
+     <div class="mod-confirm-cards" data-testid="mod-confirm-cards" data-type="${ask.type}">${cards}</div>
      <div class="sheet-actions">
        <button class="btn btn-primary" ${attrs({ 'data-action': 'mod-confirm-go', 'data-testid': 'mod-confirm-go' })}>${esc(go)}</button>
-       <button class="btn" ${attrs({ 'data-action': 'mod-confirm-back', 'data-testid': 'mod-confirm-back' })}>${esc(c.keep)}</button>
+       <button class="btn" ${attrs({ 'data-action': 'mod-confirm-back', 'data-testid': 'mod-confirm-back' })}>${esc(back)}</button>
      </div>`,
     false,
     'sheet-mod-confirm',

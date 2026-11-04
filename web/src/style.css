@@ -2739,7 +2739,9 @@ button.card {
   animation: sheet-in 180ms steps(4);
 }
 
-.layer.is-static .sheet {
+.layer.is-static .sheet,
+.overlay.is-still,
+.overlay.is-still .sheet {
   animation: none;
 }
 
@@ -3010,16 +3012,24 @@ button.card {
 
 /* ---------------------------------------------------------- card picking */
 
+/* The cards of a picker wrap into rows and never scroll sideways: six
+   or seven columns on a phone held upright, more on a desktop. */
 .target-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(48px, 100%), 1fr));
   gap: 6px;
-  overflow-y: auto;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .target-card {
   width: 100%;
+  min-width: 0;
 }
 
 .target-card.is-dim {
@@ -3035,10 +3045,12 @@ button.card {
   opacity: 0.4;
 }
 
+/* Inside the card's box: a tag sticking out of the last column made the
+   whole grid scroll sideways (playtest 04.11.2026). */
 .target-reason {
   position: absolute;
-  left: -2px;
-  right: -2px;
+  left: 0;
+  right: 0;
   top: 38%;
   padding: 1px 0;
   background: var(--line);
@@ -6725,11 +6737,6 @@ body > .drag-ghost {
   transform: translate(-2px, 2px) rotate(2deg);
 }
 
-.deck-pile.is-armed .deck-backs .card-back:nth-child(3) {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .deck-count {
   position: absolute;
   top: -8px;
@@ -6766,8 +6773,7 @@ body > .drag-ghost {
   border: 2px dashed transparent;
 }
 
-.is-dragging-deck .mix-zone,
-.mix-zone.is-armed {
+.is-dragging-deck .mix-zone {
   border-color: var(--accent);
   background: rgba(209, 119, 63, 0.08);
 }
@@ -6852,27 +6858,6 @@ body > .drag-ghost {
 .skat-pile:focus-visible {
   outline: 2px solid var(--cool);
   outline-offset: 4px;
-}
-
-/* One tap on the deck: "Einmischen" waits under the skat. */
-.btn-mix {
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  z-index: 3;
-  min-height: 40px;
-  padding: 0 10px;
-  white-space: nowrap;
-  transform: translateX(-50%);
-}
-
-.mix-zone.is-armed .felt-caption {
-  visibility: hidden;
-}
-
-.mix-hint {
-  text-align: center;
-  color: var(--accent-light);
 }
 
 .choice-actions .btn-hand {
