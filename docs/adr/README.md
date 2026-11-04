@@ -23,3 +23,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0015 | Eigene Ausgabe jeder Karte | Angenommen, ersetzt 0005 teilweise, ändert 0012 |
 | 0016 | Die Kneipentour statt Abschnitten und Serien | Angenommen, Boss-Kneipe geändert durch 0017 |
 | 0017 | Bosse v2: zwei Boss-Spieler, alles oder nichts | Angenommen, ersetzt den Boss-Teil von 0016 |
+| 0018 | Der Faktor als dritte Stufe der Wertung | Angenommen, Zahlen vorläufig |

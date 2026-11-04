@@ -66,6 +66,8 @@ Multiplikator = Spitzen
              + 1  Ouvert
 ```
 
+**Seit ADR 0018 (04.11.2026): Spielwert = Grundwert × Multiplikator × Faktor.** Der Faktor beginnt bei ×1 und wächst nur multiplikativ (×1,5 und ×1,5 ergeben ×2,25). Er kommt nicht von selbst, sondern aus Relikten mit festem Faktor unter einer Bedingung (eines je Farbe, eines für Grand, eines für Null), aus wachsenden Relikten (zum Beispiel +×0,1 je gewonnener Kneipe) und aus einzelnen Begegnungen und Boss-Belohnungen. Dauerhafte Faktoren der Relikte gelten nur für gewonnene Spiele; vorübergehende Faktoren, die ausdrücklich auch verloren zählen (Stammfarbe, Bock, Einsatz), bleiben. Zahlen vorläufig bis zur Messung. Grund: Grundwert und Multiplikator wachsen nur additiv, für einen Endlos-Modus braucht ein Build eine Quelle exponentiellen Wachstums.
+
 In der Sprache des Genres: **Grundwert sind die Chips, der Multiplikator (bis 02.11.2026 „Gewinnstufen“, Code `levels`) ist der Mult.** Alle Modifikationen im Spiel greifen an genau einer dieser Stellen an:
 
 | Hebel | Beispiele für Upgrades |
