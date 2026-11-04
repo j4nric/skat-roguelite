@@ -58,10 +58,13 @@
         // damalige Kurve des Alleinspielers) erreichte er Stadtteil 2 in 60 %
         // und gewann 30 % der Runs; mit der Kurve des Alleinspielers 47 % und
         // 9,5 %. Ein gewonnenes Null bringt im Run im Mittel 113 Punkte.
+        // Runde 1 nach ADR 0019 (04.11.2026): mit der Kurve oben ohne Leben
+        // Stadtteil 2 in 26,9 %, gewonnen 2,0 % (Alleinspieler 29,0 / 1,9 %).
+        // Jetzt rund die neue Kurve des Alleinspielers × 1,1.
         targets: Some([
-            [50, 65, 75, 85, 70],
-            [110, 125, 145, 160, 120],
-            [180, 210, 245, 255, 175],
+            [40, 50, 60, 65, 65],
+            [75, 90, 100, 110, 90],
+            [150, 170, 195, 210, 145],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -97,8 +100,9 @@
     // Neue Charaktere vom 03.11.2026 (DESIGN 9.4 bis 9.6), entschieden vom
     // Nutzer; sie ersetzen Grandspieler, Zaungast und Wirtin. Gemessen am
     // 03.11.2026 (docs/balance/2026-11-03-charaktere.md): Drückeberger und
-    // Bruderherz liegen mit der Kurve des Alleinspielers (targets fehlt,
-    // also run.ron) im Zielbild, die Schneiderin hat eigene Zielwerte. Die
+    // Bruderherz lagen mit der Kurve des Alleinspielers (targets fehlt,
+    // also run.ron) im Zielbild, die Schneiderin hat eigene Zielwerte. Seit
+    // Runde 1 nach ADR 0019 (04.11.2026) hat auch Bruderherz eigene. Die
     // Tresen-Gewichte wie beim Alleinspieler (nach Augenmaß).
     (
         character: Shirker,
@@ -146,10 +150,14 @@
         // Kurve erreichte sie Stadtteil 2 in 47 % und gewann 7,9 % der Runs:
         // Sie gewinnt die Hälfte ihrer Farbspiele und Grands mit Schneider
         // (Alleinspieler 39 %) und zählt sie doppelt.
+        // Runde 1 nach ADR 0019 (04.11.2026): mit der Kurve oben ohne Leben
+        // Stadtteil 2 in 22,4 %, gewonnen 1,3 % (Alleinspieler 29,0 / 1,9 %);
+        // die Boss-Kneipe in Stadtteil 1 gewann sie nur zu 57 %. Jetzt in
+        // Stadtteil 1 die neue Kurve des Alleinspielers, danach rund × 1,1.
         targets: Some([
-            [50, 65, 75, 90, 75],
-            [105, 120, 140, 155, 115],
-            [165, 195, 225, 235, 160],
+            [35, 45, 55, 60, 60],
+            [75, 90, 100, 110, 90],
+            [150, 170, 195, 210, 145],
         ]),
         start_relics: ["watertight"],
         deck: (
@@ -185,6 +193,15 @@
         name: "Bruderherz",
         text: "Sein Herz schlägt für Rot: Daus, Zehn, König und Oberin in Rot tragen ein Siegel (+2), Neun, Acht und Sieben einen Winkel (+1). Daus und Zehn der anderen Farben sind fleckig (als Trumpf Grundwert −2), ihre Könige ramponiert (−2 Augen); seine Flüche lassen sich nicht reinigen. Zinken auf Rot kosten ihn die Hälfte. Startet mit der Stammfarbe.",
         start_relics: ["home_suit"],
+        // Eigene Zielwerte seit Runde 1 nach ADR 0019 (04.11.2026): Mit der
+        // Kurve des Alleinspielers ohne Leben Stadtteil 2 in 20,9 %, gewonnen
+        // 1,8 % (Alleinspieler 29,0 / 1,9 %), die erste Kneipe nur 75,8 %
+        // (Alleinspieler 81,7 %). Jetzt rund die neue Kurve × 0,9.
+        targets: Some([
+            [30, 40, 50, 55, 55],
+            [65, 75, 80, 90, 75],
+            [125, 140, 160, 170, 120],
+        ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die
         // Könige kosten immer Augen. Unter unverändert. "Beim Erhalt"
