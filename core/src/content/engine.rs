@@ -50,15 +50,32 @@ pub struct ResolvedDeck {
     pub point_changes: Vec<(u32, Source, i32)>,
 }
 
+/// Whether the `SetCardPoints` of `source` change the cards of `owner`'s
+/// edition: the player's own relics and character only his edition (the
+/// cards he owns, ADR 0015), everything else (boss, malus) every edition.
+#[must_use]
+pub fn owns_card_points(source: &Source, owner: Owner) -> bool {
+    match source {
+        Source::Relic(_) | Source::Character(_) => owner == Owner::Player,
+        _ => true,
+    }
+}
+
 /// Resolve one edition for one game, every card as a copy of `owner`.
 ///
-/// Order per card: `SetCardPoints` from bosses and relics in source order (rules of the
-/// table, for every edition); then the card's own modifications in the
+/// Order per card: `SetCardPoints` in source order; then the card's own
+/// modifications in the
 /// order they were attached, each scaled by the value the card carries
 /// (`AddCardPoints`, `RankBonus`, `Promote`, `NullLowest`, `RevealHolder`,
 /// `NeverWins`, `HonoraryJack`, `NoDiscard`, `Wild`, `Demote`). Augen below zero leave
 /// the card at 0 with a [`DealtCard::point_debt`] (DESIGN 7.2). A demoted
 /// Unter has no Augen.
+///
+/// `SetCardPoints` of the boss and of a Spelunke's malus are rules of the
+/// table and count for every edition. Those of the player's relics and of
+/// his character count for his own edition only ([`owns_card_points`],
+/// decided by the user on 04.11.2026): "Alte Oberin" makes his Ober count
+/// 5, wherever they end up, an opponent's Ober keeps 3.
 #[must_use]
 pub fn resolve_edition(
     deck: &Edition,
@@ -78,7 +95,7 @@ pub fn resolve_edition(
             cards.push(dealt);
             continue;
         };
-        for source in global {
+        for source in global.iter().filter(|s| owns_card_points(&s.source, owner)) {
             for effect in source.passive {
                 if let Effect::SetCardPoints { filter, points } = effect {
                     if filter.matches(face) && *points != dealt.card_points {
