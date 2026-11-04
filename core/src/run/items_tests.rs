@@ -318,6 +318,10 @@ fn groups_of_the_relics_are_data() {
             RelicGroup::Tour,
             "landlord closing_time season_ticket kitty slate guardian_angel dive_expert",
         ),
+        (
+            RelicGroup::Factor,
+            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand",
+        ),
     ];
     let mut named = 0;
     for (group, ids) in groups {

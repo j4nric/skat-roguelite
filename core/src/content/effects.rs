@@ -249,6 +249,17 @@ pub enum Effect {
     /// need not be whole, written as a decimal (`ScaleGameValue(1.5)`,
     /// "Stammfarbe"). The Spielwert is rounded half up at the end.
     ScaleGameValue(Factor),
+    /// Lever Spielwert (Faktor, ADR 0018): multiply the whole game value
+    /// by `1 + per × counter`, with the value the run counter has when the
+    /// effect fires ("Zapfhahn": +×0,1 per pub won). Nothing while the
+    /// counter is 0. Like [`Effect::ScaleGameValue`] the factor need not
+    /// be whole; the Spielwert is rounded half up at the end.
+    ScaleGameValuePerCounter {
+        /// Counter name.
+        counter: String,
+        /// Factor added per point of the counter, as a decimal (`0.1`).
+        per: Factor,
+    },
     /// Lever Grundwert: add `per` times the current value of a run counter
     /// ("Allrounder": +3 per Spielart of the series).
     AddBaseValuePerCounter {
@@ -537,7 +548,8 @@ impl Effect {
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
-            | Effect::ScaleGameValue(_) => stage.in_game(),
+            | Effect::ScaleGameValue(_)
+            | Effect::ScaleGameValuePerCounter { .. } => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
             Effect::SchneiderBonusFromTrick | Effect::MultiplyTrickPoints(_) => {
                 stage == Stage::OnTrickEnd

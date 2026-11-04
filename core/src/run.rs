@@ -3732,7 +3732,8 @@ impl Run {
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
-            | Effect::ScaleGameValue(_) => active.lines.extend(line),
+            | Effect::ScaleGameValue(_)
+            | Effect::ScaleGameValuePerCounter { .. } => active.lines.extend(line),
             Effect::MultiplyTrickPoints(factor) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let points = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
@@ -5926,6 +5927,18 @@ fn score_line(
         }
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
         Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
+        Effect::ScaleGameValuePerCounter { counter, per } => {
+            let value = counters.get(counter).copied().unwrap_or(0);
+            if value == 0 || per.permille() == 0 {
+                return None;
+            }
+            let permille = u64::from(per.permille())
+                .saturating_mul(u64::from(value))
+                .saturating_add(1000);
+            let factor =
+                crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
+            (Lever::GameValue, Change::Scale(factor))
+        }
         _ => return None,
     };
     Some(ScoreLine {
@@ -6059,6 +6072,8 @@ mod edition_tests;
 mod effects_v2_tests;
 #[cfg(test)]
 mod encounters_tests;
+#[cfg(test)]
+mod factor_tests;
 #[cfg(test)]
 mod hand_voucher_tests;
 #[cfg(test)]

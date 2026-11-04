@@ -820,8 +820,10 @@ pub enum RelicGroup {
     Multiplier,
     /// Kontrolle: Blatt, Skat, Information, Vorhand.
     Control,
-    /// Tour: Groschen, Tresen, Leben, Wege.
+    /// Tour: Groschen, Tresen, Wege.
     Tour,
+    /// Faktor (ADR 0018): the Spielwert as a whole, multiplied.
+    Factor,
 }
 
 /// A relic: house rule or Stammtisch figure.

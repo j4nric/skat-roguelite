@@ -224,6 +224,7 @@ fn relic_counters<'a>(passive: &'a [Effect], hooks: &'a [Hook]) -> Vec<&'a str> 
             Effect::AddBaseValueFromCounter(c)
             | Effect::AddBaseValuePerCounter { counter: c, .. }
             | Effect::AddLevelsPerCounter { counter: c, .. }
+            | Effect::ScaleGameValuePerCounter { counter: c, .. }
             | Effect::IncrementCounter(c)
             | Effect::ResetCounter(c) => c.as_str(),
             _ => continue,

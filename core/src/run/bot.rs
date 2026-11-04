@@ -216,7 +216,17 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | Relic | Value | Why |
 /// |---|---|---|
 /// | `glass_eye` | 3 | like `kibitzer`: two defender cards known for the whole game, the PIMC samples pin them |
-pub const RELIC_VALUES: [(&str, u32); 32] = [
+///
+/// Faktor (ADR 0018, 04.11.2026), provisional by judgement until the
+/// balance round measures them:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `jay`, `tree_frog`, `robin`, `bell_tree` | 3 | ×1.5 on won suit games of one trump suit, about a quarter of them |
+/// | `black_zero` | 2 | ×1.5 on won Null games; the Alleinspieler seldom plays Null |
+/// | `tap` | 6 | +×0.1 per pub won, on every won game: ×1.5 to ×2 late in the run |
+/// | `hot_hand` | 5 | +×0.2 per won game in a row, back to ×1 after a loss |
+pub const RELIC_VALUES: [(&str, u32); 39] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -249,6 +259,13 @@ pub const RELIC_VALUES: [(&str, u32); 32] = [
     ("dive_expert", 1),
     ("jinx", 4),
     ("glass_eye", 3),
+    ("jay", 3),
+    ("tree_frog", 3),
+    ("robin", 3),
+    ("bell_tree", 3),
+    ("black_zero", 2),
+    ("tap", 6),
+    ("hot_hand", 5),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -259,7 +276,12 @@ pub const RELIC_VALUES: [(&str, u32); 32] = [
 /// |---|---|---|
 /// | `skat_god` | 9 | +4.7, +3.6; +3.7 on section 4, levels on won games only |
 /// | `honorary_chair` | 1 | -0.4, -0.6: leading every first trick does not help the bot |
-pub const LEGENDARY_VALUES: [(&str, u32); 2] = [("skat_god", 9), ("honorary_chair", 1)];
+/// | `grand_seigneur` | 4 | not measured (ADR 0018, provisional): ×2 on won Grands |
+pub const LEGENDARY_VALUES: [(&str, u32); 3] = [
+    ("skat_god", 9),
+    ("honorary_chair", 1),
+    ("grand_seigneur", 4),
+];
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;

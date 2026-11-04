@@ -15,21 +15,21 @@ pub(super) fn content() -> Content {
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
 /// he wins every trick, the last one with the D7. Instance ids follow the
 /// standard deck: D7 = 0, DA = 7, HA = 15, SK = 22, ST = 19.
-const STRONG: [&str; 3] = [
+pub(super) const STRONG: [&str; 3] = [
     "CJ SJ HJ DJ DA DT DK DQ D9 D7",
     "HA HT HK HQ H9 H8 H7 SA ST SK",
     "SQ S9 S8 S7 CA CT CK CQ C9 C8",
 ];
-const STRONG_SKAT: &str = "D8 C7";
+pub(super) const STRONG_SKAT: &str = "D8 C7";
 
 /// Declarer holds only Luschen: he can never reach 61 Augen. Seat 1 holds
 /// eight trumps of a clubs game and says Kontra.
-const WEAK: [&str; 3] = [
+pub(super) const WEAK: [&str; 3] = [
     "D7 D8 D9 H7 H8 H9 S7 S8 S9 C7",
     "CJ SJ HJ DJ CA CT CK CQ DA DT",
     "DK DQ HA HT HK HQ SA ST SK SQ",
 ];
-const WEAK_SKAT: &str = "C8 C9";
+pub(super) const WEAK_SKAT: &str = "C8 C9";
 
 /// Declarer holds ten hearts trumps without the H8 (in the skat) and leads:
 /// he takes every trick, the last one with the H7.
@@ -111,19 +111,19 @@ pub(super) fn play(
     }
 }
 
-fn hand_game(game: GameType) -> Declaration {
+pub(super) fn hand_game(game: GameType) -> Declaration {
     Declaration::new(game, RiskLevel::Hand).expect("suit or grand")
 }
 
-const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
-const CLUBS: GameType = GameType::Suit(Suit::Clubs);
+pub(super) const DIAMONDS: GameType = GameType::Suit(Suit::Diamonds);
+pub(super) const CLUBS: GameType = GameType::Suit(Suit::Clubs);
 const HEARTS: GameType = GameType::Suit(Suit::Hearts);
 
-fn relic(id: &str) -> Source {
+pub(super) fn relic(id: &str) -> Source {
     Source::Relic(RelicId::new(id))
 }
 
-fn has_line(b: &ScoreBreakdown, source: &Source, lever: Lever, change: Change) -> bool {
+pub(super) fn has_line(b: &ScoreBreakdown, source: &Source, lever: Lever, change: Change) -> bool {
     b.lines
         .iter()
         .any(|l| &l.source == source && l.lever == lever && l.change == change)
