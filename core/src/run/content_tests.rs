@@ -444,26 +444,32 @@ fn virgin_counts_61_to_70_as_schneider() {
 }
 
 #[test]
-fn old_lady_makes_every_queen_worth_five() {
+fn old_lady_makes_the_players_queens_worth_five() {
+    // Since 04.11.2026 only the player's own Ober (his edition, ADR 0015):
+    // the DQ counts 5, the opponents' Ober keep 3.
     let content = content();
     let mut run = relic_run(&content, &["old_lady"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let game = &run.game().expect("game").game;
+    let mut queens = 0;
     for card in game.cards_in_play() {
         if card
             .face()
             .is_some_and(|f| f.rank == crate::cards::Rank::Queen)
         {
-            assert_eq!(card.card_points, 5);
+            queens += 1;
+            let own = card.owner == crate::deck::Owner::Player;
+            assert_eq!(card.card_points, if own { 5 } else { 3 }, "{card:?}");
         }
     }
+    assert_eq!(queens, 4);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.outcome.declarer_card_points, 128);
+    assert_eq!(b.outcome.declarer_card_points, 122);
     assert!(has_line(
         &b,
         &relic("old_lady"),
         Lever::CardPoints,
-        Change::Add(8)
+        Change::Add(2)
     ));
 }
 
@@ -810,27 +816,127 @@ fn m4_content_items_load_with_texts_prices_and_pools() {
 }
 
 #[test]
-fn every_bit_counts_makes_sevens_and_eights_worth_one() {
+fn every_bit_counts_makes_the_players_sevens_and_eights_worth_one() {
     let content = content();
     let mut run = relic_run(&content, &["every_bit_counts"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     for card in run.game().expect("game").game.cards_in_play() {
         let Some(face) = card.face() else { continue };
+        let own = card.owner == crate::deck::Owner::Player;
         let expected = match face.rank {
-            crate::cards::Rank::Seven | crate::cards::Rank::Eight => 1,
+            crate::cards::Rank::Seven | crate::cards::Rank::Eight if own => 1,
             _ => face.rank.card_points(),
         };
         assert_eq!(card.card_points, expected, "{face}");
     }
-    // The declarer takes every trick and the skat: all eight cards.
+    // The declarer takes every trick and the skat; his own D7, D8 and C7
+    // count 1 each, the opponents' sevens and eights nothing (04.11.2026).
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(b.outcome.declarer_card_points, 128);
+    assert_eq!(b.outcome.declarer_card_points, 123);
     assert!(has_line(
         &b,
         &relic("every_bit_counts"),
         Lever::CardPoints,
-        Change::Add(8)
+        Change::Add(3)
     ));
+}
+
+#[test]
+fn an_own_queen_keeps_its_augen_in_the_opponents_trick() {
+    // A player's Ober taken by an opponent still counts 5 (like an
+    // Aufdruck); an opponent's Ober taken by the player counts 3.
+    let content = content();
+    let mut run = relic_run(&content, &["old_lady"]);
+    // The player holds the HQ, the left opponent the SQ.
+    let hands = [
+        "CJ SJ HJ DJ DA DT DK HQ D9 D7",
+        "HA HT HK DQ H9 H8 H7 SA ST SK",
+        "SQ S9 S8 S7 CA CT CK CQ C9 C8",
+    ];
+    fixed_deal(&mut run, &content, hands, STRONG_SKAT);
+    let game = &run.game().expect("game").game;
+    let points = |s: &str| {
+        let face: crate::cards::Card = s.parse().expect("card");
+        game.cards_in_play()
+            .iter()
+            .find(|c| c.face() == Some(face))
+            .map(|c| (c.owner, c.card_points))
+    };
+    assert_eq!(points("HQ"), Some((crate::deck::Owner::Player, 5)));
+    assert_ne!(points("DQ").map(|p| p.0), Some(crate::deck::Owner::Player));
+    assert_eq!(points("DQ").map(|p| p.1), Some(3));
+}
+
+#[test]
+fn fat_sow_makes_only_the_players_aces_worth_sixteen_in_null() {
+    let content = content();
+    let mut run = relic_run(&content, &["fat_sow"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    run.apply(
+        &content,
+        RunAction::Declare(Declaration::null(crate::rules::NullRisk::Hand)),
+    )
+    .expect("Null Hand");
+    let game = &run.game().expect("game").game;
+    let mut aces = 0;
+    for card in game.cards_in_play() {
+        if card
+            .face()
+            .is_some_and(|f| f.rank == crate::cards::Rank::Ace)
+        {
+            aces += 1;
+            let own = card.owner == crate::deck::Owner::Player;
+            assert_eq!(card.card_points, if own { 16 } else { 11 }, "{card:?}");
+        }
+    }
+    assert_eq!(aces, 4);
+}
+
+#[test]
+fn boss_card_points_still_count_for_every_edition() {
+    use crate::content::{ActiveSource, BossId, CardFilter, owns_card_points, resolve_edition};
+    let content = content();
+    let edition = Edition::standard();
+    let set = [Effect::SetCardPoints {
+        filter: CardFilter {
+            rank: Some(crate::cards::Rank::Seven),
+            ..CardFilter::default()
+        },
+        points: 4,
+    }];
+    let source = |source: Source| ActiveSource {
+        source,
+        passive: &set,
+        hooks: &[],
+        this_card: None,
+        scale: 1,
+    };
+    let sevens = |owner: crate::deck::Owner, global: &[ActiveSource<'_>]| -> Vec<u32> {
+        resolve_edition(&edition, owner, &content, global)
+            .cards
+            .iter()
+            .filter(|c| {
+                c.face()
+                    .is_some_and(|f| f.rank == crate::cards::Rank::Seven)
+            })
+            .map(|c| c.card_points)
+            .collect()
+    };
+    let boss = [source(Source::Boss(BossId::new("the_pusher")))];
+    let relic = [source(Source::Relic(RelicId::new("every_bit_counts")))];
+    for owner in [
+        crate::deck::Owner::Player,
+        crate::deck::Owner::Guest,
+        crate::deck::Owner::Boss,
+    ] {
+        assert_eq!(sevens(owner, &boss), vec![4; 4], "{owner:?}");
+        let own = owner == crate::deck::Owner::Player;
+        assert_eq!(sevens(owner, &relic), vec![if own { 4 } else { 0 }; 4]);
+        assert_eq!(
+            owns_card_points(&Source::Relic(RelicId::new("x")), owner),
+            own
+        );
+    }
 }
 
 /// Score a suit game with `declarer` Augen under the thresholds of the

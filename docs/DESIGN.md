@@ -389,7 +389,7 @@ Regeln, entschieden vom Nutzer (1 bis 3) und ausgelegt von Claude am 02.11.2026 
 4. **Eine Karte zeigt immer die Ausgabe ihres Halters.** Wechselt sie den Halter, wechselt ihre Ausgabe mit: die Karte, die „Drei drücken“ vom linken Gegner holt, ist in der Hand des Spielers seine Ausgabe, die zurückgegebene wieder die des Gegners (8.1); beim Revolutionär tauschen die Gegner Karten, die Ausgaben bleiben bei den Plätzen (11); Heimweh holte die Karte vor dem Spiel in die Hand (gestrichen mit Effekte v2, 7.2).
 5. **Im Stich bleibt eine Karte in der Ausgabe dessen, der sie gespielt hat.** Ihre Augen zählen für den, der den Stich macht. Eine Karte des Spielers mit Augen +4, die ein Gegner sticht, bringt dem Gegner die vier Augen. Das ist das verbliebene Risiko beim Ausspielen.
 6. **Der Skat bleibt auch im Ramsch die Ausgabe des Spielers**, wenn er an den Gewinner des letzten Stichs geht; er wird nie gespielt und wechselt deshalb keinen Halter.
-7. **Hausregeln und Boss-Regeln sind Regeln des Tisches** und gelten für jede Ausgabe (Alte Dame, Kleinvieh, Dicke Sau zählen die Augen jeder Karte; die Oma macht jeden Unter zur Blanko). Nur Kartenmodifikationen hängen an einer Ausgabe.
+7. **Boss-Regeln sind Regeln des Tisches** und gelten für jede Ausgabe (die Oma macht jeden Unter zur Blanko, die Augen-Regeln eines Bosses zählen jede Karte). Hausregeln wirken wie Regeln des Tisches, mit einer Ausnahme seit dem 04.11.2026 (Entscheidung des Nutzers): **Augen-Relikte zählen nur die eigenen Karten.** Alte Oberin, Kleinvieh und Dicke Sau (`SetCardPoints` aus einem Relikt oder der Regel des Charakters) ändern nur Karten der Ausgabe des Spielers, wo sie auch landen: Seine Oberin zählt 5, auch im Stich eines Gegners (wie eine Zinke Aufdruck, Regel 5), die Oberin eines Gegners 3 (`engine::owns_card_points`). Kartenmodifikationen hängen ohnehin an einer Ausgabe.
 8. **Die Ausgaben sind öffentlich, die Hände nicht.** Der Spieler sieht vor der Boss-Serie die Boss-Ausgabe neben der Regel, die Gegner-KI kennt die Ausgabe des Spielers (10.5). Wer welche Karte hält, bleibt unbekannt wie im Skat.
 9. **Aufwertungen schlafen.** Im Mittel hält der Spieler 12 von 32 Karten (Hand und Skat, 37,5 %). Liegt eine Karte bei einem Gegner, spielt in diesem Spiel dessen Ausgabe; die Aufwertung des Spielers wirkt dann nicht. Das ist das Risiko des Deckbaus (Säule 2).
 
@@ -583,11 +583,11 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2
 | **Ouvert-Bonus** | Ouvert zählt +2 statt +1 | Multiplikator |
 | **Schieben** | In jedem Spiel einmal mehr einmischen (seit dem Einmischen, 01.11.2026; vorher einmal pro Serie neu geben lassen) | Spitzen, Risikostufe |
 | **Jungfrau** | Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider | Schwelle |
-| **Alte Dame** | Jede Dame zählt 5 Augen | Augen |
+| **Alte Dame** | Deine Damen zählen 5 Augen (seit 04.11.2026 nur die eigenen, 7.1 Regel 7) | Augen |
 | **Tournee** | Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs | Skalierung |
 | **Durchmarsch** | Gewinnst du Schneider, zählt der Spielwert doppelt | Spielwert, Schneider |
 | **Blindflug** (Null) | Gewonnenes Null aus der Hand: +1 Multiplikator | Multiplikator |
-| **Kleinvieh** | Jede Sieben und Acht zählt 1 Auge | Augen |
+| **Kleinvieh** | Deine Sieben und Achten zählen 1 Auge (seit 04.11.2026 nur die eigenen) | Augen |
 | **Ein Auge zudrücken** | Gewinn ab 58 Augen | Schwelle |
 | **Lehrgeld** | Jedes verlorene Spiel: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
 | **Bierdeckel** | Jedes gewonnene Handspiel: +1 Grundwert für den Rest des Runs | Grundwert (Zähler) |
@@ -596,7 +596,7 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2
 | **Glückssträhne** | Ab dem dritten Sieg in Folge zählt jedes gewonnene Spiel doppelt, bis eines verloren geht | Spielwert ×2 |
 | **Nullachtfuffzehn** (Null) | Jedes Null: Grundwert +8, gewonnen wie verloren | Grundwert |
 | **Doppelter Boden** (Null) | Gewonnenes Null mit Skat: +1 Multiplikator | Multiplikator |
-| **Dicke Sau** (Null) | Jedes Daus zählt 16 Augen, die Gegner kommen schneller in den Kurzschluss | Augen |
+| **Dicke Sau** (Null) | Deine Daus zählen 16 Augen (seit 04.11.2026 nur die eigenen); wirfst du sie im Null ab, kommen die Gegner schneller in den Kurzschluss | Augen |
 | **Glashaus** (Null) | Gewonnener Null Ouvert zählt doppelt | Spielwert ×2 |
 | **Kerbholz** (Null) | Jedes gewonnene Null: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
 | **Skatpfleger** (M8) | Die Augen der gedrückten Karten zählen doppelt | Augen |
@@ -686,7 +686,7 @@ Einzeln gemessen wie Welle 2a (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --
 | Drei drücken (1×/Serie) | 46,3 / 16,8 / 5,5 | +7,9 | Rare, 9, gesperrt | gemessen auf den neuen Zielwerten (PR #47, ohne Relikt 34,1 / 8,9 / 2,7); in jedem Spiel waren es +18,0 (alte Zielwerte), die Variante „kleinste Karte des Gegners“ +26,4. Eine Karte wechselt die Seite |
 | Spickzettel | 40,8 / 12,3 / 3,5 | +0,3 | Common, 4 | nur Handspiele (beim Bot 6 % der Spiele); für Menschen |
 
-**Hausregeln mit eigener Ausgabe (ADR 0015, ausgelegt von Claude am 02.11.2026).** Hausregeln sind Regeln des Tisches und gelten für jede Ausgabe (7.1, Regel 7): Alte Dame, Kleinvieh und Dicke Sau zählen die Augen jeder Karte, wer sie auch hält. Skatpfleger zählt die Skatkarten in der Ausgabe des Spielers. **Drei drücken**: Die Karte, die vom linken Gegner kommt, ist in der Hand des Spielers seine Ausgabe (mit seinen Modifikationen); die Karte, die zurückgeht, ist beim Gegner wieder dessen Ausgabe. „Die wenigsten Augen“ (`rules::returned_discard`) misst an den drei Karten, wie der Spieler sie hält, also in seiner Ausgabe.
+**Hausregeln mit eigener Ausgabe (ADR 0015, ausgelegt von Claude am 02.11.2026).** Hausregeln sind Regeln des Tisches und gelten für jede Ausgabe (7.1, Regel 7): ~~Alte Dame, Kleinvieh und Dicke Sau zählen die Augen jeder Karte, wer sie auch hält.~~ Seit dem 04.11.2026 (Entscheidung des Nutzers) zählen Alte Oberin, Kleinvieh und Dicke Sau nur die Karten der Ausgabe des Spielers, wo sie auch landen; die Messungen unten stammen von vorher und überschätzen sie (etwa 12 von 32 Karten hält der Spieler), neu zu messen, sobald die Simulationen wieder laufen. Skatpfleger zählt die Skatkarten in der Ausgabe des Spielers. **Drei drücken**: Die Karte, die vom linken Gegner kommt, ist in der Hand des Spielers seine Ausgabe (mit seinen Modifikationen); die Karte, die zurückgeht, ist beim Gegner wieder dessen Ausgabe. „Die wenigsten Augen“ (`rules::returned_discard`) misst an den drei Karten, wie der Spieler sie hält, also in seiner Ausgabe.
 
 
 

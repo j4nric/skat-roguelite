@@ -26,7 +26,7 @@ pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
     ActiveSource, CardModStatus, Editions, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
-    resolve_edition,
+    owns_card_points, resolve_edition,
 };
 pub use score::{
     Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
