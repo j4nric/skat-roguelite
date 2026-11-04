@@ -1410,7 +1410,7 @@ async function factorPass(browser, errors, reducedMotion) {
   const box = page.locator('[data-testid="score-factor"]');
   const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
   if (mul !== '2,73') fail(`Faktor: the box shows "${mul}"`);
-  if ((await box.getAttribute('class'))?.includes('is-one')) fail('Faktor: the box is greyed on ×2,73');
+  if (!(await box.count())) fail('Faktor: no Faktor box on ×2,73');
   await shoot(page, 'factor-score');
   log(`Faktor: preview "${worth}", box ${mul}`);
   await context.close();
@@ -1827,7 +1827,7 @@ async function m5(browser, errors, reducedMotion) {
   }
   const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
   if (mul !== '1,5') fail(`wave 2a: the factor box shows "${mul}"`);
-  if (await page.locator('[data-testid="score-factor"].is-one').count()) fail('wave 2a: the Faktor box is greyed at ×1,5');
+  if (!(await page.locator('[data-testid="score-factor"]').count())) fail('wave 2a: no Faktor box at ×1,5');
   await shoot(page, 'wave2-score');
   log(`wave 2a: score line ${worth}, Abrechnung with Stammfarbe ×1,5`);
   await context.close();
@@ -2233,7 +2233,7 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-testid="rules-open"]');
   await page.waitForSelector('[data-testid="rules"]');
   const rules = ((await page.locator('[data-testid="rules"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  for (const must of ['Skat oder Hand', 'Drücken', 'Grundwert × Multiplikator', 'Schellen', 'Eichel', 'Grand', 'Null', 'Kein Reizen', 'Boss', 'Tresen']) {
+  for (const must of ['Skat oder Hand', 'Drücken', 'Grundwert × Stufen', 'Schellen', 'Eichel', 'Grand', 'Null', 'Kein Reizen', 'Boss', 'Tresen']) {
     if (!rules.includes(must)) fail(`the Regelkarte lacks "${must}"`);
   }
   await assertMenuFits(page, 'Regelkarte');
@@ -2631,8 +2631,9 @@ async function rewardFxPass(browser, errors, viewport) {
   if (!(counting < paid.account)) fail(`reward fx ${tag}: the account does not count up (${counting} -> ${paid.account})`);
   if (paid.coins !== paid.payout || !paid.full) fail(`reward fx ${tag}: after the payout ${JSON.stringify(paid)}`);
   await sideways('the score board');
-  // The Faktor box (ADR 0018) is always there, greyed at ×1.
-  if (!(await page.locator('[data-testid="score-factor"]').count())) fail(`reward fx ${tag}: no Faktor box on the score board`);
+  // The Faktor box (ADR 0018) only shows when the game has a factor other than ×1.
+  if (!(await page.locator('.fbox-levels').count())) fail(`reward fx ${tag}: no Stufen box on the score board`);
+  if ((await page.evaluate(() => document.querySelector('[data-num="mul"]')?.textContent?.trim())) === '1') fail(`reward fx ${tag}: a Faktor box at ×1`);
   log(`reward fx ${tag}: account counts ${counting} -> ${paid.account}, foam, ${paid.coins} Groschen in the purse`);
   await page.click('[data-action="score-continue"]');
 
@@ -4349,7 +4350,7 @@ async function charactersPass(browser, errors) {
   await page.click('[data-action="pick-character"][data-character="HeartBrother"]');
   await page.waitForSelector('[data-testid="char-detail"]');
   const detail = (await page.textContent('[data-testid="char-detail"]')) ?? '';
-  if (!detail.includes('Bruderherz') || detail.includes('Stufe')) fail(`detail of Bruderherz: ${detail}`);
+  if (!detail.includes('Bruderherz') || detail.includes('Multiplikator')) fail(`detail of Bruderherz: ${detail}`);
   await page.evaluate(() => {
     const row = document.querySelector('[data-testid="characters"]');
     if (row) row.scrollLeft = row.scrollWidth;
@@ -4791,7 +4792,7 @@ async function run() {
       if (await page.locator('.score-sheet').count()) break;
       const dimmed = await page.locator('.hand-card.is-dim').count();
       if (played === 0) {
-        // The value at stake comes from the core: "Grundwert × Multiplikator".
+        // The value at stake comes from the core: "Grundwert × Stufen".
         const worth = await page.locator('[data-testid="value-preview"]').textContent();
         if (!/^\d+ × \d+( × \d+)?$/.test((worth ?? '').trim())) fail(`value preview while playing: "${worth}"`);
         log(`value preview: ${worth}`);

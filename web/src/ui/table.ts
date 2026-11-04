@@ -533,7 +533,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
 }
 
 /**
- * Grundwert × Gewinnstufen of the game in progress, as the core previews
+ * Grundwert × Stufen of the game in progress, as the core previews
  * it (only what is certain; factors such as Kontra appended). Nothing in
  * a Ramsch or before the declaration.
  */
@@ -541,7 +541,7 @@ function worthChip(game: GameView): string {
   const p = game.value_preview;
   if (!p) return '';
   const label =
-    p.multiplier > 1
+    p.multiplier !== 1
       ? t(de.table.worthFactor, { base: p.base_value, levels: p.levels, factor: factorText(p.multiplier) })
       : t(de.table.worth, { base: p.base_value, levels: p.levels });
   return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${esc(label)}</span>`;

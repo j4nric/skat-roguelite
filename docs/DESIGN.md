@@ -8,7 +8,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 ## 1. Pitch
 
-**Stammtisch: Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden deine Ausgabe des Blatts: Gegeben wird ein Skatblatt für alle drei, aber jeder hält seine eigene Ausgabe jeder Karte (ADR 0015). Die Spielwertformel des echten Skats (Grundwert × Multiplikator) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
+**Stammtisch: Skat als Roguelike-Deckbuilder.** Du bist immer der Alleinspieler. Über einen Run hinweg spielst du Skat gegen zwei KI-Gegenspieler, musst in jeder Runde einen Punkte-Zielwert erreichen und veränderst zwischen den Runden deine Ausgabe des Blatts: Gegeben wird ein Skatblatt für alle drei, aber jeder hält seine eigene Ausgabe jeder Karte (ADR 0015). Die Spielwertformel des echten Skats (Grundwert × Stufen) ist die Score-Engine, Hausregeln sind die Relikte, die Kneipe ist der Shop.
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
@@ -54,9 +54,9 @@ Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus)
 ### 4.2 Die Spielwertformel als Score-Engine
 
 ```
-Spielwert = Grundwert × Multiplikator
+Spielwert = Grundwert × Stufen
 
-Multiplikator = Spitzen
+Stufen     = Spitzen
              + 1  (Spiel)
              + 1  Hand
              + 1  Schneider
@@ -66,17 +66,17 @@ Multiplikator = Spitzen
              + 1  Ouvert
 ```
 
-**Seit ADR 0018 (04.11.2026): Spielwert = Grundwert × Multiplikator × Faktor.** Der Faktor beginnt bei ×1 und wächst nur multiplikativ (×1,5 und ×1,5 ergeben ×2,25). Er kommt nicht von selbst, sondern aus Relikten mit festem Faktor unter einer Bedingung (eines je Farbe, eines für Grand, eines für Null), aus wachsenden Relikten (zum Beispiel +×0,1 je gewonnener Kneipe) und aus einzelnen Begegnungen und Boss-Belohnungen. Dauerhafte Faktoren der Relikte gelten nur für gewonnene Spiele; vorübergehende Faktoren, die ausdrücklich auch verloren zählen (Stammfarbe, Bock, Einsatz), bleiben. Zahlen vorläufig bis zur Messung. Grund: Grundwert und Multiplikator wachsen nur additiv, für einen Endlos-Modus braucht ein Build eine Quelle exponentiellen Wachstums.
+**Seit ADR 0018 (04.11.2026): Spielwert = Grundwert × Stufen × Faktor.** Der Faktor beginnt bei ×1 und wächst nur multiplikativ (×1,5 und ×1,5 ergeben ×2,25). Er kommt nicht von selbst, sondern aus Relikten mit festem Faktor unter einer Bedingung (eines je Farbe, eines für Grand, eines für Null), aus wachsenden Relikten (zum Beispiel +×0,1 je gewonnener Kneipe) und aus einzelnen Begegnungen und Boss-Belohnungen. Dauerhafte Faktoren der Relikte gelten nur für gewonnene Spiele; vorübergehende Faktoren, die ausdrücklich auch verloren zählen (Stammfarbe, Bock, Einsatz), bleiben. Zahlen vorläufig bis zur Messung. Grund: Grundwert und Stufen wachsen nur additiv, für einen Endlos-Modus braucht ein Build eine Quelle exponentiellen Wachstums.
 
-**Umsetzung (04.11.2026)**: Im Code ist der Faktor `ScoreBreakdown::multiplier`, `ScoreStep::multiplier` und `ValuePreview::multiplier` (Typ `Factor`, Tausendstel; die Namen bleiben, damit Spielstände laden; „Multiplikator“ heißt im Code `levels`). Alle Spielwert-Faktoren (`MultiplyGameValue`, `ScaleGameValue`, neu `ScaleGameValuePerCounter`, Kontra, Re, Schnäpse) werden in `score_parts` multipliziert, gerundet wird einmal am Ende, halb auf; der Goldene Vektor `factor_as_third_stage_vectors` prüft ×1,5 × ×1,5 = ×2,25. Die Wertung zeigt drei Boxen, Grundwert × Multiplikator × Faktor, die Faktor-Box immer (grau bei ×1); das Zeichen des Faktors (ein „×“ mit Hochzeichen, bernsteinfarben) ist **vorläufig**, bis der Nutzer eins wählt. Die Relikt-Familie „Faktor“ steht in 8.10.
+**Umsetzung (04.11.2026)**: Im Code ist der Faktor `ScoreBreakdown::multiplier`, `ScoreStep::multiplier` und `ValuePreview::multiplier` (Typ `Factor`, Tausendstel; die Namen bleiben, damit Spielstände laden; die Stufen heißen im Code `levels`). Alle Spielwert-Faktoren (`MultiplyGameValue`, `ScaleGameValue`, neu `ScaleGameValuePerCounter`, Kontra, Re, Schnäpse) werden in `score_parts` multipliziert, gerundet wird einmal am Ende, halb auf; der Goldene Vektor `factor_as_third_stage_vectors` prüft ×1,5 × ×1,5 = ×2,25. Die Wertung zeigt Grundwert × Stufen und die dritte Box Faktor nur, wenn das Spiel einen Faktor ungleich ×1 hat (Entscheidung des Nutzers 04.11.2026, Cockpit q22; bis dahin stand sie immer da, grau bei ×1); ebenso die Wertvorschau über dem Stich; das Zeichen des Faktors (ein „×“ mit Hochzeichen, bernsteinfarben) ist **vorläufig**, bis der Nutzer eins wählt. Die Relikt-Familie „Faktor“ steht in 8.10.
 
-In der Sprache des Genres: **Grundwert sind die Chips, der Multiplikator (bis 02.11.2026 „Gewinnstufen“, Code `levels`) ist der Mult.** Alle Modifikationen im Spiel greifen an genau einer dieser Stellen an:
+In der Sprache des Genres: **Grundwert sind die Chips, die Stufen (Gewinnstufen; vom 02.11. bis 04.11.2026 in Spieltexten „Multiplikator“, Code `levels`) sind der Mult.** Seit 04.11.2026 (Cockpit q23) heißen sie in allen Spieltexten wieder „Stufen“ („+1 Stufe“, „+2 Stufen“), „Faktor“ ist das einzige Wort fürs Malnehmen. Zeichen der Stufen ist eine schlichte Treppe (Band und Wertung, kupferfarben), es ersetzt den Steilpfeil. Alle Modifikationen im Spiel greifen an genau einer dieser Stellen an:
 
 | Hebel | Beispiele für Upgrades |
 |---|---|
 | Grundwert erhöhen | Kreuz zählt 15 statt 12. Grand zählt 30. |
 | Spitzen manipulieren | Ein fünfter Bube im Blatt. Karo-Bube zählt als zweite Spitze. |
-| Multiplikator erhöhen | Neue Stufen durch Hausregeln: „Spitze“ (letzter Stich mit einer Sieben), „Kontra“, „Bock“. |
+| Stufen erhöhen | Neue Stufen durch Hausregeln: „Spitze“ (letzter Stich mit einer Sieben), „Kontra“, „Bock“. |
 | Augen verändern | Pik-Ass zählt 15. Alle 10er zählen 11. Siebener zählen 1. |
 | Schwellen senken | Schneider ab 85 Augen. Gewinn ab 58 Augen. |
 
@@ -87,7 +87,7 @@ In der Sprache des Genres: **Grundwert sind die Chips, der Multiplikator (bis 02
 1. Spielart (Farbe oder Grand; beim Null-Charakter Null-Varianten).
 2. Risikostufe: *Normal*, *Hand* (Skat bleibt liegen), *Schneider angesagt*, *Schwarz angesagt*, *Ouvert* (offen spielen). Seit ADR 0013 (Spieltest vom 01.11.2026, gegen die Skatordnung) gehen Schneider, Schwarz und Ouvert auch nach dem Aufnehmen: Im Farbspiel und Grand stehen dann *Normal*, *Schneider angesagt*, *Schwarz angesagt* und *Ouvert* zur Wahl, beim Null *Normal* und *Ouvert*. Die Stufe *Hand* zählt nur, wenn aus der Hand gespielt wird; eine Ansage nach dem Skat bringt ihre eigenen Stufen ohne Hand (Grand mit 1, Schneider angesagt und erreicht: 4 Stufen statt 5 aus der Hand). Im Kern: `Declaration::with_hand`, im JSON `after_skat: true`.
 
-Jede Stufe erhöht den Multiplikator, aber ein Fehlschlag auf einer angesagten Stufe gilt als verloren. Das ersetzt den Push-your-luck-Charakter des Reizens durch eine einzige, klare Entscheidung.
+Jede Stufe zählt +1, aber ein Fehlschlag auf einer angesagten Stufe gilt als verloren. Das ersetzt den Push-your-luck-Charakter des Reizens durch eine einzige, klare Entscheidung.
 
 **Einmischen statt Passen** (Spieltest vom 01.11.2026, Entscheidung des Nutzers): Gefällt dem Spieler sein Blatt nicht, mischt er es vor der Ansage ein: Alle Hände und der Skat werden neu gegeben, das kostet kein Spiel der Serie. Bis zu zweimal pro Spiel (`redeals` in `run.ron`), danach muss eines der Blätter gespielt werden. Nach dem Aufnehmen des Skats und im Ramsch geht es nicht mehr. Einpassen (ein Spiel auslassen, das ein Spiel vom Limit kostete) gibt es nicht mehr. Einzelheiten in 5.1.
 
@@ -118,7 +118,7 @@ Ergänzt in M5 (entschieden von Claude am 01.11.2026):
 Rest abkürzen (entschieden von Claude am 01.11.2026, auf Wunsch des Nutzers):
 
 - **Wann:** Der Spieler ist am Zug, und die restlichen Karten können an der Wertung nichts mehr ändern, egal wie alle drei sie spielen (auch er selbst, nicht nur bei bestem Spiel). Dann bietet der Tisch „Rest abkürzen“ an (`GameView::can_settle`, Aktion `RunAction::SettleGame`).
-- **Entschieden heißt:** (1) Kein Hook, der während des Spiels feuert (`OnCardPlayed`, `OnTrickEnd`, z. B. Schenken, Revolutionär, Auf dem Trockenen), kann noch feuern. (2) Das Ergebnis nach den Regeln (gewonnen, Schneider und Schwarz beider Seiten, Grundwert, Multiplikator, Spielwert) ist für jede Augen- und Stichzahl gleich, die die Reststiche noch bringen können, mit den geltenden Schwellen (Gewinnschwelle, „Jungfrau“). Null: Der Alleinspieler bekommt in keiner Fortsetzung einen Stich (gewonnen, mit gleichem Stilbonus: Siebenen, nie bedient, Kurzschluss) oder in jeder (verloren). (3) Jeder `OnScore`-Hook feuert in allen Fortsetzungen oder in keiner, auch die des letzten Stichs (Spitze, Glückspfennig, Schlusslicht). Ramsch wird nie abgekürzt.
+- **Entschieden heißt:** (1) Kein Hook, der während des Spiels feuert (`OnCardPlayed`, `OnTrickEnd`, z. B. Schenken, Revolutionär, Auf dem Trockenen), kann noch feuern. (2) Das Ergebnis nach den Regeln (gewonnen, Schneider und Schwarz beider Seiten, Grundwert, Stufen, Spielwert) ist für jede Augen- und Stichzahl gleich, die die Reststiche noch bringen können, mit den geltenden Schwellen (Gewinnschwelle, „Jungfrau“). Null: Der Alleinspieler bekommt in keiner Fortsetzung einen Stich (gewonnen, mit gleichem Stilbonus: Siebenen, nie bedient, Kurzschluss) oder in jeder (verloren). (3) Jeder `OnScore`-Hook feuert in allen Fortsetzungen oder in keiner, auch die des letzten Stichs (Spitze, Glückspfennig, Schlusslicht). Ramsch wird nie abgekürzt.
 - **Wie gemessen:** Schranken (kleinster und größter Wert) der Reststiche aus drei Quellen, billig zuerst: aus den Karten allein; für Null ein Test auf den Händen (der Alleinspieler spielt nicht aus, kein Gegner hält eine Blanko, in jeder Farbe mit einer gewinnfähigen Karte des Alleinspielers ist jede Gegnerkarte höher); in den letzten vier Stichen eine vollständige Suche über alle legalen Karten aller Sitze mit offenen Händen (`core/src/endgame.rs`, höchstens 2000 Stichgrenzen, sonst nicht angeboten).
 - **Was passiert:** Der Kern spielt die Reststiche mit fester Regel (jeder Sitz seine erste legale Karte) über das normale Kartenspiel aus. Ereignisse, Hooks, Wertung, Groschen und Statistik sind dieselben wie beim Ausspielen. Die Oberfläche lässt die Karten kurz verschwinden und zeigt dann die Abrechnung.
 
@@ -388,7 +388,7 @@ Gemessen am 02.11.2026 (Alleinspieler, Zielwerte aus 5.2, der Bot rechnet bei An
 3. **Skat oder Hand.** Skat aufnehmen und 2 Karten drücken, oder Hand spielen. Gedrückte Karten zählen zu den Augen des Alleinspielers. Oder vorher einmischen: neu geben lassen, bis zu zweimal pro Spiel (5.1).
 4. **Ansage.** Spielart und Risikostufe wählen (ADR 0011, 0013).
 5. **10 Stiche.** Vorhand spielt aus. Die Gegner-KI spielt gemeinsam gegen den Spieler.
-6. **Abrechnung.** Augen zählen, Spitzen bestimmen, Multiplikator summieren, Spielwert berechnen, Serie-Konto aktualisieren.
+6. **Abrechnung.** Augen zählen, Spitzen bestimmen, Stufen summieren, Spielwert berechnen, Serie-Konto aktualisieren.
 7. **Triggerphase.** Relikte mit Nachwirkung (z. B. „Bock“ läuft weiter) werden aktualisiert.
 
 Die Rollen Vorhand, Mittelhand, Hinterhand rotieren pro Spiel. Vorhand zu sein ist ein echter Vorteil im Skat und bleibt als Rhythmus erhalten.
@@ -437,7 +437,7 @@ Im Kern (umgesetzt in M9, 18): Die Ausgabe des Spielers ersetzt das Blatt des Ru
 |---|---|
 | Rahmen | **was** betroffen ist (Augen, Rang, Trumpf, Stich, Gutschein) |
 | Markierung oben rechts | **wann** sie wirkt (keine Markierung: immer) |
-| Schrift unten Mitte, auf einem Farbklecks-Band | **wie viel** (+5, −3, ×2, +1 Multiplikator) |
+| Schrift unten Mitte, auf einem Farbklecks-Band | **wie viel** (+5, −3, ×2, +1 Stufe) |
 | Feld unten links, quadratisch | nur für Flüche und negative Effekte |
 | ganzes Kartenbild | Spezialkarten ändern das Grunddesign (Untot, Wandelkarte) |
 
@@ -450,10 +450,10 @@ Im Kern (umgesetzt in M9, 18): Die Ausgabe des Spielers ersetzt das Blatt des Ru
 | Rand | Blei (`lead`) | im Null die niedrigste Karte ihrer Farbe, unter der Sieben | – | Stichgewinn (Null) | bleigrauer Doppelrahmen, Senklot im Band (BL-A) |
 | Rand | Goldkante (`gilt_edge`) | +X Groschen je Stich, den der Spieler mit ihr macht | +1, Steigerung addiert | Groschen | Goldschnitt mit Glanzpunkten, Band „+1“ mit Münze (GK-A) |
 | Rand | Trumpf (`trump_bonus`) | Grundwert +X, wenn die Farbe der Karte Trumpf ist und der Spieler sie hält | Tresen +2, +4; zufällig +3 | Grundwert | Rahmen Trumpf, Zahl im Band |
-| Moment | Letzter Stich (`last_trick`) | +1 Multiplikator, wenn diese Karte den letzten Stich macht | +1, nicht steigerbar | Multiplikator | Markierung oben rechts, Text unten Mitte |
+| Moment | Letzter Stich (`last_trick`) | +1 Stufe, wenn diese Karte den letzten Stich macht | +1, nicht steigerbar | Stufen | Markierung oben rechts, Text unten Mitte |
 | Moment | Erster Stich (`first_trick`) | ×2 Augen dieses Stichs, wenn diese Karte den ersten Stich gewinnt | ×2, nicht steigerbar | Augen | Markierung oben rechts, Text unten Mitte |
-| Moment | Fadenkreuz (`crosshair`) | +1 Multiplikator, wenn diese Karte einen Daus eines Gegners sticht (je solchem Stich) | +1, nicht steigerbar | Multiplikator | Zielrote Ecke mit weißem Fadenkreuz, Doppelrahmen, Band „+1 D“ (FK-A) |
-| Moment | Schneiderkreide (`tailors_chalk`) | +1 Multiplikator, wenn der Spieler mit Schneider gewinnt und diese Karte gespielt hat | +1, nicht steigerbar | Multiplikator | heller Rand mit Steppnaht, Schere in der Ecke, Band „+1“ mit Kreide (SK-B) |
+| Moment | Fadenkreuz (`crosshair`) | +1 Stufe, wenn diese Karte einen Daus eines Gegners sticht (je solchem Stich) | +1, nicht steigerbar | Stufen | Zielrote Ecke mit weißem Fadenkreuz, Doppelrahmen, Band „+1“ mit Stufen-Treppe (FK-A) |
+| Moment | Schneiderkreide (`tailors_chalk`) | +1 Stufe, wenn der Spieler mit Schneider gewinnt und diese Karte gespielt hat | +1, nicht steigerbar | Stufen | heller Rand mit Steppnaht, Schere in der Ecke, Band „+1“ mit Stufen-Treppe (SK-B) |
 | Gutschein | Gutschein (`voucher_coins`) | wenn gedrückt oder im Handspiel: +X Groschen | +3, Steigerung addiert | Groschen | Zackenrand, keine Markierung |
 | Gutschein | Gutschein Untot (`voucher_undead`) | wenn gedrückt oder im Handspiel: die Karte wird Untot | – | Spezialkarte | Zackenrand |
 | Gutschein | Gutschein Wandelkarte (`voucher_wild`) | wenn gedrückt oder im Handspiel: die Karte wird Wandelkarte | – | Spezialkarte | Zackenrand |
@@ -520,8 +520,8 @@ Tests: `core/src/run/undead_tests.rs`, je Regelkante einer.
 - **Winkel, neue Bedeutung** (`rank`, Effekt `Promote`, ersetzt `RankBonus`): Die Karte **wird** je Stufe die nächsthöhere Karte ihrer Farbe, in der Reihe 7, 8, 9, Oberin, König, 10, Daus, in jedem Spiel (auch im Null, wo sie dort nach der Null-Reihe sticht: eine Neun als Oberin sticht Zehn und Unter), und behält ihre eigenen Augen (Antwort C auf q15). Der Kern ändert beim Auflösen der Ausgabe ihre Art (`DealtCard::kind`) und merkt sich die Stufen (`DealtCard::promoted`, `Rank::promoted`). Unter steigen nie und werden nie erreicht (eine Neun wird Oberin), ein Daus kann nicht steigen: Winkel passt auf keinen Unter und keinen Daus (`CardModDef::fits`), eine Zehn steigt höchstens einmal (`CardModDef::max_on`). Doppelte Karten sind erlaubt wie bei der Wandelkarte; bei Gleichstand behält die früher gespielte den Stich. Spitzen zählen die Karte, wie sie ist (ein Trumpf-König mit Winkel ist die Trumpf-Zehn). **Alte Spielstände** (Version 4 der Modifikationen, `deck::migrate_winkel`): Winkel behalten ihren Wert mit der neuen Bedeutung, höchstens so viele Stufen, wie die Karte steigen kann; ein Winkel auf einem Unter oder Daus wird Aufdruck mit 3 Augen je Stufe (`WINKEL_TO_AUGEN`). Die Boss-Ausgaben (Fritz, Franz) und Bruderherz behalten ihre Winkel, die jetzt die höhere Karte bedeuten. Bild seit dem 04.11.2026 (Entscheidung des Nutzers, Brett „Winkel v2“: WK-A mit der Tinte von WK-B und dem Durchstreichen von WK-C): Das gedruckte Bild bleibt, ein violetter Kopierstift malt darüber. Steigt die Zahl (7→8, 8→9, König→10), kommt ein von Hand gemaltes Auge der Farbe dazu; wird es eine Bildkarte, wird die Figur skizziert (Oberin mit Dutt, König mit Krone und Bart); der Daus bekommt ein großes gemaltes Auge. Die Skizzen sind mit Papier ausgemalt. Im Eckzeichen (oben links und unten rechts) ist der gedruckte Rang dick zugekritzelt und der neue in einer runden Handschrift daneben geschrieben; zwei Stufen sind zwei Schichten.
 - **Blei** (`lead`, Effekt `NullLowest`, `DealtCard::leaden`): im Null die niedrigste Karte ihrer Farbe, unter der Sieben (`rules::suit_strength`); zwei Bleikarten derselben Farbe: die früher gespielte behält den Stich. Sonst die gedruckte Karte, ihre Augen bleiben. Ohne Wert. Fokus Null.
 - **Goldkante** (`gilt_edge`, Bedingung `ThisCardWinsTrick` bei Stichende, Wirkung `GainCoins`): je Stich, den diese Karte macht, +1 Groschen sofort (eine untote Karte kann zweimal stechen). Eine Karte des Spielers wirkt nur in seiner Ausgabe, also nur, wenn er sie spielt.
-- **Fadenkreuz** (`crosshair`, Bedingung `ThisCardBeatsDefenderCard((rank: Some(Ace)))`): sticht diese Karte einen Daus, den ein Gegner in den Stich gespielt hat, +1 Multiplikator für dieses Spiel, je solchem Stich. Der eigene Daus zählt nicht.
-- **Schneiderkreide** (`tailors_chalk`, Bedingung `All([WonSchneider, ThisCardPlayed])` bei der Wertung): gewinnt der Spieler mit Schneider (auch Schwarz, angesagt oder gespielt) und hat die Karte in einen Stich gespielt, +1 Multiplikator. Im Skat zählt sie nicht. „Rest abkürzen“ wartet, solange Goldkante, Fadenkreuz oder Schneiderkreide noch an einer Karte der Hand hängen.
+- **Fadenkreuz** (`crosshair`, Bedingung `ThisCardBeatsDefenderCard((rank: Some(Ace)))`): sticht diese Karte einen Daus, den ein Gegner in den Stich gespielt hat, +1 Stufe für dieses Spiel, je solchem Stich. Der eigene Daus zählt nicht.
+- **Schneiderkreide** (`tailors_chalk`, Bedingung `All([WonSchneider, ThisCardPlayed])` bei der Wertung): gewinnt der Spieler mit Schneider (auch Schwarz, angesagt oder gespielt) und hat die Karte in einen Stich gespielt, +1 Stufe. Im Skat zählt sie nicht. „Rest abkürzen“ wartet, solange Goldkante, Fadenkreuz oder Schneiderkreide noch an einer Karte der Hand hängen.
 - **Untot, Umbau** (Cockpit q16): Ist der Stich voll, kehrt die Karte als **Kopie der Karte zurück, die den Stich gemacht hat** (`PlayingCard::risen_as`: Art, Augen und Regel-Eigenschaften der Gewinnerkarte, Kennung, Halter und Sichtbarkeit der eigenen; ihre eigenen Zinken wirken über die Kennung weiter). Hat sie den Stich selbst gemacht, kommt sie unverändert zurück. Auch ein Unter ist möglich: ein zusätzlicher Trumpf, aber nie eine Spitze, die Spitzen bleiben, wie angesagt (die zwölf Karten des Alleinspielers behalten die gedruckte Karte). Die Ersatzkarte: Der Spieler **wählt 3 Karten** seiner Hand, eine davon wird mit dem Zufall des Spiels gezogen (`undead_rng`, nach Kennung sortiert, die Reihenfolge der Wahl ändert nichts) und liegt an ihrer Stelle im Stich. Bis zur Wahl wartet der Run (`ActiveGame::pending_rise`, `Run::rise_pending`, Ereignis `RunEvent::RiseChoice { card, becomes, pick }`, Sicht `GameView::rise_choice`, Aktion `RunAction::ChooseRiseCards([a, b, c])`, Fehler `RisePending`, `InvalidRiseCards`); kein Gegner zieht, nichts anderes geht. Hat er nur noch 3 oder weniger andere Karten, sind alle die Kandidaten und sie steigt sofort (bei einer ist es diese). Ereignis `CardRose` mit `risen` (der Karte in der Hand). Bot: die drei schwächsten Karten (wenigste Augen, dann niedrigste Stärke). Web-App: Blatt „Wähle 3 Karten – eine davon geht in den Stich“ mit der Karte, als die sie zurückkommt, danach der grüne Bogen zurück in die Hand mit dem neuen Bild.
 - **Doppelgänger** (`doppelganger`, Spezialkarte, Effekt `Doppelganger`, Cockpit q17): höchstens einer je Ausgabe wie Untot und Wandelkarte, sonst ohne Grenzen, auch im seltenen Spezialangebot der Auslage. Er bedient als seine gedruckte Karte (nur spielbar, wenn sie es wäre). Gespielt sucht er beim **nächsten Gegner** in Spielreihenfolge eine Karte **gleichen Rangs aus einer anderen Farbe**, sonst beim anderen; bei mehreren entscheidet der Zufall des Spiels (`ActiveGame::doppel_rng`). Gefunden: Diese Karte liegt statt seiner im Stich, so wie sie ist (auch in einer anderen Farbe; als erste Karte bestimmt sie, was bedient wird), und der Gegner bekommt den Doppelgänger als gedruckte Karte in seiner Ausgabe für den Rest des Spiels (`Game::play_swapped`, Ereignisse `DoppelgangerSwapped { seat, card, from, stolen, given }`, `CardChangedHands`, dann `CardPlayed` mit der gestohlenen Karte). Nichts gefunden: gespielt als er selbst (`RunEvent::DoppelgangerUnmatched`). Im Farbspiel, Grand und Null, nicht im Ramsch. Ein Unter nimmt einen anderen Unter; die Spitzen bleiben, wie angesagt. In der Ausgabe des Spielers bleibt die Karte ein Doppelgänger. Nur Karten des Spielers tauschen. „Rest abkürzen“ wartet, solange er auf der Hand ist. Bot: spielt ihn wie jede Karte. Web-App: eine kleine Szene: die Karte blitzt im violetten Spiegelbild, ein Pixelschimmer läuft darüber, eine gepunktete Linie greift zum beraubten Gegner (der runzelt die Stirn), die beiden Karten kreuzen sich im Bogen (die gestohlene in den Stich, der Doppelgänger in seine Hand), „Getauscht!“; ohne Gegenstück nur der Schimmer und „Kein Gegenstück“. Tempo, reduzierte Bewegung und Antippen wie bei allen Szenen.
 - **Bot-Werte** (`ZINKEN_VALUES`): Goldkante 2, Fadenkreuz 1, Schneiderkreide 1, Blei 1, Doppelgänger 1.
@@ -601,24 +601,24 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2
 |---|---|---|
 | **Bockrunde** | Nach jedem verlorenen Spiel: nächstes Spiel zählt doppelt | Grundwert ×2 |
 | **Kontra** | Gegner dürfen vor dem ersten Stich Kontra sagen (Spielwert ×2). Du darfst Re sagen (×4). KI sagt Kontra, wenn sie dein Blatt für schwach hält. | Mult, Risiko |
-| **Spitze** | Letzter Stich mit einer Sieben gibt +1 Multiplikator | Multiplikator |
+| **Spitze** | Letzter Stich mit einer Sieben gibt +1 Stufe | Stufen |
 | **Schenken** | Haben die Gegner nach 5 Stichen unter 15 Augen, geben sie auf. Spiel gilt als Schneider. | Tempo, Schneider |
-| **Ouvert-Bonus** | Ouvert zählt +2 statt +1 | Multiplikator |
+| **Ouvert-Bonus** | Ouvert zählt +2 statt +1 | Stufen |
 | **Schieben** | In jedem Spiel einmal mehr einmischen (seit dem Einmischen, 01.11.2026; vorher einmal pro Serie neu geben lassen) | Spitzen, Risikostufe |
 | **Jungfrau** | Gewinnst du mit 61 bis 70 Augen, zählt das Spiel trotzdem als Schneider | Schwelle |
 | **Alte Dame** | Deine Damen zählen 5 Augen (seit 04.11.2026 nur die eigenen, 7.1 Regel 7) | Augen |
 | **Tournee** | Jede Serie, die du mit Spielen übrig gewinnst, gibt +1 Grundwert für den Rest des Runs | Skalierung |
 | **Durchmarsch** | Gewinnst du Schneider, zählt der Spielwert doppelt | Spielwert, Schneider |
-| **Blindflug** (Null) | Gewonnenes Null aus der Hand: +1 Multiplikator | Multiplikator |
+| **Blindflug** (Null) | Gewonnenes Null aus der Hand: +1 Stufe | Stufen |
 | **Kleinvieh** | Deine Sieben und Achten zählen 1 Auge (seit 04.11.2026 nur die eigenen) | Augen |
 | **Ein Auge zudrücken** | Gewinn ab 58 Augen | Schwelle |
 | **Lehrgeld** | Jedes verlorene Spiel: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
 | **Bierdeckel** | Jedes gewonnene Handspiel: +1 Grundwert für den Rest des Runs | Grundwert (Zähler) |
-| **Auf dem Trockenen** | Gegner nach drei Stichen ohne Auge: +1 Multiplikator | Multiplikator |
+| **Auf dem Trockenen** | Gegner nach drei Stichen ohne Auge: +1 Stufe | Stufen |
 | **Schneiderbock** | Nach einem gewonnenen Schneider zählt das nächste Spiel doppelt | Grundwert ×2 |
 | **Glückssträhne** | Ab dem dritten Sieg in Folge zählt jedes gewonnene Spiel doppelt, bis eines verloren geht | Spielwert ×2 |
 | **Nullachtfuffzehn** (Null) | Jedes Null: Grundwert +8, gewonnen wie verloren | Grundwert |
-| **Doppelter Boden** (Null) | Gewonnenes Null mit Skat: +1 Multiplikator | Multiplikator |
+| **Doppelter Boden** (Null) | Gewonnenes Null mit Skat: +1 Stufe | Stufen |
 | **Dicke Sau** (Null) | Deine Daus zählen 16 Augen (seit 04.11.2026 nur die eigenen); wirfst du sie im Null ab, kommen die Gegner schneller in den Kurzschluss | Augen |
 | **Glashaus** (Null) | Gewonnener Null Ouvert zählt doppelt | Spielwert ×2 |
 | **Kerbholz** (Null) | Jedes gewonnene Null: +2 Grundwert für den Rest des Runs | Grundwert (Zähler) |
@@ -626,9 +626,9 @@ Hausregeln sind regionale Skat-Varianten, als passive Modifikatoren. Bis 03.11.2
 | **Altes Blatt** (M8) | Jede gedrückte Karte gibt bis zum Ende der Serie +1 Grundwert | Grundwert (Zähler der Serie) |
 | **Allrounder** (M8) | Je verschiedener Spielart in einer Serie +3 Grundwert | Grundwert (Zähler der Serie) |
 | **Stammfarbe** (M8) | Dreimal hintereinander dieselbe Trumpffarbe: ×1,5 | Spielwert ×1,5 |
-| **Wechselbalg** (M8) | +1 Multiplikator, wenn du eine andere Spielart ansagst als im Spiel davor | Multiplikator |
+| **Wechselbalg** (M8) | +1 Stufe, wenn du eine andere Spielart ansagst als im Spiel davor | Stufen |
 | **Bubenparade** (M8) | Jeder Unter, den du ausspielst: +1 Grundwert | Grundwert |
-| **Luschenkönig** (M8) | Gewinnt eine Sieben einen Stich: +1 Multiplikator | Multiplikator |
+| **Luschenkönig** (M8) | Gewinnt eine Sieben einen Stich: +1 Stufe | Stufen |
 | **Stichfest** (M8) | Dein erster Stich zählt für die Schneider-Grenze doppelt | Schneider |
 | **Glasauge** (04.11.2026) | Zu Beginn jedes Spiels wird je eine zufällige Karte jedes Gegners durchsichtig, nur für dieses Spiel | Information (Zählen) |
 
@@ -654,14 +654,14 @@ Geändert am 01.11.2026 nach der M2-Messung (`docs/balance/2026-11-01-m2-zielwer
 | Dicke Sau | – | 27,5 / 7,6 / 2,0 | |
 | Glashaus | – | 27,0 / 7,3 / 1,7 | der Bot spielt Null Ouvert nur ohne offene Karte; Partner des Angebers |
 | Kerbholz | – | 27,8 / 7,9 / 2,1 | mit +2 je Null |
-| Mit Vieren (M5) | 29,3 / 6,1 / 0,7 | – | mit oder ohne 4 und mehr: +1 Multiplikator; Bedingung `MatadorsAtLeast` |
+| Mit Vieren (M5) | 29,3 / 6,1 / 0,7 | – | mit oder ohne 4 und mehr: +1 Stufe; Bedingung `MatadorsAtLeast` |
 | Siebenschläfer (M5) | – | 28,4 / 8,6 / 2,4 | gewonnenes Null mit unterlaufener Sieben: Grundwert +5; Bedingung `SevenDucked` |
-| Saubere Weste (M5) | – | 27,0 / 7,2 / 1,7 | gewonnenes Null, nie bedient: +2 Multiplikator; Bedingung `NeverFollowedSuit`. Der Bot erreicht das praktisch nie, für Menschen gedacht (Fehlfarben drücken) |
+| Saubere Weste (M5) | – | 27,0 / 7,2 / 1,7 | gewonnenes Null, nie bedient: +2 Stufen; Bedingung `NeverFollowedSuit`. Der Bot erreicht das praktisch nie, für Menschen gedacht (Fehlfarben drücken) |
 | Der Opa (M5) | 29,3 / 5,8 / 0,5 | – | der Bot spielt fast nie Hand |
 
 M5-Werte gemessen mit `skat_sim --seed 42 --runs 3000 --no-shop --relic <id>` gegen 29,2 / 5,9 / 0,5 % (Alleinspieler) und 27,0 / 7,2 / 1,7 % (Nullspieler) ohne Hausregel.
 
-Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Multiplikatoren sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Multiplikatoren existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben. Umgesetzt in M5: Preise und Seltenheit nach Wirkung, siehe 12.
+Die Null-Hausregeln wirken im Bot schwächer, weil der Nullspieler-Bot vor allem an seinen Händen scheitert (43 % gewonnene Nullspiele). Im vollen Run mit Tresen (3 × 3000 Runs, Seeds 42 bis 44) ändert sich gegenüber den 17 Hausregeln aus M4 wenig: Alleinspieler Abschnitt 2 / 3 / 4 erreicht 33,1 / 11,3 / 3,3 % vorher, 33,0 / 11,5 / 3,2 % nachher, Nullspieler 28,6 / 8,6 / 2,7 % und 28,3 / 8,3 / 2,6 %. Der volle Pool verdünnt die starken Hausregeln (Bockrunde, Alte Dame), die Stufen-Hausregeln sind Rare und kommen selten an den Tresen. Für die Kalibrierung der Kurve in M5 (`balance`) heißt das: Die Stufen-Hausregeln existieren jetzt, ihre Seltenheit und ihre Preise sind die Stellschrauben. Umgesetzt in M5: Preise und Seltenheit nach Wirkung, siehe 12.
 
 Gesperrt sind sieben der neuen (Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider), siehe 9.3. Die Null-Hausregeln sind frei, weil der Nullspieler selbst schon eine Freischaltung ist.
 
@@ -681,9 +681,9 @@ Variante 1 geht im geteilten Blatt nicht sauber: Ungesehen sind die Gegnerhände
 - **Altes Blatt** (`old_deck`, Zähler einer Serie): +1 Grundwert je gedrückter Karte, ab dem Spiel, in dem gedrückt wird, bis zum Ende der Serie, gewonnen wie verloren. Mit Skat in jedem Spiel +2, +4, +6. Nach der gewonnenen Serie auf null (`ResetCounter`, Ereignis `CounterReset`); eine verlorene Serie beendet den Run.
 - **Allrounder** (`all_rounder`, Zähler einer Serie, `AddBaseValuePerCounter`): +3 Grundwert je Spielart, die in der Serie bisher angesagt wurde, das laufende Spiel eingeschlossen. Das erste Spiel einer Serie bringt also immer +3, mit Farbe, Grand und Null in einer Serie das dritte +9. Mehr als drei Spielarten gibt es nicht, also passt die Regel genau zu den 3 Spielen einer Serie.
 - **Stammfarbe** (`home_suit`, Effekt `ScaleGameValue(1.5)`): ab dem dritten Farbspiel hintereinander mit derselben Trumpffarbe und bei jedem weiteren, **über Seriengrenzen hinweg** (sonst müsste jede Serie ganz in einer Farbe gespielt werden). Grand, Null oder eine andere Trumpffarbe beginnen die Folge neu, Einmischen zählt nicht. Der Faktor gilt gewonnen wie verloren (wie die Bockrunde), der Spielwert wird am Ende halb aufgerundet. Dafür gibt es jetzt gebrochene Spielwert-Faktoren: `Change::Scale`, und `ScoreBreakdown::multiplier` ist ein `Factor` (JSON Dezimalzahl, die Abrechnung zeigt „×1,5“).
-- **Wechselbalg** (`changeling`): +1 Multiplikator, wenn das angesagte Spiel eine andere Spielart hat als das Spiel davor, über Seriengrenzen hinweg, gewonnen wie verloren. Das erste Spiel mit ihm hat kein Spiel davor.
+- **Wechselbalg** (`changeling`): +1 Stufe, wenn das angesagte Spiel eine andere Spielart hat als das Spiel davor, über Seriengrenzen hinweg, gewonnen wie verloren. Das erste Spiel mit ihm hat kein Spiel davor.
 - **Bubenparade** (`jack_parade`): „ausspielen“ im Sinn von „auf den Tisch legen“, nicht nur „einen Stich eröffnen“ (Glossar: `lead`): +1 Grundwert für jeden Unter, den der Alleinspieler spielt, gewonnen wie verloren, außer im Ramsch. Gewählt, weil die Regel so am Blatt hängt und nicht an einer Spielweise, die Unter zum Anspielen statt zum Stechen verbraucht. Karten, die beim Schenken nicht mehr gespielt werden, zählen nicht. Unter der Gegner zählen nicht.
-- **Luschenkönig** (`blank_king`, Bedingung `TrickWinnerMatches`): +1 Multiplikator für jeden Stich, den eine Sieben des Alleinspielers gewinnt (eine Trumpf-Sieben, die sticht, oder eine Sieben, die keiner bedient oder sticht). Sieben der Gegner zählen nicht, der Text meint den Spieler. Nicht im Null (dort verliert sein Stich) und nicht im Ramsch.
+- **Luschenkönig** (`blank_king`, Bedingung `TrickWinnerMatches`): +1 Stufe für jeden Stich, den eine Sieben des Alleinspielers gewinnt (eine Trumpf-Sieben, die sticht, oder eine Sieben, die keiner bedient oder sticht). Sieben der Gegner zählen nicht, der Text meint den Spieler. Nicht im Null (dort verliert sein Stich) und nicht im Ramsch.
 - **Stichfest** (`watertight`, Bedingung `FirstTrickOfDeclarer`, Effekt `SchneiderBonusFromTrick`): Die Augen des ersten Stichs, den der Alleinspieler macht, zählen nur für die Schneider-Grenze ein zweites Mal. Gewinnt er, sind die Gegner mit höchstens 30 plus diesen Augen Schneider (`Thresholds::schneider_bonus`, gemessen an der verlierenden Seite wie Schneider selbst, 4.4). Gewinnen wird nicht leichter, ein angesagter Schneider aber schon; die eigene Schneider-Grenze des Alleinspielers bleibt. Zeile „zählt als Schneider“, wenn erst der Zuschlag das Spiel zum Schneider macht.
 - **Rest abkürzen** (4.4) wartet, solange einer dieser Hooks noch feuern kann: bei der Bubenparade, bis der Spieler keinen Unter mehr hält, beim Luschenkönig, bis er keine Sieben mehr hält, beim Stichfest bis zu seinem ersten Stich.
 
@@ -726,7 +726,7 @@ Einzeln gemessen wie Welle 2a (`skat_sim --runs 500 --no-shop --bot pimc:12:3 --
 | **Der Wirt** | Tresen-Preise −20 % |
 | **Die Oma** | Einmal pro Serie darfst du einen gedrückten Buben zurücknehmen |
 | **Der Schiedsrichter** | Gegner dürfen nicht schummeln (hebt Boss-Mechaniken teilweise auf) |
-| **Der Angeber** | +1 Multiplikator bei Ouvert, aber du musst immer Ouvert spielen |
+| **Der Angeber** | +1 Stufe bei Ouvert, aber du musst immer Ouvert spielen |
 | **Der Zähler** | Zeigt dir laufend die Augen, die noch im Spiel sind |
 | **Der Stammgast** | Zählt die Serien, die du mit ihm gewinnst. Ab der vierten zählt jedes gewonnene Spiel doppelt |
 | **Der Schneider** | Nimmt großzügig Maß: Gewinnst du mit 80 bis 89 Augen, sind die Gegner Schneider |
@@ -739,7 +739,7 @@ Umgesetzt in M4 (`house_rules.ron`, `kind: Regular`, Preise 6 bis 8 als Platzhal
 - **Opa** (`grandpa`, M5, `SeriesSkatSwap` für Daus): wie die Oma, aber ein Daus aus dem Skat. Oma und Opa zusammen geben zwei Täusche pro Serie, je einen (4.4).
 - **Schiedsrichter** (`referee`, `NoCheating`): schaltet die Boss-Regeln ab, die als Schummeln markiert sind: die Zwillinge (bis ADR 0017 auch der Revolutionär).
 - **Angeber** (`show_off`, `RequireOuvert` plus eine Stufe bei Ouvert): Für den Alleinspieler hieße „immer Ouvert“ immer Schwarz angesagt, das wäre Selbstmord. Deshalb nur im Pool des Nullspielers (Null Ouvert und Null Ouvert Hand).
-- **Stammgast** (`regular_guest`, Zähler `regular` plus `MultiplyGameValue(2)` ab 4): Hebel Spielwert. Der Multiplikator fürs Spätspiel, wer ihn früh kauft, wartet zwei Abende. Nur gewonnene Spiele zählen doppelt.
+- **Stammgast** (`regular_guest`, Zähler `regular` plus `MultiplyGameValue(2)` ab 4): Hebel Spielwert. Der Faktor fürs Spätspiel, wer ihn früh kauft, wartet zwei Abende. Nur gewonnene Spiele zählen doppelt.
 - **Schneider** (`tailor`, `SchneiderFromDeclarerPoints(80, 89)`): Hebel Schneider, ein Wortspiel mit dem Handwerk. Nur Alleinspieler. Er kam statt des zuerst geplanten Opa, den der Kern in M4 nicht neben der Oma tragen konnte; seit M5 gibt es beide.
 - **Zähler** (`card_counter`, `ShowCount`): zeigt Augen beider Seiten aus den Stichen (plus den Skat, sobald der Spieler ihn kennt) und die Summe der Karten, die der Spieler noch nicht gesehen hat. Der Talon zählt dazu, weil niemand weiß, welche Karten dort liegen; so verrät der Zähler nie mehr als ein perfekter Mitzähler weiß. Seit ADR 0015 gibt es keinen Talon; jede ungesehene Karte liegt bei einem der beiden Gegner. Hat der Boss eine Ausgabe mit Augen-Modifikationen, hängt die Summe davon ab, wer die Karte hält: Der Zähler zeigt dann den kleinsten und den größten möglichen Wert („noch 34 bis 38“), damit er nicht mehr verrät als ein Mitzähler weiß.
 
@@ -792,10 +792,10 @@ Eine vierte Seltenheit für Relikte, die den Run prägen (`Rarity::Legendary`, A
 
 | Relikt | Effekt | Hebel | Preis |
 |---|---|---|---|
-| **Skatgott** (`skat_god`) | Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3 | Multiplikator (Zähler `skat_god`) | 12 (bis 03.11.2026 9) |
+| **Skatgott** (`skat_god`) | Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Stufe auf jedes gewonnene Spiel, höchstens +3 | Stufen (Zähler `skat_god`) | 12 (bis 03.11.2026 9) |
 | **Ehrenvorsitz** (`honorary_chair`) | Du bist immer Vorhand | Stichgewinn (Vorhand) | 6 |
 
-- **Skatgott**: Der Zähler steigt nach jedem gewonnenen Spiel mit Schneider (auch Schneider durch Jungfrau, Schenken, Stichfest oder Schwarz). Die Stufen gelten nur für gewonnene Spiele, jede Spielart (Farbspiel, Grand, Null), nie der Ramsch (`AddLevelsPerCounter` bei der Wertung; der Stufen-Hook steht vor dem Zähler, ein Schneiderspiel zählt seinen eigenen Punkt also nicht). Entschieden am 02.11.2026: „auf alles“ heißt „auf jede Spielart“; die erste Fassung zählte auch verlorene Spiele und brachte dem Bot nur +1,3 bei weniger Punkten je Spiel. Abgestimmter Text ergänzt zu „… +1 Multiplikator auf jedes gewonnene Spiel“. **Seit 03.11.2026 höchstens +3** (Entscheidung von Claude nach `docs/balance/2026-11-03-kleine-runde.md`: allein +12 Punkte „Run gewonnen“, alle anderen Relikte höchstens +4): Der Zähler steigt nur, solange er unter 3 steht (`Not(CounterAtLeast(counter: "skat_god", value: 3))`, reine Daten).
+- **Skatgott**: Der Zähler steigt nach jedem gewonnenen Spiel mit Schneider (auch Schneider durch Jungfrau, Schenken, Stichfest oder Schwarz). Die Stufen gelten nur für gewonnene Spiele, jede Spielart (Farbspiel, Grand, Null), nie der Ramsch (`AddLevelsPerCounter` bei der Wertung; der Stufen-Hook steht vor dem Zähler, ein Schneiderspiel zählt seinen eigenen Punkt also nicht). Entschieden am 02.11.2026: „auf alles“ heißt „auf jede Spielart“; die erste Fassung zählte auch verlorene Spiele und brachte dem Bot nur +1,3 bei weniger Punkten je Spiel. Abgestimmter Text ergänzt zu „… +1 Stufe auf jedes gewonnene Spiel“ (vom 02.11. bis 04.11.2026 „+1 Multiplikator“). **Seit 03.11.2026 höchstens +3** (Entscheidung von Claude nach `docs/balance/2026-11-03-kleine-runde.md`: allein +12 Punkte „Run gewonnen“, alle anderen Relikte höchstens +4): Der Zähler steigt nur, solange er unter 3 steht (`Not(CounterAtLeast(counter: "skat_god", value: 3))`, reine Daten).
 - **Ehrenvorsitz**: Der Spieler spielt in jedem Spiel den ersten Stich aus (`AlwaysForehand`); die Gäste sitzen weiter als Mittel- und Hinterhand. Das Geben bleibt gleich, nur die Vorhand wechselt nicht mehr.
 
 Gemessen (`docs/balance/2026-11-02-welle3.md`, wie Welle 2a): Skatgott +4,7 auf „Abschnitt 3 erreicht“ (Abschnitt 4 +3,7, Punkte je Spiel +7,8), so stark wie die Alte Dame und im Spätspiel stärker; Ehrenvorsitz −0,4 (im Rauschen), ein Relikt für Menschen.
@@ -818,7 +818,7 @@ Gemessen (`docs/balance/2026-11-02-welle3.md`, wie Welle 2a): Skatgott +4,7 auf 
 - **Doppelkorn**: Trinken gibt **sofort neu** (`ConsumableAction::RedealNextGame`), kostenlos wie Kräuter, und das neue Spiel zählt doppelt; weitere Einmischen behalten die Wirkung bis zur nächsten Ansage. Nur mit zehn Karten vor „Skat oder Hand“, nicht am Tresen (dort gäbe es nichts neu zu geben). Auslegung von Claude: „löst ein Einmischen aus“ heißt neu geben ohne ein Einmischen zu verbrauchen; sonst wäre er ohne übriges Einmischen nicht trinkbar. Preis 3, Uncommon.
 - **Blue Curaçao** (bis 02.11.2026 „Kreide“, Id `blue_curacao`, alte Id `chalk` wird beim Laden umbenannt): Wirkung unverändert.
 - **Alte Oberin** (ADR 0014): Name und Text stehen jetzt so in `house_rules.ron`, die Überschreibung in der Web-App entfällt.
-- **„Multiplikator“ statt „Stufe“/„Gewinnstufe“** in allen Spieltexten (Content, Übersetzung, Abrechnung, Regelkarte, Glossar). Im Code bleiben `levels`, `AddLevels`, `Lever::Levels`. „Sticht eine Stufe höher“ (Rang) und die Risikostufe bleiben.
+- **„Multiplikator“ statt „Stufe“/„Gewinnstufe“** in allen Spieltexten (Content, Übersetzung, Abrechnung, Regelkarte, Glossar). Im Code bleiben `levels`, `AddLevels`, `Lever::Levels`. „Sticht eine Stufe höher“ (Rang) und die Risikostufe bleiben. **Seit 04.11.2026 zurückgenommen** (Cockpit q23): Die Spieltexte sagen wieder „Stufen“, siehe 4.2; die Rang-Texte der Zinken sagen dafür „Rang“.
 - **Anzeige-Gruppe** als Daten: `group` an jedem Relikt (`Value`, `Multiplier`, `Control`, `Tour`, Standard `Value`), in Sicht und Katalog. Die Web-App liest sie, die Form des Bierdeckels folgt noch der Art (Hausregel, Figur); die Form nach Gruppe kommt mit dem neuen Bierdeckel-Entwurf.
 - **Kartenwaren** (Augen +3, Trumpf +2, Rang +1, Stempelkissen) blieben zunächst, wie sie sind. Die geplanten Kartenwaren mit Schnapsnamen (Goldwasser, Trumpfbrand, Absacker, Anstich, Pfandbon, Totenschein, Narrenkappe) sind **nicht** gebaut: Kartenverbesserungen bekommen eine eigene Tresen-Mechanik (Nachentscheidung des Nutzers). **Seit 8.6 überholt**: Die Kartenwaren sind entfernt, die Mechanik heißt Zinken.
 
@@ -932,7 +932,7 @@ Zu messen, sobald der Simulator wieder läuft: Käufe je Tresen (Auslage, Karten
 **D, „noch nötig“** (Sicht `RunView::needed`, `NeededView`, `Run::max_game_value`): Vor dem letzten Spiel einer Kneipe (ein Spiel übrig, noch nicht angesagt) rechnet der Kern
 
 - `points`: Zielwert minus Konto, was ein gewonnenes Spiel bringen muss (0 oder weniger, wenn das Ziel schon steht; die Boss-Kneipe spielt alle Spiele);
-- `smallest_game`: den kleinsten Spielwert der reinen Formel (ohne Relikte und Faktoren), der reicht, z. B. 88 (Pik mit Multiplikator 8) für 87 nötige Punkte;
+- `smallest_game`: den kleinsten Spielwert der reinen Formel (ohne Relikte und Faktoren), der reicht, z. B. 88 (Pik mit 8 Stufen) für 87 nötige Punkte;
 - `max_value`: eine **Obergrenze** für ein gewonnenes Spiel ohne Wissen über das Blatt: das höchste Spiel der Formel (Grand und jede Farbe Ouvert, Hand, Schwarz angesagt mit allen Trümpfen als Spitzen; Null Ouvert Hand mit allen Stilboni; im Ramsch der Verlierer mit 120 Augen und Jungfrau) mit **jeder** erhöhenden Zeile aller Relikte, Bosse, Charaktere und Karten, als gälte ihre Bedingung, so oft ihr Auslöser feuern kann (Stichende zehnmal, jede Karte dreißigmal), dazu die wartenden Faktoren (Doppelkorn, Eierlikör, Letzte Runde). Kontra und Re zählen nicht: Der Spieler kann keinen Gegner zum Kontra bringen;
 - `reachable`: `points <= max_value`.
 
@@ -1042,7 +1042,7 @@ Relikte der Anzeige-Gruppe `Factor` (Bierdeckel: ein bernsteinfarbenes Sechseck,
 - **Heiße Hand**: Der Faktor zählt die Siege *vor* diesem Spiel (der Faktor-Hook steht vor dem Zähler): ×1, ×1,2, ×1,4 …; die Vorschau beim Spielen zeigt so genau den Faktor, den ein Sieg bekommt. Ein verlorenes Spiel (auch ein Ramsch) setzt den Zähler zurück, Einmischen nicht.
 - **Zähler** liegen wie alle Run-Zähler im Spielstand (`counters`) und stehen in der Relikt-Leiste.
 - **Gemessen in Runde 1** (04.11.2026, `docs/balance/2026-11-04-runde1.md`, alle fünf Charaktere): Gewonnene Spiele haben im Mittel ×1,15 bis ×1,25 (Alleinspieler nachher ×1,25), ein Fünftel hat einen Faktor über 1; der höchste Faktor je Run im Mittel ×1,4 bis ×1,7, der höchste überhaupt ×13,2 (Heiße Hand mit Farb-Relikt und Glückssträhne). 15 bis 27 % der Runs enden mit einem Faktor-Relikt, gekauft wird jedes in 4 bis 6 % der Runs (Grandseigneur und Schwarze Null beim Alleinspieler je 1,6 %). Keines dominiert; Seltenheit, Preise und Faktoren bleiben. Einzelmessung ohne Tresen in Runde 2.
-- **Glückssträhne** (×2 ab dem dritten Sieg in Folge) war schon ein Faktor-Relikt und bleibt in der Gruppe Multiplikator; Stammfarbe, Bock, Einsatz und Schnäpse zählen weiter auch verloren (ADR 0018 Punkt 4).
+- **Glückssträhne** (×2 ab dem dritten Sieg in Folge) war schon ein Faktor-Relikt und bleibt in der Gruppe Stufen; Stammfarbe, Bock, Einsatz und Schnäpse zählen weiter auch verloren (ADR 0018 Punkt 4).
 
 ## 9. Charaktere
 
@@ -1091,7 +1091,7 @@ Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn
 
 **Umgesetzt in M4.** Die Ansage ist ein Enum (`Declaration`: Farbspiel, Grand, Null, Ramsch), Null hat eigene Risikostufen (`NullRisk`: Normal, Hand, Ouvert, Ouvert Hand). Ungültige Kombinationen wie Null mit Schneider angesagt gibt es nicht; im JSON bleibt die Form `{game, risk}`. Null Ouvert ohne Hand (46) ist damit erstmals darstellbar. Ein Null endet wie in der Skatordnung mit dem ersten Stich des Alleinspielers. Bei Null Ouvert sehen die Gegner die Hand ab dem ersten Ausspielen. Startrelikt: **Der Kiebitz**. Pool: Hausregeln, die für Null wirken (Bockrunde, Kontra, Ouvert-Bonus auch für Null Ouvert, Schieben, Tournee), die Null-Hausregel „Blindflug“, die Figuren außer der Oma, der Angeber nur hier, die Modifikation „Unsichtbar“ (`NeverWins`: kann nie stechen, bedient aber). Bosse ohne Wirkung auf Null (Oma, Schwarzer Peter) zieht der Nullspieler nicht.
 
-**Null-Wertung, entschieden am 01.11.2026 mit dem Simulator: die Formel.** Beide Varianten sind Daten (`null_scoring` in `characters.ron`) und laufen durch dieselbe Formel Grundwert × Multiplikator, damit Relikte auf Grundwert, Stufen und Spielwert auch für Null wirken:
+**Null-Wertung, entschieden am 01.11.2026 mit dem Simulator: die Formel.** Beide Varianten sind Daten (`null_scoring` in `characters.ron`) und laufen durch dieselbe Formel Grundwert × Stufen, damit Relikte auf Grundwert, Stufen und Spielwert auch für Null wirken:
 
 - `Fixed`: Grundwert 23, 35, 46 oder 59 (Skatordnung), eine Stufe.
 - `Formula`: Grundwert 23 × (Risikostufe + Stilbonus). Die Risikostufe zerfällt in Spiel 1, Hand +1, Ouvert +2. Stilbonus nur bei gewonnenem Spiel: +1 je Stich, in dem der Alleinspieler eine Sieben gespielt und den Stich nicht bekommen hat; +2, wenn er nie bedienen musste; +3 „Kurzschluss“, wenn die Gegner nach fünf Stichen mindestens 61 Augen haben. „Alle Augen“ aus dem Vorschlag passt nicht in 15 Karten, deshalb die Mehrheit. Verloren: −2 × 23 × Risikostufe, ohne Stilbonus.
@@ -1214,7 +1214,7 @@ Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem
 
 - **Ausgabe** (`Shirker`): eine Pfandmarke (`voucher_coins`, 2 Groschen) auf allen vier Siebenern, eine Totenmarke (`voucher_undead`) auf der Schellen-Acht, eine Narrenmarke (`voucher_wild`) auf der Rot-Acht. Die Namen der Marken kommen mit den Zinken (feat/zinken); im Kern heißen sie nach ihrer Id.
 - **Regel, Teil 1: Marken kommen zurück.** Jeder Gutschein, der in einer Kneipe von seiner Ausgabe eingelöst wurde, liegt nach dem Ende dieser Kneipe (gewonnen oder verloren) wieder mit seinem Wert auf seiner Karte (`CharacterRule::vouchers_return`, gemerkt in `Series::returning_vouchers`, Ereignis `RunEvent::VoucherReturned` und `DeckChanged`). Das gilt für jeden Gutschein seiner Ausgabe, auch für einen später dazugekommenen. Trägt die Karte inzwischen eine andere normale Modifikation oder einen Fluch, bleibt der Gutschein weg (die Karte hat nur einen Platz, 7.2). Was die Marke aus der Karte gemacht hat, bleibt, und die Marke ist dann verbraucht: Hat eine Totenmarke (Narrenmarke) ihre Karte Untot (zur Wandelkarte) gemacht, kommt sie nicht zurück (Playtest 04.11.2026; vorher lag sie danach neben „Untot“). Zurück kommt sie nur, wenn sie wegen der Obergrenze Groschen gezahlt hat und die Karte blieb, wie sie war. Seit dem 04.11.2026 löst auch jedes Handspiel eine zufällige Marke der Hand ein (7.2); sie kommt genauso zurück. Endet der Run mit der Kneipe, kommt nichts mehr zurück, was keine Rolle spielt.
-- **Regel, Teil 2: kein Hand-Multiplikator.** Ein Handspiel zählt ohne die Stufe „Hand“: ein Hook `OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(-1)])`, gewonnen wie verloren, auch Null Hand und Null Ouvert Hand. In der Wertung steht „Hand +1“ und die Zeile des Charakters −1. Unter der Spelunke „Kein Skat“ (alles Hand) bekommt er nie Hand, sie bleibt für ihn ziehbar.
+- **Regel, Teil 2: keine Hand-Stufe.** Ein Handspiel zählt ohne die Stufe „Hand“: ein Hook `OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(-1)])`, gewonnen wie verloren, auch Null Hand und Null Ouvert Hand. In der Wertung steht „Hand +1“ und die Zeile des Charakters −1. Unter der Spelunke „Kein Skat“ (alles Hand) bekommt er nie Hand, sie bleibt für ihn ziehbar.
 - **Startrelikt**: Skatpfleger (gedrückte Augen zählen doppelt).
 - **Freischaltung**: `full_skat` (9.3). **Rückseite**: Briefmarke und Poststempel.
 - **Zahlen**: Zielwerte wie der Alleinspieler (gemessen am 03.11.2026 im Zielbild, Tabelle in 9), `focus_weights` Trump 100, Null 50 (nach Augenmaß). Gemessen: Er löst je Run 4,7 Pfandmarken (9,7 Groschen), 1,1 Toten- und 1,1 Narrenmarken ein, fast alle kehren zurück (6,9 je Run); das sind gut 9 Groschen mehr als beim Alleinspieler, im Ergebnis liegt er nur knapp darüber.
@@ -1224,7 +1224,7 @@ Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem
 Entschieden vom Nutzer am 03.11.2026. Nimmt Maß und macht die Gegner Schneider.
 
 - **Ausgabe** (`Tailoress`): Aufdruck (`points`) +3 auf allen vier Zehnern.
-- **Regel**: Gewinnt sie ein Farbspiel oder einen Grand mit Schneider, zählt Schneider +2 statt +1 Multiplikator, Schwarz ebenso +2 statt +1. Ein gewonnenes Farbspiel oder ein Grand ohne Schneider zählt 1 Multiplikator weniger, nie unter 1 (die Formel hält den Multiplikator bei mindestens 1, 4.2). Daten: drei `OnScore`-Hooks mit `AddLevels` auf `WonSchneider`, `All([Won, AllTricksWon])` und `All([Won, Not(WonSchneider)])`, je ohne Null und Ramsch.
+- **Regel**: Gewinnt sie ein Farbspiel oder einen Grand mit Schneider, zählt Schneider +2 statt +1 Stufe, Schwarz ebenso +2 statt +1. Ein gewonnenes Farbspiel oder ein Grand ohne Schneider zählt 1 Stufe weniger, nie unter 1 (die Formel hält die Stufen bei mindestens 1, 4.2). Daten: drei `OnScore`-Hooks mit `AddLevels` auf `WonSchneider`, `All([Won, AllTricksWon])` und `All([Won, Not(WonSchneider)])`, je ohne Null und Ramsch.
 - **Auslegung (Claude)**: Null ist ausgenommen, weil es dort keinen Schneider gibt; sonst zählte jedes gewonnene Null eine Stufe weniger, und die Schneiderin könnte praktisch kein Null spielen. Verlorene Spiele bleiben unverändert, auch ein verlorenes Spiel, in dem sie selbst Schneider ist.
 - **Startrelikt**: Stichfest (erster Stich zählt für die Schneider-Grenze doppelt).
 - **Freischaltung**: `three_schneider` (9.3). **Rückseite**: Schere und Maßband auf Stoff.
@@ -1244,7 +1244,7 @@ Entschieden vom Nutzer am 03.11.2026. Sein Herz schlägt für Rot.
 
 ### 9.6a Bis 03.11.2026: Grandspieler, Zaungast, Wirtin
 
-Gestrichen vom Nutzer am 03.11.2026. Der Grandspieler (Grand +1 Multiplikator, Farbspiel −1, Eichel-Daus mit Augen +8), der Zaungast (sah das Blatt des linken Gegners, einmal weniger einmischen) und die Wirtin (doppelte Groschen, vier Relikt-Plätze, Start mit einem Kräuter) sind aus `characters.ron`, dem `Character`-Enum, der Web-App und dem Simulator entfernt. Ihre Messungen in 5.2 und 11 bleiben als Geschichte stehen.
+Gestrichen vom Nutzer am 03.11.2026. Der Grandspieler (Grand +1 Stufe, Farbspiel −1, Eichel-Daus mit Augen +8), der Zaungast (sah das Blatt des linken Gegners, einmal weniger einmischen) und die Wirtin (doppelte Groschen, vier Relikt-Plätze, Start mit einem Kräuter) sind aus `characters.ron`, dem `Character`-Enum, der Web-App und dem Simulator entfernt. Ihre Messungen in 5.2 und 11 bleiben als Geschichte stehen.
 
 ### 9.7 Spätere Kandidaten (nicht vor v1)
 

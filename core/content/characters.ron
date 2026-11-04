@@ -107,7 +107,7 @@
     (
         character: Shirker,
         name: "Der Drückeberger",
-        text: "Drückt sich, wo er kann: Auf seinen vier Siebenern liegt je eine Pfandmarke (2 Groschen), auf der Schellen-Acht eine Totenmarke, auf der Rot-Acht eine Narrenmarke. Eingelöste Marken kommen nach jeder Kneipe zurück. Handspiele bekommen keinen Multiplikator für Hand. Startet mit dem Skatpfleger.",
+        text: "Drückt sich, wo er kann: Auf seinen vier Siebenern liegt je eine Pfandmarke (2 Groschen), auf der Schellen-Acht eine Totenmarke, auf der Rot-Acht eine Narrenmarke. Eingelöste Marken kommen nach jeder Kneipe zurück. Handspiele bekommen keine Stufe für Hand. Startet mit dem Skatpfleger.",
         start_relics: ["skat_keeper"],
         deck: (
             mods: [
@@ -144,7 +144,7 @@
     (
         character: Tailoress,
         name: "Die Schneiderin",
-        text: "Nimmt Maß: Ihre vier Zehner tragen einen Aufdruck (+3 Augen). Gewinnt sie Schneider oder Schwarz, zählt beides je +2 statt +1 Multiplikator; ein gewonnenes Spiel ohne Schneider zählt 1 Multiplikator weniger (nie unter 1, Null ausgenommen). Startet mit Stichfest.",
+        text: "Nimmt Maß: Ihre vier Zehner tragen einen Aufdruck (+3 Augen). Gewinnt sie Schneider oder Schwarz, zählt beides je +2 statt +1 Stufe; ein gewonnenes Spiel ohne Schneider zählt 1 Stufe weniger (nie unter 1, Null ausgenommen). Startet mit Stichfest.",
         // Eigene Zielwerte, gemessen am 03.11.2026: rund die Kurve des
         // Alleinspielers × 1,15 (Boss in Stadtteil 1 × 1,25). Mit dessen
         // Kurve erreichte sie Stadtteil 2 in 47 % und gewann 7,9 % der Runs:
