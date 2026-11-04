@@ -1261,6 +1261,7 @@ export const de = {
       boss: 'Boss',
       bossRule: 'Boss-Regel dieses Spiels',
       evening: 'Hausregel des Abends',
+      malus: 'Malus der Spelunke',
     },
     close: 'Schließen',
     swipe: 'Nach unten wischen zum Schließen',

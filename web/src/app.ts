@@ -65,7 +65,7 @@ import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
 import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
-import { bossEntrance, doorWipe, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
+import { bossEntrance, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -308,8 +308,6 @@ export class App {
   private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
-  /** The scene last drawn (a screen, or the kind of run screen): the door opens from a pub onto the route. */
-  private lastScene = '';
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
   private entrancePending = false;
   /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
@@ -350,11 +348,17 @@ export class App {
       blocked: () => this.ui.busy || this.ui.screen !== 'run' || Boolean(this.ui.overlay) || this.info.state?.mode === 'sheet',
       pour: (p) => this.pourSchnaps(p),
     });
-    // No text selection on the table: a long-press opens the info card and
-    // must not mark the page. Inputs (seed, save code) keep theirs.
-    root.addEventListener('selectstart', (e) => {
-      const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement;
-      if (el?.closest('.run, .info-layer') && !el.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+    // No text selection and no browser callout anywhere in the game: a
+    // long-press opens the info card and must not mark the page. Text
+    // fields (seed, save code) and the shown seed keep theirs; links keep
+    // their menu.
+    const selectable = 'input, textarea, [contenteditable="true"], .seed-num';
+    const elementOf = (t: EventTarget | null): Element | null => (t instanceof Element ? t : t instanceof Node ? t.parentElement : null);
+    document.addEventListener('selectstart', (e) => {
+      if (!elementOf(e.target)?.closest(selectable)) e.preventDefault();
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (!elementOf(e.target)?.closest(`${selectable}, a[href]`)) e.preventDefault();
     });
     // A press anywhere else closes the popover of the mouse.
     root.addEventListener('pointerdown', (e) => {
@@ -370,7 +374,7 @@ export class App {
     });
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
-    // A tap while a scene plays (boss entrance, door, stamp) ends it; the tap still counts.
+    // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
     window.addEventListener(
       'pointerdown',
       () => {
@@ -2507,6 +2511,7 @@ export class App {
       case 'info-offer-relic':
       case 'info-offer-item':
       case 'info-item':
+      case 'info-malus':
       case 'info-card': {
         // A tap on these opens their info card (the same as a long-press).
         const key = el.dataset.info;
@@ -3329,7 +3334,6 @@ export class App {
     // The player's edition shows his character's back (DESIGN 9.3).
     setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
-    if (ui.screen !== 'run') this.lastScene = ui.screen;
     switch (ui.screen) {
       case 'loading':
         body = renderLoading();
@@ -3367,9 +3371,6 @@ export class App {
                 ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        // Out of the pub (or its boss reward) onto the route: the pub door swings open.
-        if (cls === 'is-route' && (this.lastScene === 'is-table' || this.lastScene === 'is-encounter')) this.afterRender.push(() => doorWipe());
-        this.lastScene = cls;
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };

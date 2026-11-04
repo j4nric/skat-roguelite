@@ -78,7 +78,7 @@
         group: Value,
         focus: Trump,
         name: "Alte Oberin",
-        text: "Jede Oberin zählt 5 Augen. Auch bei den Gegnern.",
+        text: "Deine Oberinnen zählen 5 Augen.",
         rarity: Uncommon,
         price: 9,
         passive: [SetCardPoints(filter: (rank: Some(Queen)), points: 5)],
@@ -131,6 +131,8 @@
     // formula (Designsäule 1), named in the comment. Prices are placeholders
     // for `balance`. Texts speak of the German deck (Unter, Oberin, Daus).
     // ---------------------------------------------------------------------
+    // Since 04.11.2026 (decided by the user) the Augen relics change only
+    // the player's own cards (his edition, ADR 0015), wherever they end up.
     // Lever Augen: every seven and eight counts 1 Auge, +8 Augen in the
     // deck (as much as the Alte Dame; with the nines too, +12 Augen, it
     // measured twice as strong). Like the Alte Dame it helps the declarer
@@ -141,7 +143,7 @@
         id: "every_bit_counts",
         group: Value,
         name: "Kleinvieh",
-        text: "Kleinvieh macht auch Mist: Jede Sieben und jede Acht zählt 1 Auge. Auch bei den Gegnern.",
+        text: "Kleinvieh macht auch Mist: Deine Sieben und Achten zählen je 1 Auge.",
         rarity: Uncommon,
         price: 9,
         passive: [
@@ -224,7 +226,7 @@
         group: Value,
         focus: Null,
         name: "Dicke Sau",
-        text: "Jedes Daus zählt 16 Augen, in jedem Spiel und bei allen. Beim Null kommen die Gegner so schneller in den Kurzschluss.",
+        text: "Deine Daus zählen 16 Augen, in jedem Spiel. Wirfst du sie beim Null ab, kommen die Gegner schneller in den Kurzschluss.",
         rarity: Common,
         price: 6,
         passive: [SetCardPoints(filter: (rank: Some(Ace)), points: 16)],

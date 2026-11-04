@@ -6557,21 +6557,29 @@ button.card {
   margin-top: 2px;
 }
 
-/* ------------------------------------------------- no selection on the table */
+/* ----------------------------------------------------- no selection anywhere */
 
-/* A long touch on the table opens the info card; it must not mark text of
-   the page. Text fields keep their selection. */
-.run {
+/* A long touch opens the info card (on the table, in the Leiste, on the
+   route, in sheets); it must never mark text of the page or bring up the
+   browser's callout (playtest 04.11.2026). The whole game UI is a game, not
+   a document: only text fields keep their selection, and the seed stays
+   copyable. */
+body {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.run input,
-.run textarea {
+input,
+textarea,
+[contenteditable='true'] {
   -webkit-touch-callout: default;
   -webkit-user-select: text;
   user-select: text;
+}
+
+.seed-num {
+  -webkit-user-select: all;
 }
 
 /* ------------------------------------------------------------ dragging */
@@ -8120,13 +8128,11 @@ button.skat-card {
 }
 
 /* ---------------------------------------------------------------------------
-   Scenes (./ui/scenes.ts): the boss entrance under a spotlight, the pub
-   door onto the route, buying at the Tresen, the Zinke stamp. None of it
+   Scenes (./ui/scenes.ts): the boss entrance under a spotlight, buying at the Tresen, the Zinke stamp. None of it
    takes a tap.
    --------------------------------------------------------------------------- */
 
-.fx-spot,
-.fx-door {
+.fx-spot {
   position: fixed;
   inset: 0;
   z-index: 45;
@@ -8141,31 +8147,6 @@ button.skat-card {
 
 .fx-spot svg {
   display: block;
-}
-
-.fx-door {
-  display: flex;
-}
-
-.fx-door-leaf {
-  flex: 1 1 50%;
-  height: 100%;
-  line-height: 0;
-  backface-visibility: hidden;
-}
-
-.fx-door-leaf.is-left {
-  transform-origin: 0 50%;
-}
-
-.fx-door-leaf.is-right {
-  transform-origin: 100% 50%;
-}
-
-.fx-door-leaf svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 .fx-buy {

@@ -124,6 +124,9 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// highest value it can afford and swaps a relic for one that is worth at
 /// least [`SWAP_MARGIN`] more; value 0 is never bought. One table serves
 /// both characters. Relics not listed are worth [`DEFAULT_RELIC_VALUE`].
+/// `every_bit_counts`, `old_lady` and `fat_sow` were measured while they
+/// changed every card; since 04.11.2026 they change only the player's own
+/// cards, so their values are too high until measured again (`balance`).
 ///
 /// | Relic | Value | Measured |
 /// |---|---|---|
