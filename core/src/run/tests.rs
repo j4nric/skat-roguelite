@@ -696,6 +696,7 @@ fn a_run_can_start_with_relics_and_later() {
             .collect()
     };
     assert_eq!(ids(&with), ids(&without));
+    // The player's own Ober (since 04.11.2026 only those).
     let queens = |run: &Run| -> Vec<u32> {
         run.game()
             .expect("game")
@@ -703,8 +704,9 @@ fn a_run_can_start_with_relics_and_later() {
             .cards_in_play()
             .iter()
             .filter(|c| {
-                c.face()
-                    .is_some_and(|f| f.rank == crate::cards::Rank::Queen)
+                c.owner == crate::deck::Owner::Player
+                    && c.face()
+                        .is_some_and(|f| f.rank == crate::cards::Rank::Queen)
             })
             .map(|c| c.card_points)
             .collect()

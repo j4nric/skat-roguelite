@@ -1122,10 +1122,12 @@ export class App {
         continue;
       }
       if ('VoucherRedeemed' in ev) {
-        // Effekte v2: a voucher was redeemed when its card was discarded.
+        // Effekte v2: a voucher was redeemed when its card was discarded (or by a hand game).
         const id = ev.VoucherRedeemed.card;
         const card = before?.edition.find((c) => c.id === id) ?? after.edition.find((c) => c.id === id);
-        this.showToast(t(de.toast.voucherRedeemed, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }), 'top');
+        // Declaring a hand game redeems one Marke of the hand (04.11.2026): the card stays in the hand.
+        const text = ev.VoucherRedeemed.via_hand ? de.toast.voucherRedeemedHand : de.toast.voucherRedeemed;
+        this.showToast(t(text, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }), 'top');
         sound.play('clink');
         if (card) await this.redeemVoucher(card, after.edition.find((c) => c.id === id) ?? null);
         continue;

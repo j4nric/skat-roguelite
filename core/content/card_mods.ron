@@ -175,14 +175,15 @@
     ),
     // ---------------------------------------------------------------------
     // Gutschein: Zackenrand, keine Markierung. Wirkt beim Drücken, sofort,
-    // egal wie das Spiel ausgeht, und fällt dann von der Karte.
+    // egal wie das Spiel ausgeht, und fällt dann von der Karte. Seit dem
+    // 04.11.2026 löst ein Handspiel eine zufällige Marke der Hand ebenso ein.
     // ---------------------------------------------------------------------
     // Lever Groschen.
     (
         id: "voucher_coins",
         kind: Voucher,
         name: "Pfandmarke",
-        text: "Gutschein: Wenn gedrückt, {n} Groschen. Danach ist die Marke weg.",
+        text: "Gutschein: Gedrückt oder beim Handspiel: {n} Groschen. Danach ist die Marke weg.",
         rarity: Common,
         price: 2,
         values: [3],
@@ -195,7 +196,7 @@
         kind: Voucher,
         focus: Trump,
         name: "Totenmarke",
-        text: "Gutschein: Wenn gedrückt, wird die Karte Untot. Danach ist die Marke weg.",
+        text: "Gutschein: Gedrückt oder beim Handspiel: Die Karte wird Untot. Danach ist die Marke weg.",
         rarity: Rare,
         price: 4,
         hooks: [
@@ -206,7 +207,7 @@
         id: "voucher_wild",
         kind: Voucher,
         name: "Narrenmarke",
-        text: "Gutschein: Wenn gedrückt, wird die Karte Wandelkarte. Danach ist die Marke weg.",
+        text: "Gutschein: Gedrückt oder beim Handspiel: Die Karte wird Wandelkarte. Danach ist die Marke weg.",
         rarity: Rare,
         price: 4,
         hooks: [

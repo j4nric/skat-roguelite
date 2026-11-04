@@ -280,8 +280,10 @@ pub enum Effect {
     /// declarer's first trick, see [`crate::rules::Thresholds`]
     /// `schneider_bonus`). On trick end only.
     SchneiderBonusFromTrick,
-    /// Lever Augen: every matching card counts this many Augen, for every
-    /// seat (the deck is shared). Passive only.
+    /// Lever Augen: every matching card counts this many Augen. From a
+    /// boss or malus in every edition; from a relic or the character only
+    /// in the player's edition (`engine::owns_card_points`, 04.11.2026).
+    /// Passive only.
     SetCardPoints {
         /// Which cards.
         filter: CardFilter,

@@ -888,17 +888,19 @@ fn safety_net_adds_a_level_to_a_won_null_with_the_skat() {
 }
 
 #[test]
-fn fat_sow_makes_every_ace_worth_sixteen() {
+fn fat_sow_makes_the_players_aces_worth_sixteen() {
     let content = content();
     let mut run = null_run(&content, &["fat_sow"]);
     fixed_deal(&mut run, &content, SAFE_NULL, SAFE_NULL_SKAT);
     let in_play = run.game().expect("game").game.cards_in_play().to_vec();
-    let aces: Vec<u32> = in_play
+    // Since 04.11.2026 only the player's own aces (his edition).
+    for card in in_play
         .iter()
         .filter(|c| c.face().is_some_and(|f| f.rank == crate::cards::Rank::Ace))
-        .map(|c| c.card_points)
-        .collect();
-    assert_eq!(aces, vec![16; 4]);
+    {
+        let own = card.owner == crate::deck::Owner::Player;
+        assert_eq!(card.card_points, if own { 16 } else { 11 }, "{card:?}");
+    }
     // Made for Null, but every character meets it (ADR 0012).
     let def = content.relic(&RelicId::new("fat_sow")).expect("fat_sow");
     assert_eq!(def.focus, crate::content::GameFocus::Null);

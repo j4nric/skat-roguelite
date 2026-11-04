@@ -1275,6 +1275,37 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
+    /// Before the declaration of a hand game: replace the card `old` of the
+    /// declarer's hand by `new`, the same card with other properties (a
+    /// voucher made it a Wandelkarte, DESIGN 7.2). The card is replaced in
+    /// the hand, the declarer's cards, the cards in play, the deck and the
+    /// editions. Not logged: the run reports what changed the card.
+    pub fn replace_declarer_card(&mut self, old: C, new: C) -> Result<(), GameError<C>> {
+        if self.phase != Phase::Declaring {
+            return Err(GameError::WrongPhase { phase: self.phase });
+        }
+        if !self.hand(Seat::DECLARER).contains(&old) {
+            return Err(GameError::CardNotInHand {
+                seat: Seat::DECLARER,
+                card: old,
+            });
+        }
+        let swap = |cards: &mut Vec<C>| {
+            for c in cards.iter_mut().filter(|c| **c == old) {
+                *c = new;
+            }
+            cards.sort();
+        };
+        swap(&mut self.hands[Seat::DECLARER.index()]);
+        swap(&mut self.declarer_cards);
+        swap(&mut self.in_play);
+        swap(&mut self.deck);
+        for edition in &mut self.editions {
+            swap(edition);
+        }
+        Ok(())
+    }
+
     /// Replace the two discarded skat cards by `f(card)` everywhere the
     /// game holds them (the skat, the declarer's twelve cards, the cards
     /// in play, the deck), e.g. with more Augen (house rule "Skatpfleger").

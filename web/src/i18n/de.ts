@@ -361,6 +361,8 @@ export const de = {
     pickUpSkatTap: 'Antippen nimmt den Skat auf.',
     playHand: 'Hand spielen',
     playHandHint: 'Der Skat bleibt liegen. Das Spiel zählt +1 Multiplikator.',
+    /** Hand game with a Marke in the hand (04.11.2026, DESIGN 7.2). */
+    handVoucherHint: 'Eine zufällige Marke auf deiner Hand wird sofort eingelöst.',
     handTitle: 'Handspiel ansagen',
     afterSkatTitle: 'Ansage nach dem Skat',
     afterSkatHint: 'Skat aufgenommen und gedrückt. Jetzt sagst du dein Spiel an.',
@@ -566,6 +568,7 @@ export const de = {
     wildSettled: 'Wandelkarte: {old} wird zu {new}.',
     glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
+    voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
     voucherCapped: '{mod} eingelöst, aber {holder} ist schon {special}. Dafür {coins} Groschen.',
     coins: '{amount} Groschen: {source}',

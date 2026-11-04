@@ -231,6 +231,7 @@ fn a_voucher_pays_when_discarded_and_falls_off() {
         card: 2,
         card_mod: id("voucher_coins"),
         value: 3,
+        via_hand: false,
     }));
     assert!(card(run.edition(), 2).mods.is_empty());
 }
@@ -244,19 +245,22 @@ fn a_special_voucher_turns_the_card_into_a_special_card() {
 }
 
 #[test]
-fn a_voucher_stays_in_a_hand_game() {
+fn a_hand_game_redeems_the_voucher_in_the_hand() {
+    // Since 04.11.2026 (DESIGN 7.2): a hand game redeems one voucher of the
+    // hand at once; more in `hand_voucher_tests`.
     let content = content();
     let mut run = card_mod_run_with(&content, 2, "voucher_coins", 3);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let coins = run.coins();
     let (events, _) = play(&mut run, &content, hand(diamonds()));
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherRedeemed { .. }))
-    );
-    assert_eq!(card(run.edition(), 2).mods, vec![id("voucher_coins")]);
-    assert!(run.coins() >= coins);
+    assert!(events.contains(&RunEvent::VoucherRedeemed {
+        card: 2,
+        card_mod: id("voucher_coins"),
+        value: 3,
+        via_hand: true,
+    }));
+    assert!(card(run.edition(), 2).mods.is_empty());
+    assert!(run.coins() >= coins + 3);
 }
 
 // ---------------------------------------------------------------------------

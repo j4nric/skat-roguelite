@@ -17,6 +17,10 @@
 //!   [`null_expected_score`], win rates measured with the PIMC player). Null
 //!   is left out where a won Null would count nothing (no boss does that
 //!   since "Der Schwarze Peter" pays half, but a rule could).
+//!   A hand game redeems a random voucher of the hand (04.11.2026, DESIGN
+//!   7.2); the bot does not count it in its hand rule: a few Groschen
+//!   weigh little against the risk of the hand game, to be measured once
+//!   the simulations run again.
 //! - **Einmischen** ([`RunBot::is_weak`]): a suit game needs six trumps,
 //!   or five trumps and two aces; a grand needs two jacks and two aces;
 //!   Null at most [`NULL_MAX_EXPOSED`] exposed cards. A hand weak for both
@@ -120,6 +124,9 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// highest value it can afford and swaps a relic for one that is worth at
 /// least [`SWAP_MARGIN`] more; value 0 is never bought. One table serves
 /// both characters. Relics not listed are worth [`DEFAULT_RELIC_VALUE`].
+/// `every_bit_counts`, `old_lady` and `fat_sow` were measured while they
+/// changed every card; since 04.11.2026 they change only the player's own
+/// cards, so their values are too high until measured again (`balance`).
 ///
 /// | Relic | Value | Measured |
 /// |---|---|---|

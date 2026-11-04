@@ -1028,8 +1028,8 @@ export type RunEvent =
   | { DeckChanged: DeckChange }
   | { RedealsAdded: { redeals: number; redeals_left: number } }
   | { CardPeeked: { card: DealtCard; seat: Seat } }
-  /** Effekte v2: a voucher was redeemed when its card was discarded. */
-  | { VoucherRedeemed: { card: number; card_mod: string; value: number } }
+  /** Effekte v2: a voucher was redeemed when its card was discarded; `via_hand`: by declaring a hand game (04.11.2026), the card stays in the hand. */
+  | { VoucherRedeemed: { card: number; card_mod: string; value: number; via_hand?: boolean } }
   | { VoucherReturned: { card: number; card_mod: string; value: number } }
   /** A Totenmarke or Narrenmarke whose special card another card is already (one each per edition): Groschen instead. */
   | { VoucherCapped: { card: number; card_mod: string; special: string; holder: number; coins: number } }

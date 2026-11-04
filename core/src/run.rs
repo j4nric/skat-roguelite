@@ -97,6 +97,11 @@ pub const SERIES_PER_SECTION: u32 = PUBS_PER_DISTRICT;
 /// the draw is independent of the PIMC samples of the same game.
 const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 
+/// Salt of the draw of the voucher a hand game redeems
+/// ([`Run::redeem_hand_voucher`]): its own generator from the game's seed,
+/// so the deal and every other draw stay the same.
+const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
+
 /// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
 /// his hand, one of them is drawn to take the rising card's place in the
 /// trick ([`RunAction::ChooseRiseCards`]).
@@ -1230,6 +1235,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         card_mod: CardModId,
         /// Its value.
         value: i32,
+        /// Redeemed by declaring a hand game (decided on 04.11.2026,
+        /// DESIGN 7.2): the card stays in the hand. Left out of the JSON
+        /// when `false`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        via_hand: bool,
     },
     /// A Totenmarke or Narrenmarke was redeemed while another card of the
     /// edition is that special card already (at most one Untot and one
@@ -2907,6 +2917,12 @@ impl Run {
         if active.rules.require_ouvert && !declaration.ouvert() {
             return Err(RunError::OuvertRequired);
         }
+        // Before the skat a declaration is always a hand game: it redeems a
+        // voucher of the hand (DESIGN 7.2), before the game starts.
+        if active.game.phase() == Phase::Declaring {
+            self.redeem_hand_voucher(content, events);
+        }
+        let active = self.active_mut()?;
         let game_events = active.game.declare(declaration)?;
         active.note_settled(&game_events);
         events.extend(game_events.into_iter().map(RunEvent::Game));
@@ -5431,7 +5447,8 @@ impl Run {
     /// discard ("wenn gedrückt", DESIGN 7.2): their `OnDiscard` hooks fire
     /// at once, scaled by their value, whatever becomes of the game, and
     /// the voucher falls off the card. `TurnInto` puts the special card on
-    /// the card (from the next game on). A hand game discards nothing.
+    /// the card (from the next game on). A hand game discards nothing; it
+    /// redeems one voucher of the hand instead ([`Run::redeem_hand_voucher`]).
     fn redeem_vouchers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let Some(active) = self.game.as_ref() else {
             return;
@@ -5440,73 +5457,145 @@ impl Run {
             return;
         }
         let skat: Vec<u32> = active.game.skat().iter().map(|c| c.id).collect();
+        for card in skat {
+            for (card_mod, value) in self.vouchers_on(content, card) {
+                self.redeem_voucher(content, card, &card_mod, value, false, events);
+            }
+        }
+    }
+
+    /// The vouchers on `card` in the player's edition with their values.
+    fn vouchers_on(&self, content: &Content, card: u32) -> Vec<(CardModId, i32)> {
+        let Some(deck_card) = self.edition.get(card) else {
+            return Vec::new();
+        };
+        deck_card
+            .mods
+            .iter()
+            .filter(|m| {
+                content
+                    .card_mod(m)
+                    .is_some_and(|d| d.kind == crate::content::ModKind::Voucher)
+            })
+            .map(|m| (m.clone(), deck_card.mod_value(m)))
+            .collect()
+    }
+
+    /// A hand game is declared (decided by the user on 04.11.2026, DESIGN
+    /// 7.2): one voucher on a card of the player's hand, drawn with a
+    /// generator of its own from the game's seed, is redeemed at once as if
+    /// its card had been discarded. The card stays in the hand. Called just
+    /// before the game starts, so a Narrenmarke's Wandelkarte takes its suit
+    /// with the rest of the hand ("bei Spielbeginn") and an Untot may rise
+    /// in this very game. Nothing happens without a voucher in the hand.
+    fn redeem_hand_voucher(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
+        let Some(active) = self.game.as_ref() else {
+            return;
+        };
+        let held: Vec<DealtCard> = active
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .copied()
+            .filter(|c| c.owner == Owner::Player)
+            .collect();
+        let mut candidates: Vec<(DealtCard, CardModId, i32)> = held
+            .iter()
+            .flat_map(|&card| {
+                self.vouchers_on(content, card.id)
+                    .into_iter()
+                    .map(move |(m, v)| (card, m, v))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return;
+        }
+        candidates.sort_by_key(|(card, m, _)| (card.id, m.clone()));
+        let mut rng = Rng::from_seed(opponents::game_seed(self) ^ HAND_VOUCHER_SEED);
+        let len = u64::try_from(candidates.len()).unwrap_or(1);
+        let pick = usize::try_from(rng.gen_range(0..len)).unwrap_or(0);
+        let (card, card_mod, value) = candidates.swap_remove(pick.min(candidates.len() - 1));
+        self.redeem_voucher(content, card.id, &card_mod, value, true, events);
+        // The game's copy of the card follows its edition: a Wandelkarte
+        // now (or no longer, should Untot have replaced it).
+        let wild = self.edition.get(card.id).is_some_and(|d| {
+            d.mods
+                .iter()
+                .filter_map(|m| content.card_mod(m))
+                .any(|def| def.passive.contains(&Effect::Wild))
+        });
+        if wild != card.wild {
+            if let Some(active) = self.game.as_mut() {
+                let new = DealtCard { wild, ..card };
+                // Before the declaration the card is in the hand: cannot fail.
+                let _ = active.game.replace_declarer_card(card, new);
+            }
+        }
+    }
+
+    /// Redeem one voucher on `card`: [`RunEvent::VoucherRedeemed`], the
+    /// voucher falls off, its `OnDiscard` hooks fire scaled by `value`.
+    /// "Der Drückeberger" remembers it for after the pub.
+    fn redeem_voucher(
+        &mut self,
+        content: &Content,
+        card: u32,
+        card_mod: &CardModId,
+        value: i32,
+        via_hand: bool,
+        events: &mut Vec<RunEvent>,
+    ) {
+        let Some(def) = content.card_mod(card_mod) else {
+            return;
+        };
+        events.push(RunEvent::VoucherRedeemed {
+            card,
+            card_mod: card_mod.clone(),
+            value,
+            via_hand,
+        });
         let vouchers_return = content
             .character(self.character)
             .is_some_and(|c| c.rule.vouchers_return);
-        for card in skat {
-            let Some(deck_card) = self.edition.get(card) else {
-                continue;
+        if vouchers_return {
+            self.series
+                .returning_vouchers
+                .push((card, card_mod.clone(), value));
+        }
+        let source = Source::CardMod {
+            card_mod: card_mod.clone(),
+            card,
+        };
+        let hooks: Vec<Hook> = def
+            .hooks
+            .iter()
+            .filter(|h| h.stage() == Stage::OnDiscard)
+            .cloned()
+            .collect();
+        if let Some(change) = self.edition.remove_mod(card, card_mod) {
+            events.push(RunEvent::DeckChanged(change));
+        }
+        for hook in hooks {
+            let holds = {
+                let ctx = HookContext {
+                    flags: &self.flags,
+                    counters: &self.counters,
+                    game: None,
+                    played: None,
+                    result: None,
+                    games_left: self.series.games_left(),
+                    transport: None,
+                };
+                evaluate(hook.when(), &ctx, None)
             };
-            let vouchers: Vec<(CardModId, i32)> = deck_card
-                .mods
-                .iter()
-                .filter(|m| {
-                    content
-                        .card_mod(m)
-                        .is_some_and(|d| d.kind == crate::content::ModKind::Voucher)
-                })
-                .map(|m| (m.clone(), deck_card.mod_value(m)))
-                .collect();
-            for (card_mod, value) in vouchers {
-                let Some(def) = content.card_mod(&card_mod) else {
-                    continue;
-                };
-                events.push(RunEvent::VoucherRedeemed {
-                    card,
-                    card_mod: card_mod.clone(),
-                    value,
-                });
-                if vouchers_return {
-                    self.series
-                        .returning_vouchers
-                        .push((card, card_mod.clone(), value));
-                }
-                let source = Source::CardMod {
-                    card_mod: card_mod.clone(),
-                    card,
-                };
-                let hooks: Vec<Hook> = def
-                    .hooks
-                    .iter()
-                    .filter(|h| h.stage() == Stage::OnDiscard)
-                    .cloned()
-                    .collect();
-                if let Some(change) = self.edition.remove_mod(card, &card_mod) {
-                    events.push(RunEvent::DeckChanged(change));
-                }
-                for hook in hooks {
-                    let holds = {
-                        let ctx = HookContext {
-                            flags: &self.flags,
-                            counters: &self.counters,
-                            game: None,
-                            played: None,
-                            result: None,
-                            games_left: self.series.games_left(),
-                            transport: None,
-                        };
-                        evaluate(hook.when(), &ctx, None)
-                    };
-                    if !holds {
-                        continue;
-                    }
-                    for effect in hook.then() {
-                        if let Effect::TurnInto(special) = effect {
-                            self.turn_into(content, card, &card_mod, special, &source, events);
-                        } else {
-                            self.apply_effect(content, &source, &effect.scaled(value), events);
-                        }
-                    }
+            if !holds {
+                continue;
+            }
+            for effect in hook.then() {
+                if let Effect::TurnInto(special) = effect {
+                    self.turn_into(content, card, card_mod, special, &source, events);
+                } else {
+                    self.apply_effect(content, &source, &effect.scaled(value), events);
                 }
             }
         }
@@ -5872,6 +5961,8 @@ mod edition_tests;
 mod effects_v2_tests;
 #[cfg(test)]
 mod encounters_tests;
+#[cfg(test)]
+mod hand_voucher_tests;
 #[cfg(test)]
 mod items_tests;
 #[cfg(test)]
