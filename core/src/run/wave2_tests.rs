@@ -404,10 +404,10 @@ fn home_suit_rounds_half_up_and_counts_a_loss_too() {
     let (_, b) = bot_to_end(&mut run, &content, events);
     assert!(!b.won);
     // Lost diamonds Hand: whatever the levels, × 1.5 rounded half up and
-    // doubled for the loss.
+    // subtracted once for the loss (since 04.11.2026).
     let value = (9 * b.levels * 3).div_ceil(2);
     assert_eq!(b.value, value);
-    assert_eq!(b.score, -2 * i64::try_from(value).expect("small"));
+    assert_eq!(b.score, -i64::try_from(value).expect("small"));
 }
 
 #[test]

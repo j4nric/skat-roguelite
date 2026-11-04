@@ -207,7 +207,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
     <div class="score-result ${b.won ? 'is-won' : 'is-lost'}" data-part="result">
       <div class="value-line"><span>${esc(de.score.value)}</span><b data-num="value">${esc(b.value)}</b></div>
       <div class="result-big" data-testid="score-result">${esc(signed(b.score))}</div>
-      ${b.won ? '' : `<p class="small">${esc(lossNote(b))}</p>`}
+      ${b.won ? '' : `<p class="small" data-testid="score-loss-note">${esc(de.score.lostOnce)}</p>`}
     </div>
     <div class="score-account" data-part="account">
       <div class="account-row"><span>${esc(de.score.accountLabel)}</span><b data-num="account">${esc(plain(o.previousScore))}</b><span>${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
@@ -241,13 +241,6 @@ function ramschSeats(b: ScoreBreakdown, names: string[]): string {
     })
     .join('');
   return `<ol class="ramsch-seats" data-testid="ramsch-seats" aria-label="${esc(de.score.ramschSeats)}">${rows}</ol>`;
-}
-
-/** How a lost game counts: double, or single with "Magenbitter" (a LossFactor line). */
-function lossNote(b: ScoreBreakdown): string {
-  const line = b.lines.find((l) => l.lever === 'LossFactor' && 'Set' in l.change);
-  if (!line || !('Set' in line.change)) return de.score.lostDouble;
-  return line.change.Set === 1 ? t(de.score.lostSingle, { name: sourceName(line.source, []) }) : de.score.lostDouble;
 }
 
 /** Why a Null or Ramsch was won or lost, from the core's `won` flag. */

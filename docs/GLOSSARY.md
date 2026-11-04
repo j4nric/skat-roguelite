@@ -175,7 +175,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
 | Ansicht des Stadtteils (Altstadt, Hafen, Bahnhof) | `DistrictLook` (`OldTown`, `Harbour`, `Station`) | Daten je Stadtteilname in `tour.ron` (`DistrictName::look`); jeder Abend hat einen Stadtteil jeder Ansicht, Reihenfolge per Seed; Sicht `DistrictView::look`. Nur Anzeige |
 | Rast (Leben zurück) | `snack_bar` | Wirkung `EncounterEffect::Lives(n)` |
-| Werkstatt (Upgrade) | `workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterEffect::Painter`) oder Karte reinigen (`EncounterEffect::Cleanse`) |
+| Werkstatt (Upgrade) | `workshop` | Seit den Zinken (02.11.2026) der Kartenmaler gratis (`EncounterEffect::Painter`) oder Karte reinigen (`EncounterEffect::Cleanse`); seit 04.11.2026 auch der Griff in die Markenkiste (`EncounterEffect::Marke`) |
+| Marke aus einer Begegnung (zufällige oder gewählte Marke auf zufälliger oder gewählter Karte) | `EncounterEffect::Marke { card, marke }` | `card`, `marke`: `CardPick::Random` oder `Chosen`; die gewählte Marke in `RunAction::ChooseEncounter { marke }`; Sicht `EncounterOptionView::marken` (`MarkeChoiceView`); Ereignis `MarkeGiven`; alle Marken `Run::marken` |
 | Fundgroschen (Station, 03.11.2026) | `StopCategory::FoundCoins`, Ereignis `found_coins` | 2 Groschen auf dem Weg |
 | Kiosk (Station, 03.11.2026) | `StopCategory::Kiosk`, `Shop::kiosk` | Kein Ereignis, ein Laden: `KioskConfig` (`route.kiosk` in `run.ron`), `Run::at_kiosk`, `Run::consumable_price`, Ereignis `KioskOpened`, Sicht `ShopView::kiosk` |
 | Würfelbude (Station, 03.11.2026) | `StopCategory::DiceStall`, Ereignis `dice_stall` | Wirkung `EncounterEffect::Dice`, Ereignis `DiceThrown`; „Zuschauen“ ist eine Rückfall-Option (`fallback`) |
@@ -201,7 +202,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Skat ansehen (Kurzer) | `PeekSkat`, `SkatPeeked` | Feld `ActiveGame::skat_peeked`, Sicht `GameView::skat_peek` |
 | Skatkarte zeigen (Spickzettel) | `skat_shown` | Effekt `RevealSkatCard(n)` (Information, bei der Ansage eines Handspiels), Feld `ActiveGame::skat_shown`, Run-Ereignis `SkatCardShown`, Sicht `GameView::skat_shown` |
 | Umgefärbte Karte (Blue Curaçao, bis 02.11.2026 Kreide) | `chalk`, `ChalkCard`, `CardChalked` | `Game::chalk`, Feld `ActiveGame::chalked` (Id und gedruckte Farbe), Sicht `CardView::chalked`; Fehler `CannotChalk` |
-| Faktor eines verlorenen Spiels | `Lever::LossFactor` | 2 nach den Run-Regeln, 1 mit `NextGameEffect::SingleLoss` (ruhend) oder der Boss-Wirkung `Effect::SingleLoss` (Der Ramscher, seit 03.11.2026) |
+| Faktor eines verlorenen Spiels | `Lever::LossFactor`, `content::RUN_LOSS_FACTOR` | seit 04.11.2026 1 nach den Run-Regeln (verloren zählt einfach; die Skatordnung und `rules::game_value` sagen 2); `NextGameEffect::SingleLoss` und `Effect::SingleLoss` ruhen |
 | Boss (Gegnerpaar mit Sonderregel) | `Boss` | Definition `BossDef`, in `Series::boss` |
 | Seltenheit | `Rarity` | `Common`, `Uncommon`, `Rare`, `Legendary` (Legendär, M8) |
 | Gewicht der Stufe Legendär | `RarityWeights::legendary` | Dezimalzahl (Standard 0,3), `RarityWeights::percent_weight` |
@@ -260,6 +261,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Informations-Effekt | `is_information` | Durchsichtig, Kiebitz, Zähler, Spickzettel; abgeschaltet durch `DisableInformation` |
 | Rabatt am Tresen (Wirt) | `shop_price`, `ShopDiscount` | |
 | Kiebitz-Blick | `peek`, `CardPeeked` | |
+| Für ein Spiel durchsichtig (Glasauge) | `RevealDefenderCards`, `transparent_for_game`, `CardMadeTransparent` | nur Karten der Gegner, nie die Ausgabe |
 | Herkunft einer aufgedeckten Karte | `RevealSource` | `CardMod(id)` (Durchsichtig) oder `Kibitz`; Feld `RevealedCard::source` |
 | Risikostufe | `RiskLevel` | Normal, Hand, SchneiderDeclared, SchwarzDeclared, Ouvert; die drei Ansagen auch nach dem Skat (ADR 0013) |
 | Statistik eines Runs | `RunStats` | Gewonnene und verlorene Spiele, Einmischen (`redeals`), Serien, bestes Spiel |
@@ -354,7 +356,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Wirt | `landlord` |
 | Der Zähler (Figur) | `card_counter` (nicht `counter`, das ist der Relikt-Zustand) |
 | Die Zwillinge (Fritz und Franz) | `twins` |
-| Der Ramscher (mit Die Ramscherin; jedes Spiel ein Ramsch, Wirkung `Ramsch`, alter Name `RamschOnce`; verloren einfach, Wirkung `SingleLoss`) | `ramscher` |
+| Der Ramscher (mit Die Ramscherin; jedes Spiel ein Ramsch, Wirkung `Ramsch`, alter Name `RamschOnce`; seit 04.11.2026 zählt jedes verlorene Spiel einfach) | `ramscher` |
 | Der Revolutionär (entfernt, ADR 0017) | `revolutionary` |
 | Der Schwarze Peter (mit Die Schwarze Grete) | `black_peter` |
 | Der Kiebitz-Mörder (entfernt, ADR 0017) | `kibitz_killer` |
@@ -365,6 +367,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Letzte Runde | `last_round` |
 | Kleinvieh | `every_bit_counts` |
 | Ein Auge zudrücken | `blind_eye` |
+| Glasauge (Hausregel: je Gegner eine Karte für ein Spiel durchsichtig; Effekt `RevealDefenderCards`, Ereignis `CardMadeTransparent`, `ActiveGame::transparent_for_game`) | `glass_eye` |
 | Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
 | Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
 | Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |
@@ -406,6 +409,8 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Skatlehrer | `skat_teacher` |
 | Die Wette | `the_bet` |
 | Alte Karten im Schrank | `old_cards` |
+| Der Pfandleiher | `pawnbroker` |
+| Die Markensammlerin | `stamp_collector` |
 | Kiebitz am Fenster | `lookout` |
 | Fundgroschen | `found_coins` |
 | Die Würfelbude | `dice_stall` |

@@ -52,8 +52,8 @@ export interface PendingStart {
  * maybe replace.
  */
 export interface ModQuestion {
-  /** `apply`: a plain new Zinke (or effect) from a card picker, shown before and after (playtest 04.11.2026); `cleanse`: "Karte reinigen". */
-  type: 'replace' | 'raise' | 'change' | 'drop' | 'random' | 'apply' | 'cleanse';
+  /** `apply`: a plain new Zinke (or effect) from a card picker, shown before and after (playtest 04.11.2026); `cleanse`: "Karte reinigen"; `randomMarke`: a Marke drawn when taken goes on the card (04.11.2026). */
+  type: 'replace' | 'raise' | 'change' | 'drop' | 'random' | 'apply' | 'cleanse' | 'randomMarke';
   /** The card now and, from the preview's view, afterwards (null when drawn at random). */
   card: DeckCard;
   after: DeckCard | null;
@@ -64,6 +64,8 @@ export interface ModQuestion {
   /** The band texts before and after a raise ("+4", "+8"). */
   from: string;
   to: string;
+  /** `randomMarke`: the Marken that may come, as text ("Pfandmarke, Totenmarke oder Narrenmarke"). */
+  marken?: string;
 }
 
 export type Overlay =
@@ -74,7 +76,10 @@ export type Overlay =
   /** "Blue Curaçao": pick a card of the hand (`card`), then its new suit. */
   | { kind: 'chalk'; slot: number; card: number | null }
   /** Pick the card for an encounter option that needs one. */
-  | { kind: 'encounter-target'; option: number; reasons?: Record<number, string> }
+  /** The card for an encounter option; `marke`: the Marke picked before (a chosen Marke on a chosen card). */
+  | { kind: 'encounter-target'; option: number; reasons?: Record<number, string>; marke?: string }
+  /** Pick the Marke of a Marke option (Pfandleiher, Markensammlerin, 04.11.2026). */
+  | { kind: 'encounter-marke'; option: number }
   | { kind: 'encounter-relic'; option: number }
   /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back (null: the screen). */
   | { kind: 'mod-confirm'; action: RunAction; back: Overlay | null; ask: ModQuestion }

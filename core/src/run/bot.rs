@@ -210,7 +210,13 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | Relic | Value | Why |
 /// |---|---|---|
 /// | `jinx` | 4 | +1 Grundwert per cursed card: +9 for "Bruderherz" from the start, +4 for the Nullspieler, little for the Alleinspieler |
-pub const RELIC_VALUES: [(&str, u32); 31] = [
+///
+/// New on 04.11.2026, by judgement, not measured:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `glass_eye` | 3 | like `kibitzer`: two defender cards known for the whole game, the PIMC samples pin them |
+pub const RELIC_VALUES: [(&str, u32); 32] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -242,6 +248,7 @@ pub const RELIC_VALUES: [(&str, u32); 31] = [
     ("guardian_angel", 7),
     ("dive_expert", 1),
     ("jinx", 4),
+    ("glass_eye", 3),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -454,8 +461,8 @@ fn percent(table: &[i64], index: usize) -> i64 {
 }
 
 /// Expected score of a Null with these ten cards, in hundredths of a point
-/// (won: the value; lost: minus twice the value, as in the series
-/// account), without relics. `exposed` counts the exposed cards
+/// (won: the value; lost: minus the value times
+/// [`crate::content::RUN_LOSS_FACTOR`], as in the series account), without relics. `exposed` counts the exposed cards
 /// ([`null_unsafe_cards`]). The Null formula (DESIGN 9.2) counts the
 /// expected style bonus, each seven held as one ducked trick.
 #[must_use]
@@ -472,14 +479,17 @@ pub fn null_expected_score(
     let (won, lost) = match scoring {
         NullScoring::Fixed => {
             let value = i64::from(crate::rules::null_value(risk.hand(), risk.ouvert())) * 100;
-            (value, 2 * value)
+            (value, crate::content::RUN_LOSS_FACTOR * value)
         }
         NullScoring::Formula(f) => {
             let base = i64::from(f.base_value);
             let step = i64::from(risk.step()) * 100;
             let sevens = i64::try_from(count_rank(hand, Rank::Seven)).unwrap_or(0);
             let style = sevens * i64::from(f.per_seven_ducked) * 100 + NULL_STYLE_EXTRA;
-            (base * (step + style), 2 * base * step)
+            (
+                base * (step + style),
+                crate::content::RUN_LOSS_FACTOR * base * step,
+            )
         }
     };
     (win * won - (100 - win) * lost) / 100
@@ -488,7 +498,8 @@ pub fn null_expected_score(
 /// Expected score of a suit game or grand with these ten cards, in
 /// hundredths of a point, without relics: the Spielwert with the Spitzen
 /// of `all_cards` (the ten plus the skat, which counts for the Spitzen),
-/// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost twice.
+/// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost
+/// [`crate::content::RUN_LOSS_FACTOR`] times (once since 04.11.2026).
 /// `deck` is every card of the game (for trumps missing from the deck).
 ///
 /// `win_threshold` is the Augen the game needs (`61 + stake`, lowered by
@@ -529,7 +540,7 @@ pub fn suit_expected_score(
     let matadors = crate::rules::matadors(game, &faces).count;
     let levels = matadors + 1 + u32::from(declaration.hand());
     let value = i64::from(base) * i64::from(levels) * 100;
-    (win * value - (100 - win) * 2 * value) / 100
+    (win * value - (100 - win) * crate::content::RUN_LOSS_FACTOR * value) / 100
 }
 
 /// The simple run policy.
@@ -793,21 +804,55 @@ impl RunBot {
             if run.encounter_option_block(content, i).is_some() {
                 continue;
             }
-            let Some(target) = Self::option_target(run, content, i, option) else {
+            let Some((target, marke)) = Self::option_choice(run, content, i, option) else {
                 continue;
             };
             let value = Self::option_value(run, content, option);
             if best.as_ref().is_none_or(|(v, _)| value > *v) {
-                best = Some((value, RunAction::ChooseEncounter { option: i, target }));
+                best = Some((
+                    value,
+                    RunAction::ChooseEncounter {
+                        option: i,
+                        target,
+                        marke,
+                    },
+                ));
             }
         }
         best.map_or(
             RunAction::ChooseEncounter {
                 option: 0,
                 target: None,
+                marke: None,
             },
             |(_, action)| action,
         )
+    }
+
+    /// Target and Marke the bot uses for an option, `None` if none is
+    /// accepted. With a Marke to choose (04.11.2026), the most valuable
+    /// one by [`zinken_value`] (the Pfandmarke, then the first by id)
+    /// that some target accepts, on the target [`RunBot::option_target`]
+    /// would pick for it.
+    #[allow(clippy::type_complexity)]
+    fn option_choice(
+        run: &Run,
+        content: &Content,
+        index: usize,
+        option: &EncounterOption,
+    ) -> Option<(Option<u32>, Option<CardModId>)> {
+        if !option.needs_marke() {
+            return Self::option_target(run, content, index, option, None).map(|t| (t, None));
+        }
+        let mut marken: Vec<CardModId> = run
+            .marken(content)
+            .into_iter()
+            .map(|m| m.id.clone())
+            .collect();
+        marken.sort_by_key(|m| std::cmp::Reverse(zinken_value(m)));
+        marken.into_iter().find_map(|marke| {
+            Self::option_target(run, content, index, option, Some(&marke)).map(|t| (t, Some(marke)))
+        })
     }
 
     /// The target the bot uses for an option: `Some(None)` without one,
@@ -820,6 +865,7 @@ impl RunBot {
         content: &Content,
         index: usize,
         option: &EncounterOption,
+        marke: Option<&CardModId>,
     ) -> Option<Option<u32>> {
         let accepted = |target: u32| {
             run.accepts(
@@ -827,6 +873,7 @@ impl RunBot {
                 RunAction::ChooseEncounter {
                     option: index,
                     target: Some(target),
+                    marke: marke.cloned(),
                 },
             )
         };
@@ -840,7 +887,15 @@ impl RunBot {
             return accepted(weakest).then_some(Some(weakest));
         }
         if !option.needs_card() {
-            return Some(None);
+            let ok = run.accepts(
+                content,
+                RunAction::ChooseEncounter {
+                    option: index,
+                    target: None,
+                    marke: marke.cloned(),
+                },
+            );
+            return (ok || marke.is_none()).then_some(None);
         }
         let cleanse = option.effects.contains(&EncounterEffect::Cleanse);
         let curse = option.effects.iter().any(|e| match e {
@@ -929,6 +984,11 @@ impl RunBot {
                     let p = i64::from(*curse_percent);
                     (base * (100 - p) - 2 * p) / 100
                 }
+                // A Marke like a Zinke: 1 on a random, 2 on a chosen card.
+                EncounterEffect::Marke { card, .. } => match card {
+                    CardPick::Random => 1,
+                    CardPick::Chosen => 2,
+                },
                 EncounterEffect::Schnapps(Some(id)) => {
                     if item_slot {
                         i64::from(consumable_value(id)) + 1
@@ -2173,13 +2233,14 @@ mod tests {
         });
         let null = Declaration::null(NullRisk::Normal);
         let sevens = hand("C7 S7 H7 C8 S8 H9 D8 D9 DT DQ");
-        // 76 % of 23 × 4.3, minus 24 % of 46.
-        assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6412);
-        assert!(null_expected_score(&sevens, 4, null, &formula) < 0);
-        // Fixed: 76 % of 23, minus 24 % of 46.
+        // 76 % of 23 × 4.3, minus 24 % of 23 (a lost game counts once
+        // since 04.11.2026).
+        assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6964);
+        assert!(null_expected_score(&sevens, 7, null, &formula) < 0);
+        // Fixed: 76 % of 23, minus 24 % of 23.
         assert_eq!(
             null_expected_score(&sevens, 1, null, &NullScoring::Fixed),
-            644
+            1196
         );
         let hearts = suit(Suit::Hearts);
         let deck: Vec<DealtCard> = crate::deck::Edition::standard()
@@ -2192,8 +2253,8 @@ mod tests {
             .collect();
         let five = hand("HJ HA HT H9 H8 SA S9 C8 D7 D8");
         let seven = hand("CJ HJ HA HT HK H9 H8 SA S9 C8");
-        // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 60.
-        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), -1320);
+        // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 30.
+        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), 120);
         assert!(suit_expected_score(&seven, &seven, &deck, hearts, 61) > 0);
         assert!(
             null_expected_score(&sevens, 1, null, &formula)

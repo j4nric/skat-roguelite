@@ -162,6 +162,19 @@
         price: 7,
         passive: [WinThreshold(58)],
     ),
+    // Lever Zählen (information): je eine Karte jedes Gegners ist für ein
+    // Spiel durchsichtig. 04.11.2026 auf Wunsch des Nutzers; Seltenheit und
+    // Preis vorläufig nach Augenmaß (wie der Kiebitz, der nur eine Karte vor
+    // der Ansage zeigt), `balance` setzt sie, sobald gemessen wird.
+    (
+        id: "glass_eye",
+        group: Control,
+        name: "Glasauge",
+        text: "Zu Beginn jedes Spiels wird je eine zufällige Karte jedes Gegners durchsichtig: Du siehst sie, bis sie gespielt ist. Nur für dieses Spiel.",
+        rarity: Uncommon,
+        price: 6,
+        passive: [RevealDefenderCards(1)],
+    ),
     // Lever Grundwert (counter, grows over the run): +1 per won hand game.
     (
         id: "beer_mat",

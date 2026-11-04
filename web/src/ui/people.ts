@@ -602,6 +602,8 @@ const ENCOUNTER_FACES: Record<string, string[]> = {
   card_sharp: ['p-dealer'],
   prize_skat: ['p-opp-1', 'p-opp-2'],
   guest_from_altenburg: ['p-friend'],
+  pawnbroker: ['p-dealer'],
+  stamp_collector: ['p-friend'],
 };
 
 /** Portrait ids for an encounter; unknown ones get the Wirt. */

@@ -517,7 +517,12 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
         effects,
         [
             &[EncounterEffect::Painter][..],
-            &[EncounterEffect::Cleanse][..]
+            &[EncounterEffect::Cleanse][..],
+            // Since 04.11.2026 also a random Marke on a chosen card.
+            &[EncounterEffect::Marke {
+                card: crate::content::CardPick::Chosen,
+                marke: crate::content::CardPick::Random,
+            }][..]
         ]
     );
     let view = run.view(&content).encounter.expect("view");
@@ -531,6 +536,7 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
             RunAction::ChooseEncounter {
                 option: 0,
                 target: Some(31),
+                marke: None,
             },
         )
         .expect("painter");
@@ -548,7 +554,8 @@ fn the_werkstatt_has_the_kartenmaler_for_free() {
             &content,
             RunAction::ChooseEncounter {
                 option: 1,
-                target: None
+                target: None,
+                marke: None
             }
         ),
         Err(RunError::PainterPending)

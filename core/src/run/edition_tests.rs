@@ -90,18 +90,19 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // hashes were recorded again with the Kneipentour (ADR 0016): its
     // opponents (PIMC 8:3 instead of 6:2) and Zielwerte changed. Seeds 42
     // and 99 again with the steep Zielwerte of 03.11.2026: the pub ends
-    // later, the deals are the same.
+    // later, the deals are the same. All again on 04.11.2026: a lost game
+    // counts once, which changes the scores and the bot's choices.
     assert_eq!(
         hashes,
         vec![
-            14_014_214_924_750_367_174,
-            3_945_578_528_229_563_393,
-            10_743_877_141_182_057_974,
-            11_881_650_903_804_866_197,
+            8_372_553_221_233_023_206,
+            12_912_900_704_559_812_833,
+            2_311_626_695_843_553_887,
+            4_391_168_479_812_042_796,
             8_533_871_236_692_366_623,
-            667_397_997_431_229_310,
-            13_458_722_017_759_859_422,
-            51_271_920_649_180_957,
+            1_970_303_883_358_432_031,
+            11_370_352_877_980_222_910,
+            2_884_972_791_164_610_454,
         ]
     );
 }
@@ -358,13 +359,20 @@ fn the_old_man_plays_the_edition_of_the_rule_in_force() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_transparent_card_with_a_defender_shows_who_holds_it_in_his_edition() {
+fn a_transparent_card_of_the_player_never_shows_the_defenders_copy() {
+    // Until 04.11.2026 a "Durchsichtig" on the player's S7 showed the
+    // boss's own S7 (holder and edition) to the player. Since ADR 0015 each
+    // seat plays its own edition: the curse on the player's copy says
+    // "the defenders see this card of yours", nothing about theirs.
     let content = content();
     let mut run = boss_run(&content, "the_pusher");
     let s7 = run.edition.id_of(card("S7")).expect("S7");
-    run.edition
-        .add_mod(&content, s7, &CardModId::new("transparent"), 1)
-        .expect("curse");
+    let d7 = run.edition.id_of(card("D7")).expect("D7");
+    for id in [s7, d7] {
+        run.edition
+            .add_mod(&content, id, &CardModId::new("transparent"), 1)
+            .expect("curse");
+    }
     fixed_deal(
         &mut run,
         &content,
@@ -377,37 +385,37 @@ fn a_transparent_card_with_a_defender_shows_who_holds_it_in_his_edition() {
     );
     let view = run.view(&content);
     let game = view.game.expect("game");
+    assert!(
+        game.revealed.iter().all(|r| r.card.card.id != s7),
+        "the boss's S7 stays hidden: {:?}",
+        game.revealed
+    );
+    assert!(
+        game.revealed
+            .iter()
+            .all(|r| r.holder.is_none_or(|h| h == Seat::DECLARER)),
+        "no defender card is shown"
+    );
+    // The boss's copy carries no mark, the player's D7 does: the
+    // defenders know the player holds it.
+    let active = run.game().expect("game");
+    assert!(!active.game.hand(BOSS_SEAT).iter().any(|c| c.revealed));
+    assert!(
+        active
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .any(|c| c.id == d7 && c.revealed)
+    );
     let shown = game
         .revealed
         .iter()
-        .find(|r| r.card.card.id == s7)
-        .expect("the player sees who holds his Durchsichtig card");
-    assert_eq!(shown.holder, Some(BOSS_SEAT));
-    // ... and the boss's edition of it: Augen +4, the boss's back.
-    assert_eq!(shown.card.card.owner, Owner::Boss);
-    assert_eq!(shown.card.card.card_points, 4);
-    assert_eq!(shown.card.mods, vec![CardModId::new("points")]);
-    assert_eq!(shown.card.back.as_deref(), Some("the_pusher"));
+        .find(|r| r.card.card.id == d7)
+        .expect("the own Durchsichtig card is listed with its holder");
+    assert_eq!(shown.holder, Some(Seat::DECLARER));
     assert_eq!(
         shown.source,
         super::view::RevealSource::CardMod(CardModId::new("transparent"))
-    );
-    // The boss's copy carries no mark: the defenders' samples learn
-    // nothing from it, and no other card is shown.
-    assert!(
-        !run.game()
-            .expect("game")
-            .game
-            .hand(BOSS_SEAT)
-            .iter()
-            .any(|c| c.revealed)
-    );
-    assert_eq!(
-        game.revealed
-            .iter()
-            .filter(|r| matches!(r.source, super::view::RevealSource::CardMod(_)))
-            .count(),
-        1
     );
 }
 

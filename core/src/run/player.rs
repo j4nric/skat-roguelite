@@ -520,6 +520,20 @@ impl RunEvent {
                 value,
             },
             RunEvent::CardPeeked { card, seat } => RunEvent::CardPeeked { card, seat },
+            RunEvent::MarkeGiven {
+                card,
+                card_mod,
+                drawn,
+                random_card,
+            } => RunEvent::MarkeGiven {
+                card,
+                card_mod,
+                drawn,
+                random_card,
+            },
+            RunEvent::CardMadeTransparent { source, card, seat } => {
+                RunEvent::CardMadeTransparent { source, card, seat }
+            }
             RunEvent::RamschDealt => RunEvent::RamschDealt,
             RunEvent::EncounterOpened { encounter, options } => {
                 RunEvent::EncounterOpened { encounter, options }

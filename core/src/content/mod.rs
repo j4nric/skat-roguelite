@@ -29,7 +29,8 @@ pub use engine::{
     owns_card_points, resolve_edition,
 };
 pub use score::{
-    Change, Lever, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source, score_game, score_parts,
+    Change, Lever, RUN_LOSS_FACTOR, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source,
+    score_game, score_parts,
 };
 
 macro_rules! content_id {
@@ -420,7 +421,8 @@ impl CharacterDef {
     }
 }
 
-/// Which card a [`EncounterEffect::Mark`] goes on.
+/// Which card a [`EncounterEffect::Mark`] goes on; for
+/// [`EncounterEffect::Marke`] also which Marke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum CardPick {
     /// A random card the modification may go on (a card without
@@ -479,6 +481,22 @@ pub enum EncounterEffect {
         /// instead. The encounter's text must say "Fluch".
         #[serde(default, skip_serializing_if = "is_zero")]
         curse_percent: u32,
+    },
+    /// A Marke (Gutschein: every card modification of kind
+    /// [`ModKind::Voucher`], i.e. Pfandmarke, Totenmarke, Narrenmarke) on a
+    /// card of the player's edition (04.11.2026, DESIGN 13.0). The card is
+    /// random (a bare one first) or the player's choice; the Marke is drawn
+    /// by rarity weight when the option is taken (`marke: Random`, among
+    /// those that may go on the card) or the player's choice (`Chosen`,
+    /// [`crate::run::RunAction::ChooseEncounter`] `marke`). The rules of
+    /// every Zinke hold: one normal Zinke per card, the special card caps.
+    Marke {
+        /// Which card.
+        #[serde(default)]
+        card: CardPick,
+        /// Which Marke: drawn when taken (`Random`) or chosen (`Chosen`).
+        #[serde(default)]
+        marke: CardPick,
     },
     /// Swap an owned relic (the target, an index into the owned relics)
     /// for this one; `None`: drawn.
@@ -543,8 +561,24 @@ impl EncounterEffect {
             EncounterEffect::Mark {
                 card: CardPick::Chosen,
                 ..
+            } | EncounterEffect::Marke {
+                card: CardPick::Chosen,
+                ..
             } | EncounterEffect::Painter
                 | EncounterEffect::Cleanse
+        )
+    }
+
+    /// Whether it needs a Marke of the player's choice
+    /// ([`EncounterEffect::Marke`] with `marke: Chosen`).
+    #[must_use]
+    pub const fn needs_marke(&self) -> bool {
+        matches!(
+            self,
+            EncounterEffect::Marke {
+                marke: CardPick::Chosen,
+                ..
+            }
         )
     }
 
@@ -1261,7 +1295,9 @@ pub enum NextGameEffect {
     /// The Spielwert counts this many times, won or lost ("Doppelkorn").
     Multiply(u32),
     /// Lost, the game counts once instead of twice ("Magenbitter"). Won,
-    /// it does nothing; it is used up by the game either way.
+    /// it does nothing; it is used up by the game either way. Dormant
+    /// since 04.11.2026: every lost game counts once
+    /// ([`RUN_LOSS_FACTOR`]).
     SingleLoss,
     /// Won, the Spielwert counts this many times; lost, it counts as
     /// usual ("Eierlikör"). Used up by the game either way.

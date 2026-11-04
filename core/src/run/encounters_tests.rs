@@ -49,6 +49,7 @@ fn choose(run: &mut Run, content: &Content, option: usize) -> Vec<RunEvent> {
         RunAction::ChooseEncounter {
             option,
             target: None,
+            marke: None,
         },
     )
     .expect("choose")
@@ -108,7 +109,8 @@ fn every_encounter_has_two_or_three_options_and_one_for_nothing() {
         let regular: Vec<_> = def.options.iter().filter(|o| !o.fallback).collect();
         if single.contains(&def.id.as_str()) {
             assert_eq!(regular.len(), 1, "{}", def.id);
-        } else if def.id.as_str() == "workshop" || def.id.as_str() == "spelunke_loot" {
+        } else if def.id.as_str() == "spelunke_loot" {
+            // The workshop has three since 04.11.2026 (a random Marke).
             assert_eq!(regular.len(), 2, "{}", def.id);
         } else {
             assert!((2..=3).contains(&regular.len()), "{}", def.id);
@@ -242,7 +244,8 @@ fn the_dice_stall_doubles_the_stake_or_takes_it() {
         RunBot.encounter_action(&run, &content),
         RunAction::ChooseEncounter {
             option: 3,
-            target: None
+            target: None,
+            marke: None
         }
     );
     choose(&mut run, &content, 3);

@@ -5486,6 +5486,27 @@ button.card {
   color: var(--muted);
 }
 
+/* Marke options (04.11.2026): the Marken with their chance or as a choice. */
+.enc-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: var(--fs-s);
+}
+
+.enc-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-light);
+}
+
+.enc-marke.is-off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
 .enc-cost {
   display: inline-flex;
   align-items: center;
@@ -8407,4 +8428,10 @@ button.skat-card {
   display: inline-block;
   margin-right: 4px;
   vertical-align: -2px;
+}
+
+/* The Marke picker of an encounter (04.11.2026) reuses the painter's tiles. */
+.marke-option:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

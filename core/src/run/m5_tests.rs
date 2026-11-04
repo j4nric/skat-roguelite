@@ -480,7 +480,9 @@ fn null_style_conditions_and_house_rules() {
 fn revealed_cards_name_their_source() {
     let content = content();
     let mut run = relic_run(&content, &[]);
-    add_mod(&mut run, "HA", "transparent");
+    // The player's own DA: a Durchsichtig on his copy (on his HA it would
+    // show nothing, the defender holds his own HA).
+    add_mod(&mut run, "DA", "transparent");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let game = run.view(&content).game.expect("game");
     assert_eq!(game.revealed.len(), 1);
@@ -539,6 +541,7 @@ fn the_card_dealer_names_the_modification_before_the_choice() {
         RunAction::ChooseEncounter {
             option: 1,
             target: Some(target),
+            marke: None,
         },
     )
     .expect("chosen");
@@ -571,6 +574,7 @@ fn the_old_friend_names_the_relic_received() {
             RunAction::ChooseEncounter {
                 option: 0,
                 target: Some(1),
+                marke: None,
             },
         )
         .expect("swap");

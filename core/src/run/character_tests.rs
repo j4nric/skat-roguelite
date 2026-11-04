@@ -387,6 +387,7 @@ fn heart_brother_pays_half_for_zinken_on_hearts() {
     let choose = |target| RunAction::ChooseEncounter {
         option: 0,
         target: Some(target),
+        marke: None,
     };
     let mut run = character_run(&content, Character::HeartBrother);
     run.coins = 2;

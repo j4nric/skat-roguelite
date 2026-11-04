@@ -14,7 +14,7 @@ import { attrs, esc, reducedMotion } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
 import { seatPerson } from './guests';
-import { renderRelicPick } from './encounter';
+import { renderMarkePick, renderRelicPick } from './encounter';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
 import { renderOverview } from './overview';
@@ -613,7 +613,9 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'encounter-target': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
-      const cards = view.edition.map((c) => targetCard(editionLook(c, view, view.game ? ui.wildSettled : {}), option.targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
+      // After a Marke was picked: only the cards that Marke may go on.
+      const targets = overlay.marke ? (option.marken?.find((m) => m.card_mod.id === overlay.marke)?.targets ?? []) : option.targets;
+      const cards = view.edition.map((c) => targetCard(editionLook(c, view, view.game ? ui.wildSettled : {}), targets.includes(c.id), 'encounter-target', overlay.reasons?.[c.id])).join('');
       return sheet(
         `<h2>${esc(de.encounter.pickTarget)}</h2>
          <p class="small">${esc(contentText('encounters', view.encounter?.id ?? ''))}</p>
@@ -626,6 +628,11 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
       return sheet(renderRelicPick(view, option));
+    }
+    case 'encounter-marke': {
+      const option = view?.encounter?.options.find((o) => o.index === overlay.option);
+      if (!view || !option) return '';
+      return sheet(renderMarkePick(option), false, 'sheet-marke');
     }
     case 'mod-confirm':
       return renderModConfirm(overlay.ask);
@@ -996,7 +1003,9 @@ function renderModConfirm(ask: ModQuestion): string {
             ? [c.applyTitle, ask.mod ? t(c.apply, { card, new: name(ask.mod) }) : t(c.applyPlain, { card }), c.applyGo]
             : ask.type === 'cleanse'
               ? [c.cleanseTitle, t(c.cleanse, { card }), c.cleanseGo]
-              : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
+              : ask.type === 'randomMarke'
+                ? [c.randomMarkeTitle, t(c.randomMarke, { card, marken: ask.marken ?? '' }), c.randomMarkeGo]
+                : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
   // From a card picker the way back is another card; otherwise keep the card as it is.
   const back = ask.type === 'apply' || ask.type === 'cleanse' ? c.back : c.keep;
   const face = (d: DeckCard, label: string): string =>

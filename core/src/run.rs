@@ -7,8 +7,9 @@
 //! against two Stammgäste. Before declaring, the player may have each game
 //! dealt again a few times (einmischen, [`RunAction::Redeal`]) without
 //! using up a game; then one of the hands must be played. Won games add
-//! their value to the pub's account, lost games subtract twice their value
-//! including all relic modifiers. A pub is won the moment the account
+//! their value to the pub's account, lost games subtract their value once
+//! (since 04.11.2026, [`crate::content::RUN_LOSS_FACTOR`]; the Skatordnung
+//! says twice) including all relic modifiers. A pub is won the moment the account
 //! reaches the target; a boss pub plays all its games and counts after the
 //! last (ADR 0017). Missing the target after the last game costs a life
 //! (Leben) and the pub is left without reward; the run is lost with the
@@ -101,6 +102,10 @@ const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 /// ([`Run::redeem_hand_voucher`]): its own generator from the game's seed,
 /// so the deal and every other draw stay the same.
 const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
+
+/// Salt of the draw of the defender cards "Glasauge" makes "Durchsichtig"
+/// for a game ([`Effect::RevealDefenderCards`]).
+const TRANSPARENT_SEED: u64 = 0x61A5_5E7E_0000_0005;
 
 /// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
 /// his hand, one of them is drawn to take the rising card's place in the
@@ -333,6 +338,12 @@ pub struct GameRules {
     /// Cards of the defenders the player sees before declaring ("Der
     /// Kiebitz").
     pub peek: u32,
+    /// Cards of each defender made "Durchsichtig" for this game when it is
+    /// dealt ("Glasauge", [`Effect::RevealDefenderCards`]), and the first
+    /// source that granted it.
+    pub transparent_per_defender: u32,
+    /// Who granted [`Self::transparent_per_defender`].
+    pub transparent_source: Option<Source>,
     /// The player sees the count of Augen ("Der Zähler").
     pub show_count: bool,
     /// Skat swaps the content grants, one filter per granting effect
@@ -425,6 +436,11 @@ pub struct ActiveGame {
     /// them at the deal.
     #[serde(default)]
     pub peeked: Vec<(DealtCard, Seat)>,
+    /// Defender cards (ids) "Durchsichtig" for this game only
+    /// ("Glasauge", [`Effect::RevealDefenderCards`]): drawn from the
+    /// defenders' hands at the deal, never a card of the player's edition.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transparent_for_game: Vec<u32>,
     /// The boss whose rule is on in this game: the series' boss, or for the
     /// Endboss "Der Alte" the rule of this game.
     #[serde(default)]
@@ -437,7 +453,8 @@ pub struct ActiveGame {
     #[serde(default)]
     pub chalked: Vec<(u32, Suit)>,
     /// Lost, this game counts once instead of twice ("Magenbitter"): who
-    /// granted it.
+    /// granted it. Dormant since 04.11.2026: every lost game counts once
+    /// ([`crate::content::RUN_LOSS_FACTOR`]); kept for old saves.
     #[serde(default)]
     pub single_loss: Option<Source>,
     /// Won, this game counts that many times more ("Eierlikör",
@@ -491,9 +508,10 @@ pub struct ActiveGame {
     /// saves from before, when a Stammgast sat there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partner_edition: Option<Edition>,
-    /// Cards the player's edition marks "Durchsichtig" in this game (ids):
-    /// shown with their holder and his
-    /// edition also while a defender holds them.
+    /// Until 04.11.2026: cards the player's edition marks "Durchsichtig"
+    /// in this game (ids), which showed a defender's own copy of the same
+    /// card to the player (a bug since ADR 0015, DESIGN 7.2). No longer
+    /// filled or read; kept so that old saves load.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_marked: Vec<u32>,
 }
@@ -558,6 +576,12 @@ impl EncounterOption {
     #[must_use]
     pub fn needs_relic(&self) -> bool {
         self.effects.iter().any(EncounterEffect::needs_relic)
+    }
+
+    /// Whether it needs a Marke of the player's choice.
+    #[must_use]
+    pub fn needs_marke(&self) -> bool {
+        self.effects.iter().any(EncounterEffect::needs_marke)
     }
 }
 
@@ -909,9 +933,14 @@ pub enum RunAction {
     ChooseEncounter {
         /// Index into [`ActiveEncounter::options`].
         option: usize,
-        /// Deck card id for [`EncounterChoice::MarkChosenCard`] and
-        /// [`EncounterChoice::CleanseChosenCard`].
+        /// Deck card id for an option on a card of the player's choice
+        /// (a Zinke, a Marke, the Kartenmaler, Karte reinigen), or the
+        /// index of an owned relic for a relic option.
         target: Option<u32>,
+        /// The Marke of the player's choice for
+        /// [`EncounterEffect::Marke`] with `marke: Chosen` (04.11.2026).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        marke: Option<CardModId>,
     },
     /// Take the route at this index of the open route choice
     /// ([`tour::RouteChoice::options`]).
@@ -1266,6 +1295,29 @@ pub enum RunEvent<G = Event<DealtCard>> {
         card_mod: CardModId,
         /// Its value.
         value: i32,
+    },
+    /// An encounter put a Marke on a card of the player's edition
+    /// ([`EncounterEffect::Marke`], 04.11.2026); followed by the
+    /// `DeckChanged` of the card.
+    MarkeGiven {
+        /// Deck card id.
+        card: u32,
+        /// The Marke.
+        card_mod: CardModId,
+        /// Whether the Marke was drawn (not chosen).
+        drawn: bool,
+        /// Whether the card was drawn (not chosen).
+        random_card: bool,
+    },
+    /// "Glasauge": a defender's card is "Durchsichtig" for this game; the
+    /// player sees it with its holder until it is played.
+    CardMadeTransparent {
+        /// Who granted it.
+        source: Source,
+        /// The card, in the defender's edition.
+        card: DealtCard,
+        /// Who holds it.
+        seat: Seat,
     },
     /// "Der Kiebitz" showed the player a defender's card.
     CardPeeked {
@@ -2586,23 +2638,29 @@ impl Run {
 
     /// Cards marked "Durchsichtig" in the current game and who holds them
     /// (`None`: in the skat or already played), each as its holder holds
-    /// it. The knowledge hangs on the card (DESIGN 7.2): a card is shown
-    /// if its holder's copy is marked (the player's own, or a boss card
-    /// such as the black Unter of "Der Schwarze Peter"), and also if the
-    /// player's edition marks it while a defender holds it: then the
-    /// player sees who holds it and that defender's edition of the card.
+    /// it. The knowledge hangs on the copy (DESIGN 7.2, ADR 0015): a card
+    /// is shown only if the copy in play is marked, i.e. its owner's
+    /// edition (the player's own, a boss card such as the black Unter of
+    /// "Der Schwarze Peter") or a mark for this game ("Glasauge"). A
+    /// "Durchsichtig" on the player's copy never shows a defender's copy
+    /// of the same card (fixed 04.11.2026).
     #[must_use]
     pub fn revealed_holders(&self) -> Vec<(DealtCard, Option<Seat>)> {
         let Some(active) = &self.game else {
             return Vec::new();
         };
-        let marked_by_player = |c: &DealtCard| active.player_marked.contains(&c.id);
+        // "Glasauge" marks defender cards for this game by id: a card of
+        // the defenders' editions, never shown while the player holds it.
+        let for_game = |c: &DealtCard| {
+            active.transparent_for_game.contains(&c.id)
+                && active.game.holder_of(*c) != Some(Seat::DECLARER)
+        };
         active
             .game
             .cards_in_play()
             .iter()
             .map(|&c| active.game.current(c))
-            .filter(|c| c.revealed || marked_by_player(c))
+            .filter(|c| c.revealed || for_game(c))
             .map(|c| (c, active.game.holder_of(c)))
             .collect()
     }
@@ -2758,9 +2816,11 @@ impl Run {
             RunAction::GiveUpPub => self.give_up_pub(content, events),
             RunAction::TakeFromSkat { give, take } => self.take_from_skat(give, take, events),
             RunAction::SettleGame => self.settle_game(content, events),
-            RunAction::ChooseEncounter { option, target } => {
-                self.choose_encounter(content, option, target, events)
-            }
+            RunAction::ChooseEncounter {
+                option,
+                target,
+                marke,
+            } => self.choose_encounter(content, option, target, marke.as_ref(), events),
             RunAction::ChooseRoute(option) => self.choose_route(content, option, events),
             RunAction::ChooseBossRelic { offer, replace } => {
                 self.choose_boss_relic(content, offer, replace, events)
@@ -3760,6 +3820,14 @@ impl Run {
             Effect::PeekDefenderCards(n) => {
                 active.rules.peek = active.rules.peek.saturating_add(*n);
             }
+            Effect::RevealDefenderCards(n) => {
+                active.rules.transparent_per_defender =
+                    active.rules.transparent_per_defender.saturating_add(*n);
+                active
+                    .rules
+                    .transparent_source
+                    .get_or_insert_with(|| source.clone());
+            }
             Effect::ShowCount => active.rules.show_count = true,
             Effect::RevealDefenderHand(index) => {
                 let seat = Seat::from_index(usize::from(*index)).filter(|s| !s.is_declarer());
@@ -4102,18 +4170,59 @@ impl Run {
             );
         }
         point_changes.sort_by_key(|(id, _, _)| *id);
-        let player_marked = resolved[Seat::DECLARER.index()]
-            .cards
-            .iter()
-            .filter(|c| c.revealed)
-            .map(|c| c.id)
-            .collect();
         self.set_up_game(content, game, point_changes, events);
         if let Some(active) = self.game.as_mut() {
             let [boss, partner] = boss_editions;
             active.boss_edition = boss;
             active.partner_edition = partner;
-            active.player_marked = player_marked;
+        }
+        self.mark_defender_cards(events);
+    }
+
+    /// "Glasauge" ([`Effect::RevealDefenderCards`]): make random cards of
+    /// each defender's hand "Durchsichtig" for this game, drawn with an
+    /// own generator from the game's seed and the Einmischen of the game
+    /// ([`TRANSPARENT_SEED`]), so the deal and every other draw stay the
+    /// same. Candidates in the order of the hand sorted by id; the left
+    /// defender first.
+    fn mark_defender_cards(&mut self, events: &mut Vec<RunEvent>) {
+        let seed = opponents::game_seed(self)
+            ^ TRANSPARENT_SEED
+            ^ u64::from(self.series.redeals_in_game).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let Some(active) = self.game.as_mut() else {
+            return;
+        };
+        let n = active.rules.transparent_per_defender;
+        let Some(source) = active.rules.transparent_source.clone() else {
+            return;
+        };
+        if n == 0 {
+            return;
+        }
+        let mut rng = Rng::from_seed(seed);
+        for seat in Seat::DEFENDERS {
+            let mut pool: Vec<DealtCard> = active
+                .game
+                .hand(seat)
+                .iter()
+                .filter(|c| !c.revealed)
+                .copied()
+                .collect();
+            pool.sort_by_key(|c| c.id);
+            for _ in 0..n {
+                if pool.is_empty() {
+                    break;
+                }
+                let len = u64::try_from(pool.len()).unwrap_or(1);
+                let pick = usize::try_from(rng.gen_range(0..len)).unwrap_or(0);
+                let card = pool.remove(pick.min(pool.len() - 1));
+                active.transparent_for_game.push(card.id);
+                events.push(RunEvent::CardMadeTransparent {
+                    source: source.clone(),
+                    card,
+                    seat,
+                });
+            }
         }
     }
 
@@ -4158,19 +4267,12 @@ impl Run {
     pub(crate) fn adopt_editions(&mut self, content: &Content) {
         let global = self.sources(content, false);
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
-        let player_marked: Vec<u32> = resolved[0]
-            .cards
-            .iter()
-            .filter(|c| c.revealed)
-            .map(|c| c.id)
-            .collect();
         let editions = resolved.map(|r| r.cards);
         let mut next = self.game.as_mut();
         while let Some(active) = next {
             active.game.adopt_editions(editions.clone());
             active.boss_edition.clone_from(&boss_editions[0]);
             active.partner_edition.clone_from(&boss_editions[1]);
-            active.player_marked.clone_from(&player_marked);
             next = active.previous.as_deref_mut();
         }
     }
@@ -4222,6 +4324,7 @@ impl Run {
             kontra: Kontra::None,
             awaiting_re: false,
             peeked: Vec::new(),
+            transparent_for_game: Vec::new(),
             boss_rule,
             skat_peeked: false,
             chalked: Vec::new(),
@@ -4340,15 +4443,10 @@ impl Run {
         }
         lines.extend(active.lines.iter().cloned());
         lines.extend(kontra_lines(active.kontra));
-        if !parts.won {
-            if let Some(source) = &active.single_loss {
-                lines.push(ScoreLine {
-                    source: source.clone(),
-                    lever: Lever::LossFactor,
-                    change: Change::Set(1),
-                });
-            }
-        } else {
+        // A lost game counts single since 04.11.2026 (`RUN_LOSS_FACTOR`):
+        // `single_loss` ("Magenbitter", the Ramscher) changes nothing any
+        // more and adds no line.
+        if parts.won {
             lines.extend(win_factor_lines(active));
         }
         let mut breakdown = score_parts(
@@ -5971,6 +6069,8 @@ mod m4_tests;
 mod m5_tests;
 #[cfg(test)]
 mod m7_tests;
+#[cfg(test)]
+mod marke_encounter_tests;
 #[cfg(test)]
 mod relic_slots_tests;
 #[cfg(test)]

@@ -358,6 +358,13 @@ pub enum Effect {
     /// random cards of the defenders and who holds them (figure "Der
     /// Kiebitz"). An information effect. Passive or on deal.
     PeekDefenderCards(u32),
+    /// Lever Zählen: when a game is dealt, this many random cards of each
+    /// defender's hand become "Durchsichtig" for this game only (house
+    /// rule "Glasauge", 04.11.2026): the player sees them with their
+    /// holder until they are played, shown like a Durchsichtig card of the
+    /// defender's edition. The editions are not changed. An information
+    /// effect. Passive or on deal.
+    RevealDefenderCards(u32),
     /// Lever Zählen: the player sees the whole hand of one defender, the
     /// seat by index (1: the left neighbour, who plays after him; 2: the
     /// right one), for the whole game (a character rule; "Der Zaungast" until 03.11.2026). An
@@ -397,9 +404,10 @@ pub enum Effect {
     #[serde(alias = "RamschOnce")]
     Ramsch,
     /// Lever Spielwert: a lost game counts once against the player instead
-    /// of twice, as "Magenbitter" did (boss "Der Ramscher" since
-    /// 03.11.2026: a lost Ramsch in his pub). Passive or on deal, so it
-    /// holds for every game under the rule.
+    /// of twice, as "Magenbitter" did (boss "Der Ramscher" from 03.11.2026
+    /// to 04.11.2026). Dormant since 04.11.2026: every lost game counts
+    /// once ([`super::RUN_LOSS_FACTOR`]), so it changes nothing; it stays
+    /// readable for old data.
     SingleLoss,
     /// Lever Flüche (boss "Die Oma", ADR 0017): when the first game under
     /// this rule is dealt, `cards` random cards of the player's edition
@@ -575,6 +583,7 @@ impl Effect {
             | Effect::Ramsch
             | Effect::CurseForPub { .. } => stage == Stage::Passive,
             Effect::PeekDefenderCards(_)
+            | Effect::RevealDefenderCards(_)
             | Effect::RevealDefenderHand(_)
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
@@ -590,6 +599,7 @@ impl Effect {
             self,
             Effect::RevealHolder
                 | Effect::PeekDefenderCards(_)
+                | Effect::RevealDefenderCards(_)
                 | Effect::RevealDefenderHand(_)
                 | Effect::ShowCount
                 | Effect::RevealSkatCard(_)

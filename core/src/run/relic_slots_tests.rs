@@ -103,7 +103,8 @@ fn an_encounter_gives_a_relic_whatever_is_owned() {
         action,
         RunAction::ChooseEncounter {
             option: 0,
-            target: None
+            target: None,
+            marke: None
         }
     );
     run.apply(&content, action).expect("take");
@@ -234,6 +235,7 @@ fn swapping_selling_or_replacing_the_kitty_pays_out_its_pot() {
     let pick_kitty = RunAction::ChooseEncounter {
         option: 0,
         target: Some(0),
+        marke: None,
     };
     // "Der alte Bekannte" swaps it away.
     let swap = EncounterEffect::SwapRelic(Some(RelicId::new("old_lady")));

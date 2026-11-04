@@ -226,7 +226,7 @@
         id: "transparent",
         kind: Curse,
         name: "Durchsichtig",
-        text: "Fluch: Hältst du diese Karte, wissen die Gegner das. Hält sie ein Gegner, siehst du, wer. Beim Erhalt 3 Groschen (nicht bei einem Handel).",
+        text: "Fluch: Hältst du diese Karte, wissen die Gegner das. Trägt die Karte eines Gegners den Fluch, siehst du, wer sie hat. Beim Erhalt 3 Groschen (nicht bei einem Handel).",
         rarity: Common,
         price: 1,
         passive: [RevealHolder],

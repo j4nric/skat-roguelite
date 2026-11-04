@@ -1028,6 +1028,24 @@ function spilledBeer() {
   });
 }
 
+/**
+ * coins-curse.json with "Die Markensammlerin" open (04.11.2026): a Marke of
+ * the player's choice on a card of his choice, bought or traded.
+ */
+function stampCollector() {
+  return patched('coins-curse.json', (save) => {
+    save.run.coins = 9;
+    save.run.encounter = {
+      id: 'stamp_collector',
+      options: [
+        { cost: 5, effects: [{ Marke: { card: 'Chosen', marke: 'Chosen' } }] },
+        { cost: 0, effects: [{ Marke: { card: 'Chosen', marke: 'Chosen' } }, { Mark: { card: 'Random', curse: true } }] },
+        { cost: 0, effects: [{ Coins: 1 }] },
+      ],
+    };
+  });
+}
+
 /** Open the app with a saved run from e2e/fixtures and resume it. */
 async function resumeFixture(page, name, raw = null) {
   await resumeState(page, name, raw ?? fixture(name));
@@ -1711,6 +1729,33 @@ async function m5(browser, errors, reducedMotion) {
   const coinsAfter = Number(await text(page, 'coins'));
   if (coinsAfter !== coinsBefore + 3) fail(`Groschen ${coinsBefore} -> ${coinsAfter}, expected +3`);
   log(`curse paid: ${pop.replace(/\s+/g, ' ')}; ${coinsBefore} -> ${coinsAfter} Groschen`);
+
+  // Marken from encounters (04.11.2026): "Die Markensammlerin" — pick a
+  // Marke on its sheet (art and text), then the card in the picker, then
+  // "Zinke anbringen?" with the card before and after.
+  await resumeState(page, 'coins-curse.json', stampCollector());
+  await page.waitForSelector('[data-testid="encounter"][data-encounter="stamp_collector"]');
+  if ((await page.locator('[data-testid="enc-marken"]').count()) < 2) fail('the Marke options do not list their Marken');
+  await shoot(page, 'encounter-marke');
+  await page.locator('[data-action="choose-encounter"][data-option="0"]').click();
+  await page.waitForSelector('[data-testid="marke-options"]');
+  if ((await page.locator('[data-testid="marke-options"] [data-action="encounter-marke"]').count()) !== 3) fail('the Marke sheet does not show three Marken');
+  await shoot(page, 'encounter-marke-pick');
+  await page.click('[data-testid="marke-voucher_coins"]');
+  await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
+  await shoot(page, 'encounter-marke-card');
+  await page.locator('[data-action="encounter-target"]:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="mod-confirm-cards"]');
+  const confirmText = (await page.locator('[data-testid="mod-confirm-text"]').textContent()) ?? '';
+  if (!confirmText.includes('Pfandmarke') && !(await page.locator('[data-testid="mod-confirm-cards"] figure').count())) fail(`Marke confirm says: ${confirmText}`);
+  await shoot(page, 'encounter-marke-confirm');
+  const coinsMarke = Number(await text(page, 'coins'));
+  await page.click('[data-testid="mod-confirm-go"]');
+  await page.waitForSelector('[data-testid="encounter"]', { state: 'detached' });
+  await page.waitForSelector('.declare, [data-action="boss-go"]');
+  const coinsMarkeAfter = Number(await text(page, 'coins'));
+  if (coinsMarkeAfter !== coinsMarke - 5) fail(`Markensammlerin: Groschen ${coinsMarke} -> ${coinsMarkeAfter}, expected -5`);
+  log(`Markensammlerin: Pfandmarke on a chosen card for 5 Groschen (${confirmText.trim()})`);
 
   // Effekte v2: "Ramponiert" means −X Augen now, the old "darf nicht
   // gedrückt werden" and "Unter ehrenhalber" are gone (DESIGN 7.2); their

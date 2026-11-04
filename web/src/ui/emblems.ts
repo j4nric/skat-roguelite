@@ -1275,6 +1275,25 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ....cccc
       ...cccccc`),
   ],
+  // Glasauge (04.11.2026): an eye behind a gold monocle with its chain,
+  // on the rounded square Control mat.
+  glass_eye: [
+    sp('Auge mit Monokel', `
+      ....yyyyyyy
+      ..yyhhhhhhhyy
+      .yhccccccccchy
+      .ycwwwwwwwwwcy
+      ycwwwJJJJwwwwcy
+      ycwwJJkkJJwwwcy
+      ycwwJJkkhJwwwcy
+      ycwwwJJJJwwwwcy
+      .ycwwwwwwwwwcy
+      .yhccccccccchy
+      ..yyhhhhhhhyy.y
+      ....yyyyyyy...y
+      ..............y
+      .............y`),
+  ],
   // ---- curses as trade (03.11.2026), one motif each
   // Pechvogel: a black cat with yellow eyes, on the round Value mat.
   jinx: [
@@ -1497,6 +1516,8 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   eggnog: 0,
   // Curses as trade (03.11.2026): one motif each.
   jinx: 0,
+  // Glasauge (04.11.2026): one motif.
+  glass_eye: 0,
   rotgut: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
@@ -1800,6 +1821,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   honorary_chair: 'Control',
   card_counter: 'Control',
   kibitzer: 'Control',
+  glass_eye: 'Control',
   // Tresen and Tour
   landlord: 'Tour',
   closing_time: 'Tour',
