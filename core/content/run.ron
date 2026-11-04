@@ -5,8 +5,8 @@
 // (docs/balance/2026-11-03-grosse-runde.md, noch mit Leben); Routen und
 // Spelunke weiter nach Augenmaß (02.11.2026). Seit ADR 0019 (04.11.2026)
 // gibt es keine Leben mehr: Jede verlorene Kneipe beendet den Run, nur
-// der Schutzengel lässt eine einmal neu spielen. Die Kurve ist darauf
-// noch nicht neu gemessen.
+// der Schutzengel lässt eine einmal neu spielen. Kurve und Spelunke darauf
+// neu gesetzt in Runde 1 (04.11.2026, docs/balance/2026-11-04-runde1.md).
 (
     // Zielwerte je Stadtteil: vier Kneipen und die Boss-Kneipe (vor dem
     // Boss-Faktor). Kurve des Alleinspielers (Drückeberger, Schneiderin und
@@ -17,10 +17,15 @@
     // 90. Ziel gegen den PIMC-Spieler: Stadtteil 2 in 35 bis 40 %, Stadtteil
     // 3 in 12 bis 18 %, 3 bis 5 % gewonnen, ein Viertel bis ein Drittel der
     // verlorenen Runs endet in normalen Kneipen.
+    // Runde 1 nach ADR 0019 (04.11.2026, docs/balance/2026-11-04-runde1.md):
+    // Ohne Leben endete der Run mit der Kurve oben (45 / 55 / 65 / 75 / 60 ·
+    // 90 / 105 / 120 / 135 / 100 · 145 / 170 / 195 / 205 / 140) zu 73 % in
+    // einer normalen Kneipe; Stadtteil 2 29 %, Stadtteil 3 5,9 %, gewonnen
+    // 1,9 %. Stadtteil 1 und 2 deutlich, Stadtteil 3 leicht gesenkt.
     targets: [
-        [45, 55, 65, 75, 60],
-        [90, 105, 120, 135, 100],
-        [145, 170, 195, 205, 140],
+        [35, 45, 55, 60, 60],
+        [70, 80, 90, 100, 80],
+        [135, 155, 175, 190, 130],
     ],
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
@@ -47,7 +52,11 @@
     // Spelunke (Elite): Mit chance führt eine der drei Routen statt zur
     // nächsten Kneipe in eine Spelunke. Zielwert × target_factor, ein
     // Malus aus tour.ron, Belohnung ein Relikt zusätzlich. Vorläufig.
-    spelunke: (chance: 0.3, target_factor: 1.1),
+    // target_factor seit Runde 1 (04.11.2026) 0,9 statt 1,1: Ohne Leben
+    // gewann der Bot seine Spelunken in Stadtteil 2 nur zu 52 bis 68 %
+    // (normale Kneipen 71 bis 83 %), jeder vierte Run in Stadtteil 2 endete
+    // dort. Der Malus allein macht sie schwer genug.
+    spelunke: (chance: 0.3, target_factor: 0.9),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
     // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach

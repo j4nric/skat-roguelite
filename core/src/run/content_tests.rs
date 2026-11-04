@@ -173,20 +173,24 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Kneipentour curve (DESIGN 5.0.4, measured 03.11.2026).
-    assert_eq!(content.run.targets[0], vec![45, 55, 65, 75, 60]);
-    assert_eq!(content.run.targets[2], vec![145, 170, 195, 205, 140]);
-    // Own curves of the Nullspieler and the Schneiderin; Drückeberger and
-    // Bruderherz play the one of run.ron (measured 03.11.2026, DESIGN 9).
+    // Kneipentour curve (DESIGN 5.0.4, balance round 1 without lives,
+    // 04.11.2026).
+    assert_eq!(content.run.targets[0], vec![35, 45, 55, 60, 60]);
+    assert_eq!(content.run.targets[2], vec![135, 155, 175, 190, 130]);
+    // Own curves of the Nullspieler, the Schneiderin and (since balance
+    // round 1, 04.11.2026) Bruderherz; the Drückeberger plays the one of
+    // run.ron (DESIGN 9).
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
-    assert_eq!(null[0], vec![50, 65, 75, 85, 70]);
-    assert_eq!(null[2], vec![180, 210, 245, 255, 175]);
+    assert_eq!(null[0], vec![40, 50, 60, 65, 65]);
+    assert_eq!(null[2], vec![150, 170, 195, 210, 145]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
-    assert_eq!(tailoress[0], vec![50, 65, 75, 90, 75]);
-    assert_eq!(tailoress[2], vec![165, 195, 225, 235, 160]);
+    assert_eq!(tailoress[0], vec![35, 45, 55, 60, 60]);
+    assert_eq!(tailoress[2], vec![150, 170, 195, 210, 145]);
     assert!(targets(Character::Shirker).is_none());
-    assert!(targets(Character::HeartBrother).is_none());
+    let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
+    assert_eq!(heart_brother[0], vec![30, 40, 50, 55, 55]);
+    assert_eq!(heart_brother[2], vec![125, 140, 160, 170, 120]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
