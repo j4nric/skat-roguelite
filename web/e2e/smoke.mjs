@@ -694,6 +694,45 @@ function watch(page, errors) {
   page.on('requestfailed', (req) => errors.push(`request failed: ${req.url()}`));
 }
 
+/**
+ * Note every sound effect started (its file's name, from the buffers the
+ * app decodes), in `window.__sounds`.
+ */
+async function spySounds(context) {
+  await context.addInitScript(() => {
+    window.__sounds = [];
+    const names = new WeakMap();
+    const fetchFn = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await fetchFn(...args);
+      const url = String(args[0]);
+      if (url.endsWith('.mp3')) {
+        const read = res.arrayBuffer.bind(res);
+        res.arrayBuffer = async () => {
+          const data = await read();
+          names.set(data, (url.match(/\/([a-z]+)[-.][^/]*$/) ?? [])[1] ?? url);
+          return data;
+        };
+      }
+      return res;
+    };
+    const decode = BaseAudioContext.prototype.decodeAudioData;
+    BaseAudioContext.prototype.decodeAudioData = function (data, ...rest) {
+      const name = names.get(data);
+      return decode.call(this, data, ...rest).then((buffer) => {
+        if (name) names.set(buffer, name);
+        return buffer;
+      });
+    };
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      const name = names.get(this.buffer);
+      if (name) window.__sounds.push(name);
+      return start.apply(this, args);
+    };
+  });
+}
+
 /** Count AudioContexts and oscillators (every music note makes one or two). */
 async function spyAudio(context) {
   await context.addInitScript(() => {
@@ -798,11 +837,45 @@ async function dragOnto(page, from, to, steps = 12, shot = null) {
   await page.mouse.move(1, 1);
 }
 
-/** Einmischen with the tap fallback: tap the deck, then the button in the middle. */
+/**
+ * A card picker ("Welche Karte soll es treffen?"): the cards wrap in a
+ * grid, nothing scrolls sideways (playtest 04.11.2026).
+ */
+async function assertPickerGrid(page, label) {
+  const m = await page.evaluate(() => {
+    const g = document.querySelector('.target-grid');
+    if (!g) return null;
+    const cards = [...g.querySelectorAll('.target-card')].map((c) => c.getBoundingClientRect());
+    const rows = new Set(cards.map((r) => Math.round(r.top))).size;
+    const wide = [g, g.closest('.sheet'), document.documentElement].some((e) => e && e.scrollWidth > e.clientWidth + 1);
+    const out = cards.some((r) => r.left < 0 || r.right > window.innerWidth);
+    return { rows, wide, out };
+  });
+  if (!m) fail(`${label}: no card grid`);
+  if (m.wide || m.out || m.rows < 2) fail(`${label}: the picker does not wrap into a grid without scrolling sideways (${JSON.stringify(m)})`);
+}
+
+/** The card before and after a Zinke from a picker, with "Anbringen" and the way back. */
+async function assertApplyConfirm(page, label) {
+  await page.waitForSelector('[data-testid="mod-confirm-cards"][data-type="apply"]', { timeout: 5000 }).catch(() => fail(`${label}: a tap on a card does not show it before and after`));
+  if ((await page.locator('[data-testid="mod-confirm-cards"] .card').count()) !== 2) fail(`${label}: the confirm does not show two cards`);
+  const go = ((await page.locator('[data-testid="mod-confirm-go"]').textContent()) ?? '').trim();
+  if (go !== 'Anbringen') fail(`${label}: the confirm button says "${go}"`);
+}
+
+/**
+ * Einmischen with the tap fallback: one tap on the deck mixes in at once,
+ * no second button to confirm (playtest 04.11.2026).
+ */
 async function mixIn(page) {
+  const left = await page.locator('[data-testid="passes-left"]').textContent().catch(() => null);
   await page.click('[data-testid="deck"]');
-  await page.waitForSelector('[data-testid="deck"][aria-expanded="true"]');
-  await page.click('[data-testid="mix-confirm"]');
+  if (await page.locator('[data-testid="mix-confirm"]').count()) fail('Einmischen asks for a second tap');
+  if (left !== null && /^\d+$/.test(left.trim())) {
+    await page
+      .waitForFunction((before) => document.querySelector('[data-testid="passes-left"]')?.textContent?.trim() !== before, left.trim(), { timeout: 10000 })
+      .catch(() => fail('one tap on the deck did not mix in'));
+  }
 }
 
 /**
@@ -1414,7 +1487,17 @@ async function m4(browser, errors, reducedMotion) {
   await page.click('[data-action="choose-encounter"][data-target="Card"]');
   await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
   await shoot(page, 'encounter-target');
+  await assertPickerGrid(page, 'Kartengeber picker');
+  // A tap shows the card before and after; "Andere Karte" goes back to the
+  // picker, "Anbringen" applies it (playtest 04.11.2026).
   await page.locator('[data-action="encounter-target"]:not([disabled])').first().click();
+  await assertApplyConfirm(page, 'Kartengeber');
+  await page.click('[data-testid="mod-confirm-back"]');
+  await page.waitForSelector('[data-action="encounter-target"]:not([disabled])');
+  await page.locator('[data-action="encounter-target"]:not([disabled])').first().click();
+  await assertApplyConfirm(page, 'Kartengeber');
+  await shoot(page, 'encounter-target-confirm');
+  await page.click('[data-testid="mod-confirm-go"]');
   await page.waitForSelector('[data-testid="encounter"]', { state: 'detached' });
   await page.waitForSelector('.declare, [data-action="boss-go"]');
   log('encounter Der Kartengeber resolved with a chosen card');
@@ -2371,6 +2454,7 @@ async function motionPass(browser, errors) {
  */
 async function rewardFxPass(browser, errors, viewport) {
   const context = await quietContext(browser, { viewport, reducedMotion: 'no-preference' });
+  await spySounds(context);
   const page = await context.newPage();
   watch(page, errors);
   const tag = `${viewport.width}x${viewport.height}`;
@@ -2448,6 +2532,7 @@ async function rewardFxPass(browser, errors, viewport) {
   // A lost run: the heart breaks, the lights go out, then the end screen.
   await resumeFixture(page, 'run-end.json');
   await page.waitForSelector('.declare');
+  await page.evaluate(() => (window.__sounds = []));
   await skatThenGrand(page, `reward fx ${tag}, lost run`);
   await playOut(page, `reward fx ${tag}, lost run`);
   await page.click('[data-action="score-continue"]');
@@ -2461,7 +2546,14 @@ async function rewardFxPass(browser, errors, viewport) {
   await page.waitForSelector('[data-testid="end"]');
   await page.waitForSelector('[data-testid="lights-out"]', { state: 'detached', timeout: 5000 });
   await sideways('the end screen');
-  log(`reward fx ${tag}: heart breaks, lights go out, end screen`);
+  // One loss sound for the lost game, the heart and the run together (playtest 04.11.2026).
+  await page.waitForTimeout(600);
+  const sounds = await page.evaluate(() => window.__sounds);
+  const losses = sounds.filter((n) => n === 'lose').length;
+  if (sounds.length && losses !== 1) fail(`reward fx ${tag}: the lost run sounds "lose" ${losses} times (${sounds.join(' ')})`);
+  if (!sounds.length) log(`reward fx ${tag}: no sounds heard (audio locked?), loss sound not checked`);
+  await assertEndButtons(page, `reward fx ${tag}, lost run`);
+  log(`reward fx ${tag}: heart breaks, lights go out, end screen with working buttons`);
 
   // A won run: the last boss pub, its target already reached.
   const won = JSON.parse(fixture('boss-table.json'));
@@ -2483,8 +2575,38 @@ async function rewardFxPass(browser, errors, viewport) {
   await snap('fx-fireworks');
   await page.waitForSelector('[data-testid="fireworks"]', { state: 'detached', timeout: 10000 });
   await sideways('the firework');
+  await assertEndButtons(page, `reward fx ${tag}, won run`);
   log(`reward fx ${tag}: a life pops in, firework over the won run`);
   await context.close();
+}
+
+/**
+ * The buttons of an end screen (playtest 04.11.2026: stuck on a lost one):
+ * nothing lies over them once scrolled into sight, and "Zum Start" leads
+ * to the start screen.
+ */
+async function assertEndButtons(page, label) {
+  await page.waitForSelector('[data-testid="end"]');
+  // An unlock earned with the run is told over the end screen first; its button must work too.
+  await page.waitForTimeout(300);
+  if (await page.locator('.sheet-unlock').count()) {
+    const close = page.locator('.sheet-unlock [data-action="close-overlay"]').last();
+    await close.scrollIntoViewIfNeeded();
+    await close.click({ timeout: 5000 }).catch(() => fail(`${label}: the unlock over the end screen cannot be closed`));
+    await page.waitForSelector('.sheet-unlock', { state: 'detached', timeout: 5000 });
+  }
+  for (const action of ['new-run', 'to-start']) {
+    const btn = page.locator(`[data-testid="end"] [data-action="${action}"]`);
+    await btn.scrollIntoViewIfNeeded();
+    const hit = await btn.evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return b.contains(top) ? null : (top?.outerHTML ?? 'nothing').slice(0, 120);
+    });
+    if (hit) fail(`${label}: "${action}" lies under ${hit}`);
+  }
+  await page.click('[data-testid="end"] [data-action="to-start"]');
+  await page.waitForSelector('#seed', { timeout: 5000 }).catch(() => fail(`${label}: "Zum Start" does not lead to the start screen`));
 }
 
 /**
@@ -3106,7 +3228,10 @@ async function zinkenPass(browser, errors, reducedMotion) {
   // Karte reinigen.
   await page.click('[data-testid="cleanse-go"]');
   await page.waitForSelector('[data-testid="zinken-cards"]');
+  await assertPickerGrid(page, 'Karte reinigen');
   await page.click('.target-card[data-id="0"]');
+  await page.waitForSelector('[data-testid="mod-confirm-cards"][data-type="cleanse"]', { timeout: 5000 }).catch(() => fail('Karte reinigen: no card before and after'));
+  await page.click('[data-testid="mod-confirm-go"]');
   await page
     .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 0)?.mods?.length === 0, null, { timeout: 5000 })
     .catch(() => fail('Karte reinigen: the Schellen-Sieben is still cursed'));
@@ -3669,7 +3794,10 @@ async function pickRiseCards(page, label, shot = null) {
   if (!title?.includes('Wähle 3 Karten')) fail(`${label}: the pick sheet says "${title}"`);
   if (!(await page.locator('[data-testid="rise-go"][disabled]').count())) fail(`${label}: the button works before three cards are picked`);
   const cards = page.locator('[data-testid="rise-choice"] .rise-card');
+  // A tap toggles only that card: the sheet is not drawn (and does not enter) again.
+  await page.evaluate(() => (window.__riseSheet = document.querySelector('.sheet-rise')));
   for (let i = 0; i < 3; i++) await cards.nth(i).click();
+  if (!(await page.evaluate(() => window.__riseSheet === document.querySelector('.sheet-rise')))) fail(`${label}: the pick sheet is drawn anew on a tap`);
   if ((await page.locator('[data-testid="rise-choice"] .rise-card.is-picked').count()) !== 3) fail(`${label}: three cards are not marked`);
   await cards.nth(3).click();
   if ((await page.locator('[data-testid="rise-choice"] .rise-card.is-picked').count()) !== 3) fail(`${label}: a fourth card could be picked`);
@@ -4124,7 +4252,7 @@ async function routePass(page, label) {
   if (!/Ziel \d+ Augen in 3 Spielen/.test(next) || !next.includes('Am Tisch:')) fail(`${label}: next pub ${next}`);
   const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
   if (!/^d\d-p\d$/.test(node ?? '')) fail(`${label}: node id ${node}`);
-  if ((await page.locator('.hud .heart').count()) < 3) fail(`${label}: no hearts in the head of the route screen`);
+  if ((await page.locator('.hud .heart').count()) < 1) fail(`${label}: no hearts in the head of the route screen`);
   if (!(await page.locator('.hud [data-testid="coins"]').count())) fail(`${label}: no Groschen in the head of the route screen`);
   // The map: the city as an image, three ways, one highlighted with its stop.
   const map = await mapState(page);
@@ -4329,6 +4457,8 @@ async function scenesPass(browser, errors, viewport) {
   await page.waitForSelector('[data-testid="map-walker"]', { timeout: 5000 }).catch(() => fail(`scenes ${tag}: no walker on the way`));
   const walker = await page.getAttribute('[data-testid="map-walker"]', 'data-way');
   if ({ Walk: 'fuss', Train: 'bahn', Bike: 'rad' }[way ?? ''] !== walker) fail(`scenes ${tag}: the way ${way} is walked as ${walker}`);
+  // Transparent like the other map icons: no paper box behind it (playtest 04.11.2026).
+  if (await page.locator('[data-testid="map-walker"] rect').count()) fail(`scenes ${tag}: the walker carries a box behind it`);
   await page.waitForTimeout(700);
   await snap('scene-walker');
   await page.waitForSelector('[data-testid="route"]', { state: 'detached', timeout: 10000 });
@@ -4417,6 +4547,9 @@ async function run() {
     if (!/Spiel 1 von 3 · 0 \/ \d+ Augen/.test(progress)) fail(`pub progress in the head: ${progress}`);
     const hearts = await page.locator('[data-testid="lives"] .heart.is-full').count();
     if (hearts !== 2) fail(`${hearts} hearts in the head, expected 2`);
+    // No empty heart above the start (playtest 04.11.2026): the maximum is not shown.
+    const emptyHearts = await page.locator('[data-testid="lives"] .heart.is-empty').count();
+    if (emptyHearts) fail(`${emptyHearts} empty hearts in the head at the start of a run`);
     log(`head: ${progress}, ${hearts} hearts`);
     if (!seated.quip) fail('no Stammgast says hello at the first game of the series');
     await assertChoice(page, seated);

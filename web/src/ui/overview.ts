@@ -67,7 +67,7 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     [de.end.gamesLost, tally(s.games_lost)],
     [de.end.gamesPassed, tally(s.redeals)],
     [de.end.seriesWon, tally(s.series_won)],
-    [de.lives.label, hearts(view.tour.lives, view.tour.max_lives, 14)],
+    [de.lives.label, hearts(view.tour.lives, view.tour.start_lives, 14)],
     [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
     [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],
   ];

@@ -1240,3 +1240,25 @@ fn a_last_trick_mod_is_open_until_its_card_falls() {
         Some(CardModStatus::Inactive)
     );
 }
+
+/// Whatever gives a life back says how many lives one can hold at most
+/// (playtest 04.11.2026): the head shows no empty hearts above the start,
+/// so the maximum is told only where a life is given.
+#[test]
+fn every_consumable_giving_lives_names_the_maximum() {
+    let content = content();
+    let max = format!("höchstens {}", content.run.lives.max);
+    let mut seen = 0;
+    for def in content.consumables.values() {
+        if matches!(def.action, crate::content::ConsumableAction::GainLives(_)) {
+            seen += 1;
+            assert!(
+                def.text.contains(&max),
+                "{}: \"{}\" does not say \"{max}\"",
+                def.id,
+                def.text
+            );
+        }
+    }
+    assert!(seen > 0, "no consumable gives a life");
+}

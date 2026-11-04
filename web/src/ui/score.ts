@@ -417,7 +417,8 @@ export class ScoreBoard {
       slam(big, this.q('.score-sheet'));
     }
     sound.play('knock', { delay: 120 });
-    sound.play(this.o.score.breakdown.won ? 'win' : 'lose', { delay: 380 });
+    if (this.o.score.breakdown.won) sound.play('win', { delay: 380 });
+    else if (!this.o.quietLoss) sound.play('lose', { delay: 380 });
     await this.wait(620);
     if (this.skipped) return;
     const account = this.q('[data-part="account"]');

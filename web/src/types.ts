@@ -905,6 +905,8 @@ export interface DistrictView {
 
 export interface TourView {
   lives: number;
+  /** Lives at the start of a run: the head never shows an empty heart above them. */
+  start_lives: number;
   max_lives: number;
   map_seed: number;
   districts: DistrictView[];

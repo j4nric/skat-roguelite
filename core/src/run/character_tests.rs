@@ -195,22 +195,48 @@ fn shirker_vouchers_come_back_after_the_pub() {
         .expect("points");
     let mut events = Vec::new();
     run.pub_lost(&content, &mut events).expect("pub over");
+    // The Totenmarke fired for good (playtest 04.11.2026): D8 stays Untot
+    // without the voucher, nothing of it comes back.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RunEvent::VoucherReturned { .. }))
+    );
+    assert_eq!(mods_of(&run, "D8"), vec![("undead".into(), 1)]);
+    assert_eq!(mods_of(&run, "C7"), vec![("points".into(), 3)]);
+    assert!(run.series.returning_vouchers.is_empty());
+}
+
+#[test]
+fn shirker_voucher_capped_at_the_special_comes_back() {
+    // The Totenmarke paid Groschen instead (another card is Untot): the
+    // card did not turn, so the voucher comes back after the pub.
+    let content = content();
+    let mut run = character_run(&content, Character::Shirker);
+    let other = id_of(&run, "CA");
+    run.edition
+        .add_mod(&content, other, &CardModId::new("undead"), 1)
+        .expect("undead");
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    run.apply(&content, RunAction::PickUpSkat).expect("skat");
+    let (d8, c7) = (id_of(&run, "D8"), id_of(&run, "C7"));
+    let events = run
+        .apply(&content, RunAction::Discard([d8, c7]))
+        .expect("discard");
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::VoucherCapped { card, .. } if *card == d8))
+    );
+    assert!(mods_of(&run, "D8").is_empty());
+    let mut events = Vec::new();
+    run.pub_lost(&content, &mut events).expect("pub over");
     assert!(events.contains(&RunEvent::VoucherReturned {
         card: d8,
         card_mod: CardModId::new("voucher_undead"),
         value: 1,
     }));
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherReturned { card, .. } if *card == c7))
-    );
-    assert_eq!(
-        mods_of(&run, "D8"),
-        vec![("undead".into(), 1), ("voucher_undead".into(), 1)]
-    );
-    assert_eq!(mods_of(&run, "C7"), vec![("points".into(), 3)]);
-    assert!(run.series.returning_vouchers.is_empty());
+    assert_eq!(mods_of(&run, "D8"), vec![("voucher_undead".into(), 1)]);
 }
 
 #[test]

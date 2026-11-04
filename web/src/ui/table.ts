@@ -269,7 +269,7 @@ function giveUpButton(view: RunView): string {
  * middle (a tap picks them up), "Hand spielen" below. What each does is on
  * its info card (hover, long-press, "i"), not on the buttons.
  */
-function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined, ui: UiState): string {
+function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined): string {
   // Every Spielart (Null too) comes from the core with `allowed`.
   const handPossible = options.games.some((g) => g.allowed);
   const peeked = Boolean(peek?.length);
@@ -278,23 +278,19 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     .map((inner, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}">${inner}</span>`)
     .join('');
   const canMix = options.can_redeal;
-  const armed = ui.mixArmed && canMix;
+  // One tap on the deck mixes in at once (playtest 04.11.2026); dragging it into the middle does the same.
   const deck = `<div class="deck-col">
-      <button class="deck-pile ${armed ? 'is-armed' : ''}" style="${tossStyle(2)}" ${attrs({
-        'data-action': canMix ? 'pass-arm' : null,
+      <button class="deck-pile" style="${tossStyle(2)}" ${attrs({
+        'data-action': canMix ? 'pass' : null,
         'data-drag': canMix ? 'deck' : null,
         'data-info': 'choice:pass',
         'data-testid': 'deck',
         'aria-label': t(de.table.pass, { left: passesLeft }),
-        'aria-expanded': canMix ? (armed ? 'true' : 'false') : null,
         disabled: !canMix,
       })}>${deckPile()}<span class="deck-count" aria-hidden="true">${esc(passesLeft)}</span></button>
       <span class="felt-caption">${esc(de.table.mix)}</span>
     </div>`;
-  const confirm = armed
-    ? `<button class="btn btn-mix" ${attrs({ 'data-action': 'pass', 'data-testid': 'mix-confirm' })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
-    : '';
-  const skat = `<div class="mix-zone ${armed ? 'is-armed' : ''}" ${attrs({ 'data-drop': canMix ? 'mix' : null, 'data-accept': canMix ? 'deck' : null, 'data-swipe': canMix ? '' : null })}>
+  const skat = `<div class="mix-zone" ${attrs({ 'data-drop': canMix ? 'mix' : null, 'data-accept': canMix ? 'deck' : null, 'data-swipe': canMix ? '' : null })}>
       <span class="mix-label" aria-hidden="true">${esc(de.table.mixHere)}</span>
       <button class="skat-pile" ${attrs({
         'data-action': 'pick-up-skat',
@@ -304,11 +300,10 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
         disabled: !options.can_pick_up_skat,
       })}>${skatCards}</button>
       <span class="felt-caption">${esc(de.table.pickUpSkat)}</span>
-      ${confirm}
     </div>`;
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
-    ${armed ? `<p class="declare-hint mix-hint" role="status">${esc(de.table.mixArmed)}</p>` : tableTalk(view)}
+    ${tableTalk(view)}
     <div class="felt">${deck}${skat}<div class="felt-side" aria-hidden="true"></div></div>
     ${peeked && peek ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
     ${declareWarnings(options, false)}
@@ -348,7 +343,7 @@ function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
  */
 function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
   const afterSkat = game.phase === 'DeclaringAfterSkat';
-  if (!afterSkat && options.can_pick_up_skat && !ui.handGame && ui.view) return choicePanel(ui.view, options, passesLeft, game.skat_peek, ui);
+  if (!afterSkat && options.can_pick_up_skat && !ui.handGame && ui.view) return choicePanel(ui.view, options, passesLeft, game.skat_peek);
   const nullIndex = options.games.findIndex((g) => g.game === 'Null');
   const specialist = ui.view?.character.character === 'NullPlayer';
   const pick = ui.pickGame ?? (specialist && nullIndex >= 0 && options.games[nullIndex]?.allowed ? nullIndex : null);

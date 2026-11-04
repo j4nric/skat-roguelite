@@ -32,8 +32,8 @@ use super::{
     series_target,
 };
 use crate::content::{
-    CityDistrict, Content, DistrictLook, EncounterId, MalusDef, MalusId, RelicId, StopCategory,
-    in_pool,
+    CityDistrict, Content, DistrictLook, Effect, EncounterId, MalusDef, MalusId, RelicId,
+    StopCategory, in_pool,
 };
 use crate::deck::{CardKind, DeckChange};
 
@@ -426,7 +426,9 @@ impl Run {
     /// "Der Drückeberger" (DESIGN 9.4): every voucher redeemed in this pub
     /// goes back onto its card with its value. A card that carries another
     /// normal modification or a curse by now keeps it, the voucher stays
-    /// gone; a special card it turned into (Untot, Wandelkarte) stays.
+    /// gone. A voucher that turned its card into a special card (Untot,
+    /// Wandelkarte) has fired for good: the card stays the special card and
+    /// the voucher stays gone (playtest 04.11.2026).
     fn return_vouchers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         for (card, card_mod, value) in std::mem::take(&mut self.series.returning_vouchers) {
             let Some(deck_card) = self.edition.get(card) else {
@@ -436,7 +438,12 @@ impl Run {
                 .mods
                 .iter()
                 .any(|m| content.card_mod(m).is_none_or(|d| !d.is_special()));
-            if taken {
+            let turned = content.card_mod(&card_mod).is_some_and(|def| {
+                def.hooks.iter().flat_map(|h| h.then()).any(
+                    |e| matches!(e, Effect::TurnInto(special) if deck_card.mods.contains(special)),
+                )
+            });
+            if taken || turned {
                 continue;
             }
             if let Ok(change) = self.edition.add_mod(content, card, &card_mod, value) {
@@ -1090,6 +1097,7 @@ impl Run {
         };
         TourView {
             lives: self.lives,
+            start_lives: content.run.lives.start,
             max_lives: content.run.lives.max,
             map_seed: self.map_seed(None),
             districts,
@@ -1293,6 +1301,9 @@ pub struct DistrictView {
 pub struct TourView {
     /// Lives left.
     pub lives: u32,
+    /// Lives at the start of a run: the HUD shows a lost one of these
+    /// greyed, never an empty slot above them (playtest 04.11.2026).
+    pub start_lives: u32,
     /// Most lives a player can hold.
     pub max_lives: u32,
     /// Seed for drawing the whole city.
