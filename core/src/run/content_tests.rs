@@ -173,24 +173,25 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Kneipentour curve (DESIGN 5.0.4, balance round 3, 05.11.2026).
+    // Kneipentour curve (DESIGN 5.0.4; Stadtteil 3 since balance round 5,
+    // 05.11.2026, with eight relic slots).
     assert_eq!(content.run.targets[0], vec![15, 30, 45, 50, 85]);
-    assert_eq!(content.run.targets[2], vec![160, 180, 200, 215, 140]);
+    assert_eq!(content.run.targets[2], vec![115, 130, 145, 160, 115]);
     // Own curves of every character but the Alleinspieler (Drückeberger
     // since balance round 2, DESIGN 9).
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
-    assert_eq!(null[0], vec![35, 50, 80, 85, 120]);
-    assert_eq!(null[2], vec![260, 280, 305, 320, 185]);
+    assert_eq!(null[0], vec![30, 45, 80, 85, 120]);
+    assert_eq!(null[2], vec![200, 215, 235, 250, 175]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
-    assert_eq!(tailoress[0], vec![25, 40, 65, 70, 110]);
-    assert_eq!(tailoress[2], vec![180, 200, 225, 240, 155]);
+    assert_eq!(tailoress[0], vec![20, 35, 65, 70, 110]);
+    assert_eq!(tailoress[2], vec![135, 150, 165, 180, 120]);
     let shirker = targets(Character::Shirker).expect("shirker targets");
     assert_eq!(shirker[0], vec![20, 35, 55, 60, 100]);
-    assert_eq!(shirker[2], vec![205, 225, 245, 260, 155]);
+    assert_eq!(shirker[2], vec![130, 145, 160, 175, 125]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
     assert_eq!(heart_brother[0], vec![10, 20, 35, 40, 75]);
-    assert_eq!(heart_brother[2], vec![140, 155, 175, 185, 130]);
+    assert_eq!(heart_brother[2], vec![110, 120, 135, 145, 105]);
     // One more Einmischen in Stadtteil 1 (balance round 2).
     assert_eq!(content.run.district_redeals, vec![1]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));

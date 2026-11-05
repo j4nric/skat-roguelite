@@ -5021,7 +5021,9 @@ async function nightPass(browser, errors, viewport) {
   await page.click('[data-action="leave-shop"]');
   await page.waitForSelector('.declare, [data-testid="skat-choice"]', { timeout: 15000 });
   const target = Number(await page.locator('.slate-target').textContent());
-  if (!(target > 200)) fail(`night ${tag}: the first pub of the night has Zielwert ${target}`);
+  // Stadtteil 3 (115) × 0.6 since balance round 5 (05.11.2026, eight relic
+  // slots), × 1.1 with a Zielwert-Sprung, × 0.85 in a Spelunke.
+  if (!(target >= 55 && target <= 80)) fail(`night ${tag}: the first pub of the night has Zielwert ${target}`);
   // Unlocks of a fresh meta state (Stadtteil 2 and on) first, and the toast of the new district.
   await page.waitForTimeout(300);
   while (await page.locator('.sheet-unlock').count()) {

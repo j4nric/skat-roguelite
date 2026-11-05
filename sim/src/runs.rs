@@ -111,6 +111,8 @@ pub struct NightStat {
     /// The Verschärfung of the district each night ended in (the last one
     /// drawn), counted.
     pub ended_by: BTreeMap<String, u64>,
+    /// Where nights ended: "pub" (normal or Spelunke) or "boss:<id>".
+    pub ended_at: BTreeMap<String, u64>,
     /// Relics of the night taken (boss pick, Tresen), counted.
     pub relic_picks: BTreeMap<RelicId, u64>,
     /// Highest Spielwert of a won game in the night, summed over nights.
@@ -1087,6 +1089,7 @@ fn play_night(
     let mut best: u64 = 0;
     let mut events = run.apply(content, enter).map_err(|e| e.to_string())?;
     let mut actions = 0;
+    let mut at = String::from("pub");
     loop {
         for event in &events {
             match event {
@@ -1127,7 +1130,10 @@ fn play_night(
                             breakdown.value,
                         ]);
                 }
-                RunEvent::SeriesStarted { .. } => {
+                RunEvent::SeriesStarted { boss, .. } => {
+                    at = boss
+                        .as_ref()
+                        .map_or_else(|| String::from("pub"), |b| format!("boss:{b}"));
                     stat.targets
                         .entry(run.series().section + 1)
                         .or_default()
@@ -1171,6 +1177,7 @@ fn play_night(
     if let Some(last) = night.verschaerfungen.last() {
         *stat.ended_by.entry(last.to_string()).or_default() += 1;
     }
+    *stat.ended_at.entry(at).or_default() += 1;
     if let Some(f) = last_factor {
         stat.factor_end_permille += u64::from(f);
         stat.factor_nights += 1;
@@ -1505,6 +1512,11 @@ fn render_night(out: &mut String, n: &NightStat) {
         let _ = write!(line, " {id}={count}");
     }
     let _ = writeln!(out, "night ended under (last Verschärfung):{line}");
+    let mut line = String::new();
+    for (id, count) in &n.ended_at {
+        let _ = write!(line, " {id}={count}");
+    }
+    let _ = writeln!(out, "night ended at:{line}");
     let mut picks = String::new();
     for (id, count) in &n.relic_picks {
         let _ = write!(picks, " {id}={count}");

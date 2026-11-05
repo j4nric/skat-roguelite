@@ -83,17 +83,25 @@
         // beim Alleinspieler verschoben (1-3, 1-4 − 5, Boss + 10), Boss in
         // Stadtteil 2 + 10, Stadtteil 3 + 15: gemessen 37,5 / 14,7 / 6,5 %.
         // Danach Stadtteil 3 noch einmal + 10 (Vorschlag, ungemessen).
+        // Runde 5 (05.11.2026, acht Relikt-Plätze,
+        // docs/balance/2026-11-05-runde5.md): mit 35 / 50 · 85 / 100 / 110 /
+        // 120 / Boss 140 · 260 / 280 / 305 / 320 / Boss 185 36,6 / 17,0 /
+        // 2,4 %, Stadtteil 2 hielt 47 %, Stadtteil 3 14 %. Jetzt 1-1, 1-2
+        // − 5, Stadtteil 2 + 5 (Boss 150), Stadtteil 3 rund − 22 %:
+        // 37,4 / 17,3 / 4,8 %.
         targets: Some([
-            [35, 50, 80, 85, 120],
-            [85, 100, 110, 120, 140],
-            [260, 280, 305, 320, 185],
+            [30, 45, 80, 85, 120],
+            [90, 105, 115, 125, 150],
+            [200, 215, 235, 250, 175],
         ]),
         // Die lange Nacht (Balancing-Runde 05.11.2026,
         // docs/balance/2026-11-05-nacht.md): eigenes Wachstum je Stadtteil
         // der Nacht, flacher als in run.ron. Mit dem des Alleinspielers
         // endeten 38 % seiner Nächte in Stadtteil 4 und keine erreichte
         // Stadtteil 8: Seine Null-Spiele wachsen in der Nacht langsamer.
-        night_growth: Some([1.3, 3.0, 4.5, 8.0, 2.5]),
+        // Runde 5 (05.11.2026): Ohne die Relikt-Flut (acht Plätze) wächst
+        // kein Build mehr stark; wie der Alleinspieler (run.ron).
+        night_growth: Some([0.6, 1.0, 1.05, 1.1, 1.25, 1.6]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
         // Zielwerten oben gewann er nur 0,6 % der ganzen Abende; ein
@@ -143,10 +151,14 @@
         // die Kurve vor Runde 2 mit Boss 90, Stadtteil 3 + 20. Vorschlag.
         // Nachtrag Runde 4 (05.11.2026): Stadtteil 3 + 10, Boss 140 → 155;
         // mit der Spelunke ab fünf Relikten gewann er 6,4 % (3 × 300).
+        // Runde 5 (05.11.2026, acht Relikt-Plätze): mit Stadtteil 3 = 205 /
+        // 225 / 245 / 260 / Boss 155 38,7 / 15,6 / 1,2 % (Stadtteil 3 hielt
+        // 8 %); seine Groschen aus Pfandmarken kaufen keine Relikte mehr
+        // über acht. Stadtteil 3 − 75: 38,7 / 15,8 / 3,6 %.
         targets: Some([
             [20, 35, 55, 60, 100],
             [70, 80, 90, 100, 105],
-            [205, 225, 245, 260, 155],
+            [130, 145, 160, 175, 125],
         ]),
         start_relics: ["skat_keeper"],
         deck: (
@@ -197,10 +209,14 @@
         // Runde 2 (04.11.2026, docs/balance/2026-11-04-runde2.md): damit
         // 36,7 / 12,3 / 5,4 %; Stadtteil 1 wie der Alleinspieler, Stadtteil
         // 2 − 10 (Boss + 5), Stadtteil 3 + 10: gemessen 38,3 / 14,7 / 4,8 %.
+        // Runde 5 (05.11.2026, acht Relikt-Plätze): mit 25 / 40 / … · 180 /
+        // 200 / 225 / 240 / Boss 155 36,8 / 15,4 / 1,1 % (Stadtteil 3 hielt
+        // 7 %, der Alte 33 %), 21,6 % in den ersten beiden Kneipen. 1-1 und
+        // 1-2 − 5, Stadtteil 3 − 45 bis − 60: 36,9 / 16,0 / 3,4 %, 19,6 %.
         targets: Some([
-            [25, 40, 65, 70, 110],
+            [20, 35, 65, 70, 110],
             [60, 75, 85, 95, 105],
-            [180, 200, 225, 240, 155],
+            [135, 150, 165, 180, 120],
         ]),
         start_relics: ["watertight"],
         deck: (
@@ -245,10 +261,14 @@
         // Runs. Stadtteil 1 − 5 (Boss + 10), Stadtteil 2 − 10 (Boss + 5),
         // Stadtteil 3 + 10: gemessen 34,2 / 13,5 / 6,5 %. Danach Stadtteil
         // 3 noch einmal + 15 (Vorschlag, ungemessen).
+        // Runde 5 (05.11.2026, acht Relikt-Plätze): mit 40 / 50 / 55 / 65 /
+        // Boss 80 · 140 / 155 / 175 / 185 / Boss 130 38,8 / 18,3 / 0,9 %
+        // (Stadtteil 2 hielt 47 %, Stadtteil 3 5 %, der Alte 22 %). Stadtteil
+        // 2 + 5 (Boss 90), Stadtteil 3 − 30 bis − 40: 38,8 / 17,2 / 3,1 %.
         targets: Some([
             [10, 20, 35, 40, 75],
-            [40, 50, 55, 65, 80],
-            [140, 155, 175, 185, 130],
+            [45, 55, 60, 70, 90],
+            [110, 120, 135, 145, 105],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die
