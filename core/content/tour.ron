@@ -78,7 +78,7 @@
             id: "cursed_cards",
             name: "Klebrige Karten",
             weight: 2,
-            text: "Die Karten kleben vom Bier: Zwei zufällige Karten deiner Ausgabe ohne Modifikation sind hier ramponiert (Augen −5), ein Fluch nur für diese Kneipe. Danach sind sie wieder sauber.",
+            text: "Die Karten kleben vom Bier: Zwei zufällige Karten deines Decks ohne Modifikation sind hier ramponiert (Augen −5), ein Fluch nur für diese Kneipe. Danach sind sie wieder sauber.",
             curse: Some((card_mod: "battered", value: 5, cards: 2)),
         ),
         (

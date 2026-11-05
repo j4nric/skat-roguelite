@@ -57,7 +57,7 @@
     (
         id: "fresh_deck",
         name: "Frisches Deck",
-        text: "Reinigt eine Karte deiner Ausgabe: Alle Effekte fallen ab, auch Flüche.",
+        text: "Reinigt eine Karte deines Decks: Alle Effekte fallen ab, auch Flüche.",
         rarity: Common,
         price: 3,
         action: CleanseCard,

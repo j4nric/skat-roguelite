@@ -228,7 +228,27 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `black_zero` | 2 | ×1.5 on won Null games; the Alleinspieler seldom plays Null |
 /// | `tap` | 6 | +×0.1 per pub won, on every won game: ×1.5 to ×2 late in the run |
 /// | `hot_hand` | 5 | +×0.2 per won game in a row, back to ×1 after a loss |
-pub const RELIC_VALUES: [(&str, u32); 39] = [
+///
+/// Build directions (04.11.2026, Cockpit q26) and "Großvaters Grand"
+/// (Cockpit q27), provisional by judgement, not measured:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `club_colours` | 3 | +1 Grundwert per Zinke on the trump suit; the bot buys few Zinken on one suit |
+/// | `true_soul` | 1 | like `home_suit`: the bot seldom plays one trump suit in a row |
+/// | `rebate_book` | 2 | +1 level per redeemed Marke for the pub; the bot redeems few (more as Drückeberger) |
+/// | `empties` | 2 | +2 Groschen per redeemed Marke |
+/// | `stamp_album` | 2 | +1 Grundwert per Marke kept on a card |
+/// | `fingertips` | 4 | +3 Augen per trick taken with a Zinke, also for Schneider |
+/// | `tally_sheet` | 3 | +1 or +2 levels with three or five such tricks |
+/// | `tip` | 3 | up to 3 Groschen per game |
+/// | `golden_shears` | 5 | ×1.5 on a Schneider win, about four won games in ten |
+/// | `tape_measure` | 5 | +1 Grundwert per Schneider win for the rest of the run |
+/// | `sewing_pattern` | 2 | +1 Grundwert per Aufdruck or Schneiderkreide on a Schneider win |
+/// | `lead_pouring` | 2 | +1 level per Blei card in the hand of a won Null |
+/// | `plumb_line` | 2 | +2 Grundwert per Blei card in every Null |
+/// | `grandfathers_grand` | 3 | +6 Grundwert on every Grand |
+pub const RELIC_VALUES: [(&str, u32); 53] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -268,6 +288,20 @@ pub const RELIC_VALUES: [(&str, u32); 39] = [
     ("black_zero", 2),
     ("tap", 6),
     ("hot_hand", 5),
+    ("club_colours", 3),
+    ("true_soul", 1),
+    ("rebate_book", 2),
+    ("empties", 2),
+    ("stamp_album", 2),
+    ("fingertips", 4),
+    ("tally_sheet", 3),
+    ("tip", 3),
+    ("golden_shears", 5),
+    ("tape_measure", 5),
+    ("sewing_pattern", 2),
+    ("lead_pouring", 2),
+    ("plumb_line", 2),
+    ("grandfathers_grand", 3),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,

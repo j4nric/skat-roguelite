@@ -54,7 +54,7 @@
         id: "grandma",
         name: "Die Oma",
         back: Some("grandma"),
-        text: "Die Oma kramt in deinen Karten: Die Hälfte deiner Ausgabe trägt in dieser Kneipe einen Fluch (Durchsichtig, Ramponiert oder Fleckig). Danach ist alles wie vorher.",
+        text: "Die Oma kramt in deinen Karten: Die Hälfte deines Decks trägt in dieser Kneipe einen Fluch (Durchsichtig, Ramponiert oder Fleckig). Danach ist alles wie vorher.",
         // ADR 0017: 16 der 32 Karten, je Karte ein zufälliger Fluch mit
         // seinem Standardwert, nur für diese Kneipe, ohne Groschen. Bis
         // 03.11.2026: Alle Unter sind Blankos.

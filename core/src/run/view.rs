@@ -1219,6 +1219,7 @@ impl Run {
             result: None,
             games_left: self.series.games_left(),
             transport: None,
+            marked_cards: None,
         };
         mods.iter()
             .filter_map(|id| {

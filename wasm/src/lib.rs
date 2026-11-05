@@ -35,8 +35,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
-    CardModId, Change, Character, ConsumableAction, ConsumableCategory, Content, Effect, Hook,
-    Lever, ModKind, Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
+    BuildTag, CardModId, Change, Character, ConsumableAction, ConsumableCategory, Content, Effect,
+    Hook, Lever, ModKind, Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -148,6 +148,9 @@ struct CardModEntry<'a> {
     /// (effects v2: the card's value times an `Add`; a `Multiply` is the
     /// value itself), if the modification has one.
     figure: Option<Figure>,
+    /// Build directions (`OneSuit`, `Vouchers`, `Tricks`, `Schneider`,
+    /// `Null`), for offers that weigh by them.
+    tags: &'a [BuildTag],
 }
 
 /// Name and text of a relic, plus the run counters it reads or raises, so
@@ -162,6 +165,8 @@ struct RelicEntry<'a> {
     /// Display group (shape of the beer mat).
     group: RelicGroup,
     counters: Vec<&'a str>,
+    /// Build directions it belongs to.
+    tags: &'a [BuildTag],
 }
 
 /// Name, text, rarity and group of a consumable, so the web app can draw
@@ -177,6 +182,8 @@ struct ConsumableEntry<'a> {
     /// It puts a modification drawn at random on a card (the removed
     /// "Stempelkissen"; no content since the Zinken, DESIGN 8.6).
     random_card_mod: bool,
+    /// Build directions it belongs to.
+    tags: &'a [BuildTag],
 }
 
 /// The headline number of a card modification as written in the content:
@@ -287,6 +294,7 @@ pub fn catalog_json() -> Result<String, String> {
                         rarity: d.rarity,
                         group: d.group,
                         counters: relic_counters(&d.passive, &d.hooks),
+                        tags: &d.tags,
                     },
                 )
             })
@@ -306,6 +314,7 @@ pub fn catalog_json() -> Result<String, String> {
                         values: &d.values,
                         max: d.max,
                         figure: first_figure(&d.passive, &d.hooks),
+                        tags: &d.tags,
                     },
                 )
             })
@@ -342,6 +351,7 @@ pub fn catalog_json() -> Result<String, String> {
                             _ => None,
                         },
                         random_card_mod: d.action == ConsumableAction::AddCardMod(None),
+                        tags: &d.tags,
                     },
                 )
             })
@@ -1084,6 +1094,20 @@ mod tests {
         assert_eq!(catalog["relics"]["kibitzer"]["group"], "Control");
         assert_eq!(catalog["relics"]["kitty"]["group"], "Tour");
         assert_eq!(catalog["relics"]["tour"]["rarity"], "Rare");
+        // Build directions (04.11.2026): tags on relics, Zinken, Schnäpse.
+        assert_eq!(
+            catalog["relics"]["club_colours"]["tags"],
+            serde_json::json!(["OneSuit"])
+        );
+        assert_eq!(catalog["relics"]["landlord"]["tags"], serde_json::json!([]));
+        assert_eq!(
+            catalog["card_mods"]["lead"]["tags"],
+            serde_json::json!(["Null"])
+        );
+        assert_eq!(
+            catalog["consumables"]["blue_curacao"]["tags"],
+            serde_json::json!(["OneSuit"])
+        );
         assert_eq!(
             catalog["consumables"]["blue_curacao"]["category"],
             "Schnapps"

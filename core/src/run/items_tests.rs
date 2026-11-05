@@ -305,11 +305,11 @@ fn groups_of_the_relics_are_data() {
     let groups = [
         (
             RelicGroup::Value,
-            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper jinx",
+            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper jinx club_colours stamp_album fingertips tape_measure sewing_pattern plumb_line grandfathers_grand",
         ),
         (
             RelicGroup::Multiplier,
-            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede",
+            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede true_soul rebate_book tally_sheet lead_pouring",
         ),
         (
             RelicGroup::Control,
@@ -317,11 +317,11 @@ fn groups_of_the_relics_are_data() {
         ),
         (
             RelicGroup::Tour,
-            "landlord closing_time season_ticket kitty slate guardian_angel dive_expert",
+            "landlord closing_time season_ticket kitty slate guardian_angel dive_expert empties tip",
         ),
         (
             RelicGroup::Factor,
-            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand",
+            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand golden_shears",
         ),
     ];
     let mut named = 0;

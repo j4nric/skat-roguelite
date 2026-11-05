@@ -51,6 +51,7 @@
     // (`Run::drop_unknown_content`).
     (
         id: "blue_curacao",
+        tags: [OneSuit],
         name: "Blue Curaçao",
         text: "Vor der Ansage: Färbe eine Karte deiner Hand bis zum Spielende in eine andere Farbe um. Unter nicht.",
         rarity: Uncommon,
@@ -125,7 +126,7 @@
     (
         id: "rotgut",
         name: "Fusel",
-        text: "Vor der Wahl zwischen Skat und Hand: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren. Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer und ohne Groschen.",
+        text: "Vor der Wahl zwischen Skat und Hand: Das nächste angesagte Spiel zählt doppelt, gewonnen wie verloren. Dafür bekommt eine zufällige Karte deines Decks ohne Fluch einen Fluch, für immer und ohne Groschen.",
         rarity: Common,
         price: 2,
         action: NextGameCursed(Multiply(2)),
