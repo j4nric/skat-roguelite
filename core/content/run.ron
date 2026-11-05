@@ -36,10 +36,14 @@
     // verlorenen beim Boss. 1-1 und 1-2 deutlich leichter (35 → 15, 45 →
     // 30; die Obergrenze einer Kneipe liegt bei rund 92 %), 1-3 und 1-4 und
     // die normalen Kneipen in Stadtteil 2 je − 5, alle Bosse + 10.
+    // SR3 (3 × 500, docs/balance/2026-11-05-runde3.md): 39,8 / 15,7 / 6,3 %,
+    // 19,9 % in den ersten beiden Kneipen, verlorene Runs 57 / 10 / 33 %;
+    // Stadtteil 3 hielt 40 % statt rund 27 %. Danach Stadtteil 3 + 15 (und
+    // der Alte × 1,5 in bosses.ron), UNGEMESSEN (SR4).
     targets: [
         [15, 30, 45, 50, 85],
         [55, 65, 75, 85, 95],
-        [145, 165, 185, 200, 140],
+        [160, 180, 200, 215, 140],
     ],
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
@@ -73,7 +77,10 @@
     // (04.11.2026) 1,0: Mit 0,9 gewann der Bot seine Spelunken in
     // Stadtteil 2 zu 76 bis 80 %, so oft wie die normalen Kneipen (81 bis
     // 84 %); nur 7 % der verlorenen Runs endeten dort (Grenze 10 %).
-    spelunke: (chance: 0.3, target_factor: 1.0),
+    // Runde 3 (05.11.2026): 1,0 → 0,95; die Spelunken gewann der Bot zu
+    // 74 bis 82 % gegen 85 bis 90 % in normalen Kneipen, 9,6 bis 12,7 % der
+    // verlorenen Runs endeten dort (Grenze 10 %).
+    spelunke: (chance: 0.3, target_factor: 0.95),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
     // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach

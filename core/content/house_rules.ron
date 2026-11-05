@@ -636,8 +636,11 @@
         group: Factor,
         name: "Zapfhahn",
         text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
-        rarity: Rare,
-        price: 8,
+        // Runde 3 (05.11.2026): Rare, 8 → Legendary, 10. Ohne Tresen + 12,2
+        // auf „Stadtteil 2“, + 15,0 auf „Stadtteil 3“ (das 4,8-Fache des
+        // Mittels seltener Relikte, mehr als der Grandseigneur): Pflicht.
+        rarity: Legendary,
+        price: 10,
         hooks: [
             OnSeriesWon(then: [IncrementCounter("tap")]),
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "tap", per: 0.1)]),
@@ -652,7 +655,7 @@
         name: "Heiße Hand",
         text: "Jedes gewonnene Spiel in Folge gibt +×0,2 Faktor auf die nächsten gewonnenen Spiele. Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
         rarity: Rare,
-        price: 7,
+        price: 8,
         hooks: [
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.2), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
@@ -674,11 +677,13 @@
         group: Value,
         focus: Trump,
         name: "Vereinsfarben",
-        text: "Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
+        // Runde 3 (05.11.2026): +1 → +2 je Karte; mit +1 ohne Tresen nur
+        // + 1,9 % Punkte je Spiel (+ 1,2 auf „Stadtteil 3“).
+        text: "Farbspiel: +2 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
         rarity: Uncommon,
         price: 6,
         hooks: [
-            OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 1)]),
+            OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 2)]),
         ],
     ),
     // Farbtreue. Lever Gewinnstufen: the streak of suit games in the same
@@ -745,7 +750,7 @@
         name: "Sammelalbum",
         text: "+1 Grundwert je Marke, die in deinem Deck noch auf einer Karte klebt.",
         rarity: Common,
-        price: 5,
+        price: 6,
         hooks: [
             OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCard(count: (kind: Some(Voucher)), per: 1)]),
         ],
@@ -844,7 +849,7 @@
         name: "Schnittmuster",
         text: "Gewinnst du mit Schneider: +1 Grundwert je Karte mit Aufdruck oder Schneiderkreide in deinem Deck.",
         rarity: Common,
-        price: 5,
+        price: 6,
         hooks: [
             OnScore(when: All([WonSchneider, Not(RamschGame)]), then: [AddBaseValuePerCard(count: (mods: ["points", "tailors_chalk"]), per: 1)]),
         ],

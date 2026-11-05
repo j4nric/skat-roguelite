@@ -208,7 +208,8 @@ fn club_colours_counts_the_trump_suit_cards_with_a_zinke_in_the_deck() {
     let content = content();
     let mut run = long_run(&content, &["club_colours"]);
     // Diamonds: Daus and Unter in the hand, the Acht in the skat, all with
-    // a Zinke; the König with a curse and the Herz-Daus do not count.
+    // a Zinke (+2 each); the König with a curse and the Herz-Daus do not
+    // count.
     put(&mut run, &content, "DA", "points");
     put(&mut run, &content, "DJ", "rank");
     put(&mut run, &content, "D8", "gilt_edge");
@@ -225,7 +226,7 @@ fn club_colours_counts_the_trump_suit_cards_with_a_zinke_in_the_deck() {
         &b,
         &relic("club_colours"),
         Lever::BaseValue,
-        Change::Add(3)
+        Change::Add(6)
     ));
     // Another trump suit: none of its cards carries a Zinke.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
