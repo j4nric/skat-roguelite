@@ -54,6 +54,11 @@
 //   out before the end of a lost run (ADR 0019: a lost pub ends it); a won
 //   run (the last boss pub, patched from boss-table.json) gets a firework; a pressed button gives way and springs back; nothing scrolls
 //   sideways.
+// - Die lange Nacht (nightPass, 390 × 844 and 1280 × 800; alone with
+//   SMOKE_ONLY=night): the won run's end screen offers the night, the start
+//   sheet of Stadtteil 4 shows its Verschärfung, the HUD its chip, the
+//   first night pub its grown Zielwert, a night relic its info card and the
+//   start screen the Bestenliste.
 // The card sprite (German deck) and the shipped font (VT323, SIL OFL)
 // must be present, and a face for every Stammgast of core/content/guests.ron.
 // The opponents are Stammgäste with names of their own (two different
@@ -4721,12 +4726,119 @@ async function scenesPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * Die lange Nacht (ADR 0020): a won run (the last boss pub, patched from
+ * boss-table.json) offers "Weiterziehen in die lange Nacht" on its end
+ * screen; going on opens the start sheet of Stadtteil 4 with its
+ * Verschärfung, the HUD names the night district and shows the
+ * Verschärfung as a chip (a tap explains it), the run is saved again, the
+ * first pub of the night plays its grown Zielwert, the start screen's
+ * Bestenliste counts the night, and a night relic has its beer mat and info
+ * card. Nothing scrolls sideways.
+ */
+async function nightPass(browser, errors, viewport) {
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  await resumeFixture(page, null, JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `night ${tag}`);
+  await playOut(page, `night ${tag}`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  const enter = page.locator('[data-testid="enter-night"]');
+  if (!(await enter.count())) fail(`night ${tag}: no "Weiterziehen in die lange Nacht" on the won end screen`);
+  if (!(await page.locator('[data-testid="end-run"]').count())) fail(`night ${tag}: no "Run beenden" next to it`);
+  if (!(await page.evaluate(() => localStorage.getItem('stammtisch.run') === null))) fail(`night ${tag}: the won run is still saved`);
+  await enter.scrollIntoViewIfNeeded();
+  await snap('night-end');
+  await assertNoSideScroll(page, `night ${tag}: end screen`, '[data-testid="end"]');
+  await enter.click();
+  await page.waitForSelector('.sheet-night [data-testid="night-sheet-title"]', { timeout: 10000 }).catch(() => fail(`night ${tag}: no start sheet of the night district`));
+  const title = (await page.locator('[data-testid="night-sheet-title"]').textContent()) ?? '';
+  if (!title.includes('Stadtteil 4')) fail(`night ${tag}: the start sheet says "${title}"`);
+  const fresh = await page.locator('[data-testid="night-new"]').getAttribute('data-verschaerfung');
+  if (!fresh) fail(`night ${tag}: the start sheet names no Verschärfung`);
+  await page.waitForTimeout(200);
+  await snap('night-sheet');
+  await assertNoSideScroll(page, `night ${tag}: start sheet`, '.sheet-night');
+  await page.click('[data-testid="night-go"]');
+  await page.waitForSelector('.sheet-night', { state: 'detached' });
+  await page.waitForSelector('[data-testid="route"]');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.night ?? null);
+  if (!saved || saved.verschaerfungen?.[0] !== fresh) fail(`night ${tag}: the night is not saved (${JSON.stringify(saved)})`);
+  const chips = await page.locator('.hud [data-testid="night-chip"]').count();
+  if (chips !== 1) fail(`night ${tag}: ${chips} Verschärfung chips in the HUD`);
+  const where = (await page.locator('.hud-where-sub').textContent()) ?? '';
+  if (!where.includes('Lange Nacht · Stadtteil 4')) fail(`night ${tag}: the HUD says "${where}"`);
+  if (!(await page.locator('.run.is-night').count())) fail(`night ${tag}: no night look`);
+  await page.locator('.hud [data-testid="night-chip"]').first().click();
+  await page.waitForSelector('[data-testid="info-card"][data-info-key^="night:"]', { timeout: 3000 }).catch(() => fail(`night ${tag}: a Verschärfung chip explains nothing`));
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  // To the first pub of Stadtteil 4 over the Tresen.
+  await page.click('[data-action="pick-route"][data-category="Tresen"]');
+  await page.click('[data-testid="route-go"]');
+  await page.waitForSelector('[data-action="leave-shop"]', { timeout: 15000 });
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('.declare, [data-testid="skat-choice"]', { timeout: 15000 });
+  const target = Number(await page.locator('.slate-target').textContent());
+  if (!(target > 200)) fail(`night ${tag}: the first pub of the night has Zielwert ${target}`);
+  // Unlocks of a fresh meta state (Stadtteil 2 and on) first, and the toast of the new district.
+  await page.waitForTimeout(300);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(3500);
+  await snap('night-hud');
+  log(`night ${tag}: end screen, start sheet (${fresh}), chip, first night pub with Zielwert ${target}`);
+  // A night relic: its beer mat in the Leiste and its info card.
+  const run = JSON.parse(await page.evaluate(() => localStorage.getItem('stammtisch.run')));
+  run.run.relics.push('night_owl');
+  await resumeState(page, 'night with a night relic', JSON.stringify(run));
+  await page.waitForSelector('.hud [data-relic="night_owl"]');
+  await page.click('.hud [data-relic="night_owl"]');
+  await page.waitForSelector('[data-testid="info-card"][data-info-key="relic:night_owl"]', { timeout: 3000 }).catch(() => fail(`night ${tag}: no info card for the night relic`));
+  await page.waitForTimeout(200);
+  await snap('night-relic');
+  await page.click('[data-testid="info-card"] [data-info-close]');
+  // The Bestenliste on the start screen counts the night.
+  await page.goto(base);
+  await page.waitForSelector('[data-testid="start-board"]', { timeout: 10000 }).catch(() => fail(`night ${tag}: no Bestenliste on the start screen`));
+  const board = (await page.locator('[data-testid="start-board"] tr[data-character="Declarer"]').textContent()) ?? '';
+  if (!board.includes('Stadtteil 4')) fail(`night ${tag}: the Bestenliste says "${board}"`);
+  await page.locator('[data-testid="start-board"]').scrollIntoViewIfNeeded();
+  await snap('night-board');
+  await assertNoSideScroll(page, `night ${tag}: Bestenliste`, '[data-testid="start-board"]');
+  log(`night ${tag}: night relic info card, Bestenliste "${board.replace(/\s+/g, ' ').trim()}"`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
   const errors = [];
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
+    // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    if (process.env.SMOKE_ONLY === 'night') {
+      await nightPass(browser, errors, PHONE);
+      await nightPass(browser, errors, DESKTOP);
+      return;
+    }
     const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
     const page = await context.newPage();
     watch(page, errors);
@@ -5044,6 +5156,8 @@ async function run() {
     await tableFeelPass(browser, errors, DESKTOP);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
+    await nightPass(browser, errors, PHONE);
+    await nightPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
   } finally {

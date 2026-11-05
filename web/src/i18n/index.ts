@@ -138,7 +138,9 @@ export function relicCounters(relic: string): string[] {
 
 /** German names of the build directions of a relic (04.11.2026), from the core's catalog. */
 export function relicDirections(relic: string): string[] {
-  return (catalog?.relics[relic]?.tags ?? []).map((tag) => de.buildTags[tag] ?? tag);
+  const tags = (catalog?.relics[relic]?.tags ?? []).map((tag) => de.buildTags[tag] ?? tag);
+  // The relics of the long night (ADR 0020) say so.
+  return catalog?.relics[relic]?.night ? [...tags, de.night.pool] : tags;
 }
 
 /** Kind, rarity and group of a relic from the core's catalog, for its beer mat. */

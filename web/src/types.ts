@@ -1231,6 +1231,8 @@ export interface RelicEntry extends CatalogEntry {
   group?: RelicGroup;
   /** Build directions; absent in an older core. */
   tags?: BuildTag[];
+  /** A relic of the long night (ADR 0020). */
+  night?: boolean;
 }
 
 /** A consumable in the catalog, with rarity and group (absent in an older core). */

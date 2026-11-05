@@ -167,6 +167,9 @@ struct RelicEntry<'a> {
     counters: Vec<&'a str>,
     /// Build directions it belongs to.
     tags: &'a [BuildTag],
+    /// A relic of the long night ("Nachtschwärmer", ADR 0020).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    night: bool,
 }
 
 /// Name, text, rarity and group of a consumable, so the web app can draw
@@ -295,6 +298,7 @@ pub fn catalog_json() -> Result<String, String> {
                         group: d.group,
                         counters: relic_counters(&d.passive, &d.hooks),
                         tags: &d.tags,
+                        night: d.night,
                     },
                 )
             })

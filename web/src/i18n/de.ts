@@ -968,6 +968,8 @@ export const de = {
     over: 'Die Nacht ist vorbei',
     overText: 'Bis Stadtteil {n} durchgehalten, {pubs} Kneipen in der Nacht. Dein Sieg bleibt gezählt.',
     record: 'Neuer Rekord: Stadtteil {n}',
+    /** The night relics' pool, on their info card. */
+    pool: 'Nachtschwärmer',
   },
 
   /** The first Untot or Wandelkarte of a save: a one-time explanation (DESIGN 7.2). */
