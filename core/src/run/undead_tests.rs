@@ -153,6 +153,19 @@ fn an_undead_card_rises_only_once_per_game() {
         .expect("held")
         .can_rise;
     assert!(!cj, "risen once: no more");
+    // The view marks the card that came back, and only that one.
+    let risen: Vec<u32> = view
+        .game
+        .as_ref()
+        .expect("game")
+        .hand
+        .iter()
+        .filter(|c| c.risen)
+        .map(|c| c.card.id)
+        .collect();
+    assert_eq!(risen, vec![id_of("CJ")]);
+    let text = ron::to_string(&view).expect("ron");
+    assert_eq!(text.matches("risen").count(), 1, "left out when false");
     let events = trick(&mut run, &content, "CJ", "H9", "CQ");
     assert_eq!(rose(&events), None);
     assert_eq!(game(&run).hand(Seat::DECLARER).len(), 8);

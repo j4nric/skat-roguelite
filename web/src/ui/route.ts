@@ -18,6 +18,8 @@ import { glyph, mapIcon, type MapIcon } from './mapicons';
 import { bossPortraitId, guestPortraitId, portrait } from './people';
 
 const PAPER = '#fbf6e8';
+/** The trail of a trip on the map: the app's accent colour (--accent; playtest 05.11.2026, was white). */
+const TRAIL = '#d1773f';
 
 const WAY: Record<Transport, Way> = { Walk: 'fuss', Train: 'bahn', Bike: 'rad' };
 const LINE: Record<Way, { colour: string; pattern: Pattern }> = {
@@ -329,7 +331,7 @@ export function playTravel(root: HTMLElement, ms: number): Promise<void> {
   if (!svg || !sel || !pos || cells.length < 2 || !(ms > 0)) return Promise.resolve();
   const NS = 'http://www.w3.org/2000/svg';
   const trail = document.createElementNS(NS, 'path');
-  trail.setAttribute('fill', PAPER);
+  trail.setAttribute('fill', TRAIL);
   trail.setAttribute('class', 'map-trail');
   pos.before(trail);
   const [x0, y0] = cells[0] as [number, number];

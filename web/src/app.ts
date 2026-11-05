@@ -64,7 +64,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { crumbleInto, deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
@@ -293,6 +293,12 @@ export class App {
   private renderedOverlay: Overlay | null = null;
   private overlayDirty = false;
   private scoreBoard: ScoreBoard | null = null;
+  /**
+   * The score board or boss sheet a playback is waiting on right now. A
+   * board on the layer that nothing waits for any more (its playback
+   * broke off) is stale: its button closes it instead of resolving nothing.
+   */
+  private awaited: Overlay | null = null;
   /** Effects to run once the next render is in the DOM. */
   private afterRender: (() => void)[] = [];
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
@@ -1024,6 +1030,9 @@ export class App {
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.thinking = null;
+      // Nothing waits on a score board or boss sheet once the playback is over.
+      if (this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss') this.ui.overlay = null;
+      this.awaited = null;
       if (view) this.ui.view = view;
       this.playedFrom = null;
       this.thrown = null;
@@ -1498,10 +1507,7 @@ export class App {
         this.ui.anim = null;
         this.ui.screen = 'run';
         const boss = after.series.boss;
-        await new Promise<void>((resolve) => {
-          this.ui.overlay = { kind: 'boss', boss, resolve };
-          this.render();
-        });
+        await this.waitOn((resolve) => ({ kind: 'boss', boss, resolve }));
         this.ui.overlay = null;
         // The table opens: lights down, the spotlight onto both boss players
         // (once no dialog is open any more, see render()).
@@ -1787,15 +1793,22 @@ export class App {
     this.showToast(t(de.toast.cardRose, { card: cardName(card.kind), risen: cardName(risen.kind), substitute: cardName(substitute.kind) }), 'top');
     const anim = this.ui.anim;
     if (!anim) return;
-    const from = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
     const subFrom = this.screenEl.querySelector(`.hand-card[data-id="${substitute.id}"]`)?.getBoundingClientRect() ?? null;
+    // The card as it was played crumbles big over the table into the
+    // zombie card it comes back as (playtest 05.11.2026), then that one
+    // flies into the hand; without motion or hurried it is just there.
+    // The pick sheet goes first (the run is busy now), so the scene is seen.
+    if (this.screenEl.querySelector('.sheet-rise')) this.render();
+    const played = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
+    const morphed = this.fastForward ? null : await crumbleInto(this.root, lookSvg(this.cardOf(card, after)), lookSvg({ ...this.cardOf(risen, after), risen: true }));
+    const from = morphed ?? played;
     anim.trick = anim.trick.map((p) => (p.card.id === card.id ? { seat: p.seat, card: this.cardOf(substitute, after) } : p));
     // The trick's Augen changed with the card; the core's count follows with the score.
     anim.status = '';
     const hand = after.game?.hand;
     anim.hand = hand
       ? hand.map((c) => ({ ...c, legal: false }))
-      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(risen, after), can_rise: false }];
+      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(risen, after), can_rise: false, risen: true }];
     // A short green glow while it climbs back into the hand (style.css; with reduced motion a still outline).
     this.ui.rising = card.id;
     this.render();
@@ -2122,6 +2135,41 @@ export class App {
     return seat === 1 ? { x: table.left - card, y: cy } : { x: table.right + card, y: cy };
   }
 
+  /**
+   * Show a sheet the playback waits on (the score board, the boss) until its
+   * button resolves it. A render that throws (playtest 05.11.2026: after a
+   * won game the board stayed with a "Weiter" that did nothing, because the
+   * render inside this promise threw after drawing the board, which
+   * rejected the promise and left the board on screen with a resolve
+   * nobody awaited) does not stop the sheet: the layer is drawn on its own
+   * and the wait goes on.
+   */
+  private async waitOn(make: (resolve: () => void) => Extract<Overlay, { kind: 'score' } | { kind: 'boss' }>): Promise<void> {
+    let resolve: () => void = () => undefined;
+    const done = new Promise<void>((r) => (resolve = r));
+    const overlay = make(resolve);
+    this.ui.overlay = overlay;
+    this.awaited = overlay;
+    try {
+      this.render();
+    } catch (err) {
+      console.error('render under a sheet failed', err);
+      this.overlayDirty = true;
+      try {
+        this.renderLayer();
+      } catch (layerErr) {
+        // Without its board nothing could go on: go on without it.
+        console.error('sheet not drawn', layerErr);
+        resolve();
+      }
+    }
+    try {
+      await done;
+    } finally {
+      if (this.awaited === overlay) this.awaited = null;
+    }
+  }
+
   /** Cards fly from the deck to the hands, in turns, then two to the skat. */
   private dealEffect(): void {
     const from = this.rectOf('.deck-pile') ?? this.rectOf('.deck-spot');
@@ -2157,11 +2205,8 @@ export class App {
   ): Promise<void> {
     const score = after.last_score;
     if (!score) return;
-    await new Promise<void>((resolve) => {
-      const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
-      this.ui.overlay = { kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve };
-      this.render();
-    });
+    const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
+    await this.waitOn((resolve) => ({ kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve }));
     this.scoreBoard = null;
     this.ui.overlay = null;
     // The board goes; the account in the head counts to the new value.
@@ -2566,11 +2611,8 @@ export class App {
         else this.redrawLayer();
         return;
       case 'score-continue':
-        if (overlay?.kind === 'score') overlay.resolve();
-        else this.redrawLayer();
-        return;
       case 'boss-go':
-        if (overlay?.kind === 'boss') overlay.resolve();
+        this.closeAwaited(action === 'score-continue' ? 'score' : 'boss');
         return;
       case 'scroll-goods':
         this.root.querySelector('#shop-goods')?.scrollIntoView({ behavior: motionOn() ? 'smooth' : 'auto', block: 'start' });
@@ -3514,7 +3556,14 @@ export class App {
     watchShop(this.screenEl);
     const effects = this.afterRender;
     this.afterRender = [];
-    for (const fx of effects) fx();
+    // An effect is decoration: one that fails must not take the render (and the playback) down.
+    for (const fx of effects) {
+      try {
+        fx();
+      } catch (err) {
+        console.error('effect after render failed', err);
+      }
+    }
     if (ui.screen === 'run' && ui.view) this.hudFx.sync(ui.view);
     else if (ui.screen === 'start') this.hudFx.reset();
     if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.drink.refresh();
@@ -3535,6 +3584,22 @@ export class App {
   private redrawLayer(): void {
     this.overlayDirty = true;
     this.render();
+  }
+
+  /**
+   * "Weiter" of the score board, "Los" of the boss: resolve the sheet the
+   * playback waits on. A sheet nothing waits on any more (left on the
+   * layer by a playback that broke off) goes, and the screen is drawn
+   * anew from the state, so the button never does nothing.
+   */
+  private closeAwaited(kind: 'score' | 'boss'): void {
+    const o = this.ui.overlay;
+    if (o?.kind === kind && this.awaited === o) {
+      o.resolve();
+      return;
+    }
+    if (o?.kind === 'score' || o?.kind === 'boss') this.ui.overlay = null;
+    this.redrawLayer();
   }
 
   /** The dialog layer: only rebuilt when the dialog itself changes. */

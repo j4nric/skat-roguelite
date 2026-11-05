@@ -1362,6 +1362,13 @@ async function bossesV2(browser, errors, reducedMotion) {
   await expectMusic(page, 'shop', 'boss reward');
   await shoot(page, 'bosses-reward');
   await assertNoSideScroll(page, 'boss reward', '.boss-reward');
+  // 3 × 1 (playtest 05.11.2026): the three mats in one row, at 390 and 360.
+  for (const size of [PHONE, { width: 360, height: 740 }]) {
+    await page.setViewportSize(size);
+    const tops = await page.locator('.boss-reward-offers .coaster').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    if (new Set(tops).size !== 1) fail(`boss reward at ${size.width}: the relics are not in one row (${tops})`);
+  }
+  await page.setViewportSize(PHONE);
   const relicsBefore = await page.locator('.hud .coaster-chip').count();
   await page.locator('[data-testid="boss-relic-take"]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
@@ -2436,6 +2443,9 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('[data-testid="end"]');
   if (await page.locator('.sheet-unlock').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  // No lives since ADR 0019: nothing on the end screen that reads like them (playtest 05.11.2026).
+  if (await page.locator('[data-testid="end"] :is(.tally, .heart, [data-testid="lives"])').count()) fail('the lost end screen shows tally marks or hearts');
+  if ((await page.locator('[data-testid="end"] [data-testid="stats-run"] li').count()) !== 6) fail('the lost end screen lacks the six numbers of the run');
   log(`hint runLost: ${await expectHint(page, 'runLost')}`);
   await shoot(page, 'hint-run-lost');
   await assertHintClear(page, 'hint run lost');
@@ -3030,8 +3040,9 @@ async function framesPass(browser, errors, reducedMotion) {
   expect('Schellen-Sieben', (c) => c.fills.includes('#1b1e21'), 'Ramponiert shows no tears');
   expect('Rot-Unter', (c) => c.picture.includes('#w-J') && c.picture.includes('#wx-J'), 'Wandelkarte shows no joker face');
   expect('Rot-Daus', (c) => c.picture.includes('#w-A') && c.fills.includes(band.Trumpf), 'Wandelkarte with Trumpf shows not both');
-  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK') && c.fills.includes(band.Augen), 'Untot with Augen shows no zombie face and gold band');
-  expect('Grün-Sieben', (c) => c.state === 'both' && c.picture.includes('#u-S7') && c.fills.includes('#1b1e21'), 'Untot number card with Ramponiert shows no rotten pips and tears');
+  // Untot before it rose (playtest 05.11.2026): the printed picture with the green skull band, no zombie face.
+  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#f-HK') && !c.picture.includes('#u-HK') && c.fills.includes('#5e7a3c') && c.fills.includes(band.Augen), 'Untot with Augen shows not the printed face, the green band and the gold band');
+  expect('Grün-Sieben', (c) => c.state === 'both' && c.picture.includes('#f-S7') && !c.picture.includes('#u-S7') && c.fills.includes('#5e7a3c') && c.fills.includes('#1b1e21'), 'Untot number card with Ramponiert shows not the printed pips, the green band and tears');
   log(`Effekte v3: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, each with its frame and band`);
   await page.locator('.deck-grid').scrollIntoViewIfNeeded();
   await shoot(page, 'frames-gallery');
@@ -3099,7 +3110,8 @@ async function voucherPass(browser, errors) {
     await page.waitForTimeout(30);
   }
   for (const st of ['torn', 'coin', 'turned']) if (!stages.has(st)) fail(`Gutschein: no redeem step "${st}" (saw ${[...stages].join(', ')})`);
-  if (!turnedFace.includes('#u-S8')) fail(`Gutschein Untot: the Grün-Acht did not turn into its Untot face (${turnedFace})`);
+  // Untot until it rises: the printed Acht with the green band, not the zombie face (playtest 05.11.2026).
+  if (!turnedFace.includes('#f-S8') || turnedFace.includes('#u-S8')) fail(`Gutschein Untot: the Grün-Acht did not turn into the Untot look (${turnedFace})`);
   await page.waitForSelector('[data-testid="voucher-redeem"]', { state: 'detached' });
   const after = Number(await text(page, 'coins'));
   if (after !== coins + 3) fail(`Gutschein: Groschen ${coins} -> ${after}, expected +3`);
@@ -3762,6 +3774,107 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
 /**
+ * "Weiter" after a won game (playtest 05.11.2026: after winning the first
+ * game the board stayed and its "Weiter" did nothing). Full motion, touch,
+ * the board left to play out without skipping: a tap on "Weiter" closes it
+ * and the next screen works (seed 64 wins the pub in its first game: the
+ * unlock, then the card reward takes a tap). Then factor-win.json twice:
+ * the second time a render under the board throws once (patched in the
+ * page); "Weiter" still closes the board and the game goes on.
+ */
+async function scoreContinuePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    let armed = false;
+    try {
+      armed = localStorage.getItem('smoke.break-under-board') === '1';
+      localStorage.removeItem('smoke.break-under-board');
+    } catch {
+      // Storage blocked: nothing armed.
+    }
+    if (!armed) return;
+    const qs = Element.prototype.querySelector;
+    Element.prototype.querySelector = function (sel) {
+      // The Tresen watcher runs at the end of every render, after the layer is drawn.
+      if (armed && sel === '.more-hint' && document.querySelector('.overlay-score')) {
+        armed = false;
+        throw new Error('smoke: a render under the score board breaks');
+      }
+      return qs.call(this, sel);
+    };
+  });
+  const page = await context.newPage();
+  const own = [];
+  watch(page, own);
+  const tapContinue = async (label) => {
+    await page.waitForSelector('[data-action="score-continue"]', { timeout: 30000 });
+    const box = await page.locator('[data-action="score-continue"]').boundingBox();
+    if (!box) fail(`${label}: "Weiter" has no box`);
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-action]')?.getAttribute('data-action') ?? null, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    if (hit !== 'score-continue') fail(`${label}: something lies over "Weiter" (${hit})`);
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForSelector('.score-sheet', { state: 'detached', timeout: 5000 }).catch(() => fail(`${label}: "Weiter" did not close the score board`));
+  };
+  const playToBoard = async (label) => {
+    for (let played = 0; ; played++) {
+      await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      await page.locator('[data-action="play"]').first().tap();
+      if (played > 10) fail(`${label}: played more than ten cards`);
+    }
+  };
+
+  // Seed 64: the pub is won in its first game.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await mixIn(page);
+  await page.waitForSelector('.declare');
+  await pickUpAndDiscard(page, 'Weiter after a win');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await playToBoard('Weiter after a win');
+  if (!(await page.locator('#score-title.is-won').count())) fail('Weiter after a win: the first game of seed 64 is not won');
+  await tapContinue('Weiter after the first game, pub won');
+  await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 });
+  await page.tap('.sheet-unlock [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await page.locator('[data-action="card-reward-pick"]:not([disabled])').first().tap();
+  await page.waitForSelector('[data-testid="mod-confirm-go"]', { timeout: 5000 }).catch(() => fail('Weiter after a win: the card reward takes no tap'));
+  log('Weiter after a won first game: board closed by a tap, unlock, card reward answers');
+
+  // A render under the board that throws must not leave a dead "Weiter".
+  for (const broken of [false, true]) {
+    const label = broken ? 'Weiter with a broken render' : 'Weiter, factor-win.json';
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.evaluate(([s, b]) => {
+      localStorage.setItem('stammtisch.run', s);
+      if (b) localStorage.setItem('smoke.break-under-board', '1');
+    }, [fixture('factor-win.json'), broken]);
+    await page.reload();
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('[data-action="play-hand"]');
+    await page.click('[data-action="play-hand"]');
+    await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+    await page.click('[data-action="declare"]');
+    await page.waitForSelector('.declare', { state: 'detached' });
+    await playToBoard(label);
+    await tapContinue(label);
+    if (await page.locator('.sheet-unlock [data-action="close-overlay"]').count()) await page.tap('.sheet-unlock [data-action="close-overlay"]');
+    await page.waitForSelector('.declare, [data-testid="card-reward"], [data-testid="route-go"], [data-testid="end"]', { timeout: 10000 }).catch(() => fail(`${label}: no next screen after "Weiter"`));
+  }
+  const unexpected = own.filter((e) => !e.includes('smoke: a render under the score board breaks'));
+  if (!own.some((e) => e.includes('smoke: a render under the score board breaks'))) fail('Weiter with a broken render: the render did not break (patch not hit)');
+  errors.push(...unexpected);
+  log('Weiter: a render that throws under the board leaves no dead button');
+  await context.close();
+}
+
+/**
  * The card reward after a won pub (DESIGN 5.0; fixed pairs since
  * 05.11.2026), from card-reward.json (made by the core,
  * regenerate_card_reward_fixture): three cards with their Zinke (Winkel on
@@ -3991,7 +4104,9 @@ async function undeadPass(browser, errors, reducedMotion) {
       if (t) window.__toasts.push(t);
     }).observe(layer, { childList: true, subtree: true, characterData: true });
   });
-  if (!(await page.locator('.hand-card[data-id="22"] use[href="#u-SK"]').count())) fail('Untot: the Grün-König shows no zombie face');
+  // Before it rose an Untot card is the printed card with the green band (playtest 05.11.2026).
+  if (!(await page.locator('.hand-card[data-id="22"] [data-undead="band"] use[href="#f-SK"]').count())) fail('Untot: the Grün-König is not the printed card with the Untot band');
+  if (await page.locator('.hand-card use[href^="#u-"]').count()) fail('Untot: a card shows the zombie face before it rose');
   await page.click('[data-action="play-hand"]');
   await page.waitForSelector('.declare-hand');
   await page.click('[data-action="pick-game"][data-index="0"]');
@@ -4020,6 +4135,9 @@ async function undeadPass(browser, errors, reducedMotion) {
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
   if (!(await page.locator('.hand-card[data-id="31"]').count())) fail('Untot: the Eichel-Daus did not come back into the hand');
   if (await page.locator('.hand-card[data-id="31"] .plaque-rise').count()) fail('Untot: the risen Daus still says it can rise');
+  // Only the card that came back wears the zombie face; the other Untot card keeps its band.
+  if (!(await page.locator('.hand-card[data-id="31"] [data-undead="risen"] use[href^="#u-"]').count())) fail('Untot: the risen card shows no zombie face');
+  if (!(await page.locator('.hand-card[data-id="22"] [data-undead="band"]').count())) fail('Untot: the Grün-König lost its band');
   await page.click('[data-testid="last-trick-toggle"]');
   await page.waitForSelector('[data-testid="last-trick"]');
   if (await page.locator('[data-testid="last-trick"] .trick-card[data-card-id="31"]').count()) fail('Untot: the Daus still lies in the last trick');
@@ -4076,9 +4194,28 @@ async function undeadGlowPass(browser, errors) {
   await page.waitForSelector('.declare', { state: 'detached' });
   await page.waitForSelector('[data-action="play"][data-id="31"]', { timeout: 30000 });
   await page.click('[data-action="play"][data-id="31"]');
+  await page.evaluate(() => {
+    window.__morph = { stages: [], before: '', after: '' };
+    new MutationObserver(() => {
+      const box = document.querySelector('[data-testid="rise-morph"]');
+      if (!box) return;
+      const st = box.getAttribute('data-stage');
+      if (st && !window.__morph.stages.includes(st)) window.__morph.stages.push(st);
+      window.__morph.before = box.querySelector('.rise-bit [data-undead]')?.getAttribute('data-undead') ?? window.__morph.before;
+      window.__morph.after = box.querySelector('.rise-new [data-undead]')?.getAttribute('data-undead') ?? window.__morph.after;
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-stage'] });
+  });
   await pickRiseCards(page, 'Untot glow');
   // Out of the way, so no info card opens over the hand.
   await page.mouse.move(380, 20);
+  // The played card crumbles over the table into the zombie card it comes back as.
+  await page.waitForSelector('[data-testid="rise-morph"][data-stage="crumble"]', { timeout: 30000 }).catch(() => fail('Untot: the played card does not crumble'));
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: join(screens, 'undead-crumble-390x844.png') });
+  await page.waitForSelector('[data-testid="rise-morph"]', { state: 'detached', timeout: 15000 });
+  const morph = await page.evaluate(() => window.__morph);
+  if (morph.before !== 'band' || morph.after !== 'risen' || !morph.stages.includes('after')) fail(`Untot: the crumble is not band to zombie (${JSON.stringify(morph)})`);
+  log(`Untot: crumbled ${morph.stages.join(' > ')}, ${morph.before} to ${morph.after}`);
   await page.waitForSelector('.hand-card.is-rising[data-id="31"]', { state: 'attached', timeout: 30000 }).catch(() => fail('Untot: no glow with full motion'));
   await page.waitForTimeout(380);
   await page.screenshot({ path: join(screens, 'undead-rising-390x844.png') });
@@ -4653,6 +4790,9 @@ async function mapPass(browser, errors) {
   await shoot(page2, 'route-station');
   await page2.click('[data-testid="route-go"]');
   await page2.waitForSelector('.map-trail');
+  // The trail in the accent colour, not white (playtest 05.11.2026).
+  const trailFill = await page2.evaluate(() => document.querySelector('.map-trail')?.getAttribute('fill'));
+  if (trailFill?.toLowerCase() !== '#d1773f') fail(`travel: the trail is drawn in ${trailFill}, not the accent colour`);
   await page2.waitForTimeout(500);
   const moved = await page2.evaluate(() => document.querySelector('.map-pos')?.getAttribute('transform') ?? '');
   if (!/translate/.test(moved)) fail('travel: the position does not move along the way');
@@ -4856,6 +4996,18 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    if (process.env.SMOKE_ONLY === 'weiter') {
+      await scoreContinuePass(browser, errors);
+      return;
+    }
+    // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
+    if (process.env.SMOKE_ONLY === 'undead') {
+      await framesPass(browser, errors, reducedMotion);
+      await voucherPass(browser, errors);
+      await undeadPass(browser, errors, reducedMotion);
+      await undeadGlowPass(browser, errors);
+      return;
+    }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
@@ -5090,6 +5242,9 @@ async function run() {
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
     await expectMusic(page, 'shop', 'Tresen');
+    // Wares on the counter, own things in the bag; no "Benutzen" at the Tresen (playtest 05.11.2026).
+    if (!(await page.locator('[data-testid="counter"]').count()) || !(await page.locator('[data-testid="pouch"] .pouch-title').count())) fail('Tresen: no counter and bag');
+    if (await page.locator('.shop [data-action="use-item"]').count()) fail('Tresen: a Schnaps offers "Benutzen"');
     const coinsBefore = Number(await text(page, 'coins'));
     const next = await text(page, 'next-series');
     if (!next) fail('the Tresen shows no preview of the next series');
@@ -5160,6 +5315,7 @@ async function run() {
     await schnapsPass(browser, errors);
     await workshopPass(browser, errors, reducedMotion);
     await cardRewardPass(browser, errors, reducedMotion);
+    await scoreContinuePass(browser, errors);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);

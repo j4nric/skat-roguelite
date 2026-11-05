@@ -432,7 +432,7 @@ export function renderRiseChoice(view: RunView, picked: number[]): string {
     .join('');
   const ready = picked.length === choice.pick;
   return sheet(
-    `<div class="rise-head"><span class="card rise-becomes" data-testid="rise-becomes">${lookSvg(choice.becomes)}</span>
+    `<div class="rise-head"><span class="card rise-becomes" data-testid="rise-becomes">${lookSvg({ ...choice.becomes, risen: true })}</span>
        <div><h2>${esc(t(de.rise.title, { n: choice.pick }))}</h2>
        <p class="small">${esc(t(de.rise.text, { card: cardName(choice.card.kind), becomes: cardName(choice.becomes.kind) }))}</p></div></div>
      <div class="rise-grid" data-testid="rise-choice">${cards}</div>
