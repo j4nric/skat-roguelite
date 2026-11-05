@@ -594,6 +594,16 @@ impl EncounterOption {
         self.effects.iter().any(EncounterEffect::needs_relic)
     }
 
+    /// Whether it gives a named relic ([`EncounterEffect::Relic`]); with
+    /// every relic slot full it then needs an owned relic to replace
+    /// ([`Run::option_needs_relic`]).
+    #[must_use]
+    pub fn gains_relic(&self) -> bool {
+        self.effects
+            .iter()
+            .any(|e| matches!(e, EncounterEffect::Relic(Some(_))))
+    }
+
     /// Whether it needs a Marke of the player's choice.
     #[must_use]
     pub fn needs_marke(&self) -> bool {
@@ -883,6 +893,15 @@ pub enum RunAction {
     },
     /// Buy the relic in this Tresen slot.
     BuyRelic(usize),
+    /// Buy the relic in Tresen slot `slot` in place of the owned relic
+    /// `replace` (index into the owned relics), which is sold for half its
+    /// price first (every relic slot full, DESIGN 8.0). All or nothing.
+    ReplaceRelic {
+        /// Slot of the relic on offer.
+        slot: usize,
+        /// Index of the owned relic that makes room.
+        replace: usize,
+    },
     /// Buy the consumable in this Tresen slot.
     BuyConsumable(usize),
     /// Sell an owned relic (index into the owned relics) for half its price.
@@ -2900,6 +2919,9 @@ impl Run {
             RunAction::BuyRelic(slot) => self.buy_relic(content, slot, events),
             RunAction::BuyConsumable(slot) => self.buy_consumable(content, slot, events),
             RunAction::SellRelic(index) => self.sell_relic(content, index, events),
+            RunAction::ReplaceRelic { slot, replace } => {
+                self.replace_relic(content, slot, replace, events)
+            }
             RunAction::SellConsumable(index) => self.sell_consumable(content, index, events),
             RunAction::Reroll => self.reroll(content, events),
             RunAction::BuyCardOffer(slot) => self.buy_card_offer(content, slot, events),
@@ -5347,6 +5369,30 @@ impl Run {
             consumable: id,
             price,
         });
+        Ok(())
+    }
+
+    /// [`RunAction::ReplaceRelic`]: sell `replace`, then buy `slot`, on a
+    /// copy, so a failed purchase leaves the run as it was.
+    fn replace_relic(
+        &mut self,
+        content: &Content,
+        slot: usize,
+        replace: usize,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        self.shop_mut()?
+            .relics
+            .get(slot)
+            .cloned()
+            .flatten()
+            .ok_or(RunError::InvalidSlot)?;
+        let mut next = self.clone();
+        let mut out = Vec::new();
+        next.sell_relic(content, replace, &mut out)?;
+        next.buy_relic(content, slot, &mut out)?;
+        *self = next;
+        events.extend(out);
         Ok(())
     }
 

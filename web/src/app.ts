@@ -2861,6 +2861,14 @@ export class App {
         this.noteBought(el.closest('.relic-tile')?.querySelector('.relic-tile-emblem svg') ?? null);
         void this.act({ BuyRelic: num('slot') });
         return;
+      case 'replace-relic-pick':
+        this.ui.overlay = { kind: 'relic-replace', slot: num('slot') };
+        this.render();
+        return;
+      case 'replace-relic':
+        this.ui.overlay = null;
+        void this.act({ ReplaceRelic: { slot: num('slot'), replace: num('replace') } });
+        return;
       case 'buy-item':
         this.noteBought(el.closest('.good')?.querySelector('.good-pic svg') ?? null);
         void this.act({ BuyConsumable: num('slot') });

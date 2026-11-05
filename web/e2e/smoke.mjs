@@ -1376,21 +1376,24 @@ async function bossesV2(browser, errors, reducedMotion) {
   if (relicsAfter !== relicsBefore + 1) fail(`the relic did not arrive: ${relicsBefore} -> ${relicsAfter} chips`);
   log('boss reward: relic taken, on to the route');
 
-  // Nine relics (slots unlimited since 03.11.2026): no "full" note, the
-  // pick is taken without giving one up, the HUD strip keeps the page.
+  // Nine relics (an old save from the time of unlimited slots, 8 since
+  // 05.11.2026): the "full" note, a pick needs an owned relic to replace
+  // (sold for half), the HUD strip keeps the page.
   await resumeFixture(page, 'boss-reward-full.json');
   await page.waitForSelector('[data-testid="boss-reward"]');
-  if (await page.locator('[data-testid="boss-reward-full"]').count()) fail('boss reward says the slots are full with unlimited slots');
+  if (!(await page.locator('[data-testid="boss-reward-full"]').count())) fail('boss reward with nine relics does not say the slots are full');
   const manyBefore = await page.locator('.hud .coaster-chip').count();
   await shoot(page, 'bosses-reward-many');
   await assertNoSideScroll(page, 'boss reward, many relics', '.boss-reward');
   await page.locator('[data-testid="boss-relic-take"]').nth(1).click();
+  await page.waitForSelector('[data-testid="boss-relic-replace"]');
+  await page.locator('[data-testid="boss-relic-replace"] [data-action="boss-relic"]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
   const manyAfter = await page.locator('.hud .coaster-chip').count();
-  if (manyAfter !== manyBefore + 1) fail(`the tenth relic did not arrive: ${manyBefore} -> ${manyAfter} chips`);
+  if (manyAfter !== manyBefore) fail(`the replace did not keep the count: ${manyBefore} -> ${manyAfter} chips`);
   const pageWide = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
   if (pageWide) fail('many relics widen the page');
-  log(`boss reward with many relics: taken, ${manyBefore} -> ${manyAfter} chips`);
+  log(`boss reward with every slot full: replaced, ${manyBefore} -> ${manyAfter} chips`);
   // Or none at all.
   await resumeFixture(page, 'boss-reward.json');
   await page.waitForSelector('[data-testid="boss-relic-skip"]');
@@ -3180,6 +3183,68 @@ async function specialPass(browser, errors, reducedMotion) {
   if (await page.locator('[data-testid="special-hint"]').count()) fail('the explanation sheet came back after a reload');
   log('Spezialkarten: rare Auslage tiles, one explanation sheet each, remembered in the meta state');
   await context.close();
+}
+
+/**
+ * Eight relic slots (user decision 05.11.2026, DESIGN 8.0) at the Tresen
+ * (zinken.json): with one relic the Leiste shows seven free slots as
+ * dashed beer mats and the pouch "Deine Relikte (1/8)"; with eight none,
+ * every relic offer reads "Tauschen" instead of "Kaufen", and the sheet
+ * lists the owned relics with their half price; one replaces the first
+ * owned relic (sold for half) with the offer. Nothing scrolls sideways.
+ */
+async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
+  const size = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const run = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const shot = (name) => page.screenshot({ path: join(screens, `slots-${name}-${size}.png`) });
+  const offer = (save) => {
+    save.run.shop.relics = ['jinx', 'virgin', 'skat_redraw'];
+    save.run.shop.fence = null;
+    save.run.coins = 20;
+  };
+  await resumeFixture(page, 'slots-one.json', patched('zinken.json', offer));
+  await page.waitForSelector('[data-testid="relic-offers"]');
+  const empty = await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count();
+  if (empty !== 7) fail(`relic slots at ${size}: ${empty} free slots in the Leiste with one relic, expected 7`);
+  const pouch = (await page.locator('[data-testid="pouch"] h3').nth(1).textContent())?.trim();
+  if (pouch !== 'Deine Relikte (1/8)') fail(`relic slots at ${size}: the pouch says "${pouch}"`);
+  if (await page.locator('[data-testid="relic-replace-pick"]').count()) fail(`relic slots at ${size}: "Tauschen" with free slots`);
+  await assertNoSideScroll(page, `relic slots ${size}`);
+  await shot('free');
+  const eight = ['old_lady', 'kibitzer', 'beer_mat', 'tailor', 'lucky_streak', 'blank_king', 'with_four', 'card_counter'];
+  await resumeFixture(
+    page,
+    'slots-full.json',
+    patched('zinken.json', (save) => {
+      offer(save);
+      save.run.relics = eight;
+    }),
+  );
+  await page.waitForSelector('[data-testid="relic-offers"]');
+  if (await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count()) fail(`relic slots at ${size}: free slots shown with eight relics`);
+  if ((await page.locator('[data-testid="relic-replace-pick"]').count()) !== 3) fail(`relic slots at ${size}: not every offer reads "Tauschen"`);
+  if (await page.locator('[data-action="buy-relic"]').count()) fail(`relic slots at ${size}: a plain "Kaufen" with every slot full`);
+  await assertNoSideScroll(page, `relic slots full ${size}`);
+  await shot('full');
+  await page.click('[data-testid="relic-replace-pick"][data-slot="1"]');
+  await page.waitForSelector('[data-testid="relic-replace-list"]');
+  const rows = await page.locator('[data-testid="relic-replace"]').count();
+  if (rows !== 8) fail(`relic slots at ${size}: the sheet lists ${rows} owned relics`);
+  const refund = (await page.locator('[data-testid="relic-replace"][data-replace="0"] .enc-cost').textContent())?.trim();
+  if (refund !== '+4 Groschen') fail(`relic slots at ${size}: the Alte Dame sells for "${refund}"`);
+  await shot('sheet');
+  await page.click('[data-testid="relic-replace"][data-replace="0"]');
+  await page
+    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.relics?.includes('virgin'), null, { timeout: 5000 })
+    .catch(() => fail(`relic slots at ${size}: Jungfrau not taken`));
+  const after = await run();
+  if (after.relics.length !== 8 || after.relics.includes('old_lady')) fail(`relic slots at ${size}: relics after the swap ${after.relics.join(' ')}`);
+  await page.waitForSelector('[data-testid="relic-replace-list"]', { state: 'detached', timeout: 5000 }).catch(() => fail(`relic slots at ${size}: the sheet stays open`));
+  await context.close();
+  log(`eight relic slots and "Tauschen" at the Tresen at ${size}`);
 }
 
 /**
@@ -5310,6 +5375,8 @@ async function run() {
     await zinkenPass(browser, errors, reducedMotion);
     await tradePass(browser, errors, reducedMotion, PHONE);
     await tradePass(browser, errors, reducedMotion, DESKTOP);
+    await relicSlotsPass(browser, errors, reducedMotion, PHONE);
+    await relicSlotsPass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);
     await rescuePass(browser, errors, reducedMotion, DESKTOP);
     await schnapsPass(browser, errors);

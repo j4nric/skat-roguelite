@@ -51,8 +51,9 @@ function hourglass(): string {
 /**
  * The relic part of the Leiste: every relic as its beer mat only (no
  * name; a tap opens the info card), the house rules of the evening, then
- * waiting factors, flags and counters. It scrolls inside itself, the page
- * never sideways (relic slots are unlimited).
+ * waiting factors, flags and counters. With a cap (8 slots since
+ * 05.11.2026, DESIGN 8.0) the free slots follow the relics as dashed
+ * beer mats. It scrolls inside itself, the page never sideways.
  */
 export function relicChips(view: RunView): string {
   const relics = view.relics
@@ -61,6 +62,11 @@ export function relicChips(view: RunView): string {
       return `<button class="coaster-chip rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}`, 'aria-label': name, title: name })}>${relicCoaster(r.relic, { size: 38 })}${onceNote(r.relic.id)}</button>`;
     })
     .join('');
+  const free = view.relic_slots === null ? 0 : Math.max(0, view.relic_slots - view.relics.length);
+  const empty = Array.from(
+    { length: free },
+    (_, i) => `<span class="relic-slot is-empty" ${attrs({ 'data-testid': 'relic-slot-empty', 'data-empty-slot': view.relics.length + i, title: de.hud.emptyRelicSlot })}></span>`,
+  ).join('');
   const evening = view.evening_relics
     .map((r, i) => {
       const name = `${contentName('relics', r.id)} (${de.evening.tag})`;
@@ -81,7 +87,7 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + evening + pending + schnaps + flags + counters;
+  return relics + empty + evening + pending + schnaps + flags + counters;
 }
 
 /**

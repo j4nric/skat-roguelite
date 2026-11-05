@@ -696,6 +696,11 @@ export const de = {
     debt: 'Auf dem Deckel: {n} Groschen Schulden. Die nächste Einnahme zahlt sie zuerst.',
     price: '{price} Gr.',
     buyShort: 'Kaufen',
+    /** Every relic slot full (8): buy in place of an owned relic. */
+    replaceShort: 'Tauschen',
+    replaceTitle: 'Platz machen für {name}',
+    replaceHint: 'Alle acht Relikt-Plätze sind belegt. Wähle das Relikt, das gehen soll: Du verkaufst es für den halben Preis und zahlst {price} Groschen für das neue.',
+    replaceRefund: '+{coins} Groschen',
     noRelics: 'Noch keine Bierdeckel gesammelt.',
     noItems: 'Nichts in der Tasche.',
     /** The player's own things at the Tresen lie in his bag (playtest 05.11.2026). */
@@ -775,6 +780,7 @@ export const de = {
     /** Badge on the beer mat of a once-per-series relic (the Leiste shows no names). */
     onceBadge: '1.',
     emptySlot: 'Freier Schnaps-Platz',
+    emptyRelicSlot: 'Freier Relikt-Platz',
     drinkAria: '{name}: antippen oder auf das Ziel ziehen',
     notNowAria: '{name}: gerade nicht trinkbar',
   },
@@ -840,6 +846,7 @@ export const de = {
     pickRelic: 'Welches Relikt?',
     pickRelicSwap: 'Du gibst es ab und bekommst {new}.',
     pickRelicSell: 'Er zahlt dir {percent} % des Preises.',
+    pickRelicReplace: 'Alle Plätze sind belegt: Es macht Platz für {new} und wird für den halben Preis verkauft.',
     relicPrice: '{price} Groschen',
     mustChoose: 'Eine Möglichkeit musst du nehmen.',
     cardMod: 'Zinke: {mod}',

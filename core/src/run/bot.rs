@@ -1146,7 +1146,7 @@ impl RunBot {
                 },
             )
         };
-        if option.needs_relic() {
+        if run.option_needs_relic(content, option) {
             let weakest = run
                 .relics()
                 .iter()
@@ -1227,7 +1227,9 @@ impl RunBot {
                 EncounterEffect::Coins(n) => i64::from(*n),
                 EncounterEffect::EveningRule(Some(id)) => i64::from(relic_value(id)) + 1,
                 EncounterEffect::Relic(Some(id)) if free_slot => i64::from(relic_value(id)) + 1,
-                EncounterEffect::SwapRelic(Some(new)) => {
+                // Every slot full: in place of the weakest, only if
+                // clearly better (like a swap).
+                EncounterEffect::Relic(Some(new)) | EncounterEffect::SwapRelic(Some(new)) => {
                     let gain = i64::from(relic_value(new)) - i64::from(weakest);
                     if gain >= i64::from(SWAP_MARGIN) {
                         gain
@@ -1369,8 +1371,9 @@ impl RunBot {
             })
             .filter(|&(value, _, _)| value > 0)
             .collect();
-        // 2. All slots full (only with a cap): sell the weakest relic for a
-        //    clearly better one.
+        // 2. All slots full (8 since 05.11.2026): the most valuable offer
+        //    in place of the weakest relic, if it is clearly better
+        //    ([`SWAP_MARGIN`]) and affordable with the weakest sold.
         if !free_slot {
             let weakest = run
                 .relics()
@@ -1381,12 +1384,18 @@ impl RunBot {
                     (relic_value(id) * 100, index, refund)
                 })
                 .min_by_key(|&(value, index, _)| (value, std::cmp::Reverse(index)));
-            if let Some((weak_value, index, refund)) = weakest {
-                let better = offers.iter().any(|&(value, price, _)| {
-                    value >= weak_value + SWAP_MARGIN * 100 && price <= coins + refund
-                });
-                if better {
-                    return RunAction::SellRelic(index);
+            if let Some((weak_value, replace, refund)) = weakest {
+                let best = offers
+                    .iter()
+                    .filter(|&&(value, price, _)| {
+                        value >= weak_value + SWAP_MARGIN * 100 && price <= coins + refund
+                    })
+                    .max_by_key(|&&(value, price, slot)| (value, price, std::cmp::Reverse(slot)));
+                if let Some(&(_, _, slot)) = best {
+                    let action = RunAction::ReplaceRelic { slot, replace };
+                    if run.accepts(content, action.clone()) {
+                        return action;
+                    }
                 }
             }
         }
@@ -2311,7 +2320,7 @@ mod tests {
 
     #[test]
     fn shop_swaps_the_weakest_relic_for_a_clearly_better_one() {
-        // Only with capped slots (unlimited since 03.11.2026).
+        // With every slot full (5 here, 8 in run.ron since 05.11.2026).
         let mut content = Content::load().expect("content");
         content.run.relic_slots = Some(5);
         let mut run = open_shop(&content, 6);
@@ -2323,9 +2332,15 @@ mod tests {
         // Alte Dame costs 9; selling Bierdeckel brings 2: 8 is not enough.
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
         run.coins = 7;
-        assert_eq!(RunBot.shop_action(&run, &content), RunAction::SellRelic(1));
-        run.apply(&content, RunAction::SellRelic(1)).expect("sell");
-        assert_eq!(RunBot.shop_action(&run, &content), RunAction::BuyRelic(0));
+        let replace = RunAction::ReplaceRelic {
+            slot: 0,
+            replace: 1,
+        };
+        assert_eq!(RunBot.shop_action(&run, &content), replace);
+        run.apply(&content, replace).expect("replace");
+        assert_eq!(run.relics().len(), 5);
+        assert!(run.relics().contains(&RelicId::new("old_lady")));
+        assert!(!run.relics().contains(&RelicId::new("beer_mat")));
         // Not clearly better: the Kiebitz (3) for the Spickzettel (1).
         let mut run = open_shop(&content, 50);
         run.relics = [
@@ -2339,7 +2354,10 @@ mod tests {
         .map(|r| RelicId::new(r))
         .collect();
         offer(&mut run, &["kibitzer"], &[]);
-        assert_ne!(RunBot.shop_action(&run, &content), RunAction::SellRelic(0));
+        assert!(!matches!(
+            RunBot.shop_action(&run, &content),
+            RunAction::SellRelic(_) | RunAction::ReplaceRelic { .. }
+        ));
     }
 
     #[test]

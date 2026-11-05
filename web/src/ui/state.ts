@@ -86,6 +86,8 @@ export type Overlay =
   /** Pick the Marke of a Marke option (Pfandleiher, Markensammlerin, 04.11.2026). */
   | { kind: 'encounter-marke'; option: number }
   | { kind: 'encounter-relic'; option: number }
+  /** Tresen with every relic slot full (DESIGN 8.0): the owned relic that makes room for the offer in `slot`. */
+  | { kind: 'relic-replace'; slot: number }
   /** Before a card modification replaces or raises the one on a card: ask, then `action`, or back (null: the screen). */
   | { kind: 'mod-confirm'; action: RunAction; back: Overlay | null; ask: ModQuestion }
   /** Zinken (DESIGN 8.6): pick the card for the Kartenmaler or "Karte reinigen". */

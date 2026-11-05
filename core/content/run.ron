@@ -96,8 +96,12 @@
     // eins mehr in Stadtteil 1, damit höchstens ein Fünftel der Runs in
     // den ersten beiden Kneipen endet (docs/balance/2026-11-04-runde2.md).
     district_redeals: [1],
-    // relic_slots: seit 03.11.2026 ohne Angabe (Entscheidung des Nutzers):
-    // beliebig viele Relikte. Mit Some(n) wieder n Plätze.
+    // Relikt-Plätze (Hausregeln und Figuren zusammen): seit 05.11.2026
+    // acht (Entscheidung des Nutzers, Cockpit q34 A; DESIGN 8.0). Volle
+    // Plätze: Ein neues Relikt ersetzt ein gehaltenes, das für den halben
+    // Preis verkauft wird. 03.11. bis 05.11.2026 ohne Angabe (beliebig
+    // viele), davor 5.
+    relic_slots: Some(8),
     // Schnaps-Plätze: seit 03.11.2026 drei (Entscheidung des Nutzers,
     // Schnaps-Leiste, DESIGN 8.9), vorher zwei. Nach jeder gewonnenen
     // Kneipe gibt es einen zufälligen Schnaps dazu.

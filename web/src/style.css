@@ -1012,6 +1012,18 @@ button.card {
 }
 
 /* A Schnaps slot: its bare motif in a dark frame; an empty one dashed. */
+/* A free relic slot (8 since 05.11.2026, DESIGN 8.0): a dashed beer mat. */
+.relic-slot.is-empty {
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  margin: 0 3px;
+  border: 2px dashed #4f6272;
+  border-radius: 50%;
+}
+
 .schnaps-slot {
   position: relative;
   display: inline-flex;

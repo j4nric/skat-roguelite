@@ -469,6 +469,17 @@ pub struct RunStats {
     pub spending: [u64; 7],
     /// Times the Tresen opened.
     pub shops: u64,
+    /// "Neu auslosen" used at the Tresen.
+    pub rerolls: u64,
+    /// Relics bought or gained (boss pick, encounters), summed.
+    pub relics_gained: u64,
+    /// Relics sold (at the Tresen, to replace one, at the boss pick, at an
+    /// encounter; with 8 slots almost always to make room), summed.
+    pub relics_sold: u64,
+    /// Relics held at the end of each run, summed.
+    pub relics_held_end: u64,
+    /// Relics held at the end of each won run (before the night), summed.
+    pub relics_held_won: u64,
     /// Per relic.
     pub relics: BTreeMap<RelicId, RelicStat>,
     /// Encounters opened, by id: (opened, times each option was taken,
@@ -865,7 +876,12 @@ impl Observer<'_> {
                         p.redeals += 1;
                     }
                 }
+                RunEvent::RelicGained { .. } => self.stats.relics_gained += 1,
+                RunEvent::RunWon { .. } => {
+                    self.stats.relics_held_won += u64::try_from(run.relics().len()).unwrap_or(0);
+                }
                 RunEvent::RelicBought { relic, price } => {
+                    self.stats.relics_gained += 1;
                     self.stats.relics.entry(relic.clone()).or_default().bought += 1;
                     self.spend(0, *price);
                     self.bought.insert(relic.clone());
@@ -885,7 +901,11 @@ impl Observer<'_> {
                         .or_default()
                         .1 += 1;
                 }
-                RunEvent::RelicSold { price, .. } | RunEvent::ConsumableSold { price, .. } => {
+                RunEvent::RelicSold { price, .. } => {
+                    self.stats.relics_sold += 1;
+                    self.stats.coins_sold += u64::from(*price);
+                }
+                RunEvent::ConsumableSold { price, .. } => {
                     self.stats.coins_sold += u64::from(*price);
                 }
                 RunEvent::CoinsGained { amount, .. } => {
@@ -969,7 +989,10 @@ impl Observer<'_> {
                 RunEvent::CardOfferBought { price, .. } => self.spend(2, *price),
                 RunEvent::PainterHired { price, .. } => self.spend(3, *price),
                 RunEvent::CardCleansed { price, .. } => self.spend(4, *price),
-                RunEvent::ShopRerolled { cost } => self.spend(5, *cost),
+                RunEvent::ShopRerolled { cost } => {
+                    self.stats.rerolls += 1;
+                    self.spend(5, *cost);
+                }
                 _ => {}
             }
         }
@@ -1014,6 +1037,7 @@ fn play_run(
     observe_deck_end(&run, content, &mut stats.deck);
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let won = run.phase() == RunPhase::Won;
+    stats.relics_held_end += u64::try_from(run.relics().len()).unwrap_or(0);
     let section = usize::try_from(run.series().section).unwrap_or(0);
     if won {
         stats.won += 1;
@@ -1302,6 +1326,16 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         mean(stats.coins_end, runs)
     );
     render_groschen(&mut out, stats);
+    let _ = writeln!(
+        out,
+        "relics per run: gained {:.2}, sold {:.2}, held at end {:.2} (won runs {:.2}); rerolls per run {:.2} ({:.1}% of Tresen visits)",
+        mean(stats.relics_gained, runs),
+        mean(stats.relics_sold, runs),
+        mean(stats.relics_held_end, runs),
+        mean(stats.relics_held_won, stats.won),
+        mean(stats.rerolls, runs),
+        pct(stats.rerolls, stats.shops)
+    );
     render_card_rewards(&mut out, stats, runs);
     let _ = write!(out, "consumables (bought/used):");
     for (id, (bought, used)) in &stats.consumables {

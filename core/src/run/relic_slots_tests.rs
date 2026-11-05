@@ -1,9 +1,11 @@
-//! Unlimited relic slots (decision of 03.11.2026, DESIGN 8.0) and the pot
+//! Eight relic slots (decision of 05.11.2026, DESIGN 8.0; unlimited from
+//! 03.11.2026), replacing one when every slot is full, and the pot
 //! of the "Stammtischkasse" paid out when the relic leaves (DESIGN 8.7).
 
 use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
+use crate::run::view::OptionTarget;
 
 /// `count` owned relics, none of them `except`, the kitty first if asked.
 fn many_relics(content: &Content, count: usize, kitty: bool, except: &[RelicId]) -> Vec<RelicId> {
@@ -49,32 +51,92 @@ fn paid_out(events: &[RunEvent]) -> Option<(RelicId, u32)> {
 }
 
 #[test]
-fn relic_slots_are_unlimited_by_default() {
+fn eight_relic_slots_and_the_tresen_replaces_one() {
     let content = content();
-    assert_eq!(content.run.relic_slots, None);
+    assert_eq!(content.run.relic_slots, Some(8));
     for character in content.characters.keys() {
-        assert_eq!(content.relic_slots(*character), None, "{character}");
-        assert!(content.relic_slot_free(*character, 1000));
+        assert_eq!(content.relic_slots(*character), Some(8), "{character}");
+        assert!(content.relic_slot_free(*character, 7));
+        assert!(!content.relic_slot_free(*character, 8));
     }
-    // The Tresen sells a sixth, seventh, ... relic.
-    let mut run = at_shop(&content, many_relics(&content, 8, false, &[]));
+    // Seven owned: the eighth is bought as usual.
+    let mut run = at_shop(&content, many_relics(&content, 7, false, &[]));
     let view = run.view(&content);
-    assert_eq!(view.relic_slots, None);
+    assert_eq!(view.relic_slots, Some(8));
     let offer = view.shop.expect("shop").relics[0].clone().expect("offer");
     assert!(offer.can_buy);
+    assert!(offer.replace.is_empty(), "a slot is free");
     run.apply(&content, RunAction::BuyRelic(0)).expect("buy");
-    assert_eq!(run.relics().len(), 9);
-    // Selling stays possible.
-    run.apply(&content, RunAction::SellRelic(0)).expect("sell");
     assert_eq!(run.relics().len(), 8);
+    // Eight owned: no plain purchase, but in place of an owned one.
+    let offer = run.view(&content).shop.expect("shop").relics[1]
+        .clone()
+        .expect("offer");
+    assert!(!offer.can_buy);
+    assert_eq!(offer.replace, (0..8).collect::<Vec<_>>());
+    assert_eq!(
+        run.clone().apply(&content, RunAction::BuyRelic(1)),
+        Err(RunError::NoFreeSlot)
+    );
+    let old = run.relics()[2].clone();
+    let refund = sell_price(content.relic(&old).expect("old").price);
+    let coins = run.coins();
+    let events = run
+        .apply(
+            &content,
+            RunAction::ReplaceRelic {
+                slot: 1,
+                replace: 2,
+            },
+        )
+        .expect("replace");
+    assert_eq!(run.relics().len(), 8);
+    assert!(!run.relics().contains(&old));
+    assert!(run.relics().contains(&offer.relic.id));
+    assert_eq!(run.coins(), coins + refund - offer.price);
+    let sold = events
+        .iter()
+        .position(|e| matches!(e, RunEvent::RelicSold { .. }));
+    let bought = events
+        .iter()
+        .position(|e| matches!(e, RunEvent::RelicBought { .. }));
+    assert!(sold.is_some() && sold < bought, "sold first: {events:?}");
+    // All or nothing: too poor even with the refund, nothing changes.
+    let tap = RelicId::new("tap");
+    let mut poor = at_shop(
+        &content,
+        many_relics(&content, 8, false, std::slice::from_ref(&tap)),
+    );
+    let shop = poor.shop.as_mut().expect("shop");
+    shop.relics = vec![Some(tap)];
+    shop.fence = None;
+    poor.coins = 0;
+    let before = poor.clone();
+    let replace = RunAction::ReplaceRelic {
+        slot: 0,
+        replace: 0,
+    };
+    assert_eq!(poor.apply(&content, replace), Err(RunError::NotEnoughCoins));
+    assert_eq!(poor.relics(), before.relics());
+    assert_eq!(poor.coins(), 0);
+    assert!(
+        poor.view(&content).shop.expect("shop").relics[0]
+            .clone()
+            .expect("offer")
+            .replace
+            .is_empty()
+    );
+    // Without a cap (`relic_slots: None`) any number, as from 03.11.2026.
+    let mut unlimited = content.clone();
+    unlimited.run.relic_slots = None;
+    let mut run = at_shop(&unlimited, many_relics(&unlimited, 8, false, &[]));
+    run.apply(&unlimited, RunAction::BuyRelic(0))
+        .expect("ninth");
+    assert_eq!(run.relics().len(), 9);
 }
 
-#[test]
-fn an_encounter_gives_a_relic_whatever_is_owned() {
-    let content = content();
-    let mut run = relic_run(&content, &[]);
-    let new = RelicId::new("old_lady");
-    run.relics = many_relics(&content, 8, false, std::slice::from_ref(&new));
+/// The Spelunke loot offering `new` (or its Groschen).
+fn at_loot(run: &mut Run, new: &RelicId) {
     run.game = None;
     run.phase = RunPhase::Encounter;
     run.encounter = Some(ActiveEncounter {
@@ -93,62 +155,112 @@ fn an_encounter_gives_a_relic_whatever_is_owned() {
         ],
         chosen: None,
     });
-    assert_eq!(
-        run.view(&content).encounter.expect("open").options[0].blocked,
-        None
-    );
-    // The bot takes it too: there is always a free slot.
-    let action = RunBot.encounter_action(&run, &content);
-    assert_eq!(
-        action,
-        RunAction::ChooseEncounter {
-            option: 0,
-            target: None,
-            marke: None
-        }
-    );
-    run.apply(&content, action).expect("take");
-    assert_eq!(run.relics().len(), 9);
-    assert!(run.relics().contains(&new));
 }
 
 #[test]
-fn the_boss_pick_never_needs_a_replace_but_still_allows_one() {
+fn an_encounter_relic_with_every_slot_full_replaces_one() {
     let content = content();
-    let offers: Vec<RelicId> = content.relics.keys().rev().take(3).cloned().collect();
+    let new = RelicId::new("old_lady");
+    // A free slot: taken without a target.
     let mut run = relic_run(&content, &[]);
-    run.relics = many_relics(&content, 8, false, &offers);
-    at_boss_reward(&mut run, offers.clone());
-    assert!(!run.view(&content).boss_reward.expect("pick").slots_full);
-    // The bot takes its pick without giving anything up.
-    let RunAction::ChooseBossRelic { offer, replace } = RunBot::boss_reward_action(&run, &content)
-    else {
-        panic!("a boss pick");
-    };
-    assert!(offer.is_some());
-    assert_eq!(replace, None);
-    let mut taken = run.clone();
-    taken
-        .apply(
-            &content,
-            RunAction::ChooseBossRelic {
-                offer: Some(0),
-                replace: None,
-            },
-        )
-        .expect("take");
-    assert_eq!(taken.relics().len(), 9);
-    // Replacing is still possible: the old relic is sold for half.
+    run.relics = many_relics(&content, 7, false, std::slice::from_ref(&new));
+    at_loot(&mut run, &new);
+    let view = run.view(&content).encounter.expect("open");
+    assert_eq!(view.options[0].blocked, None);
+    assert_eq!(view.options[0].target, OptionTarget::None);
     run.apply(
         &content,
-        RunAction::ChooseBossRelic {
-            offer: Some(0),
-            replace: Some(0),
+        RunAction::ChooseEncounter {
+            option: 0,
+            target: None,
+            marke: None,
         },
     )
-    .expect("replace");
+    .expect("take");
     assert_eq!(run.relics().len(), 8);
-    assert!(run.relics().contains(&offers[0]));
+    // Every slot full: an owned relic makes room, sold for half its price.
+    let mut run = relic_run(&content, &[]);
+    run.relics = many_relics(&content, 8, false, std::slice::from_ref(&new));
+    at_loot(&mut run, &new);
+    let view = run.view(&content).encounter.expect("open");
+    assert_eq!(view.options[0].blocked, None);
+    assert_eq!(view.options[0].target, OptionTarget::Relic);
+    assert_eq!(view.options[0].targets.len(), 8);
+    let take = |target| RunAction::ChooseEncounter {
+        option: 0,
+        target,
+        marke: None,
+    };
+    assert_eq!(
+        run.clone().apply(&content, take(None)),
+        Err(RunError::TargetRequired)
+    );
+    let old = run.relics()[3].clone();
+    let coins = run.coins();
+    run.apply(&content, take(Some(3))).expect("replace");
+    assert_eq!(run.relics().len(), 8);
+    assert!(run.relics().contains(&new) && !run.relics().contains(&old));
+    let refund = sell_price(content.relic(&old).expect("old").price);
+    assert_eq!(run.coins(), coins + refund);
+}
+
+#[test]
+fn the_bot_replaces_only_for_a_clearly_better_relic() {
+    let content = content();
+    // Boss pick: the Alte Dame (10) in place of the Spickzettel (1).
+    let owned = [
+        "tap",
+        "crib_sheet",
+        "beer_mat",
+        "true_soul",
+        "dive_expert",
+        "hot_hand",
+        "tour",
+        "virgin",
+    ];
+    let mut run = relic_run(&content, &owned);
+    at_boss_reward(&mut run, vec![RelicId::new("old_lady")]);
+    assert!(run.view(&content).boss_reward.expect("pick").slots_full);
+    let action = RunBot::boss_reward_action(&run, &content);
+    let RunAction::ChooseBossRelic {
+        offer: Some(0),
+        replace: Some(index),
+    } = action
+    else {
+        panic!("a replace: {action:?}");
+    };
+    assert_eq!(run.relics()[index], RelicId::new("crib_sheet"));
+    run.apply(&content, action).expect("replace");
+    assert_eq!(run.relics().len(), 8);
+    // The loot: replaced too, the Groschen otherwise.
+    let mut run = relic_run(&content, &owned);
+    let new = RelicId::new("old_lady");
+    at_loot(&mut run, &new);
+    let action = RunBot.encounter_action(&run, &content);
+    assert!(
+        matches!(
+            action,
+            RunAction::ChooseEncounter {
+                option: 0,
+                target: Some(_),
+                ..
+            }
+        ),
+        "{action:?}"
+    );
+    run.apply(&content, action).expect("take");
+    assert!(run.relics().contains(&new));
+    assert!(!run.relics().contains(&RelicId::new("crib_sheet")));
+    assert_eq!(run.relics().len(), 8);
+    // Not clearly better (the Kiebitz, 3, for the Spickzettel, 1): the
+    // Groschen instead.
+    let mut run = relic_run(&content, &owned);
+    at_loot(&mut run, &RelicId::new("kibitzer"));
+    let action = RunBot.encounter_action(&run, &content);
+    assert!(
+        matches!(action, RunAction::ChooseEncounter { option: 1, .. }),
+        "{action:?}"
+    );
 }
 
 #[test]
@@ -165,9 +277,10 @@ fn a_character_cap_still_limits_the_relics() {
     assert_eq!(
         run.apply(&content, RunAction::BuyRelic(0)),
         Err(RunError::NoFreeSlot)
-    ); // An encounter relic is blocked, and the bot does not count on it.
+    );
+    // An encounter relic needs one to replace; the bot counts the gain.
     let new = RelicId::new("old_lady");
-    run.relics = many_relics(&content, 2, false, std::slice::from_ref(&new));
+    run.relics = vec![RelicId::new("crib_sheet"), RelicId::new("beer_mat")];
     run.shop = None;
     run.phase = RunPhase::Encounter;
     let option = EncounterOption {
@@ -175,12 +288,24 @@ fn a_character_cap_still_limits_the_relics() {
         effects: vec![EncounterEffect::Relic(Some(new))],
         fallback: false,
     };
-    assert_eq!(RunBot::option_value(&run, &content, &option), 0);
+    assert_eq!(RunBot::option_value(&run, &content, &option), 9);
+    assert!(run.option_needs_relic(&content, &option));
     run.encounter = Some(ActiveEncounter {
         id: EncounterId::new("spelunke_loot"),
         options: vec![option],
         chosen: None,
     });
+    let view = run.view(&content).encounter.expect("open");
+    assert_eq!(view.options[0].blocked, None);
+    assert_eq!(view.options[0].target, OptionTarget::Relic);
+    // No slot at all and none owned: blocked.
+    content
+        .characters
+        .get_mut(&Character::Declarer)
+        .expect("declarer")
+        .rule
+        .relic_slots = Some(0);
+    run.relics.clear();
     let view = run.view(&content).encounter.expect("open");
     assert_eq!(view.options[0].blocked, Some(OptionBlock::RelicSlotsFull));
 }
