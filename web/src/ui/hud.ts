@@ -7,6 +7,7 @@ import { de, bossFiguresText, contentName, t } from '../i18n';
 import type { RunView } from '../types';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
+import { nightChips } from './night';
 
 /** A Groschen as an 8 × 8 pixel coin in copper. */
 export function coinIcon(size = 18): string {
@@ -173,7 +174,7 @@ export function renderHud(view: RunView): string {
   <div class="hud-top">
     <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
       <span class="hud-where-main">${esc(where)}</span>
-      <span class="hud-where-sub"><span data-testid="pub-name">${esc(pub ? (pub.malus ? `${de.pub.spelunke}: ${pub.name}` : pub.name) : de.header.tourHint)}</span> · ${esc(t(de.header.section, { section: s.section + 1, sections: view.sections }))}${
+      <span class="hud-where-sub"><span data-testid="pub-name">${esc(pub ? (pub.id.endsWith('-s') ? `${de.pub.spelunke}: ${pub.name}` : pub.name) : de.header.tourHint)}</span> · ${esc(view.night ? t(de.night.hud, { n: view.night.district }) : t(de.header.section, { section: s.section + 1, sections: view.sections }))}${
         view.stake > 0 ? `<span data-testid="hud-stake" ${attrs({ title: t(de.header.stakeTitle, { stake: view.stake, augen: view.win_threshold }) })}> · ${esc(t(de.header.stake, { augen: view.win_threshold }))}</span>` : ''
       }</span>
     </button>
@@ -195,6 +196,6 @@ export function renderHud(view: RunView): string {
     </div>
   </div>
   ${neededLine(view)}
-  ${leiste(view, malus)}
+  ${leiste(view, malus + nightChips(view))}
 </header>`;
 }

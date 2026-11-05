@@ -15,6 +15,7 @@ import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
 import { oddsLine } from './odds';
 import { mapIcon } from './mapicons';
+import { moonIcon } from './night';
 import { bossPortraitId, portrait } from './people';
 import { changeText } from './score';
 import type { UiState } from './state';
@@ -298,6 +299,23 @@ function findMalus(view: RunView, id: string): MalusInfo | null {
 }
 
 /** The malus of a Spelunke (ADR 0016): its name and what it does. */
+/** A Verschärfung of the long night (ADR 0020): `night:<id>:<district>`. */
+function nightModel(key: string, view: RunView, arg: string): InfoModel | null {
+  const [id, district] = splitKey(arg);
+  const all = view.night?.verschaerfungen ?? [];
+  const v = all.find((x) => x.id === id && String(x.district) === district) ?? all.find((x) => x.id === id);
+  if (!v) return null;
+  const times = all.filter((x) => x.id === id).length;
+  return {
+    key,
+    title: v.name,
+    kind: de.night.infoKind,
+    art: `<span class="info-emblem info-moon">${moonIcon(64)}</span>`,
+    facts: [t(de.night.infoSince, { n: v.district }), ...(times > 1 ? [`×${times}`] : [])],
+    sections: [{ text: v.text, status: [] }],
+  };
+}
+
 function malusModel(key: string, view: RunView, id: string): InfoModel | null {
   const malus = findMalus(view, id);
   if (!malus) return null;
@@ -378,6 +396,8 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       return pressedModel(key, view);
     case 'malus':
       return malusModel(key, view, arg);
+    case 'night':
+      return nightModel(key, view, arg);
     default:
       return null;
   }

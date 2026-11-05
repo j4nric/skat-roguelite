@@ -83,6 +83,12 @@ export const de = {
     statWon: 'gewonnen',
     statBest: 'weitester Stadtteil',
     statGame: 'bestes Spiel',
+    /** Bestenliste per character (ADR 0020). */
+    board: 'Bestenliste',
+    boardHead: { who: 'Charakter', won: 'Gewonnen', night: 'Nacht', pubs: 'Kneipen', game: 'Bestes Spiel' },
+    boardNight: 'Stadtteil {n}',
+    boardNone: '–',
+    boardAria: '{name}: {won} gewonnen, Nacht bis Stadtteil {night}, {pubs} Kneipen in einer Nacht, bestes Spiel {game}',
     metaFailed: 'Das Vereinsbuch passte nicht zu dieser Version. Es wurde aufgehoben und ein neues angelegt.',
     sign: 'Gaststätte',
     since: 'Skat seit 1813',
@@ -932,6 +938,36 @@ export const de = {
     Regular: 'Figur',
     CardMod: 'Kartenmodifikation',
     Character: 'Charakter',
+    CardBack: 'Kartenrückseite',
+  },
+
+  /** Card backs an unlock gives (cosmetic, ADR 0020; names as in night.ron). */
+  backs: {
+    moon: { name: 'Mondsichel', text: 'Eine Mondsichel über den Dächern auf Nachtblau.' },
+    stars: { name: 'Sternenhimmel', text: 'Ein Himmel voller Sterne über der schlafenden Stadt.' },
+    lantern: { name: 'Laterne', text: 'Die letzte Laterne vor der Kneipe, im Morgengrauen.' },
+  } as Record<string, { name: string; text: string } | undefined>,
+
+  /** Die lange Nacht (ADR 0020). */
+  night: {
+    enter: 'Weiterziehen in die lange Nacht',
+    enterHint: 'Dein Sieg ist gezählt. Mit Deck, Relikten und Groschen geht es weiter durch die Nacht, bis eine Kneipe verloren geht. Verlieren kostet dann nichts mehr außer dem Rekord.',
+    endRun: 'Run beenden',
+    title: 'Die lange Nacht',
+    district: 'Stadtteil {n}',
+    sheetTitle: 'Stadtteil {n}: Die Sperrstunde rückt näher',
+    sheetLead: 'Neue Verschärfung für den Rest der Nacht:',
+    sheetActive: 'Es gelten',
+    sheetTargets: 'Zielwerte ×{factor} gegenüber Stadtteil 3',
+    sheetGo: 'Weiter',
+    chips: 'Verschärfungen',
+    hud: 'Lange Nacht · Stadtteil {n}',
+    extraBoss: 'Dazu gilt: {name}',
+    infoKind: 'Verschärfung der Nacht',
+    infoSince: 'Seit Stadtteil {n}',
+    over: 'Die Nacht ist vorbei',
+    overText: 'Bis Stadtteil {n} durchgehalten, {pubs} Kneipen in der Nacht. Dein Sieg bleibt gezählt.',
+    record: 'Neuer Rekord: Stadtteil {n}',
   },
 
   /** The first Untot or Wandelkarte of a save: a one-time explanation (DESIGN 7.2). */
