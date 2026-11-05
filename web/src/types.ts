@@ -1142,6 +1142,9 @@ export interface ModFigure {
 /** Effekte v2: Rand, Moment, Gutschein, Fluch, Spezialkarte. */
 export type ModKind = 'Edge' | 'Moment' | 'Voucher' | 'Curse' | 'Special' | 'SpecialCurse';
 
+/** Build direction of an item (04.11.2026): Farbtreue, Markenhändler, Stichjäger, Schneider, Nullspieler. */
+export type BuildTag = 'OneSuit' | 'Vouchers' | 'Tricks' | 'Schneider' | 'Null';
+
 export interface CardModEntry extends CatalogEntry {
   rarity: Rarity;
   curse: boolean;
@@ -1151,6 +1154,8 @@ export interface CardModEntry extends CatalogEntry {
   max?: number | null;
   /** The printed number per unit of the card's value. */
   figure?: ModFigure | null;
+  /** Build directions; absent in an older core. */
+  tags?: BuildTag[];
 }
 
 /** A relic in the catalog, with the run counters it reads or raises. */
@@ -1160,6 +1165,8 @@ export interface RelicEntry extends CatalogEntry {
   kind?: RelicKind;
   rarity?: Rarity;
   group?: RelicGroup;
+  /** Build directions; absent in an older core. */
+  tags?: BuildTag[];
 }
 
 /** A consumable in the catalog, with rarity and group (absent in an older core). */
@@ -1170,6 +1177,8 @@ export interface ConsumableEntry extends CatalogEntry {
   card_mod?: string | null;
   /** It puts a modification drawn at random on a card (no content since the Zinken, DESIGN 8.6). */
   random_card_mod?: boolean;
+  /** Build directions; absent in an older core. */
+  tags?: BuildTag[];
 }
 
 export interface Catalog {

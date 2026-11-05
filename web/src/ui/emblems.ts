@@ -1227,6 +1227,190 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ..sssssssss.
       ...sssssss..`),
   ],
+  // Bau-Richtungen (04.11.2026, Cockpit q26) and Großvaters Grand: one
+  // motif each, provisional.
+  club_colours: [
+    sp('Vereinswimpel', `
+      b...........
+      bJJJJJJJJJ..
+      bwwwwwwww...
+      bJJJJJJJ....
+      bwwwwww.....
+      bJJJJJ......
+      bwwww.......
+      bJJJ........
+      bww.........
+      b...........
+      b...........`),
+  ],
+  true_soul: [
+    sp('Treuer Hund', `
+      .bb......bb.
+      bnbb....bbnb
+      bnbbbbbbbbnb
+      .bbwbbbbwbb.
+      ..bkbbbbkb..
+      ..bbbbbbbb..
+      ...bbkkbb...
+      ...bbkkbb...
+      ....brrb....
+      .....rr.....`),
+  ],
+  rebate_book: [
+    sp('Rabattheft mit Marken', `
+      .oooooooooo.
+      .owwwwwwwwo.
+      .owrrwwrrwo.
+      .owrrwwrrwo.
+      .owwwwwwwwo.
+      .owrrwwggwo.
+      .owrrwwggwo.
+      .owwwwwwwwo.
+      .oooooooooo.`),
+  ],
+  empties: [
+    sp('Kasten mit Leergut', `
+      ..e..e..e...
+      ..e..e..e...
+      .ee.ee.ee...
+      .ee.ee.ee...
+      rrrrrrrrrr..
+      rwwwwwwwwr..
+      rrrrrrrrrr..
+      rrrrrrrrrr..
+      rr......rr..`),
+  ],
+  stamp_album: [
+    sp('Aufgeschlagenes Album', `
+      bbbbbbbbbbbbb
+      bwwwwwbwwwwwb
+      bw.w.wbw.w.wb
+      bwJJJwbwrrrwb
+      bwJJJwbwrrrwb
+      bw.w.wbw.w.wb
+      bwwwwwbwwwwwb
+      bw.w.wbwwwwwb
+      bweeewbwwwwwb
+      bwwwwwbwwwwwb
+      bbbbbbbbbbbbb`),
+  ],
+  fingertips: [
+    sp('Zeigefinger mit Funkeln', `
+      ....ss...Y..
+      ....ss..YYY.
+      ....ss...Y..
+      ....ss......
+      ....ssss....
+      ..s.sssssss.
+      ..sssssssss.
+      ..sssssssss.
+      ...sssssss..
+      ....sssss...`),
+  ],
+  tally_sheet: [
+    sp('Zettel mit Strichen', `
+      wwwwwwwwwww
+      wkwkwkwkwkw
+      wkwkwkkkwkw
+      wkwkkkwkwkw
+      wkkkwkwkwkw
+      wwwwwwwwwww
+      wkwkwkwwwww
+      wkwkwkwwwww
+      wkwkwkwwwww
+      wwwwwwwwwww`),
+  ],
+  tip: [
+    sp('Glas mit Groschen', `
+      ...YYYY.....
+      ..YyyyyY....
+      ...YYYY.....
+      .c......c...
+      .c..YY..c...
+      .c.YyyY.c...
+      .cYYYYYYc...
+      .cYyyyyYc...
+      .ccccccccc..`),
+  ],
+  golden_shears: [
+    sp('Goldene Schere', `
+      Y.........Y.
+      .Y.......Y..
+      ..Y.....Y...
+      ...Y...Y....
+      ....YyY.....
+      ....yYy.....
+      ...YY.YY....
+      ..Y..Y..Y...
+      ..Y..Y..Y...
+      ...YY.YY....`),
+  ],
+  tape_measure: [
+    sp('Maßband', `
+      ...yyyyy....
+      ..yyyyyyy...
+      .yyLLLLLyy..
+      .yyLkkkLyy..
+      .yyLkkkLyy..
+      .yyLLLLLyyLL
+      ..yyyyyyykLk
+      ...yyyyy.LLL
+      ..........kL`),
+  ],
+  sewing_pattern: [
+    sp('Schnittmuster', `
+      ffffffffffff
+      fk.k.k.k.k.f
+      f..........f
+      fk..rrrr..kf
+      f..rrrrrr..f
+      fk.rrrrrr.kf
+      f..rrrrrr..f
+      fk..rrrr..kf
+      f..........f
+      fk.k.k.k.k.f
+      ffffffffffff`),
+  ],
+  lead_pouring: [
+    sp('Löffel mit Blei', `
+      ..........G.
+      .........G..
+      ........G...
+      .......G....
+      ...GGGG.....
+      ..GggggG....
+      .GgghggG....
+      .GgggggG....
+      ..GggggG....
+      ...GGGG.....
+      ......r..o..
+      .....rooolo.`),
+  ],
+  plumb_line: [
+    sp('Senkblei am Faden', `
+      bbbbbbbbbbbb
+      .....w......
+      .....w......
+      .....w......
+      ....GGG.....
+      ...GgggG....
+      ...GghgG....
+      ...GgggG....
+      ....GgG.....
+      .....G......`),
+  ],
+  grandfathers_grand: [
+    sp('Großvaters Pfeife', `
+      ....g...g...
+      .....g.g....
+      ......g.....
+      .bbbbb......
+      .bnnnb......
+      .bnnnb......
+      .bbbbbbbbbbb
+      ..bbbbbbbbbb
+      ...bbb......`),
+  ],
   guardian_angel: [
     sp('Herz mit Flügeln', `
       ....YYYYYYY
@@ -1632,6 +1816,21 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   tap: 0,
   hot_hand: 0,
   rotgut: 0,
+  // Bau-Richtungen (04.11.2026): one motif each, provisional.
+  club_colours: 0,
+  true_soul: 0,
+  rebate_book: 0,
+  empties: 0,
+  stamp_album: 0,
+  fingertips: 0,
+  tally_sheet: 0,
+  tip: 0,
+  golden_shears: 0,
+  tape_measure: 0,
+  sewing_pattern: 0,
+  lead_pouring: 0,
+  plumb_line: 0,
+  grandfathers_grand: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
   counter_beer: 0,
@@ -1915,6 +2114,13 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   old_lady: 'Value',
   skat_keeper: 'Value',
   jinx: 'Value',
+  club_colours: 'Value',
+  stamp_album: 'Value',
+  fingertips: 'Value',
+  tape_measure: 'Value',
+  sewing_pattern: 'Value',
+  plumb_line: 'Value',
+  grandfathers_grand: 'Value',
   // Stufen, Gewinngrenze and Schneider
   blank_king: 'Multiplier',
   last_trick_seven: 'Multiplier',
@@ -1927,6 +2133,10 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   virgin: 'Multiplier',
   watertight: 'Multiplier',
   concede: 'Multiplier',
+  true_soul: 'Multiplier',
+  rebate_book: 'Multiplier',
+  tally_sheet: 'Multiplier',
+  lead_pouring: 'Multiplier',
   // Geben, Skat and Durchblick
   skat_redraw: 'Control',
   three_discard: 'Control',
@@ -1943,6 +2153,8 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   slate: 'Tour',
   guardian_angel: 'Tour',
   dive_expert: 'Tour',
+  empties: 'Tour',
+  tip: 'Tour',
   // Faktor (ADR 0018)
   jay: 'Factor',
   tree_frog: 'Factor',
@@ -1952,6 +2164,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   black_zero: 'Factor',
   tap: 'Factor',
   hot_hand: 'Factor',
+  golden_shears: 'Factor',
 };
 
 /** German names of the categories, for the art vote board only. */
