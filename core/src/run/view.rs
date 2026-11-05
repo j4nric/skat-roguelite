@@ -756,6 +756,12 @@ pub struct CardView {
     /// Grand, not as the last card. Left out of the JSON when `false`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub can_rise: bool,
+    /// A card of the player that rose in this game ("Untot",
+    /// [`ActiveGame::risen`]): it came back into the hand as the card that
+    /// won the trick. The web app draws only this one with the zombie
+    /// picture (playtest 05.11.2026). Left out of the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub risen: bool,
 }
 
 /// A card on the table and who played it.
@@ -1205,6 +1211,11 @@ impl Run {
                     .is_some_and(|a| a.game.declaration().is_none()),
             named,
             can_rise: false,
+            risen: card.owner == Owner::Player
+                && self
+                    .game
+                    .as_ref()
+                    .is_some_and(|a| a.risen.contains(&card.id)),
         }
     }
 

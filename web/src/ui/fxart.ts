@@ -582,6 +582,15 @@ export function winkelSketch(suit: string, chain: string[], paper: string): stri
     .join('');
 }
 
+/**
+ * "Untot" before it rose (playtest 05.11.2026): the printed card with a
+ * green band and skull across its top, nothing else. Only the card that
+ * came back into the hand shows the zombie picture.
+ */
+export function undeadBand(paper: string): string {
+  return band(['skull'], ZOMBIE, paper, 1);
+}
+
 /** Ring 0 and 1 of a tiny card in the colour of its state (curse anthracite, Untot green). */
 export function smallState(curse: boolean, undead: boolean): string {
   if (!curse && !undead) return '';

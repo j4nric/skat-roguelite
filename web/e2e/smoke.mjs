@@ -3018,8 +3018,9 @@ async function framesPass(browser, errors, reducedMotion) {
   expect('Schellen-Sieben', (c) => c.fills.includes('#1b1e21'), 'Ramponiert shows no tears');
   expect('Rot-Unter', (c) => c.picture.includes('#w-J') && c.picture.includes('#wx-J'), 'Wandelkarte shows no joker face');
   expect('Rot-Daus', (c) => c.picture.includes('#w-A') && c.fills.includes(band.Trumpf), 'Wandelkarte with Trumpf shows not both');
-  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#u-HK') && c.fills.includes(band.Augen), 'Untot with Augen shows no zombie face and gold band');
-  expect('Grün-Sieben', (c) => c.state === 'both' && c.picture.includes('#u-S7') && c.fills.includes('#1b1e21'), 'Untot number card with Ramponiert shows no rotten pips and tears');
+  // Untot before it rose (playtest 05.11.2026): the printed picture with the green skull band, no zombie face.
+  expect('Rot-König', (c) => c.state === 'undead' && c.picture.includes('#f-HK') && !c.picture.includes('#u-HK') && c.fills.includes('#5e7a3c') && c.fills.includes(band.Augen), 'Untot with Augen shows not the printed face, the green band and the gold band');
+  expect('Grün-Sieben', (c) => c.state === 'both' && c.picture.includes('#f-S7') && !c.picture.includes('#u-S7') && c.fills.includes('#5e7a3c') && c.fills.includes('#1b1e21'), 'Untot number card with Ramponiert shows not the printed pips, the green band and tears');
   log(`Effekte v3: ${cards.filter((c) => c.label.includes(',')).length} modified cards on the Kreidetafel, each with its frame and band`);
   await page.locator('.deck-grid').scrollIntoViewIfNeeded();
   await shoot(page, 'frames-gallery');
@@ -3087,7 +3088,8 @@ async function voucherPass(browser, errors) {
     await page.waitForTimeout(30);
   }
   for (const st of ['torn', 'coin', 'turned']) if (!stages.has(st)) fail(`Gutschein: no redeem step "${st}" (saw ${[...stages].join(', ')})`);
-  if (!turnedFace.includes('#u-S8')) fail(`Gutschein Untot: the Grün-Acht did not turn into its Untot face (${turnedFace})`);
+  // Untot until it rises: the printed Acht with the green band, not the zombie face (playtest 05.11.2026).
+  if (!turnedFace.includes('#f-S8') || turnedFace.includes('#u-S8')) fail(`Gutschein Untot: the Grün-Acht did not turn into the Untot look (${turnedFace})`);
   await page.waitForSelector('[data-testid="voucher-redeem"]', { state: 'detached' });
   const after = Number(await text(page, 'coins'));
   if (after !== coins + 3) fail(`Gutschein: Groschen ${coins} -> ${after}, expected +3`);
@@ -4074,7 +4076,9 @@ async function undeadPass(browser, errors, reducedMotion) {
       if (t) window.__toasts.push(t);
     }).observe(layer, { childList: true, subtree: true, characterData: true });
   });
-  if (!(await page.locator('.hand-card[data-id="22"] use[href="#u-SK"]').count())) fail('Untot: the Grün-König shows no zombie face');
+  // Before it rose an Untot card is the printed card with the green band (playtest 05.11.2026).
+  if (!(await page.locator('.hand-card[data-id="22"] [data-undead="band"] use[href="#f-SK"]').count())) fail('Untot: the Grün-König is not the printed card with the Untot band');
+  if (await page.locator('.hand-card use[href^="#u-"]').count()) fail('Untot: a card shows the zombie face before it rose');
   await page.click('[data-action="play-hand"]');
   await page.waitForSelector('.declare-hand');
   await page.click('[data-action="pick-game"][data-index="0"]');
@@ -4103,6 +4107,9 @@ async function undeadPass(browser, errors, reducedMotion) {
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
   if (!(await page.locator('.hand-card[data-id="31"]').count())) fail('Untot: the Eichel-Daus did not come back into the hand');
   if (await page.locator('.hand-card[data-id="31"] .plaque-rise').count()) fail('Untot: the risen Daus still says it can rise');
+  // Only the card that came back wears the zombie face; the other Untot card keeps its band.
+  if (!(await page.locator('.hand-card[data-id="31"] [data-undead="risen"] use[href^="#u-"]').count())) fail('Untot: the risen card shows no zombie face');
+  if (!(await page.locator('.hand-card[data-id="22"] [data-undead="band"]').count())) fail('Untot: the Grün-König lost its band');
   await page.click('[data-testid="last-trick-toggle"]');
   await page.waitForSelector('[data-testid="last-trick"]');
   if (await page.locator('[data-testid="last-trick"] .trick-card[data-card-id="31"]').count()) fail('Untot: the Daus still lies in the last trick');
@@ -4159,9 +4166,28 @@ async function undeadGlowPass(browser, errors) {
   await page.waitForSelector('.declare', { state: 'detached' });
   await page.waitForSelector('[data-action="play"][data-id="31"]', { timeout: 30000 });
   await page.click('[data-action="play"][data-id="31"]');
+  await page.evaluate(() => {
+    window.__morph = { stages: [], before: '', after: '' };
+    new MutationObserver(() => {
+      const box = document.querySelector('[data-testid="rise-morph"]');
+      if (!box) return;
+      const st = box.getAttribute('data-stage');
+      if (st && !window.__morph.stages.includes(st)) window.__morph.stages.push(st);
+      window.__morph.before = box.querySelector('.rise-bit [data-undead]')?.getAttribute('data-undead') ?? window.__morph.before;
+      window.__morph.after = box.querySelector('.rise-new [data-undead]')?.getAttribute('data-undead') ?? window.__morph.after;
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-stage'] });
+  });
   await pickRiseCards(page, 'Untot glow');
   // Out of the way, so no info card opens over the hand.
   await page.mouse.move(380, 20);
+  // The played card crumbles over the table into the zombie card it comes back as.
+  await page.waitForSelector('[data-testid="rise-morph"][data-stage="crumble"]', { timeout: 30000 }).catch(() => fail('Untot: the played card does not crumble'));
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: join(screens, 'undead-crumble-390x844.png') });
+  await page.waitForSelector('[data-testid="rise-morph"]', { state: 'detached', timeout: 15000 });
+  const morph = await page.evaluate(() => window.__morph);
+  if (morph.before !== 'band' || morph.after !== 'risen' || !morph.stages.includes('after')) fail(`Untot: the crumble is not band to zombie (${JSON.stringify(morph)})`);
+  log(`Untot: crumbled ${morph.stages.join(' > ')}, ${morph.before} to ${morph.after}`);
   await page.waitForSelector('.hand-card.is-rising[data-id="31"]', { state: 'attached', timeout: 30000 }).catch(() => fail('Untot: no glow with full motion'));
   await page.waitForTimeout(380);
   await page.screenshot({ path: join(screens, 'undead-rising-390x844.png') });
@@ -4940,6 +4966,14 @@ async function run() {
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
+      return;
+    }
+    // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
+    if (process.env.SMOKE_ONLY === 'undead') {
+      await framesPass(browser, errors, reducedMotion);
+      await voucherPass(browser, errors);
+      await undeadPass(browser, errors, reducedMotion);
+      await undeadGlowPass(browser, errors);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {

@@ -64,7 +64,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
-import { deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { crumbleInto, deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
@@ -1808,15 +1808,22 @@ export class App {
     this.showToast(t(de.toast.cardRose, { card: cardName(card.kind), risen: cardName(risen.kind), substitute: cardName(substitute.kind) }), 'top');
     const anim = this.ui.anim;
     if (!anim) return;
-    const from = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
     const subFrom = this.screenEl.querySelector(`.hand-card[data-id="${substitute.id}"]`)?.getBoundingClientRect() ?? null;
+    // The card as it was played crumbles big over the table into the
+    // zombie card it comes back as (playtest 05.11.2026), then that one
+    // flies into the hand; without motion or hurried it is just there.
+    // The pick sheet goes first (the run is busy now), so the scene is seen.
+    if (this.screenEl.querySelector('.sheet-rise')) this.render();
+    const played = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
+    const morphed = this.fastForward ? null : await crumbleInto(this.root, lookSvg(this.cardOf(card, after)), lookSvg({ ...this.cardOf(risen, after), risen: true }));
+    const from = morphed ?? played;
     anim.trick = anim.trick.map((p) => (p.card.id === card.id ? { seat: p.seat, card: this.cardOf(substitute, after) } : p));
     // The trick's Augen changed with the card; the core's count follows with the score.
     anim.status = '';
     const hand = after.game?.hand;
     anim.hand = hand
       ? hand.map((c) => ({ ...c, legal: false }))
-      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(risen, after), can_rise: false }];
+      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(risen, after), can_rise: false, risen: true }];
     // A short green glow while it climbs back into the hand (style.css; with reduced motion a still outline).
     this.ui.rising = card.id;
     this.render();

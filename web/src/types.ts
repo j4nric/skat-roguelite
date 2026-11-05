@@ -67,6 +67,8 @@ export interface CardView extends DealtCard {
   named?: Suit | null;
   /** "Untot": would rise if played now (left out when false). */
   can_rise?: boolean;
+  /** "Untot": rose in this game, back in the hand as the trick's winning card (left out when false). */
+  risen?: boolean;
 }
 
 /** Whether a card modification works in the game in progress: yes, no, or it depends on how the game goes. */

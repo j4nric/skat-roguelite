@@ -8700,3 +8700,40 @@ button.skat-card {
   width: 100%;
   height: auto;
 }
+
+/* "Untot" rises (fx.ts crumbleInto): the played card big over the table
+   crumbles into pixel bits, the zombie card it comes back as shows
+   through. Above the table, below dialogs' toasts; never takes a tap. */
+.rise-morph {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 45;
+  width: 99px;
+  aspect-ratio: 33 / 49.5;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.rise-morph .rise-new,
+.rise-morph .rise-old,
+.rise-morph .rise-whole,
+.rise-morph .rise-bit {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+}
+
+.rise-morph .rise-new {
+  opacity: 0;
+}
+
+.rise-morph[data-stage='before'] .rise-bit,
+.rise-morph:not([data-stage='before']) .rise-whole {
+  visibility: hidden;
+}
+
+.rise-morph[data-stage='after'] .rise-new {
+  opacity: 1;
+}
