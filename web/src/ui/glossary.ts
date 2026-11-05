@@ -33,9 +33,9 @@ function rankOf(mod: string): number {
   return i < 0 ? ORDER.length : i;
 }
 
-/** The sample card of a modification as inline SVG, with its first value. */
-export function glossarySample(mod: string): string {
-  return cardSvg(SAMPLE, [mod], 'full', { [mod]: modFirstValue(mod) });
+/** The sample card of a modification as inline SVG, with its first value or `value`. */
+export function glossarySample(mod: string, value?: number): string {
+  return cardSvg(SAMPLE, [mod], 'full', { [mod]: value ?? modFirstValue(mod) });
 }
 
 /** The group heading of a modification (for its info card). */

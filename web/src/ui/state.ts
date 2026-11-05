@@ -78,6 +78,8 @@ export type Overlay =
   /** Pick the card for an encounter option that needs one. */
   /** The card for an encounter option; `marke`: the Marke picked before (a chosen Marke on a chosen card). */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string>; marke?: string }
+  /** The card for the Zinke at `offer` of the card reward (DESIGN 5.0); back: the three Zinken. */
+  | { kind: 'reward-target'; offer: number; reasons?: Record<number, string> }
   /** Pick the Marke of a Marke option (Pfandleiher, Markensammlerin, 04.11.2026). */
   | { kind: 'encounter-marke'; option: number }
   | { kind: 'encounter-relic'; option: number }
