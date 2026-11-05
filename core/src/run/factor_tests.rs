@@ -272,3 +272,27 @@ fn a_growing_factor_stops_at_its_cap() {
         crate::content::Effect::ScaleGameValuePerCard { max: None, .. }
     ));
 }
+
+#[test]
+fn the_growing_relics_stop_at_their_caps() {
+    let content = content();
+    // Balance round of the night (05.11.2026): Zapfhahn and Heiße Hand
+    // at most ×3, Mondschein at most ×2, Nachteule at most ×1,5.
+    for (id, counter, value, permille) in [
+        ("tap", "tap", 19, 2900),
+        ("tap", "tap", 40, 3000),
+        ("hot_hand", "hot_hand", 40, 3000),
+        ("moonlight", "moonlight", 9, 1900),
+        ("moonlight", "moonlight", 30, 2000),
+        ("night_owl", "verschaerfungen", 12, 1500),
+    ] {
+        let mut run = long_run(&content, &[id]);
+        run.counters.insert(counter.into(), value);
+        fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+        let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+        assert!(
+            has_line(&b, &relic(id), Lever::GameValue, scale(permille)),
+            "{id} at {value}"
+        );
+    }
+}

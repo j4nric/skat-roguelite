@@ -149,6 +149,16 @@ impl Run {
         })
     }
 
+    /// The growth of the long night for the run's character
+    /// ([`crate::content::CharacterDef::night`]).
+    #[must_use]
+    pub fn night_config(&self, content: &Content) -> crate::content::NightConfig {
+        content.character(self.character).map_or_else(
+            || content.run.night.clone(),
+            |c| c.night(&content.run.night),
+        )
+    }
+
     /// Zielwert of pub `index` in district `section` with `boss`: the
     /// curve of the run ([`super::series_target`]); in a night district
     /// the last district's Zielwert grown by the night
@@ -168,7 +178,7 @@ impl Run {
         }
         let last = sections.checked_sub(1)?;
         let base = super::series_target(content, self.character, last, index, boss)?;
-        let mut target = content.run.night.grow(base, section - last);
+        let mut target = self.night_config(content).grow(base, section - last);
         for rule in self.night_rules(content) {
             if let NightRule::TargetJump(factor) = rule {
                 target = factor.apply(target);
@@ -494,9 +504,8 @@ impl Run {
             Vec::new()
         };
         let probe = 1_000_000;
-        let base = content
-            .run
-            .night
+        let base = self
+            .night_config(content)
             .grow(probe, section.saturating_sub(sections.saturating_sub(1)));
         let mut grown = base;
         for rule in self.night_rules(content) {

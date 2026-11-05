@@ -225,8 +225,20 @@
     // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,
     // Cockpit q31 A): Nach dem Alten darf der Spieler weiterziehen. Stadtteil
     // n der Nacht (4, 5, …) spielt die Zielwerte von Stadtteil 3 (Kneipen und
-    // Boss) × growth^(n − 3), gerundet; Groschen und Belohnungen wie in
-    // Stadtteil 3. Die Verschärfungen stehen in night.ron. VORLÄUFIG, eine
-    // Balancing-Runde stellt es ein.
-    night: (growth: 1.6),
+    // Boss) mal dem Wachstum aller Stadtteile der Nacht bis n, gerundet;
+    // Groschen und Belohnungen wie in Stadtteil 3. Die Verschärfungen stehen
+    // in night.ron. growth_per_district: das Wachstum von Stadtteil 4, 5, 6,
+    // 7 über den vorigen, der letzte Eintrag gilt für alle weiteren
+    // (zusammen × 1,5 / 7,5 / 60 / 660 / 1650 / 4125 …); growth gilt nur ohne
+    // Liste. Ein Charakter kann eine eigene Liste haben (night_growth in
+    // characters.ron, der Nullspieler).
+    // Balancing-Runde 05.11.2026 (docs/balance/2026-11-05-nacht.md): Mit
+    // × 1,6 je Stadtteil liefen 70 % der Nächte bis Stadtteil 12 bis 30. In
+    // Stadtteil 4 bis 6 kauft der Bot den Rest des Relikt-Pools (rund 36 →
+    // 60 Relikte, Spielwert × 70 in zwei Stadtteilen), danach wächst er
+    // langsam; das steile Wachstum in Stadtteil 5 bis 7 folgt dieser Flut,
+    // das flache danach lässt außergewöhnlichen Builds einen Schwanz bis
+    // Stadtteil 10. Alleinspieler gemessen 3 × 700 Runs: Ende in Stadtteil
+    // 4 / 5 / 6 / 7 / 8 bis 11 / ab 12: 24 / 13 / 12 / 20 / 30 / 0 %.
+    night: (growth: 2.5, growth_per_district: [1.5, 5.0, 8.0, 11.0, 2.5]),
 )

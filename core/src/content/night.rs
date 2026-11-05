@@ -88,37 +88,39 @@ pub struct NightContent {
     pub card_backs: Vec<CardBackDef>,
 }
 
-/// The long night in `run.ron` (ADR 0020). VORLÄUFIG.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The long night in `run.ron` (ADR 0020).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NightConfig {
-    /// Growth of the first night district (Stadtteil 4) over the last
-    /// district of the run.
+    /// Growth of every night district over the one before, if
+    /// `growth_per_district` is empty.
     pub growth: Factor,
-    /// "Die Sperrstunde rückt näher": every further night district grows
-    /// by this much more than the one before (district 4 × `growth`,
-    /// district 5 × `growth + step`, district 6 × `growth + 2 × step`, …),
-    /// so the Zielwerte outgrow any factor that rises by a fixed step.
-    /// 0 (the default) is a plain power.
-    #[serde(default = "Factor::zero")]
-    pub growth_step: Factor,
+    /// "Die Sperrstunde rückt näher": the growth of night district 4, 5,
+    /// … over the one before, one entry each; the last entry holds for
+    /// every further district. Empty (the default): `growth` throughout.
+    #[serde(default)]
+    pub growth_per_district: Vec<Factor>,
 }
 
 impl Default for NightConfig {
     fn default() -> NightConfig {
         NightConfig {
             growth: Factor::from_permille(1600),
-            growth_step: Factor::zero(),
+            growth_per_district: Vec::new(),
         }
     }
 }
 
 impl NightConfig {
-    /// Growth of night step `step` (1 = the first night district).
+    /// Growth of night step `step` (1 = the first night district) over
+    /// the step before.
     #[must_use]
     pub fn growth_of(&self, step: u32) -> Factor {
-        let extra = u64::from(self.growth_step.permille()) * u64::from(step.saturating_sub(1));
-        let permille = u64::from(self.growth.permille()).saturating_add(extra);
-        Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX))
+        let index = usize::try_from(step.saturating_sub(1)).unwrap_or(usize::MAX);
+        self.growth_per_district
+            .get(index)
+            .or(self.growth_per_district.last())
+            .copied()
+            .unwrap_or(self.growth)
     }
 
     /// `value` times the growth of the first `steps` night districts
@@ -157,23 +159,28 @@ mod tests {
     }
 
     #[test]
-    fn growth_can_accelerate_per_district() {
+    fn growth_can_change_per_district() {
         let night = NightConfig {
-            growth: Factor::from_permille(1500),
-            growth_step: Factor::from_permille(100),
+            growth: Factor::from_permille(1600),
+            growth_per_district: vec![
+                Factor::from_permille(1500),
+                Factor::from_permille(4000),
+                Factor::from_permille(3000),
+            ],
         };
         assert_eq!(night.growth_of(1).permille(), 1500);
-        assert_eq!(night.growth_of(3).permille(), 1700);
+        assert_eq!(night.growth_of(2).permille(), 4000);
+        assert_eq!(night.growth_of(3).permille(), 3000);
+        // The last entry holds.
+        assert_eq!(night.growth_of(9).permille(), 3000);
         assert_eq!(night.grow(100, 1), 150);
-        // 100 × 1.5 × 1.6 = 240
-        assert_eq!(night.grow(100, 2), 240);
-        // 100 × 1.5 × 1.6 × 1.7 = 408
-        assert_eq!(night.grow(100, 3), 408);
+        assert_eq!(night.grow(100, 2), 600);
+        assert_eq!(night.grow(100, 4), 5400);
         assert_eq!(night.grow(u64::MAX, 60), u64::MAX);
     }
 
     #[test]
-    fn growth_step_defaults_to_a_plain_power() {
+    fn growth_per_district_defaults_to_a_plain_power() {
         let night: NightConfig = ron::from_str("(growth: 1.6)").expect("ron");
         assert_eq!(night, NightConfig::default());
     }

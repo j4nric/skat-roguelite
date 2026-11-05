@@ -88,6 +88,12 @@
             [85, 100, 110, 120, 140],
             [260, 280, 305, 320, 185],
         ]),
+        // Die lange Nacht (Balancing-Runde 05.11.2026,
+        // docs/balance/2026-11-05-nacht.md): eigenes Wachstum je Stadtteil
+        // der Nacht, flacher als in run.ron. Mit dem des Alleinspielers
+        // endeten 38 % seiner Nächte in Stadtteil 4 und keine erreichte
+        // Stadtteil 8: Seine Null-Spiele wachsen in der Nacht langsamer.
+        night_growth: Some([1.3, 3.0, 4.5, 8.0, 2.5]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
         // Zielwerten oben gewann er nur 0,6 % der ganzen Abende; ein

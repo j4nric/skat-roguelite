@@ -419,6 +419,10 @@ pub struct CharacterDef {
     /// `None` uses `run.ron`. Must have the shape of `run.ron`'s.
     #[serde(default)]
     pub targets: Option<Vec<Vec<u64>>>,
+    /// Growth of the long night per district (ADR 0020), like
+    /// [`NightConfig::growth_per_district`]; `None` uses `run.ron`'s.
+    #[serde(default)]
+    pub night_growth: Option<Vec<Factor>>,
     /// How Null games are scored; `None` scores them like the
     /// Skatordnung ([`NullScoring::Fixed`]).
     #[serde(default)]
@@ -439,6 +443,19 @@ pub struct CharacterDef {
 pub const PLAYER_BACK: &str = "distel";
 
 impl CharacterDef {
+    /// The growth of the long night for this character: its own
+    /// `night_growth` if it has one, else `run.ron`'s.
+    #[must_use]
+    pub fn night(&self, run: &NightConfig) -> NightConfig {
+        match &self.night_growth {
+            Some(list) => NightConfig {
+                growth: run.growth,
+                growth_per_district: list.clone(),
+            },
+            None => run.clone(),
+        }
+    }
+
     /// The card back of this character's edition.
     #[must_use]
     pub fn back(&self) -> &str {

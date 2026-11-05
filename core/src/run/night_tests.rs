@@ -114,7 +114,7 @@ fn the_win_stays_and_the_night_opens_on_request() {
         .verschaerfungen
         .iter()
         .any(|v| v.id.as_str() == "target_jump");
-    let first = u64::from(content.run.night.growth_of(1).permille());
+    let first = u64::from(run.night_config(&content).growth_of(1).permille());
     assert_eq!(
         night.target_permille,
         if jump { first * 11 / 10 } else { first }
@@ -143,11 +143,11 @@ fn night_targets_grow_from_the_last_district() {
         let base = last[index as usize];
         assert_eq!(
             run.pub_target(&content, 3, index, None),
-            Some(content.run.night.growth_of(1).apply(base))
+            Some(run.night_config(&content).growth_of(1).apply(base))
         );
         assert_eq!(
             run.pub_target(&content, 5, index, None),
-            Some(content.run.night.grow(base, 3))
+            Some(run.night_config(&content).grow(base, 3))
         );
     }
     // The boss with its own factor, then the growth.
@@ -155,11 +155,11 @@ fn night_targets_grow_from_the_last_district() {
     let plain = series_target(&content, Character::Declarer, 2, 4, Some(&boss)).expect("boss");
     assert_eq!(
         run.pub_target(&content, 4, 4, Some(&boss)),
-        Some(content.run.night.grow(plain, 2))
+        Some(run.night_config(&content).grow(plain, 2))
     );
     // "Zielwert-Sprung" on top, stacking.
     force(&mut run, &["target_jump", "target_jump"]);
-    let grown = content.run.night.grow(last[0], 1);
+    let grown = run.night_config(&content).grow(last[0], 1);
     let jump = crate::content::Factor::from_permille(1100);
     assert_eq!(
         run.pub_target(&content, 3, 0, None),
@@ -177,7 +177,10 @@ fn the_first_night_pub_plays_its_grown_target() {
     walk_to_pub(&mut run, &content);
     assert_eq!((run.series().section, run.series().index), (3, 0));
     let base = content.run.targets[2][0];
-    assert_eq!(run.series().target, content.run.night.grow(base, 1));
+    assert_eq!(
+        run.series().target,
+        run.night_config(&content).grow(base, 1)
+    );
     // One Einmischen less than in Stadtteil 3.
     assert_eq!(
         run.redeals_left(&content),
@@ -603,4 +606,34 @@ fn the_bot_plays_on_into_the_night_only_when_asked() {
     );
     let (night, _) = night_run(&content, 67);
     assert_eq!(super::bot::RunBot.night_action(&night), None);
+}
+
+#[test]
+fn a_character_may_have_its_own_night_growth() {
+    let mut content = content();
+    let null = content
+        .character(Character::NullPlayer)
+        .expect("null")
+        .clone();
+    let mut own = null.clone();
+    own.night_growth = Some(vec![
+        crate::content::Factor::from_permille(1200),
+        crate::content::Factor::from_permille(2000),
+    ]);
+    let config = own.night(&content.run.night);
+    assert_eq!(config.growth_of(1).permille(), 1200);
+    assert_eq!(config.growth_of(5).permille(), 2000);
+    let mut plain = null;
+    plain.night_growth = None;
+    assert_eq!(plain.night(&content.run.night), content.run.night);
+    // The run's Zielwerte of the night follow the character's growth.
+    content.characters.insert(Character::NullPlayer, own);
+    let (mut run, _) = night_run(&content, 7);
+    run.character = Character::NullPlayer;
+    force(&mut run, &["fewer_redeals"]);
+    let base = series_target(&content, Character::NullPlayer, 2, 0, None).expect("base");
+    assert_eq!(
+        run.pub_target(&content, 4, 0, None),
+        Some((base * 24 + 5) / 10)
+    );
 }
