@@ -101,10 +101,11 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // one more Einmischen in district 1). Seeds 1, 99 and 42 (district
     // 1) again on 05.11.2026: the bot throws in mediocre hands while it
     // has Einmischen (RunBot::redeal_threshold), later deals differ.
+    // Seed 1 (district 1) again with the Zielwerte of round 3 (1-1 15).
     assert_eq!(
         hashes,
         vec![
-            10_569_917_386_627_687_651,
+            14_036_093_484_200_937_745,
             3_546_564_826_947_412_865,
             2_414_107_796_335_042_384,
             4_391_168_479_812_042_796,

@@ -251,7 +251,8 @@ fn a_bargain_costs_half_and_curses_another_card() {
     let content = always_trade();
     let (mut run, _) = tresen(&content, 7, 30);
     let all = offers(&run);
-    assert_eq!(all.len(), 3);
+    let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
+    assert_eq!(all.len(), n);
     for o in &all {
         let def = content.card_mod(&o.card_mod).expect("mod");
         if def.is_special() {
@@ -434,7 +435,8 @@ fn old_saves_load_without_the_trade() {
     old.apply(&content, RunAction::BuyRelic(0)).expect("buy");
     old.apply(&content, RunAction::RerollCardOffers)
         .expect("reroll");
-    assert_eq!(offers(&old).len(), 3);
+    let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
+    assert_eq!(offers(&old).len(), n);
 }
 
 #[test]

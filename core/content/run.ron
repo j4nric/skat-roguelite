@@ -30,10 +30,16 @@
     // normale Kneipen in Stadtteil 1 und 2 leichter, Bosse schwerer
     // (Stadtteil 1 Boss + 15, der Alte × 1,3 in bosses.ron), Stadtteil 3
     // + 10: 34,7 / 11,9 / 3,5 %, 67 / 7 / 26 % der verlorenen Runs.
+    // Runde 3 vor der Messung (05.11.2026, VORLÄUFIG): Mit Kartenbelohnung,
+    // Grand 18 und dem neuen Einmischen des Bots 32,7 / 14,3 / 4,0 %, aber
+    // 29 % der Runs in den ersten beiden Kneipen und nur 24 % der
+    // verlorenen beim Boss. 1-1 und 1-2 deutlich leichter (35 → 15, 45 →
+    // 30; die Obergrenze einer Kneipe liegt bei rund 92 %), 1-3 und 1-4 und
+    // die normalen Kneipen in Stadtteil 2 je − 5, alle Bosse + 10.
     targets: [
-        [35, 45, 50, 55, 75],
-        [60, 70, 80, 90, 85],
-        [145, 165, 185, 200, 130],
+        [15, 30, 45, 50, 85],
+        [55, 65, 75, 85, 95],
+        [145, 165, 185, 200, 140],
     ],
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
@@ -115,7 +121,12 @@
         // Tresen) nimmt alle Modifikationen ab, auch Flüche. Alle Zahlen
         // VORLÄUFIG, nach Augenmaß ohne Messung.
         zinken: (
-            offers: 3,
+            // offers seit Runde 3 (05.11.2026) 2 statt 3: Die Kartenbelohnung
+            // bringt rund vier Zinken je Run gratis; mit 3 Angeboten am
+            // Tresen und Kartenbelohnung Stadtteil 3 in 14,3 %, mit 2 in
+            // 11,3 % (3 × 100 Runs, Rauschen rund 2 Punkte), die ersten
+            // beiden Kneipen gleich. Der Tresen bleibt der Ort der Relikte.
+            offers: 2,
             bare_weight: 3,
             modded_weight: 1,
             voucher_percent: 50,

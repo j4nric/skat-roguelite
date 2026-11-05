@@ -7,6 +7,9 @@
 // targets: None nimmt die Zielwerte aus run.ron. Je Stadtteil vier Kneipen
 // und die Boss-Kneipe (ADR 0016, vorläufig nach Augenmaß aus den
 // kalibrierten Kurven der Abschnitte abgeleitet, 02.11.2026).
+// Runde 3 vor der Messung (05.11.2026, VORLÄUFIG): alle eigenen Kurven wie
+// die des Alleinspielers verschoben: 1-1 − 20 (höchstens bis 10), 1-2 − 15,
+// 1-3 und 1-4 − 5, die normalen Kneipen in Stadtteil 2 − 5, alle Bosse + 10.
 // null_scoring: Fixed (Skatordnung 23/35/46/59 als Grundwert, eine Stufe)
 // oder Formula (Grundwert × (Risikostufe + Stilbonus), DESIGN 9.2). Ohne
 // Angabe Fixed.
@@ -67,9 +70,9 @@
         // Stadtteil 2 + 10, Stadtteil 3 + 15: gemessen 37,5 / 14,7 / 6,5 %.
         // Danach Stadtteil 3 noch einmal + 10 (Vorschlag, ungemessen).
         targets: Some([
-            [40, 50, 55, 60, 75],
-            [75, 90, 100, 110, 100],
-            [175, 195, 220, 235, 145],
+            [20, 35, 50, 55, 85],
+            [70, 85, 95, 105, 110],
+            [175, 195, 220, 235, 155],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -119,9 +122,9 @@
         // 8,9 % (Stadtteil 3 hielt 52 %); Stadtteil 1 rund + 5, Stadtteil 2
         // die Kurve vor Runde 2 mit Boss 90, Stadtteil 3 + 20. Vorschlag.
         targets: Some([
-            [40, 50, 55, 60, 80],
-            [70, 80, 90, 100, 90],
-            [155, 175, 195, 210, 130],
+            [20, 35, 50, 55, 90],
+            [65, 75, 85, 95, 100],
+            [155, 175, 195, 210, 140],
         ]),
         start_relics: ["skat_keeper"],
         deck: (
@@ -173,9 +176,9 @@
         // 36,7 / 12,3 / 5,4 %; Stadtteil 1 wie der Alleinspieler, Stadtteil
         // 2 − 10 (Boss + 5), Stadtteil 3 + 10: gemessen 38,3 / 14,7 / 4,8 %.
         targets: Some([
-            [35, 45, 50, 55, 75],
-            [65, 80, 90, 100, 95],
-            [160, 180, 205, 220, 145],
+            [15, 30, 45, 50, 85],
+            [60, 75, 85, 95, 105],
+            [160, 180, 205, 220, 155],
         ]),
         start_relics: ["watertight"],
         deck: (
@@ -221,9 +224,9 @@
         // Stadtteil 3 + 10: gemessen 34,2 / 13,5 / 6,5 %. Danach Stadtteil
         // 3 noch einmal + 15 (Vorschlag, ungemessen).
         targets: Some([
-            [25, 35, 45, 50, 65],
-            [55, 65, 70, 80, 80],
-            [150, 165, 185, 195, 120],
+            [10, 20, 40, 45, 75],
+            [50, 60, 65, 75, 90],
+            [150, 165, 185, 195, 130],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die

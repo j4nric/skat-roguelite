@@ -115,12 +115,13 @@ fn the_tresen_lays_out_three_concrete_offers() {
             })
             .expect("drawn");
         let offers = offers(&run);
-        assert_eq!(offers.len(), 3, "seed {seed}");
+        let n = usize::try_from(zinken.offers).expect("small");
+        assert_eq!(offers.len(), n, "seed {seed}");
         assert_eq!(drawn.into_iter().flatten().collect::<Vec<_>>(), offers);
         let mut cards: Vec<u32> = offers.iter().map(|o| o.card).collect();
         cards.sort_unstable();
         cards.dedup();
-        assert_eq!(cards.len(), 3, "one card at most once");
+        assert_eq!(cards.len(), n, "one card at most once");
         for o in &offers {
             let def = content.card_mod(&o.card_mod).expect("mod");
             // Never a curse; a special card only as the rare special offer
@@ -604,7 +605,8 @@ fn saves_keep_the_auslage_and_old_saves_lose_the_removed_items() {
     // The Auslage of a save from before is empty; "Neu auslosen" fills it.
     old.apply(&content, RunAction::RerollCardOffers)
         .expect("reroll");
-    assert_eq!(offers(&old).len(), 3);
+    let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
+    assert_eq!(offers(&old).len(), n);
     // Unknown modifications fall out of the Auslage and the painter.
     let mut run = loaded;
     set_offers(&mut run, vec![offer(1, "glass_ace", 1, 4)]);

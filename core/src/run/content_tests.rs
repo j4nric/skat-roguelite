@@ -173,24 +173,24 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Kneipentour curve (DESIGN 5.0.4, balance round 2, 04.11.2026).
-    assert_eq!(content.run.targets[0], vec![35, 45, 50, 55, 75]);
-    assert_eq!(content.run.targets[2], vec![145, 165, 185, 200, 130]);
+    // Kneipentour curve (DESIGN 5.0.4, balance round 3, 05.11.2026).
+    assert_eq!(content.run.targets[0], vec![15, 30, 45, 50, 85]);
+    assert_eq!(content.run.targets[2], vec![145, 165, 185, 200, 140]);
     // Own curves of every character but the Alleinspieler (Drückeberger
     // since balance round 2, DESIGN 9).
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
-    assert_eq!(null[0], vec![40, 50, 55, 60, 75]);
-    assert_eq!(null[2], vec![175, 195, 220, 235, 145]);
+    assert_eq!(null[0], vec![20, 35, 50, 55, 85]);
+    assert_eq!(null[2], vec![175, 195, 220, 235, 155]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
-    assert_eq!(tailoress[0], vec![35, 45, 50, 55, 75]);
-    assert_eq!(tailoress[2], vec![160, 180, 205, 220, 145]);
+    assert_eq!(tailoress[0], vec![15, 30, 45, 50, 85]);
+    assert_eq!(tailoress[2], vec![160, 180, 205, 220, 155]);
     let shirker = targets(Character::Shirker).expect("shirker targets");
-    assert_eq!(shirker[0], vec![40, 50, 55, 60, 80]);
-    assert_eq!(shirker[2], vec![155, 175, 195, 210, 130]);
+    assert_eq!(shirker[0], vec![20, 35, 50, 55, 90]);
+    assert_eq!(shirker[2], vec![155, 175, 195, 210, 140]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
-    assert_eq!(heart_brother[0], vec![25, 35, 45, 50, 65]);
-    assert_eq!(heart_brother[2], vec![150, 165, 185, 195, 120]);
+    assert_eq!(heart_brother[0], vec![10, 20, 40, 45, 75]);
+    assert_eq!(heart_brother[2], vec![150, 165, 185, 195, 130]);
     // One more Einmischen in Stadtteil 1 (balance round 2).
     assert_eq!(content.run.district_redeals, vec![1]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));

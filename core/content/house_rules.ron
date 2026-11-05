@@ -676,7 +676,7 @@
         name: "Vereinsfarben",
         text: "Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
         rarity: Uncommon,
-        price: 7,
+        price: 6,
         hooks: [
             OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 1)]),
         ],
@@ -694,7 +694,7 @@
         name: "Treue Seele",
         text: "Gewinnst du ein Farbspiel: +1 Stufe je Spiel direkt davor in derselben Trumpffarbe, höchstens +3.",
         rarity: Common,
-        price: 5,
+        price: 4,
         hooks: [
             OnDeclare(when: All([GameIs(Suit(Clubs)), Not(Flag("true_soul_clubs"))]), then: [ClearFlag("true_soul_spades"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_clubs"), ResetCounter("true_soul")]),
             OnDeclare(when: All([GameIs(Suit(Spades)), Not(Flag("true_soul_spades"))]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_spades"), ResetCounter("true_soul")]),
@@ -777,7 +777,7 @@
         name: "Strichliste",
         text: "Machst du in einem gewonnenen Spiel 3 Stiche mit Karten mit Zinke: +1 Stufe, bei 5 Stichen +2.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         hooks: [
             OnDeclare(then: [ResetCounter("tally_sheet")]),
             OnTrickEnd(when: All([TrickWonWithMarkedCard, Not(NullGame), Not(RamschGame)]), then: [IncrementCounter("tally_sheet")]),
@@ -890,7 +890,7 @@
         name: "Großvaters Grand",
         text: "Der Grand zählt wieder 24 wie zu Großvaters Zeiten: Grundwert +6.",
         rarity: Uncommon,
-        price: 6,
+        price: 7,
         hooks: [
             OnDeclare(when: GameIs(Grand), then: [AddBaseValue(6)]),
         ],
