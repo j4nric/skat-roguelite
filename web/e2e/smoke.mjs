@@ -4762,6 +4762,9 @@ async function mapPass(browser, errors) {
   await shoot(page2, 'route-station');
   await page2.click('[data-testid="route-go"]');
   await page2.waitForSelector('.map-trail');
+  // The trail in the accent colour, not white (playtest 05.11.2026).
+  const trailFill = await page2.evaluate(() => document.querySelector('.map-trail')?.getAttribute('fill'));
+  if (trailFill?.toLowerCase() !== '#d1773f') fail(`travel: the trail is drawn in ${trailFill}, not the accent colour`);
   await page2.waitForTimeout(500);
   const moved = await page2.evaluate(() => document.querySelector('.map-pos')?.getAttribute('transform') ?? '');
   if (!/translate/.test(moved)) fail('travel: the position does not move along the way');
