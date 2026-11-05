@@ -135,10 +135,12 @@
         // Alleinspielers erreichte er Stadtteil 2 in 39,3 % und gewann
         // 8,9 % (Stadtteil 3 hielt 52 %); Stadtteil 1 rund + 5, Stadtteil 2
         // die Kurve vor Runde 2 mit Boss 90, Stadtteil 3 + 20. Vorschlag.
+        // Nachtrag Runde 4 (05.11.2026): Stadtteil 3 + 10, Boss 140 → 155;
+        // mit der Spelunke ab fünf Relikten gewann er 6,4 % (3 × 300).
         targets: Some([
             [20, 35, 55, 60, 100],
             [70, 80, 90, 100, 105],
-            [195, 215, 235, 250, 140],
+            [205, 225, 245, 260, 155],
         ]),
         start_relics: ["skat_keeper"],
         deck: (

@@ -187,7 +187,7 @@ fn every_content_item_loads_with_german_texts() {
     assert_eq!(tailoress[2], vec![180, 200, 225, 240, 155]);
     let shirker = targets(Character::Shirker).expect("shirker targets");
     assert_eq!(shirker[0], vec![20, 35, 55, 60, 100]);
-    assert_eq!(shirker[2], vec![195, 215, 235, 250, 140]);
+    assert_eq!(shirker[2], vec![205, 225, 245, 260, 155]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
     assert_eq!(heart_brother[0], vec![10, 20, 35, 40, 75]);
     assert_eq!(heart_brother[2], vec![140, 155, 175, 185, 130]);

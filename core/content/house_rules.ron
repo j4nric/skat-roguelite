@@ -658,8 +658,9 @@
         rarity: Rare,
         // SR4 (05.11.2026): 8 → 10; ohne Tresen + 9,5 / + 6,8 auf
         // „Stadtteil 2 / 3“, das Fünffache der übrigen seltenen Relikte.
-        // Nutzer 05.11.2026 (q28 B): +×0,2 → +×0,15 je Sieg in Folge.
-        price: 10,
+        // Nutzer 05.11.2026 (q28 B): +×0,2 → +×0,15 je Sieg in Folge;
+        // danach + 8,3 / + 4,7 (Punkte je Spiel + 39,8 %), Preis 10 → 9.
+        price: 9,
         hooks: [
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.15), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
