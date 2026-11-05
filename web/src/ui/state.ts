@@ -29,7 +29,7 @@ export interface ScoreOverlay {
   relics: OwnedRelic[];
   /** Display names of the seats (a boss sits in seat 1). */
   seatNames: string[];
-  /** A lost game whose loss a lost heart (or the end screen) sounds: the board stays quiet. */
+  /** A lost game that ends the run: the end screen sounds the loss, the board stays quiet. */
   quietLoss?: boolean;
   resolve: () => void;
 }

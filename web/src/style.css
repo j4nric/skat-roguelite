@@ -4157,40 +4157,35 @@ button.card {
   opacity: 0.6;
 }
 
-.chalk-stats {
+/* The numbers of a run and of all runs: rows of three tiles, the number
+   big in chalk, its label small under it (no tally marks, they read like
+   lives). */
+.chalk-tiles {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
   margin: 0;
-  font-size: var(--fs-s);
+  padding: 0;
+  list-style: none;
 }
 
-.chalk-stats dt {
-  align-self: center;
+.chalk-tiles li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px dashed rgba(232, 226, 210, 0.22);
+  text-align: center;
+}
+
+.chalk-tiles span {
+  font-size: var(--fs-2xs);
+  line-height: 1.05;
   color: var(--muted);
 }
 
-.chalk-stats dd {
-  margin: 0;
-  text-align: right;
-}
-
-.tally {
-  fill: none;
-  stroke: var(--text);
-  stroke-width: 3;
-  stroke-linecap: square;
-}
-
-.tally-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.tally-num,
-.tally-zero,
 .chalk-num {
   font-size: var(--fs-body);
   font-weight: 400;

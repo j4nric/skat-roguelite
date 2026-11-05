@@ -2421,6 +2421,9 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('[data-testid="end"]');
   if (await page.locator('.sheet-unlock').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  // No lives since ADR 0019: nothing on the end screen that reads like them (playtest 05.11.2026).
+  if (await page.locator('[data-testid="end"] :is(.tally, .heart, [data-testid="lives"])').count()) fail('the lost end screen shows tally marks or hearts');
+  if ((await page.locator('[data-testid="end"] [data-testid="stats-run"] li').count()) !== 6) fail('the lost end screen lacks the six numbers of the run');
   log(`hint runLost: ${await expectHint(page, 'runLost')}`);
   await shoot(page, 'hint-run-lost');
   await assertHintClear(page, 'hint run lost');
