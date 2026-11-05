@@ -145,14 +145,14 @@
         // (mit Aufdruck, Ramponiert und Skatpfleger): etwa Daus und Zehn.
         text: "Gewinne ein Spiel mit mindestens 21 gedrückten Augen.",
         condition: WinGame(min_discarded: 21),
-        rewards: [Character(Shirker)],
+        rewards: [Character(Shirker), Relic("rebate_book")],
     ),
     (
         id: "three_schneider",
         name: "Maßarbeit",
         text: "Gewinne drei Spiele mit Schneider in einer Kneipe.",
         condition: SchneiderWinsInPub(3),
-        rewards: [Character(Tailoress)],
+        rewards: [Character(Tailoress), Relic("golden_shears")],
     ),
     (
         id: "true_colours",
@@ -162,8 +162,12 @@
         // neu an. Ein Ramsch zählt nicht und unterbricht nicht.
         text: "Gewinne drei Farbspiele hintereinander mit derselben Trumpffarbe.",
         condition: SameTrumpStreak(3),
-        rewards: [Character(HeartBrother)],
+        rewards: [Character(HeartBrother), Relic("club_colours")],
     ),
+    // Bau-Richtungen (04.11.2026): Voll gedrückt, Maßarbeit und Farbe
+    // bekennen schalten dazu je ein Verbinder-Relikt ihrer Richtung frei
+    // (Rabattheft, Goldene Schere, Vereinsfarben), damit ein Drittel der
+    // Relikte gesperrt bleibt (DESIGN 9.3).
     // Welle 2b (02.11.2026): "Drei drücken" biegt eine Regel und ist
     // selten und teuer; wer es am Tresen sehen will, hat ein paar Abende
     // hinter sich.

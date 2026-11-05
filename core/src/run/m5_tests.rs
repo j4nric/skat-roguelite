@@ -357,6 +357,7 @@ fn matadors_at_least_counts_mit_and_ohne() {
             result: None,
             games_left: 0,
             transport: None,
+            marked_cards: None,
         };
         evaluate(c, &ctx, None)
     };
@@ -458,6 +459,7 @@ fn null_style_conditions_and_house_rules() {
         result: None,
         games_left: 0,
         transport: None,
+        marked_cards: None,
     };
     assert!(!evaluate(&Condition::NeverFollowedSuit, &ctx, None));
     assert!(!evaluate(&Condition::SevenDucked, &ctx, None));

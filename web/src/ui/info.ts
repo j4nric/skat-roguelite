@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, t } from '../i18n';
+import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, relicDirections, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
@@ -160,7 +160,7 @@ function relicModel(
   return {
     key,
     title: contentName('relics', id),
-    kind: `${label} · ${de.rarity[relic.rarity]}`,
+    kind: [label, de.rarity[relic.rarity], ...relicDirections(id)].join(' · '),
     art: `<span class="info-emblem">${relicCoaster(relic, { size: 72 })}</span>`,
     facts: [],
     sections: [

@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{CardModId, Factor};
+use super::{CardModId, Factor, ModKind};
 use crate::cards::{Card, Rank, Suit};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
@@ -42,6 +42,10 @@ pub enum Stage {
     OnRouteChosen,
     /// When the Tresen opens (no game in progress).
     OnShopOpened,
+    /// After a Marke (voucher) of the player's edition was redeemed, by
+    /// discarding or in a hand game (DESIGN 7.2). Acts on run state only
+    /// (counters, flags, Groschen), like [`Stage::OnSeriesWon`].
+    OnVoucherRedeemed,
 }
 
 impl Stage {
@@ -55,6 +59,7 @@ impl Stage {
                 | Stage::OnDiscard
                 | Stage::OnRouteChosen
                 | Stage::OnShopOpened
+                | Stage::OnVoucherRedeemed
         )
     }
 
@@ -158,6 +163,14 @@ pub enum Hook {
         /// Effects, applied in order.
         then: Vec<Effect>,
     },
+    /// After a Marke of the player's edition was redeemed.
+    OnVoucherRedeemed {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
 }
 
 impl Hook {
@@ -175,6 +188,7 @@ impl Hook {
             Hook::OnDiscard { .. } => Stage::OnDiscard,
             Hook::OnRouteChosen { .. } => Stage::OnRouteChosen,
             Hook::OnShopOpened { .. } => Stage::OnShopOpened,
+            Hook::OnVoucherRedeemed { .. } => Stage::OnVoucherRedeemed,
         }
     }
 
@@ -191,7 +205,8 @@ impl Hook {
             | Hook::OnAttach { when, .. }
             | Hook::OnDiscard { when, .. }
             | Hook::OnRouteChosen { when, .. }
-            | Hook::OnShopOpened { when, .. } => when,
+            | Hook::OnShopOpened { when, .. }
+            | Hook::OnVoucherRedeemed { when, .. } => when,
         }
     }
 
@@ -208,7 +223,8 @@ impl Hook {
             | Hook::OnAttach { then, .. }
             | Hook::OnDiscard { then, .. }
             | Hook::OnRouteChosen { then, .. }
-            | Hook::OnShopOpened { then, .. } => then,
+            | Hook::OnShopOpened { then, .. }
+            | Hook::OnVoucherRedeemed { then, .. } => then,
         }
     }
 }
@@ -230,6 +246,28 @@ impl CardFilter {
     pub fn matches(&self, card: Card) -> bool {
         self.suit.is_none_or(|s| s == card.suit) && self.rank.is_none_or(|r| r == card.rank)
     }
+}
+
+/// Which cards of the player's edition a counting effect counts
+/// ([`Effect::AddBaseValuePerCard`], [`Effect::AddLevelsPerCard`]; the
+/// connector relics of the build directions, 04.11.2026). A card counts
+/// once, however many of its modifications match. Every field narrows.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CardCount {
+    /// Only cards that carry one of these modifications. Empty: any
+    /// modification that is no curse (a Zinke, a Marke or a special card).
+    pub mods: Vec<CardModId>,
+    /// Only modifications of this kind (`Voucher`: Marken).
+    pub kind: Option<ModKind>,
+    /// Only cards whose printed suit is the trump suit of the declared
+    /// suit game, its Unter included (like "Siegel"); nothing in any other
+    /// game.
+    pub trump_suit: bool,
+    /// Only cards the player holds in the game in progress after the
+    /// skat: in his hand or played by him, not the skat. Nothing without a
+    /// game.
+    pub in_hand: bool,
 }
 
 /// What an effect does. Each variant names its lever of the formula.
@@ -273,6 +311,31 @@ pub enum Effect {
     /// "Abgestuft" and a curse laid for one pub included ("Pechvogel",
     /// 03.11.2026). Scaled like [`Effect::AddBaseValue`].
     AddBaseValuePerCursedCard(i32),
+    /// Lever Grundwert: add `per` for every card of the player's edition
+    /// that [`CardCount`] counts when the effect fires ("Vereinsfarben":
+    /// +1 per card of the trump suit with a Zinke). Scaled like
+    /// [`Effect::AddBaseValue`]. Nothing while none counts.
+    AddBaseValuePerCard {
+        /// Which cards count.
+        count: CardCount,
+        /// Grundwert per card.
+        per: i32,
+    },
+    /// Lever Gewinnstufen: add `per` levels for every card of the
+    /// player's edition that [`CardCount`] counts when the effect fires
+    /// ("Bleigießen": +1 per Blei card in the hand of a won Null). Nothing
+    /// while none counts.
+    AddLevelsPerCard {
+        /// Which cards count.
+        count: CardCount,
+        /// Gewinnstufen per card.
+        per: i32,
+    },
+    /// Lever Augen: the trick just completed counts this many Augen more
+    /// for the seat that took it, for winning and Schneider
+    /// ("Fingerspitzengefühl"). The extra goes to
+    /// [`crate::game::Game::add_bonus_points`]. On trick end only.
+    AddTrickPoints(u32),
     /// Lever Gewinnstufen: add `per` levels per point of a run counter
     /// ("Skatgott": +1 per won Schneider game, for the rest of the run).
     AddLevelsPerCounter {
@@ -548,15 +611,17 @@ impl Effect {
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
             | Effect::AddBaseValuePerCursedCard(_)
+            | Effect::AddBaseValuePerCard { .. }
+            | Effect::AddLevelsPerCard { .. }
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
             | Effect::ScaleGameValuePerCounter { .. } => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
-            Effect::SchneiderBonusFromTrick | Effect::MultiplyTrickPoints(_) => {
-                stage == Stage::OnTrickEnd
-            }
+            Effect::SchneiderBonusFromTrick
+            | Effect::MultiplyTrickPoints(_)
+            | Effect::AddTrickPoints(_) => stage == Stage::OnTrickEnd,
             Effect::TurnInto(_) => stage == Stage::OnDiscard,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)
@@ -664,6 +729,10 @@ impl Effect {
             Effect::AddCardPoints(n) => Effect::AddCardPoints(times(*n)),
             Effect::AddBaseValue(n) => Effect::AddBaseValue(times(*n)),
             Effect::AddBaseValuePerCursedCard(n) => Effect::AddBaseValuePerCursedCard(times(*n)),
+            Effect::AddBaseValuePerCard { count, per } => Effect::AddBaseValuePerCard {
+                count: count.clone(),
+                per: times(*per),
+            },
             Effect::AddLevels(n) => Effect::AddLevels(times(*n)),
             Effect::GainCoins(n) => Effect::GainCoins(times(*n)),
             Effect::RankBonus(n) => {
@@ -767,6 +836,11 @@ pub enum Condition {
     /// The trick just completed is the first one the declarer took
     /// ("Stichfest"). On trick end only.
     FirstTrickOfDeclarer,
+    /// The declarer took the trick just completed with a card of the
+    /// player's edition that carries a Zinke, any modification that is no
+    /// curse ("Fingerspitzengefühl", "Trinkgeld", "Strichliste"). On
+    /// trick end only.
+    TrickWonWithMarkedCard,
     /// The trick just completed is the first trick of the game and this
     /// card won it, whoever played it ("Erster Stich"). Card modifications
     /// only, on trick end only.
@@ -851,6 +925,7 @@ impl Condition {
             }
             Condition::TrickWinnerMatches { .. }
             | Condition::FirstTrickOfDeclarer
+            | Condition::TrickWonWithMarkedCard
             | Condition::ThisCardWinsFirstTrick
             | Condition::ThisCardWinsTrick
             | Condition::ThisCardBeatsDefenderCard(_) => stage == Stage::OnTrickEnd,

@@ -84,7 +84,7 @@ export function modText(mod: string, value: number): string {
 
 /**
  * The editions of a boss's two figures in one line (ADR 0015, ADR 0017):
- * "Ausgaben: Der Schieber: Siebenen Augen +4 · Die Hehlerin: Achten Augen +3".
+ * "Boss-Decks: Der Schieber: Siebenen Augen +4 · Die Hehlerin: Achten Augen +3".
  * Empty if neither has one. Formatting only; the entries come from the core.
  */
 export function bossEditionText(boss: BossInfo | null | undefined): string {
@@ -134,6 +134,11 @@ export function modFigure(mod: string): ModFigure | null {
 /** The run counters a relic reads or raises, from the core's catalog. */
 export function relicCounters(relic: string): string[] {
   return catalog?.relics[relic]?.counters ?? [];
+}
+
+/** German names of the build directions of a relic (04.11.2026), from the core's catalog. */
+export function relicDirections(relic: string): string[] {
+  return (catalog?.relics[relic]?.tags ?? []).map((tag) => de.buildTags[tag] ?? tag);
 }
 
 /** Kind, rarity and group of a relic from the core's catalog, for its beer mat. */

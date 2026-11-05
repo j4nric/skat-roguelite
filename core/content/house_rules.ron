@@ -20,6 +20,10 @@
 // Farbspiel und Grand, die im Null etwas Unsinniges täten, schließen Null
 // aus (Not(NullGame)).
 // characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
+// tags: Bau-Richtungen (seit 04.11.2026, Cockpit q26): OneSuit
+// (Farbtreue), Vouchers (Markenhändler), Tricks (Stichjäger), Schneider,
+// Null (Nullspieler). Die Verbinder-Relikte am Ende zählen Teile ihrer
+// Richtung; Angebote dürfen nach Tags gewichten.
 // group: Anzeige-Gruppe für die Form des Bierdeckels (Value: Wert,
 // Multiplier: Stufen, Control: Kontrolle, Tour: Groschen, Tresen
 // und Wege, Factor: Faktor; ohne Angabe Value). Nur Anzeige.
@@ -27,6 +31,7 @@
 [
     (
         id: "last_trick_seven",
+        tags: [Tricks],
         group: Multiplier,
         focus: Trump,
         name: "Spitze",
@@ -40,6 +45,7 @@
     ),
     (
         id: "concede",
+        tags: [Schneider],
         group: Multiplier,
         focus: Trump,
         name: "Schenken",
@@ -65,6 +71,7 @@
     ),
     (
         id: "virgin",
+        tags: [Schneider],
         group: Multiplier,
         focus: Trump,
         name: "Jungfrau",
@@ -209,6 +216,7 @@
     // Figure. Lever Schneider: a won game with 80 to 89 Augen is Schneider.
     (
         id: "tailor",
+        tags: [Schneider],
         group: Multiplier,
         focus: Trump,
         kind: Regular,
@@ -222,6 +230,7 @@
     // Lever Grundwert: +8 on every Null, won or lost.
     (
         id: "null_eight_fifteen",
+        tags: [Null],
         group: Value,
         focus: Null,
         name: "Nullachtfuffzehn",
@@ -236,6 +245,7 @@
     // Augen after five tricks): every Daus counts 16.
     (
         id: "fat_sow",
+        tags: [Null],
         group: Value,
         focus: Null,
         name: "Dicke Sau",
@@ -278,6 +288,7 @@
     // (docs/balance/2026-11-03-kleine-runde.md: it dominated every relic).
     (
         id: "skat_god",
+        tags: [Schneider],
         group: Multiplier,
         focus: Trump,
         name: "Skatgott",
@@ -314,6 +325,7 @@
     // game discards nothing.
     (
         id: "skat_keeper",
+        tags: [Vouchers],
         group: Value,
         name: "Skatpfleger",
         text: "Die Augen der gedrückten Karten zählen doppelt.",
@@ -347,6 +359,7 @@
     // suit starts over. The flag holds the suit, the counter the streak.
     (
         id: "home_suit",
+        tags: [OneSuit],
         group: Multiplier,
         focus: Trump,
         name: "Stammfarbe",
@@ -368,6 +381,7 @@
     // Null, where a trick of the declarer loses.
     (
         id: "blank_king",
+        tags: [Tricks],
         group: Multiplier,
         focus: Trump,
         name: "Luschenkönig",
@@ -383,6 +397,7 @@
     // for winning.
     (
         id: "watertight",
+        tags: [Schneider],
         group: Multiplier,
         focus: Trump,
         name: "Stichfest",
@@ -409,6 +424,7 @@
     // there lets it lapse); price unchanged, not measured.
     (
         id: "three_discard",
+        tags: [Vouchers],
         group: Control,
         name: "Drei drücken",
         text: "Im ersten Spiel jeder Kneipe: Du nimmst drei Karten aus einem größeren Talon und drückst drei.",
@@ -511,7 +527,7 @@
         passive: [ChooseMalus(2)],
     ),
     // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026): Lever
-    // Grundwert, +1 je verfluchter Karte der Ausgabe beim Ansagen. Zählt
+    // Grundwert, +1 je verfluchter Karte des Decks beim Ansagen. Zählt
     // jeden Fluch, auch Abgestuft (Nullspieler: +4 ab Start) und die
     // Flüche einer Kneipe (Die Oma, Spelunke). Bruderherz startet mit neun
     // Flüchen und hat damit sofort +9: darum Rare und Preis 9. VORLÄUFIG,
@@ -520,7 +536,7 @@
         id: "jinx",
         group: Value,
         name: "Pechvogel",
-        text: "+1 Grundwert für jede verfluchte Karte deiner Ausgabe.",
+        text: "+1 Grundwert für jede verfluchte Karte in deinem Deck.",
         rarity: Rare,
         price: 9,
         hooks: [
@@ -536,6 +552,7 @@
     // festlegt (ADR 0018 Punkt 6).
     (
         id: "jay",
+        tags: [OneSuit],
         group: Factor,
         focus: Trump,
         name: "Eichelhäher",
@@ -548,6 +565,7 @@
     ),
     (
         id: "tree_frog",
+        tags: [OneSuit],
         group: Factor,
         focus: Trump,
         name: "Laubfrosch",
@@ -560,6 +578,7 @@
     ),
     (
         id: "robin",
+        tags: [OneSuit],
         group: Factor,
         focus: Trump,
         name: "Rotkehlchen",
@@ -572,6 +591,7 @@
     ),
     (
         id: "bell_tree",
+        tags: [OneSuit],
         group: Factor,
         focus: Trump,
         name: "Schellenbaum",
@@ -597,6 +617,7 @@
     ),
     (
         id: "black_zero",
+        tags: [Null],
         group: Factor,
         focus: Null,
         name: "Schwarze Null",
@@ -635,6 +656,243 @@
         hooks: [
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.2), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
+        ],
+    ),
+    // ---------------------------------------------------------------------
+    // Bau-Richtungen (Entscheidung des Nutzers, 04.11.2026, Cockpit q26):
+    // Verbinder-Relikte, die andere Teile ihres Builds zählen. Seltenheit,
+    // Preise und Bot-Werte VORLÄUFIG nach Augenmaß, ohne Messung (DESIGN
+    // 8.11). "Zinke" heißt jede Modifikation, die kein Fluch ist (auch
+    // Marken und Spezialkarten), "Deck" die Ausgabe des Spielers (ADR 0015).
+    // ---------------------------------------------------------------------
+    // Farbtreue. Lever Grundwert: +1 per card of the declared trump suit
+    // in the player's edition that carries a Zinke (Siegel, Aufdruck,
+    // Winkel …; the Unter of that suit too, like the Siegel), held or not.
+    (
+        id: "club_colours",
+        tags: [OneSuit],
+        group: Value,
+        focus: Trump,
+        name: "Vereinsfarben",
+        text: "Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
+        rarity: Uncommon,
+        price: 7,
+        hooks: [
+            OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 1)]),
+        ],
+    ),
+    // Farbtreue. Lever Gewinnstufen: the streak of suit games in the same
+    // trump suit before this one (won or lost) gives levels on a won suit
+    // game, at most +3. A grand, a Null or another trump suit starts over;
+    // the Ramsch neither counts nor breaks it. Like Stammfarbe across pubs.
+    // The flag holds the suit, the counter the games before this one.
+    (
+        id: "true_soul",
+        tags: [OneSuit],
+        group: Multiplier,
+        focus: Trump,
+        name: "Treue Seele",
+        text: "Gewinnst du ein Farbspiel: +1 Stufe je Spiel direkt davor in derselben Trumpffarbe, höchstens +3.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnDeclare(when: All([GameIs(Suit(Clubs)), Not(Flag("true_soul_clubs"))]), then: [ClearFlag("true_soul_spades"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_clubs"), ResetCounter("true_soul")]),
+            OnDeclare(when: All([GameIs(Suit(Spades)), Not(Flag("true_soul_spades"))]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_spades"), ResetCounter("true_soul")]),
+            OnDeclare(when: All([GameIs(Suit(Hearts)), Not(Flag("true_soul_hearts"))]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_spades"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_hearts"), ResetCounter("true_soul")]),
+            OnDeclare(when: All([GameIs(Suit(Diamonds)), Not(Flag("true_soul_diamonds"))]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_spades"), ClearFlag("true_soul_hearts"), SetFlag("true_soul_diamonds"), ResetCounter("true_soul")]),
+            OnDeclare(when: Any([GameIs(Grand), NullGame]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_spades"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), ResetCounter("true_soul")]),
+            OnScore(when: All([Won, SuitGame]), then: [AddLevelsPerCounter(counter: "true_soul", per: 1)]),
+            OnScore(when: All([SuitGame, Not(CounterAtLeast(counter: "true_soul", value: 3))]), then: [IncrementCounter("true_soul")]),
+        ],
+    ),
+    // Markenhändler. Lever Gewinnstufen (counter of one pub): every Marke
+    // redeemed (discarded or in a hand game) gives +1 level on every won
+    // game until the pub is won; the game it was redeemed in counts too.
+    (
+        id: "rebate_book",
+        tags: [Vouchers],
+        group: Multiplier,
+        name: "Rabattheft",
+        text: "Jede eingelöste Marke: +1 Stufe auf jedes gewonnene Spiel, bis die Kneipe vorbei ist.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnVoucherRedeemed(then: [IncrementCounter("rebate_book")]),
+            OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerCounter(counter: "rebate_book", per: 1)]),
+            OnSeriesWon(then: [ResetCounter("rebate_book")]),
+        ],
+    ),
+    // Markenhändler. Lever Groschen: every redeemed Marke pays 2 more.
+    (
+        id: "empties",
+        tags: [Vouchers],
+        group: Tour,
+        name: "Leergut",
+        text: "Jede eingelöste Marke bringt dir 2 Groschen extra.",
+        rarity: Common,
+        price: 4,
+        hooks: [
+            OnVoucherRedeemed(then: [GainCoins(2)]),
+        ],
+    ),
+    // Markenhändler. Lever Grundwert: +1 per Marke still on a card of the
+    // edition at the declaration. Pulls against the two above: keep the
+    // Marken or cash them in.
+    (
+        id: "stamp_album",
+        tags: [Vouchers],
+        group: Value,
+        name: "Sammelalbum",
+        text: "+1 Grundwert je Marke, die in deinem Deck noch auf einer Karte klebt.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCard(count: (kind: Some(Voucher)), per: 1)]),
+        ],
+    ),
+    // Stichjäger. Lever Augen: a trick the declarer takes with a card of
+    // his edition that carries a Zinke counts 3 Augen more (winning and
+    // Schneider). Not in Null (a trick loses) nor Ramsch.
+    (
+        id: "fingertips",
+        tags: [Tricks],
+        group: Value,
+        focus: Trump,
+        name: "Fingerspitzengefühl",
+        text: "Machst du einen Stich mit einer Karte mit Zinke, zählt er 3 Augen mehr.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnTrickEnd(when: All([TrickWonWithMarkedCard, Not(NullGame), Not(RamschGame)]), then: [AddTrickPoints(3)]),
+        ],
+    ),
+    // Stichjäger. Lever Gewinnstufen: counts the tricks of one game the
+    // declarer takes with a card with a Zinke; on a won game 3 of them give
+    // +1 level, 5 give +2. The counter starts over with every declaration.
+    (
+        id: "tally_sheet",
+        tags: [Tricks],
+        group: Multiplier,
+        focus: Trump,
+        name: "Strichliste",
+        text: "Machst du in einem gewonnenen Spiel 3 Stiche mit Karten mit Zinke: +1 Stufe, bei 5 Stichen +2.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnDeclare(then: [ResetCounter("tally_sheet")]),
+            OnTrickEnd(when: All([TrickWonWithMarkedCard, Not(NullGame), Not(RamschGame)]), then: [IncrementCounter("tally_sheet")]),
+            OnScore(when: All([Won, CounterAtLeast(counter: "tally_sheet", value: 3)]), then: [AddLevels(1)]),
+            OnScore(when: All([Won, CounterAtLeast(counter: "tally_sheet", value: 5)]), then: [AddLevels(1)]),
+        ],
+    ),
+    // Stichjäger. Lever Groschen: 1 per trick the declarer takes with a
+    // card with a Zinke, at most 3 per game (the counter starts over with
+    // every declaration). Like a Goldkante on every card with a Zinke.
+    (
+        id: "tip",
+        tags: [Tricks],
+        group: Tour,
+        focus: Trump,
+        name: "Trinkgeld",
+        text: "Machst du einen Stich mit einer Karte mit Zinke: 1 Groschen, höchstens 3 pro Spiel.",
+        rarity: Common,
+        price: 4,
+        hooks: [
+            OnDeclare(then: [ResetCounter("tip")]),
+            OnTrickEnd(when: All([TrickWonWithMarkedCard, Not(NullGame), Not(RamschGame), Not(CounterAtLeast(counter: "tip", value: 3))]), then: [GainCoins(1), IncrementCounter("tip")]),
+        ],
+    ),
+    // Schneider. Faktor (ADR 0018: only rare relics): ×1,5 on a game won
+    // with Schneider (Schwarz included).
+    (
+        id: "golden_shears",
+        tags: [Schneider],
+        group: Factor,
+        focus: Trump,
+        name: "Goldene Schere",
+        text: "×1,5, wenn du mit Schneider gewinnst.",
+        rarity: Rare,
+        price: 8,
+        hooks: [
+            OnScore(when: All([WonSchneider, Not(RamschGame)]), then: [ScaleGameValue(1.5)]),
+        ],
+    ),
+    // Schneider. Lever Grundwert (run counter): every game won with
+    // Schneider gives +1 for the rest of the run, from the next game on.
+    (
+        id: "tape_measure",
+        tags: [Schneider],
+        group: Value,
+        focus: Trump,
+        name: "Maßband",
+        text: "Jedes Spiel, das du mit Schneider gewinnst, gibt +1 Grundwert für den Rest des Runs.",
+        rarity: Rare,
+        price: 7,
+        passive: [AddBaseValueFromCounter("tape_measure")],
+        hooks: [
+            OnScore(when: All([WonSchneider, Not(RamschGame)]), then: [IncrementCounter("tape_measure")]),
+        ],
+    ),
+    // Schneider. Lever Grundwert: on a game won with Schneider, +1 per card
+    // of the edition with Aufdruck or Schneiderkreide (the Schneiderin
+    // starts with four).
+    (
+        id: "sewing_pattern",
+        tags: [Schneider],
+        group: Value,
+        focus: Trump,
+        name: "Schnittmuster",
+        text: "Gewinnst du mit Schneider: +1 Grundwert je Karte mit Aufdruck oder Schneiderkreide in deinem Deck.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnScore(when: All([WonSchneider, Not(RamschGame)]), then: [AddBaseValuePerCard(count: (mods: ["points", "tailors_chalk"]), per: 1)]),
+        ],
+    ),
+    // Nullspieler. Lever Gewinnstufen: a won Null gives +1 level per Blei
+    // card the player held after the skat (in a won Null he ducks every
+    // one of them).
+    (
+        id: "lead_pouring",
+        tags: [Null],
+        group: Multiplier,
+        focus: Null,
+        name: "Bleigießen",
+        text: "Gewinnst du ein Null: +1 Stufe je Karte mit Blei auf deiner Hand.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(when: All([Won, NullGame]), then: [AddLevelsPerCard(count: (mods: ["lead"], in_hand: true), per: 1)]),
+        ],
+    ),
+    // Nullspieler. Lever Grundwert: every Null, won or lost (like
+    // Nullachtfuffzehn), +2 per Blei card of the edition.
+    (
+        id: "plumb_line",
+        tags: [Null],
+        group: Value,
+        focus: Null,
+        name: "Senkblei",
+        text: "Null: +2 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren.",
+        rarity: Common,
+        price: 5,
+        hooks: [
+            OnDeclare(when: NullGame, then: [AddBaseValuePerCard(count: (mods: ["lead"]), per: 2)]),
+        ],
+    ),
+    // Grand (Cockpit q27, 04.11.2026: the Grand counts 18 in the run).
+    // Lever Grundwert: +6 on every Grand, won or lost, so it counts 24 as
+    // in the Skatordnung again.
+    (
+        id: "grandfathers_grand",
+        group: Value,
+        focus: Trump,
+        name: "Großvaters Grand",
+        text: "Der Grand zählt wieder 24 wie zu Großvaters Zeiten: Grundwert +6.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnDeclare(when: GameIs(Grand), then: [AddBaseValue(6)]),
         ],
     ),
 ]

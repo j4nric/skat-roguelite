@@ -37,7 +37,7 @@ export const de = {
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
-      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Ausgabe.',
+      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Deck.',
       ConditionNotMet: 'Der wirkt gerade nicht.',
       NotInBossPub: 'Nicht in der Boss-Kneipe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
@@ -496,7 +496,7 @@ export const de = {
   },
 
   odds: {
-    line: 'Deine Ausgabe spielt in {pct} der Spiele (Hand oder Skat). Sonst hält ein Gegner die Karte in seiner eigenen.',
+    line: 'Diese Karte spielt in {pct} der Spiele aus deinem Deck (Hand oder Skat). Sonst hält sie ein Gegner, aus seinem eigenen Deck.',
     detail: 'Hand {hand} · Skat {skat} · Gegner {defenders}',
   },
 
@@ -734,9 +734,18 @@ export const de = {
     bargainNote: 'Schnäppchen: dafür ein Fluch auf einer anderen Karte, ohne Groschen',
     fence: 'Hehlerware',
     fenceNote: 'Hehlerware: dafür ein Fluch auf einer zufälligen Karte, ohne Groschen',
-    fenceRule: 'Hehlerware: Du zahlst den halben Preis (abgerundet). Dafür bekommt eine zufällige Karte deiner Ausgabe ohne Fluch einen Fluch, für immer. Der Fluch zahlt keine Groschen.',
+    fenceRule: 'Hehlerware: Du zahlst den halben Preis (abgerundet). Dafür bekommt eine zufällige Karte deines Decks ohne Fluch einen Fluch, für immer. Der Fluch zahlt keine Groschen.',
     tradeWas: 'statt {price}',
   },
+
+  /** Build directions (Bau-Richtungen, 04.11.2026), on relic info cards. */
+  buildTags: {
+    OneSuit: 'Farbtreue',
+    Vouchers: 'Markenhändler',
+    Tricks: 'Stichjäger',
+    Schneider: 'Schneider',
+    Null: 'Nullspieler',
+  } as Record<string, string>,
 
   rarity: {
     Common: 'gewöhnlich',
@@ -851,23 +860,23 @@ export const de = {
     cleanse: 'Alle Zinken einer Karte deiner Wahl gehen ab, Flüche eingeschlossen.',
     /** Marke options (04.11.2026). */
     markeRandomChosen: 'Eine zufällige Marke auf eine Karte deiner Wahl. Gezogen wird erst, wenn du die Karte gewählt hast.',
-    markeChosenRandom: 'Eine Marke deiner Wahl auf eine zufällige Karte deiner Ausgabe.',
+    markeChosenRandom: 'Eine Marke deiner Wahl auf eine zufällige Karte deines Decks.',
     markeChosenChosen: 'Eine Marke deiner Wahl auf eine Karte deiner Wahl.',
     markeRandomRandom: 'Eine zufällige Marke auf eine zufällige Karte.',
     markeChance: '{name} {percent} %',
     pickMarke: 'Welche Marke?',
     pickMarkeHint: 'Sie kommt auf eine Karte deiner Wahl.',
-    pickMarkeHintRandom: 'Sie kommt auf eine zufällige Karte deiner Ausgabe, eine ohne Zinke zuerst.',
+    pickMarkeHintRandom: 'Sie kommt auf eine zufällige Karte deines Decks, eine ohne Zinke zuerst.',
     markeTake: 'Diese',
     or: 'oder',
-    markeBlocked: 'Geht gerade nicht: Deine Ausgabe hat diese Spezialkarte schon, oder keine Karte passt.',
+    markeBlocked: 'Geht gerade nicht: Dein Deck hat diese Spezialkarte schon, oder keine Karte passt.',
     nothing: 'Sonst passiert nichts.',
     watch: 'Du schaust nur zu.',
     blocked: {
       NotEnoughCoins: 'Zu wenig Groschen.',
       NothingLeft: 'Hier gibt es nichts mehr für dich.',
-      SpecialCardCap: 'Deine Ausgabe hat diese Spezialkarte schon.',
-      NoFittingCard: 'Keine Karte deiner Ausgabe passt.',
+      SpecialCardCap: 'Dein Deck hat diese Spezialkarte schon.',
+      NoFittingCard: 'Keine Karte deines Decks passt.',
       NoRelic: 'Du hast kein Relikt.',
       RelicSlotsFull: 'Alle Relikt-Plätze sind belegt.',
       BetOpen: 'Eine Wette läuft schon.',
@@ -926,7 +935,7 @@ export const de = {
 
   /** The first Untot or Wandelkarte of a save: a one-time explanation (DESIGN 7.2). */
   special: {
-    title: 'Neu in deiner Ausgabe',
+    title: 'Neu in deinem Deck',
     lead: '{card} ist jetzt {special}.',
     undead: [
       'Spielst du sie im Farbspiel oder Grand, steht sie nach dem Stich wieder auf und kehrt als die Karte auf deine Hand zurück, die den Stich gemacht hat.',
@@ -943,7 +952,7 @@ export const de = {
       'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
       'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
     ],
-    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Ausgabe. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Deck. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
     go: 'Verstanden',
   },
 
@@ -1248,8 +1257,8 @@ export const de = {
     runs: 'Runs',
     runsWon: 'Gewonnen',
     bestSection: 'Weitester Stadtteil',
-    deck: 'Deine Ausgabe ({count} Karten)',
-    deckHint: 'Gegeben wird das normale Skatblatt. Was du hältst, spielt in deiner Ausgabe, was ein Gegner hält, in seiner.',
+    deck: 'Dein Deck ({count} Karten)',
+    deckHint: 'Gegeben wird das normale Skatblatt. Was du hältst, spielt aus deinem Deck, was ein Gegner hält, aus seinem.',
   },
 
   credits: {
@@ -1305,10 +1314,10 @@ export const de = {
     demotedJack: 'Abgestuft: kein Unter, die niedrigste Karte der Farbe',
     demoted: 'Abgestuft: sticht einen Rang tiefer',
     /** Whose edition the card shows (ADR 0015). */
-    ownerGuest: 'Ausgabe des Stammgasts',
-    ownerBoss: 'Ausgabe von {name}',
+    ownerGuest: 'Deck des Gegners',
+    ownerBoss: 'Boss-Deck von {name}',
     /** The editions of a boss's two figures next to his rule (ADR 0017). */
-    bossEdition: 'Ausgaben: {entries}',
+    bossEdition: 'Boss-Decks: {entries}',
     bossFigureEdition: '{name}: {entries}',
     bossEditionEntry: '{cards} {mod}',
     /** The two boss players by name. */
@@ -1405,6 +1414,12 @@ export const de = {
     guardian_angel: 'Verlierst du eine Kneipe, auch eine Spelunke oder die Boss-Kneipe, spielst du sie gleich noch einmal von vorn: gleicher Zielwert, frisches Konto, neue Karten. Das geht einmal, dann ist der Schutzengel weg. Auch eine verlassene Kneipe zählt.',
     tap: 'Nach jeder gewonnenen Kneipe, auch Spelunke und Boss-Kneipe, wächst der Faktor um ×0,1, für den Rest des Runs. Er wirkt auf jedes gewonnene Spiel und wird mit anderen Faktoren malgenommen.',
     hot_hand: 'Der Faktor zählt die Spiele, die du vor diesem in Folge gewonnen hast: ×1, dann ×1,2, ×1,4 … Ein verlorenes Spiel setzt ihn auf ×1 zurück. Einmischen bricht die Folge nicht.',
+    club_colours: 'Zählt bei jeder Ansage eines Farbspiels die Karten der Trumpffarbe in deinem Deck, die eine Zinke tragen (auch Marken und Spezialkarten, keine Flüche), egal wer sie gerade hält. Der Unter der Farbe zählt mit, wie beim Siegel.',
+    true_soul: 'Zählt die Farbspiele direkt davor in derselben Trumpffarbe, gewonnen wie verloren, auch über Kneipen hinweg. Die Stufen gibt es nur auf ein gewonnenes Farbspiel. Ein Grand, ein Null oder eine andere Trumpffarbe fangen von vorn an, ein Ramsch unterbricht nichts.',
+    rebate_book: 'Jede Marke zählt, ob gedrückt oder beim Handspiel eingelöst, auch die zurückgekehrten des Drückebergers. Die Stufen gelten auf jedes gewonnene Spiel bis zum Ende der Kneipe, das Spiel mit der Marke eingeschlossen.',
+    fingertips: 'Zählt nur Stiche, die du mit einer Karte deines Decks mit Zinke machst (keine Flüche). Die 3 Augen zählen zum Gewinnen und für Schneider. Nicht im Null und Ramsch.',
+    tally_sheet: 'Zählt in jedem Spiel neu: Stiche, die du mit einer Karte deines Decks mit Zinke machst. Nicht im Null und Ramsch.',
+    lead_pouring: 'Zählt die Karten mit Blei, die du nach dem Skat auf der Hand hältst. Im gewonnenen Null spielst du sie alle unter.',
     dive_expert: 'Führt ein Weg in eine Spelunke, zeigt er dir zwei Mali. Du wählst bei der Routenwahl, welcher gilt; sonst der erste.',
   } as Record<string, string>,
 
@@ -1416,6 +1431,11 @@ export const de = {
     home_suit: 'Stammfarbe: {value}× dieselbe Trumpffarbe',
     tap: 'Zapfhahn: {value} Kneipen, +×0,1 je Kneipe',
     hot_hand: 'Heiße Hand: {value} Siege in Folge, +×0,2 je Sieg',
+    true_soul: 'Treue Seele: {value} Spiele davor in dieser Trumpffarbe',
+    rebate_book: 'Rabattheft: {value} Marken eingelöst, +{value} Stufen',
+    tally_sheet: 'Strichliste: {value} Stiche mit Zinke in diesem Spiel',
+    tip: 'Trinkgeld: {value} von 3 Groschen in diesem Spiel',
+    tape_measure: 'Maßband: +{value} Grundwert',
   } as Record<string, string>,
 
   /**
