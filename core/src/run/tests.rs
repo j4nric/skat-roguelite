@@ -739,18 +739,20 @@ fn a_run_can_start_with_relics_and_later() {
         }),
         Some(RunError::InvalidStart)
     );
-    // Any number of relics (03.11.2026), unless `run.ron` caps them.
+    // Up to eight relics (05.11.2026, `run.ron`); without a cap any number.
     let all = RunStart {
         relics: content.relics.keys().cloned().collect(),
         ..RunStart::default()
     };
-    assert_eq!(bad(all.clone()), None);
-    let mut capped = content.clone();
-    capped.run.relic_slots = Some(5);
-    assert_eq!(
-        Run::new_with(&capped, 1, &all).err(),
-        Some(RunError::NoFreeSlot)
-    );
+    assert_eq!(bad(all.clone()), Some(RunError::NoFreeSlot));
+    let eight = RunStart {
+        relics: content.relics.keys().take(8).cloned().collect(),
+        ..RunStart::default()
+    };
+    assert_eq!(bad(eight), None);
+    let mut unlimited = content.clone();
+    unlimited.run.relic_slots = None;
+    assert_eq!(Run::new_with(&unlimited, 1, &all).err(), None);
     let (later, _) = Run::new_with(
         &content,
         1,

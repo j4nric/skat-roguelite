@@ -447,15 +447,17 @@ fn a_rule_may_change_slots_redeals_and_payout() {
     def.rule.relic_slots = Some(4);
     def.rule.redeals = -5;
     def.rule.payout_factor = 2;
-    // Unlimited in `run.ron` (03.11.2026): the character's cap counts.
-    assert_eq!(content.run.relic_slots, None);
+    // Eight in `run.ron` (05.11.2026): the lower of both counts.
+    assert_eq!(content.run.relic_slots, Some(8));
     assert_eq!(content.relic_slots(Character::Declarer), Some(4));
     assert!(content.relic_fits(Character::Declarer, 4));
     assert!(!content.relic_slot_free(Character::Declarer, 4));
     // With slots in `run.ron` the lower of both.
     content.run.relic_slots = Some(3);
     assert_eq!(content.relic_slots(Character::Declarer), Some(3));
+    // Without slots in `run.ron` the character's alone.
     content.run.relic_slots = None;
+    assert_eq!(content.relic_slots(Character::Declarer), Some(4));
     assert_eq!(content.redeals(Character::Declarer), 0);
     let mut run = character_run(&content, Character::Declarer);
     run.coins = 12;

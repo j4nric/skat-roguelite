@@ -40,10 +40,15 @@
     // 19,9 % in den ersten beiden Kneipen, verlorene Runs 57 / 10 / 33 %;
     // Stadtteil 3 hielt 40 % statt rund 27 %. Danach Stadtteil 3 + 15 (und
     // der Alte × 1,5 in bosses.ron), UNGEMESSEN (SR4).
+    // Runde 5 (05.11.2026, docs/balance/2026-11-05-runde5.md): Mit acht
+    // Relikt-Plätzen (statt rund 20 am Ende) hielt Stadtteil 3 nur 11 %
+    // (160 / 180 / 200 / 215, der Alte 210 gewann 43 %), gewonnen 1,5 %.
+    // Stadtteil 3 rund − 28 %, Boss 140 → 115 (der Alte × 1,2: 138):
+    // 39,9 / 13,7 / 3,5 %, Stadtteil 3 hält 25 %, der Alte 50 %.
     targets: [
         [15, 30, 45, 50, 85],
         [55, 65, 75, 85, 95],
-        [160, 180, 200, 215, 140],
+        [115, 130, 145, 160, 115],
     ],
     // Routenwahl zwischen zwei Kneipen: drei Wege (Zu Fuß, Bahn, Fahrrad),
     // alle gleich (Entscheidung des Nutzers, 02.11.2026): je eine Station,
@@ -83,7 +88,10 @@
     // SR4 (05.11.2026): 0,95 → 0,9; 8,6 bis 13,2 % der verlorenen Runs
     // endeten in Spelunken (Drückeberger 13,2, Bruderherz 11,0, Alleinspieler
     // 10,0 %).
-    spelunke: (chance: 0.3, target_factor: 0.9),
+    // Runde 5 (05.11.2026, acht Relikt-Plätze): 0,9 → 0,85; mit 0,9 endeten
+    // 9,9 bis 10,5 % der verlorenen Runs in Spelunken (gewonnen 72 bis 76 %
+    // gegen 86 bis 87 % in normalen Kneipen), danach 8,6 bis 9,9 %.
+    spelunke: (chance: 0.3, target_factor: 0.85),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
     // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach
@@ -96,8 +104,12 @@
     // eins mehr in Stadtteil 1, damit höchstens ein Fünftel der Runs in
     // den ersten beiden Kneipen endet (docs/balance/2026-11-04-runde2.md).
     district_redeals: [1],
-    // relic_slots: seit 03.11.2026 ohne Angabe (Entscheidung des Nutzers):
-    // beliebig viele Relikte. Mit Some(n) wieder n Plätze.
+    // Relikt-Plätze (Hausregeln und Figuren zusammen): seit 05.11.2026
+    // acht (Entscheidung des Nutzers, Cockpit q34 A; DESIGN 8.0). Volle
+    // Plätze: Ein neues Relikt ersetzt ein gehaltenes, das für den halben
+    // Preis verkauft wird. 03.11. bis 05.11.2026 ohne Angabe (beliebig
+    // viele), davor 5.
+    relic_slots: Some(8),
     // Schnaps-Plätze: seit 03.11.2026 drei (Entscheidung des Nutzers,
     // Schnaps-Leiste, DESIGN 8.9), vorher zwei. Nach jeder gewonnenen
     // Kneipe gibt es einen zufälligen Schnaps dazu.
@@ -241,5 +253,14 @@
     // das flache danach lässt außergewöhnlichen Builds einen Schwanz bis
     // Stadtteil 10. Alleinspieler gemessen 3 × 700 Runs: Ende in Stadtteil
     // 4 / 5 / 6 / 7 / 8 bis 11 / ab 12: 24 / 13 / 12 / 20 / 30 / 0 %.
-    night: (growth: 2.5, growth_per_district: [1.5, 5.0, 8.0, 11.0, 2.5]),
+    // Runde 5 (05.11.2026, docs/balance/2026-11-05-runde5.md): Mit acht
+    // Relikt-Plätzen gibt es keine Flut mehr; der Build wächst in der Nacht
+    // kaum (Zinken, Tausch, Nachtschwärmer). Mit dem alten Wachstum endeten
+    // 88 % der Nächte in Stadtteil 4, keine kam über 5. Eine Kneipe kommt
+    // auch mit niedrigem Zielwert nicht über rund 90 %, und die Hälfte der
+    // Nächte endet beim Boss; deshalb beginnt die Nacht unter Stadtteil 3
+    // (× 0,6), bleibt bis Stadtteil 7 fast flach (die Verschärfungen machen
+    // sie schwerer) und wird ab Stadtteil 8 steil. Zusammen × 0,6 / 0,6 /
+    // 0,63 / 0,69 / 0,87 / 1,39 / 2,2 für Stadtteil 4 bis 10.
+    night: (growth: 1.6, growth_per_district: [0.6, 1.0, 1.05, 1.1, 1.25, 1.6]),
 )

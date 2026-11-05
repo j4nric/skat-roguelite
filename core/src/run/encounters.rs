@@ -12,7 +12,7 @@
 
 use super::{
     ActiveEncounter, EncounterOption, OptionBlock, Run, RunError, RunEvent, RunPhase, Wager,
-    draw_weighted, mod_value,
+    draw_weighted, mod_value, sell_price,
 };
 use crate::content::{
     CardModDef, CardModId, CardPick, ConsumableCategory, ConsumableId, Content, EncounterDef,
@@ -259,6 +259,15 @@ impl Run {
         options
     }
 
+    /// Whether `option` needs an owned relic (its index) as target now: a
+    /// swap or a sale always, a relic gained with every slot full too (the
+    /// owned one makes room and is sold for half its price, DESIGN 8.0).
+    #[must_use]
+    pub fn option_needs_relic(&self, content: &Content, option: &EncounterOption) -> bool {
+        option.needs_relic()
+            || (option.gains_relic() && !content.relic_slot_free(self.character, self.relics.len()))
+    }
+
     /// Why option `index` of the open encounter cannot be taken now, or
     /// `None` if it can (with a fitting target if it needs one).
     #[must_use]
@@ -449,8 +458,11 @@ impl Run {
                 EncounterEffect::SwapRelic(Some(_)) | EncounterEffect::SellRelic(_) => {
                     self.relics.is_empty().then_some(OptionBlock::NoRelic)
                 }
+                // With every slot full an owned relic makes room
+                // (`option_needs_relic`); with none owned it cannot.
                 EncounterEffect::Relic(Some(_)) => (!content
-                    .relic_slot_free(self.character, self.relics.len()))
+                    .relic_slot_free(self.character, self.relics.len())
+                    && self.relics.is_empty())
                 .then_some(OptionBlock::RelicSlotsFull),
                 EncounterEffect::Bet { .. } => self.wager.is_some().then_some(OptionBlock::BetOpen),
                 _ => None,
@@ -550,7 +562,7 @@ impl Run {
         } else {
             None
         };
-        let relic = if chosen.needs_relic() {
+        let relic = if self.option_needs_relic(content, &chosen) {
             let index = usize::try_from(target.ok_or(RunError::TargetRequired)?)
                 .map_err(|_| RunError::InvalidSlot)?;
             if index >= self.relics.len() {
@@ -733,7 +745,15 @@ impl Run {
                 }
                 EncounterEffect::Relic(Some(new)) => {
                     if !content.relic_slot_free(self.character, self.relics.len()) {
-                        return Err(RunError::NoFreeSlot);
+                        // Every slot full: the chosen relic makes room,
+                        // sold for half its price (DESIGN 8.0).
+                        let index = relic.ok_or(RunError::TargetRequired)?;
+                        let old = self.relics.remove(index);
+                        self.pay_out_stash(content, &old, events);
+                        let price = content.relic(&old).map_or(0, |d| sell_price(d.price));
+                        self.coins = self.coins.saturating_add(price);
+                        events.push(RunEvent::RelicSold { relic: old, price });
+                        self.settle_debt(events);
                     }
                     self.relics.push(new.clone());
                     events.push(RunEvent::RelicGained { relic: new.clone() });

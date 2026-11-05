@@ -52,8 +52,37 @@ function relicTile(o: RelicOffer | null, i: number): string {
     <h4 class="zinke-name">${esc(name)}</h4>
     ${fence ? `<p class="zinke-on"><span class="zinke-note">${esc(de.shop.fenceNote)}</span></p>` : ''}
     <p class="zinke-text relic-tile-text">${esc(contentText('relics', relic.id))}</p>
-    <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
+    <div class="good-foot">${relicBuyButton(o)}</div>
   </article>`;
+}
+
+/** "Kaufen", or with every slot full "Tauschen" (the replace sheet, DESIGN 8.0). */
+function relicBuyButton(o: RelicOffer): string {
+  const swap = !o.can_buy && (o.replace ?? []).length > 0;
+  return swap
+    ? `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'replace-relic-pick', 'data-slot': o.slot, 'data-testid': 'relic-replace-pick' })}>${esc(de.shop.replaceShort)}</button>`
+    : `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`;
+}
+
+/** The sheet with every relic slot full: which owned relic makes room for the offer (sold for half its price). */
+export function renderRelicReplace(view: RunView, slot: number): string {
+  const offer = view.shop?.relics.find((o) => o?.slot === slot) ?? null;
+  if (!offer) return '';
+  const name = contentName('relics', offer.relic.id);
+  const owned = view.relics
+    .map((r) => {
+      const ok = offer.replace.includes(r.index);
+      return `<button class="enc-option enc-relic" ${attrs({ 'data-action': 'replace-relic', 'data-slot': slot, 'data-replace': r.index, 'data-testid': 'relic-replace', disabled: !ok })}>
+        <span class="enc-pic"><span class="enc-coaster">${relicCoaster(r.relic, { size: 44 })}</span></span>
+        <span class="enc-body"><b class="enc-title">${esc(contentName('relics', r.relic.id))}</b><span class="enc-line">${esc(contentText('relics', r.relic.id))}</span></span>
+        <span class="enc-cost">${esc(t(de.shop.replaceRefund, { coins: r.sell_price }))}</span>
+      </button>`;
+    })
+    .join('');
+  return `<h2>${esc(t(de.shop.replaceTitle, { name }))}</h2>
+    <p class="small">${esc(t(de.shop.replaceHint, { price: offer.price }))}</p>
+    <div class="enc-relics" data-testid="relic-replace-list">${owned}</div>
+    <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`;
 }
 
 /**

@@ -322,6 +322,8 @@ export interface RelicOffer {
   /** What it costs now (discounts applied by the core, half for Hehlerware). */
   price: number;
   can_buy: boolean;
+  /** Every relic slot full (8, DESIGN 8.0): the owned relics (indices) it can replace now; empty while a slot is free. */
+  replace: number[];
   /** "Hehlerware" (curses as trade): half price, buying it curses a random card. */
   fence?: boolean;
   /** For Hehlerware: the price without the trade. */
@@ -1169,6 +1171,7 @@ export type RunAction =
   | { Play: number }
   | { UseConsumable: { slot: number; target: number | null; suit?: Suit | null } }
   | { BuyRelic: number }
+  | { ReplaceRelic: { slot: number; replace: number } }
   | { BuyConsumable: number }
   | { SellRelic: number }
   | { SellConsumable: number }

@@ -283,11 +283,22 @@ export function renderRelicPick(view: RunView, option: EncounterOptionView): str
   const swap = option.effects.find((e) => typeof e.effect === 'object' && 'SwapRelic' in e.effect);
   const sellEffect = option.effects.map((e) => e.effect).find((f) => typeof f === 'object' && 'SellRelic' in f);
   const sellPercent = sellEffect && typeof sellEffect === 'object' && 'SellRelic' in sellEffect ? sellEffect.SellRelic : 0;
-  const hint = swap ? t(de.encounter.pickRelicSwap, { new: swap.relic ? contentName('relics', swap.relic.id) || swap.relic.name : '' }) : t(de.encounter.pickRelicSell, { percent: sellPercent });
+  // Every slot full (DESIGN 8.0): a gained relic replaces one, sold for half.
+  const gain = swap || sellEffect ? undefined : option.effects.find((e) => typeof e.effect === 'object' && 'Relic' in e.effect);
+  const newName = (e: typeof swap) => (e?.relic ? contentName('relics', e.relic.id) || e.relic.name : '');
+  const hint = swap
+    ? t(de.encounter.pickRelicSwap, { new: newName(swap) })
+    : gain
+      ? t(de.encounter.pickRelicReplace, { new: newName(gain) })
+      : t(de.encounter.pickRelicSell, { percent: sellPercent });
   const relics = view.relics
     .map((r) => {
       const ok = option.targets.includes(r.index);
-      const price = sellEffect ? `<span class="enc-cost">${coinIcon(14)}${esc(t(de.encounter.relicPrice, { price: payout(r.relic.price, sellPercent) }))}</span>` : '';
+      const price = sellEffect
+        ? `<span class="enc-cost">${coinIcon(14)}${esc(t(de.encounter.relicPrice, { price: payout(r.relic.price, sellPercent) }))}</span>`
+        : gain
+          ? `<span class="enc-cost">${coinIcon(14)}${esc(t(de.encounter.relicPrice, { price: r.sell_price }))}</span>`
+          : '';
       return `<button class="enc-option enc-relic" ${attrs({ 'data-action': 'encounter-relic', 'data-index': r.index, 'data-testid': 'enc-relic', disabled: !ok })}>
         <span class="enc-pic"><span class="enc-coaster">${relicCoaster(r.relic, { size: 44 })}</span></span>
         <span class="enc-body"><b class="enc-title">${esc(contentName('relics', r.relic.id))}</b><span class="enc-line">${esc(contentText('relics', r.relic.id))}</span></span>

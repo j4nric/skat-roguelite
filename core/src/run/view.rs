@@ -673,6 +673,10 @@ pub struct RelicOffer {
     pub price: u32,
     /// Whether it can be bought now (Groschen and free slot).
     pub can_buy: bool,
+    /// With every relic slot full (DESIGN 8.0): the owned relics (indices)
+    /// it can replace now ([`RunAction::ReplaceRelic`], the old one sold
+    /// for half its price). Empty while a slot is free.
+    pub replace: Vec<usize>,
     /// "Hehlerware" (curses as trade, DESIGN 8.6): half price, and buying
     /// it curses a random card of the edition.
     pub fence: bool,
@@ -1667,6 +1671,7 @@ impl Run {
 
     fn shop_view(&self, content: &Content) -> Option<ShopView> {
         let shop = self.shop.as_ref()?;
+        let slots_full = !shop.kiosk && !content.relic_slot_free(self.character, self.relics.len());
         Some(ShopView {
             relics: shop
                 .relics
@@ -1683,6 +1688,18 @@ impl Run {
                             fence,
                             relic,
                             can_buy: self.accepts(content, RunAction::BuyRelic(slot)),
+                            replace: if slots_full {
+                                (0..self.relics.len())
+                                    .filter(|&replace| {
+                                        self.accepts(
+                                            content,
+                                            RunAction::ReplaceRelic { slot, replace },
+                                        )
+                                    })
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            },
                         }
                     })
                 })
@@ -2011,7 +2028,7 @@ impl Run {
                     .collect();
                 let target = if option.needs_card() {
                     OptionTarget::Card
-                } else if option.needs_relic() {
+                } else if self.option_needs_relic(content, option) {
                     OptionTarget::Relic
                 } else {
                     OptionTarget::None

@@ -23,7 +23,7 @@ import { renderRules } from './rules';
 import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
-import { zinkeName } from './shop';
+import { renderRelicReplace, zinkeName } from './shop';
 import type { ModQuestion, Overlay, UiState } from './state';
 
 export { lockIcon };
@@ -688,6 +688,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       if (!view || !option) return '';
       return sheet(renderRelicPick(view, option));
     }
+    case 'relic-replace':
+      return view ? sheet(renderRelicReplace(view, overlay.slot)) : '';
     case 'encounter-marke': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';

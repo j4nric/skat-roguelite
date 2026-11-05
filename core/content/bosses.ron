@@ -184,6 +184,9 @@
         // Runde 3 (05.11.2026): 1,3 → 1,5; mit Kartenbelohnung gewannen
         // Alleinspieler 75 %, die anderen 70 bis 82 %, und Stadtteil 3
         // hielt 39 bis 60 % statt rund 27 %.
-        target_factor: 1.5,
+        // Runde 5 (05.11.2026, acht Relikt-Plätze): 1,5 → 1,2; mit 1,5
+        // gewannen Alleinspieler 43 %, Bruderherz 22 %, Schneiderin 33 %,
+        // die anderen 50 bis 55 %. Nachher 47 bis 58 %.
+        target_factor: 1.2,
     ),
 ]
