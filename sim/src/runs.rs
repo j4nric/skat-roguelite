@@ -115,6 +115,9 @@ pub struct NightStat {
     pub relic_picks: BTreeMap<RelicId, u64>,
     /// Highest Spielwert of a won game in the night, summed over nights.
     pub best_game: u64,
+    /// Faktor of the last won game of each night, in thousandths (for the
+    /// median and the 90th percentile).
+    pub factors_end: Vec<u64>,
 }
 
 /// Price of the Neuauslage and the Zinken under `--consumable`: never
@@ -1071,6 +1074,7 @@ fn play_night(
     if let Some(f) = last_factor {
         stat.factor_end_permille += u64::from(f);
         stat.factor_nights += 1;
+        stat.factors_end.push(u64::from(f));
     }
     stat.best_game += best;
     Ok(())
@@ -1320,6 +1324,18 @@ fn render_night(out: &mut String, n: &NightStat) {
         let _ = write!(deepest, " {district}={count}");
     }
     let _ = writeln!(out, "night deepest district:{deepest}");
+    let mut factors = n.factors_end.clone();
+    factors.sort_unstable();
+    if !factors.is_empty() {
+        let at = |q: usize| factors[(factors.len() - 1) * q / 100] as f64 / 1000.0;
+        let _ = writeln!(
+            out,
+            "night faktor at the end: median x{:.2} p90 x{:.2} max x{:.2}",
+            at(50),
+            at(90),
+            at(100)
+        );
+    }
     let mut ended: Vec<(&String, &u64)> = n.ended_by.iter().collect();
     ended.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     let mut line = String::new();
