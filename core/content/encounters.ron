@@ -241,7 +241,7 @@
     (
         id: "pawnbroker",
         name: "Der Pfandleiher",
-        text: "Im Hinterzimmer sitzt ein Pfandleiher über seiner Markenkiste. Für 2 Groschen suchst du dir eine Marke aus, er klebt sie auf eine zufällige Karte deiner Ausgabe. Oder du löst bei ihm einen alten Pfandschein ein.",
+        text: "Im Hinterzimmer sitzt ein Pfandleiher über seiner Markenkiste. Für 2 Groschen suchst du dir eine Marke aus, er klebt sie auf eine zufällige Karte deines Decks. Oder du löst bei ihm einen alten Pfandschein ein.",
         options: [
             (label: "Marke aussuchen", cost: 2, effects: [Marke(card: Random, marke: Chosen)]),
             (label: "Pfandschein einlösen", effects: [Coins(3)]),

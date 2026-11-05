@@ -401,6 +401,8 @@ Die Rollen Vorhand, Mittelhand, Hinterhand rotieren pro Spiel. Vorhand zu sein i
 
 **Bis 02.11.2026 (ADR 0005):** Es gab genau ein Blatt pro Run, alle drei Spieler spielten daraus, jede Modifikation und jede hinzugefügte oder entfernte Karte betraf alle. Bei mehr als 32 Karten blieb der Rest im Talon, bei weniger füllten Blanko-Karten auf.
 
+**Begriff (04.11.2026):** In Spieltexten heißt die Ausgabe des Spielers **Deck** („in deinem Deck“), die der Gegner „Deck des Gegners“ und „Boss-Deck“ (Wunsch des Nutzers: „Ausgabe“ war nicht verständlich). Das Design-Dokument und der Code (`Edition`) bleiben bei Ausgabe; gemeint ist dasselbe.
+
 **Seit ADR 0015 (Entscheidung des Nutzers vom 02.11.2026):** Gegeben wird ein normales Skatblatt aus 32 verschiedenen Karten mit 120 Augen. Jeder Spieler besitzt seine eigene **Ausgabe** jeder Karte: dieselbe Karte, aber mit seinen Modifikationen. Wer eine Karte bekommt, hält seine Version. Der Spieler baut über den Run nur an seiner Ausgabe; die Gegner haben ihre eigene (Stammgäste die normale, 10.4; Bosse eine Boss-Ausgabe, 11). Keine Karte verlässt das Blatt, keine kommt hinzu, es gibt keinen Talon und kein Blatt über oder unter 32 Karten.
 
 Regeln, entschieden vom Nutzer (1 bis 3) und ausgelegt von Claude am 02.11.2026 (4 bis 9):
@@ -1044,6 +1046,46 @@ Relikte der Anzeige-Gruppe `Factor` (Bierdeckel: ein bernsteinfarbenes Sechseck,
 - **Gemessen in Runde 1** (04.11.2026, `docs/balance/2026-11-04-runde1.md`, alle fünf Charaktere): Gewonnene Spiele haben im Mittel ×1,15 bis ×1,25 (Alleinspieler nachher ×1,25), ein Fünftel hat einen Faktor über 1; der höchste Faktor je Run im Mittel ×1,4 bis ×1,7, der höchste überhaupt ×13,2 (Heiße Hand mit Farb-Relikt und Glückssträhne). 15 bis 27 % der Runs enden mit einem Faktor-Relikt, gekauft wird jedes in 4 bis 6 % der Runs (Grandseigneur und Schwarze Null beim Alleinspieler je 1,6 %). Keines dominiert; Seltenheit, Preise und Faktoren bleiben. Einzelmessung ohne Tresen in Runde 2.
 - **Glückssträhne** (×2 ab dem dritten Sieg in Folge) war schon ein Faktor-Relikt und bleibt in der Gruppe Stufen; Stammfarbe, Bock, Einsatz und Schnäpse zählen weiter auch verloren (ADR 0018 Punkt 4).
 
+### 8.11 Bau-Richtungen (04.11.2026)
+
+**Entschieden vom Nutzer am 04.11.2026 (Cockpit q26, Variante A, „alle Änderungen übernehmen“):** Fünf Bau-Richtungen mit echten Synergien. Bisher waren Relikte vereinzelte Boni; jetzt bekommt jede Richtung zwei bis drei **Verbinder-Relikte**, die andere Teile des Builds zählen, und die bestehenden Relikte, Zinken und Schnäpse tragen ihre Richtung als Daten (`tags` in `house_rules.ron`, `card_mods.ron`, `consumables.ron`; `BuildTag`). Die Tags stehen im Katalog der Web-App (`catalog().relics[id].tags`, ebenso `card_mods`, `consumables`); die Kartenbelohnung darf Angebote danach gewichten. Seltenheit, Preise und Bot-Werte **vorläufig** nach Augenmaß, ohne Messung. „Zinke“ heißt in den Texten jede Modifikation, die kein Fluch ist (auch Marken und Spezialkarten).
+
+| Richtung (Tag) | Bestehende Teile mit Tag | Neue Verbinder |
+|---|---|---|
+| Farbtreue (`OneSuit`) | Stammfarbe, Eichelhäher, Laubfrosch, Rotkehlchen, Schellenbaum; Siegel; Blue Curaçao | Vereinsfarben, Treue Seele |
+| Markenhändler (`Vouchers`) | Skatpfleger, Drei drücken; Pfand-, Toten-, Narrenmarke | Rabattheft, Leergut, Sammelalbum |
+| Stichjäger (`Tricks`) | Luschenkönig, Spitze; Goldkante, Fadenkreuz, Kerbe, Eselsohr, Winkel | Fingerspitzengefühl, Strichliste, Trinkgeld |
+| Schneider (`Schneider`) | Jungfrau, Der Schneider, Stichfest, Schenken, Skatgott; Schneiderkreide, Aufdruck | Goldene Schere, Maßband, Schnittmuster |
+| Nullspieler (`Null`) | Nullachtfuffzehn, Dicke Sau, Schwarze Null; Blei | Bleigießen, Senkblei |
+
+| Relikt | Id | Text | Hebel, was es zählt | Seltenheit, Preis | Bot-Wert |
+|---|---|---|---|---|---|
+| **Vereinsfarben** | `club_colours` | Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck. | Grundwert; Siegel, Aufdruck, Winkel … auf der Trumpffarbe (Unter der Farbe mit, wie beim Siegel), gehalten oder nicht | Uncommon, 7 | 3 |
+| **Treue Seele** | `true_soul` | Gewinnst du ein Farbspiel: +1 Stufe je Spiel direkt davor in derselben Trumpffarbe, höchstens +3. | Stufen; die Folge der Stammfarbe (Zähler `true_soul`, über Kneipen, Ramsch unterbricht nicht) | Common, 5 | 1 |
+| **Rabattheft** | `rebate_book` | Jede eingelöste Marke: +1 Stufe auf jedes gewonnene Spiel, bis die Kneipe vorbei ist. | Stufen; eingelöste Marken der Kneipe (Zähler `rebate_book`, zurück nach der gewonnenen Kneipe) | Uncommon, 6 | 2 |
+| **Leergut** | `empties` | Jede eingelöste Marke bringt dir 2 Groschen extra. | Groschen; eingelöste Marken | Common, 4 | 2 |
+| **Sammelalbum** | `stamp_album` | +1 Grundwert je Marke, die in deinem Deck noch auf einer Karte klebt. | Grundwert; Marken im Deck (zieht gegen die beiden davor: behalten oder einlösen) | Common, 5 | 2 |
+| **Fingerspitzengefühl** | `fingertips` | Machst du einen Stich mit einer Karte mit Zinke, zählt er 3 Augen mehr. | Augen (auch für Schneider); Stiche mit Zinken | Uncommon, 6 | 4 |
+| **Strichliste** | `tally_sheet` | Machst du in einem gewonnenen Spiel 3 Stiche mit Karten mit Zinke: +1 Stufe, bei 5 Stichen +2. | Stufen; Stiche mit Zinken je Spiel (Zähler `tally_sheet`) | Uncommon, 6 | 3 |
+| **Trinkgeld** | `tip` | Machst du einen Stich mit einer Karte mit Zinke: 1 Groschen, höchstens 3 pro Spiel. | Groschen; Stiche mit Zinken (Zähler `tip`) | Common, 4 | 3 |
+| **Goldene Schere** | `golden_shears` | ×1,5, wenn du mit Schneider gewinnst. | Faktor (ADR 0018: nur selten, Rare, Gruppe Faktor) | Rare, 8 | 5 |
+| **Maßband** | `tape_measure` | Jedes Spiel, das du mit Schneider gewinnst, gibt +1 Grundwert für den Rest des Runs. | Grundwert; Schneider-Siege (Zähler `tape_measure`) | Rare, 7 | 5 |
+| **Schnittmuster** | `sewing_pattern` | Gewinnst du mit Schneider: +1 Grundwert je Karte mit Aufdruck oder Schneiderkreide in deinem Deck. | Grundwert; Aufdruck und Schneiderkreide im Deck (die Schneiderin startet mit vier) | Common, 5 | 2 |
+| **Bleigießen** | `lead_pouring` | Gewinnst du ein Null: +1 Stufe je Karte mit Blei auf deiner Hand. | Stufen; Blei auf der Hand nach dem Skat (im gewonnenen Null alle unterlaufen) | Uncommon, 6 | 2 |
+| **Senkblei** | `plumb_line` | Null: +2 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren. | Grundwert; Blei im Deck | Common, 5 | 2 |
+| **Großvaters Grand** | `grandfathers_grand` | Der Grand zählt wieder 24 wie zu Großvaters Zeiten: Grundwert +6. | Grundwert; Antwort auf den Grand mit 18 (Cockpit q27), kein Tag | Uncommon, 6 | 3 |
+
+Auslegungen (Claude, 04.11.2026):
+
+- **Neue Handgriffe der Hook-API**: `CardCount` (welche Karten der Ausgabe zählen: `mods`, `kind`, `trump_suit`, `in_hand`) mit den Wirkungen `AddBaseValuePerCard` und `AddLevelsPerCard` (`Run::count_cards`, Zeile wie beim Pechvogel nur, wenn mehr als null zählt); die Bedingung `TrickWonWithMarkedCard` (der Alleinspieler macht den Stich mit einer Karte seiner Ausgabe mit Zinke, `Run::marked_cards`); die Wirkung `AddTrickPoints(n)` (Augen zum fertigen Stich); der Auslöser `OnVoucherRedeemed` (nach jeder eingelösten Marke, gedrückt oder im Handspiel).
+- **Bleigießen** zählt die Blei-Karten auf der Hand nach dem Skat statt der „abgeworfenen“: Im gewonnenen Null wirft der Spieler ohnehin alle ab, und so steht die Zahl schon bei der Ansage fest (Wertvorschau, Rest abkürzen).
+- **Rabattheft** endet mit der gewonnenen Kneipe (`ResetCounter` beim `OnSeriesWon`, wie der Allrounder). Spielt der Schutzengel eine verlorene Kneipe neu, bleibt der Zähler stehen.
+- **Rest abkürzen** wartet bei Fingerspitzengefühl, Strichliste und Trinkgeld, solange der Spieler eine Karte mit Zinke auf der Hand hat.
+- **Großvaters Grand** ist ein fester Zuschlag (+6) auf den Grundwert jedes Grand, gewonnen wie verloren. Er hängt nicht am Grundwert des Grand im Run: Mit 18 (Cockpit q27) zählt der Grand mit ihm 24, solange der Grand noch 24 zählt, 30.
+- **Gesperrt** (9.3): Rabattheft hinter „Voll gedrückt“, Goldene Schere hinter „Maßarbeit“, Vereinsfarben hinter „Farbe bekennen“, je neben dem Charakter. So bleibt ein Drittel der Relikte zu Beginn gesperrt (19 von 56); die übrigen neuen sind frei.
+- **Infokarte**: Die Kopfzeile nennt die Richtung („Hausregel · ungewöhnlich · Farbtreue“), aus den Tags im Katalog.
+- **Bierdeckel**: je ein eigenes Motiv in `web/src/ui/emblems.ts` (vorläufig): Vereinswimpel, treuer Hund, Rabattheft, Leergut-Kasten, Briefmarkenalbum, Zeigefinger, Strichliste, Glas mit Groschen, goldene Schere, Maßband, Schnittmuster, Löffel mit Blei, Senkblei, Großvaters Pfeife.
+
 ## 9. Charaktere
 
 Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin und Bruderherz (je über eine Freischaltung, 9.3). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
@@ -1194,9 +1236,9 @@ Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der B
 
 | Freischaltung | Bedingung | Belohnung |
 |---|---|---|
-| `full_skat` („Voll gedrückt“) | Ein Spiel gewinnen, in dem mindestens 21 Augen gedrückt wurden (`WinGame(min_discarded: 21)`). Gezählt werden die Augen der gedrückten Karten, wie sie im Spiel zählen (mit Aufdruck, Ramponiert und Skatpfleger), aus `RunEvent::GameScored::discarded_points`; ein Handspiel drückt nichts. Nur Farbspiel und Grand wie jedes `WinGame`. | Der Drückeberger |
-| `three_schneider` („Maßarbeit“) | Drei Spiele mit Schneider in einer Kneipe gewinnen (`SchneiderWinsInPub(3)`, Farbspiel und Grand; der Zähler fängt mit jeder Kneipe neu an) | Die Schneiderin |
-| `true_colours` („Farbe bekennen“) | Drei Farbspiele hintereinander mit derselben Trumpffarbe gewinnen, egal welche (`SameTrumpStreak(3)`). Die Serie läuft über Kneipen hinweg im selben Run; ein verlorenes Spiel, ein Grand, ein Null oder eine andere Trumpffarbe dazwischen fängt neu an, ein neuer Run auch. Ein Ramsch ist keine Ansage: Er zählt nicht und unterbricht nicht (wie bei der Stammfarbe). | Bruderherz |
+| `full_skat` („Voll gedrückt“) | Ein Spiel gewinnen, in dem mindestens 21 Augen gedrückt wurden (`WinGame(min_discarded: 21)`). Gezählt werden die Augen der gedrückten Karten, wie sie im Spiel zählen (mit Aufdruck, Ramponiert und Skatpfleger), aus `RunEvent::GameScored::discarded_points`; ein Handspiel drückt nichts. Nur Farbspiel und Grand wie jedes `WinGame`. | Der Drückeberger, seit 04.11.2026 auch Rabattheft (8.11) |
+| `three_schneider` („Maßarbeit“) | Drei Spiele mit Schneider in einer Kneipe gewinnen (`SchneiderWinsInPub(3)`, Farbspiel und Grand; der Zähler fängt mit jeder Kneipe neu an) | Die Schneiderin, seit 04.11.2026 auch Goldene Schere (8.11) |
+| `true_colours` („Farbe bekennen“) | Drei Farbspiele hintereinander mit derselben Trumpffarbe gewinnen, egal welche (`SameTrumpStreak(3)`). Die Serie läuft über Kneipen hinweg im selben Run; ein verlorenes Spiel, ein Grand, ein Null oder eine andere Trumpffarbe dazwischen fängt neu an, ein neuer Run auch. Ein Ramsch ist keine Ansage: Er zählt nicht und unterbricht nicht (wie bei der Stammfarbe). | Bruderherz, seit 04.11.2026 auch Vereinsfarben (8.11) |
 
 Der Meta-Zustand hält dafür zwei kleine Zähler (`pub_schneider_wins`, `trump_streak`), die wie `current_section` aus den Ereignissen lernen; auch die bereinigten Spieler-Ereignisse tragen `discarded_points`.
 

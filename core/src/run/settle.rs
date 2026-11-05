@@ -243,6 +243,7 @@ fn on_score(
         // On trick end only: never true when the game is scored.
         Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
+        | Condition::TrickWonWithMarkedCard
         | Condition::ThisCardWinsFirstTrick
         | Condition::ThisCardWinsTrick
         | Condition::ThisCardBeatsDefenderCard(_) => Some(false),
@@ -349,6 +350,15 @@ fn during_play(
             };
             (!left).then_some(false)
         }
+        // Only a marked card the declarer still holds can take a trick to
+        // come for him (it is his turn: none of his lies on the table).
+        Condition::TrickWonWithMarkedCard => {
+            let left = game
+                .hand(Seat::DECLARER)
+                .iter()
+                .any(|&c| crate::content::is_marked(ctx, c));
+            (!left).then_some(false)
+        }
         // The declarer's trick count only grows.
         Condition::FirstTrickOfDeclarer => (outcome.declarer_tricks > 0).then_some(false),
         // "Erster Stich": decided once the first trick is complete.
@@ -417,6 +427,7 @@ impl Run {
             return false;
         }
         let sources = self.sources(content, true);
+        let marked = self.marked_cards(content);
         let now = HookContext {
             flags: &self.flags,
             counters: &self.counters,
@@ -425,6 +436,7 @@ impl Run {
             result: None,
             games_left: self.series.games_left(),
             transport: None,
+            marked_cards: Some(&marked),
         };
         let mut last_trick = false;
         for source in &sources {

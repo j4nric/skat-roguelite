@@ -3591,6 +3591,7 @@ impl Run {
     ) {
         let games_left = self.series.games_left();
         let sources = self.sources(content, stage.in_game());
+        let marked = self.marked_cards(content);
         for source in &sources {
             for hook in source.hooks.iter().filter(|h| h.stage() == stage) {
                 let holds = {
@@ -3602,6 +3603,7 @@ impl Run {
                         result,
                         games_left,
                         transport,
+                        marked_cards: Some(&marked),
                     };
                     evaluate(hook.when(), &ctx, source.this_card)
                 };
@@ -3718,7 +3720,7 @@ impl Run {
             source,
             effect,
             &self.counters,
-            self.cursed_for(content, effect),
+            self.count_for(content, effect),
         );
         let Some(active) = self.game.as_mut() else {
             return;
@@ -3732,11 +3734,26 @@ impl Run {
             | Effect::AddBaseValueFromCounter(_)
             | Effect::AddBaseValuePerCounter { .. }
             | Effect::AddBaseValuePerCursedCard(_)
+            | Effect::AddBaseValuePerCard { .. }
+            | Effect::AddLevelsPerCard { .. }
             | Effect::AddLevelsPerCounter { .. }
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
             | Effect::ScaleGameValuePerCounter { .. } => active.lines.extend(line),
+            Effect::AddTrickPoints(extra) => {
+                if let Some(trick) = active.game.tricks().last() {
+                    let winner = trick.winner;
+                    if *extra > 0 {
+                        active.game.add_bonus_points(winner, *extra);
+                        events.push(RunEvent::BonusPoints {
+                            source: source.clone(),
+                            seat: winner,
+                            card_points: *extra,
+                        });
+                    }
+                }
+            }
             Effect::MultiplyTrickPoints(factor) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let points = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
@@ -4963,14 +4980,89 @@ impl Run {
         u32::try_from(count).unwrap_or(u32::MAX)
     }
 
-    /// [`Run::cursed_cards`] for an effect that counts them, else 0 (not
-    /// counted).
-    fn cursed_for(&self, content: &Content, effect: &Effect) -> u32 {
-        if matches!(effect, Effect::AddBaseValuePerCursedCard(_)) {
-            self.cursed_cards(content)
-        } else {
-            0
+    /// What an effect that counts cards counts now: [`Run::cursed_cards`]
+    /// for `AddBaseValuePerCursedCard`, [`Run::count_cards`] for
+    /// `AddBaseValuePerCard` and `AddLevelsPerCard`; 0 for every other
+    /// effect (not counted).
+    fn count_for(&self, content: &Content, effect: &Effect) -> u32 {
+        match effect {
+            Effect::AddBaseValuePerCursedCard(_) => self.cursed_cards(content),
+            Effect::AddBaseValuePerCard { count, .. } | Effect::AddLevelsPerCard { count, .. } => {
+                self.count_cards(content, count)
+            }
+            _ => 0,
         }
+    }
+
+    /// How many cards of the player's edition `count` counts now (the
+    /// connector relics of the build directions, 04.11.2026): those that
+    /// carry a matching modification, narrowed to the trump suit of the
+    /// declared suit game and to the cards he holds in the game in
+    /// progress if asked.
+    #[must_use]
+    pub fn count_cards(&self, content: &Content, count: &crate::content::CardCount) -> u32 {
+        let game = self.game.as_ref().map(|a| &a.game);
+        let trump = game
+            .and_then(Game::declaration)
+            .filter(|d| !d.is_ramsch())
+            .and_then(|d| match d.game() {
+                GameType::Suit(suit) => Some(suit),
+                _ => None,
+            });
+        let n = self
+            .edition
+            .cards()
+            .iter()
+            .filter(|c| {
+                if count.trump_suit {
+                    let Some(suit) = trump else {
+                        return false;
+                    };
+                    if c.kind.face().is_none_or(|f| f.suit != suit) {
+                        return false;
+                    }
+                }
+                if count.in_hand {
+                    let Some(g) = game else {
+                        return false;
+                    };
+                    let in_skat = g.skat().iter().any(|s| s.id == c.id);
+                    if in_skat || !crate::content::held_by_player(g, c.id) {
+                        return false;
+                    }
+                }
+                c.mods
+                    .iter()
+                    .filter_map(|m| content.card_mod(m))
+                    .any(|def| {
+                        let named = if count.mods.is_empty() {
+                            !def.is_curse()
+                        } else {
+                            count.mods.contains(&def.id)
+                        };
+                        named && count.kind.is_none_or(|k| def.kind == k)
+                    })
+            })
+            .count();
+        u32::try_from(n).unwrap_or(u32::MAX)
+    }
+
+    /// Ids of the cards of the player's edition that carry a Zinke: any
+    /// modification that is no curse
+    /// ([`crate::content::Condition::TrickWonWithMarkedCard`]).
+    #[must_use]
+    pub fn marked_cards(&self, content: &Content) -> BTreeSet<u32> {
+        self.edition
+            .cards()
+            .iter()
+            .filter(|c| {
+                c.mods
+                    .iter()
+                    .filter_map(|m| content.card_mod(m))
+                    .any(|def| !def.is_curse())
+            })
+            .map(|c| c.id)
+            .collect()
     }
 
     /// Whether a card of the player's edition carries a curse (a special
@@ -5534,6 +5626,7 @@ impl Run {
                     result: None,
                     games_left: self.series.games_left(),
                     transport: None,
+                    marked_cards: None,
                 };
                 evaluate(hook.when(), &ctx, None)
             };
@@ -5693,6 +5786,7 @@ impl Run {
                     result: None,
                     games_left: self.series.games_left(),
                     transport: None,
+                    marked_cards: None,
                 };
                 evaluate(hook.when(), &ctx, None)
             };
@@ -5707,6 +5801,8 @@ impl Run {
                 }
             }
         }
+        // Relics that count redeemed Marken ("Markenheft", "Leergut").
+        self.fire(content, Stage::OnVoucherRedeemed, None, None, events);
     }
 
     /// A redeemed voucher makes `card` the special card `special`
@@ -5891,14 +5987,15 @@ pub fn series_target(
 }
 
 /// The line a score effect (Grundwert, Gewinnstufen, Spielwert) adds, with
-/// the run counters as they are now and `cursed_cards` cursed cards in the
-/// player's edition ([`Run::cursed_for`]). `None` for every other effect
-/// and for a counter (or count of cursed cards) that is still zero.
+/// the run counters as they are now and `cards` the cards an effect counts
+/// in the player's edition ([`Run::count_for`]: cursed cards, or cards of a
+/// [`crate::content::CardCount`]). `None` for every other effect and for a counter (or
+/// count of cards) that is still zero.
 fn score_line(
     source: &Source,
     effect: &Effect,
     counters: &BTreeMap<String, u32>,
-    cursed_cards: u32,
+    cards: u32,
 ) -> Option<ScoreLine> {
     let (lever, change) = match effect {
         Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
@@ -5918,12 +6015,19 @@ fn score_line(
             }
             (Lever::BaseValue, Change::Add(add))
         }
-        Effect::AddBaseValuePerCursedCard(per) => {
-            let add = i64::from(cursed_cards) * i64::from(*per);
+        Effect::AddBaseValuePerCursedCard(per) | Effect::AddBaseValuePerCard { per, .. } => {
+            let add = i64::from(cards) * i64::from(*per);
             if add == 0 {
                 return None;
             }
             (Lever::BaseValue, Change::Add(add))
+        }
+        Effect::AddLevelsPerCard { per, .. } => {
+            let add = i64::from(cards) * i64::from(*per);
+            if add == 0 {
+                return None;
+            }
+            (Lever::Levels, Change::Add(add))
         }
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
         Effect::AddLevelsPerCounter { counter, per } => {
@@ -6071,6 +6175,8 @@ pub(crate) fn legacy_content() -> Content {
     content
 }
 
+#[cfg(test)]
+mod build_tests;
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]

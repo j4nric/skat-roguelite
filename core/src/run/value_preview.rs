@@ -101,6 +101,7 @@ impl Run {
             result: Some(&parts),
             games_left: self.series.games_left(),
             transport: None,
+            marked_cards: None,
         };
         for source in self.sources(content, true) {
             if !knowledge.counts(&source.source) {
@@ -114,7 +115,7 @@ impl Run {
                             &source.source,
                             &e,
                             &self.counters,
-                            self.cursed_for(content, &e),
+                            self.count_for(content, &e),
                         )
                     }));
                 }
@@ -169,7 +170,8 @@ const fn max_firings(stage: Stage) -> usize {
         | Stage::OnAttach
         | Stage::OnDiscard
         | Stage::OnRouteChosen
-        | Stage::OnShopOpened => 0,
+        | Stage::OnShopOpened
+        | Stage::OnVoucherRedeemed => 0,
     }
 }
 
@@ -245,7 +247,7 @@ impl Run {
                         &source.source,
                         &effect,
                         &self.counters,
-                        self.cursed_for(content, &effect),
+                        self.count_for(content, &effect),
                     ) else {
                         continue;
                     };

@@ -26,6 +26,7 @@
 // Siegel, Eselsohr, Kerbe, Pfandmarke, Totenmarke, Narrenmarke; der Text
 // beginnt mit der Wirkung, damit Infokarten sie neben dem Namen zeigen.
 // Werte, Preise und Seltenheit VORLÄUFIG, nach Augenmaß ohne Messung.
+// tags: Bau-Richtungen (04.11.2026, Cockpit q26), wie in house_rules.ron.
 [
     // ---------------------------------------------------------------------
     // Rand: immer aktiv, die Zahl im Band unten.
@@ -33,6 +34,7 @@
     // Lever Augen.
     (
         id: "points",
+        tags: [Schneider],
         kind: Edge,
         focus: Trump,
         name: "Aufdruck",
@@ -52,6 +54,7 @@
     // kritzelt den Rang im Eckzeichen weg.
     (
         id: "rank",
+        tags: [Tricks],
         kind: Edge,
         focus: Trump,
         name: "Winkel",
@@ -68,6 +71,7 @@
     // Null die niedrigste ihrer Farbe, unter der Sieben.
     (
         id: "lead",
+        tags: [Null],
         kind: Edge,
         focus: Null,
         name: "Blei",
@@ -80,6 +84,7 @@
     // mit dieser Karte macht. Eine Untote kann zweimal stechen.
     (
         id: "gilt_edge",
+        tags: [Tricks],
         kind: Edge,
         name: "Goldkante",
         text: "Stich: Machst du mit dieser Karte einen Stich, {n} Groschen.",
@@ -94,6 +99,7 @@
     // Karte hält (ein Schalter im Kern, TRUMP_MODS_NEED_PLAYER).
     (
         id: "trump_bonus",
+        tags: [OneSuit],
         kind: Edge,
         focus: Trump,
         name: "Siegel",
@@ -112,6 +118,7 @@
     // Lever Gewinnstufen (bis Effekte v2 "Spitze").
     (
         id: "last_trick",
+        tags: [Tricks],
         kind: Moment,
         focus: Trump,
         name: "Kerbe",
@@ -128,6 +135,7 @@
     // Modifikationen lassen sich nicht steigern (max).
     (
         id: "first_trick",
+        tags: [Tricks],
         kind: Moment,
         focus: Trump,
         name: "Eselsohr",
@@ -145,6 +153,7 @@
     // Ausgabe), +1 Stufe für dieses Spiel, je solchem Stich.
     (
         id: "crosshair",
+        tags: [Tricks],
         kind: Moment,
         focus: Trump,
         name: "Fadenkreuz",
@@ -161,6 +170,7 @@
     // Schneider und hat diese Karte in einen Stich gespielt.
     (
         id: "tailors_chalk",
+        tags: [Schneider],
         kind: Moment,
         focus: Trump,
         name: "Schneiderkreide",
@@ -181,6 +191,7 @@
     // Lever Groschen.
     (
         id: "voucher_coins",
+        tags: [Vouchers],
         kind: Voucher,
         name: "Pfandmarke",
         text: "Gutschein: Gedrückt oder beim Handspiel: {n} Groschen. Danach ist die Marke weg.",
@@ -193,6 +204,7 @@
     ),
     (
         id: "voucher_undead",
+        tags: [Vouchers],
         kind: Voucher,
         focus: Trump,
         name: "Totenmarke",
@@ -205,6 +217,7 @@
     ),
     (
         id: "voucher_wild",
+        tags: [Vouchers],
         kind: Voucher,
         name: "Narrenmarke",
         text: "Gutschein: Gedrückt oder beim Handspiel: Die Karte wird Wandelkarte. Danach ist die Marke weg.",
