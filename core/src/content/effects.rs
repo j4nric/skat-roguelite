@@ -301,6 +301,9 @@ pub enum Effect {
         counter: String,
         /// Factor added per point of the counter, as a decimal (`0.1`).
         per: Factor,
+        /// The factor never exceeds this ("höchstens ×3"); none: no cap.
+        #[serde(default)]
+        max: Option<Factor>,
     },
     /// Lever Spielwert (Faktor, ADR 0018): multiply the whole game value
     /// by `1 + per × cards`, with the cards of the player's edition that
@@ -311,6 +314,9 @@ pub enum Effect {
         count: CardCount,
         /// Factor added per card, as a decimal (`0.05`).
         per: Factor,
+        /// The factor never exceeds this ("höchstens ×3"); none: no cap.
+        #[serde(default)]
+        max: Option<Factor>,
     },
     /// Lever Grundwert: add `per` times the current value of a run counter
     /// ("Allrounder": +3 per Spielart of the series).

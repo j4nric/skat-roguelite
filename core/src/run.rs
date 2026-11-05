@@ -6196,28 +6196,24 @@ fn score_line(
         }
         Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
         Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
-        Effect::ScaleGameValuePerCounter { counter, per } => {
+        Effect::ScaleGameValuePerCounter { counter, per, max } => {
             let value = counters.get(counter).copied().unwrap_or(0);
             if value == 0 || per.permille() == 0 {
                 return None;
             }
-            let permille = u64::from(per.permille())
-                .saturating_mul(u64::from(value))
-                .saturating_add(1000);
-            let factor =
-                crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
-            (Lever::GameValue, Change::Scale(factor))
+            (
+                Lever::GameValue,
+                Change::Scale(per_step_factor(*per, value, *max)),
+            )
         }
-        Effect::ScaleGameValuePerCard { per, .. } => {
+        Effect::ScaleGameValuePerCard { per, max, .. } => {
             if cards == 0 || per.permille() == 0 {
                 return None;
             }
-            let permille = u64::from(per.permille())
-                .saturating_mul(u64::from(cards))
-                .saturating_add(1000);
-            let factor =
-                crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
-            (Lever::GameValue, Change::Scale(factor))
+            (
+                Lever::GameValue,
+                Change::Scale(per_step_factor(*per, cards, *max)),
+            )
         }
         _ => return None,
     };
@@ -6226,6 +6222,22 @@ fn score_line(
         lever,
         change,
     })
+}
+
+/// `1 + per × steps`, at most `max` ("höchstens ×3", the growing Faktor
+/// relics, ADR 0018/0020). Saturates.
+fn per_step_factor(
+    per: crate::content::Factor,
+    steps: u32,
+    max: Option<crate::content::Factor>,
+) -> crate::content::Factor {
+    let mut permille = u64::from(per.permille())
+        .saturating_mul(u64::from(steps))
+        .saturating_add(1000);
+    if let Some(max) = max {
+        permille = permille.min(u64::from(max.permille()));
+    }
+    crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX))
 }
 
 /// The Spielwert factors of a won game ("Eierlikör").

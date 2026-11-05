@@ -651,7 +651,10 @@
         id: "tap",
         group: Factor,
         name: "Zapfhahn",
-        text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
+        text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs (höchstens ×3).",
+        // Nacht-Runde (05.11.2026): höchstens ×3, sonst wächst er in der
+        // langen Nacht ohne Ende; im normalen Run erreicht er höchstens
+        // ×2,5 (15 Kneipen), die Obergrenze ändert dort nichts.
         // Runde 3 (05.11.2026): Rare, 8 → Legendary, 10. Ohne Tresen + 12,2
         // auf „Stadtteil 2“, + 15,0 auf „Stadtteil 3“ (das 4,8-Fache des
         // Mittels seltener Relikte, mehr als der Grandseigneur): Pflicht.
@@ -659,7 +662,7 @@
         price: 10,
         hooks: [
             OnSeriesWon(then: [IncrementCounter("tap")]),
-            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "tap", per: 0.1)]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "tap", per: 0.1, max: Some(3.0))]),
         ],
     ),
     // Das Risiko: Der Faktor zählt die gewonnenen Spiele vor diesem (der
@@ -669,7 +672,9 @@
         id: "hot_hand",
         group: Factor,
         name: "Heiße Hand",
-        text: "Jedes gewonnene Spiel in Folge gibt +×0,15 Faktor auf die nächsten gewonnenen Spiele. Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
+        text: "Jedes gewonnene Spiel in Folge gibt +×0,15 Faktor auf die nächsten gewonnenen Spiele (höchstens ×3). Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
+        // Nacht-Runde (05.11.2026): höchstens ×3 (ab 14 Siegen in Folge);
+        // im normalen Run gleiche Runs, gleiche Siege (3 × 700 Runs).
         rarity: Rare,
         // SR4 (05.11.2026): 8 → 10; ohne Tresen + 9,5 / + 6,8 auf
         // „Stadtteil 2 / 3“, das Fünffache der übrigen seltenen Relikte.
@@ -677,7 +682,7 @@
         // danach + 8,3 / + 4,7 (Punkte je Spiel + 39,8 %), Preis 10 → 9.
         price: 9,
         hooks: [
-            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.15), IncrementCounter("hot_hand")]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.15, max: Some(3.0)), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
         ],
     ),
@@ -928,8 +933,14 @@
     // Nacht (`night: true`): nach jedem Boss der Nacht als Wahl, auch am
     // Tresen der Nacht. Fast alle Faktor (ADR 0018: nur gewonnene Spiele,
     // multipliziert). Kehraus und Morgengrauen schalten Meilensteine der
-    // Nacht auch für den normalen Run frei (unlocks.ron). Seltenheit, Preise,
-    // Faktoren und Bot-Werte VORLÄUFIG nach Augenmaß.
+    // Nacht auch für den normalen Run frei (unlocks.ron). Seltenheit, Preise
+    // und Bot-Werte VORLÄUFIG nach Augenmaß. Balancing-Runde der Nacht
+    // (05.11.2026, docs/balance/2026-11-05-nacht.md): die wachsenden
+    // Faktoren mit Obergrenze und kleiner (Nachteule +×0,15 → +×0,1, höchstens
+    // ×1,5; Lumpensammler +×0,05 → +×0,03, höchstens ×2; Mondschein +×0,2 →
+    // +×0,1, höchstens ×2; Nachtschicht +×0,1 → +×0,05, höchstens ×2). Im
+    // Mittel brachten sie, wenn sie griffen, ×1,73 / ×2,09 / ×2,66 / ×2,82,
+    // nachher ×1,4 / ×1,6 / ×1,8 / ×1,9.
     // Lever Spielwert: the run counter "verschaerfungen" counts the
     // Verschärfungen drawn in the night (kept by the core).
     (
@@ -937,11 +948,11 @@
         group: Factor,
         night: true,
         name: "Nachteule",
-        text: "Jede Verschärfung der Nacht gibt +×0,15 Faktor auf jedes gewonnene Spiel.",
+        text: "Jede Verschärfung der Nacht gibt +×0,1 Faktor auf jedes gewonnene Spiel (höchstens ×1,5).",
         rarity: Legendary,
         price: 10,
         hooks: [
-            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "verschaerfungen", per: 0.15)]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "verschaerfungen", per: 0.1, max: Some(1.5))]),
         ],
     ),
     // Lever Spielwert: the counter holds the games of the pub before this
@@ -965,11 +976,11 @@
         group: Factor,
         night: true,
         name: "Lumpensammler",
-        text: "+×0,05 Faktor auf jedes gewonnene Spiel je Karte mit Zinke in deinem Deck.",
+        text: "+×0,03 Faktor auf jedes gewonnene Spiel je Karte mit Zinke in deinem Deck (höchstens ×2).",
         rarity: Legendary,
         price: 10,
         hooks: [
-            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (), per: 0.05)]),
+            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (), per: 0.03, max: Some(2.0))]),
         ],
     ),
     (
@@ -977,12 +988,12 @@
         group: Factor,
         night: true,
         name: "Mondschein",
-        text: "Jede gewonnene Kneipe gibt +×0,2 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
+        text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs (höchstens ×2).",
         rarity: Rare,
         price: 9,
         hooks: [
             OnSeriesWon(then: [IncrementCounter("moonlight")]),
-            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "moonlight", per: 0.2)]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "moonlight", per: 0.1, max: Some(2.0))]),
         ],
     ),
     // Build booster: counts the Zinken that share a build direction (tags)
@@ -992,11 +1003,11 @@
         group: Factor,
         night: true,
         name: "Nachtschicht",
-        text: "+×0,1 Faktor auf jedes gewonnene Spiel je Karte mit einer Zinke deiner Richtung (einer Richtung deiner Relikte) in deinem Deck.",
+        text: "+×0,05 Faktor auf jedes gewonnene Spiel je Karte mit einer Zinke deiner Richtung (einer Richtung deiner Relikte) in deinem Deck (höchstens ×2).",
         rarity: Legendary,
         price: 10,
         hooks: [
-            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (direction: true), per: 0.1)]),
+            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (direction: true), per: 0.05, max: Some(2.0))]),
         ],
     ),
     // The flag marks a game of the pub played; the factor hook comes

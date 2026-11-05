@@ -247,3 +247,52 @@ fn regenerate_factor_fixture() {
     std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
     println!("wrote {}", path.display());
 }
+
+#[test]
+fn a_growing_factor_stops_at_its_cap() {
+    let per = Factor::from_permille(200);
+    let max = Some(Factor::from_permille(3000));
+    assert_eq!(per_step_factor(per, 4, max).permille(), 1800);
+    assert_eq!(per_step_factor(per, 10, max).permille(), 3000);
+    assert_eq!(per_step_factor(per, 25, max).permille(), 3000);
+    assert_eq!(per_step_factor(per, 25, None).permille(), 6000);
+    // The cap is optional in the data.
+    let capped: crate::content::Effect = ron::from_str(
+        r#"ScaleGameValuePerCounter(counter: "moonlight", per: 0.2, max: Some(3.0))"#,
+    )
+    .expect("ron");
+    assert!(matches!(
+        capped,
+        crate::content::Effect::ScaleGameValuePerCounter { max: Some(m), .. } if m.permille() == 3000
+    ));
+    let open: crate::content::Effect =
+        ron::from_str(r#"ScaleGameValuePerCard(count: (), per: 0.05)"#).expect("ron");
+    assert!(matches!(
+        open,
+        crate::content::Effect::ScaleGameValuePerCard { max: None, .. }
+    ));
+}
+
+#[test]
+fn the_growing_relics_stop_at_their_caps() {
+    let content = content();
+    // Balance round of the night (05.11.2026): Zapfhahn and Heiße Hand
+    // at most ×3, Mondschein at most ×2, Nachteule at most ×1,5.
+    for (id, counter, value, permille) in [
+        ("tap", "tap", 19, 2900),
+        ("tap", "tap", 40, 3000),
+        ("hot_hand", "hot_hand", 40, 3000),
+        ("moonlight", "moonlight", 9, 1900),
+        ("moonlight", "moonlight", 30, 2000),
+        ("night_owl", "verschaerfungen", 12, 1500),
+    ] {
+        let mut run = long_run(&content, &[id]);
+        run.counters.insert(counter.into(), value);
+        fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+        let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+        assert!(
+            has_line(&b, &relic(id), Lever::GameValue, scale(permille)),
+            "{id} at {value}"
+        );
+    }
+}
