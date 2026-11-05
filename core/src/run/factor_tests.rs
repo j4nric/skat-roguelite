@@ -189,8 +189,8 @@ fn the_hot_hand_grows_with_every_win_in_a_row_and_breaks_on_a_loss() {
         assert!(b.won);
         factors.push(b.multiplier.permille());
     }
-    // The factor counts the wins before the game: ×1, ×1,2, ×1,4.
-    assert_eq!(factors, vec![1000, 1200, 1400]);
+    // The factor counts the wins before the game: ×1, ×1,15, ×1,3.
+    assert_eq!(factors, vec![1000, 1150, 1300]);
     assert_eq!(run.counters().get("hot_hand"), Some(&3));
 
     // The counter is part of the save.
@@ -220,18 +220,18 @@ fn the_value_preview_shows_the_factor_of_a_win() {
         .expect("game")
         .value_preview
         .expect("preview");
-    // ×1,5 × ×1,4.
-    assert_eq!(preview.multiplier, Factor::from_permille(2100));
+    // ×1,5 × ×1,3.
+    assert_eq!(preview.multiplier, Factor::from_permille(1950));
     assert_eq!(
         preview.game_value,
-        Factor::from_permille(2100).scale(preview.base_value * preview.levels)
+        Factor::from_permille(1950).scale(preview.base_value * preview.levels)
     );
 }
 
 /// Write `web/e2e/fixtures/factor-win.json`: the first game of a run with
 /// Schellenbaum, Zapfhahn (three pubs) and Heiße Hand (two wins in a row),
 /// dealt so that a Schellen Hand takes every trick; the smoke test plays
-/// it and checks the Faktor box (×1,5 × ×1,3 × ×1,4). Run by hand: `cargo
+/// it and checks the Faktor box (×1,5 × ×1,3 × ×1,3). Run by hand: `cargo
 /// test -p skat_core regenerate_factor_fixture -- --ignored`.
 #[test]
 #[ignore = "rewrites web/e2e/fixtures/factor-win.json"]

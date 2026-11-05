@@ -1393,7 +1393,7 @@ async function bossesV2(browser, errors, reducedMotion) {
  * regenerate_factor_fixture): Schellenbaum, Zapfhahn after three pubs and
  * Heiße Hand after two wins; a Schellen Hand that takes every trick. The
  * value preview names the factor, the score board shows the third box
- * "Faktor" with ×1,5 × ×1,3 × ×1,4 = 2,73, not greyed; the Glossar legend
+ * "Faktor" with ×1,5 × ×1,3 × ×1,3 = 2,535, not greyed; the Glossar legend
  * has five value icons (checked in hintsAndRules).
  */
 async function factorPass(browser, errors, reducedMotion) {
@@ -1408,12 +1408,12 @@ async function factorPass(browser, errors, reducedMotion) {
   await page.click('[data-action="declare"]');
   await page.waitForSelector('.declare', { state: 'detached' });
   const worth = await text(page, 'value-preview');
-  if (!worth.includes('2,73')) fail(`Faktor: the value preview says "${worth}"`);
+  if (!worth.includes('2,535')) fail(`Faktor: the value preview says "${worth}"`);
   await playOut(page, 'Faktor');
   const box = page.locator('[data-testid="score-factor"]');
   const mul = ((await page.locator('[data-num="mul"]').textContent()) ?? '').trim();
-  if (mul !== '2,73') fail(`Faktor: the box shows "${mul}"`);
-  if (!(await box.count())) fail('Faktor: no Faktor box on ×2,73');
+  if (mul !== '2,535') fail(`Faktor: the box shows "${mul}"`);
+  if (!(await box.count())) fail('Faktor: no Faktor box on ×2,535');
   await shoot(page, 'factor-score');
   log(`Faktor: preview "${worth}", box ${mul}`);
   await context.close();
@@ -3326,7 +3326,9 @@ async function zinkenPass(browser, errors, reducedMotion) {
   await page.click('[data-testid="reroll-zinken"]');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins === 17, null, { timeout: 5000 }).catch(() => fail('Neu auslosen: did not cost 1'));
   await page.waitForFunction(() => document.querySelector('[data-testid="reroll-zinken"]')?.textContent?.includes('2 Gr.'), null, { timeout: 5000 }).catch(() => fail('Neu auslosen: the second is not dearer'));
-  if ((await page.locator('[data-testid="zinke"]').count()) !== 3) fail('Neu auslosen: not three offers again');
+  // The fixture was saved with three offers; a new draw uses run.ron's
+  // count (2 since balance round 3).
+  if ((await page.locator('[data-testid="zinke"]').count()) !== 2) fail('Neu auslosen: not two offers');
   // Kartenmaler.
   await page.click('[data-testid="painter-go"]');
   await page.waitForSelector('[data-testid="zinken-cards"]');

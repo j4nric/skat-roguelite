@@ -76,8 +76,8 @@
 //! slot (else the Groschen). The route ([`RunBot::route_action`]) scores
 //! each way by the category it shows: the Tresen when rich, an Upgrade
 //! with a cursed card, a Rast a little; a Spelunke only when strong
-//! (since ADR 0019 a lost Spelunke ends the run: four relics, or three
-//! and the "Schutzengel"). After a won boss pub (ADR 0017)
+//! (since ADR 0019 a lost Spelunke ends the run: since 05.11.2026 five
+//! relics, or four and the "Schutzengel"; before four, or three). After a won boss pub (ADR 0017)
 //! the most valuable relic of the pick into a free slot (slots are
 //! unlimited since 03.11.2026), with a cap and every slot full in place of
 //! the weakest owned one if it is worth at least [`SWAP_MARGIN`] more, else
@@ -229,7 +229,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `jay`, `tree_frog`, `robin`, `bell_tree` | 3 | ×1.5 on won suit games of one trump suit, about a quarter of them |
 /// | `black_zero` | 2 | ×1.5 on won Null games; the Alleinspieler seldom plays Null |
 /// | `tap` | 6 | +×0.1 per pub won, on every won game: ×1.5 to ×2 late in the run |
-/// | `hot_hand` | 5 | +×0.2 per won game in a row, back to ×1 after a loss |
+/// | `hot_hand` | 5 | +×0.15 per won game in a row, back to ×1 after a loss |
 ///
 /// Build directions (04.11.2026, Cockpit q26) and "Großvaters Grand"
 /// (Cockpit q27), provisional by judgement, not measured:
@@ -1020,7 +1020,7 @@ impl RunBot {
                 .is_some_and(|d| d.passive.contains(&Effect::SecondChance))
         });
         let relics = run.relics().len();
-        let strong = relics >= 4 || (relics >= 3 && angel);
+        let strong = relics >= 5 || (relics >= 4 && angel);
         let mut best: Option<(i64, usize)> = None;
         for (i, option) in route.options.iter().enumerate() {
             let mut score: i64 = 0;
