@@ -977,15 +977,13 @@ pub enum RunAction {
         give_up: Option<usize>,
     },
     /// The card reward of a won pub ([`RunPhase::CardReward`], DESIGN
-    /// 5.0): the Zinke at `offer` of [`card_reward::CardReward::offers`]
-    /// goes on the deck card `card` for free (the same Zinke on it rises,
-    /// another is replaced). The card must take it
-    /// ([`Run::card_reward_targets`]). Then the way goes on.
+    /// 5.0): the offer at `offer` of [`card_reward::CardReward::offers`],
+    /// a card with a Zinke, for free (the same Zinke on it rises, another
+    /// is replaced). Since 05.11.2026 the card comes with the offer. Then
+    /// the way goes on.
     TakeCardReward {
-        /// Index into the Zinken on offer.
+        /// Index into the offers.
         offer: usize,
-        /// The deck card (instance id).
-        card: u32,
     },
     /// The card reward of a won pub, skipped: Groschen instead
     /// ([`crate::content::CardRewardConfig::skip_coins`]). Then the way
@@ -1648,11 +1646,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The Schnaps given up for it.
         given_up: ConsumableId,
     },
-    /// A won normal pub or Spelunke: the innkeeper offers these Zinken
-    /// with their values (DESIGN 5.0, [`RunPhase::CardReward`]).
+    /// A won normal pub or Spelunke: the innkeeper offers these cards
+    /// with a Zinke each (DESIGN 5.0, [`RunPhase::CardReward`]).
     CardRewardOffered {
-        /// The Zinken on offer with their values, in offer order.
-        offers: Vec<(CardModId, i32)>,
+        /// The offers, in order.
+        offers: Vec<card_reward::RewardOffer>,
     },
     /// A Zinke of the card reward was taken; [`RunEvent::DeckChanged`]
     /// follows.
@@ -2933,9 +2931,7 @@ impl Run {
             RunAction::ChooseSchnappsReward { give_up } => {
                 self.choose_schnapps_reward(content, give_up, events)
             }
-            RunAction::TakeCardReward { offer, card } => {
-                self.take_card_reward(content, offer, card, events)
-            }
+            RunAction::TakeCardReward { offer } => self.take_card_reward(content, offer, events),
             RunAction::SkipCardReward => self.skip_card_reward(content, events),
             RunAction::EnterNight => self.enter_night(content, events),
         }

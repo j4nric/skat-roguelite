@@ -151,14 +151,22 @@ export interface CardRewardView {
   skip_coins: number;
 }
 
-/** One Zinke of the card reward. */
+/** One offer of the card reward: a card of the deck with a Zinke (since 05.11.2026). */
 export interface CardRewardOfferView {
   /** Index for `TakeCardReward.offer`. */
   index: number;
+  /** The card as it is now. */
+  card: DeckCard;
+  /** The card as it would be after taking it. */
+  result: DeckCard;
   /** The Zinke with its value and text. */
   card_mod: CardModInfo;
-  /** The deck cards it may go on now. */
-  targets: number[];
+  /** Whether it can be taken now. */
+  can_take: boolean;
+  /** The modification on the card it would replace. */
+  replaces: string | null;
+  /** Whether it raises the same modification on the card. */
+  raises: boolean;
 }
 
 /** One line of a boss edition: every card matching the filter carries the modification. */
@@ -1123,7 +1131,7 @@ export type RunEvent =
   | { SchnappsRewarded: { consumable: string; slots_full: boolean } }
   | { SchnappsRewardTaken: { consumable: string; given_up: string } }
   /** Card reward (DESIGN 5.0). */
-  | { CardRewardOffered: { offers: [string, number][] } }
+  | { CardRewardOffered: { offers: { card: number; card_mod: string; value: number }[] } }
   | { CardRewardTaken: { offer: number; card: number; card_mod: string; value: number } }
   | { CardRewardSkipped: { coins: number } }
   /** Item review (02.11.2026). */
@@ -1171,7 +1179,7 @@ export type RunAction =
   | { ChooseSchnappsReward: { give_up: number | null } }
   | { ChooseBossRelic: { offer: number | null; replace: number | null } }
   /** Card reward (DESIGN 5.0). */
-  | { TakeCardReward: { offer: number; card: number } }
+  | { TakeCardReward: { offer: number } }
   | 'SkipCardReward'
   /** Zinken (DESIGN 8.6). */
   | { BuyCardOffer: number }

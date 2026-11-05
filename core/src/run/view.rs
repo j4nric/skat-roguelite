@@ -380,27 +380,35 @@ pub struct BossRewardView {
     pub slots_full: bool,
 }
 
-/// The card reward of a won pub (DESIGN 5.0): take one Zinke for free on
-/// a card ([`RunAction::TakeCardReward`]) or skip for Groschen
+/// The card reward of a won pub (DESIGN 5.0): take one card with its
+/// Zinke for free ([`RunAction::TakeCardReward`]) or skip for Groschen
 /// ([`RunAction::SkipCardReward`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardRewardView {
-    /// The Zinken on offer.
+    /// The offers: a card with a Zinke each.
     pub offers: Vec<CardRewardOfferView>,
     /// Groschen for "Überspringen".
     pub skip_coins: u32,
 }
 
-/// One Zinke of the card reward.
+/// One offer of the card reward: a card of the edition with a Zinke
+/// (since 05.11.2026), shown like an offer of the Auslage.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardRewardOfferView {
     /// Index for [`RunAction::TakeCardReward`] `offer`.
     pub index: usize,
+    /// The card as it is now.
+    pub card: DeckCard,
+    /// The card as it would be after taking it.
+    pub result: DeckCard,
     /// The Zinke with its value and text.
     pub card_mod: CardModInfo,
-    /// The deck cards it may go on now, in id order
-    /// ([`Run::card_reward_targets`]).
-    pub targets: Vec<u32>,
+    /// Whether it can be taken now.
+    pub can_take: bool,
+    /// The modification on the card it would replace (ask first).
+    pub replaces: Option<CardModId>,
+    /// Whether it would raise the same modification on the card.
+    pub raises: bool,
 }
 
 /// One relic of the boss reward.
@@ -1491,10 +1499,23 @@ impl Run {
                     .offers
                     .iter()
                     .enumerate()
-                    .map(|(index, (card_mod, value))| CardRewardOfferView {
-                        index,
-                        card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
-                        targets: self.card_reward_targets(content, index),
+                    .filter_map(|(index, offer)| {
+                        let card = self.edition.get(offer.card)?.clone();
+                        let (result, replaces, raises) =
+                            self.mod_result(content, offer.card, &offer.card_mod, offer.value);
+                        Some(CardRewardOfferView {
+                            index,
+                            result: result.unwrap_or_else(|| card.clone()),
+                            card,
+                            card_mod: Run::card_mod_info(
+                                content,
+                                &offer.card_mod,
+                                Some(offer.value),
+                            ),
+                            can_take: self.card_reward_open(content, index),
+                            replaces,
+                            raises,
+                        })
                     })
                     .collect(),
                 skip_coins: content.run.card_reward.as_ref().map_or(0, |c| c.skip_coins),
@@ -1771,7 +1792,7 @@ impl Run {
     /// What `card_mod` with `value` would make of `card`: the card after,
     /// the modification it replaces and whether it raises one. Tried on a
     /// copy of the edition; `None` if the rules refuse it.
-    fn mod_result(
+    pub(super) fn mod_result(
         &self,
         content: &Content,
         card: u32,

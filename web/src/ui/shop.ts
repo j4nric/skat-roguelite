@@ -126,7 +126,7 @@ function zinkenOffer(o: CardOfferView | null, i: number): string {
         : '';
   const name = special ? t(de.shop.zinkeBecomes, { special: contentName('card_mods', mod.id) || mod.name }) : zinkeName(mod);
   const bargain = o.bargain === true;
-  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
+  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-action': o.can_buy ? 'zinke-tile' : null, 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
     ${priceTag(o.price, o.was)}${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}${bargain ? tradeBadge(de.shop.bargain, 'bargain-badge') : ''}
     <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
     <h4 class="zinke-name">${esc(name)}</h4>

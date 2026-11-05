@@ -259,6 +259,8 @@ export const de = {
     apply: '{card} bekommt {new}.',
     applyPlain: 'So sieht {card} danach aus.',
     applyGo: 'Anbringen',
+    /** A fixed offer of the Auslage (card and Zinke): buy it. */
+    buyGo: 'Kaufen · {price} Gr.',
     cleanseTitle: 'Karte reinigen?',
     cleanse: '{card}: Alle Zinken gehen ab, Flüche eingeschlossen.',
     cleanseGo: 'Reinigen',
@@ -1078,13 +1080,11 @@ export const de = {
     kicker: 'Kneipe gewonnen',
     sub: 'Der Wirt zinkt mit',
     title: 'Eine Zinke aufs Haus',
-    text: 'Der Wirt bietet dir drei Zinken an. Eine kommt gratis auf eine Karte deiner Wahl.',
+    text: 'Der Wirt bietet dir drei Karten aus deinem Deck mit je einer Zinke an. Eine davon gibt es gratis.',
     take: 'Diese',
     rare: 'Selten',
     skip: 'Überspringen (+{coins} Groschen)',
-    pickCard: 'Auf welche Karte?',
-    pickHint: '{name}: {text}',
-    backOffers: 'Andere Zinke',
+    backOffers: 'Anderes Angebot',
   },
 
   end: {

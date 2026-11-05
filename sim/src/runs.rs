@@ -921,10 +921,10 @@ impl Observer<'_> {
                 // The card reward (DESIGN 5.0).
                 RunEvent::CardRewardOffered { offers } => {
                     self.stats.card_rewards.offered += 1;
-                    for (card_mod, _) in offers {
+                    for offer in offers {
                         self.stats
                             .card_reward_zinken
-                            .entry(card_mod.clone())
+                            .entry(offer.card_mod.clone())
                             .or_default()
                             .0 += 1;
                     }
