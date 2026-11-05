@@ -982,7 +982,7 @@ export const de = {
       'Einmal pro Spiel, nie als letzte Karte. Im Null und im Ramsch ist sie eine normale Karte.',
     ],
     doppelganger: [
-      'Spielst du sie, nimmt sie dem nächsten Gegner eine Karte gleichen Rangs aus einer anderen Farbe ab, sonst dem anderen Gegner.',
+      'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab (sonst dem anderen).',
       'Die abgenommene Karte liegt im Stich, der Gegner bekommt deine Karte für den Rest des Spiels.',
       'Bedienen musst du mit ihrer gedruckten Farbe. Ohne Gegenstück zählt sie als sie selbst; im Ramsch immer.',
     ],
@@ -1502,7 +1502,10 @@ export const de = {
   content: {
     relics: {
     },
-    card_mods: {},
+    card_mods: {
+      // Playtest 05.11.2026: said simply (the core's catalog text has the details).
+      doppelganger: { text: 'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab.' },
+    },
     bosses: {},
     consumables: {
     },
