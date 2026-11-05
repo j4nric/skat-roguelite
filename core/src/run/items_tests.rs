@@ -442,7 +442,7 @@ fn road_beer_lowers_the_next_target_and_adds_an_einmischen() {
     assert_eq!(run.series().extra_redeals, 1);
     assert_eq!(
         run.redeals_left(&content),
-        content.redeals(Character::Declarer) + 1
+        content.redeals_in(Character::Declarer, run.series().section) + 1
     );
     assert!(run.next_pub_plan().is_empty(), "used up");
     // Not during a game.
@@ -904,7 +904,7 @@ fn the_skat_teacher_raises_a_card_and_costs_an_einmischen_next_pub() {
     // The next pub started: its first game allows one Einmischen fewer,
     // the second the usual number.
     assert_eq!(run.phase(), RunPhase::Game);
-    let own = content.redeals(Character::Declarer);
+    let own = content.redeals_in(Character::Declarer, run.series().section);
     assert_eq!(run.redeals_left(&content), own - 1);
     run.series.games_played = 1;
     assert_eq!(run.redeals_left(&content), own);

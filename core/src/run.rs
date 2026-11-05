@@ -4074,7 +4074,7 @@ impl Run {
             index,
             target,
             game_limit: config.game_limit,
-            redeals: content.redeals(self.character),
+            redeals: content.redeals_in(self.character, section),
             boss,
             malus,
         });
@@ -5938,7 +5938,7 @@ impl Run {
             0
         };
         content
-            .redeals(self.character)
+            .redeals_in(self.character, self.series.section)
             .saturating_add(extra)
             .saturating_sub(withheld)
     }

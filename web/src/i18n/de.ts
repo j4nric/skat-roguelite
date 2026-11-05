@@ -377,7 +377,7 @@ export const de = {
     mix: 'Einmischen',
     /** Shown in the middle while the deck is dragged (or after one tap on it). */
     mixHere: 'Hier einmischen',
-    mixHint: 'Gefällt dir das Blatt nicht, mischst du es ein: Alle Karten werden neu gegeben. Das kostet kein Spiel der Kneipe. Zweimal pro Spiel (die Zahl auf dem Stapel), dann wird gespielt.',
+    mixHint: 'Gefällt dir das Blatt nicht, mischst du es ein: Alle Karten werden neu gegeben. Das kostet kein Spiel der Kneipe. Zweimal pro Spiel, im ersten Stadtteil dreimal (die Zahl auf dem Stapel), dann wird gespielt.',
     mixHow: 'Tippe auf den Stapel oder zieh ihn in die Mitte.',
     choiceKind: 'Skat oder Hand',
     skatZone: 'Skat zum Drücken',
@@ -1124,7 +1124,7 @@ export const de = {
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
       'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das vom Konto ab.',
-    pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, dann wird gespielt.',
+    pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, im ersten Stadtteil dreimal, dann wird gespielt.',
     score:
       'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht es wieder runter.',
     route: 'Weiter geht’s! Drei Wege führen zur nächsten Kneipe, auf jedem wartet was anderes: Tresen, Begegnung, Werkstatt oder Rast. Führt einer in eine Spelunke, lies vorher den Malus.',
@@ -1179,7 +1179,7 @@ export const de = {
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
       'Kein Überreizen: Die Spitzen zählen nach dem Spiel, mit deinem Blatt samt Skat.',
-      'Einmischen: Gefällt dir das Blatt nicht, gibst du es zurück und es wird neu gegeben. Zweimal pro Spiel, es kostet kein Spiel. Danach wird gespielt.',
+      'Einmischen: Gefällt dir das Blatt nicht, gibst du es zurück und es wird neu gegeben. Zweimal pro Spiel (im ersten Stadtteil dreimal), es kostet kein Spiel. Danach wird gespielt.',
       'Schneider, Schwarz und Ouvert darfst du auch nach dem Skat ansagen. Die Hand-Stufe gibt’s nur aus der Hand.',
       'Hausregeln, Figuren und gezinkte Karten biegen die Regeln, auch Grundwert, Stufen und Augen.',
       'Ramsch, Kontra und Bock sind keine Grundregeln. Sie kommen über Hausregeln, Bosse oder Ereignisse.',
