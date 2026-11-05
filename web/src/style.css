@@ -8678,3 +8678,30 @@ button.skat-card {
 .start-board td {
   color: var(--accent);
 }
+
+/* Kartenrückseite in the menu (ADR 0020). */
+.back-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.back-option {
+  padding: 2px;
+  min-width: 36px;
+}
+
+.back-option.is-picked {
+  border-color: var(--accent);
+}
+
+.back-swatch {
+  display: block;
+  width: 28px;
+}
+
+.back-swatch svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

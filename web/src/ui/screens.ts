@@ -368,6 +368,21 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
 }
 
 /**
+ * Kartenrückseite (ADR 0020): the backs earned at the night's milestones,
+ * next to the character's own. Shown only once one is earned.
+ */
+function backPick(ui: UiState): string {
+  const earned = ui.meta?.card_backs ?? [];
+  if (!earned.length) return '';
+  const chosen = ui.settings.back && earned.includes(ui.settings.back) ? ui.settings.back : null;
+  const own = ui.view?.character.back ?? ui.meta?.characters.find((c) => c.character === ui.pickCharacter)?.back ?? null;
+  const option = (id: string | null, label: string): string =>
+    `<button class="btn btn-small back-option ${chosen === id ? 'is-picked' : ''}" ${attrs({ 'data-action': 'card-back', 'data-back': id ?? '', 'aria-pressed': chosen === id ? 'true' : 'false', 'aria-label': label, title: label })}><span class="back-swatch">${cardBack('', backDesign(id ?? own), 'small')}</span></button>`;
+  const options = [option(null, de.menu.backOwn), ...earned.map((id) => option(id, de.backs[id]?.name ?? id))].join('');
+  return `<div class="menu-row menu-backs" data-testid="setting-back"><span class="setting-label">${esc(de.menu.back)}</span><div class="back-options">${options}</div></div>`;
+}
+
+/**
  * Bestenliste (ADR 0020): per character the runs won, the deepest night
  * district, the most pubs of one night and the best game.
  */
@@ -495,6 +510,7 @@ function settingsBlock(ui: UiState): string {
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
     <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
+    ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',
       'data-testid': 'hints-reset',

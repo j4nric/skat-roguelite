@@ -18,10 +18,12 @@ export interface Settings {
   hints: boolean;
   /** "Kartenfarbe tönen": each card's paper lightly tinted in its suit (CSS, ./style.css). */
   suitTint: boolean;
+  /** Card back of the player's edition chosen among the earned ones (ADR 0020); null: the character's own. */
+  back: string | null;
 }
 
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -43,6 +45,7 @@ export function loadSettings(): Settings {
       thinking: parsed.thinking !== false,
       hints: parsed.hints !== false,
       suitTint: parsed.suitTint === true,
+      back: typeof parsed.back === 'string' ? parsed.back : null,
     };
   } catch {
     return { ...DEFAULTS };

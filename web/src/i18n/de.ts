@@ -1126,6 +1126,9 @@ export const de = {
     reducedMotion: 'Weniger Bewegung gewünscht: Animationen kurz.',
     hints: 'Hinweise des Wirts',
     suitTint: 'Kartenfarbe tönen',
+    /** Card back of the player's edition (ADR 0020), once one is earned. */
+    back: 'Rückseite',
+    backOwn: 'Rückseite des Charakters',
     suitTintHint: 'Das Papier jeder Karte leicht in ihrer Farbe: Eichel beige, Grün grün, Rot rosa, Schellen gelb.',
     hintsReset: 'Zurücksetzen',
     hintsResetAria: 'Hinweise des Wirts zurücksetzen',

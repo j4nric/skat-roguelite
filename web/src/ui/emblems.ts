@@ -1227,6 +1227,92 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ..sssssssss.
       ...sssssss..`),
   ],
+  // Die lange Nacht (ADR 0020): the night relics ("Nachtschwärmer"), one
+  // motif each, provisional.
+  night_owl: [
+    sp('Eule im Mondlicht', `
+      ..b......b..
+      ..bb....bb..
+      ..bbbbbbbb..
+      .bwwbbbbwwb.
+      .bwkwbbwkwb.
+      .bwwbyybwwb.
+      ..bbbyybbb..
+      ..bnbbbbnb..
+      ..bnnbbnnb..
+      ...bnnnnb...
+      ...y.bb.y...
+      ..yy....yy..`),
+  ],
+  sweep_out: [
+    sp('Besen', `
+      .........b..
+      ........b...
+      .......b....
+      ......b.....
+      .....b......
+      ....b.......
+      ...YYY......
+      ..YyYyY.....
+      .YyYyYyY....
+      .YyYyYyY....
+      YyYyYyYy....`),
+  ],
+  rag_collector: [
+    sp('Lumpensack', `
+      ....b..b....
+      .....bb.....
+      ....gGGg....
+      ...gGgGGg...
+      ..gGGrGGGg..
+      ..GGrrGgGG..
+      .gGGGGGJGGg.
+      .GgGGGJJGgG.
+      .GGgGGGGGGG.
+      ..GGGgGGGG..
+      ...GGGGGG...`),
+  ],
+  moonlight: [
+    sp('Mondsichel mit Stern', `
+      ....YYYY....
+      ..YYY.......
+      .YYY......L.
+      .YY......LLL
+      YYY.......L.
+      YYY.........
+      YYY.........
+      .YY.........
+      .YYY.....Y..
+      ..YYY..YYY..
+      ....YYYY....`),
+  ],
+  night_shift: [
+    sp('Taschenuhr', `
+      .....yy.....
+      ....y..y....
+      ...gggggg...
+      ..gwwwwwwg..
+      .gwwwkwwwwg.
+      .gwwwkwwwwg.
+      .gwwwkkkwwg.
+      .gwwwwwwwwg.
+      .gwwwwwwwwg.
+      ..gwwwwwwg..
+      ...gggggg...`),
+  ],
+  dawn: [
+    sp('Sonne über den Dächern', `
+      .....Y......
+      ..Y..Y..Y...
+      ...Y...Y....
+      ....aaa.....
+      .Y.aaaaa.Y..
+      ...aaaaa....
+      GGGGGGGGGGGG
+      GdGGdGGGdGGG
+      GGGGGGdGGGdG
+      GdGdGGGGGGGG`),
+  ],
   // Bau-Richtungen (04.11.2026, Cockpit q26) and Großvaters Grand: one
   // motif each, provisional.
   club_colours: [
@@ -1831,6 +1917,13 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   lead_pouring: 0,
   plumb_line: 0,
   grandfathers_grand: 0,
+  // Die lange Nacht (ADR 0020): one motif each, provisional.
+  night_owl: 0,
+  sweep_out: 0,
+  rag_collector: 0,
+  moonlight: 0,
+  night_shift: 0,
+  dawn: 0,
   // Still to be voted on; variant A until then.
   blue_curacao: 0,
   counter_beer: 0,
@@ -2165,6 +2258,13 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   tap: 'Factor',
   hot_hand: 'Factor',
   golden_shears: 'Factor',
+  // Die lange Nacht (ADR 0020)
+  night_owl: 'Factor',
+  sweep_out: 'Factor',
+  rag_collector: 'Factor',
+  moonlight: 'Factor',
+  night_shift: 'Factor',
+  dawn: 'Factor',
 };
 
 /** German names of the categories, for the art vote board only. */

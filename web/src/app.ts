@@ -2434,6 +2434,9 @@ export class App {
       case 'suit-tint':
         this.setSettings({ suitTint: el.dataset.on === 'true' });
         return;
+      case 'card-back':
+        this.setSettings({ back: el.dataset.back ? el.dataset.back : null });
+        return;
       case 'hints-reset':
         this.resetHints();
         return;
@@ -3429,7 +3432,9 @@ export class App {
       ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };
     }
     // The player's edition shows his character's back (DESIGN 9.3).
-    setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
+    // A back earned in the long night replaces it if chosen (ADR 0020).
+    const chosenBack = ui.settings.back && ui.meta?.card_backs?.includes(ui.settings.back) ? ui.settings.back : null;
+    setPlayerBack(chosenBack ?? (ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
     switch (ui.screen) {
       case 'loading':
