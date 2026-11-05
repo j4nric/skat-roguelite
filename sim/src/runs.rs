@@ -31,10 +31,11 @@ use std::time::Instant;
 use skat_core::ai::pimc::Opponents;
 use skat_core::cards::{Card, CardKind, Suit};
 use skat_core::content::{
-    BossId, CardModId, Character, ConsumableId, Content, Effect, EncounterId, Hook, RelicGroup,
-    RelicId, RunLength, UnlockId,
+    BossId, CardModId, Character, ConsumableId, Content, Effect, EncounterId, Hook, ModKind,
+    RelicGroup, RelicId, RunLength, UnlockId,
 };
-use skat_core::deck::DeckChange;
+use skat_core::deck::{DeckCard, DeckChange};
+use skat_core::game::{Event, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{Declaration, NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
@@ -449,6 +450,8 @@ pub struct RunStats {
     pub card_rewards: CardRewardStat,
     /// The card reward per Zinke: (offered, taken).
     pub card_reward_zinken: BTreeMap<CardModId, (u64, u64)>,
+    /// The player's edition: Zinken at the end, Marken, Zinken in hand.
+    pub deck: DeckStat,
 }
 
 /// The card reward after a won normal pub or Spelunke (DESIGN 5.0), over
@@ -465,6 +468,80 @@ pub struct CardRewardStat {
     pub skipped: u64,
     /// Groschen from skipping, summed.
     pub skip_coins: u64,
+}
+
+/// Labels of [`DeckStat::kinds`]: Rand, Ecke (Moment), Marke (voucher),
+/// Spezialkarte, Fluch (also the special curse "Abgestuft").
+pub const DECK_KINDS: [&str; 5] = ["rand", "ecke", "marke", "spezial", "fluch"];
+
+/// The deck side over all runs (balance round 2): what the player's
+/// edition carries at the end of a run, the Marken redeemed, and how often
+/// a card with a Zinke is in the hand and played.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeckStat {
+    /// Modifications on the edition at the end, by kind ([`DECK_KINDS`]),
+    /// summed over runs.
+    pub kinds: [u64; 5],
+    /// Modifications at the end by id: (summed count, runs with at least
+    /// one).
+    pub mods: BTreeMap<CardModId, (u64, u64)>,
+    /// Runs that ended with at least one curse.
+    pub runs_with_curse: u64,
+    /// Marken redeemed by discarding them into the skat.
+    pub vouchers_discard: u64,
+    /// Marken redeemed by declaring a hand game.
+    pub vouchers_hand: u64,
+    /// Games scored, for the shares below.
+    pub games: u64,
+    /// Games whose dealt hand (ten cards) held at least one card with a
+    /// Zinke (any modification but a curse).
+    pub games_zinked_in_hand: u64,
+    /// Cards with a Zinke in the dealt hand, summed over games.
+    pub zinked_in_hand: u64,
+    /// Games in which the player played at least one card with a Zinke.
+    pub games_zinked_played: u64,
+}
+
+/// Index into [`DECK_KINDS`].
+fn deck_kind(kind: ModKind) -> usize {
+    match kind {
+        ModKind::Edge => 0,
+        ModKind::Moment => 1,
+        ModKind::Voucher => 2,
+        ModKind::Special => 3,
+        ModKind::Curse | ModKind::SpecialCurse => 4,
+    }
+}
+
+/// Whether a card of the edition carries a Zinke: any modification that
+/// is not a curse.
+fn is_zinked(content: &Content, card: &DeckCard) -> bool {
+    card.mods
+        .iter()
+        .any(|id| content.card_mod(id).is_some_and(|d| deck_kind(d.kind) != 4))
+}
+
+/// The player's edition at the end of a run into [`DeckStat`].
+fn observe_deck_end(run: &Run, content: &Content, stat: &mut DeckStat) {
+    let mut per_mod: BTreeMap<CardModId, u64> = BTreeMap::new();
+    let mut curse = false;
+    for card in run.editions().player.cards() {
+        for id in &card.mods {
+            let Some(def) = content.card_mod(id) else {
+                continue;
+            };
+            let kind = deck_kind(def.kind);
+            stat.kinds[kind] += 1;
+            curse |= kind == 4;
+            *per_mod.entry(id.clone()).or_default() += 1;
+        }
+    }
+    stat.runs_with_curse += u64::from(curse);
+    for (id, n) in per_mod {
+        let entry = stat.mods.entry(id).or_default();
+        entry.0 += n;
+        entry.1 += 1;
+    }
 }
 
 /// The Faktor (ADR 0018, `ScoreBreakdown::multiplier`) over all runs, for
@@ -553,6 +630,11 @@ struct Observer<'a> {
     max_factor: u32,
     /// The value of the card reward just taken, until its deck change.
     reward_value: Option<i32>,
+    content: &'a Content,
+    /// Cards with a Zinke in the player's hand as dealt, this game.
+    hand_zinked: u64,
+    /// The player played a card with a Zinke this game.
+    played_zinked: bool,
 }
 
 impl Observer<'_> {
@@ -674,7 +756,36 @@ impl Observer<'_> {
                         }
                     }
                 }
+                RunEvent::GameDealt { .. } => {
+                    let edition = run.editions().player;
+                    self.hand_zinked = run.game().map_or(0, |a| {
+                        let n = a
+                            .game
+                            .hand(Seat::DECLARER)
+                            .iter()
+                            .filter_map(|c| edition.get(c.id))
+                            .filter(|c| is_zinked(self.content, c))
+                            .count();
+                        u64::try_from(n).unwrap_or(0)
+                    });
+                    self.played_zinked = false;
+                }
+                RunEvent::Game(Event::CardPlayed { seat, card }) if *seat == Seat::DECLARER => {
+                    if run
+                        .editions()
+                        .player
+                        .get(card.id)
+                        .is_some_and(|c| is_zinked(self.content, c))
+                    {
+                        self.played_zinked = true;
+                    }
+                }
                 RunEvent::GameScored { breakdown, .. } => {
+                    let deck = &mut self.stats.deck;
+                    deck.games += 1;
+                    deck.zinked_in_hand += self.hand_zinked;
+                    deck.games_zinked_in_hand += u64::from(self.hand_zinked > 0);
+                    deck.games_zinked_played += u64::from(self.played_zinked);
                     self.stats.games += 1;
                     self.stats.points += breakdown.score;
                     if breakdown.won {
@@ -737,8 +848,16 @@ impl Observer<'_> {
                     self.stats.coins_other += i64::from(*amount);
                 }
                 RunEvent::VoucherRedeemed {
-                    card_mod, value, ..
+                    card_mod,
+                    value,
+                    via_hand,
+                    ..
                 } => {
+                    if *via_hand {
+                        self.stats.deck.vouchers_hand += 1;
+                    } else {
+                        self.stats.deck.vouchers_discard += 1;
+                    }
                     let entry = self
                         .stats
                         .vouchers_redeemed
@@ -832,6 +951,9 @@ fn play_run(
         replay: false,
         max_factor: 1000,
         reward_value: None,
+        content,
+        hand_zinked: 0,
+        played_zinked: false,
     };
     observer.observe(&run, &events);
     let mut actions = 0;
@@ -846,6 +968,7 @@ fn play_run(
     let bought = std::mem::take(&mut observer.bought);
     let max_factor = observer.max_factor;
     observe_factor_relics(&run, content, max_factor, &mut stats.factor);
+    observe_deck_end(&run, content, &mut stats.deck);
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let won = run.phase() == RunPhase::Won;
     let section = usize::try_from(run.series().section).unwrap_or(0);
@@ -1002,6 +1125,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     );
     render_kinds(&mut out, stats, runs);
     render_factor(&mut out, stats, runs);
+    render_deck(&mut out, &stats.deck, runs);
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
     let _ = write!(out, "encounters (opened/taken per option):");
     for (id, (opened, taken)) in &stats.encounters {
@@ -1093,6 +1217,40 @@ fn render_factor(out: &mut String, stats: &RunStats, runs: u64) {
         mean(f.growing_permille, f.growing_runs) / 1000.0,
         f.growing_runs
     );
+}
+
+/// The deck side ([`DeckStat`]): one `deck:` line with the means per
+/// run and per game, then the modifications at the end by id (most first).
+fn render_deck(out: &mut String, d: &DeckStat, runs: u64) {
+    let total: u64 = d.kinds.iter().sum();
+    let _ = write!(out, "deck: mods at end per run {:.2} (", mean(total, runs));
+    for (i, (label, n)) in DECK_KINDS.iter().zip(d.kinds).enumerate() {
+        let sep = if i == 0 { "" } else { " " };
+        let _ = write!(out, "{sep}{label}={:.2}", mean(n, runs));
+    }
+    let _ = writeln!(
+        out,
+        "), runs with a curse {:.1}%; marken redeemed per run: discard {:.2}, hand {:.2}; \
+         games with a zinked card in hand {:.1}% (mean {:.2} per game), played {:.1}%",
+        pct(d.runs_with_curse, runs),
+        mean(d.vouchers_discard, runs),
+        mean(d.vouchers_hand, runs),
+        pct(d.games_zinked_in_hand, d.games),
+        mean(d.zinked_in_hand, d.games),
+        pct(d.games_zinked_played, d.games)
+    );
+    let mut mods: Vec<_> = d.mods.iter().collect();
+    mods.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(b.0)));
+    let _ = write!(out, "deck mods at end (per run, runs with one):");
+    for (id, (n, with)) in mods {
+        let _ = write!(
+            out,
+            " {id}={:.2} ({:.1}%)",
+            mean(*n, runs),
+            pct(*with, runs)
+        );
+    }
+    out.push('\n');
 }
 
 /// Games per Spielart (share, win rate, Schneider among the won, hand
@@ -1829,6 +1987,36 @@ mod option_tests {
     }
 
     #[test]
+    fn the_deck_line_counts_zinken_in_hand_and_at_the_end() {
+        let base = content();
+        // Every jack with Augen +5: a zinked card in most hands.
+        let options = Options {
+            card_mods: ["CJ", "SJ", "HJ", "DJ"]
+                .iter()
+                .map(|c| (c.parse().expect("card"), CardModId::new("points"), Some(5)))
+                .collect(),
+            no_shop: true,
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let stats = simulate(&content, &options, 8, 10).expect("runs");
+        let d = &stats.deck;
+        assert_eq!(d.games, stats.games);
+        assert!(
+            d.kinds[0] >= 40,
+            "four Rand Zinken in each of ten runs: {d:?}"
+        );
+        assert_eq!(d.mods[&CardModId::new("points")].1, 10);
+        assert!(d.games_zinked_in_hand > d.games / 2);
+        assert!(d.games_zinked_in_hand <= d.games);
+        assert!(d.zinked_in_hand >= d.games_zinked_in_hand);
+        assert!(d.games_zinked_played > 0 && d.games_zinked_played <= d.games);
+        let text = render(&stats, &content, &options, 0);
+        assert!(text.contains("deck: mods at end per run"));
+        assert!(text.contains("points="));
+    }
+
+    #[test]
     fn a_stake_makes_suit_games_harder_to_win() {
         let base = content();
         let plain = simulate(&base, &Options::default(), 11, 10).expect("plain");
@@ -1906,7 +2094,11 @@ mod option_tests {
         let d1 = stats.districts[0];
         assert_eq!(d1.runs, 40);
         assert!(d1.relics_start >= 40, "the Zähler from the start");
-        assert_eq!(d1.boss_runs, stats.series[0][4].attempts);
+        // A boss pub played again by the "Schutzengel" is one more attempt.
+        assert_eq!(
+            d1.boss_runs + stats.series[0][4].replays,
+            stats.series[0][4].attempts
+        );
         // Spelunken are counted apart from the pubs they replace: a slot is
         // entered once per run that gets there, and again when the
         // "Schutzengel" has it played once more.
@@ -1915,7 +2107,8 @@ mod option_tests {
                 if index == 0 {
                     assert_eq!(
                         p.attempts + s.attempts - p.replays - s.replays,
-                        stats.districts[section].runs
+                        stats.districts[section].runs,
+                        "section {section}: {p:?} {s:?}"
                     );
                 }
                 assert!(p.games >= p.attempts, "at least one game per pub");

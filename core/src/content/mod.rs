@@ -1683,6 +1683,12 @@ pub struct RunConfig {
     /// read under its old name `passes` (passes per series).
     #[serde(alias = "passes")]
     pub redeals: u32,
+    /// Extra Einmischen per game by district (index 0 is Stadtteil 1),
+    /// added to `redeals`; a district without an entry gets none
+    /// ([`Content::redeals_in`]). Balance round 2 (04.11.2026): one more in
+    /// Stadtteil 1, so fewer runs end in the first two pubs.
+    #[serde(default)]
+    pub district_redeals: Vec<u32>,
     /// Slots for house rules and figures together. `None` (the default
     /// since 03.11.2026): the player may hold any number of relics.
     #[serde(default)]
@@ -2568,6 +2574,19 @@ impl Content {
     pub fn redeals(&self, character: Character) -> u32 {
         let delta = self.character(character).map_or(0, |c| c.rule.redeals);
         self.run.redeals.saturating_add_signed(delta)
+    }
+
+    /// Einmischen per game of a run with `character` in district `section`
+    /// (from 0): [`Content::redeals`] plus the district's extra from
+    /// `run.ron` (`district_redeals`).
+    #[must_use]
+    pub fn redeals_in(&self, character: Character, section: u32) -> u32 {
+        let extra = usize::try_from(section)
+            .ok()
+            .and_then(|s| self.run.district_redeals.get(s))
+            .copied()
+            .unwrap_or(0);
+        self.redeals(character).saturating_add(extra)
     }
 
     /// How many times the Groschen of a won series count for `character`

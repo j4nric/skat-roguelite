@@ -512,7 +512,10 @@ fn saves_from_before_the_einmischen_rule_load() {
     let back: Run = ron::from_str(&text).expect("old save loads");
     // The series keeps its limit; Einmischen follows the new rule.
     assert_eq!(back.series().game_limit, 8);
-    assert_eq!(back.redeals_left(&content), content.run.redeals);
+    assert_eq!(
+        back.redeals_left(&content),
+        content.redeals_in(crate::content::Character::Declarer, back.series().section)
+    );
     assert_eq!(back.stats().redeals, 2);
     // Old events read under the new names.
     let won: RunEvent = ron::from_str(

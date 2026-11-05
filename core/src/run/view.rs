@@ -428,7 +428,8 @@ pub struct NextSeriesView {
     pub target: u64,
     /// Spiellimit.
     pub game_limit: u32,
-    /// Einmischen per game of the character, without relics.
+    /// Einmischen per game of the character in its district, without
+    /// relics.
     pub redeals: u32,
     /// Its boss, if it is the boss series.
     pub boss: Option<BossInfo>,
@@ -1390,7 +1391,7 @@ impl Run {
             is_boss,
             target,
             game_limit: content.run.game_limit,
-            redeals: content.redeals(self.character),
+            redeals: content.redeals_in(self.character, section),
             boss: boss.map(|id| self.boss_info(content, id)),
         })
     }
@@ -2413,7 +2414,10 @@ mod tests {
         );
         assert!(options.null_style);
         assert!(options.can_redeal);
-        assert_eq!(options.redeals_left, content.run.redeals);
+        assert_eq!(
+            options.redeals_left,
+            content.redeals_in(Character::Declarer, 0)
+        );
         assert!(options.can_pick_up_skat);
         assert!(!options.hand_required);
         // Before the skat only the hand levels (ADR 0011).

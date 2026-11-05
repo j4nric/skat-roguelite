@@ -88,7 +88,10 @@ fn run_starts_with_first_series_and_a_dealt_game() {
     assert_eq!(run.series().target, content.run.targets[0][0]);
     assert_eq!(run.series().game_limit, content.run.game_limit);
     assert_eq!(run.series().game_limit, 3);
-    assert_eq!(run.redeals_left(&content), content.run.redeals);
+    assert_eq!(
+        run.redeals_left(&content),
+        content.redeals_in(Character::Declarer, 0)
+    );
     assert_eq!(content.run.redeals, 2);
     assert_eq!(run.coins(), content.run.economy.starting_coins);
     assert!(matches!(
@@ -118,6 +121,7 @@ fn einmischen_deals_again_without_using_a_game() {
     let mut content = content();
     // Two per game, independent of run.ron.
     content.run.redeals = 2;
+    content.run.district_redeals.clear();
     let (mut run, _) = Run::new(&content, 3).expect("start");
     let first = run.game().map(|a| a.game.hand(Seat::DECLARER).to_vec());
     let events = run.apply(&content, RunAction::Redeal).expect("einmischen");
@@ -536,7 +540,7 @@ fn consumables_change_the_deck_and_the_series() {
     assert!(events.contains(&RunEvent::Redealt));
     assert_eq!(
         run.redeals_left(&content),
-        content.redeals(Character::Declarer)
+        content.redeals_in(Character::Declarer, 0)
     );
     assert_eq!(run.series().games_played, 0, "a new deal costs no game");
     assert_eq!(run.game().map(|a| a.game.forehand()), Some(Seat::DECLARER));
@@ -804,4 +808,35 @@ fn payout_serializes_its_total() {
     assert_eq!(back, payout);
     let old: Payout = ron::from_str("(base:3,games_left:2,interest:1)").expect("old");
     assert_eq!(old.total(), 6);
+}
+
+#[test]
+fn district_redeals_add_einmischen_in_their_district() {
+    let mut content = content();
+    content.run.redeals = 2;
+    content.run.district_redeals = vec![1];
+    assert_eq!(content.redeals_in(Character::Declarer, 0), 3);
+    assert_eq!(content.redeals_in(Character::Declarer, 1), 2);
+    assert_eq!(content.redeals_in(Character::Declarer, 2), 2);
+    // Stadtteil 1: one more per game, announced with the pub.
+    let (run, events) = Run::new(&content, 4).expect("start");
+    assert_eq!(run.series().section, 0);
+    assert_eq!(run.redeals_left(&content), 3);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RunEvent::SeriesStarted { redeals: 3, .. }))
+    );
+    // A run starting in Stadtteil 2 gets the usual number.
+    let start = RunStart {
+        section: 1,
+        ..RunStart::default()
+    };
+    let (mut run, _) = Run::new_with(&content, 4, &start).expect("start");
+    assert_eq!(run.redeals_left(&content), 2);
+    for _ in 0..2 {
+        run.apply(&content, RunAction::Redeal).expect("redeal");
+    }
+    assert_eq!(run.redeals_left(&content), 0);
+    assert!(run.apply(&content, RunAction::Redeal).is_err());
 }
