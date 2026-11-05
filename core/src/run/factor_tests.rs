@@ -247,3 +247,28 @@ fn regenerate_factor_fixture() {
     std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
     println!("wrote {}", path.display());
 }
+
+#[test]
+fn a_growing_factor_stops_at_its_cap() {
+    let per = Factor::from_permille(200);
+    let max = Some(Factor::from_permille(3000));
+    assert_eq!(per_step_factor(per, 4, max).permille(), 1800);
+    assert_eq!(per_step_factor(per, 10, max).permille(), 3000);
+    assert_eq!(per_step_factor(per, 25, max).permille(), 3000);
+    assert_eq!(per_step_factor(per, 25, None).permille(), 6000);
+    // The cap is optional in the data.
+    let capped: crate::content::Effect = ron::from_str(
+        r#"ScaleGameValuePerCounter(counter: "moonlight", per: 0.2, max: Some(3.0))"#,
+    )
+    .expect("ron");
+    assert!(matches!(
+        capped,
+        crate::content::Effect::ScaleGameValuePerCounter { max: Some(m), .. } if m.permille() == 3000
+    ));
+    let open: crate::content::Effect =
+        ron::from_str(r#"ScaleGameValuePerCard(count: (), per: 0.05)"#).expect("ron");
+    assert!(matches!(
+        open,
+        crate::content::Effect::ScaleGameValuePerCard { max: None, .. }
+    ));
+}

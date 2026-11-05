@@ -1095,10 +1095,13 @@ fn observe_factor_relics(run: &Run, content: &Content, max_factor: u32, stat: &m
         .iter()
         .flat_map(|d| d.hooks.iter().flat_map(Hook::then))
     {
-        if let Effect::ScaleGameValuePerCounter { counter, per } = effect {
+        if let Effect::ScaleGameValuePerCounter { counter, per, max } = effect {
             growing = true;
             let value = u64::from(run.counters().get(counter).copied().unwrap_or(0));
-            let factor = 1000 + u64::from(per.permille()) * value;
+            let mut factor = 1000 + u64::from(per.permille()) * value;
+            if let Some(max) = max {
+                factor = factor.min(u64::from(max.permille()));
+            }
             permille = (permille * factor + 500) / 1000;
         }
     }
