@@ -381,7 +381,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Grandseigneur (Figur, Faktor ×2 auf gewonnene Grands) | `grand_seigneur` |
 | Schwarze Null (Faktor ×1,5 auf gewonnene Null-Spiele) | `black_zero` |
 | Zapfhahn (+×0,1 je gewonnener Kneipe; Zähler `tap`) | `tap` |
-| Heiße Hand (+×0,2 je Sieg in Folge, zurück auf ×1 nach einer Niederlage; Zähler `hot_hand`) | `hot_hand` |
+| Heiße Hand (+×0,15 je Sieg in Folge, zurück auf ×1 nach einer Niederlage; Zähler `hot_hand`) | `hot_hand` |
 | Bierdeckel | `beer_mat` (Zähler `beer_mat`) |
 | Glückssträhne | `lucky_streak` (Flaggen `streak_start`, `streak`) |
 | Der Schneider (Figur) | `tailor` (nicht verwechseln mit Schneider = `schneider`) |
