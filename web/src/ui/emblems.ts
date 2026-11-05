@@ -1,7 +1,7 @@
 // Emblems (style "R1 Bierdeckel", v2 "Deckel v2"): every relic, consumable
 // and boss is drawn as a small object with its own 16 × 16 pixel motif.
 // - Relics are beer mats whose shape and paper follow their category
-//   (RelicGroup): Grundwert round, Multiplikator a sunburst, Kontrolle a
+//   (RelicGroup): Grundwert round, Stufen a sunburst, Kontrolle a
 //   rounded square, Tresen und Tour an inn sign shield, Faktor an amber
 //   hexagon (ADR 0018, provisional).
 // - Schnäpse are no mats but consumables at first sight: a bottle, a label
@@ -1915,7 +1915,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   old_lady: 'Value',
   skat_keeper: 'Value',
   jinx: 'Value',
-  // Multiplikator, Gewinngrenze and Schneider
+  // Stufen, Gewinngrenze and Schneider
   blank_king: 'Multiplier',
   last_trick_seven: 'Multiplier',
   with_four: 'Multiplier',
@@ -1957,7 +1957,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
 /** German names of the categories, for the art vote board only. */
 export const GROUP_LABEL: Record<RelicGroup, string> = {
   Value: 'Grundwert und Kartenwerte',
-  Multiplier: 'Multiplikator und Gewinngrenze',
+  Multiplier: 'Stufen und Gewinngrenze',
   Control: 'Geben, Skat und Durchblick',
   Tour: 'Tresen und Tour',
   Factor: 'Faktor',
@@ -1988,7 +1988,7 @@ const SPIRIT = '#f4e9bf';
 const FORMS: Record<Exclude<Form, 'Boss'>, FormSpec> = {
   // Grundwert: the plain round beer mat.
   Value: { pts: radialPts(72, () => 44), paper: '#ecebe4', motif: [22, 20, 3.5], pips: 'bottom' },
-  // Multiplikator: a sunburst with twelve points.
+  // Stufen: a sunburst with twelve points.
   Multiplier: {
     pts: radialPts(24, (k) => (k % 2 ? 39.5 : 47), -Math.PI / 2),
     paper: '#f1dfb8',

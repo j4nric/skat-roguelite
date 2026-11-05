@@ -55,7 +55,7 @@
         kind: Edge,
         focus: Trump,
         name: "Winkel",
-        text: "Rang {+n}: Diese Karte wird die nächsthöhere Karte ihrer Farbe (7, 8, 9, Oberin, König, 10, Daus), je Stufe eine, höchstens 2. Ihre Augen bleiben. Nicht auf Unter und Daus.",
+        text: "Rang {+n}: Diese Karte wird die nächsthöhere Karte ihrer Farbe (7, 8, 9, Oberin, König, 10, Daus), bei Rang +2 die übernächste. Ihre Augen bleiben. Nicht auf Unter und Daus.",
         rarity: Common,
         price: 3,
         values: [1],
@@ -115,7 +115,7 @@
         kind: Moment,
         focus: Trump,
         name: "Kerbe",
-        text: "Letzter Stich: Macht diese Karte den letzten Stich, +1 Multiplikator.",
+        text: "Letzter Stich: Macht diese Karte den letzten Stich, +1 Stufe.",
         rarity: Uncommon,
         price: 3,
         values: [1],
@@ -142,13 +142,13 @@
     ),
     // Lever Gewinnstufen (Zinken v2, 03.11.2026): sticht diese Karte einen
     // Daus eines Gegners (gespielt von einem Gegner, egal aus welcher
-    // Ausgabe), +1 Multiplikator für dieses Spiel, je solchem Stich.
+    // Ausgabe), +1 Stufe für dieses Spiel, je solchem Stich.
     (
         id: "crosshair",
         kind: Moment,
         focus: Trump,
         name: "Fadenkreuz",
-        text: "Daus: Sticht diese Karte einen Daus eines Gegners, +{n} Multiplikator.",
+        text: "Daus: Sticht diese Karte einen Daus eines Gegners, +{n} Stufe.",
         rarity: Uncommon,
         price: 4,
         values: [1],
@@ -164,7 +164,7 @@
         kind: Moment,
         focus: Trump,
         name: "Schneiderkreide",
-        text: "Schneider: Gewinnst du mit Schneider und hast diese Karte gespielt, +{n} Multiplikator.",
+        text: "Schneider: Gewinnst du mit Schneider und hast diese Karte gespielt, +{n} Stufe.",
         rarity: Uncommon,
         price: 3,
         values: [1],
@@ -284,14 +284,14 @@
     // Spezialkarte, die ein Fluch ist, das Gegenstück zu Rang. Ein Unter
     // ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe
     // (unter der Sieben, ohne Augen, keine Spitze), jede andere Karte
-    // sticht eine Stufe tiefer. Darf eine normale Modifikation tragen,
+    // sticht einen Rang tiefer. Darf eine normale Modifikation tragen,
     // keine andere Spezialkarte ersetzt sie, nur Karte reinigen nimmt
     // sie ab. Nur im Grunddeck des Nullspielers, nie zufällig.
     (
         id: "demoted",
         kind: SpecialCurse,
         name: "Abgestuft",
-        text: "Fluch: Ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe, ohne Augen. Jede andere Karte sticht eine Stufe tiefer.",
+        text: "Fluch: Ein Unter ist keine Unter mehr, sondern die niedrigste Karte seiner Farbe, ohne Augen. Jede andere Karte sticht einen Rang tiefer.",
         rarity: Common,
         price: 1,
         passive: [Demote],

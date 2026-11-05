@@ -66,7 +66,8 @@ function sourceIcon(source: Source, deck: (DeckCard & CardLook)[]): string {
 function levelText(n: number): string {
   if (n === 1) return t(de.score.plusLevels, { n });
   if (n > 1) return t(de.score.plusLevelsMany, { n });
-  return t(de.score.minusLevels, { n: signed(n) });
+  if (n === -1) return t(de.score.minusLevels, { n: signed(n) });
+  return t(de.score.minusLevelsMany, { n: signed(n) });
 }
 
 /** What a score line does, e.g. "+1 Stufe", "Grundwert ×2". */
@@ -161,8 +162,9 @@ function coasterStrip(o: ScoreOverlay): string {
 export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): string {
   const b = o.score.breakdown;
   const steps = o.score.steps;
-  // The Faktor (ADR 0018) is a box of its own, always shown; greyed while it stays ×1.
-  const factorOne = (steps[steps.length - 1]?.multiplier ?? b.multiplier) === 1;
+  // The Faktor (ADR 0018) gets a box of its own only when the game has one
+  // (user decision 04.11.2026); otherwise the board reads Grundwert × Stufen.
+  const hasFactor = b.multiplier !== 1 || steps.some((s) => s.multiplier !== 1);
   const rows = steps
     .map((step, i) => {
       const r = termRow(step.term, deck, b.rule_levels);
@@ -201,9 +203,8 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
     <div class="formula" aria-hidden="true">
       <div class="fbox fbox-base"><span>${valueIcon('base')}${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
       <span class="fop">×</span>
-      <div class="fbox fbox-levels"><span>${valueIcon('mult')}${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
-      <span class="fop">×</span>
-      <div class="fbox fbox-mul${factorOne ? ' is-one' : ''}" data-testid="score-factor"><span>${valueIcon('factor')}${esc(de.score.boxMul)}</span><b data-num="mul">${esc(factorText(1))}</b></div>
+      <div class="fbox fbox-levels"><span>${valueIcon('levels')}${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
+      ${hasFactor ? `<span class="fop">×</span><div class="fbox fbox-mul" data-testid="score-factor"><span>${valueIcon('factor')}${esc(de.score.boxMul)}</span><b data-num="mul">${esc(factorText(1))}</b></div>` : ''}
     </div>
     <ol class="steps">${rows}</ol>
     <div class="score-result ${b.won ? 'is-won' : 'is-lost'}" data-part="result">

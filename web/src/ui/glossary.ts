@@ -62,7 +62,7 @@ function legend(): string {
     [coinIcon(18), v.coins],
     [valueIcon('pips', 18), v.pips],
     [valueIcon('base', 18), v.base],
-    [valueIcon('mult', 18), v.mult],
+    [valueIcon('levels', 18), v.levels],
     [valueIcon('factor', 18), v.factor],
   ];
   return `<ul class="glossary-values" data-testid="glossary-values">${rows

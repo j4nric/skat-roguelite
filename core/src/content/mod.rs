@@ -820,7 +820,7 @@ pub enum RelicGroup {
     /// Wert: Augen, Grundwert, Skat.
     #[default]
     Value,
-    /// Multiplikator: Gewinnstufen, Schneider, Spielwert.
+    /// Stufen (Gewinnstufen): Schneider, Spielwert.
     Multiplier,
     /// Kontrolle: Blatt, Skat, Information, Vorhand.
     Control,

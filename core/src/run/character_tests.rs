@@ -69,7 +69,7 @@ fn every_character_loads_and_the_new_ones_start_locked() {
     for character in Character::ALL {
         let def = content.character(character).expect("character in content");
         assert!(!def.name.is_empty() && !def.text.is_empty());
-        assert!(!def.text.contains("Stufe"), "{character}: Multiplikator");
+        assert!(!def.text.contains("Multiplikator"), "{character}: Stufen");
         assert_eq!(character.as_str(), character.to_string());
         assert_eq!(Character::from_id(character.as_str()), Some(character));
     }

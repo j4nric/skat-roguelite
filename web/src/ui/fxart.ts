@@ -178,7 +178,6 @@ const G: Record<string, string[]> = {
   '×': ['...', '#.#', '.#.', '#.#', '...'],
   coin: ['.###.', '##.##', '#.#.#', '##.##', '.###.'],
   skull: ['.###.', '#####', '#.#.#', '#####', '.#.#.'],
-  step: ['....#', '...##', '..###', '.####', '#####'],
   eye: ['..###..', '.#...#.', '#..#..#', '.#...#.', '..###..'],
   rang1: ['...', '.#.', '#.#', '...', '...'],
   rang2: ['.#.', '#.#', '...', '.#.', '#.#'],
@@ -190,9 +189,10 @@ const G: Record<string, string[]> = {
   daus: ['.#.', '#.#', '###', '#.#', '#.#'],
   mirror: ['##.##', '#...#', '#...#', '#...#', '##.##'],
   // Werte-Icons (user decision 03.11.2026): G-B "Grundstein" for the
-  // Grundwert, M-D "Steilpfeil" for the Multiplikator (Gewinnstufen).
+  // Grundwert; the Stufen (Gewinnstufen, code `levels`) a plain staircase of
+  // three steps (user decision 04.11.2026, replaced the M-D "Steilpfeil").
   base: ['..###..', '..###..', '.......', '###.###', '###.###'],
-  mult: ['..###', '...##', '..#.#', '.#...', '#....'],
+  levels: ['....##', '....##', '..####', '..####', '######'],
   // Faktor (ADR 0018, provisional until the user picks one): a "×" with a
   // superscript caret, "× hoch": the whole Spielwert multiplied.
   factor: ['....#.', '...#.#', '#.#...', '.#....', '#.#...'],
@@ -398,10 +398,10 @@ export const MOD_DRAW: Record<string, ModDraw> = {
   gilt_edge: { band: (t) => [t, 'coin'], col: GILT_BAND, art: () => frameGilt() },
   trump_bonus: { band: (t) => [t, 'base'], col: PURPLE, art: () => frameDashed(PURPLE) },
   // Moment: the mark top right says when.
-  last_trick: { band: (t) => [t, 'mult'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
+  last_trick: { band: (t) => [t, 'levels'], col: TEAL, art: (p) => frameDashed(TEAL) + mark(TEAL, FINISH, p) },
   first_trick: { band: (t) => [t, 'pips'], col: PLAY, art: (p) => frameDouble(PLAY, PLAY_L) + mark(PLAY, PLAY_SIGN, p) },
-  crosshair: { band: (t) => [t, 'mult'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
-  tailors_chalk: { band: (t) => [t, 'mult'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
+  crosshair: { band: (t) => [t, 'levels'], col: XH, art: (p) => frameDouble(XH, XH_L) + mark(XH, G.xhair ?? [], p) },
+  tailors_chalk: { band: (t) => [t, 'levels'], col: TAILOR, art: (p) => frameSeam() + mark(TAILOR, G.scissor ?? [], p) },
   // Gutschein: when discarded; the band shows the reward.
   voucher_coins: { band: (t) => ['coin', t], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
   voucher_undead: { band: () => ['skull'], col: STAMP, art: (p, r) => (r ? frameStampTorn(p) : frameStamp()) },
@@ -605,7 +605,7 @@ const ICON: Record<string, { items: BandItem[]; col: string }> = {
   tailors_chalk: { items: ['scissor'], col: TAILOR },
   doppelganger: { items: ['mirror'], col: MIRROR },
   trump_bonus: { items: ['base'], col: PURPLE },
-  last_trick: { items: ['mult'], col: TEAL },
+  last_trick: { items: ['levels'], col: TEAL },
   first_trick: { items: ['×2'], col: PLAY },
   voucher_coins: { items: ['coin'], col: STAMP },
   voucher_undead: { items: ['skull'], col: STAMP },
@@ -646,10 +646,10 @@ export function modIconBody(mod: string): string | null {
 
 // ---------------------------------------------------------- value icons, large
 
-/** Kinds of the value icons: Augen, Grundwert, Multiplikator, Faktor. */
-export type ValueIconKind = 'base' | 'mult' | 'pips' | 'factor';
+/** Kinds of the value icons: Augen, Grundwert, Stufen, Faktor. */
+export type ValueIconKind = 'base' | 'levels' | 'pips' | 'factor';
 
-/** The large Werte-Icons (board "Werte-Icons", G-B, M-D and A-C): grid and palette, before the outline. */
+/** The large Werte-Icons (board "Werte-Icons", G-B, A-C and the Stufen staircase): grid and palette, before the outline. */
 const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, string> }> = {
   pips: {
     rows: ['.pppppppp.', 'ppppppppps', 'ppddppddps', 'ppddppddps', 'ppppddppps', 'ppppddppps', 'ppddppddps', 'ppddppddps', 'ppppppppps', '.ssssssss.'],
@@ -659,8 +659,9 @@ const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, s
     rows: ['...www...', '...sss...', '.........', '.www.www.', '.sss.sss.', '.........', 'ww.www.ww', 'ss.sss.ss'],
     pal: { w: '#e4ede8', s: '#93aea2' },
   },
-  mult: {
-    rows: ['...llllll', '....ccccc', '.....cccc', '.....cccc', '....lc.cc', '...lc...c', '..lc.....', '.lc......', 'lc.......'],
+  // Stufen: three copper steps rising to the right, lit treads on top.
+  levels: {
+    rows: ['......lll', '......ccc', '......ccc', '...lllccc', '...cccccc', '...cccccc', 'lllcccccc', 'ccccccccc', 'ccccccccc'],
     pal: { c: '#d1773f', l: '#f1b48a' },
   },
   // Faktor (ADR 0018), provisional: an amber "×" with a gold caret above
@@ -672,8 +673,8 @@ const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, s
 };
 
 /**
- * The Grundwert, Multiplikator, Faktor or Augen icon in its large form
- * (stone bricks, copper arrow, amber "×" with a caret, a die) with a dark one-pixel outline, as inline SVG `height` px
+ * The Grundwert, Stufen, Faktor or Augen icon in its large form
+ * (stone bricks, copper staircase, amber "×" with a caret, a die) with a dark one-pixel outline, as inline SVG `height` px
  * high: beside the labels of the score boxes.
  */
 export function valueIcon(kind: ValueIconKind, height = 14): string {

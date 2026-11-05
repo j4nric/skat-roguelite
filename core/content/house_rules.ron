@@ -21,7 +21,7 @@
 // aus (Not(NullGame)).
 // characters: für welche Charaktere das Relikt am Tresen liegt (leer: alle).
 // group: Anzeige-Gruppe für die Form des Bierdeckels (Value: Wert,
-// Multiplier: Multiplikator, Control: Kontrolle, Tour: Groschen, Tresen
+// Multiplier: Stufen, Control: Kontrolle, Tour: Groschen, Tresen
 // und Wege, Factor: Faktor; ohne Angabe Value). Nur Anzeige.
 // Gesperrte Relikte stehen als Belohnung in unlocks.ron.
 [
@@ -30,7 +30,7 @@
         group: Multiplier,
         focus: Trump,
         name: "Spitze",
-        text: "Machst du den letzten Stich mit einer Sieben: +1 Multiplikator.",
+        text: "Machst du den letzten Stich mit einer Sieben: +1 Stufe.",
         rarity: Common,
         price: 4,
         hooks: [
@@ -250,7 +250,7 @@
         group: Multiplier,
         focus: Trump,
         name: "Mit Vieren",
-        text: "Spielst du mit oder ohne 4 Spitzen oder mehr: +1 Multiplikator.",
+        text: "Spielst du mit oder ohne 4 Spitzen oder mehr: +1 Stufe.",
         rarity: Common,
         price: 4,
         hooks: [
@@ -281,7 +281,7 @@
         group: Multiplier,
         focus: Trump,
         name: "Skatgott",
-        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Multiplikator auf jedes gewonnene Spiel, höchstens +3.",
+        text: "Jedes gewonnene Spiel mit Schneider: bis zum Run-Ende +1 Stufe auf jedes gewonnene Spiel, höchstens +3.",
         rarity: Legendary,
         price: 12,
         hooks: [
@@ -371,7 +371,7 @@
         group: Multiplier,
         focus: Trump,
         name: "Luschenkönig",
-        text: "Gewinnt eine Sieben einen Stich: +1 Multiplikator.",
+        text: "Gewinnt eine Sieben einen Stich: +1 Stufe.",
         rarity: Common,
         price: 5,
         hooks: [
