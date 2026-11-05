@@ -156,7 +156,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Schneider-Zuschlag (Stichfest: erster Stich zählt für die Schneider-Grenze doppelt) | `schneider_bonus` | `Thresholds::schneider_bonus`: Augen, die nur für Schneider ein zweites Mal zählen; gewonnen und Gegner mit höchstens `schneider_limit + schneider_bonus` Augen ist Schneider. Effekt `SchneiderBonusFromTrick`, Quelle `GameRules::schneider_bonus_source`, Zeile `Lever::Schneider` |
 | Gedrückte Karten zählen mehrfach (Skatpfleger) | `MultiplySkatPoints` | Effekt bei der Ansage, nur nach dem Aufnehmen; `Game::map_skat` ersetzt die zwei Skatkarten, Ereignis `SkatPointsRaised`, Zeile `Lever::CardPoints` |
 | Spitzen im Spiel | `matadors_in` | Gezählt nur über Trümpfe, die im Spiel sind |
-| Verloren | `lost` | Zählt doppelt negativ |
+| Verloren | `lost` | Zählt im Run einfach negativ (`RUN_LOSS_FACTOR = 1`, seit 04.11.2026); nach Skatordnung doppelt (`rules::game_value`) |
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
 | Null-Wertung im Run | `NullScoring` | `Fixed` (Skatordnung) oder `Formula(NullFormula)`, Daten pro Charakter |
 | Stilbonus (Null) | `NullStyle` | `sevens_ducked` (mit einer Sieben unterlaufen), `never_followed` (nie bedienen müssen), `short_circuit` (Kurzschluss). Bedingungen `SevenDucked`, `NeverFollowedSuit` |

@@ -636,7 +636,7 @@ export const de = {
     formulaMul: '{base} × {levels} × {mul}',
     value: 'Spielwert',
     result: 'Ergebnis',
-    lostOnce: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab.',
+    lostOnce: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal vom Konto ab.',
     lossSingle: 'verloren nur einfach',
     lossFactor: 'verloren ×{n}',
     account: 'Konto {score} / {target}',
@@ -1179,10 +1179,10 @@ export const de = {
     afterSkatNull:
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
-      'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das vom Konto ab.',
+      'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das einmal vom Konto ab, nicht doppelt wie im Vereinsskat.',
     pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, im ersten Stadtteil dreimal, dann wird gespielt.',
     score:
-      'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht es wieder runter.',
+      'Abgerechnet wird fast wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto. Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal runter.',
     route: 'Weiter geht’s! Drei Wege führen zur nächsten Kneipe, auf jedem wartet was anderes: Tresen, Begegnung, Werkstatt oder Rast. Führt einer in eine Spelunke, lies vorher den Malus.',
     shop: 'Für jede geschaffte Kneipe gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Schnäpse helfen im Spiel, und mit Zinken (Auslage, Kartenmaler) machst du deine Karten stärker.',
     boss: 'Obacht, ein Boss! Der biegt in seiner Kneipe eine Regel, also lies genau, was er vorhat.',
@@ -1230,7 +1230,7 @@ export const de = {
       'Ouvert +1',
     ],
     factorNote: 'Der Faktor ist ×1, bis Relikte ihn heben. Mehrere Faktoren werden malgenommen (×1,5 und ×1,5 sind ×2,25). Die Faktoren deiner Relikte zählen nur in gewonnenen Spielen.',
-    lostNote: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab (im echten Skat doppelt).',
+    lostNote: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat (dort doppelt): Der Spielwert geht einmal vom Konto ab.',
     bentTitle: 'Was hier anders ist',
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
