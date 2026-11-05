@@ -3326,7 +3326,9 @@ async function zinkenPass(browser, errors, reducedMotion) {
   await page.click('[data-testid="reroll-zinken"]');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins === 17, null, { timeout: 5000 }).catch(() => fail('Neu auslosen: did not cost 1'));
   await page.waitForFunction(() => document.querySelector('[data-testid="reroll-zinken"]')?.textContent?.includes('2 Gr.'), null, { timeout: 5000 }).catch(() => fail('Neu auslosen: the second is not dearer'));
-  if ((await page.locator('[data-testid="zinke"]').count()) !== 3) fail('Neu auslosen: not three offers again');
+  // The fixture was saved with three offers; a new draw uses run.ron's
+  // count (2 since balance round 3).
+  if ((await page.locator('[data-testid="zinke"]').count()) !== 2) fail('Neu auslosen: not two offers');
   // Kartenmaler.
   await page.click('[data-testid="painter-go"]');
   await page.waitForSelector('[data-testid="zinken-cards"]');
