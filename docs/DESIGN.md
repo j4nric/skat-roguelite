@@ -416,6 +416,43 @@ Gemessen am 02.11.2026 (Alleinspieler, Zielwerte aus 5.2, der Bot rechnet bei An
 
 ---
 
+### 5.5 Die lange Nacht (ADR 0020, 05.11.2026)
+
+**Entschieden vom Nutzer am 05.11.2026 (Cockpit q30 bis q33, jeweils Variante A).** Endlos-Modus nach dem Alten. Alle Zahlen **vorläufig**, eine Balancing-Runde stellt sie ein.
+
+- **Einstieg**: Wer den Alten schlägt, hat den Run gewonnen; er wird genau wie bisher gezählt (Statistik, Einsatz-Leiter, Freischaltungen). Der Endbildschirm bietet „Weiterziehen in die lange Nacht“ neben „Run beenden“ an (`RunAction::EnterNight`). Weiter geht es mit Stadtteil 4, 5, … mit demselben Deck, denselben Relikten, Groschen und Charakter, bis eine Kneipe verloren geht (der Schutzengel hilft einmal, wenn er noch da ist). Verlieren in der Nacht kostet nur den Rekord: `RunLost { night: true }` zählt keinen Run, der Sieg bleibt.
+- **Zielwerte**: Stadtteil n der Nacht spielt die Zielwerte von Stadtteil 3 (Kneipen und Boss mit dem Faktor des gezogenen Bosses, eine Spelunke × 0,9) × 1,6^(n − 3), gerundet: für den Alleinspieler Stadtteil 4 256 / 288 / 320 / 344 und Boss 224 × Boss-Faktor (Stadtteil 5 × 2,56, Stadtteil 6 × 4,1, Stadtteil 10 × 26,8). Daten `night: (growth: 1.6)` in `run.ron`. Groschen, Kartenbelohnung, Schnaps und Gegner wie in Stadtteil 3; die Stadt bekommt neue Stadtteile aus dem Namensgenerator.
+- **Verschärfungen („Die Sperrstunde rückt näher“)**: Jeder Stadtteil der Nacht bringt eine dauerhafte Verschärfung, gezogen mit dem Generator der Nacht, ohne Wiederholung, bis alle dran waren (dann beginnt die Liste von vorn und eine Regel zählt doppelt). Sie wird beim Öffnen der Routenwahl in den neuen Stadtteil gezogen und auf einem Startblatt angekündigt; sie gilt ab da (ein Tresen auf diesem Weg kostet schon mehr). Daten in `night.ron`:
+
+| Verschärfung | Id | Regel |
+|---|---|---|
+| **Kurze Geduld** | `fewer_redeals` | ein Einmischen weniger je Spiel, nie unter 0 |
+| **Hellwache Gegner** | `sharp_opponents` | die Gegner rechnen mit vier PIMC-Blättern mehr je Zug |
+| **Doppelte Bosse** | `double_boss` | die Boss-Kneipe der Nacht legt dazu die Regel eines zweiten, zufälligen Bosses auf (nie den Alten; Ereignis `ExtraBossRules`) |
+| **Nachtzuschlag** | `pricier_tresen` | am Tresen und am Kiosk kostet alles mit Preis 1 Groschen mehr |
+| **Verhexte Karte** | `cursed_card` | zu Beginn jeder Kneipe trägt eine zufällige Karte des Blatts einen Fluch (Durchsichtig, Ramponiert, Fleckig), nur für diese Kneipe |
+| **Spelunkenluft** | `dive_air` | jede normale Kneipe hat einen zufälligen Spelunken-Malus (eine Spelunke behält ihren, die Boss-Kneipe hat keinen) |
+| **Zielwert-Sprung** | `target_jump` | alle Zielwerte der Nacht × 1,1, obendrauf |
+| **Knausriger Wirt** | `stingy_host` | die Kartenbelohnung bietet eine Zinke weniger an (mindestens eine) |
+
+- **Bosse der Nacht**: die fünf Bosse und der Alte, zufällig, keiner doppelt, bis alle dran waren. Die Boss-Kneipe der Nacht gibt die doppelte Auszahlung und eine Relikt-Wahl aus den **Nachtschwärmern**, solange einer übrig ist (sonst die normale Wahl).
+- **Nachtschwärmer** (Relikte nur der Nacht, `night: true`; auch am Tresen der Nacht; Bierdeckel: Faktor-Sechseck mit eigenem Motiv):
+
+| Relikt | Id | Effekt | Seltenheit, Preis | Bot-Wert |
+|---|---|---|---|---|
+| **Nachteule** | `night_owl` | +×0,15 je Verschärfung auf jedes gewonnene Spiel | Legendary, 10 | 6 |
+| **Kehraus** | `sweep_out` | ×2 auf ein gewonnenes drittes Spiel einer Kneipe | Rare, 8 | 3 |
+| **Lumpensammler** | `rag_collector` | +×0,05 je Karte mit Zinke im Deck auf jedes gewonnene Spiel | Legendary, 10 | 6 |
+| **Mondschein** | `moonlight` | jede gewonnene Kneipe +×0,2 auf jedes gewonnene Spiel, für den Rest des Runs | Rare, 9 | 6 |
+| **Nachtschicht** | `night_shift` | +×0,1 je Karte mit einer Zinke deiner Richtung (einer Richtung deiner Relikte) | Legendary, 10 | 5 |
+| **Morgengrauen** | `dawn` | ×1,5 auf ein gewonnenes erstes Spiel einer Kneipe | Rare, 8 | 4 |
+
+- **Rekord und Bestenliste**: Der Meta-Zustand hält je Charakter den tiefsten Stadtteil der Nacht, die meisten Kneipen einer Nacht und das beste Spiel (auch aus normalen Runs; `CharacterStats`). Die Startseite zeigt sie als „Bestenliste“. Der Rekord wird schon während der Nacht fortgeschrieben, auch wenn der Spieler die Nacht verlässt, ohne zu verlieren.
+- **Freischaltungen** an den Meilensteinen (9.3): Stadtteil 5 „Tief in der Nacht“ (Rückseite Mondsichel), Stadtteil 7 „Nach der Sperrstunde“ (Rückseite Sternenhimmel und Kehraus für den normalen Run), Stadtteil 10 „Bis zum Morgengrauen“ (Rückseite Laterne und Morgengrauen). Rückseiten sind eine neue, kosmetische Belohnungsart (`Reward::CardBack`); verdiente wählt der Spieler im Menü („Rückseite“).
+- **Auslegungen (Claude, 05.11.2026)**: Beim Einstieg in die Nacht gibt es keine Relikt-Wahl für den Alten (wie bisher). Ein Kehraus- oder Morgengrauen-Zähler bleibt bei einem Schutzengel stehen wie beim Rabattheft. Die Nachteule zählt alle Verschärfungen der Nacht, auch die vor ihrem Kauf (Zähler `verschaerfungen` des Runs). Spelunkenluft legt keinen Malus in eine Boss-Kneipe. Doppelte Bosse ziehen die weitere Regel beim Start des Stadtteils (sichtbar wie der Boss); unter dem Alten bleibt seine eigene Reihe.
+
+**Plausibilität (05.11.2026, nicht abgestimmt)**: `skat_sim --seed 42 --runs 20 --night` (Heuristik): kein Run gewonnen, also keine Nacht. `--runs 1000 --night`: 30 gewonnene Runs, alle in der Nacht; 16 enden in Stadtteil 4, die anderen 14 laufen bis Stadtteil 11 bis 27 (Mittel 45,8 Kneipen je Nacht, Faktor des letzten gewonnenen Spiels im Mittel ×5973). Gewählt wurden vor allem Lumpensammler (9), Mondschein (8) und Nachteule (6). Linear wachsende Faktor-Relikte (Zapfhahn, Mondschein, Nachteule, Lumpensammler) multiplizieren sich zu einem Polynom hohen Grades, das 1,6 je Stadtteil erst nach rund 20 Stadtteilen einholt. Für die Balancing-Runde (17).
+
 ## 6. Ein Spiel im Detail
 
 1. **Geben.** Das Skatblatt (32 verschiedene Karten) wird gemischt, 10/10/10/2. Jede Karte zeigt die Ausgabe ihres Halters: In der Hand des Spielers und im Skat seine, bei einem Stammgast die normale, beim Boss die Boss-Ausgabe (ADR 0015, 7.1).
@@ -1742,7 +1779,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 | Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü und ein Glossar der Zinken (seit dem 04.11.2026: nach Rahmensprache gruppiert, Rand, Ecke, Marke, Spezialkarten, Flüche, je mit Beispielkarte und Text aus dem Content, oben die Werte-Icons). Skat selbst wird nicht von Grund auf gelehrt. |
 | Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). Umgesetzt: 5.3, Abschnitt 1 bis 3 mit dem Alten am Ende. |
 | Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). Umgesetzt: 5.4, je Charakter und Länge getrennt. |
-| Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). |
+| Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). Seit ADR 0020 „Die lange Nacht“ (5.5): × 1,6 je Stadtteil, Verschärfungen, Bestenliste. |
 | Flüche | Nur angekündigt (z. B. bei Ereignissen) und mit Groschen bezahlt, nie aus Zufallsziehungen (M7). Umgesetzt: 7.2 und 13, Umgekipptes Bier und Der Falschspieler. |
 | Normale Gegner | Wechselnde Stammgäste mit Namen und Pixelgesicht, ohne eigene Regeln. Regeln bleiben den Bossen (M6). |
 | Relikte nur für Menschen | Behalten, selten und günstig (Mit Vieren, Der Opa, Saubere Weste, Bierdeckel, Glashaus, Ouvert-Bonus). |
@@ -1759,7 +1796,7 @@ Entschieden am 01.11.2026 im Chat (Problemliste):
 |---|---|
 | Grand | Bleibt 24. Gesteuert wird über Bosse und Relikte, nach der großen Testrunde neu bewerten. Seit 04.11.2026 im Run 18 (Cockpit q27, 4.2). |
 | Null-Wertung | Eine für alle: die Formel mit Stilbonus (9.2). |
-| Endlos-Modus | Zurückgestellt, bis es Relikte mit echtem Wachstum gibt. Die Einsatz-Leiter kommt zuerst. |
+| Endlos-Modus | Zurückgestellt, bis es Relikte mit echtem Wachstum gibt. Die Einsatz-Leiter kommt zuerst. Seit ADR 0020 (05.11.2026) umgesetzt als „Die lange Nacht“ (5.5). |
 | Charaktere | Zwei bis drei neue Charaktere als Startdecks mit je einer eigenen Regel (Konzepte im Cockpit unter Ideen). |
 | Passen | Im Spieltest prüfen, ob es zu oft vorkommt. Ersetzt am 01.11.2026 durch Einmischen (siehe unten). |
 | Freischaltungen | Run-Sieg-Freischaltungen nur im ganzen Abend. |
@@ -1812,7 +1849,8 @@ Entschieden am 02.11.2026 (Nutzer):
 - **Welle 2a im vollen Run** (02.11.2026, 8.1): Preise und Seltenheit der acht neuen Hausregeln sind aus der Einzelmessung ohne Tresen gesetzt (`docs/balance/2026-11-02-relikte-welle2.md`), Platzhalter für `balance`. Offen: Wirkung im vollen Run mit Tresen (3 × 3000), beim Nullspieler, und ob der Bot den Skatpfleger beim Drücken nutzen soll (er drückt weiter Karten mit wenig Augen, ein Mensch drückt Zehnen). Stammfarbe, Wechselbalg und Allrounder hängen an der Spielwahl; der Bot wählt das Spiel ohne Blick auf die Relikte, ein Mensch kann gezielt wechseln oder bei einer Farbe bleiben. Zu entscheiden: ob der Wechselbalg nur bei gewonnenen Spielen zählt (jetzt wie jede Stufe auch verloren, wie der Text sagt; beim Bot kostet er so Punkte je Spiel).
 - ~~**Drei drücken zähmen?**~~ Entschieden am 02.11.2026 (Lead): einmal pro Serie, beim ersten Aufnehmen des Skats (8.1). Gemessen +7,9 Prozentpunkte auf „Abschnitt 3 erreicht“ statt +18,0 in jedem Spiel; nicht weiter abgestimmt. Offen bleibt nur die Wirkung im vollen Run mit Tresen und beim Nullspieler.
 - **Nullspieler über den kurzen Abend** (M7, 5.3): „Run gewinnen“ zählt auch im kurzen Abend, der Nullspieler ist damit nach rund 25 statt rund 1700 Runs (Heuristik-Bot) frei. Entschieden ist „Freischaltungen in beiden“; soll der Nullspieler ein Ziel des ganzen Abends bleiben, bekäme die Bedingung `WinRun` eine Länge (Daten in `unlocks.ron`). Ebenso „Abschnitt 4 erreichen“: nur im ganzen Abend möglich.
-- **Weitere Kartenrückseiten** (9.3): Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Offen: welche Erfolge. Die Bedingung gehört wie jede Freischaltung in den Kern (`unlocks.ron`, eine neue Belohnungsart für Kosmetik); die Web-App bietet nur die verdienten Rückseiten zur Wahl an.
+- **Die lange Nacht** (ADR 0020, 5.5, 05.11.2026): alles vorläufig, nur eine Plausibilitätsmessung. Für die Balancing-Runde: (a) das Wachstum 1,6 je Stadtteil gegen linear wachsende Faktor-Relikte (die Hälfte der Nächte läuft mit Heuristik-Bot bis Stadtteil 20 und weiter, die andere Hälfte endet in Stadtteil 4: zweigipflig); (b) Stärke und Preis der sechs Nachtschwärmer und ihre Bot-Werte; (c) welche Verschärfung wie schwer wiegt (Simulator-Zeile `night ended under`); (d) ob die Meilensteine 5, 7 und 10 für Menschen erreichbar und nicht zu leicht sind; (e) ob die Nacht eine Obergrenze oder ein schnelleres Wachstum ab Stadtteil 10 braucht (Zahlen bis in die Millionen in der Anzeige).
+- ~~**Weitere Kartenrückseiten** (9.3)~~: seit ADR 0020 gibt es die Belohnungsart `Reward::CardBack` und drei Rückseiten der Nacht (5.5); weitere Erfolge für Rückseiten bleiben offen. Bis dahin: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Bedingung gehört wie jede Freischaltung in den Kern (`unlocks.ron`, eine neue Belohnungsart für Kosmetik); die Web-App bietet nur die verdienten Rückseiten zur Wahl an.
 - **Welle 3** (02.11.2026, 7.2, 8.4, `docs/balance/2026-11-02-welle3.md`): Abschnitt 3: Skatgott +4,7, Heimweh +0,5, Wandelkarte +0,2, Glasdaus +0,1, Ehrenvorsitz −0,4 (Alte Dame +4,5). Entschieden am 02.11.2026: Skatgott nur auf gewonnene Spiele, Preise nach Wirkung statt nach Stufe (8.4, 12). Der Glasdaus bringt früh Punkte und kostet spät (er zerbricht in 70 % der Runs); ob er beim Gegner (22 Augen für die Gegner) zu oft schadet, zeigen echte Runs (seit ADR 0015 hinfällig: Beim Gegner gibt es ihn nicht mehr). Heimweh und Wandelkarte nutzt nur ein Mensch richtig (bewusst drücken, gezielt benennen). Nicht gemessen: voller Run mit Tresen, Nullspieler.
 - **Untot** (02.11.2026, 7.2; seit Effekte v2 Spezialkarte über den Gutschein): Messung im Simulator steht aus (auf Wunsch des Nutzers zurückgestellt, das Blatt-Konzept kann sich noch ändern). Zu messen wie Welle 3 (`--card-mod CK:undead`, PIMC 12:3, Alleinspieler, 3 × 500 Runs), dazu die Variante „in jedem Stich“; Seltenheit und Preis bis dahin Platzhalter. Die Oberfläche ist seit dem 02.11.2026 eingebaut (Wunsch des Nutzers: Simulationen pausiert).
 - **Fluchbeträge** (M7, 7.2): alle Flüche zahlen 3 Groschen, die gewählte Karte kostet bei Bier und Falschspieler 4. Platzhalter für `balance`. Die Option „Zufällige Karte“ zeigt in der Web-App „gratis“, die 3 Groschen stehen nur im Text des Fluchs.

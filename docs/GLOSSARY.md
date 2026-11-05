@@ -81,7 +81,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Hehlerware (Tresen) | `fence` | Ein Relikt des Tresens zum halben Preis: `Shop::fence` (Platz), Anteil `TradeConfig::fence_percent`, Preis `Run::relic_offer_cost`, `Run::is_fence`; Sicht `RelicOffer::fence`, `was`; Ereignis `ShopOpened { fence }` |
 | Pechvogel (Relikt) | `jinx` | +1 Grundwert je verfluchter Karte der Ausgabe: Effekt `AddBaseValuePerCursedCard`, Zählung `Run::cursed_cards` |
 | Bau-Richtung (Tag eines Inhalts, 04.11.2026) | `BuildTag`, Feld `tags` | An Relikten, Kartenmodifikationen und Schnäpsen, im Katalog der Web-App: `OneSuit` (Farbtreue), `Vouchers` (Markenhändler), `Tricks` (Stichjäger), `Schneider`, `Null` (Nullspieler) |
-| Verbinder-Relikt (zählt Teile einer Bau-Richtung) | – | Zählt Karten der Ausgabe mit `CardCount` (`mods`, `kind`, `trump_suit`, `in_hand`): Effekte `AddBaseValuePerCard`, `AddLevelsPerCard`, Zählung `Run::count_cards` |
+| Verbinder-Relikt (zählt Teile einer Bau-Richtung) | – | Zählt Karten der Ausgabe mit `CardCount` (`mods`, `kind`, `trump_suit`, `in_hand`, seit ADR 0020 `direction`): Effekte `AddBaseValuePerCard`, `AddLevelsPerCard`, `ScaleGameValuePerCard`, Zählung `Run::count_cards` |
 | Karte mit Zinke (jede Modifikation, die kein Fluch ist) | `marked` | `Run::marked_cards`, `HookContext::marked_cards`, `content::is_marked`; Bedingung `TrickWonWithMarkedCard` (der Alleinspieler macht den Stich mit einer Karte seiner Ausgabe mit Zinke) |
 | Marke eingelöst (Auslöser für Relikte) | `OnVoucherRedeemed` | `Stage::OnVoucherRedeemed`, `Hook::OnVoucherRedeemed`; feuert nach jedem `VoucherRedeemed` (gedrückt oder im Handspiel), nur Run-Zustand (Zähler, Groschen) |
 | Augen zum Stich (Zuschlag) | `AddTrickPoints` | Wirkung auf den Stich, der gerade fertig ist, wie `MultiplyTrickPoints` über `Game::add_bonus_points` (Fingerspitzengefühl) |
@@ -144,7 +144,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Spielwert | `game_value` | Grundwert × Stufen × Faktor |
 | Grundwert | `base_value` | Karo 9, Herz 10, Pik 11, Kreuz 12, Grand 24 (Skatordnung, `GameType::base_value`); im Run seit 04.11.2026 Grand 18 (`RunConfig::base_value`, Daten `base_values` in `run.ron`, `BaseValues`; Wertung über `RunConfig::game_value_parts`, `ValueParts::with_base_value`) |
 | Stufen (Gewinnstufen; 02.11. bis 04.11.2026 „Multiplikator“) | `levels` | Spitzen + 1 + Hand + Schneider + … |
-| Faktor (Spielwert-Faktor, auch gebrochen, ×1,5; seit ADR 0018 die dritte Größe: Grundwert × Stufen × Faktor; das einzige Wort für Malnehmen in Spieltexten) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekte `ScaleGameValue`, `ScaleGameValuePerCounter`). Faktoren werden multipliziert, der Spielwert wird am Ende halb aufgerundet. Anzeige-Gruppe der Relikte `RelicGroup::Factor` |
+| Faktor (Spielwert-Faktor, auch gebrochen, ×1,5; seit ADR 0018 die dritte Größe: Grundwert × Stufen × Faktor; das einzige Wort für Malnehmen in Spieltexten) | `multiplier` | `Factor` in `ScoreBreakdown`, `ScoreStep`, `ValuePreview` (JSON Dezimalzahl); ganze Faktoren `Change::Multiply`, gebrochene `Change::Scale` (Effekte `ScaleGameValue`, `ScaleGameValuePerCounter`, seit ADR 0020 `ScaleGameValuePerCard`). Faktoren werden multipliziert, der Spielwert wird am Ende halb aufgerundet. Anzeige-Gruppe der Relikte `RelicGroup::Factor` |
 | Spitzen / Matadore | `matadors` | `with: bool` für „mit“ oder „ohne“ |
 | mit / ohne | `with` / `without` | |
 | Schneider | `schneider` | Eine Seite mit höchstens 30 Augen (`SCHNEIDER_LIMIT`). Gemessen an der verlierenden Seite, damit es auch bei veränderten Blättern gilt. Schwarz schließt Schneider immer ein. |
@@ -178,6 +178,12 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stationsart: Tresen, Begegnung, Upgrade (Werkstatt), Rast, Fundgroschen, Kiosk, Würfelbude | `StopCategory` (`Tresen`, `Event`, `Upgrade`, `Rest`, `FoundCoins`, `Kiosk`, `DiceStall`) | Seit 03.11.2026 drei verschiedene je Routenwahl, eine der Tresen; die anderen nach `RouteConfig::weights` ohne Zurücklegen; Ereignisse tragen ihre Kategorie (`EncounterDef::category`) |
 | Spelunke (Elite-Kneipe) | `Spelunke` | Eigener Ort mit eigenem Namen (`city.spelunken`), steht für eine normale Kneipe; Zielwert × `SpelunkeConfig::target_factor`, ein Malus, Beute ein Relikt (Ereignis `spelunke_loot`, `SpelunkeConfig::loot`, Wirkungen `Relic`, `RelicCoins`). In `Series::spelunke`, `RouteOption::spelunke`; Knoten-Id `d<S>-p<K>-s`, Sicht `SpelunkeNode` |
 | Malus (Spelunke) | `MalusDef`, `MalusId` | Daten in `tour.ron`: `passive` (Tischregeln, Quelle `Source::Malus`), `no_redeal`, `lock_schnapps` (Fehler `ConsumablesLocked`), `curse` (`MalusCurse`, Karten nur für diese Kneipe, `Series::temp_curses`) |
+| Die lange Nacht (Endlos-Modus nach dem Alten, ADR 0020) | `night` | `Run::night` (`night::NightState`: `verschaerfungen`, `bosses`, `extra_bosses`, `pubs_won`, eigener Generator), `Run::in_night`, Aktion `RunAction::EnterNight` (nur in `RunPhase::Won`), Ereignisse `NightStarted`, `VerschaerfungDrawn`, `ExtraBossRules`, `NightCursesLaid`, `RunLost { night: true }`; Sicht `RunView::night` (`NightView`), `RunView::can_enter_night`; Wachstum `night` in `run.ron` (`NightConfig::growth`, `NightConfig::grow`), Zielwert `Run::pub_target`; Modul `core/src/run/night.rs`. Stadtteil 4, 5, … heißen im Code weiter `section` (3, 4, …) |
+| Verschärfung (der Nacht, „Die Sperrstunde rückt näher“) | `Verschaerfung` | Daten in `night.ron` (`VerschaerfungDef`, `VerschaerfungId`, Regel `NightRule`: `FewerRedeals`, `StrongerOpponents`, `DoubleBoss`, `PricierTresen`, `CursedCards`, `MalusEveryPub`, `TargetJump`, `FewerCardOffers`); Zähler `verschaerfungen` (`VERSCHAERFUNGEN_COUNTER`); Sicht `VerschaerfungInfo` |
+| Doppelte Bosse (Verschärfung) | `DoubleBoss`, `extra_bosses` | Weitere Boss-Regeln der Boss-Kneipe der Nacht als Quellen `Source::Boss` (`Run::extra_boss_rules`) |
+| Nachtschwärmer (Relikte der Nacht) | `RelicDef::night` | Nur in der Nacht angeboten (Boss-Wahl der Nacht, Tresen der Nacht); im normalen Run nur, wenn eine Freischaltung sie nennt und verdient ist (`Content::relic_unlockable`) |
+| Bestenliste (je Charakter) | `CharacterStats::best_game`, `night_best_section`, `night_pubs_won` | Im Meta-Zustand; tiefster Stadtteil der Nacht (ab 1: 4 = Stadtteil 4), meiste Kneipen einer Nacht, bestes Spiel |
+| Kartenrückseite als Belohnung (Kosmetik) | `Reward::CardBack(id)` | Daten `card_backs` in `night.ron` (`CardBackDef`), verdiente in `MetaState::card_backs`, Sicht `MetaView::card_backs`, Art `RewardKind::CardBack`; Bilder in `tools/cardart/backs.py` (`moon`, `stars`, `lantern`) |
 | Stadt, Namensgenerator | `CityNames` | Wortlisten in `tour.ron`, `CityNames::generate`, `Run::city`; Karten-Seeds `Run::map_seed`, Sicht `TourView::map_seed`, `DistrictView::map_seed` (keine Geometrie im Kern) |
 | Ansicht des Stadtteils (Altstadt, Hafen, Bahnhof) | `DistrictLook` (`OldTown`, `Harbour`, `Station`) | Daten je Stadtteilname in `tour.ron` (`DistrictName::look`); jeder Abend hat einen Stadtteil jeder Ansicht, Reihenfolge per Seed; Sicht `DistrictView::look`. Nur Anzeige |
 | Rast (Imbissbude) | `snack_bar` | seit ADR 0019 `NextPubRedeals(1)` (Currywurst) oder `Cleanse` (Karte waschen); bis dahin `EncounterEffect::Lives(n)`, das nur noch alte Spielstände lesen (als `LEGACY_LIFE_COINS` Groschen) |
@@ -417,6 +423,14 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Deckel anschreiben (Figur) | `slate` |
 | Schutzengel (seit ADR 0019 die zweite Chance) | `guardian_angel` |
 | Spelunkenkenner (Figur) | `dive_expert` |
+| Nachteule (Nacht) | `night_owl` (Zähler `verschaerfungen`) |
+| Kehraus (Nacht) | `sweep_out` (Zähler `sweep_out`) |
+| Lumpensammler (Nacht) | `rag_collector` |
+| Mondschein (Nacht) | `moonlight` (Zähler `moonlight`) |
+| Nachtschicht (Nacht) | `night_shift` (`CardCount::direction`) |
+| Morgengrauen (Nacht) | `dawn` (Flagge `dawn`) |
+| Kurze Geduld, Hellwache Gegner, Doppelte Bosse, Nachtzuschlag, Verhexte Karte, Spelunkenluft, Zielwert-Sprung, Knausriger Wirt (Verschärfungen) | `fewer_redeals`, `sharp_opponents`, `double_boss`, `pricier_tresen`, `cursed_card`, `dive_air`, `target_jump`, `stingy_host` |
+| Tief in der Nacht, Nach der Sperrstunde, Bis zum Morgengrauen (Freischaltungen) | `night_district_5`, `night_district_7`, `night_district_10` |
 | Der Wirt spendiert | `landlord_treat` |
 | Falschspieler am Nebentisch (bis 02.11.2026 „Der Falschspieler“) | `card_sharp` |
 | Verlorenes Portemonnaie | `lost_wallet` |
