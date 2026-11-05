@@ -16,7 +16,7 @@ use serde::Serialize;
 use super::guests::GuestInfo;
 use super::{
     EncounterOption, Kontra, OptionBlock, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats,
-    sell_price, series_target,
+    sell_price,
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
@@ -138,6 +138,13 @@ pub struct RunView {
     pub edition: Vec<DeckCard>,
     /// Statistics of the run.
     pub stats: RunStats,
+    /// The long night (ADR 0020), once the player continued after der
+    /// Alte.
+    pub night: Option<super::night::NightView>,
+    /// Whether the player may continue into the long night now
+    /// ([`RunAction::EnterNight`]): the run is won and the night has not
+    /// begun.
+    pub can_enter_night: bool,
 }
 
 /// "Noch nötig": what the last game of a pub has to bring (DESIGN 5.1).
@@ -1372,7 +1379,7 @@ impl Run {
                 (s, i, false)
             }
         };
-        if section >= content.run.sections() {
+        if !self.district_exists(content, section) {
             return None;
         }
         let is_boss = index + 1 == PUBS_PER_DISTRICT;
@@ -1381,7 +1388,7 @@ impl Run {
         } else {
             None
         };
-        let mut target = series_target(content, self.character, section, index, boss)?;
+        let mut target = self.pub_target(content, section, index, boss)?;
         if spelunke {
             target = content.run.spelunke.target_factor.apply(target);
         }
@@ -1527,6 +1534,8 @@ impl Run {
             needed: self.needed_view(content),
             edition: self.edition.cards().to_vec(),
             stats: self.stats,
+            night: self.night_view(content),
+            can_enter_night: self.phase == RunPhase::Won && self.night.is_none(),
         }
     }
 

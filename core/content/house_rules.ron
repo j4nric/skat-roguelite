@@ -908,4 +908,96 @@
             OnDeclare(when: GameIs(Grand), then: [AddBaseValue(6)]),
         ],
     ),
+    // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,
+    // Cockpit q33 A): „Nachtschwärmer“, sechs starke Relikte nur für die
+    // Nacht (`night: true`): nach jedem Boss der Nacht als Wahl, auch am
+    // Tresen der Nacht. Fast alle Faktor (ADR 0018: nur gewonnene Spiele,
+    // multipliziert). Kehraus und Morgengrauen schalten Meilensteine der
+    // Nacht auch für den normalen Run frei (unlocks.ron). Seltenheit, Preise,
+    // Faktoren und Bot-Werte VORLÄUFIG nach Augenmaß.
+    // Lever Spielwert: the run counter "verschaerfungen" counts the
+    // Verschärfungen drawn in the night (kept by the core).
+    (
+        id: "night_owl",
+        group: Factor,
+        night: true,
+        name: "Nachteule",
+        text: "Jede Verschärfung der Nacht gibt +×0,15 Faktor auf jedes gewonnene Spiel.",
+        rarity: Legendary,
+        price: 10,
+        hooks: [
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "verschaerfungen", per: 0.15)]),
+        ],
+    ),
+    // Lever Spielwert: the counter holds the games of the pub before this
+    // one (the factor hook comes before the increment).
+    (
+        id: "sweep_out",
+        group: Factor,
+        night: true,
+        name: "Kehraus",
+        text: "Gewinnst du das dritte Spiel einer Kneipe: ×2.",
+        rarity: Rare,
+        price: 8,
+        hooks: [
+            OnScore(when: All([Won, CounterAtLeast(counter: "sweep_out", value: 2)]), then: [ScaleGameValue(2.0)]),
+            OnScore(then: [IncrementCounter("sweep_out")]),
+            OnSeriesWon(then: [ResetCounter("sweep_out")]),
+        ],
+    ),
+    (
+        id: "rag_collector",
+        group: Factor,
+        night: true,
+        name: "Lumpensammler",
+        text: "+×0,05 Faktor auf jedes gewonnene Spiel je Karte mit Zinke in deinem Deck.",
+        rarity: Legendary,
+        price: 10,
+        hooks: [
+            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (), per: 0.05)]),
+        ],
+    ),
+    (
+        id: "moonlight",
+        group: Factor,
+        night: true,
+        name: "Mondschein",
+        text: "Jede gewonnene Kneipe gibt +×0,2 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
+        rarity: Rare,
+        price: 9,
+        hooks: [
+            OnSeriesWon(then: [IncrementCounter("moonlight")]),
+            OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "moonlight", per: 0.2)]),
+        ],
+    ),
+    // Build booster: counts the Zinken that share a build direction (tags)
+    // with a relic the player holds.
+    (
+        id: "night_shift",
+        group: Factor,
+        night: true,
+        name: "Nachtschicht",
+        text: "+×0,1 Faktor auf jedes gewonnene Spiel je Karte mit einer Zinke deiner Richtung (einer Richtung deiner Relikte) in deinem Deck.",
+        rarity: Legendary,
+        price: 10,
+        hooks: [
+            OnScore(when: Won, then: [ScaleGameValuePerCard(count: (direction: true), per: 0.1)]),
+        ],
+    ),
+    // The flag marks a game of the pub played; the factor hook comes
+    // before it.
+    (
+        id: "dawn",
+        group: Factor,
+        night: true,
+        name: "Morgengrauen",
+        text: "Gewinnst du das erste Spiel einer Kneipe: ×1,5.",
+        rarity: Rare,
+        price: 8,
+        hooks: [
+            OnScore(when: All([Won, Not(Flag("dawn"))]), then: [ScaleGameValue(1.5)]),
+            OnScore(then: [SetFlag("dawn")]),
+            OnSeriesWon(then: [ClearFlag("dawn")]),
+        ],
+    ),
 ]

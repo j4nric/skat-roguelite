@@ -596,6 +596,7 @@ impl RunEvent {
                 length,
                 stake,
                 boss,
+                night,
             } => RunEvent::RunLost {
                 section,
                 index,
@@ -603,7 +604,20 @@ impl RunEvent {
                 length,
                 stake,
                 boss,
+                night,
             },
+            RunEvent::NightStarted { character } => RunEvent::NightStarted { character },
+            RunEvent::VerschaerfungDrawn {
+                section,
+                verschaerfung,
+            } => RunEvent::VerschaerfungDrawn {
+                section,
+                verschaerfung,
+            },
+            RunEvent::ExtraBossRules { section, bosses } => {
+                RunEvent::ExtraBossRules { section, bosses }
+            }
+            RunEvent::NightCursesLaid { cards } => RunEvent::NightCursesLaid { cards },
             RunEvent::BossCursesLaid { boss, cards } => RunEvent::BossCursesLaid { boss, cards },
             RunEvent::BossCursesLifted { cards } => RunEvent::BossCursesLifted { cards },
             RunEvent::BossRewardOffered { relics } => RunEvent::BossRewardOffered { relics },

@@ -832,6 +832,20 @@ export class App {
     window.location.reload();
   }
 
+  /**
+   * "Weiterziehen in die lange Nacht" (ADR 0020): the won run goes on. Its
+   * win is recorded already; from here it is saved again as it goes.
+   */
+  private enterNight(): void {
+    const ended = this.ui.ended;
+    if (!this.core || !ended?.won || !ended.view.can_enter_night || this.ui.busy) return;
+    this.ui.ended = null;
+    this.ui.screen = 'run';
+    this.ui.view = ended.view;
+    this.ui.nightSeen = null;
+    void this.act('EnterNight');
+  }
+
   private resume(): void {
     if (!this.core) return;
     this.ui.message = null;
@@ -988,7 +1002,9 @@ export class App {
         view = step.view;
         if (view.phase === 'Won' || view.phase === 'Lost') {
           clearRun();
-          this.recordRun(view);
+          // A night that ends (ADR 0020) is no run of its own: the win
+          // was recorded when der Alte fell.
+          if (!view.night) this.recordRun(view);
         } else if (this.core) {
           saveRun(this.core.save());
         }
@@ -2359,6 +2375,10 @@ export class App {
       case 'new-run':
         this.newRun();
         return;
+      // Die lange Nacht (ADR 0020): on from the end screen of a won run.
+      case 'enter-night':
+        this.enterNight();
+        return;
       case 'resume':
         this.resume();
         return;
@@ -2413,6 +2433,9 @@ export class App {
         return;
       case 'suit-tint':
         this.setSettings({ suitTint: el.dataset.on === 'true' });
+        return;
+      case 'card-back':
+        this.setSettings({ back: el.dataset.back ? el.dataset.back : null });
         return;
       case 'hints-reset':
         this.resetHints();
@@ -2521,6 +2544,7 @@ export class App {
       case 'info-offer-item':
       case 'info-item':
       case 'info-malus':
+      case 'info-night':
       case 'info-card': {
         // A tap on these opens their info card (the same as a long-press).
         const key = el.dataset.info;
@@ -3408,7 +3432,9 @@ export class App {
       ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };
     }
     // The player's edition shows his character's back (DESIGN 9.3).
-    setPlayerBack((ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
+    // A back earned in the long night replaces it if chosen (ADR 0020).
+    const chosenBack = ui.settings.back && ui.meta?.card_backs?.includes(ui.settings.back) ? ui.settings.back : null;
+    setPlayerBack(chosenBack ?? (ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
     let body = '';
     switch (ui.screen) {
       case 'loading':
@@ -3450,10 +3476,16 @@ export class App {
                 ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
+        body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
         if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
+        // Die lange Nacht (ADR 0020): a new night district shows its Verschärfung first.
+        const night = view.night;
+        if (inRoute && night?.announced && ui.nightSeen !== night.district && !ui.busy && !ui.anim && !ui.overlay) {
+          ui.nightSeen = night.district;
+          ui.overlay = { kind: 'night' };
+        }
         // The Schnaps of a won pub with every slot full: its sheet stays until it is taken or sold.
         if (view.schnapps_reward && !ui.busy && !ui.anim && !ui.overlay) ui.overlay = { kind: 'schnapps-reward' };
         if (!view.schnapps_reward && ui.overlay?.kind === 'schnapps-reward') ui.overlay = null;

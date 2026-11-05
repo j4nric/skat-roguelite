@@ -1,6 +1,8 @@
 """Card backs of the opponents (ADR 0015), approved on 02.11.2026, and of
 the characters' editions (DESIGN 9.3, 03.11.2026: Drückeberger,
-Schneiderin, Bruderherz; the Distel stays in web/src/ui/backs.ts).
+Schneiderin, Bruderherz; the Distel stays in web/src/ui/backs.ts), and
+since ADR 0020 the cosmetic backs of the long night (Mondsichel,
+Sternenhimmel, Laterne).
 
     python3 tools/cardart/backs.py            # writes web/src/ui/backs.gen.ts
     python3 tools/cardart/backs.py --check    # fails if the committed file is stale
@@ -486,6 +488,110 @@ def heart_small():
     return out
 
 
+# ------------------------------------------------------------ the long night (ADR 0020)
+# Cosmetic card backs earned at the night's milestones (unlocks.ron,
+# night.ron): Mondsichel (Stadtteil 5), Sternenhimmel (7), Laterne (10).
+NIGHT = '#1b2240'
+NIGHT_D = '#0e1226'
+NIGHT_M = '#2b3762'
+MOONY = '#f2e3a6'
+MOONY_D = '#b89a4a'
+DUSK = '#5a3f6e'
+DUSK_L = '#d98e6a'
+
+MOON = ["..............",
+        ".....yyyy.....",
+        "...yyyy.......",
+        "..yyy.......w.",
+        ".yyy.......www",
+        ".yy.........w.",
+        "yyy...........",
+        "yyy...........",
+        "yyy.......w...",
+        ".yy...........",
+        ".yyy..........",
+        "..yyy.....yy..",
+        "...yyyy.yyy...",
+        ".....yyyyy....",
+        "..............",
+        "....w.........",
+        "...www....w...",
+        "....w.........",
+        "..............",
+        "kkk.kkkkk.kkkk",
+        "kwkkkkwkkkkwkk",
+        "kkkkkkkkkkkkkk",
+        "kkkkkkkkkkkkkk"]
+STARS = ["..............",
+         "..w.......w...",
+         ".www.........",
+         "..w....y......",
+         "......yyy.....",
+         ".......y....w.",
+         "..y..........",
+         ".............w",
+         "......w.......",
+         ".w...www......",
+         "......w....y..",
+         "...........yy.",
+         "..y...........",
+         ".yyy.....w....",
+         "..y...........",
+         "........w.....",
+         ".....w.......y",
+         "..w.......yyy.",
+         "...........y..",
+         ".....w........",
+         ".y..........w.",
+         "......y.......",
+         ".............."]
+LANTERN = ["......kk......",
+           ".....kkkk.....",
+           "......kk......",
+           "....kkkkkk....",
+           "...kyyyyyyk...",
+           "...kyywwyyk...",
+           "...kywwwwyk...",
+           "...kywwwwyk...",
+           "...kyywwyyk...",
+           "...kyyyyyyk...",
+           "....kkkkkk....",
+           "......kk......",
+           "......kk......",
+           "......kk......",
+           "......kk......",
+           "......kk......",
+           "......kk......",
+           "......kk......",
+           ".....kkkk.....",
+           "....kkkkkk....",
+           "oooooooooooooo",
+           "oooooooooooooo",
+           "oooooooooooooo"]
+STARB = ["....", ".w..", "....", "...w"]
+
+NIGHT_BACKS = {
+    'moon': dict(
+        name='Mondsichel', desc='Mondsichel über den Dächern auf Nachtblau',
+        rim=MOONY_D, frame=NIGHT_D, ground=NIGHT, panel=MOON, panel_r=mirror(MOON),
+        cols={'y': MOONY, 'w': WHITE, 'k': NIGHT_D},
+        band=(STARB, {'w': MOONY}), cross=(NIGHT_D, MOONY),
+        icon=MOON[0:14], icon_cols={'y': MOONY, 'w': WHITE}),
+    'stars': dict(
+        name='Sternenhimmel', desc='Sterne in Weiß und Gold auf tiefem Blau',
+        rim=NIGHT_M, frame=NIGHT_D, ground=NIGHT, panel=STARS, panel_r=mirror(STARS),
+        cols={'y': MOONY, 'w': WHITE},
+        band=(STARB, {'w': WHITE}), cross=(NIGHT_M, MOONY),
+        icon=STARS[0:15], icon_cols={'y': MOONY, 'w': WHITE}),
+    'lantern': dict(
+        name='Laterne', desc='Straßenlaterne im Morgengrauen, Violett und Rosé',
+        rim=DUSK_L, frame=NIGHT_D, ground=DUSK, panel=LANTERN, panel_r=LANTERN,
+        cols={'y': MOONY, 'w': WHITE, 'k': NIGHT_D, 'o': DUSK_L},
+        band=(STARB, {'w': DUSK_L}), cross=(NIGHT_D, MOONY),
+        icon=LANTERN[0:20], icon_cols={'y': MOONY, 'w': WHITE, 'k': NIGHT_D}),
+}
+
+
 # ------------------------------------------------------------ emit
 # Back ids as the content names them (core/content/bosses.ron, guests.ron).
 IDS = {
@@ -510,6 +616,8 @@ def ts():
     for back, b in CHARACTERS.items():
         lines.append(f'  {back}: {{ full: {family(b)!r}, small: {small(b)!r} }},')
     lines.append(f'  heart_brother: {{ full: {heart_full()!r}, small: {heart_small()!r} }},')
+    for back, b in NIGHT_BACKS.items():
+        lines.append(f'  {back}: {{ full: {family(b)!r}, small: {small(b)!r} }},')
     lines += ['};', '']
     return '\n'.join(lines)
 

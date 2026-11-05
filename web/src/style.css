@@ -8471,3 +8471,237 @@ button.skat-card {
     align-items: center;
   }
 }
+
+/* ------------------------------------------------- Die lange Nacht (ADR 0020) */
+/* A darker, bluer slate for the night, a moon and a few stars; the
+   Verschärfungen as small moon chips in the Leiste. */
+
+.run.is-night,
+.end.is-night {
+  --bg: #12151d;
+  --dot: #1d2230;
+  --panel: #1e2330;
+  --panel2: #181c27;
+  --muted: #9aa3bb;
+  background: radial-gradient(ellipse at 50% -10%, #263052 0%, transparent 60%), var(--bg);
+}
+
+.run.is-night .hud {
+  box-shadow: inset 0 -2px 0 #2b3557;
+}
+
+.moon-icon {
+  flex: none;
+  color: #f2e3a6;
+  vertical-align: -2px;
+}
+
+.night-chips-row {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.night-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 34px;
+  max-width: 132px;
+  padding: 0 6px;
+  border: 2px solid #3a4670;
+  background: #1a2036;
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+  color: #d6dcf2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.night-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-night {
+  position: relative;
+  overflow: hidden;
+  border-color: #3a4670;
+  background: linear-gradient(180deg, #1b2240 0%, #151a2a 70%);
+}
+
+.sheet-night > *:not(.night-sky) {
+  position: relative;
+}
+
+.night-sky {
+  position: absolute;
+  inset: 0 0 50% 0;
+  pointer-events: none;
+}
+
+.night-sky i {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #f4ecd8;
+  opacity: 0.7;
+  animation: night-twinkle 2.6s steps(2) infinite;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes night-twinkle {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .night-sky i {
+    animation: none;
+  }
+}
+
+.night-kicker {
+  margin: 0;
+  font-size: var(--fs-s);
+  color: #f2e3a6;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.night-new {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 2px solid #f2e3a6;
+  background: #222a48;
+  box-shadow: var(--shadow-sm);
+}
+
+.night-new b {
+  font-weight: 400;
+  font-size: var(--fs-h);
+  color: #f2e3a6;
+}
+
+.night-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.night-targets {
+  color: #c9d0e8;
+}
+
+.btn-night {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-color: #3a4670;
+  background: #26305a;
+  color: #f2e3a6;
+}
+
+.end-night-hint {
+  margin: 0;
+  text-align: center;
+}
+
+.end h1.is-night {
+  color: #f2e3a6;
+}
+
+.info-moon .moon-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.unlock-back {
+  display: flex;
+  width: 60px;
+}
+
+.unlock-back svg {
+  width: 100%;
+  height: auto;
+}
+
+/* Bestenliste on the start screen. */
+.start-board {
+  padding: 8px 10px;
+}
+
+.start-board h2 {
+  margin: 0 0 6px;
+  font-size: var(--fs-l);
+  font-weight: 400;
+  color: var(--accent-light);
+}
+
+.start-board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-s);
+}
+
+.start-board th,
+.start-board td {
+  padding: 2px 3px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.start-board thead th {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.start-board th[scope='row'],
+.start-board thead th:first-child {
+  text-align: left;
+  color: var(--text);
+  white-space: normal;
+}
+
+.start-board td {
+  color: var(--accent);
+}
+
+/* Kartenrückseite in the menu (ADR 0020). */
+.back-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.back-option {
+  padding: 2px;
+  min-width: 36px;
+}
+
+.back-option.is-picked {
+  border-color: var(--accent);
+}
+
+.back-swatch {
+  display: block;
+  width: 28px;
+}
+
+.back-swatch svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

@@ -178,4 +178,29 @@
         condition: RunsFinished(10),
         rewards: [Relic("three_discard")],
     ),
+    // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,
+    // Cockpit q33 A): Meilensteine der Nacht. Rückseiten sind Kosmetik
+    // (night.ron); Kehraus und Morgengrauen gibt es danach auch im normalen
+    // Run. Stadtteil 4 und höher gibt es nur in der Nacht.
+    (
+        id: "night_district_5",
+        name: "Tief in der Nacht",
+        text: "Erreiche in der langen Nacht Stadtteil 5.",
+        condition: ReachSection(5),
+        rewards: [CardBack("moon")],
+    ),
+    (
+        id: "night_district_7",
+        name: "Nach der Sperrstunde",
+        text: "Erreiche in der langen Nacht Stadtteil 7.",
+        condition: ReachSection(7),
+        rewards: [CardBack("stars"), Relic("sweep_out")],
+    ),
+    (
+        id: "night_district_10",
+        name: "Bis zum Morgengrauen",
+        text: "Erreiche in der langen Nacht Stadtteil 10.",
+        condition: ReachSection(10),
+        rewards: [CardBack("lantern"), Relic("dawn")],
+    ),
 ]

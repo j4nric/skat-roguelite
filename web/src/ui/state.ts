@@ -115,7 +115,9 @@ export type Overlay =
   | { kind: 'rules' }
   /** The Glossar: every Zinke grouped by the frame language, with the value icons. */
   | { kind: 'glossary' }
-  | { kind: 'credits' };
+  | { kind: 'credits' }
+  /** Die lange Nacht (ADR 0020): the start sheet of a night district. */
+  | { kind: 'night' };
 
 export interface UiState {
   screen: 'loading' | 'start' | 'run' | 'end' | 'error';
@@ -174,6 +176,8 @@ export interface UiState {
   /** Stake picked on the start screen; null plays the highest unlocked. */
   pickStake: number | null;
   overlay: Overlay | null;
+  /** The night district whose start sheet was shown (ADR 0020). */
+  nightSeen?: number | null;
   message: string | null;
   saveInfo: string | null;
   /** Unlocks and statistics from the core's meta state. */

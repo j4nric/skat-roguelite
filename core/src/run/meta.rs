@@ -39,6 +39,14 @@ pub struct CharacterStats {
     pub won: u32,
     /// Highest section reached (from 1), 0 before the first run.
     pub best_section: u32,
+    /// Highest Spielwert of a won game with this character (Bestenliste,
+    /// ADR 0020), the long night included.
+    pub best_game: u64,
+    /// Deepest district of the long night reached (from 1: 4 = Stadtteil
+    /// 4), 0 before the first night (ADR 0020).
+    pub night_best_section: u32,
+    /// Most pubs won in one long night.
+    pub night_pubs_won: u32,
 }
 
 /// Statistics over all finished runs.
@@ -114,6 +122,21 @@ pub struct MetaState {
     /// first time (DESIGN 7.2). Part of the save, not of the browser.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub specials_seen: BTreeSet<CardModId>,
+    /// Highest Spielwert of a won game in the run in progress, for the
+    /// character's record when it ends.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    run_best_game: u64,
+    /// Who plays the long night in progress (ADR 0020); `None` outside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    night_character: Option<Character>,
+    /// Pubs won in the long night in progress.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    night_pubs: u32,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -244,6 +267,8 @@ pub enum RewardKind {
     CardMod,
     /// A character.
     Character,
+    /// A card back (cosmetic).
+    CardBack,
 }
 
 /// A reward as the menu shows it: what it is, its name and rarity.
@@ -291,6 +316,8 @@ pub struct MetaView {
     pub locked_card_mods: Vec<CardModId>,
     /// Statistics.
     pub stats: MetaStats,
+    /// Card backs earned (cosmetic, [`Reward::CardBack`]), in id order.
+    pub card_backs: Vec<String>,
 }
 
 impl MetaState {
@@ -337,12 +364,31 @@ impl MetaState {
             .flat_map(|u| u.rewards.iter())
             .filter_map(|r| match r {
                 Reward::Relic(id) => Some(id.clone()),
-                Reward::Character(_) | Reward::CardMod(_) => None,
+                Reward::Character(_) | Reward::CardMod(_) | Reward::CardBack(_) => None,
             })
             .collect();
         locked.sort();
         locked.dedup();
         locked
+    }
+
+    /// Card backs of the unlocks earned ([`Reward::CardBack`]), in id
+    /// order.
+    #[must_use]
+    pub fn card_backs(&self, content: &Content) -> Vec<String> {
+        let mut backs: Vec<String> = content
+            .unlocks
+            .values()
+            .filter(|u| self.unlocked.contains(&u.id))
+            .flat_map(|u| u.rewards.iter())
+            .filter_map(|r| match r {
+                Reward::CardBack(id) => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        backs.sort();
+        backs.dedup();
+        backs
     }
 
     /// Card modifications that are a reward of an unlock not yet earned,
@@ -356,7 +402,7 @@ impl MetaState {
             .flat_map(|u| u.rewards.iter())
             .filter_map(|r| match r {
                 Reward::CardMod(id) => Some(id.clone()),
-                Reward::Relic(_) | Reward::Character(_) => None,
+                Reward::Relic(_) | Reward::Character(_) | Reward::CardBack(_) => None,
             })
             .collect();
         locked.sort();
@@ -442,6 +488,7 @@ impl MetaState {
         let mut earned = BTreeSet::new();
         for event in events {
             self.count(event);
+            self.count_night(content, event);
             self.see_special(content, event);
             for def in content.unlocks.values() {
                 if self.unlocked.contains(&def.id) || earned.contains(&def.id) {
@@ -485,18 +532,24 @@ impl MetaState {
         let stats = &mut self.stats;
         match event {
             RunEvent::SeriesStarted { section, index, .. } => {
-                self.current_section = section + 1;
-                stats.best_section = stats.best_section.max(section + 1);
                 self.pub_schneider_wins = 0;
                 if *section == 0 && *index == 0 {
                     // A new run (also after one that was given up).
                     self.trump_streak = None;
+                    self.run_best_game = 0;
+                    self.night_character = None;
+                    self.night_pubs = 0;
+                }
+                if self.night_character.is_none() {
+                    self.current_section = section + 1;
+                    stats.best_section = stats.best_section.max(section + 1);
                 }
             }
             RunEvent::GameScored { breakdown, .. } => {
                 if breakdown.won {
                     stats.games_won += 1;
                     stats.best_game = stats.best_game.max(breakdown.value);
+                    self.run_best_game = self.run_best_game.max(breakdown.value);
                 } else {
                     stats.games_lost += 1;
                 }
@@ -538,6 +591,7 @@ impl MetaState {
                 entry.runs += 1;
                 entry.won += 1;
                 entry.best_section = entry.best_section.max(self.current_section);
+                entry.best_game = entry.best_game.max(self.run_best_game);
                 let by_length = stats.lengths.entry(*length).or_default();
                 by_length.runs += 1;
                 by_length.won += 1;
@@ -551,12 +605,19 @@ impl MetaState {
                 section,
                 character,
                 length,
+                night,
                 ..
             } => {
+                // The long night (ADR 0020): the run was won and counted
+                // already; only the record changes (in `count_night`).
+                if *night {
+                    return;
+                }
                 stats.runs_finished += 1;
                 let entry = stats.characters.entry(*character).or_default();
                 entry.runs += 1;
                 entry.best_section = entry.best_section.max(section + 1);
+                entry.best_game = entry.best_game.max(self.run_best_game);
                 let by_length = stats.lengths.entry(*length).or_default();
                 by_length.runs += 1;
                 by_length.best_section = by_length.best_section.max(section + 1);
@@ -564,6 +625,53 @@ impl MetaState {
                 self.current_section = 0;
                 self.trump_streak = None;
                 self.pub_schneider_wins = 0;
+            }
+            _ => {}
+        }
+    }
+
+    /// The record of the long night (ADR 0020): deepest night district,
+    /// pubs won in one night and the best game, per character, updated as
+    /// the night goes on (a night left without losing keeps its record).
+    fn count_night<G>(&mut self, content: &Content, event: &RunEvent<G>) {
+        match event {
+            RunEvent::NightStarted { character } => {
+                self.night_character = Some(*character);
+                self.night_pubs = 0;
+            }
+            RunEvent::SeriesStarted { section, .. } => {
+                if *section < content.run.sections() {
+                    // A pub of a normal district: no night (any more).
+                    self.night_character = None;
+                    self.night_pubs = 0;
+                } else if let Some(character) = self.night_character {
+                    let entry = self.stats.characters.entry(character).or_default();
+                    entry.night_best_section = entry.night_best_section.max(section + 1);
+                }
+            }
+            RunEvent::SeriesWon { .. } => {
+                if let Some(character) = self.night_character {
+                    self.night_pubs += 1;
+                    let entry = self.stats.characters.entry(character).or_default();
+                    entry.night_pubs_won = entry.night_pubs_won.max(self.night_pubs);
+                }
+            }
+            RunEvent::GameScored { breakdown, .. } if breakdown.won => {
+                if let Some(character) = self.night_character {
+                    let entry = self.stats.characters.entry(character).or_default();
+                    entry.best_game = entry.best_game.max(breakdown.value);
+                }
+            }
+            // A won run (before its night begins) ends any night before.
+            RunEvent::RunWon { .. } => {
+                self.night_character = None;
+                self.night_pubs = 0;
+            }
+            RunEvent::RunLost { night: true, .. } => {
+                self.night_character = None;
+                self.night_pubs = 0;
+                self.current_section = 0;
+                self.trump_streak = None;
             }
             _ => {}
         }
@@ -635,7 +743,7 @@ impl MetaState {
             ) => who.is_none_or(|c| c == *character) && length == needed,
             (
                 UnlockCondition::RunsFinished(n),
-                RunEvent::RunWon { .. } | RunEvent::RunLost { .. },
+                RunEvent::RunWon { .. } | RunEvent::RunLost { night: false, .. },
             ) => self.stats.runs_finished >= *n,
             _ => false,
         }
@@ -687,6 +795,7 @@ impl MetaState {
             locked_relics: self.locked_relics(content),
             locked_card_mods: self.locked_card_mods(content),
             stats: self.stats.clone(),
+            card_backs: self.card_backs(content),
         }
     }
 }
@@ -714,6 +823,20 @@ fn reward_info(content: &Content, reward: &Reward) -> RewardInfo {
                     Some(def.rarity),
                 )
             },
+        ),
+        Reward::CardBack(id) => (
+            RewardKind::CardBack,
+            content
+                .card_backs
+                .iter()
+                .find(|b| b.id == *id)
+                .map_or_else(|| id.clone(), |b| b.name.clone()),
+            content
+                .card_backs
+                .iter()
+                .find(|b| b.id == *id)
+                .map_or_else(String::new, |b| b.text.clone()),
+            None,
         ),
         Reward::Character(c) => content.character(*c).map_or_else(
             || (RewardKind::Character, c.to_string(), String::new(), None),
@@ -944,6 +1067,7 @@ mod tests {
             length: RunLength::Full,
             stake: 0,
             boss: None,
+            night: false,
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 4);

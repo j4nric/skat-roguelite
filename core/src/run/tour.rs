@@ -31,7 +31,6 @@ use super::guests::{GuestInfo, seat_guests};
 use super::view::BossInfo;
 use super::{
     PUBS_PER_DISTRICT, Run, RunError, RunEvent, RunPhase, Shop, draw_weighted, sell_price,
-    series_target,
 };
 use crate::content::{
     CityDistrict, Content, DistrictLook, Effect, EncounterId, MalusDef, MalusId, RelicId,
@@ -166,6 +165,18 @@ impl Run {
                     .is_some_and(|r| r.rarity >= config.min_rarity)
             })
             .collect();
+        // In the long night the relics of the night ("Nachtschwärmer",
+        // ADR 0020) while any is left.
+        let night_pool: Vec<(RelicId, u32)> = pool
+            .iter()
+            .filter(|(id, _)| self.night.is_some() && content.relic(id).is_some_and(|r| r.night))
+            .cloned()
+            .collect();
+        let pool = if night_pool.is_empty() {
+            pool
+        } else {
+            night_pool
+        };
         let relics = draw_weighted(&mut self.encounter_rng, pool, config.relics);
         if relics.is_empty() {
             return false;
@@ -244,9 +255,16 @@ impl Run {
 
     /// The malus of the current pub, if it is a Spelunke.
     #[must_use]
+    /// In the long night a normal pub may have one too
+    /// ([`crate::content::NightRule::MalusEveryPub`]).
     pub fn malus<'c>(&self, content: &'c Content) -> Option<&'c MalusDef> {
-        let spelunke = self.series.spelunke.as_ref()?;
-        content.maluses.get(&spelunke.malus)
+        let malus = self
+            .series
+            .spelunke
+            .as_ref()
+            .map(|s| &s.malus)
+            .or(self.series.night_malus.as_ref())?;
+        content.maluses.get(malus)
     }
 
     /// The names of the city: per district its name, its look on the map
@@ -256,7 +274,7 @@ impl Run {
     pub fn city(&self, content: &Content) -> Vec<CityDistrict> {
         content.city.generate(
             self.seed ^ CITY_STREAM,
-            content.run.sections(),
+            self.city_districts(content),
             PUBS_PER_DISTRICT,
         )
     }
@@ -332,12 +350,19 @@ impl Run {
         if self.series.boss_cursed {
             return;
         }
-        let Some(boss) = self.boss_rule(content).and_then(|b| content.boss(&b)) else {
-            return;
-        };
-        let Some((cards, curses)) = boss.passive.iter().find_map(|e| match e {
-            crate::content::Effect::CurseForPub { cards, curses } => Some((*cards, curses)),
-            _ => None,
+        let rules: Vec<_> = self
+            .boss_rule(content)
+            .into_iter()
+            .chain(self.extra_boss_rules().iter().cloned())
+            .filter_map(|b| content.boss(&b))
+            .collect();
+        let Some((boss, cards, curses)) = rules.into_iter().find_map(|boss| {
+            boss.passive.iter().find_map(|e| match e {
+                crate::content::Effect::CurseForPub { cards, curses } => {
+                    Some((boss, *cards, curses))
+                }
+                _ => None,
+            })
         }) else {
             return;
         };
@@ -397,7 +422,9 @@ impl Run {
         if !restored.is_empty() {
             let mut cards: Vec<u32> = restored.iter().map(|c| c.id).collect();
             cards.sort_unstable();
-            for card in restored {
+            // Backwards: a card cursed twice (a night curse, then the
+            // Oma's) ends as it was before the first.
+            for card in restored.into_iter().rev() {
                 self.edition.restore(card);
             }
             events.push(RunEvent::BossCursesLifted { cards });
@@ -456,7 +483,9 @@ impl Run {
             won: true,
             spelunke: self.series.spelunke.as_ref().map(|s| s.name.clone()),
         });
-        if self.series.is_boss_pub() && self.series.section + 1 >= content.run.sections() {
+        if let Some(night) = self.night.as_mut() {
+            night.pubs_won += 1;
+        } else if self.series.is_boss_pub() && self.series.section + 1 >= content.run.sections() {
             self.phase = RunPhase::Won;
             events.push(RunEvent::RunWon {
                 character: self.character,
@@ -534,6 +563,7 @@ impl Run {
             length: self.length,
             stake: self.stake,
             boss: self.series.boss.clone(),
+            night: self.night.is_some(),
         });
         Ok(())
     }
@@ -626,8 +656,11 @@ impl Run {
         self.encounter = None;
         self.trip = None;
         let (section, index) = self.next_series_position();
-        if section >= content.run.sections() {
+        if !self.district_exists(content, section) {
             return Err(RunError::WrongPhase);
+        }
+        if index == 0 {
+            self.draw_verschaerfung(content, section, events);
         }
         let mut options: Vec<RouteOption> = Transport::ALL
             .into_iter()
@@ -916,7 +949,7 @@ impl Run {
         } else {
             None
         };
-        let mut target = series_target(content, self.character, section, index, boss)?;
+        let mut target = self.pub_target(content, section, index, boss)?;
         if spelunke.is_some() {
             target = content.run.spelunke.target_factor.apply(target);
         }
@@ -1082,6 +1115,9 @@ impl Run {
             )
             .map(|mut p| {
                 p.target = self.series.target;
+                if p.malus.is_none() {
+                    p.malus = self.malus(content).map(malus_info);
+                }
                 p
             })
         };

@@ -32,7 +32,10 @@ export type BackDesign =
   | 'the_pusher'
   | 'ramscher'
   | 'twins'
-  | 'the_old_man';
+  | 'the_old_man'
+  | 'moon'
+  | 'stars'
+  | 'lantern';
 
 /** Older back ids (saves, content defaults) and the design they show now. */
 const ALIASES: Record<string, BackDesign> = { opponent: 'regulars' };
@@ -418,6 +421,10 @@ const BACKS: Record<BackDesign, BackArt> = {
   ramscher: generated('ramscher'),
   twins: generated('twins'),
   the_old_man: generated('the_old_man'),
+  // The long night (ADR 0020): cosmetic backs earned at its milestones.
+  moon: generated('moon'),
+  stars: generated('stars'),
+  lantern: generated('lantern'),
   distel: {
     full: distelFull,
     small: distelSmall,

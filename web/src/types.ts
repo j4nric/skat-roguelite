@@ -844,6 +844,37 @@ export interface RunView {
   /** The player's edition of the 32 cards (ADR 0015). */
   edition: DeckCard[];
   stats: RunStats;
+  /** The long night (ADR 0020), once the player continued after der Alte. */
+  night?: NightView | null;
+  /** The run is won and the long night may begin (`EnterNight`). */
+  can_enter_night?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Die lange Nacht (ADR 0020)
+// ---------------------------------------------------------------------------
+
+/** A Verschärfung of the long night, German name and text from the core. */
+export interface VerschaerfungInfo {
+  id: string;
+  name: string;
+  text: string;
+  /** The night district it was drawn for, from 1 (4 = Stadtteil 4). */
+  district: number;
+}
+
+export interface NightView {
+  /** Night district being played or chosen next, from 1. */
+  district: number;
+  /** In force, in the order drawn. */
+  verschaerfungen: VerschaerfungInfo[];
+  /** The Verschärfung of the district ahead, before its first pub: the start sheet. */
+  announced: VerschaerfungInfo | null;
+  /** "Doppelte Bosse": further boss rules of the night boss pub. */
+  extra_bosses: BossInfo[];
+  pubs_won: number;
+  /** Zielwerte against Stadtteil 3, in thousandths. */
+  target_permille: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1080,7 +1111,12 @@ export type RunEvent =
   | { SkatPeeked: { skat: DealtCard[] } }
   /** "Spickzettel": a card of the untouched skat after a hand declaration. */
   | { SkatCardShown: { source: Source; card: DealtCard } }
-  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number; boss?: string | null } }
+  | { RunLost: { section: number; index: number; character: Character; length?: RunLength; stake?: number; boss?: string | null; night?: boolean } }
+  /** The long night (ADR 0020). */
+  | { NightStarted: { character: Character } }
+  | { VerschaerfungDrawn: { section: number; verschaerfung: string } }
+  | { ExtraBossRules: { section: number; bosses: string[] } }
+  | { NightCursesLaid: { cards: [number, string][] } }
   /** "Die Oma" (ADR 0017): cards of the player's edition cursed for the pub. */
   | { BossCursesLaid: { boss: string; cards: [number, string][] } }
   | { BossCursesLifted: { cards: number[] } }
@@ -1146,7 +1182,9 @@ export type RunAction =
   | { ChoosePaint: number }
   | { CleanseCard: number }
   /** "Untot": the three cards of the hand of which one goes into the trick. */
-  | { ChooseRiseCards: [number, number, number] };
+  | { ChooseRiseCards: [number, number, number] }
+  /** After der Alte: on into the long night (ADR 0020). */
+  | 'EnterNight';
 
 export interface Step {
   events: RunEvent[];
@@ -1193,6 +1231,8 @@ export interface RelicEntry extends CatalogEntry {
   group?: RelicGroup;
   /** Build directions; absent in an older core. */
   tags?: BuildTag[];
+  /** A relic of the long night (ADR 0020). */
+  night?: boolean;
 }
 
 /** A consumable in the catalog, with rarity and group (absent in an older core). */
@@ -1235,9 +1275,9 @@ export interface CharacterEntry {
   back?: string;
 }
 
-export type Reward = { Relic: string } | { Character: Character } | { CardMod: string };
+export type Reward = { Relic: string } | { Character: Character } | { CardMod: string } | { CardBack: string };
 
-export type RewardKind = 'HouseRule' | 'Regular' | 'CardMod' | 'Character';
+export type RewardKind = 'HouseRule' | 'Regular' | 'CardMod' | 'Character' | 'CardBack';
 
 /** A reward with kind, name, text and rarity, from the core. */
 export interface RewardInfo {
@@ -1263,6 +1303,12 @@ export interface CharacterStats {
   runs: number;
   won: number;
   best_section: number;
+  /** Bestenliste (ADR 0020): highest Spielwert of a won game, the night included. */
+  best_game?: number;
+  /** Deepest district of the long night (from 1: 4 = Stadtteil 4), 0 before the first night. */
+  night_best_section?: number;
+  /** Most pubs won in one long night. */
+  night_pubs_won?: number;
 }
 
 export interface MetaStats {
@@ -1284,6 +1330,8 @@ export interface MetaView {
   /** Card modifications still locked (not drawn at random until unlocked). */
   locked_card_mods: string[];
   stats: MetaStats;
+  /** Card backs earned (cosmetic, ADR 0020). */
+  card_backs?: string[];
 }
 
 /** Result of feeding events to the meta state. */

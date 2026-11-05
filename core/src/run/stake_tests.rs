@@ -178,6 +178,7 @@ fn a_won_run_unlocks_the_next_stake_per_character_and_length() {
                 length: RunLength::Short,
                 stake: 4,
                 boss: None,
+                night: false,
             },
         ],
     );

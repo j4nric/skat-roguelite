@@ -25,3 +25,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0017 | Bosse v2: zwei Boss-Spieler, alles oder nichts | Angenommen, ersetzt den Boss-Teil von 0016; Leben (Punkte 3, 4) entfallen durch 0019 |
 | 0018 | Der Faktor als dritte Stufe der Wertung | Angenommen, Zahlen vorläufig |
 | 0019 | Keine Leben: Eine verlorene Kneipe beendet den Abend | Angenommen, ersetzt den Lebens-Teil von 0016 und 0017, Zahlen vorläufig |
+| 0020 | Die lange Nacht: Endlos-Modus nach dem Alten | Angenommen, Zahlen vorläufig |

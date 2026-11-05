@@ -89,6 +89,32 @@ pub struct Options {
     /// (`run.ron`'s `opponents`) unless `--defenders` overrides them.
     /// `None`: district 1.
     pub district: Option<u32>,
+    /// Continue every won run into the long night (`--night`, ADR 0020)
+    /// and measure it ([`NightStat`]).
+    pub night: bool,
+}
+
+/// The long night (ADR 0020, `--night`): what the won runs did after der
+/// Alte.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NightStat {
+    /// Runs that went into the night (every won run).
+    pub nights: u64,
+    /// Deepest night district reached (from 1: 4 = Stadtteil 4), counted.
+    pub reached: BTreeMap<u32, u64>,
+    /// Pubs won in the night, over all nights.
+    pub pubs_won: u64,
+    /// Faktor of the last won game of each night, in thousandths, summed.
+    pub factor_end_permille: u64,
+    /// Nights with a won game.
+    pub factor_nights: u64,
+    /// The Verschärfung of the district each night ended in (the last one
+    /// drawn), counted.
+    pub ended_by: BTreeMap<String, u64>,
+    /// Relics of the night taken (boss pick, Tresen), counted.
+    pub relic_picks: BTreeMap<RelicId, u64>,
+    /// Highest Spielwert of a won game in the night, summed over nights.
+    pub best_game: u64,
 }
 
 /// Price of the Neuauslage and the Zinken under `--consumable`: never
@@ -269,6 +295,9 @@ impl Options {
         }
         if let Some(district) = self.district {
             parts.push(format!("district={district}"));
+        }
+        if self.night {
+            parts.push("night".to_string());
         }
         if parts.is_empty() {
             "standard".to_string()
@@ -452,6 +481,8 @@ pub struct RunStats {
     pub card_reward_zinken: BTreeMap<CardModId, (u64, u64)>,
     /// The player's edition: Zinken at the end, Marken, Zinken in hand.
     pub deck: DeckStat,
+    /// The long night (`--night`).
+    pub night: NightStat,
 }
 
 /// The card reward after a won normal pub or Spelunke (DESIGN 5.0), over
@@ -985,6 +1016,63 @@ fn play_run(
         entry.runs_won += u64::from(won);
         entry.sections += u64::try_from(section + 1).unwrap_or(0);
     }
+    if won && options.night {
+        play_night(content, options, &mut run, &mut stats.night)?;
+    }
+    Ok(())
+}
+
+/// The long night after a won run (`--night`, ADR 0020): the bot always
+/// continues ([`RunBot::night_action`]) and plays until a pub is lost.
+fn play_night(
+    content: &Content,
+    options: &Options,
+    run: &mut Run,
+    stat: &mut NightStat,
+) -> Result<(), String> {
+    let Some(enter) = RunBot.night_action(run) else {
+        return Ok(());
+    };
+    stat.nights += 1;
+    let mut last_factor: Option<u32> = None;
+    let mut best: u64 = 0;
+    let mut events = run.apply(content, enter).map_err(|e| e.to_string())?;
+    let mut actions = 0;
+    loop {
+        for event in &events {
+            match event {
+                RunEvent::GameScored { breakdown, .. } if breakdown.won => {
+                    last_factor = Some(breakdown.multiplier.permille());
+                    best = best.max(breakdown.value);
+                }
+                RunEvent::RelicGained { relic }
+                    if content.relic(relic).is_some_and(|r| r.night) =>
+                {
+                    *stat.relic_picks.entry(relic.clone()).or_default() += 1;
+                }
+                _ => {}
+            }
+        }
+        let Some(action) = options.next_action(run, content) else {
+            break;
+        };
+        events = run.apply(content, action).map_err(|e| e.to_string())?;
+        actions += 1;
+        if actions > MAX_ACTIONS {
+            return Err("night does not end".into());
+        }
+    }
+    let night = run.night().ok_or("no night")?;
+    stat.pubs_won += u64::from(night.pubs_won);
+    *stat.reached.entry(run.series().section + 1).or_default() += 1;
+    if let Some(last) = night.verschaerfungen.last() {
+        *stat.ended_by.entry(last.to_string()).or_default() += 1;
+    }
+    if let Some(f) = last_factor {
+        stat.factor_end_permille += u64::from(f);
+        stat.factor_nights += 1;
+    }
+    stat.best_game += best;
     Ok(())
 }
 
@@ -1125,6 +1213,9 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     );
     render_kinds(&mut out, stats, runs);
     render_factor(&mut out, stats, runs);
+    if options.night {
+        render_night(&mut out, &stats.night);
+    }
     render_deck(&mut out, &stats.deck, runs);
     let _ = writeln!(out, "best game per run: {:.1}", mean(stats.best_game, runs));
     let _ = write!(out, "encounters (opened/taken per option):");
@@ -1201,6 +1292,45 @@ fn render_card_rewards(out: &mut String, stats: &RunStats, runs: u64) {
 /// The Faktor (ADR 0018): mean factor of the won games, the share above
 /// ×1, the highest per run and overall, runs with a Faktor relic at the
 /// end and the factor of the growing ones.
+/// The long night (`--night`): one `night:` line, then where the nights
+/// ended and the night relics taken.
+fn render_night(out: &mut String, n: &NightStat) {
+    let nights = n.nights;
+    let at_least = |d: u32| -> u64 { n.reached.range(d..).map(|(_, c)| c).sum() };
+    let _ = writeln!(
+        out,
+        "night: {nights} nights; reached 4={:.1}% 5={:.1}% 6={:.1}% 7={:.1}% 8+={:.1}%; \
+         pubs won mean {:.2}; faktor of the last won game mean x{:.3} ({} nights); \
+         best game mean {:.0}",
+        pct(at_least(4), nights),
+        pct(at_least(5), nights),
+        pct(at_least(6), nights),
+        pct(at_least(7), nights),
+        pct(at_least(8), nights),
+        mean(n.pubs_won, nights),
+        mean(n.factor_end_permille, n.factor_nights) / 1000.0,
+        n.factor_nights,
+        mean(n.best_game, nights),
+    );
+    let mut deepest = String::new();
+    for (district, count) in &n.reached {
+        let _ = write!(deepest, " {district}={count}");
+    }
+    let _ = writeln!(out, "night deepest district:{deepest}");
+    let mut ended: Vec<(&String, &u64)> = n.ended_by.iter().collect();
+    ended.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let mut line = String::new();
+    for (id, count) in ended {
+        let _ = write!(line, " {id}={count}");
+    }
+    let _ = writeln!(out, "night ended under (last Verschärfung):{line}");
+    let mut picks = String::new();
+    for (id, count) in &n.relic_picks {
+        let _ = write!(picks, " {id}={count}");
+    }
+    let _ = writeln!(out, "night relics taken:{picks}");
+}
+
 fn render_factor(out: &mut String, stats: &RunStats, runs: u64) {
     let f = &stats.factor;
     let _ = writeln!(

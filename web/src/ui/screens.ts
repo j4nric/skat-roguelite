@@ -11,6 +11,7 @@ import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo,
 import { backDesign } from './backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
+import { moonIcon, renderNightSheet } from './night';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
 import { seatPerson } from './guests';
@@ -319,6 +320,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     </div>
     ${dailyBlock(ui)}
     ${meta ? startStats(meta) : ''}
+    ${meta ? startBoard(meta) : ''}
     ${meta ? `<button class="btn btn-wide btn-book" ${attrs({ 'data-action': 'book' })}>${bookIcon()}<span>${esc(de.start.book)}</span><span class="book-progress">${esc(t(de.start.bookHint, { done, total }))}</span></button>` : ''}
     <p class="howto">${esc(de.start.howTo)}</p>
     <footer class="start-foot">
@@ -339,18 +341,74 @@ function lostReason(view: RunView): string {
 }
 
 export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
-  return `<main class="end" data-testid="end">
+  // Die lange Nacht (ADR 0020): after der Alte the player may go on; a
+  // night that ends is no lost run, the win stays.
+  const night = view.night ?? null;
+  const title = won ? de.end.won : night ? de.night.over : de.end.lost;
+  const reason = won ? de.end.wonText : night ? t(de.night.overText, { n: night.district, pubs: night.pubs_won }) : lostReason(view);
+  const enter = won && view.can_enter_night;
+  const actions = enter
+    ? `<p class="small end-night-hint">${esc(de.night.enterHint)}</p>
+      <button class="btn btn-primary btn-wide btn-night" ${attrs({ 'data-action': 'enter-night', 'data-testid': 'enter-night' })}>${moonIcon(18)}<span>${esc(de.night.enter)}</span></button>
+      <button class="btn btn-wide" ${attrs({ 'data-action': 'to-start', 'data-testid': 'end-run' })}>${esc(de.night.endRun)}</button>
+      <button class="btn btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(de.end.newRun)}</button>`
+    : `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(de.end.newRun)}</button>
+      <button class="btn btn-wide" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>`;
+  return `<main class="end ${night ? 'is-night' : ''}" data-testid="end">
     <div class="sheet chalkboard end-board">
-      <h1 class="${won ? 'is-won' : 'is-lost'}">${esc(won ? de.end.won : de.end.lost)}</h1>
-      <p class="chalk-small" data-testid="end-reason">${esc(won ? de.end.wonText : lostReason(view))}</p>
+      <h1 class="${won ? 'is-won' : night ? 'is-night' : 'is-lost'}">${esc(title)}</h1>
+      <p class="chalk-small" data-testid="end-reason">${esc(reason)}</p>
       ${shareBlock(view.seed, view.character.character, view.length, ui, view.stake ?? 0)}
-      ${renderOverview(view, ui.meta, !won)}
+      ${renderOverview(view, ui.meta, !won && !night)}
     </div>
     <div class="end-actions">
-      <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(de.end.newRun)}</button>
-      <button class="btn btn-wide" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>
+      ${actions}
     </div>
   </main>`;
+}
+
+/**
+ * Kartenrückseite (ADR 0020): the backs earned at the night's milestones,
+ * next to the character's own. Shown only once one is earned.
+ */
+function backPick(ui: UiState): string {
+  const earned = ui.meta?.card_backs ?? [];
+  if (!earned.length) return '';
+  const chosen = ui.settings.back && earned.includes(ui.settings.back) ? ui.settings.back : null;
+  const own = ui.view?.character.back ?? ui.meta?.characters.find((c) => c.character === ui.pickCharacter)?.back ?? null;
+  const option = (id: string | null, label: string): string =>
+    `<button class="btn btn-small back-option ${chosen === id ? 'is-picked' : ''}" ${attrs({ 'data-action': 'card-back', 'data-back': id ?? '', 'aria-pressed': chosen === id ? 'true' : 'false', 'aria-label': label, title: label })}><span class="back-swatch">${cardBack('', backDesign(id ?? own), 'small')}</span></button>`;
+  const options = [option(null, de.menu.backOwn), ...earned.map((id) => option(id, de.backs[id]?.name ?? id))].join('');
+  return `<div class="menu-row menu-backs" data-testid="setting-back"><span class="setting-label">${esc(de.menu.back)}</span><div class="back-options">${options}</div></div>`;
+}
+
+/**
+ * Bestenliste (ADR 0020): per character the runs won, the deepest night
+ * district, the most pubs of one night and the best game.
+ */
+function startBoard(meta: MetaView): string {
+  const rows = meta.characters
+    .filter((c) => c.unlocked)
+    .map((c) => ({ c, s: meta.stats.characters[c.character] }))
+    .filter((r) => r.s && (r.s.runs > 0 || (r.s.best_game ?? 0) > 0));
+  if (!rows.length) return '';
+  const none = de.start.boardNone;
+  const body = rows
+    .map(({ c, s }) => {
+      const won = s?.won ?? 0;
+      const night = s?.night_best_section ?? 0;
+      const pubs = s?.night_pubs_won ?? 0;
+      const game = s?.best_game ?? 0;
+      const name = shortName(c.character);
+      const label = t(de.start.boardAria, { name, won, night: night || none, pubs, game });
+      return `<tr ${attrs({ 'data-character': c.character, 'aria-label': label })}><th scope="row">${esc(name)}</th><td>${esc(won)}</td><td>${night ? esc(t(de.start.boardNight, { n: night })) : none}</td><td>${night ? esc(pubs) : none}</td><td>${game ? esc(game) : none}</td></tr>`;
+    })
+    .join('');
+  const h = de.start.boardHead;
+  return `<section class="start-board chalkboard" data-testid="start-board">
+    <h2>${moonIcon(14)} ${esc(de.start.board)}</h2>
+    <table><thead><tr><th scope="col">${esc(h.who)}</th><th scope="col">${esc(h.won)}</th><th scope="col">${esc(h.night)}</th><th scope="col">${esc(h.pubs)}</th><th scope="col">${esc(h.game)}</th></tr></thead><tbody>${body}</tbody></table>
+  </section>`;
 }
 
 function sheet(inner: string, closable = true, cls = '', overlayCls = ''): string {
@@ -452,6 +510,7 @@ function settingsBlock(ui: UiState): string {
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
     <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
+    ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',
       'data-testid': 'hints-reset',
@@ -761,6 +820,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return ui.meta ? sheet(renderUnlocks(ui.meta, overlay.ids), false, 'sheet-unlock', 'overlay-unlock') : '';
     case 'special':
       return sheet(renderSpecials(overlay.ids, view?.edition ?? []), false, 'sheet-special', 'overlay-special');
+    case 'night':
+      return view ? sheet(renderNightSheet(view), false, 'sheet-night', 'overlay-night') : '';
     case 'score':
       return '';
   }
@@ -775,6 +836,7 @@ function bookIcon(): string {
 function rewardName(reward: Reward, meta: MetaView): string {
   if ('Relic' in reward) return contentName('relics', reward.Relic);
   if ('CardMod' in reward) return contentName('card_mods', reward.CardMod);
+  if ('CardBack' in reward) return de.backs[reward.CardBack]?.name ?? reward.CardBack;
   const c = meta.characters.find((x) => x.character === reward.Character);
   return t(de.book.rewardCharacter, { name: c ? characterName(c) : contentName('characters', reward.Character) });
 }
@@ -794,7 +856,7 @@ function infoName(info: RewardInfo, meta: MetaView): string {
 /** Text of a reward from the core's reward info, German-deck override first. */
 function infoText(info: RewardInfo): string {
   const r = info.reward;
-  const own = 'Relic' in r ? contentText('relics', r.Relic) : 'CardMod' in r ? contentText('card_mods', r.CardMod) : contentText('characters', r.Character);
+  const own = 'Relic' in r ? contentText('relics', r.Relic) : 'CardMod' in r ? contentText('card_mods', r.CardMod) : 'CardBack' in r ? (de.backs[r.CardBack]?.text ?? '') : contentText('characters', r.Character);
   return own || info.text;
 }
 
@@ -917,6 +979,7 @@ function burst(): string {
 function rewardPic(reward: Reward, info?: RewardInfo): string {
   if ('Character' in reward) return portrait(characterPortraitId(reward.Character), 'portrait-lg');
   if ('CardMod' in reward) return `<span class="unlock-coaster unlock-mod">${modIcon(reward.CardMod, 46)}</span>`;
+  if ('CardBack' in reward) return `<span class="unlock-back">${cardBack('', backDesign(reward.CardBack))}</span>`;
   const look = relicLook(reward.Relic);
   const kind = info?.kind === 'Regular' || info?.kind === 'HouseRule' ? info.kind : look.kind;
   return `<span class="unlock-deckel">${relicCoaster({ id: reward.Relic, kind, rarity: info?.rarity ?? look.rarity, group: look.group }, { size: 72 })}</span>`;
@@ -956,7 +1019,7 @@ function renderUnlocks(meta: MetaView, ids: string[]): string {
         : u.rewards.map((r) => ({
             reward: r,
             name: rewardName(r, meta),
-            text: 'Character' in r ? contentText('characters', r.Character) : 'CardMod' in r ? contentText('card_mods', r.CardMod) : contentText('relics', r.Relic),
+            text: 'Character' in r ? contentText('characters', r.Character) : 'CardMod' in r ? contentText('card_mods', r.CardMod) : 'CardBack' in r ? (de.backs[r.CardBack]?.text ?? '') : contentText('relics', r.Relic),
             kind: '',
           }));
       const rewards = infos

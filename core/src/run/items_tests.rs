@@ -321,7 +321,7 @@ fn groups_of_the_relics_are_data() {
         ),
         (
             RelicGroup::Factor,
-            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand golden_shears",
+            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand golden_shears night_owl sweep_out rag_collector moonlight night_shift dawn",
         ),
     ];
     let mut named = 0;
@@ -630,6 +630,7 @@ fn guardian_angel_plays_a_lost_pub_again_once() {
         length: RunLength::Full,
         stake: 0,
         boss: None,
+        night: false,
     }));
 }
 

@@ -222,4 +222,11 @@
         Pimc(samples: 8, depth: 3),
         Pimc(samples: 12, depth: 3),
     ],
+    // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,
+    // Cockpit q31 A): Nach dem Alten darf der Spieler weiterziehen. Stadtteil
+    // n der Nacht (4, 5, …) spielt die Zielwerte von Stadtteil 3 (Kneipen und
+    // Boss) × growth^(n − 3), gerundet; Groschen und Belohnungen wie in
+    // Stadtteil 3. Die Verschärfungen stehen in night.ron. VORLÄUFIG, eine
+    // Balancing-Runde stellt es ein.
+    night: (growth: 1.6),
 )

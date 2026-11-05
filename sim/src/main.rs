@@ -29,6 +29,10 @@
 //!   character that plays (DESIGN 9.2).
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
 //!   state; prints after how many runs each unlock is earned.
+//! - `--night`: every won run continues into the long night (ADR 0020)
+//!   until a pub is lost; prints the night districts reached, pubs won,
+//!   the Faktor at the end, the Verschärfung each night ended under and
+//!   the night relics taken.
 //! - `--short`: dropped with the Kneipentour (ADR 0016); an error now.
 //!   Was: kurzer Abend, the sections of `run.ron`'s `short_sections`
 //!   (DESIGN 5.3) instead of all.
@@ -129,6 +133,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-shop" => args.options.no_shop = true,
             "--curve" => args.options.curve = true,
             "--unlocks" => args.options.unlocks = true,
+            "--night" => args.options.night = true,
             "--short" => {
                 return Err("--short: the short evening is dropped (ADR 0016)".into());
             }
@@ -593,7 +598,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve [--district N] | --unlocks]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve [--district N] | --unlocks | --night]]"
             );
             return ExitCode::FAILURE;
         }
