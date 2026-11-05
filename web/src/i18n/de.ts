@@ -38,7 +38,6 @@ export const de = {
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
-      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Deck.',
       ConditionNotMet: 'Der wirkt gerade nicht.',
       NotInBossPub: 'Nicht in der Boss-Kneipe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
@@ -275,7 +274,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'trägt nichts, was abgehen könnte',
-      SpecialTaken: 'eine andere Karte ist das schon',
     } as Record<string, string>,
     /** Short tag on the card in the picker. */
     tags: {
@@ -285,7 +283,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'sauber',
-      SpecialTaken: 'vergeben',
     } as Record<string, string>,
   },
 
@@ -582,7 +579,6 @@ export const de = {
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
-    voucherCapped: '{mod} eingelöst, aber {holder} ist schon {special}. Dafür {coins} Groschen.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -882,7 +878,6 @@ export const de = {
     blocked: {
       NotEnoughCoins: 'Zu wenig Groschen.',
       NothingLeft: 'Hier gibt es nichts mehr für dich.',
-      SpecialCardCap: 'Dein Deck hat diese Spezialkarte schon.',
       NoFittingCard: 'Keine Karte deines Decks passt.',
       NoRelic: 'Du hast kein Relikt.',
       RelicSlotsFull: 'Alle Relikt-Plätze sind belegt.',
@@ -991,7 +986,7 @@ export const de = {
       'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
       'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
     ],
-    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Deck. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    cap: 'Spezialkarten darf dein Deck beliebig viele haben.',
     go: 'Verstanden',
   },
 

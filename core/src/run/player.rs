@@ -505,19 +505,6 @@ impl RunEvent {
                 value,
                 via_hand,
             },
-            RunEvent::VoucherCapped {
-                card,
-                card_mod,
-                special,
-                holder,
-                coins,
-            } => RunEvent::VoucherCapped {
-                card,
-                card_mod,
-                special,
-                holder,
-                coins,
-            },
             RunEvent::VoucherReturned {
                 card,
                 card_mod,

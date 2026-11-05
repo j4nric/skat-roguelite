@@ -208,9 +208,10 @@ fn shirker_vouchers_come_back_after_the_pub() {
 }
 
 #[test]
-fn shirker_voucher_capped_at_the_special_comes_back() {
-    // The Totenmarke paid Groschen instead (another card is Untot): the
-    // card did not turn, so the voucher comes back after the pub.
+fn shirker_totenmarke_turns_its_card_next_to_another_untot() {
+    // No cap on special cards since 05.11.2026: the Totenmarke turns D8
+    // even though CA is Untot, and like every Marke that turned its card
+    // it does not come back after the pub.
     let content = content();
     let mut run = character_run(&content, Character::Shirker);
     let other = id_of(&run, "CA");
@@ -220,23 +221,16 @@ fn shirker_voucher_capped_at_the_special_comes_back() {
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     run.apply(&content, RunAction::PickUpSkat).expect("skat");
     let (d8, c7) = (id_of(&run, "D8"), id_of(&run, "C7"));
-    let events = run
-        .apply(&content, RunAction::Discard([d8, c7]))
+    run.apply(&content, RunAction::Discard([d8, c7]))
         .expect("discard");
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherCapped { card, .. } if *card == d8))
-    );
-    assert!(mods_of(&run, "D8").is_empty());
+    assert_eq!(mods_of(&run, "D8"), vec![("undead".into(), 1)]);
     let mut events = Vec::new();
     run.pub_lost(&content, &mut events).expect("pub over");
-    assert!(events.contains(&RunEvent::VoucherReturned {
-        card: d8,
-        card_mod: CardModId::new("voucher_undead"),
-        value: 1,
-    }));
-    assert_eq!(mods_of(&run, "D8"), vec![("voucher_undead".into(), 1)]);
+    assert!(!events.iter().any(|e| matches!(
+        e,
+        RunEvent::VoucherReturned { card, .. } if *card == d8
+    )));
+    assert_eq!(mods_of(&run, "D8"), vec![("undead".into(), 1)]);
 }
 
 #[test]

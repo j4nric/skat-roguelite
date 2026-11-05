@@ -1152,16 +1152,6 @@ export class App {
         this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
         continue;
       }
-      if ('VoucherCapped' in ev) {
-        // One Untot and one Wandelkarte per edition (DESIGN 7.2): the voucher paid Groschen instead.
-        const { card_mod, special, holder, coins } = ev.VoucherCapped;
-        const held = after.edition.find((c) => c.id === holder);
-        this.showToast(
-          t(de.toast.voucherCapped, { mod: contentName('card_mods', card_mod), holder: held ? cardName(held.kind) : '', special: contentName('card_mods', special), coins }),
-          'top',
-        );
-        continue;
-      }
       if ('VoucherRedeemed' in ev) {
         // Effekte v2: a voucher was redeemed when its card was discarded (or by a hand game).
         const id = ev.VoucherRedeemed.card;

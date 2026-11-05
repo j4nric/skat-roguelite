@@ -1,7 +1,8 @@
 //! Special cards in the run (DESIGN 7.2, decided by the user on
-//! 03.11.2026): at most one Untot and one Wandelkarte per edition on every
-//! path, the voucher's fallback, the rare special offer of the Auslage, the
-//! hint flag of the meta state and saves.
+//! 03.11.2026; since 05.11.2026 without a cap per edition): Marken always
+//! turn their card, offers propose special cards the edition has already,
+//! the rare special offer of the Auslage, the hint flag of the meta state
+//! and saves.
 
 use super::content_tests::{card_mod_run_with, content, fixed_deal};
 use super::meta::MetaState;
@@ -41,7 +42,7 @@ fn discard_d9(run: &mut Run, content: &Content) -> Vec<RunEvent> {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_totenmarke_pays_three_groschen_when_another_card_is_untot() {
+fn a_totenmarke_turns_its_card_when_another_card_is_untot() {
     let content = content();
     let mut run = card_mod_run_with(&content, 2, "voucher_undead", 1);
     run.edition
@@ -49,45 +50,27 @@ fn a_totenmarke_pays_three_groschen_when_another_card_is_untot() {
         .expect("Untot on HA");
     let coins = run.coins();
     let events = discard_d9(&mut run, &content);
-    let fallback = content.run.shop.zinken.capped_voucher_coins;
-    assert_eq!(fallback, 3);
-    assert!(events.contains(&RunEvent::VoucherCapped {
-        card: 2,
-        card_mod: id("voucher_undead"),
-        special: id("undead"),
-        holder: 15,
-        coins: fallback,
-    }));
     assert!(events.iter().any(|e| matches!(
         e,
-        RunEvent::CoinsGained {
-            amount: 3,
-            source: Source::CardMod { card: 2, .. },
-            ..
-        }
+        RunEvent::DeckChanged(DeckChange::Modified { card: 2, card_mod, .. })
+            if card_mod == &id("undead")
     )));
-    assert_eq!(run.coins(), coins + fallback);
-    assert!(mods(&run, 2).is_empty(), "the voucher is gone, no Untot");
+    assert_eq!(run.coins(), coins, "nothing paid instead");
+    assert_eq!(mods(&run, 2), vec![id("undead")]);
     assert_eq!(mods(&run, 15), vec![id("undead")]);
 }
 
 #[test]
-fn a_narrenmarke_pays_when_another_card_is_wandelkarte() {
+fn a_narrenmarke_turns_its_card_when_another_card_is_wandelkarte() {
     let content = content();
     let mut run = card_mod_run_with(&content, 2, "voucher_wild", 1);
     run.edition
         .add_mod(&content, 15, &id("wild_card"), 1)
         .expect("Wandelkarte on HA");
-    // An Untot elsewhere does not matter for the Narrenmarke.
     let coins = run.coins();
-    let events = discard_d9(&mut run, &content);
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherCapped { holder: 15, .. }))
-    );
-    assert_eq!(run.coins(), coins + 3);
-    assert!(mods(&run, 2).is_empty());
+    discard_d9(&mut run, &content);
+    assert_eq!(run.coins(), coins);
+    assert_eq!(mods(&run, 2), vec![id("wild_card")]);
 }
 
 #[test]
@@ -99,12 +82,7 @@ fn a_totenmarke_turns_its_card_when_untot_is_free() {
         .add_mod(&content, 15, &id("wild_card"), 1)
         .expect("Wandelkarte on HA");
     let coins = run.coins();
-    let events = discard_d9(&mut run, &content);
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherCapped { .. }))
-    );
+    discard_d9(&mut run, &content);
     assert_eq!(mods(&run, 2), vec![id("undead")]);
     assert_eq!(run.coins(), coins);
 }
@@ -119,18 +97,13 @@ fn a_totenmarke_on_its_own_untot_card_does_nothing() {
         .add_mod(&content, 2, &id("voucher_undead"), 1)
         .expect("voucher next to Untot");
     let coins = run.coins();
-    let events = discard_d9(&mut run, &content);
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherCapped { .. }))
-    );
+    discard_d9(&mut run, &content);
     assert_eq!(mods(&run, 2), vec![id("undead")]);
     assert_eq!(run.coins(), coins);
 }
 
 // ---------------------------------------------------------------------------
-// The cap on every path
+// No cap on any path (since 05.11.2026)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -147,64 +120,20 @@ fn the_special_target_of_vouchers_and_special_cards() {
 }
 
 #[test]
-fn a_special_card_or_its_voucher_closes_the_special_card() {
-    let content = content();
-    let mut run = at_route(&content, 3, 0);
-    assert!(run.special_open(&content, &id("undead")));
-    run.edition
-        .add_mod(&content, 9, &id("voucher_undead"), 1)
-        .expect("voucher");
-    assert!(!run.special_open(&content, &id("undead")));
-    assert!(run.special_open(&content, &id("wild_card")));
-    run.edition.cleanse(9).expect("cleanse");
-    run.edition
-        .add_mod(&content, 9, &id("undead"), 1)
-        .expect("Untot");
-    assert!(!run.special_open(&content, &id("undead")));
-}
-
-#[test]
-fn the_kartenmaler_and_the_auslage_pool_respect_the_cap() {
+fn the_pools_keep_the_marken_next_to_a_special_card() {
     let content = content();
     let mut run = at_route(&content, 3, 0);
     let has = |run: &Run, m: &str| run.zinken_pool(&content).iter().any(|(p, _)| p == &id(m));
-    assert!(has(&run, "voucher_undead") && has(&run, "voucher_wild"));
     run.edition
         .add_mod(&content, 9, &id("undead"), 1)
         .expect("Untot");
-    assert!(!has(&run, "voucher_undead"));
-    assert!(has(&run, "voucher_wild"));
     run.edition
         .add_mod(&content, 10, &id("voucher_wild"), 1)
         .expect("Narrenmarke");
-    assert!(!has(&run, "voucher_wild"));
+    assert!(has(&run, "voucher_undead") && has(&run, "voucher_wild"));
     // The random draws of the encounters (Kartengeber) as well.
     let pool = run.mod_pool(&content, false);
-    assert!(
-        pool.iter()
-            .all(|(m, _)| !["voucher_undead", "voucher_wild"].contains(&m.as_str()))
-    );
-}
-
-#[test]
-fn the_kartenmaler_never_offers_a_closed_voucher() {
-    let content = content();
-    for seed in 0..60 {
-        let (mut run, _) = tresen(&content, seed, 30);
-        run.edition
-            .add_mod(&content, 9, &id("undead"), 1)
-            .expect("Untot");
-        run.edition
-            .add_mod(&content, 10, &id("wild_card"), 1)
-            .expect("Wandelkarte");
-        run.apply(&content, RunAction::HirePainter(31))
-            .expect("hire");
-        let painter = run.painter().expect("painter");
-        for (m, _) in &painter.options {
-            let def = content.card_mod(m).expect("mod");
-            assert!(special_target(def).is_none(), "seed {seed}: {m}");
-        }
-    }
+    assert!(pool.iter().any(|(m, _)| m.as_str() == "voucher_undead"));
 }
 
 /// Open an encounter on a walk (as `items_tests::open` does).
@@ -222,22 +151,8 @@ fn open(run: &mut Run, content: &Content, encounter: &str) -> bool {
 }
 
 #[test]
-fn old_cards_offer_only_a_voucher_the_edition_may_still_use() {
+fn old_cards_offer_their_vouchers_next_to_special_cards() {
     let content = content();
-    for seed in 0..20 {
-        let mut run = at_route(&content, seed, 0);
-        run.edition
-            .add_mod(&content, 9, &id("undead"), 1)
-            .expect("Untot");
-        assert!(open(&mut run, &content, "old_cards"));
-        assert_eq!(
-            run.encounter_option_block(&content, 0),
-            Some(OptionBlock::SpecialCardCap),
-            "seed {seed}"
-        );
-        assert_eq!(run.encounter_option_block(&content, 1), None);
-    }
-    // Both closed: only the Groschen for the old deck are left.
     let mut run = at_route(&content, 1, 0);
     run.edition
         .add_mod(&content, 9, &id("undead"), 1)
@@ -246,35 +161,20 @@ fn old_cards_offer_only_a_voucher_the_edition_may_still_use() {
         .add_mod(&content, 10, &id("voucher_wild"), 1)
         .expect("Narrenmarke");
     assert!(open(&mut run, &content, "old_cards"));
-    let blocks: Vec<Option<OptionBlock>> = (0..3)
-        .map(|i| run.encounter_option_block(&content, i))
-        .collect();
-    assert_eq!(
-        blocks,
-        [
-            Some(OptionBlock::SpecialCardCap),
-            Some(OptionBlock::SpecialCardCap),
-            None
-        ]
-    );
+    for i in 0..3 {
+        assert_eq!(run.encounter_option_block(&content, i), None, "option {i}");
+    }
 }
 
 #[test]
-fn the_conjurer_stays_away_while_the_wandelkarte_is_taken() {
+fn the_conjurer_comes_while_another_card_is_wandelkarte() {
     let content = content();
-    let mut run = at_route(&content, 1, 0);
-    assert!(open(&mut run, &content, "conjurer"));
     let mut run = at_route(&content, 1, 0);
     run.edition
         .add_mod(&content, 9, &id("wild_card"), 1)
         .expect("Wandelkarte");
-    // Only the card trick is left.
     assert!(open(&mut run, &content, "conjurer"));
-    assert_eq!(
-        run.encounter_option_block(&content, 0),
-        Some(OptionBlock::SpecialCardCap)
-    );
-    assert_eq!(run.encounter_option_block(&content, 2), None);
+    assert_eq!(run.encounter_option_block(&content, 0), None);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,14 +195,8 @@ fn the_auslage_rarely_offers_a_special_card_right_on_a_card() {
     for seed in 0..400 {
         let (run, _) = tresen(&content, seed, 10);
         let offers = offers(&run);
-        let mut targets = Vec::new();
         for o in &offers {
             total += 1;
-            let def = content.card_mod(&o.card_mod).expect("mod");
-            if let Some(t) = special_target(def) {
-                assert!(!targets.contains(t), "seed {seed}: one per special card");
-                targets.push(t.clone());
-            }
             if !is_special(&content, o) {
                 continue;
             }
@@ -331,8 +225,9 @@ fn the_auslage_rarely_offers_a_special_card_right_on_a_card() {
 }
 
 #[test]
-fn the_auslage_never_offers_a_special_card_the_edition_has() {
+fn the_auslage_offers_special_cards_the_edition_has() {
     let content = content();
+    let mut seen = 0;
     for seed in 0..300 {
         let mut run = at_route(&content, seed, 10);
         run.edition
@@ -341,15 +236,16 @@ fn the_auslage_never_offers_a_special_card_the_edition_has() {
         run.edition
             .add_mod(&content, 12, &id("voucher_wild"), 1)
             .expect("Narrenmarke");
-        run.edition
-            .add_mod(&content, 14, &id("doppelganger"), 1)
-            .expect("Doppelgänger");
         run.walk_to_tresen(&content);
-        for o in offers(&run) {
-            let def = content.card_mod(&o.card_mod).expect("mod");
-            assert_eq!(special_target(def), None, "seed {seed}: {}", o.card_mod);
-        }
+        seen += offers(&run)
+            .iter()
+            .filter(|o| {
+                let def = content.card_mod(&o.card_mod).expect("mod");
+                special_target(def).is_some()
+            })
+            .count();
     }
+    assert!(seen > 0, "Untot and Narrenmarke still come");
 }
 
 #[test]
@@ -404,7 +300,7 @@ fn a_special_offer_goes_through_the_tresen_prices() {
 }
 
 #[test]
-fn a_special_offer_the_cap_forbids_cannot_be_bought() {
+fn a_second_untot_can_be_bought() {
     let content = content();
     let (mut run, _) = tresen(&content, 4, 20);
     run.edition
@@ -420,13 +316,12 @@ fn a_special_offer_the_cap_forbids_cannot_be_bought() {
             bargain: None,
         }],
     );
-    let err = run
-        .apply(&content, RunAction::BuyCardOffer(0))
-        .expect_err("capped");
-    assert_eq!(err.code(), RunErrorCode::SpecialTaken);
-    assert_eq!(run.coins(), 20, "nothing paid");
     let view = run.view(&content).shop.expect("shop");
-    assert!(!view.card_offers[0].as_ref().expect("tile").can_buy);
+    assert!(view.card_offers[0].as_ref().expect("tile").can_buy);
+    run.apply(&content, RunAction::BuyCardOffer(0))
+        .expect("buy");
+    assert_eq!(mods(&run, 9), vec![id("undead")]);
+    assert_eq!(mods(&run, 31), vec![id("undead")]);
 }
 
 // ---------------------------------------------------------------------------
@@ -491,13 +386,13 @@ fn a_run_shows_the_hint_once_through_its_events() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_save_from_before_the_cap_keeps_both_special_cards() {
+fn a_save_with_two_untot_keeps_both() {
     let content = content();
     let mut run = at_route(&content, 5, 10);
     run.edition
         .add_mod(&content, 9, &id("undead"), 1)
         .expect("Untot");
-    // Before the cap a second Untot could come; the save keeps it.
+    // Two Untot (from before the cap of 03.11.2026, or since 05.11.2026).
     let mut value = serde_json::to_value(&run).expect("value");
     let cards = value["edition"]["cards"]
         .as_array_mut()
@@ -508,11 +403,12 @@ fn a_save_from_before_the_cap_keeps_both_special_cards() {
     old.drop_unknown_content(&content);
     assert_eq!(mods(&old, 9), vec![id("undead")]);
     assert_eq!(mods(&old, 10), vec![id("undead")]);
-    // No third, and no offer for it.
-    assert!(!old.special_open(&content, &id("undead")));
-    assert_eq!(
-        old.edition.clone().add_mod(&content, 11, &id("undead"), 1),
-        Err(crate::deck::DeckError::SpecialTaken(id("undead")))
+    // A third may come since 05.11.2026 (no cap).
+    assert!(
+        old.edition
+            .clone()
+            .add_mod(&content, 11, &id("undead"), 1)
+            .is_ok()
     );
     // A save with a special offer in the Auslage loads as it was.
     let (mut run, _) = tresen(&content, 6, 10);

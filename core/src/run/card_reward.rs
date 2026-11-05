@@ -11,9 +11,8 @@
 //!
 //! The offers come from the Zinken catalogue like the Auslage (DESIGN
 //! 8.6): never a curse, only what the character meets and has unlocked,
-//! only a Zinke some card of the edition takes now, under the cap of the
-//! special cards ([`Run::special_open`]), at most one offer per special
-//! card (the Marke for it included). Each offer is, with
+//! only a Zinke some card of the edition takes now, at most one offer per
+//! special card (the Marke for it included). Each offer is, with
 //! [`CardRewardConfig::special_percent`], a special card (Untot,
 //! Wandelkarte, Doppelgänger) while one may still come; otherwise first a
 //! rarity class by [`CardRewardConfig::rarity_weights`] (only classes with
@@ -144,7 +143,6 @@ impl Run {
             .filter(|m| !m.is_curse() && m.kind != ModKind::SpecialCurse)
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.offer_open(content, m))
             .filter(|m| self.reward_fits_some(content, m));
         for def in defs {
             let mut weight = self.focus_weight(content, def.focus);

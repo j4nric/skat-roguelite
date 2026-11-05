@@ -610,9 +610,6 @@ pub enum OptionBlock {
     /// Nothing was left to draw (no house rule, relic, Schnaps or
     /// modification for the character).
     NothingLeft,
-    /// The edition holds as many special cards of this kind as it may
-    /// (DESIGN 7.2).
-    SpecialCardCap,
     /// No card of the edition can take it.
     NoFittingCard,
     /// No relic owned.
@@ -632,9 +629,7 @@ impl OptionBlock {
         match self {
             OptionBlock::NotEnoughCoins => RunError::NotEnoughCoins,
             OptionBlock::RelicSlotsFull => RunError::NoFreeSlot,
-            OptionBlock::NothingLeft | OptionBlock::SpecialCardCap | OptionBlock::NoFittingCard => {
-                RunError::NoModAvailable
-            }
+            OptionBlock::NothingLeft | OptionBlock::NoFittingCard => RunError::NoModAvailable,
             OptionBlock::NoRelic => RunError::InvalidSlot,
             OptionBlock::BetOpen | OptionBlock::NotNeeded => RunError::ConditionNotMet,
         }
@@ -1302,22 +1297,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         via_hand: bool,
     },
-    /// A Totenmarke or Narrenmarke was redeemed while another card of the
-    /// edition is that special card already (at most one Untot and one
-    /// Wandelkarte, DESIGN 7.2): the card stays as it is, the voucher pays
-    /// Groschen instead (`CoinsGained` follows).
-    VoucherCapped {
-        /// Instance id of the card that went into the skat.
-        card: u32,
-        /// The voucher.
-        card_mod: CardModId,
-        /// The special card it would have made.
-        special: CardModId,
-        /// The card that is that special card.
-        holder: u32,
-        /// Groschen paid instead.
-        coins: u32,
-    },
     /// "Der Drückeberger" (DESIGN 9.4): a voucher redeemed in the pub
     /// that just ended is back on its card.
     VoucherReturned {
@@ -1910,9 +1889,6 @@ pub enum RunErrorCode {
     AlreadyUsed,
     /// The character's curses cannot be cleansed ("Bruderherz").
     CurseStays,
-    /// Another card of the edition is this special card already (at most
-    /// one Untot and one Wandelkarte, DESIGN 7.2).
-    SpecialTaken,
     /// The consumable does nothing now ("Klarer" without a minus,
     /// "Eierlikör" without being behind).
     ConditionNotMet,
@@ -1982,7 +1958,6 @@ impl RunErrorCode {
             RunErrorCode::InvalidRiseCards => "InvalidRiseCards",
             RunErrorCode::AlreadyUsed => "AlreadyUsed",
             RunErrorCode::CurseStays => "CurseStays",
-            RunErrorCode::SpecialTaken => "SpecialTaken",
             RunErrorCode::ConditionNotMet => "ConditionNotMet",
             RunErrorCode::NotInBossPub => "NotInBossPub",
             RunErrorCode::SchnappsRewardPending => "SchnappsRewardPending",
@@ -2028,7 +2003,6 @@ impl RunError {
                 DeckError::AtMaximum(_) => RunErrorCode::ModAtMaximum,
                 DeckError::UnknownMod(_) => RunErrorCode::UnknownContent,
                 DeckError::MissingCard(_) => RunErrorCode::MissingCard,
-                DeckError::SpecialTaken(_) => RunErrorCode::SpecialTaken,
             },
             RunError::TargetRequired => RunErrorCode::TargetRequired,
             RunError::NoModAvailable => RunErrorCode::NoModAvailable,
@@ -5740,7 +5714,6 @@ impl Run {
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.offer_open(content, m))
             // Only what some card of the deck may still take.
             .filter(|m| {
                 self.edition
@@ -5980,7 +5953,7 @@ impl Run {
             }
             for effect in hook.then() {
                 if let Effect::TurnInto(special) = effect {
-                    self.turn_into(content, card, card_mod, special, &source, events);
+                    self.turn_into(content, card, special, events);
                 } else {
                     self.apply_effect(content, &source, &effect.scaled(value), events);
                 }
@@ -5991,35 +5964,19 @@ impl Run {
     }
 
     /// A redeemed voucher makes `card` the special card `special`
-    /// (`TurnInto`). If another card is that special card already (at most
-    /// one Untot and one Wandelkarte, DESIGN 7.2), the card stays as it is
-    /// and the voucher pays [`crate::content::ZinkenConfig::capped_voucher_coins`]
-    /// instead. A card that is the special card already stays so, nothing
-    /// paid (the Drückeberger's returned Totenmarke, DESIGN 9.4).
+    /// (`TurnInto`). Since 05.11.2026 there is no cap on special cards
+    /// (DESIGN 7.2): it always turns the card. A card that is the special
+    /// card already stays so (the Drückeberger's returned Totenmarke,
+    /// DESIGN 9.4).
     fn turn_into(
         &mut self,
         content: &Content,
         card: u32,
-        voucher: &CardModId,
         special: &CardModId,
-        source: &Source,
         events: &mut Vec<RunEvent>,
     ) {
-        match self.edition.add_mod(content, card, special, 1) {
-            Ok(change) => events.push(RunEvent::DeckChanged(change)),
-            Err(DeckError::SpecialTaken(_)) => {
-                let coins = content.run.shop.zinken.capped_voucher_coins;
-                events.push(RunEvent::VoucherCapped {
-                    card,
-                    card_mod: voucher.clone(),
-                    special: special.clone(),
-                    holder: self.edition.holder_of(special).unwrap_or(card),
-                    coins,
-                });
-                let amount = i32::try_from(coins).unwrap_or(i32::MAX);
-                self.apply_effect(content, source, &Effect::GainCoins(amount), events);
-            }
-            Err(_) => {}
+        if let Ok(change) = self.edition.add_mod(content, card, special, 1) {
+            events.push(RunEvent::DeckChanged(change));
         }
     }
 

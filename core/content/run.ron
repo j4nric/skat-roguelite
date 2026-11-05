@@ -148,12 +148,10 @@
             painter_choices: 2,
             cleanse_price: 3,
             // Spezialkarten (03.11.2026, nach Augenmaß): selten direkt in
-            // der Auslage, etwa ein Angebot von 20, teuer. Eine Toten- oder
-            // Narrenmarke, deren Spezialkarte die Ausgabe schon hat, zahlt
-            // beim Einlösen Groschen statt dessen.
+            // der Auslage, etwa ein Angebot von 20, teuer. Seit 05.11.2026
+            // ohne Obergrenze je Deck (Entscheidung des Nutzers).
             special_percent: 5,
             special_price: 6,
-            capped_voucher_coins: 3,
         ),
         // Flüche als Handel (Entscheidung des Nutzers, 03.11.2026, DESIGN
         // 8.6): Schnäppchen in der Auslage (bargain_percent je Angebot, halber

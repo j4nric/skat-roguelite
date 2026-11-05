@@ -1556,10 +1556,6 @@ pub struct ZinkenConfig {
     /// Price of such an offer before discounts (plus `premium` on a card
     /// of `premium_ranks`).
     pub special_price: u32,
-    /// Groschen a Totenmarke or Narrenmarke pays when it is redeemed while
-    /// another card is that special card already (DESIGN 7.2: at most one
-    /// Untot and one Wandelkarte per edition).
-    pub capped_voucher_coins: u32,
 }
 
 /// Groschen per life of an encounter option from before ADR 0019 (no

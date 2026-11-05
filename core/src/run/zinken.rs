@@ -91,30 +91,6 @@ pub fn special_target(def: &CardModDef) -> Option<&CardModId> {
 }
 
 impl Run {
-    /// Whether the player's edition may still get the special card
-    /// `special` (DESIGN 7.2, at most one Untot and one Wandelkarte): no
-    /// card is it, and no card carries a voucher that turns into it.
-    /// Offers (Auslage, Kartenmaler, encounters) propose nothing for a
-    /// special card that is not open, so nothing they sell ends up in the
-    /// voucher's fallback.
-    #[must_use]
-    pub fn special_open(&self, content: &Content, special: &CardModId) -> bool {
-        !self.edition.cards().iter().any(|card| {
-            card.mods.iter().any(|m| {
-                content
-                    .card_mod(m)
-                    .and_then(special_target)
-                    .is_some_and(|target| target == special)
-            })
-        })
-    }
-
-    /// Whether an offer may propose `def` under the cap of the special
-    /// cards ([`Run::special_open`]); always for what makes no special card.
-    pub(super) fn offer_open(&self, content: &Content, def: &CardModDef) -> bool {
-        special_target(def).is_none_or(|special| self.special_open(content, special))
-    }
-
     /// The Kartenmaler's choice waiting for the player, if any.
     #[must_use]
     pub const fn painter(&self) -> Option<&PainterChoice> {
@@ -135,7 +111,6 @@ impl Run {
             .filter(|m| !m.is_curse() && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.offer_open(content, m))
             .map(|m| {
                 let mut weight =
                     rarity.percent_weight(m.rarity, self.focus_weight(content, m.focus));
@@ -192,11 +167,11 @@ impl Run {
     ///
     /// Each offer is, with [`crate::content::ZinkenConfig::special_percent`],
     /// a special card right on a card ("wird untot", "wird Wandelkarte",
-    /// [`Run::special_offers`]) while one may still come; otherwise a Zinke
-    /// from [`Run::zinken_pool`]. At most one offer per special card, the
-    /// voucher for it included, so that buying one never makes another
-    /// offer of the same Auslage void. A Zinke may be a "Schnäppchen" at
-    /// half price ([`Run::draw_bargain`], curses as trade).
+    /// [`Run::special_offers`]); otherwise a Zinke from
+    /// [`Run::zinken_pool`]. One card at most once per Auslage; since
+    /// 05.11.2026 (no cap on special cards) a special card may come next to
+    /// its Marke. A Zinke may be a "Schnäppchen" at half price
+    /// ([`Run::draw_bargain`], curses as trade).
     pub(super) fn draw_card_offers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let config = &content.run.shop.zinken;
         let pool = self.zinken_pool(content);
@@ -216,7 +191,6 @@ impl Run {
             }
         }
         let mut specials = self.special_offers(content);
-        let target = |m: &CardModId| content.card_mod(m).and_then(special_target).cloned();
         let mut offers: Vec<Option<CardOffer>> = Vec::new();
         for _ in 0..config.offers {
             let special_roll = !specials.is_empty()
@@ -231,10 +205,6 @@ impl Run {
             };
             pairs.retain(|((c, _), _)| *c != card);
             specials.retain(|((c, _), _)| *c != card);
-            if let Some(special) = target(&card_mod) {
-                pairs.retain(|((_, m), _)| target(m).as_ref() != Some(&special));
-                specials.retain(|((_, m), _)| *m != special);
-            }
             let (Some(def), Some(deck_card)) =
                 (content.card_mod(&card_mod), self.edition.get(card))
             else {
@@ -279,9 +249,9 @@ impl Run {
 
     /// The special cards the Auslage may offer right on a card (DESIGN
     /// 8.6), with their weight: every [`ModKind::Special`] for the
-    /// character, unlocked and still open ([`Run::special_open`]), on
-    /// every card that carries no special card yet and takes it (a normal
-    /// Zinke stays next to it); weighted like the cards of the Auslage.
+    /// character and unlocked, on every card that carries no special card
+    /// yet and takes it (a normal Zinke stays next to it); weighted like
+    /// the cards of the Auslage.
     pub(super) fn special_offers(&self, content: &Content) -> Vec<((u32, CardModId), u32)> {
         let mut offers = Vec::new();
         let specials = content
@@ -289,8 +259,7 @@ impl Run {
             .values()
             .filter(|m| m.kind == ModKind::Special)
             .filter(|m| in_pool(&m.characters, self.character))
-            .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.special_open(content, &m.id));
+            .filter(|m| !self.locked_card_mods.contains(&m.id));
         for def in specials {
             for card in self.edition.cards() {
                 let has_special = card

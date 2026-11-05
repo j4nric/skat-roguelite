@@ -722,7 +722,6 @@ export type EncounterEffect =
 export type OptionBlock =
   | 'NotEnoughCoins'
   | 'NothingLeft'
-  | 'SpecialCardCap'
   | 'NoFittingCard'
   | 'NoRelic'
   | 'RelicSlotsFull'
@@ -1094,7 +1093,6 @@ export type RunEvent =
   | { VoucherRedeemed: { card: number; card_mod: string; value: number; via_hand?: boolean } }
   | { VoucherReturned: { card: number; card_mod: string; value: number } }
   /** A Totenmarke or Narrenmarke whose special card another card is already (one each per edition): Groschen instead. */
-  | { VoucherCapped: { card: number; card_mod: string; special: string; holder: number; coins: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
