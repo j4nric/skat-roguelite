@@ -268,6 +268,10 @@ pub struct CardCount {
     /// skat: in his hand or played by him, not the skat. Nothing without a
     /// game.
     pub in_hand: bool,
+    /// Only modifications that share a build direction ([`super::BuildTag`])
+    /// with a relic the player holds: Zinken "of his direction"
+    /// ("Nachtschicht", ADR 0020).
+    pub direction: bool,
 }
 
 /// What an effect does. Each variant names its lever of the formula.
@@ -296,6 +300,16 @@ pub enum Effect {
         /// Counter name.
         counter: String,
         /// Factor added per point of the counter, as a decimal (`0.1`).
+        per: Factor,
+    },
+    /// Lever Spielwert (Faktor, ADR 0018): multiply the whole game value
+    /// by `1 + per × cards`, with the cards of the player's edition that
+    /// [`CardCount`] counts when the effect fires ("Lumpensammler": +×0,05
+    /// per card with a Zinke). Nothing while none counts.
+    ScaleGameValuePerCard {
+        /// Which cards count.
+        count: CardCount,
+        /// Factor added per card, as a decimal (`0.05`).
         per: Factor,
     },
     /// Lever Grundwert: add `per` times the current value of a run counter
@@ -617,7 +631,8 @@ impl Effect {
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
-            | Effect::ScaleGameValuePerCounter { .. } => stage.in_game(),
+            | Effect::ScaleGameValuePerCounter { .. }
+            | Effect::ScaleGameValuePerCard { .. } => stage.in_game(),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
             Effect::SchneiderBonusFromTrick
             | Effect::MultiplyTrickPoints(_)

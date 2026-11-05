@@ -321,6 +321,27 @@ pub const LEGENDARY_VALUES: [(&str, u32); 3] = [
     ("grand_seigneur", 4),
 ];
 
+/// Bot values of the relics of the long night ("Nachtschwärmer", ADR 0020),
+/// provisional, not measured: the growing and counting Faktor relics high,
+/// the conditional ×2 and ×1.5 like the other rare Faktor relics.
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `night_owl` | 6 | +×0.15 per Verschärfung, grows with the night |
+/// | `sweep_out` | 3 | ×2 on a won third game; the bot often finishes earlier |
+/// | `rag_collector` | 6 | +×0.05 per card with a Zinke: ×1.5 with ten |
+/// | `moonlight` | 6 | like the Zapfhahn with +×0.2 |
+/// | `night_shift` | 5 | +×0.1 per Zinke of the bot's direction |
+/// | `dawn` | 4 | ×1.5 on a won first game, the bot's usual win |
+pub const NIGHT_VALUES: [(&str, u32); 6] = [
+    ("night_owl", 6),
+    ("sweep_out", 3),
+    ("rag_collector", 6),
+    ("moonlight", 6),
+    ("night_shift", 5),
+    ("dawn", 4),
+];
+
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;
 
@@ -430,6 +451,7 @@ pub fn relic_value(id: &RelicId) -> u32 {
     RELIC_VALUES
         .iter()
         .chain(LEGENDARY_VALUES.iter())
+        .chain(NIGHT_VALUES.iter())
         .find(|(name, _)| *name == id.as_str())
         .map_or(DEFAULT_RELIC_VALUE, |&(_, v)| v)
 }
@@ -855,6 +877,15 @@ impl RunBot {
                 trumps >= 7 || (trumps >= 6 && aces >= 2)
             }
         }
+    }
+
+    /// The long night (ADR 0020), for measurement: after der Alte the bot
+    /// always continues ([`RunAction::EnterNight`]). [`RunBot::next_action`]
+    /// stops at the won run as before; only a caller that wants the night
+    /// (the simulator's `--night`) asks here.
+    #[must_use]
+    pub fn night_action(&self, run: &Run) -> Option<RunAction> {
+        (run.phase() == RunPhase::Won && !run.in_night()).then_some(RunAction::EnterNight)
     }
 
     /// The next action, or `None` once the run is over.
@@ -2623,6 +2654,7 @@ mod tests {
                 RELIC_VALUES
                     .iter()
                     .chain(LEGENDARY_VALUES.iter())
+                    .chain(NIGHT_VALUES.iter())
                     .any(|(name, _)| *name == id.as_str()),
                 "relic {id} has no bot value"
             );

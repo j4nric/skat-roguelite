@@ -138,6 +138,13 @@ pub struct RunView {
     pub edition: Vec<DeckCard>,
     /// Statistics of the run.
     pub stats: RunStats,
+    /// The long night (ADR 0020), once the player continued after der
+    /// Alte.
+    pub night: Option<super::night::NightView>,
+    /// Whether the player may continue into the long night now
+    /// ([`RunAction::EnterNight`]): the run is won and the night has not
+    /// begun.
+    pub can_enter_night: bool,
 }
 
 /// "Noch nötig": what the last game of a pub has to bring (DESIGN 5.1).
@@ -1527,6 +1534,8 @@ impl Run {
             needed: self.needed_view(content),
             edition: self.edition.cards().to_vec(),
             stats: self.stats,
+            night: self.night_view(content),
+            can_enter_night: self.phase == RunPhase::Won && self.night.is_none(),
         }
     }
 

@@ -26,6 +26,10 @@ use crate::content::{
 };
 use crate::rng::Rng;
 
+/// The run counter of the Verschärfungen drawn, for relics that count them
+/// ("Nachteule").
+pub const VERSCHAERFUNGEN_COUNTER: &str = "verschaerfungen";
+
 /// Salt of the night's generator ("NACHT").
 const NIGHT_STREAM: u64 = 0x4E41_4348_5400_0000;
 
@@ -227,6 +231,7 @@ impl Run {
             return;
         };
         let wanted = usize::try_from(section.saturating_sub(sections) + 1).unwrap_or(0);
+        let mut drawn = 0;
         while night.verschaerfungen.len() < wanted {
             let all: Vec<&VerschaerfungId> = content.verschaerfungen.keys().collect();
             if all.is_empty() {
@@ -248,6 +253,15 @@ impl Run {
                 section,
                 verschaerfung: id,
             });
+            drawn += 1;
+        }
+        // The run counter "Nachteule" counts ([`VERSCHAERFUNGEN_COUNTER`]).
+        if drawn > 0 {
+            let counter = self
+                .counters
+                .entry(VERSCHAERFUNGEN_COUNTER.to_owned())
+                .or_insert(0);
+            *counter = counter.saturating_add(drawn);
         }
     }
 
@@ -395,5 +409,108 @@ impl Run {
             laid.sort();
             events.push(RunEvent::NightCursesLaid { cards: laid });
         }
+    }
+}
+
+/// A Verschärfung as the player sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VerschaerfungInfo {
+    /// Id, also the key for the frontend's texts.
+    pub id: VerschaerfungId,
+    /// German name.
+    pub name: String,
+    /// German rule text.
+    pub text: String,
+    /// The night district it was drawn for, from 1 (4 = Stadtteil 4).
+    pub district: u32,
+}
+
+/// The long night for a frontend (ADR 0020).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NightView {
+    /// The night district being played or chosen next, from 1 (4 =
+    /// Stadtteil 4).
+    pub district: u32,
+    /// The Verschärfungen in force, in the order drawn.
+    pub verschaerfungen: Vec<VerschaerfungInfo>,
+    /// The Verschärfung of the district ahead while its first pub is
+    /// still to come (route choice into a new night district, the way
+    /// there): what the district start sheet shows.
+    pub announced: Option<VerschaerfungInfo>,
+    /// Further boss rules of the night boss pub of this district
+    /// ("Doppelte Bosse").
+    pub extra_bosses: Vec<super::view::BossInfo>,
+    /// Pubs won in the night.
+    pub pubs_won: u32,
+    /// Factor of the night's Zielwerte against Stadtteil 3 in this
+    /// district, in thousandths (growth and "Zielwert-Sprung").
+    pub target_permille: u64,
+}
+
+impl Run {
+    /// The long night for a frontend; `None` outside it.
+    #[must_use]
+    pub fn night_view(&self, content: &Content) -> Option<NightView> {
+        let night = self.night.as_ref()?;
+        let sections = content.run.sections();
+        let ahead = self
+            .route
+            .as_ref()
+            .map(|r| (r.section, r.index))
+            .or(self.trip.as_ref().map(|t| (t.section, t.index)));
+        let section = match (ahead, self.phase) {
+            (Some((s, _)), _) => s,
+            (None, RunPhase::Won) => sections,
+            _ => self.series.section,
+        };
+        let verschaerfungen: Vec<VerschaerfungInfo> = night
+            .verschaerfungen
+            .iter()
+            .enumerate()
+            .filter_map(|(i, id)| {
+                let def = content.verschaerfungen.get(id)?;
+                Some(VerschaerfungInfo {
+                    id: id.clone(),
+                    name: def.name.clone(),
+                    text: def.text.clone(),
+                    district: sections + u32::try_from(i).unwrap_or(0) + 1,
+                })
+            })
+            .collect();
+        let announced = match ahead {
+            Some((s, 0)) if s >= sections => verschaerfungen
+                .iter()
+                .find(|v| v.district == s + 1)
+                .cloned(),
+            _ => None,
+        };
+        let extra_bosses = if section == self.series.section {
+            night
+                .extra_bosses
+                .iter()
+                .map(|id| self.boss_info(content, id))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let probe = 1_000_000;
+        let base = content
+            .run
+            .night
+            .grow(probe, section.saturating_sub(sections.saturating_sub(1)));
+        let mut grown = base;
+        for rule in self.night_rules(content) {
+            if let NightRule::TargetJump(factor) = rule {
+                grown = factor.scale(grown);
+            }
+        }
+        Some(NightView {
+            district: section + 1,
+            verschaerfungen,
+            announced,
+            extra_bosses,
+            pubs_won: night.pubs_won,
+            target_permille: grown / 1000,
+        })
     }
 }

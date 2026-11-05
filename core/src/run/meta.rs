@@ -639,8 +639,12 @@ impl MetaState {
                 self.night_character = Some(*character);
                 self.night_pubs = 0;
             }
-            RunEvent::SeriesStarted { section, .. } if *section >= content.run.sections() => {
-                if let Some(character) = self.night_character {
+            RunEvent::SeriesStarted { section, .. } => {
+                if *section < content.run.sections() {
+                    // A pub of a normal district: no night (any more).
+                    self.night_character = None;
+                    self.night_pubs = 0;
+                } else if let Some(character) = self.night_character {
                     let entry = self.stats.characters.entry(character).or_default();
                     entry.night_best_section = entry.night_best_section.max(section + 1);
                 }
@@ -657,6 +661,11 @@ impl MetaState {
                     let entry = self.stats.characters.entry(character).or_default();
                     entry.best_game = entry.best_game.max(breakdown.value);
                 }
+            }
+            // A won run (before its night begins) ends any night before.
+            RunEvent::RunWon { .. } => {
+                self.night_character = None;
+                self.night_pubs = 0;
             }
             RunEvent::RunLost { night: true, .. } => {
                 self.night_character = None;

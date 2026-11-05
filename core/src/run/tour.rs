@@ -1115,6 +1115,9 @@ impl Run {
             )
             .map(|mut p| {
                 p.target = self.series.target;
+                if p.malus.is_none() {
+                    p.malus = self.malus(content).map(malus_info);
+                }
                 p
             })
         };

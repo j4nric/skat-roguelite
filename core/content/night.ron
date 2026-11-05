@@ -57,4 +57,24 @@
             rule: FewerCardOffers(1),
         ),
     ],
+    // Kartenrückseiten als Belohnung der Meilensteine der Nacht
+    // (unlocks.ron): Kosmetik ohne Spielwirkung (DESIGN 9.3). Die Bilder
+    // malt tools/cardart/backs.py für die Web-App.
+    card_backs: [
+        (
+            id: "moon",
+            name: "Mondsichel",
+            text: "Eine Mondsichel über den Dächern auf Nachtblau.",
+        ),
+        (
+            id: "stars",
+            name: "Sternenhimmel",
+            text: "Ein Himmel voller Sterne über der schlafenden Stadt.",
+        ),
+        (
+            id: "lantern",
+            name: "Laterne",
+            text: "Die letzte Laterne vor der Kneipe, im Morgengrauen.",
+        ),
+    ],
 )

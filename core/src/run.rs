@@ -3874,7 +3874,8 @@ impl Run {
             | Effect::AddLevels(_)
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
-            | Effect::ScaleGameValuePerCounter { .. } => active.lines.extend(line),
+            | Effect::ScaleGameValuePerCounter { .. }
+            | Effect::ScaleGameValuePerCard { .. } => active.lines.extend(line),
             Effect::AddTrickPoints(extra) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let winner = trick.winner;
@@ -5158,9 +5159,9 @@ impl Run {
     fn count_for(&self, content: &Content, effect: &Effect) -> u32 {
         match effect {
             Effect::AddBaseValuePerCursedCard(_) => self.cursed_cards(content),
-            Effect::AddBaseValuePerCard { count, .. } | Effect::AddLevelsPerCard { count, .. } => {
-                self.count_cards(content, count)
-            }
+            Effect::AddBaseValuePerCard { count, .. }
+            | Effect::AddLevelsPerCard { count, .. }
+            | Effect::ScaleGameValuePerCard { count, .. } => self.count_cards(content, count),
             _ => 0,
         }
     }
@@ -5173,6 +5174,17 @@ impl Run {
     #[must_use]
     pub fn count_cards(&self, content: &Content, count: &crate::content::CardCount) -> u32 {
         let game = self.game.as_ref().map(|a| &a.game);
+        // The build directions of the relics the player holds.
+        let directions: Vec<crate::content::BuildTag> = if count.direction {
+            self.relics
+                .iter()
+                .chain(&self.evening_relics)
+                .filter_map(|r| content.relic(r))
+                .flat_map(|r| r.tags.iter().copied())
+                .collect()
+        } else {
+            Vec::new()
+        };
         let trump = game
             .and_then(Game::declaration)
             .filter(|d| !d.is_ramsch())
@@ -5211,7 +5223,9 @@ impl Run {
                         } else {
                             count.mods.contains(&def.id)
                         };
-                        named && count.kind.is_none_or(|k| def.kind == k)
+                        named
+                            && count.kind.is_none_or(|k| def.kind == k)
+                            && (!count.direction || def.tags.iter().any(|t| directions.contains(t)))
                     })
             })
             .count();
@@ -6224,6 +6238,17 @@ fn score_line(
                 crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
             (Lever::GameValue, Change::Scale(factor))
         }
+        Effect::ScaleGameValuePerCard { per, .. } => {
+            if cards == 0 || per.permille() == 0 {
+                return None;
+            }
+            let permille = u64::from(per.permille())
+                .saturating_mul(u64::from(cards))
+                .saturating_add(1000);
+            let factor =
+                crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX));
+            (Lever::GameValue, Change::Scale(factor))
+        }
         _ => return None,
     };
     Some(ScoreLine {
@@ -6375,6 +6400,8 @@ mod m5_tests;
 mod m7_tests;
 #[cfg(test)]
 mod marke_encounter_tests;
+#[cfg(test)]
+mod night_tests;
 #[cfg(test)]
 mod relic_slots_tests;
 #[cfg(test)]
