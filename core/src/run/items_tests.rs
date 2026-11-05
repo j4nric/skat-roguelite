@@ -317,7 +317,7 @@ fn groups_of_the_relics_are_data() {
         ),
         (
             RelicGroup::Tour,
-            "landlord closing_time season_ticket kitty slate guardian_angel dive_expert empties tip",
+            "landlord first_names closing_time season_ticket kitty slate guardian_angel dive_expert empties tip",
         ),
         (
             RelicGroup::Factor,

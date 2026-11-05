@@ -476,13 +476,10 @@ fn a_game_with_a_doppelganger_plays_to_its_end_and_counts_every_card() {
             10
         );
     }
-    // The cap of the special cards holds for it.
+    // No cap on special cards since 05.11.2026: several Doppelgänger.
     let content = content();
     let mut edition = Edition::standard();
     let dg = CardModId::new(DG);
     edition.add_mod(&content, 3, &dg, 1).expect("one");
-    assert_eq!(
-        edition.add_mod(&content, 4, &dg, 1),
-        Err(DeckError::SpecialTaken(dg))
-    );
+    edition.add_mod(&content, 4, &dg, 1).expect("two");
 }

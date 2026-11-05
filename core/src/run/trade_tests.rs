@@ -433,8 +433,7 @@ fn old_saves_load_without_the_trade() {
     assert!(offers(&old).iter().all(|o| o.bargain.is_none()));
     // It plays on: a normal relic, a new Auslage with its own trades.
     old.apply(&content, RunAction::BuyRelic(0)).expect("buy");
-    old.apply(&content, RunAction::RerollCardOffers)
-        .expect("reroll");
+    old.apply(&content, RunAction::Reroll).expect("reroll");
     let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
     assert_eq!(offers(&old).len(), n);
 }

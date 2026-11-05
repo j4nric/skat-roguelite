@@ -332,10 +332,6 @@ pub enum DeckError {
     MissingCard(Card),
     /// "Frisches Deck": the card carries no modification.
     NothingToCleanse(u32),
-    /// Another card of the edition is this special card already: at most
-    /// one Untot and one Wandelkarte per edition (DESIGN 7.2, decided by
-    /// the user on 03.11.2026).
-    SpecialTaken(CardModId),
 }
 
 impl fmt::Display for DeckError {
@@ -349,7 +345,6 @@ impl fmt::Display for DeckError {
             DeckError::UnknownMod(m) => write!(f, "unknown card mod {m}"),
             DeckError::MissingCard(c) => write!(f, "no {c} in the deck"),
             DeckError::NothingToCleanse(id) => write!(f, "card {id} carries no modification"),
-            DeckError::SpecialTaken(m) => write!(f, "another card is {m} already"),
         }
     }
 }
@@ -677,9 +672,7 @@ impl Edition {
             .map(|c| c.id)
     }
 
-    /// The card that carries `card_mod`, the first in id order. For a
-    /// special card ([`ModKind::Special`]) at most one
-    /// ([`DeckError::SpecialTaken`]), except in saves from before the cap.
+    /// The card that carries `card_mod`, the first in id order.
     #[must_use]
     pub fn holder_of(&self, card_mod: &CardModId) -> Option<u32> {
         self.cards
@@ -717,8 +710,8 @@ impl Edition {
     /// - a cursed card takes nothing but a special card
     ///   ([`DeckError::Cursed`]); a special curse ("Abgestuft") takes a
     ///   normal modification but no other special card;
-    /// - at most one card of the edition is Untot and one is Wandelkarte
-    ///   (every [`ModKind::Special`], [`DeckError::SpecialTaken`]);
+    /// - any number of cards may be Untot, Wandelkarte or Doppelgänger
+    ///   (the cap of 03.11.2026 is gone since 05.11.2026, DESIGN 7.2);
     /// - Augen and Ramponiert are one signed value ([`AUGEN`],
     ///   [`RAMPONIERT`]): Augen with a negative value is Ramponiert, a
     ///   curse; Ramponiert on a card with Augen adds up, and the sign of
@@ -741,10 +734,6 @@ impl Edition {
         let def = content
             .card_mod(card_mod)
             .ok_or_else(|| DeckError::UnknownMod(card_mod.clone()))?;
-        let taken_elsewhere = self
-            .cards
-            .iter()
-            .any(|c| c.id != id && c.mods.contains(card_mod));
         let card = self
             .cards
             .iter_mut()
@@ -755,9 +744,6 @@ impl Edition {
         }
         let kind_of = |m: &CardModId| content.card_mod(m).map(|d| d.kind);
         let special = |m: &CardModId| kind_of(m).is_some_and(ModKind::is_special);
-        if def.kind == ModKind::Special && taken_elsewhere {
-            return Err(DeckError::SpecialTaken(card_mod.clone()));
-        }
         if def.is_special() {
             // A special curse ("Abgestuft") holds the special slot for good.
             if let Some(curse) = card
@@ -1031,41 +1017,34 @@ mod tests {
     }
 
     #[test]
-    fn at_most_one_untot_and_one_wandelkarte_per_edition() {
+    fn special_cards_have_no_cap_per_edition() {
+        // Since 05.11.2026 (decided by the user) any number of cards may be
+        // Untot, Wandelkarte or Doppelgänger.
         let content = Content::load().expect("content");
         let mut edition = Edition::standard();
         let (undead, wild) = (CardModId::new("undead"), CardModId::new("wild_card"));
-        edition
-            .add_mod(&content, 3, &undead, 1)
-            .expect("first Untot");
-        assert_eq!(
-            edition.add_mod(&content, 4, &undead, 1),
-            Err(DeckError::SpecialTaken(undead.clone()))
-        );
-        // The other special card is free, also on another card.
-        edition.add_mod(&content, 4, &wild, 1).expect("Wandelkarte");
-        assert_eq!(
-            edition.add_mod(&content, 5, &wild, 1),
-            Err(DeckError::SpecialTaken(wild.clone()))
-        );
+        for id in [3, 4, 5] {
+            edition.add_mod(&content, id, &undead, 1).expect("Untot");
+        }
+        for id in [6, 7] {
+            edition
+                .add_mod(&content, id, &wild, 1)
+                .expect("Wandelkarte");
+        }
         assert_eq!(edition.holder_of(&undead), Some(3));
-        assert_eq!(edition.holder_of(&wild), Some(4));
-        // On its own card the old rules hold: not again, and the other
-        // special card replaces it only when that one is free.
+        assert_eq!(edition.holder_of(&wild), Some(6));
+        // On its own card the old rules hold: not again, another special
+        // card replaces it.
         assert_eq!(
             edition.add_mod(&content, 3, &undead, 1),
             Err(DeckError::AlreadyModified(undead.clone()))
         );
-        assert_eq!(
-            edition.add_mod(&content, 3, &wild, 1),
-            Err(DeckError::SpecialTaken(wild.clone()))
-        );
-        // Cleansed, the special card is free again.
-        edition.cleanse(3).expect("cleanse");
-        edition
-            .add_mod(&content, 6, &undead, 1)
-            .expect("Untot again");
-        // "Abgestuft" is a special curse, not capped.
+        let change = edition.add_mod(&content, 3, &wild, 1).expect("replaced");
+        assert!(matches!(
+            change,
+            DeckChange::Modified { replaced: Some(ref m), .. } if *m == undead
+        ));
+        // "Abgestuft" is a special curse, not capped either.
         let demoted = CardModId::new("demoted");
         for id in [0, 1, 2] {
             edition.add_mod(&content, id, &demoted, 1).expect("demoted");

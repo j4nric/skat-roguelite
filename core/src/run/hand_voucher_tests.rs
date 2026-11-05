@@ -228,7 +228,8 @@ fn exactly_one_random_voucher_fires_and_the_draw_is_deterministic() {
 }
 
 #[test]
-fn a_totenmarke_in_the_hand_pays_when_another_card_is_untot() {
+fn a_totenmarke_in_the_hand_turns_its_card_when_another_card_is_untot() {
+    // No cap on special cards since 05.11.2026 (DESIGN 7.2).
     let content = content();
     let mut run = card_mod_run_with(&content, 2, "voucher_undead", 1);
     run.edition
@@ -236,23 +237,14 @@ fn a_totenmarke_in_the_hand_pays_when_another_card_is_untot() {
         .expect("Untot on HA");
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let coins = run.coins();
-    let events = declare(&mut run, &content, diamonds_hand());
-    let fallback = content.run.shop.zinken.capped_voucher_coins;
-    assert!(events.contains(&RunEvent::VoucherCapped {
-        card: 2,
-        card_mod: id("voucher_undead"),
-        special: id("undead"),
-        holder: 15,
-        coins: fallback,
-    }));
-    assert_eq!(run.coins(), coins + fallback);
-    assert!(mods(&run, 2).is_empty(), "the voucher is gone, no Untot");
-    let card = in_hand(&run, 2).expect("D9");
-    assert!(!run.can_rise(&content, card));
+    declare(&mut run, &content, diamonds_hand());
+    assert_eq!(run.coins(), coins, "nothing paid instead");
+    assert_eq!(mods(&run, 2), vec![id("undead")]);
+    assert_eq!(mods(&run, 15), vec![id("undead")]);
 }
 
 #[test]
-fn a_narrenmarke_in_the_hand_pays_when_another_card_is_wandelkarte() {
+fn a_narrenmarke_in_the_hand_turns_its_card_when_another_card_is_wandelkarte() {
     let content = content();
     let (mut run, _) = Run::new(&content, 11).expect("start");
     let h7 = id_of(&run, "H7");
@@ -264,16 +256,12 @@ fn a_narrenmarke_in_the_hand_pays_when_another_card_is_wandelkarte() {
         .expect("Wandelkarte on HA");
     fixed_deal(&mut run, &content, ONE_HEART, STRONG_SKAT);
     let coins = run.coins();
-    let events = declare(&mut run, &content, diamonds_hand());
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, RunEvent::VoucherCapped { holder: 15, .. }))
+    declare(&mut run, &content, diamonds_hand());
+    assert_eq!(run.coins(), coins);
+    assert_eq!(
+        run.edition().get(h7).expect("H7").mods,
+        vec![id("wild_card")]
     );
-    assert_eq!(run.coins(), coins + 3);
-    // The H7 stays the H7.
-    let card = in_hand(&run, h7).expect("H7");
-    assert_eq!(card.face().map(|f| f.suit), Some(Suit::Hearts));
 }
 
 // ---------------------------------------------------------------------------

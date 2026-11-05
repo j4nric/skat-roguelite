@@ -275,7 +275,6 @@ fn the_kiosk_sells_one_of_two_schnapps_cheaper() {
     // No Tresen services at the Kiosk.
     for action in [
         RunAction::Reroll,
-        RunAction::RerollCardOffers,
         RunAction::HirePainter(31),
         RunAction::CleanseCard(31),
     ] {

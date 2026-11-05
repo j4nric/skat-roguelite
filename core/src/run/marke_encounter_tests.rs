@@ -122,11 +122,11 @@ fn a_random_marke_goes_on_the_chosen_card() {
 }
 
 #[test]
-fn a_random_marke_respects_the_special_card_caps() {
+fn a_random_marke_comes_next_to_special_cards() {
     let content = content();
     let mut run = relic_run(&content, &[]);
-    // Another card is Untot and another a Wandelkarte: only the
-    // Pfandmarke can come (DESIGN 7.2).
+    // Another card is Untot and another a Wandelkarte: every Marke can
+    // still come (no cap since 05.11.2026, DESIGN 7.2).
     for (card, special) in [(0, "undead"), (1, "wild_card")] {
         run.edition
             .add_mod(&content, card, &id(special), 1)
@@ -140,16 +140,17 @@ fn a_random_marke_respects_the_special_card_caps() {
         .iter()
         .map(|m| m.can_choose)
         .collect();
-    assert_eq!(can, [true, false, false]);
-    assert_eq!(view.options[option].marken[0].percent, 100);
+    assert_eq!(can, [true, true, true]);
+    let mut drawn = std::collections::BTreeSet::new();
     for seed in 0..12 {
         let mut probe = run.clone();
         probe.encounter_rng = crate::rng::Rng::from_seed(seed);
         probe
             .apply(&content, choose(option, Some(20), None))
             .expect("take");
-        assert_eq!(marken_on(&probe, 20), vec![id("voucher_coins")]);
+        drawn.extend(marken_on(&probe, 20));
     }
+    assert!(drawn.len() > 1, "{drawn:?}");
     // A cursed card takes no Marke.
     let mut run = relic_run(&content, &[]);
     run.edition
@@ -205,7 +206,7 @@ fn a_chosen_marke_goes_on_a_random_card() {
         .expect("MarkeGiven");
     assert_eq!(marken_on(&run, card), vec![id("voucher_undead")]);
     assert_eq!(run.coins(), 3, "2 Groschen");
-    // With an Untot card the Totenmarke cannot be chosen any more.
+    // With an Untot card the Totenmarke can still be chosen.
     let mut run = relic_run(&content, &[]);
     run.coins = 5;
     run.edition
@@ -218,11 +219,10 @@ fn a_chosen_marke_goes_on_a_random_card() {
         .iter()
         .map(|m| m.can_choose)
         .collect();
-    assert_eq!(can, [true, false, true]);
-    assert_eq!(
-        run.apply(&content, choose(option, None, Some("voucher_undead"))),
-        Err(RunError::NoModAvailable)
-    );
+    assert_eq!(can, [true, true, true]);
+    run.clone()
+        .apply(&content, choose(option, None, Some("voucher_undead")))
+        .expect("take");
     // Too poor: blocked, the other option is free.
     let mut run = relic_run(&content, &[]);
     run.coins = 1;

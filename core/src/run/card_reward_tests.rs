@@ -1,10 +1,10 @@
 //! The card reward after a won pub (Kartenbelohnung, DESIGN 5.0, decided
-//! by the user on 04.11.2026, Cockpit q24): when it opens, what it offers,
-//! taking and raising, skipping, the guard, its own generator, old saves
-//! and the bot.
+//! by the user on 04.11.2026; fixed pairs of card and Zinke since
+//! 05.11.2026): when it opens, what it offers, taking and raising,
+//! skipping, the guard, its own generator, old saves and the bot.
 
 use super::bot::RunBot;
-use super::card_reward::CardReward;
+use super::card_reward::{CardReward, RewardOffer};
 use super::tour::Spelunke;
 use super::*;
 use crate::content::{MalusId, ModKind, Rarity};
@@ -58,17 +58,28 @@ fn card(run: &Run, name: &str) -> u32 {
         .id
 }
 
-/// Put an open card reward with these offers on the run.
-fn offer(run: &mut Run, offers: &[(&str, i32)]) {
+/// Put an open card reward with these offers (printed card, Zinke, value)
+/// on the run.
+fn offer(run: &mut Run, offers: &[(&str, &str, i32)]) {
     run.phase = RunPhase::CardReward;
     run.game = None;
-    run.card_reward = Some(CardReward {
-        offers: offers.iter().map(|(m, v)| (id(m), *v)).collect(),
-    });
+    let offers = offers
+        .iter()
+        .map(|(c, m, v)| RewardOffer {
+            card: card(run, c),
+            card_mod: id(m),
+            value: *v,
+        })
+        .collect();
+    run.card_reward = Some(CardReward::new(offers));
+}
+
+fn take(offer: usize) -> RunAction {
+    RunAction::TakeCardReward { offer }
 }
 
 #[test]
-fn a_won_pub_offers_three_zinken_after_the_schnaps() {
+fn a_won_pub_offers_three_cards_with_a_zinke_after_the_schnaps() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 0);
     let events = end_pub(&mut run, &content, 1, true);
@@ -90,8 +101,9 @@ fn a_won_pub_offers_three_zinken_after_the_schnaps() {
     assert_eq!(view.skip_coins, 2);
     for (i, o) in view.offers.iter().enumerate() {
         assert_eq!(o.index, i);
-        assert!(!o.targets.is_empty(), "{:?} fits some card", o.card_mod.id);
-        assert_eq!(o.targets, run.card_reward_targets(&content, i));
+        assert!(o.can_take, "{:?} fits its card", o.card_mod.id);
+        assert_eq!(o.card.id, reward.offers[i].card);
+        assert_ne!(o.result, o.card, "the card with the Zinke");
     }
 }
 
@@ -102,35 +114,32 @@ fn offers_are_different_never_curses_and_rare_about_one_in_ten() {
     let mut rare = 0u32;
     let mut specials = 0u32;
     let mut vouchers = 0u32;
+    let mut raised = 0u32;
     for seed in 0..300 {
         let mut run = start_at(&content, seed, 0, 0);
         end_pub(&mut run, &content, 1, true);
         let reward = run.card_reward().expect("open");
-        let mut seen: Vec<&CardModId> = Vec::new();
-        for (i, (m, value)) in reward.offers.iter().enumerate() {
-            let def = content.card_mod(m).expect("known");
-            assert!(!def.is_curse(), "seed {seed}: curse {m}");
-            assert!(!seen.contains(&m), "seed {seed}: {m} twice");
-            seen.push(m);
-            assert_eq!(*value, def.offer_value(), "the Auslage value");
-            assert!(!run.card_reward_targets(&content, i).is_empty());
+        let mut zinken: Vec<&CardModId> = Vec::new();
+        let mut cards: Vec<u32> = Vec::new();
+        for (i, o) in reward.offers.iter().enumerate() {
+            let def = content.card_mod(&o.card_mod).expect("known");
+            assert!(!def.is_curse(), "seed {seed}: curse {}", o.card_mod);
+            assert!(!zinken.contains(&&o.card_mod), "seed {seed}: Zinke twice");
+            assert!(!cards.contains(&o.card), "seed {seed}: card twice");
+            zinken.push(&o.card_mod);
+            cards.push(o.card);
+            assert_eq!(o.value, def.offer_value(), "the Auslage value");
+            assert!(run.card_reward_open(&content, i), "seed {seed}: fits");
             offers += 1;
             rare += u32::from(def.rarity == Rarity::Rare);
             specials += u32::from(def.kind == ModKind::Special);
             vouchers += u32::from(def.kind == ModKind::Voucher);
+            raised += u32::from(
+                run.edition()
+                    .get(o.card)
+                    .is_some_and(|c| c.mods.contains(&o.card_mod)),
+            );
         }
-        // At most one offer per special card, its Marke included.
-        let undead = reward
-            .offers
-            .iter()
-            .filter(|(m, _)| m.as_str() == "undead" || m.as_str() == "voucher_undead")
-            .count();
-        let wild = reward
-            .offers
-            .iter()
-            .filter(|(m, _)| m.as_str() == "wild_card" || m.as_str() == "voucher_wild")
-            .count();
-        assert!(undead <= 1 && wild <= 1, "seed {seed}: {reward:?}");
     }
     assert_eq!(offers, 900);
     // Rare: the class (10 %) plus the special cards (5 % per offer).
@@ -138,25 +147,82 @@ fn offers_are_different_never_curses_and_rare_about_one_in_ten() {
     assert!((8..=22).contains(&pct), "rare {pct} %");
     assert!(specials > 0 && specials < 90, "specials {specials}");
     assert!(vouchers < offers / 4, "Marken are rarer: {vouchers}");
+    // A fresh edition carries no Zinke yet.
+    assert_eq!(raised, 0);
 }
 
 #[test]
-fn taking_puts_the_zinke_on_the_card_then_the_route() {
+fn the_card_is_drawn_among_the_cards_the_zinke_fits() {
+    let content = content();
+    let mut seen = std::collections::BTreeSet::new();
+    for seed in 0..200 {
+        let mut run = start_at(&content, seed, 0, 0);
+        // Every card but the Grün-Daus carries a curse: only it takes a
+        // normal Zinke (a special card goes on a cursed card all the same),
+        // and no card comes twice.
+        let ace = card(&run, "SA");
+        let ids: Vec<u32> = run.edition().cards().iter().map(|c| c.id).collect();
+        for c in ids.into_iter().filter(|&c| c != ace) {
+            run.edition
+                .add_mod(&content, c, &id("battered"), 1)
+                .expect("curse");
+        }
+        end_pub(&mut run, &content, 1, true);
+        let reward = run.card_reward().expect("open");
+        let normal: Vec<&RewardOffer> = reward
+            .offers
+            .iter()
+            .filter(|o| !content.card_mod(&o.card_mod).expect("known").is_special())
+            .collect();
+        assert!(normal.len() <= 1, "seed {seed}: no card twice");
+        assert!(normal.iter().all(|o| o.card == ace), "seed {seed}");
+        let mut cards: Vec<u32> = reward.offers.iter().map(|o| o.card).collect();
+        cards.sort_unstable();
+        cards.dedup();
+        assert_eq!(cards.len(), reward.offers.len(), "seed {seed}");
+        // A plain deck: the cards vary.
+        let mut plain = start_at(&content, seed, 0, 0);
+        end_pub(&mut plain, &content, 1, true);
+        seen.extend(
+            plain
+                .card_reward()
+                .expect("open")
+                .offers
+                .iter()
+                .map(|o| o.card),
+        );
+    }
+    assert!(seen.len() > 20, "random cards: {}", seen.len());
+}
+
+#[test]
+fn a_zinke_comes_twice_only_when_no_other_has_a_free_card() {
+    // A catalogue with Aufdruck as the only Zinke: three offers of it, on
+    // three different cards.
+    let mut content = content();
+    content.card_mods.retain(|m, def| {
+        m.as_str() == "points" || def.is_curse() || def.kind == ModKind::SpecialCurse
+    });
+    let mut run = start_at(&content, 5, 0, 0);
+    end_pub(&mut run, &content, 1, true);
+    let reward = run.card_reward().expect("open");
+    assert_eq!(reward.offers.len(), 3);
+    assert!(reward.offers.iter().all(|o| o.card_mod == id("points")));
+    let mut cards: Vec<u32> = reward.offers.iter().map(|o| o.card).collect();
+    cards.sort_unstable();
+    cards.dedup();
+    assert_eq!(cards.len(), 3, "no card twice");
+}
+
+#[test]
+fn taking_puts_the_zinke_on_its_card_then_the_route() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 0);
     end_pub(&mut run, &content, 1, true);
-    offer(&mut run, &[("points", 3), ("trump_bonus", 2)]);
+    offer(&mut run, &[("HA", "points", 3), ("SA", "trump_bonus", 2)]);
     let ace = card(&run, "SA");
     let coins = run.coins();
-    let events = run
-        .apply(
-            &content,
-            RunAction::TakeCardReward {
-                offer: 1,
-                card: ace,
-            },
-        )
-        .expect("take");
+    let events = run.apply(&content, take(1)).expect("take");
     assert!(events.contains(&RunEvent::CardRewardTaken {
         offer: 1,
         card: ace,
@@ -167,6 +233,13 @@ fn taking_puts_the_zinke_on_the_card_then_the_route() {
     let deck_card = run.edition().get(ace).expect("ace");
     assert!(deck_card.mods.contains(&id("trump_bonus")));
     assert_eq!(deck_card.mod_value(&id("trump_bonus")), 2);
+    assert!(
+        run.edition()
+            .get(card(&run, "HA"))
+            .expect("HA")
+            .mods
+            .is_empty()
+    );
     assert_eq!(run.coins(), coins, "free");
     assert_eq!(run.card_reward(), None);
     assert_eq!(run.phase(), RunPhase::Route);
@@ -181,15 +254,13 @@ fn the_same_zinke_rises_another_is_replaced() {
     run.edition
         .add_mod(&content, ace, &id("points"), 3)
         .expect("points");
-    offer(&mut run, &[("points", 3)]);
-    run.apply(
-        &content,
-        RunAction::TakeCardReward {
-            offer: 0,
-            card: ace,
-        },
-    )
-    .expect("raise");
+    offer(&mut run, &[("SA", "points", 3), ("SA", "first_trick", 2)]);
+    let view = run.view(&content).card_reward.expect("view");
+    assert!(view.offers[0].raises && view.offers[0].replaces.is_none());
+    assert_eq!(view.offers[0].result.mod_value(&id("points")), 6);
+    assert!(!view.offers[1].raises);
+    assert_eq!(view.offers[1].replaces, Some(id("points")));
+    run.apply(&content, take(0)).expect("raise");
     assert_eq!(
         run.edition()
             .get(ace)
@@ -198,50 +269,26 @@ fn the_same_zinke_rises_another_is_replaced() {
         6
     );
     // Another Zinke replaces it.
-    offer(&mut run, &[("first_trick", 2)]);
-    run.apply(
-        &content,
-        RunAction::TakeCardReward {
-            offer: 0,
-            card: ace,
-        },
-    )
-    .expect("replace");
+    offer(&mut run, &[("SA", "first_trick", 2)]);
+    run.apply(&content, take(0)).expect("replace");
     let mods = &run.edition().get(ace).expect("ace").mods;
     assert!(mods.contains(&id("first_trick")) && !mods.contains(&id("points")));
 }
 
 #[test]
-fn a_card_that_does_not_take_it_is_refused_and_nothing_changes() {
+fn an_offer_its_card_does_not_take_is_refused_and_nothing_changes() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 0);
     end_pub(&mut run, &content, 1, true);
     // Winkel never goes on a Daus.
-    offer(&mut run, &[("rank", 1)]);
-    let ace = card(&run, "SA");
-    assert!(!run.card_reward_targets(&content, 0).contains(&ace));
+    offer(&mut run, &[("SA", "rank", 1)]);
+    assert!(!run.card_reward_open(&content, 0));
+    let view = run.view(&content).card_reward.expect("view");
+    assert!(!view.offers[0].can_take);
     let before = run.clone();
-    assert!(
-        run.apply(
-            &content,
-            RunAction::TakeCardReward {
-                offer: 0,
-                card: ace
-            }
-        )
-        .is_err()
-    );
+    assert!(run.apply(&content, take(0)).is_err());
     assert_eq!(run, before);
-    assert_eq!(
-        run.apply(
-            &content,
-            RunAction::TakeCardReward {
-                offer: 5,
-                card: ace
-            }
-        ),
-        Err(RunError::InvalidSlot)
-    );
+    assert_eq!(run.apply(&content, take(5)), Err(RunError::InvalidSlot));
     // Nothing else goes before the choice.
     assert_eq!(
         run.apply(&content, RunAction::ChooseRoute(0)),
@@ -316,19 +363,7 @@ fn a_spelunke_gives_the_reward_then_its_loot() {
         .expect("spelunke");
     end_pub(&mut run, &content, 2, true);
     assert_eq!(run.phase(), RunPhase::CardReward);
-    let ace = card(&run, "HA");
-    let offer = (0..run.card_reward().expect("open").offers.len())
-        .find(|&i| run.card_reward_targets(&content, i).contains(&ace))
-        .unwrap_or(0);
-    let target = run.card_reward_targets(&content, offer)[0];
-    run.apply(
-        &content,
-        RunAction::TakeCardReward {
-            offer,
-            card: target,
-        },
-    )
-    .expect("take");
+    run.apply(&content, take(0)).expect("take");
     assert_eq!(run.phase(), RunPhase::Encounter, "the loot follows");
     assert_eq!(
         run.encounter().map(|e| e.id.as_str()),
@@ -392,54 +427,92 @@ fn old_saves_load_and_the_open_reward_survives_a_save() {
     // A Zinke the content no longer knows is dropped from the offers.
     let mut gone = run.clone();
     if let Some(reward) = gone.card_reward.as_mut() {
-        reward.offers.push((id("no_such_zinke"), 1));
+        reward.offers.push(RewardOffer {
+            card: 3,
+            card_mod: id("no_such_zinke"),
+            value: 1,
+        });
     }
     gone.drop_unknown_content(&content);
     assert_eq!(gone.card_reward(), run.card_reward());
 }
 
 #[test]
-fn the_bot_takes_its_best_zinke_and_skips_only_if_nothing_fits() {
+fn an_open_reward_of_bare_zinken_is_drawn_again_as_pairs() {
+    // Saves from before 05.11.2026: the offers were Zinken without cards.
+    let content = content();
+    let mut run = start_at(&content, 7, 0, 0);
+    end_pub(&mut run, &content, 1, true);
+    let mut value = serde_json::to_value(&run).expect("value");
+    value["card_reward"] = serde_json::json!({
+        "offers": [["points", 3], ["rank", 1], ["voucher_wild", 1]]
+    });
+    let json = serde_json::to_string(&value).expect("json");
+    let load = || {
+        let mut old: Run = serde_json::from_str(&json).expect("old save");
+        old.drop_unknown_content(&content);
+        old
+    };
+    let old = load();
+    assert_eq!(old.phase(), RunPhase::CardReward);
+    let reward = old.card_reward().expect("open");
+    assert_eq!(reward.offers.len(), 3, "drawn again");
+    for i in 0..3 {
+        assert!(old.card_reward_open(&content, i));
+    }
+    assert_eq!(load(), old, "the same save gives the same offers");
+    // It plays on and saves in the new shape.
+    let saved = serde_json::to_string(&old).expect("save");
+    let again: Run = serde_json::from_str(&saved).expect("load");
+    assert_eq!(again, old);
+    let mut old = old;
+    old.apply(&content, take(0)).expect("take");
+    assert_eq!(old.phase(), RunPhase::Route);
+}
+
+#[test]
+fn the_bot_takes_its_best_offer_and_skips_if_none_is_worth_it() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 0);
     end_pub(&mut run, &content, 1, true);
     offer(
         &mut run,
-        &[("last_trick", 1), ("trump_bonus", 2), ("points", 3)],
+        &[
+            ("HA", "last_trick", 1),
+            ("C7", "trump_bonus", 2),
+            ("SA", "points", 3),
+        ],
     );
-    let RunAction::TakeCardReward {
-        offer: taken,
-        card: target,
-    } = RunBot::card_reward_action(&run, &content)
-    else {
-        panic!("takes one");
-    };
-    assert_eq!(taken, 1, "Siegel is worth most to the bot");
-    let deck_card = run.edition().get(target).expect("card");
-    assert!(deck_card.mods.is_empty(), "a bare card");
-    assert!(
-        matches!(deck_card.kind, CardKind::Normal(c) if c.rank == crate::cards::Rank::Ace),
-        "the card with the most Augen"
-    );
-    // A card with the same Zinke comes first: it rises.
-    let ten = card(&run, "CT");
-    run.edition
-        .add_mod(&content, ten, &id("trump_bonus"), 2)
-        .expect("siegel");
     assert_eq!(
         RunBot::card_reward_action(&run, &content),
-        RunAction::TakeCardReward {
-            offer: 1,
-            card: ten
-        }
+        take(1),
+        "Siegel is worth most to the bot"
     );
-    // Nothing fits any card: skipped.
-    offer(&mut run, &[("rank", 1)]);
-    let ids: Vec<u32> = run.edition().cards().iter().map(|c| c.id).collect();
-    for c in ids {
-        let _ = run.edition.add_mod(&content, c, &id("battered"), 1);
-    }
-    assert!(run.card_reward_targets(&content, 0).is_empty());
+    // With a Siegel on the C7, an Aufdruck there would replace it.
+    let seven = card(&run, "C7");
+    run.edition
+        .add_mod(&content, seven, &id("trump_bonus"), 2)
+        .expect("siegel");
+    offer(&mut run, &[("C7", "points", 3), ("SA", "last_trick", 1)]);
+    assert_eq!(
+        RunBot::card_reward_action(&run, &content),
+        take(1),
+        "never a worse Zinke in place of a better one"
+    );
+    // The same Zinke rises: worth taking.
+    offer(
+        &mut run,
+        &[("C7", "trump_bonus", 2), ("SA", "trump_bonus", 2)],
+    );
+    assert_eq!(RunBot::card_reward_action(&run, &content), take(0));
+    // Only a replace for less: skipped for the Groschen.
+    offer(&mut run, &[("C7", "points", 3)]);
+    assert_eq!(
+        RunBot::card_reward_action(&run, &content),
+        RunAction::SkipCardReward
+    );
+    // Nothing fits: skipped.
+    offer(&mut run, &[("SA", "rank", 1)]);
     assert_eq!(
         RunBot::card_reward_action(&run, &content),
         RunAction::SkipCardReward
@@ -452,6 +525,7 @@ fn a_whole_run_with_the_bot_takes_rewards() {
     let (mut run, _) = Run::new(&content, 11).expect("run");
     let mut offered = 0;
     let mut taken = 0;
+    let mut skipped = 0;
     for _ in 0..20_000 {
         let Some(action) = RunBot.next_action(&run, &content) else {
             break;
@@ -461,20 +535,24 @@ fn a_whole_run_with_the_bot_takes_rewards() {
             match e {
                 RunEvent::CardRewardOffered { .. } => offered += 1,
                 RunEvent::CardRewardTaken { .. } => taken += 1,
+                RunEvent::CardRewardSkipped { .. } => skipped += 1,
                 _ => {}
             }
         }
     }
     assert!(offered > 0, "a pub was won");
-    assert_eq!(taken, offered, "the bot always finds a card");
+    assert!(taken > 0, "the bot takes rewards");
+    assert_eq!(taken + skipped, offered);
 }
 
 /// Write `web/e2e/fixtures/card-reward.json`: the card reward after the
-/// first pub of seed 5, with three fixed Zinken (Winkel, which no Daus
-/// takes, Aufdruck, already on the Grün-Daus so that it rises, and the
-/// rare Narrenmarke); the smoke test takes one, goes back to the offers
-/// and skips. Run by hand: `cargo test -p skat_core
-/// regenerate_card_reward_fixture -- --ignored`.
+/// first pub of seed 5 with three fixed pairs: Winkel on the Schellen-König
+/// (a bare card), Aufdruck on the Grün-Daus that has one already (it
+/// rises) and the rare Narrenmarke on the Herz-König; the smoke test opens
+/// the confirm sheets, takes the Aufdruck and skips once. Run by hand:
+/// `cargo test -p skat_core regenerate_card_reward_fixture -- --ignored`.
+/// The fixture of the old shape (bare Zinken, before 05.11.2026) stays as
+/// `card-reward-v1.json` for the save check.
 #[test]
 #[ignore = "rewrites web/e2e/fixtures/card-reward.json"]
 fn regenerate_card_reward_fixture() {
@@ -485,7 +563,14 @@ fn regenerate_card_reward_fixture() {
     run.edition
         .add_mod(&content, ace, &id("points"), 3)
         .expect("points");
-    offer(&mut run, &[("rank", 1), ("points", 3), ("voucher_wild", 1)]);
+    offer(
+        &mut run,
+        &[
+            ("DK", "rank", 1),
+            ("SA", "points", 3),
+            ("HK", "voucher_wild", 1),
+        ],
+    );
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../web/e2e/fixtures/card-reward.json");
     let out = serde_json::json!({ "version": 3, "run": run });
@@ -524,9 +609,9 @@ fn the_bot_prefers_zinken_and_relics_of_its_direction() {
     let content = content();
     let mut run = start_at(&content, 5, 0, 0);
     end_pub(&mut run, &content, 1, true);
-    offer(&mut run, &[("rank", 1), ("lead", 1)]);
+    offer(&mut run, &[("S7", "rank", 1), ("H7", "lead", 1)]);
     let taken = |run: &Run| match RunBot::card_reward_action(run, &content) {
-        RunAction::TakeCardReward { offer, .. } => offer,
+        RunAction::TakeCardReward { offer } => offer,
         other => panic!("takes one: {other:?}"),
     };
     // Without a Null relic Rang +1 is worth more than Blei.

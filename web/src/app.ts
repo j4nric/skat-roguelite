@@ -1152,16 +1152,6 @@ export class App {
         this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
         continue;
       }
-      if ('VoucherCapped' in ev) {
-        // One Untot and one Wandelkarte per edition (DESIGN 7.2): the voucher paid Groschen instead.
-        const { card_mod, special, holder, coins } = ev.VoucherCapped;
-        const held = after.edition.find((c) => c.id === holder);
-        this.showToast(
-          t(de.toast.voucherCapped, { mod: contentName('card_mods', card_mod), holder: held ? cardName(held.kind) : '', special: contentName('card_mods', special), coins }),
-          'top',
-        );
-        continue;
-      }
       if ('VoucherRedeemed' in ev) {
         // Effekte v2: a voucher was redeemed when its card was discarded (or by a hand game).
         const id = ev.VoucherRedeemed.card;
@@ -1354,11 +1344,6 @@ export class App {
       }
       if ('ShopRerolled' in ev) {
         this.showToast(de.toast.rerolled);
-        sound.play('card');
-        continue;
-      }
-      if ('CardOffersRerolled' in ev) {
-        this.showToast(de.toast.cardsRerolled);
         sound.play('card');
         continue;
       }
@@ -2682,23 +2667,12 @@ export class App {
         this.ui.rewardPick = null;
         void this.act({ ChooseBossRelic: { offer: null, replace: null } });
         return;
-      // The card reward after a won pub (DESIGN 5.0): a Zinke, then its card, then "Anbringen".
+      // The card reward after a won pub (DESIGN 5.0, fixed pairs since 05.11.2026): an offer, then "Anbringen".
       case 'card-reward-pick': {
         const o = view.card_reward?.offers.find((x) => x.index === num('offer'));
-        if (!o) return;
-        const reasons = this.refusals(view, o.targets, (id) => ({ TakeCardReward: { offer: o.index, card: id } }));
-        this.ui.overlay = { kind: 'reward-target', offer: o.index, reasons };
-        this.render();
-        return;
-      }
-      case 'reward-target': {
-        const o = this.ui.overlay;
-        if (o?.kind !== 'reward-target') return;
-        const offer = view.card_reward?.offers.find((x) => x.index === o.offer);
-        if (!offer) return;
-        this.noteStamp(el);
-        const action: RunAction = { TakeCardReward: { offer: o.offer, card: num('id') } };
-        this.applyMod(view, action, num('id'), offer.card_mod.id, false, o, 'apply');
+        if (!o || !o.can_take) return;
+        this.noteStamp(el.querySelector('.card'));
+        this.applyMod(view, { TakeCardReward: { offer: o.index } }, o.card.id, o.card_mod.id, false, null, 'apply', { pair: true });
         return;
       }
       case 'card-reward-skip':
@@ -2904,17 +2878,16 @@ export class App {
       case 'reroll':
         void this.act('Reroll');
         return;
+      case 'zinke-tile':
       case 'buy-zinke': {
-        // Zinken (DESIGN 8.6): the card is fixed; ask first if it replaces or raises.
+        // Zinken (DESIGN 8.6): the card is fixed; like the card reward (05.11.2026) the
+        // tile opens the sheet with the card before and after, then "Kaufen".
         const offer = view.shop?.card_offers?.find((o) => o?.slot === num('slot'));
-        if (!offer) return;
+        if (!offer || !offer.can_buy) return;
         this.noteStamp(el.closest('.zinke')?.querySelector('.zinke-card') ?? null);
-        this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null);
+        this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null, 'apply', { pair: true, price: offer.price });
         return;
       }
-      case 'reroll-zinken':
-        void this.act('RerollCardOffers');
-        return;
       case 'painter':
       case 'cleanse': {
         const service: 'painter' | 'cleanse' = action === 'painter' ? 'painter' : 'cleanse';
@@ -3199,13 +3172,23 @@ export class App {
    * sheet); otherwise apply it at once. One drawn at random is not
    * previewed: the sheet only says that the card carries one already.
    */
-  private applyMod(view: RunView, action: RunAction, id: number, mod: string | null, random: boolean, back: Overlay | null, always: 'apply' | 'cleanse' | null = null): void {
+  private applyMod(
+    view: RunView,
+    action: RunAction,
+    id: number,
+    mod: string | null,
+    random: boolean,
+    back: Overlay | null,
+    always: 'apply' | 'cleanse' | null = null,
+    extra: Pick<ModQuestion, 'pair' | 'price'> = {},
+  ): void {
     const card = view.edition.find((c) => c.id === id);
-    const ask = card ? this.modQuestion(card, action, mod, random, always) : null;
-    if (!ask) {
+    const found = card ? this.modQuestion(card, action, mod, random, always) : null;
+    if (!found) {
       void this.act(action);
       return;
     }
+    const ask: ModQuestion = { ...found, ...extra };
     this.ui.overlay = { kind: 'mod-confirm', action, back, ask };
     this.render();
   }
