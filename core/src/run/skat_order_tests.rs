@@ -363,6 +363,9 @@ fn the_bot_announces_after_the_skat() {
         ],
         "D9 D8",
     );
+    // No Einmischen: since 05.11.2026 the bot throws in a mediocre hand
+    // while it has one (RunBot::redeal_threshold).
+    run.series.redeals_in_game = 99;
     let mut declared = None;
     for _ in 0..10 {
         let action = RunBot.next_action(&run, &content).expect("action");

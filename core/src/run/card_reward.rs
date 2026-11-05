@@ -107,12 +107,27 @@ impl Run {
     }
 
     /// The build direction's weight for `def` in the card reward, in
-    /// percent (100 = plain). The hook for build directions: a direction
-    /// that favours some Zinken raises their weight here, from data. None
-    /// yet, so always 100.
+    /// percent (100 = plain): [`CardRewardConfig::direction_percent`] when
+    /// the Zinke shares a build tag with a relic the player holds
+    /// (DESIGN 8.11), else 100.
+    ///
+    /// [`CardRewardConfig::direction_percent`]: crate::content::CardRewardConfig::direction_percent
     #[must_use]
-    pub fn card_reward_bias(&self, _content: &Content, _def: &CardModDef) -> u32 {
-        100
+    pub fn card_reward_bias(&self, content: &Content, def: &CardModDef) -> u32 {
+        let Some(config) = content.run.card_reward.as_ref() else {
+            return 100;
+        };
+        let shares_tag = !def.tags.is_empty()
+            && self.relics.iter().any(|id| {
+                content
+                    .relic(id)
+                    .is_some_and(|r| r.tags.iter().any(|t| def.tags.contains(t)))
+            });
+        if shares_tag {
+            config.direction_percent
+        } else {
+            100
+        }
     }
 
     /// The Zinken and special cards the card reward may offer now, in id

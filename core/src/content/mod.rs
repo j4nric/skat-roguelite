@@ -1799,6 +1799,15 @@ pub struct CardRewardConfig {
     /// Percent per offer for a special card (Untot, Wandelkarte) instead
     /// of a Zinke, while the edition may still get one.
     pub special_percent: u32,
+    /// A Zinke sharing a build tag ([`BuildTag`]) with a relic the player
+    /// holds weighs this many percent ("Kartenbelohnung bevorzugt leicht
+    /// Zinken deiner Richtung", DESIGN 8.11). Default 100: no bias.
+    #[serde(default = "hundred_percent")]
+    pub direction_percent: u32,
+}
+
+const fn hundred_percent() -> u32 {
+    100
 }
 
 /// Why content failed to load.

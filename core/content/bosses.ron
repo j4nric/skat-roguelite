@@ -47,7 +47,10 @@
         // 34 %, fast unabhängig vom Zielwert (bei 8 wie bei 21): Unter dem
         // Schieber spielt der Bot Null Hand nur mit höchstens zwei offenen
         // Karten, sonst Farbe ohne Unter. Der Faktor hilft kaum.
-        target_factor: 0.5,
+        // Runde 3 (05.11.2026): 0,5 → 0,6; in Stadtteil 1 mit 72 bis 79 %
+        // (Alleinspieler, Drückeberger, Schneiderin, Bruderherz) neben den
+        // Zwillingen der leichteste Boss.
+        target_factor: 0.6,
         character_factors: {NullPlayer: 0.2},
     ),
     (
@@ -84,8 +87,9 @@
             (name: "Fritz", edition: [((rank: Some(Eight)), "rank", 2)]),
             (name: "Franz", edition: [((rank: Some(Nine)), "rank", 2)]),
         ],
-        // Vorläufig (03.11.2026), bis ADR 0017 1,0.
-        target_factor: 1.2,
+        // Vorläufig (03.11.2026), bis ADR 0017 1,0. Runde 3 (05.11.2026):
+        // 1,2 → 1,35, in Stadtteil 1 mit 70 bis 85 % der leichteste Boss.
+        target_factor: 1.35,
     ),
     (
         id: "ramscher",
@@ -111,8 +115,11 @@
         // target_factor): Mit seinen abgestuften Untern hat er im Ramsch
         // keinen Trumpf und gewann die Kneipe bei 1,0 zu 87 bis 88 %, bei
         // 2,0 noch zu gut 70 %.
-        target_factor: 1.0,
-        character_factors: {NullPlayer: 2.0},
+        // Runde 3 (05.11.2026): 1,0 → 0,7, Nullspieler 2,0 → 1,6. Der
+        // schwerste Boss für alle: in Stadtteil 1 45 bis 55 % gegen 64 bis
+        // 85 % bei den anderen (Nullspieler 62 %).
+        target_factor: 0.7,
+        character_factors: {NullPlayer: 1.6},
     ),
     (
         id: "black_peter",
@@ -147,8 +154,9 @@
         // und drei vollen Spielen neu messen.
         target_factor: 0.7,
         // ADR 0012: Ein gewonnenes Null ist nie Schneider, der Nullspieler
-        // muss hier Farbe spielen (ohne Unter).
-        character_factors: {NullPlayer: 0.2},
+        // muss hier Farbe spielen (ohne Unter). Runde 3 (05.11.2026): 0,2 →
+        // 0,4, er gewann ihn in Stadtteil 1 zu 84 %.
+        character_factors: {NullPlayer: 0.4},
     ),
     (
         id: "the_old_man",
@@ -173,6 +181,9 @@
         // (04.11.2026, docs/balance/2026-11-04-runde2.md): 1,0 → 1,3; mit
         // 1,0 gewannen Alleinspieler 78 %, die anderen Charaktere 87 bis
         // 89 % beim Endboss. Nachher 71 % (Alleinspieler), 74 bis 81 %.
-        target_factor: 1.3,
+        // Runde 3 (05.11.2026): 1,3 → 1,5; mit Kartenbelohnung gewannen
+        // Alleinspieler 75 %, die anderen 70 bis 82 %, und Stadtteil 3
+        // hielt 39 bis 60 % statt rund 27 %.
+        target_factor: 1.5,
     ),
 ]

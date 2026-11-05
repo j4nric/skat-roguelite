@@ -98,18 +98,21 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // q27): the scores and the bot's choices change; with Grand 24 and
     // without the card reward the hashes above were unchanged. Seed 99
     // (district 1) again after merging balance round 2 (Zielwerte and
-    // one more Einmischen in district 1).
+    // one more Einmischen in district 1). Seeds 1, 99 and 42 (district
+    // 1) again on 05.11.2026: the bot throws in mediocre hands while it
+    // has Einmischen (RunBot::redeal_threshold), later deals differ.
+    // Seed 1 (district 1) again with the Zielwerte of round 3 (1-1 15).
     assert_eq!(
         hashes,
         vec![
-            8_372_553_221_233_023_206,
-            12_912_900_704_559_812_833,
+            14_036_093_484_200_937_745,
+            3_546_564_826_947_412_865,
             2_414_107_796_335_042_384,
             4_391_168_479_812_042_796,
-            9_802_066_370_201_224_385,
+            2_529_254_151_088_883_613,
             15_843_915_930_078_675_950,
-            16_145_715_983_571_043_373,
-            15_006_232_414_759_784_512,
+            14_136_657_416_726_076_620,
+            15_260_306_049_370_023_035,
         ]
     );
 }

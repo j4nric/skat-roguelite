@@ -208,7 +208,8 @@ fn club_colours_counts_the_trump_suit_cards_with_a_zinke_in_the_deck() {
     let content = content();
     let mut run = long_run(&content, &["club_colours"]);
     // Diamonds: Daus and Unter in the hand, the Acht in the skat, all with
-    // a Zinke; the König with a curse and the Herz-Daus do not count.
+    // a Zinke (+2 each); the König with a curse and the Herz-Daus do not
+    // count.
     put(&mut run, &content, "DA", "points");
     put(&mut run, &content, "DJ", "rank");
     put(&mut run, &content, "D8", "gilt_edge");
@@ -225,7 +226,7 @@ fn club_colours_counts_the_trump_suit_cards_with_a_zinke_in_the_deck() {
         &b,
         &relic("club_colours"),
         Lever::BaseValue,
-        Change::Add(3)
+        Change::Add(6)
     ));
     // Another trump suit: none of its cards carries a Zinke.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
@@ -560,7 +561,7 @@ fn lead_pouring_adds_a_level_per_blei_card_in_the_hand_of_a_won_null() {
 }
 
 #[test]
-fn plumb_line_adds_two_grundwert_per_blei_card_in_every_null() {
+fn plumb_line_adds_one_grundwert_per_blei_card_in_every_null() {
     let content = content();
     let mut run = long_run(&content, &["plumb_line"]);
     put(&mut run, &content, "D7", "lead");
@@ -572,7 +573,7 @@ fn plumb_line_adds_two_grundwert_per_blei_card_in_every_null() {
         &b,
         &relic("plumb_line"),
         Lever::BaseValue,
-        Change::Add(6)
+        Change::Add(3)
     ));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));

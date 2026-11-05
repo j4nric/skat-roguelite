@@ -29,7 +29,9 @@
 //!   "Ein Bier" for one more. With nothing left it is played. The balancing
 //!   measurement of 01.11.2026 showed that the weaker hands lose points on
 //!   average (`docs/balance/2026-11-01-m2-zielwerte.md`). "Reue" is never
-//!   used.
+//!   used. Since 05.11.2026 a hand that is not weak is thrown in too while
+//!   the game has an Einmischen of its own left and its
+//!   [`ten_card_score`] is below [`RunBot::redeal_threshold`].
 //! - **Rescue Schnäpse** (`RunBot::rescue_schnapps`, before Skat oder
 //!   Hand): "Klarer" with the account below 0, "Absacker" before the last
 //!   game short of the target, "Eierlikör" whenever it is accepted. The
@@ -112,8 +114,8 @@ use super::{EncounterOption, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{
-    BetOn, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content, Effect,
-    EncounterEffect, NextGameEffect, RelicId, StopCategory,
+    BetOn, BuildTag, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content,
+    Effect, EncounterEffect, NextGameEffect, RelicId, StopCategory,
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
@@ -450,6 +452,93 @@ pub fn consumable_value(id: &ConsumableId) -> u32 {
         .map_or(0, |&(_, v)| v)
 }
 
+/// A Zinke that shares a build direction ([`BuildTag`]) with a relic the
+/// bot holds is worth this many percent more to it ([`zinke_score`]): in
+/// the card reward, the Auslage and the Kartenmaler. Measurement tool
+/// (05.11.2026, provisional): without it the bot took Rang +1 in 47 % of
+/// its card rewards and the build directions hardly formed in the
+/// simulator (`docs/balance/2026-11-05-runde3.md`). + 200 % (three times
+/// the value) lets a direction Zinke worth 1 (Blei, Schneiderkreide,
+/// Pfandmarke) tie with the best plain ones (3) and win the tie; + 50 %
+/// would never change a pick against Rang +1.
+pub const ZINKE_DIRECTION_BONUS_PERCENT: u32 = 200;
+
+/// A relic offer that shares a build direction with a relic the bot holds
+/// or a Zinke in its deck is worth this much more ([`relic_score`], in
+/// hundredths of a [`relic_value`] point): one point, enough to break ties
+/// and close gaps of one (provisional, 05.11.2026).
+pub const RELIC_DIRECTION_BONUS: u32 = 100;
+
+/// The build directions of the relics the run holds.
+fn relic_tags(run: &Run, content: &Content) -> Vec<BuildTag> {
+    let mut tags: Vec<BuildTag> = run
+        .relics()
+        .iter()
+        .filter_map(|id| content.relic(id))
+        .flat_map(|def| def.tags.iter().copied())
+        .collect();
+    tags.sort_unstable();
+    tags.dedup();
+    tags
+}
+
+/// The build directions of the relics held and of the Zinken (no curses)
+/// in the deck.
+fn build_tags(run: &Run, content: &Content) -> Vec<BuildTag> {
+    let mut tags = relic_tags(run, content);
+    tags.extend(
+        run.edition()
+            .cards()
+            .iter()
+            .flat_map(|c| c.mods.iter())
+            .filter_map(|m| content.card_mod(m))
+            .filter(|def| !def.is_curse())
+            .flat_map(|def| def.tags.iter().copied()),
+    );
+    tags.sort_unstable();
+    tags.dedup();
+    tags
+}
+
+/// The bot's score of a Zinke for this run, in hundredths of a
+/// [`zinken_value`] point: its value, + [`ZINKE_DIRECTION_BONUS_PERCENT`]
+/// if it shares a build direction with a relic the bot holds.
+#[must_use]
+pub fn zinke_score(run: &Run, content: &Content, id: &CardModId) -> u32 {
+    let base = zinken_value(id) * 100;
+    let tags = relic_tags(run, content);
+    let matches = content
+        .card_mod(id)
+        .is_some_and(|def| def.tags.iter().any(|t| tags.contains(t)));
+    if matches && base > 0 {
+        // + 1 wins a tie for the direction.
+        base * (100 + ZINKE_DIRECTION_BONUS_PERCENT) / 100 + 1
+    } else {
+        base
+    }
+}
+
+/// The bot's score of a relic offer for this run, in hundredths of a
+/// [`relic_value`] point: its value, + [`RELIC_DIRECTION_BONUS`] if it
+/// shares a build direction with a relic held or a Zinke in the deck. A
+/// relic the bot does not want (value 0) stays 0.
+#[must_use]
+pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
+    let base = relic_value(id) * 100;
+    if base == 0 {
+        return 0;
+    }
+    let tags = build_tags(run, content);
+    let matches = content
+        .relic(id)
+        .is_some_and(|def| def.tags.iter().any(|t| tags.contains(t)));
+    if matches {
+        base + RELIC_DIRECTION_BONUS
+    } else {
+        base
+    }
+}
+
 /// The Nullspieler plays a hand with at most this many exposed cards
 /// (before the skat). Measured with the Null formula (DESIGN 9.2, 3 × 1000
 /// runs): with 2 the bot reaches section 2 in 15 %, with 4 in 28 %, with 5
@@ -602,6 +691,51 @@ pub fn suit_expected_score(
     let value = i64::from(base) * i64::from(levels) * 100;
     (win * value - (100 - win) * crate::content::RUN_LOSS_FACTOR * value) / 100
 }
+
+/// Exposed cards the skat is assumed to take away from a Null before the
+/// skat is seen ([`ten_card_score`]): the two the bot discards.
+const NULL_SKAT_DISCARDS: usize = 2;
+
+/// Expected score of ten cards before the skat, in hundredths of a point,
+/// without relics: the best of the four suit games, the grand
+/// ([`suit_expected_score`] with the run's Grundwert `grand_base`) and,
+/// with `null`, a Null after the skat with [`NULL_SKAT_DISCARDS`] exposed
+/// cards fewer ([`null_expected_score`]). A rough measure of how good a
+/// deal is, for the redeal decision ([`RunBot::redeal_threshold`]); the
+/// skat is not counted, so every hand is a little better than this.
+#[must_use]
+pub fn ten_card_score(
+    hand: &[DealtCard],
+    deck: &[DealtCard],
+    grand_base: u32,
+    null: Option<&NullScoring>,
+) -> i64 {
+    let suits = Suit::ALL.iter().map(|&s| {
+        let declaration = Declaration::suit(s, RiskLevel::Normal);
+        let base = GameType::Suit(s).base_value().unwrap_or(0);
+        suit_expected_score(hand, hand, deck, declaration, base, 61)
+    });
+    let grand = suit_expected_score(
+        hand,
+        hand,
+        deck,
+        Declaration::grand(RiskLevel::Normal),
+        grand_base,
+        61,
+    );
+    let null = null.map_or(i64::MIN, |scoring| {
+        let exposed = null_unsafe_cards(hand, deck).saturating_sub(NULL_SKAT_DISCARDS);
+        null_expected_score(hand, exposed, Declaration::null(NullRisk::Normal), scoring)
+    });
+    suits.chain([grand, null]).max().unwrap_or(0)
+}
+
+/// Optimal-stopping values of [`ten_card_score`] over random deals of the
+/// standard deck (hundredths; 200 000 deals, Grand 18, Null formula of the
+/// Alleinspieler): index `k − 1` is the expected best of `k` deals taken
+/// with this rule, so a hand with `k` Einmischen left is thrown in below
+/// index `k − 1` (`redeal_probe` test prints them).
+pub const REDEAL_STOP: [i64; 5] = [877, 1759, 2355, 2824, 3203];
 
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
@@ -756,7 +890,7 @@ impl RunBot {
         };
         let mut best: Option<(u32, usize)> = None;
         for (i, id) in reward.relics.iter().enumerate() {
-            let value = relic_value(id);
+            let value = relic_score(run, content, id);
             if best.is_none_or(|(b, _)| value > b) {
                 best = Some((value, i));
             }
@@ -776,7 +910,7 @@ impl RunBot {
             .enumerate()
             .min_by_key(|(i, id)| (relic_value(id), *i));
         match weakest {
-            Some((index, id)) if value >= relic_value(id) + SWAP_MARGIN => {
+            Some((index, id)) if value >= (relic_value(id) + SWAP_MARGIN) * 100 => {
                 RunAction::ChooseBossRelic {
                     offer: Some(offer),
                     replace: Some(index),
@@ -801,7 +935,7 @@ impl RunBot {
             .enumerate()
             .filter_map(|(offer, (card_mod, _))| {
                 let card = Self::card_reward_card(run, content, offer)?;
-                Some((zinken_value(card_mod), offer, card))
+                Some((zinke_score(run, content, card_mod), offer, card))
             })
             .max_by_key(|&(value, offer, _)| (value, std::cmp::Reverse(offer)));
         match best {
@@ -919,7 +1053,7 @@ impl RunBot {
     /// first on a tie. One is always taken.
     #[must_use]
     pub fn encounter_action(&self, run: &Run, content: &Content) -> RunAction {
-        if let Some(action) = Self::paint_choice(run) {
+        if let Some(action) = Self::paint_choice(run, content) {
             return action;
         }
         let Some(encounter) = run.encounter() else {
@@ -1189,7 +1323,7 @@ impl RunBot {
         let Some(shop) = run.shop() else {
             return RunAction::LeaveShop;
         };
-        if let Some(action) = Self::paint_choice(run) {
+        if let Some(action) = Self::paint_choice(run, content) {
             return action;
         }
         if shop.kiosk {
@@ -1216,10 +1350,11 @@ impl RunBot {
             .filter_map(|(slot, id)| {
                 let id = id.as_ref()?;
                 let def = content.relic(id)?;
+                let score = relic_score(run, content, id);
                 let value = if run.is_fence(slot) && !likes_curses {
-                    relic_value(id).saturating_sub(TRADE_PENALTY)
+                    score.saturating_sub(TRADE_PENALTY * 100)
                 } else {
-                    relic_value(id)
+                    score
                 };
                 Some((value, run.relic_offer_cost(content, slot, def.price), slot))
             })
@@ -1234,12 +1369,12 @@ impl RunBot {
                 .enumerate()
                 .map(|(index, id)| {
                     let refund = content.relic(id).map_or(0, |d| super::sell_price(d.price));
-                    (relic_value(id), index, refund)
+                    (relic_value(id) * 100, index, refund)
                 })
                 .min_by_key(|&(value, index, _)| (value, std::cmp::Reverse(index)));
             if let Some((weak_value, index, refund)) = weakest {
                 let better = offers.iter().any(|&(value, price, _)| {
-                    value >= weak_value + SWAP_MARGIN && price <= coins + refund
+                    value >= weak_value + SWAP_MARGIN * 100 && price <= coins + refund
                 });
                 if better {
                     return RunAction::SellRelic(index);
@@ -1286,10 +1421,11 @@ impl RunBot {
                 let offer = offer.as_ref()?;
                 let card = run.edition().get(offer.card)?;
                 let bare = card.mods.iter().all(|m| *m == offer.card_mod);
+                let score = zinke_score(run, content, &offer.card_mod);
                 let value = if offer.bargain.is_some() && !likes_curses {
-                    zinken_value(&offer.card_mod).saturating_sub(TRADE_PENALTY)
+                    score.saturating_sub(TRADE_PENALTY * 100)
                 } else {
-                    zinken_value(&offer.card_mod)
+                    score
                 };
                 let cost = run.card_offer_cost(content, offer);
                 (bare && value > 0 && cost <= coins).then_some((value, cost, slot))
@@ -1323,13 +1459,13 @@ impl RunBot {
 
     /// The Kartenmaler waits: take his most valuable modification, the
     /// first on a tie.
-    fn paint_choice(run: &Run) -> Option<RunAction> {
+    fn paint_choice(run: &Run, content: &Content) -> Option<RunAction> {
         let painter = run.painter()?;
         let best = painter
             .options
             .iter()
             .enumerate()
-            .max_by_key(|(i, (m, _))| (zinken_value(m), std::cmp::Reverse(*i)))
+            .max_by_key(|(i, (m, _))| (zinke_score(run, content, m), std::cmp::Reverse(*i)))
             .map_or(0, |(i, _)| i);
         Some(RunAction::ChoosePaint(best))
     }
@@ -1515,6 +1651,8 @@ impl RunBot {
     /// - Throw the hand in ([`RunBot::throw_in`]) if it is weak for a suit
     ///   game or grand ([`RunBot::is_weak`]) and has more than
     ///   [`NULL_MAX_EXPOSED`] exposed cards for Null.
+    /// - Use one of the game's own Einmischen on a mediocre hand
+    ///   ([`RunBot::redeal_threshold`], since 05.11.2026).
     /// - Otherwise pick up the skat; the game is chosen with twelve cards
     ///   ([`RunBot::after_skat`]).
     ///
@@ -1568,7 +1706,57 @@ impl RunBot {
                 return Some(action);
             }
         }
+        if Self::redeal_mediocre(run, content, hand, deck, null_counts) {
+            return Some(RunAction::Redeal);
+        }
         Some(RunAction::PickUpSkat)
+    }
+
+    /// Whether to spend one of the game's own Einmischen on a hand that is
+    /// not weak but mediocre: its [`ten_card_score`] is below
+    /// [`RunBot::redeal_threshold`] for the Einmischen left. Only real
+    /// Einmischen, no Schnaps.
+    fn redeal_mediocre(
+        run: &Run,
+        content: &Content,
+        hand: &[DealtCard],
+        deck: &[DealtCard],
+        null_counts: bool,
+    ) -> bool {
+        let left = run.redeals_left(content);
+        if left == 0 || !run.accepts(content, RunAction::Redeal) {
+            return false;
+        }
+        let scoring = run.null_scoring(content);
+        let grand = content.run.base_value(GameType::Grand).unwrap_or(0);
+        let score = ten_card_score(hand, deck, grand, null_counts.then_some(&scoring));
+        score < Self::redeal_threshold(left)
+    }
+
+    /// The [`ten_card_score`] (hundredths) below which the bot throws a
+    /// deal in with `left` Einmischen: the optimal stopping rule on the
+    /// score of a random deal ([`REDEAL_STOP`]: with `k` left, redeal when
+    /// the hand is worth less than the expected best of `k − 1` more
+    /// deals). Measurement tool: it stands in for a sensible human, who
+    /// throws in mediocre hands while Einmischen are left (round 2 found
+    /// the bot used the third one rarely).
+    ///
+    /// Measured on 05.11.2026 (curve of the first pub, 1000 pubs, seed 42,
+    /// two Einmischen): the first pub at Zielwert 35 / 55 / 90 / 145 went
+    /// from 83,2 / 73,4 / 56,7 / 30,9 % (only weak hands thrown in) to
+    /// 85,3 / 77,4 / 62,9 / 36,9 %. The thresholds × 0,75, × 1,25, × 1,5
+    /// and × 2 were equal or worse, also at high Zielwerte, and keeping
+    /// every hand with a table win chance of 70, 80 or 90 % or more was
+    /// worse too; so the rule does not look at the pub's Zielwert (which
+    /// also keeps `--curve`, played without one, equal to the runs).
+    #[must_use]
+    pub fn redeal_threshold(left: u32) -> i64 {
+        let index = usize::try_from(left.saturating_sub(1)).unwrap_or(usize::MAX);
+        REDEAL_STOP
+            .get(index)
+            .or(REDEAL_STOP.last())
+            .copied()
+            .unwrap_or(0)
     }
 
     /// A hand game is forced ("Der Schieber"): the declaration with the
@@ -2446,6 +2634,99 @@ mod tests {
                     .any(|(name, _)| *name == id.as_str()),
                 "consumable {id} has no bot value"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod redeal_tests {
+    use super::*;
+    use crate::content::Content;
+
+    #[test]
+    fn the_redeal_threshold_falls_with_fewer_einmischen() {
+        assert_eq!(RunBot::redeal_threshold(1), REDEAL_STOP[0]);
+        assert_eq!(RunBot::redeal_threshold(3), REDEAL_STOP[2]);
+        assert!(RunBot::redeal_threshold(2) < RunBot::redeal_threshold(3));
+        // Beyond the table the last value holds.
+        assert_eq!(RunBot::redeal_threshold(9), REDEAL_STOP[4]);
+    }
+
+    /// A deal that is not weak but scores below the threshold is thrown
+    /// in while an Einmischen is left, and played without one.
+    #[test]
+    fn the_bot_throws_in_a_mediocre_hand_only_with_einmischen_left() {
+        let content = Content::load().expect("content");
+        let grand = content.run.base_value(GameType::Grand).unwrap_or(0);
+        let found = (0..500).find_map(|seed| {
+            let (run, _) = Run::new(&content, seed).ok()?;
+            let active = run.game()?;
+            let hand = active.game.hand(Seat::DECLARER);
+            let deck = active.game.deck_cards();
+            let suit = DeclarerHeuristic.choose_declaration(hand);
+            let scoring = run.null_scoring(&content);
+            let score = ten_card_score(hand, deck, grand, Some(&scoring));
+            let left = run.redeals_left(&content);
+            let mediocre = !RunBot::is_weak(hand, suit)
+                && !suit.hand()
+                && null_unsafe_cards(hand, deck) > 0
+                && score < RunBot::redeal_threshold(left);
+            mediocre.then_some(run)
+        });
+        let mut run = found.expect("a mediocre deal in 500 seeds");
+        assert_eq!(RunBot.next_action(&run, &content), Some(RunAction::Redeal));
+        run.series.redeals_in_game = 99;
+        run.series.extra_redeals = 0;
+        assert_eq!(run.redeals_left(&content), 0);
+        assert_ne!(RunBot.next_action(&run, &content), Some(RunAction::Redeal));
+    }
+}
+
+#[cfg(test)]
+mod redeal_probe {
+    use super::*;
+    use crate::cards::CardKind;
+    use crate::content::Character;
+    use crate::content::Content;
+
+    /// Prints the distribution of [`ten_card_score`] over random deals and
+    /// the optimal-stopping values (balance tool, not a check).
+    #[test]
+    #[ignore = "balance probe, prints numbers"]
+    fn ten_card_score_distribution() {
+        let content = Content::load().expect("content");
+        for character in [Character::Declarer, Character::NullPlayer] {
+            let def = content.character(character).expect("character");
+            let scoring = def.null_scoring.clone().unwrap_or(NullScoring::Fixed);
+            let deck: Vec<DealtCard> = crate::deck::Edition::standard()
+                .cards()
+                .iter()
+                .filter_map(|c| match c.kind {
+                    CardKind::Normal(card) => Some(DealtCard::plain(c.id, CardKind::Normal(card))),
+                    CardKind::Blank => None,
+                })
+                .collect();
+            let mut rng = crate::rng::Rng::from_seed(7);
+            let mut scores = Vec::new();
+            for _ in 0..200_000 {
+                let mut d = deck.clone();
+                rng.shuffle(&mut d);
+                scores.push(ten_card_score(&d[..10], &deck, 18, Some(&scoring)));
+            }
+            scores.sort_unstable();
+            let n = scores.len();
+            let q: Vec<i64> = [5, 10, 25, 50, 75, 90, 95]
+                .iter()
+                .map(|p| scores[n * p / 100])
+                .collect();
+            let mut v = scores.iter().sum::<i64>() / i64::try_from(n).expect("n");
+            let mut stops = vec![v];
+            for _ in 0..4 {
+                let t = v;
+                v = scores.iter().map(|&s| s.max(t)).sum::<i64>() / i64::try_from(n).expect("n");
+                stops.push(v);
+            }
+            println!("{character:?} quantiles {q:?} stopping V0.. {stops:?}");
         }
     }
 }

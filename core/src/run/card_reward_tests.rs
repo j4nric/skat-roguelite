@@ -492,3 +492,71 @@ fn regenerate_card_reward_fixture() {
     std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
     println!("wrote {}", path.display());
 }
+
+#[test]
+fn zinken_of_a_held_relics_direction_weigh_more() {
+    let content = content();
+    let mut run = start_at(&content, 5, 0, 0);
+    let percent = content
+        .run
+        .card_reward
+        .as_ref()
+        .expect("card reward")
+        .direction_percent;
+    assert!(percent > 100, "the direction is favoured");
+    let tricks = content.card_mod(&id("gilt_edge")).expect("Goldkante");
+    let schneider = content.card_mod(&id("points")).expect("Augen");
+    let untagged = content
+        .card_mods
+        .values()
+        .find(|m| m.tags.is_empty())
+        .expect("a Zinke without direction");
+    assert_eq!(run.card_reward_bias(&content, tricks), 100);
+    run.relics.push(RelicId::new("fingertips"));
+    assert_eq!(run.card_reward_bias(&content, tricks), percent);
+    assert_eq!(run.card_reward_bias(&content, schneider), 100);
+    assert_eq!(run.card_reward_bias(&content, untagged), 100);
+}
+
+#[test]
+fn the_bot_prefers_zinken_and_relics_of_its_direction() {
+    use super::bot::{RELIC_DIRECTION_BONUS, relic_score, relic_value, zinke_score, zinken_value};
+    let content = content();
+    let mut run = start_at(&content, 5, 0, 0);
+    end_pub(&mut run, &content, 1, true);
+    offer(&mut run, &[("rank", 1), ("lead", 1)]);
+    let taken = |run: &Run| match RunBot::card_reward_action(run, &content) {
+        RunAction::TakeCardReward { offer, .. } => offer,
+        other => panic!("takes one: {other:?}"),
+    };
+    // Without a Null relic Rang +1 is worth more than Blei.
+    assert_eq!(taken(&run), 0);
+    assert_eq!(
+        zinke_score(&run, &content, &id("lead")),
+        zinken_value(&id("lead")) * 100
+    );
+    // With "Senkblei" (Null) Blei wins.
+    run.relics.push(RelicId::new("plumb_line"));
+    assert!(zinke_score(&run, &content, &id("lead")) > zinke_score(&run, &content, &id("rank")));
+    assert_eq!(taken(&run), 1);
+    // A relic of a direction the bot has gets a bonus, others do not.
+    let lead_pouring = RelicId::new("lead_pouring");
+    let shears = RelicId::new("golden_shears");
+    assert_eq!(
+        relic_score(&run, &content, &lead_pouring),
+        relic_value(&lead_pouring) * 100 + RELIC_DIRECTION_BONUS
+    );
+    assert_eq!(
+        relic_score(&run, &content, &shears),
+        relic_value(&shears) * 100
+    );
+    // A Zinke in the deck counts as well: Schneiderkreide for Schneider.
+    let ace = card(&run, "CA");
+    run.edition
+        .add_mod(&content, ace, &id("tailors_chalk"), 1)
+        .expect("chalk");
+    assert_eq!(
+        relic_score(&run, &content, &shears),
+        relic_value(&shears) * 100 + RELIC_DIRECTION_BONUS
+    );
+}

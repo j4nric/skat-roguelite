@@ -512,7 +512,7 @@
         name: "Schutzengel",
         text: "Einmal im Run: Verlierst du eine Kneipe, spielst du sie noch einmal, auch die Boss-Kneipe. Danach ist der Schutzengel weg.",
         rarity: Rare,
-        price: 8,
+        price: 12,
         passive: [SecondChance],
     ),
     // Lever Spelunke: two maluses on offer, the player picks one.
@@ -558,7 +558,7 @@
         name: "Eichelhäher",
         text: "×1,5, wenn du ein Eichel-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Clubs))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -571,7 +571,7 @@
         name: "Laubfrosch",
         text: "×1,5, wenn du ein Grün-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Spades))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -584,7 +584,7 @@
         name: "Rotkehlchen",
         text: "×1,5, wenn du ein Rot-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Hearts))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -597,7 +597,7 @@
         name: "Schellenbaum",
         text: "×1,5, wenn du ein Schellen-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Diamonds))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -623,7 +623,8 @@
         name: "Schwarze Null",
         text: "×1,5, wenn du ein Null-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        // SR4 (05.11.2026): 7 → 9, beim Nullspieler + 19,3 / + 20,7.
+        price: 9,
         hooks: [
             OnScore(when: All([Won, NullGame]), then: [ScaleGameValue(1.5)]),
         ],
@@ -636,8 +637,11 @@
         group: Factor,
         name: "Zapfhahn",
         text: "Jede gewonnene Kneipe gibt +×0,1 Faktor auf jedes gewonnene Spiel, für den Rest des Runs.",
-        rarity: Rare,
-        price: 8,
+        // Runde 3 (05.11.2026): Rare, 8 → Legendary, 10. Ohne Tresen + 12,2
+        // auf „Stadtteil 2“, + 15,0 auf „Stadtteil 3“ (das 4,8-Fache des
+        // Mittels seltener Relikte, mehr als der Grandseigneur): Pflicht.
+        rarity: Legendary,
+        price: 10,
         hooks: [
             OnSeriesWon(then: [IncrementCounter("tap")]),
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "tap", per: 0.1)]),
@@ -652,7 +656,9 @@
         name: "Heiße Hand",
         text: "Jedes gewonnene Spiel in Folge gibt +×0,2 Faktor auf die nächsten gewonnenen Spiele. Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
         rarity: Rare,
-        price: 7,
+        // SR4 (05.11.2026): 8 → 10; ohne Tresen + 9,5 / + 6,8 auf
+        // „Stadtteil 2 / 3“, das Fünffache der übrigen seltenen Relikte.
+        price: 10,
         hooks: [
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.2), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
@@ -674,11 +680,13 @@
         group: Value,
         focus: Trump,
         name: "Vereinsfarben",
-        text: "Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
+        // Runde 3 (05.11.2026): +1 → +2 je Karte; mit +1 ohne Tresen nur
+        // + 1,9 % Punkte je Spiel (+ 1,2 auf „Stadtteil 3“).
+        text: "Farbspiel: +2 Grundwert je Karte deiner Trumpffarbe mit Zinke in deinem Deck.",
         rarity: Uncommon,
-        price: 7,
+        price: 6,
         hooks: [
-            OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 1)]),
+            OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true), per: 2)]),
         ],
     ),
     // Farbtreue. Lever Gewinnstufen: the streak of suit games in the same
@@ -694,7 +702,7 @@
         name: "Treue Seele",
         text: "Gewinnst du ein Farbspiel: +1 Stufe je Spiel direkt davor in derselben Trumpffarbe, höchstens +3.",
         rarity: Common,
-        price: 5,
+        price: 4,
         hooks: [
             OnDeclare(when: All([GameIs(Suit(Clubs)), Not(Flag("true_soul_clubs"))]), then: [ClearFlag("true_soul_spades"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_clubs"), ResetCounter("true_soul")]),
             OnDeclare(when: All([GameIs(Suit(Spades)), Not(Flag("true_soul_spades"))]), then: [ClearFlag("true_soul_clubs"), ClearFlag("true_soul_hearts"), ClearFlag("true_soul_diamonds"), SetFlag("true_soul_spades"), ResetCounter("true_soul")]),
@@ -745,7 +753,7 @@
         name: "Sammelalbum",
         text: "+1 Grundwert je Marke, die in deinem Deck noch auf einer Karte klebt.",
         rarity: Common,
-        price: 5,
+        price: 6,
         hooks: [
             OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCard(count: (kind: Some(Voucher)), per: 1)]),
         ],
@@ -777,7 +785,7 @@
         name: "Strichliste",
         text: "Machst du in einem gewonnenen Spiel 3 Stiche mit Karten mit Zinke: +1 Stufe, bei 5 Stichen +2.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         hooks: [
             OnDeclare(then: [ResetCounter("tally_sheet")]),
             OnTrickEnd(when: All([TrickWonWithMarkedCard, Not(NullGame), Not(RamschGame)]), then: [IncrementCounter("tally_sheet")]),
@@ -844,7 +852,7 @@
         name: "Schnittmuster",
         text: "Gewinnst du mit Schneider: +1 Grundwert je Karte mit Aufdruck oder Schneiderkreide in deinem Deck.",
         rarity: Common,
-        price: 5,
+        price: 6,
         hooks: [
             OnScore(when: All([WonSchneider, Not(RamschGame)]), then: [AddBaseValuePerCard(count: (mods: ["points", "tailors_chalk"]), per: 1)]),
         ],
@@ -860,7 +868,8 @@
         name: "Bleigießen",
         text: "Gewinnst du ein Null: +1 Stufe je Karte mit Blei auf deiner Hand.",
         rarity: Uncommon,
-        price: 6,
+        // SR4 (05.11.2026): 6 → 8, beim Nullspieler + 11,3 / + 14,0.
+        price: 8,
         hooks: [
             OnScore(when: All([Won, NullGame]), then: [AddLevelsPerCard(count: (mods: ["lead"], in_hand: true), per: 1)]),
         ],
@@ -873,11 +882,13 @@
         group: Value,
         focus: Null,
         name: "Senkblei",
-        text: "Null: +2 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren.",
+        // SR4 (05.11.2026): +2 → +1 je Karte, beim Nullspieler ohne Tresen
+        // + 10,7 / + 15,3 auf „Stadtteil 2 / 3“ (gewöhnlich!).
+        text: "Null: +1 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren.",
         rarity: Common,
         price: 5,
         hooks: [
-            OnDeclare(when: NullGame, then: [AddBaseValuePerCard(count: (mods: ["lead"]), per: 2)]),
+            OnDeclare(when: NullGame, then: [AddBaseValuePerCard(count: (mods: ["lead"]), per: 1)]),
         ],
     ),
     // Grand (Cockpit q27, 04.11.2026: the Grand counts 18 in the run).
@@ -890,7 +901,7 @@
         name: "Großvaters Grand",
         text: "Der Grand zählt wieder 24 wie zu Großvaters Zeiten: Grundwert +6.",
         rarity: Uncommon,
-        price: 6,
+        price: 7,
         hooks: [
             OnDeclare(when: GameIs(Grand), then: [AddBaseValue(6)]),
         ],
