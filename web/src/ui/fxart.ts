@@ -193,9 +193,9 @@ const G: Record<string, string[]> = {
   // three steps (user decision 04.11.2026, replaced the M-D "Steilpfeil").
   base: ['..###..', '..###..', '.......', '###.###', '###.###'],
   levels: ['....##', '....##', '..####', '..####', '######'],
-  // Faktor (ADR 0018, provisional until the user picks one): a "×" with a
-  // superscript caret, "× hoch": the whole Spielwert multiplied.
-  factor: ['....#.', '...#.#', '#.#...', '.#....', '#.#...'],
+  // Faktor (ADR 0018; playtest 05.11.2026): a "steigender Kurs", a chart
+  // line that dips once and climbs to an arrow head at the top right.
+  factor: ['...###', '....##', '.#.#.#', '#.#...', '#.....'],
 };
 
 /** One item of a band: a number text ("+4", "−2", "×2") or a named glyph. */
@@ -673,17 +673,18 @@ const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, s
     rows: ['......lll', '......ccc', '......ccc', '...lllccc', '...cccccc', '...cccccc', 'lllcccccc', 'ccccccccc', 'ccccccccc'],
     pal: { c: '#d1773f', l: '#f1b48a' },
   },
-  // Faktor (ADR 0018), provisional: an amber "×" with a gold caret above
-  // it to the right, the exponent mark of "multiplied as a whole".
+  // Faktor (ADR 0018; playtest 05.11.2026): a "steigender Kurs" in amber,
+  // a chart line with a dip climbing to an arrow head at the top right,
+  // lit on top, dark below.
   factor: {
-    rows: ['......gg..', '.....g..g.', '....g....g', 'cl..lc....', '.cllc.....', '..cc......', '.clcl.....', 'cl..cl....'],
-    pal: { c: '#c98a12', l: '#ffd25e', g: '#f7c21a' },
+    rows: ['......llll', '......ccll', '.......lll', '.......lcl', '..l...lc.c', '.lcl.lc...', 'lc.clc....', 'c...c.....'],
+    pal: { c: '#c98a12', l: '#ffd25e' },
   },
 };
 
 /**
  * The Grundwert, Stufen, Faktor or Augen icon in its large form
- * (stone bricks, copper staircase, amber "×" with a caret, a die) with a dark one-pixel outline, as inline SVG `height` px
+ * (stone bricks, copper staircase, an amber rising chart line, a die) with a dark one-pixel outline, as inline SVG `height` px
  * high: beside the labels of the score boxes.
  */
 export function valueIcon(kind: ValueIconKind, height = 14): string {

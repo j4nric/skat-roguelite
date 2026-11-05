@@ -21,6 +21,7 @@ import { backDesign } from './backs';
 import { cardBack, lookSvg, modIcon, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
+import { valueIcon } from './fxart';
 import { quipBubble, seatLabel, seatPerson } from './guests';
 import { schnapsNotes } from './hud';
 import { bossCoaster } from './emblems';
@@ -544,7 +545,9 @@ function worthChip(game: GameView): string {
     p.multiplier !== 1
       ? t(de.table.worthFactor, { base: p.base_value, levels: p.levels, factor: factorText(p.multiplier) })
       : t(de.table.worth, { base: p.base_value, levels: p.levels });
-  return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${esc(label)}</span>`;
+  // With a Faktor its icon (the rising chart line) leads the chip.
+  const icon = p.multiplier !== 1 ? valueIcon('factor', 12) : '';
+  return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${icon}${esc(label)}</span>`;
 }
 
 /**

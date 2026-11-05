@@ -1686,6 +1686,9 @@ button.card {
 
 /* Grundwert × Gewinnstufen while playing: quieter than the tricks. */
 .gameline .worth {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 6px;
   border: 2px solid var(--line);
   color: var(--muted);
