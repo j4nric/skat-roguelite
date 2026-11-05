@@ -512,7 +512,7 @@
         name: "Schutzengel",
         text: "Einmal im Run: Verlierst du eine Kneipe, spielst du sie noch einmal, auch die Boss-Kneipe. Danach ist der Schutzengel weg.",
         rarity: Rare,
-        price: 8,
+        price: 12,
         passive: [SecondChance],
     ),
     // Lever Spelunke: two maluses on offer, the player picks one.
@@ -558,7 +558,7 @@
         name: "Eichelhäher",
         text: "×1,5, wenn du ein Eichel-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Clubs))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -571,7 +571,7 @@
         name: "Laubfrosch",
         text: "×1,5, wenn du ein Grün-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Spades))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -584,7 +584,7 @@
         name: "Rotkehlchen",
         text: "×1,5, wenn du ein Rot-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Hearts))]), then: [ScaleGameValue(1.5)]),
         ],
@@ -597,7 +597,7 @@
         name: "Schellenbaum",
         text: "×1,5, wenn du ein Schellen-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, GameIs(Suit(Diamonds))]), then: [ScaleGameValue(1.5)]),
         ],

@@ -173,6 +173,8 @@
     // eine Spezialkarte (Untot, Wandelkarte, Doppelgänger), solange die
     // Ausgabe sie noch bekommen darf. Nie ein Fluch. Werte wie in der
     // Auslage (shop_value). Überspringen gibt skip_coins Groschen.
+    // Eine Zinke mit einer Richtung (tags) eines Relikts, das der Spieler
+    // hat, wiegt direction_percent Prozent (DESIGN 8.11, Runde 3).
     // VORLÄUFIG, nach Augenmaß ohne Messung.
     card_reward: Some((
         offers: 3,
@@ -180,6 +182,7 @@
         rarity_weights: (common: 60, uncommon: 30, rare: 10),
         voucher_percent: 50,
         special_percent: 5,
+        direction_percent: 150,
     )),
     // Grundwerte des Runs, wo sie von der Skatordnung abweichen (DESIGN
     // 4.2). Grand 18 statt 24 (Entscheidung des Nutzers, 04.11.2026,

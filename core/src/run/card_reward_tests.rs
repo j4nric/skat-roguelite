@@ -492,3 +492,28 @@ fn regenerate_card_reward_fixture() {
     std::fs::write(&path, serde_json::to_string(&out).expect("json")).expect("write");
     println!("wrote {}", path.display());
 }
+
+#[test]
+fn zinken_of_a_held_relics_direction_weigh_more() {
+    let content = content();
+    let mut run = start_at(&content, 5, 0, 0);
+    let percent = content
+        .run
+        .card_reward
+        .as_ref()
+        .expect("card reward")
+        .direction_percent;
+    assert!(percent > 100, "the direction is favoured");
+    let tricks = content.card_mod(&id("gilt_edge")).expect("Goldkante");
+    let schneider = content.card_mod(&id("points")).expect("Augen");
+    let untagged = content
+        .card_mods
+        .values()
+        .find(|m| m.tags.is_empty())
+        .expect("a Zinke without direction");
+    assert_eq!(run.card_reward_bias(&content, tricks), 100);
+    run.relics.push(RelicId::new("fingertips"));
+    assert_eq!(run.card_reward_bias(&content, tricks), percent);
+    assert_eq!(run.card_reward_bias(&content, schneider), 100);
+    assert_eq!(run.card_reward_bias(&content, untagged), 100);
+}
