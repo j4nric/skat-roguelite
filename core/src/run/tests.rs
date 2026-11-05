@@ -367,11 +367,15 @@ fn buy_sell_reroll_and_slots() {
     run.apply(&content, RunAction::SellRelic(0)).expect("sell");
     assert_eq!(run.coins(), 100 - price + price / 2);
     assert!(run.relics().is_empty());
-    // Reroll costs 2 Groschen and draws a new offer.
+    // "Neu auslosen" costs 2 Groschen and draws a new offer, once.
     let coins = run.coins();
     run.apply(&content, RunAction::Reroll).expect("reroll");
     assert_eq!(run.coins(), coins - 2);
     assert_eq!(run.shop().map(|s| s.rerolls), Some(1));
+    assert_eq!(
+        run.clone().apply(&content, RunAction::Reroll),
+        Err(RunError::AlreadyUsed)
+    );
     // Slots: relics unlimited (03.11.2026) unless `run.ron` caps them,
     // two consumables.
     run.relics = content.relics.keys().take(5).cloned().collect();

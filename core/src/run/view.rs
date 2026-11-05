@@ -380,27 +380,35 @@ pub struct BossRewardView {
     pub slots_full: bool,
 }
 
-/// The card reward of a won pub (DESIGN 5.0): take one Zinke for free on
-/// a card ([`RunAction::TakeCardReward`]) or skip for Groschen
+/// The card reward of a won pub (DESIGN 5.0): take one card with its
+/// Zinke for free ([`RunAction::TakeCardReward`]) or skip for Groschen
 /// ([`RunAction::SkipCardReward`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardRewardView {
-    /// The Zinken on offer.
+    /// The offers: a card with a Zinke each.
     pub offers: Vec<CardRewardOfferView>,
     /// Groschen for "Überspringen".
     pub skip_coins: u32,
 }
 
-/// One Zinke of the card reward.
+/// One offer of the card reward: a card of the edition with a Zinke
+/// (since 05.11.2026), shown like an offer of the Auslage.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardRewardOfferView {
     /// Index for [`RunAction::TakeCardReward`] `offer`.
     pub index: usize,
+    /// The card as it is now.
+    pub card: DeckCard,
+    /// The card as it would be after taking it.
+    pub result: DeckCard,
     /// The Zinke with its value and text.
     pub card_mod: CardModInfo,
-    /// The deck cards it may go on now, in id order
-    /// ([`Run::card_reward_targets`]).
-    pub targets: Vec<u32>,
+    /// Whether it can be taken now.
+    pub can_take: bool,
+    /// The modification on the card it would replace (ask first).
+    pub replaces: Option<CardModId>,
+    /// Whether it would raise the same modification on the card.
+    pub raises: bool,
 }
 
 /// One relic of the boss reward.
@@ -560,20 +568,17 @@ pub struct ShopView {
     pub relics: Vec<Option<RelicOffer>>,
     /// Consumable slots; `None` once bought.
     pub consumables: Vec<Option<ConsumableOffer>>,
-    /// Price of a Neuauslage.
+    /// Price of "Neu auslosen" now (relics, Schnäpse and the Auslage, once
+    /// per visit since 05.11.2026; 0 with "Der Stammkunde").
     pub reroll_cost: u32,
-    /// Whether a Neuauslage is possible now.
+    /// Whether "Neu auslosen" is possible now.
     pub can_reroll: bool,
-    /// Neuauslagen bought during this visit.
+    /// "Neu auslosen" during this visit (0 or 1).
     pub rerolls: u32,
+    /// "Neu auslosen" was used at this visit.
+    pub reroll_used: bool,
     /// The Auslage (Zinken, DESIGN 8.6); `None` once bought.
     pub card_offers: Vec<Option<CardOfferView>>,
-    /// Price of the next "Neu auslosen" (after discounts).
-    pub card_reroll_cost: u32,
-    /// Whether "Neu auslosen" is possible now.
-    pub can_reroll_cards: bool,
-    /// "Neu auslosen" bought during this visit.
-    pub card_rerolls: u32,
     /// The Kartenmaler ([`RunAction::HirePainter`]).
     pub painter: ServiceView,
     /// "Karte reinigen" ([`RunAction::CleanseCard`]).
@@ -1502,10 +1507,23 @@ impl Run {
                     .offers
                     .iter()
                     .enumerate()
-                    .map(|(index, (card_mod, value))| CardRewardOfferView {
-                        index,
-                        card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
-                        targets: self.card_reward_targets(content, index),
+                    .filter_map(|(index, offer)| {
+                        let card = self.edition.get(offer.card)?.clone();
+                        let (result, replaces, raises) =
+                            self.mod_result(content, offer.card, &offer.card_mod, offer.value);
+                        Some(CardRewardOfferView {
+                            index,
+                            result: result.unwrap_or_else(|| card.clone()),
+                            card,
+                            card_mod: Run::card_mod_info(
+                                content,
+                                &offer.card_mod,
+                                Some(offer.value),
+                            ),
+                            can_take: self.card_reward_open(content, index),
+                            replaces,
+                            raises,
+                        })
                     })
                     .collect(),
                 skip_coins: content.run.card_reward.as_ref().map_or(0, |c| c.skip_coins),
@@ -1685,9 +1703,10 @@ impl Run {
                     })
                 })
                 .collect(),
-            reroll_cost: self.shop_price(content, content.run.economy.reroll_cost),
+            reroll_cost: self.reroll_cost(content),
             can_reroll: self.accepts(content, RunAction::Reroll),
             rerolls: shop.rerolls,
+            reroll_used: shop.rerolls > 0,
             card_offers: shop
                 .card_offers
                 .iter()
@@ -1717,9 +1736,6 @@ impl Run {
                     })
                 })
                 .collect(),
-            card_reroll_cost: self.shop_price(content, self.card_reroll_price(content)),
-            can_reroll_cards: self.accepts(content, RunAction::RerollCardOffers),
-            card_rerolls: shop.card_rerolls,
             painter: self.service_view(
                 content,
                 shop.painter_used,
@@ -1782,7 +1798,7 @@ impl Run {
     /// What `card_mod` with `value` would make of `card`: the card after,
     /// the modification it replaces and whether it raises one. Tried on a
     /// copy of the edition; `None` if the rules refuse it.
-    fn mod_result(
+    pub(super) fn mod_result(
         &self,
         content: &Content,
         card: u32,

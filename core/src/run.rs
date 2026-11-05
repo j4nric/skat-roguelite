@@ -610,9 +610,6 @@ pub enum OptionBlock {
     /// Nothing was left to draw (no house rule, relic, Schnaps or
     /// modification for the character).
     NothingLeft,
-    /// The edition holds as many special cards of this kind as it may
-    /// (DESIGN 7.2).
-    SpecialCardCap,
     /// No card of the edition can take it.
     NoFittingCard,
     /// No relic owned.
@@ -632,9 +629,7 @@ impl OptionBlock {
         match self {
             OptionBlock::NotEnoughCoins => RunError::NotEnoughCoins,
             OptionBlock::RelicSlotsFull => RunError::NoFreeSlot,
-            OptionBlock::NothingLeft | OptionBlock::SpecialCardCap | OptionBlock::NoFittingCard => {
-                RunError::NoModAvailable
-            }
+            OptionBlock::NothingLeft | OptionBlock::NoFittingCard => RunError::NoModAvailable,
             OptionBlock::NoRelic => RunError::InvalidSlot,
             OptionBlock::BetOpen | OptionBlock::NotNeeded => RunError::ConditionNotMet,
         }
@@ -698,7 +693,8 @@ pub struct Shop {
     pub relics: Vec<Option<RelicId>>,
     /// Consumables on offer.
     pub consumables: Vec<Option<ConsumableId>>,
-    /// Neuauslagen bought during this visit.
+    /// "Neu auslosen" during this visit (once per visit since 05.11.2026;
+    /// saves from before may hold more).
     pub rerolls: u32,
     /// This visit sold on credit ("Deckel anschreiben"): it may go on
     /// down to the limit.
@@ -708,9 +704,6 @@ pub struct Shop {
     /// cards. Empty in saves from before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub card_offers: Vec<Option<zinken::CardOffer>>,
-    /// "Neu auslosen" of the Auslage bought during this visit.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub card_rerolls: u32,
     /// The Kartenmaler worked at this visit (once per Tresen).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub painter_used: bool,
@@ -896,16 +889,16 @@ pub enum RunAction {
     SellRelic(usize),
     /// Sell an owned consumable for half its price.
     SellConsumable(usize),
-    /// Neuauslage: draw a new offer of relics and consumables (the
-    /// Auslage stays).
+    /// "Neu auslosen" (since 05.11.2026, DESIGN 8.6): draw a new offer of
+    /// relics, consumables and the Auslage, once per Tresen visit
+    /// ([`RunError::AlreadyUsed`]), for
+    /// [`crate::content::Economy::reroll_cost`] (free with "Der
+    /// Stammkunde", [`Effect::FreeReroll`]).
     Reroll,
     /// Buy the offer of the Auslage in this slot (Zinken, DESIGN 8.6): its
     /// modification with its value goes on its card. The same modification
     /// on the card is raised, another one replaced.
     BuyCardOffer(usize),
-    /// "Neu auslosen": draw the Auslage again. The price rises with every
-    /// further time at the same Tresen.
-    RerollCardOffers,
     /// Hire the Kartenmaler (once per Tresen) for this card of the player's
     /// edition (instance id): he draws modifications that fit it, the
     /// player takes one ([`RunAction::ChoosePaint`]).
@@ -982,15 +975,13 @@ pub enum RunAction {
         give_up: Option<usize>,
     },
     /// The card reward of a won pub ([`RunPhase::CardReward`], DESIGN
-    /// 5.0): the Zinke at `offer` of [`card_reward::CardReward::offers`]
-    /// goes on the deck card `card` for free (the same Zinke on it rises,
-    /// another is replaced). The card must take it
-    /// ([`Run::card_reward_targets`]). Then the way goes on.
+    /// 5.0): the offer at `offer` of [`card_reward::CardReward::offers`],
+    /// a card with a Zinke, for free (the same Zinke on it rises, another
+    /// is replaced). Since 05.11.2026 the card comes with the offer. Then
+    /// the way goes on.
     TakeCardReward {
-        /// Index into the Zinken on offer.
+        /// Index into the offers.
         offer: usize,
-        /// The deck card (instance id).
-        card: u32,
     },
     /// The card reward of a won pub, skipped: Groschen instead
     /// ([`crate::content::CardRewardConfig::skip_coins`]). Then the way
@@ -1189,13 +1180,14 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Groschen received.
         price: u32,
     },
-    /// A new offer was drawn.
+    /// "Neu auslosen": a new offer of relics and consumables was drawn
+    /// (`ShopOpened` follows), then the Auslage (`CardOffersDrawn`).
     ShopRerolled {
         /// Price paid.
         cost: u32,
     },
     /// The Auslage was drawn (Zinken, DESIGN 8.6): when the Tresen opens
-    /// and after "Neu auslosen".
+    /// and after "Neu auslosen" ([`RunEvent::ShopRerolled`]).
     CardOffersDrawn {
         /// The offers, by slot.
         offers: Vec<Option<zinken::CardOffer>>,
@@ -1213,11 +1205,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
         value: i32,
         /// Price paid.
         price: u32,
-    },
-    /// "Neu auslosen" was paid; `CardOffersDrawn` follows.
-    CardOffersRerolled {
-        /// Price paid.
-        cost: u32,
     },
     /// The Kartenmaler took a card and drew the modifications to choose
     /// from (at the Tresen, or free at the Werkstatt).
@@ -1301,22 +1288,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// when `false`.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         via_hand: bool,
-    },
-    /// A Totenmarke or Narrenmarke was redeemed while another card of the
-    /// edition is that special card already (at most one Untot and one
-    /// Wandelkarte, DESIGN 7.2): the card stays as it is, the voucher pays
-    /// Groschen instead (`CoinsGained` follows).
-    VoucherCapped {
-        /// Instance id of the card that went into the skat.
-        card: u32,
-        /// The voucher.
-        card_mod: CardModId,
-        /// The special card it would have made.
-        special: CardModId,
-        /// The card that is that special card.
-        holder: u32,
-        /// Groschen paid instead.
-        coins: u32,
     },
     /// "Der Drückeberger" (DESIGN 9.4): a voucher redeemed in the pub
     /// that just ended is back on its card.
@@ -1669,11 +1640,11 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The Schnaps given up for it.
         given_up: ConsumableId,
     },
-    /// A won normal pub or Spelunke: the innkeeper offers these Zinken
-    /// with their values (DESIGN 5.0, [`RunPhase::CardReward`]).
+    /// A won normal pub or Spelunke: the innkeeper offers these cards
+    /// with a Zinke each (DESIGN 5.0, [`RunPhase::CardReward`]).
     CardRewardOffered {
-        /// The Zinken on offer with their values, in offer order.
-        offers: Vec<(CardModId, i32)>,
+        /// The offers, in order.
+        offers: Vec<card_reward::RewardOffer>,
     },
     /// A Zinke of the card reward was taken; [`RunEvent::DeckChanged`]
     /// follows.
@@ -1775,7 +1746,8 @@ pub enum RunError {
     /// The cards for an "Untot" card are not three different cards of the
     /// player's hand, or no "Untot" card waits for them.
     InvalidRiseCards,
-    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
+    /// this Tresen already.
     AlreadyUsed,
     /// "Bruderherz": a curse on his edition cannot be cleansed.
     CurseStays,
@@ -1906,13 +1878,11 @@ pub enum RunErrorCode {
     RisePending,
     /// Not three different cards of the hand, or nothing waits for them.
     InvalidRiseCards,
-    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
+    /// this Tresen already.
     AlreadyUsed,
     /// The character's curses cannot be cleansed ("Bruderherz").
     CurseStays,
-    /// Another card of the edition is this special card already (at most
-    /// one Untot and one Wandelkarte, DESIGN 7.2).
-    SpecialTaken,
     /// The consumable does nothing now ("Klarer" without a minus,
     /// "Eierlikör" without being behind).
     ConditionNotMet,
@@ -1982,7 +1952,6 @@ impl RunErrorCode {
             RunErrorCode::InvalidRiseCards => "InvalidRiseCards",
             RunErrorCode::AlreadyUsed => "AlreadyUsed",
             RunErrorCode::CurseStays => "CurseStays",
-            RunErrorCode::SpecialTaken => "SpecialTaken",
             RunErrorCode::ConditionNotMet => "ConditionNotMet",
             RunErrorCode::NotInBossPub => "NotInBossPub",
             RunErrorCode::SchnappsRewardPending => "SchnappsRewardPending",
@@ -2028,7 +1997,6 @@ impl RunError {
                 DeckError::AtMaximum(_) => RunErrorCode::ModAtMaximum,
                 DeckError::UnknownMod(_) => RunErrorCode::UnknownContent,
                 DeckError::MissingCard(_) => RunErrorCode::MissingCard,
-                DeckError::SpecialTaken(_) => RunErrorCode::SpecialTaken,
             },
             RunError::TargetRequired => RunErrorCode::TargetRequired,
             RunError::NoModAvailable => RunErrorCode::NoModAvailable,
@@ -2935,7 +2903,6 @@ impl Run {
             RunAction::SellConsumable(index) => self.sell_consumable(content, index, events),
             RunAction::Reroll => self.reroll(content, events),
             RunAction::BuyCardOffer(slot) => self.buy_card_offer(content, slot, events),
-            RunAction::RerollCardOffers => self.reroll_card_offers(content, events),
             RunAction::HirePainter(card) => self.hire_painter(content, card, events),
             RunAction::ChoosePaint(option) => self.choose_paint(content, option, events),
             RunAction::ChooseRiseCards(ids) => self.choose_rise_cards(content, ids, events),
@@ -2959,9 +2926,7 @@ impl Run {
             RunAction::ChooseSchnappsReward { give_up } => {
                 self.choose_schnapps_reward(content, give_up, events)
             }
-            RunAction::TakeCardReward { offer, card } => {
-                self.take_card_reward(content, offer, card, events)
-            }
+            RunAction::TakeCardReward { offer } => self.take_card_reward(content, offer, events),
             RunAction::SkipCardReward => self.skip_card_reward(content, events),
             RunAction::EnterNight => self.enter_night(content, events),
         }
@@ -4049,6 +4014,7 @@ impl Run {
             | Effect::Doppelganger
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
+            | Effect::FreeReroll
             | Effect::CurseForPub { .. }
             | Effect::SetFlag(_)
             | Effect::ClearFlag(_)
@@ -4913,7 +4879,6 @@ impl Run {
             rerolls,
             on_credit: false,
             card_offers: Vec::new(),
-            card_rerolls: 0,
             painter_used: false,
             cleansed: false,
             kiosk: false,
@@ -5429,9 +5394,32 @@ impl Run {
         Ok(())
     }
 
+    /// What "Neu auslosen" costs now: [`crate::content::Economy::reroll_cost`]
+    /// after the Tresen discount ("Der Wirt"), nothing with "Der
+    /// Stammkunde" ([`Effect::FreeReroll`]).
+    #[must_use]
+    pub fn reroll_cost(&self, content: &Content) -> u32 {
+        let free = self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .any(|def| def.passive.contains(&Effect::FreeReroll));
+        if free {
+            0
+        } else {
+            self.shop_price(content, content.run.economy.reroll_cost)
+        }
+    }
+
+    /// "Neu auslosen" (DESIGN 8.6, since 05.11.2026): relics, Schnäpse and
+    /// the Auslage drawn again, once per Tresen visit.
     fn reroll(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let rerolls = self.tresen_mut()?.rerolls;
-        let cost = self.shop_price(content, content.run.economy.reroll_cost);
+        if rerolls > 0 {
+            return Err(RunError::AlreadyUsed);
+        }
+        let cost = self.reroll_cost(content);
         if !self.can_pay(content, cost) {
             return Err(RunError::NotEnoughCoins);
         }
@@ -5440,8 +5428,6 @@ impl Run {
         let mut shop = self.draw_offer(content, rerolls + 1);
         if let Some(old) = old {
             shop.on_credit = old.on_credit;
-            shop.card_offers = old.card_offers;
-            shop.card_rerolls = old.card_rerolls;
             shop.painter_used = old.painter_used;
             shop.cleansed = old.cleansed;
         }
@@ -5452,6 +5438,7 @@ impl Run {
             fence: shop.fence,
         });
         self.shop = Some(shop);
+        self.draw_card_offers(content, events);
         Ok(())
     }
 
@@ -5740,7 +5727,6 @@ impl Run {
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.offer_open(content, m))
             // Only what some card of the deck may still take.
             .filter(|m| {
                 self.edition
@@ -5980,7 +5966,7 @@ impl Run {
             }
             for effect in hook.then() {
                 if let Effect::TurnInto(special) = effect {
-                    self.turn_into(content, card, card_mod, special, &source, events);
+                    self.turn_into(content, card, special, events);
                 } else {
                     self.apply_effect(content, &source, &effect.scaled(value), events);
                 }
@@ -5991,35 +5977,19 @@ impl Run {
     }
 
     /// A redeemed voucher makes `card` the special card `special`
-    /// (`TurnInto`). If another card is that special card already (at most
-    /// one Untot and one Wandelkarte, DESIGN 7.2), the card stays as it is
-    /// and the voucher pays [`crate::content::ZinkenConfig::capped_voucher_coins`]
-    /// instead. A card that is the special card already stays so, nothing
-    /// paid (the Drückeberger's returned Totenmarke, DESIGN 9.4).
+    /// (`TurnInto`). Since 05.11.2026 there is no cap on special cards
+    /// (DESIGN 7.2): it always turns the card. A card that is the special
+    /// card already stays so (the Drückeberger's returned Totenmarke,
+    /// DESIGN 9.4).
     fn turn_into(
         &mut self,
         content: &Content,
         card: u32,
-        voucher: &CardModId,
         special: &CardModId,
-        source: &Source,
         events: &mut Vec<RunEvent>,
     ) {
-        match self.edition.add_mod(content, card, special, 1) {
-            Ok(change) => events.push(RunEvent::DeckChanged(change)),
-            Err(DeckError::SpecialTaken(_)) => {
-                let coins = content.run.shop.zinken.capped_voucher_coins;
-                events.push(RunEvent::VoucherCapped {
-                    card,
-                    card_mod: voucher.clone(),
-                    special: special.clone(),
-                    holder: self.edition.holder_of(special).unwrap_or(card),
-                    coins,
-                });
-                let amount = i32::try_from(coins).unwrap_or(i32::MAX);
-                self.apply_effect(content, source, &Effect::GainCoins(amount), events);
-            }
-            Err(_) => {}
+        if let Ok(change) = self.edition.add_mod(content, card, special, 1) {
+            events.push(RunEvent::DeckChanged(change));
         }
     }
 

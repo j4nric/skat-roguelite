@@ -5038,6 +5038,12 @@ button.card {
   margin-top: auto;
 }
 
+/* Since 05.11.2026 the whole offer of the Auslage opens the sheet with
+   the card before and after, like the card reward. */
+.zinke[data-action='zinke-tile'] {
+  cursor: pointer;
+}
+
 /*
  * The relics on offer at the Tresen (03.11.2026): a row of three tiles
  * like the Auslage, on the phone too. The whole tile opens the full text,
@@ -5113,10 +5119,6 @@ button.card {
   margin-right: 4px;
   color: #6a3b33;
   font-size: var(--fs-s);
-}
-
-.zinken-reroll {
-  align-self: center;
 }
 
 .services {

@@ -38,7 +38,6 @@ export const de = {
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
-      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Deck.',
       ConditionNotMet: 'Der wirkt gerade nicht.',
       NotInBossPub: 'Nicht in der Boss-Kneipe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
@@ -260,6 +259,8 @@ export const de = {
     apply: '{card} bekommt {new}.',
     applyPlain: 'So sieht {card} danach aus.',
     applyGo: 'Anbringen',
+    /** A fixed offer of the Auslage (card and Zinke): buy it. */
+    buyGo: 'Kaufen · {price} Gr.',
     cleanseTitle: 'Karte reinigen?',
     cleanse: '{card}: Alle Zinken gehen ab, Flüche eingeschlossen.',
     cleanseGo: 'Reinigen',
@@ -275,7 +276,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'trägt nichts, was abgehen könnte',
-      SpecialTaken: 'eine andere Karte ist das schon',
     } as Record<string, string>,
     /** Short tag on the card in the picker. */
     tags: {
@@ -285,7 +285,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'sauber',
-      SpecialTaken: 'vergeben',
     } as Record<string, string>,
   },
 
@@ -522,8 +521,7 @@ export const de = {
     passesAdded: 'Einmal mehr einmischen: jetzt {left}.',
     bought: '{name} gekauft.',
     sold: '{name} verkauft (+{price} Gr.).',
-    rerolled: 'Neue Ware auf dem Tresen.',
-    cardsRerolled: 'Die Auslage ist neu ausgelost.',
+    rerolled: 'Alles neu ausgelost: Relikte, Schnäpse und Auslage.',
     peeked: 'Der Kiebitz flüstert: {name} hält {card}.',
     glassEye: 'Glasauge: Durchsichtig sind {cards}.',
     transparentCard: '{card} bei {name}',
@@ -582,7 +580,6 @@ export const de = {
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
-    voucherCapped: '{mod} eingelöst, aber {holder} ist schon {special}. Dafür {coins} Groschen.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -674,7 +671,10 @@ export const de = {
     buy: 'Kaufen · {price} Gr.',
     sell: 'Verkaufen +{price}',
     use: 'Benutzen',
-    reroll: 'Neuauslage · {cost} Gr.',
+    /** "Neu auslosen" of the whole Tresen, once per visit (05.11.2026). */
+    reroll: 'Neu auslosen · {cost} Gr.',
+    rerollFree: 'Neu auslosen · gratis',
+    rerollUsed: 'Schon neu ausgelost',
     leave: 'Weiter',
     pickTarget: 'Wähle eine Karte',
     chalkCard: 'Welche Karte färbst du um? Sie behält ihren Wert und hat bis zum Spielende die neue Farbe.',
@@ -712,7 +712,6 @@ export const de = {
     zinkeBecomes: 'wird {special}',
     zinkeKeeps: '{mod} bleibt',
     noOffers: 'Gerade passt keine Zinke auf deine Karten.',
-    rerollCards: 'Neu auslosen · {cost} Gr.',
     painter: 'Kartenmaler',
     painterHint: 'Du wählst die Karte, er malt dir eine von zwei Zinken darauf. Einmal je Tresen.',
     painterGo: 'Karte wählen · {price} Gr.',
@@ -882,7 +881,6 @@ export const de = {
     blocked: {
       NotEnoughCoins: 'Zu wenig Groschen.',
       NothingLeft: 'Hier gibt es nichts mehr für dich.',
-      SpecialCardCap: 'Dein Deck hat diese Spezialkarte schon.',
       NoFittingCard: 'Keine Karte deines Decks passt.',
       NoRelic: 'Du hast kein Relikt.',
       RelicSlotsFull: 'Alle Relikt-Plätze sind belegt.',
@@ -991,7 +989,7 @@ export const de = {
       'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
       'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
     ],
-    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Deck. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    cap: 'Spezialkarten darf dein Deck beliebig viele haben.',
     go: 'Verstanden',
   },
 
@@ -1083,13 +1081,11 @@ export const de = {
     kicker: 'Kneipe gewonnen',
     sub: 'Der Wirt zinkt mit',
     title: 'Eine Zinke aufs Haus',
-    text: 'Der Wirt bietet dir drei Zinken an. Eine kommt gratis auf eine Karte deiner Wahl.',
+    text: 'Der Wirt bietet dir drei Karten aus deinem Deck mit je einer Zinke an. Eine davon gibt es gratis.',
     take: 'Diese',
     rare: 'Selten',
     skip: 'Überspringen (+{coins} Groschen)',
-    pickCard: 'Auf welche Karte?',
-    pickHint: '{name}: {text}',
-    backOffers: 'Andere Zinke',
+    backOffers: 'Anderes Angebot',
   },
 
   end: {

@@ -118,11 +118,7 @@ impl Run {
                                 offers
                                     .iter()
                                     .map(|(m, _)| m)
-                                    .find(|m| {
-                                        content
-                                            .card_mod(m)
-                                            .is_some_and(|d| self.offer_open(content, d))
-                                    })
+                                    .find(|m| content.card_mod(m).is_some())
                                     .cloned()
                             };
                             EncounterEffect::Mark {
@@ -221,11 +217,7 @@ impl Run {
                             (None, None) if !offers.is_empty() => {
                                 let pool: Vec<((CardModId, i32), u32)> = offers
                                     .iter()
-                                    .filter(|(m, _)| {
-                                        content
-                                            .card_mod(m)
-                                            .is_some_and(|d| self.offer_open(content, d))
-                                    })
+                                    .filter(|(m, _)| content.card_mod(m).is_some())
                                     .map(|o| (o.clone(), 1))
                                     .collect();
                                 draw_weighted(&mut self.encounter_rng, pool, 1)
@@ -337,8 +329,7 @@ impl Run {
     }
 
     /// The Marken that may go on a card now: on `card`, or (`None`) on
-    /// some card of the edition. A Toten- or Narrenmarke only while the
-    /// edition may still get its special card (DESIGN 7.2).
+    /// some card of the edition.
     fn marken_for<'c>(
         &'c self,
         content: &'c Content,
@@ -346,7 +337,6 @@ impl Run {
     ) -> impl Iterator<Item = &'c CardModDef> + 'c {
         self.marken(content)
             .into_iter()
-            .filter(|m| self.offer_open(content, m))
             .filter(move |m| match card {
                 Some(card) => self.may_attach(content, card, &m.id),
                 None => self
@@ -357,8 +347,7 @@ impl Run {
             })
     }
 
-    /// Whether the Marke `marke` may go on `card` now (special card caps
-    /// included).
+    /// Whether the Marke `marke` may go on `card` now.
     #[must_use]
     pub fn marke_fits_card(&self, content: &Content, card: u32, marke: &CardModId) -> bool {
         self.marken_for(content, Some(card)).any(|m| &m.id == marke)
@@ -432,9 +421,6 @@ impl Run {
                     ..
                 } => match content.card_mod(m) {
                     None => Some(OptionBlock::NothingLeft),
-                    Some(def) if !self.offer_open(content, def) => {
-                        Some(OptionBlock::SpecialCardCap)
-                    }
                     Some(_) => {
                         let fits = match card {
                             CardPick::Random => self.edition.cards().iter().any(|c| {
@@ -453,16 +439,7 @@ impl Run {
                             CardPick::Random => self.marken_for(content, None).next().is_some(),
                             CardPick::Chosen => !self.fitting_cards(content, option).is_empty(),
                         };
-                        let capped = !fits
-                            && self
-                                .marken(content)
-                                .iter()
-                                .all(|m| !self.offer_open(content, m));
-                        if capped {
-                            Some(OptionBlock::SpecialCardCap)
-                        } else {
-                            (!fits).then_some(OptionBlock::NoFittingCard)
-                        }
+                        (!fits).then_some(OptionBlock::NoFittingCard)
                     }
                 }
                 EncounterEffect::Cleanse => self

@@ -393,7 +393,6 @@ impl RunEvent {
                 value,
                 price,
             },
-            RunEvent::CardOffersRerolled { cost } => RunEvent::CardOffersRerolled { cost },
             RunEvent::PainterHired {
                 card,
                 options,
@@ -504,19 +503,6 @@ impl RunEvent {
                 card_mod,
                 value,
                 via_hand,
-            },
-            RunEvent::VoucherCapped {
-                card,
-                card_mod,
-                special,
-                holder,
-                coins,
-            } => RunEvent::VoucherCapped {
-                card,
-                card_mod,
-                special,
-                holder,
-                coins,
             },
             RunEvent::VoucherReturned {
                 card,
