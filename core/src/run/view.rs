@@ -16,7 +16,7 @@ use serde::Serialize;
 use super::guests::GuestInfo;
 use super::{
     EncounterOption, Kontra, OptionBlock, PUBS_PER_DISTRICT, Run, RunAction, RunPhase, RunStats,
-    sell_price, series_target,
+    sell_price,
 };
 use crate::cards::{Card, PlayingCard, Suit};
 use crate::content::{
@@ -1372,7 +1372,7 @@ impl Run {
                 (s, i, false)
             }
         };
-        if section >= content.run.sections() {
+        if !self.district_exists(content, section) {
             return None;
         }
         let is_boss = index + 1 == PUBS_PER_DISTRICT;
@@ -1381,7 +1381,7 @@ impl Run {
         } else {
             None
         };
-        let mut target = series_target(content, self.character, section, index, boss)?;
+        let mut target = self.pub_target(content, section, index, boss)?;
         if spelunke {
             target = content.run.spelunke.target_factor.apply(target);
         }

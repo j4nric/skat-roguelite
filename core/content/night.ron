@@ -1,0 +1,60 @@
+// Die lange Nacht (ADR 0020, DESIGN 5.5): Verschärfungen des Endlos-Modus
+// nach dem Alten. „Die Sperrstunde rückt näher“: Jeder Stadtteil der Nacht
+// (4, 5, …) bringt eine Verschärfung, zufällig gezogen (Generator der
+// Nacht) und vor dem Stadtteil angekündigt. Sie bleiben für den Rest der
+// Nacht und stapeln sich. Keine wird zweimal gezogen, bevor alle dran
+// waren; danach beginnt die Liste von vorn (und eine Regel zählt doppelt).
+// Vorschläge aus der Entscheidung des Nutzers vom 05.11.2026 (Cockpit q32,
+// Variante A). Alle Zahlen VORLÄUFIG, bis eine Balancing-Runde sie misst.
+(
+    verschaerfungen: [
+        (
+            id: "fewer_redeals",
+            name: "Kurze Geduld",
+            text: "Ein Einmischen weniger in jedem Spiel.",
+            rule: FewerRedeals(1),
+        ),
+        (
+            id: "sharp_opponents",
+            name: "Hellwache Gegner",
+            text: "Die Gegner rechnen genauer: vier Blätter mehr je Zug.",
+            rule: StrongerOpponents(4),
+        ),
+        (
+            id: "double_boss",
+            name: "Doppelte Bosse",
+            text: "In der Boss-Kneipe gilt dazu die Regel eines zweiten, zufälligen Bosses.",
+            rule: DoubleBoss,
+        ),
+        (
+            id: "pricier_tresen",
+            name: "Nachtzuschlag",
+            text: "Am Tresen und am Kiosk kostet alles 1 Groschen mehr.",
+            rule: PricierTresen(1),
+        ),
+        (
+            id: "cursed_card",
+            name: "Verhexte Karte",
+            text: "Zu Beginn jeder Kneipe trägt eine zufällige Karte deines Blatts einen Fluch, nur für diese Kneipe.",
+            rule: CursedCards(cards: 1, curses: ["transparent", "battered", "stained"]),
+        ),
+        (
+            id: "dive_air",
+            name: "Spelunkenluft",
+            text: "Jede Kneipe hat einen zufälligen Spelunken-Malus.",
+            rule: MalusEveryPub,
+        ),
+        (
+            id: "target_jump",
+            name: "Zielwert-Sprung",
+            text: "Alle Zielwerte der Nacht steigen um 10 %.",
+            rule: TargetJump(1.1),
+        ),
+        (
+            id: "stingy_host",
+            name: "Knausriger Wirt",
+            text: "Die Kartenbelohnung bietet eine Zinke weniger an.",
+            rule: FewerCardOffers(1),
+        ),
+    ],
+)

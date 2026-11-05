@@ -188,6 +188,7 @@ fn reaching_the_limit_below_target_loses_the_run() {
         length: RunLength::Full,
         stake: 0,
         boss: None,
+        night: false,
     }));
     assert_eq!(
         run.apply(&content, RunAction::Redeal),

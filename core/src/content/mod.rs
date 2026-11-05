@@ -62,8 +62,12 @@ macro_rules! content_id {
     };
 }
 
+mod night;
 mod tour;
 
+pub use night::{
+    CardBackDef, NightConfig, NightContent, NightRule, VerschaerfungDef, VerschaerfungId,
+};
 pub use tour::{
     CityDistrict, CityNames, DistrictLook, DistrictName, MalusCurse, MalusDef, MalusId,
     NamePattern, TourContent,
@@ -792,6 +796,10 @@ pub enum Reward {
     /// A card modification joins the random draws (Auslage, Kartenmaler,
     /// Kartengeber).
     CardMod(CardModId),
+    /// A card back the player may choose for his edition: cosmetic, no
+    /// effect on play (DESIGN 9.3, ADR 0020). The id names a back design
+    /// of the frontend.
+    CardBack(String),
 }
 
 /// An unlock (Freischaltung, DESIGN 9.3): one condition, its rewards.
@@ -885,6 +893,11 @@ pub struct RelicDef {
     /// Build directions it belongs to ([`BuildTag`]).
     #[serde(default)]
     pub tags: Vec<BuildTag>,
+    /// A relic of the long night ("Nachtschwärmer", ADR 0020): offered
+    /// only in the night (after a night boss, at the Tresen of the night),
+    /// in a normal run only once an unlock opened it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub night: bool,
 }
 
 /// The kind of a card modification in the effects v2 system (DESIGN 7.2).
@@ -1720,6 +1733,9 @@ pub struct RunConfig {
     /// empty list means the heuristic everywhere.
     #[serde(default)]
     pub opponents: Vec<crate::ai::pimc::Opponents>,
+    /// The long night after der Alte (ADR 0020): growth of the Zielwerte.
+    #[serde(default)]
+    pub night: NightConfig,
 }
 
 impl RunConfig {
@@ -1845,6 +1861,8 @@ pub struct Sources<'a> {
     pub guests: &'a str,
     /// `tour.ron`: names of the city and the Spelunke maluses.
     pub tour: &'a str,
+    /// `night.ron`: the Verschärfungen of the long night (ADR 0020).
+    pub night: &'a str,
 }
 
 impl Sources<'static> {
@@ -1862,6 +1880,7 @@ impl Sources<'static> {
             unlocks: include_str!("../../content/unlocks.ron"),
             guests: include_str!("../../content/guests.ron"),
             tour: include_str!("../../content/tour.ron"),
+            night: include_str!("../../content/night.ron"),
         }
     }
 }
@@ -1892,6 +1911,10 @@ pub struct Content {
     pub city: CityNames,
     /// Spelunke maluses (ADR 0016).
     pub maluses: BTreeMap<MalusId, MalusDef>,
+    /// Verschärfungen of the long night (ADR 0020), in id order.
+    pub verschaerfungen: BTreeMap<VerschaerfungId, VerschaerfungDef>,
+    /// Card backs unlocks may give (cosmetic, `night.ron`).
+    pub card_backs: Vec<CardBackDef>,
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(file: &str, text: &str) -> Result<T, ContentError> {
@@ -1998,6 +2021,7 @@ impl Content {
     pub fn from_sources(sources: &Sources<'_>) -> Result<Content, ContentError> {
         let characters: Vec<CharacterDef> = parse("characters", sources.characters)?;
         let tour: TourContent = parse("tour", sources.tour)?;
+        let night: NightContent = parse("night", sources.night)?;
         let content = Content {
             relics: index(
                 "relics",
@@ -2038,12 +2062,26 @@ impl Content {
             )?,
             city: tour.city,
             maluses: index("tour", tour.maluses, |m| &m.id)?,
+            verschaerfungen: index("night", night.verschaerfungen, |v| &v.id)?,
+            card_backs: night.card_backs,
         };
         content.validate()?;
         Ok(content)
     }
 
     fn validate(&self) -> Result<(), ContentError> {
+        for v in self.verschaerfungen.values() {
+            if let NightRule::CursedCards { curses, .. } = &v.rule {
+                if curses.is_empty() {
+                    return Err(ContentError(format!("night {}: no curses", v.id)));
+                }
+                for curse in curses {
+                    if !self.card_mods.get(curse).is_some_and(CardModDef::is_curse) {
+                        return Err(ContentError(format!("night {}: {curse} is no curse", v.id)));
+                    }
+                }
+            }
+        }
         for relic in self.relics.values() {
             validate_effects(
                 &format!("relic {}", relic.id),
@@ -2527,6 +2565,7 @@ impl Content {
                         *c != Character::Declarer && self.characters.contains_key(c)
                     }
                     Reward::CardMod(id) => self.card_mods.contains_key(id),
+                    Reward::CardBack(id) => self.card_backs.iter().any(|b| b.id == *id),
                 };
                 if !known {
                     return Err(ContentError(format!("{what}: unknown reward {reward:?}")));
@@ -2623,6 +2662,17 @@ impl Content {
     #[must_use]
     pub fn relic(&self, id: &RelicId) -> Option<&RelicDef> {
         self.relics.get(id)
+    }
+
+    /// Whether an unlock names this relic as its reward
+    /// ([`Reward::Relic`]).
+    #[must_use]
+    pub fn relic_unlockable(&self, id: &RelicId) -> bool {
+        self.unlocks.values().any(|u| {
+            u.rewards
+                .iter()
+                .any(|r| matches!(r, Reward::Relic(x) if x == id))
+        })
     }
 
     /// A card modification by id.

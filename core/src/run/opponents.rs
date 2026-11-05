@@ -69,7 +69,11 @@ pub(super) fn defender_card(
 ) -> Option<DealtCard> {
     match opponents_in(content, run.curve_row(content)).pimc() {
         None => DefenderHeuristic.choose(view),
-        Some(config) => {
+        Some(mut config) => {
+            // "Hellwache Gegner" (long night, ADR 0020).
+            config.samples = config
+                .samples
+                .saturating_add(run.night_extra_samples(content));
             let hints = defender_hints(active, view);
             PimcPolicy::new(config, game_seed(run))
                 .with_thresholds(active.rules.thresholds.clone())

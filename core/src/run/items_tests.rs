@@ -630,6 +630,7 @@ fn guardian_angel_plays_a_lost_pub_again_once() {
         length: RunLength::Full,
         stake: 0,
         boss: None,
+        night: false,
     }));
 }
 

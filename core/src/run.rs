@@ -54,6 +54,7 @@ mod card_reward;
 mod encounters;
 pub mod guests;
 pub mod meta;
+pub mod night;
 pub mod opponents;
 pub mod player;
 mod schnapps_reward;
@@ -232,6 +233,10 @@ pub struct Series {
     /// Skatlehrer", [`NextPubPlan`]).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub redeals_withheld: u32,
+    /// The Spelunke malus of a normal pub in the long night
+    /// ([`crate::content::NightRule::MalusEveryPub`], ADR 0020).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub night_malus: Option<crate::content::MalusId>,
 }
 
 /// Changes waiting for the next pub ("Wegbier", "Der Skatlehrer",
@@ -991,6 +996,9 @@ pub enum RunAction {
     /// ([`crate::content::CardRewardConfig::skip_coins`]). Then the way
     /// goes on.
     SkipCardReward,
+    /// After der Alte ([`RunPhase::Won`]): continue into the long night
+    /// (ADR 0020). The win stays recorded; the route to Stadtteil 4 opens.
+    EnterNight,
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -1590,6 +1598,38 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// or a Spelunke.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         boss: Option<BossId>,
+        /// Lost in the long night (ADR 0020): the run was won already and
+        /// stays won; only the night ends.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        night: bool,
+    },
+    /// The player continued into the long night after der Alte (ADR
+    /// 0020).
+    NightStarted {
+        /// Who plays it.
+        character: Character,
+    },
+    /// A Verschärfung of the long night was drawn for the night district
+    /// ahead; it stays for the rest of the night (ADR 0020).
+    VerschaerfungDrawn {
+        /// The night district it is drawn for, from 0 (3 = Stadtteil 4).
+        section: u32,
+        /// The Verschärfung.
+        verschaerfung: crate::content::VerschaerfungId,
+    },
+    /// "Doppelte Bosse": further boss rules of a night boss pub, known
+    /// from the start of the district like its boss.
+    ExtraBossRules {
+        /// The night district, from 0.
+        section: u32,
+        /// The further bosses whose rules apply too.
+        bosses: Vec<BossId>,
+    },
+    /// "Verhexte Karte": cards of the player's edition carry a curse until
+    /// the pub ends.
+    NightCursesLaid {
+        /// The cards (ids) with their curse, in id order.
+        cards: Vec<(u32, CardModId)>,
     },
     /// "Die Oma" (ADR 0017): cards of the player's edition carry a curse
     /// until the pub ends; each in place of its normal modification.
@@ -2248,6 +2288,9 @@ pub struct Run {
     /// The card reward of a won pub, while open ([`RunPhase::CardReward`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     card_reward: Option<card_reward::CardReward>,
+    /// The long night after der Alte (ADR 0020), once the player continued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    night: Option<night::NightState>,
 }
 
 impl Run {
@@ -2329,6 +2372,7 @@ impl Run {
                 boss_cursed: false,
                 returning_vouchers: Vec::new(),
                 redeals_withheld: 0,
+                night_malus: None,
             },
             coins: content.run.economy.starting_coins,
             edition,
@@ -2371,6 +2415,7 @@ impl Run {
             schnapps_reward: None,
             reward_rng: master.fork(),
             card_reward: None,
+            night: None,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -2918,6 +2963,7 @@ impl Run {
                 self.take_card_reward(content, offer, card, events)
             }
             RunAction::SkipCardReward => self.skip_card_reward(content, events),
+            RunAction::EnterNight => self.enter_night(content, events),
         }
     }
 
@@ -3614,7 +3660,11 @@ impl Run {
                 });
             }
         }
-        if let Some(def) = self.boss_rule(content).and_then(|b| content.boss(&b)) {
+        let bosses = self
+            .boss_rule(content)
+            .into_iter()
+            .chain(self.extra_boss_rules().iter().cloned());
+        for def in bosses.filter_map(|b| content.boss(&b)) {
             sources.push(ActiveSource {
                 source: Source::Boss(def.id.clone()),
                 passive: &def.passive,
@@ -4067,7 +4117,7 @@ impl Run {
     ) -> Result<(), RunError> {
         let config = &content.run;
         let sections = config.sections();
-        if section >= sections || index >= PUBS_PER_DISTRICT {
+        if !self.district_exists(content, section) || index >= PUBS_PER_DISTRICT {
             return Err(RunError::WrongPhase);
         }
         if index == 0 && !replay && !self.evening_relics.is_empty() {
@@ -4079,6 +4129,7 @@ impl Run {
         if (index == 0 && !replay) || self.section_boss.is_none() {
             let last = section + 1 == sections;
             self.section_boss = match (&config.final_boss, last) {
+                _ if section >= sections => self.draw_night_boss(content),
                 (Some(boss), true) => Some(boss.clone()),
                 _ => {
                     let pool: Vec<&BossId> = config
@@ -4103,13 +4154,25 @@ impl Run {
                     boss: boss.clone(),
                 });
             }
+            let extra = self
+                .night
+                .as_ref()
+                .map(|n| n.extra_bosses.clone())
+                .unwrap_or_default();
+            if section >= sections && !extra.is_empty() {
+                events.push(RunEvent::ExtraBossRules {
+                    section,
+                    bosses: extra,
+                });
+            }
         }
         let boss = if index + 1 == PUBS_PER_DISTRICT {
             self.section_boss.clone()
         } else {
             None
         };
-        let mut target = series_target(content, self.character, section, index, boss.as_ref())
+        let mut target = self
+            .pub_target(content, section, index, boss.as_ref())
             .ok_or(RunError::WrongPhase)?;
         if spelunke.is_some() {
             target = config.spelunke.target_factor.apply(target);
@@ -4139,7 +4202,10 @@ impl Run {
             boss_cursed: false,
             returning_vouchers: Vec::new(),
             redeals_withheld,
+            night_malus: None,
         };
+        self.series.night_malus = self.draw_night_malus(content, boss.is_some());
+        let malus = malus.or_else(|| self.series.night_malus.clone());
         self.phase = RunPhase::Game;
         self.shop = None;
         self.encounter = None;
@@ -4163,6 +4229,7 @@ impl Run {
             malus,
         });
         self.curse_for_pub(content, events);
+        self.lay_night_curses(content, events);
         self.deal(content, true, events)
     }
 
@@ -4786,7 +4853,16 @@ impl Run {
             .relics
             .values()
             .filter(|r| in_pool(&r.characters, self.character))
-            .filter(|r| !self.locked.contains(&r.id))
+            // The relics of the night (ADR 0020): in the long night always;
+            // in a normal run only one an unlock opened.
+            .filter(|r| {
+                if r.night {
+                    self.night.is_some()
+                        || (content.relic_unlockable(&r.id) && !self.locked.contains(&r.id))
+                } else {
+                    !self.locked.contains(&r.id)
+                }
+            })
             .filter(|r| !self.relics.contains(&r.id) && !self.evening_relics.contains(&r.id))
             .filter(|r| !house_rules_only || r.kind == RelicKind::HouseRule)
             .map(|r| {
@@ -5003,12 +5079,20 @@ impl Run {
     /// for a priced item. Selling always pays half the full price.
     #[must_use]
     pub fn shop_price(&self, content: &Content, price: u32) -> u32 {
+        if price == 0 {
+            return 0;
+        }
+        // "Nachtzuschlag" (long night, ADR 0020): on top of everything.
+        let surcharge = self.night_surcharge(content);
         let discount = self.shop_discount(content);
-        if price == 0 || discount == 0 {
-            return price;
+        if discount == 0 {
+            return price.saturating_add(surcharge);
         }
         let paid = (u64::from(price) * u64::from(100 - discount) + 50) / 100;
-        u32::try_from(paid).unwrap_or(price).max(1)
+        u32::try_from(paid)
+            .unwrap_or(price)
+            .max(1)
+            .saturating_add(surcharge)
     }
 
     /// What a Zinke (a card modification bought for Groschen on a card of
@@ -6028,6 +6112,7 @@ impl Run {
             .redeals_in(self.character, self.series.section)
             .saturating_add(extra)
             .saturating_sub(withheld)
+            .saturating_sub(self.night_fewer_redeals(content))
     }
 
     /// Einmischen left now: what the game in progress still allows of its

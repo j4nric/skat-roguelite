@@ -177,7 +177,12 @@ impl Run {
         };
         let (mut zinken, mut specials) = self.reward_candidates(content);
         let mut offers = Vec::new();
-        for _ in 0..config.offers {
+        // "Knausriger Wirt" (long night): fewer Zinken, at least one.
+        let count = config
+            .offers
+            .saturating_sub(self.night_fewer_offers(content))
+            .max(1);
+        for _ in 0..count {
             let special_roll = !specials.is_empty()
                 && self.reward_rng.gen_range(0..100) < u64::from(config.special_percent);
             let drawn = if special_roll {
