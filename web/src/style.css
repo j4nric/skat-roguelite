@@ -5214,6 +5214,13 @@ button.card {
   flex: 1;
 }
 
+/* "Neu auslosen · 2 Gr." in one line on a phone. */
+.shop-bar [data-testid='reroll'] {
+  padding-inline: 6px;
+  font-size: var(--fs-m);
+  white-space: nowrap;
+}
+
 .more-hint {
   position: absolute;
   left: 50%;
@@ -8785,4 +8792,82 @@ button.skat-card {
 
 .rise-morph[data-stage='after'] .rise-new {
   opacity: 1;
+}
+
+/* The Tresen (playtest 05.11.2026): what is for sale lies on the wooden
+   counter, the player's own relics and Schnäpse in his leather bag. */
+.tresen-counter {
+  padding: 10px 8px 12px;
+  border: var(--edge) solid var(--line);
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0) 0 22px, rgba(0, 0, 0, 0.22) 22px 24px),
+    linear-gradient(180deg, #5e3d24, #4a2f1b);
+  box-shadow: inset 0 3px 0 #7b5434, var(--shadow-sm);
+}
+
+.tresen-counter > h3 {
+  color: #f3dcc0;
+}
+
+.pouch {
+  position: relative;
+  margin-top: 26px;
+  padding: 30px 14px 16px;
+  border: var(--edge) solid #24160b;
+  border-radius: 10px 10px 26px 26px;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 220, 170, 0.08) 0 2px, transparent 3px) 0 0 / 14px 14px,
+    linear-gradient(180deg, #7b4a28, #5a341b);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The stitching along the edge. */
+.pouch::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed rgba(244, 205, 150, 0.55);
+  border-radius: 6px 6px 20px 20px;
+  pointer-events: none;
+}
+
+/* The flap over the top with its brass clasp, carrying the title. */
+.pouch-title {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  z-index: 1;
+  min-width: 62%;
+  margin: 0;
+  padding: 8px 16px 14px;
+  border: var(--edge) solid #24160b;
+  border-radius: 6px 6px 50% 50% / 6px 6px 18px 18px;
+  background: linear-gradient(180deg, #8d5732, #6c4023);
+  color: #f6e2c4;
+  font-size: var(--fs-s);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.pouch-title::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 14px;
+  height: 10px;
+  border: 2px solid #24160b;
+  background: #d9a441;
+  transform: translateX(-50%);
+}
+
+.pouch > h3:not(.pouch-title) {
+  position: relative;
+  z-index: 1;
+  color: #f3dcc0;
+}
+
+.pouch > .small {
+  position: relative;
+  color: #e8cfae;
 }

@@ -698,6 +698,8 @@ export const de = {
     buyShort: 'Kaufen',
     noRelics: 'Noch keine Bierdeckel gesammelt.',
     noItems: 'Nichts in der Tasche.',
+    /** The player's own things at the Tresen lie in his bag (playtest 05.11.2026). */
+    pouch: 'In deiner Tasche',
     moreAbout: '{name}: ganze Beschreibung',
     moreBelow: 'Weitere Waren weiter unten',
     /** Zinken at the Tresen (DESIGN 8.6). */

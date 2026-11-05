@@ -5242,6 +5242,9 @@ async function run() {
     // Tresen.
     await page.waitForSelector('[data-testid="shop"]');
     await expectMusic(page, 'shop', 'Tresen');
+    // Wares on the counter, own things in the bag; no "Benutzen" at the Tresen (playtest 05.11.2026).
+    if (!(await page.locator('[data-testid="counter"]').count()) || !(await page.locator('[data-testid="pouch"] .pouch-title').count())) fail('Tresen: no counter and bag');
+    if (await page.locator('.shop [data-action="use-item"]').count()) fail('Tresen: a Schnaps offers "Benutzen"');
     const coinsBefore = Number(await text(page, 'coins'));
     const next = await text(page, 'next-series');
     if (!next) fail('the Tresen shows no preview of the next series');

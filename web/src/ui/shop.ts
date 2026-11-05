@@ -220,8 +220,8 @@ function renderKiosk(view: RunView, shop: ShopView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
-         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        // Only selling here: a Schnaps is drunk from the Leiste (playtest 05.11.2026).
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),
     )
@@ -234,7 +234,8 @@ function renderKiosk(view: RunView, shop: ShopView): string {
     <div class="counter kiosk-counter">
       ${goods ? `<div class="goods kiosk-goods" data-goods>${goods}</div>` : ''}
     </div>
-    <section class="shop-owned">
+    <section class="shop-owned pouch" data-testid="pouch" aria-label="${esc(de.shop.pouch)}">
+      <h3 class="pouch-title">${esc(de.shop.pouch)}</h3>
       <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
       ${items ? `<div class="goods">${items}</div>` : `<p class="small">${esc(de.shop.noItems)}</p>`}
     </section>
@@ -265,8 +266,8 @@ export function renderShop(view: RunView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
-         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        // Only selling here: a Schnaps is drunk from the Leiste (playtest 05.11.2026).
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),
     )
@@ -280,14 +281,15 @@ export function renderShop(view: RunView): string {
     </div>
     ${nextBoard(view)}
     ${debtLine(view)}
-    <div class="counter">
+    <div class="counter tresen-counter" data-testid="counter">
       <h3>${esc(de.shop.relics)}</h3>
       <div class="zinken-row relic-row" data-testid="relic-offers">${relicOffers}</div>
       <h3 id="shop-goods">${esc(de.shop.consumables)}</h3>
       <div class="goods" data-goods>${itemOffers}</div>
       ${zinkenBlock(shop)}
     </div>
-    <section class="shop-owned">
+    <section class="shop-owned pouch" data-testid="pouch" aria-label="${esc(de.shop.pouch)}">
+      <h3 class="pouch-title">${esc(de.shop.pouch)}</h3>
       <h3>${esc(view.relic_slots === null ? t(de.shop.owned, { count: view.relics.length }) : t(de.shop.ownedCapped, { count: view.relics.length, slots: view.relic_slots }))}</h3>
       ${owned ? `<div class="coasters coasters-owned">${owned}</div>` : `<p class="small">${esc(de.shop.noRelics)}</p>`}
       <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
