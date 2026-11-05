@@ -54,7 +54,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Zinken (Kategorie am Tresen, „Karte zinken“, seit 02.11.2026) | `zinken` | Die Kartenmodifikationen, wie der Tresen sie verkauft (Auslage, Kartenmaler); Modul `core/src/run/zinken.rs`, Einstellungen `ZinkenConfig` (`zinken` in `run.ron`); eine einzelne heißt Zinke |
 | Auslage (Zinken am Tresen) | `CardOffer`, `Shop::card_offers` | Drei Angebote, je Karte der Ausgabe und Zinke mit Wert; Aktion `RunAction::BuyCardOffer(slot)`, Ereignisse `CardOffersDrawn`, `CardOfferBought`; Sicht `ShopView::card_offers` (`CardOfferView` mit `card`, `result`, `replaces`, `raises`) |
 | Wert in der Auslage | `CardModDef::shop_value`, `offer_value` | Ohne Angabe der erste aus `values` |
-| Neu auslosen (Auslage) | `RerollCardOffers` | Preis `ZinkenConfig::reroll_cost`, jedes weitere Mal am selben Tresen `reroll_step` mehr (`Run::card_reroll_price`, `Shop::card_rerolls`); Ereignis `CardOffersRerolled`. Nicht verwechseln mit der Neuauslage (`reroll`, Relikte und Gegenstände) |
+| Neu auslosen (Tresen, seit 05.11.2026: Relikte, Schnäpse und Auslage, einmal je Besuch) | `reroll` | `RunAction::Reroll`, Preis `Economy::reroll_cost` über `Run::reroll_cost` (0 mit `FreeReroll`), Ereignis `ShopRerolled { cost }`, Zähler `Shop::rerolls`, Sicht `ShopView::reroll_used`; ein zweites Mal `AlreadyUsed`. Bis 05.11.2026 getrennt: Neuauslage (`Reroll`, beliebig oft) und Neu auslosen der Auslage (`RerollCardOffers`, `CardOffersRerolled`, `reroll_step`, `Shop::card_rerolls`, entfallen) |
 | Kartenmaler | `painter` | Einmal je Tresen: `RunAction::HirePainter(card)`, dann eine von zwei Zinken `RunAction::ChoosePaint(i)`; wartend `Run::painter` (`PainterChoice`), Sicht `RunView::painter` (`PainterView`), `ShopView::painter` (`ServiceView`); Ereignisse `PainterHired`, `PainterChosen`; Fehler `PainterPending`, `AlreadyUsed`. In der Werkstatt gratis (Wirkung `EncounterEffect::Painter`) |
 | Karte reinigen (Tresen-Dienst) | `CleanseCard` | Einmal je Tresen, `RunAction::CleanseCard(card)`, Ereignis `CardCleansed`, Sicht `ShopView::cleanse` |
 | Im Spiel (die 32 gegebenen Karten) | `cards_in_play` | immer alle 32 Karten (kein Talon seit ADR 0015) |
@@ -220,7 +220,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Stufen je Zählerpunkt (Skatgott) | `AddLevelsPerCounter` | `{ counter, per }`, wie `AddBaseValuePerCounter` für die Stufen |
 | Preis | `price` | Groschen |
 | Verkaufen (halber Preis) | `sell` | |
-| Neuauslage (Tresen) | `reroll` | Relikte und Gegenstände neu; die Auslage bleibt |
+| Neuauslage (Tresen, bis 05.11.2026) | `reroll` | Relikte und Gegenstände neu, die Auslage blieb; seit 05.11.2026 in „Neu auslosen“ aufgegangen |
+| Der Duzfreund (Figur: Neu auslosen gratis, 05.11.2026) | `first_names` | Wirkung `Effect::FreeReroll`, weiter einmal je Besuch |
 | Grundbetrag (gewonnene Kneipe) | `series_reward` | |
 | Zinsen | `interest` | |
 | Auszahlung einer Kneipe | `Payout` | Grundbetrag, Bonus für übrige Spiele (`per_game_left`), Zinsen; eine verlorene Kneipe zahlt nichts |

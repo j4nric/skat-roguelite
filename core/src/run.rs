@@ -693,7 +693,8 @@ pub struct Shop {
     pub relics: Vec<Option<RelicId>>,
     /// Consumables on offer.
     pub consumables: Vec<Option<ConsumableId>>,
-    /// Neuauslagen bought during this visit.
+    /// "Neu auslosen" during this visit (once per visit since 05.11.2026;
+    /// saves from before may hold more).
     pub rerolls: u32,
     /// This visit sold on credit ("Deckel anschreiben"): it may go on
     /// down to the limit.
@@ -703,9 +704,6 @@ pub struct Shop {
     /// cards. Empty in saves from before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub card_offers: Vec<Option<zinken::CardOffer>>,
-    /// "Neu auslosen" of the Auslage bought during this visit.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub card_rerolls: u32,
     /// The Kartenmaler worked at this visit (once per Tresen).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub painter_used: bool,
@@ -891,16 +889,16 @@ pub enum RunAction {
     SellRelic(usize),
     /// Sell an owned consumable for half its price.
     SellConsumable(usize),
-    /// Neuauslage: draw a new offer of relics and consumables (the
-    /// Auslage stays).
+    /// "Neu auslosen" (since 05.11.2026, DESIGN 8.6): draw a new offer of
+    /// relics, consumables and the Auslage, once per Tresen visit
+    /// ([`RunError::AlreadyUsed`]), for
+    /// [`crate::content::Economy::reroll_cost`] (free with "Der
+    /// Stammkunde", [`Effect::FreeReroll`]).
     Reroll,
     /// Buy the offer of the Auslage in this slot (Zinken, DESIGN 8.6): its
     /// modification with its value goes on its card. The same modification
     /// on the card is raised, another one replaced.
     BuyCardOffer(usize),
-    /// "Neu auslosen": draw the Auslage again. The price rises with every
-    /// further time at the same Tresen.
-    RerollCardOffers,
     /// Hire the Kartenmaler (once per Tresen) for this card of the player's
     /// edition (instance id): he draws modifications that fit it, the
     /// player takes one ([`RunAction::ChoosePaint`]).
@@ -1182,13 +1180,14 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Groschen received.
         price: u32,
     },
-    /// A new offer was drawn.
+    /// "Neu auslosen": a new offer of relics and consumables was drawn
+    /// (`ShopOpened` follows), then the Auslage (`CardOffersDrawn`).
     ShopRerolled {
         /// Price paid.
         cost: u32,
     },
     /// The Auslage was drawn (Zinken, DESIGN 8.6): when the Tresen opens
-    /// and after "Neu auslosen".
+    /// and after "Neu auslosen" ([`RunEvent::ShopRerolled`]).
     CardOffersDrawn {
         /// The offers, by slot.
         offers: Vec<Option<zinken::CardOffer>>,
@@ -1206,11 +1205,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
         value: i32,
         /// Price paid.
         price: u32,
-    },
-    /// "Neu auslosen" was paid; `CardOffersDrawn` follows.
-    CardOffersRerolled {
-        /// Price paid.
-        cost: u32,
     },
     /// The Kartenmaler took a card and drew the modifications to choose
     /// from (at the Tresen, or free at the Werkstatt).
@@ -1752,7 +1746,8 @@ pub enum RunError {
     /// The cards for an "Untot" card are not three different cards of the
     /// player's hand, or no "Untot" card waits for them.
     InvalidRiseCards,
-    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
+    /// this Tresen already.
     AlreadyUsed,
     /// "Bruderherz": a curse on his edition cannot be cleansed.
     CurseStays,
@@ -1883,7 +1878,8 @@ pub enum RunErrorCode {
     RisePending,
     /// Not three different cards of the hand, or nothing waits for them.
     InvalidRiseCards,
-    /// The Kartenmaler or "Karte reinigen" was used at this Tresen already.
+    /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
+    /// this Tresen already.
     AlreadyUsed,
     /// The character's curses cannot be cleansed ("Bruderherz").
     CurseStays,
@@ -2907,7 +2903,6 @@ impl Run {
             RunAction::SellConsumable(index) => self.sell_consumable(content, index, events),
             RunAction::Reroll => self.reroll(content, events),
             RunAction::BuyCardOffer(slot) => self.buy_card_offer(content, slot, events),
-            RunAction::RerollCardOffers => self.reroll_card_offers(content, events),
             RunAction::HirePainter(card) => self.hire_painter(content, card, events),
             RunAction::ChoosePaint(option) => self.choose_paint(content, option, events),
             RunAction::ChooseRiseCards(ids) => self.choose_rise_cards(content, ids, events),
@@ -4019,6 +4014,7 @@ impl Run {
             | Effect::Doppelganger
             | Effect::AlwaysForehand
             | Effect::ShopDiscount(_)
+            | Effect::FreeReroll
             | Effect::CurseForPub { .. }
             | Effect::SetFlag(_)
             | Effect::ClearFlag(_)
@@ -4883,7 +4879,6 @@ impl Run {
             rerolls,
             on_credit: false,
             card_offers: Vec::new(),
-            card_rerolls: 0,
             painter_used: false,
             cleansed: false,
             kiosk: false,
@@ -5399,9 +5394,32 @@ impl Run {
         Ok(())
     }
 
+    /// What "Neu auslosen" costs now: [`crate::content::Economy::reroll_cost`]
+    /// after the Tresen discount ("Der Wirt"), nothing with "Der
+    /// Stammkunde" ([`Effect::FreeReroll`]).
+    #[must_use]
+    pub fn reroll_cost(&self, content: &Content) -> u32 {
+        let free = self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .any(|def| def.passive.contains(&Effect::FreeReroll));
+        if free {
+            0
+        } else {
+            self.shop_price(content, content.run.economy.reroll_cost)
+        }
+    }
+
+    /// "Neu auslosen" (DESIGN 8.6, since 05.11.2026): relics, Schnäpse and
+    /// the Auslage drawn again, once per Tresen visit.
     fn reroll(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let rerolls = self.tresen_mut()?.rerolls;
-        let cost = self.shop_price(content, content.run.economy.reroll_cost);
+        if rerolls > 0 {
+            return Err(RunError::AlreadyUsed);
+        }
+        let cost = self.reroll_cost(content);
         if !self.can_pay(content, cost) {
             return Err(RunError::NotEnoughCoins);
         }
@@ -5410,8 +5428,6 @@ impl Run {
         let mut shop = self.draw_offer(content, rerolls + 1);
         if let Some(old) = old {
             shop.on_credit = old.on_credit;
-            shop.card_offers = old.card_offers;
-            shop.card_rerolls = old.card_rerolls;
             shop.painter_used = old.painter_used;
             shop.cleansed = old.cleansed;
         }
@@ -5422,6 +5438,7 @@ impl Run {
             fence: shop.fence,
         });
         self.shop = Some(shop);
+        self.draw_card_offers(content, events);
         Ok(())
     }
 

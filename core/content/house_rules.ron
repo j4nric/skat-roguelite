@@ -118,10 +118,25 @@
         group: Tour,
         kind: Regular,
         name: "Der Wirt",
-        text: "Alles am Tresen ist 20 % billiger, auch Neuauslage, Zinken, Neu auslosen, Kartenmaler und Karte reinigen.",
+        text: "Alles am Tresen ist 20 % billiger, auch Zinken, Neu auslosen, Kartenmaler und Karte reinigen.",
         rarity: Uncommon,
         price: 7,
         passive: [ShopDiscount(20)],
+    ),
+    // Neu auslosen (Entscheidung des Nutzers, Playtest 05.11.2026): Am
+    // Tresen gibt es einmal je Besuch "Neu auslosen" (Relikte, Schnäpse,
+    // Auslage) für Groschen; mit dieser Figur gratis, weiterhin einmal je
+    // Besuch. Name statt "Der Stammkunde" (so heißt schon ein Meilenstein,
+    // unlocks.ron). Seltenheit und Preis VORLÄUFIG, ungemessen.
+    (
+        id: "first_names",
+        group: Tour,
+        kind: Regular,
+        name: "Der Duzfreund",
+        text: "Du bist mit dem Wirt per Du: Neu auslosen am Tresen kostet dich nichts, weiter einmal je Besuch.",
+        rarity: Uncommon,
+        price: 5,
+        passive: [FreeReroll],
     ),
     (
         id: "card_counter",

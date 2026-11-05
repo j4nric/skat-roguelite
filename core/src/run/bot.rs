@@ -244,13 +244,14 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `fingertips` | 4 | +3 Augen per trick taken with a Zinke, also for Schneider |
 /// | `tally_sheet` | 3 | +1 or +2 levels with three or five such tricks |
 /// | `tip` | 3 | up to 3 Groschen per game |
+/// | `first_names` | 2 | "Neu auslosen" for free (05.11.2026, not measured) |
 /// | `golden_shears` | 5 | ×1.5 on a Schneider win, about four won games in ten |
 /// | `tape_measure` | 5 | +1 Grundwert per Schneider win for the rest of the run |
 /// | `sewing_pattern` | 2 | +1 Grundwert per Aufdruck or Schneiderkreide on a Schneider win |
 /// | `lead_pouring` | 2 | +1 level per Blei card in the hand of a won Null |
 /// | `plumb_line` | 2 | +2 Grundwert per Blei card in every Null |
 /// | `grandfathers_grand` | 3 | +6 Grundwert on every Grand |
-pub const RELIC_VALUES: [(&str, u32); 53] = [
+pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -304,6 +305,7 @@ pub const RELIC_VALUES: [(&str, u32); 53] = [
     ("lead_pouring", 2),
     ("plumb_line", 2),
     ("grandfathers_grand", 3),
+    ("first_names", 2),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -390,12 +392,10 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("rotgut", 1),
 ];
 
-/// A Neuauslage needs at least this many Groschen left over after paying
-/// for it, enough for a cheap relic from the new offer.
+/// "Neu auslosen" needs at least this many Groschen left over after
+/// paying for it, enough for a cheap relic from the new offer. Once per
+/// Tresen visit (the rule since 05.11.2026).
 pub const REROLL_RESERVE: u32 = 6;
-
-/// At most this many Neuauslagen per Tresen visit.
-pub const MAX_REROLLS: u32 = 2;
 
 /// How much the bot wants each Zinke (Zinken at the Tresen, DESIGN 8.6;
 /// simple rules, not measured). Not listed: 0 (never bought). The
@@ -1458,9 +1458,13 @@ impl RunBot {
         if let Some(card) = bare_ace {
             return RunAction::HirePainter(card);
         }
-        // 7. Nothing sensible to buy: a new offer, if Groschen are plenty.
-        let cost = price(content.run.economy.reroll_cost);
-        if shop.rerolls < MAX_REROLLS && coins >= cost + REROLL_RESERVE {
+        // 7. Nothing sensible to buy: "Neu auslosen" (once per visit), if
+        // Groschen are plenty.
+        let cost = run.reroll_cost(content);
+        if shop.rerolls == 0
+            && coins >= cost + REROLL_RESERVE
+            && run.accepts(content, RunAction::Reroll)
+        {
             return RunAction::Reroll;
         }
         RunAction::LeaveShop
@@ -2432,7 +2436,8 @@ mod tests {
         run.coins -= 1;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
         run.coins += 1;
-        run.shop.as_mut().expect("shop").rerolls = MAX_REROLLS;
+        // Once per visit.
+        run.shop.as_mut().expect("shop").rerolls = 1;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
     }
 

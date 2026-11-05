@@ -1418,7 +1418,8 @@ pub struct Economy {
     pub interest_step: u32,
     /// Maximum interest per series.
     pub interest_max: u32,
-    /// Price of a Neuauslage at the Tresen.
+    /// Price of "Neu auslosen" at the Tresen (relics, Schnäpse and the
+    /// Auslage, once per visit since 05.11.2026).
     pub reroll_cost: u32,
     /// Groschen at the start of a run.
     pub starting_coins: u32,
@@ -1539,10 +1540,6 @@ pub struct ZinkenConfig {
     /// Groschen more for a card of `premium_ranks`.
     #[serde(default)]
     pub premium: u32,
-    /// Price of the first "Neu auslosen" at a Tresen.
-    pub reroll_cost: u32,
-    /// Groschen more for every further "Neu auslosen" at the same Tresen.
-    pub reroll_step: u32,
     /// Price of the Kartenmaler.
     pub painter_price: u32,
     /// Modifications the Kartenmaler offers to choose from.
@@ -1550,8 +1547,7 @@ pub struct ZinkenConfig {
     /// Price of "Karte reinigen".
     pub cleanse_price: u32,
     /// Chance in percent that an offer of the Auslage is a special card
-    /// right on a card ("wird untot", "wird Wandelkarte"), while the
-    /// edition may still get one (DESIGN 8.6). At most one per Auslage.
+    /// right on a card ("wird untot", "wird Wandelkarte", DESIGN 8.6).
     pub special_percent: u32,
     /// Price of such an offer before discounts (plus `premium` on a card
     /// of `premium_ranks`).

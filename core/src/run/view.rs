@@ -568,20 +568,17 @@ pub struct ShopView {
     pub relics: Vec<Option<RelicOffer>>,
     /// Consumable slots; `None` once bought.
     pub consumables: Vec<Option<ConsumableOffer>>,
-    /// Price of a Neuauslage.
+    /// Price of "Neu auslosen" now (relics, Schnäpse and the Auslage, once
+    /// per visit since 05.11.2026; 0 with "Der Stammkunde").
     pub reroll_cost: u32,
-    /// Whether a Neuauslage is possible now.
+    /// Whether "Neu auslosen" is possible now.
     pub can_reroll: bool,
-    /// Neuauslagen bought during this visit.
+    /// "Neu auslosen" during this visit (0 or 1).
     pub rerolls: u32,
+    /// "Neu auslosen" was used at this visit.
+    pub reroll_used: bool,
     /// The Auslage (Zinken, DESIGN 8.6); `None` once bought.
     pub card_offers: Vec<Option<CardOfferView>>,
-    /// Price of the next "Neu auslosen" (after discounts).
-    pub card_reroll_cost: u32,
-    /// Whether "Neu auslosen" is possible now.
-    pub can_reroll_cards: bool,
-    /// "Neu auslosen" bought during this visit.
-    pub card_rerolls: u32,
     /// The Kartenmaler ([`RunAction::HirePainter`]).
     pub painter: ServiceView,
     /// "Karte reinigen" ([`RunAction::CleanseCard`]).
@@ -1695,9 +1692,10 @@ impl Run {
                     })
                 })
                 .collect(),
-            reroll_cost: self.shop_price(content, content.run.economy.reroll_cost),
+            reroll_cost: self.reroll_cost(content),
             can_reroll: self.accepts(content, RunAction::Reroll),
             rerolls: shop.rerolls,
+            reroll_used: shop.rerolls > 0,
             card_offers: shop
                 .card_offers
                 .iter()
@@ -1727,9 +1725,6 @@ impl Run {
                     })
                 })
                 .collect(),
-            card_reroll_cost: self.shop_price(content, self.card_reroll_price(content)),
-            can_reroll_cards: self.accepts(content, RunAction::RerollCardOffers),
-            card_rerolls: shop.card_rerolls,
             painter: self.service_view(
                 content,
                 shop.painter_used,

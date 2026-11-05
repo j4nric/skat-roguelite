@@ -3303,7 +3303,8 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
  * Schellen-König (Siegel) asks "ersetzt Siegel durch Aufdruck" and "Lieber
  * nicht" goes back to the Tresen; on the Schellen-Zehn (Aufdruck +4) it
  * shows the raise "+4 → +7" and applies it. Winkel on the Schellen-Oberin
- * (Rang 2, the maximum) cannot be bought. "Neu auslosen" costs 1, then 2.
+ * (Rang 2, the maximum) cannot be bought. "Neu auslosen" (the whole Tresen)
+ * costs 2, once per visit.
  * The Kartenmaler: pay, pick a card (cursed ones dimmed with "Fluch"), take
  * one of two Zinken; once per Tresen. "Karte reinigen" takes the curse off
  * the Schellen-Sieben; once per Tresen.
@@ -3340,14 +3341,18 @@ async function zinkenPass(browser, errors, reducedMotion) {
     .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 3)?.mod_values?.points === 7, null, { timeout: 5000 })
     .catch(() => fail('raise: the Schellen-Zehn does not carry Aufdruck +7 afterwards'));
   if ((await run()).coins !== 18) fail(`Auslage: paid wrong, ${(await run()).coins} Groschen left`);
-  // Neu auslosen: 1, then 2.
-  const rerollText = await page.locator('[data-testid="reroll-zinken"]').textContent();
-  if (!rerollText?.includes('1 Gr.')) fail(`Neu auslosen: says "${rerollText}"`);
-  await page.click('[data-testid="reroll-zinken"]');
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins === 17, null, { timeout: 5000 }).catch(() => fail('Neu auslosen: did not cost 1'));
-  await page.waitForFunction(() => document.querySelector('[data-testid="reroll-zinken"]')?.textContent?.includes('2 Gr.'), null, { timeout: 5000 }).catch(() => fail('Neu auslosen: the second is not dearer'));
+  // Neu auslosen (05.11.2026): the whole Tresen for 2, once per visit.
+  if (await page.locator('[data-testid="reroll-zinken"]').count()) fail('Neu auslosen: the Auslage still has its own reroll');
+  const rerollText = await text(page, 'reroll');
+  if (rerollText !== 'Neu auslosen · 2 Gr.') fail(`Neu auslosen: says "${rerollText}"`);
+  await shoot(page, 'zinken-reroll');
+  await page.click('[data-testid="reroll"]');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.coins === 16, null, { timeout: 5000 }).catch(() => fail('Neu auslosen: did not cost 2'));
+  await page.waitForFunction(() => document.querySelector('[data-testid="reroll"]')?.textContent === 'Schon neu ausgelost', null, { timeout: 5000 }).catch(() => fail('Neu auslosen: does not say it was used'));
+  if (!(await page.locator('[data-testid="reroll"]').isDisabled())) fail('Neu auslosen: a second time possible');
   // A new draw uses run.ron's count (3 again since 05.11.2026).
   if ((await page.locator('[data-testid="zinke"]').count()) !== 3) fail('Neu auslosen: not three offers');
+  await shoot(page, 'zinken-rerolled');
   // Kartenmaler.
   await page.click('[data-testid="painter-go"]');
   await page.waitForSelector('[data-testid="zinken-cards"]');
@@ -3358,7 +3363,7 @@ async function zinkenPass(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="painter-options"]');
   if ((await page.locator('.painter-option').count()) !== 2) fail('Kartenmaler: not two Zinken to choose from');
   await shoot(page, 'zinken-painter');
-  if ((await run()).coins !== 11) fail(`Kartenmaler: paid wrong, ${(await run()).coins} Groschen left`);
+  if ((await run()).coins !== 10) fail(`Kartenmaler: paid wrong, ${(await run()).coins} Groschen left`);
   const pick = await page.getAttribute('[data-testid="paint-0"]', 'data-card-mod');
   await page.click('[data-testid="paint-0"]');
   await page.waitForSelector('[data-testid="painter-options"]', { state: 'detached' });
@@ -3377,10 +3382,21 @@ async function zinkenPass(browser, errors, reducedMotion) {
     .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.edition?.cards?.find((c) => c.id === 0)?.mods?.length === 0, null, { timeout: 5000 })
     .catch(() => fail('Karte reinigen: the Schellen-Sieben is still cursed'));
   if (!(await page.locator('[data-testid="cleanse-go"]').isDisabled())) fail('Karte reinigen: twice at one Tresen');
-  if ((await run()).coins !== 8) fail(`Karte reinigen: paid wrong, ${(await run()).coins} Groschen left`);
+  if ((await run()).coins !== 7) fail(`Karte reinigen: paid wrong, ${(await run()).coins} Groschen left`);
   await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
   await shoot(page, 'zinken-done');
-  log(`Zinken: "${replace}" / "${raise}" / Kartenmaler ${pick} / Karte reinigen`);
+  // "Der Duzfreund": Neu auslosen for free, still once per visit.
+  const friend = JSON.parse(fixture('zinken.json'));
+  friend.run.relics = [...(friend.run.relics ?? []), 'first_names'];
+  await resumeFixture(page, 'zinken.json', JSON.stringify(friend));
+  await page.waitForSelector('[data-testid="reroll"]');
+  const free = await text(page, 'reroll');
+  if (free !== 'Neu auslosen · gratis') fail(`Duzfreund: Neu auslosen says "${free}"`);
+  const coins = (await run()).coins;
+  await page.click('[data-testid="reroll"]');
+  await page.waitForFunction(() => document.querySelector('[data-testid="reroll"]')?.textContent === 'Schon neu ausgelost', null, { timeout: 5000 }).catch(() => fail('Duzfreund: Neu auslosen not used'));
+  if ((await run()).coins !== coins) fail('Duzfreund: Neu auslosen was not free');
+  log(`Zinken: "${replace}" / "${raise}" / Neu auslosen once / Kartenmaler ${pick} / Karte reinigen / Duzfreund free`);
   await context.close();
 }
 

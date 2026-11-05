@@ -320,50 +320,71 @@ fn der_wirt_takes_off_everything_with_zinken() {
     run.apply(&content, RunAction::BuyCardOffer(0))
         .expect("buy");
     assert_eq!(run.coins(), 16);
-    // 20 % off 1 is still 1 Groschen, off 2 too.
-    assert_eq!(view.card_reroll_cost, 1);
+    // 20 % off 2 is still 2 Groschen ("Neu auslosen").
+    assert_eq!(view.reroll_cost, 2);
 }
 
 #[test]
-fn neu_auslosen_gets_dearer_at_the_same_tresen() {
+fn neu_auslosen_draws_the_whole_tresen_once_per_visit() {
+    // Since 05.11.2026 (decided by the user): one "Neu auslosen" for
+    // relics, Schnäpse and the Auslage, once per Tresen visit.
     let content = content();
-    let zinken = &content.run.shop.zinken;
-    let (mut run, _) = tresen(&content, 5, 3);
+    let cost = content.run.economy.reroll_cost;
+    let (mut run, _) = tresen(&content, 5, 10);
+    run.relics.clear();
     let before = offers(&run);
-    let relics = run.shop().expect("shop").relics.clone();
-    let events = run
-        .apply(&content, RunAction::RerollCardOffers)
-        .expect("reroll");
-    assert_eq!(
-        events[0],
-        RunEvent::CardOffersRerolled {
-            cost: zinken.reroll_cost
-        }
+    let shop = run.shop().expect("shop").clone();
+    let view = run.view(&content).shop.expect("shop");
+    assert_eq!(view.reroll_cost, cost);
+    assert!(view.can_reroll && !view.reroll_used);
+    let events = run.apply(&content, RunAction::Reroll).expect("reroll");
+    assert_eq!(events[0], RunEvent::ShopRerolled { cost });
+    assert!(matches!(events[1], RunEvent::ShopOpened { .. }));
+    assert!(matches!(events[2], RunEvent::CardOffersDrawn { .. }));
+    assert_eq!(run.coins(), 10 - cost);
+    let after = run.shop().expect("shop");
+    assert!(
+        offers(&run) != before || after.relics != shop.relics,
+        "a new Tresen"
     );
-    assert!(matches!(events[1], RunEvent::CardOffersDrawn { .. }));
-    assert_eq!(run.coins(), 3 - zinken.reroll_cost);
-    assert_ne!(offers(&run), before);
-    assert_eq!(run.shop().expect("shop").relics, relics, "relics stay");
-    let second = zinken.reroll_cost + zinken.reroll_step;
+    let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
+    assert_eq!(offers(&run).len(), n);
+    // Once per visit.
+    let view = run.view(&content).shop.expect("shop");
+    assert!(!view.can_reroll && view.reroll_used);
     assert_eq!(
-        run.view(&content).shop.expect("shop").card_reroll_cost,
-        second
+        run.apply(&content, RunAction::Reroll),
+        Err(RunError::AlreadyUsed)
     );
-    run.apply(&content, RunAction::RerollCardOffers)
-        .expect("second");
-    assert_eq!(run.coins(), 3 - zinken.reroll_cost - second);
     assert_eq!(
-        run.apply(&content, RunAction::RerollCardOffers),
+        RunError::AlreadyUsed.code().as_str(),
+        "AlreadyUsed",
+        "the frontend's text"
+    );
+}
+
+#[test]
+fn der_stammkunde_rerolls_for_free_once_per_visit() {
+    let content = content();
+    let (mut run, _) = tresen(&content, 5, 0);
+    assert_eq!(
+        run.clone().apply(&content, RunAction::Reroll),
         Err(RunError::NotEnoughCoins)
     );
-    // A Neuauslage keeps the Auslage and its price.
-    run.coins = 50;
-    let auslage = offers(&run);
-    run.apply(&content, RunAction::Reroll).expect("Neuauslage");
-    assert_eq!(offers(&run), auslage);
-    assert_eq!(run.shop().expect("shop").card_rerolls, 2);
-    // The next Tresen starts at the first price again.
-    run.apply(&content, RunAction::LeaveShop).expect("leave");
+    run.relics.push(RelicId::new("first_names"));
+    let view = run.view(&content).shop.expect("shop");
+    assert_eq!(view.reroll_cost, 0);
+    assert!(view.can_reroll);
+    let events = run.apply(&content, RunAction::Reroll).expect("free");
+    assert_eq!(events[0], RunEvent::ShopRerolled { cost: 0 });
+    assert_eq!(run.coins(), 0);
+    assert_eq!(
+        run.apply(&content, RunAction::Reroll),
+        Err(RunError::AlreadyUsed)
+    );
+    let def = content.relic(&RelicId::new("first_names")).expect("relic");
+    assert_eq!(def.group, crate::content::RelicGroup::Tour);
+    assert_eq!(def.rarity, crate::content::Rarity::Uncommon);
 }
 
 #[test]
@@ -603,8 +624,7 @@ fn saves_keep_the_auslage_and_old_saves_lose_the_removed_items() {
         vec![None, Some(ConsumableId::new("herbal"))]
     );
     // The Auslage of a save from before is empty; "Neu auslosen" fills it.
-    old.apply(&content, RunAction::RerollCardOffers)
-        .expect("reroll");
+    old.apply(&content, RunAction::Reroll).expect("reroll");
     let n = usize::try_from(content.run.shop.zinken.offers).expect("small");
     assert_eq!(offers(&old).len(), n);
     // Unknown modifications fall out of the Auslage and the painter.

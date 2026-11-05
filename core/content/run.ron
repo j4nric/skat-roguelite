@@ -110,6 +110,10 @@
         per_game_left: 2,
         interest_step: 5,
         interest_max: 5,
+        // Neu auslosen am Tresen: Relikte, Schnäpse und Auslage neu, einmal
+        // je Besuch (seit 05.11.2026, Entscheidung des Nutzers; vorher die
+        // Neuauslage beliebig oft zu 2 und die Auslage einzeln zu 1, 2, 3,
+        // ...). VORLÄUFIG.
         reroll_cost: 2,
         starting_coins: 4,
     ),
@@ -124,8 +128,8 @@
         // Modifikation zählen bare_weight, andere modded_weight;
         // Gutscheine (Pfandmarke, Totenmarke, Narrenmarke) wiegen
         // voucher_percent Prozent ihrer Seltenheit. Preis: price der Zinke,
-        // auf premium_ranks premium mehr. Neu auslosen kostet reroll_cost,
-        // jedes weitere Mal am selben Tresen reroll_step mehr. Der
+        // auf premium_ranks premium mehr. Neu auslosen (seit 05.11.2026 eins
+        // für den ganzen Tresen, economy.reroll_cost). Der
         // Kartenmaler (einmal je Tresen) setzt auf eine gewählte Karte eine
         // von painter_choices gezogenen Zinken; Karte reinigen (einmal je
         // Tresen) nimmt alle Modifikationen ab, auch Flüche. Alle Zahlen
@@ -143,8 +147,6 @@
             voucher_percent: 50,
             premium_ranks: [Jack, Ace],
             premium: 1,
-            reroll_cost: 1,
-            reroll_step: 1,
             painter_price: 6,
             painter_choices: 2,
             cleanse_price: 3,

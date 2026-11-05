@@ -393,7 +393,6 @@ impl RunEvent {
                 value,
                 price,
             },
-            RunEvent::CardOffersRerolled { cost } => RunEvent::CardOffersRerolled { cost },
             RunEvent::PainterHired {
                 card,
                 options,

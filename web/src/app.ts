@@ -1347,11 +1347,6 @@ export class App {
         sound.play('card');
         continue;
       }
-      if ('CardOffersRerolled' in ev) {
-        this.showToast(de.toast.cardsRerolled);
-        sound.play('card');
-        continue;
-      }
       if ('CardOfferBought' in ev || 'PainterHired' in ev || 'CardCleansed' in ev) {
         // The card itself is told by the DeckChanged that follows (or the painter's sheet).
         if (!('PainterHired' in ev) || ev.PainterHired.price > 0) sound.play('coin');
@@ -2893,9 +2888,6 @@ export class App {
         this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null, 'apply', { pair: true, price: offer.price });
         return;
       }
-      case 'reroll-zinken':
-        void this.act('RerollCardOffers');
-        return;
       case 'painter':
       case 'cleanse': {
         const service: 'painter' | 'cleanse' = action === 'painter' ? 'painter' : 'cleanse';

@@ -14,9 +14,9 @@
 //!   ([`ZinkenConfig::voucher_percent`]). One card at most once per
 //!   Auslage. An offer may be a "Schnäppchen" ([`super::trade`]): half
 //!   price, and a curse on another card.
-//! - **Neu auslosen**: the Auslage drawn again; the price rises by
-//!   [`ZinkenConfig::reroll_step`] with each further time at the same
-//!   Tresen.
+//! - **Neu auslosen** (since 05.11.2026 one action for the whole Tresen,
+//!   [`super::RunAction::Reroll`]): relics, Schnäpse and the Auslage drawn
+//!   again, once per visit.
 //! - **Kartenmaler** (once per Tresen, free at the Werkstatt): the player
 //!   pays and names a card, the painter draws
 //!   [`ZinkenConfig::painter_choices`] modifications that fit it, the
@@ -29,7 +29,6 @@
 //! [`ZinkenConfig::bare_weight`]: crate::content::ZinkenConfig::bare_weight
 //! [`ZinkenConfig::modded_weight`]: crate::content::ZinkenConfig::modded_weight
 //! [`ZinkenConfig::voucher_percent`]: crate::content::ZinkenConfig::voucher_percent
-//! [`ZinkenConfig::reroll_step`]: crate::content::ZinkenConfig::reroll_step
 //! [`ZinkenConfig::painter_choices`]: crate::content::ZinkenConfig::painter_choices
 //! [`RunAction::ChoosePaint`]: super::RunAction::ChoosePaint
 
@@ -292,16 +291,6 @@ impl Run {
         self.zinken_price(content, card, price)
     }
 
-    /// Price of the next "Neu auslosen" before discounts.
-    #[must_use]
-    pub fn card_reroll_price(&self, content: &Content) -> u32 {
-        let config = &content.run.shop.zinken;
-        let done = self.shop.as_ref().map_or(0, |s| s.card_rerolls);
-        config
-            .reroll_cost
-            .saturating_add(config.reroll_step.saturating_mul(done))
-    }
-
     pub(super) fn buy_card_offer(
         &mut self,
         content: &Content,
@@ -340,23 +329,6 @@ impl Run {
         if offer.bargain.is_some() {
             self.bargain_curse(content, offer.card, events)?;
         }
-        Ok(())
-    }
-
-    pub(super) fn reroll_card_offers(
-        &mut self,
-        content: &Content,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        self.tresen_mut()?;
-        let cost = self.shop_price(content, self.card_reroll_price(content));
-        if !self.can_pay(content, cost) {
-            return Err(RunError::NotEnoughCoins);
-        }
-        self.pay(cost, events);
-        self.shop_mut()?.card_rerolls += 1;
-        events.push(RunEvent::CardOffersRerolled { cost });
-        self.draw_card_offers(content, events);
         Ok(())
     }
 

@@ -221,7 +221,6 @@ impl Options {
             // No Zinken either (DESIGN 8.6): only that consumable is bought.
             let zinken = &mut content.run.shop.zinken;
             zinken.offers = 0;
-            zinken.reroll_cost = NO_REROLL;
             zinken.painter_price = NO_REROLL;
             zinken.cleanse_price = NO_REROLL;
             let slots = usize::try_from(content.run.consumable_slots).unwrap_or(0);
@@ -375,14 +374,10 @@ pub enum RunEnd {
 }
 
 /// What the bot spends Groschen on, in report order.
-pub const SPENDING: [&str; 7] = [
-    "relics",
-    "schnaps",
-    "zinken",
-    "painter",
-    "cleanse",
-    "zinken_reroll",
-    "reroll",
+/// "reroll" is "Neu auslosen" of the whole Tresen (once per visit since
+/// 05.11.2026; the Auslage had its own reroll before).
+pub const SPENDING: [&str; 6] = [
+    "relics", "schnaps", "zinken", "painter", "cleanse", "reroll",
 ];
 
 /// Per district, over all runs that reached it.
@@ -956,8 +951,7 @@ impl Observer<'_> {
                 RunEvent::CardOfferBought { price, .. } => self.spend(2, *price),
                 RunEvent::PainterHired { price, .. } => self.spend(3, *price),
                 RunEvent::CardCleansed { price, .. } => self.spend(4, *price),
-                RunEvent::CardOffersRerolled { cost } => self.spend(5, *cost),
-                RunEvent::ShopRerolled { cost } => self.spend(6, *cost),
+                RunEvent::ShopRerolled { cost } => self.spend(5, *cost),
                 _ => {}
             }
         }

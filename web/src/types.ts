@@ -337,15 +337,14 @@ export interface ConsumableOffer {
 export interface ShopView {
   relics: (RelicOffer | null)[];
   consumables: (ConsumableOffer | null)[];
+  /** "Neu auslosen" (relics, Schnäpse and the Auslage, once per visit since 05.11.2026): its price now, 0 with "Der Duzfreund". */
   reroll_cost: number;
   can_reroll: boolean;
   rerolls: number;
+  /** "Neu auslosen" was used at this visit. */
+  reroll_used: boolean;
   /** Zinken (DESIGN 8.6): the Auslage, null once bought. Absent in old cores. */
   card_offers?: (CardOfferView | null)[];
-  /** Price of the next "Neu auslosen". */
-  card_reroll_cost?: number;
-  can_reroll_cards?: boolean;
-  card_rerolls?: number;
   /** The Kartenmaler. */
   painter?: ServiceView;
   /** "Karte reinigen". */
