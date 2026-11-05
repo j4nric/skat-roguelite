@@ -114,7 +114,11 @@ fn the_win_stays_and_the_night_opens_on_request() {
         .verschaerfungen
         .iter()
         .any(|v| v.id.as_str() == "target_jump");
-    assert_eq!(night.target_permille, if jump { 1760 } else { 1600 });
+    let first = u64::from(content.run.night.growth_of(1).permille());
+    assert_eq!(
+        night.target_permille,
+        if jump { first * 11 / 10 } else { first }
+    );
     // Only once.
     let mut again = run.clone();
     assert_eq!(
@@ -139,7 +143,7 @@ fn night_targets_grow_from_the_last_district() {
         let base = last[index as usize];
         assert_eq!(
             run.pub_target(&content, 3, index, None),
-            Some((base * 16 + 5) / 10)
+            Some(content.run.night.growth_of(1).apply(base))
         );
         assert_eq!(
             run.pub_target(&content, 5, index, None),

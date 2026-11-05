@@ -118,6 +118,21 @@ pub struct NightStat {
     /// Faktor of the last won game of each night, in thousandths (for the
     /// median and the 90th percentile).
     pub factors_end: Vec<u64>,
+    /// Won games of the night per district (from 1): Grundwert, Stufen,
+    /// Faktor in thousandths and Spielwert, for medians.
+    pub won_games: BTreeMap<u32, Vec<[u64; 4]>>,
+    /// Pub Zielwerte met per district (from 1), for the median.
+    pub targets: BTreeMap<u32, Vec<u64>>,
+    /// Spielwert factors of the won night games by source: summed natural
+    /// log in thousandths, and the games they fired in.
+    pub factor_sources: BTreeMap<String, (i64, u64)>,
+    /// Won night games (for the mean log factor per source).
+    pub won_night_games: u64,
+    /// Relics held and Groschen at the start of each night pub, per
+    /// district (from 1), for the median.
+    pub held: BTreeMap<u32, Vec<[u64; 2]>>,
+    /// Relics bought / gained (boss pick, encounter) per district.
+    pub relic_events: BTreeMap<u32, [u64; 2]>,
 }
 
 /// Price of the Neuauslage and the Zinken under `--consumable`: never
@@ -1047,11 +1062,65 @@ fn play_night(
                 RunEvent::GameScored { breakdown, .. } if breakdown.won => {
                     last_factor = Some(breakdown.multiplier.permille());
                     best = best.max(breakdown.value);
+                    stat.won_night_games += 1;
+                    for line in &breakdown.lines {
+                        let f = match line.change {
+                            skat_core::content::Change::Scale(f) => {
+                                f64::from(f.permille()) / 1000.0
+                            }
+                            skat_core::content::Change::Multiply(n) => f64::from(n),
+                            _ => continue,
+                        };
+                        if line.lever != skat_core::content::Lever::GameValue || f <= 0.0 {
+                            continue;
+                        }
+                        let key = match &line.source {
+                            skat_core::content::Source::Relic(id) => id.to_string(),
+                            skat_core::content::Source::CardMod { card_mod, .. } => {
+                                format!("mod:{card_mod}")
+                            }
+                            skat_core::content::Source::Consumable(id) => format!("drink:{id}"),
+                            other => format!("{other:?}"),
+                        };
+                        let e = stat.factor_sources.entry(key).or_default();
+                        e.0 += (f.ln() * 1000.0).round() as i64;
+                        e.1 += 1;
+                    }
+                    stat.won_games
+                        .entry(run.series().section + 1)
+                        .or_default()
+                        .push([
+                            breakdown.base_value,
+                            breakdown.levels,
+                            u64::from(breakdown.multiplier.permille()),
+                            breakdown.value,
+                        ]);
                 }
-                RunEvent::RelicGained { relic }
-                    if content.relic(relic).is_some_and(|r| r.night) =>
-                {
-                    *stat.relic_picks.entry(relic.clone()).or_default() += 1;
+                RunEvent::SeriesStarted { .. } => {
+                    stat.targets
+                        .entry(run.series().section + 1)
+                        .or_default()
+                        .push(run.series().target);
+                    stat.held
+                        .entry(run.series().section + 1)
+                        .or_default()
+                        .push([
+                            u64::try_from(run.relics().len()).unwrap_or(0),
+                            u64::from(run.coins()),
+                        ]);
+                }
+                RunEvent::RelicBought { .. } => {
+                    stat.relic_events
+                        .entry(run.series().section + 1)
+                        .or_default()[0] += 1;
+                }
+                RunEvent::RelicGained { relic } => {
+                    stat.relic_events
+                        .entry(run.series().section + 1)
+                        .or_default()[1] += 1;
+                    if content.relic(relic).is_some_and(|r| r.night) {
+                        *stat.relic_picks.entry(relic.clone()).or_default() += 1;
+                    }
                 }
                 _ => {}
             }
@@ -1336,6 +1405,55 @@ fn render_night(out: &mut String, n: &NightStat) {
             at(100)
         );
     }
+    for (district, games) in &n.won_games {
+        let median = |i: usize| -> u64 {
+            let mut v: Vec<u64> = games.iter().map(|g| g[i]).collect();
+            v.sort_unstable();
+            v[v.len() / 2]
+        };
+        let target = n.targets.get(district).map_or(0, |t| {
+            let mut t = t.clone();
+            t.sort_unstable();
+            t[t.len() / 2]
+        });
+        let held = n.held.get(district).map_or(String::new(), |h| {
+            let k = h.len().max(1) as f64;
+            format!(
+                "{:.1}/{:.1}",
+                h.iter().map(|x| x[0]).sum::<u64>() as f64 / k,
+                h.iter().map(|x| x[1]).sum::<u64>() as f64 / k
+            )
+        });
+        let _ = writeln!(
+            out,
+            "night district {district}: won games {} median grundwert {} stufen {} faktor x{:.2} spielwert {}; pub target median {target}; relics/groschen at pub start mean {held}",
+            games.len(),
+            median(0),
+            median(1),
+            median(2) as f64 / 1000.0,
+            median(3),
+        );
+    }
+    let mut line = String::new();
+    for (d, [b, g]) in &n.relic_events {
+        let _ = write!(line, " {d}={b}+{g}");
+    }
+    let _ = writeln!(out, "night relics bought+gained per district:{line}");
+    let mut sources: Vec<(&String, &(i64, u64))> = n.factor_sources.iter().collect();
+    sources.sort_by_key(|a| std::cmp::Reverse(a.1.0));
+    let mut line = String::new();
+    for (id, (log, count)) in sources.iter().take(16) {
+        let _ = write!(
+            line,
+            " {id}=x{:.2}/{:.0}%",
+            ((*log as f64 / 1000.0) / *count as f64).exp(),
+            pct(*count, n.won_night_games)
+        );
+    }
+    let _ = writeln!(
+        out,
+        "night factor sources (mean factor when it fires / share of won games):{line}"
+    );
     let mut ended: Vec<(&String, &u64)> = n.ended_by.iter().collect();
     ended.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
     let mut line = String::new();
