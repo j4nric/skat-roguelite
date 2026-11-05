@@ -3741,6 +3741,107 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
  * route; once more, "Überspringen" pays 2 Groschen. No side scrolling at
  * 390, 375 and 360.
  */
+/**
+ * "Weiter" after a won game (playtest 05.11.2026: after winning the first
+ * game the board stayed and its "Weiter" did nothing). Full motion, touch,
+ * the board left to play out without skipping: a tap on "Weiter" closes it
+ * and the next screen works (seed 64 wins the pub in its first game: the
+ * unlock, then the card reward takes a tap). Then factor-win.json twice:
+ * the second time a render under the board throws once (patched in the
+ * page); "Weiter" still closes the board and the game goes on.
+ */
+async function scoreContinuePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    let armed = false;
+    try {
+      armed = localStorage.getItem('smoke.break-under-board') === '1';
+      localStorage.removeItem('smoke.break-under-board');
+    } catch {
+      // Storage blocked: nothing armed.
+    }
+    if (!armed) return;
+    const qs = Element.prototype.querySelector;
+    Element.prototype.querySelector = function (sel) {
+      // The Tresen watcher runs at the end of every render, after the layer is drawn.
+      if (armed && sel === '.more-hint' && document.querySelector('.overlay-score')) {
+        armed = false;
+        throw new Error('smoke: a render under the score board breaks');
+      }
+      return qs.call(this, sel);
+    };
+  });
+  const page = await context.newPage();
+  const own = [];
+  watch(page, own);
+  const tapContinue = async (label) => {
+    await page.waitForSelector('[data-action="score-continue"]', { timeout: 30000 });
+    const box = await page.locator('[data-action="score-continue"]').boundingBox();
+    if (!box) fail(`${label}: "Weiter" has no box`);
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-action]')?.getAttribute('data-action') ?? null, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    if (hit !== 'score-continue') fail(`${label}: something lies over "Weiter" (${hit})`);
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForSelector('.score-sheet', { state: 'detached', timeout: 5000 }).catch(() => fail(`${label}: "Weiter" did not close the score board`));
+  };
+  const playToBoard = async (label) => {
+    for (let played = 0; ; played++) {
+      await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      await page.locator('[data-action="play"]').first().tap();
+      if (played > 10) fail(`${label}: played more than ten cards`);
+    }
+  };
+
+  // Seed 64: the pub is won in its first game.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await mixIn(page);
+  await page.waitForSelector('.declare');
+  await pickUpAndDiscard(page, 'Weiter after a win');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await playToBoard('Weiter after a win');
+  if (!(await page.locator('#score-title.is-won').count())) fail('Weiter after a win: the first game of seed 64 is not won');
+  await tapContinue('Weiter after the first game, pub won');
+  await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 });
+  await page.tap('.sheet-unlock [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await page.locator('[data-action="card-reward-pick"]:not([disabled])').first().tap();
+  await page.waitForSelector('[data-testid="reward-cards"]', { timeout: 5000 }).catch(() => fail('Weiter after a win: the card reward takes no tap'));
+  log('Weiter after a won first game: board closed by a tap, unlock, card reward answers');
+
+  // A render under the board that throws must not leave a dead "Weiter".
+  for (const broken of [false, true]) {
+    const label = broken ? 'Weiter with a broken render' : 'Weiter, factor-win.json';
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.evaluate(([s, b]) => {
+      localStorage.setItem('stammtisch.run', s);
+      if (b) localStorage.setItem('smoke.break-under-board', '1');
+    }, [fixture('factor-win.json'), broken]);
+    await page.reload();
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('[data-action="play-hand"]');
+    await page.click('[data-action="play-hand"]');
+    await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+    await page.click('[data-action="declare"]');
+    await page.waitForSelector('.declare', { state: 'detached' });
+    await playToBoard(label);
+    await tapContinue(label);
+    if (await page.locator('.sheet-unlock [data-action="close-overlay"]').count()) await page.tap('.sheet-unlock [data-action="close-overlay"]');
+    await page.waitForSelector('.declare, [data-testid="card-reward"], [data-testid="route-go"], [data-testid="end"]', { timeout: 10000 }).catch(() => fail(`${label}: no next screen after "Weiter"`));
+  }
+  const unexpected = own.filter((e) => !e.includes('smoke: a render under the score board breaks'));
+  if (!own.some((e) => e.includes('smoke: a render under the score board breaks'))) fail('Weiter with a broken render: the render did not break (patch not hit)');
+  errors.push(...unexpected);
+  log('Weiter: a render that throws under the board leaves no dead button');
+  await context.close();
+}
+
 /** The card reward after a won pub: the first Zinke that fits, on the first card it fits, "Anbringen". */
 async function takeCardReward(page) {
   await page.waitForSelector('[data-testid="card-reward"]');
@@ -4834,6 +4935,10 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    if (process.env.SMOKE_ONLY === 'weiter') {
+      await scoreContinuePass(browser, errors);
+      return;
+    }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
@@ -5138,6 +5243,7 @@ async function run() {
     await schnapsPass(browser, errors);
     await workshopPass(browser, errors, reducedMotion);
     await cardRewardPass(browser, errors, reducedMotion);
+    await scoreContinuePass(browser, errors);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);
