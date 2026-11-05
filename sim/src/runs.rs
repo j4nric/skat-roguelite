@@ -358,6 +358,12 @@ pub struct RelicStat {
     pub runs_won: u64,
     /// Sum of the sections reached (1-based) by those runs.
     pub sections: u64,
+    /// Times gained without paying (boss pick, encounters).
+    pub gained: u64,
+    /// Times sold (with 8 slots mostly to make room).
+    pub sold: u64,
+    /// Runs that held it at their end.
+    pub held_end: u64,
 }
 
 /// How one pub slot went over all runs: a normal pub, a boss pub, or a
@@ -876,7 +882,10 @@ impl Observer<'_> {
                         p.redeals += 1;
                     }
                 }
-                RunEvent::RelicGained { .. } => self.stats.relics_gained += 1,
+                RunEvent::RelicGained { relic } => {
+                    self.stats.relics_gained += 1;
+                    self.stats.relics.entry(relic.clone()).or_default().gained += 1;
+                }
                 RunEvent::RunWon { .. } => {
                     self.stats.relics_held_won += u64::try_from(run.relics().len()).unwrap_or(0);
                 }
@@ -901,8 +910,9 @@ impl Observer<'_> {
                         .or_default()
                         .1 += 1;
                 }
-                RunEvent::RelicSold { price, .. } => {
+                RunEvent::RelicSold { relic, price } => {
                     self.stats.relics_sold += 1;
+                    self.stats.relics.entry(relic.clone()).or_default().sold += 1;
                     self.stats.coins_sold += u64::from(*price);
                 }
                 RunEvent::ConsumableSold { price, .. } => {
@@ -1038,6 +1048,9 @@ fn play_run(
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let won = run.phase() == RunPhase::Won;
     stats.relics_held_end += u64::try_from(run.relics().len()).unwrap_or(0);
+    for relic in run.relics() {
+        stats.relics.entry(relic.clone()).or_default().held_end += 1;
+    }
     let section = usize::try_from(run.series().section).unwrap_or(0);
     if won {
         stats.won += 1;
@@ -1344,18 +1357,21 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
     out.push('\n');
     let _ = writeln!(
         out,
-        "{:<18} {:>7} {:>6} {:>9} {:>13}",
-        "relic", "bought", "runs", "run win%", "mean section"
+        "{:<18} {:>7} {:>6} {:>9} {:>13} {:>7} {:>5} {:>9}",
+        "relic", "bought", "runs", "run win%", "mean section", "gained", "sold", "held end"
     );
     for (id, r) in &stats.relics {
         let _ = writeln!(
             out,
-            "{:<18} {:>7} {:>6} {:>9.1} {:>13.2}",
+            "{:<18} {:>7} {:>6} {:>9.1} {:>13.2} {:>7} {:>5} {:>9}",
             id.as_str(),
             r.bought,
             r.runs,
             pct(r.runs_won, r.runs),
-            mean(r.sections, r.runs)
+            mean(r.sections, r.runs),
+            r.gained,
+            r.sold,
+            r.held_end
         );
     }
     let per_run = if stats.runs == 0 {
