@@ -50,7 +50,7 @@
     (
         character: NullPlayer,
         name: "Der Nullspieler",
-        text: "Der Null-Spezialist: Seine Unter sind abgestuft (die niedrigste Karte ihrer Farbe), und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt dreimal statt zweimal ein. Startet mit dem Kiebitz.",
+        text: "Der Null-Spezialist: Seine Unter sind abgestuft (die niedrigste Karte ihrer Farbe), und am Tresen liegen öfter Null-Relikte. Farbe und Grand darf er auch. Mischt in jedem Spiel einmal öfter ein. Startet mit dem Kiebitz.",
         // Eigene Zielwerte (DESIGN 5.0.4 und 9), gemessen am 03.11.2026
         // (docs/balance/2026-11-03-charaktere.md): die Kurve des
         // Alleinspielers, Stadtteil 1 × 1,15, Stadtteil 2 × 1,2, Stadtteil 3
@@ -61,10 +61,15 @@
         // Runde 1 nach ADR 0019 (04.11.2026): mit der Kurve oben ohne Leben
         // Stadtteil 2 in 26,9 %, gewonnen 2,0 % (Alleinspieler 29,0 / 1,9 %).
         // Jetzt rund die neue Kurve des Alleinspielers × 1,1.
+        // Runde 2 (04.11.2026, docs/balance/2026-11-04-runde2.md): damit
+        // 33,4 / 14,6 / 7,3 % (Stadtteil 2 / 3 / gewonnen). Stadtteil 1 wie
+        // beim Alleinspieler verschoben (1-3, 1-4 − 5, Boss + 10), Boss in
+        // Stadtteil 2 + 10, Stadtteil 3 + 15: gemessen 37,5 / 14,7 / 6,5 %.
+        // Danach Stadtteil 3 noch einmal + 10 (Vorschlag, ungemessen).
         targets: Some([
-            [40, 50, 60, 65, 65],
-            [75, 90, 100, 110, 90],
-            [150, 170, 195, 210, 145],
+            [40, 50, 55, 60, 75],
+            [75, 90, 100, 110, 100],
+            [175, 195, 220, 235, 145],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den
@@ -108,6 +113,16 @@
         character: Shirker,
         name: "Der Drückeberger",
         text: "Drückt sich, wo er kann: Auf seinen vier Siebenern liegt je eine Pfandmarke (2 Groschen), auf der Schellen-Acht eine Totenmarke, auf der Rot-Acht eine Narrenmarke. Eingelöste Marken kommen nach jeder Kneipe zurück. Handspiele bekommen keinen Multiplikator für Hand. Startet mit dem Skatpfleger.",
+        // Eigene Zielwerte seit Runde 2 (04.11.2026,
+        // docs/balance/2026-11-04-runde2.md): Mit der Kurve des
+        // Alleinspielers erreichte er Stadtteil 2 in 39,3 % und gewann
+        // 8,9 % (Stadtteil 3 hielt 52 %); Stadtteil 1 rund + 5, Stadtteil 2
+        // die Kurve vor Runde 2 mit Boss 90, Stadtteil 3 + 20. Vorschlag.
+        targets: Some([
+            [40, 50, 55, 60, 80],
+            [70, 80, 90, 100, 90],
+            [155, 175, 195, 210, 130],
+        ]),
         start_relics: ["skat_keeper"],
         deck: (
             mods: [
@@ -154,10 +169,13 @@
         // Stadtteil 2 in 22,4 %, gewonnen 1,3 % (Alleinspieler 29,0 / 1,9 %);
         // die Boss-Kneipe in Stadtteil 1 gewann sie nur zu 57 %. Jetzt in
         // Stadtteil 1 die neue Kurve des Alleinspielers, danach rund × 1,1.
+        // Runde 2 (04.11.2026, docs/balance/2026-11-04-runde2.md): damit
+        // 36,7 / 12,3 / 5,4 %; Stadtteil 1 wie der Alleinspieler, Stadtteil
+        // 2 − 10 (Boss + 5), Stadtteil 3 + 10: gemessen 38,3 / 14,7 / 4,8 %.
         targets: Some([
-            [35, 45, 55, 60, 60],
-            [75, 90, 100, 110, 90],
-            [150, 170, 195, 210, 145],
+            [35, 45, 50, 55, 75],
+            [65, 80, 90, 100, 95],
+            [160, 180, 205, 220, 145],
         ]),
         start_relics: ["watertight"],
         deck: (
@@ -197,10 +215,15 @@
         // Kurve des Alleinspielers ohne Leben Stadtteil 2 in 20,9 %, gewonnen
         // 1,8 % (Alleinspieler 29,0 / 1,9 %), die erste Kneipe nur 75,8 %
         // (Alleinspieler 81,7 %). Jetzt rund die neue Kurve × 0,9.
+        // Runde 2 (04.11.2026, docs/balance/2026-11-04-runde2.md): damit
+        // 30,1 / 9,9 / 4,7 %, die ersten beiden Kneipen beendeten 35 % der
+        // Runs. Stadtteil 1 − 5 (Boss + 10), Stadtteil 2 − 10 (Boss + 5),
+        // Stadtteil 3 + 10: gemessen 34,2 / 13,5 / 6,5 %. Danach Stadtteil
+        // 3 noch einmal + 15 (Vorschlag, ungemessen).
         targets: Some([
-            [30, 40, 50, 55, 55],
-            [65, 75, 80, 90, 75],
-            [125, 140, 160, 170, 120],
+            [25, 35, 45, 50, 65],
+            [55, 65, 70, 80, 80],
+            [150, 165, 185, 195, 120],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die

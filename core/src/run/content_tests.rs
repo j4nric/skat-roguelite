@@ -173,24 +173,26 @@ fn every_content_item_loads_with_german_texts() {
     for id in ["herbal", "double_grain"] {
         assert!(content.consumable(&ConsumableId::new(id)).is_some(), "{id}");
     }
-    // Kneipentour curve (DESIGN 5.0.4, balance round 1 without lives,
-    // 04.11.2026).
-    assert_eq!(content.run.targets[0], vec![35, 45, 55, 60, 60]);
-    assert_eq!(content.run.targets[2], vec![135, 155, 175, 190, 130]);
-    // Own curves of the Nullspieler, the Schneiderin and (since balance
-    // round 1, 04.11.2026) Bruderherz; the Drückeberger plays the one of
-    // run.ron (DESIGN 9).
+    // Kneipentour curve (DESIGN 5.0.4, balance round 2, 04.11.2026).
+    assert_eq!(content.run.targets[0], vec![35, 45, 50, 55, 75]);
+    assert_eq!(content.run.targets[2], vec![145, 165, 185, 200, 130]);
+    // Own curves of every character but the Alleinspieler (Drückeberger
+    // since balance round 2, DESIGN 9).
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
-    assert_eq!(null[0], vec![40, 50, 60, 65, 65]);
-    assert_eq!(null[2], vec![150, 170, 195, 210, 145]);
+    assert_eq!(null[0], vec![40, 50, 55, 60, 75]);
+    assert_eq!(null[2], vec![175, 195, 220, 235, 145]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
-    assert_eq!(tailoress[0], vec![35, 45, 55, 60, 60]);
-    assert_eq!(tailoress[2], vec![150, 170, 195, 210, 145]);
-    assert!(targets(Character::Shirker).is_none());
+    assert_eq!(tailoress[0], vec![35, 45, 50, 55, 75]);
+    assert_eq!(tailoress[2], vec![160, 180, 205, 220, 145]);
+    let shirker = targets(Character::Shirker).expect("shirker targets");
+    assert_eq!(shirker[0], vec![40, 50, 55, 60, 80]);
+    assert_eq!(shirker[2], vec![155, 175, 195, 210, 130]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
-    assert_eq!(heart_brother[0], vec![30, 40, 50, 55, 55]);
-    assert_eq!(heart_brother[2], vec![125, 140, 160, 170, 120]);
+    assert_eq!(heart_brother[0], vec![25, 35, 45, 50, 65]);
+    assert_eq!(heart_brother[2], vec![150, 165, 185, 195, 120]);
+    // One more Einmischen in Stadtteil 1 (balance round 2).
+    assert_eq!(content.run.district_redeals, vec![1]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
 }
 
@@ -363,7 +365,7 @@ fn ouvert_bonus_adds_a_second_ouvert_level() {
 #[test]
 fn skat_redraw_adds_one_einmischen_to_every_game() {
     let content = content();
-    let own = content.redeals(crate::content::Character::Declarer);
+    let own = content.redeals_in(crate::content::Character::Declarer, 0);
     let start = RunStart {
         relics: vec![RelicId::new("skat_redraw")],
         ..RunStart::default()

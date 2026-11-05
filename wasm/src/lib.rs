@@ -1028,9 +1028,11 @@ mod tests {
         assert_eq!(code(err), "InvalidAction");
         let err = session.apply(r#"{"Play":999}"#).expect_err("not held");
         assert_eq!(code(err), "UnknownCard");
-        // Einmischen twice per game, then the old names fail like the new.
+        // Einmischen three times per game in Stadtteil 1 (two plus one,
+        // run.ron), then the old names fail like the new.
         session.apply(r#""Redeal""#).expect("first");
         session.apply(r#""Pass""#).expect("second, old name");
+        session.apply(r#""Redeal""#).expect("third, Stadtteil 1");
         let err = session.apply(r#""RedrawSkat""#).expect_err("none left");
         assert_eq!(code(err), "NoRedealLeft");
         // "Rest abkürzen" only in a decided game.
@@ -1065,7 +1067,8 @@ mod tests {
         assert!(view["next_series"]["target"].is_u64());
         assert_eq!(view["deal_odds"]["hand_or_skat"]["permille"], 375);
         assert_eq!(view["game"]["declare"]["can_redeal"], true);
-        assert_eq!(view["series"]["redeals_left"], 2);
+        // Two per game and one more in Stadtteil 1 (run.ron).
+        assert_eq!(view["series"]["redeals_left"], 3);
         let odds: serde_json::Value =
             serde_json::from_str(&deal_odds_json().expect("odds")).expect("json");
         assert_eq!(odds["deck_size"], 32);
