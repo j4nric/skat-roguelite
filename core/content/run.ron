@@ -80,7 +80,10 @@
     // Runde 3 (05.11.2026): 1,0 → 0,95; die Spelunken gewann der Bot zu
     // 74 bis 82 % gegen 85 bis 90 % in normalen Kneipen, 9,6 bis 12,7 % der
     // verlorenen Runs endeten dort (Grenze 10 %).
-    spelunke: (chance: 0.3, target_factor: 0.95),
+    // SR4 (05.11.2026): 0,95 → 0,9; 8,6 bis 13,2 % der verlorenen Runs
+    // endeten in Spelunken (Drückeberger 13,2, Bruderherz 11,0, Alleinspieler
+    // 10,0 %).
+    spelunke: (chance: 0.3, target_factor: 0.9),
     // Seit 01.11.2026 (Spieltest, Entscheidung des Nutzers): 3 Spiele je
     // Kneipe (bis ADR 0016 je Serie), und jedes Spiel darf bis zu zweimal
     // eingemischt (neu gegeben) werden, ohne ein Spiel zu kosten; danach

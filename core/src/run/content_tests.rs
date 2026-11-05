@@ -181,7 +181,7 @@ fn every_content_item_loads_with_german_texts() {
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
     assert_eq!(null[0], vec![35, 50, 80, 85, 120]);
-    assert_eq!(null[2], vec![210, 230, 255, 270, 155]);
+    assert_eq!(null[2], vec![260, 280, 305, 320, 185]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
     assert_eq!(tailoress[0], vec![25, 40, 65, 70, 110]);
     assert_eq!(tailoress[2], vec![180, 200, 225, 240, 155]);

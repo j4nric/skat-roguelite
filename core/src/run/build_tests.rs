@@ -561,7 +561,7 @@ fn lead_pouring_adds_a_level_per_blei_card_in_the_hand_of_a_won_null() {
 }
 
 #[test]
-fn plumb_line_adds_two_grundwert_per_blei_card_in_every_null() {
+fn plumb_line_adds_one_grundwert_per_blei_card_in_every_null() {
     let content = content();
     let mut run = long_run(&content, &["plumb_line"]);
     put(&mut run, &content, "D7", "lead");
@@ -573,7 +573,7 @@ fn plumb_line_adds_two_grundwert_per_blei_card_in_every_null() {
         &b,
         &relic("plumb_line"),
         Lever::BaseValue,
-        Change::Add(6)
+        Change::Add(3)
     ));
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));

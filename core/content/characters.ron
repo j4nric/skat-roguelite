@@ -18,6 +18,9 @@
 // 35 / 50 / 65 / 70 / 105: 43,8 / 21,0 / 6,0 %, Stadtteil 2 hielt 48 %);
 // Schneiderin 1-1 und 1-2 nur + 10 (mit + 20: 27 % der Runs in den
 // ersten beiden Kneipen);
+// Nach SR4 (05.11.2026, docs/balance/2026-11-05-runde4.md): Nullspieler
+// 35,9 / 15,9 / 8,2 %, Stadtteil 3 hielt 52 %: Stadtteil 3 + 50, Boss
+// 155 → 185, Boss in Stadtteil 2 125 → 140.
 // Drückeberger (42,0 / 18,9 / 11,3 %) Stadtteil 1 ab 1-3 + 5, Boss + 10,
 // Stadtteil 2 + 5, Stadtteil 3 + 40; Bruderherz (35,2 / 10,8 / 3,1 %)
 // 1-3, 1-4 − 5, Stadtteil 2 − 10, Stadtteil 3 − 10.
@@ -82,8 +85,8 @@
         // Danach Stadtteil 3 noch einmal + 10 (Vorschlag, ungemessen).
         targets: Some([
             [35, 50, 80, 85, 120],
-            [85, 100, 110, 120, 125],
-            [210, 230, 255, 270, 155],
+            [85, 100, 110, 120, 140],
+            [260, 280, 305, 320, 185],
         ]),
         start_relics: ["kibitzer"],
         // Dreimal statt zweimal einmischen pro Spiel (02.11.2026): Mit den

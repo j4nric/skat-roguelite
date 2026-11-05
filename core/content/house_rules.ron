@@ -623,7 +623,8 @@
         name: "Schwarze Null",
         text: "×1,5, wenn du ein Null-Spiel gewinnst.",
         rarity: Rare,
-        price: 7,
+        // SR4 (05.11.2026): 7 → 9, beim Nullspieler + 19,3 / + 20,7.
+        price: 9,
         hooks: [
             OnScore(when: All([Won, NullGame]), then: [ScaleGameValue(1.5)]),
         ],
@@ -655,7 +656,9 @@
         name: "Heiße Hand",
         text: "Jedes gewonnene Spiel in Folge gibt +×0,2 Faktor auf die nächsten gewonnenen Spiele. Ein verlorenes Spiel setzt ihn auf ×1 zurück.",
         rarity: Rare,
-        price: 8,
+        // SR4 (05.11.2026): 8 → 10; ohne Tresen + 9,5 / + 6,8 auf
+        // „Stadtteil 2 / 3“, das Fünffache der übrigen seltenen Relikte.
+        price: 10,
         hooks: [
             OnScore(when: Won, then: [ScaleGameValuePerCounter(counter: "hot_hand", per: 0.2), IncrementCounter("hot_hand")]),
             OnScore(when: Lost, then: [ResetCounter("hot_hand")]),
@@ -865,7 +868,8 @@
         name: "Bleigießen",
         text: "Gewinnst du ein Null: +1 Stufe je Karte mit Blei auf deiner Hand.",
         rarity: Uncommon,
-        price: 6,
+        // SR4 (05.11.2026): 6 → 8, beim Nullspieler + 11,3 / + 14,0.
+        price: 8,
         hooks: [
             OnScore(when: All([Won, NullGame]), then: [AddLevelsPerCard(count: (mods: ["lead"], in_hand: true), per: 1)]),
         ],
@@ -878,11 +882,13 @@
         group: Value,
         focus: Null,
         name: "Senkblei",
-        text: "Null: +2 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren.",
+        // SR4 (05.11.2026): +2 → +1 je Karte, beim Nullspieler ohne Tresen
+        // + 10,7 / + 15,3 auf „Stadtteil 2 / 3“ (gewöhnlich!).
+        text: "Null: +1 Grundwert je Karte mit Blei in deinem Deck, gewonnen wie verloren.",
         rarity: Common,
         price: 5,
         hooks: [
-            OnDeclare(when: NullGame, then: [AddBaseValuePerCard(count: (mods: ["lead"]), per: 2)]),
+            OnDeclare(when: NullGame, then: [AddBaseValuePerCard(count: (mods: ["lead"]), per: 1)]),
         ],
     ),
     // Grand (Cockpit q27, 04.11.2026: the Grand counts 18 in the run).
