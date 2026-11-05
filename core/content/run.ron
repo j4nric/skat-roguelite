@@ -131,12 +131,13 @@
         // Tresen) nimmt alle Modifikationen ab, auch Flüche. Alle Zahlen
         // VORLÄUFIG, nach Augenmaß ohne Messung.
         zinken: (
-            // offers seit Runde 3 (05.11.2026) 2 statt 3: Die Kartenbelohnung
-            // bringt rund vier Zinken je Run gratis; mit 3 Angeboten am
-            // Tresen und Kartenbelohnung Stadtteil 3 in 14,3 %, mit 2 in
-            // 11,3 % (3 × 100 Runs, Rauschen rund 2 Punkte), die ersten
-            // beiden Kneipen gleich. Der Tresen bleibt der Ort der Relikte.
-            offers: 2,
+            // offers: seit dem Playtest vom 05.11.2026 wieder 3
+            // (Entscheidung des Nutzers: "3 Zinken zur Auswahl im Shop,
+            // ähnlich wie gewonnene Kneipe"), VORLÄUFIG, ungemessen. In
+            // Runde 3 (05.11.2026) 2 statt 3: mit 3 Angeboten und
+            // Kartenbelohnung Stadtteil 3 in 14,3 %, mit 2 in 11,3 %
+            // (3 × 100 Runs, Rauschen rund 2 Punkte).
+            offers: 3,
             bare_weight: 3,
             modded_weight: 1,
             voucher_percent: 50,
