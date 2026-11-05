@@ -7592,8 +7592,52 @@ button.skat-card {
 }
 
 /* ------------------------------------------------ boss reward (ADR 0017) */
+/* The three relics side by side (3 × 1, playtest 05.11.2026), like the
+   other choices; on a phone the mats are smaller. */
 .boss-reward .coasters {
-  padding: 0 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 2px;
+}
+
+@media (max-width: 599px) {
+  .boss-reward .coaster {
+    padding: 10px 4px 6px;
+  }
+
+  .boss-reward .coaster-emblem-wrap svg {
+    width: 40px;
+    height: 40px;
+  }
+
+  .boss-reward .coaster-name,
+  .boss-reward .coaster-text {
+    font-size: var(--fs-2xs);
+  }
+
+  .boss-reward .coaster .btn-small {
+    padding-inline: 8px;
+  }
+}
+
+/* The loot of a Spelunke: its choices side by side too. */
+.encounter[data-encounter='spelunke_loot'] .enc-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  align-items: stretch;
+}
+
+.encounter[data-encounter='spelunke_loot'] .enc-option {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  align-content: start;
+  text-align: center;
+}
+
+.encounter[data-encounter='spelunke_loot'] .enc-body {
+  align-items: center;
 }
 
 .boss-reward .coaster-wrap .coaster {

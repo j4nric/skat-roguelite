@@ -1347,6 +1347,13 @@ async function bossesV2(browser, errors, reducedMotion) {
   await expectMusic(page, 'shop', 'boss reward');
   await shoot(page, 'bosses-reward');
   await assertNoSideScroll(page, 'boss reward', '.boss-reward');
+  // 3 × 1 (playtest 05.11.2026): the three mats in one row, at 390 and 360.
+  for (const size of [PHONE, { width: 360, height: 740 }]) {
+    await page.setViewportSize(size);
+    const tops = await page.locator('.boss-reward-offers .coaster').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    if (new Set(tops).size !== 1) fail(`boss reward at ${size.width}: the relics are not in one row (${tops})`);
+  }
+  await page.setViewportSize(PHONE);
   const relicsBefore = await page.locator('.hud .coaster-chip').count();
   await page.locator('[data-testid="boss-relic-take"]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
