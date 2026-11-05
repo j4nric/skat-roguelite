@@ -410,10 +410,15 @@ fn three_discard_keeps_every_card_once() {
                 let total = u32::try_from(signed).expect("positive") + bonus;
                 let finished = game.drawn().is_some() || !game.tricks().is_empty();
                 if finished && game.declaration().is_some_and(|d| !d.is_null()) {
-                    assert_eq!(
-                        outcome.declarer_card_points + outcome.defender_card_points,
-                        total
-                    );
+                    let sum = outcome.declarer_card_points + outcome.defender_card_points;
+                    // A seat never has fewer than 0 Augen (`seat_card_points`):
+                    // with a card below 0 in play the sum may lie above.
+                    let below_zero = game.cards_in_play().iter().any(|c| c.signed_points() < 0);
+                    if below_zero {
+                        assert!(sum >= total, "{sum} < {total}");
+                    } else {
+                        assert_eq!(sum, total);
+                    }
                     checked += 1;
                 }
             }

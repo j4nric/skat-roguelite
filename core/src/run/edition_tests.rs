@@ -94,6 +94,9 @@ fn plain_deck_deals_and_plays_as_before_editions() {
     // counts once, which changes the scores and the bot's choices. Seed 7
     // (district 1) and seed 42 (district 2) again with the Zielwerte of
     // balance round 1 (04.11.2026): the pub ends after another game.
+    // Seeds 42 and 99 again with Grand 18 in the run (04.11.2026, Cockpit
+    // q27): the scores and the bot's choices change; with Grand 24 and
+    // without the card reward the hashes above were unchanged.
     assert_eq!(
         hashes,
         vec![
@@ -101,10 +104,10 @@ fn plain_deck_deals_and_plays_as_before_editions() {
             12_912_900_704_559_812_833,
             2_414_107_796_335_042_384,
             4_391_168_479_812_042_796,
-            8_533_871_236_692_366_623,
-            4_882_658_249_966_581_140,
-            11_370_352_877_980_222_910,
-            2_884_972_791_164_610_454,
+            9_802_066_370_201_224_385,
+            5_928_900_689_182_085_624,
+            16_145_715_983_571_043_373,
+            15_006_232_414_759_784_512,
         ]
     );
 }

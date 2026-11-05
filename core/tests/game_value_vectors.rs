@@ -10,7 +10,7 @@
 
 use skat_core::cards::Suit;
 use skat_core::cards::parse_cards;
-use skat_core::content::{RUN_LOSS_FACTOR, score_game};
+use skat_core::content::{Content, RUN_LOSS_FACTOR, score_game, score_parts};
 use skat_core::rules::{
     Declaration, GameType, Matadors, NullRisk, Outcome, RiskLevel, SCHNEIDER_THRESHOLD,
     TOTAL_CARD_POINTS, Thresholds, WIN_THRESHOLD, game_value, matadors, null_game_value,
@@ -464,6 +464,59 @@ fn vectors_run_account_counts_a_lost_game_single() {
         );
         assert_eq!(run.score, -i64::from(v.value), "{}: run score", v.name);
     }
+}
+
+/// The run's Grundwerte (DESIGN 4.2, decision of the user on 04.11.2026,
+/// Cockpit q27): a Grand counts 18 in the run, the Skatordnung above stays
+/// at 24. The levels stay; suit games and Null are unchanged.
+#[test]
+fn vectors_run_grand_counts_eighteen() {
+    let content = Content::load().expect("content");
+    assert_eq!(content.run.base_value(GameType::Grand), Some(18));
+    assert_eq!(GameType::Grand.base_value(), Some(24));
+    let mut grands = 0;
+    for v in VECTORS {
+        let Some(declaration) = declaration_from_vector(v) else {
+            continue;
+        };
+        if v.game == GameType::Null {
+            continue;
+        }
+        let cards = parse_cards(v.cards).unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let outcome = outcome_from_vector(v);
+        let m = matadors(v.game, &cards);
+        let thresholds = Thresholds::default();
+        let parts = content
+            .run
+            .game_value_parts(declaration, m, &outcome, &thresholds);
+        let expected = if v.game == GameType::Grand {
+            grands += 1;
+            18 * v.levels
+        } else {
+            v.value
+        };
+        assert_eq!(parts.value.levels, v.levels, "{}: levels", v.name);
+        assert_eq!(parts.value.value, expected, "{}: run value", v.name);
+        let run = score_parts(declaration, m, &outcome, &thresholds, parts, Vec::new());
+        assert_eq!(run.value, u64::from(expected), "{}: run Spielwert", v.name);
+        assert_eq!(run.score, i64::from(expected), "{}: run score", v.name);
+    }
+    assert!(grands >= 3, "the vectors hold Grand games");
+    // By hand: Grand Hand mit 4, Spiel 5, Hand 6: 18 × 6 = 108 (Skatordnung 144).
+    let cards = parse_cards("CJ SJ HJ DJ CA CT SA ST HA HT DA D7").expect("cards");
+    let decl = Declaration::grand(RiskLevel::Hand);
+    let won = Outcome {
+        declarer_card_points: 80,
+        defender_card_points: 40,
+        declarer_tricks: 8,
+        defender_tricks: 2,
+    };
+    let m = matadors(GameType::Grand, &cards);
+    let run = content
+        .run
+        .game_value_parts(decl, m, &won, &Thresholds::default());
+    assert_eq!((run.base_value, run.value.value), (18, 108));
+    assert_eq!(game_value(decl, m, &won).value, 144);
 }
 
 // ---------------------------------------------------------------------------

@@ -92,6 +92,9 @@ pub struct RunView {
     pub encounter: Option<EncounterView>,
     /// The relic pick of a won boss pub, while open (ADR 0017).
     pub boss_reward: Option<BossRewardView>,
+    /// The card reward of a won normal pub or Spelunke, while open
+    /// ([`RunPhase::CardReward`], DESIGN 5.0).
+    pub card_reward: Option<CardRewardView>,
     /// The Kartenmaler's choice, waiting for the player (Tresen or
     /// Werkstatt): nothing but [`RunAction::ChoosePaint`] goes now.
     pub painter: Option<PainterView>,
@@ -368,6 +371,29 @@ pub struct BossRewardView {
     /// for an owned one (sold for half its price, `replace`). Never with
     /// unlimited slots (the default since 03.11.2026).
     pub slots_full: bool,
+}
+
+/// The card reward of a won pub (DESIGN 5.0): take one Zinke for free on
+/// a card ([`RunAction::TakeCardReward`]) or skip for Groschen
+/// ([`RunAction::SkipCardReward`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CardRewardView {
+    /// The Zinken on offer.
+    pub offers: Vec<CardRewardOfferView>,
+    /// Groschen for "Überspringen".
+    pub skip_coins: u32,
+}
+
+/// One Zinke of the card reward.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CardRewardOfferView {
+    /// Index for [`RunAction::TakeCardReward`] `offer`.
+    pub index: usize,
+    /// The Zinke with its value and text.
+    pub card_mod: CardModInfo,
+    /// The deck cards it may go on now, in id order
+    /// ([`Run::card_reward_targets`]).
+    pub targets: Vec<u32>,
 }
 
 /// One relic of the boss reward.
@@ -1375,7 +1401,9 @@ impl Run {
         let boss = series.boss.as_ref().map(|id| self.boss_info(content, id));
         let boss_ahead = match self.phase {
             RunPhase::Game => true,
-            RunPhase::Shop | RunPhase::Encounter | RunPhase::Route => !series.is_boss_pub(),
+            RunPhase::Shop | RunPhase::Encounter | RunPhase::Route | RunPhase::CardReward => {
+                !series.is_boss_pub()
+            }
             RunPhase::BossReward | RunPhase::Won | RunPhase::Lost => false,
         };
         let upcoming_boss = self
@@ -1449,6 +1477,19 @@ impl Run {
             shop: self.shop_view(content),
             encounter: self.encounter_view(content),
             boss_reward: self.boss_reward_view(content),
+            card_reward: self.card_reward().map(|reward| CardRewardView {
+                offers: reward
+                    .offers
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (card_mod, value))| CardRewardOfferView {
+                        index,
+                        card_mod: Run::card_mod_info(content, card_mod, Some(*value)),
+                        targets: self.card_reward_targets(content, index),
+                    })
+                    .collect(),
+                skip_coins: content.run.card_reward.as_ref().map_or(0, |c| c.skip_coins),
+            }),
             schnapps_reward: self.schnapps_reward().map(|id| {
                 let consumable = Run::consumable_info(content, id);
                 SchnappsRewardView {
@@ -1827,7 +1868,7 @@ impl Run {
             .into_iter()
             .map(|game| GameOption {
                 game,
-                base_value: game.base_value().unwrap_or(0),
+                base_value: content.run.base_value(game).unwrap_or(0),
                 allowed: Declaration::new(game, lowest)
                     .is_some_and(|d| self.accepts(content, RunAction::Declare(d))),
             })
@@ -2356,7 +2397,8 @@ mod tests {
         assert!(options.games.iter().all(|g| g.allowed));
         assert!(options.risks.iter().all(|r| r.allowed));
         assert_eq!(options.games[0].base_value, 12);
-        assert_eq!(options.games[4].base_value, 24);
+        // Grand 18 in the run (04.11.2026, Cockpit q27).
+        assert_eq!(options.games[4].base_value, 18);
         assert_eq!(options.games[5].game, GameType::Null);
         assert_eq!(options.games[5].base_value, 23);
         let null_risks: Vec<(NullRisk, u64)> = options

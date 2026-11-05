@@ -50,6 +50,7 @@
 //! ([`RunStart::locked_relics`]).
 
 pub mod bot;
+mod card_reward;
 mod encounters;
 pub mod guests;
 pub mod meta;
@@ -147,6 +148,11 @@ pub enum RunPhase {
     /// A boss pub was won: the player picks one of the relics on offer or
     /// none ([`tour::BossReward`], ADR 0017).
     BossReward,
+    /// A normal pub or a Spelunke was won: the innkeeper offers Zinken,
+    /// the player takes one on a card of his choice or skips
+    /// ([`card_reward::CardReward`], DESIGN 5.0). Added on 04.11.2026,
+    /// after the other phases, so saves keep their phase.
+    CardReward,
     /// The last boss pub was won.
     Won,
     /// A pub was lost (ADR 0019: any lost pub ends the run).
@@ -970,6 +976,21 @@ pub enum RunAction {
         #[serde(default)]
         give_up: Option<usize>,
     },
+    /// The card reward of a won pub ([`RunPhase::CardReward`], DESIGN
+    /// 5.0): the Zinke at `offer` of [`card_reward::CardReward::offers`]
+    /// goes on the deck card `card` for free (the same Zinke on it rises,
+    /// another is replaced). The card must take it
+    /// ([`Run::card_reward_targets`]). Then the way goes on.
+    TakeCardReward {
+        /// Index into the Zinken on offer.
+        offer: usize,
+        /// The deck card (instance id).
+        card: u32,
+    },
+    /// The card reward of a won pub, skipped: Groschen instead
+    /// ([`crate::content::CardRewardConfig::skip_coins`]). Then the way
+    /// goes on.
+    SkipCardReward,
 }
 
 /// Something that happened in the run, in order of occurrence.
@@ -1608,6 +1629,29 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// The Schnaps given up for it.
         given_up: ConsumableId,
     },
+    /// A won normal pub or Spelunke: the innkeeper offers these Zinken
+    /// with their values (DESIGN 5.0, [`RunPhase::CardReward`]).
+    CardRewardOffered {
+        /// The Zinken on offer with their values, in offer order.
+        offers: Vec<(CardModId, i32)>,
+    },
+    /// A Zinke of the card reward was taken; [`RunEvent::DeckChanged`]
+    /// follows.
+    CardRewardTaken {
+        /// Index into the offers.
+        offer: usize,
+        /// The deck card (instance id).
+        card: u32,
+        /// The Zinke.
+        card_mod: CardModId,
+        /// Its value.
+        value: i32,
+    },
+    /// The card reward was skipped for Groschen.
+    CardRewardSkipped {
+        /// Groschen paid.
+        coins: u32,
+    },
 }
 
 /// Why an action was rejected. The run is unchanged.
@@ -1703,6 +1747,10 @@ pub enum RunError {
     /// The Schnaps of a won pub waits for the player's choice
     /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
     SchnappsRewardPending,
+    /// The card reward of a won pub waits for the player
+    /// ([`RunAction::TakeCardReward`], [`RunAction::SkipCardReward`]);
+    /// nothing else goes before it.
+    CardRewardPending,
 }
 
 /// Stable code of a [`RunError`], for frontends: serialized as its name
@@ -1833,6 +1881,8 @@ pub enum RunErrorCode {
     /// The Schnaps of a won pub waits for the player's choice
     /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
     SchnappsRewardPending,
+    /// The card reward of a won pub waits for the player.
+    CardRewardPending,
 }
 
 impl RunErrorCode {
@@ -1896,6 +1946,7 @@ impl RunErrorCode {
             RunErrorCode::ConditionNotMet => "ConditionNotMet",
             RunErrorCode::NotInBossPub => "NotInBossPub",
             RunErrorCode::SchnappsRewardPending => "SchnappsRewardPending",
+            RunErrorCode::CardRewardPending => "CardRewardPending",
         }
     }
 }
@@ -1963,6 +2014,7 @@ impl RunError {
             RunError::ConditionNotMet => RunErrorCode::ConditionNotMet,
             RunError::NotInBossPub => RunErrorCode::NotInBossPub,
             RunError::SchnappsRewardPending => RunErrorCode::SchnappsRewardPending,
+            RunError::CardRewardPending => RunErrorCode::CardRewardPending,
         }
     }
 }
@@ -2010,6 +2062,9 @@ impl fmt::Display for RunError {
             RunError::NotInBossPub => f.write_str("not in a boss pub"),
             RunError::SchnappsRewardPending => {
                 f.write_str("the Schnaps of the won pub waits for a choice")
+            }
+            RunError::CardRewardPending => {
+                f.write_str("the card reward of the won pub waits for a choice")
             }
         }
     }
@@ -2186,6 +2241,13 @@ pub struct Run {
     /// takes it for one of his or sells it ([`RunAction::ChooseSchnappsReward`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     schnapps_reward: Option<ConsumableId>,
+    /// The card reward after a won pub (DESIGN 5.0). Its own generator,
+    /// so that every other draw stays as it was.
+    #[serde(default = "Run::default_reward_rng")]
+    reward_rng: Rng,
+    /// The card reward of a won pub, while open ([`RunPhase::CardReward`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    card_reward: Option<card_reward::CardReward>,
 }
 
 impl Run {
@@ -2307,6 +2369,8 @@ impl Run {
             trade_rng: master.fork(),
             schnapps_rng: master.fork(),
             schnapps_reward: None,
+            reward_rng: master.fork(),
+            card_reward: None,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -2423,6 +2487,7 @@ impl Run {
             self.schnapps_reward = None;
         }
         self.drop_unknown_zinken(content);
+        self.drop_unknown_card_reward(content);
         self.renew_encounter(content);
         dropped
     }
@@ -2448,6 +2513,11 @@ impl Run {
     /// ("SCHNAPS").
     fn default_schnapps_rng() -> Rng {
         Rng::from_seed(0x5343_484E_4150_5300)
+    }
+
+    /// Card reward generator of saves from before it ("KREWARD").
+    fn default_reward_rng() -> Rng {
+        Rng::from_seed(0x4B52_4557_4152_4400)
     }
 
     /// Zinken generator of saves from before the Auslage ("ZINKEN").
@@ -2793,6 +2863,16 @@ impl Run {
         {
             return Err(RunError::SchnappsRewardPending);
         }
+        if self.phase == RunPhase::CardReward
+            && !matches!(
+                action,
+                RunAction::TakeCardReward { .. }
+                    | RunAction::SkipCardReward
+                    | RunAction::ChooseSchnappsReward { .. }
+            )
+        {
+            return Err(RunError::CardRewardPending);
+        }
         match action {
             RunAction::Redeal => self.redeal_action(content, events),
             RunAction::PickUpSkat => self.pick_up_skat(events),
@@ -2834,6 +2914,10 @@ impl Run {
             RunAction::ChooseSchnappsReward { give_up } => {
                 self.choose_schnapps_reward(content, give_up, events)
             }
+            RunAction::TakeCardReward { offer, card } => {
+                self.take_card_reward(content, offer, card, events)
+            }
+            RunAction::SkipCardReward => self.skip_card_reward(content, events),
         }
     }
 
@@ -4424,9 +4508,12 @@ impl Run {
                 null_value_parts(risk, &scoring, &outcome, &game.null_style(tricks))
             }
             Declaration::Ramsch => ramsch_value_parts(game.seat_card_points(), game.seat_tricks()),
-            Declaration::Suit { .. } | Declaration::Grand { .. } => {
-                game_value_parts(declaration, matadors, &outcome, &active.rules.thresholds)
-            }
+            Declaration::Suit { .. } | Declaration::Grand { .. } => content.run.game_value_parts(
+                declaration,
+                matadors,
+                &outcome,
+                &active.rules.thresholds,
+            ),
         };
         self.fire(content, Stage::OnScore, None, Some(&parts), events);
 
@@ -6071,6 +6158,8 @@ pub(crate) fn legacy_content() -> Content {
     content
 }
 
+#[cfg(test)]
+mod card_reward_tests;
 #[cfg(test)]
 mod character_tests;
 #[cfg(test)]

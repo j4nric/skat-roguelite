@@ -291,6 +291,9 @@ fn series_won_pays_groschen_and_opens_the_shop() {
         run.coins = 12;
     }
     assert!(won, "some game must be won");
+    // The card reward (DESIGN 5.0) comes first; passed here.
+    assert_eq!(run.phase(), RunPhase::CardReward);
+    run.pass_card_reward(&content, &mut Vec::new());
     assert_eq!(run.phase(), RunPhase::Route);
     run.walk_to_tresen(&content);
     assert_eq!(run.phase(), RunPhase::Shop);

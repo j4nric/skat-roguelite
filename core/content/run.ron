@@ -147,6 +147,30 @@
     // als blieben so viele übrig (per_game_left je Spiel), und verdoppelt
     // dann. Vorher zahlte sie weniger als eine früh geschaffte Kneipe.
     boss_reward: (relics: 3, min_rarity: Uncommon, games_left_as: 2),
+    // Kartenbelohnung (Entscheidung des Nutzers, 04.11.2026, Cockpit q24,
+    // Variante A; DESIGN 5.0): Nach jeder gewonnenen normalen Kneipe und
+    // Spelunke (nicht nach der Boss-Kneipe, die gibt ein Relikt) bietet
+    // der Wirt offers verschiedene Zinken an, eine kommt gratis auf eine
+    // Karte nach Wahl. Je Angebot erst die Seltenheit nach rarity_weights
+    // (selten etwa 10 %), dann eine Zinke daraus; Marken wiegen
+    // voucher_percent Prozent, mit special_percent Prozent ist ein Angebot
+    // eine Spezialkarte (Untot, Wandelkarte, Doppelgänger), solange die
+    // Ausgabe sie noch bekommen darf. Nie ein Fluch. Werte wie in der
+    // Auslage (shop_value). Überspringen gibt skip_coins Groschen.
+    // VORLÄUFIG, nach Augenmaß ohne Messung.
+    card_reward: Some((
+        offers: 3,
+        skip_coins: 2,
+        rarity_weights: (common: 60, uncommon: 30, rare: 10),
+        voucher_percent: 50,
+        special_percent: 5,
+    )),
+    // Grundwerte des Runs, wo sie von der Skatordnung abweichen (DESIGN
+    // 4.2). Grand 18 statt 24 (Entscheidung des Nutzers, 04.11.2026,
+    // Cockpit q27); ein Relikt kann ihn wieder auf 24
+    // heben. Die Farben bleiben 9 / 10 / 11 / 12, Null zählt nach der
+    // Null-Wertung des Charakters (characters.ron). VORLÄUFIG.
+    base_values: (grand: 18),
     // Kartenspiel der Gegenspieler je Stadtteil (DESIGN 10.3): Stadtteil 1
     // Heuristik, danach PIMC mit steigender Zahl an Stichproben. `depth`:
     // exakt durchsuchte Stiche je Stichprobe, dahinter eine schnelle

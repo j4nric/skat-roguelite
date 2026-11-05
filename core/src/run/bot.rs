@@ -524,6 +524,8 @@ pub fn null_expected_score(
 /// won with [`SUIT_WIN_PERCENT`] or [`GRAND_WIN_PERCENT`], lost
 /// [`crate::content::RUN_LOSS_FACTOR`] times (once since 04.11.2026).
 /// `deck` is every card of the game (for trumps missing from the deck).
+/// `base` is the run's Grundwert of the game
+/// ([`crate::content::RunConfig::base_value`], Grand 18); 0 gives 0.
 ///
 /// `win_threshold` is the Augen the game needs (`61 + stake`, lowered by
 /// relics; [`crate::rules::Thresholds::win`]). The tables are measured at
@@ -537,12 +539,13 @@ pub fn suit_expected_score(
     all_cards: &[DealtCard],
     deck: &[DealtCard],
     declaration: Declaration,
+    base: u32,
     win_threshold: u32,
 ) -> i64 {
     let game = declaration.game();
-    let Some(base) = game.base_value() else {
+    if game == GameType::Null || base == 0 {
         return 0;
-    };
+    }
     let aces = count_rank(hand, Rank::Ace).min(3);
     let win = match game {
         GameType::Grand => GRAND_WIN_PERCENT
@@ -698,6 +701,7 @@ impl RunBot {
             RunPhase::Encounter => Some(self.encounter_action(run, content)),
             RunPhase::Route => Some(self.route_action(run, content)),
             RunPhase::BossReward => Some(Self::boss_reward_action(run, content)),
+            RunPhase::CardReward => Some(Self::card_reward_action(run, content)),
             RunPhase::Game => self.game_action(run, content),
         }
     }
@@ -746,6 +750,70 @@ impl RunBot {
             }
             _ => none,
         }
+    }
+
+    /// The card reward of a won pub (DESIGN 5.0): the Zinke with the
+    /// highest value ([`zinken_value`], the first on a tie) that some card
+    /// takes, on the best card for it ([`RunBot::card_reward_card`]).
+    /// Skipped only if no Zinke fits any card.
+    #[must_use]
+    pub fn card_reward_action(run: &Run, content: &Content) -> RunAction {
+        let Some(reward) = run.card_reward() else {
+            return RunAction::SkipCardReward;
+        };
+        let best = reward
+            .offers
+            .iter()
+            .enumerate()
+            .filter_map(|(offer, (card_mod, _))| {
+                let card = Self::card_reward_card(run, content, offer)?;
+                Some((zinken_value(card_mod), offer, card))
+            })
+            .max_by_key(|&(value, offer, _)| (value, std::cmp::Reverse(offer)));
+        match best {
+            Some((_, offer, card)) => RunAction::TakeCardReward { offer, card },
+            None => RunAction::SkipCardReward,
+        }
+    }
+
+    /// The card the bot puts the Zinke at `offer` of the card reward on:
+    /// one that carries the same Zinke (it rises) before one without any
+    /// modification before one whose Zinke it would replace; among them
+    /// the card with the most Augen (Daus, Zehn, ...), Unter last as they
+    /// are trumps anyway, then the lowest id.
+    fn card_reward_card(run: &Run, content: &Content, offer: usize) -> Option<u32> {
+        let (card_mod, _) = run.card_reward()?.offers.get(offer)?;
+        let special = content
+            .card_mod(card_mod)
+            .is_some_and(CardModDef::is_special);
+        run.card_reward_targets(content, offer)
+            .into_iter()
+            .filter_map(|id| run.edition().get(id))
+            .max_by_key(|c| {
+                // Special cards sit in their own slot next to a Zinke.
+                let own: Vec<&CardModId> = c
+                    .mods
+                    .iter()
+                    .filter(|m| {
+                        content
+                            .card_mod(m)
+                            .is_some_and(|d| d.is_special() == special)
+                    })
+                    .collect();
+                let fit = if own.contains(&card_mod) {
+                    2
+                } else if own.is_empty() {
+                    1
+                } else {
+                    0
+                };
+                let (points, jack) = match c.kind {
+                    CardKind::Normal(card) => (card.card_points(), card.is_jack()),
+                    _ => (0, false),
+                };
+                (fit, !jack, points, std::cmp::Reverse(c.id))
+            })
+            .map(|c| c.id)
     }
 
     /// The Schnaps of a won pub with every slot full, if it waits: in
@@ -1495,6 +1563,7 @@ impl RunBot {
             hand,
             game.deck_cards(),
             suit,
+            content.run.base_value(suit.game()).unwrap_or(0),
             active.rules.thresholds.win,
         );
         let null_fits = exposed <= NULL_HAND_MAX_EXPOSED && Self::null_counts(run, content, None);
@@ -1578,8 +1647,15 @@ impl RunBot {
         }
         let scoring = run.null_scoring(content);
         let null_ev = null_expected_score(&null_hand, exposed, null, &scoring);
-        let suit_ev =
-            suit_expected_score(&suit_hand, cards, deck, suit, active.rules.thresholds.win);
+        let base = content.run.base_value(suit.game()).unwrap_or(0);
+        let suit_ev = suit_expected_score(
+            &suit_hand,
+            cards,
+            deck,
+            suit,
+            base,
+            active.rules.thresholds.win,
+        );
         if null_ev > suit_ev {
             Some((null, null_discard))
         } else {
@@ -2269,24 +2345,27 @@ mod tests {
         let five = hand("HJ HA HT H9 H8 SA S9 C8 D7 D8");
         let seven = hand("CJ HJ HA HT HK H9 H8 SA S9 C8");
         // Five trumps and two aces, ohne 2: 52 % of 10 × 3, minus 48 % of 30.
-        assert_eq!(suit_expected_score(&five, &five, &deck, hearts, 61), 120);
-        assert!(suit_expected_score(&seven, &seven, &deck, hearts, 61) > 0);
+        assert_eq!(
+            suit_expected_score(&five, &five, &deck, hearts, 10, 61),
+            120
+        );
+        assert!(suit_expected_score(&seven, &seven, &deck, hearts, 10, 61) > 0);
         assert!(
             null_expected_score(&sevens, 1, null, &formula)
-                > suit_expected_score(&five, &five, &deck, hearts, 61)
+                > suit_expected_score(&five, &five, &deck, hearts, 10, 61)
         );
         assert!(
-            suit_expected_score(&seven, &seven, &deck, hearts, 61)
+            suit_expected_score(&seven, &seven, &deck, hearts, 10, 61)
                 > null_expected_score(&sevens, 3, null, &formula)
         );
         // A high stake makes the suit game worse and Null the better
         // choice; a lowered threshold keeps the measured table.
-        let staked = suit_expected_score(&seven, &seven, &deck, hearts, 61 + 30);
-        assert!(staked < suit_expected_score(&seven, &seven, &deck, hearts, 61));
+        let staked = suit_expected_score(&seven, &seven, &deck, hearts, 10, 61 + 30);
+        assert!(staked < suit_expected_score(&seven, &seven, &deck, hearts, 10, 61));
         assert!(staked < null_expected_score(&sevens, 3, null, &formula));
         assert_eq!(
-            suit_expected_score(&five, &five, &deck, hearts, 58),
-            suit_expected_score(&five, &five, &deck, hearts, 61)
+            suit_expected_score(&five, &five, &deck, hearts, 10, 58),
+            suit_expected_score(&five, &five, &deck, hearts, 10, 61)
         );
     }
 

@@ -18,8 +18,8 @@ use crate::content::{
 };
 use crate::game::{Event, Phase, Seat, TRICKS_PER_GAME};
 use crate::rules::{
-    Declaration, GameType, Matadors, NullRisk, NullStyle, Outcome, RiskLevel, game_value_parts,
-    null_value_parts, ramsch_value_parts,
+    Declaration, GameType, Matadors, NullRisk, NullStyle, Outcome, RiskLevel, null_value_parts,
+    ramsch_value_parts,
 };
 
 impl Run {
@@ -82,7 +82,9 @@ impl Run {
                 declarer_tricks: if schwarz { tricks } else { tricks - 1 },
                 defender_tricks: u32::from(!schwarz),
             };
-            let parts = game_value_parts(declaration, matadors, &outcome, &thresholds);
+            let parts = content
+                .run
+                .game_value_parts(declaration, matadors, &outcome, &thresholds);
             (parts, outcome)
         };
 
@@ -132,11 +134,11 @@ impl Run {
     }
 }
 
-/// Spielwerte of the plain formula (no relics, no factors), sorted: every
-/// suit game and Grand from "mit/ohne 1, Spiel 2" to the highest, and the
+/// Spielwerte of the plain formula (no relics, no factors) with the run's
+/// Grundwerte (Grand 18), sorted: every suit game and Grand from "mit/ohne 1, Spiel 2" to the highest, and the
 /// four Null values. The smallest of them a pub still needs is the hint of
 /// [`NeededView::smallest_game`].
-fn plain_values() -> Vec<u64> {
+fn plain_values(run: &crate::content::RunConfig) -> Vec<u64> {
     let mut values: Vec<u64> = vec![23, 35, 46, 59];
     for game in [
         GameType::Suit(Suit::Diamonds),
@@ -145,7 +147,7 @@ fn plain_values() -> Vec<u64> {
         GameType::Suit(Suit::Clubs),
         GameType::Grand,
     ] {
-        let base = u64::from(game.base_value().unwrap_or(0));
+        let base = u64::from(run.base_value(game).unwrap_or(0));
         // Spitzen up to every trump, plus Spiel, Hand, Schneider, angesagt,
         // Schwarz, angesagt and Ouvert.
         let most = u64::try_from(game.trump_order().len()).unwrap_or(0) + 7;
@@ -206,7 +208,7 @@ impl Run {
         let smallest_game = u64::try_from(points)
             .ok()
             .filter(|&p| p > 0)
-            .and_then(|p| plain_values().into_iter().find(|&v| v >= p));
+            .and_then(|p| plain_values(&content.run).into_iter().find(|&v| v >= p));
         Some(NeededView {
             points,
             smallest_game,
@@ -326,7 +328,9 @@ impl Run {
                 with: true,
                 count: u32::try_from(game.trump_order().len()).unwrap_or(0),
             };
-            let parts = game_value_parts(declaration, matadors, &schwarz, thresholds);
+            let parts = content
+                .run
+                .game_value_parts(declaration, matadors, &schwarz, thresholds);
             consider(declaration, matadors, schwarz, parts);
         }
         let null = Outcome {
@@ -595,7 +599,7 @@ mod tests {
     #[test]
     fn grand_counts_certain_relic_levels_and_base_value() {
         let content = crate::run::legacy_content();
-        // Mit 4, Spiel, Hand: 24 × 6.
+        // Mit 4, Spiel, Hand: 18 × 6 (Grand 18 in the run since 04.11.2026).
         let mut run = relic_run(&content, &[]);
         fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
         run.apply(
@@ -604,7 +608,7 @@ mod tests {
         )
         .expect("declare");
         let p = preview(&run, &content);
-        assert_eq!((p.base_value, p.levels, p.game_value), (24, 6, 144));
+        assert_eq!((p.base_value, p.levels, p.game_value), (18, 6, 108));
 
         // "Mit Vieren" (+1 level for certain mit 4), "Tournee" with two
         // strokes (+2 Grundwert), "Durchmarsch" only pays for Schneider.
@@ -617,8 +621,8 @@ mod tests {
         )
         .expect("declare");
         let p = preview(&run, &content);
-        assert_eq!((p.base_value, p.levels, p.multiplier), (26, 7, Factor::ONE));
-        assert_eq!(p.game_value, 182);
+        assert_eq!((p.base_value, p.levels, p.multiplier), (20, 7, Factor::ONE));
+        assert_eq!(p.game_value, 140);
 
         // Declared Schneider: "Durchmarsch" is certain for a win.
         let mut run = relic_run(&content, &["march_through"]);
@@ -629,12 +633,12 @@ mod tests {
         )
         .expect("declare");
         let p = preview(&run, &content);
-        // Mit 4, Spiel, Hand, Schneider, angesagt: 24 × 8 × 2.
+        // Mit 4, Spiel, Hand, Schneider, angesagt: 18 × 8 × 2.
         assert_eq!(
             (p.base_value, p.levels, p.multiplier),
-            (24, 8, Factor::from_int(2))
+            (18, 8, Factor::from_int(2))
         );
-        assert_eq!(p.game_value, 384);
+        assert_eq!(p.game_value, 288);
     }
 
     #[test]
@@ -648,14 +652,14 @@ mod tests {
         )
         .expect("declare");
         // Mit 4, Spiel, Hand, Schneider, angesagt, Schwarz, angesagt,
-        // Ouvert, plus the relic: 24 × 12.
+        // Ouvert, plus the relic: 18 × 12.
         let p = preview(&run, &content);
-        assert_eq!((p.base_value, p.levels, p.game_value), (24, 12, 288));
+        assert_eq!((p.base_value, p.levels, p.game_value), (18, 12, 216));
         // Kontra doubles what is certain.
         let active = run.game.as_mut().expect("game");
         active.kontra = super::super::Kontra::Kontra(Seat::ALL[1]);
         let p = preview(&run, &content);
-        assert_eq!((p.multiplier, p.game_value), (Factor::from_int(2), 576));
+        assert_eq!((p.multiplier, p.game_value), (Factor::from_int(2), 432));
     }
 
     #[test]

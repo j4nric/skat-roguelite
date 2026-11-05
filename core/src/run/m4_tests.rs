@@ -574,7 +574,8 @@ fn encounters_on_the_way_must_be_taken_and_lead_to_the_next_pub() {
     let content = content();
     for seed in 0..80 {
         let (mut run, _) = Run::new(&content, seed).expect("run");
-        while run.phase() == RunPhase::Game {
+        // The card reward of the won pub (DESIGN 5.0) is the bot's too.
+        while matches!(run.phase(), RunPhase::Game | RunPhase::CardReward) {
             let action = RunBot.next_action(&run, &content).expect("action");
             run.apply(&content, action).expect("legal");
         }

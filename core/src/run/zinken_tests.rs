@@ -18,6 +18,7 @@ pub(super) fn at_route(content: &Content, seed: u64, coins: u32) -> Run {
     run.game = None;
     let mut events = Vec::new();
     run.after_game(content, &mut events).expect("after game");
+    run.pass_card_reward(content, &mut events);
     assert_eq!(run.phase(), RunPhase::Route);
     run.coins = coins;
     run
@@ -656,6 +657,7 @@ fn bruderherz_pays_half_on_rot_and_keeps_his_curses() {
     run.game = None;
     let mut events = Vec::new();
     run.after_game(&content, &mut events).expect("after game");
+    run.pass_card_reward(&content, &mut events);
     run.coins = 40;
     run.walk_to_tresen(&content);
     // Rot-Zehn (11) and Grün-Zehn (19), both bare for the test.

@@ -441,8 +441,9 @@ impl Run {
 
     /// The pub was won and paid: the last boss pub wins the run; every
     /// other gives a random Schnaps (DESIGN 8.9), then the
-    /// boss pub opens the relic pick (ADR 0017), a Spelunke its loot; then
-    /// the route choice.
+    /// boss pub opens the relic pick (ADR 0017), a normal pub or Spelunke
+    /// the card reward (DESIGN 5.0), a Spelunke then its loot; then the
+    /// route choice.
     pub(super) fn pub_won(
         &mut self,
         content: &Content,
@@ -465,9 +466,23 @@ impl Run {
             return Ok(());
         }
         self.reward_schnapps(content, events);
-        if self.series.is_boss_pub() && self.open_boss_reward(content, events) {
+        if self.series.is_boss_pub() {
+            if self.open_boss_reward(content, events) {
+                return Ok(());
+            }
+        } else if self.open_card_reward(content, events) {
             return Ok(());
         }
+        self.after_pub_rewards(content, events)
+    }
+
+    /// The way on after the rewards of a won pub: the loot of a Spelunke,
+    /// then the route choice.
+    pub(super) fn after_pub_rewards(
+        &mut self,
+        content: &Content,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
         if self.series.spelunke.is_some() {
             let loot = content.run.spelunke.loot.clone();
             if self.open_encounter(content, &loot, events) {
