@@ -472,6 +472,10 @@ pub enum Effect {
     /// this many percent, rounded to the nearest Groschen, at least 1
     /// (figure "Der Wirt"). Passive only; several add up to at most 90.
     ShopDiscount(u32),
+    /// Lever Groschen: "Neu auslosen" at the Tresen costs nothing; it
+    /// stays once per visit (figure "Der Stammkunde", 05.11.2026). Passive
+    /// only.
+    FreeReroll,
     /// Lever Spitzen and Hand: once per series, in a hand game before the
     /// first card, the player may take a card matching the filter from the
     /// untouched skat into his hand and put one of his cards in its place.
@@ -679,6 +683,7 @@ impl Effect {
             | Effect::ChooseMalus(_)
             | Effect::ShowCount
             | Effect::ShopDiscount(_)
+            | Effect::FreeReroll
             | Effect::SeriesSkatSwap(_)
             | Effect::NoCheating
             | Effect::Ramsch

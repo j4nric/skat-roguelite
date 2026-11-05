@@ -29,7 +29,7 @@ export interface ScoreOverlay {
   relics: OwnedRelic[];
   /** Display names of the seats (a boss sits in seat 1). */
   seatNames: string[];
-  /** A lost game whose loss a lost heart (or the end screen) sounds: the board stays quiet. */
+  /** A lost game that ends the run: the end screen sounds the loss, the board stays quiet. */
   quietLoss?: boolean;
   resolve: () => void;
 }
@@ -66,6 +66,10 @@ export interface ModQuestion {
   to: string;
   /** `randomMarke`: the Marken that may come, as text ("Pfandmarke, Totenmarke oder Narrenmarke"). */
   marken?: string;
+  /** A fixed offer of card and Zinke (card reward, Auslage): the way back is "Anderes Angebot". */
+  pair?: boolean;
+  /** An offer of the Auslage: its price on the button. */
+  price?: number;
 }
 
 export type Overlay =
@@ -79,7 +83,6 @@ export type Overlay =
   /** The card for an encounter option; `marke`: the Marke picked before (a chosen Marke on a chosen card). */
   | { kind: 'encounter-target'; option: number; reasons?: Record<number, string>; marke?: string }
   /** The card for the Zinke at `offer` of the card reward (DESIGN 5.0); back: the three Zinken. */
-  | { kind: 'reward-target'; offer: number; reasons?: Record<number, string> }
   /** Pick the Marke of a Marke option (Pfandleiher, Markensammlerin, 04.11.2026). */
   | { kind: 'encounter-marke'; option: number }
   | { kind: 'encounter-relic'; option: number }

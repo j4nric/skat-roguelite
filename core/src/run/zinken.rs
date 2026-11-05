@@ -14,9 +14,9 @@
 //!   ([`ZinkenConfig::voucher_percent`]). One card at most once per
 //!   Auslage. An offer may be a "Schnäppchen" ([`super::trade`]): half
 //!   price, and a curse on another card.
-//! - **Neu auslosen**: the Auslage drawn again; the price rises by
-//!   [`ZinkenConfig::reroll_step`] with each further time at the same
-//!   Tresen.
+//! - **Neu auslosen** (since 05.11.2026 one action for the whole Tresen,
+//!   [`super::RunAction::Reroll`]): relics, Schnäpse and the Auslage drawn
+//!   again, once per visit.
 //! - **Kartenmaler** (once per Tresen, free at the Werkstatt): the player
 //!   pays and names a card, the painter draws
 //!   [`ZinkenConfig::painter_choices`] modifications that fit it, the
@@ -29,7 +29,6 @@
 //! [`ZinkenConfig::bare_weight`]: crate::content::ZinkenConfig::bare_weight
 //! [`ZinkenConfig::modded_weight`]: crate::content::ZinkenConfig::modded_weight
 //! [`ZinkenConfig::voucher_percent`]: crate::content::ZinkenConfig::voucher_percent
-//! [`ZinkenConfig::reroll_step`]: crate::content::ZinkenConfig::reroll_step
 //! [`ZinkenConfig::painter_choices`]: crate::content::ZinkenConfig::painter_choices
 //! [`RunAction::ChoosePaint`]: super::RunAction::ChoosePaint
 
@@ -91,30 +90,6 @@ pub fn special_target(def: &CardModDef) -> Option<&CardModId> {
 }
 
 impl Run {
-    /// Whether the player's edition may still get the special card
-    /// `special` (DESIGN 7.2, at most one Untot and one Wandelkarte): no
-    /// card is it, and no card carries a voucher that turns into it.
-    /// Offers (Auslage, Kartenmaler, encounters) propose nothing for a
-    /// special card that is not open, so nothing they sell ends up in the
-    /// voucher's fallback.
-    #[must_use]
-    pub fn special_open(&self, content: &Content, special: &CardModId) -> bool {
-        !self.edition.cards().iter().any(|card| {
-            card.mods.iter().any(|m| {
-                content
-                    .card_mod(m)
-                    .and_then(special_target)
-                    .is_some_and(|target| target == special)
-            })
-        })
-    }
-
-    /// Whether an offer may propose `def` under the cap of the special
-    /// cards ([`Run::special_open`]); always for what makes no special card.
-    pub(super) fn offer_open(&self, content: &Content, def: &CardModDef) -> bool {
-        special_target(def).is_none_or(|special| self.special_open(content, special))
-    }
-
     /// The Kartenmaler's choice waiting for the player, if any.
     #[must_use]
     pub const fn painter(&self) -> Option<&PainterChoice> {
@@ -135,7 +110,6 @@ impl Run {
             .filter(|m| !m.is_curse() && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.offer_open(content, m))
             .map(|m| {
                 let mut weight =
                     rarity.percent_weight(m.rarity, self.focus_weight(content, m.focus));
@@ -192,11 +166,11 @@ impl Run {
     ///
     /// Each offer is, with [`crate::content::ZinkenConfig::special_percent`],
     /// a special card right on a card ("wird untot", "wird Wandelkarte",
-    /// [`Run::special_offers`]) while one may still come; otherwise a Zinke
-    /// from [`Run::zinken_pool`]. At most one offer per special card, the
-    /// voucher for it included, so that buying one never makes another
-    /// offer of the same Auslage void. A Zinke may be a "Schnäppchen" at
-    /// half price ([`Run::draw_bargain`], curses as trade).
+    /// [`Run::special_offers`]); otherwise a Zinke from
+    /// [`Run::zinken_pool`]. One card at most once per Auslage; since
+    /// 05.11.2026 (no cap on special cards) a special card may come next to
+    /// its Marke. A Zinke may be a "Schnäppchen" at half price
+    /// ([`Run::draw_bargain`], curses as trade).
     pub(super) fn draw_card_offers(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let config = &content.run.shop.zinken;
         let pool = self.zinken_pool(content);
@@ -216,7 +190,6 @@ impl Run {
             }
         }
         let mut specials = self.special_offers(content);
-        let target = |m: &CardModId| content.card_mod(m).and_then(special_target).cloned();
         let mut offers: Vec<Option<CardOffer>> = Vec::new();
         for _ in 0..config.offers {
             let special_roll = !specials.is_empty()
@@ -231,10 +204,6 @@ impl Run {
             };
             pairs.retain(|((c, _), _)| *c != card);
             specials.retain(|((c, _), _)| *c != card);
-            if let Some(special) = target(&card_mod) {
-                pairs.retain(|((_, m), _)| target(m).as_ref() != Some(&special));
-                specials.retain(|((_, m), _)| *m != special);
-            }
             let (Some(def), Some(deck_card)) =
                 (content.card_mod(&card_mod), self.edition.get(card))
             else {
@@ -279,9 +248,9 @@ impl Run {
 
     /// The special cards the Auslage may offer right on a card (DESIGN
     /// 8.6), with their weight: every [`ModKind::Special`] for the
-    /// character, unlocked and still open ([`Run::special_open`]), on
-    /// every card that carries no special card yet and takes it (a normal
-    /// Zinke stays next to it); weighted like the cards of the Auslage.
+    /// character and unlocked, on every card that carries no special card
+    /// yet and takes it (a normal Zinke stays next to it); weighted like
+    /// the cards of the Auslage.
     pub(super) fn special_offers(&self, content: &Content) -> Vec<((u32, CardModId), u32)> {
         let mut offers = Vec::new();
         let specials = content
@@ -289,8 +258,7 @@ impl Run {
             .values()
             .filter(|m| m.kind == ModKind::Special)
             .filter(|m| in_pool(&m.characters, self.character))
-            .filter(|m| !self.locked_card_mods.contains(&m.id))
-            .filter(|m| self.special_open(content, &m.id));
+            .filter(|m| !self.locked_card_mods.contains(&m.id));
         for def in specials {
             for card in self.edition.cards() {
                 let has_special = card
@@ -321,16 +289,6 @@ impl Run {
     pub fn painter_cost(&self, content: &Content, card: u32) -> u32 {
         let price = self.shop_price(content, content.run.shop.zinken.painter_price);
         self.zinken_price(content, card, price)
-    }
-
-    /// Price of the next "Neu auslosen" before discounts.
-    #[must_use]
-    pub fn card_reroll_price(&self, content: &Content) -> u32 {
-        let config = &content.run.shop.zinken;
-        let done = self.shop.as_ref().map_or(0, |s| s.card_rerolls);
-        config
-            .reroll_cost
-            .saturating_add(config.reroll_step.saturating_mul(done))
     }
 
     pub(super) fn buy_card_offer(
@@ -371,23 +329,6 @@ impl Run {
         if offer.bargain.is_some() {
             self.bargain_curse(content, offer.card, events)?;
         }
-        Ok(())
-    }
-
-    pub(super) fn reroll_card_offers(
-        &mut self,
-        content: &Content,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        self.tresen_mut()?;
-        let cost = self.shop_price(content, self.card_reroll_price(content));
-        if !self.can_pay(content, cost) {
-            return Err(RunError::NotEnoughCoins);
-        }
-        self.pay(cost, events);
-        self.shop_mut()?.card_rerolls += 1;
-        events.push(RunEvent::CardOffersRerolled { cost });
-        self.draw_card_offers(content, events);
         Ok(())
     }
 

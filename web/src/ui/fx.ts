@@ -951,3 +951,104 @@ export function frown(el: Element): void {
     ),
   );
 }
+
+/** A settled promise of an animation: finished or cancelled (finishAll, a removed element). */
+function settled(anim: Animation): Promise<void> {
+  return anim.finished.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/** Columns and rows of the bits an "Untot" card crumbles into. */
+const CRUMBLE_COLS = 6;
+const CRUMBLE_ROWS = 9;
+
+/**
+ * "Untot" rises (playtest 05.11.2026): the card as it was played (`before`,
+ * an inline card SVG) lies big over the table, crumbles from the top down
+ * into pixel bits that fall away, and the card it comes back as (`after`,
+ * the zombie picture) is left in its place. About 1.6 s at tempo Normal;
+ * nothing with reduced motion; finishAll() (a tap) ends it at once.
+ * Resolves with the box the new card stood in (for its flight into the
+ * hand), or null when nothing played. Cosmetic: the cards come from the
+ * core's event and view, `Math.random` only scatters the bits.
+ */
+export async function crumbleInto(root: HTMLElement, before: string, after: string): Promise<DOMRect | null> {
+  if (!dur(1)) return null;
+  const box = document.createElement('div');
+  box.className = 'rise-morph';
+  box.dataset.testid = 'rise-morph';
+  box.dataset.stage = 'before';
+  box.setAttribute('aria-hidden', 'true');
+  const bits: string[] = [];
+  for (let r = 0; r < CRUMBLE_ROWS; r++) {
+    for (let c = 0; c < CRUMBLE_COLS; c++) {
+      const top = (r / CRUMBLE_ROWS) * 100;
+      const left = (c / CRUMBLE_COLS) * 100;
+      const bottom = 100 - ((r + 1) / CRUMBLE_ROWS) * 100;
+      const right = 100 - ((c + 1) / CRUMBLE_COLS) * 100;
+      bits.push(`<span class="card rise-bit" data-row="${r}" style="clip-path: inset(${top.toFixed(2)}% ${right.toFixed(2)}% ${bottom.toFixed(2)}% ${left.toFixed(2)}%)">${before}</span>`);
+    }
+  }
+  // Whole until it crumbles: the bits only take over then (no seams between them before).
+  box.innerHTML = `<span class="card rise-new">${after}</span><span class="rise-old"><span class="card rise-whole">${before}</span>${bits.join('')}</span>`;
+  root.appendChild(box);
+  const rect = box.getBoundingClientRect();
+  try {
+    const old = box.querySelector<HTMLElement>('.rise-old');
+    const fresh = box.querySelector<HTMLElement>('.rise-new');
+    if (!old || !fresh) return rect;
+    // The played card comes up and shudders.
+    await settled(
+      play(
+        old,
+        [
+          { transform: 'scale(.7)', opacity: 0.4 },
+          { transform: 'scale(1.04)', opacity: 1, offset: 0.45 },
+          { transform: 'scale(1) rotate(-2deg)', offset: 0.65 },
+          { transform: 'scale(1) rotate(2deg)', offset: 0.82 },
+          { transform: 'scale(1) rotate(0)', opacity: 1 },
+        ],
+        { duration: dur(520), easing: 'ease-out', fill: 'backwards' },
+      ),
+    );
+    if (!box.isConnected) return rect;
+    // It crumbles from the top down; the zombie card shows through.
+    box.dataset.stage = 'crumble';
+    const falls = Array.from(box.querySelectorAll<HTMLElement>('.rise-bit')).map((bit) => {
+      const row = Number(bit.dataset.row ?? 0);
+      const dx = (Math.random() * 2 - 1) * 14;
+      const dy = 40 + Math.random() * 50;
+      const turn = (Math.random() * 2 - 1) * 40;
+      return settled(
+        play(
+          bit,
+          [
+            { transform: 'translate(0, 0) rotate(0)', opacity: 1 },
+            { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${turn.toFixed(0)}deg)`, opacity: 0 },
+          ],
+          { duration: dur(480), delay: dur(row * 55 + Math.random() * 90), easing: 'steps(6, end)', fill: 'both' },
+        ),
+      );
+    });
+    const reveal = settled(
+      play(
+        fresh,
+        [
+          { opacity: 0, filter: 'brightness(1.6) saturate(.4)' },
+          { opacity: 1, filter: 'drop-shadow(0 0 6px #7edc6e) brightness(1.15)', offset: 0.6 },
+          { opacity: 1, filter: 'drop-shadow(0 0 0 rgba(126, 220, 110, 0)) brightness(1)' },
+        ],
+        { duration: dur(760), delay: dur(160), easing: 'ease-out', fill: 'both' },
+      ),
+    );
+    await Promise.all([...falls, reveal]);
+    box.dataset.stage = 'after';
+    // The new card stays a moment, so the player sees what came back.
+    await settled(play(fresh, [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: dur(360), easing: 'ease-in-out' }));
+    return box.getBoundingClientRect();
+  } finally {
+    box.remove();
+  }
+}

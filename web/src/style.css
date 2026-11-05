@@ -1686,6 +1686,9 @@ button.card {
 
 /* Grundwert × Gewinnstufen while playing: quieter than the tricks. */
 .gameline .worth {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 6px;
   border: 2px solid var(--line);
   color: var(--muted);
@@ -4157,40 +4160,35 @@ button.card {
   opacity: 0.6;
 }
 
-.chalk-stats {
+/* The numbers of a run and of all runs: rows of three tiles, the number
+   big in chalk, its label small under it (no tally marks, they read like
+   lives). */
+.chalk-tiles {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
   margin: 0;
-  font-size: var(--fs-s);
+  padding: 0;
+  list-style: none;
 }
 
-.chalk-stats dt {
-  align-self: center;
+.chalk-tiles li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px dashed rgba(232, 226, 210, 0.22);
+  text-align: center;
+}
+
+.chalk-tiles span {
+  font-size: var(--fs-2xs);
+  line-height: 1.05;
   color: var(--muted);
 }
 
-.chalk-stats dd {
-  margin: 0;
-  text-align: right;
-}
-
-.tally {
-  fill: none;
-  stroke: var(--text);
-  stroke-width: 3;
-  stroke-linecap: square;
-}
-
-.tally-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.tally-num,
-.tally-zero,
 .chalk-num {
   font-size: var(--fs-body);
   font-weight: 400;
@@ -5040,6 +5038,12 @@ button.card {
   margin-top: auto;
 }
 
+/* Since 05.11.2026 the whole offer of the Auslage opens the sheet with
+   the card before and after, like the card reward. */
+.zinke[data-action='zinke-tile'] {
+  cursor: pointer;
+}
+
 /*
  * The relics on offer at the Tresen (03.11.2026): a row of three tiles
  * like the Auslage, on the phone too. The whole tile opens the full text,
@@ -5115,10 +5119,6 @@ button.card {
   margin-right: 4px;
   color: #6a3b33;
   font-size: var(--fs-s);
-}
-
-.zinken-reroll {
-  align-self: center;
 }
 
 .services {
@@ -5212,6 +5212,13 @@ button.card {
 
 .shop-bar .btn {
   flex: 1;
+}
+
+/* "Neu auslosen · 2 Gr." in one line on a phone. */
+.shop-bar [data-testid='reroll'] {
+  padding-inline: 6px;
+  font-size: var(--fs-m);
+  white-space: nowrap;
 }
 
 .more-hint {
@@ -7597,8 +7604,52 @@ button.skat-card {
 }
 
 /* ------------------------------------------------ boss reward (ADR 0017) */
+/* The three relics side by side (3 × 1, playtest 05.11.2026), like the
+   other choices; on a phone the mats are smaller. */
 .boss-reward .coasters {
-  padding: 0 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 2px;
+}
+
+@media (max-width: 599px) {
+  .boss-reward .coaster {
+    padding: 10px 4px 6px;
+  }
+
+  .boss-reward .coaster-emblem-wrap svg {
+    width: 40px;
+    height: 40px;
+  }
+
+  .boss-reward .coaster-name,
+  .boss-reward .coaster-text {
+    font-size: var(--fs-2xs);
+  }
+
+  .boss-reward .coaster .btn-small {
+    padding-inline: 8px;
+  }
+}
+
+/* The loot of a Spelunke: its choices side by side too. */
+.encounter[data-encounter='spelunke_loot'] .enc-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  align-items: stretch;
+}
+
+.encounter[data-encounter='spelunke_loot'] .enc-option {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  align-content: start;
+  text-align: center;
+}
+
+.encounter[data-encounter='spelunke_loot'] .enc-body {
+  align-items: center;
 }
 
 .boss-reward .coaster-wrap .coaster {
@@ -8704,4 +8755,119 @@ button.skat-card {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* "Untot" rises (fx.ts crumbleInto): the played card big over the table
+   crumbles into pixel bits, the zombie card it comes back as shows
+   through. Above the table, below dialogs' toasts; never takes a tap. */
+.rise-morph {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 45;
+  width: 99px;
+  aspect-ratio: 33 / 49.5;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.rise-morph .rise-new,
+.rise-morph .rise-old,
+.rise-morph .rise-whole,
+.rise-morph .rise-bit {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+}
+
+.rise-morph .rise-new {
+  opacity: 0;
+}
+
+.rise-morph[data-stage='before'] .rise-bit,
+.rise-morph:not([data-stage='before']) .rise-whole {
+  visibility: hidden;
+}
+
+.rise-morph[data-stage='after'] .rise-new {
+  opacity: 1;
+}
+
+/* The Tresen (playtest 05.11.2026): what is for sale lies on the wooden
+   counter, the player's own relics and Schnäpse in his leather bag. */
+.tresen-counter {
+  padding: 10px 8px 12px;
+  border: var(--edge) solid var(--line);
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0) 0 22px, rgba(0, 0, 0, 0.22) 22px 24px),
+    linear-gradient(180deg, #5e3d24, #4a2f1b);
+  box-shadow: inset 0 3px 0 #7b5434, var(--shadow-sm);
+}
+
+.tresen-counter > h3 {
+  color: #f3dcc0;
+}
+
+.pouch {
+  position: relative;
+  margin-top: 26px;
+  padding: 30px 14px 16px;
+  border: var(--edge) solid #24160b;
+  border-radius: 10px 10px 26px 26px;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 220, 170, 0.08) 0 2px, transparent 3px) 0 0 / 14px 14px,
+    linear-gradient(180deg, #7b4a28, #5a341b);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The stitching along the edge. */
+.pouch::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed rgba(244, 205, 150, 0.55);
+  border-radius: 6px 6px 20px 20px;
+  pointer-events: none;
+}
+
+/* The flap over the top with its brass clasp, carrying the title. */
+.pouch-title {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  z-index: 1;
+  min-width: 62%;
+  margin: 0;
+  padding: 8px 16px 14px;
+  border: var(--edge) solid #24160b;
+  border-radius: 6px 6px 50% 50% / 6px 6px 18px 18px;
+  background: linear-gradient(180deg, #8d5732, #6c4023);
+  color: #f6e2c4;
+  font-size: var(--fs-s);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.pouch-title::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 14px;
+  height: 10px;
+  border: 2px solid #24160b;
+  background: #d9a441;
+  transform: translateX(-50%);
+}
+
+.pouch > h3:not(.pouch-title) {
+  position: relative;
+  z-index: 1;
+  color: #f3dcc0;
+}
+
+.pouch > .small {
+  position: relative;
+  color: #e8cfae;
 }

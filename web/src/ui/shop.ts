@@ -1,8 +1,9 @@
 // The Tresen: the Wirt behind the counter, the relics on offer as a row of
 // three tiles like the Auslage (03.11.2026), items as things on the
-// counter, owned relics as little paper cards and items, Neuauslage. The
-// Zinken (DESIGN 8.6): the Auslage of three cards drawn with their new
-// Zinke, "Neu auslosen", the Kartenmaler and "Karte reinigen". Curses as
+// counter, owned relics as little paper cards and items, "Neu auslosen"
+// (everything, once per visit since 05.11.2026). The Zinken (DESIGN 8.6):
+// the Auslage of three cards drawn with their new Zinke, the Kartenmaler
+// and "Karte reinigen". Curses as
 // trade: "Hehlerware" among the relics, "Schnäppchen" in the Auslage, each
 // with a badge and the price struck through. What can be bought, sold or
 // used is decided by the core (can_buy, can_sell, can_use, usable_now).
@@ -126,7 +127,7 @@ function zinkenOffer(o: CardOfferView | null, i: number): string {
         : '';
   const name = special ? t(de.shop.zinkeBecomes, { special: contentName('card_mods', mod.id) || mod.name }) : zinkeName(mod);
   const bargain = o.bargain === true;
-  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
+  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-action': o.can_buy ? 'zinke-tile' : null, 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
     ${priceTag(o.price, o.was)}${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}${bargain ? tradeBadge(de.shop.bargain, 'bargain-badge') : ''}
     <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
     <h4 class="zinke-name">${esc(name)}</h4>
@@ -161,7 +162,7 @@ function sponge(): string {
   return `<svg viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges"><rect x="4" y="12" width="24" height="14" rx="3" fill="#e8c56a" stroke="#2b1a0e" stroke-width="2"/><circle cx="10" cy="18" r="1.6" fill="#b8902e"/><circle cx="17" cy="21" r="1.6" fill="#b8902e"/><circle cx="23" cy="17" r="1.6" fill="#b8902e"/><path d="M16 2 C19 6 20 8 16 10 C12 8 13 6 16 2 Z" fill="#7fb2d9" stroke="#2b1a0e" stroke-width="1.5"/></svg>`;
 }
 
-/** The Zinken at the counter: Auslage, Neu auslosen, Kartenmaler, Karte reinigen. */
+/** The Zinken at the counter: Auslage, Kartenmaler, Karte reinigen. */
 function zinkenBlock(shop: ShopView): string {
   const offers = shop.card_offers;
   if (!offers) return '';
@@ -170,7 +171,6 @@ function zinkenBlock(shop: ShopView): string {
       <h3 id="shop-zinken">${esc(de.shop.zinken)}</h3>
       <div class="zinken-head"><b>${esc(de.shop.auslage)}</b><span class="small">${esc(de.shop.auslageHint)}</span></div>
       <div class="zinken-row" data-testid="auslage">${row}</div>
-      <button class="btn btn-small zinken-reroll" ${attrs({ 'data-action': 'reroll-zinken', 'data-testid': 'reroll-zinken', disabled: !shop.can_reroll_cards })}>${esc(t(de.shop.rerollCards, { cost: shop.card_reroll_cost ?? 0 }))}</button>
       <div class="services">${service('painter', shop.painter)}${service('cleanse', shop.cleanse)}</div>
     </section>`;
 }
@@ -220,8 +220,8 @@ function renderKiosk(view: RunView, shop: ShopView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
-         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        // Only selling here: a Schnaps is drunk from the Leiste (playtest 05.11.2026).
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),
     )
@@ -234,7 +234,8 @@ function renderKiosk(view: RunView, shop: ShopView): string {
     <div class="counter kiosk-counter">
       ${goods ? `<div class="goods kiosk-goods" data-goods>${goods}</div>` : ''}
     </div>
-    <section class="shop-owned">
+    <section class="shop-owned pouch" data-testid="pouch" aria-label="${esc(de.shop.pouch)}">
+      <h3 class="pouch-title">${esc(de.shop.pouch)}</h3>
       <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
       ${items ? `<div class="goods">${items}</div>` : `<p class="small">${esc(de.shop.noItems)}</p>`}
     </section>
@@ -265,8 +266,8 @@ export function renderShop(view: RunView): string {
       good(
         c.consumable,
         { 'data-action': 'info-item', 'data-slot': c.slot, 'data-info': `item:${c.slot}` },
-        `<button class="btn btn-small" ${attrs({ 'data-action': 'use-item', 'data-slot': c.slot, disabled: !c.usable_now })}>${esc(de.shop.use)}</button>
-         <button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
+        // Only selling here: a Schnaps is drunk from the Leiste (playtest 05.11.2026).
+        `<button class="btn btn-small" ${attrs({ 'data-action': 'sell-item', 'data-slot': c.slot, disabled: !c.can_sell })}>${esc(t(de.shop.sell, { price: c.sell_price }))}</button>`,
         'good-owned',
       ),
     )
@@ -280,14 +281,15 @@ export function renderShop(view: RunView): string {
     </div>
     ${nextBoard(view)}
     ${debtLine(view)}
-    <div class="counter">
+    <div class="counter tresen-counter" data-testid="counter">
       <h3>${esc(de.shop.relics)}</h3>
       <div class="zinken-row relic-row" data-testid="relic-offers">${relicOffers}</div>
       <h3 id="shop-goods">${esc(de.shop.consumables)}</h3>
       <div class="goods" data-goods>${itemOffers}</div>
       ${zinkenBlock(shop)}
     </div>
-    <section class="shop-owned">
+    <section class="shop-owned pouch" data-testid="pouch" aria-label="${esc(de.shop.pouch)}">
+      <h3 class="pouch-title">${esc(de.shop.pouch)}</h3>
       <h3>${esc(view.relic_slots === null ? t(de.shop.owned, { count: view.relics.length }) : t(de.shop.ownedCapped, { count: view.relics.length, slots: view.relic_slots }))}</h3>
       ${owned ? `<div class="coasters coasters-owned">${owned}</div>` : `<p class="small">${esc(de.shop.noRelics)}</p>`}
       <h3>${esc(t(de.shop.ownedItems, { count: view.consumables.length, slots: view.consumable_slots }))}</h3>
@@ -295,10 +297,16 @@ export function renderShop(view: RunView): string {
     </section>
     <div class="shop-bar">
       <div class="more-hint" hidden aria-hidden="true" ${attrs({ 'data-action': 'scroll-goods' })}>${esc(de.shop.moreBelow)}</div>
-      <button class="btn" ${attrs({ 'data-action': 'reroll', disabled: !shop.can_reroll })}>${esc(t(de.shop.reroll, { cost: shop.reroll_cost }))}</button>
+      <button class="btn" ${attrs({ 'data-action': 'reroll', 'data-testid': 'reroll', disabled: !shop.can_reroll })}>${esc(rerollLabel(shop))}</button>
       <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop' })}>${esc(de.shop.leave)}</button>
     </div>
   </main>`;
+}
+
+/** "Neu auslosen" (relics, Schnäpse, Auslage; once per visit since 05.11.2026): price, free or used. */
+function rerollLabel(shop: ShopView): string {
+  if (shop.reroll_used) return de.shop.rerollUsed;
+  return shop.reroll_cost === 0 ? de.shop.rerollFree : t(de.shop.reroll, { cost: shop.reroll_cost });
 }
 
 /** "Deckel anschreiben": debt and credit left, as the core counts them. */

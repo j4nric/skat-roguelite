@@ -67,6 +67,8 @@ export interface CardView extends DealtCard {
   named?: Suit | null;
   /** "Untot": would rise if played now (left out when false). */
   can_rise?: boolean;
+  /** "Untot": rose in this game, back in the hand as the trick's winning card (left out when false). */
+  risen?: boolean;
 }
 
 /** Whether a card modification works in the game in progress: yes, no, or it depends on how the game goes. */
@@ -151,14 +153,22 @@ export interface CardRewardView {
   skip_coins: number;
 }
 
-/** One Zinke of the card reward. */
+/** One offer of the card reward: a card of the deck with a Zinke (since 05.11.2026). */
 export interface CardRewardOfferView {
   /** Index for `TakeCardReward.offer`. */
   index: number;
+  /** The card as it is now. */
+  card: DeckCard;
+  /** The card as it would be after taking it. */
+  result: DeckCard;
   /** The Zinke with its value and text. */
   card_mod: CardModInfo;
-  /** The deck cards it may go on now. */
-  targets: number[];
+  /** Whether it can be taken now. */
+  can_take: boolean;
+  /** The modification on the card it would replace. */
+  replaces: string | null;
+  /** Whether it raises the same modification on the card. */
+  raises: boolean;
 }
 
 /** One line of a boss edition: every card matching the filter carries the modification. */
@@ -329,15 +339,14 @@ export interface ConsumableOffer {
 export interface ShopView {
   relics: (RelicOffer | null)[];
   consumables: (ConsumableOffer | null)[];
+  /** "Neu auslosen" (relics, Schnäpse and the Auslage, once per visit since 05.11.2026): its price now, 0 with "Der Duzfreund". */
   reroll_cost: number;
   can_reroll: boolean;
   rerolls: number;
+  /** "Neu auslosen" was used at this visit. */
+  reroll_used: boolean;
   /** Zinken (DESIGN 8.6): the Auslage, null once bought. Absent in old cores. */
   card_offers?: (CardOfferView | null)[];
-  /** Price of the next "Neu auslosen". */
-  card_reroll_cost?: number;
-  can_reroll_cards?: boolean;
-  card_rerolls?: number;
   /** The Kartenmaler. */
   painter?: ServiceView;
   /** "Karte reinigen". */
@@ -722,7 +731,6 @@ export type EncounterEffect =
 export type OptionBlock =
   | 'NotEnoughCoins'
   | 'NothingLeft'
-  | 'SpecialCardCap'
   | 'NoFittingCard'
   | 'NoRelic'
   | 'RelicSlotsFull'
@@ -1094,7 +1102,6 @@ export type RunEvent =
   | { VoucherRedeemed: { card: number; card_mod: string; value: number; via_hand?: boolean } }
   | { VoucherReturned: { card: number; card_mod: string; value: number } }
   /** A Totenmarke or Narrenmarke whose special card another card is already (one each per edition): Groschen instead. */
-  | { VoucherCapped: { card: number; card_mod: string; special: string; holder: number; coins: number } }
   /** Effekte v2 ("Erster Stich"): extra Augen for a seat. */
   | { BonusPoints: { source: Source; seat: Seat; card_points: number } }
   | { EncounterOpened: { encounter: string; options: unknown[] } }
@@ -1125,7 +1132,7 @@ export type RunEvent =
   | { SchnappsRewarded: { consumable: string; slots_full: boolean } }
   | { SchnappsRewardTaken: { consumable: string; given_up: string } }
   /** Card reward (DESIGN 5.0). */
-  | { CardRewardOffered: { offers: [string, number][] } }
+  | { CardRewardOffered: { offers: { card: number; card_mod: string; value: number }[] } }
   | { CardRewardTaken: { offer: number; card: number; card_mod: string; value: number } }
   | { CardRewardSkipped: { coins: number } }
   /** Item review (02.11.2026). */
@@ -1173,7 +1180,7 @@ export type RunAction =
   | { ChooseSchnappsReward: { give_up: number | null } }
   | { ChooseBossRelic: { offer: number | null; replace: number | null } }
   /** Card reward (DESIGN 5.0). */
-  | { TakeCardReward: { offer: number; card: number } }
+  | { TakeCardReward: { offer: number } }
   | 'SkipCardReward'
   /** Zinken (DESIGN 8.6). */
   | { BuyCardOffer: number }

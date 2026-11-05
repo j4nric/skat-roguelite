@@ -432,7 +432,7 @@ export function renderRiseChoice(view: RunView, picked: number[]): string {
     .join('');
   const ready = picked.length === choice.pick;
   return sheet(
-    `<div class="rise-head"><span class="card rise-becomes" data-testid="rise-becomes">${lookSvg(choice.becomes)}</span>
+    `<div class="rise-head"><span class="card rise-becomes" data-testid="rise-becomes">${lookSvg({ ...choice.becomes, risen: true })}</span>
        <div><h2>${esc(t(de.rise.title, { n: choice.pick }))}</h2>
        <p class="small">${esc(t(de.rise.text, { card: cardName(choice.card.kind), becomes: cardName(choice.becomes.kind) }))}</p></div></div>
      <div class="rise-grid" data-testid="rise-choice">${cards}</div>
@@ -683,21 +683,6 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
       );
     }
-    case 'reward-target': {
-      // The card reward (DESIGN 5.0): the cards the chosen Zinke may go on.
-      const o = view?.card_reward?.offers.find((x) => x.index === overlay.offer);
-      if (!view || !o) return '';
-      const name = contentName('card_mods', o.card_mod.id) || o.card_mod.name;
-      const text = modText(o.card_mod.id, o.card_mod.value ?? 1) || o.card_mod.text;
-      const cards = view.edition.map((c) => targetCard(editionLook(c, view, {}), o.targets.includes(c.id), 'reward-target', overlay.reasons?.[c.id])).join('');
-      return sheet(
-        `<h2>${esc(de.cardReward.pickCard)}</h2>
-         <p class="small">${esc(t(de.cardReward.pickHint, { name, text }))}</p>
-         ${oddsLine(view.deal_odds)}
-         <div class="target-grid" data-testid="reward-cards">${cards}</div>
-         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'reward-back' })}>${esc(de.cardReward.backOffers)}</button>`,
-      );
-    }
     case 'encounter-relic': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
@@ -709,8 +694,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(renderMarkePick(option), false, 'sheet-marke');
     }
     case 'mod-confirm':
-      // From the card reward also back to its three Zinken.
-      return renderModConfirm(overlay.ask, typeof overlay.action === 'object' && 'TakeCardReward' in overlay.action);
+      return renderModConfirm(overlay.ask);
     case 'zinken-card': {
       // Zinken (DESIGN 8.6): the card for the Kartenmaler or "Karte reinigen".
       const s = overlay.service === 'painter' ? view?.shop?.painter : view?.shop?.cleanse;
@@ -1065,7 +1049,7 @@ function targetCard(c: DeckCard & CardLook, ok: boolean, action: string, reason:
  * Asking before a card modification replaces, raises or cancels the one on
  * a card: what the core's preview reported, with the card now and after.
  */
-function renderModConfirm(ask: ModQuestion, offers = false): string {
+function renderModConfirm(ask: ModQuestion): string {
   const card = cardName(ask.card.kind);
   const name = (m: string | null): string => (m ? contentName('card_mods', m) : '');
   const c = de.modConfirm;
@@ -1079,14 +1063,15 @@ function renderModConfirm(ask: ModQuestion, offers = false): string {
         : ask.type === 'drop'
           ? [c.dropTitle, t(c.drop, { card, old: name(ask.old), new: name(ask.mod) }), c.dropGo]
           : ask.type === 'apply'
-            ? [c.applyTitle, ask.mod ? t(c.apply, { card, new: name(ask.mod) }) : t(c.applyPlain, { card }), c.applyGo]
+            ? [c.applyTitle, ask.mod ? t(c.apply, { card, new: name(ask.mod) }) : t(c.applyPlain, { card }), ask.price != null ? t(c.buyGo, { price: ask.price }) : c.applyGo]
             : ask.type === 'cleanse'
               ? [c.cleanseTitle, t(c.cleanse, { card }), c.cleanseGo]
               : ask.type === 'randomMarke'
                 ? [c.randomMarkeTitle, t(c.randomMarke, { card, marken: ask.marken ?? '' }), c.randomMarkeGo]
                 : [c.randomTitle, t(c.random, { card, old: name(ask.old) }), c.randomGo];
-  // From a card picker the way back is another card; otherwise keep the card as it is.
-  const back = ask.type === 'apply' || ask.type === 'cleanse' ? c.back : c.keep;
+  // A fixed offer (card reward, Auslage): back to the offers. From a card
+  // picker the way back is another card; otherwise keep the card as it is.
+  const back = ask.pair ? de.cardReward.backOffers : ask.type === 'apply' || ask.type === 'cleanse' ? c.back : c.keep;
   const face = (d: DeckCard, label: string): string =>
     `<figure class="mod-confirm-card"><span class="card">${cardSvg(d.kind, d.mods, 'full', d.mod_values)}</span><figcaption>${esc(label)}</figcaption></figure>`;
   const cards = ask.after
@@ -1099,7 +1084,6 @@ function renderModConfirm(ask: ModQuestion, offers = false): string {
      <div class="sheet-actions">
        <button class="btn btn-primary" ${attrs({ 'data-action': 'mod-confirm-go', 'data-testid': 'mod-confirm-go' })}>${esc(go)}</button>
        <button class="btn" ${attrs({ 'data-action': 'mod-confirm-back', 'data-testid': 'mod-confirm-back' })}>${esc(back)}</button>
-       ${offers ? `<button class="btn" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'mod-confirm-offers' })}>${esc(de.cardReward.backOffers)}</button>` : ''}
      </div>`,
     false,
     'sheet-mod-confirm',

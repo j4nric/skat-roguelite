@@ -7,8 +7,10 @@
 //
 // Effekte v3 (tools/cardart/fx3.py, ./fxart.ts): frame = what, mark top
 // right = when, band at the bottom middle = how much; curses anthracite.
-// The special cards change the picture: "Untot" shows the zombie picture
-// (rotten pips on number cards), "Wandelkarte" a fool in a harlequin of all
+// The special cards change the picture: "Untot" is the printed card with
+// a green skull band across the top until it rises; the card that came
+// back into the hand shows the zombie picture (rotten pips on number
+// cards, playtest 05.11.2026), "Wandelkarte" a fool in a harlequin of all
 // four suit colours while its suit is open (four suit pips in the index),
 // and once the core has settled it the same fool in the new suit's shades
 // with that suit's normal index (DESIGN 7.2), "Doppelgänger" its mirror
@@ -28,7 +30,7 @@ import type { CardKind, CardView, DeckCard, ModFigure, Rank, RunView, Suit } fro
 import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitCode, suitId, undeadFaceId, wildFaceIds } from './art';
 import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
-import { fillOf, H, MOD_DRAW, modLayer, smallState, W, winkelScribble, winkelSketch } from './fxart';
+import { fillOf, H, MOD_DRAW, modLayer, smallState, undeadBand, W, winkelScribble, winkelSketch } from './fxart';
 
 /** A suit sign (the held sign of the deck) as a standalone inline SVG. */
 export function suitIcon(suit: Suit, size = 24, label: string | null = de.suits[suit]): string {
@@ -110,6 +112,8 @@ export interface FaceOptions {
   settled?: boolean;
   /** "Winkel": the steps a dealt card rose (`DealtCard.promoted`); `kind` is the card it became. */
   promoted?: number;
+  /** "Untot": the card rose in this game (`CardView.risen`): the zombie picture instead of the band. */
+  risen?: boolean;
 }
 
 /** What a card view needs to be drawn (a CardView, or a DeckCard with a known settled look). */
@@ -121,6 +125,8 @@ export interface CardLook {
   named?: Suit | null;
   /** "Winkel": the steps a dealt card rose. */
   promoted?: number;
+  /** "Untot": rose in this game (CardView.risen). */
+  risen?: boolean;
 }
 
 /** "Wandelkarte": a card the core settled in this game (event `WildCardSettled`). */
@@ -154,14 +160,14 @@ export function editionLook(c: DeckCard, view: RunView | null, settled: Readonly
 
 /** The face of a card view: `cardSvg` with the settled look of a Wandelkarte the core settled. */
 export function lookSvg(c: CardLook, size: FaceSize = 'full', opts: FaceOptions = {}): string {
-  return cardSvg(c.kind, c.mods, size, c.mod_values ?? {}, { settled: c.named != null, ...(c.promoted ? { promoted: c.promoted } : {}), ...opts });
+  return cardSvg(c.kind, c.mods, size, c.mod_values ?? {}, { settled: c.named != null, ...(c.promoted ? { promoted: c.promoted } : {}), ...(c.risen ? { risen: true } : {}), ...opts });
 }
 
 /**
  * The face of a card as inline SVG (viewBox 33 × 49.5 art pixels). `size`
  * "small" is for tiny cards (about 16 to 26 px wide): the index letter and
  * the suit sign, big, with a curse or Untot as a thin ring, but without
- * frames and bands. Untot and Wandelkarte change the picture.
+ * frames and bands. Wandelkarte and a risen Untot change the picture.
  */
 export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'full', values: Record<string, number> = {}, opts: FaceOptions = {}): string {
   const f = face(kind);
@@ -169,13 +175,14 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   const label = esc(cardName(kind) + (mods.length ? ', ' + t(de.card.mods, { mods: modNames }) : ''));
   const curse = mods.some(isCurse);
   const undead = mods.includes(UNDEAD);
+  const zombie = undead && opts.risen === true;
   const wild = mods.includes(WILD);
   const doppel = mods.includes(DOPPEL);
   const settled = wild && opts.settled === true;
   const paper = `<rect class="paper" width="${W}" height="${H}" ${fillOf(PLAIN)}/>`;
   const suit = f && (!wild || settled) ? ` data-suit="${f.suit}"` : '';
   const state = undead || curse ? ` data-state="${undead && curse ? 'both' : undead ? 'undead' : 'curse'}"` : '';
-  const special = wild ? ` data-special="wild" data-wild="${settled ? 'settled' : 'open'}"` : undead ? ' data-special="undead"' : doppel ? ' data-special="doppelganger"' : '';
+  const special = wild ? ` data-special="wild" data-wild="${settled ? 'settled' : 'open'}"` : undead ? ` data-special="undead" data-undead="${zombie ? 'risen' : 'band'}"` : doppel ? ' data-special="doppelganger"' : '';
   const ids = f && wild ? wildFaceIds(f.rank, settled ? f.suit : null) : null;
   // "Winkel": printed rank first, the card it is (or becomes) last.
   const chain = f && (opts.promoted || mods.includes(WINKEL)) ? winkelChain(f.rank, opts.promoted, values[WINKEL] ?? 1) : null;
@@ -188,7 +195,7 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
   } else {
     // Winkel v2: the printed picture stays, the hand sketches lie on it.
     const base = printed ?? f.rank;
-    const picture = ids ? ids.picture : undead ? (undeadFaceId(f.suit, base) ?? faceId(f.suit, base)) : doppel ? mirrorFaceId(f.suit, base) : faceId(f.suit, base);
+    const picture = ids ? ids.picture : zombie ? (undeadFaceId(f.suit, base) ?? faceId(f.suit, base)) : doppel ? mirrorFaceId(f.suit, base) : faceId(f.suit, base);
     const index = ids ? ids.index : indexId(f.suit, base);
     const sketch = chain && !ids ? winkelSketch(suitCode(f.suit), chain, PLAIN) : '';
     // One normal modification (the core allows no more); a special card changes the picture only.
@@ -197,7 +204,9 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
       .map((m) => modLayer(m, modValueText(m, values), values[m] ?? 1, PLAIN, opts.redeeming === true))
       .join('');
     const scribble = chain && !ids ? winkelScribble(chain, PLAIN) : '';
-    body = `${paper}<use class="face-pic" href="#${picture}"/>${sketch}${over}<use class="face-idx" href="#${index}"/>${scribble}`;
+    // "Untot" that has not risen: only the band across the top says so.
+    const untot = undead && !zombie && !ids ? undeadBand(PLAIN) : '';
+    body = `${paper}<use class="face-pic" href="#${picture}"/>${sketch}${over}<use class="face-idx" href="#${index}"/>${scribble}${untot}`;
   }
   return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${state}${special}>${body}</svg>`;
 }

@@ -1,5 +1,6 @@
 // The Kreidetafel: the Kneipentour as a chalk board (districts × pubs), the
-// statistics of this run with tally marks, the record over all runs, and
+// statistics of this run and the record over all runs as rows of
+// numbers (no tally marks: they read like lives, playtest 05.11.2026), and
 // the shared deck. Shows only what the core's run view and meta view say;
 // future targets are not known here and stay empty.
 
@@ -9,21 +10,6 @@ import { editionLook, lookSvg, type SettledWild } from './cards';
 import { attrs, esc } from './dom';
 import { oddsDetail } from './odds';
 import { bossCoaster, relicCoaster } from './emblems';
-
-/** Tally marks in groups of five, drawn in chalk; large numbers as digits. */
-export function tally(n: number): string {
-  if (n <= 0) return `<span class="tally-zero">0</span>`;
-  if (n > 25) return `<span class="tally-num">${esc(n)}</span>`;
-  const groups: string[] = [];
-  for (let left = n; left > 0; left -= 5) {
-    const k = Math.min(5, left);
-    const w = k === 5 ? 26 : k * 6 + 2;
-    const strokes = Array.from({ length: Math.min(k, 4) }, (_, i) => `<path d="M${3 + i * 6} 3 L${2 + i * 6} 21"/>`).join('');
-    const cross = k === 5 ? `<path d="M0 17 L25 6"/>` : '';
-    groups.push(`<svg class="tally" viewBox="0 0 ${w} 24" width="${w}" height="24" aria-hidden="true">${strokes}${cross}</svg>`);
-  }
-  return `<span class="tally-group" aria-label="${esc(n)}">${groups.join('')}</span>`;
-}
 
 const CHECK = `<svg class="chalk-mark" viewBox="0 0 40 30" aria-hidden="true"><path d="M5 16 L15 25 L36 4"/></svg>`;
 const CROSS = `<svg class="chalk-mark" viewBox="0 0 40 30" aria-hidden="true"><path d="M8 4 L32 26 M32 4 L8 26"/></svg>`;
@@ -61,24 +47,25 @@ function grid(view: RunView, lost: boolean): string {
  */
 export function renderOverview(view: RunView, meta: MetaView | null, lost = false, settled: Readonly<Record<number, SettledWild>> = {}): string {
   const s = view.stats;
-  const stats: [string, string][] = [
-    [de.end.gamesWon, tally(s.games_won)],
-    [de.end.gamesLost, tally(s.games_lost)],
-    [de.end.gamesPassed, tally(s.redeals)],
-    [de.end.seriesWon, tally(s.series_won)],
-    [de.end.bestGame, `<b class="chalk-num">${esc(s.best_game)}</b>`],
-    [de.end.coins, `<b class="chalk-num">${esc(view.coins)}</b>`],
+  const stats: [string, number][] = [
+    [de.end.gamesWon, s.games_won],
+    [de.end.gamesLost, s.games_lost],
+    [de.end.gamesPassed, s.redeals],
+    [de.end.seriesWon, s.series_won],
+    [de.end.bestGame, s.best_game],
+    [de.end.coins, view.coins],
   ];
   const m = meta?.stats;
-  const all: [string, string][] = m
+  const all: [string, number][] = m
     ? [
-        [de.overview.runs, tally(m.runs_finished)],
-        [de.overview.runsWon, tally(m.runs_won)],
-        [de.overview.bestSection, `<b class="chalk-num">${esc(m.best_section)}</b>`],
+        [de.overview.runs, m.runs_finished],
+        [de.overview.runsWon, m.runs_won],
+        [de.overview.bestSection, m.best_section],
       ]
     : [];
-  const dl = (list: [string, string][]): string =>
-    `<dl class="chalk-stats">${list.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
+  // One row of chalk numbers, each with its label under it.
+  const row = (list: [string, number][], id: string): string =>
+    `<ul class="chalk-tiles" data-testid="${id}">${list.map(([k, v]) => `<li><b class="chalk-num">${esc(v)}</b><span>${esc(k)}</span></li>`).join('')}</ul>`;
   const deck = view.edition
     .map((c) => `<span class="deck-card" ${attrs({ 'data-info': `card:${c.id}`, tabindex: 0 })}>${lookSvg(editionLook(c, view, settled), 'full')}</span>`)
     .join('');
@@ -91,8 +78,8 @@ export function renderOverview(view: RunView, meta: MetaView | null, lost = fals
     ${relics ? `<div class="relic-strip">${relics}</div>` : ''}
     <h3 class="chalk-h">${esc(de.overview.thisRun)}</h3>
     <p class="chalk-small">${esc(t(de.overview.character, { name: contentName('characters', view.character.character) }))}</p>
-    ${dl(stats)}
-    ${all.length ? `<h3 class="chalk-h">${esc(de.overview.allRuns)}</h3>${dl(all)}` : ''}
+    ${row(stats, 'stats-run')}
+    ${all.length ? `<h3 class="chalk-h">${esc(de.overview.allRuns)}</h3>${row(all, 'stats-all')}` : ''}
     <h3 class="chalk-h">${esc(t(de.overview.deck, { count: view.edition.length }))}</h3>
     <p class="chalk-small">${esc(de.overview.deckHint)}</p>
     ${oddsDetail(view.deal_odds)}

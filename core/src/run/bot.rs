@@ -244,13 +244,14 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `fingertips` | 4 | +3 Augen per trick taken with a Zinke, also for Schneider |
 /// | `tally_sheet` | 3 | +1 or +2 levels with three or five such tricks |
 /// | `tip` | 3 | up to 3 Groschen per game |
+/// | `first_names` | 2 | "Neu auslosen" for free (05.11.2026, not measured) |
 /// | `golden_shears` | 5 | ×1.5 on a Schneider win, about four won games in ten |
 /// | `tape_measure` | 5 | +1 Grundwert per Schneider win for the rest of the run |
 /// | `sewing_pattern` | 2 | +1 Grundwert per Aufdruck or Schneiderkreide on a Schneider win |
 /// | `lead_pouring` | 2 | +1 level per Blei card in the hand of a won Null |
 /// | `plumb_line` | 2 | +2 Grundwert per Blei card in every Null |
 /// | `grandfathers_grand` | 3 | +6 Grundwert on every Grand |
-pub const RELIC_VALUES: [(&str, u32); 53] = [
+pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -304,6 +305,7 @@ pub const RELIC_VALUES: [(&str, u32); 53] = [
     ("lead_pouring", 2),
     ("plumb_line", 2),
     ("grandfathers_grand", 3),
+    ("first_names", 2),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -390,12 +392,10 @@ pub const CONSUMABLE_VALUES: [(&str, u32); 10] = [
     ("rotgut", 1),
 ];
 
-/// A Neuauslage needs at least this many Groschen left over after paying
-/// for it, enough for a cheap relic from the new offer.
+/// "Neu auslosen" needs at least this many Groschen left over after
+/// paying for it, enough for a cheap relic from the new offer. Once per
+/// Tresen visit (the rule since 05.11.2026).
 pub const REROLL_RESERVE: u32 = 6;
-
-/// At most this many Neuauslagen per Tresen visit.
-pub const MAX_REROLLS: u32 = 2;
 
 /// How much the bot wants each Zinke (Zinken at the Tresen, DESIGN 8.6;
 /// simple rules, not measured). Not listed: 0 (never bought). The
@@ -951,10 +951,12 @@ impl RunBot {
         }
     }
 
-    /// The card reward of a won pub (DESIGN 5.0): the Zinke with the
-    /// highest value ([`zinken_value`], the first on a tie) that some card
-    /// takes, on the best card for it ([`RunBot::card_reward_card`]).
-    /// Skipped only if no Zinke fits any card.
+    /// The card reward of a won pub (DESIGN 5.0, fixed pairs since
+    /// 05.11.2026): the offer worth most to the bot. An offer is worth its
+    /// Zinke ([`zinke_score`]), less the Zinke it would replace; on a tie
+    /// a raise before a bare card before a replace, then the card with the
+    /// most Augen, Unter last (trumps anyway), then the first offer.
+    /// Skipped for the Groschen if no offer is worth anything.
     #[must_use]
     pub fn card_reward_action(run: &Run, content: &Content) -> RunAction {
         let Some(reward) = run.card_reward() else {
@@ -964,55 +966,31 @@ impl RunBot {
             .offers
             .iter()
             .enumerate()
-            .filter_map(|(offer, (card_mod, _))| {
-                let card = Self::card_reward_card(run, content, offer)?;
-                Some((zinke_score(run, content, card_mod), offer, card))
-            })
-            .max_by_key(|&(value, offer, _)| (value, std::cmp::Reverse(offer)));
-        match best {
-            Some((_, offer, card)) => RunAction::TakeCardReward { offer, card },
-            None => RunAction::SkipCardReward,
-        }
-    }
-
-    /// The card the bot puts the Zinke at `offer` of the card reward on:
-    /// one that carries the same Zinke (it rises) before one without any
-    /// modification before one whose Zinke it would replace; among them
-    /// the card with the most Augen (Daus, Zehn, ...), Unter last as they
-    /// are trumps anyway, then the lowest id.
-    fn card_reward_card(run: &Run, content: &Content, offer: usize) -> Option<u32> {
-        let (card_mod, _) = run.card_reward()?.offers.get(offer)?;
-        let special = content
-            .card_mod(card_mod)
-            .is_some_and(CardModDef::is_special);
-        run.card_reward_targets(content, offer)
-            .into_iter()
-            .filter_map(|id| run.edition().get(id))
-            .max_by_key(|c| {
-                // Special cards sit in their own slot next to a Zinke.
-                let own: Vec<&CardModId> = c
-                    .mods
-                    .iter()
-                    .filter(|m| {
-                        content
-                            .card_mod(m)
-                            .is_some_and(|d| d.is_special() == special)
-                    })
-                    .collect();
-                let fit = if own.contains(&card_mod) {
+            .filter(|&(offer, _)| run.card_reward_open(content, offer))
+            .filter_map(|(offer, o)| {
+                let (_, replaces, raises) = run.mod_result(content, o.card, &o.card_mod, o.value);
+                let gain = i64::from(zinke_score(run, content, &o.card_mod));
+                let lost = replaces
+                    .as_ref()
+                    .map_or(0, |old| i64::from(zinke_score(run, content, old)));
+                let fit = if raises {
                     2
-                } else if own.is_empty() {
+                } else if replaces.is_none() {
                     1
                 } else {
                     0
                 };
-                let (points, jack) = match c.kind {
+                let (points, jack) = match run.edition().get(o.card)?.kind {
                     CardKind::Normal(card) => (card.card_points(), card.is_jack()),
                     _ => (0, false),
                 };
-                (fit, !jack, points, std::cmp::Reverse(c.id))
+                Some(((gain - lost, fit, !jack, points), offer))
             })
-            .map(|c| c.id)
+            .max_by_key(|&(key, offer)| (key, std::cmp::Reverse(offer)));
+        match best {
+            Some(((value, ..), offer)) if value > 0 => RunAction::TakeCardReward { offer },
+            _ => RunAction::SkipCardReward,
+        }
     }
 
     /// The Schnaps of a won pub with every slot full, if it waits: in
@@ -1480,9 +1458,13 @@ impl RunBot {
         if let Some(card) = bare_ace {
             return RunAction::HirePainter(card);
         }
-        // 7. Nothing sensible to buy: a new offer, if Groschen are plenty.
-        let cost = price(content.run.economy.reroll_cost);
-        if shop.rerolls < MAX_REROLLS && coins >= cost + REROLL_RESERVE {
+        // 7. Nothing sensible to buy: "Neu auslosen" (once per visit), if
+        // Groschen are plenty.
+        let cost = run.reroll_cost(content);
+        if shop.rerolls == 0
+            && coins >= cost + REROLL_RESERVE
+            && run.accepts(content, RunAction::Reroll)
+        {
             return RunAction::Reroll;
         }
         RunAction::LeaveShop
@@ -2454,7 +2436,8 @@ mod tests {
         run.coins -= 1;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
         run.coins += 1;
-        run.shop.as_mut().expect("shop").rerolls = MAX_REROLLS;
+        // Once per visit.
+        run.shop.as_mut().expect("shop").rerolls = 1;
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
     }
 

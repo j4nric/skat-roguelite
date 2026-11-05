@@ -38,7 +38,6 @@ export const de = {
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
       CurseStays: 'Bruderherz wird seine Flüche nicht los.',
-      SpecialTaken: 'Eine andere Karte ist das schon. Höchstens ein Untot und eine Wandelkarte je Deck.',
       ConditionNotMet: 'Der wirkt gerade nicht.',
       NotInBossPub: 'Nicht in der Boss-Kneipe.',
       InvalidDiscard: 'Diese zwei Karten kannst du nicht drücken.',
@@ -260,6 +259,8 @@ export const de = {
     apply: '{card} bekommt {new}.',
     applyPlain: 'So sieht {card} danach aus.',
     applyGo: 'Anbringen',
+    /** A fixed offer of the Auslage (card and Zinke): buy it. */
+    buyGo: 'Kaufen · {price} Gr.',
     cleanseTitle: 'Karte reinigen?',
     cleanse: '{card}: Alle Zinken gehen ab, Flüche eingeschlossen.',
     cleanseGo: 'Reinigen',
@@ -275,7 +276,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'trägt nichts, was abgehen könnte',
-      SpecialTaken: 'eine andere Karte ist das schon',
     } as Record<string, string>,
     /** Short tag on the card in the picker. */
     tags: {
@@ -285,7 +285,6 @@ export const de = {
       BlankCannotBeModified: 'Blanko',
       NoModAvailable: 'passt nicht',
       NothingToCleanse: 'sauber',
-      SpecialTaken: 'vergeben',
     } as Record<string, string>,
   },
 
@@ -522,8 +521,7 @@ export const de = {
     passesAdded: 'Einmal mehr einmischen: jetzt {left}.',
     bought: '{name} gekauft.',
     sold: '{name} verkauft (+{price} Gr.).',
-    rerolled: 'Neue Ware auf dem Tresen.',
-    cardsRerolled: 'Die Auslage ist neu ausgelost.',
+    rerolled: 'Alles neu ausgelost: Relikte, Schnäpse und Auslage.',
     peeked: 'Der Kiebitz flüstert: {name} hält {card}.',
     glassEye: 'Glasauge: Durchsichtig sind {cards}.',
     transparentCard: '{card} bei {name}',
@@ -582,7 +580,6 @@ export const de = {
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
-    voucherCapped: '{mod} eingelöst, aber {holder} ist schon {special}. Dafür {coins} Groschen.',
     coins: '{amount} Groschen: {source}',
   },
 
@@ -636,7 +633,7 @@ export const de = {
     formulaMul: '{base} × {levels} × {mul}',
     value: 'Spielwert',
     result: 'Ergebnis',
-    lostOnce: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab.',
+    lostOnce: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal vom Konto ab.',
     lossSingle: 'verloren nur einfach',
     lossFactor: 'verloren ×{n}',
     account: 'Konto {score} / {target}',
@@ -674,7 +671,10 @@ export const de = {
     buy: 'Kaufen · {price} Gr.',
     sell: 'Verkaufen +{price}',
     use: 'Benutzen',
-    reroll: 'Neuauslage · {cost} Gr.',
+    /** "Neu auslosen" of the whole Tresen, once per visit (05.11.2026). */
+    reroll: 'Neu auslosen · {cost} Gr.',
+    rerollFree: 'Neu auslosen · gratis',
+    rerollUsed: 'Schon neu ausgelost',
     leave: 'Weiter',
     pickTarget: 'Wähle eine Karte',
     chalkCard: 'Welche Karte färbst du um? Sie behält ihren Wert und hat bis zum Spielende die neue Farbe.',
@@ -698,6 +698,8 @@ export const de = {
     buyShort: 'Kaufen',
     noRelics: 'Noch keine Bierdeckel gesammelt.',
     noItems: 'Nichts in der Tasche.',
+    /** The player's own things at the Tresen lie in his bag (playtest 05.11.2026). */
+    pouch: 'In deiner Tasche',
     moreAbout: '{name}: ganze Beschreibung',
     moreBelow: 'Weitere Waren weiter unten',
     /** Zinken at the Tresen (DESIGN 8.6). */
@@ -712,7 +714,6 @@ export const de = {
     zinkeBecomes: 'wird {special}',
     zinkeKeeps: '{mod} bleibt',
     noOffers: 'Gerade passt keine Zinke auf deine Karten.',
-    rerollCards: 'Neu auslosen · {cost} Gr.',
     painter: 'Kartenmaler',
     painterHint: 'Du wählst die Karte, er malt dir eine von zwei Zinken darauf. Einmal je Tresen.',
     painterGo: 'Karte wählen · {price} Gr.',
@@ -882,7 +883,6 @@ export const de = {
     blocked: {
       NotEnoughCoins: 'Zu wenig Groschen.',
       NothingLeft: 'Hier gibt es nichts mehr für dich.',
-      SpecialCardCap: 'Dein Deck hat diese Spezialkarte schon.',
       NoFittingCard: 'Keine Karte deines Decks passt.',
       NoRelic: 'Du hast kein Relikt.',
       RelicSlotsFull: 'Alle Relikt-Plätze sind belegt.',
@@ -982,7 +982,7 @@ export const de = {
       'Einmal pro Spiel, nie als letzte Karte. Im Null und im Ramsch ist sie eine normale Karte.',
     ],
     doppelganger: [
-      'Spielst du sie, nimmt sie dem nächsten Gegner eine Karte gleichen Rangs aus einer anderen Farbe ab, sonst dem anderen Gegner.',
+      'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab (sonst dem anderen).',
       'Die abgenommene Karte liegt im Stich, der Gegner bekommt deine Karte für den Rest des Spiels.',
       'Bedienen musst du mit ihrer gedruckten Farbe. Ohne Gegenstück zählt sie als sie selbst; im Ramsch immer.',
     ],
@@ -991,7 +991,7 @@ export const de = {
       'Bei Gleichstand gilt Eichel, Grün, Rot, Schellen. Rang, Augen und ihre Zinke bleiben.',
       'Tipp: Drück die zweitlängste Farbe, damit sie in deine Trumpffarbe kommt.',
     ],
-    cap: 'Höchstens ein Untot, eine Wandelkarte und ein Doppelgänger je Deck. Eine weitere Toten- oder Narrenmarke zahlt dann Groschen statt dessen.',
+    cap: 'Spezialkarten darf dein Deck beliebig viele haben.',
     go: 'Verstanden',
   },
 
@@ -1083,13 +1083,11 @@ export const de = {
     kicker: 'Kneipe gewonnen',
     sub: 'Der Wirt zinkt mit',
     title: 'Eine Zinke aufs Haus',
-    text: 'Der Wirt bietet dir drei Zinken an. Eine kommt gratis auf eine Karte deiner Wahl.',
+    text: 'Der Wirt bietet dir drei Karten aus deinem Deck mit je einer Zinke an. Eine davon gibt es gratis.',
     take: 'Diese',
     rare: 'Selten',
     skip: 'Überspringen (+{coins} Groschen)',
-    pickCard: 'Auf welche Karte?',
-    pickHint: '{name}: {text}',
-    backOffers: 'Andere Zinke',
+    backOffers: 'Anderes Angebot',
   },
 
   end: {
@@ -1179,10 +1177,10 @@ export const de = {
     afterSkatNull:
       'Skat aufgenommen: Jetzt gibt’s Null oder Null Ouvert. Null Hand ist vorbei, dafür kennst du den Skat.',
     value:
-      'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das vom Konto ab.',
+      'Die {base} × {levels} über dem Stich ist Grundwert mal Stufen, so viel ist dein Spiel bis jetzt sicher wert. Verlierst du, geht genau das einmal vom Konto ab, nicht doppelt wie im Vereinsskat.',
     pass: 'Eingemischt ist keine Schande. Das Blatt geht zurück und wird neu gegeben, das kostet kein Spiel. Zweimal pro Spiel, im ersten Stadtteil dreimal, dann wird gespielt.',
     score:
-      'Abgerechnet wird wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto, verloren geht es wieder runter.',
+      'Abgerechnet wird fast wie im Verein: Grundwert mal Stufen, und jede Hausregel legt ihr Scherflein drauf. Gewonnen kommt aufs Konto. Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal runter.',
     route: 'Weiter geht’s! Drei Wege führen zur nächsten Kneipe, auf jedem wartet was anderes: Tresen, Begegnung, Werkstatt oder Rast. Führt einer in eine Spelunke, lies vorher den Malus.',
     shop: 'Für jede geschaffte Kneipe gibt’s Groschen, und hier am Tresen wirst du sie los. Hausregeln und Figuren biegen die Regeln für dich, Schnäpse helfen im Spiel, und mit Zinken (Auslage, Kartenmaler) machst du deine Karten stärker.',
     boss: 'Obacht, ein Boss! Der biegt in seiner Kneipe eine Regel, also lies genau, was er vorhat.',
@@ -1230,7 +1228,7 @@ export const de = {
       'Ouvert +1',
     ],
     factorNote: 'Der Faktor ist ×1, bis Relikte ihn heben. Mehrere Faktoren werden malgenommen (×1,5 und ×1,5 sind ×2,25). Die Faktoren deiner Relikte zählen nur in gewonnenen Spielen.',
-    lostNote: 'Verloren zählt einfach: Der Spielwert geht einmal vom Konto ab (im echten Skat doppelt).',
+    lostNote: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat (dort doppelt): Der Spielwert geht einmal vom Konto ab.',
     bentTitle: 'Was hier anders ist',
     bent: [
       'Kein Reizen: Du bist immer der Alleinspieler, die zwei anderen spielen zusammen gegen dich.',
@@ -1502,7 +1500,10 @@ export const de = {
   content: {
     relics: {
     },
-    card_mods: {},
+    card_mods: {
+      // Playtest 05.11.2026: said simply (the core's catalog text has the details).
+      doppelganger: { text: 'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab.' },
+    },
     bosses: {},
     consumables: {
     },
