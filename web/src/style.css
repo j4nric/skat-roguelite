@@ -8411,3 +8411,63 @@ button.skat-card {
   opacity: 0.5;
   cursor: default;
 }
+
+/* The card reward after a won pub (DESIGN 5.0): three Zinken on sample
+   cards, one row each on a phone, side by side from 720px. */
+.reward-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.reward-option {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.reward-option .card {
+  flex: none;
+  width: 64px;
+  height: 96px;
+}
+
+.reward-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.reward-option.is-rare {
+  border-color: #c9a23a;
+}
+
+.card-reward > .btn-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+@media (min-width: 720px) {
+  .reward-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .reward-option {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .reward-option .card {
+    width: 88px;
+    height: 132px;
+  }
+
+  .reward-body {
+    align-items: center;
+  }
+}

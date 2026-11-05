@@ -181,6 +181,9 @@
 //   Auslage of three set offers and 20 Groschen: the Zinken at the Tresen
 //   (DESIGN 8.6), the in-app sheet before a Zinke replaces or raises
 //   another, the Kartenmaler and Karte reinigen (see zinkenPass).
+// - card-reward.json: seed 5 after the first pub, the card reward open
+//   with Winkel, Aufdruck (already +3 on the Grün-Daus) and the
+//   Narrenmarke (core: regenerate_card_reward_fixture; cardRewardPass).
 // - voucher.json: frames.json with "Gutschein" on the Grün-Neun and
 //   "Gutschein Untot" on the Grün-Acht, both dealt to the player in the boss
 //   game: pressed, they are redeemed with their animation (voucherPass).
@@ -2349,6 +2352,8 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await page.waitForSelector('[data-testid="unlock-new"]');
   if (await page.locator('[data-testid="hint"]').count()) fail('a hint over the unlock dialog');
   await page.click('.sheet-unlock [data-action="close-overlay"]');
+  // The card reward of the won pub (DESIGN 5.0), then the route.
+  await takeCardReward(page);
   // Kneipentour: the route choice comes first, with its own hint.
   log(`hint route: ${await expectHint(page, 'route')}`);
   await shoot(page, 'hint-route');
@@ -3719,6 +3724,92 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
 }
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
+/**
+ * The card reward after a won pub (DESIGN 5.0, 04.11.2026), from
+ * card-reward.json (made by the core, regenerate_card_reward_fixture): the
+ * innkeeper's three Zinken on sample cards (Winkel, Aufdruck, the rare
+ * Narrenmarke), the picker with only the fitting cards (no Daus for the
+ * Winkel), back to the offers, a bare card shown before and after, "Andere
+ * Karte", the Aufdruck raised on the Grün-Daus that has it, then the
+ * route; once more, "Überspringen" pays 2 Groschen. No side scrolling at
+ * 390, 375 and 360.
+ */
+/** The card reward after a won pub: the first Zinke that fits, on the first card it fits, "Anbringen". */
+async function takeCardReward(page) {
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await page.locator('[data-action="card-reward-pick"]:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="reward-cards"]');
+  await page.locator('[data-testid="reward-cards"] .target-card:not([disabled])').first().click();
+  await page.waitForSelector('[data-testid="mod-confirm-go"]');
+  await page.click('[data-testid="mod-confirm-go"]');
+  await page.waitForSelector('[data-testid="card-reward"]', { state: 'detached', timeout: 15000 });
+}
+
+async function cardRewardPass(browser, errors, reducedMotion) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  await resumeFixture(page, 'card-reward.json');
+  await page.waitForSelector('[data-testid="card-reward"]');
+  const offers = await page.locator('[data-testid="card-reward-offers"] .reward-option').count();
+  if (offers !== 3) fail(`card reward: ${offers} Zinken on offer`);
+  if ((await page.locator('.reward-option.is-rare').count()) !== 1) fail('card reward: the Narrenmarke has no "Selten" band');
+  const skipText = await text(page, 'card-reward-skip');
+  if (!skipText.includes('2 Groschen')) fail(`card reward: the skip button says "${skipText}"`);
+  await shoot(page, 'card-reward');
+  await assertNoSideScroll(page, 'card reward', '.card-reward');
+  const before = await stored();
+  const ace = before.edition.cards.find((c) => (c.mods ?? []).includes('points'));
+  const bare = before.edition.cards.find((c) => !(c.mods ?? []).length && c.kind?.Normal?.endsWith('K'));
+  if (!ace || !bare) fail('card reward fixture: no Daus with an Aufdruck or no bare König');
+  // Winkel: the Daus is greyed with its reason.
+  await page.click('[data-testid="card-reward-rank"]');
+  await page.waitForSelector('[data-testid="reward-cards"]');
+  if (!(await page.locator(`.target-card[data-id="${ace.id}"]`).isDisabled())) fail('card reward: Winkel offered on a Daus');
+  await assertPickerGrid(page, 'card reward picker');
+  await shoot(page, 'card-reward-picker');
+  // Back to the three Zinken.
+  await page.click('[data-testid="reward-back"]');
+  await page.waitForSelector('[data-testid="reward-cards"]', { state: 'detached' });
+  await page.waitForSelector('[data-testid="card-reward"]');
+  // Aufdruck on a bare König: before and after, "Anbringen", "Andere Karte".
+  await page.click('[data-testid="card-reward-points"]');
+  await page.waitForSelector('[data-testid="reward-cards"]');
+  await page.click(`.target-card[data-id="${bare.id}"]`);
+  await assertApplyConfirm(page, 'card reward');
+  if (!(await page.locator('[data-testid="mod-confirm-offers"]').count())) fail('card reward: the confirm has no way back to the Zinken');
+  await shoot(page, 'card-reward-confirm');
+  await page.click('[data-testid="mod-confirm-back"]');
+  await page.waitForSelector('[data-testid="reward-cards"]');
+  // On the Daus that has it: it rises; first back to the offers once.
+  await page.click(`.target-card[data-id="${ace.id}"]`);
+  await page.waitForSelector('[data-testid="mod-confirm-cards"][data-type="raise"]');
+  await page.click('[data-testid="mod-confirm-offers"]');
+  await page.waitForSelector('[data-testid="mod-confirm-cards"]', { state: 'detached' });
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await page.click('[data-testid="card-reward-points"]');
+  await page.waitForSelector('[data-testid="reward-cards"]');
+  await page.click(`.target-card[data-id="${ace.id}"]`);
+  await page.waitForSelector('[data-testid="mod-confirm-cards"][data-type="raise"]');
+  await page.click('[data-testid="mod-confirm-go"]');
+  await page.waitForSelector('[data-testid="route-next"]', { timeout: 15000 });
+  const after = await stored();
+  const raised = after.edition.cards.find((c) => c.id === ace.id);
+  if (raised?.mod_values?.points !== 6) fail(`card reward: the Aufdruck did not rise to +6 (${JSON.stringify(raised)})`);
+  if (after.coins !== before.coins) fail(`card reward: the Zinke was not free (${before.coins} -> ${after.coins})`);
+  log('card reward: Aufdruck raised to +6 for free, on to the route');
+  // Or skip it for Groschen.
+  await resumeFixture(page, 'card-reward.json');
+  await page.waitForSelector('[data-testid="card-reward-skip"]');
+  await page.click('[data-testid="card-reward-skip"]');
+  await page.waitForSelector('[data-testid="route-next"]', { timeout: 15000 });
+  const skipped = await stored();
+  if (skipped.coins !== before.coins + 2) fail(`card reward: skipping paid ${skipped.coins - before.coins} Groschen`);
+  log('card reward: skipped for 2 Groschen');
+  await context.close();
+}
+
 async function workshopPass(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
   const page = await context.newPage();
@@ -4849,6 +4940,11 @@ async function run() {
     if (accountAfter === accountBefore) fail(`account unchanged: ${accountAfter}`);
     log(`account ${accountBefore} -> ${accountAfter}`);
 
+    // The card reward (DESIGN 5.0) comes after a won pub: the first Zinke
+    // that fits, on the first card it fits, before and after, "Anbringen".
+    await takeCardReward(page);
+    log('card reward taken after the first pub');
+
     // Kneipentour (ADR 0016): the pub was won in its first game, so the
     // route choice to the next pub opens: no hearts (ADR 0019), the next pub
     // with name, target and guests, three ways each with its stop.
@@ -4927,6 +5023,7 @@ async function run() {
     await rescuePass(browser, errors, reducedMotion, DESKTOP);
     await schnapsPass(browser, errors);
     await workshopPass(browser, errors, reducedMotion);
+    await cardRewardPass(browser, errors, reducedMotion);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);

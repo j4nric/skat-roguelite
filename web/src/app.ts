@@ -56,6 +56,7 @@ import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCar
 import { esc, reducedMotion } from './ui/dom';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
+import { renderCardReward } from './ui/cardreward';
 import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
@@ -118,7 +119,7 @@ function errorText(err: unknown): string {
 /** One line about a saved run: who plays, where, the account. */
 function runLine(view: RunView): string {
   const character = contentName('characters', view.character.character);
-  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop' || view.phase === 'BossReward'
+  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop' || view.phase === 'BossReward' || view.phase === 'CardReward'
     ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
     : t(de.start.resumeInfo, {
         character,
@@ -494,7 +495,7 @@ export class App {
     if (ui.screen === 'start' || ui.screen === 'end') return 'table';
     if (ui.screen !== 'run' || !ui.view) return null;
     const view = ui.view;
-    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'BossReward') && !ui.anim) return 'shop';
+    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'BossReward' || view.phase === 'CardReward') && !ui.anim) return 'shop';
     return view.series.is_boss ? 'boss' : 'table';
   }
 
@@ -2657,6 +2658,29 @@ export class App {
         this.ui.rewardPick = null;
         void this.act({ ChooseBossRelic: { offer: null, replace: null } });
         return;
+      // The card reward after a won pub (DESIGN 5.0): a Zinke, then its card, then "Anbringen".
+      case 'card-reward-pick': {
+        const o = view.card_reward?.offers.find((x) => x.index === num('offer'));
+        if (!o) return;
+        const reasons = this.refusals(view, o.targets, (id) => ({ TakeCardReward: { offer: o.index, card: id } }));
+        this.ui.overlay = { kind: 'reward-target', offer: o.index, reasons };
+        this.render();
+        return;
+      }
+      case 'reward-target': {
+        const o = this.ui.overlay;
+        if (o?.kind !== 'reward-target') return;
+        const offer = view.card_reward?.offers.find((x) => x.index === o.offer);
+        if (!offer) return;
+        this.noteStamp(el);
+        const action: RunAction = { TakeCardReward: { offer: o.offer, card: num('id') } };
+        this.applyMod(view, action, num('id'), offer.card_mod.id, false, o, 'apply');
+        return;
+      }
+      case 'card-reward-skip':
+        this.ui.overlay = null;
+        void this.act('SkipCardReward');
+        return;
       case 'choose-encounter': {
         const option = view.encounter?.options.find((o) => o.index === num('option'));
         if (!option) return;
@@ -3406,6 +3430,7 @@ export class App {
         const inEncounter = view.phase === 'Encounter' && !ui.anim;
         const inRoute = view.phase === 'Route' && !ui.anim;
         const inReward = view.phase === 'BossReward' && !ui.anim;
+        const inCardReward = view.phase === 'CardReward' && !ui.anim;
         if (!inReward) ui.rewardPick = null;
         if (inRoute && ui.routeLeg !== legKey(view)) {
           // A new leg: the default way, the map in front.
@@ -3419,10 +3444,12 @@ export class App {
             ? renderEncounter(view)
             : inReward
               ? renderBossReward(view, ui.rewardPick)
-              : inRoute
+              : inCardReward
+                ? renderCardReward(view)
+                : inRoute
                 ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
                 : renderTable(view, ui);
-        const cls = inShop ? 'is-shop' : inEncounter || inReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
+        const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''}">${renderHud(view)}${main}</div>`;
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };

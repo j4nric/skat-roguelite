@@ -624,6 +624,21 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.shop.cancel)}</button>`,
       );
     }
+    case 'reward-target': {
+      // The card reward (DESIGN 5.0): the cards the chosen Zinke may go on.
+      const o = view?.card_reward?.offers.find((x) => x.index === overlay.offer);
+      if (!view || !o) return '';
+      const name = contentName('card_mods', o.card_mod.id) || o.card_mod.name;
+      const text = modText(o.card_mod.id, o.card_mod.value ?? 1) || o.card_mod.text;
+      const cards = view.edition.map((c) => targetCard(editionLook(c, view, {}), o.targets.includes(c.id), 'reward-target', overlay.reasons?.[c.id])).join('');
+      return sheet(
+        `<h2>${esc(de.cardReward.pickCard)}</h2>
+         <p class="small">${esc(t(de.cardReward.pickHint, { name, text }))}</p>
+         ${oddsLine(view.deal_odds)}
+         <div class="target-grid" data-testid="reward-cards">${cards}</div>
+         <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'reward-back' })}>${esc(de.cardReward.backOffers)}</button>`,
+      );
+    }
     case 'encounter-relic': {
       const option = view?.encounter?.options.find((o) => o.index === overlay.option);
       if (!view || !option) return '';
@@ -635,7 +650,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(renderMarkePick(option), false, 'sheet-marke');
     }
     case 'mod-confirm':
-      return renderModConfirm(overlay.ask);
+      // From the card reward also back to its three Zinken.
+      return renderModConfirm(overlay.ask, typeof overlay.action === 'object' && 'TakeCardReward' in overlay.action);
     case 'zinken-card': {
       // Zinken (DESIGN 8.6): the card for the Kartenmaler or "Karte reinigen".
       const s = overlay.service === 'painter' ? view?.shop?.painter : view?.shop?.cleanse;
@@ -986,7 +1002,7 @@ function targetCard(c: DeckCard & CardLook, ok: boolean, action: string, reason:
  * Asking before a card modification replaces, raises or cancels the one on
  * a card: what the core's preview reported, with the card now and after.
  */
-function renderModConfirm(ask: ModQuestion): string {
+function renderModConfirm(ask: ModQuestion, offers = false): string {
   const card = cardName(ask.card.kind);
   const name = (m: string | null): string => (m ? contentName('card_mods', m) : '');
   const c = de.modConfirm;
@@ -1020,6 +1036,7 @@ function renderModConfirm(ask: ModQuestion): string {
      <div class="sheet-actions">
        <button class="btn btn-primary" ${attrs({ 'data-action': 'mod-confirm-go', 'data-testid': 'mod-confirm-go' })}>${esc(go)}</button>
        <button class="btn" ${attrs({ 'data-action': 'mod-confirm-back', 'data-testid': 'mod-confirm-back' })}>${esc(back)}</button>
+       ${offers ? `<button class="btn" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'mod-confirm-offers' })}>${esc(de.cardReward.backOffers)}</button>` : ''}
      </div>`,
     false,
     'sheet-mod-confirm',

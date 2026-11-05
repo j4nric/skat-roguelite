@@ -34,7 +34,7 @@ use skat_core::content::{
     BossId, CardModId, Character, ConsumableId, Content, Effect, EncounterId, Hook, ModKind,
     RelicGroup, RelicId, RunLength, UnlockId,
 };
-use skat_core::deck::DeckCard;
+use skat_core::deck::{DeckCard, DeckChange};
 use skat_core::game::{Event, Seat};
 use skat_core::rng::Rng;
 use skat_core::rules::{Declaration, NullFormula, NullScoring};
@@ -446,8 +446,28 @@ pub struct RunStats {
     pub vouchers_returned: u64,
     /// The Faktor (ADR 0018) of the games won.
     pub factor: FactorStat,
+    /// The card reward after a won pub (DESIGN 5.0).
+    pub card_rewards: CardRewardStat,
+    /// The card reward per Zinke: (offered, taken).
+    pub card_reward_zinken: BTreeMap<CardModId, (u64, u64)>,
     /// The player's edition: Zinken at the end, Marken, Zinken in hand.
     pub deck: DeckStat,
+}
+
+/// The card reward after a won normal pub or Spelunke (DESIGN 5.0), over
+/// all runs, for the balance round.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CardRewardStat {
+    /// Rewards offered (one per won normal pub or Spelunke).
+    pub offered: u64,
+    /// Rewards taken (a Zinke on a card).
+    pub taken: u64,
+    /// Of those, a Zinke raised on a card that had it already.
+    pub raised: u64,
+    /// Rewards skipped for Groschen.
+    pub skipped: u64,
+    /// Groschen from skipping, summed.
+    pub skip_coins: u64,
 }
 
 /// Labels of [`DeckStat::kinds`]: Rand, Ecke (Moment), Marke (voucher),
@@ -608,6 +628,8 @@ struct Observer<'a> {
     replay: bool,
     /// The highest factor of a won game in this run, in thousandths.
     max_factor: u32,
+    /// The value of the card reward just taken, until its deck change.
+    reward_value: Option<i32>,
     content: &'a Content,
     /// Cards with a Zinke in the player's hand as dealt, this game.
     hand_zinked: u64,
@@ -865,6 +887,40 @@ impl Observer<'_> {
                     }
                 }
                 RunEvent::KioskOpened { .. } => self.stats.kiosks += 1,
+                // The card reward (DESIGN 5.0).
+                RunEvent::CardRewardOffered { offers } => {
+                    self.stats.card_rewards.offered += 1;
+                    for (card_mod, _) in offers {
+                        self.stats
+                            .card_reward_zinken
+                            .entry(card_mod.clone())
+                            .or_default()
+                            .0 += 1;
+                    }
+                }
+                RunEvent::CardRewardTaken {
+                    card_mod, value, ..
+                } => {
+                    self.reward_value = Some(*value);
+                    self.stats.card_rewards.taken += 1;
+                    self.stats
+                        .card_reward_zinken
+                        .entry(card_mod.clone())
+                        .or_default()
+                        .1 += 1;
+                }
+                // The change of a taken card reward: above the offered value
+                // it was raised.
+                RunEvent::DeckChanged(DeckChange::Modified { value, .. })
+                    if self.reward_value.is_some() =>
+                {
+                    let offered = self.reward_value.take().unwrap_or(0);
+                    self.stats.card_rewards.raised += u64::from(*value > offered);
+                }
+                RunEvent::CardRewardSkipped { coins } => {
+                    self.stats.card_rewards.skipped += 1;
+                    self.stats.card_rewards.skip_coins += u64::from(*coins);
+                }
                 // Zinken at the Tresen (DESIGN 8.6).
                 RunEvent::CardOfferBought { price, .. } => self.spend(2, *price),
                 RunEvent::PainterHired { price, .. } => self.spend(3, *price),
@@ -894,6 +950,7 @@ fn play_run(
         bought: BTreeSet::new(),
         replay: false,
         max_factor: 1000,
+        reward_value: None,
         content,
         hand_zinked: 0,
         played_zinked: false,
@@ -1084,6 +1141,7 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         mean(stats.coins_end, runs)
     );
     render_groschen(&mut out, stats);
+    render_card_rewards(&mut out, stats, runs);
     let _ = write!(out, "consumables (bought/used):");
     for (id, (bought, used)) in &stats.consumables {
         let _ = write!(out, " {id}={bought}/{used}");
@@ -1117,6 +1175,27 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         per_run / 1000.0
     );
     out
+}
+
+/// The card reward after a won pub (DESIGN 5.0): offered, taken (raised),
+/// skipped per run, and per Zinke how often it was offered and taken.
+fn render_card_rewards(out: &mut String, stats: &RunStats, runs: u64) {
+    let c = &stats.card_rewards;
+    let _ = writeln!(
+        out,
+        "card rewards per run: offered {:.2}, taken {:.2} (raised {:.2}), skipped {:.2} ({:.1}% of offered, {:.2} Groschen)",
+        mean(c.offered, runs),
+        mean(c.taken, runs),
+        mean(c.raised, runs),
+        mean(c.skipped, runs),
+        pct(c.skipped, c.offered),
+        mean(c.skip_coins, runs)
+    );
+    let _ = write!(out, "card reward zinken (offered/taken):");
+    for (id, (offered, taken)) in &stats.card_reward_zinken {
+        let _ = write!(out, " {id}={offered}/{taken}");
+    }
+    out.push('\n');
 }
 
 /// The Faktor (ADR 0018): mean factor of the won games, the share above
@@ -2050,7 +2129,24 @@ mod option_tests {
         // The Faktor of the won games is at least ×1 without a factor below.
         assert_eq!(stats.factor.won_games, stats.games_won);
         assert!(stats.factor.run_max_permille >= 40 * 1000);
+        // A card reward after every won normal pub and Spelunke (DESIGN
+        // 5.0); the bot takes it whenever a Zinke fits.
+        let won_pubs: u64 = stats
+            .series
+            .iter()
+            .chain(&stats.spelunken)
+            .flat_map(|row| row[..4].iter())
+            .map(|p| p.wins)
+            .sum();
+        let c = stats.card_rewards;
+        assert_eq!(c.offered, won_pubs);
+        assert_eq!(c.offered, c.taken + c.skipped);
+        assert!(c.taken > 0 && c.raised <= c.taken);
+        let taken: u64 = stats.card_reward_zinken.values().map(|(_, t)| t).sum();
+        assert_eq!(taken, c.taken);
         for needle in [
+            "card rewards per run",
+            "card reward zinken",
             "relics start",
             "faktor: won games mean",
             "runs end:",

@@ -33,6 +33,7 @@ export const de = {
       RisePending: 'Erst die drei Karten für die untote Karte wählen.',
       InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',
       SchnappsRewardPending: 'Erst entscheiden, was mit dem neuen Schnaps passiert.',
+      CardRewardPending: 'Erst die Zinke des Wirts nehmen oder überspringen.',
       AlreadyUsed: 'Das gibt es an diesem Tresen nur einmal.',
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
@@ -1039,6 +1040,20 @@ export const de = {
     rewardBack: 'Zurück',
   },
 
+  /** The card reward after a won normal pub or Spelunke (DESIGN 5.0). */
+  cardReward: {
+    kicker: 'Kneipe gewonnen',
+    sub: 'Der Wirt zinkt mit',
+    title: 'Eine Zinke aufs Haus',
+    text: 'Der Wirt bietet dir drei Zinken an. Eine kommt gratis auf eine Karte deiner Wahl.',
+    take: 'Diese',
+    rare: 'Selten',
+    skip: 'Überspringen (+{coins} Groschen)',
+    pickCard: 'Auf welche Karte?',
+    pickHint: '{name}: {text}',
+    backOffers: 'Andere Zinke',
+  },
+
   end: {
     won: 'Kneipentour gewonnen!',
     wonText: 'Der ganze Stammtisch zieht den Hut.',
@@ -1160,7 +1175,7 @@ export const de = {
       ['Hearts', '10'],
       ['Spades', '11'],
       ['Clubs', '12'],
-      ['Grand', '24'],
+      ['Grand', '18'],
       ['Null', '23'],
     ] as [string, string][],
     nullNote: 'Null darf jeder ansagen. Es zählt 23 × Stufen (Spiel 1, Hand +1, Ouvert +2), bei Sieg mit Stilbonus.',
@@ -1352,7 +1367,7 @@ export const de = {
   keywords: {
     Augen: 'Die Punkte der Karten im Stich: Daus 11, Zehn 10, König 4, Oberin 3, Unter 2. Ab 61 von 120 hast du gewonnen.',
     Stufen: 'Spitzen, Spiel, Hand, Schneider und mehr bringen je +1 Stufe. Spielwert ist Grundwert mal Stufen (mal Faktor).',
-    Grundwert: 'Der Wert der Spielart: Schellen 9, Rot 10, Grün 11, Eichel 12, Grand 24. Er wird mit den Stufen malgenommen.',
+    Grundwert: 'Der Wert der Spielart: Schellen 9, Rot 10, Grün 11, Eichel 12, Grand 18 (nach Skatordnung 24). Er wird mit den Stufen malgenommen.',
     Faktor: 'Multipliziert den ganzen Spielwert: Grundwert × Stufen × Faktor. Startet bei ×1; mehrere Faktoren werden malgenommen, die der Relikte nur in gewonnenen Spielen.',
     Trumpf: 'Die Karten, die jede andere Farbe stechen: im Farbspiel die Unter und die angesagte Farbe, im Grand nur die Unter.',
     Schneider: 'Die Gegner haben höchstens 30 Augen. Bringt +1 Stufe, angesagt noch +1.',

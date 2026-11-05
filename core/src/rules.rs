@@ -1259,6 +1259,30 @@ pub struct ValueParts {
     pub value: GameValue,
 }
 
+impl ValueParts {
+    /// The same parts with another Grundwert (the run's own, DESIGN 4.2:
+    /// Grand 18 since 04.11.2026), the value recomputed from it. Parts
+    /// without a Grundwert (a Null by the Skatordnung) stay as they are.
+    #[must_use]
+    pub fn with_base_value(self, base: u32) -> ValueParts {
+        if self.base_value == 0 {
+            return self;
+        }
+        let levels = self.value.levels;
+        ValueParts {
+            base_value: base,
+            value: GameValue::from_value(
+                levels,
+                base.saturating_mul(levels),
+                self.value.won,
+                self.value.schneider,
+                self.value.schwarz,
+            ),
+            ..self
+        }
+    }
+}
+
 /// Compute the game value with explicit thresholds and return every
 /// intermediate result. [`game_value`] is this function with the default
 /// thresholds.

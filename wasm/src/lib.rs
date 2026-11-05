@@ -926,14 +926,15 @@ mod tests {
         assert_eq!(step["view"]["game"]["declaration"]["game"], "Grand");
         // While playing, the table's score line comes from the core.
         let preview = &step["view"]["game"]["value_preview"];
-        assert_eq!(preview["base_value"], 24);
+        // Grand 18 in the run (04.11.2026, Cockpit q27).
+        assert_eq!(preview["base_value"], 18);
         let levels = preview["levels"].as_u64().expect("levels");
         assert!(levels >= 2, "Spitzen plus Spiel");
         // The factor is a decimal number (1.5 for "Stammfarbe").
         let multiplier = preview["multiplier"].as_f64().expect("multiplier");
         assert_eq!(
             preview["game_value"].as_f64(),
-            Some((24.0 * levels as f64 * multiplier).round())
+            Some((18.0 * levels as f64 * multiplier).round())
         );
 
         let saved = session.save().expect("save");

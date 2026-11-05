@@ -1707,6 +1707,14 @@ pub struct RunConfig {
     /// The relic pick after a won boss pub (ADR 0017).
     #[serde(default)]
     pub boss_reward: BossRewardConfig,
+    /// The Grundwerte of the run where they differ from the Skatordnung
+    /// (DESIGN 4.2). Without: the Skatordnung.
+    #[serde(default)]
+    pub base_values: BaseValues,
+    /// The card reward after a won pub (DESIGN 5.0, Kartenbelohnung).
+    /// Without: none.
+    #[serde(default)]
+    pub card_reward: Option<CardRewardConfig>,
     /// The defenders' card play per Stadtteil (DESIGN 10.3): heuristic or
     /// PIMC with its strength. Later Stadtteile take the last entry; an
     /// empty list means the heuristic everywhere.
@@ -1720,6 +1728,77 @@ impl RunConfig {
     pub fn sections(&self) -> u32 {
         u32::try_from(self.targets.len()).unwrap_or(0)
     }
+
+    /// The Grundwert of `game` in the run: the Skatordnung
+    /// ([`GameType::base_value`]) except where [`RunConfig::base_values`]
+    /// sets another (Grand 18 since 04.11.2026). `None` for Null, which
+    /// the run scores by the character's [`NullScoring`].
+    #[must_use]
+    pub fn base_value(&self, game: GameType) -> Option<u32> {
+        match game {
+            GameType::Grand => Some(self.base_values.grand),
+            _ => game.base_value(),
+        }
+    }
+
+    /// [`crate::rules::game_value_parts`] with the run's Grundwerte
+    /// ([`RunConfig::base_value`]) for suit games and Grand; a Null and a
+    /// Ramsch as the rules give them.
+    #[must_use]
+    pub fn game_value_parts(
+        &self,
+        declaration: crate::rules::Declaration,
+        matadors: crate::rules::Matadors,
+        outcome: &crate::rules::Outcome,
+        thresholds: &crate::rules::Thresholds,
+    ) -> crate::rules::ValueParts {
+        let parts = crate::rules::game_value_parts(declaration, matadors, outcome, thresholds);
+        let own = match declaration {
+            crate::rules::Declaration::Suit { .. } | crate::rules::Declaration::Grand { .. } => {
+                self.base_value(declaration.game())
+            }
+            _ => None,
+        };
+        own.map_or(parts, |base| parts.with_base_value(base))
+    }
+}
+
+/// Grundwerte of the run that differ from the Skatordnung (DESIGN 4.2).
+/// The rules ([`crate::rules::game_value`]) keep the Skatordnung; the run
+/// scores its games with these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaseValues {
+    /// Grundwert of a Grand (Skatordnung 24; in the run 18 since the
+    /// decision of the user on 04.11.2026, Cockpit q27).
+    pub grand: u32,
+}
+
+impl Default for BaseValues {
+    fn default() -> BaseValues {
+        BaseValues { grand: 24 }
+    }
+}
+
+/// The card reward after a won normal pub or Spelunke (DESIGN 5.0,
+/// decision of the user on 04.11.2026, Cockpit q24): the innkeeper offers
+/// [`CardRewardConfig::offers`] Zinken, the player takes one for free on
+/// a card of his choice, or skips for [`CardRewardConfig::skip_coins`].
+/// All numbers VORLÄUFIG.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardRewardConfig {
+    /// Zinken on offer, all different.
+    pub offers: u32,
+    /// Groschen for "Überspringen".
+    pub skip_coins: u32,
+    /// Weight of each rarity class (drawn first, then a Zinke of it): a
+    /// rare Zinke comes with `rare / (common + uncommon + rare)` per
+    /// offer, as far as the class has one that fits.
+    pub rarity_weights: RarityWeights,
+    /// Marken (vouchers) weigh this many percent within their class.
+    pub voucher_percent: u32,
+    /// Percent per offer for a special card (Untot, Wandelkarte) instead
+    /// of a Zinke, while the edition may still get one.
+    pub special_percent: u32,
 }
 
 /// Why content failed to load.

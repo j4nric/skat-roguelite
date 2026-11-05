@@ -16,6 +16,7 @@ fn win_pub(run: &mut Run, content: &Content) {
     run.game = None;
     let mut events = Vec::new();
     run.after_game(content, &mut events).expect("after game");
+    run.pass_card_reward(content, &mut events);
 }
 
 /// A run at the route choice after the first pub.

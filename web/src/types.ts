@@ -93,7 +93,7 @@ export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shir
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
-export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Route' | 'BossReward' | 'Won' | 'Lost';
+export type RunPhase = 'Game' | 'Shop' | 'Encounter' | 'Route' | 'BossReward' | 'CardReward' | 'Won' | 'Lost';
 /**
  * Phase of the game, in the order of the Skatordnung: ten cards (hand game or
  * pick up the skat), twelve cards (discard two), the Ansage after the skat,
@@ -142,6 +142,23 @@ export interface BossRewardView {
   offers: { index: number; relic: RelicInfo }[];
   /** Every relic slot taken: a relic only for an owned one (sold for half its price). */
   slots_full: boolean;
+}
+
+/** The card reward after a won normal pub or Spelunke (DESIGN 5.0): one Zinke for free on a card, or skip for Groschen. */
+export interface CardRewardView {
+  offers: CardRewardOfferView[];
+  /** Groschen for "Überspringen". */
+  skip_coins: number;
+}
+
+/** One Zinke of the card reward. */
+export interface CardRewardOfferView {
+  /** Index for `TakeCardReward.offer`. */
+  index: number;
+  /** The Zinke with its value and text. */
+  card_mod: CardModInfo;
+  /** The deck cards it may go on now. */
+  targets: number[];
 }
 
 /** One line of a boss edition: every card matching the filter carries the modification. */
@@ -797,6 +814,8 @@ export interface RunView {
   encounter: EncounterView | null;
   /** The relic pick after a won boss pub (ADR 0017). */
   boss_reward?: BossRewardView | null;
+  /** The card reward after a won normal pub or Spelunke (DESIGN 5.0). */
+  card_reward?: CardRewardView | null;
   /** The Kartenmaler's choice, waiting (Tresen or Werkstatt). */
   painter?: PainterView | null;
   /** The Schnaps of a won pub while every slot is full: nothing but `ChooseSchnappsReward` goes now. */
@@ -1069,6 +1088,10 @@ export type RunEvent =
   | 'BossRewardDeclined'
   | { SchnappsRewarded: { consumable: string; slots_full: boolean } }
   | { SchnappsRewardTaken: { consumable: string; given_up: string } }
+  /** Card reward (DESIGN 5.0). */
+  | { CardRewardOffered: { offers: [string, number][] } }
+  | { CardRewardTaken: { offer: number; card: number; card_mod: string; value: number } }
+  | { CardRewardSkipped: { coins: number } }
   /** Item review (02.11.2026). */
   | 'RoutesRerolled'
   | { DebtChanged: { debt: number } }
@@ -1113,6 +1136,9 @@ export type RunAction =
   | { ChooseMalus: { option: number; malus: number } }
   | { ChooseSchnappsReward: { give_up: number | null } }
   | { ChooseBossRelic: { offer: number | null; replace: number | null } }
+  /** Card reward (DESIGN 5.0). */
+  | { TakeCardReward: { offer: number; card: number } }
+  | 'SkipCardReward'
   /** Zinken (DESIGN 8.6). */
   | { BuyCardOffer: number }
   | 'RerollCardOffers'

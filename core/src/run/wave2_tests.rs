@@ -342,7 +342,8 @@ fn all_rounder_pays_three_per_spielart_of_the_series() {
     );
     // Played out: the Grundwert of the grand plus 3.
     let (_, b) = bot_to_end(&mut run, &content, Vec::new());
-    assert_eq!(b.base_value, 24 + 3);
+    // Grand 18 in the run (04.11.2026).
+    assert_eq!(b.base_value, 18 + 3);
 }
 
 #[test]
@@ -590,7 +591,7 @@ fn watertight_counts_the_first_trick_twice_for_schneider_only() {
     assert!(without.won && !without.schneider);
     // Grand Hand mit 3: 3 + 1 + 1 = 5 levels, 6 with Schneider.
     assert_eq!((without.levels, b.levels), (5, 6));
-    assert_eq!(b.value, 24 * 6);
+    assert_eq!(b.value, 18 * 6);
     // A Schneider by the rules needs no line.
     let mut run = relic_run(&content, &["watertight"]);
     deal(&mut run, &content, STRONG, STRONG_SKAT);
