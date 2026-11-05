@@ -22,11 +22,11 @@ use serde::{Deserialize, Serialize};
 use crate::cards::Card;
 use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
-pub use effects::{CardFilter, Condition, Effect, Hook, Stage};
+pub use effects::{CardCount, CardFilter, Condition, Effect, Hook, Stage};
 pub use engine::{
     ActiveSource, CardModStatus, Editions, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
-    owns_card_points, resolve_edition,
+    is_marked, owns_card_points, resolve_edition,
 };
 pub use score::{
     Change, Lever, RUN_LOSS_FACTOR, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source,
@@ -242,6 +242,27 @@ pub enum GameFocus {
     /// Suit games and grand (Trumpfspiele).
     Trump,
     /// Null.
+    Null,
+}
+
+/// Build direction ("Bau-Richtung", decided by the user on 04.11.2026,
+/// Cockpit q26): which build an item belongs to. Relics, card
+/// modifications and Schnäpse carry it as data (`tags`); the connector
+/// relics of a direction count its other parts, and offers may weigh items
+/// by their tags. An item may carry several or none. Presentation and
+/// offer data only: what an item does stays in its effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum BuildTag {
+    /// Farbtreue: one trump suit (Stammfarbe, the suit birds, Siegel,
+    /// Blue Curaçao).
+    OneSuit,
+    /// Markenhändler: Marken (vouchers), discarding and their redemption.
+    Vouchers,
+    /// Stichjäger: Zinken that act when their card takes a trick.
+    Tricks,
+    /// Schneider: making the defenders Schneider.
+    Schneider,
+    /// Nullspieler: Null games (Blei, Schwarze Null).
     Null,
 }
 
@@ -861,6 +882,9 @@ pub struct RelicDef {
     /// Display group (default: Value).
     #[serde(default)]
     pub group: RelicGroup,
+    /// Build directions it belongs to ([`BuildTag`]).
+    #[serde(default)]
+    pub tags: Vec<BuildTag>,
 }
 
 /// The kind of a card modification in the effects v2 system (DESIGN 7.2).
@@ -947,6 +971,9 @@ pub struct CardModDef {
     /// only a Daus). `None`: every normal card.
     #[serde(default)]
     pub only_on: Option<CardFilter>,
+    /// Build directions it belongs to ([`BuildTag`]).
+    #[serde(default)]
+    pub tags: Vec<BuildTag>,
 }
 
 impl CardModDef {
@@ -1342,6 +1369,9 @@ pub struct ConsumableDef {
     /// core decides whether it can be used now. Default [`ConsumableTarget::Player`].
     #[serde(default)]
     pub target: ConsumableTarget,
+    /// Build directions it belongs to ([`BuildTag`]).
+    #[serde(default)]
+    pub tags: Vec<BuildTag>,
 }
 
 /// What a Schnaps is poured on in the frontend (Schnaps-Leiste, DESIGN

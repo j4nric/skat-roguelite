@@ -261,6 +261,10 @@ pub struct HookContext<'a> {
     pub games_left: u32,
     /// The means of transport of the route just taken (on route chosen).
     pub transport: Option<crate::run::tour::Transport>,
+    /// Ids of the cards of the player's edition that carry a Zinke (a
+    /// modification that is no curse), for
+    /// [`Condition::TrickWonWithMarkedCard`]. `None`: none known.
+    pub marked_cards: Option<&'a BTreeSet<u32>>,
 }
 
 /// Evaluate a condition. `this_card` is the card a modification sits on.
@@ -363,6 +367,12 @@ pub fn evaluate(
             g.tricks().last().is_some_and(|t| t.winner.is_declarer())
                 && g.tricks().iter().filter(|t| t.winner.is_declarer()).count() == 1
         }),
+        Condition::TrickWonWithMarkedCard => {
+            game.and_then(|g| g.tricks().last()).is_some_and(|t| {
+                let card = t.winning_card();
+                t.winner.is_declarer() && is_marked(ctx, card)
+            })
+        }
         Condition::GamesLeftAtLeast(n) => ctx.games_left >= *n,
         Condition::TransportIs(t) => ctx.transport == Some(*t),
         Condition::NullGame => declaration.is_some_and(Declaration::is_null),
@@ -466,6 +476,7 @@ pub fn evaluate_if_won(
         | Condition::NeverFollowedSuit
         | Condition::TrickWinnerMatches { .. }
         | Condition::FirstTrickOfDeclarer
+        | Condition::TrickWonWithMarkedCard
         | Condition::ThisCardWinsFirstTrick
         | Condition::ThisCardWinsTrick
         | Condition::ThisCardBeatsDefenderCard(_) => None,
@@ -619,7 +630,8 @@ pub fn evaluate_known(
         | Condition::NeverFollowedSuit
         | Condition::MatadorsAtLeast { .. }
         | Condition::TrickWinnerMatches { .. }
-        | Condition::FirstTrickOfDeclarer => None,
+        | Condition::FirstTrickOfDeclarer
+        | Condition::TrickWonWithMarkedCard => None,
         // Certain once the card lies in a trick (an "Untot" card may come
         // back and be played again, so only `true` is final).
         Condition::ThisCardPlayed => evaluate(condition, ctx, this_card).then_some(true),
@@ -674,6 +686,13 @@ pub fn held_by_player(game: &Game<DealtCard>, id: u32) -> bool {
                 .any(|(i, c)| c.id == id && seat_at(lead, i).is_declarer())
         };
     in_hand || in_skat || played
+}
+
+/// Whether `card` is a card of the player's edition that carries a Zinke
+/// ([`HookContext::marked_cards`]).
+#[must_use]
+pub fn is_marked(ctx: &HookContext<'_>, card: DealtCard) -> bool {
+    card.owner == Owner::Player && ctx.marked_cards.is_some_and(|m| m.contains(&card.id))
 }
 
 /// Whether the player played the card with this id into a completed
