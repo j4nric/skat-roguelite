@@ -114,8 +114,8 @@ use super::{EncounterOption, Run, RunAction, RunPhase};
 use crate::ai::{DeclarerHeuristic, Policy, null_unsafe_cards, trump_count};
 use crate::cards::{Card, CardKind, PlayingCard, Rank, Suit};
 use crate::content::{
-    BetOn, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content, Effect,
-    EncounterEffect, NextGameEffect, RelicId, StopCategory,
+    BetOn, BuildTag, CardModDef, CardModId, CardPick, ConsumableAction, ConsumableId, Content,
+    Effect, EncounterEffect, NextGameEffect, RelicId, StopCategory,
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
@@ -450,6 +450,93 @@ pub fn consumable_value(id: &ConsumableId) -> u32 {
         .iter()
         .find(|(name, _)| *name == id.as_str())
         .map_or(0, |&(_, v)| v)
+}
+
+/// A Zinke that shares a build direction ([`BuildTag`]) with a relic the
+/// bot holds is worth this many percent more to it ([`zinke_score`]): in
+/// the card reward, the Auslage and the Kartenmaler. Measurement tool
+/// (05.11.2026, provisional): without it the bot took Rang +1 in 47 % of
+/// its card rewards and the build directions hardly formed in the
+/// simulator (`docs/balance/2026-11-05-runde3.md`). + 200 % (three times
+/// the value) lets a direction Zinke worth 1 (Blei, Schneiderkreide,
+/// Pfandmarke) tie with the best plain ones (3) and win the tie; + 50 %
+/// would never change a pick against Rang +1.
+pub const ZINKE_DIRECTION_BONUS_PERCENT: u32 = 200;
+
+/// A relic offer that shares a build direction with a relic the bot holds
+/// or a Zinke in its deck is worth this much more ([`relic_score`], in
+/// hundredths of a [`relic_value`] point): one point, enough to break ties
+/// and close gaps of one (provisional, 05.11.2026).
+pub const RELIC_DIRECTION_BONUS: u32 = 100;
+
+/// The build directions of the relics the run holds.
+fn relic_tags(run: &Run, content: &Content) -> Vec<BuildTag> {
+    let mut tags: Vec<BuildTag> = run
+        .relics()
+        .iter()
+        .filter_map(|id| content.relic(id))
+        .flat_map(|def| def.tags.iter().copied())
+        .collect();
+    tags.sort_unstable();
+    tags.dedup();
+    tags
+}
+
+/// The build directions of the relics held and of the Zinken (no curses)
+/// in the deck.
+fn build_tags(run: &Run, content: &Content) -> Vec<BuildTag> {
+    let mut tags = relic_tags(run, content);
+    tags.extend(
+        run.edition()
+            .cards()
+            .iter()
+            .flat_map(|c| c.mods.iter())
+            .filter_map(|m| content.card_mod(m))
+            .filter(|def| !def.is_curse())
+            .flat_map(|def| def.tags.iter().copied()),
+    );
+    tags.sort_unstable();
+    tags.dedup();
+    tags
+}
+
+/// The bot's score of a Zinke for this run, in hundredths of a
+/// [`zinken_value`] point: its value, + [`ZINKE_DIRECTION_BONUS_PERCENT`]
+/// if it shares a build direction with a relic the bot holds.
+#[must_use]
+pub fn zinke_score(run: &Run, content: &Content, id: &CardModId) -> u32 {
+    let base = zinken_value(id) * 100;
+    let tags = relic_tags(run, content);
+    let matches = content
+        .card_mod(id)
+        .is_some_and(|def| def.tags.iter().any(|t| tags.contains(t)));
+    if matches && base > 0 {
+        // + 1 wins a tie for the direction.
+        base * (100 + ZINKE_DIRECTION_BONUS_PERCENT) / 100 + 1
+    } else {
+        base
+    }
+}
+
+/// The bot's score of a relic offer for this run, in hundredths of a
+/// [`relic_value`] point: its value, + [`RELIC_DIRECTION_BONUS`] if it
+/// shares a build direction with a relic held or a Zinke in the deck. A
+/// relic the bot does not want (value 0) stays 0.
+#[must_use]
+pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
+    let base = relic_value(id) * 100;
+    if base == 0 {
+        return 0;
+    }
+    let tags = build_tags(run, content);
+    let matches = content
+        .relic(id)
+        .is_some_and(|def| def.tags.iter().any(|t| tags.contains(t)));
+    if matches {
+        base + RELIC_DIRECTION_BONUS
+    } else {
+        base
+    }
 }
 
 /// The Nullspieler plays a hand with at most this many exposed cards
@@ -803,7 +890,7 @@ impl RunBot {
         };
         let mut best: Option<(u32, usize)> = None;
         for (i, id) in reward.relics.iter().enumerate() {
-            let value = relic_value(id);
+            let value = relic_score(run, content, id);
             if best.is_none_or(|(b, _)| value > b) {
                 best = Some((value, i));
             }
@@ -823,7 +910,7 @@ impl RunBot {
             .enumerate()
             .min_by_key(|(i, id)| (relic_value(id), *i));
         match weakest {
-            Some((index, id)) if value >= relic_value(id) + SWAP_MARGIN => {
+            Some((index, id)) if value >= (relic_value(id) + SWAP_MARGIN) * 100 => {
                 RunAction::ChooseBossRelic {
                     offer: Some(offer),
                     replace: Some(index),
@@ -848,7 +935,7 @@ impl RunBot {
             .enumerate()
             .filter_map(|(offer, (card_mod, _))| {
                 let card = Self::card_reward_card(run, content, offer)?;
-                Some((zinken_value(card_mod), offer, card))
+                Some((zinke_score(run, content, card_mod), offer, card))
             })
             .max_by_key(|&(value, offer, _)| (value, std::cmp::Reverse(offer)));
         match best {
@@ -966,7 +1053,7 @@ impl RunBot {
     /// first on a tie. One is always taken.
     #[must_use]
     pub fn encounter_action(&self, run: &Run, content: &Content) -> RunAction {
-        if let Some(action) = Self::paint_choice(run) {
+        if let Some(action) = Self::paint_choice(run, content) {
             return action;
         }
         let Some(encounter) = run.encounter() else {
@@ -1236,7 +1323,7 @@ impl RunBot {
         let Some(shop) = run.shop() else {
             return RunAction::LeaveShop;
         };
-        if let Some(action) = Self::paint_choice(run) {
+        if let Some(action) = Self::paint_choice(run, content) {
             return action;
         }
         if shop.kiosk {
@@ -1263,10 +1350,11 @@ impl RunBot {
             .filter_map(|(slot, id)| {
                 let id = id.as_ref()?;
                 let def = content.relic(id)?;
+                let score = relic_score(run, content, id);
                 let value = if run.is_fence(slot) && !likes_curses {
-                    relic_value(id).saturating_sub(TRADE_PENALTY)
+                    score.saturating_sub(TRADE_PENALTY * 100)
                 } else {
-                    relic_value(id)
+                    score
                 };
                 Some((value, run.relic_offer_cost(content, slot, def.price), slot))
             })
@@ -1281,12 +1369,12 @@ impl RunBot {
                 .enumerate()
                 .map(|(index, id)| {
                     let refund = content.relic(id).map_or(0, |d| super::sell_price(d.price));
-                    (relic_value(id), index, refund)
+                    (relic_value(id) * 100, index, refund)
                 })
                 .min_by_key(|&(value, index, _)| (value, std::cmp::Reverse(index)));
             if let Some((weak_value, index, refund)) = weakest {
                 let better = offers.iter().any(|&(value, price, _)| {
-                    value >= weak_value + SWAP_MARGIN && price <= coins + refund
+                    value >= weak_value + SWAP_MARGIN * 100 && price <= coins + refund
                 });
                 if better {
                     return RunAction::SellRelic(index);
@@ -1333,10 +1421,11 @@ impl RunBot {
                 let offer = offer.as_ref()?;
                 let card = run.edition().get(offer.card)?;
                 let bare = card.mods.iter().all(|m| *m == offer.card_mod);
+                let score = zinke_score(run, content, &offer.card_mod);
                 let value = if offer.bargain.is_some() && !likes_curses {
-                    zinken_value(&offer.card_mod).saturating_sub(TRADE_PENALTY)
+                    score.saturating_sub(TRADE_PENALTY * 100)
                 } else {
-                    zinken_value(&offer.card_mod)
+                    score
                 };
                 let cost = run.card_offer_cost(content, offer);
                 (bare && value > 0 && cost <= coins).then_some((value, cost, slot))
@@ -1370,13 +1459,13 @@ impl RunBot {
 
     /// The Kartenmaler waits: take his most valuable modification, the
     /// first on a tie.
-    fn paint_choice(run: &Run) -> Option<RunAction> {
+    fn paint_choice(run: &Run, content: &Content) -> Option<RunAction> {
         let painter = run.painter()?;
         let best = painter
             .options
             .iter()
             .enumerate()
-            .max_by_key(|(i, (m, _))| (zinken_value(m), std::cmp::Reverse(*i)))
+            .max_by_key(|(i, (m, _))| (zinke_score(run, content, m), std::cmp::Reverse(*i)))
             .map_or(0, |(i, _)| i);
         Some(RunAction::ChoosePaint(best))
     }
