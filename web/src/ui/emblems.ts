@@ -1714,10 +1714,11 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
   // Bierdeckel and Spelunkenkenner were reworked and keep their motifs.
   fan_block: [
     sp('Fanschal über drei Köpfen', `
+      w.w.w.w.w.w.w
       rrwwrrwwrrwwr
       rrwwrrwwrrwwr
-      s....s.s....s
-      s....s.s....s
+      s...........s
+      s...........s
       nnn..nnn..nnn
       sss..sss..sss
       sss..sss..sss
@@ -1743,11 +1744,11 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
   ],
   pump_attendant: [
     sp('Zapfsäule mit Pfandmarke', `
-      .rrrrrr...L.L.
-      rrrrrrrr.LLLLL
-      rwwwwwwr..LoL.
-      rwkwkkwr.LLLLL
-      rwwwwwwr..L.L.
+      .rrrrrr..o.o.o
+      rrrrrrrr.ooooo
+      rwwwwwwr..oYo.
+      rwkwkkwr.ooooo
+      rwwwwwwr.o.o.o
       rrrrrrrrG.....
       rrrrrrrr.G....
       rrrwwrrr..G...
@@ -1845,18 +1846,18 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       ..rrrrrrrrr..`),
   ],
   yardstick: [
-    sp('Elle mit Teilstrichen', `
-      .........gggg
-      ........YYYY.
-      .......OOOO..
-      ......YYYY...
-      .....OOOO....
-      ....YYYY.....
-      ...OOOO......
-      ..YYYY.......
-      .OOOO........
-      YYYY.........
-      ggg..........`),
+    sp('Elle über dem Stoffballen', `
+      yYGYGYGYGYGYGy
+      yYGYYYGYYYGYYy
+      yYYYYYYYYYYYYy
+      yyyyyyyyyyyyyy
+      ..............
+      ..rrrrrrrrrr..
+      .rrRrrRrrRrrr.
+      .rrrrrrrrrrrr.
+      .rrRrrRrrRrrr.
+      .rrrrrrrrrrrr.
+      ..rrrrrrrrrr..`),
   ],
   plumber: [
     sp('Rohrzange mit flüssigem Blei', `
@@ -2000,14 +2001,15 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       OOOOOOOOOOOO`),
   ],
   teetotaller: [
-    sp('Teetasse mit Dampf', `
-      ...g..g.....
-      ....g..g....
-      ...g..g.....
-      .wOOOOOOw...
-      .wrwwrwwwww.
-      .wwwrwwrw.w.
-      ..wwwwwwww..
+    sp('Teetasse mit Teebeutel', `
+      ....g.......
+      ....g.......
+      ...LLL......
+      ...LLL......
+      .wwgOOOOw...
+      .wrgwrwwwww.
+      .wwgrwwrw.w.
+      ..wgwwwwww..
       ...wwwwww...
       gwwwwwwwwwg.
       .gggggggg...`),
