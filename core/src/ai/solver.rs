@@ -47,6 +47,10 @@ pub enum Goal {
     /// take from now on, the skat included for the last trick. The seat
     /// maximizes, the two others minimize.
     RamschAvoid(Seat),
+    /// Schwarz announced (Schwarz angesagt, a suit or grand Ouvert): 1 if
+    /// a defender takes a trick from now on, else 0. The defenders
+    /// maximize, the declarer minimizes.
+    DefenderTrick,
 }
 
 /// A position with every hand known.
@@ -152,7 +156,11 @@ struct Search<'t> {
     gain: u8,
     /// Seats that maximize.
     maxi: u8,
+    /// Null card play (move ordering and estimate of a Null).
     null: bool,
+    /// Seats whose first trick ends the search with value 1 (Null: the
+    /// declarer, Schwarz announced: the defenders); `0` for point goals.
+    catch: u8,
     ramsch: bool,
     skat_points: i32,
     hands: [u32; 3],
@@ -313,6 +321,7 @@ impl<'t> Search<'t> {
             gain: 0,
             maxi: 0,
             null: false,
+            catch: 0,
             ramsch: false,
             skat_points: i32::try_from(layout.skat_points).unwrap_or(0),
             hands: [0; 3],
@@ -363,6 +372,11 @@ impl<'t> Search<'t> {
             }
             Goal::NullDeclarerTrick => {
                 s.null = true;
+                s.catch = 0b001;
+                s.maxi = 0b110;
+            }
+            Goal::DefenderTrick => {
+                s.catch = 0b110;
                 s.maxi = 0b110;
             }
             Goal::RamschAvoid(seat) => {
@@ -630,6 +644,30 @@ impl<'t> Search<'t> {
         value
     }
 
+    /// Schwarz announced behind the depth limit: the greedy play-out of
+    /// [`Search::estimate`]; 1 if a defender takes a trick.
+    fn trick_estimate(&self) -> i32 {
+        let mut hands = self.hands;
+        let mut leader = self.leader;
+        while hands[leader] != 0 {
+            let mut trick = [0u8; 3];
+            for k in 0..3 {
+                let seat = (leader + k) % 3;
+                let Some(card) = self.greedy_card(&hands, seat, &trick[..k], leader) else {
+                    return 0;
+                };
+                trick[k] = card;
+                hands[seat] &= !(1 << card);
+            }
+            let winner = (leader + self.winner_of(&trick)) % 3;
+            if self.catch & (1 << winner) != 0 {
+                return 1;
+            }
+            leader = winner;
+        }
+        0
+    }
+
     /// Null behind the depth limit: a greedy play-out with open cards
     /// (the declarer ducks as high as he can, the defenders keep him on
     /// top). 1 if the declarer takes a trick.
@@ -844,7 +882,7 @@ impl<'t> Search<'t> {
         if boundary && self.hands[self.leader] == 0 {
             return 0;
         }
-        if self.null {
+        if self.catch != 0 {
             if alpha >= 1 {
                 return 1;
             }
@@ -852,7 +890,11 @@ impl<'t> Search<'t> {
                 return 0;
             }
             if boundary && self.out_of_budget() {
-                return self.null_estimate();
+                return if self.null {
+                    self.null_estimate()
+                } else {
+                    self.trick_estimate()
+                };
             }
         } else {
             let max = self.live_points + if self.ramsch { self.skat_points } else { 0 };
@@ -952,7 +994,7 @@ impl<'t> Search<'t> {
                 .sum();
             let saved_leader = self.leader;
             let saved_trick = self.trick;
-            if self.null && winner == 0 {
+            if self.catch & (1 << winner) != 0 {
                 1
             } else {
                 let mut gained = if self.gain & (1 << winner) != 0 {
@@ -1056,7 +1098,7 @@ mod tests {
         }
         let maximize = match goal {
             Goal::DeclarerPoints => seat.is_declarer(),
-            Goal::NullDeclarerTrick => !seat.is_declarer(),
+            Goal::NullDeclarerTrick | Goal::DefenderTrick => !seat.is_declarer(),
             Goal::RamschAvoid(me) => seat == me,
         };
         let mut best: Option<i32> = None;
@@ -1075,6 +1117,8 @@ mod tests {
                     Goal::NullDeclarerTrick => {
                         reference(game, goal, hands, winner, trick, skat_points)
                     }
+                    Goal::DefenderTrick if !winner.is_declarer() => 1,
+                    Goal::DefenderTrick => reference(game, goal, hands, winner, trick, skat_points),
                     Goal::DeclarerPoints => {
                         let gained = if winner.is_declarer() { points } else { 0 };
                         i32::try_from(gained).unwrap_or(0)
@@ -1169,6 +1213,8 @@ mod tests {
         match goal {
             Goal::NullDeclarerTrick if winner.is_declarer() => 1,
             Goal::NullDeclarerTrick => rest(hands, &mut empty),
+            Goal::DefenderTrick if !winner.is_declarer() => 1,
+            Goal::DefenderTrick => rest(hands, &mut empty),
             Goal::DeclarerPoints => {
                 let gained = if winner.is_declarer() { points } else { 0 };
                 i32::try_from(gained).unwrap_or(0) + rest(hands, &mut empty)
@@ -1236,6 +1282,7 @@ mod tests {
                 _ => vec![
                     Goal::DeclarerPoints,
                     Goal::RamschAvoid(Seat::ALL[round % 3]),
+                    Goal::DefenderTrick,
                 ],
             };
             for goal in goals {
@@ -1283,14 +1330,16 @@ mod tests {
         for round in 0..240 {
             let game = games()[round % 3];
             let layout = random_layout(&mut rng, odd_deck(), 2 + round % 3, (round / 3) % 3);
-            let goal = if game == GameType::Null {
-                Goal::NullDeclarerTrick
+            let goals = if game == GameType::Null {
+                vec![Goal::NullDeclarerTrick]
             } else {
-                Goal::DeclarerPoints
+                vec![Goal::DeclarerPoints, Goal::DefenderTrick]
             };
-            let fast = solve(game, goal, &layout);
-            let slow = reference_moves(game, goal, &layout);
-            assert_eq!(fast, slow, "round {round} {game} {layout:?}");
+            for goal in goals {
+                let fast = solve(game, goal, &layout);
+                let slow = reference_moves(game, goal, &layout);
+                assert_eq!(fast, slow, "round {round} {game} {goal:?} {layout:?}");
+            }
         }
     }
 
