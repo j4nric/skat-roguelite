@@ -4,6 +4,8 @@
 import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
+import type { DailyBoard } from '../account';
+import type { AccountView, ConflictSide } from './account';
 import type { RunRecord } from '../storage';
 import type { SettledWild } from './cards';
 import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunLength, RunView, ScoreView, Seat } from '../types';
@@ -115,6 +117,16 @@ export type Overlay =
   | { kind: 'save-import'; text: string; error: string | null; checking: boolean }
   /** A checked save code, waiting for the player to replace the current progress. */
   | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[] }
+  /** The account (ADR 0021): sign up and in, or name, sign out, delete. */
+  | { kind: 'account'; busy: boolean; error: string | null; note: string | null }
+  /** The recovery code, shown once (sign-up, recovery login, renewed). */
+  | { kind: 'account-code'; code: string; why: 'new' | 'recovered' | 'renewed'; copied: boolean | null }
+  /** Sign in with the recovery code. */
+  | { kind: 'account-recover'; busy: boolean; error: string | null }
+  /** Delete the account? */
+  | { kind: 'account-delete'; busy: boolean; error: string | null }
+  /** Played on two devices: which state stays. */
+  | { kind: 'sync-conflict'; here: ConflictSide; server: ConflictSide }
   | { kind: 'overview' }
   /** The Regelkarte: what is different here from the Skatordnung. */
   | { kind: 'rules' }
@@ -190,4 +202,8 @@ export interface UiState {
   settings: Settings;
   /** The run ended: won or lost. */
   ended: { won: boolean; view: RunView } | null;
+  /** The account and its sync status (ADR 0021). */
+  account: AccountView;
+  /** Today's daily board, once fetched (null: not there or not reachable). */
+  board: DailyBoard | null;
 }

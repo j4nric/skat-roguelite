@@ -7,6 +7,7 @@ import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, 
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
+import { CHARACTERS } from '../types';
 import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunLength, RunView, Suit, UnlockEntry } from '../types';
 import { backDesign } from './backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
@@ -23,6 +24,8 @@ import { renderRules } from './rules';
 import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
+import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderRecover, renderRecoveryCode, syncPill } from './account';
+import type { DailyBoard, DailyEntry } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
 import type { ModQuestion, Overlay, UiState } from './state';
 
@@ -248,8 +251,42 @@ function dailyBlock(ui: UiState): string {
       <span class="small">${esc(de.start.dailyText)} ${esc(seedLine(seed, ui.pickCharacter, ui.pickLength, pickedStake(ui.meta, ui.pickCharacter, ui.pickLength, ui.pickStake)))}</span>
       ${played ? `<span class="small daily-done">${esc(t(de.start.dailyDone, { result: runResult(played) }))}</span>` : ''}
     </div>
+    ${ui.board && ui.board.day === seed ? dailyBoard(ui.board, ui.account.user !== null, played !== undefined) : ''}
     <button class="btn btn-wide" ${attrs({ 'data-action': 'play-daily' })}>${esc(t(de.start.dailyPlay, { name: shortName(ui.pickCharacter) }))}</button>
   </section>`;
+}
+
+/** A result on the daily board in a few words. */
+function boardResult(e: DailyEntry): string {
+  const result = e.won ? de.board.won : t(de.board.reached, { section: e.section, series: e.series });
+  return `${result}${e.stake > 0 ? ` · ${t(de.board.stake, { stake: e.stake })}` : ''}`;
+}
+
+function boardRow(e: DailyEntry): string {
+  const character = (CHARACTERS as readonly string[]).includes(e.character) ? shortName(e.character as Character) : e.character;
+  return `<li class="board-row${e.me ? ' is-me' : ''}"><span class="board-rank">${esc(e.rank)}.</span><span class="board-who"><span class="board-name">${esc(e.name ?? de.account.noName)}</span><span class="board-char">${esc(character)}</span></span><span class="board-result">${esc(boardResult(e))}</span></li>`;
+}
+
+/**
+ * Today's daily board (ADR 0021): the best ten with names, the own place
+ * below if it is not among them. Read-only without an account.
+ */
+function dailyBoard(board: DailyBoard, signedIn: boolean, played: boolean): string {
+  const rows = board.entries.map(boardRow).join('');
+  const meShown = board.entries.some((e) => e.me);
+  let foot = '';
+  if (!signedIn) {
+    foot = `<p class="small board-hint">${esc(de.board.signInHint)} <button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'board-signin' })}>${esc(de.board.signIn)}</button></p>`;
+  } else if (board.me && !meShown) {
+    foot = `<ol class="board-list board-me">${boardRow(board.me)}</ol><p class="small">${esc(t(de.board.you, { rank: board.me.rank, total: board.total }))}</p>`;
+  } else if (!board.me && !played) {
+    foot = `<p class="small board-hint">${esc(de.board.notYet)}</p>`;
+  }
+  return `<div class="board" data-testid="daily-board">
+    <div class="board-head"><b>${esc(de.board.title)}</b>${board.total ? `<span class="small">${esc(t(de.board.total, { total: board.total }))}</span>` : ''}</div>
+    ${rows ? `<ol class="board-list">${rows}</ol>` : `<p class="small">${esc(de.board.empty)}</p>`}
+    ${foot}
+  </div>`;
 }
 
 /**
@@ -324,6 +361,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     ${meta ? `<button class="btn btn-wide btn-book" ${attrs({ 'data-action': 'book' })}>${bookIcon()}<span>${esc(de.start.book)}</span><span class="book-progress">${esc(t(de.start.bookHint, { done, total }))}</span></button>` : ''}
     <p class="howto">${esc(de.start.howTo)}</p>
     <footer class="start-foot">
+      <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'account-open' })}>${esc(ui.account.user ? accountName(ui.account.user) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span>
       <button class="link-btn" ${attrs({ 'data-action': 'settings' })}>${esc(de.start.settings)}</button>
       <button class="link-btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.start.credits)}</button>
       <span class="build" data-testid="build">${esc(t(de.app.build, { info: buildInfo }))}</span>
@@ -594,6 +632,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
+           <button class="btn btn-account" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}><span>${esc(ui.account.user ? de.account.title : de.account.menuSignIn)}</span>${ui.account.user ? syncPill(ui.account.status, false) : ''}</button>
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
@@ -603,6 +642,16 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'save-menu':
       return renderSaveMenu(sheet);
+    case 'account':
+      return renderAccount(sheet, ui.account, overlay.busy, overlay.error, overlay.note);
+    case 'account-code':
+      return renderRecoveryCode(sheet, overlay.code, overlay.why, overlay.copied, ui.account.supported);
+    case 'account-recover':
+      return renderRecover(sheet, overlay.busy, overlay.error);
+    case 'account-delete':
+      return renderDeleteAccount(sheet, overlay.busy, overlay.error);
+    case 'sync-conflict':
+      return renderConflict(sheet, overlay.here, overlay.server);
     case 'save-export':
       return renderSaveExport(sheet, overlay.code, overlay.copied);
     case 'save-import':
