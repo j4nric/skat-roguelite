@@ -91,8 +91,8 @@
         // 37,4 / 17,3 / 4,8 %.
         targets: Some([
             [30, 45, 80, 85, 120],
-            [90, 105, 115, 125, 150],
-            [200, 215, 235, 250, 175],
+            [95, 110, 120, 130, 150],
+            [225, 240, 265, 280, 195],
         ]),
         // Die lange Nacht (Balancing-Runde 05.11.2026,
         // docs/balance/2026-11-05-nacht.md): eigenes Wachstum je Stadtteil
@@ -214,8 +214,8 @@
         // 7 %, der Alte 33 %), 21,6 % in den ersten beiden Kneipen. 1-1 und
         // 1-2 − 5, Stadtteil 3 − 45 bis − 60: 36,9 / 16,0 / 3,4 %, 19,6 %.
         targets: Some([
-            [20, 35, 65, 70, 110],
-            [60, 75, 85, 95, 105],
+            [20, 35, 60, 65, 100],
+            [65, 80, 90, 100, 110],
             [135, 150, 165, 180, 120],
         ]),
         start_relics: ["watertight"],
@@ -267,8 +267,8 @@
         // 2 + 5 (Boss 90), Stadtteil 3 − 30 bis − 40: 38,8 / 17,2 / 3,1 %.
         targets: Some([
             [10, 20, 35, 40, 75],
-            [45, 55, 60, 70, 90],
-            [110, 120, 135, 145, 105],
+            [40, 50, 55, 65, 90],
+            [100, 110, 125, 135, 100],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die

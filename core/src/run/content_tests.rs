@@ -182,16 +182,16 @@ fn every_content_item_loads_with_german_texts() {
     let targets = |c: Character| content.characters[&c].targets.clone();
     let null = targets(Character::NullPlayer).expect("null targets");
     assert_eq!(null[0], vec![30, 45, 80, 85, 120]);
-    assert_eq!(null[2], vec![200, 215, 235, 250, 175]);
+    assert_eq!(null[2], vec![225, 240, 265, 280, 195]);
     let tailoress = targets(Character::Tailoress).expect("tailoress targets");
-    assert_eq!(tailoress[0], vec![20, 35, 65, 70, 110]);
+    assert_eq!(tailoress[0], vec![20, 35, 60, 65, 100]);
     assert_eq!(tailoress[2], vec![135, 150, 165, 180, 120]);
     let shirker = targets(Character::Shirker).expect("shirker targets");
     assert_eq!(shirker[0], vec![20, 35, 55, 60, 100]);
     assert_eq!(shirker[2], vec![130, 145, 160, 175, 125]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
     assert_eq!(heart_brother[0], vec![10, 20, 35, 40, 75]);
-    assert_eq!(heart_brother[2], vec![110, 120, 135, 145, 105]);
+    assert_eq!(heart_brother[2], vec![100, 110, 125, 135, 100]);
     // One more Einmischen in Stadtteil 1 (balance round 2).
     assert_eq!(content.run.district_redeals, vec![1]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
