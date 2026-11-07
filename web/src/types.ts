@@ -67,6 +67,8 @@ export interface CardView extends DealtCard {
   named?: Suit | null;
   /** "Untot": would rise if played now (left out when false). */
   can_rise?: boolean;
+  /** "Doppelgänger": its mirror is still to come in this game (left out when false). */
+  can_mirror?: boolean;
   /** "Untot": rose in this game, back in the hand as the trick's winning card (left out when false). */
   risen?: boolean;
 }
@@ -1023,7 +1025,9 @@ export type GameEvent =
   | { LeadDemanded: { suit: LeadSuit } }
   /** "Untot": the card rose back into the hand, the substitute lies in the trick. */
   | { CardRose: { seat: Seat; card: DealtCard; substitute: DealtCard; risen?: DealtCard } }
-  /** "Doppelgänger": `stolen` from `from` lies in the trick for `card`; `from` holds `given` now. CardPlayed (stolen) follows. */
+  /** "Doppelgänger", Spiegelbild: `card` played last lies in the trick as `copy`, a copy of `copied` (the trick's highest card), and wins it. CardPlayed (copy) follows. */
+  | { DoppelgangerMirrored: { seat: Seat; card: DealtCard; copied: DealtCard; copy: DealtCard } }
+  /** "Doppelgänger" until 07.11.2026 (a stolen card): only in old saves. */
   | { DoppelgangerSwapped: { seat: Seat; card: DealtCard; from: Seat; stolen: DealtCard; given: DealtCard } }
   /** ADR 0015: a card changed its holder and shows his edition (the card only if the player knows it). */
   | { CardChangedHands: { seat: Seat; card?: DealtCard } }
@@ -1066,8 +1070,6 @@ export type RunEvent =
   | { Game: GameEvent }
   /** "Untot": the card waits in the trick for `pick` cards of the hand; `becomes` is what it comes back as. */
   | { RiseChoice: { card: DealtCard; becomes: DealtCard; pick: number } }
-  /** "Doppelgänger": nobody held a counterpart; it is played as itself. */
-  | { DoppelgangerUnmatched: { card: DealtCard } }
   | { Kontra: { seat: Seat } }
   | { FlagSet: string }
   | { FlagCleared: string }

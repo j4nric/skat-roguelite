@@ -320,10 +320,27 @@ pub enum Event<C = Card> {
         #[serde(skip_serializing_if = "Option::is_none")]
         risen: Option<C>,
     },
-    /// "Doppelgänger" (DESIGN 7.2): `seat` played `card`, and `stolen`
-    /// from the hand of `from` lies in the trick in its place
-    /// ([`Game::play_swapped`]); `given` is `card` as `from` holds it now.
-    /// [`Event::CardPlayed`] with the stolen card follows.
+    /// "Doppelgänger", "Spiegelbild" (DESIGN 7.2, since 07.11.2026):
+    /// `seat` played `card` as the last card of the trick, and it lies in
+    /// the trick as `copy`, a copy of `copied`, the highest card of the
+    /// trick so far ([`Game::play_mirrored`]). The copy keeps the identity
+    /// of `card` (instance, owner) and takes the face and Augen of
+    /// `copied`; it wins the trick. [`Event::CardPlayed`] with `copy`
+    /// follows, then [`Event::TrickWon`].
+    DoppelgangerMirrored {
+        /// Who played the Doppelgänger.
+        seat: Seat,
+        /// The Doppelgänger as it was played (its printed card).
+        card: C,
+        /// The highest card of the trick, which it copies.
+        copied: C,
+        /// The card as it lies in the trick.
+        copy: C,
+    },
+    /// "Doppelgänger" until 07.11.2026: `seat` played `card`, and `stolen`
+    /// from the hand of `from` lay in the trick in its place; `given` was
+    /// `card` as `from` held it then. No longer logged; kept so that games
+    /// saved in the middle of play still load.
     DoppelgangerSwapped {
         /// Who played the Doppelgänger.
         seat: Seat,
@@ -407,6 +424,12 @@ pub enum GameError<C = Card> {
         /// The rejected card.
         card: C,
     },
+    /// The card may only be played this way as the last card of a trick
+    /// ("Doppelgänger", [`Game::play_mirrored`]).
+    NotLastCard {
+        /// The rejected card.
+        card: C,
+    },
 }
 
 impl<C: fmt::Display> fmt::Display for GameError<C> {
@@ -430,6 +453,9 @@ impl<C: fmt::Display> fmt::Display for GameError<C> {
             }
             GameError::InvalidSkatSwap => f.write_str("the skat cannot be swapped with"),
             GameError::DiscardForbidden { card } => write!(f, "{card} must not be discarded"),
+            GameError::NotLastCard { card } => {
+                write!(f, "{card} can only mirror as the last card of a trick")
+            }
         }
     }
 }
@@ -1576,25 +1602,24 @@ impl<C: PlayingCard> Game<C> {
 
         self.hands[seat.index()].retain(|&c| c != card);
         let mut events = Vec::new();
-        self.put_into_trick(declaration, seat, card, &mut events);
+        self.put_into_trick(declaration, seat, card, None, &mut events);
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
 
-    /// "Doppelgänger" (DESIGN 7.2, 03.11.2026): `seat` plays `card`, which
-    /// must be a legal play as printed, and `stolen` from the hand of
-    /// `from` lies in the trick instead, as it is (also of another suit);
-    /// `card` goes into the hand of `from` in his edition
-    /// ([`Event::CardChangedHands`]) for the rest of the game. Logs
-    /// [`Event::DoppelgangerSwapped`], then [`Event::CardPlayed`] with the
-    /// stolen card. Which card is stolen is the run's business.
-    pub fn play_swapped(
-        &mut self,
-        seat: Seat,
-        card: C,
-        from: Seat,
-        stolen: C,
-    ) -> Result<Vec<Event<C>>, GameError<C>> {
+    /// "Doppelgänger", "Spiegelbild" (DESIGN 7.2, since 07.11.2026):
+    /// `seat` plays `card` as the last card of the trick; it must be a
+    /// legal play as printed. It lies in the trick as a copy of the
+    /// highest card so far ([`PlayingCard::risen_as`]: the face, Augen and
+    /// modifications of that card, the identity of `card`) and wins the
+    /// trick, also against the card it copies. The copy replaces `card` in
+    /// the deck and the editions, like a risen "Untot" card; the
+    /// declarer's twelve cards and the cards in play keep the card as
+    /// dealt, so the Spitzen stay as declared. Logs
+    /// [`Event::DoppelgangerMirrored`], then [`Event::CardPlayed`] with
+    /// the copy and [`Event::TrickWon`]. Whether a card may mirror is the
+    /// run's business.
+    pub fn play_mirrored(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
         let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
             return Err(GameError::WrongPhase { phase: self.phase });
         };
@@ -1605,35 +1630,39 @@ impl<C: PlayingCard> Game<C> {
         if !self.hand(seat).contains(&card) {
             return Err(GameError::CardNotInHand { seat, card });
         }
-        if from == seat || !self.hand(from).contains(&stolen) {
-            return Err(GameError::CardNotInHand {
-                seat: from,
-                card: stolen,
-            });
-        }
         if let Some(lead) = self.lead_card() {
             if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), card) {
                 return Err(GameError::MustFollowSuit { card, lead });
             }
         }
-        let mut events = Vec::new();
+        let Some(copied) = (self.trick.len() == 2)
+            .then(|| rules::winning_index(declaration.game(), &self.trick))
+            .flatten()
+            .and_then(|i| self.trick.get(i).copied())
+        else {
+            return Err(GameError::NotLastCard { card });
+        };
+        let copy = card.risen_as(copied);
         self.hands[seat.index()].retain(|&c| c != card);
-        self.hands[from.index()].retain(|&c| c != stolen);
-        let given = self.change_holder(card, from, &mut events);
-        let hand = &mut self.hands[from.index()];
-        hand.push(given);
-        hand.sort();
-        events.insert(
-            0,
-            Event::DoppelgangerSwapped {
-                seat,
-                card,
-                from,
-                stolen,
-                given,
-            },
-        );
-        self.put_into_trick(declaration, seat, stolen, &mut events);
+        for c in self.deck.iter_mut().filter(|c| **c == card) {
+            *c = copy;
+        }
+        self.deck.sort();
+        if let Some(id) = card.instance() {
+            for edition in &mut self.editions {
+                for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
+                    *c = c.risen_as(copied);
+                }
+                edition.sort();
+            }
+        }
+        let mut events = vec![Event::DoppelgangerMirrored {
+            seat,
+            card,
+            copied,
+            copy,
+        }];
+        self.put_into_trick(declaration, seat, copy, Some(seat), &mut events);
         self.log.extend(events.iter().cloned());
         Ok(events)
     }
@@ -1644,6 +1673,7 @@ impl<C: PlayingCard> Game<C> {
         declaration: Declaration,
         seat: Seat,
         card: C,
+        winner: Option<Seat>,
         events: &mut Vec<Event<C>>,
     ) {
         self.trick.push(card);
@@ -1651,9 +1681,11 @@ impl<C: PlayingCard> Game<C> {
 
         if self.trick.len() == 3 {
             let cards = [self.trick[0], self.trick[1], self.trick[2]];
-            let winner_index =
-                rules::trick_winner(declaration.game(), self.trick_lead.index(), cards);
-            let winner = Seat::from_index(winner_index).unwrap_or(self.trick_lead);
+            let winner = winner.unwrap_or_else(|| {
+                let winner_index =
+                    rules::trick_winner(declaration.game(), self.trick_lead.index(), cards);
+                Seat::from_index(winner_index).unwrap_or(self.trick_lead)
+            });
             let trick = CompletedTrick {
                 lead: self.trick_lead,
                 cards,

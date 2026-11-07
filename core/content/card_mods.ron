@@ -310,16 +310,16 @@
         passive: [Demote],
     ),
     // Lever Stichgewinn (Zinken v2, user decision 03.11.2026, Cockpit
-    // q17): played as printed (it must be a legal play), it takes a card
-    // of the same rank and another suit from the next opponent, else from
-    // the other one (drawn among several); that card lies in the trick,
-    // the robbed opponent gets this card for the rest of the game. Without
-    // a match it plays as itself. Suit games, Grand and Null.
+    // q17; reworked as "Spiegelbild" by the user on 07.11.2026, Cockpit
+    // q37): played as the last card of a trick (a legal play as printed),
+    // it becomes a copy of the highest card in the trick and wins it; the
+    // copy counts that card's Augen. Once per game. Otherwise, and in Null
+    // and Ramsch, it plays as itself.
     (
         id: "doppelganger",
         kind: Special,
         name: "Doppelgänger",
-        text: "Spielst du sie, nimmt sie dem nächsten Gegner eine Karte gleichen Rangs aus einer anderen Farbe ab (sonst dem anderen). Die liegt im Stich, er bekommt diese Karte. Ohne Gegenstück zählt sie als sie selbst. Nicht im Ramsch.",
+        text: "Spiegelbild: Spielst du sie als letzte Karte eines Stichs, wird sie zur Kopie der höchsten Karte darin und gewinnt den Stich, mit deren Augen. Einmal je Spiel, nicht im Null und Ramsch. Sonst zählt sie als sie selbst.",
         rarity: Rare,
         price: 5,
         passive: [Doppelganger],

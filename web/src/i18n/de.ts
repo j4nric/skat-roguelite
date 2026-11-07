@@ -29,6 +29,7 @@ export const de = {
       InvalidCharacter: 'Diesen Charakter gibt es nicht.',
       UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
+      NotLastCard: 'Der Doppelgänger spiegelt nur als letzte Karte eines Stichs.',
       PainterPending: 'Erst eine Zinke des Kartenmalers wählen.',
       RisePending: 'Erst die drei Karten für die untote Karte wählen.',
       InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',
@@ -229,6 +230,7 @@ export const de = {
     chalked: 'mit Blue Curaçao umgefärbt, eigentlich {suit}',
     noDiscard: 'darf nicht gedrückt werden',
     canRise: 'Untot: steht in diesem Spiel noch einmal auf',
+    canMirror: 'Doppelgänger: spiegelt in diesem Spiel noch, als letzte Karte eines Stichs',
     promotedOne: 'Winkel: einen Rang höher, ihre Augen bleiben',
     promotedMany: 'Winkel: {n} Ränge höher, ihre Augen bleiben',
     leaden: 'Blei: im Null die niedrigste ihrer Farbe',
@@ -487,10 +489,9 @@ export const de = {
     more: 'Noch {n} wählen',
   },
 
-  /** "Doppelgänger": the words of its swap scene. */
+  /** "Doppelgänger": the word of its mirror scene. */
   doppel: {
-    swapped: 'Getauscht!',
-    unmatched: 'Kein Gegenstück',
+    mirrored: 'Gespiegelt!',
   },
 
   kontra: {
@@ -547,8 +548,7 @@ export const de = {
     skatSwapped: 'Aus dem Skat: {took} genommen, {gave} gedrückt.',
     cardDrawn: 'Drei drücken: {card} von {name} kommt dazu.',
     cardRose: 'Untot: {card} steht wieder auf und kehrt als {risen} auf die Hand zurück. {substitute} liegt im Stich.',
-    doppelSwapped: 'Doppelgänger: {card} nimmt {name} {stolen} ab. {name} bekommt {card}.',
-    doppelUnmatched: 'Doppelgänger: niemand hat ein Gegenstück, {card} zählt als sie selbst.',
+    doppelMirrored: 'Spiegelbild: {card} wird zu {copied} und gewinnt den Stich.',
     cardReturned: '{card} geht an {name} zurück.',
     skatShown: 'Spickzettel: {card} liegt im Skat.',
     debt: 'Angeschrieben: {debt} Groschen Schulden.',
@@ -990,9 +990,9 @@ export const de = {
       'Einmal pro Spiel, nie als letzte Karte. Im Null und im Ramsch ist sie eine normale Karte.',
     ],
     doppelganger: [
-      'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab (sonst dem anderen).',
-      'Die abgenommene Karte liegt im Stich, der Gegner bekommt deine Karte für den Rest des Spiels.',
-      'Bedienen musst du mit ihrer gedruckten Farbe. Ohne Gegenstück zählt sie als sie selbst; im Ramsch immer.',
+      'Spielst du sie als letzte Karte eines Stichs, wird sie zur Kopie der höchsten Karte darin und gewinnt den Stich.',
+      'Sie zählt die Augen der kopierten Karte. Einmal pro Spiel, im Farbspiel und Grand.',
+      'Bedienen musst du mit ihrer gedruckten Farbe. Als erste oder zweite Karte, im Null und im Ramsch zählt sie als sie selbst.',
     ],
     wild_card: [
       'Bei Spielbeginn nimmt sie die Farbe an, von der du die meisten Karten hältst (ohne Unter).',
@@ -1538,7 +1538,7 @@ export const de = {
     },
     card_mods: {
       // Playtest 05.11.2026: said simply (the core's catalog text has the details).
-      doppelganger: { text: 'Spielst du sie, nimmst du dem nächsten Gegner seine Karte gleichen Rangs ab.' },
+      doppelganger: { text: 'Spiegelbild: Als letzte Karte eines Stichs wird sie zur höchsten Karte darin und gewinnt ihn. Einmal pro Spiel.' },
     },
     bosses: {},
     consumables: {

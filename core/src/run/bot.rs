@@ -478,7 +478,7 @@ pub const REROLL_RESERVE: u32 = 6;
 /// | `crosshair` (Fadenkreuz) | 1 | only when it beats a defender's Daus |
 /// | `tailors_chalk` (Schneiderkreide) | 1 | only in a won Schneider game |
 /// | `lead` (Blei) | 1 | only in Null, which the bot rarely plays |
-/// | `doppelganger` (Doppelgänger, rare in the Auslage) | 1 | a swap at random, hard to judge |
+/// | `doppelganger` (Doppelgänger, rare in the Auslage) | 1 | one mirror per game, only as the last card |
 pub const ZINKEN_VALUES: [(&str, u32); 13] = [
     ("trump_bonus", 3),
     ("rank", 3),
@@ -1809,9 +1809,13 @@ impl RunBot {
                 if let Some(card) = Self::undead_card(run, content) {
                     return Some(RunAction::Play(card.id));
                 }
+                if let Some(card) = Self::mirror_card(run, content) {
+                    return Some(RunAction::Play(card.id));
+                }
                 // A Wandelkarte has its settled suit by now: a card like
-                // any other.
-                let view = game.view(Seat::DECLARER)?;
+                // any other. A Doppelgänger waits for its mirror.
+                let mut view = game.view(Seat::DECLARER)?;
+                Self::keep_for_mirror(run, content, &mut view.legal_moves);
                 let chosen = declarer.choose(&view)?;
                 Some(RunAction::Play(chosen.id))
             }
@@ -1863,6 +1867,49 @@ impl RunBot {
                 cards.push(c);
                 crate::rules::winning_index(declaration.game(), &cards) == Some(2)
             })
+    }
+
+    /// The least Augen a trick must be worth with the copy before the bot
+    /// mirrors a "Doppelgänger" into it ([`RunBot::mirror_card`]; simple
+    /// rule, not tuned): a Daus or a Zehn in the trick, copied.
+    pub const MIRROR_MIN_AUGEN: i64 = 15;
+
+    /// A "Doppelgänger" the bot plays now (simple rule, not tuned): playing
+    /// last to the trick, a card of the hand that mirrors
+    /// ([`Run::mirrors_now`]) when the trick with the copy is worth at
+    /// least [`RunBot::MIRROR_MIN_AUGEN`] Augen, or when it is the only
+    /// legal card. `None` otherwise.
+    #[must_use]
+    pub fn mirror_card(run: &Run, content: &Content) -> Option<DealtCard> {
+        let active = run.game()?;
+        let game = &active.game;
+        let declaration = game.declaration()?;
+        let trick = game.current_trick();
+        if trick.len() != 2 || active.awaiting_re {
+            return None;
+        }
+        let legal = game.legal_moves(Seat::DECLARER);
+        let card = legal
+            .iter()
+            .copied()
+            .find(|&c| run.mirrors_now(content, c))?;
+        if legal.len() == 1 {
+            return Some(card);
+        }
+        let copied = trick[crate::rules::winning_index(declaration.game(), trick)?];
+        let worth: i64 =
+            trick.iter().map(|c| c.signed_points()).sum::<i64>() + copied.signed_points();
+        (worth >= Self::MIRROR_MIN_AUGEN).then_some(card)
+    }
+
+    /// Keep a "Doppelgänger" whose mirror is still to come
+    /// ([`Run::can_mirror`]) out of `legal` while another card may be
+    /// played: the bot plays it only through [`RunBot::mirror_card`] or
+    /// when nothing else is legal. The search knows nothing of the mirror.
+    pub fn keep_for_mirror(run: &Run, content: &Content, legal: &mut Vec<DealtCard>) {
+        if legal.iter().any(|&c| !run.can_mirror(content, c)) {
+            legal.retain(|&c| !run.can_mirror(content, c));
+        }
     }
 
     /// The decision with ten cards (Skatordnung, ADR 0011), for every

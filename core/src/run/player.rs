@@ -143,9 +143,23 @@ pub enum PlayerGameEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         risen: Option<DealtCard>,
     },
-    /// "Doppelgänger" (DESIGN 7.2): `seat` played `card`, `stolen` from
-    /// the hand of `from` lies in the trick instead, and `from` holds
-    /// `given` now. Every card of it is open on the table.
+    /// "Doppelgänger", "Spiegelbild" (DESIGN 7.2, since 07.11.2026):
+    /// `seat` played `card` as the last card of the trick; it lies there as
+    /// `copy`, a copy of `copied`, the highest card of the trick, and wins
+    /// it. [`PlayerGameEvent::CardPlayed`] with `copy` follows. Every card
+    /// of it is open on the table.
+    DoppelgangerMirrored {
+        /// Who played the Doppelgänger.
+        seat: Seat,
+        /// The Doppelgänger as it was played (its printed card).
+        card: DealtCard,
+        /// The highest card of the trick, which it copies.
+        copied: DealtCard,
+        /// The card as it lies in the trick.
+        copy: DealtCard,
+    },
+    /// "Doppelgänger" until 07.11.2026 (a stolen card of the same rank);
+    /// only in logs saved before ([`Event::DoppelgangerSwapped`]).
     DoppelgangerSwapped {
         /// Who played the Doppelgänger.
         seat: Seat,
@@ -238,6 +252,17 @@ impl PlayerGameEvent {
                 substitute,
                 risen,
             },
+            Event::DoppelgangerMirrored {
+                seat,
+                card,
+                copied,
+                copy,
+            } => PlayerGameEvent::DoppelgangerMirrored {
+                seat,
+                card,
+                copied,
+                copy,
+            },
             Event::DoppelgangerSwapped {
                 seat,
                 card,
@@ -273,7 +298,6 @@ impl RunEvent {
     pub fn for_player(self) -> PlayerEvent {
         match self {
             RunEvent::Game(event) => RunEvent::Game(PlayerGameEvent::from_event(event)),
-            RunEvent::DoppelgangerUnmatched { card } => RunEvent::DoppelgangerUnmatched { card },
             RunEvent::RiseChoice {
                 card,
                 becomes,

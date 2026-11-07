@@ -519,10 +519,6 @@ pub struct ActiveGame {
     /// it rises. `None` otherwise and in saves from before 03.11.2026.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_rise: Option<u32>,
-    /// Generator that draws the card a "Doppelgänger" takes among several,
-    /// derived from the run's seed when first needed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub doppel_rng: Option<Rng>,
     /// Generator that draws the substitute of a rising "Untot" card, forked
     /// from the game's own generator at the deal if an "Untot" card is in
     /// play. Saves from before it derive one from the run's seed.
@@ -1076,13 +1072,6 @@ pub enum RunEvent<G = Event<DealtCard>> {
     },
     /// An event of the game in progress.
     Game(G),
-    /// "Doppelgänger" (DESIGN 7.2): the player played this Doppelgänger,
-    /// and no opponent held a card of its rank in another suit: it is
-    /// played as itself ([`Event::DoppelgangerSwapped`] otherwise).
-    DoppelgangerUnmatched {
-        /// The card as played.
-        card: DealtCard,
-    },
     /// "Untot" (DESIGN 7.2): the player's card rises from the trick just
     /// completed as soon as he picks `pick` cards of his hand
     /// ([`RunAction::ChooseRiseCards`]); one of them is drawn and takes its
@@ -1891,6 +1880,8 @@ pub enum RunErrorCode {
     RamschRequired,
     /// The card must not be discarded ("Ramponiert").
     DiscardForbidden,
+    /// A "Doppelgänger" mirrors only as the last card of a trick.
+    NotLastCard,
     /// A defender is to move; the player has to wait.
     AiToMove,
     /// "Blue Curaçao" cannot repaint this card into this suit.
@@ -1978,6 +1969,7 @@ impl RunErrorCode {
             RunErrorCode::InvalidSkatSwap => "InvalidSkatSwap",
             RunErrorCode::RamschRequired => "RamschRequired",
             RunErrorCode::DiscardForbidden => "DiscardForbidden",
+            RunErrorCode::NotLastCard => "NotLastCard",
             RunErrorCode::AiToMove => "AiToMove",
             RunErrorCode::CannotChalk => "CannotChalk",
             RunErrorCode::NotDecided => "NotDecided",
@@ -2017,6 +2009,7 @@ impl RunError {
                 GameError::InvalidDeclaration { .. } => RunErrorCode::InvalidDeclaration,
                 GameError::InvalidSkatSwap => RunErrorCode::InvalidSkatSwap,
                 GameError::DiscardForbidden { .. } => RunErrorCode::DiscardForbidden,
+                GameError::NotLastCard { .. } => RunErrorCode::NotLastCard,
             },
             RunError::NoPassesLeft => RunErrorCode::NoPassesLeft,
             RunError::HandRequired => RunErrorCode::HandRequired,
@@ -3393,76 +3386,67 @@ impl Run {
             return Err(RunError::AwaitingKontraAnswer);
         }
         let card = Run::declarer_card(active, id)?;
-        if let Some((from, stolen)) = self.doppelganger_match(content, card) {
+        if self.mirrors_now(content, card) {
             let active = self.active_mut()?;
-            let game_events = active
-                .game
-                .play_swapped(Seat::DECLARER, card, from, stolen)?;
+            let game_events = active.game.play_mirrored(Seat::DECLARER, card)?;
+            let copy = game_events
+                .iter()
+                .find_map(|e| match e {
+                    Event::DoppelgangerMirrored { copy, .. } => Some(*copy),
+                    _ => None,
+                })
+                .unwrap_or(card);
             let trick_done = game_events
                 .iter()
                 .any(|e| matches!(e, Event::TrickWon { .. }));
             events.extend(game_events.into_iter().map(RunEvent::Game));
-            self.after_card(content, Seat::DECLARER, stolen, trick_done, events);
+            self.after_card(content, Seat::DECLARER, copy, trick_done, events);
             return self.settle(content, events);
-        }
-        if self.is_doppelganger(content, card) {
-            events.push(RunEvent::DoppelgangerUnmatched { card });
         }
         self.play_card(content, Seat::DECLARER, card, events)?;
         self.settle(content, events)
     }
 
-    /// Whether the player's `card` is a "Doppelgänger" that may swap in
-    /// this game: a suit game, Grand or Null, not a Ramsch.
-    pub(crate) fn is_doppelganger(&self, content: &Content, card: DealtCard) -> bool {
+    /// Whether the player's `card` is a "Doppelgänger" whose mirror is
+    /// still to come in this game ("Spiegelbild", DESIGN 7.2, since
+    /// 07.11.2026): it is in his hand, the game is a suit game or Grand
+    /// (not Null, not a Ramsch), and no Doppelgänger mirrored in this game
+    /// yet (once per game, whatever the number of Doppelgänger). Played as
+    /// the last card of a trick it would mirror ([`Run::mirrors_now`]).
+    /// `false` outside a game.
+    #[must_use]
+    pub fn can_mirror(&self, content: &Content, card: DealtCard) -> bool {
         let Some(active) = self.game.as_ref() else {
             return false;
         };
-        active.game.declaration().is_some_and(|d| !d.is_ramsch())
+        let game = &active.game;
+        let trump_game = game
+            .declaration()
+            .is_some_and(|d| !d.is_null() && !d.is_ramsch());
+        trump_game
             && !card.is_blank()
+            && game.hand(Seat::DECLARER).contains(&card)
+            && !game
+                .log()
+                .iter()
+                .any(|e| matches!(e, Event::DoppelgangerMirrored { .. }))
             && self.has_card_effect(content, card, &Effect::Doppelganger)
     }
 
-    /// "Doppelgänger" (DESIGN 7.2, 03.11.2026): the card it takes when the
-    /// player plays `card` now, and from whom: a card of the same rank and
-    /// another suit from the next opponent in play order, else from the
-    /// other; of several one drawn with the game's generator. `None` if
-    /// `card` is no Doppelgänger, is no legal play, or nobody holds such a
-    /// card.
-    fn doppelganger_match(
-        &mut self,
-        content: &Content,
-        card: DealtCard,
-    ) -> Option<(Seat, DealtCard)> {
-        if !self.is_doppelganger(content, card) {
-            return None;
-        }
-        let face = card.face()?;
-        let fallback = opponents::game_seed(self) ^ 0x0D0B_B1E0_0000_0005;
-        let active = self.game.as_mut()?;
+    /// Whether the player's `card` mirrors if he plays it now: it may
+    /// mirror ([`Run::can_mirror`]), it is his turn as the last card of
+    /// the trick and it is a legal play as printed. Otherwise a
+    /// Doppelgänger plays as its printed card.
+    #[must_use]
+    pub fn mirrors_now(&self, content: &Content, card: DealtCard) -> bool {
+        let Some(active) = self.game.as_ref() else {
+            return false;
+        };
         let game = &active.game;
-        if !game.legal_moves(Seat::DECLARER).contains(&card) {
-            return None;
-        }
-        let first = Seat::DECLARER.next();
-        let (from, candidates) = [first, first.next()].into_iter().find_map(|seat| {
-            let candidates: Vec<DealtCard> = game
-                .hand(seat)
-                .iter()
-                .copied()
-                .filter(|c| {
-                    c.face()
-                        .is_some_and(|f| f.rank == face.rank && f.suit != face.suit)
-                })
-                .collect();
-            (!candidates.is_empty()).then_some((seat, candidates))
-        })?;
-        let rng = active
-            .doppel_rng
-            .get_or_insert_with(|| Rng::from_seed(fallback));
-        let roll = rng.gen_range(0..u64::try_from(candidates.len()).unwrap_or(1));
-        let stolen = usize::try_from(roll).ok().and_then(|i| candidates.get(i))?;
-        Some((from, *stolen))
+        game.current_trick().len() == 2
+            && game.current_seat() == Some(Seat::DECLARER)
+            && game.legal_moves(Seat::DECLARER).contains(&card)
+            && self.can_mirror(content, card)
     }
 
     /// Play one card and fire the in-play hooks.
@@ -4629,7 +4613,6 @@ impl Run {
             skat_shown: Vec::new(),
             risen: Vec::new(),
             pending_rise: None,
-            doppel_rng: None,
             undead_rng: None,
             boss_edition: None,
             partner_edition: None,

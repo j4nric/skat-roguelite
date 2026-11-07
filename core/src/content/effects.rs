@@ -603,13 +603,13 @@ pub enum Effect {
     /// Null or Ramsch, not for a defender's copy. Card modifications only,
     /// passive only.
     Undead,
-    /// Lever Stichgewinn ("Doppelgänger", DESIGN 7.2, 03.11.2026): when the
-    /// player plays this card (a legal play as printed) in a suit game,
-    /// Grand or Null, it takes a card of the same rank and another suit
-    /// from the next opponent in play order, else from the other one (a
-    /// random one of several); that card lies in the trick instead, and the
-    /// robbed opponent holds this card for the rest of the game. Without a
-    /// match it is played as itself. Card modifications only, passive only.
+    /// Lever Stichgewinn ("Doppelgänger", DESIGN 7.2; "Spiegelbild" since
+    /// 07.11.2026): when the player plays this card as the last card of a
+    /// trick (a legal play as printed) in a suit game or Grand, it becomes
+    /// a copy of the highest card in the trick and wins the trick; the copy
+    /// counts that card's Augen. Once per game, whatever the number of
+    /// Doppelgänger. Otherwise, in Null and in Ramsch it is played as
+    /// itself. Card modifications only, passive only.
     Doppelganger,
     /// Lever Stichgewinn (Vorhand): the player leads the first trick of
     /// every game ("Ehrenvorsitz"). Passive only.

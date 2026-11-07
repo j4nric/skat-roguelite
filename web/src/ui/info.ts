@@ -115,6 +115,7 @@ function cardModel(key: string, view: RunView, ui: UiState, id: number): InfoMod
     if (card.honorary_jack) facts.push(de.card.honoraryJack);
     if (card.no_discard) facts.push(de.card.noDiscard);
     if ('can_rise' in card && card.can_rise) facts.push(de.card.canRise);
+    if ('can_mirror' in card && card.can_mirror) facts.push(de.card.canMirror);
   }
   if (named) facts.push(t(de.card.named, { suit: de.suits[named] }));
   if (holder !== null && holder !== 0) facts.push(t(de.info.holder, { name: seatPerson(view, holder).name }));
