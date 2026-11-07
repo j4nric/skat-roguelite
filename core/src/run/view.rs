@@ -765,6 +765,12 @@ pub struct CardView {
     /// Grand, not as the last card. Left out of the JSON when `false`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub can_rise: bool,
+    /// A "Doppelgänger" of the hand whose mirror is still to come in this
+    /// game ([`Run::can_mirror`]): played as the last card of a trick it
+    /// becomes a copy of the highest card and wins the trick. Left out of
+    /// the JSON when `false`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub can_mirror: bool,
     /// A card of the player that rose in this game ("Untot",
     /// [`ActiveGame::risen`]): it came back into the hand as the card that
     /// won the trick. The web app draws only this one with the zombie
@@ -1220,6 +1226,7 @@ impl Run {
                     .is_some_and(|a| a.game.declaration().is_none()),
             named,
             can_rise: false,
+            can_mirror: false,
             risen: card.owner == Owner::Player
                 && self
                     .game
@@ -2232,6 +2239,7 @@ impl Run {
                 drawn_from: drawn.filter(|(_, c)| c.id == card.id).map(|(seat, _)| seat),
                 discardable: discarding && discardable_of(held, card, discard_count),
                 can_rise: self.can_rise(content, card),
+                can_mirror: self.can_mirror(content, card),
                 ..self.card_view(content, card)
             })
             .collect();

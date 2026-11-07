@@ -337,8 +337,12 @@ impl Options {
         if plays && RunBot::undead_card(run, content).is_some() {
             return Some(action);
         }
+        // A "Doppelgänger" that mirrors: the same.
+        if plays && RunBot::mirror_card(run, content).is_some() {
+            return Some(action);
+        }
         if let (true, Some(config)) = (plays, self.bot.pimc()) {
-            if let Some(card) = skat_core::run::opponents::player_card(run, config) {
+            if let Some(card) = skat_core::run::opponents::player_card(run, content, config) {
                 return Some(RunAction::Play(card.id));
             }
         }
@@ -463,6 +467,9 @@ pub struct RunStats {
     /// Games with a "Durchsichtig" card dealt to the player (hand or
     /// skat) and their wins.
     pub transparent: (u64, u64),
+    /// "Doppelgänger" mirrors (Spiegelbild, DESIGN 7.2): times one of the
+    /// player's Doppelgänger became a copy of a trick's highest card.
+    pub mirrors: u64,
     /// Sum of the series account changes of all games.
     pub points: i64,
     /// Einmischen (games dealt again, also by "Neues Blatt").
@@ -852,6 +859,7 @@ impl Observer<'_> {
                             .any(|c| c.revealed)
                     });
                 }
+                RunEvent::Game(Event::DoppelgangerMirrored { .. }) => self.stats.mirrors += 1,
                 RunEvent::Game(Event::CardPlayed { seat, card }) if *seat == Seat::DECLARER => {
                     if run
                         .editions()
@@ -1382,6 +1390,14 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         stats.transparent.0,
         pct(stats.transparent.1, stats.transparent.0)
     );
+    if stats.mirrors > 0 {
+        let _ = writeln!(
+            out,
+            "doppelganger mirrors={} per run={:.2}",
+            stats.mirrors,
+            mean(stats.mirrors, runs)
+        );
+    }
     render_kinds(&mut out, stats, runs);
     render_factor(&mut out, stats, runs);
     if options.night {

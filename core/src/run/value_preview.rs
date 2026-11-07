@@ -224,6 +224,29 @@ impl Run {
         })
     }
 
+    /// The most Augen the player can take in this game: 120, plus the
+    /// Augen of the richest card in play if his edition holds a
+    /// "Doppelgänger" (its copy counts the copied card's Augen instead of
+    /// its own, DESIGN 7.2).
+    fn max_declarer_points(&self, content: &Content) -> u32 {
+        let mirror = self.edition.cards().iter().any(|c| {
+            c.mods.iter().any(|m| {
+                content
+                    .card_mod(m)
+                    .is_some_and(|d| d.passive.contains(&crate::content::Effect::Doppelganger))
+            })
+        });
+        let richest = self.game.as_ref().map_or(0, |a| {
+            a.game
+                .deck_cards()
+                .iter()
+                .map(|c| c.card_points())
+                .max()
+                .unwrap_or(0)
+        });
+        120 + if mirror { richest } else { 0 }
+    }
+
     /// An upper bound of the Spielwert a won game of the current pub can
     /// reach, without knowing the hand: the highest game of the formula
     /// (Grand and every suit Ouvert, Hand, Schwarz angesagt with every
@@ -257,7 +280,10 @@ impl Run {
                             above,
                             step,
                             ..
-                        } => 120_u32.saturating_sub(*above) / (*step).max(1),
+                        } => {
+                            self.max_declarer_points(content).saturating_sub(*above)
+                                / (*step).max(1)
+                        }
                         _ => self.count_for(content, &effect),
                     };
                     let Some(line) = score_line(&source.source, &effect, &self.counters, count)

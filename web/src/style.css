@@ -8445,7 +8445,7 @@ button.skat-card {
   visibility: hidden;
 }
 
-/* "Doppelgänger" swap scene (ui/scenes.ts): the mirror shimmer, the reach, the word. */
+/* "Doppelgänger" mirror scene (ui/scenes.ts): the shimmer and the word. */
 .fx-doppel-card {
   overflow: hidden;
 }
@@ -8457,14 +8457,6 @@ button.skat-card {
   background: repeating-linear-gradient(90deg, transparent 0 4px, #e4def5cc 4px 8px, transparent 8px 12px);
   mix-blend-mode: screen;
   pointer-events: none;
-}
-
-.fx-doppel-dot {
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
-  background: #a493d6;
-  box-shadow: 0 0 0 1px #3d2f5e;
 }
 
 .fx-doppel-word {

@@ -66,7 +66,7 @@ import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
 import { crumbleInto, deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
-import { bossEntrance, doppelReach, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, swapFlight, zinkeStamp } from './ui/scenes';
+import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
@@ -211,7 +211,8 @@ const TOAST_QUEUE = 3;
 /** Where a toast shows: the middle of the screen, or above the Stammgäste. */
 type ToastPlace = 'middle' | 'top';
 /** "Untot": the event of a card that rose from the trick. */
-type DoppelSwap = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { DoppelgangerSwapped: unknown }>['DoppelgangerSwapped'];
+/** "Doppelgänger": the event of its mirror. */
+type DoppelMirror = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { DoppelgangerMirrored: unknown }>['DoppelgangerMirrored'];
 type RoseEvent = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { CardRose: unknown }>['CardRose'];
 
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
@@ -270,8 +271,6 @@ export class App {
   private readonly toastEl: HTMLElement;
   /** "Untot": cards whose rising was already shown with their trick in this game. */
   private readonly riseShown = new Set<number>();
-  /** "Doppelgänger": the stolen card the swap scene already laid into the trick (its CardPlayed follows). */
-  private doppelLanded: number | null = null;
   private readonly hintEl: HTMLElement;
   /** The info card (long-press, hover, "i"): one for everything. */
   private readonly info: InfoCard;
@@ -1234,10 +1233,6 @@ export class App {
         await this.playGameEvent(ev.Game, after, breaking, rising);
         continue;
       }
-      if ('DoppelgangerUnmatched' in ev) {
-        await this.doppelAlone(ev.DoppelgangerUnmatched.card, after);
-        continue;
-      }
       if ('RiseChoice' in ev) {
         // "Untot": the sheet of the core's `rise_choice` asks for the three cards.
         continue;
@@ -1519,18 +1514,13 @@ export class App {
 
   private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView, breaking: number[] = [], rising: RoseEvent | null = null): Promise<void> {
     const anim = this.ui.anim;
-    if ('DoppelgangerSwapped' in ev) {
-      await this.doppelSwap(ev.DoppelgangerSwapped, after);
+    if ('DoppelgangerMirrored' in ev) {
+      await this.doppelMirror(ev.DoppelgangerMirrored, after);
       return;
     }
     if ('CardPlayed' in ev) {
       if (!anim) return;
       const { seat, card } = ev.CardPlayed;
-      if (seat === 0 && this.doppelLanded === card.id) {
-        // "Doppelgänger": the swap scene laid it into the trick already.
-        this.doppelLanded = null;
-        return;
-      }
       if (anim.trick.length >= 3) anim.trick = [];
       // Where the card comes from, measured before the table changes.
       const from = seat === 0 ? (this.playedFrom ?? this.rectOf('.hand')) : this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
@@ -1828,65 +1818,17 @@ export class App {
   }
 
   /**
-   * "Doppelgänger" (DoppelgangerSwapped): a little scene. The played card
-   * flashes in its violet mirror look with a shimmer, a dotted reach goes
-   * to the robbed opponent (who frowns), the two cards cross in the air:
-   * the stolen one into the trick, the Doppelgänger into his hand;
-   * "Getauscht!". Tempo-scaled, off with reduced motion, a tap ends it.
+   * "Doppelgänger", Spiegelbild (DoppelgangerMirrored): the played card
+   * flashes in its violet mirror look with a shimmer, "Gespiegelt!"; then
+   * its CardPlayed throws the copy (the copied face with the mirror look)
+   * into the trick. Tempo-scaled, off with reduced motion, a tap ends it.
    */
-  private async doppelSwap(swap: DoppelSwap, after: RunView): Promise<void> {
-    const { card, from, stolen } = swap;
-    const name = this.seatLabel(from, after);
-    this.showToast(t(de.toast.doppelSwapped, { card: cardName(card.kind), name, stolen: cardName(stolen.kind) }), 'top');
-    const anim = this.ui.anim;
-    if (!anim) return;
-    const handRect = this.playedFrom ?? this.rectOf(`.hand-card[data-id="${card.id}"]`) ?? this.rectOf('.hand');
-    const portrait = this.screenEl.querySelector(`.opp[data-seat="${from}"] .portrait`);
-    const portraitRect = portrait?.getBoundingClientRect() ?? null;
-    const mirror = lookSvg(this.cardOf(card, after));
-    const stolenView = this.cardOf(stolen, after);
-    if (anim.trick.length >= 3) anim.trick = [];
-    anim.hand = anim.hand.filter((c) => c.id !== card.id);
-    anim.handSizes[0] = Math.max(0, (anim.handSizes[0] ?? 0) - 1);
-    anim.trick.push({ seat: 0, card: stolenView });
-    anim.turn = null;
-    anim.status = '';
-    this.doppelLanded = stolen.id;
-    this.render();
-    const slot = this.screenEl.querySelector<HTMLElement>('[data-trick-seat="0"]');
-    if (this.fastForward || !handRect || !portraitRect || !slot) {
-      sound.play('card');
-      await this.pause(DELAY.ownCard);
-      return;
-    }
-    const slotRect = slot.getBoundingClientRect();
-    // A card-sized box on the portrait, where the stolen card comes from.
-    const atPortrait = new DOMRect(portraitRect.left + portraitRect.width / 2 - slotRect.width / 2, portraitRect.top + portraitRect.height / 2 - slotRect.height / 2, slotRect.width, slotRect.height);
-    slot.style.visibility = 'hidden';
-    try {
-      await mirrorShimmer(mirror, handRect);
-      doppelReach(handRect, portraitRect);
-      if (portrait) frown(portrait);
-      sound.play('card', { rate: 0.85 });
-      await Promise.all([
-        swapFlight(mirror, handRect, portraitRect, -48, 'doppel-flight-given', true),
-        swapFlight(lookSvg(stolenView), atPortrait, slotRect, 48, 'doppel-flight-stolen'),
-      ]);
-    } finally {
-      slot.style.visibility = '';
-    }
-    sceneWord(de.doppel.swapped, slotRect, 'doppel-word');
-    sound.play('card', { rate: 1.1 });
-    await this.pause(DELAY.notice * 0.6);
-  }
-
-  /** "Doppelgänger" without a counterpart: only its shimmer and "Kein Gegenstück"; the card is played as itself. */
-  private async doppelAlone(card: DealtCard, after: RunView): Promise<void> {
-    this.showToast(t(de.toast.doppelUnmatched, { card: cardName(card.kind) }), 'top');
-    const rect = this.playedFrom ?? this.rectOf(`.hand-card[data-id="${card.id}"]`);
+  private async doppelMirror(m: DoppelMirror, after: RunView): Promise<void> {
+    this.showToast(t(de.toast.doppelMirrored, { card: cardName(m.card.kind), copied: cardName(m.copied.kind) }), 'top');
+    const rect = this.playedFrom ?? this.rectOf(`.hand-card[data-id="${m.card.id}"]`);
     if (this.fastForward || !rect) return;
-    sceneWord(de.doppel.unmatched, rect, 'doppel-word');
-    await mirrorShimmer(lookSvg(this.cardOf(card, after)), rect);
+    sceneWord(de.doppel.mirrored, rect, 'doppel-word');
+    await mirrorShimmer(lookSvg(this.cardOf(m.card, after)), rect);
   }
 
   private seatLabel(seat: Seat, view: RunView): string {

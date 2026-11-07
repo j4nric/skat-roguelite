@@ -217,10 +217,13 @@
 // - Zinken v2 (zinkenV2Pass, undead.json patched): Blei, Goldkante,
 //   Fadenkreuz, Schneiderkreide and Winkel (the Grün-Acht with Winkel 2
 //   keeps its printed picture under violet sketches, Winkel v2) in the hand, the
-//   Doppelgänger on the Grün-König with its mirror picture; played with
-//   full motion it shimmers, reaches to Tante Erna, both cards fly (the
-//   stolen Rot-König into the trick, the König to her) and "Getauscht!"
-//   pops up. Mid-animation screenshots on phone and desktop.
+//   Doppelgänger on the Grün-König with its mirror picture (and on every
+//   other hand card but the Grün-Acht, so one is legal whatever is led);
+//   the left Stammgast leads, the player plays last: the Doppelgänger
+//   shimmers, "Gespiegelt!" pops up and it lies in the trick as a copy of
+//   the highest card (the copied face in its mirror look) and takes the
+//   trick (Spiegelbild, 07.11.2026). Mid-animation screenshots on phone
+//   and desktop.
 // M8 wave 2b (wave2b): a new run with seed 64, its save patched in the
 // browser (owned relics and the rules of the dealt game, by text so the
 // big rng numbers stay exact), then resumed:
@@ -4319,7 +4322,9 @@ async function undeadGlowPass(browser, errors) {
  * Zinken v2 (03.11.2026) on undead.json: the new Zinken on hand cards
  * (Blei, Goldkante, Fadenkreuz, Schneiderkreide, Winkel 1 and 2 with the
  * black scribble) and the Doppelgänger on the Grün-König (22), in place
- * of its Untot.
+ * of its Untot, and beside the Zinken on every other hand card but the
+ * Grün-Acht (17), so that the player holds a legal Doppelgänger whatever
+ * is led. The left Stammgast (seat 1) leads: the player plays last.
  */
 function zinkenV2Save() {
   return patched('undead.json', (save) => {
@@ -4335,6 +4340,14 @@ function zinkenV2Save() {
     put(23, ['crosshair'], { crosshair: 1 });
     put(27, ['tailors_chalk'], { tailors_chalk: 1 });
     put(22, ['doppelganger']);
+    for (const id of [2, 15, 16, 19, 23, 27, 28, 31]) {
+      const card = save.run.edition.cards.find((c) => c.id === id);
+      card.mods = ['doppelganger', ...card.mods];
+    }
+    const game = save.run.game.game;
+    game.forehand = 1;
+    game.trick_lead = 1;
+    for (const ev of game.log) if (ev.Dealt) ev.Dealt.forehand = 1;
   });
 }
 
@@ -4350,9 +4363,10 @@ async function declareClubsHand(page) {
 }
 
 /**
- * Zinken v2: the new looks in the hand and the Doppelgänger's swap scene
- * with full motion and the slow tempo: the mirror shimmer, the reach to
- * the robbed Stammgast, both cards crossing ("Getauscht!"). Mid-animation
+ * Zinken v2: the new looks in the hand and the Doppelgänger's mirror
+ * scene with full motion and the slow tempo: played as the last card it
+ * shimmers, "Gespiegelt!", and it lies in the trick as the copy of the
+ * highest card, with the mirror look, and takes the trick. Mid-animation
  * screenshots per viewport.
  */
 async function zinkenV2Pass(browser, errors, viewport) {
@@ -4386,36 +4400,37 @@ async function zinkenV2Pass(browser, errors, viewport) {
   await page.screenshot({ path: join(screens, `zinken-v2-hand-${size}.png`) });
   await page.locator('.hand').screenshot({ path: join(screens, `zinken-v2-cards-${size}.png`) });
   await declareClubsHand(page);
-  await page.waitForSelector('[data-action="play"][data-id="22"]', { timeout: 30000 });
+  // The two Stammgäste play first; then a legal Doppelgänger (not the Grün-Acht).
+  await page.waitForFunction(() => document.querySelectorAll('[data-trick-seat="1"], [data-trick-seat="2"]').length === 2 && document.querySelector('.hand-card[data-action="play"]:not([data-id="17"])'), null, { timeout: 30000 }).catch(() => fail('Doppelgänger: the player is not last in the first trick'));
+  const id = await page.locator('.hand-card[data-action="play"]:not([data-id="17"])').first().getAttribute('data-id');
   await page.evaluate(() => {
-    window.__doppel = { given: false, stolen: false, reach: false, word: false, shimmer: false };
+    window.__doppel = { word: false, shimmer: false, copy: null };
     new MutationObserver(() => {
       const d = window.__doppel;
-      if (document.querySelector('[data-testid="doppel-flight-given"]')) d.given = true;
-      if (document.querySelector('[data-testid="doppel-flight-stolen"]')) d.stolen = true;
-      if (document.querySelector('[data-testid="doppel-reach"]')) d.reach = true;
       if (document.querySelector('[data-testid="doppel-word"]')) d.word = true;
       if (document.querySelector('[data-testid="doppel-shimmer"]')) d.shimmer = true;
-    }).observe(document.body, { childList: true, subtree: true });
+      const copy = document.querySelector('[data-trick-seat="0"] svg[data-special="doppelganger"], [data-last-seat="0"] svg[data-special="doppelganger"]');
+      if (copy && !d.copy) d.copy = copy.querySelector('use.face-pic')?.getAttribute('href') ?? 'no picture';
+    }).observe(document.body, { childList: true, subtree: true, attributes: true });
   });
-  await page.click('[data-action="play"][data-id="22"]');
+  await page.click(`.hand-card[data-action="play"][data-id="${id}"]`);
   await page.mouse.move(viewport.width - 10, 10);
   await page.waitForSelector('[data-testid="doppel-shimmer"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no mirror shimmer'));
   await page.waitForTimeout(250);
   await page.screenshot({ path: join(screens, `doppel-shimmer-${size}.png`) });
-  await page.waitForSelector('[data-testid="doppel-flight-stolen"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: the stolen card does not fly'));
-  await page.waitForTimeout(380);
-  await page.screenshot({ path: join(screens, `doppel-cross-${size}.png`) });
-  await page.waitForSelector('[data-testid="doppel-word"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no "Getauscht!"'));
-  await page.screenshot({ path: join(screens, `doppel-word-${size}.png`) });
-  const seen = await page.evaluate(() => window.__doppel);
-  if (!seen.given || !seen.stolen) fail(`Doppelgänger: both flights must happen (${JSON.stringify(seen)})`);
-  if (!seen.reach) fail('Doppelgänger: no reach to the robbed Stammgast');
+  await page.waitForSelector('[data-testid="doppel-word"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no "Gespiegelt!"'));
   const word = await page.locator('[data-testid="doppel-word"]').first().textContent().catch(() => '');
-  if (word && word !== 'Getauscht!') fail(`Doppelgänger: the word says "${word}"`);
+  if (word && word !== 'Gespiegelt!') fail(`Doppelgänger: the word says "${word}"`);
+  await page.waitForSelector('[data-trick-seat="0"] svg[data-special="doppelganger"], [data-last-seat="0"] svg[data-special="doppelganger"]', { state: 'attached', timeout: 15000 }).catch(() => fail('Doppelgänger: no mirrored copy in the trick'));
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(screens, `doppel-copy-${size}.png`) });
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'), null, { timeout: 30000 });
-  // The Grün-König is with the Stammgast now, the Rot-König lay in the trick.
-  if (await page.locator('.hand-card[data-id="22"]').count()) fail('Doppelgänger: the card is still in the hand');
+  const seen = await page.evaluate(() => window.__doppel);
+  if (!seen.shimmer || !seen.word || !seen.copy) fail(`Doppelgänger: shimmer, word and copy must show (${JSON.stringify(seen)})`);
+  if (await page.locator(`.hand-card[data-id="${id}"]`).count()) fail('Doppelgänger: the card is still in the hand');
+  // It took the trick: the player leads the next one.
+  await page.waitForSelector('.hand-card[data-action="play"]', { timeout: 30000 }).catch(() => fail('Doppelgänger: the player does not lead after the mirror'));
+  if (await page.locator('[data-trick-seat="1"], [data-trick-seat="2"]').count()) fail('Doppelgänger: a Stammgast took the trick');
   log(`Doppelgänger: ${JSON.stringify(seen)}`);
   await context.close();
 }
@@ -5105,6 +5120,12 @@ async function run() {
     // SMOKE_ONLY=bosses: the boss passes with the route legend and the names on the map.
     if (process.env.SMOKE_ONLY === 'bosses') {
       await bossesV2(browser, errors, reducedMotion);
+      return;
+    }
+    // SMOKE_ONLY=doppel: the Zinken v2 looks and the Doppelgänger's mirror (07.11.2026).
+    if (process.env.SMOKE_ONLY === 'doppel') {
+      await zinkenV2Pass(browser, errors, PHONE);
+      await zinkenV2Pass(browser, errors, DESKTOP);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
