@@ -1006,27 +1006,44 @@ fn tuition_adds_two_base_value_for_every_lost_game() {
 }
 
 #[test]
-fn beer_mat_counts_won_hand_games() {
+fn beer_mat_counts_the_games_of_the_pub_and_charges_the_tab() {
+    // Relics v4 (07.11.2026): +2 Grundwert per game of the pub before this
+    // one, won or lost; after the won pub 2 Groschen and a fresh tab.
     let content = content();
     let mut run = relic_run(&content, &["beer_mat"]);
-    // A lost hand game gives no stroke.
+    run.series.target = 1_000_000;
+    run.series.game_limit = 100;
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
-    play(&mut run, &content, hand_game(CLUBS));
-    assert_eq!(run.counters().get("beer_mat"), None);
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    let (events, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert!(b.won);
+    let (events, lost) = play(&mut run, &content, hand_game(CLUBS));
+    assert!(!lost.won);
+    assert!(lost.lines_of(&relic("beer_mat")).next().is_none());
     assert!(events.contains(&RunEvent::CounterRaised {
-        counter: "beer_mat".into(),
+        counter: "beer_tab".into(),
         value: 1
     }));
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, won) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(has_line(
+        &won,
+        &relic("beer_mat"),
+        Lever::BaseValue,
+        Change::Add(2)
+    ));
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, won) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(has_line(
+        &won,
+        &relic("beer_mat"),
+        Lever::BaseValue,
+        Change::Add(4)
+    ));
+    assert_eq!(run.counters().get("beer_tab"), Some(&3));
+    // The won pub pays the tab: 2 Groschen, never below 0.
+    run.coins = 1;
     let mut events = Vec::new();
-    run.deal(&content, true, &mut events).expect("deal");
-    assert!(run.game().expect("game").lines.contains(&ScoreLine {
-        source: relic("beer_mat"),
-        lever: Lever::BaseValue,
-        change: Change::Add(1),
-    }));
+    run.fire(&content, Stage::OnSeriesWon, None, None, &mut events);
+    assert_eq!(run.coins(), 0);
+    assert_eq!(run.counters().get("beer_tab"), None);
 }
 
 #[test]

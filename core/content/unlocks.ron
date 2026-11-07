@@ -10,6 +10,12 @@
 // anschreiben, Neues Viertel → Monatskarte, Lehrjahre → Spelunkenkenner,
 // Den Peter los → Luschenkönig, Trocken gekontert → Stammfarbe. Wer eine
 // davon schon verdient hat, hat das neue Relikt frei.
+//
+// Relikte v4 (07.11.2026): sieben der neuen Relikte kommen als zweite
+// Belohnung zu passenden Taten (Grand Schneider → Großkopferten, Grand Hand
+// → Offenes Visier, Voll gedrückt → Doppelt gemoppelt, Maßarbeit → Elle,
+// Farbe bekennen → Fanblock, Stammkunde → Unterschlupf, Glückspilz →
+// Sieben auf einen Streich), damit ein Drittel der Relikte gesperrt bleibt.
 [
     (
         id: "second_evening",
@@ -47,7 +53,7 @@
         name: "Grand Schneider",
         text: "Gewinne einen Grand Schneider.",
         condition: WinGame(game: Some(Grand), schneider: true),
-        rewards: [Relic("watertight")],
+        rewards: [Relic("watertight"), Relic("big_shots")],
     ),
     (
         id: "early_finish",
@@ -102,7 +108,7 @@
         name: "Glückspilz",
         text: "Gewinne ein Spiel, das mindestens 144 Punkte zählt.",
         condition: WinGame(min_value: 144),
-        rewards: [Relic("lucky_streak")],
+        rewards: [Relic("lucky_streak"), Relic("seven_at_one_blow")],
     ),
     (
         id: "beat_black_peter",
@@ -125,7 +131,7 @@
         name: "Grand Hand",
         text: "Gewinne einen Grand Hand.",
         condition: WinGame(game: Some(Grand), min_risk: Some(Hand)),
-        rewards: [Relic("beer_mat")],
+        rewards: [Relic("beer_mat"), Relic("open_visor")],
     ),
     (
         id: "hearts_schneider",
@@ -145,14 +151,14 @@
         // (mit Aufdruck, Ramponiert und Skatpfleger): etwa Daus und Zehn.
         text: "Gewinne ein Spiel mit mindestens 21 gedrückten Augen.",
         condition: WinGame(min_discarded: 21),
-        rewards: [Character(Shirker), Relic("rebate_book")],
+        rewards: [Character(Shirker), Relic("rebate_book"), Relic("double_stamp")],
     ),
     (
         id: "three_schneider",
         name: "Maßarbeit",
         text: "Gewinne drei Spiele mit Schneider in einer Kneipe.",
         condition: SchneiderWinsInPub(3),
-        rewards: [Character(Tailoress), Relic("golden_shears")],
+        rewards: [Character(Tailoress), Relic("golden_shears"), Relic("yardstick")],
     ),
     (
         id: "true_colours",
@@ -162,7 +168,7 @@
         // neu an. Ein Ramsch zählt nicht und unterbricht nicht.
         text: "Gewinne drei Farbspiele hintereinander mit derselben Trumpffarbe.",
         condition: SameTrumpStreak(3),
-        rewards: [Character(HeartBrother), Relic("club_colours")],
+        rewards: [Character(HeartBrother), Relic("club_colours"), Relic("fan_block")],
     ),
     // Bau-Richtungen (04.11.2026): Voll gedrückt, Maßarbeit und Farbe
     // bekennen schalten dazu je ein Verbinder-Relikt ihrer Richtung frei
@@ -176,7 +182,7 @@
         name: "Stammkunde",
         text: "Spiele zehn Runs zu Ende, gewonnen oder verloren.",
         condition: RunsFinished(10),
-        rewards: [Relic("three_discard")],
+        rewards: [Relic("three_discard"), Relic("safe_haven")],
     ),
     // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,
     // Cockpit q33 A): Meilensteine der Nacht. Rückseiten sind Kosmetik

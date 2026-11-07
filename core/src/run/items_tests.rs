@@ -305,23 +305,23 @@ fn groups_of_the_relics_are_data() {
     let groups = [
         (
             RelicGroup::Value,
-            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper jinx club_colours stamp_album fingertips tape_measure sewing_pattern plumb_line grandfathers_grand",
+            "all_rounder beer_mat tour null_eight_fifteen every_bit_counts fat_sow old_lady skat_keeper jinx club_colours stamp_album fingertips tape_measure sewing_pattern plumb_line grandfathers_grand true_soul upstart yardstick plumber junk_dealer teetotaller",
         ),
         (
             RelicGroup::Multiplier,
-            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede true_soul rebate_book tally_sheet lead_pouring",
+            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede rebate_book tally_sheet lead_pouring crib_sheet dive_expert fan_block clear_cut trick_after_trick big_mouth loose_contact big_shots open_visor empty_chair",
         ),
         (
             RelicGroup::Control,
-            "skat_redraw three_discard crib_sheet honorary_chair card_counter kibitzer glass_eye",
+            "skat_redraw three_discard honorary_chair card_counter kibitzer glass_eye double_stamp cards_on_table safe_haven beer_calm",
         ),
         (
             RelicGroup::Tour,
-            "landlord first_names closing_time season_ticket kitty slate guardian_angel dive_expert empties tip",
+            "landlord first_names closing_time season_ticket kitty slate guardian_angel empties tip pump_attendant",
         ),
         (
             RelicGroup::Factor,
-            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand golden_shears night_owl sweep_out rag_collector moonlight night_shift dawn",
+            "jay tree_frog robin bell_tree grand_seigneur black_zero tap hot_hand golden_shears night_owl sweep_out rag_collector moonlight night_shift dawn rebate_king seven_at_one_blow",
         ),
     ];
     let mut named = 0;
@@ -664,9 +664,16 @@ fn guardian_angel_plays_a_boss_pub_again() {
 }
 
 #[test]
-fn dive_expert_offers_two_maluses_to_choose_from() {
+fn choose_malus_offers_two_maluses_to_choose_from() {
     let mut content = content();
     content.run.spelunke.chance = Factor::ONE;
+    // No relic chooses the malus since relics v4 (07.11.2026, the
+    // Spelunkenkenner reworked); the effect stays and is tested on it.
+    content
+        .relics
+        .get_mut(&RelicId::new("dive_expert"))
+        .expect("dive_expert")
+        .passive = vec![Effect::ChooseMalus(2)];
     let mut run = at_route(&content, &["dive_expert"]);
     // The route choice of the second pub had its Spelunke drawn with the
     // relic owned.
