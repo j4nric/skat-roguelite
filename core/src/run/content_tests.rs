@@ -1276,6 +1276,7 @@ fn mod_status_of(
         games_left: 0,
         transport: None,
         marked_cards: None,
+        run: None,
     };
     let def = content.card_mod(&CardModId::new(card_mod)).expect("mod");
     crate::content::card_mod_status(def, &ctx, card)

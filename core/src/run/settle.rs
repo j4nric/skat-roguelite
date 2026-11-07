@@ -77,6 +77,8 @@ struct Ending<'a> {
     tricks: Span,
     /// Augen of the defenders at the end.
     defender_points: Span,
+    /// Augen of the declarer at the end.
+    declarer_points: Span,
     /// Tricks with a seven the declarer did not take, at the end.
     sevens_ducked: Span,
     /// "The declarer never followed suit" at the end, if certain.
@@ -148,6 +150,18 @@ fn any3(values: impl Iterator<Item = Option<bool>>) -> Option<bool> {
     out
 }
 
+/// Whether every effect of a firing `OnScore` hook that counts the
+/// declarer's Augen ("Elle") gives the same in every line.
+fn same_points_value(hook: &crate::content::Hook, end: &Ending<'_>) -> bool {
+    hook.then().iter().all(|effect| match effect {
+        crate::content::Effect::AddBaseValuePerDeclarerPoints { above, step, .. } => {
+            let steps = |p: u32| p.saturating_sub(*above) / (*step).max(1);
+            steps(end.declarer_points.min) == steps(end.declarer_points.max)
+        }
+        _ => true,
+    })
+}
+
 /// Whether a condition looks at the tenth trick.
 fn needs_last_trick(condition: &Condition) -> bool {
     match condition {
@@ -191,7 +205,10 @@ fn on_score(
         | Condition::HandGame
         | Condition::MatadorsAtLeast { .. }
         | Condition::PlayedCardMatches(_)
-        | Condition::PlayedByDeclarer => Some(evaluate(condition, ctx, this_card)),
+        | Condition::PlayedByDeclarer
+        | Condition::CardsCounted { .. }
+        | Condition::PubMalusActive => Some(evaluate(condition, ctx, this_card)),
+        Condition::DeclarerTricksAtLeast(n) => certain(end.declarer_tricks, |t| t >= *n),
         Condition::AllTricksWon => certain(end.declarer_tricks, |t| t == ALL_TRICKS),
         Condition::NoTrickTaken => certain(end.declarer_tricks, |t| t == 0),
         Condition::TricksPlayed(n) => certain(end.tricks, |t| t == *n),
@@ -307,7 +324,19 @@ fn during_play(
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
         | Condition::HandGame
-        | Condition::MatadorsAtLeast { .. } => Some(evaluate(condition, ctx, this_card)),
+        | Condition::MatadorsAtLeast { .. }
+        | Condition::CardsCounted { .. }
+        | Condition::PubMalusActive => Some(evaluate(condition, ctx, this_card)),
+        // The declarer's tricks only grow, by at most the tricks left.
+        Condition::DeclarerTricksAtLeast(n) => {
+            if outcome.declarer_tricks >= *n {
+                Some(true)
+            } else if outcome.declarer_tricks + (ALL_TRICKS - done) < *n {
+                Some(false)
+            } else {
+                None
+            }
+        }
         Condition::TricksPlayed(n) => {
             // Tricks complete when the hook looks: after each card from
             // now on, or after each trick still to finish.
@@ -437,6 +466,7 @@ impl Run {
             games_left: self.series.games_left(),
             transport: None,
             marked_cards: Some(&marked),
+            run: Some((self, content)),
         };
         let mut last_trick = false;
         for source in &sources {
@@ -473,7 +503,10 @@ impl Run {
                     .hooks
                     .iter()
                     .filter(|h| h.stage() == Stage::OnScore)
-                    .all(|h| on_score(h.when(), &ctx, source.this_card, &end).is_some())
+                    .all(|h| {
+                        let fires = on_score(h.when(), &ctx, source.this_card, &end);
+                        fires.is_some() && (fires == Some(false) || same_points_value(h, &end))
+                    })
             })
         };
         if loose_reach(game, early).is_some_and(|r| decided(&r)) {
@@ -508,7 +541,7 @@ impl Run {
         let tricks_done = u32::try_from(game.tricks().len()).unwrap_or(0);
         let style = game.null_style(early);
         let declarer_tricks = reach.declarer_tricks.shift(now.declarer_tricks);
-        let (parts, defender_points) = match declaration {
+        let (parts, defender_points, declarer_points) = match declaration {
             Declaration::Ramsch => return None,
             Declaration::Null { risk } => {
                 let parts = if reach.declarer_tricks.max == 0 {
@@ -558,7 +591,14 @@ impl Run {
                 } else {
                     return None;
                 };
-                (parts, reach.defender_points.shift(now.defender_card_points))
+                (
+                    parts,
+                    reach.defender_points.shift(now.defender_card_points),
+                    Span {
+                        min: now.declarer_card_points,
+                        max: now.declarer_card_points,
+                    },
+                )
             }
             Declaration::Suit { .. } | Declaration::Grand { .. } => {
                 let matadors = game.matadors()?;
@@ -587,7 +627,7 @@ impl Run {
                     min: total.saturating_sub(points.max),
                     max: total.saturating_sub(points.min),
                 };
-                (parts, defender_points)
+                (parts, defender_points, points)
             }
         };
         let never_followed = match never_followed_possible(&style, reach) {
@@ -601,6 +641,7 @@ impl Run {
             declarer_tricks,
             tricks: reach.tricks.shift(tricks_done),
             defender_points,
+            declarer_points,
             sevens_ducked: reach.sevens_ducked.shift(style.sevens_ducked),
             never_followed,
             last_tricks: reach.last_tricks.as_deref(),

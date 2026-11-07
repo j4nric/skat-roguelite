@@ -758,6 +758,7 @@ export const de = {
     Tricks: 'Stichjäger',
     Schneider: 'Schneider',
     Null: 'Nullspieler',
+    Grand: 'Grand',
   } as Record<string, string>,
 
   rarity: {

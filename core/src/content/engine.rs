@@ -85,6 +85,27 @@ pub fn resolve_edition(
 ) -> ResolvedDeck {
     let mut cards = Vec::with_capacity(deck.len());
     let mut point_changes = Vec::new();
+    // "Emporkömmling": a promoted card of the player counts the Augen of
+    // the card it became.
+    let promoted_points = global
+        .iter()
+        .filter(|s| owns_card_points(&s.source, owner) && owner == Owner::Player)
+        .find(|s| s.passive.contains(&Effect::PromotedCardsTakePoints))
+        .map(|s| s.source.clone());
+    // The Augen of a face after the `SetCardPoints` of `global`.
+    let set_points = |face: crate::cards::Card| -> u32 {
+        let mut points = face.card_points();
+        for source in global.iter().filter(|s| owns_card_points(&s.source, owner)) {
+            for effect in source.passive {
+                if let Effect::SetCardPoints { filter, points: p } = effect {
+                    if filter.matches(face) {
+                        points = *p;
+                    }
+                }
+            }
+        }
+        points
+    };
     for deck_card in deck.cards() {
         let kind = deck_card.kind;
         let mut dealt = DealtCard {
@@ -160,7 +181,24 @@ pub fn resolve_edition(
                             let rank = card.rank.promoted(steps);
                             let room = card.rank.promotion_room();
                             dealt.promoted = dealt.promoted.saturating_add(steps.min(room));
-                            dealt.kind = CardKind::Normal(crate::cards::Card::new(card.suit, rank));
+                            let new_face = crate::cards::Card::new(card.suit, rank);
+                            dealt.kind = CardKind::Normal(new_face);
+                            if let Some(relic) = &promoted_points {
+                                let delta =
+                                    i64::from(set_points(new_face)) - i64::from(set_points(card));
+                                if delta != 0 {
+                                    let old =
+                                        i64::from(dealt.card_points) - i64::from(dealt.point_debt);
+                                    let new = old + delta;
+                                    point_changes.push((
+                                        dealt.id,
+                                        relic.clone(),
+                                        i32::try_from(delta).unwrap_or(0),
+                                    ));
+                                    dealt.card_points = u32::try_from(new.max(0)).unwrap_or(0);
+                                    dealt.point_debt = u32::try_from((-new).max(0)).unwrap_or(0);
+                                }
+                            }
                         }
                     }
                     Effect::NullLowest => dealt.leaden = true,
@@ -265,6 +303,10 @@ pub struct HookContext<'a> {
     /// modification that is no curse), for
     /// [`Condition::TrickWonWithMarkedCard`]. `None`: none known.
     pub marked_cards: Option<&'a BTreeSet<u32>>,
+    /// The run and its content, for conditions that count the player's
+    /// edition or look at the pub ([`Condition::CardsCounted`],
+    /// [`Condition::PubMalusActive`]). `None`: they are false.
+    pub run: Option<(&'a crate::run::Run, &'a Content)>,
 }
 
 /// Evaluate a condition. `this_card` is the card a modification sits on.
@@ -391,6 +433,16 @@ pub fn evaluate(
         Condition::MatadorsAtLeast { with, count } => game
             .and_then(Game::matadors)
             .is_some_and(|m| m.count > 0 && m.with == *with && m.count >= *count),
+        Condition::CardsCounted { count, min, max } => ctx.run.is_some_and(|(run, content)| {
+            let n = run.count_cards(content, count);
+            min.is_none_or(|m| n >= m) && max.is_none_or(|m| n <= m)
+        }),
+        Condition::PubMalusActive => ctx
+            .run
+            .is_some_and(|(run, content)| run.malus(content).is_some()),
+        Condition::DeclarerTricksAtLeast(n) => {
+            game.is_some_and(|g| g.outcome().declarer_tricks >= *n)
+        }
     }
 }
 
@@ -480,9 +532,13 @@ pub fn evaluate_if_won(
         | Condition::ThisCardWinsFirstTrick
         | Condition::ThisCardWinsTrick
         | Condition::ThisCardBeatsDefenderCard(_) => None,
+        // Tricks only grow: certain once reached.
+        Condition::DeclarerTricksAtLeast(_) => evaluate(condition, ctx, this_card).then_some(true),
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
+        | Condition::CardsCounted { .. }
+        | Condition::PubMalusActive
         | Condition::GameIs(_)
         | Condition::SuitGame
         | Condition::RiskAtLeast(_)
@@ -605,6 +661,8 @@ pub fn evaluate_known(
         Condition::Always
         | Condition::Flag(_)
         | Condition::CounterAtLeast { .. }
+        | Condition::CardsCounted { .. }
+        | Condition::PubMalusActive
         | Condition::GameIs(_)
         | Condition::SuitGame
         | Condition::RiskAtLeast(_)
@@ -613,6 +671,7 @@ pub fn evaluate_known(
         | Condition::NullRiskAtLeast(_)
         | Condition::RamschGame
         | Condition::HandGame => Some(evaluate(condition, ctx, this_card)),
+        Condition::DeclarerTricksAtLeast(_) => evaluate(condition, ctx, this_card).then_some(true),
         Condition::Won
         | Condition::Lost
         | Condition::AllTricksWon
