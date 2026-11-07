@@ -505,11 +505,20 @@ function toggle(action: string, name: string, on: boolean): string {
   })}>${esc(t(on ? de.menu.toggleOn : de.menu.toggleOff, { name }))}</button>`;
 }
 
-/** "Hand sortieren": automatisch (the core's order for the game) or manuell (dragged). */
-function handSortRow(ui: UiState): string {
-  const seg = (k: 'auto' | 'manual'): string =>
-    `<button class="seg ${ui.settings.handSort === k ? 'is-picked' : ''}" ${attrs({ 'data-action': 'hand-sort', 'data-sort': k, 'aria-pressed': ui.settings.handSort === k ? 'true' : 'false' })}>${esc(de.handSort[k])}</button>`;
-  return `<div class="menu-row" ${attrs({ title: de.handSort.hint, 'data-testid': 'setting-hand-sort' })}><span class="setting-label">${esc(de.handSort.label)}</span><div class="segmented">${seg('auto')}${seg('manual')}</div></div>`;
+/**
+ * "Hand sortieren" as a toggle: automatisch (the core's order for the
+ * game) or manuell (the player drags); a tap switches.
+ */
+function handSortToggle(ui: UiState): string {
+  const manual = ui.settings.handSort === 'manual';
+  return `<button class="seg seg-toggle ${manual ? 'is-picked' : ''}" ${attrs({
+    'data-action': 'hand-sort',
+    'data-sort': manual ? 'auto' : 'manual',
+    'data-testid': 'toggle-hand-sort',
+    'aria-pressed': manual ? 'true' : 'false',
+    'aria-label': `${de.handSort.label}: ${manual ? de.handSort.manual : de.handSort.auto}`,
+    title: de.handSort.hint,
+  })}>${esc(t(de.handSort.toggle, { mode: manual ? de.handSort.manual : de.handSort.auto }))}</button>`;
 }
 
 /** The settings as tight rows: label left, switch right. */
@@ -523,11 +532,9 @@ function settingsBlock(ui: UiState): string {
   return `<div class="menu-settings">
     <div class="menu-row"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
-    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
-    <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
+    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}${canVibrate() ? toggle('vibrate', de.vibration.label, ui.settings.vibrate) : ''}</div></div>
+    <div class="menu-row" ${attrs({ 'data-testid': 'setting-table' })}><span class="setting-label">${esc(de.handSort.row)}</span><div class="segmented" ${attrs({ title: de.menu.thinkingHint })}>${toggle('thinking', de.menu.thinking, ui.settings.thinking)}${handSortToggle(ui)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
-    ${handSortRow(ui)}
-    ${canVibrate() ? `<div class="menu-row" ${attrs({ title: de.vibration.hint, 'data-testid': 'setting-vibrate' })}><span class="setting-label">${esc(de.vibration.label)}</span>${onOff('vibrate', ui.settings.vibrate)}</div>` : ''}
     ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',

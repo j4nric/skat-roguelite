@@ -9001,17 +9001,16 @@ button.skat-card {
 
 .keys-list {
   display: grid;
-  gap: 6px;
+  grid-template-columns: max-content 1fr;
+  align-items: baseline;
+  gap: 6px 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .keys-list li {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) 1fr;
-  align-items: baseline;
-  gap: 8px;
+  display: contents;
 }
 
 .keys-list kbd {

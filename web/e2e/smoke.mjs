@@ -5201,7 +5201,7 @@ async function handSortPass(browser, errors, viewport) {
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.click('[data-action="menu"]');
-  await page.click('[data-testid="setting-hand-sort"] [data-sort="manual"]');
+  await page.click('[data-testid="toggle-hand-sort"][data-sort="manual"]');
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').handSort);
   if (stored !== 'manual') fail(`hand sort ${tag}: setting stored as ${stored}`);
   await page.keyboard.press('Escape');
@@ -5350,7 +5350,7 @@ async function qolPass(browser, errors, viewport) {
   log(`qol ${tag}: vibrated ${taps}× for a trick, result ${JSON.stringify(results[0])}`);
   // Switched off in the menu, nothing vibrates (the switch shows where the browser can vibrate).
   await page.click('[data-action="menu"]');
-  await page.click('[data-testid="setting-vibrate"] [data-on="false"]');
+  await page.click('[data-testid="toggle-vibrate"][aria-pressed="true"]');
   const off = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').vibrate);
   if (off !== false) fail(`qol ${tag}: vibration switched off stored as ${off}`);
   await page.keyboard.press('Escape');

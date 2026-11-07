@@ -1530,10 +1530,13 @@ export const de = {
 
   /** "Hand sortieren" in the menu: the core's order for the game, or the player's own. */
   handSort: {
+    /** The menu row with Bedenkzeit and the sort toggle. */
+    row: 'Am Tisch',
     label: 'Hand sortieren',
-    auto: 'Automatisch',
+    toggle: 'Sortieren: {mode}',
+    auto: 'Auto',
     manual: 'Manuell',
-    hint: 'Automatisch: nach der Ansage Trümpfe vorn, dann die Farben. Manuell: Karten in der Hand an einen anderen Platz ziehen.',
+    hint: 'Auto: nach der Ansage Trümpfe vorn, dann die Farben. Manuell: Karten in der Hand an einen anderen Platz ziehen.',
   },
 
   /** Vibration in the menu (./haptics.ts), only where the device has it. */
