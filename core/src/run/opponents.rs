@@ -196,13 +196,17 @@ pub fn player_hints(run: &Run) -> Hints<DealtCard> {
 }
 
 /// A PIMC card for the player's seat in the current game, with everything
-/// the player is allowed to know ([`player_hints`]). `None` if the player
+/// the player is allowed to know ([`player_hints`]). A "Doppelgänger"
+/// whose mirror is still to come is kept back while another card is legal
+/// ([`crate::run::bot::RunBot::keep_for_mirror`]). `None` if the player
 /// is not to play.
 #[must_use]
-pub fn player_card(run: &Run, config: PimcConfig) -> Option<DealtCard> {
+pub fn player_card(run: &Run, content: &Content, config: PimcConfig) -> Option<DealtCard> {
     let active = run.game()?;
     let game = &active.game;
-    let view = game.view(Seat::DECLARER)?;
+    let mut view = game.view(Seat::DECLARER)?;
+    // A Doppelgänger waits for its mirror; the search knows nothing of it.
+    crate::run::bot::RunBot::keep_for_mirror(run, content, &mut view.legal_moves);
     if view.legal_moves.is_empty() {
         return None;
     }

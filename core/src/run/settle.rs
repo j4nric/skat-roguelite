@@ -435,13 +435,13 @@ impl Run {
         if declaration.is_ramsch() {
             return false;
         }
-        // An "Untot" card that can still rise, or a "Doppelgänger" still to
-        // swap: the cards are drawn at random, the bounds of the rest
-        // cannot know them.
+        // An "Untot" card that can still rise (its substitute is drawn at
+        // random), or a "Doppelgänger" still to mirror: the bounds of the
+        // rest cannot know them.
         if game
             .hand(Seat::DECLARER)
             .iter()
-            .any(|&c| self.can_rise(content, c) || self.is_doppelganger(content, c))
+            .any(|&c| self.can_rise(content, c) || self.can_mirror(content, c))
         {
             return false;
         }

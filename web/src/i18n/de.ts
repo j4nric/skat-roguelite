@@ -29,6 +29,7 @@ export const de = {
       InvalidCharacter: 'Diesen Charakter gibt es nicht.',
       UnknownCharacter: 'Diesen Charakter gibt es nicht.',
       DiscardForbidden: 'Ramponierte Karten darfst du nicht drücken.',
+      NotLastCard: 'Der Doppelgänger spiegelt nur als letzte Karte eines Stichs.',
       PainterPending: 'Erst eine Zinke des Kartenmalers wählen.',
       RisePending: 'Erst die drei Karten für die untote Karte wählen.',
       InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',

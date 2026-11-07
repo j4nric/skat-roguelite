@@ -337,8 +337,12 @@ impl Options {
         if plays && RunBot::undead_card(run, content).is_some() {
             return Some(action);
         }
+        // A "Doppelgänger" that mirrors: the same.
+        if plays && RunBot::mirror_card(run, content).is_some() {
+            return Some(action);
+        }
         if let (true, Some(config)) = (plays, self.bot.pimc()) {
-            if let Some(card) = skat_core::run::opponents::player_card(run, config) {
+            if let Some(card) = skat_core::run::opponents::player_card(run, content, config) {
                 return Some(RunAction::Play(card.id));
             }
         }
