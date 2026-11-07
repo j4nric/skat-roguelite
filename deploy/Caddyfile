@@ -17,4 +17,11 @@
 	# WebAssembly.instantiateStreaming never depends on the MIME table.
 	@wasm path *.wasm
 	header @wasm Content-Type application/wasm
+
+	# Web app manifest (PWA). Go's MIME table has no .webmanifest, so set the
+	# type explicitly. Not hashed, so revalidate like index.html; the icons
+	# it lists keep Caddy's default ETag revalidation.
+	@manifest path *.webmanifest
+	header @manifest Content-Type application/manifest+json
+	header @manifest Cache-Control "no-cache"
 }
