@@ -456,6 +456,11 @@ pub struct RunStats {
     pub null_games: u64,
     /// Null games won.
     pub null_won: u64,
+    /// Suit games and grands with Schneider announced, not open: (games,
+    /// won).
+    pub announced_schneider: (u64, u64),
+    /// Suit games and grands played Ouvert: (games, won).
+    pub announced_ouvert: (u64, u64),
     /// Sum of the series account changes of all games.
     pub points: i64,
     /// Einmischen (games dealt again, also by "Neues Blatt").
@@ -885,6 +890,20 @@ impl Observer<'_> {
                         kind.won += 1;
                         kind.won_value += breakdown.value;
                         kind.won_schneider += u64::from(breakdown.schneider);
+                    }
+                    let declaration = breakdown.declaration;
+                    if !declaration.is_null() && !declaration.is_ramsch() {
+                        let announced = if declaration.ouvert() {
+                            Some(&mut self.stats.announced_ouvert)
+                        } else if declaration.schneider_declared() {
+                            Some(&mut self.stats.announced_schneider)
+                        } else {
+                            None
+                        };
+                        if let Some((games, won)) = announced {
+                            *games += 1;
+                            *won += u64::from(breakdown.won);
+                        }
                     }
                     if breakdown.declaration.is_null() {
                         self.stats.null_games += 1;
@@ -1342,6 +1361,14 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         pct(stats.null_won, stats.null_games)
     );
     render_kinds(&mut out, stats, runs);
+    let (sg, sw) = stats.announced_schneider;
+    let (og, ow) = stats.announced_ouvert;
+    let _ = writeln!(
+        out,
+        "announced: schneider={sg} (won%={:.1}) ouvert={og} (won%={:.1})",
+        pct(sw, sg),
+        pct(ow, og)
+    );
     render_factor(&mut out, stats, runs);
     if options.night {
         render_night(&mut out, &stats.night);
@@ -2498,6 +2525,7 @@ mod option_tests {
             "games per pub:",
             "groschen spent per run",
             "schneider%",
+            "announced: schneider=",
             "vouchers per run",
             "sp ",
         ] {
