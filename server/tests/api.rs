@@ -91,9 +91,10 @@ async fn health_and_no_session() {
     let (app, _) = app();
     let res = call(&app, "GET", "/api/health", None, None).await;
     assert_eq!(res.status, StatusCode::OK);
+    // Nobody signed in is an answer, not an error.
     let res = call(&app, "GET", "/api/me", None, None).await;
-    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(res.body["error"], "unauthorized");
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body, json!({ "user": null }));
     let res = call(
         &app,
         "GET",
@@ -408,6 +409,8 @@ async fn logout_ends_the_session() {
         .unwrap_or("");
     assert!(set.contains("Max-Age=0"));
     let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.body["user"], Value::Null);
+    let res = call(&app, "GET", "/api/save", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
 }
 
@@ -574,10 +577,8 @@ async fn deleting_the_account_removes_everything() {
     let res = call(&app, "DELETE", "/api/account", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::NO_CONTENT);
     assert_eq!(
-        call(&app, "GET", "/api/me", Some(&cookie), None)
-            .await
-            .status,
-        StatusCode::UNAUTHORIZED
+        call(&app, "GET", "/api/me", Some(&cookie), None).await.body["user"],
+        Value::Null
     );
     assert_eq!(
         call(

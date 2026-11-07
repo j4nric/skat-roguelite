@@ -1,12 +1,17 @@
 # Runs on the vServer in $DEPLOY_PATH (default /opt/skat). The GitHub Actions
-# deploy job syncs ./site, this file and the Caddyfile there and runs
-# `docker compose up -d`.
+# deploy job syncs ./site, ./server (the account server binary), this file
+# and the Caddyfile there and runs `docker compose up -d`.
 #
 # Ports 80/443 on the server belong to the Caddy of the household app
 # (repo j4nric/haushalt-app, infra/production). That Caddy terminates HTTPS
-# for stammtisch-62-83-23-90.sslip.io and forwards to this container through
-# the shared network `stammtisch-proxy` under the alias `stammtisch-web`.
-# This container publishes no ports. See ADR 0008.
+# for stammtisch-62-83-23-90.sslip.io and forwards everything to the `web`
+# container through the shared network `stammtisch-proxy` under the alias
+# `stammtisch-web`. Neither container publishes ports. See ADR 0008.
+#
+# `web` serves the static site and proxies /api/* to `api` (ADR 0021) over
+# the internal network `backend`, which nothing else can reach. `web` does
+# not depend on `api`: if the account server is down, the game is still
+# served and only /api answers 502.
 
 name: stammtisch
 
@@ -20,8 +25,32 @@ services:
     networks:
       proxy:
         aliases: [stammtisch-web]
+      backend:
+
+  # Account server (server/ in the repo): a static musl binary built in
+  # GitHub Actions, run in a plain Alpine image. SQLite lives in ./data.
+  # Runs as the deploy user (uid/gid written to .env by the deploy job), so
+  # the database file belongs to that user and can be copied for backups.
+  api:
+    image: alpine:3.20
+    restart: unless-stopped
+    command: ["/app/stammtisch-server"]
+    user: "${STAMMTISCH_UID:-1000}:${STAMMTISCH_GID:-1000}"
+    environment:
+      STAMMTISCH_ORIGIN: https://stammtisch-62-83-23-90.sslip.io
+      STAMMTISCH_DB: /data/stammtisch.db
+      STAMMTISCH_LISTEN: 0.0.0.0:8080
+      RUST_LOG: info
+    volumes:
+      - ./server:/app:ro
+      - ./data:/data
+    networks:
+      backend:
+        aliases: [stammtisch-api]
 
 networks:
   proxy:
     name: stammtisch-proxy
     external: true
+  backend:
+    internal: true

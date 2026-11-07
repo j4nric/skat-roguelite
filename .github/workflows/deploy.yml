@@ -56,16 +56,52 @@ jobs:
           name: site
           path: site
 
+  server:
+    name: build account server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: musl
+      # A static musl binary (ADR 0021): no runtime on the server beyond a
+      # plain Alpine image, nothing built there. musl-gcc compiles the
+      # bundled SQLite.
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build static binary
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked -p stammtisch_server --target x86_64-unknown-linux-musl
+          mkdir -p server-bin
+          cp target/x86_64-unknown-linux-musl/release/stammtisch-server server-bin/
+          strip server-bin/stammtisch-server || true
+          file server-bin/stammtisch-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: server-bin
+
   deploy:
     name: deploy to vServer
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, server]
+    # A broken account server build must not hold back the game itself.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: site
           path: site
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: server
+          path: server-bin
       - name: Check secrets
         id: secrets
         env:
@@ -96,9 +132,17 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           DEST: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "mkdir -p '$DEST/site'"
+          # data/ holds the SQLite file of the account server; never synced, never deleted.
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "mkdir -p '$DEST/site' '$DEST/server' '$DEST/data'"
           rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" site/ "$USER@$HOST:$DEST/site/"
-          rsync -az -e "ssh -i ~/.ssh/deploy_key" deploy/docker-compose.yml deploy/Caddyfile "$USER@$HOST:$DEST/"
+          if [ -f server-bin/stammtisch-server ]; then
+            # Artifacts lose the executable bit.
+            chmod 755 server-bin/stammtisch-server
+            rsync -az -e "ssh -i ~/.ssh/deploy_key" server-bin/stammtisch-server "$USER@$HOST:$DEST/server/"
+          else
+            echo "::warning::No account server binary built; the one on the server (if any) stays."
+          fi
+          rsync -az -e "ssh -i ~/.ssh/deploy_key" deploy/docker-compose.yml deploy/Caddyfile deploy/up.sh "$USER@$HOST:$DEST/"
       - name: Start or update containers
         if: steps.secrets.outputs.ready == 'true'
         env:
@@ -106,7 +150,4 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           DEST: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "
-            docker network inspect stammtisch-proxy >/dev/null 2>&1 || docker network create stammtisch-proxy
-            cd '$DEST' && docker compose up -d --remove-orphans && docker compose ps
-          "
+          ssh -i ~/.ssh/deploy_key "$USER@$HOST" "sh '$DEST/up.sh'"

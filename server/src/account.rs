@@ -63,17 +63,19 @@ pub fn user_json(state: &AppState, user_id: &str) -> ApiResult<Value> {
     }))
 }
 
-/// `GET /api/me`: who is signed in (401 if nobody).
+/// `GET /api/me`: who is signed in; `{"user": null}` if nobody (not an
+/// error: the app asks this without knowing).
 pub async fn me(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Read)?;
-    let session = session::require(&state, &headers)?;
-    Ok(Json(
-        json!({ "user": user_json(&state, &session.user_id)? }),
-    ))
+    let user = match session::current(&state, &headers)? {
+        Some(session) => user_json(&state, &session.user_id)?,
+        None => Value::Null,
+    };
+    Ok(Json(json!({ "user": user })))
 }
 
 /// Body of `PUT /api/me/name`.
