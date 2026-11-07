@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "sim", "wasm"]
+members = ["core", "sim", "wasm", "server"]
 
 [workspace.package]
 version = "0.1.0"
@@ -29,3 +29,11 @@ panic = "abort"
 # test builds too (debug assertions and overflow checks stay on).
 [profile.dev.package.skat_core]
 opt-level = 2
+
+# The recovery code is hashed with argon2id; unoptimized it takes seconds
+# per hash and slows the server tests down.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
