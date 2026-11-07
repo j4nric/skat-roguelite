@@ -76,26 +76,45 @@ function placeIcon(pub: PubPreview): MapIcon {
   return pub.is_boss ? 'festsaal' : 'kneipe';
 }
 
+/**
+ * What a thing on the map is called: `data-label` (the kind: "Kneipe",
+ * "Begegnung") and `data-detail` (its name), shown in a small bubble on
+ * hover or tap (watchMapLabels), and as the SVG title for screen readers.
+ */
+function labelAttrs(label: string, detail: string): string {
+  return attrs({ 'data-label': label, 'data-detail': detail || null });
+}
+
+function labelTitle(label: string, detail: string): string {
+  return `<title>${esc(detail ? `${label}: ${detail}` : label)}</title>`;
+}
+
+/** An invisible square around a small thing on the map, so a finger finds it (44 px at the map's scale). */
+function hitBox(x: number, y: number, s = 24): string {
+  return `<rect class="map-hit" x="${Math.round(x - s / 2)}" y="${Math.round(y - s / 2)}" width="${s}" height="${s}" fill="transparent"/>`;
+}
+
 /** A framed tile standing on its place, with a small spike to the street. */
-function tile(kind: MapIcon, x: number, y: number, big: boolean, frame: string, extra: string): string {
+function tile(kind: MapIcon, x: number, y: number, big: boolean, frame: string, extra: string, label: string, detail: string): string {
   const s = big ? 30 : 26;
   const u = big ? 1.5 : 1.25;
   const x0 = Math.round(x - s / 2);
   const y0 = y - s - 7;
-  return `<g ${extra}><rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + (s - 16 * u) / 2, y0 + (s - 16 * u) / 2, u)}<path d="M${x - 3} ${y0 + s + 1}h6v2h-1v2h-1v2h-2v-2h-1v-2h-1z" fill="${INK}"/></g>`;
+  return `<g ${extra} ${labelAttrs(label, detail)}>${labelTitle(label, detail)}<rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + (s - 16 * u) / 2, y0 + (s - 16 * u) / 2, u)}<path d="M${x - 3} ${y0 + s + 1}h6v2h-1v2h-1v2h-2v-2h-1v-2h-1z" fill="${INK}"/></g>`;
 }
 
-function badge(kind: MapIcon, x: number, y: number, frame: string, category: string): string {
+function badge(kind: MapIcon, x: number, y: number, frame: string, category: string, label: string, detail: string): string {
   const s = 24;
   const x0 = x - s / 2;
   const y0 = y - s / 2;
-  return `<g class="map-badge" data-testid="map-badge" ${attrs({ 'data-category': category })}><rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + 2, y0 + 2, 1.25)}</g>`;
+  return `<g class="map-badge" data-testid="map-badge" ${attrs({ 'data-category': category })} ${labelAttrs(label, detail)}>${labelTitle(label, detail)}<rect x="${x0 - 1}" y="${y0 - 1}" width="${s + 2}" height="${s + 2}" fill="${INK}"/><rect x="${x0}" y="${y0}" width="${s}" height="${s}" fill="${frame}"/><rect x="${x0 + 2}" y="${y0 + 2}" width="${s - 4}" height="${s - 4}" fill="${PAPER}"/>${glyph(kind, x0 + 2, y0 + 2, 1.25)}</g>`;
 }
 
-function positionMark(x: number, y: number): string {
+function positionMark(x: number, y: number, detail: string): string {
   const px = Math.round(x);
   const py = Math.round(y);
-  return `<g class="map-pos" data-testid="map-pos"><g class="map-pin"><rect x="${px - 8}" y="${py - 8}" width="16" height="16" fill="${PAPER}" opacity=".85"/>${glyph('position', px - 8, py - 8, 1)}</g></g>`;
+  const label = de.route.legendHere;
+  return `<g class="map-pos" data-testid="map-pos" ${labelAttrs(label, detail)}>${labelTitle(label, detail)}${hitBox(px, py)}<g class="map-pin"><rect x="${px - 8}" y="${py - 8}" width="16" height="16" fill="${PAPER}" opacity=".85"/>${glyph('position', px - 8, py - 8, 1)}</g></g>`;
 }
 
 interface Leg {
@@ -116,6 +135,44 @@ function legOf(view: RunView): Leg | null {
   return { city, plan };
 }
 
+/** The name under the kind of a place: the pub, the boss players, the Malus. */
+function pubDetail(pub: PubPreview): string {
+  if (pub.malus) return `${pub.name} · ${t(de.route.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name })}`;
+  if (pub.is_boss) return `${pub.name} · ${pub.boss ? bossLine(pub.boss) : de.route.bossUnknown}`;
+  return pub.name;
+}
+
+/** The name under a stop: the scouted encounter, or what the stop offers. */
+function stopDetail(o: RouteOptionView): string {
+  const stop = o.stops[0];
+  if (!stop) return '';
+  if (stop.encounter) return contentName('encounters', stop.encounter.id) || stop.encounter.name;
+  return de.route.categoryHints[stop.category] ?? '';
+}
+
+/** The legend under the map: every kind of thing on this leg, icon and name. */
+export function mapLegend(view: RunView): string {
+  const route = view.tour.route;
+  const leg = legOf(view);
+  if (!route || !leg) return '';
+  const items: [MapIcon, string, string][] = [['position', de.route.legendHere, 'position']];
+  const nextKind = placeIcon(route.next);
+  items.push([nextKind, de.route.kinds[nextKind] ?? '', nextKind]);
+  if (nextKind !== 'kneipe' && leg.plan.future.length) items.push(['kneipe', de.route.kinds.kneipe ?? '', 'kneipe']);
+  if (route.options.some((o) => o.spelunke) && nextKind !== 'spelunke') items.push(['spelunke', de.route.kinds.spelunke ?? '', 'spelunke']);
+  const seen = new Set<StopCategory>();
+  for (const o of route.options) {
+    const stop = o.stops[0]?.category;
+    if (!stop || seen.has(stop)) continue;
+    seen.add(stop);
+    items.push([STOP_ICON[stop] ?? 'begegnung', de.route.categories[stop] ?? stop, stop]);
+  }
+  const list = items
+    .map(([icon, name, key]) => `<li class="map-legend-item" ${attrs({ 'data-kind': key, title: name })}>${mapIcon(icon, 16)}<span>${esc(name)}</span></li>`)
+    .join('');
+  return `<ul class="map-legend" data-testid="map-legend" ${attrs({ 'aria-label': de.route.legend })}>${list}</ul>`;
+}
+
 /** The leg as one SVG: city, future pubs, the three ways, targets, position. */
 export function mapSvg(view: RunView, pick: number): string {
   const route = view.tour.route;
@@ -123,7 +180,12 @@ export function mapSvg(view: RunView, pick: number): string {
   if (!route || !leg) return '';
   const { city, plan } = leg;
   let out = cityImageTag(city);
-  for (const [x, y] of plan.future) out += `<g opacity=".4">${glyph('kneipe', Math.round(x) - 8, Math.round(y) - 8, 1, '#5a5650')}</g>`;
+  const later = de.route.kinds.kneipe ?? '';
+  for (const [x, y] of plan.future) {
+    const px = Math.round(x);
+    const py = Math.round(y);
+    out += `<g class="map-later" data-testid="map-later" ${labelAttrs(later, de.route.legendLater)}>${labelTitle(later, de.route.legendLater)}${hitBox(px, py)}<g opacity=".4">${glyph('kneipe', px - 8, py - 8, 1, '#5a5650')}</g></g>`;
+  }
   const picked = route.options.find((o) => o.index === pick) ?? route.options[0];
   for (const o of route.options) {
     if (o === picked) continue;
@@ -137,17 +199,18 @@ export function mapSvg(view: RunView, pick: number): string {
     const [mx, my] = cells[Math.floor(cells.length / 2)] ?? plan.pos;
     const stop = picked.stops[0]?.category ?? 'Tresen';
     out += `<g class="map-route is-selected" data-testid="map-route" ${attrs({ 'data-route': picked.transport, 'data-option': picked.index, 'data-cells': cells.map(([x, y]) => `${x},${y}`).join(' ') })}>${stamps(cells, '#ffffff', 7, pattern)}${stamps(cells, colour, 5, pattern)}</g>`;
-    out += badge(STOP_ICON[stop], mx, my, colour, stop);
+    out += badge(STOP_ICON[stop], mx, my, colour, stop, de.route.categories[stop] ?? stop, stopDetail(picked));
   }
   const next = route.next;
   const [tx, ty] = plan.target;
-  out += tile(placeIcon(next), Math.round(tx), Math.round(ty), next.is_boss, next.is_boss ? '#8a6a22' : '#7a2232', attrs({ class: 'map-target', 'data-testid': 'map-target', 'data-node': next.id }));
+  const nextKind = placeIcon(next);
+  out += tile(nextKind, Math.round(tx), Math.round(ty), next.is_boss, next.is_boss ? '#8a6a22' : '#7a2232', attrs({ class: 'map-target', 'data-testid': 'map-target', 'data-node': next.id }), de.route.kinds[nextKind] ?? '', pubDetail(next));
   const sp = route.options.find((o) => o.spelunke)?.spelunke;
   if (sp && plan.spelunke) {
     const [sx, sy] = plan.spelunke;
-    out += tile('spelunke', Math.round(sx), Math.round(sy), false, '#383b42', attrs({ class: 'map-spelunke', 'data-testid': 'map-spelunke', 'data-node': sp.id }));
+    out += tile('spelunke', Math.round(sx), Math.round(sy), false, '#383b42', attrs({ class: 'map-spelunke', 'data-testid': 'map-spelunke', 'data-node': sp.id }), de.route.kinds.spelunke ?? '', pubDetail(sp));
   }
-  out += positionMark(plan.pos[0], plan.pos[1]);
+  out += positionMark(plan.pos[0], plan.pos[1], view.tour.current?.name ?? '');
   const label = t(de.route.mapAria, { from: view.tour.current?.name ?? '', to: next.name });
   return `<svg class="map-svg look-${city.look}" data-testid="map-svg" viewBox="0 0 ${MW} ${MH}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" overflow="visible" role="img" ${attrs({ 'aria-label': label, 'data-leg': legKey(view), 'data-look': city.look, 'data-seed': city.key })}>${out}</svg>`;
 }
@@ -304,6 +367,7 @@ export function renderRoute(view: RunView, pick: number, overview: boolean): str
       ${body}
       ${zoomButtons(overview)}
     </div>
+    ${overview ? '' : mapLegend(view)}
     <div class="route-bar">
       <div class="route-options">${buttons}</div>
       <button class="btn route-go" ${attrs({ 'data-action': 'choose-route', 'data-option': sel, 'data-testid': 'route-go', disabled: !picked?.can_choose })}>${esc(go)}</button>
@@ -385,5 +449,67 @@ export function playTravel(root: HTMLElement, ms: number): Promise<void> {
     };
     timer.finished.then(arrived, finish);
     requestAnimationFrame(frame);
+  });
+}
+
+// ---------------------------------------------------------------- names on the map
+
+const LABELLED = '.route-map [data-label]';
+
+function labelled(target: EventTarget | null): SVGElement | HTMLElement | null {
+  return target instanceof Element ? target.closest<SVGElement | HTMLElement>(LABELLED) : null;
+}
+
+function hideMapLabel(root: HTMLElement): void {
+  root.querySelectorAll('.map-label').forEach((el) => el.remove());
+}
+
+/** The bubble with the name of a thing on the map, just above it. */
+function showMapLabel(root: HTMLElement, el: SVGElement | HTMLElement): void {
+  const map = el.closest<HTMLElement>('.route-map');
+  if (!map) return;
+  hideMapLabel(root);
+  const bubble = document.createElement('div');
+  bubble.className = 'map-label';
+  bubble.dataset.testid = 'map-label';
+  bubble.setAttribute('role', 'status');
+  const detail = el.dataset.detail ?? '';
+  bubble.innerHTML = `<b>${esc(el.dataset.label ?? '')}</b>${detail ? `<span>${esc(detail)}</span>` : ''}`;
+  map.appendChild(bubble);
+  const m = map.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const w = bubble.offsetWidth;
+  const h = bubble.offsetHeight;
+  const left = Math.max(6, Math.min(m.width - w - 6, r.left - m.left + r.width / 2 - w / 2));
+  // Above the thing if there is room, else below it.
+  const above = r.top - m.top - h - 6;
+  const top = above >= 6 ? above : Math.min(m.height - h - 6, r.bottom - m.top + 6);
+  bubble.style.left = `${Math.round(left)}px`;
+  bubble.style.top = `${Math.round(top)}px`;
+}
+
+/**
+ * Names on the map: resting the mouse on a place or stop shows its name,
+ * a tap shows it too (and a tap elsewhere hides it). Only labels from the
+ * rendered map; nothing is decided here.
+ */
+export function watchMapLabels(root: HTMLElement): void {
+  root.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const el = labelled(e.target);
+    if (el) showMapLabel(root, el);
+  });
+  root.addEventListener('pointerout', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const from = labelled(e.target);
+    if (from && from !== labelled(e.relatedTarget)) hideMapLabel(root);
+  });
+  root.addEventListener('pointerdown', (e) => {
+    const el = labelled(e.target);
+    if (!el) hideMapLabel(root);
+  });
+  root.addEventListener('click', (e) => {
+    const el = labelled(e.target);
+    if (el) showMapLabel(root, el);
   });
 }

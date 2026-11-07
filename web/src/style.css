@@ -4225,6 +4225,30 @@ button.card {
   gap: 8px;
 }
 
+/*
+ * Long sheets (Vereinsbuch, Übersicht, Credits): only the body scrolls, the
+ * title above and the close button below stay in view (like the Regelkarte).
+ */
+.sheet.has-body {
+  overflow: hidden;
+}
+
+.sheet-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: inherit;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet.has-body > :not(.sheet-body) {
+  flex: none;
+}
+
 /* -------------------------------------------- the Vereinsbuch (ledger) */
 
 .overlay-book .sheet {
@@ -7485,6 +7509,57 @@ button.skat-card {
 
 .plan-mark.is-next {
   background: #2a2320;
+}
+
+/* The legend under the map: icon and name of every kind of place on this leg. */
+.map-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 5px 10px;
+  border-top: var(--edge) solid var(--line);
+  background: #f1e6cc;
+  color: #2a2320;
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  list-style: none;
+}
+
+.map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Things on the map with a name show it on hover or tap. */
+.route-map [data-label] {
+  cursor: pointer;
+}
+
+.map-label {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: min(260px, calc(100% - 12px));
+  padding: 4px 8px;
+  border: var(--edge) solid var(--line);
+  background: #fbf6e8;
+  box-shadow: var(--shadow-sm);
+  color: #2a2320;
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.map-label b {
+  color: #7a2232;
+  font-size: var(--fs-s);
+  font-weight: 400;
 }
 
 .route-bar {
