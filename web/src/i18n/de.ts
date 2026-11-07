@@ -1034,6 +1034,10 @@ export const de = {
     bossEnd: '{name} · Ende des Stadtteils',
     bossUnknown: 'Unbekannter Boss',
     mapAria: 'Stadtplan: von {from} nach {to}',
+    /** The legend under the map: every kind of place on this leg by name. */
+    legend: 'Legende',
+    legendHere: 'Du bist hier',
+    legendLater: 'Spätere Kneipe',
     zoomIn: 'Zurück zur Karte',
     zoomOut: 'Ganze Tour zeigen',
     planTitle: 'Deine Kneipentour',
