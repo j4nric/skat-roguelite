@@ -4225,6 +4225,30 @@ button.card {
   gap: 8px;
 }
 
+/*
+ * Long sheets (Vereinsbuch, Übersicht, Credits): only the body scrolls, the
+ * title above and the close button below stay in view (like the Regelkarte).
+ */
+.sheet.has-body {
+  overflow: hidden;
+}
+
+.sheet-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: inherit;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet.has-body > :not(.sheet-body) {
+  flex: none;
+}
+
 /* -------------------------------------------- the Vereinsbuch (ledger) */
 
 .overlay-book .sheet {

@@ -561,9 +561,11 @@ function credits(): string {
     .map((e) => `<li><b>${esc(e.what)}</b><span>${esc(e.who)}</span><span class="credit-license">${esc(e.license)}</span></li>`)
     .join('');
   return `<h2>${esc(de.credits.title)}</h2>
-    <p>${esc(de.credits.intro)}</p>
-    <ul class="credits">${rows}</ul>
-    <p class="credits-thanks">${esc(de.credits.thanks)}</p>
+    <div class="sheet-body">
+      <p>${esc(de.credits.intro)}</p>
+      <ul class="credits">${rows}</ul>
+      <p class="credits-thanks">${esc(de.credits.thanks)}</p>
+    </div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 
@@ -611,13 +613,13 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       if (!view) return '';
       return sheet(
         `<h2>${esc(de.overview.title)}</h2>
-         ${renderOverview(view, ui.meta, false, view.game ? ui.wildSettled : {})}
+         <div class="sheet-body">${renderOverview(view, ui.meta, false, view.game ? ui.wildSettled : {})}</div>
          <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`,
         true,
-        'chalkboard sheet-overview',
+        'chalkboard sheet-overview has-body',
       );
     case 'credits':
-      return sheet(credits(), true, 'sheet-credits');
+      return sheet(credits(), true, 'sheet-credits has-body');
     case 'rules':
       return sheet(renderRules(), true, 'sheet-rules');
     case 'glossary':
@@ -770,7 +772,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     }
     case 'book':
-      return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger', 'overlay-book') : '';
+      return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger has-body', 'overlay-book') : '';
     case 'confirm-new':
       return sheet(
         `<h2>${esc(de.confirm.title)}</h2>
@@ -952,7 +954,7 @@ function statsPage(meta: MetaView, history: RunRecord[]): string {
 export function renderBook(meta: MetaView, tab: 'book' | 'stats', history: RunRecord[]): string {
   return `<header class="ledger-head"><h2>${esc(de.book.title)}</h2><p class="ledger-sub">${esc(de.book.subtitle)}</p></header>
     ${bookTabs(tab)}
-    <div class="ledger-page" data-page="${tab}">${tab === 'stats' ? statsPage(meta, history) : bookPage(meta)}</div>
+    <div class="ledger-page sheet-body" data-page="${tab}">${tab === 'stats' ? statsPage(meta, history) : bookPage(meta)}</div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 

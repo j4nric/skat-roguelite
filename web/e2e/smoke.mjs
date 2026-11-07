@@ -1535,6 +1535,21 @@ async function m4(browser, errors, reducedMotion) {
   const done = await page.locator('.ledger-row.is-done').count();
   if (done !== 4) fail(`Vereinsbuch shows ${done} done unlocks, expected 4`);
   await shoot(page, 'book');
+  // Only the pages scroll: title, tabs and "Schließen" stay in view (playtest 07.11.2026).
+  const pinned = await page.evaluate(() => {
+    const sheet = document.querySelector('.ledger');
+    const body = sheet?.querySelector('.ledger-page');
+    if (!sheet || !body) return 'no ledger';
+    if (body.scrollHeight <= body.clientHeight) return 'pages do not scroll';
+    body.scrollTop = body.scrollHeight;
+    const s = sheet.getBoundingClientRect();
+    const out = [...sheet.querySelectorAll(':scope > h2, :scope > .ledger-head, :scope > [data-action="close-overlay"]')].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top < s.top - 1 || r.bottom > s.bottom + 1 || r.bottom > innerHeight;
+    });
+    return out.length ? `out of view after scrolling: ${out.map((el) => el.className).join(', ')}` : null;
+  });
+  if (pinned) fail(`Vereinsbuch: ${pinned}`);
   await page.click('.ledger [data-action="close-overlay"]');
   await page.fill('#seed', '5');
   await page.click('[data-action="new-run"]');
