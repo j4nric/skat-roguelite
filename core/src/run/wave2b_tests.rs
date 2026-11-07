@@ -369,10 +369,11 @@ fn crib_sheet_tells_the_value_preview_about_a_jack_in_the_skat() {
             .expect("preview")
     };
     // Without it the HJ may be with a defender: mit 2. With it the player
-    // knows it lies in the skat: mit 3, one level more.
+    // knows it lies in the skat: mit 3, one level more, and since relics v4
+    // (07.11.2026) the Spickzettel's own level for the hand game.
     let without = preview(&[]);
     let with = preview(&["crib_sheet"]);
-    assert_eq!(with.levels, without.levels + 1, "{with:?} {without:?}");
+    assert_eq!(with.levels, without.levels + 2, "{with:?} {without:?}");
 }
 
 #[test]

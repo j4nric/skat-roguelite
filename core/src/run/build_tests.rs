@@ -167,11 +167,21 @@ fn the_parts_of_every_direction_carry_its_tag() {
     assert_eq!(curacao.tags, vec![BuildTag::OneSuit]);
     // Untagged items stay untagged.
     assert!(tags_of(&content, "landlord").is_empty());
-    assert!(tags_of(&content, "grandfathers_grand").is_empty());
+    // The Grand direction (relics v4, 07.11.2026).
+    for id in [
+        "grandfathers_grand",
+        "grand_seigneur",
+        "big_shots",
+        "safe_haven",
+        "beer_calm",
+        "open_visor",
+    ] {
+        assert_eq!(tags_of(&content, id), vec![BuildTag::Grand], "{id}");
+    }
     // The tags read from RON as written.
     let tags: Vec<BuildTag> =
-        ron::from_str("[OneSuit, Vouchers, Tricks, Schneider, Null]").expect("ron");
-    assert_eq!(tags.len(), 5);
+        ron::from_str("[OneSuit, Vouchers, Tricks, Schneider, Null, Grand]").expect("ron");
+    assert_eq!(tags.len(), 6);
 }
 
 #[test]
@@ -239,45 +249,40 @@ fn club_colours_counts_the_trump_suit_cards_with_a_zinke_in_the_deck() {
 }
 
 #[test]
-fn true_soul_adds_a_level_per_game_before_in_the_same_trump_suit() {
+fn true_soul_adds_the_trump_suit_in_the_hand_to_the_base_value() {
+    // Relics v4 (07.11.2026): +1 per card of the trump suit the player
+    // holds after the skat, Zinke or not, without the Unter.
     let content = content();
     let mut run = long_run(&content, &["true_soul"]);
-    let mut levels = Vec::new();
-    for game in [DIAMONDS, DIAMONDS, DIAMONDS, DIAMONDS, DIAMONDS] {
-        fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-        let (_, b) = play(&mut run, &content, hand_game(game));
-        assert!(b.won);
-        levels.push(
-            b.lines_of(&relic("true_soul"))
-                .map(|l| l.change)
-                .collect::<Vec<_>>(),
-        );
-    }
-    assert_eq!(
-        levels,
-        vec![
-            vec![],
-            vec![Change::Add(1)],
-            vec![Change::Add(2)],
-            vec![Change::Add(3)],
-            vec![Change::Add(3)],
-        ]
-    );
-    // A Grand starts over, so does another trump suit.
-    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
-    play(&mut run, &content, hand_game(GameType::Grand));
+    // STRONG in diamonds: DA DT DK DQ D9 D7 in the hand (the D8 in the
+    // skat does not count), four Unter left out.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert!(b.lines_of(&relic("true_soul")).next().is_none());
+    assert!(has_line(
+        &b,
+        &relic("true_soul"),
+        Lever::BaseValue,
+        Change::Add(6)
+    ));
+    assert_eq!(b.base_value, 9 + 6);
+    // Clubs: no club in the hand.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));
     assert!(b.lines_of(&relic("true_soul")).next().is_none());
-    // A lost game in the suit keeps the streak but gets no level.
+    // Grand: no trump suit.
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(GameType::Grand));
+    assert!(b.lines_of(&relic("true_soul")).next().is_none());
+    // Lost games count too (a Grundwert line): WEAK holds one club, C7.
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));
     assert!(!b.won);
-    assert!(b.lines_of(&relic("true_soul")).next().is_none());
-    assert_eq!(run.counters().get("true_soul"), Some(&2));
+    assert!(has_line(
+        &b,
+        &relic("true_soul"),
+        Lever::BaseValue,
+        Change::Add(1)
+    ));
 }
 
 // ---------------------------------------------------------- Markenhändler

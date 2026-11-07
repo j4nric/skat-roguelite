@@ -251,7 +251,38 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `lead_pouring` | 2 | +1 level per Blei card in the hand of a won Null |
 /// | `plumb_line` | 2 | +2 Grundwert per Blei card in every Null |
 /// | `grandfathers_grand` | 3 | +6 Grundwert on every Grand |
-pub const RELIC_VALUES: [(&str, u32); 54] = [
+///
+/// Relics v4 (07.11.2026, decided by the user), provisional by judgement,
+/// not measured; the four reworked relics are listed again with their new
+/// value:
+///
+/// | Relic | Value | Why |
+/// |---|---|---|
+/// | `true_soul` | 4 | rework: +1 Grundwert per trump of the suit in the hand, every suit game |
+/// | `crib_sheet` | 1 | rework: +1 level in a hand game; the bot rarely plays hand |
+/// | `beer_mat` | 4 | rework: +2 / +4 Grundwert on the second and third game of a pub, 2 Groschen per pub |
+/// | `dive_expert` | 3 | rework: +2 levels on won games under a malus (Spelunke, the night) |
+/// | `fan_block` | 2 | +2 levels with only trump-suit Siegel; the bot does not gather Siegel on one suit |
+/// | `clear_cut` | 3 | +1 level per void side suit after the skat, at most +2 |
+/// | `pump_attendant` | 2 | a Pfandmarke per pub won |
+/// | `rebate_king` | 3 | ×1.5 from the third Marke of a pub; mostly the Drückeberger ([`relic_score`]: build) |
+/// | `double_stamp` | 1 | nothing alone; worth 5 with a Marken build ([`relic_score`]) |
+/// | `seven_at_one_blow` | 5 | ×1.5 on won games with seven tricks, about a third of the wins |
+/// | `upstart` | 3 | Winkel cards count the Augen of their new rank; Winkel is the bot's favourite Zinke |
+/// | `trick_after_trick` | 3 | up to +2 levels for runs of three tricks |
+/// | `big_mouth` | 1 | the bot rarely announces Schneider |
+/// | `yardstick` | 3 | +1 Grundwert per 5 Augen above 90 on a Schneider win |
+/// | `plumber` | 2 | Blei on a card per won Null |
+/// | `loose_contact` | 2 | Kurzschluss from 50 Augen; Null only |
+/// | `cards_on_table` | 1 | the bot rarely plays Null Ouvert |
+/// | `big_shots` | 3 | Daus as Spitzen in a Grand |
+/// | `safe_haven` | 5 | keeps the Unter at an Einmischen; the bot redeals often |
+/// | `beer_calm` | 2 | a lost Grand counts half |
+/// | `open_visor` | 1 | the bot never announces Ouvert in suit games or Grand |
+/// | `empty_chair` | 2 | 2 plus the free slots it leaves, at most 5 ([`relic_score`]) |
+/// | `junk_dealer` | 2 | the bot sells or swaps about once per run |
+/// | `teetotaller` | 2 | the bot skips weak card rewards while holding it ([`RunBot::card_reward_action`]) |
+pub const RELIC_VALUES: [(&str, u32); 74] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -267,7 +298,7 @@ pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("kibitzer", 3),
     ("last_trick_seven", 2),
     ("with_four", 2),
-    ("beer_mat", 1),
+    ("beer_mat", 4),
     ("card_counter", 1),
     ("all_rounder", 7),
     ("watertight", 6),
@@ -281,7 +312,7 @@ pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("kitty", 3),
     ("slate", 2),
     ("guardian_angel", 7),
-    ("dive_expert", 1),
+    ("dive_expert", 3),
     ("jinx", 4),
     ("glass_eye", 3),
     ("jay", 3),
@@ -292,7 +323,7 @@ pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("tap", 6),
     ("hot_hand", 5),
     ("club_colours", 3),
-    ("true_soul", 1),
+    ("true_soul", 4),
     ("rebate_book", 2),
     ("empties", 2),
     ("stamp_album", 2),
@@ -306,6 +337,26 @@ pub const RELIC_VALUES: [(&str, u32); 54] = [
     ("plumb_line", 2),
     ("grandfathers_grand", 3),
     ("first_names", 2),
+    ("fan_block", 2),
+    ("clear_cut", 3),
+    ("pump_attendant", 2),
+    ("rebate_king", 3),
+    ("double_stamp", 1),
+    ("seven_at_one_blow", 5),
+    ("upstart", 3),
+    ("trick_after_trick", 3),
+    ("big_mouth", 1),
+    ("yardstick", 3),
+    ("plumber", 2),
+    ("loose_contact", 2),
+    ("cards_on_table", 1),
+    ("big_shots", 3),
+    ("safe_haven", 5),
+    ("beer_calm", 2),
+    ("open_visor", 1),
+    ("empty_chair", 2),
+    ("junk_dealer", 2),
+    ("teetotaller", 2),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,
@@ -346,6 +397,11 @@ pub const NIGHT_VALUES: [(&str, u32); 6] = [
 
 /// Value of a relic that is not in [`RELIC_VALUES`].
 pub const DEFAULT_RELIC_VALUE: u32 = 3;
+
+/// With "Der Abstinenzler" the bot takes a card reward only if it is worth
+/// more than this ([`zinke_score`] hundredths): a Zinke of its build
+/// direction, never a plain one (provisional, relics v4).
+pub const TEETOTALLER_SKIP_WORTH: i64 = 300;
 
 /// A relic is swapped only for one worth at least this much more.
 pub const SWAP_MARGIN: u32 = 3;
@@ -551,6 +607,23 @@ pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
         return 0;
     }
     let tags = build_tags(run, content);
+    // Relics whose worth hangs on the run (relics v4, by judgement).
+    let base = match id.as_str() {
+        // Doubles what the Marken do: worth it in a Marken build only.
+        "double_stamp" if tags.contains(&BuildTag::Vouchers) => base + 400,
+        "rebate_king" if tags.contains(&BuildTag::Vouchers) => base + 200,
+        // +1 level per slot left free once it is bought, at most +3.
+        "empty_chair" => {
+            let owned = run.relics().len().saturating_add(1);
+            let free = content.relic_slots(run.character()).map_or(0, |slots| {
+                usize::try_from(slots)
+                    .unwrap_or(usize::MAX)
+                    .saturating_sub(owned)
+            });
+            base + 100 * u32::try_from(free.min(3)).unwrap_or(3)
+        }
+        _ => base,
+    };
     let matches = content
         .relic(id)
         .is_some_and(|def| def.tags.iter().any(|t| tags.contains(t)));
@@ -987,8 +1060,15 @@ impl RunBot {
                 Some(((gain - lost, fit, !jack, points), offer))
             })
             .max_by_key(|&(key, offer)| (key, std::cmp::Reverse(offer)));
+        // "Der Abstinenzler": skipping is worth +2 Grundwert for the rest
+        // of the run, more than any Zinke the bot does not build on.
+        let skip_worth = if run.relics().iter().any(|r| r.as_str() == "teetotaller") {
+            TEETOTALLER_SKIP_WORTH
+        } else {
+            0
+        };
         match best {
-            Some(((value, ..), offer)) if value > 0 => RunAction::TakeCardReward { offer },
+            Some(((value, ..), offer)) if value > skip_worth => RunAction::TakeCardReward { offer },
             _ => RunAction::SkipCardReward,
         }
     }
@@ -2324,12 +2404,12 @@ mod tests {
         let mut content = Content::load().expect("content");
         content.run.relic_slots = Some(5);
         let mut run = open_shop(&content, 6);
-        run.relics = ["crib_sheet", "beer_mat", "tour", "virgin", "concede"]
+        run.relics = ["tour", "card_counter", "skat_redraw", "virgin", "concede"]
             .iter()
             .map(|r| RelicId::new(r))
             .collect();
         offer(&mut run, &["old_lady"], &[]);
-        // Alte Dame costs 9; selling Bierdeckel brings 2: 8 is not enough.
+        // Alte Dame costs 9; selling Der Zähler brings 2: 8 is not enough.
         assert_eq!(RunBot.shop_action(&run, &content), RunAction::LeaveShop);
         run.coins = 7;
         let replace = RunAction::ReplaceRelic {
@@ -2340,7 +2420,7 @@ mod tests {
         run.apply(&content, replace).expect("replace");
         assert_eq!(run.relics().len(), 5);
         assert!(run.relics().contains(&RelicId::new("old_lady")));
-        assert!(!run.relics().contains(&RelicId::new("beer_mat")));
+        assert!(!run.relics().contains(&RelicId::new("card_counter")));
         // Not clearly better: the Kiebitz (3) for the Spickzettel (1).
         let mut run = open_shop(&content, 50);
         run.relics = [

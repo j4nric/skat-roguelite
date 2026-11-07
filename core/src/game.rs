@@ -562,6 +562,10 @@ pub struct Game<C = Card> {
     /// The defenders see each other's hands (boss "Die Zwillinge").
     #[serde(default)]
     defenders_open: bool,
+    /// In a Grand the four Daus count as Spitzen after the Unter (relic
+    /// "Die Großkopferten", [`rules::matador_order`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    grand_aces_matadors: bool,
     /// The card the declarer drew from a defender with the skat ("Drei
     /// drücken") and who held it.
     #[serde(default = "no_card", skip_serializing_if = "Option::is_none")]
@@ -645,6 +649,21 @@ impl<C: PlayingCard> Game<C> {
         editions: [Vec<C>; 3],
         forehand: Seat,
     ) -> Result<Game<C>, GameError<C>> {
+        Game::deal_editions_keeping(rng, editions, forehand, &[])
+    }
+
+    /// [`Game::deal_editions`], but the cards with the instance ids in
+    /// `keep` (at most a hand) go to the declarer's hand as they are; the
+    /// other cards are shuffled and fill his hand, the defenders' hands
+    /// and the skat ("Unterschlupf", relic: keep the Unter at an
+    /// Einmischen). Ids not among the cards are ignored. With `keep` empty
+    /// the deal is exactly [`Game::deal_editions`].
+    pub fn deal_editions_keeping(
+        rng: &mut Rng,
+        editions: [Vec<C>; 3],
+        forehand: Seat,
+        keep: &[u32],
+    ) -> Result<Game<C>, GameError<C>> {
         let same_cards = editions.iter().all(|e| {
             e.len() == CARDS_IN_PLAY
                 && e.iter()
@@ -654,8 +673,17 @@ impl<C: PlayingCard> Game<C> {
         if !same_cards {
             return Err(GameError::InvalidDeal);
         }
-        let mut order: Vec<usize> = (0..CARDS_IN_PLAY).collect();
+        let kept: Vec<usize> = (0..CARDS_IN_PLAY)
+            .filter(|&i| {
+                editions[0][i]
+                    .instance()
+                    .is_some_and(|id| keep.contains(&id))
+            })
+            .take(HAND_SIZE)
+            .collect();
+        let mut order: Vec<usize> = (0..CARDS_IN_PLAY).filter(|i| !kept.contains(i)).collect();
         rng.shuffle(&mut order);
+        let order: Vec<usize> = kept.into_iter().chain(order).collect();
         let take = |seat: usize, range: std::ops::Range<usize>| -> Vec<C> {
             order[range].iter().map(|&i| editions[seat][i]).collect()
         };
@@ -755,6 +783,7 @@ impl<C: PlayingCard> Game<C> {
             card_points: [0; 3],
             conceded: None,
             defenders_open: false,
+            grand_aces_matadors: false,
             drawn: None,
             returned: None,
             bonus_points: [0; 3],
@@ -1040,6 +1069,18 @@ impl<C: PlayingCard> Game<C> {
     #[must_use]
     pub fn deck_cards(&self) -> &[C] {
         &self.deck
+    }
+
+    /// In a Grand, count the four Daus as Spitzen after the Unter (relic
+    /// "Die Großkopferten").
+    pub fn count_grand_aces(&mut self) {
+        self.grand_aces_matadors = true;
+    }
+
+    /// Whether the four Daus count as Spitzen in a Grand.
+    #[must_use]
+    pub fn grand_aces_matadors(&self) -> bool {
+        self.grand_aces_matadors
     }
 
     /// Let the defenders see each other's hands (boss "Die Zwillinge").
@@ -1832,8 +1873,8 @@ impl<C: PlayingCard> Game<C> {
                 count: 0,
             });
         }
-        Some(rules::matadors_in(
-            declaration.game(),
+        Some(rules::matadors_along(
+            rules::matador_order(declaration.game(), self.grand_aces_matadors),
             &self.declarer_cards,
             &self.in_play,
         ))

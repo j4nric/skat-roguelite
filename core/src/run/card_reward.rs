@@ -39,7 +39,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Run, RunError, RunEvent, RunPhase, draw_weighted};
-use crate::content::{CardModDef, CardModId, Content, ModKind, Rarity, in_pool};
+use crate::content::{CardModDef, CardModId, Content, ModKind, Rarity, Stage, in_pool};
 
 /// The card reward of a won pub, waiting for the player.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,6 +403,8 @@ impl Run {
         events.push(RunEvent::CardRewardSkipped { coins });
         self.settle_debt(events);
         self.card_reward = None;
+        // "Der Abstinenzler".
+        self.fire(content, Stage::OnCardRewardSkipped, None, None, events);
         self.after_pub_rewards(content, events)
     }
 

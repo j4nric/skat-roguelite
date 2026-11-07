@@ -1217,7 +1217,7 @@ export interface ModFigure {
 export type ModKind = 'Edge' | 'Moment' | 'Voucher' | 'Curse' | 'Special' | 'SpecialCurse';
 
 /** Build direction of an item (04.11.2026): Farbtreue, Markenhändler, Stichjäger, Schneider, Nullspieler. */
-export type BuildTag = 'OneSuit' | 'Vouchers' | 'Tricks' | 'Schneider' | 'Null';
+export type BuildTag = 'OneSuit' | 'Vouchers' | 'Tricks' | 'Schneider' | 'Null' | 'Grand';
 
 export interface CardModEntry extends CatalogEntry {
   rarity: Rarity;

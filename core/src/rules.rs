@@ -477,6 +477,22 @@ pub fn matadors(game: GameType, declarer_cards: &[Card]) -> Matadors {
     }
 }
 
+/// The cards along which the Spitzen of `game` are counted: the trump
+/// order, and with `grand_aces` ("Die Großkopferten", relic) in a Grand
+/// the four Daus after the four Unter (Eichel, Grün, Rot, Schellen).
+#[must_use]
+pub fn matador_order(game: GameType, grand_aces: bool) -> Vec<Card> {
+    let mut order = game.trump_order();
+    if grand_aces && game == GameType::Grand {
+        order.extend(
+            [Suit::Clubs, Suit::Spades, Suit::Hearts, Suit::Diamonds]
+                .into_iter()
+                .map(|suit| Card::new(suit, Rank::Ace)),
+        );
+    }
+    order
+}
+
 /// Spitzen over card instances, counted only along the trumps that are in
 /// play in this game (`in_play`: hands plus skat).
 ///
@@ -491,6 +507,16 @@ pub fn matadors_in<C: PlayingCard>(
     declarer_cards: &[C],
     in_play: &[C],
 ) -> Matadors {
+    matadors_along(game.trump_order(), declarer_cards, in_play)
+}
+
+/// [`matadors_in`] along an explicit order of cards ([`matador_order`]).
+#[must_use]
+pub fn matadors_along<C: PlayingCard>(
+    order: Vec<Card>,
+    declarer_cards: &[C],
+    in_play: &[C],
+) -> Matadors {
     // A demoted Unter ("Abgestuft") is no Unter in this game: like a card
     // "Blue Curaçao" repainted, it is skipped.
     let faces = |cards: &[C]| -> Vec<Card> {
@@ -502,11 +528,7 @@ pub fn matadors_in<C: PlayingCard>(
     };
     let present = faces(in_play);
     let held = faces(declarer_cards);
-    let order: Vec<Card> = game
-        .trump_order()
-        .into_iter()
-        .filter(|c| present.contains(c))
-        .collect();
+    let order: Vec<Card> = order.into_iter().filter(|c| present.contains(c)).collect();
     let Some(top) = order.first() else {
         return Matadors {
             with: false,
@@ -1135,6 +1157,11 @@ pub struct Thresholds {
     /// like Schneider itself, so it holds with a changed deck.
     #[serde(default)]
     pub schneider_bonus: u32,
+    /// "Offenes Visier" (relic, 07.11.2026): a suit game or Grand declared
+    /// Ouvert needs Schneider instead of Schwarz. Schwarz angesagt gives no
+    /// level then, Schwarz one only when made. The Skatordnung: `false`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ouvert_schneider: bool,
 }
 
 impl Default for Thresholds {
@@ -1154,6 +1181,7 @@ impl Thresholds {
             declarer_schneider: Vec::new(),
             stake,
             schneider_bonus: 0,
+            ouvert_schneider: false,
         }
     }
 
@@ -1311,8 +1339,10 @@ pub fn game_value_parts(
     };
     let hand = declaration.hand();
     let schneider_declared = declaration.schneider_declared();
-    let schwarz_declared = declaration.schwarz_declared();
     let ouvert = declaration.ouvert();
+    // "Offenes Visier": Ouvert asks for Schneider only.
+    let schwarz_declared =
+        declaration.schwarz_declared() && !(ouvert && thresholds.ouvert_schneider);
     let points = outcome.declarer_card_points;
     let won_on_points = points >= thresholds.win;
 
@@ -1971,6 +2001,7 @@ mod tests {
             declarer_schneider: vec![(85, u32::MAX)],
             stake: 0,
             schneider_bonus: 0,
+            ouvert_schneider: false,
         };
         let parts = game_value_parts(decl, MIT_2, &outcome(59, 5), &thresholds);
         assert!(parts.won && parts.won_by_lowered_threshold);
