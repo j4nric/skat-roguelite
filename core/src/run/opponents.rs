@@ -71,9 +71,10 @@ const INFORMED_FALLBACK: PimcConfig = PimcConfig {
 /// some of the declarer's cards (an Ouvert hand, "Durchsichtig" cards in
 /// his hand or in the skat), they play PIMC instead, with the weakest PIMC
 /// strength of `run.ron`, so the knowledge reaches their card play in every
-/// section. Against an open hand only the partner's hand and the skat are
-/// unknown, few deals cover them, and every deal is searched to the end
-/// (depth `0`); the node budget of a decision bounds the time as before.
+/// section. The search depth stays: searched to the end (depth `0`), the
+/// node budget of a decision cuts the deals short, and the defenders of a
+/// Null Ouvert catch the declarer less often than with depth 3 (measured
+/// in `core/tests/defender_knowledge.rs`).
 #[must_use]
 pub fn informed_config(
     content: &Content,
@@ -81,7 +82,7 @@ pub fn informed_config(
     declarer_open: bool,
     knows_cards: bool,
 ) -> Option<PimcConfig> {
-    let config = opponents_in(content, section).pimc().or_else(|| {
+    opponents_in(content, section).pimc().or_else(|| {
         (declarer_open || knows_cards).then(|| {
             content
                 .run
@@ -90,11 +91,6 @@ pub fn informed_config(
                 .find_map(|o| o.pimc())
                 .unwrap_or(INFORMED_FALLBACK)
         })
-    })?;
-    Some(if declarer_open {
-        PimcConfig { depth: 0, ..config }
-    } else {
-        config
     })
 }
 
@@ -263,15 +259,11 @@ mod tests {
         // Section 1: the heuristic, unless the defenders know cards.
         assert_eq!(informed_config(&content, 0, false, false), None);
         assert_eq!(informed_config(&content, 0, false, true), Some(weakest));
-        // An open hand: searched to the end.
-        let open = informed_config(&content, 0, true, false).expect("PIMC");
-        assert_eq!((open.samples, open.depth), (weakest.samples, 0));
-        // Later sections keep their strength; Ouvert drops the depth limit.
+        assert_eq!(informed_config(&content, 0, true, false), Some(weakest));
+        // Later sections keep their strength.
         let section = opponents_in(&content, 2).pimc().expect("PIMC");
         assert_eq!(informed_config(&content, 2, false, false), Some(section));
-        assert_eq!(informed_config(&content, 2, false, true), Some(section));
-        let open = informed_config(&content, 2, true, true).expect("PIMC");
-        assert_eq!((open.samples, open.depth), (section.samples, 0));
+        assert_eq!(informed_config(&content, 2, true, true), Some(section));
         // Without any PIMC section in run.ron: the fallback.
         let mut none = content.clone();
         none.run.opponents.clear();

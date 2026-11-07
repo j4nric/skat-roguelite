@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use skat_core::ai::pimc::{PimcConfig, PimcPolicy};
 use skat_core::ai::sample::Hints;
-use skat_core::ai::solver::{self, Goal, Layout};
+use skat_core::ai::solver::{self, Goal, Layout, Limits, Table};
 use skat_core::ai::{DeclarerHeuristic, DefenderHeuristic, Policy, null_unsafe_cards};
 use skat_core::cards::{Card, Rank};
 use skat_core::game::{Game, Seat};
@@ -114,6 +114,17 @@ fn play(
     }
 }
 
+/// Double-dummy values of the moves, with a node budget: a rare deal
+/// explodes otherwise (behind the budget the solver estimates).
+fn dd_solve(game: GameType, goal: Goal, layout: &Layout<Card>) -> Vec<(Card, i32)> {
+    let mut table = Table::new(18);
+    let limits = Limits {
+        depth: 0,
+        nodes: 400_000,
+    };
+    solver::solve_with(game, goal, layout, limits, &mut table).0
+}
+
 /// The declarer's best card with every hand known (double dummy): the
 /// lowest value of the goal his game is lost by.
 fn perfect_card(game: &Game) -> Option<Card> {
@@ -133,7 +144,7 @@ fn perfect_card(game: &Game) -> Option<Card> {
         trick: game.current_trick().to_vec(),
         skat_points: 0,
     };
-    solver::solve(declaration.game(), goal, &layout)
+    dd_solve(declaration.game(), goal, &layout)
         .into_iter()
         .min_by_key(|&(_, v)| v)
         .map(|(c, _)| c)
@@ -160,7 +171,7 @@ fn defence_can_win(game: &Game) -> bool {
         trick: Vec::new(),
         skat_points: 0,
     };
-    let values = solver::solve(declaration.game(), goal, &layout);
+    let values = dd_solve(declaration.game(), goal, &layout);
     let defender_leads = !game.trick_lead().is_declarer();
     let best = if defender_leads {
         values.iter().map(|&(_, v)| v).max()
@@ -233,8 +244,8 @@ fn defenders_with_knowledge_of_the_declarers_cards() {
         ("heuristic", Defence::Heuristic),
         ("pimc 8:3", pimc(8, 3, Pins::None)),
         ("pimc 12:3", pimc(12, 3, Pins::None)),
+        ("pimc 8:0", pimc(8, 0, Pins::None)),
         ("pimc 12:0", pimc(12, 0, Pins::None)),
-        ("pimc 24:0", pimc(24, 0, Pins::None)),
     ];
     // Null Ouvert Hand with at most two exposed cards.
     let null = deals(n, |game, _| {
