@@ -46,6 +46,14 @@ pub enum Stage {
     /// discarding or in a hand game (DESIGN 7.2). Acts on run state only
     /// (counters, flags, Groschen), like [`Stage::OnSeriesWon`].
     OnVoucherRedeemed,
+    /// After the player gave up a relic: sold at the Tresen, replaced by
+    /// another (Tresen, boss reward) or swapped in an encounter. The relic
+    /// given up no longer fires ("Der Trödler" does not count itself). Run
+    /// state only.
+    OnRelicSold,
+    /// After the player skipped the card reward of a won pub on purpose
+    /// (not when there was none). Run state only ("Der Abstinenzler").
+    OnCardRewardSkipped,
 }
 
 impl Stage {
@@ -60,6 +68,8 @@ impl Stage {
                 | Stage::OnRouteChosen
                 | Stage::OnShopOpened
                 | Stage::OnVoucherRedeemed
+                | Stage::OnRelicSold
+                | Stage::OnCardRewardSkipped
         )
     }
 
@@ -171,6 +181,22 @@ pub enum Hook {
         /// Effects, applied in order.
         then: Vec<Effect>,
     },
+    /// After the player sold, replaced or swapped away a relic.
+    OnRelicSold {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
+    /// After the player skipped a card reward.
+    OnCardRewardSkipped {
+        /// Condition.
+        #[serde(default)]
+        when: Condition,
+        /// Effects, applied in order.
+        then: Vec<Effect>,
+    },
 }
 
 impl Hook {
@@ -189,6 +215,8 @@ impl Hook {
             Hook::OnRouteChosen { .. } => Stage::OnRouteChosen,
             Hook::OnShopOpened { .. } => Stage::OnShopOpened,
             Hook::OnVoucherRedeemed { .. } => Stage::OnVoucherRedeemed,
+            Hook::OnRelicSold { .. } => Stage::OnRelicSold,
+            Hook::OnCardRewardSkipped { .. } => Stage::OnCardRewardSkipped,
         }
     }
 
@@ -206,7 +234,9 @@ impl Hook {
             | Hook::OnDiscard { when, .. }
             | Hook::OnRouteChosen { when, .. }
             | Hook::OnShopOpened { when, .. }
-            | Hook::OnVoucherRedeemed { when, .. } => when,
+            | Hook::OnVoucherRedeemed { when, .. }
+            | Hook::OnRelicSold { when, .. }
+            | Hook::OnCardRewardSkipped { when, .. } => when,
         }
     }
 
@@ -224,7 +254,9 @@ impl Hook {
             | Hook::OnDiscard { then, .. }
             | Hook::OnRouteChosen { then, .. }
             | Hook::OnShopOpened { then, .. }
-            | Hook::OnVoucherRedeemed { then, .. } => then,
+            | Hook::OnVoucherRedeemed { then, .. }
+            | Hook::OnRelicSold { then, .. }
+            | Hook::OnCardRewardSkipped { then, .. } => then,
         }
     }
 }
@@ -257,6 +289,9 @@ impl CardFilter {
 pub struct CardCount {
     /// Only cards that carry one of these modifications. Empty: any
     /// modification that is no curse (a Zinke, a Marke or a special card).
+    /// With `in_hand`, suit and rank are those of the card as the player
+    /// holds it in the game (repainted by "Blue Curaçao", settled as a
+    /// Wandelkarte); otherwise those printed.
     pub mods: Vec<CardModId>,
     /// Only modifications of this kind (`Voucher`: Marken).
     pub kind: Option<ModKind>,
@@ -272,6 +307,15 @@ pub struct CardCount {
     /// with a relic the player holds: Zinken "of his direction"
     /// ("Nachtschicht", ADR 0020).
     pub direction: bool,
+    /// Count cards with or without a modification: `mods` and `kind` are
+    /// ignored ("Treue Seele": the length of the trump suit).
+    pub all_cards: bool,
+    /// Leave out the Unter (which `trump_suit` includes).
+    pub no_jacks: bool,
+    /// Only cards whose suit is not the trump suit of the declared suit
+    /// game, its Unter excluded ("Fanblock": a Siegel off the trump suit);
+    /// nothing in any other game.
+    pub off_trump: bool,
 }
 
 /// What an effect does. Each variant names its lever of the formula.
@@ -621,8 +665,94 @@ pub enum Effect {
     SecondChance,
     /// Lever Spelunke ("Spelunkenkenner"): a Spelunke offers this many
     /// maluses and the player picks one at the route choice. Passive only;
-    /// the largest number counts.
+    /// the largest number counts. No relic uses it since 07.11.2026
+    /// ("Spelunkenkenner" reworked); it stays readable for content and
+    /// saves.
     ChooseMalus(u32),
+    /// Deck (relics v4, "Der Tankwart", "Der Klempner"): put `card_mod`
+    /// with `value` on one card of the player's edition, drawn at random
+    /// with a generator of its own from the game's seed. With
+    /// `only_unmarked` only cards without any modification (no Zinke, no
+    /// curse) are drawn; only cards the modification fits. Nothing if no
+    /// card fits. The card has it from the next game on. On score and
+    /// outside a game only.
+    AttachModToRandomCard {
+        /// The modification.
+        card_mod: CardModId,
+        /// Its value.
+        #[serde(default = "one")]
+        value: i32,
+        /// Only cards without any modification.
+        #[serde(default)]
+        only_unmarked: bool,
+    },
+    /// Lever Gewinnstufen ("Kahlschlag"): `per` levels for each of the three
+    /// suits besides the trump suit of which the player holds no card
+    /// (Unter and blanks do not count) in the ten cards he plays, at most
+    /// `max`. Fixed at the declaration; nothing outside a suit game.
+    AddLevelsPerVoidSuit {
+        /// Levels per void suit.
+        per: i32,
+        /// At most this many levels.
+        max: i32,
+    },
+    /// Lever Grundwert ("Elle"): `per` for every full `step` Augen the
+    /// declarer has above `above` when the effect fires (skat and extra
+    /// Augen included; nothing at or below `above`). Meant for the score.
+    AddBaseValuePerDeclarerPoints {
+        /// Augen from which it counts.
+        above: u32,
+        /// Augen per step.
+        step: u32,
+        /// Grundwert per step.
+        per: i32,
+    },
+    /// Lever Gewinnstufen ("Leerer Stuhl"): `per` levels for each relic
+    /// slot the player leaves free ([`super::Content::relic_slots`] less
+    /// the relics he holds; house rules of the evening do not count), at
+    /// most `max`. Nothing without a slot limit.
+    AddLevelsPerFreeRelicSlot {
+        /// Levels per free slot.
+        per: i32,
+        /// At most this many levels.
+        max: i32,
+    },
+    /// Lever Groschen and Gewinnstufen ("Doppelt gemoppelt"): every Marke
+    /// of the player is redeemed twice: its `OnDiscard` hooks and every
+    /// `OnVoucherRedeemed` hook fire a second time. Passive only.
+    RedeemVouchersTwice,
+    /// Lever Augen ("Emporkömmling"): a card of the player's edition that
+    /// a "Winkel" raised ([`Effect::Promote`]) counts the Augen of the card
+    /// it became, after the relics that set Augen ("Alte Oberin"); its own
+    /// Augen modifications count on top. Only the player's edition (ADR
+    /// 0015). Passive only.
+    PromotedCardsTakePoints,
+    /// Lever Gewinnstufen (Null, "Wackelkontakt"): the Kurzschluss of the
+    /// Null formula ([`crate::rules::NullFormula::short_circuit_points`])
+    /// comes from this many defender Augen; the lowest value counts.
+    /// Nothing with fixed Null values. Passive only.
+    ShortCircuitThreshold(u32),
+    /// Lever Spitzen (Grand, "Die Großkopferten"): in a Grand the Spitzen
+    /// run on after the four Unter through the four Daus (Eichel, Grün,
+    /// Rot, Schellen), "mit" or "ohne" as usual. Never in a suit game,
+    /// Null or Ramsch. Passive only.
+    GrandAcesAsMatadors,
+    /// Lever Spitzen ("Unterschlupf"): at an Einmischen the player keeps
+    /// the cards of his hand that match the filter (cards that are Unter
+    /// in his edition when the filter names the Unter: a demoted one is
+    /// not); the rest of the 32 cards is shuffled and dealt again. Passive
+    /// only.
+    RedealKeeps(CardFilter),
+    /// Lever Gewinnstufen and Gewinnschwelle (Ouvert, "Offenes Visier"): a
+    /// suit game or Grand declared Ouvert needs Schneider instead of
+    /// Schwarz; Schwarz angesagt does not count, Schwarz counts only when
+    /// made ([`crate::rules::Thresholds::ouvert_schneider`]). Passive only.
+    OuvertRequiresSchneider,
+}
+
+/// Serde default of a value: 1.
+const fn one() -> i32 {
+    1
 }
 
 impl Effect {
@@ -642,7 +772,20 @@ impl Effect {
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
             | Effect::ScaleGameValuePerCounter { .. }
-            | Effect::ScaleGameValuePerCard { .. } => stage.in_game(),
+            | Effect::ScaleGameValuePerCard { .. }
+            | Effect::AddLevelsPerVoidSuit { .. }
+            | Effect::AddBaseValuePerDeclarerPoints { .. }
+            | Effect::AddLevelsPerFreeRelicSlot { .. } => stage.in_game(),
+            Effect::AttachModToRandomCard { .. } => matches!(
+                stage,
+                Stage::OnScore
+                    | Stage::OnSeriesWon
+                    | Stage::OnRouteChosen
+                    | Stage::OnShopOpened
+                    | Stage::OnVoucherRedeemed
+                    | Stage::OnRelicSold
+                    | Stage::OnCardRewardSkipped
+            ),
             Effect::MultiplySkatPoints(_) | Effect::RevealSkatCard(_) => stage == Stage::OnDeclare,
             Effect::SchneiderBonusFromTrick
             | Effect::MultiplyTrickPoints(_)
@@ -687,10 +830,20 @@ impl Effect {
             | Effect::SeriesSkatSwap(_)
             | Effect::NoCheating
             | Effect::Ramsch
-            | Effect::CurseForPub { .. } => stage == Stage::Passive,
+            | Effect::CurseForPub { .. }
+            | Effect::RedeemVouchersTwice
+            | Effect::PromotedCardsTakePoints
+            | Effect::ShortCircuitThreshold(_)
+            | Effect::GrandAcesAsMatadors
+            | Effect::RedealKeeps(_)
+            | Effect::OuvertRequiresSchneider => stage == Stage::Passive,
+            // "Hosen runter": the defenders' hands open once a Null Ouvert
+            // is declared.
+            Effect::RevealDefenderHand(_) => {
+                matches!(stage, Stage::Passive | Stage::OnDeal | Stage::OnDeclare)
+            }
             Effect::PeekDefenderCards(_)
             | Effect::RevealDefenderCards(_)
-            | Effect::RevealDefenderHand(_)
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther => matches!(stage, Stage::Passive | Stage::OnDeal),
             Effect::StashCoins { .. } => stage == Stage::OnSeriesWon,
@@ -919,6 +1072,27 @@ pub enum Condition {
         /// Minimum number of Spitzen.
         count: u32,
     },
+    /// The cards of the player's edition that [`CardCount`] counts are at
+    /// least `min` and at most `max` ("Fanblock": at least three Siegel on
+    /// the trump suit, none off it). In every stage; what needs a game
+    /// counts nothing without one.
+    CardsCounted {
+        /// Which cards count.
+        count: CardCount,
+        /// At least this many (none: no lower bound).
+        #[serde(default)]
+        min: Option<u32>,
+        /// At most this many (none: no upper bound).
+        #[serde(default)]
+        max: Option<u32>,
+    },
+    /// A malus is in force in the current pub: a Spelunke's or one of the
+    /// long night ("Spelunkenkenner"). In every stage.
+    PubMalusActive,
+    /// The declarer has taken at least this many tricks so far, conceded
+    /// ones included ("Sieben auf einen Streich" on score). During play
+    /// and on score.
+    DeclarerTricksAtLeast(u32),
 }
 
 impl Condition {
@@ -926,7 +1100,15 @@ impl Condition {
     #[must_use]
     pub fn allowed_in(&self, stage: Stage) -> bool {
         match self {
-            Condition::Always | Condition::Flag(_) | Condition::CounterAtLeast { .. } => true,
+            Condition::Always
+            | Condition::Flag(_)
+            | Condition::CounterAtLeast { .. }
+            | Condition::CardsCounted { .. }
+            | Condition::PubMalusActive => true,
+            Condition::DeclarerTricksAtLeast(_) => matches!(
+                stage,
+                Stage::OnCardPlayed | Stage::OnTrickEnd | Stage::OnScore
+            ),
             Condition::All(cs) | Condition::Any(cs) => cs.iter().all(|c| c.allowed_in(stage)),
             Condition::Not(c) => c.allowed_in(stage),
             Condition::Won

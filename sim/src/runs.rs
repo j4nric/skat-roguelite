@@ -518,6 +518,9 @@ pub struct RunStats {
     pub card_rewards: CardRewardStat,
     /// The card reward per Zinke: (offered, taken).
     pub card_reward_zinken: BTreeMap<CardModId, (u64, u64)>,
+    /// Games in which a relic added a line to the score, per relic (does
+    /// it fire? relics v4, 07.11.2026).
+    pub relic_lines: BTreeMap<RelicId, u64>,
     /// The player's edition: Zinken at the end, Marken, Zinken in hand.
     pub deck: DeckStat,
     /// The long night (`--night`).
@@ -860,6 +863,19 @@ impl Observer<'_> {
                     }
                 }
                 RunEvent::GameScored { breakdown, .. } => {
+                    let mut fired: Vec<&RelicId> = breakdown
+                        .lines
+                        .iter()
+                        .filter_map(|l| match &l.source {
+                            skat_core::content::Source::Relic(id) => Some(id),
+                            _ => None,
+                        })
+                        .collect();
+                    fired.sort();
+                    fired.dedup();
+                    for id in fired {
+                        *self.stats.relic_lines.entry(id.clone()).or_default() += 1;
+                    }
                     let deck = &mut self.stats.deck;
                     deck.games += 1;
                     deck.zinked_in_hand += self.hand_zinked;
@@ -1450,6 +1466,11 @@ fn render_card_rewards(out: &mut String, stats: &RunStats, runs: u64) {
         pct(c.skipped, c.offered),
         mean(c.skip_coins, runs)
     );
+    let _ = write!(out, "relic score lines (games with a line):");
+    for (id, games) in &stats.relic_lines {
+        let _ = write!(out, " {id}={games}");
+    }
+    let _ = writeln!(out);
     let _ = write!(out, "card reward zinken (offered/taken):");
     for (id, (offered, taken)) in &stats.card_reward_zinken {
         let _ = write!(out, " {id}={offered}/{taken}");
@@ -2511,6 +2532,7 @@ mod option_tests {
         for needle in [
             "card rewards per run",
             "card reward zinken",
+            "relic score lines",
             "relics start",
             "faktor: won games mean",
             "runs end:",

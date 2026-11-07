@@ -220,7 +220,7 @@ impl Run {
                         .ok_or(RunError::InvalidSlot)?;
                     let price = content.relic(&old).map_or(0, |d| sell_price(d.price));
                     self.relics.remove(index);
-                    self.pay_out_stash(content, &old, events);
+                    self.relic_given_up(content, &old, events);
                     self.coins = self.coins.saturating_add(price);
                     events.push(RunEvent::RelicSold { relic: old, price });
                     self.settle_debt(events);

@@ -71,7 +71,9 @@ impl Run {
             thresholds.declarer_schneider.clear();
             thresholds.schneider_bonus = 0;
             let schneider = declaration.schneider_declared();
-            let schwarz = declaration.schwarz_declared();
+            // "Offenes Visier": Ouvert needs Schneider only.
+            let schwarz = declaration.schwarz_declared()
+                && !(declaration.ouvert() && thresholds.ouvert_schneider);
             let outcome = Outcome {
                 declarer_card_points: thresholds.win,
                 defender_card_points: if schneider {
@@ -104,6 +106,7 @@ impl Run {
             games_left: self.series.games_left(),
             transport: None,
             marked_cards: None,
+            run: Some((self, content)),
         };
         for source in self.sources(content, true) {
             if !knowledge.counts(&source.source) {
@@ -173,7 +176,9 @@ const fn max_firings(stage: Stage) -> usize {
         | Stage::OnDiscard
         | Stage::OnRouteChosen
         | Stage::OnShopOpened
-        | Stage::OnVoucherRedeemed => 0,
+        | Stage::OnVoucherRedeemed
+        | Stage::OnRelicSold
+        | Stage::OnCardRewardSkipped => 0,
     }
 }
 
@@ -245,12 +250,18 @@ impl Run {
             for hook in source.hooks {
                 for effect in hook.then() {
                     let effect = effect.scaled(source.scale);
-                    let Some(line) = score_line(
-                        &source.source,
-                        &effect,
-                        &self.counters,
-                        self.count_for(content, &effect),
-                    ) else {
+                    // What the game decides counts at its most.
+                    let count = match &effect {
+                        crate::content::Effect::AddLevelsPerVoidSuit { .. } => 3,
+                        crate::content::Effect::AddBaseValuePerDeclarerPoints {
+                            above,
+                            step,
+                            ..
+                        } => 120_u32.saturating_sub(*above) / (*step).max(1),
+                        _ => self.count_for(content, &effect),
+                    };
+                    let Some(line) = score_line(&source.source, &effect, &self.counters, count)
+                    else {
                         continue;
                     };
                     if raises(&line) {
@@ -326,9 +337,10 @@ impl Run {
             let Some(declaration) = Declaration::new(game, RiskLevel::Ouvert) else {
                 continue;
             };
+            let order = crate::rules::matador_order(game, active.game.grand_aces_matadors());
             let matadors = Matadors {
                 with: true,
-                count: u32::try_from(game.trump_order().len()).unwrap_or(0),
+                count: u32::try_from(order.len()).unwrap_or(0),
             };
             let parts = content
                 .run
@@ -441,8 +453,7 @@ impl Knowledge {
                 .iter()
                 .any(|e| e.id == id && crate::rules::is_demoted_jack(*e))
         };
-        let places: Vec<Place> = game_type
-            .trump_order()
+        let places: Vec<Place> = crate::rules::matador_order(game_type, game.grand_aces_matadors())
             .into_iter()
             .filter_map(|top| {
                 let copies: Vec<_> = deck.iter().filter(|c| c.face() == Some(top)).collect();

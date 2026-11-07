@@ -727,7 +727,7 @@ impl Run {
                 EncounterEffect::SwapRelic(Some(new)) => {
                     let index = relic.ok_or(RunError::TargetRequired)?;
                     let old = std::mem::replace(&mut self.relics[index], new.clone());
-                    self.pay_out_stash(content, &old, events);
+                    self.relic_given_up(content, &old, events);
                     events.push(RunEvent::RelicSwapped {
                         old,
                         new: new.clone(),
@@ -736,7 +736,7 @@ impl Run {
                 EncounterEffect::SellRelic(percent) => {
                     let index = relic.ok_or(RunError::TargetRequired)?;
                     let old = self.relics.remove(index);
-                    self.pay_out_stash(content, &old, events);
+                    self.relic_given_up(content, &old, events);
                     let price = content.relic(&old).map_or(0, |d| d.price);
                     let price =
                         u32::try_from(u64::from(price) * u64::from(*percent) / 100).unwrap_or(0);
@@ -749,7 +749,7 @@ impl Run {
                         // sold for half its price (DESIGN 8.0).
                         let index = relic.ok_or(RunError::TargetRequired)?;
                         let old = self.relics.remove(index);
-                        self.pay_out_stash(content, &old, events);
+                        self.relic_given_up(content, &old, events);
                         let price = content.relic(&old).map_or(0, |d| sell_price(d.price));
                         self.coins = self.coins.saturating_add(price);
                         events.push(RunEvent::RelicSold { relic: old, price });
