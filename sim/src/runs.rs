@@ -461,6 +461,13 @@ pub struct RunStats {
     pub announced_schneider: (u64, u64),
     /// Suit games and grands played Ouvert: (games, won).
     pub announced_ouvert: (u64, u64),
+    /// Games declared Ouvert (suit, grand) and their wins.
+    pub ouvert: (u64, u64),
+    /// Games declared Null Ouvert (with or without Hand) and their wins.
+    pub null_ouvert: (u64, u64),
+    /// Games with a "Durchsichtig" card dealt to the player (hand or
+    /// skat) and their wins.
+    pub transparent: (u64, u64),
     /// Sum of the series account changes of all games.
     pub points: i64,
     /// Einmischen (games dealt again, also by "Neues Blatt").
@@ -706,6 +713,8 @@ struct Observer<'a> {
     hand_zinked: u64,
     /// The player played a card with a Zinke this game.
     played_zinked: bool,
+    /// A "Durchsichtig" card was dealt to the player (hand or skat).
+    dealt_transparent: bool,
 }
 
 impl Observer<'_> {
@@ -840,6 +849,13 @@ impl Observer<'_> {
                         u64::try_from(n).unwrap_or(0)
                     });
                     self.played_zinked = false;
+                    self.dealt_transparent = run.game().is_some_and(|a| {
+                        a.game
+                            .hand(Seat::DECLARER)
+                            .iter()
+                            .chain(a.game.skat().iter())
+                            .any(|c| c.revealed)
+                    });
                 }
                 RunEvent::Game(Event::CardPlayed { seat, card }) if *seat == Seat::DECLARER => {
                     if run
@@ -908,6 +924,20 @@ impl Observer<'_> {
                     if breakdown.declaration.is_null() {
                         self.stats.null_games += 1;
                         self.stats.null_won += u64::from(breakdown.won);
+                    }
+                    let won = u64::from(breakdown.won);
+                    if breakdown.declaration.ouvert() {
+                        let tally = if breakdown.declaration.is_null() {
+                            &mut self.stats.null_ouvert
+                        } else {
+                            &mut self.stats.ouvert
+                        };
+                        tally.0 += 1;
+                        tally.1 += won;
+                    }
+                    if self.dealt_transparent {
+                        self.stats.transparent.0 += 1;
+                        self.stats.transparent.1 += won;
                     }
                     if let Some(p) = self.pub_stat() {
                         p.games += 1;
@@ -1067,6 +1097,7 @@ fn play_run(
         content,
         hand_zinked: 0,
         played_zinked: false,
+        dealt_transparent: false,
     };
     observer.observe(&run, &events);
     let mut actions = 0;
@@ -1359,6 +1390,16 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         stats.null_games,
         pct(stats.null_games, stats.games),
         pct(stats.null_won, stats.null_games)
+    );
+    let _ = writeln!(
+        out,
+        "open cards: ouvert={} won%={:.1} null ouvert={} won%={:.1} durchsichtig dealt={} won%={:.1}",
+        stats.ouvert.0,
+        pct(stats.ouvert.1, stats.ouvert.0),
+        stats.null_ouvert.0,
+        pct(stats.null_ouvert.1, stats.null_ouvert.0),
+        stats.transparent.0,
+        pct(stats.transparent.1, stats.transparent.0)
     );
     render_kinds(&mut out, stats, runs);
     let (sg, sw) = stats.announced_schneider;

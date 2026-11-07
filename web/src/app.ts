@@ -57,7 +57,7 @@ import { esc, reducedMotion } from './ui/dom';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
-import { defaultPick, legKey, playTravel, renderRoute } from './ui/route';
+import { defaultPick, legKey, playTravel, renderRoute, watchMapLabels } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
 import { infoModel } from './ui/info';
@@ -328,6 +328,7 @@ export class App {
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
     watchSprings(root);
+    watchMapLabels(root);
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
     this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
     const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;

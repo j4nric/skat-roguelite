@@ -1326,6 +1326,18 @@ async function bossesV2(browser, errors, reducedMotion) {
   log(`route to the boss pub: ${figures}; chip ${chip}`);
   await shoot(page, 'bosses-route');
   await assertRouteFits(page, 'route before the boss pub');
+  // The legend names every kind of place on the leg; a tap on a place names it.
+  const legend = ((await page.locator('[data-testid="map-legend"]').innerText()) ?? '').replace(/\s+/g, ' ');
+  for (const word of ['Du bist hier', 'Festsaal']) if (!legend.includes(word)) fail(`route legend without "${word}": ${legend}`);
+  await page.locator('[data-testid="map-target"]').click();
+  const named = ((await page.locator('[data-testid="map-label"]').innerText({ timeout: 3000 })) ?? '').replace(/\s+/g, ' ');
+  if (!named.includes('Festsaal') || !named.includes('Der Schieber')) fail(`tap on the boss pub on the map names "${named}"`);
+  await page.locator('[data-testid="map-badge"]').click();
+  const stop = ((await page.locator('[data-testid="map-label"] b').textContent()) ?? '').trim();
+  if (!stop || !legend.includes(stop)) fail(`tap on the stop on the map names "${stop}", not in the legend "${legend}"`);
+  await page.locator('[data-testid="route-next"]').click();
+  if (await page.locator('[data-testid="map-label"]').count()) fail('the name on the map stays after a tap elsewhere');
+  log(`route legend: ${legend}; tap names "${named}" and "${stop}"`);
 
   // At the table of Die Zwillinge: Fritz left, Franz right, both plates, both backs.
   await resumeFixture(page, 'boss-table.json');
@@ -1523,6 +1535,21 @@ async function m4(browser, errors, reducedMotion) {
   const done = await page.locator('.ledger-row.is-done').count();
   if (done !== 4) fail(`Vereinsbuch shows ${done} done unlocks, expected 4`);
   await shoot(page, 'book');
+  // Only the pages scroll: title, tabs and "Schließen" stay in view (playtest 07.11.2026).
+  const pinned = await page.evaluate(() => {
+    const sheet = document.querySelector('.ledger');
+    const body = sheet?.querySelector('.ledger-page');
+    if (!sheet || !body) return 'no ledger';
+    if (body.scrollHeight <= body.clientHeight) return 'pages do not scroll';
+    body.scrollTop = body.scrollHeight;
+    const s = sheet.getBoundingClientRect();
+    const out = [...sheet.querySelectorAll(':scope > h2, :scope > .ledger-head, :scope > [data-action="close-overlay"]')].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top < s.top - 1 || r.bottom > s.bottom + 1 || r.bottom > innerHeight;
+    });
+    return out.length ? `out of view after scrolling: ${out.map((el) => el.className).join(', ')}` : null;
+  });
+  if (pinned) fail(`Vereinsbuch: ${pinned}`);
   await page.click('.ledger [data-action="close-overlay"]');
   await page.fill('#seed', '5');
   await page.click('[data-action="new-run"]');
@@ -5073,6 +5100,11 @@ async function run() {
       await voucherPass(browser, errors);
       await undeadPass(browser, errors, reducedMotion);
       await undeadGlowPass(browser, errors);
+      return;
+    }
+    // SMOKE_ONLY=bosses: the boss passes with the route legend and the names on the map.
+    if (process.env.SMOKE_ONLY === 'bosses') {
+      await bossesV2(browser, errors, reducedMotion);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
