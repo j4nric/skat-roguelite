@@ -661,3 +661,19 @@ fn a_game_with_a_doppelganger_plays_to_its_end_and_counts_every_card() {
     edition.add_mod(&content, 3, &dg, 1).expect("one");
     edition.add_mod(&content, 4, &dg, 1).expect("two");
 }
+
+#[test]
+fn the_value_bound_counts_the_augen_a_mirror_can_add() {
+    // "Elle": +1 Grundwert per 5 Augen above 90. Without a Doppelgänger
+    // the player takes at most 120 Augen, with one a copied Daus more.
+    let (content, mut run) = run_with(&[], HANDS, SKAT);
+    run.relics.clear();
+    run.evening_relics.clear();
+    run.relics.push(RelicId::new("yardstick"));
+    let plain = run.max_game_value(&content);
+    let (content, mut mirrored) = run_with(&[("H7", DG)], HANDS, SKAT);
+    mirrored.relics.clear();
+    mirrored.evening_relics.clear();
+    mirrored.relics.push(RelicId::new("yardstick"));
+    assert!(mirrored.max_game_value(&content) > plain);
+}
