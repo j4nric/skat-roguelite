@@ -1248,6 +1248,7 @@ impl Run {
             games_left: self.series.games_left(),
             transport: None,
             marked_cards: None,
+            run: Some((self, content)),
         };
         mods.iter()
             .filter_map(|id| {
@@ -2274,7 +2275,7 @@ impl Run {
         // The hand `RevealDefenderHand` shows, in display order, like the player's.
         let mut peeked = active.peeked.clone();
         peeked.sort_by_key(|(card, seat)| {
-            if active.shown_hand == Some(*seat) {
+            if active.shows_hand(*seat) {
                 display_key(order_game, card)
             } else {
                 (0, 0, 0)
@@ -2287,7 +2288,7 @@ impl Run {
                 revealed.push(RevealedCard {
                     card: self.card_view(content, card),
                     holder: game.holder_of(card),
-                    source: if active.shown_hand == Some(seat) {
+                    source: if active.shows_hand(seat) {
                         RevealSource::Onlooker
                     } else {
                         RevealSource::Kibitz

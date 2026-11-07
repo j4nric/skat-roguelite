@@ -268,6 +268,9 @@ pub enum BuildTag {
     Schneider,
     /// Nullspieler: Null games (Blei, Schwarze Null).
     Null,
+    /// Grand: the Grand (relics v4, 07.11.2026: Großkopferten,
+    /// Unterschlupf, Bierruhe, Offenes Visier).
+    Grand,
 }
 
 /// How often the Tresen offers items of each [`GameFocus`] to a character,
@@ -2098,6 +2101,16 @@ impl Content {
                 &relic.hooks,
                 false,
             )?;
+            for effect in relic.hooks.iter().flat_map(Hook::then) {
+                if let Effect::AttachModToRandomCard { card_mod, .. } = effect {
+                    if !self.card_mods.contains_key(card_mod) {
+                        return Err(ContentError(format!(
+                            "relic {}: unknown card mod {card_mod}",
+                            relic.id
+                        )));
+                    }
+                }
+            }
         }
         for card_mod in self.card_mods.values() {
             validate_effects(

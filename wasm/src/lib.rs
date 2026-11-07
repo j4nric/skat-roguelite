@@ -1154,7 +1154,7 @@ mod tests {
         // Counters a relic reads or raises.
         assert_eq!(
             catalog["relics"]["beer_mat"]["counters"],
-            serde_json::json!(["beer_mat"])
+            serde_json::json!(["beer_tab"])
         );
         assert_eq!(
             catalog["relics"]["old_lady"]["counters"],

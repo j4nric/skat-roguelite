@@ -70,8 +70,10 @@ fn save_and_load_gives_the_same_result() {
     for stop_after in [0, 5, 37, 150] {
         let (mut run, _) = Run::new(&content, 1234).expect("start");
         play_to_end(&mut run, &content, stop_after);
-        let saved = ron::to_string(&run).expect("serialize");
-        let mut loaded: Run = ron::from_str(&saved).expect("deserialize");
+        // JSON, as the web app saves: RON loses the effects of an open
+        // encounter in the untagged reader of `ActiveEncounter`.
+        let saved = serde_json::to_string(&run).expect("serialize");
+        let mut loaded: Run = serde_json::from_str(&saved).expect("deserialize");
         assert_eq!(loaded, run, "stop after {stop_after}");
         let rest_a = play_to_end(&mut run, &content, 100_000);
         let rest_b = play_to_end(&mut loaded, &content, 100_000);
@@ -745,8 +747,15 @@ fn a_run_can_start_with_relics_and_later() {
         ..RunStart::default()
     };
     assert_eq!(bad(all.clone()), Some(RunError::NoFreeSlot));
+    // Seven and the Alleinspieler's start relic (Der Zähler).
     let eight = RunStart {
-        relics: content.relics.keys().take(8).cloned().collect(),
+        relics: content
+            .relics
+            .keys()
+            .filter(|r| r.as_str() != "card_counter")
+            .take(7)
+            .cloned()
+            .collect(),
         ..RunStart::default()
     };
     assert_eq!(bad(eight), None);

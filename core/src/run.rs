@@ -109,6 +109,10 @@ const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
 /// for a game ([`Effect::RevealDefenderCards`]).
 const TRANSPARENT_SEED: u64 = 0x61A5_5E7E_0000_0005;
 
+/// Salt of the generator that picks the card of
+/// [`Effect::AttachModToRandomCard`] (relics v4).
+const ATTACH_SEED: u64 = 0xA77A_C4ED_0000_0006;
+
 /// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
 /// his hand, one of them is drawn to take the rising card's place in the
 /// trick ([`RunAction::ChooseRiseCards`]).
@@ -481,6 +485,11 @@ pub struct ActiveGame {
     /// his cards are in `peeked` with this seat.
     #[serde(default)]
     pub shown_hand: Option<Seat>,
+    /// Every defender whose whole hand the player sees: both with "Hosen
+    /// runter" (relic, Null Ouvert). Saves from before 07.11.2026 have
+    /// only [`ActiveGame::shown_hand`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shown_hands: Vec<Seat>,
     /// The deal before the last Einmischen of this game, kept for "Reue"
     /// ([`ConsumableAction::UndoRedeal`]); its own `previous` is always
     /// empty. `None` before the first Einmischen and after an undo.
@@ -533,6 +542,13 @@ pub struct ActiveGame {
 }
 
 impl ActiveGame {
+    /// Whether the player sees the whole hand of `seat`
+    /// (`RevealDefenderHand`).
+    #[must_use]
+    pub fn shows_hand(&self, seat: Seat) -> bool {
+        self.shown_hand == Some(seat) || self.shown_hands.contains(&seat)
+    }
+
     /// Remember the printed suit of every Wandelkarte the game settled in
     /// `events` ([`Event::WildCardSettled`]), for [`Self::named`].
     fn note_settled(&mut self, events: &[Event<DealtCard>]) {
@@ -3000,6 +3016,7 @@ impl Run {
     /// for the series (rule rotation of "Der Alte").
     fn redeal(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         self.declaring()?;
+        let keep = self.kept_at_redeal(content);
         let previous = self.game.take().map(|mut active| {
             active.previous = None;
             Box::new(active)
@@ -3007,11 +3024,43 @@ impl Run {
         self.series.redeals_used += 1;
         self.stats.redeals += 1;
         events.push(RunEvent::Redealt);
-        self.deal(content, false, events)?;
+        self.deal_keeping(content, false, &keep, events)?;
         if let Some(active) = self.game.as_mut() {
             active.previous = previous;
         }
         Ok(())
+    }
+
+    /// The cards of the player's hand an Einmischen leaves him
+    /// ([`Effect::RedealKeeps`], "Unterschlupf"): his own cards that match a
+    /// filter as he holds them; a Unter his edition demotes is no Unter.
+    fn kept_at_redeal(&self, content: &Content) -> Vec<u32> {
+        let Some(active) = self.game.as_ref() else {
+            return Vec::new();
+        };
+        let filters: Vec<CardFilter> = self
+            .sources(content, false)
+            .iter()
+            .flat_map(|s| s.passive.iter())
+            .filter_map(|e| match e {
+                Effect::RedealKeeps(filter) => Some(*filter),
+                _ => None,
+            })
+            .collect();
+        if filters.is_empty() {
+            return Vec::new();
+        }
+        active
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .filter(|c| c.owner == Owner::Player && !crate::rules::is_demoted_jack(**c))
+            .filter(|c| {
+                c.face()
+                    .is_some_and(|f| filters.iter().any(|filter| filter.matches(f)))
+            })
+            .map(|c| c.id)
+            .collect()
     }
 
     /// "Reue": the deal before the last Einmischen comes back as it was
@@ -3725,6 +3774,7 @@ impl Run {
                         games_left,
                         transport,
                         marked_cards: Some(&marked),
+                        run: Some((self, content)),
                     };
                     evaluate(hook.when(), &ctx, source.this_card)
                 };
@@ -3783,6 +3833,14 @@ impl Run {
             }
             // Needs the content: applied by `redeem_vouchers`.
             Effect::TurnInto(_) => return,
+            Effect::AttachModToRandomCard {
+                card_mod,
+                value,
+                only_unmarked,
+            } => {
+                self.attach_to_random_card(content, card_mod, *value, *only_unmarked, events);
+                return;
+            }
             Effect::GainCoins(amount) => {
                 if *amount != 0 {
                     self.coins = if *amount > 0 {
@@ -3862,7 +3920,10 @@ impl Run {
             | Effect::MultiplyGameValue(_)
             | Effect::ScaleGameValue(_)
             | Effect::ScaleGameValuePerCounter { .. }
-            | Effect::ScaleGameValuePerCard { .. } => active.lines.extend(line),
+            | Effect::ScaleGameValuePerCard { .. }
+            | Effect::AddLevelsPerVoidSuit { .. }
+            | Effect::AddBaseValuePerDeclarerPoints { .. }
+            | Effect::AddLevelsPerFreeRelicSlot { .. } => active.lines.extend(line),
             Effect::AddTrickPoints(extra) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let winner = trick.winner;
@@ -3975,7 +4036,10 @@ impl Run {
             Effect::RevealDefenderHand(index) => {
                 let seat = Seat::from_index(usize::from(*index)).filter(|s| !s.is_declarer());
                 if let Some(seat) = seat {
-                    active.shown_hand = Some(seat);
+                    active.shown_hand.get_or_insert(seat);
+                    if !active.shown_hands.contains(&seat) {
+                        active.shown_hands.push(seat);
+                    }
                     for &card in active.game.hand(seat) {
                         if !active.peeked.iter().any(|(c, _)| c.id == card.id) {
                             active.peeked.push((card, seat));
@@ -4014,6 +4078,8 @@ impl Run {
                 }
             }
             Effect::NoCheating => active.rules.no_cheating = true,
+            Effect::GrandAcesAsMatadors => active.game.count_grand_aces(),
+            Effect::OuvertRequiresSchneider => active.rules.thresholds.ouvert_schneider = true,
             Effect::RequireOuvert => active.rules.require_ouvert = true,
             Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
             Effect::Ramsch => active.rules.ramsch = true,
@@ -4047,7 +4113,12 @@ impl Run {
             | Effect::PayOutCounter { .. }
             | Effect::Credit(_)
             | Effect::SecondChance
-            | Effect::ChooseMalus(_) => {}
+            | Effect::ChooseMalus(_)
+            | Effect::AttachModToRandomCard { .. }
+            | Effect::RedeemVouchersTwice
+            | Effect::PromotedCardsTakePoints
+            | Effect::ShortCircuitThreshold(_)
+            | Effect::RedealKeeps(_) => {}
         }
     }
 
@@ -4230,6 +4301,18 @@ impl Run {
         rotate: bool,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
+        self.deal_keeping(content, rotate, &[], events)
+    }
+
+    /// [`Run::deal`], the player keeping the cards with the ids in `keep`
+    /// in his hand ("Unterschlupf" at an Einmischen).
+    fn deal_keeping(
+        &mut self,
+        content: &Content,
+        rotate: bool,
+        keep: &[u32],
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
         let rotation = if rotate {
             self.games_dealt
         } else {
@@ -4252,7 +4335,12 @@ impl Run {
         }
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let mut rng = self.deal_rng.fork();
-        let game = Game::deal_editions(&mut rng, resolved.clone().map(|r| r.cards), forehand)?;
+        let game = Game::deal_editions_keeping(
+            &mut rng,
+            resolved.clone().map(|r| r.cards),
+            forehand,
+            keep,
+        )?;
         self.install_game(content, game, &resolved, boss_editions, events);
         self.peek(&mut rng, events);
         // "Untot": the substitutes come from the game's generator, after
@@ -4521,6 +4609,7 @@ impl Run {
             single_loss: None,
             win_factors: Vec::new(),
             shown_hand: None,
+            shown_hands: Vec::new(),
             previous: None,
             named: Vec::new(),
             skat_shown: Vec::new(),
@@ -4970,6 +5059,14 @@ impl Run {
     }
 
     /// Income pays the debt first ("Deckel anschreiben").
+    /// The player gave `relic` up (sold, replaced, swapped): its pots are
+    /// paid out ([`Run::pay_out_stash`]) and the `OnRelicSold` hooks of the
+    /// relics still held fire ("Der Trödler").
+    fn relic_given_up(&mut self, content: &Content, relic: &RelicId, events: &mut Vec<RunEvent>) {
+        self.pay_out_stash(content, relic, events);
+        self.fire(content, Stage::OnRelicSold, None, None, events);
+    }
+
     /// `relic` has just left the player: every pot it stashes into
     /// ([`Effect::StashCoins`]) that no relic still held stashes into is
     /// paid out as it is, without a bonus, and emptied
@@ -5149,8 +5246,59 @@ impl Run {
             Effect::AddBaseValuePerCard { count, .. }
             | Effect::AddLevelsPerCard { count, .. }
             | Effect::ScaleGameValuePerCard { count, .. } => self.count_cards(content, count),
+            Effect::AddLevelsPerVoidSuit { .. } => self.void_suits(),
+            Effect::AddBaseValuePerDeclarerPoints { above, step, .. } => {
+                let points = self
+                    .game
+                    .as_ref()
+                    .map_or(0, |a| a.game.outcome().declarer_card_points);
+                points.saturating_sub(*above) / (*step).max(1)
+            }
+            Effect::AddLevelsPerFreeRelicSlot { .. } => self.free_relic_slots(content),
             _ => 0,
         }
+    }
+
+    /// Relic slots the player leaves free ("Leerer Stuhl"): the slots of
+    /// his character less the relics he holds (house rules of the evening
+    /// do not count); 0 without a slot limit.
+    #[must_use]
+    pub fn free_relic_slots(&self, content: &Content) -> u32 {
+        content.relic_slots(self.character).map_or(0, |slots| {
+            slots.saturating_sub(u32::try_from(self.relics.len()).unwrap_or(u32::MAX))
+        })
+    }
+
+    /// The suits besides the trump suit of the declared suit game of which
+    /// the player holds no card in the ten he plays ("Kahlschlag"): his hand
+    /// and the cards he played, as he holds them (repainted by "Blue
+    /// Curaçao", a settled Wandelkarte). Trumps (the Unter, "Bube
+    /// ehrenhalber") and blanks belong to no suit. 0 outside a suit game.
+    #[must_use]
+    pub fn void_suits(&self) -> u32 {
+        let Some(game) = self.game.as_ref().map(|a| &a.game) else {
+            return 0;
+        };
+        let Some(GameType::Suit(trump)) = game
+            .declaration()
+            .filter(|d| !d.is_ramsch())
+            .map(Declaration::game)
+        else {
+            return 0;
+        };
+        let game_type = GameType::Suit(trump);
+        let held = player_cards(game);
+        let n = Suit::ALL
+            .iter()
+            .filter(|&&suit| suit != trump)
+            .filter(|&&suit| {
+                !held.iter().any(|c| {
+                    !crate::rules::is_trump(game_type, *c)
+                        && c.face().is_some_and(|f| f.suit == suit)
+                })
+            })
+            .count();
+        u32::try_from(n).unwrap_or(0)
     }
 
     /// How many cards of the player's edition `count` counts now (the
@@ -5179,27 +5327,42 @@ impl Run {
                 GameType::Suit(suit) => Some(suit),
                 _ => None,
             });
+        let held = game.map(player_cards).unwrap_or_default();
         let n = self
             .edition
             .cards()
             .iter()
             .filter(|c| {
+                // With `in_hand` the card as the player holds it.
+                let face = if count.in_hand {
+                    let Some(copy) = held.iter().find(|h| h.id == c.id) else {
+                        return false;
+                    };
+                    copy.face()
+                } else {
+                    c.kind.face()
+                };
                 if count.trump_suit {
                     let Some(suit) = trump else {
                         return false;
                     };
-                    if c.kind.face().is_none_or(|f| f.suit != suit) {
+                    if face.is_none_or(|f| f.suit != suit) {
                         return false;
                     }
                 }
-                if count.in_hand {
-                    let Some(g) = game else {
+                if count.off_trump {
+                    let Some(suit) = trump else {
                         return false;
                     };
-                    let in_skat = g.skat().iter().any(|s| s.id == c.id);
-                    if in_skat || !crate::content::held_by_player(g, c.id) {
+                    if face.is_none_or(|f| f.suit == suit || f.is_jack()) {
                         return false;
                     }
+                }
+                if count.no_jacks && face.is_some_and(|f| f.is_jack()) {
+                    return false;
+                }
+                if count.all_cards {
+                    return true;
                 }
                 c.mods
                     .iter()
@@ -5249,12 +5412,32 @@ impl Run {
     }
 
     /// How the character's Null games are scored (Fixed if the data says
-    /// nothing).
+    /// nothing), with the Kurzschluss lowered by
+    /// [`Effect::ShortCircuitThreshold`] ("Wackelkontakt": the lowest
+    /// value of the character's rule, the relics and the evening rules).
     fn null_scoring(&self, content: &Content) -> NullScoring {
-        content
+        let mut scoring = content
             .character(self.character)
             .and_then(|c| c.null_scoring.clone())
-            .unwrap_or(NullScoring::Fixed)
+            .unwrap_or(NullScoring::Fixed);
+        if let NullScoring::Formula(formula) = &mut scoring {
+            let rule = content
+                .character(self.character)
+                .map(|c| c.rule.passive.as_slice())
+                .unwrap_or_default();
+            let relics = self
+                .relics
+                .iter()
+                .chain(&self.evening_relics)
+                .filter_map(|r| content.relic(r))
+                .flat_map(|def| def.passive.iter());
+            for effect in rule.iter().chain(relics) {
+                if let Effect::ShortCircuitThreshold(points) = effect {
+                    formula.short_circuit_points = formula.short_circuit_points.min(*points);
+                }
+            }
+        }
+        scoring
     }
 
     fn shop_mut(&mut self) -> Result<&mut Shop, RunError> {
@@ -5410,7 +5593,7 @@ impl Run {
             .ok_or(RunError::InvalidSlot)?;
         let price = content.relic(&id).map_or(0, |d| sell_price(d.price));
         self.relics.remove(index);
-        self.pay_out_stash(content, &id, events);
+        self.relic_given_up(content, &id, events);
         self.coins = self.coins.saturating_add(price);
         events.push(RunEvent::RelicSold { relic: id, price });
         self.settle_debt(events);
@@ -5785,6 +5968,46 @@ impl Run {
             .collect()
     }
 
+    /// [`Effect::AttachModToRandomCard`] ("Der Tankwart", "Der Klempner"):
+    /// put `card_mod` with `value` on a random card of the player's edition
+    /// that may take it (with `only_unmarked` only cards without any
+    /// modification), drawn with a generator of its own from the game's
+    /// seed and the modification, so every other draw stays the same.
+    /// Candidates in id order. Nothing if none fits.
+    fn attach_to_random_card(
+        &mut self,
+        content: &Content,
+        card_mod: &CardModId,
+        value: i32,
+        only_unmarked: bool,
+        events: &mut Vec<RunEvent>,
+    ) {
+        let mut pool: Vec<u32> = self
+            .edition
+            .cards()
+            .iter()
+            .filter(|c| !only_unmarked || c.mods.is_empty())
+            .map(|c| c.id)
+            .filter(|&id| self.may_attach(content, id, card_mod))
+            .collect();
+        if pool.is_empty() {
+            return;
+        }
+        pool.sort_unstable();
+        let salt = card_mod
+            .as_str()
+            .bytes()
+            .fold(0xCBF2_9CE4_8422_2325_u64, |h, b| {
+                (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3)
+            });
+        let mut rng = Rng::from_seed(opponents::game_seed(self) ^ ATTACH_SEED ^ salt);
+        let len = u64::try_from(pool.len()).unwrap_or(1);
+        let pick = usize::try_from(rng.gen_range(0..len)).unwrap_or(0);
+        let card = pool[pick.min(pool.len() - 1)];
+        // May only fail on content errors, which validation rules out.
+        let _ = self.attach_mod(content, card, card_mod, value, events);
+    }
+
     /// Attach a card modification with `value` to a deck card by the
     /// rules of effects v2 ([`Deck::add_mod`]) and fire the `OnAttach`
     /// hooks of what the card carries then (a curse pays Groschen, not
@@ -5844,6 +6067,7 @@ impl Run {
                     games_left: self.series.games_left(),
                     transport: None,
                     marked_cards: None,
+                    run: Some((self, content)),
                 };
                 evaluate(hook.when(), &ctx, None)
             };
@@ -5993,6 +6217,29 @@ impl Run {
         if let Some(change) = self.edition.remove_mod(card, card_mod) {
             events.push(RunEvent::DeckChanged(change));
         }
+        // "Doppelt gemoppelt": everything a Marke does happens twice.
+        let twice = self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .any(|def| def.passive.contains(&Effect::RedeemVouchersTwice));
+        for _ in 0..if twice { 2 } else { 1 } {
+            self.fire_voucher(content, card, &source, &hooks, value, events);
+        }
+    }
+
+    /// The hooks of one redeemed Marke: its `OnDiscard` hooks, scaled by
+    /// its value, then every `OnVoucherRedeemed` hook.
+    fn fire_voucher(
+        &mut self,
+        content: &Content,
+        card: u32,
+        source: &Source,
+        hooks: &[Hook],
+        value: i32,
+        events: &mut Vec<RunEvent>,
+    ) {
         for hook in hooks {
             let holds = {
                 let ctx = HookContext {
@@ -6004,6 +6251,7 @@ impl Run {
                     games_left: self.series.games_left(),
                     transport: None,
                     marked_cards: None,
+                    run: Some((self, content)),
                 };
                 evaluate(hook.when(), &ctx, None)
             };
@@ -6014,7 +6262,7 @@ impl Run {
                 if let Effect::TurnInto(special) = effect {
                     self.turn_into(content, card, special, events);
                 } else {
-                    self.apply_effect(content, &source, &effect.scaled(value), events);
+                    self.apply_effect(content, source, &effect.scaled(value), events);
                 }
             }
         }
@@ -6231,6 +6479,21 @@ fn score_line(
             }
             (Lever::Levels, Change::Add(add))
         }
+        Effect::AddLevelsPerVoidSuit { per, max }
+        | Effect::AddLevelsPerFreeRelicSlot { per, max } => {
+            let add = (i64::from(cards) * i64::from(*per)).min(i64::from(*max));
+            if add == 0 {
+                return None;
+            }
+            (Lever::Levels, Change::Add(add))
+        }
+        Effect::AddBaseValuePerDeclarerPoints { per, .. } => {
+            let add = i64::from(cards) * i64::from(*per);
+            if add == 0 {
+                return None;
+            }
+            (Lever::BaseValue, Change::Add(add))
+        }
         Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
         Effect::AddLevelsPerCounter { counter, per } => {
             let value = counters.get(counter).copied().unwrap_or(0);
@@ -6268,6 +6531,27 @@ fn score_line(
         lever,
         change,
     })
+}
+
+/// The ten cards the player plays in `game`, as he holds them: his hand
+/// and the cards he played (completed tricks and the trick on the table),
+/// never the skat.
+fn player_cards(game: &Game<DealtCard>) -> Vec<DealtCard> {
+    let mut cards: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
+    for trick in game.tricks() {
+        for i in 0..3 {
+            if trick.seat_of(i).is_declarer() {
+                cards.push(trick.cards[i]);
+            }
+        }
+    }
+    let lead = game.trick_lead();
+    for (i, card) in game.current_trick().iter().enumerate() {
+        if crate::game::seat_at(lead, i).is_declarer() {
+            cards.push(*card);
+        }
+    }
+    cards
 }
 
 /// `1 + per × steps`, at most `max` ("höchstens ×3", the growing Faktor
@@ -6432,6 +6716,8 @@ mod marke_encounter_tests;
 mod night_tests;
 #[cfg(test)]
 mod relic_slots_tests;
+#[cfg(test)]
+mod relics_v4_tests;
 #[cfg(test)]
 mod rescue_tests;
 #[cfg(test)]

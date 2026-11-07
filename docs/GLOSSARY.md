@@ -316,6 +316,22 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Wege auskundschaften | `scout_legs` | Kiebitz am Fenster: `EncounterEffect::Scout`, Sicht `StopView::encounter`; Ereignis `StopsRevealed` |
 | Spielerei (Falschspieler am Nebentisch) | `Gamble` | `EncounterEffect::Mark` mit `curse_percent`, Ereignis `GambleResolved` |
 | Entfernte Inhalte beim Laden | `drop_unknown_content` | `Run::drop_unknown_content` (wasm `Session::load`), Umbenennungen `RENAMED_CONSUMABLES` |
+| Relikt abgegeben (verkauft, ersetzt, getauscht) | `Stage::OnRelicSold`, `Hook::OnRelicSold` | Seit 07.11.2026 (Der Trödler): nach Verkauf am Tresen, Ersetzen (Tresen, Boss-Belohnung) und Tausch in einer Begegnung; das abgegebene Relikt feuert nicht mehr. `Run::relic_given_up` |
+| Kartenbelohnung ausgelassen | `Stage::OnCardRewardSkipped`, `Hook::OnCardRewardSkipped` | Seit 07.11.2026 (Der Abstinenzler): nur bei `RunAction::SkipCardReward` |
+| Zinke auf zufällige Karte | `AttachModToRandomCard` | `card_mod`, `value`, `only_unmarked` (nur Karten ohne Modifikation); Der Tankwart (Pfandmarke), Der Klempner (Blei); eigener Zufall aus dem Seed des Spiels (`ATTACH_SEED`) |
+| Blanke Fehlfarbe (Kahlschlag) | `AddLevelsPerVoidSuit` | `per`, `max`; Fehlfarben ohne Karte in den zehn Karten des Spielers, `Run::void_suits` |
+| Augen über einer Schwelle (Elle) | `AddBaseValuePerDeclarerPoints` | `above`, `step`, `per`: Grundwert je volle `step` Augen über `above` |
+| Freier Relikt-Platz (Leerer Stuhl) | `AddLevelsPerFreeRelicSlot` | `per`, `max`; `Run::free_relic_slots` (ohne Platz-Grenze 0) |
+| Marke doppelt einlösen | `RedeemVouchersTwice` | Doppelt gemoppelt: `OnDiscard` und `OnVoucherRedeemed` feuern zweimal |
+| Aufgestiegene Karte zählt neue Augen | `PromotedCardsTakePoints` | Emporkömmling: Winkel-Karten zählen die Augen der Karte, die sie wurden |
+| Kurzschluss-Schwelle | `ShortCircuitThreshold` | Wackelkontakt: `NullFormula::short_circuit_points` (61) gesenkt, der kleinste Wert gilt |
+| Daus als Spitzen im Grand | `GrandAcesAsMatadors` | Die Großkopferten: `rules::matador_order`, `Game::count_grand_aces` |
+| Beim Einmischen behalten | `RedealKeeps` | Unterschlupf: `CardFilter` der behaltenen Karten, `Game::deal_editions_keeping` |
+| Ouvert nur mit Schneider | `OuvertRequiresSchneider`, `Thresholds::ouvert_schneider` | Offenes Visier: Farb-/Grand-Ouvert verlangt Schneider statt Schwarz |
+| Karten gezählt (Bedingung) | `CardsCounted` | `count` (`CardCount`), `min`, `max`; Fanblock. `CardCount` hat seit 07.11.2026 auch `all_cards` (mit und ohne Zinke), `no_jacks` (ohne Unter), `off_trump` (Farbe nicht Trumpf, ohne Unter) |
+| Malus in der Kneipe | `PubMalusActive` | Spelunke oder Spelunkenluft der Nacht (Spelunkenkenner) |
+| Stiche des Alleinspielers | `DeclarerTricksAtLeast` | Sieben auf einen Streich; zählt geschenkte Stiche mit |
+| Bau-Richtung Grand | `BuildTag::Grand` | seit 07.11.2026: Großkopferten, Unterschlupf, Bierruhe, Offenes Visier |
 | Effekt | `Effect` | Geschlossener `enum`, jeder Effekt nennt seinen Hebel |
 | Bedingung | `Condition` | Geschlossener `enum` |
 | Stich gewonnen mit (Luschenkönig) | `TrickWinnerMatches` | `filter`, `by_declarer`: der eben beendete Stich, nur bei Stichende |
