@@ -467,7 +467,7 @@
         name: "Spickzettel",
         text: "Handspiel: +1 Stufe mehr, und nach der Ansage siehst du beide Skatkarten.",
         rarity: Common,
-        price: 5,
+        price: 4,
         hooks: [
             OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [RevealSkatCard(2), AddLevels(1)]),
         ],
@@ -954,17 +954,18 @@
     // Farbtreue. Lever Gewinnstufen: all-or-nothing over the deck: at least
     // three Siegel on the trump suit (its Unter included) and none on
     // another suit (Unter excluded). Fixed at the declaration, won and lost.
+    // Balance v4 (07.11.2026): +3 levels (before +2), price 6 -> 5.
     (
         id: "fan_block",
         tags: [OneSuit],
         group: Multiplier,
         focus: Trump,
         name: "Fanblock",
-        text: "Farbspiel: +2 Stufen, wenn jede Karte mit Siegel in deinem Deck deine Trumpffarbe hat (mindestens drei).",
+        text: "Farbspiel: +3 Stufen, wenn jede Karte mit Siegel in deinem Deck deine Trumpffarbe hat (mindestens drei).",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         hooks: [
-            OnDeclare(when: All([SuitGame, CardsCounted(count: (mods: ["trump_bonus"], trump_suit: true), min: Some(3)), CardsCounted(count: (mods: ["trump_bonus"], off_trump: true), max: Some(0))]), then: [AddLevels(2)]),
+            OnDeclare(when: All([SuitGame, CardsCounted(count: (mods: ["trump_bonus"], trump_suit: true), min: Some(3)), CardsCounted(count: (mods: ["trump_bonus"], off_trump: true), max: Some(0))]), then: [AddLevels(3)]),
         ],
     ),
     // Farbtreue. Lever Gewinnstufen: +1 per side suit the player holds no
@@ -1001,17 +1002,18 @@
     ),
     // Markenhändler. Faktor (ADR 0018: won games only): from the third
     // Marke redeemed in a pub, ×1,5 until the pub is won.
+    // Balance v4 (07.11.2026): from the second Marke (before the third), price 8 -> 7.
     (
         id: "rebate_king",
         tags: [Vouchers],
         group: Factor,
         name: "Rabattkönig",
-        text: "Ab der dritten eingelösten Marke einer Kneipe: ×1,5 auf jedes gewonnene Spiel, bis die Kneipe vorbei ist.",
+        text: "Ab der zweiten eingelösten Marke einer Kneipe: ×1,5 auf jedes gewonnene Spiel, bis die Kneipe vorbei ist.",
         rarity: Rare,
-        price: 8,
+        price: 7,
         hooks: [
             OnVoucherRedeemed(then: [IncrementCounter("rebate_king")]),
-            OnScore(when: All([Won, Not(RamschGame), CounterAtLeast(counter: "rebate_king", value: 3)]), then: [ScaleGameValue(1.5)]),
+            OnScore(when: All([Won, Not(RamschGame), CounterAtLeast(counter: "rebate_king", value: 2)]), then: [ScaleGameValue(1.5)]),
             OnSeriesWon(then: [ResetCounter("rebate_king")]),
         ],
     ),
@@ -1052,26 +1054,28 @@
         name: "Emporkömmling",
         text: "Deine Karten mit Winkel zählen die Augen der Karte, die sie geworden sind.",
         rarity: Uncommon,
-        price: 6,
+        price: 5,
         passive: [PromotedCardsTakePoints],
     ),
     // Stichjäger. Lever Gewinnstufen: three tricks of the declarer in a row
     // give +1, at most +2 per game, won and lost (like Luschenkönig). A
     // trick of the defenders breaks the run; a completed run starts over.
+    // Balance v4 (07.11.2026): once per game (before at most +2), Common 5 ->
+    // Uncommon 6.
     (
         id: "trick_after_trick",
         tags: [Tricks],
         group: Multiplier,
         focus: Trump,
         name: "Stich auf Stich",
-        text: "Machst du drei Stiche hintereinander: +1 Stufe, höchstens +2 pro Spiel.",
-        rarity: Common,
-        price: 5,
+        text: "Machst du drei Stiche hintereinander: +1 Stufe, einmal pro Spiel.",
+        rarity: Uncommon,
+        price: 6,
         hooks: [
             OnDeclare(then: [ResetCounter("tat_run"), ResetCounter("tat_done")]),
             OnTrickEnd(when: All([TrickWinnerMatches(filter: (), by_declarer: true), Not(NullGame), Not(RamschGame)]), then: [IncrementCounter("tat_run")]),
             OnTrickEnd(when: Not(TrickWinnerMatches(filter: (), by_declarer: true)), then: [ResetCounter("tat_run")]),
-            OnTrickEnd(when: All([CounterAtLeast(counter: "tat_run", value: 3), Not(CounterAtLeast(counter: "tat_done", value: 2))]), then: [AddLevels(1), IncrementCounter("tat_done"), ResetCounter("tat_run")]),
+            OnTrickEnd(when: All([CounterAtLeast(counter: "tat_run", value: 3), Not(CounterAtLeast(counter: "tat_done", value: 1))]), then: [AddLevels(1), IncrementCounter("tat_done"), ResetCounter("tat_run")]),
         ],
     ),
     // Schneider. Lever Grundwert ×2 on a won game with Schneider announced
@@ -1084,8 +1088,8 @@
         focus: Trump,
         name: "Große Klappe",
         text: "Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt.",
-        rarity: Uncommon,
-        price: 6,
+        rarity: Common,
+        price: 4,
         hooks: [
             OnScore(when: All([Won, RiskAtLeast(SchneiderDeclared), Not(NullGame), Not(RamschGame)]), then: [MultiplyBaseValue(2)]),
         ],
@@ -1107,6 +1111,8 @@
     ),
     // Nullspieler. Deck: after every won Null, Blei on a random card of the
     // deck without any modification (from the next game on).
+    // Balance v4 (07.11.2026): once per pub with a won Null, at most three times per
+    // run (counter "plumber"); before after every won Null. Price 5 -> 7.
     (
         id: "plumber",
         tags: [Null],
@@ -1114,25 +1120,28 @@
         focus: Null,
         kind: Regular,
         name: "Der Klempner",
-        text: "Gewinnst du ein Null, gießt der Klempner Blei auf eine zufällige Karte deines Decks ohne Zinke.",
+        text: "Gewinnst du in einer Kneipe ein Null, gießt der Klempner nach der Kneipe Blei auf eine zufällige Karte deines Decks ohne Zinke, höchstens dreimal im Run.",
         rarity: Uncommon,
-        price: 5,
+        price: 7,
         hooks: [
-            OnScore(when: All([Won, NullGame]), then: [AttachModToRandomCard(card_mod: "lead", value: 1, only_unmarked: true)]),
+            OnScore(when: All([Won, NullGame]), then: [SetFlag("plumber_null")]),
+            OnSeriesWon(when: All([Flag("plumber_null"), Not(CounterAtLeast(counter: "plumber", value: 3))]), then: [AttachModToRandomCard(card_mod: "lead", value: 1, only_unmarked: true), IncrementCounter("plumber")]),
+            OnSeriesWon(then: [ClearFlag("plumber_null")]),
         ],
     ),
     // Nullspieler. Lever Gewinnstufen (Kurzschluss, +3 of the Null formula):
     // from 50 defender Augen after five tricks instead of 61.
+    // Balance v4 (07.11.2026): threshold 55 (before 50).
     (
         id: "loose_contact",
         tags: [Null],
         group: Multiplier,
         focus: Null,
         name: "Wackelkontakt",
-        text: "Null: Der Kurzschluss kommt schon, wenn die Gegner nach fünf Stichen 50 Augen haben (statt 61).",
+        text: "Null: Der Kurzschluss kommt schon, wenn die Gegner nach fünf Stichen 55 Augen haben (statt 61).",
         rarity: Uncommon,
         price: 6,
-        passive: [ShortCircuitThreshold(50)],
+        passive: [ShortCircuitThreshold(55)],
     ),
     // Nullspieler. Lever Zählen: in a Null Ouvert (and Ouvert Hand) both
     // defenders' hands lie open for the player.
@@ -1143,8 +1152,8 @@
         focus: Null,
         name: "Hosen runter",
         text: "Spielst du Null Ouvert, liegen auch die Karten der Gegner offen.",
-        rarity: Uncommon,
-        price: 5,
+        rarity: Common,
+        price: 4,
         hooks: [
             OnDeclare(when: NullRiskAtLeast(Ouvert), then: [RevealDefenderHand(1), RevealDefenderHand(2)]),
         ],
@@ -1158,20 +1167,22 @@
         name: "Die Großkopferten",
         text: "Grand: Nach den Untern zählen die Daus als Spitzen weiter (Eichel, Grün, Rot, Schellen).",
         rarity: Uncommon,
-        price: 7,
+        price: 5,
         passive: [GrandAcesAsMatadors],
     ),
     // Grand. Lever Spitzen: at an Einmischen the player keeps his Unter.
+    // Balance v4 (07.11.2026): only the first Einmischen of a game keeps (per_game);
+    // before every one, which ratcheted the Unter up. Rare 8 -> 7.
     (
         id: "safe_haven",
         tags: [Grand],
         group: Control,
         focus: Trump,
         name: "Unterschlupf",
-        text: "Mischst du ein, behältst du deine Unter. Der Rest wird neu gegeben.",
+        text: "Mischst du in einem Spiel zum ersten Mal ein, behältst du deine Unter. Der Rest wird neu gegeben.",
         rarity: Rare,
-        price: 8,
-        passive: [RedealKeeps((rank: Some(Jack)))],
+        price: 7,
+        passive: [RedealKeeps(filter: (rank: Some(Jack)), per_game: Some(1))],
     ),
     // Grand. Lever Spielwert: a lost Grand counts half (a factor below 1 on
     // lost games; ADR 0018 forbids relic factors above 1 there).
@@ -1197,21 +1208,22 @@
         focus: Trump,
         name: "Offenes Visier",
         text: "Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es.",
-        rarity: Rare,
-        price: 7,
+        rarity: Uncommon,
+        price: 5,
         passive: [OuvertRequiresSchneider],
     ),
-    // Lever Gewinnstufen: +1 on every won game per free relic slot, at most
-    // +3 (the relic takes a slot itself).
+    // Lever Gewinnstufen: +1 on every won game while at least two relic
+    // slots are free (the relic takes a slot itself). Balance v4
+    // (07.11.2026): before +1 per free slot, at most +3, Uncommon 6.
     (
         id: "empty_chair",
         group: Multiplier,
         name: "Leerer Stuhl",
-        text: "+1 Stufe auf jedes gewonnene Spiel je freiem Relikt-Platz, höchstens +3.",
-        rarity: Uncommon,
-        price: 6,
+        text: "+1 Stufe auf jedes gewonnene Spiel, solange mindestens zwei Relikt-Plätze frei sind.",
+        rarity: Rare,
+        price: 9,
         hooks: [
-            OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerFreeRelicSlot(per: 1, max: 3)]),
+            OnScore(when: All([Won, Not(RamschGame)]), then: [AddLevelsPerFreeRelicSlot(per: 1, max: 1, every: 2)]),
         ],
     ),
     // Lever Grundwert (run counter): giving up a relic (sold, replaced,
@@ -1233,17 +1245,18 @@
     ),
     // Lever Grundwert (run counter): every skipped card reward +2 for the
     // rest of the run.
+    // Balance v4 (07.11.2026): +1 per skip (before +2), price 5 -> 6.
     (
         id: "teetotaller",
         group: Value,
         kind: Regular,
         name: "Der Abstinenzler",
-        text: "Lässt du eine Kartenbelohnung aus: +2 Grundwert für den Rest des Runs.",
+        text: "Lässt du eine Kartenbelohnung aus: +1 Grundwert für den Rest des Runs.",
         rarity: Uncommon,
-        price: 5,
+        price: 6,
         hooks: [
             OnCardRewardSkipped(then: [IncrementCounter("teetotaller")]),
-            OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCounter(counter: "teetotaller", per: 2)]),
+            OnDeclare(when: Not(RamschGame), then: [AddBaseValuePerCounter(counter: "teetotaller", per: 1)]),
         ],
     ),
     // Die lange Nacht (ADR 0020, Entscheidung des Nutzers vom 05.11.2026,

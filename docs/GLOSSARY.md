@@ -326,7 +326,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Aufgestiegene Karte zählt neue Augen | `PromotedCardsTakePoints` | Emporkömmling: Winkel-Karten zählen die Augen der Karte, die sie wurden |
 | Kurzschluss-Schwelle | `ShortCircuitThreshold` | Wackelkontakt: `NullFormula::short_circuit_points` (61) gesenkt, der kleinste Wert gilt |
 | Daus als Spitzen im Grand | `GrandAcesAsMatadors` | Die Großkopferten: `rules::matador_order`, `Game::count_grand_aces` |
-| Beim Einmischen behalten | `RedealKeeps` | Unterschlupf: `CardFilter` der behaltenen Karten, `Game::deal_editions_keeping` |
+| Beim Einmischen behalten | `RedealKeeps` | Unterschlupf: `filter` (`CardFilter` der behaltenen Karten), `per_game` (nur bei den ersten n Einmischen eines Spiels, `Series::redeals_this_game`), `Game::deal_editions_keeping` |
 | Ouvert nur mit Schneider | `OuvertRequiresSchneider`, `Thresholds::ouvert_schneider` | Offenes Visier: Farb-/Grand-Ouvert verlangt Schneider statt Schwarz |
 | Karten gezählt (Bedingung) | `CardsCounted` | `count` (`CardCount`), `min`, `max`; Fanblock. `CardCount` hat seit 07.11.2026 auch `all_cards` (mit und ohne Zinke), `no_jacks` (ohne Unter), `off_trump` (Farbe nicht Trumpf, ohne Unter) |
 | Malus in der Kneipe | `PubMalusActive` | Spelunke oder Spelunkenluft der Nacht (Spelunkenkenner) |

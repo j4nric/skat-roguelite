@@ -707,15 +707,18 @@ pub enum Effect {
         /// Grundwert per step.
         per: i32,
     },
-    /// Lever Gewinnstufen ("Leerer Stuhl"): `per` levels for each relic
-    /// slot the player leaves free ([`super::Content::relic_slots`] less
-    /// the relics he holds; house rules of the evening do not count), at
-    /// most `max`. Nothing without a slot limit.
+    /// Lever Gewinnstufen ("Leerer Stuhl"): `per` levels for every `every`
+    /// relic slots the player leaves free ([`super::Content::relic_slots`]
+    /// less the relics he holds; house rules of the evening do not count),
+    /// at most `max`. Nothing without a slot limit.
     AddLevelsPerFreeRelicSlot {
-        /// Levels per free slot.
+        /// Levels per `every` free slots.
         per: i32,
         /// At most this many levels.
         max: i32,
+        /// Free slots per step (default 1; 0 counts as 1).
+        #[serde(default = "one_u32")]
+        every: u32,
     },
     /// Lever Groschen and Gewinnstufen ("Doppelt gemoppelt"): every Marke
     /// of the player is redeemed twice: its `OnDiscard` hooks and every
@@ -742,7 +745,14 @@ pub enum Effect {
     /// in his edition when the filter names the Unter: a demoted one is
     /// not); the rest of the 32 cards is shuffled and dealt again. Passive
     /// only.
-    RedealKeeps(CardFilter),
+    RedealKeeps {
+        /// The cards kept.
+        filter: CardFilter,
+        /// Only at the first this many Einmischen of a game (own, extra or
+        /// "Neues Blatt"); `None`: at every one.
+        #[serde(default)]
+        per_game: Option<u32>,
+    },
     /// Lever Gewinnstufen and Gewinnschwelle (Ouvert, "Offenes Visier"): a
     /// suit game or Grand declared Ouvert needs Schneider instead of
     /// Schwarz; Schwarz angesagt does not count, Schwarz counts only when
@@ -752,6 +762,11 @@ pub enum Effect {
 
 /// Serde default of a value: 1.
 const fn one() -> i32 {
+    1
+}
+
+/// Serde default of a count: 1.
+const fn one_u32() -> u32 {
     1
 }
 
@@ -835,7 +850,7 @@ impl Effect {
             | Effect::PromotedCardsTakePoints
             | Effect::ShortCircuitThreshold(_)
             | Effect::GrandAcesAsMatadors
-            | Effect::RedealKeeps(_)
+            | Effect::RedealKeeps { .. }
             | Effect::OuvertRequiresSchneider => stage == Stage::Passive,
             // "Hosen runter": the defenders' hands open once a Null Ouvert
             // is declared.

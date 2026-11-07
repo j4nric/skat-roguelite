@@ -286,7 +286,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `safe_haven` | 5 | keeps the Unter at an Einmischen; the bot redeals often |
 /// | `beer_calm` | 2 | a lost Grand counts half |
 /// | `open_visor` | 1 | the bot never announces Ouvert in suit games or Grand |
-/// | `empty_chair` | 2 | 2 plus the free slots it leaves, at most 5 ([`relic_score`]) |
+/// | `empty_chair` | 2 | 5 while it leaves two slots free ([`relic_score`]) |
 /// | `junk_dealer` | 2 | the bot sells or swaps about once per run |
 /// | `teetotaller` | 2 | the bot skips weak card rewards while holding it ([`RunBot::card_reward_action`]) |
 pub const RELIC_VALUES: [(&str, u32); 74] = [
@@ -619,7 +619,7 @@ pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
         // Doubles what the Marken do: worth it in a Marken build only.
         "double_stamp" if tags.contains(&BuildTag::Vouchers) => base + 400,
         "rebate_king" if tags.contains(&BuildTag::Vouchers) => base + 200,
-        // +1 level per slot left free once it is bought, at most +3.
+        // +1 level while two slots are left free once it is bought.
         "empty_chair" => {
             let owned = run.relics().len().saturating_add(1);
             let free = content.relic_slots(run.character()).map_or(0, |slots| {
@@ -627,7 +627,7 @@ pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
                     .unwrap_or(usize::MAX)
                     .saturating_sub(owned)
             });
-            base + 100 * u32::try_from(free.min(3)).unwrap_or(3)
+            if free >= 2 { base + 300 } else { base }
         }
         _ => base,
     };

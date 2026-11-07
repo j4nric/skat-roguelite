@@ -193,6 +193,11 @@ pub struct Series {
     /// ([`Run::redeals_left`]); back to 0 with every new game.
     #[serde(default)]
     pub redeals_in_game: u32,
+    /// Every Einmischen of the current game (own, extra or "Neues Blatt");
+    /// back to 0 with every new game. "Unterschlupf" keeps cards only at
+    /// the first ones ([`crate::content::Effect::RedealKeeps`]).
+    #[serde(default)]
+    pub redeals_this_game: u32,
     /// Einmischen left for the rest of the series from consumables ("Ein
     /// Bier", "Kräuter"), used once the game's own are gone.
     #[serde(default)]
@@ -2364,6 +2369,7 @@ impl Run {
                 boss: None,
                 redeals_used: 0,
                 redeals_in_game: 0,
+                redeals_this_game: 0,
                 extra_redeals: 0,
                 skat_swaps_used: 0,
                 skat_swaps_taken: Vec::new(),
@@ -3017,6 +3023,7 @@ impl Run {
     fn redeal(&mut self, content: &Content, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         self.declaring()?;
         let keep = self.kept_at_redeal(content);
+        self.series.redeals_this_game += 1;
         let previous = self.game.take().map(|mut active| {
             active.previous = None;
             Box::new(active)
@@ -3034,16 +3041,21 @@ impl Run {
     /// The cards of the player's hand an Einmischen leaves him
     /// ([`Effect::RedealKeeps`], "Unterschlupf"): his own cards that match a
     /// filter as he holds them; a Unter his edition demotes is no Unter.
+    /// A filter with `per_game` counts only at the first that many
+    /// Einmischen of the game ([`Series::redeals_this_game`]).
     fn kept_at_redeal(&self, content: &Content) -> Vec<u32> {
         let Some(active) = self.game.as_ref() else {
             return Vec::new();
         };
+        let done = self.series.redeals_this_game;
         let filters: Vec<CardFilter> = self
             .sources(content, false)
             .iter()
             .flat_map(|s| s.passive.iter())
             .filter_map(|e| match e {
-                Effect::RedealKeeps(filter) => Some(*filter),
+                Effect::RedealKeeps { filter, per_game } => {
+                    per_game.is_none_or(|n| done < n).then_some(*filter)
+                }
                 _ => None,
             })
             .collect();
@@ -4118,7 +4130,7 @@ impl Run {
             | Effect::RedeemVouchersTwice
             | Effect::PromotedCardsTakePoints
             | Effect::ShortCircuitThreshold(_)
-            | Effect::RedealKeeps(_) => {}
+            | Effect::RedealKeeps { .. } => {}
         }
     }
 
@@ -4251,6 +4263,7 @@ impl Run {
             boss: boss.clone(),
             redeals_used: 0,
             redeals_in_game: 0,
+            redeals_this_game: 0,
             extra_redeals: 0,
             skat_swaps_used: 0,
             skat_swaps_taken: Vec::new(),
@@ -4332,6 +4345,7 @@ impl Run {
         if rotate {
             self.games_dealt += 1;
             self.series.redeals_in_game = 0;
+            self.series.redeals_this_game = 0;
         }
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let mut rng = self.deal_rng.fork();
@@ -5254,7 +5268,9 @@ impl Run {
                     .map_or(0, |a| a.game.outcome().declarer_card_points);
                 points.saturating_sub(*above) / (*step).max(1)
             }
-            Effect::AddLevelsPerFreeRelicSlot { .. } => self.free_relic_slots(content),
+            Effect::AddLevelsPerFreeRelicSlot { every, .. } => {
+                self.free_relic_slots(content) / (*every).max(1)
+            }
             _ => 0,
         }
     }
@@ -6480,7 +6496,7 @@ fn score_line(
             (Lever::Levels, Change::Add(add))
         }
         Effect::AddLevelsPerVoidSuit { per, max }
-        | Effect::AddLevelsPerFreeRelicSlot { per, max } => {
+        | Effect::AddLevelsPerFreeRelicSlot { per, max, .. } => {
             let add = (i64::from(cards) * i64::from(*per)).min(i64::from(*max));
             if add == 0 {
                 return None;
