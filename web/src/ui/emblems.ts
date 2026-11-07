@@ -1710,6 +1710,308 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       { c: '#7d8a5e', f: '#b59b52' },
     ),
   ],
+  // ---- Relikte v4 (07.11.2026): one motif each. Treue Seele, Spickzettel,
+  // Bierdeckel and Spelunkenkenner were reworked and keep their motifs.
+  fan_block: [
+    sp('Fanschal über drei Köpfen', `
+      rrwwrrwwrrwwr
+      rrwwrrwwrrwwr
+      s....s.s....s
+      s....s.s....s
+      nnn..nnn..nnn
+      sss..sss..sss
+      sss..sss..sss
+      .s....s....s.
+      rrr..rrr..rrr
+      rrrr.rrr.rrrr
+      rrrrrrrrrrrrr`),
+  ],
+  clear_cut: [
+    sp('Axt im Baumstumpf', `
+      ..........b...
+      .........b....
+      ........b.....
+      .......b......
+      ....GGb.......
+      ...lGGlllll...
+      ...llOOOOll...
+      ...bbbbbbbb...
+      ll.bnbbbbnb.ll
+      bb.bbbbbbbb.bb
+      bb.bbbbbbbb.bb
+      eeeeeeeeeeeeee`),
+  ],
+  pump_attendant: [
+    sp('Zapfsäule mit Pfandmarke', `
+      .rrrrrr...L.L.
+      rrrrrrrr.LLLLL
+      rwwwwwwr..LoL.
+      rwkwkkwr.LLLLL
+      rwwwwwwr..L.L.
+      rrrrrrrrG.....
+      rrrrrrrr.G....
+      rrrwwrrr..G...
+      rrrwwrrr..G...
+      rrrrrrrr..GG..
+      rrrrrrrr..Gg..
+      GGGGGGGG......`),
+  ],
+  rebate_king: [
+    sp('Krone über dem Prozentzeichen', `
+      y....y....y
+      yy..yyy..yy
+      yyyyyyyyyyy
+      yrYyyJyyYry
+      yyyyyyyyyyy
+      ...........
+      rr......rr.
+      rr.....rr..
+      ......rr...
+      .....rr....
+      ....rr.....
+      ...rr....rr
+      ..rr.....rr`),
+  ],
+  double_stamp: [
+    sp('Zwei Marken übereinander', `
+      J.J.J.J....
+      JJJJJJJ....
+      .JwwwJ.....
+      JJwwwJJ....
+      .JwwrJr.r.r
+      JJJJrrwwwrr
+      J.J.Jrrrwr.
+      ....rrwwwrr
+      .....rwrrr.
+      ....rrwwwrr
+      ....r.r.r.r`),
+  ],
+  seven_at_one_blow: [
+    sp('Fliegenklatsche mit Sieben', `
+      ....eeeeeeee
+      ....ewwwwwwe
+      ....eMeMewwe
+      ....eeMewwMe
+      ....eMewwMee
+      ....eeMwweMe
+      ....eMewwMee
+      ....eeeeeeee
+      ...b........
+      ..b.....h.h.
+      .b.......k..
+      b...........`),
+  ],
+  upstart: [
+    sp('Karte mit Krone auf der Leiter', `
+      ..wwwwwww...
+      ..wywywyw..e
+      ..wyyyyyw.eee
+      ..wwwwwww..e.
+      ..wwwrwww..e
+      ..wwwwwww..e
+      ...bbbbb...e
+      ...b...b...e
+      ...bbbbb....
+      ...b...b....
+      ...bbbbb....
+      ...b...b....
+      ...bbbbb....
+      ...b...b....`),
+  ],
+  trick_after_trick: [
+    sp('Drei Stiche treppauf', `
+      ......wwwww
+      ......wrrrw
+      ...wwwwrrrw
+      ...wrrwrrrw
+      wwwwrrwrrrw
+      wrrwrrwrrrw
+      wrrwrrwwwww
+      wrrwrrrw...
+      wrrwwwww...
+      wrrrw......
+      wwwww......`),
+  ],
+  big_mouth: [
+    sp('Weit offener Mund', `
+      ...rrrrrrr...
+      .rrRRRRRRRrr.
+      rrwwwwwwwwwrr
+      rrwdwdwdwdwrr
+      rrdddddddddrr
+      rrdddddddddrr
+      rrddpppppddrr
+      .rrppppppprr.
+      ..rrrrrrrrr..`),
+  ],
+  yardstick: [
+    sp('Elle mit Teilstrichen', `
+      .........gggg
+      ........YYYY.
+      .......OOOO..
+      ......YYYY...
+      .....OOOO....
+      ....YYYY.....
+      ...OOOO......
+      ..YYYY.......
+      .OOOO........
+      YYYY.........
+      ggg..........`),
+  ],
+  plumber: [
+    sp('Rohrzange mit flüssigem Blei', `
+      .........G..G
+      ........GG.GG
+      ........GGGGG
+      .........GGG.
+      ........GGG..
+      .......rrr...
+      ......rrr..g.
+      .....rrr..ggg
+      ....rrr...ghg
+      ...rrr.....g.
+      ..rrr........
+      ..rr....gggg.`),
+  ],
+  loose_contact: [
+    sp('Stecker mit Blitz', `
+      ..........L.
+      .........LL.
+      ..G..G..LL..
+      ..G..G.LLLL.
+      .wwwwww..LL.
+      .wwwwww.LL..
+      .wgwwww.L...
+      ..wwww......
+      ...ww.......
+      ...GG.......
+      ....G.......
+      ....GG......`),
+  ],
+  cards_on_table: [
+    sp('Jeans mit Karte in der Tasche', `
+      .......ww.
+      .......wr.
+      bbbbYbbbbb
+      JJJJJJJJJJ
+      JJJJUJJJJJ
+      JJJJUJJJJJ
+      JJJJJJJJJJ
+      JJJJ..JJJJ
+      JJJJ..JJJJ
+      JJJJ..JJJJ
+      JJJJ..JJJJ
+      JJJJ..JJJJ
+      UUUU..UUUU`,
+      { U: '#2d5a8f' },
+    ),
+  ],
+  big_shots: [
+    sp('Großer Kopf mit Amtskette', `
+      ...nnnnnn...
+      ..nnnnnnnn..
+      .ssssssssss.
+      .ssksssskss.
+      ssssssssssss
+      sssnnnnnnsss
+      .ssssssssss.
+      ..ssssssss..
+      .GGGGwwGGGG.
+      GYGGGwwGGGYG
+      GGYGGGGGGYGG
+      GGGYYYYYYGGG
+      GGGGGyyGGGGG`),
+  ],
+  safe_haven: [
+    sp('Unterstand mit Unter', `
+      ......n......
+      .....nnn.....
+      ....nnbnn....
+      ...nnbnbnn...
+      ..nnbnnnbnn..
+      .nnbnnnnnbnn.
+      nnnnnnnnnnnnn
+      .b..wwwww..b.
+      .b..wwsww..b.
+      .b..wJJJw..b.
+      .b..wwJww..b.
+      .b..wJwJw..b.
+      eeeeeeeeeeeee`),
+  ],
+  beer_calm: [
+    sp('Halbvolles Glas mit Zzz', `
+      ........gggg
+      ..........g.
+      .........g..
+      .cccccc.gggg
+      .chcccc.....
+      .chcccc.....
+      .cwwwwc.....
+      .caaaac.....
+      .caaaac.....
+      .caaaac.....
+      .caaaac.....
+      ..cccc......`),
+  ],
+  open_visor: [
+    sp('Helm mit offenem Visier', `
+      ......rrr...
+      .....rr.....
+      ...gggggg...
+      ..gGGGGGGg..
+      .gGkkkkkkGg.
+      .gggggggggg.
+      .gssssssssg.
+      .gssksskssg.
+      .gssssssssg.
+      .gsssnnsssg.
+      .gggggggggg.
+      ..gggggggg..`),
+  ],
+  empty_chair: [
+    sp('Leerer Wirtshausstuhl', `
+      .bbbbbbbbb.
+      .blllllllb.
+      .bl..l..lb.
+      .b.......b.
+      .bl.....lb.
+      .bll...llb.
+      .blll.lllb.
+      .bbbbbbbbb.
+      bbbbbbbbbbb
+      lllllllllll
+      .b.......b.
+      .b.......b.
+      .b.......b.`),
+  ],
+  junk_dealer: [
+    sp('Trödelkiste mit Lampe und Bild', `
+      ..YYYY......
+      ..YYYY..yyyy
+      .YYYYYY.yJJy
+      ....g...yeey
+      ....g...yyyy
+      ....g....y..
+      OOOOOOOOOOOO
+      OllllllllllO
+      OllllllllllO
+      OlllOOOOlllO
+      OllllllllllO
+      OOOOOOOOOOOO`),
+  ],
+  teetotaller: [
+    sp('Teetasse mit Dampf', `
+      ...g..g.....
+      ....g..g....
+      ...g..g.....
+      .wOOOOOOw...
+      .wrwwrwwwww.
+      .wwwrwwrw.w.
+      ..wwwwwwww..
+      ...wwwwww...
+      gwwwwwwwwwg.
+      .gggggggg...`),
+  ],
 };
 
 /** One motif per boss (core/content/bosses.ron). */
@@ -1928,6 +2230,27 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   blue_curacao: 0,
   counter_beer: 0,
   snifter: 0,
+  // Relikte v4 (07.11.2026), one motif each.
+  fan_block: 0,
+  clear_cut: 0,
+  pump_attendant: 0,
+  rebate_king: 0,
+  double_stamp: 0,
+  seven_at_one_blow: 0,
+  upstart: 0,
+  trick_after_trick: 0,
+  big_mouth: 0,
+  yardstick: 0,
+  plumber: 0,
+  loose_contact: 0,
+  cards_on_table: 0,
+  big_shots: 0,
+  safe_haven: 0,
+  beer_calm: 0,
+  open_visor: 0,
+  empty_chair: 0,
+  junk_dealer: 0,
+  teetotaller: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -2214,6 +2537,12 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   sewing_pattern: 'Value',
   plumb_line: 'Value',
   grandfathers_grand: 'Value',
+  true_soul: 'Value',
+  upstart: 'Value',
+  yardstick: 'Value',
+  plumber: 'Value',
+  junk_dealer: 'Value',
+  teetotaller: 'Value',
   // Stufen, Gewinngrenze and Schneider
   blank_king: 'Multiplier',
   last_trick_seven: 'Multiplier',
@@ -2226,18 +2555,30 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   virgin: 'Multiplier',
   watertight: 'Multiplier',
   concede: 'Multiplier',
-  true_soul: 'Multiplier',
   rebate_book: 'Multiplier',
   tally_sheet: 'Multiplier',
   lead_pouring: 'Multiplier',
+  fan_block: 'Multiplier',
+  clear_cut: 'Multiplier',
+  trick_after_trick: 'Multiplier',
+  big_mouth: 'Multiplier',
+  loose_contact: 'Multiplier',
+  big_shots: 'Multiplier',
+  crib_sheet: 'Multiplier',
+  open_visor: 'Multiplier',
+  empty_chair: 'Multiplier',
+  dive_expert: 'Multiplier',
   // Geben, Skat and Durchblick
   skat_redraw: 'Control',
   three_discard: 'Control',
-  crib_sheet: 'Control',
   honorary_chair: 'Control',
   card_counter: 'Control',
   kibitzer: 'Control',
   glass_eye: 'Control',
+  double_stamp: 'Control',
+  cards_on_table: 'Control',
+  safe_haven: 'Control',
+  beer_calm: 'Control',
   // Tresen and Tour
   landlord: 'Tour',
   closing_time: 'Tour',
@@ -2245,9 +2586,9 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   kitty: 'Tour',
   slate: 'Tour',
   guardian_angel: 'Tour',
-  dive_expert: 'Tour',
   empties: 'Tour',
   tip: 'Tour',
+  pump_attendant: 'Tour',
   // Faktor (ADR 0018)
   jay: 'Factor',
   tree_frog: 'Factor',
@@ -2258,6 +2599,8 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   tap: 'Factor',
   hot_hand: 'Factor',
   golden_shears: 'Factor',
+  rebate_king: 'Factor',
+  seven_at_one_blow: 'Factor',
   // Die lange Nacht (ADR 0020)
   night_owl: 'Factor',
   sweep_out: 'Factor',
