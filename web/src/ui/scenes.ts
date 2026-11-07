@@ -415,7 +415,7 @@ export function zinkeStamp(before: string, after: string, place: DOMRect, order 
   }
 }
 
-// ---------------------------------------------------------------- the Doppelgänger swap
+// ---------------------------------------------------------------- the Doppelgänger mirror
 
 /** A card face as a floating sprite of the scene layer at `place`. */
 function floatingCard(html: string, place: DOMRect, testid: string): HTMLElement {
@@ -464,64 +464,7 @@ export function mirrorShimmer(html: string, place: DOMRect): Promise<void> {
   );
 }
 
-/**
- * The reach of a "Doppelgänger": a dotted line of pixels from the card
- * at `from` to the robbed opponent's portrait at `to`, drawn out and
- * faded again.
- */
-export function doppelReach(from: DOMRect, to: DOMRect): void {
-  const D = dur(620);
-  if (!D || !from.width || !to.width) return;
-  const a = centre(from);
-  const b = centre(to);
-  const steps = Math.max(4, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 12));
-  for (let i = 1; i < steps; i++) {
-    const p = i / steps;
-    const dot = sprite('fx-doppel-dot', '', px4(a.x + (b.x - a.x) * p), px4(a.y + (b.y - a.y) * p));
-    dot.dataset.testid = 'doppel-reach';
-    const anim = play(
-      dot,
-      [
-        { opacity: 0, transform: 'scale(.4)' },
-        { opacity: 1, transform: 'scale(1)', offset: 0.25 },
-        { opacity: 1, transform: 'scale(1)', offset: 0.7 },
-        { opacity: 0, transform: 'scale(.6)' },
-      ],
-      { duration: D * 0.7, delay: D * 0.3 * p, easing: 'steps(4, end)', fill: 'both' },
-    );
-    scene(anim, () => dot.remove());
-  }
-}
-
-/**
- * One card of the swap flying in a high arc from `from` to `to` (the
- * cards cross mid-air: give the two flights arcs of opposite sign). With
- * `shrink` it disappears into the hand it lands in. Resolves on landing.
- */
-export function swapFlight(html: string, from: DOMRect, to: DOMRect, arc: number, testid: string, shrink = false): Promise<void> {
-  const D = dur(640);
-  if (!D || !from.width || !to.width) return Promise.resolve();
-  const card = floatingCard(html, from, testid);
-  const dx = to.left + to.width / 2 - (from.left + from.width / 2);
-  const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-  const end = shrink ? 0.35 : Math.max(0.4, Math.min(2, to.width / from.width));
-  const flight = play(
-    card,
-    [
-      { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
-      { transform: `translate(${(dx * 0.5).toFixed(1)}px, ${(dy * 0.5 + arc).toFixed(1)}px) rotate(${arc > 0 ? 8 : -8}deg) scale(${((1 + end) / 2).toFixed(2)})`, opacity: 1, offset: 0.5 },
-      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(0deg) scale(${end.toFixed(2)})`, opacity: shrink ? 0 : 1 },
-    ],
-    { duration: D, easing: 'cubic-bezier(.3,.1,.3,1)', fill: 'both' },
-  );
-  scene(flight, () => card.remove());
-  return flight.finished.then(
-    () => undefined,
-    () => undefined,
-  );
-}
-
-/** A short pixel word ("Getauscht!", "Kein Gegenstück") popping up at `at` and fading. */
+/** A short pixel word ("Gespiegelt!") popping up at `at` and fading. */
 export function sceneWord(text: string, at: DOMRect, testid: string): void {
   const D = dur(900);
   if (!D || !at.width) return;
