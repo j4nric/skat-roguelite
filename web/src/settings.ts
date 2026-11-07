@@ -1,7 +1,8 @@
 // Player settings of the web app (presentation only): animation tempo,
 // sound effects, music, whether a thought bubble shows while the opponents think, and
 // whether the Wirt explains things the first time they happen, and whether
-// the cards' paper takes a light tint of their suit.
+// the cards' paper takes a light tint of their suit, how the hand is
+// sorted and whether the phone vibrates.
 // Stored in localStorage, every access guarded.
 
 export type Tempo = 'slow' | 'normal' | 'fast';
@@ -20,10 +21,14 @@ export interface Settings {
   suitTint: boolean;
   /** Card back of the player's edition chosen among the earned ones (ADR 0020); null: the character's own. */
   back: string | null;
+  /** "Hand sortieren": the core's order for the game declared, or the player's own (drag to reorder). */
+  handSort: HandSort;
 }
 
+export type HandSort = 'auto' | 'manual';
+
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null, handSort: 'auto' };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -46,6 +51,7 @@ export function loadSettings(): Settings {
       hints: parsed.hints !== false,
       suitTint: parsed.suitTint === true,
       back: typeof parsed.back === 'string' ? parsed.back : null,
+      handSort: parsed.handSort === 'manual' ? 'manual' : 'auto',
     };
   } catch {
     return { ...DEFAULTS };

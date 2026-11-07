@@ -72,6 +72,7 @@ import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } f
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
 import { watchKeys } from './ui/keys';
+import { arrangeHand, moveInOrder } from './ui/handorder';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -235,6 +236,7 @@ export class App {
     omaPick: false,
     swapTake: null,
     peekTrick: false,
+    handOrder: null,
     routePick: null,
     routeLeg: '',
     routeOverview: false,
@@ -1258,6 +1260,7 @@ export class App {
       }
       if ('GameDealt' in ev) {
         this.ui.wildSettled = {};
+        this.ui.handOrder = null;
         this.ui.risen = null;
         this.riseShown.clear();
         // A new game: from here on the final view tells the story.
@@ -1689,7 +1692,15 @@ export class App {
       if (g && this.ui.view?.game) {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
+      // "Hand sortieren: automatisch": the hand takes the core's order for the game declared at once.
+      const resort = Boolean(g && 'Declared' in ev && this.ui.settings.handSort === 'auto');
+      const spots = resort ? spotsOf(this.screenEl, '.hand .hand-card') : null;
+      if (g && resort) {
+        const order = g.hand.map((c) => c.id);
+        anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      }
       this.render();
+      if (spots) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
       if ('Declared' in ev && !this.fastForward) this.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev && !this.fastForward) {
         this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
@@ -2421,6 +2432,9 @@ export class App {
         return;
       case 'suit-tint':
         this.setSettings({ suitTint: el.dataset.on === 'true' });
+        return;
+      case 'hand-sort':
+        this.setSettings({ handSort: el.dataset.sort === 'manual' ? 'manual' : 'auto' });
         return;
       case 'card-back':
         this.setSettings({ back: el.dataset.back ? el.dataset.back : null });
@@ -3272,10 +3286,54 @@ export class App {
    * card's place. Only which two lie there is decided here; the core checks
    * the pair on Drücken.
    */
+  /**
+   * "Hand sortieren: manuell": the hand keeps the order the player sees
+   * (and dragged); cards new to it come in after their neighbour in the
+   * core's order. Automatic: the core's order (null).
+   */
+  private keepHandOrder(): void {
+    const game = this.ui.view?.game;
+    if (this.ui.settings.handSort !== 'manual' || !game) {
+      this.ui.handOrder = null;
+      return;
+    }
+    const hand = this.ui.anim ? this.ui.anim.hand : game.hand;
+    this.ui.handOrder = arrangeHand(hand, this.ui.handOrder).map((c) => c.id);
+  }
+
+  /** A hand card dragged within the hand (manual order): it goes before or after the card nearest to where it was let go. */
+  private reorderHand(el: HTMLElement, at: DOMRect | null): void {
+    const order = this.ui.handOrder;
+    const id = el.dataset.id;
+    if (!order || id === undefined || !at) return;
+    const x = at.left + at.width / 2;
+    const y = at.top + at.height / 2;
+    let best: { id: number; after: boolean; d: number } | null = null;
+    for (const card of Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card'))) {
+      if (card === el || card.dataset.id === undefined) continue;
+      const r = card.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const d = Math.hypot(cx - x, r.top + r.height / 2 - y);
+      if (!best || d < best.d) best = { id: Number(card.dataset.id), after: x > cx, d };
+    }
+    if (!best) return;
+    const spots = spotsOf(this.screenEl, '.hand .hand-card');
+    spots.set(id, spotOfRect(at));
+    this.ui.handOrder = moveInOrder(order, Number(id), best.id, best.after);
+    sound.play('card', { volume: 0.4, rate: 1.1 });
+    this.render();
+    glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 200 });
+  }
+
   private onDrop(el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null, fling: Fling): void {
     if (this.ui.busy || !this.ui.view?.game) return;
     const kind = el.dataset.drag;
     const where = zone?.dataset.drop;
+    // "Hand sortieren: manuell": a hand card let go over the hand changes places.
+    if (where === 'hand' && this.ui.handOrder && el.classList.contains('hand-card')) {
+      this.reorderHand(el, at);
+      return;
+    }
     if (kind === 'play') {
       this.onThrow(el, where === 'table', at, fling);
       return;
@@ -3423,6 +3481,7 @@ export class App {
 
   private render(): void {
     const ui = this.ui;
+    this.keepHandOrder();
     // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
     if (this.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
       ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };

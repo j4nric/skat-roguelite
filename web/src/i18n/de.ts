@@ -1528,6 +1528,14 @@ export const de = {
     tat_run: 'Stich auf Stich: {value} Stiche in Folge',
   } as Record<string, string>,
 
+  /** "Hand sortieren" in the menu: the core's order for the game, or the player's own. */
+  handSort: {
+    label: 'Hand sortieren',
+    auto: 'Automatisch',
+    manual: 'Manuell',
+    hint: 'Automatisch: nach der Ansage Trümpfe vorn, dann die Farben. Manuell: Karten in der Hand an einen anderen Platz ziehen.',
+  },
+
   /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
   keys: {
     title: 'Tastatur',

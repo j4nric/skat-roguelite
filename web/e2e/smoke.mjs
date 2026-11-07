@@ -5098,6 +5098,89 @@ async function nightPass(browser, errors, viewport) {
   await context.close();
 }
 
+/** The suit game to declare in qolPass: Rot if allowed, else another suit. */
+async function declarableSuit(page) {
+  for (const [index, name] of [[2, 'Rot'], [1, 'Grün'], [3, 'Schellen'], [0, 'Eichel']]) {
+    if (await page.locator(`[data-action="pick-game"][data-index="${index}"]:not(:disabled)`).count()) return { index, name };
+  }
+  fail('no suit game may be declared');
+  return null;
+}
+
+/** The hand as groups in the order shown: "Unter", then the suits (from the cards' names). */
+async function handGroups(page) {
+  const labels = await page.locator('.hand .hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+  const groups = [];
+  for (const label of labels) {
+    const g = /\bUnter\b/.test(label) ? 'Unter' : label.split(/[- ]/)[0];
+    if (groups[groups.length - 1] !== g) groups.push(g);
+  }
+  return groups;
+}
+
+/** Ids of the hand cards in the order shown. */
+async function handIds(page) {
+  return page.locator('.hand .hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('data-id')));
+}
+
+/**
+ * "Hand sortieren: manuell" (handSortPass): the switch in the menu is
+ * stored; the Ansage leaves the hand as it was; a card dragged within the
+ * hand takes its new place and keeps it while the game goes on.
+ */
+async function handSortPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="menu"]');
+  await page.click('[data-testid="setting-hand-sort"] [data-sort="manual"]');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').handSort);
+  if (stored !== 'manual') fail(`hand sort ${tag}: setting stored as ${stored}`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.overlay', { state: 'detached' });
+  await pickUpAndDiscard(page, `hand sort ${tag}`);
+  const before = await handIds(page);
+  const suit = await declarableSuit(page);
+  await page.click(`[data-action="pick-game"][data-index="${suit.index}"]`);
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  await page.waitForSelector('[data-action="play"]');
+  const after = await handIds(page);
+  if (after.join() !== before.join()) fail(`hand sort ${tag}: manual hand re-sorted by the Ansage (${before.join()} → ${after.join()})`);
+  // Drag the first card behind the last one.
+  const first = page.locator('.hand .hand-card').first();
+  const last = page.locator('.hand .hand-card').last();
+  const a = await first.boundingBox();
+  const b = await last.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(a.x + a.width / 2 + ((b.x + b.width * 0.8 - a.x - a.width / 2) * i) / 12, a.y + a.height / 2 + ((b.y + b.height / 2 - a.y - a.height / 2) * i) / 12);
+  await page.screenshot({ path: join(screens, `qol-hand-drag-${tag}.png`) });
+  await page.mouse.up();
+  const moved = await handIds(page);
+  const want = [...after.slice(1), after[0]];
+  if (moved.join() !== want.join()) fail(`hand sort ${tag}: after the drag ${moved.join()}, expected ${want.join()}`);
+  // Play a card: the rest keeps the player's order.
+  // (The screenshot also lets the click after a drag pass: ./drag.ts swallows one at once.)
+  await page.screenshot({ path: join(screens, `qol-hand-dropped-${tag}.png`) });
+  const playId = await page.locator('.hand [data-action="play"]').first().getAttribute('data-id');
+  await page.locator('.hand [data-action="play"]').first().click();
+  await page.waitForSelector(`.hand .hand-card[data-id="${playId}"]`, { state: 'detached', timeout: 10000 });
+  await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+  const rest = await handIds(page);
+  if (rest.join() !== want.filter((id) => id !== playId).join()) fail(`hand sort ${tag}: order after a card ${rest.join()}, expected ${want.filter((id) => id !== playId).join()} (played ${playId})`);
+  log(`hand sort ${tag}: manual order kept through the Ansage, a drag and a played card`);
+  await context.close();
+  if (errors.length) fail(`hand sort ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
 /**
  * Quality of life on the table (qolPass, 390 × 844 and 1280 × 800; alone
  * with SMOKE_ONLY=qol): the keyboard (S picks up the skat, a digit plays
@@ -5129,10 +5212,19 @@ async function qolPass(browser, errors, viewport) {
   await page.waitForSelector('[data-testid="keys-help"]', { state: 'detached' });
   await discardFirstTwo(page, `qol ${tag}`);
   await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
-  await page.click('[data-action="pick-game"][data-index="4"]');
+  // A suit game other than the order before the Ansage (the Grand order): Rot if it may be declared.
+  const suit = await declarableSuit(page);
+  await page.click(`[data-action="pick-game"][data-index="${suit.index}"]`);
   // Space: the main button (Ansagen).
   await page.keyboard.press('Space');
   await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  // Hand sortieren (automatisch): Unter first, then the trump suit, then the other suits.
+  const groups = await handGroups(page);
+  const want = ['Unter', suit.name, ...['Eichel', 'Grün', 'Rot', 'Schellen'].filter((x) => x !== suit.name)];
+  const order = groups.filter((g) => want.includes(g));
+  if (order.join() !== want.filter((g) => groups.includes(g)).join()) fail(`qol ${tag}: hand after ${suit.name} declared in the order ${groups.join(', ')}`);
+  log(`qol ${tag}: hand sorted for ${suit.name}: ${groups.join(', ')}`);
   let played = 0;
   let refused = false;
   for (;;) {
@@ -5212,6 +5304,8 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'qol') {
       await qolPass(browser, errors, PHONE);
       await qolPass(browser, errors, DESKTOP);
+      await handSortPass(browser, errors, PHONE);
+      await handSortPass(browser, errors, DESKTOP);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -5548,6 +5642,8 @@ async function run() {
     await scenesPass(browser, errors, DESKTOP);
     await qolPass(browser, errors, PHONE);
     await qolPass(browser, errors, DESKTOP);
+    await handSortPass(browser, errors, PHONE);
+    await handSortPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();
