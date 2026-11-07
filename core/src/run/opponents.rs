@@ -57,6 +57,43 @@ pub fn defender_swaps<C>(log: &[Event<C>]) -> Vec<usize> {
     swaps
 }
 
+/// PIMC strength of heuristic defenders who know some of the declarer's
+/// cards, if `run.ron` names no PIMC section at all.
+const INFORMED_FALLBACK: PimcConfig = PimcConfig {
+    samples: 8,
+    depth: 3,
+};
+
+/// The defenders' PIMC configuration in `section` given what they know of
+/// the declarer's cards, `None` for the heuristic.
+///
+/// The heuristic cannot use where a card lies. Whenever the defenders know
+/// some of the declarer's cards (an Ouvert hand, "Durchsichtig" cards in
+/// his hand or in the skat), they play PIMC instead, with the weakest PIMC
+/// strength of `run.ron`, so the knowledge reaches their card play in every
+/// section. The search depth stays: searched to the end (depth `0`), the
+/// node budget of a decision cuts the deals short, and the defenders of a
+/// Null Ouvert catch the declarer less often than with depth 3 (measured
+/// in `core/tests/defender_knowledge.rs`).
+#[must_use]
+pub fn informed_config(
+    content: &Content,
+    section: u32,
+    declarer_open: bool,
+    knows_cards: bool,
+) -> Option<PimcConfig> {
+    opponents_in(content, section).pimc().or_else(|| {
+        (declarer_open || knows_cards).then(|| {
+            content
+                .run
+                .opponents
+                .iter()
+                .find_map(|o| o.pimc())
+                .unwrap_or(INFORMED_FALLBACK)
+        })
+    })
+}
+
 /// The defender's card in the run's current game. A defender never holds
 /// a Wandelkarte (ADR 0015: it exists only in the player's edition), so it
 /// plays the game as it is; the samples resolve every card by the seat it
@@ -67,14 +104,16 @@ pub(super) fn defender_card(
     active: &ActiveGame,
     view: &SeatView<'_, DealtCard>,
 ) -> Option<DealtCard> {
-    match opponents_in(content, run.curve_row(content)).pimc() {
+    let hints = defender_hints(active, view);
+    let declarer_open = view.declarer_hand.is_some();
+    let knows_cards = !hints.pinned.is_empty();
+    match informed_config(content, run.curve_row(content), declarer_open, knows_cards) {
         None => DefenderHeuristic.choose(view),
         Some(mut config) => {
             // "Hellwache Gegner" (long night, ADR 0020).
             config.samples = config
                 .samples
                 .saturating_add(run.night_extra_samples(content));
-            let hints = defender_hints(active, view);
             PimcPolicy::new(config, game_seed(run))
                 .with_thresholds(active.rules.thresholds.clone())
                 .choose_with(view, &hints)
@@ -206,6 +245,33 @@ mod tests {
         let mut none = content.clone();
         none.run.opponents.clear();
         assert_eq!(opponents_in(&none, 3), Opponents::Heuristic);
+    }
+
+    #[test]
+    fn defenders_who_know_declarer_cards_play_pimc_in_every_section() {
+        let content = Content::load().expect("content");
+        let weakest = content
+            .run
+            .opponents
+            .iter()
+            .find_map(|o| o.pimc())
+            .expect("a PIMC section");
+        // Section 1: the heuristic, unless the defenders know cards.
+        assert_eq!(informed_config(&content, 0, false, false), None);
+        assert_eq!(informed_config(&content, 0, false, true), Some(weakest));
+        assert_eq!(informed_config(&content, 0, true, false), Some(weakest));
+        // Later sections keep their strength.
+        let section = opponents_in(&content, 2).pimc().expect("PIMC");
+        assert_eq!(informed_config(&content, 2, false, false), Some(section));
+        assert_eq!(informed_config(&content, 2, true, true), Some(section));
+        // Without any PIMC section in run.ron: the fallback.
+        let mut none = content.clone();
+        none.run.opponents.clear();
+        assert_eq!(informed_config(&none, 0, false, false), None);
+        assert_eq!(
+            informed_config(&none, 0, false, true),
+            Some(INFORMED_FALLBACK)
+        );
     }
 
     #[test]

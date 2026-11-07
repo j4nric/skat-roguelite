@@ -13,6 +13,8 @@
 //!   the win threshold and for Schneider (the defenders count the same
 //!   number negated). Thresholds come from [`Hints`]-free
 //!   [`PimcPolicy::with_thresholds`] when house rules move them.
+//! - Schwarz announced (also every suit or grand Ouvert): whether the
+//!   defenders take a trick, the only thing that decides the game.
 //! - Null: whether the declarer takes a trick.
 //! - Ramsch: the Augen the two other seats take (every seat for itself,
 //!   paranoid: the other two are assumed to play against it).
@@ -212,6 +214,10 @@ impl PimcPolicy {
             Goal::RamschAvoid(view.seat)
         } else if view.declaration.is_null() {
             Goal::NullDeclarerTrick
+        } else if view.declaration.schwarz_declared() {
+            // Schwarz angesagt and every suit or grand Ouvert: lost with
+            // the first defender trick.
+            Goal::DefenderTrick
         } else {
             Goal::DeclarerPoints
         };
@@ -361,7 +367,11 @@ impl PimcPolicy {
             if threshold <= 0 {
                 return Some(vec![true; len]);
             }
-            if threshold > i64::from(points.live) {
+            // Out of reach in Augen; a trick goal counts tricks, and a
+            // trick of sevens, eights and nines has none.
+            // Out of reach in Augen; a trick goal counts tricks, and a
+            // trick of sevens, eights and nines has none.
+            if goal == Goal::DeclarerPoints && threshold > i64::from(points.live) {
                 return Some(vec![false; len]);
             }
             let threshold = i32::try_from(threshold).ok()?;
@@ -375,6 +385,14 @@ impl PimcPolicy {
                 let sign = if seat.is_declarer() { -1 } else { 1 };
                 for (u, c) in out.iter_mut().zip(caught) {
                     *u = sign * NULL_WEIGHT * i64::from(c);
+                }
+            }
+            Goal::DefenderTrick => {
+                // Schwarz announced: one defender trick decides the game.
+                let caught = probe(1, table)?;
+                let sign = if seat.is_declarer() { -1 } else { 1 };
+                for (u, c) in out.iter_mut().zip(caught) {
+                    *u = sign * WIN_BONUS * i64::from(c);
                 }
             }
             Goal::RamschAvoid(_) => {
@@ -598,6 +616,9 @@ mod tests {
             let declaration = DeclarerHeuristic
                 .choose_declaration(game.hand(Seat::DECLARER))
                 .with_risk(RiskLevel::Ouvert);
+            if declaration.is_null() {
+                continue;
+            }
             declare(&mut game, declaration);
             // Play heuristically until five tricks are left.
             while game.tricks().len() < 5 {
@@ -634,27 +655,186 @@ mod tests {
                 trick: game.current_trick().to_vec(),
                 skat_points: 0,
             };
-            let values = solver::solve(declaration.game(), Goal::DeclarerPoints, &layout);
-            let base: i32 = game
-                .seat_card_points()
-                .first()
-                .map(|&p| i32::try_from(p).unwrap_or(0))
-                .unwrap_or(0);
-            let win = |v: i32| base + v >= 61;
-            let best_win = values.iter().all(|&(_, v)| win(v));
+            // Ouvert is Schwarz announced: one defender trick beats it.
+            let values = solver::solve(declaration.game(), Goal::DefenderTrick, &layout);
             let chosen = values
                 .iter()
                 .find(|(c, _)| *c == card)
                 .map(|&(_, v)| v)
                 .expect("chosen card is legal");
-            // The defenders minimize: if any move stops the declarer, the
-            // chosen one does.
-            if !best_win {
-                assert!(!win(chosen), "seed {seed}: {card} lets the declarer win");
+            // If any move takes a trick, the chosen one does.
+            if values.iter().any(|&(_, v)| v == 1) {
+                assert_eq!(chosen, 1, "seed {seed}: {card} lets the declarer win");
             }
             checked += 1;
         }
         assert!(checked >= 5, "enough positions checked ({checked})");
+    }
+}
+
+#[cfg(test)]
+mod knowledge_tests {
+    use super::*;
+    use crate::cards::{Card, Rank, Suit, parse_cards, standard_deck};
+    use crate::rules::{Declaration, NullRisk, RiskLevel};
+
+    static NO_EDITIONS: [Vec<Card>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+
+    fn cards(s: &str) -> Vec<Card> {
+        let mut cards = parse_cards(s).expect("cards");
+        cards.sort();
+        cards
+    }
+
+    /// The view of seat 1, who leads the next trick of an endgame with
+    /// `hands` (the declarer's hand open, the partner's as `partner`
+    /// says), `skat` known as `skat_known` says; `deck` holds the live
+    /// cards and the skat.
+    fn lead_view<'a>(
+        declaration: Declaration,
+        hands: &'a [Vec<Card>; 3],
+        deck: &'a [Card],
+        skat: [Card; 2],
+        partner: bool,
+    ) -> SeatView<'a, Card> {
+        SeatView {
+            seat: Seat::ALL[1],
+            declaration,
+            forehand: Seat::ALL[1],
+            hand: &hands[1],
+            trick_lead: Seat::ALL[1],
+            trick: &[],
+            tricks: &[],
+            skat: partner.then_some(skat),
+            declarer_hand: Some(&hands[0]),
+            partner_hand: partner.then_some(&hands[2][..]),
+            deck,
+            editions: &NO_EDITIONS,
+            legal_moves: rules::legal_moves(declaration.game(), &hands[1], None),
+        }
+    }
+
+    /// A random endgame of `tricks` tricks from `pool`, seat 1 to lead.
+    fn endgame(
+        rng: &mut Rng,
+        pool: &[Card],
+        tricks: usize,
+    ) -> ([Vec<Card>; 3], [Card; 2], Vec<Card>) {
+        let mut deck = pool.to_vec();
+        rng.shuffle(&mut deck);
+        let mut hands: [Vec<Card>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for (seat, hand) in hands.iter_mut().enumerate() {
+            *hand = deck[seat * tricks..(seat + 1) * tricks].to_vec();
+            hand.sort();
+        }
+        let skat = [deck[3 * tricks], deck[3 * tricks + 1]];
+        let mut live = deck[..3 * tricks + 2].to_vec();
+        live.sort();
+        (hands, skat, live)
+    }
+
+    fn defender_values(game: GameType, goal: Goal, hands: &[Vec<Card>; 3]) -> Vec<(Card, i32)> {
+        let layout = Layout {
+            hands: hands.clone(),
+            trick_lead: Seat::ALL[1],
+            trick: Vec::new(),
+            skat_points: 0,
+        };
+        solver::solve(game, goal, &layout)
+    }
+
+    #[test]
+    fn against_an_announced_schwarz_the_defenders_play_for_one_trick() {
+        // Grand Ouvert, every card known: whenever a lead takes a trick
+        // (double dummy), PIMC leads one. Augen do not matter here; before
+        // the trick goal the defenders weighed 61 Augen and fell back to
+        // the heuristic.
+        let mut rng = Rng::from_seed(31);
+        let declaration = Declaration::grand(RiskLevel::Ouvert);
+        let policy = PimcPolicy::new(
+            PimcConfig {
+                samples: 1,
+                depth: 0,
+            },
+            3,
+        );
+        let mut heuristic_misses = 0;
+        let mut checked = 0;
+        for _ in 0..1500 {
+            let (hands, skat, deck) = endgame(&mut rng, &standard_deck(), 4);
+            let values = defender_values(GameType::Grand, Goal::DefenderTrick, &hands);
+            if values.iter().all(|&(_, v)| v == values[0].1) {
+                continue;
+            }
+            let view = lead_view(declaration, &hands, &deck, skat, true);
+            let value = |card: Card| values.iter().find(|(c, _)| *c == card).map(|&(_, v)| v);
+            let card = policy.choose(&view).expect("card");
+            assert_eq!(value(card), Some(1), "{card} in {hands:?}");
+            let heuristic = DefenderHeuristic.choose(&view).expect("card");
+            heuristic_misses += usize::from(value(heuristic) == Some(0));
+            checked += 1;
+        }
+        assert!(checked >= 20, "positions with a choice: {checked}");
+        assert!(heuristic_misses > 0, "the heuristic misses some");
+    }
+
+    #[test]
+    fn grand_ouvert_defender_leads_through_the_declarers_bare_ten() {
+        // The declarer shows CJ DJ CT. Seat 1 holds D7 HK C8 and does not
+        // know where SJ DQ H8 HQ ST lie (partner or skat). Only the C8
+        // can take a trick: the declarer must follow with the CT and the
+        // partner, void in clubs, trumps it whenever he holds the SJ. The
+        // heuristic leads the HK into the declarer's trumps.
+        let hands = [cards("DJ CT CJ"), cards("D7 HK C8"), cards("DQ H8 SJ")];
+        let skat = [cards("HQ")[0], cards("ST")[0]];
+        let mut deck: Vec<Card> = hands.iter().flatten().copied().chain(skat).collect();
+        deck.sort();
+        let declaration = Declaration::grand(RiskLevel::Ouvert);
+        let view = lead_view(declaration, &hands, &deck, skat, false);
+        let c8 = Card::new(Suit::Clubs, Rank::Eight);
+        assert_ne!(DefenderHeuristic.choose(&view), Some(c8));
+        let config = PimcConfig {
+            samples: 8,
+            depth: 0,
+        };
+        assert_eq!(PimcPolicy::new(config, 11).choose(&view), Some(c8));
+    }
+
+    #[test]
+    fn null_endgame_without_augen_is_still_searched() {
+        // Only sevens, eights and nines left: no Augen, but a Null is
+        // decided by tricks. PIMC with every card known catches the
+        // declarer whenever a lead does (double dummy).
+        let low: Vec<Card> = standard_deck()
+            .into_iter()
+            .filter(|c| matches!(c.rank, Rank::Seven | Rank::Eight | Rank::Nine))
+            .collect();
+        let declaration = Declaration::null(NullRisk::OuvertHand);
+        let policy = PimcPolicy::new(
+            PimcConfig {
+                samples: 1,
+                depth: 0,
+            },
+            5,
+        );
+        let mut rng = Rng::from_seed(32);
+        let mut checked = 0;
+        for _ in 0..300 {
+            let (hands, skat, deck) = endgame(&mut rng, &low, 3);
+            let values = defender_values(GameType::Null, Goal::NullDeclarerTrick, &hands);
+            if values.iter().all(|&(_, v)| v == values[0].1) {
+                continue;
+            }
+            let view = lead_view(declaration, &hands, &deck, skat, true);
+            let decision = policy.decide(&view, &Hints::default()).expect("decision");
+            let value = values
+                .iter()
+                .find(|(c, _)| *c == decision.card)
+                .map(|&(_, v)| v);
+            assert_eq!(value, Some(1), "{} in {hands:?}", decision.card);
+            checked += 1;
+        }
+        assert!(checked >= 20, "positions with a choice: {checked}");
     }
 }
 
