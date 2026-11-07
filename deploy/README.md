@@ -1,6 +1,6 @@
 # Deployment auf den vServer
 
-Jeder Push auf `main` baut das Spiel und spielt es auf den vServer. Auf dem Server läuft nur ein kleiner Caddy-Container, der die statischen Dateien ausliefert. Alles andere passiert in GitHub Actions.
+Jeder Push auf `main` baut das Spiel und spielt es auf den vServer. Auf dem Server laufen zwei kleine Container: Caddy liefert die statischen Dateien aus und leitet `/api/*` an den Konto-Dienst weiter (ADR 0021). Gebaut wird alles in GitHub Actions, auf dem Server nichts.
 
 Adresse: **https://stammtisch-62-83-23-90.sslip.io**
 
@@ -9,8 +9,13 @@ Adresse: **https://stammtisch-62-83-23-90.sslip.io**
 Auf dem Server laufen bereits weitere Anwendungen. Ports 80 und 443 gehören dem Caddy der Haushalt-App (Repo `j4nric/haushalt-app`, Ordner `infra/production`). Dieser Caddy holt das HTTPS-Zertifikat für unsere Domain und leitet weiter:
 
 ```
-Browser ──HTTPS──▶ haushalt-prod-caddy-1 ──Netzwerk stammtisch-proxy──▶ stammtisch-web (unser Container)
+Browser ──HTTPS──▶ haushalt-prod-caddy-1 ──Netzwerk stammtisch-proxy──▶ stammtisch-web (unser Caddy)
+                                                                          │ /api/*
+                                                                          ▼ Netzwerk backend (intern)
+                                                                        stammtisch-api (Konto-Dienst, SQLite in ./data)
 ```
+
+Der Haushalt-Caddy reicht alles an unseren Caddy weiter; für `/api` braucht es dort keine Änderung. Der Konto-Dienst veröffentlicht keine Ports und hängt nur im internen Netzwerk `backend`, das allein unser Caddy erreicht.
 
 Dafür braucht es drei Dinge, die zusammenpassen müssen:
 
@@ -61,8 +66,39 @@ Solange die Secrets fehlen, überspringt der Deploy-Job den Server-Schritt mit e
 1. Tests und Lint wie in `ci.yml`.
 2. Simulator-Baseline erzeugen.
 3. Web-App bauen (`web/`, `npm run build`: Kern als WebAssembly plus Vite-Build) und `site/` aus `web/dist/` zusammenstellen. Commit und Datum stehen als Build-Info in der Fußzeile des Startbildschirms.
-4. `site/`, `docker-compose.yml` und `Caddyfile` per `rsync` über SSH nach `/opt/skat`.
-5. Netzwerk `stammtisch-proxy` anlegen, falls es fehlt, dann `docker compose up -d`.
+4. Parallel dazu der Konto-Dienst (`server/`) als statisches musl-Binary (`x86_64-unknown-linux-musl`, SQLite eingebaut). Er läuft in einem schlichten `alpine`-Image, das Binary wird hineingemountet; auf dem Server wird nichts gebaut und kein eigenes Image gebraucht.
+5. `site/`, `server/stammtisch-server`, `docker-compose.yml`, `Caddyfile` und `up.sh` per `rsync` über SSH nach `/opt/skat`. `data/` wird nie synchronisiert oder gelöscht.
+6. `up.sh` auf dem Server: Netzwerk `stammtisch-proxy` anlegen, falls es fehlt; `data/` anlegen; `.env` mit der uid/gid des Deploy-Nutzers schreiben (der Dienst läuft als dieser Nutzer, die Datenbank gehört ihm); erst `web` starten (bei geänderter Caddyfile neu starten), dann `api` neu erzeugen und auf `/api/health` warten.
+
+Startet der Konto-Dienst nicht oder scheitert sein Bau, gibt es nur eine Warnung: Das Spiel wird trotzdem ausgeliefert, `/api` antwortet 502 und die App zeigt beim Konto „offline“.
+
+## Konto-Dienst und Datenbank (ADR 0021)
+
+| Was | Wo |
+|---|---|
+| Binary | `/opt/skat/server/stammtisch-server` |
+| Datenbank (SQLite, WAL) | `/opt/skat/data/stammtisch.db` (dazu `-wal` und `-shm`) |
+| Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN` |
+
+Einmalig ist nichts zu tun: `up.sh` legt `data/` selbst an. Secrets braucht der Dienst keine (Sitzungen sind Zufallstokens in der Datenbank).
+
+**Sicherung.** Die Datenbank ist der einzige Zustand auf dem Server. Eine konsistente Kopie im laufenden Betrieb:
+
+```
+sqlite3 /opt/skat/data/stammtisch.db ".backup '/opt/skat/backup-$(date +%F).db'"
+```
+
+Ohne `sqlite3` auf dem Server: Dienst kurz anhalten und die Datei kopieren (die Seite läuft weiter, nur `/api` ist so lange weg):
+
+```
+cd /opt/skat && docker compose stop api && cp data/stammtisch.db "backup-$(date +%F).db" && docker compose start api
+```
+
+Zurückspielen: Dienst anhalten, Datei nach `data/stammtisch.db` kopieren (alte `-wal`/`-shm` löschen), Dienst starten.
+
+**Domain wechseln.** Passkeys gelten nur für die Domain, auf der sie angelegt wurden. Nach einem Umzug `STAMMTISCH_ORIGIN` anpassen; Spieler melden sich einmal mit dem Wiederherstellungscode an und legen einen neuen Passkey an (ADR 0021).
+
+**Lokal entwickeln.** `cargo run -p stammtisch_server` (lauscht auf `127.0.0.1:8787`, Datenbank `stammtisch.db` im aktuellen Ordner, erlaubt `http://localhost:5173` und `:4173`), dazu `npm run dev` oder `npm run preview` in `web/`: Vite leitet `/api` dorthin.
 
 ## Fehlersuche
 
@@ -73,3 +109,12 @@ docker network inspect stammtisch-proxy --format '{{range .Containers}}{{.Name}}
 ```
 
 Der letzte Befehl muss `stammtisch-web-1` und `haushalt-prod-caddy-1` zeigen. Fehlt der Caddy, ist der Haushalt-PR noch nicht ausgerollt.
+
+Konto-Dienst:
+
+```
+cd /opt/skat && docker compose logs --tail 50 api
+cd /opt/skat && docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/health    # "ok"
+curl -s https://stammtisch-62-83-23-90.sslip.io/api/health                                 # "ok" von außen
+sh /opt/skat/up.sh                                                                          # alles neu starten
+```

@@ -1350,7 +1350,7 @@ Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschal
 - Ein neuer Spielstand kennt etwa die Hälfte der Hausregeln und Figuren. Die übrigen erscheinen erst nach einer Freischaltung im Tresen.
 - Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Einmischen schlagen.
 - Jede Freischaltung ist an genau einer Stelle als Daten definiert (Bedingung und Belohnung) und wird im Simulator auf Erreichbarkeit geprüft.
-- Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Kein Konto, kein Server-Speicher.
+- Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Seit ADR 0021 (07.11.2026) kann der Spieler zusätzlich ein Konto mit Passkey anlegen; dann liegt derselbe Stand auch auf dem Server und gleicht sich zwischen Geräten ab (14.4). Ohne Konto bleibt alles im Browser wie bisher.
 
 **Umgesetzt in M4.** Freischaltungen stehen in `core/content/unlocks.ron` (Bedingung und Belohnung). Jedes Relikt und jeder Charakter, der dort als Belohnung steht, ist bis dahin gesperrt. Der Meta-Zustand (`MetaState`: verdiente Freischaltungen, Statistik) ist ein eigenes, serialisierbares Objekt neben dem Run; er lernt aus den Ereignissen des Runs (auch aus den bereinigten Spieler-Ereignissen) und erzeugt den Start eines Runs mit den gesperrten Relikten. Anfangs gesperrt sind 15 von 31 Hausregeln und Figuren (Durchmarsch, Tournee, Jungfrau, Ouvert-Bonus, Kontra, Wirt, Oma, Schiedsrichter, dazu aus M4 Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider) und der Nullspieler. Die sieben Hausregeln und Figuren nur für den Nullspieler sind nicht gesperrt.
 
@@ -1790,6 +1790,7 @@ skat-roguelite/
 │   └── content      Relikte, Bosse, Modifikationen als Daten (RON, eingebettet)
 ├── sim/             Rust-Binary: headless Simulator und Balancing-CLI
 ├── wasm/            Crate „skat_wasm“: wasm-bindgen-Schicht, exponiert skat_core dem Browser
+├── server/          Crate „stammtisch_server“: Konten, Spielstand, Tafel des Tages (ADR 0021), kennt skat_core nicht
 └── web/             Web-App (TypeScript, Vite): Tisch, Hand, Tresen, Animation, Speichern
 ```
 
@@ -1809,6 +1810,19 @@ skat-roguelite/
 - Einfluss jeder einzelnen Modifikation und jeder Hausregel auf die obigen Werte
 - Laufzeit pro Spiel (Ziel: unter 1 ms mit Heuristik-KI)
 - Seit 03.11.2026 im ganzen Abend (`--runs N`): je Kneipe Spiele und Einmischen, Relikte beim Betreten, Groschen je gewonnener Kneipe, Spelunken in eigenen Zeilen, seit ADR 0019 die mit dem Schutzengel neu gespielten Kneipen (`again`; bis dahin Leben beim Betreten); je Stadtteil Relikte zu Beginn und vor dem Boss, verlorene Kneipen je Run, neu gespielte Kneipen, wo die verlorenen Runs enden (normale Kneipe, Spelunke, Boss-Kneipe); Groschen nach Herkunft und Ausgaben nach Art (Relikte, Schnäpse, Zinken, Kartenmaler, reinigen, neu auslosen, Neuauslage). Seit ADR 0018 die Zeile `faktor`: mittlerer Faktor der gewonnenen Spiele, Anteil über ×1, höchster Faktor je Run (Mittel) und insgesamt, Anteil der Runs mit einem Faktor-Relikt am Ende und Relikte je Run, Faktor der wachsenden Relikte (Zapfhahn, Heiße Hand) am Ende. `--curve` und `--curve --boss <id>` messen mit `--district 1|2|3` im gewählten Stadtteil (dessen Gegner aus `run.ron`).
+
+### 14.4 Konto und Spielstand auf dem Server (ADR 0021)
+
+Entschieden vom Nutzer im Cockpit (Frage 38, Variante A mit Ergänzung), umgesetzt am 07.11.2026.
+
+- **Freiwillig.** Ohne Konto spielt man wie bisher; der gesicherte Text (`STAMMTISCH1:…`) bleibt der Weg ohne Server.
+- **Anmelden** mit einem Passkey (Fingerabdruck, Gesicht, Geräte-PIN), ohne Benutzernamen, E-Mail oder Passwort. Beim Anlegen zeigt die App einmal einen **Wiederherstellungscode** (24 Zeichen, mit Knopf zum Kopieren und dem Hinweis, ihn aufzuschreiben). Damit kommt man ohne Passkey ins Konto (neues Gerät, andere Domain) und legt dann einen neuen Passkey an; der Code wird bei jedem Gebrauch ersetzt.
+- **Name am Stammtisch**: 1 bis 24 Zeichen, nicht eindeutig, steht auf der Tafel des Tages.
+- **Spielstand**: genau der gesicherte Text, für den Server undurchsichtig. Abgleich beim Start (vor dem Lesen des Speichers), nach jeder Kneipe, am Ende des Runs und beim Verlassen der Seite. Hat sich nur eine Seite geändert, gilt sie (mit Hinweis, wenn der Stand des Kontos geladen wird); haben sich beide geändert, wählt der Spieler in einem Dialog, der beide Stände zeigt. Ein älterer Stand überschreibt nie still einen neueren (Versionen, HTTP 409). Kleine Anzeige „gespeichert“, „offline“, „Konflikt“ neben dem Konto.
+- **Tafel des Tages**: Am Ende eines Tages-Runs meldet ein angemeldeter Spieler sein Ergebnis; der Startbildschirm zeigt die besten zehn und den eigenen Platz, ohne Konto nur lesend. Das erste Ergebnis je Tag zählt. Selbstauskunft, der Server prüft nichts.
+- **Keine Spiellogik auf dem Server**: Er speichert und zählt, er spielt nicht nach. Die Regeln bleiben im Kern im Browser.
+- **Datenschutz**: gespeichert werden nur Name, öffentliche Schlüssel der Passkeys, Hash des Wiederherstellungscodes, Spielstand und Tafel-Ergebnisse. Konto löschen (mit Rückfrage) entfernt alles davon sofort.
+- **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.
 
 ---
 
