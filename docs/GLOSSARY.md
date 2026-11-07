@@ -84,6 +84,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Marke eingelöst (Auslöser für Relikte) | `OnVoucherRedeemed` | `Stage::OnVoucherRedeemed`, `Hook::OnVoucherRedeemed`; feuert nach jedem `VoucherRedeemed` (gedrückt oder im Handspiel), nur Run-Zustand (Zähler, Groschen) |
 | Augen zum Stich (Zuschlag) | `AddTrickPoints` | Wirkung auf den Stich, der gerade fertig ist, wie `MultiplyTrickPoints` über `Game::add_bonus_points` (Fingerspitzengefühl) |
 | Fusel (Schnaps) | `rotgut` | `ConsumableAction::NextGameCursed(Multiply(2))`: nächstes angesagtes Spiel ×2 und ein dauerhafter Fluch auf einer zufälligen Karte ohne Fluch |
+| Einführung (geführte Kneipe für Einsteiger, DESIGN 16.1) | `tutorial` | Run mit festen Spielen aus `core/content/tutorial.ron` (`TutorialDef`, `TutorialDeal`): `Run::new_tutorial`, `RunStart::tutorial`, `Run::is_tutorial`, Sicht `RunView::tutorial`, wasm `WasmRun.tutorial()`. In der Web-App der Trainer `Coach` (`web/src/tutorial.ts`), Schritte `CoachStep`; zählt nicht als Run |
 | Hinweis zur ersten Spezialkarte | `MetaState::specials_seen` | Im Meta-Spielstand; `MetaState::new_specials`, in der Web-App `MetaStep::first_specials` und das Blatt „Neu in deiner Ausgabe“ |
 | Wert einer Modifikation | `value` | An der Karte `DeckCard::mod_values`, angeboten `CardModDef::values`, Obergrenze `CardModDef::max`, Wirkung je Einheit mal Wert `Effect::scaled` |
 | Steigerung (dieselbe Modifikation noch einmal) | `upgrade` | Werte addieren, Rang bis 3; Ergebnis `DeckChange::Modified { value, replaced: None }` |

@@ -4849,9 +4849,11 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        // A boss pub plays all its games (ADR 0017); the target counts
-        // after the last.
-        let early = !self.series.is_boss_pub() || self.series.games_left() == 0;
+        // A boss pub plays all its games (ADR 0017), and so does the
+        // Einführung (DESIGN 16.1: every lesson is dealt); the target
+        // counts after the last.
+        let plays_all = self.series.is_boss_pub() || self.in_tutorial_pub();
+        let early = !plays_all || self.series.games_left() == 0;
         if early && self.series.target_reached() {
             return self.series_won(content, events);
         }

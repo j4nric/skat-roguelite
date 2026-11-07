@@ -60,6 +60,8 @@ import { renderCardReward } from './ui/cardreward';
 import { defaultPick, legKey, playTravel, renderRoute, watchMapLabels } from './ui/route';
 import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
 import { hintText, renderHint } from './ui/hint';
+import { renderCoach } from './ui/coach';
+import { Coach, markTutorial, tutorialSeen } from './tutorial';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
@@ -272,6 +274,14 @@ export class App {
   /** "Untot": cards whose rising was already shown with their trick in this game. */
   private readonly riseShown = new Set<number>();
   private readonly hintEl: HTMLElement;
+  /** The Wirt as coach of the Einführung (./tutorial.ts). */
+  private readonly coachEl: HTMLElement;
+  /** The Einführung in progress; null otherwise. Its run is never saved nor counted. */
+  private coach: Coach | null = null;
+  /** The coach's bubble on screen (to draw it only when it changes). */
+  private coachHtml = '';
+  /** The Einführung was left while a playback ran: where to go once it is over. */
+  private leaveTutorialTo: 'start' | 'run' | null = null;
   /** The info card (long-press, hover, "i"): one for everything. */
   private readonly info: InfoCard;
   /** Lines and wiggles when a relic or modification fires. */
@@ -322,7 +332,7 @@ export class App {
   private stampAt: { rect: DOMRect; at: number } | null = null;
 
   constructor(private readonly root: HTMLElement) {
-    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
+    root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
@@ -330,6 +340,7 @@ export class App {
     watchMapLabels(root);
     this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
     this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
+    this.coachEl = root.querySelector<HTMLElement>('.coach-layer') ?? root;
     const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;
     this.info = new InfoCard(infoEl, (key) => infoModel(key, this.ui.view, this.ui));
     this.triggers = new TriggerFeed(root.querySelector<HTMLElement>('.trigger-layer') ?? root);
@@ -376,8 +387,12 @@ export class App {
     let settle: number | undefined;
     window.addEventListener('resize', () => {
       this.positionHint();
+      this.positionCoach();
       window.clearTimeout(settle);
-      settle = window.setTimeout(() => this.positionHint(), 100);
+      settle = window.setTimeout(() => {
+        this.positionHint();
+        this.positionCoach();
+      }, 100);
     });
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
@@ -531,6 +546,8 @@ export class App {
         this.ui.message = errorCode(err) === 'OutdatedSave' ? de.start.newRules : de.start.resumeFailed;
       }
     }
+    // Die Einführung (DESIGN 16.1) is offered once to a new player.
+    this.ui.tutorialOffer = !tutorialSeen() && !saved && !this.ui.history.length && !(this.ui.meta?.stats.runs_finished ?? 0);
     this.ui.screen = 'start';
     this.render();
   }
@@ -1006,7 +1023,11 @@ export class App {
           }
         }
         view = step.view;
-        if (view.phase === 'Won' || view.phase === 'Lost') {
+        // The Einführung (DESIGN 16.1) is no run: never saved, never
+        // counted, and a run in progress stays as it was stored.
+        if (view.tutorial) {
+          // Nothing to keep.
+        } else if (view.phase === 'Won' || view.phase === 'Lost') {
           clearRun();
           // A night that ends (ADR 0020) is no run of its own: the win
           // was recorded when der Alte fell.
@@ -1014,7 +1035,7 @@ export class App {
         } else if (this.core) {
           saveRun(this.core.save());
         }
-        earned = earned.concat(this.observe(step.events));
+        if (!view.tutorial) earned = earned.concat(this.observe(step.events));
         await this.playEvents(previous, step.events, view);
         // A lost run: the pub lights go out before the end screen.
         if (view.phase === 'Lost') await lightsOut();
@@ -1055,6 +1076,12 @@ export class App {
         this.render();
       } finally {
         lightsUp();
+      }
+      // The Einführung was left during the playback: now it can go.
+      const leave = this.leaveTutorialTo;
+      if (leave) {
+        this.leaveTutorialTo = null;
+        this.afterTutorial(leave);
       }
     }
   }
@@ -2262,6 +2289,12 @@ export class App {
    * hides it for the moment.
    */
   private updateHint(): void {
+    // In the Einführung the Wirt coaches instead (./tutorial.ts).
+    if (this.coach) {
+      if (this.hint) this.hintEl.innerHTML = '';
+      this.hint = null;
+      return;
+    }
     const ctx = { ui: this.ui, passed: this.passedOnce };
     const on = this.ui.settings.hints;
     if (on) {
@@ -2300,6 +2333,145 @@ export class App {
     const selector = { hud: '.hud', end: '.end-board h1', shop: '.shop .backbar, .shop .backbar > *', top: null }[hint.anchor];
     const bottoms = selector ? Array.from(this.screenEl.querySelectorAll(selector), (el) => el.getBoundingClientRect().bottom) : [];
     this.hintEl.style.top = bottoms.length ? `${Math.round(Math.max(...bottoms) + 6)}px` : '';
+  }
+
+  // -------------------------------------------------------------------------
+  // Die Einführung (DESIGN 16.1)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Start the Einführung: the core's guided pub with fixed deals. A run in
+   * progress stays stored untouched; the tutorial run is never saved and
+   * its events never reach the meta state.
+   */
+  private startTutorial(): void {
+    if (this.ui.busy) return;
+    let core: CoreRun;
+    try {
+      core = CoreRun.tutorial();
+    } catch (err) {
+      console.warn('tutorial not started', err);
+      this.showToast(errorText(err));
+      return;
+    }
+    markTutorial('done');
+    this.core?.dispose();
+    this.core = core;
+    this.coach = new Coach();
+    this.coachHtml = '';
+    this.ui.tutorialOffer = false;
+    this.ui.message = null;
+    this.ui.ended = null;
+    this.ui.copy = null;
+    this.enterRun(core.view(), true);
+  }
+
+  /** The coach goes; the bubble and ring with him. */
+  private endTutorial(): void {
+    if (!this.coach) return;
+    this.coach = null;
+    this.coachHtml = '';
+    this.coachEl.innerHTML = '';
+  }
+
+  /**
+   * Leave the Einführung (skipped, or finished): to the start screen, or
+   * into a real evening ('run') when no run in progress would be given up.
+   * During a playback the core is let go first, the rest waits for its end.
+   */
+  private leaveTutorial(go: 'start' | 'run'): void {
+    this.endTutorial();
+    markTutorial('done');
+    if (this.ui.busy) {
+      this.leaveTutorialTo = go;
+      this.core?.dispose();
+      this.core = null;
+      const o = this.ui.overlay;
+      if ((o?.kind === 'score' || o?.kind === 'boss') && this.awaited === o) o.resolve();
+      this.hurry();
+      return;
+    }
+    this.afterTutorial(go);
+  }
+
+  private afterTutorial(go: 'start' | 'run'): void {
+    this.toStart();
+    if (go === 'run' && !this.hasRunningRun()) this.newRun();
+  }
+
+  /** Show the coach's step for what is on screen (after every render). */
+  private updateCoach(): void {
+    const coach = this.coach;
+    if (!coach || !this.ui.view?.tutorial) {
+      if (this.coachHtml) this.coachEl.innerHTML = '';
+      this.coachHtml = '';
+      return;
+    }
+    const step = coach.update(this.ui);
+    if (!step) {
+      if (this.coachHtml) this.coachEl.innerHTML = '';
+      this.coachHtml = '';
+      return;
+    }
+    // One bubble at a time: the Wirt goes before a Stammgast's line.
+    if (this.ui.quip) {
+      this.ui.quip = null;
+      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
+    }
+    const html = renderCoach(step.id, step.kind, step.text(this.ui), coach.label(this.ui));
+    if (html !== this.coachHtml) {
+      this.coachEl.innerHTML = html;
+      this.coachHtml = html;
+    }
+    this.positionCoach();
+    // The layout may still settle (cards dealt, a sheet sliding in).
+    requestAnimationFrame(() => this.positionCoach());
+    window.setTimeout(() => this.positionCoach(), 360);
+  }
+
+  /**
+   * Ring what the step talks about and put the bubble above or below it,
+   * whichever half of the screen is free, the arrow towards it. Without a
+   * target the bubble hangs below the head of the run.
+   */
+  private positionCoach(): void {
+    const step = this.coach?.step;
+    const box = this.coachEl.querySelector<HTMLElement>('.coach');
+    const ring = this.coachEl.querySelector<HTMLElement>('.coach-ring');
+    if (!step || !box || !ring) return;
+    const selector = step.target?.(this.ui) ?? null;
+    const target = selector
+      ? Array.from(this.root.querySelectorAll(selector)).find((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        })
+      : undefined;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const h = box.offsetHeight;
+    box.classList.remove('is-above', 'is-below');
+    if (!target) {
+      ring.hidden = true;
+      const hud = this.screenEl.querySelector('.hud')?.getBoundingClientRect();
+      const top = hud && hud.bottom + h + 8 < vh ? hud.bottom + 6 : 8;
+      box.style.top = `${Math.round(top)}px`;
+      return;
+    }
+    const r = target.getBoundingClientRect();
+    const pad = 4;
+    ring.hidden = false;
+    ring.style.left = `${Math.round(Math.max(2, r.left - pad))}px`;
+    ring.style.top = `${Math.round(Math.max(2, r.top - pad))}px`;
+    ring.style.width = `${Math.round(Math.min(vw - 4, r.width + 2 * pad))}px`;
+    ring.style.height = `${Math.round(Math.min(vh - 4, r.height + 2 * pad))}px`;
+    const below = step.place ? step.place === 'below' : r.top + r.height / 2 < vh / 2;
+    let top = below ? r.bottom + 14 : r.top - 14 - h;
+    top = Math.max(8, Math.min(vh - h - 8, top));
+    box.style.top = `${Math.round(top)}px`;
+    box.classList.add(below ? 'is-below' : 'is-above');
+    const left = box.getBoundingClientRect().left;
+    const x = Math.max(22, Math.min(box.offsetWidth - 22, r.left + r.width / 2 - left));
+    box.style.setProperty('--arrow-x', `${Math.round(x)}px`);
   }
 
   private dismissHint(): void {
@@ -2346,7 +2518,27 @@ export class App {
     const view = this.ui.view;
     switch (action) {
       case 'new-run':
+        this.endTutorial();
         this.newRun();
+        return;
+      // Die Einführung (DESIGN 16.1).
+      case 'tutorial-start':
+        this.startTutorial();
+        return;
+      case 'tutorial-offer-no':
+        markTutorial('declined');
+        this.ui.tutorialOffer = false;
+        this.render();
+        return;
+      case 'coach-next':
+        this.coach?.next();
+        this.updateCoach();
+        return;
+      case 'tutorial-skip':
+        this.leaveTutorial('start');
+        return;
+      case 'tutorial-finish':
+        this.leaveTutorial(el.dataset.go === 'run' ? 'run' : 'start');
         return;
       // Die lange Nacht (ADR 0020): on from the end screen of a won run.
       case 'enter-night':
@@ -2425,6 +2617,7 @@ export class App {
         this.render();
         return;
       case 'to-start':
+        this.endTutorial();
         this.toStart();
         return;
       case 'menu':
@@ -3503,6 +3696,7 @@ export class App {
       this.info.refresh();
     }
     this.updateHint();
+    this.updateCoach();
     music.setScene(this.musicScene());
     watchShop(this.screenEl);
     const effects = this.afterRender;

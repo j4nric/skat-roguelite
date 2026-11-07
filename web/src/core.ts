@@ -67,6 +67,15 @@ export class CoreRun {
     return { run: new CoreRun(run), startEvents: run.startEvents() };
   }
 
+  /**
+   * Start the Einführung (DESIGN 16.1): one guided pub with the fixed deals
+   * of the core's `tutorial.ron`. Never feed its events to the meta state
+   * and never save it: it is no run.
+   */
+  static tutorial(): CoreRun {
+    return new CoreRun(WasmRun.tutorial());
+  }
+
   /** Load a saved run; throws if the save does not fit. */
   static load(state: string): CoreRun {
     return new CoreRun(WasmRun.load(state));

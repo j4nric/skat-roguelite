@@ -228,3 +228,28 @@ fn the_third_game_reaches_the_target_even_after_a_lost_first_game() {
     let worst = -scores[0].score + scores[1].score + scores[2].score;
     assert!(worst >= target, "{worst} < {target}");
 }
+
+#[test]
+fn tutorial_pub_plays_all_three_games_even_with_the_target_reached() {
+    let mut content = content();
+    content.tutorial.target = 10;
+    let (mut run, _) = Run::new_tutorial(&content).expect("tutorial");
+    let events = run
+        .apply(
+            &content,
+            RunAction::Declare(Declaration::Grand {
+                risk: RiskLevel::Hand,
+                hand: true,
+            }),
+        )
+        .expect("grand hand");
+    let first = play_out(&mut run, &content, events, false);
+    assert!(first.won && first.score >= 10, "{first:?}");
+    // The target is reached, but the next lesson is dealt all the same.
+    assert_eq!(run.phase, RunPhase::Game);
+    assert_eq!(run.series.games_played, 1);
+    assert_eq!(
+        faces(&run, Seat::DECLARER),
+        sorted(&content.tutorial.deals[1].player)
+    );
+}

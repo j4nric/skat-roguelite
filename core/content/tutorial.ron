@@ -13,7 +13,9 @@
 //   zwei; zusammen jede der 32 Karten genau einmal. Notation wie im Kern:
 //   Farbe C (Eichel), S (Grün), H (Rot), D (Schellen), Wert 7 8 9 T J
 //   (Unter) Q (Ober) K A (Daus).
-// Einmischen gibt es in der Einführungskneipe nicht.
+// Einmischen gibt es in der Einführungskneipe nicht, und wie in der
+// Boss-Kneipe werden alle drei Spiele gespielt: Das Ziel zählt nach dem
+// dritten, jede Lektion kommt dran.
 (
     seed: 20261107,
     target: 150,
