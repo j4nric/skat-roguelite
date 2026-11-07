@@ -89,10 +89,15 @@
         // 2,4 %, Stadtteil 2 hielt 47 %, Stadtteil 3 14 %. Jetzt 1-1, 1-2
         // − 5, Stadtteil 2 + 5 (Boss 150), Stadtteil 3 rund − 22 %:
         // 37,4 / 17,3 / 4,8 %.
+        // Runde 6 (07.11.2026, docs/balance/2026-11-07-runde6.md): nach den
+        // neuen Verteidigern (#108) und Relikten v4 38,4 / 17,2 / 5,8 %
+        // (Stadtteil 3 hielt 34 %). Stadtteil 2 + 5 je normaler Kneipe,
+        // Stadtteil 3 rund + 12 % (Boss 175 → 195): 38,2 / 15,6 / 3,9 %
+        // (5 × 300 Runs).
         targets: Some([
             [30, 45, 80, 85, 120],
-            [90, 105, 115, 125, 150],
-            [200, 215, 235, 250, 175],
+            [95, 110, 120, 130, 150],
+            [225, 240, 265, 280, 195],
         ]),
         // Die lange Nacht (Balancing-Runde 05.11.2026,
         // docs/balance/2026-11-05-nacht.md): eigenes Wachstum je Stadtteil
@@ -213,8 +218,12 @@
         // 200 / 225 / 240 / Boss 155 36,8 / 15,4 / 1,1 % (Stadtteil 3 hielt
         // 7 %, der Alte 33 %), 21,6 % in den ersten beiden Kneipen. 1-1 und
         // 1-2 − 5, Stadtteil 3 − 45 bis − 60: 36,9 / 16,0 / 3,4 %, 19,6 %.
+        // Runde 6 (07.11.2026, docs/balance/2026-11-07-runde6.md): nach den
+        // neuen Verteidigern (#108) und Relikten v4 34,7 / 15,2 / 4,4 %. 1-3
+        // und 1-4 − 5, Boss 110 → 100: 37,3 / 14,7 / 3,7 % (5 × 300 Runs;
+        // mit Stadtteil 2 zusätzlich + 5 nur 37,1 / 14,3 / 3,7 %, verworfen).
         targets: Some([
-            [20, 35, 65, 70, 110],
+            [20, 35, 60, 65, 100],
             [60, 75, 85, 95, 105],
             [135, 150, 165, 180, 120],
         ]),
@@ -265,10 +274,15 @@
         // Boss 80 · 140 / 155 / 175 / 185 / Boss 130 38,8 / 18,3 / 0,9 %
         // (Stadtteil 2 hielt 47 %, Stadtteil 3 5 %, der Alte 22 %). Stadtteil
         // 2 + 5 (Boss 90), Stadtteil 3 − 30 bis − 40: 38,8 / 17,2 / 3,1 %.
+        // Runde 6 (07.11.2026, docs/balance/2026-11-07-runde6.md): nach den
+        // neuen Verteidigern (#108) und Relikten v4 39,2 / 14,0 / 2,3 %
+        // (Stadtteil 3 hielt 17 %). Stadtteil 2 − 5 je normaler Kneipe,
+        // Stadtteil 3 − 15 (Boss 105 → 100): 40,5 / 15,7 / 3,9 % (5 × 300
+        // Runs; Stadtteil 1 unverändert, auf den Seeds 42 bis 44 39,2 %).
         targets: Some([
             [10, 20, 35, 40, 75],
-            [45, 55, 60, 70, 90],
-            [110, 120, 135, 145, 105],
+            [40, 50, 55, 65, 90],
+            [95, 105, 120, 130, 100],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die
