@@ -5098,6 +5098,68 @@ async function nightPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * "Teilen" on the end screen (shareRunPass, 390 × 844 and 1280 × 800):
+ * a won run (the last boss pub, patched from boss-table.json, with five
+ * relics) draws its picture; without a share sheet it is saved as a PNG
+ * of 1080 × 1350, with one the picture goes into it as a file.
+ */
+async function shareRunPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', acceptDownloads: true });
+  const page = await context.newPage();
+  watch(page, errors);
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  won.run.relics.push('home_suit', 'all_rounder', 'old_deck', 'skat_keeper');
+  await resumeFixture(page, null, JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `share ${tag}`);
+  await playOut(page, `share ${tag}`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  const button = page.locator('[data-testid="share-run"]');
+  if (!(await button.count())) fail(`share ${tag}: no "Teilen" on the end screen`);
+  await button.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(screens, `qol-end-share-${tag}.png`) });
+  // No share sheet here: the picture is saved.
+  const hasShare = await page.evaluate(() => typeof navigator.share === 'function');
+  if (!hasShare) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), button.click()]);
+    const file = join(screens, `qol-run-card-${tag}.png`);
+    await download.saveAs(file);
+    const png = readFileSync(file);
+    const w = png.readUInt32BE(16);
+    const h = png.readUInt32BE(20);
+    if (png.toString('latin1', 1, 4) !== 'PNG' || w !== 1080 || h !== 1350) fail(`share ${tag}: saved picture ${download.suggestedFilename()} is ${w} × ${h}`);
+    if (!/^stammtisch-.+\.png$/.test(download.suggestedFilename())) fail(`share ${tag}: picture named ${download.suggestedFilename()}`);
+    log(`share ${tag}: picture saved as ${download.suggestedFilename()} (${w} × ${h}, ${png.length} bytes)`);
+  }
+  // With a share sheet that takes files, the picture goes there.
+  await page.evaluate(() => {
+    window.__shared = [];
+    navigator.canShare = (data) => Array.isArray(data?.files);
+    navigator.share = async (data) => {
+      window.__shared.push({ files: data.files.map((f) => ({ name: f.name, type: f.type, size: f.size })), text: data.text });
+    };
+  });
+  await button.click();
+  await page.waitForFunction(() => window.__shared.length === 1, null, { timeout: 5000 }).catch(() => fail(`share ${tag}: nothing went to the share sheet`));
+  const shared = await page.evaluate(() => window.__shared[0]);
+  if (shared.files.length !== 1 || shared.files[0].type !== 'image/png' || shared.files[0].size < 2000) fail(`share ${tag}: shared ${JSON.stringify(shared)}`);
+  log(`share ${tag}: share sheet got ${shared.files[0].name} with "${shared.text}"`);
+  await context.close();
+  if (errors.length) fail(`share ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
 /** The suit game to declare in qolPass: Rot if allowed, else another suit. */
 async function declarableSuit(page) {
   for (const [index, name] of [[2, 'Rot'], [1, 'Grün'], [3, 'Schellen'], [0, 'Eichel']]) {
@@ -5331,6 +5393,8 @@ async function run() {
       await qolPass(browser, errors, DESKTOP);
       await handSortPass(browser, errors, PHONE);
       await handSortPass(browser, errors, DESKTOP);
+      await shareRunPass(browser, errors, PHONE);
+      await shareRunPass(browser, errors, DESKTOP);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -5669,6 +5733,8 @@ async function run() {
     await qolPass(browser, errors, DESKTOP);
     await handSortPass(browser, errors, PHONE);
     await handSortPass(browser, errors, DESKTOP);
+    await shareRunPass(browser, errors, PHONE);
+    await shareRunPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();

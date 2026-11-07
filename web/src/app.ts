@@ -74,6 +74,7 @@ import { watchDrags, type Fling } from './ui/drag';
 import { watchKeys } from './ui/keys';
 import { arrangeHand, moveInOrder } from './ui/handorder';
 import { buzz, setVibration } from './haptics';
+import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -324,6 +325,8 @@ export class App {
   private bought: { html: string; rect: DOMRect } | null = null;
   /** Where the card was that a Zinke goes onto, seen as it was tapped (for its stamp). */
   private stampAt: { rect: DOMRect; at: number } | null = null;
+  /** The picture of the ended run for "Teilen", drawn in advance (./ui/runcard.ts). */
+  private runCard: { view: RunView; blob: Promise<Blob> } | null = null;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -629,6 +632,72 @@ export class App {
       this.announceUnlocks(earned);
       this.render();
     }
+  }
+
+  /**
+   * The picture of the ended run, drawn once as the end screen comes, so a
+   * tap on "Teilen" reaches the share sheet while it still counts as the
+   * player's gesture (Safari is strict about that).
+   */
+  private prepareRunCard(): Promise<Blob> {
+    const ended = this.ui.ended;
+    if (!ended) return Promise.reject(new Error('no ended run'));
+    const view = ended.view;
+    if (this.runCard?.view === view) return this.runCard.blob;
+    const record = this.ui.history[0];
+    const daily = Boolean(record && record.seed === view.seed && record.daily);
+    const blob = runCardBlob(view, { won: ended.won, daily, date: record && record.seed === view.seed ? new Date(record.date) : new Date() });
+    // A failed drawing is tried again on the tap.
+    blob.catch(() => {
+      if (this.runCard?.blob === blob) this.runCard = null;
+    });
+    this.runCard = { view, blob };
+    return blob;
+  }
+
+  /**
+   * "Teilen" on the end screen: the run as a picture (./ui/runcard.ts),
+   * into the share sheet with the file where the browser can, else saved
+   * as a download.
+   */
+  private async shareRun(button: HTMLElement): Promise<void> {
+    const ended = this.ui.ended;
+    if (!ended || button.hasAttribute('aria-busy')) return;
+    const view = ended.view;
+    button.setAttribute('aria-busy', 'true');
+    let blob: Blob;
+    try {
+      blob = await this.prepareRunCard();
+    } catch (err) {
+      console.warn('run picture failed', err);
+      this.showToast(de.runCard.failed);
+      button.removeAttribute('aria-busy');
+      return;
+    }
+    button.removeAttribute('aria-busy');
+    const name = runCardName(view);
+    const text = runCardText(view, ended.won);
+    try {
+      const file = new File([blob], name, { type: 'image/png' });
+      if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: de.runCard.shareTitle, text });
+        return;
+      }
+    } catch (err) {
+      // Closed by the player: nothing more to do.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.warn('share sheet failed, saving the picture instead', err);
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    this.showToast(de.runCard.saved);
   }
 
   /** Remember a finished run in the list of this browser. */
@@ -2423,6 +2492,9 @@ export class App {
       case 'copy-link':
         this.copyLink(el.dataset.url ?? '');
         return;
+      case 'share-run':
+        void this.shareRun(el);
+        return;
       case 'share-native':
         this.shareNative(el.dataset.url ?? '', el.dataset.text ?? '');
         return;
@@ -3515,6 +3587,7 @@ export class App {
         break;
       case 'end':
         body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : '';
+        if (ui.ended) this.afterRender.push(() => void this.prepareRunCard().catch(() => undefined));
         break;
       case 'run': {
         const view = ui.view;

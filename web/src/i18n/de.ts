@@ -1542,6 +1542,26 @@ export const de = {
     hint: 'Kurz bei deinem Stich, länger bei Spiel- und Kneipenende.',
   },
 
+  /** "Teilen" on the end screen: the run as a picture (./ui/runcard.ts). */
+  runCard: {
+    button: 'Teilen',
+    buttonAria: 'Zusammenfassung des Runs als Bild teilen',
+    brand: 'STAMMTISCH',
+    reached: 'Stadtteil {section} · Kneipe {series}',
+    night: 'Lange Nacht · Stadtteil {n}',
+    stake: 'Einsatz {stake}',
+    relics: 'Bierdeckel',
+    noRelics: 'Keine Bierdeckel',
+    seed: 'Seed {seed}',
+    daily: 'Tagesseed {seed}',
+    file: 'stammtisch-{seed}.png',
+    shareTitle: 'Stammtisch',
+    shareText: 'Mein Stammtisch-Run: {result} {reached}.',
+    saved: 'Bild gespeichert.',
+    failed: 'Das Bild ging gerade nicht.',
+    making: 'Bild wird gemalt …',
+  },
+
   /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
   keys: {
     title: 'Tastatur',
