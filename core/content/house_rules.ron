@@ -744,7 +744,7 @@
         focus: Trump,
         name: "Treue Seele",
         text: "Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe auf deiner Hand (nach dem Skat, ohne Unter).",
-        rarity: Common,
+        rarity: Uncommon,
         price: 5,
         hooks: [
             OnDeclare(when: SuitGame, then: [AddBaseValuePerCard(count: (trump_suit: true, in_hand: true, all_cards: true, no_jacks: true), per: 1)]),
@@ -1088,8 +1088,8 @@
         focus: Trump,
         name: "Große Klappe",
         text: "Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt.",
-        rarity: Common,
-        price: 4,
+        rarity: Uncommon,
+        price: 5,
         hooks: [
             OnScore(when: All([Won, RiskAtLeast(SchneiderDeclared), Not(NullGame), Not(RamschGame)]), then: [MultiplyBaseValue(2)]),
         ],
@@ -1152,7 +1152,7 @@
         focus: Null,
         name: "Hosen runter",
         text: "Spielst du Null Ouvert, liegen auch die Karten der Gegner offen.",
-        rarity: Common,
+        rarity: Uncommon,
         price: 4,
         hooks: [
             OnDeclare(when: NullRiskAtLeast(Ouvert), then: [RevealDefenderHand(1), RevealDefenderHand(2)]),
@@ -1208,8 +1208,8 @@
         focus: Trump,
         name: "Offenes Visier",
         text: "Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es.",
-        rarity: Uncommon,
-        price: 5,
+        rarity: Rare,
+        price: 6,
         passive: [OuvertRequiresSchneider],
     ),
     // Lever Gewinnstufen: +1 on every won game while at least two relic

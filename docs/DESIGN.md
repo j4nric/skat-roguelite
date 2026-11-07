@@ -1203,7 +1203,7 @@ Auslegungen (Claude, 04.11.2026):
 
 | Relikt | Id | Text | Gruppe, Richtung | Seltenheit, Preis | Bot-Wert |
 |---|---|---|---|---|---|
-| **Treue Seele** (überarbeitet) | `true_soul` | Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe auf deiner Hand (nach dem Skat, ohne Unter). | Wert, Farbtreue | Common, 5 | 4 |
+| **Treue Seele** (überarbeitet) | `true_soul` | Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe auf deiner Hand (nach dem Skat, ohne Unter). | Wert, Farbtreue | Uncommon, 5 | 4 |
 | **Fanblock** | `fan_block` | Farbspiel: +3 Stufen, wenn jede Karte mit Siegel in deinem Deck deine Trumpffarbe hat (mindestens drei). | Stufen, Farbtreue | Uncommon, 5 | 2 |
 | **Kahlschlag** | `clear_cut` | Farbspiel: +1 Stufe je Fehlfarbe, von der du nach dem Skat keine Karte mehr hältst, höchstens +2. | Stufen, Farbtreue | Common, 5 | 3 |
 | **Der Tankwart** (Figur) | `pump_attendant` | Nach jeder gewonnenen Kneipe klebt der Tankwart eine Pfandmarke auf eine zufällige Karte deines Decks ohne Zinke. | Tour, Markenhändler | Uncommon, 5 | 2 |
@@ -1212,17 +1212,17 @@ Auslegungen (Claude, 04.11.2026):
 | **Sieben auf einen Streich** | `seven_at_one_blow` | Machst du in einem gewonnenen Spiel mindestens sieben Stiche: ×1,5. | Faktor, Stichjäger | Rare, 8 | 5 |
 | **Emporkömmling** | `upstart` | Deine Karten mit Winkel zählen die Augen der Karte, die sie geworden sind. | Wert, Stichjäger | Uncommon, 5 | 3 |
 | **Stich auf Stich** | `trick_after_trick` | Machst du drei Stiche hintereinander: +1 Stufe, einmal pro Spiel. | Stufen, Stichjäger | Uncommon, 6 | 3 |
-| **Große Klappe** | `big_mouth` | Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt. | Stufen, Schneider | Common, 4 | 1 |
+| **Große Klappe** | `big_mouth` | Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt. | Stufen, Schneider | Uncommon, 5 | 1 |
 | **Elle** | `yardstick` | Gewinnst du mit Schneider: +1 Grundwert je 5 Augen über 90. | Wert, Schneider | Uncommon, 6 | 3 |
 | **Der Klempner** (Figur) | `plumber` | Gewinnst du in einer Kneipe ein Null, gießt der Klempner nach der Kneipe Blei auf eine zufällige Karte deines Decks ohne Zinke, höchstens dreimal im Run. | Wert, Nullspieler | Uncommon, 7 | 2 |
 | **Wackelkontakt** | `loose_contact` | Null: Der Kurzschluss kommt schon, wenn die Gegner nach fünf Stichen 55 Augen haben (statt 61). | Stufen, Nullspieler | Uncommon, 6 | 2 |
-| **Hosen runter** | `cards_on_table` | Spielst du Null Ouvert, liegen auch die Karten der Gegner offen. | Kontrolle, Nullspieler | Common, 4 | 1 |
+| **Hosen runter** | `cards_on_table` | Spielst du Null Ouvert, liegen auch die Karten der Gegner offen. | Kontrolle, Nullspieler | Uncommon, 4 | 1 |
 | **Die Großkopferten** | `big_shots` | Grand: Nach den Untern zählen die Daus als Spitzen weiter (Eichel, Grün, Rot, Schellen). | Stufen, Grand | Uncommon, 5 | 3 |
 | **Unterschlupf** | `safe_haven` | Mischst du in einem Spiel zum ersten Mal ein, behältst du deine Unter. Der Rest wird neu gegeben. | Kontrolle, Grand | Rare, 7 | 5 |
 | **Bierruhe** | `beer_calm` | Verlierst du einen Grand, zählt er nur halb. | Kontrolle, Grand | Common, 5 | 2 |
 | **Spickzettel** (überarbeitet) | `crib_sheet` | Handspiel: +1 Stufe mehr, und nach der Ansage siehst du beide Skatkarten. | Stufen | Common, 4 | 1 |
 | **Bierdeckel** (überarbeitet) | `beer_mat` | Jedes Spiel einer Kneipe macht einen Strich: +2 Grundwert je Strich. Nach der Kneipe zahlst du 2 Groschen. | Wert | Uncommon, 6 | 4 |
-| **Offenes Visier** | `open_visor` | Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es. | Stufen, Grand | Uncommon, 5 | 1 |
+| **Offenes Visier** | `open_visor` | Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es. | Stufen, Grand | Rare, 6 | 1 |
 | **Leerer Stuhl** | `empty_chair` | +1 Stufe auf jedes gewonnene Spiel, solange mindestens zwei Relikt-Plätze frei sind. | Stufen | Rare, 9 | 2, mit zwei freien Plätzen nach dem Kauf 5 |
 | **Der Trödler** (Figur) | `junk_dealer` | Verkaufst oder tauschst du ein Relikt: +1 Grundwert für den Rest des Runs, einmal je Tresen. | Wert | Common, 4 | 2 |
 | **Der Abstinenzler** (Figur) | `teetotaller` | Lässt du eine Kartenbelohnung aus: +1 Grundwert für den Rest des Runs. | Wert | Uncommon, 6 | 2 |
