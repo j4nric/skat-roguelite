@@ -6717,6 +6717,8 @@ mod night_tests;
 #[cfg(test)]
 mod relic_slots_tests;
 #[cfg(test)]
+mod relics_v4_tests;
+#[cfg(test)]
 mod rescue_tests;
 #[cfg(test)]
 mod schnapps_reward_tests;
