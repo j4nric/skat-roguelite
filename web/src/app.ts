@@ -71,6 +71,7 @@ import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
+import { watchKeys } from './ui/keys';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -403,6 +404,20 @@ export class App {
         this.ui.overlay = null;
         this.render();
       }
+    });
+    // Keys on the desktop: cards by digit, Space or Enter for the main button.
+    watchKeys(root, this.screenEl, this.layerEl, {
+      blocked: () => this.ui.screen === 'loading' || this.info.state?.mode === 'sheet' || this.drink.active,
+      dialogOpen: () => Boolean(this.ui.overlay),
+      refused: (card) => {
+        if (this.ui.busy || this.ui.anim || !this.ui.view?.game?.your_turn) return;
+        springBack(card, null, true);
+        sound.play('card', { volume: 0.35, rate: 0.7 });
+        this.showToast(de.table.notPlayable, 'top');
+      },
+      idle: () => {
+        if (this.ui.busy) this.hurry();
+      },
     });
   }
 

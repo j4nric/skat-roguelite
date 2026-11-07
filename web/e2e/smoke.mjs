@@ -5098,6 +5098,75 @@ async function nightPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * Quality of life on the table (qolPass, 390 × 844 and 1280 × 800; alone
+ * with SMOKE_ONLY=qol): the keyboard (S picks up the skat, a digit plays
+ * that card of the hand, a card the core does not let go shakes with the
+ * same note as a thrown one, the digits show on the cards only after a
+ * key, "?" lists the keys, Space skips and closes the score board).
+ */
+async function qolPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  // No digits before a key (a phone never shows them).
+  if (await page.locator('.hand .key-hint').first().isVisible()) fail(`qol ${tag}: key digits shown before any key`);
+  await page.keyboard.press('s');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  const hints = await page.locator('.hand .key-hint').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.textContent).join(''));
+  if (!hints.startsWith('1234567890')) fail(`qol ${tag}: key digits on the hand "${hints}"`);
+  await page.keyboard.press('?');
+  await page.waitForSelector('[data-testid="keys-help"]');
+  await page.screenshot({ path: join(screens, `qol-keys-help-${tag}.png`) });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="keys-help"]', { state: 'detached' });
+  await discardFirstTwo(page, `qol ${tag}`);
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  // Space: the main button (Ansagen).
+  await page.keyboard.press('Space');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  let played = 0;
+  let refused = false;
+  for (;;) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    const cards = page.locator('.hand .hand-card');
+    const legal = await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-action') === 'play'));
+    const dim = legal.findIndex((x) => !x);
+    if (!refused && dim >= 0 && dim < 10) {
+      await page.keyboard.press(String((dim + 1) % 10));
+      await page.waitForFunction(() => document.querySelector('.toast-layer')?.textContent?.includes('Diese Karte geht gerade nicht'), null, { timeout: 3000 }).catch(() => fail(`qol ${tag}: no note for a card that may not be played`));
+      if ((await cards.count()) !== legal.length) fail(`qol ${tag}: a card that may not be played left the hand`);
+      refused = true;
+    }
+    const first = legal.indexOf(true);
+    const id = await cards.nth(first).getAttribute('data-id');
+    await page.keyboard.press(String((first + 1) % 10));
+    await page.waitForSelector(`.hand .hand-card[data-id="${id}"]`, { state: 'detached', timeout: 10000 }).catch(() => fail(`qol ${tag}: key ${first + 1} did not play card ${id}`));
+    played += 1;
+    if (played > 10) fail(`qol ${tag}: played more than ten cards`);
+  }
+  if (played !== 10) fail(`qol ${tag}: ${played} cards played by key`);
+  // Space skips the counting (if it still runs), then closes the board.
+  await page.waitForSelector('[data-action="score-continue"], [data-action="score-skip"].btn');
+  if (await page.locator('[data-action="score-skip"].btn').count()) {
+    await page.keyboard.press('Space');
+    await page.waitForSelector('[data-action="score-continue"]');
+  }
+  await page.keyboard.press('Space');
+  await page.waitForSelector('.score-sheet', { state: 'detached' });
+  log(`qol ${tag}: a game played by keyboard (${played} cards${refused ? ', one refused' : ''})`);
+  await context.close();
+  if (errors.length) fail(`qol ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -5126,6 +5195,11 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'doppel') {
       await zinkenV2Pass(browser, errors, PHONE);
       await zinkenV2Pass(browser, errors, DESKTOP);
+      return;
+    }
+    if (process.env.SMOKE_ONLY === 'qol') {
+      await qolPass(browser, errors, PHONE);
+      await qolPass(browser, errors, DESKTOP);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -5460,6 +5534,8 @@ async function run() {
     await nightPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
+    await qolPass(browser, errors, PHONE);
+    await qolPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();

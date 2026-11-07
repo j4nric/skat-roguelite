@@ -1528,6 +1528,21 @@ export const de = {
     tat_run: 'Stich auf Stich: {value} Stiche in Folge',
   } as Record<string, string>,
 
+  /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
+  keys: {
+    title: 'Tastatur',
+    close: 'Schließen',
+    rows: [
+      ['1 bis 9, 0', 'Karte 1 bis 10 der Hand spielen'],
+      ['Leertaste, Enter', 'Weiter, Los, Drücken'],
+      ['S', 'Skat aufnehmen'],
+      ['H', 'Hand spielen'],
+      ['L', 'Letzter Stich'],
+      ['Esc', 'Fenster schließen'],
+      ['?, F1', 'Diese Liste'],
+    ] as [string, string][],
+  },
+
   /**
    * Display names and texts that depend on the French deck in the content
    * files get German-deck versions here (ADR 0010). Anything not listed

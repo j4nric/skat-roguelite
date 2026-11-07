@@ -2123,6 +2123,33 @@ button.card {
   pointer-events: none;
 }
 
+/* The digit that plays a hand card from the keyboard (./ui/keys.ts):
+   only once a key was pressed, bottom left where the card is free. */
+.key-hint {
+  display: none;
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  min-width: 15px;
+  padding: 0 2px;
+  border: 2px solid var(--line);
+  background: rgba(11, 12, 14, 0.78);
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1.1;
+  text-align: center;
+  pointer-events: none;
+}
+
+html[data-kbd] .hand-card .key-hint {
+  display: block;
+}
+
+html[data-kbd] .hand-card.is-dim .key-hint {
+  opacity: 0.6;
+}
+
 /* Top right: both corner indexes stay free (bottom right is the index). */
 .plaques {
   position: absolute;
@@ -8949,4 +8976,50 @@ button.skat-card {
 .pouch > .small {
   position: relative;
   color: #e8cfae;
+}
+
+/* ---------------------------------------------------------- keyboard help */
+
+.keys-help {
+  z-index: 60;
+  align-items: center;
+}
+
+.keys-help-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.keys-help-card h2 {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: var(--fs-h);
+  font-weight: 400;
+}
+
+.keys-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.keys-list li {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.keys-list kbd {
+  justify-self: start;
+  padding: 1px 6px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  color: var(--accent);
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
 }

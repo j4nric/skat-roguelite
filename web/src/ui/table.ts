@@ -439,7 +439,8 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       const locked = discarding && !c.discardable;
       const rising = ui.rising === c.id;
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : '', rising ? 'is-rising' : ''].join(' ');
-      const skatTag = cardTag(view, c) + plaques(c);
+      // The digit that plays it from the keyboard (./keys.ts), shown once a key was pressed.
+      const skatTag = cardTag(view, c) + plaques(c) + (i < 10 ? `<span class="key-hint" aria-hidden="true">${(i + 1) % 10}</span>` : '');
       const label = cardLabel(c);
       // Each row fans out gently: -1 at its left end, 1 at its right end.
       const half = (cols - 1) / 2;
