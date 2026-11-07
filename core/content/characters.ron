@@ -215,7 +215,7 @@
         // 1-2 − 5, Stadtteil 3 − 45 bis − 60: 36,9 / 16,0 / 3,4 %, 19,6 %.
         targets: Some([
             [20, 35, 60, 65, 100],
-            [65, 80, 90, 100, 110],
+            [60, 75, 85, 95, 105],
             [135, 150, 165, 180, 120],
         ]),
         start_relics: ["watertight"],
@@ -268,7 +268,7 @@
         targets: Some([
             [10, 20, 35, 40, 75],
             [40, 50, 55, 65, 90],
-            [100, 110, 125, 135, 100],
+            [95, 105, 120, 130, 100],
         ]),
         // Rot ist seine Farbe: stark, wenn Rot Trumpf ist. In jeder anderen
         // Farbe kosten Daus und Zehn Grundwert, wenn sie Trumpf ist; die

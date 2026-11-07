@@ -191,7 +191,7 @@ fn every_content_item_loads_with_german_texts() {
     assert_eq!(shirker[2], vec![130, 145, 160, 175, 125]);
     let heart_brother = targets(Character::HeartBrother).expect("heart brother targets");
     assert_eq!(heart_brother[0], vec![10, 20, 35, 40, 75]);
-    assert_eq!(heart_brother[2], vec![100, 110, 125, 135, 100]);
+    assert_eq!(heart_brother[2], vec![95, 105, 120, 130, 100]);
     // One more Einmischen in Stadtteil 1 (balance round 2).
     assert_eq!(content.run.district_redeals, vec![1]);
     assert_eq!((content.run.game_limit, content.run.redeals), (3, 2));
