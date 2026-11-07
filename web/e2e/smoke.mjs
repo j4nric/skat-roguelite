@@ -5187,11 +5187,24 @@ async function handSortPass(browser, errors, viewport) {
  * that card of the hand, a card the core does not let go shakes with the
  * same note as a thrown one, the digits show on the cards only after a
  * key, "?" lists the keys, Space skips and closes the score board); the
- * last trick by L and by a tap on the open trick.
+ * last trick by L and by a tap on the open trick; the hand sorted for the
+ * suit declared; a vibration per own trick and one for the result, the
+ * switch in the menu.
  */
 async function qolPass(browser, errors, viewport) {
   const tag = `${viewport.width}x${viewport.height}`;
   const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  // Vibration: every pattern the app asks for, in window.__buzz.
+  await context.addInitScript(() => {
+    window.__buzz = [];
+    Object.defineProperty(Navigator.prototype, 'vibrate', {
+      configurable: true,
+      value: (pattern) => {
+        window.__buzz.push(pattern);
+        return true;
+      },
+    });
+  });
   const page = await context.newPage();
   watch(page, errors);
   await page.goto(base);
@@ -5267,6 +5280,18 @@ async function qolPass(browser, errors, viewport) {
   await page.keyboard.press('Space');
   await page.waitForSelector('.score-sheet', { state: 'detached' });
   log(`qol ${tag}: a game played by keyboard (${played} cards${refused ? ', one refused' : ''})`);
+  // Vibration: a short one per trick taken, one pattern for the game's (or pub's) result.
+  const buzzed = await page.evaluate(() => window.__buzz);
+  const taps = buzzed.filter((p) => p === 12).length;
+  const results = buzzed.filter((p) => Array.isArray(p));
+  if (results.length !== 1) fail(`qol ${tag}: vibration patterns for the result: ${JSON.stringify(results)}`);
+  log(`qol ${tag}: vibrated ${taps}× for a trick, result ${JSON.stringify(results[0])}`);
+  // Switched off in the menu, nothing vibrates (the switch shows where the browser can vibrate).
+  await page.click('[data-action="menu"]');
+  await page.click('[data-testid="setting-vibrate"] [data-on="false"]');
+  const off = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').vibrate);
+  if (off !== false) fail(`qol ${tag}: vibration switched off stored as ${off}`);
+  await page.keyboard.press('Escape');
   await context.close();
   if (errors.length) fail(`qol ${tag}: console errors:\n${errors.join('\n')}`);
 }

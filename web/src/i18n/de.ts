@@ -1536,6 +1536,12 @@ export const de = {
     hint: 'Automatisch: nach der Ansage Trümpfe vorn, dann die Farben. Manuell: Karten in der Hand an einen anderen Platz ziehen.',
   },
 
+  /** Vibration in the menu (./haptics.ts), only where the device has it. */
+  vibration: {
+    label: 'Vibration',
+    hint: 'Kurz bei deinem Stich, länger bei Spiel- und Kneipenende.',
+  },
+
   /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
   keys: {
     title: 'Tastatur',

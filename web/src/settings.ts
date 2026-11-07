@@ -23,12 +23,14 @@ export interface Settings {
   back: string | null;
   /** "Hand sortieren": the core's order for the game declared, or the player's own (drag to reorder). */
   handSort: HandSort;
+  /** Vibration on the player's tricks and on results where the device has it (./haptics.ts). */
+  vibrate: boolean;
 }
 
 export type HandSort = 'auto' | 'manual';
 
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null, handSort: 'auto' };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null, handSort: 'auto', vibrate: true };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -52,6 +54,7 @@ export function loadSettings(): Settings {
       suitTint: parsed.suitTint === true,
       back: typeof parsed.back === 'string' ? parsed.back : null,
       handSort: parsed.handSort === 'manual' ? 'manual' : 'auto',
+      vibrate: parsed.vibrate !== false,
     };
   } catch {
     return { ...DEFAULTS };

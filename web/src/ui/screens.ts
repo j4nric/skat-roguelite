@@ -11,6 +11,7 @@ import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo,
 import { backDesign } from './backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
+import { canVibrate } from '../haptics';
 import { moonIcon, renderNightSheet } from './night';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
@@ -518,6 +519,7 @@ function settingsBlock(ui: UiState): string {
     <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
     <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
     ${handSortRow(ui)}
+    ${canVibrate() ? `<div class="menu-row" ${attrs({ title: de.vibration.hint, 'data-testid': 'setting-vibrate' })}><span class="setting-label">${esc(de.vibration.label)}</span>${onOff('vibrate', ui.settings.vibrate)}</div>` : ''}
     ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',

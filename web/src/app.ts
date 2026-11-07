@@ -73,6 +73,7 @@ import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
 import { watchKeys } from './ui/keys';
 import { arrangeHand, moveInOrder } from './ui/handorder';
+import { buzz, setVibration } from './haptics';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -506,6 +507,7 @@ export class App {
     music.setEnabled(this.ui.settings.music);
     // Pure presentation: style.css tints the cards' paper under this flag.
     document.documentElement.toggleAttribute('data-suit-tint', this.ui.settings.suitTint);
+    setVibration(this.ui.settings.vibrate);
   }
 
   /**
@@ -1059,6 +1061,8 @@ export class App {
         this.ui.screen = 'end';
         this.ui.copy = null;
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
+        // The lost pub buzzed with its score board already.
+        if (view.phase === 'Won') buzz('runWon');
         if (view.phase === 'Won') this.afterRender.push(() => fireworks());
       }
       // The end screen must come whatever went wrong before it (playtest
@@ -1402,6 +1406,9 @@ export class App {
         // One loss sound per chain (playtest 04.11.2026): when this lost game ends the run
         // (ADR 0019), the end screen sounds it, not the board.
         const runEnds = rest.some((e) => typeof e === 'object' && 'RunLost' in e);
+        // One pattern per chain: the pub's result, else the game's.
+        const pubLost = runEnds || rest.some((e) => typeof e === 'object' && 'PubLost' in e);
+        buzz(won ? 'pubWon' : pubLost ? 'pubLost' : ev.GameScored.breakdown.won ? 'gameWon' : 'gameLost');
         await this.showScore(
           before?.series.score ?? 0,
           ev.GameScored.series_score,
@@ -1564,6 +1571,7 @@ export class App {
           ? t(de.table.trickToYou, { points: card_points })
           : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
       this.trickQuip(after, trick.winner, card_points);
+      if (trick.winner === 0 && !this.fastForward) buzz('trick');
       this.render();
       if (!this.fastForward) this.reactToTrick(after, trick.winner, card_points);
       await this.pause(DELAY.trickShow);
@@ -2432,6 +2440,10 @@ export class App {
         return;
       case 'suit-tint':
         this.setSettings({ suitTint: el.dataset.on === 'true' });
+        return;
+      case 'vibrate':
+        this.setSettings({ vibrate: el.dataset.on === 'true' });
+        if (el.dataset.on === 'true') buzz('trick');
         return;
       case 'hand-sort':
         this.setSettings({ handSort: el.dataset.sort === 'manual' ? 'manual' : 'auto' });
