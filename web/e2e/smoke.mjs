@@ -5103,7 +5103,8 @@ async function nightPass(browser, errors, viewport) {
  * with SMOKE_ONLY=qol): the keyboard (S picks up the skat, a digit plays
  * that card of the hand, a card the core does not let go shakes with the
  * same note as a thrown one, the digits show on the cards only after a
- * key, "?" lists the keys, Space skips and closes the score board).
+ * key, "?" lists the keys, Space skips and closes the score board); the
+ * last trick by L and by a tap on the open trick.
  */
 async function qolPass(browser, errors, viewport) {
   const tag = `${viewport.width}x${viewport.height}`;
@@ -5137,6 +5138,17 @@ async function qolPass(browser, errors, viewport) {
   for (;;) {
     await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
     if (await page.locator('.score-sheet').count()) break;
+    if (played === 1) {
+      // Letzter Stich: L shows it and puts it away, a tap on the open trick shows it too.
+      await page.keyboard.press('l');
+      await page.waitForSelector('[data-testid="last-trick"]', { timeout: 3000 }).catch(() => fail(`qol ${tag}: L shows no last trick`));
+      if ((await page.locator('[data-testid="last-trick"] .trick-card').count()) !== 3) fail(`qol ${tag}: the last trick has not three cards`);
+      await page.keyboard.press('l');
+      await page.waitForSelector('[data-testid="last-trick"]', { state: 'detached' });
+      await page.click('[data-testid="trick"]');
+      await page.waitForSelector('[data-testid="last-trick"]', { timeout: 3000 }).catch(() => fail(`qol ${tag}: a tap on the trick shows no last trick`));
+      await page.screenshot({ path: join(screens, `qol-last-trick-${tag}.png`) });
+    }
     const cards = page.locator('.hand .hand-card');
     const legal = await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-action') === 'play'));
     const dim = legal.findIndex((x) => !x);

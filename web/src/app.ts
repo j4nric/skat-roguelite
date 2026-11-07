@@ -2557,6 +2557,11 @@ export class App {
         return;
       case 'fast':
         if (this.ui.busy) this.hurry();
+        // A tap on the open trick while nothing plays: the last one, as with "Letzter Stich".
+        else if (!this.ui.anim && view?.game?.phase === 'Playing' && view.game.last_trick) {
+          this.ui.peekTrick = true;
+          this.render();
+        }
         return;
       case 'last-trick':
         // Show the last finished trick on the felt, or the open one again.
