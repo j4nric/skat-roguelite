@@ -87,16 +87,16 @@ fn fan_block_needs_three_siegel_on_the_trump_suit_and_none_beside() {
         play(&mut run, &content, hand_game(DIAMONDS)).1
     };
     let b = game(&["DA", "DT", "DK"]);
-    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(2)]);
+    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(3)]);
     // The Unter of the trump suit counts as the trump suit.
     let b = game(&["DA", "DT", "DJ"]);
-    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(2)]);
+    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(3)]);
     // Two are too few, one Siegel beside spoils it.
     assert!(changes(&game(&["DA", "DT"]), "fan_block").is_empty());
     assert!(changes(&game(&["DA", "DT", "DK", "CA"]), "fan_block").is_empty());
     // An Unter of another suit is no card beside the trump suit.
     let b = game(&["DA", "DT", "DK", "CJ"]);
-    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(2)]);
+    assert_eq!(changes(&b, "fan_block"), vec![Change::Add(3)]);
 }
 
 #[test]
@@ -173,14 +173,14 @@ fn voucher_run(content: &Content, relics: &[&str]) -> Run {
 }
 
 #[test]
-fn rebate_king_scales_won_games_from_the_third_marke_of_the_pub() {
+fn rebate_king_scales_won_games_from_the_second_marke_of_the_pub() {
     let content = content();
     let mut run = voucher_run(&content, &["rebate_king"]);
-    run.counters.insert("rebate_king".into(), 2);
-    // The hand game redeems the third Marke: ×1,5 on this won game.
+    run.counters.insert("rebate_king".into(), 1);
+    // The hand game redeems the second Marke: ×1,5 on this won game.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(run.counters().get("rebate_king"), Some(&3));
+    assert_eq!(run.counters().get("rebate_king"), Some(&2));
     assert_eq!(
         changes(&b, "rebate_king"),
         vec![Change::Scale(Factor::from_permille(1500))]
@@ -194,9 +194,9 @@ fn rebate_king_scales_won_games_from_the_third_marke_of_the_pub() {
     let mut events = Vec::new();
     run.fire(&content, Stage::OnSeriesWon, None, None, &mut events);
     assert_eq!(run.counters().get("rebate_king"), None);
-    // Two Marken are not enough.
+    // One Marke is not enough.
     let mut run = long_run(&content, &["rebate_king"]);
-    run.counters.insert("rebate_king".into(), 2);
+    run.counters.insert("rebate_king".into(), 1);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
     assert!(changes(&b, "rebate_king").is_empty());
@@ -320,16 +320,13 @@ fn upstart_gives_a_card_with_winkel_the_augen_of_its_new_rank() {
 }
 
 #[test]
-fn trick_after_trick_adds_a_level_per_run_of_three_at_most_two() {
+fn trick_after_trick_adds_a_level_for_a_run_of_three_once_per_game() {
     let content = content();
     let mut run = long_run(&content, &["trick_after_trick"]);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
     assert_eq!(b.outcome.declarer_tricks, 10);
-    assert_eq!(
-        changes(&b, "trick_after_trick"),
-        vec![Change::Add(1), Change::Add(1)]
-    );
+    assert_eq!(changes(&b, "trick_after_trick"), vec![Change::Add(1)]);
     // The counters start over with the next declaration.
     fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(CLUBS));
@@ -381,29 +378,46 @@ fn yardstick_adds_a_base_value_per_five_augen_above_ninety() {
 // ------------------------------------------------------------ Nullspieler
 
 #[test]
-fn plumber_pours_lead_on_a_card_after_a_won_null() {
+fn plumber_pours_lead_after_a_pub_with_a_won_null_three_times() {
     let content = content();
     let mut run = long_run(&content, &["plumber"]);
-    fixed_deal(&mut run, &content, LOW, LOW_SKAT);
-    let (_, b) = play(&mut run, &content, null(NullRisk::Hand));
-    assert!(b.won);
+    let won_pub = |run: &mut Run| {
+        let mut events = Vec::new();
+        run.fire(&content, Stage::OnSeriesWon, None, None, &mut events);
+    };
+    // Two won Nulls in a pub: one Blei, after the pub.
+    for _ in 0..2 {
+        fixed_deal(&mut run, &content, LOW, LOW_SKAT);
+        let (_, b) = play(&mut run, &content, null(NullRisk::Hand));
+        assert!(b.won);
+    }
+    assert!(with_mod(&run, "lead").is_empty());
+    won_pub(&mut run);
     let lead = with_mod(&run, "lead");
     assert_eq!(lead.len(), 1);
-    // A suit game does not.
+    // A pub with a suit game only does not.
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     play(&mut run, &content, hand_game(DIAMONDS));
+    won_pub(&mut run);
     assert_eq!(with_mod(&run, "lead"), lead);
+    // At most three times in a run.
+    for _ in 0..3 {
+        fixed_deal(&mut run, &content, LOW, LOW_SKAT);
+        play(&mut run, &content, null(NullRisk::Hand));
+        won_pub(&mut run);
+    }
+    assert_eq!(with_mod(&run, "lead").len(), 3);
 }
 
 #[test]
-fn loose_contact_lowers_the_short_circuit_to_fifty() {
+fn loose_contact_lowers_the_short_circuit_to_fifty_five() {
     let content = content();
     let threshold = |run: &Run| match run.null_scoring(&content) {
         NullScoring::Formula(f) => f.short_circuit_points,
         NullScoring::Fixed => 0,
     };
     assert_eq!(threshold(&relic_run(&content, &[])), 61);
-    assert_eq!(threshold(&relic_run(&content, &["loose_contact"])), 50);
+    assert_eq!(threshold(&relic_run(&content, &["loose_contact"])), 55);
 }
 
 #[test]
@@ -500,6 +514,30 @@ fn safe_haven_keeps_the_unter_at_an_einmischen() {
     all.sort_unstable();
     all.dedup();
     assert_eq!(all.len(), 32);
+    // Only the first Einmischen of a game keeps (balance v4): the second
+    // deals like a plain run.
+    assert_eq!(run.series().redeals_this_game, 1);
+    let mut plain = run.clone();
+    plain.relics.clear();
+    run.apply(&content, RunAction::Redeal).expect("redeal");
+    plain.apply(&content, RunAction::Redeal).expect("redeal");
+    let hand = |run: &Run| -> Vec<u32> {
+        run.game()
+            .expect("game")
+            .game
+            .hand(Seat::DECLARER)
+            .iter()
+            .map(|c| c.id)
+            .collect()
+    };
+    assert_eq!(hand(&run), hand(&plain));
+    // The next game starts the count again.
+    let mut run = long_run(&content, &["safe_haven"]);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    run.apply(&content, RunAction::Redeal).expect("redeal");
+    assert_eq!(run.series().redeals_this_game, 1);
+    play(&mut run, &content, hand_game(DIAMONDS));
+    assert_eq!(run.series().redeals_this_game, 0);
 }
 
 #[test]
@@ -595,29 +633,32 @@ fn ouvert_with_schneider_wins_with_the_open_visor() {
 // ---------------------------------------------------------- Without tags
 
 #[test]
-fn empty_chair_adds_a_level_per_free_slot_at_most_three() {
+fn empty_chair_adds_a_level_while_two_slots_are_free() {
     let content = content();
     assert_eq!(content.run.relic_slots, Some(8));
     let mut run = long_run(&content, &["empty_chair"]);
     assert_eq!(run.free_relic_slots(&content), 7);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(changes(&b, "empty_chair"), vec![Change::Add(3)]);
-    let mut run = long_run(
-        &content,
-        &[
-            "empty_chair",
-            "tour",
-            "virgin",
-            "concede",
-            "skat_redraw",
-            "card_counter",
-            "kibitzer",
-        ],
-    );
+    assert_eq!(changes(&b, "empty_chair"), vec![Change::Add(1)]);
+    let six = [
+        "empty_chair",
+        "tour",
+        "virgin",
+        "concede",
+        "skat_redraw",
+        "card_counter",
+    ];
+    let mut run = long_run(&content, &six);
+    assert_eq!(run.free_relic_slots(&content), 2);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
     assert_eq!(changes(&b, "empty_chair"), vec![Change::Add(1)]);
+    // One free slot is not enough.
+    let mut run = long_run(&content, &[&six[..], &["kibitzer"]].concat());
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
+    assert!(changes(&b, "empty_chair").is_empty());
     // Without a slot limit: nothing.
     let mut unlimited = content.clone();
     unlimited.run.relic_slots = None;
@@ -680,12 +721,12 @@ fn teetotaller_counts_skipped_card_rewards() {
     run.apply(&content, RunAction::SkipCardReward)
         .expect("skip");
     assert_eq!(run.counters().get("teetotaller"), Some(&1));
-    // +2 Grundwert per skip in every game.
+    // +1 Grundwert per skip in every game.
     let mut run = long_run(&content, &["teetotaller"]);
     run.counters.insert("teetotaller".into(), 2);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
     let (_, b) = play(&mut run, &content, hand_game(DIAMONDS));
-    assert_eq!(changes(&b, "teetotaller"), vec![Change::Add(4)]);
+    assert_eq!(changes(&b, "teetotaller"), vec![Change::Add(2)]);
 }
 
 #[test]

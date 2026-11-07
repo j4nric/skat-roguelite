@@ -1199,33 +1199,33 @@ Auslegungen (Claude, 04.11.2026):
 
 ### 8.12 Relikte v4 (07.11.2026)
 
-**Entschieden vom Nutzer am 07.11.2026:** alle 24 Vorschläge der Relikt-Runde v4 angenommen, 20 neue Relikte und vier Überarbeitungen (Treue Seele, Spickzettel, Bierdeckel, Spelunkenkenner ersetzen ihre alte Wirkung). Neue Bau-Richtung **Grand** (`BuildTag::Grand`), die auch Großvaters Grand und Der Grandseigneur tragen. Daten in `house_rules.ron`, Tests in `core/src/run/relics_v4_tests.rs`. Seltenheit, Preise und Bot-Werte **vorläufig** nach Augenmaß, ohne Messung; `balance` misst sie.
+**Entschieden vom Nutzer am 07.11.2026:** alle 24 Vorschläge der Relikt-Runde v4 angenommen, 20 neue Relikte und vier Überarbeitungen (Treue Seele, Spickzettel, Bierdeckel, Spelunkenkenner ersetzen ihre alte Wirkung). Neue Bau-Richtung **Grand** (`BuildTag::Grand`), die auch Großvaters Grand und Der Grandseigneur tragen. Daten in `house_rules.ron`, Tests in `core/src/run/relics_v4_tests.rs`. Seltenheit, Preise und Bot-Werte zuerst nach Augenmaß; seit der Balance-Runde v4 (07.11.2026, `docs/balance/2026-11-07-relikte-v4.md`) gemessen, die Tabelle zeigt den Stand danach (Unterschlupf, Leerer Stuhl, Klempner, Abstinenzler, Stich auf Stich, Wackelkontakt, Rabattkönig und Fanblock mit geänderter Wirkung).
 
 | Relikt | Id | Text | Gruppe, Richtung | Seltenheit, Preis | Bot-Wert |
 |---|---|---|---|---|---|
-| **Treue Seele** (überarbeitet) | `true_soul` | Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe auf deiner Hand (nach dem Skat, ohne Unter). | Wert, Farbtreue | Common, 5 | 4 |
-| **Fanblock** | `fan_block` | Farbspiel: +2 Stufen, wenn jede Karte mit Siegel in deinem Deck deine Trumpffarbe hat (mindestens drei). | Stufen, Farbtreue | Uncommon, 6 | 2 |
+| **Treue Seele** (überarbeitet) | `true_soul` | Farbspiel: +1 Grundwert je Karte deiner Trumpffarbe auf deiner Hand (nach dem Skat, ohne Unter). | Wert, Farbtreue | Uncommon, 5 | 4 |
+| **Fanblock** | `fan_block` | Farbspiel: +3 Stufen, wenn jede Karte mit Siegel in deinem Deck deine Trumpffarbe hat (mindestens drei). | Stufen, Farbtreue | Uncommon, 5 | 2 |
 | **Kahlschlag** | `clear_cut` | Farbspiel: +1 Stufe je Fehlfarbe, von der du nach dem Skat keine Karte mehr hältst, höchstens +2. | Stufen, Farbtreue | Common, 5 | 3 |
 | **Der Tankwart** (Figur) | `pump_attendant` | Nach jeder gewonnenen Kneipe klebt der Tankwart eine Pfandmarke auf eine zufällige Karte deines Decks ohne Zinke. | Tour, Markenhändler | Uncommon, 5 | 2 |
-| **Rabattkönig** | `rebate_king` | Ab der dritten eingelösten Marke einer Kneipe: ×1,5 auf jedes gewonnene Spiel, bis die Kneipe vorbei ist. | Faktor, Markenhändler | Rare, 8 | 3 (+2 im Marken-Build) |
+| **Rabattkönig** | `rebate_king` | Ab der zweiten eingelösten Marke einer Kneipe: ×1,5 auf jedes gewonnene Spiel, bis die Kneipe vorbei ist. | Faktor, Markenhändler | Rare, 7 | 3 (+2 im Marken-Build) |
 | **Doppelt gemoppelt** | `double_stamp` | Jede Marke wird zweimal eingelöst. | Kontrolle, Markenhändler | Rare, 7 | 1 (+4 im Marken-Build) |
 | **Sieben auf einen Streich** | `seven_at_one_blow` | Machst du in einem gewonnenen Spiel mindestens sieben Stiche: ×1,5. | Faktor, Stichjäger | Rare, 8 | 5 |
-| **Emporkömmling** | `upstart` | Deine Karten mit Winkel zählen die Augen der Karte, die sie geworden sind. | Wert, Stichjäger | Uncommon, 6 | 3 |
-| **Stich auf Stich** | `trick_after_trick` | Machst du drei Stiche hintereinander: +1 Stufe, höchstens +2 pro Spiel. | Stufen, Stichjäger | Common, 5 | 3 |
-| **Große Klappe** | `big_mouth` | Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt. | Stufen, Schneider | Uncommon, 6 | 1 |
+| **Emporkömmling** | `upstart` | Deine Karten mit Winkel zählen die Augen der Karte, die sie geworden sind. | Wert, Stichjäger | Uncommon, 5 | 3 |
+| **Stich auf Stich** | `trick_after_trick` | Machst du drei Stiche hintereinander: +1 Stufe, einmal pro Spiel. | Stufen, Stichjäger | Uncommon, 6 | 3 |
+| **Große Klappe** | `big_mouth` | Sagst du Schneider an und gewinnst, zählt der Grundwert doppelt. | Stufen, Schneider | Uncommon, 5 | 1 |
 | **Elle** | `yardstick` | Gewinnst du mit Schneider: +1 Grundwert je 5 Augen über 90. | Wert, Schneider | Uncommon, 6 | 3 |
-| **Der Klempner** (Figur) | `plumber` | Gewinnst du ein Null, gießt der Klempner Blei auf eine zufällige Karte deines Decks ohne Zinke. | Wert, Nullspieler | Uncommon, 5 | 2 |
-| **Wackelkontakt** | `loose_contact` | Null: Der Kurzschluss kommt schon, wenn die Gegner nach fünf Stichen 50 Augen haben (statt 61). | Stufen, Nullspieler | Uncommon, 6 | 2 |
-| **Hosen runter** | `cards_on_table` | Spielst du Null Ouvert, liegen auch die Karten der Gegner offen. | Kontrolle, Nullspieler | Uncommon, 5 | 1 |
-| **Die Großkopferten** | `big_shots` | Grand: Nach den Untern zählen die Daus als Spitzen weiter (Eichel, Grün, Rot, Schellen). | Stufen, Grand | Uncommon, 7 | 3 |
-| **Unterschlupf** | `safe_haven` | Mischst du ein, behältst du deine Unter. Der Rest wird neu gegeben. | Kontrolle, Grand | Rare, 8 | 5 |
+| **Der Klempner** (Figur) | `plumber` | Gewinnst du in einer Kneipe ein Null, gießt der Klempner nach der Kneipe Blei auf eine zufällige Karte deines Decks ohne Zinke, höchstens dreimal im Run. | Wert, Nullspieler | Uncommon, 7 | 2 |
+| **Wackelkontakt** | `loose_contact` | Null: Der Kurzschluss kommt schon, wenn die Gegner nach fünf Stichen 55 Augen haben (statt 61). | Stufen, Nullspieler | Uncommon, 6 | 2 |
+| **Hosen runter** | `cards_on_table` | Spielst du Null Ouvert, liegen auch die Karten der Gegner offen. | Kontrolle, Nullspieler | Uncommon, 4 | 1 |
+| **Die Großkopferten** | `big_shots` | Grand: Nach den Untern zählen die Daus als Spitzen weiter (Eichel, Grün, Rot, Schellen). | Stufen, Grand | Uncommon, 5 | 3 |
+| **Unterschlupf** | `safe_haven` | Mischst du in einem Spiel zum ersten Mal ein, behältst du deine Unter. Der Rest wird neu gegeben. | Kontrolle, Grand | Rare, 7 | 5 |
 | **Bierruhe** | `beer_calm` | Verlierst du einen Grand, zählt er nur halb. | Kontrolle, Grand | Common, 5 | 2 |
-| **Spickzettel** (überarbeitet) | `crib_sheet` | Handspiel: +1 Stufe mehr, und nach der Ansage siehst du beide Skatkarten. | Stufen | Common, 5 | 1 |
+| **Spickzettel** (überarbeitet) | `crib_sheet` | Handspiel: +1 Stufe mehr, und nach der Ansage siehst du beide Skatkarten. | Stufen | Common, 4 | 1 |
 | **Bierdeckel** (überarbeitet) | `beer_mat` | Jedes Spiel einer Kneipe macht einen Strich: +2 Grundwert je Strich. Nach der Kneipe zahlst du 2 Groschen. | Wert | Uncommon, 6 | 4 |
-| **Offenes Visier** | `open_visor` | Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es. | Stufen, Grand | Rare, 7 | 1 |
-| **Leerer Stuhl** | `empty_chair` | +1 Stufe auf jedes gewonnene Spiel je freiem Relikt-Platz, höchstens +3. | Stufen | Uncommon, 6 | 2 + freie Plätze, höchstens 5 |
+| **Offenes Visier** | `open_visor` | Ouvert verlangt nur noch Schneider statt Schwarz. Schaffst du trotzdem Schwarz, zählt es. | Stufen, Grand | Rare, 6 | 1 |
+| **Leerer Stuhl** | `empty_chair` | +1 Stufe auf jedes gewonnene Spiel, solange mindestens zwei Relikt-Plätze frei sind. | Stufen | Rare, 9 | 2, mit zwei freien Plätzen nach dem Kauf 5 |
 | **Der Trödler** (Figur) | `junk_dealer` | Verkaufst oder tauschst du ein Relikt: +1 Grundwert für den Rest des Runs, einmal je Tresen. | Wert | Common, 4 | 2 |
-| **Der Abstinenzler** (Figur) | `teetotaller` | Lässt du eine Kartenbelohnung aus: +2 Grundwert für den Rest des Runs. | Wert | Uncommon, 5 | 2 |
+| **Der Abstinenzler** (Figur) | `teetotaller` | Lässt du eine Kartenbelohnung aus: +1 Grundwert für den Rest des Runs. | Wert | Uncommon, 6 | 2 |
 | **Spelunkenkenner** (überarbeitet, Figur) | `dive_expert` | Gilt in einer Kneipe ein Malus, zählt jedes gewonnene Spiel dort +2 Stufen. | Stufen | Uncommon, 5 | 3 |
 
 **Neue Handgriffe der Hook-API** (Glossar): Auslöser `OnRelicSold` (Verkauf am Tresen, Ersetzen am Tresen und bei der Boss-Belohnung, Tausch und Verkauf in Begegnungen; das abgegebene Relikt feuert nicht mehr) und `OnCardRewardSkipped` (nur aktives Auslassen); Wirkungen `AttachModToRandomCard`, `AddLevelsPerVoidSuit`, `AddBaseValuePerDeclarerPoints`, `AddLevelsPerFreeRelicSlot`, `RedeemVouchersTwice`, `PromotedCardsTakePoints`, `ShortCircuitThreshold`, `GrandAcesAsMatadors`, `RedealKeeps`, `OuvertRequiresSchneider`; Bedingungen `CardsCounted`, `PubMalusActive`, `DeclarerTricksAtLeast`; `CardCount` mit `all_cards`, `no_jacks`, `off_trump`; `RevealDefenderHand` auch bei der Ansage, für beide Gegner (`ActiveGame::shown_hands`).
@@ -1242,14 +1242,14 @@ Auslegungen (Claude, 07.11.2026):
 - **Doppelt gemoppelt**: Die Marke fällt einmal ab, ein Ereignis `VoucherRedeemed`; ihre `OnDiscard`-Wirkung und alle `OnVoucherRedeemed`-Hooks laufen zweimal. Ein zweites `TurnInto` auf eine schon verwandelte Karte ändert nichts.
 - **Emporkömmling**: Die Augen der neuen Karte nach den Relikten, die Augen setzen (Alte Oberin); eigene Augen-Zinken zählen dazu. Nur die Ausgabe des Spielers.
 - **Die Großkopferten** zählen im Grand über die zwölf Karten des Alleinspielers in seiner Ausgabe (`rules::matador_order`, `Game::count_grand_aces`), in Wertvorschau und Obergrenze ebenso.
-- **Unterschlupf** behält bei jedem Einmischen (auch Kräuter und Doppelkorn) die Karten, die in der Ausgabe des Spielers Unter sind (ein abgestufter nicht); der Rest wird mit dem Zufall des Gebens neu verteilt (`Game::deal_editions_keeping`, ohne behaltene Karten genau wie bisher).
+- **Unterschlupf** behält seit der Balance-Runde v4 nur beim ersten Einmischen eines Spiels (`per_game: Some(1)`, `Series::redeals_this_game`; vorher bei jedem, das Hochschaukeln der Unter brachte + 23 / + 14 Punkte auf Stadtteil 2 / 3) (auch Kräuter und Doppelkorn) die Karten, die in der Ausgabe des Spielers Unter sind (ein abgestufter nicht); der Rest wird mit dem Zufall des Gebens neu verteilt (`Game::deal_editions_keeping`, ohne behaltene Karten genau wie bisher).
 - **Offenes Visier**: `Thresholds::ouvert_schneider`; die Regelfunktion bleibt bei der Skatordnung (Golden-Vektoren unverändert), der Run biegt sie wie die Gewinnschwelle.
-- **Leerer Stuhl**: freie Plätze = `relic_slots` des Charakters minus gehaltene Relikte (Hausregeln des Abends zählen nicht); ohne Platz-Grenze nichts.
+- **Leerer Stuhl**: freie Plätze = `relic_slots` des Charakters minus gehaltene Relikte (Hausregeln des Abends zählen nicht); ohne Platz-Grenze nichts. Seit der Balance-Runde v4 +1 Stufe ab zwei freien Plätzen (`AddLevelsPerFreeRelicSlot` mit `every: 2`, `max: 1`; vorher +1 je Platz, höchstens +3: + 26 / + 22 Punkte).
 - **Der Trödler**: einmal je Tresen über die Flagge `junk_dealer_sold`, die beim Öffnen des nächsten Tresens fällt; sonst wäre Kaufen und Verkaufen +1 Grundwert für 2 Groschen.
 - **Spelunkenkenner**: `PubMalusActive` (Malus einer Spelunke oder Spelunkenluft der Nacht). `ChooseMalus` nutzt kein Relikt mehr, bleibt lesbar und getestet.
 - **Rest abkürzen** wartet bei Stich auf Stich, solange der Alleinspieler Karten hat (wie bei der Strichliste), und bei der Elle, solange die Stufe der Augen über 90 noch nicht feststeht.
 - **Gesperrt** (9.3): sieben der neuen als zweite Belohnung bestehender Taten (Grand Schneider → Großkopferten, Grand Hand → Offenes Visier, Voll gedrückt → Doppelt gemoppelt, Maßarbeit → Elle, Farbe bekennen → Fanblock, Stammkunde → Unterschlupf, Glückspilz → Sieben auf einen Streich), damit ein Drittel der Relikte gesperrt bleibt.
-- **Bot** (`run/bot.rs`): Werte in `RELIC_VALUES`; im Marken-Build sind Doppelt gemoppelt (+4) und Rabattkönig (+2) mehr wert, der Leere Stuhl zählt die nach dem Kauf freien Plätze. Mit dem Abstinenzler lässt der Bot jede Kartenbelohnung aus, die nicht mehr als eine Zinke der eigenen Richtung wert ist (`TEETOTALLER_SKIP_WORTH`). Ansage-Regeln für Schneider angesagt und Ouvert kennt er nicht: Große Klappe, Offenes Visier und Hosen runter misst der Simulator kaum.
+- **Bot** (`run/bot.rs`): Werte in `RELIC_VALUES`; im Marken-Build sind Doppelt gemoppelt (+4) und Rabattkönig (+2) mehr wert, der Leere Stuhl zählt die nach dem Kauf freien Plätze. Mit dem Abstinenzler lässt der Bot jede Kartenbelohnung aus, die nicht mehr als eine Zinke der eigenen Richtung wert ist (`TEETOTALLER_SKIP_WORTH`). Seit der Balance-Runde v4 (`docs/balance/2026-11-07-relikte-v4.md`): Mit Großer Klappe sagt er nach dem Skat Schneider an, mit Offenem Visier spielt er Ouvert, wenn Schneider in mindestens 80 % von zwölf doppelt-offen gelösten Verteilungen der unbekannten Karten gelingt (`schneider_percent`) und der erwartete Wert über dem Spiel ohne Ansage liegt; mit Kahlschlag drückt er auf Fehlfarben (höchstens zwei, auch ein blankes Daus). Ohne diese Relikte spielt er unverändert. Hosen runter misst der Simulator weiter kaum.
 - **Simulator**: Zeile `relic score lines` (Spiele mit einer Zeile eines Relikts in der Abrechnung) zeigt, ob ein Relikt wirkt.
 - **Bierdeckel-Motive** der neuen Relikte kommen getrennt (`web/src/ui/emblems.ts`).
 

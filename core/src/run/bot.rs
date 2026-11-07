@@ -48,6 +48,13 @@
 //!   hand and, with the same rules for the ten cards kept, after the skat
 //!   (ADR 0013). Re on Kontra only with a very strong hand
 //!   ([`RunBot::says_re`]).
+//! - **Relics that pay for announcements** (relics v4, 07.11.2026): with
+//!   "Große Klappe" or "Offenes Visier" the bot announces Schneider or
+//!   plays Ouvert after the skat when double-dummy deals of the unseen
+//!   cards say Schneider is near certain ([`schneider_percent`],
+//!   `RunBot::bold_announcement`). With "Kahlschlag" it discards for void
+//!   side suits (`RunBot::void_discard`). Without these relics nothing
+//!   changes.
 //!
 //! Tresen ([`RunBot::shop_action`]): one action per call, in this order:
 //! take the Kartenmaler's best modification while he waits, "Karte
@@ -279,7 +286,7 @@ use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 /// | `safe_haven` | 5 | keeps the Unter at an Einmischen; the bot redeals often |
 /// | `beer_calm` | 2 | a lost Grand counts half |
 /// | `open_visor` | 1 | the bot never announces Ouvert in suit games or Grand |
-/// | `empty_chair` | 2 | 2 plus the free slots it leaves, at most 5 ([`relic_score`]) |
+/// | `empty_chair` | 2 | 5 while it leaves two slots free ([`relic_score`]) |
 /// | `junk_dealer` | 2 | the bot sells or swaps about once per run |
 /// | `teetotaller` | 2 | the bot skips weak card rewards while holding it ([`RunBot::card_reward_action`]) |
 pub const RELIC_VALUES: [(&str, u32); 74] = [
@@ -612,7 +619,7 @@ pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
         // Doubles what the Marken do: worth it in a Marken build only.
         "double_stamp" if tags.contains(&BuildTag::Vouchers) => base + 400,
         "rebate_king" if tags.contains(&BuildTag::Vouchers) => base + 200,
-        // +1 level per slot left free once it is bought, at most +3.
+        // +1 level while two slots are left free once it is bought.
         "empty_chair" => {
             let owned = run.relics().len().saturating_add(1);
             let free = content.relic_slots(run.character()).map_or(0, |slots| {
@@ -620,7 +627,7 @@ pub fn relic_score(run: &Run, content: &Content, id: &RelicId) -> u32 {
                     .unwrap_or(usize::MAX)
                     .saturating_sub(owned)
             });
-            base + 100 * u32::try_from(free.min(3)).unwrap_or(3)
+            if free >= 2 { base + 300 } else { base }
         }
         _ => base,
     };
@@ -831,6 +838,120 @@ pub fn ten_card_score(
 /// with this rule, so a hand with `k` Einmischen left is thrown in below
 /// index `k − 1` (`redeal_probe` test prints them).
 pub const REDEAL_STOP: [i64; 5] = [877, 1759, 2355, 2824, 3203];
+
+/// "Kahlschlag": +1 level per void side suit after the skat, at most this
+/// many ([`RunBot::void_discard`]).
+const CLEAR_CUT_MAX_VOIDS: usize = 2;
+/// Relic ids the game decisions look at (relics v4).
+const CLEAR_CUT: &str = "clear_cut";
+/// "Große Klappe": a won game with Schneider announced counts the Grundwert
+/// twice.
+const BIG_MOUTH: &str = "big_mouth";
+/// "Offenes Visier": Ouvert asks for Schneider only.
+const OPEN_VISOR: &str = "open_visor";
+
+/// Deals of the unseen cards [`schneider_percent`] solves.
+pub const BOLD_SAMPLES: u64 = 12;
+
+/// The least chance of Schneider (percent of [`BOLD_SAMPLES`] deals) for
+/// which the bot announces it with "Große Klappe" or plays Ouvert with
+/// "Offenes Visier" ([`RunBot::bold_announcement`]). High on purpose: the
+/// double-dummy deals see every card, the bot in play does not.
+pub const BOLD_MIN_PERCENT: i64 = 80;
+
+/// Nodes per deal after which [`schneider_percent`] estimates the rest
+/// (keeps the search cheap; the estimate is the solver's static one).
+const BOLD_NODES: u64 = 20_000;
+
+/// Whether the player holds the relic `id`.
+fn holds_relic(run: &Run, id: &str) -> bool {
+    run.relics().iter().any(|r| r.as_str() == id)
+}
+
+/// splitmix64 finalizer, for the seed of [`schneider_percent`].
+fn mix(mut z: u64) -> u64 {
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Percent of [`BOLD_SAMPLES`] deals of the unseen cards on which the
+/// declarer makes Schneider in `game` with the ten cards `kept`, solved
+/// double-dummy ([`crate::ai::solver`]): the defenders' Augen at most
+/// `schneider_limit`, the skat counted for the declarer. `cards` are the
+/// twelve cards (kept and skat), `deck` every card of the game, `forehand`
+/// leads the first trick. The deals come from a generator seeded with
+/// `seed` and the cards of the declarer (in any order), so the same
+/// decision gives the same answer in every phase. Stops early once the
+/// deals left cannot lift it to [`BOLD_MIN_PERCENT`] (the deals not solved
+/// count as missed). 0 if the unseen cards are not two
+/// hands of ten ("Drei drücken").
+#[must_use]
+pub fn schneider_percent(
+    game: GameType,
+    kept: &[DealtCard],
+    cards: &[DealtCard],
+    deck: &[DealtCard],
+    forehand: Seat,
+    schneider_limit: u32,
+    seed: u64,
+) -> i64 {
+    use crate::ai::solver::{Goal, Layout, Limits, Table, probe_with};
+    let unseen: Vec<DealtCard> = deck
+        .iter()
+        .copied()
+        .filter(|c| !cards.contains(c))
+        .collect();
+    if kept.len() != 10 || unseen.len() != 20 {
+        return 0;
+    }
+    let pool: u32 = kept.iter().chain(&unseen).map(|c| c.card_points()).sum();
+    let need = i32::try_from(pool.saturating_sub(schneider_limit)).unwrap_or(i32::MAX);
+    let key = cards
+        .iter()
+        .fold(seed, |acc, c| acc.wrapping_add(mix(u64::from(c.id))));
+    let mut rng = crate::rng::Rng::from_seed(mix(key));
+    let mut table = Table::new(16);
+    let samples = i64::try_from(BOLD_SAMPLES).unwrap_or(1);
+    // Misses after which the percent is below BOLD_MIN_PERCENT for sure.
+    let allowed = samples - (BOLD_MIN_PERCENT * samples + 99) / 100;
+    let limits = Limits {
+        depth: 0,
+        nodes: BOLD_NODES,
+    };
+    let (mut made, mut missed) = (0, 0);
+    for _ in 0..BOLD_SAMPLES {
+        if missed > allowed {
+            break;
+        }
+        let mut shuffled = unseen.clone();
+        rng.shuffle(&mut shuffled);
+        let (first, second) = shuffled.split_at(10);
+        let layout = Layout {
+            hands: [kept.to_vec(), first.to_vec(), second.to_vec()],
+            trick_lead: forehand,
+            trick: Vec::new(),
+            skat_points: 0,
+        };
+        let (moves, _) = probe_with(
+            game,
+            Goal::DeclarerPoints,
+            &layout,
+            need,
+            limits,
+            &mut table,
+        );
+        let reached = if forehand.is_declarer() {
+            moves.iter().any(|&(_, r)| r)
+        } else {
+            !moves.is_empty() && moves.iter().all(|&(_, r)| r)
+        };
+        made += i64::from(reached);
+        missed += i64::from(!reached);
+    }
+    made * 100 / samples
+}
 
 /// The simple run policy.
 #[derive(Debug, Clone, Copy, Default)]
@@ -1998,7 +2119,12 @@ impl RunBot {
             Declaration::null(NullRisk::Normal)
         };
         let suit = DeclarerHeuristic.choose_game_after_skat(cards);
-        let suit_discard = Self::discard_n(cards, suit, deck, count)?;
+        let voids = holds_relic(run, CLEAR_CUT) && matches!(suit.game(), GameType::Suit(_));
+        let suit_discard = if voids {
+            Self::void_discard_n(cards, suit, deck, count)?
+        } else {
+            Self::discard_n(cards, suit, deck, count)?
+        };
         let suit_hand: Vec<DealtCard> = cards
             .iter()
             .copied()
@@ -2007,6 +2133,7 @@ impl RunBot {
         let suit = suit
             .with_risk(RunBot::announcement(&suit_hand, suit))
             .with_hand(false);
+        let suit = Self::bold_announcement(run, suit, &suit_hand, cards, deck);
         if active.rules.require_ouvert {
             if suit.ouvert() {
                 return Some((suit, suit_discard));
@@ -2031,6 +2158,179 @@ impl RunBot {
             Some((null, null_discard))
         } else {
             Some((suit, suit_discard))
+        }
+    }
+
+    /// Schneider angesagt or Ouvert after the skat for a relic that pays
+    /// for it (relics v4, 07.11.2026): with "Große Klappe" (`big_mouth`, a
+    /// won game with Schneider announced counts the Grundwert twice) and
+    /// "Offenes Visier" (`open_visor`, Ouvert asks for Schneider only).
+    /// Without either relic, for a weak hand ([`RunBot::is_weak`]) or a
+    /// Null, `suit` is returned unchanged.
+    ///
+    /// The chance of Schneider is [`schneider_percent`]: the unseen cards
+    /// dealt [`BOLD_SAMPLES`] times, each deal solved double-dummy. Below
+    /// [`BOLD_MIN_PERCENT`] nothing is announced. Above it the bot takes the
+    /// best expected Gewinnstufen (hundredths) of a simple model that
+    /// counts the game as won whenever Schneider is not announced: plain
+    /// `Spitzen + 1` plus the chance of Schneider; announced `k` levels
+    /// (Spitzen, Spiel, Schneider, angesagt; Ouvert one more) won with
+    /// chance `p`, doubled with "Große Klappe", lost `k` otherwise. With
+    /// "Der Angeber" (always open) only Ouvert counts.
+    fn bold_announcement(
+        run: &Run,
+        suit: Declaration,
+        kept: &[DealtCard],
+        cards: &[DealtCard],
+        deck: &[DealtCard],
+    ) -> Declaration {
+        let Some(active) = run.game() else {
+            return suit;
+        };
+        let rules = &active.rules;
+        let big_mouth = holds_relic(run, BIG_MOUTH);
+        let visor = holds_relic(run, OPEN_VISOR) && rules.thresholds.ouvert_schneider;
+        let risk = suit.risk().unwrap_or(RiskLevel::Normal);
+        if suit.is_null()
+            || !(big_mouth || visor)
+            || risk >= RiskLevel::Ouvert
+            || !Self::may_make_schneider(kept, suit.game())
+        {
+            return suit;
+        }
+        let p = schneider_percent(
+            suit.game(),
+            kept,
+            cards,
+            deck,
+            active.game.forehand(),
+            rules.thresholds.schneider_limit,
+            run.seed(),
+        );
+        if p < BOLD_MIN_PERCENT {
+            return suit;
+        }
+        if rules.require_ouvert {
+            return if visor {
+                suit.with_risk(RiskLevel::Ouvert).with_hand(false)
+            } else {
+                suit
+            };
+        }
+        let faces: Vec<Card> = cards.iter().filter_map(|c| c.face()).collect();
+        let spitzen = i64::from(crate::rules::matadors(suit.game(), &faces).count);
+        let double = if big_mouth { 2 } else { 1 };
+        let announced = |levels: i64| p * levels * double - (100 - p) * levels;
+        let mut best = (
+            match risk {
+                RiskLevel::SchneiderDeclared => announced(spitzen + 3),
+                _ => 100 * (spitzen + 1) + p,
+            },
+            risk,
+        );
+        if big_mouth && risk < RiskLevel::SchneiderDeclared {
+            let ev = announced(spitzen + 3);
+            if ev > best.0 {
+                best = (ev, RiskLevel::SchneiderDeclared);
+            }
+        }
+        if visor {
+            let ev = announced(spitzen + 4);
+            if ev > best.0 {
+                best = (ev, RiskLevel::Ouvert);
+            }
+        }
+        if best.1 == risk {
+            suit
+        } else {
+            suit.with_risk(best.1).with_hand(false)
+        }
+    }
+
+    /// Cheap filter before [`schneider_percent`]: a suit game with six
+    /// trumps or more, a grand with two jacks or more, and at most two side
+    /// cards that may lose a trick.
+    fn may_make_schneider(kept: &[DealtCard], game: GameType) -> bool {
+        let strong = match game {
+            GameType::Grand => count_rank(kept, Rank::Jack) >= 2,
+            GameType::Suit(_) => trump_count(game, kept) >= 6,
+            GameType::Null => false,
+        };
+        strong && side_losers(kept, game) <= 2
+    }
+
+    /// `count` discards for a suit game with "Kahlschlag" (`clear_cut`, +1
+    /// level per side suit without a card after the skat, at most +2): the
+    /// pair of [`RunBot::void_discard`], then for a third discard ("Drei
+    /// drücken") the plain rule of [`RunBot::discard_n`].
+    fn void_discard_n(
+        cards: &[DealtCard],
+        declaration: Declaration,
+        deck: &[DealtCard],
+        count: usize,
+    ) -> Option<Vec<DealtCard>> {
+        let pair = Self::discard(cards, |free| Self::void_discard(free, declaration, deck))?;
+        let mut chosen = pair.to_vec();
+        if count > 2 {
+            let left: Vec<DealtCard> = cards
+                .iter()
+                .copied()
+                .filter(|c| !chosen.contains(c))
+                .collect();
+            chosen.extend(Self::discard_n(&left, declaration, deck, count - 2)?);
+        }
+        Some(chosen)
+    }
+
+    /// The two discards that leave the most side suits void (counted up to
+    /// the two "Kahlschlag" pays for) in a suit game: the plain choice of
+    /// [`RunBot::discard_for`] if it leaves as many, else among the pairs
+    /// without a trump that do, the one with the most Augen (they count for
+    /// the declarer in the skat), the first such pair in hand order on a
+    /// tie. Other games: the plain choice.
+    fn void_discard(
+        cards: &[DealtCard],
+        declaration: Declaration,
+        deck: &[DealtCard],
+    ) -> Option<[DealtCard; 2]> {
+        let plain = Self::discard_for(cards, declaration, deck)?;
+        let GameType::Suit(trump) = declaration.game() else {
+            return Some(plain);
+        };
+        let game = declaration.game();
+        let voids_without = |pair: [DealtCard; 2]| -> usize {
+            Suit::ALL
+                .iter()
+                .filter(|&&suit| suit != trump)
+                .filter(|&&suit| {
+                    !cards.iter().any(|c| {
+                        !pair.contains(c)
+                            && !crate::rules::is_trump(game, *c)
+                            && c.face().is_some_and(|f| f.suit == suit)
+                    })
+                })
+                .count()
+                .min(CLEAR_CUT_MAX_VOIDS)
+        };
+        let plain_voids = voids_without(plain);
+        let side: Vec<DealtCard> = cards
+            .iter()
+            .copied()
+            .filter(|&c| !crate::rules::is_trump(game, c))
+            .collect();
+        let mut best: Option<(usize, u32, [DealtCard; 2])> = None;
+        for (i, &a) in side.iter().enumerate() {
+            for &b in &side[i + 1..] {
+                let pair = [a, b];
+                let key = (voids_without(pair), a.card_points() + b.card_points());
+                if best.is_none_or(|(v, p, _)| key > (v, p)) {
+                    best = Some((key.0, key.1, pair));
+                }
+            }
+        }
+        match best {
+            Some((voids, _, pair)) if voids > plain_voids => Some(pair),
+            _ => Some(plain),
         }
     }
 
@@ -2795,6 +3095,111 @@ mod tests {
                 "consumable {id} has no bot value"
             );
         }
+    }
+    /// A run with `relics` on a constructed deal (the player forehand), the
+    /// skat picked up: the bot's planned declaration and discard.
+    fn plan_after_skat(
+        relics: &[&str],
+        hands: [&str; 3],
+        skat: &str,
+    ) -> (Declaration, Vec<DealtCard>) {
+        use super::super::content_tests::{content, fixed_deal, relic_run};
+        let content = content();
+        let mut run = relic_run(&content, relics);
+        fixed_deal(&mut run, &content, hands, skat);
+        run.apply(&content, RunAction::PickUpSkat).expect("pick up");
+        RunBot::after_skat(&run, &content).expect("plan")
+    }
+
+    /// A grand mit 4 with the four clubs from the ace and two aces: two
+    /// side cards may lose a trick by the plain rules, so the bot plays it
+    /// without announcement; double-dummy the declarer takes every trick.
+    const SCHNEIDER_HAND: [&str; 3] = [
+        "CJ SJ HJ DJ CA CT CK CQ SA HA",
+        "C9 C8 HT HK HQ H9 H8 SK SQ S9",
+        "C7 H7 ST S8 S7 DA DT DK DQ D9",
+    ];
+    const SCHNEIDER_SKAT: &str = "D8 D7";
+
+    #[test]
+    fn big_mouth_and_open_visor_make_the_bot_announce() {
+        let grand = |risk| Declaration::grand(risk).with_hand(false);
+        let (plain, plain_discard) = plan_after_skat(&[], SCHNEIDER_HAND, SCHNEIDER_SKAT);
+        assert_eq!(plain, grand(RiskLevel::Normal));
+        let (big, big_discard) = plan_after_skat(&["big_mouth"], SCHNEIDER_HAND, SCHNEIDER_SKAT);
+        assert_eq!(big, grand(RiskLevel::SchneiderDeclared));
+        assert_eq!(big_discard, plain_discard);
+        let (visor, _) = plan_after_skat(&["open_visor"], SCHNEIDER_HAND, SCHNEIDER_SKAT);
+        assert_eq!(visor, grand(RiskLevel::Ouvert));
+        let (both, _) =
+            plan_after_skat(&["big_mouth", "open_visor"], SCHNEIDER_HAND, SCHNEIDER_SKAT);
+        assert_eq!(both, grand(RiskLevel::Ouvert));
+        // A hand that does not make Schneider stays plain: STRONG of the
+        // content tests without two of its trumps.
+        let middling = [
+            "CJ HJ DA DK DQ D9 D7 HA S7 C8",
+            "SJ DJ HT HK HQ H9 H8 H7 SA ST",
+            "DT SK SQ S9 S8 CA CT CK CQ C9",
+        ];
+        let (decl, _) = plan_after_skat(&["big_mouth", "open_visor"], middling, "D8 C7");
+        assert!(!decl.schneider_declared(), "{decl:?}");
+    }
+
+    #[test]
+    fn schneider_percent_is_deterministic_and_reads_the_cards() {
+        let deck: Vec<DealtCard> = hand(
+            "CJ SJ HJ DJ CA CT CK SA ST H7 HA HT HK HQ H9 H8 SK SQ S9 S8 \
+             CQ C9 C8 C7 DA DT DK DQ D9 S7 D8 D7",
+        );
+        let cards: Vec<DealtCard> = deck[..10].iter().chain(&deck[30..]).copied().collect();
+        let kept = &deck[..10];
+        let clubs = GameType::Suit(Suit::Clubs);
+        let p = schneider_percent(clubs, kept, &cards, &deck, Seat::DECLARER, 30, 7);
+        assert!(p >= BOLD_MIN_PERCENT, "{p}");
+        assert_eq!(
+            p,
+            schneider_percent(clubs, kept, &cards, &deck, Seat::DECLARER, 30, 7)
+        );
+        // A defender's hand in the declarer's seat: no trump, no Schneider.
+        let weak: Vec<DealtCard> = deck[10..20].iter().chain(&deck[30..]).copied().collect();
+        assert_eq!(
+            schneider_percent(clubs, &deck[10..20], &weak, &deck, Seat::DECLARER, 30, 7),
+            0
+        );
+    }
+
+    #[test]
+    fn clear_cut_makes_the_bot_discard_for_voids() {
+        // Clubs with nine trumps, HA, S7 and from the skat D7 D8: the plain
+        // rule never discards an ace and leaves one void suit (spades);
+        // with "Kahlschlag" HA and S7 go, hearts and spades are void.
+        let hands = [
+            "CJ SJ HJ CT CK CQ C9 C8 HA S7",
+            "DJ CA C7 HT HK HQ H9 H8 H7 SA",
+            "ST SK SQ S9 S8 DA DT DK DQ D9",
+        ];
+        let faces = |cards: &[DealtCard]| -> Vec<String> {
+            let mut v: Vec<String> = cards
+                .iter()
+                .filter_map(|c| c.face())
+                .map(|f| f.to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        let (plain, plain_discard) = plan_after_skat(&[], hands, "D7 D8");
+        assert_eq!(plain.game(), GameType::Suit(Suit::Clubs));
+        assert!(!faces(&plain_discard).contains(&"HA".to_string()));
+        let (decl, discard) = plan_after_skat(&["clear_cut"], hands, "D7 D8");
+        assert_eq!(decl.game(), GameType::Suit(Suit::Clubs));
+        assert_eq!(faces(&discard), vec!["HA".to_string(), "S7".to_string()]);
+        // Not a suit game: the plain discard.
+        let deck = hand("CJ SJ HJ DJ CA C7 HA H7 S7 S8 D7 D8");
+        let grand = Declaration::grand(RiskLevel::Normal);
+        assert_eq!(
+            RunBot::void_discard(&deck, grand, &deck),
+            RunBot::discard_for(&deck, grand, &deck)
+        );
     }
 }
 

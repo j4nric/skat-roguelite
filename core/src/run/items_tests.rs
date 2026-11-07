@@ -538,7 +538,11 @@ fn slate_sells_on_credit_once_per_district_and_income_pays_it_back() {
     let shop = run.shop.as_mut().expect("shop");
     shop.relics[0] = Some(RelicId::new("crib_sheet"));
     shop.relics[1] = Some(RelicId::new("old_lady"));
-    let price = run.shop_price(&content, 5);
+    let list = content
+        .relic(&RelicId::new("crib_sheet"))
+        .expect("relic")
+        .price;
+    let price = run.shop_price(&content, list);
     assert!(
         run.view(&content).shop.expect("shop").relics[0]
             .as_ref()
