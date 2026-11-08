@@ -129,7 +129,7 @@ export class Sync {
   /** When the last upload or download succeeded (ms). */
   lastSync = 0;
   private record: SyncRecord | null = readRecord();
-  private running = false;
+  private running: Promise<void> | null = null;
   private again = false;
 
   constructor(private readonly host: SyncHost) {
@@ -138,7 +138,7 @@ export class Sync {
       this.user = { name: this.record.name, passkeys: 0, createdAt: 0 };
       this.status = 'saved';
     }
-    window.addEventListener('online', () => this.push());
+    window.addEventListener('online', () => void this.push());
   }
 
   /** Whether this device thinks it is signed in. */
@@ -273,15 +273,17 @@ export class Sync {
     }
   }
 
-  /** Upload if anything changed (after a pub, at run end, on page hide). */
-  push(keepalive = false): void {
-    if (!this.record || this.status === 'conflict' || this.status === 'outdated') return;
+  /**
+   * Upload if anything changed (after a pub, at run end, on page hide).
+   * Resolves when this and any upload asked for meanwhile are done.
+   */
+  push(keepalive = false): Promise<void> {
+    if (!this.record || this.status === 'conflict' || this.status === 'outdated') return Promise.resolve();
     if (this.running) {
       this.again = true;
-      return;
+      return this.running;
     }
-    this.running = true;
-    void (async () => {
+    this.running = (async () => {
       try {
         do {
           this.again = false;
@@ -297,9 +299,10 @@ export class Sync {
           await this.upload(keys, hash, record.version, keepalive);
         } while (this.again && this.record && this.status !== 'conflict');
       } finally {
-        this.running = false;
+        this.running = null;
       }
     })();
+    return this.running;
   }
 
   /** Conflict: keep this device's state and put it on the server. */

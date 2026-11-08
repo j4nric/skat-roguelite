@@ -409,9 +409,9 @@ export class App {
     this.ui.account.status = this.sync.status;
     // Leaving the page (tab switch, app to the background, closing): upload what changed.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') this.sync.push(true);
+      if (document.visibilityState === 'hidden') void this.sync.push(true);
     });
-    window.addEventListener('pagehide', () => this.sync.push(true));
+    window.addEventListener('pagehide', () => void this.sync.push(true));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
@@ -690,8 +690,8 @@ export class App {
 
   private async signOutHere(): Promise<void> {
     // Upload what is new first; then the device forgets the account.
-    this.sync.push();
     const res = await this.accountBusy(async () => {
+      await this.sync.push();
       await signOut();
       return true;
     });
@@ -1354,7 +1354,7 @@ export class App {
         step = null;
       }
     } finally {
-      if (pubEnded) this.sync.push();
+      if (pubEnded) void this.sync.push();
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.thinking = null;

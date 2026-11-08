@@ -1269,6 +1269,7 @@ export const de = {
   account: {
     title: 'Konto',
     menuSignIn: 'Anmelden',
+    menuAccount: 'Konto: {name}',
     why: 'Mit einem Konto liegt dein Fortschritt zusätzlich auf dem Server: Vereinsbuch, Statistik und der laufende Run. So spielst du auf jedem Gerät weiter, und dein Name kommt auf die Tafel des Tages-Seeds. Ohne Konto spielst du wie bisher.',
     how: 'Angemeldet wird mit einem Passkey: Fingerabdruck, Gesicht oder Geräte-PIN. Kein Passwort, keine E-Mail.',
     stored: 'Gespeichert werden nur dein Spielstand, dein Name und der öffentliche Schlüssel deines Passkeys.',

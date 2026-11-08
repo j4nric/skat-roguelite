@@ -623,7 +623,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'menu':
       return sheet(
-        `<h2>${esc(de.header.menu)}</h2>
+        `<div class="menu-head"><h2>${esc(de.header.menu)}</h2>
+           <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}>${esc(ui.account.user ? t(de.account.menuAccount, { name: accountName(ui.account.user) }) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span></div>
          ${settingsBlock(ui)}
          ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, view.length, ui, view.stake ?? 0) : ''}
          <div class="menu-list menu-grid">
@@ -632,7 +633,6 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            ${view ? `<button class="btn" ${attrs({ 'data-action': 'overview' })}>${esc(de.menu.overview)}</button>` : ''}
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
-           <button class="btn btn-account" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}><span>${esc(ui.account.user ? de.account.title : de.account.menuSignIn)}</span>${ui.account.user ? syncPill(ui.account.status, false) : ''}</button>
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>

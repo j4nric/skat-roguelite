@@ -8995,8 +8995,35 @@ button.sync-pill {
   gap: 4px;
 }
 
-.btn-account {
-  gap: 6px;
+/* The menu's head: "Menü" and the account on one line, no taller than the
+   heading alone (the menu must fit 375 × 667 without scrolling). */
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.menu-head h2 {
+  flex: none;
+}
+
+.menu-head .account-link {
+  min-width: 0;
+}
+
+.menu-head .link-btn {
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 6px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-head .sync-pill {
+  flex: none;
 }
 
 .account-body {
