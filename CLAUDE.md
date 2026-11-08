@@ -15,6 +15,7 @@ cargo test                                   # alle Tests
 cargo clippy --all-targets -- -D warnings    # muss sauber sein
 cargo fmt                                    # vor jedem Commit
 cargo run -p skat_sim -- --seed 42 --games 10000
+cargo run -p stammtisch_server               # Konto-Dienst lokal (127.0.0.1:8787, Vite leitet /api dorthin)
 ```
 
 ## Architekturregeln
@@ -25,6 +26,7 @@ cargo run -p skat_sim -- --seed 42 --games 10000
 - Content (Relikte, Kartenmodifikationen, Bosse) ist Daten in `core/content/*.ron`, nicht Code.
 - Jede neue Mechanik wird im Simulator gemessen, bevor sie in die Oberfläche kommt.
 - Spiellogik gehört nie in `wasm/` oder `web/`. Die Web-App zeigt an und leitet Eingaben weiter.
+- `server/` (Konten, Spielstand, Tafel des Tages, ADR 0021) speichert nur und kennt `skat_core` nicht. Er prüft nie Spielzustand; der Spielstand ist für ihn ein undurchsichtiger Text.
 - Oberflächenänderungen werden vor dem PR mit Playwright im Browser geprüft (Handy hochkant und Desktop).
 - `unsafe` ist im Workspace verboten.
 

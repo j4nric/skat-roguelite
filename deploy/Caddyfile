@@ -1,6 +1,27 @@
 # Internal static file server. HTTPS is handled by the household app's Caddy
 # in front of this container, so this one only speaks plain HTTP on :80.
+
+{
+	servers {
+		# The household app's Caddy in front of us sits in a private Docker
+		# network. Trusting it lets {client_ip} be the player's address from
+		# its X-Forwarded-For instead of the front Caddy's.
+		trusted_proxies static private_ranges
+		# Read X-Forwarded-For from the right, so a client cannot spoof its
+		# address (it only feeds the rate limit) with its own header.
+		trusted_proxies_strict
+	}
+}
+
 :80 {
+	# Account server (ADR 0021), only reachable through this container. If
+	# it is down, /api answers 502 and the game is served as before.
+	handle /api/* {
+		reverse_proxy stammtisch-api:8080 {
+			header_up X-Client-IP {client_ip}
+		}
+	}
+
 	root * /srv
 	encode zstd gzip
 	file_server
