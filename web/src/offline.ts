@@ -22,9 +22,17 @@ export function watchNetwork(listener: (online: boolean) => void): void {
 let toastEl: HTMLElement | null = null;
 let applyUpdate: () => void = () => {};
 
+/** The page makes room for the bar (style.css: `html.has-update`) or takes it back. */
+function makeRoom(on: boolean): void {
+  document.documentElement.classList.toggle('has-update', on);
+  // Positions measured on resize (hints, the table) follow.
+  window.dispatchEvent(new Event('resize'));
+}
+
 /**
- * The toast that offers the new version; `apply` runs on a tap. The small
- * cross puts it away until the next visit (it covers the top of the table).
+ * The slim bar that offers the new version; `apply` runs on a tap. It
+ * sits above the app, which moves down by its height, so it never covers
+ * a control. The small cross puts it away until the next visit.
  */
 function showUpdateToast(apply: () => void): void {
   applyUpdate = apply;
@@ -36,7 +44,13 @@ function showUpdateToast(apply: () => void): void {
   go.type = 'button';
   go.className = 'update-go';
   go.dataset.testid = 'update-toast';
-  go.textContent = de.offline.update;
+  const long = document.createElement('span');
+  long.className = 'update-long';
+  long.textContent = de.offline.update;
+  const short = document.createElement('span');
+  short.className = 'update-short';
+  short.textContent = de.offline.updateShort;
+  go.append(long, short);
   go.setAttribute('aria-label', de.offline.updateLabel);
   go.onclick = () => applyUpdate();
   const later = document.createElement('button');
@@ -45,10 +59,14 @@ function showUpdateToast(apply: () => void): void {
   later.dataset.testid = 'update-later';
   later.textContent = de.offline.updateLaterMark;
   later.setAttribute('aria-label', de.offline.updateLater);
-  later.onclick = () => el.remove();
+  later.onclick = () => {
+    el.remove();
+    makeRoom(false);
+  };
   el.append(go, later);
   document.body.append(el);
   toastEl = el;
+  makeRoom(true);
 }
 
 /**

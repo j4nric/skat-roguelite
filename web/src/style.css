@@ -645,27 +645,32 @@ button.card {
   }
 }
 
-/* A new version is waiting (./offline.ts): stays until tapped or put
-   away with the cross, above everything, at the top so it never covers
-   the hand. */
+/* A new version is waiting (./offline.ts): a slim bar on top. The page
+   makes room for it by moving the safe area down, so the app (and every
+   sheet that keeps clear of the notch) starts below it and nothing is
+   covered. */
+:root.has-update {
+  --update-h: 44px;
+  --safe-top: calc(env(safe-area-inset-top, 0px) + var(--update-h));
+}
+
 .update-toast {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  top: env(safe-area-inset-top, 0px);
   left: 50%;
   z-index: 90;
   display: flex;
-  width: max-content;
-  max-width: 92vw;
+  width: min(100%, 560px);
+  height: 44px;
   transform: translateX(-50%);
-  border: var(--edge) solid var(--line);
+  border-bottom: 2px solid var(--accent);
   background: var(--panel);
-  box-shadow: var(--shadow), 0 0 0 2px var(--accent);
 }
 
 .update-toast button {
   min-width: 44px;
-  min-height: 44px;
-  padding: 6px 12px;
+  height: 44px;
+  padding: 0 12px;
   border: 0;
   background: none;
   color: var(--text);
@@ -675,10 +680,29 @@ button.card {
   cursor: pointer;
 }
 
+.update-toast .update-go {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .update-toast .update-later {
-  padding: 6px 10px;
   border-left: 2px solid var(--line);
   color: var(--muted);
+}
+
+.update-short {
+  display: none;
+}
+
+@media (max-width: 400px) {
+  .update-long {
+    display: none;
+  }
+
+  .update-short {
+    display: inline;
+  }
 }
 
 /* ---------------------------------------------------------------- the run */

@@ -1746,6 +1746,7 @@ export const de = {
   /** Offline play and updates (./offline.ts, DESIGN 14.5). */
   offline: {
     update: 'Neue Version verfügbar – neu laden',
+    updateShort: 'Neue Version – neu laden',
     updateLabel: 'Neue Version verfügbar. Antippen lädt die Seite neu.',
     updateLater: 'Später',
     updateLaterMark: '×',
