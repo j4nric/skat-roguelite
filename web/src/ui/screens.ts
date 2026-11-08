@@ -12,6 +12,7 @@ import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo,
 import { backDesign } from './backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
+import { canVibrate } from '../haptics';
 import { moonIcon, renderNightSheet } from './night';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
@@ -378,6 +379,11 @@ function lostReason(view: RunView): string {
   return t(de.end.lostText, { section: s.section + 1, series: s.index + 1 });
 }
 
+/** A small framed picture, for "Teilen" (the run as an image). */
+function pictureIcon(size = 18): string {
+  return `<svg class="picture-icon" viewBox="0 0 12 10" width="${size}" height="${Math.round((size * 10) / 12)}" aria-hidden="true" shape-rendering="crispEdges"><path d="M0 0h12v10h-12z" fill="currentColor"/><path d="M1 1h10v8h-10z" fill="#23282c"/><path d="M2 8l3-4 2 2 1-1 2 3z" fill="#8fc7a8"/><path d="M8 2h2v2h-2z" fill="#d1773f"/></svg>`;
+}
+
 export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
   // Die lange Nacht (ADR 0020): after der Alte the player may go on; a
   // night that ends is no lost run, the win stays.
@@ -392,6 +398,8 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
       <button class="btn btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(de.end.newRun)}</button>`
     : `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(de.end.newRun)}</button>
       <button class="btn btn-wide" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>`;
+  // The run as a picture to pass on (./runcard.ts).
+  const shareRun = `<button class="btn btn-wide btn-share-run" ${attrs({ 'data-action': 'share-run', 'data-testid': 'share-run', 'aria-label': de.runCard.buttonAria, title: de.runCard.buttonAria })}>${pictureIcon()}<span>${esc(de.runCard.button)}</span></button>`;
   return `<main class="end ${night ? 'is-night' : ''}" data-testid="end">
     <div class="sheet chalkboard end-board">
       <h1 class="${won ? 'is-won' : night ? 'is-night' : 'is-lost'}">${esc(title)}</h1>
@@ -401,6 +409,7 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
     </div>
     <div class="end-actions">
       ${actions}
+      ${shareRun}
     </div>
   </main>`;
 }
@@ -534,6 +543,22 @@ function toggle(action: string, name: string, on: boolean): string {
   })}>${esc(t(on ? de.menu.toggleOn : de.menu.toggleOff, { name }))}</button>`;
 }
 
+/**
+ * "Hand sortieren" as a toggle: automatisch (the core's order for the
+ * game) or manuell (the player drags); a tap switches.
+ */
+function handSortToggle(ui: UiState): string {
+  const manual = ui.settings.handSort === 'manual';
+  return `<button class="seg seg-toggle ${manual ? 'is-picked' : ''}" ${attrs({
+    'data-action': 'hand-sort',
+    'data-sort': manual ? 'auto' : 'manual',
+    'data-testid': 'toggle-hand-sort',
+    'aria-pressed': manual ? 'true' : 'false',
+    'aria-label': `${de.handSort.label}: ${manual ? de.handSort.manual : de.handSort.auto}`,
+    title: de.handSort.hint,
+  })}>${esc(t(de.handSort.toggle, { mode: manual ? de.handSort.manual : de.handSort.auto }))}</button>`;
+}
+
 /** The settings as tight rows: label left, switch right. */
 function settingsBlock(ui: UiState): string {
   const tempos = (['slow', 'normal', 'fast'] as const)
@@ -545,8 +570,8 @@ function settingsBlock(ui: UiState): string {
   return `<div class="menu-settings">
     <div class="menu-row"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
-    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}</div></div>
-    <div class="menu-row" ${attrs({ title: de.menu.thinkingHint })}><span class="setting-label">${esc(de.menu.thinking)}</span>${onOff('thinking', ui.settings.thinking)}</div>
+    <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}${canVibrate() ? toggle('vibrate', de.vibration.label, ui.settings.vibrate) : ''}</div></div>
+    <div class="menu-row" ${attrs({ 'data-testid': 'setting-table' })}><span class="setting-label">${esc(de.handSort.row)}</span><div class="segmented" ${attrs({ title: de.menu.thinkingHint })}>${toggle('thinking', de.menu.thinking, ui.settings.thinking)}${handSortToggle(ui)}</div></div>
     <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
     ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({

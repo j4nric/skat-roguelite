@@ -29,6 +29,7 @@ import { portrait } from './people';
 import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
 import { tossStyle } from './scatter';
+import { arrangeHand } from './handorder';
 
 /** Marks a card for the info card (long-press, hover, "i"). */
 function infoAttrs(id: number, focusable = true): Record<string, string | number | null> {
@@ -405,7 +406,8 @@ function onTable(game: GameView, ui: UiState): number[] {
 /** The cards in the hand, without those laid on the table to be pressed. */
 function shownHand(game: GameView, ui: UiState): CardView[] {
   const table = onTable(game, ui);
-  const hand = ui.anim ? ui.anim.hand : game.hand;
+  // "Hand sortieren: manuell": the player's order over the core's (display only).
+  const hand = arrangeHand(ui.anim ? ui.anim.hand : game.hand, ui.handOrder);
   return table.length ? hand.filter((c) => !table.includes(c.id)) : hand;
 }
 
@@ -427,6 +429,7 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
   const oma = idle && ui.omaPick && game.can_take_from_skat;
   const playing = idle && game.your_turn && !oma;
   const cols = Math.max(5, Math.ceil(hand.length / 2));
+  const sorting = ui.handOrder !== null && !ui.anim && !ui.busy;
   const cards = hand
     .map((c, i) => {
       const selected = ui.selected.includes(c.id);
@@ -439,7 +442,8 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       const locked = discarding && !c.discardable;
       const rising = ui.rising === c.id;
       const cls = ['card', 'hand-card', dim ? 'is-dim' : '', selected ? 'is-selected' : '', action ? 'is-active' : '', locked ? 'is-locked' : '', rising ? 'is-rising' : ''].join(' ');
-      const skatTag = cardTag(view, c) + plaques(c);
+      // The digit that plays it from the keyboard (./keys.ts), shown once a key was pressed.
+      const skatTag = cardTag(view, c) + plaques(c) + (i < 10 ? `<span class="key-hint" aria-hidden="true">${(i + 1) % 10}</span>` : '');
       const label = cardLabel(c);
       // Each row fans out gently: -1 at its left end, 1 at its right end.
       const half = (cols - 1) / 2;
@@ -458,12 +462,18 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
         })}>${lookSvg(c, 'full')}${skatTag}</button>`;
       }
       // A card that may not be played can still be thrown: it comes back (the core's `legal`).
-      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'data-drag': dim ? 'play' : null, 'data-legal': dim ? 'false' : null, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${lookSvg(c, 'full')}${skatTag}</div>`;
+      // Sorted by hand, every card can be dragged to another place in the hand.
+      return `<div class="${cls}" style="${style}" ${attrs({ 'data-id': c.id, 'data-drag': dim ? 'play' : sorting ? 'sort' : null, 'data-legal': dim ? 'false' : null, 'aria-disabled': 'true', 'aria-label': label, role: 'img', ...infoAttrs(c.id) })}>${lookSvg(c, 'full')}${skatTag}</div>`;
     })
     .join('');
   const open = isOpen(game);
   const banner = open ? `<p class="open-banner">${eyeIcon(16)}<span>${esc(de.table.openHand)}</span></p>` : '';
-  const drop = discarding ? { 'data-drop': 'hand', 'data-accept': 'card' } : {};
+  // Sorted by hand, the hand takes its own cards back in a new place (./drag.ts `data-reorder`).
+  const drop = sorting
+    ? { 'data-drop': 'hand', 'data-accept': discarding ? 'card sort' : 'card play sort', 'data-reorder': '' }
+    : discarding
+      ? { 'data-drop': 'hand', 'data-accept': 'card' }
+      : {};
   return `${banner}<div class="hand ${open ? 'is-open' : ''} ${oma ? 'is-oma' : ''}" style="--cols:${cols}" ${attrs({ 'data-testid': 'hand', ...drop })}>${cards}</div>`;
 }
 

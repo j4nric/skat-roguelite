@@ -5106,6 +5106,266 @@ async function nightPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * "Teilen" on the end screen (shareRunPass, 390 × 844 and 1280 × 800):
+ * a won run (the last boss pub, patched from boss-table.json, with five
+ * relics) draws its picture; without a share sheet it is saved as a PNG
+ * of 1080 × 1350, with one the picture goes into it as a file.
+ */
+async function shareRunPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', acceptDownloads: true });
+  const page = await context.newPage();
+  watch(page, errors);
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  won.run.relics.push('home_suit', 'all_rounder', 'old_deck', 'skat_keeper');
+  await resumeFixture(page, null, JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await skatThenGrand(page, `share ${tag}`);
+  await playOut(page, `share ${tag}`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  const button = page.locator('[data-testid="share-run"]');
+  if (!(await button.count())) fail(`share ${tag}: no "Teilen" on the end screen`);
+  await button.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(screens, `qol-end-share-${tag}.png`) });
+  // No share sheet here: the picture is saved.
+  const hasShare = await page.evaluate(() => typeof navigator.share === 'function');
+  if (!hasShare) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), button.click()]);
+    const file = join(screens, `qol-run-card-${tag}.png`);
+    await download.saveAs(file);
+    const png = readFileSync(file);
+    const w = png.readUInt32BE(16);
+    const h = png.readUInt32BE(20);
+    if (png.toString('latin1', 1, 4) !== 'PNG' || w !== 1080 || h !== 1350) fail(`share ${tag}: saved picture ${download.suggestedFilename()} is ${w} × ${h}`);
+    if (!/^stammtisch-.+\.png$/.test(download.suggestedFilename())) fail(`share ${tag}: picture named ${download.suggestedFilename()}`);
+    log(`share ${tag}: picture saved as ${download.suggestedFilename()} (${w} × ${h}, ${png.length} bytes)`);
+  }
+  // With a share sheet that takes files, the picture goes there.
+  await page.evaluate(() => {
+    window.__shared = [];
+    navigator.canShare = (data) => Array.isArray(data?.files);
+    navigator.share = async (data) => {
+      window.__shared.push({ files: data.files.map((f) => ({ name: f.name, type: f.type, size: f.size })), text: data.text });
+    };
+  });
+  await button.click();
+  await page.waitForFunction(() => window.__shared.length === 1, null, { timeout: 5000 }).catch(() => fail(`share ${tag}: nothing went to the share sheet`));
+  const shared = await page.evaluate(() => window.__shared[0]);
+  if (shared.files.length !== 1 || shared.files[0].type !== 'image/png' || shared.files[0].size < 2000) fail(`share ${tag}: shared ${JSON.stringify(shared)}`);
+  log(`share ${tag}: share sheet got ${shared.files[0].name} with "${shared.text}"`);
+  await context.close();
+  if (errors.length) fail(`share ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
+/** The suit game to declare in qolPass: Rot if allowed, else another suit. */
+async function declarableSuit(page) {
+  for (const [index, name] of [[2, 'Rot'], [1, 'Grün'], [3, 'Schellen'], [0, 'Eichel']]) {
+    if (await page.locator(`[data-action="pick-game"][data-index="${index}"]:not(:disabled)`).count()) return { index, name };
+  }
+  fail('no suit game may be declared');
+  return null;
+}
+
+/** The hand as groups in the order shown: "Unter", then the suits (from the cards' names). */
+async function handGroups(page) {
+  const labels = await page.locator('.hand .hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+  const groups = [];
+  for (const label of labels) {
+    const g = /\bUnter\b/.test(label) ? 'Unter' : label.split(/[- ]/)[0];
+    if (groups[groups.length - 1] !== g) groups.push(g);
+  }
+  return groups;
+}
+
+/** Ids of the hand cards in the order shown. */
+async function handIds(page) {
+  return page.locator('.hand .hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('data-id')));
+}
+
+/**
+ * "Hand sortieren: manuell" (handSortPass): the switch in the menu is
+ * stored; the Ansage leaves the hand as it was; a card dragged within the
+ * hand takes its new place and keeps it while the game goes on.
+ */
+async function handSortPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="menu"]');
+  await page.click('[data-testid="toggle-hand-sort"][data-sort="manual"]');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').handSort);
+  if (stored !== 'manual') fail(`hand sort ${tag}: setting stored as ${stored}`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.overlay', { state: 'detached' });
+  await pickUpAndDiscard(page, `hand sort ${tag}`);
+  const before = await handIds(page);
+  const suit = await declarableSuit(page);
+  await page.click(`[data-action="pick-game"][data-index="${suit.index}"]`);
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  await page.waitForSelector('[data-action="play"]');
+  const after = await handIds(page);
+  if (after.join() !== before.join()) fail(`hand sort ${tag}: manual hand re-sorted by the Ansage (${before.join()} → ${after.join()})`);
+  // Drag the first card behind the last one.
+  const first = page.locator('.hand .hand-card').first();
+  const last = page.locator('.hand .hand-card').last();
+  const a = await first.boundingBox();
+  const b = await last.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(a.x + a.width / 2 + ((b.x + b.width * 0.8 - a.x - a.width / 2) * i) / 12, a.y + a.height / 2 + ((b.y + b.height / 2 - a.y - a.height / 2) * i) / 12);
+  await page.screenshot({ path: join(screens, `qol-hand-drag-${tag}.png`) });
+  await page.mouse.up();
+  const moved = await handIds(page);
+  const want = [...after.slice(1), after[0]];
+  if (moved.join() !== want.join()) fail(`hand sort ${tag}: after the drag ${moved.join()}, expected ${want.join()}`);
+  // Play a card: the rest keeps the player's order.
+  // (The screenshot also lets the click after a drag pass: ./drag.ts swallows one at once.)
+  await page.screenshot({ path: join(screens, `qol-hand-dropped-${tag}.png`) });
+  const playId = await page.locator('.hand [data-action="play"]').first().getAttribute('data-id');
+  await page.locator('.hand [data-action="play"]').first().click();
+  await page.waitForSelector(`.hand .hand-card[data-id="${playId}"]`, { state: 'detached', timeout: 10000 });
+  await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+  const rest = await handIds(page);
+  if (rest.join() !== want.filter((id) => id !== playId).join()) fail(`hand sort ${tag}: order after a card ${rest.join()}, expected ${want.filter((id) => id !== playId).join()} (played ${playId})`);
+  log(`hand sort ${tag}: manual order kept through the Ansage, a drag and a played card`);
+  await context.close();
+  if (errors.length) fail(`hand sort ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
+/**
+ * Quality of life on the table (qolPass, 390 × 844 and 1280 × 800; alone
+ * with SMOKE_ONLY=qol): the keyboard (S picks up the skat, a digit plays
+ * that card of the hand, a card the core does not let go shakes with the
+ * same note as a thrown one, the digits show on the cards only after a
+ * key, "?" lists the keys, Space skips and closes the score board); the
+ * last trick by L and by a tap on the open trick; the hand sorted for the
+ * suit declared; a vibration per own trick and one for the result, the
+ * switch in the menu.
+ */
+async function qolPass(browser, errors, viewport) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  // Vibration: every pattern the app asks for, in window.__buzz.
+  await context.addInitScript(() => {
+    window.__buzz = [];
+    Object.defineProperty(Navigator.prototype, 'vibrate', {
+      configurable: true,
+      value: (pattern) => {
+        window.__buzz.push(pattern);
+        return true;
+      },
+    });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  // No digits before a key (a phone never shows them).
+  if (await page.locator('.hand .key-hint').first().isVisible()) fail(`qol ${tag}: key digits shown before any key`);
+  await page.keyboard.press('s');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  const hints = await page.locator('.hand .key-hint').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.textContent).join(''));
+  if (!hints.startsWith('1234567890')) fail(`qol ${tag}: key digits on the hand "${hints}"`);
+  await page.keyboard.press('?');
+  await page.waitForSelector('[data-testid="keys-help"]');
+  await page.screenshot({ path: join(screens, `qol-keys-help-${tag}.png`) });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-testid="keys-help"]', { state: 'detached' });
+  await discardFirstTwo(page, `qol ${tag}`);
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  // A suit game other than the order before the Ansage (the Grand order): Rot if it may be declared.
+  const suit = await declarableSuit(page);
+  await page.click(`[data-action="pick-game"][data-index="${suit.index}"]`);
+  // Space: the main button (Ansagen).
+  await page.keyboard.press('Space');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+  // Hand sortieren (automatisch): Unter first, then the trump suit, then the other suits.
+  const groups = await handGroups(page);
+  const want = ['Unter', suit.name, ...['Eichel', 'Grün', 'Rot', 'Schellen'].filter((x) => x !== suit.name)];
+  const order = groups.filter((g) => want.includes(g));
+  if (order.join() !== want.filter((g) => groups.includes(g)).join()) fail(`qol ${tag}: hand after ${suit.name} declared in the order ${groups.join(', ')}`);
+  log(`qol ${tag}: hand sorted for ${suit.name}: ${groups.join(', ')}`);
+  let played = 0;
+  let refused = false;
+  for (;;) {
+    await page.waitForSelector('[data-action="play"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    if (played === 1) {
+      // Letzter Stich: L shows it and puts it away, a tap on the open trick shows it too.
+      await page.keyboard.press('l');
+      await page.waitForSelector('[data-testid="last-trick"]', { timeout: 3000 }).catch(() => fail(`qol ${tag}: L shows no last trick`));
+      if ((await page.locator('[data-testid="last-trick"] .trick-card').count()) !== 3) fail(`qol ${tag}: the last trick has not three cards`);
+      await page.keyboard.press('l');
+      await page.waitForSelector('[data-testid="last-trick"]', { state: 'detached' });
+      await page.click('[data-testid="trick"]');
+      await page.waitForSelector('[data-testid="last-trick"]', { timeout: 3000 }).catch(() => fail(`qol ${tag}: a tap on the trick shows no last trick`));
+      await page.screenshot({ path: join(screens, `qol-last-trick-${tag}.png`) });
+    }
+    const cards = page.locator('.hand .hand-card');
+    const legal = await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-action') === 'play'));
+    const dim = legal.findIndex((x) => !x);
+    if (!refused && dim >= 0 && dim < 10) {
+      await page.keyboard.press(String((dim + 1) % 10));
+      await page.waitForFunction(() => document.querySelector('.toast-layer')?.textContent?.includes('Diese Karte geht gerade nicht'), null, { timeout: 3000 }).catch(() => fail(`qol ${tag}: no note for a card that may not be played`));
+      if ((await cards.count()) !== legal.length) fail(`qol ${tag}: a card that may not be played left the hand`);
+      refused = true;
+    }
+    const first = legal.indexOf(true);
+    const id = await cards.nth(first).getAttribute('data-id');
+    await page.keyboard.press(String((first + 1) % 10));
+    await page.waitForSelector(`.hand .hand-card[data-id="${id}"]`, { state: 'detached', timeout: 10000 }).catch(() => fail(`qol ${tag}: key ${first + 1} did not play card ${id}`));
+    played += 1;
+    if (played > 10) fail(`qol ${tag}: played more than ten cards`);
+  }
+  if (played !== 10) fail(`qol ${tag}: ${played} cards played by key`);
+  // Space skips the counting (if it still runs), then closes the board.
+  await page.waitForSelector('[data-action="score-continue"], [data-action="score-skip"].btn');
+  if (await page.locator('[data-action="score-skip"].btn').count()) {
+    await page.keyboard.press('Space');
+    await page.waitForSelector('[data-action="score-continue"]');
+  }
+  await page.keyboard.press('Space');
+  await page.waitForSelector('.score-sheet', { state: 'detached' });
+  log(`qol ${tag}: a game played by keyboard (${played} cards${refused ? ', one refused' : ''})`);
+  // Vibration: a short one per trick taken, one pattern for the game's (or pub's) result.
+  const buzzed = await page.evaluate(() => window.__buzz);
+  const taps = buzzed.filter((p) => p === 12).length;
+  const results = buzzed.filter((p) => Array.isArray(p));
+  if (results.length !== 1) fail(`qol ${tag}: vibration patterns for the result: ${JSON.stringify(results)}`);
+  log(`qol ${tag}: vibrated ${taps}× for a trick, result ${JSON.stringify(results[0])}`);
+  // Switched off in the menu, nothing vibrates (the switch shows where the browser can vibrate).
+  await page.click('[data-action="menu"]');
+  await page.click('[data-testid="toggle-vibrate"][aria-pressed="true"]');
+  const off = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}').vibrate);
+  if (off !== false) fail(`qol ${tag}: vibration switched off stored as ${off}`);
+  await page.keyboard.press('Escape');
+  await context.close();
+  if (errors.length) fail(`qol ${tag}: console errors:\n${errors.join('\n')}`);
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -5134,6 +5394,15 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'doppel') {
       await zinkenV2Pass(browser, errors, PHONE);
       await zinkenV2Pass(browser, errors, DESKTOP);
+      return;
+    }
+    if (process.env.SMOKE_ONLY === 'qol') {
+      await qolPass(browser, errors, PHONE);
+      await qolPass(browser, errors, DESKTOP);
+      await handSortPass(browser, errors, PHONE);
+      await handSortPass(browser, errors, DESKTOP);
+      await shareRunPass(browser, errors, PHONE);
+      await shareRunPass(browser, errors, DESKTOP);
       return;
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -5468,6 +5737,12 @@ async function run() {
     await nightPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
+    await qolPass(browser, errors, PHONE);
+    await qolPass(browser, errors, DESKTOP);
+    await handSortPass(browser, errors, PHONE);
+    await handSortPass(browser, errors, DESKTOP);
+    await shareRunPass(browser, errors, PHONE);
+    await shareRunPass(browser, errors, DESKTOP);
   } finally {
     await browser.close();
     preview.kill();
