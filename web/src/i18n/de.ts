@@ -1194,7 +1194,7 @@ export const de = {
     start: 'Einführung',
     startHint: 'Eine Kneipe, drei Spiele: der Wirt erklärt Skat von Grund auf.',
     offerTitle: 'Neu am Stammtisch?',
-    offerText: 'Skat noch nie gespielt oder lange her? Der Wirt zeigt dir in einer Kneipe mit drei Spielen, wie es geht. Zählt nicht als Abend.',
+    offerText: 'Der Wirt zeigt dir Skat in einer Kneipe mit drei Spielen. Zählt nicht als Abend.',
     offerPlay: 'Einführung spielen',
     offerNo: 'Nein danke',
     // Game 1: the goal, Skat or Hand, Drücken, Ansage, Trumpf, Bedienen, Augen, Spielwert

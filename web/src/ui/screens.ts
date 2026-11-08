@@ -296,8 +296,8 @@ function tutorialOffer(ui: UiState): string {
       <h2>${esc(TD.offerTitle)}</h2>
       <p class="chalk-small">${esc(TD.offerText)}</p>
       <div class="tutorial-offer-actions">
-        <button class="btn btn-primary" ${attrs({ 'data-action': 'tutorial-start', 'data-testid': 'tutorial-offer-play' })}>${esc(TD.offerPlay)}</button>
-        <button class="btn" ${attrs({ 'data-action': 'tutorial-offer-no', 'data-testid': 'tutorial-offer-no' })}>${esc(TD.offerNo)}</button>
+        <button class="btn btn-small btn-primary" ${attrs({ 'data-action': 'tutorial-start', 'data-testid': 'tutorial-offer-play' })}>${esc(TD.offerPlay)}</button>
+        <button class="btn btn-small" ${attrs({ 'data-action': 'tutorial-offer-no', 'data-testid': 'tutorial-offer-no' })}>${esc(TD.offerNo)}</button>
       </div>
     </div>
   </section>`;

@@ -9113,11 +9113,11 @@ div.coach-main {
   align-items: flex-start;
   width: 100%;
   max-width: 520px;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 .tutorial-offer h2 {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   font-size: var(--fs-l);
 }
 
@@ -9128,9 +9128,12 @@ div.coach-main {
 
 .tutorial-offer-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 6px;
+}
+
+.tutorial-offer .chalk-small {
+  margin: 0;
 }
 
 .start-tutorial .small {
