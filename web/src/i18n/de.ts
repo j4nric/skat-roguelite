@@ -1591,6 +1591,58 @@ export const de = {
     tat_run: 'Stich auf Stich: {value} Stiche in Folge',
   } as Record<string, string>,
 
+  /** "Hand sortieren" in the menu: the core's order for the game, or the player's own. */
+  handSort: {
+    /** The menu row with Bedenkzeit and the sort toggle. */
+    row: 'Am Tisch',
+    label: 'Hand sortieren',
+    toggle: 'Sortieren: {mode}',
+    auto: 'Auto',
+    manual: 'Manuell',
+    hint: 'Auto: nach der Ansage Trümpfe vorn, dann die Farben. Manuell: Karten in der Hand an einen anderen Platz ziehen.',
+  },
+
+  /** Vibration in the menu (./haptics.ts), only where the device has it. */
+  vibration: {
+    label: 'Vibration',
+    hint: 'Kurz bei deinem Stich, länger bei Spiel- und Kneipenende.',
+  },
+
+  /** "Teilen" on the end screen: the run as a picture (./ui/runcard.ts). */
+  runCard: {
+    button: 'Teilen',
+    buttonAria: 'Zusammenfassung des Runs als Bild teilen',
+    brand: 'STAMMTISCH',
+    reached: 'Stadtteil {section} · Kneipe {series}',
+    night: 'Lange Nacht · Stadtteil {n}',
+    stake: 'Einsatz {stake}',
+    relics: 'Bierdeckel',
+    noRelics: 'Keine Bierdeckel',
+    seed: 'Seed {seed}',
+    daily: 'Tagesseed {seed}',
+    file: 'stammtisch-{seed}.png',
+    shareTitle: 'Stammtisch',
+    shareText: 'Mein Stammtisch-Run: {result} {reached}.',
+    saved: 'Bild gespeichert.',
+    failed: 'Das Bild ging gerade nicht.',
+    making: 'Bild wird gemalt …',
+  },
+
+  /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
+  keys: {
+    title: 'Tastatur',
+    close: 'Schließen',
+    rows: [
+      ['1 bis 9, 0', 'Karte 1 bis 10 der Hand spielen'],
+      ['Leertaste, Enter', 'Weiter, Los, Drücken'],
+      ['S', 'Skat aufnehmen'],
+      ['H', 'Hand spielen'],
+      ['L', 'Letzter Stich'],
+      ['Esc', 'Fenster schließen'],
+      ['?, F1', 'Diese Liste'],
+    ] as [string, string][],
+  },
+
   /**
    * Display names and texts that depend on the French deck in the content
    * files get German-deck versions here (ADR 0010). Anything not listed

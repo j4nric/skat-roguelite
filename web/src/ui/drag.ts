@@ -65,9 +65,10 @@ export function watchDrags(root: HTMLElement, h: DragHandlers): void {
   let drag: Drag | null = null;
 
   const zoneAt = (kind: string, x: number, y: number, origin: HTMLElement): HTMLElement | null => {
-    // The place the thing came from does not count as a drop.
+    // The place the thing came from does not count as a drop, unless it
+    // takes its own things in a new order (`data-reorder`, the hand sorted by hand).
     const from = origin.closest<HTMLElement>('[data-drop]');
-    return zonesFor(root, kind).find((z) => z !== from && inside(z.getBoundingClientRect(), x, y, 6)) ?? null;
+    return zonesFor(root, kind).find((z) => (z !== from || z.hasAttribute('data-reorder')) && inside(z.getBoundingClientRect(), x, y, 6)) ?? null;
   };
 
   const mark = (zone: HTMLElement | null): void => {

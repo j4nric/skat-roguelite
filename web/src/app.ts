@@ -73,6 +73,10 @@ import { backDesign, setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
+import { watchKeys } from './ui/keys';
+import { arrangeHand, moveInOrder } from './ui/handorder';
+import { buzz, setVibration } from './haptics';
+import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
@@ -236,6 +240,7 @@ export class App {
     omaPick: false,
     swapTake: null,
     peekTrick: false,
+    handOrder: null,
     routePick: null,
     routeLeg: '',
     routeOverview: false,
@@ -330,6 +335,8 @@ export class App {
   private bought: { html: string; rect: DOMRect } | null = null;
   /** Where the card was that a Zinke goes onto, seen as it was tapped (for its stamp). */
   private stampAt: { rect: DOMRect; at: number } | null = null;
+  /** The picture of the ended run for "Teilen", drawn in advance (./ui/runcard.ts). */
+  private runCard: { view: RunView; blob: Promise<Blob> } | null = null;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -419,6 +426,41 @@ export class App {
         this.render();
       }
     });
+    // Die Einführung: while the Wirt explains (an info step), Space and
+    // Enter go on with his bubble instead of pressing the screen's main
+    // button, so no lesson is skipped by the keyboard; on his last bubble
+    // they do nothing (its two buttons want a deliberate choice). Runs in
+    // the capture phase, before ./ui/keys.ts, which then sees it handled.
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        const kind = this.coach?.step?.kind;
+        if (!kind || kind === 'do' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+        const t = e.target;
+        if (t instanceof HTMLElement && t !== document.body && t.closest('button, a[href], input, textarea, select, [contenteditable="true"]')) return;
+        if (document.querySelector('[data-testid="keys-help"]') || this.info.state?.mode === 'sheet') return;
+        e.preventDefault();
+        if (e.repeat || kind === 'end') return;
+        this.coach?.next();
+        this.updateCoach();
+      },
+      { capture: true },
+    );
+    // Keys on the desktop: cards by digit, Space or Enter for the main button.
+    watchKeys(root, this.screenEl, this.layerEl, {
+      blocked: () => this.ui.screen === 'loading' || this.info.state?.mode === 'sheet' || this.drink.active,
+      dialogOpen: () => Boolean(this.ui.overlay),
+      refused: (card) => {
+        if (this.ui.busy || this.ui.anim || !this.ui.view?.game?.your_turn) return;
+        springBack(card, null, true);
+        sound.play('card', { volume: 0.35, rate: 0.7 });
+        this.showToast(de.table.notPlayable, 'top');
+      },
+      idle: () => {
+        if (this.ui.busy) this.hurry();
+      },
+    });
   }
 
   async start(): Promise<void> {
@@ -504,6 +546,7 @@ export class App {
     music.setEnabled(this.ui.settings.music);
     // Pure presentation: style.css tints the cards' paper under this flag.
     document.documentElement.toggleAttribute('data-suit-tint', this.ui.settings.suitTint);
+    setVibration(this.ui.settings.vibrate);
   }
 
   /**
@@ -627,6 +670,72 @@ export class App {
       this.announceUnlocks(earned);
       this.render();
     }
+  }
+
+  /**
+   * The picture of the ended run, drawn once as the end screen comes, so a
+   * tap on "Teilen" reaches the share sheet while it still counts as the
+   * player's gesture (Safari is strict about that).
+   */
+  private prepareRunCard(): Promise<Blob> {
+    const ended = this.ui.ended;
+    if (!ended) return Promise.reject(new Error('no ended run'));
+    const view = ended.view;
+    if (this.runCard?.view === view) return this.runCard.blob;
+    const record = this.ui.history[0];
+    const daily = Boolean(record && record.seed === view.seed && record.daily);
+    const blob = runCardBlob(view, { won: ended.won, daily, date: record && record.seed === view.seed ? new Date(record.date) : new Date() });
+    // A failed drawing is tried again on the tap.
+    blob.catch(() => {
+      if (this.runCard?.blob === blob) this.runCard = null;
+    });
+    this.runCard = { view, blob };
+    return blob;
+  }
+
+  /**
+   * "Teilen" on the end screen: the run as a picture (./ui/runcard.ts),
+   * into the share sheet with the file where the browser can, else saved
+   * as a download.
+   */
+  private async shareRun(button: HTMLElement): Promise<void> {
+    const ended = this.ui.ended;
+    if (!ended || button.hasAttribute('aria-busy')) return;
+    const view = ended.view;
+    button.setAttribute('aria-busy', 'true');
+    let blob: Blob;
+    try {
+      blob = await this.prepareRunCard();
+    } catch (err) {
+      console.warn('run picture failed', err);
+      this.showToast(de.runCard.failed);
+      button.removeAttribute('aria-busy');
+      return;
+    }
+    button.removeAttribute('aria-busy');
+    const name = runCardName(view);
+    const text = runCardText(view, ended.won);
+    try {
+      const file = new File([blob], name, { type: 'image/png' });
+      if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: de.runCard.shareTitle, text });
+        return;
+      }
+    } catch (err) {
+      // Closed by the player: nothing more to do.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.warn('share sheet failed, saving the picture instead', err);
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    this.showToast(de.runCard.saved);
   }
 
   /** Remember a finished run in the list of this browser. */
@@ -1063,6 +1172,8 @@ export class App {
         this.ui.screen = 'end';
         this.ui.copy = null;
         sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
+        // The lost pub buzzed with its score board already.
+        if (view.phase === 'Won') buzz('runWon');
         if (view.phase === 'Won') this.afterRender.push(() => fireworks());
       }
       // The end screen must come whatever went wrong before it (playtest
@@ -1270,6 +1381,7 @@ export class App {
       }
       if ('GameDealt' in ev) {
         this.ui.wildSettled = {};
+        this.ui.handOrder = null;
         this.ui.risen = null;
         this.riseShown.clear();
         // A new game: from here on the final view tells the story.
@@ -1411,6 +1523,9 @@ export class App {
         // One loss sound per chain (playtest 04.11.2026): when this lost game ends the run
         // (ADR 0019), the end screen sounds it, not the board.
         const runEnds = rest.some((e) => typeof e === 'object' && 'RunLost' in e);
+        // One pattern per chain: the pub's result, else the game's.
+        const pubLost = runEnds || rest.some((e) => typeof e === 'object' && 'PubLost' in e);
+        buzz(won ? 'pubWon' : pubLost ? 'pubLost' : ev.GameScored.breakdown.won ? 'gameWon' : 'gameLost');
         await this.showScore(
           before?.series.score ?? 0,
           ev.GameScored.series_score,
@@ -1573,6 +1688,7 @@ export class App {
           ? t(de.table.trickToYou, { points: card_points })
           : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
       this.trickQuip(after, trick.winner, card_points);
+      if (trick.winner === 0 && !this.fastForward) buzz('trick');
       this.render();
       if (!this.fastForward) this.reactToTrick(after, trick.winner, card_points);
       await this.pause(DELAY.trickShow);
@@ -1701,7 +1817,15 @@ export class App {
       if (g && this.ui.view?.game) {
         this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
       }
+      // "Hand sortieren: automatisch": the hand takes the core's order for the game declared at once.
+      const resort = Boolean(g && 'Declared' in ev && this.ui.settings.handSort === 'auto');
+      const spots = resort ? spotsOf(this.screenEl, '.hand .hand-card') : null;
+      if (g && resort) {
+        const order = g.hand.map((c) => c.id);
+        anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      }
       this.render();
+      if (spots) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
       if ('Declared' in ev && !this.fastForward) this.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev && !this.fastForward) {
         this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
@@ -2581,6 +2705,9 @@ export class App {
       case 'copy-link':
         this.copyLink(el.dataset.url ?? '');
         return;
+      case 'share-run':
+        void this.shareRun(el);
+        return;
       case 'share-native':
         this.shareNative(el.dataset.url ?? '', el.dataset.text ?? '');
         return;
@@ -2598,6 +2725,13 @@ export class App {
         return;
       case 'suit-tint':
         this.setSettings({ suitTint: el.dataset.on === 'true' });
+        return;
+      case 'vibrate':
+        this.setSettings({ vibrate: el.dataset.on === 'true' });
+        if (el.dataset.on === 'true') buzz('trick');
+        return;
+      case 'hand-sort':
+        this.setSettings({ handSort: el.dataset.sort === 'manual' ? 'manual' : 'auto' });
         return;
       case 'card-back':
         this.setSettings({ back: el.dataset.back ? el.dataset.back : null });
@@ -2735,6 +2869,11 @@ export class App {
         return;
       case 'fast':
         if (this.ui.busy) this.hurry();
+        // A tap on the open trick while nothing plays: the last one, as with "Letzter Stich".
+        else if (!this.ui.anim && view?.game?.phase === 'Playing' && view.game.last_trick) {
+          this.ui.peekTrick = true;
+          this.render();
+        }
         return;
       case 'last-trick':
         // Show the last finished trick on the felt, or the open one again.
@@ -3445,10 +3584,54 @@ export class App {
    * card's place. Only which two lie there is decided here; the core checks
    * the pair on Drücken.
    */
+  /**
+   * "Hand sortieren: manuell": the hand keeps the order the player sees
+   * (and dragged); cards new to it come in after their neighbour in the
+   * core's order. Automatic: the core's order (null).
+   */
+  private keepHandOrder(): void {
+    const game = this.ui.view?.game;
+    if (this.ui.settings.handSort !== 'manual' || !game) {
+      this.ui.handOrder = null;
+      return;
+    }
+    const hand = this.ui.anim ? this.ui.anim.hand : game.hand;
+    this.ui.handOrder = arrangeHand(hand, this.ui.handOrder).map((c) => c.id);
+  }
+
+  /** A hand card dragged within the hand (manual order): it goes before or after the card nearest to where it was let go. */
+  private reorderHand(el: HTMLElement, at: DOMRect | null): void {
+    const order = this.ui.handOrder;
+    const id = el.dataset.id;
+    if (!order || id === undefined || !at) return;
+    const x = at.left + at.width / 2;
+    const y = at.top + at.height / 2;
+    let best: { id: number; after: boolean; d: number } | null = null;
+    for (const card of Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card'))) {
+      if (card === el || card.dataset.id === undefined) continue;
+      const r = card.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const d = Math.hypot(cx - x, r.top + r.height / 2 - y);
+      if (!best || d < best.d) best = { id: Number(card.dataset.id), after: x > cx, d };
+    }
+    if (!best) return;
+    const spots = spotsOf(this.screenEl, '.hand .hand-card');
+    spots.set(id, spotOfRect(at));
+    this.ui.handOrder = moveInOrder(order, Number(id), best.id, best.after);
+    sound.play('card', { volume: 0.4, rate: 1.1 });
+    this.render();
+    glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 200 });
+  }
+
   private onDrop(el: HTMLElement, zone: HTMLElement | null, over: Element | null, at: DOMRect | null, fling: Fling): void {
     if (this.ui.busy || !this.ui.view?.game) return;
     const kind = el.dataset.drag;
     const where = zone?.dataset.drop;
+    // "Hand sortieren: manuell": a hand card let go over the hand changes places.
+    if (where === 'hand' && this.ui.handOrder && el.classList.contains('hand-card')) {
+      this.reorderHand(el, at);
+      return;
+    }
     if (kind === 'play') {
       this.onThrow(el, where === 'table', at, fling);
       return;
@@ -3596,6 +3779,7 @@ export class App {
 
   private render(): void {
     const ui = this.ui;
+    this.keepHandOrder();
     // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
     if (this.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
       ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };
@@ -3617,6 +3801,7 @@ export class App {
         break;
       case 'end':
         body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : '';
+        if (ui.ended) this.afterRender.push(() => void this.prepareRunCard().catch(() => undefined));
         break;
       case 'run': {
         const view = ui.view;
