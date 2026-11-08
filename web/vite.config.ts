@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { serviceWorker } from './sw/plugin.ts';
 
 // BUILD_INFO (commit and date) is set by the deploy workflow and shown in
 // the footer of the start screen.
@@ -17,6 +18,9 @@ const api = {
 
 export default defineConfig({
   base: '/',
+  // Offline play (DESIGN 14.5): dist/sw.js with the build's file list.
+  // Build and preview only, never in `vite dev`.
+  plugins: [serviceWorker()],
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
   },

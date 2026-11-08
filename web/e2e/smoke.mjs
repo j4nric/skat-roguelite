@@ -287,6 +287,10 @@
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
 //
+// The build's service worker stays on in every pass (it never touches
+// /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
+// network: the start screen and a new run come from the cache.
+//
 // The runs were made with skat_wasm::Session and RunBot (create a session
 // with Session::new(seed), apply RunBot::next_action until the view
 // matches, save; search the seeds from 0 upwards). When the save format
@@ -5540,6 +5544,33 @@ async function qolPass(browser, errors, viewport) {
   if (errors.length) fail(`qol ${tag}: console errors:\n${errors.join('\n')}`);
 }
 
+/**
+ * Offline play (DESIGN 14.5): the service worker of the build installs and
+ * takes over on the first visit; offline a reload still brings the start
+ * screen (shell and assets from the cache), the daily board says
+ * "offline", a run starts; back online nothing is left broken.
+ */
+async function offlinePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30000 }).catch(() => fail('offline: no service worker in control after the first visit'));
+  await context.setOffline(true);
+  await page.reload();
+  await page.waitForSelector('[data-action="new-run"]', { timeout: 15000 }).catch(() => fail('offline: the start screen does not load from the cache'));
+  await page.waitForSelector('[data-testid="board-offline"]').catch(() => fail('offline: no offline note at the daily board'));
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]', { timeout: 20000 }).catch(() => fail('offline: no run starts'));
+  await context.setOffline(false);
+  await page.reload();
+  await page.waitForSelector('[data-action="resume"]');
+  await context.close();
+  log('offline: service worker in control, start screen and a new run without network');
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -5571,6 +5602,10 @@ async function run() {
       return;
     }
     // SMOKE_ONLY=tutorial: the Einführung (DESIGN 16.1).
+    if (process.env.SMOKE_ONLY === 'offline') {
+      await offlinePass(browser, errors);
+      return;
+    }
     if (process.env.SMOKE_ONLY === 'tutorial') {
       await tutorialPass(browser, errors, PHONE, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
       await tutorialPass(browser, errors, DESKTOP, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
@@ -5925,6 +5960,7 @@ async function run() {
     await handSortPass(browser, errors, DESKTOP);
     await shareRunPass(browser, errors, PHONE);
     await shareRunPass(browser, errors, DESKTOP);
+    await offlinePass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

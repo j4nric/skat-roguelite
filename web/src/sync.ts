@@ -10,7 +10,9 @@
 // - at start, before the app reads its storage: fetch the server's state
 //   and compare,
 // - after each pub won or lost, at the end of a run, when the page is
-//   hidden: upload if anything changed since the last sync.
+//   hidden: upload if anything changed since the last sync,
+// - offline, nothing is tried; when the browser is back online or the app
+//   returns to the foreground, whatever changed meanwhile goes up.
 //
 // Which state wins:
 // - Only one side changed since the last sync: that one (it is newer).
@@ -26,6 +28,7 @@
 // so it is never part of a save code or an upload.
 
 import { AccountError, fetchSave, putSave, type AccountUser, type ServerSave } from './account';
+import { isOnline } from './offline';
 import { decodeSave, encodeSave } from './savecode';
 import { readAllKeys, replaceAllKeys } from './storage';
 
@@ -138,7 +141,15 @@ export class Sync {
       this.user = { name: this.record.name, passkeys: 0, createdAt: 0 };
       this.status = 'saved';
     }
+    // Offline (DESIGN 14.5): say so at once; what changed meanwhile goes up
+    // when the connection is back or the app returns to the foreground.
+    window.addEventListener('offline', () => {
+      if (this.record && (this.status === 'saved' || this.status === 'saving')) this.setStatus('offline');
+    });
     window.addEventListener('online', () => void this.push());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.status === 'offline') void this.push();
+    });
   }
 
   /** Whether this device thinks it is signed in. */
@@ -291,6 +302,11 @@ export class Sync {
           this.again = false;
           const record = this.record;
           if (!record) return;
+          if (!isOnline()) {
+            // No point trying; the `online` event brings us back.
+            this.setStatus('offline');
+            return;
+          }
           const keys = readAllKeys();
           const hash = hashKeys(keys);
           if (hash === record.hash) {

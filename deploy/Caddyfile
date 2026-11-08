@@ -34,6 +34,13 @@
 	@html path / /index.html
 	header @html Cache-Control "no-cache"
 
+	# Service worker (offline play, DESIGN 14.5). Browsers look for a new one
+	# on every visit; never let a cache hold the old one back. It lives at
+	# the root, so its scope is the whole site without Service-Worker-Allowed.
+	@sw path /sw.js
+	header @sw Cache-Control "no-cache"
+	header @sw Content-Type "text/javascript; charset=utf-8"
+
 	# Caddy maps .wasm to application/wasm already; set it explicitly so
 	# WebAssembly.instantiateStreaming never depends on the MIME table.
 	@wasm path *.wasm

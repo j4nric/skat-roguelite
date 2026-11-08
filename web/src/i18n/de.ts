@@ -1743,6 +1743,17 @@ export const de = {
     ] as [string, string][],
   },
 
+  /** Offline play and updates (./offline.ts, DESIGN 14.5). */
+  offline: {
+    update: 'Neue Version verfügbar – neu laden',
+    updateShort: 'Neue Version – neu laden',
+    updateLabel: 'Neue Version verfügbar. Antippen lädt die Seite neu.',
+    updateLater: 'Später',
+    updateLaterMark: '×',
+    board: 'Offline: Die Tafel des Tages erscheint wieder, sobald du online bist.',
+    account: 'Du bist offline. Anmelden geht erst wieder mit Verbindung. Spielen kannst du weiter, dein Fortschritt bleibt in diesem Browser.',
+  },
+
   /**
    * Display names and texts that depend on the French deck in the content
    * files get German-deck versions here (ADR 0010). Anything not listed

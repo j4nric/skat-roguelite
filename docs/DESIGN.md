@@ -1350,7 +1350,7 @@ Entschieden am 01.11.2026: Neben dem Nullspieler werden auch Relikte freigeschal
 - Ein neuer Spielstand kennt etwa die Hälfte der Hausregeln und Figuren. Die übrigen erscheinen erst nach einer Freischaltung im Tresen.
 - Freischaltungen hängen an Taten am Tisch, nicht an Spielzeit: zum Beispiel einen Grand Schneider gewinnen, Abschnitt 3 erreichen, einen Boss ohne Einmischen schlagen.
 - Jede Freischaltung ist an genau einer Stelle als Daten definiert (Bedingung und Belohnung) und wird im Simulator auf Erreichbarkeit geprüft.
-- Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Seit ADR 0021 (07.11.2026) kann der Spieler zusätzlich ein Konto mit Passkey anlegen; dann liegt derselbe Stand auch auf dem Server und gleicht sich zwischen Geräten ab (14.4). Ohne Konto bleibt alles im Browser wie bisher.
+- Gespeichert wird im Browser des Spielers: laufender Run, Freischaltungen, Statistik der Runs. Seit ADR 0021 (07.11.2026) kann der Spieler zusätzlich ein Konto mit Passkey anlegen; dann liegt derselbe Stand auch auf dem Server und gleicht sich zwischen Geräten ab (14.4). Ohne Konto bleibt alles im Browser wie bisher. Seit 08.11.2026 läuft das Spiel auch offline (14.5).
 
 **Umgesetzt in M4.** Freischaltungen stehen in `core/content/unlocks.ron` (Bedingung und Belohnung). Jedes Relikt und jeder Charakter, der dort als Belohnung steht, ist bis dahin gesperrt. Der Meta-Zustand (`MetaState`: verdiente Freischaltungen, Statistik) ist ein eigenes, serialisierbares Objekt neben dem Run; er lernt aus den Ereignissen des Runs (auch aus den bereinigten Spieler-Ereignissen) und erzeugt den Start eines Runs mit den gesperrten Relikten. Anfangs gesperrt sind 15 von 31 Hausregeln und Figuren (Durchmarsch, Tournee, Jungfrau, Ouvert-Bonus, Kontra, Wirt, Oma, Schiedsrichter, dazu aus M4 Stammgast, Lehrgeld, Glückssträhne, Schneiderbock, Auf dem Trockenen, Bierdeckel, Der Schneider) und der Nullspieler. Die sieben Hausregeln und Figuren nur für den Nullspieler sind nicht gesperrt.
 
@@ -1823,6 +1823,17 @@ Entschieden vom Nutzer im Cockpit (Frage 38, Variante A mit Ergänzung), umgeset
 - **Keine Spiellogik auf dem Server**: Er speichert und zählt, er spielt nicht nach. Die Regeln bleiben im Kern im Browser.
 - **Datenschutz**: gespeichert werden nur Name, öffentliche Schlüssel der Passkeys, Hash des Wiederherstellungscodes, Spielstand und Tafel-Ergebnisse. Konto löschen (mit Rückfrage) entfernt alles davon sofort.
 - **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.
+
+### 14.5 Offline spielen (Service Worker)
+
+Umgesetzt am 08.11.2026. Der Kern läuft als WebAssembly im Browser und der Spielstand liegt in `localStorage`; mit einem Service Worker geht das Spiel deshalb ganz ohne Netz.
+
+- **Was im Cache liegt**: der ganze Build (die Seite, alle gehashten Dateien unter `/assets/` mit dem WebAssembly-Kern, Schriften und Klängen, Icons, Manifest). Die Liste schreibt ein kleines Vite-Plugin (`web/sw/plugin.ts`) bei jedem Build in `dist/sw.js`, dazu eine Version aus dem Inhalt aller Dateien. Neuer Build heißt neuer Worker mit eigenem Cache. Von Hand geschrieben (`web/sw/sw.js`), ohne Workbox.
+- **Strategie**: `/assets/*` aus dem Cache (gehashte Namen werden nie alt); die Seite selbst zuerst aus dem Netz mit 3 Sekunden Frist, sonst die Seite aus dem Cache; `/api/*` nie (Konto und Tafel brauchen den Server).
+- **Keine alte Seite mit fehlenden Dateien** (der Grund, warum es bis PR #109 keinen Worker gab): Eine Seite aus dem Netz wird nie in den Cache geschrieben. Die Seite im Cache ist immer die, deren Dateien im selben Cache liegen. Ein neuer Worker lädt seinen Build vollständig, bevor er übernimmt; scheitert das, bleibt der alte. Beim Übernehmen löscht er ältere Caches, behält aber die Dateien der Version davor, damit ein noch offener Tab der alten Version weiterläuft, auch wenn der Deploy sie auf dem Server gelöscht hat.
+- **Neue Version**: Der neue Worker wartet. Die App zeigt oben eine schmale Leiste „Neue Version verfügbar – neu laden“ (auf dem Handy kurz „Neue Version – neu laden“); die App rückt um ihre Höhe nach unten, die Leiste verdeckt also nichts, und ein × legt sie bis zum nächsten Besuch weg. Sie lädt nie von selbst mitten im Spiel neu. Ein Tipp lässt den Worker übernehmen und lädt die Seite; der laufende Run steht im Speicher und geht weiter. Nach neuen Versionen sieht die App auch, wenn sie wieder in den Vordergrund kommt.
+- **Offline**: Das Spiel läuft vollständig. Angemeldet zeigt das Konto „offline“; was sich geändert hat, geht hoch, sobald der Browser wieder online ist oder die App in den Vordergrund kommt. Die Tafel des Tages zeigt einen kurzen Hinweis statt der Liste, die Knöpfe des Kontos (Anmelden, Anlegen, Code) sind mit Hinweis gesperrt.
+- **Entwicklung**: `vite dev` hat keinen Worker, nur `vite build` und `vite preview`. Caddy liefert `/sw.js` mit `Cache-Control: no-cache` aus.
 
 ---
 

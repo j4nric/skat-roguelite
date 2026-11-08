@@ -1,0 +1,125 @@
+// Service worker of Stammtisch: the game plays offline (DESIGN 14.5).
+//
+// This file is a template. The Vite plugin next to it (./plugin.ts)
+// writes it to dist/sw.js after each build and fills in the build's
+// version and the list of its files, so every deploy brings a new worker
+// with its own cache. Not used by `vite dev`.
+//
+// Strategy:
+// - Install: precache the whole build (index.html as "/", every hashed
+//   file under /assets/ with the WebAssembly core, fonts and sounds, the
+//   icons and the manifest) into one cache per version. A failed download
+//   fails the install; the old worker keeps serving and the browser tries
+//   again later.
+// - /assets/*: cache first (the names are hashed, so a hit is never
+//   stale), a miss goes to the network and is kept.
+// - Navigations: network first with a short timeout, then the cached
+//   shell. A page from the network is never written to the cache: the
+//   cached shell must always be the one whose assets lie next to it.
+// - /api/* and other origins: never touched, never cached.
+// - Updates: a new worker waits until the page asks it to take over
+//   ({ type: 'skip-waiting' } after the player taps the toast). On
+//   activate it deletes the caches of older versions but keeps the one
+//   just before it, so a tab still running the previous version finds
+//   its files even after the server deleted them.
+
+const VERSION = '__SW_VERSION__';
+const PRECACHE = self.__SW_PRECACHE__;
+const PREFIX = 'stammtisch-';
+const CACHE = `${PREFIX}${VERSION}`;
+const SHELL = '/';
+const NAV_TIMEOUT_MS = 3000;
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      // `reload` skips the HTTP cache, so the shell and its assets come
+      // from the same deploy.
+      cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' }))),
+    ),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = (await caches.keys()).filter((k) => k.startsWith(PREFIX) && k !== CACHE);
+      // caches.keys() lists in creation order: the last one is the version before.
+      const previous = keys.pop();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      if (previous) await trimPrevious(previous);
+      await self.clients.claim();
+    })(),
+  );
+});
+
+/** Of the version before, keep only the hashed assets (the shell would be stale). */
+async function trimPrevious(name) {
+  const cache = await caches.open(name);
+  const requests = await cache.keys();
+  await Promise.all(requests.filter((r) => !new URL(r.url).pathname.startsWith('/assets/')).map((r) => cache.delete(r)));
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'skip-waiting') self.skipWaiting();
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+  if (url.pathname === '/sw.js') return;
+  if (request.mode === 'navigate') {
+    event.respondWith(navigate(request));
+    return;
+  }
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(cacheFirst(request, true));
+    return;
+  }
+  if (PRECACHE.includes(url.pathname)) event.respondWith(cacheFirst(request, false));
+});
+
+/** Hashed files: from any of our caches, else the network (kept for next time). */
+async function cacheFirst(request, keep) {
+  // ignoreVary: servers answer "Vary: Origin" or "Accept-Encoding", and a
+  // module script asks with an Origin header the precache request lacked.
+  const hit = await caches.match(request, { ignoreSearch: true, ignoreVary: true });
+  if (hit) return hit;
+  const response = await fetch(request);
+  // Never keep a page under an asset's name (a server with an SPA fallback
+  // answers a deleted file with index.html).
+  const html = (response.headers.get('Content-Type') ?? '').includes('text/html');
+  if (keep && response.ok && response.type === 'basic' && !html) {
+    const copy = response.clone();
+    caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+  }
+  return response;
+}
+
+/** The page: fresh from the network if it answers in time, else the cached shell. */
+async function navigate(request) {
+  const network = fetch(request);
+  // Answered late or failed after the shell was served: nobody waits for it.
+  network.catch(() => {});
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, NAV_TIMEOUT_MS, null);
+  });
+  try {
+    const response = await Promise.race([network, timeout]);
+    // A proxy error (502 while deploying) is no better than offline.
+    if (response && (response.ok || !(await shell()))) return response;
+  } catch {
+    // Offline or the server is gone: the shell.
+  } finally {
+    clearTimeout(timer);
+  }
+  return (await shell()) ?? network;
+}
+
+function shell() {
+  return caches.open(CACHE).then((cache) => cache.match(SHELL, { ignoreVary: true }));
+}

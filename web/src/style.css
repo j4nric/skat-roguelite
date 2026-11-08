@@ -645,6 +645,66 @@ button.card {
   }
 }
 
+/* A new version is waiting (./offline.ts): a slim bar on top. The page
+   makes room for it by moving the safe area down, so the app (and every
+   sheet that keeps clear of the notch) starts below it and nothing is
+   covered. */
+:root.has-update {
+  --update-h: 44px;
+  --safe-top: calc(env(safe-area-inset-top, 0px) + var(--update-h));
+}
+
+.update-toast {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  width: min(100%, 560px);
+  height: 44px;
+  transform: translateX(-50%);
+  border-bottom: 2px solid var(--accent);
+  background: var(--panel);
+}
+
+.update-toast button {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-toast .update-go {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-toast .update-later {
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+
+.update-short {
+  display: none;
+}
+
+@media (max-width: 400px) {
+  .update-long {
+    display: none;
+  }
+
+  .update-short {
+    display: inline;
+  }
+}
+
 /* ---------------------------------------------------------------- the run */
 
 /* A run screen fills the visible height exactly: head on top, the table
@@ -3969,6 +4029,13 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .daily .btn {
   grid-column: 1 / -1;
+}
+
+/* Offline (DESIGN 14.5): a line where the daily board would be. */
+.board-offline {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
 }
 
 .daily-text {

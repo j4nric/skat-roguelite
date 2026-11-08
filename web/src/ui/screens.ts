@@ -252,7 +252,7 @@ function dailyBlock(ui: UiState): string {
       <span class="small">${esc(de.start.dailyText)} ${esc(seedLine(seed, ui.pickCharacter, ui.pickLength, pickedStake(ui.meta, ui.pickCharacter, ui.pickLength, ui.pickStake)))}</span>
       ${played ? `<span class="small daily-done">${esc(t(de.start.dailyDone, { result: runResult(played) }))}</span>` : ''}
     </div>
-    ${ui.board && ui.board.day === seed ? dailyBoard(ui.board, ui.account.user !== null, played !== undefined) : ''}
+    ${ui.board && ui.board.day === seed ? dailyBoard(ui.board, ui.account.user !== null, played !== undefined) : !ui.account.online ? `<p class="small board-offline" data-testid="board-offline">${esc(de.offline.board)}</p>` : ''}
     <button class="btn btn-wide" ${attrs({ 'data-action': 'play-daily' })}>${esc(t(de.start.dailyPlay, { name: shortName(ui.pickCharacter) }))}</button>
   </section>`;
 }
