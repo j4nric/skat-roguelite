@@ -20,6 +20,8 @@ export interface AccountView {
   user: AccountUser | null;
   status: SyncStatus;
   supported: boolean;
+  /** The browser is online; offline every button that needs the server is off. */
+  online: boolean;
 }
 
 function notice(error: string | null, note: string | null): string {
@@ -50,7 +52,8 @@ export function accountName(user: AccountUser): string {
 
 export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean, error: string | null, note: string | null): string {
   const user = account.user;
-  const disabled = busy ? 'disabled' : null;
+  const disabled = busy || !account.online ? 'disabled' : null;
+  const offline = account.online ? '' : `<p class="small is-warning" role="status" data-testid="account-offline">${esc(de.offline.account)}</p>`;
   if (!user) {
     const create = account.supported
       ? `<label class="account-field"><span>${esc(de.account.nameLabel)}</span>
@@ -63,6 +66,7 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
        <div class="sheet-body account-body" data-testid="account-sheet" data-state="out">
          <p>${esc(de.account.why)}</p>
          <p class="small">${esc(de.account.how)}</p>
+         ${offline}
          ${notice(error, note)}
          <div class="menu-list">
            ${create}
@@ -80,6 +84,7 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
      <div class="sheet-body account-body" data-testid="account-sheet" data-state="in">
        <p class="account-who"><span data-testid="account-who">${esc(t(de.account.signedInAs, { name: accountName(user) }))}</span> ${syncPill(account.status)}</p>
        ${account.status === 'outdated' ? `<p class="small is-warning">${esc(de.account.outdatedText)}</p>` : ''}
+       ${offline}
        ${notice(error, note)}
        <label class="account-field"><span>${esc(de.account.nameLabel)}</span>
          <span class="account-name-row">

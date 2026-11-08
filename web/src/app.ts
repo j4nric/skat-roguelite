@@ -33,6 +33,7 @@ import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
 import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, passkeysSupported, recover, register, renewRecoveryCode, setName, signIn, signOut, submitDaily, type AccountUser } from './account';
+import { isOnline, watchNetwork } from './offline';
 import { Sync, type Reconciled } from './sync';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
 import { maxStake, pickedStake } from './stake';
@@ -283,7 +284,7 @@ export class App {
     meta: null,
     settings: loadSettings(),
     ended: null,
-    account: { user: null, status: 'off', supported: passkeysSupported() },
+    account: { user: null, status: 'off', supported: passkeysSupported(), online: isOnline() },
     board: null,
   };
   /** The account and the sync of the stored progress (ADR 0021). */
@@ -434,6 +435,7 @@ export class App {
       if (document.visibilityState === 'hidden') void this.sync.push(true);
     });
     window.addEventListener('pagehide', () => void this.sync.push(true));
+    watchNetwork((online) => this.networkChanged(online));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
@@ -544,6 +546,17 @@ export class App {
     this.root.querySelectorAll<HTMLElement>('[data-testid="sync-status"]').forEach((el) => {
       el.outerHTML = syncPill(account.status, !el.parentElement?.closest('button'));
     });
+  }
+
+  /** Online or offline (DESIGN 14.5): the account buttons and the daily board follow. */
+  private networkChanged(online: boolean): void {
+    this.ui.account.online = online;
+    if (online) this.loadBoard(true);
+    const o = this.ui.overlay?.kind;
+    if (!this.ui.busy && (this.ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete')) {
+      this.overlayDirty = true;
+      this.render();
+    }
   }
 
   /** Ask the server who is signed in (the name may have changed elsewhere). */

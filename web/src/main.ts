@@ -2,6 +2,7 @@
 
 import './style.css';
 import { App } from './app';
+import { registerServiceWorker } from './offline';
 import { installSprite } from './ui/art';
 import { blinkJobs, portraitJobs } from './ui/people';
 import { preparePixelArt } from './ui/pixelate';
@@ -32,3 +33,5 @@ async function boot(el: HTMLElement): Promise<void> {
 if (root) {
   void boot(root);
 }
+// Offline play (DESIGN 14.5); production builds only.
+registerServiceWorker();

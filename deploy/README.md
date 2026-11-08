@@ -65,7 +65,7 @@ Solange die Secrets fehlen, überspringt der Deploy-Job den Server-Schritt mit e
 
 1. Tests und Lint wie in `ci.yml`.
 2. Simulator-Baseline erzeugen.
-3. Web-App bauen (`web/`, `npm run build`: Kern als WebAssembly plus Vite-Build) und `site/` aus `web/dist/` zusammenstellen. Commit und Datum stehen als Build-Info in der Fußzeile des Startbildschirms.
+3. Web-App bauen (`web/`, `npm run build`: Kern als WebAssembly plus Vite-Build) und `site/` aus `web/dist/` zusammenstellen. Commit und Datum stehen als Build-Info in der Fußzeile des Startbildschirms. Der Build enthält `sw.js`, den Service Worker für das Spielen ohne Netz (DESIGN 14.5); Caddy liefert ihn mit `Cache-Control: no-cache` aus. Dass `rsync --delete` die Dateien des alten Builds löscht, schadet nicht: Offene Tabs der alten Version holen sie aus ihrem Cache, und die neue Version meldet sich in der App mit „Neue Version verfügbar – neu laden“.
 4. Parallel dazu der Konto-Dienst (`server/`) als statisches musl-Binary (`x86_64-unknown-linux-musl`, SQLite eingebaut). Er läuft in einem schlichten `alpine`-Image, das Binary wird hineingemountet; auf dem Server wird nichts gebaut und kein eigenes Image gebraucht.
 5. `site/`, `server/stammtisch-server`, `docker-compose.yml`, `Caddyfile` und `up.sh` per `rsync` über SSH nach `/opt/skat`. `data/` wird nie synchronisiert oder gelöscht.
 6. `up.sh` auf dem Server: Netzwerk `stammtisch-proxy` anlegen, falls es fehlt; `data/` anlegen; `.env` mit der uid/gid des Deploy-Nutzers schreiben (der Dienst läuft als dieser Nutzer, die Datenbank gehört ihm); erst `web` starten (bei geänderter Caddyfile neu starten), dann `api` neu erzeugen und auf `/api/health` warten.

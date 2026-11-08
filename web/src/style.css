@@ -645,6 +645,42 @@ button.card {
   }
 }
 
+/* A new version is waiting (./offline.ts): stays until tapped or put
+   away with the cross, above everything, at the top so it never covers
+   the hand. */
+.update-toast {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  width: max-content;
+  max-width: 92vw;
+  transform: translateX(-50%);
+  border: var(--edge) solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow), 0 0 0 2px var(--accent);
+}
+
+.update-toast button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-toast .update-later {
+  padding: 6px 10px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- the run */
 
 /* A run screen fills the visible height exactly: head on top, the table
@@ -3969,6 +4005,13 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .daily .btn {
   grid-column: 1 / -1;
+}
+
+/* Offline (DESIGN 14.5): a line where the daily board would be. */
+.board-offline {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
 }
 
 .daily-text {
