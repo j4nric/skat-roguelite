@@ -292,6 +292,20 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Double-Dummy-Suche (alle Karten offen) | `ai::solver`, `solve`, `probe_with` | Alpha-Beta mit Transpositionstabelle |
 | Suchtiefe in Stichen | `depth` | Dahinter eine Ausspiel-Schätzung (`estimate`) |
 
+## Konto und Spielstand (ADR 0021)
+
+| Deutsch | Bezeichner | Anmerkung |
+|---|---|---|
+| Konto | `account` | Freiwillig. Server `server/` (Crate `stammtisch_server`, Binary `stammtisch-server`), Web `web/src/account.ts` (Aufrufe), `web/src/ui/account.ts` (Dialoge) |
+| Passkey | `passkey` | WebAuthn-Anmeldedaten, auffindbar (resident key); gespeichert wird nur der öffentliche Teil (Tabelle `passkeys`). Anmelden ohne Namen: `start_discoverable_authentication` |
+| Wiederherstellungscode | `recovery code` | 24 Zeichen Crockford-Base32 in sechs Vierergruppen; die ersten 8 Zeichen sind die öffentliche Kennung (`recovery_id`), der Rest liegt nur als argon2id-Hash vor (`recovery_hash`). Wird bei Gebrauch ersetzt. Modul `server/src/recovery.rs`, JSON `recoveryCode` |
+| Name am Stammtisch | `name` | Anzeigename des Kontos, 1 bis 24 Zeichen, nicht eindeutig (`clean_name`) |
+| Gesicherter Spielstand (Text) | save code | `STAMMTISCH1:…`, `web/src/savecode.ts`; derselbe Text liegt als undurchsichtiger Blob im Konto (Tabelle `saves`) |
+| Abgleich | `Sync` | `web/src/sync.ts`: `reconcile` (Start, nach dem Anmelden), `push` (nach jeder Kneipe, am Ende des Runs, beim Verlassen der Seite) |
+| Konflikt | `SyncConflict` | Beide Seiten haben sich seit dem letzten Abgleich geändert (Server: HTTP 409 bei falscher `ifVersion`); der Spieler wählt |
+| Tages-Seed | `dailySeed` | Datum als JJJJMMTT (`web/src/seed.ts`) |
+| Tafel des Tages | `DailyBoard` | Bestenliste eines Tages-Seeds, Tabelle `daily_results`, das erste Ergebnis je Konto und Tag zählt |
+
 ## Hook-API und Wertung mit Relikten
 
 | Deutsch | Bezeichner | Anmerkung |

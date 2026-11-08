@@ -700,13 +700,21 @@ async function storedMeta(page) {
   return JSON.parse(raw);
 }
 
-/** Collect console errors of a page. */
+/**
+ * Collect console errors of a page. The account server (/api, ADR 0021) is
+ * not part of the smoke test: without it the start screen's daily board
+ * request fails (vite preview proxies to a server that is not running),
+ * and the game must work as before.
+ */
 function watch(page, errors) {
+  const isApi = (url) => /\/api\//.test(url ?? '');
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
+    if (msg.type() === 'error' && !isApi(msg.location()?.url)) errors.push(`console: ${msg.text()}`);
   });
   page.on('pageerror', (err) => errors.push(`page: ${err.message}`));
-  page.on('requestfailed', (req) => errors.push(`request failed: ${req.url()}`));
+  page.on('requestfailed', (req) => {
+    if (!isApi(req.url())) errors.push(`request failed: ${req.url()}`);
+  });
 }
 
 /**

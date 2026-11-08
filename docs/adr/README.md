@@ -26,3 +26,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0018 | Der Faktor als dritte Stufe der Wertung | Angenommen, Zahlen vorläufig |
 | 0019 | Keine Leben: Eine verlorene Kneipe beendet den Abend | Angenommen, ersetzt den Lebens-Teil von 0016 und 0017, Zahlen vorläufig |
 | 0020 | Die lange Nacht: Endlos-Modus nach dem Alten | Angenommen, Zahlen vorläufig |
+| 0021 | Konten mit Passkey und Spielstand auf dem Server | Angenommen, ändert DESIGN 9.3 (Speichern nur im Browser) |

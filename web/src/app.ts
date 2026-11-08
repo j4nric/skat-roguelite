@@ -32,6 +32,8 @@ import { de, cardName, consumableMod, contentName, face, modKind, relicCounters,
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
+import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, passkeysSupported, recover, register, renewRecoveryCode, setName, signIn, signOut, submitDaily, type AccountUser } from './account';
+import { Sync, type Reconciled } from './sync';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
 import { maxStake, pickedStake } from './stake';
 import {
@@ -54,6 +56,7 @@ import {
 } from './storage';
 import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
+import { syncPill } from './ui/account';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
@@ -83,6 +86,20 @@ import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoic
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { declarationSign, discardNeed, renderTable } from './ui/table';
+
+/** Session flag: the page was reloaded to take the account's state (a note after the reload). */
+const LOADED_NOTE = 'stammtisch-sync-loaded';
+
+/** Whether the account's state was just taken (read once). */
+function takeLoadedNote(): boolean {
+  try {
+    const set = window.sessionStorage.getItem(LOADED_NOTE) === '1';
+    window.sessionStorage.removeItem(LOADED_NOTE);
+    return set;
+  } catch {
+    return false;
+  }
+}
 
 /** The stable code of a core error (JSON `{code, message}`), if any. */
 function errorCode(err: unknown): string | null {
@@ -264,7 +281,15 @@ export class App {
     meta: null,
     settings: loadSettings(),
     ended: null,
+    account: { user: null, status: 'off', supported: passkeysSupported() },
+    board: null,
   };
+  /** The account and the sync of the stored progress (ADR 0021). */
+  private readonly sync: Sync;
+  /** The day whose daily board was asked for in this visit. */
+  private boardDay = '';
+  /** What signing in with the recovery code brought, acted on once its code was seen. */
+  private pendingSync: Reconciled = 'none';
   private fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
@@ -386,6 +411,14 @@ export class App {
       window.clearTimeout(settle);
       settle = window.setTimeout(() => this.positionHint(), 100);
     });
+    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, changed: () => this.accountChanged() });
+    this.ui.account.user = this.sync.user;
+    this.ui.account.status = this.sync.status;
+    // Leaving the page (tab switch, app to the background, closing): upload what changed.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') void this.sync.push(true);
+    });
+    window.addEventListener('pagehide', () => void this.sync.push(true));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
@@ -438,6 +471,9 @@ export class App {
       this.render();
       return;
     }
+    // Signed in: compare with the account before anything is read from storage.
+    let synced: Reconciled = 'none';
+    if (this.sync.signedIn) synced = await this.sync.reconcile(5000);
     this.loadMetaState();
     this.readShareHash();
     window.addEventListener('hashchange', () => {
@@ -445,6 +481,280 @@ export class App {
       if (this.ui.screen === 'start') this.render();
     });
     this.toStart();
+    if (synced === 'applied' || takeLoadedNote()) this.showToast(de.account.loadedFromServer);
+    if (synced === 'conflict') this.openConflict();
+    void this.refreshAccount();
+  }
+
+  // -------------------------------------------------------------------------
+  // Account and sync (ADR 0021). Transport only: the save is the save code.
+  // -------------------------------------------------------------------------
+
+  /** The sync changed: show the new status (and the account, if it changed). */
+  private accountChanged(): void {
+    const account = this.ui.account;
+    const userChanged = account.user !== this.sync.user;
+    account.user = this.sync.user;
+    account.status = this.sync.status;
+    if (this.sync.status === 'conflict' && this.ui.overlay?.kind !== 'sync-conflict' && this.ui.screen === 'run') {
+      this.showToast(de.account.conflictToast);
+    }
+    if (userChanged && !this.ui.busy && this.ui.screen !== 'loading') {
+      this.overlayDirty = true;
+      this.render();
+      return;
+    }
+    // Only the small status word: no re-render (a name may be being typed).
+    this.root.querySelectorAll<HTMLElement>('[data-testid="sync-status"]').forEach((el) => {
+      el.outerHTML = syncPill(account.status, !el.parentElement?.closest('button'));
+    });
+  }
+
+  /** Ask the server who is signed in (the name may have changed elsewhere). */
+  private async refreshAccount(): Promise<void> {
+    if (!this.sync.signedIn) return;
+    try {
+      const user = await fetchMe();
+      if (user) this.sync.updateUser(user);
+      else this.sync.forget();
+    } catch {
+      // Offline: the status says so.
+    }
+  }
+
+  /** Today's daily board, once per visit and day (and again after a result). */
+  private loadBoard(force = false): void {
+    const day = dailySeed();
+    if (!force && this.boardDay === day) return;
+    this.boardDay = day;
+    fetchDailyBoard(day).then(
+      (board) => {
+        this.ui.board = board;
+        if (this.ui.screen === 'start' && !this.ui.busy) this.render();
+      },
+      () => {
+        // No server (local preview, offline): no board.
+        this.ui.board = null;
+      },
+    );
+  }
+
+  /** A finished daily run of a signed-in player goes on the board. */
+  private submitDailyResult(view: RunView): void {
+    if (!this.sync.signedIn) return;
+    submitDaily({
+      day: view.seed,
+      character: view.character.character,
+      won: view.phase === 'Won',
+      section: view.series.section + 1,
+      series: view.series.index + 1,
+      stake: view.stake ?? 0,
+      bestGame: view.stats.best_game,
+    }).then(
+      (res) => {
+        if (res.stored && res.me) this.showToast(t(de.board.submitted, { rank: res.me.rank }));
+        this.loadBoard(true);
+      },
+      (err: unknown) => console.warn('daily result not sent', err),
+    );
+  }
+
+  private accountError(err: unknown): string {
+    const code = err instanceof AccountError ? err.code : 'default';
+    return de.account.errors[code] ?? de.account.errors.default ?? '';
+  }
+
+  private openAccount(note: string | null = null, error: string | null = null): void {
+    this.ui.overlay = { kind: 'account', busy: false, error, note };
+    this.render();
+  }
+
+  /** Run an account call with the sheet showing "Einen Moment …". */
+  private async accountBusy<T>(work: () => Promise<T>): Promise<T | null> {
+    const o = this.ui.overlay;
+    if (o && (o.kind === 'account' || o.kind === 'account-recover' || o.kind === 'account-delete')) {
+      if (o.busy) return null;
+      this.ui.overlay = { ...o, busy: true, error: null };
+      this.render();
+    }
+    try {
+      return await work();
+    } catch (err) {
+      const now = this.ui.overlay;
+      const error = this.accountError(err);
+      if (now && (now.kind === 'account' || now.kind === 'account-recover' || now.kind === 'account-delete')) {
+        this.ui.overlay = { ...now, busy: false, error };
+        this.render();
+      } else {
+        this.showToast(error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Signed in: compare the stored progress with the account. A state from
+   * the account is taken by reloading the page (after the recovery code
+   * was seen); a conflict asks the player.
+   */
+  private async afterSignIn(user: AccountUser): Promise<Reconciled> {
+    this.sync.signedInAs(user);
+    const result = await this.sync.reconcile();
+    this.loadBoard(true);
+    return result;
+  }
+
+  /** Reload to start from the account's state, with a note after the reload. */
+  private reloadWithAccountState(): void {
+    try {
+      window.sessionStorage.setItem(LOADED_NOTE, '1');
+    } catch {
+      // The note is lost, the state is not.
+    }
+    window.location.reload();
+  }
+
+  private async createAccount(): Promise<void> {
+    const name = this.root.querySelector<HTMLInputElement>('#account-name')?.value.trim() ?? '';
+    const res = await this.accountBusy(() => register(name || null));
+    if (!res) return;
+    await this.afterSignIn(res.user);
+    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'new', copied: null };
+    this.render();
+  }
+
+  private async signInWithPasskey(): Promise<void> {
+    const res = await this.accountBusy(() => signIn());
+    if (!res) return;
+    const synced = await this.afterSignIn(res.user);
+    if (synced === 'applied') {
+      this.reloadWithAccountState();
+      return;
+    }
+    if (synced === 'conflict') {
+      this.openConflict();
+      return;
+    }
+    this.openAccount(t(de.account.signedInAs, { name: res.user.name ?? de.account.noName }));
+  }
+
+  private async recoverWithCode(): Promise<void> {
+    const code = this.root.querySelector<HTMLInputElement>('#recover-code')?.value ?? '';
+    const res = await this.accountBusy(() => recover(code));
+    if (!res) return;
+    this.pendingSync = await this.afterSignIn(res.user);
+    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'recovered', copied: null };
+    this.render();
+  }
+
+  /** The recovery code was seen: go on with what signing in brought. */
+  private codeDone(): void {
+    const pending = this.pendingSync;
+    this.pendingSync = 'none';
+    if (pending === 'applied') {
+      this.reloadWithAccountState();
+      return;
+    }
+    if (pending === 'conflict' && this.sync.conflict) {
+      this.openConflict();
+      return;
+    }
+    this.openAccount();
+  }
+
+  private copyRecoveryCode(): void {
+    const o = this.ui.overlay;
+    if (o?.kind !== 'account-code') return;
+    const done = (ok: boolean): void => {
+      if (this.ui.overlay !== o) return;
+      this.ui.overlay = { ...o, copied: ok };
+      this.render();
+    };
+    try {
+      navigator.clipboard.writeText(o.code).then(
+        () => done(true),
+        () => done(false),
+      );
+    } catch {
+      done(false);
+    }
+  }
+
+  private async addPasskeyHere(): Promise<void> {
+    const fromCode = this.ui.overlay?.kind === 'account-code';
+    if (fromCode) this.openAccount();
+    const res = await this.accountBusy(() => addPasskey());
+    if (!res) return;
+    this.sync.updateUser(res.user);
+    if (fromCode && this.pendingSync !== 'none') {
+      this.codeDone();
+      return;
+    }
+    this.openAccount(de.account.passkeyAdded);
+  }
+
+  private async saveName(): Promise<void> {
+    const name = this.root.querySelector<HTMLInputElement>('#account-name')?.value ?? '';
+    const res = await this.accountBusy(() => setName(name));
+    if (!res) return;
+    this.sync.updateUser(res.user);
+    this.loadBoard(true);
+    this.openAccount(de.account.nameSaved);
+  }
+
+  private async newRecoveryCode(): Promise<void> {
+    const res = await this.accountBusy(() => renewRecoveryCode());
+    if (!res) return;
+    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'renewed', copied: null };
+    this.render();
+  }
+
+  private async signOutHere(): Promise<void> {
+    // Upload what is new first; then the device forgets the account.
+    const res = await this.accountBusy(async () => {
+      await this.sync.push();
+      await signOut();
+      return true;
+    });
+    if (!res) return;
+    this.sync.forget();
+    this.loadBoard(true);
+    this.openAccount(de.account.signedOut);
+  }
+
+  private async deleteAccountNow(): Promise<void> {
+    const res = await this.accountBusy(async () => {
+      await deleteAccount();
+      return true;
+    });
+    if (!res) return;
+    this.sync.forget();
+    this.loadBoard(true);
+    this.openAccount(de.account.deleted);
+  }
+
+  /** Played on two devices: show both states and let the player choose. */
+  private openConflict(): void {
+    const c = this.sync.conflict;
+    if (!c) return;
+    this.ui.overlay = {
+      kind: 'sync-conflict',
+      here: { at: c.localAt, lines: this.describeKeys(c.localKeys) ?? [] },
+      server: { at: c.server.updatedAt, lines: this.describeKeys(c.serverKeys) ?? [] },
+    };
+    this.render();
+  }
+
+  private async keepHere(): Promise<void> {
+    this.ui.overlay = null;
+    this.render();
+    await this.sync.keepLocal();
+    if (this.sync.status === 'saved') this.showToast(de.account.keptHere);
+  }
+
+  private keepServer(): void {
+    if (this.sync.takeServer()) this.reloadWithAccountState();
+    else this.showToast(de.save.errors.write ?? '');
   }
 
   /** Offer the seed of a shared link (`#seed-…`), if the address has one. */
@@ -554,6 +864,7 @@ export class App {
       }
     }
     this.ui.screen = 'start';
+    this.loadBoard();
     this.render();
   }
 
@@ -715,6 +1026,7 @@ export class App {
       date: new Date().toISOString(),
       daily: info?.seed === view.seed && info.daily,
     });
+    if (info?.seed === view.seed && info.daily) this.submitDailyResult(view);
   }
 
   /** Copy the link of a seed; on failure show it to be copied by hand. */
@@ -880,12 +1192,24 @@ export class App {
     if (!decoded.ok) return { error: de.save.errors[decoded.error] ?? '' };
     const { run, meta } = runAndMetaOf(decoded.keys);
     if (!run && !meta) return { error: de.save.errors.nothing ?? '' };
+    const lines = this.describeKeys(decoded.keys);
+    if (!lines) return { error: de.save.errors.rejected ?? '' };
+    return { keys: decoded.keys, lines };
+  }
+
+  /**
+   * What a set of stored keys holds, in lines for the player (running run,
+   * Vereinsbuch), or null if the core cannot load its run or meta state.
+   */
+  private describeKeys(keys: Record<string, string>): string[] | null {
+    const { run, meta } = runAndMetaOf(keys);
     const lines: string[] = [];
     try {
       if (run) {
         const core = CoreRun.load(run);
         try {
-          lines.push(t(de.save.containsRun, { line: runLine(core.view()) }));
+          const view = core.view();
+          lines.push(t(de.save.containsRun, { line: `${runLine(view)} · ${de.end.seed} ${view.seed}` }));
         } finally {
           core.dispose();
         }
@@ -908,10 +1232,10 @@ export class App {
         }
       }
     } catch (err) {
-      console.warn('save code rejected by the core', err);
-      return { error: de.save.errors.rejected ?? '' };
+      console.warn('stored state rejected by the core', err);
+      return null;
     }
-    return { keys: decoded.keys, lines };
+    return lines;
   }
 
   /** Replace everything stored by the checked code and start over with it. */
@@ -1075,6 +1399,8 @@ export class App {
     let view = before;
     let step = first;
     let earned: string[] = [];
+    // A pub ended (won, lost, the run over): the account gets the new state.
+    let pubEnded = false;
     try {
       for (;;) {
         if (!step) {
@@ -1094,6 +1420,7 @@ export class App {
           }
         }
         view = step.view;
+        if (step.events.some((e) => typeof e === 'object' && ('SeriesWon' in e || 'RunWon' in e || 'RunLost' in e))) pubEnded = true;
         if (view.phase === 'Won' || view.phase === 'Lost') {
           clearRun();
           // A night that ends (ADR 0020) is no run of its own: the win
@@ -1115,6 +1442,7 @@ export class App {
         step = null;
       }
     } finally {
+      if (pubEnded) void this.sync.push();
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.thinking = null;
@@ -2555,6 +2883,58 @@ export class App {
         if (this.ui.busy) return;
         this.ui.overlay = { kind: 'save-menu' };
         this.render();
+        return;
+      case 'account':
+        if (this.ui.busy) return;
+        this.openAccount();
+        return;
+      case 'account-create':
+        void this.createAccount();
+        return;
+      case 'account-signin':
+        void this.signInWithPasskey();
+        return;
+      case 'account-recover':
+        this.ui.overlay = { kind: 'account-recover', busy: false, error: null };
+        this.render();
+        return;
+      case 'account-recover-go':
+        void this.recoverWithCode();
+        return;
+      case 'account-code-copy':
+        this.copyRecoveryCode();
+        return;
+      case 'account-code-done':
+        this.codeDone();
+        return;
+      case 'account-add-passkey':
+        void this.addPasskeyHere();
+        return;
+      case 'account-name-save':
+        void this.saveName();
+        return;
+      case 'account-new-code':
+        void this.newRecoveryCode();
+        return;
+      case 'account-signout':
+        void this.signOutHere();
+        return;
+      case 'account-delete':
+        this.ui.overlay = { kind: 'account-delete', busy: false, error: null };
+        this.render();
+        return;
+      case 'account-delete-go':
+        void this.deleteAccountNow();
+        return;
+      case 'sync-conflict':
+        if (this.ui.busy) return;
+        this.openConflict();
+        return;
+      case 'sync-keep-here':
+        void this.keepHere();
+        return;
+      case 'sync-keep-server':
+        this.keepServer();
         return;
       case 'save-export':
         if (this.ui.busy || overlay?.kind !== 'save-menu') return;
