@@ -5107,6 +5107,180 @@ async function nightPass(browser, errors, viewport) {
 }
 
 /**
+ * Die Einführung (DESIGN 16.1; alone with SMOKE_ONLY=tutorial): a new
+ * player is offered it on the start screen, plays the guided pub with the
+ * fixed deals of tutorial.ron as the Wirt suggests (Eichel after the skat
+ * pressing both Schellen, Null pressing both Daus, Grand Hand), every
+ * coach bubble pointing at something on screen and inside the viewport,
+ * then the card reward, the way and the Tresen are explained and "Zum
+ * Start" ends it. Nothing of it is stored: no run, no history, the meta
+ * state unchanged. On the phone a run in progress is stored first; the
+ * Einführung, skipped half-way, leaves it untouched.
+ */
+async function tutorialPass(browser, errors, viewport, shotDir = null) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', deviceScaleFactor: shotDir ? 2 : 1 });
+  const page = await context.newPage();
+  watch(page, errors);
+  const snap = async (name) => {
+    if (!shotDir) return;
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: join(shotDir, `${name}-${tag}.png`) });
+    log(`tutorial ${tag}: screenshot ${name}`);
+  };
+  const keep = async () =>
+    page.evaluate(() => {
+      const out = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings') out[k] = localStorage.getItem(k);
+      }
+      return out;
+    });
+  await page.goto(base);
+  await page.waitForSelector('[data-testid="tutorial-offer"]', { timeout: 10000 }).catch(() => fail(`tutorial ${tag}: no offer for a new player`));
+  const before = await keep();
+  await page.click('[data-testid="tutorial-offer-play"]');
+  await page.waitForSelector('[data-testid="coach"]', { timeout: 10000 }).catch(() => fail(`tutorial ${tag}: no coach after starting`));
+  const seen = [];
+  const shots = { goal: 'tutorial-goal', press: 'tutorial-press', score: 'tutorial-score', evening: 'tutorial-evening', trump: 'tutorial-trump' };
+  for (let i = 0; i < 400; i++) {
+    await page.waitForTimeout(120);
+    const coach = page.locator('[data-testid="coach"]');
+    const step = (await coach.count()) ? await coach.getAttribute('data-step') : null;
+    if (step && seen[seen.length - 1] !== step) {
+      seen.push(step);
+      // The bubble is inside the viewport; a ring sits on what it talks about.
+      const box = await page.locator('.coach-main').boundingBox();
+      if (!box || box.y < 0 || box.y + box.height > viewport.height + 1 || box.x < 0 || box.x + box.width > viewport.width + 1) fail(`tutorial ${tag}: bubble "${step}" leaves the viewport: ${JSON.stringify(box)}`);
+      const ring = await page.locator('.coach-ring').boundingBox().catch(() => null);
+      if (ring && box.y < ring.y + ring.height - 6 && box.y + box.height > ring.y + 6 && step !== 'evening') {
+        // A bubble over its own target would hide it: only allowed when there is no room.
+        log(`tutorial ${tag}: note: bubble "${step}" overlaps its ring`);
+      }
+      const text = ((await page.locator('.coach-text').textContent()) ?? '').trim();
+      if (text.length < 20) fail(`tutorial ${tag}: step "${step}" has no text`);
+      if (shots[step]) await snap(shots[step]);
+    }
+    const sheet = page.locator('[data-action="score-continue"]');
+    if (step === 'evening') break;
+    const kind = step ? await coach.getAttribute('data-kind') : null;
+    if (kind === 'info') {
+      if (viewport.width >= 1000) {
+        // On the desktop by keyboard: Space goes on with the Wirt and
+        // presses nothing else (keys.ts would press the main button).
+        await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+        const screen = await page.evaluate(() => document.querySelector('.run')?.className ?? '');
+        await page.keyboard.press(' ');
+        await page.waitForFunction((was) => document.querySelector('[data-testid="coach"]')?.getAttribute('data-step') !== was, step, { timeout: 5000 }).catch(() => fail(`tutorial ${tag}: Space did not go on from "${step}"`));
+        const now = await page.evaluate(() => document.querySelector('.run')?.className ?? '');
+        if (step === 'goal' && now !== screen) fail(`tutorial ${tag}: Space on "${step}" changed the screen too`);
+      } else {
+        await page.click('[data-testid="coach-next"]');
+      }
+      continue;
+    }
+    if (step === 'skat' || step === 'nullSkat') {
+      await page.click('[data-testid="skat-pile"]');
+      await page.waitForSelector('[data-testid="skat-zone"]');
+      continue;
+    }
+    if (step === 'press') {
+      // Eichel-Zehn back to the hand, Schellen-8 onto the table: Schellen 7 and 8 pressed.
+      await page.click('.skat-card[data-id="27"]');
+      await page.click('.hand-card[data-id="1"]');
+      await page.click('[data-testid="discard"]:not([disabled])');
+      continue;
+    }
+    if (step === 'nullPress' || step === 'pressGeneric') {
+      await page.click('[data-testid="discard"]:not([disabled])');
+      continue;
+    }
+    if (step === 'pickClubs' || step === 'grandPick' || step === 'nullPick') {
+      const sel = await page.evaluate(() => {
+        const ring = document.querySelector('.coach-ring');
+        const r = ring?.getBoundingClientRect();
+        if (!r) return null;
+        const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.game-btn');
+        return el ? el.getAttribute('data-index') : null;
+      });
+      if (sel === null) fail(`tutorial ${tag}: the ring of "${step}" is not on a Spielart`);
+      await page.click(`.game-btn[data-index="${sel}"]`);
+      continue;
+    }
+    if (step === 'declareGo') {
+      await page.click('[data-action="declare"]:not([disabled]), [data-action="declare-null"]:not([disabled])');
+      continue;
+    }
+    if (step === 'grandHand') {
+      await page.click('[data-action="play-hand"]');
+      continue;
+    }
+    // No step to act on: play on as the table asks.
+    if (await sheet.count()) {
+      // The Wirt's word on the board comes with it: give it a moment.
+      await page.waitForTimeout(300);
+      if (await page.locator('[data-testid="coach"]').count()) continue;
+      if (await page.locator('[data-action="score-skip"].btn').count()) await page.locator('[data-action="score-skip"].btn').click();
+      await page.click('[data-action="score-continue"]');
+      continue;
+    }
+    if (await page.locator('[data-testid="card-reward"]').count()) {
+      if (!seen.includes('pubWon')) fail(`tutorial ${tag}: the card reward came without the Wirt's word on Zinken`);
+      await takeCardReward(page);
+      continue;
+    }
+    const declare = page.locator('[data-action="declare"]:not([disabled]), [data-action="declare-null"]:not([disabled])');
+    if (await declare.count()) {
+      if (await page.locator('[data-testid="coach"]').count()) continue;
+      await declare.first().click();
+      continue;
+    }
+    const play = page.locator('.hand [data-action="play"]');
+    if (await play.count()) {
+      // The table and the Wirt come back together: let him speak first.
+      if (await page.locator('[data-testid="coach"]').count()) continue;
+      await play.first().click();
+      continue;
+    }
+  }
+  const lessons = ['goal', 'hand', 'skat', 'pressWhy', 'press', 'ansage', 'pickClubs', 'declareGo', 'trump', 'follow', 'augen', 'value', 'score', 'nullIntro', 'nullPress', 'nullPick', 'nullPlay', 'nullScore', 'grandIntro', 'grandHand', 'grandPick', 'grandPlay', 'pubWon', 'route', 'tresen', 'evening'];
+  const missing = lessons.filter((id) => !seen.includes(id));
+  if (missing.length) fail(`tutorial ${tag}: lessons not shown: ${missing.join(', ')} (seen ${seen.join(', ')})`);
+  log(`tutorial ${tag}: ${seen.length} steps: ${seen.join(', ')}`);
+  // The Wirt's regular hints stay away during the Einführung.
+  if (await page.locator('[data-testid="hint"]').count()) fail(`tutorial ${tag}: a regular hint over the coach`);
+  await page.click('[data-testid="coach-finish-start"]');
+  await page.waitForSelector('[data-testid="tutorial-start"]', { timeout: 10000 }).catch(() => fail(`tutorial ${tag}: "Zum Start" did not lead to the start screen`));
+  if (await page.locator('[data-testid="tutorial-offer"]').count()) fail(`tutorial ${tag}: the offer comes again after the Einführung`);
+  if (await page.locator('[data-action="resume"]').count()) fail(`tutorial ${tag}: the Einführung left a run to resume`);
+  const after = await keep();
+  if (JSON.stringify(after) !== JSON.stringify(before)) fail(`tutorial ${tag}: storage changed: ${JSON.stringify(Object.keys(after))} vs ${JSON.stringify(Object.keys(before))}`);
+  log(`tutorial ${tag}: played through, nothing stored`);
+
+  if (shotDir || viewport.width < 1000) {
+    // A run in progress survives the Einführung.
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('.declare');
+    await page.goto(base);
+    await page.waitForSelector('[data-action="resume"]');
+    const run = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+    await page.click('[data-testid="tutorial-start"]');
+    await page.waitForSelector('[data-testid="coach"]');
+    await page.click('[data-testid="coach-next"]');
+    await page.click('[data-testid="coach-skip"]');
+    await page.waitForSelector('[data-action="resume"]', { timeout: 10000 }).catch(() => fail(`tutorial ${tag}: no resume after skipping`));
+    const still = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+    if (still !== run) fail(`tutorial ${tag}: the run in progress changed`);
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('.declare');
+    if (await page.locator('[data-testid="coach"]').count()) fail(`tutorial ${tag}: the coach followed into the real run`);
+    log(`tutorial ${tag}: skipped half-way, the run in progress stayed`);
+  }
+  await context.close();
+}
+
+/**
  * "Teilen" on the end screen (shareRunPass, 390 × 844 and 1280 × 800):
  * a won run (the last boss pub, patched from boss-table.json, with five
  * relics) draws its picture; without a share sheet it is saved as a PNG
@@ -5394,6 +5568,12 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'doppel') {
       await zinkenV2Pass(browser, errors, PHONE);
       await zinkenV2Pass(browser, errors, DESKTOP);
+      return;
+    }
+    // SMOKE_ONLY=tutorial: the Einführung (DESIGN 16.1).
+    if (process.env.SMOKE_ONLY === 'tutorial') {
+      await tutorialPass(browser, errors, PHONE, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
+      await tutorialPass(browser, errors, DESKTOP, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
       return;
     }
     if (process.env.SMOKE_ONLY === 'qol') {
@@ -5737,6 +5917,8 @@ async function run() {
     await nightPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
+    await tutorialPass(browser, errors, PHONE);
+    await tutorialPass(browser, errors, DESKTOP);
     await qolPass(browser, errors, PHONE);
     await qolPass(browser, errors, DESKTOP);
     await handSortPass(browser, errors, PHONE);

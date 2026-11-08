@@ -2156,6 +2156,11 @@ pub struct RunStart {
     /// `61 + stake` Augen. 0 is the normal game.
     #[serde(default)]
     pub stake: u32,
+    /// The Einführung (DESIGN 16.1): the first pub has the Zielwert and
+    /// the fixed deals of `tutorial.ron` and no Einmischen. Use
+    /// [`Run::new_tutorial`], which also takes the tutorial's seed.
+    #[serde(default)]
+    pub tutorial: bool,
 }
 
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
@@ -2292,9 +2297,39 @@ pub struct Run {
     /// The long night after der Alte (ADR 0020), once the player continued.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     night: Option<night::NightState>,
+    /// The Einführung (DESIGN 16.1, [`RunStart::tutorial`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    tutorial: bool,
 }
 
 impl Run {
+    /// Start the Einführung (DESIGN 16.1): a run of the Alleinspieler with
+    /// the seed of `tutorial.ron` whose first pub deals the fixed games of
+    /// that file, with its Zielwert and without Einmischen. It needs no
+    /// meta state; the web app keeps it out of the statistics and saves.
+    pub fn new_tutorial(content: &Content) -> Result<(Run, Vec<RunEvent>), RunError> {
+        Run::new_with(
+            content,
+            content.tutorial.seed,
+            &RunStart {
+                tutorial: true,
+                ..RunStart::default()
+            },
+        )
+    }
+
+    /// Whether this run is the Einführung.
+    #[must_use]
+    pub fn is_tutorial(&self) -> bool {
+        self.tutorial
+    }
+
+    /// Whether the pub in progress is the guided pub of the Einführung
+    /// (the first pub of the run).
+    fn in_tutorial_pub(&self) -> bool {
+        self.tutorial && self.series.section == 0 && self.series.index == 0
+    }
+
     /// Start a run: the first series begins and its first game is dealt.
     /// Should the defenders move first (a Ramsch from a start relic), they
     /// have played when this returns, as after [`Run::apply`].
@@ -2418,6 +2453,7 @@ impl Run {
             reward_rng: master.fork(),
             card_reward: None,
             night: None,
+            tutorial: start.tutorial,
         };
         let mut events = Vec::new();
         run.start_series(content, start.section, start.index, &mut events)?;
@@ -4235,6 +4271,9 @@ impl Run {
         }
         let plan = std::mem::take(&mut self.next_pub);
         target = plan.apply_to(target);
+        if self.tutorial && section == 0 && index == 0 {
+            target = content.tutorial.target;
+        }
         let redeals_withheld = plan.redeals.min(0).unsigned_abs();
         let malus = spelunke.as_ref().map(|s| s.malus.clone());
         self.series = Series {
@@ -4333,12 +4372,40 @@ impl Run {
         }
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
         let mut rng = self.deal_rng.fork();
-        let game = Game::deal_editions_keeping(
-            &mut rng,
-            resolved.clone().map(|r| r.cards),
-            forehand,
-            keep,
-        )?;
+        // The Einführung deals its fixed games (DESIGN 16.1); the generator
+        // is forked all the same, so everything drawn after stays put.
+        let fixed = self
+            .in_tutorial_pub()
+            .then(|| {
+                content
+                    .tutorial
+                    .deals
+                    .get(self.series.games_played as usize)
+            })
+            .flatten();
+        let game = if let Some(deal) = fixed {
+            let kinds = |cards: &[Card]| -> Vec<CardKind> {
+                cards.iter().map(|&c| CardKind::Normal(c)).collect()
+            };
+            let skat = [deal.skat[0], deal.skat[1]].map(CardKind::Normal);
+            fixed_game(
+                &resolved,
+                [
+                    &kinds(&deal.player),
+                    &kinds(&deal.left),
+                    &kinds(&deal.right),
+                ],
+                skat,
+                Seat::from_index(deal.forehand).unwrap_or(Seat::DECLARER),
+            )?
+        } else {
+            Game::deal_editions_keeping(
+                &mut rng,
+                resolved.clone().map(|r| r.cards),
+                forehand,
+                keep,
+            )?
+        };
         self.install_game(content, game, &resolved, boss_editions, events);
         self.peek(&mut rng, events);
         // "Untot": the substitutes come from the game's generator, after
@@ -4516,24 +4583,7 @@ impl Run {
     ) {
         let global = self.sources(content, false);
         let (resolved, boss_editions) = self.resolve_editions(content, &global);
-        let editions = resolved.clone().map(|r| r.cards);
-        // By the printed card: "Winkel" changes the kind of a dealt card.
-        let printed = Edition::standard();
-        let pick = |seat: usize, kind: CardKind| -> DealtCard {
-            let id = printed
-                .cards()
-                .iter()
-                .find(|c| c.kind == kind)
-                .expect("printed card")
-                .id;
-            *editions[seat]
-                .iter()
-                .find(|c| c.id == id)
-                .expect("card in the deck")
-        };
-        let hands = [0, 1, 2].map(|seat| hands[seat].iter().map(|&k| pick(seat, k)).collect());
-        let skat = skat.map(|k| pick(0, k));
-        let game = Game::with_editions(hands, skat, editions, forehand).expect("valid deal");
+        let game = fixed_game(&resolved, hands, skat, forehand).expect("valid deal");
         self.install_game(content, game, &resolved, boss_editions, events);
     }
 
@@ -4799,9 +4849,11 @@ impl Run {
         content: &Content,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        // A boss pub plays all its games (ADR 0017); the target counts
-        // after the last.
-        let early = !self.series.is_boss_pub() || self.series.games_left() == 0;
+        // A boss pub plays all its games (ADR 0017), and so does the
+        // Einführung (DESIGN 16.1: every lesson is dealt); the target
+        // counts after the last.
+        let plays_all = self.series.is_boss_pub() || self.in_tutorial_pub();
+        let early = !plays_all || self.series.games_left() == 0;
         if early && self.series.target_reached() {
             return self.series_won(content, events);
         }
@@ -6376,7 +6428,7 @@ impl Run {
     /// progress: `run.ron` and the character ([`Content::redeals`]) plus
     /// one per "Schieben" in force ([`GameRules::extra_redeals`]).
     fn redeal_allowance(&self, content: &Content) -> u32 {
-        if self.malus(content).is_some_and(|m| m.no_redeal) {
+        if self.malus(content).is_some_and(|m| m.no_redeal) || self.in_tutorial_pub() {
             return 0;
         }
         let extra = self.game.as_ref().map_or(0, |a| a.rules.extra_redeals);
@@ -6399,13 +6451,51 @@ impl Run {
     /// [`Run::accepts`]`(`[`RunAction::Redeal`]`)`.
     #[must_use]
     pub fn redeals_left(&self, content: &Content) -> u32 {
-        if self.game.is_none() || self.malus(content).is_some_and(|m| m.no_redeal) {
+        if self.game.is_none()
+            || self.malus(content).is_some_and(|m| m.no_redeal)
+            || self.in_tutorial_pub()
+        {
             return 0;
         }
         self.redeal_allowance(content)
             .saturating_sub(self.series.redeals_in_game)
             .saturating_add(self.series.extra_redeals)
     }
+}
+
+/// A game dealt by hand: every card in the edition of the seat that gets
+/// it (the skat in the player's), found by its printed face ("Winkel"
+/// changes the kind of a dealt card). Fails if a card is not in a deck.
+fn fixed_game(
+    resolved: &[crate::content::ResolvedDeck; 3],
+    hands: [&[CardKind]; 3],
+    skat: [CardKind; 2],
+    forehand: Seat,
+) -> Result<Game<DealtCard>, RunError> {
+    let editions = resolved.clone().map(|r| r.cards);
+    let printed = Edition::standard();
+    let pick = |seat: usize, kind: CardKind| -> Result<DealtCard, RunError> {
+        let missing = || RunError::UnknownContent(format!("card {kind} in the deal"));
+        let id = printed
+            .cards()
+            .iter()
+            .find(|c| c.kind == kind)
+            .ok_or_else(missing)?
+            .id;
+        editions[seat]
+            .iter()
+            .find(|c| c.id == id)
+            .copied()
+            .ok_or_else(missing)
+    };
+    let mut dealt: [Vec<DealtCard>; 3] = Default::default();
+    for (seat, cards) in hands.iter().enumerate() {
+        for &kind in *cards {
+            dealt[seat].push(pick(seat, kind)?);
+        }
+    }
+    let skat = [pick(0, skat[0])?, pick(0, skat[1])?];
+    Ok(Game::with_editions(dealt, skat, editions, forehand)?)
 }
 
 /// Zielwert of a pub: the character's value (from `characters.ron`, or
@@ -6739,6 +6829,8 @@ mod tests;
 mod tour_tests;
 #[cfg(test)]
 mod trade_tests;
+#[cfg(test)]
+mod tutorial_tests;
 #[cfg(test)]
 mod undead_tests;
 #[cfg(test)]

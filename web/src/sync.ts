@@ -277,6 +277,8 @@ export class Sync {
    * Upload if anything changed (after a pub, at run end, on page hide).
    * Resolves when this and any upload asked for meanwhile are done.
    */
+  // Only what localStorage holds goes up: the Einführung (DESIGN 16.1) is
+  // never saved there, so it is never uploaded.
   push(keepalive = false): Promise<void> {
     if (!this.record || this.status === 'conflict' || this.status === 'outdated') return Promise.resolve();
     if (this.running) {

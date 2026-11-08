@@ -476,6 +476,15 @@ impl Session {
         Ok((Session { content, run }, player_events(events)))
     }
 
+    /// Start the Einführung (DESIGN 16.1): the guided pub with the fixed
+    /// deals of `tutorial.ron`. It needs no meta state and gives no
+    /// player events to feed one: it must not count as a run.
+    pub fn tutorial() -> Result<Session, String> {
+        let content = content()?;
+        let (run, _events) = Run::new_tutorial(content).map_err(|e| run_error(&e))?;
+        Ok(Session { content, run })
+    }
+
     /// Load a run saved with [`Session::save`].
     pub fn load(state: &str) -> Result<Session, String> {
         #[derive(Deserialize)]
@@ -765,6 +774,18 @@ impl WasmRun {
             session,
             start: Some(start),
         })
+    }
+
+    /// Start the Einführung (DESIGN 16.1): one guided pub with fixed
+    /// deals. Do not feed its events to the meta state and do not save it
+    /// over a run in progress; the web app keeps it apart.
+    pub fn tutorial() -> Result<WasmRun, JsError> {
+        Session::tutorial()
+            .map(|session| WasmRun {
+                session,
+                start: None,
+            })
+            .map_err(|e| JsError::new(&e))
     }
 
     /// The player events of the run start as JSON (once after
@@ -1676,5 +1697,33 @@ mod tests {
             assert_eq!(session.run(), &twin);
         }
         assert!(waited && steps > 10, "{steps} steps");
+    }
+
+    /// The Einführung: fixed first hand, its own Zielwert, no Einmischen,
+    /// no start events for the meta state, and the view says so.
+    #[test]
+    fn tutorial_session_starts_the_guided_pub() {
+        let session = Session::tutorial().expect("tutorial");
+        let view: serde_json::Value =
+            serde_json::from_str(&session.view().expect("view")).expect("json");
+        assert_eq!(view["tutorial"], serde_json::json!(true));
+        assert_eq!(view["series"]["target"], serde_json::json!(150));
+        assert_eq!(view["series"]["redeals_left"], serde_json::json!(0));
+        let mut hand: Vec<String> = view["game"]["hand"]
+            .as_array()
+            .expect("hand")
+            .iter()
+            .map(|c| c["kind"]["Normal"].as_str().unwrap_or("").to_string())
+            .collect();
+        hand.sort();
+        assert_eq!(
+            hand,
+            ["C8", "C9", "CA", "CJ", "CK", "D8", "HA", "HJ", "HK", "SJ"]
+        );
+        let mut run = WasmRun::tutorial().expect("tutorial");
+        assert_eq!(run.start_events(), "[]");
+        // A normal run's view does not name the tutorial.
+        let normal = Session::new("11").expect("run");
+        assert!(!normal.view().expect("view").contains("\"tutorial\""));
     }
 }

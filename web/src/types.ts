@@ -791,6 +791,8 @@ export interface EncounterView {
 
 export interface RunView {
   seed: string;
+  /** The Einführung (core `tutorial.ron`, DESIGN 16.1); absent for every other run. */
+  tutorial?: boolean;
   character: CharacterInfo;
   phase: RunPhase;
   /**

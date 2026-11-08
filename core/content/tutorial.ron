@@ -1,0 +1,54 @@
+// Die Einführung (DESIGN 16.1, 07.11.2026): eine geführte Kneipe mit drei
+// fest gegebenen Spielen für Spieler, die Skat kaum kennen. Die Texte des
+// Wirts stehen in der Web-App (web/src/tutorial.ts), hier nur die Karten.
+//
+// seed: Seed des Runs (Stammgäste, Namen, Kartenbelohnung danach).
+// target: Zielwert der Einführungskneipe. Gewählt so, dass die beiden
+//   ersten Spiele zusammen (Eichel mit 3: 48, mit Schneider 60; Null mit
+//   zwei geduckten Siebenen: 69) nicht reichen und das dritte (Grand Hand
+//   mit 4, Schwarz: 144) es schafft, auch wenn das erste verloren geht
+//   (−48 + 69 + 144 = 165) oder der Grand mit Skat gespielt wird (126).
+// deals: die drei Spiele der Kneipe. forehand: wer ausspielt (0 der
+//   Spieler, 1 links, 2 rechts). player, left, right je zehn Karten, skat
+//   zwei; zusammen jede der 32 Karten genau einmal. Notation wie im Kern:
+//   Farbe C (Eichel), S (Grün), H (Rot), D (Schellen), Wert 7 8 9 T J
+//   (Unter) Q (Ober) K A (Daus).
+// Einmischen gibt es in der Einführungskneipe nicht, und wie in der
+// Boss-Kneipe werden alle drei Spiele gespielt: Das Ziel zählt nach dem
+// dritten, jede Lektion kommt dran.
+(
+    seed: 20261107,
+    target: 150,
+    deals: [
+        // 1. Eichel nach dem Skat: mit 3 Spitzen (Eichel-, Grün- und
+        //    Rot-Unter), acht Trümpfe nach dem Skat. Der Skat bringt die Eichel-Zehn
+        //    und die Schellen-Sieben; Schellen 7 und 8 drücken macht
+        //    Schellen frei.
+        (
+            forehand: 0,
+            player: ["CJ", "SJ", "HJ", "CA", "CK", "C9", "C8", "HA", "HK", "D8"],
+            left: ["S7", "C7", "SA", "ST", "S9", "H9", "HQ", "D9", "DK", "DA"],
+            right: ["DJ", "CQ", "SK", "SQ", "S8", "H7", "H8", "HT", "DT", "DQ"],
+            skat: ["CT", "D7"],
+        ),
+        // 2. Null: Eichel und Rot von der Sieben bis zum Unter, Grün und
+        //    Schellen blank: kein Stich möglich. Im Skat liegen Grün- und
+        //    Schellen-Daus, die gedrückt werden wollen.
+        (
+            forehand: 1,
+            player: ["C7", "C8", "C9", "CT", "CJ", "H7", "H8", "H9", "HT", "HJ"],
+            left: ["CQ", "CA", "HK", "S7", "S9", "SJ", "SK", "D8", "DT", "DQ"],
+            right: ["CK", "HQ", "HA", "S8", "ST", "SQ", "D7", "D9", "DJ", "DK"],
+            skat: ["SA", "DA"],
+        ),
+        // 3. Grand Hand: alle vier Unter, dazu Daus und Zehnen. Der Skat
+        //    bleibt liegen (zwei Schellen ohne Augen).
+        (
+            forehand: 0,
+            player: ["CJ", "SJ", "HJ", "DJ", "CA", "CT", "CK", "SA", "ST", "HA"],
+            left: ["C7", "C9", "S8", "SK", "H7", "H9", "HQ", "D9", "DQ", "DA"],
+            right: ["C8", "CQ", "S7", "S9", "SQ", "H8", "HT", "HK", "DT", "DK"],
+            skat: ["D7", "D8"],
+        ),
+    ],
+)

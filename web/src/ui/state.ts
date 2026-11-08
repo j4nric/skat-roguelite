@@ -207,6 +207,8 @@ export interface UiState {
   settings: Settings;
   /** The run ended: won or lost. */
   ended: { won: boolean; view: RunView } | null;
+  /** Die Einführung is offered on the start screen (a new player, once; DESIGN 16.1). */
+  tutorialOffer?: boolean;
   /** The account and its sync status (ADR 0021). */
   account: AccountView;
   /** Today's daily board, once fetched (null: not there or not reachable). */

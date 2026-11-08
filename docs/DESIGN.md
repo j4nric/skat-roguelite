@@ -1883,7 +1883,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 
 | Frage | Entscheidung |
 |---|---|
-| Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü und ein Glossar der Zinken (seit dem 04.11.2026: nach Rahmensprache gruppiert, Rand, Ecke, Marke, Spezialkarten, Flüche, je mit Beispielkarte und Text aus dem Content, oben die Werte-Icons). Skat selbst wird nicht von Grund auf gelehrt. |
+| Einstieg | Geführter erster Abend: Der Wirt erklärt in kurzen Sprechblasen, wenn etwas zum ersten Mal passiert. Dazu eine Regelkarte im Menü und ein Glossar der Zinken (seit dem 04.11.2026: nach Rahmensprache gruppiert, Rand, Ecke, Marke, Spezialkarten, Flüche, je mit Beispielkarte und Text aus dem Content, oben die Werte-Icons). Skat selbst wird hier nicht von Grund auf gelehrt; dafür gibt es seit dem 07.11.2026 die Einführung (16.1). |
 | Run-Länge | 5 Abschnitte als Standard, dazu ein „kurzer Abend“ mit 3 Abschnitten. Freischaltungen in beiden (M7). Umgesetzt: 5.3, Abschnitt 1 bis 3 mit dem Alten am Ende. |
 | Schwierigkeit | Endlose Einsatz-Leiter: Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge (61, 62, 63 …). Schneider rückt nicht mit. Wirkung wird vorher im Simulator gemessen (M7). Umgesetzt: 5.4, je Charakter und Länge getrennt. |
 | Nach dem Endboss | Endlos-Modus: Zielwerte wachsen weiter, nur für den Highscore (M7). Seit ADR 0020 „Die lange Nacht“ (5.5): × 1,6 je Stadtteil, Verschärfungen, Bestenliste. |
@@ -1924,6 +1924,16 @@ Entschieden am 02.11.2026 (Nutzer):
 |---|---|
 | Blatt-Modell | **Eigene Ausgabe jeder Karte** (ADR 0015, ersetzt 0005 teilweise): ein normales Skatblatt für alle, jeder hält seine eigene Ausgabe; keine Karten hinzufügen oder entfernen, Grunddecks als Modifikationen; der Skat gehört dem Spieler; Gegnerkarten mit eigener Rückseite (7.1, 9.8, 11, 18). Simulationen bleiben pausiert, gemessen wird später. |
 | Kartenmodifikationen | **Effekte v2** (7.2): höchstens eine Modifikation je Karte (Spezialkarten zusätzlich eine), Steigerung durch dieselbe, Ersetzen durch eine andere, Flüche sperren die Karte; Rand (Augen, Rang, Trumpf), Moment (Letzter Stich, Erster Stich), Gutschein (wenn gedrückt), Flüche (Durchsichtig, Ramponiert, Fleckig), Spezialkarten (Untot, Wandelkarte). Visuelle Grammatik: Rahmen = was, oben rechts = wann, unten Mitte = wie viel, unten links = Fluch. 18 alte Modifikationen und Heimweh gestrichen, alte Spielstände werden umgerechnet. |
+
+### 16.1 Die Einführung (07.11.2026)
+
+Der geführte erste Abend (Hinweise des Wirts) setzt voraus, dass der Spieler Skat kennt. Für Spieler, die Skat kaum kennen, gibt es seit dem 07.11.2026 die **Einführung**: eine geführte Kneipe mit drei fest gegebenen Spielen. Entschieden von Claude im Rahmen der Autonomie-Regel.
+
+- **Start**: Knopf „Einführung“ auf dem Startbildschirm; einem neuen Spieler (kein Run gespielt, keiner gespeichert) wird sie einmal oben angeboten („Neu am Stammtisch?“, „Nein danke“ blendet das Angebot für immer aus; gemerkt unter `stammtisch.tutorial`).
+- **Kern**: `core/content/tutorial.ron` hält Seed, Zielwert (150) und die drei Spiele (Hände, Skat, Vorhand). `Run::new_tutorial` startet einen Run des Alleinspielers mit diesem Seed; in seiner ersten Kneipe gilt der Zielwert der Datei, Einmischen gibt es nicht, die Spiele kommen in der Reihenfolge der Datei, und wie in der Boss-Kneipe werden alle drei gespielt (das Ziel zählt nach dem dritten). Alles andere ist ein normaler Run, deterministisch über den Seed.
+- **Lektionen**: (1) Eichel nach dem Skat, mit 3: Ziel, Skat oder Hand, Drücken (beide Schellen, um Schellen frei zu machen), Ansage (Farbe, Grand, Null), Trumpfordnung, Bedienen, Augen und 61, Grundwert × Stufen, Abrechnung mit Schneider und Schwarz. (2) Null nach dem Skat: zwei Daus drücken, keinen Stich machen, Null-Reihenfolge, Null-Wert mit geduckten Siebenen. (3) Grand Hand mit 4: Hand bringt eine Stufe, nur Unter sind Trumpf, „Noch nötig“. Danach Kartenbelohnung (Zinken), Routenwahl, Tresen und Relikte, dann „Echten Abend starten“ oder „Zum Start“.
+- **Web-App**: Die Texte und wann sie kommen stehen in `web/src/tutorial.ts` (Darstellung): Jeder Schritt hat eine Situation, einen Text und ein Ziel, auf das der Wirt mit Rahmen und Pfeil zeigt. Infoschritte gehen mit Antippen weiter, Handlungsschritte, sobald der Spieler handelt; ein Schritt, dessen Situation vorbei ist, gilt als erledigt, allgemeine Schritte fangen andere Wege auf (Hand statt Skat, andere Spielart, verlorenes Spiel oder verlorene Kneipe). „Einführung beenden“ steht an jeder Sprechblase. Die normalen Hinweise des Wirts schweigen solange.
+- **Kein Run**: Der Einführungs-Run wird nie gespeichert, seine Ereignisse gehen nicht an den Meta-Stand (keine Freischaltungen, keine Statistik, kein Eintrag in der Liste der Runs), und ein laufender gespeicherter Run bleibt unberührt.
 
 ## 17. Offen
 

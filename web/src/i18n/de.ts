@@ -1175,6 +1175,69 @@ export const de = {
   },
 
   /**
+   * Die Einführung (DESIGN 16.1): one guided pub with fixed deals for
+   * players who barely know Skat. The Wirt explains each thing the moment
+   * it matters. Placeholders are filled from the core's view.
+   */
+  tutorial: {
+    speaker: 'Der Wirt',
+    title: 'Einführung',
+    progress: 'Einführung · Spiel {game} von 3',
+    after: 'Einführung · nach der Kneipe',
+    next: 'Weiter',
+    doIt: 'Du bist dran',
+    skip: 'Einführung beenden',
+    skipAria: 'Einführung beenden und zum Start',
+    finishRun: 'Echten Abend starten',
+    finishStart: 'Zum Start',
+    // Start screen
+    start: 'Einführung',
+    startHint: 'Eine Kneipe, drei Spiele: der Wirt erklärt Skat von Grund auf.',
+    offerTitle: 'Neu am Stammtisch?',
+    offerText: 'Der Wirt zeigt dir Skat in einer Kneipe mit drei Spielen. Zählt nicht als Abend.',
+    offerPlay: 'Einführung spielen',
+    offerNo: 'Nein danke',
+    // Game 1: the goal, Skat or Hand, Drücken, Ansage, Trumpf, Bedienen, Augen, Spielwert
+    goal: 'Willkommen! Du spielst immer allein gegen die zwei Stammgäste. Oben steht dein Ziel: {target} Punkte in höchstens 3 Spielen. Jedes gewonnene Spiel bringt seinen Spielwert aufs Konto.',
+    hand: 'Das ist dein Blatt: 10 Karten. Die anderen haben auch je 10, und zwei liegen verdeckt in der Mitte: der Skat.',
+    skat: 'Erste Entscheidung: Skat aufnehmen (zwei Karten mehr, dann zwei weglegen) oder ohne ihn spielen, „Hand“. Hand ist mehr wert, aber riskanter. Nimm hier den Skat: tipp auf die zwei Karten.',
+    handChosen: 'Hand also, mutig! Der Skat bleibt liegen, seine Augen zählen am Ende trotzdem für dich. Jetzt sagst du an, was gespielt wird.',
+    pressWhy: 'Jetzt hast du 12 Karten und legst 2 zurück in den Skat: Drücken. Ihre Augen zählen am Ende für dich. Gut zum Drücken: Karten, die allein in ihrer Farbe stehen. Drückst du beide Schellen, hast du keine mehr und kannst Schellen später stechen.',
+    press: 'Tipp die Eichel-Zehn an (sie kommt auf die Hand), dann die Schellen-8 (sie kommt auf den Tisch). Dann „Drücken“.',
+    pressGeneric: 'Leg zwei Karten zurück in den Skat: Tipp sie an, dann „Drücken“. Gut zum Drücken sind Karten, die allein in ihrer Farbe stehen.',
+    ansage: 'Jetzt die Ansage, was gespielt wird. Farbe: Eine Farbe wird Trumpf (Grundwert Schellen 9, Rot 10, Grün 11, Eichel 12). Grand: nur die vier Unter sind Trumpf (18). Null: Du darfst keinen einzigen Stich machen.',
+    pickClubs: 'Du hast viele Eicheln und die drei höchsten Unter. Also: Eichel ist Trumpf. Tipp auf Eichel.',
+    declareGo: 'Gut. Jetzt „Ansagen“, und los geht’s.',
+    trump: 'Trumpf sticht jede andere Farbe. Die Reihenfolge: zuerst die vier Unter (Eichel, Grün, Rot, Schellen), dann Daus, Zehn, König, Ober, 9, 8, 7 der Trumpffarbe. Deine Unter und Eicheln sind also alle Trumpf.',
+    lead: 'Du spielst aus. Guter Anfang: Trumpf ziehen, also hohe Trümpfe spielen, bis die anderen keine mehr haben. Tipp eine Karte an oder wirf sie auf den Tisch.',
+    follow: 'Wer ausspielt, gibt die Farbe vor, und alle müssen bedienen: dieselbe Farbe legen (Trumpf auf Trumpf). Nur wer nicht kann, darf stechen oder abwerfen. Was du nicht spielen darfst, ist grau.',
+    augen: 'Jeder Stich bringt die Augen seiner Karten: Daus 11, Zehn 10, König 4, Ober 3, Unter 2, 9, 8 und 7 nichts. Zusammen sind es 120. Gewonnen hast du ab 61 Augen.',
+    value: 'Hier steht, was dein Spiel wert ist: Grundwert × Stufen = {base} × {levels}. Stufen sind die Spitzen („mit {matadors}“: die höchsten Trümpfe lückenlos ab dem Eichel-Unter) plus 1 fürs Spiel.',
+    score: 'Die Abrechnung: {base} × {levels} = {value}. Schneider (90 Augen oder mehr) und Schwarz (alle Stiche) geben je eine Stufe extra, Hand auch. Gewonnen kommt der Spielwert aufs Konto, verloren geht er einmal ab.',
+    scoreLost: 'Verloren: Es fehlten Augen. Der Spielwert ({value}) geht einmal vom Konto ab. Macht nichts, weiter geht’s!',
+    // Game 2: Null
+    nullIntro: 'Spiel 2. Schau dein Blatt an: lauter kleine Karten, kein Daus, Grün und Schellen gar nicht. Damit gewinnst du keine Farbe, aber einen Null: Du darfst keinen einzigen Stich machen.',
+    nullSkat: 'Nimm wieder den Skat auf und schau, was drin liegt.',
+    nullPress: 'Zwei Daus im Skat, die höchsten Karten, beim Null gefährlich. Lass beide auf dem Tisch liegen und drück sie.',
+    nullPick: 'Jetzt Null wählen. Beim Null gibt es keinen Trumpf, und die Reihenfolge ist 7, 8, 9, 10, Unter, Ober, König, Daus.',
+    nullPlay: 'Spiel immer kleiner als die Karte, die schon liegt. Kannst du eine Farbe nicht bedienen, wirf ab, was du willst. Ein einziger Stich, und der Null ist verloren.',
+    nullScore: 'Null hat keine Spitzen. Hier zählt er 23, und jede Sieben, die du weggeduckt hast, gibt eine Stufe mehr. Das Ziel zählt nach dem dritten Spiel.',
+    // Game 3: Grand Hand
+    grandIntroReached: 'Letztes Spiel. Dein Ziel hast du schon, aber hier wird jedes Spiel gespielt. Sieh mal: alle vier Unter, dazu Daus und Zehnen. Das ist ein Grand: Nur die vier Unter sind Trumpf, die Farben laufen Daus, Zehn, König, Ober, 9, 8, 7.',
+    grandIntro: 'Letztes Spiel, dir fehlen noch {needed} Punkte. Sieh mal: alle vier Unter, dazu Daus und Zehnen. Das ist ein Grand: Nur die vier Unter sind Trumpf, die Farben laufen Daus, Zehn, König, Ober, 9, 8, 7.',
+    grandHand: 'So ein Blatt braucht den Skat nicht: Spiel „Hand“. Der Skat bleibt liegen, seine Augen zählen trotzdem für dich, und das Spiel bekommt eine Stufe mehr.',
+    grandPick: 'Wähl Grand. Mit allen vier Untern spielst du „mit 4“, dazu Spiel und Hand: 18 × 6.',
+    grandPlay: 'Zieh zuerst die Unter, dann spiel Daus und Zehnen. Mit 90 Augen wird’s Schneider, mit allen Stichen Schwarz: jeweils noch eine Stufe.',
+    // After the pub
+    pubWon: 'Kneipe geschafft! Jetzt kommt, was den Abend zum Roguelike macht. Der Wirt schenkt dir eine Zinke: Sie kommt auf eine deiner Karten und macht sie stärker. Such dir eine aus.',
+    pubLost: 'Diesmal hat’s nicht gereicht, macht nichts: Das war nur die Übung. Im echten Abend ist mit einer verlorenen Kneipe der Abend vorbei. Ein paar Worte noch, wie es weitergeht.',
+    route: 'Nach jeder Kneipe wählst du einen Weg zur nächsten. Auf jedem wartet etwas: der Tresen, eine Begegnung, die Werkstatt, ein Imbiss oder ein paar Groschen.',
+    tresen: 'Am Tresen kaufst du mit Groschen Relikte, Hausregeln, die den ganzen Abend wirken, und Schnäpse für ein Spiel. Dein erstes Relikt hast du schon: den Zähler, hier oben.',
+    tresenEnd: 'Am Tresen kaufst du mit Groschen Relikte, Hausregeln, die den ganzen Abend wirken, Schnäpse für ein Spiel und Zinken für deine Karten.',
+    evening: 'Ein echter Abend sind drei Stadtteile mit je vier Kneipen und einer Boss-Kneipe, die Ziele steigen. Die Regelkarte im Menü hat alles noch mal kurz. Jetzt ein echter Abend?',
+  },
+
+  /**
    * "Geführter erster Abend": the Wirt explains, once each, what happens
    * for the first time. Short, warm, a bit gruff; Skat itself is known.
    */

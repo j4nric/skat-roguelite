@@ -1875,6 +1875,8 @@ pub struct Sources<'a> {
     pub tour: &'a str,
     /// `night.ron`: the Verschärfungen of the long night (ADR 0020).
     pub night: &'a str,
+    /// `tutorial.ron`: the fixed deals of the Einführung (DESIGN 16.1).
+    pub tutorial: &'a str,
 }
 
 impl Sources<'static> {
@@ -1893,6 +1895,7 @@ impl Sources<'static> {
             guests: include_str!("../../content/guests.ron"),
             tour: include_str!("../../content/tour.ron"),
             night: include_str!("../../content/night.ron"),
+            tutorial: include_str!("../../content/tutorial.ron"),
         }
     }
 }
@@ -1927,6 +1930,70 @@ pub struct Content {
     pub verschaerfungen: BTreeMap<VerschaerfungId, VerschaerfungDef>,
     /// Card backs unlocks may give (cosmetic, `night.ron`).
     pub card_backs: Vec<CardBackDef>,
+    /// The Einführung: one guided pub with fixed deals (DESIGN 16.1).
+    pub tutorial: TutorialDef,
+}
+
+/// The Einführung (`tutorial.ron`, DESIGN 16.1): a run with a fixed seed
+/// whose first pub has its own Zielwert, no Einmischen and these deals in
+/// order. What the Wirt says is presentation and lives in the web app.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct TutorialDef {
+    /// Seed of the run (Stammgäste, names, what comes after the pub).
+    pub seed: u64,
+    /// Zielwert of the tutorial pub.
+    pub target: u64,
+    /// The games of the pub, in order; a game past the list is dealt
+    /// from the seed as usual.
+    pub deals: Vec<TutorialDeal>,
+}
+
+/// One fixed deal of the Einführung, in printed cards: each player gets
+/// the card of his own edition with this face.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct TutorialDeal {
+    /// Who leads the first trick: 0 the player, 1 left, 2 right.
+    pub forehand: usize,
+    /// The player's ten cards.
+    pub player: Vec<Card>,
+    /// The left opponent's ten cards (seat 1).
+    pub left: Vec<Card>,
+    /// The right opponent's ten cards (seat 2).
+    pub right: Vec<Card>,
+    /// The two cards of the skat.
+    pub skat: Vec<Card>,
+}
+
+impl TutorialDeal {
+    /// Check the deal: 10, 10, 10 and 2 cards, each of the 32 once, a
+    /// forehand of 0 to 2.
+    fn validate(&self, n: usize) -> Result<(), ContentError> {
+        let fail = |what: String| Err(ContentError(format!("tutorial deal {n}: {what}")));
+        if self.forehand > 2 {
+            return fail(format!("forehand {} is no seat", self.forehand));
+        }
+        for (name, cards, len) in [
+            ("player", &self.player, 10),
+            ("left", &self.left, 10),
+            ("right", &self.right, 10),
+            ("skat", &self.skat, 2),
+        ] {
+            if cards.len() != len {
+                return fail(format!("{name} has {} cards, not {len}", cards.len()));
+            }
+        }
+        let mut all: Vec<Card> = [&self.player, &self.left, &self.right, &self.skat]
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        all.sort();
+        all.dedup();
+        if all.len() != 32 {
+            return fail(format!("{} different cards, not 32", all.len()));
+        }
+        Ok(())
+    }
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(file: &str, text: &str) -> Result<T, ContentError> {
@@ -2076,12 +2143,16 @@ impl Content {
             maluses: index("tour", tour.maluses, |m| &m.id)?,
             verschaerfungen: index("night", night.verschaerfungen, |v| &v.id)?,
             card_backs: night.card_backs,
+            tutorial: parse("tutorial", sources.tutorial)?,
         };
         content.validate()?;
         Ok(content)
     }
 
     fn validate(&self) -> Result<(), ContentError> {
+        for (n, deal) in self.tutorial.deals.iter().enumerate() {
+            deal.validate(n + 1)?;
+        }
         for v in self.verschaerfungen.values() {
             if let NightRule::CursedCards { curses, .. } = &v.rule {
                 if curses.is_empty() {

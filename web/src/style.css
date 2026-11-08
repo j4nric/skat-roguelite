@@ -9256,6 +9256,196 @@ button.sync-pill {
   padding: 0;
 }
 
+/* ------------------------------------------------- Einführung (DESIGN 16.1) */
+
+/* The Wirt as coach: his bubble hangs fixed above or below what he points
+   at (the app sets top and the arrow), above the dialogs and below the
+   toasts. Only the bubble and its buttons take taps. */
+.coach-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 32;
+  pointer-events: none;
+}
+
+.coach {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: min(520px, calc(100vw - 20px));
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: hint-in 220ms steps(4);
+}
+
+.coach-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 4px 0 var(--line));
+}
+
+div.coach-main {
+  cursor: default;
+}
+
+.coach-bubble {
+  padding-right: 10px;
+}
+
+.coach-text {
+  font-size: var(--fs-m);
+  line-height: 1.05;
+}
+
+.coach-go {
+  align-self: flex-end;
+  margin-top: 2px;
+  font-family: var(--font-label);
+  font-size: var(--fs-xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+.coach-go.is-do {
+  color: var(--cool-dark);
+}
+
+.coach-main:focus-visible .hint-bubble {
+  outline: 2px solid var(--cool);
+  outline-offset: 2px;
+}
+
+.coach-end {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.coach-skip {
+  align-self: flex-end;
+  padding: 2px 6px;
+  border: 0;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* The arrow from the bubble towards the ring, in pixel steps. */
+.coach-arrow {
+  display: none;
+  position: absolute;
+  left: calc(var(--arrow-x, 50%) - 8px);
+  width: 16px;
+  height: 10px;
+  background: var(--accent);
+}
+
+.coach.is-below .coach-arrow {
+  display: block;
+  top: -10px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.coach.is-above .coach-arrow {
+  display: block;
+  bottom: -10px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* The bubble above its target: the skip link goes on top, the arrow stays free. */
+.coach.is-above .coach-skip {
+  order: -1;
+}
+
+.coach-ring {
+  position: fixed;
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 0 2px var(--line), 0 0 14px 2px var(--accent);
+  pointer-events: none;
+  animation: coach-ring 1.1s steps(4) infinite alternate;
+}
+
+.coach-ring[hidden] {
+  display: none;
+}
+
+@keyframes coach-ring {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach,
+  .coach-ring {
+    animation: none;
+  }
+}
+
+@media (max-height: 700px) {
+  .coach-text {
+    font-size: var(--fs-s);
+  }
+}
+
+/* Start screen: the offer to a new player, and the button for everyone. */
+.tutorial-offer {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 520px;
+  padding: 8px 10px;
+}
+
+.tutorial-offer h2 {
+  margin: 0 0 2px;
+  font-size: var(--fs-l);
+}
+
+.tutorial-offer-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.tutorial-offer-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tutorial-offer .chalk-small {
+  margin: 0;
+}
+
+.start-tutorial .small {
+  margin: 4px 0 0;
+  text-align: center;
+}
+
 /* ---------------------------------------------------------- keyboard help */
 
 .keys-help {

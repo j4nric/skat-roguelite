@@ -37,6 +37,9 @@ use crate::rules::{
 pub struct RunView {
     /// The seed as decimal text (JavaScript numbers cannot hold every u64).
     pub seed: String,
+    /// The Einführung (DESIGN 16.1): absent for every other run.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tutorial: bool,
     /// Who plays the run.
     pub character: CharacterInfo,
     /// What the run waits for.
@@ -1471,6 +1474,7 @@ impl Run {
         let character = content.character(self.character);
         RunView {
             seed: self.seed.to_string(),
+            tutorial: self.tutorial,
             character: CharacterInfo {
                 character: self.character,
                 name: character.map_or_else(|| self.character.to_string(), |c| c.name.clone()),
