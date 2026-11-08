@@ -152,6 +152,11 @@ export interface UiState {
   /** The player looks at the last finished trick (the core's `last_trick`) instead of the open one. */
   peekTrick: boolean;
   /**
+   * "Hand sortieren: manuell": the player's order of the hand by card id
+   * (display only, ./handorder.ts); null keeps the core's order.
+   */
+  handOrder: number[] | null;
+  /**
    * "Wandelkarte": cards the core settled in this game (event
    * `WildCardSettled`), by id: the card from now on and its printed suit.
    * For the places that only know the edition (overview, score); cleared
