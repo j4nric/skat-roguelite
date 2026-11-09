@@ -108,201 +108,168 @@ pub enum RunError {
     CardRewardPending,
 }
 
-/// Stable code of a [`RunError`], for frontends: serialized as its name
-/// (`"NotEnoughCoins"`), never renamed once released. A frontend maps the
-/// code to its own text; the English message of [`RunError`]'s `Display`
-/// is for logs only.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum RunErrorCode {
-    /// The action does not fit the current phase of the run.
-    WrongPhase,
-    /// No passes left (never since Einmischen replaced passing, kept for
-    /// stable codes).
-    NoPassesLeft,
-    /// The boss demands a hand game.
-    HandRequired,
-    /// Null is not available (never since ADR 0012, kept for stable codes).
-    NullNotAvailable,
-    /// No Einmischen left in this game.
-    NoRedealLeft,
-    /// Kontra must be answered first.
-    AwaitingKontraAnswer,
-    /// There is no Kontra to answer.
-    NoKontra,
-    /// The declarer does not hold this card.
-    UnknownCard,
-    /// No item in this slot.
-    InvalidSlot,
-    /// Not enough Groschen.
-    NotEnoughCoins,
-    /// All slots are taken.
-    NoFreeSlot,
-    /// The consumable needs a target card.
-    TargetRequired,
-    /// No card modification can be added to this card.
-    NoModAvailable,
-    /// The content does not know this id.
-    UnknownContent,
-    /// The start of the run names a section or series that does not exist.
-    InvalidStart,
-    /// The game rejected the action in its current phase.
-    GameWrongPhase,
-    /// It is another seat's turn.
-    NotYourTurn,
-    /// The card is not in the hand.
-    CardNotInHand,
-    /// The card does not follow suit although the hand could.
-    MustFollowSuit,
-    /// The two discards are not two distinct cards of the hand.
-    InvalidDiscard,
-    /// The cards do not form a legal deal.
-    InvalidDeal,
-    /// A trick is in progress.
-    TrickInProgress,
-    /// The declaration does not fit the skat: before it is picked up only
-    /// hand games, after it only games without hand levels.
-    InvalidDeclaration,
-    /// The deck has no card with this id.
-    UnknownDeckCard,
-    /// The deck cannot shrink below 32 cards (no longer produced since
-    /// ADR 0015: no card leaves the deck).
-    DeckAtMinimum,
-    /// "Frisches Deck": the card carries no modification.
-    NothingToCleanse,
-    /// Blanks carry no modifications.
-    BlankCannotBeModified,
-    /// The card already carries this modification and it cannot be
-    /// raised.
-    AlreadyModified,
-    /// The card carries a curse and takes no modification (DESIGN 7.2).
-    CardCursed,
-    /// The modification on the card is at its highest value.
-    ModAtMaximum,
-    /// The card is not in the deck.
-    MissingCard,
-    /// The character cannot declare this game.
-    GameNotAvailable,
-    /// An Ouvert game is required.
-    OuvertRequired,
-    /// No skat swap left.
-    NoSkatSwapLeft,
-    /// No matching card in the skat.
-    NothingToTake,
-    /// The skat cannot be swapped with now.
-    InvalidSkatSwap,
-    /// The Ramsch cannot be dealt again.
-    RamschRequired,
-    /// The card must not be discarded ("Ramponiert").
-    DiscardForbidden,
-    /// A "Doppelgänger" mirrors only as the last card of a trick.
-    NotLastCard,
-    /// A defender is to move; the player has to wait.
-    AiToMove,
-    /// "Blue Curaçao" cannot repaint this card into this suit.
-    CannotChalk,
-    /// The rest of the game can still change its score; it cannot be
-    /// settled ([`RunAction::SettleGame`]).
-    NotDecided,
-    /// "Reue": no Einmischen of this game to take back.
-    NoRedealToUndo,
-    /// "Lockvogel" (removed on 02.11.2026, never returned, kept for stable
-    /// codes): the lead did not meet the demand.
-    MustLeadDemanded,
-    /// "Lockvogel" (never returned, kept for stable codes): no lead could
-    /// be demanded.
-    InvalidLeadDemand,
-    /// "Lockvogel" (never returned, kept for stable codes): none left.
-    NoLeadDemandLeft,
-    /// A Spelunke's malus locks the Schnäpse.
-    ConsumablesLocked,
-    /// No life was missing (never returned since ADR 0019).
-    LivesFull,
-    /// The Kartenmaler waits for the player's choice.
-    PainterPending,
-    /// An "Untot" card waits for the player's three cards.
-    RisePending,
-    /// Not three different cards of the hand, or nothing waits for them.
-    InvalidRiseCards,
-    /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
-    /// this Tresen already.
-    AlreadyUsed,
-    /// The character's curses cannot be cleansed ("Bruderherz").
-    CurseStays,
-    /// The consumable does nothing now ("Klarer" without a minus,
-    /// "Eierlikör" without being behind).
-    ConditionNotMet,
-    /// Not in a boss pub ("Absacker").
-    NotInBossPub,
-    /// The Schnaps of a won pub waits for the player's choice
-    /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
-    SchnappsRewardPending,
-    /// The card reward of a won pub waits for the player.
-    CardRewardPending,
+/// Defines [`RunErrorCode`] and its [`RunErrorCode::as_str`] from one
+/// list of variants, so that the text of a code is always its name (equal
+/// to its serialized form) and no arm can be forgotten.
+macro_rules! error_codes {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident {
+            $($(#[$vmeta:meta])* $variant:ident,)*
+        }
+    ) => {
+        $(#[$meta])*
+        pub enum $name {
+            $($(#[$vmeta])* $variant,)*
+        }
+
+        impl $name {
+            /// The code as text, equal to its serialized form.
+            #[must_use]
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $($name::$variant => stringify!($variant),)*
+                }
+            }
+
+            /// Every code, in declaration order.
+            #[cfg(test)]
+            const ALL: &'static [$name] = &[$($name::$variant,)*];
+        }
+    };
 }
 
-impl RunErrorCode {
-    /// The code as text, equal to its serialized form.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            RunErrorCode::WrongPhase => "WrongPhase",
-            RunErrorCode::NoPassesLeft => "NoPassesLeft",
-            RunErrorCode::HandRequired => "HandRequired",
-            RunErrorCode::NullNotAvailable => "NullNotAvailable",
-            RunErrorCode::NoRedealLeft => "NoRedealLeft",
-            RunErrorCode::AwaitingKontraAnswer => "AwaitingKontraAnswer",
-            RunErrorCode::NoKontra => "NoKontra",
-            RunErrorCode::UnknownCard => "UnknownCard",
-            RunErrorCode::InvalidSlot => "InvalidSlot",
-            RunErrorCode::NotEnoughCoins => "NotEnoughCoins",
-            RunErrorCode::NoFreeSlot => "NoFreeSlot",
-            RunErrorCode::TargetRequired => "TargetRequired",
-            RunErrorCode::NoModAvailable => "NoModAvailable",
-            RunErrorCode::UnknownContent => "UnknownContent",
-            RunErrorCode::InvalidStart => "InvalidStart",
-            RunErrorCode::GameWrongPhase => "GameWrongPhase",
-            RunErrorCode::NotYourTurn => "NotYourTurn",
-            RunErrorCode::CardNotInHand => "CardNotInHand",
-            RunErrorCode::MustFollowSuit => "MustFollowSuit",
-            RunErrorCode::InvalidDiscard => "InvalidDiscard",
-            RunErrorCode::InvalidDeal => "InvalidDeal",
-            RunErrorCode::TrickInProgress => "TrickInProgress",
-            RunErrorCode::InvalidDeclaration => "InvalidDeclaration",
-            RunErrorCode::UnknownDeckCard => "UnknownDeckCard",
-            RunErrorCode::DeckAtMinimum => "DeckAtMinimum",
-            RunErrorCode::NothingToCleanse => "NothingToCleanse",
-            RunErrorCode::BlankCannotBeModified => "BlankCannotBeModified",
-            RunErrorCode::AlreadyModified => "AlreadyModified",
-            RunErrorCode::CardCursed => "CardCursed",
-            RunErrorCode::ModAtMaximum => "ModAtMaximum",
-            RunErrorCode::MissingCard => "MissingCard",
-            RunErrorCode::GameNotAvailable => "GameNotAvailable",
-            RunErrorCode::OuvertRequired => "OuvertRequired",
-            RunErrorCode::NoSkatSwapLeft => "NoSkatSwapLeft",
-            RunErrorCode::NothingToTake => "NothingToTake",
-            RunErrorCode::InvalidSkatSwap => "InvalidSkatSwap",
-            RunErrorCode::RamschRequired => "RamschRequired",
-            RunErrorCode::DiscardForbidden => "DiscardForbidden",
-            RunErrorCode::NotLastCard => "NotLastCard",
-            RunErrorCode::AiToMove => "AiToMove",
-            RunErrorCode::CannotChalk => "CannotChalk",
-            RunErrorCode::NotDecided => "NotDecided",
-            RunErrorCode::NoRedealToUndo => "NoRedealToUndo",
-            RunErrorCode::MustLeadDemanded => "MustLeadDemanded",
-            RunErrorCode::InvalidLeadDemand => "InvalidLeadDemand",
-            RunErrorCode::NoLeadDemandLeft => "NoLeadDemandLeft",
-            RunErrorCode::ConsumablesLocked => "ConsumablesLocked",
-            RunErrorCode::LivesFull => "LivesFull",
-            RunErrorCode::PainterPending => "PainterPending",
-            RunErrorCode::RisePending => "RisePending",
-            RunErrorCode::InvalidRiseCards => "InvalidRiseCards",
-            RunErrorCode::AlreadyUsed => "AlreadyUsed",
-            RunErrorCode::CurseStays => "CurseStays",
-            RunErrorCode::ConditionNotMet => "ConditionNotMet",
-            RunErrorCode::NotInBossPub => "NotInBossPub",
-            RunErrorCode::SchnappsRewardPending => "SchnappsRewardPending",
-            RunErrorCode::CardRewardPending => "CardRewardPending",
-        }
+error_codes! {
+    /// Stable code of a [`RunError`], for frontends: serialized as its name
+    /// (`"NotEnoughCoins"`), never renamed once released. A frontend maps the
+    /// code to its own text; the English message of [`RunError`]'s `Display`
+    /// is for logs only.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+    pub enum RunErrorCode {
+        /// The action does not fit the current phase of the run.
+        WrongPhase,
+        /// No passes left (never since Einmischen replaced passing, kept for
+        /// stable codes).
+        NoPassesLeft,
+        /// The boss demands a hand game.
+        HandRequired,
+        /// Null is not available (never since ADR 0012, kept for stable codes).
+        NullNotAvailable,
+        /// No Einmischen left in this game.
+        NoRedealLeft,
+        /// Kontra must be answered first.
+        AwaitingKontraAnswer,
+        /// There is no Kontra to answer.
+        NoKontra,
+        /// The declarer does not hold this card.
+        UnknownCard,
+        /// No item in this slot.
+        InvalidSlot,
+        /// Not enough Groschen.
+        NotEnoughCoins,
+        /// All slots are taken.
+        NoFreeSlot,
+        /// The consumable needs a target card.
+        TargetRequired,
+        /// No card modification can be added to this card.
+        NoModAvailable,
+        /// The content does not know this id.
+        UnknownContent,
+        /// The start of the run names a section or series that does not exist.
+        InvalidStart,
+        /// The game rejected the action in its current phase.
+        GameWrongPhase,
+        /// It is another seat's turn.
+        NotYourTurn,
+        /// The card is not in the hand.
+        CardNotInHand,
+        /// The card does not follow suit although the hand could.
+        MustFollowSuit,
+        /// The two discards are not two distinct cards of the hand.
+        InvalidDiscard,
+        /// The cards do not form a legal deal.
+        InvalidDeal,
+        /// A trick is in progress.
+        TrickInProgress,
+        /// The declaration does not fit the skat: before it is picked up only
+        /// hand games, after it only games without hand levels.
+        InvalidDeclaration,
+        /// The deck has no card with this id.
+        UnknownDeckCard,
+        /// The deck cannot shrink below 32 cards (no longer produced since
+        /// ADR 0015: no card leaves the deck).
+        DeckAtMinimum,
+        /// "Frisches Deck": the card carries no modification.
+        NothingToCleanse,
+        /// Blanks carry no modifications.
+        BlankCannotBeModified,
+        /// The card already carries this modification and it cannot be
+        /// raised.
+        AlreadyModified,
+        /// The card carries a curse and takes no modification (DESIGN 7.2).
+        CardCursed,
+        /// The modification on the card is at its highest value.
+        ModAtMaximum,
+        /// The card is not in the deck.
+        MissingCard,
+        /// The character cannot declare this game.
+        GameNotAvailable,
+        /// An Ouvert game is required.
+        OuvertRequired,
+        /// No skat swap left.
+        NoSkatSwapLeft,
+        /// No matching card in the skat.
+        NothingToTake,
+        /// The skat cannot be swapped with now.
+        InvalidSkatSwap,
+        /// The Ramsch cannot be dealt again.
+        RamschRequired,
+        /// The card must not be discarded ("Ramponiert").
+        DiscardForbidden,
+        /// A "Doppelgänger" mirrors only as the last card of a trick.
+        NotLastCard,
+        /// A defender is to move; the player has to wait.
+        AiToMove,
+        /// "Blue Curaçao" cannot repaint this card into this suit.
+        CannotChalk,
+        /// The rest of the game can still change its score; it cannot be
+        /// settled ([`RunAction::SettleGame`]).
+        NotDecided,
+        /// "Reue": no Einmischen of this game to take back.
+        NoRedealToUndo,
+        /// "Lockvogel" (removed on 02.11.2026, never returned, kept for stable
+        /// codes): the lead did not meet the demand.
+        MustLeadDemanded,
+        /// "Lockvogel" (never returned, kept for stable codes): no lead could
+        /// be demanded.
+        InvalidLeadDemand,
+        /// "Lockvogel" (never returned, kept for stable codes): none left.
+        NoLeadDemandLeft,
+        /// A Spelunke's malus locks the Schnäpse.
+        ConsumablesLocked,
+        /// No life was missing (never returned since ADR 0019).
+        LivesFull,
+        /// The Kartenmaler waits for the player's choice.
+        PainterPending,
+        /// An "Untot" card waits for the player's three cards.
+        RisePending,
+        /// Not three different cards of the hand, or nothing waits for them.
+        InvalidRiseCards,
+        /// The Kartenmaler, "Karte reinigen" or "Neu auslosen" was used at
+        /// this Tresen already.
+        AlreadyUsed,
+        /// The character's curses cannot be cleansed ("Bruderherz").
+        CurseStays,
+        /// The consumable does nothing now ("Klarer" without a minus,
+        /// "Eierlikör" without being behind).
+        ConditionNotMet,
+        /// Not in a boss pub ("Absacker").
+        NotInBossPub,
+        /// The Schnaps of a won pub waits for the player's choice
+        /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
+        SchnappsRewardPending,
+        /// The card reward of a won pub waits for the player.
+        CardRewardPending,
     }
 }
 
@@ -436,5 +403,88 @@ impl From<GameError<DealtCard>> for RunError {
 impl From<DeckError> for RunError {
     fn from(e: DeckError) -> RunError {
         RunError::Deck(e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunErrorCode;
+
+    /// The texts of the codes, as frontends know them. A code is never
+    /// renamed once released; a new code goes at the end.
+    const CODES: [&str; 57] = [
+        "WrongPhase",
+        "NoPassesLeft",
+        "HandRequired",
+        "NullNotAvailable",
+        "NoRedealLeft",
+        "AwaitingKontraAnswer",
+        "NoKontra",
+        "UnknownCard",
+        "InvalidSlot",
+        "NotEnoughCoins",
+        "NoFreeSlot",
+        "TargetRequired",
+        "NoModAvailable",
+        "UnknownContent",
+        "InvalidStart",
+        "GameWrongPhase",
+        "NotYourTurn",
+        "CardNotInHand",
+        "MustFollowSuit",
+        "InvalidDiscard",
+        "InvalidDeal",
+        "TrickInProgress",
+        "InvalidDeclaration",
+        "UnknownDeckCard",
+        "DeckAtMinimum",
+        "NothingToCleanse",
+        "BlankCannotBeModified",
+        "AlreadyModified",
+        "CardCursed",
+        "ModAtMaximum",
+        "MissingCard",
+        "GameNotAvailable",
+        "OuvertRequired",
+        "NoSkatSwapLeft",
+        "NothingToTake",
+        "InvalidSkatSwap",
+        "RamschRequired",
+        "DiscardForbidden",
+        "NotLastCard",
+        "AiToMove",
+        "CannotChalk",
+        "NotDecided",
+        "NoRedealToUndo",
+        "MustLeadDemanded",
+        "InvalidLeadDemand",
+        "NoLeadDemandLeft",
+        "ConsumablesLocked",
+        "LivesFull",
+        "PainterPending",
+        "RisePending",
+        "InvalidRiseCards",
+        "AlreadyUsed",
+        "CurseStays",
+        "ConditionNotMet",
+        "NotInBossPub",
+        "SchnappsRewardPending",
+        "CardRewardPending",
+    ];
+
+    #[test]
+    fn codes_keep_their_texts() {
+        let texts: Vec<&str> = RunErrorCode::ALL.iter().map(|c| c.as_str()).collect();
+        assert_eq!(texts, CODES);
+    }
+
+    #[test]
+    fn code_text_is_its_serialized_form() {
+        for code in RunErrorCode::ALL {
+            let json = serde_json::to_string(code).expect("serialize");
+            assert_eq!(json, format!("\"{}\"", code.as_str()));
+            let back: RunErrorCode = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back, *code);
+        }
     }
 }
