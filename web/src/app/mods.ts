@@ -14,8 +14,9 @@ export class Mods {
 
   /**
    * Why the core refuses each card a modification would go on: its error
-   * code from a preview of the action (CardCursed, ModAtMaximum, …), for
-   * the dimmed cards of the picker. Read-only.
+   * code for the action (CardCursed, ModAtMaximum, …), for the dimmed
+   * cards of the picker. Asked with `check`, which builds no view (W5 of
+   * the review: one preview per card made a picker of 32 cards slow).
    */
   refusals(view: RunView, targets: number[], action: (id: number) => RunAction): Record<number, string> {
     const out: Record<number, string> = {};
@@ -23,12 +24,13 @@ export class Mods {
     if (!core) return out;
     for (const c of view.edition) {
       if (targets.includes(c.id)) continue;
+      let code: string | null;
       try {
-        core.preview(action(c.id));
+        code = core.check(action(c.id));
       } catch (err) {
-        const code = errorCode(err);
-        if (code) out[c.id] = code;
+        code = errorCode(err);
       }
+      if (code) out[c.id] = code;
     }
     return out;
   }
