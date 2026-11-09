@@ -29,55 +29,50 @@
 
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
-import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, consumableMod, contentName, setCatalog } from './i18n';
+import { CoreMeta, CoreRun } from './core';
+import { de, consumableMod, contentName } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { passkeysSupported } from './account';
 import { isOnline, watchNetwork } from './offline';
-import { type Reconciled } from './sync';
-import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
-import { maxStake, pickedStake } from './stake';
+import { clearShareHash, dailySeed, isSeedText } from './seed';
+import { maxStake } from './stake';
 import {
   clearRun,
   loadCharacter,
   loadHistory,
-  loadRun,
   saveCharacter,
-  saveRun,
-  saveRunInfo,
 } from './storage';
-import { type NullRisk, type RiskLevel, type RunAction, type RunLength, type RunView,  type Suit } from './types';
+import { type NullRisk, type RiskLevel, type RunAction,  type Suit } from './types';
 import { reducedMotion } from './ui/dom';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
 import { defaultPick, legKey, renderRoute, watchMapLabels } from './ui/route';
-import { markTutorial, tutorialSeen } from './tutorial';
+import { markTutorial } from './tutorial';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed } from './ui/triggers';
-import { finishAll, type FlightSnapshot,  motionOn, noteFlights, resumeFlights, setTempo, springBack } from './ui/fx';
+import { finishAll, type FlightSnapshot, motionOn, noteFlights, resumeFlights, setTempo, springBack } from './ui/fx';
 import { HudFx, spring, watchSprings } from './ui/juice';
 import { bossEntrance, sceneRunning } from './ui/scenes';
 import { setPlayerBack } from './ui/backs';
 import { watchDrags } from './ui/drag';
 import { watchKeys } from './ui/keys';
 import { buzz, setVibration } from './haptics';
-import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink } from './ui/drink';
-import { reshuffle } from './ui/scatter';
 import { renderHud } from './ui/hud';
 import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
-import type { PendingStart, UiState } from './ui/state';
+import type { UiState } from './ui/state';
 import { discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
-import { errorCode, errorText, isCharacter, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
-import { AccountFlow, takeLoadedNote } from './app/account';
+import { isCharacter, type ToastPlace } from './app/consts';
+import { AccountFlow } from './app/account';
 import type { AppCtx } from './app/context';
 import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
+import { Lifecycle } from './app/lifecycle';
 import { Mods } from './app/mods';
 import { EventPlayback } from './app/playback/events';
 import { GamePlayback } from './app/playback/game';
@@ -87,7 +82,8 @@ import { Flights } from './app/playback/flights';
 import { Fx } from './app/playback/fx';
 import { Progress } from './app/progress';
 import { SaveCodeFlow } from './app/savecode';
-import { resetTableChoices, TableInput } from './app/table-input';
+import { Share } from './app/share';
+import { TableInput } from './app/table-input';
 
 /**
  * Cards whose flights survive a re-render: the open trick, the hand, the
@@ -151,8 +147,6 @@ export class App implements AppCtx {
   /** Account and Groschen in the head: how their changes get there. */
   readonly hudFx: HudFx;
   readonly layerEl: HTMLElement;
-  /** The Einführung was left while a playback ran: where to go once it is over. */
-  private leaveTutorialTo: 'start' | 'run' | null = null;
   /** The info card (long-press, hover, "i"): one for everything. */
   readonly info: InfoCard;
   /** Lines and wiggles when a relic or modification fires. */
@@ -163,9 +157,6 @@ export class App implements AppCtx {
   readonly drink: Drink;
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
   entrancePending = false;
-  /** The picture of the ended run for "Teilen", drawn in advance (./ui/runcard.ts). */
-  private runCard: { view: RunView; blob: Promise<Blob> } | null = null;
-
   /** The dialog layer (./app/layer.ts). */
   private readonly layer = new Layer(this);
   /** The Wirt's hints and coaching (./app/guidance.ts). */
@@ -188,6 +179,10 @@ export class App implements AppCtx {
   private readonly table: TableInput;
   /** Actions sent to the core and played back (./app/playback/steps.ts). */
   private readonly steps: Steps;
+  /** "Teilen": the run's picture and the seed's link (./app/share.ts). */
+  private readonly share: Share;
+  /** Start, new run, resume, the Einführung (./app/lifecycle.ts). */
+  private readonly lifecycle: Lifecycle;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -203,7 +198,9 @@ export class App implements AppCtx {
     this.table = new TableInput(this, this.fx, this.flights, this.drinkFx, this.mods);
     const game = new GamePlayback(this, this.fx, this.flights, this.layer);
     const events = new EventPlayback(this, this.fx, this.flights, this.drinkFx, game, this.layer, this.guidance);
-    this.steps = new Steps(this, this.fx, this.flights, events, this.layer, this.progress, this.account.sync, () => this.afterPlayback());
+    this.steps = new Steps(this, this.fx, this.flights, events, this.layer, this.progress, this.account.sync, () => this.lifecycle.afterPlayback());
+    this.share = new Share(this, this.layer);
+    this.lifecycle = new Lifecycle(this, this.account, this.progress, this.fx, this.flights, this.guidance, this.steps, this.layer);
     this.screen = new Patcher(this.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -325,48 +322,14 @@ export class App implements AppCtx {
     this.render();
   }
 
-  async start(): Promise<void> {
-    this.render();
-    try {
-      await loadCore();
-      // A breath between instantiating the core and reading the catalog,
-      // and before the stored states: the boot is no single long task.
-      await yieldToBrowser();
-      setCatalog(loadCatalog());
-    } catch (err) {
-      console.warn('core failed to load', err);
-      this.ui.screen = 'error';
-      this.render();
-      return;
-    }
-    await yieldToBrowser();
-    // Signed in: compare with the account before anything is read from storage.
-    let synced: Reconciled = 'none';
-    if (this.account.sync.signedIn) synced = await this.account.sync.reconcileAtStart(5000);
-    this.progress.loadMetaState();
-    this.readShareHash();
-    window.addEventListener('hashchange', () => {
-      this.readShareHash();
-      if (this.ui.screen === 'start') this.render();
-    });
-    this.toStart();
-    if (synced === 'applied' || takeLoadedNote()) this.showToast(de.account.loadedFromServer);
-    if (synced === 'conflict') this.account.openConflict();
-    void this.account.refreshAccount();
+  /** Load the core, then the stored states, and show the start screen (./app/lifecycle.ts). */
+  start(): Promise<void> {
+    return this.lifecycle.start();
   }
 
   // -------------------------------------------------------------------------
   // Account and sync (ADR 0021). Transport only: the save is the save code.
   // -------------------------------------------------------------------------
-
-  /** Offer the seed of a shared link (`#seed-…`), if the address has one. */
-  private readShareHash(): void {
-    const shared = parseShareHash(window.location.hash);
-    if (!shared) return;
-    const entry = this.ui.meta?.characters.find((c) => c.character === shared.character);
-    const locked = shared.character !== 'Declarer' && entry?.unlocked !== true;
-    this.ui.shared = { ...shared, locked };
-  }
 
   private applySettings(): void {
     setTempo(TEMPO_FACTOR[this.ui.settings.tempo]);
@@ -395,267 +358,9 @@ export class App implements AppCtx {
   // Screens
   // -------------------------------------------------------------------------
 
-  private toStart(): void {
-    // The start screen reads the run from storage.
-    this.persist();
-    this.core?.dispose();
-    this.core = null;
-    this.ui.view = null;
-    this.ui.overlay = null;
-    this.ui.ended = null;
-    this.ui.saveInfo = null;
-    const saved = loadRun();
-    if (saved) {
-      try {
-        this.core = CoreRun.load(saved);
-        const view = this.core.view();
-        this.ui.view = view;
-        this.ui.saveInfo = runLine(view);
-      } catch (err) {
-        console.warn('saved run discarded', err);
-        clearRun();
-        this.core = null;
-        // A run of the old rules (shared deck, before ADR 0015) is told once.
-        this.ui.message = errorCode(err) === 'OutdatedSave' ? de.start.newRules : de.start.resumeFailed;
-      }
-    }
-    // Die Einführung (DESIGN 16.1) is offered once to a new player.
-    this.ui.tutorialOffer = !tutorialSeen() && !saved && !this.ui.history.length && !(this.ui.meta?.stats.runs_finished ?? 0);
-    this.ui.screen = 'start';
-    this.account.loadBoard();
-    this.render();
-  }
-
-  /** Whether a run in progress is stored (it must not be overwritten unasked). */
-  private hasRunningRun(): boolean {
-    return loadRun() !== null;
-  }
-
-  /** "Neuer Run" on the start or end screen: the typed seed or a random one. */
-  private newRun(): void {
-    const input = this.root.querySelector<HTMLInputElement>('#seed');
-    const typed = input?.value.trim() ?? '';
-    let seed = typed;
-    if (!seed) {
-      const random = new Uint32Array(1);
-      crypto.getRandomValues(random);
-      seed = String(random[0]);
-    } else if (!isSeedText(seed)) {
-      this.ui.message = de.start.seedInvalid;
-      this.render();
-      return;
-    }
-    this.requestStart({ seed, character: this.ui.pickCharacter, stake: this.pickedStake(), daily: false });
-  }
-
-  /** The stake picked on the start screen, at most the highest unlocked. */
-  private pickedStake(): number {
-    return pickedStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickStake);
-  }
-
-  /** Start a run, after asking if that gives up a running one. */
-  private requestStart(start: PendingStart): void {
-    if (this.hasRunningRun()) {
-      this.ui.overlay = { kind: 'confirm-new', start };
-      this.render();
-      return;
-    }
-    this.startRun(start);
-  }
-
-  private startRun({ seed, character, stake, daily }: PendingStart): void {
-    // Since ADR 0016 every run is the whole evening.
-    const length: RunLength = 'Full';
-    let core: CoreRun;
-    let startEvents = '[]';
-    try {
-      if (this.meta) {
-        const started = CoreRun.createWith(seed, character, length, stake, this.meta);
-        core = started.run;
-        startEvents = started.startEvents;
-      } else {
-        core = CoreRun.create(seed);
-      }
-    } catch (err) {
-      console.warn('run not started', err);
-      this.ui.overlay = null;
-      this.ui.message = errorCode(err) === 'InvalidSeed' ? de.start.seedInvalid : errorText(err);
-      this.render();
-      return;
-    }
-    this.persist();
-    this.core?.dispose();
-    this.core = core;
-    this.ui.message = null;
-    this.ui.ended = null;
-    this.ui.copy = null;
-    if (this.ui.shared) {
-      this.ui.shared = null;
-      clearShareHash();
-    }
-    saveRun(core.save());
-    const view = core.view();
-    saveRunInfo({ seed: view.seed, daily });
-    const earned = this.progress.observe(startEvents);
-    this.enterRun(view, true);
-    if (earned.length) {
-      this.progress.announceUnlocks(earned);
-      this.render();
-    }
-  }
-
-  /**
-   * The picture of the ended run, drawn once as the end screen comes, so a
-   * tap on "Teilen" reaches the share sheet while it still counts as the
-   * player's gesture (Safari is strict about that).
-   */
-  private prepareRunCard(): Promise<Blob> {
-    const ended = this.ui.ended;
-    if (!ended) return Promise.reject(new Error('no ended run'));
-    const view = ended.view;
-    if (this.runCard?.view === view) return this.runCard.blob;
-    const record = this.ui.history[0];
-    const daily = Boolean(record && record.seed === view.seed && record.daily);
-    const blob = runCardBlob(view, { won: ended.won, daily, date: record && record.seed === view.seed ? new Date(record.date) : new Date() });
-    // A failed drawing is tried again on the tap.
-    blob.catch(() => {
-      if (this.runCard?.blob === blob) this.runCard = null;
-    });
-    this.runCard = { view, blob };
-    return blob;
-  }
-
-  /**
-   * "Teilen" on the end screen: the run as a picture (./ui/runcard.ts),
-   * into the share sheet with the file where the browser can, else saved
-   * as a download.
-   */
-  private async shareRun(button: HTMLElement): Promise<void> {
-    const ended = this.ui.ended;
-    if (!ended || button.hasAttribute('aria-busy')) return;
-    const view = ended.view;
-    button.setAttribute('aria-busy', 'true');
-    let blob: Blob;
-    try {
-      blob = await this.prepareRunCard();
-    } catch (err) {
-      console.warn('run picture failed', err);
-      this.showToast(de.runCard.failed);
-      button.removeAttribute('aria-busy');
-      return;
-    }
-    button.removeAttribute('aria-busy');
-    const name = runCardName(view);
-    const text = runCardText(view, ended.won);
-    try {
-      const file = new File([blob], name, { type: 'image/png' });
-      if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: de.runCard.shareTitle, text });
-        return;
-      }
-    } catch (err) {
-      // Closed by the player: nothing more to do.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      console.warn('share sheet failed, saving the picture instead', err);
-    }
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
-    this.showToast(de.runCard.saved);
-  }
-
-  /** Copy the link of a seed; on failure show it to be copied by hand. */
-  private copyLink(url: string): void {
-    const done = (ok: boolean): void => {
-      this.ui.copy = { url, ok };
-      this.layer.markDirty();
-      this.render();
-      if (ok) sound.play('clink');
-      else this.root.querySelector<HTMLInputElement>('[data-testid="share-fallback"]')?.select();
-    };
-    try {
-      const clip = navigator.clipboard as Clipboard | undefined;
-      if (!clip) {
-        done(false);
-        return;
-      }
-      clip.writeText(url).then(
-        () => done(true),
-        (err: unknown) => {
-          console.warn('clipboard refused', err);
-          done(false);
-        },
-      );
-    } catch (err) {
-      console.warn('clipboard unavailable', err);
-      done(false);
-    }
-  }
-
-  /** The share sheet of the system, where there is one. */
-  private shareNative(url: string, text: string): void {
-    try {
-      if (typeof navigator.share !== 'function') {
-        this.copyLink(url);
-        return;
-      }
-      navigator.share({ title: de.app.title, text, url }).catch((err: unknown) => {
-        // Closing the sheet is no error.
-        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copyLink(url);
-      });
-    } catch {
-      this.copyLink(url);
-    }
-  }
-
   // -------------------------------------------------------------------------
   // Save code: export and import of everything stored (./savecode.ts)
   // -------------------------------------------------------------------------
-
-  /**
-   * "Weiterziehen in die lange Nacht" (ADR 0020): the won run goes on. Its
-   * win is recorded already; from here it is saved again as it goes.
-   */
-  private enterNight(): void {
-    const ended = this.ui.ended;
-    if (!this.core || !ended?.won || !ended.view.can_enter_night || this.ui.busy) return;
-    this.ui.ended = null;
-    this.ui.screen = 'run';
-    this.ui.view = ended.view;
-    this.ui.nightSeen = null;
-    void this.act('EnterNight');
-  }
-
-  private resume(): void {
-    if (!this.core) return;
-    this.ui.message = null;
-    this.enterRun(this.core.view(), true);
-    // Saved while an opponent was to move: let him play on.
-    this.steps.continueOpponents();
-  }
-
-  private enterRun(view: RunView, dealt: boolean): void {
-    this.hudFx.reset();
-    this.ui.view = view;
-    this.ui.screen = 'run';
-    this.ui.anim = null;
-    this.ui.overlay = null;
-    resetTableChoices(this.ui);
-    if (dealt && view.game) {
-      reshuffle();
-      this.afterRender.push(() => this.flights.dealEffect());
-    }
-    // A fresh series says hello; a run resumed mid-series does not.
-    if (dealt && view.game && view.series.games_played === 0) this.fx.greetSeries(view);
-    else this.fx.quipSeries = `${view.series.section}-${view.series.index}`;
-    this.render();
-  }
 
   // -------------------------------------------------------------------------
   // Actions
@@ -692,72 +397,6 @@ export class App implements AppCtx {
   // Die Einführung (DESIGN 16.1)
   // -------------------------------------------------------------------------
 
-  /**
-   * Start the Einführung: the core's guided pub with fixed deals. A run in
-   * progress stays stored untouched; the tutorial run is never saved and
-   * its events never reach the meta state.
-   */
-  private startTutorial(): void {
-    if (this.ui.busy) return;
-    let core: CoreRun;
-    try {
-      core = CoreRun.tutorial();
-    } catch (err) {
-      console.warn('tutorial not started', err);
-      this.showToast(errorText(err));
-      return;
-    }
-    markTutorial('done');
-    this.persist();
-    this.core?.dispose();
-    this.core = core;
-    this.guidance.startCoach();
-    this.ui.tutorialOffer = false;
-    this.ui.message = null;
-    this.ui.ended = null;
-    this.ui.copy = null;
-    this.enterRun(core.view(), true);
-  }
-
-  /** The coach goes; the bubble and ring with him. */
-  private endTutorial(): void {
-    this.guidance.endCoach();
-  }
-
-  /**
-   * Leave the Einführung (skipped, or finished): to the start screen, or
-   * into a real evening ('run') when no run in progress would be given up.
-   * During a playback the core is let go first, the rest waits for its end.
-   */
-  private leaveTutorial(go: 'start' | 'run'): void {
-    this.endTutorial();
-    markTutorial('done');
-    if (this.ui.busy) {
-      this.leaveTutorialTo = go;
-      this.core?.dispose();
-      this.core = null;
-      const o = this.ui.overlay;
-      if ((o?.kind === 'score' || o?.kind === 'boss') && this.layer.awaited === o) o.resolve();
-      this.fx.hurry();
-      return;
-    }
-    this.afterTutorial(go);
-  }
-
-  /** A playback is over: the Einführung left meanwhile can go now. */
-  private afterPlayback(): void {
-    const leave = this.leaveTutorialTo;
-    if (leave) {
-      this.leaveTutorialTo = null;
-      this.afterTutorial(leave);
-    }
-  }
-
-  private afterTutorial(go: 'start' | 'run'): void {
-    this.toStart();
-    if (go === 'run' && !this.hasRunningRun()) this.newRun();
-  }
-
   // -------------------------------------------------------------------------
   // Input
   // -------------------------------------------------------------------------
@@ -783,12 +422,12 @@ export class App implements AppCtx {
     const view = this.ui.view;
     switch (action) {
       case 'new-run':
-        this.endTutorial();
-        this.newRun();
+        this.lifecycle.endTutorial();
+        this.lifecycle.newRun();
         return;
       // Die Einführung (DESIGN 16.1).
       case 'tutorial-start':
-        this.startTutorial();
+        this.lifecycle.startTutorial();
         return;
       case 'tutorial-offer-no':
         markTutorial('declined');
@@ -799,21 +438,21 @@ export class App implements AppCtx {
         this.guidance.nextCoach();
         return;
       case 'tutorial-skip':
-        this.leaveTutorial('start');
+        this.lifecycle.leaveTutorial('start');
         return;
       case 'tutorial-finish':
-        this.leaveTutorial(el.dataset.go === 'run' ? 'run' : 'start');
+        this.lifecycle.leaveTutorial(el.dataset.go === 'run' ? 'run' : 'start');
         return;
       // Die lange Nacht (ADR 0020): on from the end screen of a won run.
       case 'enter-night':
-        this.enterNight();
+        this.lifecycle.enterNight();
         return;
       case 'resume':
-        this.resume();
+        this.lifecycle.resume();
         return;
       case 'play-shared': {
         const shared = this.ui.shared;
-        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, stake: sharedStake(this.ui), daily: false });
+        if (shared) this.lifecycle.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, stake: sharedStake(this.ui), daily: false });
         return;
       }
       case 'dismiss-shared':
@@ -822,7 +461,7 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'play-daily':
-        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, stake: this.pickedStake(), daily: true });
+        this.lifecycle.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, stake: this.lifecycle.pickedStake(), daily: true });
         return;
       case 'replay': {
         const c = el.dataset.character ?? null;
@@ -830,7 +469,7 @@ export class App implements AppCtx {
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
         // Replayed at its stake, or the highest unlocked if that is lower.
         const stake = isCharacter(c) ? Math.min(num('stake') < 0 ? 0 : num('stake'), maxStake(this.ui.meta, c)) : 0;
-        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, stake, daily: false });
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.lifecycle.requestStart({ seed, character: c, stake, daily: false });
         return;
       }
       case 'confirm-new':
@@ -838,17 +477,17 @@ export class App implements AppCtx {
           const start = overlay.start;
           this.ui.overlay = null;
           clearRun();
-          this.startRun(start);
+          this.lifecycle.startRun(start);
         }
         return;
       case 'copy-link':
-        this.copyLink(el.dataset.url ?? '');
+        this.share.copyLink(el.dataset.url ?? '');
         return;
       case 'share-run':
-        void this.shareRun(el);
+        void this.share.shareRun(el);
         return;
       case 'share-native':
-        this.shareNative(el.dataset.url ?? '', el.dataset.text ?? '');
+        this.share.shareNative(el.dataset.url ?? '', el.dataset.text ?? '');
         return;
       case 'book-tab':
         if (overlay?.kind === 'book') {
@@ -890,8 +529,8 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'to-start':
-        this.endTutorial();
-        this.toStart();
+        this.lifecycle.endTutorial();
+        this.lifecycle.toStart();
         return;
       case 'menu':
       case 'settings':
@@ -1473,7 +1112,7 @@ export class App implements AppCtx {
         break;
       case 'end':
         parts = [ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : ''];
-        if (ui.ended) this.afterRender.push(() => void this.prepareRunCard().catch(() => undefined));
+        if (ui.ended) this.afterRender.push(() => void this.share.prepareRunCard().catch(() => undefined));
         break;
       case 'run': {
         const view = ui.view;
