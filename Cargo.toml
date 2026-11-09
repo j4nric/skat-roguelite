@@ -19,7 +19,7 @@ all = "warn"
 # (web/scripts/build-wasm.sh). The simulator keeps the fast release profile.
 [profile.wasm-release]
 inherits = "release"
-opt-level = "s"
+opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"

@@ -3045,7 +3045,7 @@ mod option_tests {
     }
 
     #[test]
-    fn the_null_player_and_the_unlocks_can_be_measured() {
+    fn the_null_player_can_be_measured() {
         let base = content();
         let options = Options {
             character: Character::NullPlayer,
@@ -3056,12 +3056,27 @@ mod option_tests {
         let stats = simulate(&content, &options, 2, 20).expect("runs");
         assert_eq!(stats.lost_in_section.iter().sum::<u64>() + stats.won, 20);
         assert!(render(&stats, &content, &options, 0).contains("character=NullPlayer"));
+    }
+
+    #[test]
+    fn the_unlocks_are_deterministic() {
+        let base = content();
+        let options = Options {
+            unlocks: true,
+            ..Options::default()
+        };
+        let a = unlocks(&base, &options, 3, 4).expect("unlocks");
+        assert_eq!(a, unlocks(&base, &options, 3, 4).expect("unlocks"));
+    }
+
+    #[test]
+    fn the_unlocks_can_be_measured() {
+        let base = content();
         let options = Options {
             unlocks: true,
             ..Options::default()
         };
         let a = unlocks(&base, &options, 3, 15).expect("unlocks");
-        assert_eq!(a, unlocks(&base, &options, 3, 15).expect("unlocks"));
         assert_eq!(a.earned_at.len(), base.unlocks.len());
         assert!(
             !a.earned_at[&UnlockId::new("second_evening")].is_empty(),
