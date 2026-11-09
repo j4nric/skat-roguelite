@@ -30,7 +30,7 @@
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, cardName, consumableMod, contentName, face, setCatalog, t } from './i18n';
+import { de, consumableMod, contentName, setCatalog } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { passkeysSupported } from './account';
 import { isOnline, watchNetwork } from './offline';
@@ -46,43 +46,42 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { type CardKind, type CardView, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type Seat, type Source, type Step, type Suit } from './types';
-import { esc, reducedMotion } from './ui/dom';
+import { type NullRisk, type RiskLevel, type RunAction, type RunLength, type RunView,  type Suit } from './types';
+import { reducedMotion } from './ui/dom';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
-import { defaultPick, legKey, playTravel, renderRoute, watchMapLabels } from './ui/route';
-import { seatLabel as seatLabelOf } from './ui/guests';
+import { defaultPick, legKey, renderRoute, watchMapLabels } from './ui/route';
 import { markTutorial, tutorialSeen } from './tutorial';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed } from './ui/triggers';
-import { crumbleInto, finishAll, finishOn, type FlightSnapshot, flip, flyIn, glideAll, motionOn, noteFlights, resumeFlights, setTempo, spotsOf, springBack, sweepAway } from './ui/fx';
-import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
-import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot } from './ui/scenes';
+import { finishAll, type FlightSnapshot,  motionOn, noteFlights, resumeFlights, setTempo, springBack } from './ui/fx';
+import { HudFx, spring, watchSprings } from './ui/juice';
+import { bossEntrance, sceneRunning } from './ui/scenes';
 import { setPlayerBack } from './ui/backs';
-import { cardBack, cardSvg, lookSvg, showWildSuit } from './ui/cards';
-import { SUITS } from './ui/art';
 import { watchDrags } from './ui/drag';
 import { watchKeys } from './ui/keys';
 import { buzz, setVibration } from './haptics';
 import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink } from './ui/drink';
 import { reshuffle } from './ui/scatter';
-import { coinIcon, renderHud } from './ui/hud';
-import { sourceName } from './ui/score';
+import { renderHud } from './ui/hud';
 import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
-import type { PendingStart, ScoreOverlay, UiState } from './ui/state';
+import type { PendingStart, UiState } from './ui/state';
 import { discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
-import { DELAY, errorCode, errorText, isCharacter, nextPaint, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
+import { errorCode, errorText, isCharacter, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
 import { AccountFlow, takeLoadedNote } from './app/account';
 import type { AppCtx } from './app/context';
 import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
 import { Mods } from './app/mods';
+import { EventPlayback } from './app/playback/events';
+import { GamePlayback } from './app/playback/game';
+import { Steps } from './app/playback/steps';
 import { DrinkFx } from './app/playback/drinkfx';
 import { Flights } from './app/playback/flights';
 import { Fx } from './app/playback/fx';
@@ -90,39 +89,11 @@ import { Progress } from './app/progress';
 import { SaveCodeFlow } from './app/savecode';
 import { resetTableChoices, TableInput } from './app/table-input';
 
-/** The boss edition's modifications on a boss card (ADR 0015), from the filters the core names. */
-function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string[]; mod_values: Record<string, number> } | null {
-  if (typeof card.kind !== 'object') return null;
-  const code = card.kind.Normal;
-  const suits: Record<string, Suit> = { C: 'Clubs', S: 'Spades', H: 'Hearts', D: 'Diamonds' };
-  const ranks: Record<string, string> = { '7': 'Seven', '8': 'Eight', '9': 'Nine', T: 'Ten', J: 'Jack', Q: 'Queen', K: 'King', A: 'Ace' };
-  const suit = suits[code[0] ?? ''];
-  const rank = ranks[code[1] ?? ''];
-  const mods: string[] = [];
-  const mod_values: Record<string, number> = {};
-  for (const e of edition) {
-    if ((e.filter.suit && e.filter.suit !== suit) || (e.filter.rank && e.filter.rank !== rank)) continue;
-    mods.push(e.card_mod.id);
-    if (e.card_mod.value != null) mod_values[e.card_mod.id] = e.card_mod.value;
-  }
-  return { mods, mod_values };
-}
-
 /**
  * Cards whose flights survive a re-render: the open trick, the hand, the
  * cards to press on the table and the pressed stack.
  */
 const FLYING = '.trick:not(.is-last) .trick-card, .hand-card, .skat-card, .pressed-card[data-fly]';
-
-/** How long the cards slide away before a settled game is scored. */
-const SETTLE_MS = 260;
-/** The trip along a way on the map at tempo "Normal". */
-const TRAVEL_MS = 1600;
-
-/** "Untot": the event of a card that rose from the trick. */
-/** "Doppelgänger": the event of its mirror. */
-type DoppelMirror = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { DoppelgangerMirrored: unknown }>['DoppelgangerMirrored'];
-type RoseEvent = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { CardRose: unknown }>['CardRose'];
 
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
@@ -180,8 +151,6 @@ export class App implements AppCtx {
   /** Account and Groschen in the head: how their changes get there. */
   readonly hudFx: HudFx;
   readonly layerEl: HTMLElement;
-  /** "Untot": cards whose rising was already shown with their trick in this game. */
-  private readonly riseShown = new Set<number>();
   /** The Einführung was left while a playback ran: where to go once it is over. */
   private leaveTutorialTo: 'start' | 'run' | null = null;
   /** The info card (long-press, hover, "i"): one for everything. */
@@ -217,6 +186,8 @@ export class App implements AppCtx {
   private readonly mods: Mods;
   /** Pouring, dragging and throwing at the table (./app/table-input.ts). */
   private readonly table: TableInput;
+  /** Actions sent to the core and played back (./app/playback/steps.ts). */
+  private readonly steps: Steps;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -230,6 +201,9 @@ export class App implements AppCtx {
     this.saveCode = new SaveCodeFlow(this);
     this.mods = new Mods(this);
     this.table = new TableInput(this, this.fx, this.flights, this.drinkFx, this.mods);
+    const game = new GamePlayback(this, this.fx, this.flights, this.layer);
+    const events = new EventPlayback(this, this.fx, this.flights, this.drinkFx, game, this.layer, this.guidance);
+    this.steps = new Steps(this, this.fx, this.flights, events, this.layer, this.progress, this.account.sync, () => this.afterPlayback());
     this.screen = new Patcher(this.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -663,7 +637,7 @@ export class App implements AppCtx {
     this.ui.message = null;
     this.enterRun(this.core.view(), true);
     // Saved while an opponent was to move: let him play on.
-    this.continueOpponents();
+    this.steps.continueOpponents();
   }
 
   private enterRun(view: RunView, dealt: boolean): void {
@@ -687,1037 +661,9 @@ export class App implements AppCtx {
   // Actions
   // -------------------------------------------------------------------------
 
-  /** Send an action to the core, then play its events and the opponents' cards back. */
-  /**
-   * Send an action to the core and play back what happened. `fast` skips
-   * the card animations and pauses ("Rest abkürzen"); the score board
-   * still comes.
-   */
-  async act(action: RunAction, fast = false): Promise<void> {
-    if (!this.core || this.ui.busy) return;
-    const before = this.ui.view;
-    this.ui.busy = true;
-    // Any move ends a look at the last trick.
-    this.ui.peekTrick = false;
-    this.flights.noteCardSources(action);
-    let step;
-    try {
-      step = this.core.apply(action);
-    } catch (err) {
-      console.warn('action rejected', action, err);
-      this.flights.pickupFrom = null;
-      this.flights.pressFlight = null;
-      this.ui.busy = false;
-      this.render();
-      this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
-      return;
-    }
-    this.fastForward = fast;
-    this.ui.overlay = null;
-    await this.playSteps(before, step);
-  }
-
-  /**
-   * "Los": the position travels along the chosen way on the map (not with
-   * reduced motion; the tempo setting scales it, a tap skips it), then the
-   * core takes the choice and the stop follows.
-   */
-  private async travel(option: number): Promise<void> {
-    if (this.ui.busy) return;
-    if (motionOn() && !this.ui.routeOverview) {
-      this.ui.busy = true;
-      this.screenEl.querySelectorAll<HTMLButtonElement>('.route button').forEach((b) => (b.disabled = true));
-      await playTravel(this.screenEl, TRAVEL_MS * this.fx.tempo());
-      this.ui.busy = false;
-    }
-    await this.act({ ChooseRoute: option });
-  }
-
-  /**
-   * "Rest abkürzen": the cards still on the table and in the hand slide
-   * away (not with reduced motion), then the core plays the rest out and
-   * the score board follows.
-   */
-  private async settle(): Promise<void> {
-    if (this.ui.busy) return;
-    this.ui.busy = true;
-    const cards = Array.from(this.screenEl.querySelectorAll<HTMLElement>('.table .trick-card, .table .hand-card'));
-    if (motionOn() && cards.length) {
-      this.screenEl.querySelector('.table')?.classList.add('is-settling');
-      await new Promise((resolve) => window.setTimeout(resolve, SETTLE_MS));
-    }
-    this.ui.busy = false;
-    await this.act('SettleGame', true);
-  }
-
-  /** A run loaded while an opponent was to move: let the opponents play on. */
-  private continueOpponents(): void {
-    const view = this.ui.view;
-    if (!this.core || this.ui.busy || view?.ai_to_move == null) return;
-    this.ui.busy = true;
-    this.fastForward = false;
-    void this.playSteps(view, null);
-  }
-
-  /**
-   * Play a step of the core back (`first`; null to start with an opponent's
-   * card), then, while an opponent is to move, one card of his at a time:
-   * the thought bubble at his seat is painted, then the core computes his
-   * card, then it is animated.
-   *
-   * Storing (W6 of the review): the player's own step is stored at once,
-   * so a reload never takes a decision back. The opponents' cards after it
-   * are stored with the player's next step, or before when the phase
-   * changes, a pub ends, the start screen or the save code reads the
-   * storage, or the page is hidden; until then the run and the meta state
-   * wait in memory together (`persist`). A reload in between loads the state after the
-   * player's step, and the core plays the same opponent cards again (their
-   * choice follows from the stored state), with the meta state at the same
-   * point, so nothing is counted twice.
-   */
-  private async playSteps(before: RunView | null, first: Step | null): Promise<void> {
-    let previous = before;
-    let view = before;
-    let step = first;
-    /** This step is the player's own (stored at once). */
-    let own = first !== null;
-    let earned: string[] = [];
-    // A pub ended (won, lost, the run over): the account gets the new state.
-    let pubEnded = false;
-    try {
-      for (;;) {
-        if (!step) {
-          const seat = view?.ai_to_move ?? null;
-          if (seat === null || !this.core) break;
-          this.ui.thinking = this.ui.settings.thinking ? seat : null;
-          this.render();
-          await nextPaint();
-          try {
-            step = this.core.step();
-          } catch (err) {
-            console.warn('opponent move failed', err);
-            this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
-            break;
-          } finally {
-            this.ui.thinking = null;
-          }
-        }
-        view = step.view;
-        // The Einführung (DESIGN 16.1) is no run: never saved, never
-        // counted, never synced, and a run in progress stays as it was stored.
-        if (!view.tutorial && step.events.some((e) => typeof e === 'object' && ('SeriesWon' in e || 'RunWon' in e || 'RunLost' in e))) pubEnded = true;
-        if (view.tutorial) {
-          // Nothing to keep.
-        } else if (view.phase === 'Won' || view.phase === 'Lost') {
-          this.progress.unsaved.run = null;
-          clearRun();
-          // A night that ends (ADR 0020) is no run of its own: the win
-          // was recorded when der Alte fell.
-          if (!view.night) this.progress.recordRun(view);
-        } else if (this.core) {
-          this.progress.unsaved.run = this.core;
-        }
-        // Stored now: the player's own step, a new phase, the run over.
-        const store = own || view.phase !== previous?.phase || view.phase === 'Won' || view.phase === 'Lost';
-        if (!view.tutorial) earned = earned.concat(this.progress.observe(step.events, true));
-        if (store) this.persist();
-        own = false;
-        await this.playEvents(previous, step.events, view);
-        // A lost run: the pub lights go out before the end screen.
-        if (view.phase === 'Lost') await lightsOut();
-        // The table as the core has it now, before the next opponent thinks.
-        this.ui.anim = null;
-        this.ui.view = view;
-        this.flights.playedFrom = null;
-        this.flights.thrown = null;
-        previous = view;
-        step = null;
-      }
-    } finally {
-      // The account gets the new state: stored first. Otherwise what the
-      // opponents played waits in memory for the player's next step.
-      if (pubEnded) {
-        this.persist();
-        void this.account.sync.push();
-      }
-      this.ui.busy = false;
-      this.ui.anim = null;
-      this.ui.thinking = null;
-      // Nothing waits on a score board or boss sheet once the playback is over.
-      if (this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss') this.ui.overlay = null;
-      this.layer.awaited = null;
-      if (view) this.ui.view = view;
-      this.flights.playedFrom = null;
-      this.flights.thrown = null;
-      resetTableChoices(this.ui);
-      if (view && (view.phase === 'Won' || view.phase === 'Lost')) {
-        this.ui.ended = { won: view.phase === 'Won', view };
-        this.ui.screen = 'end';
-        this.ui.copy = null;
-        sound.play(view.phase === 'Won' ? 'win' : 'lose', { delay: 200 });
-        // The lost pub buzzed with its score board already.
-        if (view.phase === 'Won') buzz('runWon');
-        if (view.phase === 'Won') this.afterRender.push(() => fireworks());
-      }
-      // The end screen must come whatever went wrong before it (playtest
-      // 04.11.2026: stuck on a lost board without a working button).
-      try {
-        this.progress.announceUnlocks(earned);
-      } catch (err) {
-        console.warn('unlocks not shown', err);
-      }
-      try {
-        this.render();
-      } finally {
-        lightsUp();
-      }
-      // The Einführung was left during the playback: now it can go.
-      const leave = this.leaveTutorialTo;
-      if (leave) {
-        this.leaveTutorialTo = null;
-        this.afterTutorial(leave);
-      }
-    }
-  }
-
-  /** A card from an event as the table shows it: the modifications of its owner's edition (ADR 0015). */
-  private cardOf(card: DealtCard, view: RunView): CardView {
-    const owner = card.owner ?? 'Player';
-    const own = owner === 'Player' ? view.edition.find((d) => d.id === card.id) : undefined;
-    // ADR 0017: each boss player plays the edition of his figure of the rule in force.
-    const figure = owner === 'Boss' ? 0 : owner === 'BossPartner' ? 1 : -1;
-    const boss = figure >= 0 ? bossEditionOf(card, view.game?.boss_rule?.figures?.[figure]?.edition ?? []) : null;
-    const mods = own?.mods ?? boss?.mods ?? [];
-    const mod_values = own?.mod_values ?? boss?.mod_values ?? {};
-    const back = owner === 'Player' ? undefined : (view.game?.backs?.[owner === 'Boss' ? 1 : 2] ?? 'regulars');
-    return { ...card, mods, mod_values, ...(back ? { back } : {}), legal: false, from_skat: false, discardable: false, named: this.ui.wildSettled[card.id]?.printed ?? null };
-  }
-
-  /** Animate what happened, using only the events and views of the core. */
-  private async playEvents(before: RunView | null, events: RunEvent[], after: RunView): Promise<void> {
-    const game = before?.game;
-    if (game) {
-      this.ui.anim = {
-        trick: game.trick.slice(),
-        hand: game.hand.map((c) => ({ ...c, legal: false, from_skat: false, discardable: false })),
-        handSizes: game.hand_sizes.slice(),
-        status: '',
-        turn: null,
-      };
-    }
-    // Cards a trade cursed: their curse is told by the trade, not again as a Zinke.
-    const tradeCursed = new Set<number>();
-    // Zinken stamped on in this step, one after another.
-    let stamps = 0;
-    for (let i = 0; i < events.length; i++) {
-      const ev = events[i];
-      if (ev === undefined) continue;
-      if (typeof ev === 'string') {
-        if (ev === 'Re') this.showToast(de.toast.re);
-        if (ev === 'Redealt') {
-          // Kräuter, Doppelkorn: the old cards are washed off the table first.
-          if (this.drinkFx.pouring?.wash.length) {
-            this.drinkFx.washAway(this.drinkFx.pouring.wash);
-            this.drinkFx.pouring.wash = [];
-          }
-          this.guidance.passedOnce = true;
-          this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
-          reshuffle();
-          this.afterRender.push(() => this.flights.dealEffect());
-        }
-        if (ev === 'RedealUndone') {
-          this.showToast(de.toast.redealUndone);
-          reshuffle();
-          this.afterRender.push(() => this.flights.dealEffect());
-        }
-        if (ev === 'RamschDealt') {
-          this.showToast(de.toast.ramsch);
-          sound.play('knock');
-        }
-        if (ev === 'EveningRulesEnded') this.showToast(de.toast.eveningEnded);
-        if (ev === 'RoutesRerolled') {
-          this.showToast(de.toast.routesRerolled);
-          sound.play('card');
-          this.afterRender.push(() => this.drinkFx.reelRoutes());
-        }
-        if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
-        continue;
-      }
-      if ('MarkeGiven' in ev) {
-        // A Marke from an encounter (04.11.2026): say which, and where, when drawn.
-        const g = ev.MarkeGiven;
-        if (g.drawn || g.random_card) {
-          const card = after.edition.find((c) => c.id === g.card);
-          const text = g.drawn ? de.toast.markeGivenDrawn : de.toast.markeGiven;
-          this.showToast(t(text, { mod: contentName('card_mods', g.card_mod), card: card ? cardName(card.kind) : '' }));
-        }
-        continue;
-      }
-      if ('CardMadeTransparent' in ev) {
-        // "Glasauge": one toast for all cards of this deal, at the first one.
-        const prev = events[i - 1];
-        if (prev !== undefined && typeof prev === 'object' && 'CardMadeTransparent' in prev) continue;
-        const cards: string[] = [];
-        for (let j = i; j < events.length; j++) {
-          const e = events[j];
-          if (e === undefined || typeof e !== 'object' || !('CardMadeTransparent' in e)) break;
-          const { card, seat } = e.CardMadeTransparent;
-          cards.push(t(de.toast.transparentCard, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
-        }
-        this.showToast(t(de.toast.glassEye, { cards: cards.join(', ') }));
-        continue;
-      }
-      if ('CardPeeked' in ev) {
-        const { card, seat } = ev.CardPeeked;
-        // "Der Zaungast" sees the whole left hand at the table every game:
-        // no whisper per card.
-        if (after.game?.revealed.some((r) => r.card.id === card.id && r.source === 'Onlooker')) continue;
-        this.showToast(t(de.toast.peeked, { name: this.seatLabel(seat, after), card: cardName(card.kind) }));
-        continue;
-      }
-      if ('VoucherReturned' in ev) {
-        // "Der Drückeberger": a voucher of the pub just ended is back on its card.
-        const id = ev.VoucherReturned.card;
-        const card = after.edition.find((c) => c.id === id);
-        this.showToast(t(de.toast.voucherReturned, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherReturned.card_mod) }), 'top');
-        continue;
-      }
-      if ('VoucherRedeemed' in ev) {
-        // Effekte v2: a voucher was redeemed when its card was discarded (or by a hand game).
-        const id = ev.VoucherRedeemed.card;
-        const card = before?.edition.find((c) => c.id === id) ?? after.edition.find((c) => c.id === id);
-        // Declaring a hand game redeems one Marke of the hand (04.11.2026): the card stays in the hand.
-        const text = ev.VoucherRedeemed.via_hand ? de.toast.voucherRedeemedHand : de.toast.voucherRedeemed;
-        this.showToast(t(text, { card: card ? cardName(card.kind) : '', mod: contentName('card_mods', ev.VoucherRedeemed.card_mod) }), 'top');
-        sound.play('clink');
-        if (card) await this.redeemVoucher(card, after.edition.find((c) => c.id === id) ?? null);
-        continue;
-      }
-      if ('EveningRuleAdded' in ev) {
-        this.showToast(t(de.toast.eveningRule, { name: contentName('relics', ev.EveningRuleAdded) }));
-        sound.play('clink');
-        continue;
-      }
-      if ('RelicSwapped' in ev) {
-        this.showToast(t(de.toast.relicSwapped, { old: contentName('relics', ev.RelicSwapped.old), new: contentName('relics', ev.RelicSwapped.new) }));
-        sound.play('clink');
-        continue;
-      }
-      if ('NextGameDoubled' in ev) {
-        this.showToast(t(de.toast.nextDoubled, { factor: ev.NextGameDoubled.factor }));
-        sound.play('clink');
-        continue;
-      }
-      if ('TradeCurse' in ev) {
-        // Curses as trade: Schnäppchen, Hehlerware, Fusel.
-        const { card: id, curse, cause } = ev.TradeCurse;
-        const card = after.edition.find((c) => c.id === id);
-        tradeCursed.add(id);
-        this.showToast(t(de.toast.tradeCurse[cause], { card: card ? cardName(card.kind) : '', curse: contentName('card_mods', curse) }));
-        sound.play('clink');
-        continue;
-      }
-      if ('DeckChanged' in ev) {
-        const change = ev.DeckChanged;
-        if ('Modified' in change && tradeCursed.delete(change.Modified.card)) continue;
-        if ('Modified' in change) {
-          const card = after.edition.find((c) => c.id === change.Modified.card);
-          if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));
-          // A Zinke put on at the Tresen, by the Kartenmaler or at an encounter: stamped on.
-          const old = before?.edition.find((c) => c.id === change.Modified.card);
-          if (card && old && (before?.phase === 'Shop' || before?.phase === 'Encounter')) this.flights.stampLater(old, card, stamps++);
-        }
-        if ('Cleansed' in change) {
-          const card = after.edition.find((c) => c.id === change.Cleansed.card);
-          if (card) this.showToast(t(de.toast.cardCleansed, { card: cardName(card.kind) }));
-        }
-        continue;
-      }
-      if ('Game' in ev) {
-        // "Glasdaus": cards that break with this trick (their events follow it).
-        const breaking: number[] = [];
-        // "Untot": a card that rises from this trick (its event follows the trick's hooks).
-        let rising: RoseEvent | null = null;
-        if ('TrickWon' in ev.Game) {
-          for (const next of events.slice(i + 1)) {
-            if (typeof next !== 'object') break;
-            if ('Game' in next) {
-              if ('CardRose' in next.Game) rising = next.Game.CardRose;
-              break;
-            }
-          }
-          if (!rising) {
-            const later = events.slice(i + 1).find((e): e is Extract<RunEvent, { Game: unknown }> => typeof e === 'object' && 'Game' in e);
-            if (later && 'CardRose' in later.Game) rising = later.Game.CardRose;
-          }
-        }
-        await this.playGameEvent(ev.Game, after, breaking, rising);
-        continue;
-      }
-      if ('RiseChoice' in ev) {
-        // "Untot": the sheet of the core's `rise_choice` asks for the three cards.
-        continue;
-      }
-      if ('CoinsGained' in ev) {
-        await this.coinsGained(ev.CoinsGained.source, ev.CoinsGained.amount, ev.CoinsGained.coins, after);
-        continue;
-      }
-      if ('GameDealt' in ev) {
-        this.ui.wildSettled = {};
-        this.ui.handOrder = null;
-        this.ui.risen = null;
-        this.riseShown.clear();
-        // A new game: from here on the final view tells the story.
-        this.ui.anim = null;
-        this.ui.view = after;
-        resetTableChoices(this.ui);
-        this.fx.greetSeries(after);
-        reshuffle();
-        this.afterRender.push(() => this.flights.dealEffect());
-        continue;
-      }
-      if ('BossAnnounced' in ev) {
-        this.showToast(t(de.toast.bossAnnounced, { name: contentName('bosses', ev.BossAnnounced.boss) }));
-        continue;
-      }
-      if ('Kontra' in ev) {
-        this.showToast(t(de.toast.kontra, { name: this.seatLabel(ev.Kontra.seat, after) }));
-        sound.play('knock');
-        await this.fx.pause(DELAY.notice);
-        continue;
-      }
-      if ('RedealsAdded' in ev) {
-        this.showToast(t(de.toast.passesAdded, { left: ev.RedealsAdded.redeals_left }));
-        continue;
-      }
-      if ('AccountCleared' in ev) {
-        this.showToast(t(de.toast.accountCleared, { before: ev.AccountCleared.before }));
-        sound.play('clink');
-        continue;
-      }
-      if ('GamesAdded' in ev) {
-        this.showToast(t(de.toast.gamesAdded, { left: ev.GamesAdded.games_left }));
-        sound.play('clink');
-        continue;
-      }
-      if ('PubGivenUp' in ev) {
-        // The toasts of the lost pub follow (life, or the end of the run).
-        continue;
-      }
-      if ('SkatPeeked' in ev) {
-        this.afterRender.push(() => this.drinkFx.revealSkat());
-      }
-      if ('ConsumableUsed' in ev) {
-        const id = ev.ConsumableUsed.consumable;
-        // Poured over the table: a factor for the next game slams onto the felt.
-        const poured = this.drinkFx.pouring;
-        if (poured?.id === id && poured.kind === 'Table') {
-          const effect = after.pending_next_game?.find((p) => p.consumable === id)?.effect;
-          const factor = effect && typeof effect === 'object' ? ('Multiply' in effect ? effect.Multiply : effect.MultiplyWin) : null;
-          if (factor) this.afterRender.push(() => this.drinkFx.slamFactor(factor));
-        }
-        // Klarer and Absacker have said what they did.
-        if (events.some((e) => typeof e === 'object' && ('AccountCleared' in e || 'GamesAdded' in e))) continue;
-        // A Schnaps that changes the next game says so; the others just get used.
-        const waiting = after.pending_next_game?.find((p) => p.consumable === id);
-        this.showToast(
-          waiting
-            ? t(de.toast.schnapsWaiting, { name: contentName('consumables', id) })
-            : t(de.toast.consumableUsed, { name: contentName('consumables', id) }),
-        );
-        continue;
-      }
-      if ('RelicBought' in ev) {
-        this.showToast(t(de.toast.bought, { name: contentName('relics', ev.RelicBought.relic) }));
-        sound.play('coin');
-        const bought = this.flights.bought;
-        this.flights.bought = null;
-        const relic = ev.RelicBought.relic;
-        if (bought) {
-          this.afterRender.push(() => {
-            const chips = this.screenEl.querySelectorAll<HTMLElement>(`.leiste-relics .coaster-chip[data-relic="${CSS.escape(relic)}"]`);
-            relicToStrip(bought.html, bought.rect, chips[chips.length - 1] ?? null);
-          });
-        }
-        continue;
-      }
-      if ('ConsumableBought' in ev) {
-        this.showToast(t(de.toast.bought, { name: contentName('consumables', ev.ConsumableBought.consumable) }));
-        sound.play('coin');
-        const bought = this.flights.bought;
-        this.flights.bought = null;
-        // Its slot: the one the core filled with it in this step.
-        const id = ev.ConsumableBought.consumable;
-        const slot = after.consumables.find((c) => c.consumable.id === id && !before?.consumables.some((b) => b.slot === c.slot && b.consumable.id === id))?.slot;
-        if (bought) {
-          this.afterRender.push(() => {
-            const target = slot === undefined ? null : this.screenEl.querySelector<HTMLElement>(`.leiste-slots [data-testid="schnaps-slot-${slot}"]`);
-            schnapsToSlot(bought.html, bought.rect, target);
-          });
-        }
-        continue;
-      }
-      if ('RelicSold' in ev) {
-        this.showToast(t(de.toast.sold, { name: contentName('relics', ev.RelicSold.relic), price: ev.RelicSold.price }));
-        sound.play('coin');
-        continue;
-      }
-      if ('ConsumableSold' in ev) {
-        this.showToast(
-          t(de.toast.sold, { name: contentName('consumables', ev.ConsumableSold.consumable), price: ev.ConsumableSold.price }),
-        );
-        sound.play('coin');
-        continue;
-      }
-      if ('ShopRerolled' in ev) {
-        this.showToast(de.toast.rerolled);
-        sound.play('card');
-        continue;
-      }
-      if ('CardOfferBought' in ev || 'PainterHired' in ev || 'CardCleansed' in ev) {
-        // The card itself is told by the DeckChanged that follows (or the painter's sheet).
-        if (!('PainterHired' in ev) || ev.PainterHired.price > 0) sound.play('coin');
-        continue;
-      }
-      if ('CounterRaised' in ev) {
-        this.fx.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
-        continue;
-      }
-      if ('SkatCardShown' in ev) {
-        // "Spickzettel": the card lies face up beside the trick from now on.
-        this.fx.wiggleSource(ev.SkatCardShown.source);
-        this.showToast(t(de.toast.skatShown, { card: cardName(ev.SkatCardShown.card.kind) }), 'top');
-        continue;
-      }
-      if ('SkatPointsRaised' in ev) {
-        // "Skatpfleger": the discards count more, say so at the relic.
-        const { source, card_points } = ev.SkatPointsRaised;
-        this.fx.fireTriggers([{ source, lever: 'CardPoints', change: { Add: card_points } }], after);
-        continue;
-      }
-      if ('GameScored' in ev) {
-        // What fired, on the chips and cards still on screen, before the board covers them.
-        // The regulars take the result, a Schneider is cut across the felt; what fired lights up meanwhile.
-        let wait = this.fastForward ? 0 : await this.flights.gameEndEffect(ev.GameScored.breakdown);
-        if (this.fx.fireTriggers(ev.GameScored.breakdown.lines, after)) wait = Math.max(wait, DELAY.trigger);
-        if (wait) await this.fx.pause(wait);
-        const rest = events.slice(i + 1);
-        const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
-        // One loss sound per chain (playtest 04.11.2026): when this lost game ends the run
-        // (ADR 0019), the end screen sounds it, not the board.
-        const runEnds = rest.some((e) => typeof e === 'object' && 'RunLost' in e);
-        // One pattern per chain: the pub's result, else the game's.
-        const pubLost = runEnds || rest.some((e) => typeof e === 'object' && 'PubLost' in e);
-        buzz(won ? 'pubWon' : pubLost ? 'pubLost' : ev.GameScored.breakdown.won ? 'gameWon' : 'gameLost');
-        await this.showScore(
-          before?.series.score ?? 0,
-          ev.GameScored.series_score,
-          before?.series.target ?? after.series.target,
-          after,
-          won ? { payout: won.SeriesWon.payout, coins: won.SeriesWon.coins } : null,
-          runEnds,
-        );
-        continue;
-      }
-      if ('DebtChanged' in ev) {
-        const debt = ev.DebtChanged.debt;
-        const took = (before?.debt ?? 0) < debt;
-        this.showToast(took ? t(de.toast.debt, { debt }) : debt === 0 ? de.toast.debtPaid : t(de.toast.debtLeft, { debt }));
-        continue;
-      }
-      // ADR 0017: "Die Oma" curses half the edition for the pub, and lifts it after.
-      if ('BossCursesLaid' in ev) {
-        const { boss, cards } = ev.BossCursesLaid;
-        this.showToast(t(de.toast.bossCursed, { name: contentName('bosses', boss), n: cards.length }), 'top');
-        sound.play('clink');
-        continue;
-      }
-      if ('BossCursesLifted' in ev) {
-        this.showToast(de.toast.bossCursesLifted);
-        continue;
-      }
-      if ('RelicGained' in ev) {
-        this.showToast(t(de.toast.relicGained, { name: contentName('relics', ev.RelicGained.relic) }));
-        sound.play('clink');
-        continue;
-      }
-      if ('SecondChance' in ev) {
-        // ADR 0019: the Schutzengel has the lost pub played again and goes.
-        const name = contentName('relics', ev.SecondChance.relic);
-        this.showToast(t(de.toast.secondChance, { name }), 'top');
-        sound.play('clink');
-        if (motionOn()) await this.fx.pause(900);
-        continue;
-      }
-      if ('CoinsStashed' in ev) {
-        const { source, amount, pot } = ev.CoinsStashed;
-        const name = typeof source === 'object' && 'Relic' in source ? contentName('relics', source.Relic) : '';
-        this.fx.wiggleSource(source);
-        this.showToast(t(de.toast.stashed, { name, amount, pot }));
-        sound.play('coin');
-        continue;
-      }
-      if ('StashPaidOut' in ev) {
-        const { relic, amount } = ev.StashPaidOut;
-        this.showToast(t(de.toast.stashPaidOut, { name: contentName('relics', relic), amount }));
-        sound.play('coin');
-        continue;
-      }
-      if ('NextPubPlanned' in ev) {
-        const { redeals, target } = ev.NextPubPlanned;
-        const parts: string[] = [];
-        if (redeals) parts.push(t(de.toast.nextPubRedeals, { n: redeals > 0 ? `+${redeals}` : `−${-redeals}` }));
-        if (target) parts.push(t(de.toast.nextPubTarget, { n: target > 0 ? `+${target}` : `−${-target}` }));
-        if (parts.length) this.showToast(t(de.toast.nextPub, { parts: parts.join(', ') }));
-        continue;
-      }
-      if ('WagerPlaced' in ev) {
-        const bet = after.wager;
-        const text = bet?.on === 'Win' ? de.toast.wagerPlacedWin : de.toast.wagerPlaced;
-        this.showToast(t(text, { stake: ev.WagerPlaced.stake }));
-        sound.play('coin');
-        continue;
-      }
-      if ('DiceThrown' in ev) {
-        const { stake, won, payout } = ev.DiceThrown;
-        this.showToast(won ? t(de.toast.diceWon, { payout }) : t(de.toast.diceLost, { stake }), 'top');
-        sound.play(won ? 'coin' : 'lose');
-        continue;
-      }
-      if ('WagerSettled' in ev) {
-        const { stake, won, payout } = ev.WagerSettled;
-        this.showToast(won ? t(de.toast.wagerWon, { payout }) : t(de.toast.wagerLost, { stake }), 'top');
-        continue;
-      }
-      if ('StopsRevealed' in ev) {
-        this.showToast(t(de.toast.stopsRevealed, { n: ev.StopsRevealed.legs }));
-        continue;
-      }
-      if ('MalusChosen' in ev) {
-        this.showToast(t(de.toast.malusChosen, { name: contentName('maluses', ev.MalusChosen.malus) }));
-        continue;
-      }
-      if ('GambleResolved' in ev) {
-        this.showToast(ev.GambleResolved.curse ? de.toast.gambleCurse : de.toast.gambleGood, 'top');
-        sound.play(ev.GambleResolved.curse ? 'lose' : 'clink');
-        continue;
-      }
-      if ('SchnappsRewarded' in ev) {
-        if (!ev.SchnappsRewarded.slots_full) {
-          this.showToast(t(de.toast.schnappsRewarded, { name: contentName('consumables', ev.SchnappsRewarded.consumable) }));
-          sound.play('clink');
-        }
-        continue;
-      }
-      if ('SchnappsRewardTaken' in ev) {
-        this.showToast(
-          t(de.toast.schnappsRewardTaken, {
-            name: contentName('consumables', ev.SchnappsRewardTaken.consumable),
-            old: contentName('consumables', ev.SchnappsRewardTaken.given_up),
-          }),
-        );
-        continue;
-      }
-      if ('ConsumableGained' in ev) {
-        this.showToast(t(de.toast.consumableGained, { name: contentName('consumables', ev.ConsumableGained.consumable) }));
-        sound.play('clink');
-        continue;
-      }
-      if ('SeriesStarted' in ev && ev.SeriesStarted.boss && after.series.boss) {
-        this.ui.view = after;
-        this.ui.anim = null;
-        this.ui.screen = 'run';
-        const boss = after.series.boss;
-        await this.layer.waitOn((resolve) => ({ kind: 'boss', boss, resolve }));
-        this.ui.overlay = null;
-        // The table opens: lights down, the spotlight onto both boss players
-        // (once no dialog is open any more, see render()).
-        this.entrancePending = true;
-      }
-    }
-  }
-
-  private async playGameEvent(ev: Extract<RunEvent, { Game: unknown }>['Game'], after: RunView, breaking: number[] = [], rising: RoseEvent | null = null): Promise<void> {
-    const anim = this.ui.anim;
-    if ('DoppelgangerMirrored' in ev) {
-      await this.doppelMirror(ev.DoppelgangerMirrored, after);
-      return;
-    }
-    if ('CardPlayed' in ev) {
-      if (!anim) return;
-      const { seat, card } = ev.CardPlayed;
-      if (anim.trick.length >= 3) anim.trick = [];
-      // Where the card comes from, measured before the table changes.
-      const from = seat === 0 ? (this.flights.playedFrom ?? this.rectOf('.hand')) : this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
-      anim.trick.push({ seat, card: this.cardOf(card, after) });
-      anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
-      if (seat === 0) anim.hand = anim.hand.filter((c) => c.id !== card.id);
-      anim.turn = seat === 0 ? null : seat;
-      anim.status = '';
-      this.render();
-      const el = this.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
-      const played = anim.trick[anim.trick.length - 1]?.card;
-      if (el instanceof HTMLElement && from && !this.fastForward) this.flights.throwOnto(el, seat, from, played?.back ?? null);
-      sound.play('card', { rate: 0.94 + seat * 0.05 });
-      await this.fx.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
-      return;
-    }
-    if ('TrickWon' in ev) {
-      if (!anim) return;
-      const { trick, card_points } = ev.TrickWon;
-      anim.turn = null;
-      anim.status =
-        trick.winner === 0
-          ? t(de.table.trickToYou, { points: card_points })
-          : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
-      this.fx.trickQuip(after, trick.winner, card_points);
-      if (trick.winner === 0 && !this.fastForward) buzz('trick');
-      this.render();
-      if (!this.fastForward) this.flights.reactToTrick(after, trick.winner, card_points);
-      await this.fx.pause(DELAY.trickShow);
-      if (breaking.length) {
-        // "Glasdaus": the card cracks and shatters before the trick leaves.
-        for (const id of breaking) this.screenEl.querySelector(`.trick-card[data-card-id="${id}"]`)?.classList.add('is-shattering');
-        sound.play('clink', { rate: 1.6 });
-        await this.fx.pause(DELAY.notice);
-      }
-      // "Untot": the card rises back into the hand, the substitute takes its place, then the trick leaves.
-      if (rising) await this.riseCard(rising, after);
-      const target = this.flights.sweepTarget(trick.winner);
-      const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
-      // A card still sliding onto its place lies there now.
-      finishOn(cards);
-      sound.play('trick');
-      // The stack forms on the card that took the trick.
-      const onto = cards.findIndex((c) => c.getAttribute('data-trick-seat') === String(trick.winner));
-      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly, onto), this.fx.pause(DELAY.trickFly + 200)]);
-      anim.trick = [];
-      anim.status = '';
-      this.render();
-      return;
-    }
-    if ('Conceded' in ev) {
-      this.showToast(de.toast.conceded);
-      await this.fx.pause(DELAY.notice);
-      return;
-    }
-    if ('DefenderHandsSwapped' in ev) {
-      if (anim) anim.handSizes = ev.DefenderHandsSwapped.hand_sizes.slice();
-      this.showToast(de.toast.handsSwapped);
-      sound.play('card');
-      this.render();
-      await this.fx.pause(DELAY.notice);
-      return;
-    }
-    if ('CardRose' in ev) {
-      // Shown with its trick (riseCard) unless the trick was not on screen.
-      if (!this.riseShown.has(ev.CardRose.card.id)) await this.riseCard(ev.CardRose, after);
-      return;
-    }
-    if ('CardChalked' in ev) {
-      const { old, new: painted } = ev.CardChalked;
-      this.showToast(t(de.toast.chalked, { old: cardName(old.kind), new: cardName(painted.kind) }));
-      return;
-    }
-    if ('WildCardSettled' in ev) {
-      // "Wandelkarte": its suit is settled as the game starts.
-      const { old, new: settled } = ev.WildCardSettled;
-      const printed = face(old.kind)?.suit;
-      if (printed) this.ui.wildSettled = { ...this.ui.wildSettled, [old.id]: { kind: settled.kind, printed } };
-      this.showToast(t(de.toast.wildSettled, { old: cardName(old.kind), new: cardName(settled.kind) }));
-      if (anim && printed) {
-        // The hand shows the settled card in the core's order from now on.
-        anim.hand = anim.hand.map((c) => (c.id === old.id ? { ...c, kind: settled.kind, unsettled: false, named: printed } : c));
-        const order = after.game?.hand.map((c) => c.id) ?? [];
-        if (order.length) anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-        this.render();
-        await this.cycleWild(old.id, settled.kind);
-      }
-      return;
-    }
-    if ('SkatSwapped' in ev) {
-      const { took, gave } = ev.SkatSwapped;
-      const g = after.game;
-      if (anim && g) {
-        anim.hand = g.hand.map((c) => ({ ...c, legal: false }));
-        anim.handSizes[0] = anim.hand.length;
-      }
-      this.showToast(t(de.toast.skatSwapped, { took: cardName(took.kind), gave: cardName(gave.kind) }));
-      this.render();
-      const from = this.rectOf('.deck-spot');
-      const el = this.screenEl.querySelector(`.hand-card[data-id="${took.id}"]`);
-      if (from && el && !this.fastForward) flyIn(el, from, { ms: 320 });
-      sound.play('card');
-      await this.fx.pause(DELAY.notice);
-      return;
-    }
-    if ('CardDrawn' in ev) {
-      const { seat, card } = ev.CardDrawn;
-      if (anim) {
-        anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
-        this.render();
-      }
-      this.showToast(t(de.toast.cardDrawn, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
-      const from = this.rectOf(`.opp[data-seat="${seat}"]`);
-      const el = this.screenEl.querySelector(`.skat-zone [data-id="${card.id}"], .hand-card[data-id="${card.id}"]`);
-      if (from && el && !this.fastForward) flyIn(el, from, { ms: 360 });
-      sound.play('card');
-      await this.fx.pause(DELAY.notice);
-      return;
-    }
-    if ('CardReturned' in ev) {
-      const { seat, card } = ev.CardReturned;
-      if (anim) {
-        anim.hand = anim.hand.filter((c) => c.id !== card.id);
-        anim.handSizes[0] = anim.hand.length;
-        anim.handSizes[seat] = (anim.handSizes[seat] ?? 0) + 1;
-        this.render();
-      }
-      this.showToast(t(de.toast.cardReturned, { card: cardName(card.kind), name: this.seatLabel(seat, after) }), 'top');
-      return;
-    }
-    if ('Discarded' in ev && anim) {
-      const gone = ev.Discarded.cards.map((c) => c.id);
-      anim.hand = anim.hand.filter((c) => !gone.includes(c.id));
-      anim.handSizes[0] = anim.hand.length;
-      this.render();
-      return;
-    }
-    if (('Declared' in ev || 'SkatPickedUp' in ev) && anim) {
-      // Show the new hand order and the declaration right away.
-      const g = after.game;
-      // "Kurzer": the skat lay face up already, nothing to turn over.
-      const peeked = Boolean(this.ui.view?.game?.skat_peek?.length);
-      if (g && 'SkatPickedUp' in ev) {
-        anim.hand = g.hand.map((c) => ({ ...c, legal: false }));
-        anim.handSizes[0] = anim.hand.length;
-        // The skat stays on the table, face up: the cards to press lie there.
-        const loose = new Set(g.hand.filter((c) => c.discardable).map((c) => c.id));
-        // "Drei drücken": the card drawn from a defender joins them on the table.
-        const drawn = g.hand.filter((c) => c.drawn_from != null).map((c) => c.id);
-        if (g.phase === 'Discarding') this.ui.selected = [...ev.SkatPickedUp.skat.map((c) => c.id), ...drawn].filter((id) => loose.has(id));
-      }
-      if (g && this.ui.view?.game) {
-        this.ui.view = { ...this.ui.view, game: { ...this.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };
-      }
-      // "Hand sortieren: automatisch": the hand takes the core's order for the game declared at once.
-      const resort = Boolean(g && 'Declared' in ev && this.ui.settings.handSort === 'auto');
-      const spots = resort ? spotsOf(this.screenEl, '.hand .hand-card') : null;
-      if (g && resort) {
-        const order = g.hand.map((c) => c.id);
-        anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-      }
-      this.render();
-      if (spots) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
-      if ('Declared' in ev && !this.fastForward) this.flights.declareEffect(ev.Declared.declaration);
-      if ('SkatPickedUp' in ev && !this.fastForward) {
-        this.flights.pickUpFlights(ev.SkatPickedUp.skat, peeked);
-        sound.play('card');
-        await this.fx.pause(DELAY.flip);
-      }
-    }
-  }
-
-  /**
-   * Groschen paid by content (a curse when it is attached): a coin pops up
-   * at the purse with the amount and where it came from, the purse shows
-   * the new total from the core.
-   */
-  private async coinsGained(source: Source, amount: number, coins: number, after: RunView): Promise<void> {
-    const from = sourceName(source, after.edition);
-    this.fx.wiggleSource(source);
-    const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
-    this.showToast(t(de.toast.coins, { amount: sign, source: from }));
-    // The coins fly from what paid them (its chip or card on screen), else from the last tap.
-    const payer = this.fx.triggerTargets(source)[0]?.getBoundingClientRect() ?? null;
-    if (amount > 0) this.hudFx.gainTo(coins, payer?.width ? payer : null);
-    else this.hudFx.loseTo(coins);
-    const box = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
-    const pop = document.createElement('div');
-    pop.className = `coin-pop ${amount < 0 ? 'is-minus' : ''}`;
-    pop.dataset.testid = 'coin-pop';
-    pop.setAttribute('aria-hidden', 'true');
-    pop.innerHTML = `${coinIcon(22)}<b>${esc(sign)}</b><span>${esc(from)}</span>`;
-    if (box) {
-      pop.style.top = `${Math.round(box.bottom + 6)}px`;
-      pop.style.right = `${Math.max(8, Math.round(window.innerWidth - box.right))}px`;
-    }
-    this.root.appendChild(pop);
-    window.setTimeout(() => pop.remove(), Math.max(1400, 2200 * TEMPO_FACTOR[this.ui.settings.tempo]));
-    await this.fx.pause(DELAY.notice);
-  }
-
-  /**
-   * A voucher redeemed (VoucherRedeemed, board "Einlösen in drei
-   * Schritten"): the card shows big over the table, its stamp margin tears
-   * off, then a coin flies to the Groschen counter, or the card turns over
-   * into its new form (Untot, Wandelkarte). Both faces come from the core's
-   * views before and after the discard; the Groschen follow as their own
-   * event. Skipped with reduced motion and when the table is hurried.
-   */
-  private async redeemVoucher(card: DeckCard, now: DeckCard | null): Promise<void> {
-    if (!motionOn() || this.fastForward) return;
-    const from = this.screenEl.querySelector(`[data-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
-    const box = document.createElement('div');
-    box.className = 'voucher-redeem';
-    box.dataset.testid = 'voucher-redeem';
-    box.dataset.stage = 'voucher';
-    box.setAttribute('aria-hidden', 'true');
-    box.innerHTML = `<span class="card">${cardSvg(card.kind, card.mods, 'full', card.mod_values)}</span>`;
-    this.root.appendChild(box);
-    const el = box.querySelector<HTMLElement>('.card');
-    if (!el) return;
-    if (from?.width) flyIn(el, from, { ms: 260 });
-    await this.fx.pause(DELAY.notice * 0.5);
-    // Step 2: the stamp margin tears off.
-    el.innerHTML = cardSvg(card.kind, card.mods, 'full', card.mod_values, { redeeming: true });
-    box.dataset.stage = 'torn';
-    el.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-4deg)' }, { transform: 'rotate(3deg)' }, { transform: 'rotate(0)' }], { duration: 260, easing: 'ease-out' });
-    sound.play('card', { rate: 1.3 });
-    await this.fx.pause(DELAY.notice * 0.6);
-    // Step 3: what the voucher gives.
-    if (now) {
-      const turned = now.mods.some((m) => !card.mods.includes(m));
-      if (turned) {
-        el.innerHTML = cardSvg(now.kind, now.mods, 'full', now.mod_values);
-        flip(el, cardBack(), { ms: 360 });
-        box.dataset.stage = 'turned';
-      } else {
-        el.innerHTML = cardSvg(now.kind, now.mods, 'full', now.mod_values);
-        box.dataset.stage = 'coin';
-        const purse = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
-        if (purse) {
-          const coin = document.createElement('span');
-          coin.className = 'voucher-coin';
-          coin.innerHTML = coinIcon(28);
-          coin.style.left = `${Math.round(purse.left + purse.width / 2 - 14)}px`;
-          coin.style.top = `${Math.round(purse.top + purse.height / 2 - 14)}px`;
-          this.root.appendChild(coin);
-          const anim = flyIn(coin, el.getBoundingClientRect(), { ms: 420, arc: 40 });
-          const gone = (): void => coin.remove();
-          if (anim) anim.finished.then(gone, gone);
-          else gone();
-        }
-      }
-    }
-    await this.fx.pause(DELAY.notice * 0.8);
-    box.remove();
-  }
-
-  /**
-   * "Untot" (CardRose): the card lifts out of the trick back into the hand,
-   * the substitute from the hand turns over into its place; a toast above
-   * the Stammgäste says so. Everything from the event and the core's view.
-   */
-  private async riseCard(rose: RoseEvent, after: RunView): Promise<void> {
-    const { card, substitute } = rose;
-    // Since 03.11.2026 it comes back as a copy of the trick's winning card.
-    const risen = rose.risen ?? card;
-    this.riseShown.add(card.id);
-    this.ui.risen = { substitute: substitute.id, card: cardName(card.kind) };
-    this.showToast(t(de.toast.cardRose, { card: cardName(card.kind), risen: cardName(risen.kind), substitute: cardName(substitute.kind) }), 'top');
-    const anim = this.ui.anim;
-    if (!anim) return;
-    const subFrom = this.screenEl.querySelector(`.hand-card[data-id="${substitute.id}"]`)?.getBoundingClientRect() ?? null;
-    // The card as it was played crumbles big over the table into the
-    // zombie card it comes back as (playtest 05.11.2026), then that one
-    // flies into the hand; without motion or hurried it is just there.
-    // The pick sheet goes first (the run is busy now), so the scene is seen.
-    if (this.screenEl.querySelector('.sheet-rise')) this.render();
-    const played = this.screenEl.querySelector(`.trick-card[data-card-id="${card.id}"]`)?.getBoundingClientRect() ?? null;
-    const morphed = this.fastForward ? null : await crumbleInto(this.root, lookSvg(this.cardOf(card, after)), lookSvg({ ...this.cardOf(risen, after), risen: true }));
-    const from = morphed ?? played;
-    anim.trick = anim.trick.map((p) => (p.card.id === card.id ? { seat: p.seat, card: this.cardOf(substitute, after) } : p));
-    // The trick's Augen changed with the card; the core's count follows with the score.
-    anim.status = '';
-    const hand = after.game?.hand;
-    anim.hand = hand
-      ? hand.map((c) => ({ ...c, legal: false }))
-      : [...anim.hand.filter((c) => c.id !== substitute.id), { ...this.cardOf(risen, after), can_rise: false, risen: true }];
-    // A short green glow while it climbs back into the hand (style.css; with reduced motion a still outline).
-    this.ui.rising = card.id;
-    this.render();
-    if (!this.fastForward) {
-      const back = this.screenEl.querySelector(`.hand-card[data-id="${card.id}"]`);
-      if (back && from) flyIn(back, from, { ms: 520, arc: -46 });
-      const sub = this.screenEl.querySelector<HTMLElement>(`.trick-card[data-card-id="${substitute.id}"]`);
-      if (sub) {
-        if (subFrom) flyIn(sub, subFrom, { ms: 300, delay: 120 });
-        flip(sub, cardBack(), { ms: 320, delay: 160 });
-      }
-    }
-    sound.play('card', { rate: 0.8 });
-    await this.fx.pause(DELAY.notice);
-    this.ui.rising = null;
-  }
-
-  /**
-   * "Doppelgänger", Spiegelbild (DoppelgangerMirrored): the played card
-   * flashes in its violet mirror look with a shimmer, "Gespiegelt!"; then
-   * its CardPlayed throws the copy (the copied face with the mirror look)
-   * into the trick. Tempo-scaled, off with reduced motion, a tap ends it.
-   */
-  private async doppelMirror(m: DoppelMirror, after: RunView): Promise<void> {
-    this.showToast(t(de.toast.doppelMirrored, { card: cardName(m.card.kind), copied: cardName(m.copied.kind) }), 'top');
-    const rect = this.flights.playedFrom ?? this.rectOf(`.hand-card[data-id="${m.card.id}"]`);
-    if (this.fastForward || !rect) return;
-    sceneWord(de.doppel.mirrored, rect, 'doppel-word');
-    await mirrorShimmer(lookSvg(this.cardOf(m.card, after)), rect);
-  }
-
-  private seatLabel(seat: Seat, view: RunView): string {
-    return seatLabelOf(view, seat);
-  }
-
-  private rectOf(selector: string): DOMRect | null {
-    const el = this.screenEl.querySelector(selector);
-    return el ? el.getBoundingClientRect() : null;
-  }
-
-  private async showScore(
-    previousScore: number,
-    seriesScore: number,
-    target: number,
-    after: RunView,
-    payout: ScoreOverlay['payout'],
-    quietLoss = false,
-  ): Promise<void> {
-    const score = after.last_score;
-    if (!score) return;
-    const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
-    await this.layer.waitOn((resolve) => ({ kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve }));
-    this.layer.scoreBoard = null;
-    this.ui.overlay = null;
-    // The board goes; the account in the head counts to the new value.
-    this.layer.render();
-    if (previousScore !== seriesScore && this.screenEl.querySelector('.hud [data-testid="account"]')) {
-      void this.hudFx.account(seriesScore, target);
-      if (motionOn()) await this.fx.pause(520);
-    }
-  }
-
-  /**
-   * "Wandelkarte": as the core settles its suit, the card in the hand runs
-   * through the four suits' colours (about 0.8 s) and stops on the new one.
-   * Already drawn settled, so reduced motion and hurrying just skip it.
-   */
-  private async cycleWild(id: number, kind: CardKind): Promise<void> {
-    const f = face(kind);
-    const card = this.screenEl.querySelector<HTMLElement>(`.hand [data-id="${id}"]`);
-    const svg = card?.querySelector('svg.card-svg');
-    if (!f || !card || !svg || reducedMotion() || this.fastForward) return;
-    const steps = 8;
-    const last = SUITS.indexOf(f.suit);
-    card.classList.add('is-settling');
-    sound.play('card', { rate: 1.4 });
-    for (let i = 0; i < steps; i++) {
-      const suit = SUITS[(last - (steps - 1 - i) + 4 * steps) % 4] ?? f.suit;
-      showWildSuit(svg, f.rank, suit);
-      if (this.fastForward) break;
-      await this.fx.pause(i === steps - 1 ? 180 : 85);
-    }
-    showWildSuit(svg, f.rank, f.suit);
-    card.classList.remove('is-settling');
+  /** Send an action to the core and play back what happened (./app/playback/steps.ts). */
+  act(action: RunAction, fast = false): Promise<void> {
+    return this.steps.act(action, fast);
   }
 
   /** Store what the playback kept in memory (./app/progress.ts). */
@@ -1796,6 +742,15 @@ export class App implements AppCtx {
       return;
     }
     this.afterTutorial(go);
+  }
+
+  /** A playback is over: the Einführung left meanwhile can go now. */
+  private afterPlayback(): void {
+    const leave = this.leaveTutorialTo;
+    if (leave) {
+      this.leaveTutorialTo = null;
+      this.afterTutorial(leave);
+    }
   }
 
   private afterTutorial(go: 'start' | 'run'): void {
@@ -2174,7 +1129,7 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'settle':
-        void this.settle();
+        void this.steps.settle();
         return;
       case 'oma-cancel':
         this.ui.omaPick = false;
@@ -2199,7 +1154,7 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'choose-route':
-        void this.travel(num('option'));
+        void this.steps.travel(num('option'));
         return;
       // The relic pick after a won boss pub (ADR 0017).
       case 'boss-relic': {
