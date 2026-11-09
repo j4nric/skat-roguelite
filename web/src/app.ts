@@ -19,7 +19,8 @@
 // player's action the app asks for one opponent card at a time while the
 // view names who is to move (`ai_to_move`). Each such call runs after the
 // next frame, so the thought bubble at that opponent is painted before the
-// main thread is busy, and the run is saved after every card.
+// main thread is busy; the player's own steps are stored at once, the
+// opponents' cards with the next one (playSteps).
 //
 // Above the dialogs sits the Wirt's speech bubble (./hints.ts, "Geführter
 // erster Abend"): after every render the app asks which hint fits what is
@@ -345,6 +346,8 @@ export class App {
    * broke off) is stale: its button closes it instead of resolving nothing.
    */
   private awaited: Overlay | null = null;
+  /** Changed in memory, not stored yet (playSteps, persist). */
+  private unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
   /** Effects to run once the next render is in the DOM. */
   private afterRender: (() => void)[] = [];
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
@@ -776,6 +779,7 @@ export class App {
   private async signOutHere(): Promise<void> {
     // Upload what is new first; then the device forgets the account.
     const res = await this.accountBusy(async () => {
+      this.persist();
       await this.sync.push();
       await signOut();
       return true;
@@ -855,19 +859,39 @@ export class App {
     if (!picked?.unlocked) this.ui.pickCharacter = 'Declarer';
   }
 
-  /** Feed the events of a step to the meta state; returns the unlocks just earned. */
-  private observe(events: RunEvent[] | string): string[] {
+  /**
+   * Feed the events of a step to the meta state; returns the unlocks just
+   * earned. `defer` keeps the new meta state in memory until `persist()`
+   * (an opponent's card: stored together with the run, see playSteps).
+   */
+  private observe(events: RunEvent[] | string, defer = false): string[] {
     if (!this.meta) return [];
     try {
       const step = this.meta.observe(events);
       this.ui.meta = step.view;
-      saveMeta(this.meta.save());
+      if (defer) this.unsaved.meta = true;
+      else saveMeta(this.meta.save());
       // The first Untot or Wandelkarte of this save: explained once (DESIGN 7.2), shown by render().
       for (const id of step.first_specials ?? []) if (!this.specialQueue.includes(id)) this.specialQueue.push(id);
       return step.earned;
     } catch (err) {
       console.warn('meta state did not take the events', err);
       return [];
+    }
+  }
+
+  /**
+   * Store what playSteps kept in memory: the run (if it is still the one
+   * that changed) and the meta state. Also on leaving the page.
+   */
+  private persist(): void {
+    const { run, meta } = this.unsaved;
+    this.unsaved = { run: null, meta: false };
+    try {
+      if (run && run === this.core) saveRun(run.save());
+      if (meta && this.meta) saveMeta(this.meta.save());
+    } catch (err) {
+      console.warn('state not stored', err);
     }
   }
 
@@ -906,6 +930,8 @@ export class App {
   // -------------------------------------------------------------------------
 
   private toStart(): void {
+    // The start screen reads the run from storage.
+    this.persist();
     this.core?.dispose();
     this.core = null;
     this.ui.view = null;
@@ -991,6 +1017,7 @@ export class App {
       this.render();
       return;
     }
+    this.persist();
     this.core?.dispose();
     this.core = core;
     this.ui.message = null;
@@ -1150,6 +1177,7 @@ export class App {
     const from = this.ui.overlay;
     let code: string;
     try {
+      this.persist();
       code = await encodeSave(readAllKeys());
     } catch (err) {
       console.warn('save code not made', err);
@@ -1460,12 +1488,24 @@ export class App {
    * Play a step of the core back (`first`; null to start with an opponent's
    * card), then, while an opponent is to move, one card of his at a time:
    * the thought bubble at his seat is painted, then the core computes his
-   * card, then it is animated. The run is saved after every step.
+   * card, then it is animated.
+   *
+   * Storing (W6 of the review): the player's own step is stored at once,
+   * so a reload never takes a decision back. The opponents' cards after it
+   * are stored with the player's next step, or before when the phase
+   * changes, a pub ends, the start screen or the save code reads the
+   * storage, or the page is hidden; until then the run and the meta state
+   * wait in memory together (`persist`). A reload in between loads the state after the
+   * player's step, and the core plays the same opponent cards again (their
+   * choice follows from the stored state), with the meta state at the same
+   * point, so nothing is counted twice.
    */
   private async playSteps(before: RunView | null, first: Step | null): Promise<void> {
     let previous = before;
     let view = before;
     let step = first;
+    /** This step is the player's own (stored at once). */
+    let own = first !== null;
     let earned: string[] = [];
     // A pub ended (won, lost, the run over): the account gets the new state.
     let pubEnded = false;
@@ -1494,14 +1534,19 @@ export class App {
         if (view.tutorial) {
           // Nothing to keep.
         } else if (view.phase === 'Won' || view.phase === 'Lost') {
+          this.unsaved.run = null;
           clearRun();
           // A night that ends (ADR 0020) is no run of its own: the win
           // was recorded when der Alte fell.
           if (!view.night) this.recordRun(view);
         } else if (this.core) {
-          saveRun(this.core.save());
+          this.unsaved.run = this.core;
         }
-        if (!view.tutorial) earned = earned.concat(this.observe(step.events));
+        // Stored now: the player's own step, a new phase, the run over.
+        const store = own || view.phase !== previous?.phase || view.phase === 'Won' || view.phase === 'Lost';
+        if (!view.tutorial) earned = earned.concat(this.observe(step.events, true));
+        if (store) this.persist();
+        own = false;
         await this.playEvents(previous, step.events, view);
         // A lost run: the pub lights go out before the end screen.
         if (view.phase === 'Lost') await lightsOut();
@@ -1514,7 +1559,12 @@ export class App {
         step = null;
       }
     } finally {
-      if (pubEnded) void this.sync.push();
+      // The account gets the new state: stored first. Otherwise what the
+      // opponents played waits in memory for the player's next step.
+      if (pubEnded) {
+        this.persist();
+        void this.sync.push();
+      }
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.thinking = null;
@@ -2837,6 +2887,7 @@ export class App {
       return;
     }
     markTutorial('done');
+    this.persist();
     this.core?.dispose();
     this.core = core;
     this.coach = new Coach();
