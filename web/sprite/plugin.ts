@@ -2,7 +2,8 @@
 // time, not in the browser. `vite build` writes two hashed files,
 // assets/sprite-<hash>.svg (everything the first screens need) and
 // assets/sprite-rare-<hash>.svg (Doppelgänger, Untot and Wandelkarte
-// faces), and the app fetches them at boot (web/src/ui/art.ts). The service
+// faces), and the app fetches them at boot (web/src/ui/art.ts; the rare
+// one in idle time, into the document when a card needs it). The service
 // worker precaches them like every other file of the build (../sw/plugin.ts).
 //
 // The app reads the file names from the virtual module

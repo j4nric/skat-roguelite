@@ -70,34 +70,67 @@ export function suitId(suit: Suit): string {
 const UNDEAD_SET = new Set(UNDEAD);
 
 let main: Promise<void> | null = null;
-let rare: Promise<void> | null = null;
 
-/** Fetch a sprite file and put it at the start of the body; a failure only warns (cards then show blank faces). */
-async function insert(url: string): Promise<void> {
+/** A sprite file as text; null (with a warning) if it does not load (cards then show blank faces). */
+async function fetchSvg(url: string): Promise<string | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const svg = await res.text();
-    document.body.insertAdjacentHTML('afterbegin', svg);
+    return await res.text();
   } catch (err) {
     console.warn('sprite failed to load', url, err);
+    return null;
   }
+}
+
+function insert(svg: string): void {
+  document.body.insertAdjacentHTML('afterbegin', svg);
 }
 
 /** Put the main sprite into the document once (resolves when it is in). */
 export function installSprite(): Promise<void> {
   if (typeof document === 'undefined') return Promise.resolve();
-  main ??= insert(SPRITE_URL);
+  main ??= fetchSvg(SPRITE_URL).then((svg) => {
+    if (svg) insert(svg);
+  });
   return main;
 }
 
-/**
- * Put the rare sprite (Doppelgänger, Untot, Wandelkarte faces) into the
- * document once. The ids above ask for it when a card uses one of its
- * symbols; a <use> drawn before the file is in fills in once it arrives.
- */
-export function ensureRareSprite(): Promise<void> {
+// The rare sprite (Doppelgänger, Untot, Wandelkarte faces, about 1000
+// nodes) is fetched in idle time after boot but only goes into the
+// document when a card first needs one of its symbols: most evenings
+// never do. The ids above ask for it while the card's HTML is built, so
+// with the file fetched the symbols are in before the card is.
+let rareFetch: Promise<void> | null = null;
+let rareText: string | null = null;
+let rareWanted = false;
+let rareIn = false;
+
+function putRare(): void {
+  if (rareIn || !rareText) return;
+  rareIn = true;
+  insert(rareText);
+  rareText = null;
+}
+
+/** Fetch the rare sprite in advance (it goes into the document on first use). */
+export function prefetchRareSprite(): Promise<void> {
   if (typeof document === 'undefined') return Promise.resolve();
-  rare ??= (main ?? Promise.resolve()).then(() => insert(RARE_SPRITE_URL));
-  return rare;
+  rareFetch ??= fetchSvg(RARE_SPRITE_URL).then((svg) => {
+    rareText = svg;
+    if (rareWanted) putRare();
+  });
+  return rareFetch;
+}
+
+/**
+ * A card uses a symbol of the rare sprite: put it into the document now
+ * if it is fetched, else as soon as it is (a <use> drawn before fills in
+ * then).
+ */
+export function ensureRareSprite(): void {
+  if (rareIn || typeof document === 'undefined') return;
+  rareWanted = true;
+  if (rareText) putRare();
+  else void prefetchRareSprite();
 }

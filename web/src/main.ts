@@ -10,7 +10,7 @@ import './style.css';
 import { App } from './app';
 import { loadCore } from './core';
 import { registerServiceWorker } from './offline';
-import { ensureRareSprite, installSprite } from './ui/art';
+import { installSprite, prefetchRareSprite } from './ui/art';
 import { blinkJobs, portraitJobs } from './ui/people';
 import { preparePixelArt } from './ui/pixelate';
 
@@ -52,7 +52,7 @@ async function boot(el: HTMLElement): Promise<void> {
   // Not needed for the first screen: the opponents' blink and the rare card faces.
   whenIdle(() => {
     void preparePixelArt(blinkJobs());
-    void ensureRareSprite();
+    void prefetchRareSprite();
   });
 }
 
