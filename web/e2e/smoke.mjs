@@ -1757,10 +1757,11 @@ async function m5(browser, errors, reducedMotion) {
   log(`thought bubble shown ${seen} times`);
 
   // A second link while this run is saved: offered, but nothing is overwritten unasked.
-  const runBefore = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+  // (The opponents' last cards are stored on the way to the start screen, so read it there.)
   await page.click('.hud [data-action="menu"]');
   await page.click('.sheet [data-action="to-start"]');
   await page.waitForSelector('[data-action="resume"]');
+  const runBefore = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
   await page.goto(`${base}#seed-777-nullspieler`);
   await page.waitForSelector('[data-testid="shared-seed"][data-seed="777"]');
   const lockedNote = (await page.locator('[data-testid="shared-seed"]').textContent()) ?? '';
@@ -4511,7 +4512,13 @@ async function wave3(browser, errors, reducedMotion) {
   for (const id of ['skat_god', 'honorary_chair']) {
     const mat = page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`);
     if (!(await mat.count())) fail(`legendary relic ${id} has no beer mat in the head`);
-    if (!(await mat.first().locator('[fill="#ff8a1c"], [stroke="#ff8a1c"]').count())) fail(`legendary relic ${id} lacks the legendary ink`);
+    // A mat on screen is a <use> of its symbol (ui/emblems.ts): look into the symbol.
+    const ink = await mat.first().evaluate((svg) => {
+      const href = svg.querySelector('use')?.getAttribute('href');
+      const drawing = href ? document.querySelector(href) : svg;
+      return Boolean(drawing?.querySelector('[fill="#ff8a1c"], [stroke="#ff8a1c"]'));
+    });
+    if (!ink) fail(`legendary relic ${id} lacks the legendary ink`);
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
   // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.
