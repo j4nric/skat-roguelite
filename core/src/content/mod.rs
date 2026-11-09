@@ -22,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use crate::cards::Card;
 use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
-pub use effects::{CardCount, CardFilter, Condition, Effect, Hook, Stage};
+#[cfg(test)]
+pub(crate) use effects::per_step_factor;
+pub use effects::{CardCount, CardFilter, Condition, Counted, Effect, EffectKind, Hook, Stage};
 pub use engine::{
     ActiveSource, CardModStatus, Editions, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,

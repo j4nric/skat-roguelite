@@ -1124,11 +1124,10 @@ fn display_key(game: GameType, card: &DealtCard) -> (u8, u8, u32) {
 }
 
 impl Run {
-    /// Whether the run would accept `action` now. Tried on a copy.
+    /// Whether the run would accept `action` now ([`Run::check`]).
     #[must_use]
     pub fn accepts(&self, content: &Content, action: RunAction) -> bool {
-        let mut probe = self.clone();
-        probe.dispatch(content, action, &mut Vec::new()).is_ok()
+        self.check(content, action).is_ok()
     }
 
     /// The card back of a seat (ADR 0015): `None` for the player, the

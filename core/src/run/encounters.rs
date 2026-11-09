@@ -27,6 +27,17 @@ type DrawKey = (Vec<(CardModId, i32)>, bool);
 /// A drawn modification with its value.
 type DrawnMod = (Option<CardModId>, Option<i32>);
 
+/// An encounter option that passed every check of
+/// [`Run::encounter_choice`].
+pub(super) struct EncounterChoice<'m> {
+    encounter: ActiveEncounter,
+    chosen: EncounterOption,
+    card: Option<u32>,
+    relic: Option<usize>,
+    marke: Option<&'m CardModId>,
+    cost: u32,
+}
+
 /// What the player chose for an option: a card of the edition, an owned
 /// relic (index), a Marke.
 #[derive(Debug, Clone, Copy)]
@@ -525,14 +536,16 @@ impl Run {
     /// relic) as `target` if it needs one, and the Marke `marke` if it lets
     /// the player choose one. All or nothing: on an error the run is
     /// unchanged.
-    pub(super) fn choose_encounter(
-        &mut self,
+    /// What [`Run::choose_encounter`] checks before it changes anything:
+    /// the open encounter, the option and what it needs (card, relic,
+    /// Marke) and what it costs.
+    pub(super) fn encounter_choice<'m>(
+        &self,
         content: &Content,
         option: usize,
         target: Option<u32>,
-        marke: Option<&CardModId>,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
+        marke: Option<&'m CardModId>,
+    ) -> Result<EncounterChoice<'m>, RunError> {
         if self.phase != RunPhase::Encounter {
             return Err(RunError::WrongPhase);
         }
@@ -587,6 +600,32 @@ impl Run {
         if cost > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
+        Ok(EncounterChoice {
+            encounter,
+            chosen,
+            card,
+            relic,
+            marke,
+            cost,
+        })
+    }
+
+    pub(super) fn choose_encounter(
+        &mut self,
+        content: &Content,
+        option: usize,
+        target: Option<u32>,
+        marke: Option<&CardModId>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let EncounterChoice {
+            encounter,
+            chosen,
+            card,
+            relic,
+            marke,
+            cost,
+        } = self.encounter_choice(content, option, target, marke)?;
         // On an error the caller drops this copy of the run ([`Run::dispatch`]).
         self.coins -= cost;
         let target = Target { card, relic, marke };

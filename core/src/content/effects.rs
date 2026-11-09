@@ -6,10 +6,11 @@
 //! lever of the game value formula it turns in its doc comment.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{CardModId, Factor, ModKind};
+use super::{CardModId, Change, Factor, Lever, ModKind};
 use crate::cards::{Card, Rank, Suit};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
@@ -772,6 +773,56 @@ const fn one_u32() -> u32 {
     1
 }
 
+/// Where an effect is applied ([`Effect::kind`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectKind {
+    /// A line of the score breakdown (Grundwert, Gewinnstufen, Spielwert).
+    ScoreLine,
+    /// The run itself: flags, counters, Groschen, the edition.
+    Run,
+    /// The game in progress: its rules, tricks, skat or what is shown.
+    Game,
+    /// A card: applied when the edition is resolved for a game.
+    Card,
+    /// Always on: read where it applies (prices, the deal, the rules).
+    Passive,
+}
+
+/// What an effect counts for its score line ([`Effect::counted`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Counted<'a> {
+    /// Cursed cards of the player's edition.
+    CursedCards,
+    /// Cards of the player's edition that match.
+    Cards(&'a CardCount),
+    /// Suits the player holds no card of.
+    VoidSuits,
+    /// Steps of `step` Augen of the declarer above `above`.
+    DeclarerPointsAbove {
+        /// Augen that do not count yet.
+        above: u32,
+        /// Augen per step.
+        step: u32,
+    },
+    /// Every `every` free relic slots.
+    FreeRelicSlots {
+        /// Free slots per step.
+        every: u32,
+    },
+}
+
+/// `1 + per × steps`, at most `max` ("höchstens ×3", the growing Faktor
+/// relics, ADR 0018/0020). Saturates.
+pub(crate) fn per_step_factor(per: Factor, steps: u32, max: Option<Factor>) -> Factor {
+    let mut permille = u64::from(per.permille())
+        .saturating_mul(u64::from(steps))
+        .saturating_add(1000);
+    if let Some(max) = max {
+        permille = permille.min(u64::from(max.permille()));
+    }
+    Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX))
+}
+
 impl Effect {
     /// Whether this effect is meaningful in `stage`.
     #[must_use]
@@ -887,6 +938,203 @@ impl Effect {
     #[must_use]
     pub const fn is_cheat(&self) -> bool {
         matches!(self, Effect::DefendersSeeEachOther)
+    }
+
+    /// The kind of effect, which says where it is applied (see
+    /// [`EffectKind`]). Every effect is named here, so a new one must be
+    /// placed.
+    #[must_use]
+    pub const fn kind(&self) -> EffectKind {
+        match self {
+            Effect::AddBaseValue(_)
+            | Effect::MultiplyBaseValue(_)
+            | Effect::AddBaseValueFromCounter(_)
+            | Effect::AddBaseValuePerCounter { .. }
+            | Effect::AddBaseValuePerCursedCard(_)
+            | Effect::AddBaseValuePerCard { .. }
+            | Effect::AddLevelsPerCard { .. }
+            | Effect::AddLevelsPerCounter { .. }
+            | Effect::AddLevels(_)
+            | Effect::MultiplyGameValue(_)
+            | Effect::ScaleGameValue(_)
+            | Effect::ScaleGameValuePerCounter { .. }
+            | Effect::ScaleGameValuePerCard { .. }
+            | Effect::AddLevelsPerVoidSuit { .. }
+            | Effect::AddBaseValuePerDeclarerPoints { .. }
+            | Effect::AddLevelsPerFreeRelicSlot { .. } => EffectKind::ScoreLine,
+            Effect::SetFlag(_)
+            | Effect::ClearFlag(_)
+            | Effect::IncrementCounter(_)
+            | Effect::ResetCounter(_)
+            | Effect::TurnInto(_)
+            | Effect::AttachModToRandomCard { .. }
+            | Effect::GainCoins(_)
+            | Effect::StashCoins { .. }
+            | Effect::PayOutCounter { .. } => EffectKind::Run,
+            Effect::AddTrickPoints(_)
+            | Effect::MultiplyTrickPoints(_)
+            | Effect::MultiplySkatPoints(_)
+            | Effect::SchneiderBonusFromTrick
+            | Effect::WinThreshold(_)
+            | Effect::SchneiderFromDeclarerPoints { .. }
+            | Effect::RequireHand
+            | Effect::EnableKontra
+            | Effect::ExtraRedeal
+            | Effect::Concede
+            | Effect::PeekDefenderCards(_)
+            | Effect::RevealDefenderCards(_)
+            | Effect::ShowCount
+            | Effect::RevealDefenderHand(_)
+            | Effect::SeriesSkatSwap(_)
+            | Effect::DiscardThree
+            | Effect::RevealSkatCard(_)
+            | Effect::NoCheating
+            | Effect::GrandAcesAsMatadors
+            | Effect::OuvertRequiresSchneider
+            | Effect::RequireOuvert
+            | Effect::DefendersSeeEachOther
+            | Effect::Ramsch
+            | Effect::SingleLoss => EffectKind::Game,
+            Effect::SetCardPoints { .. }
+            | Effect::AddCardPoints(_)
+            | Effect::RankBonus(_)
+            | Effect::Promote(_)
+            | Effect::NullLowest
+            | Effect::RevealHolder
+            | Effect::NeverWins
+            | Effect::HonoraryJack
+            | Effect::NoDiscard
+            | Effect::Wild
+            | Effect::Demote
+            | Effect::Undead
+            | Effect::Doppelganger => EffectKind::Card,
+            Effect::AlwaysForehand
+            | Effect::ShopDiscount(_)
+            | Effect::FreeReroll
+            | Effect::CurseForPub { .. }
+            | Effect::Credit(_)
+            | Effect::SecondChance
+            | Effect::ChooseMalus(_)
+            | Effect::RedeemVouchersTwice
+            | Effect::PromotedCardsTakePoints
+            | Effect::ShortCircuitThreshold(_)
+            | Effect::RedealKeeps { .. } => EffectKind::Passive,
+        }
+    }
+
+    /// What the effect counts now, for the score line of
+    /// [`Effect::score_change`]; `None` if it counts nothing.
+    #[must_use]
+    pub const fn counted(&self) -> Option<Counted<'_>> {
+        match self {
+            Effect::AddBaseValuePerCursedCard(_) => Some(Counted::CursedCards),
+            Effect::AddBaseValuePerCard { count, .. }
+            | Effect::AddLevelsPerCard { count, .. }
+            | Effect::ScaleGameValuePerCard { count, .. } => Some(Counted::Cards(count)),
+            Effect::AddLevelsPerVoidSuit { .. } => Some(Counted::VoidSuits),
+            Effect::AddBaseValuePerDeclarerPoints { above, step, .. } => {
+                Some(Counted::DeclarerPointsAbove {
+                    above: *above,
+                    step: *step,
+                })
+            }
+            Effect::AddLevelsPerFreeRelicSlot { every, .. } => {
+                Some(Counted::FreeRelicSlots { every: *every })
+            }
+            _ => None,
+        }
+    }
+
+    /// The lever and change of the score line this effect adds, with the
+    /// run counters as they are now and `cards` what it counts
+    /// ([`Effect::counted`]). `None` for every effect of another
+    /// [`EffectKind`] than [`EffectKind::ScoreLine`] and for a counter
+    /// (or count) that is still zero.
+    #[must_use]
+    pub fn score_change(
+        &self,
+        counters: &BTreeMap<String, u32>,
+        cards: u32,
+    ) -> Option<(Lever, Change)> {
+        Some(match self {
+            Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
+            Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
+            Effect::AddBaseValueFromCounter(name) => {
+                let value = counters.get(name).copied().unwrap_or(0);
+                if value == 0 {
+                    return None;
+                }
+                (Lever::BaseValue, Change::Add(i64::from(value)))
+            }
+            Effect::AddBaseValuePerCounter { counter, per } => {
+                let value = counters.get(counter).copied().unwrap_or(0);
+                let add = i64::from(value) * i64::from(*per);
+                if add == 0 {
+                    return None;
+                }
+                (Lever::BaseValue, Change::Add(add))
+            }
+            Effect::AddBaseValuePerCursedCard(per) | Effect::AddBaseValuePerCard { per, .. } => {
+                let add = i64::from(cards) * i64::from(*per);
+                if add == 0 {
+                    return None;
+                }
+                (Lever::BaseValue, Change::Add(add))
+            }
+            Effect::AddLevelsPerCard { per, .. } => {
+                let add = i64::from(cards) * i64::from(*per);
+                if add == 0 {
+                    return None;
+                }
+                (Lever::Levels, Change::Add(add))
+            }
+            Effect::AddLevelsPerVoidSuit { per, max }
+            | Effect::AddLevelsPerFreeRelicSlot { per, max, .. } => {
+                let add = (i64::from(cards) * i64::from(*per)).min(i64::from(*max));
+                if add == 0 {
+                    return None;
+                }
+                (Lever::Levels, Change::Add(add))
+            }
+            Effect::AddBaseValuePerDeclarerPoints { per, .. } => {
+                let add = i64::from(cards) * i64::from(*per);
+                if add == 0 {
+                    return None;
+                }
+                (Lever::BaseValue, Change::Add(add))
+            }
+            Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
+            Effect::AddLevelsPerCounter { counter, per } => {
+                let value = counters.get(counter).copied().unwrap_or(0);
+                let add = i64::from(value) * i64::from(*per);
+                if add == 0 {
+                    return None;
+                }
+                (Lever::Levels, Change::Add(add))
+            }
+            Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
+            Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
+            Effect::ScaleGameValuePerCounter { counter, per, max } => {
+                let value = counters.get(counter).copied().unwrap_or(0);
+                if value == 0 || per.permille() == 0 {
+                    return None;
+                }
+                (
+                    Lever::GameValue,
+                    Change::Scale(per_step_factor(*per, value, *max)),
+                )
+            }
+            Effect::ScaleGameValuePerCard { per, max, .. } => {
+                if cards == 0 || per.permille() == 0 {
+                    return None;
+                }
+                (
+                    Lever::GameValue,
+                    Change::Scale(per_step_factor(*per, cards, *max)),
+                )
+            }
+            _ => return None,
+        })
     }
 
     /// Whether this effect needs "this card" and so only works on card

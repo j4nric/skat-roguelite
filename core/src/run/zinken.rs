@@ -354,6 +354,35 @@ impl Run {
             .collect()
     }
 
+    /// Whether the Kartenmaler can take `card`: a card of the edition, no
+    /// blank, and some modification of his pool fits it (else the reason
+    /// from the rules, or [`RunError::NoModAvailable`]). What
+    /// [`Run::start_painter`] checks before it draws.
+    pub(super) fn check_paint(&self, content: &Content, card: u32) -> Result<(), RunError> {
+        let deck_card = self
+            .edition
+            .get(card)
+            .ok_or(crate::deck::DeckError::UnknownCard(card))?;
+        if deck_card.kind == CardKind::Blank {
+            return Err(crate::deck::DeckError::BlankCannotBeModified.into());
+        }
+        let pool = self.zinken_pool(content);
+        let value = |m: &CardModId| content.card_mod(m).map_or(1, CardModDef::offer_value);
+        if pool
+            .iter()
+            .any(|(m, _)| self.takes(content, card, m, value(m)))
+        {
+            return Ok(());
+        }
+        // The reason from the rules if they give one (a cursed card).
+        if let Some((card_mod, _)) = pool.first() {
+            self.edition
+                .probe_card(card)
+                .add_mod(content, card, card_mod, value(card_mod))?;
+        }
+        Err(RunError::NoModAvailable)
+    }
+
     /// The Kartenmaler takes `card`: draw his choice and wait for the
     /// player. `price` is paid first (0 at the Werkstatt).
     pub(super) fn start_painter(
@@ -364,13 +393,7 @@ impl Run {
         encounter: bool,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        let deck_card = self
-            .edition
-            .get(card)
-            .ok_or(crate::deck::DeckError::UnknownCard(card))?;
-        if deck_card.kind == CardKind::Blank {
-            return Err(crate::deck::DeckError::BlankCannotBeModified.into());
-        }
+        self.check_paint(content, card)?;
         let options = self.draw_paints(content, card);
         if options.is_empty() {
             // The reason from the rules if they give one (a cursed card).

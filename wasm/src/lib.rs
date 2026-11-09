@@ -566,6 +566,20 @@ impl Session {
         copy.step_json(events)
     }
 
+    /// Whether `action` (JSON) would be accepted now, without carrying
+    /// it out or building a view: `None` if so, else the error code (as
+    /// in the errors of [`Session::apply`]). Cheaper than
+    /// [`Session::preview`]. Fails only on JSON that is no action.
+    pub fn check(&self, action: &str) -> Result<Option<String>, String> {
+        let action: RunAction =
+            serde_json::from_str(action).map_err(|e| error_json("InvalidAction", e))?;
+        Ok(self
+            .run
+            .check(self.content, action)
+            .err()
+            .map(|e| e.code().as_str().to_string()))
+    }
+
     /// Let the defender named by `view.ai_to_move` play one card
     /// ([`Run::advance_ai`]). Returns `{ events, view }` as JSON like
     /// [`Session::apply`]. Fails with `WrongPhase` if no defender is to
@@ -828,6 +842,12 @@ impl WasmRun {
         self.session.preview(action).map_err(|e| JsError::new(&e))
     }
 
+    /// Whether `action` (JSON) would be accepted now: `null` if so, else
+    /// the error code. Builds no view, unlike [`WasmRun::preview`].
+    pub fn check(&self, action: &str) -> Result<Option<String>, JsError> {
+        self.session.check(action).map_err(|e| JsError::new(&e))
+    }
+
     /// Let the defender who is to move play one card; returns
     /// `{ events, view }` as JSON like [`WasmRun::apply`].
     pub fn step(&mut self) -> Result<String, JsError> {
@@ -875,6 +895,34 @@ mod tests {
             session,
             &serde_json::to_string(action).expect("action json"),
         )
+    }
+
+    #[test]
+    fn check_names_the_error_of_apply_without_changing_the_run() {
+        let session = Session::new("42").expect("new");
+        let before = session.run().clone();
+        let grand = r#"{"Declare":{"game":"Grand","risk":"Normal"}}"#;
+        for action in [grand, r#""LeaveShop""#, r#"{"Play":3}"#, r#""PickUpSkat""#] {
+            let checked = session.check(action).expect("an action");
+            assert_eq!(session.run(), &before, "check changes nothing");
+            let mut probe = session.clone();
+            let applied = probe.apply(action);
+            match (&checked, applied) {
+                (None, Ok(_)) => {}
+                (Some(code), Err(e)) => {
+                    let e: serde_json::Value = serde_json::from_str(&e).expect("json");
+                    assert_eq!(e["code"].as_str(), Some(code.as_str()), "{action}");
+                }
+                (checked, applied) => panic!("{action}: {checked:?} vs {applied:?}"),
+            }
+        }
+        assert_eq!(
+            session.check(grand).expect("action"),
+            Some("InvalidDeclaration".into()),
+            "no game without hand levels before the skat"
+        );
+        assert_eq!(session.check(r#""PickUpSkat""#).expect("action"), None);
+        assert!(session.check("no action").is_err());
     }
 
     #[test]
