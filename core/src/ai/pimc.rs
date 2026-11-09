@@ -921,6 +921,110 @@ mod bench {
 }
 
 #[cfg(test)]
+mod bench_augen {
+    use super::*;
+    use crate::cards::{CardKind, standard_deck};
+    use crate::deck::DealtCard;
+    use crate::game::Game;
+
+    /// The standard deck as dealt cards; `battered` sevens count 5 Augen
+    /// below zero ("Ramponiert").
+    fn deck(battered: bool) -> Vec<DealtCard> {
+        standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let mut dealt = DealtCard::plain(id, CardKind::Normal(card));
+                if battered && card.rank == Rank::Seven {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 5;
+                }
+                dealt
+            })
+            .collect()
+    }
+
+    /// Declarer heuristic against PIMC defenders on decks with Augen below
+    /// zero ("Ramponiert" sevens) and with extra Augen ("Erster Stich":
+    /// the first trick counts twice for its winner). Prints the declarer's
+    /// results and the defenders' decision time per variant.
+    ///
+    /// `cargo test --release -p skat_core bench_augen -- --ignored --nocapture`
+    /// (`PIMC_GAMES`, `PIMC_SAMPLES`, `PIMC_DEPTH` override 600, 8, 3).
+    #[test]
+    #[ignore = "measurement"]
+    fn bench_augen() {
+        let env = |name: &str, default: u32| {
+            std::env::var(name)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(default)
+        };
+        let games = env("PIMC_GAMES", 600);
+        let config = PimcConfig {
+            samples: env("PIMC_SAMPLES", 8),
+            depth: env("PIMC_DEPTH", 3),
+        };
+        for (name, battered, first_trick) in [
+            ("plain", false, false),
+            ("battered sevens", true, false),
+            ("first trick twice", false, true),
+        ] {
+            let (mut won, mut schneider, mut point_games) = (0u32, 0u32, 0u32);
+            let mut micros: Vec<u64> = Vec::new();
+            let mut nodes = 0u64;
+            for seed in 0..u64::from(games) {
+                let mut rng = Rng::from_seed(seed);
+                let forehand = Seat::ALL[usize::try_from(seed % 3).unwrap_or(0)];
+                let mut game = Game::deal_from(&mut rng, deck(battered), forehand).expect("deal");
+                let declaration = DeclarerHeuristic.declare(&mut game).expect("declare");
+                let policy = PimcPolicy::new(config, mix64(seed));
+                while let Some(seat) = game.current_seat() {
+                    let view = game.view(seat).expect("view");
+                    let card = if seat.is_declarer() || view.legal_moves.len() < 2 {
+                        PimcPolicy::heuristic(&view).expect("card")
+                    } else {
+                        let start = std::time::Instant::now();
+                        let d = policy.decide(&view, &Hints::default()).expect("decision");
+                        micros.push(u64::try_from(start.elapsed().as_micros()).unwrap_or(0));
+                        nodes += d.nodes;
+                        d.card
+                    };
+                    let tricks = game.tricks().len();
+                    game.play(seat, card).expect("legal");
+                    if first_trick && tricks == 0 && game.tricks().len() == 1 {
+                        let trick = &game.tricks()[0];
+                        let extra = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
+                        let winner = trick.winner;
+                        game.add_bonus_points(winner, extra);
+                    }
+                }
+                if declaration.is_null() || declaration.is_ramsch() {
+                    continue;
+                }
+                let value = game.value().expect("finished");
+                point_games += 1;
+                won += u32::from(value.won);
+                schneider += u32::from(value.schneider);
+            }
+            micros.sort_unstable();
+            let n = micros.len().max(1);
+            let mean = micros.iter().sum::<u64>() as f64 / n as f64 / 1000.0;
+            let p95 = micros[(n * 95 / 100).min(n - 1)] as f64 / 1000.0;
+            let max = micros.last().copied().unwrap_or(0) as f64 / 1000.0;
+            println!(
+                "{name}: suit/grand games {point_games}, declarer won {:.1}%, schneider {:.1}%; \
+                 decisions {}, mean {mean:.2} ms, p95 {p95:.2} ms, max {max:.2} ms, mean nodes {}",
+                100.0 * f64::from(won) / f64::from(point_games.max(1)),
+                100.0 * f64::from(schneider) / f64::from(point_games.max(1)),
+                micros.len(),
+                nodes / u64::try_from(n).unwrap_or(1),
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod bench_parts {
     use super::*;
     use crate::game::Game;

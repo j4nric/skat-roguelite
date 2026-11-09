@@ -1562,6 +1562,106 @@ mod bench {
     use crate::game::seat_at;
     use crate::rng::Rng;
 
+    /// How the node limit of PIMC's probes errs against the same probe
+    /// without it, by the position of the move in the legal order.
+    ///
+    /// `cargo test --release -p skat_core bench_node_limit -- --ignored --nocapture`
+    /// (`BENCH_DEPTH` sets the depth, default 0 = to the end; `BENCH_NODES`
+    /// the node limit, default 6000).
+    #[test]
+    #[ignore = "measurement"]
+    fn bench_node_limit() {
+        let env = |name: &str, default: u64| {
+            std::env::var(name)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(default)
+        };
+        let depth = u32::try_from(env("BENCH_DEPTH", 0)).unwrap_or(0);
+        let node_limit = env("BENCH_NODES", 6000);
+        let mut rng = Rng::from_seed(9);
+        let mut table = Table::new(15);
+        for tricks in [10usize, 8, 6] {
+            let positions = 300;
+            // Per move index in the legal order: probes, wrong answers.
+            let mut by_index = [(0u64, 0u64); 10];
+            let (mut nodes_total, mut nodes_max, mut wrong_choice) = (0u64, 0u64, 0u64);
+            let (mut exact_nodes, mut micros) = (0u64, 0u128);
+            for round in 0..positions {
+                let mut deck = standard_deck();
+                rng.shuffle(&mut deck);
+                let lead = Seat::ALL[1 + round % 2];
+                let mut hands: [Vec<_>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+                for o in 0..3 {
+                    let seat = seat_at(lead, o);
+                    hands[seat.index()] = deck[o * tricks..(o + 1) * tricks].to_vec();
+                    hands[seat.index()].sort();
+                }
+                let live: u32 = deck[..3 * tricks].iter().map(|c| c.card_points()).sum();
+                let layout = Layout {
+                    hands,
+                    trick_lead: lead,
+                    trick: Vec::new(),
+                    skat_points: 0,
+                };
+                let game = GameType::Suit(crate::cards::Suit::ALL[round % 4]);
+                let threshold = i32::try_from(live / 2).unwrap_or(0);
+                let exact = Limits { depth, nodes: 0 };
+                let (truth, n) = probe_with(
+                    game,
+                    Goal::DeclarerPoints,
+                    &layout,
+                    threshold,
+                    exact,
+                    &mut table,
+                );
+                exact_nodes += n;
+                let limited = Limits {
+                    depth,
+                    nodes: node_limit,
+                };
+                let start = std::time::Instant::now();
+                let (got, n) = probe_with(
+                    game,
+                    Goal::DeclarerPoints,
+                    &layout,
+                    threshold,
+                    limited,
+                    &mut table,
+                );
+                micros += start.elapsed().as_micros();
+                nodes_total += n;
+                nodes_max = nodes_max.max(n);
+                for (k, (t, g)) in truth.iter().zip(&got).enumerate() {
+                    by_index[k.min(9)].0 += 1;
+                    by_index[k.min(9)].1 += u64::from(t.1 != g.1);
+                }
+                // The defenders (seat to play) want a move that keeps the
+                // declarer below the threshold: the first such move.
+                let pick = got.iter().position(|&(_, r)| !r).unwrap_or(0);
+                let can = truth.iter().any(|&(_, r)| !r);
+                wrong_choice += u64::from(can && truth[pick].1);
+            }
+            let p = positions as u64;
+            println!(
+                "tricks {tricks} depth {depth}: nodes per probe mean {} max {} (exact mean {}), \
+                 {:.3} ms per probe, wrong choice {:.1}%",
+                nodes_total / p,
+                nodes_max,
+                exact_nodes / p,
+                micros as f64 / 1000.0 / p as f64,
+                100.0 * wrong_choice as f64 / p as f64,
+            );
+            let row: Vec<String> = by_index
+                .iter()
+                .enumerate()
+                .filter(|(_, (n, _))| *n > 0)
+                .map(|(k, (n, w))| format!("{}:{:.1}%", k + 1, 100.0 * *w as f64 / *n as f64))
+                .collect();
+            println!("  wrong answers by move index: {}", row.join(" "));
+        }
+    }
+
     /// `cargo test --release -p skat_core bench_solver -- --ignored --nocapture`
     #[test]
     #[ignore = "measurement"]
