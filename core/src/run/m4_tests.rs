@@ -8,6 +8,7 @@ use super::*;
 use crate::cards::{Card, Suit};
 use crate::content::EncounterEffect;
 use crate::content::{Change, EncounterId, Factor, Lever, ScoreLine, ScoreTerm, Source};
+use crate::game::Event;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// A Null deal the declarer cannot lose: he holds the four sevens and his

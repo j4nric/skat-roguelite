@@ -6,6 +6,7 @@
 use super::bot::RunBot;
 use super::content_tests::content;
 use super::*;
+use crate::game::Event;
 
 /// Play a run with the bot through [`Run::apply`] for at most `actions`
 /// player actions.

@@ -6,6 +6,9 @@ use super::trade::CurseCause;
 use super::zinken_tests::{offers, tresen};
 use super::*;
 use crate::cards::Suit;
+use crate::content::Change;
+use crate::content::Lever;
+use crate::content::ScoreLine;
 use crate::content::{Rarity, TradeConfig};
 use crate::rules::{GameType, RiskLevel};
 

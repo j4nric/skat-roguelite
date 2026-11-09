@@ -11,8 +11,11 @@ use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
 use crate::content::CardFilter;
+use crate::content::Change;
 use crate::content::EncounterEffect;
+use crate::content::Lever;
 use crate::content::{Condition, Rarity, Reward, UnlockId};
+use crate::game::Event;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).

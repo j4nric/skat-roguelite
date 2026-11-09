@@ -6,6 +6,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play};
 use super::*;
 use crate::cards::Suit;
+use crate::content::ScoreLine;
 use crate::content::{ConsumableId, RelicId};
 use crate::rules::{GameType, RiskLevel};
 

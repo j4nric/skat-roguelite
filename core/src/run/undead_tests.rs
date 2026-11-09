@@ -11,6 +11,7 @@ use super::wave3_tests::{
 };
 use super::*;
 use crate::content::GameFocus;
+use crate::game::Event;
 use crate::game::GameError;
 use crate::rules::NullRisk;
 

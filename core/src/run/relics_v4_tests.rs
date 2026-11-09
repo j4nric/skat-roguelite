@@ -11,6 +11,7 @@ use super::content_tests::{
 use super::view::RevealSource;
 use super::wave3_tests::id_of;
 use super::*;
+use crate::content::Change;
 use crate::content::{CardCount, Condition, Factor, HookContext, MalusId, evaluate};
 use crate::rules::{
     GameType, Matadors, NullRisk, NullScoring, Outcome, RiskLevel, Thresholds, game_value_parts,

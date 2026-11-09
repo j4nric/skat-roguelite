@@ -5,6 +5,7 @@
 use super::bot::RunBot;
 use super::content_tests::{content, declare, fixed_deal, relic_run};
 use super::*;
+use crate::game::Event;
 use crate::game::TRICKS_PER_GAME;
 use crate::rules::{NullRisk, RiskLevel};
 

@@ -7,6 +7,7 @@ use super::content_tests::{card_mod_run_with, content, fixed_deal, play, relic_r
 use super::opponents::defender_hints;
 use super::*;
 use crate::content::TRUMP_MODS_NEED_PLAYER;
+use crate::content::resolve_edition;
 use crate::deck::{AUGEN, DeckCard, RAMPONIERT, RANK_MAX, legacy_mod};
 use crate::rules::{GameType, RiskLevel};
 

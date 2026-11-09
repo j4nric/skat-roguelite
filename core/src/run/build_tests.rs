@@ -8,6 +8,8 @@ use super::content_tests::{
 };
 use super::wave3_tests::{bot_to_end, deal_with, defender_plays, hand_clubs, id_of};
 use super::*;
+use crate::content::Change;
+use crate::content::Lever;
 use crate::content::{BuildTag, CardCount, Factor, ModKind, Rarity, RelicGroup};
 use crate::rules::{GameType, NullRisk};
 

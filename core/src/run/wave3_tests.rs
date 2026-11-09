@@ -7,7 +7,11 @@ use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
 use crate::cards::Suit;
+use crate::content::Change;
+use crate::content::Lever;
+use crate::content::ScoreLine;
 use crate::content::{CardModDef, Factor, Rarity, RarityWeights};
+use crate::game::Event;
 use crate::rules::{self, NullRisk, RiskLevel};
 
 const WILD: &str = "wild_card";

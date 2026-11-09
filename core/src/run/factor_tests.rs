@@ -8,6 +8,8 @@ use super::content_tests::{
     has_line, play, relic, relic_run,
 };
 use super::*;
+use crate::content::Change;
+use crate::content::Lever;
 use crate::content::per_step_factor;
 use crate::content::{Factor, Rarity};
 use crate::rules::{GameType, NullRisk};
