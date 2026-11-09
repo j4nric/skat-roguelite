@@ -215,6 +215,11 @@ const SETTLE_MS = 260;
 /** The trip along a way on the map at tempo "Normal". */
 const TRAVEL_MS = 1600;
 
+/** Let the browser handle input and paint before the next piece of work. */
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
 /** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
@@ -524,6 +529,9 @@ export class App {
     this.render();
     try {
       await loadCore();
+      // A breath between instantiating the core and reading the catalog,
+      // and before the stored states: the boot is no single long task.
+      await yieldToBrowser();
       setCatalog(loadCatalog());
     } catch (err) {
       console.warn('core failed to load', err);
@@ -531,6 +539,7 @@ export class App {
       this.render();
       return;
     }
+    await yieldToBrowser();
     // Signed in: compare with the account before anything is read from storage.
     let synced: Reconciled = 'none';
     if (this.sync.signedIn) synced = await this.sync.reconcileAtStart(5000);
