@@ -76,9 +76,12 @@ pub struct Limits {
     /// Tricks searched exactly, the current one included; behind them a
     /// static estimate. `0` searches to the end.
     pub depth: u32,
-    /// Nodes after which every further trick boundary is estimated
-    /// instead of searched, as if the depth were used up. `0` = no limit.
-    /// Keeps the worst case of a search bounded, deterministically.
+    /// Nodes per move of the seat to play after which every further trick
+    /// boundary of that move's search is estimated instead of searched, as
+    /// if the depth were used up. `0` = no limit. Keeps the worst case of a
+    /// search bounded, deterministically. Every move gets the whole limit:
+    /// a limit shared by all moves left the moves late in the legal order
+    /// with one trick and the estimate once the early ones had used it up.
     pub nodes: u64,
 }
 
@@ -230,6 +233,9 @@ struct Search<'t> {
     nodes: u64,
     /// See [`Limits::nodes`].
     node_limit: u64,
+    /// Nodes when the search of the current root move began: the node
+    /// limit counts from there.
+    move_start: u64,
     /// Cutoffs per seat and card (history heuristic for move ordering).
     history: [[u32; MAX_CARDS]; 3],
 }
@@ -259,29 +265,22 @@ pub fn solve_with<C: PlayingCard>(
     let seat = search.to_play();
     let lead = rules::effective_lead(&layout.trick);
     let legal = rules::legal_moves(game, &layout.hands[seat], lead);
-    let index_of = |card: C| cards.iter().position(|&c| c == card);
-    // Equivalent moves share one search.
-    let mut reps: Vec<(u8, i32)> = Vec::new();
-    let mut out = Vec::with_capacity(legal.len());
-    for card in legal {
-        let Some(i) = index_of(card) else {
-            return (Vec::new(), search.nodes);
-        };
-        let i = u8::try_from(i).unwrap_or(0);
-        let known = reps
-            .iter()
-            .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
-            .map(|&(_, v)| v);
-        let value = match known {
-            Some(v) => v,
-            None => {
-                let v = search.play(seat, i, -INF, INF);
-                reps.push((i, v));
-                v
-            }
-        };
-        out.push((card, value));
-    }
+    let Some(roots) = RootMoves::new(&search, &cards, &legal) else {
+        return (Vec::new(), 0);
+    };
+    let values: Vec<i32> = roots
+        .distinct
+        .iter()
+        .map(|&m| {
+            search.begin_root_move();
+            search.play(seat, m, -INF, INF)
+        })
+        .collect();
+    let out = legal
+        .into_iter()
+        .zip(&roots.slot)
+        .map(|(card, &k)| (card, values[k]))
+        .collect();
     (out, search.nodes)
 }
 
@@ -309,10 +308,40 @@ pub fn probe_with<C: PlayingCard>(
 /// so the results equal separate calls of [`probe_with`].
 pub struct Probes<'t, C> {
     search: Search<'t>,
-    cards: Vec<C>,
     legal: Vec<C>,
+    /// `None` if a legal card is not among the cards of the layout.
+    roots: Option<RootMoves>,
     limits: Limits,
     fresh: bool,
+}
+
+/// The legal moves of the seat to play at the root of a search, equivalent
+/// moves merged: they share one search.
+struct RootMoves {
+    /// Card indices of the moves searched, in the order of the legal moves.
+    distinct: Vec<u8>,
+    /// Per legal move the position of its search in `distinct`.
+    slot: Vec<usize>,
+}
+
+impl RootMoves {
+    /// `None` if a legal card is not among `cards`.
+    fn new<C: PlayingCard>(search: &Search<'_>, cards: &[C], legal: &[C]) -> Option<RootMoves> {
+        let seat = search.to_play();
+        let mut distinct: Vec<u8> = Vec::new();
+        let mut slot = Vec::with_capacity(legal.len());
+        for &card in legal {
+            let i = u8::try_from(cards.iter().position(|&c| c == card)?).ok()?;
+            let known = distinct
+                .iter()
+                .position(|&r| search.equivalent(seat, r.min(i), r.max(i)));
+            slot.push(known.unwrap_or_else(|| {
+                distinct.push(i);
+                distinct.len() - 1
+            }));
+        }
+        Some(RootMoves { distinct, slot })
+    }
 }
 
 impl<'t, C: PlayingCard> Probes<'t, C> {
@@ -330,10 +359,11 @@ impl<'t, C: PlayingCard> Probes<'t, C> {
         let seat = search.to_play();
         let lead = rules::effective_lead(&layout.trick);
         let legal = rules::legal_moves(game, &layout.hands[seat], lead);
+        let roots = RootMoves::new(&search, &cards, &legal);
         Some(Probes {
             search,
-            cards,
             legal,
+            roots,
             limits,
             fresh: true,
         })
@@ -345,29 +375,25 @@ impl<'t, C: PlayingCard> Probes<'t, C> {
             self.search.restart(self.limits);
         }
         self.fresh = false;
+        let Some(roots) = &self.roots else {
+            return (Vec::new(), 0);
+        };
         let search = &mut self.search;
         let seat = search.to_play();
-        let mut reps: Vec<(u8, bool)> = Vec::new();
-        let mut out = Vec::with_capacity(self.legal.len());
-        for &card in &self.legal {
-            let Some(i) = self.cards.iter().position(|&c| c == card) else {
-                return (Vec::new(), search.nodes);
-            };
-            let i = u8::try_from(i).unwrap_or(0);
-            let known = reps
-                .iter()
-                .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
-                .map(|&(_, v)| v);
-            let reached = match known {
-                Some(v) => v,
-                None => {
-                    let v = search.play(seat, i, threshold - 1, threshold) >= threshold;
-                    reps.push((i, v));
-                    v
-                }
-            };
-            out.push((card, reached));
-        }
+        let reached: Vec<bool> = roots
+            .distinct
+            .iter()
+            .map(|&m| {
+                search.begin_root_move();
+                search.play(seat, m, threshold - 1, threshold) >= threshold
+            })
+            .collect();
+        let out = self
+            .legal
+            .iter()
+            .zip(&roots.slot)
+            .map(|(&card, &k)| (card, reached[k]))
+            .collect();
         (out, search.nodes)
     }
 }
@@ -441,6 +467,7 @@ impl<'t> Search<'t> {
             table,
             nodes: 0,
             node_limit: limits.nodes,
+            move_start: 0,
             history: [[0; MAX_CARDS]; 3],
         };
         for (i, &c) in cards.iter().enumerate() {
@@ -514,6 +541,7 @@ impl<'t> Search<'t> {
         self.table.next_generation();
         self.nodes = 0;
         self.node_limit = limits.nodes;
+        self.move_start = 0;
         self.depth_left = if limits.depth == 0 {
             u32::MAX
         } else {
@@ -522,9 +550,16 @@ impl<'t> Search<'t> {
         self.history = [[0; MAX_CARDS]; 3];
     }
 
+    /// Start the search of a root move: it gets the whole node limit
+    /// ([`Limits::nodes`]) of its own, whatever the moves before it used.
+    fn begin_root_move(&mut self) {
+        self.move_start = self.nodes;
+    }
+
     /// Whether the search must estimate at the next trick boundary.
     fn out_of_budget(&self) -> bool {
-        self.depth_left == 0 || (self.node_limit > 0 && self.nodes > self.node_limit)
+        self.depth_left == 0
+            || (self.node_limit > 0 && self.nodes - self.move_start > self.node_limit)
     }
 
     /// Seat to play.
@@ -1554,6 +1589,46 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_root_move_gets_the_whole_node_limit() {
+        // Depth 3 as PIMC searches, whole deals, a defender to lead: a
+        // node limit of 6000 per move is not reached on these deals, so
+        // the limited probes equal the unlimited ones. With one limit for
+        // all moves, the moves late in the legal order were cut short and
+        // some answered wrongly.
+        let mut rng = Rng::from_seed(9);
+        let mut table = Table::new(15);
+        for round in 0..150 {
+            let mut deck = standard_deck();
+            rng.shuffle(&mut deck);
+            let lead = Seat::ALL[1 + round % 2];
+            let mut hands: [Vec<Card>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+            for o in 0..3 {
+                let seat = seat_at(lead, o);
+                hands[seat.index()] = deck[o * 10..(o + 1) * 10].to_vec();
+                hands[seat.index()].sort();
+            }
+            let live: u32 = deck[..30].iter().map(|c| c.card_points()).sum();
+            let layout = Layout {
+                hands,
+                trick_lead: lead,
+                trick: Vec::new(),
+                skat_points: 0,
+            };
+            let game = GameType::Suit(Suit::ALL[round % 4]);
+            let threshold = i32::try_from(live / 2).expect("small");
+            let limited = Limits {
+                depth: 3,
+                nodes: 6000,
+            };
+            let free = Limits { depth: 3, nodes: 0 };
+            let goal = Goal::DeclarerPoints;
+            let (a, _) = probe_with(game, goal, &layout, threshold, limited, &mut table);
+            let (b, _) = probe_with(game, goal, &layout, threshold, free, &mut table);
+            assert_eq!(a, b, "round {round}");
         }
     }
 

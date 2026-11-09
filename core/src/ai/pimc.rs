@@ -99,8 +99,8 @@ const NULL_WEIGHT: i64 = 100;
 const NULL_MAX_UNSAFE: usize = 3;
 /// Tries to find a deal that fits the declaration before taking any.
 const BIAS_TRIES: u32 = 12;
-/// Search nodes per probe after which the remaining tricks are estimated
-/// (about 3 ms natively): bounds the rare deals that explode.
+/// Search nodes per move of a probe after which the remaining tricks are
+/// estimated (about 3 ms natively): bounds the rare deals that explode.
 const NODE_LIMIT: u64 = 6_000;
 /// Search nodes per decision after which no further deal is solved (the
 /// deals solved so far decide): about 25 ms natively, so the slowest
@@ -976,7 +976,7 @@ mod bench_augen {
         ] {
             let (mut won, mut schneider, mut point_games) = (0u32, 0u32, 0u32);
             let mut micros: Vec<u64> = Vec::new();
-            let mut nodes = 0u64;
+            let mut node_list: Vec<u64> = Vec::new();
             for seed in 0..u64::from(games) {
                 let mut rng = Rng::from_seed(seed);
                 let forehand = Seat::ALL[usize::try_from(seed % 3).unwrap_or(0)];
@@ -991,7 +991,7 @@ mod bench_augen {
                         let start = std::time::Instant::now();
                         let d = policy.decide(&view, &Hints::default()).expect("decision");
                         micros.push(u64::try_from(start.elapsed().as_micros()).unwrap_or(0));
-                        nodes += d.nodes;
+                        node_list.push(d.nodes);
                         d.card
                     };
                     let tricks = game.tricks().len();
@@ -1012,17 +1012,25 @@ mod bench_augen {
                 schneider += u32::from(value.schneider);
             }
             micros.sort_unstable();
+            node_list.sort_unstable();
             let n = micros.len().max(1);
+            let at = |q: usize| node_list[(n * q / 1000).min(n - 1)];
+            let nodes = node_list.iter().sum::<u64>();
             let mean = micros.iter().sum::<u64>() as f64 / n as f64 / 1000.0;
             let p95 = micros[(n * 95 / 100).min(n - 1)] as f64 / 1000.0;
             let max = micros.last().copied().unwrap_or(0) as f64 / 1000.0;
             println!(
                 "{name}: suit/grand games {point_games}, declarer won {:.1}%, schneider {:.1}%; \
-                 decisions {}, mean {mean:.2} ms, p95 {p95:.2} ms, max {max:.2} ms, mean nodes {}",
+                 decisions {}, mean {mean:.2} ms, p95 {p95:.2} ms, max {max:.2} ms; \
+                 nodes mean {} p95 {} p99 {} p99.9 {} max {}",
                 100.0 * f64::from(won) / f64::from(point_games.max(1)),
                 100.0 * f64::from(schneider) / f64::from(point_games.max(1)),
                 micros.len(),
                 nodes / u64::try_from(n).unwrap_or(1),
+                at(950),
+                at(990),
+                at(999),
+                node_list.last().copied().unwrap_or(0),
             );
         }
     }
