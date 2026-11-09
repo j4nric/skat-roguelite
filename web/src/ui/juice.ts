@@ -11,7 +11,7 @@
 
 import { sound } from '../audio';
 import type { RunView } from '../types';
-import { dur, motionOn, play, tween } from './fx';
+import { dur, jitter, motionOn, play, tween } from './fx';
 import { coinIcon, meterPercent } from './hud';
 
 /** The fixed layer above everything (dialogs too) that holds the flying sprites. */
@@ -26,10 +26,11 @@ export function layer(): HTMLElement {
   return el;
 }
 
-/** A sprite in the fx layer, its centre at (x, y). */
-function sprite(cls: string, html: string, x: number, y: number): HTMLElement {
+/** A sprite in the fx layer, its centre at (x, y); decoration, hidden from screen readers. */
+export function sprite(cls: string, html: string, x: number, y: number): HTMLElement {
   const el = document.createElement('span');
   el.className = `fx-sprite ${cls}`;
+  el.setAttribute('aria-hidden', 'true');
   el.innerHTML = html;
   el.style.left = `${Math.round(x)}px`;
   el.style.top = `${Math.round(y)}px`;
@@ -44,11 +45,6 @@ function gone(anim: Animation, el: Element): void {
 
 function mid(r: DOMRect): { x: number; y: number } {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-}
-
-/** A random number in [-n, n]: cosmetic only (never the core's RNG). */
-function jitter(n: number): number {
-  return (Math.random() * 2 - 1) * n;
 }
 
 /**
