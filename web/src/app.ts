@@ -1,10 +1,11 @@
 // The app controller: holds the core run and the UI state, turns taps into
 // RunActions, plays the core's events back as animations with sound, and
-// saves the core state after every action. No game rules live here: what
+// saves the core state after every action of the player. No game rules live here: what
 // is legal, what a game is worth and who takes a trick all come from the
 // core.
 //
-// The DOM has three layers: the screen (re-rendered on every change), the
+// The DOM has three layers: the screen (drawn on every change, part by
+// part: only the parts whose HTML changed are rebuilt, ./ui/patch.ts), the
 // overlay (rendered only when the dialog changes, so the score board can
 // animate undisturbed) and the toast line.
 //
@@ -70,7 +71,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
-import { crumbleInto, deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { crumbleInto, deal, declareSign, finishAll, finishOn, type FlightSnapshot, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
@@ -89,6 +90,7 @@ import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoic
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { declarationSign, discardNeed, renderTable } from './ui/table';
+import { Patcher, shell, type Part } from './ui/patch';
 
 /** Session flag: the page was reloaded to take the account's state (a note after the reload). */
 const LOADED_NOTE = 'stammtisch-sync-loaded';
@@ -298,6 +300,10 @@ export class App {
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
+  /** Draws the screen part by part (./ui/patch.ts). */
+  private readonly screen: Patcher;
+  /** Cards in flight in the parts the patcher just replaced. */
+  private flights: FlightSnapshot[] = [];
   /** Account and Groschen in the head: how their changes get there. */
   private readonly hudFx: HudFx;
   private readonly layerEl: HTMLElement;
@@ -367,6 +373,9 @@ export class App {
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
+    this.screen = new Patcher(this.screenEl, (nodes) => {
+      for (const n of nodes) if (n instanceof Element) this.flights.push(...noteFlights(n, FLYING));
+    });
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
     watchSprings(root);
@@ -4189,19 +4198,19 @@ export class App {
     // A back earned in the long night replaces it if chosen (ADR 0020).
     const chosenBack = ui.settings.back && ui.meta?.card_backs?.includes(ui.settings.back) ? ui.settings.back : null;
     setPlayerBack(chosenBack ?? (ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
-    let body = '';
+    let parts: Part[] = [];
     switch (ui.screen) {
       case 'loading':
-        body = renderLoading();
+        parts = [renderLoading()];
         break;
       case 'error':
-        body = renderError();
+        parts = [renderError()];
         break;
       case 'start':
-        body = renderStart(ui, BUILD_INFO);
+        parts = [renderStart(ui, BUILD_INFO)];
         break;
       case 'end':
-        body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : '';
+        parts = [ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : ''];
         if (ui.ended) this.afterRender.push(() => void this.prepareRunCard().catch(() => undefined));
         break;
       case 'run': {
@@ -4219,19 +4228,20 @@ export class App {
           ui.routePick = defaultPick(view);
           ui.routeOverview = false;
         }
-        const main = inShop
-          ? renderShop(view)
+        const main: Part[] = inShop
+          ? [renderShop(view)]
           : inEncounter
-            ? renderEncounter(view)
+            ? [renderEncounter(view)]
             : inReward
-              ? renderBossReward(view, ui.rewardPick)
+              ? [renderBossReward(view, ui.rewardPick)]
               : inCardReward
-                ? renderCardReward(view)
+                ? [renderCardReward(view)]
                 : inRoute
-                ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
+                ? [renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)]
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">${renderHud(view)}${main}</div>`;
+        // HUD and main area are parts of their own (./ui/patch.ts): what did not change stays in the DOM.
+        const run = shell(`<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">`, [renderHud(view), ...main], { sticky: true });
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
         if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
@@ -4245,10 +4255,9 @@ export class App {
         if (view.schnapps_reward && !ui.busy && !ui.anim && !ui.overlay) ui.overlay = { kind: 'schnapps-reward' };
         if (!view.schnapps_reward && ui.overlay?.kind === 'schnapps-reward') ui.overlay = null;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
-        if (kontra) body += renderKontra(view);
         // "Untot": the card waits in the trick for three cards of the hand.
         const rise = view.game?.rise_choice;
-        if (rise && !ui.busy && !ui.overlay && !kontra) body += renderRiseChoice(view, ui.risePick);
+        parts = [run, kontra ? renderKontra(view) : '', rise && !ui.busy && !ui.overlay && !kontra ? renderRiseChoice(view, ui.risePick) : ''];
         if (!rise && ui.risePick.length) ui.risePick = [];
         break;
       }
@@ -4258,12 +4267,18 @@ export class App {
     const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
     // The Tresen stays where it was scrolled to after buying or selling.
     const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
-    // Cards flying onto the felt keep flying through the re-render.
-    const flights = noteFlights(this.screenEl, FLYING);
     // A sheet on the screen that is drawn again (the Untot pick) does not enter again.
     const riseShown = this.screenEl.querySelector('.sheet-rise') !== null;
-    this.screenEl.innerHTML = body;
-    if (riseShown) this.screenEl.querySelector('.sheet-rise')?.closest('.overlay')?.classList.add('is-still');
+    // Cards flying onto the felt keep flying through the re-render: the
+    // patcher names the nodes it replaces (noteFlights in the constructor).
+    this.flights = [];
+    this.screen.patch(parts);
+    const flights = this.flights;
+    this.flights = [];
+    if (riseShown) {
+      const still = this.screenEl.querySelector('.sheet-rise')?.closest('.overlay');
+      if (still && !still.classList.contains('is-still')) still.classList.add('is-still');
+    }
     if (flights.length) resumeFlights(this.screenEl, FLYING, flights);
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');
