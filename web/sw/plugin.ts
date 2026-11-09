@@ -7,7 +7,9 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import type { Logger, Plugin } from 'vite';
 
-const SKIP = [/\.map$/, /^sw\.js$/, /^\./];
+// Not precached: source maps, the worker itself, dotfiles, and the 512 px
+// icons (only installing the app needs them, which happens online).
+const SKIP = [/\.map$/, /^sw\.js$/, /^\./, /^icon(-maskable)?-512\.png$/];
 
 function listFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

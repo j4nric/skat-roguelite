@@ -105,6 +105,8 @@ export function registerServiceWorker(): void {
   const register = (): void => {
     sw.register('/sw.js', { scope: '/', updateViaCache: 'none' }).then(
       (reg) => {
+        // Some embedders (test browsers that block workers) resolve without one.
+        if (!reg) return;
         offer(reg);
         reg.addEventListener('updatefound', () => {
           const installing = reg.installing;
