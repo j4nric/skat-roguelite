@@ -28,7 +28,7 @@
 // situation has passed.
 
 import { sound, unlockAudio } from './audio';
-import { music, type MusicId } from './music';
+import { music } from './music';
 import { CoreMeta, CoreRun } from './core';
 import { de, consumableMod, contentName } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
@@ -42,31 +42,25 @@ import {
   loadHistory,
   saveCharacter,
 } from './storage';
-import { type NullRisk, type RiskLevel, type RunAction,  type Suit } from './types';
+import { type NullRisk, type RiskLevel, type RunAction, type Suit } from './types';
 import { reducedMotion } from './ui/dom';
-import { markeEffect, renderEncounter } from './ui/encounter';
-import { renderBossReward } from './ui/bossreward';
-import { renderCardReward } from './ui/cardreward';
-import { defaultPick, legKey, renderRoute, watchMapLabels } from './ui/route';
+import { markeEffect } from './ui/encounter';
+import { legKey, watchMapLabels } from './ui/route';
 import { markTutorial } from './tutorial';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed } from './ui/triggers';
-import { finishAll, type FlightSnapshot, motionOn, noteFlights, resumeFlights, setTempo, springBack } from './ui/fx';
+import { finishAll, motionOn,  setTempo, springBack } from './ui/fx';
 import { HudFx, spring, watchSprings } from './ui/juice';
-import { bossEntrance, sceneRunning } from './ui/scenes';
-import { setPlayerBack } from './ui/backs';
+import { sceneRunning } from './ui/scenes';
 import { watchDrags } from './ui/drag';
 import { watchKeys } from './ui/keys';
 import { buzz, setVibration } from './haptics';
 import { Drink } from './ui/drink';
-import { renderHud } from './ui/hud';
-import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
-import { renderShop, watchShop } from './ui/shop';
+import { updateRiseChoice,  scrollCharacterPicker, sharedStake } from './ui/screens';
 import type { UiState } from './ui/state';
-import { discardNeed, renderTable } from './ui/table';
-import { Patcher, shell, type Part } from './ui/patch';
+import { discardNeed } from './ui/table';
 import { isCharacter, type ToastPlace } from './app/consts';
 import { AccountFlow } from './app/account';
 import type { AppCtx } from './app/context';
@@ -81,17 +75,10 @@ import { DrinkFx } from './app/playback/drinkfx';
 import { Flights } from './app/playback/flights';
 import { Fx } from './app/playback/fx';
 import { Progress } from './app/progress';
+import { Renderer } from './app/render';
 import { SaveCodeFlow } from './app/savecode';
 import { Share } from './app/share';
 import { TableInput } from './app/table-input';
-
-/**
- * Cards whose flights survive a re-render: the open trick, the hand, the
- * cards to press on the table and the pressed stack.
- */
-const FLYING = '.trick:not(.is-last) .trick-card, .hand-card, .skat-card, .pressed-card[data-fly]';
-
-const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
 export class App implements AppCtx {
   core: CoreRun | null = null;
@@ -140,10 +127,6 @@ export class App implements AppCtx {
   };
   fastForward = false;
   readonly screenEl: HTMLElement;
-  /** Draws the screen part by part (./ui/patch.ts). */
-  private readonly screen: Patcher;
-  /** Cards in flight in the parts the patcher just replaced. */
-  private snapshots: FlightSnapshot[] = [];
   /** Account and Groschen in the head: how their changes get there. */
   readonly hudFx: HudFx;
   readonly layerEl: HTMLElement;
@@ -183,6 +166,8 @@ export class App implements AppCtx {
   private readonly share: Share;
   /** Start, new run, resume, the Einführung (./app/lifecycle.ts). */
   private readonly lifecycle: Lifecycle;
+  /** Draws the screen part by part (./app/render.ts). */
+  private readonly renderer: Renderer;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -201,9 +186,7 @@ export class App implements AppCtx {
     this.steps = new Steps(this, this.fx, this.flights, events, this.layer, this.progress, this.account.sync, () => this.lifecycle.afterPlayback());
     this.share = new Share(this, this.layer);
     this.lifecycle = new Lifecycle(this, this.account, this.progress, this.fx, this.flights, this.guidance, this.steps, this.layer);
-    this.screen = new Patcher(this.screenEl, (nodes) => {
-      for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
-    });
+    this.renderer = new Renderer(this, this.layer, this.guidance, this.share, this.table, this.flights, this.progress);
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
     watchSprings(root);
@@ -340,20 +323,6 @@ export class App implements AppCtx {
     setVibration(this.ui.settings.vibrate);
   }
 
-  /**
-   * The music loop for what is on screen: the Tresen loop at the Tresen and
-   * at an encounter, the boss loop in a boss series, the table loop at the
-   * table and on the start and end screens.
-   */
-  private musicScene(): MusicId | null {
-    const ui = this.ui;
-    if (ui.screen === 'start' || ui.screen === 'end') return 'table';
-    if (ui.screen !== 'run' || !ui.view) return null;
-    const view = ui.view;
-    if ((view.phase === 'Shop' || view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'BossReward' || view.phase === 'CardReward') && !ui.anim) return 'shop';
-    return view.series.is_boss ? 'boss' : 'table';
-  }
-
   // -------------------------------------------------------------------------
   // Screens
   // -------------------------------------------------------------------------
@@ -365,6 +334,11 @@ export class App implements AppCtx {
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
+
+  /** Draw the screen from the state (./app/render.ts). */
+  render(): void {
+    this.renderer.render();
+  }
 
   /** Send an action to the core and play back what happened (./app/playback/steps.ts). */
   act(action: RunAction, fast = false): Promise<void> {
@@ -1087,139 +1061,5 @@ export class App implements AppCtx {
   // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
-
-  render(): void {
-    const ui = this.ui;
-    this.table.keepHandOrder();
-    // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
-    if (this.progress.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
-      ui.overlay = { kind: 'special', ids: this.progress.specialQueue.splice(0) };
-    }
-    // The player's edition shows his character's back (DESIGN 9.3).
-    // A back earned in the long night replaces it if chosen (ADR 0020).
-    const chosenBack = ui.settings.back && ui.meta?.card_backs?.includes(ui.settings.back) ? ui.settings.back : null;
-    setPlayerBack(chosenBack ?? (ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
-    let parts: Part[] = [];
-    switch (ui.screen) {
-      case 'loading':
-        parts = [renderLoading()];
-        break;
-      case 'error':
-        parts = [renderError()];
-        break;
-      case 'start':
-        parts = [renderStart(ui, BUILD_INFO)];
-        break;
-      case 'end':
-        parts = [ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : ''];
-        if (ui.ended) this.afterRender.push(() => void this.share.prepareRunCard().catch(() => undefined));
-        break;
-      case 'run': {
-        const view = ui.view;
-        if (!view) break;
-        const inShop = view.phase === 'Shop' && !ui.anim;
-        const inEncounter = view.phase === 'Encounter' && !ui.anim;
-        const inRoute = view.phase === 'Route' && !ui.anim;
-        const inReward = view.phase === 'BossReward' && !ui.anim;
-        const inCardReward = view.phase === 'CardReward' && !ui.anim;
-        if (!inReward) ui.rewardPick = null;
-        if (inRoute && ui.routeLeg !== legKey(view)) {
-          // A new leg: the default way, the map in front.
-          ui.routeLeg = legKey(view);
-          ui.routePick = defaultPick(view);
-          ui.routeOverview = false;
-        }
-        const main: Part[] = inShop
-          ? [renderShop(view)]
-          : inEncounter
-            ? [renderEncounter(view)]
-            : inReward
-              ? [renderBossReward(view, ui.rewardPick)]
-              : inCardReward
-                ? [renderCardReward(view)]
-                : inRoute
-                ? [renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)]
-                : renderTable(view, ui);
-        const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        // HUD and main area are parts of their own (./ui/patch.ts): what did not change stays in the DOM.
-        const run = shell(`<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">`, [renderHud(view), ...main], { sticky: true });
-        // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
-        if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
-        if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
-        // Die lange Nacht (ADR 0020): a new night district shows its Verschärfung first.
-        const night = view.night;
-        if (inRoute && night?.announced && ui.nightSeen !== night.district && !ui.busy && !ui.anim && !ui.overlay) {
-          ui.nightSeen = night.district;
-          ui.overlay = { kind: 'night' };
-        }
-        // The Schnaps of a won pub with every slot full: its sheet stays until it is taken or sold.
-        if (view.schnapps_reward && !ui.busy && !ui.anim && !ui.overlay) ui.overlay = { kind: 'schnapps-reward' };
-        if (!view.schnapps_reward && ui.overlay?.kind === 'schnapps-reward') ui.overlay = null;
-        const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
-        // "Untot": the card waits in the trick for three cards of the hand.
-        const rise = view.game?.rise_choice;
-        parts = [run, kontra ? renderKontra(view) : '', rise && !ui.busy && !ui.overlay && !kontra ? renderRiseChoice(view, ui.risePick) : ''];
-        if (!rise && ui.risePick.length) ui.risePick = [];
-        break;
-      }
-    }
-    // Keep the typed seed and the picker row across re-renders of the start screen.
-    const seed = this.root.querySelector<HTMLInputElement>('#seed')?.value;
-    const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
-    // The Tresen stays where it was scrolled to after buying or selling.
-    const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
-    // A sheet on the screen that is drawn again (the Untot pick) does not enter again.
-    const riseShown = this.screenEl.querySelector('.sheet-rise') !== null;
-    // Cards flying onto the felt keep flying through the re-render: the
-    // patcher names the nodes it replaces (noteFlights in the constructor).
-    this.snapshots = [];
-    this.screen.patch(parts);
-    const flights = this.snapshots;
-    this.snapshots = [];
-    if (riseShown) {
-      const still = this.screenEl.querySelector('.sheet-rise')?.closest('.overlay');
-      if (still && !still.classList.contains('is-still')) still.classList.add('is-still');
-    }
-    if (flights.length) resumeFlights(this.screenEl, FLYING, flights);
-    if (seed) {
-      const input = this.root.querySelector<HTMLInputElement>('#seed');
-      if (input) input.value = seed;
-    }
-    const shop = this.screenEl.querySelector<HTMLElement>('.run > .shop');
-    if (shop && shopScroll) shop.scrollTop = shopScroll;
-    if (ui.screen === 'start') settleCharacterPicker(this.screenEl, charScroll);
-    this.layer.render();
-    // The score board and the boss take the screen: no info card, no trigger lines over them.
-    const big = ui.overlay?.kind === 'score' || ui.overlay?.kind === 'boss';
-    if (big) {
-      this.info.close();
-      this.triggers.clear();
-    } else {
-      this.info.refresh();
-    }
-    this.guidance.updateHint();
-    this.guidance.updateCoach();
-    music.setScene(this.musicScene());
-    watchShop(this.screenEl);
-    const effects = this.afterRender.splice(0);
-    // An effect is decoration: one that fails must not take the render (and the playback) down.
-    for (const fx of effects) {
-      try {
-        fx();
-      } catch (err) {
-        console.error('effect after render failed', err);
-      }
-    }
-    if (ui.screen === 'run' && ui.view) this.hudFx.sync(ui.view);
-    else if (ui.screen === 'start') this.hudFx.reset();
-    if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.drink.refresh();
-    else this.drink.cancel();
-    this.flights.flyPressed();
-    if (ui.screen !== 'run') this.entrancePending = false;
-    if (this.entrancePending && !ui.overlay && !ui.anim) {
-      this.entrancePending = false;
-      if (ui.view?.series.is_boss && ui.view.phase === 'Game') bossEntrance(this.screenEl);
-    }
-  }
 
 }
