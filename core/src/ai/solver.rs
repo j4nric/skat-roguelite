@@ -65,9 +65,9 @@ pub struct Layout<C> {
     pub trick_lead: Seat,
     /// Cards of the current trick in play order (0 to 2).
     pub trick: Vec<C>,
-    /// Augen in the skat; in a Ramsch they go to the winner of the last
-    /// trick.
-    pub skat_points: u32,
+    /// Augen in the skat with their sign ([`PlayingCard::signed_points`]);
+    /// in a Ramsch they go to the winner of the last trick.
+    pub skat_points: i32,
 }
 
 /// Search limits.
@@ -218,8 +218,12 @@ struct Search<'t> {
     trick: [u8; 3],
     trick_len: usize,
     leader: usize,
-    /// Augen still in the hands and on the table.
-    live_points: i32,
+    /// Augen still in the hands and on the table, the positive ones
+    /// (`live_gain`, at least 0) and the ones below zero (`live_loss`, at
+    /// most 0) apart: what the rest of the search can add lies between
+    /// their sums.
+    live_gain: i32,
+    live_loss: i32,
     /// Tricks left to search exactly (`u32::MAX` = no limit).
     depth_left: u32,
     table: &'t mut Table,
@@ -422,12 +426,13 @@ impl<'t> Search<'t> {
             null: false,
             catch: 0,
             ramsch: false,
-            skat_points: i32::try_from(layout.skat_points).unwrap_or(0),
+            skat_points: layout.skat_points,
             hands: [0; 3],
             trick: [0; 3],
             trick_len: layout.trick.len(),
             leader: layout.trick_lead.index(),
-            live_points: 0,
+            live_gain: 0,
+            live_loss: 0,
             depth_left: if limits.depth == 0 {
                 u32::MAX
             } else {
@@ -441,12 +446,13 @@ impl<'t> Search<'t> {
         for (i, &c) in cards.iter().enumerate() {
             s.kind[i] = card_kind(game, c);
             s.strength[i] = card_strength(game, c);
-            s.points[i] = i32::try_from(c.card_points()).unwrap_or(0);
+            s.points[i] = i32::try_from(c.signed_points()).unwrap_or(0);
             s.kind_mask[usize::from(s.kind[i])] |= 1 << i;
             if !c.is_blank() && !c.never_wins() {
                 s.can_win |= 1 << i;
             }
-            s.live_points += s.points[i];
+            s.live_gain += s.points[i].max(0);
+            s.live_loss += s.points[i].min(0);
         }
         for i in 0..n {
             let same = |j: usize| s.kind[j] == s.kind[i] && s.strength[j] == s.strength[i];
@@ -1030,9 +1036,15 @@ impl<'t> Search<'t> {
                 });
             }
         } else {
-            let max = self.live_points + if self.ramsch { self.skat_points } else { 0 };
-            if beta <= 0 {
-                return 0;
+            // The rest adds at least every Augen below zero and at most
+            // every positive one (a Ramsch: the skat too).
+            let (mut min, mut max) = (self.live_loss, self.live_gain);
+            if self.ramsch {
+                min += self.skat_points.min(0);
+                max += self.skat_points.max(0);
+            }
+            if beta <= min {
+                return min;
             }
             if alpha >= max {
                 return max;
@@ -1120,11 +1132,13 @@ impl<'t> Search<'t> {
         self.trick_len += 1;
         let value = if self.trick_len == 3 {
             let winner = (self.leader + self.winning_offset()) % 3;
-            let points: i32 = self
-                .trick
-                .iter()
-                .map(|&c| self.points[usize::from(c)])
-                .sum();
+            let (mut gain, mut loss) = (0, 0);
+            for &c in &self.trick {
+                let p = self.points[usize::from(c)];
+                gain += p.max(0);
+                loss += p.min(0);
+            }
+            let points = gain + loss;
             let saved_leader = self.leader;
             let saved_trick = self.trick;
             if self.catch & (1 << winner) != 0 {
@@ -1141,12 +1155,14 @@ impl<'t> Search<'t> {
                 }
                 self.trick_len = 0;
                 self.leader = winner;
-                self.live_points -= points;
+                self.live_gain -= gain;
+                self.live_loss -= loss;
                 let depth = self.depth_left;
                 self.depth_left = depth.saturating_sub(1);
                 let v = gained + self.search(alpha - gained, beta - gained);
                 self.depth_left = depth;
-                self.live_points += points;
+                self.live_gain += gain;
+                self.live_loss += loss;
                 self.leader = saved_leader;
                 self.trick = saved_trick;
                 self.trick_len = 3;
@@ -1215,6 +1231,11 @@ mod tests {
         cards
     }
 
+    /// The Augen of `cards` with their sign.
+    fn signed_sum<C: PlayingCard>(cards: &[C]) -> i32 {
+        i32::try_from(cards.iter().map(|c| c.signed_points()).sum::<i64>()).expect("small")
+    }
+
     /// Plain minimax over the rules of [`crate::rules`], no pruning.
     fn reference<C: PlayingCard>(
         game: GameType,
@@ -1222,7 +1243,7 @@ mod tests {
         hands: &mut [Vec<C>; 3],
         lead: Seat,
         trick: &mut Vec<C>,
-        skat_points: u32,
+        skat_points: i32,
     ) -> i32 {
         let seat = seat_at(lead, trick.len());
         let legal = rules::legal_moves(game, &hands[seat.index()], rules::effective_lead(trick));
@@ -1242,7 +1263,7 @@ mod tests {
                 let cards = [trick[0], trick[1], trick[2]];
                 let winner = Seat::from_index(rules::trick_winner(game, lead.index(), cards))
                     .unwrap_or(lead);
-                let points: u32 = cards.iter().map(|c| c.card_points()).sum();
+                let points = signed_sum(&cards);
                 let saved = std::mem::take(trick);
                 let last = hands[winner.index()].is_empty();
                 let v = match goal {
@@ -1254,16 +1275,14 @@ mod tests {
                     Goal::DefenderTrick => reference(game, goal, hands, winner, trick, skat_points),
                     Goal::DeclarerPoints => {
                         let gained = if winner.is_declarer() { points } else { 0 };
-                        i32::try_from(gained).unwrap_or(0)
-                            + reference(game, goal, hands, winner, trick, skat_points)
+                        gained + reference(game, goal, hands, winner, trick, skat_points)
                     }
                     Goal::RamschAvoid(me) => {
                         let mut gained = 0;
                         if winner != me {
                             gained = points + if last { skat_points } else { 0 };
                         }
-                        i32::try_from(gained).unwrap_or(0)
-                            + reference(game, goal, hands, winner, trick, skat_points)
+                        gained + reference(game, goal, hands, winner, trick, skat_points)
                     }
                 };
                 *trick = saved;
@@ -1324,7 +1343,7 @@ mod tests {
         let cards = [trick[0], trick[1], trick[2]];
         let winner =
             Seat::from_index(rules::trick_winner(game, lead.index(), cards)).unwrap_or(lead);
-        let points: u32 = cards.iter().map(|c| c.card_points()).sum();
+        let points = signed_sum(&cards);
         let last = hands[winner.index()].is_empty();
         let mut empty = Vec::new();
         let rest = |hands: &mut [Vec<C>; 3], empty: &mut Vec<C>| {
@@ -1337,7 +1356,7 @@ mod tests {
             Goal::DefenderTrick => rest(hands, &mut empty),
             Goal::DeclarerPoints => {
                 let gained = if winner.is_declarer() { points } else { 0 };
-                i32::try_from(gained).unwrap_or(0) + rest(hands, &mut empty)
+                gained + rest(hands, &mut empty)
             }
             Goal::RamschAvoid(me) => {
                 let gained = if winner == me {
@@ -1345,7 +1364,7 @@ mod tests {
                 } else {
                     points + if last { layout.skat_points } else { 0 }
                 };
-                i32::try_from(gained).unwrap_or(0) + rest(hands, &mut empty)
+                gained + rest(hands, &mut empty)
             }
         }
     }
@@ -1372,7 +1391,8 @@ mod tests {
             hands[seat.index()].sort();
         }
         let trick: Vec<C> = it.by_ref().take(on_table).collect();
-        let skat_points = it.take(2).map(|c| c.card_points()).sum();
+        let skat: Vec<C> = it.take(2).collect();
+        let skat_points = signed_sum(&skat);
         Layout {
             hands,
             trick_lead: lead,
@@ -1413,8 +1433,8 @@ mod tests {
         }
     }
 
-    /// A roguelike deck: blanks, a rank bonus, a card that never wins and
-    /// one with extra Augen.
+    /// A roguelike deck: blanks, a rank bonus, a card that never wins, one
+    /// with extra Augen and some below zero ("Ramponiert").
     fn odd_deck() -> Vec<DealtCard> {
         standard_deck()
             .into_iter()
@@ -1436,6 +1456,15 @@ mod tests {
                 if card == c("HQ") {
                     dealt.card_points = 9;
                 }
+                // Below zero (a Seven, an Eight, a Unter), a Zehn with
+                // fewer Augen.
+                if card == c("C7") || card == c("D8") || card == c("SJ") {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 5;
+                }
+                if card == c("HT") {
+                    dealt.card_points = 5;
+                }
                 if card == c("SQ") || card == c("DA") || card == c("C9") {
                     dealt.honorary_jack = true;
                 }
@@ -1453,12 +1482,77 @@ mod tests {
             let goals = if game == GameType::Null {
                 vec![Goal::NullDeclarerTrick]
             } else {
-                vec![Goal::DeclarerPoints, Goal::DefenderTrick]
+                vec![
+                    Goal::DeclarerPoints,
+                    Goal::RamschAvoid(Seat::ALL[round % 3]),
+                    Goal::DefenderTrick,
+                ]
             };
             for goal in goals {
                 let fast = solve(game, goal, &layout);
                 let slow = reference_moves(game, goal, &layout);
                 assert_eq!(fast, slow, "round {round} {game} {goal:?} {layout:?}");
+            }
+        }
+    }
+
+    /// Many cards below zero ("Ramponiert" with 1 to 9 Augen of debt on
+    /// every Seven, Eight, Nine and Dame, the Unter partly): the bounds of
+    /// the search are no longer 0 and the Augen left.
+    fn battered_deck() -> Vec<DealtCard> {
+        standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let mut dealt = DealtCard::plain(id, CardKind::Normal(card));
+                let low = matches!(
+                    card.rank,
+                    crate::cards::Rank::Seven
+                        | crate::cards::Rank::Eight
+                        | crate::cards::Rank::Nine
+                        | crate::cards::Rank::Queen
+                ) || (card.rank == crate::cards::Rank::Jack && id % 2 == 0);
+                if low {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 1 + id % 9;
+                }
+                dealt
+            })
+            .collect()
+    }
+
+    #[test]
+    fn matches_plain_minimax_with_augen_below_zero() {
+        let mut rng = Rng::from_seed(14);
+        for round in 0..240 {
+            let game = games()[round % 2];
+            let layout = random_layout(&mut rng, battered_deck(), 2 + round % 3, (round / 2) % 3);
+            for goal in [
+                Goal::DeclarerPoints,
+                Goal::RamschAvoid(Seat::ALL[round % 3]),
+            ] {
+                let fast = solve(game, goal, &layout);
+                let slow = reference_moves(game, goal, &layout);
+                assert_eq!(fast, slow, "round {round} {game} {goal:?} {layout:?}");
+                // The null window gives the same answer as the exact value
+                // for thresholds around and below zero.
+                for threshold in [-20, -7, -1, 0, 1, 5, 12, 30] {
+                    let mut table = Table::new(10);
+                    let (probed, _) = probe_with(
+                        game,
+                        goal,
+                        &layout,
+                        threshold,
+                        Limits::default(),
+                        &mut table,
+                    );
+                    let expected: Vec<(DealtCard, bool)> =
+                        slow.iter().map(|&(c, v)| (c, v >= threshold)).collect();
+                    assert_eq!(
+                        probed, expected,
+                        "round {round} {goal:?} threshold {threshold}"
+                    );
+                }
             }
         }
     }

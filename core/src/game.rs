@@ -482,6 +482,12 @@ pub struct SeatView<'a, C = Card> {
     pub trick: &'a [C],
     /// Completed tricks in order.
     pub tricks: &'a [CompletedTrick<C>],
+    /// Augen each seat has taken so far with their sign (Augen below zero
+    /// count against the taker, [`PlayingCard::signed_points`]), extra
+    /// Augen from card effects ([`Game::bonus_points`]) included, the skat
+    /// and the trick in progress not. Public: every seat sees the tricks
+    /// and the extra Augen.
+    pub seat_points: [i64; 3],
     /// The skat, if this seat knows it (declarer after picking it up).
     pub skat: Option<[C; 2]>,
     /// The declarer's current hand, open on the table in an Ouvert game
@@ -1083,6 +1089,18 @@ impl<C: PlayingCard> Game<C> {
         points
     }
 
+    /// Augen per seat so far with their sign: [`Game::trick_signed_points`]
+    /// plus [`Game::bonus_points`], the skat not included (see
+    /// [`SeatView::seat_points`]).
+    #[must_use]
+    pub fn signed_seat_points(&self) -> [i64; 3] {
+        let mut points = self.trick_signed_points();
+        for (p, bonus) in points.iter_mut().zip(self.bonus_points) {
+            *p += i64::from(bonus);
+        }
+        points
+    }
+
     /// [`Game::trick_signed_points`] with no seat below 0.
     #[must_use]
     pub fn trick_card_points(&self) -> [u32; 3] {
@@ -1208,6 +1226,7 @@ impl<C: PlayingCard> Game<C> {
             trick_lead: self.trick_lead,
             trick: &self.trick,
             tricks: &self.tricks,
+            seat_points: self.signed_seat_points(),
             skat,
             declarer_hand,
             partner_hand,
@@ -2397,6 +2416,49 @@ mod tests {
                 assert_eq!(signed, i64::from(printed) - debt);
             }
         }
+    }
+
+    #[test]
+    fn seat_views_show_signed_augen_with_extra_augen() {
+        use crate::cards::{CardKind, Rank};
+        use crate::deck::DealtCard;
+        let deck: Vec<DealtCard> = standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let plain = DealtCard::plain(id, CardKind::Normal(card));
+                let debt = if card.rank == Rank::Seven { 5 } else { 0 };
+                DealtCard {
+                    point_debt: debt,
+                    ..plain
+                }
+            })
+            .collect();
+        let mut game = Game::deal_from(&mut Rng::from_seed(3), deck, Seat::DECLARER).expect("deal");
+        game.declare(Declaration::grand(RiskLevel::Hand))
+            .expect("declare");
+        let mut sevens_taken = false;
+        while let Some(seat) = game.current_seat() {
+            let view = game.view(seat).expect("view");
+            let mut expected = [0i64; 3];
+            for trick in game.tricks() {
+                for card in trick.cards {
+                    let debt = i64::from(card.point_debt);
+                    sevens_taken |= debt > 0;
+                    expected[trick.winner.index()] += i64::from(card.card_points) - debt;
+                }
+            }
+            if !game.tricks().is_empty() {
+                expected[2] += 7;
+            }
+            assert_eq!(view.seat_points, expected);
+            let card = view.legal_moves[0];
+            game.play(seat, card).expect("legal card");
+            if game.tricks().len() == 1 && game.current_trick().is_empty() {
+                game.add_bonus_points(Seat::ALL[2], 7);
+            }
+        }
+        assert!(sevens_taken, "a seven below zero was taken");
     }
 
     /// Three editions of the 32 cards: the player's counts one Auge more on

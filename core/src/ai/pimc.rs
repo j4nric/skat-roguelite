@@ -13,7 +13,9 @@
 //!   the win threshold and for Schneider (the defenders count the same
 //!   number negated). The win threshold and the Schneider limit are the
 //!   Skatordnung's unless house rules move them
-//!   ([`PimcPolicy::with_thresholds`]).
+//!   ([`PimcPolicy::with_thresholds`]). Augen count with their sign (a
+//!   card below zero, "Ramponiert", costs its taker) and with the extra
+//!   Augen of card effects so far ([`SeatView::seat_points`]).
 //! - Schwarz announced (also every suit or grand Ouvert): whether the
 //!   defenders take a trick, the only thing that decides the game.
 //! - Null: whether the declarer takes a trick.
@@ -220,19 +222,9 @@ impl PimcPolicy {
         };
         let played = view.tricks.len() * 3 + view.trick.len();
         let mut rng = Rng::from_seed(decision_seed(self.seed, played, view.seat));
-        let declarer_points: u32 = view
-            .tricks
-            .iter()
-            .filter(|t| t.winner.is_declarer())
-            .map(|t| t.card_points())
-            .sum();
-        let played_points: u32 = view
-            .tricks
-            .iter()
-            .map(|t| t.card_points())
-            .chain(view.trick.iter().map(|c| c.card_points()))
-            .sum();
-        let trick_points: u32 = view.trick.iter().map(|c| c.card_points()).sum();
+        // Augen so far with their sign, extra Augen included.
+        let [declarer_points, first, second] = view.seat_points;
+        let defender_points = first + second;
         let declarer_played: Vec<C> = view
             .tricks
             .iter()
@@ -273,24 +265,25 @@ impl PimcPolicy {
                 } else {
                     knowledge.sample(&mut rng)
                 };
-                let skat_points: u32 = sample.skat.iter().map(|c| c.card_points()).sum();
+                let skat_points: i64 = sample.skat.iter().map(|c| c.signed_points()).sum();
                 let layout = Layout {
                     hands: sample.hands,
                     trick_lead: view.trick_lead,
                     trick: view.trick.to_vec(),
-                    skat_points,
+                    skat_points: i32::try_from(skat_points).unwrap_or(0),
                 };
-                let live: u32 = layout
-                    .hands
-                    .iter()
-                    .flatten()
-                    .chain(&layout.trick)
-                    .map(|c| c.card_points())
-                    .sum();
+                let (mut gain, mut loss) = (0, 0);
+                for c in layout.hands.iter().flatten().chain(&layout.trick) {
+                    let p = c.signed_points();
+                    gain += p.max(0);
+                    loss += p.min(0);
+                }
+                let base = declarer_points + skat_points;
                 let points = Points {
-                    base: declarer_points + skat_points,
-                    live,
-                    total: played_points - trick_points + live + skat_points,
+                    base,
+                    gain,
+                    loss,
+                    total: base + defender_points + gain + loss,
                 };
                 let mut utilities = vec![0i64; legal.len()];
                 let Some(n) = self.evaluate(
@@ -378,13 +371,19 @@ impl PimcPolicy {
         // that needs a search; every probe is still a search of its own.
         let mut table = Some(table);
         let mut probes: Option<Option<Probes<'_, C>>> = None;
+        // What the rest can bring: in Augen every one below zero up to
+        // every positive one; a trick goal counts tricks (a trick of
+        // sevens, eights and nines has no Augen).
+        let (min, max) = if goal == Goal::DeclarerPoints {
+            (points.loss, points.gain)
+        } else {
+            (0, 1)
+        };
         let mut probe = |threshold: i64| -> Option<Vec<bool>> {
-            if threshold <= 0 {
+            if threshold <= min {
                 return Some(vec![true; len]);
             }
-            // Out of reach in Augen; a trick goal counts tricks, and a
-            // trick of sevens, eights and nines has none.
-            if goal == Goal::DeclarerPoints && threshold > i64::from(points.live) {
+            if threshold > max {
                 return Some(vec![false; len]);
             }
             let threshold = i32::try_from(threshold).ok()?;
@@ -418,8 +417,7 @@ impl PimcPolicy {
             }
             Goal::RamschAvoid(_) => {}
             Goal::DeclarerPoints => {
-                let base = i64::from(points.base);
-                let total = i64::from(points.total);
+                let Points { base, total, .. } = points;
                 let limit = i64::from(self.thresholds.schneider_limit);
                 let wins = probe(i64::from(self.thresholds.win) - base)?;
                 for (u, &w) in out.iter_mut().zip(&wins) {
@@ -465,15 +463,20 @@ const fn goal_is_ramsch(goal: Goal) -> bool {
     matches!(goal, Goal::RamschAvoid(_))
 }
 
-/// Augen that decide a point game on one deal.
+/// Augen that decide a point game on one deal, with their sign (Augen
+/// below zero count against the taker) and extra Augen from card effects
+/// included.
 #[derive(Debug, Clone, Copy)]
 struct Points {
-    /// The declarer's Augen so far: tricks and skat.
-    base: u32,
-    /// Augen still in the hands and on the table.
-    live: u32,
-    /// All Augen of the game.
-    total: u32,
+    /// The declarer's Augen so far: tricks, extra Augen and skat.
+    base: i64,
+    /// Positive Augen still in the hands and on the table.
+    gain: i64,
+    /// Augen below zero still in the hands and on the table (at most 0).
+    loss: i64,
+    /// All Augen of the game: both sides' so far, the skat and the live
+    /// ones.
+    total: i64,
 }
 
 /// Whether a deal gives the declarer a hand that fits his declaration.
@@ -723,6 +726,7 @@ mod knowledge_tests {
             trick_lead: Seat::ALL[1],
             trick: &[],
             tricks: &[],
+            seat_points: [0; 3],
             skat: partner.then_some(skat),
             declarer_hand: Some(&hands[0]),
             partner_hand: partner.then_some(&hands[2][..]),
