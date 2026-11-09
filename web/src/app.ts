@@ -56,7 +56,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { CHARACTERS, type CardKind, type CardView, type Character, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { type CardKind, type CardView, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { syncPill } from './ui/account';
 import { markeEffect, renderEncounter } from './ui/encounter';
@@ -75,7 +75,7 @@ import { crumbleInto, deal, declareSign, finishAll, finishOn, type FlightSnapsho
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
-import { cardBack, cardSvg, editionLook, lookSvg, modValueText, showWildSuit } from './ui/cards';
+import { cardBack, cardSvg, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
 import { watchKeys } from './ui/keys';
@@ -85,12 +85,15 @@ import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
-import { changeText, renderScore, ScoreBoard, sourceName } from './ui/score';
-import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderOverlay, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
+import { changeText,  sourceName } from './ui/score';
+import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { declarationSign, discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
+import { DELAY, errorCode, errorText, isCharacter, nextPaint, PICK, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
+import type { AppCtx } from './app/context';
+import { Layer } from './app/layer';
 
 /** Session flag: the page was reloaded to take the account's state (a note after the reload). */
 const LOADED_NOTE = 'stammtisch-sync-loaded';
@@ -103,17 +106,6 @@ function takeLoadedNote(): boolean {
     return set;
   } catch {
     return false;
-  }
-}
-
-/** The stable code of a core error (JSON `{code, message}`), if any. */
-function errorCode(err: unknown): string | null {
-  const raw = err instanceof Error ? err.message : String(err);
-  try {
-    const parsed = JSON.parse(raw) as { code?: string };
-    return parsed.code ?? null;
-  } catch {
-    return null;
   }
 }
 
@@ -135,51 +127,10 @@ function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string
   return { mods, mod_values };
 }
 
-/** Turn a core error into a German text. */
-function errorText(err: unknown): string {
-  const code = errorCode(err);
-  const fallback = de.app.errors.default ?? '';
-  return code ? (de.app.errors[code] ?? fallback) : fallback;
-}
-
-/** One line about a saved run: who plays, where, the account. */
-function runLine(view: RunView): string {
-  const character = contentName('characters', view.character.character);
-  const line = view.phase === 'Encounter' || view.phase === 'Route' || view.phase === 'Shop' || view.phase === 'BossReward' || view.phase === 'CardReward'
-    ? t(de.start.resumeEncounter, { character, section: view.series.section + 1 })
-    : t(de.start.resumeInfo, {
-        character,
-        section: view.series.section + 1,
-        series: view.series.index + 1,
-        score: view.series.score,
-        target: view.series.target,
-      });
-  const short = view.length === 'Short' ? `${line} · ${de.start.shortEvening}` : line;
-  return view.stake > 0 ? short + t(de.share.lineStake, { stake: view.stake }) : short;
-}
-
-function isCharacter(value: string | null): value is Character {
-  return CHARACTERS.includes(value as Character);
-}
-
 /** How long a Stammgast's bubble stays at tempo "Normal" (reading time, not motion). */
 const QUIP_MS = 2800;
 /** At least this many tricks between two quips: about one every second game. */
 const QUIP_EVERY_TRICKS = 14;
-
-/** Pauses in milliseconds at tempo "Normal"; reduced motion shortens them. */
-const DELAY = {
-  ownCard: 340,
-  aiCard: 560,
-  trickShow: 650,
-  trickFly: 480,
-  toast: 1900,
-  notice: 700,
-  /** The skat turning over on the table. */
-  flip: 420,
-  /** Relics and modifications that fired, before the score board covers them. */
-  trigger: 650,
-};
 
 /** A trick with this many Augen or more the player took annoys the regulars (the same bar as their quips). */
 const BIG_TRICK = 10;
@@ -196,8 +147,6 @@ const FLYING = '.trick:not(.is-last) .trick-card, .hand-card, .skat-card, .press
 /** The cards of the hand and those lying on the table to be pressed. */
 const PRESS_CARDS = '.hand-card, .skat-card';
 
-/** A card picked up or laid down: flight (ms at tempo Normal), lift and curve (px). */
-const PICK = { ms: 440, lift: 28, arc: 16 };
 /** The other hand cards making room (FLIP). */
 const MAKE_ROOM_MS = 260;
 
@@ -215,32 +164,9 @@ const SETTLE_MS = 260;
 /** The trip along a way on the map at tempo "Normal". */
 const TRAVEL_MS = 1600;
 
-/** Let the browser handle input and paint before the next piece of work. */
-function yieldToBrowser(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 0));
-}
-
-/** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
-function nextPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (): void => {
-      if (done) return;
-      done = true;
-      resolve();
-    };
-    // rAF runs just before the paint; the timeout after it runs once the
-    // frame is on screen.
-    requestAnimationFrame(() => window.setTimeout(finish, 0));
-    window.setTimeout(finish, 120);
-  });
-}
-
 /** Toasts waiting at most; older ones are dropped. */
 const TOAST_QUEUE = 3;
 
-/** Where a toast shows: the middle of the screen, or above the Stammgäste. */
-type ToastPlace = 'middle' | 'top';
 /** "Untot": the event of a card that rose from the trick. */
 /** "Doppelgänger": the event of its mirror. */
 type DoppelMirror = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { DoppelgangerMirrored: unknown }>['DoppelgangerMirrored'];
@@ -248,10 +174,10 @@ type RoseEvent = Extract<Extract<RunEvent, { Game: unknown }>['Game'], { CardRos
 
 const BUILD_INFO = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
 
-export class App {
-  private core: CoreRun | null = null;
-  private meta: CoreMeta | null = null;
-  private ui: UiState = {
+export class App implements AppCtx {
+  core: CoreRun | null = null;
+  meta: CoreMeta | null = null;
+  readonly ui: UiState = {
     screen: 'loading',
     view: null,
     anim: null,
@@ -299,18 +225,18 @@ export class App {
   private boardDay = '';
   /** What signing in with the recovery code brought, acted on once its code was seen. */
   private pendingSync: Reconciled = 'none';
-  private fastForward = false;
+  fastForward = false;
   private wakers: (() => void)[] = [];
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
-  private readonly screenEl: HTMLElement;
+  readonly screenEl: HTMLElement;
   /** Draws the screen part by part (./ui/patch.ts). */
   private readonly screen: Patcher;
   /** Cards in flight in the parts the patcher just replaced. */
-  private flights: FlightSnapshot[] = [];
+  private snapshots: FlightSnapshot[] = [];
   /** Account and Groschen in the head: how their changes get there. */
-  private readonly hudFx: HudFx;
-  private readonly layerEl: HTMLElement;
+  readonly hudFx: HudFx;
+  readonly layerEl: HTMLElement;
   private readonly toastEl: HTMLElement;
   /** "Untot": cards whose rising was already shown with their trick in this game. */
   private readonly riseShown = new Set<number>();
@@ -324,9 +250,9 @@ export class App {
   /** The Einführung was left while a playback ran: where to go once it is over. */
   private leaveTutorialTo: 'start' | 'run' | null = null;
   /** The info card (long-press, hover, "i"): one for everything. */
-  private readonly info: InfoCard;
+  readonly info: InfoCard;
   /** Lines and wiggles when a relic or modification fires. */
-  private readonly triggers: TriggerFeed;
+  readonly triggers: TriggerFeed;
   /** Hints of the Wirt already seen (stored). */
   private hintSeen = loadSeenHints();
   /** The hint on screen and where it sits. */
@@ -340,19 +266,10 @@ export class App {
   /** Tricks since the last quip: quips stay rare. */
   private tricksSinceQuip = 0;
   private quipTimer: number | undefined;
-  private renderedOverlay: Overlay | null = null;
-  private overlayDirty = false;
-  private scoreBoard: ScoreBoard | null = null;
-  /**
-   * The score board or boss sheet a playback is waiting on right now. A
-   * board on the layer that nothing waits for any more (its playback
-   * broke off) is stale: its button closes it instead of resolving nothing.
-   */
-  private awaited: Overlay | null = null;
   /** Changed in memory, not stored yet (playSteps, persist). */
   private unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
   /** Effects to run once the next render is in the DOM. */
-  private afterRender: (() => void)[] = [];
+  readonly afterRender: (() => void)[] = [];
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
   private specialQueue: string[] = [];
   /** Where the card the player just tapped was. */
@@ -362,13 +279,13 @@ export class App {
   /** The pressed cards still to fly onto their place (./ui/table.ts pressedStack). */
   private pressFlight: PressFlight | null = null;
   /** Drinking a Schnaps from the Leiste (drag and drop or tap, ./ui/drink.ts). */
-  private readonly drink: Drink;
+  readonly drink: Drink;
   /** The Schnaps just poured, for its effects while its events play: the table's cards washed away. */
   private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
   /** How the player's card was thrown (drag and flick), for its flight. */
   private thrown: Fling | null = null;
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
-  private entrancePending = false;
+  entrancePending = false;
   /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
   private bought: { html: string; rect: DOMRect } | null = null;
   /** Where the card was that a Zinke goes onto, seen as it was tapped (for its stamp). */
@@ -376,11 +293,14 @@ export class App {
   /** The picture of the ended run for "Teilen", drawn in advance (./ui/runcard.ts). */
   private runCard: { view: RunView; blob: Promise<Blob> } | null = null;
 
-  constructor(private readonly root: HTMLElement) {
+  /** The dialog layer (./app/layer.ts). */
+  private readonly layer = new Layer(this);
+
+  constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.screen = new Patcher(this.screenEl, (nodes) => {
-      for (const n of nodes) if (n instanceof Element) this.flights.push(...noteFlights(n, FLYING));
+      for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
@@ -569,7 +489,7 @@ export class App {
       this.showToast(de.account.conflictToast);
     }
     if (userChanged && !this.ui.busy && this.ui.screen !== 'loading') {
-      this.overlayDirty = true;
+      this.layer.markDirty();
       this.render();
       return;
     }
@@ -585,7 +505,7 @@ export class App {
     if (online) this.loadBoard(true);
     const o = this.ui.overlay?.kind;
     if (!this.ui.busy && (this.ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete' || o === 'account-passkeys')) {
-      this.overlayDirty = true;
+      this.layer.markDirty();
       this.render();
     }
   }
@@ -944,7 +864,7 @@ export class App {
    * Store what playSteps kept in memory: the run (if it is still the one
    * that changed) and the meta state. Also on leaving the page.
    */
-  private persist(): void {
+  persist(): void {
     const { run, meta } = this.unsaved;
     this.unsaved = { run: null, meta: false };
     try {
@@ -1187,7 +1107,7 @@ export class App {
   private copyLink(url: string): void {
     const done = (ok: boolean): void => {
       this.ui.copy = { url, ok };
-      this.overlayDirty = true;
+      this.layer.markDirty();
       this.render();
       if (ok) sound.play('clink');
       else this.root.querySelector<HTMLInputElement>('[data-testid="share-fallback"]')?.select();
@@ -1494,7 +1414,7 @@ export class App {
    * the card animations and pauses ("Rest abkürzen"); the score board
    * still comes.
    */
-  private async act(action: RunAction, fast = false): Promise<void> {
+  async act(action: RunAction, fast = false): Promise<void> {
     if (!this.core || this.ui.busy) return;
     const before = this.ui.view;
     this.ui.busy = true;
@@ -1646,7 +1566,7 @@ export class App {
       this.ui.thinking = null;
       // Nothing waits on a score board or boss sheet once the playback is over.
       if (this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss') this.ui.overlay = null;
-      this.awaited = null;
+      this.layer.awaited = null;
       if (view) this.ui.view = view;
       this.playedFrom = null;
       this.thrown = null;
@@ -2129,7 +2049,7 @@ export class App {
         this.ui.anim = null;
         this.ui.screen = 'run';
         const boss = after.series.boss;
-        await this.waitOn((resolve) => ({ kind: 'boss', boss, resolve }));
+        await this.layer.waitOn((resolve) => ({ kind: 'boss', boss, resolve }));
         this.ui.overlay = null;
         // The table opens: lights down, the spotlight onto both boss players
         // (once no dialog is open any more, see render()).
@@ -2713,41 +2633,6 @@ export class App {
     return seat === 1 ? { x: table.left - card, y: cy } : { x: table.right + card, y: cy };
   }
 
-  /**
-   * Show a sheet the playback waits on (the score board, the boss) until its
-   * button resolves it. A render that throws (playtest 05.11.2026: after a
-   * won game the board stayed with a "Weiter" that did nothing, because the
-   * render inside this promise threw after drawing the board, which
-   * rejected the promise and left the board on screen with a resolve
-   * nobody awaited) does not stop the sheet: the layer is drawn on its own
-   * and the wait goes on.
-   */
-  private async waitOn(make: (resolve: () => void) => Extract<Overlay, { kind: 'score' } | { kind: 'boss' }>): Promise<void> {
-    let resolve: () => void = () => undefined;
-    const done = new Promise<void>((r) => (resolve = r));
-    const overlay = make(resolve);
-    this.ui.overlay = overlay;
-    this.awaited = overlay;
-    try {
-      this.render();
-    } catch (err) {
-      console.error('render under a sheet failed', err);
-      this.overlayDirty = true;
-      try {
-        this.renderLayer();
-      } catch (layerErr) {
-        // Without its board nothing could go on: go on without it.
-        console.error('sheet not drawn', layerErr);
-        resolve();
-      }
-    }
-    try {
-      await done;
-    } finally {
-      if (this.awaited === overlay) this.awaited = null;
-    }
-  }
-
   /** Cards fly from the deck to the hands, in turns, then two to the skat. */
   private dealEffect(): void {
     const from = this.rectOf('.deck-pile') ?? this.rectOf('.deck-spot');
@@ -2784,11 +2669,11 @@ export class App {
     const score = after.last_score;
     if (!score) return;
     const seatNames = ([0, 1, 2] as const).map((seat) => this.seatLabel(seat, after));
-    await this.waitOn((resolve) => ({ kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve }));
-    this.scoreBoard = null;
+    await this.layer.waitOn((resolve) => ({ kind: 'score', score, previousScore, seriesScore, target, payout, relics: after.relics, seatNames, quietLoss, resolve }));
+    this.layer.scoreBoard = null;
     this.ui.overlay = null;
     // The board goes; the account in the head counts to the new value.
-    this.renderLayer();
+    this.layer.render();
     if (previousScore !== seriesScore && this.screenEl.querySelector('.hud [data-testid="account"]')) {
       void this.hudFx.account(seriesScore, target);
       if (motionOn()) await this.pause(520);
@@ -2848,7 +2733,7 @@ export class App {
    * cards lie on the felt (Drücken, the Ansage, the trick) that must stay
    * readable.
    */
-  private showToast(text: string, place: ToastPlace = 'middle'): void {
+  showToast(text: string, place: ToastPlace = 'middle'): void {
     if (this.toastTimer !== undefined) {
       this.toasts.push({ text, place });
       if (this.toasts.length > TOAST_QUEUE) this.toasts.shift();
@@ -2877,7 +2762,7 @@ export class App {
     this.ui.settings = { ...this.ui.settings, ...change };
     saveSettings(this.ui.settings);
     this.applySettings();
-    this.overlayDirty = true;
+    this.layer.markDirty();
     this.render();
   }
 
@@ -2996,7 +2881,7 @@ export class App {
       this.core?.dispose();
       this.core = null;
       const o = this.ui.overlay;
-      if ((o?.kind === 'score' || o?.kind === 'boss') && this.awaited === o) o.resolve();
+      if ((o?.kind === 'score' || o?.kind === 'boss') && this.layer.awaited === o) o.resolve();
       this.hurry();
       return;
     }
@@ -3418,12 +3303,12 @@ export class App {
         this.render();
         return;
       case 'score-skip':
-        if (overlay?.kind === 'score' && this.scoreBoard) this.scoreBoard.skip();
-        else this.redrawLayer();
+        if (overlay?.kind === 'score' && this.layer.scoreBoard) this.layer.scoreBoard.skip();
+        else this.layer.redraw();
         return;
       case 'score-continue':
       case 'boss-go':
-        this.closeAwaited(action === 'score-continue' ? 'score' : 'boss');
+        this.layer.closeAwaited(action === 'score-continue' ? 'score' : 'boss');
         return;
       case 'scroll-goods':
         this.root.querySelector('#shop-goods')?.scrollIntoView({ behavior: motionOn() ? 'smooth' : 'auto', block: 'start' });
@@ -4313,7 +4198,7 @@ export class App {
   // Rendering
   // -------------------------------------------------------------------------
 
-  private render(): void {
+  render(): void {
     const ui = this.ui;
     this.keepHandOrder();
     // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
@@ -4397,10 +4282,10 @@ export class App {
     const riseShown = this.screenEl.querySelector('.sheet-rise') !== null;
     // Cards flying onto the felt keep flying through the re-render: the
     // patcher names the nodes it replaces (noteFlights in the constructor).
-    this.flights = [];
+    this.snapshots = [];
     this.screen.patch(parts);
-    const flights = this.flights;
-    this.flights = [];
+    const flights = this.snapshots;
+    this.snapshots = [];
     if (riseShown) {
       const still = this.screenEl.querySelector('.sheet-rise')?.closest('.overlay');
       if (still && !still.classList.contains('is-still')) still.classList.add('is-still');
@@ -4413,7 +4298,7 @@ export class App {
     const shop = this.screenEl.querySelector<HTMLElement>('.run > .shop');
     if (shop && shopScroll) shop.scrollTop = shopScroll;
     if (ui.screen === 'start') settleCharacterPicker(this.screenEl, charScroll);
-    this.renderLayer();
+    this.layer.render();
     // The score board and the boss take the screen: no info card, no trigger lines over them.
     const big = ui.overlay?.kind === 'score' || ui.overlay?.kind === 'boss';
     if (big) {
@@ -4426,8 +4311,7 @@ export class App {
     this.updateCoach();
     music.setScene(this.musicScene());
     watchShop(this.screenEl);
-    const effects = this.afterRender;
-    this.afterRender = [];
+    const effects = this.afterRender.splice(0);
     // An effect is decoration: one that fails must not take the render (and the playback) down.
     for (const fx of effects) {
       try {
@@ -4448,57 +4332,4 @@ export class App {
     }
   }
 
-  /**
-   * A button of a dialog that is not the one in force (a board left on the
-   * layer): draw the layer and the screen anew from the state, so nothing
-   * stale stays under the finger.
-   */
-  private redrawLayer(): void {
-    this.overlayDirty = true;
-    this.render();
-  }
-
-  /**
-   * "Weiter" of the score board, "Los" of the boss: resolve the sheet the
-   * playback waits on. A sheet nothing waits on any more (left on the
-   * layer by a playback that broke off) goes, and the screen is drawn
-   * anew from the state, so the button never does nothing.
-   */
-  private closeAwaited(kind: 'score' | 'boss'): void {
-    const o = this.ui.overlay;
-    if (o?.kind === kind && this.awaited === o) {
-      o.resolve();
-      return;
-    }
-    if (o?.kind === 'score' || o?.kind === 'boss') this.ui.overlay = null;
-    this.redrawLayer();
-  }
-
-  /** The dialog layer: only rebuilt when the dialog itself changes. */
-  private renderLayer(): void {
-    const o = this.ui.overlay;
-    if (o === this.renderedOverlay && !this.overlayDirty) return;
-    const same = o !== null && o === this.renderedOverlay;
-    this.renderedOverlay = o;
-    this.overlayDirty = false;
-    this.layerEl.classList.toggle('is-static', same);
-    if (!o) {
-      this.layerEl.innerHTML = '';
-      this.scoreBoard = null;
-      return;
-    }
-    if (o.kind === 'score') {
-      this.layerEl.innerHTML = renderScore(o, (this.ui.view?.edition ?? []).map((c) => editionLook(c, this.ui.view, this.ui.wildSettled)));
-      const board = new ScoreBoard(this.layerEl, o, (coins, from) => this.hudFx.gainTo(coins, from));
-      this.scoreBoard = board;
-      // Whatever breaks in the show, the board ends with its "Weiter" button.
-      board.play().catch((err: unknown) => {
-        console.warn('score board', err);
-        board.skip();
-      });
-      return;
-    }
-    const view = this.ui.screen === 'run' || this.ui.screen === 'end' ? this.ui.view : null;
-    this.layerEl.innerHTML = renderOverlay(o, view, this.ui);
-  }
 }
