@@ -7,6 +7,8 @@ import { dailySeed } from '../seed';
 import { Sync, type Reconciled } from '../sync';
 import type { RunView } from '../types';
 import { syncPill } from '../ui/account';
+import type { Overlay } from '../ui/state';
+import { copyText } from './consts';
 import type { Actions, AppCtx } from './context';
 import type { Layer } from './layer';
 import { describeKeys, isFreshMeta } from './savecode';
@@ -23,6 +25,13 @@ export function takeLoadedNote(): boolean {
   } catch {
     return false;
   }
+}
+
+/** The account's sheets that show "Einen Moment …" and an error of their own. */
+type AccountSheet = Extract<Overlay, { kind: 'account' | 'account-recover' | 'account-delete' | 'account-passkeys' }>;
+
+function isAccountSheet(o: Overlay | null): o is AccountSheet {
+  return o?.kind === 'account' || o?.kind === 'account-recover' || o?.kind === 'account-delete' || o?.kind === 'account-passkeys';
 }
 
 export class AccountFlow {
@@ -68,8 +77,7 @@ export class AccountFlow {
     const ui = this.ctx.ui;
     ui.account.online = online;
     if (online) this.loadBoard(true);
-    const o = ui.overlay?.kind;
-    if (!ui.busy && (ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete' || o === 'account-passkeys')) {
+    if (!ui.busy && (ui.screen === 'start' || isAccountSheet(ui.overlay))) {
       this.layer.markDirty();
       this.ctx.render();
     }
@@ -139,7 +147,7 @@ export class AccountFlow {
   private async accountBusy<T>(work: () => Promise<T>): Promise<T | null> {
     const ui = this.ctx.ui;
     const o = ui.overlay;
-    if (o && (o.kind === 'account' || o.kind === 'account-recover' || o.kind === 'account-delete' || o.kind === 'account-passkeys')) {
+    if (isAccountSheet(o)) {
       if (o.busy) return null;
       ui.overlay = { ...o, busy: true, error: null };
       this.ctx.render();
@@ -149,7 +157,7 @@ export class AccountFlow {
     } catch (err) {
       const now = ui.overlay;
       const error = this.accountError(err);
-      if (now && (now.kind === 'account' || now.kind === 'account-recover' || now.kind === 'account-delete' || now.kind === 'account-passkeys')) {
+      if (isAccountSheet(now)) {
         ui.overlay = { ...now, busy: false, error };
         this.ctx.render();
       } else {
@@ -248,14 +256,7 @@ export class AccountFlow {
       ui.overlay = { ...o, copied: ok };
       this.ctx.render();
     };
-    try {
-      navigator.clipboard.writeText(o.code).then(
-        () => done(true),
-        () => done(false),
-      );
-    } catch {
-      done(false);
-    }
+    copyText(o.code, done);
   }
 
   async addPasskeyHere(): Promise<void> {

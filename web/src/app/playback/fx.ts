@@ -113,11 +113,7 @@ export class Fx {
     this.tricksSinceQuip = 0;
     window.clearTimeout(this.quipTimer);
     const ms = Math.max(1800, QUIP_MS * TEMPO_FACTOR[ui.settings.tempo]);
-    this.quipTimer = window.setTimeout(() => {
-      ui.quip = null;
-      // Remove just the bubble: a full render could cut a running animation.
-      this.ctx.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }, ms);
+    this.quipTimer = window.setTimeout(() => this.guidance.hushQuip(), ms);
   }
 
   /** Hello from a Stammgast when a new series sits down at the table. */

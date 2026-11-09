@@ -7,7 +7,7 @@ import { de, t } from '../i18n';
 import { decodeSave, encodeSave } from '../savecode';
 import { readAllKeys, replaceAllKeys, runAndMetaOf } from '../storage';
 import type { Overlay } from '../ui/state';
-import { runLine } from './consts';
+import { copyText, runLine, shareOr } from './consts';
 import type { Actions, AppCtx } from './context';
 
 /** Whether a stored meta state is still the one of a new player (asked of the core). */
@@ -121,40 +121,14 @@ export class SaveCodeFlow {
       }
       done(ok);
     };
-    try {
-      const clip = navigator.clipboard as Clipboard | undefined;
-      if (!clip) {
-        fallback();
-        return;
-      }
-      clip.writeText(o.code).then(
-        () => done(true),
-        (err: unknown) => {
-          console.warn('clipboard refused', err);
-          fallback();
-        },
-      );
-    } catch (err) {
-      console.warn('clipboard unavailable', err);
-      fallback();
-    }
+    copyText(o.code, done, fallback);
   }
 
   /** The share sheet of the system with the save code as text. */
   shareSave(): void {
     const o = this.ctx.ui.overlay;
     if (o?.kind !== 'save-export') return;
-    try {
-      if (typeof navigator.share !== 'function') {
-        this.copySave();
-        return;
-      }
-      navigator.share({ title: de.save.shareTitle, text: o.code }).catch((err: unknown) => {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copySave();
-      });
-    } catch {
-      this.copySave();
-    }
+    shareOr({ title: de.save.shareTitle, text: o.code }, () => this.copySave());
   }
 
   /** "Prüfen": read the pasted code and let the core load what it carries. */

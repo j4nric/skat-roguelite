@@ -5,6 +5,7 @@ import { sound } from '../audio';
 import { de } from '../i18n';
 import type { RunView } from '../types';
 import { runCardBlob, runCardName, runCardText } from '../ui/runcard';
+import { copyText, shareOr } from './consts';
 import type { Actions, AppCtx } from './context';
 import type { Layer } from './layer';
 
@@ -94,40 +95,13 @@ export class Share {
       if (ok) sound.play('clink');
       else this.ctx.root.querySelector<HTMLInputElement>('[data-testid="share-fallback"]')?.select();
     };
-    try {
-      const clip = navigator.clipboard as Clipboard | undefined;
-      if (!clip) {
-        done(false);
-        return;
-      }
-      clip.writeText(url).then(
-        () => done(true),
-        (err: unknown) => {
-          console.warn('clipboard refused', err);
-          done(false);
-        },
-      );
-    } catch (err) {
-      console.warn('clipboard unavailable', err);
-      done(false);
-    }
+    copyText(url, done);
   }
 
 
   /** The share sheet of the system, where there is one. */
   shareNative(url: string, text: string): void {
-    try {
-      if (typeof navigator.share !== 'function') {
-        this.copyLink(url);
-        return;
-      }
-      navigator.share({ title: de.app.title, text, url }).catch((err: unknown) => {
-        // Closing the sheet is no error.
-        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copyLink(url);
-      });
-    } catch {
-      this.copyLink(url);
-    }
+    shareOr({ title: de.app.title, text, url }, () => this.copyLink(url));
   }
 
   actions(): Actions {

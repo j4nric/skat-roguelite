@@ -88,3 +88,43 @@ export function runLine(view: RunView): string {
 export function isCharacter(value: string | null): value is Character {
   return CHARACTERS.includes(value as Character);
 }
+
+/**
+ * Write text to the clipboard and tell `done` whether it worked. Without
+ * the Clipboard API, or when it refuses, `fallback` runs instead (by
+ * default `done(false)`); at once where there is no API at all.
+ */
+export function copyText(text: string, done: (ok: boolean) => void, fallback: () => void = () => done(false)): void {
+  try {
+    const clip = navigator.clipboard as Clipboard | undefined;
+    if (!clip) {
+      fallback();
+      return;
+    }
+    clip.writeText(text).then(
+      () => done(true),
+      (err: unknown) => {
+        console.warn('clipboard refused', err);
+        fallback();
+      },
+    );
+  } catch (err) {
+    console.warn('clipboard unavailable', err);
+    fallback();
+  }
+}
+
+/** The system's share sheet with `data`; `fallback` where there is none or it fails (closing it is no failure). */
+export function shareOr(data: ShareData, fallback: () => void): void {
+  try {
+    if (typeof navigator.share !== 'function') {
+      fallback();
+      return;
+    }
+    navigator.share(data).catch((err: unknown) => {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) fallback();
+    });
+  } catch {
+    fallback();
+  }
+}

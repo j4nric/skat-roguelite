@@ -34,6 +34,12 @@ export class Guidance {
     this.coachEl = ctx.root.querySelector<HTMLElement>('.coach-layer') ?? ctx.root;
   }
 
+  /** A Stammgast's bubble goes: just the bubble, a full render could cut a running animation. */
+  hushQuip(): void {
+    this.ctx.ui.quip = null;
+    this.ctx.screenEl.querySelector('[data-testid="quip"]')?.remove();
+  }
+
   private markHintSeen(id: HintId): void {
     if (this.hintSeen.has(id)) return;
     this.hintSeen.add(id);
@@ -69,10 +75,7 @@ export class Guidance {
       return;
     }
     // One bubble at a time: the Wirt goes before a Stammgast's line.
-    if (ui.quip) {
-      ui.quip = null;
-      this.ctx.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }
+    if (ui.quip) this.hushQuip();
     const html = renderHint(pick.id, pick.anchor, hintText(pick.id, ui));
     if (html !== this.hint?.html) {
       // The same hint with a new number does not pop in again.
@@ -167,10 +170,7 @@ export class Guidance {
       return;
     }
     // One bubble at a time: the Wirt goes before a Stammgast's line.
-    if (ui.quip) {
-      ui.quip = null;
-      this.ctx.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }
+    if (ui.quip) this.hushQuip();
     const html = renderCoach(step.id, step.kind, step.text(ui), coach.label(ui));
     if (html !== this.coachHtml) {
       this.coachEl.innerHTML = html;
