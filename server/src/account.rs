@@ -51,6 +51,18 @@ pub fn clean_name(raw: &str) -> Option<String> {
     (1..=MAX_NAME_CHARS).contains(&n).then_some(out)
 }
 
+/// Whether a text starts like a save code (`STAMMTISCH<format>:`, see
+/// `web/src/savecode.ts`). A cheap check, not a parse: the server never
+/// reads the save, but it need not store arbitrary data either. Any
+/// format number passes, so a newer app's save is kept as it is.
+pub fn looks_like_save(data: &str) -> bool {
+    data.strip_prefix("STAMMTISCH")
+        .and_then(|rest| rest.split_once(':'))
+        .is_some_and(|(format, _)| {
+            (1..=4).contains(&format.len()) && format.bytes().all(|b| b.is_ascii_digit())
+        })
+}
+
 /// The user as JSON: `{name, passkeys, createdAt}`.
 pub fn user_json(state: &AppState, user_id: &str) -> ApiResult<Value> {
     let conn = state.db();
@@ -146,6 +158,9 @@ pub async fn put_save(
     if body.data.is_empty() {
         return Err(ApiError::bad_request("empty"));
     }
+    if !looks_like_save(&body.data) {
+        return Err(ApiError::bad_request("not_a_save"));
+    }
     // A clock far off is clamped: the time only orders states for the player.
     let now = db::now_ms();
     let updated_at = body.updated_at.clamp(0, now + 24 * 60 * 60 * 1000);
@@ -208,5 +223,15 @@ mod tests {
         assert_eq!(clean_name(&"x".repeat(24)), Some("x".repeat(24)));
         assert_eq!(clean_name(&"x".repeat(25)), None);
         assert_eq!(clean_name("Jürgen 🍺"), Some("Jürgen 🍺".into()));
+    }
+
+    #[test]
+    fn saves_are_recognised_by_their_prefix() {
+        assert!(looks_like_save("STAMMTISCH1:d:abc:0011aabb"));
+        assert!(looks_like_save("STAMMTISCH12:x"));
+        assert!(!looks_like_save("STAMMTISCH:x"));
+        assert!(!looks_like_save("STAMMTISCHx:1"));
+        assert!(!looks_like_save("hello"));
+        assert!(!looks_like_save(" STAMMTISCH1:x"));
     }
 }

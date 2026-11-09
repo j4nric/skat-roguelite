@@ -15,6 +15,16 @@ export interface AccountUser {
   createdAt: number;
 }
 
+/** A passkey of the account. The server knows no name for it (the
+ * authenticator does not tell one); `synced` says whether a password
+ * manager backs it up, null if unknown. */
+export interface PasskeyInfo {
+  id: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  synced: boolean | null;
+}
+
 /** The stored save of the account. */
 export interface ServerSave {
   version: number;
@@ -284,6 +294,22 @@ export function setName(name: string): Promise<{ user: AccountUser }> {
 
 export async function signOut(): Promise<void> {
   await call('POST', '/logout');
+}
+
+/** End every session of the account, on every device, this one too. */
+export async function signOutEverywhere(): Promise<void> {
+  await call('POST', '/logout-all');
+}
+
+/** The account's passkeys, oldest first. */
+export async function fetchPasskeys(): Promise<PasskeyInfo[]> {
+  const res = await call<{ passkeys: PasskeyInfo[] }>('GET', '/passkeys');
+  return res.passkeys;
+}
+
+/** Remove a passkey; AccountError `last_passkey` for the last one. */
+export function removePasskey(id: string): Promise<{ user: AccountUser }> {
+  return call('DELETE', `/passkeys/${encodeURIComponent(id)}`);
 }
 
 export async function deleteAccount(): Promise<void> {

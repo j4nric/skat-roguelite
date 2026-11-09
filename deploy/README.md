@@ -58,19 +58,36 @@ sudo rm /home/deploy/.ssh/skat-deploy      # danach vom Server löschen
 | `DEPLOY_USER` | `deploy` |
 | `DEPLOY_SSH_KEY` | privater Schlüssel aus Schritt 3, komplett mit BEGIN- und END-Zeile |
 | `DEPLOY_PATH` | `/opt/skat` |
+| `DEPLOY_KNOWN_HOSTS` | freiwillig, aber empfohlen: die Zeile mit dem Host-Schlüssel des Servers (siehe unten) |
 
-Solange die Secrets fehlen, überspringt der Deploy-Job den Server-Schritt mit einer Warnung.
+Solange die ersten vier Secrets fehlen, überspringt der Deploy-Job den Server-Schritt mit einer Warnung.
+
+**Host-Schlüssel (`DEPLOY_KNOWN_HOSTS`).** Ohne dieses Secret vertraut der Workflow dem Schlüssel, den `ssh-keyscan` beim Deploy gerade sieht (mit einer Warnung im Lauf); ein Angreifer zwischen GitHub und Server fiele so nicht auf. Mit dem Secret prüft SSH streng (`StrictHostKeyChecking yes`). Die Zeile holen und gegen den Fingerabdruck vergleichen, den der Server selbst nennt:
+
+```
+ssh-keyscan -t ed25519 62.83.23.90                    # auf dem eigenen Rechner: die Zeile "62.83.23.90 ssh-ed25519 AAAA…"
+ssh-keyscan -t ed25519 62.83.23.90 | ssh-keygen -lf -  # ihr Fingerabdruck (SHA256:…)
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub      # auf dem Server (in der Konsole des Anbieters): muss gleich sein
+```
+
+Stimmen die Fingerabdrücke überein, die ganze Zeile `62.83.23.90 ssh-ed25519 AAAA…` als Secret `DEPLOY_KNOWN_HOSTS` anlegen. Bekommt der Server einen neuen Host-Schlüssel (Neuinstallation), schlägt der Deploy fehl, bis das Secret erneuert ist.
 
 ## Ablauf des Workflows (`.github/workflows/deploy.yml`)
 
-1. Tests und Lint wie in `ci.yml`.
-2. Simulator-Baseline erzeugen.
-3. Web-App bauen (`web/`, `npm run build`: Kern als WebAssembly plus Vite-Build) und `site/` aus `web/dist/` zusammenstellen. Commit und Datum stehen als Build-Info in der Fußzeile des Startbildschirms. Der Build enthält `sw.js`, den Service Worker für das Spielen ohne Netz (DESIGN 14.5); Caddy liefert ihn mit `Cache-Control: no-cache` aus. Dass `rsync --delete` die Dateien des alten Builds löscht, schadet nicht: Offene Tabs der alten Version holen sie aus ihrem Cache, und die neue Version meldet sich in der App mit „Neue Version verfügbar – neu laden“.
-4. Parallel dazu der Konto-Dienst (`server/`) als statisches musl-Binary (`x86_64-unknown-linux-musl`, SQLite eingebaut). Er läuft in einem schlichten `alpine`-Image, das Binary wird hineingemountet; auf dem Server wird nichts gebaut und kein eigenes Image gebraucht.
-5. `site/`, `server/stammtisch-server`, `docker-compose.yml`, `Caddyfile` und `up.sh` per `rsync` über SSH nach `/opt/skat`. `data/` wird nie synchronisiert oder gelöscht.
-6. `up.sh` auf dem Server: Netzwerk `stammtisch-proxy` anlegen, falls es fehlt; `data/` anlegen; `.env` mit der uid/gid des Deploy-Nutzers schreiben (der Dienst läuft als dieser Nutzer, die Datenbank gehört ihm); erst `web` starten (bei geänderter Caddyfile neu starten), dann `api` neu erzeugen und auf `/api/health` warten.
+Gebaut und getestet wird nur einmal, im CI-Workflow (`ci.yml`): Bei einem Pull Request läuft er für sich, bei einem Push auf `main` ruft der Deploy ihn auf (`workflow_call`) und liefert genau die Artefakte aus, die dort getestet wurden.
 
-Startet der Konto-Dienst nicht oder scheitert sein Bau, gibt es nur eine Warnung: Das Spiel wird trotzdem ausgeliefert, `/api` antwortet 502 und die App zeigt beim Konto „offline“.
+1. **CI** (`ci.yml`), parallel: `fmt`, Clippy und Tests (`check`); danach die Simulator-Baseline (`sim-baseline`, Seed 42 mit 10 000 Spielen, dazu 200 Runs mit Zeitmessung). Die Web-App (`web`): Kern als WebAssembly plus Vite-Build, Commit und Datum als Build-Info in der Fußzeile des Startbildschirms (Artefakt `web-dist`). Der Konto-Dienst (`server`) als statisches musl-Binary (`x86_64-unknown-linux-musl`, SQLite eingebaut, Profil `server-release` ohne Symbole), dazu `caddy validate` und `docker compose config` (Artefakt `server`).
+2. **Deploy** (nur auf `main`, nie zwei gleichzeitig): lädt `web-dist`, `sim-baseline` und `server`. `site/` ist `web-dist` plus `sim-baseline.txt`. Der Build enthält `sw.js`, den Service Worker für das Spielen ohne Netz (DESIGN 14.5); Caddy liefert ihn mit `Cache-Control: no-cache` aus.
+3. `site/` per `rsync --delete-after --delay-updates`: Neue Dateien landen erst unter vorläufigen Namen und werden am Ende zusammen umbenannt, alte erst danach gelöscht; eine Seite, die währenddessen lädt, sieht nie einen halben Build. Offene Tabs der alten Version holen gelöschte Dateien aus ihrem Cache, und die neue Version meldet sich in der App mit „Neue Version verfügbar – neu laden“. Dazu `server/stammtisch-server`, `docker-compose.yml`, `Caddyfile` und `up.sh` nach `/opt/skat`. `data/` wird nie synchronisiert oder gelöscht.
+4. `up.sh` auf dem Server: Netzwerk `stammtisch-proxy` anlegen, falls es fehlt; `data/` anlegen; `.env` mit der uid/gid des Deploy-Nutzers schreiben (der Dienst läuft als dieser Nutzer, die Datenbank gehört ihm); `docker compose pull` holt neue Patch-Stände der Images (scheitert das, laufen die alten weiter); erst `web` starten (bei geänderter Caddyfile neu starten), dann `api` (neu erzeugt nur, wenn sich die SHA-256 des Binarys geändert hat) und auf `/api/health` warten.
+
+Der Deploy-Job läuft auch, wenn CI rot ist, und hängt an den Artefakten: Fehlen `web-dist` oder `sim-baseline` (Build gescheitert oder Tests rot), scheitert er, ohne etwas auszuliefern. Fehlt nur `server` (Bau des Konto-Diensts gescheitert), gibt es eine Warnung: Das Spiel wird trotzdem ausgeliefert, das alte Binary bleibt, und fehlt auch das, antwortet `/api` 502 und die App zeigt beim Konto „offline“.
+
+**Images.** `caddy:2.11-alpine` und `alpine:3.24` sind auf die Minor-Version festgelegt; Patch-Stände (Sicherheitskorrekturen) kommen mit dem `pull` bei jedem Deploy. Eine neue Minor-Version wird in `docker-compose.yml` und für `caddy validate` in `ci.yml` zusammen eingetragen.
+
+**Container.** `api` läuft mit schreibgeschütztem Dateisystem (beschreibbar sind nur `./data` und ein `/tmp` im Speicher), ohne Capabilities (`cap_drop: ALL`), mit `no-new-privileges` und einem Healthcheck auf `/api/health` (`docker compose ps` zeigt `healthy`). `web` (Caddy) läuft unverändert als root im offiziellen Image. Die Logs beider Container rotieren (`local`, höchstens 3 Dateien zu 10 MB).
+
+**Sicherheits-Header** (`Caddyfile`, für die ganze Seite): `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` (keine Kamera, kein Mikrofon, kein Standort); der `Server`-Header fällt weg. Die CSP erlaubt nur Eigenes, dazu was die App wirklich braucht: `'wasm-unsafe-eval'` für den Kern als WebAssembly, `'unsafe-inline'` bei `style-src` für die `style`-Attribute der Oberfläche, `data:` und `blob:` bei `img-src` für Porträts, Karten und die Run-Karte. Geprüft am 09.11.2026 in Chromium mit genau diesem Header: Startbildschirm, ein ganzes Spiel mit Ton und Bewegung, Service Worker, Konto mit Passkey, ohne einen einzigen Verstoß. Braucht eine neue Funktion mehr (etwa eine fremde Quelle), zeigt die Browser-Konsole „Refused to …“; dann die CSP hier anpassen.
 
 ## Konto-Dienst und Datenbank (ADR 0021)
 
@@ -78,23 +95,30 @@ Startet der Konto-Dienst nicht oder scheitert sein Bau, gibt es nur eine Warnung
 |---|---|
 | Binary | `/opt/skat/server/stammtisch-server` |
 | Datenbank (SQLite, WAL) | `/opt/skat/data/stammtisch.db` (dazu `-wal` und `-shm`) |
-| Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN` |
+| Tägliche Sicherung | `/opt/skat/data/backup/stammtisch-JJJJMMTT.db` (die letzten sieben) |
+| Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN`, optional `STAMMTISCH_BACKUP_DIR` |
 
 Einmalig ist nichts zu tun: `up.sh` legt `data/` selbst an. Secrets braucht der Dienst keine (Sitzungen sind Zufallstokens in der Datenbank).
 
-**Sicherung.** Die Datenbank ist der einzige Zustand auf dem Server. Eine konsistente Kopie im laufenden Betrieb:
+**Sicherung.** Die Datenbank ist der einzige Zustand auf dem Server. Der Dienst sichert sie selbst: Einmal am Tag (geprüft wird stündlich, das Datum kommt von der Uhr des Servers, UTC) schreibt er mit `VACUUM INTO` eine konsistente Kopie nach `/opt/skat/data/backup/stammtisch-JJJJMMTT.db`, im laufenden Betrieb und ohne `sqlite3` auf dem Server. Die letzten sieben Kopien bleiben, ältere löscht er. Das Log zeigt `backup written`. Ein anderer Ordner geht mit `STAMMTISCH_BACKUP_DIR`, `off` schaltet die Sicherung ab.
+
+Die Kopien liegen auf demselben Server. Gegen den Verlust des Servers gehören sie ab und zu woandershin, etwa vom eigenen Rechner aus:
 
 ```
-sqlite3 /opt/skat/data/stammtisch.db ".backup '/opt/skat/backup-$(date +%F).db'"
+rsync -az deploy@62.83.23.90:/opt/skat/data/backup/ ./stammtisch-backup/
 ```
 
-Ohne `sqlite3` auf dem Server: Dienst kurz anhalten und die Datei kopieren (die Seite läuft weiter, nur `/api` ist so lange weg):
+Eine Kopie von Hand, sofort: Dienst kurz anhalten und die Datei kopieren (die Seite läuft weiter, nur `/api` ist so lange weg):
 
 ```
 cd /opt/skat && docker compose stop api && cp data/stammtisch.db "backup-$(date +%F).db" && docker compose start api
 ```
 
-Zurückspielen: Dienst anhalten, Datei nach `data/stammtisch.db` kopieren (alte `-wal`/`-shm` löschen), Dienst starten.
+Zurückspielen: Dienst anhalten, die Kopie nach `data/stammtisch.db` kopieren (alte `-wal`/`-shm` löschen), Dienst starten.
+
+**Schema.** Die Tabellen entstehen aus einer Liste von Migrationen; `PRAGMA user_version` zählt, wie viele eine Datei schon hat. Ein neuer Dienst ergänzt beim Start die fehlenden in einer Transaktion. Eine Datei aus einem neueren Dienst (Rückkehr zu einem alten Binary) fasst er nicht an und startet nicht; dann das neuere Binary wieder ausrollen oder eine Sicherung von vorher zurückspielen.
+
+**Grenzen.** Die Datenbank wächst höchstens auf 2 GiB, danach antwortet jedes Schreiben 507 und die App behält den Fortschritt im Browser. Höchstens 5 neue Konten je Adresse (IPv6: je /64) und Stunde.
 
 **Domain wechseln.** Passkeys gelten nur für die Domain, auf der sie angelegt wurden. Nach einem Umzug `STAMMTISCH_ORIGIN` anpassen; Spieler melden sich einmal mit dem Wiederherstellungscode an und legen einen neuen Passkey an (ADR 0021).
 
@@ -110,11 +134,13 @@ docker network inspect stammtisch-proxy --format '{{range .Containers}}{{.Name}}
 
 Der letzte Befehl muss `stammtisch-web-1` und `haushalt-prod-caddy-1` zeigen. Fehlt der Caddy, ist der Haushalt-PR noch nicht ausgerollt.
 
-Konto-Dienst:
+Konto-Dienst (ändernde Anfragen von Hand brauchen `-H 'Origin: https://stammtisch-62-83-23-90.sslip.io'`, sonst 403):
 
 ```
 cd /opt/skat && docker compose logs --tail 50 api
 cd /opt/skat && docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/health    # "ok"
 curl -s https://stammtisch-62-83-23-90.sslip.io/api/health                                 # "ok" von außen
+curl -sI https://stammtisch-62-83-23-90.sslip.io/ | grep -i content-security               # die CSP ist da
+ls -l /opt/skat/data/backup/                                                                # die täglichen Sicherungen
 sh /opt/skat/up.sh                                                                          # alles neu starten
 ```

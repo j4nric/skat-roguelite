@@ -41,6 +41,37 @@ impl ApiError {
         Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited")
     }
 
+    /// 503: the server is too busy right now (all open passkey ceremonies
+    /// are taken); not the client's fault, try again soon.
+    pub const fn busy() -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "busy")
+    }
+
+    /// 507: the database reached its size cap (`db::MAX_DB_BYTES`).
+    pub const fn storage_full() -> Self {
+        Self::new(StatusCode::INSUFFICIENT_STORAGE, "storage_full")
+    }
+
+    /// The JSON error for a status that no handler named: what axum's
+    /// extractors and the router answer on their own (bad JSON, body too
+    /// large, wrong content type, unknown path or method).
+    pub fn for_status(status: StatusCode) -> Self {
+        let code = match status.as_u16() {
+            400 => "bad_request",
+            401 => "unauthorized",
+            403 => "forbidden",
+            404 => "not_found",
+            405 => "method",
+            413 => "too_large",
+            415 => "content_type",
+            422 => "invalid",
+            429 => "rate_limited",
+            500..=599 => "internal",
+            _ => "error",
+        };
+        Self::new(status, code)
+    }
+
     /// 500: something broke on our side (details go to the log only).
     pub const fn internal() -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal")
@@ -49,6 +80,12 @@ impl ApiError {
 
 impl From<rusqlite::Error> for ApiError {
     fn from(err: rusqlite::Error) -> Self {
+        if let rusqlite::Error::SqliteFailure(e, _) = &err
+            && e.code == rusqlite::ErrorCode::DiskFull
+        {
+            tracing::error!(%err, "database full");
+            return Self::storage_full();
+        }
         tracing::error!(%err, "database error");
         Self::internal()
     }

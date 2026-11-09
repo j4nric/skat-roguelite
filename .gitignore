@@ -2,12 +2,6 @@
 /target/
 **/*.rs.bk
 
-# Godot 4
-godot/.godot/
-godot/*.import
-godot/export_presets.cfg
-godot/.export/
-
 # Simulator output
 /sim-out/
 

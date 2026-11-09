@@ -361,6 +361,12 @@ async fn recovery_code_signs_in_once_and_is_replaced() {
     )
     .await;
     assert_eq!(res.status, StatusCode::OK);
+    // Signing in with the code ends every other session: whoever used the
+    // code before is out.
+    let old_cookie = cookie;
+    let cookie = cookie_of(&res);
+    let res = call(&app, "GET", "/api/me", Some(&old_cookie), None).await;
+    assert_eq!(res.body["user"], Value::Null);
 
     let res = call(
         &app,
@@ -372,10 +378,306 @@ async fn recovery_code_signs_in_once_and_is_replaced() {
     .await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST);
 
-    // Renewing the code while signed in.
+    // Renewing the code while signed in ends the other sessions, not this one.
+    let other = second_session(&state, "u1");
     let res = call(&app, "POST", "/api/recovery-code", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::OK);
     assert_eq!(res.body["recoveryCode"].as_str().map(str::len), Some(29));
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.body["user"]["name"], "Jan");
+    let res = call(&app, "GET", "/api/me", Some(&other), None).await;
+    assert_eq!(res.body["user"], Value::Null);
+}
+
+/// Another session of a user (a second device); returns its cookie.
+fn second_session(state: &AppState, id: &str) -> String {
+    let token = session::new_token();
+    db::insert_session(
+        &state.db(),
+        &session::token_hash(&token),
+        id,
+        db::now_ms() + 100 * 24 * 3_600_000,
+    )
+    .expect("session");
+    format!("{}={token}", session::COOKIE_NAME)
+}
+
+#[tokio::test]
+async fn session_cookie_is_refreshed_with_the_session() {
+    let (app, state) = app();
+    // `user` makes a session that ends in an hour: past half its life.
+    let (cookie, _) = user(&state, "u1", None);
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::OK);
+    let set = res
+        .headers
+        .get(header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .expect("refreshed cookie");
+    assert!(set.starts_with(&format!("{cookie};")), "{set}");
+    assert!(set.contains(&format!("Max-Age={}", session::SESSION_DAYS * 24 * 60 * 60)));
+    let token = cookie.split_once('=').expect("pair").1;
+    let (_, expires) = db::session_user(&state.db(), &session::token_hash(token))
+        .expect("query")
+        .expect("session");
+    assert!(expires > db::now_ms() + (session::SESSION_DAYS - 1) * 24 * 3_600_000);
+
+    // A session with most of its life ahead is left alone.
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert!(res.headers.get(header::SET_COOKIE).is_none());
+    // Logging out keeps its own cookie (removal), not a refresh.
+    let (old, _) = user(&state, "u2", None);
+    let res = call(&app, "POST", "/api/logout", Some(&old), None).await;
+    let set = res
+        .headers
+        .get(header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(set.contains("Max-Age=0"), "{set}");
+}
+
+#[tokio::test]
+async fn passkeys_are_listed_and_removed_but_not_the_last() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    {
+        let conn = state.db();
+        db::insert_passkey(&conn, "credA", "u1", r#"{"cred":{"backup_state":true}}"#).expect("a");
+        db::insert_passkey(&conn, "credB", "u1", "{}").expect("b");
+    }
+    let (other, _) = user(&state, "u2", None);
+    db::insert_passkey(&state.db(), "credC", "u2", "{}").expect("c");
+
+    let res = call(&app, "GET", "/api/passkeys", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::OK);
+    let list = res.body["passkeys"].as_array().expect("list");
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0]["id"], "credA");
+    assert_eq!(list[0]["synced"], true);
+    assert!(list[0]["createdAt"].as_i64().is_some());
+    assert_eq!(list[0]["lastUsedAt"], Value::Null);
+    assert_eq!(list[1]["synced"], Value::Null);
+
+    // Somebody else's passkey is not found.
+    let res = call(&app, "DELETE", "/api/passkeys/credC", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+    assert_eq!(res.body["error"], "not_found");
+    let res = call(&app, "DELETE", "/api/passkeys/credA", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body["user"]["passkeys"], 1);
+    let res = call(&app, "DELETE", "/api/passkeys/credB", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::CONFLICT);
+    assert_eq!(res.body["error"], "last_passkey");
+    let res = call(&app, "GET", "/api/passkeys", Some(&other), None).await;
+    assert_eq!(res.body["passkeys"].as_array().map(Vec::len), Some(1));
+    let res = call(&app, "GET", "/api/passkeys", None, None).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn logout_all_ends_every_session() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    let other = second_session(&state, "u1");
+    let (stranger, _) = user(&state, "u2", None);
+    let res = call(&app, "POST", "/api/logout-all", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT);
+    let set = res
+        .headers
+        .get(header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(set.contains("Max-Age=0"));
+    for c in [&cookie, &other] {
+        let res = call(&app, "GET", "/api/me", Some(c), None).await;
+        assert_eq!(res.body["user"], Value::Null);
+    }
+    // Other accounts are untouched.
+    let res = call(&app, "GET", "/api/me", Some(&stranger), None).await;
+    assert!(res.body["user"].is_object());
+    let res = call(&app, "POST", "/api/logout-all", None, None).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+async fn raw(app: &Router, req: Request<Body>) -> Res {
+    let res = app.clone().oneshot(req).await.expect("response");
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.expect("body").to_bytes();
+    Res {
+        status,
+        headers,
+        body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    }
+}
+
+#[tokio::test]
+async fn changes_need_our_origin_and_no_foreign_fetch_site() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    let put = |origin: Option<&str>, site: Option<&str>| {
+        let mut req = Request::builder()
+            .method("PUT")
+            .uri("/api/me/name")
+            .header(header::COOKIE, &cookie)
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(o) = origin {
+            req = req.header(header::ORIGIN, o);
+        }
+        if let Some(s) = site {
+            req = req.header("sec-fetch-site", s);
+        }
+        req.body(Body::from(r#"{"name":"Jan"}"#)).expect("request")
+    };
+    // No Origin on a change: refused (browsers always send one).
+    let res = raw(&app, put(None, None)).await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+    assert_eq!(res.body["error"], "origin");
+    // Our Origin, but the browser says another site (or a sibling host
+    // under sslip.io) made the request.
+    for site in ["cross-site", "same-site"] {
+        let res = raw(&app, put(Some(ORIGIN), Some(site))).await;
+        assert_eq!(res.status, StatusCode::FORBIDDEN, "{site}");
+    }
+    let res = raw(&app, put(Some(ORIGIN), Some("same-origin"))).await;
+    assert_eq!(res.status, StatusCode::OK);
+    // Reads need no Origin.
+    let req = Request::builder()
+        .uri("/api/me")
+        .header(header::COOKIE, &cookie)
+        .header("sec-fetch-site", "cross-site")
+        .body(Body::empty())
+        .expect("request");
+    assert_eq!(raw(&app, req).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn bodies_are_limited_and_errors_are_json() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    // 16 KiB for small requests.
+    let res = call(
+        &app,
+        "PUT",
+        "/api/me/name",
+        Some(&cookie),
+        Some(json!({ "name": "x".repeat(20_000) })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(res.body["error"], "too_large");
+    // A save may be much larger.
+    let data = format!("STAMMTISCH1:{}", "x".repeat(500_000));
+    let res = call(
+        &app,
+        "PUT",
+        "/api/save",
+        Some(&cookie),
+        Some(json!({ "data": data, "ifVersion": null, "updatedAt": 1 })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
+    // Broken JSON, missing fields, a wrong content type, unknown paths:
+    // all JSON errors the app can read.
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/me/name")
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::COOKIE, &cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{nope"))
+        .expect("request");
+    let res = raw(&app, req).await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert_eq!(res.body["error"], "bad_request");
+    let res = call(&app, "PUT", "/api/me/name", Some(&cookie), Some(json!({}))).await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.body["error"], "invalid");
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/me/name")
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::COOKIE, &cookie)
+        .body(Body::from(r#"{"name":"Jan"}"#))
+        .expect("request");
+    let res = raw(&app, req).await;
+    assert_eq!(res.status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(res.body["error"], "content_type");
+    let res = call(&app, "GET", "/api/nothing", None, None).await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+    assert_eq!(res.body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn saves_must_look_like_save_codes() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    let res = call(
+        &app,
+        "PUT",
+        "/api/save",
+        Some(&cookie),
+        Some(json!({ "data": "just some data", "ifVersion": null, "updatedAt": 1 })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert_eq!(res.body["error"], "not_a_save");
+    // A newer format is kept as it is (an older app must not lose it).
+    let res = call(
+        &app,
+        "PUT",
+        "/api/save",
+        Some(&cookie),
+        Some(json!({ "data": "STAMMTISCH2:z:abc", "ifVersion": null, "updatedAt": 1 })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_full_database_answers_507() {
+    let (app, state) = app();
+    let (cookie, _) = user(&state, "u1", None);
+    db::set_max_bytes(&state.db(), 128 * 1024).expect("cap");
+    let data = format!("STAMMTISCH1:{}", "x".repeat(400_000));
+    let res = call(
+        &app,
+        "PUT",
+        "/api/save",
+        Some(&cookie),
+        Some(json!({ "data": data, "ifVersion": null, "updatedAt": 1 })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::INSUFFICIENT_STORAGE);
+    assert_eq!(res.body["error"], "storage_full");
+    // Small things still work.
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn one_client_cannot_hold_all_ceremonies() {
+    let (app, _) = app();
+    let start = |ip: &str| {
+        Request::builder()
+            .method("POST")
+            .uri("/api/login/start")
+            .header(header::ORIGIN, ORIGIN)
+            .header("x-client-ip", ip)
+            .body(Body::empty())
+            .expect("request")
+    };
+    for _ in 0..10 {
+        assert_eq!(raw(&app, start("2001:db8::1")).await.status, StatusCode::OK);
+    }
+    // The same /64 is the same client.
+    let res = raw(&app, start("2001:db8::2")).await;
+    assert_eq!(res.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.body["error"], "rate_limited");
+    assert_eq!(
+        raw(&app, start("2001:db8:0:1::1")).await.status,
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]

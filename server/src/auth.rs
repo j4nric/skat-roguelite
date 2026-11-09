@@ -7,7 +7,7 @@
 //!   whenever it is used or renewed.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -60,20 +60,20 @@ struct FreshCode {
     hash: String,
 }
 
-/// Make a recovery code and hash its secret (off the async threads).
-async fn new_code() -> ApiResult<FreshCode> {
-    tokio::task::spawn_blocking(|| {
-        let code = recovery::generate();
-        recovery::hash(&code.secret).map(|hash| FreshCode {
-            display: code.display,
-            id: code.id,
-            hash,
+/// Make a recovery code and hash its secret (off the async threads, with
+/// an argon2 permit).
+async fn new_code(state: &AppState) -> ApiResult<FreshCode> {
+    state
+        .argon2(|| {
+            let code = recovery::generate();
+            recovery::hash(&code.secret).map(|hash| FreshCode {
+                display: code.display,
+                id: code.id,
+                hash,
+            })
         })
-    })
-    .await
-    .ok()
-    .flatten()
-    .ok_or_else(ApiError::internal)
+        .await?
+        .ok_or_else(ApiError::internal)
 }
 
 /// Body of `POST /api/register/start`.
@@ -105,11 +105,14 @@ pub async fn register_start(
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
     require_resident_key(&mut options);
-    let ceremony = state.put_ceremony(Ceremony::Register {
-        user_id,
-        name,
-        state: reg,
-    })?;
+    let ceremony = state.put_ceremony(
+        ip,
+        Ceremony::Register {
+            user_id,
+            name,
+            state: reg,
+        },
+    )?;
     Ok(Json(json!({ "ceremony": ceremony, "options": options })))
 }
 
@@ -142,7 +145,10 @@ pub async fn register_finish(
         .webauthn
         .finish_passkey_registration(&body.credential, &reg)
         .map_err(passkey_error)?;
-    let code = new_code().await?;
+    // Each account may store a save of 1 MB: only a few new ones per
+    // address and hour (counted when one is really about to be created).
+    state.limiter.check(ip, Bucket::SignUp)?;
+    let code = new_code(&state).await?;
     let id = user_id.to_string();
     {
         let mut conn = state.db();
@@ -151,11 +157,11 @@ pub async fn register_finish(
         store_passkey(&tx, &id, &passkey)?;
         tx.commit()?;
     }
-    let headers = session::start(&state, &id)?;
+    let started = session::start(&state, &id)?;
     let user = user_json(&state, &id)?;
     Ok((
         StatusCode::CREATED,
-        headers,
+        started.headers,
         Json(json!({ "user": user, "recoveryCode": code.display })),
     ))
 }
@@ -188,7 +194,7 @@ pub async fn login_start(
     if let Some(o) = options.as_object_mut() {
         o.remove("mediation");
     }
-    let ceremony = state.put_ceremony(Ceremony::Login { state: auth })?;
+    let ceremony = state.put_ceremony(ip, Ceremony::Login { state: auth })?;
     Ok(Json(json!({ "ceremony": ceremony, "options": options })))
 }
 
@@ -219,9 +225,9 @@ pub async fn login_finish(
         let json = serde_json::to_string(&passkey).map_err(|_| ApiError::internal())?;
         db::update_passkey(&state.db(), &cred_id, &json)?;
     }
-    let headers = session::start(&state, &user_id)?;
+    let started = session::start(&state, &user_id)?;
     let user = user_json(&state, &user_id)?;
-    Ok((headers, Json(json!({ "user": user }))))
+    Ok((started.headers, Json(json!({ "user": user }))))
 }
 
 /// Body of `POST /api/recover`.
@@ -232,14 +238,23 @@ pub struct Recover {
 }
 
 /// A hash to verify against when the code's id is unknown, so a wrong id
-/// takes as long as a wrong secret.
+/// takes as long as a wrong secret. Computing it is argon2 work: call it
+/// only on a blocking thread ([`warm_up`] does it once at startup).
 fn dummy_hash() -> &'static str {
     static HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     HASH.get_or_init(|| recovery::hash("0000000000000000").unwrap_or_default())
 }
 
+/// Compute the dummy hash before the first request needs it. Blocking:
+/// run it with `spawn_blocking`.
+pub fn warm_up() {
+    let _ = dummy_hash();
+}
+
 /// `POST /api/recover`: sign in with the recovery code. The code is used
-/// up; the answer carries the new one. The app then offers to add a passkey.
+/// up; the answer carries the new one. The app then offers to add a
+/// passkey. Every other session of the account ends: whoever had the
+/// code before (a thief, too) is signed out.
 pub async fn recover(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
@@ -249,21 +264,29 @@ pub async fn recover(
     let (id, secret) = recovery::parse(&body.code).ok_or(ApiError::bad_request("code"))?;
     let found = db::user_by_recovery_id(&state.db(), &id)?;
     let (user_id, hash) = match found {
-        Some((user, hash)) => (Some(user), hash),
-        None => (None, dummy_hash().to_owned()),
+        Some((user, hash)) => (Some(user), Some(hash)),
+        None => (None, None),
     };
-    let ok = tokio::task::spawn_blocking(move || recovery::verify(&secret, &hash))
-        .await
-        .unwrap_or(false);
-    let Some(user_id) = user_id.filter(|_| ok) else {
+    let checked = hash.clone();
+    let ok = state
+        .argon2(move || {
+            let hash = checked.as_deref().unwrap_or_else(|| dummy_hash());
+            recovery::verify(&secret, hash)
+        })
+        .await?;
+    let (Some(user_id), Some(old_hash), true) = (user_id, hash, ok) else {
         return Err(ApiError::new(StatusCode::UNAUTHORIZED, "code"));
     };
-    let code = new_code().await?;
-    db::set_recovery(&state.db(), &user_id, &code.id, &code.hash)?;
-    let headers = session::start(&state, &user_id)?;
+    let code = new_code(&state).await?;
+    // Only one of two requests with the same code at once gets through.
+    if !db::swap_recovery(&state.db(), &user_id, &old_hash, &code.id, &code.hash)? {
+        return Err(ApiError::new(StatusCode::UNAUTHORIZED, "code"));
+    }
+    let started = session::start(&state, &user_id)?;
+    db::delete_other_sessions(&state.db(), &user_id, Some(&started.token_hash))?;
     let user = user_json(&state, &user_id)?;
     Ok((
-        headers,
+        started.headers,
         Json(json!({ "user": user, "recoveryCode": code.display })),
     ))
 }
@@ -294,10 +317,13 @@ pub async fn passkey_start(
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
     require_resident_key(&mut options);
-    let ceremony = state.put_ceremony(Ceremony::AddPasskey {
-        user_id,
-        state: reg,
-    })?;
+    let ceremony = state.put_ceremony(
+        ip,
+        Ceremony::AddPasskey {
+            user_id,
+            state: reg,
+        },
+    )?;
     Ok(Json(json!({ "ceremony": ceremony, "options": options })))
 }
 
@@ -330,7 +356,9 @@ pub async fn passkey_finish(
     ))
 }
 
-/// `POST /api/recovery-code`: replace the recovery code, show the new one.
+/// `POST /api/recovery-code`: replace the recovery code, show the new
+/// one. Every other session of the account ends (a renewed code is what a
+/// player does who fears the old one is known).
 pub async fn new_recovery_code(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
@@ -338,9 +366,94 @@ pub async fn new_recovery_code(
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Auth)?;
     let session = session::require(&state, &headers)?;
-    let code = new_code().await?;
-    db::set_recovery(&state.db(), &session.user_id, &code.id, &code.hash)?;
+    let old_hash =
+        db::recovery_hash(&state.db(), &session.user_id)?.ok_or_else(ApiError::unauthorized)?;
+    let code = new_code(&state).await?;
+    if !db::swap_recovery(
+        &state.db(),
+        &session.user_id,
+        &old_hash,
+        &code.id,
+        &code.hash,
+    )? {
+        // Renewed or redeemed elsewhere in the meantime.
+        return Err(ApiError::new(StatusCode::CONFLICT, "code_changed"));
+    }
+    db::delete_other_sessions(&state.db(), &session.user_id, Some(&session.token_hash))?;
     Ok(Json(json!({ "recoveryCode": code.display })))
+}
+
+/// `GET /api/passkeys`: the account's passkeys, oldest first:
+/// `{"passkeys": [{id, createdAt, lastUsedAt, synced}]}`. `synced` says
+/// whether the authenticator backs it up (iCloud keychain, Google password
+/// manager). There is no name: the authenticator does not tell one.
+pub async fn list_passkeys(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    headers: HeaderMap,
+) -> ApiResult<Json<Value>> {
+    state.limiter.check(ip, Bucket::Read)?;
+    let session = session::require(&state, &headers)?;
+    let rows = db::passkey_rows(&state.db(), &session.user_id)?;
+    let list = rows
+        .iter()
+        .map(|row| {
+            // The stored JSON of webauthn-rs' Passkey: {"cred": {…, "backup_state": bool}}.
+            let synced = serde_json::from_str::<Value>(&row.passkey)
+                .ok()
+                .and_then(|v| v["cred"]["backup_state"].as_bool());
+            json!({
+                "id": row.cred_id,
+                "createdAt": row.created_at,
+                "lastUsedAt": row.last_used_at,
+                "synced": synced,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(json!({ "passkeys": list })))
+}
+
+/// `DELETE /api/passkeys/{id}`: remove a passkey of the account (a lost
+/// phone, one somebody else added). The last one stays (409
+/// `last_passkey`): without it only the recovery code would open the
+/// account. Sessions are not touched; "sign out everywhere" ends them.
+pub async fn remove_passkey(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    state.limiter.check(ip, Bucket::Write)?;
+    let session = session::require(&state, &headers)?;
+    match db::remove_passkey(&state.db(), &session.user_id, &id)? {
+        db::RemovePasskey::Removed => {}
+        db::RemovePasskey::NotFound => return Err(ApiError::not_found()),
+        db::RemovePasskey::Last => {
+            return Err(ApiError::new(StatusCode::CONFLICT, "last_passkey"));
+        }
+    }
+    Ok(Json(
+        json!({ "user": user_json(&state, &session.user_id)? }),
+    ))
+}
+
+/// `POST /api/logout-all`: end every session of the account, this one
+/// too, and remove the cookie.
+pub async fn logout_all(
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    state.limiter.check(ip, Bucket::Write)?;
+    let session = session::require(&state, &headers)?;
+    let n = db::delete_other_sessions(&state.db(), &session.user_id, None)?;
+    tracing::info!(n, "signed out everywhere");
+    let mut out = HeaderMap::new();
+    out.insert(
+        SET_COOKIE,
+        session::clear_cookie(state.config.secure_cookie),
+    );
+    Ok((StatusCode::NO_CONTENT, out))
 }
 
 /// `POST /api/logout`: end the session, remove the cookie.
