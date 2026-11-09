@@ -14,7 +14,7 @@ import { motionOn } from '../../ui/fx';
 import { fireworks, lightsOut, lightsUp } from '../../ui/juice';
 import { playTravel } from '../../ui/route';
 import { errorText, nextPaint } from '../consts';
-import type { AppCtx } from '../context';
+import type { AppCtx, RunActions } from '../context';
 import type { Layer } from '../layer';
 import type { Progress } from '../progress';
 import { resetTableChoices } from '../table-input';
@@ -226,5 +226,13 @@ export class Steps {
       // The Einführung was left during the playback: now it can go.
       this.afterPlayback();
     }
+  }
+
+  /** The two buttons that play out with a scene first: "Rest abkürzen" and the route's "Los". */
+  runActions(): RunActions {
+    return {
+      'settle': () => void this.settle(),
+      'choose-route': ({ num }) => void this.travel(num('option')),
+    };
   }
 }

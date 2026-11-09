@@ -10,9 +10,11 @@ import type { Fling } from '../ui/drag';
 import type { Pour } from '../ui/drink';
 import { glide, glideAll, motionOn, spotOfRect, spotsOf, springBack } from '../ui/fx';
 import { arrangeHand, moveInOrder } from '../ui/handorder';
+import type { NullRisk, RiskLevel, RunAction, Suit } from '../types';
+import { updateRiseChoice } from '../ui/screens';
 import { discardNeed } from '../ui/table';
 import { PICK } from './consts';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx, RunActions } from './context';
 import type { Mods } from './mods';
 import type { DrinkFx } from './playback/drinkfx';
 import type { Flights } from './playback/flights';
@@ -243,5 +245,170 @@ export class TableInput {
     }
     glideAll(els, before, { ms: MAKE_ROOM_MS, skip: changing });
     sound.play('card', { volume: 0.5, rate: 1.05 });
+  }
+
+  /** Taps at the table that also count during a playback. */
+  actions(): Actions {
+    const ui = this.ctx.ui;
+    return {
+      'fast': () => {
+        const view = ui.view;
+        if (ui.busy) this.fx.hurry();
+        // A tap on the open trick while nothing plays: the last one, as with "Letzter Stich".
+        else if (!ui.anim && view?.game?.phase === 'Playing' && view.game.last_trick) {
+          ui.peekTrick = true;
+          this.ctx.render();
+        }
+      },
+      'last-trick': () => {
+        // Show the last finished trick on the felt, or the open one again.
+        if (ui.anim || ui.busy || !ui.view?.game?.last_trick) return;
+        ui.peekTrick = !ui.peekTrick;
+        this.ctx.render();
+      },
+    };
+  }
+
+  /** The table's choices: Skat oder Hand, Drücken, the Ansage, playing, Kontra, Untot, the Schnaps-Leiste. */
+  runActions(): RunActions {
+    const ui = this.ctx.ui;
+    const render = (): void => this.ctx.render();
+    const act = (action: RunAction): void => void this.ctx.act(action);
+    return {
+      'pick-game': ({ num }) => {
+        ui.pickGame = num('index');
+        render();
+      },
+      'pick-risk': ({ el }) => {
+        ui.pickRisk = (el.dataset.risk ?? 'Normal') as RiskLevel;
+        render();
+      },
+      'pick-null-risk': ({ el }) => {
+        ui.pickNullRisk = (el.dataset.risk ?? 'Normal') as NullRisk;
+        render();
+      },
+      'pick-up-skat': () => act('PickUpSkat'),
+      'give-up': () => {
+        // "Kneipe verlassen" (DESIGN 8.7): ask first, a boss pub ends the run.
+        ui.overlay = { kind: 'confirm-give-up' };
+        render();
+      },
+      'confirm-give-up': () => {
+        ui.overlay = null;
+        act('GiveUpPub');
+      },
+      'play-hand': () => {
+        ui.handGame = true;
+        render();
+      },
+      'hand-back': () => {
+        ui.handGame = false;
+        ui.pickGame = null;
+        ui.pickRisk = null;
+        ui.pickNullRisk = null;
+        render();
+      },
+      'declare-null': ({ el }) => act({ Declare: { game: 'Null', risk: (el.dataset.risk ?? 'Normal') as NullRisk } }),
+      'oma': () => {
+        ui.omaPick = true;
+        render();
+      },
+      'oma-cancel': () => {
+        ui.omaPick = false;
+        render();
+      },
+      'swap-take': ({ num }) => {
+        ui.swapTake = num('id');
+        render();
+      },
+      'oma-give': ({ num }) => act({ TakeFromSkat: { give: num('id'), take: ui.swapTake } }),
+      'declare': (_tap, view) => {
+        const options = view.game?.declare;
+        const game = ui.pickGame === null ? undefined : options?.games[ui.pickGame];
+        if (!options || !game) return;
+        const risk = ui.pickRisk ?? options.risks.find((r) => r.allowed)?.risk ?? 'Normal';
+        act({ Declare: { game: game.game, risk } });
+      },
+      // Einmischen: one tap on the deck (or the button) mixes in at once.
+      'pass': () => act('Redeal'),
+      're': ({ el }) => act({ AnswerKontra: { re: el.dataset.re === 'true' } }),
+      'rise-pick': ({ num }, view) => {
+        // "Untot": a tap picks or drops a hand card, at most `pick` of them.
+        const id = num('id');
+        const need = view.game?.rise_choice?.pick ?? 3;
+        const pick = ui.risePick;
+        ui.risePick = pick.includes(id) ? pick.filter((x) => x !== id) : pick.length < need ? [...pick, id] : pick;
+        // Only the tapped card and the button change: no re-render, the sheet does not enter again.
+        const sheetEl = this.ctx.screenEl.querySelector<HTMLElement>('.sheet-rise');
+        if (sheetEl) updateRiseChoice(sheetEl, ui.risePick, need);
+        else render();
+      },
+      'rise-go': () => {
+        const [a, b, c] = ui.risePick;
+        if (a === undefined || b === undefined || c === undefined) return;
+        ui.risePick = [];
+        act({ ChooseRiseCards: [a, b, c] });
+      },
+      'select': ({ num }, view) => {
+        // A tap moves a card between hand and table (the fallback for dragging).
+        const id = num('id');
+        const sel = ui.selected;
+        const need = view.game ? discardNeed(view.game) : 2;
+        if (sel.includes(id)) this.moveCards(sel.filter((x) => x !== id), id, null);
+        else if (sel.length < need) this.moveCards([...sel, id], id, null);
+        else this.moveCards([...sel.slice(1), id], id, null);
+      },
+      'discard': (_tap, view) => {
+        const sel = ui.selected;
+        const need = view.game ? discardNeed(view.game) : 2;
+        const [a, b, c] = sel;
+        if (sel.length !== need || a === undefined || b === undefined) return;
+        if (need === 3 && c !== undefined) act({ DiscardThree: [a, b, c] });
+        else act({ Discard: [a, b] });
+      },
+      'play': ({ el, num }) => this.playCard(num('id'), el.getBoundingClientRect(), null),
+      'lift-item': ({ num }) => {
+        // A tap on a drinkable Schnaps lifts it; the next tap on its target pours it (../ui/drink.ts).
+        if (!ui.busy) this.ctx.drink.lift(num('slot'));
+      },
+      'use-item': ({ num }, view) => {
+        const slot = num('slot');
+        const item = view.consumables.find((c) => c.slot === slot);
+        if (!item) return;
+        if (item.consumable.needs_suit) {
+          ui.overlay = { kind: 'chalk', slot, card: null };
+          render();
+        } else if (item.consumable.needs_target) {
+          const marks = consumableMod(item.consumable.id);
+          const reasons = marks.mod || marks.random ? this.mods.refusals(view, item.targets, (id) => ({ UseConsumable: { slot, target: id } })) : {};
+          ui.overlay = { kind: 'target', slot, reasons };
+          render();
+        } else {
+          act({ UseConsumable: { slot, target: null } });
+        }
+      },
+      'target': ({ el, num }, view) => {
+        const o = ui.overlay;
+        if (o?.kind !== 'target') return;
+        const item = view.consumables.find((c) => c.slot === o.slot);
+        const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
+        this.flights.noteStamp(el);
+        const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
+        if (marks.mod || marks.random) this.mods.applyMod(view, action, num('id'), marks.mod, marks.random, o, 'apply');
+        else act(action);
+      },
+      'chalk-card': ({ num }) => {
+        const o = ui.overlay;
+        if (o?.kind === 'chalk') {
+          ui.overlay = { ...o, card: num('id') };
+          render();
+        }
+      },
+      'chalk-suit': ({ el }) => {
+        const o = ui.overlay;
+        const suit = el.dataset.suit as Suit | undefined;
+        if (o?.kind === 'chalk' && o.card !== null && suit) act({ UseConsumable: { slot: o.slot, target: o.card, suit } });
+      },
+    };
   }
 }

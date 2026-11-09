@@ -7,7 +7,7 @@ import { dailySeed } from '../seed';
 import { Sync, type Reconciled } from '../sync';
 import type { RunView } from '../types';
 import { syncPill } from '../ui/account';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx } from './context';
 import type { Layer } from './layer';
 import { describeKeys, isFreshMeta } from './savecode';
 
@@ -371,5 +371,48 @@ export class AccountFlow {
   keepServer(): void {
     if (this.sync.takeServer()) this.reloadWithAccountState();
     else this.ctx.showToast(de.save.errors.write ?? '');
+  }
+
+  actions(): Actions {
+    const ui = this.ctx.ui;
+    return {
+      'account': () => {
+        if (ui.busy) return;
+        this.openAccount();
+      },
+      'account-create': () => void this.createAccount(),
+      'account-signin': () => void this.signInWithPasskey(),
+      'account-recover': () => {
+        ui.overlay = { kind: 'account-recover', busy: false, error: null };
+        this.ctx.render();
+      },
+      'account-recover-go': () => void this.recoverWithCode(),
+      'account-code-copy': () => this.copyRecoveryCode(),
+      'account-code-done': () => this.codeDone(),
+      'account-add-passkey': () => void this.addPasskeyHere(),
+      'account-name-save': () => void this.saveName(),
+      'account-new-code': () => void this.newRecoveryCode(),
+      'account-signout': () => void this.signOutHere(),
+      'account-signout-all': () => void this.signOutEverywhereNow(),
+      'account-passkeys': () => {
+        const overlay = ui.overlay;
+        if (overlay?.kind === 'account' && overlay.busy) return;
+        void this.openPasskeys();
+      },
+      'account-passkey-remove': ({ el }) => {
+        if (el.dataset.id) void this.removePasskeyNow(el.dataset.id);
+      },
+      'account-delete': () => {
+        ui.overlay = { kind: 'account-delete', busy: false, error: null };
+        this.ctx.render();
+      },
+      'account-delete-go': () => void this.deleteAccountNow(),
+      'sync-conflict': () => {
+        if (ui.busy) return;
+        this.openConflict();
+      },
+      'sync-keep-here': () => void this.keepHere(),
+      'sync-keep-server': () => this.keepServer(),
+    };
   }
 }

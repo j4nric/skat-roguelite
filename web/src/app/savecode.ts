@@ -8,7 +8,7 @@ import { decodeSave, encodeSave } from '../savecode';
 import { readAllKeys, replaceAllKeys, runAndMetaOf } from '../storage';
 import type { Overlay } from '../ui/state';
 import { runLine } from './consts';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx } from './context';
 
 /** Whether a stored meta state is still the one of a new player (asked of the core). */
 export function isFreshMeta(meta: string): boolean {
@@ -206,5 +206,30 @@ export class SaveCodeFlow {
       return;
     }
     window.location.reload();
+  }
+
+  actions(): Actions {
+    const ui = this.ctx.ui;
+    return {
+      'save-menu': () => {
+        if (ui.busy) return;
+        ui.overlay = { kind: 'save-menu' };
+        this.ctx.render();
+      },
+      'save-export': () => {
+        if (ui.busy || ui.overlay?.kind !== 'save-menu') return;
+        void this.openSaveExport();
+      },
+      'save-copy': () => this.copySave(),
+      'save-share': () => this.shareSave(),
+      'save-select': () => void this.selectSaveCode(),
+      'save-import': () => {
+        if (ui.busy) return;
+        ui.overlay = { kind: 'save-import', text: '', error: null, checking: false };
+        this.ctx.render();
+      },
+      'save-check': () => void this.checkImport(),
+      'save-apply': () => this.applyImport(),
+    };
   }
 }

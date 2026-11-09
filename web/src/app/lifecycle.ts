@@ -4,17 +4,19 @@
 
 import { CoreRun, loadCatalog, loadCore } from '../core';
 import { de, setCatalog } from '../i18n';
-import { clearShareHash, isSeedText, parseShareHash } from '../seed';
-import { pickedStake } from '../stake';
-import { clearRun, loadRun, saveRun, saveRunInfo } from '../storage';
+import { clearShareHash, dailySeed, isSeedText, parseShareHash } from '../seed';
+import { maxStake, pickedStake } from '../stake';
+import { clearRun, loadRun, saveCharacter, saveRun, saveRunInfo } from '../storage';
 import type { Reconciled } from '../sync';
 import { markTutorial, tutorialSeen } from '../tutorial';
 import type { RunLength, RunView } from '../types';
+import { reducedMotion } from '../ui/dom';
 import { reshuffle } from '../ui/scatter';
+import { scrollCharacterPicker, sharedStake } from '../ui/screens';
 import type { PendingStart } from '../ui/state';
 import { takeLoadedNote, type AccountFlow } from './account';
-import { errorCode, errorText, runLine, yieldToBrowser } from './consts';
-import type { AppCtx } from './context';
+import { errorCode, errorText, isCharacter, runLine, yieldToBrowser } from './consts';
+import type { Actions, AppCtx } from './context';
 import type { Guidance } from './guidance';
 import type { Layer } from './layer';
 import type { Flights } from './playback/flights';
@@ -304,5 +306,77 @@ export class Lifecycle {
   private afterTutorial(go: 'start' | 'run'): void {
     this.toStart();
     if (go === 'run' && !this.hasRunningRun()) this.newRun();
+  }
+
+  /** The start and end screens' buttons, and those of the Einführung (DESIGN 16.1). */
+  actions(): Actions {
+    const ui = this.ctx.ui;
+    return {
+      'new-run': () => {
+        this.endTutorial();
+        this.newRun();
+      },
+      'tutorial-start': () => this.startTutorial(),
+      'tutorial-offer-no': () => {
+        markTutorial('declined');
+        ui.tutorialOffer = false;
+        this.ctx.render();
+      },
+      'tutorial-skip': () => this.leaveTutorial('start'),
+      'tutorial-finish': ({ el }) => this.leaveTutorial(el.dataset.go === 'run' ? 'run' : 'start'),
+      // Die lange Nacht (ADR 0020): on from the end screen of a won run.
+      'enter-night': () => this.enterNight(),
+      'resume': () => this.resume(),
+      'play-shared': () => {
+        const shared = ui.shared;
+        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, stake: sharedStake(ui), daily: false });
+      },
+      'dismiss-shared': () => {
+        ui.shared = null;
+        clearShareHash();
+        this.ctx.render();
+      },
+      'play-daily': () => this.requestStart({ seed: dailySeed(), character: ui.pickCharacter, stake: this.pickedStake(), daily: true }),
+      'replay': ({ el, num }) => {
+        const c = el.dataset.character ?? null;
+        const seed = el.dataset.seed ?? '';
+        const entry = ui.meta?.characters.find((x) => x.character === c);
+        // Replayed at its stake, or the highest unlocked if that is lower.
+        const stake = isCharacter(c) ? Math.min(num('stake') < 0 ? 0 : num('stake'), maxStake(ui.meta, c)) : 0;
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, stake, daily: false });
+      },
+      'confirm-new': () => {
+        const overlay = ui.overlay;
+        if (overlay?.kind === 'confirm-new') {
+          const start = overlay.start;
+          ui.overlay = null;
+          clearRun();
+          this.startRun(start);
+        }
+      },
+      'to-start': () => {
+        this.endTutorial();
+        this.toStart();
+      },
+      'pick-stake': ({ num }) => {
+        const max = maxStake(ui.meta, ui.pickCharacter);
+        const stake = num('stake');
+        if (stake >= 0 && stake <= max) {
+          ui.pickStake = stake;
+          this.ctx.render();
+        }
+      },
+      'char-scroll': ({ num }) => scrollCharacterPicker(this.ctx.screenEl, num('dir'), !reducedMotion()),
+      'pick-character': ({ el }) => {
+        const c = el.dataset.character ?? null;
+        const entry = ui.meta?.characters.find((x) => x.character === c);
+        if (isCharacter(c) && entry?.unlocked) {
+          ui.pickCharacter = c;
+          ui.pickStake = null;
+          saveCharacter(c);
+          this.ctx.render();
+        }
+      },
+    };
   }
 }

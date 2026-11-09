@@ -6,7 +6,7 @@ import { editionLook } from '../ui/cards';
 import { renderScore, ScoreBoard } from '../ui/score';
 import { renderOverlay } from '../ui/screens';
 import type { Overlay } from '../ui/state';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx } from './context';
 
 export class Layer {
   private rendered: Overlay | null = null;
@@ -116,5 +116,25 @@ export class Layer {
     }
     if (o?.kind === 'score' || o?.kind === 'boss') this.ctx.ui.overlay = null;
     this.redraw();
+  }
+
+  /** The dialogs' close buttons and backdrop, and the buttons of the sheets a playback waits on. */
+  actions(): Actions {
+    const ui = this.ctx.ui;
+    return {
+      'close-overlay': () => {
+        const overlay = ui.overlay;
+        if (overlay && overlay.kind !== 'score' && overlay.kind !== 'boss') {
+          ui.overlay = null;
+          this.ctx.render();
+        }
+      },
+      'score-skip': () => {
+        if (ui.overlay?.kind === 'score' && this.scoreBoard) this.scoreBoard.skip();
+        else this.redraw();
+      },
+      'score-continue': () => this.closeAwaited('score'),
+      'boss-go': () => this.closeAwaited('boss'),
+    };
   }
 }

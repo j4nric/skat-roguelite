@@ -10,7 +10,7 @@ import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, ty
 import { Coach } from '../tutorial';
 import { renderCoach } from '../ui/coach';
 import { hintText, renderHint } from '../ui/hint';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx } from './context';
 
 export class Guidance {
   private readonly hintEl: HTMLElement;
@@ -225,5 +225,13 @@ export class Guidance {
     const left = box.getBoundingClientRect().left;
     const x = Math.max(22, Math.min(box.offsetWidth - 22, r.left + r.width / 2 - left));
     box.style.setProperty('--arrow-x', `${Math.round(x)}px`);
+  }
+
+  actions(): Actions {
+    return {
+      'coach-next': () => this.nextCoach(),
+      'hints-reset': () => this.resetHints(),
+      'hint-dismiss': () => this.dismissHint(),
+    };
   }
 }

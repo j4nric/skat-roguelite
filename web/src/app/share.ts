@@ -5,7 +5,7 @@ import { sound } from '../audio';
 import { de } from '../i18n';
 import type { RunView } from '../types';
 import { runCardBlob, runCardName, runCardText } from '../ui/runcard';
-import type { AppCtx } from './context';
+import type { Actions, AppCtx } from './context';
 import type { Layer } from './layer';
 
 export class Share {
@@ -128,5 +128,13 @@ export class Share {
     } catch {
       this.copyLink(url);
     }
+  }
+
+  actions(): Actions {
+    return {
+      'copy-link': ({ el }) => this.copyLink(el.dataset.url ?? ''),
+      'share-run': ({ el }) => void this.shareRun(el),
+      'share-native': ({ el }) => this.shareNative(el.dataset.url ?? '', el.dataset.text ?? ''),
+    };
   }
 }
