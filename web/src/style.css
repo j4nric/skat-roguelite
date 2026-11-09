@@ -463,12 +463,6 @@ button:focus-visible,
   color: var(--card-ink);
 }
 
-/* "Lockvogel": the demand waiting for the next defender lead. */
-.badge-lure {
-  background: var(--accent);
-  color: var(--card-ink);
-}
-
 /* ------------------------------------------------------------------ cards */
 
 /* The colour of the ring around a card in a state (picked, playable,
@@ -2416,38 +2410,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   width: 20px;
 }
 
-/* "Lockvogel": a small button beside "Du bist dran"; tapped, the choices. */
-.btn-lure {
-  min-height: 40px;
-  padding: 0 10px;
-  font-size: var(--fs-s);
-}
-
-.status-lure {
-  justify-content: flex-start;
-}
-
-.lure-pick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.lure-q {
-  flex: 1 0 100%;
-}
-
-.btn-lure-suit {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  min-height: 40px;
-  padding: 0 6px;
-  font-size: var(--fs-s);
-}
-
 .skat-tag.is-drawn {
   background: var(--accent);
   white-space: nowrap;
@@ -2562,68 +2524,9 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   gap: 8px;
 }
 
-.choice-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 6px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
-  box-shadow: var(--shadow-sm);
-  text-align: center;
-  cursor: pointer;
-}
-
-.choice-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.choice-btn:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--line);
-}
-
-.choice-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.choice-btn.is-skat {
-  border-color: var(--accent);
-}
-
-.choice-cards {
-  display: flex;
-  gap: 4px;
-}
-
-.choice-cards .card-back {
-  width: 22px;
-}
-
-.choice-cards.is-hand .card-back:last-child {
-  transform: rotate(8deg);
-}
-
 /* "Kurzer": the skat face up on the skat button. */
-.choice-cards.is-peeked .mini-card {
-  width: 26px;
-}
-
 .skat-peek-hint {
   color: var(--accent);
-}
-
-.choice-name {
-  font-size: var(--fs-body);
-  font-weight: 400;
-}
-
-.choice-hint {
-  font-size: var(--fs-s);
-  line-height: 1.04;
-  color: var(--muted);
 }
 
 /* Kreuz, Pik, Herz, Karo, Grand and Null (ADR 0012) in one row. */
@@ -2978,11 +2881,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   text-transform: uppercase;
 }
 
-.info-pic {
-  display: flex;
-  justify-content: center;
-}
-
 .odds {
   font-size: var(--fs-s);
   color: var(--cool);
@@ -3328,7 +3226,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--accent-light);
 }
 
-.overview-sheet .mini-coaster,
 .tour .mini-coaster {
   opacity: 1;
 }
@@ -3907,36 +3804,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   color: var(--text);
 }
 
-/* Ganzer or kurzer Abend (DESIGN 5.3), between the characters and the start. */
-.length-pick .length-opt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 3px 6px;
-  line-height: 1;
-}
-
-.length-opt b {
-  font-size: var(--fs-body);
-  font-weight: 400;
-  color: var(--text);
-}
-
-.length-opt span {
-  font-family: var(--font-label);
-  font-size: var(--fs-2xs);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.length-opt.is-picked b,
-.length-opt.is-picked span {
-  color: var(--card-ink);
-}
-
-/* Einsatz-Leiter (DESIGN 9.3): one row under the run length. */
+/* Einsatz-Leiter (DESIGN 9.3): one row above the start. */
 .stake-pick {
   display: grid;
   grid-template-columns: var(--touch) 1fr var(--touch);
@@ -4680,10 +4548,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   gap: 10px;
 }
 
-.shelf-svg {
-  display: none;
-}
-
 .portrait-wirt {
   width: 64px;
   height: 64px;
@@ -4890,7 +4754,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   white-space: nowrap;
 }
 
-.coaster-ring.is-sold,
 .good.is-sold {
   display: flex;
   width: 100%;
@@ -5769,14 +5632,9 @@ html[data-kbd] .hand-card.is-dim .key-hint {
     padding: 6px 8px 8px;
   }
 
-  .choice-btn {
-    padding: 6px;
-  }
-
   /* No pictures of the skat, no labels over the rows, no note on the Null
      style bonus; the status line (game number and position) gives its
      room to the panel. */
-  .choice-cards,
   .declare-label,
   .null-style {
     display: none;

@@ -8,9 +8,12 @@ import { CHARACTERS, type Character } from './types';
 const RUN_KEY = 'stammtisch.run';
 const META_KEY = 'stammtisch.meta';
 const CHARACTER_KEY = 'stammtisch.character';
-const LENGTH_KEY = 'stammtisch.length';
 
-function read(key: string): string | null {
+/**
+ * Read a key; null if it is missing or the storage is blocked. For the
+ * app's own small records too (settings, hints, sync bookkeeping).
+ */
+export function readKey(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -18,65 +21,98 @@ function read(key: string): string | null {
   }
 }
 
-function write(key: string, value: string): boolean {
+/** Write a key; false if the storage is full or blocked (the game goes on without saving). */
+export function writeKey(key: string, value: string): boolean {
   try {
     window.localStorage.setItem(key, value);
-    return true;
   } catch {
-    // Storage full or blocked: the game goes on without saving.
+    return false;
+  }
+  changed(key);
+  return true;
+}
+
+export function removeKey(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    return;
+  }
+  changed(key);
+}
+
+/** Whether the storage can be used at all (some embedded browsers block it). */
+export function storageUsable(): boolean {
+  try {
+    return Boolean(window.localStorage);
+  } catch {
     return false;
   }
 }
 
-function remove(key: string): void {
+/** Read and parse a JSON key; null if missing, blocked or broken. */
+export function readJson(key: string): unknown {
+  const raw = readKey(key);
+  if (raw === null) return null;
   try {
-    window.localStorage.removeItem(key);
+    return JSON.parse(raw) as unknown;
   } catch {
-    // Ignore.
+    return null;
+  }
+}
+
+const watchers: ((key: string | null) => void)[] = [];
+
+/**
+ * Be told after any write through this module, with the key (null: all
+ * keys of the app). The sync prepares its upload with it (./sync.ts).
+ */
+export function watchStorage(fn: (key: string | null) => void): void {
+  watchers.push(fn);
+}
+
+function changed(key: string | null): void {
+  for (const fn of watchers) {
+    try {
+      fn(key);
+    } catch (err) {
+      console.warn('storage watcher failed', err);
+    }
   }
 }
 
 export function loadRun(): string | null {
-  return read(RUN_KEY);
+  return readKey(RUN_KEY);
 }
 
 export function saveRun(state: string): void {
-  if (write(RUN_KEY, state)) askPersistence();
+  if (writeKey(RUN_KEY, state)) askPersistence();
 }
 
 export function clearRun(): void {
-  remove(RUN_KEY);
+  removeKey(RUN_KEY);
 }
 
 export function loadMeta(): string | null {
-  return read(META_KEY);
+  return readKey(META_KEY);
 }
 
 export function saveMeta(state: string): void {
-  write(META_KEY, state);
+  writeKey(META_KEY, state);
 }
 
 /** Keep a meta save the core no longer reads, instead of overwriting it. */
 export function backupMeta(state: string): void {
-  write(`${META_KEY}.backup`, state);
+  writeKey(`${META_KEY}.backup`, state);
 }
 
 /** The character picked last on the start screen (presentation only). */
 export function loadCharacter(): string | null {
-  return read(CHARACTER_KEY);
+  return readKey(CHARACTER_KEY);
 }
 
 export function saveCharacter(character: string): void {
-  write(CHARACTER_KEY, character);
-}
-
-/** The run length picked last on the start screen (presentation only). */
-export function loadLength(): string | null {
-  return read(LENGTH_KEY);
-}
-
-export function saveLength(length: string): void {
-  write(LENGTH_KEY, length);
+  writeKey(CHARACTER_KEY, character);
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +130,6 @@ export const HISTORY_SIZE = 20;
 export interface RunRecord {
   character: Character;
   seed: string;
-  /** Kurzer Abend; absent (entries from before) means ganzer Abend. */
-  short?: boolean;
   /** Stake of the Einsatz-Leiter; absent means 0. */
   stake?: number;
   /** Section reached, from 1. */
@@ -123,18 +157,18 @@ function isRecord(value: unknown): value is RunRecord {
     typeof r.bestGame === 'number' &&
     typeof r.date === 'string' &&
     typeof r.daily === 'boolean' &&
-    (r.short === undefined || typeof r.short === 'boolean') &&
     (r.stake === undefined || typeof r.stake === 'number')
   );
 }
 
 /** The recent runs, newest first. Broken entries are skipped. */
 export function loadHistory(): RunRecord[] {
-  const raw = read(HISTORY_KEY);
+  const raw = readKey(HISTORY_KEY);
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isRecord).slice(0, HISTORY_SIZE) : [];
+    // Entries of a short evening (`short`, dropped with ADR 0016) read as the whole evening.
+    return Array.isArray(parsed) ? parsed.filter(isRecord).slice(0, HISTORY_SIZE).map(({ short: _short, ...r }: RunRecord & { short?: unknown }) => r) : [];
   } catch {
     return [];
   }
@@ -143,7 +177,7 @@ export function loadHistory(): RunRecord[] {
 /** Put a finished run on top of the list; returns the new list. */
 export function addToHistory(record: RunRecord): RunRecord[] {
   const list = [record, ...loadHistory()].slice(0, HISTORY_SIZE);
-  write(HISTORY_KEY, JSON.stringify(list));
+  writeKey(HISTORY_KEY, JSON.stringify(list));
   return list;
 }
 
@@ -154,7 +188,7 @@ export interface RunInfo {
 }
 
 export function loadRunInfo(): RunInfo | null {
-  const raw = read(RUN_INFO_KEY);
+  const raw = readKey(RUN_INFO_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<RunInfo>;
@@ -165,7 +199,7 @@ export function loadRunInfo(): RunInfo | null {
 }
 
 export function saveRunInfo(info: RunInfo): void {
-  write(RUN_INFO_KEY, JSON.stringify(info));
+  writeKey(RUN_INFO_KEY, JSON.stringify(info));
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +211,11 @@ export function saveRunInfo(info: RunInfo): void {
 
 /** Every key of the app starts with this. */
 const PREFIX = 'stammtisch.';
+
+/** Whether a key is part of the save (save code, upload). */
+export function isSaveKey(key: string): boolean {
+  return key.startsWith(PREFIX);
+}
 
 let persistenceAsked = false;
 
@@ -224,30 +263,50 @@ export function readAllKeys(): Record<string, string> {
 
 /**
  * Replace every stored key of the app by the given ones (keys of other
- * apps are left alone, foreign keys in `keys` are skipped). Returns false
- * if the storage refused.
+ * apps are left alone, foreign keys in `keys` are skipped). All or
+ * nothing: if the storage refuses a write (full), every key gets its old
+ * value back and false is returned.
  */
 export function replaceAllKeys(keys: Record<string, string>): boolean {
+  let store: Storage;
+  const before = readAllKeys();
   try {
-    const store = window.localStorage;
-    const old: string[] = [];
-    for (let i = 0; i < store.length; i++) {
-      const key = store.key(i);
-      if (key !== null && key.startsWith(PREFIX)) old.push(key);
-    }
-    // Write first, then drop what the code does not have: a full storage
-    // fails before anything of the current progress is removed.
-    for (const [key, value] of Object.entries(keys)) {
-      if (key.startsWith(PREFIX)) store.setItem(key, value);
-    }
-    for (const key of old) {
-      if (!(key in keys)) store.removeItem(key);
-    }
-    askPersistence();
-    return true;
+    store = window.localStorage;
   } catch {
     return false;
   }
+  const restore = (): void => {
+    for (const key of Object.keys(readAllKeys())) {
+      if (!(key in before)) store.removeItem(key);
+    }
+    for (const [key, value] of Object.entries(before)) {
+      try {
+        store.setItem(key, value);
+      } catch {
+        // Was there before, so it fitted; nothing more to do.
+      }
+    }
+  };
+  try {
+    // Drop what the new state does not have first: that frees room for it.
+    for (const key of Object.keys(before)) {
+      if (!(key in keys)) store.removeItem(key);
+    }
+    for (const [key, value] of Object.entries(keys)) {
+      if (key.startsWith(PREFIX)) store.setItem(key, value);
+    }
+  } catch {
+    try {
+      restore();
+    } catch {
+      // Blocked midway: nothing more to do.
+    }
+    changed(null);
+    return false;
+  }
+  changed(null);
+  askPersistence();
+  return true;
 }
 
 /** The stored run and meta state inside a set of keys, for checking. */

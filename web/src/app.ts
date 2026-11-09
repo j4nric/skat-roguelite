@@ -1,10 +1,11 @@
 // The app controller: holds the core run and the UI state, turns taps into
 // RunActions, plays the core's events back as animations with sound, and
-// saves the core state after every action. No game rules live here: what
+// saves the core state after every action of the player. No game rules live here: what
 // is legal, what a game is worth and who takes a trick all come from the
 // core.
 //
-// The DOM has three layers: the screen (re-rendered on every change), the
+// The DOM has three layers: the screen (drawn on every change, part by
+// part: only the parts whose HTML changed are rebuilt, ./ui/patch.ts), the
 // overlay (rendered only when the dialog changes, so the score board can
 // animate undisturbed) and the toast line.
 //
@@ -18,7 +19,8 @@
 // player's action the app asks for one opponent card at a time while the
 // view names who is to move (`ai_to_move`). Each such call runs after the
 // next frame, so the thought bubble at that opponent is painted before the
-// main thread is busy, and the run is saved after every card.
+// main thread is busy; the player's own steps are stored at once, the
+// opponents' cards with the next one (playSteps).
 //
 // Above the dialogs sits the Wirt's speech bubble (./hints.ts, "Geführter
 // erster Abend"): after every render the app asks which hint fits what is
@@ -50,7 +52,6 @@ import {
   replaceAllKeys,
   runAndMetaOf,
   saveCharacter,
-  saveLength,
   saveMeta,
   saveRun,
   saveRunInfo,
@@ -70,7 +71,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
-import { crumbleInto, deal, declareSign, finishAll, finishOn, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { crumbleInto, deal, declareSign, finishAll, finishOn, type FlightSnapshot, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
 import { backDesign, setPlayerBack } from './ui/backs';
@@ -89,6 +90,7 @@ import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoic
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
 import { declarationSign, discardNeed, renderTable } from './ui/table';
+import { Patcher, shell, type Part } from './ui/patch';
 
 /** Session flag: the page was reloaded to take the account's state (a note after the reload). */
 const LOADED_NOTE = 'stammtisch-sync-loaded';
@@ -152,7 +154,7 @@ function runLine(view: RunView): string {
         score: view.series.score,
         target: view.series.target,
       });
-  const short = view.length === 'Short' ? `${line} · ${de.start.lengths.Short.name}` : line;
+  const short = view.length === 'Short' ? `${line} · ${de.start.shortEvening}` : line;
   return view.stake > 0 ? short + t(de.share.lineStake, { stake: view.stake }) : short;
 }
 
@@ -212,6 +214,11 @@ interface PressFlight {
 const SETTLE_MS = 260;
 /** The trip along a way on the map at tempo "Normal". */
 const TRAVEL_MS = 1600;
+
+/** Let the browser handle input and paint before the next piece of work. */
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
 
 /** Wait until the next frame has been painted (or 120 ms in a hidden tab). */
 function nextPaint(): Promise<void> {
@@ -276,7 +283,6 @@ export class App {
       return isCharacter(stored) ? stored : 'Declarer';
     })(),
     // The short evening is dropped (ADR 0016): always the whole evening.
-    pickLength: 'Full',
     pickStake: null,
     overlay: null,
     message: null,
@@ -298,6 +304,10 @@ export class App {
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
   private readonly screenEl: HTMLElement;
+  /** Draws the screen part by part (./ui/patch.ts). */
+  private readonly screen: Patcher;
+  /** Cards in flight in the parts the patcher just replaced. */
+  private flights: FlightSnapshot[] = [];
   /** Account and Groschen in the head: how their changes get there. */
   private readonly hudFx: HudFx;
   private readonly layerEl: HTMLElement;
@@ -339,6 +349,8 @@ export class App {
    * broke off) is stale: its button closes it instead of resolving nothing.
    */
   private awaited: Overlay | null = null;
+  /** Changed in memory, not stored yet (playSteps, persist). */
+  private unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
   /** Effects to run once the next render is in the DOM. */
   private afterRender: (() => void)[] = [];
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
@@ -367,6 +379,9 @@ export class App {
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
+    this.screen = new Patcher(this.screenEl, (nodes) => {
+      for (const n of nodes) if (n instanceof Element) this.flights.push(...noteFlights(n, FLYING));
+    });
     this.layerEl = root.querySelector<HTMLElement>('.layer') ?? root;
     this.hudFx = new HudFx(this.screenEl);
     watchSprings(root);
@@ -427,14 +442,21 @@ export class App {
         this.positionCoach();
       }, 100);
     });
-    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, changed: () => this.accountChanged() });
+    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, freshMeta: (meta) => this.isFreshMeta(meta), changed: () => this.accountChanged() });
     this.ui.account.user = this.sync.user;
     this.ui.account.status = this.sync.status;
-    // Leaving the page (tab switch, app to the background, closing): upload what changed.
+    // Leaving the page (tab switch, app to the background, closing): store
+    // what an opponent's card left in memory, then upload what changed.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void this.sync.push(true);
+      if (document.visibilityState !== 'hidden') return;
+      this.persist();
+      void this.sync.push(true);
     });
-    window.addEventListener('pagehide', () => void this.sync.push(true));
+    window.addEventListener('pagehide', () => {
+      this.persist();
+      // The request must start now: the upload was encoded in advance.
+      this.sync.sendOnHide();
+    });
     watchNetwork((online) => this.networkChanged(online));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
@@ -498,10 +520,18 @@ export class App {
     });
   }
 
+  /** Draw the loading screen (before the core and the sprite are in). */
+  showLoading(): void {
+    this.render();
+  }
+
   async start(): Promise<void> {
     this.render();
     try {
       await loadCore();
+      // A breath between instantiating the core and reading the catalog,
+      // and before the stored states: the boot is no single long task.
+      await yieldToBrowser();
       setCatalog(loadCatalog());
     } catch (err) {
       console.warn('core failed to load', err);
@@ -509,9 +539,10 @@ export class App {
       this.render();
       return;
     }
+    await yieldToBrowser();
     // Signed in: compare with the account before anything is read from storage.
     let synced: Reconciled = 'none';
-    if (this.sync.signedIn) synced = await this.sync.reconcile(5000);
+    if (this.sync.signedIn) synced = await this.sync.reconcileAtStart(5000);
     this.loadMetaState();
     this.readShareHash();
     window.addEventListener('hashchange', () => {
@@ -649,9 +680,19 @@ export class App {
    */
   private async afterSignIn(user: AccountUser): Promise<Reconciled> {
     this.sync.signedInAs(user);
-    const result = await this.sync.reconcile();
+    const result = await this.sync.reconcileAfterSignIn();
     this.loadBoard(true);
     return result;
+  }
+
+  /**
+   * Signing in found the account's state to take: into storage now, then
+   * reload. False (with a note) if the storage refused.
+   */
+  private takeAccountState(): boolean {
+    if (this.sync.takeServer()) return true;
+    this.showToast(de.save.errors.write ?? '');
+    return false;
   }
 
   /** Reload to start from the account's state, with a note after the reload. */
@@ -677,7 +718,7 @@ export class App {
     const res = await this.accountBusy(() => signIn());
     if (!res) return;
     const synced = await this.afterSignIn(res.user);
-    if (synced === 'applied') {
+    if (synced === 'applied' && this.takeAccountState()) {
       this.reloadWithAccountState();
       return;
     }
@@ -701,7 +742,7 @@ export class App {
   private codeDone(): void {
     const pending = this.pendingSync;
     this.pendingSync = 'none';
-    if (pending === 'applied') {
+    if (pending === 'applied' && this.takeAccountState()) {
       this.reloadWithAccountState();
       return;
     }
@@ -762,6 +803,7 @@ export class App {
   private async signOutHere(): Promise<void> {
     // Upload what is new first; then the device forgets the account.
     const res = await this.accountBusy(async () => {
+      this.persist();
       await this.sync.push();
       await signOut();
       return true;
@@ -877,19 +919,39 @@ export class App {
     if (!picked?.unlocked) this.ui.pickCharacter = 'Declarer';
   }
 
-  /** Feed the events of a step to the meta state; returns the unlocks just earned. */
-  private observe(events: RunEvent[] | string): string[] {
+  /**
+   * Feed the events of a step to the meta state; returns the unlocks just
+   * earned. `defer` keeps the new meta state in memory until `persist()`
+   * (an opponent's card: stored together with the run, see playSteps).
+   */
+  private observe(events: RunEvent[] | string, defer = false): string[] {
     if (!this.meta) return [];
     try {
       const step = this.meta.observe(events);
       this.ui.meta = step.view;
-      saveMeta(this.meta.save());
+      if (defer) this.unsaved.meta = true;
+      else saveMeta(this.meta.save());
       // The first Untot or Wandelkarte of this save: explained once (DESIGN 7.2), shown by render().
       for (const id of step.first_specials ?? []) if (!this.specialQueue.includes(id)) this.specialQueue.push(id);
       return step.earned;
     } catch (err) {
       console.warn('meta state did not take the events', err);
       return [];
+    }
+  }
+
+  /**
+   * Store what playSteps kept in memory: the run (if it is still the one
+   * that changed) and the meta state. Also on leaving the page.
+   */
+  private persist(): void {
+    const { run, meta } = this.unsaved;
+    this.unsaved = { run: null, meta: false };
+    try {
+      if (run && run === this.core) saveRun(run.save());
+      if (meta && this.meta) saveMeta(this.meta.save());
+    } catch (err) {
+      console.warn('state not stored', err);
     }
   }
 
@@ -928,6 +990,8 @@ export class App {
   // -------------------------------------------------------------------------
 
   private toStart(): void {
+    // The start screen reads the run from storage.
+    this.persist();
     this.core?.dispose();
     this.core = null;
     this.ui.view = null;
@@ -975,12 +1039,12 @@ export class App {
       this.render();
       return;
     }
-    this.requestStart({ seed, character: this.ui.pickCharacter, length: this.ui.pickLength, stake: this.pickedStake(), daily: false });
+    this.requestStart({ seed, character: this.ui.pickCharacter, stake: this.pickedStake(), daily: false });
   }
 
   /** The stake picked on the start screen, at most the highest unlocked. */
   private pickedStake(): number {
-    return pickedStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickLength, this.ui.pickStake);
+    return pickedStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickStake);
   }
 
   /** Start a run, after asking if that gives up a running one. */
@@ -993,8 +1057,8 @@ export class App {
     this.startRun(start);
   }
 
-  private startRun({ seed, character, length: _asked, stake, daily }: PendingStart): void {
-    // Since ADR 0016 every run is the whole evening, also from old `-kurz` links.
+  private startRun({ seed, character, stake, daily }: PendingStart): void {
+    // Since ADR 0016 every run is the whole evening.
     const length: RunLength = 'Full';
     let core: CoreRun;
     let startEvents = '[]';
@@ -1013,6 +1077,7 @@ export class App {
       this.render();
       return;
     }
+    this.persist();
     this.core?.dispose();
     this.core = core;
     this.ui.message = null;
@@ -1107,7 +1172,6 @@ export class App {
     this.ui.history = addToHistory({
       character: view.character.character,
       seed: view.seed,
-      ...(view.length === 'Short' ? { short: true } : {}),
       ...(view.stake > 0 ? { stake: view.stake } : {}),
       section: view.series.section + 1,
       series: view.series.index + 1,
@@ -1172,6 +1236,7 @@ export class App {
     const from = this.ui.overlay;
     let code: string;
     try {
+      this.persist();
       code = await encodeSave(readAllKeys());
     } catch (err) {
       console.warn('save code not made', err);
@@ -1285,6 +1350,23 @@ export class App {
     const lines = this.describeKeys(decoded.keys);
     if (!lines) return { error: de.save.errors.rejected ?? '' };
     return { keys: decoded.keys, lines };
+  }
+
+  /** Whether a stored meta state is still the one of a new player (asked of the core). */
+  private isFreshMeta(meta: string): boolean {
+    try {
+      const stored = CoreMeta.load(meta);
+      const fresh = CoreMeta.fresh();
+      try {
+        return stored.save() === fresh.save();
+      } finally {
+        stored.meta.free();
+        fresh.meta.free();
+      }
+    } catch {
+      // Unreadable here: treat it as progress, never replace it unasked.
+      return false;
+    }
   }
 
   /**
@@ -1482,12 +1564,24 @@ export class App {
    * Play a step of the core back (`first`; null to start with an opponent's
    * card), then, while an opponent is to move, one card of his at a time:
    * the thought bubble at his seat is painted, then the core computes his
-   * card, then it is animated. The run is saved after every step.
+   * card, then it is animated.
+   *
+   * Storing (W6 of the review): the player's own step is stored at once,
+   * so a reload never takes a decision back. The opponents' cards after it
+   * are stored with the player's next step, or before when the phase
+   * changes, a pub ends, the start screen or the save code reads the
+   * storage, or the page is hidden; until then the run and the meta state
+   * wait in memory together (`persist`). A reload in between loads the state after the
+   * player's step, and the core plays the same opponent cards again (their
+   * choice follows from the stored state), with the meta state at the same
+   * point, so nothing is counted twice.
    */
   private async playSteps(before: RunView | null, first: Step | null): Promise<void> {
     let previous = before;
     let view = before;
     let step = first;
+    /** This step is the player's own (stored at once). */
+    let own = first !== null;
     let earned: string[] = [];
     // A pub ended (won, lost, the run over): the account gets the new state.
     let pubEnded = false;
@@ -1516,14 +1610,19 @@ export class App {
         if (view.tutorial) {
           // Nothing to keep.
         } else if (view.phase === 'Won' || view.phase === 'Lost') {
+          this.unsaved.run = null;
           clearRun();
           // A night that ends (ADR 0020) is no run of its own: the win
           // was recorded when der Alte fell.
           if (!view.night) this.recordRun(view);
         } else if (this.core) {
-          saveRun(this.core.save());
+          this.unsaved.run = this.core;
         }
-        if (!view.tutorial) earned = earned.concat(this.observe(step.events));
+        // Stored now: the player's own step, a new phase, the run over.
+        const store = own || view.phase !== previous?.phase || view.phase === 'Won' || view.phase === 'Lost';
+        if (!view.tutorial) earned = earned.concat(this.observe(step.events, true));
+        if (store) this.persist();
+        own = false;
         await this.playEvents(previous, step.events, view);
         // A lost run: the pub lights go out before the end screen.
         if (view.phase === 'Lost') await lightsOut();
@@ -1536,7 +1635,12 @@ export class App {
         step = null;
       }
     } finally {
-      if (pubEnded) void this.sync.push();
+      // The account gets the new state: stored first. Otherwise what the
+      // opponents played waits in memory for the player's next step.
+      if (pubEnded) {
+        this.persist();
+        void this.sync.push();
+      }
       this.ui.busy = false;
       this.ui.anim = null;
       this.ui.thinking = null;
@@ -2859,6 +2963,7 @@ export class App {
       return;
     }
     markTutorial('done');
+    this.persist();
     this.core?.dispose();
     this.core = core;
     this.coach = new Coach();
@@ -3053,7 +3158,7 @@ export class App {
         return;
       case 'play-shared': {
         const shared = this.ui.shared;
-        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, length: shared.length, stake: sharedStake(this.ui), daily: false });
+        if (shared) this.requestStart({ seed: shared.seed, character: shared.locked ? 'Declarer' : shared.character, stake: sharedStake(this.ui), daily: false });
         return;
       }
       case 'dismiss-shared':
@@ -3062,16 +3167,15 @@ export class App {
         this.render();
         return;
       case 'play-daily':
-        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, length: this.ui.pickLength, stake: this.pickedStake(), daily: true });
+        this.requestStart({ seed: dailySeed(), character: this.ui.pickCharacter, stake: this.pickedStake(), daily: true });
         return;
       case 'replay': {
         const c = el.dataset.character ?? null;
         const seed = el.dataset.seed ?? '';
         const entry = this.ui.meta?.characters.find((x) => x.character === c);
-        const length: RunLength = el.dataset.length === 'Short' ? 'Short' : 'Full';
         // Replayed at its stake, or the highest unlocked if that is lower.
-        const stake = isCharacter(c) ? Math.min(num('stake') < 0 ? 0 : num('stake'), maxStake(this.ui.meta, c, length)) : 0;
-        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, length, stake, daily: false });
+        const stake = isCharacter(c) ? Math.min(num('stake') < 0 ? 0 : num('stake'), maxStake(this.ui.meta, c)) : 0;
+        if (isCharacter(c) && entry?.unlocked && isSeedText(seed)) this.requestStart({ seed, character: c, stake, daily: false });
         return;
       }
       case 'confirm-new':
@@ -3245,18 +3349,8 @@ export class App {
         this.ui.overlay = { kind: 'book', tab: 'book' };
         this.render();
         return;
-      case 'pick-length': {
-        const length = el.dataset.length;
-        if (length === 'Full' || length === 'Short') {
-          this.ui.pickLength = length;
-          this.ui.pickStake = null;
-          saveLength(length);
-          this.render();
-        }
-        return;
-      }
       case 'pick-stake': {
-        const max = maxStake(this.ui.meta, this.ui.pickCharacter, this.ui.pickLength);
+        const max = maxStake(this.ui.meta, this.ui.pickCharacter);
         const stake = num('stake');
         if (stake >= 0 && stake <= max) {
           this.ui.pickStake = stake;
@@ -4230,19 +4324,19 @@ export class App {
     // A back earned in the long night replaces it if chosen (ADR 0020).
     const chosenBack = ui.settings.back && ui.meta?.card_backs?.includes(ui.settings.back) ? ui.settings.back : null;
     setPlayerBack(chosenBack ?? (ui.screen === 'end' ? ui.ended?.view : ui.view)?.character.back);
-    let body = '';
+    let parts: Part[] = [];
     switch (ui.screen) {
       case 'loading':
-        body = renderLoading();
+        parts = [renderLoading()];
         break;
       case 'error':
-        body = renderError();
+        parts = [renderError()];
         break;
       case 'start':
-        body = renderStart(ui, BUILD_INFO);
+        parts = [renderStart(ui, BUILD_INFO)];
         break;
       case 'end':
-        body = ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : '';
+        parts = [ui.ended ? renderEnd(ui.ended.won, ui.ended.view, ui) : ''];
         if (ui.ended) this.afterRender.push(() => void this.prepareRunCard().catch(() => undefined));
         break;
       case 'run': {
@@ -4260,19 +4354,20 @@ export class App {
           ui.routePick = defaultPick(view);
           ui.routeOverview = false;
         }
-        const main = inShop
-          ? renderShop(view)
+        const main: Part[] = inShop
+          ? [renderShop(view)]
           : inEncounter
-            ? renderEncounter(view)
+            ? [renderEncounter(view)]
             : inReward
-              ? renderBossReward(view, ui.rewardPick)
+              ? [renderBossReward(view, ui.rewardPick)]
               : inCardReward
-                ? renderCardReward(view)
+                ? [renderCardReward(view)]
                 : inRoute
-                ? renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)
+                ? [renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)]
                 : renderTable(view, ui);
         const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
-        body = `<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">${renderHud(view)}${main}</div>`;
+        // HUD and main area are parts of their own (./ui/patch.ts): what did not change stays in the DOM.
+        const run = shell(`<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">`, [renderHud(view), ...main], { sticky: true });
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
         if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;
@@ -4286,10 +4381,9 @@ export class App {
         if (view.schnapps_reward && !ui.busy && !ui.anim && !ui.overlay) ui.overlay = { kind: 'schnapps-reward' };
         if (!view.schnapps_reward && ui.overlay?.kind === 'schnapps-reward') ui.overlay = null;
         const kontra = view.game?.awaiting_kontra_answer && !ui.busy && !ui.overlay;
-        if (kontra) body += renderKontra(view);
         // "Untot": the card waits in the trick for three cards of the hand.
         const rise = view.game?.rise_choice;
-        if (rise && !ui.busy && !ui.overlay && !kontra) body += renderRiseChoice(view, ui.risePick);
+        parts = [run, kontra ? renderKontra(view) : '', rise && !ui.busy && !ui.overlay && !kontra ? renderRiseChoice(view, ui.risePick) : ''];
         if (!rise && ui.risePick.length) ui.risePick = [];
         break;
       }
@@ -4299,12 +4393,18 @@ export class App {
     const charScroll = this.root.querySelector<HTMLElement>('[data-testid="characters"]')?.scrollLeft;
     // The Tresen stays where it was scrolled to after buying or selling.
     const shopScroll = this.screenEl.querySelector<HTMLElement>('.run > .shop')?.scrollTop ?? 0;
-    // Cards flying onto the felt keep flying through the re-render.
-    const flights = noteFlights(this.screenEl, FLYING);
     // A sheet on the screen that is drawn again (the Untot pick) does not enter again.
     const riseShown = this.screenEl.querySelector('.sheet-rise') !== null;
-    this.screenEl.innerHTML = body;
-    if (riseShown) this.screenEl.querySelector('.sheet-rise')?.closest('.overlay')?.classList.add('is-still');
+    // Cards flying onto the felt keep flying through the re-render: the
+    // patcher names the nodes it replaces (noteFlights in the constructor).
+    this.flights = [];
+    this.screen.patch(parts);
+    const flights = this.flights;
+    this.flights = [];
+    if (riseShown) {
+      const still = this.screenEl.querySelector('.sheet-rise')?.closest('.overlay');
+      if (still && !still.classList.contains('is-still')) still.classList.add('is-still');
+    }
     if (flights.length) resumeFlights(this.screenEl, FLYING, flights);
     if (seed) {
       const input = this.root.querySelector<HTMLInputElement>('#seed');

@@ -26,16 +26,31 @@
 //
 // The bookkeeping (`stammtisch-sync`, no dot) lies outside the save keys,
 // so it is never part of a save code or an upload.
+//
+// Order: every exchange with the server (compare, upload, keep this
+// device's state) runs one after the other through one queue, so an upload
+// never builds on a version a compare running at the same time is about
+// to change. Storage is only replaced at start (before the app has read
+// it) or right before the page reloads; while the app runs, a newer state
+// on the server is a conflict for the player to settle.
+//
+// Leaving the page: the encoded upload is prepared whenever the stored
+// keys change, so `pagehide` can send it at once (an async encoding there
+// may never get to its request).
 
 import { AccountError, fetchSave, putSave, type AccountUser, type ServerSave } from './account';
+import { hashText } from './hash';
 import { isOnline } from './offline';
 import { decodeSave, encodeSave } from './savecode';
-import { readAllKeys, replaceAllKeys } from './storage';
+import { isSaveKey, readAllKeys, readJson, removeKey, replaceAllKeys, watchStorage, writeKey } from './storage';
 
 const RECORD_KEY = 'stammtisch-sync';
 
 /** Uploads on page hide go with `keepalive`, which allows small bodies only. */
 const KEEPALIVE_MAX = 60_000;
+
+/** Wait after a change of the stored keys before encoding the upload. */
+const PREPARE_MS = 400;
 
 export type SyncStatus = 'off' | 'saving' | 'saved' | 'offline' | 'conflict' | 'outdated';
 
@@ -64,55 +79,44 @@ interface SyncRecord {
 export interface SyncHost {
   /** Whether the core can load the run and meta state among these keys. */
   readable(keys: Record<string, string>): boolean;
+  /** Whether a stored meta state holds no progress yet (asked of the core). */
+  freshMeta(meta: string): boolean;
   /** Something about the account or its status changed: render. */
   changed(): void;
 }
 
 function readRecord(): SyncRecord | null {
-  try {
-    const raw = window.localStorage.getItem(RECORD_KEY);
-    if (!raw) return null;
-    const r = JSON.parse(raw) as Partial<SyncRecord>;
-    if (r.signedIn !== true) return null;
-    return {
-      signedIn: true,
-      version: typeof r.version === 'number' ? r.version : null,
-      hash: typeof r.hash === 'string' ? r.hash : null,
-      localAt: typeof r.localAt === 'number' ? r.localAt : 0,
-      name: typeof r.name === 'string' ? r.name : null,
-    };
-  } catch {
-    return null;
-  }
+  const r = readJson(RECORD_KEY) as Partial<SyncRecord> | null;
+  if (!r || typeof r !== 'object' || r.signedIn !== true) return null;
+  return {
+    signedIn: true,
+    version: typeof r.version === 'number' ? r.version : null,
+    hash: typeof r.hash === 'string' ? r.hash : null,
+    localAt: typeof r.localAt === 'number' ? r.localAt : 0,
+    name: typeof r.name === 'string' ? r.name : null,
+  };
 }
 
+/** Storage blocked: the account works for this visit only. */
 function writeRecord(r: SyncRecord | null): void {
-  try {
-    if (r) window.localStorage.setItem(RECORD_KEY, JSON.stringify(r));
-    else window.localStorage.removeItem(RECORD_KEY);
-  } catch {
-    // Storage blocked: the account works for this visit only.
-  }
+  if (r) writeKey(RECORD_KEY, JSON.stringify(r));
+  else removeKey(RECORD_KEY);
 }
 
 /** A fast 53-bit hash of the stored keys (order does not matter). */
 export function hashKeys(keys: Record<string, string>): string {
-  const text = JSON.stringify(Object.keys(keys).sort().map((k) => [k, keys[k]]));
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 2654435761);
-    h2 = Math.imul(h2 ^ c, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  return hashText(JSON.stringify(Object.keys(keys).sort().map((k) => [k, keys[k]])));
 }
 
-/** No progress worth keeping: no run in progress and no finished run. */
-export function isEmptyProgress(keys: Record<string, string>): boolean {
+/**
+ * No progress worth keeping: no run in progress, no finished run and a
+ * meta state without progress (no unlocks, no statistics; `freshMeta`
+ * asks the core).
+ */
+export function isEmptyProgress(keys: Record<string, string>, freshMeta: (meta: string) => boolean): boolean {
   if (keys['stammtisch.run']) return false;
+  const meta = keys['stammtisch.meta'];
+  if (meta && !freshMeta(meta)) return false;
   const history = keys['stammtisch.history'];
   if (!history) return true;
   try {
@@ -123,7 +127,14 @@ export function isEmptyProgress(keys: Record<string, string>): boolean {
   }
 }
 
+/**
+ * `applied`: the server's state is in storage (at start) or waits to be
+ * taken right before the page reloads (after signing in, `takeServer`).
+ */
 export type Reconciled = 'applied' | 'none' | 'conflict';
+
+/** When a compare runs: at start, right after signing in, or mid-session (an upload was refused). */
+type When = 'start' | 'signin' | 'session';
 
 export class Sync {
   user: AccountUser | null = null;
@@ -132,8 +143,16 @@ export class Sync {
   /** When the last upload or download succeeded (ms). */
   lastSync = 0;
   private record: SyncRecord | null = readRecord();
-  private running: Promise<void> | null = null;
-  private again = false;
+  /** Every exchange with the server, one after the other. */
+  private queue: Promise<unknown> = Promise.resolve();
+  /** A push waiting in the queue that has not started yet (later pushes join it). */
+  private queuedPush: Promise<void> | null = null;
+  private queuedKeepalive = false;
+  /** The server's state found right after signing in, taken by `takeServer` before the reload. */
+  private incoming: { server: ServerSave; keys: Record<string, string> } | null = null;
+  /** The upload encoded in advance for leaving the page. */
+  private prepared: { hash: string; data: string } | null = null;
+  private prepareTimer: number | undefined;
 
   constructor(private readonly host: SyncHost) {
     if (this.record) {
@@ -149,6 +168,9 @@ export class Sync {
     window.addEventListener('online', () => void this.push());
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && this.status === 'offline') void this.push();
+    });
+    watchStorage((key) => {
+      if (key === null || isSaveKey(key)) this.schedulePrepare();
     });
   }
 
@@ -166,6 +188,13 @@ export class Sync {
     if (!this.record) return;
     this.record = { ...this.record, ...change };
     writeRecord(this.record);
+  }
+
+  /** Run `fn` after everything queued before it. */
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   /** Signed in (sign-up, passkey, recovery code): start keeping track. */
@@ -191,16 +220,29 @@ export class Sync {
     writeRecord(null);
     this.user = null;
     this.conflict = null;
+    this.incoming = null;
+    this.prepared = null;
     this.status = 'off';
     this.host.changed();
   }
 
   /**
-   * Compare with the server and settle what can be settled alone. Called
-   * at start (before the app reads its storage) and right after signing
-   * in. `applied`: the server's state was written to storage.
+   * Compare with the server and settle what can be settled alone. At
+   * start (before the app reads its storage) the server's
+   * state may be written to storage (`applied`). Right after signing in it
+   * is only kept for `takeServer`, which the app calls right before it
+   * reloads.
    */
-  async reconcile(timeout?: number): Promise<Reconciled> {
+  reconcileAtStart(timeout: number): Promise<Reconciled> {
+    return this.serial(() => this.compare('start', timeout));
+  }
+
+  /** The same right after signing in; `applied` waits for `takeServer`. */
+  reconcileAfterSignIn(): Promise<Reconciled> {
+    return this.serial(() => this.compare('signin'));
+  }
+
+  private async compare(when: When, timeout?: number): Promise<Reconciled> {
     if (!this.record) return 'none';
     this.setStatus('saving');
     let server: ServerSave | null;
@@ -211,12 +253,13 @@ export class Sync {
       return 'none';
     }
     const record = this.record;
+    if (!record) return 'none';
     const local = readAllKeys();
     const hash = hashKeys(local);
     const dirty = hash !== record.hash;
     if (dirty) this.remember({ localAt: Date.now() });
     if (!server) {
-      if (!isEmptyProgress(local)) await this.upload(local, hash, null);
+      if (!isEmptyProgress(local, (m) => this.host.freshMeta(m))) await this.upload(local, hash, null);
       else this.setStatus('saved');
       return 'none';
     }
@@ -238,7 +281,14 @@ export class Sync {
       this.done();
       return 'none';
     }
-    if (!dirty || isEmptyProgress(local)) {
+    // Mid-session the app runs on what it read from storage: never replace it under it.
+    const take = when !== 'session' && (!dirty || isEmptyProgress(local, (m) => this.host.freshMeta(m)));
+    if (take && when === 'signin') {
+      this.incoming = { server, keys: decoded.keys };
+      this.done();
+      return 'applied';
+    }
+    if (take) {
       if (!replaceAllKeys(decoded.keys)) {
         this.setStatus('offline');
         return 'none';
@@ -267,17 +317,28 @@ export class Sync {
     this.setStatus('offline');
   }
 
+  /** The encoded keys: prepared in advance if they have not changed since, else encoded now. */
+  private async encoded(keys: Record<string, string>, hash: string): Promise<string> {
+    const ready = this.prepared;
+    if (ready && ready.hash === hash) return ready.data;
+    const data = await encodeSave(keys);
+    this.prepared = { hash, data };
+    return data;
+  }
+
+  /** Inside the queue only. */
   private async upload(keys: Record<string, string>, hash: string, ifVersion: number | null, keepalive = false): Promise<void> {
     this.setStatus('saving');
     try {
-      const data = await encodeSave(keys);
+      const data = await this.encoded(keys, hash);
       const res = await putSave(data, this.record?.localAt ?? Date.now(), ifVersion, keepalive && data.length < KEEPALIVE_MAX);
       this.remember({ version: res.version, hash });
       this.done();
     } catch (err) {
       if (err instanceof AccountError && err.code === 'conflict') {
-        // Someone was faster: compare again; with changes here it asks the player.
-        await this.reconcile();
+        // Someone was faster: compare again. The app runs on its storage,
+        // so a newer server state is put to the player, never written.
+        await this.compare('session');
         return;
       }
       this.failed(err);
@@ -286,58 +347,114 @@ export class Sync {
 
   /**
    * Upload if anything changed (after a pub, at run end, on page hide).
-   * Resolves when this and any upload asked for meanwhile are done.
+   * Resolves when this upload is done; pushes asked for before it started
+   * share it.
    */
   // Only what localStorage holds goes up: the Einführung (DESIGN 16.1) is
   // never saved there, so it is never uploaded.
   push(keepalive = false): Promise<void> {
     if (!this.record || this.status === 'conflict' || this.status === 'outdated') return Promise.resolve();
-    if (this.running) {
-      this.again = true;
-      return this.running;
+    if (keepalive) this.queuedKeepalive = true;
+    this.queuedPush ??= this.serial(async () => {
+      this.queuedPush = null;
+      const ka = this.queuedKeepalive;
+      this.queuedKeepalive = false;
+      await this.pushNow(ka);
+    });
+    return this.queuedPush;
+  }
+
+  private async pushNow(keepalive: boolean): Promise<void> {
+    const record = this.record;
+    if (!record || this.status === 'conflict' || this.status === 'outdated') return;
+    if (!isOnline()) {
+      // No point trying; the `online` event brings us back.
+      this.setStatus('offline');
+      return;
     }
-    this.running = (async () => {
-      try {
-        do {
-          this.again = false;
-          const record = this.record;
-          if (!record) return;
-          if (!isOnline()) {
-            // No point trying; the `online` event brings us back.
-            this.setStatus('offline');
-            return;
-          }
-          const keys = readAllKeys();
-          const hash = hashKeys(keys);
-          if (hash === record.hash) {
-            if (this.status !== 'saved') this.done();
-            continue;
-          }
-          this.remember({ localAt: Date.now() });
-          await this.upload(keys, hash, record.version, keepalive);
-        } while (this.again && this.record && this.status !== 'conflict');
-      } finally {
-        this.running = null;
-      }
-    })();
-    return this.running;
+    const keys = readAllKeys();
+    const hash = hashKeys(keys);
+    if (hash === record.hash) {
+      if (this.status !== 'saved') this.done();
+      return;
+    }
+    this.remember({ localAt: Date.now() });
+    await this.upload(keys, hash, record.version, keepalive);
+  }
+
+  /** Encode the upload soon after the stored keys changed (for `sendOnHide`). */
+  private schedulePrepare(): void {
+    if (!this.record) return;
+    window.clearTimeout(this.prepareTimer);
+    this.prepareTimer = window.setTimeout(() => {
+      const record = this.record;
+      if (!record || this.status === 'conflict' || this.status === 'outdated') return;
+      const keys = readAllKeys();
+      const hash = hashKeys(keys);
+      if (hash === record.hash || this.prepared?.hash === hash) return;
+      encodeSave(keys).then(
+        (data) => {
+          this.prepared = { hash, data };
+        },
+        () => undefined,
+      );
+    }, PREPARE_MS);
+  }
+
+  /**
+   * The page goes away (`pagehide`): send what changed with the request
+   * started right now, from the upload prepared in advance. If the keys
+   * changed after it was prepared, or it is too big for `keepalive`, the
+   * normal push tries (and the next start compares anyway).
+   */
+  sendOnHide(): void {
+    const record = this.record;
+    if (!record || this.status === 'conflict' || this.status === 'outdated' || !isOnline()) return;
+    const keys = readAllKeys();
+    const hash = hashKeys(keys);
+    if (hash === record.hash) return;
+    const ready = this.prepared;
+    if (!ready || ready.hash !== hash || ready.data.length >= KEEPALIVE_MAX) {
+      void this.push(true);
+      return;
+    }
+    this.remember({ localAt: Date.now() });
+    // Started synchronously: putSave calls fetch before its first await.
+    const sent = putSave(ready.data, record.localAt, record.version, true);
+    sent.then(
+      (res) => {
+        // Only if nothing else synced meanwhile.
+        if (this.record && this.record.version === record.version) {
+          this.remember({ version: res.version, hash });
+          this.done();
+        }
+      },
+      () => undefined,
+    );
   }
 
   /** Conflict: keep this device's state and put it on the server. */
-  async keepLocal(): Promise<void> {
-    const c = this.conflict;
-    if (!c) return;
-    this.conflict = null;
-    const keys = readAllKeys();
-    await this.upload(keys, hashKeys(keys), c.server.version);
+  keepLocal(): Promise<void> {
+    return this.serial(async () => {
+      const c = this.conflict;
+      if (!c) return;
+      this.conflict = null;
+      const keys = readAllKeys();
+      await this.upload(keys, hashKeys(keys), c.server.version);
+    });
   }
 
-  /** Conflict: take the server's state into storage (the app reloads then). */
+  /**
+   * Take the server's state into storage: the one of a conflict, or the
+   * one found right after signing in. The app reloads right after; false
+   * if the storage refused (nothing changed then).
+   */
   takeServer(): boolean {
-    const c = this.conflict;
-    if (!c || !replaceAllKeys(c.serverKeys)) return false;
+    const from = this.conflict ? { server: this.conflict.server, keys: this.conflict.serverKeys } : this.incoming;
+    if (!from || !replaceAllKeys(from.keys)) return false;
     this.conflict = null;
-    this.remember({ version: c.server.version, hash: hashKeys(c.serverKeys), localAt: c.server.updatedAt });
+    this.incoming = null;
+    this.remember({ version: from.server.version, hash: hashKeys(from.keys), localAt: from.server.updatedAt });
     this.status = 'saved';
     return true;
   }

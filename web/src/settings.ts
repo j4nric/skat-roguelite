@@ -5,6 +5,8 @@
 // sorted and whether the phone vibrates.
 // Stored in localStorage, every access guarded.
 
+import { readJson, writeKey } from './storage';
+
 export type Tempo = 'slow' | 'normal' | 'fast';
 
 export interface Settings {
@@ -40,31 +42,24 @@ export const TEMPO_FACTOR: Record<Tempo, number> = {
 };
 
 export function loadSettings(): Settings {
-  try {
-    const text = window.localStorage.getItem(KEY);
-    if (!text) return { ...DEFAULTS };
-    const parsed = JSON.parse(text) as Partial<Settings>;
-    const tempo = parsed.tempo === 'slow' || parsed.tempo === 'fast' ? parsed.tempo : 'normal';
-    return {
-      tempo,
-      sound: parsed.sound !== false,
-      music: parsed.music !== false,
-      thinking: parsed.thinking !== false,
-      hints: parsed.hints !== false,
-      suitTint: parsed.suitTint === true,
-      back: typeof parsed.back === 'string' ? parsed.back : null,
-      handSort: parsed.handSort === 'manual' ? 'manual' : 'auto',
-      vibrate: parsed.vibrate !== false,
-    };
-  } catch {
-    return { ...DEFAULTS };
-  }
+  const stored = readJson(KEY);
+  if (!stored || typeof stored !== 'object') return { ...DEFAULTS };
+  const parsed = stored as Partial<Settings>;
+  const tempo = parsed.tempo === 'slow' || parsed.tempo === 'fast' ? parsed.tempo : 'normal';
+  return {
+    tempo,
+    sound: parsed.sound !== false,
+    music: parsed.music !== false,
+    thinking: parsed.thinking !== false,
+    hints: parsed.hints !== false,
+    suitTint: parsed.suitTint === true,
+    back: typeof parsed.back === 'string' ? parsed.back : null,
+    handSort: parsed.handSort === 'manual' ? 'manual' : 'auto',
+    vibrate: parsed.vibrate !== false,
+  };
 }
 
+/** Storage blocked: the settings last for this visit only. */
 export function saveSettings(settings: Settings): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(settings));
-  } catch {
-    // Storage blocked: settings last for this visit only.
-  }
+  writeKey(KEY, JSON.stringify(settings));
 }

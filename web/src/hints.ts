@@ -6,6 +6,7 @@
 // The triggers only read what the screen already shows (the core's view,
 // the open dialog, an event just played back). No rule is decided here.
 
+import { readJson, removeKey, writeKey } from './storage';
 import type { UiState } from './ui/state';
 
 export type HintId =
@@ -122,29 +123,16 @@ const KEY = 'stammtisch.hints';
 
 /** The hints the player has seen (dismissed, or moved on from). */
 export function loadSeenHints(): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []);
-  } catch {
-    return new Set();
-  }
+  const parsed = readJson(KEY);
+  return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []);
 }
 
+/** Storage blocked: the hints come back next visit. */
 export function saveSeenHints(seen: ReadonlySet<string>): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify([...seen].sort()));
-  } catch {
-    // Storage blocked: the hints come back next visit.
-  }
+  writeKey(KEY, JSON.stringify([...seen].sort()));
 }
 
 /** "Hinweise zurücksetzen": every hint shows again. */
 export function clearSeenHints(): void {
-  try {
-    window.localStorage.removeItem(KEY);
-  } catch {
-    // Ignore.
-  }
+  removeKey(KEY);
 }

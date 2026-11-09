@@ -30,6 +30,7 @@ import type { UiState } from './state';
 import { BASE_WIN } from '../stake';
 import { tossStyle } from './scatter';
 import { arrangeHand } from './handorder';
+import { shell, type Part } from './patch';
 
 /** Marks a card for the info card (long-press, hover, "i"). */
 function infoAttrs(id: number, focusable = true): Record<string, string | number | null> {
@@ -804,9 +805,14 @@ function pendingNote(view: RunView, game: GameView): string {
   return notes.length ? `<p class="pending-note">${esc(notes.join(' · '))}</p>` : '';
 }
 
-export function renderTable(view: RunView, ui: UiState): string {
+/**
+ * The table as parts (./patch.ts): the opponents, the felt and the hand
+ * are drawn again only when they change, so an opponent's card does not
+ * rebuild the player's hand.
+ */
+export function renderTable(view: RunView, ui: UiState): Part[] {
   const game = view.game;
-  if (!game) return '';
+  if (!game) return [];
   const declaring = (game.phase === 'Declaring' || game.phase === 'DeclaringAfterSkat') && !ui.anim && game.declare;
   const peek = ui.peekTrick && !ui.anim && !ui.busy && game.phase === 'Playing' ? game.last_trick : null;
   const center =
@@ -823,11 +829,13 @@ export function renderTable(view: RunView, ui: UiState): string {
   // While the player is to play, the felt takes a hand card thrown onto it.
   const throwable = game.phase === 'Playing' && game.your_turn && !ui.anim && !ui.busy && !ui.omaPick;
   const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
-  return `<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">
-    <div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>
-    ${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}
-    <div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>
-    ${handCards(view, game, ui)}
-    ${statusLine(view, game, ui)}
-  </div>`;
+  return [
+    shell(`<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">`, [
+      `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
+      `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
+      `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,
+      handCards(view, game, ui),
+      statusLine(view, game, ui),
+    ]),
+  ];
 }

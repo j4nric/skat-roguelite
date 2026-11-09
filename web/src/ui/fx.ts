@@ -129,7 +129,7 @@ export function flyIn(el: Element, from: DOMRect, opts: { ms?: number; delay?: n
 }
 
 /** A random number in [-n, n]: cosmetic only (Math.random, never the core's RNG). */
-function jitter(n: number): number {
+export function jitter(n: number): number {
   return (Math.random() * 2 - 1) * n;
 }
 
