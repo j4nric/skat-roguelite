@@ -7,13 +7,17 @@
 //! | `STAMMTISCH_ORIGIN` | `http://localhost:5173,http://localhost:4173` | Site origin(s), comma-separated; the first is the main one |
 //! | `STAMMTISCH_RP_ID` | host of the first origin | WebAuthn relying party id |
 //! | `STAMMTISCH_DB` | `stammtisch.db` | SQLite file (`:memory:` for a throwaway) |
+//! | `STAMMTISCH_BACKUP_DIR` | `backup` next to the database | Daily copies (`VACUUM INTO`), the last 7 stay; `off` disables |
 //! | `STAMMTISCH_LISTEN` | `127.0.0.1:8787` | Address to listen on |
 //! | `RUST_LOG` | `info` | Log filter |
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use stammtisch_server::{AppState, Config, db, router, spawn_housekeeping};
+use stammtisch_server::{AppState, Backup, Config, auth, db, router, spawn_housekeeping};
+
+/// Daily backups kept.
+const BACKUPS_KEPT: usize = 7;
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key)
@@ -36,6 +40,27 @@ async fn main() {
         tracing::error!("{err}");
         std::process::exit(1);
     }
+}
+
+/// Where the daily backup goes: `STAMMTISCH_BACKUP_DIR`, else `backup/`
+/// next to the database file; none for an in-memory database or `off`.
+fn backup_config(db_path: &str) -> Option<Backup> {
+    if db_path == ":memory:" {
+        return None;
+    }
+    let db = PathBuf::from(db_path);
+    let dir = match std::env::var("STAMMTISCH_BACKUP_DIR") {
+        Ok(v) if v.trim() == "off" => return None,
+        Ok(v) if !v.trim().is_empty() => PathBuf::from(v.trim()),
+        _ => db
+            .parent()
+            .map_or_else(|| PathBuf::from("backup"), |p| p.join("backup")),
+    };
+    Some(Backup {
+        db,
+        dir,
+        keep: BACKUPS_KEPT,
+    })
 }
 
 async fn run() -> Result<(), String> {
@@ -62,8 +87,18 @@ async fn run() -> Result<(), String> {
         db = %db_path,
         "starting"
     );
+    let backup = backup_config(&db_path);
+    match &backup {
+        Some(b) => tracing::info!(dir = %b.dir.display(), keep = b.keep, "daily backup"),
+        None => tracing::info!("no daily backup"),
+    }
     let state = AppState::new(config, conn)?;
-    spawn_housekeeping(state.clone());
+    // The dummy hash of a wrong recovery id is argon2 work: do it now, on
+    // a blocking thread, not in the first request.
+    tokio::task::spawn_blocking(auth::warm_up)
+        .await
+        .map_err(|e| format!("warm up: {e}"))?;
+    spawn_housekeeping(state.clone(), backup);
     let listen = env_or("STAMMTISCH_LISTEN", "127.0.0.1:8787");
     let listener = tokio::net::TcpListener::bind(&listen)
         .await

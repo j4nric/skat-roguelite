@@ -8,9 +8,8 @@
 //! a new one.
 
 use argon2::Argon2;
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use rand::RngCore;
-use rand::rngs::OsRng;
 
 /// Crockford base32: no I, L, O, U.
 const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";

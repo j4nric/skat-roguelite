@@ -1,18 +1,17 @@
 //! Sessions (HttpOnly cookie with a random token, only its SHA-256 is
 //! stored), the client address and a light in-memory rate limit.
 
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::RngCore;
-use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -71,17 +70,27 @@ pub fn clear_cookie(secure: bool) -> HeaderValue {
     .unwrap_or_else(|_| HeaderValue::from_static(""))
 }
 
-/// Start a session for a user; returns the headers that set the cookie.
-pub fn start(state: &AppState, user_id: &str) -> ApiResult<HeaderMap> {
+/// A session just started: the headers that set its cookie and the hash
+/// of its token (to keep it when other sessions are ended).
+pub struct Started {
+    /// `Set-Cookie` for the new token.
+    pub headers: HeaderMap,
+    /// Hash of the new token as stored.
+    pub token_hash: String,
+}
+
+/// Start a session for a user.
+pub fn start(state: &AppState, user_id: &str) -> ApiResult<Started> {
     let token = new_token();
+    let hash = token_hash(&token);
     let expires = db::now_ms() + SESSION_DAYS * DAY_MS;
-    {
-        let conn = state.db();
-        db::insert_session(&conn, &token_hash(&token), user_id, expires)?;
-    }
+    db::insert_session(&state.db(), &hash, user_id, expires)?;
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, set_cookie(&token, state.config.secure_cookie));
-    Ok(headers)
+    Ok(Started {
+        headers,
+        token_hash: hash,
+    })
 }
 
 /// The signed-in user of a request.
@@ -93,24 +102,41 @@ pub struct Session {
     pub token_hash: String,
 }
 
-/// Find the session of a request, extending it when half of it has passed.
+/// Find the session of a request. Extending it is the job of
+/// [`refresh`], which runs for every request before the handler.
 pub fn current(state: &AppState, headers: &HeaderMap) -> ApiResult<Option<Session>> {
     let Some(token) = token_of(headers) else {
         return Ok(None);
     };
     let hash = token_hash(&token);
-    let conn = state.db();
-    let Some((user_id, expires)) = db::session_user(&conn, &hash)? else {
+    let Some((user_id, _)) = db::session_user(&state.db(), &hash)? else {
         return Ok(None);
     };
-    let now = db::now_ms();
-    if expires - now < SESSION_DAYS * DAY_MS / 2 {
-        db::extend_session(&conn, &hash, now + SESSION_DAYS * DAY_MS)?;
-    }
     Ok(Some(Session {
         user_id,
         token_hash: hash,
     }))
+}
+
+/// Extend the request's session when half of it has passed. Returns the
+/// `Set-Cookie` that gives the browser the new lifetime too: the cookie's
+/// `Max-Age` was set at sign-in and would otherwise run out while the
+/// session in the database still lives.
+pub fn refresh(state: &AppState, headers: &HeaderMap) -> ApiResult<Option<HeaderValue>> {
+    let Some(token) = token_of(headers) else {
+        return Ok(None);
+    };
+    let hash = token_hash(&token);
+    let conn = state.db();
+    let Some((_, expires)) = db::session_user(&conn, &hash)? else {
+        return Ok(None);
+    };
+    let now = db::now_ms();
+    if expires - now >= SESSION_DAYS * DAY_MS / 2 {
+        return Ok(None);
+    }
+    db::extend_session(&conn, &hash, now + SESSION_DAYS * DAY_MS)?;
+    Ok(Some(set_cookie(&token, state.config.secure_cookie)))
 }
 
 /// Like [`current`], but a missing session is a 401.
@@ -153,28 +179,55 @@ pub enum Bucket {
     Write,
     /// Reads.
     Read,
+    /// New accounts (each one may store a save of up to 1 MB).
+    SignUp,
 }
 
 impl Bucket {
-    /// Requests per minute and address.
-    pub const fn per_minute(self) -> u32 {
+    /// Requests per window and address.
+    pub const fn limit(self) -> u32 {
         match self {
             Bucket::Auth => 30,
             Bucket::Recover => 10,
             Bucket::Write => 120,
             Bucket::Read => 300,
+            Bucket::SignUp => 5,
+        }
+    }
+
+    /// Length of the window: a minute, an hour for new accounts.
+    pub const fn window(self) -> Duration {
+        match self {
+            Bucket::SignUp => Duration::from_secs(60 * 60),
+            _ => Duration::from_secs(60),
         }
     }
 }
 
-/// Fixed one-minute windows per address and bucket.
+/// The key an address is counted under. An IPv6 client usually holds a
+/// whole /64 (and can pick any address in it), so IPv6 counts per /64;
+/// an IPv4-mapped IPv6 address counts as the IPv4 address.
+pub fn client_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => {
+                let prefix = v6.to_bits() & (u128::MAX << 64);
+                IpAddr::V6(Ipv6Addr::from_bits(prefix))
+            }
+        },
+    }
+}
+
+/// Fixed windows per address (see [`client_key`]) and bucket.
 #[derive(Debug, Default)]
 pub struct RateLimiter {
     windows: Mutex<HashMap<(IpAddr, Bucket), (Instant, u32)>>,
 }
 
 impl RateLimiter {
-    /// Count a request; error if the address used up its minute.
+    /// Count a request; error if the address used up its window.
     pub fn check(&self, ip: IpAddr, bucket: Bucket) -> ApiResult<()> {
         let now = Instant::now();
         let mut map = self
@@ -182,14 +235,14 @@ impl RateLimiter {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if map.len() > 50_000 {
-            map.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
+            map.retain(|(_, b), (start, _)| now.duration_since(*start) < b.window());
         }
-        let entry = map.entry((ip, bucket)).or_insert((now, 0));
-        if now.duration_since(entry.0) >= Duration::from_secs(60) {
+        let entry = map.entry((client_key(ip), bucket)).or_insert((now, 0));
+        if now.duration_since(entry.0) >= bucket.window() {
             *entry = (now, 0);
         }
         entry.1 += 1;
-        if entry.1 > bucket.per_minute() {
+        if entry.1 > bucket.limit() {
             Err(ApiError::too_many())
         } else {
             Ok(())
@@ -215,7 +268,7 @@ mod tests {
     fn limiter_stops_after_the_budget() {
         let limiter = RateLimiter::default();
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        for _ in 0..Bucket::Recover.per_minute() {
+        for _ in 0..Bucket::Recover.limit() {
             assert!(limiter.check(ip, Bucket::Recover).is_ok());
         }
         assert!(limiter.check(ip, Bucket::Recover).is_err());
@@ -226,5 +279,22 @@ mod tests {
                 .check(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), Bucket::Recover)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn ipv6_counts_per_64() {
+        let limiter = RateLimiter::default();
+        let a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:ffff:1234:5678:9abc".parse().unwrap();
+        let other: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        for _ in 0..Bucket::SignUp.limit() {
+            assert!(limiter.check(a, Bucket::SignUp).is_ok());
+        }
+        // Another address in the same /64 shares the budget.
+        assert!(limiter.check(b, Bucket::SignUp).is_err());
+        assert!(limiter.check(other, Bucket::SignUp).is_ok());
+        // An IPv4-mapped address is the IPv4 address.
+        let mapped: IpAddr = "::ffff:10.0.0.7".parse().unwrap();
+        assert_eq!(client_key(mapped), IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7)));
     }
 }

@@ -11,13 +11,26 @@
 //!
 //! Deleting a user deletes everything else of that user (foreign keys
 //! with `ON DELETE CASCADE`).
+//!
+//! The schema is a list of migrations ([`MIGRATIONS`]); `PRAGMA
+//! user_version` says how many of them a file has seen. Opening applies
+//! the missing ones in one transaction. A change to the schema is a new
+//! entry at the end, never an edit of an old one.
 
 use rusqlite::{Connection, OptionalExtension, params};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SCHEMA: &str = r#"
-PRAGMA foreign_keys = ON;
+/// The database stops growing here (`PRAGMA max_page_count`): a write
+/// that needs more fails with `SQLITE_FULL`, which the API answers with
+/// 507. Some 2000 players with a full 1 MB save each; the real saves are
+/// a few kilobytes.
+pub const MAX_DB_BYTES: i64 = 2 * 1024 * 1024 * 1024;
+
+/// Migration 1: the schema of the first release. `IF NOT EXISTS`, so it
+/// also adopts a file made before migrations were counted (version 0
+/// with these tables).
+const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
     name          TEXT,
@@ -61,6 +74,13 @@ CREATE TABLE IF NOT EXISTS daily_results (
 );
 "#;
 
+/// Every migration in order; the database's `user_version` is the number
+/// applied.
+const MIGRATIONS: &[&str] = &[MIGRATION_1];
+
+/// The schema version this server writes.
+pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
+
 /// Milliseconds since the Unix epoch.
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -69,10 +89,13 @@ pub fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Open (or create) the database file and apply the schema.
+/// Open (or create) the database file and bring the schema up to date.
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
+    // With WAL, NORMAL is safe against corruption; a power cut may lose
+    // the last commits, not the file.
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "busy_timeout", 5000)?;
     init(&conn)?;
     Ok(conn)
@@ -86,7 +109,46 @@ pub fn open_in_memory() -> rusqlite::Result<Connection> {
 }
 
 fn init(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch(SCHEMA)
+    // Not inside a transaction: there the pragma does nothing.
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    set_max_bytes(conn, MAX_DB_BYTES)?;
+    migrate(conn)
+}
+
+/// Cap the size of the database (per connection, not stored in the file).
+pub fn set_max_bytes(conn: &Connection, bytes: i64) -> rusqlite::Result<()> {
+    let page: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+    let pages = (bytes / page.max(512)).max(1);
+    conn.query_row(&format!("PRAGMA max_page_count = {pages}"), [], |_| Ok(()))
+}
+
+/// The schema version of the open database.
+pub fn schema_version(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row("PRAGMA user_version", [], |r| r.get(0))
+}
+
+/// Apply the migrations the database has not seen, all in one
+/// transaction. A database from a newer server is refused, not touched.
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let version = schema_version(&tx)?;
+    if version > SCHEMA_VERSION {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISMATCH),
+            Some(format!(
+                "database schema {version} is newer than this server ({SCHEMA_VERSION})"
+            )),
+        ));
+    }
+    for (n, sql) in MIGRATIONS
+        .iter()
+        .enumerate()
+        .skip(usize::try_from(version).unwrap_or(0))
+    {
+        tx.execute_batch(sql)?;
+        tx.pragma_update(None, "user_version", n + 1)?;
+    }
+    tx.commit()
 }
 
 /// A user as the API shows it.
@@ -153,18 +215,31 @@ pub fn user_by_recovery_id(
     .optional()
 }
 
-/// Replace the recovery code of a user.
-pub fn set_recovery(
+/// The argon2 hash of the user's current recovery code.
+pub fn recovery_hash(conn: &Connection, id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT recovery_hash FROM users WHERE id = ?1",
+        params![id],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
+/// Replace the recovery code of a user, but only if it still is the one
+/// with `old_hash` (compare and swap): of two requests that redeemed the
+/// same code at once, only one gets through. Returns whether it changed.
+pub fn swap_recovery(
     conn: &Connection,
     id: &str,
+    old_hash: &str,
     recovery_id: &str,
     recovery_hash: &str,
-) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE users SET recovery_id = ?2, recovery_hash = ?3 WHERE id = ?1",
-        params![id, recovery_id, recovery_hash],
+) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "UPDATE users SET recovery_id = ?3, recovery_hash = ?4 WHERE id = ?1 AND recovery_hash = ?2",
+        params![id, old_hash, recovery_id, recovery_hash],
     )?;
-    Ok(())
+    Ok(n == 1)
 }
 
 /// Delete a user and, through the foreign keys, all of their data.
@@ -205,6 +280,73 @@ pub fn passkeys(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<String
     let mut stmt = conn.prepare("SELECT passkey FROM passkeys WHERE user_id = ?1")?;
     let rows = stmt.query_map(params![user_id], |r| r.get(0))?;
     rows.collect()
+}
+
+/// A passkey as the account sheet lists it.
+#[derive(Debug, Clone)]
+pub struct PasskeyRow {
+    /// Credential id (base64url).
+    pub cred_id: String,
+    /// The stored credential (JSON).
+    pub passkey: String,
+    /// When it was added (ms).
+    pub created_at: i64,
+    /// Last sign-in with it (ms), if any.
+    pub last_used_at: Option<i64>,
+}
+
+/// The passkeys of a user, oldest first.
+pub fn passkey_rows(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<PasskeyRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT cred_id, passkey, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at, cred_id",
+    )?;
+    let rows = stmt.query_map(params![user_id], |r| {
+        Ok(PasskeyRow {
+            cred_id: r.get(0)?,
+            passkey: r.get(1)?,
+            created_at: r.get(2)?,
+            last_used_at: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Outcome of removing a passkey.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RemovePasskey {
+    /// Gone.
+    Removed,
+    /// The user has no passkey with this id.
+    NotFound,
+    /// It is the user's last passkey; it stays.
+    Last,
+}
+
+/// Remove one of a user's passkeys, never the last one (one statement,
+/// so two removals at once cannot take both of the last two).
+pub fn remove_passkey(
+    conn: &Connection,
+    user_id: &str,
+    cred_id: &str,
+) -> rusqlite::Result<RemovePasskey> {
+    let n = conn.execute(
+        "DELETE FROM passkeys WHERE user_id = ?1 AND cred_id = ?2
+           AND (SELECT COUNT(*) FROM passkeys WHERE user_id = ?1) > 1",
+        params![user_id, cred_id],
+    )?;
+    if n > 0 {
+        return Ok(RemovePasskey::Removed);
+    }
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM passkeys WHERE user_id = ?1 AND cred_id = ?2)",
+        params![user_id, cred_id],
+        |r| r.get(0),
+    )?;
+    Ok(if exists {
+        RemovePasskey::Last
+    } else {
+        RemovePasskey::NotFound
+    })
 }
 
 /// Write back a passkey after a login (counter, backup state).
@@ -272,6 +414,19 @@ pub fn delete_session(conn: &Connection, token_hash: &str) -> rusqlite::Result<(
         params![token_hash],
     )?;
     Ok(())
+}
+
+/// End every session of a user except the one with `keep` (all of them
+/// with `None`). Returns how many ended.
+pub fn delete_other_sessions(
+    conn: &Connection,
+    user_id: &str,
+    keep: Option<&str>,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM sessions WHERE user_id = ?1 AND token_hash IS NOT ?2",
+        params![user_id, keep],
+    )
 }
 
 /// Drop expired sessions.
@@ -448,4 +603,222 @@ pub fn daily_count(conn: &Connection, day: &str) -> rusqlite::Result<i64> {
         params![day],
         |r| r.get(0),
     )
+}
+
+/// Name of the backup file of a day (`JJJJMMTT`).
+fn backup_name(day: &str) -> String {
+    format!("stammtisch-{day}.db")
+}
+
+/// Whether a file name is one of our daily backups; returns its day.
+fn backup_day(name: &str) -> Option<&str> {
+    let day = name.strip_prefix("stammtisch-")?.strip_suffix(".db")?;
+    (day.len() == 8 && day.bytes().all(|b| b.is_ascii_digit())).then_some(day)
+}
+
+/// Write a consistent copy of the database at `db` to
+/// `dir/stammtisch-<day>.db` with `VACUUM INTO` (on its own connection, so
+/// the server keeps answering; WAL lets it read meanwhile), unless that
+/// day has one already. Then keep only the newest `keep` backups. Returns
+/// the path of a backup written now.
+pub fn backup(db: &Path, dir: &Path, day: &str, keep: usize) -> rusqlite::Result<Option<PathBuf>> {
+    let io = |e: std::io::Error| {
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+            Some(format!("backup dir {}: {e}", dir.display())),
+        )
+    };
+    std::fs::create_dir_all(dir).map_err(io)?;
+    let target = dir.join(backup_name(day));
+    let mut written = None;
+    if !target.exists() {
+        // VACUUM INTO refuses an existing file; a half-written one from a
+        // crash is removed first, and the rename makes the copy appear whole.
+        let tmp = dir.join(format!("{}.tmp", backup_name(day)));
+        let _ = std::fs::remove_file(&tmp);
+        let conn = Connection::open(db)?;
+        conn.pragma_update(None, "busy_timeout", 5000)?;
+        let tmp_text = tmp
+            .to_str()
+            .ok_or_else(|| io(std::io::Error::other("path is not UTF-8")))?;
+        conn.execute("VACUUM INTO ?1", params![tmp_text])?;
+        drop(conn);
+        std::fs::rename(&tmp, &target).map_err(io)?;
+        written = Some(target);
+    }
+    let mut days: Vec<String> = std::fs::read_dir(dir)
+        .map_err(io)?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(backup_day)
+                .map(str::to_owned)
+        })
+        .collect();
+    days.sort_unstable();
+    let old = days.len().saturating_sub(keep);
+    for day in &days[..old] {
+        let _ = std::fs::remove_file(dir.join(backup_name(day)));
+    }
+    Ok(written)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// A fresh path under the system temp dir (no extra crate for this).
+    fn temp_path(name: &str) -> PathBuf {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "stammtisch-test-{}-{}-{n}-{name}",
+            std::process::id(),
+            now_ms()
+        ))
+    }
+
+    /// The tables as the first release created them, before migrations
+    /// were counted (`user_version` 0).
+    const UNVERSIONED: &str = "
+        CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT, created_at INTEGER NOT NULL,
+            recovery_id TEXT NOT NULL UNIQUE, recovery_hash TEXT NOT NULL);
+        CREATE TABLE passkeys (cred_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            passkey TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER);
+        CREATE INDEX passkeys_user ON passkeys(user_id);
+        CREATE TABLE sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+        CREATE INDEX sessions_user ON sessions(user_id);
+        CREATE TABLE saves (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, version INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL, stored_at INTEGER NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE daily_results (day TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            character TEXT NOT NULL, won INTEGER NOT NULL, section INTEGER NOT NULL, series INTEGER NOT NULL,
+            stake INTEGER NOT NULL, best_game INTEGER NOT NULL, submitted_at INTEGER NOT NULL, PRIMARY KEY (day, user_id));
+        INSERT INTO users (id, name, created_at, recovery_id, recovery_hash) VALUES ('u1', 'Jan', 1, 'ABCDEFGH', 'h');
+    ";
+
+    #[test]
+    fn fresh_database_is_at_the_latest_version() {
+        let conn = open_in_memory().expect("db");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+        // Applying again changes nothing.
+        migrate(&conn).expect("again");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn unversioned_database_is_adopted_with_its_data() {
+        let path = temp_path("old.db");
+        {
+            let conn = Connection::open(&path).expect("create");
+            conn.execute_batch(UNVERSIONED).expect("old schema");
+            assert_eq!(schema_version(&conn).expect("version"), 0);
+        }
+        let conn = open(&path).expect("open");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+        let user = user(&conn, "u1").expect("query").expect("kept");
+        assert_eq!(user.name.as_deref(), Some("Jan"));
+        drop(conn);
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        }
+    }
+
+    #[test]
+    fn newer_database_is_refused() {
+        let conn = Connection::open_in_memory().expect("db");
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+            .expect("set");
+        assert!(init(&conn).is_err());
+    }
+
+    #[test]
+    fn file_database_settings_and_backups() {
+        let path = temp_path("live.db");
+        let conn = open(&path).expect("open");
+        let mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .expect("mode");
+        assert_eq!(mode, "wal");
+        let sync: i64 = conn
+            .query_row("PRAGMA synchronous", [], |r| r.get(0))
+            .expect("sync");
+        assert_eq!(sync, 1, "NORMAL");
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .expect("fk");
+        assert_eq!(fk, 1);
+        let pages: i64 = conn
+            .query_row("PRAGMA max_page_count", [], |r| r.get(0))
+            .expect("pages");
+        let page: i64 = conn
+            .query_row("PRAGMA page_size", [], |r| r.get(0))
+            .expect("page");
+        assert_eq!(pages * page, MAX_DB_BYTES);
+        insert_user(&conn, "u1", Some("Jan"), "ABCDEFGH", "h").expect("user");
+
+        let dir = temp_path("backup");
+        for day in ["20261101", "20261102", "20261103"] {
+            assert!(backup(&path, &dir, day, 2).expect("backup").is_some());
+        }
+        // A second run on the same day writes nothing.
+        assert!(backup(&path, &dir, "20261103", 2).expect("again").is_none());
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .expect("dir")
+            .map(|e| e.expect("entry").file_name().into_string().expect("utf8"))
+            .collect();
+        names.sort();
+        assert_eq!(names, ["stammtisch-20261102.db", "stammtisch-20261103.db"]);
+        let copy = Connection::open(dir.join("stammtisch-20261103.db")).expect("copy");
+        assert!(user(&copy, "u1").expect("query").is_some());
+        drop((conn, copy));
+        let _ = std::fs::remove_dir_all(&dir);
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        }
+    }
+
+    #[test]
+    fn full_database_fails_with_disk_full() {
+        let conn = open_in_memory().expect("db");
+        insert_user(&conn, "u1", None, "ABCDEFGH", "h").expect("user");
+        set_max_bytes(&conn, 64 * 1024).expect("cap");
+        let mut conn = conn;
+        let err = put_save(&mut conn, "u1", None, 1, &"x".repeat(200_000)).expect_err("full");
+        assert!(
+            matches!(&err, rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::DiskFull),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn recovery_swap_and_passkey_removal() {
+        let conn = open_in_memory().expect("db");
+        insert_user(&conn, "u1", None, "ABCDEFGH", "old").expect("user");
+        assert!(swap_recovery(&conn, "u1", "old", "BBBBBBBB", "new").expect("swap"));
+        // The second redemption of the same code finds it changed.
+        assert!(!swap_recovery(&conn, "u1", "old", "CCCCCCCC", "other").expect("swap"));
+        assert_eq!(
+            recovery_hash(&conn, "u1").expect("q").as_deref(),
+            Some("new")
+        );
+
+        insert_passkey(&conn, "a", "u1", "{}").expect("a");
+        insert_passkey(&conn, "b", "u1", "{}").expect("b");
+        assert_eq!(
+            remove_passkey(&conn, "u1", "x").expect("x"),
+            RemovePasskey::NotFound
+        );
+        assert_eq!(
+            remove_passkey(&conn, "u1", "a").expect("a"),
+            RemovePasskey::Removed
+        );
+        assert_eq!(
+            remove_passkey(&conn, "u1", "b").expect("b"),
+            RemovePasskey::Last
+        );
+        assert_eq!(passkey_count(&conn, "u1").expect("n"), 1);
+    }
 }
