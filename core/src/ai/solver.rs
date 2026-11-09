@@ -10,7 +10,8 @@
 //! - a transposition table probed at every node (the value of the rest
 //!   depends only on who holds what, who led and the cards on the table;
 //!   within one search the cards still held say who holds what),
-//! - a cache of the static estimates at the depth or node limit,
+//! - the static estimates at the depth or node limit stored in the
+//!   transposition table like searched values, and in a cache of their own,
 //! - equivalent cards searched once (two cards of one hand of the same
 //!   kind and Augen with no live card of another seat between them),
 //! - move ordering (sure winners and cheap ducks first, the stored best
@@ -65,9 +66,9 @@ pub struct Layout<C> {
     pub trick_lead: Seat,
     /// Cards of the current trick in play order (0 to 2).
     pub trick: Vec<C>,
-    /// Augen in the skat; in a Ramsch they go to the winner of the last
-    /// trick.
-    pub skat_points: u32,
+    /// Augen in the skat with their sign ([`PlayingCard::signed_points`]);
+    /// in a Ramsch they go to the winner of the last trick.
+    pub skat_points: i32,
 }
 
 /// Search limits.
@@ -76,9 +77,12 @@ pub struct Limits {
     /// Tricks searched exactly, the current one included; behind them a
     /// static estimate. `0` searches to the end.
     pub depth: u32,
-    /// Nodes after which every further trick boundary is estimated
-    /// instead of searched, as if the depth were used up. `0` = no limit.
-    /// Keeps the worst case of a search bounded, deterministically.
+    /// Nodes per move of the seat to play after which every further trick
+    /// boundary of that move's search is estimated instead of searched, as
+    /// if the depth were used up. `0` = no limit. Keeps the worst case of a
+    /// search bounded, deterministically. Every move gets the whole limit:
+    /// a limit shared by all moves left the moves late in the legal order
+    /// with one trick and the estimate once the early ones had used it up.
     pub nodes: u64,
 }
 
@@ -203,6 +207,13 @@ struct Search<'t> {
     tie_hi: [u8; MAX_CARDS],
     kind_mask: [u32; 6],
     can_win: u32,
+    /// Sort keys of [`Search::greedy_card`], one integer per card ordered
+    /// like the tuple it replaces: `(trump, points, strength)` to cash or
+    /// throw, `(not trump, points)` to smear, `(trump, strength, -points)`
+    /// to win cheaply.
+    cash_key: [u64; MAX_CARDS],
+    smear_key: [u64; MAX_CARDS],
+    win_key: [u64; MAX_CARDS],
     /// Seats whose tricks count for the value.
     gain: u8,
     /// Seats that maximize.
@@ -218,14 +229,21 @@ struct Search<'t> {
     trick: [u8; 3],
     trick_len: usize,
     leader: usize,
-    /// Augen still in the hands and on the table.
-    live_points: i32,
+    /// Augen still in the hands and on the table, the positive ones
+    /// (`live_gain`, at least 0) and the ones below zero (`live_loss`, at
+    /// most 0) apart: what the rest of the search can add lies between
+    /// their sums.
+    live_gain: i32,
+    live_loss: i32,
     /// Tricks left to search exactly (`u32::MAX` = no limit).
     depth_left: u32,
     table: &'t mut Table,
     nodes: u64,
     /// See [`Limits::nodes`].
     node_limit: u64,
+    /// Nodes when the search of the current root move began: the node
+    /// limit counts from there.
+    move_start: u64,
     /// Cutoffs per seat and card (history heuristic for move ordering).
     history: [[u32; MAX_CARDS]; 3],
 }
@@ -255,29 +273,22 @@ pub fn solve_with<C: PlayingCard>(
     let seat = search.to_play();
     let lead = rules::effective_lead(&layout.trick);
     let legal = rules::legal_moves(game, &layout.hands[seat], lead);
-    let index_of = |card: C| cards.iter().position(|&c| c == card);
-    // Equivalent moves share one search.
-    let mut reps: Vec<(u8, i32)> = Vec::new();
-    let mut out = Vec::with_capacity(legal.len());
-    for card in legal {
-        let Some(i) = index_of(card) else {
-            return (Vec::new(), search.nodes);
-        };
-        let i = u8::try_from(i).unwrap_or(0);
-        let known = reps
-            .iter()
-            .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
-            .map(|&(_, v)| v);
-        let value = match known {
-            Some(v) => v,
-            None => {
-                let v = search.play(seat, i, -INF, INF);
-                reps.push((i, v));
-                v
-            }
-        };
-        out.push((card, value));
-    }
+    let Some(roots) = RootMoves::new(&search, &cards, &legal) else {
+        return (Vec::new(), 0);
+    };
+    let values: Vec<i32> = roots
+        .distinct
+        .iter()
+        .map(|&m| {
+            search.begin_root_move();
+            search.play(seat, m, -INF, INF)
+        })
+        .collect();
+    let out = legal
+        .into_iter()
+        .zip(&roots.slot)
+        .map(|(card, &k)| (card, values[k]))
+        .collect();
     (out, search.nodes)
 }
 
@@ -305,10 +316,40 @@ pub fn probe_with<C: PlayingCard>(
 /// so the results equal separate calls of [`probe_with`].
 pub struct Probes<'t, C> {
     search: Search<'t>,
-    cards: Vec<C>,
     legal: Vec<C>,
+    /// `None` if a legal card is not among the cards of the layout.
+    roots: Option<RootMoves>,
     limits: Limits,
     fresh: bool,
+}
+
+/// The legal moves of the seat to play at the root of a search, equivalent
+/// moves merged: they share one search.
+struct RootMoves {
+    /// Card indices of the moves searched, in the order of the legal moves.
+    distinct: Vec<u8>,
+    /// Per legal move the position of its search in `distinct`.
+    slot: Vec<usize>,
+}
+
+impl RootMoves {
+    /// `None` if a legal card is not among `cards`.
+    fn new<C: PlayingCard>(search: &Search<'_>, cards: &[C], legal: &[C]) -> Option<RootMoves> {
+        let others = search.separators(search.to_play());
+        let mut distinct: Vec<u8> = Vec::new();
+        let mut slot = Vec::with_capacity(legal.len());
+        for &card in legal {
+            let i = u8::try_from(cards.iter().position(|&c| c == card)?).ok()?;
+            let known = distinct
+                .iter()
+                .position(|&r| search.equivalent(others, r.min(i), r.max(i)));
+            slot.push(known.unwrap_or_else(|| {
+                distinct.push(i);
+                distinct.len() - 1
+            }));
+        }
+        Some(RootMoves { distinct, slot })
+    }
 }
 
 impl<'t, C: PlayingCard> Probes<'t, C> {
@@ -326,10 +367,11 @@ impl<'t, C: PlayingCard> Probes<'t, C> {
         let seat = search.to_play();
         let lead = rules::effective_lead(&layout.trick);
         let legal = rules::legal_moves(game, &layout.hands[seat], lead);
+        let roots = RootMoves::new(&search, &cards, &legal);
         Some(Probes {
             search,
-            cards,
             legal,
+            roots,
             limits,
             fresh: true,
         })
@@ -341,29 +383,25 @@ impl<'t, C: PlayingCard> Probes<'t, C> {
             self.search.restart(self.limits);
         }
         self.fresh = false;
+        let Some(roots) = &self.roots else {
+            return (Vec::new(), 0);
+        };
         let search = &mut self.search;
         let seat = search.to_play();
-        let mut reps: Vec<(u8, bool)> = Vec::new();
-        let mut out = Vec::with_capacity(self.legal.len());
-        for &card in &self.legal {
-            let Some(i) = self.cards.iter().position(|&c| c == card) else {
-                return (Vec::new(), search.nodes);
-            };
-            let i = u8::try_from(i).unwrap_or(0);
-            let known = reps
-                .iter()
-                .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
-                .map(|&(_, v)| v);
-            let reached = match known {
-                Some(v) => v,
-                None => {
-                    let v = search.play(seat, i, threshold - 1, threshold) >= threshold;
-                    reps.push((i, v));
-                    v
-                }
-            };
-            out.push((card, reached));
-        }
+        let reached: Vec<bool> = roots
+            .distinct
+            .iter()
+            .map(|&m| {
+                search.begin_root_move();
+                search.play(seat, m, threshold - 1, threshold) >= threshold
+            })
+            .collect();
+        let out = self
+            .legal
+            .iter()
+            .zip(&roots.slot)
+            .map(|(&card, &k)| (card, reached[k]))
+            .collect();
         (out, search.nodes)
     }
 }
@@ -417,17 +455,21 @@ impl<'t> Search<'t> {
             tie_hi: [0; MAX_CARDS],
             kind_mask: [0; 6],
             can_win: 0,
+            cash_key: [0; MAX_CARDS],
+            smear_key: [0; MAX_CARDS],
+            win_key: [0; MAX_CARDS],
             gain: 0,
             maxi: 0,
             null: false,
             catch: 0,
             ramsch: false,
-            skat_points: i32::try_from(layout.skat_points).unwrap_or(0),
+            skat_points: layout.skat_points,
             hands: [0; 3],
             trick: [0; 3],
             trick_len: layout.trick.len(),
             leader: layout.trick_lead.index(),
-            live_points: 0,
+            live_gain: 0,
+            live_loss: 0,
             depth_left: if limits.depth == 0 {
                 u32::MAX
             } else {
@@ -436,17 +478,28 @@ impl<'t> Search<'t> {
             table,
             nodes: 0,
             node_limit: limits.nodes,
+            move_start: 0,
             history: [[0; MAX_CARDS]; 3],
         };
         for (i, &c) in cards.iter().enumerate() {
             s.kind[i] = card_kind(game, c);
             s.strength[i] = card_strength(game, c);
-            s.points[i] = i32::try_from(c.card_points()).unwrap_or(0);
+            s.points[i] = i32::try_from(c.signed_points()).unwrap_or(0);
             s.kind_mask[usize::from(s.kind[i])] |= 1 << i;
             if !c.is_blank() && !c.never_wins() {
                 s.can_win |= 1 << i;
             }
-            s.live_points += s.points[i];
+            s.live_gain += s.points[i].max(0);
+            s.live_loss += s.points[i].min(0);
+            // Points shifted into 0..2^32, order kept.
+            let p = i64::from(s.points[i]);
+            let up = u64::try_from(p - i64::from(i32::MIN)).unwrap_or(0);
+            let down = u64::try_from(i64::from(i32::MAX) - p).unwrap_or(0);
+            let trump = u64::from(s.kind[i] == TRUMP);
+            let strength = u64::from(s.strength[i]);
+            s.cash_key[i] = trump << 40 | up << 8 | strength;
+            s.smear_key[i] = (1 - trump) << 32 | up;
+            s.win_key[i] = trump << 40 | strength << 32 | down;
         }
         for i in 0..n {
             let same = |j: usize| s.kind[j] == s.kind[i] && s.strength[j] == s.strength[i];
@@ -508,6 +561,7 @@ impl<'t> Search<'t> {
         self.table.next_generation();
         self.nodes = 0;
         self.node_limit = limits.nodes;
+        self.move_start = 0;
         self.depth_left = if limits.depth == 0 {
             u32::MAX
         } else {
@@ -516,9 +570,16 @@ impl<'t> Search<'t> {
         self.history = [[0; MAX_CARDS]; 3];
     }
 
+    /// Start the search of a root move: it gets the whole node limit
+    /// ([`Limits::nodes`]) of its own, whatever the moves before it used.
+    fn begin_root_move(&mut self) {
+        self.move_start = self.nodes;
+    }
+
     /// Whether the search must estimate at the next trick boundary.
     fn out_of_budget(&self) -> bool {
-        self.depth_left == 0 || (self.node_limit > 0 && self.nodes > self.node_limit)
+        self.depth_left == 0
+            || (self.node_limit > 0 && self.nodes - self.move_start > self.node_limit)
     }
 
     /// Seat to play.
@@ -594,8 +655,15 @@ impl<'t> Search<'t> {
         self.legal_of(self.hands[seat], &self.trick[..self.trick_len])
     }
 
-    /// Whether cards `a < b` of `seat` are interchangeable.
-    fn equivalent(&self, seat: usize, a: u8, b: u8) -> bool {
+    /// The live cards of the other seats that can win a trick: what
+    /// separates two cards of `seat` ([`Search::equivalent`]).
+    fn separators(&self, seat: usize) -> u32 {
+        self.live() & !self.hands[seat] & self.can_win
+    }
+
+    /// Whether cards `a < b` of one seat are interchangeable, given the
+    /// [`Search::separators`] of that seat.
+    fn equivalent(&self, separators: u32, a: u8, b: u8) -> bool {
         if a == b {
             return true;
         }
@@ -617,7 +685,6 @@ impl<'t> Search<'t> {
         let lo = u32::from(self.tie_lo[ia]);
         let hi = u32::from(self.tie_hi[ib]);
         let range = range_mask(lo, hi);
-        let separators = self.live() & !self.hands[seat] & self.can_win;
         range & separators & self.kind_mask[usize::from(self.kind[ia])] == 0
     }
 
@@ -638,7 +705,7 @@ impl<'t> Search<'t> {
         let mut scores = [0i32; 10];
         let mut n = 0;
         let mut legal = self.legal(seat);
-        let mut last_kept: Option<u8> = None;
+        let separators = self.separators(seat);
         let maximize = self.maxi & (1 << seat) != 0;
         let (holder, lead_kind, partner_wins) = if self.trick_len > 0 {
             let off = self.winning_offset();
@@ -652,12 +719,14 @@ impl<'t> Search<'t> {
         while legal != 0 && n < 10 {
             let c = u8::try_from(legal.trailing_zeros()).unwrap_or(0);
             legal &= legal - 1;
-            if let Some(prev) = last_kept {
-                if self.equivalent(seat, prev, c) {
-                    continue;
-                }
+            // Kept moves have lower indices; compare with every one, an
+            // equivalent card need not be the neighbour.
+            if moves[..n]
+                .iter()
+                .any(|&kept| self.equivalent(separators, kept, c))
+            {
+                continue;
             }
-            last_kept = Some(c);
             let i = usize::from(c);
             let pts = self.points[i];
             let strength = i32::from(self.strength[i]);
@@ -898,7 +967,12 @@ impl<'t> Search<'t> {
 
     /// Legal cards of `hand` after `trick`.
     fn legal_of(&self, hand: u32, trick: &[u8]) -> u32 {
-        let lead_kind = self.lead_kind_of(trick);
+        self.legal_under(hand, self.lead_kind_of(trick))
+    }
+
+    /// Legal cards of `hand` in a trick whose effective lead is of
+    /// `lead_kind` (`BLANK`: none yet).
+    fn legal_under(&self, hand: u32, lead_kind: u8) -> u32 {
         if lead_kind == BLANK {
             return hand;
         }
@@ -910,29 +984,46 @@ impl<'t> Search<'t> {
         }
     }
 
-    /// Whether a seat of the other side still to play after `trick` (with
-    /// `card` added) can take the trick away from the current winner.
+    /// Whether a seat of the other side still to play after `card`, played
+    /// at `offset` of the trick, can take the trick away from the winner.
+    /// `before` is the card winning the trick so far and the kind of its
+    /// effective lead (`BLANK` if only blanks were played), `None` for a
+    /// lead.
     fn overtaken(
         &self,
         hands: &[u32; 3],
         seat: usize,
-        trick: &[u8],
+        offset: usize,
+        before: Option<(u8, u8)>,
         card: u8,
         leader: usize,
     ) -> bool {
-        let mut next = [0u8; 3];
-        next[..trick.len()].copy_from_slice(trick);
-        next[trick.len()] = card;
-        let next = &next[..=trick.len()];
-        let holder = next[self.winner_of(next)];
-        let lead_kind = self.lead_kind_of(next);
+        // The trick with `card` added, as `winner_of` and `lead_kind_of`
+        // would see it: the first card that is no blank sets the lead.
+        let (holder, lead_kind) = match before {
+            None => (card, self.kind[usize::from(card)]),
+            Some((holder, lead_kind)) => {
+                let lead_kind = if lead_kind == BLANK {
+                    self.kind[usize::from(card)]
+                } else {
+                    lead_kind
+                };
+                let holder = if self.beats(lead_kind, holder, card) {
+                    card
+                } else {
+                    holder
+                };
+                (holder, lead_kind)
+            }
+        };
+        let beaters = self.beaters(lead_kind, holder);
         let side = self.maxi & (1 << seat) != 0;
-        (next.len()..3).any(|k| {
+        (offset + 1..3).any(|k| {
             let other = (leader + k) % 3;
             if (self.maxi & (1 << other) != 0) == side {
                 return false;
             }
-            self.legal_of(hands[other], next) & self.beaters(lead_kind, holder) != 0
+            self.legal_under(hands[other], lead_kind) & beaters != 0
         })
     }
 
@@ -961,20 +1052,12 @@ impl<'t> Search<'t> {
                 Some(c)
             })
         };
-        let cheapest = || {
-            cards().min_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] == TRUMP, self.points[i], self.strength[i])
-            })
-        };
+        let cheapest = || cards().min_by_key(|&c| self.cash_key[usize::from(c)]);
         if trick.is_empty() {
             // Highest-scoring card nobody can take away, else the cheapest.
             let sure = cards()
-                .filter(|&c| !self.overtaken(hands, seat, &[], c, leader))
-                .max_by_key(|&c| {
-                    let i = usize::from(c);
-                    (self.kind[i] == TRUMP, self.points[i], self.strength[i])
-                });
+                .filter(|&c| !self.overtaken(hands, seat, 0, None, c, leader))
+                .max_by_key(|&c| self.cash_key[usize::from(c)]);
             return sure.or_else(cheapest);
         }
         let holder_offset = self.winner_of(trick);
@@ -984,25 +1067,21 @@ impl<'t> Search<'t> {
         let side = self.maxi & (1 << seat) != 0;
         let partner_wins = (self.maxi & (1 << winner) != 0) == side;
         let beating = legal & self.beaters(lead_kind, holder);
+        let before = Some((holder, lead_kind));
+        let offset = trick.len();
         if partner_wins {
             let losing = cards().filter(|&c| beating & (1 << c) == 0);
-            let smear = losing.max_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] != TRUMP, self.points[i])
-            });
+            let smear = losing.max_by_key(|&c| self.smear_key[usize::from(c)]);
             if let Some(c) = smear {
-                if !self.overtaken(hands, seat, trick, c, leader) {
+                if !self.overtaken(hands, seat, offset, before, c, leader) {
                     return Some(c);
                 }
             }
         }
         let safe_win = cards()
             .filter(|&c| beating & (1 << c) != 0)
-            .filter(|&c| !self.overtaken(hands, seat, trick, c, leader))
-            .min_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] == TRUMP, self.strength[i], -self.points[i])
-            });
+            .filter(|&c| !self.overtaken(hands, seat, offset, before, c, leader))
+            .min_by_key(|&c| self.win_key[usize::from(c)]);
         safe_win.or_else(cheapest)
     }
 
@@ -1020,25 +1099,19 @@ impl<'t> Search<'t> {
             if beta <= 0 {
                 return 0;
             }
-            if boundary && self.out_of_budget() {
-                return self.cached_estimate(|s| {
-                    if s.null {
-                        s.null_estimate()
-                    } else {
-                        s.trick_estimate()
-                    }
-                });
-            }
         } else {
-            let max = self.live_points + if self.ramsch { self.skat_points } else { 0 };
-            if beta <= 0 {
-                return 0;
+            // The rest adds at least every Augen below zero and at most
+            // every positive one (a Ramsch: the skat too).
+            let (mut min, mut max) = (self.live_loss, self.live_gain);
+            if self.ramsch {
+                min += self.skat_points.min(0);
+                max += self.skat_points.max(0);
+            }
+            if beta <= min {
+                return min;
             }
             if alpha >= max {
                 return max;
-            }
-            if boundary && self.out_of_budget() {
-                return self.cached_estimate(Search::estimate);
             }
         }
         let tag = self.tag();
@@ -1046,7 +1119,8 @@ impl<'t> Search<'t> {
         let mut tt_move = NO_MOVE;
         let key = position_key(self.hands, tag);
         let e = self.table.entries[slot];
-        if e.generation == self.table.generation && e.key == key {
+        let hit = e.generation == self.table.generation && e.key == key;
+        if hit {
             match e.flag {
                 EXACT => return e.value,
                 LOWER => alpha = alpha.max(e.value),
@@ -1056,6 +1130,33 @@ impl<'t> Search<'t> {
                 return e.value;
             }
             tt_move = e.best;
+        }
+        // Behind the depth or node limit: the estimate, stored like a
+        // searched value (equal hands at a trick boundary have equal depth
+        // left within one search), within a bound a search already proved.
+        if boundary && self.out_of_budget() {
+            let mut value = if self.catch == 0 {
+                self.cached_estimate(Search::estimate)
+            } else if self.null {
+                self.cached_estimate(Search::null_estimate)
+            } else {
+                self.cached_estimate(Search::trick_estimate)
+            };
+            if hit {
+                value = if e.flag == LOWER {
+                    value.max(e.value)
+                } else {
+                    value.min(e.value)
+                };
+            }
+            self.table.entries[slot] = Entry {
+                key,
+                flag: EXACT,
+                best: NO_MOVE,
+                generation: self.table.generation,
+                value,
+            };
+            return value;
         }
         let seat = self.to_play();
         let maximize = self.maxi & (1 << seat) != 0;
@@ -1120,11 +1221,13 @@ impl<'t> Search<'t> {
         self.trick_len += 1;
         let value = if self.trick_len == 3 {
             let winner = (self.leader + self.winning_offset()) % 3;
-            let points: i32 = self
-                .trick
-                .iter()
-                .map(|&c| self.points[usize::from(c)])
-                .sum();
+            let (mut gain, mut loss) = (0, 0);
+            for &c in &self.trick {
+                let p = self.points[usize::from(c)];
+                gain += p.max(0);
+                loss += p.min(0);
+            }
+            let points = gain + loss;
             let saved_leader = self.leader;
             let saved_trick = self.trick;
             if self.catch & (1 << winner) != 0 {
@@ -1141,12 +1244,14 @@ impl<'t> Search<'t> {
                 }
                 self.trick_len = 0;
                 self.leader = winner;
-                self.live_points -= points;
+                self.live_gain -= gain;
+                self.live_loss -= loss;
                 let depth = self.depth_left;
                 self.depth_left = depth.saturating_sub(1);
                 let v = gained + self.search(alpha - gained, beta - gained);
                 self.depth_left = depth;
-                self.live_points += points;
+                self.live_gain += gain;
+                self.live_loss += loss;
                 self.leader = saved_leader;
                 self.trick = saved_trick;
                 self.trick_len = 3;
@@ -1215,6 +1320,11 @@ mod tests {
         cards
     }
 
+    /// The Augen of `cards` with their sign.
+    fn signed_sum<C: PlayingCard>(cards: &[C]) -> i32 {
+        i32::try_from(cards.iter().map(|c| c.signed_points()).sum::<i64>()).expect("small")
+    }
+
     /// Plain minimax over the rules of [`crate::rules`], no pruning.
     fn reference<C: PlayingCard>(
         game: GameType,
@@ -1222,7 +1332,7 @@ mod tests {
         hands: &mut [Vec<C>; 3],
         lead: Seat,
         trick: &mut Vec<C>,
-        skat_points: u32,
+        skat_points: i32,
     ) -> i32 {
         let seat = seat_at(lead, trick.len());
         let legal = rules::legal_moves(game, &hands[seat.index()], rules::effective_lead(trick));
@@ -1242,7 +1352,7 @@ mod tests {
                 let cards = [trick[0], trick[1], trick[2]];
                 let winner = Seat::from_index(rules::trick_winner(game, lead.index(), cards))
                     .unwrap_or(lead);
-                let points: u32 = cards.iter().map(|c| c.card_points()).sum();
+                let points = signed_sum(&cards);
                 let saved = std::mem::take(trick);
                 let last = hands[winner.index()].is_empty();
                 let v = match goal {
@@ -1254,16 +1364,14 @@ mod tests {
                     Goal::DefenderTrick => reference(game, goal, hands, winner, trick, skat_points),
                     Goal::DeclarerPoints => {
                         let gained = if winner.is_declarer() { points } else { 0 };
-                        i32::try_from(gained).unwrap_or(0)
-                            + reference(game, goal, hands, winner, trick, skat_points)
+                        gained + reference(game, goal, hands, winner, trick, skat_points)
                     }
                     Goal::RamschAvoid(me) => {
                         let mut gained = 0;
                         if winner != me {
                             gained = points + if last { skat_points } else { 0 };
                         }
-                        i32::try_from(gained).unwrap_or(0)
-                            + reference(game, goal, hands, winner, trick, skat_points)
+                        gained + reference(game, goal, hands, winner, trick, skat_points)
                     }
                 };
                 *trick = saved;
@@ -1324,7 +1432,7 @@ mod tests {
         let cards = [trick[0], trick[1], trick[2]];
         let winner =
             Seat::from_index(rules::trick_winner(game, lead.index(), cards)).unwrap_or(lead);
-        let points: u32 = cards.iter().map(|c| c.card_points()).sum();
+        let points = signed_sum(&cards);
         let last = hands[winner.index()].is_empty();
         let mut empty = Vec::new();
         let rest = |hands: &mut [Vec<C>; 3], empty: &mut Vec<C>| {
@@ -1337,7 +1445,7 @@ mod tests {
             Goal::DefenderTrick => rest(hands, &mut empty),
             Goal::DeclarerPoints => {
                 let gained = if winner.is_declarer() { points } else { 0 };
-                i32::try_from(gained).unwrap_or(0) + rest(hands, &mut empty)
+                gained + rest(hands, &mut empty)
             }
             Goal::RamschAvoid(me) => {
                 let gained = if winner == me {
@@ -1345,7 +1453,7 @@ mod tests {
                 } else {
                     points + if last { layout.skat_points } else { 0 }
                 };
-                i32::try_from(gained).unwrap_or(0) + rest(hands, &mut empty)
+                gained + rest(hands, &mut empty)
             }
         }
     }
@@ -1372,7 +1480,8 @@ mod tests {
             hands[seat.index()].sort();
         }
         let trick: Vec<C> = it.by_ref().take(on_table).collect();
-        let skat_points = it.take(2).map(|c| c.card_points()).sum();
+        let skat: Vec<C> = it.take(2).collect();
+        let skat_points = signed_sum(&skat);
         Layout {
             hands,
             trick_lead: lead,
@@ -1413,8 +1522,8 @@ mod tests {
         }
     }
 
-    /// A roguelike deck: blanks, a rank bonus, a card that never wins and
-    /// one with extra Augen.
+    /// A roguelike deck: blanks, a rank bonus, a card that never wins, one
+    /// with extra Augen and some below zero ("Ramponiert").
     fn odd_deck() -> Vec<DealtCard> {
         standard_deck()
             .into_iter()
@@ -1436,6 +1545,15 @@ mod tests {
                 if card == c("HQ") {
                     dealt.card_points = 9;
                 }
+                // Below zero (a Seven, an Eight, a Unter), a Zehn with
+                // fewer Augen.
+                if card == c("C7") || card == c("D8") || card == c("SJ") {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 5;
+                }
+                if card == c("HT") {
+                    dealt.card_points = 5;
+                }
                 if card == c("SQ") || card == c("DA") || card == c("C9") {
                     dealt.honorary_jack = true;
                 }
@@ -1453,13 +1571,239 @@ mod tests {
             let goals = if game == GameType::Null {
                 vec![Goal::NullDeclarerTrick]
             } else {
-                vec![Goal::DeclarerPoints, Goal::DefenderTrick]
+                vec![
+                    Goal::DeclarerPoints,
+                    Goal::RamschAvoid(Seat::ALL[round % 3]),
+                    Goal::DefenderTrick,
+                ]
             };
             for goal in goals {
                 let fast = solve(game, goal, &layout);
                 let slow = reference_moves(game, goal, &layout);
                 assert_eq!(fast, slow, "round {round} {game} {goal:?} {layout:?}");
             }
+        }
+    }
+
+    /// Many cards below zero ("Ramponiert" with 1 to 9 Augen of debt on
+    /// every Seven, Eight, Nine and Dame, the Unter partly): the bounds of
+    /// the search are no longer 0 and the Augen left.
+    fn battered_deck() -> Vec<DealtCard> {
+        standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let mut dealt = DealtCard::plain(id, CardKind::Normal(card));
+                let low = matches!(
+                    card.rank,
+                    crate::cards::Rank::Seven
+                        | crate::cards::Rank::Eight
+                        | crate::cards::Rank::Nine
+                        | crate::cards::Rank::Queen
+                ) || (card.rank == crate::cards::Rank::Jack && id % 2 == 0);
+                if low {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 1 + id % 9;
+                }
+                dealt
+            })
+            .collect()
+    }
+
+    #[test]
+    fn matches_plain_minimax_with_augen_below_zero() {
+        let mut rng = Rng::from_seed(14);
+        for round in 0..240 {
+            let game = games()[round % 2];
+            let layout = random_layout(&mut rng, battered_deck(), 2 + round % 3, (round / 2) % 3);
+            for goal in [
+                Goal::DeclarerPoints,
+                Goal::RamschAvoid(Seat::ALL[round % 3]),
+            ] {
+                let fast = solve(game, goal, &layout);
+                let slow = reference_moves(game, goal, &layout);
+                assert_eq!(fast, slow, "round {round} {game} {goal:?} {layout:?}");
+                // The null window gives the same answer as the exact value
+                // for thresholds around and below zero.
+                for threshold in [-20, -7, -1, 0, 1, 5, 12, 30] {
+                    let mut table = Table::new(10);
+                    let (probed, _) = probe_with(
+                        game,
+                        goal,
+                        &layout,
+                        threshold,
+                        Limits::default(),
+                        &mut table,
+                    );
+                    let expected: Vec<(DealtCard, bool)> =
+                        slow.iter().map(|&(c, v)| (c, v >= threshold)).collect();
+                    assert_eq!(
+                        probed, expected,
+                        "round {round} {goal:?} threshold {threshold}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_root_move_gets_the_whole_node_limit() {
+        // Depth 3 as PIMC searches, whole deals, a defender to lead: a
+        // node limit of 6000 per move is not reached on these deals, so
+        // the limited probes equal the unlimited ones. With one limit for
+        // all moves, the moves late in the legal order were cut short and
+        // some answered wrongly.
+        let mut rng = Rng::from_seed(9);
+        let mut table = Table::new(15);
+        for round in 0..150 {
+            let mut deck = standard_deck();
+            rng.shuffle(&mut deck);
+            let lead = Seat::ALL[1 + round % 2];
+            let mut hands: [Vec<Card>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+            for o in 0..3 {
+                let seat = seat_at(lead, o);
+                hands[seat.index()] = deck[o * 10..(o + 1) * 10].to_vec();
+                hands[seat.index()].sort();
+            }
+            let live: u32 = deck[..30].iter().map(|c| c.card_points()).sum();
+            let layout = Layout {
+                hands,
+                trick_lead: lead,
+                trick: Vec::new(),
+                skat_points: 0,
+            };
+            let game = GameType::Suit(Suit::ALL[round % 4]);
+            let threshold = i32::try_from(live / 2).expect("small");
+            let limited = Limits {
+                depth: 3,
+                nodes: 6000,
+            };
+            let free = Limits { depth: 3, nodes: 0 };
+            let goal = Goal::DeclarerPoints;
+            let (a, _) = probe_with(game, goal, &layout, threshold, limited, &mut table);
+            let (b, _) = probe_with(game, goal, &layout, threshold, free, &mut table);
+            assert_eq!(a, b, "round {round}");
+        }
+    }
+
+    #[test]
+    fn equivalent_cards_merge_with_a_different_card_between_them() {
+        // Grand, the declarer leads C9, C8 with 5 extra Augen, C7. C9 and
+        // C7 are interchangeable (no club of another seat between them),
+        // the C8 between them is not: two moves, not three.
+        let dealt = |s: &str, id: u32| DealtCard::plain(id, CardKind::Normal(c(s)));
+        let mut c8 = dealt("C8", 1);
+        c8.card_points = 5;
+        let hands = [
+            vec![dealt("C9", 0), c8, dealt("C7", 2)],
+            vec![dealt("SA", 3), dealt("SK", 4), dealt("SQ", 5)],
+            vec![dealt("HA", 6), dealt("HK", 7), dealt("HQ", 8)],
+        ];
+        let layout = Layout {
+            hands,
+            trick_lead: Seat::DECLARER,
+            trick: Vec::new(),
+            skat_points: 0,
+        };
+        let mut table = Table::new(4);
+        let (search, cards) = Search::new(
+            GameType::Grand,
+            Goal::DeclarerPoints,
+            &layout,
+            Limits::default(),
+            &mut table,
+        )
+        .expect("valid layout");
+        let (moves, n) = search.ordered_moves(0, NO_MOVE);
+        let mut kept: Vec<DealtCard> = moves[..n].iter().map(|&m| cards[usize::from(m)]).collect();
+        kept.sort();
+        assert_eq!(kept.len(), 2, "{kept:?}");
+        assert!(kept.contains(&c8));
+    }
+
+    /// [`Search::greedy_card`] as it was with tuple keys and the trick
+    /// rebuilt for every card.
+    fn tuple_greedy_card(
+        s: &Search<'_>,
+        hands: &[u32; 3],
+        seat: usize,
+        trick: &[u8],
+        leader: usize,
+    ) -> Option<u8> {
+        let overtaken = |trick: &[u8], card: u8| {
+            let mut next = [0u8; 3];
+            next[..trick.len()].copy_from_slice(trick);
+            next[trick.len()] = card;
+            let next = &next[..=trick.len()];
+            let holder = next[s.winner_of(next)];
+            let lead_kind = s.lead_kind_of(next);
+            let side = s.maxi & (1 << seat) != 0;
+            (next.len()..3).any(|k| {
+                let other = (leader + k) % 3;
+                (s.maxi & (1 << other) != 0) != side
+                    && s.legal_of(hands[other], next) & s.beaters(lead_kind, holder) != 0
+            })
+        };
+        let legal = s.legal_of(hands[seat], trick);
+        let cards = || (0u8..32).filter(move |&c| legal & (1 << c) != 0);
+        let cash = |c: &u8| {
+            let i = usize::from(*c);
+            (s.kind[i] == TRUMP, s.points[i], s.strength[i])
+        };
+        let cheapest = || cards().min_by_key(cash);
+        if trick.is_empty() {
+            let sure = cards().filter(|&c| !overtaken(&[], c)).max_by_key(cash);
+            return sure.or_else(cheapest);
+        }
+        let holder = trick[s.winner_of(trick)];
+        let winner = (leader + s.winner_of(trick)) % 3;
+        let side = s.maxi & (1 << seat) != 0;
+        let partner_wins = (s.maxi & (1 << winner) != 0) == side;
+        let beating = legal & s.beaters(s.lead_kind_of(trick), holder);
+        if partner_wins {
+            let smear = cards()
+                .filter(|&c| beating & (1 << c) == 0)
+                .max_by_key(|&c| (s.kind[usize::from(c)] != TRUMP, s.points[usize::from(c)]));
+            if let Some(c) = smear {
+                if !overtaken(trick, c) {
+                    return Some(c);
+                }
+            }
+        }
+        let safe_win = cards()
+            .filter(|&c| beating & (1 << c) != 0)
+            .filter(|&c| !overtaken(trick, c))
+            .min_by_key(|&c| {
+                let i = usize::from(c);
+                (s.kind[i] == TRUMP, s.strength[i], -s.points[i])
+            });
+        safe_win.or_else(cheapest)
+    }
+
+    #[test]
+    fn greedy_keys_choose_as_the_tuples_did() {
+        let mut rng = Rng::from_seed(16);
+        for round in 0..3000 {
+            let deck = if round % 2 == 0 {
+                odd_deck()
+            } else {
+                battered_deck()
+            };
+            let game = games()[round % 3];
+            let layout = random_layout(&mut rng, deck, 1 + round % 4, (round / 3) % 3);
+            let goal = if round % 5 == 0 {
+                Goal::RamschAvoid(Seat::ALL[round % 3])
+            } else {
+                Goal::DeclarerPoints
+            };
+            let mut table = Table::new(4);
+            let (s, _) = Search::new(game, goal, &layout, Limits::default(), &mut table)
+                .expect("valid layout");
+            let trick = &s.trick[..s.trick_len];
+            let seat = s.to_play();
+            let fast = s.greedy_card(&s.hands, seat, trick, s.leader);
+            let slow = tuple_greedy_card(&s, &s.hands, seat, trick, s.leader);
+            assert_eq!(fast, slow, "round {round} {layout:?}");
         }
     }
 
@@ -1561,6 +1905,106 @@ mod bench {
     use crate::cards::standard_deck;
     use crate::game::seat_at;
     use crate::rng::Rng;
+
+    /// How the node limit of PIMC's probes errs against the same probe
+    /// without it, by the position of the move in the legal order.
+    ///
+    /// `cargo test --release -p skat_core bench_node_limit -- --ignored --nocapture`
+    /// (`BENCH_DEPTH` sets the depth, default 0 = to the end; `BENCH_NODES`
+    /// the node limit, default 6000).
+    #[test]
+    #[ignore = "measurement"]
+    fn bench_node_limit() {
+        let env = |name: &str, default: u64| {
+            std::env::var(name)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(default)
+        };
+        let depth = u32::try_from(env("BENCH_DEPTH", 0)).unwrap_or(0);
+        let node_limit = env("BENCH_NODES", 6000);
+        let mut rng = Rng::from_seed(9);
+        let mut table = Table::new(15);
+        for tricks in [10usize, 8, 6] {
+            let positions = 300;
+            // Per move index in the legal order: probes, wrong answers.
+            let mut by_index = [(0u64, 0u64); 10];
+            let (mut nodes_total, mut nodes_max, mut wrong_choice) = (0u64, 0u64, 0u64);
+            let (mut exact_nodes, mut micros) = (0u64, 0u128);
+            for round in 0..positions {
+                let mut deck = standard_deck();
+                rng.shuffle(&mut deck);
+                let lead = Seat::ALL[1 + round % 2];
+                let mut hands: [Vec<_>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+                for o in 0..3 {
+                    let seat = seat_at(lead, o);
+                    hands[seat.index()] = deck[o * tricks..(o + 1) * tricks].to_vec();
+                    hands[seat.index()].sort();
+                }
+                let live: u32 = deck[..3 * tricks].iter().map(|c| c.card_points()).sum();
+                let layout = Layout {
+                    hands,
+                    trick_lead: lead,
+                    trick: Vec::new(),
+                    skat_points: 0,
+                };
+                let game = GameType::Suit(crate::cards::Suit::ALL[round % 4]);
+                let threshold = i32::try_from(live / 2).unwrap_or(0);
+                let exact = Limits { depth, nodes: 0 };
+                let (truth, n) = probe_with(
+                    game,
+                    Goal::DeclarerPoints,
+                    &layout,
+                    threshold,
+                    exact,
+                    &mut table,
+                );
+                exact_nodes += n;
+                let limited = Limits {
+                    depth,
+                    nodes: node_limit,
+                };
+                let start = std::time::Instant::now();
+                let (got, n) = probe_with(
+                    game,
+                    Goal::DeclarerPoints,
+                    &layout,
+                    threshold,
+                    limited,
+                    &mut table,
+                );
+                micros += start.elapsed().as_micros();
+                nodes_total += n;
+                nodes_max = nodes_max.max(n);
+                for (k, (t, g)) in truth.iter().zip(&got).enumerate() {
+                    by_index[k.min(9)].0 += 1;
+                    by_index[k.min(9)].1 += u64::from(t.1 != g.1);
+                }
+                // The defenders (seat to play) want a move that keeps the
+                // declarer below the threshold: the first such move.
+                let pick = got.iter().position(|&(_, r)| !r).unwrap_or(0);
+                let can = truth.iter().any(|&(_, r)| !r);
+                wrong_choice += u64::from(can && truth[pick].1);
+            }
+            let p = positions as u64;
+            println!(
+                "tricks {tricks} depth {depth}: nodes per probe mean {} max {} (exact mean {}), \
+                 {:.3} ms per probe, wrong choice {:.1}%",
+                nodes_total / p,
+                nodes_max,
+                exact_nodes / p,
+                micros as f64 / 1000.0 / p as f64,
+                100.0 * wrong_choice as f64 / p as f64,
+            );
+            let row: Vec<String> = by_index
+                .iter()
+                .enumerate()
+                .filter(|(_, (n, _))| *n > 0)
+                .map(|(k, (n, w))| format!("{}:{:.1}%", k + 1, 100.0 * *w as f64 / *n as f64))
+                .collect();
+            println!("  wrong answers by move index: {}", row.join(" "));
+        }
+    }
 
     /// `cargo test --release -p skat_core bench_solver -- --ignored --nocapture`
     #[test]
