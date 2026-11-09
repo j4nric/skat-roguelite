@@ -25,7 +25,7 @@ import { renderRules } from './rules';
 import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
-import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderRecover, renderRecoveryCode, syncPill } from './account';
+import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderPasskeys, renderRecover, renderRecoveryCode, syncPill } from './account';
 import type { DailyBoard, DailyEntry } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
 import type { ModQuestion, Overlay, UiState } from './state';
@@ -694,6 +694,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return renderRecover(sheet, overlay.busy, overlay.error);
     case 'account-delete':
       return renderDeleteAccount(sheet, overlay.busy, overlay.error);
+    case 'account-passkeys':
+      return renderPasskeys(sheet, overlay.list, overlay.busy, overlay.error, overlay.note);
     case 'sync-conflict':
       return renderConflict(sheet, overlay.here, overlay.server);
     case 'save-export':

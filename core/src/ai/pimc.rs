@@ -11,8 +11,9 @@
 //!
 //! - Suit and grand: the declarer's final Augen, plus a bonus for reaching
 //!   the win threshold and for Schneider (the defenders count the same
-//!   number negated). Thresholds come from [`Hints`]-free
-//!   [`PimcPolicy::with_thresholds`] when house rules move them.
+//!   number negated). The win threshold and the Schneider limit are the
+//!   Skatordnung's unless house rules move them
+//!   ([`PimcPolicy::with_thresholds`]).
 //! - Schwarz announced (also every suit or grand Ouvert): whether the
 //!   defenders take a trick, the only thing that decides the game.
 //! - Null: whether the declarer takes a trick.
@@ -31,11 +32,11 @@
 use serde::{Deserialize, Serialize};
 
 use super::sample::{Hints, Knowledge, Sample};
-use super::solver::{self, Goal, Layout, Limits, Table};
+use super::solver::{self, Goal, Layout, Limits, Probes, Table};
 use super::{DeclarerHeuristic, DefenderHeuristic, Policy};
 use crate::cards::{PlayingCard, Rank};
 use crate::game::{Seat, SeatView};
-use crate::rng::Rng;
+use crate::rng::{Rng, mix64};
 use crate::rules::{self, GameType, Thresholds};
 
 /// Strength of a PIMC policy.
@@ -131,11 +132,7 @@ pub struct Decision<C> {
 
 /// Mix a seed with the decision's coordinates.
 fn decision_seed(seed: u64, played: usize, seat: Seat) -> u64 {
-    let mut z = seed ^ (u64::try_from(played).unwrap_or(0) << 8) ^ (seat.index() as u64);
-    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
+    mix64(seed ^ (u64::try_from(played).unwrap_or(0) << 8) ^ (seat.index() as u64))
 }
 
 impl PimcPolicy {
@@ -253,65 +250,69 @@ impl PimcPolicy {
         let bias = !view.seat.is_declarer()
             && !view.declaration.is_ramsch()
             && view.declarer_hand.is_none();
-        let mut table = Table::new(TABLE_BITS);
-        let mut sums = vec![0i64; legal.len()];
-        let mut nodes = 0;
-        let mut solved = 0;
-        for _ in 0..self.config.samples {
-            if solved > 0 && nodes >= DECISION_NODES {
-                break;
-            }
-            let sample = if bias {
-                let mut chosen = knowledge.sample(&mut rng);
-                let mut tries = 1;
-                while !fits_declaration(game, &chosen, &declarer_played, view.deck)
-                    && tries < BIAS_TRIES
-                {
-                    chosen = knowledge.sample(&mut rng);
-                    tries += 1;
+        // One table for every deal of the decision, reused across
+        // decisions: each search starts a generation of its own.
+        let (sums, nodes, solved) = solver::with_table(TABLE_BITS, |table| {
+            let mut sums = vec![0i64; legal.len()];
+            let mut nodes = 0;
+            let mut solved = 0;
+            for _ in 0..self.config.samples {
+                if solved > 0 && nodes >= DECISION_NODES {
+                    break;
                 }
-                chosen
-            } else {
-                knowledge.sample(&mut rng)
-            };
-            let skat_points: u32 = sample.skat.iter().map(|c| c.card_points()).sum();
-            let layout = Layout {
-                hands: sample.hands,
-                trick_lead: view.trick_lead,
-                trick: view.trick.to_vec(),
-                skat_points,
-            };
-            let live: u32 = layout
-                .hands
-                .iter()
-                .flatten()
-                .chain(&layout.trick)
-                .map(|c| c.card_points())
-                .sum();
-            let points = Points {
-                base: declarer_points + skat_points,
-                live,
-                total: played_points - trick_points + live + skat_points,
-            };
-            let mut utilities = vec![0i64; legal.len()];
-            let Some(n) = self.evaluate(
-                view.seat,
-                game,
-                goal,
-                &layout,
-                points,
-                &mut table,
-                legal,
-                &mut utilities,
-            ) else {
-                continue;
-            };
-            nodes += n;
-            for (sum, u) in sums.iter_mut().zip(&utilities) {
-                *sum += u;
+                let sample = if bias {
+                    let mut chosen = knowledge.sample(&mut rng);
+                    let mut tries = 1;
+                    while !fits_declaration(game, &chosen, &declarer_played, view.deck)
+                        && tries < BIAS_TRIES
+                    {
+                        chosen = knowledge.sample(&mut rng);
+                        tries += 1;
+                    }
+                    chosen
+                } else {
+                    knowledge.sample(&mut rng)
+                };
+                let skat_points: u32 = sample.skat.iter().map(|c| c.card_points()).sum();
+                let layout = Layout {
+                    hands: sample.hands,
+                    trick_lead: view.trick_lead,
+                    trick: view.trick.to_vec(),
+                    skat_points,
+                };
+                let live: u32 = layout
+                    .hands
+                    .iter()
+                    .flatten()
+                    .chain(&layout.trick)
+                    .map(|c| c.card_points())
+                    .sum();
+                let points = Points {
+                    base: declarer_points + skat_points,
+                    live,
+                    total: played_points - trick_points + live + skat_points,
+                };
+                let mut utilities = vec![0i64; legal.len()];
+                let Some(n) = self.evaluate(
+                    view.seat,
+                    game,
+                    goal,
+                    &layout,
+                    points,
+                    table,
+                    legal,
+                    &mut utilities,
+                ) else {
+                    continue;
+                };
+                nodes += n;
+                for (sum, u) in sums.iter_mut().zip(&utilities) {
+                    *sum += u;
+                }
+                solved += 1;
             }
-            solved += 1;
-        }
+            (sums, nodes, solved)
+        });
         if solved == 0 {
             return Some(trivial);
         }
@@ -362,26 +363,46 @@ impl PimcPolicy {
             nodes: NODE_LIMIT,
         };
         let mut nodes = 0;
+        if goal_is_ramsch(goal) {
+            let exact = Limits::default();
+            let (values, n) = solver::solve_with(game, goal, layout, exact, table);
+            nodes += n;
+            let values = pick(&values, legal)?;
+            for (u, v) in out.iter_mut().zip(values) {
+                *u = i64::from(v);
+            }
+            return Some(nodes);
+        }
         let len = out.len();
-        let mut probe = |threshold: i64, table: &mut Table| -> Option<Vec<bool>> {
+        // The deal is prepared for the solver once, at the first probe
+        // that needs a search; every probe is still a search of its own.
+        let mut table = Some(table);
+        let mut probes: Option<Option<Probes<'_, C>>> = None;
+        let mut probe = |threshold: i64| -> Option<Vec<bool>> {
             if threshold <= 0 {
                 return Some(vec![true; len]);
             }
-            // Out of reach in Augen; a trick goal counts tricks, and a
-            // trick of sevens, eights and nines has none.
             // Out of reach in Augen; a trick goal counts tricks, and a
             // trick of sevens, eights and nines has none.
             if goal == Goal::DeclarerPoints && threshold > i64::from(points.live) {
                 return Some(vec![false; len]);
             }
             let threshold = i32::try_from(threshold).ok()?;
-            let (moves, n) = solver::probe_with(game, goal, layout, threshold, limits, table);
+            let prepared = probes.get_or_insert_with(|| {
+                table
+                    .take()
+                    .and_then(|t| Probes::new(game, goal, layout, limits, t))
+            });
+            let (moves, n) = match prepared {
+                Some(p) => p.probe(threshold),
+                None => (Vec::new(), 0),
+            };
             nodes += n;
             pick(&moves, legal)
         };
         match goal {
             Goal::NullDeclarerTrick => {
-                let caught = probe(1, table)?;
+                let caught = probe(1)?;
                 let sign = if seat.is_declarer() { -1 } else { 1 };
                 for (u, c) in out.iter_mut().zip(caught) {
                     *u = sign * NULL_WEIGHT * i64::from(c);
@@ -389,26 +410,18 @@ impl PimcPolicy {
             }
             Goal::DefenderTrick => {
                 // Schwarz announced: one defender trick decides the game.
-                let caught = probe(1, table)?;
+                let caught = probe(1)?;
                 let sign = if seat.is_declarer() { -1 } else { 1 };
                 for (u, c) in out.iter_mut().zip(caught) {
                     *u = sign * WIN_BONUS * i64::from(c);
                 }
             }
-            Goal::RamschAvoid(_) => {
-                let exact = Limits::default();
-                let (values, n) = solver::solve_with(game, goal, layout, exact, table);
-                nodes += n;
-                let values = pick(&values, legal)?;
-                for (u, v) in out.iter_mut().zip(values) {
-                    *u = i64::from(v);
-                }
-            }
+            Goal::RamschAvoid(_) => {}
             Goal::DeclarerPoints => {
                 let base = i64::from(points.base);
                 let total = i64::from(points.total);
                 let limit = i64::from(self.thresholds.schneider_limit);
-                let wins = probe(i64::from(self.thresholds.win) - base, table)?;
+                let wins = probe(i64::from(self.thresholds.win) - base)?;
                 for (u, &w) in out.iter_mut().zip(&wins) {
                     *u = WIN_BONUS * i64::from(w);
                 }
@@ -416,12 +429,12 @@ impl PimcPolicy {
                 // tells the moves apart.
                 if wins.iter().all(|&w| w == wins[0]) {
                     if wins[0] {
-                        let schneider = probe(total - limit - base, table)?;
+                        let schneider = probe(total - limit - base)?;
                         for (u, s) in out.iter_mut().zip(schneider) {
                             *u += SCHNEIDER_BONUS * i64::from(s);
                         }
                     } else {
-                        let escaped = probe(limit + 1 - base, table)?;
+                        let escaped = probe(limit + 1 - base)?;
                         for (u, e) in out.iter_mut().zip(escaped) {
                             *u -= SCHNEIDER_BONUS * i64::from(!e);
                         }
@@ -445,6 +458,11 @@ fn pick<C: PlayingCard, T: Copy>(results: &[(C, T)], legal: &[C]) -> Option<Vec<
         .iter()
         .map(|card| results.iter().find(|(c, _)| c == card).map(|&(_, r)| r))
         .collect()
+}
+
+/// Whether `goal` is a Ramsch (solved exactly, not probed).
+const fn goal_is_ramsch(goal: Goal) -> bool {
+    matches!(goal, Goal::RamschAvoid(_))
 }
 
 /// Augen that decide a point game on one deal.

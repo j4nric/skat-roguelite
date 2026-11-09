@@ -15,6 +15,10 @@ mkdir -p data server
 # The account server runs as the deploy user, so the database belongs to it.
 printf 'STAMMTISCH_UID=%s\nSTAMMTISCH_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 
+# Newer patch releases of the pinned images (security fixes). Without a
+# registry the old images keep running.
+docker compose pull -q || echo "::warning::docker compose pull failed; running the images already on the server."
+
 docker compose up -d --remove-orphans web
 
 # The Caddyfile is a single-file bind mount: rsync replaces the file, the
@@ -25,8 +29,20 @@ if [ "$sum" != "$(cat .caddyfile.sha256 2>/dev/null || true)" ]; then
   echo "$sum" > .caddyfile.sha256
 fi
 
+# The binary is a bind mount as well: recreate the container only when it
+# changed (or when compose sees a new image or config, which `up -d` does
+# by itself). An unchanged deploy leaves the account server running.
 ok=
-if [ -x server/stammtisch-server ] && docker compose up -d --force-recreate api; then
+started=
+if [ -x server/stammtisch-server ]; then
+  bin=$(sha256sum server/stammtisch-server | cut -d' ' -f1)
+  if [ "$bin" != "$(cat .server.sha256 2>/dev/null || true)" ]; then
+    docker compose up -d --force-recreate api && started=1 && echo "$bin" > .server.sha256
+  else
+    docker compose up -d api && started=1
+  fi
+fi
+if [ -n "$started" ]; then
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1
     if docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/health >/dev/null 2>&1; then

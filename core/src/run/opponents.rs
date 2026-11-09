@@ -107,7 +107,7 @@ pub(super) fn defender_card(
     let hints = defender_hints(active, view);
     let declarer_open = view.declarer_hand.is_some();
     let knows_cards = !hints.pinned.is_empty();
-    match informed_config(content, run.curve_row(content), declarer_open, knows_cards) {
+    match informed_config(content, run.curve_row(), declarer_open, knows_cards) {
         None => DefenderHeuristic.choose(view),
         Some(mut config) => {
             // "Hellwache Gegner" (long night, ADR 0020).

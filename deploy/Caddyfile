@@ -14,6 +14,18 @@
 }
 
 :80 {
+	# Security headers for everything, the API included. The CSP was
+	# checked in Chromium against a full game (deploy/README.md): the
+	# WebAssembly core needs 'wasm-unsafe-eval', the UI sets inline style
+	# attributes, portraits and cards are data: and blob: images.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; media-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
 	# Account server (ADR 0021), only reachable through this container. If
 	# it is down, /api answers 502 and the game is served as before.
 	handle /api/* {

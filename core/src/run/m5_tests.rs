@@ -634,7 +634,7 @@ fn rewards_show_kind_and_rarity_and_card_mods_can_be_locked() {
     assert_eq!(start.locked_card_mods, vec![honorary.clone()]);
     let (run, _) = Run::new_with(&content, 1, &start).expect("run");
     assert!(
-        !run.card_mod_pool(&content)
+        !run.mod_pool(&content, false)
             .iter()
             .any(|(m, _)| *m == honorary)
     );

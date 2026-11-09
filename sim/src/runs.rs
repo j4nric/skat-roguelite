@@ -1296,14 +1296,9 @@ fn observe_factor_relics(run: &Run, content: &Content, max_factor: u32, stat: &m
     }
 }
 
-/// Play `runs` runs. Run seeds come from one master generator, so the same
-/// seed gives the same runs with and without options (same deals).
-pub fn simulate(
-    content: &Content,
-    options: &Options,
-    seed: u64,
-    runs: u32,
-) -> Result<RunStats, String> {
+/// Empty statistics with a row per district, every relic and every
+/// consumable.
+fn empty_stats(content: &Content, seed: u64, runs: u32) -> RunStats {
     let sections = usize::try_from(content.run.sections()).unwrap_or(1);
     let mut stats = RunStats {
         seed,
@@ -1321,12 +1316,399 @@ pub fn simulate(
     for id in content.consumables.keys() {
         stats.consumables.insert(id.clone(), (0, 0));
     }
+    stats
+}
+
+/// Play `runs` runs. Run seeds come from one master generator, so the same
+/// seed gives the same runs with and without options (same deals).
+///
+/// The runs are played on all cores ([`std::thread::scope`]; the core
+/// itself stays single-threaded): every run is a pure function of its
+/// seed, its statistics are kept apart and added up in run order
+/// ([`RunStats::merge`]), so the result equals playing them one after
+/// the other.
+pub fn simulate(
+    content: &Content,
+    options: &Options,
+    seed: u64,
+    runs: u32,
+) -> Result<RunStats, String> {
     let mut master = Rng::from_seed(seed);
-    for i in 0..runs {
-        let run_seed = master.next_u64();
-        play_run(content, options, run_seed, &mut stats).map_err(|e| format!("run {i}: {e}"))?;
+    let seeds: Vec<u64> = (0..runs).map(|_| master.next_u64()).collect();
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .min(seeds.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut results: Vec<Option<Result<RunStats, String>>> = vec![None; seeds.len()];
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(&run_seed) = seeds.get(i) else {
+                            break;
+                        };
+                        let mut stats = empty_stats(content, seed, runs);
+                        let result = play_run(content, options, run_seed, &mut stats)
+                            .map(|()| stats)
+                            .map_err(|e| format!("run {i}: {e}"));
+                        done.push((i, result));
+                    }
+                    done
+                })
+            })
+            .collect();
+        for handle in handles {
+            for (i, result) in handle.join().unwrap_or_default() {
+                results[i] = Some(result);
+            }
+        }
+    });
+    let mut stats = empty_stats(content, seed, runs);
+    for (i, result) in results.into_iter().enumerate() {
+        let run = result.ok_or_else(|| format!("run {i}: not played"))??;
+        stats.merge(run);
     }
     Ok(stats)
+}
+
+/// Add every count of `other` to `into`.
+fn add_counts<K: Ord, V: Default>(
+    into: &mut BTreeMap<K, V>,
+    other: BTreeMap<K, V>,
+    add: impl Fn(&mut V, V),
+) {
+    for (key, value) in other {
+        add(into.entry(key).or_default(), value);
+    }
+}
+
+fn add_pair<A: std::ops::AddAssign, B: std::ops::AddAssign>(into: &mut (A, B), other: (A, B)) {
+    into.0 += other.0;
+    into.1 += other.1;
+}
+
+fn add_array<const N: usize>(into: &mut [u64; N], other: [u64; N]) {
+    for (a, b) in into.iter_mut().zip(other) {
+        *a += b;
+    }
+}
+
+/// Add `other` row by row; rows `into` lacks are taken over.
+fn add_rows<T: Clone>(into: &mut Vec<T>, other: Vec<T>, add: impl Fn(&mut T, T)) {
+    let mut other = other.into_iter();
+    for row in into.iter_mut() {
+        match other.next() {
+            Some(o) => add(row, o),
+            None => return,
+        }
+    }
+    into.extend(other);
+}
+
+impl PubStat {
+    fn merge(&mut self, o: PubStat) {
+        let PubStat {
+            attempts,
+            wins,
+            games,
+            redeals,
+            replays,
+            relics,
+            payout,
+        } = o;
+        self.attempts += attempts;
+        self.wins += wins;
+        self.games += games;
+        self.redeals += redeals;
+        self.replays += replays;
+        self.relics += relics;
+        self.payout += payout;
+    }
+}
+
+impl DistrictStat {
+    fn merge(&mut self, o: DistrictStat) {
+        let DistrictStat {
+            runs,
+            boss_runs,
+            relics_start,
+            relics_boss,
+            lost_pubs,
+            second_chances,
+            ended,
+        } = o;
+        self.runs += runs;
+        self.boss_runs += boss_runs;
+        self.relics_start += relics_start;
+        self.relics_boss += relics_boss;
+        self.lost_pubs += lost_pubs;
+        self.second_chances += second_chances;
+        add_array(&mut self.ended, ended);
+    }
+}
+
+impl RelicStat {
+    fn merge(&mut self, o: RelicStat) {
+        let RelicStat {
+            bought,
+            runs,
+            runs_won,
+            sections,
+            gained,
+            sold,
+            held_end,
+        } = o;
+        self.bought += bought;
+        self.runs += runs;
+        self.runs_won += runs_won;
+        self.sections += sections;
+        self.gained += gained;
+        self.sold += sold;
+        self.held_end += held_end;
+    }
+}
+
+impl KindStat {
+    fn merge(&mut self, o: KindStat) {
+        let KindStat {
+            games,
+            won,
+            won_schneider,
+            hand,
+            points,
+            won_value,
+        } = o;
+        self.games += games;
+        self.won += won;
+        self.won_schneider += won_schneider;
+        self.hand += hand;
+        self.points += points;
+        self.won_value += won_value;
+    }
+}
+
+impl FactorStat {
+    fn merge(&mut self, o: FactorStat) {
+        let FactorStat {
+            won_games,
+            won_permille,
+            won_above_one,
+            run_max_permille,
+            max_permille,
+            runs_with_relic,
+            relics_end,
+            growing_permille,
+            growing_runs,
+        } = o;
+        self.won_games += won_games;
+        self.won_permille += won_permille;
+        self.won_above_one += won_above_one;
+        self.run_max_permille += run_max_permille;
+        // The highest over all runs, not a sum.
+        self.max_permille = self.max_permille.max(max_permille);
+        self.runs_with_relic += runs_with_relic;
+        self.relics_end += relics_end;
+        self.growing_permille += growing_permille;
+        self.growing_runs += growing_runs;
+    }
+}
+
+impl CardRewardStat {
+    fn merge(&mut self, o: CardRewardStat) {
+        let CardRewardStat {
+            offered,
+            taken,
+            raised,
+            skipped,
+            skip_coins,
+        } = o;
+        self.offered += offered;
+        self.taken += taken;
+        self.raised += raised;
+        self.skipped += skipped;
+        self.skip_coins += skip_coins;
+    }
+}
+
+impl DeckStat {
+    fn merge(&mut self, o: DeckStat) {
+        let DeckStat {
+            kinds,
+            mods,
+            runs_with_curse,
+            vouchers_discard,
+            vouchers_hand,
+            games,
+            games_zinked_in_hand,
+            zinked_in_hand,
+            games_zinked_played,
+        } = o;
+        add_array(&mut self.kinds, kinds);
+        add_counts(&mut self.mods, mods, add_pair);
+        self.runs_with_curse += runs_with_curse;
+        self.vouchers_discard += vouchers_discard;
+        self.vouchers_hand += vouchers_hand;
+        self.games += games;
+        self.games_zinked_in_hand += games_zinked_in_hand;
+        self.zinked_in_hand += zinked_in_hand;
+        self.games_zinked_played += games_zinked_played;
+    }
+}
+
+impl NightStat {
+    /// Counts add up; the lists of samples are appended in run order.
+    fn merge(&mut self, o: NightStat) {
+        let NightStat {
+            nights,
+            reached,
+            pubs_won,
+            factor_end_permille,
+            factor_nights,
+            ended_by,
+            ended_at,
+            relic_picks,
+            best_game,
+            factors_end,
+            won_games,
+            targets,
+            factor_sources,
+            won_night_games,
+            held,
+            relic_events,
+        } = o;
+        self.nights += nights;
+        add_counts(&mut self.reached, reached, |a, b| *a += b);
+        self.pubs_won += pubs_won;
+        self.factor_end_permille += factor_end_permille;
+        self.factor_nights += factor_nights;
+        add_counts(&mut self.ended_by, ended_by, |a, b| *a += b);
+        add_counts(&mut self.ended_at, ended_at, |a, b| *a += b);
+        add_counts(&mut self.relic_picks, relic_picks, |a, b| *a += b);
+        self.best_game += best_game;
+        self.factors_end.extend(factors_end);
+        add_counts(&mut self.won_games, won_games, Vec::extend);
+        add_counts(&mut self.targets, targets, Vec::extend);
+        add_counts(&mut self.factor_sources, factor_sources, add_pair);
+        self.won_night_games += won_night_games;
+        add_counts(&mut self.held, held, Vec::extend);
+        add_counts(&mut self.relic_events, relic_events, add_array);
+    }
+}
+
+impl RunStats {
+    /// Add the statistics of later runs (`other`, same seed and options)
+    /// as if they had been observed into `self` one after the other.
+    pub fn merge(&mut self, other: RunStats) {
+        let RunStats {
+            seed: _,
+            runs: _,
+            lost_in_section,
+            won,
+            series,
+            spelunken,
+            districts,
+            bosses,
+            bosses_later,
+            games,
+            games_won,
+            null_games,
+            null_won,
+            announced_schneider,
+            announced_ouvert,
+            ouvert,
+            null_ouvert,
+            transparent,
+            mirrors,
+            points,
+            redeals,
+            coins_end,
+            coins_start,
+            coins_earned,
+            coins_sold,
+            coins_other,
+            coins_spent,
+            spending,
+            shops,
+            rerolls,
+            relics_gained,
+            relics_sold,
+            relics_held_end,
+            relics_held_won,
+            relics,
+            encounters,
+            kiosks,
+            best_game,
+            consumables,
+            kinds,
+            vouchers_redeemed,
+            vouchers_returned,
+            factor,
+            card_rewards,
+            card_reward_zinken,
+            relic_lines,
+            deck,
+            night,
+        } = other;
+        add_rows(&mut self.lost_in_section, lost_in_section, |a, b| *a += b);
+        self.won += won;
+        let add_pubs = |a: &mut [PubStat; 5], b: [PubStat; 5]| {
+            for (x, y) in a.iter_mut().zip(b) {
+                x.merge(y);
+            }
+        };
+        add_rows(&mut self.series, series, add_pubs);
+        add_rows(&mut self.spelunken, spelunken, add_pubs);
+        add_rows(&mut self.districts, districts, DistrictStat::merge);
+        add_counts(&mut self.bosses, bosses, add_pair);
+        add_counts(&mut self.bosses_later, bosses_later, add_pair);
+        self.games += games;
+        self.games_won += games_won;
+        self.null_games += null_games;
+        self.null_won += null_won;
+        add_pair(&mut self.announced_schneider, announced_schneider);
+        add_pair(&mut self.announced_ouvert, announced_ouvert);
+        add_pair(&mut self.ouvert, ouvert);
+        add_pair(&mut self.null_ouvert, null_ouvert);
+        add_pair(&mut self.transparent, transparent);
+        self.mirrors += mirrors;
+        self.points += points;
+        self.redeals += redeals;
+        self.coins_end += coins_end;
+        self.coins_start += coins_start;
+        self.coins_earned += coins_earned;
+        self.coins_sold += coins_sold;
+        self.coins_other += coins_other;
+        self.coins_spent += coins_spent;
+        add_array(&mut self.spending, spending);
+        self.shops += shops;
+        self.rerolls += rerolls;
+        self.relics_gained += relics_gained;
+        self.relics_sold += relics_sold;
+        self.relics_held_end += relics_held_end;
+        self.relics_held_won += relics_held_won;
+        add_counts(&mut self.relics, relics, RelicStat::merge);
+        add_counts(&mut self.encounters, encounters, |a, b| {
+            a.0 += b.0;
+            add_array(&mut a.1, b.1);
+        });
+        self.kiosks += kiosks;
+        self.best_game += best_game;
+        add_counts(&mut self.consumables, consumables, add_pair);
+        for (a, b) in self.kinds.iter_mut().zip(kinds) {
+            a.merge(b);
+        }
+        add_counts(&mut self.vouchers_redeemed, vouchers_redeemed, add_pair);
+        self.vouchers_returned += vouchers_returned;
+        self.factor.merge(factor);
+        self.card_rewards.merge(card_rewards);
+        add_counts(&mut self.card_reward_zinken, card_reward_zinken, add_pair);
+        add_counts(&mut self.relic_lines, relic_lines, |a, b| *a += b);
+        self.deck.merge(deck);
+        self.night.merge(night);
+    }
 }
 
 fn pct(part: u64, whole: u64) -> f64 {
@@ -2243,6 +2625,28 @@ mod tests {
         assert_ne!(simulate(&content, &options, 43, 30).expect("runs"), a);
     }
 
+    /// [`simulate`] as it was before the runs went onto threads: every
+    /// run observed into one set of statistics.
+    fn simulate_in_order(content: &Content, options: &Options, seed: u64, runs: u32) -> RunStats {
+        let mut stats = empty_stats(content, seed, runs);
+        let mut master = Rng::from_seed(seed);
+        for _ in 0..runs {
+            play_run(content, options, master.next_u64(), &mut stats).expect("run");
+        }
+        stats
+    }
+
+    #[test]
+    fn runs_on_threads_add_up_to_runs_in_order() {
+        let content = heuristic_content();
+        let options = Options {
+            night: true,
+            ..Options::default()
+        };
+        let parallel = simulate(&content, &options, 42, 24).expect("runs");
+        assert_eq!(parallel, simulate_in_order(&content, &options, 42, 24));
+    }
+
     #[test]
     fn every_run_ends_once() {
         let content = heuristic_content();
@@ -2641,7 +3045,7 @@ mod option_tests {
     }
 
     #[test]
-    fn the_null_player_and_the_unlocks_can_be_measured() {
+    fn the_null_player_can_be_measured() {
         let base = content();
         let options = Options {
             character: Character::NullPlayer,
@@ -2652,12 +3056,27 @@ mod option_tests {
         let stats = simulate(&content, &options, 2, 20).expect("runs");
         assert_eq!(stats.lost_in_section.iter().sum::<u64>() + stats.won, 20);
         assert!(render(&stats, &content, &options, 0).contains("character=NullPlayer"));
+    }
+
+    #[test]
+    fn the_unlocks_are_deterministic() {
+        let base = content();
+        let options = Options {
+            unlocks: true,
+            ..Options::default()
+        };
+        let a = unlocks(&base, &options, 3, 4).expect("unlocks");
+        assert_eq!(a, unlocks(&base, &options, 3, 4).expect("unlocks"));
+    }
+
+    #[test]
+    fn the_unlocks_can_be_measured() {
+        let base = content();
         let options = Options {
             unlocks: true,
             ..Options::default()
         };
         let a = unlocks(&base, &options, 3, 15).expect("unlocks");
-        assert_eq!(a, unlocks(&base, &options, 3, 15).expect("unlocks"));
         assert_eq!(a.earned_at.len(), base.unlocks.len());
         assert!(
             !a.earned_at[&UnlockId::new("second_evening")].is_empty(),

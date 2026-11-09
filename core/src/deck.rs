@@ -636,10 +636,15 @@ impl Edition {
         self.cards.is_empty()
     }
 
-    /// The card with this instance id.
+    /// The card with this instance id. Ids are unique; a standard edition
+    /// keeps card `id` at index `id`, which is tried first.
     #[must_use]
     pub fn get(&self, id: u32) -> Option<&DeckCard> {
-        self.cards.iter().find(|c| c.id == id)
+        let at = usize::try_from(id).ok().and_then(|i| self.cards.get(i));
+        match at {
+            Some(card) if card.id == id => Some(card),
+            _ => self.cards.iter().find(|c| c.id == id),
+        }
     }
 
     /// Build a character's start edition from this one: attach every
@@ -695,6 +700,17 @@ impl Edition {
         let removed = std::mem::take(&mut card.mods);
         card.mod_values.clear();
         Ok(DeckChange::Cleansed { card: id, removed })
+    }
+
+    /// A copy of the edition holding only card `id`: enough to try
+    /// [`Edition::add_mod`] on it without cloning the whole deck.
+    #[must_use]
+    pub fn probe_card(&self, id: u32) -> Edition {
+        Edition {
+            cards: self.cards.iter().filter(|c| c.id == id).cloned().collect(),
+            next_id: self.next_id,
+            mods_version: self.mods_version,
+        }
     }
 
     /// Attach a modification with `value` to a normal card by the rules

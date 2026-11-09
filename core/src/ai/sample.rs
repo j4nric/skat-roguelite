@@ -234,12 +234,6 @@ impl<C: PlayingCard> Knowledge<C> {
         self.relaxed
     }
 
-    /// Cards whose place is unknown.
-    #[must_use]
-    pub fn unknown(&self) -> &[C] {
-        &self.unknown
-    }
-
     /// Deal the unknown cards once.
     #[must_use]
     pub fn sample(&self, rng: &mut Rng) -> Sample<C> {
@@ -250,27 +244,26 @@ impl<C: PlayingCard> Knowledge<C> {
             counts[usize::from(mask)] += 1;
         }
         let mut room = self.room;
+        let mut hall = Hall::new(&counts, &room);
         let mut hands = self.known.clone();
         let mut hidden = self.known_hidden.clone();
         for i in order {
             let card = self.unknown[i];
             let mask = self.allowed[i];
-            counts[usize::from(mask)] -= 1;
-            let mut options = [(0usize, 0u64); 4];
+            hall.remove_card(mask);
+            // The feasible places, weighted by the room they have left.
+            let mut places = [0usize; 4];
+            let mut weights = [0u64; 4];
             let mut n = 0;
-            let mut total = 0u64;
-            for place in 0..4 {
-                if mask & (1 << place) == 0 || room[place] == 0 {
+            for (place, &left) in room.iter().enumerate() {
+                if mask & (1 << place) == 0 || left == 0 {
                     continue;
                 }
-                room[place] -= 1;
-                if feasible(&counts, &room) {
-                    let weight = room[place] as u64 + 1;
-                    options[n] = (place, weight);
+                if hall.feasible_without_room(place) {
+                    places[n] = place;
+                    weights[n] = left as u64;
                     n += 1;
-                    total += weight;
                 }
-                room[place] += 1;
             }
             // A consistent start keeps at least one place feasible; fall
             // back to any allowed place with room should that ever fail.
@@ -280,18 +273,13 @@ impl<C: PlayingCard> Knowledge<C> {
                     .or_else(|| (0..4).find(|&p| room[p] > 0))
                     .unwrap_or(HIDDEN)
             } else {
-                let mut roll = rng.gen_range(0..total);
-                let mut chosen = options[0].0;
-                for &(p, w) in &options[..n] {
-                    if roll < w {
-                        chosen = p;
-                        break;
-                    }
-                    roll -= w;
-                }
-                chosen
+                let pick = rng.weighted_index(&weights[..n]).unwrap_or(0);
+                places[pick]
             };
-            room[place] = room[place].saturating_sub(1);
+            if room[place] > 0 {
+                room[place] -= 1;
+                hall.remove_room(place);
+            }
             let holder = Seat::from_index(place).unwrap_or(Seat::DECLARER);
             let card = resolve_in(&self.editions, card, holder);
             if place == HIDDEN {
@@ -313,6 +301,73 @@ impl<C: PlayingCard> Knowledge<C> {
             }
         };
         Sample { hands, skat }
+    }
+}
+
+/// [`feasible`] kept up to date while [`Knowledge::sample`] deals card by
+/// card, instead of summing all subsets again for every try.
+struct Hall {
+    /// Per set of places: the cards that may only go into these places.
+    need: [usize; 16],
+    /// Per set of places: the room they have together.
+    cap: [usize; 16],
+    /// Cards with no allowed place at all.
+    nowhere: usize,
+}
+
+impl Hall {
+    fn new(counts: &[usize; 16], room: &[usize; 4]) -> Hall {
+        let mut need = [0usize; 16];
+        let mut cap = [0usize; 16];
+        for set in 1u8..16 {
+            let s = usize::from(set);
+            cap[s] = (0..4)
+                .filter(|&p| set & (1 << p) != 0)
+                .map(|p| room[p])
+                .sum();
+            need[s] = (1u8..16)
+                .filter(|&mask| mask & !set == 0)
+                .map(|mask| counts[usize::from(mask)])
+                .sum();
+        }
+        Hall {
+            need,
+            cap,
+            nowhere: counts[0],
+        }
+    }
+
+    /// One card with the allowed places `mask` is no longer to deal.
+    fn remove_card(&mut self, mask: u8) {
+        if mask == 0 {
+            self.nowhere = self.nowhere.saturating_sub(1);
+            return;
+        }
+        for set in 1u8..16 {
+            if mask & !set == 0 {
+                let need = &mut self.need[usize::from(set)];
+                *need = need.saturating_sub(1);
+            }
+        }
+    }
+
+    /// `place` has room for one card less.
+    fn remove_room(&mut self, place: usize) {
+        for set in 1usize..16 {
+            if set & (1 << place) != 0 {
+                self.cap[set] = self.cap[set].saturating_sub(1);
+            }
+        }
+    }
+
+    /// Whether the rest can still be dealt once `place` (with room left)
+    /// has room for one card less: [`feasible`] after that change.
+    fn feasible_without_room(&self, place: usize) -> bool {
+        self.nowhere == 0
+            && (1usize..16).all(|set| {
+                let cap = self.cap[set] - usize::from(set & (1 << place) != 0);
+                self.need[set] <= cap
+            })
     }
 }
 

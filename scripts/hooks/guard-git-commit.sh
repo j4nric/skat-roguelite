@@ -27,14 +27,17 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$root" || exit 0
 [ -f Cargo.toml ] || exit 0
 
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+
 fail() { echo "commit blocked (checked in $root): $1" >&2; exit 2; }
 
 cargo fmt --all -- --check >/dev/null 2>&1 \
   || fail "cargo fmt --check failed. Run 'cargo fmt' first."
-cargo clippy --all-targets --quiet -- -D warnings 2>/tmp/clippy.err \
+cargo clippy --all-targets --quiet -- -D warnings 2>"$log" \
   || fail "clippy reported warnings:
-$(tail -n 40 /tmp/clippy.err)"
-cargo test --quiet 2>/tmp/test.err >/dev/null \
+$(tail -n 40 "$log")"
+cargo test --quiet 2>"$log" >/dev/null \
   || fail "tests failed:
-$(tail -n 40 /tmp/test.err)"
+$(tail -n 40 "$log")"
 exit 0

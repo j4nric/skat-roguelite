@@ -49,7 +49,7 @@ impl Run {
     /// one curse of the character's pool ([`Run::mod_pool`]). In id order.
     #[must_use]
     pub fn trade_curse_targets(&self, content: &Content, except: &[u32]) -> Vec<u32> {
-        let curses = self.mod_pool(content, true);
+        let curses = self.mod_candidates(content, true);
         self.edition
             .cards()
             .iter()
@@ -87,7 +87,7 @@ impl Run {
             .gen_range(0..u64::try_from(targets.len()).unwrap_or(1));
         let card = targets[usize::try_from(pick).unwrap_or(0)];
         let pool: Vec<(CardModId, u32)> = self
-            .mod_pool(content, true)
+            .mod_candidates(content, true)
             .into_iter()
             .filter(|(m, _)| self.may_attach(content, card, m))
             .collect();

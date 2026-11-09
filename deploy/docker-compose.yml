@@ -12,13 +12,24 @@
 # the internal network `backend`, which nothing else can reach. `web` does
 # not depend on `api`: if the account server is down, the game is still
 # served and only /api answers 502.
+#
+# `up.sh` pulls the images on every deploy, so the pinned minor versions
+# below get their patch releases (Caddy, Alpine security fixes).
 
 name: stammtisch
 
+# Logs rotate on the server: at most 3 files of 10 MB per container.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   web:
-    image: caddy:2.8-alpine
+    image: caddy:2.11-alpine
     restart: unless-stopped
+    logging: *logging
     volumes:
       - ./site:/srv:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -31,11 +42,27 @@ services:
   # GitHub Actions, run in a plain Alpine image. SQLite lives in ./data.
   # Runs as the deploy user (uid/gid written to .env by the deploy job), so
   # the database file belongs to that user and can be copied for backups.
+  # Locked down: read-only root file system (only ./data and a /tmp in
+  # memory are writable), no capabilities, no privilege gain.
   api:
-    image: alpine:3.20
+    image: alpine:3.24
     restart: unless-stopped
+    logging: *logging
     command: ["/app/stammtisch-server"]
     user: "${STAMMTISCH_UID:-1000}:${STAMMTISCH_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Busybox wget is part of the Alpine image.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     environment:
       STAMMTISCH_ORIGIN: https://stammtisch-62-83-23-90.sslip.io
       STAMMTISCH_DB: /data/stammtisch.db

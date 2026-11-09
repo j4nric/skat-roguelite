@@ -19,10 +19,17 @@ all = "warn"
 # (web/scripts/build-wasm.sh). The simulator keeps the fast release profile.
 [profile.wasm-release]
 inherits = "release"
-opt-level = "s"
+opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# Deploy build of the account server (CI, static musl binary): release
+# without symbols, so no separate `strip` step. Its own profile, so the
+# simulator and the WebAssembly profile keep theirs.
+[profile.server-release]
+inherits = "release"
+strip = true
 
 # The PIMC search (core/src/ai/) is far too slow unoptimized; tests that
 # play whole runs reach the PIMC sections. Optimize the core in dev and

@@ -3,7 +3,7 @@
 // and the choice between two states after playing on two devices.
 
 import { de, t } from '../i18n';
-import type { AccountUser } from '../account';
+import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
 
@@ -95,12 +95,51 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
        ${user.passkeys ? `<p class="small" data-testid="account-passkeys">${esc(t(de.account.passkeys, { n: user.passkeys }))}</p>` : ''}
        <div class="menu-list menu-grid account-grid">
          ${account.supported ? `<button class="btn" ${attrs({ 'data-action': 'account-add-passkey', 'data-testid': 'account-add-passkey', disabled })}>${esc(de.account.addPasskey)}</button>` : ''}
+         <button class="btn" ${attrs({ 'data-action': 'account-passkeys', 'data-testid': 'account-passkeys-open', disabled })}>${esc(de.account.passkeysManage)}</button>
          <button class="btn" ${attrs({ 'data-action': 'account-new-code', 'data-testid': 'account-new-code', disabled })}>${esc(de.account.newCode)}</button>
          <button class="btn" ${attrs({ 'data-action': 'account-signout', 'data-testid': 'account-signout', disabled })}>${esc(de.account.signOut)}</button>
+         <button class="btn" ${attrs({ 'data-action': 'account-signout-all', 'data-testid': 'account-signout-all', disabled })}>${esc(de.account.signOutAll)}</button>
          <button class="btn btn-danger" ${attrs({ 'data-action': 'account-delete', 'data-testid': 'account-delete', disabled })}>${esc(de.account.delete)}</button>
        </div>
      </div>
      <button class="btn btn-wide" ${attrs({ 'data-action': 'menu' })}>${esc(de.account.back)}</button>`,
+    true,
+    'sheet-account has-body',
+  );
+}
+
+/**
+ * The account's passkeys: when each was added and last used, whether a
+ * password manager syncs it, and a button to remove it (a lost phone, one
+ * somebody else added). The last one cannot be removed. `list` is null
+ * while it loads.
+ */
+export function renderPasskeys(sheet: Sheet, list: PasskeyInfo[] | null, busy: boolean, error: string | null, note: string | null): string {
+  const only = (list?.length ?? 0) <= 1;
+  const rows = list
+    ? list
+        .map((p, i) => {
+          const used = p.lastUsedAt ? t(de.account.passkeyUsed, { date: when(p.lastUsedAt) }) : de.account.passkeyNeverUsed;
+          const synced = p.synced ? `<span class="recent-daily">${esc(de.account.passkeySynced)}</span>` : '';
+          return `<section class="share" ${attrs({ 'data-testid': 'passkey-row', 'data-id': p.id })}>
+            <div class="share-head"><b>${esc(t(de.account.passkeyName, { n: i + 1 }))}</b>${synced}</div>
+            <p class="small">${esc(t(de.account.passkeyCreated, { date: when(p.createdAt) }))} · ${esc(used)}</p>
+            <div class="share-actions">
+              <button class="btn btn-small" ${attrs({ 'data-action': 'account-passkey-remove', 'data-id': p.id, 'data-testid': 'passkey-remove', disabled: busy || only ? 'disabled' : null })}>${esc(de.account.passkeyRemove)}</button>
+            </div>
+          </section>`;
+        })
+        .join('')
+    : `<p class="small" role="status">${esc(de.account.working)}</p>`;
+  return sheet(
+    `<h2>${esc(de.account.passkeysTitle)}</h2>
+     <div class="sheet-body account-body" data-testid="passkeys-sheet">
+       <p class="small">${esc(de.account.passkeysText)}</p>
+       ${notice(error, note)}
+       ${rows}
+       ${list && only ? `<p class="small">${esc(de.account.passkeysLast)}</p>` : ''}
+     </div>
+     <button class="btn btn-wide" ${attrs({ 'data-action': 'account', 'data-testid': 'passkeys-back' })}>${esc(de.account.back)}</button>`,
     true,
     'sheet-account has-body',
   );

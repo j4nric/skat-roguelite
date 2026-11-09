@@ -93,19 +93,8 @@ impl CityNames {
     /// Fill one pattern drawn from `patterns` with words; `None` without
     /// patterns.
     fn fill(&self, rng: &mut Rng, patterns: &[NamePattern]) -> Option<String> {
-        let total: u64 = patterns.iter().map(|p| u64::from(p.weight)).sum();
-        if total == 0 {
-            return None;
-        }
-        let mut roll = rng.gen_range(0..total);
-        let pattern = patterns.iter().find(|p| {
-            if roll < u64::from(p.weight) {
-                true
-            } else {
-                roll -= u64::from(p.weight);
-                false
-            }
-        })?;
+        let weights: Vec<u64> = patterns.iter().map(|p| u64::from(p.weight)).collect();
+        let pattern = &patterns[rng.weighted_index(&weights)?];
         let mut out = String::new();
         let mut rest = pattern.pattern.as_str();
         while let Some(start) = rest.find('{') {
@@ -152,11 +141,7 @@ impl CityNames {
         let mut looks: Vec<DistrictLook> = self.districts.iter().map(|d| d.look).collect();
         looks.sort_unstable();
         looks.dedup();
-        // Seeded Fisher-Yates shuffle of the looks.
-        for i in (1..looks.len()).rev() {
-            let j = rng.gen_range(0..(i as u64 + 1));
-            looks.swap(i, usize::try_from(j).unwrap_or(0));
-        }
+        rng.shuffle(&mut looks);
         let mut pool: Vec<&DistrictName> = self.districts.iter().collect();
         let mut used = Vec::new();
         (0..districts)
