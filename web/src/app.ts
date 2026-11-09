@@ -30,9 +30,8 @@
 import { sound, unlockAudio } from './audio';
 import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
-import { de, cardName, consumableMod, contentName, face, modKind, relicCounters, setCatalog, t } from './i18n';
+import { de, cardName, consumableMod, contentName, face, modKind, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
-import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
 import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, passkeysSupported, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, type AccountUser } from './account';
 import { isOnline, watchNetwork } from './offline';
@@ -56,21 +55,19 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { type CardKind, type CardView, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type ScoreLine, type Seat, type Source, type Step, type Suit } from './types';
+import { type CardKind, type CardView, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { syncPill } from './ui/account';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
 import { defaultPick, legKey, playTravel, renderRoute, watchMapLabels } from './ui/route';
-import { seatLabel as seatLabelOf, seatPerson } from './ui/guests';
-import { hintText, renderHint } from './ui/hint';
-import { renderCoach } from './ui/coach';
-import { Coach, markTutorial, tutorialSeen } from './tutorial';
+import { seatLabel as seatLabelOf } from './ui/guests';
+import { markTutorial, tutorialSeen } from './tutorial';
 import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
-import { targetsOf, TriggerFeed, type Trigger } from './ui/triggers';
+import { TriggerFeed } from './ui/triggers';
 import { crumbleInto, deal, declareSign, finishAll, finishOn, type FlightSnapshot, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
@@ -85,7 +82,7 @@ import { runCardBlob, runCardName, runCardText } from './ui/runcard';
 import { Drink, type Pour } from './ui/drink';
 import { reshuffle } from './ui/scatter';
 import { coinIcon, renderHud } from './ui/hud';
-import { changeText,  sourceName } from './ui/score';
+import { sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
@@ -93,7 +90,9 @@ import { declarationSign, discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
 import { DELAY, errorCode, errorText, isCharacter, nextPaint, PICK, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
 import type { AppCtx } from './app/context';
+import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
+import { Fx } from './app/playback/fx';
 
 /** Session flag: the page was reloaded to take the account's state (a note after the reload). */
 const LOADED_NOTE = 'stammtisch-sync-loaded';
@@ -127,11 +126,6 @@ function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string
   return { mods, mod_values };
 }
 
-/** How long a Stammgast's bubble stays at tempo "Normal" (reading time, not motion). */
-const QUIP_MS = 2800;
-/** At least this many tricks between two quips: about one every second game. */
-const QUIP_EVERY_TRICKS = 14;
-
 /** A trick with this many Augen or more the player took annoys the regulars (the same bar as their quips). */
 const BIG_TRICK = 10;
 
@@ -163,9 +157,6 @@ interface PressFlight {
 const SETTLE_MS = 260;
 /** The trip along a way on the map at tempo "Normal". */
 const TRAVEL_MS = 1600;
-
-/** Toasts waiting at most; older ones are dropped. */
-const TOAST_QUEUE = 3;
 
 /** "Untot": the event of a card that rose from the trick. */
 /** "Doppelgänger": the event of its mirror. */
@@ -226,9 +217,6 @@ export class App implements AppCtx {
   /** What signing in with the recovery code brought, acted on once its code was seen. */
   private pendingSync: Reconciled = 'none';
   fastForward = false;
-  private wakers: (() => void)[] = [];
-  private toastTimer: number | undefined;
-  private toasts: { text: string; place: ToastPlace }[] = [];
   readonly screenEl: HTMLElement;
   /** Draws the screen part by part (./ui/patch.ts). */
   private readonly screen: Patcher;
@@ -237,35 +225,14 @@ export class App implements AppCtx {
   /** Account and Groschen in the head: how their changes get there. */
   readonly hudFx: HudFx;
   readonly layerEl: HTMLElement;
-  private readonly toastEl: HTMLElement;
   /** "Untot": cards whose rising was already shown with their trick in this game. */
   private readonly riseShown = new Set<number>();
-  private readonly hintEl: HTMLElement;
-  /** The Wirt as coach of the Einführung (./tutorial.ts). */
-  private readonly coachEl: HTMLElement;
-  /** The Einführung in progress; null otherwise. Its run is never saved nor counted. */
-  private coach: Coach | null = null;
-  /** The coach's bubble on screen (to draw it only when it changes). */
-  private coachHtml = '';
   /** The Einführung was left while a playback ran: where to go once it is over. */
   private leaveTutorialTo: 'start' | 'run' | null = null;
   /** The info card (long-press, hover, "i"): one for everything. */
   readonly info: InfoCard;
   /** Lines and wiggles when a relic or modification fires. */
   readonly triggers: TriggerFeed;
-  /** Hints of the Wirt already seen (stored). */
-  private hintSeen = loadSeenHints();
-  /** The hint on screen and where it sits. */
-  private hint: { id: HintId; anchor: HintAnchor; html: string } | null = null;
-  /** Hints shown but not dismissed: seen once their situation has passed. */
-  private hintsShown = new Set<HintId>();
-  /** The player passed a game in this visit (for the hint about passing). */
-  private passedOnce = false;
-  /** Series ("section-index") whose Stammgast already said hello. */
-  private quipSeries = '';
-  /** Tricks since the last quip: quips stay rare. */
-  private tricksSinceQuip = 0;
-  private quipTimer: number | undefined;
   /** Changed in memory, not stored yet (playSteps, persist). */
   private unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
   /** Effects to run once the next render is in the DOM. */
@@ -295,10 +262,16 @@ export class App implements AppCtx {
 
   /** The dialog layer (./app/layer.ts). */
   private readonly layer = new Layer(this);
+  /** The Wirt's hints and coaching (./app/guidance.ts). */
+  private readonly guidance: Guidance;
+  /** Pauses, toasts, quips and triggers of the playback (./app/playback/fx.ts). */
+  private readonly fx: Fx;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
+    this.guidance = new Guidance(this);
+    this.fx = new Fx(this, this.guidance);
     this.screen = new Patcher(this.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -306,9 +279,6 @@ export class App implements AppCtx {
     this.hudFx = new HudFx(this.screenEl);
     watchSprings(root);
     watchMapLabels(root);
-    this.toastEl = root.querySelector<HTMLElement>('.toast-layer') ?? root;
-    this.hintEl = root.querySelector<HTMLElement>('.hint-layer') ?? root;
-    this.coachEl = root.querySelector<HTMLElement>('.coach-layer') ?? root;
     const infoEl = root.querySelector<HTMLElement>('.info-layer') ?? root;
     this.info = new InfoCard(infoEl, (key) => infoModel(key, this.ui.view, this.ui));
     this.triggers = new TriggerFeed(root.querySelector<HTMLElement>('.trigger-layer') ?? root);
@@ -354,12 +324,12 @@ export class App implements AppCtx {
     // address bar going away); follow it then once more.
     let settle: number | undefined;
     window.addEventListener('resize', () => {
-      this.positionHint();
-      this.positionCoach();
+      this.guidance.positionHint();
+      this.guidance.positionCoach();
       window.clearTimeout(settle);
       settle = window.setTimeout(() => {
-        this.positionHint();
-        this.positionCoach();
+        this.guidance.positionHint();
+        this.guidance.positionCoach();
       }, 100);
     });
     this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, freshMeta: (meta) => this.isFreshMeta(meta), changed: () => this.accountChanged() });
@@ -403,27 +373,8 @@ export class App implements AppCtx {
         this.render();
       }
     });
-    // Die Einführung: while the Wirt explains (an info step), Space and
-    // Enter go on with his bubble instead of pressing the screen's main
-    // button, so no lesson is skipped by the keyboard; on his last bubble
-    // they do nothing (its two buttons want a deliberate choice). Runs in
-    // the capture phase, before ./ui/keys.ts, which then sees it handled.
-    window.addEventListener(
-      'keydown',
-      (e) => {
-        if (e.key !== ' ' && e.key !== 'Enter') return;
-        const kind = this.coach?.step?.kind;
-        if (!kind || kind === 'do' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
-        const t = e.target;
-        if (t instanceof HTMLElement && t !== document.body && t.closest('button, a[href], input, textarea, select, [contenteditable="true"]')) return;
-        if (document.querySelector('[data-testid="keys-help"]') || this.info.state?.mode === 'sheet') return;
-        e.preventDefault();
-        if (e.repeat || kind === 'end') return;
-        this.coach?.next();
-        this.updateCoach();
-      },
-      { capture: true },
-    );
+    // Die Einführung: Space and Enter go on with the Wirt's bubble (./app/guidance.ts).
+    window.addEventListener('keydown', (e) => this.guidance.coachKey(e), { capture: true });
     // Keys on the desktop: cards by digit, Space or Enter for the main button.
     watchKeys(root, this.screenEl, this.layerEl, {
       blocked: () => this.ui.screen === 'loading' || this.info.state?.mode === 'sheet' || this.drink.active,
@@ -435,7 +386,7 @@ export class App implements AppCtx {
         this.showToast(de.table.notPlayable, 'top');
       },
       idle: () => {
-        if (this.ui.busy) this.hurry();
+        if (this.ui.busy) this.fx.hurry();
       },
     });
   }
@@ -1376,8 +1327,8 @@ export class App implements AppCtx {
       this.afterRender.push(() => this.dealEffect());
     }
     // A fresh series says hello; a run resumed mid-series does not.
-    if (dealt && view.game && view.series.games_played === 0) this.greetSeries(view);
-    else this.quipSeries = `${view.series.section}-${view.series.index}`;
+    if (dealt && view.game && view.series.games_played === 0) this.fx.greetSeries(view);
+    else this.fx.quipSeries = `${view.series.section}-${view.series.index}`;
     this.render();
   }
 
@@ -1448,7 +1399,7 @@ export class App implements AppCtx {
     if (motionOn() && !this.ui.routeOverview) {
       this.ui.busy = true;
       this.screenEl.querySelectorAll<HTMLButtonElement>('.route button').forEach((b) => (b.disabled = true));
-      await playTravel(this.screenEl, TRAVEL_MS * this.tempo());
+      await playTravel(this.screenEl, TRAVEL_MS * this.fx.tempo());
       this.ui.busy = false;
     }
     await this.act({ ChooseRoute: option });
@@ -1641,7 +1592,7 @@ export class App implements AppCtx {
             this.washAway(this.pouring.wash);
             this.pouring.wash = [];
           }
-          this.passedOnce = true;
+          this.guidance.passedOnce = true;
           this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
           reshuffle();
           this.afterRender.push(() => this.dealEffect());
@@ -1792,7 +1743,7 @@ export class App implements AppCtx {
         this.ui.anim = null;
         this.ui.view = after;
         this.resetTableChoices();
-        this.greetSeries(after);
+        this.fx.greetSeries(after);
         reshuffle();
         this.afterRender.push(() => this.dealEffect());
         continue;
@@ -1804,7 +1755,7 @@ export class App implements AppCtx {
       if ('Kontra' in ev) {
         this.showToast(t(de.toast.kontra, { name: this.seatLabel(ev.Kontra.seat, after) }));
         sound.play('knock');
-        await this.pause(DELAY.notice);
+        await this.fx.pause(DELAY.notice);
         continue;
       }
       if ('RedealsAdded' in ev) {
@@ -1901,27 +1852,27 @@ export class App implements AppCtx {
         continue;
       }
       if ('CounterRaised' in ev) {
-        this.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
+        this.fx.counterRaised(ev.CounterRaised.counter, ev.CounterRaised.value, after);
         continue;
       }
       if ('SkatCardShown' in ev) {
         // "Spickzettel": the card lies face up beside the trick from now on.
-        this.wiggleSource(ev.SkatCardShown.source);
+        this.fx.wiggleSource(ev.SkatCardShown.source);
         this.showToast(t(de.toast.skatShown, { card: cardName(ev.SkatCardShown.card.kind) }), 'top');
         continue;
       }
       if ('SkatPointsRaised' in ev) {
         // "Skatpfleger": the discards count more, say so at the relic.
         const { source, card_points } = ev.SkatPointsRaised;
-        this.fireTriggers([{ source, lever: 'CardPoints', change: { Add: card_points } }], after);
+        this.fx.fireTriggers([{ source, lever: 'CardPoints', change: { Add: card_points } }], after);
         continue;
       }
       if ('GameScored' in ev) {
         // What fired, on the chips and cards still on screen, before the board covers them.
         // The regulars take the result, a Schneider is cut across the felt; what fired lights up meanwhile.
         let wait = this.fastForward ? 0 : await this.gameEndEffect(ev.GameScored.breakdown);
-        if (this.fireTriggers(ev.GameScored.breakdown.lines, after)) wait = Math.max(wait, DELAY.trigger);
-        if (wait) await this.pause(wait);
+        if (this.fx.fireTriggers(ev.GameScored.breakdown.lines, after)) wait = Math.max(wait, DELAY.trigger);
+        if (wait) await this.fx.pause(wait);
         const rest = events.slice(i + 1);
         const won = rest.find((e): e is Extract<RunEvent, { SeriesWon: unknown }> => typeof e === 'object' && 'SeriesWon' in e);
         // One loss sound per chain (playtest 04.11.2026): when this lost game ends the run
@@ -1967,13 +1918,13 @@ export class App implements AppCtx {
         const name = contentName('relics', ev.SecondChance.relic);
         this.showToast(t(de.toast.secondChance, { name }), 'top');
         sound.play('clink');
-        if (motionOn()) await this.pause(900);
+        if (motionOn()) await this.fx.pause(900);
         continue;
       }
       if ('CoinsStashed' in ev) {
         const { source, amount, pot } = ev.CoinsStashed;
         const name = typeof source === 'object' && 'Relic' in source ? contentName('relics', source.Relic) : '';
-        this.wiggleSource(source);
+        this.fx.wiggleSource(source);
         this.showToast(t(de.toast.stashed, { name, amount, pot }));
         sound.play('coin');
         continue;
@@ -2080,7 +2031,7 @@ export class App implements AppCtx {
       const played = anim.trick[anim.trick.length - 1]?.card;
       if (el instanceof HTMLElement && from && !this.fastForward) this.throwOnto(el, seat, from, played?.back ?? null);
       sound.play('card', { rate: 0.94 + seat * 0.05 });
-      await this.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
+      await this.fx.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;
     }
     if ('TrickWon' in ev) {
@@ -2091,16 +2042,16 @@ export class App implements AppCtx {
         trick.winner === 0
           ? t(de.table.trickToYou, { points: card_points })
           : t(de.table.trickTo, { name: this.seatLabel(trick.winner, after), points: card_points });
-      this.trickQuip(after, trick.winner, card_points);
+      this.fx.trickQuip(after, trick.winner, card_points);
       if (trick.winner === 0 && !this.fastForward) buzz('trick');
       this.render();
       if (!this.fastForward) this.reactToTrick(after, trick.winner, card_points);
-      await this.pause(DELAY.trickShow);
+      await this.fx.pause(DELAY.trickShow);
       if (breaking.length) {
         // "Glasdaus": the card cracks and shatters before the trick leaves.
         for (const id of breaking) this.screenEl.querySelector(`.trick-card[data-card-id="${id}"]`)?.classList.add('is-shattering');
         sound.play('clink', { rate: 1.6 });
-        await this.pause(DELAY.notice);
+        await this.fx.pause(DELAY.notice);
       }
       // "Untot": the card rises back into the hand, the substitute takes its place, then the trick leaves.
       if (rising) await this.riseCard(rising, after);
@@ -2111,7 +2062,7 @@ export class App implements AppCtx {
       sound.play('trick');
       // The stack forms on the card that took the trick.
       const onto = cards.findIndex((c) => c.getAttribute('data-trick-seat') === String(trick.winner));
-      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly, onto), this.pause(DELAY.trickFly + 200)]);
+      if (target && !this.fastForward) await Promise.race([sweepAway(cards, target, DELAY.trickFly, onto), this.fx.pause(DELAY.trickFly + 200)]);
       anim.trick = [];
       anim.status = '';
       this.render();
@@ -2119,7 +2070,7 @@ export class App implements AppCtx {
     }
     if ('Conceded' in ev) {
       this.showToast(de.toast.conceded);
-      await this.pause(DELAY.notice);
+      await this.fx.pause(DELAY.notice);
       return;
     }
     if ('DefenderHandsSwapped' in ev) {
@@ -2127,7 +2078,7 @@ export class App implements AppCtx {
       this.showToast(de.toast.handsSwapped);
       sound.play('card');
       this.render();
-      await this.pause(DELAY.notice);
+      await this.fx.pause(DELAY.notice);
       return;
     }
     if ('CardRose' in ev) {
@@ -2169,7 +2120,7 @@ export class App implements AppCtx {
       const el = this.screenEl.querySelector(`.hand-card[data-id="${took.id}"]`);
       if (from && el && !this.fastForward) flyIn(el, from, { ms: 320 });
       sound.play('card');
-      await this.pause(DELAY.notice);
+      await this.fx.pause(DELAY.notice);
       return;
     }
     if ('CardDrawn' in ev) {
@@ -2183,7 +2134,7 @@ export class App implements AppCtx {
       const el = this.screenEl.querySelector(`.skat-zone [data-id="${card.id}"], .hand-card[data-id="${card.id}"]`);
       if (from && el && !this.fastForward) flyIn(el, from, { ms: 360 });
       sound.play('card');
-      await this.pause(DELAY.notice);
+      await this.fx.pause(DELAY.notice);
       return;
     }
     if ('CardReturned' in ev) {
@@ -2234,7 +2185,7 @@ export class App implements AppCtx {
       if ('SkatPickedUp' in ev && !this.fastForward) {
         this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
         sound.play('card');
-        await this.pause(DELAY.flip);
+        await this.fx.pause(DELAY.flip);
       }
     }
   }
@@ -2246,11 +2197,11 @@ export class App implements AppCtx {
    */
   private async coinsGained(source: Source, amount: number, coins: number, after: RunView): Promise<void> {
     const from = sourceName(source, after.edition);
-    this.wiggleSource(source);
+    this.fx.wiggleSource(source);
     const sign = amount > 0 ? `+${amount}` : `−${Math.abs(amount)}`;
     this.showToast(t(de.toast.coins, { amount: sign, source: from }));
     // The coins fly from what paid them (its chip or card on screen), else from the last tap.
-    const payer = this.triggerTargets(source)[0]?.getBoundingClientRect() ?? null;
+    const payer = this.fx.triggerTargets(source)[0]?.getBoundingClientRect() ?? null;
     if (amount > 0) this.hudFx.gainTo(coins, payer?.width ? payer : null);
     else this.hudFx.loseTo(coins);
     const box = this.screenEl.querySelector('.hud-coins')?.getBoundingClientRect();
@@ -2265,7 +2216,7 @@ export class App implements AppCtx {
     }
     this.root.appendChild(pop);
     window.setTimeout(() => pop.remove(), Math.max(1400, 2200 * TEMPO_FACTOR[this.ui.settings.tempo]));
-    await this.pause(DELAY.notice);
+    await this.fx.pause(DELAY.notice);
   }
 
   /**
@@ -2289,13 +2240,13 @@ export class App implements AppCtx {
     const el = box.querySelector<HTMLElement>('.card');
     if (!el) return;
     if (from?.width) flyIn(el, from, { ms: 260 });
-    await this.pause(DELAY.notice * 0.5);
+    await this.fx.pause(DELAY.notice * 0.5);
     // Step 2: the stamp margin tears off.
     el.innerHTML = cardSvg(card.kind, card.mods, 'full', card.mod_values, { redeeming: true });
     box.dataset.stage = 'torn';
     el.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(-4deg)' }, { transform: 'rotate(3deg)' }, { transform: 'rotate(0)' }], { duration: 260, easing: 'ease-out' });
     sound.play('card', { rate: 1.3 });
-    await this.pause(DELAY.notice * 0.6);
+    await this.fx.pause(DELAY.notice * 0.6);
     // Step 3: what the voucher gives.
     if (now) {
       const turned = now.mods.some((m) => !card.mods.includes(m));
@@ -2321,7 +2272,7 @@ export class App implements AppCtx {
         }
       }
     }
-    await this.pause(DELAY.notice * 0.8);
+    await this.fx.pause(DELAY.notice * 0.8);
     box.remove();
   }
 
@@ -2368,7 +2319,7 @@ export class App implements AppCtx {
       }
     }
     sound.play('card', { rate: 0.8 });
-    await this.pause(DELAY.notice);
+    await this.fx.pause(DELAY.notice);
     this.ui.rising = null;
   }
 
@@ -2388,103 +2339,6 @@ export class App implements AppCtx {
 
   private seatLabel(seat: Seat, view: RunView): string {
     return seatLabelOf(view, seat);
-  }
-
-  /** Tempo factor of the settings, for effects outside ./ui/fx.ts. */
-  private tempo(): number {
-    return TEMPO_FACTOR[this.ui.settings.tempo];
-  }
-
-  /** What stands for a source on screen (its relic chip, its card). */
-  private triggerTargets(source: Source): Element[] {
-    return targetsOf(this.screenEl, source);
-  }
-
-  /** Wiggle what stands for a source on screen (its relic chip, its card). */
-  private wiggleSource(source: Source): void {
-    if (this.fastForward) return;
-    this.triggers.fire([{ source, text: '' }], this.screenEl, this.tempo(), false);
-  }
-
-  /**
-   * Relics and card modifications whose score lines are in the result: wiggle
-   * them and say what they did. Returns whether anything fired.
-   */
-  private fireTriggers(lines: ScoreLine[], after: RunView): boolean {
-    const fired: Trigger[] = lines
-      .filter((l) => typeof l.source === 'object' && ('Relic' in l.source || 'CardMod' in l.source))
-      .map((l) => ({
-        source: l.source,
-        text: t(de.trigger.line, { source: sourceName(l.source, after.edition), effect: changeText(l.lever, l.change) }),
-      }));
-    if (!fired.length || this.fastForward) return false;
-    this.positionTriggers();
-    this.triggers.fire(fired, this.screenEl, this.tempo());
-    return true;
-  }
-
-  /** A run counter went up: the relics that count it wiggle and say the new value. */
-  private counterRaised(counter: string, value: number, after: RunView): void {
-    const template = de.counters[counter];
-    if (!template || this.fastForward) return;
-    const owners = after.relics.filter((r) => relicCounters(r.relic.id).includes(counter));
-    if (!owners.length) return;
-    this.positionTriggers();
-    this.triggers.fire(
-      owners.map((r) => ({ source: { Relic: r.relic.id }, text: t(template, { value }) })),
-      this.screenEl,
-      this.tempo(),
-    );
-  }
-
-  /** The trigger lines sit on the felt above the trick, else right below the head of the run. */
-  private positionTriggers(): void {
-    const felt = this.screenEl.querySelector('.table .center')?.getBoundingClientRect();
-    const hud = this.screenEl.querySelector('.hud')?.getBoundingClientRect();
-    this.triggers.place(felt ? felt.top + 8 : hud ? hud.bottom + 6 : null);
-  }
-
-  /**
-   * A Stammgast says one of his lines (from the core content) in a small
-   * bubble at his seat: hello at the first game of a series, and now and
-   * then after a trick worth something. One bubble at a time, never while
-   * the Wirt explains something, gone after a few seconds (tempo setting).
-   * Pure decoration: it changes nothing and catches no taps.
-   */
-  private sayQuip(view: RunView, seat: 1 | 2, line: 'greet' | 'win' | 'lose'): void {
-    const guest = seatPerson(view, seat).guest;
-    if (!guest || this.hint) return;
-    this.ui.quip = { seat, text: guest[line] };
-    this.tricksSinceQuip = 0;
-    window.clearTimeout(this.quipTimer);
-    const ms = Math.max(1800, QUIP_MS * TEMPO_FACTOR[this.ui.settings.tempo]);
-    this.quipTimer = window.setTimeout(() => {
-      this.ui.quip = null;
-      // Remove just the bubble: a full render could cut a running animation.
-      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }, ms);
-  }
-
-  /** Hello from a Stammgast when a new series sits down at the table. */
-  private greetSeries(view: RunView): void {
-    const key = `${view.series.section}-${view.series.index}`;
-    if (key === this.quipSeries) return;
-    this.quipSeries = key;
-    // The boss on the left has no lines; else the two take turns per series.
-    const seat = view.series.is_boss ? 2 : (((view.series.section * 3 + view.series.index) % 2) + 1) as 1 | 2;
-    this.sayQuip(view, seat, 'greet');
-  }
-
-  /** Now and then a line after a trick worth something (Augen from the core). */
-  private trickQuip(view: RunView, winner: Seat, points: number): void {
-    this.tricksSinceQuip += 1;
-    if (this.tricksSinceQuip < QUIP_EVERY_TRICKS || points < 10) return;
-    if (winner !== 0) {
-      this.sayQuip(view, winner, 'win');
-      return;
-    }
-    const seat = view.series.is_boss ? 2 : ((this.tricksSinceQuip % 2) + 1) as 1 | 2;
-    this.sayQuip(view, seat, 'lose');
   }
 
   /**
@@ -2598,7 +2452,7 @@ export class App implements AppCtx {
     for (const el of this.faces().values()) (b.won ? frown : nod)(el);
     const felt = this.rectOf('.center');
     if (b.won && b.schneider && felt) {
-      await Promise.race([snipAcross(this.root, felt), this.pause(1100)]);
+      await Promise.race([snipAcross(this.root, felt), this.fx.pause(1100)]);
       return 250;
     }
     return 520;
@@ -2676,7 +2530,7 @@ export class App implements AppCtx {
     this.layer.render();
     if (previousScore !== seriesScore && this.screenEl.querySelector('.hud [data-testid="account"]')) {
       void this.hudFx.account(seriesScore, target);
-      if (motionOn()) await this.pause(520);
+      if (motionOn()) await this.fx.pause(520);
     }
   }
 
@@ -2698,64 +2552,15 @@ export class App implements AppCtx {
       const suit = SUITS[(last - (steps - 1 - i) + 4 * steps) % 4] ?? f.suit;
       showWildSuit(svg, f.rank, suit);
       if (this.fastForward) break;
-      await this.pause(i === steps - 1 ? 180 : 85);
+      await this.fx.pause(i === steps - 1 ? 180 : 85);
     }
     showWildSuit(svg, f.rank, f.suit);
     card.classList.remove('is-settling');
   }
 
-  /** Wait, unless the player asked to hurry. */
-  private pause(ms: number): Promise<void> {
-    if (this.fastForward) return Promise.resolve();
-    const scaled = ms * TEMPO_FACTOR[this.ui.settings.tempo] * (reducedMotion() ? 0.25 : 1);
-    return new Promise((resolve) => {
-      const timer = window.setTimeout(done, scaled);
-      const wakers = this.wakers;
-      function done(): void {
-        window.clearTimeout(timer);
-        const i = wakers.indexOf(done);
-        if (i >= 0) wakers.splice(i, 1);
-        resolve();
-      }
-      wakers.push(done);
-    });
-  }
-
-  private hurry(): void {
-    this.fastForward = true;
-    finishAll();
-    for (const wake of this.wakers.slice()) wake();
-  }
-
-  /** Show a toast; while one is up, the next ones wait their turn. */
-  /**
-   * A short message. `top`: above the Stammgäste, for messages while
-   * cards lie on the felt (Drücken, the Ansage, the trick) that must stay
-   * readable.
-   */
+  /** A short message (./app/playback/fx.ts). */
   showToast(text: string, place: ToastPlace = 'middle'): void {
-    if (this.toastTimer !== undefined) {
-      this.toasts.push({ text, place });
-      if (this.toasts.length > TOAST_QUEUE) this.toasts.shift();
-      return;
-    }
-    this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
-    this.toastEl.classList.toggle('is-top', place === 'top');
-    this.toastEl.style.top = '';
-    if (place === 'top') {
-      // The toast's bottom edge sits just above the opponents' row.
-      const opps = this.screenEl.querySelector('.opponents')?.getBoundingClientRect();
-      const height = this.toastEl.querySelector('.toast')?.getBoundingClientRect().height ?? 0;
-      if (opps) this.toastEl.style.top = `${Math.round(Math.max(height + 4, opps.top - 4))}px`;
-    }
-    // Shorter while others wait.
-    const ms = this.toasts.length ? DELAY.toast * 0.7 : DELAY.toast;
-    this.toastTimer = window.setTimeout(() => {
-      this.toastTimer = undefined;
-      this.toastEl.innerHTML = '';
-      const next = this.toasts.shift();
-      if (next !== undefined) this.showToast(next.text, next.place);
-    }, ms);
+    this.fx.showToast(text, place);
   }
 
   private setSettings(change: Partial<UiState['settings']>): void {
@@ -2769,64 +2574,6 @@ export class App implements AppCtx {
   // -------------------------------------------------------------------------
   // Hints of the Wirt
   // -------------------------------------------------------------------------
-
-  private markHintSeen(id: HintId): void {
-    if (this.hintSeen.has(id)) return;
-    this.hintSeen.add(id);
-    saveSeenHints(this.hintSeen);
-  }
-
-  /**
-   * Show the hint that fits the screen now, if any. A hint shown before
-   * whose situation has passed counts as seen; a dialog in front of it only
-   * hides it for the moment.
-   */
-  private updateHint(): void {
-    // In the Einführung the Wirt coaches instead (./tutorial.ts).
-    if (this.coach) {
-      if (this.hint) this.hintEl.innerHTML = '';
-      this.hint = null;
-      return;
-    }
-    const ctx = { ui: this.ui, passed: this.passedOnce };
-    const on = this.ui.settings.hints;
-    if (on) {
-      for (const id of this.hintsShown) {
-        if (hintApplies(id, ctx)) continue;
-        this.markHintSeen(id);
-        this.hintsShown.delete(id);
-      }
-    }
-    const pick = on ? pickHint(ctx, this.hintSeen) : null;
-    if (!pick) {
-      if (this.hint) this.hintEl.innerHTML = '';
-      this.hint = null;
-      return;
-    }
-    // One bubble at a time: the Wirt goes before a Stammgast's line.
-    if (this.ui.quip) {
-      this.ui.quip = null;
-      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }
-    const html = renderHint(pick.id, pick.anchor, hintText(pick.id, this.ui));
-    if (html !== this.hint?.html) {
-      // The same hint with a new number does not pop in again.
-      this.hintEl.classList.toggle('is-static', this.hint?.id === pick.id);
-      this.hintEl.innerHTML = html;
-    }
-    this.hint = { ...pick, html };
-    this.hintsShown.add(pick.id);
-    this.positionHint();
-  }
-
-  /** Put the bubble right below what it hangs from: the head of the run, the Wirt at the Tresen, the end title, or the top. */
-  private positionHint(): void {
-    const hint = this.hint;
-    if (!hint) return;
-    const selector = { hud: '.hud', end: '.end-board h1', shop: '.shop .backbar, .shop .backbar > *', top: null }[hint.anchor];
-    const bottoms = selector ? Array.from(this.screenEl.querySelectorAll(selector), (el) => el.getBoundingClientRect().bottom) : [];
-    this.hintEl.style.top = bottoms.length ? `${Math.round(Math.max(...bottoms) + 6)}px` : '';
-  }
 
   // -------------------------------------------------------------------------
   // Die Einführung (DESIGN 16.1)
@@ -2851,8 +2598,7 @@ export class App implements AppCtx {
     this.persist();
     this.core?.dispose();
     this.core = core;
-    this.coach = new Coach();
-    this.coachHtml = '';
+    this.guidance.startCoach();
     this.ui.tutorialOffer = false;
     this.ui.message = null;
     this.ui.ended = null;
@@ -2862,10 +2608,7 @@ export class App implements AppCtx {
 
   /** The coach goes; the bubble and ring with him. */
   private endTutorial(): void {
-    if (!this.coach) return;
-    this.coach = null;
-    this.coachHtml = '';
-    this.coachEl.innerHTML = '';
+    this.guidance.endCoach();
   }
 
   /**
@@ -2882,7 +2625,7 @@ export class App implements AppCtx {
       this.core = null;
       const o = this.ui.overlay;
       if ((o?.kind === 'score' || o?.kind === 'boss') && this.layer.awaited === o) o.resolve();
-      this.hurry();
+      this.fx.hurry();
       return;
     }
     this.afterTutorial(go);
@@ -2891,100 +2634,6 @@ export class App implements AppCtx {
   private afterTutorial(go: 'start' | 'run'): void {
     this.toStart();
     if (go === 'run' && !this.hasRunningRun()) this.newRun();
-  }
-
-  /** Show the coach's step for what is on screen (after every render). */
-  private updateCoach(): void {
-    const coach = this.coach;
-    if (!coach || !this.ui.view?.tutorial) {
-      if (this.coachHtml) this.coachEl.innerHTML = '';
-      this.coachHtml = '';
-      return;
-    }
-    const step = coach.update(this.ui);
-    if (!step) {
-      if (this.coachHtml) this.coachEl.innerHTML = '';
-      this.coachHtml = '';
-      return;
-    }
-    // One bubble at a time: the Wirt goes before a Stammgast's line.
-    if (this.ui.quip) {
-      this.ui.quip = null;
-      this.screenEl.querySelector('[data-testid="quip"]')?.remove();
-    }
-    const html = renderCoach(step.id, step.kind, step.text(this.ui), coach.label(this.ui));
-    if (html !== this.coachHtml) {
-      this.coachEl.innerHTML = html;
-      this.coachHtml = html;
-    }
-    this.positionCoach();
-    // The layout may still settle (cards dealt, a sheet sliding in).
-    requestAnimationFrame(() => this.positionCoach());
-    window.setTimeout(() => this.positionCoach(), 360);
-  }
-
-  /**
-   * Ring what the step talks about and put the bubble above or below it,
-   * whichever half of the screen is free, the arrow towards it. Without a
-   * target the bubble hangs below the head of the run.
-   */
-  private positionCoach(): void {
-    const step = this.coach?.step;
-    const box = this.coachEl.querySelector<HTMLElement>('.coach');
-    const ring = this.coachEl.querySelector<HTMLElement>('.coach-ring');
-    if (!step || !box || !ring) return;
-    const selector = step.target?.(this.ui) ?? null;
-    const target = selector
-      ? Array.from(this.root.querySelectorAll(selector)).find((el) => {
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        })
-      : undefined;
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-    const h = box.offsetHeight;
-    box.classList.remove('is-above', 'is-below');
-    if (!target) {
-      ring.hidden = true;
-      const hud = this.screenEl.querySelector('.hud')?.getBoundingClientRect();
-      const top = hud && hud.bottom + h + 8 < vh ? hud.bottom + 6 : 8;
-      box.style.top = `${Math.round(top)}px`;
-      return;
-    }
-    const r = target.getBoundingClientRect();
-    const pad = 4;
-    ring.hidden = false;
-    ring.style.left = `${Math.round(Math.max(2, r.left - pad))}px`;
-    ring.style.top = `${Math.round(Math.max(2, r.top - pad))}px`;
-    ring.style.width = `${Math.round(Math.min(vw - 4, r.width + 2 * pad))}px`;
-    ring.style.height = `${Math.round(Math.min(vh - 4, r.height + 2 * pad))}px`;
-    const below = step.place ? step.place === 'below' : r.top + r.height / 2 < vh / 2;
-    let top = below ? r.bottom + 14 : r.top - 14 - h;
-    top = Math.max(8, Math.min(vh - h - 8, top));
-    box.style.top = `${Math.round(top)}px`;
-    box.classList.add(below ? 'is-below' : 'is-above');
-    const left = box.getBoundingClientRect().left;
-    const x = Math.max(22, Math.min(box.offsetWidth - 22, r.left + r.width / 2 - left));
-    box.style.setProperty('--arrow-x', `${Math.round(x)}px`);
-  }
-
-  private dismissHint(): void {
-    const id = this.hint?.id;
-    if (!id) return;
-    this.markHintSeen(id);
-    this.hintsShown.delete(id);
-    this.updateHint();
-  }
-
-  /** Menu "Hinweise zurücksetzen": every hint shows again. */
-  private resetHints(): void {
-    clearSeenHints();
-    this.hintSeen = new Set();
-    this.hintsShown.clear();
-    this.passedOnce = false;
-    this.showToast(de.menu.hintsResetDone);
-    sound.play('clink');
-    this.render();
   }
 
   // -------------------------------------------------------------------------
@@ -2996,7 +2645,7 @@ export class App implements AppCtx {
     const el = target?.closest<HTMLElement>('[data-action]');
     const overlay = this.ui.overlay;
     if (!el) {
-      if (this.ui.busy && !overlay) this.hurry();
+      if (this.ui.busy && !overlay) this.fx.hurry();
       return;
     }
     const action = el.dataset.action ?? '';
@@ -3025,8 +2674,7 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'coach-next':
-        this.coach?.next();
-        this.updateCoach();
+        this.guidance.nextCoach();
         return;
       case 'tutorial-skip':
         this.leaveTutorial('start');
@@ -3106,10 +2754,10 @@ export class App implements AppCtx {
         this.setSettings({ back: el.dataset.back ? el.dataset.back : null });
         return;
       case 'hints-reset':
-        this.resetHints();
+        this.guidance.resetHints();
         return;
       case 'hint-dismiss':
-        this.dismissHint();
+        this.guidance.dismissHint();
         return;
       case 'rules':
         this.ui.overlay = { kind: 'rules' };
@@ -3289,7 +2937,7 @@ export class App implements AppCtx {
         }
         return;
       case 'fast':
-        if (this.ui.busy) this.hurry();
+        if (this.ui.busy) this.fx.hurry();
         // A tap on the open trick while nothing plays: the last one, as with "Letzter Stich".
         else if (!this.ui.anim && view?.game?.phase === 'Playing' && view.game.last_trick) {
           this.ui.peekTrick = true;
@@ -3694,7 +3342,7 @@ export class App implements AppCtx {
         this.ui.overlay = { kind: 'chalk', slot: p.slot, card };
         this.render();
       };
-      if (card !== null && motionOn()) window.setTimeout(open, 480 * this.tempo());
+      if (card !== null && motionOn()) window.setTimeout(open, 480 * this.fx.tempo());
       else open();
       return;
     }
@@ -3739,7 +3387,7 @@ export class App implements AppCtx {
   /** Kräuter and Doppelkorn: a green wave washes the old cards off the table to the right. */
   private washAway(cards: HTMLElement[]): void {
     const layer = this.root.querySelector<HTMLElement>('.drink-layer');
-    const ms = 760 * this.tempo();
+    const ms = 760 * this.fx.tempo();
     if (!layer || !cards.length || !motionOn()) {
       for (const el of cards) el.remove();
       return;
@@ -3789,7 +3437,7 @@ export class App implements AppCtx {
     word.style.left = `${over.left + over.width / 2}px`;
     word.style.top = `${over.top + over.height * at}px`;
     layer.appendChild(word);
-    const ms = 1100 * this.tempo();
+    const ms = 1100 * this.fx.tempo();
     const anim = play(word, 
       [
         { transform: 'translate(-50%, -50%) rotate(-6deg) scale(.3)', opacity: 0 },
@@ -3817,7 +3465,7 @@ export class App implements AppCtx {
     dye.style.width = `${at.width}px`;
     dye.style.height = `${at.height}px`;
     layer.appendChild(dye);
-    const ms = 1100 * this.tempo();
+    const ms = 1100 * this.fx.tempo();
     const anim = play(dye, 
       [
         { clipPath: 'inset(0 0 100% 0)', opacity: 0.85 },
@@ -3839,8 +3487,8 @@ export class App implements AppCtx {
     const reels = Array.from(this.screenEl.querySelectorAll<HTMLElement | SVGElement>('.route-options > *, .route-map .map-badge, .route-map .map-target'));
     reels.forEach((el, i) => {
       el.classList.add('is-reeling');
-      el.style.setProperty('--reel-delay', `${Math.round(i * 90 * this.tempo())}ms`);
-      el.style.setProperty('--reel-ms', `${Math.round(620 * this.tempo())}ms`);
+      el.style.setProperty('--reel-delay', `${Math.round(i * 90 * this.fx.tempo())}ms`);
+      el.style.setProperty('--reel-ms', `${Math.round(620 * this.fx.tempo())}ms`);
       el.addEventListener('animationend', () => el.classList.remove('is-reeling'), { once: true });
     });
   }
@@ -4307,8 +3955,8 @@ export class App implements AppCtx {
     } else {
       this.info.refresh();
     }
-    this.updateHint();
-    this.updateCoach();
+    this.guidance.updateHint();
+    this.guidance.updateCoach();
     music.setScene(this.musicScene());
     watchShop(this.screenEl);
     const effects = this.afterRender.splice(0);
