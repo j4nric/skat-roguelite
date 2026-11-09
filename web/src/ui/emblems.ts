@@ -2612,15 +2612,6 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   dawn: 'Factor',
 };
 
-/** German names of the categories, for the art vote board only. */
-export const GROUP_LABEL: Record<RelicGroup, string> = {
-  Value: 'Grundwert und Kartenwerte',
-  Multiplier: 'Stufen und Gewinngrenze',
-  Control: 'Geben, Skat und Durchblick',
-  Tour: 'Tresen und Tour',
-  Factor: 'Faktor',
-};
-
 /** Every drawn form: four relic mats, the item mat, the boss mat and three Schnaps styles. */
 export type Form = RelicGroup | 'Item' | 'Boss' | SchnapsStyle;
 
@@ -2843,11 +2834,6 @@ export function spriteFor(id: string, kind: CoasterKind, variant?: number): Spri
   const set = SHOP_ART[id];
   if (!set) return FALLBACK[kind === 'Schnapps' || kind === 'Item' || kind === 'Regular' ? kind : 'HouseRule'];
   return set[variant ?? CHOSEN[id] ?? 0] ?? set[0];
-}
-
-/** Whether an id has its own motif (not the generic one of its kind). */
-export function hasOwnArt(id: string): boolean {
-  return id in SHOP_ART || id in BOSS_ART;
 }
 
 export interface CoasterOpts {

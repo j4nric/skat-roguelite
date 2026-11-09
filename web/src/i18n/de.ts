@@ -152,7 +152,6 @@ export const de = {
   header: {
     section: 'Stadtteil {section}/{sections}',
     series: 'Kneipe {series}/5',
-    bossSeries: 'Boss: {name}',
     account: 'Konto',
     accountTarget: 'Konto / Ziel',
     target: 'Ziel {target}',
@@ -284,15 +283,6 @@ export const de = {
     } as Record<string, string>,
   },
 
-  /** Short badge per card modification id. */
-  modShort: {
-    fat: 'F',
-    marked: 'G',
-    stamp: 'St',
-    last_trick: 'Sp',
-    transparent: 'D',
-  } as Record<string, string>,
-
   games: {
     Grand: 'Grand',
     Null: 'Null',
@@ -353,10 +343,8 @@ export const de = {
   },
 
   seats: ['Du', 'Gegner links', 'Gegner rechts'],
-  seatsShort: ['Du', 'Links', 'Rechts'],
 
   table: {
-    declareTitle: 'Ansage',
     choiceTitle: 'Skat oder Hand?',
     pickUpSkat: 'Skat aufnehmen',
     pickUpSkatHint: 'Du nimmst die zwei Karten des Skats auf, legst zwei Karten zurück auf den Tisch (Drücken) und sagst dann an. Gedrückte Augen zählen für dich.',
@@ -368,7 +356,6 @@ export const de = {
     handVoucherHint: 'Eine zufällige Marke auf deiner Hand wird sofort eingelöst.',
     handTitle: 'Handspiel ansagen',
     afterSkatTitle: 'Ansage nach dem Skat',
-    afterSkatHint: 'Skat aufgenommen und gedrückt. Jetzt sagst du dein Spiel an.',
     back: 'Zurück',
     noPickUp: 'Den Skat darfst du in diesem Spiel nicht aufnehmen.',
     gameType: 'Spielart',
@@ -471,7 +458,6 @@ export const de = {
     countRight: 'Rechts',
     discardLocked: 'Karten mit Schloss (Ramponiert) darfst du nicht drücken.',
     game: 'Spiel {number}',
-    tricksOwn: 'Deine Stiche',
     you: 'Du',
   },
 
@@ -570,7 +556,6 @@ export const de = {
     schnappsRewarded: 'Der Wirt gibt einen aus: {name}.',
     schnappsRewardTaken: '{name} genommen, {old} abgegeben.',
     wildSettled: 'Wandelkarte: {old} wird zu {new}.',
-    glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
@@ -624,7 +609,6 @@ export const de = {
     re: 'Re',
     cardMod: '{mod} ({card})',
     formula: '{base} × {levels}',
-    formulaMul: '{base} × {levels} × {mul}',
     value: 'Spielwert',
     result: 'Ergebnis',
     lostOnce: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal vom Konto ab.',
@@ -633,7 +617,6 @@ export const de = {
     account: 'Konto {score} / {target}',
     continue: 'Weiter',
     skip: 'Überspringen',
-    tapToSkip: 'Tippen zum Überspringen',
     boxBase: 'Grundwert',
     boxLevels: 'Stufen',
     boxMul: 'Faktor',
@@ -656,7 +639,6 @@ export const de = {
     subtitle: 'Kaufe Hausregeln, Schnäpse und Zinken für die nächste Kneipe.',
     relics: 'Hausregeln und Figuren',
     consumables: 'Schnäpse',
-    consumableKind: 'Gegenstand',
     owned: 'Deine Relikte ({count})',
     ownedCapped: 'Deine Relikte ({count}/{slots})',
     ownedItems: 'Deine Schnäpse ({count}/{slots})',
@@ -963,7 +945,6 @@ export const de = {
     sheetGo: 'Weiter',
     chips: 'Verschärfungen',
     hud: 'Lange Nacht · Stadtteil {n}',
-    extraBoss: 'Dazu gilt: {name}',
     infoKind: 'Verschärfung der Nacht',
     infoSince: 'Seit Stadtteil {n}',
     over: 'Die Nacht ist vorbei',
@@ -1771,5 +1752,3 @@ export const de = {
     Record<string, { name?: string; text?: string }>
   >,
 } as const;
-
-export type Texts = typeof de;

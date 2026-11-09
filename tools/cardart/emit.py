@@ -149,8 +149,7 @@ def ts():
             lines.append(f'  {code}{rc}: [')
             lines += [f"    '{r}'," for r in rows(suit, rank, wild.settled(suit, rank))]
             lines.append('  ],')
-    lines += ['};', '', '/** The open Wandelkarte\'s signs: four suit pips in the index (4 wide), the rainbow held sign (7 wide). */',
-              'export const ART_WILD_SIGN: string[] = [' + ', '.join(f"'{r}'" for r in SIGN['Wild']) + '];',
+    lines += ['};', '', '/** The open Wandelkarte\'s rainbow held sign (7 wide). */',
               'export const ART_WILD_BIG: string[] = [' + ', '.join(f"'{r}'" for r in BIG['Wild']) + '];',
               f"export const ART_WILD_INK = '{INK['Wild']}';", '']
     return '\n'.join(lines)

@@ -412,9 +412,6 @@ export const MOD_DRAW: Record<string, ModDraw> = {
   stained: { band: (t) => [t], col: ANTH, art: () => frameDashed(ANTH) + stains() },
 };
 
-/** The band colour of a voucher being redeemed. */
-export const REDEEM_BAND = STAMP_REDEEM;
-
 /**
  * The layer of one normal modification over the picture: its frame, mark
  * and curse art, then the band with `text` (the card's value formatted).

@@ -5396,7 +5396,6 @@ export const ART_WILD_SETTLED: Record<string, string[]> = {
   ],
 };
 
-/** The open Wandelkarte's signs: four suit pips in the index (4 wide), the rainbow held sign (7 wide). */
-export const ART_WILD_SIGN: string[] = ['jjgg', 'jjgg', 'rryy', 'rryy'];
+/** The open Wandelkarte's rainbow held sign (7 wide). */
 export const ART_WILD_BIG: string[] = ['...r...', '..rrr..', '.yyyyy.', 'ggggggg', '.jjjjj.', '..ooo..', '...o...'];
 export const ART_WILD_INK = 'k';
