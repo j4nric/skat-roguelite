@@ -2518,8 +2518,8 @@ async function hudSection(page) {
 
 /**
  * The short evening is dropped (ADR 0016): no length choice on the start
- * screen, the start button fits; an old `-kurz` link is offered and played
- * as the whole evening (three districts in the HUD).
+ * screen, the start button fits; an old `-kurz` link is offered like any
+ * link and played as the whole evening (three districts in the HUD).
  */
 async function shortEvening(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -2547,7 +2547,7 @@ async function shortEvening(browser, errors, reducedMotion) {
   await page2.goto(`${base}#seed-4343-alleinspieler-kurz`);
   await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4343"]');
   const offer = ((await page2.locator('[data-testid="shared-seed"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  if (!offer.includes('ganzen Abend')) fail(`the offer of an old short link does not say it plays the whole evening: ${offer}`);
+  if (/kurz/i.test(offer)) fail(`the offer of an old short link still speaks of the short evening: ${offer}`);
   await page2.click('[data-action="play-shared"]');
   await page2.waitForSelector('.declare');
   const hud = await hudSection(page2);

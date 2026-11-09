@@ -8,7 +8,6 @@ import { CHARACTERS, type Character } from './types';
 const RUN_KEY = 'stammtisch.run';
 const META_KEY = 'stammtisch.meta';
 const CHARACTER_KEY = 'stammtisch.character';
-const LENGTH_KEY = 'stammtisch.length';
 
 function read(key: string): string | null {
   try {
@@ -70,15 +69,6 @@ export function saveCharacter(character: string): void {
   write(CHARACTER_KEY, character);
 }
 
-/** The run length picked last on the start screen (presentation only). */
-export function loadLength(): string | null {
-  return read(LENGTH_KEY);
-}
-
-export function saveLength(length: string): void {
-  write(LENGTH_KEY, length);
-}
-
 // ---------------------------------------------------------------------------
 // Recent runs (presentation only). The core's meta state keeps totals but no
 // list of runs, so the app remembers the last finished runs itself: who
@@ -94,8 +84,6 @@ export const HISTORY_SIZE = 20;
 export interface RunRecord {
   character: Character;
   seed: string;
-  /** Kurzer Abend; absent (entries from before) means ganzer Abend. */
-  short?: boolean;
   /** Stake of the Einsatz-Leiter; absent means 0. */
   stake?: number;
   /** Section reached, from 1. */
@@ -123,7 +111,6 @@ function isRecord(value: unknown): value is RunRecord {
     typeof r.bestGame === 'number' &&
     typeof r.date === 'string' &&
     typeof r.daily === 'boolean' &&
-    (r.short === undefined || typeof r.short === 'boolean') &&
     (r.stake === undefined || typeof r.stake === 'number')
   );
 }
@@ -134,7 +121,8 @@ export function loadHistory(): RunRecord[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isRecord).slice(0, HISTORY_SIZE) : [];
+    // Entries of a short evening (`short`, dropped with ADR 0016) read as the whole evening.
+    return Array.isArray(parsed) ? parsed.filter(isRecord).slice(0, HISTORY_SIZE).map(({ short: _short, ...r }: RunRecord & { short?: unknown }) => r) : [];
   } catch {
     return [];
   }

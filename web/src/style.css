@@ -3907,36 +3907,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   color: var(--text);
 }
 
-/* Ganzer or kurzer Abend (DESIGN 5.3), between the characters and the start. */
-.length-pick .length-opt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 3px 6px;
-  line-height: 1;
-}
-
-.length-opt b {
-  font-size: var(--fs-body);
-  font-weight: 400;
-  color: var(--text);
-}
-
-.length-opt span {
-  font-family: var(--font-label);
-  font-size: var(--fs-2xs);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.length-opt.is-picked b,
-.length-opt.is-picked span {
-  color: var(--card-ink);
-}
-
-/* Einsatz-Leiter (DESIGN 9.3): one row under the run length. */
+/* Einsatz-Leiter (DESIGN 9.3): one row above the start. */
 .stake-pick {
   display: grid;
   grid-template-columns: var(--touch) 1fr var(--touch);
