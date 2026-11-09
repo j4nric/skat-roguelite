@@ -4,7 +4,7 @@
 import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
-import type { DailyBoard } from '../account';
+import type { DailyBoard, PasskeyInfo } from '../account';
 import type { AccountView, ConflictSide } from './account';
 import type { RunRecord } from '../storage';
 import type { SettledWild } from './cards';
@@ -125,6 +125,8 @@ export type Overlay =
   | { kind: 'account-recover'; busy: boolean; error: string | null }
   /** Delete the account? */
   | { kind: 'account-delete'; busy: boolean; error: string | null }
+  /** The account's passkeys (null while loading), to remove one. */
+  | { kind: 'account-passkeys'; list: PasskeyInfo[] | null; busy: boolean; error: string | null; note: string | null }
   /** Played on two devices: which state stays. */
   | { kind: 'sync-conflict'; here: ConflictSide; server: ConflictSide }
   | { kind: 'overview' }

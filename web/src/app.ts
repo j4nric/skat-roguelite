@@ -32,7 +32,7 @@ import { de, cardName, consumableMod, contentName, face, modKind, relicCounters,
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
 import { clearSeenHints, hintApplies, loadSeenHints, pickHint, saveSeenHints, type HintAnchor, type HintId } from './hints';
 import { decodeSave, encodeSave } from './savecode';
-import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, passkeysSupported, recover, register, renewRecoveryCode, setName, signIn, signOut, submitDaily, type AccountUser } from './account';
+import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, passkeysSupported, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, type AccountUser } from './account';
 import { isOnline, watchNetwork } from './offline';
 import { Sync, type Reconciled } from './sync';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
@@ -553,7 +553,7 @@ export class App {
     this.ui.account.online = online;
     if (online) this.loadBoard(true);
     const o = this.ui.overlay?.kind;
-    if (!this.ui.busy && (this.ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete')) {
+    if (!this.ui.busy && (this.ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete' || o === 'account-passkeys')) {
       this.overlayDirty = true;
       this.render();
     }
@@ -622,7 +622,7 @@ export class App {
   /** Run an account call with the sheet showing "Einen Moment …". */
   private async accountBusy<T>(work: () => Promise<T>): Promise<T | null> {
     const o = this.ui.overlay;
-    if (o && (o.kind === 'account' || o.kind === 'account-recover' || o.kind === 'account-delete')) {
+    if (o && (o.kind === 'account' || o.kind === 'account-recover' || o.kind === 'account-delete' || o.kind === 'account-passkeys')) {
       if (o.busy) return null;
       this.ui.overlay = { ...o, busy: true, error: null };
       this.render();
@@ -632,7 +632,7 @@ export class App {
     } catch (err) {
       const now = this.ui.overlay;
       const error = this.accountError(err);
-      if (now && (now.kind === 'account' || now.kind === 'account-recover' || now.kind === 'account-delete')) {
+      if (now && (now.kind === 'account' || now.kind === 'account-recover' || now.kind === 'account-delete' || now.kind === 'account-passkeys')) {
         this.ui.overlay = { ...now, busy: false, error };
         this.render();
       } else {
@@ -770,6 +770,42 @@ export class App {
     this.sync.forget();
     this.loadBoard(true);
     this.openAccount(de.account.signedOut);
+  }
+
+  /** Sign out on every device (a code or passkey somebody else may have). */
+  private async signOutEverywhereNow(): Promise<void> {
+    const res = await this.accountBusy(async () => {
+      await this.sync.push();
+      await signOutEverywhere();
+      return true;
+    });
+    if (!res) return;
+    this.sync.forget();
+    this.loadBoard(true);
+    this.openAccount(de.account.signedOutAll);
+  }
+
+  /** The passkey list; `note` after a removal. */
+  private async openPasskeys(note: string | null = null): Promise<void> {
+    this.ui.overlay = { kind: 'account-passkeys', list: null, busy: true, error: null, note };
+    this.render();
+    let list = null;
+    let error: string | null = null;
+    try {
+      list = await fetchPasskeys();
+    } catch (err) {
+      error = this.accountError(err);
+    }
+    if (this.ui.overlay?.kind !== 'account-passkeys') return;
+    this.ui.overlay = { kind: 'account-passkeys', list: list ?? [], busy: false, error, note };
+    this.render();
+  }
+
+  private async removePasskeyNow(id: string): Promise<void> {
+    const res = await this.accountBusy(() => removePasskey(id));
+    if (!res) return;
+    this.sync.updateUser(res.user);
+    await this.openPasskeys(de.account.passkeyRemoved);
   }
 
   private async deleteAccountNow(): Promise<void> {
@@ -3148,6 +3184,16 @@ export class App {
         return;
       case 'account-signout':
         void this.signOutHere();
+        return;
+      case 'account-signout-all':
+        void this.signOutEverywhereNow();
+        return;
+      case 'account-passkeys':
+        if (overlay?.kind === 'account' && overlay.busy) return;
+        void this.openPasskeys();
+        return;
+      case 'account-passkey-remove':
+        if (el.dataset.id) void this.removePasskeyNow(el.dataset.id);
         return;
       case 'account-delete':
         this.ui.overlay = { kind: 'account-delete', busy: false, error: null };
