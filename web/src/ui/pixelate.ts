@@ -4,8 +4,38 @@
 // `image-rendering: pixelated`, they match the pixel look of the deck. The
 // colours are pulled a little toward the slate palette for the dark mood.
 // If anything fails, the vector drawing is shown instead. Pure drawing.
+//
+// The images are kept in localStorage (W15 of the review): drawing them
+// costs the main thread at every start, and they only change with the
+// drawings or this code. Each is stored with a hash of its drawing, the
+// build and PIXEL_VERSION (raise it when `grade` or `render` change); the
+// key has no dot, so it is no part of the save (./storage.ts).
+
+import { hashText } from '../hash';
+import { readJson, writeKey } from '../storage';
 
 const cache = new Map<string, string>();
+
+const STORE_KEY = 'stammtisch-pixels';
+/** Raise when the way a drawing becomes pixels changes. */
+const PIXEL_VERSION = 1;
+
+/** Stored images: key → [hash of the job, data URL]. */
+type Stored = Record<string, [string, string]>;
+
+let stored: Stored | null = null;
+
+function storedImages(): Stored {
+  if (stored) return stored;
+  const raw = readJson(STORE_KEY);
+  stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Stored) : {};
+  return stored;
+}
+
+function jobHash(job: PixelJob): string {
+  const build = typeof __BUILD_INFO__ === 'string' ? __BUILD_INFO__ : '';
+  return hashText(`${PIXEL_VERSION}|${build}|${job.size}|${job.markup}`);
+}
 
 /** Pixel image (data URL) for a key, once prepared. */
 export function pixelUrl(key: string): string | null {
@@ -83,15 +113,31 @@ async function render(job: PixelJob, defs: string): Promise<void> {
   }
 }
 
-/** Render all jobs; failures leave the vector drawing in place. */
+/** Render all jobs (or take them from storage); failures leave the vector drawing in place. */
 export async function preparePixelArt(jobs: PixelJob[]): Promise<void> {
   if (typeof document === 'undefined') return;
+  const store = storedImages();
+  const hashes = new Map(jobs.map((job) => [job.key, jobHash(job)]));
+  const todo = jobs.filter((job) => {
+    const hit = store[job.key];
+    if (!hit || hit[0] !== hashes.get(job.key)) return true;
+    cache.set(job.key, hit[1]);
+    return false;
+  });
+  if (!todo.length) return;
   const defs = sharedDefs();
   await Promise.all(
-    jobs.map((job) =>
+    todo.map((job) =>
       render(job, defs).catch((err: unknown) => {
         console.warn('pixel art failed', job.key, err);
       }),
     ),
   );
+  for (const job of todo) {
+    const url = cache.get(job.key);
+    const hash = hashes.get(job.key);
+    if (url && hash) store[job.key] = [hash, url];
+  }
+  // Full or blocked storage: drawn again next time.
+  writeKey(STORE_KEY, JSON.stringify(store));
 }
