@@ -452,7 +452,16 @@ impl Run {
             return false;
         }
         let sources = self.sources(content, true);
-        let marked = self.marked_cards(content);
+        // Only conditions on marked cards look at them.
+        let marked = if sources
+            .iter()
+            .flat_map(|s| s.hooks)
+            .any(|h| h.when().uses_marked_cards())
+        {
+            self.marked_cards(content)
+        } else {
+            std::collections::BTreeSet::new()
+        };
         let now = HookContext {
             flags: &self.flags,
             counters: &self.counters,

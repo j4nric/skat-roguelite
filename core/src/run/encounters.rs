@@ -303,24 +303,26 @@ impl Run {
             .iter()
             .filter(|c| c.kind != CardKind::Blank)
             .map(|c| c.id)
-            .filter(|&card| {
-                option.effects.iter().all(|e| match e {
-                    EncounterEffect::Mark {
-                        card: CardPick::Chosen,
-                        card_mod: Some(m),
-                        ..
-                    } => self.may_attach(content, card, m),
-                    EncounterEffect::Marke {
-                        card: CardPick::Chosen,
-                        ..
-                    } => self.marken_for(content, Some(card)).next().is_some(),
-                    EncounterEffect::Cleanse => {
-                        self.edition.get(card).is_some_and(|c| !c.mods.is_empty())
-                    }
-                    _ => true,
-                })
-            })
+            .filter(|&card| self.fits_option(content, option, card))
             .collect()
+    }
+
+    /// Whether the deck card `card` (no blank) may take every chosen-card
+    /// effect of the option now (see [`Run::fitting_cards`]).
+    fn fits_option(&self, content: &Content, option: &EncounterOption, card: u32) -> bool {
+        option.effects.iter().all(|e| match e {
+            EncounterEffect::Mark {
+                card: CardPick::Chosen,
+                card_mod: Some(m),
+                ..
+            } => self.may_attach(content, card, m),
+            EncounterEffect::Marke {
+                card: CardPick::Chosen,
+                ..
+            } => self.marken_for(content, Some(card)).next().is_some(),
+            EncounterEffect::Cleanse => self.edition.get(card).is_some_and(|c| !c.mods.is_empty()),
+            _ => true,
+        })
     }
 
     /// Every Marke (card modification of kind [`ModKind::Voucher`]) for the
@@ -555,7 +557,7 @@ impl Run {
             if deck_card.kind == CardKind::Blank {
                 return Err(crate::deck::DeckError::BlankCannotBeModified.into());
             }
-            if !self.fitting_cards(content, &chosen).contains(&card) {
+            if !self.fits_option(content, &chosen, card) {
                 return Err(RunError::NoModAvailable);
             }
             Some(card)
@@ -585,28 +587,25 @@ impl Run {
         if cost > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
-        let mut next = self.clone();
-        let mut out = Vec::new();
-        next.coins -= cost;
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.coins -= cost;
         let target = Target { card, relic, marke };
-        let painter = next.apply_option(content, &encounter.id, &chosen, target, cost, &mut out)?;
+        let painter = self.apply_option(content, &encounter.id, &chosen, target, cost, events)?;
         if painter {
             let card = card.ok_or(RunError::TargetRequired)?;
-            if let Some(open) = next.encounter.as_mut() {
+            if let Some(open) = self.encounter.as_mut() {
                 open.chosen = Some(option);
             }
-            next.start_painter(content, card, 0, true, &mut out)?;
+            self.start_painter(content, card, 0, true, events)?;
         } else {
-            next.settle_debt(&mut out);
-            out.push(RunEvent::EncounterResolved {
+            self.settle_debt(events);
+            events.push(RunEvent::EncounterResolved {
                 encounter: encounter.id.clone(),
                 option,
             });
-            next.encounter = None;
-            next.continue_trip(content, &mut out)?;
+            self.encounter = None;
+            self.continue_trip(content, events)?;
         }
-        *self = next;
-        events.extend(out);
         Ok(())
     }
 

@@ -428,24 +428,23 @@ impl Run {
             .get(option)
             .cloned()
             .ok_or(RunError::InvalidSlot)?;
-        let mut next = self.clone();
-        next.painter = None;
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.painter = None;
         events.push(RunEvent::PainterChosen {
             card: painter.card,
             card_mod: card_mod.clone(),
             value,
         });
-        next.attach_mod(content, painter.card, &card_mod, value, events)?;
-        if painter.encounter && next.phase == RunPhase::Encounter {
-            if let Some(encounter) = next.encounter.take() {
+        self.attach_mod(content, painter.card, &card_mod, value, events)?;
+        if painter.encounter && self.phase == RunPhase::Encounter {
+            if let Some(encounter) = self.encounter.take() {
                 events.push(RunEvent::EncounterResolved {
                     encounter: encounter.id,
                     option: encounter.chosen.unwrap_or(0),
                 });
             }
-            next.continue_trip(content, events)?;
+            self.continue_trip(content, events)?;
         }
-        *self = next;
         Ok(())
     }
 
@@ -462,9 +461,7 @@ impl Run {
         if !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
-        let mut next = self.clone();
-        let change = next.cleanse(content, card)?;
-        self.edition = next.edition;
+        let change = self.cleanse(content, card)?;
         self.pay(price, events);
         self.shop_mut()?.cleansed = true;
         events.push(RunEvent::CardCleansed { card, price });

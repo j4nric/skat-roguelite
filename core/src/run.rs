@@ -2926,6 +2926,11 @@ impl Run {
         Ok(())
     }
 
+    /// Carry out `action`. Only ever called on a copy of the run
+    /// ([`Run::apply`], [`Run::apply_step`], [`Run::accepts`]): on an error
+    /// the copy and `events` are dropped, so an action may change the run
+    /// and log events before it fails. Actions therefore mutate `self`
+    /// directly instead of cloning the run once more.
     fn dispatch(
         &mut self,
         content: &Content,
@@ -3768,6 +3773,57 @@ impl Run {
         sources
     }
 
+    /// Whether any of [`Run::sources`] has a hook of `stage`, without
+    /// building them.
+    fn has_hook(&self, content: &Content, stage: Stage, with_card_mods: bool) -> bool {
+        let of = |hooks: &[Hook]| hooks.iter().any(|h| h.stage() == stage);
+        if content
+            .character(self.character)
+            .is_some_and(|def| of(&def.rule.hooks))
+        {
+            return true;
+        }
+        let bosses = self.boss_rule(content);
+        let extra = self.extra_boss_rules();
+        if bosses
+            .iter()
+            .chain(extra)
+            .filter_map(|b| content.boss(b))
+            .any(|def| of(&def.hooks))
+        {
+            return true;
+        }
+        if self
+            .relics
+            .iter()
+            .chain(&self.evening_relics)
+            .filter_map(|r| content.relic(r))
+            .any(|def| of(&def.hooks))
+        {
+            return true;
+        }
+        if !with_card_mods {
+            return false;
+        }
+        let Some(active) = &self.game else {
+            return false;
+        };
+        let editions = self.editions();
+        active.game.cards_in_play().iter().any(|card| {
+            !card.is_blank()
+                && editions
+                    .of(card.owner)
+                    .and_then(|e| e.get(card.id))
+                    .is_some_and(|deck_card| {
+                        deck_card
+                            .mods
+                            .iter()
+                            .filter_map(|m| content.card_mod(m))
+                            .any(|def| of(&def.hooks))
+                    })
+        })
+    }
+
     /// Fire every hook of `stage` whose condition holds.
     fn fire(
         &mut self,
@@ -3791,9 +3847,22 @@ impl Run {
         transport: Option<tour::Transport>,
         events: &mut Vec<RunEvent>,
     ) {
+        let with_card_mods = stage.in_game();
+        if !self.has_hook(content, stage, with_card_mods) {
+            return;
+        }
         let games_left = self.series.games_left();
-        let sources = self.sources(content, stage.in_game());
-        let marked = self.marked_cards(content);
+        let sources = self.sources(content, with_card_mods);
+        // Only conditions on marked cards look at them.
+        let marked = if sources
+            .iter()
+            .flat_map(|s| s.hooks)
+            .any(|h| h.stage() == stage && h.when().uses_marked_cards())
+        {
+            self.marked_cards(content)
+        } else {
+            BTreeSet::new()
+        };
         for source in &sources {
             for hook in source.hooks.iter().filter(|h| h.stage() == stage) {
                 let holds = {
@@ -5621,13 +5690,9 @@ impl Run {
             .cloned()
             .flatten()
             .ok_or(RunError::InvalidSlot)?;
-        let mut next = self.clone();
-        let mut out = Vec::new();
-        next.sell_relic(content, replace, &mut out)?;
-        next.buy_relic(content, slot, &mut out)?;
-        *self = next;
-        events.extend(out);
-        Ok(())
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.sell_relic(content, replace, events)?;
+        self.buy_relic(content, slot, events)
     }
 
     fn sell_relic(

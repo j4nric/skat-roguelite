@@ -636,10 +636,15 @@ impl Edition {
         self.cards.is_empty()
     }
 
-    /// The card with this instance id.
+    /// The card with this instance id. Ids are unique; a standard edition
+    /// keeps card `id` at index `id`, which is tried first.
     #[must_use]
     pub fn get(&self, id: u32) -> Option<&DeckCard> {
-        self.cards.iter().find(|c| c.id == id)
+        let at = usize::try_from(id).ok().and_then(|i| self.cards.get(i));
+        match at {
+            Some(card) if card.id == id => Some(card),
+            _ => self.cards.iter().find(|c| c.id == id),
+        }
     }
 
     /// Build a character's start edition from this one: attach every

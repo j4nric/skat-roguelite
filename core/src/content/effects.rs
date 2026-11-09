@@ -5,6 +5,8 @@
 //! Design pillar 1 ("Die Formel ist das Spiel"): every effect names the
 //! lever of the game value formula it turns in its doc comment.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 use super::{CardModId, Factor, ModKind};
@@ -915,11 +917,14 @@ impl Effect {
     /// `Promote` (at most 255), `AddBaseValue`, `AddBaseValuePerCursedCard`, `AddLevels`, `GainCoins` and
     /// `MultiplyTrickPoints` (the factor itself is the value: one unit of
     /// "Erster Stich" with value 2 is ×2). Every other effect stays as it
-    /// is. A value of 1 changes nothing.
+    /// is. A value of 1 changes nothing. Borrowed when nothing changes.
     #[must_use]
-    pub fn scaled(&self, value: i32) -> Effect {
+    pub fn scaled(&self, value: i32) -> Cow<'_, Effect> {
+        if value == 1 {
+            return Cow::Borrowed(self);
+        }
         let times = |n: i32| n.saturating_mul(value);
-        match self {
+        Cow::Owned(match self {
             Effect::AddCardPoints(n) => Effect::AddCardPoints(times(*n)),
             Effect::AddBaseValue(n) => Effect::AddBaseValue(times(*n)),
             Effect::AddBaseValuePerCursedCard(n) => Effect::AddBaseValuePerCursedCard(times(*n)),
@@ -938,8 +943,8 @@ impl Effect {
             Effect::MultiplyTrickPoints(n) => Effect::MultiplyTrickPoints(
                 u32::try_from(i64::from(*n) * i64::from(value.max(0))).unwrap_or(u32::MAX),
             ),
-            other => other.clone(),
-        }
+            other => return Cow::Borrowed(other),
+        })
     }
 }
 
@@ -1111,6 +1116,19 @@ pub enum Condition {
 }
 
 impl Condition {
+    /// Whether this condition looks at the player's marked cards
+    /// ([`Condition::TrickWonWithMarkedCard`],
+    /// [`crate::content::HookContext::marked_cards`]).
+    #[must_use]
+    pub fn uses_marked_cards(&self) -> bool {
+        match self {
+            Condition::TrickWonWithMarkedCard => true,
+            Condition::All(cs) | Condition::Any(cs) => cs.iter().any(Condition::uses_marked_cards),
+            Condition::Not(c) => c.uses_marked_cards(),
+            _ => false,
+        }
+    }
+
     /// Whether this condition can be evaluated in `stage`.
     #[must_use]
     pub fn allowed_in(&self, stage: Stage) -> bool {
