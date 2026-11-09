@@ -1,13 +1,25 @@
 name: CI
 
+# Pull requests run this directly. A push to main runs it through the
+# deploy workflow (deploy.yml calls it with `workflow_call`), so main is
+# built once and the deploy ships exactly the artifacts tested here:
+# web-dist (with BUILD_INFO), sim-baseline and the server binary.
 on:
-  push:
-    branches: [master, main]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push to a PR cancels the older run. Called from the deploy, the
+# github context is the caller's ("Deploy", push), so the group differs
+# from any PR group and nothing is cancelled there.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
   check:
@@ -15,10 +27,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # Toolchain, components and targets from rust-toolchain.toml.
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 2>/dev/null || rustup show
+          rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: host-debug
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -31,59 +48,85 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 2>/dev/null || rustup show
+          rustup target add x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
         with:
-          key: musl
+          shared-key: musl
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # A static musl binary (ADR 0021): no runtime on the server beyond a
+      # plain Alpine image, nothing built there. musl-gcc compiles the
+      # bundled SQLite. The server's tests run in `check`; the profile
+      # server-release strips the symbols.
       - name: Install musl tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      # The server's tests run in `check` with the whole workspace; this
-      # builds the binary exactly as the deploy does.
       - name: Build static binary
         run: |
-          rustup target add x86_64-unknown-linux-musl
-          cargo build --release --locked -p stammtisch_server --target x86_64-unknown-linux-musl
-          file target/x86_64-unknown-linux-musl/release/stammtisch-server
+          cargo build --profile server-release --locked -p stammtisch_server --target x86_64-unknown-linux-musl
+          mkdir -p server-bin
+          cp target/x86_64-unknown-linux-musl/server-release/stammtisch-server server-bin/
+          file server-bin/stammtisch-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: server-bin
+          retention-days: 7
+      # Same image as deploy/docker-compose.yml.
       - name: Validate Caddyfile
-        run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+        run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Validate compose file
         run: docker compose -f deploy/docker-compose.yml config --quiet
 
+  # After `check`: the deploy ships only when this artifact exists, so a
+  # failing test holds the deploy back.
   sim-baseline:
     name: simulator baseline
     runs-on: ubuntu-latest
     needs: check
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust toolchain
+        run: rustup toolchain install 2>/dev/null || rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: host-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run simulator with fixed seed
         run: |
           mkdir -p sim-out
           cargo run --release -p skat_sim -- --seed 42 --games 10000 | tee sim-out/baseline.txt
+      - name: Runs mode, timed
+        run: |
+          { echo; echo "== skat_sim --seed 42 --runs 200"; } >> sim-out/baseline.txt
+          start=$(date +%s)
+          cargo run --release -p skat_sim -- --seed 42 --runs 200 | tee -a sim-out/baseline.txt
+          echo "== runs mode: $(( $(date +%s) - start )) s" | tee -a sim-out/baseline.txt
       - uses: actions/upload-artifact@v4
         with:
           name: sim-baseline
           path: sim-out/baseline.txt
+          retention-days: 7
 
   web:
     name: wasm and web app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 2>/dev/null || rustup show
+          rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
-          key: wasm
-      - name: Install wasm-bindgen CLI (same version as the crate)
-        run: |
-          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen 0.2.130"; then
-            cargo install wasm-bindgen-cli --version 0.2.130 --locked --force
-          fi
+          shared-key: wasm
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Prebuilt, in exactly the version of the wasm-bindgen crate
+      # (Cargo.lock, web/scripts/build-wasm.sh).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.130
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -92,10 +135,14 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: npm ci
+      # Commit and date go into the footer of the start screen.
       - name: Build wasm and web app
         working-directory: web
-        run: npm run build
+        run: |
+          export BUILD_INFO="${GITHUB_SHA::7} · $(date -u +%Y-%m-%dT%H:%MZ)"
+          npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist
           path: web/dist
+          retention-days: 7
