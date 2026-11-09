@@ -13,6 +13,7 @@ use super::*;
 use crate::cards::Rank;
 use crate::content::{Lever, resolve_edition};
 use crate::deck::{AUGEN, DeckError, MODS_VERSION, Owner, WINKEL_TO_AUGEN};
+use crate::game::GameError;
 use crate::rules::{NullRisk, beats};
 
 /// Player forehand with all four Unter and the clubs top; the left defender
