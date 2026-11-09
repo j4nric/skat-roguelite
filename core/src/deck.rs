@@ -697,6 +697,17 @@ impl Edition {
         Ok(DeckChange::Cleansed { card: id, removed })
     }
 
+    /// A copy of the edition holding only card `id`: enough to try
+    /// [`Edition::add_mod`] on it without cloning the whole deck.
+    #[must_use]
+    pub fn probe_card(&self, id: u32) -> Edition {
+        Edition {
+            cards: self.cards.iter().filter(|c| c.id == id).cloned().collect(),
+            next_id: self.next_id,
+            mods_version: self.mods_version,
+        }
+    }
+
     /// Attach a modification with `value` to a normal card by the rules
     /// of effects v2 (DESIGN 7.2):
     ///

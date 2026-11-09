@@ -90,6 +90,16 @@ struct Entry {
     value: i32,
 }
 
+/// One slot of the leaf-estimate cache: an estimate of one search
+/// generation for the hands and the leader at a trick boundary.
+#[derive(Debug, Clone, Copy, Default)]
+struct Estimate {
+    hands: [u32; 3],
+    leader: u32,
+    generation: u32,
+    value: i32,
+}
+
 const EXACT: u8 = 0;
 const LOWER: u8 = 1;
 const UPPER: u8 = 2;
@@ -100,6 +110,9 @@ const UPPER: u8 = 2;
 pub struct Table {
     entries: Vec<Entry>,
     generation: u32,
+    /// Leaf estimates behind the depth or node limit, valid in their
+    /// generation only (see [`Search::cached_estimate`]).
+    estimates: Vec<Estimate>,
 }
 
 impl Table {
@@ -109,6 +122,7 @@ impl Table {
         Table {
             entries: vec![Entry::default(); 1 << bits.clamp(4, 24)],
             generation: 0,
+            estimates: vec![Estimate::default(); 1 << 12],
         }
     }
 
@@ -116,6 +130,7 @@ impl Table {
         self.generation = self.generation.wrapping_add(1);
         if self.generation == 0 {
             self.entries.fill(Entry::default());
+            self.estimates.fill(Estimate::default());
             self.generation = 1;
         }
     }
@@ -446,6 +461,25 @@ impl<'t> Search<'t> {
         }
     }
 
+    /// The cards that take the trick from `holder` under `lead_kind`, as
+    /// a mask: `beats(lead_kind, holder, c)` for every `c` in it.
+    fn beaters(&self, lead_kind: u8, holder: u8) -> u32 {
+        if self.can_win & (1 << holder) == 0 {
+            return self.can_win;
+        }
+        let h = usize::from(holder);
+        let stronger = (1u32 << self.tie_lo[h]) - 1;
+        let trumps = self.kind_mask[usize::from(TRUMP)];
+        let m = if self.kind[h] == TRUMP {
+            trumps & stronger
+        } else if self.kind[h] == lead_kind {
+            trumps | (self.kind_mask[usize::from(lead_kind)] & stronger)
+        } else {
+            trumps | self.kind_mask[usize::from(lead_kind)]
+        };
+        m & self.can_win
+    }
+
     /// Kind of the effective lead of the current trick, `BLANK` if none.
     fn lead_kind(&self) -> u8 {
         self.trick[..self.trick_len]
@@ -613,6 +647,31 @@ impl<'t> Search<'t> {
         (moves, n)
     }
 
+    /// A leaf estimate, from the table's estimate cache when this search
+    /// already estimated the same position. Estimates are pure functions
+    /// of the hands and the leader at a trick boundary (everything else
+    /// they read is fixed for one search), and an entry only counts in
+    /// the generation of its search.
+    fn cached_estimate(&mut self, f: impl Fn(&Search<'t>) -> i32) -> i32 {
+        let leader = u32::try_from(self.leader).unwrap_or(0);
+        let generation = self.table.generation;
+        let a = u64::from(self.hands[0]) | (u64::from(self.hands[1]) << 32);
+        let b = u64::from(self.hands[2]) | (u64::from(leader) << 32);
+        let slot = (mix(a ^ mix(b)) as usize) & (self.table.estimates.len() - 1);
+        let e = self.table.estimates[slot];
+        if e.generation == generation && e.hands == self.hands && e.leader == leader {
+            return e.value;
+        }
+        let value = f(self);
+        self.table.estimates[slot] = Estimate {
+            hands: self.hands,
+            leader,
+            generation,
+            value,
+        };
+        value
+    }
+
     /// Static estimate of the remaining tricks behind the depth limit: a
     /// greedy play-out with open cards ([`Search::greedy_card`]).
     fn estimate(&self) -> i32 {
@@ -713,16 +772,22 @@ impl<'t> Search<'t> {
         let lead_kind = self.lead_kind_of(trick);
         let declarer_played = (0..trick.len()).any(|k| (leader + k) % 3 == 0);
         let declarer_wins = (leader + offset) % 3 == 0;
-        let under = |c: &u8| !self.beats(lead_kind, holder, *c);
         if seat == 0 || declarer_wins {
             // Duck as high as possible; if nothing ducks, the lowest.
-            let all: Vec<u8> = cards.collect();
-            return all
-                .iter()
-                .copied()
-                .filter(under)
+            let bits = |mut rest: u32| {
+                std::iter::from_fn(move || {
+                    if rest == 0 {
+                        return None;
+                    }
+                    let c = u8::try_from(rest.trailing_zeros()).unwrap_or(0);
+                    rest &= rest - 1;
+                    Some(c)
+                })
+            };
+            let under = legal & !self.beaters(lead_kind, holder);
+            return bits(under)
                 .max_by_key(|&c| strength(c))
-                .or_else(|| all.iter().copied().min_by_key(|&c| strength(c)));
+                .or_else(|| bits(legal).min_by_key(|&c| strength(c)));
         }
         if declarer_played {
             cards.max_by_key(|&c| strength(c))
@@ -788,15 +853,7 @@ impl<'t> Search<'t> {
             if (self.maxi & (1 << other) != 0) == side {
                 return false;
             }
-            let mut legal = self.legal_of(hands[other], next);
-            while legal != 0 {
-                let c = u8::try_from(legal.trailing_zeros()).unwrap_or(0);
-                legal &= legal - 1;
-                if self.beats(lead_kind, holder, c) {
-                    return true;
-                }
-            }
-            false
+            self.legal_of(hands[other], next) & self.beaters(lead_kind, holder) != 0
         })
     }
 
@@ -847,12 +904,7 @@ impl<'t> Search<'t> {
         let holder = trick[holder_offset];
         let side = self.maxi & (1 << seat) != 0;
         let partner_wins = (self.maxi & (1 << winner) != 0) == side;
-        let mut beating = 0u32;
-        for c in cards() {
-            if self.beats(lead_kind, holder, c) {
-                beating |= 1 << c;
-            }
-        }
+        let beating = legal & self.beaters(lead_kind, holder);
         if partner_wins {
             let losing = cards().filter(|&c| beating & (1 << c) == 0);
             let smear = losing.max_by_key(|&c| {
@@ -890,11 +942,13 @@ impl<'t> Search<'t> {
                 return 0;
             }
             if boundary && self.out_of_budget() {
-                return if self.null {
-                    self.null_estimate()
-                } else {
-                    self.trick_estimate()
-                };
+                return self.cached_estimate(|s| {
+                    if s.null {
+                        s.null_estimate()
+                    } else {
+                        s.trick_estimate()
+                    }
+                });
             }
         } else {
             let max = self.live_points + if self.ramsch { self.skat_points } else { 0 };
@@ -905,7 +959,7 @@ impl<'t> Search<'t> {
                 return max;
             }
             if boundary && self.out_of_budget() {
-                return self.estimate();
+                return self.cached_estimate(Search::estimate);
             }
         }
         let tag = self.tag();

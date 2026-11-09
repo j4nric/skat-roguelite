@@ -2366,7 +2366,7 @@ impl RunBot {
             Phase::Playing | Phase::Finished(_) => return true,
         };
         if probe
-            .apply(content, RunAction::Declare(Declaration::null(risk)))
+            .apply_step(content, RunAction::Declare(Declaration::null(risk)))
             .is_err()
         {
             return true;

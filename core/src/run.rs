@@ -5959,17 +5959,8 @@ impl Run {
         Ok(())
     }
 
-    /// Card modifications a random draw may give a card, with their draw
-    /// weight: for the character, unlocked, no curse (DESIGN 7.2: curses
-    /// only where announced) and no special card (that comes with a
-    /// voucher), in id order. Rarity does not count here; the weight is the
-    /// character's weight for the modification's Spielart
-    /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
-    fn card_mod_pool(&self, content: &Content) -> Vec<(CardModId, u32)> {
-        self.mod_pool(content, false)
-    }
-
-    /// [`Run::card_mod_pool`] for one deck card: only modifications that
+    /// The card modifications a random draw may give one deck card
+    /// ([`Run::mod_pool`] without curses): only modifications that
     /// may go on it now ([`crate::content::CardModDef::only_on`], and by
     /// the rules of [`Deck::add_mod`]: not on a cursed card, not past the
     /// limit).
@@ -5978,7 +5969,7 @@ impl Run {
         content: &Content,
         card: &crate::deck::DeckCard,
     ) -> Vec<(CardModId, u32)> {
-        self.card_mod_pool(content)
+        self.mod_candidates(content, false)
             .into_iter()
             .filter(|(id, _)| self.may_attach(content, card.id, id))
             .collect()
@@ -5993,27 +5984,41 @@ impl Run {
         let fits = self.edition.get(card).is_some_and(|c| def.fits(c.kind));
         fits && self
             .edition
-            .clone()
+            .probe_card(card)
             .add_mod(content, card, card_mod, def.default_value())
             .is_ok()
     }
 
-    /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
-    /// modifications without drawback.
+    /// Card modifications a random draw may give a card (`curse` false;
+    /// `true`: only curses, for draws that announce one), with their draw
+    /// weight: for the character, unlocked, no curse unless asked for (DESIGN 7.2:
+    /// curses only where announced) and no special card (that comes with a
+    /// voucher), in id order. Rarity does not count here; the weight is the
+    /// character's weight for the modification's Spielart
+    /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
     fn mod_pool(&self, content: &Content, curse: bool) -> Vec<(CardModId, u32)> {
+        // Only what some card of the deck may still take.
+        self.mod_candidates(content, curse)
+            .into_iter()
+            .filter(|(m, _)| {
+                self.edition
+                    .cards()
+                    .iter()
+                    .any(|c| self.may_attach(content, c.id, m))
+            })
+            .collect()
+    }
+
+    /// [`Run::mod_pool`] before asking whether some deck card may take a
+    /// modification: for one deck card filter these with
+    /// [`Run::may_attach`] directly (what fits that card fits some card).
+    fn mod_candidates(&self, content: &Content, curse: bool) -> Vec<(CardModId, u32)> {
         content
             .card_mods
             .values()
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            // Only what some card of the deck may still take.
-            .filter(|m| {
-                self.edition
-                    .cards()
-                    .iter()
-                    .any(|c| self.may_attach(content, c.id, &m.id))
-            })
             .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
             .filter(|&(_, weight)| weight > 0)
             .collect()

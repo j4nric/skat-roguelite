@@ -1839,7 +1839,7 @@ impl Run {
             .get(card)
             .map(|c| c.mods.clone())
             .unwrap_or_default();
-        let mut edition = self.edition.clone();
+        let mut edition = self.edition.probe_card(card);
         match edition.add_mod(content, card, card_mod, value) {
             Ok(change) => {
                 let replaced = match change {

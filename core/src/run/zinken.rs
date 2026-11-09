@@ -142,7 +142,7 @@ impl Run {
             .is_some_and(|c| c.kind != CardKind::Blank && def.fits(c.kind));
         fits && self
             .edition
-            .clone()
+            .probe_card(card)
             .add_mod(content, card, card_mod, value)
             .is_ok()
     }
@@ -310,7 +310,7 @@ impl Run {
         }
         if !self.takes(content, offer.card, &offer.card_mod, offer.value) {
             // The reason from the rules (cursed, at its maximum).
-            let mut probe = self.edition.clone();
+            let mut probe = self.edition.probe_card(offer.card);
             probe.add_mod(content, offer.card, &offer.card_mod, offer.value)?;
             return Err(RunError::NoModAvailable);
         }
@@ -379,7 +379,7 @@ impl Run {
                     .card_mod(card_mod)
                     .map_or(1, CardModDef::offer_value);
                 self.edition
-                    .clone()
+                    .probe_card(card)
                     .add_mod(content, card, card_mod, value)?;
             }
             return Err(RunError::NoModAvailable);

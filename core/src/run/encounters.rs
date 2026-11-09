@@ -654,7 +654,7 @@ impl Run {
                         let hit = self.encounter_rng.gen_range(0..100) < u64::from(*curse_percent);
                         let curse = if hit {
                             let pool: Vec<(CardModId, u32)> = self
-                                .mod_pool(content, true)
+                                .mod_candidates(content, true)
                                 .into_iter()
                                 .filter(|(m, _)| self.may_attach(content, target, m))
                                 .collect();
