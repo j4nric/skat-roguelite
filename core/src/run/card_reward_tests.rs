@@ -8,6 +8,7 @@ use super::card_reward::{CardReward, RewardOffer};
 use super::tour::Spelunke;
 use super::*;
 use crate::content::{MalusId, ModKind, Rarity};
+use crate::deck::CardKind;
 
 fn content() -> Content {
     Content::load().expect("content")

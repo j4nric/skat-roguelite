@@ -5,7 +5,14 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play};
 use super::*;
 use crate::cards::Suit;
+use crate::content::Change;
+use crate::content::Lever;
+use crate::content::ScoreLine;
+use crate::content::Source;
 use crate::content::{ConsumableCategory, ConsumableId, Factor};
+use crate::deck::CardKind;
+use crate::game::Event;
+use crate::rules::Declaration;
 use crate::rules::{GameType, RiskLevel, is_trump};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):

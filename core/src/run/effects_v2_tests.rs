@@ -6,8 +6,14 @@
 use super::content_tests::{card_mod_run_with, content, fixed_deal, play, relic_run};
 use super::opponents::defender_hints;
 use super::*;
+use crate::cards::Suit;
+use crate::content::Source;
 use crate::content::TRUMP_MODS_NEED_PLAYER;
+use crate::content::resolve_edition;
+use crate::deck::DeckChange;
+use crate::deck::DeckError;
 use crate::deck::{AUGEN, DeckCard, RAMPONIERT, RANK_MAX, legacy_mod};
+use crate::rules::Declaration;
 use crate::rules::{GameType, RiskLevel};
 
 /// The declarer holds all trumps of a diamonds game but the D8 (in the

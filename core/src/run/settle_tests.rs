@@ -5,7 +5,10 @@
 use super::bot::RunBot;
 use super::content_tests::{content, declare, fixed_deal, relic_run};
 use super::*;
+use crate::cards::Suit;
+use crate::game::Event;
 use crate::game::TRICKS_PER_GAME;
+use crate::rules::Declaration;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// A Null the declarer cannot lose once a defender leads (all eight

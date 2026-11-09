@@ -9,8 +9,20 @@ use super::meta::{MetaState, RewardKind};
 use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
 use super::*;
+use crate::cards::PlayingCard;
 use crate::cards::{Card, Rank, Suit};
+use crate::content::CardFilter;
+use crate::content::Change;
+use crate::content::Effect;
+use crate::content::EncounterEffect;
+use crate::content::HookContext;
+use crate::content::Lever;
+use crate::content::Source;
+use crate::content::Stage;
+use crate::content::evaluate;
 use crate::content::{Condition, Rarity, Reward, UnlockId};
+use crate::game::Event;
+use crate::rules::Declaration;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// Instance id of a printed card in the standard deck (D7 = 0 … CA = 31).

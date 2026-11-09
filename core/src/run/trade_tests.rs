@@ -6,7 +6,14 @@ use super::trade::CurseCause;
 use super::zinken_tests::{offers, tresen};
 use super::*;
 use crate::cards::Suit;
+use crate::content::Change;
+use crate::content::ConsumableAction;
+use crate::content::Lever;
+use crate::content::ScoreLine;
+use crate::content::Source;
 use crate::content::{Rarity, TradeConfig};
+use crate::deck::CardKind;
+use crate::rules::Declaration;
 use crate::rules::{GameType, RiskLevel};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat).

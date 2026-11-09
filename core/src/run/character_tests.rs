@@ -9,7 +9,12 @@ use super::meta::MetaState;
 use super::view::RevealSource;
 use super::*;
 use crate::cards::Suit;
+use crate::content::Change;
+use crate::content::EncounterEffect;
+use crate::content::Lever;
+use crate::content::Source;
 use crate::content::{CardModId, Effect, UnlockId};
+use crate::rules::Declaration;
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
 /// Declarer holds the four jacks and six diamonds; the defenders hold no

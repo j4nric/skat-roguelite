@@ -6,6 +6,7 @@
 use super::meta::MetaState;
 use super::night::VERSCHAERFUNGEN_COUNTER;
 use super::*;
+use crate::content::Source;
 use crate::content::{MalusId, NightRule, UnlockId, VerschaerfungId};
 
 fn content() -> Content {

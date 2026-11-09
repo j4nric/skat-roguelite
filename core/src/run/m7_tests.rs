@@ -6,6 +6,10 @@ use super::content_tests::content;
 use super::meta::MetaState;
 use super::*;
 use crate::content::ConsumableId;
+use crate::content::Effect;
+use crate::content::EncounterEffect;
+use crate::content::Stage;
+use crate::deck::CardKind;
 use crate::deck::DeckChange;
 
 fn is_curse(content: &Content, id: &CardModId) -> bool {

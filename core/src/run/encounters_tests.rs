@@ -7,6 +7,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::tour::RouteStop;
 use super::*;
+use crate::content::EncounterEffect;
 use crate::content::{ConsumableCategory, EncounterDef, StopCategory};
 
 /// End the current pub as won in its first game.

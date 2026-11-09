@@ -31,6 +31,12 @@ pub(super) enum Precheck {
 }
 
 impl Run {
+    /// Whether the run would accept `action` now ([`Run::check`]).
+    #[must_use]
+    pub fn accepts(&self, content: &Content, action: RunAction) -> bool {
+        self.check(content, action).is_ok()
+    }
+
     /// Whether `action` would be accepted now, and if not, why: the error
     /// [`Run::apply_step`] would return, without changing the run. Cheap
     /// when [`Run::precheck`] already rules the action out; otherwise the

@@ -10,9 +10,18 @@ use super::wave3_tests::{
     bot_to_end, card_in, deal_with, defender_plays, hand_clubs, id_of, with_mod,
 };
 use super::*;
+use crate::cards::Card;
+use crate::cards::PlayingCard;
 use crate::cards::Rank;
+use crate::content::Source;
 use crate::content::{Lever, resolve_edition};
+use crate::deck::CardKind;
 use crate::deck::{AUGEN, DeckError, MODS_VERSION, Owner, WINKEL_TO_AUGEN};
+use crate::game::Event;
+use crate::game::Game;
+use crate::game::GameError;
+use crate::rules::Declaration;
+use crate::rules::GameType;
 use crate::rules::{NullRisk, beats};
 
 /// Player forehand with all four Unter and the clubs top; the left defender

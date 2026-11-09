@@ -7,7 +7,11 @@ use super::tour::{RouteStop, Transport};
 use super::view::OptionTarget;
 use super::*;
 use crate::cards::Suit;
+use crate::content::Effect;
+use crate::content::EncounterEffect;
+use crate::content::Source;
 use crate::content::{ConsumableCategory, Factor, MalusId, RelicGroup, StopCategory};
+use crate::rules::Declaration;
 use crate::rules::RiskLevel;
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):
