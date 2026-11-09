@@ -25,6 +25,17 @@ fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
+/// The splitmix64 finalizer of `z`: a well-mixed 64-bit hash, for seeds
+/// derived from coordinates and for hash tables. Equals the first value
+/// of a splitmix64 stream started at `z`.
+#[must_use]
+pub const fn mix64(z: u64) -> u64 {
+    let mut z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
 impl Rng {
     /// Create a generator from a 64-bit seed. Equal seeds give equal streams.
     #[must_use]
@@ -82,6 +93,26 @@ impl Rng {
         }
     }
 
+    /// An index drawn with a chance proportional to its weight: one value
+    /// `roll` of `gen_range(0..total)`, then the first index whose weights
+    /// up to and including it exceed `roll`. `None`, without drawing, if
+    /// the weights add up to 0.
+    pub fn weighted_index(&mut self, weights: &[u64]) -> Option<usize> {
+        let total: u64 = weights.iter().sum();
+        if total == 0 {
+            return None;
+        }
+        let mut roll = self.gen_range(0..total);
+        weights.iter().position(|&w| {
+            if roll < w {
+                true
+            } else {
+                roll -= w;
+                false
+            }
+        })
+    }
+
     /// Derive an independent generator for a sub task (e.g. one game of a
     /// run) so that the parent stream advances by exactly one value.
     pub fn fork(&mut self) -> Rng {
@@ -132,6 +163,37 @@ mod tests {
         sorted.sort_unstable();
         assert_eq!(sorted, (0..32).collect::<Vec<_>>());
         assert_ne!(a, sorted, "32 elements should not stay in place");
+    }
+
+    #[test]
+    fn mix64_is_the_first_splitmix_value() {
+        for z in [0, 1, 42, u64::MAX] {
+            let mut state = z;
+            assert_eq!(mix64(z), splitmix64(&mut state));
+        }
+    }
+
+    #[test]
+    fn weighted_index_follows_the_weights_with_one_draw() {
+        let mut rng = Rng::from_seed(3);
+        let mut reference = rng.clone();
+        let weights = [2, 0, 5, 1];
+        for _ in 0..1000 {
+            let i = rng.weighted_index(&weights).expect("weights");
+            let roll = reference.gen_range(0..8);
+            let expected = if roll < 2 {
+                0
+            } else if roll < 7 {
+                2
+            } else {
+                3
+            };
+            assert_eq!(i, expected);
+        }
+        let before = rng.clone();
+        assert_eq!(rng.weighted_index(&[0, 0]), None);
+        assert_eq!(rng.weighted_index(&[]), None);
+        assert_eq!(rng, before, "no draw without weight");
     }
 
     #[test]

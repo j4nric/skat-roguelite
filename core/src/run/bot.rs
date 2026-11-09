@@ -126,6 +126,7 @@ use crate::content::{
 };
 use crate::deck::DealtCard;
 use crate::game::{Phase, Seat};
+use crate::rng::mix64;
 use crate::rules::{Declaration, GameType, NullRisk, NullScoring, RiskLevel};
 
 /// How much the bot wants each relic, by the measured effect of the relic
@@ -868,14 +869,6 @@ fn holds_relic(run: &Run, id: &str) -> bool {
     run.relics().iter().any(|r| r.as_str() == id)
 }
 
-/// splitmix64 finalizer, for the seed of [`schneider_percent`].
-fn mix(mut z: u64) -> u64 {
-    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
 /// Percent of [`BOLD_SAMPLES`] deals of the unseen cards on which the
 /// declarer makes Schneider in `game` with the ten cards `kept`, solved
 /// double-dummy ([`crate::ai::solver`]): the defenders' Augen at most
@@ -897,7 +890,7 @@ pub fn schneider_percent(
     schneider_limit: u32,
     seed: u64,
 ) -> i64 {
-    use crate::ai::solver::{Goal, Layout, Limits, Table, probe_with};
+    use crate::ai::solver::{Goal, Layout, Limits, probe_with, with_table};
     let unseen: Vec<DealtCard> = deck
         .iter()
         .copied()
@@ -910,9 +903,8 @@ pub fn schneider_percent(
     let need = i32::try_from(pool.saturating_sub(schneider_limit)).unwrap_or(i32::MAX);
     let key = cards
         .iter()
-        .fold(seed, |acc, c| acc.wrapping_add(mix(u64::from(c.id))));
-    let mut rng = crate::rng::Rng::from_seed(mix(key));
-    let mut table = Table::new(16);
+        .fold(seed, |acc, c| acc.wrapping_add(mix64(u64::from(c.id))));
+    let mut rng = crate::rng::Rng::from_seed(mix64(key));
     let samples = i64::try_from(BOLD_SAMPLES).unwrap_or(1);
     // Misses after which the percent is below BOLD_MIN_PERCENT for sure.
     let allowed = samples - (BOLD_MIN_PERCENT * samples + 99) / 100;
@@ -920,36 +912,32 @@ pub fn schneider_percent(
         depth: 0,
         nodes: BOLD_NODES,
     };
-    let (mut made, mut missed) = (0, 0);
-    for _ in 0..BOLD_SAMPLES {
-        if missed > allowed {
-            break;
+    let made = with_table(16, |table| {
+        let (mut made, mut missed) = (0, 0);
+        for _ in 0..BOLD_SAMPLES {
+            if missed > allowed {
+                break;
+            }
+            let mut shuffled = unseen.clone();
+            rng.shuffle(&mut shuffled);
+            let (first, second) = shuffled.split_at(10);
+            let layout = Layout {
+                hands: [kept.to_vec(), first.to_vec(), second.to_vec()],
+                trick_lead: forehand,
+                trick: Vec::new(),
+                skat_points: 0,
+            };
+            let (moves, _) = probe_with(game, Goal::DeclarerPoints, &layout, need, limits, table);
+            let reached = if forehand.is_declarer() {
+                moves.iter().any(|&(_, r)| r)
+            } else {
+                !moves.is_empty() && moves.iter().all(|&(_, r)| r)
+            };
+            made += i64::from(reached);
+            missed += i64::from(!reached);
         }
-        let mut shuffled = unseen.clone();
-        rng.shuffle(&mut shuffled);
-        let (first, second) = shuffled.split_at(10);
-        let layout = Layout {
-            hands: [kept.to_vec(), first.to_vec(), second.to_vec()],
-            trick_lead: forehand,
-            trick: Vec::new(),
-            skat_points: 0,
-        };
-        let (moves, _) = probe_with(
-            game,
-            Goal::DeclarerPoints,
-            &layout,
-            need,
-            limits,
-            &mut table,
-        );
-        let reached = if forehand.is_declarer() {
-            moves.iter().any(|&(_, r)| r)
-        } else {
-            !moves.is_empty() && moves.iter().all(|&(_, r)| r)
-        };
-        made += i64::from(reached);
-        missed += i64::from(!reached);
-    }
+        made
+    });
     made * 100 / samples
 }
 
