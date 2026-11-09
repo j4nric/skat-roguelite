@@ -5634,6 +5634,8 @@ async function run() {
     await page.waitForSelector('[data-action="new-run"]');
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
+    // The rare faces (Untot, Wandelkarte, Doppelgänger) come in a second sprite file after boot.
+    await page.waitForFunction(() => document.querySelector('svg.sprite-rare')).catch(() => fail('the rare card sprite did not load'));
     const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'u-S7', 'u-CA', 'w-A', 'wx-T', 'wt-K', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
     // Every opponent back (tools/cardart/backs.py) in both sizes, with a picture.
     const backIds = ['regulars', 'black_peter', 'grandma', 'the_pusher', 'ramscher', 'twins', 'the_old_man'];

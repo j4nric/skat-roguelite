@@ -498,6 +498,11 @@ export class App {
     });
   }
 
+  /** Draw the loading screen (before the core and the sprite are in). */
+  showLoading(): void {
+    this.render();
+  }
+
   async start(): Promise<void> {
     this.render();
     try {
