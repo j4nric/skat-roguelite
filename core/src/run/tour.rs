@@ -190,6 +190,24 @@ impl Run {
         true
     }
 
+    /// Drop relics the content no longer knows from the open boss relic
+    /// pick (part of [`Run::drop_unknown_content`]). If none is left, the
+    /// pick closes and the route choice opens, as after passing it.
+    pub(super) fn drop_unknown_boss_reward(&mut self, content: &Content) {
+        let Some(reward) = self.boss_reward.as_mut() else {
+            return;
+        };
+        reward.relics.retain(|id| content.relic(id).is_some());
+        if !reward.relics.is_empty() {
+            return;
+        }
+        self.boss_reward = None;
+        if self.phase == RunPhase::BossReward {
+            // Like a loaded encounter with nothing left to offer.
+            let _ = self.open_route(content, &mut Vec::new());
+        }
+    }
+
     /// [`RunAction::ChooseBossRelic`]: take one relic of the pick (selling
     /// an owned one for its slot if asked) or none, then the route choice.
     pub(super) fn choose_boss_relic(
@@ -253,10 +271,10 @@ impl Run {
         &self.pub_results
     }
 
-    /// The malus of the current pub, if it is a Spelunke.
-    #[must_use]
-    /// In the long night a normal pub may have one too
+    /// The malus of the current pub, if it is a Spelunke. In the long
+    /// night a normal pub may have one too
     /// ([`crate::content::NightRule::MalusEveryPub`]).
+    #[must_use]
     pub fn malus<'c>(&self, content: &'c Content) -> Option<&'c MalusDef> {
         let malus = self
             .series
@@ -571,9 +589,7 @@ impl Run {
     /// The relic that gives a second chance, an owned one before a house
     /// rule of the evening.
     fn second_chance(&self, content: &Content) -> Option<RelicId> {
-        self.relics
-            .iter()
-            .chain(&self.evening_relics)
+        self.held_relics()
             .find(|r| {
                 content
                     .relic(r)
@@ -588,7 +604,8 @@ impl Run {
     fn category_open(&self, content: &Content, category: StopCategory) -> bool {
         match category {
             StopCategory::Tresen => true,
-            StopCategory::Kiosk => !self.kiosk_pool(content).is_empty(),
+            // What the Kiosk may sell: the Schnäpse of the draws.
+            StopCategory::Kiosk => !self.schnapps_pool(content).is_empty(),
             _ => !self.fitting_encounters(content, category).is_empty(),
         }
     }
@@ -796,6 +813,20 @@ impl Run {
         Ok(())
     }
 
+    /// What [`Run::choose_route`] checks first: the open route choice and
+    /// its way `option`.
+    pub(super) fn route_choice(
+        &self,
+        option: usize,
+    ) -> Result<(&RouteChoice, &RouteOption), RunError> {
+        if self.phase != RunPhase::Route {
+            return Err(RunError::WrongPhase);
+        }
+        let route = self.route.as_ref().ok_or(RunError::WrongPhase)?;
+        let chosen = route.options.get(option).ok_or(RunError::InvalidSlot)?;
+        Ok((route, chosen))
+    }
+
     /// Take a route ([`super::RunAction::ChooseRoute`]).
     pub(super) fn choose_route(
         &mut self,
@@ -803,15 +834,8 @@ impl Run {
         option: usize,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if self.phase != RunPhase::Route {
-            return Err(RunError::WrongPhase);
-        }
-        let route = self.route.as_ref().ok_or(RunError::WrongPhase)?;
-        let chosen = route
-            .options
-            .get(option)
-            .cloned()
-            .ok_or(RunError::InvalidSlot)?;
+        let (route, chosen) = self.route_choice(option)?;
+        let chosen = chosen.clone();
         events.push(RunEvent::RouteChosen {
             option,
             transport: chosen.transport,
@@ -865,16 +889,11 @@ impl Run {
         }
     }
 
-    /// Schnäpse the Kiosk may sell, with their rarity weight.
-    fn kiosk_pool(&self, content: &Content) -> Vec<(crate::content::ConsumableId, u32)> {
-        self.schnapps_pool(content)
-    }
-
     /// Open a Kiosk (03.11.2026): a shop with a few Schnäpse, drawn with
     /// the Tresen's generator.
     fn open_kiosk(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         self.phase = RunPhase::Shop;
-        let pool = self.kiosk_pool(content);
+        let pool = self.schnapps_pool(content);
         let drawn = draw_weighted(&mut self.shop_rng, pool, content.run.route.kiosk.offers);
         let shop = Shop {
             consumables: drawn.into_iter().map(Some).collect(),

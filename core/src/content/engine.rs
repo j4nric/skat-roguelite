@@ -140,7 +140,7 @@ pub fn resolve_edition(
                 card: deck_card.id,
             };
             let value = deck_card.mod_value(mod_id);
-            for effect in def.passive.iter().map(|e| e.scaled(value)) {
+            for effect in def.passive.iter().map(|e| e.scaled(value).into_owned()) {
                 match effect {
                     Effect::AddCardPoints(delta) => {
                         let old = i64::from(dealt.card_points) - i64::from(dealt.point_debt);

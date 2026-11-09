@@ -27,6 +27,17 @@ type DrawKey = (Vec<(CardModId, i32)>, bool);
 /// A drawn modification with its value.
 type DrawnMod = (Option<CardModId>, Option<i32>);
 
+/// An encounter option that passed every check of
+/// [`Run::encounter_choice`].
+pub(super) struct EncounterChoice<'m> {
+    encounter: ActiveEncounter,
+    chosen: EncounterOption,
+    card: Option<u32>,
+    relic: Option<usize>,
+    marke: Option<&'m CardModId>,
+    cost: u32,
+}
+
 /// What the player chose for an option: a card of the edition, an owned
 /// relic (index), a Marke.
 #[derive(Debug, Clone, Copy)]
@@ -303,24 +314,26 @@ impl Run {
             .iter()
             .filter(|c| c.kind != CardKind::Blank)
             .map(|c| c.id)
-            .filter(|&card| {
-                option.effects.iter().all(|e| match e {
-                    EncounterEffect::Mark {
-                        card: CardPick::Chosen,
-                        card_mod: Some(m),
-                        ..
-                    } => self.may_attach(content, card, m),
-                    EncounterEffect::Marke {
-                        card: CardPick::Chosen,
-                        ..
-                    } => self.marken_for(content, Some(card)).next().is_some(),
-                    EncounterEffect::Cleanse => {
-                        self.edition.get(card).is_some_and(|c| !c.mods.is_empty())
-                    }
-                    _ => true,
-                })
-            })
+            .filter(|&card| self.fits_option(content, option, card))
             .collect()
+    }
+
+    /// Whether the deck card `card` (no blank) may take every chosen-card
+    /// effect of the option now (see [`Run::fitting_cards`]).
+    fn fits_option(&self, content: &Content, option: &EncounterOption, card: u32) -> bool {
+        option.effects.iter().all(|e| match e {
+            EncounterEffect::Mark {
+                card: CardPick::Chosen,
+                card_mod: Some(m),
+                ..
+            } => self.may_attach(content, card, m),
+            EncounterEffect::Marke {
+                card: CardPick::Chosen,
+                ..
+            } => self.marken_for(content, Some(card)).next().is_some(),
+            EncounterEffect::Cleanse => self.edition.get(card).is_some_and(|c| !c.mods.is_empty()),
+            _ => true,
+        })
     }
 
     /// Every Marke (card modification of kind [`ModKind::Voucher`]) for the
@@ -523,14 +536,16 @@ impl Run {
     /// relic) as `target` if it needs one, and the Marke `marke` if it lets
     /// the player choose one. All or nothing: on an error the run is
     /// unchanged.
-    pub(super) fn choose_encounter(
-        &mut self,
+    /// What [`Run::choose_encounter`] checks before it changes anything:
+    /// the open encounter, the option and what it needs (card, relic,
+    /// Marke) and what it costs.
+    pub(super) fn encounter_choice<'m>(
+        &self,
         content: &Content,
         option: usize,
         target: Option<u32>,
-        marke: Option<&CardModId>,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
+        marke: Option<&'m CardModId>,
+    ) -> Result<EncounterChoice<'m>, RunError> {
         if self.phase != RunPhase::Encounter {
             return Err(RunError::WrongPhase);
         }
@@ -555,7 +570,7 @@ impl Run {
             if deck_card.kind == CardKind::Blank {
                 return Err(crate::deck::DeckError::BlankCannotBeModified.into());
             }
-            if !self.fitting_cards(content, &chosen).contains(&card) {
+            if !self.fits_option(content, &chosen, card) {
                 return Err(RunError::NoModAvailable);
             }
             Some(card)
@@ -585,28 +600,51 @@ impl Run {
         if cost > self.coins {
             return Err(RunError::NotEnoughCoins);
         }
-        let mut next = self.clone();
-        let mut out = Vec::new();
-        next.coins -= cost;
+        Ok(EncounterChoice {
+            encounter,
+            chosen,
+            card,
+            relic,
+            marke,
+            cost,
+        })
+    }
+
+    pub(super) fn choose_encounter(
+        &mut self,
+        content: &Content,
+        option: usize,
+        target: Option<u32>,
+        marke: Option<&CardModId>,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let EncounterChoice {
+            encounter,
+            chosen,
+            card,
+            relic,
+            marke,
+            cost,
+        } = self.encounter_choice(content, option, target, marke)?;
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.coins -= cost;
         let target = Target { card, relic, marke };
-        let painter = next.apply_option(content, &encounter.id, &chosen, target, cost, &mut out)?;
+        let painter = self.apply_option(content, &encounter.id, &chosen, target, cost, events)?;
         if painter {
             let card = card.ok_or(RunError::TargetRequired)?;
-            if let Some(open) = next.encounter.as_mut() {
+            if let Some(open) = self.encounter.as_mut() {
                 open.chosen = Some(option);
             }
-            next.start_painter(content, card, 0, true, &mut out)?;
+            self.start_painter(content, card, 0, true, events)?;
         } else {
-            next.settle_debt(&mut out);
-            out.push(RunEvent::EncounterResolved {
+            self.settle_debt(events);
+            events.push(RunEvent::EncounterResolved {
                 encounter: encounter.id.clone(),
                 option,
             });
-            next.encounter = None;
-            next.continue_trip(content, &mut out)?;
+            self.encounter = None;
+            self.continue_trip(content, events)?;
         }
-        *self = next;
-        events.extend(out);
         Ok(())
     }
 
@@ -654,7 +692,7 @@ impl Run {
                         let hit = self.encounter_rng.gen_range(0..100) < u64::from(*curse_percent);
                         let curse = if hit {
                             let pool: Vec<(CardModId, u32)> = self
-                                .mod_pool(content, true)
+                                .mod_candidates(content, true)
                                 .into_iter()
                                 .filter(|(m, _)| self.may_attach(content, target, m))
                                 .collect();

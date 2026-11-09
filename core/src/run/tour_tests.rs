@@ -2,7 +2,7 @@
 //! pub ends the run), the boss pub (ADR 0017: all games, the relic pick),
 //! the route choice per transport, the Spelunke and the names.
 
-use super::tour::{RouteStop, Transport, Trip};
+use super::tour::{BossReward, RouteStop, Transport, Trip};
 use super::*;
 use crate::content::{Factor, MalusId, StopCategory};
 
@@ -278,6 +278,48 @@ fn the_boss_pick_with_full_slots_replaces_a_relic_or_is_passed() {
     assert!(events.contains(&RunEvent::BossRewardDeclined));
     assert_eq!(run.relics(), fillers.as_slice());
     assert_eq!(run.phase(), RunPhase::Route);
+}
+
+#[test]
+fn a_save_with_an_unknown_relic_in_the_boss_pick_keeps_only_known_ones() {
+    let content = content();
+    let (run, _) = win_boss_pub(&content, 6);
+    let offered = run.boss_reward().expect("pick").relics.clone();
+    let load = |relics: Vec<RelicId>| {
+        let mut saved = run.clone();
+        saved.boss_reward = Some(BossReward { relics });
+        let json = serde_json::to_string(&saved).expect("save");
+        let mut loaded: Run = serde_json::from_str(&json).expect("load");
+        loaded.drop_unknown_content(&content);
+        loaded
+    };
+    let gone = RelicId::new("long_gone_relic");
+    assert!(content.relic(&gone).is_none());
+    // One removed relic among known ones: the pick keeps the others.
+    let mut loaded = load(vec![offered[0].clone(), gone.clone(), offered[1].clone()]);
+    assert_eq!(loaded.phase(), RunPhase::BossReward);
+    assert_eq!(
+        loaded.boss_reward().expect("pick").relics,
+        vec![offered[0].clone(), offered[1].clone()]
+    );
+    let events = loaded
+        .apply(
+            &content,
+            RunAction::ChooseBossRelic {
+                offer: Some(1),
+                replace: None,
+            },
+        )
+        .expect("take");
+    assert!(events.contains(&RunEvent::RelicGained {
+        relic: offered[1].clone()
+    }));
+    // Only removed relics: the pick closes and the route opens.
+    let loaded = load(vec![gone]);
+    assert!(loaded.boss_reward().is_none());
+    assert_eq!(loaded.phase(), RunPhase::Route);
+    let route = loaded.route().expect("route");
+    assert_eq!((route.section, route.index), (1, 0), "the next district");
 }
 
 #[test]

@@ -71,18 +71,32 @@ fn stepwise(
     (run, events, ai_cards)
 }
 
-#[test]
-fn stepwise_play_equals_whole_actions() {
+/// A whole run played with whole actions and step by step ends the same.
+/// One test per seed, so they run in parallel.
+fn stepwise_play_equals_whole_actions(seed: u64) {
     let content = content();
-    for seed in [3, 7, 21] {
-        let start = RunStart::default();
-        let (a, ea) = whole(&content, seed, &start, 3_000);
-        let (b, eb, ai_cards) = stepwise(&content, seed, &start, 3_000);
-        assert!(ai_cards > 20, "seed {seed}: {ai_cards} AI cards");
-        assert_eq!(ea, eb, "seed {seed}: same events");
-        assert_eq!(a, b, "seed {seed}: same run");
-        assert!(matches!(a.phase(), RunPhase::Won | RunPhase::Lost));
-    }
+    let start = RunStart::default();
+    let (a, ea) = whole(&content, seed, &start, 3_000);
+    let (b, eb, ai_cards) = stepwise(&content, seed, &start, 3_000);
+    assert!(ai_cards > 20, "seed {seed}: {ai_cards} AI cards");
+    assert_eq!(ea, eb, "seed {seed}: same events");
+    assert_eq!(a, b, "seed {seed}: same run");
+    assert!(matches!(a.phase(), RunPhase::Won | RunPhase::Lost));
+}
+
+#[test]
+fn stepwise_play_equals_whole_actions_seed_3() {
+    stepwise_play_equals_whole_actions(3);
+}
+
+#[test]
+fn stepwise_play_equals_whole_actions_seed_7() {
+    stepwise_play_equals_whole_actions(7);
+}
+
+#[test]
+fn stepwise_play_equals_whole_actions_seed_21() {
+    stepwise_play_equals_whole_actions(21);
 }
 
 #[test]

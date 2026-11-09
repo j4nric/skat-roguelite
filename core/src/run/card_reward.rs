@@ -364,7 +364,7 @@ impl Run {
             // The reason from the rules (unknown card, cursed, at its
             // maximum), else it does not fit.
             self.edition
-                .clone()
+                .probe_card(card)
                 .add_mod(content, card, &card_mod, value)?;
             return Err(RunError::NoModAvailable);
         }

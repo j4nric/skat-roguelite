@@ -19,6 +19,11 @@
 //!
 //! The spans are each sound on their own; they do not say which
 //! combinations occur together.
+//!
+//! Every card counts with at least 0 Augen here. While a card with Augen
+//! below zero ("Ramponiert", [`PlayingCard::point_debt`]) is still in a
+//! hand or on the table, all three return `None`
+//! ([`negative_augen_in_play`]).
 
 use std::collections::HashMap;
 
@@ -132,12 +137,31 @@ pub struct Reach<C> {
     pub nodes: u64,
 }
 
+/// Whether a card with Augen below zero ("Ramponiert") is still in a
+/// hand or on the table. The bounds count every card with at least 0
+/// Augen, so then [`reach`], [`loose_reach`] and [`null_reach`] give
+/// `None`.
+#[must_use]
+pub fn negative_augen_in_play<C: PlayingCard>(game: &Game<C>) -> bool {
+    Seat::ALL
+        .iter()
+        .flat_map(|&seat| game.hand(seat).iter())
+        .chain(game.current_trick())
+        .any(|c| c.point_debt() > 0)
+}
+
+/// Whether the bounds may be computed: in play, no card with Augen below
+/// zero left ([`negative_augen_in_play`]).
+fn bounds_apply<C: PlayingCard>(game: &Game<C>) -> bool {
+    game.phase() == Phase::Playing && !negative_augen_in_play(game)
+}
+
 /// Bounds of the remaining tricks of `game` over all legal play. `None`
-/// outside play or when the search needs more than
-/// [`ReachOptions::node_limit`] trick boundaries.
+/// outside play, with Augen below zero in play or when the search needs
+/// more than [`ReachOptions::node_limit`] trick boundaries.
 #[must_use]
 pub fn reach<C: PlayingCard>(game: &Game<C>, options: ReachOptions) -> Option<Reach<C>> {
-    if game.phase() != Phase::Playing {
+    if !bounds_apply(game) {
         return None;
     }
     let declaration = game.declaration()?;
@@ -217,10 +241,11 @@ fn sevens_left<C: PlayingCard>(game: &Game<C>) -> u32 {
 
 /// Bounds without any search, from the cards alone: wide, but sound.
 /// Every quantity lies in its span in every line of play; the spans are
-/// as wide as the cards still in play allow. `None` outside play.
+/// as wide as the cards still in play allow. `None` outside play and
+/// with Augen below zero in play.
 #[must_use]
 pub fn loose_reach<C: PlayingCard>(game: &Game<C>, early_tricks: usize) -> Option<Reach<C>> {
-    if game.phase() != Phase::Playing {
+    if !bounds_apply(game) {
         return None;
     }
     let null = game.declaration()?.is_null();
@@ -259,7 +284,8 @@ pub fn loose_reach<C: PlayingCard>(game: &Game<C>, early_tricks: usize) -> Optio
 
 /// Bounds of a Null in which the declarer can no longer take a trick,
 /// however anyone plays; `None` if that is not certain from this simple
-/// test (or the game is no Null in play). Sound, without search:
+/// test (or the game is no Null in play, or Augen below zero are in
+/// play). Sound, without search:
 ///
 /// - no defender holds a blank (a blank lead lets the next card choose
 ///   the suit);
@@ -277,7 +303,7 @@ pub fn loose_reach<C: PlayingCard>(game: &Game<C>, early_tricks: usize) -> Optio
 /// Augen of the early tricks are only bounded.
 #[must_use]
 pub fn null_reach<C: PlayingCard>(game: &Game<C>, early_tricks: usize) -> Option<Reach<C>> {
-    if game.phase() != Phase::Playing {
+    if !bounds_apply(game) {
         return None;
     }
     let declaration = game.declaration()?;

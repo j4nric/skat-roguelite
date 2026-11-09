@@ -784,7 +784,7 @@ fn locked_relics_are_never_offered_and_null_relics_are_for_everyone() {
     assert_eq!(weight(&pool, "fat_sow"), Some(1200));
     assert_eq!(weight(&pool, "old_lady"), Some(150));
     assert_eq!(weight(&pool, "all_rounder"), Some(300));
-    let mods = run.card_mod_pool(&content);
+    let mods = run.mod_pool(&content, false);
     let mod_weight = |id: &str| mods.iter().find(|(m, _)| m.as_str() == id).map(|&(_, w)| w);
     assert_eq!(mod_weight("points"), Some(50));
     assert_eq!(mod_weight("voucher_coins"), Some(100));

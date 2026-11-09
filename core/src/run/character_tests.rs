@@ -516,21 +516,31 @@ fn a_character_rule_is_validated() {
 // ---------------------------------------------------------------------------
 
 fn scored(declaration: Declaration, won: bool, schneider: bool, discarded: u32) -> RunEvent {
-    let mut breakdown = crate::content::score_game(
-        declaration,
-        crate::rules::Matadors {
-            with: true,
-            count: 1,
-        },
-        &crate::rules::Outcome {
-            declarer_card_points: if won { 95 } else { 40 },
-            defender_card_points: if won { 25 } else { 80 },
-            declarer_tricks: 8,
-            defender_tricks: 2,
-        },
-        &crate::rules::Thresholds::default(),
-        Vec::new(),
-    );
+    let matadors = crate::rules::Matadors {
+        with: true,
+        count: 1,
+    };
+    let outcome = crate::rules::Outcome {
+        declarer_card_points: if won { 95 } else { 40 },
+        defender_card_points: if won { 25 } else { 80 },
+        declarer_tricks: 8,
+        defender_tricks: 2,
+    };
+    let thresholds = crate::rules::Thresholds::default();
+    let mut breakdown = if declaration.is_ramsch() {
+        // A Ramsch is scored with every seat's Augen.
+        let parts = crate::rules::ramsch_value_parts([95, 13, 12], [8, 1, 1]);
+        crate::content::score_parts(
+            declaration,
+            matadors,
+            &outcome,
+            &thresholds,
+            parts,
+            Vec::new(),
+        )
+    } else {
+        crate::content::score_game(declaration, matadors, &outcome, &thresholds, Vec::new())
+    };
     breakdown.won = won;
     breakdown.schneider = schneider;
     RunEvent::GameScored {

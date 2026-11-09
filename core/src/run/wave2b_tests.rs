@@ -447,7 +447,7 @@ fn three_discard_works_once_per_series() {
     assert_eq!(game.discard_count(), 2);
     // A new series grants it again.
     let mut events = Vec::new();
-    run.start_series(&content, 0, 1, &mut events)
+    run.start_pub(&content, 0, 1, None, &mut events)
         .expect("series");
     assert!(run.discard_three_ready());
     deal(&mut run, &content, STRONG, STRONG_SKAT);

@@ -274,7 +274,7 @@ impl Run {
                 for effect in hook.then() {
                     let effect = effect.scaled(source.scale);
                     // What the game decides counts at its most.
-                    let count = match &effect {
+                    let count = match &*effect {
                         crate::content::Effect::AddLevelsPerVoidSuit { .. } => 3,
                         crate::content::Effect::AddBaseValuePerDeclarerPoints {
                             above,
