@@ -22,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use crate::cards::Card;
 use crate::rules::{GameType, NullRisk, NullScoring, RiskLevel};
 
-pub use effects::{CardCount, CardFilter, Condition, Effect, Hook, Stage};
+#[cfg(test)]
+pub(crate) use effects::per_step_factor;
+pub use effects::{CardCount, CardFilter, Condition, Counted, Effect, EffectKind, Hook, Stage};
 pub use engine::{
     ActiveSource, CardModStatus, Editions, HookContext, ResolvedDeck, TRUMP_MODS_NEED_PLAYER,
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
@@ -1880,9 +1882,29 @@ pub struct Sources<'a> {
 }
 
 impl Sources<'static> {
-    /// The RON files embedded in the binary.
+    /// The RON files embedded in the binary, without their comment lines
+    /// (the build script strips them, `core/build.rs`).
     #[must_use]
     pub const fn embedded() -> Sources<'static> {
+        Sources {
+            relics: include_str!(concat!(env!("OUT_DIR"), "/house_rules.ron")),
+            card_mods: include_str!(concat!(env!("OUT_DIR"), "/card_mods.ron")),
+            bosses: include_str!(concat!(env!("OUT_DIR"), "/bosses.ron")),
+            consumables: include_str!(concat!(env!("OUT_DIR"), "/consumables.ron")),
+            run: include_str!(concat!(env!("OUT_DIR"), "/run.ron")),
+            characters: include_str!(concat!(env!("OUT_DIR"), "/characters.ron")),
+            encounters: include_str!(concat!(env!("OUT_DIR"), "/encounters.ron")),
+            unlocks: include_str!(concat!(env!("OUT_DIR"), "/unlocks.ron")),
+            guests: include_str!(concat!(env!("OUT_DIR"), "/guests.ron")),
+            tour: include_str!(concat!(env!("OUT_DIR"), "/tour.ron")),
+            night: include_str!(concat!(env!("OUT_DIR"), "/night.ron")),
+            tutorial: include_str!(concat!(env!("OUT_DIR"), "/tutorial.ron")),
+        }
+    }
+
+    /// The RON files as they are in `core/content/`, comments included.
+    #[cfg(test)]
+    pub(crate) const fn with_comments() -> Sources<'static> {
         Sources {
             relics: include_str!("../../content/house_rules.ron"),
             card_mods: include_str!("../../content/card_mods.ron"),
@@ -2790,5 +2812,19 @@ impl Content {
     #[must_use]
     pub fn consumable(&self, id: &ConsumableId) -> Option<&ConsumableDef> {
         self.consumables.get(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_embedded_content_parses_as_the_files_with_comments() {
+        let stripped = Content::from_sources(&Sources::embedded()).expect("embedded");
+        let files = Content::from_sources(&Sources::with_comments()).expect("files");
+        assert_eq!(stripped, files);
+        let length = |s: &Sources<'_>| s.relics.len() + s.card_mods.len() + s.run.len();
+        assert!(length(&Sources::embedded()) < length(&Sources::with_comments()));
     }
 }

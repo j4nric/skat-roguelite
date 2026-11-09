@@ -7,8 +7,10 @@
 //!
 //! - card indices in a `u32` bit mask per hand (at most 32 cards are live:
 //!   three hands plus the cards on the table),
-//! - a transposition table at trick boundaries (the value of the remaining
-//!   tricks depends only on who holds what and who leads),
+//! - a transposition table probed at every node (the value of the rest
+//!   depends only on who holds what, who led and the cards on the table;
+//!   within one search the cards still held say who holds what),
+//! - a cache of the static estimates at the depth or node limit,
 //! - equivalent cards searched once (two cards of one hand of the same
 //!   kind and Augen with no live card of another seat between them),
 //! - move ordering (sure winners and cheap ducks first, the stored best
@@ -21,6 +23,7 @@
 
 use crate::cards::PlayingCard;
 use crate::game::Seat;
+use crate::rng::mix64;
 use crate::rules::{self, GameType};
 
 /// Kind of a non-trump card: its suit (0..4). Trumps and blanks follow.
@@ -82,10 +85,20 @@ pub struct Limits {
 /// One slot of the transposition table.
 #[derive(Debug, Clone, Copy, Default)]
 struct Entry {
-    hands: [u32; 3],
-    tag: u32,
+    /// [`position_key`] of the position.
+    key: u64,
     flag: u8,
     best: u8,
+    generation: u32,
+    value: i32,
+}
+
+/// One slot of the leaf-estimate cache: an estimate of one search
+/// generation for the hands and the leader at a trick boundary.
+#[derive(Debug, Clone, Copy, Default)]
+struct Estimate {
+    /// [`position_key`] of the trick boundary.
+    key: u64,
     generation: u32,
     value: i32,
 }
@@ -100,6 +113,9 @@ const UPPER: u8 = 2;
 pub struct Table {
     entries: Vec<Entry>,
     generation: u32,
+    /// Leaf estimates behind the depth or node limit, valid in their
+    /// generation only (see [`Search::cached_estimate`]).
+    estimates: Vec<Estimate>,
 }
 
 impl Table {
@@ -109,6 +125,7 @@ impl Table {
         Table {
             entries: vec![Entry::default(); 1 << bits.clamp(4, 24)],
             generation: 0,
+            estimates: vec![Estimate::default(); 1 << 12],
         }
     }
 
@@ -116,6 +133,7 @@ impl Table {
         self.generation = self.generation.wrapping_add(1);
         if self.generation == 0 {
             self.entries.fill(Entry::default());
+            self.estimates.fill(Estimate::default());
             self.generation = 1;
         }
     }
@@ -123,23 +141,56 @@ impl Table {
     fn slot(&self, hands: [u32; 3], tag: u32) -> usize {
         let a = u64::from(hands[0]) | (u64::from(hands[1]) << 32);
         let b = u64::from(hands[2]) | (u64::from(tag) << 32);
-        let h = mix(a ^ mix(b));
+        let h = mix64(a ^ mix64(b));
         (h as usize) & (self.entries.len() - 1)
     }
+}
+
+/// The key of a position within one search: the cards still in the
+/// hands and the [`Search::tag`]. Who holds a live card follows from the
+/// deal the search started from (every card has one holder), so the
+/// union of the hands says as much as the three hands.
+fn position_key(hands: [u32; 3], tag: u32) -> u64 {
+    u64::from(hands[0] | hands[1] | hands[2]) | (u64::from(tag) << 32)
+}
+
+/// Most spare tables [`with_table`] keeps.
+const SPARE_TABLES: usize = 4;
+
+std::thread_local! {
+    /// Spare tables of [`with_table`]. Not shared state: a search starts
+    /// a new generation, which invalidates whatever an earlier search
+    /// left, so results never depend on which table a search gets. The
+    /// core runs single-threaded (on `wasm32-unknown-unknown` this is a
+    /// plain static); the simulator's threads each get their own.
+    static SPARE: std::cell::RefCell<Vec<Table>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Run `f` with a table of `2^bits` slots, reused from an earlier call
+/// instead of allocating one (a table of 15 bits holds about 900 KB).
+/// Nested calls get a table of their own.
+pub fn with_table<R>(bits: u32, f: impl FnOnce(&mut Table) -> R) -> R {
+    let len = 1usize << bits.clamp(4, 24);
+    let spare = SPARE.with(|spare| {
+        let mut spare = spare.borrow_mut();
+        let at = spare.iter().position(|t| t.entries.len() == len)?;
+        Some(spare.swap_remove(at))
+    });
+    let mut table = spare.unwrap_or_else(|| Table::new(bits));
+    let result = f(&mut table);
+    SPARE.with(|spare| {
+        let mut spare = spare.borrow_mut();
+        if spare.len() < SPARE_TABLES {
+            spare.push(table);
+        }
+    });
+    result
 }
 
 impl Default for Table {
     fn default() -> Table {
         Table::new(16)
     }
-}
-
-/// 64-bit finalizer (splitmix64).
-fn mix(mut z: u64) -> u64 {
-    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
 }
 
 /// Search state over card indices.
@@ -242,34 +293,79 @@ pub fn probe_with<C: PlayingCard>(
     limits: Limits,
     table: &mut Table,
 ) -> (Vec<(C, bool)>, u64) {
-    let Some((mut search, cards)) = Search::new(game, goal, layout, limits, table) else {
-        return (Vec::new(), 0);
-    };
-    let seat = search.to_play();
-    let lead = rules::effective_lead(&layout.trick);
-    let legal = rules::legal_moves(game, &layout.hands[seat], lead);
-    let mut reps: Vec<(u8, bool)> = Vec::new();
-    let mut out = Vec::with_capacity(legal.len());
-    for card in legal {
-        let Some(i) = cards.iter().position(|&c| c == card) else {
-            return (Vec::new(), search.nodes);
-        };
-        let i = u8::try_from(i).unwrap_or(0);
-        let known = reps
-            .iter()
-            .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
-            .map(|&(_, v)| v);
-        let reached = match known {
-            Some(v) => v,
-            None => {
-                let v = search.play(seat, i, threshold - 1, threshold) >= threshold;
-                reps.push((i, v));
-                v
-            }
-        };
-        out.push((card, reached));
+    match Probes::new(game, goal, layout, limits, table) {
+        Some(mut probes) => probes.probe(threshold),
+        None => (Vec::new(), 0),
     }
-    (out, search.nodes)
+}
+
+/// One position prepared for several [`probe_with`] calls with different
+/// thresholds: the cards are sorted and indexed once. Every probe is a
+/// search of its own (a new table generation, no history carried over),
+/// so the results equal separate calls of [`probe_with`].
+pub struct Probes<'t, C> {
+    search: Search<'t>,
+    cards: Vec<C>,
+    legal: Vec<C>,
+    limits: Limits,
+    fresh: bool,
+}
+
+impl<'t, C: PlayingCard> Probes<'t, C> {
+    /// Prepare `layout`; `None` if nobody is to play or a hand is
+    /// inconsistent (then [`probe_with`] returns an empty list).
+    #[must_use]
+    pub fn new(
+        game: GameType,
+        goal: Goal,
+        layout: &Layout<C>,
+        limits: Limits,
+        table: &'t mut Table,
+    ) -> Option<Probes<'t, C>> {
+        let (search, cards) = Search::new(game, goal, layout, limits, table)?;
+        let seat = search.to_play();
+        let lead = rules::effective_lead(&layout.trick);
+        let legal = rules::legal_moves(game, &layout.hands[seat], lead);
+        Some(Probes {
+            search,
+            cards,
+            legal,
+            limits,
+            fresh: true,
+        })
+    }
+
+    /// [`probe_with`] for `threshold`.
+    pub fn probe(&mut self, threshold: i32) -> (Vec<(C, bool)>, u64) {
+        if !self.fresh {
+            self.search.restart(self.limits);
+        }
+        self.fresh = false;
+        let search = &mut self.search;
+        let seat = search.to_play();
+        let mut reps: Vec<(u8, bool)> = Vec::new();
+        let mut out = Vec::with_capacity(self.legal.len());
+        for &card in &self.legal {
+            let Some(i) = self.cards.iter().position(|&c| c == card) else {
+                return (Vec::new(), search.nodes);
+            };
+            let i = u8::try_from(i).unwrap_or(0);
+            let known = reps
+                .iter()
+                .find(|&&(r, _)| search.equivalent(seat, r.min(i), r.max(i)))
+                .map(|&(_, v)| v);
+            let reached = match known {
+                Some(v) => v,
+                None => {
+                    let v = search.play(seat, i, threshold - 1, threshold) >= threshold;
+                    reps.push((i, v));
+                    v
+                }
+            };
+            out.push((card, reached));
+        }
+        (out, search.nodes)
+    }
 }
 
 impl<'t> Search<'t> {
@@ -280,7 +376,9 @@ impl<'t> Search<'t> {
         limits: Limits,
         table: &'t mut Table,
     ) -> Option<(Search<'t>, Vec<C>)> {
-        if layout.trick.len() > 2 {
+        // A hand holds at most ten cards ([`Search::ordered_moves`] keeps
+        // ten moves).
+        if layout.trick.len() > 2 || layout.hands.iter().any(|h| h.len() > 10) {
             return None;
         }
         let mut cards: Vec<C> = layout
@@ -303,12 +401,13 @@ impl<'t> Search<'t> {
                 *c,
             )
         };
-        cards.sort_by_key(key);
+        cards.sort_by_cached_key(key);
         let n = cards.len();
         cards.dedup();
         if cards.len() != n {
             return None;
         }
+        let keys: Vec<_> = cards.iter().map(key).collect();
         table.next_generation();
         let mut s = Search {
             kind: [BLANK; MAX_CARDS],
@@ -356,7 +455,7 @@ impl<'t> Search<'t> {
             s.tie_lo[i] = u8::try_from(lo).unwrap_or(0);
             s.tie_hi[i] = u8::try_from(hi).unwrap_or(0);
         }
-        let index = |c: &C| cards.binary_search_by_key(&key(c), key).ok();
+        let index = |c: &C| keys.binary_search(&key(c)).ok();
         for (seat, hand) in layout.hands.iter().enumerate() {
             for c in hand {
                 s.hands[seat] |= 1 << index(c)?;
@@ -400,6 +499,21 @@ impl<'t> Search<'t> {
             }
         }
         Some((s, cards))
+    }
+
+    /// Start a new search of the same position (see [`Probes`]): a new
+    /// table generation, no nodes, no history. The position itself is
+    /// back where [`Search::new`] left it after every search.
+    fn restart(&mut self, limits: Limits) {
+        self.table.next_generation();
+        self.nodes = 0;
+        self.node_limit = limits.nodes;
+        self.depth_left = if limits.depth == 0 {
+            u32::MAX
+        } else {
+            limits.depth
+        };
+        self.history = [[0; MAX_CARDS]; 3];
     }
 
     /// Whether the search must estimate at the next trick boundary.
@@ -446,39 +560,38 @@ impl<'t> Search<'t> {
         }
     }
 
+    /// The cards that take the trick from `holder` under `lead_kind`, as
+    /// a mask: `beats(lead_kind, holder, c)` for every `c` in it.
+    fn beaters(&self, lead_kind: u8, holder: u8) -> u32 {
+        if self.can_win & (1 << holder) == 0 {
+            return self.can_win;
+        }
+        let h = usize::from(holder);
+        let stronger = (1u32 << self.tie_lo[h]) - 1;
+        let trumps = self.kind_mask[usize::from(TRUMP)];
+        let m = if self.kind[h] == TRUMP {
+            trumps & stronger
+        } else if self.kind[h] == lead_kind {
+            trumps | (self.kind_mask[usize::from(lead_kind)] & stronger)
+        } else {
+            trumps | self.kind_mask[usize::from(lead_kind)]
+        };
+        m & self.can_win
+    }
+
     /// Kind of the effective lead of the current trick, `BLANK` if none.
     fn lead_kind(&self) -> u8 {
-        self.trick[..self.trick_len]
-            .iter()
-            .map(|&c| self.kind[usize::from(c)])
-            .find(|&k| k != BLANK)
-            .unwrap_or(BLANK)
+        self.lead_kind_of(&self.trick[..self.trick_len])
     }
 
     /// Offset of the card currently winning the trick.
     fn winning_offset(&self) -> usize {
-        let lead_kind = self.lead_kind();
-        let mut best = 0;
-        for i in 1..self.trick_len {
-            if self.beats(lead_kind, self.trick[best], self.trick[i]) {
-                best = i;
-            }
-        }
-        best
+        self.winner_of(&self.trick[..self.trick_len])
     }
 
+    /// Legal cards of `seat` in the current trick.
     fn legal(&self, seat: usize) -> u32 {
-        let hand = self.hands[seat];
-        let lead_kind = self.lead_kind();
-        if lead_kind == BLANK {
-            return hand;
-        }
-        let follow = hand & self.kind_mask[usize::from(lead_kind)];
-        if follow == 0 {
-            hand
-        } else {
-            follow | (hand & self.kind_mask[usize::from(BLANK)])
-        }
+        self.legal_of(self.hands[seat], &self.trick[..self.trick_len])
     }
 
     /// Whether cards `a < b` of `seat` are interchangeable.
@@ -613,6 +726,31 @@ impl<'t> Search<'t> {
         (moves, n)
     }
 
+    /// A leaf estimate, from the table's estimate cache when this search
+    /// already estimated the same position. Estimates are pure functions
+    /// of the hands and the leader at a trick boundary (everything else
+    /// they read is fixed for one search), and an entry only counts in
+    /// the generation of its search.
+    fn cached_estimate(&mut self, f: impl Fn(&Search<'t>) -> i32) -> i32 {
+        let leader = u32::try_from(self.leader).unwrap_or(0);
+        let generation = self.table.generation;
+        let key = position_key(self.hands, leader);
+        let a = u64::from(self.hands[0]) | (u64::from(self.hands[1]) << 32);
+        let b = u64::from(self.hands[2]) | (u64::from(leader) << 32);
+        let slot = (mix64(a ^ mix64(b)) as usize) & (self.table.estimates.len() - 1);
+        let e = self.table.estimates[slot];
+        if e.generation == generation && e.key == key {
+            return e.value;
+        }
+        let value = f(self);
+        self.table.estimates[slot] = Estimate {
+            key,
+            generation,
+            value,
+        };
+        value
+    }
+
     /// Static estimate of the remaining tricks behind the depth limit: a
     /// greedy play-out with open cards ([`Search::greedy_card`]).
     fn estimate(&self) -> i32 {
@@ -713,16 +851,22 @@ impl<'t> Search<'t> {
         let lead_kind = self.lead_kind_of(trick);
         let declarer_played = (0..trick.len()).any(|k| (leader + k) % 3 == 0);
         let declarer_wins = (leader + offset) % 3 == 0;
-        let under = |c: &u8| !self.beats(lead_kind, holder, *c);
         if seat == 0 || declarer_wins {
             // Duck as high as possible; if nothing ducks, the lowest.
-            let all: Vec<u8> = cards.collect();
-            return all
-                .iter()
-                .copied()
-                .filter(under)
+            let bits = |mut rest: u32| {
+                std::iter::from_fn(move || {
+                    if rest == 0 {
+                        return None;
+                    }
+                    let c = u8::try_from(rest.trailing_zeros()).unwrap_or(0);
+                    rest &= rest - 1;
+                    Some(c)
+                })
+            };
+            let under = legal & !self.beaters(lead_kind, holder);
+            return bits(under)
                 .max_by_key(|&c| strength(c))
-                .or_else(|| all.iter().copied().min_by_key(|&c| strength(c)));
+                .or_else(|| bits(legal).min_by_key(|&c| strength(c)));
         }
         if declarer_played {
             cards.max_by_key(|&c| strength(c))
@@ -788,15 +932,7 @@ impl<'t> Search<'t> {
             if (self.maxi & (1 << other) != 0) == side {
                 return false;
             }
-            let mut legal = self.legal_of(hands[other], next);
-            while legal != 0 {
-                let c = u8::try_from(legal.trailing_zeros()).unwrap_or(0);
-                legal &= legal - 1;
-                if self.beats(lead_kind, holder, c) {
-                    return true;
-                }
-            }
-            false
+            self.legal_of(hands[other], next) & self.beaters(lead_kind, holder) != 0
         })
     }
 
@@ -847,12 +983,7 @@ impl<'t> Search<'t> {
         let holder = trick[holder_offset];
         let side = self.maxi & (1 << seat) != 0;
         let partner_wins = (self.maxi & (1 << winner) != 0) == side;
-        let mut beating = 0u32;
-        for c in cards() {
-            if self.beats(lead_kind, holder, c) {
-                beating |= 1 << c;
-            }
-        }
+        let beating = legal & self.beaters(lead_kind, holder);
         if partner_wins {
             let losing = cards().filter(|&c| beating & (1 << c) == 0);
             let smear = losing.max_by_key(|&c| {
@@ -890,11 +1021,13 @@ impl<'t> Search<'t> {
                 return 0;
             }
             if boundary && self.out_of_budget() {
-                return if self.null {
-                    self.null_estimate()
-                } else {
-                    self.trick_estimate()
-                };
+                return self.cached_estimate(|s| {
+                    if s.null {
+                        s.null_estimate()
+                    } else {
+                        s.trick_estimate()
+                    }
+                });
             }
         } else {
             let max = self.live_points + if self.ramsch { self.skat_points } else { 0 };
@@ -905,14 +1038,15 @@ impl<'t> Search<'t> {
                 return max;
             }
             if boundary && self.out_of_budget() {
-                return self.estimate();
+                return self.cached_estimate(Search::estimate);
             }
         }
         let tag = self.tag();
         let slot = self.table.slot(self.hands, tag);
         let mut tt_move = NO_MOVE;
+        let key = position_key(self.hands, tag);
         let e = self.table.entries[slot];
-        if e.generation == self.table.generation && e.hands == self.hands && e.tag == tag {
+        if e.generation == self.table.generation && e.key == key {
             match e.flag {
                 EXACT => return e.value,
                 LOWER => alpha = alpha.max(e.value),
@@ -959,8 +1093,7 @@ impl<'t> Search<'t> {
             EXACT
         };
         self.table.entries[slot] = Entry {
-            hands: self.hands,
-            tag,
+            key,
             flag,
             best: best_move,
             generation: self.table.generation,
@@ -1164,22 +1297,9 @@ mod tests {
         legal
             .into_iter()
             .map(|card| {
+                // The seat plays `card` first, the reference the rest.
                 let mut hands = layout.hands.clone();
-                hands[seat.index()].retain(|&x| x != card);
-                let mut trick = layout.trick.clone();
-                trick.push(card);
-                // Let the reference play the rest: a one-card hand that
-                // only holds `card` is forced.
-                let mut forced = hands.clone();
-                forced[seat.index()].push(card);
-                forced[seat.index()].sort();
-                let mut only = layout.hands.clone();
-                only[seat.index()] = vec![card];
-                let _ = only;
-                trick.pop();
-                // Evaluate by restricting the seat's choice to `card`.
-                let mut restricted = forced;
-                let value = reference_first(game, goal, &mut restricted, layout, card);
+                let value = reference_first(game, goal, &mut hands, layout, card);
                 (card, value)
             })
             .collect()

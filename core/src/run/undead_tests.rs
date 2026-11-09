@@ -97,7 +97,7 @@ fn undead_loads_as_a_special_card_for_every_card() {
     // Untot", never from a random draw.
     let (run, _) = Run::new(&content, 1).expect("run");
     assert!(
-        !run.card_mod_pool(&content)
+        !run.mod_pool(&content, false)
             .iter()
             .any(|(id, _)| id.as_str() == UNDEAD)
     );

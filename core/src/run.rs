@@ -51,6 +51,7 @@
 
 pub mod bot;
 mod card_reward;
+mod check;
 mod encounters;
 pub mod guests;
 pub mod meta;
@@ -76,10 +77,10 @@ use crate::ai::DefenderHeuristic;
 use crate::cards::{Card, PlayingCard, Rank, Suit};
 use crate::content::{
     ActiveSource, BetOn, BossId, CardFilter, CardModDef, CardModId, Change, Character,
-    ConsumableAction, ConsumableId, Content, Editions, Effect, EncounterEffect, EncounterId,
-    GameFocus, Hook, HookContext, Lever, NextGameEffect, RelicId, RelicKind, RunLength,
-    ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate, in_pool, resolve_edition,
-    score_parts,
+    ConsumableAction, ConsumableId, Content, Counted, Editions, Effect, EffectKind,
+    EncounterEffect, EncounterId, GameFocus, Hook, HookContext, Lever, NextGameEffect, RelicId,
+    RelicKind, RunLength, ScoreBreakdown, ScoreLine, Source, Stage, card_mod_sources, evaluate,
+    in_pool, resolve_edition, score_parts,
 };
 use crate::deck::{CardKind, DealtCard, DeckChange, DeckError, Edition, Owner};
 use crate::game::{Event, Game, GameError, Phase, Seat};
@@ -92,9 +93,6 @@ use crate::rules::{
 /// Pubs per district (Stadtteil, ADR 0016): four Kneipen and the
 /// Boss-Kneipe last.
 pub const PUBS_PER_DISTRICT: u32 = 5;
-
-/// Old name of [`PUBS_PER_DISTRICT`] (series per section before ADR 0016).
-pub const SERIES_PER_SECTION: u32 = PUBS_PER_DISTRICT;
 
 /// Mixed into the game's seed for the card "Drei drücken" draws, so that
 /// the draw is independent of the PIMC samples of the same game.
@@ -166,7 +164,7 @@ pub enum RunPhase {
 
 /// The current pub (Kneipe; the type keeps its name from before ADR 0016,
 /// when a section had three series).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Series {
     /// District (Stadtteil; Abschnitt before ADR 0016), counted from 0.
     pub section: u32,
@@ -2387,30 +2385,7 @@ impl Run {
             shop_rng: master.fork(),
             misc_rng: master.fork(),
             phase: RunPhase::Game,
-            series: Series {
-                section: 0,
-                index: 0,
-                target: 0,
-                score: 0,
-                games_played: 0,
-                game_limit: 0,
-                boss: None,
-                redeals_used: 0,
-                redeals_in_game: 0,
-                redeals_this_game: 0,
-                extra_redeals: 0,
-                skat_swaps_used: 0,
-                skat_swaps_taken: Vec::new(),
-                ramsch_played: false,
-                discard_three_used: false,
-                spelunke: None,
-                temp_curses: Vec::new(),
-                boss_curses: Vec::new(),
-                boss_cursed: false,
-                returning_vouchers: Vec::new(),
-                redeals_withheld: 0,
-                night_malus: None,
-            },
+            series: Series::default(),
             coins: content.run.economy.starting_coins,
             edition,
             relics,
@@ -2456,7 +2431,7 @@ impl Run {
             tutorial: start.tutorial,
         };
         let mut events = Vec::new();
-        run.start_series(content, start.section, start.index, &mut events)?;
+        run.start_pub(content, start.section, start.index, None, &mut events)?;
         run.play_ai(content, &mut events)?;
         Ok((run, events))
     }
@@ -2571,6 +2546,7 @@ impl Run {
         }
         self.drop_unknown_zinken(content);
         self.drop_unknown_card_reward(content);
+        self.drop_unknown_boss_reward(content);
         self.renew_encounter(content);
         dropped
     }
@@ -2640,7 +2616,7 @@ impl Run {
     /// The row of the curve (Zielwerte, opponents) the current district
     /// plays: since ADR 0016 the district itself.
     #[must_use]
-    pub const fn curve_row(&self, _content: &Content) -> u32 {
+    pub const fn curve_row(&self) -> u32 {
         self.series.section
     }
 
@@ -2648,12 +2624,6 @@ impl Run {
     #[must_use]
     pub const fn locked_relics(&self) -> &BTreeSet<RelicId> {
         &self.locked
-    }
-
-    /// Card modifications that are not unlocked in this run.
-    #[must_use]
-    pub const fn locked_card_mods(&self) -> &BTreeSet<CardModId> {
-        &self.locked_card_mods
     }
 
     /// The open encounter.
@@ -2926,36 +2896,18 @@ impl Run {
         Ok(())
     }
 
+    /// Carry out `action`. Only ever called on a copy of the run
+    /// ([`Run::apply`], [`Run::apply_step`], [`Run::check`]): on an error
+    /// the copy and `events` are dropped, so an action may change the run
+    /// and log events before it fails. Actions therefore mutate `self`
+    /// directly instead of cloning the run once more.
     fn dispatch(
         &mut self,
         content: &Content,
         action: RunAction,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        if self.ai_to_move().is_some() {
-            return Err(RunError::AiToMove);
-        }
-        if self.painter.is_some() && !matches!(action, RunAction::ChoosePaint(_)) {
-            return Err(RunError::PainterPending);
-        }
-        if self.rise_pending().is_some() && !matches!(action, RunAction::ChooseRiseCards(_)) {
-            return Err(RunError::RisePending);
-        }
-        if self.schnapps_reward.is_some()
-            && !matches!(action, RunAction::ChooseSchnappsReward { .. })
-        {
-            return Err(RunError::SchnappsRewardPending);
-        }
-        if self.phase == RunPhase::CardReward
-            && !matches!(
-                action,
-                RunAction::TakeCardReward { .. }
-                    | RunAction::SkipCardReward
-                    | RunAction::ChooseSchnappsReward { .. }
-            )
-        {
-            return Err(RunError::CardRewardPending);
-        }
+        self.check_pending(&action)?;
         match action {
             RunAction::Redeal => self.redeal_action(content, events),
             RunAction::PickUpSkat => self.pick_up_skat(events),
@@ -3005,15 +2957,52 @@ impl Run {
         }
     }
 
-    fn active_mut(&mut self) -> Result<&mut ActiveGame, RunError> {
+    /// What [`Run::dispatch`] checks before any action: a defender to
+    /// move, or a choice that must come first.
+    fn check_pending(&self, action: &RunAction) -> Result<(), RunError> {
+        if self.ai_to_move().is_some() {
+            return Err(RunError::AiToMove);
+        }
+        if self.painter.is_some() && !matches!(action, RunAction::ChoosePaint(_)) {
+            return Err(RunError::PainterPending);
+        }
+        if self.rise_pending().is_some() && !matches!(action, RunAction::ChooseRiseCards(_)) {
+            return Err(RunError::RisePending);
+        }
+        if self.schnapps_reward.is_some()
+            && !matches!(action, RunAction::ChooseSchnappsReward { .. })
+        {
+            return Err(RunError::SchnappsRewardPending);
+        }
+        if self.phase == RunPhase::CardReward
+            && !matches!(
+                action,
+                RunAction::TakeCardReward { .. }
+                    | RunAction::SkipCardReward
+                    | RunAction::ChooseSchnappsReward { .. }
+            )
+        {
+            return Err(RunError::CardRewardPending);
+        }
+        Ok(())
+    }
+
+    /// The game in progress, in the game phase.
+    fn active_ref(&self) -> Result<&ActiveGame, RunError> {
         if self.phase != RunPhase::Game {
             return Err(RunError::WrongPhase);
         }
+        self.game.as_ref().ok_or(RunError::WrongPhase)
+    }
+
+    fn active_mut(&mut self) -> Result<&mut ActiveGame, RunError> {
+        self.active_ref()?;
         self.game.as_mut().ok_or(RunError::WrongPhase)
     }
 
-    fn declaring(&mut self) -> Result<&mut ActiveGame, RunError> {
-        let active = self.active_mut()?;
+    /// The game in progress before the skat is touched, no Ramsch.
+    fn declaring_ref(&self) -> Result<&ActiveGame, RunError> {
+        let active = self.active_ref()?;
         if active.rules.ramsch {
             return Err(RunError::RamschRequired);
         }
@@ -3021,6 +3010,11 @@ impl Run {
             return Err(RunError::WrongPhase);
         }
         Ok(active)
+    }
+
+    fn declaring(&mut self) -> Result<&mut ActiveGame, RunError> {
+        self.declaring_ref()?;
+        self.game.as_mut().ok_or(RunError::WrongPhase)
     }
 
     /// Einmischen ([`RunAction::Redeal`]): one of the game's own first,
@@ -3160,13 +3154,9 @@ impl Run {
                 .is_some_and(|a| a.rules.discard_three.is_some())
     }
 
-    fn declare(
-        &mut self,
-        content: &Content,
-        declaration: Declaration,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        let active = self.active_mut()?;
+    /// What [`Run::declare`] checks before it changes anything.
+    fn check_declare(&self, declaration: Declaration) -> Result<&ActiveGame, RunError> {
+        let active = self.active_ref()?;
         if active.rules.ramsch {
             return Err(RunError::RamschRequired);
         }
@@ -3187,6 +3177,16 @@ impl Run {
         if active.rules.require_ouvert && !declaration.ouvert() {
             return Err(RunError::OuvertRequired);
         }
+        Ok(active)
+    }
+
+    fn declare(
+        &mut self,
+        content: &Content,
+        declaration: Declaration,
+        events: &mut Vec<RunEvent>,
+    ) -> Result<(), RunError> {
+        let active = self.check_declare(declaration)?;
         // Before the skat a declaration is always a hand game: it redeems a
         // voucher of the hand (DESIGN 7.2), before the game starts.
         if active.game.phase() == Phase::Declaring {
@@ -3459,14 +3459,15 @@ impl Run {
         let trump_game = game
             .declaration()
             .is_some_and(|d| !d.is_null() && !d.is_ramsch());
+        // The scan of the log last: most cards are no Doppelgänger.
         trump_game
             && !card.is_blank()
             && game.hand(Seat::DECLARER).contains(&card)
+            && self.has_card_effect(content, card, &Effect::Doppelganger)
             && !game
                 .log()
                 .iter()
                 .any(|e| matches!(e, Event::DoppelgangerMirrored { .. }))
-            && self.has_card_effect(content, card, &Effect::Doppelganger)
     }
 
     /// Whether the player's `card` mirrors if he plays it now: it may
@@ -3750,8 +3751,7 @@ impl Run {
                 scale: 1,
             });
         }
-        let relics = self.relics.iter().chain(&self.evening_relics);
-        for def in relics.filter_map(|r| content.relic(r)) {
+        for def in self.held_relic_defs(content) {
             sources.push(ActiveSource {
                 source: Source::Relic(def.id.clone()),
                 passive: &def.passive,
@@ -3766,6 +3766,51 @@ impl Run {
             }
         }
         sources
+    }
+
+    /// Whether any of [`Run::sources`] has a hook of `stage`, without
+    /// building them.
+    fn has_hook(&self, content: &Content, stage: Stage, with_card_mods: bool) -> bool {
+        let of = |hooks: &[Hook]| hooks.iter().any(|h| h.stage() == stage);
+        if content
+            .character(self.character)
+            .is_some_and(|def| of(&def.rule.hooks))
+        {
+            return true;
+        }
+        let bosses = self.boss_rule(content);
+        let extra = self.extra_boss_rules();
+        if bosses
+            .iter()
+            .chain(extra)
+            .filter_map(|b| content.boss(b))
+            .any(|def| of(&def.hooks))
+        {
+            return true;
+        }
+        if self.held_relic_defs(content).any(|def| of(&def.hooks)) {
+            return true;
+        }
+        if !with_card_mods {
+            return false;
+        }
+        let Some(active) = &self.game else {
+            return false;
+        };
+        let editions = self.editions();
+        active.game.cards_in_play().iter().any(|card| {
+            !card.is_blank()
+                && editions
+                    .of(card.owner)
+                    .and_then(|e| e.get(card.id))
+                    .is_some_and(|deck_card| {
+                        deck_card
+                            .mods
+                            .iter()
+                            .filter_map(|m| content.card_mod(m))
+                            .any(|def| of(&def.hooks))
+                    })
+        })
     }
 
     /// Fire every hook of `stage` whose condition holds.
@@ -3791,9 +3836,22 @@ impl Run {
         transport: Option<tour::Transport>,
         events: &mut Vec<RunEvent>,
     ) {
+        let with_card_mods = stage.in_game();
+        if !self.has_hook(content, stage, with_card_mods) {
+            return;
+        }
         let games_left = self.series.games_left();
-        let sources = self.sources(content, stage.in_game());
-        let marked = self.marked_cards(content);
+        let sources = self.sources(content, with_card_mods);
+        // Only conditions on marked cards look at them.
+        let marked = if sources
+            .iter()
+            .flat_map(|s| s.hooks)
+            .any(|h| h.stage() == stage && h.when().uses_marked_cards())
+        {
+            self.marked_cards(content)
+        } else {
+            BTreeSet::new()
+        };
         for source in &sources {
             for hook in source.hooks.iter().filter(|h| h.stage() == stage) {
                 let holds = {
@@ -3927,35 +3985,27 @@ impl Run {
             }
             _ => {}
         }
-        let line = score_line(
-            source,
-            effect,
-            &self.counters,
-            self.count_for(content, effect),
-        );
+        let line = if effect.kind() == EffectKind::ScoreLine {
+            score_line(
+                source,
+                effect,
+                &self.counters,
+                self.count_for(content, effect),
+            )
+        } else {
+            None
+        };
         let Some(active) = self.game.as_mut() else {
             return;
         };
         if effect.is_cheat() && matches!(source, Source::Boss(_)) && active.rules.no_cheating {
             return;
         }
+        if effect.kind() == EffectKind::ScoreLine {
+            active.lines.extend(line);
+            return;
+        }
         match effect {
-            Effect::AddBaseValue(_)
-            | Effect::MultiplyBaseValue(_)
-            | Effect::AddBaseValueFromCounter(_)
-            | Effect::AddBaseValuePerCounter { .. }
-            | Effect::AddBaseValuePerCursedCard(_)
-            | Effect::AddBaseValuePerCard { .. }
-            | Effect::AddLevelsPerCard { .. }
-            | Effect::AddLevelsPerCounter { .. }
-            | Effect::AddLevels(_)
-            | Effect::MultiplyGameValue(_)
-            | Effect::ScaleGameValue(_)
-            | Effect::ScaleGameValuePerCounter { .. }
-            | Effect::ScaleGameValuePerCard { .. }
-            | Effect::AddLevelsPerVoidSuit { .. }
-            | Effect::AddBaseValuePerDeclarerPoints { .. }
-            | Effect::AddLevelsPerFreeRelicSlot { .. } => active.lines.extend(line),
             Effect::AddTrickPoints(extra) => {
                 if let Some(trick) = active.game.tricks().last() {
                     let winner = trick.winner;
@@ -4118,55 +4168,15 @@ impl Run {
             Effect::SingleLoss => {
                 active.single_loss.get_or_insert_with(|| source.clone());
             }
-            Effect::SetCardPoints { .. }
-            | Effect::AddCardPoints(_)
-            | Effect::RankBonus(_)
-            | Effect::Promote(_)
-            | Effect::NullLowest
-            | Effect::RevealHolder
-            | Effect::NeverWins
-            | Effect::HonoraryJack
-            | Effect::NoDiscard
-            | Effect::Wild
-            | Effect::Demote
-            | Effect::TurnInto(_)
-            | Effect::Undead
-            | Effect::Doppelganger
-            | Effect::AlwaysForehand
-            | Effect::ShopDiscount(_)
-            | Effect::FreeReroll
-            | Effect::CurseForPub { .. }
-            | Effect::SetFlag(_)
-            | Effect::ClearFlag(_)
-            | Effect::IncrementCounter(_)
-            | Effect::ResetCounter(_)
-            | Effect::GainCoins(_)
-            | Effect::StashCoins { .. }
-            | Effect::PayOutCounter { .. }
-            | Effect::Credit(_)
-            | Effect::SecondChance
-            | Effect::ChooseMalus(_)
-            | Effect::AttachModToRandomCard { .. }
-            | Effect::RedeemVouchersTwice
-            | Effect::PromotedCardsTakePoints
-            | Effect::ShortCircuitThreshold(_)
-            | Effect::RedealKeeps { .. } => {}
+            // Card-level effects (applied when the deck is resolved) and
+            // effects of the run outside the game score ([`Effect::kind`]).
+            _ => {}
         }
     }
 
     // -----------------------------------------------------------------------
     // Series flow
     // -----------------------------------------------------------------------
-
-    fn start_series(
-        &mut self,
-        content: &Content,
-        section: u32,
-        index: u32,
-        events: &mut Vec<RunEvent>,
-    ) -> Result<(), RunError> {
-        self.start_pub(content, section, index, None, events)
-    }
 
     /// Start pub `index` of district `section`, a Spelunke if `spelunke`
     /// is set (ADR 0016), and deal its first game.
@@ -4280,25 +4290,11 @@ impl Run {
             section,
             index,
             target,
-            score: 0,
-            games_played: 0,
             game_limit: config.game_limit,
             boss: boss.clone(),
-            redeals_used: 0,
-            redeals_in_game: 0,
-            redeals_this_game: 0,
-            extra_redeals: 0,
-            skat_swaps_used: 0,
-            skat_swaps_taken: Vec::new(),
-            ramsch_played: false,
-            discard_three_used: false,
             spelunke,
-            temp_curses: Vec::new(),
-            boss_curses: Vec::new(),
-            boss_cursed: false,
-            returning_vouchers: Vec::new(),
             redeals_withheld,
-            night_malus: None,
+            ..Series::default()
         };
         self.series.night_malus = self.draw_night_malus(content, boss.is_some());
         let malus = malus.or_else(|| self.series.night_malus.clone());
@@ -4634,8 +4630,10 @@ impl Run {
     ) {
         let forehand = game.forehand();
         let dealt_events: Vec<Event<DealtCard>> = game.log().to_vec();
-        let global = self.sources(content, false);
-        let has = |wanted: &Effect| global.iter().any(|s| s.passive.contains(wanted));
+        // Boss, relics and the rest: the same before and after the game
+        // is installed; the card modifications in play follow below.
+        let mut sources = self.sources(content, false);
+        let has = |wanted: &Effect| sources.iter().any(|s| s.passive.contains(wanted));
         let rules = GameRules {
             thresholds: Thresholds::with_stake(self.stake),
             no_cheating: has(&Effect::NoCheating),
@@ -4674,7 +4672,9 @@ impl Run {
         });
         events.extend(dealt_events.into_iter().map(RunEvent::Game));
         // Passive effects of boss, relics and card mods in play.
-        let sources = self.sources(content, true);
+        if let Some(active) = &self.game {
+            sources.extend(card_mod_sources(self.editions(), content, &active.game));
+        }
         for source in &sources {
             for effect in source.passive {
                 self.apply_effect(content, &source.source, effect, events);
@@ -5045,15 +5045,29 @@ impl Run {
         }
     }
 
+    /// The owned relics and the evening's house rules, in that order.
+    fn held_relics(&self) -> impl Iterator<Item = &RelicId> {
+        self.relics.iter().chain(&self.evening_relics)
+    }
+
+    /// [`Run::held_relics`] the content knows.
+    fn held_relic_defs<'c>(
+        &self,
+        content: &'c Content,
+    ) -> impl Iterator<Item = &'c crate::content::RelicDef> {
+        self.held_relics().filter_map(|r| content.relic(r))
+    }
+
+    /// The passive effects of [`Run::held_relic_defs`].
+    fn held_passives<'c>(&self, content: &'c Content) -> impl Iterator<Item = &'c Effect> {
+        self.held_relic_defs(content)
+            .flat_map(|def| def.passive.iter())
+    }
+
     /// The passive effects of the owned relics and the evening's house
     /// rules.
     fn relic_passives<'c>(&self, content: &'c Content) -> Vec<&'c Effect> {
-        self.relics
-            .iter()
-            .chain(&self.evening_relics)
-            .filter_map(|r| content.relic(r))
-            .flat_map(|def| def.passive.iter())
-            .collect()
+        self.held_passives(content).collect()
     }
 
     /// The credit limit at the Tresen ("Deckel anschreiben"): the largest
@@ -5107,7 +5121,6 @@ impl Run {
         events.push(RunEvent::DebtChanged { debt: self.debt });
     }
 
-    /// Income pays the debt first ("Deckel anschreiben").
     /// The player gave `relic` up (sold, replaced, swapped): its pots are
     /// paid out ([`Run::pay_out_stash`]) and the `OnRelicSold` hooks of the
     /// relics still held fire ("Der Trödler").
@@ -5134,12 +5147,7 @@ impl Run {
                     .collect()
             })
         };
-        let still_held: BTreeSet<String> = self
-            .relics
-            .iter()
-            .chain(&self.evening_relics)
-            .flat_map(stashes)
-            .collect();
+        let still_held: BTreeSet<String> = self.held_relics().flat_map(stashes).collect();
         let mut amount: u32 = 0;
         for counter in stashes(relic) {
             if still_held.contains(&counter) {
@@ -5158,6 +5166,7 @@ impl Run {
         }
     }
 
+    /// Income pays the debt first ("Deckel anschreiben").
     fn settle_debt(&mut self, events: &mut Vec<RunEvent>) {
         let paid = self.debt.min(self.coins);
         if paid > 0 {
@@ -5195,11 +5204,7 @@ impl Run {
     /// most 90.
     fn shop_discount(&self, content: &Content) -> u32 {
         let total: u32 = self
-            .relics
-            .iter()
-            .chain(&self.evening_relics)
-            .filter_map(|r| content.relic(r))
-            .flat_map(|def| def.passive.iter())
+            .held_passives(content)
             .map(|e| match e {
                 Effect::ShopDiscount(p) => *p,
                 _ => 0,
@@ -5262,13 +5267,23 @@ impl Run {
     /// [`crate::content::CharacterRule::keep_curses`] ("Bruderherz")
     /// cannot cleanse a card that carries a curse ([`RunError::CurseStays`]).
     fn cleanse(&mut self, content: &Content, card: u32) -> Result<DeckChange, RunError> {
+        self.check_cleanse(content, card)?;
+        Ok(self.edition.cleanse(card)?)
+    }
+
+    /// Whether [`Run::cleanse`] would cleanse `card`, and if not, why.
+    fn check_cleanse(&self, content: &Content, card: u32) -> Result<(), RunError> {
         let keep = content
             .character(self.character)
             .is_some_and(|c| c.rule.keep_curses);
         if keep && self.card_is_cursed(content, card) {
             return Err(RunError::CurseStays);
         }
-        Ok(self.edition.cleanse(card)?)
+        let deck_card = self.edition.get(card).ok_or(DeckError::UnknownCard(card))?;
+        if deck_card.mods.is_empty() {
+            return Err(DeckError::NothingToCleanse(card).into());
+        }
+        Ok(())
     }
 
     /// How many cards of the player's edition carry a curse now (a special
@@ -5290,23 +5305,21 @@ impl Run {
     /// `AddBaseValuePerCard` and `AddLevelsPerCard`; 0 for every other
     /// effect (not counted).
     fn count_for(&self, content: &Content, effect: &Effect) -> u32 {
-        match effect {
-            Effect::AddBaseValuePerCursedCard(_) => self.cursed_cards(content),
-            Effect::AddBaseValuePerCard { count, .. }
-            | Effect::AddLevelsPerCard { count, .. }
-            | Effect::ScaleGameValuePerCard { count, .. } => self.count_cards(content, count),
-            Effect::AddLevelsPerVoidSuit { .. } => self.void_suits(),
-            Effect::AddBaseValuePerDeclarerPoints { above, step, .. } => {
+        match effect.counted() {
+            Some(Counted::CursedCards) => self.cursed_cards(content),
+            Some(Counted::Cards(count)) => self.count_cards(content, count),
+            Some(Counted::VoidSuits) => self.void_suits(),
+            Some(Counted::DeclarerPointsAbove { above, step }) => {
                 let points = self
                     .game
                     .as_ref()
                     .map_or(0, |a| a.game.outcome().declarer_card_points);
-                points.saturating_sub(*above) / (*step).max(1)
+                points.saturating_sub(above) / step.max(1)
             }
-            Effect::AddLevelsPerFreeRelicSlot { every, .. } => {
-                self.free_relic_slots(content) / (*every).max(1)
+            Some(Counted::FreeRelicSlots { every }) => {
+                self.free_relic_slots(content) / every.max(1)
             }
-            _ => 0,
+            None => 0,
         }
     }
 
@@ -5362,10 +5375,7 @@ impl Run {
         let game = self.game.as_ref().map(|a| &a.game);
         // The build directions of the relics the player holds.
         let directions: Vec<crate::content::BuildTag> = if count.direction {
-            self.relics
-                .iter()
-                .chain(&self.evening_relics)
-                .filter_map(|r| content.relic(r))
+            self.held_relic_defs(content)
                 .flat_map(|r| r.tags.iter().copied())
                 .collect()
         } else {
@@ -5476,12 +5486,7 @@ impl Run {
                 .character(self.character)
                 .map(|c| c.rule.passive.as_slice())
                 .unwrap_or_default();
-            let relics = self
-                .relics
-                .iter()
-                .chain(&self.evening_relics)
-                .filter_map(|r| content.relic(r))
-                .flat_map(|def| def.passive.iter());
+            let relics = self.held_passives(content);
             for effect in rule.iter().chain(relics) {
                 if let Effect::ShortCircuitThreshold(points) = effect {
                     formula.short_circuit_points = formula.short_circuit_points.min(*points);
@@ -5492,15 +5497,27 @@ impl Run {
     }
 
     fn shop_mut(&mut self) -> Result<&mut Shop, RunError> {
+        self.shop_ref()?;
+        self.shop.as_mut().ok_or(RunError::WrongPhase)
+    }
+
+    /// The open shop, read only.
+    fn shop_ref(&self) -> Result<&Shop, RunError> {
         if self.phase != RunPhase::Shop {
             return Err(RunError::WrongPhase);
         }
-        self.shop.as_mut().ok_or(RunError::WrongPhase)
+        self.shop.as_ref().ok_or(RunError::WrongPhase)
     }
 
     /// The open shop if it is the Tresen (not a Kiosk).
     fn tresen_mut(&mut self) -> Result<&mut Shop, RunError> {
-        let shop = self.shop_mut()?;
+        self.tresen_ref()?;
+        self.shop.as_mut().ok_or(RunError::WrongPhase)
+    }
+
+    /// [`Run::tresen_mut`], read only.
+    fn tresen_ref(&self) -> Result<&Shop, RunError> {
+        let shop = self.shop_ref()?;
         if shop.kiosk {
             return Err(RunError::WrongPhase);
         }
@@ -5621,13 +5638,9 @@ impl Run {
             .cloned()
             .flatten()
             .ok_or(RunError::InvalidSlot)?;
-        let mut next = self.clone();
-        let mut out = Vec::new();
-        next.sell_relic(content, replace, &mut out)?;
-        next.buy_relic(content, slot, &mut out)?;
-        *self = next;
-        events.extend(out);
-        Ok(())
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.sell_relic(content, replace, events)?;
+        self.buy_relic(content, slot, events)
     }
 
     fn sell_relic(
@@ -5680,11 +5693,8 @@ impl Run {
     #[must_use]
     pub fn reroll_cost(&self, content: &Content) -> u32 {
         let free = self
-            .relics
-            .iter()
-            .chain(&self.evening_relics)
-            .filter_map(|r| content.relic(r))
-            .any(|def| def.passive.contains(&Effect::FreeReroll));
+            .held_passives(content)
+            .any(|e| *e == Effect::FreeReroll);
         if free {
             0
         } else {
@@ -5737,6 +5747,27 @@ impl Run {
     // Consumables
     // -----------------------------------------------------------------------
 
+    /// The consumable in `slot` and its definition, if it may be used at
+    /// all now (not locked by a Spelunke malus): what
+    /// [`Run::use_consumable`] checks first.
+    fn consumable_at<'c>(
+        &self,
+        content: &'c Content,
+        slot: usize,
+    ) -> Result<(&ConsumableId, &'c crate::content::ConsumableDef), RunError> {
+        let id = self.consumables.get(slot).ok_or(RunError::InvalidSlot)?;
+        let def = content
+            .consumable(id)
+            .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
+        if def.category == crate::content::ConsumableCategory::Schnapps
+            && self.phase == RunPhase::Game
+            && self.malus(content).is_some_and(|m| m.lock_schnapps)
+        {
+            return Err(RunError::ConsumablesLocked);
+        }
+        Ok((id, def))
+    }
+
     fn use_consumable(
         &mut self,
         content: &Content,
@@ -5745,20 +5776,8 @@ impl Run {
         suit: Option<Suit>,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        let id = self
-            .consumables
-            .get(slot)
-            .cloned()
-            .ok_or(RunError::InvalidSlot)?;
-        let def = content
-            .consumable(&id)
-            .ok_or_else(|| RunError::UnknownContent(id.to_string()))?;
-        if def.category == crate::content::ConsumableCategory::Schnapps
-            && self.phase == RunPhase::Game
-            && self.malus(content).is_some_and(|m| m.lock_schnapps)
-        {
-            return Err(RunError::ConsumablesLocked);
-        }
+        let (id, def) = self.consumable_at(content, slot)?;
+        let id = id.clone();
         match &def.action {
             ConsumableAction::CleanseCard => {
                 if self.phase != RunPhase::Shop {
@@ -5959,17 +5978,8 @@ impl Run {
         Ok(())
     }
 
-    /// Card modifications a random draw may give a card, with their draw
-    /// weight: for the character, unlocked, no curse (DESIGN 7.2: curses
-    /// only where announced) and no special card (that comes with a
-    /// voucher), in id order. Rarity does not count here; the weight is the
-    /// character's weight for the modification's Spielart
-    /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
-    fn card_mod_pool(&self, content: &Content) -> Vec<(CardModId, u32)> {
-        self.mod_pool(content, false)
-    }
-
-    /// [`Run::card_mod_pool`] for one deck card: only modifications that
+    /// The card modifications a random draw may give one deck card
+    /// ([`Run::mod_pool`] without curses): only modifications that
     /// may go on it now ([`crate::content::CardModDef::only_on`], and by
     /// the rules of [`Deck::add_mod`]: not on a cursed card, not past the
     /// limit).
@@ -5978,7 +5988,7 @@ impl Run {
         content: &Content,
         card: &crate::deck::DeckCard,
     ) -> Vec<(CardModId, u32)> {
-        self.card_mod_pool(content)
+        self.mod_candidates(content, false)
             .into_iter()
             .filter(|(id, _)| self.may_attach(content, card.id, id))
             .collect()
@@ -5993,27 +6003,41 @@ impl Run {
         let fits = self.edition.get(card).is_some_and(|c| def.fits(c.kind));
         fits && self
             .edition
-            .clone()
+            .probe_card(card)
             .add_mod(content, card, card_mod, def.default_value())
             .is_ok()
     }
 
-    /// Like [`Run::card_mod_pool`], but only curses (`curse`) or only
-    /// modifications without drawback.
+    /// Card modifications a random draw may give a card (`curse` false;
+    /// `true`: only curses, for draws that announce one), with their draw
+    /// weight: for the character, unlocked, no curse unless asked for (DESIGN 7.2:
+    /// curses only where announced) and no special card (that comes with a
+    /// voucher), in id order. Rarity does not count here; the weight is the
+    /// character's weight for the modification's Spielart
+    /// ([`Run::focus_weight`]), and modifications of weight 0 are left out.
     fn mod_pool(&self, content: &Content, curse: bool) -> Vec<(CardModId, u32)> {
+        // Only what some card of the deck may still take.
+        self.mod_candidates(content, curse)
+            .into_iter()
+            .filter(|(m, _)| {
+                self.edition
+                    .cards()
+                    .iter()
+                    .any(|c| self.may_attach(content, c.id, m))
+            })
+            .collect()
+    }
+
+    /// [`Run::mod_pool`] before asking whether some deck card may take a
+    /// modification: for one deck card filter these with
+    /// [`Run::may_attach`] directly (what fits that card fits some card).
+    fn mod_candidates(&self, content: &Content, curse: bool) -> Vec<(CardModId, u32)> {
         content
             .card_mods
             .values()
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
-            // Only what some card of the deck may still take.
-            .filter(|m| {
-                self.edition
-                    .cards()
-                    .iter()
-                    .any(|c| self.may_attach(content, c.id, &m.id))
-            })
             .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
             .filter(|&(_, weight)| weight > 0)
             .collect()
@@ -6072,6 +6096,27 @@ impl Run {
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
         self.attach_mod_paid(content, card, card_mod, value, true, events)
+    }
+
+    /// Whether [`Run::attach_mod`] would attach `card_mod` with `value` to
+    /// `card`, and if not, why: the same checks, the edition's tried on a
+    /// copy of the one card. The `OnAttach` hooks that follow never fail.
+    fn check_attach(
+        &self,
+        content: &Content,
+        card: u32,
+        card_mod: &CardModId,
+        value: i32,
+    ) -> Result<(), RunError> {
+        if let (Some(def), Some(deck_card)) = (content.card_mod(card_mod), self.edition.get(card)) {
+            if deck_card.kind != CardKind::Blank && !def.fits(deck_card.kind) {
+                return Err(RunError::NoModAvailable);
+            }
+        }
+        self.edition
+            .probe_card(card)
+            .add_mod(content, card, card_mod, value)?;
+        Ok(())
     }
 
     /// [`Run::attach_mod`]; with `paid` false the `OnAttach` hooks pay no
@@ -6270,11 +6315,8 @@ impl Run {
         }
         // "Doppelt gemoppelt": everything a Marke does happens twice.
         let twice = self
-            .relics
-            .iter()
-            .chain(&self.evening_relics)
-            .filter_map(|r| content.relic(r))
-            .any(|def| def.passive.contains(&Effect::RedeemVouchersTwice));
+            .held_passives(content)
+            .any(|e| *e == Effect::RedeemVouchersTwice);
         for _ in 0..if twice { 2 } else { 1 } {
             self.fire_voucher(content, card, &source, &hooks, value, events);
         }
@@ -6536,85 +6578,7 @@ fn score_line(
     counters: &BTreeMap<String, u32>,
     cards: u32,
 ) -> Option<ScoreLine> {
-    let (lever, change) = match effect {
-        Effect::AddBaseValue(n) => (Lever::BaseValue, Change::Add(i64::from(*n))),
-        Effect::MultiplyBaseValue(n) => (Lever::BaseValue, Change::Multiply(*n)),
-        Effect::AddBaseValueFromCounter(name) => {
-            let value = counters.get(name).copied().unwrap_or(0);
-            if value == 0 {
-                return None;
-            }
-            (Lever::BaseValue, Change::Add(i64::from(value)))
-        }
-        Effect::AddBaseValuePerCounter { counter, per } => {
-            let value = counters.get(counter).copied().unwrap_or(0);
-            let add = i64::from(value) * i64::from(*per);
-            if add == 0 {
-                return None;
-            }
-            (Lever::BaseValue, Change::Add(add))
-        }
-        Effect::AddBaseValuePerCursedCard(per) | Effect::AddBaseValuePerCard { per, .. } => {
-            let add = i64::from(cards) * i64::from(*per);
-            if add == 0 {
-                return None;
-            }
-            (Lever::BaseValue, Change::Add(add))
-        }
-        Effect::AddLevelsPerCard { per, .. } => {
-            let add = i64::from(cards) * i64::from(*per);
-            if add == 0 {
-                return None;
-            }
-            (Lever::Levels, Change::Add(add))
-        }
-        Effect::AddLevelsPerVoidSuit { per, max }
-        | Effect::AddLevelsPerFreeRelicSlot { per, max, .. } => {
-            let add = (i64::from(cards) * i64::from(*per)).min(i64::from(*max));
-            if add == 0 {
-                return None;
-            }
-            (Lever::Levels, Change::Add(add))
-        }
-        Effect::AddBaseValuePerDeclarerPoints { per, .. } => {
-            let add = i64::from(cards) * i64::from(*per);
-            if add == 0 {
-                return None;
-            }
-            (Lever::BaseValue, Change::Add(add))
-        }
-        Effect::AddLevels(n) => (Lever::Levels, Change::Add(i64::from(*n))),
-        Effect::AddLevelsPerCounter { counter, per } => {
-            let value = counters.get(counter).copied().unwrap_or(0);
-            let add = i64::from(value) * i64::from(*per);
-            if add == 0 {
-                return None;
-            }
-            (Lever::Levels, Change::Add(add))
-        }
-        Effect::MultiplyGameValue(n) => (Lever::GameValue, Change::Multiply(*n)),
-        Effect::ScaleGameValue(f) => (Lever::GameValue, Change::Scale(*f)),
-        Effect::ScaleGameValuePerCounter { counter, per, max } => {
-            let value = counters.get(counter).copied().unwrap_or(0);
-            if value == 0 || per.permille() == 0 {
-                return None;
-            }
-            (
-                Lever::GameValue,
-                Change::Scale(per_step_factor(*per, value, *max)),
-            )
-        }
-        Effect::ScaleGameValuePerCard { per, max, .. } => {
-            if cards == 0 || per.permille() == 0 {
-                return None;
-            }
-            (
-                Lever::GameValue,
-                Change::Scale(per_step_factor(*per, cards, *max)),
-            )
-        }
-        _ => return None,
-    };
+    let (lever, change) = effect.score_change(counters, cards)?;
     Some(ScoreLine {
         source: source.clone(),
         lever,
@@ -6641,22 +6605,6 @@ fn player_cards(game: &Game<DealtCard>) -> Vec<DealtCard> {
         }
     }
     cards
-}
-
-/// `1 + per × steps`, at most `max` ("höchstens ×3", the growing Faktor
-/// relics, ADR 0018/0020). Saturates.
-fn per_step_factor(
-    per: crate::content::Factor,
-    steps: u32,
-    max: Option<crate::content::Factor>,
-) -> crate::content::Factor {
-    let mut permille = u64::from(per.permille())
-        .saturating_mul(u64::from(steps))
-        .saturating_add(1000);
-    if let Some(max) = max {
-        permille = permille.min(u64::from(max.permille()));
-    }
-    crate::content::Factor::from_permille(u32::try_from(permille).unwrap_or(u32::MAX))
 }
 
 /// The Spielwert factors of a won game ("Eierlikör").

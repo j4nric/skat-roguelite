@@ -142,7 +142,7 @@ impl Run {
             .is_some_and(|c| c.kind != CardKind::Blank && def.fits(c.kind));
         fits && self
             .edition
-            .clone()
+            .probe_card(card)
             .add_mod(content, card, card_mod, value)
             .is_ok()
     }
@@ -310,7 +310,7 @@ impl Run {
         }
         if !self.takes(content, offer.card, &offer.card_mod, offer.value) {
             // The reason from the rules (cursed, at its maximum).
-            let mut probe = self.edition.clone();
+            let mut probe = self.edition.probe_card(offer.card);
             probe.add_mod(content, offer.card, &offer.card_mod, offer.value)?;
             return Err(RunError::NoModAvailable);
         }
@@ -354,6 +354,35 @@ impl Run {
             .collect()
     }
 
+    /// Whether the Kartenmaler can take `card`: a card of the edition, no
+    /// blank, and some modification of his pool fits it (else the reason
+    /// from the rules, or [`RunError::NoModAvailable`]). What
+    /// [`Run::start_painter`] checks before it draws.
+    pub(super) fn check_paint(&self, content: &Content, card: u32) -> Result<(), RunError> {
+        let deck_card = self
+            .edition
+            .get(card)
+            .ok_or(crate::deck::DeckError::UnknownCard(card))?;
+        if deck_card.kind == CardKind::Blank {
+            return Err(crate::deck::DeckError::BlankCannotBeModified.into());
+        }
+        let pool = self.zinken_pool(content);
+        let value = |m: &CardModId| content.card_mod(m).map_or(1, CardModDef::offer_value);
+        if pool
+            .iter()
+            .any(|(m, _)| self.takes(content, card, m, value(m)))
+        {
+            return Ok(());
+        }
+        // The reason from the rules if they give one (a cursed card).
+        if let Some((card_mod, _)) = pool.first() {
+            self.edition
+                .probe_card(card)
+                .add_mod(content, card, card_mod, value(card_mod))?;
+        }
+        Err(RunError::NoModAvailable)
+    }
+
     /// The Kartenmaler takes `card`: draw his choice and wait for the
     /// player. `price` is paid first (0 at the Werkstatt).
     pub(super) fn start_painter(
@@ -364,13 +393,7 @@ impl Run {
         encounter: bool,
         events: &mut Vec<RunEvent>,
     ) -> Result<(), RunError> {
-        let deck_card = self
-            .edition
-            .get(card)
-            .ok_or(crate::deck::DeckError::UnknownCard(card))?;
-        if deck_card.kind == CardKind::Blank {
-            return Err(crate::deck::DeckError::BlankCannotBeModified.into());
-        }
+        self.check_paint(content, card)?;
         let options = self.draw_paints(content, card);
         if options.is_empty() {
             // The reason from the rules if they give one (a cursed card).
@@ -379,7 +402,7 @@ impl Run {
                     .card_mod(card_mod)
                     .map_or(1, CardModDef::offer_value);
                 self.edition
-                    .clone()
+                    .probe_card(card)
                     .add_mod(content, card, card_mod, value)?;
             }
             return Err(RunError::NoModAvailable);
@@ -428,24 +451,23 @@ impl Run {
             .get(option)
             .cloned()
             .ok_or(RunError::InvalidSlot)?;
-        let mut next = self.clone();
-        next.painter = None;
+        // On an error the caller drops this copy of the run ([`Run::dispatch`]).
+        self.painter = None;
         events.push(RunEvent::PainterChosen {
             card: painter.card,
             card_mod: card_mod.clone(),
             value,
         });
-        next.attach_mod(content, painter.card, &card_mod, value, events)?;
-        if painter.encounter && next.phase == RunPhase::Encounter {
-            if let Some(encounter) = next.encounter.take() {
+        self.attach_mod(content, painter.card, &card_mod, value, events)?;
+        if painter.encounter && self.phase == RunPhase::Encounter {
+            if let Some(encounter) = self.encounter.take() {
                 events.push(RunEvent::EncounterResolved {
                     encounter: encounter.id,
                     option: encounter.chosen.unwrap_or(0),
                 });
             }
-            next.continue_trip(content, events)?;
+            self.continue_trip(content, events)?;
         }
-        *self = next;
         Ok(())
     }
 
@@ -462,9 +484,7 @@ impl Run {
         if !self.can_pay(content, price) {
             return Err(RunError::NotEnoughCoins);
         }
-        let mut next = self.clone();
-        let change = next.cleanse(content, card)?;
-        self.edition = next.edition;
+        let change = self.cleanse(content, card)?;
         self.pay(price, events);
         self.shop_mut()?.cleansed = true;
         events.push(RunEvent::CardCleansed { card, price });

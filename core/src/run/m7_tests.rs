@@ -135,68 +135,93 @@ fn the_card_dealer_never_draws_a_curse() {
 /// Over whole runs of the bot with an encounter after every series, every
 /// curse that lands in the deck comes from an encounter whose text says
 /// "Fluch" and pays, or from a trade that announced it (curses as trade,
-/// 03.11.2026: Schnäppchen, Hehlerware, Fusel) and pays nothing.
-#[test]
-fn in_whole_runs_curses_come_only_from_announcing_encounters() {
+/// 03.11.2026: Schnäppchen, Hehlerware, Fusel) and pays nothing. Checked
+/// for one character over 40 runs; returns the curses that landed. One
+/// test per character below, so they run in parallel.
+fn curses_come_only_from_announcing_encounters(character: Character) -> usize {
     let content = content();
     let mut curses = 0;
-    for character in Character::ALL {
-        for seed in 0..40 {
-            let start = RunStart {
-                character,
-                ..RunStart::default()
-            };
-            let (mut run, mut events) = Run::new_with(&content, seed, &start).expect("run");
-            while let Some(action) = RunBot.next_action(&run, &content) {
-                events.extend(run.apply(&content, action).expect("bot"));
-            }
-            let mut open: Option<EncounterId> = None;
-            let mut malus_curse = false;
-            let mut traded: Option<u32> = None;
-            for (i, event) in events.iter().enumerate() {
-                match event {
-                    RunEvent::TradeCurse { card, .. } => traded = Some(*card),
-                    RunEvent::EncounterOpened { encounter, .. } => open = Some(encounter.clone()),
-                    RunEvent::EncounterResolved { .. } => open = None,
-                    // A Spelunke malus curses cards for its pub (ADR 0016),
-                    // announced on the route choice.
-                    RunEvent::SeriesStarted { malus: Some(m), .. }
-                        if content.maluses[m].curse.is_some() =>
-                    {
-                        malus_curse = true;
-                    }
-                    RunEvent::GameDealt { .. } => malus_curse = false,
-                    RunEvent::DeckChanged(DeckChange::Modified { card_mod, card, .. })
-                        if is_curse(&content, card_mod) && !malus_curse =>
-                    {
-                        curses += 1;
-                        if traded.take() == Some(*card) {
-                            // The price of a trade: it pays nothing.
-                            assert!(
-                                !matches!(events.get(i + 1), Some(RunEvent::CoinsGained { .. })),
-                                "seed {seed}: traded {card_mod} paid"
-                            );
-                            continue;
-                        }
-                        let encounter = open
-                            .as_ref()
-                            .and_then(|id| content.encounter(id))
-                            .unwrap_or_else(|| panic!("seed {seed}: unannounced {card_mod}"));
-                        assert!(encounter.text.contains("Fluch"), "{}", encounter.id);
-                        assert!(
-                            matches!(
-                                events.get(i + 1),
-                                Some(RunEvent::CoinsGained { amount, .. }) if *amount > 0
-                            ),
-                            "seed {seed}: {card_mod} did not pay"
-                        );
-                    }
-                    _ => {}
+    for seed in 0..40 {
+        let start = RunStart {
+            character,
+            ..RunStart::default()
+        };
+        let (mut run, mut events) = Run::new_with(&content, seed, &start).expect("run");
+        while let Some(action) = RunBot.next_action(&run, &content) {
+            events.extend(run.apply(&content, action).expect("bot"));
+        }
+        let mut open: Option<EncounterId> = None;
+        let mut malus_curse = false;
+        let mut traded: Option<u32> = None;
+        for (i, event) in events.iter().enumerate() {
+            match event {
+                RunEvent::TradeCurse { card, .. } => traded = Some(*card),
+                RunEvent::EncounterOpened { encounter, .. } => open = Some(encounter.clone()),
+                RunEvent::EncounterResolved { .. } => open = None,
+                // A Spelunke malus curses cards for its pub (ADR 0016),
+                // announced on the route choice.
+                RunEvent::SeriesStarted { malus: Some(m), .. }
+                    if content.maluses[m].curse.is_some() =>
+                {
+                    malus_curse = true;
                 }
+                RunEvent::GameDealt { .. } => malus_curse = false,
+                RunEvent::DeckChanged(DeckChange::Modified { card_mod, card, .. })
+                    if is_curse(&content, card_mod) && !malus_curse =>
+                {
+                    curses += 1;
+                    if traded.take() == Some(*card) {
+                        // The price of a trade: it pays nothing.
+                        assert!(
+                            !matches!(events.get(i + 1), Some(RunEvent::CoinsGained { .. })),
+                            "seed {seed}: traded {card_mod} paid"
+                        );
+                        continue;
+                    }
+                    let encounter = open
+                        .as_ref()
+                        .and_then(|id| content.encounter(id))
+                        .unwrap_or_else(|| panic!("seed {seed}: unannounced {card_mod}"));
+                    assert!(encounter.text.contains("Fluch"), "{}", encounter.id);
+                    assert!(
+                        matches!(
+                            events.get(i + 1),
+                            Some(RunEvent::CoinsGained { amount, .. }) if *amount > 0
+                        ),
+                        "seed {seed}: {card_mod} did not pay"
+                    );
+                }
+                _ => {}
             }
         }
     }
+    curses
+}
+
+#[test]
+fn in_whole_runs_curses_come_only_from_announcing_encounters_declarer() {
+    let curses = curses_come_only_from_announcing_encounters(Character::Declarer);
     assert!(curses > 0, "the bot takes announced curses");
+}
+
+#[test]
+fn in_whole_runs_curses_come_only_from_announcing_encounters_null_player() {
+    curses_come_only_from_announcing_encounters(Character::NullPlayer);
+}
+
+#[test]
+fn in_whole_runs_curses_come_only_from_announcing_encounters_shirker() {
+    curses_come_only_from_announcing_encounters(Character::Shirker);
+}
+
+#[test]
+fn in_whole_runs_curses_come_only_from_announcing_encounters_tailoress() {
+    curses_come_only_from_announcing_encounters(Character::Tailoress);
+}
+
+#[test]
+fn in_whole_runs_curses_come_only_from_announcing_encounters_heart_brother() {
+    curses_come_only_from_announcing_encounters(Character::HeartBrother);
 }
 
 #[test]
