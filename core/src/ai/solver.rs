@@ -207,6 +207,13 @@ struct Search<'t> {
     tie_hi: [u8; MAX_CARDS],
     kind_mask: [u32; 6],
     can_win: u32,
+    /// Sort keys of [`Search::greedy_card`], one integer per card ordered
+    /// like the tuple it replaces: `(trump, points, strength)` to cash or
+    /// throw, `(not trump, points)` to smear, `(trump, strength, -points)`
+    /// to win cheaply.
+    cash_key: [u64; MAX_CARDS],
+    smear_key: [u64; MAX_CARDS],
+    win_key: [u64; MAX_CARDS],
     /// Seats whose tricks count for the value.
     gain: u8,
     /// Seats that maximize.
@@ -448,6 +455,9 @@ impl<'t> Search<'t> {
             tie_hi: [0; MAX_CARDS],
             kind_mask: [0; 6],
             can_win: 0,
+            cash_key: [0; MAX_CARDS],
+            smear_key: [0; MAX_CARDS],
+            win_key: [0; MAX_CARDS],
             gain: 0,
             maxi: 0,
             null: false,
@@ -481,6 +491,15 @@ impl<'t> Search<'t> {
             }
             s.live_gain += s.points[i].max(0);
             s.live_loss += s.points[i].min(0);
+            // Points shifted into 0..2^32, order kept.
+            let p = i64::from(s.points[i]);
+            let up = u64::try_from(p - i64::from(i32::MIN)).unwrap_or(0);
+            let down = u64::try_from(i64::from(i32::MAX) - p).unwrap_or(0);
+            let trump = u64::from(s.kind[i] == TRUMP);
+            let strength = u64::from(s.strength[i]);
+            s.cash_key[i] = trump << 40 | up << 8 | strength;
+            s.smear_key[i] = (1 - trump) << 32 | up;
+            s.win_key[i] = trump << 40 | strength << 32 | down;
         }
         for i in 0..n {
             let same = |j: usize| s.kind[j] == s.kind[i] && s.strength[j] == s.strength[i];
@@ -948,7 +967,12 @@ impl<'t> Search<'t> {
 
     /// Legal cards of `hand` after `trick`.
     fn legal_of(&self, hand: u32, trick: &[u8]) -> u32 {
-        let lead_kind = self.lead_kind_of(trick);
+        self.legal_under(hand, self.lead_kind_of(trick))
+    }
+
+    /// Legal cards of `hand` in a trick whose effective lead is of
+    /// `lead_kind` (`BLANK`: none yet).
+    fn legal_under(&self, hand: u32, lead_kind: u8) -> u32 {
         if lead_kind == BLANK {
             return hand;
         }
@@ -960,29 +984,46 @@ impl<'t> Search<'t> {
         }
     }
 
-    /// Whether a seat of the other side still to play after `trick` (with
-    /// `card` added) can take the trick away from the current winner.
+    /// Whether a seat of the other side still to play after `card`, played
+    /// at `offset` of the trick, can take the trick away from the winner.
+    /// `before` is the card winning the trick so far and the kind of its
+    /// effective lead (`BLANK` if only blanks were played), `None` for a
+    /// lead.
     fn overtaken(
         &self,
         hands: &[u32; 3],
         seat: usize,
-        trick: &[u8],
+        offset: usize,
+        before: Option<(u8, u8)>,
         card: u8,
         leader: usize,
     ) -> bool {
-        let mut next = [0u8; 3];
-        next[..trick.len()].copy_from_slice(trick);
-        next[trick.len()] = card;
-        let next = &next[..=trick.len()];
-        let holder = next[self.winner_of(next)];
-        let lead_kind = self.lead_kind_of(next);
+        // The trick with `card` added, as `winner_of` and `lead_kind_of`
+        // would see it: the first card that is no blank sets the lead.
+        let (holder, lead_kind) = match before {
+            None => (card, self.kind[usize::from(card)]),
+            Some((holder, lead_kind)) => {
+                let lead_kind = if lead_kind == BLANK {
+                    self.kind[usize::from(card)]
+                } else {
+                    lead_kind
+                };
+                let holder = if self.beats(lead_kind, holder, card) {
+                    card
+                } else {
+                    holder
+                };
+                (holder, lead_kind)
+            }
+        };
+        let beaters = self.beaters(lead_kind, holder);
         let side = self.maxi & (1 << seat) != 0;
-        (next.len()..3).any(|k| {
+        (offset + 1..3).any(|k| {
             let other = (leader + k) % 3;
             if (self.maxi & (1 << other) != 0) == side {
                 return false;
             }
-            self.legal_of(hands[other], next) & self.beaters(lead_kind, holder) != 0
+            self.legal_under(hands[other], lead_kind) & beaters != 0
         })
     }
 
@@ -1011,20 +1052,12 @@ impl<'t> Search<'t> {
                 Some(c)
             })
         };
-        let cheapest = || {
-            cards().min_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] == TRUMP, self.points[i], self.strength[i])
-            })
-        };
+        let cheapest = || cards().min_by_key(|&c| self.cash_key[usize::from(c)]);
         if trick.is_empty() {
             // Highest-scoring card nobody can take away, else the cheapest.
             let sure = cards()
-                .filter(|&c| !self.overtaken(hands, seat, &[], c, leader))
-                .max_by_key(|&c| {
-                    let i = usize::from(c);
-                    (self.kind[i] == TRUMP, self.points[i], self.strength[i])
-                });
+                .filter(|&c| !self.overtaken(hands, seat, 0, None, c, leader))
+                .max_by_key(|&c| self.cash_key[usize::from(c)]);
             return sure.or_else(cheapest);
         }
         let holder_offset = self.winner_of(trick);
@@ -1034,25 +1067,21 @@ impl<'t> Search<'t> {
         let side = self.maxi & (1 << seat) != 0;
         let partner_wins = (self.maxi & (1 << winner) != 0) == side;
         let beating = legal & self.beaters(lead_kind, holder);
+        let before = Some((holder, lead_kind));
+        let offset = trick.len();
         if partner_wins {
             let losing = cards().filter(|&c| beating & (1 << c) == 0);
-            let smear = losing.max_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] != TRUMP, self.points[i])
-            });
+            let smear = losing.max_by_key(|&c| self.smear_key[usize::from(c)]);
             if let Some(c) = smear {
-                if !self.overtaken(hands, seat, trick, c, leader) {
+                if !self.overtaken(hands, seat, offset, before, c, leader) {
                     return Some(c);
                 }
             }
         }
         let safe_win = cards()
             .filter(|&c| beating & (1 << c) != 0)
-            .filter(|&c| !self.overtaken(hands, seat, trick, c, leader))
-            .min_by_key(|&c| {
-                let i = usize::from(c);
-                (self.kind[i] == TRUMP, self.strength[i], -self.points[i])
-            });
+            .filter(|&c| !self.overtaken(hands, seat, offset, before, c, leader))
+            .min_by_key(|&c| self.win_key[usize::from(c)]);
         safe_win.or_else(cheapest)
     }
 
@@ -1690,6 +1719,92 @@ mod tests {
         kept.sort();
         assert_eq!(kept.len(), 2, "{kept:?}");
         assert!(kept.contains(&c8));
+    }
+
+    /// [`Search::greedy_card`] as it was with tuple keys and the trick
+    /// rebuilt for every card.
+    fn tuple_greedy_card(
+        s: &Search<'_>,
+        hands: &[u32; 3],
+        seat: usize,
+        trick: &[u8],
+        leader: usize,
+    ) -> Option<u8> {
+        let overtaken = |trick: &[u8], card: u8| {
+            let mut next = [0u8; 3];
+            next[..trick.len()].copy_from_slice(trick);
+            next[trick.len()] = card;
+            let next = &next[..=trick.len()];
+            let holder = next[s.winner_of(next)];
+            let lead_kind = s.lead_kind_of(next);
+            let side = s.maxi & (1 << seat) != 0;
+            (next.len()..3).any(|k| {
+                let other = (leader + k) % 3;
+                (s.maxi & (1 << other) != 0) != side
+                    && s.legal_of(hands[other], next) & s.beaters(lead_kind, holder) != 0
+            })
+        };
+        let legal = s.legal_of(hands[seat], trick);
+        let cards = || (0u8..32).filter(move |&c| legal & (1 << c) != 0);
+        let cash = |c: &u8| {
+            let i = usize::from(*c);
+            (s.kind[i] == TRUMP, s.points[i], s.strength[i])
+        };
+        let cheapest = || cards().min_by_key(cash);
+        if trick.is_empty() {
+            let sure = cards().filter(|&c| !overtaken(&[], c)).max_by_key(cash);
+            return sure.or_else(cheapest);
+        }
+        let holder = trick[s.winner_of(trick)];
+        let winner = (leader + s.winner_of(trick)) % 3;
+        let side = s.maxi & (1 << seat) != 0;
+        let partner_wins = (s.maxi & (1 << winner) != 0) == side;
+        let beating = legal & s.beaters(s.lead_kind_of(trick), holder);
+        if partner_wins {
+            let smear = cards()
+                .filter(|&c| beating & (1 << c) == 0)
+                .max_by_key(|&c| (s.kind[usize::from(c)] != TRUMP, s.points[usize::from(c)]));
+            if let Some(c) = smear {
+                if !overtaken(trick, c) {
+                    return Some(c);
+                }
+            }
+        }
+        let safe_win = cards()
+            .filter(|&c| beating & (1 << c) != 0)
+            .filter(|&c| !overtaken(trick, c))
+            .min_by_key(|&c| {
+                let i = usize::from(c);
+                (s.kind[i] == TRUMP, s.strength[i], -s.points[i])
+            });
+        safe_win.or_else(cheapest)
+    }
+
+    #[test]
+    fn greedy_keys_choose_as_the_tuples_did() {
+        let mut rng = Rng::from_seed(16);
+        for round in 0..3000 {
+            let deck = if round % 2 == 0 {
+                odd_deck()
+            } else {
+                battered_deck()
+            };
+            let game = games()[round % 3];
+            let layout = random_layout(&mut rng, deck, 1 + round % 4, (round / 3) % 3);
+            let goal = if round % 5 == 0 {
+                Goal::RamschAvoid(Seat::ALL[round % 3])
+            } else {
+                Goal::DeclarerPoints
+            };
+            let mut table = Table::new(4);
+            let (s, _) = Search::new(game, goal, &layout, Limits::default(), &mut table)
+                .expect("valid layout");
+            let trick = &s.trick[..s.trick_len];
+            let seat = s.to_play();
+            let fast = s.greedy_card(&s.hands, seat, trick, s.leader);
+            let slow = tuple_greedy_card(&s, &s.hands, seat, trick, s.leader);
+            assert_eq!(fast, slow, "round {round} {layout:?}");
+        }
     }
 
     #[test]
