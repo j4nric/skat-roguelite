@@ -5,6 +5,7 @@
 use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
+use crate::content::EncounterEffect;
 use crate::run::view::OptionTarget;
 
 /// `count` owned relics, none of them `except`, the kitty first if asked.

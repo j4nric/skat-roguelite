@@ -4,6 +4,7 @@
 use super::tour::RouteStop;
 use super::zinken::{CardOffer, PainterChoice};
 use super::*;
+use crate::content::EncounterEffect;
 use crate::content::{CardFilter, ModKind, StopCategory};
 
 fn content() -> Content {

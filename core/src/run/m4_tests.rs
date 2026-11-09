@@ -6,6 +6,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play, relic_run};
 use super::*;
 use crate::cards::{Card, Suit};
+use crate::content::EncounterEffect;
 use crate::content::{Change, EncounterId, Factor, Lever, ScoreLine, ScoreTerm, Source};
 use crate::rules::{NullRisk, RiskLevel};
 

@@ -7,6 +7,7 @@ use super::tour::{RouteStop, Transport};
 use super::view::OptionTarget;
 use super::*;
 use crate::cards::Suit;
+use crate::content::EncounterEffect;
 use crate::content::{ConsumableCategory, Factor, MalusId, RelicGroup, StopCategory};
 use crate::rules::RiskLevel;
 

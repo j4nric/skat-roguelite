@@ -10,6 +10,7 @@ use super::player::{PlayerGameEvent, player_events};
 use super::view::RevealSource;
 use super::*;
 use crate::cards::{Card, Rank, Suit};
+use crate::content::EncounterEffect;
 use crate::content::{Condition, Rarity, Reward, UnlockId};
 use crate::rules::{NullRisk, RiskLevel};
 

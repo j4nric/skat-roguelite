@@ -5,6 +5,7 @@ use super::bot::RunBot;
 use super::*;
 use crate::cards::PlayingCard;
 use crate::cards::Suit;
+use crate::content::EncounterEffect;
 use crate::content::{CardModId, Factor, GameFocus};
 use crate::rules::{GameType, Matadors, Outcome, RiskLevel};
 

@@ -9,6 +9,7 @@ use super::meta::MetaState;
 use super::view::RevealSource;
 use super::*;
 use crate::cards::Suit;
+use crate::content::EncounterEffect;
 use crate::content::{CardModId, Effect, UnlockId};
 use crate::rules::{GameType, NullRisk, RiskLevel};
 

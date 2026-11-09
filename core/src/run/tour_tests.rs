@@ -459,6 +459,7 @@ fn spelunke_run(content: &Content, malus: &str) -> Run {
 }
 
 use super::tour::Spelunke;
+use crate::content::EncounterEffect;
 
 #[test]
 fn spelunken_come_on_routes_but_never_before_a_boss_pub() {

@@ -7,6 +7,7 @@ use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
 use crate::content::CardPick;
+use crate::content::EncounterEffect;
 
 const MARKEN: [&str; 3] = ["voucher_coins", "voucher_undead", "voucher_wild"];
 
