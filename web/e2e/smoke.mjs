@@ -5589,7 +5589,7 @@ async function run() {
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
     if (process.env.SMOKE_ONLY === 'undead') {
@@ -5597,28 +5597,28 @@ async function run() {
       await voucherPass(browser, errors);
       await undeadPass(browser, errors, reducedMotion);
       await undeadGlowPass(browser, errors);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=bosses: the boss passes with the route legend and the names on the map.
     if (process.env.SMOKE_ONLY === 'bosses') {
       await bossesV2(browser, errors, reducedMotion);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=doppel: the Zinken v2 looks and the Doppelgänger's mirror (07.11.2026).
     if (process.env.SMOKE_ONLY === 'doppel') {
       await zinkenV2Pass(browser, errors, PHONE);
       await zinkenV2Pass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=tutorial: the Einführung (DESIGN 16.1).
     if (process.env.SMOKE_ONLY === 'offline') {
       await offlinePass(browser, errors);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'tutorial') {
       await tutorialPass(browser, errors, PHONE, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
       await tutorialPass(browser, errors, DESKTOP, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'qol') {
       await qolPass(browser, errors, PHONE);
@@ -5627,12 +5627,12 @@ async function run() {
       await handSortPass(browser, errors, DESKTOP);
       await shareRunPass(browser, errors, PHONE);
       await shareRunPass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
     const page = await context.newPage();
@@ -5986,6 +5986,11 @@ async function run() {
     await browser.close();
     preview.kill();
   }
+  report(errors);
+}
+
+/** Fail on console errors of any pass (also with SMOKE_ONLY), else say OK. */
+function report(errors) {
   if (errors.length) fail(`console errors:\n${errors.join('\n')}`);
   log(`OK. Screenshots in ${screens}`);
 }
