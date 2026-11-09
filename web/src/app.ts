@@ -32,32 +32,22 @@ import { music, type MusicId } from './music';
 import { CoreMeta, CoreRun, loadCatalog, loadCore } from './core';
 import { de, cardName, consumableMod, contentName, face, modKind, setCatalog, t } from './i18n';
 import { loadSettings, saveSettings, TEMPO_FACTOR, type Tempo } from './settings';
-import { decodeSave, encodeSave } from './savecode';
-import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, passkeysSupported, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, type AccountUser } from './account';
+import { passkeysSupported } from './account';
 import { isOnline, watchNetwork } from './offline';
-import { Sync, type Reconciled } from './sync';
+import { type Reconciled } from './sync';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from './seed';
 import { maxStake, pickedStake } from './stake';
 import {
-  addToHistory,
-  backupMeta,
   clearRun,
   loadCharacter,
   loadHistory,
-  loadMeta,
   loadRun,
-  loadRunInfo,
-  readAllKeys,
-  replaceAllKeys,
-  runAndMetaOf,
   saveCharacter,
-  saveMeta,
   saveRun,
   saveRunInfo,
 } from './storage';
 import { type CardKind, type CardView, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
-import { syncPill } from './ui/account';
 import { markeEffect, renderEncounter } from './ui/encounter';
 import { renderBossReward } from './ui/bossreward';
 import { renderCardReward } from './ui/cardreward';
@@ -68,7 +58,7 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed } from './ui/triggers';
-import { crumbleInto,  finishAll, finishOn, type FlightSnapshot, flip, flyIn, glide, glideAll, motionOn, noteFlights, resumeFlights, setTempo,   spotOfRect, spotsOf, springBack, sweepAway } from './ui/fx';
+import { crumbleInto, finishAll, finishOn, type FlightSnapshot, flip, flyIn, glide, glideAll, motionOn, noteFlights, resumeFlights, setTempo,  spotOfRect, spotsOf, springBack, sweepAway } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
 import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot } from './ui/scenes';
 import { setPlayerBack } from './ui/backs';
@@ -89,26 +79,15 @@ import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from '
 import { discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
 import { DELAY, errorCode, errorText, isCharacter, nextPaint, PICK, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
+import { AccountFlow, takeLoadedNote } from './app/account';
 import type { AppCtx } from './app/context';
 import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
 import { DrinkFx } from './app/playback/drinkfx';
 import { Flights } from './app/playback/flights';
 import { Fx } from './app/playback/fx';
-
-/** Session flag: the page was reloaded to take the account's state (a note after the reload). */
-const LOADED_NOTE = 'stammtisch-sync-loaded';
-
-/** Whether the account's state was just taken (read once). */
-function takeLoadedNote(): boolean {
-  try {
-    const set = window.sessionStorage.getItem(LOADED_NOTE) === '1';
-    window.sessionStorage.removeItem(LOADED_NOTE);
-    return set;
-  } catch {
-    return false;
-  }
-}
+import { Progress } from './app/progress';
+import { SaveCodeFlow } from './app/savecode';
 
 /** The boss edition's modifications on a boss card (ADR 0015), from the filters the core names. */
 function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string[]; mod_values: Record<string, number> } | null {
@@ -200,12 +179,6 @@ export class App implements AppCtx {
     account: { user: null, status: 'off', supported: passkeysSupported(), online: isOnline() },
     board: null,
   };
-  /** The account and the sync of the stored progress (ADR 0021). */
-  private readonly sync: Sync;
-  /** The day whose daily board was asked for in this visit. */
-  private boardDay = '';
-  /** What signing in with the recovery code brought, acted on once its code was seen. */
-  private pendingSync: Reconciled = 'none';
   fastForward = false;
   readonly screenEl: HTMLElement;
   /** Draws the screen part by part (./ui/patch.ts). */
@@ -223,12 +196,8 @@ export class App implements AppCtx {
   readonly info: InfoCard;
   /** Lines and wiggles when a relic or modification fires. */
   readonly triggers: TriggerFeed;
-  /** Changed in memory, not stored yet (playSteps, persist). */
-  private unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
   /** Effects to run once the next render is in the DOM. */
   readonly afterRender: (() => void)[] = [];
-  /** Special cards received for the first time in this save, waiting for their explanation sheet. */
-  private specialQueue: string[] = [];
   /** Drinking a Schnaps from the Leiste (drag and drop or tap, ./ui/drink.ts). */
   readonly drink: Drink;
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
@@ -246,6 +215,12 @@ export class App implements AppCtx {
   private readonly flights: Flights;
   /** What a Schnaps does on screen (./app/playback/drinkfx.ts). */
   private readonly drinkFx: DrinkFx;
+  /** Account, sync and daily board (./app/account.ts). */
+  private readonly account: AccountFlow;
+  /** The stored run and meta state (./app/progress.ts). */
+  private readonly progress: Progress;
+  /** Export and import of the save code (./app/savecode.ts). */
+  private readonly saveCode: SaveCodeFlow;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -254,6 +229,9 @@ export class App implements AppCtx {
     this.fx = new Fx(this, this.guidance);
     this.flights = new Flights(this, this.fx);
     this.drinkFx = new DrinkFx(this, this.fx);
+    this.account = new AccountFlow(this, this.layer);
+    this.progress = new Progress(this, this.account);
+    this.saveCode = new SaveCodeFlow(this);
     this.screen = new Patcher(this.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -314,22 +292,19 @@ export class App implements AppCtx {
         this.guidance.positionCoach();
       }, 100);
     });
-    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, freshMeta: (meta) => this.isFreshMeta(meta), changed: () => this.accountChanged() });
-    this.ui.account.user = this.sync.user;
-    this.ui.account.status = this.sync.status;
     // Leaving the page (tab switch, app to the background, closing): store
     // what an opponent's card left in memory, then upload what changed.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'hidden') return;
       this.persist();
-      void this.sync.push(true);
+      void this.account.sync.push(true);
     });
     window.addEventListener('pagehide', () => {
       this.persist();
       // The request must start now: the upload was encoded in advance.
-      this.sync.sendOnHide();
+      this.account.sync.sendOnHide();
     });
-    watchNetwork((online) => this.networkChanged(online));
+    watchNetwork((online) => this.account.networkChanged(online));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
@@ -395,8 +370,8 @@ export class App implements AppCtx {
     await yieldToBrowser();
     // Signed in: compare with the account before anything is read from storage.
     let synced: Reconciled = 'none';
-    if (this.sync.signedIn) synced = await this.sync.reconcileAtStart(5000);
-    this.loadMetaState();
+    if (this.account.sync.signedIn) synced = await this.account.sync.reconcileAtStart(5000);
+    this.progress.loadMetaState();
     this.readShareHash();
     window.addEventListener('hashchange', () => {
       this.readShareHash();
@@ -404,339 +379,13 @@ export class App implements AppCtx {
     });
     this.toStart();
     if (synced === 'applied' || takeLoadedNote()) this.showToast(de.account.loadedFromServer);
-    if (synced === 'conflict') this.openConflict();
-    void this.refreshAccount();
+    if (synced === 'conflict') this.account.openConflict();
+    void this.account.refreshAccount();
   }
 
   // -------------------------------------------------------------------------
   // Account and sync (ADR 0021). Transport only: the save is the save code.
   // -------------------------------------------------------------------------
-
-  /** The sync changed: show the new status (and the account, if it changed). */
-  private accountChanged(): void {
-    const account = this.ui.account;
-    const userChanged = account.user !== this.sync.user;
-    account.user = this.sync.user;
-    account.status = this.sync.status;
-    if (this.sync.status === 'conflict' && this.ui.overlay?.kind !== 'sync-conflict' && this.ui.screen === 'run') {
-      this.showToast(de.account.conflictToast);
-    }
-    if (userChanged && !this.ui.busy && this.ui.screen !== 'loading') {
-      this.layer.markDirty();
-      this.render();
-      return;
-    }
-    // Only the small status word: no re-render (a name may be being typed).
-    this.root.querySelectorAll<HTMLElement>('[data-testid="sync-status"]').forEach((el) => {
-      el.outerHTML = syncPill(account.status, !el.parentElement?.closest('button'));
-    });
-  }
-
-  /** Online or offline (DESIGN 14.5): the account buttons and the daily board follow. */
-  private networkChanged(online: boolean): void {
-    this.ui.account.online = online;
-    if (online) this.loadBoard(true);
-    const o = this.ui.overlay?.kind;
-    if (!this.ui.busy && (this.ui.screen === 'start' || o === 'account' || o === 'account-recover' || o === 'account-delete' || o === 'account-passkeys')) {
-      this.layer.markDirty();
-      this.render();
-    }
-  }
-
-  /** Ask the server who is signed in (the name may have changed elsewhere). */
-  private async refreshAccount(): Promise<void> {
-    if (!this.sync.signedIn) return;
-    try {
-      const user = await fetchMe();
-      if (user) this.sync.updateUser(user);
-      else this.sync.forget();
-    } catch {
-      // Offline: the status says so.
-    }
-  }
-
-  /** Today's daily board, once per visit and day (and again after a result). */
-  private loadBoard(force = false): void {
-    const day = dailySeed();
-    if (!force && this.boardDay === day) return;
-    this.boardDay = day;
-    fetchDailyBoard(day).then(
-      (board) => {
-        this.ui.board = board;
-        if (this.ui.screen === 'start' && !this.ui.busy) this.render();
-      },
-      () => {
-        // No server (local preview, offline): no board.
-        this.ui.board = null;
-      },
-    );
-  }
-
-  /** A finished daily run of a signed-in player goes on the board. */
-  private submitDailyResult(view: RunView): void {
-    // The Einführung (DESIGN 16.1) never goes on a board.
-    if (!this.sync.signedIn || view.tutorial) return;
-    submitDaily({
-      day: view.seed,
-      character: view.character.character,
-      won: view.phase === 'Won',
-      section: view.series.section + 1,
-      series: view.series.index + 1,
-      stake: view.stake ?? 0,
-      bestGame: view.stats.best_game,
-    }).then(
-      (res) => {
-        if (res.stored && res.me) this.showToast(t(de.board.submitted, { rank: res.me.rank }));
-        this.loadBoard(true);
-      },
-      (err: unknown) => console.warn('daily result not sent', err),
-    );
-  }
-
-  private accountError(err: unknown): string {
-    const code = err instanceof AccountError ? err.code : 'default';
-    return de.account.errors[code] ?? de.account.errors.default ?? '';
-  }
-
-  private openAccount(note: string | null = null, error: string | null = null): void {
-    this.ui.overlay = { kind: 'account', busy: false, error, note };
-    this.render();
-  }
-
-  /** Run an account call with the sheet showing "Einen Moment …". */
-  private async accountBusy<T>(work: () => Promise<T>): Promise<T | null> {
-    const o = this.ui.overlay;
-    if (o && (o.kind === 'account' || o.kind === 'account-recover' || o.kind === 'account-delete' || o.kind === 'account-passkeys')) {
-      if (o.busy) return null;
-      this.ui.overlay = { ...o, busy: true, error: null };
-      this.render();
-    }
-    try {
-      return await work();
-    } catch (err) {
-      const now = this.ui.overlay;
-      const error = this.accountError(err);
-      if (now && (now.kind === 'account' || now.kind === 'account-recover' || now.kind === 'account-delete' || now.kind === 'account-passkeys')) {
-        this.ui.overlay = { ...now, busy: false, error };
-        this.render();
-      } else {
-        this.showToast(error);
-      }
-      return null;
-    }
-  }
-
-  /**
-   * Signed in: compare the stored progress with the account. A state from
-   * the account is taken by reloading the page (after the recovery code
-   * was seen); a conflict asks the player.
-   */
-  private async afterSignIn(user: AccountUser): Promise<Reconciled> {
-    this.sync.signedInAs(user);
-    const result = await this.sync.reconcileAfterSignIn();
-    this.loadBoard(true);
-    return result;
-  }
-
-  /**
-   * Signing in found the account's state to take: into storage now, then
-   * reload. False (with a note) if the storage refused.
-   */
-  private takeAccountState(): boolean {
-    if (this.sync.takeServer()) return true;
-    this.showToast(de.save.errors.write ?? '');
-    return false;
-  }
-
-  /** Reload to start from the account's state, with a note after the reload. */
-  private reloadWithAccountState(): void {
-    try {
-      window.sessionStorage.setItem(LOADED_NOTE, '1');
-    } catch {
-      // The note is lost, the state is not.
-    }
-    window.location.reload();
-  }
-
-  private async createAccount(): Promise<void> {
-    const name = this.root.querySelector<HTMLInputElement>('#account-name')?.value.trim() ?? '';
-    const res = await this.accountBusy(() => register(name || null));
-    if (!res) return;
-    await this.afterSignIn(res.user);
-    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'new', copied: null };
-    this.render();
-  }
-
-  private async signInWithPasskey(): Promise<void> {
-    const res = await this.accountBusy(() => signIn());
-    if (!res) return;
-    const synced = await this.afterSignIn(res.user);
-    if (synced === 'applied' && this.takeAccountState()) {
-      this.reloadWithAccountState();
-      return;
-    }
-    if (synced === 'conflict') {
-      this.openConflict();
-      return;
-    }
-    this.openAccount(t(de.account.signedInAs, { name: res.user.name ?? de.account.noName }));
-  }
-
-  private async recoverWithCode(): Promise<void> {
-    const code = this.root.querySelector<HTMLInputElement>('#recover-code')?.value ?? '';
-    const res = await this.accountBusy(() => recover(code));
-    if (!res) return;
-    this.pendingSync = await this.afterSignIn(res.user);
-    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'recovered', copied: null };
-    this.render();
-  }
-
-  /** The recovery code was seen: go on with what signing in brought. */
-  private codeDone(): void {
-    const pending = this.pendingSync;
-    this.pendingSync = 'none';
-    if (pending === 'applied' && this.takeAccountState()) {
-      this.reloadWithAccountState();
-      return;
-    }
-    if (pending === 'conflict' && this.sync.conflict) {
-      this.openConflict();
-      return;
-    }
-    this.openAccount();
-  }
-
-  private copyRecoveryCode(): void {
-    const o = this.ui.overlay;
-    if (o?.kind !== 'account-code') return;
-    const done = (ok: boolean): void => {
-      if (this.ui.overlay !== o) return;
-      this.ui.overlay = { ...o, copied: ok };
-      this.render();
-    };
-    try {
-      navigator.clipboard.writeText(o.code).then(
-        () => done(true),
-        () => done(false),
-      );
-    } catch {
-      done(false);
-    }
-  }
-
-  private async addPasskeyHere(): Promise<void> {
-    const fromCode = this.ui.overlay?.kind === 'account-code';
-    if (fromCode) this.openAccount();
-    const res = await this.accountBusy(() => addPasskey());
-    if (!res) return;
-    this.sync.updateUser(res.user);
-    if (fromCode && this.pendingSync !== 'none') {
-      this.codeDone();
-      return;
-    }
-    this.openAccount(de.account.passkeyAdded);
-  }
-
-  private async saveName(): Promise<void> {
-    const name = this.root.querySelector<HTMLInputElement>('#account-name')?.value ?? '';
-    const res = await this.accountBusy(() => setName(name));
-    if (!res) return;
-    this.sync.updateUser(res.user);
-    this.loadBoard(true);
-    this.openAccount(de.account.nameSaved);
-  }
-
-  private async newRecoveryCode(): Promise<void> {
-    const res = await this.accountBusy(() => renewRecoveryCode());
-    if (!res) return;
-    this.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'renewed', copied: null };
-    this.render();
-  }
-
-  private async signOutHere(): Promise<void> {
-    // Upload what is new first; then the device forgets the account.
-    const res = await this.accountBusy(async () => {
-      this.persist();
-      await this.sync.push();
-      await signOut();
-      return true;
-    });
-    if (!res) return;
-    this.sync.forget();
-    this.loadBoard(true);
-    this.openAccount(de.account.signedOut);
-  }
-
-  /** Sign out on every device (a code or passkey somebody else may have). */
-  private async signOutEverywhereNow(): Promise<void> {
-    const res = await this.accountBusy(async () => {
-      await this.sync.push();
-      await signOutEverywhere();
-      return true;
-    });
-    if (!res) return;
-    this.sync.forget();
-    this.loadBoard(true);
-    this.openAccount(de.account.signedOutAll);
-  }
-
-  /** The passkey list; `note` after a removal. */
-  private async openPasskeys(note: string | null = null): Promise<void> {
-    this.ui.overlay = { kind: 'account-passkeys', list: null, busy: true, error: null, note };
-    this.render();
-    let list = null;
-    let error: string | null = null;
-    try {
-      list = await fetchPasskeys();
-    } catch (err) {
-      error = this.accountError(err);
-    }
-    if (this.ui.overlay?.kind !== 'account-passkeys') return;
-    this.ui.overlay = { kind: 'account-passkeys', list: list ?? [], busy: false, error, note };
-    this.render();
-  }
-
-  private async removePasskeyNow(id: string): Promise<void> {
-    const res = await this.accountBusy(() => removePasskey(id));
-    if (!res) return;
-    this.sync.updateUser(res.user);
-    await this.openPasskeys(de.account.passkeyRemoved);
-  }
-
-  private async deleteAccountNow(): Promise<void> {
-    const res = await this.accountBusy(async () => {
-      await deleteAccount();
-      return true;
-    });
-    if (!res) return;
-    this.sync.forget();
-    this.loadBoard(true);
-    this.openAccount(de.account.deleted);
-  }
-
-  /** Played on two devices: show both states and let the player choose. */
-  private openConflict(): void {
-    const c = this.sync.conflict;
-    if (!c) return;
-    this.ui.overlay = {
-      kind: 'sync-conflict',
-      here: { at: c.localAt, lines: this.describeKeys(c.localKeys) ?? [] },
-      server: { at: c.server.updatedAt, lines: this.describeKeys(c.serverKeys) ?? [] },
-    };
-    this.render();
-  }
-
-  private async keepHere(): Promise<void> {
-    this.ui.overlay = null;
-    this.render();
-    await this.sync.keepLocal();
-    if (this.sync.status === 'saved') this.showToast(de.account.keptHere);
-  }
-
-  private keepServer(): void {
-    if (this.sync.takeServer()) this.reloadWithAccountState();
-    else this.showToast(de.save.errors.write ?? '');
-  }
 
   /** Offer the seed of a shared link (`#seed-…`), if the address has one. */
   private readShareHash(): void {
@@ -745,74 +394,6 @@ export class App implements AppCtx {
     const entry = this.ui.meta?.characters.find((c) => c.character === shared.character);
     const locked = shared.character !== 'Declarer' && entry?.unlocked !== true;
     this.ui.shared = { ...shared, locked };
-  }
-
-  /** Load the meta state, or start a new one (keeping an unreadable save aside). */
-  private loadMetaState(): void {
-    const saved = loadMeta();
-    if (saved) {
-      try {
-        this.meta = CoreMeta.load(saved);
-      } catch (err) {
-        console.warn('meta state discarded', err);
-        backupMeta(saved);
-        this.ui.message = de.start.metaFailed;
-      }
-    }
-    try {
-      this.meta ??= CoreMeta.fresh();
-      if (!saved) saveMeta(this.meta.save());
-      this.ui.meta = this.meta.view();
-    } catch (err) {
-      console.warn('meta state unavailable', err);
-      this.meta = null;
-      this.ui.meta = null;
-    }
-    const picked = this.ui.meta?.characters.find((c) => c.character === this.ui.pickCharacter);
-    if (!picked?.unlocked) this.ui.pickCharacter = 'Declarer';
-  }
-
-  /**
-   * Feed the events of a step to the meta state; returns the unlocks just
-   * earned. `defer` keeps the new meta state in memory until `persist()`
-   * (an opponent's card: stored together with the run, see playSteps).
-   */
-  private observe(events: RunEvent[] | string, defer = false): string[] {
-    if (!this.meta) return [];
-    try {
-      const step = this.meta.observe(events);
-      this.ui.meta = step.view;
-      if (defer) this.unsaved.meta = true;
-      else saveMeta(this.meta.save());
-      // The first Untot or Wandelkarte of this save: explained once (DESIGN 7.2), shown by render().
-      for (const id of step.first_specials ?? []) if (!this.specialQueue.includes(id)) this.specialQueue.push(id);
-      return step.earned;
-    } catch (err) {
-      console.warn('meta state did not take the events', err);
-      return [];
-    }
-  }
-
-  /**
-   * Store what playSteps kept in memory: the run (if it is still the one
-   * that changed) and the meta state. Also on leaving the page.
-   */
-  persist(): void {
-    const { run, meta } = this.unsaved;
-    this.unsaved = { run: null, meta: false };
-    try {
-      if (run && run === this.core) saveRun(run.save());
-      if (meta && this.meta) saveMeta(this.meta.save());
-    } catch (err) {
-      console.warn('state not stored', err);
-    }
-  }
-
-  /** Announce unlocks just earned. */
-  private announceUnlocks(ids: string[]): void {
-    if (!ids.length || !this.ui.meta) return;
-    this.ui.overlay = { kind: 'unlock', ids };
-    sound.play('win', { delay: 150 });
   }
 
   private applySettings(): void {
@@ -869,7 +450,7 @@ export class App implements AppCtx {
     // Die Einführung (DESIGN 16.1) is offered once to a new player.
     this.ui.tutorialOffer = !tutorialSeen() && !saved && !this.ui.history.length && !(this.ui.meta?.stats.runs_finished ?? 0);
     this.ui.screen = 'start';
-    this.loadBoard();
+    this.account.loadBoard();
     this.render();
   }
 
@@ -943,10 +524,10 @@ export class App implements AppCtx {
     saveRun(core.save());
     const view = core.view();
     saveRunInfo({ seed: view.seed, daily });
-    const earned = this.observe(startEvents);
+    const earned = this.progress.observe(startEvents);
     this.enterRun(view, true);
     if (earned.length) {
-      this.announceUnlocks(earned);
+      this.progress.announceUnlocks(earned);
       this.render();
     }
   }
@@ -1017,25 +598,6 @@ export class App implements AppCtx {
     this.showToast(de.runCard.saved);
   }
 
-  /** Remember a finished run in the list of this browser. */
-  private recordRun(view: RunView): void {
-    // The Einführung is no run (DESIGN 16.1): no history, no board.
-    if (view.tutorial) return;
-    const info = loadRunInfo();
-    this.ui.history = addToHistory({
-      character: view.character.character,
-      seed: view.seed,
-      ...(view.stake > 0 ? { stake: view.stake } : {}),
-      section: view.series.section + 1,
-      series: view.series.index + 1,
-      won: view.phase === 'Won',
-      bestGame: view.stats.best_game,
-      date: new Date().toISOString(),
-      daily: info?.seed === view.seed && info.daily,
-    });
-    if (info?.seed === view.seed && info.daily) this.submitDailyResult(view);
-  }
-
   /** Copy the link of a seed; on failure show it to be copied by hand. */
   private copyLink(url: string): void {
     const done = (ok: boolean): void => {
@@ -1083,197 +645,6 @@ export class App implements AppCtx {
   // -------------------------------------------------------------------------
   // Save code: export and import of everything stored (./savecode.ts)
   // -------------------------------------------------------------------------
-
-  /** Menu "Spielstand sichern": the code of everything stored, to copy or share. */
-  private async openSaveExport(): Promise<void> {
-    const from = this.ui.overlay;
-    let code: string;
-    try {
-      this.persist();
-      code = await encodeSave(readAllKeys());
-    } catch (err) {
-      console.warn('save code not made', err);
-      this.showToast(de.save.exportFailed);
-      return;
-    }
-    // The player closed the menu meanwhile.
-    if (this.ui.overlay !== from) return;
-    this.ui.overlay = { kind: 'save-export', code, copied: null };
-    this.render();
-  }
-
-  /** Mark the whole save code, for copying by hand. */
-  private selectSaveCode(): HTMLTextAreaElement | null {
-    const area = this.root.querySelector<HTMLTextAreaElement>('[data-testid="save-code"]');
-    if (!area) return null;
-    area.focus();
-    area.select();
-    area.setSelectionRange(0, area.value.length);
-    return area;
-  }
-
-  /** Copy the save code; without the Clipboard API mark it and try the old way. */
-  private copySave(): void {
-    const o = this.ui.overlay;
-    if (o?.kind !== 'save-export') return;
-    const done = (ok: boolean): void => {
-      if (this.ui.overlay !== o) return;
-      this.ui.overlay = { ...o, copied: ok };
-      this.render();
-      if (ok) sound.play('clink');
-      else this.selectSaveCode();
-    };
-    const fallback = (): void => {
-      let ok = false;
-      try {
-        ok = this.selectSaveCode() !== null && document.execCommand('copy');
-      } catch {
-        ok = false;
-      }
-      done(ok);
-    };
-    try {
-      const clip = navigator.clipboard as Clipboard | undefined;
-      if (!clip) {
-        fallback();
-        return;
-      }
-      clip.writeText(o.code).then(
-        () => done(true),
-        (err: unknown) => {
-          console.warn('clipboard refused', err);
-          fallback();
-        },
-      );
-    } catch (err) {
-      console.warn('clipboard unavailable', err);
-      fallback();
-    }
-  }
-
-  /** The share sheet of the system with the save code as text. */
-  private shareSave(): void {
-    const o = this.ui.overlay;
-    if (o?.kind !== 'save-export') return;
-    try {
-      if (typeof navigator.share !== 'function') {
-        this.copySave();
-        return;
-      }
-      navigator.share({ title: de.save.shareTitle, text: o.code }).catch((err: unknown) => {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) this.copySave();
-      });
-    } catch {
-      this.copySave();
-    }
-  }
-
-  /** "Prüfen": read the pasted code and let the core load what it carries. */
-  private async checkImport(): Promise<void> {
-    const o = this.ui.overlay;
-    if (o?.kind !== 'save-import' || o.checking) return;
-    const text = this.root.querySelector<HTMLTextAreaElement>('#save-input')?.value ?? '';
-    const pending: Overlay = { kind: 'save-import', text, error: null, checking: true };
-    this.ui.overlay = pending;
-    this.render();
-    const result = await this.readSaveCode(text);
-    if (this.ui.overlay !== pending) return;
-    this.ui.overlay =
-      'error' in result
-        ? { kind: 'save-import', text, error: result.error, checking: false }
-        : { kind: 'save-confirm', keys: result.keys, lines: result.lines };
-    this.render();
-  }
-
-  /**
-   * Decode a save code and check that the core loads its run and meta
-   * state. Returns the keys and what they hold, or the German reason.
-   */
-  private async readSaveCode(text: string): Promise<{ keys: Record<string, string>; lines: string[] } | { error: string }> {
-    let decoded;
-    try {
-      decoded = await decodeSave(text);
-    } catch (err) {
-      console.warn('save code unreadable', err);
-      return { error: de.save.errors.damaged ?? '' };
-    }
-    if (!decoded.ok) return { error: de.save.errors[decoded.error] ?? '' };
-    const { run, meta } = runAndMetaOf(decoded.keys);
-    if (!run && !meta) return { error: de.save.errors.nothing ?? '' };
-    const lines = this.describeKeys(decoded.keys);
-    if (!lines) return { error: de.save.errors.rejected ?? '' };
-    return { keys: decoded.keys, lines };
-  }
-
-  /** Whether a stored meta state is still the one of a new player (asked of the core). */
-  private isFreshMeta(meta: string): boolean {
-    try {
-      const stored = CoreMeta.load(meta);
-      const fresh = CoreMeta.fresh();
-      try {
-        return stored.save() === fresh.save();
-      } finally {
-        stored.meta.free();
-        fresh.meta.free();
-      }
-    } catch {
-      // Unreadable here: treat it as progress, never replace it unasked.
-      return false;
-    }
-  }
-
-  /**
-   * What a set of stored keys holds, in lines for the player (running run,
-   * Vereinsbuch), or null if the core cannot load its run or meta state.
-   */
-  private describeKeys(keys: Record<string, string>): string[] | null {
-    const { run, meta } = runAndMetaOf(keys);
-    const lines: string[] = [];
-    try {
-      if (run) {
-        const core = CoreRun.load(run);
-        try {
-          const view = core.view();
-          lines.push(t(de.save.containsRun, { line: `${runLine(view)} · ${de.end.seed} ${view.seed}` }));
-        } finally {
-          core.dispose();
-        }
-      } else {
-        lines.push(de.save.containsNoRun);
-      }
-      if (meta) {
-        const loaded = CoreMeta.load(meta);
-        try {
-          const view = loaded.view();
-          lines.push(
-            t(de.save.containsBook, {
-              runs: view.stats.runs_finished,
-              done: view.unlocks.filter((u) => u.unlocked).length,
-              total: view.unlocks.length,
-            }),
-          );
-        } finally {
-          loaded.meta.free();
-        }
-      }
-    } catch (err) {
-      console.warn('stored state rejected by the core', err);
-      return null;
-    }
-    return lines;
-  }
-
-  /** Replace everything stored by the checked code and start over with it. */
-  private applyImport(): void {
-    const o = this.ui.overlay;
-    if (o?.kind !== 'save-confirm') return;
-    if (!replaceAllKeys(o.keys)) {
-      this.ui.overlay = { kind: 'save-import', text: '', error: de.save.errors.write ?? '', checking: false };
-      this.render();
-      return;
-    }
-    window.location.reload();
-  }
 
   /**
    * "Weiterziehen in die lange Nacht" (ADR 0020): the won run goes on. Its
@@ -1463,17 +834,17 @@ export class App implements AppCtx {
         if (view.tutorial) {
           // Nothing to keep.
         } else if (view.phase === 'Won' || view.phase === 'Lost') {
-          this.unsaved.run = null;
+          this.progress.unsaved.run = null;
           clearRun();
           // A night that ends (ADR 0020) is no run of its own: the win
           // was recorded when der Alte fell.
-          if (!view.night) this.recordRun(view);
+          if (!view.night) this.progress.recordRun(view);
         } else if (this.core) {
-          this.unsaved.run = this.core;
+          this.progress.unsaved.run = this.core;
         }
         // Stored now: the player's own step, a new phase, the run over.
         const store = own || view.phase !== previous?.phase || view.phase === 'Won' || view.phase === 'Lost';
-        if (!view.tutorial) earned = earned.concat(this.observe(step.events, true));
+        if (!view.tutorial) earned = earned.concat(this.progress.observe(step.events, true));
         if (store) this.persist();
         own = false;
         await this.playEvents(previous, step.events, view);
@@ -1492,7 +863,7 @@ export class App implements AppCtx {
       // opponents played waits in memory for the player's next step.
       if (pubEnded) {
         this.persist();
-        void this.sync.push();
+        void this.account.sync.push();
       }
       this.ui.busy = false;
       this.ui.anim = null;
@@ -1516,7 +887,7 @@ export class App implements AppCtx {
       // The end screen must come whatever went wrong before it (playtest
       // 04.11.2026: stuck on a lost board without a working button).
       try {
-        this.announceUnlocks(earned);
+        this.progress.announceUnlocks(earned);
       } catch (err) {
         console.warn('unlocks not shown', err);
       }
@@ -2374,6 +1745,11 @@ export class App implements AppCtx {
     card.classList.remove('is-settling');
   }
 
+  /** Store what the playback kept in memory (./app/progress.ts). */
+  persist(): void {
+    this.progress.persist();
+  }
+
   /** A short message (./app/playback/fx.ts). */
   showToast(text: string, place: ToastPlace = 'middle'): void {
     this.fx.showToast(text, place);
@@ -2605,78 +1981,78 @@ export class App implements AppCtx {
         return;
       case 'account':
         if (this.ui.busy) return;
-        this.openAccount();
+        this.account.openAccount();
         return;
       case 'account-create':
-        void this.createAccount();
+        void this.account.createAccount();
         return;
       case 'account-signin':
-        void this.signInWithPasskey();
+        void this.account.signInWithPasskey();
         return;
       case 'account-recover':
         this.ui.overlay = { kind: 'account-recover', busy: false, error: null };
         this.render();
         return;
       case 'account-recover-go':
-        void this.recoverWithCode();
+        void this.account.recoverWithCode();
         return;
       case 'account-code-copy':
-        this.copyRecoveryCode();
+        this.account.copyRecoveryCode();
         return;
       case 'account-code-done':
-        this.codeDone();
+        this.account.codeDone();
         return;
       case 'account-add-passkey':
-        void this.addPasskeyHere();
+        void this.account.addPasskeyHere();
         return;
       case 'account-name-save':
-        void this.saveName();
+        void this.account.saveName();
         return;
       case 'account-new-code':
-        void this.newRecoveryCode();
+        void this.account.newRecoveryCode();
         return;
       case 'account-signout':
-        void this.signOutHere();
+        void this.account.signOutHere();
         return;
       case 'account-signout-all':
-        void this.signOutEverywhereNow();
+        void this.account.signOutEverywhereNow();
         return;
       case 'account-passkeys':
         if (overlay?.kind === 'account' && overlay.busy) return;
-        void this.openPasskeys();
+        void this.account.openPasskeys();
         return;
       case 'account-passkey-remove':
-        if (el.dataset.id) void this.removePasskeyNow(el.dataset.id);
+        if (el.dataset.id) void this.account.removePasskeyNow(el.dataset.id);
         return;
       case 'account-delete':
         this.ui.overlay = { kind: 'account-delete', busy: false, error: null };
         this.render();
         return;
       case 'account-delete-go':
-        void this.deleteAccountNow();
+        void this.account.deleteAccountNow();
         return;
       case 'sync-conflict':
         if (this.ui.busy) return;
-        this.openConflict();
+        this.account.openConflict();
         return;
       case 'sync-keep-here':
-        void this.keepHere();
+        void this.account.keepHere();
         return;
       case 'sync-keep-server':
-        this.keepServer();
+        this.account.keepServer();
         return;
       case 'save-export':
         if (this.ui.busy || overlay?.kind !== 'save-menu') return;
-        void this.openSaveExport();
+        void this.saveCode.openSaveExport();
         return;
       case 'save-copy':
-        this.copySave();
+        this.saveCode.copySave();
         return;
       case 'save-share':
-        this.shareSave();
+        this.saveCode.shareSave();
         return;
       case 'save-select':
-        this.selectSaveCode();
+        this.saveCode.selectSaveCode();
         return;
       case 'save-import':
         if (this.ui.busy) return;
@@ -2684,10 +2060,10 @@ export class App implements AppCtx {
         this.render();
         return;
       case 'save-check':
-        void this.checkImport();
+        void this.saveCode.checkImport();
         return;
       case 'save-apply':
-        this.applyImport();
+        this.saveCode.applyImport();
         return;
       case 'credits':
         this.ui.overlay = { kind: 'credits' };
@@ -3434,8 +2810,8 @@ export class App implements AppCtx {
     const ui = this.ui;
     this.keepHandOrder();
     // A waiting explanation of a new special card, once the table is quiet and no other sheet is open.
-    if (this.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
-      ui.overlay = { kind: 'special', ids: this.specialQueue.splice(0) };
+    if (this.progress.specialQueue.length && !ui.overlay && !ui.busy && !ui.anim && ui.screen === 'run') {
+      ui.overlay = { kind: 'special', ids: this.progress.specialQueue.splice(0) };
     }
     // The player's edition shows his character's back (DESIGN 9.3).
     // A back earned in the long night replaces it if chosen (ADR 0020).
