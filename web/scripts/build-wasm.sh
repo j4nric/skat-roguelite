@@ -26,6 +26,11 @@ if [ "$found" != "$WASM_BINDGEN_VERSION" ]; then
   exit 1
 fi
 
+# No wasm-opt pass on purpose (W14 of the review, measured 09.11.2026 with
+# binaryen 123): `wasm-opt -Oz` makes the module smaller raw but larger
+# gzipped (682 KB -> 764 KB), and gzip is what goes over the wire. The size
+# work happens in the wasm-release profile (Cargo.toml) instead.
+
 cd "$root"
 cargo build -p skat_wasm --target wasm32-unknown-unknown --profile wasm-release
 rm -rf "$out"
