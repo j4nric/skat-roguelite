@@ -4,8 +4,12 @@
 use super::tour::RouteStop;
 use super::zinken::{CardOffer, PainterChoice};
 use super::*;
+use crate::cards::Rank;
+use crate::content::ConsumableAction;
 use crate::content::EncounterEffect;
 use crate::content::{CardFilter, ModKind, StopCategory};
+use crate::deck::DeckChange;
+use crate::deck::DeckError;
 
 fn content() -> Content {
     Content::load().expect("content")

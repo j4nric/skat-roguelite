@@ -7,7 +7,9 @@ use super::content_tests::{content, fixed_deal, play};
 use super::*;
 use crate::cards::Suit;
 use crate::content::ScoreLine;
+use crate::content::Source;
 use crate::content::{ConsumableId, RelicId};
+use crate::rules::Declaration;
 use crate::rules::{GameType, RiskLevel};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat).

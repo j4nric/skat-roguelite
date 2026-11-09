@@ -6,7 +6,10 @@
 use super::bot::RunBot;
 use super::content_tests::content;
 use super::*;
+use crate::cards::Card;
+use crate::cards::Suit;
 use crate::content::Sources;
+use crate::rules::Declaration;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// The printed faces of the player's hand, sorted.

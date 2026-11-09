@@ -6,12 +6,19 @@
 use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
+use crate::cards::Card;
+use crate::cards::Rank;
 use crate::cards::Suit;
 use crate::content::Change;
+use crate::content::Effect;
 use crate::content::Lever;
 use crate::content::ScoreLine;
+use crate::content::Source;
 use crate::content::{CardModDef, Factor, Rarity, RarityWeights};
+use crate::deck::CardKind;
 use crate::game::Event;
+use crate::rules::Declaration;
+use crate::rules::GameType;
 use crate::rules::{self, NullRisk, RiskLevel};
 
 const WILD: &str = "wild_card";

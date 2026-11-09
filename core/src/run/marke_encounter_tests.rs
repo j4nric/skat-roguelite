@@ -6,8 +6,13 @@
 use super::bot::RunBot;
 use super::content_tests::{content, relic_run};
 use super::*;
+use crate::cards::Card;
+use crate::cards::Rank;
+use crate::cards::Suit;
+use crate::content::CardModDef;
 use crate::content::CardPick;
 use crate::content::EncounterEffect;
+use crate::deck::DeckChange;
 
 const MARKEN: [&str; 3] = ["voucher_coins", "voucher_undead", "voucher_wild"];
 

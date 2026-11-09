@@ -5,7 +5,9 @@
 
 use super::content_tests::{card_mod_run_with, content, fixed_deal};
 use super::*;
+use crate::cards::PlayingCard;
 use crate::cards::Suit;
+use crate::rules::Declaration;
 use crate::rules::{GameType, NullRisk, RiskLevel};
 
 /// Declarer holds the four jacks and six diamonds. Ids: D7 = 0, D8 = 1,

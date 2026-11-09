@@ -10,9 +10,14 @@ use super::wave3_tests::{
     bot_to_end, card_in, deal_with, defender_plays, hand_clubs, id_of, with_mod, with_old_specials,
 };
 use super::*;
+use crate::cards::Card;
+use crate::content::Effect;
 use crate::content::GameFocus;
+use crate::deck::CardKind;
 use crate::game::Event;
+use crate::game::Game;
 use crate::game::GameError;
+use crate::rules::Declaration;
 use crate::rules::NullRisk;
 
 const UNDEAD: &str = "undead";

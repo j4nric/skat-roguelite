@@ -1,7 +1,9 @@
 use super::bot::RunBot;
 use super::*;
 use crate::cards::PlayingCard;
+use crate::deck::DeckError;
 use crate::game::GameError;
+use crate::rules::Declaration;
 use crate::rules::NullRisk;
 
 fn content() -> Content {

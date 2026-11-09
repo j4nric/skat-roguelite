@@ -6,12 +6,17 @@ use super::*;
 use crate::cards::PlayingCard;
 use crate::cards::Suit;
 use crate::content::Change;
+use crate::content::Effect;
 use crate::content::EncounterEffect;
 use crate::content::Lever;
 use crate::content::ScoreLine;
+use crate::content::Source;
+use crate::content::Stage;
 use crate::content::resolve_edition;
 use crate::content::{CardModId, Factor, GameFocus};
+use crate::deck::CardKind;
 use crate::game::Event;
+use crate::rules::Declaration;
 use crate::rules::{GameType, Matadors, Outcome, RiskLevel};
 
 pub(super) fn content() -> Content {

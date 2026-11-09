@@ -5,10 +5,13 @@
 use super::bot::RunBot;
 use super::content_tests::{content, fixed_deal, play, relic_run};
 use super::*;
+use crate::cards::PlayingCard;
 use crate::cards::{Card, Suit};
+use crate::content::Effect;
 use crate::content::EncounterEffect;
 use crate::content::{Change, EncounterId, Factor, Lever, ScoreLine, ScoreTerm, Source};
 use crate::game::Event;
+use crate::rules::Declaration;
 use crate::rules::{NullRisk, RiskLevel};
 
 /// A Null deal the declarer cannot lose: he holds the four sevens and his

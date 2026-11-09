@@ -7,6 +7,8 @@ use super::meta::{MetaError, MetaState};
 use super::player::player_events;
 use super::*;
 use crate::cards::Suit;
+use crate::content::Source;
+use crate::rules::Declaration;
 use crate::rules::{GameType, NullRisk, RiskLevel, WIN_THRESHOLD};
 
 /// Declarer holds all trumps of a diamonds game but the D8 (in the skat):

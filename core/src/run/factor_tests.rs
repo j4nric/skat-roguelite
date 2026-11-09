@@ -12,6 +12,7 @@ use crate::content::Change;
 use crate::content::Lever;
 use crate::content::per_step_factor;
 use crate::content::{Factor, Rarity};
+use crate::rules::Declaration;
 use crate::rules::{GameType, NullRisk};
 
 /// [`STRONG`] with clubs as the long suit: the declarer takes every trick
