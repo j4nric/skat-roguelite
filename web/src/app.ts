@@ -55,7 +55,7 @@ import {
   saveRun,
   saveRunInfo,
 } from './storage';
-import { type CardKind, type CardView, type DealtCard, type Declaration, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type ScoreBreakdown, type Seat, type Source, type Step, type Suit } from './types';
+import { type CardKind, type CardView, type DealtCard, type DeckCard, type EditionEntry, type NullRisk, type RiskLevel, type RunAction, type RunEvent, type RunLength, type RunView, type Seat, type Source, type Step, type Suit } from './types';
 import { esc, reducedMotion } from './ui/dom';
 import { syncPill } from './ui/account';
 import { markeEffect, renderEncounter } from './ui/encounter';
@@ -68,10 +68,10 @@ import { infoModel } from './ui/info';
 import { InfoCard } from './ui/infocard';
 import { watchPresses } from './ui/press';
 import { TriggerFeed } from './ui/triggers';
-import { crumbleInto, deal, declareSign, finishAll, finishOn, type FlightSnapshot, flip, flyIn, frown, glide, glideAll, motionOn, nod, noteFlights, play, resumeFlights, setTempo, snipAcross, type Spot, spotOf, spotOfRect, spotsOf, springBack, sweepAway, throwCard } from './ui/fx';
+import { crumbleInto,  finishAll, finishOn, type FlightSnapshot, flip, flyIn, glide, glideAll, motionOn, noteFlights, resumeFlights, setTempo,   spotOfRect, spotsOf, springBack, sweepAway } from './ui/fx';
 import { fireworks, HudFx, lightsOut, lightsUp, spring, watchSprings } from './ui/juice';
-import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot, zinkeStamp } from './ui/scenes';
-import { backDesign, setPlayerBack } from './ui/backs';
+import { bossEntrance, mirrorShimmer, relicToStrip, sceneRunning, sceneWord, schnapsToSlot } from './ui/scenes';
+import { setPlayerBack } from './ui/backs';
 import { cardBack, cardSvg, lookSvg, modValueText, showWildSuit } from './ui/cards';
 import { SUITS } from './ui/art';
 import { watchDrags, type Fling } from './ui/drag';
@@ -86,12 +86,14 @@ import { sourceName } from './ui/score';
 import { renderEnd, renderError, renderKontra, renderRiseChoice, updateRiseChoice, renderLoading, renderStart, scrollCharacterPicker, settleCharacterPicker, sharedStake } from './ui/screens';
 import { renderShop, watchShop } from './ui/shop';
 import type { ModQuestion, Overlay, PendingStart, ScoreOverlay, UiState } from './ui/state';
-import { declarationSign, discardNeed, renderTable } from './ui/table';
+import { discardNeed, renderTable } from './ui/table';
 import { Patcher, shell, type Part } from './ui/patch';
 import { DELAY, errorCode, errorText, isCharacter, nextPaint, PICK, runLine, type ToastPlace, yieldToBrowser } from './app/consts';
 import type { AppCtx } from './app/context';
 import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
+import { DrinkFx } from './app/playback/drinkfx';
+import { Flights } from './app/playback/flights';
 import { Fx } from './app/playback/fx';
 
 /** Session flag: the page was reloaded to take the account's state (a note after the reload). */
@@ -126,9 +128,6 @@ function bossEditionOf(card: DealtCard, edition: EditionEntry[]): { mods: string
   return { mods, mod_values };
 }
 
-/** A trick with this many Augen or more the player took annoys the regulars (the same bar as their quips). */
-const BIG_TRICK = 10;
-
 /** A flick upwards this fast (px per ms) throws a card even if let go over the hand. */
 const FLICK_UP = 0.9;
 
@@ -143,15 +142,6 @@ const PRESS_CARDS = '.hand-card, .skat-card';
 
 /** The other hand cards making room (FLIP). */
 const MAKE_ROOM_MS = 260;
-
-/** Cards on their way to the pressed skat: where they were seen, and their face. */
-interface PressFlight {
-  cards: { spot: Spot; face: string }[];
-  /** Only the stack in the felt's corner takes them (after the Ansage); else also the Ansage's row. */
-  stackOnly: boolean;
-  /** Dropped when no render showed a target by then (performance.now()). */
-  until: number;
-}
 
 /** How long the cards slide away before a settled game is scored. */
 const SETTLE_MS = 260;
@@ -239,24 +229,10 @@ export class App implements AppCtx {
   readonly afterRender: (() => void)[] = [];
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
   private specialQueue: string[] = [];
-  /** Where the card the player just tapped was. */
-  private playedFrom: DOMRect | null = null;
-  /** The face-down skat and the hand, seen when the player picked it up. */
-  private pickupFrom: { pile: Spot[]; hand: Map<string, Spot> } | null = null;
-  /** The pressed cards still to fly onto their place (./ui/table.ts pressedStack). */
-  private pressFlight: PressFlight | null = null;
   /** Drinking a Schnaps from the Leiste (drag and drop or tap, ./ui/drink.ts). */
   readonly drink: Drink;
-  /** The Schnaps just poured, for its effects while its events play: the table's cards washed away. */
-  private pouring: { id: string; kind: Pour['kind']; wash: HTMLElement[] } | null = null;
-  /** How the player's card was thrown (drag and flick), for its flight. */
-  private thrown: Fling | null = null;
   /** A boss pub just opened: its entrance plays once the table is free of dialogs. */
   entrancePending = false;
-  /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
-  private bought: { html: string; rect: DOMRect } | null = null;
-  /** Where the card was that a Zinke goes onto, seen as it was tapped (for its stamp). */
-  private stampAt: { rect: DOMRect; at: number } | null = null;
   /** The picture of the ended run for "Teilen", drawn in advance (./ui/runcard.ts). */
   private runCard: { view: RunView; blob: Promise<Blob> } | null = null;
 
@@ -266,12 +242,18 @@ export class App implements AppCtx {
   private readonly guidance: Guidance;
   /** Pauses, toasts, quips and triggers of the playback (./app/playback/fx.ts). */
   private readonly fx: Fx;
+  /** Cards in the air and the table's reactions (./app/playback/flights.ts). */
+  private readonly flights: Flights;
+  /** What a Schnaps does on screen (./app/playback/drinkfx.ts). */
+  private readonly drinkFx: DrinkFx;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
     this.screenEl = root.querySelector<HTMLElement>('.screen') ?? root;
     this.guidance = new Guidance(this);
     this.fx = new Fx(this, this.guidance);
+    this.flights = new Flights(this, this.fx);
+    this.drinkFx = new DrinkFx(this, this.fx);
     this.screen = new Patcher(this.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -1324,7 +1306,7 @@ export class App implements AppCtx {
     this.resetTableChoices();
     if (dealt && view.game) {
       reshuffle();
-      this.afterRender.push(() => this.dealEffect());
+      this.afterRender.push(() => this.flights.dealEffect());
     }
     // A fresh series says hello; a run resumed mid-series does not.
     if (dealt && view.game && view.series.games_played === 0) this.fx.greetSeries(view);
@@ -1371,14 +1353,14 @@ export class App implements AppCtx {
     this.ui.busy = true;
     // Any move ends a look at the last trick.
     this.ui.peekTrick = false;
-    this.noteCardSources(action);
+    this.flights.noteCardSources(action);
     let step;
     try {
       step = this.core.apply(action);
     } catch (err) {
       console.warn('action rejected', action, err);
-      this.pickupFrom = null;
-      this.pressFlight = null;
+      this.flights.pickupFrom = null;
+      this.flights.pressFlight = null;
       this.ui.busy = false;
       this.render();
       this.showToast(t(de.app.actionFailed, { reason: errorText(err) }));
@@ -1500,8 +1482,8 @@ export class App implements AppCtx {
         // The table as the core has it now, before the next opponent thinks.
         this.ui.anim = null;
         this.ui.view = view;
-        this.playedFrom = null;
-        this.thrown = null;
+        this.flights.playedFrom = null;
+        this.flights.thrown = null;
         previous = view;
         step = null;
       }
@@ -1519,8 +1501,8 @@ export class App implements AppCtx {
       if (this.ui.overlay?.kind === 'score' || this.ui.overlay?.kind === 'boss') this.ui.overlay = null;
       this.layer.awaited = null;
       if (view) this.ui.view = view;
-      this.playedFrom = null;
-      this.thrown = null;
+      this.flights.playedFrom = null;
+      this.flights.thrown = null;
       this.resetTableChoices();
       if (view && (view.phase === 'Won' || view.phase === 'Lost')) {
         this.ui.ended = { won: view.phase === 'Won', view };
@@ -1588,19 +1570,19 @@ export class App implements AppCtx {
         if (ev === 'Re') this.showToast(de.toast.re);
         if (ev === 'Redealt') {
           // Kräuter, Doppelkorn: the old cards are washed off the table first.
-          if (this.pouring?.wash.length) {
-            this.washAway(this.pouring.wash);
-            this.pouring.wash = [];
+          if (this.drinkFx.pouring?.wash.length) {
+            this.drinkFx.washAway(this.drinkFx.pouring.wash);
+            this.drinkFx.pouring.wash = [];
           }
           this.guidance.passedOnce = true;
           this.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
           reshuffle();
-          this.afterRender.push(() => this.dealEffect());
+          this.afterRender.push(() => this.flights.dealEffect());
         }
         if (ev === 'RedealUndone') {
           this.showToast(de.toast.redealUndone);
           reshuffle();
-          this.afterRender.push(() => this.dealEffect());
+          this.afterRender.push(() => this.flights.dealEffect());
         }
         if (ev === 'RamschDealt') {
           this.showToast(de.toast.ramsch);
@@ -1610,7 +1592,7 @@ export class App implements AppCtx {
         if (ev === 'RoutesRerolled') {
           this.showToast(de.toast.routesRerolled);
           sound.play('card');
-          this.afterRender.push(() => this.reelRoutes());
+          this.afterRender.push(() => this.drinkFx.reelRoutes());
         }
         if (ev === 'SkatPeekPlanned') this.showToast(de.toast.skatPeekPlanned);
         continue;
@@ -1697,7 +1679,7 @@ export class App implements AppCtx {
           if (card) this.showToast(t(de.toast.cardMarked, { card: cardName(card.kind), mod: contentName('card_mods', change.Modified.card_mod) }));
           // A Zinke put on at the Tresen, by the Kartenmaler or at an encounter: stamped on.
           const old = before?.edition.find((c) => c.id === change.Modified.card);
-          if (card && old && (before?.phase === 'Shop' || before?.phase === 'Encounter')) this.stampLater(old, card, stamps++);
+          if (card && old && (before?.phase === 'Shop' || before?.phase === 'Encounter')) this.flights.stampLater(old, card, stamps++);
         }
         if ('Cleansed' in change) {
           const card = after.edition.find((c) => c.id === change.Cleansed.card);
@@ -1745,7 +1727,7 @@ export class App implements AppCtx {
         this.resetTableChoices();
         this.fx.greetSeries(after);
         reshuffle();
-        this.afterRender.push(() => this.dealEffect());
+        this.afterRender.push(() => this.flights.dealEffect());
         continue;
       }
       if ('BossAnnounced' in ev) {
@@ -1777,16 +1759,16 @@ export class App implements AppCtx {
         continue;
       }
       if ('SkatPeeked' in ev) {
-        this.afterRender.push(() => this.revealSkat());
+        this.afterRender.push(() => this.drinkFx.revealSkat());
       }
       if ('ConsumableUsed' in ev) {
         const id = ev.ConsumableUsed.consumable;
         // Poured over the table: a factor for the next game slams onto the felt.
-        const poured = this.pouring;
+        const poured = this.drinkFx.pouring;
         if (poured?.id === id && poured.kind === 'Table') {
           const effect = after.pending_next_game?.find((p) => p.consumable === id)?.effect;
           const factor = effect && typeof effect === 'object' ? ('Multiply' in effect ? effect.Multiply : effect.MultiplyWin) : null;
-          if (factor) this.afterRender.push(() => this.slamFactor(factor));
+          if (factor) this.afterRender.push(() => this.drinkFx.slamFactor(factor));
         }
         // Klarer and Absacker have said what they did.
         if (events.some((e) => typeof e === 'object' && ('AccountCleared' in e || 'GamesAdded' in e))) continue;
@@ -1802,8 +1784,8 @@ export class App implements AppCtx {
       if ('RelicBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('relics', ev.RelicBought.relic) }));
         sound.play('coin');
-        const bought = this.bought;
-        this.bought = null;
+        const bought = this.flights.bought;
+        this.flights.bought = null;
         const relic = ev.RelicBought.relic;
         if (bought) {
           this.afterRender.push(() => {
@@ -1816,8 +1798,8 @@ export class App implements AppCtx {
       if ('ConsumableBought' in ev) {
         this.showToast(t(de.toast.bought, { name: contentName('consumables', ev.ConsumableBought.consumable) }));
         sound.play('coin');
-        const bought = this.bought;
-        this.bought = null;
+        const bought = this.flights.bought;
+        this.flights.bought = null;
         // Its slot: the one the core filled with it in this step.
         const id = ev.ConsumableBought.consumable;
         const slot = after.consumables.find((c) => c.consumable.id === id && !before?.consumables.some((b) => b.slot === c.slot && b.consumable.id === id))?.slot;
@@ -1870,7 +1852,7 @@ export class App implements AppCtx {
       if ('GameScored' in ev) {
         // What fired, on the chips and cards still on screen, before the board covers them.
         // The regulars take the result, a Schneider is cut across the felt; what fired lights up meanwhile.
-        let wait = this.fastForward ? 0 : await this.gameEndEffect(ev.GameScored.breakdown);
+        let wait = this.fastForward ? 0 : await this.flights.gameEndEffect(ev.GameScored.breakdown);
         if (this.fx.fireTriggers(ev.GameScored.breakdown.lines, after)) wait = Math.max(wait, DELAY.trigger);
         if (wait) await this.fx.pause(wait);
         const rest = events.slice(i + 1);
@@ -2020,7 +2002,7 @@ export class App implements AppCtx {
       const { seat, card } = ev.CardPlayed;
       if (anim.trick.length >= 3) anim.trick = [];
       // Where the card comes from, measured before the table changes.
-      const from = seat === 0 ? (this.playedFrom ?? this.rectOf('.hand')) : this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
+      const from = seat === 0 ? (this.flights.playedFrom ?? this.rectOf('.hand')) : this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
       anim.trick.push({ seat, card: this.cardOf(card, after) });
       anim.handSizes[seat] = Math.max(0, (anim.handSizes[seat] ?? 0) - 1);
       if (seat === 0) anim.hand = anim.hand.filter((c) => c.id !== card.id);
@@ -2029,7 +2011,7 @@ export class App implements AppCtx {
       this.render();
       const el = this.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
       const played = anim.trick[anim.trick.length - 1]?.card;
-      if (el instanceof HTMLElement && from && !this.fastForward) this.throwOnto(el, seat, from, played?.back ?? null);
+      if (el instanceof HTMLElement && from && !this.fastForward) this.flights.throwOnto(el, seat, from, played?.back ?? null);
       sound.play('card', { rate: 0.94 + seat * 0.05 });
       await this.fx.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;
@@ -2045,7 +2027,7 @@ export class App implements AppCtx {
       this.fx.trickQuip(after, trick.winner, card_points);
       if (trick.winner === 0 && !this.fastForward) buzz('trick');
       this.render();
-      if (!this.fastForward) this.reactToTrick(after, trick.winner, card_points);
+      if (!this.fastForward) this.flights.reactToTrick(after, trick.winner, card_points);
       await this.fx.pause(DELAY.trickShow);
       if (breaking.length) {
         // "Glasdaus": the card cracks and shatters before the trick leaves.
@@ -2055,7 +2037,7 @@ export class App implements AppCtx {
       }
       // "Untot": the card rises back into the hand, the substitute takes its place, then the trick leaves.
       if (rising) await this.riseCard(rising, after);
-      const target = this.sweepTarget(trick.winner);
+      const target = this.flights.sweepTarget(trick.winner);
       const cards = Array.from(this.screenEl.querySelectorAll('.trick-card'));
       // A card still sliding onto its place lies there now.
       finishOn(cards);
@@ -2181,9 +2163,9 @@ export class App implements AppCtx {
       }
       this.render();
       if (spots) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
-      if ('Declared' in ev && !this.fastForward) this.declareEffect(ev.Declared.declaration);
+      if ('Declared' in ev && !this.fastForward) this.flights.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev && !this.fastForward) {
-        this.pickUpFlights(ev.SkatPickedUp.skat, peeked);
+        this.flights.pickUpFlights(ev.SkatPickedUp.skat, peeked);
         sound.play('card');
         await this.fx.pause(DELAY.flip);
       }
@@ -2331,7 +2313,7 @@ export class App implements AppCtx {
    */
   private async doppelMirror(m: DoppelMirror, after: RunView): Promise<void> {
     this.showToast(t(de.toast.doppelMirrored, { card: cardName(m.card.kind), copied: cardName(m.copied.kind) }), 'top');
-    const rect = this.playedFrom ?? this.rectOf(`.hand-card[data-id="${m.card.id}"]`);
+    const rect = this.flights.playedFrom ?? this.rectOf(`.hand-card[data-id="${m.card.id}"]`);
     if (this.fastForward || !rect) return;
     sceneWord(de.doppel.mirrored, rect, 'doppel-word');
     await mirrorShimmer(lookSvg(this.cardOf(m.card, after)), rect);
@@ -2341,175 +2323,9 @@ export class App implements AppCtx {
     return seatLabelOf(view, seat);
   }
 
-  /**
-   * Before an action goes to the core: where the cards it will move are
-   * seen now (later renders while the core's events play take them away).
-   * Picking up the skat notes the face-down skat and the hand; Drücken the
-   * cards lying on the table; the Ansage after the skat its row of pressed
-   * cards, which then fly into the stack in the felt's corner.
-   */
-  private noteCardSources(action: RunAction): void {
-    this.pickupFrom = null;
-    if (!motionOn()) return;
-    if (action === 'PickUpSkat') {
-      const pile = Array.from(this.screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map(spotOf);
-      this.pickupFrom = { pile, hand: spotsOf(this.screenEl, '.hand-card') };
-      return;
-    }
-    if (typeof action !== 'object') return;
-    const from = 'Discard' in action || 'DiscardThree' in action ? '.skat-zone .skat-card' : 'Declare' in action ? '[data-testid="pressed"] .mini-card' : null;
-    if (!from) return;
-    const cards = Array.from(this.screenEl.querySelectorAll<HTMLElement>(from)).map((el) => ({ spot: spotOf(el), face: el.querySelector('svg')?.outerHTML ?? '' }));
-    if (cards.length) this.pressFlight = { cards, stackOnly: 'Declare' in action, until: performance.now() + 5000 };
-  }
-
-  /**
-   * The skat is picked up: each card is lifted off the face-down pile,
-   * turns face up on the way (not after "Kurzer": it lay face up) and
-   * lands where it goes, on the table to be pressed or, one the core keeps
-   * from the skat ("Ramponiert"), in its sorted place in the hand. The hand
-   * cards glide into their new places meanwhile.
-   */
-  private pickUpFlights(skat: DealtCard[], peeked: boolean): void {
-    const seen = this.pickupFrom;
-    this.pickupFrom = null;
-    const zone = this.rectOf('.skat-zone') ?? this.rectOf('.deck-spot');
-    skat.forEach((c, i) => {
-      const el = this.screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"], .hand-card[data-id="${c.id}"]`);
-      if (!el) return;
-      const at = seen?.pile[i] ?? (zone ? spotOfRect(zone) : null);
-      if (!at) return;
-      glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
-    });
-    if (seen) glideAll(Array.from(this.screenEl.querySelectorAll<HTMLElement>('.hand-card')), seen.hand, { ms: 320, skip: new Set(skat.map((c) => String(c.id))) });
-  }
-
-  /**
-   * The pressed cards fly onto their place once a render shows it: after
-   * Drücken into the row of the Ansage (face up), after the Ansage into the
-   * stack in the felt's corner, turning face down on the way.
-   */
-  private flyPressed(): void {
-    const p = this.pressFlight;
-    if (!p) return;
-    if (this.fastForward || performance.now() > p.until || this.ui.screen !== 'run') {
-      this.pressFlight = null;
-      return;
-    }
-    const stack = Array.from(this.screenEl.querySelectorAll<HTMLElement>('[data-testid="pressed-play"] .pressed-card'));
-    const row = p.stackOnly ? [] : Array.from(this.screenEl.querySelectorAll<HTMLElement>('[data-testid="pressed"] .mini-card'));
-    const targets = stack.length ? stack : row;
-    if (!targets.length) return;
-    this.pressFlight = null;
-    p.cards.forEach((c, i) => {
-      const el = targets[i];
-      if (!el) return;
-      // Into the stack it turns face down; into the Ansage's row its full face shrinks onto the small one.
-      const cover = c.face ? { cover: c.face, turn: stack.length > 0 } : {};
-      glide(el, c.spot, { ms: 480, lift: 22, arc: (i % 2 ? -1 : 1) * 12, delay: i * 80, above: true, ...cover });
-    });
-  }
-
   private rectOf(selector: string): DOMRect | null {
     const el = this.screenEl.querySelector(selector);
     return el ? el.getBoundingClientRect() : null;
-  }
-
-  /** The opponents' portraits on the table, by seat. */
-  private faces(): Map<1 | 2, Element> {
-    const out = new Map<1 | 2, Element>();
-    for (const seat of [1, 2] as const) {
-      const el = this.screenEl.querySelector(`.opp[data-seat="${seat}"] .portrait`);
-      if (el) out.set(seat, el);
-    }
-    return out;
-  }
-
-  /**
-   * The regulars react to a trick: the one who took it nods; a big one
-   * the player took makes both frown. In a Ramsch everyone plays for
-   * himself and a trick is no gain, so nobody reacts.
-   */
-  private reactToTrick(view: RunView, winner: Seat, points: number): void {
-    if (view.game?.declaration?.game === 'Ramsch') return;
-    const faces = this.faces();
-    if (winner !== 0) {
-      const el = faces.get(winner);
-      if (el) nod(el);
-      return;
-    }
-    if (points < BIG_TRICK) return;
-    for (const el of faces.values()) frown(el);
-  }
-
-  /**
-   * The game is scored: the regulars frown when the player won it, nod
-   * when he lost; a win with Schneider is snipped across the felt. Returns
-   * how long to let it show (ms at tempo Normal), 0 if nothing plays.
-   */
-  private async gameEndEffect(b: ScoreBreakdown): Promise<number> {
-    if (!motionOn() || b.declaration.game === 'Ramsch') return 0;
-    for (const el of this.faces().values()) (b.won ? frown : nod)(el);
-    const felt = this.rectOf('.center');
-    if (b.won && b.schneider && felt) {
-      await Promise.race([snipAcross(this.root, felt), this.fx.pause(1100)]);
-      return 250;
-    }
-    return 520;
-  }
-
-  /**
-   * The Ansage slams onto the felt as a sign, then shrinks into the game
-   * line. Play goes on underneath at once (the sign takes no tap), so the
-   * game is no slower for it.
-   */
-  private declareEffect(d: Declaration): void {
-    const felt = this.rectOf('.center');
-    if (!felt || !motionOn()) return;
-    const into = this.rectOf('.gameline .decl');
-    declareSign(this.root, declarationSign(d), felt, into, { onHit: () => sound.play('knock', { rate: 1.15, volume: 0.5 }) });
-  }
-
-  /**
-   * Where a finished trick goes: into the portrait of the regular who
-   * took it (his name plate), or down past the hand to the player. Without
-   * a portrait, off the edge of the table on his side.
-   */
-  private sweepTarget(seat: Seat): { x: number; y: number } | null {
-    const table = this.rectOf('.table');
-    const trick = this.rectOf('.trick');
-    if (!table || !trick) return null;
-    const card = trick.height;
-    const cy = trick.top + trick.height / 2;
-    if (seat === 0) return { x: trick.left + trick.width / 2, y: table.bottom + card * 0.6 };
-    const face = this.rectOf(`.opp[data-seat="${seat}"] .portrait`);
-    if (face) return { x: face.left + face.width / 2, y: face.top + face.height / 2 };
-    return seat === 1 ? { x: table.left - card, y: cy } : { x: table.right + card, y: cy };
-  }
-
-  /** Cards fly from the deck to the hands, in turns, then two to the skat. */
-  private dealEffect(): void {
-    const from = this.rectOf('.deck-pile') ?? this.rectOf('.deck-spot');
-    if (!from) return;
-    const hand = Array.from(this.screenEl.querySelectorAll('.hand-card'));
-    const left = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="1"] .opp-hand .card-back'));
-    const right = Array.from(this.screenEl.querySelectorAll('.opp[data-seat="2"] .opp-hand .card-back'));
-    const skat = Array.from(this.screenEl.querySelectorAll('.skat-pile .skat-spot'));
-    const order: Element[] = [];
-    for (let i = 0; i < Math.max(hand.length, left.length, right.length); i++) {
-      for (const list of [hand, left, right]) {
-        const el = list[i];
-        if (el) order.push(el);
-      }
-    }
-    order.push(...skat);
-    deal(order, from, {
-      step: 22,
-      ms: 280,
-      onCard: (i) => {
-        if (i % 4 === 0) sound.play('card', { volume: 0.45, rate: 0.95 + Math.random() * 0.2 });
-      },
-    });
   }
 
   private async showScore(
@@ -3057,7 +2873,7 @@ export class App implements AppCtx {
       case 'card-reward-pick': {
         const o = view.card_reward?.offers.find((x) => x.index === num('offer'));
         if (!o || !o.can_take) return;
-        this.noteStamp(el.querySelector('.card'));
+        this.flights.noteStamp(el.querySelector('.card'));
         this.applyMod(view, { TakeCardReward: { offer: o.index } }, o.card.id, o.card_mod.id, false, null, 'apply', { pair: true });
         return;
       }
@@ -3090,7 +2906,7 @@ export class App implements AppCtx {
         if (o?.kind !== 'encounter-target') return;
         const option = view.encounter?.options.find((x) => x.index === o.option);
         const action: RunAction = { ChooseEncounter: { option: o.option, target: num('id'), marke: o.marke ?? null } };
-        this.noteStamp(el);
+        this.flights.noteStamp(el);
         // The Zinke on the chosen card (a Painter or cleansing names none); a chosen Marke.
         const chosen = option?.effects.find((e) => typeof e.effect === 'object' && 'Mark' in e.effect && e.effect.Mark.card === 'Chosen');
         // A Marke drawn when taken: no preview of the card afterwards (04.11.2026).
@@ -3130,7 +2946,7 @@ export class App implements AppCtx {
       case 'mod-confirm-go': {
         const o = this.ui.overlay;
         // The Zinke comes down on the card shown "Danach".
-        if (o?.kind === 'mod-confirm') this.noteStamp(this.layerEl.querySelector('.mod-confirm-card:last-of-type .card'));
+        if (o?.kind === 'mod-confirm') this.flights.noteStamp(this.layerEl.querySelector('.mod-confirm-card:last-of-type .card'));
         if (o?.kind === 'mod-confirm') void this.act(o.action);
         return;
       }
@@ -3202,7 +3018,7 @@ export class App implements AppCtx {
         this.playCard(num('id'), el.getBoundingClientRect(), null);
         return;
       case 'buy-relic':
-        this.noteBought(el.closest('.relic-tile')?.querySelector('.relic-tile-emblem svg') ?? null);
+        this.flights.noteBought(el.closest('.relic-tile')?.querySelector('.relic-tile-emblem svg') ?? null);
         void this.act({ BuyRelic: num('slot') });
         return;
       case 'replace-relic-pick':
@@ -3214,7 +3030,7 @@ export class App implements AppCtx {
         void this.act({ ReplaceRelic: { slot: num('slot'), replace: num('replace') } });
         return;
       case 'buy-item':
-        this.noteBought(el.closest('.good')?.querySelector('.good-pic svg') ?? null);
+        this.flights.noteBought(el.closest('.good')?.querySelector('.good-pic svg') ?? null);
         void this.act({ BuyConsumable: num('slot') });
         return;
       case 'sell-relic':
@@ -3249,7 +3065,7 @@ export class App implements AppCtx {
         if (o?.kind !== 'target') return;
         const item = view.consumables.find((c) => c.slot === o.slot);
         const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
-        this.noteStamp(el);
+        this.flights.noteStamp(el);
         const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
         if (marks.mod || marks.random) this.applyMod(view, action, num('id'), marks.mod, marks.random, o, 'apply');
         else void this.act(action);
@@ -3278,7 +3094,7 @@ export class App implements AppCtx {
         // tile opens the sheet with the card before and after, then "Kaufen".
         const offer = view.shop?.card_offers?.find((o) => o?.slot === num('slot'));
         if (!offer || !offer.can_buy) return;
-        this.noteStamp(el.closest('.zinke')?.querySelector('.zinke-card') ?? null);
+        this.flights.noteStamp(el.closest('.zinke')?.querySelector('.zinke-card') ?? null);
         this.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null, 'apply', { pair: true, price: offer.price });
         return;
       }
@@ -3298,7 +3114,7 @@ export class App implements AppCtx {
         // The Kartenmaler's sheet shows each Zinke on the card; cleansing shows the card before and after first.
         if (o.service === 'painter') void this.act({ HirePainter: num('id') });
         else {
-          this.noteStamp(el);
+          this.flights.noteStamp(el);
           this.applyMod(view, { CleanseCard: num('id') }, num('id'), null, false, o, 'cleanse');
         }
         return;
@@ -3313,7 +3129,7 @@ export class App implements AppCtx {
         const painter = view.painter;
         const option = painter?.options.find((p) => p.index === num('index'));
         if (!painter || !option) return;
-        this.noteStamp(el.querySelector('.card'));
+        this.flights.noteStamp(el.querySelector('.card'));
         this.applyMod(view, { ChoosePaint: option.index }, painter.card.id, option.card_mod.id, false, { kind: 'painter' });
         return;
       }
@@ -3336,7 +3152,7 @@ export class App implements AppCtx {
     const c = item.consumable;
     if (c.needs_suit) {
       const card = p.kind === 'Card' ? p.card : null;
-      if (card !== null) this.dyeCard(card, p.at);
+      if (card !== null) this.drinkFx.dyeCard(card, p.at);
       const open = (): void => {
         if (this.ui.busy || this.ui.overlay || this.ui.view !== view) return;
         this.ui.overlay = { kind: 'chalk', slot: p.slot, card };
@@ -3354,157 +3170,11 @@ export class App implements AppCtx {
       this.render();
       return;
     }
-    this.pouring = { id: c.id, kind: p.kind, wash: p.kind === 'Table' ? this.snapshotTable() : [] };
+    this.drinkFx.pouring = { id: c.id, kind: p.kind, wash: p.kind === 'Table' ? this.drinkFx.snapshotTable() : [] };
     void this.act({ UseConsumable: { slot: p.slot, target: null } }).finally(() => {
-      for (const el of this.pouring?.wash ?? []) el.remove();
-      this.pouring = null;
+      for (const el of this.drinkFx.pouring?.wash ?? []) el.remove();
+      this.drinkFx.pouring = null;
     });
-  }
-
-  /** Pictures of the cards on the felt and in the hand, laid over them until the table is washed. */
-  private snapshotTable(): HTMLElement[] {
-    if (!motionOn()) return [];
-    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
-    if (!layer) return [];
-    return Array.from(this.screenEl.querySelectorAll<HTMLElement>('.declare-choice .felt .card, .declare-choice .felt .skat-pile, .table .hand .hand-card')).map((el) => {
-      const r = el.getBoundingClientRect();
-      const copy = el.cloneNode(true) as HTMLElement;
-      copy.removeAttribute('data-testid');
-      copy.removeAttribute('data-action');
-      copy.removeAttribute('data-drag');
-      copy.removeAttribute('data-info');
-      copy.setAttribute('aria-hidden', 'true');
-      copy.classList.add('wash-card');
-      copy.style.left = `${r.left}px`;
-      copy.style.top = `${r.top}px`;
-      copy.style.width = `${r.width}px`;
-      copy.style.height = `${r.height}px`;
-      layer.appendChild(copy);
-      return copy;
-    });
-  }
-
-  /** Kräuter and Doppelkorn: a green wave washes the old cards off the table to the right. */
-  private washAway(cards: HTMLElement[]): void {
-    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
-    const ms = 760 * this.fx.tempo();
-    if (!layer || !cards.length || !motionOn()) {
-      for (const el of cards) el.remove();
-      return;
-    }
-    const table = this.rectOf('.run .table') ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-    // The wave stays on the table (a box that clips it); the cards fly off the screen.
-    const box = document.createElement('div');
-    box.className = 'wash-box';
-    box.style.left = `${table.left}px`;
-    box.style.top = `${table.top}px`;
-    box.style.width = `${table.width}px`;
-    box.style.height = `${table.height}px`;
-    const wave = document.createElement('div');
-    wave.className = 'wash-wave';
-    wave.dataset.testid = 'wash-wave';
-    box.appendChild(wave);
-    layer.appendChild(box);
-    const w = window.innerWidth;
-    const sweep = play(wave, [{ transform: 'translateX(-100%)' }, { transform: `translateX(${(table.width * 1.05).toFixed(0)}px)` }], { duration: ms, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'both' });
-    const done = (): void => box.remove();
-    sweep.finished.then(done, done);
-    for (const el of cards) {
-      const r = el.getBoundingClientRect();
-      const reach = Math.max(0, Math.min(1, (r.left + r.width / 2 - table.left) / table.width));
-      const spin = (Math.random() - 0.3) * 50;
-      const anim = play(el, 
-        [
-          { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
-          { transform: `translate(${(w - r.left + 40).toFixed(0)}px, ${(-20 - Math.random() * 60).toFixed(0)}px) rotate(${spin.toFixed(0)}deg)`, opacity: 0.9 },
-        ],
-        { duration: ms * 0.7, delay: ms * reach * 0.5, easing: 'cubic-bezier(.5,0,.8,.6)', fill: 'both' },
-      );
-      const gone = (): void => el.remove();
-      anim.finished.then(gone, gone);
-    }
-    this.bigWord(de.drink.redeal, table, ms * 0.3, 'is-redeal');
-  }
-
-  /** A big pixel word over a box for a moment ("Neu geben!", "Wird neu ausgelost …"). */
-  private bigWord(text: string, over: DOMRect, delay: number, cls: string, at = 0.38): void {
-    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
-    if (!layer || !motionOn()) return;
-    const word = document.createElement('div');
-    word.className = `drink-big ${cls}`;
-    word.dataset.testid = `drink-big-${cls.replace('is-', '')}`;
-    word.textContent = text;
-    word.style.left = `${over.left + over.width / 2}px`;
-    word.style.top = `${over.top + over.height * at}px`;
-    layer.appendChild(word);
-    const ms = 1100 * this.fx.tempo();
-    const anim = play(word, 
-      [
-        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(.3)', opacity: 0 },
-        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1.1)', opacity: 1, offset: 0.15 },
-        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1)', opacity: 1, offset: 0.25 },
-        { transform: 'translate(-50%, -50%) rotate(-6deg) scale(1)', opacity: 1, offset: 0.8 },
-        { transform: 'translate(-50%, -60%) rotate(-6deg) scale(1)', opacity: 0 },
-      ],
-      { duration: ms, delay, fill: 'both' },
-    );
-    const gone = (): void => word.remove();
-    anim.finished.then(gone, gone);
-  }
-
-  /** Blue Curaçao on a hand card: the card takes on the blue. */
-  private dyeCard(card: number, at: DOMRect): void {
-    const layer = this.root.querySelector<HTMLElement>('.drink-layer');
-    if (!layer || !motionOn()) return;
-    const dye = document.createElement('div');
-    dye.className = 'drink-dye';
-    dye.dataset.testid = 'drink-dye';
-    dye.dataset.card = String(card);
-    dye.style.left = `${at.left}px`;
-    dye.style.top = `${at.top}px`;
-    dye.style.width = `${at.width}px`;
-    dye.style.height = `${at.height}px`;
-    layer.appendChild(dye);
-    const ms = 1100 * this.fx.tempo();
-    const anim = play(dye, 
-      [
-        { clipPath: 'inset(0 0 100% 0)', opacity: 0.85 },
-        { clipPath: 'inset(0 0 0 0)', opacity: 0.85, offset: 0.4 },
-        { clipPath: 'inset(0 0 0 0)', opacity: 0.6, offset: 0.75 },
-        { clipPath: 'inset(0 0 0 0)', opacity: 0 },
-      ],
-      { duration: ms, fill: 'both', easing: 'steps(8, end)' },
-    );
-    const gone = (): void => dye.remove();
-    anim.finished.then(gone, gone);
-  }
-
-  /** Schwenker: the stops of every way spin like the reels of a slot machine and settle one by one. */
-  private reelRoutes(): void {
-    if (!motionOn()) return;
-    const map = this.rectOf('.route-map');
-    if (map) this.bigWord(de.drink.reroll, map, 0, 'is-reroll', 0.2);
-    const reels = Array.from(this.screenEl.querySelectorAll<HTMLElement | SVGElement>('.route-options > *, .route-map .map-badge, .route-map .map-target'));
-    reels.forEach((el, i) => {
-      el.classList.add('is-reeling');
-      el.style.setProperty('--reel-delay', `${Math.round(i * 90 * this.fx.tempo())}ms`);
-      el.style.setProperty('--reel-ms', `${Math.round(620 * this.fx.tempo())}ms`);
-      el.addEventListener('animationend', () => el.classList.remove('is-reeling'), { once: true });
-    });
-  }
-
-  /** Kurzer: the skat turns face up. */
-  private revealSkat(): void {
-    if (!motionOn()) return;
-    this.screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot').forEach((el, i) => flip(el, cardBack(), { ms: 380, delay: 80 + i * 120 }));
-  }
-
-  /** Doppelkorn and Fusel: "×2" slams onto the felt. */
-  private slamFactor(factor: number): void {
-    const felt = this.rectOf('.run .felt') ?? this.rectOf('.run .table');
-    if (!felt || !motionOn()) return;
-    const html = `<span class="decl-sign-text x2-sign" data-testid="x2-sign"><b>${esc(t(de.drink.times, { factor }))}</b></span>`;
-    declareSign(this.root, html, felt, this.rectOf('.slate'), { ms: 1500, onHit: () => sound.play('knock', { rate: 0.9, volume: 0.6 }) });
   }
 
   /**
@@ -3525,39 +3195,6 @@ export class App implements AppCtx {
       }
     }
     return out;
-  }
-
-  /** The picture of what is being bought at the Tresen and where it is (for its flight into the Leiste). */
-  private noteBought(pic: Element | null): void {
-    const rect = pic?.getBoundingClientRect();
-    this.bought = pic && rect?.width ? { html: pic.outerHTML, rect } : null;
-  }
-
-  /** Where the card is that a Zinke is about to go onto (its stamp comes down there). */
-  private noteStamp(card: Element | null): void {
-    const rect = card?.getBoundingClientRect();
-    this.stampAt = rect?.width ? { rect, at: performance.now() } : null;
-  }
-
-  /**
-   * After the next render, stamp a Zinke onto `card` (as it was: `old`),
-   * where it was tapped, or in the middle of the screen if that place is
-   * gone or out of sight. Only pictures: the faces come from the core's
-   * edition before and after the step.
-   */
-  private stampLater(old: DeckCard, card: DeckCard, order: number): void {
-    const noted = this.stampAt && performance.now() - this.stampAt.at < 60000 ? this.stampAt.rect : null;
-    if (order === 0) this.stampAt = null;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const seen = noted && noted.top >= 0 && noted.bottom <= h && noted.left >= 0 && noted.right <= w;
-    const cw = Math.min(110, Math.round(w * 0.26));
-    const ch = Math.round(cw * 1.5);
-    const shift = order * Math.round(cw * 0.35);
-    const place = seen && order === 0 ? noted : new DOMRect(Math.round(w / 2 - cw / 2 + shift), Math.round(h * 0.42 - ch / 2), cw, ch);
-    const before = cardSvg(old.kind, old.mods, 'full', old.mod_values);
-    const after = cardSvg(card.kind, card.mods, 'full', card.mod_values);
-    this.afterRender.push(() => zinkeStamp(before, after, place, order));
   }
 
   /**
@@ -3754,62 +3391,9 @@ export class App implements AppCtx {
 
   /** Play a hand card (tap or throw). */
   private playCard(id: number, from: DOMRect | null, fling: Fling | null): void {
-    this.playedFrom = from;
-    this.thrown = fling;
+    this.flights.playedFrom = from;
+    this.flights.thrown = fling;
     void this.act({ Play: id });
-  }
-
-  /**
-   * A card lands on the felt (cosmetic): an opponent's flies in from his
-   * portrait turning over from his back; the player's from the hand, or,
-   * thrown, as far as the flick sent it across the felt. Each comes down a
-   * little askew, lies there for a moment and slides onto its place.
-   */
-  private throwOnto(el: HTMLElement, seat: Seat, from: DOMRect, back: string | null): void {
-    const side = seat === 1 ? -1 : seat === 2 ? 1 : Math.random() < 0.5 ? -1 : 1;
-    if (seat !== 0) {
-      throwCard(el, {
-        from,
-        spin: side * (200 + Math.random() * 220),
-        flightMs: 340,
-        holdMs: 340,
-        settleMs: 260,
-        ...(back ? { back: cardBack('', backDesign(back)) } : {}),
-      });
-      return;
-    }
-    const fling = this.thrown;
-    if (!fling) {
-      throwCard(el, { from, spin: side * (90 + Math.random() * 120), flightMs: 260, holdMs: 320, settleMs: 240 });
-      return;
-    }
-    // Thrown: the faster the flick, the further and quicker it flies.
-    // It comes down on the felt around the trick, never off it.
-    const row = this.rectOf('.trick-row');
-    const felt = row ? new DOMRect(row.left, row.top - 24, row.width, row.height + 36) : null;
-    const speed = Math.min(4, Math.hypot(fling.vx, fling.vy));
-    const sx = from.left + from.width / 2;
-    const sy = from.top + from.height / 2;
-    const reach = Math.min(1, speed / 2.5) * 260;
-    let land = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
-    if (felt) {
-      const card = el.getBoundingClientRect();
-      const mx = card.width / 2;
-      const my = card.height / 2;
-      land = { x: Math.max(felt.left + mx, Math.min(felt.right - mx, land.x)), y: Math.max(felt.top + my, Math.min(felt.bottom - my, land.y)) };
-    }
-    const way = Math.hypot(land.x - sx, land.y - sy);
-    const slot = el.getBoundingClientRect();
-    const home = Math.hypot(slot.left + slot.width / 2 - land.x, slot.top + slot.height / 2 - land.y);
-    throwCard(el, {
-      from,
-      fromRotate: fling.tilt,
-      land,
-      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * (40 + speed * 150),
-      flightMs: Math.max(140, Math.min(440, way / Math.max(0.7, speed))),
-      holdMs: 300,
-      settleMs: Math.max(220, Math.min(520, 200 + home * 0.9)),
-    });
   }
 
   /**
@@ -3972,7 +3556,7 @@ export class App implements AppCtx {
     else if (ui.screen === 'start') this.hudFx.reset();
     if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.drink.refresh();
     else this.drink.cancel();
-    this.flyPressed();
+    this.flights.flyPressed();
     if (ui.screen !== 'run') this.entrancePending = false;
     if (this.entrancePending && !ui.overlay && !ui.anim) {
       this.entrancePending = false;
