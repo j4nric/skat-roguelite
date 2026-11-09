@@ -2141,8 +2141,6 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
   const before = await tableState(page);
-  const keysBefore = await storedKeys(page);
-  if (!keysBefore['stammtisch.run'] || !keysBefore['stammtisch.meta']) fail(`${label}: run or meta not stored`);
 
   // Export from the menu.
   await page.click('.hud [data-action="menu"]');
@@ -2159,6 +2157,9 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.click('[data-testid="save-export"]');
   await page.waitForSelector('[data-testid="save-code"]');
   const code = await page.locator('[data-testid="save-code"]').inputValue();
+  // Read with the code: making it stores what the opponents' last cards left in memory.
+  const keysBefore = await storedKeys(page);
+  if (!keysBefore['stammtisch.run'] || !keysBefore['stammtisch.meta']) fail(`${label}: run or meta not stored`);
   if (!/^STAMMTISCH1:[dj]:[A-Za-z0-9_-]+:[0-9a-f]{8}$/.test(code)) fail(`${label}: save code looks wrong: ${code.slice(0, 40)}…`);
   await page.click('[data-action="save-copy"]');
   await page.waitForSelector('[data-testid="save-copied"], [data-testid="save-copy-failed"]');
