@@ -82,16 +82,22 @@ impl Run {
     /// a previous pair, which is deterministic too.
     #[must_use]
     pub fn guests(&self, content: &Content) -> Vec<GuestId> {
+        self.seated_guests(content).into_owned()
+    }
+
+    /// [`Run::guests`], borrowed when the run holds them (every save since
+    /// guests exist).
+    pub(super) fn seated_guests(&self, content: &Content) -> std::borrow::Cow<'_, [GuestId]> {
         if self.guests.is_empty() {
-            seat_guests(
+            std::borrow::Cow::Owned(seat_guests(
                 content,
                 self.seed,
                 self.series.section,
                 self.series.index,
                 &[],
-            )
+            ))
         } else {
-            self.guests.clone()
+            std::borrow::Cow::Borrowed(&self.guests)
         }
     }
 
@@ -121,7 +127,7 @@ impl Run {
 
     /// The guests of the current series for the view.
     pub(super) fn guest_infos(&self, content: &Content) -> Vec<GuestInfo> {
-        self.guests(content)
+        self.seated_guests(content)
             .iter()
             .zip(Seat::DEFENDERS)
             .filter_map(|(id, seat)| self.guest_info(content, id, seat))

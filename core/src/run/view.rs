@@ -1137,8 +1137,9 @@ impl Run {
             Owner::Player => None,
             Owner::Boss => Some(self.boss_back(content, 0)),
             Owner::BossPartner => Some(self.boss_back(content, 1)),
+            // Borrowed: this runs for every card of the view.
             Owner::Guest => Some(
-                self.guests(content)
+                self.seated_guests(content)
                     .iter()
                     .zip(Seat::DEFENDERS)
                     .find(|(_, s)| *s == seat)
