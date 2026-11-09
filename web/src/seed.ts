@@ -1,7 +1,7 @@
-// Seeds to share (DESIGN 15, M5): a run is fully determined by its seed,
-// character and length, so a link `#seed-<number>-<character>` lets
-// someone else play the same run. A short evening (DESIGN 5.3, M7) adds
-// `-kurz`; links without it are a full evening, as all links from before.
+// Seeds to share (DESIGN 15, M5): a run is fully determined by its seed
+// and character, so a link `#seed-<number>-<character>` lets someone else
+// play the same run. Links of the short evening (`-kurz`, dropped with
+// ADR 0016) still open, as the whole evening.
 // A stake of the Einsatz-Leiter (DESIGN 9.3) adds `-einsatz<n>` at the end;
 // links without it are stake 0. The hash is the only part of a URL that survives every
 // messenger, and it never reaches the server. Only letters, digits and
@@ -10,7 +10,7 @@
 // The daily seed is the date as JJJJMMTT, so everyone who plays on the
 // same day (local date) gets the same run.
 
-import type { Character, RunLength } from './types';
+import type { Character } from './types';
 
 /** URL tokens of the characters (lower case, no umlauts). */
 const SLUGS: Record<Character, string> = {
@@ -21,7 +21,7 @@ const SLUGS: Record<Character, string> = {
   HeartBrother: 'bruderherz',
 };
 
-/** URL token of the short evening; the full evening has none. */
+/** URL token of the short evening of old links (ADR 0016: read, never written). */
 const SHORT_SLUG = 'kurz';
 
 /** URL token of the stake, followed by its number; stake 0 has none. */
@@ -36,7 +36,6 @@ const SEED_RE = /^[0-9]{1,20}$/;
 export interface SharedSeed {
   seed: string;
   character: Character;
-  length: RunLength;
   /** Stake of the Einsatz-Leiter, 0 for links without it. */
   stake: number;
 }
@@ -48,8 +47,9 @@ export function isSeedText(text: string): boolean {
 
 /**
  * Read `#seed-123-alleinspieler`, `#seed-123-alleinspieler-kurz` or
- * `#seed-123-alleinspieler-kurz-einsatz2` (character, length and stake
- * optional); null if it is no seed link.
+ * `#seed-123-alleinspieler-kurz-einsatz2` (character, the old length and
+ * stake optional; `-kurz` opens the whole evening too, ADR 0016); null if
+ * it is no seed link.
  */
 export function parseShareHash(hash: string): SharedSeed | null {
   const m = /^#?seed-([0-9]{1,20})(?:-([a-z]+))?(?:-([a-z]+))?(?:-einsatz([0-9]{1,4}))?$/i.exec(hash.trim());
@@ -66,20 +66,19 @@ export function parseShareHash(hash: string): SharedSeed | null {
   if (!character || !isSeedText(seed)) return null;
   if (lengthSlug !== null && lengthSlug !== SHORT_SLUG) return null;
   const stake = Math.min(Number(m[4] ?? '0'), STAKE_MAX);
-  return { seed, character, length: lengthSlug === SHORT_SLUG ? 'Short' : 'Full', stake };
+  return { seed, character, stake };
 }
 
-/** `seed-123-alleinspieler`, `…-kurz`, `…-einsatz2`, without the `#`. */
-export function shareHash(seed: string, character: Character, length: RunLength = 'Full', stake = 0): string {
-  const short = length === 'Short' ? `-${SHORT_SLUG}` : '';
+/** `seed-123-alleinspieler`, `…-einsatz2`, without the `#`. */
+export function shareHash(seed: string, character: Character, stake = 0): string {
   const staked = stake > 0 ? `-${STAKE_SLUG}${Math.min(Math.floor(stake), STAKE_MAX)}` : '';
-  return `seed-${seed}-${SLUGS[character]}${short}${staked}`;
+  return `seed-${seed}-${SLUGS[character]}${staked}`;
 }
 
 /** The full link to this page with the seed in the hash. */
-export function shareUrl(seed: string, character: Character, length: RunLength = 'Full', stake = 0): string {
+export function shareUrl(seed: string, character: Character, stake = 0): string {
   const { origin, pathname, search } = window.location;
-  return `${origin}${pathname}${search}#${shareHash(seed, character, length, stake)}`;
+  return `${origin}${pathname}${search}#${shareHash(seed, character, stake)}`;
 }
 
 /** Remove a seed link from the address bar (after it was used or dismissed). */

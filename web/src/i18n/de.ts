@@ -50,6 +50,20 @@ export const de = {
       AiToMove: 'Warte, die Gegner sind am Zug.',
       NotDecided: 'Das Spiel ist noch nicht entschieden.',
       InvalidSeed: 'Der Seed muss eine ganze Zahl sein.',
+      StakeLocked: 'Diesen Einsatz hast du noch nicht erreicht.',
+      CardNotInHand: 'Diese Karte hast du nicht auf der Hand.',
+      TrickInProgress: 'Erst den Stich zu Ende spielen.',
+      InvalidDeclaration: 'Das passt nicht zum Skat: vor dem Aufnehmen nur Handspiele, danach keine.',
+      GameWrongPhase: 'Das geht in diesem Moment des Spiels nicht.',
+      NoKontra: 'Es gibt kein Kontra zu beantworten.',
+      InvalidSlot: 'Dort liegt nichts.',
+      CardCursed: 'Die Karte ist verflucht und nimmt keine Zinke an.',
+      ModAtMaximum: 'Diese Zinke ist schon am Höchstwert.',
+      AlreadyModified: 'Die Karte hat diese Zinke schon.',
+      BlankCannotBeModified: 'Ein Blanko nimmt keine Zinke an.',
+      CannotChalk: 'Diese Karte lässt sich nicht in diese Farbe umfärben.',
+      MissingCard: 'Diese Karte ist nicht in deinem Blatt.',
+      UnknownDeckCard: 'Diese Karte ist nicht in deinem Blatt.',
       default: 'Unbekannter Fehler.',
     } as Record<string, string>,
     close: 'Schließen',
@@ -96,7 +110,6 @@ export const de = {
     settings: 'Einstellungen',
     sharedTitle: 'Geteilter Seed',
     sharedText: 'Dir wurde ein Run geschickt: Seed {seed} als {character}.',
-    sharedTextShort: 'Dir wurde ein kurzer Abend geschickt. Den gibt es nicht mehr, du spielst Seed {seed} als {character} als ganzen Abend.',
     sharedLocked: 'Der {character} ist bei dir noch gesperrt. Du spielst den Seed als {fallback}.',
     sharedKeep: 'Dein laufender Run bleibt gespeichert, bis du dich entscheidest.',
     sharedPlay: 'Diesen Seed spielen',
@@ -106,11 +119,8 @@ export const de = {
     dailyText: 'Heute spielen alle denselben Run.',
     dailyPlay: 'Tages-Run als {name}',
     dailyDone: 'Heute schon gespielt: {result}',
-    howLong: 'Wie lange?',
-    lengths: {
-      Full: { name: 'Ganzer Abend', sections: '3 Stadtteile', aria: 'Ganzer Abend (3 Stadtteile)' },
-      Short: { name: 'Kurzer Abend', sections: 'entfällt', aria: 'Kurzer Abend (entfällt)' },
-    } as Record<'Full' | 'Short', { name: string; sections: string; aria: string }>,
+    /** A run the core still keeps as a short evening (saved before ADR 0016). */
+    shortEvening: 'Kurzer Abend',
     stake: 'Einsatz {stake}',
     stakeWin: 'Gewinn ab {augen} Augen',
     stakeAria: 'Einsatz {stake} von höchstens {max}: Gewinn ab {augen} Augen',
@@ -141,7 +151,6 @@ export const de = {
   share: {
     title: 'Seed teilen',
     line: 'Seed {seed} · {character}',
-    lineShort: 'Seed {seed} · {character} · kurzer Abend',
     lineStake: ' · Einsatz {stake}',
     nativeStake: ' Einsatz {stake}, Gewinn ab {augen} Augen.',
     hint: 'Wer den Link öffnet, spielt denselben Run: dieselben Karten, dieselben Gegner, derselbe Tresen.',
@@ -151,14 +160,12 @@ export const de = {
     copyFailed: 'Kopieren ging nicht. Halte den Link gedrückt oder markiere ihn:',
     native: 'Teilen …',
     nativeText: 'Spiel diesen Stammtisch-Run nach: Seed {seed} als {character}.',
-    nativeTextShort: 'Spiel diesen Stammtisch-Run nach: Seed {seed} als {character}, kurzer Abend.',
     link: 'Link zum Seed',
   },
 
   header: {
     section: 'Stadtteil {section}/{sections}',
     series: 'Kneipe {series}/5',
-    bossSeries: 'Boss: {name}',
     account: 'Konto',
     accountTarget: 'Konto / Ziel',
     target: 'Ziel {target}',
@@ -290,15 +297,6 @@ export const de = {
     } as Record<string, string>,
   },
 
-  /** Short badge per card modification id. */
-  modShort: {
-    fat: 'F',
-    marked: 'G',
-    stamp: 'St',
-    last_trick: 'Sp',
-    transparent: 'D',
-  } as Record<string, string>,
-
   games: {
     Grand: 'Grand',
     Null: 'Null',
@@ -359,10 +357,8 @@ export const de = {
   },
 
   seats: ['Du', 'Gegner links', 'Gegner rechts'],
-  seatsShort: ['Du', 'Links', 'Rechts'],
 
   table: {
-    declareTitle: 'Ansage',
     choiceTitle: 'Skat oder Hand?',
     pickUpSkat: 'Skat aufnehmen',
     pickUpSkatHint: 'Du nimmst die zwei Karten des Skats auf, legst zwei Karten zurück auf den Tisch (Drücken) und sagst dann an. Gedrückte Augen zählen für dich.',
@@ -374,7 +370,6 @@ export const de = {
     handVoucherHint: 'Eine zufällige Marke auf deiner Hand wird sofort eingelöst.',
     handTitle: 'Handspiel ansagen',
     afterSkatTitle: 'Ansage nach dem Skat',
-    afterSkatHint: 'Skat aufgenommen und gedrückt. Jetzt sagst du dein Spiel an.',
     back: 'Zurück',
     noPickUp: 'Den Skat darfst du in diesem Spiel nicht aufnehmen.',
     gameType: 'Spielart',
@@ -477,7 +472,6 @@ export const de = {
     countRight: 'Rechts',
     discardLocked: 'Karten mit Schloss (Ramponiert) darfst du nicht drücken.',
     game: 'Spiel {number}',
-    tricksOwn: 'Deine Stiche',
     you: 'Du',
   },
 
@@ -576,7 +570,6 @@ export const de = {
     schnappsRewarded: 'Der Wirt gibt einen aus: {name}.',
     schnappsRewardTaken: '{name} genommen, {old} abgegeben.',
     wildSettled: 'Wandelkarte: {old} wird zu {new}.',
-    glassBroken: 'Klirr! {card} ist zerbrochen und fliegt aus dem Blatt.',
     voucherRedeemed: '{mod} eingelöst: {card}.',
     voucherRedeemedHand: 'Handspiel: {mod} auf {card} eingelöst.',
     voucherReturned: '{mod} ist zurück: {card}.',
@@ -630,7 +623,6 @@ export const de = {
     re: 'Re',
     cardMod: '{mod} ({card})',
     formula: '{base} × {levels}',
-    formulaMul: '{base} × {levels} × {mul}',
     value: 'Spielwert',
     result: 'Ergebnis',
     lostOnce: 'Verlorene Spiele zählen hier nur einfach, anders als im Vereinsskat: Der Spielwert geht einmal vom Konto ab.',
@@ -639,7 +631,6 @@ export const de = {
     account: 'Konto {score} / {target}',
     continue: 'Weiter',
     skip: 'Überspringen',
-    tapToSkip: 'Tippen zum Überspringen',
     boxBase: 'Grundwert',
     boxLevels: 'Stufen',
     boxMul: 'Faktor',
@@ -662,7 +653,6 @@ export const de = {
     subtitle: 'Kaufe Hausregeln, Schnäpse und Zinken für die nächste Kneipe.',
     relics: 'Hausregeln und Figuren',
     consumables: 'Schnäpse',
-    consumableKind: 'Gegenstand',
     owned: 'Deine Relikte ({count})',
     ownedCapped: 'Deine Relikte ({count}/{slots})',
     ownedItems: 'Deine Schnäpse ({count}/{slots})',
@@ -937,7 +927,6 @@ export const de = {
     replay: 'Nochmal',
     replayAria: 'Seed {seed} als {character} nochmal spielen',
     daily: 'Tages-Seed',
-    short: 'Kurz',
     stake: 'Einsatz {stake}',
   },
 
@@ -970,7 +959,6 @@ export const de = {
     sheetGo: 'Weiter',
     chips: 'Verschärfungen',
     hud: 'Lange Nacht · Stadtteil {n}',
-    extraBoss: 'Dazu gilt: {name}',
     infoKind: 'Verschärfung der Nacht',
     infoSince: 'Seit Stadtteil {n}',
     over: 'Die Nacht ist vorbei',
@@ -1796,5 +1784,3 @@ export const de = {
     Record<string, { name?: string; text?: string }>
   >,
 } as const;
-
-export type Texts = typeof de;

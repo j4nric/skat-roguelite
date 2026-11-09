@@ -9,7 +9,10 @@ import { de, t } from '../i18n';
 import type { RunView } from '../types';
 import { relicCoaster } from './emblems';
 import { characterPortraitId } from './people';
-import { pixelUrl } from './pixelate';
+import { loadImage as loadOrFail, pixelUrl } from './pixelate';
+
+/** An image, or null if it does not load. */
+const loadImage = (src: string): Promise<HTMLImageElement | null> => loadOrFail(src).catch(() => null);
 
 /** Size of the picture: 4:5, as phones and feeds show it whole. */
 const W = 1080;
@@ -43,15 +46,6 @@ export interface RunCardInfo {
 
 function snap(n: number): number {
   return Math.round(n / PX) * PX;
-}
-
-function loadImage(src: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
 }
 
 function svgImage(svg: string): Promise<HTMLImageElement | null> {

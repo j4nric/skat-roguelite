@@ -7,10 +7,13 @@
 //
 // Strategy:
 // - Install: precache the whole build (index.html as "/", every hashed
-//   file under /assets/ with the WebAssembly core, fonts and sounds, the
-//   icons and the manifest) into one cache per version. A failed download
+//   file under /assets/ with the WebAssembly core, the card sprites, fonts
+//   and sounds, the small icons and the manifest) into one cache per
+//   version. A hashed file an older version already holds is copied from
+//   its cache, so an update only downloads what changed. A failed download
 //   fails the install; the old worker keeps serving and the browser tries
-//   again later.
+//   again later. The 512 px icons are left out: only installing the app
+//   needs them, and that happens online.
 // - /assets/*: cache first (the names are hashed, so a hit is never
 //   stale), a miss goes to the network and is kept.
 // - Navigations: network first with a short timeout, then the cached
@@ -32,13 +35,25 @@ const NAV_TIMEOUT_MS = 3000;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) =>
-      // `reload` skips the HTTP cache, so the shell and its assets come
-      // from the same deploy.
-      cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' }))),
-    ),
+    caches.open(CACHE).then((cache) => Promise.all(PRECACHE.map((url) => precache(cache, url)))),
   );
 });
+
+/** One file into the new cache: a hashed one from an older cache if it is there, else from the network. */
+async function precache(cache, url) {
+  if (url.startsWith('/assets/')) {
+    // The name carries the content's hash: the same name is the same file.
+    const kept = await caches.match(url, { ignoreSearch: true, ignoreVary: true });
+    if (kept) {
+      await cache.put(url, kept);
+      return;
+    }
+  }
+  // `reload` skips the HTTP cache, so the shell and its assets come from the same deploy.
+  const response = await fetch(new Request(url, { cache: 'reload' }));
+  if (!response.ok) throw new Error(`precache ${url}: HTTP ${response.status}`);
+  await cache.put(url, response);
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(

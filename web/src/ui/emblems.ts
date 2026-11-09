@@ -2612,15 +2612,6 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   dawn: 'Factor',
 };
 
-/** German names of the categories, for the art vote board only. */
-export const GROUP_LABEL: Record<RelicGroup, string> = {
-  Value: 'Grundwert und Kartenwerte',
-  Multiplier: 'Stufen und Gewinngrenze',
-  Control: 'Geben, Skat und Durchblick',
-  Tour: 'Tresen und Tour',
-  Factor: 'Faktor',
-};
-
 /** Every drawn form: four relic mats, the item mat, the boss mat and three Schnaps styles. */
 export type Form = RelicGroup | 'Item' | 'Boss' | SchnapsStyle;
 
@@ -2845,11 +2836,6 @@ export function spriteFor(id: string, kind: CoasterKind, variant?: number): Spri
   return set[variant ?? CHOSEN[id] ?? 0] ?? set[0];
 }
 
-/** Whether an id has its own motif (not the generic one of its kind). */
-export function hasOwnArt(id: string): boolean {
-  return id in SHOP_ART || id in BOSS_ART;
-}
-
 export interface CoasterOpts {
   /** Width and height in CSS pixels. */
   size?: number;
@@ -2942,16 +2928,42 @@ export function coasterInner(id: string, kind: CoasterKind, ring: CoasterRing, o
   return `<g transform="rotate(${tiltOf(id)} ${CX} ${CY})">${body}</g>`;
 }
 
-/** A mat as an SVG element. */
+// Mats on screen are <use>s of symbols drawn once per look (W4 of the
+// review): the head, the Tresen and the Leiste show the same mats on every
+// render, and a symbol keeps their many paths out of each re-render. The
+// symbols live in a hidden sprite of their own, made on first use.
+const matSymbols = new Map<string, string>();
+let matSprite: SVGSVGElement | null = null;
+
+/** The id of the symbol of a mat's look, drawn into the document the first time. */
+function matSymbol(id: string, kind: CoasterKind, ring: CoasterRing, opts: InnerOpts): string | null {
+  if (typeof document === 'undefined') return null;
+  const key = [id, kind, ring, opts.variant ?? '', opts.group ?? '', opts.rarityStyle ?? '', opts.schnapsStyle ?? ''].join('|');
+  const known = matSymbols.get(key);
+  if (known) return known;
+  if (!matSprite?.isConnected) {
+    matSprite = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    matSprite.setAttribute('class', 'sprite sprite-mats');
+    matSprite.setAttribute('aria-hidden', 'true');
+    matSprite.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden');
+    document.body.prepend(matSprite);
+    matSymbols.clear();
+  }
+  const symbol = `mat-${matSymbols.size}`;
+  matSprite.insertAdjacentHTML('beforeend', `<symbol id="${symbol}" viewBox="0 0 100 100">${coasterInner(id, kind, ring, opts)}</symbol>`);
+  matSymbols.set(key, symbol);
+  return symbol;
+}
+
+/** A mat as an SVG element (a <use> of its symbol; drawn out in full for a file of its own). */
 export function coasterSvg(id: string, kind: CoasterKind, ring: CoasterRing, opts: CoasterOpts = {}): string {
   const size = opts.size ?? 44;
   const a11y = opts.label ? `role="img" aria-label="${attr(opts.label)}"` : 'aria-hidden="true"';
   const ns = opts.standalone ? ' xmlns="http://www.w3.org/2000/svg"' : '';
   const data = `data-deckel="${attr(id)}" data-form="${formOf(id, kind, opts)}"`;
-  return (
-    `<svg${ns} class="deckel ${opts.cls ?? ''}" viewBox="0 0 100 100" width="${size}" height="${size}" shape-rendering="crispEdges" ${a11y} ${data}>` +
-    `${coasterInner(id, kind, ring, opts)}</svg>`
-  );
+  const symbol = opts.standalone ? null : matSymbol(id, kind, ring, opts);
+  const inner = symbol ? `<use href="#${symbol}"/>` : coasterInner(id, kind, ring, opts);
+  return `<svg${ns} class="deckel ${opts.cls ?? ''}" viewBox="0 0 100 100" width="${size}" height="${size}" shape-rendering="crispEdges" ${a11y} ${data}>${inner}</svg>`;
 }
 
 /** The mat of a relic, shaped by its category (group, else the fallback map). */

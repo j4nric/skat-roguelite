@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { sprite } from './sprite/plugin.ts';
 import { serviceWorker } from './sw/plugin.ts';
 
 // BUILD_INFO (commit and date) is set by the deploy workflow and shown in
@@ -18,9 +19,10 @@ const api = {
 
 export default defineConfig({
   base: '/',
-  // Offline play (DESIGN 14.5): dist/sw.js with the build's file list.
-  // Build and preview only, never in `vite dev`.
-  plugins: [serviceWorker()],
+  // The card sprite, drawn at build time (sprite/plugin.ts). Offline play
+  // (DESIGN 14.5): dist/sw.js with the build's file list, build and
+  // preview only, never in `vite dev`.
+  plugins: [sprite(), serviceWorker()],
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
   },
@@ -30,7 +32,9 @@ export default defineConfig({
     target: 'es2022',
     // The WebAssembly core is loaded as a file, never inlined.
     assetsInlineLimit: 0,
-    chunkSizeWarningLimit: 1024,
+    // One chunk of about 575 kB since the card sprite is drawn at build
+    // time (sprite/plugin.ts); the limit warns well before it doubles again.
+    chunkSizeWarningLimit: 640,
   },
   server: {
     proxy: api,

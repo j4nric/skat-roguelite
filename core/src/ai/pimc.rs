@@ -13,7 +13,9 @@
 //!   the win threshold and for Schneider (the defenders count the same
 //!   number negated). The win threshold and the Schneider limit are the
 //!   Skatordnung's unless house rules move them
-//!   ([`PimcPolicy::with_thresholds`]).
+//!   ([`PimcPolicy::with_thresholds`]). Augen count with their sign (a
+//!   card below zero, "Ramponiert", costs its taker) and with the extra
+//!   Augen of card effects so far ([`SeatView::seat_points`]).
 //! - Schwarz announced (also every suit or grand Ouvert): whether the
 //!   defenders take a trick, the only thing that decides the game.
 //! - Null: whether the declarer takes a trick.
@@ -97,8 +99,8 @@ const NULL_WEIGHT: i64 = 100;
 const NULL_MAX_UNSAFE: usize = 3;
 /// Tries to find a deal that fits the declaration before taking any.
 const BIAS_TRIES: u32 = 12;
-/// Search nodes per probe after which the remaining tricks are estimated
-/// (about 3 ms natively): bounds the rare deals that explode.
+/// Search nodes per move of a probe after which the remaining tricks are
+/// estimated (about 3 ms natively): bounds the rare deals that explode.
 const NODE_LIMIT: u64 = 6_000;
 /// Search nodes per decision after which no further deal is solved (the
 /// deals solved so far decide): about 25 ms natively, so the slowest
@@ -220,19 +222,9 @@ impl PimcPolicy {
         };
         let played = view.tricks.len() * 3 + view.trick.len();
         let mut rng = Rng::from_seed(decision_seed(self.seed, played, view.seat));
-        let declarer_points: u32 = view
-            .tricks
-            .iter()
-            .filter(|t| t.winner.is_declarer())
-            .map(|t| t.card_points())
-            .sum();
-        let played_points: u32 = view
-            .tricks
-            .iter()
-            .map(|t| t.card_points())
-            .chain(view.trick.iter().map(|c| c.card_points()))
-            .sum();
-        let trick_points: u32 = view.trick.iter().map(|c| c.card_points()).sum();
+        // Augen so far with their sign, extra Augen included.
+        let [declarer_points, first, second] = view.seat_points;
+        let defender_points = first + second;
         let declarer_played: Vec<C> = view
             .tricks
             .iter()
@@ -273,24 +265,25 @@ impl PimcPolicy {
                 } else {
                     knowledge.sample(&mut rng)
                 };
-                let skat_points: u32 = sample.skat.iter().map(|c| c.card_points()).sum();
+                let skat_points: i64 = sample.skat.iter().map(|c| c.signed_points()).sum();
                 let layout = Layout {
                     hands: sample.hands,
                     trick_lead: view.trick_lead,
                     trick: view.trick.to_vec(),
-                    skat_points,
+                    skat_points: i32::try_from(skat_points).unwrap_or(0),
                 };
-                let live: u32 = layout
-                    .hands
-                    .iter()
-                    .flatten()
-                    .chain(&layout.trick)
-                    .map(|c| c.card_points())
-                    .sum();
+                let (mut gain, mut loss) = (0, 0);
+                for c in layout.hands.iter().flatten().chain(&layout.trick) {
+                    let p = c.signed_points();
+                    gain += p.max(0);
+                    loss += p.min(0);
+                }
+                let base = declarer_points + skat_points;
                 let points = Points {
-                    base: declarer_points + skat_points,
-                    live,
-                    total: played_points - trick_points + live + skat_points,
+                    base,
+                    gain,
+                    loss,
+                    total: base + defender_points + gain + loss,
                 };
                 let mut utilities = vec![0i64; legal.len()];
                 let Some(n) = self.evaluate(
@@ -378,13 +371,19 @@ impl PimcPolicy {
         // that needs a search; every probe is still a search of its own.
         let mut table = Some(table);
         let mut probes: Option<Option<Probes<'_, C>>> = None;
+        // What the rest can bring: in Augen every one below zero up to
+        // every positive one; a trick goal counts tricks (a trick of
+        // sevens, eights and nines has no Augen).
+        let (min, max) = if goal == Goal::DeclarerPoints {
+            (points.loss, points.gain)
+        } else {
+            (0, 1)
+        };
         let mut probe = |threshold: i64| -> Option<Vec<bool>> {
-            if threshold <= 0 {
+            if threshold <= min {
                 return Some(vec![true; len]);
             }
-            // Out of reach in Augen; a trick goal counts tricks, and a
-            // trick of sevens, eights and nines has none.
-            if goal == Goal::DeclarerPoints && threshold > i64::from(points.live) {
+            if threshold > max {
                 return Some(vec![false; len]);
             }
             let threshold = i32::try_from(threshold).ok()?;
@@ -418,8 +417,7 @@ impl PimcPolicy {
             }
             Goal::RamschAvoid(_) => {}
             Goal::DeclarerPoints => {
-                let base = i64::from(points.base);
-                let total = i64::from(points.total);
+                let Points { base, total, .. } = points;
                 let limit = i64::from(self.thresholds.schneider_limit);
                 let wins = probe(i64::from(self.thresholds.win) - base)?;
                 for (u, &w) in out.iter_mut().zip(&wins) {
@@ -465,15 +463,20 @@ const fn goal_is_ramsch(goal: Goal) -> bool {
     matches!(goal, Goal::RamschAvoid(_))
 }
 
-/// Augen that decide a point game on one deal.
+/// Augen that decide a point game on one deal, with their sign (Augen
+/// below zero count against the taker) and extra Augen from card effects
+/// included.
 #[derive(Debug, Clone, Copy)]
 struct Points {
-    /// The declarer's Augen so far: tricks and skat.
-    base: u32,
-    /// Augen still in the hands and on the table.
-    live: u32,
-    /// All Augen of the game.
-    total: u32,
+    /// The declarer's Augen so far: tricks, extra Augen and skat.
+    base: i64,
+    /// Positive Augen still in the hands and on the table.
+    gain: i64,
+    /// Augen below zero still in the hands and on the table (at most 0).
+    loss: i64,
+    /// All Augen of the game: both sides' so far, the skat and the live
+    /// ones.
+    total: i64,
 }
 
 /// Whether a deal gives the declarer a hand that fits his declaration.
@@ -723,6 +726,7 @@ mod knowledge_tests {
             trick_lead: Seat::ALL[1],
             trick: &[],
             tricks: &[],
+            seat_points: [0; 3],
             skat: partner.then_some(skat),
             declarer_hand: Some(&hands[0]),
             partner_hand: partner.then_some(&hands[2][..]),
@@ -916,6 +920,118 @@ mod bench {
                     nodes / n
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod bench_augen {
+    use super::*;
+    use crate::cards::{CardKind, standard_deck};
+    use crate::deck::DealtCard;
+    use crate::game::Game;
+
+    /// The standard deck as dealt cards; `battered` sevens count 5 Augen
+    /// below zero ("Ramponiert").
+    fn deck(battered: bool) -> Vec<DealtCard> {
+        standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let mut dealt = DealtCard::plain(id, CardKind::Normal(card));
+                if battered && card.rank == Rank::Seven {
+                    dealt.card_points = 0;
+                    dealt.point_debt = 5;
+                }
+                dealt
+            })
+            .collect()
+    }
+
+    /// Declarer heuristic against PIMC defenders on decks with Augen below
+    /// zero ("Ramponiert" sevens) and with extra Augen ("Erster Stich":
+    /// the first trick counts twice for its winner). Prints the declarer's
+    /// results and the defenders' decision time per variant.
+    ///
+    /// `cargo test --release -p skat_core bench_augen -- --ignored --nocapture`
+    /// (`PIMC_GAMES`, `PIMC_SAMPLES`, `PIMC_DEPTH` override 600, 8, 3).
+    #[test]
+    #[ignore = "measurement"]
+    fn bench_augen() {
+        let env = |name: &str, default: u32| {
+            std::env::var(name)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(default)
+        };
+        let games = env("PIMC_GAMES", 600);
+        let config = PimcConfig {
+            samples: env("PIMC_SAMPLES", 8),
+            depth: env("PIMC_DEPTH", 3),
+        };
+        for (name, battered, first_trick) in [
+            ("plain", false, false),
+            ("battered sevens", true, false),
+            ("first trick twice", false, true),
+        ] {
+            let (mut won, mut schneider, mut point_games) = (0u32, 0u32, 0u32);
+            let mut micros: Vec<u64> = Vec::new();
+            let mut node_list: Vec<u64> = Vec::new();
+            for seed in 0..u64::from(games) {
+                let mut rng = Rng::from_seed(seed);
+                let forehand = Seat::ALL[usize::try_from(seed % 3).unwrap_or(0)];
+                let mut game = Game::deal_from(&mut rng, deck(battered), forehand).expect("deal");
+                let declaration = DeclarerHeuristic.declare(&mut game).expect("declare");
+                let policy = PimcPolicy::new(config, mix64(seed));
+                while let Some(seat) = game.current_seat() {
+                    let view = game.view(seat).expect("view");
+                    let card = if seat.is_declarer() || view.legal_moves.len() < 2 {
+                        PimcPolicy::heuristic(&view).expect("card")
+                    } else {
+                        let start = std::time::Instant::now();
+                        let d = policy.decide(&view, &Hints::default()).expect("decision");
+                        micros.push(u64::try_from(start.elapsed().as_micros()).unwrap_or(0));
+                        node_list.push(d.nodes);
+                        d.card
+                    };
+                    let tricks = game.tricks().len();
+                    game.play(seat, card).expect("legal");
+                    if first_trick && tricks == 0 && game.tricks().len() == 1 {
+                        let trick = &game.tricks()[0];
+                        let extra = u32::try_from(trick.signed_points().max(0)).unwrap_or(0);
+                        let winner = trick.winner;
+                        game.add_bonus_points(winner, extra);
+                    }
+                }
+                if declaration.is_null() || declaration.is_ramsch() {
+                    continue;
+                }
+                let value = game.value().expect("finished");
+                point_games += 1;
+                won += u32::from(value.won);
+                schneider += u32::from(value.schneider);
+            }
+            micros.sort_unstable();
+            node_list.sort_unstable();
+            let n = micros.len().max(1);
+            let at = |q: usize| node_list[(n * q / 1000).min(n - 1)];
+            let nodes = node_list.iter().sum::<u64>();
+            let mean = micros.iter().sum::<u64>() as f64 / n as f64 / 1000.0;
+            let p95 = micros[(n * 95 / 100).min(n - 1)] as f64 / 1000.0;
+            let max = micros.last().copied().unwrap_or(0) as f64 / 1000.0;
+            println!(
+                "{name}: suit/grand games {point_games}, declarer won {:.1}%, schneider {:.1}%; \
+                 decisions {}, mean {mean:.2} ms, p95 {p95:.2} ms, max {max:.2} ms; \
+                 nodes mean {} p95 {} p99 {} p99.9 {} max {}",
+                100.0 * f64::from(won) / f64::from(point_games.max(1)),
+                100.0 * f64::from(schneider) / f64::from(point_games.max(1)),
+                micros.len(),
+                nodes / u64::try_from(n).unwrap_or(1),
+                at(950),
+                at(990),
+                at(999),
+                node_list.last().copied().unwrap_or(0),
+            );
         }
     }
 }

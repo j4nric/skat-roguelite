@@ -16,7 +16,7 @@ export type { MusicId } from './songs';
 
 /**
  * Level of the music: about -33 LUFS, some 10 dB under the sound effects
- * (their master is 0.9). Measured on offline renders (renderLoop).
+ * (their master is 0.9). Measured on offline renders (OfflineAudioContext).
  */
 const MUSIC_VOLUME = 0.18;
 /** Crossfade between loops, seconds. */
@@ -514,22 +514,6 @@ class Music {
 }
 
 export const music = new Music();
-
-/**
- * Render `seconds` of a loop offline (for listening to it outside the app,
- * e2e/smoke.mjs). Returns the mono samples at `sampleRate`, music volume
- * applied as in the game.
- */
-export async function renderLoop(id: MusicId, seconds: number, sampleRate = 44100): Promise<Float32Array> {
-  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * sampleRate), sampleRate);
-  const master = ctx.createGain();
-  master.gain.value = MUSIC_VOLUME;
-  master.connect(ctx.destination);
-  const player = new LoopPlayer(ctx, compileSong(SONGS[id]), master, 0, 0);
-  player.pump(seconds);
-  const buffer = await ctx.startRendering();
-  return buffer.getChannelData(0);
-}
 
 /** Notation errors of all songs (empty when every bar reads cleanly). */
 export function songProblems(): string[] {

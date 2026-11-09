@@ -110,6 +110,17 @@ export class CoreRun {
     return JSON.parse(this.run.preview(JSON.stringify(action))) as Step;
   }
 
+  /**
+   * Whether the core would accept an action now: null if so, else its
+   * error code (`CardCursed`, `ModAtMaximum`, …, as `apply` would throw
+   * it). Builds no view and no events, unlike `preview`: for asking about
+   * many actions at once (the dimmed cards of a picker). Throws only on
+   * JSON that is no action.
+   */
+  check(action: RunAction): string | null {
+    return this.run.check(JSON.stringify(action)) ?? null;
+  }
+
   /** Let the opponent named by `view.ai_to_move` play one card. */
   step(): Step {
     return JSON.parse(this.run.step()) as Step;

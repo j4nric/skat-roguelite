@@ -8,7 +8,7 @@ import type { DailyBoard, PasskeyInfo } from '../account';
 import type { AccountView, ConflictSide } from './account';
 import type { RunRecord } from '../storage';
 import type { SettledWild } from './cards';
-import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunLength, RunView, ScoreView, Seat } from '../types';
+import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunView, ScoreView, Seat } from '../types';
 
 /** What the table shows while events are being animated. */
 export interface AnimState {
@@ -40,8 +40,6 @@ export interface ScoreOverlay {
 export interface PendingStart {
   seed: string;
   character: Character;
-  /** Ganzer or kurzer Abend. */
-  length: RunLength;
   /** Stake of the Einsatz-Leiter. */
   stake: number;
   daily: boolean;
@@ -195,8 +193,6 @@ export interface UiState {
   history: RunRecord[];
   /** Character picked on the start screen. */
   pickCharacter: Character;
-  /** Run length picked on the start screen (ganzer or kurzer Abend). */
-  pickLength: RunLength;
   /** Stake picked on the start screen; null plays the highest unlocked. */
   pickStake: number | null;
   overlay: Overlay | null;

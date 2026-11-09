@@ -1757,10 +1757,11 @@ async function m5(browser, errors, reducedMotion) {
   log(`thought bubble shown ${seen} times`);
 
   // A second link while this run is saved: offered, but nothing is overwritten unasked.
-  const runBefore = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+  // (The opponents' last cards are stored on the way to the start screen, so read it there.)
   await page.click('.hud [data-action="menu"]');
   await page.click('.sheet [data-action="to-start"]');
   await page.waitForSelector('[data-action="resume"]');
+  const runBefore = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
   await page.goto(`${base}#seed-777-nullspieler`);
   await page.waitForSelector('[data-testid="shared-seed"][data-seed="777"]');
   const lockedNote = (await page.locator('[data-testid="shared-seed"]').textContent()) ?? '';
@@ -2140,8 +2141,6 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
   await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
   const before = await tableState(page);
-  const keysBefore = await storedKeys(page);
-  if (!keysBefore['stammtisch.run'] || !keysBefore['stammtisch.meta']) fail(`${label}: run or meta not stored`);
 
   // Export from the menu.
   await page.click('.hud [data-action="menu"]');
@@ -2158,6 +2157,9 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.click('[data-testid="save-export"]');
   await page.waitForSelector('[data-testid="save-code"]');
   const code = await page.locator('[data-testid="save-code"]').inputValue();
+  // Read with the code: making it stores what the opponents' last cards left in memory.
+  const keysBefore = await storedKeys(page);
+  if (!keysBefore['stammtisch.run'] || !keysBefore['stammtisch.meta']) fail(`${label}: run or meta not stored`);
   if (!/^STAMMTISCH1:[dj]:[A-Za-z0-9_-]+:[0-9a-f]{8}$/.test(code)) fail(`${label}: save code looks wrong: ${code.slice(0, 40)}…`);
   await page.click('[data-action="save-copy"]');
   await page.waitForSelector('[data-testid="save-copied"], [data-testid="save-copy-failed"]');
@@ -2518,8 +2520,8 @@ async function hudSection(page) {
 
 /**
  * The short evening is dropped (ADR 0016): no length choice on the start
- * screen, the start button fits; an old `-kurz` link is offered and played
- * as the whole evening (three districts in the HUD).
+ * screen, the start button fits; an old `-kurz` link is offered like any
+ * link and played as the whole evening (three districts in the HUD).
  */
 async function shortEvening(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
@@ -2547,7 +2549,7 @@ async function shortEvening(browser, errors, reducedMotion) {
   await page2.goto(`${base}#seed-4343-alleinspieler-kurz`);
   await page2.waitForSelector('[data-testid="shared-seed"][data-seed="4343"]');
   const offer = ((await page2.locator('[data-testid="shared-seed"]').textContent()) ?? '').replace(/\s+/g, ' ');
-  if (!offer.includes('ganzen Abend')) fail(`the offer of an old short link does not say it plays the whole evening: ${offer}`);
+  if (/kurz/i.test(offer)) fail(`the offer of an old short link still speaks of the short evening: ${offer}`);
   await page2.click('[data-action="play-shared"]');
   await page2.waitForSelector('.declare');
   const hud = await hudSection(page2);
@@ -4511,7 +4513,13 @@ async function wave3(browser, errors, reducedMotion) {
   for (const id of ['skat_god', 'honorary_chair']) {
     const mat = page.locator(`[data-info="relic:${id}"] svg[data-deckel="${id}"]`);
     if (!(await mat.count())) fail(`legendary relic ${id} has no beer mat in the head`);
-    if (!(await mat.first().locator('[fill="#ff8a1c"], [stroke="#ff8a1c"]').count())) fail(`legendary relic ${id} lacks the legendary ink`);
+    // A mat on screen is a <use> of its symbol (ui/emblems.ts): look into the symbol.
+    const ink = await mat.first().evaluate((svg) => {
+      const href = svg.querySelector('use')?.getAttribute('href');
+      const drawing = href ? document.querySelector(href) : svg;
+      return Boolean(drawing?.querySelector('[fill="#ff8a1c"], [stroke="#ff8a1c"]'));
+    });
+    if (!ink) fail(`legendary relic ${id} lacks the legendary ink`);
   }
   const labels = await page.locator('.hand-card').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').join(' | '));
   // Effekte v2: the old save's Glasdaus became Augen +11, Heimweh fell away.
@@ -5137,7 +5145,8 @@ async function tutorialPass(browser, errors, viewport, shotDir = null) {
       const out = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings') out[k] = localStorage.getItem(k);
+        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), no part of the save.
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels') out[k] = localStorage.getItem(k);
       }
       return out;
     });
@@ -5580,7 +5589,7 @@ async function run() {
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
     if (process.env.SMOKE_ONLY === 'undead') {
@@ -5588,28 +5597,28 @@ async function run() {
       await voucherPass(browser, errors);
       await undeadPass(browser, errors, reducedMotion);
       await undeadGlowPass(browser, errors);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=bosses: the boss passes with the route legend and the names on the map.
     if (process.env.SMOKE_ONLY === 'bosses') {
       await bossesV2(browser, errors, reducedMotion);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=doppel: the Zinken v2 looks and the Doppelgänger's mirror (07.11.2026).
     if (process.env.SMOKE_ONLY === 'doppel') {
       await zinkenV2Pass(browser, errors, PHONE);
       await zinkenV2Pass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     // SMOKE_ONLY=tutorial: the Einführung (DESIGN 16.1).
     if (process.env.SMOKE_ONLY === 'offline') {
       await offlinePass(browser, errors);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'tutorial') {
       await tutorialPass(browser, errors, PHONE, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
       await tutorialPass(browser, errors, DESKTOP, process.env.SMOKE_TUTORIAL_SHOTS ?? null);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'qol') {
       await qolPass(browser, errors, PHONE);
@@ -5618,12 +5627,12 @@ async function run() {
       await handSortPass(browser, errors, DESKTOP);
       await shareRunPass(browser, errors, PHONE);
       await shareRunPass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
-      return;
+      return report(errors);
     }
     const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
     const page = await context.newPage();
@@ -5634,7 +5643,19 @@ async function run() {
     await page.waitForSelector('[data-action="new-run"]');
     const build = await text(page, 'build');
     if (!build) fail('build info missing on the start screen');
-    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'u-S7', 'u-CA', 'w-A', 'wx-T', 'wt-K', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    const sprite = await page.evaluate(() => ['f-CA', 'f-SJ', 'f-HQ', 'f-DK', 'm-points', 'bk-distel', 'bk-distel-s', 'f-blank', 'p-wirt'].filter((id) => !document.getElementById(id)));
+    // The rare faces (Untot, Wandelkarte, Doppelgänger) are a second sprite file, fetched after boot
+    // and put into the document only when a card needs them (ui/art.ts).
+    const rareUrl = await page
+      .waitForFunction(() => performance.getEntriesByType('resource').find((e) => /\/sprite-rare-[^/]*\.svg$/.test(e.name))?.name, null, { timeout: 10000 })
+      .then((h) => h.jsonValue())
+      .catch(() => fail('the rare card sprite was not fetched after boot'));
+    if (await page.evaluate(() => document.querySelector('svg.sprite-rare'))) fail('the rare card sprite is in the document before a card needs it');
+    const rareMissing = await page.evaluate(async (url) => {
+      const doc = new DOMParser().parseFromString(await (await fetch(url)).text(), 'image/svg+xml');
+      return ['u-S7', 'u-CA', 'd-HQ', 'w-A', 'wx-T', 'wt-K', 'ws-SA'].filter((id) => !doc.getElementById(id));
+    }, rareUrl);
+    if (rareMissing.length) fail(`rare card sprite incomplete, missing: ${rareMissing.join(', ')}`);
     // Every opponent back (tools/cardart/backs.py) in both sizes, with a picture.
     const backIds = ['regulars', 'black_peter', 'grandma', 'the_pusher', 'ramscher', 'twins', 'the_old_man'];
     const emptyBacks = await page.evaluate((ids) => ids.flatMap((id) => [`bk-${id}`, `bk-${id}-s`]).filter((id) => !document.getElementById(id)?.childElementCount), backIds);
@@ -5965,6 +5986,11 @@ async function run() {
     await browser.close();
     preview.kill();
   }
+  report(errors);
+}
+
+/** Fail on console errors of any pass (also with SMOKE_ONLY), else say OK. */
+function report(errors) {
   if (errors.length) fail(`console errors:\n${errors.join('\n')}`);
   log(`OK. Screenshots in ${screens}`);
 }

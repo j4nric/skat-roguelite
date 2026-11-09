@@ -17,6 +17,7 @@
 
 import { de, t } from './i18n';
 import type { GameOption, ScoreBreakdown } from './types';
+import { readKey, storageUsable, writeKey } from './storage';
 import type { UiState } from './ui/state';
 
 /** What a step asks of the player: read and tap on, act on the table, or end the Einführung. */
@@ -299,19 +300,12 @@ export class Coach {
 const KEY = 'stammtisch.tutorial';
 
 /** Whether the player played, skipped or declined the Einführung. */
+// Storage blocked: counts as seen, the offer would come back on every visit.
 export function tutorialSeen(): boolean {
-  try {
-    return window.localStorage.getItem(KEY) !== null;
-  } catch {
-    return true;
-  }
+  return !storageUsable() || readKey(KEY) !== null;
 }
 
 /** Remember the Einführung as played ('done') or declined ('declined'). */
 export function markTutorial(state: 'done' | 'declined'): void {
-  try {
-    window.localStorage.setItem(KEY, state);
-  } catch {
-    // Storage blocked: the offer comes back next visit.
-  }
+  writeKey(KEY, state);
 }
