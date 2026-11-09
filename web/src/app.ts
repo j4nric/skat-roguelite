@@ -437,14 +437,21 @@ export class App {
         this.positionCoach();
       }, 100);
     });
-    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, changed: () => this.accountChanged() });
+    this.sync = new Sync({ readable: (keys) => this.describeKeys(keys) !== null, freshMeta: (meta) => this.isFreshMeta(meta), changed: () => this.accountChanged() });
     this.ui.account.user = this.sync.user;
     this.ui.account.status = this.sync.status;
-    // Leaving the page (tab switch, app to the background, closing): upload what changed.
+    // Leaving the page (tab switch, app to the background, closing): store
+    // what an opponent's card left in memory, then upload what changed.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void this.sync.push(true);
+      if (document.visibilityState !== 'hidden') return;
+      this.persist();
+      void this.sync.push(true);
     });
-    window.addEventListener('pagehide', () => void this.sync.push(true));
+    window.addEventListener('pagehide', () => {
+      this.persist();
+      // The request must start now: the upload was encoded in advance.
+      this.sync.sendOnHide();
+    });
     watchNetwork((online) => this.networkChanged(online));
     this.applySettings();
     root.addEventListener('click', (e) => this.onClick(e));
@@ -526,7 +533,7 @@ export class App {
     }
     // Signed in: compare with the account before anything is read from storage.
     let synced: Reconciled = 'none';
-    if (this.sync.signedIn) synced = await this.sync.reconcile(5000);
+    if (this.sync.signedIn) synced = await this.sync.reconcileAtStart(5000);
     this.loadMetaState();
     this.readShareHash();
     window.addEventListener('hashchange', () => {
@@ -664,9 +671,19 @@ export class App {
    */
   private async afterSignIn(user: AccountUser): Promise<Reconciled> {
     this.sync.signedInAs(user);
-    const result = await this.sync.reconcile();
+    const result = await this.sync.reconcileAfterSignIn();
     this.loadBoard(true);
     return result;
+  }
+
+  /**
+   * Signing in found the account's state to take: into storage now, then
+   * reload. False (with a note) if the storage refused.
+   */
+  private takeAccountState(): boolean {
+    if (this.sync.takeServer()) return true;
+    this.showToast(de.save.errors.write ?? '');
+    return false;
   }
 
   /** Reload to start from the account's state, with a note after the reload. */
@@ -692,7 +709,7 @@ export class App {
     const res = await this.accountBusy(() => signIn());
     if (!res) return;
     const synced = await this.afterSignIn(res.user);
-    if (synced === 'applied') {
+    if (synced === 'applied' && this.takeAccountState()) {
       this.reloadWithAccountState();
       return;
     }
@@ -716,7 +733,7 @@ export class App {
   private codeDone(): void {
     const pending = this.pendingSync;
     this.pendingSync = 'none';
-    if (pending === 'applied') {
+    if (pending === 'applied' && this.takeAccountState()) {
       this.reloadWithAccountState();
       return;
     }
@@ -1288,6 +1305,23 @@ export class App {
     const lines = this.describeKeys(decoded.keys);
     if (!lines) return { error: de.save.errors.rejected ?? '' };
     return { keys: decoded.keys, lines };
+  }
+
+  /** Whether a stored meta state is still the one of a new player (asked of the core). */
+  private isFreshMeta(meta: string): boolean {
+    try {
+      const stored = CoreMeta.load(meta);
+      const fresh = CoreMeta.fresh();
+      try {
+        return stored.save() === fresh.save();
+      } finally {
+        stored.meta.free();
+        fresh.meta.free();
+      }
+    } catch {
+      // Unreadable here: treat it as progress, never replace it unasked.
+      return false;
+    }
   }
 
   /**
