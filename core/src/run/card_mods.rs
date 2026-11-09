@@ -14,17 +14,17 @@ use super::{Run, RunError, RunEvent, opponents};
 /// Salt of the draw of the voucher a hand game redeems
 /// ([`Run::redeem_hand_voucher`]): its own generator from the game's seed,
 /// so the deal and every other draw stay the same.
-pub(super) const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
+const HAND_VOUCHER_SEED: u64 = 0x4A4E_D7E1_0000_0004;
 
 /// Salt of the generator that picks the card of
 /// [`Effect::AttachModToRandomCard`] (relics v4).
-pub(super) const ATTACH_SEED: u64 = 0xA77A_C4ED_0000_0006;
+const ATTACH_SEED: u64 = 0xA77A_C4ED_0000_0006;
 
 impl Run {
     /// The card modifications a random draw may give one deck card
     /// ([`Run::mod_pool`] without curses): only modifications that
     /// may go on it now ([`crate::content::CardModDef::only_on`], and by
-    /// the rules of [`Deck::add_mod`]: not on a cursed card, not past the
+    /// the rules of [`Deck::add_mod`](crate::deck::Deck::add_mod): not on a cursed card, not past the
     /// limit).
     pub(super) fn card_mod_pool_for(
         &self,
@@ -127,7 +127,7 @@ impl Run {
     }
 
     /// Attach a card modification with `value` to a deck card by the
-    /// rules of effects v2 ([`Deck::add_mod`]) and fire the `OnAttach`
+    /// rules of effects v2 ([`Deck::add_mod`](crate::deck::Deck::add_mod)) and fire the `OnAttach`
     /// hooks of what the card carries then (a curse pays Groschen, not
     /// scaled by the value).
     pub(super) fn attach_mod(
@@ -163,7 +163,7 @@ impl Run {
     }
 
     /// [`Run::attach_mod`]; with `paid` false the `OnAttach` hooks pay no
-    /// Groschen (a curse as the price of a trade, [`trade`], decided on
+    /// Groschen (a curse as the price of a trade, [`trade`](super::trade), decided on
     /// 03.11.2026: the curse is the price, it pays nothing back).
     pub(super) fn attach_mod_paid(
         &mut self,

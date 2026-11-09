@@ -458,7 +458,7 @@ impl Run {
         Ok(())
     }
 
-    /// [`RunAction::ReplaceRelic`]: sell `replace`, then buy `slot`, on a
+    /// [`RunAction::ReplaceRelic`](super::RunAction::ReplaceRelic): sell `replace`, then buy `slot`, on a
     /// copy, so a failed purchase leaves the run as it was.
     pub(super) fn replace_relic(
         &mut self,

@@ -33,7 +33,7 @@
 //! run at any point, also while the AI is to move; equal seed and equal
 //! actions give equal results.
 //!
-//! Content effects fire at fixed points ([`Stage`]): passive effects when a
+//! Content effects fire at fixed points ([`Stage`](crate::content::Stage)): passive effects when a
 //! game is set up, then `OnDeal`, `OnDeclare`, `OnCardPlayed`,
 //! `OnTrickEnd`, `OnScore` and, after a won pub, `OnSeriesWon`. Sources
 //! fire in a fixed order: character, boss, the malus of a Spelunke, relics
@@ -50,50 +50,54 @@
 //! ([`RunStart::locked_relics`]).
 
 pub mod bot;
-mod card_reward;
-mod check;
-mod encounters;
 pub mod guests;
 pub mod meta;
 pub mod night;
 pub mod opponents;
 pub mod player;
-mod schnapps_reward;
 pub mod tour;
 pub mod trade;
 pub mod view;
 pub mod zinken;
 
-mod settle;
-
+// Types of the run's state and its interface.
 mod action;
+mod error;
+mod event;
+mod migrate;
+mod state;
+
+// The `impl Run` sections: each module adds the methods of one area.
 mod card_mods;
+mod card_reward;
+mod check;
 mod consumables;
 mod counts;
 mod deal;
-mod error;
-mod event;
+mod encounters;
 mod hooks;
-mod migrate;
+mod schnapps_reward;
 mod scoring;
+mod settle;
 mod shop;
-mod state;
 mod table;
 mod util;
 mod value_preview;
+
 pub use action::RunAction;
 pub use error::{RunError, RunErrorCode};
 pub use event::RunEvent;
-use hooks::score_line;
 pub use migrate::{REFUNDED_CONSUMABLES, RENAMED_CONSUMABLES, RETIRED_BOSSES};
 pub use scoring::series_target;
-use scoring::{kontra_lines, player_cards, win_factor_lines};
-use state::is_zero;
 pub use state::{
     ActiveEncounter, ActiveGame, BOSS_SEAT, EncounterOption, GameRules, Kontra, NextPubPlan,
     OptionBlock, PARTNER_SEAT, Payout, RunPhase, RunStats, Series, Shop, Wager, sell_price,
 };
 pub use table::UNDEAD_PICK;
+
+use hooks::score_line;
+use scoring::{kontra_lines, player_cards, win_factor_lines};
+use state::is_zero;
 use util::{draw_weighted, mod_value};
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -206,7 +210,7 @@ pub struct Run {
     #[serde(default)]
     pending_factor: Option<(EncounterId, u32)>,
     /// An encounter showed the player both skat cards of every deal until
-    /// the next declaration ([`EncounterEffect::SeeSkat`]).
+    /// the next declaration ([`EncounterEffect::SeeSkat`](crate::content::EncounterEffect::SeeSkat)).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     peek_next_skat: Option<EncounterId>,
     /// Consumables used for the next declared game ("Doppelkorn",

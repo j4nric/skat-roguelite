@@ -81,7 +81,7 @@ pub(super) fn kontra_lines(kontra: Kontra) -> Vec<ScoreLine> {
     }
 }
 
-pub(super) const fn kontra_line(source: Source) -> ScoreLine {
+const fn kontra_line(source: Source) -> ScoreLine {
     ScoreLine {
         source,
         lever: Lever::GameValue,
@@ -92,7 +92,7 @@ pub(super) const fn kontra_line(source: Source) -> ScoreLine {
 /// Augen changes from relics and card modifications on the cards that
 /// count for the declarer (skat, won tricks, conceded hands), one line per
 /// source.
-pub(super) fn declarer_point_lines(active: &ActiveGame) -> Vec<ScoreLine> {
+fn declarer_point_lines(active: &ActiveGame) -> Vec<ScoreLine> {
     let game = &active.game;
     let mut ids: Vec<u32> = game.skat().iter().map(|c| c.id).collect();
     for trick in game.tricks().iter().filter(|t| t.winner.is_declarer()) {
@@ -321,7 +321,7 @@ impl Run {
     }
 
     /// Whether the player may give up the pub now
-    /// ([`RunAction::GiveUpPub`]): between two games, once its first game
+    /// ([`RunAction::GiveUpPub`](super::RunAction::GiveUpPub)): between two games, once its first game
     /// was played.
     #[must_use]
     pub fn can_give_up(&self) -> bool {

@@ -1,4 +1,4 @@
-//! What happened: [`RunEvent`], the output of [`Run::apply`].
+//! What happened: [`RunEvent`], the output of [`Run::apply`](super::Run::apply).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +14,8 @@ use super::{EncounterOption, Payout, card_reward, is_zero, tour, trade, zinken};
 /// Something that happened in the run, in order of occurrence.
 ///
 /// `G` is the type of the game events: the full [`Event`] for the run
-/// itself and the simulator, [`player::PlayerGameEvent`] for what the
-/// player may see (see [`player::PlayerEvent`]).
+/// itself and the simulator, [`player::PlayerGameEvent`](super::player::PlayerGameEvent) for what the
+/// player may see (see [`player::PlayerEvent`](super::player::PlayerEvent)).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunEvent<G = Event<DealtCard>> {
     /// A new section (Skatabend) began and its boss was drawn. The boss is
@@ -57,7 +57,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
     Game(G),
     /// "Untot" (DESIGN 7.2): the player's card rises from the trick just
     /// completed as soon as he picks `pick` cards of his hand
-    /// ([`RunAction::ChooseRiseCards`]); one of them is drawn and takes its
+    /// ([`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards)); one of them is drawn and takes its
     /// place. Then [`Event::CardRose`] follows.
     RiseChoice {
         /// The card as it lies in the trick.
@@ -275,7 +275,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Einmischen added.
         #[serde(alias = "passes")]
         redeals: u32,
-        /// Einmischen left now ([`Run::redeals_left`]).
+        /// Einmischen left now ([`Run::redeals_left`](super::Run::redeals_left)).
         #[serde(alias = "passes_left")]
         redeals_left: u32,
     },
@@ -312,7 +312,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         value: i32,
     },
     /// An encounter put a Marke on a card of the player's edition
-    /// ([`EncounterEffect::Marke`], 04.11.2026); followed by the
+    /// ([`EncounterEffect::Marke`](crate::content::EncounterEffect::Marke), 04.11.2026); followed by the
     /// `DeckChanged` of the card.
     MarkeGiven {
         /// Deck card id.
@@ -425,7 +425,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         boss: Option<BossId>,
     },
     /// The player gave up the pub ("Kneipe verlassen",
-    /// [`RunAction::GiveUpPub`]). It counts as lost: `PubLost` and what a
+    /// [`RunAction::GiveUpPub`](super::RunAction::GiveUpPub)). It counts as lost: `PubLost` and what a
     /// lost pub brings follow (the end of the run, or the second chance of
     /// the "Schutzengel").
     PubGivenUp {
@@ -628,7 +628,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         cards: Vec<u32>,
     },
     /// A won boss pub (not the last): relics to pick one from (ADR 0017),
-    /// see [`BossReward`].
+    /// see [`BossReward`](super::tour::BossReward).
     BossRewardOffered {
         /// The relics on offer.
         relics: Vec<RelicId>,
@@ -637,7 +637,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
     BossRewardDeclined,
     /// A won pub gave a random Schnaps (DESIGN 8.9). With a free slot it
     /// is in the slots now; with every slot full the player chooses
-    /// ([`RunAction::ChooseSchnappsReward`]).
+    /// ([`RunAction::ChooseSchnappsReward`](super::RunAction::ChooseSchnappsReward)).
     SchnappsRewarded {
         /// The Schnaps.
         consumable: ConsumableId,
@@ -653,7 +653,7 @@ pub enum RunEvent<G = Event<DealtCard>> {
         given_up: ConsumableId,
     },
     /// A won normal pub or Spelunke: the innkeeper offers these cards
-    /// with a Zinke each (DESIGN 5.0, [`RunPhase::CardReward`]).
+    /// with a Zinke each (DESIGN 5.0, [`RunPhase::CardReward`](super::RunPhase::CardReward)).
     CardRewardOffered {
         /// The offers, in order.
         offers: Vec<card_reward::RewardOffer>,

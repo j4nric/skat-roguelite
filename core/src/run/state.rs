@@ -1,4 +1,4 @@
-//! The state types of a run besides [`Run`] itself: the phase, the pub
+//! The state types of a run besides [`Run`](super::Run) itself: the phase, the pub
 //! being played ([`Series`]), the game in progress ([`ActiveGame`]), the
 //! open encounter, the Tresen ([`Shop`]), the payout of a won pub and the
 //! run statistics. All of them are part of a save.
@@ -36,7 +36,7 @@ pub enum RunPhase {
     BossReward,
     /// A normal pub or a Spelunke was won: the innkeeper offers Zinken,
     /// the player takes one on a card of his choice or skips
-    /// ([`card_reward::CardReward`], DESIGN 5.0). Added on 04.11.2026,
+    /// ([`card_reward::CardReward`](super::card_reward::CardReward), DESIGN 5.0). Added on 04.11.2026,
     /// after the other phases, so saves keep their phase.
     CardReward,
     /// The last boss pub was won.
@@ -71,7 +71,7 @@ pub struct Series {
     #[serde(default)]
     pub redeals_used: u32,
     /// Einmischen of the current game's own allowance used so far
-    /// ([`Run::redeals_left`]); back to 0 with every new game.
+    /// ([`Run::redeals_left`](super::Run::redeals_left)); back to 0 with every new game.
     #[serde(default)]
     pub redeals_in_game: u32,
     /// Every Einmischen of the current game (own, extra or "Neues Blatt");
@@ -107,7 +107,7 @@ pub struct Series {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub temp_curses: Vec<(u32, CardModId)>,
     /// Cards of the player's edition a boss cursed for this pub ("Die
-    /// Oma", [`Effect::CurseForPub`]), each as it was before; put back
+    /// Oma", [`Effect::CurseForPub`](crate::content::Effect::CurseForPub)), each as it was before; put back
     /// when the pub ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boss_curses: Vec<crate::deck::DeckCard>,
@@ -234,8 +234,8 @@ pub struct GameRules {
     /// Who allows Kontra in this game, if anyone.
     pub kontra_source: Option<Source>,
     /// Einmischen the content adds to every game ("Schieben", one per
-    /// [`Effect::ExtraRedeal`]), on top of `run.ron` and the character
-    /// ([`Content::redeals`]). Also read under its old name
+    /// [`Effect::ExtraRedeal`](crate::content::Effect::ExtraRedeal)), on top of `run.ron` and the character
+    /// ([`Content::redeals`](crate::content::Content::redeals)). Also read under its old name
     /// `series_redeals`.
     #[serde(alias = "series_redeals")]
     pub extra_redeals: u32,
@@ -245,7 +245,7 @@ pub struct GameRules {
     /// Kiebitz").
     pub peek: u32,
     /// Cards of each defender made "Durchsichtig" for this game when it is
-    /// dealt ("Glasauge", [`Effect::RevealDefenderCards`]), and the first
+    /// dealt ("Glasauge", [`Effect::RevealDefenderCards`](crate::content::Effect::RevealDefenderCards)), and the first
     /// source that granted it.
     pub transparent_per_defender: u32,
     /// Who granted [`Self::transparent_per_defender`].
@@ -272,7 +272,7 @@ pub struct GameRules {
 /// Read a list of card filters, or the single optional filter of saves
 /// from before several skat swaps (`null`/`None` or one filter). Works for
 /// JSON and RON alike, so no untagged enum (RON cannot buffer those).
-pub(super) fn filters_or_one<'de, D: serde::Deserializer<'de>>(
+fn filters_or_one<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<CardFilter>, D::Error> {
     struct Filters;
@@ -343,7 +343,7 @@ pub struct ActiveGame {
     #[serde(default)]
     pub peeked: Vec<(DealtCard, Seat)>,
     /// Defender cards (ids) "Durchsichtig" for this game only
-    /// ("Glasauge", [`Effect::RevealDefenderCards`]): drawn from the
+    /// ("Glasauge", [`Effect::RevealDefenderCards`](crate::content::Effect::RevealDefenderCards)): drawn from the
     /// defenders' hands at the deal, never a card of the player's edition.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transparent_for_game: Vec<u32>,
@@ -364,7 +364,7 @@ pub struct ActiveGame {
     #[serde(default)]
     pub single_loss: Option<Source>,
     /// Won, this game counts that many times more ("Eierlikör",
-    /// [`NextGameEffect::MultiplyWin`]): who granted it and the factor.
+    /// [`NextGameEffect::MultiplyWin`](crate::content::NextGameEffect::MultiplyWin)): who granted it and the factor.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub win_factors: Vec<(Source, u32)>,
     /// The defender whose whole hand the player sees (`RevealDefenderHand`):
@@ -377,7 +377,7 @@ pub struct ActiveGame {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shown_hands: Vec<Seat>,
     /// The deal before the last Einmischen of this game, kept for "Reue"
-    /// ([`ConsumableAction::UndoRedeal`]); its own `previous` is always
+    /// ([`ConsumableAction::UndoRedeal`](crate::content::ConsumableAction::UndoRedeal)); its own `previous` is always
     /// empty. `None` before the first Einmischen and after an undo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous: Option<Box<ActiveGame>>,
@@ -392,11 +392,11 @@ pub struct ActiveGame {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skat_shown: Vec<DealtCard>,
     /// "Untot" cards that rose in this game (instance ids): each rises
-    /// once per game ([`Effect::Undead`]).
+    /// once per game ([`Effect::Undead`](crate::content::Effect::Undead)).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub risen: Vec<u32>,
     /// An "Untot" card (instance id) that lies in the last trick and waits
-    /// for the player's three cards ([`RunAction::ChooseRiseCards`]) before
+    /// for the player's three cards ([`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards)) before
     /// it rises. `None` otherwise and in saves from before 03.11.2026.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_rise: Option<u32>,
@@ -490,7 +490,7 @@ impl EncounterOption {
 
     /// Whether it gives a named relic ([`EncounterEffect::Relic`]); with
     /// every relic slot full it then needs an owned relic to replace
-    /// ([`Run::option_needs_relic`]).
+    /// ([`Run::option_needs_relic`](super::Run::option_needs_relic)).
     #[must_use]
     pub fn gains_relic(&self) -> bool {
         self.effects
@@ -527,7 +527,7 @@ pub enum OptionBlock {
 }
 
 impl OptionBlock {
-    /// The error [`RunAction::ChooseEncounter`] returns for it.
+    /// The error [`RunAction::ChooseEncounter`](super::RunAction::ChooseEncounter) returns for it.
     #[must_use]
     pub const fn error(self) -> RunError {
         match self {
@@ -547,7 +547,7 @@ pub struct ActiveEncounter {
     pub id: EncounterId,
     /// Its options, drawn when it opened; one must be taken. Empty only
     /// for an encounter of a save from before 03.11.2026, which is opened
-    /// anew when loaded ([`Run::drop_unknown_content`]).
+    /// anew when loaded ([`Run::drop_unknown_content`](super::Run::drop_unknown_content)).
     pub options: Vec<EncounterOption>,
     /// The option taken while the Kartenmaler waits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -656,7 +656,7 @@ impl Payout {
 /// Serialized form of [`Payout`]: the parts plus their sum. The sum is
 /// ignored when reading; it is always recomputed.
 #[derive(Serialize, Deserialize)]
-pub(super) struct PayoutRepr {
+struct PayoutRepr {
     base: u32,
     games_left: u32,
     interest: u32,

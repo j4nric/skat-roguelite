@@ -16,15 +16,15 @@ use super::{ActiveGame, Kontra, Run, RunError, RunEvent, opponents};
 
 /// Mixed into the game's seed for the card "Drei drücken" draws, so that
 /// the draw is independent of the PIMC samples of the same game.
-pub(super) const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
+const DRAW_SEED: u64 = 0xD8E1_D8E1_0000_0003;
 
 /// "Untot" (DESIGN 7.2, 03.11.2026): the player picks this many cards of
 /// his hand, one of them is drawn to take the rising card's place in the
-/// trick ([`RunAction::ChooseRiseCards`]).
+/// trick ([`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards)).
 pub const UNDEAD_PICK: usize = 3;
 
 impl Run {
-    /// Einmischen ([`RunAction::Redeal`]): one of the game's own first,
+    /// Einmischen ([`RunAction::Redeal`](super::RunAction::Redeal)): one of the game's own first,
     /// then one of the series' extras ("Ein Bier").
     pub(super) fn redeal_action(
         &mut self,
@@ -76,7 +76,7 @@ impl Run {
     /// ([`Effect::RedealKeeps`], "Unterschlupf"): his own cards that match a
     /// filter as he holds them; a Unter his edition demotes is no Unter.
     /// A filter with `per_game` counts only at the first that many
-    /// Einmischen of the game ([`Series::redeals_this_game`]).
+    /// Einmischen of the game ([`Series::redeals_this_game`](super::Series::redeals_this_game)).
     fn kept_at_redeal(&self, content: &Content) -> Vec<u32> {
         let Some(active) = self.game.as_ref() else {
             return Vec::new();
@@ -564,7 +564,7 @@ impl Run {
     /// hooks of a completed trick, the player's card in it rises back into
     /// his hand if it may ([`Run::can_rise`], judged as if it were still in
     /// the hand), as a copy of the card that won the trick
-    /// ([`Game::raise`]). One of [`UNDEAD_PICK`] cards of his hand, drawn
+    /// ([`Game::raise`](crate::game::Game::raise)). One of [`UNDEAD_PICK`] cards of his hand, drawn
     /// with the game's generator, takes its place in the trick: with more
     /// cards in his hand he picks them first, and the run waits
     /// ([`Run::rise_pending`], [`RunEvent::RiseChoice`]); with as many or
@@ -641,7 +641,7 @@ impl Run {
     }
 
     /// The "Untot" card waiting for the player's three cards
-    /// ([`RunAction::ChooseRiseCards`]), as it lies in the last trick.
+    /// ([`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards)), as it lies in the last trick.
     #[must_use]
     pub fn rise_pending(&self) -> Option<DealtCard> {
         let active = self.game.as_ref()?;
@@ -653,7 +653,7 @@ impl Run {
             .and_then(|t| t.cards.iter().copied().find(|c| c.id == id))
     }
 
-    /// [`RunAction::ChooseRiseCards`]: three different cards of the hand,
+    /// [`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards): three different cards of the hand,
     /// sorted by id so the draw does not depend on their order; one of
     /// them is drawn and the waiting card rises.
     pub(super) fn choose_rise_cards(
@@ -709,7 +709,7 @@ impl Run {
 
     /// Einmischen each game of the series allows, for the game in
     /// progress: `run.ron` and the character ([`Content::redeals`]) plus
-    /// one per "Schieben" in force ([`GameRules::extra_redeals`]).
+    /// one per "Schieben" in force ([`GameRules::extra_redeals`](super::GameRules::extra_redeals)).
     fn redeal_allowance(&self, content: &Content) -> u32 {
         if self.malus(content).is_some_and(|m| m.no_redeal) || self.in_tutorial_pub() {
             return 0;
@@ -731,7 +731,7 @@ impl Run {
     /// own, plus the extras of the series ("Ein Bier", "Kräuter"). 0
     /// without a game. Whether one may be used right now (only with ten
     /// cards before the skat, never in the Ramsch) is
-    /// [`Run::accepts`]`(`[`RunAction::Redeal`]`)`.
+    /// [`Run::accepts`]`(`[`RunAction::Redeal`](super::RunAction::Redeal)`)`.
     #[must_use]
     pub fn redeals_left(&self, content: &Content) -> u32 {
         if self.game.is_none()

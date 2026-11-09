@@ -47,7 +47,7 @@ pub enum RunError {
     NoModAvailable,
     /// The content does not know this id.
     UnknownContent(String),
-    /// A [`RunStart`] names a section or series that does not exist.
+    /// A [`RunStart`](super::RunStart) names a section or series that does not exist.
     InvalidStart,
     /// The character cannot declare this game (the Nullspieler only Null,
     /// nobody Ramsch).
@@ -60,14 +60,14 @@ pub enum RunError {
     NothingToTake,
     /// The Ramsch of the series cannot be dealt again.
     RamschRequired,
-    /// A defender is to move: advance the AI ([`Run::advance_ai`]) before
+    /// A defender is to move: advance the AI ([`Run::advance_ai`](super::Run::advance_ai)) before
     /// the player acts again.
     AiToMove,
     /// "Blue Curaçao" cannot repaint this card into this suit: a jack, a blank,
     /// or the suit it already has.
     CannotChalk,
     /// The rest of the game can still change its score
-    /// ([`RunAction::SettleGame`]).
+    /// ([`RunAction::SettleGame`](super::RunAction::SettleGame)).
     NotDecided,
     /// "Reue": there is no Einmischen of this game to take back.
     NoRedealToUndo,
@@ -81,10 +81,10 @@ pub enum RunError {
     /// codes): no life was missing.
     LivesFull,
     /// The Kartenmaler waits for the player's choice
-    /// ([`RunAction::ChoosePaint`]); nothing else goes before it.
+    /// ([`RunAction::ChoosePaint`](super::RunAction::ChoosePaint)); nothing else goes before it.
     PainterPending,
     /// An "Untot" card waits for the player's three cards
-    /// ([`RunAction::ChooseRiseCards`]); nothing else goes before it.
+    /// ([`RunAction::ChooseRiseCards`](super::RunAction::ChooseRiseCards)); nothing else goes before it.
     RisePending,
     /// The cards for an "Untot" card are not three different cards of the
     /// player's hand, or no "Untot" card waits for them.
@@ -100,10 +100,10 @@ pub enum RunError {
     /// Not in a boss pub ("Absacker").
     NotInBossPub,
     /// The Schnaps of a won pub waits for the player's choice
-    /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
+    /// ([`RunAction::ChooseSchnappsReward`](super::RunAction::ChooseSchnappsReward)); nothing else goes before it.
     SchnappsRewardPending,
     /// The card reward of a won pub waits for the player
-    /// ([`RunAction::TakeCardReward`], [`RunAction::SkipCardReward`]);
+    /// ([`RunAction::TakeCardReward`](super::RunAction::TakeCardReward), [`RunAction::SkipCardReward`](super::RunAction::SkipCardReward));
     /// nothing else goes before it.
     CardRewardPending,
 }
@@ -233,7 +233,7 @@ error_codes! {
         /// "Blue Curaçao" cannot repaint this card into this suit.
         CannotChalk,
         /// The rest of the game can still change its score; it cannot be
-        /// settled ([`RunAction::SettleGame`]).
+        /// settled ([`RunAction::SettleGame`](super::RunAction::SettleGame)).
         NotDecided,
         /// "Reue": no Einmischen of this game to take back.
         NoRedealToUndo,
@@ -266,7 +266,7 @@ error_codes! {
         /// Not in a boss pub ("Absacker").
         NotInBossPub,
         /// The Schnaps of a won pub waits for the player's choice
-        /// ([`RunAction::ChooseSchnappsReward`]); nothing else goes before it.
+        /// ([`RunAction::ChooseSchnappsReward`](super::RunAction::ChooseSchnappsReward)); nothing else goes before it.
         SchnappsRewardPending,
         /// The card reward of a won pub waits for the player.
         CardRewardPending,

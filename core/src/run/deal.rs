@@ -20,16 +20,16 @@ use super::{
 
 /// Salt of the draw of the defender cards "Glasauge" makes "Durchsichtig"
 /// for a game ([`Effect::RevealDefenderCards`]).
-pub(super) const TRANSPARENT_SEED: u64 = 0x61A5_5E7E_0000_0005;
+const TRANSPARENT_SEED: u64 = 0x61A5_5E7E_0000_0005;
 
 /// The editions of the two boss players of a game, left and right; both
 /// `None` outside a boss pub.
-pub(super) type BossEditions = [Option<Edition>; 2];
+type BossEditions = [Option<Edition>; 2];
 
 /// A game dealt by hand: every card in the edition of the seat that gets
 /// it (the skat in the player's), found by its printed face ("Winkel"
 /// changes the kind of a dealt card). Fails if a card is not in a deck.
-pub(super) fn fixed_game(
+fn fixed_game(
     resolved: &[crate::content::ResolvedDeck; 3],
     hands: [&[CardKind]; 3],
     skat: [CardKind; 2],
@@ -308,7 +308,7 @@ impl Run {
 
     /// "Der Kiebitz": show the player random cards of the defenders, drawn
     /// with the game's own generator (so the deal stays the same).
-    pub(super) fn peek(&mut self, rng: &mut Rng, events: &mut Vec<RunEvent>) {
+    fn peek(&mut self, rng: &mut Rng, events: &mut Vec<RunEvent>) {
         let Some(active) = self.game.as_mut() else {
             return;
         };
