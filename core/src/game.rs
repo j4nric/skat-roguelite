@@ -582,6 +582,9 @@ pub struct Game<C = Card> {
     trick_lead: Seat,
     trick: Vec<C>,
     tricks: Vec<CompletedTrick<C>>,
+    /// Augen per seat from the tricks as printed (no sign). Kept up to
+    /// date for the save format only; [`Game::trick_card_points`] counts
+    /// from the tricks with the sign.
     card_points: [u32; 3],
     /// Tricks and Augen handed to the declarer by a concession.
     conceded: Option<(u32, u32)>,
@@ -607,6 +610,25 @@ pub struct Game<C = Card> {
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
+/// Replace every `old` in `cards` by `new` and sort the list again.
+fn replace_sorted<C: PlayingCard>(cards: &mut [C], old: C, new: C) {
+    for c in cards.iter_mut().filter(|c| **c == old) {
+        *c = new;
+    }
+    cards.sort();
+}
+
+/// Pass every copy of the card instance `id` in the three editions through
+/// `f` and sort each edition again.
+fn remap_instance<C: PlayingCard>(editions: &mut [Vec<C>; 3], id: u32, f: impl Fn(C) -> C) {
+    for edition in editions {
+        for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
+            *c = f(*c);
+        }
+        edition.sort();
+    }
+}
+
 fn no_bonus(points: &[u32; 3]) -> bool {
     *points == [0; 3]
 }
@@ -926,10 +948,7 @@ impl<C: PlayingCard> Game<C> {
             return card;
         }
         for list in [&mut self.deck, &mut self.in_play, &mut self.declarer_cards] {
-            for c in list.iter_mut().filter(|c| **c == card) {
-                *c = new;
-            }
-            list.sort();
+            replace_sorted(list, card, new);
         }
         events.push(Event::CardChangedHands {
             seat: to,
@@ -942,12 +961,6 @@ impl<C: PlayingCard> Game<C> {
     /// Current phase.
     #[must_use]
     pub fn phase(&self) -> Phase {
-        self.phase
-    }
-
-    /// Alias of [`Game::phase`] for readers who think in states.
-    #[must_use]
-    pub fn state(&self) -> Phase {
         self.phase
     }
 
@@ -1057,10 +1070,24 @@ impl<C: PlayingCard> Game<C> {
         self.trick_lead
     }
 
-    /// Augen each seat has collected in tricks (skat not included).
+    /// Augen each seat has collected in tricks (skat and extra Augen not
+    /// included), with their sign: Augen below zero
+    /// ([`PlayingCard::point_debt`]) count against the seat that took
+    /// them, as in [`Game::seat_card_points`].
+    #[must_use]
+    pub fn trick_signed_points(&self) -> [i64; 3] {
+        let mut points = [0i64; 3];
+        for trick in &self.tricks {
+            points[trick.winner.index()] += trick.signed_points();
+        }
+        points
+    }
+
+    /// [`Game::trick_signed_points`] with no seat below 0.
     #[must_use]
     pub fn trick_card_points(&self) -> [u32; 3] {
-        self.card_points
+        self.trick_signed_points()
+            .map(|p| u32::try_from(p.max(0)).unwrap_or(u32::MAX))
     }
 
     /// Extra Augen per seat from card effects ("Erster Stich").
@@ -1309,25 +1336,14 @@ impl<C: PlayingCard> Game<C> {
                 card: old,
             });
         }
-        let swap = |cards: &mut Vec<C>| {
-            for c in cards.iter_mut().filter(|c| **c == old) {
-                *c = new;
-            }
-            cards.sort();
-        };
-        swap(&mut self.hands[Seat::DECLARER.index()]);
-        swap(&mut self.declarer_cards);
-        swap(&mut self.in_play);
-        swap(&mut self.deck);
+        replace_sorted(&mut self.hands[Seat::DECLARER.index()], old, new);
+        replace_sorted(&mut self.declarer_cards, old, new);
+        replace_sorted(&mut self.in_play, old, new);
+        replace_sorted(&mut self.deck, old, new);
         // The card is repainted in every edition: should it change its
         // holder, it keeps the new suit.
         if let (Some(id), Some(face)) = (old.instance(), new.face()) {
-            for edition in &mut self.editions {
-                for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
-                    *c = c.with_suit(face.suit);
-                }
-                edition.sort();
-            }
+            remap_instance(&mut self.editions, id, |c| c.with_suit(face.suit));
         }
         // While discarding, the picked-up skat cards are also still named
         // in the skat.
@@ -1357,18 +1373,12 @@ impl<C: PlayingCard> Game<C> {
                 card: old,
             });
         }
-        let swap = |cards: &mut Vec<C>| {
-            for c in cards.iter_mut().filter(|c| **c == old) {
-                *c = new;
-            }
-            cards.sort();
-        };
-        swap(&mut self.hands[Seat::DECLARER.index()]);
-        swap(&mut self.declarer_cards);
-        swap(&mut self.in_play);
-        swap(&mut self.deck);
+        replace_sorted(&mut self.hands[Seat::DECLARER.index()], old, new);
+        replace_sorted(&mut self.declarer_cards, old, new);
+        replace_sorted(&mut self.in_play, old, new);
+        replace_sorted(&mut self.deck, old, new);
         for edition in &mut self.editions {
-            swap(edition);
+            replace_sorted(edition, old, new);
         }
         Ok(())
     }
@@ -1390,15 +1400,9 @@ impl<C: PlayingCard> Game<C> {
         let old = self.skat;
         for card in old {
             let new = f(card);
-            let swap = |cards: &mut Vec<C>| {
-                for c in cards.iter_mut().filter(|c| **c == card) {
-                    *c = new;
-                }
-                cards.sort();
-            };
-            swap(&mut self.declarer_cards);
-            swap(&mut self.in_play);
-            swap(&mut self.deck);
+            replace_sorted(&mut self.declarer_cards, card, new);
+            replace_sorted(&mut self.in_play, card, new);
+            replace_sorted(&mut self.deck, card, new);
             for c in self.skat.iter_mut().filter(|c| **c == card) {
                 *c = new;
             }
@@ -1457,21 +1461,10 @@ impl<C: PlayingCard> Game<C> {
                 _ => old.settle_wild(suit),
             };
             let target = new.face().map(|f| f.suit);
-            let swap = |cards: &mut Vec<C>| {
-                for c in cards.iter_mut().filter(|c| **c == old) {
-                    *c = new;
-                }
-                cards.sort();
-            };
-            swap(&mut self.hands[Seat::DECLARER.index()]);
-            swap(&mut self.deck);
+            replace_sorted(&mut self.hands[Seat::DECLARER.index()], old, new);
+            replace_sorted(&mut self.deck, old, new);
             if let (Some(id), Some(target)) = (old.instance(), target) {
-                for edition in &mut self.editions {
-                    for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
-                        *c = c.settle_wild(target);
-                    }
-                    edition.sort();
-                }
+                remap_instance(&mut self.editions, id, |c| c.settle_wild(target));
             }
             events.push(Event::WildCardSettled { old, new });
         }
@@ -1581,9 +1574,9 @@ impl<C: PlayingCard> Game<C> {
         Ok(events)
     }
 
-    /// Play a card. Returns the events this caused: the card, possibly the
-    /// completed trick, possibly the finished game.
-    pub fn play(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
+    /// Whether `seat` may play `card` now: in play, the seat's turn, the
+    /// card in its hand and following suit. Returns the declaration.
+    fn check_play(&self, seat: Seat, card: C) -> Result<Declaration, GameError<C>> {
         let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
             return Err(GameError::WrongPhase { phase: self.phase });
         };
@@ -1599,6 +1592,13 @@ impl<C: PlayingCard> Game<C> {
                 return Err(GameError::MustFollowSuit { card, lead });
             }
         }
+        Ok(declaration)
+    }
+
+    /// Play a card. Returns the events this caused: the card, possibly the
+    /// completed trick, possibly the finished game.
+    pub fn play(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
+        let declaration = self.check_play(seat, card)?;
 
         self.hands[seat.index()].retain(|&c| c != card);
         let mut events = Vec::new();
@@ -1620,21 +1620,7 @@ impl<C: PlayingCard> Game<C> {
     /// the copy and [`Event::TrickWon`]. Whether a card may mirror is the
     /// run's business.
     pub fn play_mirrored(&mut self, seat: Seat, card: C) -> Result<Vec<Event<C>>, GameError<C>> {
-        let (Phase::Playing, Some(declaration)) = (self.phase, self.declaration) else {
-            return Err(GameError::WrongPhase { phase: self.phase });
-        };
-        let expected = seat_at(self.trick_lead, self.trick.len());
-        if seat != expected {
-            return Err(GameError::NotYourTurn { seat, expected });
-        }
-        if !self.hand(seat).contains(&card) {
-            return Err(GameError::CardNotInHand { seat, card });
-        }
-        if let Some(lead) = self.lead_card() {
-            if !rules::may_play(declaration.game(), self.hand(seat), Some(lead), card) {
-                return Err(GameError::MustFollowSuit { card, lead });
-            }
-        }
+        let declaration = self.check_play(seat, card)?;
         let Some(copied) = (self.trick.len() == 2)
             .then(|| rules::winning_index(declaration.game(), &self.trick))
             .flatten()
@@ -1644,17 +1630,9 @@ impl<C: PlayingCard> Game<C> {
         };
         let copy = card.risen_as(copied);
         self.hands[seat.index()].retain(|&c| c != card);
-        for c in self.deck.iter_mut().filter(|c| **c == card) {
-            *c = copy;
-        }
-        self.deck.sort();
+        replace_sorted(&mut self.deck, card, copy);
         if let Some(id) = card.instance() {
-            for edition in &mut self.editions {
-                for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
-                    *c = c.risen_as(copied);
-                }
-                edition.sort();
-            }
+            remap_instance(&mut self.editions, id, |c| c.risen_as(copied));
         }
         let mut events = vec![Event::DoppelgangerMirrored {
             seat,
@@ -1758,17 +1736,9 @@ impl<C: PlayingCard> Game<C> {
         hand.push(risen);
         hand.sort();
         if risen != card {
-            for c in self.deck.iter_mut().filter(|c| **c == card) {
-                *c = risen;
-            }
-            self.deck.sort();
+            replace_sorted(&mut self.deck, card, risen);
             if let Some(id) = card.instance() {
-                for edition in &mut self.editions {
-                    for c in edition.iter_mut().filter(|c| c.instance() == Some(id)) {
-                        *c = c.risen_as(winning);
-                    }
-                    edition.sort();
-                }
+                remap_instance(&mut self.editions, id, |c| c.risen_as(winning));
             }
         }
         let events = vec![Event::CardRose {
@@ -2377,6 +2347,56 @@ mod tests {
         cards.pop();
         let game = Game::deal_from(&mut rng, cards, Seat::DECLARER).expect("deal");
         assert_eq!(game.cards_in_play().len(), 32);
+    }
+
+    #[test]
+    fn trick_points_count_augen_below_zero_against_the_taker() {
+        use crate::cards::{CardKind, Rank};
+        use crate::deck::DealtCard;
+        // Every seven is "Ramponiert" with 5 Augen below zero.
+        let deck: Vec<DealtCard> = standard_deck()
+            .into_iter()
+            .zip(0u32..)
+            .map(|(card, id)| {
+                let plain = DealtCard::plain(id, CardKind::Normal(card));
+                let debt = if card.rank == Rank::Seven { 5 } else { 0 };
+                DealtCard {
+                    point_debt: debt,
+                    ..plain
+                }
+            })
+            .collect();
+        for seed in 0..10 {
+            let mut game = Game::deal_from(&mut Rng::from_seed(seed), deck.clone(), Seat::DECLARER)
+                .expect("deal");
+            game.declare(Declaration::grand(RiskLevel::Hand))
+                .expect("declare");
+            while let Some(seat) = game.current_seat() {
+                let card = game.legal_moves(seat)[0];
+                game.play(seat, card).expect("legal card");
+            }
+            let signed = game.trick_signed_points();
+            let skat: i64 = game.skat().iter().map(|c| c.signed_points()).sum();
+            let expected = [signed[0] + skat, signed[1], signed[2]]
+                .map(|p| u32::try_from(p.max(0)).unwrap_or(0));
+            assert_eq!(game.seat_card_points(), expected, "seed {seed}");
+            for (seat, &signed) in signed.iter().enumerate() {
+                let printed: u32 = game
+                    .tricks()
+                    .iter()
+                    .filter(|t| t.winner.index() == seat)
+                    .map(CompletedTrick::card_points)
+                    .sum();
+                let debt: i64 = game
+                    .tricks()
+                    .iter()
+                    .filter(|t| t.winner.index() == seat)
+                    .flat_map(|t| t.cards)
+                    .map(|c| i64::from(c.point_debt))
+                    .sum();
+                assert_eq!(signed, i64::from(printed) - debt);
+            }
+        }
     }
 
     /// Three editions of the 32 cards: the player's counts one Auge more on

@@ -1314,6 +1314,11 @@ impl ValueParts {
 /// Compute the game value with explicit thresholds and return every
 /// intermediate result. [`game_value`] is this function with the default
 /// thresholds.
+///
+/// Not for a Ramsch: an [`Outcome`] only knows both defenders together,
+/// so a Ramsch is scored with every seat's Augen by
+/// [`ramsch_value_parts`]. Debug builds assert that; release builds fall
+/// back to the Augen of the defenders split evenly.
 #[must_use]
 pub fn game_value_parts(
     declaration: Declaration,
@@ -1322,6 +1327,10 @@ pub fn game_value_parts(
     thresholds: &Thresholds,
 ) -> ValueParts {
     if declaration.is_ramsch() {
+        debug_assert!(
+            false,
+            "a Ramsch is scored by ramsch_value_parts, not game_value_parts"
+        );
         return ramsch_from_outcome(outcome);
     }
     let Some(base) = declaration.game().base_value() else {
@@ -1547,8 +1556,9 @@ pub fn ramsch_value_parts(points: [u32; 3], tricks: [u32; 3]) -> ValueParts {
 }
 
 /// A Ramsch judged from an [`Outcome`] alone, which knows only the sum of
-/// both defenders: their Augen count as split evenly. The run and the game
-/// judge a Ramsch with every seat's Augen ([`ramsch_value_parts`]).
+/// both defenders: their Augen count as split evenly. Only the fallback of
+/// [`game_value_parts`]; the run and the game judge a Ramsch with every
+/// seat's Augen ([`ramsch_value_parts`]).
 fn ramsch_from_outcome(outcome: &Outcome) -> ValueParts {
     let defenders = outcome.defender_card_points;
     let tricks = [

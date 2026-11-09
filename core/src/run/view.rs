@@ -320,6 +320,8 @@ pub struct EncounterView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CountView {
     /// Augen the player took in tricks, plus the skat once he knows it.
+    /// Augen below zero ("Ramponiert") count against the seat that took
+    /// them; no count is below 0.
     pub declarer: u32,
     /// Augen the defenders took in tricks.
     pub defenders: u32,
@@ -328,6 +330,11 @@ pub struct CountView {
     /// Augen per seat (index = seat) from the tricks, the player's with
     /// the skat once he knows it: who has the most in a Ramsch.
     pub seats: [u32; 3],
+}
+
+/// Signed Augen shown as a count: never below 0.
+fn non_negative(points: i64) -> u32 {
+    u32::try_from(points.max(0)).unwrap_or(u32::MAX)
 }
 
 /// A boss with its rule text.
@@ -1966,9 +1973,10 @@ impl Run {
             return None;
         }
         let game = &active.game;
-        let points = game.trick_card_points();
+        // With the sign: a "Ramponiert" card counts against its taker.
+        let points = game.trick_signed_points();
         let known_skat = game.skat_picked_up() && game.phase() != Phase::Discarding;
-        let skat_points: u32 = game.skat().iter().map(|c| c.card_points()).sum();
+        let skat_points: i64 = game.skat().iter().map(|c| c.signed_points()).sum();
         let mut seen: Vec<DealtCard> = game.hand(Seat::DECLARER).to_vec();
         seen.extend(game.tricks().iter().flat_map(|t| t.cards));
         seen.extend(game.current_trick().iter().copied());
@@ -1979,18 +1987,19 @@ impl Run {
         // drücken").
         seen.extend(active.skat_shown.iter().copied());
         seen.extend(game.returned().map(|(_, c)| c));
-        let unseen: u32 = game
+        let unseen: i64 = game
             .deck_cards()
             .iter()
             .filter(|c| !seen.contains(c))
-            .map(|c| c.card_points())
+            .map(|c| c.signed_points())
             .sum();
         let own = points[0] + if known_skat { skat_points } else { 0 };
+        let seats = [own, points[1], points[2]].map(non_negative);
         Some(CountView {
-            declarer: own,
-            defenders: points[1] + points[2],
-            unseen,
-            seats: [own, points[1], points[2]],
+            declarer: seats[0],
+            defenders: seats[1] + seats[2],
+            unseen: non_negative(unseen),
+            seats,
         })
     }
 

@@ -40,7 +40,8 @@ use crate::cards::PlayingCard;
 use crate::content::{CardFilter, Condition, Content, HookContext, Stage, evaluate};
 use crate::deck::DealtCard;
 use crate::endgame::{
-    LastTrick, Reach, ReachOptions, Span, live_points, loose_reach, null_reach, reach,
+    LastTrick, Reach, ReachOptions, Span, live_points, loose_reach, negative_augen_in_play,
+    null_reach, reach,
 };
 use crate::game::{Phase, Seat, TRICKS_PER_GAME};
 use crate::rules::{
@@ -446,13 +447,8 @@ impl Run {
             return false;
         }
         // Augen below zero still to fall (effects v2, "Ramponiert"): the
-        // bounds of the rest count every card with at least 0 Augen.
-        let debt_left = Seat::ALL
-            .iter()
-            .flat_map(|&seat| game.hand(seat).iter())
-            .chain(game.current_trick())
-            .any(|c| c.point_debt > 0);
-        if debt_left {
+        // bounds give none then; no need to look at the hooks.
+        if negative_augen_in_play(game) {
             return false;
         }
         let sources = self.sources(content, true);
