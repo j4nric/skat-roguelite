@@ -328,14 +328,14 @@ struct RootMoves {
 impl RootMoves {
     /// `None` if a legal card is not among `cards`.
     fn new<C: PlayingCard>(search: &Search<'_>, cards: &[C], legal: &[C]) -> Option<RootMoves> {
-        let seat = search.to_play();
+        let others = search.separators(search.to_play());
         let mut distinct: Vec<u8> = Vec::new();
         let mut slot = Vec::with_capacity(legal.len());
         for &card in legal {
             let i = u8::try_from(cards.iter().position(|&c| c == card)?).ok()?;
             let known = distinct
                 .iter()
-                .position(|&r| search.equivalent(seat, r.min(i), r.max(i)));
+                .position(|&r| search.equivalent(others, r.min(i), r.max(i)));
             slot.push(known.unwrap_or_else(|| {
                 distinct.push(i);
                 distinct.len() - 1
@@ -636,8 +636,15 @@ impl<'t> Search<'t> {
         self.legal_of(self.hands[seat], &self.trick[..self.trick_len])
     }
 
-    /// Whether cards `a < b` of `seat` are interchangeable.
-    fn equivalent(&self, seat: usize, a: u8, b: u8) -> bool {
+    /// The live cards of the other seats that can win a trick: what
+    /// separates two cards of `seat` ([`Search::equivalent`]).
+    fn separators(&self, seat: usize) -> u32 {
+        self.live() & !self.hands[seat] & self.can_win
+    }
+
+    /// Whether cards `a < b` of one seat are interchangeable, given the
+    /// [`Search::separators`] of that seat.
+    fn equivalent(&self, separators: u32, a: u8, b: u8) -> bool {
         if a == b {
             return true;
         }
@@ -659,7 +666,6 @@ impl<'t> Search<'t> {
         let lo = u32::from(self.tie_lo[ia]);
         let hi = u32::from(self.tie_hi[ib]);
         let range = range_mask(lo, hi);
-        let separators = self.live() & !self.hands[seat] & self.can_win;
         range & separators & self.kind_mask[usize::from(self.kind[ia])] == 0
     }
 
@@ -680,7 +686,7 @@ impl<'t> Search<'t> {
         let mut scores = [0i32; 10];
         let mut n = 0;
         let mut legal = self.legal(seat);
-        let mut last_kept: Option<u8> = None;
+        let separators = self.separators(seat);
         let maximize = self.maxi & (1 << seat) != 0;
         let (holder, lead_kind, partner_wins) = if self.trick_len > 0 {
             let off = self.winning_offset();
@@ -694,12 +700,14 @@ impl<'t> Search<'t> {
         while legal != 0 && n < 10 {
             let c = u8::try_from(legal.trailing_zeros()).unwrap_or(0);
             legal &= legal - 1;
-            if let Some(prev) = last_kept {
-                if self.equivalent(seat, prev, c) {
-                    continue;
-                }
+            // Kept moves have lower indices; compare with every one, an
+            // equivalent card need not be the neighbour.
+            if moves[..n]
+                .iter()
+                .any(|&kept| self.equivalent(separators, kept, c))
+            {
+                continue;
             }
-            last_kept = Some(c);
             let i = usize::from(c);
             let pts = self.points[i];
             let strength = i32::from(self.strength[i]);
@@ -1647,6 +1655,41 @@ mod tests {
             let (b, _) = probe_with(game, goal, &layout, threshold, free, &mut table);
             assert_eq!(a, b, "round {round}");
         }
+    }
+
+    #[test]
+    fn equivalent_cards_merge_with_a_different_card_between_them() {
+        // Grand, the declarer leads C9, C8 with 5 extra Augen, C7. C9 and
+        // C7 are interchangeable (no club of another seat between them),
+        // the C8 between them is not: two moves, not three.
+        let dealt = |s: &str, id: u32| DealtCard::plain(id, CardKind::Normal(c(s)));
+        let mut c8 = dealt("C8", 1);
+        c8.card_points = 5;
+        let hands = [
+            vec![dealt("C9", 0), c8, dealt("C7", 2)],
+            vec![dealt("SA", 3), dealt("SK", 4), dealt("SQ", 5)],
+            vec![dealt("HA", 6), dealt("HK", 7), dealt("HQ", 8)],
+        ];
+        let layout = Layout {
+            hands,
+            trick_lead: Seat::DECLARER,
+            trick: Vec::new(),
+            skat_points: 0,
+        };
+        let mut table = Table::new(4);
+        let (search, cards) = Search::new(
+            GameType::Grand,
+            Goal::DeclarerPoints,
+            &layout,
+            Limits::default(),
+            &mut table,
+        )
+        .expect("valid layout");
+        let (moves, n) = search.ordered_moves(0, NO_MOVE);
+        let mut kept: Vec<DealtCard> = moves[..n].iter().map(|&m| cards[usize::from(m)]).collect();
+        kept.sort();
+        assert_eq!(kept.len(), 2, "{kept:?}");
+        assert!(kept.contains(&c8));
     }
 
     #[test]
