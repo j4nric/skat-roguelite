@@ -10,7 +10,8 @@
 //! - a transposition table probed at every node (the value of the rest
 //!   depends only on who holds what, who led and the cards on the table;
 //!   within one search the cards still held say who holds what),
-//! - a cache of the static estimates at the depth or node limit,
+//! - the static estimates at the depth or node limit stored in the
+//!   transposition table like searched values, and in a cache of their own,
 //! - equivalent cards searched once (two cards of one hand of the same
 //!   kind and Augen with no live card of another seat between them),
 //! - move ordering (sure winners and cheap ducks first, the stored best
@@ -1061,15 +1062,6 @@ impl<'t> Search<'t> {
             if beta <= 0 {
                 return 0;
             }
-            if boundary && self.out_of_budget() {
-                return self.cached_estimate(|s| {
-                    if s.null {
-                        s.null_estimate()
-                    } else {
-                        s.trick_estimate()
-                    }
-                });
-            }
         } else {
             // The rest adds at least every Augen below zero and at most
             // every positive one (a Ramsch: the skat too).
@@ -1084,16 +1076,14 @@ impl<'t> Search<'t> {
             if alpha >= max {
                 return max;
             }
-            if boundary && self.out_of_budget() {
-                return self.cached_estimate(Search::estimate);
-            }
         }
         let tag = self.tag();
         let slot = self.table.slot(self.hands, tag);
         let mut tt_move = NO_MOVE;
         let key = position_key(self.hands, tag);
         let e = self.table.entries[slot];
-        if e.generation == self.table.generation && e.key == key {
+        let hit = e.generation == self.table.generation && e.key == key;
+        if hit {
             match e.flag {
                 EXACT => return e.value,
                 LOWER => alpha = alpha.max(e.value),
@@ -1103,6 +1093,33 @@ impl<'t> Search<'t> {
                 return e.value;
             }
             tt_move = e.best;
+        }
+        // Behind the depth or node limit: the estimate, stored like a
+        // searched value (equal hands at a trick boundary have equal depth
+        // left within one search), within a bound a search already proved.
+        if boundary && self.out_of_budget() {
+            let mut value = if self.catch == 0 {
+                self.cached_estimate(Search::estimate)
+            } else if self.null {
+                self.cached_estimate(Search::null_estimate)
+            } else {
+                self.cached_estimate(Search::trick_estimate)
+            };
+            if hit {
+                value = if e.flag == LOWER {
+                    value.max(e.value)
+                } else {
+                    value.min(e.value)
+                };
+            }
+            self.table.entries[slot] = Entry {
+                key,
+                flag: EXACT,
+                best: NO_MOVE,
+                generation: self.table.generation,
+                value,
+            };
+            return value;
         }
         let seat = self.to_play();
         let maximize = self.maxi & (1 << seat) != 0;
