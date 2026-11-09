@@ -58,3 +58,17 @@ Der Nutzer hat im Cockpit (Frage 38) Variante A gewählt und ergänzt: Anmelden 
 - Neue Felder im Spielstand brauchen keine Server-Änderung, der Server liest ihn nie. Ändert sich das Format des gesicherten Texts, muss eine ältere App einen neueren Stand erkennen und in Ruhe lassen (heute: Version im Präfix, Fehler `newer`).
 - Die Tafel ist Selbstauskunft (siehe oben).
 - Bei einem Umzug der Domain gelten Passkeys nicht mehr; der Wiederherstellungscode trägt hinüber.
+
+## Nachtrag (09.11.2026): Härtung nach Review
+
+Ohne die Entscheidung zu ändern, nach einer Durchsicht von Server, Deploy und CI:
+
+- **Passkeys verwalten, überall abmelden.** `GET /api/passkeys` listet die Passkeys des Kontos (angelegt, zuletzt benutzt, ob ein Passwortmanager ihn synchronisiert; einen Namen liefert der Authenticator nicht). `DELETE /api/passkeys/{id}` entfernt einen, nie den letzten (409 `last_passkey`). `POST /api/logout-all` beendet alle Sitzungen des Kontos, auch die eigene. Das Konto-Blatt der App zeigt beides („Passkeys verwalten“, „Überall abmelden“).
+- **Wiederherstellungscode.** Anmelden mit dem Code und Erneuern beenden alle anderen Sitzungen des Kontos; wer den Code gestohlen hat, ist danach draußen. Das Ersetzen ist ein Vergleichen-und-Tauschen (`… WHERE recovery_hash = <alter Hash>`): Zwei gleichzeitige Anfragen mit demselben Code lösen ihn höchstens einmal ein.
+- **Sitzung.** Wird die Sitzung verlängert (nach der Hälfte der 180 Tage), bekommt der Browser auch ein neues Cookie mit voller Laufzeit.
+- **Begrenzungen.** IPv6-Adressen zählen je /64 (ein Anschluss hat meist ein ganzes /64). Höchstens 5 neue Konten je Adresse und Stunde. Höchstens 10 offene Passkey-Vorgänge je Adresse, jeder lebt 2 Minuten; sind alle 10 000 belegt, antwortet der Server 503 `busy`. Höchstens 2 argon2-Berechnungen gleichzeitig. Anfragen höchstens 16 KiB, `/api/save` 1,2 MB, die Passkey-Registrierung 64 KiB.
+- **Speicherplatz.** Die Datenbank wächst höchstens auf 2 GiB (`PRAGMA max_page_count`); ist sie voll, antwortet ein Schreiben 507 `storage_full`, der Fortschritt bleibt im Browser. Ein Spielstand muss wie ein gesicherter Text beginnen (`STAMMTISCH<Zahl>:`), jede Formatnummer wird angenommen.
+- **Herkunft.** Ändernde Anfragen (POST, PUT, DELETE) brauchen ein `Origin` der Seite; Browser senden es dabei immer, `curl` braucht `-H 'Origin: …'`. Dazu wird `Sec-Fetch-Site: cross-site` und `same-site` abgewiesen: `sslip.io` steht nicht auf der Public Suffix List, jede andere `*.sslip.io`-Seite wäre für den Browser „same site“ und bekäme das SameSite=Lax-Cookie mit.
+- **Fehler** kommen immer als JSON (`{"error": "…"}`), auch die, die axum selbst erzeugt (kaputtes JSON, zu großer Inhalt, unbekannter Pfad).
+- **Datenbank.** Das Schema ist eine Liste von Migrationen, gezählt mit `PRAGMA user_version` und in einer Transaktion angewandt; eine Datei aus einem neueren Server wird nicht angefasst. `synchronous=NORMAL` mit WAL. Einmal am Tag schreibt der Dienst mit `VACUUM INTO` eine Sicherung nach `data/backup/stammtisch-JJJJMMTT.db` (Datum nach der Uhr des Servers, die letzten sieben bleiben).
+- **Betrieb.** Der Container des Dienstes läuft mit schreibgeschütztem Dateisystem (nur `data/` und ein `/tmp` im Speicher sind beschreibbar), ohne Capabilities, mit Healthcheck. Caddy setzt Sicherheits-Header für die ganze Seite, darunter eine Content-Security-Policy (`deploy/README.md`).

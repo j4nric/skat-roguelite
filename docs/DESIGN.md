@@ -1817,12 +1817,13 @@ Entschieden vom Nutzer im Cockpit (Frage 38, Variante A mit Ergänzung), umgeset
 
 - **Freiwillig.** Ohne Konto spielt man wie bisher; der gesicherte Text (`STAMMTISCH1:…`) bleibt der Weg ohne Server.
 - **Anmelden** mit einem Passkey (Fingerabdruck, Gesicht, Geräte-PIN), ohne Benutzernamen, E-Mail oder Passwort. Beim Anlegen zeigt die App einmal einen **Wiederherstellungscode** (24 Zeichen, mit Knopf zum Kopieren und dem Hinweis, ihn aufzuschreiben). Damit kommt man ohne Passkey ins Konto (neues Gerät, andere Domain) und legt dann einen neuen Passkey an; der Code wird bei jedem Gebrauch ersetzt.
+- **Passkeys verwalten und überall abmelden** (Nachtrag 09.11.2026): Das Konto listet seine Passkeys (angelegt, zuletzt benutzt, synchronisiert) und entfernt einzelne, nie den letzten. „Überall abmelden“ beendet jede Sitzung auf jedem Gerät. Wer sich mit dem Wiederherstellungscode anmeldet oder ihn erneuert, meldet damit alle anderen Geräte ab: Ein gestohlener Code lässt sich so wieder aussperren.
 - **Name am Stammtisch**: 1 bis 24 Zeichen, nicht eindeutig, steht auf der Tafel des Tages.
 - **Spielstand**: genau der gesicherte Text, für den Server undurchsichtig. Abgleich beim Start (vor dem Lesen des Speichers), nach jeder Kneipe, am Ende des Runs und beim Verlassen der Seite. Hat sich nur eine Seite geändert, gilt sie (mit Hinweis, wenn der Stand des Kontos geladen wird); haben sich beide geändert, wählt der Spieler in einem Dialog, der beide Stände zeigt. Ein älterer Stand überschreibt nie still einen neueren (Versionen, HTTP 409). Kleine Anzeige „gespeichert“, „offline“, „Konflikt“ neben dem Konto.
 - **Tafel des Tages**: Am Ende eines Tages-Runs meldet ein angemeldeter Spieler sein Ergebnis; der Startbildschirm zeigt die besten zehn und den eigenen Platz, ohne Konto nur lesend. Das erste Ergebnis je Tag zählt. Selbstauskunft, der Server prüft nichts.
 - **Keine Spiellogik auf dem Server**: Er speichert und zählt, er spielt nicht nach. Die Regeln bleiben im Kern im Browser.
 - **Datenschutz**: gespeichert werden nur Name, öffentliche Schlüssel der Passkeys, Hash des Wiederherstellungscodes, Spielstand und Tafel-Ergebnisse. Konto löschen (mit Rückfrage) entfernt alles davon sofort.
-- **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.
+- **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` mit täglicher Sicherung der letzten sieben Tage (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.
 
 ### 14.5 Offline spielen (Service Worker)
 
