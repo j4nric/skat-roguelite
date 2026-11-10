@@ -148,6 +148,7 @@ fn old_saves_play_at_stake_zero() {
             character: Character::Declarer,
             length: RunLength::Short,
             stake: 0,
+            relics: Vec::new(),
         }
     );
 }
@@ -161,6 +162,7 @@ fn a_won_run_unlocks_the_next_stake_per_character_and_length() {
         character,
         length,
         stake,
+        relics: Vec::new(),
     };
     meta.observe(&content, &[won(Character::Declarer, RunLength::Short, 0)]);
     assert_eq!(meta.max_stake(Character::Declarer, RunLength::Short), 1);
@@ -181,6 +183,7 @@ fn a_won_run_unlocks_the_next_stake_per_character_and_length() {
                 stake: 4,
                 boss: None,
                 night: false,
+                relics: Vec::new(),
             },
         ],
     );

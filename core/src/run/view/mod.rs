@@ -355,6 +355,7 @@ impl Run {
             edition: self.edition.cards().to_vec(),
             stats: self.stats,
             night: self.night_view(content),
+            weekly: self.weekly_view(content),
             can_enter_night: self.phase == RunPhase::Won && self.night.is_none(),
         }
     }

@@ -58,6 +58,7 @@ pub mod player;
 pub mod tour;
 pub mod trade;
 pub mod view;
+pub mod weekly;
 pub mod zinken;
 
 // Types of the run's state and its interface.
@@ -108,7 +109,7 @@ use serde::{Deserialize, Serialize};
 use crate::content::in_pool;
 use crate::content::{
     BossId, CardModId, Character, ConsumableId, Content, Editions, EncounterId, NextGameEffect,
-    RelicId, RunLength, ScoreBreakdown,
+    RelicId, RunLength, ScoreBreakdown, WeekId, WeeklyRuleId,
 };
 use crate::deck::{DealtCard, Edition, Owner};
 use crate::game::{Phase, Seat};
@@ -154,6 +155,14 @@ pub struct RunStart {
     /// [`Run::new_tutorial`], which also takes the tutorial's seed.
     #[serde(default)]
     pub tutorial: bool,
+    /// Die Wochen-Herausforderung (DESIGN 5.6): the Sonderregel in force
+    /// for the whole run. [`Run::new_weekly`] sets it with the week's seed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weekly_rule: Option<WeeklyRuleId>,
+    /// The week of a weekly run ([`Run::new_weekly`]); `None` for a rule
+    /// played on another seed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub week: Option<WeekId>,
 }
 
 /// A run. Create with [`Run::new`], drive with [`Run::apply`].
@@ -293,6 +302,9 @@ pub struct Run {
     /// The Einführung (DESIGN 16.1, [`RunStart::tutorial`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     tutorial: bool,
+    /// The Sonderregel der Woche (DESIGN 5.6), for the whole run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weekly: Option<weekly::WeeklyState>,
 }
 
 impl Run {
@@ -346,11 +358,27 @@ impl Run {
         {
             return Err(RunError::InvalidStart);
         }
+        let rule = match &start.weekly_rule {
+            Some(id) => Some(
+                content
+                    .weekly_rule(id)
+                    .ok_or_else(|| RunError::UnknownContent(id.to_string()))?,
+            ),
+            None => None,
+        };
+        // A Sonderregel may fix who plays (DESIGN 5.6).
+        let who = rule.and_then(|r| r.character).unwrap_or(start.character);
         let character = content
-            .character(start.character)
-            .ok_or_else(|| RunError::UnknownContent(start.character.to_string()))?;
+            .character(who)
+            .ok_or_else(|| RunError::UnknownContent(who.to_string()))?;
+        let rule_relics = rule.map_or(&[][..], |r| &r.start_relics[..]);
         let mut relics: Vec<RelicId> = Vec::new();
-        for relic in character.start_relics.iter().chain(&start.relics) {
+        for relic in character
+            .start_relics
+            .iter()
+            .chain(&start.relics)
+            .chain(rule_relics)
+        {
             if content.relic(relic).is_none() {
                 return Err(RunError::UnknownContent(relic.to_string()));
             }
@@ -358,7 +386,7 @@ impl Run {
                 relics.push(relic.clone());
             }
         }
-        if !content.relic_fits(start.character, relics.len()) {
+        if !content.relic_fits(who, relics.len()) {
             return Err(RunError::NoFreeSlot);
         }
         for consumable in &character.start_consumables {
@@ -373,6 +401,25 @@ impl Run {
         }
         let mut edition = Edition::standard();
         edition.apply_spec(&character.deck, content)?;
+        if let Some(rule) = rule {
+            // A modification of the rule that does not fit the
+            // character's edition falls away (weekly.ron).
+            for (card, card_mod, value) in &rule.deck.mods {
+                if let Some(id) = edition.id_of(*card) {
+                    let mut probe = edition.probe_card(id);
+                    if probe.add_mod(content, id, card_mod, *value).is_ok() {
+                        edition.add_mod(content, id, card_mod, *value)?;
+                    }
+                }
+            }
+        }
+        let coins = rule.map_or(0, |r| r.coins);
+        let starting_coins = u32::try_from(
+            i64::from(content.run.economy.starting_coins)
+                .saturating_add(i64::from(coins))
+                .max(0),
+        )
+        .unwrap_or(u32::MAX);
         let mut master = Rng::from_seed(seed);
         let mut run = Run {
             seed,
@@ -381,7 +428,7 @@ impl Run {
             misc_rng: master.fork(),
             phase: RunPhase::Game,
             series: Series::default(),
-            coins: content.run.economy.starting_coins,
+            coins: starting_coins,
             edition,
             relics,
             consumables: character.start_consumables.clone(),
@@ -393,7 +440,7 @@ impl Run {
             last_score: None,
             stats: RunStats::default(),
             section_boss: None,
-            character: start.character,
+            character: who,
             locked: start.locked_relics.iter().cloned().collect(),
             locked_card_mods: start.locked_card_mods.iter().cloned().collect(),
             encounter_rng: master.fork(),
@@ -424,6 +471,7 @@ impl Run {
             card_reward: None,
             night: None,
             tutorial: start.tutorial,
+            weekly: rule.map(|r| weekly::WeeklyState::new(start.week, r.id.clone(), seed)),
         };
         let mut events = Vec::new();
         run.start_pub(content, start.section, start.index, None, &mut events)?;

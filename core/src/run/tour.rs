@@ -509,6 +509,7 @@ impl Run {
                 character: self.character,
                 length: self.length,
                 stake: self.stake,
+                relics: self.relics.clone(),
             });
             return Ok(());
         }
@@ -582,6 +583,7 @@ impl Run {
             stake: self.stake,
             boss: self.series.boss.clone(),
             night: self.night.is_some(),
+            relics: self.relics.clone(),
         });
         Ok(())
     }

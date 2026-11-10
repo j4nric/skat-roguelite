@@ -561,6 +561,10 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// Stake of the run (Einsatz-Leiter).
         #[serde(default)]
         stake: u32,
+        /// Relics held at the end, in purchase order (house rules of the
+        /// evening not included), for the statistics.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        relics: Vec<RelicId>,
     },
     /// The run was lost: a pub was lost (ADR 0019).
     RunLost {
@@ -585,6 +589,10 @@ pub enum RunEvent<G = Event<DealtCard>> {
         /// stays won; only the night ends.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         night: bool,
+        /// Relics held at the end, in purchase order (house rules of the
+        /// evening not included), for the statistics.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        relics: Vec<RelicId>,
     },
     /// The player continued into the long night after der Alte (ADR
     /// 0020).

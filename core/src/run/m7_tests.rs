@@ -378,6 +378,7 @@ fn saves_and_events_from_before_the_short_evening_are_full() {
             character: Character::Declarer,
             length: RunLength::Full,
             stake: 0,
+            relics: Vec::new(),
         }
     );
 }

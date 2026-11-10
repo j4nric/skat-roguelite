@@ -1,0 +1,81 @@
+// Die Wochen-Herausforderung (DESIGN 5.6): Jede ISO-Woche hat einen festen
+// Seed und eine Sonderregel der Woche aus dieser Liste. Die Regeln kommen
+// in Runden: Jede Runde ist die ganze Liste in einer Reihenfolge, die aus
+// der Nummer der Runde folgt; keine Regel kommt zweimal, bevor alle dran
+// waren (core/src/content/weekly.rs).
+//
+// Eine Regel baut nur aus Mechaniken, die der Kern schon hat:
+// character: alle spielen diesen Charakter, auch wenn er noch gesperrt ist.
+// start_relics: Relikte ab dem Start, nach denen des Charakters.
+// deck: Modifikationen auf der Startausgabe wie beim Charakter (ein
+// Startfluch); passt eine nicht auf die Ausgabe des Charakters, fällt sie
+// weg. coins: Groschen zum Start dazu (oder weg). rules: Verschärfungen der
+// langen Nacht (night.ron) für den ganzen Run; DoubleBoss gilt nur nachts
+// und ist hier ein Ladefehler. passive und hooks: Tischregeln wie bei einem
+// Boss, für jedes Spiel (Quelle „Sonderregel“).
+//
+// Gemessen am 10.11.2026 (docs/balance/2026-11-10-wochenregeln.md): Run
+// gewonnen und Stadtteil 2 und 3 erreicht je Regel mit dem Standard-Bot.
+[
+    (
+        id: "grand_double",
+        name: "Grand zählt doppelt",
+        text: "Jeder Grand zählt doppelt: gewonnen wie verloren.",
+        hooks: [
+            OnScore(when: GameIs(Grand), then: [MultiplyGameValue(2)]),
+        ],
+    ),
+    (
+        id: "dive_air",
+        name: "Spelunkenluft",
+        text: "Jede Kneipe hat einen zufälligen Spelunken-Malus. Dafür startest du mit 6 Groschen mehr.",
+        coins: 6,
+        rules: [MalusEveryPub],
+    ),
+    (
+        id: "wide_awake",
+        name: "Hellwache Gegner",
+        text: "Die Gegner rechnen genauer: vier Blätter mehr je Zug, den ganzen Abend.",
+        rules: [StrongerOpponents(4)],
+    ),
+    (
+        id: "short_patience",
+        name: "Kurze Geduld",
+        text: "Ein Einmischen weniger in jedem Spiel. Dafür startest du mit 6 Groschen mehr.",
+        coins: 6,
+        rules: [FewerRedeals(1)],
+    ),
+    (
+        id: "devils_pact",
+        name: "Teufelspakt",
+        text: "Du startest mit dem Schutzengel. Dafür sind die Eichel-, Grün- und Schellen-Neun ramponiert (−5 Augen).",
+        start_relics: ["guardian_angel"],
+        deck: (
+            mods: [
+                ("C9", "battered", 5),
+                ("S9", "battered", 5),
+                ("D9", "battered", 5),
+            ],
+        ),
+    ),
+    (
+        id: "null_evening",
+        name: "Nullabend",
+        text: "Alle spielen diese Woche den Nullspieler, auch wer ihn noch nicht freigeschaltet hat.",
+        character: Some(NullPlayer),
+    ),
+    (
+        id: "rich_uncle",
+        name: "Erbonkel",
+        text: "Du startest mit 15 Groschen mehr. Dafür liegen alle Zielwerte 10 % höher.",
+        coins: 15,
+        rules: [TargetJump(1.1)],
+    ),
+    (
+        id: "spendthrift",
+        name: "Spendierhosen",
+        text: "Du startest mit Tournee und Bierdeckel. Dafür kostet am Tresen und am Kiosk alles 2 Groschen mehr.",
+        start_relics: ["tour", "beer_mat"],
+        rules: [PricierTresen(2)],
+    ),
+]

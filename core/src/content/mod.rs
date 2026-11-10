@@ -66,6 +66,7 @@ macro_rules! content_id {
 
 mod night;
 mod tour;
+mod weekly;
 
 pub use night::{
     CardBackDef, NightConfig, NightContent, NightRule, VerschaerfungDef, VerschaerfungId,
@@ -74,6 +75,7 @@ pub use tour::{
     CityDistrict, CityNames, DistrictLook, DistrictName, MalusCurse, MalusDef, MalusId,
     NamePattern, TourContent,
 };
+pub use weekly::{WeekId, WeeklyRuleDef, WeeklyRuleId, pick_rule, weeks_in_year};
 
 content_id!(
     /// Id of a relic (house rule or Stammtisch figure).
@@ -1879,6 +1881,8 @@ pub struct Sources<'a> {
     pub night: &'a str,
     /// `tutorial.ron`: the fixed deals of the Einführung (DESIGN 16.1).
     pub tutorial: &'a str,
+    /// `weekly.ron`: the Sonderregeln der Woche (DESIGN 5.6).
+    pub weekly: &'a str,
 }
 
 impl Sources<'static> {
@@ -1899,6 +1903,7 @@ impl Sources<'static> {
             tour: include_str!(concat!(env!("OUT_DIR"), "/tour.ron")),
             night: include_str!(concat!(env!("OUT_DIR"), "/night.ron")),
             tutorial: include_str!(concat!(env!("OUT_DIR"), "/tutorial.ron")),
+            weekly: include_str!(concat!(env!("OUT_DIR"), "/weekly.ron")),
         }
     }
 
@@ -1918,6 +1923,7 @@ impl Sources<'static> {
             tour: include_str!("../../content/tour.ron"),
             night: include_str!("../../content/night.ron"),
             tutorial: include_str!("../../content/tutorial.ron"),
+            weekly: include_str!("../../content/weekly.ron"),
         }
     }
 }
@@ -1954,6 +1960,8 @@ pub struct Content {
     pub card_backs: Vec<CardBackDef>,
     /// The Einführung: one guided pub with fixed deals (DESIGN 16.1).
     pub tutorial: TutorialDef,
+    /// The Sonderregeln der Woche (DESIGN 5.6), in id order.
+    pub weekly: BTreeMap<WeeklyRuleId, WeeklyRuleDef>,
 }
 
 /// The Einführung (`tutorial.ron`, DESIGN 16.1): a run with a fixed seed
@@ -2166,6 +2174,11 @@ impl Content {
             verschaerfungen: index("night", night.verschaerfungen, |v| &v.id)?,
             card_backs: night.card_backs,
             tutorial: parse("tutorial", sources.tutorial)?,
+            weekly: index(
+                "weekly",
+                parse::<Vec<WeeklyRuleDef>>("weekly", sources.weekly)?,
+                |w| &w.id,
+            )?,
         };
         content.validate()?;
         Ok(content)
@@ -2222,6 +2235,7 @@ impl Content {
                 false,
             )?;
         }
+        self.validate_weekly()?;
         for consumable in self.consumables.values() {
             let factor_zero = matches!(
                 consumable.action,
@@ -2800,6 +2814,68 @@ impl Content {
     #[must_use]
     pub fn boss(&self, id: &BossId) -> Option<&BossDef> {
         self.bosses.get(id)
+    }
+
+    /// A Sonderregel der Woche by id.
+    #[must_use]
+    pub fn weekly_rule(&self, id: &WeeklyRuleId) -> Option<&WeeklyRuleDef> {
+        self.weekly.get(id)
+    }
+
+    /// The Sonderregel of `week` ([`pick_rule`] over the rules in id
+    /// order).
+    #[must_use]
+    pub fn rule_of_week(&self, week: WeekId) -> Option<&WeeklyRuleDef> {
+        let rules: Vec<&WeeklyRuleDef> = self.weekly.values().collect();
+        pick_rule(&rules, week).copied()
+    }
+
+    /// Check the Sonderregeln der Woche: known relics, card mods and
+    /// characters, effects allowed where they fire, no night-only rule.
+    fn validate_weekly(&self) -> Result<(), ContentError> {
+        for rule in self.weekly.values() {
+            let what = format!("weekly {}", rule.id);
+            validate_effects(&what, &rule.passive, &rule.hooks, false)?;
+            if let Some(character) = rule.character {
+                if self.character(character).is_none() {
+                    return Err(ContentError(format!(
+                        "{what}: unknown character {character}"
+                    )));
+                }
+            }
+            for relic in &rule.start_relics {
+                if !self.relics.contains_key(relic) {
+                    return Err(ContentError(format!("{what}: unknown relic {relic}")));
+                }
+            }
+            for (_, card_mod, _) in &rule.deck.mods {
+                if !self.card_mods.contains_key(card_mod)
+                    && card_mod.as_str() != crate::deck::AUGEN
+                    && card_mod.as_str() != crate::deck::RAMPONIERT
+                {
+                    return Err(ContentError(format!("{what}: unknown card mod {card_mod}")));
+                }
+            }
+            for night_rule in &rule.rules {
+                match night_rule {
+                    NightRule::DoubleBoss => {
+                        return Err(ContentError(format!(
+                            "{what}: DoubleBoss works in the night only"
+                        )));
+                    }
+                    NightRule::CursedCards { curses, .. }
+                        if curses.is_empty()
+                            || !curses.iter().all(|c| {
+                                self.card_mods.get(c).is_some_and(CardModDef::is_curse)
+                            }) =>
+                    {
+                        return Err(ContentError(format!("{what}: CursedCards needs curses")));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
     }
 
     /// A Stammgast by id.
