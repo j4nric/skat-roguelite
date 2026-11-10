@@ -4,6 +4,7 @@
 
 import { sound } from '../audio';
 import { buzz, setVibration } from '../haptics';
+import { localize, setLanguage, type Lang } from '../i18n';
 import { music } from '../music';
 import { saveSettings, TEMPO_FACTOR, type Tempo } from '../settings';
 import { setTempo } from '../ui/fx';
@@ -35,6 +36,24 @@ export class Menu {
     this.applySettings();
     this.layer.markDirty();
     this.ctx.render();
+  }
+
+  /**
+   * "Sprache / Language" (ADR 0022): switch and draw everything anew, no
+   * reload. The views on screen get the content texts of the new language.
+   */
+  private setLanguage(next: Lang): void {
+    void setLanguage(next, true).then(
+      () => {
+        const ui = this.ctx.ui;
+        localize(ui.view);
+        localize(ui.ended?.view);
+        localize(ui.meta);
+        this.layer.markDirty();
+        this.ctx.render();
+      },
+      (err: unknown) => console.warn('language not loaded', err),
+    );
   }
 
   actions(): Actions {
@@ -94,6 +113,7 @@ export class Menu {
         if (el.dataset.on === 'true') sound.play('clink');
       },
       'music': ({ el }) => this.setSettings({ music: el.dataset.on === 'true' }),
+      'language': ({ el }) => this.setLanguage(el.dataset.lang === 'en' ? 'en' : 'de'),
     };
   }
 }

@@ -2,7 +2,7 @@
 // start sheet of a night district. Presentation only; what a Verschärfung
 // does and when it is drawn is the core's.
 
-import { de, t } from '../i18n';
+import { de, num, t } from '../i18n';
 import type { RunView, VerschaerfungInfo } from '../types';
 import { attrs, esc } from './dom';
 
@@ -22,7 +22,7 @@ export function renderNightSheet(view: RunView): string {
   if (!night || !fresh) return '';
   const older = night.verschaerfungen.filter((v) => v.district !== fresh.district);
   const chips = older.map((v) => `<li>${nightChip(v)}</li>`).join('');
-  const factor = (night.target_permille / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+  const factor = num(night.target_permille / 1000, 2);
   return `<div class="night-sky" aria-hidden="true">${nightStars(14, fresh.district)}</div>
     <p class="night-kicker">${moonIcon(16)} ${esc(de.night.title)}</p>
     <h2 data-testid="night-sheet-title">${esc(t(de.night.sheetTitle, { n: fresh.district }))}</h2>

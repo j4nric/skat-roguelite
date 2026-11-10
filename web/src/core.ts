@@ -1,8 +1,11 @@
 // The only place that talks to the WebAssembly core. Every game fact the
-// app shows comes out of here as JSON produced by skat_core.
+// app shows comes out of here as JSON produced by skat_core. Views pass
+// through `localize` (./i18n): the content's German display texts become
+// those of the active language.
 
 import init, { WasmMeta, WasmRun, catalog as wasmCatalog } from './wasm/pkg/skat_wasm.js';
 import wasmUrl from './wasm/pkg/skat_wasm_bg.wasm?url';
+import { localize } from './i18n';
 import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step } from './types';
 
 let ready: Promise<void> | null = null;
@@ -38,13 +41,13 @@ export class CoreMeta {
   }
 
   view(): MetaView {
-    return JSON.parse(this.meta.view()) as MetaView;
+    return localize(JSON.parse(this.meta.view()) as MetaView);
   }
 
   /** Let the meta state learn from the events of a step. */
   observe(events: RunEvent[] | string): MetaStep {
     const json = typeof events === 'string' ? events : JSON.stringify(events);
-    return JSON.parse(this.meta.observe(json)) as MetaStep;
+    return localize(JSON.parse(this.meta.observe(json)) as MetaStep);
   }
 }
 
@@ -87,7 +90,7 @@ export class CoreRun {
   }
 
   view(): RunView {
-    return JSON.parse(this.run.view()) as RunView;
+    return localize(JSON.parse(this.run.view()) as RunView);
   }
 
   /**
@@ -96,7 +99,7 @@ export class CoreRun {
    * rejects it.
    */
   apply(action: RunAction): Step {
-    return JSON.parse(this.run.apply(JSON.stringify(action))) as Step;
+    return localize(JSON.parse(this.run.apply(JSON.stringify(action))) as Step);
   }
 
   /**
@@ -107,7 +110,7 @@ export class CoreRun {
    * not be shown.
    */
   preview(action: RunAction): Step {
-    return JSON.parse(this.run.preview(JSON.stringify(action))) as Step;
+    return localize(JSON.parse(this.run.preview(JSON.stringify(action))) as Step);
   }
 
   /**
@@ -123,7 +126,7 @@ export class CoreRun {
 
   /** Let the opponent named by `view.ai_to_move` play one card. */
   step(): Step {
-    return JSON.parse(this.run.step()) as Step;
+    return localize(JSON.parse(this.run.step()) as Step);
   }
 
   dispose(): void {

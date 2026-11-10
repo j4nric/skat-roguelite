@@ -1,7 +1,7 @@
 {
   "name": "Stammtisch",
   "short_name": "Stammtisch",
-  "description": "Skat als Roguelike im Browser.",
+  "description": "Skat als Roguelike im Browser. Skat as a roguelike in the browser.",
   "lang": "de",
   "dir": "ltr",
   "id": "/",

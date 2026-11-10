@@ -4,7 +4,7 @@
 // Trumpf, Bedienen, Augen, Spielwert, the Abrechnung, and after the pub the
 // Zinken, the way and the Tresen.
 //
-// This file is presentation only: the texts (../i18n/de.ts) and when each
+// This file is presentation only: the texts (./i18n/de.ts, ./i18n/en.ts) and when each
 // one shows. Every trigger reads what the screen already shows (the core's
 // view, the open dialog); nothing here decides a rule. The lessons stay
 // resilient: a step whose situation never comes is skipped, a step whose
@@ -122,7 +122,8 @@ function pubLost(ui: UiState): boolean {
 }
 
 const HAND = '[data-testid="hand"]';
-const TD = de.tutorial;
+/** The Einführung's texts in the active language (read at each use: the language can change). */
+const TD = new Proxy({} as typeof de.tutorial, { get: (_, key) => de.tutorial[key as keyof typeof de.tutorial] });
 
 /**
  * The steps in the order they win when several apply at once: per game the
