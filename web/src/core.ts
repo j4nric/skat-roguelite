@@ -1,9 +1,9 @@
 // The only place that talks to the WebAssembly core. Every game fact the
 // app shows comes out of here as JSON produced by skat_core.
 
-import init, { WasmMeta, WasmRun, catalog as wasmCatalog } from './wasm/pkg/skat_wasm.js';
+import init, { WasmMeta, WasmRun, catalog as wasmCatalog, weekInfo as wasmWeekInfo } from './wasm/pkg/skat_wasm.js';
 import wasmUrl from './wasm/pkg/skat_wasm_bg.wasm?url';
-import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step } from './types';
+import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step, WeekInfo } from './types';
 
 let ready: Promise<void> | null = null;
 
@@ -16,6 +16,18 @@ export function loadCore(): Promise<void> {
 /** Names and texts of all content. */
 export function loadCatalog(): Catalog {
   return JSON.parse(wasmCatalog()) as Catalog;
+}
+
+/**
+ * The Wochen-Herausforderung of the ISO week of a local date (DESIGN 5.6):
+ * its number, seed and Sonderregel, from the core. Null if the core has none.
+ */
+export function weekInfo(date: Date = new Date()): WeekInfo | null {
+  try {
+    return JSON.parse(wasmWeekInfo(date.getFullYear(), date.getMonth() + 1, date.getDate())) as WeekInfo;
+  } catch {
+    return null;
+  }
 }
 
 /** The meta state across runs: unlocks and statistics (DESIGN 9.3). */
@@ -64,6 +76,16 @@ export class CoreRun {
    */
   static createWith(seed: string, character: Character, length: RunLength, stake: number, meta: CoreMeta): { run: CoreRun; startEvents: string } {
     const run = WasmRun.newRunWith(seed, character, length, stake, meta.meta);
+    return { run: new CoreRun(run), startEvents: run.startEvents() };
+  }
+
+  /**
+   * Start the run of a week (JJJJWW, DESIGN 5.6) with a character and stake
+   * from the meta state: the week's seed and Sonderregel. A rule with its
+   * own character plays that one. Returns the run and its start events.
+   */
+  static createWeekly(week: number, character: Character, stake: number, meta: CoreMeta): { run: CoreRun; startEvents: string } {
+    const run = WasmRun.newRunWeekly(week, character, stake, meta.meta);
     return { run: new CoreRun(run), startEvents: run.startEvents() };
   }
 

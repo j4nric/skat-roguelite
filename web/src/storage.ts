@@ -143,6 +143,8 @@ export interface RunRecord {
   date: string;
   /** Started as the daily seed. */
   daily: boolean;
+  /** Started as the run of this week (JJJJWW, DESIGN 5.6); absent otherwise. */
+  weekly?: number;
 }
 
 function isRecord(value: unknown): value is RunRecord {
@@ -157,7 +159,8 @@ function isRecord(value: unknown): value is RunRecord {
     typeof r.bestGame === 'number' &&
     typeof r.date === 'string' &&
     typeof r.daily === 'boolean' &&
-    (r.stake === undefined || typeof r.stake === 'number')
+    (r.stake === undefined || typeof r.stake === 'number') &&
+    (r.weekly === undefined || typeof r.weekly === 'number')
   );
 }
 

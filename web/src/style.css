@@ -9415,3 +9415,85 @@ div.coach-main {
   font-family: var(--font-label);
   font-size: var(--fs-s);
 }
+
+/* ------------------------------------- Wochen-Herausforderung (DESIGN 5.6) */
+.weekly {
+  border-color: var(--cool-dark);
+}
+
+.weekly .weekly-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 420px) {
+  .weekly .weekly-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.weekly-rule {
+  font-size: var(--fs-s);
+  line-height: 1.1;
+}
+
+.daily-text .weekly-rule b {
+  color: var(--cool);
+}
+
+/* A calendar sheet with the week number, like the daily seed's. */
+.week-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  line-height: 0.9;
+}
+
+.week-badge small {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.week-badge b {
+  font-weight: 400;
+  font-size: var(--fs-l);
+  color: var(--cool);
+}
+
+.weekly-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weekly-sheet-head b {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.sheet-weekly-board .board {
+  border-top: none;
+}
+
+.menu-weekly b {
+  font-weight: 400;
+  color: var(--cool);
+}
+
+.ledger-favs {
+  color: var(--cool);
+}
+
+/* Three pages of the Vereinsbuch: the tabs shrink on narrow phones. */
+.ledger-tabs .seg {
+  min-width: 0;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}

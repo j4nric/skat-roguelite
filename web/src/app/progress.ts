@@ -106,7 +106,10 @@ export class Progress {
       bestGame: view.stats.best_game,
       date: new Date().toISOString(),
       daily: info?.seed === view.seed && info.daily,
+      // The core knows a weekly run (DESIGN 5.6).
+      ...(view.weekly?.week ? { weekly: view.weekly.week } : {}),
     });
     if (info?.seed === view.seed && info.daily) this.account.submitDailyResult(view);
+    if (view.weekly?.week) this.account.submitWeeklyResult(view, view.weekly.week);
   }
 }

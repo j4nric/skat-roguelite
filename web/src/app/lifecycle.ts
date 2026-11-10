@@ -2,7 +2,7 @@
 // shared, daily or replayed seed), resuming a stored one, the long night,
 // and the Einführung (DESIGN 16.1), whose run is never saved nor counted.
 
-import { CoreRun, loadCatalog, loadCore } from '../core';
+import { CoreRun, loadCatalog, loadCore, weekInfo } from '../core';
 import { de, setCatalog } from '../i18n';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from '../seed';
 import { maxStake, pickedStake } from '../stake';
@@ -108,6 +108,8 @@ export class Lifecycle {
     // Die Einführung (DESIGN 16.1) is offered once to a new player.
     this.ctx.ui.tutorialOffer = !tutorialSeen() && !saved && !this.ctx.ui.history.length && !(this.ctx.ui.meta?.stats.runs_finished ?? 0);
     this.ctx.ui.screen = 'start';
+    // This week's challenge (DESIGN 5.6): the core names its rule and seed.
+    this.ctx.ui.week = weekInfo();
     this.account.loadBoard();
     this.ctx.render();
   }
@@ -154,13 +156,17 @@ export class Lifecycle {
   }
 
 
-  startRun({ seed, character, stake, daily }: PendingStart): void {
+  startRun({ seed, character, stake, daily, weekly }: PendingStart): void {
     // Since ADR 0016 every run is the whole evening.
     const length: RunLength = 'Full';
     let core: CoreRun;
     let startEvents = '[]';
     try {
-      if (this.ctx.meta) {
+      if (this.ctx.meta && weekly) {
+        const started = CoreRun.createWeekly(weekly, character, stake, this.ctx.meta);
+        core = started.run;
+        startEvents = started.startEvents;
+      } else if (this.ctx.meta) {
         const started = CoreRun.createWith(seed, character, length, stake, this.ctx.meta);
         core = started.run;
         startEvents = started.startEvents;
@@ -337,6 +343,13 @@ export class Lifecycle {
         this.ctx.render();
       },
       'play-daily': () => this.requestStart({ seed: dailySeed(), character: ui.pickCharacter, stake: this.pickedStake(), daily: true }),
+      'play-weekly': () => {
+        const week = ui.week ?? weekInfo();
+        if (!week) return;
+        // A rule with its own character plays that one, at stake 0.
+        const fixed = week.character;
+        this.requestStart({ seed: week.seed, character: fixed ?? ui.pickCharacter, stake: fixed ? 0 : this.pickedStake(), daily: false, weekly: week.week });
+      },
       'replay': ({ el, num }) => {
         const c = el.dataset.character ?? null;
         const seed = el.dataset.seed ?? '';

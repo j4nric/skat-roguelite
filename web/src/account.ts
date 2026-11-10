@@ -333,3 +333,22 @@ export function submitDaily(result: DailyResult): Promise<{ stored: boolean; me:
 export function fetchDailyBoard(day: string, limit = 10): Promise<DailyBoard> {
   return call('GET', `/daily/${encodeURIComponent(day)}?limit=${limit}`);
 }
+
+/** The Tafel der Woche (DESIGN 5.6): rows like the daily board's, keyed by the week (JJJJWW). */
+export interface WeeklyBoard extends Omit<DailyBoard, 'day'> {
+  week: string;
+}
+
+/** What a weekly run reports: as a daily one, with the week for the day. */
+export interface WeeklyResult extends Omit<DailyResult, 'day'> {
+  week: string;
+}
+
+/** The first result of the week counts on the board; later ones are practice (`stored: false`). */
+export function submitWeekly(result: WeeklyResult): Promise<{ stored: boolean; me: DailyEntry | null }> {
+  return call('POST', '/weekly', result);
+}
+
+export function fetchWeeklyBoard(week: string, limit = 10): Promise<WeeklyBoard> {
+  return call('GET', `/weekly/${encodeURIComponent(week)}?limit=${limit}`);
+}
