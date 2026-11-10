@@ -175,7 +175,7 @@ pub enum Bucket {
     Auth,
     /// Recovery code login (argon2, guessing).
     Recover,
-    /// Writes: save, name, daily result.
+    /// Writes: save, name, board results.
     Write,
     /// Reads.
     Read,

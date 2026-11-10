@@ -8,6 +8,7 @@
 //! - `sessions`: SHA-256 of the session token, user, expiry.
 //! - `saves`: one opaque save blob per user with version and time.
 //! - `daily_results`: one result per user and daily seed.
+//! - `weekly_results`: one result per user and ISO week (Tafel der Woche).
 //!
 //! Deleting a user deletes everything else of that user (foreign keys
 //! with `ON DELETE CASCADE`).
@@ -74,9 +75,26 @@ CREATE TABLE IF NOT EXISTS daily_results (
 );
 "#;
 
+/// Migration 2: the Tafel der Woche (DESIGN 5.6), shaped like the daily
+/// board with the ISO week (`JJJJWW`) as key.
+const MIGRATION_2: &str = r#"
+CREATE TABLE weekly_results (
+    week         TEXT NOT NULL,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    character    TEXT NOT NULL,
+    won          INTEGER NOT NULL,
+    section      INTEGER NOT NULL,
+    series       INTEGER NOT NULL,
+    stake        INTEGER NOT NULL,
+    best_game    INTEGER NOT NULL,
+    submitted_at INTEGER NOT NULL,
+    PRIMARY KEY (week, user_id)
+);
+"#;
+
 /// Every migration in order; the database's `user_version` is the number
 /// applied.
-const MIGRATIONS: &[&str] = &[MIGRATION_1];
+const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2];
 
 /// The schema version this server writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -502,11 +520,31 @@ pub fn put_save(
     Ok(PutSave::Stored(version))
 }
 
-/// A daily result to store.
+/// A leaderboard: the Tafel des Tages or the Tafel der Woche. Both
+/// tables have the same shape; only the table and its key differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Board {
+    /// One result per user and daily seed (`JJJJMMTT`).
+    Daily,
+    /// One result per user and ISO week (`JJJJWW`).
+    Weekly,
+}
+
+impl Board {
+    /// The table and its key column (fixed names, never user input).
+    const fn table(self) -> (&'static str, &'static str) {
+        match self {
+            Board::Daily => ("daily_results", "day"),
+            Board::Weekly => ("weekly_results", "week"),
+        }
+    }
+}
+
+/// A result to store on a board.
 #[derive(Debug, Clone)]
-pub struct DailyResult {
-    /// The daily seed (JJJJMMTT).
-    pub day: String,
+pub struct BoardResult {
+    /// The period: the daily seed (`JJJJMMTT`) or the week (`JJJJWW`).
+    pub period: String,
     /// Character id of the core (`Declarer`, …).
     pub character: String,
     /// Run won.
@@ -521,14 +559,22 @@ pub struct DailyResult {
     pub best_game: i64,
 }
 
-/// Store a daily result; the first one per user and day counts. Returns
+/// Store a result; the first one per user and period counts. Returns
 /// whether it was stored (false: there was one already).
-pub fn insert_daily(conn: &Connection, user_id: &str, r: &DailyResult) -> rusqlite::Result<bool> {
+pub fn insert_result(
+    conn: &Connection,
+    board: Board,
+    user_id: &str,
+    r: &BoardResult,
+) -> rusqlite::Result<bool> {
+    let (table, key) = board.table();
     let n = conn.execute(
-        "INSERT OR IGNORE INTO daily_results (day, user_id, character, won, section, series, stake, best_game, submitted_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        &format!(
+            "INSERT OR IGNORE INTO {table} ({key}, user_id, character, won, section, series, stake, best_game, submitted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        ),
         params![
-            r.day,
+            r.period,
             user_id,
             r.character,
             r.won,
@@ -542,9 +588,9 @@ pub fn insert_daily(conn: &Connection, user_id: &str, r: &DailyResult) -> rusqli
     Ok(n > 0)
 }
 
-/// A row of the daily leaderboard.
+/// A row of a leaderboard.
 #[derive(Debug, Clone)]
-pub struct DailyRow {
+pub struct BoardRow {
     /// Place, from 1.
     pub rank: i64,
     /// User id (not sent to clients).
@@ -552,23 +598,28 @@ pub struct DailyRow {
     /// Display name, if the player set one.
     pub name: Option<String>,
     /// The result.
-    pub result: DailyResult,
+    pub result: BoardResult,
 }
 
-/// Order of the board: won runs first, then farther, then higher stake,
-/// then the better best game, then who was first.
-const RANKED: &str = "SELECT ROW_NUMBER() OVER (ORDER BY d.won DESC, d.section DESC, d.series DESC, d.stake DESC, d.best_game DESC, d.submitted_at ASC) AS rank,
-       d.user_id, u.name, d.day, d.character, d.won, d.section, d.series, d.stake, d.best_game
-  FROM daily_results d JOIN users u ON u.id = d.user_id
- WHERE d.day = ?1";
+/// The ranked rows of a period: won runs first, then farther, then
+/// higher stake, then the better best game, then who was first.
+fn ranked(board: Board) -> String {
+    let (table, key) = board.table();
+    format!(
+        "SELECT ROW_NUMBER() OVER (ORDER BY d.won DESC, d.section DESC, d.series DESC, d.stake DESC, d.best_game DESC, d.submitted_at ASC) AS rank,
+       d.user_id, u.name, d.{key}, d.character, d.won, d.section, d.series, d.stake, d.best_game
+  FROM {table} d JOIN users u ON u.id = d.user_id
+ WHERE d.{key} = ?1"
+    )
+}
 
-fn daily_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DailyRow> {
-    Ok(DailyRow {
+fn board_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<BoardRow> {
+    Ok(BoardRow {
         rank: r.get(0)?,
         user_id: r.get(1)?,
         name: r.get(2)?,
-        result: DailyResult {
-            day: r.get(3)?,
+        result: BoardResult {
+            period: r.get(3)?,
             character: r.get(4)?,
             won: r.get(5)?,
             section: r.get(6)?,
@@ -579,28 +630,39 @@ fn daily_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DailyRow> {
     })
 }
 
-/// The best `limit` results of a day.
-pub fn daily_top(conn: &Connection, day: &str, limit: i64) -> rusqlite::Result<Vec<DailyRow>> {
-    let mut stmt = conn.prepare(&format!("{RANKED} ORDER BY rank LIMIT ?2"))?;
-    let rows = stmt.query_map(params![day, limit], daily_row)?;
+/// The best `limit` results of a period.
+pub fn board_top(
+    conn: &Connection,
+    board: Board,
+    period: &str,
+    limit: i64,
+) -> rusqlite::Result<Vec<BoardRow>> {
+    let mut stmt = conn.prepare(&format!("{} ORDER BY rank LIMIT ?2", ranked(board)))?;
+    let rows = stmt.query_map(params![period, limit], board_row)?;
     rows.collect()
 }
 
-/// The result of one user on a day, with its place.
-pub fn daily_of(conn: &Connection, day: &str, user_id: &str) -> rusqlite::Result<Option<DailyRow>> {
+/// The result of one user in a period, with its place.
+pub fn result_of(
+    conn: &Connection,
+    board: Board,
+    period: &str,
+    user_id: &str,
+) -> rusqlite::Result<Option<BoardRow>> {
     conn.query_row(
-        &format!("SELECT * FROM ({RANKED}) WHERE user_id = ?2"),
-        params![day, user_id],
-        daily_row,
+        &format!("SELECT * FROM ({}) WHERE user_id = ?2", ranked(board)),
+        params![period, user_id],
+        board_row,
     )
     .optional()
 }
 
-/// How many results a day has.
-pub fn daily_count(conn: &Connection, day: &str) -> rusqlite::Result<i64> {
+/// How many results a period has.
+pub fn board_count(conn: &Connection, board: Board, period: &str) -> rusqlite::Result<i64> {
+    let (table, key) = board.table();
     conn.query_row(
-        "SELECT COUNT(*) FROM daily_results WHERE day = ?1",
-        params![day],
+        &format!("SELECT COUNT(*) FROM {table} WHERE {key} = ?1"),
+        params![period],
         |r| r.get(0),
     )
 }
@@ -720,6 +782,48 @@ mod tests {
         assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
         let user = user(&conn, "u1").expect("query").expect("kept");
         assert_eq!(user.name.as_deref(), Some("Jan"));
+        drop(conn);
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        }
+    }
+
+    #[test]
+    fn version_one_gets_the_weekly_board_and_keeps_the_daily() {
+        let path = temp_path("v1.db");
+        {
+            let conn = Connection::open(&path).expect("create");
+            conn.execute_batch(MIGRATION_1).expect("v1");
+            conn.pragma_update(None, "user_version", 1).expect("v1");
+            conn.execute_batch(
+                "INSERT INTO users (id, name, created_at, recovery_id, recovery_hash) VALUES ('u1', 'Jan', 1, 'ABCDEFGH', 'h');
+                 INSERT INTO daily_results VALUES ('20261109', 'u1', 'Declarer', 1, 3, 5, 0, 96, 1);",
+            )
+            .expect("data");
+        }
+        let conn = open(&path).expect("open");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+        assert_eq!(board_count(&conn, Board::Daily, "20261109").expect("n"), 1);
+        let week = BoardResult {
+            period: "202646".into(),
+            character: "Declarer".into(),
+            won: false,
+            section: 2,
+            series: 1,
+            stake: 0,
+            best_game: 40,
+        };
+        assert!(insert_result(&conn, Board::Weekly, "u1", &week).expect("insert"));
+        assert!(!insert_result(&conn, Board::Weekly, "u1", &week).expect("again"));
+        assert_eq!(board_count(&conn, Board::Weekly, "202646").expect("n"), 1);
+        assert_eq!(board_count(&conn, Board::Daily, "202646").expect("n"), 0);
+        let mine = result_of(&conn, Board::Weekly, "202646", "u1")
+            .expect("q")
+            .expect("row");
+        assert_eq!((mine.rank, mine.name.as_deref()), (1, Some("Jan")));
+        // Deleting the user takes the weekly result along.
+        assert!(delete_user(&conn, "u1").expect("delete"));
+        assert_eq!(board_count(&conn, Board::Weekly, "202646").expect("n"), 0);
         drop(conn);
         for ext in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{ext}", path.display()));

@@ -187,7 +187,7 @@ pub async fn put_save(
 }
 
 /// `DELETE /api/account`: delete the account with passkeys, sessions,
-/// save and daily results. The passkey stays in the player's password
+/// save and board results. The passkey stays in the player's password
 /// manager; it no longer opens anything.
 pub async fn delete_account(
     State(state): State<AppState>,
