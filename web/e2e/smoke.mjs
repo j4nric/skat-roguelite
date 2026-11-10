@@ -41,9 +41,16 @@
 //   hand (sampled every frame), a hand card tapped flies onto the table,
 //   on Drücken both fly into the Ansage and after it into the stack in
 //   the felt's corner, turning face down,
-// - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
+// - "Kartenfarbe tönen" (suitTintPass): the switch "Tönen" tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
+// - Barrierefreiheit (a11yPass; alone with SMOKE_ONLY=a11y): the row
+//   "Darstellung" in the menu, "Farbenblind-Hilfe" puts a suit letter on
+//   every face (stored), "Schriftgröße" Groß and Sehr groß keep the table
+//   fitting and nothing scrolling sideways, cards and HUD have names, a
+//   polite live region says opponents' cards, tricks and the result, the
+//   menu takes the focus, keeps Tab inside and gives it back on Escape;
+//   screenshots with simulated deuteranopia and protanopia (a11y-*.png),
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
@@ -1211,9 +1218,10 @@ async function suitTintPass(browser, errors, reducedMotion) {
   if (plainFills.size !== 1) fail(`with the tint off the papers differ: ${[...plainFills].join(', ')}`);
 
   await page.click('[data-action="menu"]');
-  await page.waitForSelector('[data-testid="setting-suit-tint"]');
-  await page.click('[data-testid="setting-suit-tint"] [data-on="true"]');
-  await page.waitForSelector('[data-testid="setting-suit-tint"] [data-on="true"][aria-pressed="true"]');
+  // "Tönen" is a toggle in the row "Darstellung": its data-on is the state a tap sets.
+  await page.waitForSelector('[data-testid="setting-display"] [data-testid="toggle-suit-tint"]');
+  await page.click('[data-testid="toggle-suit-tint"][data-on="true"]');
+  await page.waitForSelector('[data-testid="toggle-suit-tint"][aria-pressed="true"]');
   await assertMenuNoScroll(page, 'menu with "Kartenfarbe tönen"');
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
   if (stored.suitTint !== true) fail(`"Kartenfarbe tönen" not stored: ${JSON.stringify(stored)}`);
@@ -1235,7 +1243,7 @@ async function suitTintPass(browser, errors, reducedMotion) {
   await check('tint on after a reload');
 
   await page.click('[data-action="menu"]');
-  await page.click('[data-testid="setting-suit-tint"] [data-on="false"]');
+  await page.click('[data-testid="toggle-suit-tint"][data-on="false"]');
   await page.click('[data-testid="menu-close"]');
   const off = new Set((await papers()).map((p) => p.fill));
   if (off.size !== 1 || !plainFills.has([...off][0])) fail(`tint off again: papers ${[...off].join(', ')}`);
@@ -2062,7 +2070,7 @@ async function pasteSaveCode(page, code) {
 /** The menu fits the viewport (it scrolls inside), the page itself does not scroll. */
 async function assertMenuFits(page, label) {
   const r = await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+    await Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined)));
     const sheet = document.querySelector('.layer .sheet')?.getBoundingClientRect();
     const doc = document.scrollingElement;
     return { top: sheet?.top ?? -1, bottom: sheet?.bottom ?? 1e9, height: innerHeight, scroll: (doc?.scrollHeight ?? 0) - innerHeight };
@@ -2082,7 +2090,7 @@ async function assertMenuNoScroll(page, label) {
     await page.setViewportSize(size);
     const r = await page.evaluate(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+      await Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined)));
       const sheet = document.querySelector('.layer .sheet-menu');
       const close = document.querySelector('.layer [data-testid="menu-close"]')?.getBoundingClientRect();
       return {
@@ -2242,7 +2250,7 @@ async function expectHint(page, id) {
   await page.waitForSelector(`[data-testid="hint"][data-hint="${id}"]`, { timeout: 15000 }).catch(async () => {
     fail(`hint "${id}" not shown (on screen: ${await hintId(page)})`);
   });
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined))));
   return ((await page.locator('[data-testid="hint"] .hint-text').textContent()) ?? '').trim();
 }
 
@@ -5580,6 +5588,242 @@ async function offlinePass(browser, errors) {
   log('offline: service worker in control, start screen and a new run without network');
 }
 
+/**
+ * Colour vision deficiencies as SVG colour matrices (Machado et al. 2009,
+ * severity 1, linear RGB), laid over the whole page for screenshots.
+ */
+const CVD = {
+  deuteranopia: '0.367322 0.860646 -0.227968 0 0  0.280085 0.672501 0.047413 0 0  -0.011820 0.042940 0.968881 0 0  0 0 0 1 0',
+  protanopia: '0.152286 1.052583 -0.204868 0 0  0.114503 0.786281 0.099216 0 0  -0.003882 -0.048116 1.051998 0 0  0 0 0 1 0',
+};
+
+async function simulateCvd(page, kind) {
+  await page.evaluate((m) => {
+    document.getElementById('cvd-sim')?.remove();
+    document.documentElement.style.filter = '';
+    if (!m) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'cvd-sim';
+    svg.setAttribute('width', '0');
+    svg.setAttribute('height', '0');
+    svg.style.position = 'absolute';
+    svg.innerHTML = `<filter id="cvd-f" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="${m}"/></filter>`;
+    document.body.appendChild(svg);
+    document.documentElement.style.filter = 'url(#cvd-f)';
+  }, kind ? CVD[kind] : '');
+}
+
+/** Screenshots of the page as it is and as seen with deuteranopia and protanopia. */
+async function shootCvd(page, name) {
+  const size = page.viewportSize();
+  const tag = size ? `${size.width}x${size.height}` : 'page';
+  await page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  for (const kind of Object.keys(CVD)) {
+    await simulateCvd(page, kind);
+    await page.screenshot({ path: join(screens, `${name}-${kind}-${tag}.png`) });
+  }
+  await simulateCvd(page, null);
+}
+
+/** The page never scrolls sideways and no element of the screen or dialog leaves the viewport. */
+async function assertNoSideways(page, label) {
+  const r = await page.evaluate(() => {
+    const w = innerWidth;
+    const out = [];
+    for (const el of document.querySelectorAll('.screen *, .layer *')) {
+      const b = el.getBoundingClientRect();
+      if (!b.width || !b.height || el.closest('svg, [data-testid="characters"], .leiste')) continue;
+      // Inside a box that scrolls or clips sideways on purpose (the HUD strip, the character row).
+      if (el.parentElement?.closest('.hud-leiste, .relic-strip, .char-pick')) continue;
+      if (b.right > w + 1 || b.left < -1) out.push(`${el.tagName.toLowerCase()}.${String(el.className?.baseVal ?? el.className).split(' ')[0]} ${Math.round(b.left)}..${Math.round(b.right)}`);
+    }
+    return { page: document.documentElement.scrollWidth - w, out: out.slice(0, 4) };
+  });
+  if (r.page > 0) fail(`${label}: the page scrolls sideways by ${r.page}px`);
+  if (r.out.length) fail(`${label}: elements leave the viewport: ${r.out.join(', ')}`);
+}
+
+/**
+ * Barrierefreiheit (DESIGN 16): the menu row "Darstellung" with
+ * "Farbenblind-Hilfe" (suit letters on every face, stored) and
+ * "Schriftgröße" (Normal, Groß, Sehr groß: the type scale grows, nothing
+ * scrolls sideways at 390 × 844 and 360 × 740, the table still fits), the
+ * screen reader's names of cards, the HUD and the opponents, a polite live
+ * region for an opponent's card, a trick and the result, and the focus in
+ * dialogs (into the menu, kept inside on Tab, Escape closes it and the
+ * focus returns). Screenshots with deuteranopia and protanopia simulated.
+ */
+async function a11yPass(browser, errors, reducedMotion = 'reduce') {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  // Every line the live region gets, in window.__said.
+  await context.addInitScript(() => {
+    window.__said = [];
+    new MutationObserver(() => {
+      const live = document.querySelector('[data-testid="sr-live"]');
+      if (!live || live.__watched) return;
+      live.__watched = true;
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) if (n.textContent) window.__said.push(n.textContent);
+      }).observe(live, { childList: true });
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const letters = () =>
+    page.$$eval('.hand .card-svg[data-suit]', (svgs) =>
+      svgs.map((svg) => {
+        const use = svg.querySelector('use.face-letter');
+        return { suit: svg.dataset.suit, href: use?.getAttribute('href') ?? '', shown: use ? getComputedStyle(use).display !== 'none' : false };
+      }),
+    );
+  const off = await letters();
+  if (!off.length || off.some((l) => l.shown)) fail('a11y: suit letters shown without "Farbenblind-Hilfe"');
+  await shootCvd(page, 'a11y-cards-plain');
+
+  // The menu by keyboard: focus goes into the dialog, Tab stays in it, Escape closes it and focus returns.
+  await page.focus('.hud [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.layer .sheet-menu');
+  const into = await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]')));
+  if (!into) fail('a11y: the menu opened, but the focus did not go into it');
+  const named = await page.locator('.layer [role="dialog"]').getAttribute('aria-labelledby');
+  if (!named || !(await page.locator(`#${named}`).count())) fail('a11y: the menu dialog has no name');
+  for (let i = 0; i < 40; i++) await page.keyboard.press('Tab');
+  if (!(await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]'))))) fail('a11y: Tab left the open menu');
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+Tab');
+  if (!(await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]'))))) fail('a11y: Shift+Tab left the open menu');
+  const ring = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+  if (ring === 'none') fail('a11y: no visible focus ring on the focused control');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.layer .sheet-menu', { state: 'detached' });
+  const back = await page.evaluate(() => document.activeElement?.getAttribute('data-action'));
+  if (back !== 'menu') fail(`a11y: after Escape the focus is on "${back}", not on the menu button`);
+  log('a11y: menu by keyboard: focus in, kept inside on Tab, Escape closes, focus back on the menu button');
+
+  // "Farbenblind-Hilfe": off by default, on in the row "Darstellung", stored.
+  await page.click('[data-action="menu"]');
+  const cb = page.locator('[data-testid="setting-display"] [data-testid="toggle-color-blind"]');
+  if ((await cb.getAttribute('aria-pressed')) !== 'false') fail('a11y: "Farbenblind-Hilfe" is on by default');
+  if ((await cb.getAttribute('aria-label')) !== 'Farbenblind-Hilfe') fail(`a11y: the toggle is named "${await cb.getAttribute('aria-label')}"`);
+  await assertMenuNoScroll(page, 'menu with the row "Darstellung"');
+  await cb.click();
+  await page.waitForSelector('[data-testid="toggle-color-blind"][aria-pressed="true"]');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+  if (stored.colorBlind !== true) fail(`a11y: "Farbenblind-Hilfe" not stored: ${JSON.stringify(stored)}`);
+  await page.click('[data-testid="menu-close"]');
+  const on = await letters();
+  const code = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' };
+  const wrong = on.filter((l) => !l.shown || l.href !== `#cb-${code[l.suit]}`);
+  if (wrong.length) fail(`a11y: suit letters wrong: ${JSON.stringify(wrong.slice(0, 3))}`);
+  if (new Set(on.map((l) => l.suit)).size < 4) fail('a11y: the hand should hold all four suits');
+  const glyphs = await page.evaluate(() => ['C', 'S', 'H', 'D'].filter((c) => !document.getElementById(`cb-${c}`)?.querySelector('path')));
+  if (glyphs.length) fail(`a11y: suit letter symbols missing in the sprite: ${glyphs.join(', ')}`);
+  await shootCvd(page, 'a11y-cards-letters');
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  if ((await letters()).some((l) => !l.shown)) fail('a11y: suit letters gone after a reload');
+  log('a11y: "Farbenblind-Hilfe" off by default, a letter per suit on every face, stored');
+
+  // Screen reader names: cards, the opponents' boxes, the HUD.
+  const cardNames = await page.$$eval('.hand .hand-card', (els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+  if (cardNames.some((n) => !/^(Eichel|Grün|Rot|Schellen)-(Sieben|Acht|Neun|Zehn|Unter|Ober|Oberin|König|Daus)/.test(n))) fail(`a11y: hand card names: ${cardNames.join(' | ')}`);
+  const oppName = (await page.locator('.opp[data-seat="1"] .opp-main').getAttribute('aria-label')) ?? '';
+  if (!/10 Karten/.test(oppName)) fail(`a11y: the opponent's box is named "${oppName}"`);
+  const hud = await page.locator('.hud').ariaSnapshot();
+  if (!/Groschen/.test(hud) || !/meter "Konto \/ Ziel"/.test(hud)) fail(`a11y: the HUD reads:\n${hud}`);
+  log(`a11y: names: "${cardNames[0]}", "${oppName}"`);
+
+  // A game: the live region says the opponents' cards, the tricks and the result, politely.
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  await discardFirstTwo(page, 'a11y');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  const live = await page.locator('[data-testid="sr-live"]').evaluate((el) => ({ role: el.getAttribute('role'), polite: el.getAttribute('aria-live') }));
+  if (live.role !== 'status' || live.polite !== 'polite') fail(`a11y: live region ${JSON.stringify(live)}`);
+  await page.waitForSelector('[data-action="play"]');
+  const trickName = await page.evaluate(() => document.querySelector('.trick-card[aria-label]')?.getAttribute('aria-label') ?? '');
+  await playOut(page, 'a11y');
+  const said = await page.evaluate(() => window.__said);
+  if (!said.some((l) => / spielt (Eichel|Grün|Rot|Schellen)-/.test(l))) fail(`a11y: no opponent's card said: ${said.slice(0, 6).join(' | ')}`);
+  if (!said.some((l) => /Stich/.test(l))) fail(`a11y: no trick said: ${said.slice(0, 6).join(' | ')}`);
+  if (!said.some((l) => /^(Gewonnen|Verloren): /.test(l))) fail(`a11y: no result said: ${said.slice(-3).join(' | ')}`);
+  if (said.some((l) => l.length > 90)) fail(`a11y: a live line is too long: ${said.find((l) => l.length > 90)}`);
+  const scoreFocus = await page.evaluate(() => Boolean(document.activeElement?.closest('.score-sheet')));
+  if (!scoreFocus) fail('a11y: the score board took no focus');
+  log(`a11y: live region said ${said.length} lines, e.g. "${said[0]}", "${said[said.length - 1]}"${trickName ? `; trick card "${trickName}"` : ''}`);
+  await shootCvd(page, 'a11y-score');
+  await context.close();
+
+  // "Schriftgröße": Normal, Groß, Sehr groß; the scale grows, nothing scrolls sideways, the table fits.
+  const sizes = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const p2 = await sizes.newPage();
+  watch(p2, errors);
+  await p2.goto(base);
+  await p2.waitForSelector('[data-action="new-run"]');
+  const body = () => p2.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs-body')));
+  let last = await body();
+  for (const size of ['large', 'xlarge']) {
+    await p2.click('[data-action="settings"], [data-action="menu"]');
+    await p2.click('[data-testid="toggle-text-size"]');
+    await p2.waitForSelector(`[data-testid="toggle-text-size"][data-now="${size}"]`);
+    const now = await body();
+    if (!(now > last)) fail(`a11y: text size ${size}: --fs-body ${now}px, not above ${last}px`);
+    last = now;
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, menu at ${vp.width}x${vp.height}`);
+    }
+    await p2.setViewportSize(PHONE);
+    if (size === 'xlarge') await p2.screenshot({ path: join(screens, 'a11y-text-xlarge-menu-390x844.png') });
+    await p2.click('[data-testid="menu-close"]');
+    const stored = await p2.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+    if (stored.textSize !== size) fail(`a11y: text size ${size} not stored: ${JSON.stringify(stored)}`);
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, start screen at ${vp.width}x${vp.height}`);
+    }
+    await p2.setViewportSize(PHONE);
+    await p2.fill('#seed', SEED);
+    await p2.click('[data-action="new-run"]');
+    // From the second size on a run is going: give it up for the new one.
+    await p2.waitForSelector('[data-testid="skat-choice"], [data-action="confirm-new"]');
+    if (await p2.locator('[data-action="confirm-new"]').count()) await p2.click('[data-action="confirm-new"]');
+    await p2.waitForSelector('[data-testid="skat-choice"]');
+    await assertFits(p2, `text ${size}, Skat oder Hand`);
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, table at ${vp.width}x${vp.height}`);
+      await p2.screenshot({ path: join(screens, `a11y-text-${size}-${vp.width}x${vp.height}.png`) });
+    }
+    await p2.setViewportSize(PHONE);
+    await p2.click('[data-action="pick-up-skat"]');
+    await p2.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+    await discardFirstTwo(p2, `text ${size}`);
+    await p2.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+    await assertFits(p2, `text ${size}, Ansage after the skat`);
+    await p2.click('[data-action="pick-game"][data-index="4"]');
+    await p2.click('[data-action="declare"]');
+    await p2.waitForSelector('[data-action="play"]');
+    await assertFits(p2, `text ${size}, playing`);
+    await p2.goto(base);
+    await p2.waitForSelector('[data-action="new-run"]');
+  }
+  log('a11y: "Schriftgröße" Groß and Sehr groß: bigger type, stored, no sideways scroll, the table fits');
+  await sizes.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -5627,6 +5871,11 @@ async function run() {
       await handSortPass(browser, errors, DESKTOP);
       await shareRunPass(browser, errors, PHONE);
       await shareRunPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=a11y: Barrierefreiheit (colour-blind aid, text size, screen reader, focus).
+    if (process.env.SMOKE_ONLY === 'a11y') {
+      await a11yPass(browser, errors, reducedMotion);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -5933,6 +6182,7 @@ async function run() {
     await factorPass(browser, errors, reducedMotion);
     await musicPass(browser, errors, reducedMotion);
     await suitTintPass(browser, errors, reducedMotion);
+    await a11yPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
     await bossesV2(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
