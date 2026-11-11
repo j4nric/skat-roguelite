@@ -78,9 +78,9 @@ interface SyncRecord {
 /** What the app provides. */
 export interface SyncHost {
   /** Whether the core can load the run and meta state among these keys. */
-  readable(keys: Record<string, string>): boolean;
+  readable(keys: Record<string, string>): Promise<boolean>;
   /** Whether a stored meta state holds no progress yet (asked of the core). */
-  freshMeta(meta: string): boolean;
+  freshMeta(meta: string): Promise<boolean>;
   /** Something about the account or its status changed: render. */
   changed(): void;
 }
@@ -113,10 +113,10 @@ export function hashKeys(keys: Record<string, string>): string {
  * meta state without progress (no unlocks, no statistics; `freshMeta`
  * asks the core).
  */
-export function isEmptyProgress(keys: Record<string, string>, freshMeta: (meta: string) => boolean): boolean {
+export async function isEmptyProgress(keys: Record<string, string>, freshMeta: (meta: string) => Promise<boolean>): Promise<boolean> {
   if (keys['stammtisch.run']) return false;
   const meta = keys['stammtisch.meta'];
-  if (meta && !freshMeta(meta)) return false;
+  if (meta && !(await freshMeta(meta))) return false;
   const history = keys['stammtisch.history'];
   if (!history) return true;
   try {
@@ -259,7 +259,7 @@ export class Sync {
     const dirty = hash !== record.hash;
     if (dirty) this.remember({ localAt: Date.now() });
     if (!server) {
-      if (!isEmptyProgress(local, (m) => this.host.freshMeta(m))) await this.upload(local, hash, null);
+      if (!(await isEmptyProgress(local, (m) => this.host.freshMeta(m)))) await this.upload(local, hash, null);
       else this.setStatus('saved');
       return 'none';
     }
@@ -270,7 +270,7 @@ export class Sync {
     }
     // Another device saved since.
     const decoded = await decodeSave(server.data).catch(() => null);
-    if (!decoded?.ok || !this.host.readable(decoded.keys)) {
+    if (!decoded?.ok || !(await this.host.readable(decoded.keys))) {
       // From a newer version of the game (or broken): never overwrite it from here.
       this.setStatus('outdated');
       return 'none';
@@ -282,7 +282,7 @@ export class Sync {
       return 'none';
     }
     // Mid-session the app runs on what it read from storage: never replace it under it.
-    const take = when !== 'session' && (!dirty || isEmptyProgress(local, (m) => this.host.freshMeta(m)));
+    const take = when !== 'session' && (!dirty || (await isEmptyProgress(local, (m) => this.host.freshMeta(m))));
     if (take && when === 'signin') {
       this.incoming = { server, keys: decoded.keys };
       this.done();
