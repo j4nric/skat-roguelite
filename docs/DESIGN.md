@@ -1573,9 +1573,22 @@ Stand M5 (`run.ron`, `opponents`): Abschnitt 1 Heuristik, Abschnitt 2 PIMC mit 6
 Entschieden am 01.11.2026 (Cockpit): Die normalen Gegner sind wechselnde Stammgäste mit Namen und Pixelgesicht, ohne eigene Regeln; Regeln bleiben den Bossen. Umgesetzt in M6 (`core/content/guests.ron`, 14 Gäste, im Code `Guest`):
 
 - Zu Beginn jeder Serie setzen sich zwei verschiedene Gäste (Sitz 1 links, Sitz 2 rechts). Gezogen wird aus einem eigenen Zufallsstrom, der nur vom Seed des Runs und der Serie abhängt; kein anderer Strom rückt dadurch weiter, Simulator-Ergebnisse bleiben gleich. Die beiden Gäste der vorigen Serie setzen aus, so kommt nie dasselbe Paar zweimal hintereinander.
-- In der Boss-Serie sitzt links der Boss, rechts ein Stammgast.
+- In der Boss-Serie saß bis ADR 0017 links der Boss, rechts ein Stammgast; seitdem sitzen dort beide Figuren des Bosses.
 - Spielstände von vorher bekommen die Gäste der laufenden Serie aus dem Seed, ab der nächsten Serie wie oben.
-- Jeder Gast hat drei kurze Sprüche (Begrüßung, eigener Stich, Stich des Spielers). Die Oberfläche zeigt selten einen davon als kleine Sprechblase in seinem Kasten: beim ersten Spiel einer Serie und höchstens etwa jedes zweite Spiel nach einem Stich ab 10 Augen. Nie zusammen mit einem Hinweis des Wirts.
+- **Sprüche** (bis 11.11.2026 drei je Gast: Begrüßung, eigener Stich, Stich des Spielers; die Oberfläche zeigte beim ersten Spiel einer Serie und höchstens etwa jedes zweite Spiel nach einem Stich ab 10 Augen einen davon). Seit dem 11.11.2026 („Sprüche v2“, entschieden von Claude im Rahmen von Säule „Stammtisch, nicht Turnier“) hat jeder Gast für elf Anlässe je zwei bis drei Varianten (`quips` in `guests.ron`, im Kern `Quips` und `QuipSituation`, 25 Sprüche je Gast):
+
+  | Anlass (`quips`) | Wann | Wie oft |
+  |---|---|---|
+  | `greet` | erstes Spiel der Serie (steht auch auf dem Filz) | immer |
+  | `win`, `lose` | Stich ab 10 Augen an den Gast oder an den Spieler | nach mindestens 14 ruhigen Stichen |
+  | `smear` | der Gast schmiert: Daus oder Zehn in den Stich seines Partners | nach 9 ruhigen Stichen |
+  | `grand`, `null`, `bold` | der Spieler sagt Grand, Null oder Hand, Schneider, Schwarz, Ouvert an (Null geht vor, dann die Risikostufe, dann Grand) | nach 7 ruhigen Stichen, zu 60 % |
+  | `ramsch` | der erste Ramsch einer Serie beginnt | wie die Ansage |
+  | `won`, `lost` | nach der Abrechnung: die Gäste gewinnen, der Spieler gewinnt | nach 7 ruhigen Stichen, zu 45 % |
+  | `schneider` | der Spieler gewinnt mit Schneider oder Schwarz | nach 3 ruhigen Stichen |
+
+  Ruhig heißt: ohne Sprechblase seit so vielen Stichen. Im Mittel kommt so etwa eine Blase je Spiel, nie zwei kurz hintereinander, immer höchstens eine auf dem Tisch, nie zusammen mit einem Hinweis des Wirts; die Begrüßung kommt immer durch. Im Ramsch (Ramschtante) schweigen die Gäste zu Stichen, ihre Stich-Sprüche gelten einem Spiel gegen den Spieler. Nach dem letzten Spiel einer Kneipe gibt es keinen Ergebnis-Spruch (der Tisch ist weg). Welche Variante kommt, entscheidet die Oberfläche mit `Math.random`, nie dieselbe zweimal nacheinander für dieselbe Person und denselben Anlass (`web/src/ui/quips.ts`, Zeitplan `web/src/app/talk.ts`); die Begrüßung ist je Serie fest, damit Blase und Filz dasselbe sagen. Das ist Dekoration: kein Zufallsstrom des Kerns, kein Einfluss auf Simulator und Spiel. Die Blase bleibt 2,8 Sekunden (Tempo-Einstellung, mindestens 1,8), bei reduzierter Bewegung ohne Einblenden, für Bildschirmleser als `status`. Höchstens 40 Zeichen auf Deutsch (Test im Kern), 42 auf Englisch (`check-i18n`). Ein alter Inhalt mit einem einzelnen Spruch je Anlass lädt weiter. Spielstände enthalten nur die Ids der Gäste, die Sprüche kommen immer aus dem Inhalt.
+  Den Anlass „Stammgast neben dem Boss“ gibt es nicht: Seit ADR 0017 sitzen in der Boss-Kneipe beide Figuren des Bosses (die haben eigene Sprüche, 11).
 - Kein Einfluss auf Spiel und KI.
 - **Ausgabe** (ADR 0015, umgesetzt in M9): Stammgäste spielen die normale Ausgabe ohne Modifikationen (Antwort im Cockpit). Ihre Karten zeigen eine gemeinsame Gegner-Rückseite (`back` in `guests.ron`, Standard `opponent`; Web: `web/src/ui/backs.ts`).
 
@@ -1610,6 +1623,8 @@ Die Sonderregel gilt für die ganze Boss-Kneipe und wird vorher angezeigt, damit
 | **Der Schwarze Peter** | Ein gewonnenes Spiel ohne Schneider zählt halb | Der Schwarze Peter, Die Schwarze Grete | Eichel- und Grün-Unter Durchsichtig; Eichel- und Grün-Oberin Durchsichtig | Ruß an den Fingern: eine Hilfe beim schwersten Boss | 0,7 (Nullspieler 0,2) |
 | **Der Alte** (Endboss) | legt die fünf Regeln oben der Reihe nach auf, eine pro Blatt (Schieber, Zwillinge, Ramscher, Oma, Schwarzer Peter) | Der Alte, Die Alte | die Ausgaben der Figuren des Bosses, dessen Regel gerade gilt (links die erste, rechts die zweite) | das alte Paar | 1,3 (seit Runde 2, 04.11.2026; vorher 1,0) |
 | **Der Totengräber** (nur in der langen Nacht, seit 10.11.2026) | Die gedrückten Karten zählen keine Augen (`MultiplySkatPoints(0)`; nicht im Handspiel und im Null) | Der Totengräber, Die Witwe | Neunen Rang 2; Daus Augen +4 | vom Friedhof: begrabener Skat, Erbstücke der Witwe | 2,5 (in der Nacht gemessen) |
+
+**Sprüche der Figuren** (11.11.2026, mit den Sprüchen v2 der Stammgäste, 10.4): Jede Figur jedes Bosses, auch Der Alte, Die Alte, Der Totengräber und Die Witwe, hat in der Stimme ihres Bosses je zwei Varianten für sieben Anlässe (`figures[].quips` in `bosses.ron`, Sicht `BossFigureInfo::quips`, nur Darstellung): `greet` beim Auftritt (die linke Figur auf dem Boss-Blatt vor der Kneipe, die rechte als Blase beim ersten Spiel), `win` und `lose` bei einem Stich ab 10 Augen, `won` und `lost` nach einem Spiel, `beaten` auf der Relikt-Wahl nach der gewonnenen Boss-Kneipe (beim Alten auf dem Endbildschirm) und `victory` auf dem Endbildschirm, wenn der Boss die Kneipe gewinnt. Zeitplan und Wahl der Variante wie bei den Stammgästen.
 
 Entfallen mit ADR 0017: **Der Kontra-Hans** (Kontra immer erlaubt), **Der Revolutionär** (Handtausch nach dem fünften Stich) und **Der Kiebitz-Mörder** (Informations-Wirkungen aus). Mit ihnen die Wirkungen `SwapDefenderHands`, `DisableInformation` und `BlankOut` (die alte Regel der Oma); `EnableKontra` bleibt für die Hausregel. Ein Spielstand, der einen von ihnen gezogen hat, trifft einen Ersatz (`RETIRED_BOSSES`: Kontra-Hans und Revolutionär die Zwillinge, Kiebitz-Mörder der Schwarze Peter; keiner verlangt Hand, damit ein wartender Stand spielbar bleibt). **Der Totengräber** ruhte als Boss mit Sonderkarten bis zum 10.11.2026; seitdem ist er der Boss der Nacht (unten).
 
