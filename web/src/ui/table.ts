@@ -23,6 +23,7 @@ import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { valueIcon } from './fxart';
 import { quipBubble, seatLabel, seatPerson } from './guests';
+import { greetingOf } from './quips';
 import { schnapsNotes } from './hud';
 import { bossCoaster } from './emblems';
 import { portrait } from './people';
@@ -257,9 +258,9 @@ function pressedCards(game: GameView): string {
  */
 function tableTalk(view: RunView): string {
   const lines = ([1, 2] as const)
-    .map((seat) => seatPerson(view, seat))
-    .filter((p) => p.guest)
-    .map((p) => `<li class="talk-line"><b>${esc(p.name)}:</b> <q>${esc(p.guest?.greet ?? '')}</q></li>`)
+    .map((seat) => ({ person: seatPerson(view, seat), greet: greetingOf(view, seat) }))
+    .filter(({ person, greet }) => person.guest && greet)
+    .map(({ person, greet }) => `<li class="talk-line"><b>${esc(person.name)}:</b> <q>${esc(greet)}</q></li>`)
     .join('');
   return lines ? `<ul class="table-talk" data-testid="table-talk">${lines}</ul>` : '';
 }
