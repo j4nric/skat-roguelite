@@ -211,8 +211,14 @@
             (name: "Der Totengräber", edition: [((rank: Some(Nine)), "rank", 2)]),
             (name: "Die Witwe", edition: [((rank: Some(Ace)), "points", 4)]),
         ],
-        // Vorläufig (10.11.2026), gemessen in
-        // docs/balance/2026-11-10-neue-charaktere.md.
-        target_factor: 1.0,
+        // Gemessen in der Nacht (10.11.2026,
+        // docs/balance/2026-11-10-neue-charaktere.md, je 3 × 700 Runs mit
+        // --night --night-boss gravedigger): Mit 1,0 gewann der
+        // Alleinspieler 92 % seiner Kneipen, der Nullspieler 94 %, mehr als
+        // jeder Boss des Tages in der Nacht (81 bis 87 %, der Alte 58 %,
+        // der Ramscher 33 %). Der Build der Nacht ist so stark, dass der
+        // Faktor wenig bewegt (1,4: 91 / 88 %); mit 2,5 83 / 79 %, wie die
+        // mittleren Bosse.
+        target_factor: 2.5,
     ),
 ]
