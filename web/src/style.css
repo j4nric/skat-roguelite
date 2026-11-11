@@ -875,6 +875,8 @@ button.card {
 .hud-where-main {
   max-width: 100%;
   overflow: hidden;
+  /* Where the line breaks (little room, bigger text): two rows of like length. */
+  text-wrap: balance;
   font-family: var(--font-label);
   font-size: var(--fs-s);
   color: var(--text);
