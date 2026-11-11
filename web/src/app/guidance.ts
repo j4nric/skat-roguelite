@@ -87,13 +87,30 @@ export class Guidance {
     this.positionHint();
   }
 
-  /** Put the bubble right below what it hangs from: the head of the run, the Wirt at the Tresen, the end title, or the top. */
+  /**
+   * Put the bubble where it covers nothing to play with: over the head of
+   * the run (its upper edge on the head's, so the seats, the skat and the
+   * trick stay free), below the Wirt at the Tresen and the end title, or
+   * at the top.
+   */
   positionHint(): void {
     const hint = this.hint;
     if (!hint) return;
     const selector = { hud: '.hud', end: '.end-board h1', shop: '.shop .backbar, .shop .backbar > *', top: null }[hint.anchor];
-    const bottoms = selector ? Array.from(this.ctx.screenEl.querySelectorAll(selector), (el) => el.getBoundingClientRect().bottom) : [];
-    this.hintEl.style.top = bottoms.length ? `${Math.round(Math.max(...bottoms) + 6)}px` : '';
+    const boxes = selector ? Array.from(this.ctx.screenEl.querySelectorAll(selector), (el) => el.getBoundingClientRect()) : [];
+    this.hintEl.classList.remove('is-head');
+    this.hintEl.style.paddingRight = '';
+    this.hintEl.style.paddingLeft = '';
+    if (hint.anchor === 'hud' && boxes[0]) {
+      // From the very top of the screen (the safe area in the layer's own rule), so even the long ones end on the head.
+      this.hintEl.style.top = '';
+      this.hintEl.classList.add('is-head');
+      // As wide as the head, to stay as low as it can.
+      this.hintEl.style.paddingLeft = `${Math.round(boxes[0].left)}px`;
+      this.hintEl.style.paddingRight = `${Math.round(window.innerWidth - boxes[0].right)}px`;
+      return;
+    }
+    this.hintEl.style.top = boxes.length ? `${Math.round(Math.max(...boxes.map((b) => b.bottom)) + 6)}px` : '';
   }
 
   dismissHint(): void {

@@ -72,9 +72,10 @@ export class Fx {
   }
 
   /**
-   * A short message; while one is up, the next ones wait their turn. `top`:
-   * above the Stammgäste, for messages while cards lie on the felt
-   * (Drücken, the Ansage, the trick) that must stay readable.
+   * A short message; while one is up, the next ones wait their turn. In a
+   * run it is a strip over the bar of the head (where, account, Groschen),
+   * whatever the place asked for: never over the seats, the skat, the trick
+   * or the hand. Elsewhere it stands in the middle of the screen.
    */
   showToast(text: string, place: ToastPlace = 'middle'): void {
     if (this.toastTimer !== undefined) {
@@ -85,11 +86,12 @@ export class Fx {
     this.toastEl.innerHTML = `<div class="toast">${esc(text)}</div>`;
     this.toastEl.classList.toggle('is-top', place === 'top');
     this.toastEl.style.top = '';
-    if (place === 'top') {
-      // The toast's bottom edge sits just above the opponents' row.
-      const opps = this.ctx.screenEl.querySelector('.opponents')?.getBoundingClientRect();
-      const height = this.toastEl.querySelector('.toast')?.getBoundingClientRect().height ?? 0;
-      if (opps) this.toastEl.style.top = `${Math.round(Math.max(height + 4, opps.top - 4))}px`;
+    const bar = this.ctx.screenEl.querySelector('.run .hud-top')?.getBoundingClientRect();
+    this.toastEl.classList.toggle('is-head', Boolean(bar));
+    if (bar) {
+      this.toastEl.style.top = `${Math.round(bar.top)}px`;
+      this.toastEl.style.setProperty('--toast-w', `${Math.round(bar.width)}px`);
+      this.toastEl.style.setProperty('--toast-h', `${Math.round(bar.height)}px`);
     }
     // Shorter while others wait.
     const ms = this.toasts.length ? DELAY.toast * 0.7 : DELAY.toast;

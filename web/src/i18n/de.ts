@@ -1284,7 +1284,8 @@ export const de = {
   hints: {
     speaker: 'Der Wirt',
     dismiss: 'Antippen zum Schließen',
-    welcome: 'Na, Neuer? Oben siehst du Konto und Ziel: Schaff das Ziel in drei Spielen, sonst ist der Abend vorbei.',
+    /** The bubble lies over the head of the run while it shows: Konto und Ziel are "behind" the Wirt. */
+    welcome: 'Na, Neuer? Schaff das Ziel in drei Spielen, sonst ist der Abend vorbei. Konto und Ziel stehen oben, gleich hinter mir.',
     skatOrHand:
       'Gereizt wird hier nicht, du bist immer der Alleinspieler. Lässt du den Skat liegen und spielst Hand, gibt’s +1 Stufe.',
     afterSkat:

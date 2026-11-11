@@ -623,6 +623,8 @@ async function assertTableLook(page, label) {
       playable: cards.filter((c) => c.dataset.action === 'play').map((c) => ({ ring: css(c).getPropertyValue('--ring').trim(), rise: css(c).getPropertyValue('--rise').trim(), filter: css(c).filter })),
       dimmed: cards.filter((c) => c.classList.contains('is-dim')).map((c) => ({ filter: css(c).filter, opacity: css(c).opacity })),
       reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+      band: turn ? css(document.querySelector('[data-testid="your-turn"]')).backgroundColor : '',
+      primary: [...document.querySelectorAll('.btn-primary')].map((b) => css(b).backgroundColor),
       view: `${innerWidth}x${innerHeight}`,
       hud: [...document.querySelectorAll('.hud > *, .run > *')].map((e) => `${e.className.split(' ')[0]} ${Math.round(e.getBoundingClientRect().top)}..${Math.round(e.getBoundingClientRect().bottom)}`),
     };
@@ -634,6 +636,11 @@ async function assertTableLook(page, label) {
   if (!r.turn || r.turn.text !== 'Du bist dran') fail(`${label}: no "Du bist dran" while the player is to play (${JSON.stringify(r.turn)})`);
   if (r.turn.top < r.felt.bottom || r.turn.bottom > r.firstCardTop + 2 || r.handTop - r.turn.bottom > 16) fail(`${label}: "Du bist dran" is not between the felt and the hand (${JSON.stringify(r)})`);
   if (r.turn.height < 24) fail(`${label}: the band of the turn is ${Math.round(r.turn.height)}px high`);
+  // The colour of actions is ivory (#f1e6c8) since 11.11.2026: the band and the ring of a playable card.
+  const IVORY = 'rgb(241, 230, 200)';
+  if (r.band !== IVORY) fail(`${label}: the band of the turn is ${r.band}, not ivory`);
+  if (r.playable.some((c) => c.ring !== IVORY)) fail(`${label}: the ring of a playable card is ${r.playable[0].ring}, not ivory`);
+  if (r.primary.some((c) => c !== IVORY)) fail(`${label}: a primary button is ${r.primary.join(', ')}, not ivory`);
   if (!r.playable.length) fail(`${label}: no playable card`);
   for (const c of r.playable) {
     if (!c.ring || c.ring === 'transparent' || c.filter !== 'none') fail(`${label}: a playable card has no clear frame (${JSON.stringify(c)})`);
@@ -992,17 +999,20 @@ async function mixIn(page) {
 }
 
 /**
- * Skat oder Hand on the felt (play-test feedback): what the Stammgäste say
- * stands written out, the choices have short labels ("Einmischen" on the
+ * Skat oder Hand on the felt (play-test feedback): the hello of a Stammgast
+ * is the bubble at his seat and nothing else (11.11.2026: it is not written
+ * out a second time under the question), the choices have short labels ("Einmischen" on the
  * deck, "Hand spielen") with their explanations on the info card (hover
  * here), the skat lies face down in the middle. A long press opens the
  * info card and marks no text; dragging across the table marks none either.
  */
 async function assertChoice(page, seated) {
-  const talk = (await page.locator('[data-testid="table-talk"] .talk-line').allTextContents()).map((l) => l.replace(/\s+/g, ' ').trim());
-  const names = seated.opps.map((o) => o.name);
-  if (talk.length !== 2 || !names.every((n, i) => talk[i]?.startsWith(`${n}:`))) fail(`table talk ${JSON.stringify(talk)} does not name ${names.join(', ')}`);
-  if (seated.quip && !talk.some((l) => l.includes(seated.quip.text))) fail(`the greeting "${seated.quip.text}" is not on the felt: ${JSON.stringify(talk)}`);
+  if (await page.locator('[data-testid="table-talk"], .talk-line').count()) fail('the greetings are written out on the felt again, beside the bubble');
+  // The hello stands once: in the bubble at its speaker's seat, nowhere else on the table.
+  const said = seated.quip
+    ? await page.evaluate((text) => [...document.querySelectorAll('.table *')].filter((el) => !el.children.length && el.textContent.includes(text)).map((el) => el.className), seated.quip.text)
+    : [];
+  if (seated.quip && (said.length !== 1 || !said[0].includes('quip'))) fail(`the greeting "${seated.quip.text}" stands ${said.length} times on the table (${said.join(', ')})`);
   const hand = (await page.locator('[data-action="play-hand"]').textContent())?.trim();
   if (hand !== 'Hand spielen') fail(`the hand button reads "${hand}"`);
   const deck = await page.locator('[data-testid="deck"]').getAttribute('aria-label');
@@ -1030,8 +1040,8 @@ async function assertChoice(page, seated) {
   if (marked) fail(`a long press marked text: "${marked.slice(0, 60)}"`);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.info-card', { state: 'detached' });
-  // Dragging across the talk and the opponents marks nothing.
-  const line = await page.locator('[data-testid="table-talk"]').boundingBox();
+  // Dragging across the question and the opponents marks nothing.
+  const line = await page.locator('.declare-choice .declare-title').boundingBox();
   await page.mouse.move(line.x + 2, line.y + 4);
   await page.mouse.down();
   await page.mouse.move(line.x + line.width - 2, line.y - 60, { steps: 6 });
@@ -1039,7 +1049,7 @@ async function assertChoice(page, seated) {
   const dragged = await page.evaluate(() => window.getSelection()?.toString() ?? '');
   if (dragged) fail(`dragging across the table marked text: "${dragged.slice(0, 60)}"`);
   await page.mouse.move(1, 1);
-  log(`Skat oder Hand: talk ${JSON.stringify(talk)}, explanations on hover, no text marked`);
+  log(`Skat oder Hand: the hello only in the bubble${seated.quip ? ` ("${seated.quip.text}")` : ''}, explanations on hover, no text marked`);
 }
 
 /**
@@ -2049,14 +2059,16 @@ async function wave2b(browser, errors, reducedMotion) {
   if (!drawnTag.startsWith('von ')) fail(`Drei drücken: the drawn card is tagged "${drawnTag}"`);
   const label = ((await page.locator(`${zone} .skat-zone-label`).textContent()) ?? '').trim();
   if (label !== 'Drei drücken (1. Spiel) · 3 von 3') fail(`Drei drücken: the table says "${label}"`);
-  // Its toast stands above the Stammgäste, never over the cards on the table.
+  // Its toast is a strip over the head (11.11.2026), never over the seats or the cards on the table.
   const toast = await page
-    .waitForSelector('.toast-layer.is-top .toast', { timeout: 3000 })
+    .waitForSelector('.toast-layer.is-head .toast', { timeout: 3000 })
     .then((el) => el.boundingBox())
     .catch(() => null);
   const table = await page.locator(zone).boundingBox();
-  if (!toast) fail('Drei drücken: no toast above the Stammgäste');
+  const top = await page.locator('.tabletop').boundingBox();
+  if (!toast) fail('Drei drücken: no toast over the head');
   if (toast.y + toast.height > table.y) fail(`Drei drücken: the toast (bottom ${Math.round(toast.y + toast.height)}) covers the table zone (top ${Math.round(table.y)})`);
+  if (toast.y + toast.height > top.y) fail(`Drei drücken: the toast (bottom ${Math.round(toast.y + toast.height)}) reaches onto the table top (top ${Math.round(top.y)})`);
   if (!(await page.locator('.coaster-chip.is-used [data-testid="once-three_discard"]').count())) fail('Drei drücken: the chip does not show "1. Spiel" as used');
   if (await page.locator('[data-action="discard"]').isDisabled()) fail('Drei drücken: Drücken not possible with three on the table');
   await shoot(page, 'wave2b-three-discard');
@@ -2353,13 +2365,14 @@ async function assertHintClear(page, label, sizes = [PHONE, { width: 375, height
           return b.left < hint.right && b.right > hint.left && b.top < hint.bottom && b.bottom > hint.top;
         })
         .map((el) => el.getAttribute('data-action') ?? el.className);
-      return { top: hint.top, bottom: hint.bottom, height: innerHeight, scroll: document.scrollingElement.scrollHeight - innerHeight, hits };
+      return { top: hint.top, bottom: hint.bottom, height: innerHeight, scroll: document.scrollingElement.scrollHeight - innerHeight, hits, table: document.querySelector('.hint-layer.is-head') ? (document.querySelector('.tabletop .opp')?.getBoundingClientRect().top ?? null) : null };
     }, HINT_KEEP_CLEAR);
     const where = `${label} at ${size.width}x${size.height}`;
     if (!r) fail(`${where}: no hint on screen`);
     if (r.top < 0 || r.bottom > r.height) fail(`${where}: the hint at ${r.top}..${r.bottom} leaves the viewport of ${r.height}`);
     if (r.scroll > 0) fail(`${where}: the page scrolls by ${r.scroll}px with the hint`);
     if (r.hits.length) fail(`${where}: the hint covers ${r.hits.join(', ')}`);
+    if (r.table !== null && r.bottom > r.table + 1) fail(`${where}: the hint (bottom ${Math.round(r.bottom)}) reaches the seats at the table (top ${Math.round(r.table)})`);
   }
   if (original) await page.setViewportSize(original);
   log(`${label}: hint clear of hand and buttons at ${sizes.map((s) => `${s.width}x${s.height}`).join(', ')}`);
@@ -3777,6 +3790,9 @@ async function schnapsPass(browser, errors) {
     await page.waitForSelector('.hud .schnaps-slot.is-lifted');
     if (!(await page.locator('.felt.drink-target').count())) fail(`Kräuter at ${tag}: the felt does not glow`);
     const banner = (await page.locator('[data-testid="drink-banner"]').textContent()) ?? '';
+    // The banner is a strip over the head (11.11.2026): never over the seats, the skat or the hand.
+    const bannerAt = await page.evaluate(() => ({ bottom: document.querySelector('[data-testid="drink-banner"]').getBoundingClientRect().bottom, table: document.querySelector('.tabletop').getBoundingClientRect().top }));
+    if (bannerAt.bottom > bannerAt.table + 1) fail(`Kurzer at ${tag}: the drag banner (bottom ${Math.round(bannerAt.bottom)}) reaches onto the table top (top ${Math.round(bannerAt.table)})`);
     if (!banner.includes('Tippe auf das Ziel')) fail(`Kräuter at ${tag}: the banner says "${banner}"`);
     await shot('tap-lifted');
     await page.click('.hud .schnaps-slot[data-slot="0"]');
@@ -5082,9 +5098,9 @@ async function mapPass(browser, errors) {
   await shoot(page2, 'route-station');
   await page2.click('[data-testid="route-go"]');
   await page2.waitForSelector('.map-trail');
-  // The trail in the accent colour, not white (playtest 05.11.2026).
+  // The trail in dark ink (11.11.2026; the accent was copper), not white (playtest 05.11.2026).
   const trailFill = await page2.evaluate(() => document.querySelector('.map-trail')?.getAttribute('fill'));
-  if (trailFill?.toLowerCase() !== '#d1773f') fail(`travel: the trail is drawn in ${trailFill}, not the accent colour`);
+  if (trailFill?.toLowerCase() !== '#1b1e21') fail(`travel: the trail is drawn in ${trailFill}, not dark ink`);
   await page2.waitForTimeout(500);
   const moved = await page2.evaluate(() => document.querySelector('.map-pos')?.getAttribute('transform') ?? '');
   if (!/translate/.test(moved)) fail('travel: the position does not move along the way');
@@ -6650,13 +6666,12 @@ async function quipsPass(browser, errors, locale, viewport = PHONE) {
   const helloText = ((await hello.textContent()) ?? '').trim();
   if (!bySeat[helloSeat]?.greet?.includes(helloText)) fail(`${tag}: the hello "${helloText}" is no greet line of seat ${helloSeat}`);
   if (german && Object.values(german.guests).some((q) => Object.values(q).flat().includes(helloText))) fail(`${tag}: the hello "${helloText}" is German`);
-  const talk = (await page.locator('[data-testid="table-talk"] .talk-line').allTextContents()).join(' | ');
-  if (!talk.includes(helloText)) fail(`${tag}: the felt does not say the hello "${helloText}": ${talk}`);
+  if (await page.locator('[data-testid="table-talk"], .talk-line').count()) fail(`${tag}: the hello is written out on the felt beside its bubble`);
   const label = await hello.getAttribute('aria-label');
   if (!label?.endsWith(helloText) || (await hello.getAttribute('role')) !== 'status') fail(`${tag}: the bubble is no polite status for screen readers (${label})`);
   await assertGuests(page, `${tag} first game`);
   await shoot(page, `${tag}-hello`);
-  log(`${tag}: hello "${helloText}" (seat ${helloSeat}), felt: ${talk}`);
+  log(`${tag}: hello "${helloText}" (seat ${helloSeat}), only in the bubble`);
 
   // A whole game: Skat, Grand, every card; each bubble a line of its speaker.
   await skatThenGrand(page, tag);

@@ -9,7 +9,8 @@
 // is played by a tap or thrown onto the felt).
 // Before the first card the felt holds the choice of Skat oder Hand: the
 // deck (dragged into the middle it mixes in), the skat face down in the
-// middle (a tap picks it up), what the Stammgäste say, "Hand spielen".
+// middle (a tap picks it up), "Hand spielen"; the hello of a Stammgast is
+// the bubble at his seat alone (./app/talk.ts), not written out again.
 // After picking up, the skat lies face up on the table and the player
 // swaps cards between hand and table until the two to press lie there.
 // While declaring, the Ansage panel takes the middle (for the Nullspieler
@@ -27,7 +28,6 @@ import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { valueIcon } from './fxart';
 import { quipBubble, seatLabel, seatPerson } from './guests';
-import { greetingOf } from './quips';
 import { schnapsNotes } from './hud';
 import { bossCoaster } from './emblems';
 import { portrait } from './people';
@@ -256,20 +256,6 @@ function pressedCards(game: GameView): string {
   return `<p class="declare-pressed" data-testid="pressed"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</p>`;
 }
 
-/**
- * What the two at the table say before the first decision: each
- * Stammgast's greeting, written out (the boss's rule stands above in the
- * rule strip). From the core content, compact, one line each if it fits.
- */
-function tableTalk(view: RunView): string {
-  const lines = ([1, 2] as const)
-    .map((seat) => ({ person: seatPerson(view, seat), greet: greetingOf(view, seat) }))
-    .filter(({ person, greet }) => person.guest && greet)
-    .map(({ person, greet }) => `<li class="talk-line"><b>${esc(person.name)}:</b> <q>${esc(greet)}</q></li>`)
-    .join('');
-  return lines ? `<ul class="table-talk" data-testid="table-talk">${lines}</ul>` : '';
-}
-
 /** The deck, three backs on top of each other. */
 function deckPile(): string {
   return `<span class="deck-backs" aria-hidden="true">${cardBack()}${cardBack()}${cardBack()}</span>`;
@@ -288,7 +274,7 @@ function giveUpButton(view: RunView): string {
 
 /**
  * The first decision with ten cards (Skatordnung), laid out on the felt:
- * the deck on the left (pull it into the middle, or tap it twice, to
+ * the deck on the left (pull it into the middle, or tap it, to
  * Einmischen), the two skat cards face down and a little askew in the
  * middle (a tap picks them up), "Hand spielen" below. What each does is on
  * its info card (hover, long-press, "i"), not on the buttons.
@@ -327,7 +313,6 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     </div>`;
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
-    ${tableTalk(view)}
     <div class="felt">${deck}${skat}<div class="felt-side" aria-hidden="true"></div></div>
     ${peeked && peek ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
     ${declareWarnings(options, false)}${skatPickupsNote(options)}

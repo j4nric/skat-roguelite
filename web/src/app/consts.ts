@@ -21,7 +21,7 @@ export const DELAY = {
 /** A card picked up or laid down: flight (ms at tempo Normal), lift and curve (px). */
 export const PICK = { ms: 440, lift: 28, arc: 16 };
 
-/** Where a toast shows: the middle of the screen, or above the Stammgäste. */
+/** Where a toast was asked for: the middle of the screen or the top. In a run both show as a strip over the head (./playback/fx.ts). */
 export type ToastPlace = 'middle' | 'top';
 
 /** Let the browser handle input and paint before the next piece of work. */

@@ -484,7 +484,7 @@ function lostReason(view: RunView): string {
 
 /** A small framed picture, for "Teilen" (the run as an image). */
 function pictureIcon(size = 18): string {
-  return `<svg class="picture-icon" viewBox="0 0 12 10" width="${size}" height="${Math.round((size * 10) / 12)}" aria-hidden="true" shape-rendering="crispEdges"><path d="M0 0h12v10h-12z" fill="currentColor"/><path d="M1 1h10v8h-10z" fill="#23282c"/><path d="M2 8l3-4 2 2 1-1 2 3z" fill="#8fc7a8"/><path d="M8 2h2v2h-2z" fill="#d1773f"/></svg>`;
+  return `<svg class="picture-icon" viewBox="0 0 12 10" width="${size}" height="${Math.round((size * 10) / 12)}" aria-hidden="true" shape-rendering="crispEdges"><path d="M0 0h12v10h-12z" fill="currentColor"/><path d="M1 1h10v8h-10z" fill="#23282c"/><path d="M2 8l3-4 2 2 1-1 2 3z" fill="#8fc7a8"/><path d="M8 2h2v2h-2z" fill="#ecd28a"/></svg>`;
 }
 
 /**
