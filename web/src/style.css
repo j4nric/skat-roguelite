@@ -32,6 +32,41 @@
   --card-ink: #1b1e21;
   --rot: #bd3b32;
   --rot-light: #e5776d;
+  --brass: #c9a24a;
+  --brass-dark: #6f5320;
+  --brass-light: #ecd28a;
+
+  /* Colour roles (DESIGN 16): what a colour says, on the table, in the
+     head, on the Ansage and on the score board. A colour used for one
+     role is not used for another there.
+     - action: the next thing to do, the primary button, the active choice
+       (the picked Spielart, a card held or laid out to press).
+     - gain: what the player wins, anything going well.
+     - money: Groschen and prices.
+     - danger: curses, boss rules, a loss (text; fills take --rot).
+     - readout: plain numbers and labels, and everything else. */
+  --role-action: var(--accent);
+  --role-action-ink: var(--card-ink);
+  --role-gain: var(--cool);
+  --role-money: var(--brass-light);
+  --role-danger: var(--rot-light);
+  --role-readout: var(--muted);
+  /* A thing to press is raised: a light upper and a dark lower edge inside
+     its thick line, over a hard shadow. A readout is flat: no edge, no
+     shadow, at most a thin line. */
+  --raised: inset 0 2px 0 rgba(236, 235, 228, 0.14), inset 0 -3px 0 rgba(11, 12, 14, 0.38);
+  --readout-bg: #1f2327;
+
+  /* The table top: green felt under the lamp, a wooden edge. Text on the
+     felt takes --text or --felt-text (5.5:1 on the lightest felt); --muted
+     is too dark there. */
+  --felt: #264a3c;
+  --felt-dark: #1c382d;
+  --felt-light: #315d4b;
+  --felt-text: #cfdcd3;
+  --wood: #7b4a2b;
+  --wood-dark: #4f2e1a;
+  --wood-light: #a2683c;
 
   --font: 'VT323', ui-monospace, 'Courier New', monospace;
   --font-label: var(--font);
@@ -329,7 +364,7 @@ button {
   border-radius: 0;
   background: var(--panel);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), var(--raised);
   font-size: var(--fs-body);
   line-height: 0.88;
   text-align: center;
@@ -344,7 +379,7 @@ button {
 
 .btn:active:not(:disabled) {
   transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--line);
+  box-shadow: 0 1px 0 var(--line), var(--raised);
 }
 
 button:focus-visible,
@@ -420,14 +455,14 @@ button:focus-visible,
   padding: 0;
   border: var(--edge) solid var(--line);
   background: var(--panel);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), var(--raised);
   color: var(--text);
   cursor: pointer;
 }
 
 .icon-btn:active {
   transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--line);
+  box-shadow: 0 1px 0 var(--line), var(--raised);
 }
 
 /* Three pixel bars. */
@@ -799,22 +834,35 @@ button.card {
   gap: 6px;
 }
 
+/* One row: the bar of readouts (where, account, Groschen), flat, and the
+   menu button beside it, raised. */
 .hud-top {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 6px;
   min-height: 44px;
 }
 
-.hud-where {
+.hud-bar {
   display: flex;
   flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 8px;
+  border: 2px solid var(--line);
+  background: var(--readout-bg);
+}
+
+.hud-where {
+  display: flex;
+  flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 3px;
-  min-height: 44px;
+  gap: 4px;
+  align-self: stretch;
   padding: 0;
   border: 0;
   background: none;
@@ -823,58 +871,87 @@ button.card {
 }
 
 .hud-where-main {
+  max-width: 100%;
+  overflow: hidden;
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text);
   text-transform: uppercase;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Little room (the table on a phone): the pub's name without the district, which the line above names. */
+.hud-where {
+  container-type: inline-size;
+}
+
+@container (max-width: 210px) {
+  .hud-where-section {
+    display: none;
+  }
+}
+
+/* Less still (a narrow phone, a boss pub's longer line): a size smaller. */
+@container (max-width: 132px) {
+  .hud-where-main {
+    font-size: 13px;
+  }
+}
+
+/* Bigger text ("Schriftgröße") with little room: the line of the tour on
+   two rows, the pub's name stays on the Kreidetafel behind the tap. */
+@container (max-width: 210px) {
+  :root:is([data-text-size='large'], [data-text-size='xlarge']) .hud-where-main {
+    font-size: var(--fs-xs);
+    line-height: 0.86;
+    white-space: normal;
+  }
+
+  :root:is([data-text-size='large'], [data-text-size='xlarge']) .hud-where-sub {
+    display: none;
+  }
 }
 
 .hud-where-sub {
   max-width: 100%;
   overflow: hidden;
-  font-size: var(--fs-s);
-  color: #6f7980;
+  font-size: var(--fs-xs);
+  color: var(--muted);
   white-space: nowrap;
   text-overflow: ellipsis;
-  text-decoration: underline;
-  text-decoration-color: var(--dot);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
 }
 
+/* Groschen: a readout in brass, the colour of money. */
 .hud-coins {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 10px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow-sm);
+  gap: 5px;
+  align-self: stretch;
+  padding-left: 6px;
+  border-left: 2px solid var(--line);
 }
 
 .hud-coins b {
   font-size: var(--fs-body);
   font-weight: 400;
-  /* Text in copper takes the light copper: the plain one has 4.1:1 on the panels, under WCAG's 4.5:1. */
-  color: var(--accent-light);
+  color: var(--role-money);
 }
 
+/* The boss of the pub at hand: first in the Leiste, in the colour of danger. */
 .boss-chip {
   display: inline-flex;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 40%;
+  flex: none;
+  max-width: 190px;
   align-items: center;
   gap: 6px;
   height: 40px;
+  margin-right: 4px;
   padding: 0 8px 0 3px;
-  border: var(--edge) solid var(--rot);
-  background: var(--panel2);
-  box-shadow: var(--shadow-sm);
+  border: 2px solid var(--rot);
+  background: #2c2326;
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -883,6 +960,7 @@ button.card {
   min-width: 0;
   flex-direction: column;
   line-height: 1.05;
+  text-align: left;
 }
 
 .boss-chip-names > span,
@@ -897,70 +975,63 @@ button.card {
 }
 
 .boss-chip-names > small {
-  font-size: var(--fs-xs, 11px);
-  opacity: 0.8;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
+/* At the table both figures sit there with their name plates: the chip keeps the boss's name. */
+.run.is-table .boss-chip-names > small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* Account and target over their bar; beside them the games left as pips
+   and the Einmischen left as a number at two small cards. */
 .hud-board {
   display: flex;
-  gap: 8px;
-  height: 52px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  align-self: stretch;
+  padding-left: 6px;
+  border-left: 2px solid var(--line);
 }
 
 .slate {
   display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 10px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.slate-text {
-  display: flex;
-  min-width: 0;
+  min-width: 56px;
   flex-direction: column;
-  gap: 3px;
-}
-
-.slate-label {
-  font-family: var(--font-label);
-  font-size: var(--fs-s);
-  color: var(--muted);
-  white-space: nowrap;
+  justify-content: center;
+  gap: 4px;
 }
 
 .slate-row {
   display: flex;
   align-items: baseline;
+  gap: 3px;
   white-space: nowrap;
   line-height: 0.8;
-  text-shadow: 2px 2px 0 var(--line);
 }
 
 .slate-score {
   font-size: var(--fs-h);
   font-weight: 400;
+  line-height: 0.66;
+  text-shadow: 2px 2px 0 var(--line);
 }
 
 .slate-score.is-negative {
-  color: var(--rot-light);
+  color: var(--role-danger);
 }
 
-.slate-sep {
-  font-size: var(--fs-body);
-  color: var(--muted);
-  white-space: pre;
-}
-
+.slate-sep,
 .slate-target {
-  font-size: var(--fs-h);
+  font-size: var(--fs-l);
   font-weight: 400;
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .chalk-meter {
@@ -971,10 +1042,18 @@ button.card {
   background: var(--line);
 }
 
+.slate .chalk-meter {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: 9px;
+}
+
+/* What is on the account is won: the bar fills in the colour of gains. */
 .chalk-fill {
   height: 100%;
-  background: var(--accent);
-  box-shadow: inset 0 -3px 0 var(--accent-dark);
+  background: var(--role-gain);
+  box-shadow: inset 0 -2px 0 var(--cool-dark);
   transition: width 500ms steps(10);
 }
 
@@ -982,13 +1061,9 @@ button.card {
   display: flex;
   flex: none;
   flex-direction: column;
+  align-items: flex-end;
   justify-content: center;
   gap: 5px;
-  width: 136px;
-  padding: 3px 8px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow);
   font-family: var(--font-label);
   font-size: var(--fs-s);
   color: var(--muted);
@@ -997,43 +1072,44 @@ button.card {
 .count-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-}
-
-.count-label {
-  white-space: nowrap;
+  justify-content: flex-end;
+  gap: 3px;
 }
 
 .pips {
   display: flex;
-  flex: 1;
-  min-width: 0;
   justify-content: flex-end;
   gap: 2px;
 }
 
-/* Up to 8 games: pips shrink before they overflow the panel. */
+/* Up to 8 games: a pip per game, the ones still to play filled. */
 .pips i {
-  flex: 0 1 9px;
-  min-width: 5px;
+  width: 7px;
   height: 9px;
-  background: var(--dot);
+  border: 2px solid var(--muted);
 }
 
-.pip-game.is-on {
-  background: var(--accent);
+.pips i.is-on {
+  border-color: var(--text);
+  background: var(--text);
 }
 
-.pip-pass.is-on {
-  background: var(--cool);
+.count-games .pips:has(i:nth-child(6)) i {
+  width: 5px;
 }
 
 .count-num {
-  min-width: 10px;
+  min-width: 8px;
+  font-size: var(--fs-l);
   font-weight: 400;
+  line-height: 0.7;
   color: var(--text);
   text-align: right;
+}
+
+.mix-icon,
+.mats-icon {
+  flex: none;
 }
 
 /* The Leiste (DESIGN 8.9): the relics as beer mats only, scrolling inside
@@ -1044,11 +1120,10 @@ button.card {
   flex: none;
   align-items: center;
   min-width: 0;
-  height: 48px;
+  height: 44px;
   padding: 0 2px 0 0;
   border: 2px solid var(--line);
-  background: var(--panel);
-  box-shadow: 0 3px 0 var(--line);
+  background: var(--readout-bg);
 }
 
 .leiste-relics {
@@ -1075,9 +1150,8 @@ button.card {
   align-items: center;
   gap: 4px;
   height: 100%;
-  padding-left: 6px;
+  padding: 0 2px 0 6px;
   border-left: 2px solid var(--line);
-  box-shadow: inset 1px 0 0 #4f6272;
 }
 
 .coaster-chip {
@@ -1086,8 +1160,8 @@ button.card {
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 44px;
+  width: 44px;
+  height: 100%;
   padding: 0;
   border: 0;
   background: none;
@@ -1097,11 +1171,11 @@ button.card {
 /* "1.": a relic that works once per series. */
 .chip-badge {
   position: absolute;
-  right: -2px;
+  right: 0;
   bottom: 0;
   padding: 0 2px;
   border: 2px solid var(--line);
-  background: var(--accent);
+  background: var(--card);
   color: var(--line);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
@@ -1110,8 +1184,8 @@ button.card {
 
 /* A house rule of the evening: a dashed frame around its mat. */
 .coaster-chip.is-evening {
-  outline: 2px dashed var(--accent);
-  outline-offset: -2px;
+  outline: 2px dashed var(--muted);
+  outline-offset: -4px;
 }
 
 /* A once-per-series relic already used in this series. */
@@ -1119,18 +1193,27 @@ button.card {
   opacity: 0.45;
 }
 
-/* A Schnaps slot: its bare motif in a dark frame; an empty one dashed. */
-/* A free relic slot (8 since 05.11.2026, DESIGN 8.0): a dashed beer mat. */
-.relic-slot.is-empty {
-  display: inline-block;
+/* How many relic slots are taken ("1/8", 8 slots since 05.11.2026, DESIGN
+   8.0): a readout behind the relics; the free slots are not drawn. */
+.relic-count {
+  display: inline-flex;
   flex: none;
-  box-sizing: border-box;
-  width: 34px;
-  height: 34px;
-  margin: 0 3px;
-  border: 2px dashed #4f6272;
-  border-radius: 50%;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 6px 0 4px;
+  font-family: var(--font-label);
+  font-size: var(--fs-l);
+  color: var(--muted);
+  white-space: nowrap;
 }
+
+.relic-count b {
+  font-weight: 400;
+}
+
+/* A Schnaps slot: its bare motif in a dark frame, a thing to pick up. An
+   empty one is a narrow dashed outline: nothing to tap. */
 
 .schnaps-slot {
   position: relative;
@@ -1139,10 +1222,11 @@ button.card {
   align-items: center;
   justify-content: center;
   width: 46px;
-  height: 44px;
+  height: 40px;
   padding: 0;
   border: 2px solid var(--line);
-  background: var(--bg);
+  background: var(--panel);
+  box-shadow: var(--raised);
   cursor: grab;
   touch-action: none;
   -webkit-touch-callout: none;
@@ -1150,8 +1234,11 @@ button.card {
 }
 
 .schnaps-slot.is-empty {
+  width: 22px;
+  height: 30px;
   border: 2px dashed #4f6272;
   background: none;
+  box-shadow: none;
   cursor: default;
 }
 
@@ -1222,22 +1309,63 @@ button.card {
   white-space: nowrap;
 }
 
+/* A factor waiting for the next game: a gain to come. */
 .flag-chip.is-pending {
-  border-color: var(--accent);
-  color: var(--accent-light);
+  border-color: var(--cool-dark);
+  color: var(--role-gain);
 }
 
 /* ---------------------------------------------------------------- the table */
 
 .table {
   --card-h: clamp(54px, calc(var(--avail) * 0.126), 150px);
-  --trick-h: clamp(52px, calc(var(--avail) * 0.126), 132px);
+  /* The trick lies big on the felt: its cards are larger than the hand's. */
+  --trick-h: clamp(52px, calc(var(--avail) * 0.156), 165px);
   display: flex;
   flex: 1 1 0;
   min-height: 0;
   flex-direction: column;
   gap: 6px;
   container: table / size;
+}
+
+/* The table top: green felt in a wooden edge, the pool of the lamp's light
+   in its middle. All of it is pixel art drawn for the game
+   (scripts/gen-table-art.mjs): hard steps and a dither, no gradient. The
+   art lies on a layer of its own behind the seats and the cards, so
+   nothing that flies across the table is clipped by it. */
+.tabletop {
+  /* Art pixels of the edge and the light are 2 CSS px, like the cards'. */
+  --rim: 12px;
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: calc(var(--rim) + 4px) calc(var(--rim) + 4px) calc(var(--rim) + 6px);
+}
+
+.tabletop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: var(--rim) solid var(--wood);
+  border-image: url('./assets/table/rim.svg') 6 / var(--rim) stretch;
+  background:
+    url('./assets/table/lamp.svg') 50% 46% / 320px 224px no-repeat,
+    url('./assets/table/felt.svg') 0 0 / 32px 32px,
+    var(--felt);
+  background-origin: padding-box;
+  background-clip: padding-box;
+  box-shadow: 0 4px 0 var(--line);
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.tabletop > * {
+  position: relative;
 }
 
 /* While declaring the Ansage needs the room; the hand moves closer. */
@@ -1255,6 +1383,9 @@ button.card {
   --card-h: clamp(46px, calc(var(--avail) * 0.088), 112px);
 }
 
+/* The two at the far edge of the table: each in his corner, the left one
+   with his face on the left, the right one mirrored. No box around them:
+   they sit at the table. */
 .opponents {
   display: grid;
   flex: none;
@@ -1268,29 +1399,56 @@ button.card {
   min-width: 0;
   flex-direction: column;
   gap: 4px;
-  padding: 4px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
 }
 
-.opp.is-turn {
-  border-color: var(--accent);
-}
-
-.opp.is-boss {
-  background: #2c2326;
+.opp[data-seat='2'] {
+  align-items: flex-end;
 }
 
 .opp-main {
   display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 6px;
+  max-width: 100%;
+  align-items: flex-start;
+  gap: 7px;
+  cursor: pointer;
 }
 
+.opp[data-seat='2'] .opp-main {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+/* The face at twice the size of its 30 pixels, in a dark frame that
+   throws a hard shadow onto the felt. Whose turn it is has a light frame. */
 .portrait-opp {
-  width: 40px;
-  height: 40px;
+  width: 66px;
+  height: 66px;
+  box-shadow: 0 4px 0 var(--felt-dark);
+}
+
+.opp.is-turn .portrait-opp {
+  border-color: var(--card);
+}
+
+/* Bigger text ("Schriftgröße"): the face at its own 30 pixels, the room goes to the lines beside it. */
+:root:is([data-text-size='large'], [data-text-size='xlarge']) .portrait-opp {
+  width: 36px;
+  height: 36px;
+}
+
+:root:is([data-text-size='large'], [data-text-size='xlarge']) .quip {
+  left: 46px;
+}
+
+:root:is([data-text-size='large'], [data-text-size='xlarge']) .opp[data-seat='2'] .quip {
+  left: 0;
+  right: 46px;
+}
+
+.opp.is-boss .portrait-opp {
+  border-color: var(--rot);
+  background: #2c2326;
 }
 
 /* An opponent blinks now and then: the frame with shut eyes (people.ts
@@ -1350,14 +1508,28 @@ button.card {
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding-top: 3px;
+}
+
+.opp[data-seat='2'] .opp-info,
+.opp[data-seat='2'].is-boss .opp-name {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+
+.opp[data-seat='2'] .opp-info {
+  align-self: auto;
 }
 
 .opp-name {
+  max-width: 100%;
   overflow: hidden;
-  font-size: var(--fs-s);
+  font-size: var(--fs-l);
   font-weight: 400;
   line-height: 0.88;
+  color: var(--text);
+  text-shadow: 2px 2px 0 var(--felt-dark);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1365,11 +1537,12 @@ button.card {
 /* ADR 0017: both boss players carry a name plate. */
 .opp.is-boss .opp-name {
   align-self: flex-start;
-  max-width: 100%;
   padding: 3px 5px 2px;
   border: 1px solid var(--rot-light);
   background: var(--rot);
   color: #fff6e6;
+  font-size: var(--fs-s);
+  text-shadow: none;
   box-shadow: 1px 1px 0 #00000066;
 }
 
@@ -1378,32 +1551,96 @@ button.card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
+  gap: 3px 8px;
   font-family: var(--font-label);
   font-size: var(--fs-s);
   line-height: 0.92;
-  color: var(--muted);
+  color: var(--felt-text);
+}
+
+.opp[data-seat='2'] .opp-meta {
+  flex-direction: row-reverse;
+}
+
+/* Position, and below it the tricks (beside it where the table is wide). */
+.opp-pos {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.opp[data-seat='2'] .opp-pos {
+  align-items: flex-end;
+}
+
+@media (min-width: 900px) {
+  .opp-pos {
+    flex-direction: row;
+    align-items: center;
+    gap: 3px 8px;
+  }
+
+  .opp[data-seat='2'] .opp-pos {
+    flex-direction: row-reverse;
+  }
 }
 
 .opp.is-turn .opp-pos {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .opp-tricks {
   color: var(--text);
+  white-space: nowrap;
 }
 
+/* His hand: as many backs as he holds cards, fanned out flat on the felt
+   (pixel steps, no turned art), the number beside them. */
 .opp-hand {
   display: inline-flex;
   flex: none;
-  align-items: center;
-  gap: 3px;
+  align-items: flex-end;
+  height: 24px;
+}
+
+/* While he speaks, the bubble stands in place of his lines. */
+.opp-main:has(.quip) .opp-info {
+  visibility: hidden;
 }
 
 .opp-hand .card-back {
-  width: 10px;
-  border: 1px solid var(--line);
-  box-shadow: none;
+  width: 14px;
+  margin-right: -10px;
+  border: 0;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.opp-hand .card-back:nth-child(3n + 2) {
+  translate: 0 -1px;
+}
+
+.opp-hand .card-back:nth-child(3n) {
+  translate: 0 -2px;
+}
+
+.opp-count {
+  align-self: center;
+  margin-left: 15px;
+  color: var(--text);
+}
+
+.opp-hand[style*='--n:0'] .opp-count {
+  margin-left: 0;
+}
+
+@media (max-width: 374px) {
+  .opp-hand .card-back {
+    margin-right: -11px;
+  }
+
+  .opp-name {
+    font-size: var(--fs-s);
+  }
 }
 
 .opp-meta .badge {
@@ -1417,7 +1654,7 @@ button.card {
   align-items: center;
   gap: 2px;
   font-size: var(--fs-s);
-  color: var(--muted);
+  color: var(--felt-text);
 }
 
 .opp-revealed .mini-card {
@@ -1438,7 +1675,7 @@ button.card {
 
 /* "Drei drücken": the card the player gave back to this defender. */
 .mini-card.is-returned {
-  border-color: var(--accent);
+  border-color: var(--card);
 }
 
 /* "Der Zaungast": the left hand, overlapping in one row. */
@@ -1472,8 +1709,8 @@ button.card {
 /* A thought bubble while the core computes this opponent's card. */
 .think-bubble {
   position: absolute;
-  top: -8px;
-  left: 30px;
+  top: -7px;
+  left: 50px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -1502,6 +1739,16 @@ button.card {
   animation: think-dot 900ms steps(2) infinite;
 }
 
+.opp[data-seat='2'] .think-bubble {
+  left: auto;
+  right: 50px;
+}
+
+.opp[data-seat='2'] .think-bubble::after {
+  left: auto;
+  right: 2px;
+}
+
 .think-bubble i:nth-child(2) {
   animation-delay: 150ms;
 }
@@ -1524,30 +1771,37 @@ button.card {
 }
 
 /*
- * A Stammgast's line: a tiny speech bubble inside his own box, beside the
- * portrait with the tail towards the face. It lies over his name for a few
- * seconds, never over the trick, the hand or a button, and catches no taps.
+ * A Stammgast's line: a small speech bubble at his seat, beside the
+ * portrait with the tail towards the face (the right one's mirrored). It
+ * lies over his name for a few seconds, never over the trick, the hand or
+ * a button, and catches no taps.
  */
 .quip {
   position: absolute;
   top: 0;
-  left: 52px;
+  left: 76px;
   right: 0;
   z-index: 3;
   display: block;
-  /* Three lines of the longest quips (40 characters) without clipping. */
-  max-height: 50px;
+  /* The longest quips (40 characters) fit his seat without clipping. */
+  max-height: 100%;
   overflow: hidden;
-  padding: 3px 5px 4px;
+  padding: 4px 6px 5px;
   border: 2px solid var(--line);
   background: var(--card);
   color: var(--card-ink);
   font-family: var(--font);
   font-size: var(--fs-xs);
   line-height: 0.92;
-  box-shadow: 0 0 0 1px var(--accent) inset, 0 3px 0 var(--line);
+  text-align: left;
+  box-shadow: 0 3px 0 var(--felt-dark);
   pointer-events: none;
   animation: quip-in 220ms steps(3) both;
+}
+
+.opp[data-seat='2'] .quip {
+  left: 0;
+  right: 76px;
 }
 
 /* The tail towards the face, in pixel steps. */
@@ -1555,11 +1809,17 @@ button.card {
   content: '';
   position: absolute;
   left: -8px;
-  top: 8px;
+  top: 10px;
   width: 8px;
   height: 10px;
   background: var(--line);
   clip-path: polygon(100% 0, 40% 0, 40% 30%, 0 30%, 0 70%, 40% 70%, 40% 100%, 100% 100%);
+}
+
+.opp[data-seat='2'] .quip::before {
+  left: auto;
+  right: -8px;
+  scale: -1 1;
 }
 
 @keyframes quip-in {
@@ -1657,9 +1917,10 @@ button.card {
 
 .pending-note {
   flex: none;
+  margin: 0;
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  color: var(--accent);
+  color: var(--role-gain);
   text-align: center;
 }
 
@@ -1787,52 +2048,52 @@ button.card {
   pointer-events: none;
 }
 
-/* The small score line above the trick. */
+/* The line of the game above the trick: what is played, then the tricks
+   and the value at stake as flat readouts on small slates. */
 .gameline {
+  position: relative;
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 4px 8px;
+  gap: 4px 6px;
   max-width: 100%;
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  color: var(--muted);
+  color: var(--felt-text);
 }
 
 .decl {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: var(--text);
   text-transform: uppercase;
 }
 
-.gameline .tricks {
-  padding: 2px 6px;
-  border: 2px solid var(--line);
-  background: var(--panel);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* Grundwert × Gewinnstufen while playing: quieter than the tricks. */
+.gameline .tricks,
 .gameline .worth {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
-  border: 2px solid var(--line);
-  color: var(--muted);
+  padding: 3px 6px 2px;
+  background: var(--felt-dark);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-/* While the player looks at the last trick, its caption covers the line
-   (same height, so nothing below moves). */
-.gameline {
-  position: relative;
+.gameline .tricks {
+  color: var(--text);
 }
 
+/* Grundwert × Gewinnstufen while playing: quieter than the tricks. */
+.gameline .worth {
+  color: var(--felt-text);
+}
+
+/* While the player looks at the last trick, its caption covers the line
+   (same height, so nothing below moves). */
 .gameline.is-peek > :not(.peek-caption) {
   visibility: hidden;
 }
@@ -1843,54 +2104,58 @@ button.card {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--cool);
+  color: var(--text);
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* The felt: "Letzter Stich" | trick | pressed skat. The sides take only
-   what the trick leaves, so the trick stays in the middle; their things
-   sit in the bottom corners. */
+/* The middle of the felt: the trick, and in the room its triangle leaves
+   in the bottom corners "Letzter Stich" on the left, the boss rule and the
+   pressed skat on the right. */
 .trick-row {
-  /* The trick cards take what the middle leaves after the score line and
-     the count: never more than --trick-h, smaller when the table is full.
-     The triangle is 1.6 cards high. */
-  --th: clamp(36px, min(var(--trick-h), (100cqh - 64px) / 1.6), 200px);
+  /* The trick cards take what the middle leaves after the line of the game
+     and the count: never more than --trick-h, smaller when the table is
+     full, and never wider than the felt. The triangle is 1.6 cards high. */
+  --th: clamp(36px, min(var(--trick-h), (100cqh - var(--trick-lines, 64px)) / 1.6, (100cqw - 16px) / 2.9 * 1.5), 200px);
   --w0: calc(var(--th) * 2 / 3);
   --tw: min(var(--w0), var(--w0) - mod(var(--w0), var(--art-step)) + max(0px, mod(var(--w0), var(--art-step)) - 8px) * 1000);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
-  gap: 8px;
+  position: relative;
+  display: flex;
+  flex: none;
+  justify-content: center;
   width: 100%;
 }
 
+:root[data-text-size='large'] .trick-row {
+  --trick-lines: 74px;
+}
+
+:root[data-text-size='xlarge'] .trick-row {
+  --trick-lines: 86px;
+}
+
 .trick-side {
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
   display: flex;
-  min-width: 0;
   align-items: flex-end;
+  gap: 4px;
 }
 
-/* The corners: the boss rule top left, "Letzter Stich" bottom left, the
-   pressed skat bottom right. */
 .trick-side.is-left {
-  align-self: stretch;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 6px;
+  left: 0;
 }
 
-.trick-side.is-left .last-trick-btn {
-  margin-top: auto;
+.trick-side.is-right {
+  right: 0;
 }
 
 /* The boss rule during play: a coaster with a label in the felt's corner,
    so it takes no height from the trick. A tap opens the rule. */
 .rule-chip {
   display: inline-flex;
-  width: 100%;
-  max-width: 64px;
+  width: 60px;
   min-height: var(--touch);
   flex: none;
   flex-direction: column;
@@ -1899,7 +2164,7 @@ button.card {
   padding: 3px 2px;
   border: 2px solid var(--rot);
   background: #2c2326;
-  color: var(--rot-light);
+  color: var(--role-danger);
   box-shadow: var(--shadow-sm);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
@@ -1918,10 +2183,6 @@ button.card {
 .rule-chip:hover,
 .rule-chip:focus-visible {
   color: var(--text);
-}
-
-.trick-side.is-right {
-  justify-content: flex-end;
 }
 
 /* The trick as a triangle pointing at the player: left regular top left,
@@ -1981,7 +2242,7 @@ button.card {
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
   line-height: 1;
-  color: var(--muted);
+  color: var(--felt-text);
   text-transform: uppercase;
 }
 
@@ -2044,8 +2305,7 @@ button.card {
 /* "Letzter Stich": a small square button, two short lines under a sign. */
 .last-trick-btn {
   display: inline-flex;
-  width: 100%;
-  max-width: 64px;
+  width: 64px;
   min-height: var(--touch);
   flex-direction: column;
   align-items: center;
@@ -2054,8 +2314,8 @@ button.card {
   padding: 4px 2px;
   border: 2px solid var(--line);
   background: var(--panel);
-  color: var(--muted);
-  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  box-shadow: var(--shadow-sm), var(--raised);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
   line-height: 0.95;
@@ -2065,9 +2325,10 @@ button.card {
   touch-action: manipulation;
 }
 
+/* Shown: the active choice. */
 .last-trick-btn.is-on {
-  border-color: var(--cool);
-  color: var(--cool);
+  border-color: var(--role-action);
+  color: var(--accent-light);
 }
 
 .last-trick-btn:disabled {
@@ -2077,13 +2338,13 @@ button.card {
 
 /* The last trick on the felt: framed, the card that took it marked. */
 .trick.is-last {
-  outline: 2px dashed var(--cool);
-  outline-offset: 3px;
+  outline: 0;
 }
 
+/* Whoever took it: a light frame and tag (a gain only when it was the player). */
 .trick-card.is-winner {
   position: relative;
-  --ring: var(--cool);
+  --ring: var(--card);
 }
 
 .trick-won-tag {
@@ -2092,7 +2353,7 @@ button.card {
   bottom: -2px;
   padding: 1px 4px;
   border: 2px solid var(--line);
-  background: var(--cool);
+  background: var(--card);
   color: var(--line);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
@@ -2106,36 +2367,44 @@ button.card {
   height: 100%;
 }
 
+/* A place of the trick with no card on it: a faint mark on the felt. The
+   player's place lights up when it is his turn: there the next card goes. */
 .card-slot {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
-  border: var(--edge) dashed var(--dot);
+  border: 2px dashed var(--felt-dark);
   font-family: var(--font-label);
-  font-size: var(--fs-s);
-  color: var(--accent);
+  font-size: var(--fs-l);
+  color: var(--accent-light);
 }
 
 .card-slot.is-you {
-  border-color: var(--accent);
+  border: var(--edge) dashed var(--role-action);
+  background: rgba(11, 12, 14, 0.18);
 }
 
-/* The count of "Der Zähler". */
+/* The count of "Der Zähler": a small slate lying under the trick, a readout. */
 .counter-slate {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 4px 10px;
+  gap: 3px 10px;
+  max-width: 100%;
+  padding: 4px 8px 3px;
+  background: var(--felt-dark);
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  color: var(--muted);
+  color: var(--felt-text);
 }
 
 .counter-title {
-  color: var(--cool);
+  color: var(--felt-text);
+  text-transform: uppercase;
 }
 
 .count-cell {
@@ -2150,7 +2419,7 @@ button.card {
 }
 
 .count-cell.is-you b {
-  color: var(--cool);
+  color: var(--role-gain);
 }
 
 /* ------------------------------------------------------------------ hand */
@@ -2161,9 +2430,10 @@ button.card {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin: 0;
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  color: var(--cool);
+  color: var(--muted);
 }
 
 .hand {
@@ -2198,28 +2468,43 @@ button.card {
     opacity 90ms;
 }
 
-.hand-card.is-dim {
-  opacity: 0.5;
-}
-
+/* Whose turn it is shows on the cards themselves. A card that may be
+   played stands up out of the fan with a clear light frame; one that may
+   not sinks back, darker and greyer but still readable (its face keeps
+   its ink: no see-through card). The frame in the colour of the action is
+   for the one card under the finger or the pointer and for a picked one.
+   With reduced motion no card moves: frame and shade alone say it. */
+.hand-card.is-dim,
 .hand-card.is-locked {
-  opacity: 0.55;
+  filter: brightness(0.56) saturate(0.6);
 }
 
 .phase-playing .hand-card.is-active {
-  --ring: var(--accent);
+  --ring: var(--card);
   --rise: 8px;
 }
 
 .hand-card.is-selected {
-  --ring: var(--accent);
+  --ring: var(--role-action);
   --rise: 10px;
+}
+
+.phase-playing .hand-card.is-active:active,
+.phase-playing .hand-card.is-active:focus-visible {
+  --ring: var(--role-action);
 }
 
 @media (hover: hover) {
   .phase-playing .hand-card.is-active:hover,
   .phase-discarding .hand-card.is-active:hover {
+    --ring: var(--role-action);
     --rise: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand .hand-card {
+    --rise: 0px !important;
   }
 }
 
@@ -2438,27 +2723,72 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 /* ---------------------------------------------------------------- status */
 
+/* The band between the felt and the hand. "Du bist dran" lights it up in
+   the colour of the action, right above the cards it is about; otherwise
+   it is a quiet line (what just happened, the hint while pressing). */
 .status {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 44px;
+  min-height: 26px;
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  letter-spacing: 1px;
   line-height: 1.08;
   color: var(--muted);
   text-transform: uppercase;
 }
 
-.status.is-your-turn {
-  color: var(--accent);
-}
-
 .status > span:first-child {
   min-width: 0;
+}
+
+.status > span:only-child {
+  flex: 1;
+  text-align: center;
+}
+
+.turn-label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 26px;
+  padding: 2px 8px 0;
+  border: 2px solid var(--line);
+  background: var(--role-action);
+  color: var(--role-action-ink);
+  box-shadow: inset 0 -3px 0 var(--accent-dark), inset 0 2px 0 var(--accent-light);
+  font-size: var(--fs-l);
+  letter-spacing: 2px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Beside a button (the skat swap of "Die Oma") the label takes only its own width. */
+.turn-label:not(:only-child) {
+  flex: 0 1 auto;
+  gap: 6px;
+  letter-spacing: 0;
+}
+
+.turn-arrow {
+  flex: none;
+  animation: turn-nudge 900ms steps(2) infinite;
+}
+
+@keyframes turn-nudge {
+  50% {
+    translate: 0 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-arrow {
+    animation: none;
+  }
 }
 
 .status .btn {
@@ -2524,8 +2854,8 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .swap-card.is-picked {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--role-action);
+  box-shadow: 0 0 0 2px var(--role-action);
 }
 
 /* While declaring the status line only names the game number. */
@@ -2565,8 +2895,9 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   color: var(--muted);
 }
 
+/* A boss rule that binds the Ansage: the colour of danger. */
 .declare-hint.is-warning {
-  color: var(--accent-light);
+  color: var(--role-danger);
 }
 
 .declare-actions {
@@ -2601,7 +2932,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 /* "Kurzer": the skat face up on the skat button. */
 .skat-peek-hint {
-  color: var(--accent);
+  color: var(--text);
 }
 
 /* Kreuz, Pik, Herz, Karo, Grand and Null (ADR 0012) in one row. */
@@ -3222,6 +3553,10 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   background: rgba(8, 9, 11, 0.86);
 }
 
+/* Colour roles on the score board (DESIGN 16): the Grundwert is a plain
+   readout, every Stufe, Faktor and relic that adds to the Spielwert has the
+   colour of gains, Groschen are brass, a loss is red; the colour of the
+   action is left to "Weiter". */
 .score-sheet {
   gap: 8px;
   padding: 14px 14px 12px;
@@ -3264,7 +3599,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .score-note {
   font-size: var(--fs-s);
-  color: var(--accent-light);
+  color: var(--text);
 }
 
 /* The relics of the run; each one that contributes lights up in turn. */
@@ -3297,8 +3632,8 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .mini-coaster.is-lit {
   opacity: 1;
-  background: var(--accent);
-  box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--accent-light);
+  background: var(--role-gain);
+  box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--cool-dark);
 }
 
 .tour .mini-coaster {
@@ -3341,15 +3676,15 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .fbox-base b {
-  color: var(--cool);
+  color: var(--text);
 }
 
 .fbox-levels b {
-  color: var(--accent);
+  color: var(--role-gain);
 }
 
 .fbox-mul b {
-  color: var(--rot-light);
+  color: var(--role-gain);
 }
 
 .fop {
@@ -3378,15 +3713,15 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .step.is-base {
-  border-left-color: var(--cool);
+  border-left-color: var(--muted);
 }
 
 .step.is-level {
-  border-left-color: var(--accent);
+  border-left-color: var(--role-gain);
 }
 
 .step.is-relic {
-  border-left-color: var(--accent-light);
+  border-left-color: var(--role-gain);
   background: #33302c;
 }
 
@@ -3419,15 +3754,15 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .step.is-base .step-effect {
-  color: var(--cool);
+  color: var(--text);
 }
 
 .step.is-level .step-effect {
-  color: var(--accent);
+  color: var(--role-gain);
 }
 
 .step.is-relic .step-effect {
-  color: var(--accent-light);
+  color: var(--role-gain);
 }
 
 .step-icon {
@@ -3584,7 +3919,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   align-items: center;
   gap: 4px;
   font-weight: 400;
-  color: var(--accent);
+  color: var(--role-money);
 }
 
 .payout.is-in {
@@ -5618,7 +5953,21 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   }
 }
 
-/* Short screens (small phones, landscape desktop windows): tighter head. */
+/* Desktop: the table takes more width than the phone column, so the felt
+   is a table and not a strip; the light on it is drawn a step bigger. (A
+   layout of its own for wide screens is a later step.) */
+@media (min-width: 900px) {
+  .app:has(.run.is-table) {
+    max-width: 760px;
+  }
+
+  .tabletop::before {
+    background-size: 480px 336px, 32px 32px, auto;
+  }
+}
+
+/* Short screens (small phones, landscape desktop windows): tighter head,
+   the faces at the table at their own 30 pixels. */
 @media (max-height: 720px) {
   .run {
     gap: 5px;
@@ -5633,29 +5982,12 @@ html[data-kbd] .hand-card.is-dim .key-hint {
     min-height: 40px;
   }
 
-  .hud-where {
-    min-height: 40px;
-  }
-
   .icon-btn {
     height: 40px;
   }
 
-  .hud-board {
-    height: 46px;
-  }
-
-  .slate-score,
-  .slate-target {
-    font-size: var(--fs-body);
-  }
-
   .leiste {
-    height: 44px;
-  }
-
-  .coaster-chip {
-    height: 40px;
+    height: 42px;
   }
 
   .coaster-chip .deckel {
@@ -5664,16 +5996,29 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   }
 
   .schnaps-slot {
-    height: 40px;
+    height: 38px;
   }
 
   .portrait-opp {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
   }
 
   .quip {
     left: 46px;
+  }
+
+  .opp[data-seat='2'] .quip {
+    left: 0;
+    right: 46px;
+  }
+
+  .think-bubble {
+    left: 26px;
+  }
+
+  .opp[data-seat='2'] .think-bubble {
+    right: 26px;
   }
 
   /* The settlement stays big, a little less so. */
@@ -5738,14 +6083,28 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   .table.is-declaring .status {
     display: none;
   }
+}
 
-  .portrait-opp {
-    width: 34px;
-    height: 34px;
+/* The Ansage on a table of middling height (a desktop window, bigger
+   text): the two at the table keep name and position, their fans go (ten
+   cards each before the first card anyway). */
+@container table (max-height: 700px) {
+  .table.is-declaring:not(.is-choice) .opp-meta {
+    display: none;
   }
 
-  .quip {
-    left: 46px;
+  .table.is-declaring:not(.is-choice) .portrait-opp {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* Skat oder Hand with the biggest text on a small phone: the fans and the
+   question go, the deck, the skat and the button say it. */
+@container table (max-height: 600px) {
+  :root[data-text-size='xlarge'] .table.is-choice .opp-meta,
+  :root[data-text-size='xlarge'] .declare-choice .declare-title {
+    display: none;
   }
 }
 
@@ -7005,7 +7364,8 @@ body > .drag-ghost {
 
 .declare-choice .declare-title {
   font-size: var(--fs-body);
-  color: var(--muted);
+  color: var(--text);
+  text-shadow: 2px 2px 0 var(--felt-dark);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -7020,7 +7380,7 @@ body > .drag-ghost {
   list-style: none;
   font-size: var(--fs-s);
   line-height: 1.04;
-  color: var(--muted);
+  color: var(--felt-text);
   text-align: center;
 }
 
@@ -7037,7 +7397,7 @@ body > .drag-ghost {
 /* Deck | skat | (room): the deck goes into the middle to mix in. */
 .felt {
   /* Card height on the felt: what the middle leaves after talk and buttons. */
-  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 172px), 150px);
+  --fh: clamp(44px, min(var(--avail) * 0.14, 100cqh - 172px, (100cqw - 48px) * 0.42), 150px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
@@ -7047,11 +7407,11 @@ body > .drag-ghost {
 
 /* Bigger text: the talk and the buttons take more of the middle. */
 :root[data-text-size='large'] .felt {
-  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 180px), 150px);
+  --fh: clamp(44px, min(var(--avail) * 0.14, 100cqh - 180px, (100cqw - 48px) * 0.42), 150px);
 }
 
 :root[data-text-size='xlarge'] .felt {
-  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 204px), 150px);
+  --fh: clamp(44px, min(var(--avail) * 0.14, 100cqh - 204px, (100cqw - 48px) * 0.42), 150px);
 }
 
 .deck-col {
@@ -7106,7 +7466,7 @@ body > .drag-ghost {
   min-width: 22px;
   padding: 1px 4px;
   border: 2px solid var(--line);
-  background: var(--accent);
+  background: var(--card);
   color: var(--card-ink);
   font-family: var(--font-label);
   font-size: var(--fs-s);
@@ -7118,7 +7478,7 @@ body > .drag-ghost {
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
   line-height: 1;
-  color: var(--muted);
+  color: var(--felt-text);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -7238,13 +7598,34 @@ body > .drag-ghost {
 /* ------------------------------------------------- Drücken on the table */
 
 .skat-zone {
-  --sh: clamp(48px, min(var(--trick-h) * 1.15, 100cqh - 64px), 170px);
+  /* Card height on the table: what the middle leaves after the label (and the line of the game above it). */
+  --sh: clamp(48px, min(var(--avail) * 0.145, 100cqh - var(--zone-lines, 68px)), 170px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   padding: 6px 16px 12px;
-  border: 2px dashed var(--dot);
+  border: 2px dashed var(--felt-dark);
+}
+
+.gameline + .skat-zone {
+  --zone-lines: 100px;
+}
+
+:root[data-text-size='large'] .skat-zone {
+  --zone-lines: 76px;
+}
+
+:root[data-text-size='large'] .gameline + .skat-zone {
+  --zone-lines: 112px;
+}
+
+:root[data-text-size='xlarge'] .skat-zone {
+  --zone-lines: 84px;
+}
+
+:root[data-text-size='xlarge'] .gameline + .skat-zone {
+  --zone-lines: 124px;
 }
 
 .is-dragging-card .skat-zone[data-drop] {
@@ -7259,12 +7640,12 @@ body > .drag-ghost {
 .skat-zone-label {
   font-family: var(--font-label);
   font-size: var(--fs-s);
-  color: var(--muted);
+  color: var(--felt-text);
   text-transform: uppercase;
 }
 
 .skat-zone.is-full .skat-zone-label {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .skat-slots {
@@ -7280,12 +7661,12 @@ body > .drag-ghost {
 }
 
 .skat-slot.is-empty {
-  border: var(--edge) dashed var(--dot);
+  border: var(--edge) dashed var(--felt-dark);
 }
 
 /* "Drei drücken": three slots fit beside each other on a phone. */
 .skat-zone.is-three {
-  --sh: clamp(48px, min(var(--trick-h) * 1.05, 100cqh - 64px), 132px);
+  --sh: clamp(48px, min(var(--avail) * 0.132, 100cqh - var(--zone-lines, 68px)), 132px);
   padding: 6px 10px 12px;
 }
 
@@ -7308,7 +7689,7 @@ button.skat-card {
 }
 
 .is-dragging-card .hand[data-drop] {
-  outline-color: var(--dot);
+  outline-color: var(--muted);
 }
 
 .hand[data-drop].is-over {
@@ -7961,8 +8342,8 @@ button.skat-card {
   margin: 0;
   padding: 2px 8px;
   border: 2px solid var(--line);
-  background: var(--panel2);
-  color: var(--accent-light);
+  background: var(--readout-bg);
+  color: var(--text);
   font-size: var(--fs-s);
   line-height: 1.05;
 }
