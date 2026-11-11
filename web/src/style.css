@@ -1,5 +1,5 @@
 /* Stammtisch in the style "Kupfer und Schiefer" (DESIGN 16, mockup in
-   docs/design/stil-a4-mockup.dc.html): slate grey with copper and mint,
+   docs/design/stil-a4-mockup.dc.html): slate grey with ivory and mint (copper until 11.11.2026),
    a pixel font, thick dark lines and hard pixel shadows, a dark vignette.
    Phone portrait first (360 to 430 px); desktop uses the same column with
    more room around it (the table a wider one). The run screens fill exactly the visible height
@@ -23,11 +23,6 @@
   --line: #0b0c0e;
   --text: #ecebe4;
   --muted: #a4adb3;
-  /* Copper is decoration only since 11.11.2026 (the pub's sign on the
-     start screen, pixel art): it is no longer the colour of actions. */
-  --copper: #d1773f;
-  --copper-dark: #8a4a22;
-  --copper-light: #f1b48a;
   /* Ivory, the colour of actions: light on the slate and on the felt, with
      a darker and a lighter step for edges and the pressed state. */
   --ivory: #f1e6c8;
@@ -4088,7 +4083,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   gap: 6px;
   padding: 14px 10px 12px;
   border: var(--edge) solid var(--line);
-  border-top: 6px solid var(--copper);
+  border-top: 6px solid var(--ivory);
   background: var(--panel);
   box-shadow: var(--shadow);
   text-align: center;
@@ -4096,7 +4091,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .sign h1 {
   font-size: var(--fs-3xl);
-  color: var(--copper);
+  color: var(--ivory);
   text-shadow: 4px 4px 0 var(--line);
 }
 
@@ -4407,7 +4402,6 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .daily-text b {
   font-weight: 400;
-  /* The light copper: the plain one has 4.1:1 on the panel, under WCAG's 4.5:1. */
   color: var(--text);
 }
 
@@ -8664,7 +8658,7 @@ button.skat-card {
 /* ---------------------------------------------------- drinking a Schnaps */
 /* ./ui/drink.ts: the layer never takes a pointer; the screen below keeps
    its input. Targets of a Schnaps in the hand glow mint, the one under it
-   copper. */
+   ivory. */
 
 .drink-layer {
   position: fixed;
@@ -8889,7 +8883,7 @@ button.skat-card {
   box-shadow: 0 0 0 3px #0d6fb5;
 }
 
-/* Doppelkorn and Fusel: the factor as a big copper sign. */
+/* Doppelkorn and Fusel: the factor as a big sign in the colour of gain. */
 .decl-sign .x2-sign b {
   color: var(--role-gain);
   font-size: var(--fs-4xl);

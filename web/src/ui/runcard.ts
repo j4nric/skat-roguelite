@@ -28,8 +28,8 @@ const C = {
   line: '#0b0c0e',
   text: '#ecebe4',
   muted: '#a4adb3',
-  /** Copper: the brand line only (decoration, like the sign of the start screen). */
-  copper: '#d1773f',
+  /** Ivory: the brand line, like the sign of the start screen. */
+  ivory: '#f1e6c8',
   /** Brass: Groschen. */
   money: '#ecd28a',
   cool: '#8fc7a8',
@@ -129,7 +129,7 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
 
   // Head: the game's name, the result.
   const { title, color } = outcome(view, info.won);
-  text(g, de.runCard.brand, W / 2, snap(M + 96), 64, C.copper, 'center');
+  text(g, de.runCard.brand, W / 2, snap(M + 96), 64, C.ivory, 'center');
   text(g, title, W / 2, snap(M + 170), 72, color, 'center', W - 2 * M - 60);
   g.fillStyle = C.line;
   g.fillRect(M + PX * 6, snap(M + 204), W - 2 * M - PX * 12, PX);
