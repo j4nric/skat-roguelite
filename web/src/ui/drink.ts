@@ -344,14 +344,11 @@ export class Drink {
     banner.innerHTML = `<b>${esc(title)}</b><small>${esc(sub)}</small>`;
     this.layer.appendChild(banner);
     this.banner = banner;
-    // Above the mouth, else just below the Leiste.
-    const leiste = this.screen.querySelector('.leiste')?.getBoundingClientRect();
-    if (this.mouth) {
-      const top = this.mouthTop() - banner.offsetHeight - 14;
-      banner.style.top = `${Math.max(leiste ? leiste.bottom + 8 : 8, top)}px`;
-    } else {
-      banner.style.top = `${leiste ? leiste.bottom + 10 : 80}px`;
-    }
+    // Over the bar of the head, above the Leiste the glass comes from:
+    // never over the seats, the skat, the trick or the mouth.
+    const bar = this.screen.querySelector('.hud-top')?.getBoundingClientRect();
+    banner.style.top = `${Math.round(bar ? bar.top : 8)}px`;
+    if (bar) banner.style.minHeight = `${Math.round(bar.height)}px`;
   }
 
   // ------------------------------------------------------------------ mouth

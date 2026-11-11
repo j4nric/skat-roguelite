@@ -1,11 +1,16 @@
-// The table: the two regulars (or the boss) on top, the open trick on the
-// felt as a triangle pointing at the player, the "Letzter Stich" button
-// (which shows the core's last trick instead) in the bottom left corner,
-// the pressed skat face down in the bottom right one, the player's hand at
-// the bottom in two rows (a card is played by a tap or thrown onto the felt).
+// The table: a felt top with a wooden edge under the pub's lamp. The two
+// regulars (or the boss's two figures) sit at its far edge, each with his
+// portrait, name, position, a fan of card backs and his tricks; the open
+// trick lies big in the middle as a triangle pointing at the player, the
+// line of the game above it, "Letzter Stich" (which shows the core's last
+// trick instead) in the bottom left corner of the felt, the pressed skat
+// face down in the bottom right one. Below the felt the band that says
+// whose turn it is, directly above the player's hand in two rows (a card
+// is played by a tap or thrown onto the felt).
 // Before the first card the felt holds the choice of Skat oder Hand: the
 // deck (dragged into the middle it mixes in), the skat face down in the
-// middle (a tap picks it up), what the Stammgäste say, "Hand spielen".
+// middle (a tap picks it up), "Hand spielen"; the hello of a Stammgast is
+// the bubble at his seat alone (./app/talk.ts), not written out again.
 // After picking up, the skat lies face up on the table and the player
 // swaps cards between hand and table until the two to press lie there.
 // While declaring, the Ansage panel takes the middle (for the Nullspieler
@@ -23,7 +28,6 @@ import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { valueIcon } from './fxart';
 import { quipBubble, seatLabel, seatPerson } from './guests';
-import { greetingOf } from './quips';
 import { schnapsNotes } from './hud';
 import { bossCoaster } from './emblems';
 import { portrait } from './people';
@@ -147,15 +151,16 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
     tricks === null
       ? ''
       : `<span class="opp-tricks" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
-  // The box is one button (its info card): its name says what the box shows.
+  // The seat is one button (its info card): its name says what the seat shows.
+  // The hand is a fan of as many backs as he holds cards (display only).
   const details = [position ? de.positions[position] : '', t(de.table.cards, { count: size }), tricks === null ? '' : t(de.table.oppTricksAria, { n: tricks })].filter(Boolean).join(', ');
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" ${attrs({ 'data-seat': seat, 'data-guest': person.guest?.id ?? null, 'data-face': person.face })}>
     <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.a11y.seat, { name: person.name, details }) })}>
       ${portrait(person.face, 'portrait-opp', blinkRhythm(seat))}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
         <b class="opp-name" ${attrs({ 'data-testid': 'opp-name', 'data-plate': boss ? 'boss' : null })}>${esc(person.name)}</b>
-        <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
-        <span class="opp-meta"><span class="opp-hand">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
+        <span class="opp-pos"><span>${esc(position ? de.positions[position] : '')}</span>${trickTag}</span>
+        <span class="opp-meta"><span class="opp-hand" style="--n:${size}">${cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small').repeat(size)}<span class="opp-count">${esc(size)}</span></span>${kontraBadge(game, seat)}</span>
       </div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}
@@ -251,20 +256,6 @@ function pressedCards(game: GameView): string {
   return `<p class="declare-pressed" data-testid="pressed"><span>${esc(de.table.skat)}</span>${game.skat.map(miniCard).join('')}</p>`;
 }
 
-/**
- * What the two at the table say before the first decision: each
- * Stammgast's greeting, written out (the boss's rule stands above in the
- * rule strip). From the core content, compact, one line each if it fits.
- */
-function tableTalk(view: RunView): string {
-  const lines = ([1, 2] as const)
-    .map((seat) => ({ person: seatPerson(view, seat), greet: greetingOf(view, seat) }))
-    .filter(({ person, greet }) => person.guest && greet)
-    .map(({ person, greet }) => `<li class="talk-line"><b>${esc(person.name)}:</b> <q>${esc(greet)}</q></li>`)
-    .join('');
-  return lines ? `<ul class="table-talk" data-testid="table-talk">${lines}</ul>` : '';
-}
-
 /** The deck, three backs on top of each other. */
 function deckPile(): string {
   return `<span class="deck-backs" aria-hidden="true">${cardBack()}${cardBack()}${cardBack()}</span>`;
@@ -283,7 +274,7 @@ function giveUpButton(view: RunView): string {
 
 /**
  * The first decision with ten cards (Skatordnung), laid out on the felt:
- * the deck on the left (pull it into the middle, or tap it twice, to
+ * the deck on the left (pull it into the middle, or tap it, to
  * Einmischen), the two skat cards face down and a little askew in the
  * middle (a tap picks them up), "Hand spielen" below. What each does is on
  * its info card (hover, long-press, "i"), not on the buttons.
@@ -322,7 +313,6 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     </div>`;
   return `<section class="declare declare-choice" aria-label="${esc(de.table.choiceTitle)}" data-testid="skat-choice">
     <h2 class="declare-title">${esc(de.table.choiceTitle)}</h2>
-    ${tableTalk(view)}
     <div class="felt">${deck}${skat}<div class="felt-side" aria-hidden="true"></div></div>
     ${peeked && peek ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
     ${declareWarnings(options, false)}${skatPickupsNote(options)}
@@ -509,16 +499,31 @@ function isOpen(game: GameView): boolean {
   return game.phase !== 'Declaring' && game.phase !== 'DeclaringAfterSkat' && (risk === 'Ouvert' || risk === 'OuvertHand');
 }
 
+/** A pixel arrow pointing down at the hand, on both ends of "Du bist dran". */
+function turnArrow(): string {
+  return `<svg class="turn-arrow" viewBox="0 0 7 4" width="14" height="8" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h7v1h-7zM1 1h5v1h-5zM2 2h3v1h-3zM3 3h1v1h-1z" fill="currentColor"/></svg>`;
+}
+
+/** "Du bist dran" between two arrows while the core waits for the player's card, else nothing. */
+function turnLabel(game: GameView): string {
+  return game.your_turn ? `<span class="turn-label" data-testid="your-turn">${turnArrow()}<span>${esc(de.table.yourTurn)}</span>${turnArrow()}</span>` : '<span></span>';
+}
+
+/**
+ * The band between the felt and the hand: whose turn it is ("Du bist
+ * dran" lit up, directly above the cards it is about), the line of the
+ * playback, the hint and the button while pressing.
+ */
 function statusLine(view: RunView, game: GameView, ui: UiState): string {
   if (ui.anim) {
     // Screen readers hear the line from the live region (./a11y.ts), not from here.
-    return `<div class="status">${esc(ui.anim.status)}</div>`;
+    return `<div class="status"><span>${esc(ui.anim.status)}</span></div>`;
   }
   switch (game.phase) {
     case 'Declaring':
-      return `<div class="status">${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</div>`;
+      return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</span></div>`;
     case 'DeclaringAfterSkat':
-      return `<div class="status">${esc(t(de.table.game, { number: game.number }))} · ${esc(de.table.declareAfterSkat)}</div>`;
+      return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.table.declareAfterSkat)}</span></div>`;
     case 'Discarding': {
       // Saves from before the Skatordnung order already hold the declaration here.
       const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
@@ -552,10 +557,10 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
           <button class="btn" ${attrs({ 'data-action': 'oma-cancel' })}>${esc(de.table.omaCancel)}</button></div>`;
       }
       if (take) {
-        return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span>
+        return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}">${turnLabel(game)}
           <button class="btn btn-oma" ${attrs({ 'data-action': 'oma', 'data-testid': 'skat-swap' })}><span class="mini-card">${lookSvg(take, 'small')}</span><span>${esc(t(de.table.swapTake, { card: cardName(take.kind) }))}</span></button></div>`;
       }
-      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}"><span>${esc(game.your_turn ? de.table.yourTurn : '')}</span></div>`;
+      return `<div class="status ${game.your_turn ? 'is-your-turn' : ''}">${turnLabel(game)}</div>`;
     }
     default:
       return `<div class="status"></div>`;
@@ -719,10 +724,12 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
 }
 
 /**
- * The felt: the trick in the middle as a triangle (or the last trick while
- * the player looks at it, in the same places), "Letzter Stich" in the
- * bottom left corner, the pressed skat face down in the bottom right one.
- * During play the felt takes a hand card thrown onto it (`data-drop`).
+ * The middle of the felt: the trick as a triangle (or the last trick while
+ * the player looks at it, in the same places), each card towards the one
+ * who played it; "Letzter Stich" in the bottom left corner, the boss rule
+ * and the pressed skat face down in the bottom right one, in the room the
+ * triangle leaves. During play the felt takes a hand card thrown onto it
+ * (`data-drop`).
  */
 function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
   const slots = (cards: PlayedCard[], you: boolean, winner: Seat | null, risen: UiState['risen']): string =>
@@ -730,7 +737,7 @@ function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | 
   const trick = peek
     ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${slots(peek.cards, false, peek.winner, ui.risen)}</div>`
     : `<div class="trick" data-action="fast" data-testid="trick">${slots(ui.anim ? ui.anim.trick : game.trick, !ui.anim && !ui.busy && game.your_turn, null, ui.anim ? ui.risen : null)}</div>`;
-  return `<div class="trick-row"><div class="trick-side is-left">${ruleChip(view, game)}${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${pressedStack(game)}</div></div>`;
+  return `<div class="trick-row"><div class="trick-side is-left">${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${ruleChip(view, game)}${pressedStack(game)}</div></div>`;
 }
 
 /**
@@ -767,8 +774,8 @@ function ruleStrip(view: RunView, game: GameView): string {
 }
 
 /**
- * The boss rule during play: a small coaster with a label in the top left
- * corner of the felt, beside the trick. A tap opens the rule on the info
+ * The boss rule during play: a small coaster with a label in the bottom
+ * right corner of the felt, beside the pressed skat. A tap opens the rule on the info
  * card, like the strip it replaces.
  */
 function ruleChip(view: RunView, game: GameView): string {
@@ -828,7 +835,9 @@ function pendingNote(view: RunView, game: GameView): string {
 /**
  * The table as parts (./patch.ts): the opponents, the felt and the hand
  * are drawn again only when they change, so an opponent's card does not
- * rebuild the player's hand.
+ * rebuild the player's hand. The table top (felt and wooden edge, drawn
+ * by CSS) holds the seats and the middle; the band of the turn and the
+ * hand follow below it.
  */
 export function renderTable(view: RunView, ui: UiState): Part[] {
   const game = view.game;
@@ -851,11 +860,18 @@ export function renderTable(view: RunView, ui: UiState): Part[] {
   const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
   return [
     shell(`<main class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">`, [
-      `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
-      `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
-      `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,
-      handCards(view, game, ui),
+      // The table top: the seats at its far edge, the notices, the middle.
+      shell(
+        '<div class="tabletop">',
+        [
+          `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
+          `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
+          `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,
+        ],
+        { sticky: true },
+      ),
       statusLine(view, game, ui),
+      handCards(view, game, ui),
     ]),
   ];
 }

@@ -1,7 +1,8 @@
-// Head of the run screen: where we are in the tour, Groschen and the menu;
-// a slate panel with account and target, games and Einmischen left as pips;
-// the Leiste: the collected relics as beer mats (./emblems.ts), scrolling
-// inside itself, and the Schnaps slots next to them.
+// Head of the run screen, two rows: one flat bar with where we are in the
+// tour, account and target over their bar, games and Einmischen left as
+// pips and the Groschen, the menu button beside it; below it the Leiste:
+// the collected relics as beer mats (./emblems.ts) with a counter of the
+// slots ("1/8"), scrolling inside itself, and the Schnaps slots.
 
 import { de, bossFiguresText, contentName, t } from '../i18n';
 import type { RunView } from '../types';
@@ -9,9 +10,9 @@ import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { nightChips } from './night';
 
-/** A Groschen as an 8 × 8 pixel coin in copper. */
+/** A Groschen as an 8 × 8 pixel coin in brass (the colour of money, style.css --brass). */
 export function coinIcon(size = 18): string {
-  return `<svg class="coin" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h4v1h-4zM1 1h6v1h-6zM0 2h8v4h-8zM1 6h6v1h-6zM2 7h4v1h-4z" fill="#d1773f"/><path d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v4h-1zM7 2h1v4h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z" fill="#8a4a22"/><path d="M3 2h2v1h-2zM3 3h1v2h-1zM3 5h2v1h-2z" fill="#f1b48a"/></svg>`;
+  return `<svg class="coin" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h4v1h-4zM1 1h6v1h-6zM0 2h8v4h-8zM1 6h6v1h-6zM2 7h4v1h-4z" fill="#c9a24a"/><path d="M2 0h4v1h-4zM1 1h1v1h-1zM6 1h1v1h-1zM0 2h1v4h-1zM7 2h1v4h-1zM1 6h1v1h-1zM6 6h1v1h-1zM2 7h4v1h-4z" fill="#6f5320"/><path d="M3 2h2v1h-2zM3 3h1v2h-1zM3 5h2v1h-2z" fill="#f3e2a4"/></svg>`;
 }
 
 /** The foam crown of a full account bar (hidden by CSS until `.is-full`). */
@@ -48,12 +49,28 @@ function hourglass(): string {
   return `<svg class="slot-wait" viewBox="0 0 7 7" width="14" height="14" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h7v1h-7zM0 6h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM2 3h1v1h-1zM4 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1z" fill="#0b0c0e"/><path d="M1 1h5v1h-5zM2 2h3v1h-3zM3 3h1v1h-1zM2 5h3v1h-3zM3 4h1v1h-1z" fill="#a4adb3"/></svg>`;
 }
 
+/** Two beer mats on top of each other: the sign of the relic counter. */
+function matsIcon(): string {
+  return `<svg class="mats-icon" viewBox="0 0 9 8" width="18" height="16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h4v1h-4zM2 1h6v1h-6zM1 2h8v3h-8zM2 5h6v1h-6zM3 6h4v1h-4z" fill="#5d666d"/><path d="M2 1h4v1h-4zM1 2h6v1h-6zM0 3h8v3h-8zM1 6h6v1h-6zM2 7h4v1h-4z" fill="#a4adb3"/><path d="M2 3h4v1h-4zM2 5h4v1h-4z" fill="#2a2f34"/></svg>`;
+}
+
+/**
+ * How many relic slots are taken: "1/8" beside the relics, always in view (the free slots
+ * are not drawn; 8 slots since 05.11.2026, DESIGN 8.0), or just the number
+ * while the slots are unlimited.
+ */
+function relicCount(view: RunView): string {
+  const n = view.relics.length;
+  const text = view.relic_slots === null ? String(n) : `${n}/${view.relic_slots}`;
+  const label = view.relic_slots === null ? t(de.hud.relicCountOpen, { n }) : t(de.hud.relicCount, { n, max: view.relic_slots });
+  return `<span class="relic-count" ${attrs({ 'data-testid': 'relic-count', role: 'img', 'aria-label': label, title: label })}>${matsIcon()}<b aria-hidden="true">${esc(text)}</b></span>`;
+}
+
 /**
  * The relic part of the Leiste: every relic as its beer mat only (no
  * name; a tap opens the info card), the house rules of the evening, then
- * waiting factors, flags and counters. With a cap (8 slots since
- * 05.11.2026, DESIGN 8.0) the free slots follow the relics as dashed
- * beer mats. It scrolls inside itself, the page never sideways.
+ * waiting factors, flags and counters. It scrolls inside itself, the page
+ * never sideways.
  */
 export function relicChips(view: RunView): string {
   const relics = view.relics
@@ -62,11 +79,6 @@ export function relicChips(view: RunView): string {
       return `<button class="coaster-chip rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}`, 'aria-label': name, title: name })}>${relicCoaster(r.relic, { size: 38 })}${onceNote(r.relic.id)}</button>`;
     })
     .join('');
-  const free = view.relic_slots === null ? 0 : Math.max(0, view.relic_slots - view.relics.length);
-  const empty = Array.from(
-    { length: free },
-    (_, i) => `<span class="relic-slot is-empty" ${attrs({ 'data-testid': 'relic-slot-empty', 'data-empty-slot': view.relics.length + i, title: de.hud.emptyRelicSlot })}></span>`,
-  ).join('');
   const evening = view.evening_relics
     .map((r, i) => {
       const name = `${contentName('relics', r.id)} (${de.evening.tag})`;
@@ -87,7 +99,7 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + empty + evening + pending + schnaps + flags + counters;
+  return relics + evening + pending + schnaps + flags + counters;
 }
 
 /**
@@ -118,9 +130,9 @@ export function schnapsSlots(view: RunView): string {
   }).join('');
 }
 
-/** The Leiste: relics (scrolling inside), a divider, the Schnaps slots. */
+/** The Leiste: relics (scrolling inside), the counter of their slots, a divider, the Schnaps slots. */
 export function leiste(view: RunView, malus = ''): string {
-  return `<div class="leiste" data-testid="leiste"><div class="leiste-relics" data-testid="leiste-relics">${malus}${relicChips(view)}</div><div class="leiste-slots" data-testid="schnaps-slots">${schnapsSlots(view)}</div></div>`;
+  return `<div class="leiste" data-testid="leiste"><div class="leiste-relics" data-testid="leiste-relics">${malus}${relicChips(view)}</div>${relicCount(view)}<div class="leiste-slots" data-testid="schnaps-slots">${schnapsSlots(view)}</div></div>`;
 }
 
 /** "Doppelkorn ×2" and the like, for each Schnaps waiting for the next game, in the given texts. */
@@ -152,6 +164,11 @@ export function neededLine(view: RunView): string {
   return `<p class="hud-needed ${n.reachable ? '' : 'is-hopeless'}" role="status" data-testid="needed" ${attrs({ 'data-reachable': n.reachable ? 'true' : 'false' })}>${esc(text)}</p>`;
 }
 
+/** Two cards being shuffled into each other: the sign of Einmischen in the head. */
+function mixIcon(): string {
+  return `<svg class="mix-icon" viewBox="0 0 9 8" width="18" height="16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 1h5v7h-5z" fill="#0b0c0e"/><path d="M1 2h3v5h-3z" fill="#a4adb3"/><path d="M4 0h5v7h-5z" fill="#0b0c0e"/><path d="M5 1h3v5h-3z" fill="#ecebe4"/><path d="M6 2h1v1h-1zM6 4h1v1h-1z" fill="#5d666d"/></svg>`;
+}
+
 export function renderHud(view: RunView): string {
   const s = view.series;
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
@@ -176,33 +193,34 @@ export function renderHud(view: RunView): string {
     ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': bossTitle, title: bossTitle })}>${bossCoaster(bossInfo.id, { size: 34 })}<span class="boss-chip-names"><span>${esc(contentName('bosses', bossInfo.id))}</span><small data-testid="hud-boss-figures">${esc(bossFiguresText(bossInfo))}</small></span></button>`
     : '';
   const fill = meterPercent(s.score, s.target);
+  // Account and target with their bar, games and Einmischen left as pips: readouts, not buttons.
+  const board = `<div class="hud-board">
+      <div class="slate" role="meter" ${attrs({ 'aria-label': de.header.accountTarget, 'aria-valuemin': Math.min(0, s.score), 'aria-valuemax': Math.max(s.target, s.score), 'aria-valuenow': s.score, 'aria-valuetext': t(de.pub.points, { score: s.score, target: s.target }) })}>
+        <span class="slate-label sr-only">${view.phase === 'Game' ? progress : esc(de.header.accountTarget)}</span>
+        <span class="slate-row"><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-sep">/</span><b class="slate-target">${esc(s.target)}</b></span>
+        <div class="chalk-meter ${fill >= 100 ? 'is-full' : ''}"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-hud')}</div>
+      </div>
+      <div class="hud-counts">
+        <div class="count-row count-games" role="group" ${attrs({ 'aria-label': t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }), title: t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }) })}><span class="pips" aria-hidden="true">${pips(s.games_left, s.game_limit, 'pip-game') || esc(s.games_left)}</span><b data-testid="games-left" class="sr-only" aria-hidden="true">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>
+        <div class="count-row count-passes" role="group" ${attrs({ 'aria-label': t(de.header.passesAria, { left: s.redeals_left }), title: t(de.header.passesAria, { left: s.redeals_left }) })}>${mixIcon()}<b data-testid="passes-left" class="count-num" aria-hidden="true">${esc(s.redeals_left)}</b></div>
+      </div>
+    </div>`;
   return `<header class="hud">
   <h1 class="sr-only">${esc(de.app.title)}</h1>
   <div class="hud-top">
-    <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
-      <span class="hud-where-main">${esc(where)}</span>
-      <span class="hud-where-sub"><span data-testid="pub-name">${esc(pub ? (pub.id.endsWith('-s') ? `${de.pub.spelunke}: ${pub.name}` : pub.name) : de.header.tourHint)}</span> · ${esc(view.night ? t(de.night.hud, { n: view.night.district }) : t(de.header.section, { section: s.section + 1, sections: view.sections }))}${
-        view.stake > 0 ? `<span data-testid="hud-stake" ${attrs({ title: t(de.header.stakeTitle, { stake: view.stake, augen: view.win_threshold }) })}> · ${esc(t(de.header.stake, { augen: view.win_threshold }))}</span>` : ''
-      }</span>
-    </button>
-    ${boss}
-    <span class="hud-coins">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b><span class="sr-only"> ${esc(de.header.coins)}</span></span>
+    <div class="hud-bar">
+      <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
+        <span class="hud-where-main">${esc(where)}</span>
+        <span class="hud-where-sub"><span data-testid="pub-name">${esc(pub ? (pub.id.endsWith('-s') ? `${de.pub.spelunke}: ${pub.name}` : pub.name) : de.header.tourHint)}</span><span class="hud-where-section"> · ${esc(view.night ? t(de.night.hud, { n: view.night.district }) : t(de.header.section, { section: s.section + 1, sections: view.sections }))}</span>${
+          view.stake > 0 ? `<span data-testid="hud-stake" ${attrs({ title: t(de.header.stakeTitle, { stake: view.stake, augen: view.win_threshold }) })}> · ${esc(t(de.header.stake, { augen: view.win_threshold }))}</span>` : ''
+        }</span>
+      </button>
+      ${board}
+      <span class="hud-coins" ${attrs({ title: de.header.coins })}>${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b><span class="sr-only"> ${esc(de.header.coins)}</span></span>
+    </div>
     <button class="icon-btn" ${attrs({ 'data-action': 'menu', 'aria-label': de.header.menu })}><span class="burger"></span></button>
   </div>
-  <div class="hud-board">
-    <div class="slate" role="meter" ${attrs({ 'aria-label': de.header.accountTarget, 'aria-valuemin': Math.min(0, s.score), 'aria-valuemax': Math.max(s.target, s.score), 'aria-valuenow': s.score, 'aria-valuetext': t(de.pub.points, { score: s.score, target: s.target }) })}>
-      <div class="slate-text">
-        <span class="slate-label">${view.phase === 'Game' ? progress : esc(de.header.accountTarget)}</span>
-        <span class="slate-row"><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-sep"> / </span><b class="slate-target">${esc(s.target)}</b></span>
-      </div>
-      <div class="chalk-meter ${fill >= 100 ? 'is-full' : ''}"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-hud')}</div>
-    </div>
-    <div class="hud-counts">
-      <div class="count-row" role="group" aria-label="${esc(t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }))}"><span class="count-label" aria-hidden="true">${esc(de.header.games)}</span><span class="pips" aria-hidden="true">${pips(s.games_left, s.game_limit, 'pip-game')}</span><b data-testid="games-left" class="sr-only" aria-hidden="true">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>
-      <div class="count-row" role="group" aria-label="${esc(t(de.header.passesAria, { left: s.redeals_left }))}"><span class="count-label" aria-hidden="true">${esc(de.header.passes)}</span><span class="pips" aria-hidden="true">${pips(s.redeals_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num" aria-hidden="true">${esc(s.redeals_left)}</b></div>
-    </div>
-  </div>
   ${neededLine(view)}
-  ${leiste(view, malus + nightChips(view))}
+  ${leiste(view, malus + nightChips(view) + boss)}
 </header>`;
 }

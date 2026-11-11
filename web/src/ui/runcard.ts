@@ -28,7 +28,10 @@ const C = {
   line: '#0b0c0e',
   text: '#ecebe4',
   muted: '#a4adb3',
-  accent: '#d1773f',
+  /** Ivory: the brand line, like the sign of the start screen. */
+  ivory: '#f1e6c8',
+  /** Brass: Groschen. */
+  money: '#ecd28a',
   cool: '#8fc7a8',
   rot: '#e5776d',
   night: '#9fb4e8',
@@ -126,7 +129,7 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
 
   // Head: the game's name, the result.
   const { title, color } = outcome(view, info.won);
-  text(g, de.runCard.brand, W / 2, snap(M + 96), 64, C.accent, 'center');
+  text(g, de.runCard.brand, W / 2, snap(M + 96), 64, C.ivory, 'center');
   text(g, title, W / 2, snap(M + 170), 72, color, 'center', W - 2 * M - 60);
   g.fillStyle = C.line;
   g.fillRect(M + PX * 6, snap(M + 204), W - 2 * M - PX * 12, PX);
@@ -146,7 +149,7 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
   const reached = reachedLine(view);
   text(g, reached.line, tx, top + 112, 46, color, 'left', tw);
   wrap(g, reached.name, 36, tw, 1).forEach((l, i) => text(g, l, tx, top + 160 + i * 36, 36, C.muted, 'left', tw));
-  if (view.stake > 0) text(g, t(de.runCard.stake, { stake: view.stake }), tx, top + 204, 32, C.accent, 'left', tw);
+  if (view.stake > 0) text(g, t(de.runCard.stake, { stake: view.stake }), tx, top + 204, 32, C.text, 'left', tw);
 
   // The numbers of the run, as on the Kreidetafel.
   const s = view.stats;
@@ -168,7 +171,7 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
     const x = M + PX * 8 + (i % cols) * (tw2 + gap);
     const y = tileTop + Math.floor(i / cols) * (th + gap);
     box(g, x, y, tw2, th, C.panel);
-    text(g, String(value), x + tw2 / 2, y + 86, 84, i === 3 ? C.accent : C.text, 'center', tw2 - 20);
+    text(g, String(value), x + tw2 / 2, y + 86, 84, i === 3 ? C.money : C.text, 'center', tw2 - 20);
     text(g, label, x + tw2 / 2, y + 128, 32, C.muted, 'center', tw2 - 20);
   });
 

@@ -758,7 +758,9 @@ export const en: Strings = {
     onceUsed: 'Already used in this pub',
     onceBadge: '1st',
     emptySlot: 'Free Schnapps slot',
-    emptyRelicSlot: 'Free relic slot',
+    /** The counter behind the relics in the Leiste ("1/8"), written out. */
+    relicCount: 'Relics: {n} of {max} slots taken',
+    relicCountOpen: 'Relics: {n}',
     drinkAria: '{name}: tap or drag onto the target',
     notNowAria: '{name}: can’t be drunk right now',
   },
@@ -1207,7 +1209,7 @@ export const en: Strings = {
   hints: {
     speaker: 'The Landlord',
     dismiss: 'Tap to close',
-    welcome: 'New here, eh? Up top you see score and target: reach the target in three games, or the evening’s over.',
+    welcome: 'New here, eh? Reach the target in three games, or the evening’s over. Score and target are up top, right behind me.',
     skatOrHand:
       'No bidding here, you’re always the declarer. Leave the Skat where it is and play Hand, and you get +1 level.',
     afterSkat:

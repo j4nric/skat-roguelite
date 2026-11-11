@@ -18,8 +18,8 @@ import { glyph, mapIcon, type MapIcon } from './mapicons';
 import { bossPortraitId, guestPortraitId, portrait } from './people';
 
 const PAPER = '#fbf6e8';
-/** The trail of a trip on the map: the app's accent colour (--accent; playtest 05.11.2026, was white). */
-const TRAIL = '#d1773f';
+/** The trail of a trip on the map: dark ink, which shows on the paper (the colour of actions is ivory since 11.11.2026 and would not; was copper, before that white). */
+const TRAIL = '#1b1e21';
 
 const WAY: Record<Transport, Way> = { Walk: 'fuss', Train: 'bahn', Bike: 'rad' };
 const LINE: Record<Way, { colour: string; pattern: Pattern }> = {

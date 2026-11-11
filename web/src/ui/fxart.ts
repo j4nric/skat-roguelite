@@ -663,25 +663,25 @@ const VALUE_ICONS: Record<ValueIconKind, { rows: string[]; pal: Record<string, s
   },
   base: {
     rows: ['...www...', '...sss...', '.........', '.www.www.', '.sss.sss.', '.........', 'ww.www.ww', 'ss.sss.ss'],
-    pal: { w: '#e4ede8', s: '#93aea2' },
+    pal: { w: '#ecebe4', s: '#a4adb3' },
   },
-  // Stufen: three copper steps rising to the right, lit treads on top.
+  // Stufen: three steps rising to the right in the colour of gains (mint), lit treads on top.
   levels: {
     rows: ['......lll', '......ccc', '......ccc', '...lllccc', '...cccccc', '...cccccc', 'lllcccccc', 'ccccccccc', 'ccccccccc'],
-    pal: { c: '#d1773f', l: '#f1b48a' },
+    pal: { c: '#8fc7a8', l: '#d3f0e0' },
   },
-  // Faktor (ADR 0018; playtest 05.11.2026): a "steigender Kurs" in amber,
+  // Faktor (ADR 0018; playtest 05.11.2026): a "steigender Kurs" in a deeper mint (a gain, like the Stufen),
   // a chart line with a dip climbing to an arrow head at the top right,
   // lit on top, dark below.
   factor: {
     rows: ['......llll', '......ccll', '.......lll', '.......lcl', '..l...lc.c', '.lcl.lc...', 'lc.clc....', 'c...c.....'],
-    pal: { c: '#c98a12', l: '#ffd25e' },
+    pal: { c: '#5fa886', l: '#d3f0e0' },
   },
 };
 
 /**
  * The Grundwert, Stufen, Faktor or Augen icon in its large form
- * (stone bricks, copper staircase, an amber rising chart line, a die) with a dark one-pixel outline, as inline SVG `height` px
+ * (stone bricks, a mint staircase, a mint rising chart line, a die) with a dark one-pixel outline, as inline SVG `height` px
  * high: beside the labels of the score boxes.
  */
 export function valueIcon(kind: ValueIconKind, height = 14): string {
