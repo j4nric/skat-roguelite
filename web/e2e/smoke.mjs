@@ -44,6 +44,10 @@
 // - "Kartenfarbe tönen" (suitTintPass): the switch "Tönen" tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
+// - Startseite (startScreenPass, DESIGN 16.4; with SMOKE_ONLY=characters):
+//   locked characters after the free ones, "Neuer Run als …" docked at the
+//   bottom edge without scrolling and covering nothing at the end of the
+//   page, "Weitere Spielarten" and "mehr" fold and unfold (aria-expanded),
 // - Barrierefreiheit (a11yPass; alone with SMOKE_ONLY=a11y): the row
 //   "Darstellung" in the menu, "Farbenblind-Hilfe" puts a suit letter on
 //   every face (stored), "Schriftgröße" Groß and Sehr groß keep the table
