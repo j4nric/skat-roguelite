@@ -31,6 +31,7 @@ import { passkeysSupported } from './account';
 import { loadSettings } from './settings';
 import { loadCharacter, loadHistory } from './storage';
 import type { RunAction } from './types';
+import { mountLive, trapFocus } from './ui/a11y';
 import { watchDrags } from './ui/drag';
 import { Drink } from './ui/drink';
 import { finishAll, springBack } from './ui/fx';
@@ -109,6 +110,8 @@ export class App implements AppCtx {
     ended: null,
     account: { user: null, status: 'off', supported: passkeysSupported(), online: isOnline() },
     board: null,
+    week: null,
+    weeklyBoard: null,
   };
   fastForward = false;
   readonly screenEl: HTMLElement;
@@ -242,6 +245,9 @@ export class App implements AppCtx {
     });
     watchNetwork((online) => this.account.networkChanged(online));
     this.menu.applySettings();
+    // Screen readers: the polite live region; keyboard: Tab stays inside an open dialog (./ui/a11y.ts).
+    mountLive(root);
+    trapFocus();
     root.addEventListener('click', (e) => this.actions.onClick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
     window.addEventListener(

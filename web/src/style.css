@@ -98,6 +98,39 @@
   }
 }
 
+/* "Schriftgröße" (setting, data-text-size on <html>): the type scale in
+   two bigger steps. The small sizes grow most (they carry the labels and
+   rules), the display sizes of the score board a little; whole pixels
+   only, like the scale itself. The layouts take their room from --avail
+   and wrap, so the phone layout keeps without sideways scrolling. */
+:root[data-text-size='large'] {
+  --fs-2xs: 14px;
+  --fs-xs: 16px;
+  --fs-s: 17px;
+  --fs-m: 18px;
+  --fs-l: 20px;
+  --fs-body: 22px;
+  --fs-h: 32px;
+  --fs-xl: 42px;
+  --fs-2xl: 52px;
+  --fs-3xl: 62px;
+  --fs-4xl: 72px;
+}
+
+:root[data-text-size='xlarge'] {
+  --fs-2xs: 16px;
+  --fs-xs: 18px;
+  --fs-s: 19px;
+  --fs-m: 20px;
+  --fs-l: 22px;
+  --fs-body: 24px;
+  --fs-h: 34px;
+  --fs-xl: 44px;
+  --fs-2xl: 54px;
+  --fs-3xl: 64px;
+  --fs-4xl: 74px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -316,8 +349,14 @@ button {
 
 button:focus-visible,
 .card:focus-visible {
-  outline: 2px solid var(--cool);
+  outline: 3px solid var(--cool);
   outline-offset: 2px;
+}
+
+/* A dialog takes the focus when it opens (its name is read, ./ui/a11y.ts);
+   it needs no ring of its own, the first Tab goes to its controls. */
+[role='dialog']:focus {
+  outline: none;
 }
 
 .btn:disabled {
@@ -518,6 +557,20 @@ button:focus-visible,
 
 :root[data-suit-tint] .card-svg[data-suit='Diamonds'] {
   --suit-paper: #fcf5cf;
+}
+
+/* "Farbenblind-Hilfe" (setting, off by default, data-color-blind on
+   <html>): the four suits differ by colour above all (Eichel blue, Grün
+   green, Rot red, Schellen amber), which red-green colour blindness takes
+   away. With the aid each full face shows its suit's letter (E, G, R, S)
+   on a dark tag under the corner index (./ui/sprite.ts draws it), and the
+   marks that only had a colour get a sign or a shape of their own. */
+.face-letter {
+  display: none;
+}
+
+:root[data-color-blind] .face-letter {
+  display: inline;
 }
 
 button.card {
@@ -806,7 +859,8 @@ button.card {
 .hud-coins b {
   font-size: var(--fs-body);
   font-weight: 400;
-  color: var(--accent);
+  /* Text in copper takes the light copper: the plain one has 4.1:1 on the panels, under WCAG's 4.5:1. */
+  color: var(--accent-light);
 }
 
 .boss-chip {
@@ -1189,6 +1243,16 @@ button.card {
 /* While declaring the Ansage needs the room; the hand moves closer. */
 .table.is-declaring {
   --card-h: clamp(50px, calc(var(--avail) * 0.106), 128px);
+}
+
+/* Bigger text ("Schriftgröße") makes the Ansage taller: the hand gives up
+   a little more of its height while declaring, so nothing is cut off. */
+:root[data-text-size='large'] .table.is-declaring {
+  --card-h: clamp(48px, calc(var(--avail) * 0.1), 120px);
+}
+
+:root[data-text-size='xlarge'] .table.is-declaring {
+  --card-h: clamp(46px, calc(var(--avail) * 0.088), 112px);
 }
 
 .opponents {
@@ -2233,6 +2297,16 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   background: #1f5a8c;
 }
 
+/* "Farbenblind-Hilfe": a suit on a plaque (Blue Curaçao, a settled
+   Wandelkarte) as its letter instead of its sign. */
+:root[data-color-blind] .plaque[data-letter] svg {
+  display: none;
+}
+
+:root[data-color-blind] .plaque[data-letter]::after {
+  content: attr(data-letter);
+}
+
 .plaque-lock {
   background: var(--rot);
 }
@@ -3006,7 +3080,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .credits-thanks {
-  color: var(--accent);
+  color: var(--accent-light);
   text-align: center;
 }
 
@@ -3914,7 +3988,8 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .daily-text b {
   font-weight: 400;
-  color: var(--accent);
+  /* The light copper: the plain one has 4.1:1 on the panel, under WCAG's 4.5:1. */
+  color: var(--accent-light);
 }
 
 .daily-done {
@@ -4082,7 +4157,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .tour-row-head.is-current {
-  color: var(--accent);
+  color: var(--accent-light);
 }
 
 .tour-cell.is-done {
@@ -4243,7 +4318,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .ledger-progress {
-  color: var(--accent);
+  color: var(--accent-light);
 }
 
 .ledger-chars,
@@ -4613,7 +4688,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .next-target {
-  color: var(--accent);
+  color: var(--accent-light);
 }
 
 .next-boss {
@@ -4761,7 +4836,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   align-items: center;
   justify-content: center;
   border: var(--edge) dashed var(--dot);
-  color: #5d666d;
+  color: #949ca2;
   font-family: var(--font-label);
   font-size: var(--fs-s);
 }
@@ -5022,7 +5097,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   border-style: dashed;
   border-color: var(--dot);
   box-shadow: none;
-  color: #5d666d;
+  color: #949ca2;
   font-family: var(--font-label);
   font-size: var(--fs-s);
 }
@@ -5224,7 +5299,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   background: var(--panel);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
-  color: var(--accent);
+  color: var(--accent-light);
   white-space: nowrap;
   transform: translateX(-50%);
   cursor: pointer;
@@ -5962,6 +6037,35 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   grid-template-columns: 78px minmax(0, 1fr) auto;
 }
 
+/* Bigger text ("Schriftgröße"): each setting's label above its switches,
+   which take the whole width; a word too long for its button still breaks
+   rather than leaving the button. The menu scrolls inside if it must. */
+.menu-row .seg {
+  overflow-wrap: anywhere;
+}
+
+:root[data-text-size] .menu-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+:root[data-text-size] .menu-row.menu-hints {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+:root[data-text-size] .menu-hints .setting-label {
+  grid-column: 1 / -1;
+}
+
+:root[data-text-size] .menu-note {
+  margin-left: 0;
+}
+
+:root[data-text-size] .menu-seed .menu-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .menu-hints .btn {
   min-width: 0;
   padding: 0 8px;
@@ -5972,6 +6076,12 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .sheet-rules {
   overflow: hidden;
+}
+
+.rules-body:focus-visible,
+.sheet-body:focus-visible {
+  outline: 3px solid var(--cool);
+  outline-offset: -3px;
 }
 
 .rules-body {
@@ -6000,7 +6110,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   font-size: var(--fs-m);
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-light);
 }
 
 .rules-sub {
@@ -6828,6 +6938,15 @@ body > .drag-ghost {
   width: 100%;
 }
 
+/* Bigger text: the talk and the buttons take more of the middle. */
+:root[data-text-size='large'] .felt {
+  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 180px), 150px);
+}
+
+:root[data-text-size='xlarge'] .felt {
+  --fh: clamp(44px, min(var(--trick-h) * 1.12, 100cqh - 204px), 150px);
+}
+
 .deck-col {
   display: flex;
   flex-direction: column;
@@ -7587,7 +7706,7 @@ button.skat-card {
 }
 
 .route-stop small {
-  color: #6a6458;
+  color: #554f45;
   font-size: var(--fs-s);
   white-space: nowrap;
 }
@@ -8978,6 +9097,22 @@ button.sync-pill {
   flex: none;
 }
 
+/* "Sprache / Language" (ADR 0023) between the heading and the account: two
+   small switches that take no more height than the heading (the menu must
+   still fit 375 × 667); negative margins keep a 40 px touch target. */
+.menu-head .lang-switch {
+  flex: none;
+  margin: -8px 0 -8px auto;
+  gap: 4px;
+}
+
+.menu-head .lang-switch .seg {
+  flex: none;
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: var(--fs-s);
+}
+
 .account-body {
   display: flex;
   flex-direction: column;
@@ -9414,4 +9549,86 @@ div.coach-main {
   color: var(--accent);
   font-family: var(--font-label);
   font-size: var(--fs-s);
+}
+
+/* ------------------------------------- Wochen-Herausforderung (DESIGN 5.6) */
+.weekly {
+  border-color: var(--cool-dark);
+}
+
+.weekly .weekly-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 420px) {
+  .weekly .weekly-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.weekly-rule {
+  font-size: var(--fs-s);
+  line-height: 1.1;
+}
+
+.daily-text .weekly-rule b {
+  color: var(--cool);
+}
+
+/* A calendar sheet with the week number, like the daily seed's. */
+.week-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+  line-height: 0.9;
+}
+
+.week-badge small {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.week-badge b {
+  font-weight: 400;
+  font-size: var(--fs-l);
+  color: var(--cool);
+}
+
+.weekly-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weekly-sheet-head b {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.sheet-weekly-board .board {
+  border-top: none;
+}
+
+.menu-weekly b {
+  font-weight: 400;
+  color: var(--cool);
+}
+
+.ledger-favs {
+  color: var(--cool);
+}
+
+/* Three pages of the Vereinsbuch: the tabs shrink on narrow phones. */
+.ledger-tabs .seg {
+  min-width: 0;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
 }

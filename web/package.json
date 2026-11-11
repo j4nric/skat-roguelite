@@ -6,7 +6,7 @@
   "description": "Stammtisch: Skat als Roguelike. Web-App über dem Rust-Kern (WebAssembly).",
   "scripts": {
     "wasm": "sh scripts/build-wasm.sh",
-    "typecheck": "tsc --noEmit && node scripts/check-actions.mjs",
+    "typecheck": "tsc --noEmit && node scripts/check-actions.mjs && node scripts/check-i18n.mjs",
     "dev": "npm run wasm && vite",
     "build": "npm run wasm && npm run typecheck && vite build",
     "build:web": "npm run typecheck && vite build",

@@ -73,6 +73,28 @@ pub struct MetaStats {
     /// before the short evening existed count as ganzer Abend only in the
     /// totals above, not here.
     pub lengths: BTreeMap<RunLength, LengthStats>,
+    /// Per relic (Statistik, DESIGN 9.3): how often taken, how often held
+    /// at the end of a run and how often in a won one. Counted since
+    /// 10.11.2026; older saves start empty.
+    pub relics: BTreeMap<RelicId, RelicStats>,
+    /// Per character: how often each relic was held at the end of a run
+    /// (the favourite relics). Counted since 10.11.2026.
+    #[serde(deserialize_with = "known_characters")]
+    pub character_relics: BTreeMap<Character, BTreeMap<RelicId, u32>>,
+}
+
+/// Statistics of one relic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RelicStats {
+    /// Times taken in a run: bought, gained (Spelunke, boss pick,
+    /// encounter) or swapped for. Start relics are not taken.
+    pub taken: u32,
+    /// Runs that ended with the relic held (the long night not counted:
+    /// its run was counted when it was won).
+    pub held: u32,
+    /// Of those, runs won.
+    pub won: u32,
 }
 
 /// Statistics of the runs of one length.
@@ -322,6 +344,162 @@ pub struct MetaView {
     pub stats: MetaStats,
     /// Card backs earned (cosmetic, [`Reward::CardBack`]), in id order.
     pub card_backs: Vec<String>,
+    /// The statistics sheet (per character and per relic), computed from
+    /// [`MetaView::stats`].
+    pub records: StatsView,
+}
+
+/// How many favourite relics a character's line names.
+pub const FAVOURITE_RELICS: usize = 3;
+
+/// The statistics sheet of the Vereinsbuch (DESIGN 9.3): what the
+/// frontend shows per character and per relic, computed by the core.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct StatsView {
+    /// Every character of the content, in content order.
+    pub characters: Vec<CharacterRecord>,
+    /// Every relic taken or held at least once: most often held first,
+    /// then most often taken, then by id.
+    pub relics: Vec<RelicRecord>,
+}
+
+/// A relic and how often it was held at the end of a run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RelicCount {
+    /// The relic.
+    pub relic: RelicId,
+    /// German name.
+    pub name: String,
+    /// Runs it was held at the end.
+    pub count: u32,
+}
+
+/// One character on the statistics sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CharacterRecord {
+    /// Which character.
+    pub character: Character,
+    /// German name.
+    pub name: String,
+    /// Runs finished.
+    pub runs: u32,
+    /// Runs won.
+    pub won: u32,
+    /// Runs won in percent of the runs, rounded; `None` before the first.
+    pub win_percent: Option<u32>,
+    /// Deepest district reached (from 1), 0 before the first run.
+    pub best_section: u32,
+    /// Highest Spielwert of a won game.
+    pub best_game: u64,
+    /// The relics most often held at the end, at most
+    /// [`FAVOURITE_RELICS`], most often first, then by id.
+    pub favourite_relics: Vec<RelicCount>,
+}
+
+/// One relic on the statistics sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RelicRecord {
+    /// The relic.
+    pub relic: RelicId,
+    /// German name (the id if the content no longer has it).
+    pub name: String,
+    /// House rule or figure.
+    pub kind: RelicKind,
+    /// Its rarity, if the content still has it.
+    pub rarity: Option<Rarity>,
+    /// Times taken.
+    pub taken: u32,
+    /// Runs it was held at the end.
+    pub held: u32,
+    /// Of those, runs won.
+    pub won: u32,
+    /// Won in percent of `held`, rounded; `None` if never held at the end.
+    pub win_percent: Option<u32>,
+}
+
+/// `part` of `whole` in percent, rounded half up; `None` for no whole.
+fn percent(part: u32, whole: u32) -> Option<u32> {
+    (whole > 0).then(|| {
+        let p = (u64::from(part) * 200 + u64::from(whole)) / (2 * u64::from(whole));
+        u32::try_from(p).unwrap_or(100)
+    })
+}
+
+impl MetaStats {
+    /// The statistics sheet ([`StatsView`]).
+    #[must_use]
+    pub fn records(&self, content: &Content) -> StatsView {
+        let name = |id: &RelicId| {
+            content
+                .relic(id)
+                .map_or_else(|| id.to_string(), |d| d.name.clone())
+        };
+        let characters = content
+            .characters
+            .values()
+            .map(|def| {
+                let s = self
+                    .characters
+                    .get(&def.character)
+                    .copied()
+                    .unwrap_or_default();
+                let mut favourites: Vec<(&RelicId, u32)> = self
+                    .character_relics
+                    .get(&def.character)
+                    .map(|m| {
+                        m.iter()
+                            .map(|(id, n)| (id, *n))
+                            .filter(|(_, n)| *n > 0)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                favourites.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+                CharacterRecord {
+                    character: def.character,
+                    name: def.name.clone(),
+                    runs: s.runs,
+                    won: s.won,
+                    win_percent: percent(s.won, s.runs),
+                    best_section: s.best_section,
+                    best_game: s.best_game,
+                    favourite_relics: favourites
+                        .into_iter()
+                        .take(FAVOURITE_RELICS)
+                        .map(|(id, count)| RelicCount {
+                            relic: id.clone(),
+                            name: name(id),
+                            count,
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        let mut relics: Vec<RelicRecord> = self
+            .relics
+            .iter()
+            .filter(|(_, s)| s.taken > 0 || s.held > 0)
+            .map(|(id, s)| {
+                let def = content.relic(id);
+                RelicRecord {
+                    relic: id.clone(),
+                    name: name(id),
+                    kind: def.map_or(RelicKind::HouseRule, |d| d.kind),
+                    rarity: def.map(|d| d.rarity),
+                    taken: s.taken,
+                    held: s.held,
+                    won: s.won,
+                    win_percent: percent(s.won, s.held),
+                }
+            })
+            .collect();
+        relics.sort_by(|a, b| {
+            b.held
+                .cmp(&a.held)
+                .then_with(|| b.taken.cmp(&a.taken))
+                .then_with(|| a.relic.cmp(&b.relic))
+        });
+        StatsView { characters, relics }
+    }
 }
 
 impl MetaState {
@@ -531,8 +709,43 @@ impl MetaState {
             .collect()
     }
 
+    /// Relics held at the end of a run (`won` or not): per relic and per
+    /// character.
+    fn count_relics(&mut self, character: Character, relics: &[RelicId], won: bool) {
+        let mut seen = BTreeSet::new();
+        for relic in relics.iter().filter(|r| seen.insert(*r)) {
+            let entry = self.stats.relics.entry(relic.clone()).or_default();
+            entry.held += 1;
+            entry.won += u32::from(won);
+            *self
+                .stats
+                .character_relics
+                .entry(character)
+                .or_default()
+                .entry(relic.clone())
+                .or_insert(0) += 1;
+        }
+    }
+
     /// Statistics of one event.
     fn count<G>(&mut self, event: &RunEvent<G>) {
+        match event {
+            RunEvent::RelicBought { relic, .. }
+            | RunEvent::RelicGained { relic }
+            | RunEvent::RelicSwapped { new: relic, .. } => {
+                self.stats.relics.entry(relic.clone()).or_default().taken += 1;
+            }
+            RunEvent::RunWon {
+                character, relics, ..
+            } => self.count_relics(*character, relics, true),
+            RunEvent::RunLost {
+                character,
+                relics,
+                night: false,
+                ..
+            } => self.count_relics(*character, relics, false),
+            _ => {}
+        }
         let stats = &mut self.stats;
         match event {
             RunEvent::SeriesStarted { section, index, .. } => {
@@ -580,6 +793,7 @@ impl MetaState {
                 character,
                 length,
                 stake,
+                ..
             } => {
                 let next = stake.saturating_add(1);
                 let ladder = self
@@ -800,6 +1014,7 @@ impl MetaState {
             locked_card_mods: self.locked_card_mods(content),
             stats: self.stats.clone(),
             card_backs: self.card_backs(content),
+            records: self.stats.records(content),
         }
     }
 }
@@ -1015,6 +1230,7 @@ mod tests {
             character: Character::Declarer,
             length: RunLength::Full,
             stake: 0,
+            relics: Vec::new(),
         }];
         let earned = meta.observe(&content, &events);
         assert!(earned.contains(&UnlockId::new("tour_won")));
@@ -1043,6 +1259,7 @@ mod tests {
                 character,
                 length,
                 stake: 0,
+                relics: Vec::new(),
             }
         };
         assert!(meta.met(&parsed, &won(Character::Declarer, RunLength::Full)));
@@ -1072,6 +1289,7 @@ mod tests {
             stake: 0,
             boss: None,
             night: false,
+            relics: Vec::new(),
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 4);
@@ -1082,8 +1300,150 @@ mod tests {
             character: Character::Declarer,
             length: RunLength::Full,
             stake: 0,
+            relics: Vec::new(),
         }];
         meta.observe(&content, &events);
         assert_eq!(meta.stats.best_section, 5);
+    }
+
+    #[test]
+    fn a_save_from_before_the_relic_statistics_loads() {
+        // A meta save as the web app stored it before 10.11.2026: no
+        // relic statistics, a removed character ("Landlady").
+        let text = include_str!("../../tests/fixtures/meta-before-relic-stats.json");
+        let save: serde_json::Value = serde_json::from_str(text).expect("json");
+        let mut meta: MetaState = serde_json::from_value(save["meta"].clone()).expect("old meta");
+        assert_eq!(meta.stats.runs_finished, 12);
+        assert_eq!(meta.stats.characters[&Character::Declarer].best_game, 288);
+        assert!(meta.stats.relics.is_empty());
+        assert!(meta.stats.character_relics.is_empty());
+        assert_eq!(meta.max_stake(Character::Declarer, RunLength::Full), 2);
+        let content = content();
+        let records = meta.stats.records(&content);
+        let declarer = records
+            .characters
+            .iter()
+            .find(|c| c.character == Character::Declarer)
+            .expect("declarer");
+        assert_eq!(
+            (declarer.runs, declarer.won, declarer.win_percent),
+            (9, 2, Some(22))
+        );
+        assert!(declarer.favourite_relics.is_empty());
+        assert!(records.relics.is_empty());
+        // It goes on counting, and saves with the new fields.
+        let tour = RelicId::new("tour");
+        meta.observe::<crate::game::Event<crate::deck::DealtCard>>(
+            &content,
+            &[
+                RunEvent::RelicBought {
+                    relic: tour.clone(),
+                    price: 7,
+                },
+                RunEvent::RunWon {
+                    character: Character::Declarer,
+                    length: RunLength::Full,
+                    stake: 0,
+                    relics: vec![RelicId::new("card_counter"), tour.clone()],
+                },
+            ],
+        );
+        let again: MetaState =
+            serde_json::from_str(&serde_json::to_string(&meta).expect("save")).expect("load");
+        assert_eq!(again, meta);
+        assert_eq!(
+            meta.stats.relics[&tour],
+            RelicStats {
+                taken: 1,
+                held: 1,
+                won: 1
+            }
+        );
+    }
+
+    #[test]
+    fn relics_held_at_the_end_count_per_relic_and_character() {
+        let content = content();
+        let mut meta = MetaState::new();
+        let (a, b, c) = (
+            RelicId::new("tour"),
+            RelicId::new("beer_mat"),
+            RelicId::new("tip"),
+        );
+        let lost = |relics: Vec<RelicId>, night: bool| RunEvent::RunLost {
+            section: 1,
+            index: 2,
+            character: Character::Shirker,
+            length: RunLength::Full,
+            stake: 0,
+            boss: None,
+            night,
+            relics,
+        };
+        let events: Vec<RunEvent> = vec![
+            RunEvent::RelicBought {
+                relic: a.clone(),
+                price: 7,
+            },
+            RunEvent::RelicGained { relic: b.clone() },
+            RunEvent::RelicSwapped {
+                old: b.clone(),
+                new: c.clone(),
+            },
+            lost(vec![a.clone(), c.clone()], false),
+            RunEvent::RunWon {
+                character: Character::Shirker,
+                length: RunLength::Full,
+                stake: 0,
+                relics: vec![a.clone(), b.clone()],
+            },
+            // A lost night counts nothing: the run counted when it was won.
+            lost(vec![a.clone(), b.clone(), c.clone()], true),
+        ];
+        meta.observe(&content, &events);
+        let s = &meta.stats.relics;
+        assert_eq!(
+            s[&a],
+            RelicStats {
+                taken: 1,
+                held: 2,
+                won: 1
+            }
+        );
+        assert_eq!(
+            s[&b],
+            RelicStats {
+                taken: 1,
+                held: 1,
+                won: 1
+            }
+        );
+        assert_eq!(
+            s[&c],
+            RelicStats {
+                taken: 1,
+                held: 1,
+                won: 0
+            }
+        );
+        let records = meta.view(&content).records;
+        assert_eq!(records.relics[0].relic, a, "most often held first");
+        assert_eq!(records.relics[0].win_percent, Some(50));
+        let shirker = records
+            .characters
+            .iter()
+            .find(|r| r.character == Character::Shirker)
+            .expect("shirker");
+        assert_eq!(shirker.runs, 2);
+        assert_eq!(shirker.win_percent, Some(50));
+        let favourites: Vec<(&str, u32)> = shirker
+            .favourite_relics
+            .iter()
+            .map(|f| (f.relic.as_str(), f.count))
+            .collect();
+        assert_eq!(favourites, vec![("tour", 2), ("beer_mat", 1), ("tip", 1)]);
+        assert_eq!(percent(1, 3), Some(33));
+        assert_eq!(percent(2, 3), Some(67));
+        assert_eq!(percent(0, 0), None);
     }
 }

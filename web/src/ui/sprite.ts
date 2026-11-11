@@ -15,12 +15,13 @@
 // Wandelkarte; a settled one uses its suit's x-…).
 
 import { de } from '../i18n';
+import { en } from '../i18n/en';
 import type { Rank, Suit } from '../types';
 import { CARD_H, CARD_W, RANKS, suitCode, SUITS } from './deck';
 import { backSymbols } from './backsprite';
 import { peopleSymbols } from './people';
 import { modIconBody, ICON_MODS } from './fxart';
-import { ART_FACES, ART_GLYPHS, ART_INK, ART_PALETTE, ART_SIGNS, ART_UNDEAD, ART_WILD, ART_WILD_BIG, ART_WILD_INK, ART_WILD_SETTLED } from './pixelcards.gen';
+import { ART_FACES, ART_GLYPHS, ART_INK, ART_PALETTE, ART_PAPER, ART_SIGNS, ART_UNDEAD, ART_WILD, ART_WILD_BIG, ART_WILD_INK, ART_WILD_SETTLED } from './pixelcards.gen';
 
 const PIXEL_FONT = "'VT323', monospace";
 
@@ -62,6 +63,40 @@ function signPaths(suit: Suit): string {
   const rows = ART_SIGNS[suitCode(suit)] ?? [];
   const w = rows[0]?.length ?? 0;
   return gridPaths(rows, same, (8 - w) / 2, (8 - rows.length) / 2);
+}
+
+// ------------------------------------------------- "Farbenblind-Hilfe"
+
+/**
+ * Pixel letters (3 × 5) for the suit letters of both languages (ADR 0023):
+ * German E G R S (de.suitLetters), English A L H B (en.suitLetters); "x" is ink.
+ */
+const SUIT_LETTER_GLYPHS: Record<string, string[]> = {
+  E: ['xxx', 'x..', 'xx.', 'x..', 'xxx'],
+  G: ['.xx', 'x..', 'x.x', 'x.x', '.xx'],
+  R: ['xx.', 'x.x', 'xx.', 'x.x', 'x.x'],
+  S: ['.xx', 'x..', '.x.', '..x', 'xx.'],
+  A: ['.x.', 'x.x', 'xxx', 'x.x', 'x.x'],
+  L: ['x..', 'x..', 'x..', 'x..', 'xxx'],
+  H: ['x.x', 'x.x', 'xxx', 'x.x', 'x.x'],
+  B: ['xx.', 'x.x', 'xx.', 'x.x', 'xx.'],
+};
+
+/**
+ * The suit's letter on a dark tag right under the corner index (x 1 to 6,
+ * y 12 to 19, which the pictures leave free but for the Daus's big pip):
+ * shown only with "Farbenblind-Hilfe" (style.css), so the suit does not
+ * depend on its colour.
+ */
+function suitLetterBody(letter: string): string {
+  const glyph = SUIT_LETTER_GLYPHS[letter] ?? [];
+  let d = '';
+  glyph.forEach((row, y) => {
+    [...row].forEach((ch, x) => {
+      if (ch === 'x') d += `M${2 + x} ${13 + y}h1v1h-1z`;
+    });
+  });
+  return `<rect x="1" y="12" width="5" height="7" fill="#1b1e21"/><path d="${d}" fill="${ART_PAPER}"/>`;
 }
 
 // --------------------------------------------------------------- the faces
@@ -157,6 +192,10 @@ ${body}
 export function spriteFiles(): SpriteFiles {
   const box = `viewBox="0 0 ${CARD_W} ${CARD_H}" shape-rendering="crispEdges"`;
   const suits = SUITS.map((s) => `<symbol id="s-${suitCode(s)}" viewBox="0 0 8 8" shape-rendering="crispEdges">${signPaths(s)}</symbol>`).join('');
+  // German letters as cb-C …, English ones as cb-en-C … (../ui/art.ts suitLetterId picks by language).
+  const letters = SUITS.map(
+    (s) => `<symbol id="cb-${suitCode(s)}" ${box}>${suitLetterBody(de.suitLetters[s])}</symbol><symbol id="cb-en-${suitCode(s)}" ${box}>${suitLetterBody(en.suitLetters[s])}</symbol>`,
+  ).join('');
   const cards = SUITS.flatMap((s) => RANKS.map((r) => ({ s, r, rows: faceRows(s, r), id: `${suitCode(s)}${r}` })));
   const faces = cards
     .map(
@@ -186,7 +225,7 @@ export function spriteFiles(): SpriteFiles {
 <pattern id="blank-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
 <path d="M0 0h4v4h-4z" fill="#cbc7bb"/></pattern>
 </defs>
-${suits}${faces}
+${suits}${letters}${faces}
 ${backSymbols()}
 <symbol id="f-blank" viewBox="0 0 120 180" shape-rendering="crispEdges">${blankBody()}</symbol>
 ${modSymbols()}

@@ -9,6 +9,7 @@
 import './style.css';
 import { App } from './app';
 import { loadCore } from './core';
+import { setLanguage, storedOrDetectedLanguage } from './i18n';
 import { registerServiceWorker } from './offline';
 import { installSprite, prefetchRareSprite } from './ui/art';
 import { blinkJobs, portraitJobs } from './ui/people';
@@ -44,6 +45,8 @@ async function prepareArt(): Promise<void> {
 
 /** Show the app at once; render the portraits first, but never wait long for them. */
 async function boot(el: HTMLElement): Promise<void> {
+  // The language first (ADR 0023): German at once, English as a small chunk.
+  await setLanguage(storedOrDetectedLanguage()).catch(() => undefined);
   const app = new App(el);
   app.showLoading();
   const timeout = new Promise<void>((resolve) => window.setTimeout(resolve, 1500));

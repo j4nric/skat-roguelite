@@ -5,7 +5,7 @@
 // flags of a card, counters of a relic, what fired in the last game).
 // Only lookups and labels: every fact comes from the view or the catalog.
 
-import { de, bossEditionText, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, relicDirections, t } from '../i18n';
+import { de, bossEditionText, num, quote, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, relicDirections, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
 import { cardBack, editionLook, lookSvg } from './cards';
@@ -190,7 +190,7 @@ function itemModel(key: string, item: ConsumableInfo, extra: string, actions: st
 
 function bossModel(key: string, view: RunView, id: string, kind: string, figure: number | null = null): InfoModel {
   const boss = [view.series.boss, view.upcoming_boss, view.next_series?.boss, view.game?.boss_rule].find((b) => b?.id === id) ?? null;
-  const facts = boss && boss.target_factor !== 1 && kind === de.info.kinds.boss ? [t(de.info.targetFactor, { factor: boss.target_factor.toLocaleString('de-DE') })] : [];
+  const facts = boss && boss.target_factor !== 1 && kind === de.info.kinds.boss ? [t(de.info.targetFactor, { factor: num(boss.target_factor) })] : [];
   return {
     key,
     title: contentName('bosses', id),
@@ -219,7 +219,7 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
     const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss, seat - 1);
     return { ...m, title: person.name, facts: [...m.facts, ...facts] };
   }
-  const greet = person.guest ? `„${person.guest.greet}“` : '';
+  const greet = person.guest ? quote(person.guest.greet) : '';
   return {
     key,
     title: person.name,

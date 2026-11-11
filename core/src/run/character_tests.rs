@@ -715,6 +715,7 @@ fn the_stake_ladder_climbs_per_new_character() {
             character: Character::Tailoress,
             length: RunLength::Full,
             stake: 0,
+            relics: Vec::new(),
         }],
     );
     assert_eq!(meta.max_stake(Character::Tailoress, RunLength::Full), 1);

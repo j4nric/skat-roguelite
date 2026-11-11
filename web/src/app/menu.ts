@@ -4,8 +4,10 @@
 
 import { sound } from '../audio';
 import { buzz, setVibration } from '../haptics';
+import { localize, setLanguage, type Lang } from '../i18n';
 import { music } from '../music';
-import { saveSettings, TEMPO_FACTOR, type Tempo } from '../settings';
+import { saveSettings, TEMPO_FACTOR, TEXT_SIZES, type Tempo, type TextSize } from '../settings';
+import { setColorBlindEmblems } from '../ui/emblems';
 import { setTempo } from '../ui/fx';
 import type { UiState } from '../ui/state';
 import type { Actions, AppCtx, Tap } from './context';
@@ -17,7 +19,7 @@ export class Menu {
     private readonly layer: Layer,
   ) {}
 
-  /** Put the stored settings into effect (tempo, sound, music, tint, vibration). */
+  /** Put the stored settings into effect (tempo, sound, music, tint, display aids, vibration). */
   applySettings(): void {
     const settings = this.ctx.ui.settings;
     setTempo(TEMPO_FACTOR[settings.tempo]);
@@ -25,6 +27,11 @@ export class Menu {
     music.setEnabled(settings.music);
     // Pure presentation: style.css tints the cards' paper under this flag.
     document.documentElement.toggleAttribute('data-suit-tint', settings.suitTint);
+    // Display aids, also pure CSS: suit letters and shapes, the type scale.
+    document.documentElement.toggleAttribute('data-color-blind', settings.colorBlind);
+    setColorBlindEmblems(settings.colorBlind);
+    if (settings.textSize === 'normal') document.documentElement.removeAttribute('data-text-size');
+    else document.documentElement.setAttribute('data-text-size', settings.textSize);
     setVibration(settings.vibrate);
   }
 
@@ -35,6 +42,24 @@ export class Menu {
     this.applySettings();
     this.layer.markDirty();
     this.ctx.render();
+  }
+
+  /**
+   * "Sprache / Language" (ADR 0023): switch and draw everything anew, no
+   * reload. The views on screen get the content texts of the new language.
+   */
+  private setLanguage(next: Lang): void {
+    void setLanguage(next, true).then(
+      () => {
+        const ui = this.ctx.ui;
+        localize(ui.view);
+        localize(ui.ended?.view);
+        localize(ui.meta);
+        this.layer.markDirty();
+        this.ctx.render();
+      },
+      (err: unknown) => console.warn('language not loaded', err),
+    );
   }
 
   actions(): Actions {
@@ -66,8 +91,13 @@ export class Menu {
         if (ui.busy || !ui.meta) return;
         open({ kind: 'book', tab: 'book' });
       },
+      'weekly-board': () => {
+        if (ui.busy) return;
+        open({ kind: 'weekly-board' });
+      },
       'book-tab': ({ el }) => {
-        if (ui.overlay?.kind === 'book') open({ kind: 'book', tab: el.dataset.tab === 'stats' ? 'stats' : 'book' });
+        const tab = el.dataset.tab === 'stats' || el.dataset.tab === 'relics' ? el.dataset.tab : 'book';
+        if (ui.overlay?.kind === 'book') open({ kind: 'book', tab });
       },
       'info-rule': info,
       'info-evening': info,
@@ -82,6 +112,11 @@ export class Menu {
       'thinking': ({ el }) => this.setSettings({ thinking: el.dataset.on === 'true' }),
       'hints': ({ el }) => this.setSettings({ hints: el.dataset.on === 'true' }),
       'suit-tint': ({ el }) => this.setSettings({ suitTint: el.dataset.on === 'true' }),
+      'color-blind': ({ el }) => this.setSettings({ colorBlind: el.dataset.on === 'true' }),
+      'text-size': ({ el }) => {
+        const size = el.dataset.size as TextSize | undefined;
+        this.setSettings({ textSize: size && TEXT_SIZES.includes(size) ? size : 'normal' });
+      },
       'vibrate': ({ el }) => {
         this.setSettings({ vibrate: el.dataset.on === 'true' });
         if (el.dataset.on === 'true') buzz('trick');
@@ -94,6 +129,7 @@ export class Menu {
         if (el.dataset.on === 'true') sound.play('clink');
       },
       'music': ({ el }) => this.setSettings({ music: el.dataset.on === 'true' }),
+      'language': ({ el }) => this.setLanguage(el.dataset.lang === 'en' ? 'en' : 'de'),
     };
   }
 }

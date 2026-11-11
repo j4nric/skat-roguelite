@@ -27,7 +27,7 @@
 
 import { de, cardName, contentName, face, factorText, isCurse, modFigure, t } from '../i18n';
 import type { CardKind, CardView, DeckCard, ModFigure, Rank, RunView, Suit } from '../types';
-import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitCode, suitId, undeadFaceId, wildFaceIds } from './art';
+import { faceId, indexId, mirrorFaceId, modIconId, PAPER, smallFaceId, suitCode, suitId, suitLetterId, undeadFaceId, wildFaceIds } from './art';
 import { backId, currentPlayerBack, type BackDesign, type BackSize } from './backs';
 import { esc } from './dom';
 import { fillOf, H, MOD_DRAW, modLayer, smallState, undeadBand, W, winkelScribble, winkelSketch } from './fxart';
@@ -95,6 +95,29 @@ export function figureText(figure: ModFigure | null, value = 1): string {
 /** The band text of a modification on a card: its value formatted. */
 export function modValueText(mod: string, values: Record<string, number> = {}): string {
   return figureText(modFigure(mod), values[mod] ?? 1);
+}
+
+/** The special cards change the picture; their value is no printed figure. */
+const SPECIAL_MODS = new Set(['undead', 'wild_card', 'doppelganger', 'rank']);
+
+/**
+ * "Aufdruck +3", "Fluch Klebrig": one modification as screen readers hear
+ * it, its name and the figure its band shows (the core's value).
+ */
+export function modLabel(mod: string, values: Record<string, number> = {}): string {
+  const name = contentName('card_mods', mod);
+  const figure = !SPECIAL_MODS.has(mod) && (modFigure(mod) || values[mod] !== undefined) ? modValueText(mod, values) : '';
+  const named = figure ? `${name} ${figure}` : name;
+  return isCurse(mod) ? `${named} (${de.card.curse})` : named;
+}
+
+/**
+ * "Rot-Ober, gezinkt: Aufdruck +3": a card's name for screen readers, built
+ * from the view data (the kind as the core shows it, its modifications).
+ */
+export function lookLabel(c: { kind: CardKind; mods: string[]; mod_values?: Record<string, number> }): string {
+  const name = cardName(c.kind);
+  return c.mods.length ? `${name}, ${t(de.card.mods, { mods: c.mods.map((m) => modLabel(m, c.mod_values ?? {})).join(', ') })}` : name;
 }
 
 /** Size variant of a face: the full picture, or index and sign for tiny cards. */
@@ -171,8 +194,7 @@ export function lookSvg(c: CardLook, size: FaceSize = 'full', opts: FaceOptions 
  */
 export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'full', values: Record<string, number> = {}, opts: FaceOptions = {}): string {
   const f = face(kind);
-  const modNames = mods.map((m) => (isCurse(m) ? `${contentName('card_mods', m)} (${de.card.curse})` : contentName('card_mods', m))).join(', ');
-  const label = esc(cardName(kind) + (mods.length ? ', ' + t(de.card.mods, { mods: modNames }) : ''));
+  const label = esc(lookLabel({ kind, mods, mod_values: values }));
   const curse = mods.some(isCurse);
   const undead = mods.includes(UNDEAD);
   const zombie = undead && opts.risen === true;
@@ -206,7 +228,9 @@ export function cardSvg(kind: CardKind, mods: string[] = [], size: FaceSize = 'f
     const scribble = chain && !ids ? winkelScribble(chain, PLAIN) : '';
     // "Untot" that has not risen: only the band across the top says so.
     const untot = undead && !zombie && !ids ? undeadBand(PLAIN) : '';
-    body = `${paper}<use class="face-pic" href="#${picture}"/>${sketch}${over}<use class="face-idx" href="#${index}"/>${scribble}${untot}`;
+    // "Farbenblind-Hilfe": the suit's letter under the index (hidden by CSS otherwise); not on an open Wandelkarte.
+    const letter = !wild || settled ? `<use class="face-letter" href="#${suitLetterId(f.suit)}"/>` : '';
+    body = `${paper}<use class="face-pic" href="#${picture}"/>${sketch}${over}<use class="face-idx" href="#${index}"/>${letter}${scribble}${untot}`;
   }
   return `<svg class="card-svg${size === 'small' ? ' is-small' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="${label}"${suit}${state}${special}>${body}</svg>`;
 }
@@ -228,5 +252,6 @@ export function showWildSuit(svg: Element, rank: Rank, suit: Suit): void {
   svg.querySelector('.face-pic')?.setAttribute('href', `#${ids.picture}`);
   svg.querySelector('.face-idx')?.setAttribute('href', `#${ids.index}`);
   svg.querySelector('.face-small')?.setAttribute('href', `#${ids.small}`);
+  svg.querySelector('.face-letter')?.setAttribute('href', `#${suitLetterId(suit)}`);
   svg.setAttribute('data-suit', suit);
 }

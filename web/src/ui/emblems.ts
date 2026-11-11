@@ -2559,6 +2559,14 @@ export const EMBLEM_STYLE: { rarity: RarityStyle; schnaps: SchnapsStyle } = {
 };
 
 /**
+ * "Farbenblind-Hilfe" (settings): the rarity as pips (one to four, R3)
+ * instead of the rim band, whose four inks are its only difference.
+ */
+export function setColorBlindEmblems(on: boolean): void {
+  EMBLEM_STYLE.rarity = on ? 'Pips' : 'Band';
+}
+
+/**
  * Category per relic id, only a fallback: the core sends `group` with
  * every relic (RelicInfo, catalog); an older core or save without it gets
  * the shape from here.
@@ -2982,7 +2990,7 @@ let matSprite: SVGSVGElement | null = null;
 /** The id of the symbol of a mat's look, drawn into the document the first time. */
 function matSymbol(id: string, kind: CoasterKind, ring: CoasterRing, opts: InnerOpts): string | null {
   if (typeof document === 'undefined') return null;
-  const key = [id, kind, ring, opts.variant ?? '', opts.group ?? '', opts.rarityStyle ?? '', opts.schnapsStyle ?? ''].join('|');
+  const key = [id, kind, ring, opts.variant ?? '', opts.group ?? '', opts.rarityStyle ?? EMBLEM_STYLE.rarity, opts.schnapsStyle ?? EMBLEM_STYLE.schnaps].join('|');
   const known = matSymbols.get(key);
   if (known) return known;
   if (!matSprite?.isConnected) {

@@ -130,6 +130,10 @@ pub struct RunView {
     /// The long night (ADR 0020), once the player continued after der
     /// Alte.
     pub night: Option<super::super::night::NightView>,
+    /// Die Wochen-Herausforderung (DESIGN 5.6): the Sonderregel in force;
+    /// absent for every other run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weekly: Option<super::super::weekly::WeeklyView>,
     /// Whether the player may continue into the long night now
     /// ([`RunAction::EnterNight`](super::RunAction::EnterNight)): the run is won and the night has not
     /// begun.

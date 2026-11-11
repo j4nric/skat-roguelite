@@ -1,5 +1,7 @@
 // The only place that talks to the WebAssembly core. Every game fact the
-// app shows comes out of here as JSON produced by skat_core.
+// app shows comes out of here as JSON produced by skat_core. Views pass
+// through `localize` (./i18n): the content's German display texts become
+// those of the active language (ADR 0023).
 //
 // The core runs in a dedicated worker (ADR 0022, ./core.worker.ts), so the
 // opponents' search never blocks the page. Every call is a request with an
@@ -15,7 +17,8 @@
 
 import type { CoreOp, MetaState, RunState, StepState } from './core-engine';
 import wasmUrl from './wasm/pkg/skat_wasm_bg.wasm?url';
-import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step } from './types';
+import { localize } from './i18n';
+import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step, WeekInfo } from './types';
 
 /** Where the core runs. */
 interface Backend {
@@ -159,6 +162,18 @@ export async function loadCatalog(): Promise<Catalog> {
   return JSON.parse(await call<string>('catalog', [])) as Catalog;
 }
 
+/**
+ * The Wochen-Herausforderung of the ISO week of a local date (DESIGN 5.6):
+ * its number, seed and Sonderregel, from the core. Null if the core has none.
+ */
+export async function weekInfo(date: Date = new Date()): Promise<WeekInfo | null> {
+  try {
+    return JSON.parse(await call<string>('weekInfo', [date.getFullYear(), date.getMonth() + 1, date.getDate()])) as WeekInfo;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a stored meta state is still the one of a new player; rejects if the core cannot load it. */
 export function isFreshMetaState(meta: string): Promise<boolean> {
   return call<boolean>('isFreshMeta', [meta]);
@@ -167,7 +182,7 @@ export function isFreshMetaState(meta: string): Promise<boolean> {
 /** The views of a stored run and meta state (either may be null); rejects if the core cannot load one. */
 export async function describeStored(run: string | null, meta: string | null): Promise<{ run: RunView | null; meta: MetaView | null }> {
   const out = await call<{ run: string | null; meta: string | null }>('describe', [run, meta]);
-  return { run: out.run ? (JSON.parse(out.run) as RunView) : null, meta: out.meta ? (JSON.parse(out.meta) as MetaView) : null };
+  return { run: out.run ? localize(JSON.parse(out.run) as RunView) : null, meta: out.meta ? localize(JSON.parse(out.meta) as MetaView) : null };
 }
 
 /** The error code in a core error's JSON text, or null. */
@@ -193,7 +208,7 @@ export class CoreMeta {
   ) {}
 
   private static from(s: MetaState): CoreMeta {
-    return new CoreMeta(s.handle, JSON.parse(s.view) as MetaView, s.save);
+    return new CoreMeta(s.handle, localize(JSON.parse(s.view) as MetaView), s.save);
   }
 
   /** A new player: nothing unlocked. */
@@ -213,7 +228,7 @@ export class CoreMeta {
 
   /** The meta view as the core last gave it. */
   view(): MetaView {
-    return this.lastView;
+    return localize(this.lastView);
   }
 
   /** Let the meta state learn from the events of a step. */
@@ -221,7 +236,7 @@ export class CoreMeta {
     if (this.disposed) throw disposedError();
     const json = typeof events === 'string' ? events : JSON.stringify(events);
     const s = await call<StepState>('metaObserve', [this.handle, json]);
-    const step = JSON.parse(s.step) as MetaStep;
+    const step = localize(JSON.parse(s.step) as MetaStep);
     this.lastView = step.view;
     this.lastSave = s.save;
     return step;
@@ -245,7 +260,7 @@ export class CoreRun {
   ) {}
 
   private static from(s: RunState): CoreRun {
-    return new CoreRun(s.handle, JSON.parse(s.view) as RunView, s.save);
+    return new CoreRun(s.handle, localize(JSON.parse(s.view) as RunView), s.save);
   }
 
   /** Start a new run of the Alleinspieler with every relic unlocked. */
@@ -260,6 +275,16 @@ export class CoreRun {
    */
   static async createWith(seed: string, character: Character, length: RunLength, stake: number, meta: CoreMeta): Promise<{ run: CoreRun; startEvents: string }> {
     const s = await call<RunState & { startEvents: string }>('runCreateWith', [seed, character, length, stake, meta.handle]);
+    return { run: CoreRun.from(s), startEvents: s.startEvents };
+  }
+
+  /**
+   * Start the run of a week (JJJJWW, DESIGN 5.6) with a character and stake
+   * from the meta state: the week's seed and Sonderregel. A rule with its
+   * own character plays that one. Returns the run and its start events.
+   */
+  static async createWeekly(week: number, character: Character, stake: number, meta: CoreMeta): Promise<{ run: CoreRun; startEvents: string }> {
+    const s = await call<RunState & { startEvents: string }>('runCreateWeekly', [week, character, stake, meta.handle]);
     return { run: CoreRun.from(s), startEvents: s.startEvents };
   }
 
@@ -284,7 +309,7 @@ export class CoreRun {
 
   /** The view after the last step the core answered. */
   view(): RunView {
-    return this.lastView;
+    return localize(this.lastView);
   }
 
   /**
@@ -304,7 +329,7 @@ export class CoreRun {
    * outcome must not be shown.
    */
   async preview(action: RunAction): Promise<Step> {
-    return JSON.parse(await this.call<string>('runPreview', [this.handle, JSON.stringify(action)])) as Step;
+    return localize(JSON.parse(await this.call<string>('runPreview', [this.handle, JSON.stringify(action)])) as Step);
   }
 
   /**
@@ -337,7 +362,7 @@ export class CoreRun {
 
   /** A step changed the run: keep its view and save text. */
   private took(s: StepState): Step {
-    const step = JSON.parse(s.step) as Step;
+    const step = localize(JSON.parse(s.step) as Step);
     this.lastView = step.view;
     this.lastSave = s.save;
     return step;

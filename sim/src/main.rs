@@ -35,6 +35,11 @@
 //!   the night relics taken, and the boss pubs of the night won per boss.
 //! - `--night-boss <id>` (with `--night`): the boss pubs of the night draw
 //!   only this boss; the day keeps its bosses.
+//! - `--weekly-rule <id>`: the Sonderregel der Woche (`weekly.ron`,
+//!   DESIGN 5.6) is in force in every run, on the usual seeds (a rule
+//!   with a character plays that one).
+//! - `--weekly <JJJJWW>`: the same with the rule of that ISO week (the
+//!   week's own seed is one run; this measures its rule).
 //! - `--short`: dropped with the Kneipentour (ADR 0016); an error now.
 //!   Was: kurzer Abend, the sections of `run.ron`'s `short_sections`
 //!   (DESIGN 5.3) instead of all.
@@ -211,6 +216,28 @@ fn parse_args() -> Result<Args, String> {
             "--stake" => {
                 let value = it.next().ok_or("missing value for --stake")?;
                 args.options.stake = value.parse().map_err(|e| format!("--stake: {e}"))?;
+            }
+            "--weekly-rule" => {
+                let value = it.next().ok_or("--weekly-rule needs a rule id")?;
+                let content = skat_core::content::Content::load().map_err(|e| e.to_string())?;
+                let id = skat_core::content::WeeklyRuleId::new(&value);
+                if content.weekly_rule(&id).is_none() {
+                    return Err(format!("--weekly-rule: unknown {value}"));
+                }
+                args.options.weekly_rule = Some(id);
+            }
+            "--weekly" => {
+                let value = it.next().ok_or("--weekly needs a week JJJJWW")?;
+                let week = value
+                    .parse()
+                    .ok()
+                    .and_then(skat_core::content::WeekId::from_number)
+                    .ok_or_else(|| format!("--weekly: no ISO week {value}"))?;
+                let content = skat_core::content::Content::load().map_err(|e| e.to_string())?;
+                let rule = content
+                    .rule_of_week(week)
+                    .ok_or("--weekly: the content has no weekly rules")?;
+                args.options.weekly_rule = Some(rule.id.clone());
             }
             "--seed" | "--games" | "--runs" => {
                 let value = it

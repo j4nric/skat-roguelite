@@ -2,18 +2,20 @@
 //!
 //! A small HTTP API under `/api` behind our Caddy: sign-up and sign-in
 //! with passkeys (WebAuthn), a recovery code as the way back in, a display
-//! name, one opaque save blob per player and the daily leaderboard. The
-//! server never looks into the save and never checks game state: all game
-//! logic stays in the browser (the Rust core as WebAssembly). It knows
-//! nothing of `skat_core`.
+//! name, one opaque save blob per player, the daily and the weekly
+//! leaderboard ([`board`]). The server never looks into the save and never
+//! checks game state: all game logic stays in the browser (the Rust core
+//! as WebAssembly). It knows nothing of `skat_core`.
 
 pub mod account;
 pub mod auth;
+pub mod board;
 pub mod daily;
 pub mod db;
 pub mod error;
 pub mod recovery;
 pub mod session;
+pub mod weekly;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request, State};
@@ -37,7 +39,7 @@ use crate::error::ApiError;
 /// Largest body of `PUT /api/save` (the save blob is at most
 /// [`account::MAX_SAVE_BYTES`], plus the JSON around it).
 pub const MAX_BODY_BYTES: usize = 1_200_000;
-/// Largest body of every other request: names, codes, daily results.
+/// Largest body of every other request: names, codes, board results.
 pub const SMALL_BODY_BYTES: usize = 16 * 1024;
 /// Largest body of the passkey registration finish calls: an attestation
 /// object can carry a certificate chain (we ask for none, but some
@@ -338,8 +340,10 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_BODY_BYTES)),
         )
         .route("/account", delete(account::delete_account))
-        .route("/daily", post(daily::submit))
-        .route("/daily/{day}", get(daily::board));
+        .route("/daily", post(board::submit_daily))
+        .route("/daily/{day}", get(board::show_daily))
+        .route("/weekly", post(board::submit_weekly))
+        .route("/weekly/{week}", get(board::show_weekly));
     Router::new()
         .nest("/api", api)
         .layer(middleware::from_fn_with_state(state.clone(), api_layer))

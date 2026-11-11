@@ -12,7 +12,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
-Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch, Englisch als zweite Sprache (ADR 0023). Zielgerät: Handy hochkant zuerst.
 
 ---
 
@@ -483,6 +483,32 @@ Alleinspieler nachher: Stadtteil 10 erreichen 3,4 % der Nächte; gewonnene Kneip
 | Nullspieler nachher | 25,4 % | 57,1 % | 17,5 % | 0,0 % | 5 | 9 |
 
 Stadtteil 10 erreichen 2,5 % der Nächte des Alleinspielers. Der Anteil, der schon in Stadtteil 4 endet, hängt an den Bossen, kaum am Wachstum (× 1,0 statt × 0,6: 56 statt 43 %).
+
+### 5.6 Die Wochen-Herausforderung (10.11.2026)
+
+Aufbauend auf dem Tages-Seed und der Tafel des Tages (14.4): Jede ISO-Woche (Montag bis Sonntag, Woche 1 hält den ersten Donnerstag des Jahres) hat **einen Run für alle**, mit festem Seed und einer **Sonderregel der Woche**.
+
+- **Woche**: ISO-Jahr und -Woche als Zahl `JJJJWW` (202646 ist Woche 46 von 2026, `WeekId`). Die App nimmt die Woche des lokalen Datums, der Server die der UTC-Uhr und lässt eine Woche Abstand zu (ein Run über Sonntag Mitternacht).
+- **Seed**: folgt aus der Woche allein (`WeekId::seed`, gemischt, damit er nie wie ein Tages-Seed aussieht). Charakter und Einsatz wählt der Spieler wie beim Tages-Seed, außer die Regel legt den Charakter fest (dann Einsatz 0, auch wenn der Charakter noch gesperrt ist).
+- **Sonderregel**: Daten in `core/content/weekly.ron`, etwa acht Regeln. Sie kommen in Runden: Jede Runde ist die ganze Liste in einer Reihenfolge, die aus der Nummer der Runde folgt (`pick_rule`); keine Regel kommt zweimal, bevor alle dran waren. Eine Regel baut nur aus vorhandenen Mechaniken (`WeeklyRuleDef`): fester Charakter (`character`), Startrelikte (`start_relics`), Startausgabe wie beim Charakter (`deck`, ein Startfluch), Groschen zum Start (`coins`), Verschärfungen der langen Nacht für den ganzen Run (`rules`, `NightRule`; `DoubleBoss` gilt nur nachts und ist ein Ladefehler) und Tischregeln wie bei einem Boss (`passive`, `hooks`, Quelle `Source::Weekly`, feuert direkt nach dem Charakter). Was sie zufällig zieht (Malus je Kneipe, Flüche für eine Kneipe), kommt aus einem eigenen Generator; alle anderen Ziehungen bleiben wie ohne Regel. In der Nacht stapeln sich die Verschärfungen der Regel mit den gezogenen (`Run::rules_in_force`).
+- **Kern**: `Run::new_weekly(content, week, start)` setzt Seed und Regel (`RunStart::weekly_rule`, `RunStart::week`), die Sicht trägt `RunView::weekly`; vor dem Start nennt `week_info` Woche, Seed, Regel und festen Charakter. Web: `weekInfo(date)` und `CoreRun.createWeekly`.
+- **Tafel der Woche**: wie die Tafel des Tages (gleicher Code auf dem Server, `server/src/board.rs`, Tabelle `weekly_results`, Migration 2). Es zählt der **erste beendete Wochen-Run** je Konto; jeder weitere ist Übung: Er zählt im Vereinsbuch, nicht auf der Tafel (der Server behält das erste Ergebnis und antwortet `stored: false`). Der Server kennt weder Seed noch Regel.
+- **Oberfläche**: Auf dem Startbildschirm unter der Tafel des Tages ein Block „Herausforderung der Woche“ mit Kalenderwoche, Restzeit bis Montag 0 Uhr, Name und Text der Regel, dem gewerteten Ergebnis und den Knöpfen „Wochen-Run als …“ (danach „Üben als …“) und „Tafel der Woche“ (eigenes Blatt mit der Tafel). Im Run nennt das Menü die Regel; der Endbildschirm bietet keinen Seed-Link an, weil der Seed allein nicht die Herausforderung ist.
+- **Simulator**: `--weekly-rule <id>` legt die Regel auf jeden Run der Messung (auf den üblichen Seeds), `--weekly <JJJJWW>` nimmt die Regel dieser Woche.
+
+**Gemessen** (10./11.11.2026, `docs/balance/2026-11-10-wochenregeln.md`): Standard-Bot, 3000 Runs je Regel auf denselben Seeds, Grundlage der Alleinspieler ohne Regel (Nullabend: der Nullspieler). Grenze: gewonnen etwa zwischen der Hälfte und dem Doppelten der Grundlage. Nachgestellt wurden drei Regeln: Teufelspakt war viel zu leicht (5,3 % gewonnen, der Schutzengel ist eine zweite Chance) und bekam Zielwerte +30 %; Spelunkenluft war zu schwer (0,7 %) und startet jetzt mit dem Spelunkenkenner statt mit 6 Groschen; Grand zählt doppelt war zu leicht (4,3 %) und lässt dafür Farbspiele nur drei Viertel zählen.
+
+| Regel | Stadtteil 2 | Stadtteil 3 | gewonnen |
+|---|---|---|---|
+| Grundlage Alleinspieler | 35,4 % | 10,6 % | 2,1 % |
+| Grand zählt doppelt | 38,9 % | 13,0 % | 3,5 % |
+| Spelunkenluft | 36,3 % | 13,2 % | 1,9 % |
+| Hellwache Gegner | 35,1 % | 9,8 % | 1,6 % |
+| Kurze Geduld | 32,5 % | 9,6 % | 1,7 % |
+| Teufelspakt | 49,9 % | 13,7 % | 1,7 % |
+| Nullabend (Grundlage Nullspieler: gleich) | 34,1 % | 12,4 % | 2,6 % |
+| Erbonkel | 35,3 % | 10,4 % | 1,6 % |
+| Spendierhosen | 39,9 % | 12,3 % | 2,7 % |
 
 ## 6. Ein Spiel im Detail
 
@@ -1417,6 +1443,8 @@ Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreich
 
 **Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Seit dem 03.11.2026 hängt die Rückseite der Ausgabe des Spielers am Charakter (`back` in `characters.ron`, ohne Angabe die Distel; Sicht `CharacterInfo::back` und `CharacterEntry::back`): Alleinspieler und Nullspieler die Distel, der Drückeberger Briefmarke und Poststempel auf Packpapier, die Schneiderin Schere und Maßband auf Aubergine, Bruderherz ein großes rotes Herz auf Creme mit kleinen Herzen. Die drei neuen sind Pixelgrafik im Stil der Gegner-Rückseiten aus `tools/cardart/backs.py`. Seit ADR 0015 zeigt die Rückseite, wessen Ausgabe eine Karte ist: Die Rückseite des Charakters gehört dem Spieler und dem Skat; die Hände der Gegner zeigen eine Gegner-Rückseite, die als Daten am Gast oder Boss hängt (`back` in `guests.ron` und `bosses.ron`, ohne Angabe eine gemeinsame Rückseite der Stammgäste). Die Gegner-Rückseiten sind keine Freischaltung und nicht wählbar. Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
 
+**Statistik je Charakter und Relikt** (10.11.2026): Der Meta-Zustand zählt zusätzlich je Relikt, wie oft es genommen wurde (gekauft, gefunden, getauscht; Startrelikte nicht), wie oft es am Ende eines Runs gehalten wurde und wie viele dieser Runs gewonnen waren (`MetaStats::relics`), und je Charakter, welche Relikte er am Ende hielt (`MetaStats::character_relics`). Dafür tragen `RunWon` und `RunLost` die Relikte am Ende; ein Run, der in der langen Nacht endet, zählt nicht noch einmal. Ältere Meta-Stände laden (alle neuen Felder mit Standardwert; Test mit einem alten Stand in `core/tests/fixtures/`) und zählen ab dann. Der Kern rechnet das Statistikblatt (`MetaView::records`: Runs, Siege, Quote, weitester Stadtteil, bestes Spiel und die drei liebsten Relikte je Charakter; je Relikt genommen, am Ende, gewonnen, Quote). Das Vereinsbuch zeigt es auf der Seite „Statistik“ und auf der neuen Seite „Relikte“.
+
 ### 9.4 Der Drückeberger
 
 Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem, was er drückt.
@@ -1823,6 +1851,7 @@ Entschieden vom Nutzer im Cockpit (Frage 38, Variante A mit Ergänzung), umgeset
 - **Name am Stammtisch**: 1 bis 24 Zeichen, nicht eindeutig, steht auf der Tafel des Tages.
 - **Spielstand**: genau der gesicherte Text, für den Server undurchsichtig. Abgleich beim Start (vor dem Lesen des Speichers), nach jeder Kneipe, am Ende des Runs und beim Verlassen der Seite. Hat sich nur eine Seite geändert, gilt sie (mit Hinweis, wenn der Stand des Kontos geladen wird); haben sich beide geändert, wählt der Spieler in einem Dialog, der beide Stände zeigt. Ein älterer Stand überschreibt nie still einen neueren (Versionen, HTTP 409). Kleine Anzeige „gespeichert“, „offline“, „Konflikt“ neben dem Konto.
 - **Tafel des Tages**: Am Ende eines Tages-Runs meldet ein angemeldeter Spieler sein Ergebnis; der Startbildschirm zeigt die besten zehn und den eigenen Platz, ohne Konto nur lesend. Das erste Ergebnis je Tag zählt. Selbstauskunft, der Server prüft nichts.
+- **Tafel der Woche** (10.11.2026, 5.6): dasselbe für den Wochen-Run (`POST /api/weekly`, `GET /api/weekly/{JJJJWW}`); das erste Ergebnis je Woche zählt, weitere Wochen-Runs sind Übung.
 - **Keine Spiellogik auf dem Server**: Er speichert und zählt, er spielt nicht nach. Die Regeln bleiben im Kern im Browser.
 - **Datenschutz**: gespeichert werden nur Name, öffentliche Schlüssel der Passkeys, Hash des Wiederherstellungscodes, Spielstand und Tafel-Ergebnisse. Konto löschen (mit Rückfrage) entfernt alles davon sofort.
 - **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` mit täglicher Sicherung der letzten sieben Tage (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.
@@ -1837,6 +1866,16 @@ Umgesetzt am 08.11.2026. Der Kern läuft als WebAssembly im Browser und der Spie
 - **Neue Version**: Der neue Worker wartet. Die App zeigt oben eine schmale Leiste „Neue Version verfügbar – neu laden“ (auf dem Handy kurz „Neue Version – neu laden“); die App rückt um ihre Höhe nach unten, die Leiste verdeckt also nichts, und ein × legt sie bis zum nächsten Besuch weg. Sie lädt nie von selbst mitten im Spiel neu. Ein Tipp lässt den Worker übernehmen und lädt die Seite; der laufende Run steht im Speicher und geht weiter. Nach neuen Versionen sieht die App auch, wenn sie wieder in den Vordergrund kommt.
 - **Offline**: Das Spiel läuft vollständig. Angemeldet zeigt das Konto „offline“; was sich geändert hat, geht hoch, sobald der Browser wieder online ist oder die App in den Vordergrund kommt. Die Tafel des Tages zeigt einen kurzen Hinweis statt der Liste, die Knöpfe des Kontos (Anmelden, Anlegen, Code) sind mit Hinweis gesperrt.
 - **Entwicklung**: `vite dev` hat keinen Worker, nur `vite build` und `vite preview`. Caddy liefert `/sw.js` mit `Cache-Control: no-cache` aus.
+
+### 14.6 Zwei Sprachen (ADR 0023)
+
+Umgesetzt am 10.11.2026. Deutsch ist die Voreinstellung, Englisch die zweite Sprache; das deutsche Blatt bleibt in beiden.
+
+- **Texte**: `web/src/i18n/de.ts` und `web/src/i18n/en.ts` mit denselben Schlüsseln. `en.ts` ist gegen die Form von `de.ts` getypt, `web/scripts/check-i18n.mjs` prüft dazu offene Tabellen, Platzhalter und Listenlängen. Im Web-Code heißt die aktive Sprache weiter `de` (eine lebende Bindung in `web/src/i18n/index.ts`, die `setLanguage` umstellt).
+- **Wahl**: beim ersten Start nach der Browsersprache (deutsch nur für deutsche Browser), dann im Menü „Sprache / Language“, gespeichert unter `stammtisch.lang`. Der Wechsel zeichnet alles neu, ohne Neuladen. Englisch liegt in einem eigenen Bundle-Stück und wird nur geladen, wenn es gewählt ist.
+- **Inhalte**: Der Kern liefert weiter die deutschen Namen und Texte aus `core/content/*.ron`. `web/src/i18n/localize.ts` ersetzt sie in jeder Sicht nach Content-Id durch die englischen aus `web/src/i18n/en-content.ts` (Relikte, Zinken mit eingesetztem Wert, Schnäpse, Bosse und ihre Spieler, Begegnungen und ihre Möglichkeiten, Freischaltungen, Mali, Verschärfungen, Rückseiten, Stammgäste mit ihren Sprüchen, Stadtteile). Kneipennamen bleiben deutsch.
+- **Formate**: Zahlen und Daten über `Intl` in der Sprache (`1,5` und `1.5`, `37,5 %` und `37.5%`), Anführungszeichen „…“ und “…”.
+- **Prüfung**: Der Rauchtest läuft deutsch; `SMOKE_ONLY=english` (und am Ende des vollen Laufs) spielt Start, ein ganzes Spiel, Kartenbelohnung, Route, Tresen, Menü mit Sprachwechsel, Regelkarte, Glossar, eine Begegnung und die Einführung auf Englisch, ohne deutsche Oberflächenwörter, abgeschnittene Texte oder seitliches Scrollen.
 
 ---
 
@@ -1877,7 +1916,7 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Frontend | Web-App mit Rust-Kern als WebAssembly statt Godot, ADR 0009. |
 | Kartenbild | Deutsches Blatt, ADR 0010. |
 | Zielgerät | Handy hochkant zuerst. |
-| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. |
+| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. Seit 10.11.2026 (ADR 0023): Deutsch als Voreinstellung, Englisch als zweite Sprache, Texte aus `de.ts` und `en.ts`. |
 | Assets | CC0, CC-BY und SIL OFL, mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
 | Schrift | VT323 (S4 aus der Schriftauswahl), SIL OFL |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |
@@ -1948,6 +1987,18 @@ Der geführte erste Abend (Hinweise des Wirts) setzt voraus, dass der Spieler Sk
 - **Lektionen**: (1) Eichel nach dem Skat, mit 3: Ziel, Skat oder Hand, Drücken (beide Schellen, um Schellen frei zu machen), Ansage (Farbe, Grand, Null), Trumpfordnung, Bedienen, Augen und 61, Grundwert × Stufen, Abrechnung mit Schneider und Schwarz. (2) Null nach dem Skat: zwei Daus drücken, keinen Stich machen, Null-Reihenfolge, Null-Wert mit geduckten Siebenen. (3) Grand Hand mit 4: Hand bringt eine Stufe, nur Unter sind Trumpf, „Noch nötig“. Danach Kartenbelohnung (Zinken), Routenwahl, Tresen und Relikte, dann „Echten Abend starten“ oder „Zum Start“.
 - **Web-App**: Die Texte und wann sie kommen stehen in `web/src/tutorial.ts` (Darstellung): Jeder Schritt hat eine Situation, einen Text und ein Ziel, auf das der Wirt mit Rahmen und Pfeil zeigt. Infoschritte gehen mit Antippen weiter, Handlungsschritte, sobald der Spieler handelt; ein Schritt, dessen Situation vorbei ist, gilt als erledigt, allgemeine Schritte fangen andere Wege auf (Hand statt Skat, andere Spielart, verlorenes Spiel oder verlorene Kneipe). „Einführung beenden“ steht an jeder Sprechblase. Die normalen Hinweise des Wirts schweigen solange.
 - **Kein Run**: Der Einführungs-Run wird nie gespeichert, seine Ereignisse gehen nicht an den Meta-Stand (keine Freischaltungen, keine Statistik, kein Eintrag in der Liste der Runs), und ein laufender gespeicherter Run bleibt unberührt.
+
+### 16.2 Barrierefreiheit (10.11.2026)
+
+Vorbereitung auf die Veröffentlichung im App Store. Entschieden von Claude im Rahmen der Autonomie-Regel; reine Darstellung, der Kern bleibt unberührt.
+
+- **Menü-Zeile „Darstellung“**: ersetzt die Zeile „Kartenfarbe tönen“ und hält drei Schalter, damit das Menü bei 375 × 667 weiter ohne Scrollen passt: „Tönen“ (wie bisher), „Farbenblind“ und „Schrift“. Gespeichert mit den übrigen Einstellungen (`stammtisch.settings`: `colorBlind`, `textSize`), wirksam als Attribute an `<html>` (`data-color-blind`, `data-text-size`), sodass nur CSS umschaltet und nichts neu gezeichnet werden muss.
+- **Farbenblind-Hilfe** (aus): Die vier Farben unterscheiden sich sonst vor allem über die Farbe, was bei Rot-Grün-Schwäche wegfällt (Grün, Rot und Schellen werden olivgelb). Mit der Hilfe trägt jede volle Karte unter dem Eckzeichen den Buchstaben ihrer Farbe (E, G, R, S, `de.suitLetters`) hell auf einem dunklen Schild, als Pixelglyphe im Sprite (`cb-*`); die Ecke ist bei allen Bildern frei, nur das große Daus-Zeichen wird leicht überdeckt. Eine offene Wandelkarte hat keinen Buchstaben, eine festgelegte den ihrer neuen Farbe. Blue Curaçao und die Wandelkarte zeigen auf ihrem Schild den Buchstaben statt des Zeichens. Die Seltenheit der Bierdeckel wechselt vom farbigen Rand zu ein bis vier Punkten. Geprüft mit simulierter Deuteranopie und Protanopie (Farbmatrizen nach Machado 2009, im Smoke-Test `a11yPass`); Wege auf dem Stadtplan (Linienart), Stationen (Symbole), Flüche und Zinken (Rahmenform, Band mit Zahl) sowie die Zielleiste (Zahlen) waren schon ohne Farbe lesbar.
+- **Schriftgröße** (Normal, Groß, Sehr groß): ein Tipp wechselt zur nächsten Stufe. Die Schriftskala wächst um 1 bis 4 Pixel je Stufe, die kleinen Größen am meisten, die Anzeigezahlen der Abrechnung am wenigsten. Damit der Tisch weiter ohne Scrollen passt, geben die Handkarten beim Ansagen und die Karten auf dem Filz bei „Skat oder Hand“ etwas Höhe ab; das Menü stellt die Beschriftung über die Schalter und scrollt bei Bedarf in sich. Nichts scrollt seitwärts (390 × 844, 360 × 740).
+- **Bildschirmleser**: Karten heißen nach den Sichtdaten und `de.ts`, etwa „Rot-Oberin, gezinkt: Aufdruck +3“ (Name der Zinke und die Zahl auf ihrem Band, Flüche mit „(Fluch)“); Stichkarten mit dem Platz („Jupp: …“). Die Kästen der Gegner nennen Position, Kartenzahl und Stiche, der Kopf Groschen, Spiele und Einmischen; die Zielleiste ist ein `meter` mit Text, auch bei negativem Konto. Eine höfliche Live-Region (`role="status"`, `web/src/ui/a11y.ts`) sagt kurz an, was ein Gegner spielt, wer den Stich bekommt und das Ergebnis des Spiels; beim Vorspulen schweigt sie. Jeder Dialog ist nach seiner Überschrift benannt.
+- **Tastatur und Fokus**: Öffnet ein Dialog, geht der Fokus hinein (der Name wird vorgelesen); Tab bleibt im obersten Dialog; Escape schließt, wo die App es erlaubt (nicht die Abrechnung und den Boss, die ihren Knopf haben); danach kehrt der Fokus zum Auslöser zurück. Wird derselbe Dialog neu gezeichnet (ein Schalter im Menü), bleibt der Fokus auf demselben Bedienelement. Fokusringe sind 3 px Mint. Scrollende Textflächen (Regelkarte, Glossar, Vereinsbuch) sind per Tab erreichbar.
+- **Kontrast**: Kupfer als Schriftfarbe auf den Schieferflächen hatte 4,1 : 1; Text in Kupfer nimmt jetzt das helle Kupfer (`--accent-light`), dazu dunklere Beschriftungen auf dem Stadtplan und hellere „Verkauft“-Felder am Tresen (WCAG 4,5 : 1). Flächen und Knöpfe in Kupfer bleiben.
+- **Weniger Bewegung**: `prefers-reduced-motion` kürzt jede Animation auf 1 ms und eine Wiederholung (`style.css`), dazu schalten Rauch, Lampe, Blinzeln, Denkblase und die übrigen Endlos-Animationen ab; das Tempo der Wiedergabe sinkt auf ein Viertel. Ein eigener Schalter in der App fehlt noch (eigene Zeile im Menü nötig).
 
 ## 17. Offen
 

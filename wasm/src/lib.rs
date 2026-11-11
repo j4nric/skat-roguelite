@@ -36,7 +36,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use skat_core::content::{
     BuildTag, CardModId, Change, Character, ConsumableAction, ConsumableCategory, Content, Effect,
-    Hook, Lever, ModKind, Rarity, RelicGroup, RelicKind, RunLength, UnlockId,
+    Hook, Lever, ModKind, Rarity, RelicGroup, RelicKind, RunLength, UnlockId, WeekId,
 };
 use skat_core::deck::deal_odds;
 use skat_core::run::meta::{META_VERSION, MetaState, MetaView};
@@ -259,6 +259,7 @@ struct Catalog<'a> {
     encounters: BTreeMap<&'a str, Entry<'a>>,
     unlocks: BTreeMap<&'a str, Entry<'a>>,
     maluses: BTreeMap<&'a str, Entry<'a>>,
+    weekly: BTreeMap<&'a str, Entry<'a>>,
 }
 
 fn entries<'a, T: 'a>(
@@ -384,8 +385,46 @@ pub fn catalog_json() -> Result<String, String> {
             |d| &d.name,
             |d| &d.text,
         ),
+        weekly: entries(
+            content.weekly.values(),
+            |d| d.id.as_str(),
+            |d| &d.name,
+            |d| &d.text,
+        ),
     };
     serde_json::to_string(&catalog).map_err(internal)
+}
+
+/// The week of a local date (Wochen-Herausforderung, DESIGN 5.6) as JSON:
+/// `{week, year, iso_week, seed, rule: {week, id, name, text}, character}`.
+/// The date is the player's local calendar day; the week is its ISO week.
+pub fn week_info_json(year: i32, month: u32, day: u32) -> Result<String, String> {
+    let content = content()?;
+    let week = week_of_date(year, month, day)?;
+    let info = skat_core::run::weekly::week_info(content, week)
+        .ok_or_else(|| error_json("NoWeeklyRule", "the content has no weekly rules"))?;
+    serde_json::to_string(&info).map_err(internal)
+}
+
+/// The ISO week of a civil date.
+fn week_of_date(year: i32, month: u32, day: u32) -> Result<WeekId, String> {
+    let invalid = || error_json("InvalidWeek", format!("no week for {year}-{month}-{day}"));
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return Err(invalid());
+    }
+    let (y, m, d) = (i64::from(year), i64::from(month), i64::from(day));
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    WeekId::of_day(era * 146_097 + doe - 719_468).ok_or_else(invalid)
+}
+
+fn parse_week(week: u32) -> Result<WeekId, String> {
+    WeekId::from_number(week)
+        .ok_or_else(|| error_json("InvalidWeek", format!("no ISO week {week}")))
 }
 
 /// Where any one card lands when a game is dealt (DESIGN 7.4; always the
@@ -473,6 +512,39 @@ impl Session {
             .run_start_staked(content, character, length, stake)
             .map_err(|e| error_json(e.code(), &e))?;
         let (run, events) = Run::new_with(content, seed, &start).map_err(|e| run_error(&e))?;
+        Ok((Session { content, run }, player_events(events)))
+    }
+
+    /// Start the run of `week` (`JJJJWW`, Wochen-Herausforderung, DESIGN
+    /// 5.6) with `character` at `stake` from a meta state: the week's seed
+    /// and Sonderregel. A rule that fixes the character plays that one,
+    /// unlocked or not; otherwise the character must be unlocked.
+    pub fn new_weekly(
+        week: u32,
+        character: &str,
+        stake: u32,
+        meta: &MetaState,
+    ) -> Result<(Session, Vec<PlayerEvent>), String> {
+        let week = parse_week(week)?;
+        let content = content()?;
+        let fixed = content.rule_of_week(week).and_then(|r| r.character);
+        let character = match fixed {
+            Some(c) => c,
+            None => parse_character(character)?,
+        };
+        let start: RunStart = if fixed.is_some() {
+            // The week's character needs no unlock; the stake stays 0.
+            RunStart {
+                character,
+                locked_relics: meta.locked_relics(content),
+                locked_card_mods: meta.locked_card_mods(content),
+                ..RunStart::default()
+            }
+        } else {
+            meta.run_start_staked(content, character, RunLength::Full, stake)
+                .map_err(|e| error_json(e.code(), &e))?
+        };
+        let (run, events) = Run::new_weekly(content, week, &start).map_err(|e| run_error(&e))?;
         Ok((Session { content, run }, player_events(events)))
     }
 
@@ -700,6 +772,13 @@ pub fn catalog() -> Result<String, JsError> {
     catalog_json().map_err(|e| JsError::new(&e))
 }
 
+/// The week of a local date with its seed and Sonderregel, as JSON
+/// ([`week_info_json`]).
+#[wasm_bindgen(js_name = weekInfo)]
+pub fn week_info_js(year: i32, month: u32, day: u32) -> Result<String, JsError> {
+    week_info_json(year, month, day).map_err(|e| JsError::new(&e))
+}
+
 /// Where any one card lands when a game is dealt, as JSON (see
 /// [`deal_odds_json`]).
 #[wasm_bindgen(js_name = dealOdds)]
@@ -790,6 +869,26 @@ impl WasmRun {
         })
     }
 
+    /// Start the run of a week (`JJJJWW`, Wochen-Herausforderung) with a
+    /// character and stake from the meta state; a Sonderregel with its own
+    /// character plays that one. Feed [`WasmRun::start_events`] to the
+    /// meta state once.
+    #[wasm_bindgen(js_name = newRunWeekly)]
+    pub fn new_run_weekly(
+        week: u32,
+        character: &str,
+        stake: u32,
+        meta: &WasmMeta,
+    ) -> Result<WasmRun, JsError> {
+        let (session, events) = Session::new_weekly(week, character, stake, &meta.session.meta)
+            .map_err(|e| JsError::new(&e))?;
+        let start = serde_json::to_string(&events).map_err(|e| JsError::new(&internal(e)))?;
+        Ok(WasmRun {
+            session,
+            start: Some(start),
+        })
+    }
+
     /// Start the Einführung (DESIGN 16.1): one guided pub with fixed
     /// deals. Do not feed its events to the meta state and do not save it
     /// over a run in progress; the web app keeps it apart.
@@ -860,6 +959,33 @@ mod tests {
     use super::*;
     use skat_core::run::RunPhase;
     use skat_core::run::bot::RunBot;
+
+    #[test]
+    fn a_weekly_run_starts_from_the_date_and_saves_its_rule() {
+        let info: serde_json::Value =
+            serde_json::from_str(&week_info_json(2026, 11, 10).expect("info")).expect("json");
+        assert_eq!(info["week"], 202_646);
+        assert_eq!(info["iso_week"], 46);
+        // Sunday 2021-01-03 is week 53 of 2020.
+        let sunday: serde_json::Value =
+            serde_json::from_str(&week_info_json(2021, 1, 3).expect("info")).expect("json");
+        assert_eq!(sunday["week"], 202_053);
+        assert!(week_info_json(2026, 13, 1).is_err());
+        let meta = MetaState::new();
+        let (session, events) = Session::new_weekly(202_646, "Declarer", 0, &meta).expect("run");
+        assert!(!events.is_empty());
+        let view: serde_json::Value =
+            serde_json::from_str(&session.view().expect("view")).expect("json");
+        assert_eq!(view["seed"], info["seed"]);
+        assert_eq!(view["weekly"]["id"], info["rule"]["id"]);
+        assert_eq!(view["weekly"]["week"], 202_646);
+        let back = Session::load(&session.save().expect("save")).expect("load");
+        assert_eq!(back.run(), session.run());
+        assert!(Session::new_weekly(202_699, "Declarer", 0, &meta).is_err());
+        let catalog: serde_json::Value =
+            serde_json::from_str(&catalog_json().expect("catalog")).expect("json");
+        assert!(catalog["weekly"]["grand_double"]["name"].is_string());
+    }
 
     /// Saves from before fractional Spielwert factors hold the multiplier
     /// of the last score as a whole number; it still loads.

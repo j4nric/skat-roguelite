@@ -11,6 +11,7 @@
 // same day (local date) gets the same run.
 
 import type { Character } from './types';
+import { dateText } from './i18n';
 
 /** URL tokens of the characters (lower case, no umlauts). */
 const SLUGS: Record<Character, string> = {
@@ -103,5 +104,5 @@ export function dailySeed(date: Date = new Date()): string {
 
 /** The date of the daily seed for display: "01.11.2026". */
 export function dailyLabel(date: Date = new Date()): string {
-  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return dateText(date);
 }

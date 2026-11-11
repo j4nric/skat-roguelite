@@ -18,7 +18,7 @@
 import { de, cardName, contentName, contentText, declarationName, factorText, gameName, holdsVoucher, t } from '../i18n';
 import type { BossInfo, CardView, Declaration, DeclaredGame, DeclareOptions, GameView, NullRisk, PlayedCard, RevealedCard, RiskLevel, RunView, Seat, Suit, TrickView } from '../types';
 import { backDesign } from './backs';
-import { cardBack, lookSvg, modIcon, suitIcon } from './cards';
+import { cardBack, lookLabel, lookSvg, modIcon, modLabel, suitIcon } from './cards';
 import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { valueIcon } from './fxart';
@@ -73,11 +73,11 @@ function thinkBubble(): string {
 /** Plaques for what the core resolved on a card: "Unter ehrenhalber", "Ramponiert", "Blue Curaçao". */
 function plaques(c: CardView): string {
   const out: string[] = [];
-  if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
+  if (c.chalked) out.push(`<span class="plaque plaque-chalk" title="${esc(chalkLabel(c.chalked))}" data-letter="${esc(de.suitLetters[c.chalked])}" aria-hidden="true">${suitIcon(c.chalked, 11, null)}</span>`);
   if (c.honorary_jack) out.push(`<span class="plaque plaque-hj" title="${esc(de.card.honoraryJack)}" aria-hidden="true">U</span>`);
   if (c.no_discard) out.push(`<span class="plaque plaque-lock" title="${esc(de.card.noDiscard)}" aria-hidden="true">${lockIcon(13)}</span>`);
   if (c.can_rise) out.push(`<span class="plaque plaque-rise" title="${esc(de.card.canRise)}" aria-hidden="true">${skullIcon(12)}</span>`);
-  if (c.named) out.push(`<span class="plaque plaque-wild" title="${esc(t(de.card.named, { suit: de.suits[c.named] }))}" aria-hidden="true">${suitIcon(c.named, 11, null)}</span>`);
+  if (c.named) out.push(`<span class="plaque plaque-wild" title="${esc(t(de.card.named, { suit: de.suits[c.named] }))}" data-letter="${esc(de.suitLetters[c.named])}" aria-hidden="true">${suitIcon(c.named, 11, null)}</span>`);
   return out.length ? `<span class="plaques">${out.join('')}</span>` : '';
 }
 
@@ -95,7 +95,7 @@ function cardLabel(c: CardView): string {
     c.named ? t(de.card.named, { suit: de.suits[c.named] }) : '',
   ].filter(Boolean);
   const name = extra.length ? `${cardName(c.kind)} (${extra.join(', ')})` : cardName(c.kind);
-  return c.mods.length ? `${name}, ${t(de.card.mods, { mods: c.mods.map((m) => contentName('card_mods', m)).join(', ') })}` : name;
+  return c.mods.length ? `${name}, ${t(de.card.mods, { mods: c.mods.map((m) => modLabel(m, c.mod_values)).join(', ') })}` : name;
 }
 
 function kontraBadge(game: GameView, seat: Seat): string {
@@ -145,14 +145,16 @@ function opponent(view: RunView, game: GameView, seat: 1 | 2, ui: UiState): stri
   const trickTag =
     tricks === null
       ? ''
-      : `<span class="opp-tricks" aria-label="${esc(t(de.table.oppTricksAria, { n: tricks }))}" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
+      : `<span class="opp-tricks" data-testid="opp-tricks">${esc(t(de.table.oppTricks, { n: tricks }))}</span>`;
+  // The box is one button (its info card): its name says what the box shows.
+  const details = [position ? de.positions[position] : '', t(de.table.cards, { count: size }), tricks === null ? '' : t(de.table.oppTricksAria, { n: tricks })].filter(Boolean).join(', ');
   return `<div class="opp ${turn ? 'is-turn' : ''} ${boss ? 'is-boss' : ''} ${thinking ? 'is-thinking' : ''}" ${attrs({ 'data-seat': seat, 'data-guest': person.guest?.id ?? null, 'data-face': person.face })}>
-    <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: person.name }) })}>
+    <div class="opp-main" ${attrs({ 'data-info': `seat:${seat}`, tabindex: 0, role: 'button', 'aria-label': t(de.a11y.seat, { name: person.name, details }) })}>
       ${portrait(person.face, 'portrait-opp', blinkRhythm(seat))}${thinking ? thinkBubble() : ''}${quip}
       <div class="opp-info">
         <b class="opp-name" ${attrs({ 'data-testid': 'opp-name', 'data-plate': boss ? 'boss' : null })}>${esc(person.name)}</b>
         <span class="opp-pos">${esc(position ? de.positions[position] : '')}</span>
-        <span class="opp-meta"><span class="opp-hand" aria-label="${esc(t(de.table.cards, { count: size }))}">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
+        <span class="opp-meta"><span class="opp-hand">${size ? cardBack('fan', backDesign(game.backs?.[seat] ?? 'regulars'), 'small') : ''}<span class="opp-count">${esc(size)}</span></span>${trickTag}${kontraBadge(game, seat)}</span>
       </div>
     </div>
     ${revealed ? `<div class="opp-revealed">${revealed}</div>` : ''}
@@ -171,7 +173,7 @@ function skullIcon(size: number): string {
  * left, the right one top right, the player's card bottom centre. A card
  * played later lies on top of one played earlier (`--z`).
  */
-function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null, risen: UiState['risen'] = null): string {
+function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Seat | null = null, risen: UiState['risen'] = null, who = ''): string {
   const order = cards.findIndex((c) => c.seat === seat);
   const played = cards[order];
   const won = winner === seat;
@@ -180,7 +182,7 @@ function trickSlot(cards: PlayedCard[], seat: Seat, yourTurn = false, winner: Se
     tag += `<span class="trick-rose-tag" data-testid="rose-note" title="${esc(t(de.table.roseHint, { card: risen.card }))}">${skullIcon(9)}${esc(de.table.roseTag)}</span>`;
   }
   const inner = played
-    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, ...infoAttrs(played.card.id) })}>${lookSvg(played.card, 'full')}${plaques(played.card)}${tag}</div>`
+    ? `<div class="card trick-card ${won ? 'is-winner' : ''}" ${attrs({ 'data-trick-seat': winner === null ? seat : null, 'data-last-seat': winner === null ? null : seat, 'data-card-id': played.card.id, role: 'img', 'aria-label': who ? `${who}: ${lookLabel(played.card)}${won ? ` (${de.table.lastTrickWon})` : ''}` : null, ...infoAttrs(played.card.id) })}>${lookSvg(played.card, 'full')}${plaques(played.card)}${tag}</div>`
     : yourTurn
       ? `<div class="card-slot is-you">${esc(de.table.slotYou)}</div>`
       : `<div class="card-slot"></div>`;
@@ -508,7 +510,8 @@ function isOpen(game: GameView): boolean {
 
 function statusLine(view: RunView, game: GameView, ui: UiState): string {
   if (ui.anim) {
-    return `<div class="status" aria-live="polite">${esc(ui.anim.status)}</div>`;
+    // Screen readers hear the line from the live region (./a11y.ts), not from here.
+    return `<div class="status">${esc(ui.anim.status)}</div>`;
   }
   switch (game.phase) {
     case 'Declaring':
@@ -538,7 +541,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
                       'data-action': 'swap-take',
                       'data-id': c.id,
                       'aria-pressed': c.id === take.id ? 'true' : 'false',
-                      'aria-label': cardName(c.kind),
+                      'aria-label': lookLabel(c),
                       ...infoAttrs(c.id, false),
                     })}>${lookSvg(c, 'small')}</button>`,
                 )
@@ -572,7 +575,9 @@ function worthChip(game: GameView): string {
       : t(de.table.worth, { base: p.base_value, levels: p.levels });
   // With a Faktor its icon (the rising chart line) leads the chip.
   const icon = p.multiplier !== 1 ? valueIcon('factor', 12) : '';
-  return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title: t(de.table.worthTitle, { value: p.game_value }) })}>${icon}${esc(label)}</span>`;
+  const title = t(de.table.worthTitle, { value: p.game_value });
+  // Screen readers hear the line with its explanation ("18 × 5: Grundwert × Stufen, …").
+  return `<span class="worth" ${attrs({ 'data-testid': 'value-preview', title, role: 'img', 'aria-label': `${label}: ${title}` })}>${icon}${esc(label)}</span>`;
 }
 
 /**
@@ -652,7 +657,7 @@ function cribStack(game: GameView): string {
   const hidden = Array.from({ length: Math.max(0, 2 - shown.length) }, (_, i) => `<span class="pressed-card is-back" style="--i:${i}">${cardBack()}</span>`);
   const open = shown.map(
     (c, i) =>
-      `<button class="pressed-card" style="--i:${hidden.length + i}" ${attrs({ 'data-action': 'info-card', 'aria-label': cardName(c.kind), ...infoAttrs(c.id, false) })}>${lookSvg(c, 'full')}</button>`,
+      `<button class="pressed-card" style="--i:${hidden.length + i}" ${attrs({ 'data-action': 'info-card', 'aria-label': lookLabel(c), ...infoAttrs(c.id, false) })}>${lookSvg(c, 'full')}</button>`,
   );
   const cards = [...hidden, ...open].join('');
   const label = t(de.table.cribAria, { cards: shown.map((c) => cardName(c.kind)).join(', ') });
@@ -720,7 +725,7 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
  */
 function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
   const slots = (cards: PlayedCard[], you: boolean, winner: Seat | null, risen: UiState['risen']): string =>
-    `${trickSlot(cards, 1, false, winner, risen)}${trickSlot(cards, 2, false, winner, risen)}${trickSlot(cards, 0, you, winner, risen)}`;
+    `${trickSlot(cards, 1, false, winner, risen, seatLabel(view, 1))}${trickSlot(cards, 2, false, winner, risen, seatLabel(view, 2))}${trickSlot(cards, 0, you, winner, risen, seatLabel(view, 0))}`;
   const trick = peek
     ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${slots(peek.cards, false, peek.winner, ui.risen)}</div>`
     : `<div class="trick" data-action="fast" data-testid="trick">${slots(ui.anim ? ui.anim.trick : game.trick, !ui.anim && !ui.busy && game.your_turn, null, ui.anim ? ui.risen : null)}</div>`;
@@ -791,7 +796,7 @@ function countPanel(game: GameView): string {
     game.declaration.game === 'Ramsch'
       ? cell(de.table.countYou, c.seats[0], 'is-you') + cell(de.table.countLeft, c.seats[1], 'is-them') + cell(de.table.countRight, c.seats[2], 'is-them')
       : cell(de.table.countYou, c.declarer, 'is-you') + cell(de.table.countThem, c.defenders, 'is-them');
-  return `<div class="counter-slate" data-testid="count" aria-label="${esc(de.table.countTitle)}">
+  return `<div class="counter-slate" data-testid="count" role="group" aria-label="${esc(de.table.countTitle)}">
     <span class="counter-title">${esc(de.table.countTitle)}</span>
     ${cells}${cell(de.table.countUnseen, c.unseen, 'is-unseen')}
   </div>`;
@@ -844,7 +849,7 @@ export function renderTable(view: RunView, ui: UiState): Part[] {
   const throwable = game.phase === 'Playing' && game.your_turn && !ui.anim && !ui.busy && !ui.omaPick;
   const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
   return [
-    shell(`<div class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">`, [
+    shell(`<main class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">`, [
       `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
       `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
       `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,

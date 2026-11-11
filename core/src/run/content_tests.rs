@@ -1270,6 +1270,7 @@ fn half_of_the_new_relics_are_locked_behind_reachable_deeds() {
             stake: 0,
             boss: None,
             night: false,
+            relics: Vec::new(),
         })
         .collect();
     let earned = meta.observe(&content, &lost);

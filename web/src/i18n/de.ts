@@ -1,6 +1,8 @@
-// All texts of the web app (German only, see DESIGN 16). Game terms use the
-// German deck (ADR 0010, GLOSSARY "Anzeige im deutschen Blatt"). Placeholders
-// in braces are filled by `t()` in ./index.ts.
+// All texts of the web app in German, the default language (DESIGN 16).
+// ./en.ts has the same keys in English (ADR 0023): a new text goes into
+// both files. Game terms use the German deck (ADR 0010, GLOSSARY "Anzeige
+// im deutschen Blatt"). Placeholders in braces are filled by `t()` in
+// ./index.ts and must be the same in both languages.
 
 export const de = {
   app: {
@@ -202,6 +204,17 @@ export const de = {
     Diamonds: 'Schellen',
   },
 
+  /**
+   * "Farbenblind-Hilfe": the letter of each suit, drawn in the card's corner
+   * (as pixel glyphs by ./ui/sprite.ts: only the letters of de.ts and en.ts exist there).
+   */
+  suitLetters: {
+    Clubs: 'E',
+    Spades: 'G',
+    Hearts: 'R',
+    Diamonds: 'S',
+  },
+
   ranks: {
     '7': 'Sieben',
     '8': 'Acht',
@@ -232,7 +245,7 @@ export const de = {
     fromSkat: 'Skat',
     /** "Drei drücken": the card drawn from this defender. */
     fromDefender: 'von {name}',
-    mods: 'Gezinkt: {mods}',
+    mods: 'gezinkt: {mods}',
     curse: 'Fluch',
     honoraryJack: 'Unter ehrenhalber',
     chalked: 'mit Blue Curaçao umgefärbt, eigentlich {suit}',
@@ -923,7 +936,20 @@ export const de = {
     lockedRelics: 'Noch {count} Hausregeln und Figuren warten auf ihre Freischaltung.',
     lockedMods: 'Noch {count} Kartenmodifikationen sind gesperrt und kommen bis dahin nicht zufällig ins Blatt.',
     rewardKind: '{kind}, {rarity}',
-    tabs: { book: 'Freischaltungen', stats: 'Statistik' },
+    tabs: { book: 'Freischaltungen', stats: 'Statistik', relics: 'Relikte' },
+    /** Statistik per character and relic (DESIGN 9.3), computed by the core. */
+    perCharacterBest: 'bestes Spiel {game}',
+    winRate: '{pct} %',
+    favourites: 'Liebste Relikte: {list}',
+    favourite: '{name} ({n}×)',
+    relicsTitle: 'Relikte',
+    relicsHint: 'Wie oft du ein Relikt genommen hast (gekauft, gefunden, getauscht), wie oft du es am Ende eines Runs noch hattest und wie viele dieser Runs gewonnen waren. Gezählt seit dem 10.11.2026.',
+    relicsNone: 'Noch keine Relikte gezählt. Am Ende deines nächsten Runs steht hier, was du dabei hattest.',
+    relicTaken: '{n}× genommen',
+    relicHeld: '{n}× am Ende',
+    relicWon: '{won} gewonnen ({pct} %)',
+    relicWonNone: 'nie am Ende',
+    weekly: 'Woche',
     totals: 'Insgesamt',
     perCharacterTitle: 'Nach Charakter',
     recent: 'Letzte Runs',
@@ -1140,6 +1166,16 @@ export const de = {
     back: 'Rückseite',
     backOwn: 'Rückseite des Charakters',
     suitTintHint: 'Das Papier jeder Karte leicht in ihrer Farbe: Eichel beige, Grün grün, Rot rosa, Schellen gelb.',
+    /** Display aids (Barrierefreiheit): one row of toggles. */
+    display: 'Darstellung',
+    suitTintShort: 'Tönen',
+    colorBlind: 'Farbenblind-Hilfe',
+    colorBlindShort: 'Farbenblind',
+    colorBlindHint: 'Ein Buchstabe für die Farbe in der Ecke jeder Karte (E Eichel, G Grün, R Rot, S Schellen) und Zeichen neben allem, was sonst nur die Farbe sagt.',
+    textSize: 'Schriftgröße',
+    textSizeShort: 'Schrift: {size}',
+    textSizes: { normal: 'Normal', large: 'Groß', xlarge: 'Sehr groß' },
+    textSizeHint: 'Größere Schrift für alle Texte. Antippen wechselt: Normal, Groß, Sehr groß.',
     hintsReset: 'Zurücksetzen',
     hintsResetAria: 'Hinweise des Wirts zurücksetzen',
     hintsResetDone: 'Der Wirt erklärt dir alles noch mal.',
@@ -1325,6 +1361,12 @@ export const de = {
       ['Danach', 'Freischaltungen und Statistik bleiben im Vereinsbuch, auch wenn der Run verloren ist.'],
       ['Einsatz', 'Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge: 61, 62, 63 … Schneider bleibt bei 90, Null zählt keine Augen. Den Einsatz wählst du vor dem Run, je Charakter und für den ganzen und kurzen Abend getrennt.'],
     ] as [string, string][],
+    /**
+     * The Skat words that stay German in another language, explained
+     * (ADR 0023). German needs no list: empty here, the card shows none.
+     */
+    wordsTitle: 'Begriffe',
+    words: [] as [string, string][],
   },
 
   account: {
@@ -1429,6 +1471,39 @@ export const de = {
       unauthorized: 'Du bist nicht mehr angemeldet.',
       default: 'Das ging nicht. Versuch es noch einmal.',
     } as Record<string, string>,
+  },
+
+  /** Die Wochen-Herausforderung (DESIGN 5.6) on the start screen. */
+  weekly: {
+    title: 'Herausforderung der Woche',
+    kw: 'KW',
+    week: 'Woche {week}/{year}',
+    leftDays: 'noch {days} Tage und {hours} Std.',
+    leftDay: 'noch 1 Tag und {hours} Std.',
+    leftHours: 'noch {hours} Std. und {minutes} Min.',
+    fixed: 'Diese Woche spielen alle als {name}.',
+    once: 'Alle spielen denselben Run mit dieser Sonderregel. Der erste Versuch der Woche kommt auf die Tafel.',
+    done: 'Gewertet: {result}.',
+    practice: 'Weitere Versuche sind Übung.',
+    play: 'Wochen-Run als {name}',
+    playAgain: 'Üben als {name}',
+    rule: 'Sonderregel der Woche',
+    /** End screen of a weekly run: its seed alone is not the challenge, so no link to share. */
+    endNote: 'Wochen-Run mit der Sonderregel „{name}“. Der erste beendete Wochen-Run zählt auf der Tafel der Woche.',
+  },
+
+  /** Die Tafel der Woche (DESIGN 5.6): the same rows as the Tafel des Tages. */
+  weeklyBoard: {
+    title: 'Tafel der Woche',
+    empty: 'Noch niemand hat den Wochen-Run beendet.',
+    signInHint: 'Melde dich an, dann kommt dein Ergebnis auf die Tafel der Woche.',
+    signIn: 'Anmelden',
+    you: 'Du: Platz {rank} von {total}',
+    notYet: 'Dein erster Wochen-Run kommt auf die Tafel, wenn du ihn beendest.',
+    total: '{total} Spieler diese Woche',
+    submitted: 'Dein Ergebnis steht auf der Tafel der Woche: Platz {rank}.',
+    unavailable: 'Die Tafel ist gerade nicht erreichbar.',
+    rules: 'Es zählt der erste beendete Wochen-Run. Jeder weitere ist Übung und ändert die Tafel nicht. Montag beginnt eine neue Woche mit neuer Sonderregel.',
   },
 
   board: {
@@ -1747,6 +1822,15 @@ export const de = {
   },
 
   /** Keyboard on the desktop (./ui/keys.ts): the list behind "?" or F1. */
+  /** Said by screen readers (live region, ./ui/a11y.ts): short and polite. */
+  a11y: {
+    played: '{name} spielt {card}.',
+    won: 'Gewonnen: {score} Punkte.',
+    lost: 'Verloren: {score} Punkte.',
+    /** An opponent's box at the table (a button that opens his info card). */
+    seat: '{name}: {details}. Erklärung öffnen',
+  },
+
   keys: {
     title: 'Tastatur',
     close: 'Schließen',
@@ -1772,6 +1856,17 @@ export const de = {
     account: 'Du bist offline. Anmelden geht erst wieder mit Verbindung. Spielen kannst du weiter, dein Fortschritt bleibt in diesem Browser.',
   },
 
+  /** The language setting and the formats that follow the language (ADR 0023). */
+  lang: {
+    /** The menu row: in both languages, so it is found whichever is on. */
+    label: 'Sprache / Language',
+    names: { de: 'Deutsch', en: 'English' },
+    percent: '{n} %',
+    quote: '„{text}“',
+    /** The page's meta description. */
+    description: 'Stammtisch: Skat als Roguelike im Browser.',
+  },
+
   /**
    * Display names and texts that depend on the French deck in the content
    * files get German-deck versions here (ADR 0010). Anything not listed
@@ -1791,8 +1886,9 @@ export const de = {
     encounters: {},
     unlocks: {},
     maluses: {},
+    weekly: {},
   } as Record<
-    'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses',
+    'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses' | 'weekly',
     Record<string, { name?: string; text?: string }>
   >,
 } as const;

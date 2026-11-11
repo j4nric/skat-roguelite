@@ -1,10 +1,107 @@
-// Text helpers: fill placeholders and turn core identifiers into German
-// display names. Only translation, no game logic.
+// Text helpers: the active language (German by default, English as the
+// second language, ADR 0023), placeholders, number formats and the display
+// names of core identifiers. Only translation, no game logic.
+//
+// `de` is the strings of the ACTIVE language, not always German: it is a
+// live ES module binding that `setLanguage` points at ./de.ts or ./en.ts.
+// The name stays so that the many `de.…` call sites (and branches written
+// against them) keep working; read it as "the display texts".
 
-import { de } from './de';
+import { de as deStrings } from './de';
+import { fillModValue, localizeContent, type ContentTexts } from './localize';
+import { readKey, writeKey } from '../storage';
 import type { BossInfo, Catalog, EditionEntry, CardKind, ConsumableCategory, Rarity, RelicGroup, RelicKind, ModFigure, ModKind, Declaration, DeclaredGame, NullRisk, Rank, RiskLevel, Suit } from '../types';
 
-export { de };
+/** Deep shape of the German strings with every text widened to `string`: what every language must provide. */
+type Widen<T> = T extends string
+  ? string
+  : T extends readonly unknown[]
+    ? { [K in keyof T]: Widen<T[K]> }
+    : T extends object
+      ? { [K in keyof T]: Widen<T[K]> }
+      : T;
+
+/** The texts of one language; ./en.ts is typed against it, so a missing key fails `tsc`. */
+export type Strings = Widen<typeof deStrings>;
+
+export type Lang = 'de' | 'en';
+export const LANGS: readonly Lang[] = ['de', 'en'];
+
+/**
+ * The loaded languages. German is built in; English is a chunk of its own,
+ * fetched only when it is chosen (so German players do not download it).
+ */
+const PACKS: Partial<Record<Lang, Strings>> = { de: deStrings };
+/** Locale for numbers and dates: decimal comma in German, point in English. */
+const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
+/** Display texts of the core's content that the language replaces (German comes from the core). */
+const CONTENT: Partial<Record<Lang, ContentTexts>> = {};
+const LANG_KEY = 'stammtisch.lang';
+
+let current: Lang = 'de';
+
+/** The texts of the active language (see the note at the top). */
+export let de: Strings = deStrings;
+
+/** The active language. */
+export function lang(): Lang {
+  return current;
+}
+
+/** Locale tag of the active language for `toLocaleString` and `Intl`. */
+export function locale(): string {
+  return LOCALES[current];
+}
+
+/** The language chosen in the menu, else the browser's: German for German browsers, English for all others. */
+export function storedOrDetectedLanguage(): Lang {
+  const stored = readKey(LANG_KEY);
+  if (stored === 'de' || stored === 'en') return stored;
+  let wanted: readonly string[] = [];
+  try {
+    wanted = navigator.languages?.length ? navigator.languages : [navigator.language];
+  } catch {
+    wanted = [];
+  }
+  const first = (wanted[0] ?? 'de').toLowerCase();
+  return first.startsWith('de') || first === '' ? 'de' : 'en';
+}
+
+/** Fetch a language's texts once (English: its own chunk). */
+async function loadPack(next: Lang): Promise<Strings> {
+  const have = PACKS[next];
+  if (have) return have;
+  const [{ en }, { EN_CONTENT }] = await Promise.all([import('./en'), import('./en-content')]);
+  PACKS.en = en;
+  CONTENT.en = EN_CONTENT;
+  return en;
+}
+
+/**
+ * Switch the display language (fetching its texts first). `remember`: the
+ * player chose it (menu), so it is stored like the other settings; the
+ * detected one is not stored. Should English fail to load, German stays.
+ */
+export async function setLanguage(next: Lang, remember = false): Promise<void> {
+  const pack = await loadPack(next);
+  current = next;
+  de = pack;
+  if (remember) writeKey(LANG_KEY, next);
+  try {
+    document.documentElement.lang = next;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', de.lang.description);
+  } catch {
+    // No document (tests): nothing to mark.
+  }
+}
+
+/**
+ * A view, meta view or catalog from the core with the content texts of the
+ * active language in place (in place; German: the core's own texts).
+ */
+export function localize<T>(value: T): T {
+  return localizeContent(value, current === 'de' ? null : (CONTENT[current] ?? null));
+}
 
 /** Fill `{name}` placeholders of a template. */
 export function t(template: string, params: Record<string, string | number> = {}): string {
@@ -15,12 +112,27 @@ export function t(template: string, params: Record<string, string | number> = {}
 
 /** A probability from the core (thousandths) as "37,5 %". */
 export function percent(permille: number): string {
-  return `${(permille / 10).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+  return t(de.lang.percent, { n: (permille / 10).toLocaleString(locale(), { maximumFractionDigits: 1 }) });
 }
 
-/** A factor from the core with the German decimal comma: "2", "1,5", "2,25". */
+/** A number in the active language ("1,5" or "1.5"). */
+export function num(n: number, digits = 3): string {
+  return n.toLocaleString(locale(), { maximumFractionDigits: digits });
+}
+
+/** A date as day, month, year in the active language ("01.11.2026", "01/11/2026"). */
+export function dateText(date: Date, opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' }): string {
+  return date.toLocaleDateString(locale(), opts);
+}
+
+/** A line someone says, in the language's quotation marks. */
+export function quote(text: string): string {
+  return t(de.lang.quote, { text });
+}
+
+/** A factor from the core in the language's decimals: "2", "1,5", "2,25" (German). */
 export function factorText(n: number): string {
-  return n.toLocaleString('de-DE', { maximumFractionDigits: 3 });
+  return num(n, 3);
 }
 
 /** Suit and rank of a card kind, or null for a blank. */
@@ -65,12 +177,12 @@ export function setCatalog(c: Catalog): void {
 
 /** Display name of a content item, German-deck override first. */
 export function contentName(category: Category, id: string): string {
-  return de.content[category][id]?.name ?? catalog?.[category][id]?.name ?? id;
+  return de.content[category]?.[id]?.name ?? catalog?.[category]?.[id]?.name ?? id;
 }
 
 /** Display text of a content item, German-deck override first. */
 export function contentText(category: Category, id: string): string {
-  return de.content[category][id]?.text ?? catalog?.[category][id]?.text ?? '';
+  return de.content[category]?.[id]?.text ?? catalog?.[category]?.[id]?.text ?? '';
 }
 
 /**
@@ -78,8 +190,7 @@ export function contentText(category: Category, id: string): string {
  * `{n}` the amount, `{+n}` with its sign). Formatting only.
  */
 export function modText(mod: string, value: number): string {
-  const signed = value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '0';
-  return contentText('card_mods', mod).replaceAll('{+n}', signed).replaceAll('{n}', String(Math.abs(value)));
+  return fillModValue(contentText('card_mods', mod), value);
 }
 
 /**
@@ -115,7 +226,7 @@ function editionEntries(entries: EditionEntry[]): string {
   const rankKey: Record<string, Rank> = { Seven: '7', Eight: '8', Nine: '9', Ten: 'T', Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A' };
   const parts = entries.map((e) => {
     const { suit, rank } = e.filter;
-    const cards = suit && rank ? `${de.suits[suit]}-${de.ranks[rankKey[rank] ?? '7']}` : rank ? (de.info.rankPlural[rank] ?? rank) : suit ? de.suits[suit] : '';
+    const cards = suit && rank ? t(de.card.name, { suit: de.suits[suit], rank: de.ranks[rankKey[rank] ?? '7'] }) : rank ? (de.info.rankPlural[rank] ?? rank) : suit ? de.suits[suit] : '';
     const value = e.card_mod.value ?? 1;
     const name = contentName('card_mods', e.card_mod.id);
     const negative = e.card_mod.id === 'battered' || e.card_mod.id === 'stained';

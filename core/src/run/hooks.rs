@@ -84,6 +84,19 @@ impl Run {
                 });
             }
         }
+        // The Sonderregel der Woche (DESIGN 5.6) right after the
+        // character: a rule of the whole run.
+        if let Some(def) = self.weekly_def(content) {
+            if !def.passive.is_empty() || !def.hooks.is_empty() {
+                sources.push(ActiveSource {
+                    source: Source::Weekly(def.id.clone()),
+                    passive: &def.passive,
+                    hooks: &def.hooks,
+                    this_card: None,
+                    scale: 1,
+                });
+            }
+        }
         let bosses = self
             .boss_rule(content)
             .into_iter()
@@ -131,6 +144,9 @@ impl Run {
             .character(self.character)
             .is_some_and(|def| of(&def.rule.hooks))
         {
+            return true;
+        }
+        if self.weekly_def(content).is_some_and(|def| of(&def.hooks)) {
             return true;
         }
         let bosses = self.boss_rule(content);

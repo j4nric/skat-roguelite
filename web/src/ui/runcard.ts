@@ -5,7 +5,7 @@
 // seed (or the daily seed) and the date. Everything shown comes from the
 // core's run view; nothing is computed here but the layout.
 
-import { de, t } from '../i18n';
+import { dateText, de, t } from '../i18n';
 import type { RunView } from '../types';
 import { relicCoaster } from './emblems';
 import { characterPortraitId } from './people';
@@ -193,7 +193,7 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
   const footY = H - M - PX * 2 - PX * 7;
   g.fillStyle = C.line;
   g.fillRect(M + PX * 6, footY - 56, W - 2 * M - PX * 12, PX);
-  const day = info.date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const day = dateText(info.date);
   const seedText = info.daily ? t(de.runCard.daily, { seed: view.seed }) : t(de.runCard.seed, { seed: view.seed });
   text(g, seedText, M + PX * 8, footY, 40, C.text);
   text(g, day, W - M - PX * 8, footY, 40, C.muted, 'right');
