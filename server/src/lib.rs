@@ -3,7 +3,8 @@
 //! A small HTTP API under `/api` behind our Caddy: sign-up and sign-in
 //! with passkeys (WebAuthn), a recovery code as the way back in, a display
 //! name, one opaque save blob per player, the daily and the weekly
-//! leaderboard ([`board`]). The server never looks into the save and never
+//! leaderboard ([`board`]), and a one-time move code to take the account
+//! to the new address ([`moving`], ADR 0025). The server never looks into the save and never
 //! checks game state: all game logic stays in the browser (the Rust core
 //! as WebAssembly). It knows nothing of `skat_core`.
 
@@ -13,6 +14,7 @@ pub mod board;
 pub mod daily;
 pub mod db;
 pub mod error;
+pub mod moving;
 pub mod recovery;
 pub mod session;
 pub mod weekly;
@@ -49,63 +51,108 @@ pub const PASSKEY_BODY_BYTES: usize = 64 * 1024;
 /// core for a moment); further requests wait for a permit.
 pub const ARGON2_PERMITS: usize = 2;
 
+/// One WebAuthn relying party: an RP id and the origins that belong to it.
+#[derive(Debug, Clone)]
+pub struct RelyingParty {
+    /// The RP id passkeys are bound to (a host name).
+    pub id: String,
+    /// Origins of this RP id (scheme, host, port).
+    pub origins: Vec<Url>,
+}
+
 /// Settings of the server.
+///
+/// The site can live under several host names at once: the game moved
+/// from `stammtisch-62-83-23-90.sslip.io` to `one-more-skat.de` (ADR 0025),
+/// and the passkeys made on the old address are bound to its RP id. Every
+/// host is then its own relying party, and a ceremony is run by the one
+/// the request's `Origin` belongs to.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// WebAuthn relying party id: the host of the site.
+    /// RP id of the main (first) origin.
     pub rp_id: String,
     /// Origins the browser may send from (the first is the main one).
     pub origins: Vec<Url>,
+    /// The relying parties, the main one first.
+    pub rps: Vec<RelyingParty>,
     /// Set `Secure` on the cookie (when the site is served over HTTPS).
     pub secure_cookie: bool,
 }
 
 impl Config {
-    /// Config for these origins; the RP id defaults to the first origin's host.
+    /// Config for these origins. With `rp_id`, one relying party with that
+    /// id holds every origin (they must be the id or below it); without,
+    /// every host of the origins is a relying party of its own.
     pub fn new(origins: &[&str], rp_id: Option<&str>) -> Result<Self, String> {
         let origins = origins
             .iter()
             .map(|o| Url::parse(o.trim()).map_err(|e| format!("bad origin {o}: {e}")))
             .collect::<Result<Vec<_>, _>>()?;
-        let first = origins.first().ok_or("no origin")?;
-        let rp_id = match rp_id {
-            Some(id) if !id.is_empty() => id.to_owned(),
-            _ => first.host_str().ok_or("origin without host")?.to_owned(),
-        };
+        if origins.is_empty() {
+            return Err("no origin".into());
+        }
+        let mut rps: Vec<RelyingParty> = Vec::new();
+        match rp_id {
+            Some(id) if !id.is_empty() => rps.push(RelyingParty {
+                id: id.to_owned(),
+                origins: origins.clone(),
+            }),
+            _ => {
+                for origin in &origins {
+                    let host = origin.host_str().ok_or("origin without host")?;
+                    match rps.iter_mut().find(|rp| rp.id == host) {
+                        Some(rp) => rp.origins.push(origin.clone()),
+                        None => rps.push(RelyingParty {
+                            id: host.to_owned(),
+                            origins: vec![origin.clone()],
+                        }),
+                    }
+                }
+            }
+        }
+        let rp_id = rps[0].id.clone();
         let secure_cookie = origins.iter().all(|o| o.scheme() == "https");
         Ok(Self {
             rp_id,
             origins,
+            rps,
             secure_cookie,
         })
     }
 
-    fn webauthn(&self) -> Result<Webauthn, String> {
-        let first = self.origins.first().ok_or("no origin")?;
-        let mut builder = WebauthnBuilder::new(&self.rp_id, first)
-            .map_err(|e| format!("webauthn config: {e}"))?
+    fn webauthn(rp: &RelyingParty) -> Result<Webauthn, String> {
+        let first = rp.origins.first().ok_or("no origin")?;
+        let mut builder = WebauthnBuilder::new(&rp.id, first)
+            .map_err(|e| format!("webauthn config {}: {e}", rp.id))?
             .rp_name("Stammtisch");
-        for origin in &self.origins[1..] {
+        for origin in &rp.origins[1..] {
             builder = builder.append_allowed_origin(origin);
         }
         // Local development: vite dev and preview run on different ports.
-        if self.rp_id == "localhost" {
+        if rp.id == "localhost" {
             builder = builder.allow_any_port(true);
         }
-        builder.build().map_err(|e| format!("webauthn config: {e}"))
+        builder
+            .build()
+            .map_err(|e| format!("webauthn config {}: {e}", rp.id))
+    }
+
+    /// Index of the relying party an `Origin` header belongs to.
+    pub fn rp_of(&self, origin: &str) -> Option<usize> {
+        let url = Url::parse(origin).ok()?;
+        self.rps.iter().position(|rp| {
+            rp.origins.iter().any(|o| {
+                o.scheme() == url.scheme()
+                    && o.host_str() == url.host_str()
+                    && (o.port_or_known_default() == url.port_or_known_default()
+                        || rp.id == "localhost")
+            })
+        })
     }
 
     /// Whether a request with this `Origin` header may change something.
     pub fn origin_allowed(&self, origin: &str) -> bool {
-        let Ok(url) = Url::parse(origin) else {
-            return false;
-        };
-        self.origins.iter().any(|o| {
-            o.scheme() == url.scheme()
-                && o.host_str() == url.host_str()
-                && (o.port_or_known_default() == url.port_or_known_default()
-                    || self.rp_id == "localhost")
-        })
+        self.rp_of(origin).is_some()
     }
 }
 
@@ -113,6 +160,8 @@ impl Config {
 pub enum Ceremony {
     /// Sign-up: the new user's id and optional name.
     Register {
+        /// Relying party that started it ([`Config::rps`]).
+        rp: usize,
         /// Id of the user to create.
         user_id: Uuid,
         /// Name given at the start, already cleaned.
@@ -122,6 +171,8 @@ pub enum Ceremony {
     },
     /// A further passkey for a signed-in user.
     AddPasskey {
+        /// Relying party that started it.
+        rp: usize,
         /// The user.
         user_id: Uuid,
         /// WebAuthn state.
@@ -129,6 +180,8 @@ pub enum Ceremony {
     },
     /// Sign-in with a discoverable passkey.
     Login {
+        /// Relying party that started it.
+        rp: usize,
         /// WebAuthn state.
         state: DiscoverableAuthentication,
     },
@@ -147,8 +200,8 @@ const CEREMONY_PER_CLIENT: usize = 10;
 pub struct AppState {
     /// Settings.
     pub config: Arc<Config>,
-    /// WebAuthn relying party.
-    pub webauthn: Arc<Webauthn>,
+    /// WebAuthn, one per relying party (same order as [`Config::rps`]).
+    webauthn: Arc<Vec<Webauthn>>,
     db: Arc<Mutex<Connection>>,
     ceremonies: Arc<Mutex<HashMap<String, OpenCeremony>>>,
     /// Requests per address.
@@ -166,7 +219,11 @@ struct OpenCeremony {
 impl AppState {
     /// State over an open database.
     pub fn new(config: Config, conn: Connection) -> Result<Self, String> {
-        let webauthn = config.webauthn()?;
+        let webauthn = config
+            .rps
+            .iter()
+            .map(Config::webauthn)
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             config: Arc::new(config),
             webauthn: Arc::new(webauthn),
@@ -191,6 +248,34 @@ impl AppState {
         tokio::task::spawn_blocking(work)
             .await
             .map_err(|_| ApiError::internal())
+    }
+
+    /// The relying party a request comes from (by its `Origin`), with its
+    /// index for the ceremony. Ceremonies are POSTs, which always carry an
+    /// allowed `Origin` ([`api_layer`]); without one the main RP answers.
+    pub fn rp(&self, headers: &axum::http::HeaderMap) -> (usize, &Webauthn) {
+        let index = headers
+            .get(header::ORIGIN)
+            .and_then(|o| o.to_str().ok())
+            .and_then(|o| self.config.rp_of(o))
+            .unwrap_or(0);
+        self.rp_at(index)
+    }
+
+    /// The relying party with this index (the main one if out of range).
+    pub fn rp_at(&self, index: usize) -> (usize, &Webauthn) {
+        match self.webauthn.get(index) {
+            Some(w) => (index, w),
+            None => (0, &self.webauthn[0]),
+        }
+    }
+
+    /// RP id of the relying party with this index.
+    pub fn rp_id(&self, index: usize) -> &str {
+        self.config
+            .rps
+            .get(index)
+            .map_or(self.config.rp_id.as_str(), |rp| rp.id.as_str())
     }
 
     /// The database connection (held only for short statements).
@@ -331,6 +416,8 @@ pub fn router(state: AppState) -> Router {
         .route("/recovery-code", post(auth::new_recovery_code))
         .route("/logout", post(auth::logout))
         .route("/logout-all", post(auth::logout_all))
+        .route("/move/start", post(moving::move_start))
+        .route("/move/redeem", post(moving::move_redeem))
         .route("/me", get(account::me))
         .route("/me/name", put(account::set_name))
         .route(
