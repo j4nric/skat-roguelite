@@ -5914,6 +5914,24 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   grid-column: 1 / -1;
 }
 
+/* Short phones (375 × 667): the navigation in three columns, so the
+   volume sliders fit without scrolling the menu. */
+@media (max-height: 700px) {
+  .menu-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .menu-grid .btn {
+    padding: 0 3px;
+    font-size: var(--fs-m);
+  }
+
+  .menu-grid > .menu-close:nth-child(odd) {
+    grid-column: auto;
+  }
+}
+
 /* ------------------------------------------------- hints of the Wirt */
 
 /* "Geführter erster Abend": the Wirt's speech bubble hangs fixed below the
@@ -6031,6 +6049,94 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   .hint-text {
     font-size: var(--fs-s);
   }
+}
+
+/* Menu row "Lautstärke": two sliders side by side, each under its name and
+   value. The whole label is the touch target (44 px); the thumb is a pixel
+   block in the accent colour, the track a slate groove. */
+.volumes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.vol {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--touch);
+  cursor: pointer;
+}
+
+.vol-name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 0.96;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vol-name b {
+  color: var(--text);
+  font-weight: normal;
+}
+
+.vol.is-off {
+  opacity: 0.55;
+}
+
+.vol input[type='range'] {
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.vol input[type='range']::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+}
+
+.vol input[type='range']::-moz-range-track {
+  height: 8px;
+  border: 2px solid var(--line);
+  background: var(--panel2);
+}
+
+.vol input[type='range']::-moz-range-progress {
+  height: 8px;
+  background: var(--accent-dark);
+}
+
+.vol input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 22px;
+  margin-top: -9px;
+  border: 2px solid var(--line);
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.vol input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-radius: 0;
+  background: var(--accent);
+}
+
+.vol input[type='range']:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
 }
 
 /* Menu row "Hinweise des Wirts": switch and reset side by side. */

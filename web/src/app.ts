@@ -249,6 +249,9 @@ export class App implements AppCtx {
     mountLive(root);
     trapFocus();
     root.addEventListener('click', (e) => this.actions.onClick(e));
+    // The volume sliders of the menu (./app/menu.ts): live while moved, stored when let go.
+    root.addEventListener('input', (e) => this.menu.onVolume(e, false));
+    root.addEventListener('change', (e) => this.menu.onVolume(e, true));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
     window.addEventListener(
       'pointerdown',

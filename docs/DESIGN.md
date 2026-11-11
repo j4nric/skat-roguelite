@@ -1920,6 +1920,42 @@ Umgesetzt am 10.11.2026. Deutsch ist die Voreinstellung, Englisch die zweite Spr
 - **Formate**: Zahlen und Daten über `Intl` in der Sprache (`1,5` und `1.5`, `37,5 %` und `37.5%`), Anführungszeichen „…“ und “…”.
 - **Prüfung**: Der Rauchtest läuft deutsch; `SMOKE_ONLY=english` (und am Ende des vollen Laufs) spielt Start, ein ganzes Spiel, Kartenbelohnung, Route, Tresen, Menü mit Sprachwechsel, Regelkarte, Glossar, eine Begegnung und die Einführung auf Englisch, ohne deutsche Oberflächenwörter, abgeschnittene Texte oder seitliches Scrollen.
 
+### 14.7 Klänge und Musik
+
+Klänge seit M6, erweitert am 11.11.2026 (Klänge v2). Alle Klänge sind selbst synthetisiert (`web/scripts/make-sounds.mjs`, Rauschen und Teiltöne aus einem festen Seed, ffmpeg mit libmp3lame), als kleine MP3s im Repo, ohne fremde Aufnahmen (`web/LICENSES.md`). Die Musik sind eigene Chiptune-Schleifen für Tisch, Tresen und Boss (`web/src/songs.ts`, `web/src/music.ts`). Klänge reagieren nur auf Ereignisse und Sichten des Kerns; die Web-App rechnet dafür nichts aus.
+
+**Wann was klingt** (`web/src/audio.ts`, Name der Datei in Klammern):
+
+| Moment | Klang |
+|---|---|
+| Knopf gedrückt (nicht Karten) | leiser Holz-Tipp (`tap`) |
+| Neues Spiel gegeben, Einmischen, Neu geben | Mischen mit Aufstoßen (`shuffle`), dann Karten beim Austeilen (`card`) |
+| Spruch eines Stammgasts (Sprechblase) | leises Brummen „hm“, links tiefer als rechts (`quip`, `playQuipSound(seat)`) |
+| Skat aufnehmen | zwei Karten vom Filz geschoben (`pickup`) |
+| Drücken | zwei gedämpfte Karten auf den Filz (`discard`) |
+| Ansage | Fingerknöchel und Kreidestrich (`declare`); Grand, Null und jede Stufe über Normal (Hand, Schneider, Schwarz, Ouvert): Faust auf den Tisch, die Gläser klirren (`bang`) |
+| Karte gespielt | Karte schnippen (`card`); ein Unter knallt (`slam`, nach dem aufgedruckten Bild, ohne Trumpfregel) |
+| Stich | Stich zusammenschieben (`trick`) |
+| Kontra, Re, Fluch eines Bosses | flache Hand auf den Tisch (`kontra`) |
+| Ergebnis | Klopfen (`knock`), dann bei Schneider die Schere (`snip`), bei Schwarz der Riss (`schwarz`), dann Sieg oder Niederlage (`win`, `lose`); auch wenn die Abrechnung übersprungen wird |
+| Zeile eines Relikts in der Abrechnung | Gläserklirren (`clink`), sonst Kreide-Tick (`tick`) mit steigender Tonhöhe |
+| Kaufen am Tresen, Kartenmaler, Reinigen | Münzen und Kassenglocke (`till`); Verkaufen und Auszahlung: Groschen (`coin`) |
+| Neue Auslage am Tresen | Mischen (`shuffle`) |
+| Relikt, Schnaps oder Hausregel erhalten | Bierdeckel mit kleinem Glanz (`prize`) |
+| Schnaps trinken | Einschenken (`pour`), selbst getrunken danach Kippen und Glas absetzen (`gulp`) |
+| Würfel (Spelunke) | Würfelbecher und Wurf (`dice`), dann Groschen oder Niederlage |
+| Weg auf der Karte gewählt, Wege neu | Kreide (`chalk`) |
+| Boss-Kneipe (Bogen des Bosses) | Kneipentür knarrt und fällt zu (`boss`) |
+| Freischaltung | Thekenglocke, zweimal steigend (`unlock`) |
+| Die lange Nacht beginnt | Kirchturmglocke (`night`) |
+| Run gewonnen oder verloren | Sieg oder Niederlage (`win`, `lose`), einmal je Kette |
+
+**Mischung.** Jeder Klang hat eine Grundlautstärke und eine Stufe: Alltag (Karte, Tipp, Tick, Brummen), auffällig (Groschen, Klirren, Ansage, Kontra) und groß (große Ansage, Freischaltung, Boss, Nacht, Sieg, Niederlage). Zwei große Klänge laufen nie gleichzeitig: der spätere wartet, bis der erste weitgehend verklungen ist (höchstens 2,5 s, sonst entfällt er). Unter einem großen Klang werden auffällige auf die Hälfte und alltägliche auf 70 % gesenkt, die Musik auf die Hälfte. Derselbe Klang zweimal binnen 70 ms (alltägliche: 25 ms) erklingt einmal; zwei auffällige binnen 90 ms: der zweite leiser. Wiederkehrende Klänge streuen leicht in Tonhöhe und Lautstärke. Ein sanfter Begrenzer verhindert Übersteuern.
+
+**Einstellungen.** Im Menü unter „Ton“ Klänge und Musik getrennt an und aus, darunter „Lautstärke“ mit je einem Schieber (0 bis 100 % in Fünferschritten, Voreinstellung 80 %, das ist die entworfene Lautstärke; die Kurve ist quadratisch). Gespeichert in `stammtisch.settings` (`soundVolume`, `musicVolume`); ältere Einstellungen ohne die Werte bekommen 80 %. Ton erst nach der ersten Berührung (Browserregel), angehalten, solange die Seite verborgen ist; jeder Fehler bleibt still. Weniger Bewegung schaltet keine Klänge ab.
+
+**Prüfung.** `SMOKE_ONLY=sounds` (und im vollen Lauf): Ein Init-Skript legt `window.__soundLog` an, `audio.ts` trägt dann jeden angefragten Klang mit Ergebnis der Mischung ein. Ein Durchlauf bei 390 × 844 (weniger Bewegung) und 1280 × 800 prüft die Klänge oben, dass zwei große Klänge nie binnen 300 ms starten, und die Schieber auf Deutsch und Englisch.
+
 ---
 
 ## 15. Roadmap

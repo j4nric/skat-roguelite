@@ -1101,6 +1101,10 @@ export const en: Strings = {
     music: 'Music',
     toggleOn: '{name}: on',
     toggleOff: '{name}: off',
+    /** Volume sliders of sound effects and music (0 to 100 %). */
+    volume: 'Volume',
+    volumeOf: '{name} volume',
+    volumeValue: '{n}%',
     overview: 'Chalkboard',
     credits: 'Credits',
     thinking: 'Thinking',
@@ -1523,7 +1527,7 @@ export const en: Strings = {
         license: 'Part of the project',
       },
       {
-        what: 'Sounds (cards, trick, chalk, glasses, Groschen, knocking, accordion)',
+        what: 'Sounds (cards, shuffling, trick, chalk, glasses, Groschen, till, dice, Schnaps, knocking, bells, pub door, humming, accordion)',
         who: 'Synthesised for this project (scripts/make-sounds.mjs)',
         license: 'Part of the project',
       },

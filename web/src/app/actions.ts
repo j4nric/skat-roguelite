@@ -3,6 +3,7 @@
 // save code, …). The names in the DOM are the keys; scripts/check-actions.mjs
 // checks that every name the templates use has a handler here.
 
+import { sound } from '../audio';
 import type { RunView } from '../types';
 import { spring } from '../ui/juice';
 import type { Actions, AppCtx, RunActions, Tap } from './context';
@@ -57,6 +58,8 @@ export class ActionTable {
       return;
     }
     if (el instanceof HTMLButtonElement && el.disabled) return;
+    // A quiet tap for buttons; cards make their own sound when they move.
+    if (el instanceof HTMLButtonElement && !el.matches('.card, [data-drag]') && action !== 'sound') sound.play('tap');
     const tap: Tap = { el, action, num: (key) => Number(el.dataset[key] ?? '-1') };
     const any = this.any.get(action);
     if (any) {

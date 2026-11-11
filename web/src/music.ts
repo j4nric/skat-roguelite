@@ -9,7 +9,7 @@
 // while the page is hidden. The chosen loop is mirrored in
 // `<html data-music="table|shop|boss|off">` for the smoke test.
 
-import { audioContext, audioUnlocked, onAudioUnlock, onPageVisibility } from './audio';
+import { audioContext, audioUnlocked, MUSIC_DUCK, onAudioUnlock, onBigSound, onPageVisibility, volumeGain } from './audio';
 import { SONGS, type Instrument, type MusicId, type Part, type Song, type Wave } from './songs';
 
 export type { MusicId } from './songs';
@@ -395,6 +395,9 @@ class Music {
   private scene: MusicId | null = null;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** Between the master and the speakers: steps back while a big sound effect sounds. */
+  private duck: GainNode | null = null;
+  private volume = 80;
   private current: LoopPlayer | null = null;
   private fading: LoopPlayer[] = [];
   private timer: number | undefined;
@@ -407,6 +410,7 @@ class Music {
       if (problems.length) console.warn('music notation:', problems);
     }
     onAudioUnlock(() => this.update());
+    onBigSound((startIn, seconds) => this.duckFor(startIn, seconds));
     onPageVisibility((hidden) => {
       this.hidden = hidden;
       if (hidden) this.stopTimer();
@@ -419,6 +423,36 @@ class Music {
     if (this.enabled === on) return;
     this.enabled = on;
     this.update();
+  }
+
+  /** The player's volume for the music, 0 to 100. */
+  setVolume(percent: number): void {
+    this.volume = percent;
+    try {
+      if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.level(), this.ctx.currentTime, 0.05);
+    } catch {
+      // Ignore.
+    }
+  }
+
+  private level(): number {
+    return MUSIC_VOLUME * volumeGain(this.volume);
+  }
+
+  /** A big sound effect (a win, an unlock, the boss): the music steps back under it and comes up again. */
+  private duckFor(startIn: number, seconds: number): void {
+    const ctx = this.ctx;
+    const g = this.duck?.gain;
+    if (!ctx || !g || !this.current) return;
+    try {
+      const at = ctx.currentTime + startIn;
+      g.cancelScheduledValues(ctx.currentTime);
+      g.setValueAtTime(g.value, ctx.currentTime);
+      g.setTargetAtTime(MUSIC_DUCK, at, 0.04);
+      g.setTargetAtTime(1, at + seconds, 0.35);
+    } catch {
+      // Ignore.
+    }
   }
 
   /** The loop the screen asks for; null for none. */
@@ -451,8 +485,10 @@ class Music {
     if (ctx !== this.ctx) {
       this.ctx = ctx;
       this.master = ctx.createGain();
-      this.master.gain.value = MUSIC_VOLUME;
-      this.master.connect(ctx.destination);
+      this.master.gain.value = this.level();
+      this.duck = ctx.createGain();
+      this.duck.gain.value = 1;
+      this.master.connect(this.duck).connect(ctx.destination);
     }
     return ctx;
   }

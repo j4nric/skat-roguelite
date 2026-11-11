@@ -2,6 +2,7 @@
 // shared, daily or replayed seed), resuming a stored one, the long night,
 // and the Einführung (DESIGN 16.1), whose run is never saved nor counted.
 
+import { sound } from '../audio';
 import { CoreRun, loadCatalog, loadCore, weekInfo } from '../core';
 import { de, setCatalog } from '../i18n';
 import { clearShareHash, dailySeed, isSeedText, parseShareHash } from '../seed';
@@ -268,6 +269,7 @@ export class Lifecycle {
     this.ctx.ui.overlay = null;
     resetTableChoices(this.ctx.ui);
     if (dealt && view.game) {
+      sound.play('shuffle');
       reshuffle();
       this.ctx.afterRender.push(() => this.flights.dealEffect());
     }

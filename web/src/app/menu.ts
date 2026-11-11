@@ -4,9 +4,9 @@
 
 import { sound } from '../audio';
 import { buzz, setVibration } from '../haptics';
-import { localize, setLanguage, type Lang } from '../i18n';
+import { de, localize, setLanguage, t, type Lang } from '../i18n';
 import { music } from '../music';
-import { saveSettings, TEMPO_FACTOR, TEXT_SIZES, type Tempo, type TextSize } from '../settings';
+import { saveSettings, TEMPO_FACTOR, TEXT_SIZES, volumeOf, type Tempo, type TextSize } from '../settings';
 import { setColorBlindEmblems } from '../ui/emblems';
 import { setTempo } from '../ui/fx';
 import type { UiState } from '../ui/state';
@@ -24,7 +24,9 @@ export class Menu {
     const settings = this.ctx.ui.settings;
     setTempo(TEMPO_FACTOR[settings.tempo]);
     sound.setEnabled(settings.sound);
+    sound.setVolume(settings.soundVolume);
     music.setEnabled(settings.music);
+    music.setVolume(settings.musicVolume);
     // Pure presentation: style.css tints the cards' paper under this flag.
     document.documentElement.toggleAttribute('data-suit-tint', settings.suitTint);
     // Display aids, also pure CSS: suit letters and shapes, the type scale.
@@ -42,6 +44,39 @@ export class Menu {
     this.applySettings();
     this.layer.markDirty();
     this.ctx.render();
+  }
+
+  /** When the last preview of the effects' volume sounded (ms). */
+  private lastPreview = 0;
+
+  /**
+   * A volume slider moved (`input`) or let go (`change`): the volume changes
+   * at once, its value beside the name follows; let go, it is stored. No
+   * new drawing of the menu, so the slider keeps the pointer and the focus.
+   * Moving the effects' slider sounds a card now and then, to hear the level.
+   */
+  onVolume(e: Event, done: boolean): void {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement) || !el.dataset.volume) return;
+    const isMusic = el.dataset.volume === 'music';
+    const value = volumeOf(Number(el.value));
+    const text = t(de.menu.volumeValue, { n: value });
+    el.setAttribute('aria-valuetext', text);
+    const shown = el.closest('.vol')?.querySelector('[data-vol-value]');
+    if (shown) shown.textContent = text;
+    if (isMusic) music.setVolume(value);
+    else sound.setVolume(value);
+    if (!isMusic) {
+      const now = performance.now();
+      if (done || now - this.lastPreview > 140) {
+        this.lastPreview = now;
+        sound.play(done ? 'clink' : 'card');
+      }
+    }
+    if (!done) return;
+    const ui = this.ctx.ui;
+    ui.settings = { ...ui.settings, ...(isMusic ? { musicVolume: value } : { soundVolume: value }) };
+    saveSettings(ui.settings);
   }
 
   /**

@@ -9,6 +9,7 @@
 // quiet for a while, counted in tricks; the hello of a new series always
 // gets through.
 
+import { playQuipSound } from '../audio';
 import { TEMPO_FACTOR } from '../settings';
 import type { CompletedTrick, Declaration, QuipSituation, RunView, ScoreBreakdown, Seat } from '../types';
 import { quipBubble } from '../ui/guests';
@@ -154,6 +155,7 @@ export class TableTalk {
     if (!text || this.guidance.hint) return false;
     const ui = this.ctx.ui;
     ui.quip = { seat, text };
+    playQuipSound(seat);
     this.quiet = 0;
     window.clearTimeout(this.timer);
     const ms = Math.max(QUIP_MIN_MS, QUIP_MS * TEMPO_FACTOR[ui.settings.tempo]);
