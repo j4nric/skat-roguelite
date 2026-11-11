@@ -12,7 +12,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
-Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch, Englisch als zweite Sprache (ADR 0022). Zielgerät: Handy hochkant zuerst.
 
 ---
 
@@ -1836,6 +1836,16 @@ Umgesetzt am 08.11.2026. Der Kern läuft als WebAssembly im Browser und der Spie
 - **Offline**: Das Spiel läuft vollständig. Angemeldet zeigt das Konto „offline“; was sich geändert hat, geht hoch, sobald der Browser wieder online ist oder die App in den Vordergrund kommt. Die Tafel des Tages zeigt einen kurzen Hinweis statt der Liste, die Knöpfe des Kontos (Anmelden, Anlegen, Code) sind mit Hinweis gesperrt.
 - **Entwicklung**: `vite dev` hat keinen Worker, nur `vite build` und `vite preview`. Caddy liefert `/sw.js` mit `Cache-Control: no-cache` aus.
 
+### 14.6 Zwei Sprachen (ADR 0022)
+
+Umgesetzt am 10.11.2026. Deutsch ist die Voreinstellung, Englisch die zweite Sprache; das deutsche Blatt bleibt in beiden.
+
+- **Texte**: `web/src/i18n/de.ts` und `web/src/i18n/en.ts` mit denselben Schlüsseln. `en.ts` ist gegen die Form von `de.ts` getypt, `web/scripts/check-i18n.mjs` prüft dazu offene Tabellen, Platzhalter und Listenlängen. Im Web-Code heißt die aktive Sprache weiter `de` (eine lebende Bindung in `web/src/i18n/index.ts`, die `setLanguage` umstellt).
+- **Wahl**: beim ersten Start nach der Browsersprache (deutsch nur für deutsche Browser), dann im Menü „Sprache / Language“, gespeichert unter `stammtisch.lang`. Der Wechsel zeichnet alles neu, ohne Neuladen. Englisch liegt in einem eigenen Bundle-Stück und wird nur geladen, wenn es gewählt ist.
+- **Inhalte**: Der Kern liefert weiter die deutschen Namen und Texte aus `core/content/*.ron`. `web/src/i18n/localize.ts` ersetzt sie in jeder Sicht nach Content-Id durch die englischen aus `web/src/i18n/en-content.ts` (Relikte, Zinken mit eingesetztem Wert, Schnäpse, Bosse und ihre Spieler, Begegnungen und ihre Möglichkeiten, Freischaltungen, Mali, Verschärfungen, Rückseiten, Stammgäste mit ihren Sprüchen, Stadtteile). Kneipennamen bleiben deutsch.
+- **Formate**: Zahlen und Daten über `Intl` in der Sprache (`1,5` und `1.5`, `37,5 %` und `37.5%`), Anführungszeichen „…“ und “…”.
+- **Prüfung**: Der Rauchtest läuft deutsch; `SMOKE_ONLY=english` (und am Ende des vollen Laufs) spielt Start, ein ganzes Spiel, Kartenbelohnung, Route, Tresen, Menü mit Sprachwechsel, Regelkarte, Glossar, eine Begegnung und die Einführung auf Englisch, ohne deutsche Oberflächenwörter, abgeschnittene Texte oder seitliches Scrollen.
+
 ---
 
 ## 15. Roadmap
@@ -1875,7 +1885,7 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Frontend | Web-App mit Rust-Kern als WebAssembly statt Godot, ADR 0009. |
 | Kartenbild | Deutsches Blatt, ADR 0010. |
 | Zielgerät | Handy hochkant zuerst. |
-| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. |
+| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. Seit 10.11.2026 (ADR 0022): Deutsch als Voreinstellung, Englisch als zweite Sprache, Texte aus `de.ts` und `en.ts`. |
 | Assets | CC0, CC-BY und SIL OFL, mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
 | Schrift | VT323 (S4 aus der Schriftauswahl), SIL OFL |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |

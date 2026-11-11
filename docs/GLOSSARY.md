@@ -503,3 +503,87 @@ Nur für Spieltexte und Grafik. Code, Tests und Design-Dokument bleiben bei den 
 | `Queen` | Oberin |
 | `Jack` | Unter |
 | `Nine`, `Eight`, `Seven` | Neun, Acht, Sieben |
+
+## Englische Anzeige (ADR 0022)
+
+Verbindlich für `web/src/i18n/en.ts` und `web/src/i18n/en-content.ts`. Das deutsche Blatt bleibt auch auf Englisch. Wo die englische Skat-Literatur (International Skat Order, ISPA) deutsche Wörter behält, behalten wir sie auch; die Regelkarte erklärt sie unter „Skat words“. Britisches Englisch, Ton der Kneipe: freundlich, nicht wörtlich.
+
+### Karten und Spiel
+
+| Deutsch (Anzeige) | Code | Englisch (Anzeige) |
+|---|---|---|
+| Eichel, Grün, Rot, Schellen | `Clubs`, `Spades`, `Hearts`, `Diamonds` | Acorns, Leaves, Hearts, Bells |
+| Unter, Oberin, König, Daus | `Jack`, `Queen`, `King`, `Ace` | Unter, Ober, King, Ace (Eckzeichen U, O, K, A) |
+| Sieben bis Zehn | `Seven` … `Ten` | Seven … Ten |
+| Eichel-Unter | `CJ` | Unter of Acorns (`{rank} of {suit}`) |
+| Blanko | `CardKind::Blank` | Blank |
+| Augen | `card_points` | pips |
+| Stich | `trick` | trick |
+| Trumpf | `trump` | trump |
+| Bedienen | `follow` | follow suit |
+| Skat, Hand, Grand, Null, Ramsch, Schneider, Schwarz, Ouvert, Kontra, Re, Bock | – | unverändert |
+| Null Hand, Null Ouvert, Null Ouvert Hand | `NullRisk` | unverändert |
+| Schneider angesagt, Schwarz angesagt | `SchneiderDeclared`, `SchwarzDeclared` | Schneider announced, Schwarz announced |
+| Spitzen; mit, ohne | `Matadors` | matadors; with, without |
+| Grundwert | `base_value` | base value |
+| Stufen (Gewinnstufen) | `levels` | levels |
+| Faktor | `multiplier` | factor |
+| Spielwert | `value` | game value |
+| Ansage, ansagen | `Declaration`, `Declare` | declaration, declare |
+| Drücken | `Discard` | discard |
+| Einmischen | `Redeal` | redeal |
+| Kurzschluss | `ShortCircuit` | short circuit |
+| Jungfrau (Ramsch) | `Virgin` | Virgin |
+| Vorhand, Mittelhand, Hinterhand | `Forehand`, `Middlehand`, `Rearhand` | Forehand, Middlehand, Rearhand |
+| Alleinspieler | `Declarer` | declarer |
+| Reizen | – | bidding |
+
+### Roguelike
+
+| Deutsch (Anzeige) | Code | Englisch (Anzeige) |
+|---|---|---|
+| Konto (Punkte der Kneipe) | `score` | score (points) |
+| Konto (Anmeldung, ADR 0021) | `account` | account |
+| Zielwert, Ziel | `target` | target |
+| Kneipe, Spelunke, Boss-Kneipe, Festsaal | `pub`, `spelunke` | pub, dive, boss pub, function room |
+| Stadtteil | `section` | district |
+| Kneipentour, Tournee | `tour` | pub crawl, the crawl |
+| Tresen | `Shop` | bar |
+| Begegnung, Werkstatt, Rast, Fundgroschen, Kiosk, Würfelbude | `StopCategory` | encounter, workshop, rest, lucky find, kiosk, dice stall |
+| Der Wirt | `landlord` | the landlord |
+| Stammgast | `guest` | regular |
+| Relikt, Hausregel, Figur | `Relic`, `HouseRule`, `Regular` | relic, house rule, local |
+| Bierdeckel | – | beer mat |
+| Schnaps, Schnäpse | `Consumable` (`Schnapps`) | Schnapps |
+| Zinke, Zinken, zinken | `CardMod`, `zinken` | mark, marks, mark a card |
+| Marke (Gutschein) | `ModKind::Voucher` | stamp |
+| Fluch | `curse` | curse |
+| Spezialkarte; Untot, Wandelkarte, Doppelgänger | `ModKind::Special` | special card; Undead, Wild Card, Doppelgänger |
+| Auslage, Kartenmaler, Karte reinigen | `card_offers`, `painter`, `cleanse` | display, card painter, clean a card |
+| Neu auslosen | `reroll` | redraw |
+| Schnäppchen, Hehlerware | `bargain`, `fence` | bargain, hot goods |
+| Groschen | `coins` | Groschen (Gr.) |
+| Malus | `Malus` | handicap |
+| Einsatz | `stake` | stake |
+| Die lange Nacht, Verschärfung | `night`, `Verschaerfung` | the Long Night, twist |
+| Vereinsbuch, Kreidetafel, Regelkarte, Glossar, Abspann | – | Club Book, chalkboard, rules card, glossary, credits |
+| Tages-Seed, Tafel des Tages, Bestenliste | `daily` | daily seed, today’s board, leaderboard |
+| Einführung | `tutorial` | introduction |
+
+### Namen (Auswahl)
+
+Wortspiele, wo eines trägt, sonst übertragen. Der Titel „Stammtisch“ bleibt. Kneipennamen und die Vornamen der Stammgäste bleiben deutsch; Stadtteile werden übersetzt (Altstadt: Old Town, Hafen: Harbour, Bahnhofsviertel: Station Quarter). Die vollständige Liste steht in `web/src/i18n/en-content.ts`.
+
+| Deutsch | Id | Englisch |
+|---|---|---|
+| Der Alleinspieler, Der Nullspieler, Der Drückeberger, Die Schneiderin, Bruderherz | `Declarer`, `NullPlayer`, `Shirker`, `Tailoress`, `HeartBrother` | The Declarer, The Null Player, The Shirker, The Tailoress, Brother Heart |
+| Der Zähler, Der Kiebitz, Der Wirt | `card_counter`, `kibitzer`, `landlord` | The Counter, The Kibitzer, The Landlord |
+| Deckel anschreiben, Kleinvieh, Ein Auge zudrücken, Nullachtfuffzehn | `slate`, `every_bit_counts`, `blind_eye`, `null_eight_fifteen` | On the Slate, Every Little Helps, Turn a Blind Eye, Run of the Mill |
+| Schwarze Null, Unterschlupf, Hosen runter, Die Großkopferten, Stammfarbe | `black_zero`, `safe_haven`, `cards_on_table`, `big_shots`, `home_suit` | In the Black, Under Cover, Trousers Down, The Bigwigs, The Usual |
+| Feierabend, Sieben auf einen Streich, Kehraus, Lumpensammler | `closing_time`, `seven_at_one_blow`, `sweep_out`, `rag_collector` | Early Doors, Seven at One Blow, Last Dance, Rag-and-Bone Man |
+| Aufdruck, Winkel, Siegel, Kerbe, Eselsohr | `points`, `rank`, `trump_bonus`, `last_trick`, `first_trick` | Overprint, Bend, Seal, Notch, Dog-Ear |
+| Pfandmarke, Totenmarke, Narrenmarke | `voucher_coins`, `voucher_undead`, `voucher_wild` | Deposit Stamp, Death Stamp, Fool’s Stamp |
+| Kurzer, Doppelkorn, Kräuter, Wegbier, Klarer, Absacker, Fusel | `shot`, `double_grain`, `herbal`, `road_beer`, `clear_spirit`, `nightcap`, `rotgut` | Wee Dram, Double Korn, Herbal Bitters, One for the Road, Clear Spirit, Nightcap, Rotgut |
+| Der Schieber und Die Hehlerin, Die Oma und Der Opa, Der Ramscher, Der Schwarze Peter, Der Alte | `the_pusher`, `grandma`, `ramscher`, `black_peter`, `the_old_man` | The Fixer and The Fence, Grandma and Grandpa, Mr Ramsch, Black Peter, The Old Man |
+| Letzte Runde, Umgekipptes Bier, Der Wirt spendiert | `last_round`, `spilled_beer`, `landlord_treat` | Last Orders, Spilt Pint, On the House |
+| Schnapsverbot, Klebrige Karten | `schnapps_locked`, `cursed_cards` | Dry Bar, Sticky Cards |
