@@ -480,6 +480,10 @@ export class ScoreBoard {
     this.finished = true;
     this.q('.score-sheet')?.classList.remove('is-running');
     const actions = this.q('.score-actions');
-    if (actions) actions.innerHTML = continueButton();
+    if (!actions) return;
+    // The skip button goes; if it had the focus, "Weiter" takes it (keyboard, screen readers).
+    const focused = actions.contains(document.activeElement);
+    actions.innerHTML = continueButton();
+    if (focused || document.activeElement === document.body) actions.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
   }
 }
