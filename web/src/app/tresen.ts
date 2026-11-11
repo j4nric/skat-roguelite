@@ -38,9 +38,8 @@ export class Tresen {
       const service: 'painter' | 'cleanse' = action === 'painter' ? 'painter' : 'cleanse';
       const s = service === 'painter' ? view.shop?.painter : view.shop?.cleanse;
       if (!s) return;
-      const reasons = this.mods.refusals(view, s.targets, (id) => (service === 'painter' ? { HirePainter: id } : { CleanseCard: id }));
-      ui.overlay = { kind: 'zinken-card', service, reasons };
-      render();
+      const ask = { targets: s.targets, action: (id: number): RunAction => (service === 'painter' ? { HirePainter: id } : { CleanseCard: id }) };
+      void this.mods.openPicker(view, ask, (reasons) => ({ kind: 'zinken-card', service, reasons }));
     };
     const zinke = ({ el, num }: Tap, view: RunView): void => {
       // Zinken (DESIGN 8.6): the card is fixed; like the card reward (05.11.2026) the
@@ -48,7 +47,7 @@ export class Tresen {
       const offer = view.shop?.card_offers?.find((o) => o?.slot === num('slot'));
       if (!offer || !offer.can_buy) return;
       this.flights.noteStamp(el.closest('.zinke')?.querySelector('.zinke-card') ?? null);
-      this.mods.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null, 'apply', { pair: true, price: offer.price });
+      void this.mods.applyMod(view, { BuyCardOffer: offer.slot }, offer.card.id, offer.card_mod.id, false, null, 'apply', { pair: true, price: offer.price });
     };
     return {
       // The route (DESIGN 5.0).
@@ -83,7 +82,7 @@ export class Tresen {
         const o = view.card_reward?.offers.find((x) => x.index === num('offer'));
         if (!o || !o.can_take) return;
         this.flights.noteStamp(el.querySelector('.card'));
-        this.mods.applyMod(view, { TakeCardReward: { offer: o.index } }, o.card.id, o.card_mod.id, false, null, 'apply', { pair: true });
+        void this.mods.applyMod(view, { TakeCardReward: { offer: o.index } }, o.card.id, o.card_mod.id, false, null, 'apply', { pair: true });
       },
       'card-reward-skip': () => {
         ui.overlay = null;
@@ -99,9 +98,8 @@ export class Tresen {
           render();
         } else if (option.target === 'Card') {
           const marks = option.effects.some((e) => e.card_mod);
-          const reasons = marks ? this.mods.refusals(view, option.targets, (id) => ({ ChooseEncounter: { option: option.index, target: id } })) : {};
-          ui.overlay = { kind: 'encounter-target', option: option.index, reasons };
-          render();
+          const ask = marks ? { targets: option.targets, action: (id: number): RunAction => ({ ChooseEncounter: { option: option.index, target: id } }) } : null;
+          void this.mods.openPicker(view, ask, (reasons) => ({ kind: 'encounter-target', option: option.index, reasons }));
         } else if (option.target === 'Relic') {
           ui.overlay = { kind: 'encounter-relic', option: option.index };
           render();
@@ -126,7 +124,7 @@ export class Tresen {
           return;
         }
         // The card before and after, then "Anbringen" (playtest 04.11.2026).
-        this.mods.applyMod(view, action, num('id'), o.marke ?? chosen?.card_mod?.id ?? null, false, o, 'apply');
+        void this.mods.applyMod(view, action, num('id'), o.marke ?? chosen?.card_mod?.id ?? null, false, o, 'apply');
       },
       'encounter-marke': ({ el }, view) => {
         const o = ui.overlay;
@@ -136,9 +134,8 @@ export class Tresen {
         if (!option || !marke) return;
         if (option.target === 'Card') {
           // Then the card picker, with the cards this Marke may go on.
-          const reasons = this.mods.refusals(view, option.marken?.find((m) => m.card_mod.id === marke)?.targets ?? [], (id) => ({ ChooseEncounter: { option: option.index, target: id, marke } }));
-          ui.overlay = { kind: 'encounter-target', option: option.index, reasons, marke };
-          render();
+          const ask = { targets: option.marken?.find((m) => m.card_mod.id === marke)?.targets ?? [], action: (id: number): RunAction => ({ ChooseEncounter: { option: option.index, target: id, marke } }) };
+          void this.mods.openPicker(view, ask, (reasons) => ({ kind: 'encounter-target', option: option.index, reasons, marke }));
         } else {
           act({ ChooseEncounter: { option: option.index, target: null, marke } });
         }
@@ -193,7 +190,7 @@ export class Tresen {
         if (o.service === 'painter') act({ HirePainter: num('id') });
         else {
           this.flights.noteStamp(el);
-          this.mods.applyMod(view, { CleanseCard: num('id') }, num('id'), null, false, o, 'cleanse');
+          void this.mods.applyMod(view, { CleanseCard: num('id') }, num('id'), null, false, o, 'cleanse');
         }
       },
       'paint': ({ el, num }, view) => {
@@ -201,7 +198,7 @@ export class Tresen {
         const option = painter?.options.find((p) => p.index === num('index'));
         if (!painter || !option) return;
         this.flights.noteStamp(el.querySelector('.card'));
-        this.mods.applyMod(view, { ChoosePaint: option.index }, painter.card.id, option.card_mod.id, false, { kind: 'painter' });
+        void this.mods.applyMod(view, { ChoosePaint: option.index }, painter.card.id, option.card_mod.id, false, { kind: 'painter' });
       },
       'schnapps-swap': ({ num }, view) => {
         if (view.schnapps_reward) act({ ChooseSchnappsReward: { give_up: num('slot') } });

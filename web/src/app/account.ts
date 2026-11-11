@@ -48,7 +48,7 @@ export class AccountFlow {
     private readonly ctx: AppCtx,
     private readonly layer: Layer,
   ) {
-    this.sync = new Sync({ readable: (keys) => describeKeys(keys) !== null, freshMeta: (meta) => isFreshMeta(meta), changed: () => this.accountChanged() });
+    this.sync = new Sync({ readable: async (keys) => (await describeKeys(keys)) !== null, freshMeta: (meta) => isFreshMeta(meta), changed: () => this.accountChanged() });
     ctx.ui.account.user = this.sync.user;
     ctx.ui.account.status = this.sync.status;
   }
@@ -261,7 +261,7 @@ export class AccountFlow {
       return;
     }
     if (synced === 'conflict') {
-      this.openConflict();
+      void this.openConflict();
       return;
     }
     this.openAccount(t(de.account.signedInAs, { name: res.user.name ?? de.account.noName }));
@@ -285,7 +285,7 @@ export class AccountFlow {
       return;
     }
     if (pending === 'conflict' && this.sync.conflict) {
-      this.openConflict();
+      void this.openConflict();
       return;
     }
     this.openAccount();
@@ -395,13 +395,16 @@ export class AccountFlow {
   }
 
   /** Played on two devices: show both states and let the player choose. */
-  openConflict(): void {
+  async openConflict(): Promise<void> {
     const c = this.sync.conflict;
     if (!c) return;
+    const [here, server] = await Promise.all([describeKeys(c.localKeys), describeKeys(c.serverKeys)]);
+    // Settled meanwhile (another device, a choice): nothing to ask.
+    if (this.sync.conflict !== c) return;
     this.ctx.ui.overlay = {
       kind: 'sync-conflict',
-      here: { at: c.localAt, lines: describeKeys(c.localKeys) ?? [] },
-      server: { at: c.server.updatedAt, lines: describeKeys(c.serverKeys) ?? [] },
+      here: { at: c.localAt, lines: here ?? [] },
+      server: { at: c.server.updatedAt, lines: server ?? [] },
     };
     this.ctx.render();
   }
@@ -454,7 +457,7 @@ export class AccountFlow {
       'account-delete-go': () => void this.deleteAccountNow(),
       'sync-conflict': () => {
         if (ui.busy) return;
-        this.openConflict();
+        void this.openConflict();
       },
       'sync-keep-here': () => void this.keepHere(),
       'sync-keep-server': () => this.keepServer(),

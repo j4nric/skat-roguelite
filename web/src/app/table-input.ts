@@ -87,9 +87,8 @@ export class TableInput {
     if (c.needs_target) {
       // A Schnaps for a deck card: the card picker, as from the info card.
       const marks = consumableMod(c.id);
-      const reasons = marks.mod || marks.random ? this.mods.refusals(view, item.targets, (id) => ({ UseConsumable: { slot: p.slot, target: id } })) : {};
-      ui.overlay = { kind: 'target', slot: p.slot, reasons };
-      this.ctx.render();
+      const ask = marks.mod || marks.random ? { targets: item.targets, action: (id: number): RunAction => ({ UseConsumable: { slot: p.slot, target: id } }) } : null;
+      void this.mods.openPicker(view, ask, (reasons) => ({ kind: 'target', slot: p.slot, reasons }));
       return;
     }
     this.drinkFx.pouring = { id: c.id, kind: p.kind, wash: p.kind === 'Table' ? this.drinkFx.snapshotTable() : [] };
@@ -380,9 +379,8 @@ export class TableInput {
           render();
         } else if (item.consumable.needs_target) {
           const marks = consumableMod(item.consumable.id);
-          const reasons = marks.mod || marks.random ? this.mods.refusals(view, item.targets, (id) => ({ UseConsumable: { slot, target: id } })) : {};
-          ui.overlay = { kind: 'target', slot, reasons };
-          render();
+          const ask = marks.mod || marks.random ? { targets: item.targets, action: (id: number): RunAction => ({ UseConsumable: { slot, target: id } }) } : null;
+          void this.mods.openPicker(view, ask, (reasons) => ({ kind: 'target', slot, reasons }));
         } else {
           act({ UseConsumable: { slot, target: null } });
         }
@@ -394,7 +392,7 @@ export class TableInput {
         const marks = item ? consumableMod(item.consumable.id) : { mod: null, random: false };
         this.flights.noteStamp(el);
         const action: RunAction = { UseConsumable: { slot: o.slot, target: num('id') } };
-        if (marks.mod || marks.random) this.mods.applyMod(view, action, num('id'), marks.mod, marks.random, o, 'apply');
+        if (marks.mod || marks.random) void this.mods.applyMod(view, action, num('id'), marks.mod, marks.random, o, 'apply');
         else act(action);
       },
       'chalk-card': ({ num }) => {

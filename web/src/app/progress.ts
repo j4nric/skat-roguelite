@@ -11,8 +11,12 @@ import type { AccountFlow } from './account';
 import type { AppCtx } from './context';
 
 export class Progress {
-  /** Changed in memory, not stored yet (../playback/steps.ts, persist). */
-  unsaved: { run: CoreRun | null; meta: boolean } = { run: null, meta: false };
+  /**
+   * Changed in memory, not stored yet (../playback/steps.ts, persist): the
+   * run's save text after its last step, and whether the meta state (its
+   * save text kept by CoreMeta) changed.
+   */
+  unsaved: { run: { core: CoreRun; save: string } | null; meta: boolean } = { run: null, meta: false };
   /** Special cards received for the first time in this save, waiting for their explanation sheet. */
   readonly specialQueue: string[] = [];
 
@@ -22,12 +26,12 @@ export class Progress {
   ) {}
 
   /** Load the meta state, or start a new one (keeping an unreadable save aside). */
-  loadMetaState(): void {
+  async loadMetaState(): Promise<void> {
     const ctx = this.ctx;
     const saved = loadMeta();
     if (saved) {
       try {
-        ctx.meta = CoreMeta.load(saved);
+        ctx.meta = await CoreMeta.load(saved);
       } catch (err) {
         console.warn('meta state discarded', err);
         backupMeta(saved);
@@ -35,7 +39,7 @@ export class Progress {
       }
     }
     try {
-      ctx.meta ??= CoreMeta.fresh();
+      ctx.meta ??= await CoreMeta.fresh();
       if (!saved) saveMeta(ctx.meta.save());
       ctx.ui.meta = ctx.meta.view();
     } catch (err) {
@@ -52,11 +56,11 @@ export class Progress {
    * earned. `defer` keeps the new meta state in memory until `persist()`
    * (an opponent's card: stored together with the run, see playSteps).
    */
-  observe(events: RunEvent[] | string, defer = false): string[] {
+  async observe(events: RunEvent[] | string, defer = false): Promise<string[]> {
     const meta = this.ctx.meta;
     if (!meta) return [];
     try {
-      const step = meta.observe(events);
+      const step = await meta.observe(events);
       this.ctx.ui.meta = step.view;
       if (defer) this.unsaved.meta = true;
       else saveMeta(meta.save());
@@ -71,13 +75,14 @@ export class Progress {
 
   /**
    * Store what playSteps kept in memory: the run (if it is still the one
-   * that changed) and the meta state. Also on leaving the page.
+   * that changed) and the meta state. Also on leaving the page: it asks
+   * the core nothing, both save texts are at hand.
    */
   persist(): void {
     const { run, meta } = this.unsaved;
     this.unsaved = { run: null, meta: false };
     try {
-      if (run && run === this.ctx.core) saveRun(run.save());
+      if (run && run.core === this.ctx.core) saveRun(run.save);
       if (meta && this.ctx.meta) saveMeta(this.ctx.meta.save());
     } catch (err) {
       console.warn('state not stored', err);

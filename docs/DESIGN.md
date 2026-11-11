@@ -1810,6 +1810,8 @@ skat-roguelite/
 └── web/             Web-App (TypeScript, Vite): Tisch, Hand, Tresen, Animation, Speichern
 ```
 
+**Kern im Web Worker (ADR 0022).** Im Browser läuft der Kern nicht auf dem Hauptthread, sondern in einem eigenen Worker (`web/src/core.worker.ts`). Die Web-App spricht nur über `web/src/core.ts` mit ihm: Jeder Aufruf ist eine Nachricht mit Id und gibt ein Promise zurück; der Worker beantwortet eine nach der anderen in der Reihenfolge, in der sie kamen. Der Hauptthread behält die letzte Sicht und den letzten Spielstand als Text jedes Runs und des Meta-Zustands, damit Zeichnen und Speichern beim Verlassen der Seite nicht auf den Worker warten. Während ein Gegner denkt (PIMC), laufen Denkblase, Animationen und Eingaben weiter; Eingaben ins Spiel bleiben wie bisher gesperrt, bis die Gegner gespielt haben. Ohne Worker (oder ohne WebAssembly darin) läuft dieselbe Hülle (`web/src/core-engine.ts`) auf dem Hauptthread hinter denselben Promises. Der Worker ist ein eigener Chunk unter `/assets/` und liegt im Cache des Service Workers (14.5).
+
 ### 14.2 Grundsätze
 
 - **Der Kern kennt das Frontend nicht.** Alles im Kern ist reine Logik, ohne Rendering, ohne Zeit, ohne Threads und ohne Dateizugriff zur Laufzeit, damit er als WebAssembly läuft. Web-App und Simulator sind Clients des Kerns.

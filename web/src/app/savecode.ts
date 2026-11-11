@@ -2,7 +2,7 @@
 // checked by the core before anything is replaced.
 
 import { sound } from '../audio';
-import { CoreMeta, CoreRun } from '../core';
+import { describeStored, isFreshMetaState } from '../core';
 import { de, t } from '../i18n';
 import { decodeSave, encodeSave } from '../savecode';
 import { readAllKeys, replaceAllKeys, runAndMetaOf } from '../storage';
@@ -11,16 +11,9 @@ import { copyText, runLine, shareOr } from './consts';
 import type { Actions, AppCtx } from './context';
 
 /** Whether a stored meta state is still the one of a new player (asked of the core). */
-export function isFreshMeta(meta: string): boolean {
+export async function isFreshMeta(meta: string): Promise<boolean> {
   try {
-    const stored = CoreMeta.load(meta);
-    const fresh = CoreMeta.fresh();
-    try {
-      return stored.save() === fresh.save();
-    } finally {
-      stored.meta.free();
-      fresh.meta.free();
-    }
+    return await isFreshMetaState(meta);
   } catch {
     // Unreadable here: treat it as progress, never replace it unasked.
     return false;
@@ -31,39 +24,31 @@ export function isFreshMeta(meta: string): boolean {
  * What a set of stored keys holds, in lines for the player (running run,
  * Vereinsbuch), or null if the core cannot load its run or meta state.
  */
-export function describeKeys(keys: Record<string, string>): string[] | null {
+export async function describeKeys(keys: Record<string, string>): Promise<string[] | null> {
   const { run, meta } = runAndMetaOf(keys);
-  const lines: string[] = [];
+  let views;
   try {
-    if (run) {
-      const core = CoreRun.load(run);
-      try {
-        const view = core.view();
-        lines.push(t(de.save.containsRun, { line: `${runLine(view)} · ${de.end.seed} ${view.seed}` }));
-      } finally {
-        core.dispose();
-      }
-    } else {
-      lines.push(de.save.containsNoRun);
-    }
-    if (meta) {
-      const loaded = CoreMeta.load(meta);
-      try {
-        const view = loaded.view();
-        lines.push(
-          t(de.save.containsBook, {
-            runs: view.stats.runs_finished,
-            done: view.unlocks.filter((u) => u.unlocked).length,
-            total: view.unlocks.length,
-          }),
-        );
-      } finally {
-        loaded.meta.free();
-      }
-    }
+    views = await describeStored(run, meta);
   } catch (err) {
     console.warn('stored state rejected by the core', err);
     return null;
+  }
+  const lines: string[] = [];
+  if (views.run) {
+    const view = views.run;
+    lines.push(t(de.save.containsRun, { line: `${runLine(view)} · ${de.end.seed} ${view.seed}` }));
+  } else {
+    lines.push(de.save.containsNoRun);
+  }
+  if (views.meta) {
+    const view = views.meta;
+    lines.push(
+      t(de.save.containsBook, {
+        runs: view.stats.runs_finished,
+        done: view.unlocks.filter((u) => u.unlocked).length,
+        total: view.unlocks.length,
+      }),
+    );
   }
   return lines;
 }
@@ -164,7 +149,7 @@ export class SaveCodeFlow {
     if (!decoded.ok) return { error: de.save.errors[decoded.error] ?? '' };
     const { run, meta } = runAndMetaOf(decoded.keys);
     if (!run && !meta) return { error: de.save.errors.nothing ?? '' };
-    const lines = describeKeys(decoded.keys);
+    const lines = await describeKeys(decoded.keys);
     if (!lines) return { error: de.save.errors.rejected ?? '' };
     return { keys: decoded.keys, lines };
   }
