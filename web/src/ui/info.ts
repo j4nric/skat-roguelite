@@ -251,6 +251,8 @@ function choiceModel(key: string, view: RunView, arg: string): InfoModel | null 
         art: art(1),
         sections: [{ text: holdsVoucher(game.hand) ? `${de.table.playHandHint} ${de.table.handVoucherHint}` : de.table.playHandHint, status: [] }],
       };
+    case 'ramsch':
+      return { ...base, title: de.table.playRamsch, art: art(3), sections: [{ text: de.table.playRamschHint, status: [] }] };
     case 'pass':
       return {
         ...base,

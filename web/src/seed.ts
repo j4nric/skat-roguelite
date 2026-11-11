@@ -19,6 +19,8 @@ const SLUGS: Record<Character, string> = {
   Shirker: 'drueckeberger',
   Tailoress: 'schneiderin',
   HeartBrother: 'bruderherz',
+  Gambler: 'zocker',
+  RamschAunt: 'ramschtante',
 };
 
 /** URL token of the short evening of old links (ADR 0016: read, never written). */

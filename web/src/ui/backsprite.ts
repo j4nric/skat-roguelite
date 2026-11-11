@@ -353,6 +353,8 @@ const BACKS: Record<BackDesign, BackArt> = {
   shirker: generated('shirker'),
   tailoress: generated('tailoress'),
   heart_brother: generated('heart_brother'),
+  gambler: generated('gambler'),
+  ramsch_aunt: generated('ramsch_aunt'),
   regulars: generated('regulars'),
   black_peter: generated('black_peter'),
   grandma: generated('grandma'),
@@ -360,6 +362,8 @@ const BACKS: Record<BackDesign, BackArt> = {
   ramscher: generated('ramscher'),
   twins: generated('twins'),
   the_old_man: generated('the_old_man'),
+  // The first boss only of the long night (10.11.2026).
+  gravedigger: generated('gravedigger'),
   // The long night (ADR 0020): cosmetic backs earned at its milestones.
   moon: generated('moon'),
   stars: generated('stars'),

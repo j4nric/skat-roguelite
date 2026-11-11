@@ -1312,7 +1312,7 @@ async function expectBacks(page, label, left, right) {
 }
 
 /** Portraits of the boss players (ADR 0017): every boss a pair. */
-const BOSS_FACES = ['the_pusher', 'grandma', 'twins', 'ramscher', 'black_peter', 'the_old_man'].flatMap((b) => [`p-boss-${b}`, `p-boss-${b}-2`]);
+const BOSS_FACES = ['the_pusher', 'grandma', 'twins', 'ramscher', 'black_peter', 'the_old_man', 'gravedigger'].flatMap((b) => [`p-boss-${b}`, `p-boss-${b}-2`]);
 
 /** The names on both opponents' plates, left first. */
 async function oppNames(page) {
@@ -4722,12 +4722,12 @@ async function charactersPass(browser, errors) {
   const text = (await page.textContent('body')) ?? '';
   if (text.includes('passte nicht zu dieser Version')) fail('the old meta save with a removed character was discarded');
   const ids = await page.$$eval('[data-testid="characters"] .char-card', (cards) => cards.map((c) => c.dataset.character));
-  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother') fail(`characters on the start screen: ${ids.join(', ')}`);
-  for (const id of ['Shirker', 'Tailoress']) {
+  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother,Gambler,RamschAunt') fail(`characters on the start screen: ${ids.join(', ')}`);
+  for (const id of ['Shirker', 'Tailoress', 'Gambler', 'RamschAunt']) {
     const card = page.locator(`.char-card.is-locked[data-character="${id}"]`);
     if (!(await card.count())) fail(`${id} is not shown as locked`);
     const cond = (await card.textContent()) ?? '';
-    if (!/Gewinne/.test(cond)) fail(`locked ${id} without his condition: ${cond}`);
+    if (!/Gewinne|Schlage/.test(cond)) fail(`locked ${id} without his condition: ${cond}`);
   }
   if (await page.locator('.char-card.is-locked[data-character="HeartBrother"]').count()) fail('Bruderherz should be unlocked by true_colours');
   await page.click('[data-action="pick-character"][data-character="HeartBrother"]');
@@ -4738,7 +4738,7 @@ async function charactersPass(browser, errors) {
     const row = document.querySelector('[data-testid="characters"]');
     if (row) row.scrollLeft = row.scrollWidth;
   });
-  log('start screen: five characters, old pick of a removed one fell back to the Alleinspieler');
+  log('start screen: seven characters, old pick of a removed one fell back to the Alleinspieler');
   await shoot(page, 'start-characters-new');
   await page.fill('#seed', SEED);
   await page.click('[data-action="new-run"]');
@@ -4749,6 +4749,52 @@ async function charactersPass(browser, errors) {
   log(`Bruderherz plays with his own back (${backs.join(', ')})`);
   await shoot(page, 'heart-brother-table');
   await context.close();
+}
+
+/**
+ * The characters of 10.11.2026 on phone and desktop: Die Ramschtante sees
+ * "Ramsch spielen" before the skat and plays it, Der Zocker sees how often
+ * the skat may still be picked up; both with their own back.
+ */
+async function newCharactersPass(browser, errors) {
+  for (const [label, viewport] of [['phone', PHONE], ['desktop', DESKTOP]]) {
+    const context = await quietContext(browser, { viewport });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="characters"]');
+    await page.evaluate(() => {
+      localStorage.setItem('stammtisch.meta', JSON.stringify({ version: 1, meta: { version: 1, unlocked: ['beat_ramscher', 'big_hand'] } }));
+      localStorage.removeItem('stammtisch.run');
+    });
+    await page.reload();
+    for (const [id, back] of [['RamschAunt', 'ramsch_aunt'], ['Gambler', 'gambler']]) {
+      if (await page.locator(`.char-card.is-locked[data-character="${id}"]`).count()) fail(`${label}: ${id} should be unlocked`);
+      await page.click(`[data-action="pick-character"][data-character="${id}"]`);
+      await page.waitForSelector('[data-testid="char-detail"]');
+      await page.fill('#seed', SEED);
+      await page.click('[data-action="new-run"]');
+      await page.waitForSelector('[data-testid="skat-choice"]');
+      const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
+      if (!backs.includes(`#bk-${back}`)) fail(`${label}: ${id}'s back not shown: ${backs.join(', ')}`);
+      if (id === 'RamschAunt') {
+        await page.waitForSelector('[data-testid="declare-ramsch"]');
+        await shoot(page, `ramsch-aunt-choice-${label}`);
+        await page.click('[data-testid="declare-ramsch"]');
+        await page.waitForFunction(() => !document.querySelector('[data-testid="skat-choice"]'));
+        log(`${label}: the Ramschtante plays a Ramsch from the choice of skat or hand`);
+      } else {
+        await page.waitForSelector('[data-testid="skat-pickups"]');
+        if (await page.locator('[data-testid="declare-ramsch"]').count()) fail(`${label}: the Zocker may not Ramsch`);
+        await shoot(page, `gambler-choice-${label}`);
+        log(`${label}: the Zocker sees how often the skat may be picked up`);
+      }
+      await page.evaluate(() => localStorage.removeItem('stammtisch.run'));
+      await page.goto(base);
+      await page.waitForSelector('[data-testid="characters"]');
+    }
+    await context.close();
+  }
 }
 
 async function routePass(page, label) {
@@ -5675,7 +5721,7 @@ async function run() {
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
-    const portraits = await page.evaluate((faces) => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-dealer', ...faces].filter((id) => !document.getElementById(id)), BOSS_FACES);
+    const portraits = await page.evaluate((faces) => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-char-Gambler', 'p-char-RamschAunt', 'p-dealer', ...faces].filter((id) => !document.getElementById(id)), BOSS_FACES);
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
     // Every Stammgast of the core content has a face drawn in ui/people.ts.
     const looks = guestLooks();
@@ -5960,6 +6006,7 @@ async function run() {
     await zinkenV2Pass(browser, errors, DESKTOP);
     await shortEvening(browser, errors, reducedMotion);
     await charactersPass(browser, errors);
+    await newCharactersPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);

@@ -193,6 +193,64 @@ ${eyes(42, '#7a2e12', 8)}${cheeks(50)}
 <path d="M41 52 C45 50 49 51 50 53 C51 51 55 50 59 52" fill="none" stroke="#7a2e12" stroke-width="2.6" stroke-linecap="round"/>`;
 }
 
+/** Der Zocker: slicked-back hair, a loud checked jacket, open collar with a gold chain, a die between his fingers, a gold tooth in his grin. */
+function gambler(): string {
+  const skin = '#e6b28a';
+  return `${shoulders('#c79a2e', '<path d="M22 84 L78 84 M18 94 L82 94 M34 74 L30 101 M50 78 L50 101 M66 74 L70 101" stroke="#7a5a14" stroke-width="1.6" opacity=".8"/><path d="M38 72 L50 90 L62 72 Z" fill="#f4efe4" stroke="#2b1a0e" stroke-width="1.5"/><path d="M42 76 C46 84 54 84 58 76" fill="none" stroke="#e2b04a" stroke-width="1.8"/><rect x="74" y="66" width="12" height="12" rx="2" fill="#fbf6e9" stroke="#2b1a0e" stroke-width="1.5" transform="rotate(14 80 72)"/><circle cx="77" cy="69" r="1.3" fill="#2b1a0e"/><circle cx="80" cy="72" r="1.3" fill="#2b1a0e"/><circle cx="83" cy="75" r="1.3" fill="#2b1a0e"/><ellipse cx="80" cy="82" rx="6" ry="4" fill="${skin}" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 18, 22, 45)}
+<path d="M31 40 C29 22 40 16 51 16 C63 16 71 22 69 40 C66 30 62 26 56 25 C48 24 38 28 31 40 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M38 24 C46 19 58 19 64 24 M42 28 C50 23 58 24 63 28" fill="none" stroke="#4a4642" stroke-width="1.6"/>
+${eyes(45, OUT, 8)}
+<path d="M53 37 L64 34" stroke="${OUT}" stroke-width="2.6" stroke-linecap="round"/>
+<path d="M41 56 C45 61 55 61 60 55" fill="#fff" stroke="${OUT}" stroke-width="1.6" stroke-linecap="round"/>
+<rect x="52" y="56.5" width="3" height="2.6" fill="#e2b04a"/>
+<path d="M33 52 C35 60 40 64 44 65 M67 52 C65 60 60 64 56 65" fill="none" stroke="#6d5a46" stroke-width="3" stroke-dasharray="0.8 2" opacity=".5"/>`;
+}
+
+/** Die Ramschtante: auburn perm with two pink curlers, cat-eye glasses, lipstick, a flowered Kittelschürze. */
+function ramschAunt(): string {
+  const skin = '#f0c4a0';
+  return `${shoulders('#4a6a9a', '<path d="M30 74 L36 101 L64 101 L70 74 C62 80 38 80 30 74 Z" fill="#7a9ac8" stroke="#2b1a0e" stroke-width="1.6"/><circle cx="40" cy="86" r="2.6" fill="#e86a8a"/><circle cx="54" cy="92" r="2.6" fill="#f4d04a"/><circle cx="60" cy="82" r="2.6" fill="#e86a8a"/><circle cx="46" cy="96" r="2.6" fill="#fbf6e9"/><path d="M38 72 L50 80 L62 72" fill="none" stroke="#2b1a0e" stroke-width="1.4"/>')}
+${headShape(skin, 18, 21, 47)}
+<path d="M28 46 C24 34 28 22 36 20 C38 14 46 12 50 15 C55 12 63 14 65 20 C73 22 77 34 72 46 C70 38 66 34 62 33 C56 30 44 30 38 33 C34 34 30 38 28 46 Z" fill="#9a4a2a" stroke="${OUT}" stroke-width="2"/>
+<circle cx="32" cy="30" r="4" fill="#b85a34" stroke="${OUT}" stroke-width="1.2"/><circle cx="68" cy="30" r="4" fill="#b85a34" stroke="${OUT}" stroke-width="1.2"/><circle cx="42" cy="20" r="4" fill="#b85a34" stroke="${OUT}" stroke-width="1.2"/><circle cx="58" cy="20" r="4" fill="#b85a34" stroke="${OUT}" stroke-width="1.2"/>
+<rect x="44" y="9" width="12" height="7" rx="3" fill="#f2a0c0" stroke="${OUT}" stroke-width="1.4"/><rect x="62" y="14" width="11" height="7" rx="3" fill="#f2a0c0" stroke="${OUT}" stroke-width="1.4" transform="rotate(30 67 17)"/>
+${eyes(47, '#6a2a14', 8)}${cheeks(56)}
+<path d="M33 45 L49 45 L48 51 C44 54 37 53 35 50 Z M51 45 L67 45 L65 50 C63 53 56 54 52 51 Z" fill="#fff" fill-opacity=".25" stroke="#8e2430" stroke-width="1.8"/>
+<path d="M33 45 L30 42 M67 45 L70 42" stroke="#8e2430" stroke-width="1.8" stroke-linecap="round"/>
+${lips(60, '#c0262f')}`;
+}
+
+/** Der Totengräber: gaunt and pale, a battered black hat, a long dark coat, the spade over his shoulder. */
+function gravedigger(): string {
+  const skin = '#dcc4ae';
+  return `<path d="M76 101 L86 22" stroke="#6b4a2e" stroke-width="4" stroke-linecap="round"/><path d="M80 30 L92 30 L94 14 C90 8 84 8 80 14 Z" fill="#8a8a86" stroke="${OUT}" stroke-width="1.8" transform="rotate(8 86 20)"/>
+${shoulders('#24221f', '<path d="M40 72 L50 86 L60 72" fill="#4a4642" stroke="#2b1a0e" stroke-width="1.4"/><path d="M30 80 L36 101 M70 80 L64 101" stroke="#141210" stroke-width="2"/><circle cx="44" cy="92" r="1.8" fill="#6d6a64"/><circle cx="56" cy="92" r="1.8" fill="#6d6a64"/>')}
+${headShape(skin, 16, 23, 47)}
+<path d="M38 56 C40 60 42 62 44 62 M62 56 C60 60 58 62 56 62" fill="none" stroke="#a8907a" stroke-width="1.6"/>
+${eyes(46, '#4a4642', 7)}
+<path d="M40 50 C42 52 45 52 46 50 M54 50 C55 52 58 52 60 50" fill="none" stroke="#9a8a7a" stroke-width="1.2"/>
+<path d="M44 61 L56 61" stroke="${OUT}" stroke-width="2" stroke-linecap="round"/>
+<path d="M33 34 C33 18 40 12 50 12 C60 12 67 18 67 34 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M20 35 C34 30 66 30 80 35 C72 40 28 40 20 35 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="2"/>
+<path d="M34 28 L66 28" stroke="#4a4642" stroke-width="2.4"/>`;
+}
+
+/** Die Witwe: black veiled hat, pale face, a string of pearls, the heirloom Daus on her black dress. */
+function widow(): string {
+  const skin = '#efd2bc';
+  return `${shoulders('#1d1a18', '<path d="M36 74 C40 82 60 82 64 74" fill="none" stroke="#f4f1ea" stroke-width="2.4" stroke-dasharray="0.1 4" stroke-linecap="round"/><rect x="46" y="86" width="8" height="11" rx="1" fill="#fbf6e9" stroke="#2b1a0e" stroke-width="1.2"/><path d="M50 89 L52 92 L50 95 L48 92 Z" fill="#c0262f"/>')}
+<path d="M30 46 C28 60 30 70 36 74 L64 74 C70 70 72 60 70 46 Z" fill="#2b2622" stroke="${OUT}" stroke-width="2"/>
+${headShape(skin, 18, 21, 46)}
+<path d="M31 42 C29 26 40 21 50 21 C61 21 71 26 69 42 C64 32 56 30 50 30 C44 30 36 32 31 42 Z" fill="#2b2622" stroke="${OUT}" stroke-width="2"/>
+${eyes(46, OUT, 8)}
+${lips(58, '#6e2232')}
+<path d="M26 30 C34 22 66 22 74 30 L72 34 C60 30 40 30 28 34 Z" fill="#1d1a18" stroke="${OUT}" stroke-width="1.8"/>
+<path d="M28 34 L72 34 L66 54 L34 54 Z" fill="#1d1a18" fill-opacity=".35" stroke="#1d1a18" stroke-width="1"/>
+<path d="M32 40 L68 40 M34 46 L66 46 M40 34 L38 54 M50 34 L50 54 M60 34 L62 54" stroke="#1d1a18" stroke-width=".8" opacity=".6"/>
+<circle cx="68" cy="26" r="4" fill="#3a3632" stroke="${OUT}" stroke-width="1.2"/>`;
+}
+
 /** Der Kartengeber: green eyeshade, sleeve garters, curled moustache. */
 function dealer(): string {
   const skin = '#e8b48c';
@@ -574,12 +632,16 @@ const PORTRAITS: Record<string, () => string> = {
   'p-boss-black_peter-2': blackGrete,
   'p-boss-the_old_man': oldMan,
   'p-boss-the_old_man-2': oldWoman,
+  'p-boss-gravedigger': gravedigger,
+  'p-boss-gravedigger-2': widow,
   'p-boss': genericBoss,
   'p-char-Declarer': declarer,
   'p-char-NullPlayer': nullPlayer,
   'p-char-Shirker': shirker,
   'p-char-Tailoress': tailoress,
   'p-char-HeartBrother': heartBrother,
+  'p-char-Gambler': gambler,
+  'p-char-RamschAunt': ramschAunt,
   'p-dealer': dealer,
   'p-friend': oldFriend,
 };
