@@ -496,7 +496,19 @@ Aufbauend auf dem Tages-Seed und der Tafel des Tages (14.4): Jede ISO-Woche (Mon
 - **Oberfläche**: Auf dem Startbildschirm unter der Tafel des Tages ein Block „Herausforderung der Woche“ mit Kalenderwoche, Restzeit bis Montag 0 Uhr, Name und Text der Regel, dem gewerteten Ergebnis und den Knöpfen „Wochen-Run als …“ (danach „Üben als …“) und „Tafel der Woche“ (eigenes Blatt mit der Tafel). Im Run nennt das Menü die Regel; der Endbildschirm bietet keinen Seed-Link an, weil der Seed allein nicht die Herausforderung ist.
 - **Simulator**: `--weekly-rule <id>` legt die Regel auf jeden Run der Messung (auf den üblichen Seeds), `--weekly <JJJJWW>` nimmt die Regel dieser Woche.
 
-WEEKLY_TABLE
+**Gemessen** (10./11.11.2026, `docs/balance/2026-11-10-wochenregeln.md`): Standard-Bot, 3000 Runs je Regel auf denselben Seeds, Grundlage der Alleinspieler ohne Regel (Nullabend: der Nullspieler). Grenze: gewonnen etwa zwischen der Hälfte und dem Doppelten der Grundlage. Nachgestellt wurden drei Regeln: Teufelspakt war viel zu leicht (5,3 % gewonnen, der Schutzengel ist eine zweite Chance) und bekam Zielwerte +30 %; Spelunkenluft war zu schwer (0,7 %) und startet jetzt mit dem Spelunkenkenner statt mit 6 Groschen; Grand zählt doppelt war zu leicht (4,3 %) und lässt dafür Farbspiele nur drei Viertel zählen.
+
+| Regel | Stadtteil 2 | Stadtteil 3 | gewonnen |
+|---|---|---|---|
+| Grundlage Alleinspieler | 35,4 % | 10,6 % | 2,1 % |
+| Grand zählt doppelt | 38,9 % | 13,0 % | 3,5 % |
+| Spelunkenluft | 36,3 % | 13,2 % | 1,9 % |
+| Hellwache Gegner | 35,1 % | 9,8 % | 1,6 % |
+| Kurze Geduld | 32,5 % | 9,6 % | 1,7 % |
+| Teufelspakt | 49,9 % | 13,7 % | 1,7 % |
+| Nullabend (Grundlage Nullspieler: gleich) | 34,1 % | 12,4 % | 2,6 % |
+| Erbonkel | 35,3 % | 10,4 % | 1,6 % |
+| Spendierhosen | 39,9 % | 12,3 % | 2,7 % |
 
 ## 6. Ein Spiel im Detail
 
