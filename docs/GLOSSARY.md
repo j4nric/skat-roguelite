@@ -504,7 +504,7 @@ Nur für Spieltexte und Grafik. Code, Tests und Design-Dokument bleiben bei den 
 | `Jack` | Unter |
 | `Nine`, `Eight`, `Seven` | Neun, Acht, Sieben |
 
-## Englische Anzeige (ADR 0022)
+## Englische Anzeige (ADR 0023)
 
 Verbindlich für `web/src/i18n/en.ts` und `web/src/i18n/en-content.ts`. Das deutsche Blatt bleibt auch auf Englisch. Wo die englische Skat-Literatur (International Skat Order, ISPA) deutsche Wörter behält, behalten wir sie auch; die Regelkarte erklärt sie unter „Skat words“. Britisches Englisch, Ton der Kneipe: freundlich, nicht wörtlich.
 

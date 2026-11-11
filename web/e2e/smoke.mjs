@@ -5582,7 +5582,7 @@ async function offlinePass(browser, errors) {
 }
 
 /**
- * German words that must not show in the English game (ADR 0022). Pub
+ * German words that must not show in the English game (ADR 0023). Pub
  * names stay German on purpose (place names: "Zum Goldenen Hirschen"), so
  * the list holds only words of the interface, never of a pub's name.
  */
@@ -5663,7 +5663,7 @@ async function englishScreen(page, name, label, root = 'body') {
 }
 
 /**
- * English (ADR 0022; alone with SMOKE_ONLY=english): an English browser
+ * English (ADR 0023; alone with SMOKE_ONLY=english): an English browser
  * gets the English game. Start screen, a whole game (redeal, Skat, discard,
  * Grand, ten tricks, score), the unlock, the card reward, the route, the
  * Tresen, the menu with the language switch (and back, without a reload),
@@ -5790,7 +5790,7 @@ async function englishPass(browser, errors) {
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
-  // German stays the default (ADR 0022): every context gets a German
+  // German stays the default (ADR 0023): every context gets a German
   // browser unless it asks for another locale (the English pass).
   const newContext = browser.newContext.bind(browser);
   browser.newContext = (options = {}) => newContext({ locale: 'de-DE', ...options });
@@ -5840,7 +5840,7 @@ async function run() {
       await shareRunPass(browser, errors, DESKTOP);
       return report(errors);
     }
-    // SMOKE_ONLY=english: the English game (ADR 0022).
+    // SMOKE_ONLY=english: the English game (ADR 0023).
     if (process.env.SMOKE_ONLY === 'english') {
       await englishPass(browser, errors);
       return report(errors);

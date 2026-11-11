@@ -1,5 +1,5 @@
 // Text helpers: the active language (German by default, English as the
-// second language, ADR 0022), placeholders, number formats and the display
+// second language, ADR 0023), placeholders, number formats and the display
 // names of core identifiers. Only translation, no game logic.
 //
 // `de` is the strings of the ACTIVE language, not always German: it is a

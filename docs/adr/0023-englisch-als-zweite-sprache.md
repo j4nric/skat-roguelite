@@ -1,4 +1,4 @@
-# 0022: Englisch als zweite Sprache
+# 0023: Englisch als zweite Sprache
 
 Datum: 2026-11-10 · Status: Angenommen · Ersetzt teilweise DESIGN 16 („Sprache: Nur Deutsch für v1“) und die Regel „Nur Deutsch“ in CLAUDE.md; ergänzt 0010
 

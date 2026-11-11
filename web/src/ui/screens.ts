@@ -579,7 +579,7 @@ function handSortToggle(ui: UiState): string {
 }
 
 /**
- * "Sprache / Language" (ADR 0022) in the menu's head: each language named
+ * "Sprache / Language" (ADR 0023) in the menu's head: each language named
  * in itself, so it is found whichever is on; the group says it in both.
  */
 function languageSwitch(): string {

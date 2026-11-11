@@ -26,6 +26,11 @@ export default defineConfig({
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
   },
+  // The core worker (src/core.worker.ts, ADR 0022) is a module worker:
+  // its chunk lies next to the others under /assets/ and is precached.
+  worker: {
+    format: 'es',
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

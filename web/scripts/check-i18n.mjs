@@ -1,4 +1,4 @@
-// The two languages of the web app (ADR 0022) must say the same things:
+// The two languages of the web app (ADR 0023) must say the same things:
 // ./src/i18n/de.ts and ./src/i18n/en.ts have the same keys (tsc checks the
 // typed ones; this also covers the open maps like the error texts), every
 // text has the same placeholders ({n}, {name}, …) in both, and arrays have

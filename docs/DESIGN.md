@@ -12,7 +12,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
-Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch, Englisch als zweite Sprache (ADR 0022). Zielgerät: Handy hochkant zuerst.
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch, Englisch als zweite Sprache (ADR 0023). Zielgerät: Handy hochkant zuerst.
 
 ---
 
@@ -1794,6 +1794,8 @@ skat-roguelite/
 └── web/             Web-App (TypeScript, Vite): Tisch, Hand, Tresen, Animation, Speichern
 ```
 
+**Kern im Web Worker (ADR 0022).** Im Browser läuft der Kern nicht auf dem Hauptthread, sondern in einem eigenen Worker (`web/src/core.worker.ts`). Die Web-App spricht nur über `web/src/core.ts` mit ihm: Jeder Aufruf ist eine Nachricht mit Id und gibt ein Promise zurück; der Worker beantwortet eine nach der anderen in der Reihenfolge, in der sie kamen. Der Hauptthread behält die letzte Sicht und den letzten Spielstand als Text jedes Runs und des Meta-Zustands, damit Zeichnen und Speichern beim Verlassen der Seite nicht auf den Worker warten. Während ein Gegner denkt (PIMC), laufen Denkblase, Animationen und Eingaben weiter; Eingaben ins Spiel bleiben wie bisher gesperrt, bis die Gegner gespielt haben. Ohne Worker (oder ohne WebAssembly darin) läuft dieselbe Hülle (`web/src/core-engine.ts`) auf dem Hauptthread hinter denselben Promises. Der Worker ist ein eigener Chunk unter `/assets/` und liegt im Cache des Service Workers (14.5).
+
 ### 14.2 Grundsätze
 
 - **Der Kern kennt das Frontend nicht.** Alles im Kern ist reine Logik, ohne Rendering, ohne Zeit, ohne Threads und ohne Dateizugriff zur Laufzeit, damit er als WebAssembly läuft. Web-App und Simulator sind Clients des Kerns.
@@ -1836,7 +1838,7 @@ Umgesetzt am 08.11.2026. Der Kern läuft als WebAssembly im Browser und der Spie
 - **Offline**: Das Spiel läuft vollständig. Angemeldet zeigt das Konto „offline“; was sich geändert hat, geht hoch, sobald der Browser wieder online ist oder die App in den Vordergrund kommt. Die Tafel des Tages zeigt einen kurzen Hinweis statt der Liste, die Knöpfe des Kontos (Anmelden, Anlegen, Code) sind mit Hinweis gesperrt.
 - **Entwicklung**: `vite dev` hat keinen Worker, nur `vite build` und `vite preview`. Caddy liefert `/sw.js` mit `Cache-Control: no-cache` aus.
 
-### 14.6 Zwei Sprachen (ADR 0022)
+### 14.6 Zwei Sprachen (ADR 0023)
 
 Umgesetzt am 10.11.2026. Deutsch ist die Voreinstellung, Englisch die zweite Sprache; das deutsche Blatt bleibt in beiden.
 
@@ -1885,7 +1887,7 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Frontend | Web-App mit Rust-Kern als WebAssembly statt Godot, ADR 0009. |
 | Kartenbild | Deutsches Blatt, ADR 0010. |
 | Zielgerät | Handy hochkant zuerst. |
-| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. Seit 10.11.2026 (ADR 0022): Deutsch als Voreinstellung, Englisch als zweite Sprache, Texte aus `de.ts` und `en.ts`. |
+| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. Seit 10.11.2026 (ADR 0023): Deutsch als Voreinstellung, Englisch als zweite Sprache, Texte aus `de.ts` und `en.ts`. |
 | Assets | CC0, CC-BY und SIL OFL, mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
 | Schrift | VT323 (S4 aus der Schriftauswahl), SIL OFL |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |

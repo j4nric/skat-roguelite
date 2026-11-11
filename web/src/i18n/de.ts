@@ -1,5 +1,5 @@
 // All texts of the web app in German, the default language (DESIGN 16).
-// ./en.ts has the same keys in English (ADR 0022): a new text goes into
+// ./en.ts has the same keys in English (ADR 0023): a new text goes into
 // both files. Game terms use the German deck (ADR 0010, GLOSSARY "Anzeige
 // im deutschen Blatt"). Placeholders in braces are filled by `t()` in
 // ./index.ts and must be the same in both languages.
@@ -1319,7 +1319,7 @@ export const de = {
     ] as [string, string][],
     /**
      * The Skat words that stay German in another language, explained
-     * (ADR 0022). German needs no list: empty here, the card shows none.
+     * (ADR 0023). German needs no list: empty here, the card shows none.
      */
     wordsTitle: 'Begriffe',
     words: [] as [string, string][],
@@ -1768,7 +1768,7 @@ export const de = {
     account: 'Du bist offline. Anmelden geht erst wieder mit Verbindung. Spielen kannst du weiter, dein Fortschritt bleibt in diesem Browser.',
   },
 
-  /** The language setting and the formats that follow the language (ADR 0022). */
+  /** The language setting and the formats that follow the language (ADR 0023). */
   lang: {
     /** The menu row: in both languages, so it is found whichever is on. */
     label: 'Sprache / Language',

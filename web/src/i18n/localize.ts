@@ -3,7 +3,7 @@
 // Stammgäste's lines and so on come out of `core/content/*.ron` inside
 // every view. For another language this walks a view (or the meta view,
 // or the catalog) and puts the display texts of that language in place,
-// looked up by content id (ADR 0022). The German originals are kept on the
+// looked up by content id (ADR 0023). The German originals are kept on the
 // side, so a switch back to German restores them. Only display texts are
 // touched; ids and numbers stay as the core sent them.
 

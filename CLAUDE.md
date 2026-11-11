@@ -42,7 +42,7 @@ cargo run -p stammtisch_server               # Konto-Dienst lokal (127.0.0.1:878
 
 ## Darstellung und Sprache
 
-- Zwei Sprachen (ADR 0022): Deutsch ist die Voreinstellung, Englisch die zweite. Spieltexte kommen aus den Übersetzungsdateien `web/src/i18n/de.ts` und `web/src/i18n/en.ts`; neue Texte immer in beide, mit denselben Platzhaltern (`npm run typecheck` prüft Schlüssel und Platzhalter). Englische Namen und Texte der Inhalte aus `core/content/*.ron` stehen nach Id in `web/src/i18n/en-content.ts`; ein neuer Inhalt braucht dort einen Eintrag. `de` im Web-Code meint die Texte der aktiven Sprache.
+- Zwei Sprachen (ADR 0023): Deutsch ist die Voreinstellung, Englisch die zweite. Spieltexte kommen aus den Übersetzungsdateien `web/src/i18n/de.ts` und `web/src/i18n/en.ts`; neue Texte immer in beide, mit denselben Platzhaltern (`npm run typecheck` prüft Schlüssel und Platzhalter). Englische Namen und Texte der Inhalte aus `core/content/*.ron` stehen nach Id in `web/src/i18n/en-content.ts`; ein neuer Inhalt braucht dort einen Eintrag. `de` im Web-Code meint die Texte der aktiven Sprache.
 - Deutsches Blatt in der Anzeige, in beiden Sprachen (Eichel, Grün, Rot, Schellen; Unter, Ober, Daus; englisch Acorns, Leaves, Hearts, Bells; Unter, Ober, Ace), siehe ADR 0010 und Glossar. Im Code bleiben die Bezeichner aus dem Glossar.
 - Fremde Assets unter freien Lizenzen (CC0, CC-BY, SIL OFL). Jede Quelle mit Lizenz in `web/LICENSES.md`.
 

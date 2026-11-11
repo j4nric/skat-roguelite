@@ -39,7 +39,7 @@ export class Menu {
   }
 
   /**
-   * "Sprache / Language" (ADR 0022): switch and draw everything anew, no
+   * "Sprache / Language" (ADR 0023): switch and draw everything anew, no
    * reload. The views on screen get the content texts of the new language.
    */
   private setLanguage(next: Lang): void {

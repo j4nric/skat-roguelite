@@ -1,5 +1,5 @@
 // English names and texts of the core's content (core/content/*.ron), by
-// id (ADR 0022). The core keeps the rules and the German texts; the web
+// id (ADR 0023). The core keeps the rules and the German texts; the web
 // layer puts these in place of the German ones (./localize.ts) and
 // `contentName`/`contentText` read them first (./index.ts). A content item
 // missing here shows its German text from the core: web/scripts/check-i18n.mjs

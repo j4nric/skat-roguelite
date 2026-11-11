@@ -1,4 +1,4 @@
-// All texts of the web app in English, the second language (ADR 0022).
+// All texts of the web app in English, the second language (ADR 0023).
 // Same keys as ./de.ts, typed against it: a key missing here fails `tsc`,
 // and web/scripts/check-i18n.mjs compares the key sets and placeholders.
 // British English with a pub's voice: friendly, a bit gruff, never stiff.

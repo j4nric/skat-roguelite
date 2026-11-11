@@ -45,7 +45,7 @@ async function prepareArt(): Promise<void> {
 
 /** Show the app at once; render the portraits first, but never wait long for them. */
 async function boot(el: HTMLElement): Promise<void> {
-  // The language first (ADR 0022): German at once, English as a small chunk.
+  // The language first (ADR 0023): German at once, English as a small chunk.
   await setLanguage(storedOrDetectedLanguage()).catch(() => undefined);
   const app = new App(el);
   app.showLoading();
