@@ -202,6 +202,10 @@ export interface UiState {
   pickCharacter: Character;
   /** Stake picked on the start screen; null plays the highest unlocked. */
   pickStake: number | null;
+  /** Start screen: the picked character's whole text is unfolded (DESIGN 16.4). */
+  charMore?: boolean;
+  /** Start screen: "Weitere Spielarten" (daily run, seed, Einführung) is open (DESIGN 16.4). */
+  startMore?: boolean;
   overlay: Overlay | null;
   /** The night district whose start sheet was shown (ADR 0020). */
   nightSeen?: number | null;

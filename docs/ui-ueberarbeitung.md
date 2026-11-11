@@ -23,7 +23,7 @@ Stand: 11.11.2026, abends. Übergabe-Dokument für die weitere Arbeit an der Obe
 
 Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest notierte Farbwerte und rund sieben Animationszeiten im Stylesheet.
 
-## Schritt 1: Tisch, Kopf, Farbrollen, Zug-Signal — gebaut, noch nicht gemergt
+## Schritt 1: Tisch, Kopf, Farbrollen, Zug-Signal — gemergt (PR #132)
 
 - **Branch:** `feat/ui-table-v2` (Worktree `/home/user/skat-ui`), 10 Commits über `main`, gepusht. **Kein PR.** Achtung: `origin/feat/ui-table` ist ein alter, fremder Branch und wird nicht angefasst.
 - **Inhalt** (Details in `docs/DESIGN.md` 16.3):
@@ -51,11 +51,14 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 
 ## Offene Schritte (Reihenfolge wie mit dem Nutzer besprochen)
 
-### Schritt 2: Startseite
-- Porträt groß, zwei Zeilen Kurztext, „mehr“ klappt die volle Beschreibung auf.
-- Gesperrte Figuren ans Ende des Karussells.
-- Hauptknopf („Neuer Run als …“) fest am unteren Rand.
-- Seed-Feld und Tages-Run in eine zweite Ebene (aufklappbar), Wochen-Herausforderung sichtbar lassen.
+### Schritt 2: Startseite — gebaut, noch nicht gemergt
+- **Branch:** `feat/ui-start` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.4.
+- Porträt groß (3×, ab 700 px 4×), Name, Rolle, Beschreibung auf zwei Zeilen; „mehr“/„weniger“ klappt auf (`aria-expanded`), entfällt, wenn der Text passt.
+- Gesperrte Figuren am Ende des Karussells (nur Anzeige).
+- „Neuer Run als …“ in einer Leiste fest am unteren Rand (sticky am Seitenende, verdeckt am Ende nichts). Mit laufendem Run bleibt „Fortsetzen“ oben der Hauptknopf.
+- „Weitere Spielarten“ (aufklappbar): Tages-Run, Seed, Einführung. Wochen-Herausforderung bleibt sichtbar, darunter Statistik, Bestenliste, Vereinsbuch, Kurzregel, Fußzeile.
+- **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `startScreenPass` (gesperrte am Ende, Hauptknopf sichtbar und unverdeckt ohne Scrollen, beide Aufklapper; 390 × 844, 360 × 740, 1280 × 800, Groß, Sehr groß, Englisch). Smoke tippt Seeds über `fillSeed()`, das die zweite Ebene öffnet.
+- **Restpunkte:** Das Schild „Stammtisch“ ist unverändert hoch (~145 px); bei 360 × 740 sieht man ohne Scrollen nur Figur und Karussell. Die Karten im Karussell sind so hoch wie die längste Freischalt-Bedingung. Ein getippter Seed ist zugeklappt nicht sichtbar.
 
 ### Schritt 3: Tresen
 - Waren zuerst; Vorschau auf die nächste Kneipe als schmaler, aufklappbarer Streifen.

@@ -4069,7 +4069,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
-  padding: 18px 14px 12px;
+  padding: 18px 14px 0;
 }
 
 .lamp {
@@ -4090,7 +4090,10 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .sign h1 {
-  font-size: var(--fs-3xl);
+  /* The name is a question of two lines on a phone ("Noch 'ne Runde Skat?"). */
+  font-size: var(--fs-2xl);
+  line-height: 1;
+  text-wrap: balance;
   color: var(--ivory);
   text-shadow: 4px 4px 0 var(--line);
 }
@@ -4279,17 +4282,79 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   color: var(--text);
 }
 
-.char-detail {
-  margin: 0;
-  font-size: var(--fs-s);
-  line-height: 1.1;
-  color: var(--muted);
+/* The picked character, large above the row (DESIGN 16.4): the portrait in
+   three times its 30 pixels, its text folded to two lines. */
+.char-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   text-align: center;
 }
 
-.char-detail b {
+.portrait-hero {
+  width: calc(90px + 2 * var(--edge));
+  height: calc(90px + 2 * var(--edge));
+  box-shadow: var(--shadow);
+}
+
+.char-hero-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 34em;
+  margin-top: 4px;
+}
+
+.char-hero-name {
+  margin: 0;
+  font-size: var(--fs-l);
   font-weight: 400;
   color: var(--text);
+  text-shadow: none;
+}
+
+.char-hero-role {
+  font-family: var(--font-label);
+  font-size: var(--fs-xs);
+  color: var(--cool);
+}
+
+.char-blurb {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: var(--fs-s);
+  line-height: 1.2;
+  color: var(--muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.char-blurb.is-open {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+}
+
+/* Right under the text; the 44 px reach into the gap below. */
+.char-more {
+  min-width: 88px;
+  margin: -6px 0 -10px;
+  color: var(--text);
+}
+
+.char-more[hidden] {
+  display: none;
+}
+
+@media (min-width: 700px) {
+  .portrait-hero {
+    width: calc(120px + 2 * var(--edge));
+    height: calc(120px + 2 * var(--edge));
+  }
 }
 
 /* Einsatz-Leiter (DESIGN 9.3): one row above the start. */
@@ -4460,6 +4525,97 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   line-height: 1.16;
   color: var(--muted);
   text-align: left !important;
+}
+
+/* "Weitere Spielarten" (DESIGN 16.4): one raised row that unfolds the
+   daily run, the own seed and the Einführung. */
+.start-more {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.start-more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 14px;
+  border: var(--edge) solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  box-shadow: var(--shadow-sm), var(--raised);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.start-more-toggle:active {
+  box-shadow: 0 1px 0 var(--line), var(--raised);
+  transform: translateY(1px);
+}
+
+.start-more-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.start-more-label b {
+  font-size: var(--fs-body);
+  font-weight: 400;
+}
+
+.start-more-label span {
+  font-family: var(--font-label);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.start-more-chev {
+  flex: none;
+  transition: transform 0.15s steps(2);
+}
+
+.start-more.is-open .start-more-chev {
+  transform: rotate(180deg);
+}
+
+.start-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* A rule down the left side ties the unfolded part to its row. */
+  padding-left: 10px;
+  border-left: var(--edge) solid var(--panel);
+}
+
+.start-more-body[hidden] {
+  display: none;
+}
+
+/* The main button stays at the bottom edge while the page scrolls under it;
+   at the end of the page it sits below the footer, so it covers nothing.
+   The safe area is the padding of .app around the screen. */
+.start-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -14px;
+  padding: 10px 14px 12px;
+  border-top: var(--edge) solid var(--line);
+  /* The body's dotted cloth, fixed to the viewport so the dots line up. */
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
+  background-size: 8px 8px;
+  background-attachment: fixed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .start-more-chev {
+    transition: none;
+  }
 }
 
 .start-foot {
@@ -5688,7 +5844,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   margin: 0 calc(-1 * var(--run-x));
   padding: 8px var(--run-x) 6px;
   border-top: var(--edge) solid var(--line);
-  background: var(--bg);
+  /* The body's dotted cloth, fixed to the viewport so the dots line up. */
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
+  background-size: 8px 8px;
+  background-attachment: fixed;
 }
 
 .shop-bar .btn {

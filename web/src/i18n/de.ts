@@ -6,7 +6,7 @@
 
 export const de = {
   app: {
-    title: 'Stammtisch',
+    title: "Noch 'ne Runde Skat?",
     tagline: 'Skat als Roguelike',
     build: 'Build {info}',
     loading: 'Der Tisch wird gedeckt …',
@@ -131,6 +131,14 @@ export const de = {
     stakeUp: 'Einsatz erhöhen',
     sharedStake: 'Einsatz {stake}: Gewinn ab {augen} Augen.',
     sharedStakeLocked: 'Einsatz {stake} hast du hier noch nicht erreicht. Du spielst mit Einsatz {fallback}.',
+    /** Step 2 of the UI rework (DESIGN 16.4): the picked character's text, folded to two lines. */
+    charMore: 'mehr',
+    charLess: 'weniger',
+    charMoreAria: 'Ganze Beschreibung von {name}',
+    /** The second level of the start screen: daily run, own seed, Einführung. */
+    moreTitle: 'Weitere Spielarten',
+    moreHint: 'Tages-Run · eigener Seed · Einführung',
+    moreHintShort: 'Tages-Run · eigener Seed',
   },
 
   /** "Kneipe verlassen?" (DESIGN 8.7). */
