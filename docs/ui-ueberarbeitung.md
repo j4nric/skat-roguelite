@@ -35,7 +35,7 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
   - Skat oder Hand: Begrüßung nur noch als Sprechblase. Meldungen, Wirt-Hinweise und Schnaps-Banner als Streifen über der Kopfzeile.
 - **Prüfstand:**
   - Vor Elfenbein: voller Smoke-Test grün (Commit `b9b85f1`).
-  - Nach Elfenbein (Commit `10ed969`): `typecheck` und `build:web` liefen; der **volle Smoke-Test lief beim Schreiben dieses Dokuments noch**. Ergebnis prüfen (bzw. neu laufen lassen: `cd web && SMOKE_PORT=<frei> node e2e/smoke.mjs`, ~25 min).
+  - Nach Elfenbein (Commit `10ed969`): `typecheck`, `build:web` und voller Smoke-Test grün (neu laufen lassen: `cd web && SMOKE_PORT=<frei> node e2e/smoke.mjs`, ~25 min).
   - Der Nutzer hat die Elfenbein-Bilder erhalten, aber **noch nicht freigegeben**.
 - **Nächste Handgriffe für Schritt 1:**
   1. Smoke-Ergebnis prüfen, Elfenbein-Screenshots selbst kritisch ansehen (Tisch, Ansage, Abrechnung, Tresen, Stadtplan, Start; Handy und Desktop).
@@ -46,6 +46,8 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
   - Gegner sitzen auf dem Filz statt hinter der Tischkante (sonst wäre der Kopf höher als 110 px).
   - Bei ≤720 px Höhe und großer Schrift schrumpfen Porträts auf 1×; bei „sehr groß“ entfallen Fächer, Beschriftungen und Statuszeile im Ansage-Blatt.
   - Bei 360 px bricht der längste englische Gastname auf zwei Zeilen.
+  - Desktop: Die Hand liegt immer in zwei Reihen (`cols` in `web/src/ui/table.ts`), auch bei 1280 px. Eine Reihe gehört zu Schritt 5.
+  - Während ein Gegner spricht, ersetzt die Sprechblase Name und Position (gewollt, `.opp-main:has(.quip)`), nur für die Dauer des Spruchs.
 
 ## Offene Schritte (Reihenfolge wie mit dem Nutzer besprochen)
 
