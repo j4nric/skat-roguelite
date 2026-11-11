@@ -9097,6 +9097,22 @@ button.sync-pill {
   flex: none;
 }
 
+/* "Sprache / Language" (ADR 0023) between the heading and the account: two
+   small switches that take no more height than the heading (the menu must
+   still fit 375 × 667); negative margins keep a 40 px touch target. */
+.menu-head .lang-switch {
+  flex: none;
+  margin: -8px 0 -8px auto;
+  gap: 4px;
+}
+
+.menu-head .lang-switch .seg {
+  flex: none;
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: var(--fs-s);
+}
+
 .account-body {
   display: flex;
   flex-direction: column;

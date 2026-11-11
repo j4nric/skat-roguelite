@@ -3,7 +3,7 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
+import { de, LANGS, lang, bossEditionText, dateText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
@@ -606,6 +606,18 @@ function handSortToggle(ui: UiState): string {
   })}>${esc(t(de.handSort.toggle, { mode: manual ? de.handSort.manual : de.handSort.auto }))}</button>`;
 }
 
+/**
+ * "Sprache / Language" (ADR 0023) in the menu's head: each language named
+ * in itself, so it is found whichever is on; the group says it in both.
+ */
+function languageSwitch(): string {
+  const langs = LANGS.map(
+    (l) =>
+      `<button class="seg ${lang() === l ? 'is-picked' : ''}" ${attrs({ 'data-action': 'language', 'data-lang': l, 'data-testid': `lang-${l}`, lang: l, 'aria-pressed': lang() === l ? 'true' : 'false' })}>${esc(de.lang.names[l])}</button>`,
+  ).join('');
+  return `<div class="segmented lang-switch" ${attrs({ role: 'group', 'aria-label': de.lang.label, title: de.lang.label, 'data-testid': 'setting-language' })}>${langs}</div>`;
+}
+
 /** The settings as tight rows: label left, switch right. */
 function settingsBlock(ui: UiState): string {
   const tempos = (['slow', 'normal', 'fast'] as const)
@@ -696,6 +708,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'menu':
       return sheet(
         `<div class="menu-head"><h2>${esc(de.header.menu)}</h2>
+           ${languageSwitch()}
            <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}>${esc(ui.account.user ? t(de.account.menuAccount, { name: accountName(ui.account.user) }) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span></div>
          ${settingsBlock(ui)}
          ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, ui, view.stake ?? 0) : ''}
@@ -1026,7 +1039,7 @@ function bookPage(meta: MetaView): string {
 function recentRow(r: RunRecord, meta: MetaView): string {
   const entry = meta.characters.find((c) => c.character === r.character);
   const date = new Date(r.date);
-  const when = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const when = Number.isNaN(date.getTime()) ? '' : dateText(date, { day: '2-digit', month: '2-digit', year: '2-digit' });
   const replay = entry?.unlocked
     ? `<button class="btn btn-small" ${attrs({ 'data-action': 'replay', 'data-seed': r.seed, 'data-character': r.character, 'data-stake': r.stake ?? 0, 'aria-label': t(de.book.replayAria, { seed: r.seed, character: shortName(r.character) }) })}>${esc(de.book.replay)}</button>`
     : '';

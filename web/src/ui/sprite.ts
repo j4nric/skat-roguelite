@@ -15,6 +15,7 @@
 // Wandelkarte; a settled one uses its suit's x-…).
 
 import { de } from '../i18n';
+import { en } from '../i18n/en';
 import type { Rank, Suit } from '../types';
 import { CARD_H, CARD_W, RANKS, suitCode, SUITS } from './deck';
 import { backSymbols } from './backsprite';
@@ -66,12 +67,19 @@ function signPaths(suit: Suit): string {
 
 // ------------------------------------------------- "Farbenblind-Hilfe"
 
-/** Pixel letters (3 × 5) for the suit letters of de.suitLetters; "x" is ink. */
+/**
+ * Pixel letters (3 × 5) for the suit letters of both languages (ADR 0023):
+ * German E G R S (de.suitLetters), English A L H B (en.suitLetters); "x" is ink.
+ */
 const SUIT_LETTER_GLYPHS: Record<string, string[]> = {
   E: ['xxx', 'x..', 'xx.', 'x..', 'xxx'],
   G: ['.xx', 'x..', 'x.x', 'x.x', '.xx'],
   R: ['xx.', 'x.x', 'xx.', 'x.x', 'x.x'],
   S: ['.xx', 'x..', '.x.', '..x', 'xx.'],
+  A: ['.x.', 'x.x', 'xxx', 'x.x', 'x.x'],
+  L: ['x..', 'x..', 'x..', 'x..', 'xxx'],
+  H: ['x.x', 'x.x', 'xxx', 'x.x', 'x.x'],
+  B: ['xx.', 'x.x', 'xx.', 'x.x', 'xx.'],
 };
 
 /**
@@ -80,8 +88,8 @@ const SUIT_LETTER_GLYPHS: Record<string, string[]> = {
  * shown only with "Farbenblind-Hilfe" (style.css), so the suit does not
  * depend on its colour.
  */
-function suitLetterBody(suit: Suit): string {
-  const glyph = SUIT_LETTER_GLYPHS[de.suitLetters[suit]] ?? [];
+function suitLetterBody(letter: string): string {
+  const glyph = SUIT_LETTER_GLYPHS[letter] ?? [];
   let d = '';
   glyph.forEach((row, y) => {
     [...row].forEach((ch, x) => {
@@ -184,7 +192,10 @@ ${body}
 export function spriteFiles(): SpriteFiles {
   const box = `viewBox="0 0 ${CARD_W} ${CARD_H}" shape-rendering="crispEdges"`;
   const suits = SUITS.map((s) => `<symbol id="s-${suitCode(s)}" viewBox="0 0 8 8" shape-rendering="crispEdges">${signPaths(s)}</symbol>`).join('');
-  const letters = SUITS.map((s) => `<symbol id="cb-${suitCode(s)}" ${box}>${suitLetterBody(s)}</symbol>`).join('');
+  // German letters as cb-C …, English ones as cb-en-C … (../ui/art.ts suitLetterId picks by language).
+  const letters = SUITS.map(
+    (s) => `<symbol id="cb-${suitCode(s)}" ${box}>${suitLetterBody(de.suitLetters[s])}</symbol><symbol id="cb-en-${suitCode(s)}" ${box}>${suitLetterBody(en.suitLetters[s])}</symbol>`,
+  ).join('');
   const cards = SUITS.flatMap((s) => RANKS.map((r) => ({ s, r, rows: faceRows(s, r), id: `${suitCode(s)}${r}` })));
   const faces = cards
     .map(

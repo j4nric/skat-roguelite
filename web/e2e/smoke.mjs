@@ -5138,9 +5138,9 @@ async function nightPass(browser, errors, viewport) {
  * state unchanged. On the phone a run in progress is stored first; the
  * Einführung, skipped half-way, leaves it untouched.
  */
-async function tutorialPass(browser, errors, viewport, shotDir = null) {
-  const tag = `${viewport.width}x${viewport.height}`;
-  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', deviceScaleFactor: shotDir ? 2 : 1 });
+async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 'de-DE') {
+  const tag = `${viewport.width}x${viewport.height}${locale === 'de-DE' ? '' : ` ${locale}`}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', deviceScaleFactor: shotDir ? 2 : 1, locale });
   const page = await context.newPage();
   watch(page, errors);
   const snap = async (name) => {
@@ -5182,6 +5182,7 @@ async function tutorialPass(browser, errors, viewport, shotDir = null) {
       }
       const text = ((await page.locator('.coach-text').textContent()) ?? '').trim();
       if (text.length < 20) fail(`tutorial ${tag}: step "${step}" has no text`);
+      if (locale !== 'de-DE' && GERMAN_WORDS.test(text)) fail(`tutorial ${tag}: step "${step}" speaks German: ${text.slice(0, 80)}`);
       if (shots[step]) await snap(shots[step]);
     }
     const sheet = page.locator('[data-action="score-continue"]');
@@ -5825,9 +5826,230 @@ async function a11yPass(browser, errors, reducedMotion = 'reduce') {
   await sizes.close();
 }
 
+/**
+ * German words that must not show in the English game (ADR 0023). Pub
+ * names stay German on purpose (place names: "Zum Goldenen Hirschen"), so
+ * the list holds only words of the interface, never of a pub's name.
+ */
+const GERMAN_WORDS = /(?<![\p{L}])(Fortsetzen|Einstellungen|Stadtteil|Einführung|Schließen|Gegner|Stich|Stiche|Augen|Einmischen|Drücken|Ansagen|Ansage|Tresen|Weiter|Überspringen|Spielwert|Grundwert|Stufe|Stufen|Konto|Zinke|Zinken|Relikt|Relikte|Schnäpse|Hausregel|Hausregeln|Eichel|Schellen|Daus|Oberin|König|nicht|Gewonnen|Verloren|Karte|Karten|Wähle|Spiele|Abbrechen|Zurück|Kaufen|Verkaufen|Begegnung|Werkstatt|Rast|Vereinsbuch|Kreidetafel|Regelkarte|Glossar|Abspann|Wirt|Stammgast|Bierdeckel|Fluch|Flüche)(?![\p{L}])/u;
+
+/**
+ * The English game shows no German interface text: neither in the visible
+ * text nor in aria-labels, titles and placeholders of `root`.
+ */
+async function assertEnglish(page, label, root = 'body') {
+  const found = await page.evaluate(
+    ({ sel, source }) => {
+      const re = new RegExp(source, 'u');
+      const box = document.querySelector(sel);
+      if (!box) return [`${sel} not on screen`];
+      const hits = [];
+      const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest('.sr-only, script, style, [aria-hidden="true"]')) continue;
+        // Names of pubs and districts' pubs are German on purpose.
+        if (el.closest('[data-pub-name], .pub-name, .map-label')) continue;
+        const m = re.exec(n.textContent ?? '');
+        if (m) hits.push(`"${m[1]}" in "${(n.textContent ?? '').trim().slice(0, 80)}"`);
+      }
+      for (const el of box.querySelectorAll('[aria-label], [title], [placeholder]')) {
+        for (const a of ['aria-label', 'title', 'placeholder']) {
+          const v = el.getAttribute(a);
+          const m = v ? re.exec(v) : null;
+          if (m) hits.push(`"${m[1]}" in ${a} "${v.slice(0, 80)}"`);
+        }
+      }
+      return hits;
+    },
+    { sel: root, source: GERMAN_WORDS.source },
+  );
+  if (found.length) fail(`English ${label}: German text: ${found.slice(0, 6).join('; ')}`);
+}
+
+/**
+ * Longer English strings must not break the layout: at 390 × 844, 375 ×
+ * 667, 360 × 740 and 1280 × 800 the page never scrolls sideways and no
+ * button, label or heading cuts off its text.
+ */
+async function assertEnglishFits(page, label) {
+  const original = page.viewportSize();
+  for (const size of [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }, DESKTOP]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(() => {
+      const name = (el) => `${el.tagName.toLowerCase()}.${String(el.className?.baseVal ?? el.className ?? '').trim().replace(/\s+/g, '.')}`;
+      const clipped = [...document.querySelectorAll('button, .btn, .seg, .chip, h1, h2, h3, .setting-label, .info-tag, .badge, label')]
+        .filter((el) => {
+          if (el.closest('.sr-only') || !el.textContent?.trim()) return false;
+          const st = getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden') return false;
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height) return false;
+          const cut = (st.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1) || (st.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1);
+          return cut;
+        })
+        .map((el) => `${name(el)} "${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)}" (${el.scrollWidth} > ${el.clientWidth})`);
+      return { doc: document.scrollingElement.scrollWidth, width: innerWidth, clipped };
+    });
+    const where = `English ${label} at ${size.width}x${size.height}`;
+    if (r.doc > r.width) fail(`${where}: the page is ${r.doc}px wide, the viewport ${r.width}px`);
+    if (r.clipped.length) fail(`${where}: text cut off: ${r.clipped.slice(0, 5).join(', ')}`);
+  }
+  if (original) await page.setViewportSize(original);
+}
+
+/** Screenshot, German check and layout check of one English screen. */
+async function englishScreen(page, name, label, root = 'body') {
+  await shoot(page, `en-${name}`);
+  await assertEnglish(page, label, root);
+  await assertEnglishFits(page, label);
+  log(`English ${label}: no German text, nothing cut off or scrolling sideways`);
+}
+
+/**
+ * English (ADR 0023; alone with SMOKE_ONLY=english): an English browser
+ * gets the English game. Start screen, a whole game (redeal, Skat, discard,
+ * Grand, ten tricks, score), the unlock, the card reward, the route, the
+ * Tresen, the menu with the language switch (and back, without a reload),
+ * an encounter, the rules card, the glossary and the Einführung, each at
+ * 390 × 844 and 1280 × 800: no German interface text, no text cut off, no
+ * sideways scrolling.
+ */
+async function englishPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: 'en-GB' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if ((await page.evaluate(() => document.documentElement.lang)) !== 'en') fail('English: the page is not marked lang="en" for an English browser');
+  const startText = await page.locator('[data-action="new-run"]').first().textContent();
+  if (!/^New run/.test((startText ?? '').trim())) fail(`English: the start button says "${startText}"`);
+  await englishScreen(page, 'start', 'start screen');
+
+  // The menu from the start screen: the language row, then the rules and the glossary.
+  await page.click('[data-action="settings"]');
+  await page.waitForSelector('[data-testid="setting-language"]');
+  if ((await page.locator('[data-testid="lang-en"][aria-pressed="true"]').count()) !== 1) fail('English: the menu does not mark English as the language');
+  await englishScreen(page, 'menu', 'menu', '.overlay');
+  // Switch to German and back, without a reload.
+  const loads = await page.evaluate(() => performance.getEntriesByType('navigation').length);
+  await page.click('[data-testid="lang-de"]');
+  await page.waitForFunction(() => document.documentElement.lang === 'de');
+  await page.waitForSelector('[data-testid="lang-de"][aria-pressed="true"]');
+  const german = (await page.locator('.menu-head h2').textContent()) ?? '';
+  if (german.trim() !== 'Menü' || !(await page.locator('.overlay').filter({ hasText: 'Klänge' }).count())) fail('English: switching to Deutsch does not draw the menu in German');
+  await page.click('[data-testid="lang-en"]');
+  await page.waitForFunction(() => document.documentElement.lang === 'en');
+  if (!(await page.locator('.overlay').filter({ hasText: 'Effects' }).count())) fail('English: switching back does not draw the menu in English');
+  if ((await page.evaluate(() => localStorage.getItem('stammtisch.lang'))) !== 'en') fail('English: the chosen language is not stored');
+  if ((await page.evaluate(() => performance.getEntriesByType('navigation').length)) !== loads) fail('English: the language switch reloaded the page');
+  log('English: menu switches to Deutsch and back without a reload, choice stored');
+  await page.click('.overlay [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="setting-language"]', { state: 'detached' });
+
+  // A whole game with the main pass's seed: one redeal, Skat, discard, Grand.
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const progress = await text(page, 'pub-progress');
+  if (!/^Game 1 of 3 · 0 \/ \d+ points$/.test(progress)) fail(`English: pub progress in the head: ${progress}`);
+  await englishScreen(page, 'table-choice', 'Skat or Hand');
+  // "Colour-blind aid": the corner letters follow the language (A L H B, sprite cb-en-*).
+  const hrefs = await page.$$eval('.hand use.face-letter', (uses) => uses.map((u) => u.getAttribute('href')));
+  if (!hrefs.length || hrefs.some((h) => !/^#cb-en-[CSHD]$/.test(h ?? ''))) fail(`English: suit letters use ${[...new Set(hrefs)].join(', ')}`);
+  const enGlyphs = await page.evaluate(() => ['C', 'S', 'H', 'D'].filter((c) => !document.getElementById(`cb-en-${c}`)?.querySelector('path')));
+  if (enGlyphs.length) fail(`English: no letter glyph for ${enGlyphs.join(', ')}`);
+  await assertFits(page, 'English Skat or Hand');
+  await dragOnto(page, '[data-testid="deck"]', '.mix-zone', 12);
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await englishScreen(page, 'table-declare-hand', 'hand declaration');
+  await assertFits(page, 'English hand declaration');
+  await page.click('[data-action="hand-back"]');
+  await pickUpAndDiscard(page, 'English first game');
+  await englishScreen(page, 'table-declare', 'declaration after the Skat');
+  await assertFits(page, 'English declaration after the Skat');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForSelector('[data-action="play"]');
+  const worth = await page.locator('[data-testid="value-preview"]').textContent();
+  if (!/^\d+ × \d+( × \d+)?$/.test((worth ?? '').trim())) fail(`English: value preview while playing: "${worth}"`);
+  await englishScreen(page, 'table-play', 'table while playing');
+  await assertFits(page, 'English table while playing');
+  await playOut(page, 'English first game');
+  const result = await text(page, 'score-result');
+  // The screen reader's live region speaks English too (it is .sr-only, so assertEnglish skips it).
+  const said = ((await page.locator('[data-testid="sr-live"]').textContent().catch(() => '')) ?? '').trim();
+  if (!said) fail('English: the live region said nothing during the game');
+  const germanSaid = GERMAN_WORDS.exec(said);
+  if (germanSaid || /\b(spielt|Punkte)\b/.test(said)) fail(`English: the live region speaks German: ${said.slice(0, 120)}`);
+  log(`English: live region says "${said.slice(-80)}"`);
+  await englishScreen(page, 'score', 'score board', '.overlay');
+  log(`English: game played, score ${result}`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('.score-sheet', { state: 'detached' });
+  await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail('English: no unlock announced after the first pub'));
+  await englishScreen(page, 'unlock', 'unlock', '.overlay');
+  await page.click('.sheet-unlock [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="unlock-new"]', { state: 'detached' });
+
+  // The card reward, the route, the Tresen.
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await englishScreen(page, 'card-reward', 'card reward');
+  await takeCardReward(page);
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await englishScreen(page, 'route', 'route');
+  await takeRoute(page, 'Tresen');
+  await page.waitForSelector('[data-testid="shop"]');
+  await englishScreen(page, 'shop', 'bar');
+  await assertNoSideScroll(page, 'English bar');
+  // An info card of a relic at the bar: the content texts come in English.
+  const relic = page.locator('.shop [data-action="info-offer-relic"]').first();
+  if (await relic.count()) {
+    await relic.click();
+    await page.waitForSelector('.info-card, [data-testid="info-card"]');
+    await englishScreen(page, 'info-relic', 'relic info card');
+    await page.keyboard.press('Escape');
+  }
+  // The menu in a run: rules card and glossary.
+  await page.click('.hud [data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-language"]');
+  await englishScreen(page, 'menu-run', 'menu in a run', '.overlay');
+  await page.click('[data-action="rules"]');
+  await page.waitForSelector('.overlay .sheet');
+  await englishScreen(page, 'rules', 'rules card', '.overlay');
+  await page.click('.overlay [data-action="close-overlay"]');
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-action="glossary"]');
+  await page.waitForSelector('.overlay .sheet');
+  await englishScreen(page, 'glossary', 'glossary', '.overlay');
+  await page.click('.overlay [data-action="close-overlay"]');
+
+  // An encounter (encounter.json: "Der Kartengeber").
+  await resumeFixture(page, 'encounter.json');
+  await page.waitForSelector('[data-testid="encounter"]');
+  const title = ((await page.locator('[data-testid="encounter"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!/The Dealer/.test(title)) fail(`English: the encounter is not in English: ${title.slice(0, 120)}`);
+  await englishScreen(page, 'encounter', 'encounter');
+  await assertNoSideScroll(page, 'English encounter', '[data-testid="encounter"]');
+  await context.close();
+
+  // The Einführung, played through in English.
+  await tutorialPass(browser, errors, PHONE, null, 'en-GB');
+  await tutorialPass(browser, errors, DESKTOP, null, 'en-GB');
+  log('English: start, game, unlock, card reward, route, bar, menu, rules, glossary, encounter and introduction');
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
+  // German stays the default (ADR 0023): every context gets a German
+  // browser unless it asks for another locale (the English pass).
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = (options = {}) => newContext({ locale: 'de-DE', ...options });
   const errors = [];
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
@@ -5877,6 +6099,11 @@ async function run() {
     // SMOKE_ONLY=a11y: Barrierefreiheit (colour-blind aid, text size, screen reader, focus).
     if (process.env.SMOKE_ONLY === 'a11y') {
       await a11yPass(browser, errors, reducedMotion);
+      return report(errors);
+    }
+    // SMOKE_ONLY=english: the English game (ADR 0023).
+    if (process.env.SMOKE_ONLY === 'english') {
+      await englishPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -6233,6 +6460,7 @@ async function run() {
     await shareRunPass(browser, errors, PHONE);
     await shareRunPass(browser, errors, DESKTOP);
     await offlinePass(browser, errors);
+    await englishPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

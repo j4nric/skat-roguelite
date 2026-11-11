@@ -6,7 +6,7 @@
 // (`mod:<id>`, ./info.ts). Only lookups and labels: which Zinken exist,
 // their kind, values and texts come from the catalog.
 
-import { de, cardModIds, contentName, isCurse, modFirstValue, modKind, modText } from '../i18n';
+import { de, cardModIds, contentName, lang, isCurse, modFirstValue, modKind, modText } from '../i18n';
 import type { CardKind, ModKind } from '../types';
 import { cardSvg } from './cards';
 import { attrs, esc } from './dom';
@@ -75,7 +75,7 @@ export function renderGlossary(): string {
   const byGroup = new Map<Group, string[]>(GROUPS.map((k) => [k, []]));
   for (const mod of cardModIds()) byGroup.get(groupOf(modKind(mod), isCurse(mod)))?.push(mod);
   const sections = GROUPS.map((k) => {
-    const mods = (byGroup.get(k) ?? []).sort((a, b) => rankOf(a) - rankOf(b) || contentName('card_mods', a).localeCompare(contentName('card_mods', b), 'de'));
+    const mods = (byGroup.get(k) ?? []).sort((a, b) => rankOf(a) - rankOf(b) || contentName('card_mods', a).localeCompare(contentName('card_mods', b), lang()));
     if (!mods.length) return '';
     const [title, line] = g.groups[k];
     return `<section class="glossary-group" ${attrs({ 'data-group': k, 'data-testid': `glossary-${k}` })}>

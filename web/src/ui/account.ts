@@ -2,7 +2,7 @@
 // the recovery code, the recovery code shown once, name, sign out, delete,
 // and the choice between two states after playing on two devices.
 
-import { de, t } from '../i18n';
+import { de, locale, t } from '../i18n';
 import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
@@ -215,7 +215,7 @@ export function renderDeleteAccount(sheet: Sheet, busy: boolean, error: string |
 function when(at: number): string {
   if (!at) return '';
   const d = new Date(at);
-  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function side(title: string, s: ConflictSide, newer: boolean, action: string, testid: string, label: string): string {

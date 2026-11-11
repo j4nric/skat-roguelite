@@ -1,6 +1,8 @@
-// All texts of the web app (German only, see DESIGN 16). Game terms use the
-// German deck (ADR 0010, GLOSSARY "Anzeige im deutschen Blatt"). Placeholders
-// in braces are filled by `t()` in ./index.ts.
+// All texts of the web app in German, the default language (DESIGN 16).
+// ./en.ts has the same keys in English (ADR 0023): a new text goes into
+// both files. Game terms use the German deck (ADR 0010, GLOSSARY "Anzeige
+// im deutschen Blatt"). Placeholders in braces are filled by `t()` in
+// ./index.ts and must be the same in both languages.
 
 export const de = {
   app: {
@@ -203,7 +205,7 @@ export const de = {
 
   /**
    * "Farbenblind-Hilfe": the letter of each suit, drawn in the card's corner
-   * (as pixel glyphs by ./ui/sprite.ts: only these four letters exist there).
+   * (as pixel glyphs by ./ui/sprite.ts: only the letters of de.ts and en.ts exist there).
    */
   suitLetters: {
     Clubs: 'E',
@@ -1336,6 +1338,12 @@ export const de = {
       ['Danach', 'Freischaltungen und Statistik bleiben im Vereinsbuch, auch wenn der Run verloren ist.'],
       ['Einsatz', 'Jeder gewonnene Run hebt die Gewinngrenze des nächsten um ein Auge: 61, 62, 63 … Schneider bleibt bei 90, Null zählt keine Augen. Den Einsatz wählst du vor dem Run, je Charakter und für den ganzen und kurzen Abend getrennt.'],
     ] as [string, string][],
+    /**
+     * The Skat words that stay German in another language, explained
+     * (ADR 0023). German needs no list: empty here, the card shows none.
+     */
+    wordsTitle: 'Begriffe',
+    words: [] as [string, string][],
   },
 
   account: {
@@ -1788,6 +1796,17 @@ export const de = {
     updateLaterMark: '×',
     board: 'Offline: Die Tafel des Tages erscheint wieder, sobald du online bist.',
     account: 'Du bist offline. Anmelden geht erst wieder mit Verbindung. Spielen kannst du weiter, dein Fortschritt bleibt in diesem Browser.',
+  },
+
+  /** The language setting and the formats that follow the language (ADR 0023). */
+  lang: {
+    /** The menu row: in both languages, so it is found whichever is on. */
+    label: 'Sprache / Language',
+    names: { de: 'Deutsch', en: 'English' },
+    percent: '{n} %',
+    quote: '„{text}“',
+    /** The page's meta description. */
+    description: 'Stammtisch: Skat als Roguelike im Browser.',
   },
 
   /**

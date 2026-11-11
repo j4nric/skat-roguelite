@@ -10,6 +10,7 @@
 // outside the art, so the art keeps its integer scale.
 
 import { RARE_SPRITE_URL, SPRITE_URL, UNDEAD } from 'virtual:stammtisch-sprite';
+import { lang } from '../i18n';
 import type { Rank, Suit } from '../types';
 import { ICON_MODS } from './fxart';
 import { suitCode } from './deck';
@@ -63,7 +64,8 @@ export function wildFaceIds(rank: Rank, suit: Suit | null = null): { picture: st
 
 /** Symbol id of a suit's letter tag ("Farbenblind-Hilfe", under the corner index). */
 export function suitLetterId(suit: Suit): string {
-  return `cb-${suitCode(suit)}`;
+  // The sprite has the letters of both languages (./sprite.ts, ADR 0023).
+  return lang() === 'de' ? `cb-${suitCode(suit)}` : `cb-${lang()}-${suitCode(suit)}`;
 }
 
 export function suitId(suit: Suit): string {

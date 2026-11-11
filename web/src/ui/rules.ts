@@ -49,6 +49,7 @@ export function renderRules(): string {
       <ul class="rules-list">${list(r.bent)}</ul>
       <h3 class="rules-h">${esc(r.runTitle)}</h3>
       ${terms(r.run, 'rules-run')}
+      ${r.words.length ? `<h3 class="rules-h">${esc(r.wordsTitle)}</h3>${terms(r.words, 'rules-words')}` : ''}
     </div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'rules-close' })}>${esc(de.app.close)}</button>`;
 }
