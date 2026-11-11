@@ -93,7 +93,11 @@ export class Steps {
     const run = this.ctx.screenEl.querySelector('.run');
     if (!run) return;
     run.classList.add('is-busy');
-    for (const el of run.querySelectorAll('[data-action="play"]')) el.removeAttribute('data-action');
+    for (const el of run.querySelectorAll('[data-action="play"]')) {
+      el.removeAttribute('data-action');
+      // Screen readers: the card is not playable while the core answers.
+      el.setAttribute('aria-disabled', 'true');
+    }
   }
 
   /**

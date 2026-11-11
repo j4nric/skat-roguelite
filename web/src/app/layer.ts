@@ -2,6 +2,7 @@
 // board can animate undisturbed. Also the sheets a playback waits on (the
 // score board, the boss) and their buttons.
 
+import { DialogFocus } from '../ui/a11y';
 import { editionLook } from '../ui/cards';
 import { renderScore, ScoreBoard } from '../ui/score';
 import { renderOverlay } from '../ui/screens';
@@ -20,7 +21,12 @@ export class Layer {
    */
   awaited: Overlay | null = null;
 
-  constructor(private readonly ctx: AppCtx) {}
+  /** Focus into a dialog when it opens, back to its opener when it closes (../ui/a11y.ts). */
+  private readonly focus: DialogFocus;
+
+  constructor(private readonly ctx: AppCtx) {
+    this.focus = new DialogFocus(() => ctx.layerEl);
+  }
 
   /** Draw the layer with the next render even if the dialog is the same. */
   markDirty(): void {
@@ -29,11 +35,18 @@ export class Layer {
 
   /** The dialog layer: only rebuilt when the dialog itself changes. */
   render(): void {
+    const o = this.ctx.ui.overlay;
+    if (o === this.rendered && !this.dirty) return;
+    const same = o !== null && o === this.rendered;
+    const keep = this.focus.before();
+    this.draw(same);
+    this.focus.after(keep, same);
+  }
+
+  private draw(same: boolean): void {
     const ui = this.ctx.ui;
     const layerEl = this.ctx.layerEl;
     const o = ui.overlay;
-    if (o === this.rendered && !this.dirty) return;
-    const same = o !== null && o === this.rendered;
     this.rendered = o;
     this.dirty = false;
     layerEl.classList.toggle('is-static', same);

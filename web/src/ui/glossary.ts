@@ -85,7 +85,7 @@ export function renderGlossary(): string {
     </section>`;
   }).join('');
   return `<h2>${esc(g.title)}</h2>
-    <div class="rules-body glossary-body" data-testid="glossary">
+    <div class="rules-body glossary-body" data-testid="glossary" tabindex="0">
       <p class="rules-intro">${esc(g.intro)}</p>
       <h3 class="rules-h">${esc(g.valuesTitle)}</h3>
       ${legend()}

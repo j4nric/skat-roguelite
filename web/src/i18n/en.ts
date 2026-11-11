@@ -204,6 +204,13 @@ export const en: Strings = {
     Diamonds: 'Bells',
   },
 
+  suitLetters: {
+    Clubs: 'A',
+    Spades: 'L',
+    Hearts: 'H',
+    Diamonds: 'B',
+  },
+
   ranks: {
     '7': 'Seven',
     '8': 'Eight',
@@ -232,7 +239,7 @@ export const en: Strings = {
     back: 'Face-down card',
     fromSkat: 'Skat',
     fromDefender: 'from {name}',
-    mods: 'Marked: {mods}',
+    mods: 'marked: {mods}',
     curse: 'Curse',
     honoraryJack: 'Honorary Unter',
     chalked: 'dyed with Blue Curaçao, really {suit}',
@@ -1082,6 +1089,15 @@ export const en: Strings = {
     back: 'Card back',
     backOwn: 'The character’s back',
     suitTintHint: 'Each card’s paper lightly in its suit: Acorns beige, Leaves green, Hearts pink, Bells yellow.',
+    display: 'Display',
+    suitTintShort: 'Tint',
+    colorBlind: 'Colour-blind aid',
+    colorBlindShort: 'Colour-blind',
+    colorBlindHint: 'A letter for the suit in the corner of every card (A Acorns, L Leaves, H Hearts, B Bells) and signs next to everything that otherwise only colour tells.',
+    textSize: 'Text size',
+    textSizeShort: 'Text: {size}',
+    textSizes: { normal: 'Normal', large: 'Large', xlarge: 'Extra large' },
+    textSizeHint: 'Larger text everywhere. Tap to cycle: Normal, Large, Extra large.',
     hintsReset: 'Reset',
     hintsResetAria: 'Reset the landlord’s hints',
     hintsResetDone: 'The landlord will explain everything again.',
@@ -1659,6 +1675,13 @@ export const en: Strings = {
     saved: 'Picture saved.',
     failed: 'The picture didn’t work just now.',
     making: 'Painting the picture …',
+  },
+
+  a11y: {
+    played: '{name} plays {card}.',
+    won: 'Won: {score} points.',
+    lost: 'Lost: {score} points.',
+    seat: '{name}: {details}. Open explanation',
   },
 
   keys: {
