@@ -425,6 +425,14 @@ export class Lifecycle {
           this.ctx.render();
         }
       },
+      'char-more': () => {
+        ui.charMore = !ui.charMore;
+        this.ctx.render();
+      },
+      'start-more': () => {
+        ui.startMore = !ui.startMore;
+        this.ctx.render();
+      },
       'char-scroll': ({ num }) => scrollCharacterPicker(this.ctx.screenEl, num('dir'), !reducedMotion()),
       'pick-character': ({ el }) => {
         const c = el.dataset.character ?? null;

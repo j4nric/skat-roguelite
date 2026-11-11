@@ -49,8 +49,8 @@ function characterName(c: CharacterEntry): string {
 
 /**
  * A character in the picker row: portrait, short name and role; a locked one
- * shows its unlock condition instead of the role. The picked character's
- * whole text stands below the row ([`characterDetail`]).
+ * shows its unlock condition instead of the role. The picked character
+ * stands large above the row ([`characterHero`]).
  */
 function characterCard(c: CharacterEntry, ui: UiState, meta: MetaView): string {
   const name = characterName(c);
@@ -79,26 +79,51 @@ function characterCard(c: CharacterEntry, ui: UiState, meta: MetaView): string {
   </button>`;
 }
 
-/** The whole text of the picked character, below the picker row. */
-function characterDetail(meta: MetaView, ui: UiState): string {
+/**
+ * The picked character above the row (DESIGN 16.4): the portrait large, the
+ * name, the role and the whole text folded to two lines; "mehr" unfolds it.
+ * [`settleCharacterPicker`] hides "mehr" when the text fits anyway.
+ */
+function characterHero(meta: MetaView, ui: UiState): string {
   const c = meta.characters.find((x) => x.character === ui.pickCharacter && x.unlocked);
   if (!c) return '';
-  return `<p class="char-detail" data-testid="char-detail"><b>${esc(characterName(c))}:</b> ${esc(contentText('characters', c.character) || c.text)}</p>`;
+  const name = characterName(c);
+  const open = ui.charMore === true;
+  return `<div class="char-hero" data-testid="char-detail">
+    ${portrait(characterPortraitId(c.character), 'portrait-hero')}
+    <div class="char-hero-text">
+      <h3 class="char-hero-name">${esc(name)}</h3>
+      <span class="char-hero-role">${esc(de.characters[c.character]?.role ?? '')}</span>
+      <p class="char-blurb ${open ? 'is-open' : ''}" id="char-blurb" data-testid="char-blurb">${esc(contentText('characters', c.character) || c.text)}</p>
+      <button class="link-btn char-more" ${attrs({
+        'data-action': 'char-more',
+        'data-testid': 'char-more',
+        'aria-expanded': open ? 'true' : 'false',
+        'aria-controls': 'char-blurb',
+        'aria-label': t(de.start.charMoreAria, { name }),
+      })}>${esc(open ? de.start.charLess : de.start.charMore)}</button>
+    </div>
+  </div>`;
 }
 
-/** The picker row: every character in one row, swiped or moved with the arrows. */
+/**
+ * The picker: the picked character large, below it every character in one
+ * row, swiped or moved with the arrows. Locked characters come last (only
+ * the order on the screen; the core keeps its own).
+ */
 function characterPicker(meta: MetaView, ui: UiState): string {
-  const cards = meta.characters.map((c) => characterCard(c, ui, meta)).join('');
+  const ordered = [...meta.characters.filter((c) => c.unlocked), ...meta.characters.filter((c) => !c.unlocked)];
+  const cards = ordered.map((c) => characterCard(c, ui, meta)).join('');
   const arrow = (dir: -1 | 1, label: string, path: string): string =>
     `<button class="char-nav" ${attrs({ 'data-action': 'char-scroll', 'data-dir': dir, 'aria-label': label })}><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="${path}" fill="currentColor"/></svg></button>`;
   return `<section class="char-pick" aria-label="${esc(de.start.whoPlays)}">
     <h2 class="char-title">${esc(de.start.whoPlays)}</h2>
+    ${characterHero(meta, ui)}
     <div class="char-row">
       ${arrow(-1, de.start.charsBack, 'M7 0 L7 10 L1 5 Z')}
       <div class="char-cards" data-testid="characters">${cards}</div>
       ${arrow(1, de.start.charsNext, 'M3 0 L3 10 L9 5 Z')}
     </div>
-    ${characterDetail(meta, ui)}
   </section>`;
 }
 
@@ -119,6 +144,10 @@ export function settleCharacterPicker(root: HTMLElement, scrollLeft: number | un
     else if (right > cards.scrollLeft + cards.clientWidth) cards.scrollLeft = right - cards.clientWidth;
   }
   cards.closest('.char-row')?.classList.toggle('has-overflow', cards.scrollWidth > cards.clientWidth + 1);
+  // "mehr" only when the folded text does not fit in its two lines.
+  const blurb = root.querySelector<HTMLElement>('.char-blurb');
+  const more = root.querySelector<HTMLElement>('.char-more');
+  if (blurb && more) more.hidden = !blurb.classList.contains('is-open') && blurb.scrollHeight <= blurb.clientHeight + 1;
 }
 
 /** Move the picker row by about two cards. */
@@ -426,6 +455,30 @@ function tutorialOffer(ui: UiState): string {
   </section>`;
 }
 
+/**
+ * The second level of the start screen (DESIGN 16.4): the daily run, the own
+ * seed and the Einführung, folded behind one row. Folded, the seed field
+ * stays in the page (hidden), so a typed seed still starts the next run.
+ */
+function startMore(ui: UiState): string {
+  const open = ui.startMore === true;
+  const tutorial = ui.tutorialOffer
+    ? ''
+    : `<div class="start-actions start-tutorial"><button class="btn btn-wide" ${attrs({ 'data-action': 'tutorial-start', 'data-testid': 'tutorial-start' })}>${esc(de.tutorial.start)}</button><p class="small">${esc(de.tutorial.startHint)}</p></div>`;
+  return `<section class="start-more ${open ? 'is-open' : ''}" data-testid="start-more">
+    <button class="start-more-toggle" ${attrs({ 'data-action': 'start-more', 'data-testid': 'start-more-toggle', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'start-more-body' })}>
+      <span class="start-more-label"><b>${esc(de.start.moreTitle)}</b><span>${esc(ui.tutorialOffer ? de.start.moreHintShort : de.start.moreHint)}</span></span>
+      <svg class="start-more-chev" viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M0 3 L10 3 L5 8 Z" fill="currentColor"/></svg>
+    </button>
+    <div class="start-more-body" id="start-more-body" ${attrs({ hidden: !open })}>
+      ${dailyBlock(ui)}
+      <label class="seed"><span>${esc(de.start.seedLabel)}</span>
+        <input id="seed" name="seed" inputmode="numeric" autocomplete="off" placeholder="${esc(de.start.seedPlaceholder)}"></label>
+      ${tutorial}
+    </div>
+  </section>`;
+}
+
 export function renderStart(ui: UiState, buildInfo: string): string {
   const resume = ui.saveInfo
     ? `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'resume' })}>${esc(de.start.resume)}</button>
@@ -455,14 +508,8 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     ${chars}
     ${''/* ADR 0016: the short evening is dropped, no length choice */}
     ${meta ? stakePick(ui) : ''}
-    <div class="start-actions">
-      <button class="btn ${ui.saveInfo ? '' : 'btn-primary'} btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(newLabel)}</button>
-      <label class="seed"><span>${esc(de.start.seedLabel)}</span>
-        <input id="seed" name="seed" inputmode="numeric" autocomplete="off" placeholder="${esc(de.start.seedPlaceholder)}"></label>
-    </div>
-    ${dailyBlock(ui)}
     ${weeklyBlock(ui)}
-    ${ui.tutorialOffer ? '' : `<div class="start-actions start-tutorial"><button class="btn btn-wide" ${attrs({ 'data-action': 'tutorial-start', 'data-testid': 'tutorial-start' })}>${esc(de.tutorial.start)}</button><p class="small">${esc(de.tutorial.startHint)}</p></div>`}
+    ${startMore(ui)}
     ${meta ? startStats(meta) : ''}
     ${meta ? startBoard(meta) : ''}
     ${meta ? `<button class="btn btn-wide btn-book" ${attrs({ 'data-action': 'book' })}>${bookIcon()}<span>${esc(de.start.book)}</span><span class="book-progress">${esc(t(de.start.bookHint, { done, total }))}</span></button>` : ''}
@@ -473,6 +520,9 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       <button class="link-btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.start.credits)}</button>
       <span class="build" data-testid="build">${esc(t(de.app.build, { info: buildInfo }))}</span>
     </footer>
+    <div class="start-dock" data-testid="start-dock">
+      <button class="btn ${ui.saveInfo ? '' : 'btn-primary'} btn-wide" ${attrs({ 'data-action': 'new-run' })}>${esc(newLabel)}</button>
+    </div>
   </main>`;
 }
 
