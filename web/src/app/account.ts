@@ -1,7 +1,7 @@
 // Account and sync (ADR 0021), and the daily board. Transport only: the
 // save is the save code; the server never sees the game.
 
-import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, fetchWeeklyBoard, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, submitWeekly, type AccountUser } from '../account';
+import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, fetchWeeklyBoard, recover, redeemMove, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, submitWeekly, type AccountUser } from '../account';
 import { de, t } from '../i18n';
 import { dailySeed } from '../seed';
 import { Sync, type Reconciled } from '../sync';
@@ -177,7 +177,7 @@ export class AccountFlow {
     );
   }
 
-  private accountError(err: unknown): string {
+  accountError(err: unknown): string {
     const code = err instanceof AccountError ? err.code : 'default';
     return de.account.errors[code] ?? de.account.errors.default ?? '';
   }
@@ -276,6 +276,31 @@ export class AccountFlow {
     this.ctx.render();
   }
 
+  /**
+   * A move link from the old address (`#umzug=…`, ADR 0025): sign the
+   * same account in with its one-time code, then offer a passkey for this
+   * address (the old ones only open the old address). What the account
+   * holds is taken as after any sign-in, once the sheet is closed.
+   */
+  async signInWithMoveCode(code: string): Promise<void> {
+    const ui = this.ctx.ui;
+    const pending: Overlay = { kind: 'account-moved', busy: true, error: null, done: false };
+    ui.overlay = pending;
+    this.ctx.render();
+    let user: AccountUser;
+    try {
+      user = (await redeemMove(code)).user;
+    } catch (err) {
+      if (ui.overlay !== pending) return;
+      ui.overlay = { kind: 'account-moved', busy: false, error: this.accountError(err), done: false };
+      this.ctx.render();
+      return;
+    }
+    this.pendingSync = await this.afterSignIn(user);
+    ui.overlay = { kind: 'account-moved', busy: false, error: null, done: true };
+    this.ctx.render();
+  }
+
   /** The recovery code was seen: go on with what signing in brought. */
   codeDone(): void {
     const pending = this.pendingSync;
@@ -304,7 +329,8 @@ export class AccountFlow {
   }
 
   async addPasskeyHere(): Promise<void> {
-    const fromCode = this.ctx.ui.overlay?.kind === 'account-code';
+    const kind = this.ctx.ui.overlay?.kind;
+    const fromCode = kind === 'account-code' || kind === 'account-moved';
     if (fromCode) this.openAccount();
     const res = await this.accountBusy(() => addPasskey());
     if (!res) return;
@@ -437,6 +463,7 @@ export class AccountFlow {
       'account-recover-go': () => void this.recoverWithCode(),
       'account-code-copy': () => this.copyRecoveryCode(),
       'account-code-done': () => this.codeDone(),
+      'account-moved-done': () => this.codeDone(),
       'account-add-passkey': () => void this.addPasskeyHere(),
       'account-name-save': () => void this.saveName(),
       'account-new-code': () => void this.newRecoveryCode(),

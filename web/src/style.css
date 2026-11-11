@@ -3394,6 +3394,16 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 /* ------------------------------------------------------------ share block */
 
 .share,
+/* A link that looks like a button (the move link, ADR 0025). */
+a.btn {
+  text-decoration: none;
+}
+
+/* "Wir sind umgezogen" (ADR 0025): the host stays in one piece. */
+.move-host {
+  white-space: nowrap;
+}
+
 .shared-offer {
   display: flex;
   flex-direction: column;

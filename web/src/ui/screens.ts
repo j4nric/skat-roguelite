@@ -31,6 +31,8 @@ import { accountName, renderAccount, renderConflict, renderDeleteAccount, render
 import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
 import type { BookTab, ModQuestion, Overlay, UiState } from './state';
+import { renderAccountMoved, renderMove, renderMoveNotice } from './move';
+import { onOldAddress } from '../domain';
 
 export { lockIcon };
 
@@ -444,6 +446,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
     </div>
     ${chars ? '' : startFan()}
     ${ui.message ? `<p class="is-warning" role="alert">${esc(ui.message)}</p>` : ''}
+    ${onOldAddress() ? renderMoveNotice() : ''}
     ${sharedOffer(ui)}
     ${tutorialOffer(ui)}
     <div class="start-actions">
@@ -856,7 +859,11 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'save-import':
       return renderSaveImport(sheet, overlay.text, overlay.error, overlay.checking);
     case 'save-confirm':
-      return renderSaveConfirm(sheet, overlay.lines);
+      return renderSaveConfirm(sheet, overlay.lines, overlay.moved ?? false);
+    case 'move':
+      return renderMove(sheet, overlay, ui.account.user !== null, ui.account.online);
+    case 'account-moved':
+      return renderAccountMoved(sheet, overlay.busy, overlay.error, overlay.done, ui.account.user ? accountName(ui.account.user) : de.account.noName, ui.account.supported);
     case 'overview':
       if (!view) return '';
       return sheet(
