@@ -38,6 +38,10 @@ pub const RAMSCH_MARGIN: i64 = 5000;
 /// (docs/balance/2026-11-10-neue-charaktere.md).
 pub const HAND_KEEP_MIN_PERCENT: i64 = 75;
 
+/// The same for a Null Hand: at most this many exposed cards
+/// ([`RunBot::keep_the_skat`]; Null wins 76 % with one, 54 % with two).
+pub const HAND_KEEP_NULL_EXPOSED: usize = 1;
+
 /// Relic ids the game decisions look at (relics v4).
 const CLEAR_CUT: &str = "clear_cut";
 
@@ -458,7 +462,7 @@ impl RunBot {
     /// the skat may still be picked up but not for every game left, a hand
     /// that wins a hand game at least [`HAND_KEEP_MIN_PERCENT`] of the time
     /// ([`suit_win_percent`]), or a Null Hand with at most
-    /// [`NULL_HAND_MAX_EXPOSED`] exposed cards, is played from
+    /// [`HAND_KEEP_NULL_EXPOSED`] exposed cards, is played from
     /// the hand ([`RunBot::forced_hand`]) and the pickup kept for a weak
     /// one. In the last game of the pub nothing is kept.
     fn keep_the_skat(run: &Run, hand: &[DealtCard], suit: Declaration, exposed: usize) -> bool {
@@ -469,7 +473,7 @@ impl RunBot {
         left > 0
             && left < run.series().games_left()
             && (suit_win_percent(hand, deck, suit.game()) >= HAND_KEEP_MIN_PERCENT
-                || exposed <= NULL_HAND_MAX_EXPOSED)
+                || exposed <= HAND_KEEP_NULL_EXPOSED)
     }
 
     /// Whether to spend one of the game's own Einmischen on a hand that is

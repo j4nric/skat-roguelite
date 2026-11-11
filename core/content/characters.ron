@@ -333,29 +333,38 @@
     (
         character: Gambler,
         name: "Der Zocker",
-        text: "Setzt alles auf eine Karte: Ein Handspiel zählt bei ihm zwei Stufen für Hand statt einer, aber den Skat nimmt er nur einmal je Kneipe auf. Zwei Siebenen hat er im Ärmel (Wandelkarten), seine Daus kennt der ganze Tisch (Durchsichtig). Startet mit dem Knobelbecher.",
+        text: "Setzt alles auf eine Karte: Ein gewonnenes Handspiel zählt bei ihm zwei Stufen für Hand statt einer, aber den Skat nimmt er nur einmal je Kneipe auf. Zwei Siebenen hat er im Ärmel (Wandelkarten), seine Schellen-Daus kennt der ganze Tisch (Durchsichtig). Startet mit dem Knobelbecher.",
         start_relics: ["dice_cup"],
+        // Eigene Kurve (docs/balance/2026-11-10-neue-charaktere.md): Ohne
+        // Skat in den meisten Spielen sind seine Spielwerte klein, die
+        // Kurve liegt deshalb überall unter der von run.ron. Mit ihr kam
+        // er auf 25,0 / 6,8 / 1,7 % (3 × 300 Runs), so auf
+        // 38,8 / 15,2 / 4,0 % (7 × 300 Runs).
+        targets: Some([
+            [5, 15, 40, 45, 80],
+            [45, 55, 60, 70, 85],
+            [95, 105, 115, 125, 100],
+        ]),
         // Asse im Ärmel: Eichel- und Grün-Sieben sind Wandelkarten (sie
         // nehmen bei Spielbeginn die Farbe an, von der er die meisten
         // Karten hält, also meist Trumpf). Dafür kennt der Tisch seine
-        // Daus: Hält er einen, wissen es die Gegner.
+        // Schellen-Daus: Hält er sie, wissen es die Gegner (im ersten
+        // Entwurf alle vier Daus, Balance-Notiz vom 10.11.2026).
         deck: (
             mods: [
                 ("C7", "wild_card", 1),
                 ("S7", "wild_card", 1),
-                ("CA", "transparent", 1),
-                ("SA", "transparent", 1),
-                ("HA", "transparent", 1),
                 ("DA", "transparent", 1),
             ],
         ),
-        // Hand +1 dazu (wie der Drückeberger −1, nur andersherum), auch
-        // Null Hand; der Skat einmal je Kneipe (Wirkung
+        // Hand +1 dazu, nur bei Gewinn (wie der Drückeberger −1, nur
+        // andersherum), auch Null Hand; ein verlorenes Handspiel kostet
+        // wie bei allen anderen. Der Skat einmal je Kneipe (Wirkung
         // SkatPickupsPerPub, danach ist jedes Spiel der Kneipe Hand).
         rule: (
             passive: [SkatPickupsPerPub(1)],
             hooks: [
-                OnDeclare(when: All([HandGame, Not(RamschGame)]), then: [AddLevels(1)]),
+                OnScore(when: All([Won, HandGame, Not(RamschGame)]), then: [AddLevels(1)]),
             ],
         ),
         null_scoring: Some(Formula((
@@ -374,6 +383,15 @@
         name: "Die Ramschtante",
         text: "Hat schon jeden Ramsch gesehen: Vor dem Skat darf sie statt einer Ansage Ramsch spielen. Wer die meisten Augen hat, verliert; hat sie nicht die meisten, zählen die Augen des Verlierers für sie. Ihre Daus und Zehnen sind abgegriffen (Ramponiert, je 5 Augen weniger). Startet mit dem Spitzendeckchen.",
         start_relics: ["lace_doily"],
+        // Eigene Kurve (docs/balance/2026-11-10-neue-charaktere.md): Der
+        // Ramsch bringt ihr hohe Spielwerte, die Kurve liegt deshalb weit
+        // über der von run.ron. Mit ihr kam sie auf 71,3 / 48,3 / 22,3 %
+        // (3 × 300 Runs), so auf 39,2 / 13,9 / 4,2 % (7 × 300 Runs).
+        targets: Some([
+            [40, 75, 125, 145, 235],
+            [120, 140, 160, 180, 180],
+            [165, 180, 195, 210, 160],
+        ]),
         // Lauter Luschen: Daus und Zehnen ihrer Ausgabe zählen je 5 Augen
         // weniger (Daus 6, Zehn 5). Im Ramsch nimmt sie damit weniger
         // Augen, in Farbspiel und Grand fehlen sie ihr. Die Flüche lassen

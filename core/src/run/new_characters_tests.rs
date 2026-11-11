@@ -1,5 +1,5 @@
 //! Tests of the characters and the night boss of 10.11.2026 (DESIGN 9.6b,
-//! 9.6c, 11.1): Der Zocker (hand counts two levels, the skat once per pub,
+//! 9.6c, 11.1): Der Zocker (a won hand counts two levels, the skat once per pub,
 //! Knobelbecher), Die Ramschtante (Ramsch instead of a declaration, worn
 //! Daus and Zehnen, Spitzendeckchen) and Der Totengräber (discarded cards
 //! count no Augen, only in the long night), plus the bot's choices for
@@ -102,14 +102,15 @@ fn finish(
 // ---------------------------------------------------------------------------
 
 #[test]
-fn gambler_starts_with_wild_sevens_open_aces_and_the_dice_cup() {
+fn gambler_starts_with_wild_sevens_an_open_ace_and_the_dice_cup() {
     let content = content();
     let run = run_as(&content, Character::Gambler);
     for seven in ["C7", "S7"] {
         assert_eq!(mods_of(&run, seven), vec![("wild_card".into(), 1)]);
     }
-    for ace in ["CA", "SA", "HA", "DA"] {
-        assert_eq!(mods_of(&run, ace), vec![("transparent".into(), 1)]);
+    assert_eq!(mods_of(&run, "DA"), vec![("transparent".into(), 1)]);
+    for ace in ["CA", "SA", "HA"] {
+        assert!(mods_of(&run, ace).is_empty(), "{ace}");
     }
     assert!(mods_of(&run, "H7").is_empty());
     assert_eq!(run.relics(), &[RelicId::new("dice_cup")]);
@@ -117,22 +118,34 @@ fn gambler_starts_with_wild_sevens_open_aces_and_the_dice_cup() {
 }
 
 #[test]
-fn gambler_hand_games_count_two_levels_for_hand() {
+fn gambler_won_hand_games_count_two_levels_for_hand() {
     let content = content();
-    for declaration in [
-        hand(GameType::Suit(Suit::Diamonds)),
-        hand(GameType::Grand),
-        Declaration::null(NullRisk::Hand),
-    ] {
+    for declaration in [hand(GameType::Suit(Suit::Diamonds)), hand(GameType::Grand)] {
         let mut run = run_as(&content, Character::Gambler);
         fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
         let (_, b) = play(&mut run, &content, declaration);
+        assert!(b.won, "{declaration:?}");
         assert_eq!(
             source_lines(&b, &Source::Character(Character::Gambler)),
             vec![(Lever::Levels, Change::Add(1))],
             "{declaration:?}"
         );
     }
+    // A Null Hand on the low cards is won and gets the level too.
+    let mut run = run_as(&content, Character::Gambler);
+    fixed_deal(&mut run, &content, LUSCHEN, LUSCHEN_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(b.won);
+    assert_eq!(
+        source_lines(&b, &Source::Character(Character::Gambler)),
+        vec![(Lever::Levels, Change::Add(1))]
+    );
+    // A lost hand game costs what it costs everyone: no extra level.
+    let mut run = run_as(&content, Character::Gambler);
+    fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
+    let (_, b) = play(&mut run, &content, Declaration::null(NullRisk::Hand));
+    assert!(!b.won);
+    assert!(source_lines(&b, &Source::Character(Character::Gambler)).is_empty());
     // A won suit game from the hand: Hand +1 and the Zocker's +1.
     let mut run = run_as(&content, Character::Gambler);
     fixed_deal(&mut run, &content, STRONG, STRONG_SKAT);
