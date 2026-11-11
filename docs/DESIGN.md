@@ -1986,7 +1986,7 @@ Ab M1 wird jeder Meilenstein von einem Papierprototyp begleitet: echtes Skatblat
 | Gegner-Persönlichkeit | Standardgegner bleiben anonym. Nur Bosse haben Namen und Gesichter. Neu bewerten in M4. |
 | Vorhand-Rotation | Rotation bleibt fest. Beeinflussbar nur über Relikte (z. B. „Ewige Vorhand“, teuer). |
 | Name des Spiels | **Stammtisch**. Repo-Name bleibt vorerst `skat-roguelite`. |
-| Server-Zielplattform | Browser. Erreichbar unter https://stammtisch-62-83-23-90.sslip.io hinter dem Caddy der Haushalt-App, siehe ADR 0007 und 0008. |
+| Server-Zielplattform | Browser. Erreichbar unter https://one-more-skat.de hinter dem Caddy der Haushalt-App, siehe ADR 0007, 0008 und 0024; die alte Adresse stammtisch-62-83-23-90.sslip.io bleibt mit Umzugshinweis (ADR 0025). |
 
 Entschieden am 01.11.2026 (über das Cockpit):
 
@@ -2025,7 +2025,7 @@ Entschieden am 01.11.2026 über das Cockpit (Designfragen nach dem Spieltest):
 | Musik | Leise Chiptune-Schleifen für Tisch, Tresen und Boss, getrennt von den Klängen abschaltbar (M6). |
 | Wertung | Im Spiel eine kleine Zeile, nach dem letzten Stich eine große, überspringbare Abrechnung (M6). |
 | Null | Für jeden ansagbar, Nullspieler bleibt als Spezialist (ADR 0012, M6). |
-| Domain | sslip.io bleibt vorerst. Spielstand-Export als Text und dauerhafter Browserspeicher kommen trotzdem (M6). |
+| Domain | Eigene Domain one-more-skat.de seit 11.11.2026; die sslip.io-Adresse bleibt ohne Umleitung und hilft beim Umzug (ADR 0025). |
 | KI-Tempo | Am Handy flüssig, kein Hintergrund-Thread nötig. |
 | Planung | M6 Feinschliff und M7 Langzeit. Der Weckruf läuft bis M7. |
 
