@@ -45,7 +45,9 @@ jobs:
 
   server:
     name: account server (static musl build, Caddyfile)
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 26.04 since 11.11.2026; its apt cannot fetch
+    # musl-tools there (amd64v3 mirrors do not resolve). Pinned until fixed.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Rust toolchain
