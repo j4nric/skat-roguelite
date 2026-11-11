@@ -794,7 +794,9 @@ export const de = {
     /** Badge on the beer mat of a once-per-series relic (the Leiste shows no names). */
     onceBadge: '1.',
     emptySlot: 'Freier Schnaps-Platz',
-    emptyRelicSlot: 'Freier Relikt-Platz',
+    /** The counter behind the relics in the Leiste ("1/8"), written out. */
+    relicCount: 'Relikte: {n} von {max} Plätzen belegt',
+    relicCountOpen: 'Relikte: {n}',
     drinkAria: '{name}: antippen oder auf das Ziel ziehen',
     notNowAria: '{name}: gerade nicht trinkbar',
   },

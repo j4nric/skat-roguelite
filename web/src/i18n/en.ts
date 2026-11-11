@@ -758,7 +758,9 @@ export const en: Strings = {
     onceUsed: 'Already used in this pub',
     onceBadge: '1st',
     emptySlot: 'Free Schnapps slot',
-    emptyRelicSlot: 'Free relic slot',
+    /** The counter behind the relics in the Leiste ("1/8"), written out. */
+    relicCount: 'Relics: {n} of {max} slots taken',
+    relicCountOpen: 'Relics: {n}',
     drinkAria: '{name}: tap or drag onto the target',
     notNowAria: '{name}: can’t be drunk right now',
   },
