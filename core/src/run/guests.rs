@@ -11,12 +11,14 @@
 //!
 //! Pure presentation: the guests change nothing in play or AI. In a boss
 //! pub both seats are taken by the boss's two figures (ADR 0017); the
-//! guests drawn for it are not shown.
+//! guests drawn for it are not shown. Their lines (Sprüche, several per
+//! situation, [`Quips`]) go to the view as they are; the frontend picks
+//! when to show one and which.
 
 use serde::Serialize;
 
 use super::Run;
-use crate::content::{Content, GuestId};
+use crate::content::{Content, GuestId, Quips};
 use crate::game::Seat;
 use crate::rng::Rng;
 
@@ -68,12 +70,8 @@ pub struct GuestInfo {
     pub name: String,
     /// Id of the face the frontend draws.
     pub look: String,
-    /// Speech bubble line when the guest sits down.
-    pub greet: String,
-    /// Speech bubble line when the guest takes a trick.
-    pub win: String,
-    /// Speech bubble line when the player takes a trick.
-    pub lose: String,
+    /// Speech bubble lines, several per situation (from `guests.ron`).
+    pub quips: Quips,
 }
 
 impl Run {
@@ -119,9 +117,7 @@ impl Run {
             id: id.clone(),
             name: def.name.clone(),
             look: def.look.clone(),
-            greet: def.quips.greet.clone(),
-            win: def.quips.win.clone(),
-            lose: def.quips.lose.clone(),
+            quips: def.quips.clone(),
         })
     }
 
@@ -140,7 +136,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::content::GuestDef;
+    use crate::content::{GuestDef, QuipSituation};
     use crate::run::bot::RunBot;
 
     fn content() -> Content {
@@ -162,13 +158,109 @@ mod tests {
             assert!(!guest.name.trim().is_empty(), "{id}: name");
             assert!(!guest.look.trim().is_empty(), "{id}: look");
             assert!(looks.insert(guest.look.clone()), "{id}: look used twice");
-            for line in [&guest.quips.greet, &guest.quips.win, &guest.quips.lose] {
-                assert!(!line.trim().is_empty(), "{id}: empty quip");
-                assert!(line.chars().count() <= 44, "{id}: quip too long: {line}");
-            }
         }
         let names: BTreeSet<&str> = content.guests.values().map(|g| g.name.as_str()).collect();
         assert_eq!(names.len(), content.guests.len(), "names are unique");
+    }
+
+    /// Longest line in a speech bubble (characters): the bubble is small.
+    const QUIP_MAX_CHARS: usize = 40;
+
+    /// Two to four short, distinct lines for every situation of the role.
+    fn assert_quips(who: &str, quips: &Quips, situations: &[QuipSituation]) {
+        let mut seen = BTreeSet::new();
+        for &situation in situations {
+            let lines = quips.lines(situation);
+            assert!(
+                (2..=4).contains(&lines.len()),
+                "{who}: {situation:?} has {} lines, wants 2 to 4",
+                lines.len()
+            );
+            for line in lines {
+                assert!(!line.trim().is_empty(), "{who}: empty quip");
+                assert_eq!(line.trim(), line, "{who}: spaces around {line:?}");
+                assert!(
+                    line.chars().count() <= QUIP_MAX_CHARS,
+                    "{who}: quip too long ({} > {QUIP_MAX_CHARS}): {line}",
+                    line.chars().count()
+                );
+                assert!(seen.insert(line.clone()), "{who}: {line:?} twice");
+            }
+        }
+        let extra = quips.all().count()
+            - situations
+                .iter()
+                .map(|s| quips.lines(*s).len())
+                .sum::<usize>();
+        assert_eq!(
+            extra, 0,
+            "{who}: lines for a situation the role never shows"
+        );
+    }
+
+    #[test]
+    fn every_guest_has_lines_for_every_situation() {
+        let content = content();
+        for (id, guest) in &content.guests {
+            assert_quips(id.as_str(), &guest.quips, &QuipSituation::GUEST);
+        }
+    }
+
+    #[test]
+    fn every_boss_figure_has_lines_for_every_situation() {
+        let content = content();
+        assert!(
+            content
+                .bosses
+                .contains_key(&crate::content::BossId::new("gravedigger")),
+            "night bosses too"
+        );
+        for (id, boss) in &content.bosses {
+            for figure in &boss.figures {
+                let who = format!("{id} ({})", figure.name);
+                assert_quips(&who, &figure.quips, &QuipSituation::FIGURE);
+            }
+        }
+    }
+
+    #[test]
+    fn quips_reach_the_view() {
+        let content = content();
+        let (run, _) = Run::new(&content, 3).expect("run");
+        let view = run.view(&content);
+        let guest = &view.series.guests[0];
+        let def = content.guest(&guest.id).expect("guest");
+        assert_eq!(guest.quips, def.quips);
+        assert!(guest.quips.lines(QuipSituation::Smear).len() >= 2);
+        let boss = run.boss_info(&content, &crate::content::BossId::new("gravedigger"));
+        assert_eq!(boss.figures.len(), 2);
+        assert!(
+            boss.figures
+                .iter()
+                .all(|f| !f.quips.lines(QuipSituation::Beaten).is_empty())
+        );
+    }
+
+    #[test]
+    fn single_line_quips_from_before_still_load() {
+        let one = r#"[(id: "a", name: "A", look: "a", quips: (greet: "x", win: "y", lose: "z"))]"#;
+        let content = Content::from_sources(&crate::content::Sources {
+            guests: one,
+            ..crate::content::Sources::embedded()
+        })
+        .expect("old shape loads");
+        let a = content.guests.values().next().expect("guest");
+        assert_eq!(a.quips.greet, ["x"]);
+        assert!(a.quips.smear.is_empty());
+        let none = r#"[(id: "a", name: "A", look: "a", quips: (greet: [], win: "y", lose: "z"))]"#;
+        assert!(
+            Content::from_sources(&crate::content::Sources {
+                guests: none,
+                ..crate::content::Sources::embedded()
+            })
+            .is_err(),
+            "a guest without a greeting"
+        );
     }
 
     #[test]

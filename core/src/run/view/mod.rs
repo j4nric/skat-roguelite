@@ -154,6 +154,7 @@ impl Run {
                                 })
                                 .collect(),
                             back: f.back.clone().unwrap_or_else(|| back.clone()),
+                            quips: f.quips.clone(),
                         })
                         .collect(),
                     back,
