@@ -16,23 +16,40 @@ export class Mods {
    * Why the core refuses each card a modification would go on: its error
    * code for the action (CardCursed, ModAtMaximum, …), for the dimmed
    * cards of the picker. Asked with `check`, which builds no view (W5 of
-   * the review: one preview per card made a picker of 32 cards slow).
+   * the review: one preview per card made a picker of 32 cards slow), all
+   * cards in one request.
    */
-  refusals(view: RunView, targets: number[], action: (id: number) => RunAction): Record<number, string> {
+  async refusals(view: RunView, targets: number[], action: (id: number) => RunAction): Promise<Record<number, string>> {
     const out: Record<number, string> = {};
     const core = this.ctx.core;
     if (!core) return out;
-    for (const c of view.edition) {
-      if (targets.includes(c.id)) continue;
-      let code: string | null;
-      try {
-        code = core.check(action(c.id));
-      } catch (err) {
-        code = errorCode(err);
-      }
-      if (code) out[c.id] = code;
+    const cards = view.edition.filter((c) => !targets.includes(c.id));
+    let codes: (string | null)[];
+    try {
+      codes = await core.check(cards.map((c) => action(c.id)));
+    } catch (err) {
+      const code = errorCode(err);
+      codes = cards.map(() => code);
     }
+    cards.forEach((c, i) => {
+      const code = codes[i];
+      if (code) out[c.id] = code;
+    });
     return out;
+  }
+
+  /**
+   * Open a card picker once the core said which cards it refuses
+   * (`refusals`; none asked for without `ask`). Nothing opens if the
+   * table moved on or another sheet opened meanwhile.
+   */
+  async openPicker(view: RunView, ask: { targets: number[]; action: (id: number) => RunAction } | null, open: (reasons: Record<number, string>) => Overlay): Promise<void> {
+    const ui = this.ctx.ui;
+    const before = ui.overlay;
+    const reasons = ask ? await this.refusals(view, ask.targets, ask.action) : {};
+    if (ui.view !== view || ui.overlay !== before) return;
+    ui.overlay = open(reasons);
+    this.ctx.render();
   }
 
   /**
@@ -40,8 +57,10 @@ export class Mods {
    * replaces, raises or cancels the one on the card, ask first (an in-app
    * sheet); otherwise apply it at once. One drawn at random is not
    * previewed: the sheet only says that the card carries one already.
+   * Nothing happens if the table moved on or another sheet opened while
+   * the core was asked.
    */
-  applyMod(
+  async applyMod(
     view: RunView,
     action: RunAction,
     id: number,
@@ -50,9 +69,12 @@ export class Mods {
     back: Overlay | null,
     always: 'apply' | 'cleanse' | null = null,
     extra: Pick<ModQuestion, 'pair' | 'price'> = {},
-  ): void {
+  ): Promise<void> {
+    const ui = this.ctx.ui;
+    const before = ui.overlay;
     const card = view.edition.find((c) => c.id === id);
-    const found = card ? this.modQuestion(card, action, mod, random, always) : null;
+    const found = card ? await this.modQuestion(card, action, mod, random, always) : null;
+    if (ui.view !== view || ui.overlay !== before) return;
     if (!found) {
       void this.ctx.act(action);
       return;
@@ -83,15 +105,17 @@ export class Mods {
    * card before and after, from the core's preview, and wait for
    * "Anbringen" (or "Reinigen").
    */
-  private modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean, always: 'apply' | 'cleanse' | null = null): ModQuestion | null {
+  private async modQuestion(card: DeckCard, action: RunAction, mod: string | null, random: boolean, always: 'apply' | 'cleanse' | null = null): Promise<ModQuestion | null> {
     const blank = { card, after: null, old: null, mod: null, from: '', to: '' };
     if (random) {
       const old = card.mods.find((m) => modKind(m) !== 'Special' && modKind(m) !== 'SpecialCurse');
       return old ? { ...blank, type: 'random', old } : null;
     }
+    const core = this.ctx.core;
+    if (!core) return null;
     let step: Step;
     try {
-      step = this.ctx.core!.preview(action);
+      step = await core.preview(action);
     } catch {
       // The core refuses it: applying shows its error.
       return null;

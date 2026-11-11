@@ -28,6 +28,11 @@ import { resetTableChoices } from './table-input';
 export class Lifecycle {
   /** The Einführung was left while a playback ran: where to go once it is over. */
   private leaveTutorialTo: 'start' | 'run' | null = null;
+  /**
+   * Counts the moves between screens that wait for the core (start screen,
+   * new run, Einführung): one that is overtaken by a later one is dropped.
+   */
+  private moves = 0;
 
   constructor(
     private readonly ctx: AppCtx,
@@ -47,7 +52,7 @@ export class Lifecycle {
       // A breath between instantiating the core and reading the catalog,
       // and before the stored states: the boot is no single long task.
       await yieldToBrowser();
-      setCatalog(loadCatalog());
+      setCatalog(await loadCatalog());
     } catch (err) {
       console.warn('core failed to load', err);
       this.ctx.ui.screen = 'error';
@@ -58,15 +63,15 @@ export class Lifecycle {
     // Signed in: compare with the account before anything is read from storage.
     let synced: Reconciled = 'none';
     if (this.account.sync.signedIn) synced = await this.account.sync.reconcileAtStart(5000);
-    this.progress.loadMetaState();
+    await this.progress.loadMetaState();
     this.readShareHash();
     window.addEventListener('hashchange', () => {
       this.readShareHash();
       if (this.ctx.ui.screen === 'start') this.ctx.render();
     });
-    this.toStart();
+    await this.toStart();
     if (synced === 'applied' || takeLoadedNote()) this.ctx.showToast(de.account.loadedFromServer);
-    if (synced === 'conflict') this.account.openConflict();
+    if (synced === 'conflict') void this.account.openConflict();
     void this.account.refreshAccount();
   }
 
@@ -81,29 +86,45 @@ export class Lifecycle {
   }
 
 
-  toStart(): void {
+  /**
+   * To the start screen, with the stored run loaded for "Weiter". The
+   * screen changes once the core has loaded it; a later move (another
+   * start, a new run) wins over this one.
+   */
+  async toStart(): Promise<void> {
+    const ticket = ++this.moves;
     // The start screen reads the run from storage.
     this.ctx.persist();
     this.ctx.core?.dispose();
     this.ctx.core = null;
+    const saved = loadRun();
+    let loaded: CoreRun | null = null;
+    let failed: unknown = null;
+    if (saved) {
+      try {
+        loaded = await CoreRun.load(saved);
+      } catch (err) {
+        failed = err;
+      }
+    }
+    if (ticket !== this.moves) {
+      loaded?.dispose();
+      return;
+    }
     this.ctx.ui.view = null;
     this.ctx.ui.overlay = null;
     this.ctx.ui.ended = null;
     this.ctx.ui.saveInfo = null;
-    const saved = loadRun();
-    if (saved) {
-      try {
-        this.ctx.core = CoreRun.load(saved);
-        const view = this.ctx.core.view();
-        this.ctx.ui.view = view;
-        this.ctx.ui.saveInfo = runLine(view);
-      } catch (err) {
-        console.warn('saved run discarded', err);
-        clearRun();
-        this.ctx.core = null;
-        // A run of the old rules (shared deck, before ADR 0015) is told once.
-        this.ctx.ui.message = errorCode(err) === 'OutdatedSave' ? de.start.newRules : de.start.resumeFailed;
-      }
+    if (loaded) {
+      this.ctx.core = loaded;
+      const view = loaded.view();
+      this.ctx.ui.view = view;
+      this.ctx.ui.saveInfo = runLine(view);
+    } else if (saved) {
+      console.warn('saved run discarded', failed);
+      clearRun();
+      // A run of the old rules (shared deck, before ADR 0015) is told once.
+      this.ctx.ui.message = errorCode(failed) === 'OutdatedSave' ? de.start.newRules : de.start.resumeFailed;
     }
     // Die Einführung (DESIGN 16.1) is offered once to a new player.
     this.ctx.ui.tutorialOffer = !tutorialSeen() && !saved && !this.ctx.ui.history.length && !(this.ctx.ui.meta?.stats.runs_finished ?? 0);
@@ -150,30 +171,43 @@ export class Lifecycle {
       this.ctx.render();
       return;
     }
-    this.startRun(start);
+    void this.startRun(start);
   }
 
 
-  startRun({ seed, character, stake, daily }: PendingStart): void {
+  async startRun({ seed, character, stake, daily }: PendingStart): Promise<void> {
+    const ticket = ++this.moves;
     // Since ADR 0016 every run is the whole evening.
     const length: RunLength = 'Full';
     let core: CoreRun;
     let startEvents = '[]';
     try {
       if (this.ctx.meta) {
-        const started = CoreRun.createWith(seed, character, length, stake, this.ctx.meta);
+        const started = await CoreRun.createWith(seed, character, length, stake, this.ctx.meta);
         core = started.run;
         startEvents = started.startEvents;
       } else {
-        core = CoreRun.create(seed);
+        core = await CoreRun.create(seed);
       }
     } catch (err) {
+      if (ticket !== this.moves) return;
       console.warn('run not started', err);
       this.ctx.ui.overlay = null;
       this.ctx.ui.message = errorCode(err) === 'InvalidSeed' ? de.start.seedInvalid : errorText(err);
       this.ctx.render();
       return;
     }
+    if (ticket !== this.moves) {
+      core.dispose();
+      return;
+    }
+    // The meta state learns of the start before anything is stored, so the
+    // run and the meta state go to storage together below. From here on
+    // the start counts: the meta state has seen it.
+    const earned = await this.progress.observe(startEvents, true);
+    // A move begun meanwhile (the start screen) would load what is stored
+    // before this run: it gives way.
+    ++this.moves;
     this.ctx.persist();
     this.ctx.core?.dispose();
     this.ctx.core = core;
@@ -187,7 +221,6 @@ export class Lifecycle {
     saveRun(core.save());
     const view = core.view();
     saveRunInfo({ seed: view.seed, daily });
-    const earned = this.progress.observe(startEvents);
     this.enterRun(view, true);
     if (earned.length) {
       this.progress.announceUnlocks(earned);
@@ -243,14 +276,19 @@ export class Lifecycle {
    * progress stays stored untouched; the tutorial run is never saved and
    * its events never reach the meta state.
    */
-  startTutorial(): void {
+  async startTutorial(): Promise<void> {
     if (this.ctx.ui.busy) return;
+    const ticket = ++this.moves;
     let core: CoreRun;
     try {
-      core = CoreRun.tutorial();
+      core = await CoreRun.tutorial();
     } catch (err) {
       console.warn('tutorial not started', err);
-      this.ctx.showToast(errorText(err));
+      if (ticket === this.moves) this.ctx.showToast(errorText(err));
+      return;
+    }
+    if (ticket !== this.moves || this.ctx.ui.busy) {
+      core.dispose();
       return;
     }
     markTutorial('done');
@@ -289,7 +327,7 @@ export class Lifecycle {
       this.fx.hurry();
       return;
     }
-    this.afterTutorial(go);
+    void this.afterTutorial(go);
   }
 
 
@@ -298,13 +336,13 @@ export class Lifecycle {
     const leave = this.leaveTutorialTo;
     if (leave) {
       this.leaveTutorialTo = null;
-      this.afterTutorial(leave);
+      void this.afterTutorial(leave);
     }
   }
 
 
-  private afterTutorial(go: 'start' | 'run'): void {
-    this.toStart();
+  private async afterTutorial(go: 'start' | 'run'): Promise<void> {
+    await this.toStart();
     if (go === 'run' && !this.hasRunningRun()) this.newRun();
   }
 
@@ -316,7 +354,7 @@ export class Lifecycle {
         this.endTutorial();
         this.newRun();
       },
-      'tutorial-start': () => this.startTutorial(),
+      'tutorial-start': () => void this.startTutorial(),
       'tutorial-offer-no': () => {
         markTutorial('declined');
         ui.tutorialOffer = false;
@@ -351,12 +389,12 @@ export class Lifecycle {
           const start = overlay.start;
           ui.overlay = null;
           clearRun();
-          this.startRun(start);
+          void this.startRun(start);
         }
       },
       'to-start': () => {
         this.endTutorial();
-        this.toStart();
+        void this.toStart();
       },
       'pick-stake': ({ num }) => {
         const max = maxStake(ui.meta, ui.pickCharacter);
