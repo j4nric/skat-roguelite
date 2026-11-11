@@ -286,6 +286,9 @@ impl Run {
             can_redeal,
             redeals_left: self.redeals_left(content),
             hand_required: self.requires_hand(),
+            ramsch_offered: self.ramsch_offered()
+                && self.accepts(content, RunAction::Declare(Declaration::Ramsch)),
+            skat_pickups_left: self.skat_pickups_left(),
         }
     }
 

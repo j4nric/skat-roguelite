@@ -548,6 +548,15 @@ pub enum Effect {
     /// [`crate::rules::ramsch_value_parts`]). Passive only.
     #[serde(alias = "RamschOnce")]
     Ramsch,
+    /// Own scoring as an option: before the skat the player may declare a
+    /// Ramsch instead of a game ("Die Ramschtante"). It plays and scores
+    /// like the boss's ([`crate::rules::ramsch_value_parts`]): won when
+    /// another seat has the most Augen. Passive only.
+    OfferRamsch,
+    /// Lever Hand: the skat may be picked up at most this many times per
+    /// pub; after that every game is a hand game ("Der Zocker": once).
+    /// Several of them: the smallest counts. Passive only.
+    SkatPickupsPerPub(u32),
     /// Lever Spielwert: a lost game counts once against the player instead
     /// of twice, as "Magenbitter" did (boss "Der Ramscher" from 03.11.2026
     /// to 04.11.2026). Dormant since 04.11.2026: every lost game counts
@@ -898,6 +907,8 @@ impl Effect {
             | Effect::SeriesSkatSwap(_)
             | Effect::NoCheating
             | Effect::Ramsch
+            | Effect::OfferRamsch
+            | Effect::SkatPickupsPerPub(_)
             | Effect::CurseForPub { .. }
             | Effect::RedeemVouchersTwice
             | Effect::PromotedCardsTakePoints
@@ -994,6 +1005,8 @@ impl Effect {
             | Effect::RequireOuvert
             | Effect::DefendersSeeEachOther
             | Effect::Ramsch
+            | Effect::OfferRamsch
+            | Effect::SkatPickupsPerPub(_)
             | Effect::SingleLoss => EffectKind::Game,
             Effect::SetCardPoints { .. }
             | Effect::AddCardPoints(_)

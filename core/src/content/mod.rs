@@ -167,16 +167,24 @@ pub enum Character {
     /// suits cursed; his curses cannot be cleansed, Zinken on Rot cost
     /// half.
     HeartBrother,
+    /// Der Zocker (DESIGN 9.6b): hand games count two levels for Hand, but
+    /// the skat may be picked up only once per pub.
+    Gambler,
+    /// Die Ramschtante (DESIGN 9.6c): may play a Ramsch instead of a
+    /// declaration; her Daus and Zehnen are worn (Ramponiert).
+    RamschAunt,
 }
 
 impl Character {
     /// All characters in display order.
-    pub const ALL: [Character; 5] = [
+    pub const ALL: [Character; 7] = [
         Character::Declarer,
         Character::NullPlayer,
         Character::Shirker,
         Character::Tailoress,
         Character::HeartBrother,
+        Character::Gambler,
+        Character::RamschAunt,
     ];
 
     /// The id as text, equal to its serialized form.
@@ -188,6 +196,8 @@ impl Character {
             Character::Shirker => "Shirker",
             Character::Tailoress => "Tailoress",
             Character::HeartBrother => "HeartBrother",
+            Character::Gambler => "Gambler",
+            Character::RamschAunt => "RamschAunt",
         }
     }
 
@@ -1731,6 +1741,10 @@ pub struct RunConfig {
     /// Boss of the last Stadtteil's boss pub (Endboss), not drawn.
     #[serde(default)]
     pub final_boss: Option<BossId>,
+    /// Bosses only the long night draws (ADR 0020, DESIGN 5.5), besides
+    /// `bosses` and the Endboss; never drawn in a normal run.
+    #[serde(default)]
+    pub night_bosses: Vec<BossId>,
     /// The relic pick after a won boss pub (ADR 0017).
     #[serde(default)]
     pub boss_reward: BossRewardConfig,
@@ -2280,6 +2294,16 @@ impl Content {
         if let Some(boss) = &self.run.final_boss {
             if !self.bosses.contains_key(boss) {
                 return Err(ContentError(format!("run: unknown final boss {boss}")));
+            }
+        }
+        for boss in &self.run.night_bosses {
+            if !self.bosses.contains_key(boss) {
+                return Err(ContentError(format!("run: unknown night boss {boss}")));
+            }
+            if self.run.bosses.contains(boss) || self.run.final_boss.as_ref() == Some(boss) {
+                return Err(ContentError(format!(
+                    "run: night boss {boss} is also a boss of the day"
+                )));
             }
         }
         for boss in self.bosses.values() {

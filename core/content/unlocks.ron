@@ -209,4 +209,19 @@
         condition: ReachSection(10),
         rewards: [CardBack("lantern"), Relic("dawn")],
     ),
+    // Charaktere vom 10.11.2026 (DESIGN 9.6b, 9.6c), nicht gemessen.
+    (
+        id: "big_hand",
+        name: "Hoch gepokert",
+        text: "Gewinne ein Handspiel, das mindestens 96 Punkte zählt.",
+        condition: WinGame(min_risk: Some(Hand), min_value: 96),
+        rewards: [Character(Gambler), Relic("dice_cup")],
+    ),
+    (
+        id: "beat_ramscher",
+        name: "Ausgeramscht",
+        text: "Schlage den Boss Der Ramscher.",
+        condition: BeatBoss(boss: Some("ramscher")),
+        rewards: [Character(RamschAunt)],
+    ),
 ]

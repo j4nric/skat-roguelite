@@ -130,9 +130,13 @@ impl Run {
     pub(super) fn pick_up_skat(&mut self, events: &mut Vec<RunEvent>) -> Result<(), RunError> {
         let mut draw_rng = Rng::from_seed(opponents::game_seed(self) ^ DRAW_SEED);
         let draw = self.discard_three_ready();
+        let used_up = self.skat_used_up();
         let active = self.declaring()?;
         if active.rules.require_hand {
             return Err(RunError::HandRequired);
+        }
+        if used_up {
+            return Err(RunError::SkatUsedUp);
         }
         let game_events = if draw {
             let from = Seat::DEFENDERS[0];
@@ -148,8 +152,35 @@ impl Run {
         } else {
             active.game.pick_up_skat()?
         };
+        self.series.skat_pickups = self.series.skat_pickups.saturating_add(1);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         Ok(())
+    }
+
+    /// Whether the skat may not be picked up again in this pub ("Der
+    /// Zocker", [`crate::content::Effect::SkatPickupsPerPub`]): every game
+    /// left in it is a hand game.
+    #[must_use]
+    pub fn skat_used_up(&self) -> bool {
+        self.skat_pickups_left() == Some(0)
+    }
+
+    /// How often the skat may still be picked up in this pub, `None`
+    /// without a limit (or without a game).
+    #[must_use]
+    pub fn skat_pickups_left(&self) -> Option<u32> {
+        let limit = self.game.as_ref()?.rules.skat_pickups?;
+        Some(limit.saturating_sub(self.series.skat_pickups))
+    }
+
+    /// Whether the player may declare a Ramsch instead of a game in this
+    /// game ("Die Ramschtante", [`crate::content::Effect::OfferRamsch`]):
+    /// before the skat, never in a game that is a Ramsch anyway.
+    #[must_use]
+    pub fn ramsch_offered(&self) -> bool {
+        self.game.as_ref().is_some_and(|a| {
+            a.rules.ramsch_offered && !a.rules.ramsch && a.game.phase() == Phase::Declaring
+        })
     }
 
     /// Whether "Drei drücken" draws a card at the next pickup of the
@@ -178,9 +209,17 @@ impl Run {
             return Err(RunError::WrongPhase);
         }
         // Every character may declare every game (ADR 0012); the Ramsch
-        // only comes from "Der Ramscher".
+        // comes from "Der Ramscher", or before the skat from a rule that
+        // offers it ("Die Ramschtante").
         if declaration == Declaration::Ramsch {
-            return Err(RunError::GameNotAvailable);
+            let offered = active.rules.ramsch_offered && active.game.phase() == Phase::Declaring;
+            if !offered {
+                return Err(RunError::GameNotAvailable);
+            }
+            if active.rules.require_ouvert {
+                return Err(RunError::OuvertRequired);
+            }
+            return Ok(active);
         }
         if active.rules.require_hand && !declaration.hand() {
             return Err(RunError::HandRequired);
@@ -199,8 +238,10 @@ impl Run {
     ) -> Result<(), RunError> {
         let active = self.check_declare(declaration)?;
         // Before the skat a declaration is always a hand game: it redeems a
-        // voucher of the hand (DESIGN 7.2), before the game starts.
-        if active.game.phase() == Phase::Declaring {
+        // voucher of the hand (DESIGN 7.2), before the game starts. A
+        // Ramsch is nobody's game: no voucher, no Kontra.
+        let ramsch = declaration.is_ramsch();
+        if active.game.phase() == Phase::Declaring && !ramsch {
             self.redeem_hand_voucher(content, events);
         }
         let active = self.active_mut()?;
@@ -208,7 +249,10 @@ impl Run {
         active.note_settled(&game_events);
         events.extend(game_events.into_iter().map(RunEvent::Game));
         self.after_declaration(content, events);
-        if let Some(active) = self.game.as_mut() {
+        if ramsch {
+            self.series.ramsch_played = true;
+        }
+        if let Some(active) = self.game.as_mut().filter(|_| !ramsch) {
             if active.rules.kontra_source.is_some() {
                 let kontra_seat = Seat::DEFENDERS.into_iter().find(|&seat| {
                     DefenderHeuristic.says_kontra(active.game.hand(seat), declaration.game())

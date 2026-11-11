@@ -142,18 +142,7 @@ pub fn suit_expected_score(
     if game == GameType::Null || base == 0 {
         return 0;
     }
-    let aces = count_rank(hand, Rank::Ace).min(3);
-    let win = match game {
-        GameType::Grand => GRAND_WIN_PERCENT
-            .get(count_rank(hand, Rank::Jack).min(4))
-            .map_or(0, |row| percent(row, aces)),
-        _ => {
-            let missing = SUIT_TRUMPS.saturating_sub(trump_count(game, deck));
-            SUIT_WIN_PERCENT
-                .get((trump_count(game, hand) + missing).min(8))
-                .map_or(0, |row| percent(row, aces))
-        }
-    };
+    let win = suit_win_percent(hand, deck, game);
     let total = i64::from(crate::rules::TOTAL_CARD_POINTS);
     let normal = i64::from(crate::rules::WIN_THRESHOLD);
     let needed = i64::from(win_threshold).max(normal);
@@ -163,6 +152,26 @@ pub fn suit_expected_score(
     let levels = matadors + 1 + u32::from(declaration.hand());
     let value = i64::from(base) * i64::from(levels) * 100;
     (win * value - (100 - win) * crate::content::RUN_LOSS_FACTOR * value) / 100
+}
+
+/// Percent of games the bot wins with these ten cards as a suit game or
+/// grand `game` ([`SUIT_WIN_PERCENT`], [`GRAND_WIN_PERCENT`]), at 61
+/// Augen; 0 for Null.
+#[must_use]
+pub fn suit_win_percent(hand: &[DealtCard], deck: &[DealtCard], game: GameType) -> i64 {
+    let aces = count_rank(hand, Rank::Ace).min(3);
+    match game {
+        GameType::Null => 0,
+        GameType::Grand => GRAND_WIN_PERCENT
+            .get(count_rank(hand, Rank::Jack).min(4))
+            .map_or(0, |row| percent(row, aces)),
+        GameType::Suit(_) => {
+            let missing = SUIT_TRUMPS.saturating_sub(trump_count(game, deck));
+            SUIT_WIN_PERCENT
+                .get((trump_count(game, hand) + missing).min(8))
+                .map_or(0, |row| percent(row, aces))
+        }
+    }
 }
 
 /// Exposed cards the skat is assumed to take away from a Null before the
@@ -286,4 +295,98 @@ pub fn schneider_percent(
         made
     });
     made * 100 / samples
+}
+
+/// How much ten cards are at risk of taking the most Augen in a Ramsch
+/// ("Die Ramschtante", [`RunBot::before_skat`](super::RunBot)): the higher,
+/// the worse. Jacks are trump and take tricks (Eichel 5, Grün 4, Rot 3,
+/// Schellen 2). In each other suit the Daus, Zehn and König count 3, 2 and
+/// 1, doubled without a low card (7, 8, 9) to duck with, halved with two
+/// or more; a card that counts fewer Augen than printed (Ramponiert)
+/// counts half. Rounded down. A simple model, calibrated against the
+/// Ramsch play of the heuristics ([`RAMSCH_WIN_PERCENT`]).
+#[must_use]
+pub fn ramsch_danger<C: PlayingCard>(hand: &[C]) -> u32 {
+    // In quarters: a jack 4 × its weight, a high card 4 × its weight.
+    let mut quarters = 0u32;
+    for card in hand.iter().filter_map(|c| c.face()) {
+        if card.rank == Rank::Jack {
+            quarters += 4 * match card.suit {
+                Suit::Clubs => 5,
+                Suit::Spades => 4,
+                Suit::Hearts => 3,
+                Suit::Diamonds => 2,
+            };
+        }
+    }
+    for suit in Suit::ALL {
+        let cards: Vec<(Card, bool)> = hand
+            .iter()
+            .filter_map(|c| {
+                c.face()
+                    .map(|f| (f, c.signed_points() < i64::from(f.rank.card_points())))
+            })
+            .filter(|(f, _)| f.suit == suit && f.rank != Rank::Jack)
+            .collect();
+        let lows = cards
+            .iter()
+            .filter(|(c, _)| matches!(c.rank, Rank::Seven | Rank::Eight | Rank::Nine))
+            .count();
+        let highs: u32 = cards
+            .iter()
+            .map(|(c, worn)| {
+                let weight = match c.rank {
+                    Rank::Ace => 4 * 3,
+                    Rank::Ten => 4 * 2,
+                    Rank::King => 4,
+                    _ => 0,
+                };
+                if *worn { weight / 2 } else { weight }
+            })
+            .sum();
+        quarters += match lows {
+            0 => highs * 2,
+            1 => highs,
+            _ => highs / 2,
+        };
+    }
+    quarters / 4
+}
+
+/// Percent of Ramsch games the player wins (another seat has the most
+/// Augen) by [`ramsch_danger`] of his ten cards (index, the last for
+/// everything above). Measured on 10.11.2026 with the heuristics on all
+/// three seats, 40 000 random deals of the plain deck
+/// (`ramsch_danger_calibration` in the bot tests); by symmetry two thirds
+/// of all Ramsch games are won.
+pub const RAMSCH_WIN_PERCENT: [i64; 31] = [
+    99, 98, 99, 97, 97, 96, 95, 92, 91, 87, 85, 79, 75, 70, 65, 60, 56, 53, 48, 44, 40, 32, 29, 25,
+    21, 15, 15, 11, 11, 7, 4,
+];
+
+/// Mean value of a won Ramsch (Augen of the loser × Gewinnstufen, with
+/// Jungfrau) by [`ramsch_danger`], same measurement: the fewer the
+/// player's high cards, the more Augen sit with the loser.
+const RAMSCH_WON_VALUE: [i64; 31] = [
+    150, 140, 127, 121, 118, 109, 103, 96, 92, 88, 83, 83, 81, 77, 80, 79, 77, 80, 79, 79, 81, 79,
+    79, 77, 81, 80, 80, 79, 75, 80, 80,
+];
+
+/// Mean value of a lost Ramsch by [`ramsch_danger`], same measurement.
+const RAMSCH_LOST_VALUE: [i64; 31] = [
+    50, 50, 55, 56, 59, 61, 65, 65, 66, 68, 70, 70, 69, 72, 74, 77, 80, 83, 86, 88, 89, 96, 99,
+    102, 105, 105, 111, 118, 121, 122, 149,
+];
+
+/// Expected score of a Ramsch with these ten cards, in hundredths of a
+/// point, without relics ([`RAMSCH_WIN_PERCENT`] and the mean values; a
+/// lost game counts [`crate::content::RUN_LOSS_FACTOR`] times).
+#[must_use]
+pub fn ramsch_expected_score<C: PlayingCard>(hand: &[C]) -> i64 {
+    let index = usize::try_from(ramsch_danger(hand))
+        .unwrap_or(usize::MAX)
+        .min(RAMSCH_WIN_PERCENT.len() - 1);
+    let win = RAMSCH_WIN_PERCENT[index];
+    let loss_factor = crate::content::RUN_LOSS_FACTOR;
+    win * RAMSCH_WON_VALUE[index] - (100 - win) * loss_factor * RAMSCH_LOST_VALUE[index]
 }

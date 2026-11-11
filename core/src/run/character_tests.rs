@@ -70,7 +70,7 @@ fn mods_of(run: &Run, s: &str) -> Vec<(String, i32)> {
 #[test]
 fn every_character_loads_and_the_new_ones_start_locked() {
     let content = content();
-    assert_eq!(Character::ALL.len(), 5);
+    assert_eq!(Character::ALL.len(), 7);
     for character in Character::ALL {
         let def = content.character(character).expect("character in content");
         assert!(!def.name.is_empty() && !def.text.is_empty());
@@ -87,6 +87,8 @@ fn every_character_loads_and_the_new_ones_start_locked() {
         (Character::Shirker, "full_skat"),
         (Character::Tailoress, "three_schneider"),
         (Character::HeartBrother, "true_colours"),
+        (Character::Gambler, "big_hand"),
+        (Character::RamschAunt, "beat_ramscher"),
     ] {
         assert!(!meta.character_unlocked(&content, character));
         let entry = meta
@@ -767,6 +769,6 @@ fn an_old_meta_save_with_removed_characters_still_loads() {
     assert!(meta.character_unlocked(&content, Character::NullPlayer));
     assert!(!meta.character_unlocked(&content, Character::Shirker));
     let view = meta.view(&content);
-    assert_eq!(view.characters.len(), 5);
+    assert_eq!(view.characters.len(), 7);
     assert_eq!(view.unlocks.len(), content.unlocks.len());
 }

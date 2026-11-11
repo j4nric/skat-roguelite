@@ -520,6 +520,11 @@ impl Run {
             Effect::RequireOuvert => active.rules.require_ouvert = true,
             Effect::DefendersSeeEachOther => active.game.open_defender_hands(),
             Effect::Ramsch => active.rules.ramsch = true,
+            Effect::OfferRamsch => active.rules.ramsch_offered = true,
+            Effect::SkatPickupsPerPub(n) => {
+                let n = active.rules.skat_pickups.map_or(*n, |old| old.min(*n));
+                active.rules.skat_pickups = Some(n);
+            }
             Effect::SingleLoss => {
                 active.single_loss.get_or_insert_with(|| source.clone());
             }

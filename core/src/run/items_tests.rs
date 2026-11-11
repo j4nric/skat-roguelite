@@ -313,11 +313,11 @@ fn groups_of_the_relics_are_data() {
         ),
         (
             RelicGroup::Multiplier,
-            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede rebate_book tally_sheet lead_pouring crib_sheet dive_expert fan_block clear_cut trick_after_trick big_mouth loose_contact big_shots open_visor empty_chair",
+            "blank_king last_trick_seven with_four skat_god home_suit lucky_streak blind_eye tailor virgin watertight concede rebate_book tally_sheet lead_pouring crib_sheet dive_expert fan_block clear_cut trick_after_trick big_mouth loose_contact big_shots open_visor empty_chair lace_doily",
         ),
         (
             RelicGroup::Control,
-            "skat_redraw three_discard honorary_chair card_counter kibitzer glass_eye double_stamp cards_on_table safe_haven beer_calm",
+            "skat_redraw three_discard honorary_chair card_counter kibitzer glass_eye double_stamp cards_on_table safe_haven beer_calm dice_cup",
         ),
         (
             RelicGroup::Tour,

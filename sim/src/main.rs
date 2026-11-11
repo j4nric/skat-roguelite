@@ -24,7 +24,7 @@
 //! - `--district 1|2|3` (with `--curve`): the measured pub lies in this
 //!   district, so the defenders are that district's (`run.ron`'s
 //!   `opponents`; `--defenders` still overrides them). Default 1.
-//! - `--character declarer|null|shirker|tailoress|heart_brother`: who plays (default: the Alleinspieler).
+//! - `--character declarer|null|shirker|tailoress|heart_brother|gambler|ramsch_aunt`: who plays (default: the Alleinspieler).
 //! - `--null-scoring fixed|formula`: override the Null scoring of the
 //!   character that plays (DESIGN 9.2).
 //! - `--unlocks`: sequences of at most `--runs N` runs with a growing meta
@@ -32,7 +32,9 @@
 //! - `--night`: every won run continues into the long night (ADR 0020)
 //!   until a pub is lost; prints the night districts reached, pubs won,
 //!   the Faktor at the end, the Verschärfung each night ended under and
-//!   the night relics taken.
+//!   the night relics taken, and the boss pubs of the night won per boss.
+//! - `--night-boss <id>` (with `--night`): the boss pubs of the night draw
+//!   only this boss; the day keeps its bosses.
 //! - `--short`: dropped with the Kneipentour (ADR 0016); an error now.
 //!   Was: kurzer Abend, the sections of `run.ron`'s `short_sections`
 //!   (DESIGN 5.3) instead of all.
@@ -145,6 +147,8 @@ fn parse_args() -> Result<Args, String> {
                     "shirker" => Character::Shirker,
                     "tailoress" => Character::Tailoress,
                     "heart_brother" => Character::HeartBrother,
+                    "gambler" => Character::Gambler,
+                    "ramsch_aunt" => Character::RamschAunt,
                     other => return Err(format!("--character: unknown {other}")),
                 };
             }
@@ -169,13 +173,14 @@ fn parse_args() -> Result<Args, String> {
                     args.options.defenders = Some(opponents);
                 }
             }
-            "--relic" | "--without" | "--boss" => {
+            "--relic" | "--without" | "--boss" | "--night-boss" => {
                 let value = it
                     .next()
                     .ok_or_else(|| format!("missing value for {flag}"))?;
                 match flag.as_str() {
                     "--relic" => args.options.relics.push(RelicId::new(&value)),
                     "--without" => args.options.without.push(RelicId::new(&value)),
+                    "--night-boss" => args.options.night_boss = Some(BossId::new(&value)),
                     _ => args.options.boss = Some(BossId::new(&value)),
                 }
             }
@@ -598,7 +603,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             eprintln!(
-                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve [--district N] | --unlocks | --night]]"
+                "usage: sim [--seed N] [--defenders heuristic|pimc[:S[:D]]] [--bot heuristic|pimc[:S[:D]]] [--games N [--json] | --runs N [--no-shop] [--relic ID]... [--without ID]... [--boss ID] [--character declarer|null|shirker|tailoress|heart_brother|gambler|ramsch_aunt] [--null-scoring fixed|formula] [--stake N] [--consumable ID] [--card-mod CARD:ID[:VALUE]]... [--curve [--district N] | --unlocks | --night [--night-boss ID]]]"
             );
             return ExitCode::FAILURE;
         }

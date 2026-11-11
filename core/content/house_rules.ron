@@ -1357,4 +1357,33 @@
             OnSeriesWon(then: [ClearFlag("dawn")]),
         ],
     ),
+    // Startrelikte der Charaktere vom 10.11.2026 (DESIGN 9.6b, 9.6c).
+    // Der Zocker. Lever Spielwert: a lost hand game (also Null Hand)
+    // counts half, a factor below 1 on lost games like "Bierruhe".
+    (
+        id: "dice_cup",
+        group: Control,
+        name: "Knobelbecher",
+        text: "Verlierst du ein Handspiel, zählt es nur halb.",
+        rarity: Uncommon,
+        price: 6,
+        hooks: [
+            OnScore(when: All([Lost, HandGame, Not(RamschGame)]), then: [ScaleGameValue(0.5)]),
+        ],
+    ),
+    // Die Ramschtante. Lever Gewinnstufen: a won Ramsch in which she took
+    // at most two tricks counts one level more. Only in her pool: nobody
+    // else declares a Ramsch.
+    (
+        id: "lace_doily",
+        group: Multiplier,
+        name: "Spitzendeckchen",
+        text: "Gewinnst du einen Ramsch mit höchstens zwei Stichen: +1 Stufe.",
+        rarity: Uncommon,
+        price: 6,
+        characters: [RamschAunt],
+        hooks: [
+            OnScore(when: All([Won, RamschGame, Not(DeclarerTricksAtLeast(3))]), then: [AddLevels(1)]),
+        ],
+    ),
 ]

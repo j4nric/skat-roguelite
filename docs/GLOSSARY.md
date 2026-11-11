@@ -108,7 +108,11 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Ansage | `Declaration` | Enum: `Suit { suit, risk, hand }`, `Grand { risk, hand }`, `Null { risk: NullRisk }`, `Ramsch`. Ungültige Kombinationen gibt es nicht; JSON-Form `{game, risk}`, nach dem Skat angesagt zusätzlich `after_skat: true` |
 | Angesagt nach dem Skat (ADR 0013) | `after_skat` | Schneider, Schwarz angesagt oder Ouvert ohne Hand: `Declaration::with_hand(false)`, `hand()` ist dann `false`. Stufe prüfen mit `Declaration::risk_at_least` (`Hand` nur aus der Hand), `RiskLevel::is_announcement` |
 | Null-Risikostufe | `NullRisk` | `Normal` (23), `Hand` (35), `Ouvert` (46), `OuvertHand` (59); Stufe 1 bis 4 (`step`) |
-| Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren |
+| Ramsch | `Declaration::Ramsch` | Boss „Der Ramscher“: Buben Trumpf, jeder für sich, die meisten Augen verlieren; seit 10.11.2026 auch als Ansage der Ramschtante vor dem Skat |
+| Ramsch statt Ansage (Ramschtante) | `OfferRamsch` | Wirkung (passiv): vor dem Skat darf der Spieler `Declare(Ramsch)` ansagen; `GameRules::ramsch_offered`, `Run::ramsch_offered`, Sicht `DeclareOptions::ramsch_offered`. Kein Gutschein, kein Kontra; gewertet wie beim Ramscher |
+| Skat nur n-mal je Kneipe (Zocker) | `SkatPickupsPerPub(n)` | Wirkung (passiv), `GameRules::skat_pickups`, gezählt in `Series::skat_pickups`; `Run::skat_pickups_left`, `Run::skat_used_up`, Fehler `RunError::SkatUsedUp` (Code `SkatUsedUp`), Sicht `DeclareOptions::skat_pickups_left` |
+| Gefahr eines Blatts im Ramsch (Bot) | `ramsch_danger` | Unter und hohe Karten ohne Luschen zum Drunterbleiben; Gewinnquote `RAMSCH_WIN_PERCENT`, Erwartung `ramsch_expected_score`, Schwelle `RAMSCH_MARGIN` |
+| Lusche | `low card` | Sieben, Acht, Neun (ohne Augen); im Code nur in Kommentaren und im Bot (`ramsch_danger`) |
 | Jungfrau (Ramsch: Spieler ohne Stich) | `virgin` | Feld in `LevelParts`; nicht verwechseln mit der Hausregel `virgin` |
 | Augen und Stiche pro Platz | `SeatTotals` | `card_points`, `tricks` (Index = Platz), `most` (die meisten Augen, im Ramsch die Verlierer); in `ScoreBreakdown::seats`, `GameFinished::seats`; Sicht `seat_tricks`, Zähler `count.seats` |
 | Spielart | `GameType` | `Suit(Suit)`, `Grand`, `Null`. In Relikt-Texten (Allrounder, Wechselbalg) wie in der Skatordnung nur Farbspiel, Grand oder Null: Bedingungen `SuitGame`, `GameIs(Grand)`, `NullGame`; ein Wechsel der Trumpffarbe ist keine andere Spielart |
@@ -179,6 +183,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Malus (Spelunke) | `MalusDef`, `MalusId` | Daten in `tour.ron`: `passive` (Tischregeln, Quelle `Source::Malus`), `no_redeal`, `lock_schnapps` (Fehler `ConsumablesLocked`), `curse` (`MalusCurse`, Karten nur für diese Kneipe, `Series::temp_curses`) |
 | Die lange Nacht (Endlos-Modus nach dem Alten, ADR 0020) | `night` | `Run::night` (`night::NightState`: `verschaerfungen`, `bosses`, `extra_bosses`, `pubs_won`, eigener Generator), `Run::in_night`, Aktion `RunAction::EnterNight` (nur in `RunPhase::Won`), Ereignisse `NightStarted`, `VerschaerfungDrawn`, `ExtraBossRules`, `NightCursesLaid`, `RunLost { night: true }`; Sicht `RunView::night` (`NightView`), `RunView::can_enter_night`; Wachstum `night` in `run.ron` (`NightConfig::growth`, `NightConfig::grow`), Zielwert `Run::pub_target`; Modul `core/src/run/night.rs`. Stadtteil 4, 5, … heißen im Code weiter `section` (3, 4, …) |
 | Verschärfung (der Nacht, „Die Sperrstunde rückt näher“) | `Verschaerfung` | Daten in `night.ron` (`VerschaerfungDef`, `VerschaerfungId`, Regel `NightRule`: `FewerRedeals`, `StrongerOpponents`, `DoubleBoss`, `PricierTresen`, `CursedCards`, `MalusEveryPub`, `TargetJump`, `FewerCardOffers`); Zähler `verschaerfungen` (`VERSCHAERFUNGEN_COUNTER`); Sicht `VerschaerfungInfo` |
+| Boss nur der Nacht (seit 10.11.2026 der Totengräber) | `night_bosses` | Feld in `run.ron` (`RunConfig::night_bosses`); kommt zu den Bossen des Tages und dem Alten in die Ziehung der Nacht (`Run::draw_night_boss`), nie in einen normalen Run; Ladefehler, wenn er auch Boss des Tages ist |
 | Doppelte Bosse (Verschärfung) | `DoubleBoss`, `extra_bosses` | Weitere Boss-Regeln der Boss-Kneipe der Nacht als Quellen `Source::Boss` (`Run::extra_boss_rules`) |
 | Nachtschwärmer (Relikte der Nacht) | `RelicDef::night` | Nur in der Nacht angeboten (Boss-Wahl der Nacht, Tresen der Nacht); im normalen Run nur, wenn eine Freischaltung sie nennt und verdient ist (`Content::relic_unlockable`) |
 | Bestenliste (je Charakter) | `CharacterStats::best_game`, `night_best_section`, `night_pubs_won` | Im Meta-Zustand; tiefster Stadtteil der Nacht (ab 1: 4 = Stadtteil 4), meiste Kneipen einer Nacht, bestes Spiel |
@@ -245,7 +250,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Zinke auf zufällige oder gewählte Karte (Ereignis) | `CardPick` (`Random`, `Chosen`) | Feld `card` der Wirkung `EncounterEffect::Mark` |
 | Beide Skatkarten sehen (Kartentrick, Theorie) | `SeeSkat`, `Run::peek_next_skat` | Wie der Kurzer bei jedem Geben bis zur Ansage; Ereignisse `SkatPeekPlanned`, `SkatPeeked` |
 | Hausregel des Stadtteils (Stammtisch-Streit, bis ADR 0016 des Abends) | `evening_relics` | Gilt bis zum Ende des Stadtteils, ohne Platz |
-| Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `Shirker` (Drückeberger), `Tailoress` (Schneiderin, nicht die Figur „Der Schneider“ `tailor` und nicht Schneider `schneider`), `HeartBrother` (Bruderherz); Daten `CharacterDef`, Id als Text `Character::as_str`, gelesen mit `Character::from_id`. Bis 03.11.2026 auch `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast), `Landlady` (Wirtin); alte Meta-Stände lassen deren Einträge fallen |
+| Charakter | `Character` | `Declarer` (Alleinspieler), `NullPlayer` (Nullspieler), `Shirker` (Drückeberger), `Tailoress` (Schneiderin, nicht die Figur „Der Schneider“ `tailor` und nicht Schneider `schneider`), `HeartBrother` (Bruderherz), seit 10.11.2026 `Gambler` (Zocker) und `RamschAunt` (Ramschtante, nicht der Boss „Die Oma“ `grandma`); Daten `CharacterDef`, Id als Text `Character::as_str`, gelesen mit `Character::from_id`. Bis 03.11.2026 auch `GrandPlayer` (Grandspieler), `Onlooker` (Zaungast), `Landlady` (Wirtin); alte Meta-Stände lassen deren Einträge fallen |
 | Eigene Regel eines Charakters | `CharacterRule` | Feld `rule` in `CharacterDef`: `passive`, `hooks` (Hook-API wie ein Relikt ohne Platz, Quelle `Source::Character`), `redeals` (Einmischen pro Spiel) und `relic_slots` (Obergrenze `Some(n)`, die kleinere mit `run.ron` gilt; bis 03.11.2026 ein Zuschlag), `payout_factor`, `vouchers_return`, `keep_curses`, `zinken_discount`. Werte eines Runs: `Content::redeals`, `Content::relic_slots`, `Content::payout_factor` |
 | Zuschlag der Auszahlung (bis 03.11.2026 die Wirtin) | `Payout::bonus` | Was `payout_factor` über die einfache Auszahlung hinaus zahlt |
 | Blatt eines Gegners sehen (bis 03.11.2026 der Zaungast) | `RevealDefenderHand(seat)` | Informations-Wirkung, Platz 1 (links) oder 2; Feld `ActiveGame::shown_hand`, Sicht `RevealSource::Onlooker` |
@@ -253,7 +258,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Eingelöste Gutscheine kommen nach der Kneipe zurück (Drückeberger) | `vouchers_return` | Feld in `CharacterRule`; gemerkt in `Series::returning_vouchers`, Ereignis `RunEvent::VoucherReturned { card, card_mod, value }` |
 | Flüche lassen sich nicht reinigen (Bruderherz) | `keep_curses` | Feld in `CharacterRule`; Fehler `RunError::CurseStays` (Code `CurseStays`), Prüfung `Run::card_is_cursed` |
 | Zinken-Rabatt (Bruderherz: Rot zum halben Preis) | `zinken_discount` | `Option<ZinkenDiscount { cards: CardFilter, percent }>` in `CharacterRule`; Preis `Run::zinken_price`, Sicht `EncounterOptionView::target_costs` |
-| Rückseite eines Charakters | `back` | Feld in `CharacterDef` (ohne Angabe `PLAYER_BACK`, die Distel); `shirker`, `tailoress`, `heart_brother`; Sicht `CharacterInfo::back`, `CharacterEntry::back` |
+| Rückseite eines Charakters | `back` | Feld in `CharacterDef` (ohne Angabe `PLAYER_BACK`, die Distel); `shirker`, `tailoress`, `heart_brother`, `gambler`, `ramsch_aunt`; Sicht `CharacterInfo::back`, `CharacterEntry::back` |
 | Gedrückte Augen eines Spiels | `discarded_points` | Feld in `RunEvent::GameScored`, 0 im Handspiel; Freischaltung `WinGame(min_discarded)` |
 | Schneider-Siege in einer Kneipe | `SchneiderWinsInPub(n)` | Freischaltungs-Bedingung, Zähler `MetaState::pub_schneider_wins` |
 | Gleiche Trumpffarbe hintereinander gewonnen | `SameTrumpStreak(n)` | Freischaltungs-Bedingung, über Kneipen im selben Run; Zähler `MetaState::trump_streak` |
@@ -404,6 +409,11 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Der Schwarze Peter (mit Die Schwarze Grete) | `black_peter` |
 | Der Kiebitz-Mörder (entfernt, ADR 0017) | `kibitz_killer` |
 | Der Alte (mit Die Alte) | `the_old_man` |
+| Der Totengräber (mit Die Witwe; nur in der langen Nacht, `night_bosses`; gedrückte Karten zählen keine Augen) | `gravedigger` |
+| Knobelbecher (Startrelikt des Zockers: verlorenes Handspiel zählt halb) | `dice_cup` |
+| Spitzendeckchen (Startrelikt der Ramschtante: gewonnener Ramsch mit höchstens zwei Stichen +1 Stufe) | `lace_doily` |
+| Hoch gepokert (Freischaltung des Zockers) | `big_hand` |
+| Ausgeramscht (Freischaltung der Ramschtante) | `beat_ramscher` |
 | Stammtisch-Streit | `stammtisch_dispute` |
 | Der Kartengeber | `card_dealer` |
 | Alter Bekannter | `old_friend` |

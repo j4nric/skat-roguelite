@@ -106,6 +106,9 @@ pub enum RunError {
     /// ([`RunAction::TakeCardReward`](super::RunAction::TakeCardReward), [`RunAction::SkipCardReward`](super::RunAction::SkipCardReward));
     /// nothing else goes before it.
     CardRewardPending,
+    /// The skat was picked up as often as this pub allows ("Der Zocker",
+    /// [`Effect::SkatPickupsPerPub`](crate::content::Effect::SkatPickupsPerPub)): only a hand game now.
+    SkatUsedUp,
 }
 
 /// Defines [`RunErrorCode`] and its [`RunErrorCode::as_str`] from one
@@ -270,6 +273,8 @@ error_codes! {
         SchnappsRewardPending,
         /// The card reward of a won pub waits for the player.
         CardRewardPending,
+        /// The skat may not be picked up again in this pub.
+        SkatUsedUp,
     }
 }
 
@@ -337,6 +342,7 @@ impl RunError {
             RunError::NotInBossPub => RunErrorCode::NotInBossPub,
             RunError::SchnappsRewardPending => RunErrorCode::SchnappsRewardPending,
             RunError::CardRewardPending => RunErrorCode::CardRewardPending,
+            RunError::SkatUsedUp => RunErrorCode::SkatUsedUp,
         }
     }
 }
@@ -388,6 +394,7 @@ impl fmt::Display for RunError {
             RunError::CardRewardPending => {
                 f.write_str("the card reward of the won pub waits for a choice")
             }
+            RunError::SkatUsedUp => f.write_str("the skat was picked up already in this pub"),
         }
     }
 }
@@ -412,7 +419,7 @@ mod tests {
 
     /// The texts of the codes, as frontends know them. A code is never
     /// renamed once released; a new code goes at the end.
-    const CODES: [&str; 57] = [
+    const CODES: [&str; 58] = [
         "WrongPhase",
         "NoPassesLeft",
         "HandRequired",
@@ -470,6 +477,7 @@ mod tests {
         "NotInBossPub",
         "SchnappsRewardPending",
         "CardRewardPending",
+        "SkatUsedUp",
     ];
 
     #[test]

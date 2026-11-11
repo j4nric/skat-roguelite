@@ -189,4 +189,30 @@
         // die anderen 50 bis 55 %. Nachher 47 bis 58 %.
         target_factor: 1.2,
     ),
+    // Der erste Boss nur der langen Nacht (10.11.2026, DESIGN 5.5 und
+    // 11.1; run.ron night_bosses): Der Totengräber ruhte seit ADR 0017 als
+    // „Boss mit Sonderkarten“; jetzt mit einer Regel am Hebel Augen. Er
+    // begräbt den Skat: Die gedrückten Karten zählen keine Augen (die
+    // Wirkung des Skatpflegers mit 0, sie schlägt ihn auch). Ein
+    // Handspiel drückt nichts und behält seinen Skat. Im Null zählen
+    // Augen nicht, der Nullspieler trifft ihn kaum.
+    (
+        id: "gravedigger",
+        name: "Der Totengräber",
+        back: Some("gravedigger"),
+        text: "Was gedrückt wird, ist begraben: Deine gedrückten Karten zählen in seiner Kneipe keine Augen. Ein Handspiel behält seinen Skat. Nur in der langen Nacht.",
+        hooks: [
+            OnDeclare(when: All([Not(HandGame), Not(NullGame)]), then: [MultiplySkatPoints(0)]),
+        ],
+        // Vom Friedhof: Bei ihm stehen die Neunen zwei Stufen höher auf
+        // (die Neun wird König), die Witwe trägt die Daus als Erbstücke
+        // (Augen +4, 15 statt 11).
+        figures: [
+            (name: "Der Totengräber", edition: [((rank: Some(Nine)), "rank", 2)]),
+            (name: "Die Witwe", edition: [((rank: Some(Ace)), "points", 4)]),
+        ],
+        // Vorläufig (10.11.2026), gemessen in
+        // docs/balance/2026-11-10-neue-charaktere.md.
+        target_factor: 1.0,
+    ),
 ]
