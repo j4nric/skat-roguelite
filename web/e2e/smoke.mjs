@@ -3548,7 +3548,8 @@ async function drinkByTap(page, slot) {
   await page.waitForSelector(`.hud .schnaps-slot[data-slot="${slot}"].is-lifted`, { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: a tap does not lift it`));
   await page.waitForSelector('[data-testid="drink-mouth"].is-up', { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: no mouth for a Schnaps drunk yourself`));
   await page.waitForTimeout(350);
-  const box = await page.locator('[data-testid="drink-mouth"]').boundingBox();
+  // With full motion the mouth of the Schnaps before may still be gulping: the new one is the last.
+  const box = await page.locator('[data-testid="drink-mouth"]').last().boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.55);
 }
 
