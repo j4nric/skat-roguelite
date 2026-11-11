@@ -206,7 +206,14 @@ export class Tresen {
       'schnapps-sell': (_tap, view) => {
         if (view.schnapps_reward) act({ ChooseSchnappsReward: { give_up: null } });
       },
-      'leave-shop': () => act('LeaveShop'),
+      'leave-shop': () => {
+        ui.nextOpen = false;
+        act('LeaveShop');
+      },
+      'toggle-next': () => {
+        ui.nextOpen = !ui.nextOpen;
+        render();
+      },
     };
   }
 }

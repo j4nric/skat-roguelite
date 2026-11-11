@@ -5230,11 +5230,118 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   font-size: var(--fs-s);
 }
 
-.next-board {
+/* The next pub as a strip above "Weiter" (DESIGN 16.5): one line, a tap
+   unfolds the chalk board above it. A boss is marked by his beer mat, the
+   word "Boss" and the danger role on name and edge. */
+.next-strip {
   display: flex;
+  flex-direction: column;
+  box-shadow: none;
+}
+
+.next-strip.is-boss {
+  border-left: 6px solid var(--rot);
+}
+
+.next-toggle {
+  display: flex;
+  width: 100%;
+  min-height: var(--touch);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.next-toggle:hover {
+  background-color: #323840;
+}
+
+.next-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.next-label {
+  font-size: var(--fs-2xs);
+  line-height: 1.1;
+  color: var(--role-readout);
+}
+
+.next-strip.is-boss .next-label {
+  color: var(--role-danger);
+}
+
+.next-line {
+  display: block;
+  line-height: 1.15;
+}
+
+.next-strip > .next-line {
+  padding: 10px;
+  white-space: normal;
+}
+
+.next-line > * {
+  vertical-align: middle;
+}
+
+.next-strip-mark {
+  display: inline-block;
+  margin-right: 6px;
+  line-height: 0;
+}
+
+.next-where,
+.next-boss-short {
+  font-weight: 400;
+}
+
+.next-boss-short {
+  color: var(--role-danger);
+}
+
+.next-sep {
+  margin: 0 6px;
+  color: var(--role-readout);
+}
+
+/* A pixel chevron: down while folded, up while open. */
+.next-chev {
+  flex: none;
+  width: 12px;
+  height: 8px;
+  background: var(--text);
+  clip-path: polygon(0 0, 100% 0, 100% 25%, 75% 25%, 75% 50%, 62.5% 50%, 62.5% 75%, 37.5% 75%, 37.5% 50%, 25% 50%, 25% 25%, 0 25%);
+}
+
+.next-strip.is-open .next-chev {
+  transform: scaleY(-1);
+}
+
+.next-details {
+  display: flex;
+  max-height: 46vh;
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
+  border-bottom: 2px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.next-details[hidden] {
+  display: none;
 }
 
 .next-head {
@@ -5258,6 +5365,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 
 .next-target {
   color: var(--text);
+  white-space: nowrap;
 }
 
 .next-boss {
@@ -5271,7 +5379,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 .next-boss-name {
   display: block;
   font-weight: 400;
-  color: var(--rot-light);
+  color: var(--role-danger);
 }
 
 .next-boss-text {
@@ -5347,6 +5455,72 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   pointer-events: auto;
 }
 
+/* "mehr" on a ware whose text is cut (DESIGN 16.5): a tap on the ware
+   opens its full text. Shown only where watchShop measured a cut. */
+.more-tag {
+  display: none;
+  align-self: center;
+  margin-top: -2px;
+  padding: 0 6px;
+  border-bottom: 2px solid currentColor;
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  line-height: 1.3;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.coaster .more-tag {
+  color: var(--card-ink);
+}
+
+.is-clamped > .more-tag {
+  display: block;
+}
+
+/* Kaufen at the Tresen (DESIGN 16.5): as wide as its ware, 44 px high,
+   raised, a brass line and brass letters because it spends Groschen.
+   Ivory stays with "Weiter", the one main button of the page. */
+.btn-buy {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 6px;
+  border-color: var(--line);
+  background: var(--panel2);
+  color: var(--role-money);
+  box-shadow: var(--shadow-sm), inset 0 0 0 2px var(--brass-dark), var(--raised);
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  text-transform: uppercase;
+}
+
+.btn-buy:hover:not(:disabled) {
+  background-color: #323840;
+}
+
+.btn-buy:active:not(:disabled) {
+  box-shadow: 0 1px 0 var(--line), inset 0 0 0 2px var(--brass-dark), var(--raised);
+}
+
+/* Not for sale now: flat, a dashed edge, a padlock, grey letters (not
+   colour alone). Readable, not see-through. */
+.btn-buy:disabled {
+  border-style: dashed;
+  border-color: var(--dot);
+  background: transparent;
+  color: var(--role-readout);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.buy-lock {
+  flex: none;
+}
+
+.shop .btn-small {
+  min-height: var(--touch);
+}
+
 .coaster-emblem-wrap {
   display: inline-flex;
   margin-top: -4px;
@@ -5378,7 +5552,8 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .price-tag,
-.coaster > .price-tag {
+.coaster > .price-tag,
+.good > .price-tag {
   position: absolute;
   top: -10px;
   right: -6px;
@@ -5388,6 +5563,18 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   background: var(--brass);
   color: var(--card-ink);
   transform: rotate(4deg);
+}
+
+/* The tag of a ware the core will not sell now: a dashed outline in brass. */
+.is-off > .price-tag {
+  border-style: dashed;
+  border-color: var(--brass-dark);
+  background: var(--panel2);
+  color: var(--role-money);
+}
+
+.is-off > .price-tag .price-was {
+  color: var(--role-readout);
 }
 
 .price {
@@ -5401,11 +5588,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 .good.is-sold {
   display: flex;
   width: 100%;
-  min-height: 120px;
+  min-height: 72px;
   align-items: center;
   justify-content: center;
   border: var(--edge) dashed var(--dot);
-  color: #949ca2;
+  color: var(--role-readout);
   font-family: var(--font-label);
   font-size: var(--fs-s);
 }
@@ -5423,7 +5610,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px;
+  padding: 12px 8px 8px;
   border: var(--edge) solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -5475,6 +5662,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 .good-foot {
   display: flex;
   flex-wrap: wrap;
+  align-self: stretch;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -5506,6 +5694,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+/* "Gerade passt keine Zinke …" spans the row. */
+.zinken-row > p {
+  grid-column: 1 / -1;
 }
 
 .zinke {
@@ -5567,11 +5760,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .zinke-note {
-  color: #a8322a;
+  color: var(--role-danger);
 }
 
 .zinke-note.is-kept {
-  color: #7edc6e;
+  color: var(--role-gain);
 }
 
 /* Rare: a special card right on a card ("wird untot", "wird Wandelkarte"). */
@@ -5661,12 +5854,12 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .zinke.is-sold {
-  min-height: 160px;
+  min-height: 96px;
   justify-content: center;
   border-style: dashed;
   border-color: var(--dot);
   box-shadow: none;
-  color: #949ca2;
+  color: var(--role-readout);
   font-family: var(--font-label);
   font-size: var(--fs-s);
 }
@@ -5730,7 +5923,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 /* Curses as trade: Schnäppchen and Hehlerware, half price for a curse. */
 .zinke.is-trade {
   border-style: dashed;
-  border-color: #a8322a;
+  border-color: var(--rot);
   background: linear-gradient(200deg, #3a2426, var(--panel) 55%);
 }
 
@@ -5740,8 +5933,8 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   margin: 6px 0 2px;
   padding: 1px 5px;
   border: 2px solid var(--line);
-  background: #a8322a;
-  color: #f4ece0;
+  background: var(--rot);
+  color: var(--text);
   font-family: var(--font-label);
   font-size: var(--fs-s);
   text-transform: uppercase;
@@ -5749,13 +5942,15 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .zinke.is-trade .zinke-note {
-  color: #ff8f80;
+  color: var(--role-danger);
 }
 
 .price-was {
   margin-right: 4px;
-  color: #6a3b33;
+  /* Struck through by <s>: the full price before the discount, in ink. */
+  color: var(--card-ink);
   font-size: var(--fs-s);
+  text-decoration-thickness: 2px;
 }
 
 .services {
@@ -5840,6 +6035,7 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   bottom: 0;
   z-index: 3;
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin: 0 calc(-1 * var(--run-x));
   padding: 8px var(--run-x) 6px;
@@ -5849,6 +6045,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
   background-size: 8px 8px;
   background-attachment: fixed;
+}
+
+.shop-bar-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .shop-bar .btn {
@@ -5878,8 +6079,25 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   cursor: pointer;
 }
 
-.more-hint[hidden] {
+.more-hint[hidden],
+.shop-bar:has(.next-strip.is-open) .more-hint {
   display: none;
+}
+
+/* At the Tresen a button the core says no to is flat with a dashed edge
+   and grey letters, readable rather than see-through (DESIGN 16.5). */
+.shop .btn:not(.btn-primary):disabled {
+  border-style: dashed;
+  border-color: var(--dot);
+  background: transparent;
+  color: var(--role-readout);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.service .btn:not(.btn-primary):disabled {
+  border-color: var(--muted);
+  color: #4b5258;
 }
 
 /* ------------------------------------------------------------- encounters */
@@ -8208,7 +8426,10 @@ button.skat-card {
 }
 
 .shop-debt {
-  margin: 0 0 6px;
+  margin: 0;
+  padding: 4px 8px;
+  border-left: 6px solid var(--rot);
+  background: var(--readout-bg);
   font-size: var(--fs-xs);
   color: var(--role-danger);
 }

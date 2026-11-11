@@ -206,6 +206,8 @@ export interface UiState {
   charMore?: boolean;
   /** Start screen: "Weitere Spielarten" (daily run, seed, Einführung) is open (DESIGN 16.4). */
   startMore?: boolean;
+  /** Tresen: the strip with the next pub is unfolded (DESIGN 16.5). */
+  nextOpen?: boolean;
   overlay: Overlay | null;
   /** The night district whose start sheet was shown (ADR 0020). */
   nightSeen?: number | null;

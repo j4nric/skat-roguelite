@@ -728,6 +728,13 @@ export const de = {
     pouch: 'In deiner Tasche',
     moreAbout: '{name}: ganze Beschreibung',
     moreBelow: 'Weitere Waren weiter unten',
+    /** On a ware whose text is cut: the whole ware opens the full text (DESIGN 16.5). */
+    moreTag: 'mehr',
+    /** The strip above "Weiter" (DESIGN 16.5). */
+    nextSeriesShort: 'Kneipe {series}',
+    nextBossShort: 'Boss-Kneipe',
+    nextShow: 'Als Nächstes: {line}. Einzelheiten zeigen',
+    nextHide: 'Als Nächstes: {line}. Einzelheiten verbergen',
     /** Zinken at the Tresen (DESIGN 8.6). */
     zinken: 'Zinken',
     auslage: 'Auslage',

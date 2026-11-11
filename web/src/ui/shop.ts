@@ -10,6 +10,7 @@
 
 import { de, bossEditionText, bossFiguresText, cardName, contentName, contentText, modText, t } from '../i18n';
 import type { CardModInfo, CardOfferView, ConsumableInfo, OwnedRelic, RelicInfo, RelicOffer, RunView, ServiceView, ShopView } from '../types';
+import type { UiState } from './state';
 import { backDesign } from './backs';
 import { cardBack, cardSvg, modValueText } from './cards';
 import { attrs, esc } from './dom';
@@ -26,6 +27,26 @@ function price(n: number): string {
 function priceTag(n: number, was?: number | null): string {
   const old = was != null && was > n ? `<s class="price-was" aria-label="${esc(t(de.shop.tradeWas, { price: was }))}">${esc(String(was))}</s>` : '';
   return `<span class="price-tag">${old}${price(n)}</span>`;
+}
+
+/** A little padlock: drawn on a buy button the core says no to (not colour alone, DESIGN 16.5). */
+function lock(): string {
+  return `<svg class="buy-lock" viewBox="0 0 10 12" width="10" height="12" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 5V3h1V2h1V1h2v1h1v1h1v2h-1V3H6V2H4v1H3v2Z" fill="currentColor"/><path d="M1 5h8v7H1Z" fill="currentColor"/><path d="M4 7h2v3H4Z" fill="var(--panel)"/></svg>`;
+}
+
+/**
+ * "Kaufen" at the Tresen (DESIGN 16.5): a raised button the width of its
+ * ware, at least 44 px high, brass because it spends Groschen; ivory stays
+ * with "Weiter". What the core will not sell gets a padlock and a dashed,
+ * flat edge.
+ */
+function buyButton(action: string, slot: number, ok: boolean, extra: Record<string, string> = {}): string {
+  return `<button class="btn btn-buy" ${attrs({ 'data-action': action, 'data-slot': slot, ...extra, disabled: !ok })}>${ok ? '' : lock()}<span>${esc(de.shop.buyShort)}</span></button>`;
+}
+
+/** "mehr": shown by CSS on a ware whose text is cut (watchShop marks it); the whole ware opens the full text. */
+function moreTag(): string {
+  return `<span class="more-tag" aria-hidden="true">${esc(de.shop.moreTag)}</span>`;
 }
 
 /** The badge of a trade offer (curses as trade, 03.11.2026). */
@@ -45,13 +66,14 @@ function relicTile(o: RelicOffer | null, i: number): string {
   const label = t(de.shop.moreAbout, { name });
   const kind = de.relicKind[relic.kind];
   const fence = o.fence === true;
-  return `<article class="zinke relic-tile rarity-${esc(relic.rarity)}${fence ? ' is-trade' : ''}" style="--i:${i}" data-testid="relic-offer" ${attrs({ 'data-slot': o.slot, 'data-relic': relic.id, 'data-fence': fence ? 'true' : null })}>
+  const off = !o.can_buy && (o.replace ?? []).length === 0;
+  return `<article class="zinke relic-tile rarity-${esc(relic.rarity)}${fence ? ' is-trade' : ''}${off ? ' is-off' : ''}" style="--i:${i}" data-testid="relic-offer" ${attrs({ 'data-slot': o.slot, 'data-relic': relic.id, 'data-fence': fence ? 'true' : null })}>
     <button class="coaster-cover" ${attrs({ 'data-action': 'info-offer-relic', 'data-slot': o.slot, 'data-info': `offer-relic:${o.slot}`, 'aria-label': label, title: label })}></button>
     ${priceTag(o.price, o.was)}${fence ? tradeBadge(de.shop.fence, 'fence-badge') : ''}
     <span class="relic-tile-emblem" title="${esc(kind)}">${relicCoaster(relic, { size: 56 })}<span class="sr-only">${esc(kind)}</span></span>
     <h4 class="zinke-name">${esc(name)}</h4>
     ${fence ? `<p class="zinke-on"><span class="zinke-note">${esc(de.shop.fenceNote)}</span></p>` : ''}
-    <p class="zinke-text relic-tile-text">${esc(contentText('relics', relic.id))}</p>
+    <p class="zinke-text relic-tile-text" data-clamp>${esc(contentText('relics', relic.id))}</p>${moreTag()}
     <div class="good-foot">${relicBuyButton(o)}</div>
   </article>`;
 }
@@ -60,8 +82,8 @@ function relicTile(o: RelicOffer | null, i: number): string {
 function relicBuyButton(o: RelicOffer): string {
   const swap = !o.can_buy && (o.replace ?? []).length > 0;
   return swap
-    ? `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'replace-relic-pick', 'data-slot': o.slot, 'data-testid': 'relic-replace-pick' })}>${esc(de.shop.replaceShort)}</button>`
-    : `<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-relic', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`;
+    ? `<button class="btn btn-buy" ${attrs({ 'data-action': 'replace-relic-pick', 'data-slot': o.slot, 'data-testid': 'relic-replace-pick' })}><span>${esc(de.shop.replaceShort)}</span></button>`
+    : buyButton('buy-relic', o.slot, o.can_buy);
 }
 
 /** The sheet with every relic slot full: which owned relic makes room for the offer (sold for half its price). */
@@ -104,7 +126,7 @@ export function coaster(
     ${opts.price === undefined ? '' : `<span class="price-tag">${price(opts.price)}</span>`}
     <span class="coaster-emblem-wrap" title="${esc(kind)}">${relicCoaster(relic, { size: 52 })}<span class="sr-only">${esc(kind)}</span></span>
     <h4 class="coaster-name">${esc(name)}</h4>
-    <p class="coaster-text">${esc(contentText('relics', relic.id))}</p>
+    <p class="coaster-text" data-clamp>${esc(contentText('relics', relic.id))}</p>${moreTag()}
     ${footer ? `<div class="coaster-foot">${footer}</div>` : ''}
   </article>`;
 }
@@ -119,16 +141,16 @@ function ownedCoaster(r: OwnedRelic, i: number): string {
 }
 
 /** An item as a beer mat on the counter; tap the picture or name for the full text. */
-function good(item: ConsumableInfo, more: Record<string, string | number>, footer: string, extra = ''): string {
+function good(item: ConsumableInfo, more: Record<string, string | number>, footer: string, extra = '', tag = ''): string {
   const id = item.id;
   const name = contentName('consumables', id);
   const label = t(de.shop.moreAbout, { name });
   const schnaps = item.category === 'Schnapps';
   return `<article class="good ${extra} ${schnaps ? 'is-schnaps' : ''}">
-    <button class="good-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>
+    <button class="good-cover" ${attrs({ ...more, 'aria-label': label, title: label })}></button>${tag}
     <div class="good-pic">${consumableCoaster(item, { size: 52 })}${schnaps ? `<span class="good-tag">${esc(de.shop.schnaps)}</span>` : ''}</div>
     <h4>${esc(name)}</h4>
-    <p class="good-text">${esc(contentText('consumables', id))}</p>
+    <p class="good-text" data-clamp>${esc(contentText('consumables', id))}</p>${moreTag()}
     <div class="good-foot">${footer}</div>
   </article>`;
 }
@@ -156,14 +178,14 @@ function zinkenOffer(o: CardOfferView | null, i: number): string {
         : '';
   const name = special ? t(de.shop.zinkeBecomes, { special: contentName('card_mods', mod.id) || mod.name }) : zinkeName(mod);
   const bargain = o.bargain === true;
-  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-action': o.can_buy ? 'zinke-tile' : null, 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
+  return `<article class="zinke${special ? ' is-special' : ''}${bargain ? ' is-trade' : ''}${o.can_buy ? '' : ' is-off'}" style="--i:${i}" data-testid="zinke" ${attrs({ 'data-action': o.can_buy ? 'zinke-tile' : null, 'data-slot': o.slot, 'data-card': o.card.id, 'data-card-mod': mod.id, 'data-special': special ? mod.id : null, 'data-bargain': bargain ? 'true' : null })}>
     ${priceTag(o.price, o.was)}${special ? `<span class="zinke-rare">${esc(de.shop.zinkeSpecial)}</span>` : ''}${bargain ? tradeBadge(de.shop.bargain, 'bargain-badge') : ''}
     <span class="card zinke-card">${cardSvg(o.result.kind, o.result.mods, 'full', o.result.mod_values)}</span>
     <h4 class="zinke-name">${esc(name)}</h4>
     <p class="zinke-on">${esc(t(de.shop.zinkeOn, { card }))}${note ? ` · <span class="zinke-note${kept && !o.replaces && !o.raises ? ' is-kept' : ''}">${esc(note)}</span>` : ''}</p>
     ${bargain ? `<p class="zinke-on"><span class="zinke-note">${esc(de.shop.bargainNote)}</span></p>` : ''}
     <p class="zinke-text">${esc(modText(mod.id, mod.value ?? 1) || mod.text)}</p>
-    <div class="good-foot"><button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-zinke', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button></div>
+    <div class="good-foot">${buyButton('buy-zinke', o.slot, o.can_buy)}</div>
   </article>`;
 }
 
@@ -204,23 +226,40 @@ function zinkenBlock(shop: ShopView): string {
     </section>`;
 }
 
-/** The chalk board on the back wall: the next series and the boss ahead. */
-function nextBoard(view: RunView): string {
+/**
+ * The next pub as a narrow strip above "Weiter" (DESIGN 16.5): one line
+ * with where, the boss (danger role, with his beer mat) and the target; a
+ * tap unfolds the chalk board with games, Einmischen, the boss's figures,
+ * rule and decks. The wares come first on the page.
+ */
+function nextStrip(view: RunView, open: boolean): string {
   const next = view.next_series;
-  if (!next) return `<div class="next-board chalkboard"><p class="chalk-small">${esc(de.shop.lastSeries)}</p></div>`;
+  if (!next) return `<div class="next-strip chalkboard" data-testid="next-series"><p class="next-line">${esc(de.shop.lastSeries)}</p></div>`;
   const where = t(next.is_boss ? de.shop.nextBoss : de.shop.nextSeries, { section: next.section + 1, series: next.index + 1 });
+  const short = next.is_boss ? de.shop.nextBossShort : t(de.shop.nextSeriesShort, { series: next.index + 1 });
   const boss = next.boss ?? view.upcoming_boss;
+  const bossName = boss ? contentName('bosses', boss.id) : '';
+  const target = t(de.shop.nextTarget, { target: next.target });
+  const label = next.is_boss ? `${de.shop.next} · ${de.shop.nextBossShort}` : de.shop.next;
+  const line = `<span class="next-text"><span class="next-label">${esc(label)}</span>
+      <span class="next-line">${next.boss ? `<span class="next-strip-mark">${bossCoaster(next.boss.id, { size: 24 })}</span><b class="next-boss-short">${esc(bossName)}</b>` : `<b class="next-where">${esc(short)}</b>`}<span class="next-sep" aria-hidden="true">·</span><span class="next-target">${esc(target)}</span></span></span>
+      <span class="next-chev" aria-hidden="true"></span>`;
   const bossBlock = boss
-    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: contentName('bosses', boss.id) }) })}><span class="next-boss-marks">${bossCoaster(boss.id, { size: 48 })}<span class="next-boss-back">${cardBack('', backDesign(boss.back))}</span></span><div>
+    ? `<div class="next-boss" ${attrs({ 'data-info': `boss:${boss.id}`, tabindex: 0, role: 'button', 'aria-label': t(de.info.label, { name: bossName }) })}><span class="next-boss-marks">${bossCoaster(boss.id, { size: 48 })}<span class="next-boss-back">${cardBack('', backDesign(boss.back))}</span></span><div>
         <div class="chalk-small">${esc(next.boss ? de.boss.title : de.shop.bossTonight)}</div>
-        <b class="next-boss-name">${esc(contentName('bosses', boss.id))}</b>
+        <b class="next-boss-name">${esc(bossName)}</b>
         <p class="next-boss-text" data-testid="next-boss-figures">${esc(bossFiguresText(boss))}</p>
         <p class="next-boss-text">${esc(contentText('bosses', boss.id) || boss.text)}</p>${bossEditionText(boss) ? `<p class="next-boss-text boss-edition">${esc(bossEditionText(boss))}</p>` : ''}</div></div>`
     : '';
-  return `<div class="next-board chalkboard" data-testid="next-series">
-    <div class="next-head"><span class="chalk-small">${esc(de.shop.next)}</span><b>${esc(where)}</b></div>
-    <div class="next-facts"><span class="next-target">${esc(t(de.shop.nextTarget, { target: next.target }))}</span><span>${esc(t(de.shop.nextGames, { games: next.game_limit, redeals: next.redeals }))}</span></div>
-    ${bossBlock}
+  return `<div class="next-strip chalkboard${next.boss ? ' is-boss' : ''}${open ? ' is-open' : ''}" data-testid="next-series">
+    <div class="next-details" id="next-details" ${attrs({ hidden: !open })}>
+      <div class="next-head"><b>${esc(where)}</b></div>
+      <div class="next-facts"><span class="next-target">${esc(target)}</span><span>${esc(t(de.shop.nextGames, { games: next.game_limit, redeals: next.redeals }))}</span></div>
+      ${bossBlock}
+    </div>
+    <button type="button" class="next-toggle" ${attrs({ 'data-action': 'toggle-next', 'data-testid': 'next-toggle', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'next-details', 'aria-label': t(open ? de.shop.nextHide : de.shop.nextShow, { line: [where, bossName, target].filter(Boolean).join(' · ') }) })}>
+      ${line}
+    </button>
   </div>`;
 }
 
@@ -240,7 +279,9 @@ function renderKiosk(view: RunView, shop: ShopView): string {
       return good(
         o.consumable,
         { 'data-action': 'info-offer-item', 'data-slot': o.slot, 'data-info': `offer-item:${o.slot}` },
-        `${price(o.price)}${discount ? `<span class="kiosk-was">${esc(t(de.shop.kioskWas, { price: was }))}</span>` : ''}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, 'data-testid': 'kiosk-buy', disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        `${discount ? `<span class="kiosk-was">${esc(t(de.shop.kioskWas, { price: was }))}</span>` : ''}${buyButton('buy-item', o.slot, o.can_buy, { 'data-testid': 'kiosk-buy' })}`,
+        o.can_buy ? '' : 'is-off',
+        priceTag(o.price),
       );
     })
     .join('');
@@ -274,7 +315,7 @@ function renderKiosk(view: RunView, shop: ShopView): string {
   </main>`;
 }
 
-export function renderShop(view: RunView): string {
+export function renderShop(view: RunView, ui: Pick<UiState, 'nextOpen'>): string {
   const shop = view.shop;
   if (!shop) return '';
   if (shop.kiosk) return renderKiosk(view, shop);
@@ -285,7 +326,9 @@ export function renderShop(view: RunView): string {
       return good(
         o.consumable,
         { 'data-action': 'info-offer-item', 'data-slot': o.slot, 'data-info': `offer-item:${o.slot}` },
-        `${price(o.price)}<button class="btn btn-buy btn-small" ${attrs({ 'data-action': 'buy-item', 'data-slot': o.slot, disabled: !o.can_buy })}>${esc(de.shop.buyShort)}</button>`,
+        buyButton('buy-item', o.slot, o.can_buy),
+        o.can_buy ? '' : 'is-off',
+        priceTag(o.price),
       );
     })
     .join('');
@@ -308,7 +351,6 @@ export function renderShop(view: RunView): string {
       <div class="wirt">${portrait('p-wirt', 'portrait-wirt')}</div>
       <div class="bubble"><h2>${esc(de.shop.title)}</h2><p>${esc(anyAffordable ? de.shop.wirtSays : de.shop.wirtBroke)}</p></div>
     </div>
-    ${nextBoard(view)}
     ${debtLine(view)}
     <div class="counter tresen-counter" data-testid="counter">
       <h3>${esc(de.shop.relics)}</h3>
@@ -326,8 +368,11 @@ export function renderShop(view: RunView): string {
     </section>
     <div class="shop-bar">
       <div class="more-hint" hidden aria-hidden="true" ${attrs({ 'data-action': 'scroll-goods' })}>${esc(de.shop.moreBelow)}</div>
-      <button class="btn" ${attrs({ 'data-action': 'reroll', 'data-testid': 'reroll', disabled: !shop.can_reroll })}>${esc(rerollLabel(shop))}</button>
-      <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop' })}>${esc(de.shop.leave)}</button>
+      ${nextStrip(view, ui.nextOpen === true)}
+      <div class="shop-bar-buttons">
+        <button class="btn" ${attrs({ 'data-action': 'reroll', 'data-testid': 'reroll', disabled: !shop.can_reroll })}>${esc(rerollLabel(shop))}</button>
+        <button class="btn btn-primary" ${attrs({ 'data-action': 'leave-shop' })}>${esc(de.shop.leave)}</button>
+      </div>
     </div>
   </main>`;
 }
@@ -349,6 +394,19 @@ function debtLine(view: RunView): string {
 }
 
 let goodsWatch: IntersectionObserver | null = null;
+let clampWatch = false;
+
+/**
+ * Mark each ware whose short text is cut off (`is-clamped`): CSS then shows
+ * "mehr" on it, and a tap on the ware opens the full text (DESIGN 16.5).
+ * Pure measuring of the layout, nothing about the ware itself.
+ */
+function markClamped(root: HTMLElement): void {
+  for (const text of root.querySelectorAll<HTMLElement>('.shop [data-clamp]')) {
+    const ware = text.parentElement;
+    if (ware) ware.classList.toggle('is-clamped', text.scrollHeight > text.clientHeight + 1);
+  }
+}
 
 /**
  * Show the hint "more goods below" while the goods on the counter are out
@@ -357,6 +415,11 @@ let goodsWatch: IntersectionObserver | null = null;
 export function watchShop(root: HTMLElement): void {
   goodsWatch?.disconnect();
   goodsWatch = null;
+  markClamped(root);
+  if (!clampWatch && typeof window !== 'undefined') {
+    clampWatch = true;
+    window.addEventListener('resize', () => markClamped(root), { passive: true });
+  }
   // The last thing on the counter: the Zinken services, else the goods.
   const goods = root.querySelector('.services') ?? root.querySelector('[data-goods]');
   const hint = root.querySelector<HTMLElement>('.more-hint');
