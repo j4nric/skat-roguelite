@@ -207,7 +207,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Spiellimit | `game_limit` | |
 | Hausregel | `HouseRule` | Passives Relikt, Joker-Äquivalent |
 | Stammtisch-Figur | `Regular` | Passives Relikt mit Persönlichkeit |
-| Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`: `greet`, `win`, `lose`), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
+| Stammgast (normaler Gegner am Tisch) | `Guest` | Name, Gesicht (`look`) und Sprüche (`quips`, seit 11.11.2026 je Anlass mehrere Varianten, siehe Spruch), keine Regeln. Daten `GuestDef` in `guests.ron`, Id `GuestId`; zwei pro Serie in `Run::guests`, Sicht `SeriesView::guests` (`GuestInfo`). Nicht `Regular`, das ist die Stammtisch-Figur |
+| Spruch, Sprüche (Sprechblase am Tisch) | `quip`, `Quips` | Kurze Zeilen eines Stammgasts oder einer Boss-Figur je Anlass (`QuipSituation`: `greet`, `win`, `lose`, `smear`, `grand`, `null`, `bold`, `ramsch`, `won`, `lost`, `schneider`; Figuren `greet`, `win`, `lose`, `won`, `lost`, `beaten`, `victory`), je zwei bis vier Varianten. Daten `quips` in `guests.ron` und `figures[].quips` in `bosses.ron`; Sicht `GuestInfo::quips`, `BossFigureInfo::quips`; nur Darstellung (DESIGN 10.4) |
 | Verbrauchsgegenstand | `Consumable` | Definition `ConsumableDef` |
 | Schnaps (Gruppe von Verbrauchsgegenständen) | `ConsumableCategory::Schnapps` | Feld `category` an `ConsumableDef` und `ConsumableInfo`; sonst `Item` |
 | Schnaps-Platz | `consumable_slots` | Seit 03.11.2026 drei (vorher zwei), `RunConfig::consumable_slots` in `run.ron`, Sicht `RunView::consumable_slots` |

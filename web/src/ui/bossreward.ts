@@ -1,5 +1,5 @@
 // The relic pick after a won boss pub (ADR 0017): the two boss players
-// shake hands, three relics lie on the table, the player takes one, makes
+// shake hands (one of them has a word, bosses.ron beaten), three relics lie on the table, the player takes one, makes
 // room for it by selling an owned relic (when every slot is full) or walks
 // on without. What is on offer and what a choice does come from the core
 // (view.boss_reward, RunAction::ChooseBossRelic); this only draws it.
@@ -8,6 +8,7 @@ import { de, bossFiguresText, contentName, t } from '../i18n';
 import type { RunView } from '../types';
 import { attrs, esc } from './dom';
 import { bossPortraitId, portrait } from './people';
+import { bossQuip, bossQuipLine, occasionOf } from './quips';
 import { coaster } from './shop';
 
 /** The pick; `picked` is the offer chosen while every slot is full (then the owned relics follow). */
@@ -52,6 +53,7 @@ export function renderBossReward(view: RunView, picked: number | null): string {
     </div>
     <section class="enc-story">
       <h2>${esc(de.boss.rewardTitle)}</h2>
+      ${boss ? bossQuip(bossQuipLine(boss, (view.series.section % 2) as 0 | 1, 'beaten', occasionOf(view))) : ''}
       <p>${esc(de.boss.rewardText)}</p>
       ${full ? `<p class="boss-reward-full" data-testid="boss-reward-full">${esc(de.boss.rewardFull)}</p>` : ''}
     </section>

@@ -12,6 +12,7 @@
 
 mod effects;
 mod engine;
+mod quips;
 mod score;
 
 use std::collections::BTreeMap;
@@ -30,6 +31,7 @@ pub use engine::{
     card_mod_sources, card_mod_status, evaluate, evaluate_if_won, evaluate_known, held_by_player,
     is_marked, owns_card_points, resolve_edition,
 };
+pub use quips::{QuipSituation, Quips};
 pub use score::{
     Change, Lever, RUN_LOSS_FACTOR, ScoreBreakdown, ScoreLine, ScoreStep, ScoreTerm, Source,
     score_game, score_parts,
@@ -106,17 +108,6 @@ content_id!(
     GuestId
 );
 
-/// What a Stammgast says in the speech bubble (one short line each).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GuestQuips {
-    /// When the guest sits down (first game of a series).
-    pub greet: String,
-    /// When the guest takes a trick.
-    pub win: String,
-    /// When the player takes a trick.
-    pub lose: String,
-}
-
 /// A Stammgast (DESIGN 10): a normal opponent with a name and a pixel
 /// face, without rules of his own. Two sit at the table each series
 /// ([`crate::run::Run::guests`]). Pure presentation: no effect on play or AI.
@@ -128,8 +119,8 @@ pub struct GuestDef {
     pub name: String,
     /// Id of the face the frontend draws.
     pub look: String,
-    /// Speech bubble lines.
-    pub quips: GuestQuips,
+    /// Speech bubble lines, several per situation ([`QuipSituation::GUEST`]).
+    pub quips: Quips,
     /// Card back of his cards (ADR 0015); the shared opponent back
     /// `"opponent"` if not set.
     #[serde(default = "opponent_back")]
@@ -1219,6 +1210,10 @@ pub struct BossFigure {
     /// Card back of this figure's cards; the boss's back if not set.
     #[serde(default)]
     pub back: Option<String>,
+    /// Speech bubble lines in the boss's voice ([`QuipSituation::FIGURE`]);
+    /// pure presentation.
+    #[serde(default)]
+    pub quips: Quips,
 }
 
 /// A boss: the special rule of a boss series.
@@ -2363,12 +2358,27 @@ impl Content {
     fn validate_guests(&self) -> Result<(), ContentError> {
         for guest in self.guests.values() {
             let q = &guest.quips;
-            let texts = [&guest.name, &guest.look, &q.greet, &q.win, &q.lose];
-            if guest.id.as_str().is_empty() || texts.iter().any(|t| t.trim().is_empty()) {
+            let required = [&q.greet, &q.win, &q.lose];
+            if guest.id.as_str().is_empty()
+                || guest.name.trim().is_empty()
+                || guest.look.trim().is_empty()
+                || required.iter().any(|lines| lines.is_empty())
+                || q.all().any(|t| t.trim().is_empty())
+            {
                 return Err(ContentError(format!(
                     "guest {}: id, name, look and quips must not be empty",
                     guest.id
                 )));
+            }
+        }
+        for boss in self.bosses.values() {
+            for figure in &boss.figures {
+                if figure.quips.all().any(|t| t.trim().is_empty()) {
+                    return Err(ContentError(format!(
+                        "boss {} ({}): empty quip",
+                        boss.id, figure.name
+                    )));
+                }
             }
         }
         Ok(())

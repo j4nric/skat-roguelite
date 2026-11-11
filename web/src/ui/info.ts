@@ -13,6 +13,7 @@ import { glossaryGroup, glossarySample, glossaryText } from './glossary';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { seatPerson } from './guests';
+import { greetingOf } from './quips';
 import { oddsLine } from './odds';
 import { mapIcon } from './mapicons';
 import { moonIcon } from './night';
@@ -219,7 +220,7 @@ function seatModel(key: string, view: RunView, seat: 1 | 2): InfoModel | null {
     const m = bossModel(key, view, view.series.boss.id, de.info.kinds.boss, seat - 1);
     return { ...m, title: person.name, facts: [...m.facts, ...facts] };
   }
-  const greet = person.guest ? quote(person.guest.greet) : '';
+  const greet = person.guest ? quote(greetingOf(view, seat)) : '';
   return {
     key,
     title: person.name,
