@@ -6,7 +6,7 @@
 
 export const de = {
   app: {
-    title: 'Stammtisch',
+    title: "Noch 'ne Runde Skat?",
     tagline: 'Skat als Roguelike',
     build: 'Build {info}',
     loading: 'Der Tisch wird gedeckt …',

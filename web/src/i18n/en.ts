@@ -12,7 +12,7 @@ import { EN_CATALOG } from './en-content';
 
 export const en: Strings = {
   app: {
-    title: 'Stammtisch',
+    title: 'One more Round of Skat?',
     tagline: 'Skat as a roguelike',
     build: 'Build {info}',
     loading: 'Laying the table …',

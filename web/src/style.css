@@ -4090,7 +4090,10 @@ html[data-kbd] .hand-card.is-dim .key-hint {
 }
 
 .sign h1 {
-  font-size: var(--fs-3xl);
+  /* The name is a question of two lines on a phone ("Noch 'ne Runde Skat?"). */
+  font-size: var(--fs-2xl);
+  line-height: 1;
+  text-wrap: balance;
   color: var(--ivory);
   text-shadow: 4px 4px 0 var(--line);
 }
