@@ -6,6 +6,16 @@ import { de, locale, t } from '../i18n';
 import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
+import { HOME_HOST, OLD_HOSTS } from '../domain';
+
+/** Whether the page runs on the new address (ADR 0025). */
+function onHomeAddress(): boolean {
+  try {
+    return window.location.hostname === HOME_HOST;
+  } catch {
+    return false;
+  }
+}
 
 type Sheet = (inner: string, closable?: boolean, cls?: string, overlayCls?: string) => string;
 
@@ -72,6 +82,7 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
            ${create}
            <button class="btn btn-wide" ${attrs({ 'data-action': 'account-recover', 'data-testid': 'account-recover', disabled })}>${esc(de.account.recover)}</button>
          </div>
+         ${onHomeAddress() ? `<p class="small" data-testid="account-old-hint">${esc(t(de.account.oldAddress, { host: OLD_HOSTS[0] ?? '' }))}</p>` : ''}
          <p class="small">${esc(de.account.stored)}</p>
        </div>
        <button class="btn btn-wide" ${attrs({ 'data-action': 'menu' })}>${esc(de.account.back)}</button>`,
@@ -121,9 +132,12 @@ export function renderPasskeys(sheet: Sheet, list: PasskeyInfo[] | null, busy: b
         .map((p, i) => {
           const used = p.lastUsedAt ? t(de.account.passkeyUsed, { date: when(p.lastUsedAt) }) : de.account.passkeyNeverUsed;
           const synced = p.synced ? `<span class="recent-daily">${esc(de.account.passkeySynced)}</span>` : '';
+          // Since the move (ADR 0025) a passkey opens either the new or the old address.
+          const here = typeof window === 'undefined' ? '' : window.location.hostname;
+          const where = p.rpId && p.rpId !== here ? ` · ${esc(t(de.account.passkeyFor, { host: p.rpId }))}` : '';
           return `<section class="share" ${attrs({ 'data-testid': 'passkey-row', 'data-id': p.id })}>
             <div class="share-head"><b>${esc(t(de.account.passkeyName, { n: i + 1 }))}</b>${synced}</div>
-            <p class="small">${esc(t(de.account.passkeyCreated, { date: when(p.createdAt) }))} · ${esc(used)}</p>
+            <p class="small">${esc(t(de.account.passkeyCreated, { date: when(p.createdAt) }))} · ${esc(used)}${where}</p>
             <div class="share-actions">
               <button class="btn btn-small" ${attrs({ 'data-action': 'account-passkey-remove', 'data-id': p.id, 'data-testid': 'passkey-remove', disabled: busy || only ? 'disabled' : null })}>${esc(de.account.passkeyRemove)}</button>
             </div>

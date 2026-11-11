@@ -51,6 +51,7 @@ import type { AppCtx } from './app/context';
 import { Guidance } from './app/guidance';
 import { Layer } from './app/layer';
 import { Lifecycle } from './app/lifecycle';
+import { MoveFlow } from './app/move';
 import { Menu } from './app/menu';
 import { Mods } from './app/mods';
 import { DrinkFx } from './app/playback/drinkfx';
@@ -159,7 +160,8 @@ export class App implements AppCtx {
     const events = new EventPlayback(this, this.fx, flights, drinkFx, game, this.layer, this.guidance);
     this.steps = new Steps(this, this.fx, flights, events, this.layer, this.progress, this.account.sync, () => this.lifecycle.afterPlayback());
     const share = new Share(this, this.layer);
-    this.lifecycle = new Lifecycle(this, this.account, this.progress, this.fx, flights, this.guidance, this.steps, this.layer);
+    const move = new MoveFlow(this, this.account, saveCode);
+    this.lifecycle = new Lifecycle(this, this.account, this.progress, this.fx, flights, this.guidance, this.steps, this.layer, move);
     this.renderer = new Renderer(this, this.layer, this.guidance, share, this.table, flights, this.progress);
     this.menu = new Menu(this, this.layer);
     const tresen = new Tresen(this, mods, flights);
@@ -172,6 +174,7 @@ export class App implements AppCtx {
     this.actions.add(share.actions());
     this.actions.add(this.account.actions());
     this.actions.add(saveCode.actions());
+    this.actions.add(move.actions());
     this.actions.add(this.table.actions(), this.table.runActions());
     this.actions.add({}, this.steps.runActions());
     this.actions.add(tresen.actions(), tresen.runActions());

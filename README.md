@@ -1,6 +1,6 @@
 # Stammtisch
 
-Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Läuft im Browser: https://stammtisch-62-83-23-90.sslip.io Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
+Skat als Roguelike-Deckbuilder (Repo-Arbeitsname: skat-roguelite). Läuft im Browser: https://one-more-skat.de Du bist immer Alleinspieler, spielst gegen zwei KI-Gegner und veränderst zwischen den Runden das Blatt, mit dem alle drei spielen.
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md)
 - Begriffe: [`docs/GLOSSARY.md`](docs/GLOSSARY.md)

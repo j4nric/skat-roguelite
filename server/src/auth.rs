@@ -88,6 +88,7 @@ pub struct RegisterStart {
 pub async fn register_start(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
+    headers: HeaderMap,
     body: Option<Json<RegisterStart>>,
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Auth)?;
@@ -99,8 +100,8 @@ pub async fn register_start(
     };
     let user_id = Uuid::new_v4();
     let label = name.clone().unwrap_or_else(|| DEFAULT_LABEL.to_owned());
-    let (options, reg) = state
-        .webauthn
+    let (rp, webauthn) = state.rp(&headers);
+    let (options, reg) = webauthn
         .start_passkey_registration(user_id, &label, &label, None)
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
@@ -108,6 +109,7 @@ pub async fn register_start(
     let ceremony = state.put_ceremony(
         ip,
         Ceremony::Register {
+            rp,
             user_id,
             name,
             state: reg,
@@ -134,6 +136,7 @@ pub async fn register_finish(
 ) -> ApiResult<impl IntoResponse> {
     state.limiter.check(ip, Bucket::Auth)?;
     let Some(Ceremony::Register {
+        rp,
         user_id,
         name,
         state: reg,
@@ -141,8 +144,8 @@ pub async fn register_finish(
     else {
         return Err(ApiError::bad_request("expired"));
     };
-    let passkey = state
-        .webauthn
+    let (rp, webauthn) = state.rp_at(rp);
+    let passkey = webauthn
         .finish_passkey_registration(&body.credential, &reg)
         .map_err(passkey_error)?;
     // Each account may store a save of 1 MB: only a few new ones per
@@ -154,7 +157,7 @@ pub async fn register_finish(
         let mut conn = state.db();
         let tx = conn.transaction()?;
         db::insert_user(&tx, &id, name.as_deref(), &code.id, &code.hash)?;
-        store_passkey(&tx, &id, &passkey)?;
+        store_passkey(&tx, &id, &passkey, state.rp_id(rp))?;
         tx.commit()?;
     }
     let started = session::start(&state, &id)?;
@@ -166,10 +169,15 @@ pub async fn register_finish(
     ))
 }
 
-fn store_passkey(conn: &rusqlite::Connection, user_id: &str, passkey: &Passkey) -> ApiResult<()> {
+fn store_passkey(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    passkey: &Passkey,
+    rp_id: &str,
+) -> ApiResult<()> {
     let cred_id = URL_SAFE_NO_PAD.encode(passkey.cred_id());
     let json = serde_json::to_string(passkey).map_err(|_| ApiError::internal())?;
-    db::insert_passkey(conn, &cred_id, user_id, &json).map_err(|err| {
+    db::insert_passkey(conn, &cred_id, user_id, &json, rp_id).map_err(|err| {
         if let rusqlite::Error::SqliteFailure(e, _) = &err
             && e.code == rusqlite::ErrorCode::ConstraintViolation
         {
@@ -183,10 +191,11 @@ fn store_passkey(conn: &rusqlite::Connection, user_id: &str, passkey: &Passkey) 
 pub async fn login_start(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
+    headers: HeaderMap,
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Auth)?;
-    let (options, auth) = state
-        .webauthn
+    let (rp, webauthn) = state.rp(&headers);
+    let (options, auth) = webauthn
         .start_discoverable_authentication()
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
@@ -194,7 +203,7 @@ pub async fn login_start(
     if let Some(o) = options.as_object_mut() {
         o.remove("mediation");
     }
-    let ceremony = state.put_ceremony(ip, Ceremony::Login { state: auth })?;
+    let ceremony = state.put_ceremony(ip, Ceremony::Login { rp, state: auth })?;
     Ok(Json(json!({ "ceremony": ceremony, "options": options })))
 }
 
@@ -205,11 +214,11 @@ pub async fn login_finish(
     Json(body): Json<Finish<PublicKeyCredential>>,
 ) -> ApiResult<impl IntoResponse> {
     state.limiter.check(ip, Bucket::Auth)?;
-    let Some(Ceremony::Login { state: auth }) = state.take_ceremony(&body.ceremony) else {
+    let Some(Ceremony::Login { rp, state: auth }) = state.take_ceremony(&body.ceremony) else {
         return Err(ApiError::bad_request("expired"));
     };
-    let (user_id, cred_id) = state
-        .webauthn
+    let (rp, webauthn) = state.rp_at(rp);
+    let (user_id, cred_id) = webauthn
         .identify_discoverable_authentication(&body.credential)
         .map_err(passkey_error)?;
     let user_id = user_id.to_string();
@@ -217,14 +226,15 @@ pub async fn login_finish(
     let stored = db::passkey(&state.db(), &user_id, &cred_id)?
         .ok_or(ApiError::new(StatusCode::UNAUTHORIZED, "unknown_passkey"))?;
     let mut passkey: Passkey = serde_json::from_str(&stored).map_err(|_| ApiError::internal())?;
-    let result = state
-        .webauthn
+    let result = webauthn
         .finish_discoverable_authentication_v2(&body.credential, auth, &passkey)
         .map_err(passkey_error)?;
     if passkey.update_credential(&result) == Some(true) {
         let json = serde_json::to_string(&passkey).map_err(|_| ApiError::internal())?;
         db::update_passkey(&state.db(), &cred_id, &json)?;
     }
+    // Passkeys from before the RP id was stored learn it on their next use.
+    db::note_passkey_rp(&state.db(), &cred_id, state.rp_id(rp))?;
     let started = session::start(&state, &user_id)?;
     let user = user_json(&state, &user_id)?;
     Ok((started.headers, Json(json!({ "user": user }))))
@@ -311,8 +321,8 @@ pub async fn passkey_start(
         .map(|p| p.cred_id().clone())
         .collect::<Vec<_>>();
     let label = name.unwrap_or_else(|| DEFAULT_LABEL.to_owned());
-    let (options, reg) = state
-        .webauthn
+    let (rp, webauthn) = state.rp(&headers);
+    let (options, reg) = webauthn
         .start_passkey_registration(user_id, &label, &label, Some(exclude))
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
@@ -320,6 +330,7 @@ pub async fn passkey_start(
     let ceremony = state.put_ceremony(
         ip,
         Ceremony::AddPasskey {
+            rp,
             user_id,
             state: reg,
         },
@@ -337,6 +348,7 @@ pub async fn passkey_finish(
     state.limiter.check(ip, Bucket::Auth)?;
     let session = session::require(&state, &headers)?;
     let Some(Ceremony::AddPasskey {
+        rp,
         user_id,
         state: reg,
     }) = state.take_ceremony(&body.ceremony)
@@ -346,11 +358,11 @@ pub async fn passkey_finish(
     if user_id.to_string() != session.user_id {
         return Err(ApiError::unauthorized());
     }
-    let passkey = state
-        .webauthn
+    let (rp, webauthn) = state.rp_at(rp);
+    let passkey = webauthn
         .finish_passkey_registration(&body.credential, &reg)
         .map_err(passkey_error)?;
-    store_passkey(&state.db(), &session.user_id, &passkey)?;
+    store_passkey(&state.db(), &session.user_id, &passkey, state.rp_id(rp))?;
     Ok(Json(
         json!({ "user": user_json(&state, &session.user_id)? }),
     ))
@@ -384,9 +396,11 @@ pub async fn new_recovery_code(
 }
 
 /// `GET /api/passkeys`: the account's passkeys, oldest first:
-/// `{"passkeys": [{id, createdAt, lastUsedAt, synced}]}`. `synced` says
-/// whether the authenticator backs it up (iCloud keychain, Google password
-/// manager). There is no name: the authenticator does not tell one.
+/// `{"passkeys": [{id, createdAt, lastUsedAt, synced, rpId}]}`. `synced`
+/// says whether the authenticator backs it up (iCloud keychain, Google
+/// password manager). `rpId` is the address it opens (null for one made
+/// before that was stored and not used since). There is no name: the
+/// authenticator does not tell one.
 pub async fn list_passkeys(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
@@ -407,6 +421,7 @@ pub async fn list_passkeys(
                 "createdAt": row.created_at,
                 "lastUsedAt": row.last_used_at,
                 "synced": synced,
+                "rpId": row.rp_id,
             })
         })
         .collect::<Vec<_>>();

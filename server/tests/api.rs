@@ -442,11 +442,18 @@ async fn passkeys_are_listed_and_removed_but_not_the_last() {
     let (cookie, _) = user(&state, "u1", None);
     {
         let conn = state.db();
-        db::insert_passkey(&conn, "credA", "u1", r#"{"cred":{"backup_state":true}}"#).expect("a");
-        db::insert_passkey(&conn, "credB", "u1", "{}").expect("b");
+        db::insert_passkey(
+            &conn,
+            "credA",
+            "u1",
+            r#"{"cred":{"backup_state":true}}"#,
+            "stammtisch.example",
+        )
+        .expect("a");
+        db::insert_passkey(&conn, "credB", "u1", "{}", "stammtisch.example").expect("b");
     }
     let (other, _) = user(&state, "u2", None);
-    db::insert_passkey(&state.db(), "credC", "u2", "{}").expect("c");
+    db::insert_passkey(&state.db(), "credC", "u2", "{}", "stammtisch.example").expect("c");
 
     let res = call(&app, "GET", "/api/passkeys", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::OK);
@@ -1005,4 +1012,234 @@ async fn deleting_the_account_removes_everything() {
         db::board_count(&conn, db::Board::Weekly, &weekly::this_week_key()).expect("count"),
         0
     );
+}
+
+const OLD_ORIGIN: &str = "https://old.example";
+
+/// The server on the new and the old address (ADR 0025).
+fn moved_app() -> (Router, AppState) {
+    let config = Config::new(&[ORIGIN, OLD_ORIGIN], None).expect("config");
+    let state = AppState::new(config, db::open_in_memory().expect("db")).expect("state");
+    (router(state.clone()), state)
+}
+
+async fn call_from(
+    app: &Router,
+    origin: &str,
+    method: &str,
+    uri: &str,
+    body: Option<Value>,
+) -> Res {
+    let mut req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::ORIGIN, origin);
+    let req = match body {
+        Some(b) => {
+            req = req.header(header::CONTENT_TYPE, "application/json");
+            req.body(Body::from(b.to_string()))
+        }
+        None => req.body(Body::empty()),
+    }
+    .expect("request");
+    let res = app.clone().oneshot(req).await.expect("response");
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.expect("body").to_bytes();
+    Res {
+        status,
+        headers,
+        body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    }
+}
+
+#[tokio::test]
+async fn each_address_is_its_own_relying_party() {
+    let (app, state) = moved_app();
+    assert_eq!(state.config.rp_id, "stammtisch.example");
+    let ids: Vec<&str> = state.config.rps.iter().map(|rp| rp.id.as_str()).collect();
+    assert_eq!(ids, ["stammtisch.example", "old.example"]);
+    // Passkeys of the old address keep working there, new ones are made
+    // for the address the player is on.
+    for (origin, rp) in [(ORIGIN, "stammtisch.example"), (OLD_ORIGIN, "old.example")] {
+        let res = call_from(&app, origin, "POST", "/api/register/start", Some(json!({}))).await;
+        assert_eq!(res.status, StatusCode::OK, "{origin}");
+        assert_eq!(res.body["options"]["publicKey"]["rp"]["id"], rp);
+        let res = call_from(&app, origin, "POST", "/api/login/start", None).await;
+        assert_eq!(res.status, StatusCode::OK, "{origin}");
+        assert_eq!(res.body["options"]["publicKey"]["rpId"], rp);
+    }
+    // A foreign origin is still refused.
+    let res = call_from(
+        &app,
+        "https://evil.example",
+        "POST",
+        "/api/login/start",
+        None,
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+    // One RP id given: it holds every origin, as before.
+    let config = Config::new(
+        &["https://a.example", "https://b.a.example"],
+        Some("a.example"),
+    )
+    .expect("config");
+    assert_eq!(config.rps.len(), 1);
+    assert!(config.origin_allowed("https://b.a.example"));
+}
+
+#[tokio::test]
+async fn move_code_signs_the_same_account_in_once() {
+    let (app, state) = moved_app();
+    let (cookie, _) = user(&state, "u1", Some("Jan"));
+    // Only signed in.
+    let res = call_from(&app, OLD_ORIGIN, "POST", "/api/move/start", None).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    let make = |cookie: String| {
+        let app = app.clone();
+        async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/api/move/start")
+                .header(header::ORIGIN, OLD_ORIGIN)
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .expect("request");
+            let res = app.oneshot(req).await.expect("response");
+            assert_eq!(res.status(), StatusCode::OK);
+            let bytes = res.into_body().collect().await.expect("body").to_bytes();
+            serde_json::from_slice::<Value>(&bytes).expect("json")
+        }
+    };
+    let first = make(cookie.clone()).await;
+    let first_code = first["code"].as_str().expect("code").to_owned();
+    assert_eq!(first_code.len(), 43);
+    let left = first["expiresAt"].as_i64().expect("expiry") - db::now_ms();
+    assert!(left > 9 * 60 * 1000 && left <= 10 * 60 * 1000, "{left}");
+    // A new code replaces the old one.
+    let second = make(cookie.clone()).await;
+    let code = second["code"].as_str().expect("code").to_owned();
+    assert_ne!(code, first_code);
+    let res = call_from(
+        &app,
+        ORIGIN,
+        "POST",
+        "/api/move/redeem",
+        Some(json!({ "code": first_code })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(res.body["error"], "move_code");
+    // Only its hash is stored.
+    let stored: String = state
+        .db()
+        .query_row(
+            "SELECT code_hash FROM move_codes WHERE user_id = 'u1'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("stored");
+    assert_eq!(stored, session::token_hash(&code));
+
+    let res = call_from(
+        &app,
+        ORIGIN,
+        "POST",
+        "/api/move/redeem",
+        Some(json!({ "code": code })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body["user"]["name"], "Jan");
+    let new_cookie = cookie_of(&res);
+    let res = call(&app, "GET", "/api/me", Some(&new_cookie), None).await;
+    assert_eq!(res.body["user"]["name"], "Jan");
+    // The old address stays signed in: moving is no takeover.
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.body["user"]["name"], "Jan");
+    // Used up.
+    let res = call_from(
+        &app,
+        ORIGIN,
+        "POST",
+        "/api/move/redeem",
+        Some(json!({ "code": code })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    for bad in ["", "nope", &"x".repeat(200)] {
+        let res = call_from(
+            &app,
+            ORIGIN,
+            "POST",
+            "/api/move/redeem",
+            Some(json!({ "code": bad })),
+        )
+        .await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn move_code_expires_and_goes_with_the_account() {
+    let (app, state) = moved_app();
+    let (cookie, _) = user(&state, "u1", None);
+    db::put_move_code(
+        &state.db(),
+        "u1",
+        &session::token_hash("late"),
+        db::now_ms() - 1,
+    )
+    .expect("code");
+    let res = call_from(
+        &app,
+        ORIGIN,
+        "POST",
+        "/api/move/redeem",
+        Some(json!({ "code": "late" })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    db::put_move_code(
+        &state.db(),
+        "u1",
+        &session::token_hash("soon"),
+        db::now_ms() + 60_000,
+    )
+    .expect("code");
+    let res = call(&app, "DELETE", "/api/account", Some(&cookie), None).await;
+    assert!(res.status.is_success(), "{}", res.status);
+    let left: i64 = state
+        .db()
+        .query_row("SELECT COUNT(*) FROM move_codes", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(left, 0);
+}
+
+#[tokio::test]
+async fn passkeys_say_which_address_they_open() {
+    let (app, state) = moved_app();
+    let (cookie, _) = user(&state, "u1", None);
+    {
+        let conn = state.db();
+        db::insert_passkey(&conn, "new", "u1", "{}", "stammtisch.example").expect("new");
+        // One from before the RP id was stored.
+        conn.execute(
+            "INSERT INTO passkeys (cred_id, user_id, passkey, created_at) VALUES ('legacy', 'u1', '{}', 0)",
+            [],
+        )
+        .expect("legacy");
+    }
+    let res = call(&app, "GET", "/api/passkeys", Some(&cookie), None).await;
+    let list = res.body["passkeys"].as_array().expect("list");
+    assert_eq!(list[0]["id"], "legacy");
+    assert_eq!(list[0]["rpId"], Value::Null);
+    assert_eq!(list[1]["rpId"], "stammtisch.example");
+    db::note_passkey_rp(&state.db(), "legacy", "old.example").expect("note");
+    db::note_passkey_rp(&state.db(), "new", "old.example").expect("kept");
+    let res = call(&app, "GET", "/api/passkeys", Some(&cookie), None).await;
+    let list = res.body["passkeys"].as_array().expect("list");
+    assert_eq!(list[0]["rpId"], "old.example");
+    assert_eq!(list[1]["rpId"], "stammtisch.example");
 }

@@ -5661,6 +5661,8 @@ async function shareRunPass(browser, errors, viewport) {
   await page.waitForFunction(() => window.__shared.length === 1, null, { timeout: 5000 }).catch(() => fail(`share ${tag}: nothing went to the share sheet`));
   const shared = await page.evaluate(() => window.__shared[0]);
   if (shared.files.length !== 1 || shared.files[0].type !== 'image/png' || shared.files[0].size < 2000) fail(`share ${tag}: shared ${JSON.stringify(shared)}`);
+  // The canonical address goes along (ADR 0025).
+  if (!shared.text?.includes('https://one-more-skat.de')) fail(`share ${tag}: the text names no address: "${shared.text}"`);
   log(`share ${tag}: share sheet got ${shared.files[0].name} with "${shared.text}"`);
   await context.close();
   if (errors.length) fail(`share ${tag}: console errors:\n${errors.join('\n')}`);
@@ -6881,6 +6883,164 @@ async function quipsPass(browser, errors, locale, viewport = PHONE) {
   await context.close();
 }
 
+/**
+ * Der Umzug (ADR 0025; alone with SMOKE_ONLY=move). The game moved to
+ * one-more-skat.de; the old sslip.io address stays up and must not
+ * redirect, or its localStorage could not be reached any more. Both
+ * addresses are served here from the preview through Playwright routes
+ * (so the real host names of src/domain.ts are what decides; the service
+ * worker is blocked in this context, its requests would bypass the routes):
+ * - localhost (every other pass) and the new address show no notice; the
+ *   old one shows "Wir sind umgezogen" on the start screen; the account
+ *   sheet of the new address tells where old passkeys still work,
+ * - without an account the sheet puts the save code into the link's
+ *   fragment; following it, the new address asks before replacing, takes
+ *   the address bar's fragment away, and after the reload the run of the
+ *   old address is there with every key as it was,
+ * - signed in (stubbed /api), the sheet uploads first, asks for a move
+ *   code and links `#umzug=<code>`; the new address redeems it (the code
+ *   goes in the body, never in a URL), shows the account and offers a
+ *   passkey for the new address; a used code shows why and the way back.
+ */
+async function movePass(browser, errors, viewport) {
+  const tag = `move ${viewport.width}x${viewport.height}`;
+  const OLD = 'https://stammtisch-62-83-23-90.sslip.io';
+  const NEW = 'https://one-more-skat.de';
+  const local = base.replace(/\/$/, '');
+  /** Serve both hosts from the preview; `api` answers /api/* where it wants to. */
+  const serve = async (context, api = () => null) => {
+    for (const origin of [OLD, NEW]) {
+      await context.route(`${origin}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const stub = url.pathname.startsWith('/api/') ? api(url, route.request(), origin) : null;
+        if (stub) return route.fulfill({ status: stub.status ?? 200, contentType: 'application/json', body: JSON.stringify(stub.body) });
+        if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"offline"}' });
+        const response = await route.fetch({ url: `${local}${url.pathname}${url.search}` });
+        return route.fulfill({ response });
+      });
+    }
+  };
+  const snap = (page, name) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+
+  // 1. Without an account: the progress travels in the link.
+  {
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await serve(context);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice on localhost`);
+    await page.goto(`${NEW}/`);
+    await page.waitForSelector('[data-action="new-run"]');
+    if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice on the new address`);
+    // Signing in there: a hint for passkeys of the old address.
+    await page.click('[data-testid="account-open"]');
+    await page.waitForSelector('[data-testid="account-sheet"][data-state="out"]');
+    if (!(await page.locator('[data-testid="account-old-hint"]').count())) fail(`${tag}: no hint for old passkeys on the new address`);
+    await page.click('.sheet [data-action="menu"]');
+
+    const oldRes = await page.goto(`${OLD}/`);
+    if (oldRes?.status() !== 200 || new URL(page.url()).origin !== OLD) fail(`${tag}: the old address does not stay (${oldRes?.status()} ${page.url()})`);
+    await page.waitForSelector('[data-testid="move-notice"]').catch(() => fail(`${tag}: no notice on the old address`));
+    await fillSeed(page, SEED);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    await page.click('.hud [data-action="menu"]');
+    await page.click('.sheet [data-action="to-start"]');
+    await page.waitForSelector('[data-action="resume"]');
+    await page.waitForSelector('[data-testid="move-notice"]');
+    await assertNoSideScroll(page, `${tag}, start with the notice`, '.move-notice');
+    await snap(page, 'move-notice');
+    const keysBefore = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('stammtisch.')).map((k) => [k, localStorage.getItem(k)])));
+    if (!keysBefore['stammtisch.run']) fail(`${tag}: no run stored on the old address`);
+
+    await page.click('[data-testid="move-open"]');
+    await page.waitForSelector('[data-testid="move-sheet"][data-state="save"]');
+    await page.click('[data-testid="move-make"]');
+    await page.waitForSelector('[data-testid="move-sheet"][data-state="link"]');
+    await snap(page, 'move-link');
+    const href = await page.getAttribute('[data-testid="move-go"]', 'href');
+    if (!href?.startsWith(`${NEW}/#spielstand=STAMMTISCH`)) fail(`${tag}: link ${href?.slice(0, 80)}`);
+    await page.click('[data-testid="move-go"]');
+    await page.waitForURL(`${NEW}/**`);
+    await page.waitForSelector('[data-testid="save-moved"]', { timeout: 20000 }).catch(() => fail(`${tag}: the new address does not offer the progress`));
+    if (new URL(page.url()).hash) fail(`${tag}: the save code stays in the address bar`);
+    if (await page.evaluate(() => localStorage.getItem('stammtisch.run'))) fail(`${tag}: replaced before asking`);
+    await page.click('[data-testid="save-apply"]');
+    await page.waitForSelector('[data-action="resume"]', { timeout: 20000 });
+    const keysAfter = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('stammtisch.')).map((k) => [k, localStorage.getItem(k)])));
+    for (const [k, v] of Object.entries(keysBefore)) {
+      if (keysAfter[k] !== v) fail(`${tag}: ${k} did not come along`);
+    }
+    if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice after the move`);
+    log(`${tag}: progress moved in the link (${href.length} characters, ${Object.keys(keysBefore).length} keys)`);
+    await context.close();
+  }
+
+  // 2. Signed in: a one-time move code takes the account along.
+  {
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const user = { name: 'Uschi', passkeys: 1, createdAt: 1 };
+    const seen = { put: 0, start: 0, redeem: [], urls: [] };
+    let used = false;
+    await serve(context, (url, req, origin) => {
+      seen.urls.push(url.href);
+      const p = url.pathname;
+      if (p === '/api/me') return { body: { user: origin === OLD || seen.redeem.length ? user : null } };
+      if (p === '/api/save' && req.method() === 'GET') return { body: { save: null } };
+      if (p === '/api/save' && req.method() === 'PUT') {
+        seen.put += 1;
+        return { body: { version: seen.put, updatedAt: Date.now() } };
+      }
+      if (p === '/api/move/start' && origin === OLD) {
+        seen.start += 1;
+        return { body: { code: 'Zm9vYmFyLWNvZGU', expiresAt: Date.now() + 600000 } };
+      }
+      if (p === '/api/move/redeem' && origin === NEW) {
+        seen.redeem.push(req.postDataJSON());
+        if (used) return { status: 401, body: { error: 'move_code' } };
+        used = true;
+        return { body: { user } };
+      }
+      return null;
+    });
+    // Signed in on the old address only (the sync record belongs to it).
+    await context.addInitScript((old) => {
+      if (location.origin === old && !localStorage.getItem('stammtisch-sync')) {
+        localStorage.setItem('stammtisch-sync', JSON.stringify({ signedIn: true, version: null, hash: null, localAt: 0, name: 'Uschi' }));
+      }
+    }, OLD);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(`${OLD}/`);
+    await page.waitForSelector('[data-testid="move-notice"]');
+    await page.click('[data-testid="move-open"]');
+    await page.waitForSelector('[data-testid="move-sheet"][data-state="account"]');
+    await page.click('[data-testid="move-make"]');
+    await page.waitForSelector('[data-testid="move-sheet"][data-state="link"]', { timeout: 15000 }).catch(async () => fail(`${tag}: no account link (${await text(page, 'move-error')})`));
+    const href = await page.getAttribute('[data-testid="move-go"]', 'href');
+    if (href !== `${NEW}/#umzug=Zm9vYmFyLWNvZGU`) fail(`${tag}: account link ${href}`);
+    if (seen.start !== 1) fail(`${tag}: ${seen.start} move codes asked for`);
+    await page.click('[data-testid="move-go"]');
+    await page.waitForURL(`${NEW}/**`);
+    await page.waitForSelector('[data-testid="moved-sheet"][data-state="done"]', { timeout: 20000 }).catch(() => fail(`${tag}: the account did not arrive`));
+    if (new URL(page.url()).hash) fail(`${tag}: the move code stays in the address bar`);
+    if (seen.redeem.length !== 1 || seen.redeem[0]?.code !== 'Zm9vYmFyLWNvZGU') fail(`${tag}: redeemed ${JSON.stringify(seen.redeem)}`);
+    if (seen.urls.some((u) => u.includes('Zm9vYmFyLWNvZGU'))) fail(`${tag}: the move code was in a request URL`);
+    if (!(await page.locator('[data-testid="moved-sheet"]').textContent())?.includes('Uschi')) fail(`${tag}: the moved sheet does not name the account`);
+    if (!(await page.locator('[data-testid="moved-add-passkey"]').count())) fail(`${tag}: no passkey offered for the new address`);
+    await snap(page, 'move-arrived');
+    await page.click('[data-testid="moved-done"]');
+    await page.waitForSelector('[data-testid="moved-sheet"]', { state: 'detached' });
+    // The same link again: used up, with the way back.
+    await page.goto(`${NEW}/#umzug=Zm9vYmFyLWNvZGU`);
+    await page.waitForSelector('[data-testid="moved-error"]', { timeout: 20000 }).catch(() => fail(`${tag}: a used code shows no error`));
+    log(`${tag}: account moved with a one-time code (${seen.put} upload(s) before), a used code refused`);
+    await context.close();
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -6932,6 +7092,12 @@ async function run() {
       await handSortPass(browser, errors, DESKTOP);
       await shareRunPass(browser, errors, PHONE);
       await shareRunPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=move: the move to one-more-skat.de (ADR 0025).
+    if (process.env.SMOKE_ONLY === 'move') {
+      await movePass(browser, errors, PHONE);
+      await movePass(browser, errors, DESKTOP);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'weekly') {
@@ -7330,6 +7496,8 @@ async function run() {
     await handSortPass(browser, errors, DESKTOP);
     await shareRunPass(browser, errors, PHONE);
     await shareRunPass(browser, errors, DESKTOP);
+    await movePass(browser, errors, PHONE);
+    await movePass(browser, errors, DESKTOP);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');

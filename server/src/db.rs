@@ -4,11 +4,14 @@
 //! Tables:
 //! - `users`: id (UUID, also the WebAuthn user handle), display name,
 //!   the public part of the recovery code and the argon2 hash of its secret.
-//! - `passkeys`: the stored WebAuthn credential (public key, counter) per user.
+//! - `passkeys`: the stored WebAuthn credential (public key, counter) per
+//!   user, with the RP id (host) it belongs to.
 //! - `sessions`: SHA-256 of the session token, user, expiry.
 //! - `saves`: one opaque save blob per user with version and time.
 //! - `daily_results`: one result per user and daily seed.
 //! - `weekly_results`: one result per user and ISO week (Tafel der Woche).
+//! - `move_codes`: at most one open move code per user (SHA-256 of the
+//!   code, expiry), to take the account to the new address (ADR 0025).
 //!
 //! Deleting a user deletes everything else of that user (foreign keys
 //! with `ON DELETE CASCADE`).
@@ -92,9 +95,21 @@ CREATE TABLE weekly_results (
 );
 "#;
 
+/// Migration 3: the move to one-more-skat.de (ADR 0025). Passkeys note
+/// their RP id (NULL for the old ones until their next sign-in), and a
+/// signed-in player can make a short-lived move code.
+const MIGRATION_3: &str = r#"
+ALTER TABLE passkeys ADD COLUMN rp_id TEXT;
+CREATE TABLE move_codes (
+    user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    code_hash  TEXT NOT NULL UNIQUE,
+    expires_at INTEGER NOT NULL
+);
+"#;
+
 /// Every migration in order; the database's `user_version` is the number
 /// applied.
-const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2];
+const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2, MIGRATION_3];
 
 /// The schema version this server writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -265,16 +280,28 @@ pub fn delete_user(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
     Ok(conn.execute("DELETE FROM users WHERE id = ?1", params![id])? > 0)
 }
 
-/// Store a new passkey (JSON of `webauthn_rs::prelude::Passkey`).
+/// Store a new passkey (JSON of `webauthn_rs::prelude::Passkey`) made
+/// for the RP id `rp_id`.
 pub fn insert_passkey(
     conn: &Connection,
     cred_id: &str,
     user_id: &str,
     passkey: &str,
+    rp_id: &str,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO passkeys (cred_id, user_id, passkey, created_at) VALUES (?1, ?2, ?3, ?4)",
-        params![cred_id, user_id, passkey, now_ms()],
+        "INSERT INTO passkeys (cred_id, user_id, passkey, created_at, rp_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![cred_id, user_id, passkey, now_ms(), rp_id],
+    )?;
+    Ok(())
+}
+
+/// Note the RP id of a passkey that has none yet (made before it was
+/// stored; a sign-in with it shows where it belongs).
+pub fn note_passkey_rp(conn: &Connection, cred_id: &str, rp_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE passkeys SET rp_id = ?2 WHERE cred_id = ?1 AND rp_id IS NULL",
+        params![cred_id, rp_id],
     )?;
     Ok(())
 }
@@ -311,12 +338,14 @@ pub struct PasskeyRow {
     pub created_at: i64,
     /// Last sign-in with it (ms), if any.
     pub last_used_at: Option<i64>,
+    /// The RP id (host) it belongs to, if known.
+    pub rp_id: Option<String>,
 }
 
 /// The passkeys of a user, oldest first.
 pub fn passkey_rows(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<PasskeyRow>> {
     let mut stmt = conn.prepare(
-        "SELECT cred_id, passkey, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at, cred_id",
+        "SELECT cred_id, passkey, created_at, last_used_at, rp_id FROM passkeys WHERE user_id = ?1 ORDER BY created_at, cred_id",
     )?;
     let rows = stmt.query_map(params![user_id], |r| {
         Ok(PasskeyRow {
@@ -324,6 +353,7 @@ pub fn passkey_rows(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<Pa
             passkey: r.get(1)?,
             created_at: r.get(2)?,
             last_used_at: r.get(3)?,
+            rp_id: r.get(4)?,
         })
     })?;
     rows.collect()
@@ -447,12 +477,43 @@ pub fn delete_other_sessions(
     )
 }
 
-/// Drop expired sessions.
+/// Drop expired sessions (and expired move codes with them).
 pub fn purge_sessions(conn: &Connection) -> rusqlite::Result<usize> {
+    let now = now_ms();
     conn.execute(
-        "DELETE FROM sessions WHERE expires_at <= ?1",
-        params![now_ms()],
-    )
+        "DELETE FROM move_codes WHERE expires_at <= ?1",
+        params![now],
+    )?;
+    conn.execute("DELETE FROM sessions WHERE expires_at <= ?1", params![now])
+}
+
+/// Store the move code (its hash) of a user until `expires_at`; it
+/// replaces one made before.
+pub fn put_move_code(
+    conn: &Connection,
+    user_id: &str,
+    code_hash: &str,
+    expires_at: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO move_codes (user_id, code_hash, expires_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT (user_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at",
+        params![user_id, code_hash, expires_at],
+    )?;
+    Ok(())
+}
+
+/// Use up a move code: its user if it is known and not expired. One
+/// statement, so two requests with the same code get it at most once.
+pub fn take_move_code(conn: &Connection, code_hash: &str) -> rusqlite::Result<Option<String>> {
+    let user: Option<(String, i64)> = conn
+        .query_row(
+            "DELETE FROM move_codes WHERE code_hash = ?1 RETURNING user_id, expires_at",
+            params![code_hash],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    Ok(user.filter(|(_, exp)| *exp > now_ms()).map(|(u, _)| u))
 }
 
 /// The stored save of a user.
@@ -831,6 +892,30 @@ mod tests {
     }
 
     #[test]
+    fn version_two_gets_move_codes_and_keeps_its_passkeys() {
+        let conn = Connection::open_in_memory().expect("create");
+        conn.execute_batch(MIGRATION_1).expect("v1");
+        conn.execute_batch(MIGRATION_2).expect("v2");
+        conn.pragma_update(None, "user_version", 2).expect("v2");
+        conn.execute_batch(
+            "INSERT INTO users (id, name, created_at, recovery_id, recovery_hash) VALUES ('u1', 'Jan', 1, 'ABCDEFGH', 'h');
+             INSERT INTO passkeys (cred_id, user_id, passkey, created_at) VALUES ('old', 'u1', '{}', 1);",
+        )
+        .expect("data");
+        migrate(&conn).expect("migrate");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+        let rows = passkey_rows(&conn, "u1").expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].rp_id, None);
+        put_move_code(&conn, "u1", "h1", now_ms() + 1000).expect("code");
+        assert_eq!(
+            take_move_code(&conn, "h1").expect("take").as_deref(),
+            Some("u1")
+        );
+        assert_eq!(take_move_code(&conn, "h1").expect("again"), None);
+    }
+
+    #[test]
     fn newer_database_is_refused() {
         let conn = Connection::open_in_memory().expect("db");
         conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
@@ -909,8 +994,8 @@ mod tests {
             Some("new")
         );
 
-        insert_passkey(&conn, "a", "u1", "{}").expect("a");
-        insert_passkey(&conn, "b", "u1", "{}").expect("b");
+        insert_passkey(&conn, "a", "u1", "{}", "localhost").expect("a");
+        insert_passkey(&conn, "b", "u1", "{}", "localhost").expect("b");
         assert_eq!(
             remove_passkey(&conn, "u1", "x").expect("x"),
             RemovePasskey::NotFound

@@ -12,6 +12,7 @@
 
 import type { Character } from './types';
 import { dateText } from './i18n';
+import { publicOrigin } from './domain';
 
 /** URL tokens of the characters (lower case, no umlauts). */
 const SLUGS: Record<Character, string> = {
@@ -78,10 +79,10 @@ export function shareHash(seed: string, character: Character, stake = 0): string
   return `seed-${seed}-${SLUGS[character]}${staked}`;
 }
 
-/** The full link to this page with the seed in the hash. */
+/** The full link to this page with the seed in the hash (on the old address: to the new one, ADR 0025). */
 export function shareUrl(seed: string, character: Character, stake = 0): string {
-  const { origin, pathname, search } = window.location;
-  return `${origin}${pathname}${search}#${shareHash(seed, character, stake)}`;
+  const { pathname, search } = window.location;
+  return `${publicOrigin()}${pathname}${search}#${shareHash(seed, character, stake)}`;
 }
 
 /** Remove a seed link from the address bar (after it was used or dismissed). */

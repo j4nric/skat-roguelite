@@ -118,7 +118,7 @@ export type Overlay =
   /** Paste a save code; `error` names why the last one was rejected. */
   | { kind: 'save-import'; text: string; error: string | null; checking: boolean }
   /** A checked save code, waiting for the player to replace the current progress. */
-  | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[] }
+  | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[]; moved?: boolean }
   /** The account (ADR 0021): sign up and in, or name, sign out, delete. */
   | { kind: 'account'; busy: boolean; error: string | null; note: string | null }
   /** The recovery code, shown once (sign-up, recovery login, renewed). */
@@ -129,6 +129,13 @@ export type Overlay =
   | { kind: 'account-delete'; busy: boolean; error: string | null }
   /** The account's passkeys (null while loading), to remove one. */
   | { kind: 'account-passkeys'; list: PasskeyInfo[] | null; busy: boolean; error: string | null; note: string | null }
+  /**
+   * On the old address (ADR 0025): take the account or the stored progress
+   * to the new one. `link` once made (with the code in its fragment).
+   */
+  | { kind: 'move'; busy: boolean; error: string | null; link: string | null; what: 'account' | 'save' | null; copied: boolean | null }
+  /** On the new address: a move link signed the account in (or failed); next a passkey for here. */
+  | { kind: 'account-moved'; busy: boolean; error: string | null; done: boolean }
   /** Played on two devices: which state stays. */
   | { kind: 'sync-conflict'; here: ConflictSide; server: ConflictSide }
   | { kind: 'overview' }
