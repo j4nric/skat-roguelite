@@ -306,6 +306,15 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Konflikt | `SyncConflict` | Beide Seiten haben sich seit dem letzten Abgleich geändert (Server: HTTP 409 bei falscher `ifVersion`); der Spieler wählt |
 | Tages-Seed | `dailySeed` | Datum als JJJJMMTT (`web/src/seed.ts`) |
 | Tafel des Tages | `DailyBoard` | Bestenliste eines Tages-Seeds, Tabelle `daily_results`, das erste Ergebnis je Konto und Tag zählt |
+| Tafel (Bestenliste auf dem Server) | `Board` | `server/src/board.rs`: gemeinsamer Code beider Tafeln (`Board::Daily`, `Board::Weekly`), Ergebnis `BoardResult` (`period`: Tag oder Woche), Zeile `BoardRow`; `db::insert_result`, `board_top`, `result_of`, `board_count` |
+| Wochen-Herausforderung (DESIGN 5.6) | `weekly` | Ein Run je ISO-Woche mit festem Seed und einer Sonderregel. Kern: `Run::new_weekly`, `RunStart::weekly_rule` und `RunStart::week`, Zustand `WeeklyState` (`Run::weekly`), Sicht `RunView::weekly` (`WeeklyView`), vor dem Start `week_info` (`WeekInfo`); Web `CoreRun.createWeekly`, `weekInfo`; Simulator `--weekly-rule <id>`, `--weekly <JJJJWW>` |
+| Woche (ISO 8601, JJJJWW) | `WeekId` | ISO-Jahr und -Woche als eine Zahl (202646); `WeekId::seed` (Seed der Woche), `WeekId::index` (Wochen seit 2000-W01); Server `weekly::parse_week`, `this_week_key` |
+| Sonderregel der Woche | `WeeklyRuleDef`, `WeeklyRuleId` | Daten in `weekly.ron`: `character`, `start_relics`, `deck`, `coins`, `rules` (Verschärfungen der Nacht, `NightRule`), `passive`, `hooks`; Quelle `Source::Weekly`; Wahl je Woche `pick_rule` (Runden ohne Wiederholung), `Content::rule_of_week`; alle Verschärfungen in Kraft `Run::rules_in_force` |
+| Tafel der Woche | `WeeklyBoard` | Wie die Tafel des Tages, Tabelle `weekly_results` (Migration 2), `POST /api/weekly`, `GET /api/weekly/{JJJJWW}`; der erste beendete Wochen-Run je Konto zählt, jeder weitere ist Übung |
+| Übung (weiterer Wochen-Run) | practice | Ein Wochen-Run nach dem ersten der Woche: zählt im Vereinsbuch, nicht auf der Tafel (der Server behält das erste Ergebnis, `stored: false`) |
+| Statistik je Relikt | `RelicStats` | Im Meta-Zustand `MetaStats::relics`: `taken` (gekauft, gefunden, getauscht), `held` (am Ende eines Runs gehalten), `won` (davon gewonnen); seit 10.11.2026. `RunWon` und `RunLost` tragen dafür `relics` |
+| Liebste Relikte (je Charakter) | `favourite_relics` | Die drei am häufigsten am Ende gehaltenen (`MetaStats::character_relics`, `FAVOURITE_RELICS`) |
+| Statistikblatt (Vereinsbuch) | `StatsView` | Vom Kern berechnet (`MetaStats::records`, `MetaView::records`): `CharacterRecord` je Charakter, `RelicRecord` je Relikt, Quoten `win_percent` gerundet; Seiten „Statistik“ und „Relikte“ im Vereinsbuch |
 
 ## Hook-API und Wertung mit Relikten
 
@@ -461,6 +470,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Nachtschicht (Nacht) | `night_shift` (`CardCount::direction`) |
 | Morgengrauen (Nacht) | `dawn` (Flagge `dawn`) |
 | Kurze Geduld, Hellwache Gegner, Doppelte Bosse, Nachtzuschlag, Verhexte Karte, Spelunkenluft, Zielwert-Sprung, Knausriger Wirt (Verschärfungen) | `fewer_redeals`, `sharp_opponents`, `double_boss`, `pricier_tresen`, `cursed_card`, `dive_air`, `target_jump`, `stingy_host` |
+| Grand zählt doppelt, Spelunkenluft, Hellwache Gegner, Kurze Geduld, Teufelspakt, Nullabend, Erbonkel, Spendierhosen (Sonderregeln der Woche) | `grand_double`, `dive_air`, `wide_awake`, `short_patience`, `devils_pact`, `null_evening`, `rich_uncle`, `spendthrift` |
 | Tief in der Nacht, Nach der Sperrstunde, Bis zum Morgengrauen (Freischaltungen) | `night_district_5`, `night_district_7`, `night_district_10` |
 | Der Wirt spendiert | `landlord_treat` |
 | Falschspieler am Nebentisch (bis 02.11.2026 „Der Falschspieler“) | `card_sharp` |
