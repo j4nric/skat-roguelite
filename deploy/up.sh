@@ -21,6 +21,14 @@ printf 'STAMMTISCH_UID=%s\nSTAMMTISCH_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 # registry the old images keep running.
 docker compose pull -q || echo "::warning::docker compose pull failed; running the images already on the server."
 
+# Apple app site association for the iOS app's passkeys (ADR 0025). The
+# deploy job hands over the repository variable APPLE_TEAM_ID (empty when
+# unset); it is kept in apple-team-id, so a run by hand without it keeps
+# the last one. rsync --delete-after removed the file with the old site;
+# it is written anew on every run.
+if [ -n "${APPLE_TEAM_ID+x}" ]; then printf '%s\n' "$APPLE_TEAM_ID" > apple-team-id; fi
+APPLE_TEAM_ID=$(cat apple-team-id 2>/dev/null || true) sh ./aasa.sh site
+
 docker compose up -d --remove-orphans web
 
 # The Caddyfile is a single-file bind mount: rsync replaces the file, the

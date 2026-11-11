@@ -69,7 +69,10 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      STAMMTISCH_ORIGIN: https://stammtisch-62-83-23-90.sslip.io
+      # The new address first (ADR 0025); the old one stays, so its
+      # passkeys keep working there until the players have moved. Each host
+      # is its own WebAuthn relying party.
+      STAMMTISCH_ORIGIN: https://one-more-skat.de,https://stammtisch-62-83-23-90.sslip.io
       STAMMTISCH_DB: /data/stammtisch.db
       STAMMTISCH_LISTEN: 0.0.0.0:8080
       RUST_LOG: info

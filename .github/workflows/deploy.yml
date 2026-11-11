@@ -109,12 +109,17 @@ jobs:
           else
             echo "::warning::No account server binary built; the one on the server (if any) stays."
           fi
-          rsync -az deploy/docker-compose.yml deploy/Caddyfile deploy/site.caddy deploy/up.sh "$USER@$HOST:$DEST/"
+          rsync -az deploy/docker-compose.yml deploy/Caddyfile deploy/site.caddy deploy/up.sh deploy/aasa.sh "$USER@$HOST:$DEST/"
       - name: Start or update containers
         if: steps.secrets.outputs.ready == 'true'
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
           DEST: ${{ secrets.DEPLOY_PATH }}
+          # Apple team id for the iOS app's passkeys (ADR 0025): a repository
+          # variable, not a secret (it is public in the file it goes into).
+          # Only ten letters or digits pass; anything else is sent as empty.
+          TEAM: ${{ vars.APPLE_TEAM_ID }}
         run: |
-          ssh "$USER@$HOST" "sh '$DEST/up.sh'"
+          printf '%s' "$TEAM" | grep -Eq '^[A-Z0-9]{10}$' || TEAM=
+          ssh "$USER@$HOST" "APPLE_TEAM_ID='$TEAM' sh '$DEST/up.sh'"
