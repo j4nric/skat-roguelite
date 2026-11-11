@@ -656,6 +656,21 @@ function toggle(action: string, name: string, on: boolean, label = name, hint: s
 }
 
 /**
+ * A volume slider (0 to 100 % in steps of 5) under its name and value. Dimmed
+ * while its sound is off, still movable. Moving it changes the volume at
+ * once; ./app/menu.ts stores it when let go.
+ */
+function volumeSlider(kind: 'sound' | 'music', name: string, value: number, on: boolean): string {
+  const text = t(de.menu.volumeValue, { n: value });
+  return `<label class="vol ${on ? '' : 'is-off'}" ${attrs({ 'data-testid': `volume-${kind}` })}><span class="vol-name">${esc(name)} <b data-vol-value>${esc(text)}</b></span><input type="range" min="0" max="100" step="5" ${attrs({
+    value: String(value),
+    'data-volume': kind,
+    'aria-label': t(de.menu.volumeOf, { name }),
+    'aria-valuetext': text,
+  })}></label>`;
+}
+
+/**
  * "Schriftgröße" as one button that names the size; a tap takes the next
  * one (Normal, Groß, Sehr groß, then Normal again).
  */
@@ -712,6 +727,7 @@ function settingsBlock(ui: UiState): string {
     <div class="menu-row"><span class="setting-label">${esc(de.menu.tempo)}</span><div class="segmented">${tempos}</div></div>
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}${canVibrate() ? toggle('vibrate', de.vibration.label, ui.settings.vibrate) : ''}</div></div>
+    <div class="menu-row menu-volume" ${attrs({ 'data-testid': 'setting-volume' })}><span class="setting-label">${esc(de.menu.volume)}</span><div class="volumes">${volumeSlider('sound', de.menu.effects, ui.settings.soundVolume, ui.settings.sound)}${volumeSlider('music', de.menu.music, ui.settings.musicVolume, ui.settings.music)}</div></div>
     <div class="menu-row" ${attrs({ 'data-testid': 'setting-table' })}><span class="setting-label">${esc(de.handSort.row)}</span><div class="segmented" ${attrs({ title: de.menu.thinkingHint })}>${toggle('thinking', de.menu.thinking, ui.settings.thinking)}${handSortToggle(ui)}</div></div>
     <div class="menu-row" ${attrs({ 'data-testid': 'setting-display' })}><span class="setting-label">${esc(de.menu.display)}</span><div class="segmented">${toggle('suit-tint', de.menu.suitTintShort, ui.settings.suitTint, de.menu.suitTint, de.menu.suitTintHint)}${toggle('color-blind', de.menu.colorBlindShort, ui.settings.colorBlind, de.menu.colorBlind, de.menu.colorBlindHint)}${textSizeToggle(ui)}</div></div>
     ${backPick(ui)}

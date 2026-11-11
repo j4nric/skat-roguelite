@@ -1155,6 +1155,10 @@ export const de = {
     music: 'Musik',
     toggleOn: '{name}: An',
     toggleOff: '{name}: Aus',
+    /** Volume sliders of sound effects and music (0 to 100 %). */
+    volume: 'Lautstärke',
+    volumeOf: 'Lautstärke {name}',
+    volumeValue: '{n} %',
     overview: 'Kreidetafel',
     credits: 'Abspann',
     thinking: 'Bedenkzeit',
@@ -1596,7 +1600,7 @@ export const de = {
         license: 'Teil des Projekts',
       },
       {
-        what: 'Klänge (Karten, Stich, Kreide, Gläser, Groschen, Klopfen, Akkordeon)',
+        what: 'Klänge (Karten, Mischen, Stich, Kreide, Gläser, Groschen, Kasse, Würfel, Schnaps, Klopfen, Glocken, Kneipentür, Brummen, Akkordeon)',
         who: 'Selbst synthetisiert für dieses Projekt (scripts/make-sounds.mjs)',
         license: 'Teil des Projekts',
       },
