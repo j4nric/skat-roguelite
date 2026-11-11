@@ -80,10 +80,10 @@ export function renderInfoCard(m: InfoModel, mode: InfoMode, open: { sec: number
   const sheet = mode === 'sheet';
   return `<div class="info-card is-${mode}" role="dialog" aria-modal="${sheet ? 'true' : 'false'}" ${attrs({ 'aria-label': t(de.info.label, { name: m.title }), 'data-testid': 'info-card', 'data-info-key': m.key })}>
     ${sheet ? `<div class="info-grab" aria-hidden="true" title="${esc(de.info.swipe)}"></div>` : ''}
-    <header class="info-head">
+    <div class="info-head">
       <div class="info-art">${m.art}</div>
       <div class="info-title"><span class="info-kind">${esc(m.kind)}</span><h2>${esc(m.title)}</h2>${facts}</div>
-    </header>
+    </div>
     ${m.sections.map((s, i) => section(s, i, open, sheet)).join('')}
     ${m.extra ?? ''}
     ${sheet ? `<div class="info-actions">${m.actions ?? ''}<button type="button" class="btn" data-info-close="true">${esc(de.info.close)}</button></div>` : ''}

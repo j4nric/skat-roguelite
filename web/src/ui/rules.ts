@@ -32,7 +32,7 @@ export function renderRules(): string {
     .join('');
   const list = (items: readonly string[]): string => items.map((i) => `<li>${esc(i)}</li>`).join('');
   return `<h2>${esc(r.title)}</h2>
-    <div class="rules-body" data-testid="rules">
+    <div class="rules-body" data-testid="rules" tabindex="0">
       <p class="rules-intro">${esc(r.intro)}</p>
       <h3 class="rules-h">${esc(r.flowTitle)}</h3>
       <ol class="rules-flow">${flow}</ol>

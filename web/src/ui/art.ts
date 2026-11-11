@@ -61,6 +61,11 @@ export function wildFaceIds(rank: Rank, suit: Suit | null = null): { picture: st
   return { picture: `w-${rank}`, index: `wx-${rank}`, small: `wt-${rank}` };
 }
 
+/** Symbol id of a suit's letter tag ("Farbenblind-Hilfe", under the corner index). */
+export function suitLetterId(suit: Suit): string {
+  return `cb-${suitCode(suit)}`;
+}
+
 export function suitId(suit: Suit): string {
   return `s-${suitCode(suit)}`;
 }

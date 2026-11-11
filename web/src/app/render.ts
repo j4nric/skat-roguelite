@@ -6,6 +6,7 @@
 // (./guidance.ts) and the effects waiting for the new DOM follow.
 
 import { type MusicId, music } from '../music';
+import { Announcer, DialogFocus } from '../ui/a11y';
 import { setPlayerBack } from '../ui/backs';
 import { renderBossReward } from '../ui/bossreward';
 import { renderCardReward } from '../ui/cardreward';
@@ -39,6 +40,10 @@ export class Renderer {
   private readonly screen: Patcher;
   /** Cards in flight in the parts the patcher just replaced. */
   private snapshots: FlightSnapshot[] = [];
+  /** Focus for the sheets drawn on the screen itself (Kontra, Untot pick). */
+  private readonly screenFocus: DialogFocus;
+  /** What a screen reader hears of the playback (../ui/a11y.ts). */
+  private readonly announcer = new Announcer();
 
   constructor(
     private readonly ctx: AppCtx,
@@ -49,6 +54,7 @@ export class Renderer {
     private readonly flights: Flights,
     private readonly progress: Progress,
   ) {
+    this.screenFocus = new DialogFocus(() => ctx.screenEl);
     this.screen = new Patcher(ctx.screenEl, (nodes) => {
       for (const n of nodes) if (n instanceof Element) this.snapshots.push(...noteFlights(n, FLYING));
     });
@@ -139,7 +145,9 @@ export class Renderer {
     // Cards flying onto the felt keep flying through the re-render: the
     // patcher names the nodes it replaces (noteFlights in the constructor).
     this.snapshots = [];
+    const keepFocus = this.screenFocus.before();
     this.screen.patch(parts);
+    this.screenFocus.after(keepFocus, true);
     const flights = this.snapshots;
     this.snapshots = [];
     if (riseShown) {
@@ -176,6 +184,7 @@ export class Renderer {
         console.error('effect after render failed', err);
       }
     }
+    this.announcer.observe(ui, this.ctx.fastForward);
     if (ui.screen === 'run' && ui.view) this.ctx.hudFx.sync(ui.view);
     else if (ui.screen === 'start') this.ctx.hudFx.reset();
     if (ui.screen === 'run' && !ui.busy && !ui.overlay) this.ctx.drink.refresh();

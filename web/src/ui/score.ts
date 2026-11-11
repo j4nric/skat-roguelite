@@ -189,7 +189,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
       </div>`
     : '';
   return `<div class="overlay overlay-score" data-action="score-skip"><div class="sheet score-sheet chalkboard is-running" role="dialog" aria-modal="true" aria-labelledby="score-title">
-    <header class="score-head">
+    <div class="score-head">
       <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
       <div class="score-decl">${esc(decl)}</div>
       ${
@@ -198,7 +198,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
           : `<div class="score-meta">${valueIcon('pips', 12)} ${esc(t(de.score.points, { own: b.outcome.declarer_card_points, theirs: b.outcome.defender_card_points }))} · ${esc(t(de.score.tricks, { own: b.outcome.declarer_tricks, theirs: b.outcome.defender_tricks }))}</div>`
       }
       ${note ? `<p class="score-note" data-testid="score-note">${esc(note)}</p>` : ''}
-    </header>
+    </div>
     ${coasterStrip(o)}
     <div class="formula" aria-hidden="true">
       <div class="fbox fbox-base"><span>${valueIcon('base')}${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
@@ -480,6 +480,10 @@ export class ScoreBoard {
     this.finished = true;
     this.q('.score-sheet')?.classList.remove('is-running');
     const actions = this.q('.score-actions');
-    if (actions) actions.innerHTML = continueButton();
+    if (!actions) return;
+    // The skip button goes; if it had the focus, "Weiter" takes it (keyboard, screen readers).
+    const focused = actions.contains(document.activeElement);
+    actions.innerHTML = continueButton();
+    if (focused || document.activeElement === document.body) actions.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
   }
 }
