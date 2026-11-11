@@ -13,7 +13,7 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0005 | Ein geteiltes Blatt für alle drei Spieler | Teilweise ersetzt durch 0015 (Modifikationen für alle, Karten hinzufügen und entfernen); die 32 gemeinsamen Karten bleiben |
 | 0006 | Reizen wird durch die Ansage ersetzt | Angenommen, Reihenfolge geändert durch 0011 |
 | 0007 | Web-Export auf dem vServer, Auto-Deploy über GitHub Actions | Angenommen |
-| 0008 | Hinter dem bestehenden Caddy der Haushalt-App | Angenommen |
+| 0008 | Hinter dem bestehenden Caddy der Haushalt-App | Angenommen, Einträge seit 0024 aus diesem Repo |
 | 0009 | Web-Frontend mit WebAssembly-Kern statt Godot | Angenommen |
 | 0010 | Deutsches Blatt in der Darstellung | Angenommen, Ober heißt Oberin seit 0014 |
 | 0011 | Erst der Skat, dann die Ansage | Angenommen, ein Punkt geändert durch 0013 |
@@ -29,3 +29,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0021 | Konten mit Passkey und Spielstand auf dem Server | Angenommen, ändert DESIGN 9.3 (Speichern nur im Browser) |
 | 0022 | Der Kern läuft in einem Web Worker | Angenommen, ergänzt 0009 |
 | 0023 | Englisch als zweite Sprache | Angenommen, ersetzt teilweise DESIGN 16 („Nur Deutsch“) |
+| 0024 | Eigener Eintrag im vorderen Caddy | Angenommen, ergänzt 0008 |

@@ -48,26 +48,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Rust toolchain
-        run: |
-          rustup toolchain install 2>/dev/null || rustup show
-          rustup target add x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: musl
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       # A static musl binary (ADR 0021): no runtime on the server beyond a
-      # plain Alpine image, nothing built there. musl-gcc compiles the
-      # bundled SQLite. The server's tests run in `check`; the profile
+      # plain Alpine image, nothing built there. Built inside the official
+      # Rust Alpine image (same toolchain as rust-toolchain.toml), where
+      # musl is the native target and musl-dev comes from Alpine: the job
+      # needs no Ubuntu packages (on 11.11.2026 the runners could not
+      # resolve the Ubuntu mirrors for hours). The bundled SQLite compiles
+      # with Alpine's gcc. The server's tests run in `check`; the profile
       # server-release strips the symbols.
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build static binary
         run: |
-          cargo build --profile server-release --locked -p stammtisch_server --target x86_64-unknown-linux-musl
+          docker run --rm -v "$PWD:/w" -w /w \
+            rust:1.99.0-alpine sh -euc '
+              apk add --no-cache musl-dev gcc >/dev/null
+              cargo build --profile server-release --locked -p stammtisch_server --target x86_64-unknown-linux-musl
+            '
           mkdir -p server-bin
           cp target/x86_64-unknown-linux-musl/server-release/stammtisch-server server-bin/
           file server-bin/stammtisch-server
+          file server-bin/stammtisch-server | grep -Eq 'statically linked|static-pie linked'
       - uses: actions/upload-artifact@v4
         with:
           name: server
@@ -76,6 +75,8 @@ jobs:
       # Same image as deploy/docker-compose.yml.
       - name: Validate Caddyfile
         run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Validate front Caddy entry
+        run: docker run --rm -v "$PWD/deploy/site.caddy:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Validate compose file
         run: docker compose -f deploy/docker-compose.yml config --quiet
 

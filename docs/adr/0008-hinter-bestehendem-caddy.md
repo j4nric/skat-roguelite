@@ -1,6 +1,6 @@
 # 0008: Hinter dem bestehenden Caddy der Haushalt-App
 
-Datum: 2026-10-31 · Status: Angenommen · Ergänzt 0007
+Datum: 2026-10-31 · Status: Angenommen · Ergänzt 0007 · Ergänzt durch 0024 (Eintrag aus diesem Repo)
 
 ## Kontext
 

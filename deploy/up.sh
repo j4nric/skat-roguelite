@@ -10,6 +10,8 @@ set -eu
 cd "$(dirname "$0")"
 
 docker network inspect stammtisch-proxy >/dev/null 2>&1 || docker network create stammtisch-proxy
+# Shared network of the front Caddy and all apps behind it (ADR 0024).
+docker network inspect edge >/dev/null 2>&1 || docker network create edge
 # data/ holds the account server's SQLite file; it is never synced or deleted.
 mkdir -p data server
 # The account server runs as the deploy user, so the database belongs to it.
@@ -27,6 +29,35 @@ sum=$(sha256sum Caddyfile | cut -d' ' -f1)
 if [ "$sum" != "$(cat .caddyfile.sha256 2>/dev/null || true)" ]; then
   docker compose restart web
   echo "$sum" > .caddyfile.sha256
+fi
+
+# Our entry in the front Caddy (ADR 0024, deploy/site.caddy). Check it on
+# its own, keep the previous one as .prev (not imported, no .caddy ending),
+# put the new one into the shared volume, then let the front Caddy check
+# the whole configuration and reload without a restart. If that check
+# fails, the previous entry goes back and the deploy fails; the front Caddy
+# keeps running with the configuration it had.
+SITE_IMAGE=caddy:2.11-alpine
+SITE_NAME=stammtisch.caddy
+docker volume inspect caddy-sites >/dev/null 2>&1 || docker volume create caddy-sites >/dev/null
+docker run --rm -v caddy-sites:/sites -v "$PWD/site.caddy:/new.caddy:ro" "$SITE_IMAGE" sh -euc "
+  caddy validate --config /new.caddy --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /new.caddy --adapter caddyfile; exit 1; }
+  if [ -f /sites/$SITE_NAME ]; then cp /sites/$SITE_NAME /sites/$SITE_NAME.prev; else rm -f /sites/$SITE_NAME.prev; fi
+  cp /new.caddy /sites/$SITE_NAME
+"
+front=$(docker ps -q --filter label=edge.caddy=true | head -n 1)
+if [ -z "$front" ]; then
+  echo "::warning::No front Caddy with label edge.caddy=true yet; site entry stored in caddy-sites and picked up when it starts."
+elif docker exec "$front" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  docker exec "$front" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+  echo "front Caddy: site entry loaded"
+else
+  docker exec "$front" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile || true
+  docker run --rm -v caddy-sites:/sites "$SITE_IMAGE" sh -euc "
+    if [ -f /sites/$SITE_NAME.prev ]; then mv /sites/$SITE_NAME.prev /sites/$SITE_NAME; else rm -f /sites/$SITE_NAME; fi
+  "
+  echo "::error::The front Caddy refused deploy/site.caddy (see above); the previous entry is back in place."
+  exit 1
 fi
 
 # The binary is a bind mount as well: recreate the container only when it

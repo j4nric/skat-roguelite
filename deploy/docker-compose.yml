@@ -4,8 +4,9 @@
 #
 # Ports 80/443 on the server belong to the Caddy of the household app
 # (repo j4nric/haushalt-app, infra/production). That Caddy terminates HTTPS
-# for stammtisch-62-83-23-90.sslip.io and forwards everything to the `web`
-# container through the shared network `stammtisch-proxy` under the alias
+# for our domains (deploy/site.caddy, which up.sh hands it, ADR 0024) and
+# forwards everything to the `web` container through the shared network
+# `edge` (and, until it has moved over, `stammtisch-proxy`) under the alias
 # `stammtisch-web`. Neither container publishes ports. See ADR 0008.
 #
 # `web` serves the static site and proxies /api/* to `api` (ADR 0021) over
@@ -35,6 +36,10 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     networks:
       proxy:
+        aliases: [stammtisch-web]
+      # Shared network of the front Caddy (ADR 0024); `proxy` stays until the
+      # front Caddy has moved over.
+      edge:
         aliases: [stammtisch-web]
       backend:
 
@@ -78,6 +83,9 @@ services:
 networks:
   proxy:
     name: stammtisch-proxy
+    external: true
+  edge:
+    name: edge
     external: true
   backend:
     internal: true
