@@ -338,8 +338,8 @@ export const de = {
     Shirker: { short: 'Drückeberger', role: 'Marken kommen zurück, Hand ohne Stufe' },
     Tailoress: { short: 'Schneiderin', role: 'Schneider +2, ohne Schneider −1' },
     HeartBrother: { short: 'Bruderherz', role: 'Rot stark, Flüche bleiben' },
-    Gambler: { short: 'Zocker', role: 'Hand zählt doppelt, Skat einmal je Kneipe' },
-    RamschAunt: { short: 'Ramschtante', role: 'Ramsch statt Ansage, abgegriffene Asse' },
+    Gambler: { short: 'Zocker', role: 'Gewonnene Hand +1, Skat einmal je Kneipe' },
+    RamschAunt: { short: 'Ramschtante', role: 'Ramsch statt Ansage, abgegriffene Daus' },
   },
 
   risks: {

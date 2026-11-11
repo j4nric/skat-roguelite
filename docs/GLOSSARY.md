@@ -597,6 +597,7 @@ Wortspiele, wo eines trägt, sonst übertragen. Der Titel „Stammtisch“ bleib
 | Deutsch | Id | Englisch |
 |---|---|---|
 | Der Alleinspieler, Der Nullspieler, Der Drückeberger, Die Schneiderin, Bruderherz | `Declarer`, `NullPlayer`, `Shirker`, `Tailoress`, `HeartBrother` | The Declarer, The Null Player, The Shirker, The Tailoress, Brother Heart |
+| Der Zocker, Die Ramschtante (seit 10.11.2026) | `Gambler`, `RamschAunt` | The Gambler, Aunt Ramsch |
 | Der Zähler, Der Kiebitz, Der Wirt | `card_counter`, `kibitzer`, `landlord` | The Counter, The Kibitzer, The Landlord |
 | Deckel anschreiben, Kleinvieh, Ein Auge zudrücken, Nullachtfuffzehn | `slate`, `every_bit_counts`, `blind_eye`, `null_eight_fifteen` | On the Slate, Every Little Helps, Turn a Blind Eye, Run of the Mill |
 | Schwarze Null, Unterschlupf, Hosen runter, Die Großkopferten, Stammfarbe | `black_zero`, `safe_haven`, `cards_on_table`, `big_shots`, `home_suit` | In the Black, Under Cover, Trousers Down, The Bigwigs, The Usual |
@@ -605,5 +606,8 @@ Wortspiele, wo eines trägt, sonst übertragen. Der Titel „Stammtisch“ bleib
 | Pfandmarke, Totenmarke, Narrenmarke | `voucher_coins`, `voucher_undead`, `voucher_wild` | Deposit Stamp, Death Stamp, Fool’s Stamp |
 | Kurzer, Doppelkorn, Kräuter, Wegbier, Klarer, Absacker, Fusel | `shot`, `double_grain`, `herbal`, `road_beer`, `clear_spirit`, `nightcap`, `rotgut` | Wee Dram, Double Korn, Herbal Bitters, One for the Road, Clear Spirit, Nightcap, Rotgut |
 | Der Schieber und Die Hehlerin, Die Oma und Der Opa, Der Ramscher, Der Schwarze Peter, Der Alte | `the_pusher`, `grandma`, `ramscher`, `black_peter`, `the_old_man` | The Fixer and The Fence, Grandma and Grandpa, Mr Ramsch, Black Peter, The Old Man |
+| Der Totengräber und Die Witwe (nur in der langen Nacht) | `gravedigger` | The Gravedigger and The Widow |
+| Knobelbecher, Spitzendeckchen; Hoch gepokert, Ausgeramscht | `dice_cup`, `lace_doily`; `big_hand`, `beat_ramscher` | Dice Cup, Lace Doily; All In, Ramsched Out |
+| abgegriffen (Daus und Zehnen der Ramschtante, Ramponiert) | `battered` | worn, well-thumbed (Battered) |
 | Letzte Runde, Umgekipptes Bier, Der Wirt spendiert | `last_round`, `spilled_beer`, `landlord_treat` | Last Orders, Spilt Pint, On the House |
 | Schnapsverbot, Klebrige Karten | `schnapps_locked`, `cursed_cards` | Dry Bar, Sticky Cards |

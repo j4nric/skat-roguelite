@@ -4761,42 +4761,70 @@ async function charactersPass(browser, errors) {
 }
 
 /**
- * The characters of 10.11.2026 on phone and desktop: Die Ramschtante sees
- * "Ramsch spielen" before the skat and plays it, Der Zocker sees how often
- * the skat may still be picked up; both with their own back.
+ * The characters of 10.11.2026 on phone and desktop, in German and in
+ * English (ADR 0023): Die Ramschtante (Aunt Ramsch) sees "Ramsch spielen"
+ * before the skat and plays it, Der Zocker (The Gambler) sees how often
+ * the skat may still be picked up; both with their own back, names and
+ * texts in the language, and with "Farbenblind-Hilfe" on every face of the
+ * hand keeps its suit letter (A L H B in English; alone with SMOKE_ONLY=characters).
  */
 async function newCharactersPass(browser, errors) {
-  for (const [label, viewport] of [['phone', PHONE], ['desktop', DESKTOP]]) {
-    const context = await quietContext(browser, { viewport });
+  const LANG = {
+    de: { names: { RamschAunt: 'Die Ramschtante', Gambler: 'Der Zocker' }, ramsch: 'Ramsch spielen', pickups: /Kneipe noch 1× aufnehmen/ },
+    en: { names: { RamschAunt: 'Aunt Ramsch', Gambler: 'The Gambler' }, ramsch: 'Play Ramsch', pickups: /1× more in this pub/ },
+  };
+  // `shoot` takes every picture at 390 × 844 and 1280 × 800.
+  for (const lang of ['de', 'en']) {
+    const tag = lang;
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: lang === 'en' ? 'en-GB' : 'de-DE' });
     const page = await context.newPage();
     watch(page, errors);
     await page.goto(base);
     await page.waitForSelector('[data-testid="characters"]');
-    await page.evaluate(() => {
+    await page.evaluate((lang) => {
       localStorage.setItem('stammtisch.meta', JSON.stringify({ version: 1, meta: { version: 1, unlocked: ['beat_ramscher', 'big_hand'] } }));
+      localStorage.setItem('stammtisch.lang', lang);
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ colorBlind: true }));
       localStorage.removeItem('stammtisch.run');
-    });
+    }, lang);
     await page.reload();
+    await page.waitForFunction((lang) => document.documentElement.lang === lang, lang);
     for (const [id, back] of [['RamschAunt', 'ramsch_aunt'], ['Gambler', 'gambler']]) {
-      if (await page.locator(`.char-card.is-locked[data-character="${id}"]`).count()) fail(`${label}: ${id} should be unlocked`);
+      if (await page.locator(`.char-card.is-locked[data-character="${id}"]`).count()) fail(`${tag}: ${id} should be unlocked`);
       await page.click(`[data-action="pick-character"][data-character="${id}"]`);
       await page.waitForSelector('[data-testid="char-detail"]');
+      const detail = (await page.textContent('[data-testid="char-detail"]')) ?? '';
+      if (!detail.includes(LANG[lang].names[id])) fail(`${tag}: the detail of ${id} does not name ${LANG[lang].names[id]}: ${detail}`);
+      await shoot(page, `${back}-detail-${lang}`);
       await page.fill('#seed', SEED);
       await page.click('[data-action="new-run"]');
       await page.waitForSelector('[data-testid="skat-choice"]');
       const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
-      if (!backs.includes(`#bk-${back}`)) fail(`${label}: ${id}'s back not shown: ${backs.join(', ')}`);
+      if (!backs.includes(`#bk-${back}`)) fail(`${tag}: ${id}'s back not shown: ${backs.join(', ')}`);
+      // "Farbenblind-Hilfe": every settled face of the hand shows its suit letter in the language.
+      const letters = await page.$$eval('.hand .card-svg[data-suit]', (svgs) =>
+        svgs.map((svg) => {
+          const use = svg.querySelector('use.face-letter');
+          return { href: use?.getAttribute('href') ?? '', shown: use ? getComputedStyle(use).display !== 'none' : false };
+        }),
+      );
+      const want = lang === 'en' ? /^#cb-en-[CSHD]$/ : /^#cb-[CSHD]$/;
+      if (!letters.length || letters.some((l) => !l.shown || !want.test(l.href))) fail(`${tag}: ${id}'s suit letters: ${JSON.stringify(letters)}`);
       if (id === 'RamschAunt') {
         await page.waitForSelector('[data-testid="declare-ramsch"]');
-        await shoot(page, `ramsch-aunt-choice-${label}`);
+        const button = (await page.textContent('[data-testid="declare-ramsch"]')) ?? '';
+        if (!button.includes(LANG[lang].ramsch)) fail(`${tag}: the Ramsch button says ${button}`);
+        await shoot(page, `ramsch-aunt-choice-${lang}`);
         await page.click('[data-testid="declare-ramsch"]');
         await page.waitForFunction(() => !document.querySelector('[data-testid="skat-choice"]'));
-        log(`${label}: the Ramschtante plays a Ramsch from the choice of skat or hand`);
+        log(`${tag}: the Ramschtante plays a Ramsch from the choice of skat or hand`);
       } else {
         await page.waitForSelector('[data-testid="skat-pickups"]');
-        if (await page.locator('[data-testid="declare-ramsch"]').count()) fail(`${label}: the Zocker may not Ramsch`);
-        await shoot(page, `gambler-choice-${label}`);
-        log(`${label}: the Zocker sees how often the skat may be picked up`);
+        const pickups = (await page.textContent('[data-testid="skat-pickups"]')) ?? '';
+        if (!LANG[lang].pickups.test(pickups)) fail(`${tag}: the Zocker's pickups say ${pickups}`);
+        if (await page.locator('[data-testid="declare-ramsch"]').count()) fail(`${tag}: the Zocker may not Ramsch`);
+        await shoot(page, `gambler-choice-${lang}`);
+        log(`${tag}: the Zocker sees how often the skat may be picked up`);
       }
       await page.evaluate(() => localStorage.removeItem('stammtisch.run'));
       await page.goto(base);
@@ -6259,6 +6287,12 @@ async function run() {
     // SMOKE_ONLY=english: the English game (ADR 0023).
     if (process.env.SMOKE_ONLY === 'english') {
       await englishPass(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=characters: the start screen's characters and the two of 10.11.2026.
+    if (process.env.SMOKE_ONLY === 'characters') {
+      await charactersPass(browser, errors);
+      await newCharactersPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
