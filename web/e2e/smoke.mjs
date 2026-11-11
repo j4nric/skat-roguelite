@@ -71,7 +71,7 @@
 // The opponents are Stammgäste with names of their own (two different
 // ones, new ones in the next series, the boss on the left in a boss
 // series); the first game of a series starts with a quip that stays in its
-// opponent's box, and the table still fits with it at 390 × 844 and
+// opponent's seat, and the table still fits with it at 390 × 844 and
 // 375 × 667. Sprüche v2 (quipsPass; alone with SMOKE_ONLY=quips), in
 // German and English: the hello is a greet line of its guest and stands
 // on the felt, every bubble of a game is a line of its speaker, never two
@@ -499,8 +499,10 @@ async function assertNoSideScroll(page, label, root = '.shop') {
 /**
  * While playing, the pressed cards lie face down as a small stack in the
  * bottom right corner of the felt (play-test feedback: face up they were
- * too present): only backs, right of the trick, at the bottom of the trick
- * row, a touch target of 44 px. A tap shows them face up on the info card.
+ * too present): only backs, at the right end and the bottom of the trick
+ * row, in the room the triangle of the trick leaves (over none of its
+ * three places, right of the player's), a touch target of 44 px. A tap
+ * shows them face up on the info card.
  */
 async function assertPressed(page, label, shot = null) {
   const original = page.viewportSize();
@@ -518,13 +520,18 @@ async function assertPressed(page, label, shot = null) {
         faces: stack.querySelectorAll('.card-svg, use[href^="#f-"]').length,
         box: { left: box.left, right: box.right, bottom: box.bottom, width: box.width, height: box.height },
         row: { right: row.right, bottom: row.bottom },
-        trickRight: trick.right,
+        ownRight: document.querySelector('.trick .slot-0')?.getBoundingClientRect().right ?? Infinity,
+        // The places of the trick the stack lies over (none: the corner is free).
+        over: [...document.querySelectorAll('.trick .slot')].filter((s) => {
+          const b = s.getBoundingClientRect();
+          return b.left < box.right && box.left < b.right && b.top < box.bottom && box.top < b.bottom;
+        }).length,
       };
     });
     const where = `${label} at ${size.width}x${size.height}`;
     if (!r) fail(`${where}: no pressed stack on the felt`);
     if (r.backs !== 2 || r.faces) fail(`${where}: the pressed stack shows ${r.backs} backs and ${r.faces} faces, want 2 face down`);
-    if (r.box.left < r.trickRight || r.row.right - r.box.right > 2 || r.row.bottom - r.box.bottom > 2) fail(`${where}: the pressed stack is not in the bottom right corner (${JSON.stringify(r)})`);
+    if (r.box.left < r.ownRight || r.over || r.row.right - r.box.right > 2 || r.row.bottom - r.box.bottom > 2) fail(`${where}: the pressed stack is not in the free bottom right corner (${JSON.stringify(r)})`);
     if (r.box.width < 44 || r.box.height < 44) fail(`${where}: the pressed stack is ${Math.round(r.box.width)}x${Math.round(r.box.height)}, below 44 px`);
   }
   if (original) await page.setViewportSize(original);
@@ -579,6 +586,58 @@ async function assertTriangle(page, label, sizes = [PHONE, { width: 360, height:
   }
   if (original) await page.setViewportSize(original);
   log(`${label}: the trick is a triangle (left, right, the player bottom centre), cards on their places`);
+}
+
+/**
+ * The table is a place and says whose turn it is (11.11.2026, DESIGN 16.3),
+ * at 390 × 844 while the player is to play: the head (everything above the
+ * felt) takes at most 112 px; both opponents sit on the table top, each
+ * with a fan of as many backs as the number beside it; "Du bist dran"
+ * stands in a band between the felt and the hand, right above the cards;
+ * the cards that may be played have a frame, the others are shaded, and
+ * with reduced motion no card is lifted out of its row.
+ */
+async function assertTableLook(page, label) {
+  const r = await page.evaluate(() => {
+    const box = (sel) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
+    const top = box('.tabletop');
+    const turn = box('[data-testid="your-turn"]');
+    const hand = box('[data-testid="hand"]');
+    const cards = [...document.querySelectorAll('.hand-card')];
+    const css = (el) => getComputedStyle(el);
+    return {
+      felt: top ? { top: top.top, bottom: top.bottom, left: top.left, right: top.right } : null,
+      seats: [...document.querySelectorAll('.tabletop .opp')].map((o) => {
+        const b = o.querySelector('.portrait').getBoundingClientRect();
+        return {
+          inside: !!top && b.top >= top.top && b.bottom <= top.bottom && b.left >= top.left && b.right <= top.right,
+          backs: o.querySelectorAll('.opp-hand .card-back').length,
+          count: Number(o.querySelector('.opp-count')?.textContent ?? -1),
+        };
+      }),
+      turn: turn ? { top: turn.top, bottom: turn.bottom, height: turn.height, text: document.querySelector('[data-testid="your-turn"]').textContent.trim() } : null,
+      handTop: hand?.top ?? null,
+      firstCardTop: Math.min(...cards.map((c) => c.getBoundingClientRect().top)),
+      playable: cards.filter((c) => c.dataset.action === 'play').map((c) => ({ ring: css(c).getPropertyValue('--ring').trim(), rise: css(c).getPropertyValue('--rise').trim(), filter: css(c).filter })),
+      dimmed: cards.filter((c) => c.classList.contains('is-dim')).map((c) => ({ filter: css(c).filter, opacity: css(c).opacity })),
+      reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    };
+  });
+  if (!r.felt) fail(`${label}: no table top`);
+  if (r.felt.top > 112) fail(`${label}: the head takes ${Math.round(r.felt.top)}px above the felt, more than 112`);
+  if (r.seats.length !== 2 || r.seats.some((s) => !s.inside)) fail(`${label}: the opponents do not sit on the table top (${JSON.stringify(r.seats)})`);
+  for (const s of r.seats) if (s.backs !== s.count) fail(`${label}: an opponent's fan shows ${s.backs} backs beside the number ${s.count}`);
+  if (!r.turn || r.turn.text !== 'Du bist dran') fail(`${label}: no "Du bist dran" while the player is to play (${JSON.stringify(r.turn)})`);
+  if (r.turn.top < r.felt.bottom || r.turn.bottom > r.firstCardTop + 2 || r.handTop - r.turn.bottom > 16) fail(`${label}: "Du bist dran" is not between the felt and the hand (${JSON.stringify(r)})`);
+  if (r.turn.height < 24) fail(`${label}: the band of the turn is ${Math.round(r.turn.height)}px high`);
+  if (!r.playable.length) fail(`${label}: no playable card`);
+  for (const c of r.playable) {
+    if (!c.ring || c.ring === 'transparent' || c.filter !== 'none') fail(`${label}: a playable card has no clear frame (${JSON.stringify(c)})`);
+    if (r.reduced && c.rise !== '0px') fail(`${label}: a playable card is lifted by ${c.rise} with reduced motion`);
+    if (!r.reduced && c.rise === '0px') fail(`${label}: a playable card is not lifted`);
+  }
+  for (const c of r.dimmed) if (c.filter === 'none' || c.opacity !== '1') fail(`${label}: a card that may not be played is not shaded, or see-through (${JSON.stringify(c)})`);
+  log(`${label}: head ${Math.round(r.felt.top)}px, both at the table with their fans, "Du bist dran" above the hand, ${r.playable.length} playable cards framed, ${r.dimmed.length} shaded`);
 }
 
 /**
@@ -1503,7 +1562,7 @@ async function trickWidths(page, sizes) {
 
 /**
  * The boss rule during play (play-test feedback): the strip above the
- * middle gives way to a chip in the felt's top left corner, which opens the
+ * middle gives way to a chip in the felt's bottom right corner, which opens the
  * rule on a tap, so the trick cards in a boss pub are as big as in a normal
  * pub (within 2 px) at 390 × 844, 1280 × 800 and 375 × 667. The page is on
  * the boss table at Skat oder Hand; a normal pub (seed SEED) is measured in
@@ -3263,8 +3322,13 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
   };
   await resumeFixture(page, 'slots-one.json', patched('zinken.json', offer));
   await page.waitForSelector('[data-testid="relic-offers"]');
+  // The Leiste draws the relics held and counts the slots ("1/8"); free slots are not drawn (11.11.2026).
   const empty = await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count();
-  if (empty !== 7) fail(`relic slots at ${size}: ${empty} free slots in the Leiste with one relic, expected 7`);
+  if (empty) fail(`relic slots at ${size}: ${empty} free slots drawn in the Leiste, expected only the counter`);
+  const counted = ((await page.locator('.leiste-relics [data-testid="relic-count"]').textContent()) ?? '').trim();
+  if (counted !== '1/8') fail(`relic slots at ${size}: the counter in the Leiste says "${counted}" with one relic, expected 1/8`);
+  const countName = await page.locator('.leiste-relics [data-testid="relic-count"]').getAttribute('aria-label');
+  if (countName !== 'Relikte: 1 von 8 Plätzen belegt') fail(`relic slots at ${size}: the counter is called "${countName}"`);
   const pouch = (await page.locator('[data-testid="pouch"] h3').nth(1).textContent())?.trim();
   if (pouch !== 'Deine Relikte (1/8)') fail(`relic slots at ${size}: the pouch says "${pouch}"`);
   if (await page.locator('[data-testid="relic-replace-pick"]').count()) fail(`relic slots at ${size}: "Tauschen" with free slots`);
@@ -3281,6 +3345,8 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
   );
   await page.waitForSelector('[data-testid="relic-offers"]');
   if (await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count()) fail(`relic slots at ${size}: free slots shown with eight relics`);
+  const full = ((await page.locator('.leiste-relics [data-testid="relic-count"]').textContent()) ?? '').trim();
+  if (full !== '8/8') fail(`relic slots at ${size}: the counter in the Leiste says "${full}" with eight relics, expected 8/8`);
   if ((await page.locator('[data-testid="relic-replace-pick"]').count()) !== 3) fail(`relic slots at ${size}: not every offer reads "Tauschen"`);
   if (await page.locator('[data-action="buy-relic"]').count()) fail(`relic slots at ${size}: a plain "Kaufen" with every slot full`);
   await assertNoSideScroll(page, `relic slots full ${size}`);
@@ -3633,9 +3699,14 @@ async function schnapsPass(browser, errors) {
     if (!(await page.locator('.hud .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Wegbier at the table is not greyed`);
     const strip = await page.evaluate(() => {
       const r = document.querySelector('.leiste-relics');
-      return { scrolls: r.scrollWidth > r.clientWidth, page: document.scrollingElement.scrollWidth - innerWidth, slots: document.querySelector('.leiste-slots').getBoundingClientRect().right - innerWidth };
+      const box = r.getBoundingClientRect();
+      // Relics reaching out of their strip without it scrolling (none: they fit or scroll inside).
+      const spilled = r.scrollWidth > r.clientWidth ? 0 : [...r.querySelectorAll('.coaster-chip')].filter((c) => c.getBoundingClientRect().right > box.right + 1).length;
+      return { scrolls: r.scrollWidth > r.clientWidth, spilled, page: document.scrollingElement.scrollWidth - innerWidth, slots: document.querySelector('.leiste-slots').getBoundingClientRect().right - innerWidth };
     });
-    if (!strip.scrolls) fail(`Leiste at ${tag}: nine relics do not scroll inside the strip`);
+    // On a phone nine relics are wider than the strip; the wider table of a desktop holds them.
+    if (viewport.width < 600 && !strip.scrolls) fail(`Leiste at ${tag}: nine relics do not scroll inside the strip`);
+    if (strip.spilled) fail(`Leiste at ${tag}: ${strip.spilled} relics reach out of the strip`);
     if (strip.page > 0 || strip.slots > 0) fail(`Leiste at ${tag}: the page is wider than the screen (${strip.page}, slots ${strip.slots})`);
     await shot('leiste');
     if (viewport.width < 600) await assertFits(page, `Schnaps-Leiste at ${tag}`, [{ width: viewport.width, height: viewport.height }]);
@@ -6924,13 +6995,17 @@ async function run() {
         await assertFits(page, 'playing');
         await assertPressed(page, 'playing', 'table-pressed');
         await assertTriangle(page, 'playing');
+        await assertTableLook(page, 'playing');
         // Before the first trick is finished there is nothing to look back at.
         const tricks = ((await page.locator('[data-tricks]').textContent()) ?? '').trim();
         if (tricks === 'Stiche 0 : 0' && (await page.locator('[data-testid="last-trick-toggle"]').count())) fail('a "Letzter Stich" button before any trick was finished');
       }
       if (played === 2) await assertLastTrick(page, 'playing');
       if (played === 3 && (await page.locator('[data-testid="last-trick"]').count())) fail('the last trick still shows after playing a card');
-      if (played === 3 && dimmed > 0) await shoot(page, 'table-follow');
+      if (played === 3 && dimmed > 0) {
+        await shoot(page, 'table-follow');
+        await assertTableLook(page, 'following suit');
+      }
       if (played === 1) {
         // Thrown with the mouse instead of a tap: let go over the felt.
         const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
