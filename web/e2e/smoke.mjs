@@ -598,6 +598,8 @@ async function assertTriangle(page, label, sizes = [PHONE, { width: 360, height:
  * with reduced motion no card is lifted out of its row.
  */
 async function assertTableLook(page, label) {
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(250);
   const r = await page.evaluate(() => {
     const box = (sel) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
     const top = box('.tabletop');
@@ -621,10 +623,12 @@ async function assertTableLook(page, label) {
       playable: cards.filter((c) => c.dataset.action === 'play').map((c) => ({ ring: css(c).getPropertyValue('--ring').trim(), rise: css(c).getPropertyValue('--rise').trim(), filter: css(c).filter })),
       dimmed: cards.filter((c) => c.classList.contains('is-dim')).map((c) => ({ filter: css(c).filter, opacity: css(c).opacity })),
       reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+      view: `${innerWidth}x${innerHeight}`,
+      hud: [...document.querySelectorAll('.hud > *, .run > *')].map((e) => `${e.className.split(' ')[0]} ${Math.round(e.getBoundingClientRect().top)}..${Math.round(e.getBoundingClientRect().bottom)}`),
     };
   });
   if (!r.felt) fail(`${label}: no table top`);
-  if (r.felt.top > 112) fail(`${label}: the head takes ${Math.round(r.felt.top)}px above the felt, more than 112`);
+  if (r.felt.top > 112) fail(`${label}: the head takes ${Math.round(r.felt.top)}px above the felt, more than 112 (${r.view}: ${r.hud.join(', ')})`);
   if (r.seats.length !== 2 || r.seats.some((s) => !s.inside)) fail(`${label}: the opponents do not sit on the table top (${JSON.stringify(r.seats)})`);
   for (const s of r.seats) if (s.backs !== s.count) fail(`${label}: an opponent's fan shows ${s.backs} backs beside the number ${s.count}`);
   if (!r.turn || r.turn.text !== 'Du bist dran') fail(`${label}: no "Du bist dran" while the player is to play (${JSON.stringify(r.turn)})`);
@@ -2696,7 +2700,10 @@ async function motionPass(browser, errors) {
       )
       .then((h) => h.jsonValue());
     const winner = sweep.status.startsWith('Dein') ? 'you' : sweep.status.includes(names[1]) ? 'left' : sweep.status.includes(names[2]) ? 'right' : '?';
-    const ok = winner === 'left' ? sweep.x < -60 : winner === 'right' ? sweep.x > 60 : winner === 'you' ? sweep.y > 60 && Math.abs(sweep.x) < sweep.y : false;
+    // The two opponents sit at the far edge of the table top (11.11.2026): a trick of theirs
+    // leaves towards the winner's seat, up and to his side; the player's comes down to the hand.
+    const toSeat = (side) => (sweep.x * side > 60 || (sweep.y < -60 && sweep.x * side > -8));
+    const ok = winner === 'left' ? toSeat(-1) : winner === 'right' ? toSeat(1) : winner === 'you' ? sweep.y > 60 && Math.abs(sweep.x) < sweep.y : false;
     if (!ok) fail(`motion: trick to ${winner} (${sweep.status}) leaves by ${Math.round(sweep.x)}, ${Math.round(sweep.y)}`);
     if (!seen[winner]) {
       // Half way off the table.
@@ -3325,9 +3332,9 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
   // The Leiste draws the relics held and counts the slots ("1/8"); free slots are not drawn (11.11.2026).
   const empty = await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count();
   if (empty) fail(`relic slots at ${size}: ${empty} free slots drawn in the Leiste, expected only the counter`);
-  const counted = ((await page.locator('.leiste-relics [data-testid="relic-count"]').textContent()) ?? '').trim();
+  const counted = ((await page.locator('.leiste [data-testid="relic-count"]').textContent()) ?? '').trim();
   if (counted !== '1/8') fail(`relic slots at ${size}: the counter in the Leiste says "${counted}" with one relic, expected 1/8`);
-  const countName = await page.locator('.leiste-relics [data-testid="relic-count"]').getAttribute('aria-label');
+  const countName = await page.locator('.leiste [data-testid="relic-count"]').getAttribute('aria-label');
   if (countName !== 'Relikte: 1 von 8 Plätzen belegt') fail(`relic slots at ${size}: the counter is called "${countName}"`);
   const pouch = (await page.locator('[data-testid="pouch"] h3').nth(1).textContent())?.trim();
   if (pouch !== 'Deine Relikte (1/8)') fail(`relic slots at ${size}: the pouch says "${pouch}"`);
@@ -3345,7 +3352,7 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
   );
   await page.waitForSelector('[data-testid="relic-offers"]');
   if (await page.locator('.leiste-relics [data-testid="relic-slot-empty"]').count()) fail(`relic slots at ${size}: free slots shown with eight relics`);
-  const full = ((await page.locator('.leiste-relics [data-testid="relic-count"]').textContent()) ?? '').trim();
+  const full = ((await page.locator('.leiste [data-testid="relic-count"]').textContent()) ?? '').trim();
   if (full !== '8/8') fail(`relic slots at ${size}: the counter in the Leiste says "${full}" with eight relics, expected 8/8`);
   if ((await page.locator('[data-testid="relic-replace-pick"]').count()) !== 3) fail(`relic slots at ${size}: not every offer reads "Tauschen"`);
   if (await page.locator('[data-action="buy-relic"]').count()) fail(`relic slots at ${size}: a plain "Kaufen" with every slot full`);

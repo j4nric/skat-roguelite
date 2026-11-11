@@ -55,7 +55,7 @@ function matsIcon(): string {
 }
 
 /**
- * How many relic slots are taken: "1/8" behind the relics (the free slots
+ * How many relic slots are taken: "1/8" beside the relics, always in view (the free slots
  * are not drawn; 8 slots since 05.11.2026, DESIGN 8.0), or just the number
  * while the slots are unlimited.
  */
@@ -68,9 +68,9 @@ function relicCount(view: RunView): string {
 
 /**
  * The relic part of the Leiste: every relic as its beer mat only (no
- * name; a tap opens the info card), the counter of the slots, the house
- * rules of the evening, then waiting factors, flags and counters. It
- * scrolls inside itself, the page never sideways.
+ * name; a tap opens the info card), the house rules of the evening, then
+ * waiting factors, flags and counters. It scrolls inside itself, the page
+ * never sideways.
  */
 export function relicChips(view: RunView): string {
   const relics = view.relics
@@ -99,7 +99,7 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + relicCount(view) + evening + pending + schnaps + flags + counters;
+  return relics + evening + pending + schnaps + flags + counters;
 }
 
 /**
@@ -130,9 +130,9 @@ export function schnapsSlots(view: RunView): string {
   }).join('');
 }
 
-/** The Leiste: relics (scrolling inside), a divider, the Schnaps slots. */
+/** The Leiste: relics (scrolling inside), the counter of their slots, a divider, the Schnaps slots. */
 export function leiste(view: RunView, malus = ''): string {
-  return `<div class="leiste" data-testid="leiste"><div class="leiste-relics" data-testid="leiste-relics">${malus}${relicChips(view)}</div><div class="leiste-slots" data-testid="schnaps-slots">${schnapsSlots(view)}</div></div>`;
+  return `<div class="leiste" data-testid="leiste"><div class="leiste-relics" data-testid="leiste-relics">${malus}${relicChips(view)}</div>${relicCount(view)}<div class="leiste-slots" data-testid="schnaps-slots">${schnapsSlots(view)}</div></div>`;
 }
 
 /** "Doppelkorn ×2" and the like, for each Schnaps waiting for the next game, in the given texts. */
