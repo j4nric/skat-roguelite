@@ -1422,7 +1422,7 @@ export const en: Strings = {
 
   move: {
     title: 'We’ve moved',
-    text: 'Stammtisch lives at {host} now. Take your progress along: one tap and it’s all over there. This address stays up for now.',
+    text: 'The game lives at {host} now. Take your progress along: one tap and it’s all over there. This address stays up for now.',
     open: 'Move over',
     why: 'What this browser stored here belongs to this address. On {host} you’d start from scratch otherwise.',
     accountText: 'You’re signed in. The link signs you in over there with the same account; your progress comes along from the account. Then add a new passkey over there, as your passkey here only works for this address.',

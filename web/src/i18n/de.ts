@@ -1494,7 +1494,7 @@ export const de = {
   /** The move to one-more-skat.de (ADR 0025): notice on the old address, the link, the arrival. */
   move: {
     title: 'Wir sind umgezogen',
-    text: 'Stammtisch wohnt jetzt unter {host}. Nimm deinen Spielstand mit: ein Tipp, und alles ist drüben. Diese Adresse bleibt vorerst erreichbar.',
+    text: 'Das Spiel wohnt jetzt unter {host}. Nimm deinen Spielstand mit: ein Tipp, und alles ist drüben. Diese Adresse bleibt vorerst erreichbar.',
     open: 'Umziehen',
     why: 'Was dieser Browser hier gespeichert hat, gehört zu dieser Adresse. Auf {host} fängst du sonst von vorn an.',
     accountText: 'Du bist angemeldet. Der Link meldet dich drüben mit demselben Konto an; dein Spielstand kommt aus dem Konto mit. Danach legst du drüben einen neuen Passkey an, denn dein Passkey hier gilt nur für diese Adresse.',

@@ -6943,7 +6943,7 @@ async function movePass(browser, errors, viewport) {
     const oldRes = await page.goto(`${OLD}/`);
     if (oldRes?.status() !== 200 || new URL(page.url()).origin !== OLD) fail(`${tag}: the old address does not stay (${oldRes?.status()} ${page.url()})`);
     await page.waitForSelector('[data-testid="move-notice"]').catch(() => fail(`${tag}: no notice on the old address`));
-    await page.fill('#seed', SEED);
+    await fillSeed(page, SEED);
     await page.click('[data-action="new-run"]');
     await page.waitForSelector('[data-testid="skat-choice"]');
     await page.click('.hud [data-action="menu"]');
