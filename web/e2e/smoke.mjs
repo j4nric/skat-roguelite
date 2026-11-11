@@ -334,6 +334,23 @@ function log(message) {
   console.log(`[smoke] ${message}`);
 }
 
+/**
+ * Type a seed on the start screen. The field sits behind "Weitere
+ * Spielarten" (DESIGN 16.4): open it first if it is folded.
+ */
+async function fillSeed(page, seed) {
+  await openStartMore(page);
+  await page.fill('#seed', seed);
+}
+
+/** Unfold "Weitere Spielarten" on the start screen (daily run, seed, Einführung), if folded. */
+async function openStartMore(page) {
+  const toggle = page.locator('[data-testid="start-more-toggle"]');
+  await toggle.waitFor();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await page.waitForSelector('#start-more-body:not([hidden])');
+}
+
 function fail(message) {
   throw new Error(message);
 }
@@ -1203,7 +1220,7 @@ async function musicPass(browser, errors, reducedMotion) {
   if ((await audio()).contexts !== 0) fail('an AudioContext was made before the first interaction');
 
   // Starting a run is the first interaction: the table loop plays notes.
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await expectMusic(page, 'table', 'run started');
@@ -1278,7 +1295,7 @@ async function suitTintPass(browser, errors, reducedMotion) {
     return out;
   };
   await page.goto(base);
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
 
@@ -1601,7 +1618,7 @@ async function assertBossTrick(page) {
   await normal.evaluate(() => localStorage.removeItem('stammtisch.run'));
   await normal.reload();
   await normal.waitForSelector('[data-action="new-run"]');
-  await normal.fill('#seed', SEED);
+  await fillSeed(normal, SEED);
   await normal.click('[data-action="new-run"]');
   await skatThenGrand(normal, 'normal pub');
   await normal.waitForSelector('[data-testid="trick"]');
@@ -1651,7 +1668,7 @@ async function m4(browser, errors, reducedMotion) {
   });
   if (pinned) fail(`Vereinsbuch: ${pinned}`);
   await page.click('.ledger [data-action="close-overlay"]');
-  await page.fill('#seed', '5');
+  await fillSeed(page, '5');
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   if (!(await page.locator('.mini-card.is-kiebitz').count())) fail('the Kiebitz shows no card');
@@ -1867,6 +1884,7 @@ async function m5(browser, errors, reducedMotion) {
 
   // The daily seed: JJJJMMTT of today.
   await page.click('.sheet [data-action="to-start"]');
+  await openStartMore(page);
   await page.waitForSelector('[data-testid="daily"]');
   const daily = await page.locator('[data-testid="daily"]').getAttribute('data-seed');
   if (daily !== todaySeed()) fail(`daily seed is ${daily}, expected ${todaySeed()}`);
@@ -2007,7 +2025,7 @@ async function patchedRun(page, seed, relics, rules = []) {
   await page.evaluate(() => localStorage.removeItem('stammtisch.run'));
   await page.reload();
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', seed);
+  await fillSeed(page, seed);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   const ok = await page.evaluate(
@@ -2210,7 +2228,7 @@ async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
   if ((await page.evaluate(() => window.__persistCalls)) !== 0) fail(`${label}: persistent storage asked for on page load`);
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.waitForFunction(() => window.__persistCalls === 1).catch(() => fail(`${label}: persistent storage not asked for after the run started`));
@@ -2449,7 +2467,7 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   log('Glossar: every group with its Zinken, the value icons, an info card; fits 390, 375 and 360');
 
   // First run: the welcome, then Skat oder Hand.
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   const welcome = await expectHint(page, 'welcome');
   log(`hint welcome: ${welcome}`);
@@ -2662,7 +2680,7 @@ async function motionPass(browser, errors) {
   watch(page, errors);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   const spins = () =>
@@ -2758,7 +2776,7 @@ async function rewardFxPass(browser, errors, viewport) {
   // The first series of SEED: won with the payout.
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.waitForTimeout(1200);
@@ -2893,7 +2911,7 @@ async function assertEndButtons(page, label) {
     if (hit) fail(`${label}: "${action}" lies under ${hit}`);
   }
   await page.click('[data-testid="end"] [data-action="to-start"]');
-  await page.waitForSelector('#seed', { timeout: 5000 }).catch(() => fail(`${label}: "Zum Start" does not lead to the start screen`));
+  await page.waitForSelector('#seed', { state: 'attached', timeout: 5000 }).catch(() => fail(`${label}: "Zum Start" does not lead to the start screen`));
 }
 
 /**
@@ -2990,7 +3008,7 @@ async function tableFeelPass(browser, errors, viewport) {
   const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-action="pick-up-skat"]');
   await page.waitForTimeout(1200);
@@ -4043,7 +4061,7 @@ async function scoreContinuePass(browser, errors) {
   // Seed 64: the pub is won in its first game.
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await mixIn(page);
@@ -4829,7 +4847,8 @@ async function charactersPass(browser, errors) {
   const text = (await page.textContent('body')) ?? '';
   if (text.includes('passte nicht zu dieser Version')) fail('the old meta save with a removed character was discarded');
   const ids = await page.$$eval('[data-testid="characters"] .char-card', (cards) => cards.map((c) => c.dataset.character));
-  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother,Gambler,RamschAunt') fail(`characters on the start screen: ${ids.join(', ')}`);
+  // Locked characters come last (DESIGN 16.4): Bruderherz is free and moves up.
+  if (ids.join(',') !== 'Declarer,NullPlayer,HeartBrother,Shirker,Tailoress,Gambler,RamschAunt') fail(`characters on the start screen: ${ids.join(', ')}`);
   for (const id of ['Shirker', 'Tailoress', 'Gambler', 'RamschAunt']) {
     const card = page.locator(`.char-card.is-locked[data-character="${id}"]`);
     if (!(await card.count())) fail(`${id} is not shown as locked`);
@@ -4847,7 +4866,7 @@ async function charactersPass(browser, errors) {
   });
   log('start screen: seven characters, old pick of a removed one fell back to the Alleinspieler');
   await shoot(page, 'start-characters-new');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
@@ -4856,6 +4875,111 @@ async function charactersPass(browser, errors) {
   log(`Bruderherz plays with his own back (${backs.join(', ')})`);
   await shoot(page, 'heart-brother-table');
   await context.close();
+}
+
+/**
+ * The start screen of 11.11.2026 (DESIGN 16.4) at 390 × 844, 360 × 740 and
+ * 1280 × 800, with the text sizes Groß and Sehr groß and in English: the
+ * locked characters stand after every free one; "Neuer Run als …" is
+ * visible at the bottom edge without scrolling, nothing covers it, and at
+ * the end of the page it covers nothing; "Weitere Spielarten" unfolds the
+ * daily run, the seed and the Einführung (aria-expanded) and folds them
+ * again, the weekly challenge stays on the first level; "mehr" unfolds the
+ * picked character's text (alone with SMOKE_ONLY=characters).
+ */
+async function startScreenPass(browser, errors) {
+  const meta = { version: 1, meta: { version: 1, unlocked: ['tour_won', 'true_colours'], stats: { runs_finished: 3, runs_won: 1, best_section: 4, characters: { Declarer: { runs: 3, won: 1 } } } } };
+  const cases = [
+    { size: PHONE, text: 'normal', lang: 'de' },
+    { size: { width: 360, height: 740 }, text: 'normal', lang: 'de' },
+    { size: DESKTOP, text: 'normal', lang: 'de' },
+    { size: PHONE, text: 'large', lang: 'de' },
+    { size: { width: 360, height: 740 }, text: 'xlarge', lang: 'de' },
+    { size: { width: 360, height: 740 }, text: 'normal', lang: 'en' },
+  ];
+  for (const c of cases) {
+    const tag = `start ${c.size.width}x${c.size.height} ${c.text} ${c.lang}`;
+    const context = await quietContext(browser, { viewport: c.size, reducedMotion: 'reduce', locale: c.lang === 'en' ? 'en-GB' : 'de-DE' });
+    await context.addInitScript(([m, text, lang]) => {
+      if (sessionStorage.getItem('smoke-start')) return;
+      sessionStorage.setItem('smoke-start', '1');
+      localStorage.setItem('stammtisch.meta', m);
+      localStorage.setItem('stammtisch.tutorial', 'declined');
+      localStorage.setItem('stammtisch.lang', lang);
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ sound: false, music: false, textSize: text }));
+    }, [JSON.stringify(meta), c.text, c.lang]);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="characters"]');
+    // Locked last.
+    const row = await page.$$eval('[data-testid="characters"] .char-card', (cards) => cards.map((el) => (el.classList.contains('is-locked') ? 'L' : 'U')).join(''));
+    if (!/^U+L+$/.test(row)) fail(`${tag}: locked characters are not at the end of the row: ${row}`);
+    // The main button: on screen at the bottom without scrolling, not covered.
+    const dock = await page.evaluate(() => {
+      const screen = document.querySelector('.screen');
+      const btn = document.querySelector('.start-dock [data-action="new-run"]');
+      if (!screen || !btn) return null;
+      screen.scrollTop = 0;
+      const b = btn.getBoundingClientRect();
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { top: b.top, bottom: b.bottom, height: b.height, vh: innerHeight, scrolls: screen.scrollHeight > screen.clientHeight + 1, onTop: hit === btn || btn.contains(hit) };
+    });
+    if (!dock) fail(`${tag}: no main button in the dock`);
+    if (!dock.scrolls) fail(`${tag}: the start screen does not scroll, the dock test proves nothing`);
+    if (dock.top < 0 || dock.bottom > dock.vh + 0.5 || dock.bottom < dock.vh - 40) fail(`${tag}: main button not at the bottom edge: ${Math.round(dock.top)}..${Math.round(dock.bottom)} of ${dock.vh}`);
+    if (dock.height < 44) fail(`${tag}: main button only ${dock.height}px high`);
+    if (!dock.onTop) fail(`${tag}: something covers the main button`);
+    // At the end of the page the dock covers nothing: the last line (build) stays above it.
+    const end = await page.evaluate(() => {
+      const screen = document.querySelector('.screen');
+      screen.scrollTop = screen.scrollHeight;
+      const d = document.querySelector('.start-dock').getBoundingClientRect();
+      const last = document.querySelector('[data-testid="build"]').getBoundingClientRect();
+      return { dockTop: d.top, lastBottom: last.bottom };
+    });
+    if (end.lastBottom > end.dockTop + 0.5) fail(`${tag}: the dock covers the end of the page (${Math.round(end.lastBottom)} > ${Math.round(end.dockTop)})`);
+    await page.evaluate(() => { document.querySelector('.screen').scrollTop = 0; });
+    // Weitere Spielarten: folded, weekly visible; unfold, fold.
+    const toggle = page.locator('[data-testid="start-more-toggle"]');
+    if ((await toggle.getAttribute('aria-expanded')) !== 'false') fail(`${tag}: "Weitere Spielarten" is not folded at first`);
+    if (await page.locator('#seed').isVisible()) fail(`${tag}: the seed field shows on the first level`);
+    if (await page.locator('[data-testid="daily"]').isVisible()) fail(`${tag}: the daily block shows on the first level`);
+    if (!(await page.locator('[data-testid="weekly"]').count())) fail(`${tag}: no weekly challenge on the first level`);
+    if (await page.locator('#start-more-body [data-testid="weekly"]').count()) fail(`${tag}: the weekly challenge is folded away`);
+    const tb = await toggle.boundingBox();
+    if (!tb || tb.height < 44) fail(`${tag}: the toggle is ${tb?.height}px high`);
+    await toggle.click();
+    await page.waitForSelector('#seed', { state: 'visible' });
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') fail(`${tag}: aria-expanded not true after unfolding`);
+    for (const sel of ['[data-testid="daily"]', '[data-testid="tutorial-start"]']) if (!(await page.locator(sel).isVisible())) fail(`${tag}: ${sel} not shown after unfolding`);
+    if (c.size === PHONE && c.text === 'normal') await shoot(page, 'start-more-open');
+    await assertNoSideways(page, `${tag}: unfolded`);
+    // The typed seed survives folding (the field stays in the page).
+    await page.fill('#seed', '4711');
+    await page.locator('[data-testid="start-more-toggle"]').click();
+    await page.waitForSelector('#seed', { state: 'hidden' });
+    if ((await page.locator('[data-testid="start-more-toggle"]').getAttribute('aria-expanded')) !== 'false') fail(`${tag}: aria-expanded not false after folding`);
+    if ((await page.inputValue('#seed')) !== '4711') fail(`${tag}: the typed seed was lost on folding`);
+    // "mehr": the Nullspieler's text is long enough to fold.
+    await page.click('[data-action="pick-character"][data-character="NullPlayer"]');
+    const more = page.locator('[data-testid="char-more"]');
+    await more.waitFor();
+    const folded = await page.$eval('[data-testid="char-blurb"]', (el) => ({ h: el.clientHeight, full: el.scrollHeight, lh: parseFloat(getComputedStyle(el).lineHeight) }));
+    if (folded.full <= folded.h + 1) fail(`${tag}: the Nullspieler's text is not folded (${folded.h} of ${folded.full}px)`);
+    if (folded.h > folded.lh * 2 + 2) fail(`${tag}: the folded text takes more than two lines (${folded.h}px, line ${folded.lh}px)`);
+    if (!(await more.isVisible())) fail(`${tag}: no "mehr" under a folded text`);
+    const mb = await more.boundingBox();
+    if (!mb || mb.height < 44) fail(`${tag}: "mehr" is ${mb?.height}px high`);
+    await more.click();
+    await page.waitForSelector('[data-testid="char-blurb"].is-open');
+    if ((await page.locator('[data-testid="char-more"]').getAttribute('aria-expanded')) !== 'true') fail(`${tag}: "mehr" without aria-expanded`);
+    const open = await page.$eval('[data-testid="char-blurb"]', (el) => el.scrollHeight - el.clientHeight);
+    if (open > 1) fail(`${tag}: the unfolded text is still cut by ${open}px`);
+    await assertNoSideways(page, tag);
+    log(`${tag}: locked last (${row}), main button at ${Math.round(dock.top)}..${Math.round(dock.bottom)}, both toggles work`);
+    await context.close();
+  }
 }
 
 /**
@@ -4894,7 +5018,7 @@ async function newCharactersPass(browser, errors) {
       const detail = (await page.textContent('[data-testid="char-detail"]')) ?? '';
       if (!detail.includes(LANG[lang].names[id])) fail(`${tag}: the detail of ${id} does not name ${LANG[lang].names[id]}: ${detail}`);
       await shoot(page, `${back}-detail-${lang}`);
-      await page.fill('#seed', SEED);
+      await fillSeed(page, SEED);
       await page.click('[data-action="new-run"]');
       await page.waitForSelector('[data-testid="skat-choice"]');
       const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
@@ -5446,7 +5570,7 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
   // The Wirt's regular hints stay away during the Einführung.
   if (await page.locator('[data-testid="hint"]').count()) fail(`tutorial ${tag}: a regular hint over the coach`);
   await page.click('[data-testid="coach-finish-start"]');
-  await page.waitForSelector('[data-testid="tutorial-start"]', { timeout: 10000 }).catch(() => fail(`tutorial ${tag}: "Zum Start" did not lead to the start screen`));
+  await page.waitForSelector('[data-testid="tutorial-start"]', { state: 'attached', timeout: 10000 }).catch(() => fail(`tutorial ${tag}: "Zum Start" did not lead to the start screen`));
   if (await page.locator('[data-testid="tutorial-offer"]').count()) fail(`tutorial ${tag}: the offer comes again after the Einführung`);
   if (await page.locator('[data-action="resume"]').count()) fail(`tutorial ${tag}: the Einführung left a run to resume`);
   const after = await keep();
@@ -5460,6 +5584,7 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
     await page.goto(base);
     await page.waitForSelector('[data-action="resume"]');
     const run = await page.evaluate(() => localStorage.getItem('stammtisch.run'));
+    await openStartMore(page);
     await page.click('[data-testid="tutorial-start"]');
     await page.waitForSelector('[data-testid="coach"]');
     await page.click('[data-testid="coach-next"]');
@@ -5574,7 +5699,7 @@ async function handSortPass(browser, errors, viewport) {
   watch(page, errors);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await page.click('[data-action="menu"]');
@@ -5648,7 +5773,7 @@ async function qolPass(browser, errors, viewport) {
   watch(page, errors);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   // No digits before a key (a phone never shows them).
@@ -5751,8 +5876,9 @@ async function offlinePass(browser, errors) {
   await context.setOffline(true);
   await page.reload();
   await page.waitForSelector('[data-action="new-run"]', { timeout: 15000 }).catch(() => fail('offline: the start screen does not load from the cache'));
+  await openStartMore(page);
   await page.waitForSelector('[data-testid="board-offline"]').catch(() => fail('offline: no offline note at the daily board'));
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]', { timeout: 20000 }).catch(() => fail('offline: no run starts'));
   await context.setOffline(false);
@@ -5812,10 +5938,13 @@ async function weeklyPass(browser, errors, viewport) {
   if (rule.length < 12) fail(`weekly ${tag}: the Sonderregel reads "${rule}"`);
   const left = (await page.locator('[data-testid="weekly-left"]').textContent()) ?? '';
   if (!/^noch \d+ (Tage?|Std\.)/.test(left)) fail(`weekly ${tag}: the time left reads "${left}"`);
-  // Next to the daily block, below it.
+  // Visible on the first level (DESIGN 16.4); the daily block waits behind "Weitere Spielarten", below it.
+  if (!(await block.isVisible())) fail(`weekly ${tag}: the weekly block is not visible on the start screen`);
+  if (await page.locator('[data-testid="daily"]').isVisible()) fail(`weekly ${tag}: the daily block is not folded away`);
+  await openStartMore(page);
   const daily = await page.locator('[data-testid="daily"]').boundingBox();
   const box = await block.boundingBox();
-  if (!daily || !box || box.y < daily.y + daily.height - 1) fail(`weekly ${tag}: the weekly block is not below the daily block`);
+  if (!daily || !box || daily.y < box.y + box.height - 1) fail(`weekly ${tag}: the daily block is not below the weekly block`);
   await block.scrollIntoViewIfNeeded();
   await snap('weekly-start');
   await assertNoSideScroll(page, `weekly ${tag}: start screen`, '[data-testid="weekly"]');
@@ -5949,7 +6078,7 @@ async function a11yPass(browser, errors, reducedMotion = 'reduce') {
   watch(page, errors);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   const letters = () =>
@@ -6072,7 +6201,7 @@ async function a11yPass(browser, errors, reducedMotion = 'reduce') {
       await assertNoSideways(p2, `text ${size}, start screen at ${vp.width}x${vp.height}`);
     }
     await p2.setViewportSize(PHONE);
-    await p2.fill('#seed', SEED);
+    await fillSeed(p2, SEED);
     await p2.click('[data-action="new-run"]');
     // From the second size on a run is going: give it up for the new one.
     await p2.waitForSelector('[data-testid="skat-choice"], [data-action="confirm-new"]');
@@ -6225,7 +6354,7 @@ async function englishPass(browser, errors) {
   await page.waitForSelector('[data-testid="setting-language"]', { state: 'detached' });
 
   // A whole game with the main pass's seed: one redeal, Skat, discard, Grand.
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   const progress = await text(page, 'pub-progress');
@@ -6653,7 +6782,7 @@ async function quipsPass(browser, errors, locale, viewport = PHONE) {
   watch(page, errors);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"]');
-  await page.fill('#seed', SEED);
+  await fillSeed(page, SEED);
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-testid="skat-choice"]');
   await spyQuips(page);
@@ -6820,6 +6949,7 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'characters') {
       await charactersPass(browser, errors);
       await newCharactersPass(browser, errors);
+      await startScreenPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
@@ -6909,7 +7039,7 @@ async function run() {
     await page.click('.ledger [data-action="close-overlay"]');
     await page.waitForSelector('.ledger', { state: 'detached' });
 
-    await page.fill('#seed', SEED);
+    await fillSeed(page, SEED);
     await page.click('[data-action="new-run"]');
     await page.waitForSelector('[data-testid="skat-choice"]');
     log(`run started with seed ${SEED} (${build})`);
@@ -7171,6 +7301,7 @@ async function run() {
     await shortEvening(browser, errors, reducedMotion);
     await charactersPass(browser, errors);
     await newCharactersPass(browser, errors);
+    await startScreenPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
