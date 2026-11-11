@@ -134,6 +134,14 @@ export const en: Strings = {
     stakeUp: 'Raise the stake',
     sharedStake: 'Stake {stake}: win from {augen} pips.',
     sharedStakeLocked: 'You haven’t reached stake {stake} here yet. You’ll play with stake {fallback}.',
+    /** Step 2 of the UI rework (DESIGN 16.4): the picked character's text, folded to two lines. */
+    charMore: 'more',
+    charLess: 'less',
+    charMoreAria: 'Full description of {name}',
+    /** The second level of the start screen: daily run, own seed, Einführung. */
+    moreTitle: 'More ways to play',
+    moreHint: 'Daily run · own seed · introduction',
+    moreHintShort: 'Daily run · own seed',
   },
 
   giveUp: {
