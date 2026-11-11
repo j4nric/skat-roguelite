@@ -107,6 +107,7 @@ export class Steps {
    */
   async travel(option: number): Promise<void> {
     if (this.ctx.ui.busy) return;
+    sound.play('chalk');
     if (motionOn() && !this.ctx.ui.routeOverview) {
       this.ctx.ui.busy = true;
       this.ctx.screenEl.querySelectorAll<HTMLButtonElement>('.route button').forEach((b) => (b.disabled = true));

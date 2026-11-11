@@ -268,6 +268,8 @@ function continueButton(): string {
  */
 export class ScoreBoard {
   private skipped = false;
+  /** The result's sounds (knock, cut, squeezebox) were asked for. */
+  private resultSounded = false;
   private finished = false;
   private timers: number[] = [];
   private wake: (() => void) | null = null;
@@ -414,9 +416,7 @@ export class ScoreBoard {
       big.classList.add('is-landed');
       slam(big, this.q('.score-sheet'));
     }
-    sound.play('knock', { delay: 120 });
-    if (this.o.score.breakdown.won) sound.play('win', { delay: 380 });
-    else if (!this.o.quietLoss) sound.play('lose', { delay: 380 });
+    this.soundResult(120);
     await this.wait(620);
     if (this.skipped) return;
     const account = this.q('[data-part="account"]');
@@ -441,10 +441,28 @@ export class ScoreBoard {
     this.complete();
   }
 
+  /**
+   * The result lands: a knock, then Schneider snipped or Schwarz torn (as
+   * the core says), then the squeezebox; one after the other, never on top
+   * of each other. Once per board: a skipped board sounds it at once.
+   */
+  private soundResult(start: number): void {
+    if (this.resultSounded) return;
+    this.resultSounded = true;
+    const b = this.o.score.breakdown;
+    sound.play('knock', { delay: start });
+    const cut = b.schwarz ? 'schwarz' : b.schneider ? 'snip' : null;
+    if (cut) sound.play(cut, { delay: start + 300 });
+    const after = start + (cut === 'schwarz' ? 960 : cut ? 620 : 260);
+    if (b.won) sound.play('win', { delay: after });
+    else if (!this.o.quietLoss) sound.play('lose', { delay: after });
+  }
+
   /** Jump to the final state. */
   skip(): void {
     if (this.finished) return;
     this.skipped = true;
+    this.soundResult(0);
     for (const id of this.timers) window.clearTimeout(id);
     this.wake?.();
     finishAll();

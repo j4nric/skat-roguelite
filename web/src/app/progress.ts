@@ -93,7 +93,7 @@ export class Progress {
   announceUnlocks(ids: string[]): void {
     if (!ids.length || !this.ctx.ui.meta) return;
     this.ctx.ui.overlay = { kind: 'unlock', ids };
-    sound.play('win', { delay: 150 });
+    sound.play('unlock', { delay: 150 });
   }
 
   /** Remember a finished run in the list of this browser. */

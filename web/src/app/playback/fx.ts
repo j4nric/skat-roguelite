@@ -3,6 +3,7 @@
 // relics and modifications that fire. Pure presentation: every fact comes
 // from the core's events and views.
 
+import { playQuipSound } from '../../audio';
 import { de, relicCounters, t } from '../../i18n';
 import { TEMPO_FACTOR } from '../../settings';
 import type { RunView, ScoreLine, Seat, Source } from '../../types';
@@ -110,6 +111,7 @@ export class Fx {
     if (!guest || this.guidance.hint) return;
     const ui = this.ctx.ui;
     ui.quip = { seat, text: guest[line] };
+    playQuipSound(seat);
     this.tricksSinceQuip = 0;
     window.clearTimeout(this.quipTimer);
     const ms = Math.max(1800, QUIP_MS * TEMPO_FACTOR[ui.settings.tempo]);

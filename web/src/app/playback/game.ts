@@ -96,7 +96,9 @@ export class GamePlayback {
       const el = this.ctx.screenEl.querySelector(`[data-trick-seat="${seat}"]`);
       const played = anim.trick[anim.trick.length - 1]?.card;
       if (el instanceof HTMLElement && from && !this.ctx.fastForward) this.flights.throwOnto(el, seat, from, played?.back ?? null);
-      sound.play('card', { rate: 0.94 + seat * 0.05 });
+      // An Unter hits the table harder (by its printed face only, no rule asked).
+      if (face(card.kind)?.rank === 'J') sound.play('slam', { rate: 0.96 + seat * 0.04 });
+      else sound.play('card', { rate: 0.94 + seat * 0.05 });
       await this.fx.pause(seat === 0 ? DELAY.ownCard : DELAY.aiCard);
       return;
     }
@@ -215,6 +217,7 @@ export class GamePlayback {
       return;
     }
     if ('Discarded' in ev && anim) {
+      sound.play('discard');
       const gone = ev.Discarded.cards.map((c) => c.id);
       anim.hand = anim.hand.filter((c) => !gone.includes(c.id));
       anim.handSizes[0] = anim.hand.length;
@@ -248,9 +251,9 @@ export class GamePlayback {
       this.ctx.render();
       if (spots) glideAll(Array.from(this.ctx.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
       if ('Declared' in ev && !this.ctx.fastForward) this.flights.declareEffect(ev.Declared.declaration);
+      if ('SkatPickedUp' in ev) sound.play('pickup');
       if ('SkatPickedUp' in ev && !this.ctx.fastForward) {
         this.flights.pickUpFlights(ev.SkatPickedUp.skat, peeked);
-        sound.play('card');
         await this.fx.pause(DELAY.flip);
       }
     }

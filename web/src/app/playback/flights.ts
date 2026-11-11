@@ -171,10 +171,17 @@ export class Flights {
    * game is no slower for it.
    */
   declareEffect(d: Declaration): void {
+    // Grand, Null and every game above Normal (Hand, Schneider, Schwarz, Ouvert announced) get the fist on the table.
+    const big = d.game === 'Grand' || d.game === 'Null' || d.risk !== 'Normal';
+    const hit = (): void => sound.play(big ? 'bang' : 'declare');
     const felt = this.rect('.center');
-    if (!felt || !motionOn()) return;
+    if (!felt || !motionOn()) {
+      // Without the sign the sound still comes (reduced motion does not mute).
+      hit();
+      return;
+    }
     const into = this.rect('.gameline .decl');
-    declareSign(this.ctx.root, declarationSign(d), felt, into, { onHit: () => sound.play('knock', { rate: 1.15, volume: 0.5 }) });
+    declareSign(this.ctx.root, declarationSign(d), felt, into, { onHit: hit });
   }
 
   /**

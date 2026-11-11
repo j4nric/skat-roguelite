@@ -51,7 +51,10 @@ export class EventPlayback {
       const ev = events[i];
       if (ev === undefined) continue;
       if (typeof ev === 'string') {
-        if (ev === 'Re') this.ctx.showToast(de.toast.re);
+        if (ev === 'Re') {
+          this.ctx.showToast(de.toast.re);
+          sound.play('kontra', { rate: 1.12 });
+        }
         if (ev === 'Redealt') {
           // Kräuter, Doppelkorn: the old cards are washed off the table first.
           if (this.drinkFx.pouring?.wash.length) {
@@ -60,11 +63,13 @@ export class EventPlayback {
           }
           this.guidance.passedOnce = true;
           this.ctx.showToast(t(de.toast.redealt, { left: after.series.redeals_left }));
+          sound.play('shuffle');
           reshuffle();
           this.ctx.afterRender.push(() => this.flights.dealEffect());
         }
         if (ev === 'RedealUndone') {
           this.ctx.showToast(de.toast.redealUndone);
+          sound.play('shuffle');
           reshuffle();
           this.ctx.afterRender.push(() => this.flights.dealEffect());
         }
@@ -75,7 +80,7 @@ export class EventPlayback {
         if (ev === 'EveningRulesEnded') this.ctx.showToast(de.toast.eveningEnded);
         if (ev === 'RoutesRerolled') {
           this.ctx.showToast(de.toast.routesRerolled);
-          sound.play('card');
+          sound.play('chalk', { rate: 1.2 });
           this.ctx.afterRender.push(() => this.drinkFx.reelRoutes());
         }
         if (ev === 'SkatPeekPlanned') this.ctx.showToast(de.toast.skatPeekPlanned);
@@ -133,12 +138,12 @@ export class EventPlayback {
       }
       if ('EveningRuleAdded' in ev) {
         this.ctx.showToast(t(de.toast.eveningRule, { name: contentName('relics', ev.EveningRuleAdded) }));
-        sound.play('clink');
+        sound.play('prize');
         continue;
       }
       if ('RelicSwapped' in ev) {
         this.ctx.showToast(t(de.toast.relicSwapped, { old: contentName('relics', ev.RelicSwapped.old), new: contentName('relics', ev.RelicSwapped.new) }));
-        sound.play('clink');
+        sound.play('prize');
         continue;
       }
       if ('NextGameDoubled' in ev) {
@@ -210,8 +215,14 @@ export class EventPlayback {
         this.ctx.ui.view = after;
         resetTableChoices(this.ctx.ui);
         this.fx.greetSeries(after);
+        sound.play('shuffle');
         reshuffle();
         this.ctx.afterRender.push(() => this.flights.dealEffect());
+        continue;
+      }
+      if ('NightStarted' in ev) {
+        // The long night (ADR 0020): the church clock strikes.
+        sound.play('night');
         continue;
       }
       if ('BossAnnounced' in ev) {
@@ -220,7 +231,7 @@ export class EventPlayback {
       }
       if ('Kontra' in ev) {
         this.ctx.showToast(t(de.toast.kontra, { name: seatLabel(after, ev.Kontra.seat) }));
-        sound.play('knock');
+        sound.play('kontra');
         await this.fx.pause(DELAY.notice);
         continue;
       }
@@ -249,6 +260,9 @@ export class EventPlayback {
         const id = ev.ConsumableUsed.consumable;
         // Poured over the table: a factor for the next game slams onto the felt.
         const poured = this.drinkFx.pouring;
+        // Poured out, and down in one when the player drinks it himself.
+        sound.play('pour');
+        if (!poured || poured.kind === 'Self') sound.play('gulp', { delay: 420 });
         if (poured?.id === id && poured.kind === 'Table') {
           const effect = after.pending_next_game?.find((p) => p.consumable === id)?.effect;
           const factor = effect && typeof effect === 'object' ? ('Multiply' in effect ? effect.Multiply : effect.MultiplyWin) : null;
@@ -267,7 +281,7 @@ export class EventPlayback {
       }
       if ('RelicBought' in ev) {
         this.ctx.showToast(t(de.toast.bought, { name: contentName('relics', ev.RelicBought.relic) }));
-        sound.play('coin');
+        sound.play('till');
         const bought = this.flights.bought;
         this.flights.bought = null;
         const relic = ev.RelicBought.relic;
@@ -281,7 +295,7 @@ export class EventPlayback {
       }
       if ('ConsumableBought' in ev) {
         this.ctx.showToast(t(de.toast.bought, { name: contentName('consumables', ev.ConsumableBought.consumable) }));
-        sound.play('coin');
+        sound.play('till');
         const bought = this.flights.bought;
         this.flights.bought = null;
         // Its slot: the one the core filled with it in this step.
@@ -309,12 +323,12 @@ export class EventPlayback {
       }
       if ('ShopRerolled' in ev) {
         this.ctx.showToast(de.toast.rerolled);
-        sound.play('card');
+        sound.play('shuffle');
         continue;
       }
       if ('CardOfferBought' in ev || 'PainterHired' in ev || 'CardCleansed' in ev) {
         // The card itself is told by the DeckChanged that follows (or the painter's sheet).
-        if (!('PainterHired' in ev) || ev.PainterHired.price > 0) sound.play('coin');
+        if (!('PainterHired' in ev) || ev.PainterHired.price > 0) sound.play('till');
         continue;
       }
       if ('CounterRaised' in ev) {
@@ -367,7 +381,7 @@ export class EventPlayback {
       if ('BossCursesLaid' in ev) {
         const { boss, cards } = ev.BossCursesLaid;
         this.ctx.showToast(t(de.toast.bossCursed, { name: contentName('bosses', boss), n: cards.length }), 'top');
-        sound.play('clink');
+        sound.play('kontra', { rate: 0.85 });
         continue;
       }
       if ('BossCursesLifted' in ev) {
@@ -376,7 +390,7 @@ export class EventPlayback {
       }
       if ('RelicGained' in ev) {
         this.ctx.showToast(t(de.toast.relicGained, { name: contentName('relics', ev.RelicGained.relic) }));
-        sound.play('clink');
+        sound.play('prize');
         continue;
       }
       if ('SecondChance' in ev) {
@@ -419,7 +433,8 @@ export class EventPlayback {
       if ('DiceThrown' in ev) {
         const { stake, won, payout } = ev.DiceThrown;
         this.ctx.showToast(won ? t(de.toast.diceWon, { payout }) : t(de.toast.diceLost, { stake }), 'top');
-        sound.play(won ? 'coin' : 'lose');
+        sound.play('dice');
+        sound.play(won ? 'coin' : 'lose', { delay: 520 });
         continue;
       }
       if ('WagerSettled' in ev) {
@@ -443,7 +458,7 @@ export class EventPlayback {
       if ('SchnappsRewarded' in ev) {
         if (!ev.SchnappsRewarded.slots_full) {
           this.ctx.showToast(t(de.toast.schnappsRewarded, { name: contentName('consumables', ev.SchnappsRewarded.consumable) }));
-          sound.play('clink');
+          sound.play('prize');
         }
         continue;
       }
@@ -458,7 +473,7 @@ export class EventPlayback {
       }
       if ('ConsumableGained' in ev) {
         this.ctx.showToast(t(de.toast.consumableGained, { name: contentName('consumables', ev.ConsumableGained.consumable) }));
-        sound.play('clink');
+        sound.play('prize');
         continue;
       }
       if ('SeriesStarted' in ev && ev.SeriesStarted.boss && after.series.boss) {
@@ -466,6 +481,8 @@ export class EventPlayback {
         this.ctx.ui.anim = null;
         this.ctx.ui.screen = 'run';
         const boss = after.series.boss;
+        // The door of the boss pub creaks open as his sheet comes up.
+        sound.play('boss');
         await this.layer.waitOn((resolve) => ({ kind: 'boss', boss, resolve }));
         this.ctx.ui.overlay = null;
         // The table opens: lights down, the spotlight onto both boss players
