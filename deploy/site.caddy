@@ -1,0 +1,22 @@
+# Our entry in the front Caddy of the server (ADR 0024). up.sh puts this
+# file into the shared Docker volume `caddy-sites` as stammtisch.caddy; the
+# front Caddy (Haushalt app, label edge.caddy=true) imports every *.caddy
+# file in it and is reloaded without a restart. A domain change for the game
+# therefore needs only this repo.
+#
+# The front Caddy terminates HTTPS (it fetches the certificates) and hands
+# everything to our own Caddy (`web`, alias stammtisch-web, deploy/Caddyfile)
+# through the shared network `edge`. Each host name may appear only once on
+# the whole server, or the front Caddy refuses the new configuration.
+
+# The old sslip.io address keeps serving the game until the players' local
+# progress has moved to the new domain (game data in the browser belongs to
+# the address).
+stammtisch-62-83-23-90.sslip.io, one-more-skat.de {
+	encode zstd gzip
+	reverse_proxy stammtisch-web:80
+}
+
+www.one-more-skat.de {
+	redir https://one-more-skat.de{uri} permanent
+}

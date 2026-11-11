@@ -109,7 +109,7 @@ jobs:
           else
             echo "::warning::No account server binary built; the one on the server (if any) stays."
           fi
-          rsync -az deploy/docker-compose.yml deploy/Caddyfile deploy/up.sh "$USER@$HOST:$DEST/"
+          rsync -az deploy/docker-compose.yml deploy/Caddyfile deploy/site.caddy deploy/up.sh "$USER@$HOST:$DEST/"
       - name: Start or update containers
         if: steps.secrets.outputs.ready == 'true'
         env:

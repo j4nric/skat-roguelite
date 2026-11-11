@@ -17,15 +17,20 @@ Browser ──HTTPS──▶ haushalt-prod-caddy-1 ──Netzwerk stammtisch-pro
 
 Der Haushalt-Caddy reicht alles an unseren Caddy weiter; für `/api` braucht es dort keine Änderung. Der Konto-Dienst veröffentlicht keine Ports und hängt nur im internen Netzwerk `backend`, das allein unser Caddy erreicht.
 
-Dafür braucht es drei Dinge, die zusammenpassen müssen:
+Seit ADR 0024 bringt das Spiel seinen Eintrag für den Haushalt-Caddy selbst mit:
 
 | Was | Wo |
 |---|---|
-| Netzwerk `stammtisch-proxy` | auf dem Server, einmalig angelegt |
-| Block für `stammtisch-62-83-23-90.sslip.io` und das Netzwerk im Caddy | `haushalt-app/infra/production/Caddyfile` und `docker-compose.yml` |
-| Unser Container mit Alias `stammtisch-web` im Netzwerk | `deploy/docker-compose.yml` in diesem Repo |
+| Netzwerk `edge` (gemeinsam für alle Apps) und Volume `caddy-sites` | auf dem Server, legt `up.sh` bei Bedarf an |
+| Unser Eintrag mit allen Domains | `deploy/site.caddy`; `up.sh` legt ihn als `stammtisch.caddy` ins Volume und lädt den Haushalt-Caddy neu |
+| Import der Einträge (`import /etc/caddy/sites/*.caddy`), Label `edge.caddy=true`, Netzwerk `edge` | einmalig in `haushalt-app/infra/production/Caddyfile` und `docker-compose.yml` |
+| Unser Container mit Alias `stammtisch-web` in `edge` (und bis zum Umzug in `stammtisch-proxy`) | `deploy/docker-compose.yml` in diesem Repo |
 
-Die Domain kommt von sslip.io: Jede Subdomain mit eingebetteter IP zeigt automatisch auf diese IP. Sie kostet nichts und braucht keine Registrierung. Eine eigene Domain kann später den Block im Haushalt-Caddy ersetzen.
+**Domain ändern:** nur `deploy/site.caddy` anpassen und mergen. Der Deploy prüft den Eintrag einzeln und dann zusammen mit allen anderen im Haushalt-Caddy; lehnt der ihn ab (etwa eine Domain, die schon eine andere App nutzt), kommt der vorige Eintrag zurück, der Deploy wird rot, und der Haushalt-Caddy läuft unverändert weiter. Jeder Name darf auf dem Server nur einmal vorkommen.
+
+**Erste Umstellung (11.11.2026):** Erst dieses Repo ausrollen (Netzwerk, Volume, Eintrag), dann den Haushalt-PR, der den alten sslip-Block entfernt und den Import einschaltet. Findet `up.sh` noch keinen Caddy mit Label, legt es den Eintrag nur ab und warnt.
+
+Domains: **one-more-skat.de** (eigene Domain, `www` leitet um) und weiterhin **stammtisch-62-83-23-90.sslip.io**, bis die Spielstände im Browser umgezogen sind.
 
 ## Einmalige Einrichtung, in dieser Reihenfolge
 

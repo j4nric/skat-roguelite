@@ -76,6 +76,8 @@ jobs:
       # Same image as deploy/docker-compose.yml.
       - name: Validate Caddyfile
         run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Validate front Caddy entry
+        run: docker run --rm -v "$PWD/deploy/site.caddy:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Validate compose file
         run: docker compose -f deploy/docker-compose.yml config --quiet
 
