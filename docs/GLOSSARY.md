@@ -309,7 +309,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Tafel (Bestenliste auf dem Server) | `Board` | `server/src/board.rs`: gemeinsamer Code beider Tafeln (`Board::Daily`, `Board::Weekly`), Ergebnis `BoardResult` (`period`: Tag oder Woche), Zeile `BoardRow`; `db::insert_result`, `board_top`, `result_of`, `board_count` |
 | Wochen-Herausforderung (DESIGN 5.6) | `weekly` | Ein Run je ISO-Woche mit festem Seed und einer Sonderregel. Kern: `Run::new_weekly`, `RunStart::weekly_rule` und `RunStart::week`, Zustand `WeeklyState` (`Run::weekly`), Sicht `RunView::weekly` (`WeeklyView`), vor dem Start `week_info` (`WeekInfo`); Web `CoreRun.createWeekly`, `weekInfo`; Simulator `--weekly-rule <id>`, `--weekly <JJJJWW>` |
 | Woche (ISO 8601, JJJJWW) | `WeekId` | ISO-Jahr und -Woche als eine Zahl (202646); `WeekId::seed` (Seed der Woche), `WeekId::index` (Wochen seit 2000-W01); Server `weekly::parse_week`, `this_week_key` |
-| Sonderregel der Woche | `WeeklyRuleDef`, `WeeklyRuleId` | Daten in `weekly.ron`: `character`, `start_relics`, `deck`, `coins`, `rules` (Verschärfungen der Nacht, `NightRule`), `passive`, `hooks`; Quelle `Source::Weekly`; Wahl je Woche `pick_rule` (Runden ohne Wiederholung), `Content::rule_of_week`; alle Verschärfungen in Kraft `Run::rules_in_force` |
+| Sonderregel der Woche | `WeeklyRuleDef`, `WeeklyRuleId` | Daten in `weekly.ron` (Ids eindeutig über alle Inhaltsdateien, die Web-App übersetzt nach Id; daher `dive_week` neben der Verschärfung `dive_air`): `character`, `start_relics`, `deck`, `coins`, `rules` (Verschärfungen der Nacht, `NightRule`), `passive`, `hooks`; Quelle `Source::Weekly`; Wahl je Woche `pick_rule` (Runden ohne Wiederholung), `Content::rule_of_week`; alle Verschärfungen in Kraft `Run::rules_in_force` |
 | Tafel der Woche | `WeeklyBoard` | Wie die Tafel des Tages, Tabelle `weekly_results` (Migration 2), `POST /api/weekly`, `GET /api/weekly/{JJJJWW}`; der erste beendete Wochen-Run je Konto zählt, jeder weitere ist Übung |
 | Übung (weiterer Wochen-Run) | practice | Ein Wochen-Run nach dem ersten der Woche: zählt im Vereinsbuch, nicht auf der Tafel (der Server behält das erste Ergebnis, `stored: false`) |
 | Statistik je Relikt | `RelicStats` | Im Meta-Zustand `MetaStats::relics`: `taken` (gekauft, gefunden, getauscht), `held` (am Ende eines Runs gehalten), `won` (davon gewonnen); seit 10.11.2026. `RunWon` und `RunLost` tragen dafür `relics` |
@@ -470,7 +470,7 @@ Content-IDs sind englisch und snake_case. Die deutschen Namen stehen in den RON-
 | Nachtschicht (Nacht) | `night_shift` (`CardCount::direction`) |
 | Morgengrauen (Nacht) | `dawn` (Flagge `dawn`) |
 | Kurze Geduld, Hellwache Gegner, Doppelte Bosse, Nachtzuschlag, Verhexte Karte, Spelunkenluft, Zielwert-Sprung, Knausriger Wirt (Verschärfungen) | `fewer_redeals`, `sharp_opponents`, `double_boss`, `pricier_tresen`, `cursed_card`, `dive_air`, `target_jump`, `stingy_host` |
-| Grand zählt doppelt, Spelunkenluft, Hellwache Gegner, Kurze Geduld, Teufelspakt, Nullabend, Erbonkel, Spendierhosen (Sonderregeln der Woche) | `grand_double`, `dive_air`, `wide_awake`, `short_patience`, `devils_pact`, `null_evening`, `rich_uncle`, `spendthrift` |
+| Grand zählt doppelt, Spelunkenluft, Hellwache Gegner, Kurze Geduld, Teufelspakt, Nullabend, Erbonkel, Spendierhosen (Sonderregeln der Woche) | `grand_double`, `dive_week`, `wide_awake`, `short_patience`, `devils_pact`, `null_evening`, `rich_uncle`, `spendthrift` |
 | Tief in der Nacht, Nach der Sperrstunde, Bis zum Morgengrauen (Freischaltungen) | `night_district_5`, `night_district_7`, `night_district_10` |
 | Der Wirt spendiert | `landlord_treat` |
 | Falschspieler am Nebentisch (bis 02.11.2026 „Der Falschspieler“) | `card_sharp` |
@@ -513,3 +513,87 @@ Nur für Spieltexte und Grafik. Code, Tests und Design-Dokument bleiben bei den 
 | `Queen` | Oberin |
 | `Jack` | Unter |
 | `Nine`, `Eight`, `Seven` | Neun, Acht, Sieben |
+
+## Englische Anzeige (ADR 0023)
+
+Verbindlich für `web/src/i18n/en.ts` und `web/src/i18n/en-content.ts`. Das deutsche Blatt bleibt auch auf Englisch. Wo die englische Skat-Literatur (International Skat Order, ISPA) deutsche Wörter behält, behalten wir sie auch; die Regelkarte erklärt sie unter „Skat words“. Britisches Englisch, Ton der Kneipe: freundlich, nicht wörtlich.
+
+### Karten und Spiel
+
+| Deutsch (Anzeige) | Code | Englisch (Anzeige) |
+|---|---|---|
+| Eichel, Grün, Rot, Schellen | `Clubs`, `Spades`, `Hearts`, `Diamonds` | Acorns, Leaves, Hearts, Bells |
+| Unter, Oberin, König, Daus | `Jack`, `Queen`, `King`, `Ace` | Unter, Ober, King, Ace (Eckzeichen U, O, K, A) |
+| Sieben bis Zehn | `Seven` … `Ten` | Seven … Ten |
+| Eichel-Unter | `CJ` | Unter of Acorns (`{rank} of {suit}`) |
+| Blanko | `CardKind::Blank` | Blank |
+| Augen | `card_points` | pips |
+| Stich | `trick` | trick |
+| Trumpf | `trump` | trump |
+| Bedienen | `follow` | follow suit |
+| Skat, Hand, Grand, Null, Ramsch, Schneider, Schwarz, Ouvert, Kontra, Re, Bock | – | unverändert |
+| Null Hand, Null Ouvert, Null Ouvert Hand | `NullRisk` | unverändert |
+| Schneider angesagt, Schwarz angesagt | `SchneiderDeclared`, `SchwarzDeclared` | Schneider announced, Schwarz announced |
+| Spitzen; mit, ohne | `Matadors` | matadors; with, without |
+| Grundwert | `base_value` | base value |
+| Stufen (Gewinnstufen) | `levels` | levels |
+| Faktor | `multiplier` | factor |
+| Spielwert | `value` | game value |
+| Ansage, ansagen | `Declaration`, `Declare` | declaration, declare |
+| Drücken | `Discard` | discard |
+| Einmischen | `Redeal` | redeal |
+| Kurzschluss | `ShortCircuit` | short circuit |
+| Jungfrau (Ramsch) | `Virgin` | Virgin |
+| Vorhand, Mittelhand, Hinterhand | `Forehand`, `Middlehand`, `Rearhand` | Forehand, Middlehand, Rearhand |
+| Alleinspieler | `Declarer` | declarer |
+| Reizen | – | bidding |
+
+### Roguelike
+
+| Deutsch (Anzeige) | Code | Englisch (Anzeige) |
+|---|---|---|
+| Konto (Punkte der Kneipe) | `score` | score (points) |
+| Konto (Anmeldung, ADR 0021) | `account` | account |
+| Zielwert, Ziel | `target` | target |
+| Kneipe, Spelunke, Boss-Kneipe, Festsaal | `pub`, `spelunke` | pub, dive, boss pub, function room |
+| Stadtteil | `section` | district |
+| Kneipentour, Tournee | `tour` | pub crawl, the crawl |
+| Tresen | `Shop` | bar |
+| Begegnung, Werkstatt, Rast, Fundgroschen, Kiosk, Würfelbude | `StopCategory` | encounter, workshop, rest, lucky find, kiosk, dice stall |
+| Der Wirt | `landlord` | the landlord |
+| Stammgast | `guest` | regular |
+| Relikt, Hausregel, Figur | `Relic`, `HouseRule`, `Regular` | relic, house rule, local |
+| Bierdeckel | – | beer mat |
+| Schnaps, Schnäpse | `Consumable` (`Schnapps`) | Schnapps |
+| Zinke, Zinken, zinken | `CardMod`, `zinken` | mark, marks, mark a card |
+| Marke (Gutschein) | `ModKind::Voucher` | stamp |
+| Fluch | `curse` | curse |
+| Spezialkarte; Untot, Wandelkarte, Doppelgänger | `ModKind::Special` | special card; Undead, Wild Card, Doppelgänger |
+| Auslage, Kartenmaler, Karte reinigen | `card_offers`, `painter`, `cleanse` | display, card painter, clean a card |
+| Neu auslosen | `reroll` | redraw |
+| Schnäppchen, Hehlerware | `bargain`, `fence` | bargain, hot goods |
+| Groschen | `coins` | Groschen (Gr.) |
+| Malus | `Malus` | handicap |
+| Einsatz | `stake` | stake |
+| Die lange Nacht, Verschärfung | `night`, `Verschaerfung` | the Long Night, twist |
+| Vereinsbuch, Kreidetafel, Regelkarte, Glossar, Abspann | – | Club Book, chalkboard, rules card, glossary, credits |
+| Tages-Seed, Tafel des Tages, Bestenliste | `daily` | daily seed, today’s board, leaderboard |
+| Einführung | `tutorial` | introduction |
+
+### Namen (Auswahl)
+
+Wortspiele, wo eines trägt, sonst übertragen. Der Titel „Stammtisch“ bleibt. Kneipennamen und die Vornamen der Stammgäste bleiben deutsch; Stadtteile werden übersetzt (Altstadt: Old Town, Hafen: Harbour, Bahnhofsviertel: Station Quarter). Die vollständige Liste steht in `web/src/i18n/en-content.ts`.
+
+| Deutsch | Id | Englisch |
+|---|---|---|
+| Der Alleinspieler, Der Nullspieler, Der Drückeberger, Die Schneiderin, Bruderherz | `Declarer`, `NullPlayer`, `Shirker`, `Tailoress`, `HeartBrother` | The Declarer, The Null Player, The Shirker, The Tailoress, Brother Heart |
+| Der Zähler, Der Kiebitz, Der Wirt | `card_counter`, `kibitzer`, `landlord` | The Counter, The Kibitzer, The Landlord |
+| Deckel anschreiben, Kleinvieh, Ein Auge zudrücken, Nullachtfuffzehn | `slate`, `every_bit_counts`, `blind_eye`, `null_eight_fifteen` | On the Slate, Every Little Helps, Turn a Blind Eye, Run of the Mill |
+| Schwarze Null, Unterschlupf, Hosen runter, Die Großkopferten, Stammfarbe | `black_zero`, `safe_haven`, `cards_on_table`, `big_shots`, `home_suit` | In the Black, Under Cover, Trousers Down, The Bigwigs, The Usual |
+| Feierabend, Sieben auf einen Streich, Kehraus, Lumpensammler | `closing_time`, `seven_at_one_blow`, `sweep_out`, `rag_collector` | Early Doors, Seven at One Blow, Last Dance, Rag-and-Bone Man |
+| Aufdruck, Winkel, Siegel, Kerbe, Eselsohr | `points`, `rank`, `trump_bonus`, `last_trick`, `first_trick` | Overprint, Bend, Seal, Notch, Dog-Ear |
+| Pfandmarke, Totenmarke, Narrenmarke | `voucher_coins`, `voucher_undead`, `voucher_wild` | Deposit Stamp, Death Stamp, Fool’s Stamp |
+| Kurzer, Doppelkorn, Kräuter, Wegbier, Klarer, Absacker, Fusel | `shot`, `double_grain`, `herbal`, `road_beer`, `clear_spirit`, `nightcap`, `rotgut` | Wee Dram, Double Korn, Herbal Bitters, One for the Road, Clear Spirit, Nightcap, Rotgut |
+| Der Schieber und Die Hehlerin, Die Oma und Der Opa, Der Ramscher, Der Schwarze Peter, Der Alte | `the_pusher`, `grandma`, `ramscher`, `black_peter`, `the_old_man` | The Fixer and The Fence, Grandma and Grandpa, Mr Ramsch, Black Peter, The Old Man |
+| Letzte Runde, Umgekipptes Bier, Der Wirt spendiert | `last_round`, `spilled_beer`, `landlord_treat` | Last Orders, Spilt Pint, On the House |
+| Schnapsverbot, Klebrige Karten | `schnapps_locked`, `cursed_cards` | Dry Bar, Sticky Cards |

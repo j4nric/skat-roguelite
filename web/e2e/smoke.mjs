@@ -41,9 +41,16 @@
 //   hand (sampled every frame), a hand card tapped flies onto the table,
 //   on Drücken both fly into the Ansage and after it into the stack in
 //   the felt's corner, turning face down,
-// - "Kartenfarbe tönen" (suitTintPass): the menu switch tints each card's
+// - "Kartenfarbe tönen" (suitTintPass): the switch "Tönen" tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
+// - Barrierefreiheit (a11yPass; alone with SMOKE_ONLY=a11y): the row
+//   "Darstellung" in the menu, "Farbenblind-Hilfe" puts a suit letter on
+//   every face (stored), "Schriftgröße" Groß and Sehr groß keep the table
+//   fitting and nothing scrolling sideways, cards and HUD have names, a
+//   polite live region says opponents' cards, tricks and the result, the
+//   menu takes the focus, keeps Tab inside and gives it back on Escape;
+//   screenshots with simulated deuteranopia and protanopia (a11y-*.png),
 // - visits the Tresen, buys something if possible, opens the Kreidetafel and
 //   the menu (tempo setting is stored), and starts the next series. The
 //   Tresen (and an encounter) never scroll sideways at 390 × 844, 375 × 667
@@ -1211,9 +1218,10 @@ async function suitTintPass(browser, errors, reducedMotion) {
   if (plainFills.size !== 1) fail(`with the tint off the papers differ: ${[...plainFills].join(', ')}`);
 
   await page.click('[data-action="menu"]');
-  await page.waitForSelector('[data-testid="setting-suit-tint"]');
-  await page.click('[data-testid="setting-suit-tint"] [data-on="true"]');
-  await page.waitForSelector('[data-testid="setting-suit-tint"] [data-on="true"][aria-pressed="true"]');
+  // "Tönen" is a toggle in the row "Darstellung": its data-on is the state a tap sets.
+  await page.waitForSelector('[data-testid="setting-display"] [data-testid="toggle-suit-tint"]');
+  await page.click('[data-testid="toggle-suit-tint"][data-on="true"]');
+  await page.waitForSelector('[data-testid="toggle-suit-tint"][aria-pressed="true"]');
   await assertMenuNoScroll(page, 'menu with "Kartenfarbe tönen"');
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
   if (stored.suitTint !== true) fail(`"Kartenfarbe tönen" not stored: ${JSON.stringify(stored)}`);
@@ -1235,7 +1243,7 @@ async function suitTintPass(browser, errors, reducedMotion) {
   await check('tint on after a reload');
 
   await page.click('[data-action="menu"]');
-  await page.click('[data-testid="setting-suit-tint"] [data-on="false"]');
+  await page.click('[data-testid="toggle-suit-tint"][data-on="false"]');
   await page.click('[data-testid="menu-close"]');
   const off = new Set((await papers()).map((p) => p.fill));
   if (off.size !== 1 || !plainFills.has([...off][0])) fail(`tint off again: papers ${[...off].join(', ')}`);
@@ -2062,7 +2070,7 @@ async function pasteSaveCode(page, code) {
 /** The menu fits the viewport (it scrolls inside), the page itself does not scroll. */
 async function assertMenuFits(page, label) {
   const r = await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+    await Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined)));
     const sheet = document.querySelector('.layer .sheet')?.getBoundingClientRect();
     const doc = document.scrollingElement;
     return { top: sheet?.top ?? -1, bottom: sheet?.bottom ?? 1e9, height: innerHeight, scroll: (doc?.scrollHeight ?? 0) - innerHeight };
@@ -2082,7 +2090,7 @@ async function assertMenuNoScroll(page, label) {
     await page.setViewportSize(size);
     const r = await page.evaluate(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined)));
+      await Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined)));
       const sheet = document.querySelector('.layer .sheet-menu');
       const close = document.querySelector('.layer [data-testid="menu-close"]')?.getBoundingClientRect();
       return {
@@ -2242,7 +2250,7 @@ async function expectHint(page, id) {
   await page.waitForSelector(`[data-testid="hint"][data-hint="${id}"]`, { timeout: 15000 }).catch(async () => {
     fail(`hint "${id}" not shown (on screen: ${await hintId(page)})`);
   });
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming?.().endTime !== Infinity).map((a) => a.finished.catch(() => undefined))));
   return ((await page.locator('[data-testid="hint"] .hint-text').textContent()) ?? '').trim();
 }
 
@@ -3540,7 +3548,8 @@ async function drinkByTap(page, slot) {
   await page.waitForSelector(`.hud .schnaps-slot[data-slot="${slot}"].is-lifted`, { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: a tap does not lift it`));
   await page.waitForSelector('[data-testid="drink-mouth"].is-up', { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: no mouth for a Schnaps drunk yourself`));
   await page.waitForTimeout(350);
-  const box = await page.locator('[data-testid="drink-mouth"]').boundingBox();
+  // With full motion the mouth of the Schnaps before may still be gulping: the new one is the last.
+  const box = await page.locator('[data-testid="drink-mouth"]').last().boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.55);
 }
 
@@ -5129,9 +5138,9 @@ async function nightPass(browser, errors, viewport) {
  * state unchanged. On the phone a run in progress is stored first; the
  * Einführung, skipped half-way, leaves it untouched.
  */
-async function tutorialPass(browser, errors, viewport, shotDir = null) {
-  const tag = `${viewport.width}x${viewport.height}`;
-  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', deviceScaleFactor: shotDir ? 2 : 1 });
+async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 'de-DE') {
+  const tag = `${viewport.width}x${viewport.height}${locale === 'de-DE' ? '' : ` ${locale}`}`;
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', deviceScaleFactor: shotDir ? 2 : 1, locale });
   const page = await context.newPage();
   watch(page, errors);
   const snap = async (name) => {
@@ -5173,6 +5182,7 @@ async function tutorialPass(browser, errors, viewport, shotDir = null) {
       }
       const text = ((await page.locator('.coach-text').textContent()) ?? '').trim();
       if (text.length < 20) fail(`tutorial ${tag}: step "${step}" has no text`);
+      if (locale !== 'de-DE' && GERMAN_WORDS.test(text)) fail(`tutorial ${tag}: step "${step}" speaks German: ${text.slice(0, 80)}`);
       if (shots[step]) await snap(shots[step]);
     }
     const sheet = page.locator('[data-action="score-continue"]');
@@ -5684,9 +5694,466 @@ async function weeklyPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * Colour vision deficiencies as SVG colour matrices (Machado et al. 2009,
+ * severity 1, linear RGB), laid over the whole page for screenshots.
+ */
+const CVD = {
+  deuteranopia: '0.367322 0.860646 -0.227968 0 0  0.280085 0.672501 0.047413 0 0  -0.011820 0.042940 0.968881 0 0  0 0 0 1 0',
+  protanopia: '0.152286 1.052583 -0.204868 0 0  0.114503 0.786281 0.099216 0 0  -0.003882 -0.048116 1.051998 0 0  0 0 0 1 0',
+};
+
+async function simulateCvd(page, kind) {
+  await page.evaluate((m) => {
+    document.getElementById('cvd-sim')?.remove();
+    document.documentElement.style.filter = '';
+    if (!m) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'cvd-sim';
+    svg.setAttribute('width', '0');
+    svg.setAttribute('height', '0');
+    svg.style.position = 'absolute';
+    svg.innerHTML = `<filter id="cvd-f" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="${m}"/></filter>`;
+    document.body.appendChild(svg);
+    document.documentElement.style.filter = 'url(#cvd-f)';
+  }, kind ? CVD[kind] : '');
+}
+
+/** Screenshots of the page as it is and as seen with deuteranopia and protanopia. */
+async function shootCvd(page, name) {
+  const size = page.viewportSize();
+  const tag = size ? `${size.width}x${size.height}` : 'page';
+  await page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  for (const kind of Object.keys(CVD)) {
+    await simulateCvd(page, kind);
+    await page.screenshot({ path: join(screens, `${name}-${kind}-${tag}.png`) });
+  }
+  await simulateCvd(page, null);
+}
+
+/** The page never scrolls sideways and no element of the screen or dialog leaves the viewport. */
+async function assertNoSideways(page, label) {
+  const r = await page.evaluate(() => {
+    const w = innerWidth;
+    const out = [];
+    for (const el of document.querySelectorAll('.screen *, .layer *')) {
+      const b = el.getBoundingClientRect();
+      if (!b.width || !b.height || el.closest('svg, [data-testid="characters"], .leiste')) continue;
+      // Inside a box that scrolls or clips sideways on purpose (the HUD strip, the character row).
+      if (el.parentElement?.closest('.hud-leiste, .relic-strip, .char-pick')) continue;
+      if (b.right > w + 1 || b.left < -1) out.push(`${el.tagName.toLowerCase()}.${String(el.className?.baseVal ?? el.className).split(' ')[0]} ${Math.round(b.left)}..${Math.round(b.right)}`);
+    }
+    return { page: document.documentElement.scrollWidth - w, out: out.slice(0, 4) };
+  });
+  if (r.page > 0) fail(`${label}: the page scrolls sideways by ${r.page}px`);
+  if (r.out.length) fail(`${label}: elements leave the viewport: ${r.out.join(', ')}`);
+}
+
+/**
+ * Barrierefreiheit (DESIGN 16): the menu row "Darstellung" with
+ * "Farbenblind-Hilfe" (suit letters on every face, stored) and
+ * "Schriftgröße" (Normal, Groß, Sehr groß: the type scale grows, nothing
+ * scrolls sideways at 390 × 844 and 360 × 740, the table still fits), the
+ * screen reader's names of cards, the HUD and the opponents, a polite live
+ * region for an opponent's card, a trick and the result, and the focus in
+ * dialogs (into the menu, kept inside on Tab, Escape closes it and the
+ * focus returns). Screenshots with deuteranopia and protanopia simulated.
+ */
+async function a11yPass(browser, errors, reducedMotion = 'reduce') {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  // Every line the live region gets, in window.__said.
+  await context.addInitScript(() => {
+    window.__said = [];
+    new MutationObserver(() => {
+      const live = document.querySelector('[data-testid="sr-live"]');
+      if (!live || live.__watched) return;
+      live.__watched = true;
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) if (n.textContent) window.__said.push(n.textContent);
+      }).observe(live, { childList: true });
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const letters = () =>
+    page.$$eval('.hand .card-svg[data-suit]', (svgs) =>
+      svgs.map((svg) => {
+        const use = svg.querySelector('use.face-letter');
+        return { suit: svg.dataset.suit, href: use?.getAttribute('href') ?? '', shown: use ? getComputedStyle(use).display !== 'none' : false };
+      }),
+    );
+  const off = await letters();
+  if (!off.length || off.some((l) => l.shown)) fail('a11y: suit letters shown without "Farbenblind-Hilfe"');
+  await shootCvd(page, 'a11y-cards-plain');
+
+  // The menu by keyboard: focus goes into the dialog, Tab stays in it, Escape closes it and focus returns.
+  await page.focus('.hud [data-action="menu"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.layer .sheet-menu');
+  const into = await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]')));
+  if (!into) fail('a11y: the menu opened, but the focus did not go into it');
+  const named = await page.locator('.layer [role="dialog"]').getAttribute('aria-labelledby');
+  if (!named || !(await page.locator(`#${named}`).count())) fail('a11y: the menu dialog has no name');
+  for (let i = 0; i < 40; i++) await page.keyboard.press('Tab');
+  if (!(await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]'))))) fail('a11y: Tab left the open menu');
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+Tab');
+  if (!(await page.evaluate(() => Boolean(document.activeElement?.closest('.layer [role="dialog"]'))))) fail('a11y: Shift+Tab left the open menu');
+  const ring = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+  if (ring === 'none') fail('a11y: no visible focus ring on the focused control');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.layer .sheet-menu', { state: 'detached' });
+  const back = await page.evaluate(() => document.activeElement?.getAttribute('data-action'));
+  if (back !== 'menu') fail(`a11y: after Escape the focus is on "${back}", not on the menu button`);
+  log('a11y: menu by keyboard: focus in, kept inside on Tab, Escape closes, focus back on the menu button');
+
+  // "Farbenblind-Hilfe": off by default, on in the row "Darstellung", stored.
+  await page.click('[data-action="menu"]');
+  const cb = page.locator('[data-testid="setting-display"] [data-testid="toggle-color-blind"]');
+  if ((await cb.getAttribute('aria-pressed')) !== 'false') fail('a11y: "Farbenblind-Hilfe" is on by default');
+  if ((await cb.getAttribute('aria-label')) !== 'Farbenblind-Hilfe') fail(`a11y: the toggle is named "${await cb.getAttribute('aria-label')}"`);
+  await assertMenuNoScroll(page, 'menu with the row "Darstellung"');
+  await cb.click();
+  await page.waitForSelector('[data-testid="toggle-color-blind"][aria-pressed="true"]');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+  if (stored.colorBlind !== true) fail(`a11y: "Farbenblind-Hilfe" not stored: ${JSON.stringify(stored)}`);
+  await page.click('[data-testid="menu-close"]');
+  const on = await letters();
+  const code = { Clubs: 'C', Spades: 'S', Hearts: 'H', Diamonds: 'D' };
+  const wrong = on.filter((l) => !l.shown || l.href !== `#cb-${code[l.suit]}`);
+  if (wrong.length) fail(`a11y: suit letters wrong: ${JSON.stringify(wrong.slice(0, 3))}`);
+  if (new Set(on.map((l) => l.suit)).size < 4) fail('a11y: the hand should hold all four suits');
+  const glyphs = await page.evaluate(() => ['C', 'S', 'H', 'D'].filter((c) => !document.getElementById(`cb-${c}`)?.querySelector('path')));
+  if (glyphs.length) fail(`a11y: suit letter symbols missing in the sprite: ${glyphs.join(', ')}`);
+  await shootCvd(page, 'a11y-cards-letters');
+  await page.reload();
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  if ((await letters()).some((l) => !l.shown)) fail('a11y: suit letters gone after a reload');
+  log('a11y: "Farbenblind-Hilfe" off by default, a letter per suit on every face, stored');
+
+  // Screen reader names: cards, the opponents' boxes, the HUD.
+  const cardNames = await page.$$eval('.hand .hand-card', (els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+  if (cardNames.some((n) => !/^(Eichel|Grün|Rot|Schellen)-(Sieben|Acht|Neun|Zehn|Unter|Ober|Oberin|König|Daus)/.test(n))) fail(`a11y: hand card names: ${cardNames.join(' | ')}`);
+  const oppName = (await page.locator('.opp[data-seat="1"] .opp-main').getAttribute('aria-label')) ?? '';
+  if (!/10 Karten/.test(oppName)) fail(`a11y: the opponent's box is named "${oppName}"`);
+  const hud = await page.locator('.hud').ariaSnapshot();
+  if (!/Groschen/.test(hud) || !/meter "Konto \/ Ziel"/.test(hud)) fail(`a11y: the HUD reads:\n${hud}`);
+  log(`a11y: names: "${cardNames[0]}", "${oppName}"`);
+
+  // A game: the live region says the opponents' cards, the tricks and the result, politely.
+  await page.click('[data-action="pick-up-skat"]');
+  await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+  await discardFirstTwo(page, 'a11y');
+  await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  const live = await page.locator('[data-testid="sr-live"]').evaluate((el) => ({ role: el.getAttribute('role'), polite: el.getAttribute('aria-live') }));
+  if (live.role !== 'status' || live.polite !== 'polite') fail(`a11y: live region ${JSON.stringify(live)}`);
+  await page.waitForSelector('[data-action="play"]');
+  const trickName = await page.evaluate(() => document.querySelector('.trick-card[aria-label]')?.getAttribute('aria-label') ?? '');
+  await playOut(page, 'a11y');
+  const said = await page.evaluate(() => window.__said);
+  if (!said.some((l) => / spielt (Eichel|Grün|Rot|Schellen)-/.test(l))) fail(`a11y: no opponent's card said: ${said.slice(0, 6).join(' | ')}`);
+  if (!said.some((l) => /Stich/.test(l))) fail(`a11y: no trick said: ${said.slice(0, 6).join(' | ')}`);
+  if (!said.some((l) => /^(Gewonnen|Verloren): /.test(l))) fail(`a11y: no result said: ${said.slice(-3).join(' | ')}`);
+  if (said.some((l) => l.length > 90)) fail(`a11y: a live line is too long: ${said.find((l) => l.length > 90)}`);
+  const scoreFocus = await page.evaluate(() => Boolean(document.activeElement?.closest('.score-sheet')));
+  if (!scoreFocus) fail('a11y: the score board took no focus');
+  log(`a11y: live region said ${said.length} lines, e.g. "${said[0]}", "${said[said.length - 1]}"${trickName ? `; trick card "${trickName}"` : ''}`);
+  await shootCvd(page, 'a11y-score');
+  await context.close();
+
+  // "Schriftgröße": Normal, Groß, Sehr groß; the scale grows, nothing scrolls sideways, the table fits.
+  const sizes = await quietContext(browser, { viewport: PHONE, reducedMotion });
+  const p2 = await sizes.newPage();
+  watch(p2, errors);
+  await p2.goto(base);
+  await p2.waitForSelector('[data-action="new-run"]');
+  const body = () => p2.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs-body')));
+  let last = await body();
+  for (const size of ['large', 'xlarge']) {
+    await p2.click('[data-action="settings"], [data-action="menu"]');
+    await p2.click('[data-testid="toggle-text-size"]');
+    await p2.waitForSelector(`[data-testid="toggle-text-size"][data-now="${size}"]`);
+    const now = await body();
+    if (!(now > last)) fail(`a11y: text size ${size}: --fs-body ${now}px, not above ${last}px`);
+    last = now;
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, menu at ${vp.width}x${vp.height}`);
+    }
+    await p2.setViewportSize(PHONE);
+    if (size === 'xlarge') await p2.screenshot({ path: join(screens, 'a11y-text-xlarge-menu-390x844.png') });
+    await p2.click('[data-testid="menu-close"]');
+    const stored = await p2.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+    if (stored.textSize !== size) fail(`a11y: text size ${size} not stored: ${JSON.stringify(stored)}`);
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, start screen at ${vp.width}x${vp.height}`);
+    }
+    await p2.setViewportSize(PHONE);
+    await p2.fill('#seed', SEED);
+    await p2.click('[data-action="new-run"]');
+    // From the second size on a run is going: give it up for the new one.
+    await p2.waitForSelector('[data-testid="skat-choice"], [data-action="confirm-new"]');
+    if (await p2.locator('[data-action="confirm-new"]').count()) await p2.click('[data-action="confirm-new"]');
+    await p2.waitForSelector('[data-testid="skat-choice"]');
+    await assertFits(p2, `text ${size}, Skat oder Hand`);
+    for (const vp of [PHONE, { width: 360, height: 740 }]) {
+      await p2.setViewportSize(vp);
+      await p2.waitForTimeout(120);
+      await assertNoSideways(p2, `text ${size}, table at ${vp.width}x${vp.height}`);
+      await p2.screenshot({ path: join(screens, `a11y-text-${size}-${vp.width}x${vp.height}.png`) });
+    }
+    await p2.setViewportSize(PHONE);
+    await p2.click('[data-action="pick-up-skat"]');
+    await p2.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+    await discardFirstTwo(p2, `text ${size}`);
+    await p2.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+    await assertFits(p2, `text ${size}, Ansage after the skat`);
+    await p2.click('[data-action="pick-game"][data-index="4"]');
+    await p2.click('[data-action="declare"]');
+    await p2.waitForSelector('[data-action="play"]');
+    await assertFits(p2, `text ${size}, playing`);
+    await p2.goto(base);
+    await p2.waitForSelector('[data-action="new-run"]');
+  }
+  log('a11y: "Schriftgröße" Groß and Sehr groß: bigger type, stored, no sideways scroll, the table fits');
+  await sizes.close();
+}
+
+/**
+ * German words that must not show in the English game (ADR 0023). Pub
+ * names stay German on purpose (place names: "Zum Goldenen Hirschen"), so
+ * the list holds only words of the interface, never of a pub's name.
+ */
+const GERMAN_WORDS = /(?<![\p{L}])(Fortsetzen|Einstellungen|Stadtteil|Einführung|Schließen|Gegner|Stich|Stiche|Augen|Einmischen|Drücken|Ansagen|Ansage|Tresen|Weiter|Überspringen|Spielwert|Grundwert|Stufe|Stufen|Konto|Zinke|Zinken|Relikt|Relikte|Schnäpse|Hausregel|Hausregeln|Eichel|Schellen|Daus|Oberin|König|nicht|Gewonnen|Verloren|Karte|Karten|Wähle|Spiele|Abbrechen|Zurück|Kaufen|Verkaufen|Begegnung|Werkstatt|Rast|Vereinsbuch|Kreidetafel|Regelkarte|Glossar|Abspann|Wirt|Stammgast|Bierdeckel|Fluch|Flüche)(?![\p{L}])/u;
+
+/**
+ * The English game shows no German interface text: neither in the visible
+ * text nor in aria-labels, titles and placeholders of `root`.
+ */
+async function assertEnglish(page, label, root = 'body') {
+  const found = await page.evaluate(
+    ({ sel, source }) => {
+      const re = new RegExp(source, 'u');
+      const box = document.querySelector(sel);
+      if (!box) return [`${sel} not on screen`];
+      const hits = [];
+      const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest('.sr-only, script, style, [aria-hidden="true"]')) continue;
+        // Names of pubs and districts' pubs are German on purpose.
+        if (el.closest('[data-pub-name], .pub-name, .map-label')) continue;
+        const m = re.exec(n.textContent ?? '');
+        if (m) hits.push(`"${m[1]}" in "${(n.textContent ?? '').trim().slice(0, 80)}"`);
+      }
+      for (const el of box.querySelectorAll('[aria-label], [title], [placeholder]')) {
+        for (const a of ['aria-label', 'title', 'placeholder']) {
+          const v = el.getAttribute(a);
+          const m = v ? re.exec(v) : null;
+          if (m) hits.push(`"${m[1]}" in ${a} "${v.slice(0, 80)}"`);
+        }
+      }
+      return hits;
+    },
+    { sel: root, source: GERMAN_WORDS.source },
+  );
+  if (found.length) fail(`English ${label}: German text: ${found.slice(0, 6).join('; ')}`);
+}
+
+/**
+ * Longer English strings must not break the layout: at 390 × 844, 375 ×
+ * 667, 360 × 740 and 1280 × 800 the page never scrolls sideways and no
+ * button, label or heading cuts off its text.
+ */
+async function assertEnglishFits(page, label) {
+  const original = page.viewportSize();
+  for (const size of [PHONE, { width: 375, height: 667 }, { width: 360, height: 740 }, DESKTOP]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(() => {
+      const name = (el) => `${el.tagName.toLowerCase()}.${String(el.className?.baseVal ?? el.className ?? '').trim().replace(/\s+/g, '.')}`;
+      const clipped = [...document.querySelectorAll('button, .btn, .seg, .chip, h1, h2, h3, .setting-label, .info-tag, .badge, label')]
+        .filter((el) => {
+          if (el.closest('.sr-only') || !el.textContent?.trim()) return false;
+          const st = getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden') return false;
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height) return false;
+          const cut = (st.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1) || (st.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1);
+          return cut;
+        })
+        .map((el) => `${name(el)} "${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)}" (${el.scrollWidth} > ${el.clientWidth})`);
+      return { doc: document.scrollingElement.scrollWidth, width: innerWidth, clipped };
+    });
+    const where = `English ${label} at ${size.width}x${size.height}`;
+    if (r.doc > r.width) fail(`${where}: the page is ${r.doc}px wide, the viewport ${r.width}px`);
+    if (r.clipped.length) fail(`${where}: text cut off: ${r.clipped.slice(0, 5).join(', ')}`);
+  }
+  if (original) await page.setViewportSize(original);
+}
+
+/** Screenshot, German check and layout check of one English screen. */
+async function englishScreen(page, name, label, root = 'body') {
+  await shoot(page, `en-${name}`);
+  await assertEnglish(page, label, root);
+  await assertEnglishFits(page, label);
+  log(`English ${label}: no German text, nothing cut off or scrolling sideways`);
+}
+
+/**
+ * English (ADR 0023; alone with SMOKE_ONLY=english): an English browser
+ * gets the English game. Start screen, a whole game (redeal, Skat, discard,
+ * Grand, ten tricks, score), the unlock, the card reward, the route, the
+ * Tresen, the menu with the language switch (and back, without a reload),
+ * an encounter, the rules card, the glossary and the Einführung, each at
+ * 390 × 844 and 1280 × 800: no German interface text, no text cut off, no
+ * sideways scrolling.
+ */
+async function englishPass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: 'en-GB' });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if ((await page.evaluate(() => document.documentElement.lang)) !== 'en') fail('English: the page is not marked lang="en" for an English browser');
+  const startText = await page.locator('[data-action="new-run"]').first().textContent();
+  if (!/^New run/.test((startText ?? '').trim())) fail(`English: the start button says "${startText}"`);
+  await englishScreen(page, 'start', 'start screen');
+
+  // The menu from the start screen: the language row, then the rules and the glossary.
+  await page.click('[data-action="settings"]');
+  await page.waitForSelector('[data-testid="setting-language"]');
+  if ((await page.locator('[data-testid="lang-en"][aria-pressed="true"]').count()) !== 1) fail('English: the menu does not mark English as the language');
+  await englishScreen(page, 'menu', 'menu', '.overlay');
+  // Switch to German and back, without a reload.
+  const loads = await page.evaluate(() => performance.getEntriesByType('navigation').length);
+  await page.click('[data-testid="lang-de"]');
+  await page.waitForFunction(() => document.documentElement.lang === 'de');
+  await page.waitForSelector('[data-testid="lang-de"][aria-pressed="true"]');
+  const german = (await page.locator('.menu-head h2').textContent()) ?? '';
+  if (german.trim() !== 'Menü' || !(await page.locator('.overlay').filter({ hasText: 'Klänge' }).count())) fail('English: switching to Deutsch does not draw the menu in German');
+  await page.click('[data-testid="lang-en"]');
+  await page.waitForFunction(() => document.documentElement.lang === 'en');
+  if (!(await page.locator('.overlay').filter({ hasText: 'Effects' }).count())) fail('English: switching back does not draw the menu in English');
+  if ((await page.evaluate(() => localStorage.getItem('stammtisch.lang'))) !== 'en') fail('English: the chosen language is not stored');
+  if ((await page.evaluate(() => performance.getEntriesByType('navigation').length)) !== loads) fail('English: the language switch reloaded the page');
+  log('English: menu switches to Deutsch and back without a reload, choice stored');
+  await page.click('.overlay [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="setting-language"]', { state: 'detached' });
+
+  // A whole game with the main pass's seed: one redeal, Skat, discard, Grand.
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const progress = await text(page, 'pub-progress');
+  if (!/^Game 1 of 3 · 0 \/ \d+ points$/.test(progress)) fail(`English: pub progress in the head: ${progress}`);
+  await englishScreen(page, 'table-choice', 'Skat or Hand');
+  // "Colour-blind aid": the corner letters follow the language (A L H B, sprite cb-en-*).
+  const hrefs = await page.$$eval('.hand use.face-letter', (uses) => uses.map((u) => u.getAttribute('href')));
+  if (!hrefs.length || hrefs.some((h) => !/^#cb-en-[CSHD]$/.test(h ?? ''))) fail(`English: suit letters use ${[...new Set(hrefs)].join(', ')}`);
+  const enGlyphs = await page.evaluate(() => ['C', 'S', 'H', 'D'].filter((c) => !document.getElementById(`cb-en-${c}`)?.querySelector('path')));
+  if (enGlyphs.length) fail(`English: no letter glyph for ${enGlyphs.join(', ')}`);
+  await assertFits(page, 'English Skat or Hand');
+  await dragOnto(page, '[data-testid="deck"]', '.mix-zone', 12);
+  await page.waitForSelector('.declare');
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await englishScreen(page, 'table-declare-hand', 'hand declaration');
+  await assertFits(page, 'English hand declaration');
+  await page.click('[data-action="hand-back"]');
+  await pickUpAndDiscard(page, 'English first game');
+  await englishScreen(page, 'table-declare', 'declaration after the Skat');
+  await assertFits(page, 'English declaration after the Skat');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await page.waitForSelector('[data-action="play"]');
+  const worth = await page.locator('[data-testid="value-preview"]').textContent();
+  if (!/^\d+ × \d+( × \d+)?$/.test((worth ?? '').trim())) fail(`English: value preview while playing: "${worth}"`);
+  await englishScreen(page, 'table-play', 'table while playing');
+  await assertFits(page, 'English table while playing');
+  await playOut(page, 'English first game');
+  const result = await text(page, 'score-result');
+  // The screen reader's live region speaks English too (it is .sr-only, so assertEnglish skips it).
+  const said = ((await page.locator('[data-testid="sr-live"]').textContent().catch(() => '')) ?? '').trim();
+  if (!said) fail('English: the live region said nothing during the game');
+  const germanSaid = GERMAN_WORDS.exec(said);
+  if (germanSaid || /\b(spielt|Punkte)\b/.test(said)) fail(`English: the live region speaks German: ${said.slice(0, 120)}`);
+  log(`English: live region says "${said.slice(-80)}"`);
+  await englishScreen(page, 'score', 'score board', '.overlay');
+  log(`English: game played, score ${result}`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('.score-sheet', { state: 'detached' });
+  await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail('English: no unlock announced after the first pub'));
+  await englishScreen(page, 'unlock', 'unlock', '.overlay');
+  await page.click('.sheet-unlock [data-action="close-overlay"]');
+  await page.waitForSelector('[data-testid="unlock-new"]', { state: 'detached' });
+
+  // The card reward, the route, the Tresen.
+  await page.waitForSelector('[data-testid="card-reward"]');
+  await englishScreen(page, 'card-reward', 'card reward');
+  await takeCardReward(page);
+  await page.waitForSelector('[data-testid="map-svg"]');
+  await englishScreen(page, 'route', 'route');
+  await takeRoute(page, 'Tresen');
+  await page.waitForSelector('[data-testid="shop"]');
+  await englishScreen(page, 'shop', 'bar');
+  await assertNoSideScroll(page, 'English bar');
+  // An info card of a relic at the bar: the content texts come in English.
+  const relic = page.locator('.shop [data-action="info-offer-relic"]').first();
+  if (await relic.count()) {
+    await relic.click();
+    await page.waitForSelector('.info-card, [data-testid="info-card"]');
+    await englishScreen(page, 'info-relic', 'relic info card');
+    await page.keyboard.press('Escape');
+  }
+  // The menu in a run: rules card and glossary.
+  await page.click('.hud [data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-language"]');
+  await englishScreen(page, 'menu-run', 'menu in a run', '.overlay');
+  await page.click('[data-action="rules"]');
+  await page.waitForSelector('.overlay .sheet');
+  await englishScreen(page, 'rules', 'rules card', '.overlay');
+  await page.click('.overlay [data-action="close-overlay"]');
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-action="glossary"]');
+  await page.waitForSelector('.overlay .sheet');
+  await englishScreen(page, 'glossary', 'glossary', '.overlay');
+  await page.click('.overlay [data-action="close-overlay"]');
+
+  // An encounter (encounter.json: "Der Kartengeber").
+  await resumeFixture(page, 'encounter.json');
+  await page.waitForSelector('[data-testid="encounter"]');
+  const title = ((await page.locator('[data-testid="encounter"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  if (!/The Dealer/.test(title)) fail(`English: the encounter is not in English: ${title.slice(0, 120)}`);
+  await englishScreen(page, 'encounter', 'encounter');
+  await assertNoSideScroll(page, 'English encounter', '[data-testid="encounter"]');
+  await context.close();
+
+  // The Einführung, played through in English.
+  await tutorialPass(browser, errors, PHONE, null, 'en-GB');
+  await tutorialPass(browser, errors, DESKTOP, null, 'en-GB');
+  log('English: start, game, unlock, card reward, route, bar, menu, rules, glossary, encounter and introduction');
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
+  // German stays the default (ADR 0023): every context gets a German
+  // browser unless it asks for another locale (the English pass).
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = (options = {}) => newContext({ locale: 'de-DE', ...options });
   const errors = [];
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
@@ -5736,6 +6203,16 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'weekly') {
       await weeklyPass(browser, errors, PHONE);
       await weeklyPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=a11y: Barrierefreiheit (colour-blind aid, text size, screen reader, focus).
+    if (process.env.SMOKE_ONLY === 'a11y') {
+      await a11yPass(browser, errors, reducedMotion);
+      return report(errors);
+    }
+    // SMOKE_ONLY=english: the English game (ADR 0023).
+    if (process.env.SMOKE_ONLY === 'english') {
+      await englishPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -6042,6 +6519,7 @@ async function run() {
     await factorPass(browser, errors, reducedMotion);
     await musicPass(browser, errors, reducedMotion);
     await suitTintPass(browser, errors, reducedMotion);
+    await a11yPass(browser, errors, reducedMotion);
     await bossAndKontra(browser, errors, reducedMotion);
     await bossesV2(browser, errors, reducedMotion);
     await m4(browser, errors, reducedMotion);
@@ -6093,6 +6571,7 @@ async function run() {
     await shareRunPass(browser, errors, PHONE);
     await shareRunPass(browser, errors, DESKTOP);
     await offlinePass(browser, errors);
+    await englishPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

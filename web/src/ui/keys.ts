@@ -64,12 +64,17 @@ function helpHtml(): string {
 /** Listen for the keys; `screen` holds the current screen, `layer` its dialogs. */
 export function watchKeys(root: HTMLElement, screen: HTMLElement, layer: HTMLElement, h: KeyHandlers): void {
   let help: HTMLElement | null = null;
+  /** Where focus was before the list opened: it goes back there. */
+  let before: HTMLElement | null = null;
   const closeHelp = (): void => {
     help?.remove();
     help = null;
+    if (before?.isConnected) before.focus({ preventScroll: true });
+    before = null;
   };
   const openHelp = (): void => {
     if (help) return;
+    before = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     help = document.createElement('div');
     help.className = 'overlay keys-help';
     help.setAttribute('data-testid', 'keys-help');
@@ -81,6 +86,7 @@ export function watchKeys(root: HTMLElement, screen: HTMLElement, layer: HTMLEle
       e.stopPropagation();
     });
     root.appendChild(help);
+    help.querySelector<HTMLElement>('[data-keys-close]')?.focus({ preventScroll: true });
   };
 
   // A finger on the glass: no keyboard hints (a phone with a keyboard case keeps them until then).

@@ -1,7 +1,7 @@
 // Dialogs for the save code (../savecode.ts): show it to copy or share,
 // paste one, and confirm replacing the current progress with it.
 
-import { de, t } from '../i18n';
+import { de, num, t } from '../i18n';
 import { attrs, esc } from './dom';
 
 type Sheet = (inner: string, closable?: boolean, cls?: string, overlayCls?: string) => string;
@@ -47,7 +47,7 @@ export function renderSaveExport(sheet: Sheet, code: string, copied: boolean | n
        'data-testid': 'save-code',
        'aria-label': de.save.codeLabel,
      })}>${esc(code)}</textarea>
-     <p class="small save-length">${esc(t(de.save.length, { n: code.length.toLocaleString('de-DE') }))}</p>
+     <p class="small save-length">${esc(t(de.save.length, { n: num(code.length) }))}</p>
      <div class="sheet-actions">
        <button class="btn btn-primary" ${attrs({ 'data-action': 'save-copy', 'data-testid': 'save-copy' })}>${esc(de.save.copy)}</button>
        ${share}

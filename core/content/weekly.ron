@@ -29,7 +29,7 @@
         ],
     ),
     (
-        id: "dive_air",
+        id: "dive_week",
         name: "Spelunkenluft",
         text: "Jede Kneipe hat einen zufälligen Spelunken-Malus. Dafür startest du mit dem Spelunkenkenner.",
         // Gemessen: mit 6 Groschen statt des Spelunkenkenners nur 0,7 %

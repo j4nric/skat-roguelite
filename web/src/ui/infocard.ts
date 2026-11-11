@@ -11,7 +11,7 @@
 // button with `data-action` in it (buy, use) goes on to the app and closes
 // the card. Purely presentation: it never changes the run.
 
-import { de, t } from '../i18n';
+import { de, lang, t } from '../i18n';
 import { attrs, clearSelection, esc } from './dom';
 import type { InfoModel, InfoSection } from './info';
 import { swallowClick } from './press';
@@ -19,20 +19,31 @@ import { swallowClick } from './press';
 export type InfoMode = 'sheet' | 'popover';
 
 /**
- * Matches the glossary terms of `de.keywordForms` as whole words. "Hand"
- * has an everyday sense that is no keyword: "deine Hand" (the cards held).
+ * Matches the glossary terms of `de.keywordForms` (the active language's)
+ * as whole words. In German "Hand" has an everyday sense that is no
+ * keyword: "deine Hand" (the cards held); English writes that "hand".
  */
 function keywordPattern(): RegExp {
+  const german = lang() === 'de';
   const forms = Object.keys(de.keywordForms)
     .sort((a, b) => b.length - a.length)
     .map((w) => {
-      if (w === 'Hand') return `(?<!deine |seine |meine |ihre |die |der )Hand`;
+      if (w === 'Hand' && german) return `(?<!deine |seine |meine |ihre |die |der )Hand`;
       return w;
     });
   return new RegExp(`(?<![\\p{L}])(${forms.join('|')})(?![\\p{L}])([.,:;!?)]*)`, 'gu');
 }
 
-const KEYWORD_RE = keywordPattern();
+/** The pattern per language, built when first needed. */
+const KEYWORD_RES = new Map<string, RegExp>();
+function keywordRe(): RegExp {
+  let re = KEYWORD_RES.get(lang());
+  if (!re) {
+    re = keywordPattern();
+    KEYWORD_RES.set(lang(), re);
+  }
+  return re;
+}
 
 /**
  * An effect text with its glossary terms as buttons; `open` is the keyword
@@ -42,7 +53,7 @@ const KEYWORD_RE = keywordPattern();
 export function markKeywords(text: string, section: number, open: string | null, buttons = true): string {
   let out = '';
   let last = 0;
-  for (const m of text.matchAll(KEYWORD_RE)) {
+  for (const m of text.matchAll(keywordRe())) {
     const word = m[1] ?? '';
     const tail = m[2] ?? '';
     const key = de.keywordForms[word];
@@ -80,10 +91,10 @@ export function renderInfoCard(m: InfoModel, mode: InfoMode, open: { sec: number
   const sheet = mode === 'sheet';
   return `<div class="info-card is-${mode}" role="dialog" aria-modal="${sheet ? 'true' : 'false'}" ${attrs({ 'aria-label': t(de.info.label, { name: m.title }), 'data-testid': 'info-card', 'data-info-key': m.key })}>
     ${sheet ? `<div class="info-grab" aria-hidden="true" title="${esc(de.info.swipe)}"></div>` : ''}
-    <header class="info-head">
+    <div class="info-head">
       <div class="info-art">${m.art}</div>
       <div class="info-title"><span class="info-kind">${esc(m.kind)}</span><h2>${esc(m.title)}</h2>${facts}</div>
-    </header>
+    </div>
     ${m.sections.map((s, i) => section(s, i, open, sheet)).join('')}
     ${m.extra ?? ''}
     ${sheet ? `<div class="info-actions">${m.actions ?? ''}<button type="button" class="btn" data-info-close="true">${esc(de.info.close)}</button></div>` : ''}

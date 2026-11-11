@@ -32,7 +32,7 @@ export function renderRules(): string {
     .join('');
   const list = (items: readonly string[]): string => items.map((i) => `<li>${esc(i)}</li>`).join('');
   return `<h2>${esc(r.title)}</h2>
-    <div class="rules-body" data-testid="rules">
+    <div class="rules-body" data-testid="rules" tabindex="0">
       <p class="rules-intro">${esc(r.intro)}</p>
       <h3 class="rules-h">${esc(r.flowTitle)}</h3>
       <ol class="rules-flow">${flow}</ol>
@@ -49,6 +49,7 @@ export function renderRules(): string {
       <ul class="rules-list">${list(r.bent)}</ul>
       <h3 class="rules-h">${esc(r.runTitle)}</h3>
       ${terms(r.run, 'rules-run')}
+      ${r.words.length ? `<h3 class="rules-h">${esc(r.wordsTitle)}</h3>${terms(r.words, 'rules-words')}` : ''}
     </div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'rules-close' })}>${esc(de.app.close)}</button>`;
 }

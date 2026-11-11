@@ -3,16 +3,17 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
-import { de, bossEditionText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
+import { de, LANGS, lang, bossEditionText, dateText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
 import type { RunRecord } from '../storage';
 import { CHARACTERS } from '../types';
 import type { Character, CharacterEntry, DeckCard, MetaView, Reward, RewardInfo, RunView, Suit, UnlockEntry } from '../types';
 import { backDesign } from './backs';
-import { cardBack, cardSvg, editionLook, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
+import { cardBack, cardSvg, editionLook, lookLabel, lookSvg, modIcon, suitIcon, type CardLook } from './cards';
 import { attrs, esc, reducedMotion } from './dom';
 import { canVibrate } from '../haptics';
+import { TEXT_SIZES } from '../settings';
 import { moonIcon, renderNightSheet } from './night';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
@@ -560,7 +561,12 @@ function startBoard(meta: MetaView): string {
 }
 
 function sheet(inner: string, closable = true, cls = '', overlayCls = ''): string {
-  return `<div class="overlay ${overlayCls}" ${closable ? attrs({ 'data-action': 'close-overlay' }) : ''}><div class="sheet ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
+  // The dialog is named by its first heading (screen readers say it on opening). The id
+  // depends only on the sheet's class, so the same sheet keeps the same HTML.
+  const id = `dlg-${(cls.split(' ')[0] || overlayCls.split(' ')[0] || 'sheet').replace(/[^a-z0-9-]/gi, '')}`;
+  const named = inner.replace(/<h2(?=[\s>])(?![^>]*\sid=)/, `<h2 id="${id}"`);
+  const label = named === inner ? '' : ` aria-labelledby="${id}"`;
+  return `<div class="overlay ${overlayCls}" ${closable ? attrs({ 'data-action': 'close-overlay' }) : ''}><div class="sheet ${cls}" role="dialog" aria-modal="true"${label}>${named}</div></div>`;
 }
 
 /**
@@ -575,7 +581,7 @@ export function renderRiseChoice(view: RunView, picked: number[]): string {
   const cards = hand
     .map((c) => {
       const on = picked.includes(c.id);
-      return `<button class="rise-card${on ? ' is-picked' : ''}" ${attrs({ 'data-action': 'rise-pick', 'data-id': c.id, 'data-testid': `rise-pick-${c.id}`, 'aria-pressed': on ? 'true' : 'false', 'aria-label': cardName(c.kind) })}><span class="card">${lookSvg(c)}</span></button>`;
+      return `<button class="rise-card${on ? ' is-picked' : ''}" ${attrs({ 'data-action': 'rise-pick', 'data-id': c.id, 'data-testid': `rise-pick-${c.id}`, 'aria-pressed': on ? 'true' : 'false', 'aria-label': lookLabel(c) })}><span class="card">${lookSvg(c)}</span></button>`;
     })
     .join('');
   const ready = picked.length === choice.pick;
@@ -633,15 +639,37 @@ function onOff(action: string, on: boolean): string {
     </div>`;
 }
 
-/** A toggle that names its setting and state ("Musik: An"); a tap flips it. */
-function toggle(action: string, name: string, on: boolean): string {
+/**
+ * A toggle that names its setting and state ("Musik: An"); a tap flips it.
+ * `label` is the setting's full name for screen readers and the tooltip
+ * when the button shows a short one.
+ */
+function toggle(action: string, name: string, on: boolean, label = name, hint: string | null = null): string {
   return `<button class="seg seg-toggle ${on ? 'is-picked' : ''}" ${attrs({
     'data-action': action,
     'data-on': on ? 'false' : 'true',
     'data-testid': `toggle-${action}`,
     'aria-pressed': on ? 'true' : 'false',
-    'aria-label': name,
+    'aria-label': label,
+    title: hint,
   })}>${esc(t(on ? de.menu.toggleOn : de.menu.toggleOff, { name }))}</button>`;
+}
+
+/**
+ * "Schriftgröße" as one button that names the size; a tap takes the next
+ * one (Normal, Groß, Sehr groß, then Normal again).
+ */
+function textSizeToggle(ui: UiState): string {
+  const now = ui.settings.textSize;
+  const next = TEXT_SIZES[(TEXT_SIZES.indexOf(now) + 1) % TEXT_SIZES.length] ?? 'normal';
+  return `<button class="seg seg-toggle ${now !== 'normal' ? 'is-picked' : ''}" ${attrs({
+    'data-action': 'text-size',
+    'data-size': next,
+    'data-testid': 'toggle-text-size',
+    'data-now': now,
+    'aria-label': `${de.menu.textSize}: ${de.menu.textSizes[now]}`,
+    title: de.menu.textSizeHint,
+  })}>${esc(t(de.menu.textSizeShort, { size: de.menu.textSizes[now] }))}</button>`;
 }
 
 /**
@@ -660,6 +688,18 @@ function handSortToggle(ui: UiState): string {
   })}>${esc(t(de.handSort.toggle, { mode: manual ? de.handSort.manual : de.handSort.auto }))}</button>`;
 }
 
+/**
+ * "Sprache / Language" (ADR 0023) in the menu's head: each language named
+ * in itself, so it is found whichever is on; the group says it in both.
+ */
+function languageSwitch(): string {
+  const langs = LANGS.map(
+    (l) =>
+      `<button class="seg ${lang() === l ? 'is-picked' : ''}" ${attrs({ 'data-action': 'language', 'data-lang': l, 'data-testid': `lang-${l}`, lang: l, 'aria-pressed': lang() === l ? 'true' : 'false' })}>${esc(de.lang.names[l])}</button>`,
+  ).join('');
+  return `<div class="segmented lang-switch" ${attrs({ role: 'group', 'aria-label': de.lang.label, title: de.lang.label, 'data-testid': 'setting-language' })}>${langs}</div>`;
+}
+
 /** The settings as tight rows: label left, switch right. */
 function settingsBlock(ui: UiState): string {
   const tempos = (['slow', 'normal', 'fast'] as const)
@@ -673,7 +713,7 @@ function settingsBlock(ui: UiState): string {
     ${reducedMotion() ? `<p class="small menu-note">${esc(de.menu.reducedMotion)}</p>` : ''}
     <div class="menu-row"><span class="setting-label">${esc(de.menu.sound)}</span><div class="segmented">${toggle('sound', de.menu.effects, ui.settings.sound)}${toggle('music', de.menu.music, ui.settings.music)}${canVibrate() ? toggle('vibrate', de.vibration.label, ui.settings.vibrate) : ''}</div></div>
     <div class="menu-row" ${attrs({ 'data-testid': 'setting-table' })}><span class="setting-label">${esc(de.handSort.row)}</span><div class="segmented" ${attrs({ title: de.menu.thinkingHint })}>${toggle('thinking', de.menu.thinking, ui.settings.thinking)}${handSortToggle(ui)}</div></div>
-    <div class="menu-row" ${attrs({ title: de.menu.suitTintHint, 'data-testid': 'setting-suit-tint' })}><span class="setting-label">${esc(de.menu.suitTint)}</span>${onOff('suit-tint', ui.settings.suitTint)}</div>
+    <div class="menu-row" ${attrs({ 'data-testid': 'setting-display' })}><span class="setting-label">${esc(de.menu.display)}</span><div class="segmented">${toggle('suit-tint', de.menu.suitTintShort, ui.settings.suitTint, de.menu.suitTint, de.menu.suitTintHint)}${toggle('color-blind', de.menu.colorBlindShort, ui.settings.colorBlind, de.menu.colorBlind, de.menu.colorBlindHint)}${textSizeToggle(ui)}</div></div>
     ${backPick(ui)}
     <div class="menu-row menu-hints"><span class="setting-label">${esc(de.menu.hints)}</span>${onOff('hints', ui.settings.hints)}<button class="btn" ${attrs({
       'data-action': 'hints-reset',
@@ -750,6 +790,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'menu':
       return sheet(
         `<div class="menu-head"><h2>${esc(de.header.menu)}</h2>
+           ${languageSwitch()}
            <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}>${esc(ui.account.user ? t(de.account.menuAccount, { name: accountName(ui.account.user) }) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span></div>
          ${settingsBlock(ui)}
          ${view && ui.screen === 'run' && !view.weekly ? seedRow(view.seed, view.character.character, ui, view.stake ?? 0) : ''}
@@ -828,7 +869,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
             'data-id': c.id,
             disabled: !ok,
             'aria-pressed': on ? 'true' : 'false',
-            'aria-label': cardName(c.kind),
+            'aria-label': lookLabel(c),
           })}>${lookSvg(c, 'full')}</button>`;
         })
         .join('');
@@ -1083,7 +1124,7 @@ function bookPage(meta: MetaView): string {
 function recentRow(r: RunRecord, meta: MetaView): string {
   const entry = meta.characters.find((c) => c.character === r.character);
   const date = new Date(r.date);
-  const when = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const when = Number.isNaN(date.getTime()) ? '' : dateText(date, { day: '2-digit', month: '2-digit', year: '2-digit' });
   const replay = entry?.unlocked
     ? `<button class="btn btn-small" ${attrs({ 'data-action': 'replay', 'data-seed': r.seed, 'data-character': r.character, 'data-stake': r.stake ?? 0, 'aria-label': t(de.book.replayAria, { seed: r.seed, character: shortName(r.character) }) })}>${esc(de.book.replay)}</button>`
     : '';
@@ -1162,9 +1203,9 @@ function relicsPage(meta: MetaView): string {
 /** The Vereinsbuch: the unlocks page, the statistics page or the relics page. */
 export function renderBook(meta: MetaView, tab: BookTab, history: RunRecord[]): string {
   const page = tab === 'stats' ? statsPage(meta, history) : tab === 'relics' ? relicsPage(meta) : bookPage(meta);
-  return `<header class="ledger-head"><h2>${esc(de.book.title)}</h2><p class="ledger-sub">${esc(de.book.subtitle)}</p></header>
+  return `<div class="ledger-head"><h2>${esc(de.book.title)}</h2><p class="ledger-sub">${esc(de.book.subtitle)}</p></div>
     ${bookTabs(tab)}
-    <div class="ledger-page sheet-body" data-page="${tab}">${page}</div>
+    <div class="ledger-page sheet-body" data-page="${tab}" tabindex="0">${page}</div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 

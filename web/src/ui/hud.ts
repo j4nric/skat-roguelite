@@ -177,6 +177,7 @@ export function renderHud(view: RunView): string {
     : '';
   const fill = meterPercent(s.score, s.target);
   return `<header class="hud">
+  <h1 class="sr-only">${esc(de.app.title)}</h1>
   <div class="hud-top">
     <button class="hud-where" ${attrs({ 'data-action': 'overview', 'aria-label': de.header.overview })}>
       <span class="hud-where-main">${esc(where)}</span>
@@ -185,11 +186,11 @@ export function renderHud(view: RunView): string {
       }</span>
     </button>
     ${boss}
-    <span class="hud-coins" aria-label="${esc(de.header.coins)}">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b></span>
+    <span class="hud-coins">${coinIcon(16)}<b data-testid="coins">${esc(view.coins)}</b><span class="sr-only"> ${esc(de.header.coins)}</span></span>
     <button class="icon-btn" ${attrs({ 'data-action': 'menu', 'aria-label': de.header.menu })}><span class="burger"></span></button>
   </div>
   <div class="hud-board">
-    <div class="slate" role="meter" aria-label="${esc(de.header.accountTarget)}" aria-valuemin="0" aria-valuemax="${esc(s.target)}" aria-valuenow="${esc(s.score)}">
+    <div class="slate" role="meter" ${attrs({ 'aria-label': de.header.accountTarget, 'aria-valuemin': Math.min(0, s.score), 'aria-valuemax': Math.max(s.target, s.score), 'aria-valuenow': s.score, 'aria-valuetext': t(de.pub.points, { score: s.score, target: s.target }) })}>
       <div class="slate-text">
         <span class="slate-label">${view.phase === 'Game' ? progress : esc(de.header.accountTarget)}</span>
         <span class="slate-row"><b class="slate-score ${s.score < 0 ? 'is-negative' : ''}" data-testid="account">${esc(s.score)}</b><span class="slate-sep"> / </span><b class="slate-target">${esc(s.target)}</b></span>
@@ -197,8 +198,8 @@ export function renderHud(view: RunView): string {
       <div class="chalk-meter ${fill >= 100 ? 'is-full' : ''}"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-hud')}</div>
     </div>
     <div class="hud-counts">
-      <div class="count-row" aria-label="${esc(t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }))}"><span class="count-label">${esc(de.header.games)}</span><span class="pips">${pips(s.games_left, s.game_limit, 'pip-game')}</span><b data-testid="games-left" class="sr-only">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>
-      <div class="count-row" aria-label="${esc(t(de.header.passesAria, { left: s.redeals_left }))}"><span class="count-label">${esc(de.header.passes)}</span><span class="pips">${pips(s.redeals_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num">${esc(s.redeals_left)}</b></div>
+      <div class="count-row" role="group" aria-label="${esc(t(de.header.gamesAria, { left: s.games_left, limit: s.game_limit }))}"><span class="count-label" aria-hidden="true">${esc(de.header.games)}</span><span class="pips" aria-hidden="true">${pips(s.games_left, s.game_limit, 'pip-game')}</span><b data-testid="games-left" class="sr-only" aria-hidden="true">${esc(t(de.header.gamesLeft, { left: s.games_left, limit: s.game_limit }))}</b></div>
+      <div class="count-row" role="group" aria-label="${esc(t(de.header.passesAria, { left: s.redeals_left }))}"><span class="count-label" aria-hidden="true">${esc(de.header.passes)}</span><span class="pips" aria-hidden="true">${pips(s.redeals_left, 0, 'pip-pass')}</span><b data-testid="passes-left" class="count-num" aria-hidden="true">${esc(s.redeals_left)}</b></div>
     </div>
   </div>
   ${neededLine(view)}

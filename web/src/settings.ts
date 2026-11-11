@@ -2,7 +2,9 @@
 // sound effects, music, whether a thought bubble shows while the opponents think, and
 // whether the Wirt explains things the first time they happen, and whether
 // the cards' paper takes a light tint of their suit, how the hand is
-// sorted and whether the phone vibrates.
+// sorted and whether the phone vibrates; and the display aids
+// (Barrierefreiheit): the suit letters of the "Farbenblind-Hilfe" and the
+// text size ("Schriftgröße").
 // Stored in localStorage, every access guarded.
 
 import { readJson, writeKey } from './storage';
@@ -27,12 +29,21 @@ export interface Settings {
   handSort: HandSort;
   /** Vibration on the player's tricks and on results where the device has it (./haptics.ts). */
   vibrate: boolean;
+  /** "Farbenblind-Hilfe": suit letters on the cards and shapes beside colour-only marks (CSS, ./style.css). */
+  colorBlind: boolean;
+  /** "Schriftgröße": the type scale of the whole app (CSS variables, ./style.css). */
+  textSize: TextSize;
 }
 
 export type HandSort = 'auto' | 'manual';
 
+export type TextSize = 'normal' | 'large' | 'xlarge';
+
+/** The text sizes in the order the menu toggle steps through them. */
+export const TEXT_SIZES: readonly TextSize[] = ['normal', 'large', 'xlarge'];
+
 const KEY = 'stammtisch.settings';
-const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null, handSort: 'auto', vibrate: true };
+const DEFAULTS: Settings = { tempo: 'normal', sound: true, music: true, thinking: true, hints: true, suitTint: false, back: null, handSort: 'auto', vibrate: true, colorBlind: false, textSize: 'normal' };
 
 /** Factor applied to every animation duration and pause. */
 export const TEMPO_FACTOR: Record<Tempo, number> = {
@@ -56,6 +67,8 @@ export function loadSettings(): Settings {
     back: typeof parsed.back === 'string' ? parsed.back : null,
     handSort: parsed.handSort === 'manual' ? 'manual' : 'auto',
     vibrate: parsed.vibrate !== false,
+    colorBlind: parsed.colorBlind === true,
+    textSize: TEXT_SIZES.includes(parsed.textSize as TextSize) ? (parsed.textSize as TextSize) : 'normal',
   };
 }
 

@@ -12,7 +12,7 @@ Dieses Dokument hält die Grundentscheidungen fest und beschreibt das Spiel so w
 
 Referenzen: Balatro (Score-Formel, Run-Struktur, Shop), Inscryption (Gegner als Figuren, Regelbrüche), Slay the Spire (Charaktere mit eigenem Kartenpool).
 
-Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch. Zielgerät: Handy hochkant zuerst.
+Darstellung: deutsches Blatt (Eichel, Grün, Rot, Schellen; Unter, Oberin, Daus), siehe ADR 0010 und 0014. Dieses Dokument verwendet weiter die französischen Begriffe, weil sie im Code und in der Skatordnung stehen. Sprache des Spiels: Deutsch, Englisch als zweite Sprache (ADR 0023). Zielgerät: Handy hochkant zuerst.
 
 ---
 
@@ -1867,6 +1867,16 @@ Umgesetzt am 08.11.2026. Der Kern läuft als WebAssembly im Browser und der Spie
 - **Offline**: Das Spiel läuft vollständig. Angemeldet zeigt das Konto „offline“; was sich geändert hat, geht hoch, sobald der Browser wieder online ist oder die App in den Vordergrund kommt. Die Tafel des Tages zeigt einen kurzen Hinweis statt der Liste, die Knöpfe des Kontos (Anmelden, Anlegen, Code) sind mit Hinweis gesperrt.
 - **Entwicklung**: `vite dev` hat keinen Worker, nur `vite build` und `vite preview`. Caddy liefert `/sw.js` mit `Cache-Control: no-cache` aus.
 
+### 14.6 Zwei Sprachen (ADR 0023)
+
+Umgesetzt am 10.11.2026. Deutsch ist die Voreinstellung, Englisch die zweite Sprache; das deutsche Blatt bleibt in beiden.
+
+- **Texte**: `web/src/i18n/de.ts` und `web/src/i18n/en.ts` mit denselben Schlüsseln. `en.ts` ist gegen die Form von `de.ts` getypt, `web/scripts/check-i18n.mjs` prüft dazu offene Tabellen, Platzhalter und Listenlängen. Im Web-Code heißt die aktive Sprache weiter `de` (eine lebende Bindung in `web/src/i18n/index.ts`, die `setLanguage` umstellt).
+- **Wahl**: beim ersten Start nach der Browsersprache (deutsch nur für deutsche Browser), dann im Menü „Sprache / Language“, gespeichert unter `stammtisch.lang`. Der Wechsel zeichnet alles neu, ohne Neuladen. Englisch liegt in einem eigenen Bundle-Stück und wird nur geladen, wenn es gewählt ist.
+- **Inhalte**: Der Kern liefert weiter die deutschen Namen und Texte aus `core/content/*.ron`. `web/src/i18n/localize.ts` ersetzt sie in jeder Sicht nach Content-Id durch die englischen aus `web/src/i18n/en-content.ts` (Relikte, Zinken mit eingesetztem Wert, Schnäpse, Bosse und ihre Spieler, Begegnungen und ihre Möglichkeiten, Freischaltungen, Mali, Verschärfungen, Rückseiten, Stammgäste mit ihren Sprüchen, Stadtteile). Kneipennamen bleiben deutsch.
+- **Formate**: Zahlen und Daten über `Intl` in der Sprache (`1,5` und `1.5`, `37,5 %` und `37.5%`), Anführungszeichen „…“ und “…”.
+- **Prüfung**: Der Rauchtest läuft deutsch; `SMOKE_ONLY=english` (und am Ende des vollen Laufs) spielt Start, ein ganzes Spiel, Kartenbelohnung, Route, Tresen, Menü mit Sprachwechsel, Regelkarte, Glossar, eine Begegnung und die Einführung auf Englisch, ohne deutsche Oberflächenwörter, abgeschnittene Texte oder seitliches Scrollen.
+
 ---
 
 ## 15. Roadmap
@@ -1906,7 +1916,7 @@ Entschieden am 01.11.2026 (über das Cockpit):
 | Frontend | Web-App mit Rust-Kern als WebAssembly statt Godot, ADR 0009. |
 | Kartenbild | Deutsches Blatt, ADR 0010. |
 | Zielgerät | Handy hochkant zuerst. |
-| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. |
+| Sprache | Nur Deutsch für v1. Texte kommen aus einer Übersetzungsdatei. Seit 10.11.2026 (ADR 0023): Deutsch als Voreinstellung, Englisch als zweite Sprache, Texte aus `de.ts` und `en.ts`. |
 | Assets | CC0, CC-BY und SIL OFL, mit Namensnennung. Jede Quelle steht in `web/LICENSES.md` und im Abspann. |
 | Schrift | VT323 (S4 aus der Schriftauswahl), SIL OFL |
 | Fortschritt | Laufender Run, Statistik und Freischaltungen im Browser. Freigeschaltet werden der Nullspieler und Relikte (9.3). |
@@ -1977,6 +1987,18 @@ Der geführte erste Abend (Hinweise des Wirts) setzt voraus, dass der Spieler Sk
 - **Lektionen**: (1) Eichel nach dem Skat, mit 3: Ziel, Skat oder Hand, Drücken (beide Schellen, um Schellen frei zu machen), Ansage (Farbe, Grand, Null), Trumpfordnung, Bedienen, Augen und 61, Grundwert × Stufen, Abrechnung mit Schneider und Schwarz. (2) Null nach dem Skat: zwei Daus drücken, keinen Stich machen, Null-Reihenfolge, Null-Wert mit geduckten Siebenen. (3) Grand Hand mit 4: Hand bringt eine Stufe, nur Unter sind Trumpf, „Noch nötig“. Danach Kartenbelohnung (Zinken), Routenwahl, Tresen und Relikte, dann „Echten Abend starten“ oder „Zum Start“.
 - **Web-App**: Die Texte und wann sie kommen stehen in `web/src/tutorial.ts` (Darstellung): Jeder Schritt hat eine Situation, einen Text und ein Ziel, auf das der Wirt mit Rahmen und Pfeil zeigt. Infoschritte gehen mit Antippen weiter, Handlungsschritte, sobald der Spieler handelt; ein Schritt, dessen Situation vorbei ist, gilt als erledigt, allgemeine Schritte fangen andere Wege auf (Hand statt Skat, andere Spielart, verlorenes Spiel oder verlorene Kneipe). „Einführung beenden“ steht an jeder Sprechblase. Die normalen Hinweise des Wirts schweigen solange.
 - **Kein Run**: Der Einführungs-Run wird nie gespeichert, seine Ereignisse gehen nicht an den Meta-Stand (keine Freischaltungen, keine Statistik, kein Eintrag in der Liste der Runs), und ein laufender gespeicherter Run bleibt unberührt.
+
+### 16.2 Barrierefreiheit (10.11.2026)
+
+Vorbereitung auf die Veröffentlichung im App Store. Entschieden von Claude im Rahmen der Autonomie-Regel; reine Darstellung, der Kern bleibt unberührt.
+
+- **Menü-Zeile „Darstellung“**: ersetzt die Zeile „Kartenfarbe tönen“ und hält drei Schalter, damit das Menü bei 375 × 667 weiter ohne Scrollen passt: „Tönen“ (wie bisher), „Farbenblind“ und „Schrift“. Gespeichert mit den übrigen Einstellungen (`stammtisch.settings`: `colorBlind`, `textSize`), wirksam als Attribute an `<html>` (`data-color-blind`, `data-text-size`), sodass nur CSS umschaltet und nichts neu gezeichnet werden muss.
+- **Farbenblind-Hilfe** (aus): Die vier Farben unterscheiden sich sonst vor allem über die Farbe, was bei Rot-Grün-Schwäche wegfällt (Grün, Rot und Schellen werden olivgelb). Mit der Hilfe trägt jede volle Karte unter dem Eckzeichen den Buchstaben ihrer Farbe (E, G, R, S, `de.suitLetters`) hell auf einem dunklen Schild, als Pixelglyphe im Sprite (`cb-*`); die Ecke ist bei allen Bildern frei, nur das große Daus-Zeichen wird leicht überdeckt. Eine offene Wandelkarte hat keinen Buchstaben, eine festgelegte den ihrer neuen Farbe. Blue Curaçao und die Wandelkarte zeigen auf ihrem Schild den Buchstaben statt des Zeichens. Die Seltenheit der Bierdeckel wechselt vom farbigen Rand zu ein bis vier Punkten. Geprüft mit simulierter Deuteranopie und Protanopie (Farbmatrizen nach Machado 2009, im Smoke-Test `a11yPass`); Wege auf dem Stadtplan (Linienart), Stationen (Symbole), Flüche und Zinken (Rahmenform, Band mit Zahl) sowie die Zielleiste (Zahlen) waren schon ohne Farbe lesbar.
+- **Schriftgröße** (Normal, Groß, Sehr groß): ein Tipp wechselt zur nächsten Stufe. Die Schriftskala wächst um 1 bis 4 Pixel je Stufe, die kleinen Größen am meisten, die Anzeigezahlen der Abrechnung am wenigsten. Damit der Tisch weiter ohne Scrollen passt, geben die Handkarten beim Ansagen und die Karten auf dem Filz bei „Skat oder Hand“ etwas Höhe ab; das Menü stellt die Beschriftung über die Schalter und scrollt bei Bedarf in sich. Nichts scrollt seitwärts (390 × 844, 360 × 740).
+- **Bildschirmleser**: Karten heißen nach den Sichtdaten und `de.ts`, etwa „Rot-Oberin, gezinkt: Aufdruck +3“ (Name der Zinke und die Zahl auf ihrem Band, Flüche mit „(Fluch)“); Stichkarten mit dem Platz („Jupp: …“). Die Kästen der Gegner nennen Position, Kartenzahl und Stiche, der Kopf Groschen, Spiele und Einmischen; die Zielleiste ist ein `meter` mit Text, auch bei negativem Konto. Eine höfliche Live-Region (`role="status"`, `web/src/ui/a11y.ts`) sagt kurz an, was ein Gegner spielt, wer den Stich bekommt und das Ergebnis des Spiels; beim Vorspulen schweigt sie. Jeder Dialog ist nach seiner Überschrift benannt.
+- **Tastatur und Fokus**: Öffnet ein Dialog, geht der Fokus hinein (der Name wird vorgelesen); Tab bleibt im obersten Dialog; Escape schließt, wo die App es erlaubt (nicht die Abrechnung und den Boss, die ihren Knopf haben); danach kehrt der Fokus zum Auslöser zurück. Wird derselbe Dialog neu gezeichnet (ein Schalter im Menü), bleibt der Fokus auf demselben Bedienelement. Fokusringe sind 3 px Mint. Scrollende Textflächen (Regelkarte, Glossar, Vereinsbuch) sind per Tab erreichbar.
+- **Kontrast**: Kupfer als Schriftfarbe auf den Schieferflächen hatte 4,1 : 1; Text in Kupfer nimmt jetzt das helle Kupfer (`--accent-light`), dazu dunklere Beschriftungen auf dem Stadtplan und hellere „Verkauft“-Felder am Tresen (WCAG 4,5 : 1). Flächen und Knöpfe in Kupfer bleiben.
+- **Weniger Bewegung**: `prefers-reduced-motion` kürzt jede Animation auf 1 ms und eine Wiederholung (`style.css`), dazu schalten Rauch, Lampe, Blinzeln, Denkblase und die übrigen Endlos-Animationen ab; das Tempo der Wiedergabe sinkt auf ein Viertel. Ein eigener Schalter in der App fehlt noch (eigene Zeile im Menü nötig).
 
 ## 17. Offen
 

@@ -263,7 +263,7 @@ mod tests {
             short.redeals_left(&content) + 1,
             plain.redeals_left(&content)
         );
-        let dive = with_rule(&content, "dive_air", &RunStart::default());
+        let dive = with_rule(&content, "dive_week", &RunStart::default());
         assert!(
             dive.series().night_malus.is_some(),
             "a malus in the first pub"
