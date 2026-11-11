@@ -26,6 +26,14 @@
 // back: Id der Kartenrückseite (web/src/ui/backs.ts, Bilder aus
 // tools/cardart/backs.py) für beide Figuren; jeder Boss seine eigene, auch
 // Der Alte (nicht die des Bosses, dessen Regel gerade gilt).
+// figures[].quips: Sprüche der Figur in der Stimme des Bosses (DESIGN 11,
+// wie die Stammgäste in guests.ron, je Anlass zwei Varianten, höchstens
+// 40 Zeichen): greet beim Auftritt (die linke Figur auf dem Boss-Blatt, die
+// rechte am Tisch), win und lose bei einem Stich mit 10 Augen oder mehr
+// (ihre Seite, deine), won und lost am Ende eines Spiels (ihre Seite
+// gewinnt, du gewinnst), beaten wenn du die Boss-Kneipe gewinnst, victory
+// wenn der Boss sie gewinnt. Englisch nach Boss-Id in
+// web/src/i18n/en-content.ts (figureQuips). Nur Darstellung.
 [
     (
         id: "the_pusher",
@@ -36,8 +44,32 @@
         // Schmuggelware: Luschen, die doch etwas wert sind. Er schiebt die
         // Siebenen, seine Hehlerin die Achten.
         figures: [
-            (name: "Der Schieber", edition: [((rank: Some(Seven)), "points", 4)]),
-            (name: "Die Hehlerin", edition: [((rank: Some(Eight)), "points", 3)]),
+            (
+                name: "Der Schieber",
+                edition: [((rank: Some(Seven)), "points", 4)],
+                quips: (
+                    greet: ["Hand aufs Herz: Hier wird nicht geguckt.", "Skat bleibt zu. Ist so abgemacht."],
+                    win: ["Unter der Hand verschoben.", "Ware ist angekommen."],
+                    lose: ["Kleiner Schwund. Passiert.", "Den buch ich ab."],
+                    won: ["Geschäft ist Geschäft.", "Lief wie geschmiert."],
+                    lost: ["Na, du schiebst ja auch.", "Verlust. Wird verrechnet."],
+                    beaten: ["Respekt. Du kannst handeln.", "Gut. Ich bin raus aus dem Geschäft."],
+                    victory: ["Tja. Der Laden gehört mir.", "Hand drauf: Das war's."],
+                ),
+            ),
+            (
+                name: "Die Hehlerin",
+                edition: [((rank: Some(Eight)), "points", 3)],
+                quips: (
+                    greet: ["Was du hast, kauf ich. Billig.", "Frag nicht, woher die Achten sind."],
+                    win: ["Hab ich günstig gekriegt.", "Der Stich ist vom Laster gefallen."],
+                    lose: ["Den hätt ich gern zurück.", "Gestohlen? Na, so was."],
+                    won: ["Gute Ware, guter Preis.", "Das läuft über meine Bücher."],
+                    lost: ["Hm. Die Ware war heiß.", "Gut gehandelt, Kleiner."],
+                    beaten: ["Du hast mich übers Ohr gehauen.", "Ich schließ den Laden. Für heute."],
+                    victory: ["Danke für die Ware.", "Komm wieder. Ich kauf alles."],
+                ),
+            ),
         ],
         // Vorläufig (03.11.2026): drei volle Handspiele gegen zwei
         // Ausgaben mit Augen. Bis ADR 0017 1,0 (Nullspieler 0,4, gemessen
@@ -65,8 +97,32 @@
         // Aus der alten Zeit: Die Oma spielt die alte Oberin (6 statt 3
         // Augen), der Opa den alten König (6 statt 4).
         figures: [
-            (name: "Die Oma", edition: [((rank: Some(Queen)), "points", 3)]),
-            (name: "Der Opa", edition: [((rank: Some(King)), "points", 2)]),
+            (
+                name: "Die Oma",
+                edition: [((rank: Some(Queen)), "points", 3)],
+                quips: (
+                    greet: ["Komm, Kind, ich misch dir was.", "Ich hab in deinen Karten gekramt."],
+                    win: ["Die alte Oberin sticht noch.", "Siehst du, Kind? Erfahrung."],
+                    lose: ["Ach, die Brille.", "Na, nimm ruhig, Kind."],
+                    won: ["Wie früher bei Tante Käthe.", "Iss was, Kind, du bist so blass."],
+                    lost: ["Fein, Kind. Ganz fein.", "Du hast ja doch aufgepasst."],
+                    beaten: ["Gut, Kind. Die Karten kriegst du wieder.", "Jetzt bist du groß, Kind."],
+                    victory: ["Nicht traurig sein, Kind.", "Komm Sonntag wieder. Es gibt Kuchen."],
+                ),
+            ),
+            (
+                name: "Der Opa",
+                edition: [((rank: Some(King)), "points", 2)],
+                quips: (
+                    greet: ["Setz dich. Der König sitzt schon.", "Wir spielen wie '53."],
+                    win: ["Der alte König lebt.", "Eins für den Opa."],
+                    lose: ["Hab's nicht gesehen.", "Wo ist mein Hörgerät?"],
+                    won: ["Ha! Das kann der Opa noch.", "So spielte man das. Damals."],
+                    lost: ["Hm. Gar nicht schlecht.", "Du erinnerst mich an mich."],
+                    beaten: ["Gut gemacht. Ich geh schlafen.", "Der König dankt ab."],
+                    victory: ["Erfahrung, mein Kind.", "Das war Skat wie früher."],
+                ),
+            ),
         ],
         // Vorläufig (03.11.2026): Die Flüche treffen den Alleinspieler
         // (Ramponiert, Fleckig) härter als den Nullspieler (im Null zählt
@@ -84,8 +140,32 @@
         // Sie sehen doppelt: Bei Fritz steht die Acht zwei Stufen höher
         // (zwei Nullen übereinander), bei Franz die Neun.
         figures: [
-            (name: "Fritz", edition: [((rank: Some(Eight)), "rank", 2)]),
-            (name: "Franz", edition: [((rank: Some(Nine)), "rank", 2)]),
+            (
+                name: "Fritz",
+                edition: [((rank: Some(Eight)), "rank", 2)],
+                quips: (
+                    greet: ["Ich bin Fritz. Das ist Franz.", "Wir denken immer dasselbe."],
+                    win: ["Hat Franz auch so gesehen.", "Doppelt hält besser."],
+                    lose: ["Franz, hast du das gesehen?", "Das war Franz' Schuld."],
+                    won: ["Zwei Köpfe, ein Spiel.", "Gleich und gleich, Franz!"],
+                    lost: ["Franz hat gepennt.", "Doppelt verloren. Hm."],
+                    beaten: ["Gegen dich hilft kein Spiegel.", "Wir gehen. Beide."],
+                    victory: ["Zwei gegen einen. Sorry.", "Das haben wir kommen sehen."],
+                ),
+            ),
+            (
+                name: "Franz",
+                edition: [((rank: Some(Nine)), "rank", 2)],
+                quips: (
+                    greet: ["Ich bin Franz. Das ist Fritz.", "Fritz weiß, was ich hab."],
+                    win: ["Fritz hat's gewusst.", "Sehen wir doppelt? Ja."],
+                    lose: ["Fritz! Warum?", "Hab ich Fritz doch gesagt."],
+                    won: ["Wie aus einem Kopf.", "Fritz, wir sind gut."],
+                    lost: ["Das war Fritz.", "Nächstes Mal schaut Fritz genauer."],
+                    beaten: ["Fritz, wir haben verloren. Beide.", "Hast du auch einen Zwilling?"],
+                    victory: ["Doppelt gewinnt.", "Fritz und ich danken."],
+                ),
+            ),
         ],
         // Vorläufig (03.11.2026), bis ADR 0017 1,0. Runde 3 (05.11.2026):
         // 1,2 → 1,35, in Stadtteil 1 mit 70 bis 85 % der leichteste Boss.
@@ -104,8 +184,32 @@
         // Sie lassen laufen: seine Daus zählen 6 Augen weniger, ihre
         // Zehnen 5 (Ramponiert).
         figures: [
-            (name: "Der Ramscher", edition: [((rank: Some(Ace)), "battered", 6)]),
-            (name: "Die Ramscherin", edition: [((rank: Some(Ten)), "battered", 5)]),
+            (
+                name: "Der Ramscher",
+                edition: [((rank: Some(Ace)), "battered", 6)],
+                quips: (
+                    greet: ["Hier wird geramscht. Immer.", "Wer am wenigsten hat, gewinnt."],
+                    win: ["Den schluck ich runter.", "Lieber ich als keiner."],
+                    lose: ["Nimm nur, nimm alles.", "Schmeckt's? Gut."],
+                    won: ["Wer frisst, der zahlt.", "Ramsch ist Kunst."],
+                    lost: ["Leer geblieben. Respekt.", "Du kannst ramschen."],
+                    beaten: ["Du ramschst besser als ich.", "Ich hab genug gefressen."],
+                    victory: ["Ramsch kennt keine Gnade.", "Komm wieder, wenn du leer bist."],
+                ),
+            ),
+            (
+                name: "Die Ramscherin",
+                edition: [((rank: Some(Ten)), "battered", 5)],
+                quips: (
+                    greet: ["Zehnen? Kann ich nicht leiden.", "Mein Mann und ich ramschen gern."],
+                    win: ["Ach, schon wieder ich.", "Den nehm ich in Kauf."],
+                    lose: ["Bitte, bedien dich.", "Guten Appetit!"],
+                    won: ["Satt? Gut.", "Ramsch ist Familiensache."],
+                    lost: ["Na, du bist ja sparsam.", "Gut gedrückt, gut geramscht."],
+                    beaten: ["Du darfst bei uns einziehen.", "Wir räumen ab. Gut gemacht."],
+                    victory: ["Ramsch hat dich satt gemacht.", "Bis zum nächsten Ramsch!"],
+                ),
+            ),
         ],
         // Vorläufig (03.11.2026): Ein gewonnener Ramsch bringt die Augen
         // des Verlierers (oft 40 bis 60), ein verlorener seit 03.11.2026
@@ -140,6 +244,15 @@
                     ((suit: Some(Clubs), rank: Some(Jack)), "transparent", 1),
                     ((suit: Some(Spades), rank: Some(Jack)), "transparent", 1),
                 ],
+                quips: (
+                    greet: ["Hab Ruß an den Fingern. Sorry.", "Wer den Peter zieht, verliert."],
+                    win: ["Schwarz auf weiß.", "Ruß bleibt hängen."],
+                    lose: ["Hast meinen Unter gesehen, was?", "Schmutzige Finger, sauberer Stich."],
+                    won: ["Den Peter hast jetzt du.", "Halb ist halb, mein Freund."],
+                    lost: ["Mach Schneider, dann zählt's.", "Nur halb so schlimm."],
+                    beaten: ["Der Peter bleibt bei mir. Gut.", "Ich wasch mir die Hände."],
+                    victory: ["Schwarzer Peter für dich.", "Wer schwarz zieht, zahlt."],
+                ),
             ),
             (
                 name: "Die Schwarze Grete",
@@ -147,6 +260,15 @@
                     ((suit: Some(Clubs), rank: Some(Queen)), "transparent", 1),
                     ((suit: Some(Spades), rank: Some(Queen)), "transparent", 1),
                 ],
+                quips: (
+                    greet: ["Grete. Die Finger halt ich ruhig.", "Meine Oberinnen sind schmutzig."],
+                    win: ["Rußig, aber meins.", "Schwarz wie der Ofen."],
+                    lose: ["Das hast du gesehen, was?", "Nimm, aber wasch dir die Hände."],
+                    won: ["Halbe Sachen machen wir nicht.", "Grete gewinnt. Wie immer."],
+                    lost: ["Nur halb, mein Lieber.", "Gut. Schneider wär besser."],
+                    beaten: ["Weiß gewaschen. Verdient.", "Ich putz mir die Finger."],
+                    victory: ["Rußfinger gewinnen.", "Schwarz steht dir gut."],
+                ),
             ),
         ],
         // Vorläufig: unverändert seit der Messung mit der alten Regel (ohne
@@ -173,8 +295,30 @@
         // Das alte Paar: Ihre Karten tragen die Ausgaben der Figuren des
         // Bosses, dessen Regel gerade gilt, die Rückseite bleibt ihre.
         figures: [
-            (name: "Der Alte"),
-            (name: "Die Alte"),
+            (
+                name: "Der Alte",
+                quips: (
+                    greet: ["Jede Runde eine neue Regel.", "Ich kenn alle Tricks. Alle."],
+                    win: ["Alt, aber nicht blind.", "Fünfzig Jahre Stammtisch."],
+                    lose: ["Respekt, Junge.", "Den hab ich übersehen."],
+                    won: ["So spielt man am Stammtisch.", "Noch nicht reif, Junge."],
+                    lost: ["Gut. Nächste Regel.", "Du lernst schnell."],
+                    beaten: ["Der Tisch gehört dir.", "Setz dich auf meinen Platz."],
+                    victory: ["Der Stammtisch bleibt meiner.", "Komm wieder, wenn du alt bist."],
+                ),
+            ),
+            (
+                name: "Die Alte",
+                quips: (
+                    greet: ["Er hat die Regeln, ich die Karten.", "Wir sitzen hier seit 1961."],
+                    win: ["Der Alte und ich, wie immer.", "Schon wieder, Liebling."],
+                    lose: ["Ach, der Junge kann was.", "Na, sieh mal an."],
+                    won: ["Das haben wir oft gesehen.", "Kopf hoch, Kleiner."],
+                    lost: ["Gut gespielt, wirklich.", "Er wird grummeln. Egal."],
+                    beaten: ["Endlich ein würdiger Gegner.", "Wir gehen in Rente, Alter."],
+                    victory: ["Gute Nacht. Komm gut heim.", "Nächsten Freitag wieder?"],
+                ),
+            ),
         ],
         // Vorläufig (03.11.2026): drei volle Spiele mit drei Regeln. Bis
         // ADR 0017 1,4 (gemessen mit acht Regeln und frühem Ende). Runde 2
@@ -208,8 +352,32 @@
         // (die Neun wird König), die Witwe trägt die Daus als Erbstücke
         // (Augen +4, 15 statt 11).
         figures: [
-            (name: "Der Totengräber", edition: [((rank: Some(Nine)), "rank", 2)]),
-            (name: "Die Witwe", edition: [((rank: Some(Ace)), "points", 4)]),
+            (
+                name: "Der Totengräber",
+                edition: [((rank: Some(Nine)), "rank", 2)],
+                quips: (
+                    greet: ["Was du drückst, begrab ich.", "Spät ist es. Gut für mich."],
+                    win: ["Ab unter die Erde.", "Ruhe in Frieden, Stich."],
+                    lose: ["Den grab ich wieder aus.", "Noch lebst du."],
+                    won: ["Schaufel, Erde, fertig.", "Wieder einer begraben."],
+                    lost: ["Der Skat ruht. Du nicht.", "Zäh, der Kleine."],
+                    beaten: ["Der Morgen kommt. Ich geh.", "Leg die Schaufel weg. Gewonnen."],
+                    victory: ["Ruhe sanft.", "Die Nacht gehört mir."],
+                ),
+            ),
+            (
+                name: "Die Witwe",
+                edition: [((rank: Some(Ace)), "points", 4)],
+                quips: (
+                    greet: ["Mein Seliger spielte auch so.", "Die Daus hat er mir vererbt."],
+                    win: ["Für meinen Seligen.", "Ein Erbstück, mein Lieber."],
+                    lose: ["Das hätte ihm nicht gefallen.", "Ach, nimm ihn."],
+                    won: ["Er schaut von oben zu.", "Schwarz steht mir."],
+                    lost: ["Du hast sein Glück.", "Ein schönes Spiel. Danke."],
+                    beaten: ["Er hätte dich gemocht.", "Nimm die Daus. Er will es so."],
+                    victory: ["Ich leg dir Blumen hin.", "Trauer steht dir nicht, Kind."],
+                ),
+            ),
         ],
         // Gemessen in der Nacht (10.11.2026,
         // docs/balance/2026-11-10-neue-charaktere.md, je 3 × 700 Runs mit

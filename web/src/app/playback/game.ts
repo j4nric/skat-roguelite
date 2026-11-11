@@ -110,7 +110,7 @@ export class GamePlayback {
         trick.winner === 0
           ? t(de.table.trickToYou, { points: card_points })
           : t(de.table.trickTo, { name: seatLabel(after, trick.winner), points: card_points });
-      this.fx.trickQuip(after, trick.winner, card_points);
+      this.fx.trickQuip(after, trick, card_points);
       if (trick.winner === 0 && !this.ctx.fastForward) buzz('trick');
       this.ctx.render();
       if (!this.ctx.fastForward) this.flights.reactToTrick(after, trick.winner, card_points);
@@ -248,6 +248,7 @@ export class GamePlayback {
         const order = g.hand.map((c) => c.id);
         anim.hand.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
       }
+      if ('Declared' in ev) this.fx.declareQuip(after, ev.Declared.declaration);
       this.ctx.render();
       if (spots) glideAll(Array.from(this.ctx.screenEl.querySelectorAll<HTMLElement>('.hand .hand-card')), spots, { ms: 320 });
       if ('Declared' in ev && !this.ctx.fastForward) this.flights.declareEffect(ev.Declared.declaration);

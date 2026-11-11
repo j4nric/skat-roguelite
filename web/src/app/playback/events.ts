@@ -369,6 +369,7 @@ export class EventPlayback {
           won ? { payout: won.SeriesWon.payout, coins: won.SeriesWon.coins } : null,
           runEnds,
         );
+        if (!won && !pubLost) this.fx.scoreQuip(after, ev.GameScored.breakdown);
         continue;
       }
       if ('DebtChanged' in ev) {

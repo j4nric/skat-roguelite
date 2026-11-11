@@ -1,44 +1,46 @@
 // Timing and small talk of the playback: pauses the player can hurry,
-// the toast line, the Stammgäste's quips and the lines and wiggles of
-// relics and modifications that fire. Pure presentation: every fact comes
+// the toast line, the quips of the people at the table (../talk.ts) and
+// the lines and wiggles of relics and modifications that fire. Pure presentation: every fact comes
 // from the core's events and views.
 
-import { playQuipSound } from '../../audio';
 import { de, relicCounters, t } from '../../i18n';
 import { TEMPO_FACTOR } from '../../settings';
-import type { RunView, ScoreLine, Seat, Source } from '../../types';
+import type { CompletedTrick, Declaration, RunView, ScoreBreakdown, ScoreLine, Source } from '../../types';
 import { esc, reducedMotion } from '../../ui/dom';
 import { finishAll } from '../../ui/fx';
-import { seatPerson } from '../../ui/guests';
 import { changeText, sourceName } from '../../ui/score';
 import { targetsOf, type Trigger } from '../../ui/triggers';
 import { DELAY, type ToastPlace } from '../consts';
 import type { AppCtx } from '../context';
 import type { Guidance } from '../guidance';
+import { TableTalk } from '../talk';
 
 /** Toasts waiting at most; older ones are dropped. */
 const TOAST_QUEUE = 3;
-/** How long a Stammgast's bubble stays at tempo "Normal" (reading time, not motion). */
-const QUIP_MS = 2800;
-/** At least this many tricks between two quips: about one every second game. */
-const QUIP_EVERY_TRICKS = 14;
 
 export class Fx {
   private wakers: (() => void)[] = [];
   private readonly toastEl: HTMLElement;
   private toastTimer: number | undefined;
   private toasts: { text: string; place: ToastPlace }[] = [];
-  /** Series ("section-index") whose Stammgast already said hello. */
-  quipSeries = '';
-  /** Tricks since the last quip: quips stay rare. */
-  private tricksSinceQuip = 0;
-  private quipTimer: number | undefined;
+  /** The quips at the table: when someone says what (../talk.ts). */
+  readonly talk: TableTalk;
 
   constructor(
     private readonly ctx: AppCtx,
-    private readonly guidance: Guidance,
+    guidance: Guidance,
   ) {
     this.toastEl = ctx.root.querySelector<HTMLElement>('.toast-layer') ?? ctx.root;
+    this.talk = new TableTalk(ctx, guidance);
+  }
+
+  /** Series ("section-index") whose hello was said. */
+  get quipSeries(): string {
+    return this.talk.greeted;
+  }
+
+  set quipSeries(key: string) {
+    this.talk.greeted = key;
   }
 
   /** Tempo factor of the settings, for effects outside ../../ui/fx.ts. */
@@ -99,45 +101,24 @@ export class Fx {
     }, ms);
   }
 
-  /**
-   * A Stammgast says one of his lines (from the core content) in a small
-   * bubble at his seat: hello at the first game of a series, and now and
-   * then after a trick worth something. One bubble at a time, never while
-   * the Wirt explains something, gone after a few seconds (tempo setting).
-   * Pure decoration: it changes nothing and catches no taps.
-   */
-  private sayQuip(view: RunView, seat: 1 | 2, line: 'greet' | 'win' | 'lose'): void {
-    const guest = seatPerson(view, seat).guest;
-    if (!guest || this.guidance.hint) return;
-    const ui = this.ctx.ui;
-    ui.quip = { seat, text: guest[line] };
-    playQuipSound(seat);
-    this.tricksSinceQuip = 0;
-    window.clearTimeout(this.quipTimer);
-    const ms = Math.max(1800, QUIP_MS * TEMPO_FACTOR[ui.settings.tempo]);
-    this.quipTimer = window.setTimeout(() => this.guidance.hushQuip(), ms);
-  }
-
-  /** Hello from a Stammgast when a new series sits down at the table. */
+  /** Hello from the table when a new series sits down. */
   greetSeries(view: RunView): void {
-    const key = `${view.series.section}-${view.series.index}`;
-    if (key === this.quipSeries) return;
-    this.quipSeries = key;
-    // The boss on the left has no lines; else the two take turns per series.
-    const seat = view.series.is_boss ? 2 : (((view.series.section * 3 + view.series.index) % 2) + 1) as 1 | 2;
-    this.sayQuip(view, seat, 'greet');
+    this.talk.greetSeries(view);
   }
 
-  /** Now and then a line after a trick worth something (Augen from the core). */
-  trickQuip(view: RunView, winner: Seat, points: number): void {
-    this.tricksSinceQuip += 1;
-    if (this.tricksSinceQuip < QUIP_EVERY_TRICKS || points < 10) return;
-    if (winner !== 0) {
-      this.sayQuip(view, winner, 'win');
-      return;
-    }
-    const seat = view.series.is_boss ? 2 : ((this.tricksSinceQuip % 2) + 1) as 1 | 2;
-    this.sayQuip(view, seat, 'lose');
+  /** Now and then a word after a trick (Augen from the core). */
+  trickQuip(view: RunView, trick: CompletedTrick, points: number): void {
+    this.talk.trick(view, trick, points);
+  }
+
+  /** Now and then a word on the Ansage. */
+  declareQuip(view: RunView, declaration: Declaration): void {
+    this.talk.declared(view, declaration);
+  }
+
+  /** Now and then a word on the game just scored, once the board is gone. */
+  scoreQuip(view: RunView, breakdown: ScoreBreakdown): void {
+    this.talk.scored(view, breakdown);
   }
 
   /** What stands for a source on screen (its relic chip, its card). */

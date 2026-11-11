@@ -18,6 +18,7 @@ import { moonIcon, renderNightSheet } from './night';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
 import { coinIcon } from './hud';
 import { seatPerson } from './guests';
+import { bossQuip, bossQuipLine, occasionOf } from './quips';
 import { renderMarkePick, renderRelicPick } from './encounter';
 import { oddsLine } from './odds';
 import { calendarIcon, linkIcon, lockIcon } from './icons';
@@ -486,6 +487,17 @@ function pictureIcon(size = 18): string {
   return `<svg class="picture-icon" viewBox="0 0 12 10" width="${size}" height="${Math.round((size * 10) / 12)}" aria-hidden="true" shape-rendering="crispEdges"><path d="M0 0h12v10h-12z" fill="currentColor"/><path d="M1 1h10v8h-10z" fill="#23282c"/><path d="M2 8l3-4 2 2 1-1 2 3z" fill="#8fc7a8"/><path d="M8 2h2v2h-2z" fill="#d1773f"/></svg>`;
 }
 
+/**
+ * The run ended at a boss table: one of the two has the last word, beaten
+ * (the player won the run against Der Alte) or victorious (the pub lost).
+ */
+function endQuip(won: boolean, view: RunView): string {
+  const boss = view.series.is_boss ? view.series.boss : null;
+  if (!boss) return '';
+  const figure = (view.series.section % 2) as 0 | 1;
+  return bossQuip(bossQuipLine(boss, figure, won ? 'beaten' : 'victory', occasionOf(view)));
+}
+
 export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
   // Die lange Nacht (ADR 0020): after der Alte the player may go on; a
   // night that ends is no lost run, the win stays.
@@ -506,6 +518,7 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
     <div class="sheet chalkboard end-board">
       <h1 class="${won ? 'is-won' : night ? 'is-night' : 'is-lost'}">${esc(title)}</h1>
       <p class="chalk-small" data-testid="end-reason">${esc(reason)}</p>
+      ${endQuip(won, view)}
       ${view.weekly ? `<p class="small" data-testid="end-weekly">${esc(t(de.weekly.endNote, { name: contentName('weekly', view.weekly.id) || view.weekly.name }))}</p>` : shareBlock(view.seed, view.character.character, ui, view.stake ?? 0)}
       ${renderOverview(view, ui.meta, !won && !night)}
     </div>
@@ -796,7 +809,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         `<div class="boss-intro"><div class="boss-faces">${portrait(bossPortraitId(overlay.boss.id, 0), 'portrait-boss')}<span class="boss-back" data-testid="boss-back" data-back="${esc(backDesign(overlay.boss.back))}">${cardBack('', backDesign(overlay.boss.back))}</span>${portrait(bossPortraitId(overlay.boss.id, 1), 'portrait-boss')}</div>
          <p class="small boss-kicker">${bossCoaster(overlay.boss.id, { size: 32 })}<span>${esc(de.boss.title)} · ${esc(de.boss.intro)}</span></p>
          <h2>${esc(contentName('bosses', overlay.boss.id))}</h2>
-         <p class="boss-figures" data-testid="boss-figures">${esc(bossFiguresText(overlay.boss))}</p>
+         <p class="boss-figures" data-testid="boss-figures">${esc(bossFiguresText(overlay.boss))}</p>${bossQuip(bossQuipLine(overlay.boss, 0, 'greet', occasionOf(view)))}
          <p>${esc(contentText('bosses', overlay.boss.id) || overlay.boss.text)}</p>${bossEditionText(overlay.boss) ? `<p class="boss-edition">${esc(bossEditionText(overlay.boss))}</p>` : ''}
          <p class="boss-stakes" data-testid="boss-stakes">${esc(de.boss.stakes)}</p></div>
          <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'boss-go' })}>${esc(de.boss.go)}</button>`,

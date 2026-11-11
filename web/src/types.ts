@@ -139,6 +139,8 @@ export interface BossFigure {
   edition: EditionEntry[];
   /** Card back of the figure's cards. */
   back: string;
+  /** The figure's lines in the boss's voice (core/content/bosses.ron). */
+  quips?: Quips;
 }
 
 /** The relic pick after a won boss pub (ADR 0017). */
@@ -231,12 +233,35 @@ export interface GuestInfo {
   name: string;
   /** Id of the face in ui/people.ts. */
   look: string;
-  greet: string;
-  win: string;
-  lose: string;
+  /** His lines, several per situation (core/content/guests.ron). */
+  quips: Quips;
   /** Card back of his cards (ui/backs.ts). */
   back?: string;
 }
+
+/**
+ * Speech bubble lines (Sprüche) of a person at the table, several per
+ * situation (core `Quips`, DESIGN 10.4). An empty list: quiet then.
+ * Stammgäste have the first eleven, boss figures greet, win, lose, won,
+ * lost, beaten and victory.
+ */
+export interface Quips {
+  greet: string[];
+  win: string[];
+  lose: string[];
+  smear: string[];
+  grand: string[];
+  null: string[];
+  bold: string[];
+  ramsch: string[];
+  won: string[];
+  lost: string[];
+  schneider: string[];
+  beaten: string[];
+  victory: string[];
+}
+
+export type QuipSituation = keyof Quips;
 
 /** Display group of a relic (shape of its beer mat), from the content. */
 export type RelicGroup = 'Value' | 'Multiplier' | 'Control' | 'Tour' | 'Factor';

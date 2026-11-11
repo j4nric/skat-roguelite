@@ -72,7 +72,11 @@
 // ones, new ones in the next series, the boss on the left in a boss
 // series); the first game of a series starts with a quip that stays in its
 // opponent's box, and the table still fits with it at 390 × 844 and
-// 375 × 667. The table must fit the visible height without scrolling
+// 375 × 667. Sprüche v2 (quipsPass; alone with SMOKE_ONLY=quips), in
+// German and English: the hello is a greet line of its guest and stands
+// on the felt, every bubble of a game is a line of its speaker, never two
+// at once, not more than five in a game; the boss figures speak on the
+// boss sheet, at the table, on the relic pick and at the end. The table must fit the visible height without scrolling
 // (DESIGN 16): while choosing Skat oder Hand, in the hand Ansage, while
 // discarding with twelve cards, in the Ansage after the skat and while
 // playing, at 390 × 844, 375 × 667, 360 × 740, 412 × 915, 1280 × 800 and
@@ -6470,6 +6474,187 @@ async function soundsAll(browser, errors) {
   }
 }
 
+/**
+ * The quips (Sprüche v2, DESIGN 10.4) of a language: per Stammgast and per
+ * boss figure, situation -> lines. German from core/content/*.ron, English
+ * from src/i18n/en-content.ts (by id, as the app puts them in place).
+ */
+async function quipLines(locale) {
+  if (locale.startsWith('en')) {
+    const { rolldown } = await import('rolldown');
+    const bundle = await rolldown({ input: join(webDir, 'src', 'i18n', 'en-content.ts'), logLevel: 'silent' });
+    const { output } = await bundle.generate({ format: 'esm' });
+    await bundle.close();
+    const { EN_CONTENT } = await import(`data:text/javascript;base64,${Buffer.from(output[0].code).toString('base64')}`);
+    return { guests: Object.fromEntries(Object.entries(EN_CONTENT.guests).map(([id, g]) => [id, g.quips])), bosses: EN_CONTENT.figureQuips };
+  }
+  const blocks = (file) => {
+    const src = readFileSync(resolve(webDir, '..', 'core', 'content', file), 'utf8')
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n');
+    const ids = [...src.matchAll(/\bid:\s*"([^"]+)"/g)];
+    return Object.fromEntries(
+      ids.map((m, i) => {
+        const part = src.slice(m.index, ids[i + 1]?.index ?? src.length);
+        const quips = [...part.matchAll(/quips:\s*\(([\s\S]*?)\n\s*\)/g)].map((q) =>
+          Object.fromEntries([...q[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)].map((l) => [l[1], [...l[2].matchAll(/"([^"]*)"/g)].map((x) => x[1])])),
+        );
+        return [m[1], quips];
+      }),
+    );
+  };
+  return { guests: Object.fromEntries(Object.entries(blocks('guests.ron')).map(([id, [q]]) => [id, q])), bosses: blocks('bosses.ron') };
+}
+
+/** Every line of one situation over all boss figures. */
+function bossLinesOf(lines, situation) {
+  return Object.values(lines.bosses).flatMap((figures) => figures.flatMap((f) => f?.[situation] ?? []));
+}
+
+/** Note every bubble that shows (text, seat) and the most on screen at once, in `window.__quips`. */
+async function spyQuips(page) {
+  await page.evaluate(() => {
+    const seen = { texts: [], most: 0 };
+    window.__quips = seen;
+    const look = () => {
+      const now = [...document.querySelectorAll('[data-testid="quip"]')];
+      seen.most = Math.max(seen.most, now.length);
+      for (const q of now) {
+        const key = `${q.closest('.opp')?.getAttribute('data-seat')}|${q.textContent.trim()}`;
+        if (seen.texts[seen.texts.length - 1] !== key) seen.texts.push(key);
+      }
+    };
+    new MutationObserver(look).observe(document.body, { childList: true, subtree: true });
+    look();
+  });
+}
+
+/** A boss figure's written-out line on a screen, checked against the lines of its situation. */
+async function expectBossQuip(page, label, lines, situation) {
+  const el = page.locator('[data-testid="boss-quip"]');
+  if ((await el.count()) !== 1) fail(`${label}: no boss line on the screen (${situation})`);
+  const said = ((await el.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  const allowed = bossLinesOf(lines, situation);
+  if (!allowed.some((l) => said.includes(l))) fail(`${label}: "${said}" is no ${situation} line of a boss figure`);
+  log(`${label}: ${said}`);
+  return said;
+}
+
+/**
+ * Sprüche v2 (DESIGN 10.4 and 11; alone with SMOKE_ONLY=quips), in the
+ * language of `locale`: the greeting of a new series is one of the
+ * guest's greet lines and stands on the felt too; every bubble of a whole
+ * game is a line of the one who speaks, never two at once and not many
+ * (no bubble spam); the boss sheet names the left figure's greeting, the
+ * right one greets at the table; the relic pick has a "beaten" line, the
+ * end of a lost boss pub a "victory" line.
+ */
+async function quipsPass(browser, errors, locale, viewport = PHONE) {
+  const tag = `quips-${locale.slice(0, 2)}${viewport === PHONE ? '' : '-wide'}`;
+  const lines = await quipLines(locale);
+  const german = locale.startsWith('de') ? null : await quipLines('de-DE');
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', locale });
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.fill('#seed', SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await spyQuips(page);
+  const guests = await page.locator('.opp').evaluateAll((els) => els.map((e) => ({ seat: e.getAttribute('data-seat'), id: e.getAttribute('data-guest') })));
+  const bySeat = Object.fromEntries(guests.map((g) => [g.seat, lines.guests[g.id]]));
+  if (guests.some((g) => !bySeat[g.seat])) fail(`${tag}: no lines for the guests ${JSON.stringify(guests)}`);
+  const hello = page.locator('[data-testid="quip"]');
+  if ((await hello.count()) !== 1) fail(`${tag}: ${await hello.count()} bubbles at the first game, expected the hello`);
+  const helloSeat = await hello.evaluate((q) => q.closest('.opp')?.getAttribute('data-seat'));
+  const helloText = ((await hello.textContent()) ?? '').trim();
+  if (!bySeat[helloSeat]?.greet?.includes(helloText)) fail(`${tag}: the hello "${helloText}" is no greet line of seat ${helloSeat}`);
+  if (german && Object.values(german.guests).some((q) => Object.values(q).flat().includes(helloText))) fail(`${tag}: the hello "${helloText}" is German`);
+  const talk = (await page.locator('[data-testid="table-talk"] .talk-line').allTextContents()).join(' | ');
+  if (!talk.includes(helloText)) fail(`${tag}: the felt does not say the hello "${helloText}": ${talk}`);
+  const label = await hello.getAttribute('aria-label');
+  if (!label?.endsWith(helloText) || (await hello.getAttribute('role')) !== 'status') fail(`${tag}: the bubble is no polite status for screen readers (${label})`);
+  await assertGuests(page, `${tag} first game`);
+  await shoot(page, `${tag}-hello`);
+  log(`${tag}: hello "${helloText}" (seat ${helloSeat}), felt: ${talk}`);
+
+  // A whole game: Skat, Grand, every card; each bubble a line of its speaker.
+  await skatThenGrand(page, tag);
+  let shot = false;
+  for (let played = 0; ; ) {
+    await page.waitForSelector('[data-action="play"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
+    if (await page.locator('.score-sheet').count()) break;
+    if (await page.locator('[data-action="re"][data-re="false"]').count()) {
+      await page.click('[data-action="re"][data-re="false"]');
+      continue;
+    }
+    if (!shot && (await page.locator('[data-testid="quip"]').count())) {
+      const text = ((await page.locator('[data-testid="quip"]').textContent()) ?? '').trim();
+      if (text !== helloText) {
+        await shoot(page, `${tag}-ingame`);
+        shot = true;
+      }
+    }
+    await page.locator('[data-action="play"]').first().click();
+    if (++played > 12) fail(`${tag}: played more than ten cards`);
+  }
+  if (await page.locator('[data-action="score-skip"].btn').count()) await page.locator('[data-action="score-skip"].btn').click();
+  await page.waitForSelector('[data-action="score-continue"]');
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="skat-choice"], .declare', { timeout: 30000 });
+  await page.waitForTimeout(300);
+  const spied = await page.evaluate(() => window.__quips);
+  if (spied.most > 1) fail(`${tag}: ${spied.most} bubbles on the table at once`);
+  for (const key of spied.texts) {
+    const [seat, ...rest] = key.split('|');
+    const said = rest.join('|');
+    if (!Object.values(bySeat[seat] ?? {}).flat().includes(said)) fail(`${tag}: seat ${seat} said "${said}", none of his lines`);
+  }
+  // Hello plus about one a game; never a bubble every trick.
+  if (spied.texts.length > 5) fail(`${tag}: ${spied.texts.length} bubbles in one game: ${spied.texts.join(' / ')}`);
+  log(`${tag}: ${spied.texts.length} bubble(s) in the first game: ${spied.texts.join(' / ')}`);
+
+  // The boss sheet: the left figure's greeting; at the table the right one says hello.
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  const sheet = await expectBossQuip(page, `${tag} boss sheet`, { bosses: { twins: [lines.bosses.twins[0]] } }, 'greet');
+  await shoot(page, `${tag}-boss-sheet`);
+  await page.click('[data-action="boss-go"]');
+  await page.waitForSelector('.declare');
+  if (await page.locator('.sheet-unlock').count()) await page.click('.sheet-unlock [data-action="close-overlay"]');
+  const franz = page.locator('.opp[data-seat="2"] [data-testid="quip"]');
+  await franz.waitFor({ timeout: 5000 }).catch(() => fail(`${tag}: the right boss player does not say hello at the boss table`));
+  const franzSays = ((await franz.textContent()) ?? '').trim();
+  if (!lines.bosses.twins[1].greet.includes(franzSays)) fail(`${tag}: Franz says "${franzSays}", no greeting of his`);
+  if (sheet.includes(franzSays)) fail(`${tag}: the table repeats the sheet's line`);
+  await assertGuests(page, `${tag} boss table`, { boss: true });
+  await shoot(page, `${tag}-boss-table`);
+
+  // Beaten: the relic pick after a won boss pub.
+  await resumeFixture(page, 'boss-reward.json');
+  await page.waitForSelector('[data-testid="boss-reward"]');
+  await expectBossQuip(page, `${tag} boss reward`, lines, 'beaten');
+  await assertNoSideScroll(page, `${tag} boss reward`, '.boss-reward');
+  await shoot(page, `${tag}-boss-reward`);
+
+  // Victorious: the end of a lost boss pub (Der Schieber: Hand, Grand).
+  await resumeFixture(page, 'boss-lost.json');
+  await page.waitForSelector('.declare[data-phase="Declaring"]');
+  await page.click('[data-action="pick-game"][data-index="4"]');
+  await page.click('[data-action="declare"]');
+  await page.waitForSelector('.declare', { state: 'detached' });
+  await playOut(page, `${tag} lost boss pub`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"]');
+  await expectBossQuip(page, `${tag} end`, lines, 'victory');
+  await shoot(page, `${tag}-end`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -6547,6 +6732,13 @@ async function run() {
     // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
     if (process.env.SMOKE_ONLY === 'sounds') {
       await soundsAll(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=quips: Sprüche v2 of guests and bosses, German and English.
+    if (process.env.SMOKE_ONLY === 'quips') {
+      await quipsPass(browser, errors, 'de-DE');
+      await quipsPass(browser, errors, 'en-GB');
+      await quipsPass(browser, errors, 'de-DE', DESKTOP);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -6908,6 +7100,8 @@ async function run() {
     await shareRunPass(browser, errors, DESKTOP);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
+    await quipsPass(browser, errors, 'de-DE');
+    await quipsPass(browser, errors, 'en-GB');
   } finally {
     await browser.close();
     preview.kill();

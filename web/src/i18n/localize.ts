@@ -19,8 +19,10 @@ export interface ContentTexts {
   byId: Record<string, ContentEntry>;
   /** Characters by their core name (`Declarer`, …). */
   characters: Record<string, ContentEntry>;
-  /** Stammgäste by id: name and the three lines of their bubble. */
-  guests: Record<string, { name?: string; greet?: string; win?: string; lose?: string }>;
+  /** Stammgäste by id: name and the lines of their bubble, per situation as in guests.ron. */
+  guests: Record<string, { name?: string; quips?: Partial<Record<string, string[]>> }>;
+  /** Lines of the two figures of each boss by boss id (left, right), per situation as in bosses.ron. */
+  figureQuips: Record<string, Partial<Record<string, string[]>>[]>;
   /** Encounter option titles by encounter id, in the order of the content file. */
   options: Record<string, string[]>;
   /** Boss players by their German name (they have no id of their own). */
@@ -48,6 +50,11 @@ const DISTRICT_LOOKS = new Set(['OldTown', 'Harbour', 'Station']);
 
 function set(node: Obj, key: string, value: string | undefined): void {
   if (value === undefined || typeof node[key] !== 'string' || node[key] === value) return;
+  keep(node, key, value);
+}
+
+/** Replace a field (any value), keeping the German original once. */
+function keep(node: Obj, key: string, value: unknown): void {
   let saved = originals.get(node);
   if (!saved) {
     saved = {};
@@ -76,15 +83,21 @@ function rewardEntry(reward: unknown, texts: ContentTexts): ContentEntry | undef
 function apply(node: Obj, texts: ContentTexts): void {
   const id = typeof node.id === 'string' ? node.id : null;
   // A Stammgast: name and bubble lines.
-  if (id && typeof node.look === 'string' && typeof node.greet === 'string') {
+  if (id && typeof node.look === 'string' && isObj(node.quips)) {
     const g = texts.guests[id];
     if (g) {
       set(node, 'name', g.name);
-      set(node, 'greet', g.greet);
-      set(node, 'win', g.win);
-      set(node, 'lose', g.lose);
+      if (g.quips) keep(node, 'quips', { ...node.quips, ...g.quips });
     }
     return;
+  }
+  // A boss: the lines of its two figures (they have no id of their own).
+  if (id && Array.isArray(node.figures)) {
+    const lines = texts.figureQuips[id];
+    node.figures.forEach((figure, i) => {
+      const q = lines?.[i];
+      if (q && isObj(figure) && isObj(figure.quips)) keep(figure, 'quips', { ...figure.quips, ...q });
+    });
   }
   // A district of the city: its name by look.
   if (typeof node.look === 'string' && DISTRICT_LOOKS.has(node.look) && typeof node.name === 'string') {

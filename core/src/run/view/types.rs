@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::cards::Suit;
 use crate::content::{
     BossId, CardFilter, CardModId, CardModStatus, Character, ConsumableCategory, ConsumableId,
-    ConsumableTarget, EncounterEffect, EncounterId, Factor, ModKind, NextGameEffect, Rarity,
+    ConsumableTarget, EncounterEffect, EncounterId, Factor, ModKind, NextGameEffect, Quips, Rarity,
     RelicId, RelicKind, RunLength, ScoreBreakdown, ScoreStep, StopCategory,
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
@@ -350,6 +350,8 @@ pub struct BossFigureInfo {
     pub edition: Vec<EditionEntry>,
     /// The card back of the figure's cards.
     pub back: String,
+    /// Speech bubble lines in the boss's voice (presentation only).
+    pub quips: Quips,
 }
 
 /// The Schnaps of a won pub with every slot full (DESIGN 8.9): take it

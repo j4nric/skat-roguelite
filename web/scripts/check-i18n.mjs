@@ -113,8 +113,46 @@ for (const file of ['tour.ron', 'night.ron']) {
   const all = entries(file);
   for (const [id, g] of Object.entries(all)) if (g.name !== undefined) check(file, { [id]: g }, EN_CONTENT.byId);
 }
-// Stammgäste and encounter options.
-for (const id of Object.keys(entries('guests.ron'))) if (!EN_CONTENT.guests[id]?.greet) problems.push(`guests.${id}: no English lines`);
+// Stammgäste and boss figures: the same situations with as many variants
+// in English as in the content, each short enough for the bubble.
+const QUIP_MAX_EN = 42;
+/** The quips blocks of a content file by owner id, in order: situation -> lines. */
+function quipBlocks(file) {
+  const src = readFileSync(join(contentDir, file), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
+  const out = {};
+  const ids = [...src.matchAll(/\bid:\s*"([^"]+)"/g)];
+  ids.forEach((m, i) => {
+    const part = src.slice(m.index, ids[i + 1]?.index ?? src.length);
+    out[m[1]] = [...part.matchAll(/quips:\s*\(([\s\S]*?)\n\s*\)/g)].map((q) => {
+      const lines = {};
+      for (const l of q[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) lines[l[1]] = [...l[2].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((x) => x[1]);
+      return lines;
+    });
+  });
+  return out;
+}
+function checkQuips(where, german, english) {
+  for (const [situation, lines] of Object.entries(german)) {
+    const en = english?.[situation];
+    if (!Array.isArray(en) || en.length !== lines.length) problems.push(`${where}.${situation}: ${lines.length} lines in the content, ${en?.length ?? 0} in English`);
+    for (const line of en ?? []) {
+      if (!line.trim()) problems.push(`${where}.${situation}: an empty English line`);
+      if ([...line].length > QUIP_MAX_EN) problems.push(`${where}.${situation}: "${line}" is longer than ${QUIP_MAX_EN}`);
+    }
+  }
+  for (const situation of Object.keys(english ?? {})) if (!(situation in german)) problems.push(`${where}.${situation}: only in English`);
+}
+for (const [id, [quips]] of Object.entries(quipBlocks('guests.ron'))) {
+  if (!EN_CONTENT.guests[id]?.name) problems.push(`guests.${id}: no English name`);
+  checkQuips(`guests.${id}`, quips ?? {}, EN_CONTENT.guests[id]?.quips);
+}
+for (const [id, figures] of Object.entries(quipBlocks('bosses.ron'))) {
+  figures.forEach((quips, i) => checkQuips(`figureQuips.${id}[${i}]`, quips, EN_CONTENT.figureQuips[id]?.[i]));
+}
+// Encounter options.
 {
   const src = readFileSync(join(contentDir, 'encounters.ron'), 'utf8');
   let id = null;
