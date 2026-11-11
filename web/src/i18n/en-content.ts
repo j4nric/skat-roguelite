@@ -10,7 +10,7 @@
 
 import type { ContentEntry, ContentTexts } from './localize';
 
-type Category = 'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses';
+type Category = 'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses' | 'weekly';
 
 /** House rules and locals (core/content/house_rules.ron). */
 const relics: Record<string, ContentEntry> = {
@@ -217,6 +217,18 @@ const maluses: Record<string, ContentEntry> = {
   schnapps_locked: { name: 'Dry Bar', text: 'Only beer is served here: you can’t drink any Schnapps in this pub.' },
 };
 
+/** Special rules of the week (core/content/weekly.ron, DESIGN 5.6). */
+const weekly: Record<string, ContentEntry> = {
+  grand_double: { name: 'Grand Counts Double', text: 'Every Grand counts double, won or lost. Suit games count only three quarters.' },
+  dive_week: { name: 'Dive Air', text: 'Every pub has a random dive handicap. In return you start with the Dive Connoisseur.' },
+  wide_awake: { name: 'Wide-Awake Opponents', text: 'The opponents calculate more carefully: four more hands per move, all evening.' },
+  short_patience: { name: 'Short Fuse', text: 'One redeal less in every game. In return you start with 6 Groschen more.' },
+  devils_pact: { name: 'Devil’s Pact', text: 'You start with the Guardian Angel. In return the Nines of Acorns, Leaves and Bells are battered (−5 pips), and all targets are 30% higher.' },
+  null_evening: { name: 'Null Night', text: 'This week everyone plays the Null Specialist, unlocked or not.' },
+  rich_uncle: { name: 'Rich Uncle', text: 'You start with 15 Groschen more. In return all targets are 10% higher.' },
+  spendthrift: { name: 'Big Spender', text: 'You start with The Crawl and Beer Mat. In return everything at the bar and the kiosk costs 2 Groschen more.' },
+};
+
 /** Twists of the Long Night and the card backs it earns (core/content/night.ron). */
 const night: Record<string, ContentEntry> = {
   fewer_redeals: { name: 'Short Fuse', text: 'One redeal less in every game.' },
@@ -242,11 +254,12 @@ export const EN_CATALOG: Record<Category, Record<string, ContentEntry>> = {
   encounters,
   unlocks,
   maluses,
+  weekly,
 };
 
 /** Everything the view walker needs (./localize.ts). */
 export const EN_CONTENT: ContentTexts = {
-  byId: { ...relics, ...card_mods, ...bosses, ...consumables, ...encounters, ...unlocks, ...maluses, ...night },
+  byId: { ...relics, ...card_mods, ...bosses, ...consumables, ...encounters, ...unlocks, ...maluses, ...night, ...weekly },
   characters,
   guests: {
     kalle: { name: 'Kalle', greet: 'Right then, give them a proper shuffle.', win: 'That one’s Kalle’s!', lose: 'Oh, keep it.' },

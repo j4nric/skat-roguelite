@@ -574,7 +574,9 @@ export type Source =
   /** The own rule of the character ("Der Grandspieler"). */
   | { Character: Character }
   /** The malus of a Spelunke (ADR 0016). */
-  | { Malus: string };
+  | { Malus: string }
+  /** The Sonderregel der Woche (DESIGN 5.6). */
+  | { Weekly: string };
 
 export type Lever = 'BaseValue' | 'Levels' | 'GameValue' | 'CardPoints' | 'WinThreshold' | 'Schneider' | 'LossFactor';
 
@@ -862,6 +864,30 @@ export interface RunView {
   night?: NightView | null;
   /** The run is won and the long night may begin (`EnterNight`). */
   can_enter_night?: boolean;
+  /** Die Wochen-Herausforderung (DESIGN 5.6): the Sonderregel in force; absent for every other run. */
+  weekly?: WeeklyView | null;
+}
+
+/** The Sonderregel der Woche as the core shows it (DESIGN 5.6). */
+export interface WeeklyView {
+  /** The week as JJJJWW; null for a rule on another seed. */
+  week: number | null;
+  id: string;
+  name: string;
+  text: string;
+}
+
+/** A week of the Wochen-Herausforderung before its run (core `week_info`). */
+export interface WeekInfo {
+  /** JJJJWW. */
+  week: number;
+  year: number;
+  iso_week: number;
+  /** The week's seed as decimal text. */
+  seed: string;
+  rule: WeeklyView;
+  /** Everyone plays this character this week, if the rule fixes one. */
+  character: Character | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1270,6 +1296,8 @@ export interface Catalog {
   encounters: Record<string, CatalogEntry>;
   unlocks: Record<string, CatalogEntry>;
   maluses: Record<string, CatalogEntry>;
+  /** Sonderregeln der Woche (DESIGN 5.6); absent in an older core. */
+  weekly?: Record<string, CatalogEntry>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1346,6 +1374,48 @@ export interface MetaView {
   stats: MetaStats;
   /** Card backs earned (cosmetic, ADR 0020). */
   card_backs?: string[];
+  /** The statistics sheet per character and relic, computed by the core; absent in an older core. */
+  records?: StatsView;
+}
+
+/** A relic and how often it was held at the end of a run. */
+export interface RelicCount {
+  relic: string;
+  name: string;
+  count: number;
+}
+
+/** One character on the statistics sheet (core `CharacterRecord`). */
+export interface CharacterRecord {
+  character: Character;
+  name: string;
+  runs: number;
+  won: number;
+  /** Runs won in percent, rounded; null before the first run. */
+  win_percent: number | null;
+  best_section: number;
+  best_game: number;
+  /** Most often held at the end, at most three. */
+  favourite_relics: RelicCount[];
+}
+
+/** One relic on the statistics sheet (core `RelicRecord`). */
+export interface RelicRecord {
+  relic: string;
+  name: string;
+  kind: RelicKind;
+  rarity: Rarity | null;
+  taken: number;
+  held: number;
+  won: number;
+  /** Won in percent of the runs it was held at the end; null if never. */
+  win_percent: number | null;
+}
+
+/** The statistics sheet of the Vereinsbuch (DESIGN 9.3). */
+export interface StatsView {
+  characters: CharacterRecord[];
+  relics: RelicRecord[];
 }
 
 /** Result of feeding events to the meta state. */

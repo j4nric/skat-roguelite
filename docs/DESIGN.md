@@ -484,6 +484,32 @@ Alleinspieler nachher: Stadtteil 10 erreichen 3,4 % der Nächte; gewonnene Kneip
 
 Stadtteil 10 erreichen 2,5 % der Nächte des Alleinspielers. Der Anteil, der schon in Stadtteil 4 endet, hängt an den Bossen, kaum am Wachstum (× 1,0 statt × 0,6: 56 statt 43 %).
 
+### 5.6 Die Wochen-Herausforderung (10.11.2026)
+
+Aufbauend auf dem Tages-Seed und der Tafel des Tages (14.4): Jede ISO-Woche (Montag bis Sonntag, Woche 1 hält den ersten Donnerstag des Jahres) hat **einen Run für alle**, mit festem Seed und einer **Sonderregel der Woche**.
+
+- **Woche**: ISO-Jahr und -Woche als Zahl `JJJJWW` (202646 ist Woche 46 von 2026, `WeekId`). Die App nimmt die Woche des lokalen Datums, der Server die der UTC-Uhr und lässt eine Woche Abstand zu (ein Run über Sonntag Mitternacht).
+- **Seed**: folgt aus der Woche allein (`WeekId::seed`, gemischt, damit er nie wie ein Tages-Seed aussieht). Charakter und Einsatz wählt der Spieler wie beim Tages-Seed, außer die Regel legt den Charakter fest (dann Einsatz 0, auch wenn der Charakter noch gesperrt ist).
+- **Sonderregel**: Daten in `core/content/weekly.ron`, etwa acht Regeln. Sie kommen in Runden: Jede Runde ist die ganze Liste in einer Reihenfolge, die aus der Nummer der Runde folgt (`pick_rule`); keine Regel kommt zweimal, bevor alle dran waren. Eine Regel baut nur aus vorhandenen Mechaniken (`WeeklyRuleDef`): fester Charakter (`character`), Startrelikte (`start_relics`), Startausgabe wie beim Charakter (`deck`, ein Startfluch), Groschen zum Start (`coins`), Verschärfungen der langen Nacht für den ganzen Run (`rules`, `NightRule`; `DoubleBoss` gilt nur nachts und ist ein Ladefehler) und Tischregeln wie bei einem Boss (`passive`, `hooks`, Quelle `Source::Weekly`, feuert direkt nach dem Charakter). Was sie zufällig zieht (Malus je Kneipe, Flüche für eine Kneipe), kommt aus einem eigenen Generator; alle anderen Ziehungen bleiben wie ohne Regel. In der Nacht stapeln sich die Verschärfungen der Regel mit den gezogenen (`Run::rules_in_force`).
+- **Kern**: `Run::new_weekly(content, week, start)` setzt Seed und Regel (`RunStart::weekly_rule`, `RunStart::week`), die Sicht trägt `RunView::weekly`; vor dem Start nennt `week_info` Woche, Seed, Regel und festen Charakter. Web: `weekInfo(date)` und `CoreRun.createWeekly`.
+- **Tafel der Woche**: wie die Tafel des Tages (gleicher Code auf dem Server, `server/src/board.rs`, Tabelle `weekly_results`, Migration 2). Es zählt der **erste beendete Wochen-Run** je Konto; jeder weitere ist Übung: Er zählt im Vereinsbuch, nicht auf der Tafel (der Server behält das erste Ergebnis und antwortet `stored: false`). Der Server kennt weder Seed noch Regel.
+- **Oberfläche**: Auf dem Startbildschirm unter der Tafel des Tages ein Block „Herausforderung der Woche“ mit Kalenderwoche, Restzeit bis Montag 0 Uhr, Name und Text der Regel, dem gewerteten Ergebnis und den Knöpfen „Wochen-Run als …“ (danach „Üben als …“) und „Tafel der Woche“ (eigenes Blatt mit der Tafel). Im Run nennt das Menü die Regel; der Endbildschirm bietet keinen Seed-Link an, weil der Seed allein nicht die Herausforderung ist.
+- **Simulator**: `--weekly-rule <id>` legt die Regel auf jeden Run der Messung (auf den üblichen Seeds), `--weekly <JJJJWW>` nimmt die Regel dieser Woche.
+
+**Gemessen** (10./11.11.2026, `docs/balance/2026-11-10-wochenregeln.md`): Standard-Bot, 3000 Runs je Regel auf denselben Seeds, Grundlage der Alleinspieler ohne Regel (Nullabend: der Nullspieler). Grenze: gewonnen etwa zwischen der Hälfte und dem Doppelten der Grundlage. Nachgestellt wurden drei Regeln: Teufelspakt war viel zu leicht (5,3 % gewonnen, der Schutzengel ist eine zweite Chance) und bekam Zielwerte +30 %; Spelunkenluft war zu schwer (0,7 %) und startet jetzt mit dem Spelunkenkenner statt mit 6 Groschen; Grand zählt doppelt war zu leicht (4,3 %) und lässt dafür Farbspiele nur drei Viertel zählen.
+
+| Regel | Stadtteil 2 | Stadtteil 3 | gewonnen |
+|---|---|---|---|
+| Grundlage Alleinspieler | 35,4 % | 10,6 % | 2,1 % |
+| Grand zählt doppelt | 38,9 % | 13,0 % | 3,5 % |
+| Spelunkenluft | 36,3 % | 13,2 % | 1,9 % |
+| Hellwache Gegner | 35,1 % | 9,8 % | 1,6 % |
+| Kurze Geduld | 32,5 % | 9,6 % | 1,7 % |
+| Teufelspakt | 49,9 % | 13,7 % | 1,7 % |
+| Nullabend (Grundlage Nullspieler: gleich) | 34,1 % | 12,4 % | 2,6 % |
+| Erbonkel | 35,3 % | 10,4 % | 1,6 % |
+| Spendierhosen | 39,9 % | 12,3 % | 2,7 % |
+
 ## 6. Ein Spiel im Detail
 
 1. **Geben.** Das Skatblatt (32 verschiedene Karten) wird gemischt, 10/10/10/2. Jede Karte zeigt die Ausgabe ihres Halters: In der Hand des Spielers und im Skat seine, bei einem Stammgast die normale, beim Boss die Boss-Ausgabe (ADR 0015, 7.1).
@@ -1417,6 +1443,8 @@ Alle Freischaltungen sind erreichbar. Die letzte ist für den Bot fast unerreich
 
 **Kartenrückseiten**: Standard ist die Distel-Rückseite (nach Altenburger Vorbild, eigene Pixelgrafik). Seit dem 03.11.2026 hängt die Rückseite der Ausgabe des Spielers am Charakter (`back` in `characters.ron`, ohne Angabe die Distel; Sicht `CharacterInfo::back` und `CharacterEntry::back`): Alleinspieler und Nullspieler die Distel, der Drückeberger Briefmarke und Poststempel auf Packpapier, die Schneiderin Schere und Maßband auf Aubergine, Bruderherz ein großes rotes Herz auf Creme mit kleinen Herzen. Die drei neuen sind Pixelgrafik im Stil der Gegner-Rückseiten aus `tools/cardart/backs.py`. Seit ADR 0015 zeigt die Rückseite, wessen Ausgabe eine Karte ist: Die Rückseite des Charakters gehört dem Spieler und dem Skat; die Hände der Gegner zeigen eine Gegner-Rückseite, die als Daten am Gast oder Boss hängt (`back` in `guests.ron` und `bosses.ron`, ohne Angabe eine gemeinsame Rückseite der Stammgäste). Die Gegner-Rückseiten sind keine Freischaltung und nicht wählbar. Weitere Rückseiten werden später über bestimmte Erfolge freischaltbar (Freischaltung als Kosmetik, ohne Spielwirkung). Die Web-App führt die Rückseiten als kleine Liste von Entwürfen (`web/src/ui/backs.ts`, `cardBack(className, design)`); die Wahl ist eine reine Anzeige-Einstellung und berührt den Kern nicht.
 
+**Statistik je Charakter und Relikt** (10.11.2026): Der Meta-Zustand zählt zusätzlich je Relikt, wie oft es genommen wurde (gekauft, gefunden, getauscht; Startrelikte nicht), wie oft es am Ende eines Runs gehalten wurde und wie viele dieser Runs gewonnen waren (`MetaStats::relics`), und je Charakter, welche Relikte er am Ende hielt (`MetaStats::character_relics`). Dafür tragen `RunWon` und `RunLost` die Relikte am Ende; ein Run, der in der langen Nacht endet, zählt nicht noch einmal. Ältere Meta-Stände laden (alle neuen Felder mit Standardwert; Test mit einem alten Stand in `core/tests/fixtures/`) und zählen ab dann. Der Kern rechnet das Statistikblatt (`MetaView::records`: Runs, Siege, Quote, weitester Stadtteil, bestes Spiel und die drei liebsten Relikte je Charakter; je Relikt genommen, am Ende, gewonnen, Quote). Das Vereinsbuch zeigt es auf der Seite „Statistik“ und auf der neuen Seite „Relikte“.
+
 ### 9.4 Der Drückeberger
 
 Entschieden vom Nutzer am 03.11.2026. Drückt sich, wo er kann, und lebt von dem, was er drückt.
@@ -1823,6 +1851,7 @@ Entschieden vom Nutzer im Cockpit (Frage 38, Variante A mit Ergänzung), umgeset
 - **Name am Stammtisch**: 1 bis 24 Zeichen, nicht eindeutig, steht auf der Tafel des Tages.
 - **Spielstand**: genau der gesicherte Text, für den Server undurchsichtig. Abgleich beim Start (vor dem Lesen des Speichers), nach jeder Kneipe, am Ende des Runs und beim Verlassen der Seite. Hat sich nur eine Seite geändert, gilt sie (mit Hinweis, wenn der Stand des Kontos geladen wird); haben sich beide geändert, wählt der Spieler in einem Dialog, der beide Stände zeigt. Ein älterer Stand überschreibt nie still einen neueren (Versionen, HTTP 409). Kleine Anzeige „gespeichert“, „offline“, „Konflikt“ neben dem Konto.
 - **Tafel des Tages**: Am Ende eines Tages-Runs meldet ein angemeldeter Spieler sein Ergebnis; der Startbildschirm zeigt die besten zehn und den eigenen Platz, ohne Konto nur lesend. Das erste Ergebnis je Tag zählt. Selbstauskunft, der Server prüft nichts.
+- **Tafel der Woche** (10.11.2026, 5.6): dasselbe für den Wochen-Run (`POST /api/weekly`, `GET /api/weekly/{JJJJWW}`); das erste Ergebnis je Woche zählt, weitere Wochen-Runs sind Übung.
 - **Keine Spiellogik auf dem Server**: Er speichert und zählt, er spielt nicht nach. Die Regeln bleiben im Kern im Browser.
 - **Datenschutz**: gespeichert werden nur Name, öffentliche Schlüssel der Passkeys, Hash des Wiederherstellungscodes, Spielstand und Tafel-Ergebnisse. Konto löschen (mit Rückfrage) entfernt alles davon sofort.
 - **Betrieb**: statisches musl-Binary in einem Alpine-Container neben unserem Caddy, nur über `/api` erreichbar, SQLite in `/opt/skat/data` mit täglicher Sicherung der letzten sieben Tage (`deploy/README.md`). Fällt der Dienst aus, läuft das Spiel weiter, nur Konto und Tafel sind „offline“.

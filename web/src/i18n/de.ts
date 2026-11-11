@@ -926,7 +926,20 @@ export const de = {
     lockedRelics: 'Noch {count} Hausregeln und Figuren warten auf ihre Freischaltung.',
     lockedMods: 'Noch {count} Kartenmodifikationen sind gesperrt und kommen bis dahin nicht zufällig ins Blatt.',
     rewardKind: '{kind}, {rarity}',
-    tabs: { book: 'Freischaltungen', stats: 'Statistik' },
+    tabs: { book: 'Freischaltungen', stats: 'Statistik', relics: 'Relikte' },
+    /** Statistik per character and relic (DESIGN 9.3), computed by the core. */
+    perCharacterBest: 'bestes Spiel {game}',
+    winRate: '{pct} %',
+    favourites: 'Liebste Relikte: {list}',
+    favourite: '{name} ({n}×)',
+    relicsTitle: 'Relikte',
+    relicsHint: 'Wie oft du ein Relikt genommen hast (gekauft, gefunden, getauscht), wie oft du es am Ende eines Runs noch hattest und wie viele dieser Runs gewonnen waren. Gezählt seit dem 10.11.2026.',
+    relicsNone: 'Noch keine Relikte gezählt. Am Ende deines nächsten Runs steht hier, was du dabei hattest.',
+    relicTaken: '{n}× genommen',
+    relicHeld: '{n}× am Ende',
+    relicWon: '{won} gewonnen ({pct} %)',
+    relicWonNone: 'nie am Ende',
+    weekly: 'Woche',
     totals: 'Insgesamt',
     perCharacterTitle: 'Nach Charakter',
     recent: 'Letzte Runs',
@@ -1450,6 +1463,39 @@ export const de = {
     } as Record<string, string>,
   },
 
+  /** Die Wochen-Herausforderung (DESIGN 5.6) on the start screen. */
+  weekly: {
+    title: 'Herausforderung der Woche',
+    kw: 'KW',
+    week: 'Woche {week}/{year}',
+    leftDays: 'noch {days} Tage und {hours} Std.',
+    leftDay: 'noch 1 Tag und {hours} Std.',
+    leftHours: 'noch {hours} Std. und {minutes} Min.',
+    fixed: 'Diese Woche spielen alle als {name}.',
+    once: 'Alle spielen denselben Run mit dieser Sonderregel. Der erste Versuch der Woche kommt auf die Tafel.',
+    done: 'Gewertet: {result}.',
+    practice: 'Weitere Versuche sind Übung.',
+    play: 'Wochen-Run als {name}',
+    playAgain: 'Üben als {name}',
+    rule: 'Sonderregel der Woche',
+    /** End screen of a weekly run: its seed alone is not the challenge, so no link to share. */
+    endNote: 'Wochen-Run mit der Sonderregel „{name}“. Der erste beendete Wochen-Run zählt auf der Tafel der Woche.',
+  },
+
+  /** Die Tafel der Woche (DESIGN 5.6): the same rows as the Tafel des Tages. */
+  weeklyBoard: {
+    title: 'Tafel der Woche',
+    empty: 'Noch niemand hat den Wochen-Run beendet.',
+    signInHint: 'Melde dich an, dann kommt dein Ergebnis auf die Tafel der Woche.',
+    signIn: 'Anmelden',
+    you: 'Du: Platz {rank} von {total}',
+    notYet: 'Dein erster Wochen-Run kommt auf die Tafel, wenn du ihn beendest.',
+    total: '{total} Spieler diese Woche',
+    submitted: 'Dein Ergebnis steht auf der Tafel der Woche: Platz {rank}.',
+    unavailable: 'Die Tafel ist gerade nicht erreichbar.',
+    rules: 'Es zählt der erste beendete Wochen-Run. Jeder weitere ist Übung und ändert die Tafel nicht. Montag beginnt eine neue Woche mit neuer Sonderregel.',
+  },
+
   board: {
     title: 'Tafel des Tages',
     empty: 'Noch niemand hat heute den Tages-Seed beendet.',
@@ -1828,8 +1874,9 @@ export const de = {
     encounters: {},
     unlocks: {},
     maluses: {},
+    weekly: {},
   } as Record<
-    'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses',
+    'relics' | 'card_mods' | 'bosses' | 'consumables' | 'characters' | 'encounters' | 'unlocks' | 'maluses' | 'weekly',
     Record<string, { name?: string; text?: string }>
   >,
 } as const;

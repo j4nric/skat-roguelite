@@ -105,6 +105,8 @@ const check = (where, german, english) => {
   }
 };
 for (const [cat, file] of Object.entries(files)) check(cat, entries(file), EN_CATALOG[cat]);
+// The Sonderregeln der Woche (DESIGN 5.6).
+check('weekly', entries('weekly.ron'), EN_CATALOG.weekly);
 check('characters', entries('characters.ron', 'character'), EN_CATALOG.characters);
 // Maluses, Verschärfungen and card backs sit in nested lists of tour.ron and night.ron.
 for (const file of ['tour.ron', 'night.ron']) {

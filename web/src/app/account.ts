@@ -1,7 +1,7 @@
 // Account and sync (ADR 0021), and the daily board. Transport only: the
 // save is the save code; the server never sees the game.
 
-import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, type AccountUser } from '../account';
+import { AccountError, addPasskey, deleteAccount, fetchDailyBoard, fetchMe, fetchPasskeys, fetchWeeklyBoard, recover, register, removePasskey, renewRecoveryCode, setName, signIn, signOut, signOutEverywhere, submitDaily, submitWeekly, type AccountUser } from '../account';
 import { de, t } from '../i18n';
 import { dailySeed } from '../seed';
 import { Sync, type Reconciled } from '../sync';
@@ -39,6 +39,8 @@ export class AccountFlow {
   readonly sync: Sync;
   /** The day whose daily board was asked for in this visit. */
   private boardDay = '';
+  /** The week whose weekly board was asked for in this visit. */
+  private boardWeek = '';
   /** What signing in with the recovery code brought, acted on once its code was seen. */
   private pendingSync: Reconciled = 'none';
 
@@ -95,8 +97,9 @@ export class AccountFlow {
     }
   }
 
-  /** Today's daily board, once per visit and day (and again after a result). */
+  /** Today's daily board and this week's, once per visit and period (and again after a result). */
   loadBoard(force = false): void {
+    this.loadWeeklyBoard(force);
     const day = dailySeed();
     if (!force && this.boardDay === day) return;
     this.boardDay = day;
@@ -109,6 +112,47 @@ export class AccountFlow {
         // No server (local preview, offline): no board.
         this.ctx.ui.board = null;
       },
+    );
+  }
+
+  /** This week's board (DESIGN 5.6), once per visit and week. */
+  private loadWeeklyBoard(force: boolean): void {
+    const week = this.ctx.ui.week ? String(this.ctx.ui.week.week) : '';
+    if (!week || (!force && this.boardWeek === week)) return;
+    this.boardWeek = week;
+    fetchWeeklyBoard(week).then(
+      (board) => {
+        this.ctx.ui.weeklyBoard = board;
+        const sheet = this.ctx.ui.overlay?.kind === 'weekly-board';
+        if ((this.ctx.ui.screen === 'start' || sheet) && !this.ctx.ui.busy) this.ctx.render();
+      },
+      () => {
+        this.ctx.ui.weeklyBoard = null;
+      },
+    );
+  }
+
+  /**
+   * A finished weekly run of a signed-in player goes to the Tafel der Woche:
+   * the first of the week counts, every later one is practice and the
+   * server keeps it off the board (as the daily board does).
+   */
+  submitWeeklyResult(view: RunView, week: number): void {
+    if (!this.sync.signedIn || view.tutorial) return;
+    submitWeekly({
+      week: String(week),
+      character: view.character.character,
+      won: view.phase === 'Won',
+      section: view.series.section + 1,
+      series: view.series.index + 1,
+      stake: view.stake ?? 0,
+      bestGame: view.stats.best_game,
+    }).then(
+      (res) => {
+        if (res.stored && res.me) this.ctx.showToast(t(de.weeklyBoard.submitted, { rank: res.me.rank }));
+        this.loadWeeklyBoard(true);
+      },
+      (err: unknown) => console.warn('weekly result not sent', err),
     );
   }
 

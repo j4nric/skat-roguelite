@@ -42,6 +42,7 @@ export function sourceName(source: Source, deck: (DeckCard & CardLook)[]): strin
   if ('Consumable' in source) return contentName('consumables', source.Consumable);
   if ('Character' in source) return contentName('characters', source.Character);
   if ('Malus' in source) return contentName('maluses', source.Malus);
+  if ('Weekly' in source) return contentName('weekly', source.Weekly);
   const card = deck.find((c) => c.id === source.CardMod.card);
   return t(de.score.cardMod, {
     mod: contentName('card_mods', source.CardMod.card_mod),
@@ -57,6 +58,7 @@ function sourceIcon(source: Source, deck: (DeckCard & CardLook)[]): string {
   if ('Consumable' in source) return `<span class="step-icon">${consumableCoaster(consumableLook(source.Consumable), { size: 22 })}</span>`;
   if ('Character' in source) return `<span class="step-icon">${portrait(characterPortraitId(source.Character), 'portrait-xs')}</span>`;
   if ('Malus' in source) return `<span class="step-icon icon-kontra">!</span>`;
+  if ('Weekly' in source) return `<span class="step-icon icon-kontra">W</span>`;
   const card = deck.find((c) => c.id === source.CardMod.card);
   return card
     ? `<span class="step-icon icon-card">${lookSvg(card, 'small')}</span>`

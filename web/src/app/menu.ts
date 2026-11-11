@@ -91,8 +91,13 @@ export class Menu {
         if (ui.busy || !ui.meta) return;
         open({ kind: 'book', tab: 'book' });
       },
+      'weekly-board': () => {
+        if (ui.busy) return;
+        open({ kind: 'weekly-board' });
+      },
       'book-tab': ({ el }) => {
-        if (ui.overlay?.kind === 'book') open({ kind: 'book', tab: el.dataset.tab === 'stats' ? 'stats' : 'book' });
+        const tab = el.dataset.tab === 'stats' || el.dataset.tab === 'relics' ? el.dataset.tab : 'book';
+        if (ui.overlay?.kind === 'book') open({ kind: 'book', tab });
       },
       'info-rule': info,
       'info-evening': info,

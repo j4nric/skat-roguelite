@@ -194,6 +194,7 @@ fn reaching_the_limit_below_target_loses_the_run() {
         stake: 0,
         boss: None,
         night: false,
+        relics: run.relics().to_vec(),
     }));
     assert_eq!(
         run.apply(&content, RunAction::Redeal),

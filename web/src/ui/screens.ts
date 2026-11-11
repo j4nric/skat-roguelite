@@ -27,9 +27,9 @@ import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderPasskeys, renderRecover, renderRecoveryCode, syncPill } from './account';
-import type { DailyBoard, DailyEntry } from '../account';
+import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
-import type { ModQuestion, Overlay, UiState } from './state';
+import type { BookTab, ModQuestion, Overlay, UiState } from './state';
 
 export { lockIcon };
 
@@ -258,6 +258,83 @@ function dailyBlock(ui: UiState): string {
   </section>`;
 }
 
+/** Time left in the week (until Monday 0:00, local time) in a few words. */
+export function weekLeft(now: Date = new Date()): string {
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  // getDay: 0 is Sunday; the ISO week ends with it.
+  end.setDate(end.getDate() + 7 - ((now.getDay() + 6) % 7));
+  const minutes = Math.max(0, Math.floor((end.getTime() - now.getTime()) / 60_000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days >= 2) return t(de.weekly.leftDays, { days, hours });
+  if (days === 1) return t(de.weekly.leftDay, { hours });
+  return t(de.weekly.leftHours, { hours, minutes: minutes % 60 });
+}
+
+/** A small sheet of a calendar with the number of the week. */
+function weekBadge(week: number): string {
+  return `<span class="week-badge" aria-hidden="true"><small>${esc(de.weekly.kw)}</small><b>${esc(week)}</b></span>`;
+}
+
+/** The weekly run counted for the board: the first finished one of the week (DESIGN 5.6). */
+function weeklyCounted(ui: UiState, week: number): RunRecord | undefined {
+  // History is newest first: the counted attempt is the oldest of the week.
+  const runs = ui.history.filter((r) => r.weekly === week);
+  return runs[runs.length - 1];
+}
+
+/** Who plays this week's run: the rule's character or the one picked. */
+function weeklyCharacter(ui: UiState): Character {
+  return ui.week?.character ?? ui.pickCharacter;
+}
+
+/**
+ * Die Wochen-Herausforderung (DESIGN 5.6) on the start screen, next to the
+ * Tafel des Tages: the week's Sonderregel, the time left, the attempt that
+ * counts, and the way to its board.
+ */
+function weeklyBlock(ui: UiState): string {
+  const week = ui.week;
+  if (!ui.meta || !week) return '';
+  const counted = weeklyCounted(ui, week.week);
+  const who = weeklyCharacter(ui);
+  const fixed = week.character !== null;
+  const W = de.weekly;
+  return `<section class="daily weekly" data-testid="weekly" ${attrs({ 'data-week': week.week })}>
+    ${weekBadge(week.iso_week)}
+    <div class="daily-text">
+      <b>${esc(W.title)}</b> <span>${esc(t(W.week, { week: week.iso_week, year: week.year }))} · <span data-testid="weekly-left">${esc(weekLeft())}</span></span>
+      <span class="weekly-rule" data-testid="weekly-rule"><b>${esc(contentName('weekly', week.rule.id) || week.rule.name)}</b> ${esc(contentText('weekly', week.rule.id) || week.rule.text)}</span>
+      ${fixed ? `<span class="small">${esc(t(W.fixed, { name: shortName(who) }))}</span>` : ''}
+      ${counted ? `<span class="small daily-done" data-testid="weekly-done">${esc(t(W.done, { result: runResult(counted) }))} ${esc(W.practice)}</span>` : `<span class="small">${esc(W.once)}</span>`}
+    </div>
+    <div class="weekly-actions">
+      <button class="btn btn-wide" ${attrs({ 'data-action': 'play-weekly', 'data-testid': 'play-weekly' })}>${esc(t(counted ? W.playAgain : W.play, { name: shortName(who) }))}</button>
+      <button class="btn btn-wide" ${attrs({ 'data-action': 'weekly-board', 'data-testid': 'weekly-board-open' })}>${esc(de.weeklyBoard.title)}</button>
+    </div>
+  </section>`;
+}
+
+/** Die Tafel der Woche as a sheet: the rule, the time left, the board (DESIGN 5.6). */
+function weeklyBoardSheet(ui: UiState): string {
+  const week = ui.week;
+  if (!week) return '';
+  const counted = weeklyCounted(ui, week.week);
+  const board = ui.weeklyBoard && ui.weeklyBoard.week === String(week.week) ? ui.weeklyBoard : null;
+  const body = board
+    ? dailyBoard(board, ui.account.user !== null, counted !== undefined, de.weeklyBoard, 'weekly-board')
+    : !ui.account.online
+      ? `<p class="small board-offline" data-testid="weekly-board-offline">${esc(de.offline.board)}</p>`
+      : `<p class="small" data-testid="weekly-board-none">${esc(de.weeklyBoard.unavailable)}</p>`;
+  return `<h2>${esc(de.weekly.title)}</h2>
+    <p class="weekly-sheet-head">${weekBadge(week.iso_week)}<span><b>${esc(contentName('weekly', week.rule.id) || week.rule.name)}</b><br><span class="small">${esc(t(de.weekly.week, { week: week.iso_week, year: week.year }))} · ${esc(weekLeft())}</span></span></p>
+    <p class="small">${esc(contentText('weekly', week.rule.id) || week.rule.text)}</p>
+    ${body}
+    <p class="small">${esc(de.weeklyBoard.rules)}</p>
+    <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
+}
+
 /** A result on the daily board in a few words. */
 function boardResult(e: DailyEntry): string {
   const result = e.won ? de.board.won : t(de.board.reached, { section: e.section, series: e.series });
@@ -269,24 +346,28 @@ function boardRow(e: DailyEntry): string {
   return `<li class="board-row${e.me ? ' is-me' : ''}"><span class="board-rank">${esc(e.rank)}.</span><span class="board-who"><span class="board-name">${esc(e.name ?? de.account.noName)}</span><span class="board-char">${esc(character)}</span></span><span class="board-result">${esc(boardResult(e))}</span></li>`;
 }
 
+/** The texts of a board: the Tafel des Tages or the Tafel der Woche. */
+type BoardTexts = Record<'title' | 'empty' | 'signInHint' | 'signIn' | 'you' | 'notYet' | 'total', string>;
+
 /**
- * Today's daily board (ADR 0021): the best ten with names, the own place
- * below if it is not among them. Read-only without an account.
+ * Today's daily board (ADR 0021) or this week's (DESIGN 5.6): the best ten
+ * with names, the own place below if it is not among them. Read-only
+ * without an account.
  */
-function dailyBoard(board: DailyBoard, signedIn: boolean, played: boolean): string {
+function dailyBoard(board: DailyBoard | WeeklyBoard, signedIn: boolean, played: boolean, texts: BoardTexts = de.board, testid = 'daily-board'): string {
   const rows = board.entries.map(boardRow).join('');
   const meShown = board.entries.some((e) => e.me);
   let foot = '';
   if (!signedIn) {
-    foot = `<p class="small board-hint">${esc(de.board.signInHint)} <button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'board-signin' })}>${esc(de.board.signIn)}</button></p>`;
+    foot = `<p class="small board-hint">${esc(texts.signInHint)} <button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'board-signin' })}>${esc(texts.signIn)}</button></p>`;
   } else if (board.me && !meShown) {
-    foot = `<ol class="board-list board-me">${boardRow(board.me)}</ol><p class="small">${esc(t(de.board.you, { rank: board.me.rank, total: board.total }))}</p>`;
+    foot = `<ol class="board-list board-me">${boardRow(board.me)}</ol><p class="small">${esc(t(texts.you, { rank: board.me.rank, total: board.total }))}</p>`;
   } else if (!board.me && !played) {
-    foot = `<p class="small board-hint">${esc(de.board.notYet)}</p>`;
+    foot = `<p class="small board-hint">${esc(texts.notYet)}</p>`;
   }
-  return `<div class="board" data-testid="daily-board">
-    <div class="board-head"><b>${esc(de.board.title)}</b>${board.total ? `<span class="small">${esc(t(de.board.total, { total: board.total }))}</span>` : ''}</div>
-    ${rows ? `<ol class="board-list">${rows}</ol>` : `<p class="small">${esc(de.board.empty)}</p>`}
+  return `<div class="board" ${attrs({ 'data-testid': testid })}>
+    <div class="board-head"><b>${esc(texts.title)}</b>${board.total ? `<span class="small">${esc(t(texts.total, { total: board.total }))}</span>` : ''}</div>
+    ${rows ? `<ol class="board-list">${rows}</ol>` : `<p class="small">${esc(texts.empty)}</p>`}
     ${foot}
   </div>`;
 }
@@ -376,6 +457,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
         <input id="seed" name="seed" inputmode="numeric" autocomplete="off" placeholder="${esc(de.start.seedPlaceholder)}"></label>
     </div>
     ${dailyBlock(ui)}
+    ${weeklyBlock(ui)}
     ${ui.tutorialOffer ? '' : `<div class="start-actions start-tutorial"><button class="btn btn-wide" ${attrs({ 'data-action': 'tutorial-start', 'data-testid': 'tutorial-start' })}>${esc(de.tutorial.start)}</button><p class="small">${esc(de.tutorial.startHint)}</p></div>`}
     ${meta ? startStats(meta) : ''}
     ${meta ? startBoard(meta) : ''}
@@ -424,7 +506,7 @@ export function renderEnd(won: boolean, view: RunView, ui: UiState): string {
     <div class="sheet chalkboard end-board">
       <h1 class="${won ? 'is-won' : night ? 'is-night' : 'is-lost'}">${esc(title)}</h1>
       <p class="chalk-small" data-testid="end-reason">${esc(reason)}</p>
-      ${shareBlock(view.seed, view.character.character, ui, view.stake ?? 0)}
+      ${view.weekly ? `<p class="small" data-testid="end-weekly">${esc(t(de.weekly.endNote, { name: contentName('weekly', view.weekly.id) || view.weekly.name }))}</p>` : shareBlock(view.seed, view.character.character, ui, view.stake ?? 0)}
       ${renderOverview(view, ui.meta, !won && !night)}
     </div>
     <div class="end-actions">
@@ -711,7 +793,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            ${languageSwitch()}
            <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'menu-account' })}>${esc(ui.account.user ? t(de.account.menuAccount, { name: accountName(ui.account.user) }) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span></div>
          ${settingsBlock(ui)}
-         ${view && ui.screen === 'run' ? seedRow(view.seed, view.character.character, ui, view.stake ?? 0) : ''}
+         ${view && ui.screen === 'run' && !view.weekly ? seedRow(view.seed, view.character.character, ui, view.stake ?? 0) : ''}
+         ${view?.weekly && ui.screen === 'run' ? `<p class="menu-weekly small" data-testid="menu-weekly"><b>${esc(de.weekly.rule)}:</b> ${esc(contentName('weekly', view.weekly.id) || view.weekly.name)}. ${esc(contentText('weekly', view.weekly.id) || view.weekly.text)}</p>` : ''}
          <div class="menu-list menu-grid">
            <button class="btn" ${attrs({ 'data-action': 'rules', 'data-testid': 'rules-open' })}>${esc(de.menu.rules)}</button>
            <button class="btn" ${attrs({ 'data-action': 'glossary', 'data-testid': 'glossary-open' })}>${esc(de.menu.glossary)}</button>
@@ -909,6 +992,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     }
     case 'book':
       return ui.meta ? sheet(renderBook(ui.meta, overlay.tab, ui.history), true, 'ledger has-body', 'overlay-book') : '';
+    case 'weekly-board':
+      return sheet(weeklyBoardSheet(ui), true, 'sheet-weekly-board', 'overlay-weekly-board');
     case 'confirm-new':
       return sheet(
         `<h2>${esc(de.confirm.title)}</h2>
@@ -1009,10 +1094,10 @@ function unlockRow(u: UnlockEntry, meta: MetaView): string {
 }
 
 /** The two pages of the Vereinsbuch. */
-function bookTabs(tab: 'book' | 'stats'): string {
-  const btn = (key: 'book' | 'stats'): string =>
+function bookTabs(tab: BookTab): string {
+  const btn = (key: BookTab): string =>
     `<button class="seg ${tab === key ? 'is-picked' : ''}" ${attrs({ 'data-action': 'book-tab', 'data-tab': key, 'aria-pressed': tab === key ? 'true' : 'false' })}>${esc(de.book.tabs[key])}</button>`;
-  return `<div class="segmented ledger-tabs" role="group">${btn('book')}${btn('stats')}</div>`;
+  return `<div class="segmented ledger-tabs" role="group">${btn('book')}${btn('stats')}${btn('relics')}</div>`;
 }
 
 /** Who sits at the table and every unlock with its reward. */
@@ -1046,7 +1131,7 @@ function recentRow(r: RunRecord, meta: MetaView): string {
   return `<li class="recent-row ${r.won ? 'is-won' : ''}" ${attrs({ 'data-seed': r.seed })}>
     ${portrait(characterPortraitId(r.character), 'portrait-xs')}
     <div class="recent-main">
-      <b>${esc(shortName(r.character))}</b>${r.stake ? `<span class="recent-daily recent-short">${esc(t(de.book.stake, { stake: r.stake }))}</span>` : ''}${r.daily ? `<span class="recent-daily">${esc(de.book.daily)}</span>` : ''}
+      <b>${esc(shortName(r.character))}</b>${r.stake ? `<span class="recent-daily recent-short">${esc(t(de.book.stake, { stake: r.stake }))}</span>` : ''}${r.daily ? `<span class="recent-daily">${esc(de.book.daily)}</span>` : ''}${r.weekly ? `<span class="recent-daily">${esc(de.book.weekly)}</span>` : ''}
       <span class="recent-result">${esc(runResult(r))} · ${esc(t(de.book.recentBest, { n: r.bestGame }))}</span>
       <span class="recent-seed">${esc(when)} · ${esc(t(de.book.recentSeed, { seed: r.seed }))}</span>
     </div>
@@ -1065,14 +1150,23 @@ function statsPage(meta: MetaView, history: RunRecord[]): string {
     [de.book.gamesLost, s.games_lost],
     [de.book.bestGame, s.best_game],
   ];
+  const records = meta.records?.characters ?? [];
   const chars = meta.characters
     .map((c) => {
       const st = s.characters[c.character];
-      const line = c.unlocked
-        ? t(de.book.perCharacter, { runs: t((st?.runs ?? 0) === 1 ? de.book.oneRun : de.book.manyRuns, { n: st?.runs ?? 0 }), won: st?.won ?? 0, best: st?.best_section ?? 0 })
-        : t(de.book.lockedHint, { text: unlockText(meta, c.unlocked_by) });
-      return `<li class="ledger-char ${c.unlocked ? '' : 'is-locked'}">${portrait(characterPortraitId(c.character), 'portrait-sm')}
-        <div><b>${esc(characterName(c))}</b>${c.unlocked ? '' : lockIcon(16)}<span class="ledger-cond">${esc(line)}</span></div></li>`;
+      const rec = records.find((r) => r.character === c.character);
+      const runs = rec?.runs ?? st?.runs ?? 0;
+      const won = rec?.won ?? st?.won ?? 0;
+      const pct = rec?.win_percent ?? null;
+      const best = rec?.best_game ?? st?.best_game ?? 0;
+      const parts = [t(de.book.perCharacter, { runs: t(runs === 1 ? de.book.oneRun : de.book.manyRuns, { n: runs }), won: pct === null ? won : `${won} (${t(de.book.winRate, { pct })})`, best: rec?.best_section ?? st?.best_section ?? 0 })];
+      if (best > 0) parts.push(t(de.book.perCharacterBest, { game: best }));
+      const line = c.unlocked ? parts.join(' · ') : t(de.book.lockedHint, { text: unlockText(meta, c.unlocked_by) });
+      const favs = c.unlocked && rec?.favourite_relics.length
+        ? `<span class="ledger-cond ledger-favs" data-testid="favourite-relics">${esc(t(de.book.favourites, { list: rec.favourite_relics.map((f) => t(de.book.favourite, { name: contentName('relics', f.relic) || f.name, n: f.count })).join(', ') }))}</span>`
+        : '';
+      return `<li class="ledger-char ${c.unlocked ? '' : 'is-locked'}" ${attrs({ 'data-character': c.character })}>${portrait(characterPortraitId(c.character), 'portrait-sm')}
+        <div><b>${esc(characterName(c))}</b>${c.unlocked ? '' : lockIcon(16)}<span class="ledger-cond">${esc(line)}</span>${favs}</div></li>`;
     })
     .join('');
   const recent = history.length
@@ -1086,11 +1180,32 @@ function statsPage(meta: MetaView, history: RunRecord[]): string {
     ${recent}`;
 }
 
-/** The Vereinsbuch: the unlocks page or the statistics page. */
-export function renderBook(meta: MetaView, tab: 'book' | 'stats', history: RunRecord[]): string {
+/** The relics page: per relic how often taken, held at the end, won with (DESIGN 9.3, from the core). */
+function relicsPage(meta: MetaView): string {
+  const relics = meta.records?.relics ?? [];
+  if (!relics.length) return `<h3 class="ledger-h">${esc(de.book.relicsTitle)}</h3><p class="ledger-note" data-testid="relic-stats-none">${esc(de.book.relicsNone)}</p>`;
+  const rows = relics
+    .map((r) => {
+      const look = relicLook(r.relic);
+      const line = (r.win_percent === null
+        ? [t(de.book.relicTaken, { n: r.taken }), de.book.relicWonNone]
+        : [t(de.book.relicTaken, { n: r.taken }), t(de.book.relicHeld, { n: r.held }), t(de.book.relicWon, { won: r.won, pct: r.win_percent })]
+      ).join(' · ');
+      return `<li class="ledger-char ledger-relic" ${attrs({ 'data-relic': r.relic })}>${relicCoaster({ id: r.relic, kind: r.kind, rarity: r.rarity ?? look.rarity, group: look.group }, { size: 36 })}
+        <div><b>${esc(contentName('relics', r.relic) || r.name)}</b><span class="ledger-cond">${esc(line)}</span></div></li>`;
+    })
+    .join('');
+  return `<h3 class="ledger-h">${esc(de.book.relicsTitle)}</h3>
+    <p class="ledger-note">${esc(de.book.relicsHint)}</p>
+    <ul class="ledger-chars" data-testid="relic-stats">${rows}</ul>`;
+}
+
+/** The Vereinsbuch: the unlocks page, the statistics page or the relics page. */
+export function renderBook(meta: MetaView, tab: BookTab, history: RunRecord[]): string {
+  const page = tab === 'stats' ? statsPage(meta, history) : tab === 'relics' ? relicsPage(meta) : bookPage(meta);
   return `<div class="ledger-head"><h2>${esc(de.book.title)}</h2><p class="ledger-sub">${esc(de.book.subtitle)}</p></div>
     ${bookTabs(tab)}
-    <div class="ledger-page sheet-body" data-page="${tab}" tabindex="0">${tab === 'stats' ? statsPage(meta, history) : bookPage(meta)}</div>
+    <div class="ledger-page sheet-body" data-page="${tab}" tabindex="0">${page}</div>
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 

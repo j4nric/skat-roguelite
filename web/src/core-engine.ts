@@ -3,7 +3,7 @@
 // is available (./core.ts). It holds the core's objects by handle and
 // passes their JSON on as text; it decides nothing itself.
 
-import init, { WasmMeta, WasmRun, catalog } from './wasm/pkg/skat_wasm.js';
+import init, { WasmMeta, WasmRun, catalog, weekInfo } from './wasm/pkg/skat_wasm.js';
 
 /** A request to the engine: `id` pairs it with its answer. */
 export interface CoreRequest {
@@ -40,6 +40,8 @@ export type CoreOp =
   | 'catalog'
   | 'runCreate'
   | 'runCreateWith'
+  | 'runCreateWeekly'
+  | 'weekInfo'
   | 'runTutorial'
   | 'runLoad'
   | 'runApply'
@@ -110,6 +112,13 @@ export function handle(op: CoreOp, args: unknown[]): unknown {
       const startEvents = r.startEvents();
       return { ...keepRun(r), startEvents };
     }
+    case 'runCreateWeekly': {
+      const r = WasmRun.newRunWeekly(Number(a), String(b), Number(c), meta(d));
+      const startEvents = r.startEvents();
+      return { ...keepRun(r), startEvents };
+    }
+    case 'weekInfo':
+      return weekInfo(Number(a), Number(b), Number(c));
     case 'runTutorial':
       return keepRun(WasmRun.tutorial());
     case 'runLoad':

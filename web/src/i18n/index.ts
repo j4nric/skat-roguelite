@@ -177,12 +177,12 @@ export function setCatalog(c: Catalog): void {
 
 /** Display name of a content item, German-deck override first. */
 export function contentName(category: Category, id: string): string {
-  return de.content[category]?.[id]?.name ?? catalog?.[category][id]?.name ?? id;
+  return de.content[category]?.[id]?.name ?? catalog?.[category]?.[id]?.name ?? id;
 }
 
 /** Display text of a content item, German-deck override first. */
 export function contentText(category: Category, id: string): string {
-  return de.content[category]?.[id]?.text ?? catalog?.[category][id]?.text ?? '';
+  return de.content[category]?.[id]?.text ?? catalog?.[category]?.[id]?.text ?? '';
 }
 
 /**

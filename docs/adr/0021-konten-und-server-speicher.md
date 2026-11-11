@@ -72,3 +72,7 @@ Ohne die Entscheidung zu ändern, nach einer Durchsicht von Server, Deploy und C
 - **Fehler** kommen immer als JSON (`{"error": "…"}`), auch die, die axum selbst erzeugt (kaputtes JSON, zu großer Inhalt, unbekannter Pfad).
 - **Datenbank.** Das Schema ist eine Liste von Migrationen, gezählt mit `PRAGMA user_version` und in einer Transaktion angewandt; eine Datei aus einem neueren Server wird nicht angefasst. `synchronous=NORMAL` mit WAL. Einmal am Tag schreibt der Dienst mit `VACUUM INTO` eine Sicherung nach `data/backup/stammtisch-JJJJMMTT.db` (Datum nach der Uhr des Servers, die letzten sieben bleiben).
 - **Betrieb.** Der Container des Dienstes läuft mit schreibgeschütztem Dateisystem (nur `data/` und ein `/tmp` im Speicher sind beschreibbar), ohne Capabilities, mit Healthcheck. Caddy setzt Sicherheits-Header für die ganze Seite, darunter eine Content-Security-Policy (`deploy/README.md`).
+
+## Nachtrag (10.11.2026): Tafel der Woche
+
+Ohne die Entscheidung zu ändern: Zur Tafel des Tages kommt die Tafel der Woche für die Wochen-Herausforderung (DESIGN 5.6). Sie ist gleich gebaut und teilt den Code (`server/src/board.rs`): Tabelle `weekly_results` (Migration 2), Schlüssel die ISO-Woche als `JJJJWW`, eine Woche Abstand zur Uhr des Servers erlaubt, das erste Ergebnis je Konto und Woche zählt, gleiche Prüfung und Begrenzung wie beim Tag. Konto löschen entfernt auch diese Ergebnisse. Der Server kennt weder Seed noch Sonderregel der Woche; beides ist Sache des Kerns im Browser.

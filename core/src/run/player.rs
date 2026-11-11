@@ -594,10 +594,12 @@ impl RunEvent {
                 character,
                 length,
                 stake,
+                relics,
             } => RunEvent::RunWon {
                 character,
                 length,
                 stake,
+                relics,
             },
             RunEvent::RunLost {
                 section,
@@ -607,6 +609,7 @@ impl RunEvent {
                 stake,
                 boss,
                 night,
+                relics,
             } => RunEvent::RunLost {
                 section,
                 index,
@@ -615,6 +618,7 @@ impl RunEvent {
                 stake,
                 boss,
                 night,
+                relics,
             },
             RunEvent::NightStarted { character } => RunEvent::NightStarted { character },
             RunEvent::VerschaerfungDrawn {

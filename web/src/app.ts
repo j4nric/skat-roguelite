@@ -110,6 +110,8 @@ export class App implements AppCtx {
     ended: null,
     account: { user: null, status: 'off', supported: passkeysSupported(), online: isOnline() },
     board: null,
+    week: null,
+    weeklyBoard: null,
   };
   fastForward = false;
   readonly screenEl: HTMLElement;

@@ -5591,6 +5591,110 @@ async function offlinePass(browser, errors) {
 }
 
 /**
+ * Die Wochen-Herausforderung and the Statistik (DESIGN 5.6 and 9.3; alone
+ * with SMOKE_ONLY=weekly). The start screen shows this week's block next
+ * to the Tafel des Tages: the Sonderregel from the core, the time left in
+ * the week. "Tafel der Woche" opens the board sheet (the board is served by
+ * a stub of /api/weekly here; the real server is checked by hand, see
+ * DESIGN 5.6). The weekly run starts with the week's seed, the menu names
+ * its rule. The Vereinsbuch's Statistik shows the core's records per
+ * character (win rate, favourite relics) and the new page "Relikte" per
+ * relic, from a meta state saved before the relic statistics existed plus
+ * one with them. Nothing scrolls sideways.
+ */
+async function weeklyPass(browser, errors, viewport) {
+  const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const tag = `${viewport.width}x${viewport.height}`;
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${tag}.png`) });
+  let asked = null;
+  await page.route('**/api/weekly/*', (route) => {
+    asked = new URL(route.request().url()).pathname.split('/').pop();
+    const row = (rank, name, character, won, section, series, me = false) => ({ rank, name, character, won, section, series, stake: 0, bestGame: 40 + rank, me });
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        week: asked,
+        total: 12,
+        entries: [row(1, 'Uschi', 'Declarer', true, 3, 5), row(2, 'Kalle', 'NullPlayer', false, 3, 2), row(3, null, 'Shirker', false, 2, 4)],
+        me: null,
+        signedIn: false,
+      }),
+    });
+  });
+  // A meta state from before the relic statistics, with a run counted since.
+  const meta = JSON.parse(readFileSync(resolve(webDir, '../core/tests/fixtures/meta-before-relic-stats.json'), 'utf8'));
+  meta.meta.stats.relics = { tour: { taken: 4, held: 3, won: 1 }, beer_mat: { taken: 2, held: 1, won: 0 }, guardian_angel: { taken: 1, held: 0, won: 0 } };
+  meta.meta.stats.character_relics = { Declarer: { tour: 3, beer_mat: 1, card_counter: 2 } };
+  await context.addInitScript((m) => {
+    if (!localStorage.getItem('stammtisch.meta')) localStorage.setItem('stammtisch.meta', m);
+  }, JSON.stringify(meta));
+  await page.goto(base);
+  const block = page.locator('[data-testid="weekly"]');
+  await block.waitFor({ timeout: 15000 }).catch(() => fail(`weekly ${tag}: no weekly block on the start screen`));
+  const week = Number(await block.getAttribute('data-week'));
+  if (!(week > 202600 && week < 210000)) fail(`weekly ${tag}: the block names week ${week}`);
+  const rule = ((await page.locator('[data-testid="weekly-rule"]').textContent()) ?? '').trim();
+  if (rule.length < 12) fail(`weekly ${tag}: the Sonderregel reads "${rule}"`);
+  const left = (await page.locator('[data-testid="weekly-left"]').textContent()) ?? '';
+  if (!/^noch \d+ (Tage?|Std\.)/.test(left)) fail(`weekly ${tag}: the time left reads "${left}"`);
+  // Next to the daily block, below it.
+  const daily = await page.locator('[data-testid="daily"]').boundingBox();
+  const box = await block.boundingBox();
+  if (!daily || !box || box.y < daily.y + daily.height - 1) fail(`weekly ${tag}: the weekly block is not below the daily block`);
+  await block.scrollIntoViewIfNeeded();
+  await snap('weekly-start');
+  await assertNoSideScroll(page, `weekly ${tag}: start screen`, '[data-testid="weekly"]');
+  // The board sheet.
+  await page.click('[data-testid="weekly-board-open"]');
+  await page.waitForSelector('.sheet-weekly-board [data-testid="weekly-board"] .board-row', { timeout: 10000 }).catch(() => fail(`weekly ${tag}: no rows on the Tafel der Woche`));
+  if (asked !== String(week)) fail(`weekly ${tag}: the board asked for week ${asked}, the block shows ${week}`);
+  const rows = await page.locator('.sheet-weekly-board .board-row').count();
+  if (rows !== 3) fail(`weekly ${tag}: ${rows} rows on the board`);
+  const head = (await page.locator('.sheet-weekly-board .board-head').textContent()) ?? '';
+  if (!head.includes('12 Spieler diese Woche')) fail(`weekly ${tag}: the board head reads "${head}"`);
+  if (!(await page.locator('.sheet-weekly-board [data-testid="board-signin"]').count())) fail(`weekly ${tag}: no sign-in hint without an account`);
+  await snap('weekly-board');
+  await assertNoSideScroll(page, `weekly ${tag}: board`, '.sheet-weekly-board');
+  await page.click('.sheet-weekly-board [data-action="close-overlay"]');
+  await page.waitForSelector('.sheet-weekly-board', { state: 'detached' });
+  // The Vereinsbuch: Statistik and Relikte.
+  await page.click('[data-action="book"]');
+  await page.click('[data-action="book-tab"][data-tab="stats"]');
+  const declarer = (await page.locator('.ledger-char[data-character="Declarer"]').textContent()) ?? '';
+  if (!declarer.includes('22 %') || !declarer.includes('bestes Spiel 288')) fail(`weekly ${tag}: the Statistik of the Alleinspieler reads "${declarer.replace(/\s+/g, ' ')}"`);
+  const favs = (await page.locator('.ledger-char[data-character="Declarer"] [data-testid="favourite-relics"]').textContent()) ?? '';
+  if (!/Tournee \(3×\), Der Zähler \(2×\)/.test(favs)) fail(`weekly ${tag}: favourite relics read "${favs}"`);
+  await snap('weekly-stats');
+  await page.click('[data-action="book-tab"][data-tab="relics"]');
+  await page.waitForSelector('[data-testid="relic-stats"]');
+  const relics = await page.locator('[data-testid="relic-stats"] [data-relic]').evaluateAll((els) => els.map((e) => e.getAttribute('data-relic')));
+  if (relics.join(',') !== 'tour,beer_mat,guardian_angel') fail(`weekly ${tag}: relics listed as ${relics.join(',')}`);
+  const tour = (await page.locator('[data-relic="tour"]').textContent()) ?? '';
+  if (!tour.includes('4× genommen') || !tour.includes('3× am Ende') || !tour.includes('1 gewonnen (33 %)')) fail(`weekly ${tag}: the Tournee reads "${tour.replace(/\s+/g, ' ')}"`);
+  await snap('weekly-relics');
+  await assertNoSideScroll(page, `weekly ${tag}: relic statistics`, '.ledger');
+  await page.click('.ledger [data-action="close-overlay"]');
+  // The weekly run: the week's seed and its rule in the menu.
+  await page.click('[data-testid="play-weekly"]');
+  await page.waitForSelector('[data-testid="skat-choice"], .declare, [data-testid="route"]', { timeout: 20000 }).catch(() => fail(`weekly ${tag}: the weekly run does not start`));
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.weekly ?? null);
+  if (!saved || saved.week !== week || !saved.rule) fail(`weekly ${tag}: the run is saved without its week (${JSON.stringify(saved)})`);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  await page.click('[data-action="menu"]');
+  const menuRule = (await page.locator('[data-testid="menu-weekly"]').textContent().catch(() => '')) ?? '';
+  if (!menuRule.includes('Sonderregel der Woche')) fail(`weekly ${tag}: the menu names no rule ("${menuRule}")`);
+  await snap('weekly-menu');
+  log(`weekly ${tag}: week ${week} "${rule.slice(0, 40)}…", ${left}, board ${rows} rows, Statistik and Relikte, run with rule ${saved.rule}`);
+  await context.close();
+}
+
+/**
  * Colour vision deficiencies as SVG colour matrices (Machado et al. 2009,
  * severity 1, linear RGB), laid over the whole page for screenshots.
  */
@@ -6096,6 +6200,11 @@ async function run() {
       await shareRunPass(browser, errors, DESKTOP);
       return report(errors);
     }
+    if (process.env.SMOKE_ONLY === 'weekly') {
+      await weeklyPass(browser, errors, PHONE);
+      await weeklyPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
     // SMOKE_ONLY=a11y: Barrierefreiheit (colour-blind aid, text size, screen reader, focus).
     if (process.env.SMOKE_ONLY === 'a11y') {
       await a11yPass(browser, errors, reducedMotion);
@@ -6449,6 +6558,8 @@ async function run() {
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);
     await nightPass(browser, errors, DESKTOP);
+    await weeklyPass(browser, errors, PHONE);
+    await weeklyPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
     await tutorialPass(browser, errors, PHONE);

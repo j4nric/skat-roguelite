@@ -9,7 +9,7 @@
 use std::path::Path;
 
 /// The content files, as `Sources::embedded` includes them.
-const FILES: [&str; 12] = [
+const FILES: [&str; 13] = [
     "house_rules.ron",
     "card_mods.ron",
     "bosses.ron",
@@ -22,6 +22,7 @@ const FILES: [&str; 12] = [
     "tour.ron",
     "night.ron",
     "tutorial.ron",
+    "weekly.ron",
 ];
 
 fn main() {

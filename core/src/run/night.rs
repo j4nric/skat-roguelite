@@ -55,6 +55,12 @@ pub struct NightState {
 }
 
 impl NightState {
+    /// The night's generator (also for the Sonderregel's draws in the
+    /// night, [`Run::rules_rng`]).
+    pub(super) fn rng_mut(&mut self) -> &mut Rng {
+        &mut self.rng
+    }
+
     fn new(seed: u64) -> NightState {
         NightState {
             verschaerfungen: Vec::new(),
@@ -99,9 +105,11 @@ impl Run {
             .collect()
     }
 
-    /// Sum of a number the night rules give (0 outside the night).
+    /// Sum of a number the rules in force give: the night's and the
+    /// Sonderregel der Woche's ([`Run::rules_in_force`]); 0 without
+    /// either.
     pub(super) fn night_sum(&self, content: &Content, pick: impl Fn(&NightRule) -> u32) -> u32 {
-        self.night_rules(content)
+        self.rules_in_force(content)
             .into_iter()
             .map(pick)
             .fold(0, u32::saturating_add)
@@ -173,13 +181,23 @@ impl Run {
         boss: Option<&BossId>,
     ) -> Option<u64> {
         let sections = content.run.sections();
-        if section < sections {
-            return super::series_target(content, self.character, section, index, boss);
-        }
-        let last = sections.checked_sub(1)?;
-        let base = super::series_target(content, self.character, last, index, boss)?;
-        let mut target = self.night_config(content).grow(base, section - last);
-        for rule in self.night_rules(content) {
+        // A district of the run: only the Sonderregel der Woche jumps
+        // (DESIGN 5.6); a night district: the night's rules too.
+        let (mut target, rules) = if section < sections {
+            let target = super::series_target(content, self.character, section, index, boss)?;
+            let weekly: Vec<&NightRule> = self
+                .weekly_def(content)
+                .into_iter()
+                .flat_map(|w| &w.rules)
+                .collect();
+            (target, weekly)
+        } else {
+            let last = sections.checked_sub(1)?;
+            let base = super::series_target(content, self.character, last, index, boss)?;
+            let target = self.night_config(content).grow(base, section - last);
+            (target, self.rules_in_force(content))
+        };
+        for rule in rules {
             if let NightRule::TargetJump(factor) = rule {
                 target = factor.apply(target);
             }
@@ -348,14 +366,14 @@ impl Run {
             return None;
         }
         let character = self.character;
-        let night = self.night.as_mut()?;
+        let rng = self.rules_rng()?;
         let pool: Vec<(MalusId, u32)> = content
             .maluses
             .values()
             .filter(|m| m.weight > 0 && in_pool(&m.characters, character))
             .map(|m| (m.id.clone(), m.weight))
             .collect();
-        super::draw_weighted(&mut night.rng, pool, 1).pop()
+        super::draw_weighted(rng, pool, 1).pop()
     }
 
     /// [`NightRule::CursedCards`]: at the start of a pub, random cards of
@@ -363,7 +381,7 @@ impl Run {
     /// ends (kept like the Oma's, [`super::Series::boss_curses`]).
     pub(super) fn lay_night_curses(&mut self, content: &Content, events: &mut Vec<RunEvent>) {
         let rules: Vec<(u32, Vec<crate::content::CardModId>)> = self
-            .night_rules(content)
+            .rules_in_force(content)
             .into_iter()
             .filter_map(|r| match r {
                 NightRule::CursedCards { cards, curses } => Some((*cards, curses.clone())),
@@ -373,7 +391,7 @@ impl Run {
         if rules.is_empty() {
             return;
         }
-        let Some(night) = self.night.as_mut() else {
+        let Some(rng) = super::weekly::rules_rng(self.night.as_mut(), self.weekly.as_mut()) else {
             return;
         };
         let mut pool: Vec<u32> = self
@@ -390,7 +408,7 @@ impl Run {
                 if pool.is_empty() {
                     break;
                 }
-                let pick = night.rng.gen_range(0..pool.len() as u64);
+                let pick = rng.gen_range(0..pool.len() as u64);
                 let card = pool.remove(usize::try_from(pick).unwrap_or(0));
                 let kind = self.edition.get(card).map(|c| c.kind);
                 let fitting: Vec<&crate::content::CardModId> = curses
@@ -404,7 +422,7 @@ impl Run {
                 if fitting.is_empty() {
                     continue;
                 }
-                let which = night.rng.gen_range(0..fitting.len() as u64);
+                let which = rng.gen_range(0..fitting.len() as u64);
                 let curse = fitting[usize::try_from(which).unwrap_or(0)].clone();
                 let value = content
                     .card_mod(&curse)

@@ -61,6 +61,8 @@ pub enum Source {
     Consumable(ConsumableId),
     /// The malus of a Spelunke (ADR 0016), a rule of that pub only.
     Malus(super::MalusId),
+    /// The Sonderregel der Woche (DESIGN 5.6), a rule of the whole run.
+    Weekly(super::WeeklyRuleId),
 }
 
 /// The lever of the game value formula a line turns.

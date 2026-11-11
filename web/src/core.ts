@@ -18,7 +18,7 @@
 import type { CoreOp, MetaState, RunState, StepState } from './core-engine';
 import wasmUrl from './wasm/pkg/skat_wasm_bg.wasm?url';
 import { localize } from './i18n';
-import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step } from './types';
+import type { Catalog, Character, MetaStep, MetaView, RunAction, RunEvent, RunLength, RunView, Step, WeekInfo } from './types';
 
 /** Where the core runs. */
 interface Backend {
@@ -162,6 +162,18 @@ export async function loadCatalog(): Promise<Catalog> {
   return JSON.parse(await call<string>('catalog', [])) as Catalog;
 }
 
+/**
+ * The Wochen-Herausforderung of the ISO week of a local date (DESIGN 5.6):
+ * its number, seed and Sonderregel, from the core. Null if the core has none.
+ */
+export async function weekInfo(date: Date = new Date()): Promise<WeekInfo | null> {
+  try {
+    return JSON.parse(await call<string>('weekInfo', [date.getFullYear(), date.getMonth() + 1, date.getDate()])) as WeekInfo;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether a stored meta state is still the one of a new player; rejects if the core cannot load it. */
 export function isFreshMetaState(meta: string): Promise<boolean> {
   return call<boolean>('isFreshMeta', [meta]);
@@ -263,6 +275,16 @@ export class CoreRun {
    */
   static async createWith(seed: string, character: Character, length: RunLength, stake: number, meta: CoreMeta): Promise<{ run: CoreRun; startEvents: string }> {
     const s = await call<RunState & { startEvents: string }>('runCreateWith', [seed, character, length, stake, meta.handle]);
+    return { run: CoreRun.from(s), startEvents: s.startEvents };
+  }
+
+  /**
+   * Start the run of a week (JJJJWW, DESIGN 5.6) with a character and stake
+   * from the meta state: the week's seed and Sonderregel. A rule with its
+   * own character plays that one. Returns the run and its start events.
+   */
+  static async createWeekly(week: number, character: Character, stake: number, meta: CoreMeta): Promise<{ run: CoreRun; startEvents: string }> {
+    const s = await call<RunState & { startEvents: string }>('runCreateWeekly', [week, character, stake, meta.handle]);
     return { run: CoreRun.from(s), startEvents: s.startEvents };
   }
 

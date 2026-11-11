@@ -92,6 +92,9 @@ pub struct Options {
     /// Continue every won run into the long night (`--night`, ADR 0020)
     /// and measure it ([`NightStat`]).
     pub night: bool,
+    /// The Sonderregel der Woche in force in every run (`--weekly-rule
+    /// <id>`, `--weekly <JJJJWW>`, DESIGN 5.6), on the usual seeds.
+    pub weekly_rule: Option<skat_core::content::WeeklyRuleId>,
 }
 
 /// The long night (ADR 0020, `--night`): what the won runs did after der
@@ -260,6 +263,7 @@ impl Options {
             character: self.character,
             length: self.length,
             stake: self.stake,
+            weekly_rule: self.weekly_rule.clone(),
             ..RunStart::default()
         }
     }
@@ -317,6 +321,9 @@ impl Options {
         }
         if self.night {
             parts.push("night".to_string());
+        }
+        if let Some(id) = &self.weekly_rule {
+            parts.push(format!("weekly-rule={id}"));
         }
         if parts.is_empty() {
             "standard".to_string()

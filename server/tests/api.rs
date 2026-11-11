@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use stammtisch_server::{AppState, Config, daily, db, recovery, router, session};
+use stammtisch_server::{AppState, Config, daily, db, recovery, router, session, weekly};
 use tower::ServiceExt;
 
 const ORIGIN: &str = "https://stammtisch.example";
@@ -852,6 +852,94 @@ async fn daily_board_ranks_results() {
     );
 }
 
+fn weekly_result(won: bool, section: i64, series: i64, best: i64) -> Value {
+    json!({ "week": weekly::this_week_key(), "character": "Declarer", "won": won, "section": section, "series": series, "stake": 0, "bestGame": best })
+}
+
+#[tokio::test]
+async fn weekly_board_ranks_results_like_the_daily() {
+    let (app, state) = app();
+    let (a, _) = user(&state, "a", Some("Anna"));
+    let (b, _) = user(&state, "b", Some("Bert"));
+    let week = weekly::this_week_key();
+    let post = |cookie: &str, body: Value| {
+        let app = app.clone();
+        let cookie = cookie.to_owned();
+        async move { call(&app, "POST", "/api/weekly", Some(&cookie), Some(body)).await }
+    };
+    assert_eq!(
+        post(&a, weekly_result(false, 2, 3, 48)).await.status,
+        StatusCode::CREATED
+    );
+    let res = post(&b, weekly_result(true, 3, 5, 96)).await;
+    assert_eq!(res.status, StatusCode::CREATED);
+    assert_eq!(res.body["me"]["rank"], 1);
+    // The first attempt of the week counts; a better one later is practice.
+    let res = post(&a, weekly_result(true, 3, 5, 500)).await;
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body["stored"], false);
+    assert_eq!(res.body["me"]["rank"], 2);
+
+    let res = call(&app, "GET", &format!("/api/weekly/{week}"), Some(&a), None).await;
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body["week"], json!(week));
+    assert_eq!(res.body["total"], 2);
+    assert_eq!(res.body["entries"][0]["name"], json!("Bert"));
+    assert_eq!(res.body["entries"][1]["me"], true);
+    // The daily board of today knows nothing of it.
+    let day = daily::today_seed();
+    let res = call(&app, "GET", &format!("/api/daily/{day}"), Some(&a), None).await;
+    assert_eq!(res.body["total"], 0);
+
+    // A week far away, no week, a daily key, a bad result.
+    let mut far = weekly_result(true, 1, 1, 1);
+    far["week"] = json!("202001");
+    assert_eq!(post(&a, far).await.status, StatusCode::BAD_REQUEST);
+    let mut odd = weekly_result(true, 1, 1, 1);
+    odd["week"] = json!("202699");
+    assert_eq!(post(&a, odd).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        post(&a, result(true, 1, 1, 1)).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        post(&b, weekly_result(true, 0, 1, 1)).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    for bad in ["2026-46", "20261110", "202600"] {
+        assert_eq!(
+            call(&app, "GET", &format!("/api/weekly/{bad}"), None, None)
+                .await
+                .status,
+            StatusCode::BAD_REQUEST,
+            "{bad}"
+        );
+    }
+    // Read-only without a session; writing needs one.
+    let res = call(
+        &app,
+        "GET",
+        &format!("/api/weekly/{week}?limit=1"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(res.body["entries"].as_array().map(Vec::len), Some(1));
+    assert_eq!(res.body["signedIn"], false);
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            "/api/weekly",
+            None,
+            Some(weekly_result(true, 1, 1, 1))
+        )
+        .await
+        .status,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
 #[tokio::test]
 async fn deleting_the_account_removes_everything() {
     let (app, state) = app();
@@ -870,6 +958,19 @@ async fn deleting_the_account_removes_everything() {
             "/api/daily",
             Some(&cookie),
             Some(result(true, 4, 5, 96))
+        )
+        .await
+        .status,
+        StatusCode::CREATED
+    );
+
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            "/api/weekly",
+            Some(&cookie),
+            Some(weekly_result(true, 4, 5, 96))
         )
         .await
         .status,
@@ -897,7 +998,11 @@ async fn deleting_the_account_removes_everything() {
     let conn = state.db();
     assert!(db::save(&conn, "u1").expect("query").is_none());
     assert_eq!(
-        db::daily_count(&conn, &daily::today_seed()).expect("count"),
+        db::board_count(&conn, db::Board::Daily, &daily::today_seed()).expect("count"),
+        0
+    );
+    assert_eq!(
+        db::board_count(&conn, db::Board::Weekly, &weekly::this_week_key()).expect("count"),
         0
     );
 }

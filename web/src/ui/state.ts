@@ -4,11 +4,11 @@
 import type { SharedSeed } from '../seed';
 import type { Quip } from './guests';
 import type { Settings } from '../settings';
-import type { DailyBoard, PasskeyInfo } from '../account';
+import type { DailyBoard, PasskeyInfo, WeeklyBoard } from '../account';
 import type { AccountView, ConflictSide } from './account';
 import type { RunRecord } from '../storage';
 import type { SettledWild } from './cards';
-import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunView, ScoreView, Seat } from '../types';
+import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunView, ScoreView, Seat, WeekInfo } from '../types';
 
 /** What the table shows while events are being animated. */
 export interface AnimState {
@@ -43,6 +43,8 @@ export interface PendingStart {
   /** Stake of the Einsatz-Leiter. */
   stake: number;
   daily: boolean;
+  /** The run of this week (JJJJWW, DESIGN 5.6): its seed and Sonderregel. */
+  weekly?: number;
 }
 
 /**
@@ -96,8 +98,10 @@ export type Overlay =
   | { kind: 'painter' }
   /** The Schnaps of a won pub with every slot full: take it for an owned one or sell it (not closable). */
   | { kind: 'schnapps-reward' }
-  /** The Vereinsbuch: characters and unlocks, or the statistics page. */
-  | { kind: 'book'; tab: 'book' | 'stats' }
+  /** The Vereinsbuch: characters and unlocks, the statistics page or the relics page. */
+  | { kind: 'book'; tab: BookTab }
+  /** Die Tafel der Woche (DESIGN 5.6): this week's rule, the board, the own place. */
+  | { kind: 'weekly-board' }
   /** "Kneipe verlassen?" (DESIGN 8.7): give up the pub, then `GiveUpPub`. */
   | { kind: 'confirm-give-up' }
   /** Give up the running run for a new one? */
@@ -135,6 +139,9 @@ export type Overlay =
   | { kind: 'credits' }
   /** Die lange Nacht (ADR 0020): the start sheet of a night district. */
   | { kind: 'night' };
+
+/** The pages of the Vereinsbuch. */
+export type BookTab = 'book' | 'stats' | 'relics';
 
 export interface UiState {
   screen: 'loading' | 'start' | 'run' | 'end' | 'error';
@@ -211,4 +218,8 @@ export interface UiState {
   account: AccountView;
   /** Today's daily board, once fetched (null: not there or not reachable). */
   board: DailyBoard | null;
+  /** This week's challenge from the core (DESIGN 5.6); null before the core loaded. */
+  week: WeekInfo | null;
+  /** This week's board, once fetched (null: not there or not reachable). */
+  weeklyBoard: WeeklyBoard | null;
 }
