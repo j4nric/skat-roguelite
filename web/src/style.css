@@ -1535,7 +1535,8 @@ button.card {
   right: 0;
   z-index: 3;
   display: block;
-  max-height: 46px;
+  /* Three lines of the longest quips (40 characters) without clipping. */
+  max-height: 50px;
   overflow: hidden;
   padding: 3px 5px 4px;
   border: 2px solid var(--line);
