@@ -91,9 +91,9 @@ export type NullRisk = 'Normal' | 'Hand' | 'Ouvert' | 'OuvertHand';
 /** Spielart in a declaration: a GameType, or Ramsch (forced by "Der Ramscher"). */
 export type DeclaredGame = GameType | 'Ramsch';
 /** Who plays the run. */
-export type Character = 'Declarer' | 'NullPlayer' | 'Shirker' | 'Tailoress' | 'HeartBrother';
+export type Character = 'Declarer' | 'NullPlayer' | 'Shirker' | 'Tailoress' | 'HeartBrother' | 'Gambler' | 'RamschAunt';
 /** Every character, in the order of the core (`Character::ALL`). */
-export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shirker', 'Tailoress', 'HeartBrother'];
+export const CHARACTERS: readonly Character[] = ['Declarer', 'NullPlayer', 'Shirker', 'Tailoress', 'HeartBrother', 'Gambler', 'RamschAunt'];
 /** Ganzer Abend (5 sections) or kurzer Abend (3 sections), DESIGN 5.3. */
 export type RunLength = 'Full' | 'Short';
 export type Position = 'Forehand' | 'Middlehand' | 'Rearhand';
@@ -456,6 +456,10 @@ export interface DeclareOptions {
   can_redeal: boolean;
   redeals_left: number;
   hand_required: boolean;
+  /** "Die Ramschtante": a Ramsch may be declared instead of a game (before the skat). */
+  ramsch_offered: boolean;
+  /** "Der Zocker": pickups of the skat left in this pub; null without a limit. */
+  skat_pickups_left: number | null;
 }
 
 /**

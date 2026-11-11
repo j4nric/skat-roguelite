@@ -218,11 +218,24 @@ function declareWarnings(options: DeclareOptions, afterSkat: boolean): string {
   return [
     options.hand_required ? de.table.handRequired : '',
     options.ouvert_required ? de.table.ouvertRequired : '',
-    !afterSkat && !options.can_pick_up_skat && !options.hand_required && !options.ouvert_required ? de.table.noPickUp : '',
+    !afterSkat && options.skat_pickups_left === 0 ? de.table.skatUsedUp : '',
+    !afterSkat && !options.can_pick_up_skat && !options.hand_required && !options.ouvert_required && options.skat_pickups_left !== 0 ? de.table.noPickUp : '',
   ]
     .filter(Boolean)
     .map((h) => `<p class="declare-hint is-warning">${esc(h)}</p>`)
     .join('');
+}
+
+/** "Der Zocker": how often the skat may still be picked up in this pub, before the skat. */
+function skatPickupsNote(options: DeclareOptions): string {
+  if (options.skat_pickups_left === null || options.skat_pickups_left === undefined || options.skat_pickups_left === 0) return '';
+  return `<p class="declare-hint" data-testid="skat-pickups">${esc(t(de.table.skatPickupsLeft, { n: options.skat_pickups_left }))}</p>`;
+}
+
+/** "Die Ramschtante": Ramsch instead of a game, before the skat. */
+function ramschButton(options: DeclareOptions): string {
+  if (!options.ramsch_offered) return '';
+  return `<button class="btn btn-ramsch" ${attrs({ 'data-action': 'declare-ramsch', 'data-info': 'choice:ramsch', 'data-testid': 'declare-ramsch' })}>${esc(de.table.playRamsch)}</button>`;
 }
 
 /** The skat seen with "Kurzer", shown on the hand Ansage. */
@@ -311,9 +324,10 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     ${tableTalk(view)}
     <div class="felt">${deck}${skat}<div class="felt-side" aria-hidden="true"></div></div>
     ${peeked && peek ? `<p class="declare-hint skat-peek-hint">${esc(t(de.table.skatPeek, { cards: peek.map((c) => cardName(c.kind)).join(', ') }))}</p>` : ''}
-    ${declareWarnings(options, false)}
+    ${declareWarnings(options, false)}${skatPickupsNote(options)}
     <div class="declare-actions choice-actions">
       <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
+      ${ramschButton(options)}
       ${giveUpButton(view)}
     </div>
   </section>`;

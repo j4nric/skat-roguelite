@@ -87,6 +87,8 @@ const relics: Record<string, ContentEntry> = {
   big_shots: { name: 'The Bigwigs', text: 'Grand: after the Unters the Aces count on as matadors (Acorns, Leaves, Hearts, Bells).' },
   safe_haven: { name: 'Under Cover', text: 'The first time you redeal in a game, you keep your Unters. The rest is dealt again.' },
   beer_calm: { name: 'Keep Calm', text: 'Lose a Grand and it counts only half.' },
+  dice_cup: { name: 'Dice Cup', text: 'Lose a Hand game and it counts only half.' },
+  lace_doily: { name: 'Lace Doily', text: 'Win a Ramsch with at most two tricks: +1 level.' },
   open_visor: { name: 'Open Visor', text: 'Ouvert only needs Schneider instead of Schwarz. Make Schwarz anyway and it counts.' },
   empty_chair: { name: 'Empty Chair', text: '+1 level on every game you win, as long as at least two relic slots are free.' },
   junk_dealer: { name: 'The Junk Dealer', text: 'Sell or swap a relic: +1 base value for the rest of the run, once per bar.' },
@@ -143,6 +145,7 @@ const bosses: Record<string, ContentEntry> = {
   twins: { name: 'The Twins', text: 'The twins see each other’s hands and play accordingly.' },
   ramscher: { name: 'Mr Ramsch', text: 'Every game in the pub is a Ramsch: Unters are trump, everyone plays for himself, whoever has the most pips loses. If you don’t have the most, the loser’s pips count for you, otherwise single against you.' },
   black_peter: { name: 'Black Peter', text: 'A game won without Schneider counts only half. With Schneider it counts in full, lost ones as always.' },
+  gravedigger: { name: 'The Gravedigger', text: 'What’s discarded is buried: your discarded cards count no pips in his pub. A Hand game keeps its Skat. Only in the Long Night.' },
   the_old_man: { name: 'The Old Man', text: 'The final boss lays down the other bosses’ rules, one per hand, in turn. Whoever redeals gets the next one.' },
 };
 
@@ -153,6 +156,8 @@ const characters: Record<string, ContentEntry> = {
   Shirker: { name: 'The Shirker', text: 'Dodges what he can: each of his four Sevens carries a deposit stamp (2 Groschen), the Eight of Bells a death stamp, the Eight of Hearts a fool’s stamp. Redeemed stamps come back after every pub. Hand games get no level for Hand. Starts with the Skat Keeper.' },
   Tailoress: { name: 'The Tailoress', text: 'Takes measure: her four Tens carry an Overprint (+3 pips). If she wins Schneider or Schwarz, each counts +2 instead of +1 level; a game won without Schneider counts 1 level less (never below 1, Null excepted). Starts with Watertight.' },
   HeartBrother: { name: 'Brother Heart', text: 'His heart beats for Hearts: Ace, Ten, King and Ober of Hearts carry a Seal (+2), Nine, Eight and Seven a Bend (+1). Ace and Ten of the other suits are stained (as trump base value −2), their Kings battered (−2 pips); his curses can’t be cleaned off. Marks on Hearts cost him half. Starts with The Usual.' },
+  Gambler: { name: 'The Gambler', text: 'Bets it all on one card: a won Hand game counts two levels for Hand instead of one, but he picks up the Skat only once per pub. He has two Sevens up his sleeve (Wild Cards), and the whole table knows his Ace of Bells (See-Through). Starts with the Dice Cup.' },
+  RamschAunt: { name: 'Aunt Ramsch', text: 'Has seen every Ramsch there is: before the Skat she may play a Ramsch instead of a declaration. Whoever has the most pips loses; if she doesn’t have the most, the loser’s pips count for her. Her Aces and Tens are well-thumbed (Battered, 5 pips less each). Starts with the Lace Doily.' },
 };
 
 /** Encounters (core/content/encounters.ron). */
@@ -190,6 +195,8 @@ const unlocks: Record<string, ContentEntry> = {
   big_game: { name: 'Big One', text: 'Win a game worth at least 96 points.' },
   grand_schneider: { name: 'Grand Schneider', text: 'Win a Grand Schneider.' },
   early_finish: { name: 'Early Night', text: 'Win a pub in its very first game.' },
+  big_hand: { name: 'All In', text: 'Win a Hand game worth at least 96 points.' },
+  beat_ramscher: { name: 'Ramsched Out', text: 'Beat the boss Mr Ramsch.' },
   boss_without_pass: { name: 'No Redeals', text: 'Beat a boss without redealing in his pub.' },
   beat_grandma: { name: 'Grandma’s Favourite', text: 'Beat the boss Grandma.' },
   tour_won: { name: 'Crawl Conquered', text: 'Win a whole evening with the Declarer.' },
@@ -315,6 +322,8 @@ export const EN_CONTENT: ContentTexts = {
     'Die Schwarze Grete': 'Black Greta',
     'Der Alte': 'The Old Man',
     'Die Alte': 'The Old Woman',
+    'Der Totengräber': 'The Gravedigger',
+    'Die Witwe': 'The Widow',
   },
   districts: {
     Altstadt: 'Old Town',

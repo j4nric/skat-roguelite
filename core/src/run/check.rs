@@ -137,6 +137,9 @@ impl Run {
                 if self.declaring_ref()?.rules.require_hand {
                     return Err(RunError::HandRequired);
                 }
+                if self.skat_used_up() {
+                    return Err(RunError::SkatUsedUp);
+                }
                 Ok(())
             }
             RunAction::Declare(declaration) => self.check_declare(*declaration).map(drop),

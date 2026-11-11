@@ -1,8 +1,9 @@
 """Card backs of the opponents (ADR 0015), approved on 02.11.2026, and of
 the characters' editions (DESIGN 9.3, 03.11.2026: Drückeberger,
-Schneiderin, Bruderherz; the Distel stays in web/src/ui/backs.ts), and
-since ADR 0020 the cosmetic backs of the long night (Mondsichel,
-Sternenhimmel, Laterne).
+Schneiderin, Bruderherz; 10.11.2026: Zocker, Ramschtante; the Distel
+stays in web/src/ui/backs.ts), and since ADR 0020 the cosmetic backs of
+the long night (Mondsichel, Sternenhimmel, Laterne) and the night boss
+(Totengraeber).
 
     python3 tools/cardart/backs.py            # writes web/src/ui/backs.gen.ts
     python3 tools/cardart/backs.py --check    # fails if the committed file is stale
@@ -467,6 +468,111 @@ CHARACTERS = {
 }
 
 
+# ------------------------------------------------------------ characters (10.11.2026)
+# Der Zocker: two dice and a stack of chips on green baize.
+DICE = ["..............",
+        ".wwwww........",
+        ".wkwww........",
+        ".wwwww..wwwww.",
+        ".wwwkw..wkwkw.",
+        ".wwwww..wwwww.",
+        "........wkwkw.",
+        "........wwwww.",
+        "..............",
+        "..............",
+        "....yyyyyy....",
+        "...yrrrrrry...",
+        "...yyyyyyyy...",
+        "...yrrrrrry...",
+        "...yyyyyyyy...",
+        "...yrrrrrry...",
+        "....yyyyyy....",
+        "..............",
+        ".k..........k.",
+        "kkk........kkk",
+        ".k..........k.",
+        "..............",
+        ".............."]
+# Die Ramschtante: the flowers of her Kittelschuerze and a coffee cup.
+APRON = ["..............",
+         "...p.....y....",
+         "..ppp...yyy...",
+         "...p.....y....",
+         "..............",
+         "......p.......",
+         ".....pwp......",
+         "......p.......",
+         "..y.........p.",
+         ".yyy.......ppp",
+         "..y.........p.",
+         "..............",
+         "..............",
+         "...wwwwwww....",
+         "...wbbbbbww...",
+         "...wwwwwww.w..",
+         "...wwwwwww.w..",
+         "...wwwwwwww...",
+         "....wwwww.....",
+         "..wwwwwwwww...",
+         "..............",
+         ".p.........y..",
+         "ppp.......yyy."]
+# Der Totengraeber (night boss): a spade stuck in a grave mound under a
+# wooden cross, on dark earth.
+GRAVE = ["......bb......",
+         "......bb......",
+         "...bbbbbbbb...",
+         "...bbbbbbbb...",
+         "......bb......",
+         "......bb......",
+         "......bb......",
+         "......bb......",
+         "......bb...s..",
+         "......bb...s..",
+         "......bb...s..",
+         "......bb...s..",
+         "......bb...s..",
+         "......bb..ggg.",
+         "......bb..ggg.",
+         "....eeeeeeggg.",
+         "..eeeeeeeeeee.",
+         ".eeeeeeeeeeeee",
+         "eeeeeeeeeeeeee",
+         "..............",
+         "..m.......m...",
+         ".mmm.....mmm..",
+         ".............."]
+FELT = '#2f6a3a'
+FELT_D = '#173a20'
+CHIP = '#c0262f'
+APRON_BLUE = '#5a7ab0'
+APRON_D = '#2c3e66'
+ROSE = '#e86a8a'
+EARTH = '#3a2e22'
+EARTH_D = '#1c1610'
+BONE = '#e6dcc4'
+MOSS = '#5e6a3a'
+
+CHARACTERS['gambler'] = dict(
+    name='Zocker', desc='zwei Würfel und ein Stapel Jetons auf grünem Spieltischfilz',
+    rim=GOLDW, frame=FELT_D, ground=FELT, panel=DICE, panel_r=mirror(DICE),
+    cols={'w': WHITE, 'k': INK, 'y': GOLDW, 'r': CHIP},
+    band=(DOTS, {'w': GOLDW}), cross=(FELT_D, GOLDW),
+    icon=DICE[0:9], icon_cols={'w': WHITE, 'k': INK})
+CHARACTERS['ramsch_aunt'] = dict(
+    name='Ramschtante', desc='Blumen der Kittelschürze und eine Kaffeetasse auf Kornblumenblau',
+    rim=ROSE, frame=APRON_D, ground=APRON_BLUE, panel=APRON, panel_r=mirror(APRON),
+    cols={'p': ROSE, 'y': AMBER, 'w': WHITE, 'b': '#6b4427'},
+    band=(DOTS, {'w': WHITE}), cross=(APRON_D, ROSE),
+    icon=APRON[12:20], icon_cols={'w': WHITE, 'b': '#6b4427'})
+BOSSES['totengraeber'] = dict(
+    name='Totengräber', desc='Holzkreuz über einem Grabhügel mit Spaten, Knochenweiß auf dunkler Erde',
+    rim=MOSS, frame=EARTH_D, ground=EARTH, panel=GRAVE, panel_r=mirror(GRAVE),
+    cols={'b': BONE, 's': GREY, 'g': '#8a8a86', 'e': EARTH_D, 'm': MOSS},
+    band=(STRIPE, {'y': MOSS, 'k': EARTH_D}), cross=(EARTH_D, BONE),
+    icon=GRAVE[0:19], icon_cols={'b': BONE, 's': GREY, 'g': '#8a8a86', 'e': EARTH_D})
+
+
 def heart_full():
     """Bruderherz: cream ground with a lattice of small hearts, one big heart."""
     out = rim(HEART_RED, HEART_D)
@@ -596,7 +702,7 @@ NIGHT_BACKS = {
 # Back ids as the content names them (core/content/bosses.ron, guests.ron).
 IDS = {
     'black_peter': 'schwarzer_peter', 'grandma': 'oma', 'the_pusher': 'schieber', 'ramscher': 'ramscher',
-    'twins': 'zwillinge', 'the_old_man': 'der_alte',
+    'twins': 'zwillinge', 'the_old_man': 'der_alte', 'gravedigger': 'totengraeber',
 }
 
 

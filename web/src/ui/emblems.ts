@@ -2014,6 +2014,35 @@ export const SHOP_ART: Record<string, [Sprite, ...Sprite[]]> = {
       gwwwwwwwwwg.
       .gggggggg...`),
   ],
+  // Startrelikte der Charaktere vom 10.11.2026.
+  dice_cup: [
+    sp('Knobelbecher mit zwei Würfeln', `
+      ..nnnnnnnn..
+      ..nbbbbbbn..
+      ..nbbbbbbn..
+      ...nbbbbn...
+      ...nbYYbn...
+      ...nbbbbn...
+      ...nbbbbn...
+      ...nnnnnn...
+      ............
+      .www....www.
+      .wkw....wwk.
+      .www....kww.`),
+  ],
+  lace_doily: [
+    sp('Spitzendeckchen mit Kaffeetasse', `
+      ..w.w.w.w.w..
+      .wwwwwwwwwww.
+      w.w.......w.w
+      .ww.wwwww.ww.
+      w.w.wJJJwww.w
+      .ww.wwwww.ww.
+      w.w..www..w.w
+      .ww.......ww.
+      w.wwwwwwwww.w
+      .w.w.w.w.w.w.`),
+  ],
 };
 
 /** One motif per boss (core/content/bosses.ron). */
@@ -2080,6 +2109,17 @@ export const BOSS_ART: Record<string, Sprite> = {
     ...wwwkkkkwww
     ...wwwwwwwwww
     ....wwwwwwww`),
+  gravedigger: sp('Spaten im Grabhügel unter einem Kreuz', `
+    ......bb......
+    ....bbbbbb....
+    ......bb...g..
+    ......bb...g..
+    ......bb...g..
+    ......bb..ggg.
+    ......bb..ggg.
+    ...nnnnnnnnnn.
+    ..nnnnnnnnnnnn
+    .nnnnnnnnnnnnn`),
   the_old_man: sp('Alter König mit Bart', `
     ....y..yy..y
     ....yyyyyyyy
@@ -2253,6 +2293,8 @@ export const CHOSEN: Record<string, 0 | 1 | 2> = {
   empty_chair: 0,
   junk_dealer: 0,
   teetotaller: 0,
+  dice_cup: 0,
+  lace_doily: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -2578,6 +2620,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   open_visor: 'Multiplier',
   empty_chair: 'Multiplier',
   dive_expert: 'Multiplier',
+  lace_doily: 'Multiplier',
   // Geben, Skat and Durchblick
   skat_redraw: 'Control',
   three_discard: 'Control',
@@ -2589,6 +2632,7 @@ export const RELIC_GROUP: Record<string, RelicGroup> = {
   cards_on_table: 'Control',
   safe_haven: 'Control',
   beer_calm: 'Control',
+  dice_cup: 'Control',
   // Tresen and Tour
   landlord: 'Tour',
   closing_time: 'Tour',

@@ -167,7 +167,9 @@ use super::Run;
 /// | `empty_chair` | 2 | 5 while it leaves two slots free ([`relic_score`]) |
 /// | `junk_dealer` | 2 | the bot sells or swaps about once per run |
 /// | `teetotaller` | 2 | the bot skips weak card rewards while holding it ([`RunBot::card_reward_action`](super::RunBot::card_reward_action)) |
-pub const RELIC_VALUES: [(&str, u32); 74] = [
+/// | `dice_cup` | 2 | a lost hand game counts half; the bot plays hand rarely (Der Zocker often) |
+/// | `lace_doily` | 4 | a won Ramsch with at most two tricks +1 level (Die Ramschtante only) |
+pub const RELIC_VALUES: [(&str, u32); 76] = [
     ("every_bit_counts", 10),
     ("old_lady", 10),
     ("concede", 8),
@@ -242,6 +244,8 @@ pub const RELIC_VALUES: [(&str, u32); 74] = [
     ("empty_chair", 2),
     ("junk_dealer", 2),
     ("teetotaller", 2),
+    ("dice_cup", 2),
+    ("lace_doily", 4),
 ];
 
 /// Bot values of the legendary relics (M8 wave 3,

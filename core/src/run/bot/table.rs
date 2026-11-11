@@ -11,7 +11,8 @@ use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
 
 use super::{
     BOLD_MIN_PERCENT, NULL_HAND_MAX_EXPOSED, NULL_MAX_EXPOSED, Run, RunAction, RunBot, holds_relic,
-    null_expected_score, schneider_percent, suit_expected_score, ten_card_score,
+    null_expected_score, ramsch_expected_score, schneider_percent, suit_expected_score,
+    suit_win_percent, ten_card_score,
 };
 
 /// Optimal-stopping values of [`ten_card_score`] over random deals of the
@@ -25,8 +26,45 @@ pub const REDEAL_STOP: [i64; 5] = [877, 1759, 2355, 2824, 3203];
 /// many ([`RunBot::void_discard`]).
 const CLEAR_CUT_MAX_VOIDS: usize = 2;
 
+/// How much a Ramsch must beat the other choices before "Die
+/// Ramschtante" declares it ([`RunBot::ramsch_choice`], hundredths): the
+/// other choices leave the skat out, so they are worth a little more than
+/// estimated. Set by measurement (docs/balance/2026-11-10-neue-charaktere.md).
+pub const RAMSCH_MARGIN: i64 = 5000;
+
+/// "Der Zocker" keeps his one pickup of the skat in a pub for a later
+/// game when the ten cards win a hand game at least this often
+/// ([`RunBot::keep_the_skat`], percent). Set by measurement
+/// (docs/balance/2026-11-10-neue-charaktere.md).
+pub const HAND_KEEP_MIN_PERCENT: i64 = 75;
+
+/// The same for a Null Hand: at most this many exposed cards
+/// ([`RunBot::keep_the_skat`]; Null wins 76 % with one, 54 % with two).
+pub const HAND_KEEP_NULL_EXPOSED: usize = 1;
+
 /// Relic ids the game decisions look at (relics v4).
 const CLEAR_CUT: &str = "clear_cut";
+
+/// The ten cards as they play once declared: an open Wandelkarte takes the
+/// suit it will settle on ([`crate::rules::settled_wild_suit`], a jack
+/// keeps its own), so the bot counts it in its choice of game.
+fn settled_hand(hand: &[DealtCard]) -> Vec<DealtCard> {
+    if !hand.iter().any(|c| c.wild()) {
+        return hand.to_vec();
+    }
+    let suit = crate::rules::settled_wild_suit(hand);
+    hand.iter()
+        .map(|&c| {
+            if !c.wild() {
+                return c;
+            }
+            match c.face() {
+                Some(face) if face.rank == Rank::Jack => c.settle_wild(face.suit),
+                _ => c.settle_wild(suit),
+            }
+        })
+        .collect()
+}
 
 /// "Große Klappe": a won game with Schneider announced counts the Grundwert
 /// twice.
@@ -332,13 +370,17 @@ impl RunBot {
     fn before_skat(run: &Run, content: &Content) -> Option<RunAction> {
         let active = run.game()?;
         let game = &active.game;
-        let hand = game.hand(Seat::DECLARER);
+        let settled = settled_hand(game.hand(Seat::DECLARER));
+        let hand = settled.as_slice();
         let deck = game.deck_cards();
         let exposed = null_unsafe_cards(hand, deck);
         let suit = DeclarerHeuristic.choose_declaration(hand);
         let suit = suit.with_risk(RunBot::announcement(hand, suit));
         let rules = &active.rules;
-        if rules.require_hand {
+        if let Some(action) = Self::ramsch_choice(run, content, hand, deck) {
+            return Some(action);
+        }
+        if rules.require_hand || run.skat_used_up() {
             return Self::forced_hand(run, content);
         }
         // "Fusel" on a hand that is not weak, one next-game Schnaps per game.
@@ -367,6 +409,9 @@ impl RunBot {
         } else if suit.hand() {
             return Some(RunAction::Declare(suit));
         }
+        if !rules.require_ouvert && Self::keep_the_skat(run, hand, suit, exposed) {
+            return Self::forced_hand(run, content);
+        }
         let weak = if rules.require_ouvert {
             true
         } else {
@@ -381,6 +426,54 @@ impl RunBot {
             return Some(RunAction::Redeal);
         }
         Some(RunAction::PickUpSkat)
+    }
+
+    /// "Die Ramschtante" ([`crate::content::Effect::OfferRamsch`]): a
+    /// Ramsch when its expected score ([`ramsch_expected_score`]) beats by
+    /// [`RAMSCH_MARGIN`] both the best game of the ten cards
+    /// ([`ten_card_score`], which leaves the skat out) and, with an
+    /// Einmischen of the game left, what a new deal is worth
+    /// ([`RunBot::redeal_threshold`]). `None` where no Ramsch is offered.
+    fn ramsch_choice(
+        run: &Run,
+        content: &Content,
+        hand: &[DealtCard],
+        deck: &[DealtCard],
+    ) -> Option<RunAction> {
+        let action = RunAction::Declare(Declaration::Ramsch);
+        if !run.ramsch_offered() || !run.accepts(content, action.clone()) {
+            return None;
+        }
+        let ramsch = ramsch_expected_score(hand);
+        let scoring = run.null_scoring(content);
+        let grand = content.run.base_value(GameType::Grand).unwrap_or(0);
+        let null_counts = Self::null_counts(run, content, None);
+        let game = ten_card_score(hand, deck, grand, null_counts.then_some(&scoring));
+        let left = run.redeals_left(content);
+        let redeal = if left > 0 && run.accepts(content, RunAction::Redeal) {
+            Self::redeal_threshold(left)
+        } else {
+            i64::MIN
+        };
+        (ramsch > game.max(redeal).saturating_add(RAMSCH_MARGIN)).then_some(action)
+    }
+
+    /// "Der Zocker" ([`crate::content::Effect::SkatPickupsPerPub`]): while
+    /// the skat may still be picked up but not for every game left, a hand
+    /// that wins a hand game at least [`HAND_KEEP_MIN_PERCENT`] of the time
+    /// ([`suit_win_percent`]), or a Null Hand with at most
+    /// [`HAND_KEEP_NULL_EXPOSED`] exposed cards, is played from
+    /// the hand ([`RunBot::forced_hand`]) and the pickup kept for a weak
+    /// one. In the last game of the pub nothing is kept.
+    fn keep_the_skat(run: &Run, hand: &[DealtCard], suit: Declaration, exposed: usize) -> bool {
+        let Some(left) = run.skat_pickups_left() else {
+            return false;
+        };
+        let deck = run.game().map_or(&[][..], |a| a.game.deck_cards());
+        left > 0
+            && left < run.series().games_left()
+            && (suit_win_percent(hand, deck, suit.game()) >= HAND_KEEP_MIN_PERCENT
+                || exposed <= HAND_KEEP_NULL_EXPOSED)
     }
 
     /// Whether to spend one of the game's own Einmischen on a hand that is
@@ -440,7 +533,8 @@ impl RunBot {
     fn forced_hand(run: &Run, content: &Content) -> Option<RunAction> {
         let active = run.game()?;
         let game = &active.game;
-        let hand = game.hand(Seat::DECLARER);
+        let settled = settled_hand(game.hand(Seat::DECLARER));
+        let hand = settled.as_slice();
         let exposed = null_unsafe_cards(hand, game.deck_cards());
         let scoring = run.null_scoring(content);
         let mut suit = DeclarerHeuristic.choose_declaration(hand);

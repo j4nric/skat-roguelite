@@ -37,6 +37,7 @@ export const de = {
       InvalidRiseCards: 'Wähle drei verschiedene Karten deiner Hand.',
       SchnappsRewardPending: 'Erst entscheiden, was mit dem neuen Schnaps passiert.',
       CardRewardPending: 'Erst die Zinke des Wirts nehmen oder überspringen.',
+      SkatUsedUp: 'Den Skat hast du in dieser Kneipe schon aufgenommen.',
       AlreadyUsed: 'Das gibt es an diesem Tresen nur einmal.',
       NoModAvailable: 'Auf diese Karte passt keine Zinke.',
       NothingToCleanse: 'Diese Karte trägt nichts, was abgehen könnte.',
@@ -337,6 +338,8 @@ export const de = {
     Shirker: { short: 'Drückeberger', role: 'Marken kommen zurück, Hand ohne Stufe' },
     Tailoress: { short: 'Schneiderin', role: 'Schneider +2, ohne Schneider −1' },
     HeartBrother: { short: 'Bruderherz', role: 'Rot stark, Flüche bleiben' },
+    Gambler: { short: 'Zocker', role: 'Gewonnene Hand +1, Skat einmal je Kneipe' },
+    RamschAunt: { short: 'Ramschtante', role: 'Ramsch statt Ansage, abgegriffene Daus' },
   },
 
   risks: {
@@ -385,6 +388,13 @@ export const de = {
     afterSkatTitle: 'Ansage nach dem Skat',
     back: 'Zurück',
     noPickUp: 'Den Skat darfst du in diesem Spiel nicht aufnehmen.',
+    /** "Der Zocker": the skat was picked up in this pub already. */
+    skatUsedUp: 'Den Skat hast du in dieser Kneipe schon aufgenommen. Jetzt nur noch Hand.',
+    /** "Der Zocker": pickups left in this pub. */
+    skatPickupsLeft: 'Den Skat darfst du in dieser Kneipe noch {n}× aufnehmen.',
+    /** "Die Ramschtante": Ramsch instead of a game. */
+    playRamsch: 'Ramsch spielen',
+    playRamschHint: 'Statt einer Ansage spielt jeder gegen jeden. Wer die meisten Augen hat, verliert. Hast du nicht die meisten, zählen die Augen des Verlierers für dich (+1 Stufe Jungfrau, wenn einer keinen Stich hat). Der Skat geht an den letzten Stich.',
     gameType: 'Spielart',
     risk: 'Risikostufe',
     declare: 'Ansagen',
@@ -1746,6 +1756,8 @@ export const de = {
     big_shots: 'Im Grand laufen die Spitzen nach dem Schellen-Unter weiter: Eichel-Daus, Grün-Daus, Rot-Daus, Schellen-Daus, mit oder ohne. Ein Grand ohne alles kann so bis zu 8 Spitzen haben.',
     safe_haven: 'Beim Einmischen bleiben deine Unter auf deiner Hand, die anderen Karten werden neu gemischt und gegeben. Ein abgestufter Unter bleibt nicht. Gilt auch für Kräuter und Doppelkorn.',
     beer_calm: 'Gilt nur für einen verlorenen Grand: Er zählt halb (×0,5, aufgerundet). Gewonnene Grands zählen wie immer.',
+    dice_cup: 'Gilt für jedes verlorene Handspiel, auch Null Hand: Es zählt halb (×0,5, aufgerundet). Gewonnene Handspiele und Spiele mit Skat zählen wie immer.',
+    lace_doily: 'Gilt nur für einen gewonnenen Ramsch: Hast du höchstens zwei Stiche gemacht, zählt er eine Stufe mehr. Nur die Ramschtante bekommt das Deckchen.',
     open_visor: 'Gilt für Farbspiel und Grand Ouvert: Du gewinnst mit Schneider. Stufen: Spitzen, Spiel, Hand, Schneider, Schneider angesagt und Ouvert; Schwarz nur, wenn du ihn schaffst. Ohne Schneider ist das Spiel verloren.',
     empty_chair: 'Zählt bei jedem gewonnenen Spiel die freien Plätze deiner acht Relikt-Plätze. Der Leere Stuhl belegt selbst einen.',
     junk_dealer: 'Zählt, wenn du ein Relikt verkaufst, am Tresen ersetzt, bei der Boss-Belohnung austauschst oder in einer Begegnung tauschst; höchstens einmal, bis der nächste Tresen öffnet. Den Trödler selbst zu verkaufen zählt nicht.',

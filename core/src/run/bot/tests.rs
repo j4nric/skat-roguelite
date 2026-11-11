@@ -294,10 +294,18 @@ fn the_bot_sees_the_skat_before_it_chooses_the_game() {
             ..super::super::RunStart::default()
         };
         let (mut hand_games, mut skat_games, mut nulls) = (0, 0, 0);
+        // "Der Zocker" keeps his one skat of the pub for weak hands.
+        let scarce = Run::new_with(&content, 0, &start)
+            .expect("start")
+            .0
+            .skat_pickups_left()
+            .is_some();
         for seed in 0..80 {
             let (mut run, _) = Run::new_with(&content, seed, &start).expect("start");
             let next = |run: &Run| RunBot.next_action(run, &content).expect("action");
             match next(&run) {
+                // "Die Ramschtante" plays a Ramsch instead of a game.
+                RunAction::Declare(d) if d.is_ramsch() => {}
                 RunAction::Declare(d) => {
                     assert!(d.hand(), "seed {seed}: {d:?} before the skat");
                     hand_games += 1;
@@ -332,7 +340,10 @@ fn the_bot_sees_the_skat_before_it_chooses_the_game() {
             }
         }
         assert!(
-            skat_games > 10 && hand_games < skat_games && nulls > 0 && nulls < skat_games,
+            skat_games > 5
+                && (scarce || hand_games < skat_games)
+                && nulls > 0
+                && nulls < skat_games,
             "{character}: {hand_games} {skat_games} {nulls}"
         );
     }
@@ -637,5 +648,63 @@ mod redeal_probe {
             }
             println!("{character:?} quantiles {q:?} stopping V0.. {stops:?}");
         }
+    }
+}
+
+/// Calibration of [`ramsch_danger`] (ignored, prints a table): random
+/// deals played as a Ramsch by the heuristics on all three seats; per
+/// danger of the player's ten cards the share of games won (not the most
+/// Augen) and the mean value won and lost.
+#[test]
+#[ignore = "calibration, prints a table"]
+fn ramsch_danger_calibration() {
+    use crate::ai::{DefenderHeuristic, Policy};
+    use crate::game::Game;
+    use crate::rng::Rng;
+    let mut buckets: std::collections::BTreeMap<u32, (u64, u64, i64, i64)> =
+        std::collections::BTreeMap::new();
+    for seed in 0..40_000u64 {
+        let mut rng = Rng::from_seed(seed);
+        let forehand = Seat::ALL[usize::try_from(seed % 3).unwrap_or(0)];
+        let mut game = Game::deal(&mut rng, forehand);
+        let danger = super::estimate::ramsch_danger(game.hand(Seat::DECLARER));
+        game.declare(Declaration::Ramsch).expect("ramsch");
+        while let Some(seat) = game.current_seat() {
+            let view = game.view(seat).expect("playing");
+            let card = if seat.is_declarer() {
+                DeclarerHeuristic.choose(&view)
+            } else {
+                DefenderHeuristic.choose(&view)
+            }
+            .expect("card");
+            game.play(seat, card).expect("legal");
+        }
+        let parts = crate::rules::ramsch_value_parts(game.seat_card_points(), game.seat_tricks());
+        let value = i64::from(parts.base_value) * i64::from(parts.levels.total());
+        let b = buckets.entry(danger.min(30)).or_default();
+        b.0 += 1;
+        if parts.won {
+            b.1 += 1;
+            b.2 += value;
+        } else {
+            b.3 += value;
+        }
+    }
+    for (danger, (n, won, v_won, v_lost)) in buckets {
+        let lost = n - won;
+        println!(
+            "danger {danger:2}: n {n:5} won {:5.1}% value won {:5.1} lost {:5.1}",
+            won as f64 * 100.0 / n as f64,
+            if won > 0 {
+                v_won as f64 / won as f64
+            } else {
+                0.0
+            },
+            if lost > 0 {
+                v_lost as f64 / lost as f64
+            } else {
+                0.0
+            },
+        );
     }
 }

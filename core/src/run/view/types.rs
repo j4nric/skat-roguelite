@@ -894,6 +894,13 @@ pub struct DeclareOptions {
     pub redeals_left: u32,
     /// Whether the boss demands a hand game.
     pub hand_required: bool,
+    /// Whether a Ramsch may be declared instead of a game ("Die
+    /// Ramschtante", [`Run::ramsch_offered`](super::Run::ramsch_offered)): before the skat only.
+    pub ramsch_offered: bool,
+    /// How often the skat may still be picked up in this pub ("Der
+    /// Zocker", [`Run::skat_pickups_left`](super::Run::skat_pickups_left)); `None` without a limit. At 0
+    /// every game left in the pub is a hand game.
+    pub skat_pickups_left: Option<u32>,
 }
 
 /// The game in progress.

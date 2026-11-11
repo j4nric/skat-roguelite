@@ -1320,7 +1320,7 @@ async function expectBacks(page, label, left, right) {
 }
 
 /** Portraits of the boss players (ADR 0017): every boss a pair. */
-const BOSS_FACES = ['the_pusher', 'grandma', 'twins', 'ramscher', 'black_peter', 'the_old_man'].flatMap((b) => [`p-boss-${b}`, `p-boss-${b}-2`]);
+const BOSS_FACES = ['the_pusher', 'grandma', 'twins', 'ramscher', 'black_peter', 'the_old_man', 'gravedigger'].flatMap((b) => [`p-boss-${b}`, `p-boss-${b}-2`]);
 
 /** The names on both opponents' plates, left first. */
 async function oppNames(page) {
@@ -4731,12 +4731,12 @@ async function charactersPass(browser, errors) {
   const text = (await page.textContent('body')) ?? '';
   if (text.includes('passte nicht zu dieser Version')) fail('the old meta save with a removed character was discarded');
   const ids = await page.$$eval('[data-testid="characters"] .char-card', (cards) => cards.map((c) => c.dataset.character));
-  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother') fail(`characters on the start screen: ${ids.join(', ')}`);
-  for (const id of ['Shirker', 'Tailoress']) {
+  if (ids.join(',') !== 'Declarer,NullPlayer,Shirker,Tailoress,HeartBrother,Gambler,RamschAunt') fail(`characters on the start screen: ${ids.join(', ')}`);
+  for (const id of ['Shirker', 'Tailoress', 'Gambler', 'RamschAunt']) {
     const card = page.locator(`.char-card.is-locked[data-character="${id}"]`);
     if (!(await card.count())) fail(`${id} is not shown as locked`);
     const cond = (await card.textContent()) ?? '';
-    if (!/Gewinne/.test(cond)) fail(`locked ${id} without his condition: ${cond}`);
+    if (!/Gewinne|Schlage/.test(cond)) fail(`locked ${id} without his condition: ${cond}`);
   }
   if (await page.locator('.char-card.is-locked[data-character="HeartBrother"]').count()) fail('Bruderherz should be unlocked by true_colours');
   await page.click('[data-action="pick-character"][data-character="HeartBrother"]');
@@ -4747,7 +4747,7 @@ async function charactersPass(browser, errors) {
     const row = document.querySelector('[data-testid="characters"]');
     if (row) row.scrollLeft = row.scrollWidth;
   });
-  log('start screen: five characters, old pick of a removed one fell back to the Alleinspieler');
+  log('start screen: seven characters, old pick of a removed one fell back to the Alleinspieler');
   await shoot(page, 'start-characters-new');
   await page.fill('#seed', SEED);
   await page.click('[data-action="new-run"]');
@@ -4758,6 +4758,80 @@ async function charactersPass(browser, errors) {
   log(`Bruderherz plays with his own back (${backs.join(', ')})`);
   await shoot(page, 'heart-brother-table');
   await context.close();
+}
+
+/**
+ * The characters of 10.11.2026 on phone and desktop, in German and in
+ * English (ADR 0023): Die Ramschtante (Aunt Ramsch) sees "Ramsch spielen"
+ * before the skat and plays it, Der Zocker (The Gambler) sees how often
+ * the skat may still be picked up; both with their own back, names and
+ * texts in the language, and with "Farbenblind-Hilfe" on every face of the
+ * hand keeps its suit letter (A L H B in English; alone with SMOKE_ONLY=characters).
+ */
+async function newCharactersPass(browser, errors) {
+  const LANG = {
+    de: { names: { RamschAunt: 'Die Ramschtante', Gambler: 'Der Zocker' }, ramsch: 'Ramsch spielen', pickups: /Kneipe noch 1× aufnehmen/ },
+    en: { names: { RamschAunt: 'Aunt Ramsch', Gambler: 'The Gambler' }, ramsch: 'Play Ramsch', pickups: /1× more in this pub/ },
+  };
+  // `shoot` takes every picture at 390 × 844 and 1280 × 800.
+  for (const lang of ['de', 'en']) {
+    const tag = lang;
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: lang === 'en' ? 'en-GB' : 'de-DE' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="characters"]');
+    await page.evaluate((lang) => {
+      localStorage.setItem('stammtisch.meta', JSON.stringify({ version: 1, meta: { version: 1, unlocked: ['beat_ramscher', 'big_hand'] } }));
+      localStorage.setItem('stammtisch.lang', lang);
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ colorBlind: true }));
+      localStorage.removeItem('stammtisch.run');
+    }, lang);
+    await page.reload();
+    await page.waitForFunction((lang) => document.documentElement.lang === lang, lang);
+    for (const [id, back] of [['RamschAunt', 'ramsch_aunt'], ['Gambler', 'gambler']]) {
+      if (await page.locator(`.char-card.is-locked[data-character="${id}"]`).count()) fail(`${tag}: ${id} should be unlocked`);
+      await page.click(`[data-action="pick-character"][data-character="${id}"]`);
+      await page.waitForSelector('[data-testid="char-detail"]');
+      const detail = (await page.textContent('[data-testid="char-detail"]')) ?? '';
+      if (!detail.includes(LANG[lang].names[id])) fail(`${tag}: the detail of ${id} does not name ${LANG[lang].names[id]}: ${detail}`);
+      await shoot(page, `${back}-detail-${lang}`);
+      await page.fill('#seed', SEED);
+      await page.click('[data-action="new-run"]');
+      await page.waitForSelector('[data-testid="skat-choice"]');
+      const backs = await page.$$eval('.card-back use', (uses) => [...new Set(uses.map((u) => u.getAttribute('href')))]);
+      if (!backs.includes(`#bk-${back}`)) fail(`${tag}: ${id}'s back not shown: ${backs.join(', ')}`);
+      // "Farbenblind-Hilfe": every settled face of the hand shows its suit letter in the language.
+      const letters = await page.$$eval('.hand .card-svg[data-suit]', (svgs) =>
+        svgs.map((svg) => {
+          const use = svg.querySelector('use.face-letter');
+          return { href: use?.getAttribute('href') ?? '', shown: use ? getComputedStyle(use).display !== 'none' : false };
+        }),
+      );
+      const want = lang === 'en' ? /^#cb-en-[CSHD]$/ : /^#cb-[CSHD]$/;
+      if (!letters.length || letters.some((l) => !l.shown || !want.test(l.href))) fail(`${tag}: ${id}'s suit letters: ${JSON.stringify(letters)}`);
+      if (id === 'RamschAunt') {
+        await page.waitForSelector('[data-testid="declare-ramsch"]');
+        const button = (await page.textContent('[data-testid="declare-ramsch"]')) ?? '';
+        if (!button.includes(LANG[lang].ramsch)) fail(`${tag}: the Ramsch button says ${button}`);
+        await shoot(page, `ramsch-aunt-choice-${lang}`);
+        await page.click('[data-testid="declare-ramsch"]');
+        await page.waitForFunction(() => !document.querySelector('[data-testid="skat-choice"]'));
+        log(`${tag}: the Ramschtante plays a Ramsch from the choice of skat or hand`);
+      } else {
+        await page.waitForSelector('[data-testid="skat-pickups"]');
+        const pickups = (await page.textContent('[data-testid="skat-pickups"]')) ?? '';
+        if (!LANG[lang].pickups.test(pickups)) fail(`${tag}: the Zocker's pickups say ${pickups}`);
+        if (await page.locator('[data-testid="declare-ramsch"]').count()) fail(`${tag}: the Zocker may not Ramsch`);
+        await shoot(page, `gambler-choice-${lang}`);
+        log(`${tag}: the Zocker sees how often the skat may be picked up`);
+      }
+      await page.evaluate(() => localStorage.removeItem('stammtisch.run'));
+      await page.goto(base);
+      await page.waitForSelector('[data-testid="characters"]');
+    }
+    await context.close();
+  }
 }
 
 async function routePass(page, label) {
@@ -6215,6 +6289,12 @@ async function run() {
       await englishPass(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=characters: the start screen's characters and the two of 10.11.2026.
+    if (process.env.SMOKE_ONLY === 'characters') {
+      await charactersPass(browser, errors);
+      await newCharactersPass(browser, errors);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
@@ -6261,7 +6341,7 @@ async function run() {
       return families.filter((f) => !loaded.includes(f)).map((f) => `${f} (loaded: ${loaded.join(', ') || 'none'})`);
     });
     if (fonts.length) fail(`fonts not loaded: ${fonts.join(', ')}`);
-    const portraits = await page.evaluate((faces) => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-dealer', ...faces].filter((id) => !document.getElementById(id)), BOSS_FACES);
+    const portraits = await page.evaluate((faces) => ['p-char-Declarer', 'p-char-NullPlayer', 'p-char-Shirker', 'p-char-Tailoress', 'p-char-HeartBrother', 'p-char-Gambler', 'p-char-RamschAunt', 'p-dealer', ...faces].filter((id) => !document.getElementById(id)), BOSS_FACES);
     if (portraits.length) fail(`portraits missing: ${portraits.join(', ')}`);
     // Every Stammgast of the core content has a face drawn in ui/people.ts.
     const looks = guestLooks();
@@ -6547,6 +6627,7 @@ async function run() {
     await zinkenV2Pass(browser, errors, DESKTOP);
     await shortEvening(browser, errors, reducedMotion);
     await charactersPass(browser, errors);
+    await newCharactersPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);

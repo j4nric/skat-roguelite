@@ -9,8 +9,9 @@
 //! district times `growth^(n − 3)` ([`crate::content::NightConfig`]), and
 //! each night district adds one Verschärfung ([`NightRule`]), drawn with
 //! the night's own generator without repeat until the list is exhausted,
-//! before the district starts. Night bosses are the existing bosses (der
-//! Alte included), without repeat until all were drawn. A won night boss
+//! before the district starts. Night bosses are the bosses of the day (der
+//! Alte included) and those only of the night (`night_bosses` in
+//! `run.ron`, "Der Totengräber"), without repeat until all were drawn. A won night boss
 //! pub offers relics of the night pool ("Nachtschwärmer",
 //! [`crate::content::RelicDef::night`]).
 //!
@@ -293,8 +294,9 @@ impl Run {
         }
     }
 
-    /// The boss of a night district: one of the bosses of the run and the
-    /// Endboss, for this character, without repeat until all were drawn;
+    /// The boss of a night district: one of the bosses of the run, the
+    /// Endboss and the bosses of the night (`night_bosses`), for this
+    /// character, without repeat until all were drawn;
     /// with [`NightRule::DoubleBoss`] further boss rules for its pub.
     pub(super) fn draw_night_boss(&mut self, content: &Content) -> Option<BossId> {
         let doubles = self.night_count(content, |r| matches!(r, NightRule::DoubleBoss));
@@ -305,6 +307,7 @@ impl Run {
             .bosses
             .iter()
             .chain(content.run.final_boss.iter())
+            .chain(content.run.night_bosses.iter())
             .filter(|id| {
                 content
                     .boss(id)

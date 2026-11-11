@@ -190,6 +190,10 @@
     ],
     // Endboss der Boss-Kneipe im letzten Stadtteil (DESIGN 11).
     final_boss: Some("the_old_man"),
+    // Bosse nur der langen Nacht (10.11.2026, DESIGN 5.5): Sie kommen zu den
+    // Bossen oben und dem Alten in die Ziehung der Nacht, nie in einen
+    // normalen Run.
+    night_bosses: ["gravedigger"],
     // Belohnung einer gewonnenen Boss-Kneipe (ADR 0017): doppelte
     // Auszahlung und ein Relikt aus drei (bis ADR 0019 auch ein Leben),
     // Seltenheit Ungewöhnlich oder höher. games_left_as (03.11.2026): Die

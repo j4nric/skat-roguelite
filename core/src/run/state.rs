@@ -99,6 +99,10 @@ pub struct Series {
     /// series, at the first pickup of the skat).
     #[serde(default)]
     pub discard_three_used: bool,
+    /// How often the skat was picked up in this pub ("Der Zocker",
+    /// [`GameRules::skat_pickups`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skat_pickups: u32,
     /// The Spelunke this pub is, if it replaced a normal pub (ADR 0016).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spelunke: Option<tour::Spelunke>,
@@ -260,6 +264,12 @@ pub struct GameRules {
     pub skat_swaps: Vec<CardFilter>,
     /// This game is the series' Ramsch ("Der Ramscher").
     pub ramsch: bool,
+    /// The player may declare a Ramsch before the skat ("Die
+    /// Ramschtante", [`Effect::OfferRamsch`](crate::content::Effect::OfferRamsch)).
+    pub ramsch_offered: bool,
+    /// How often the skat may be picked up in this pub ("Der Zocker",
+    /// [`Effect::SkatPickupsPerPub`](crate::content::Effect::SkatPickupsPerPub)); `None`: as often as wanted.
+    pub skat_pickups: Option<u32>,
     /// Boss rules that cheat are off ("Der Schiedsrichter").
     pub no_cheating: bool,
     /// Source of the Schneider bonus in the thresholds ("Stichfest").

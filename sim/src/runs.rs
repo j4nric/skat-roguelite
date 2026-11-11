@@ -56,6 +56,9 @@ pub struct Options {
     pub without: Vec<RelicId>,
     /// The only boss a boss series may draw.
     pub boss: Option<BossId>,
+    /// The only boss the boss pubs of the long night draw (`--night-boss`,
+    /// with `--night`); the day keeps its bosses.
+    pub night_boss: Option<BossId>,
     /// Measure the success curve of one series instead of whole runs.
     pub curve: bool,
     /// Who plays.
@@ -136,6 +139,9 @@ pub struct NightStat {
     /// Relics held and Groschen at the start of each night pub, per
     /// district (from 1), for the median.
     pub held: BTreeMap<u32, Vec<[u64; 2]>>,
+    /// Boss pubs of the night per boss: entered and won (a boss pub
+    /// played again counts once more).
+    pub boss_pubs: BTreeMap<BossId, (u64, u64)>,
     /// Relics bought / gained (boss pick, encounter) per district.
     pub relic_events: BTreeMap<u32, [u64; 2]>,
 }
@@ -159,6 +165,17 @@ pub fn formula_scoring() -> NullScoring {
 }
 
 impl Options {
+    /// The content of the long night with `--night-boss`: its boss pubs
+    /// draw only that boss. `None` without the option.
+    fn night_content(&self, content: &Content) -> Option<Content> {
+        let boss = self.night_boss.as_ref()?;
+        let mut night = content.clone();
+        night.run.bosses = Vec::new();
+        night.run.final_boss = None;
+        night.run.night_bosses = vec![boss.clone()];
+        Some(night)
+    }
+
     /// The content with `--without` and `--boss` applied. Fails on unknown
     /// ids.
     pub fn content(&self, base: &Content) -> Result<Content, String> {
@@ -182,6 +199,15 @@ impl Options {
             }
             content.run.bosses = vec![boss.clone()];
             content.run.final_boss = None;
+            content.run.night_bosses.retain(|b| b != boss);
+        }
+        if let Some(boss) = &self.night_boss {
+            if content.boss(boss).is_none() {
+                return Err(format!("--night-boss: unknown boss {boss}"));
+            }
+            if !self.night {
+                return Err("--night-boss needs --night".into());
+            }
         }
         if let Some(scoring) = &self.null_scoring {
             let def = content
@@ -282,6 +308,9 @@ impl Options {
         }
         if let Some(boss) = &self.boss {
             parts.push(format!("boss={boss}"));
+        }
+        if let Some(boss) = &self.night_boss {
+            parts.push(format!("night-boss={boss}"));
         }
         if self.character != Character::Declarer {
             parts.push(format!("character={}", self.character));
@@ -1171,6 +1200,10 @@ fn play_night(
     let mut events = run.apply(content, enter).map_err(|e| e.to_string())?;
     let mut actions = 0;
     let mut at = String::from("pub");
+    let mut night_boss: Option<BossId> = None;
+    // `--night-boss`: the night draws only this boss.
+    let night_content = options.night_content(content);
+    let content = night_content.as_ref().unwrap_or(content);
     loop {
         for event in &events {
             match event {
@@ -1215,6 +1248,10 @@ fn play_night(
                     at = boss
                         .as_ref()
                         .map_or_else(|| String::from("pub"), |b| format!("boss:{b}"));
+                    night_boss = boss.clone();
+                    if let Some(boss) = boss {
+                        stat.boss_pubs.entry(boss.clone()).or_default().0 += 1;
+                    }
                     stat.targets
                         .entry(run.series().section + 1)
                         .or_default()
@@ -1226,6 +1263,11 @@ fn play_night(
                             u64::try_from(run.relics().len()).unwrap_or(0),
                             u64::from(run.coins()),
                         ]);
+                }
+                RunEvent::SeriesWon { .. } => {
+                    if let Some(boss) = night_boss.take() {
+                        stat.boss_pubs.entry(boss).or_default().1 += 1;
+                    }
                 }
                 RunEvent::RelicBought { .. } => {
                     stat.relic_events
@@ -1585,6 +1627,7 @@ impl NightStat {
             won_night_games,
             held,
             relic_events,
+            boss_pubs,
         } = o;
         self.nights += nights;
         add_counts(&mut self.reached, reached, |a, b| *a += b);
@@ -1602,6 +1645,7 @@ impl NightStat {
         self.won_night_games += won_night_games;
         add_counts(&mut self.held, held, Vec::extend);
         add_counts(&mut self.relic_events, relic_events, add_array);
+        add_counts(&mut self.boss_pubs, boss_pubs, add_pair);
     }
 }
 
@@ -2011,6 +2055,15 @@ fn render_night(out: &mut String, n: &NightStat) {
         let _ = write!(line, " {id}={count}");
     }
     let _ = writeln!(out, "night ended at:{line}");
+    let mut line = String::new();
+    for (boss, (entered, won)) in &n.boss_pubs {
+        let _ = write!(
+            line,
+            " {boss}={won}/{entered} ({:.1}%)",
+            pct(*won, *entered)
+        );
+    }
+    let _ = writeln!(out, "night boss pubs won:{line}");
     let mut picks = String::new();
     for (id, count) in &n.relic_picks {
         let _ = write!(picks, " {id}={count}");

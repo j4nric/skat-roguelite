@@ -43,6 +43,7 @@ export const en: Strings = {
       InvalidRiseCards: 'Pick three different cards from your hand.',
       SchnappsRewardPending: 'First decide what happens to the new Schnapps.',
       CardRewardPending: 'Take the landlord’s mark or skip it first.',
+      SkatUsedUp: 'You’ve already picked up the Skat in this pub.',
       AlreadyUsed: 'Only once per visit to the bar.',
       NoModAvailable: 'No mark fits this card.',
       NothingToCleanse: 'There’s nothing on this card to come off.',
@@ -327,6 +328,8 @@ export const en: Strings = {
     Shirker: { short: 'Shirker', role: 'Stamps come back, Hand without a level' },
     Tailoress: { short: 'Tailoress', role: 'Schneider +2, without Schneider −1' },
     HeartBrother: { short: 'Brother Heart', role: 'Strong in Hearts, curses stay' },
+    Gambler: { short: 'Gambler', role: 'Won Hand +1, Skat once per pub' },
+    RamschAunt: { short: 'Aunt Ramsch', role: 'Ramsch instead of a declaration, worn Aces' },
   },
 
   risks: {
@@ -373,6 +376,13 @@ export const en: Strings = {
     afterSkatTitle: 'Declare after the Skat',
     back: 'Back',
     noPickUp: 'You may not pick up the Skat in this game.',
+    /** "The Gambler": the skat was picked up in this pub already. */
+    skatUsedUp: 'You’ve already picked up the Skat in this pub. Hand only from now on.',
+    /** "The Gambler": pickups left in this pub. */
+    skatPickupsLeft: 'You may pick up the Skat {n}× more in this pub.',
+    /** "Aunt Ramsch": Ramsch instead of a game. */
+    playRamsch: 'Play Ramsch',
+    playRamschHint: 'Instead of a declaration everyone plays for himself. Whoever has the most pips loses. If you don’t have the most, the loser’s pips count for you (+1 level Virgin if someone takes no trick). The Skat goes to the last trick.',
     gameType: 'Game',
     risk: 'Risk',
     declare: 'Declare',
@@ -1660,6 +1670,8 @@ export const en: Strings = {
     big_shots: 'In a Grand the matadors run on after the Unter of Bells: Ace of Acorns, Ace of Leaves, Ace of Hearts, Ace of Bells, with or without. A Grand without anything can thus have up to 8 matadors.',
     safe_haven: 'When you redeal, your Unters stay in your hand, the other cards are shuffled and dealt again. A demoted Unter doesn’t stay. Applies to Herbal Bitters and Double Korn too.',
     beer_calm: 'Applies only to a lost Grand: it counts half (×0.5, rounded up). Won Grands count as always.',
+    dice_cup: 'Applies to every lost Hand game, Null Hand too: it counts half (×0.5, rounded up). Won Hand games and games with the Skat count as always.',
+    lace_doily: 'Applies only to a won Ramsch: if you took at most two tricks, it counts one level more. Only Aunt Ramsch gets the doily.',
     open_visor: 'Applies to suit games and Grand Ouvert: you win with Schneider. Levels: matadors, game, Hand, Schneider, Schneider announced and Ouvert; Schwarz only if you make it. Without Schneider the game is lost.',
     empty_chair: 'With every game you win it counts the free places among your eight relic slots. The Empty Chair takes one itself.',
     junk_dealer: 'Counts when you sell a relic, replace one at the bar, swap one at the boss reward or trade one in an encounter; at most once until the next bar opens. Selling The Junk Dealer himself doesn’t count.',

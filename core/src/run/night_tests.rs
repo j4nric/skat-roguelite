@@ -355,7 +355,9 @@ fn night_bosses_do_not_repeat_until_all_were_drawn() {
     let content = content();
     let (mut run, _) = night_run(&content, 41);
     force(&mut run, &["fewer_redeals"]);
-    let pool = content.run.bosses.len() + usize::from(content.run.final_boss.is_some());
+    let pool = content.run.bosses.len()
+        + usize::from(content.run.final_boss.is_some())
+        + content.run.night_bosses.len();
     let drawn: Vec<BossId> = (0..pool)
         .map(|_| run.draw_night_boss(&content).expect("boss"))
         .collect();

@@ -445,7 +445,7 @@ Gemessen am 02.11.2026 (Alleinspieler, Zielwerte aus 5.2, der Bot rechnet bei An
 | **Zielwert-Sprung** | `target_jump` | alle Zielwerte der Nacht × 1,1, obendrauf |
 | **Knausriger Wirt** | `stingy_host` | die Kartenbelohnung bietet ein Angebot weniger an (mindestens eines) |
 
-- **Bosse der Nacht**: die fünf Bosse und der Alte, zufällig, keiner doppelt, bis alle dran waren. Die Boss-Kneipe der Nacht gibt die doppelte Auszahlung und eine Relikt-Wahl aus den **Nachtschwärmern**, solange einer übrig ist (sonst die normale Wahl).
+- **Bosse der Nacht**: die fünf Bosse, der Alte und seit dem 10.11.2026 der Totengräber, der nur nachts kommt (`night_bosses` in `run.ron`, 11.1), zufällig, keiner doppelt, bis alle dran waren. Die Boss-Kneipe der Nacht gibt die doppelte Auszahlung und eine Relikt-Wahl aus den **Nachtschwärmern**, solange einer übrig ist (sonst die normale Wahl).
 - **Nachtschwärmer** (Relikte nur der Nacht, `night: true`; auch am Tresen der Nacht; Bierdeckel: Faktor-Sechseck mit eigenem Motiv):
 
 | Relikt | Id | Effekt | Seltenheit, Preis | Bot-Wert |
@@ -1281,7 +1281,7 @@ Auslegungen (Claude, 07.11.2026):
 
 ## 9. Charaktere
 
-Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Fünf Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin und Bruderherz (je über eine Freischaltung, 9.3). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
+Jeder Charakter hat ein eigenes Grunddeck (seit ADR 0015: seine Ausgabe des Skatblatts mit Modifikationen ab Start, nie eine andere Zusammensetzung, 9.8), Startrelikte (oder einen Start-Schnaps) und genau eine eigene Regel; eine eigene Zielwertkurve ist möglich. Sieben Charaktere: der Alleinspieler (frei), der Nullspieler, der Drückeberger, die Schneiderin, Bruderherz und seit dem 10.11.2026 der Zocker und die Ramschtante (je über eine Freischaltung, 9.3, 9.6b, 9.6c). Am 03.11.2026 hat der Nutzer den Grandspieler, den Zaungast und die Wirtin gestrichen und die drei neuen bestimmt (9.4 bis 9.6).
 
 **Seit Runde 1 ohne Leben (04.11.2026)** gelten neue Kurven (5.0.4); ohne Leben mit den Kurven vom 03.11.2026 erreichten Stadtteil 2: Alleinspieler 29,0 %, Nullspieler 26,9 %, Drückeberger 31,6 %, Schneiderin 22,4 %, Bruderherz 20,9 % (je 3 × 150 Runs, Alleinspieler 3 × 300; `docs/balance/2026-11-04-runde1.md`). Gemessen ist danach nur der Alleinspieler (33,4 / 12,2 / 5,1 %); die neuen Kurven von Nullspieler (× 1,1), Schneiderin (Stadtteil 1 wie der Alleinspieler, danach × 1,1) und Bruderherz (× 0,9, jetzt eigene) sind Vorschläge für Runde 2. Die Tabelle unten ist der Stand vom 03.11.2026 mit Leben.
 
@@ -1432,6 +1432,8 @@ Verworfen: „Schneider angesagt gewinnen“ für den Schneider (577 Runs, der B
 | `full_skat` („Voll gedrückt“) | Ein Spiel gewinnen, in dem mindestens 21 Augen gedrückt wurden (`WinGame(min_discarded: 21)`). Gezählt werden die Augen der gedrückten Karten, wie sie im Spiel zählen (mit Aufdruck, Ramponiert und Skatpfleger), aus `RunEvent::GameScored::discarded_points`; ein Handspiel drückt nichts. Nur Farbspiel und Grand wie jedes `WinGame`. | Der Drückeberger, seit 04.11.2026 auch Rabattheft (8.11) |
 | `three_schneider` („Maßarbeit“) | Drei Spiele mit Schneider in einer Kneipe gewinnen (`SchneiderWinsInPub(3)`, Farbspiel und Grand; der Zähler fängt mit jeder Kneipe neu an) | Die Schneiderin, seit 04.11.2026 auch Goldene Schere (8.11) |
 | `true_colours` („Farbe bekennen“) | Drei Farbspiele hintereinander mit derselben Trumpffarbe gewinnen, egal welche (`SameTrumpStreak(3)`). Die Serie läuft über Kneipen hinweg im selben Run; ein verlorenes Spiel, ein Grand, ein Null oder eine andere Trumpffarbe dazwischen fängt neu an, ein neuer Run auch. Ein Ramsch ist keine Ansage: Er zählt nicht und unterbricht nicht (wie bei der Stammfarbe). | Bruderherz, seit 04.11.2026 auch Vereinsfarben (8.11) |
+| `big_hand` („Hoch gepokert“, 10.11.2026) | Ein Handspiel gewinnen, das mindestens 96 Punkte zählt (`WinGame(min_risk: Some(Hand), min_value: 96)`). Gemessen: 20 von 20 Folgen nach im Mittel 13,8 Runs (1 bis 35) | Der Zocker und der Knobelbecher (9.6b) |
+| `beat_ramscher` („Ausgeramscht“, 10.11.2026) | Den Boss Der Ramscher schlagen (`BeatBoss`). Gemessen: 20 von 20 Folgen nach im Mittel 10,4 Runs (1 bis 33) | Die Ramschtante (9.6c) |
 
 Der Meta-Zustand hält dafür zwei kleine Zähler (`pub_schneider_wins`, `trump_streak`), die wie `current_section` aus den Ereignissen lernen; auch die bereinigten Spieler-Ereignisse tragen `discarded_points`.
 
@@ -1483,10 +1485,33 @@ Entschieden vom Nutzer am 03.11.2026. Sein Herz schlägt für Rot.
 
 Gestrichen vom Nutzer am 03.11.2026. Der Grandspieler (Grand +1 Stufe, Farbspiel −1, Eichel-Daus mit Augen +8), der Zaungast (sah das Blatt des linken Gegners, einmal weniger einmischen) und die Wirtin (doppelte Groschen, vier Relikt-Plätze, Start mit einem Kräuter) sind aus `characters.ron`, dem `Character`-Enum, der Web-App und dem Simulator entfernt. Ihre Messungen in 5.2 und 11 bleiben als Geschichte stehen.
 
+### 9.6b Der Zocker (10.11.2026)
+
+Vom Nutzer früher vorgeschlagen, umgesetzt am 10.11.2026. Setzt alles auf eine Karte: Hand lohnt sich, der Skat ist knapp. Englisch „The Gambler“.
+
+- **Ausgabe** (`Gambler`): Eichel- und Grün-Sieben sind Wandelkarten (`wild_card`, 7.2: sie nehmen bei Spielbeginn die Farbe an, von der er die meisten Karten hält, meist Trumpf). Die Schellen-Daus ist Durchsichtig (`transparent`): Hält er sie, wissen es die Gegner. Im ersten Entwurf waren alle vier Daus durchsichtig; mit der Kurve aus 9.6b unten blieb das zu teuer, gemessen mit allen Änderungen zusammen (Balance-Notiz vom 10.11.2026).
+- **Regel, Teil 1: Hand zählt zwei Stufen.** Ein **gewonnenes** Handspiel (auch Null Hand, kein Ramsch) bekommt +1 Stufe zu der für Hand (`OnScore(when: All([Won, HandGame, Not(RamschGame)]), then: [AddLevels(1)])`, Zeile mit `Source::Character`). Ein verlorenes Handspiel kostet wie bei allen. Im Entwurf hing die Stufe an der Ansage (`OnDeclare`) und verdoppelte auch den Verlust; das kostete ihn zu viel.
+- **Regel, Teil 2: Den Skat nur einmal je Kneipe.** `SkatPickupsPerPub(1)` (passiv): Danach ist jedes Spiel der Kneipe Hand; der Versuch, ihn noch einmal aufzunehmen, ist `RunError::SkatUsedUp`. Die Sicht nennt die übrigen Aufnahmen (`DeclareOptions::skat_pickups_left`), die Web-App schreibt „Den Skat darfst du in dieser Kneipe noch 1× aufnehmen.“ Der Boss Der Schieber (alles Hand) bleibt davon unberührt.
+- **Startrelikt**: Knobelbecher (`dice_cup`, Ungewöhnlich, 6 Gr.): Ein verlorenes Handspiel zählt halb (× 0,5, aufgerundet), auch Null Hand.
+- **Freischaltung**: `big_hand` („Hoch gepokert“): ein Handspiel gewinnen, das mindestens 96 Punkte zählt (`WinGame(min_risk: Some(Hand), min_value: 96)`); schaltet auch den Knobelbecher für alle frei. **Rückseite**: zwei Würfel und Jetons auf grünem Spieltischfilz (`gambler`).
+- **Bot**: Er hebt die eine Aufnahme für ein schwaches Blatt auf, wenn die zehn Karten ein Handspiel zu mindestens 75 % gewinnen (`HAND_KEEP_MIN_PERCENT`) oder ein Null Hand mit höchstens einer offenen Karte möglich ist (`HAND_KEEP_NULL_EXPOSED`; Null Hand gewinnt mit einer 76 %, mit zwei 54 %); im letzten Spiel der Kneipe hebt er nichts auf.
+- **Zahlen**: eigene Kurve **5 / 15 / 40 / 45 / Boss 80 · 45 / 55 / 60 / 70 / Boss 85 · 95 / 105 / 115 / 125 / Boss 100**, überall unter der des Alleinspielers, weil er in den meisten Spielen ohne Skat spielt (Punkte je Spiel 45). Gemessen 38,8 / 15,2 / 4,0 %, 18,1 % Ende in den ersten beiden Kneipen (7 × 300 Runs; mit dem Entwurf und der Kurve aus `run.ron` 25,0 / 6,8 / 1,7 %, 30,9 %). `docs/balance/2026-11-10-neue-charaktere.md`.
+
+### 9.6c Die Ramschtante (10.11.2026)
+
+Vom Nutzer früher als „Ramsch-Oma“ vorgeschlagen; der Name „Oma“ gehört dem Boss, darum Die Ramschtante. Umgesetzt am 10.11.2026. Englisch „Aunt Ramsch“.
+
+- **Ausgabe** (`RamschAunt`): Ihre vier Daus und vier Zehnen sind abgegriffen: Ramponiert 5 (Daus 6, Zehn 5 Augen). Im Ramsch nimmt sie damit weniger Augen, in Farbspiel und Grand fehlen sie ihr. Die Flüche lassen sich reinigen.
+- **Regel: Ramsch statt Ansage.** `OfferRamsch` (passiv): Vor dem Skat darf sie statt einer Ansage Ramsch spielen (`Declare(Ramsch)`, nur vor dem Skat, Sicht `DeclareOptions::ramsch_offered`, Knopf „Ramsch spielen“). Gewertet wie beim Boss Der Ramscher (11.1): Wer die meisten Augen hat, verliert; hat sie nicht die meisten, zählen die Augen des Verlierers für sie als Grundwert, +1 Stufe Jungfrau, wenn einer keinen Stich hat; verloren zählt er einfach wie jedes Spiel. Kein Gutschein, kein Kontra. Der Skat geht an den letzten Stich.
+- **Startrelikt**: Spitzendeckchen (`lace_doily`, Ungewöhnlich, 6 Gr., nur für sie): Ein gewonnener Ramsch mit höchstens zwei Stichen zählt +1 Stufe.
+- **Freischaltung**: `beat_ramscher` („Ausgeramscht“): den Boss Der Ramscher schlagen. **Rückseite**: Blumen der Kittelschürze und eine Kaffeetasse auf Kornblumenblau (`ramsch_aunt`).
+- **Bot**: Er spielt Ramsch, wenn der Ramsch die beste Ansage und das Einmischen um mindestens 50 Punkte schlägt (`RAMSCH_MARGIN`, Hundertstel, `ramsch_danger` schätzt die Gefahr nach Untern und hohen Karten).
+- **Zahlen**: Der Ramsch bringt ihr hohe Spielwerte (63 % ihrer Spiele, 86 % gewonnen, im Mittel 148 Punkte je gewonnenem Ramsch, Punkte je Spiel 92). Eigene Kurve **40 / 75 / 125 / 145 / Boss 235 · 120 / 140 / 160 / 180 / Boss 180 · 165 / 180 / 195 / 210 / Boss 160**. Gemessen 39,2 / 13,9 / 4,2 %, 11,4 % Ende in den ersten beiden Kneipen (7 × 300 Runs; mit der Kurve aus `run.ron` 71,3 / 48,3 / 22,3 %). `docs/balance/2026-11-10-neue-charaktere.md`.
+
 ### 9.7 Spätere Kandidaten (nicht vor v1)
 
-- **Der Ramscher**: Spielt Ramsch, gewinnt mit den wenigsten Augen. Eigenes Scoring.
-- **Der Schieber**: Sieht immer den Skat vor der Ansage, aber alle Spiele sind Hand.
+- ~~**Der Ramscher**: Spielt Ramsch, gewinnt mit den wenigsten Augen. Eigenes Scoring.~~ Seit 10.11.2026 als Die Ramschtante (9.6c).
+- **Der Schieber**: Sieht immer den Skat vor der Ansage, aber alle Spiele sind Hand. (Die Hand-Seite steckt seit 10.11.2026 im Zocker, 9.6b.)
 
 ### 9.8 Grunddecks als Ausgaben (ADR 0015)
 
@@ -1584,8 +1609,11 @@ Die Sonderregel gilt für die ganze Boss-Kneipe und wird vorher angezeigt, damit
 | **Der Ramscher** | Jedes Spiel ist ein Ramsch (`Ramsch`, bis ADR 0017 nur das erste); ein verlorener Ramsch zählte vom 03.11. bis 04.11.2026 als einzige Ausnahme einfach (`SingleLoss`), seit 04.11.2026 zählt jedes verlorene Spiel einfach (4.3) | Der Ramscher, Die Ramscherin | Daus Ramponiert 6; Zehnen Ramponiert 5 | sie lassen laufen | 1,0 (Nullspieler 2,0) |
 | **Der Schwarze Peter** | Ein gewonnenes Spiel ohne Schneider zählt halb | Der Schwarze Peter, Die Schwarze Grete | Eichel- und Grün-Unter Durchsichtig; Eichel- und Grün-Oberin Durchsichtig | Ruß an den Fingern: eine Hilfe beim schwersten Boss | 0,7 (Nullspieler 0,2) |
 | **Der Alte** (Endboss) | legt die fünf Regeln oben der Reihe nach auf, eine pro Blatt (Schieber, Zwillinge, Ramscher, Oma, Schwarzer Peter) | Der Alte, Die Alte | die Ausgaben der Figuren des Bosses, dessen Regel gerade gilt (links die erste, rechts die zweite) | das alte Paar | 1,3 (seit Runde 2, 04.11.2026; vorher 1,0) |
+| **Der Totengräber** (nur in der langen Nacht, seit 10.11.2026) | Die gedrückten Karten zählen keine Augen (`MultiplySkatPoints(0)`; nicht im Handspiel und im Null) | Der Totengräber, Die Witwe | Neunen Rang 2; Daus Augen +4 | vom Friedhof: begrabener Skat, Erbstücke der Witwe | 2,5 (in der Nacht gemessen) |
 
-Entfallen mit ADR 0017: **Der Kontra-Hans** (Kontra immer erlaubt), **Der Revolutionär** (Handtausch nach dem fünften Stich) und **Der Kiebitz-Mörder** (Informations-Wirkungen aus). Mit ihnen die Wirkungen `SwapDefenderHands`, `DisableInformation` und `BlankOut` (die alte Regel der Oma); `EnableKontra` bleibt für die Hausregel. Ein Spielstand, der einen von ihnen gezogen hat, trifft einen Ersatz (`RETIRED_BOSSES`: Kontra-Hans und Revolutionär die Zwillinge, Kiebitz-Mörder der Schwarze Peter; keiner verlangt Hand, damit ein wartender Stand spielbar bleibt). **Der Totengräber** (Boss mit Sonderkarten) ruht.
+Entfallen mit ADR 0017: **Der Kontra-Hans** (Kontra immer erlaubt), **Der Revolutionär** (Handtausch nach dem fünften Stich) und **Der Kiebitz-Mörder** (Informations-Wirkungen aus). Mit ihnen die Wirkungen `SwapDefenderHands`, `DisableInformation` und `BlankOut` (die alte Regel der Oma); `EnableKontra` bleibt für die Hausregel. Ein Spielstand, der einen von ihnen gezogen hat, trifft einen Ersatz (`RETIRED_BOSSES`: Kontra-Hans und Revolutionär die Zwillinge, Kiebitz-Mörder der Schwarze Peter; keiner verlangt Hand, damit ein wartender Stand spielbar bleibt). **Der Totengräber** ruhte als Boss mit Sonderkarten bis zum 10.11.2026; seitdem ist er der Boss der Nacht (unten).
+
+**Der Totengräber** (10.11.2026, der erste Boss nur der langen Nacht, `night_bosses` in `run.ron`; englisch „The Gravedigger“ und „The Widow“): Er begräbt den Skat. Die gedrückten Karten zählen in seiner Kneipe keine Augen (`OnDeclare(when: All([Not(HandGame), Not(NullGame)]), then: [MultiplySkatPoints(0)])`, die Wirkung des Skatpflegers mit 0, sie schlägt ihn auch). Ein Handspiel drückt nichts und behält seinen Skat; im Null zählen Augen nicht. Figuren: Der Totengräber (Neunen Rang 2: die Neun wird König), Die Witwe (Daus Augen +4, 15 statt 11). Er kommt zu den Bossen des Tages und dem Alten in die Ziehung der Nacht (5.5), nie in einen normalen Run. Faktor **2,5**: Der Build der Nacht ist so stark, dass der Alleinspieler mit 1,0 92 % der Kneipen des Totengräbers gewann (Nullspieler 94 %), mehr als gegen jeden anderen Boss der Nacht; mit 2,5 83 % (Nullspieler 79 %), so oft wie gegen die mittleren Bosse (gemessen in der Nacht, `docs/balance/2026-11-10-neue-charaktere.md`).
 
 Leitlinien und Auslegungen (Claude, 03.11.2026):
 

@@ -1065,6 +1065,8 @@ mod m7_tests;
 #[cfg(test)]
 mod marke_encounter_tests;
 #[cfg(test)]
+mod new_characters_tests;
+#[cfg(test)]
 mod night_tests;
 #[cfg(test)]
 mod relic_slots_tests;

@@ -124,10 +124,11 @@ mod values;
 
 pub use estimate::{
     BOLD_MIN_PERCENT, BOLD_SAMPLES, GRAND_WIN_PERCENT, NULL_HAND_MAX_EXPOSED, NULL_MAX_EXPOSED,
-    NULL_WIN_PERCENT, SUIT_WIN_PERCENT, null_expected_score, schneider_percent,
-    suit_expected_score, ten_card_score,
+    NULL_WIN_PERCENT, RAMSCH_WIN_PERCENT, SUIT_WIN_PERCENT, null_expected_score, ramsch_danger,
+    ramsch_expected_score, schneider_percent, suit_expected_score, suit_win_percent,
+    ten_card_score,
 };
-pub use table::REDEAL_STOP;
+pub use table::{HAND_KEEP_MIN_PERCENT, RAMSCH_MARGIN, REDEAL_STOP};
 pub use values::{
     CONSUMABLE_VALUES, DEFAULT_RELIC_VALUE, LEGENDARY_VALUES, NIGHT_VALUES, PAINTER_RESERVE,
     RELIC_DIRECTION_BONUS, RELIC_VALUES, REROLL_RESERVE, RICH, SWAP_MARGIN, TEETOTALLER_SKIP_WORTH,

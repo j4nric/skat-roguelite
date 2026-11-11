@@ -287,6 +287,7 @@ export class TableInput {
         render();
       },
       'pick-up-skat': () => act('PickUpSkat'),
+      'declare-ramsch': () => act({ Declare: { game: 'Ramsch', risk: 'Normal' } }),
       'give-up': () => {
         // "Kneipe verlassen" (DESIGN 8.7): ask first, a boss pub ends the run.
         ui.overlay = { kind: 'confirm-give-up' };

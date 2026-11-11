@@ -193,6 +193,8 @@ enum SavedCharacter {
     Shirker,
     Tailoress,
     HeartBrother,
+    Gambler,
+    RamschAunt,
     #[serde(other)]
     Removed,
 }
@@ -205,6 +207,8 @@ impl SavedCharacter {
             SavedCharacter::Shirker => Some(Character::Shirker),
             SavedCharacter::Tailoress => Some(Character::Tailoress),
             SavedCharacter::HeartBrother => Some(Character::HeartBrother),
+            SavedCharacter::Gambler => Some(Character::Gambler),
+            SavedCharacter::RamschAunt => Some(Character::RamschAunt),
             SavedCharacter::Removed => None,
         }
     }

@@ -677,10 +677,18 @@ fn the_boss_target_factor_scales_the_boss_series() {
         RunEvent::SeriesStarted { index: 4, target, .. } if *target == expected
     )));
     // Factors are positive and at most 2 (set from measurements, see
-    // bosses.ron).
-    for def in Content::load().expect("content").bosses.values() {
+    // bosses.ron); a boss of the long night only plays against the night's
+    // build and may go up to 3 (the Totengräber: 2.5, measured in the
+    // night, docs/balance/2026-11-10-neue-charaktere.md).
+    let loaded = Content::load().expect("content");
+    for def in loaded.bosses.values() {
+        let max = if loaded.run.night_bosses.contains(&def.id) {
+            3000
+        } else {
+            2000
+        };
         assert!(
-            (1..=2000).contains(&def.target_factor.permille()),
+            (1..=max).contains(&def.target_factor.permille()),
             "{}",
             def.id
         );
