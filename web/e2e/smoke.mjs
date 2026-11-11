@@ -6221,6 +6221,255 @@ async function englishPass(browser, errors) {
   log('English: start, game, unlock, card reward, route, bar, menu, rules, glossary, encounter and introduction');
 }
 
+/**
+ * Sounds v2 (soundsPass; alone with SMOKE_ONLY=sounds). There is no ear in
+ * the test: an init script puts an array at `window.__soundLog`, and
+ * ./src/audio.ts notes there every sound asked for, with what the mix did
+ * with it (played, ducked, dropped, or silent when audio is locked) and its
+ * start in ms of the audio clock. A scripted run at 390 × 844 (reduced
+ * motion: the sounds must come anyway) and 1280 × 800 (full motion):
+ * - a new run: the shuffle and a Stammgast's hummed quip, a quiet tap for
+ *   buttons; a whole game (skat picked up, Drücken, a Grand declared with
+ *   the bigger bang, cards, an Unter slammed, tricks, the result's knock
+ *   and win or lose);
+ * - kontra.json answered with Re: the slap; boss-tresen.json: buying rings
+ *   the till, the boss sheet opens the creaking door; route-station.json:
+ *   chalk for the chosen way; a Schnaps drunk yourself (Eierlikör): pour and
+ *   gulp; a run won (boss-table.json): the counter bell for its unlock, the
+ *   long night's church clock;
+ * - the mix: two big sounds never start within 300 ms of each other.
+ * Then the menu's volume sliders (soundVolumePass) in German and English at
+ * 390 × 844 and 1280 × 800: the row "Lautstärke" under "Ton" with both
+ * sliders at 80 % by default, moved by keyboard and by setting the value,
+ * stored when let go and shown after a reload; older settings without the
+ * volumes get 80 %, a broken value is put right; the menu still fits.
+ */
+async function soundContext(browser, options) {
+  const context = await quietContext(browser, options);
+  await context.addInitScript(() => {
+    window.__soundLog = [];
+  });
+  return context;
+}
+
+async function soundNames(page) {
+  return page.evaluate(() => window.__soundLog.map((e) => e.name));
+}
+
+async function expectSounds(page, want, label) {
+  const deadline = Date.now() + 4000;
+  let heard = [];
+  for (;;) {
+    heard = await soundNames(page);
+    const missing = want.filter((n) => !heard.includes(n));
+    if (!missing.length) break;
+    if (Date.now() > deadline) {
+      fail(`${label}: no sound "${missing.join('", "')}" asked for (heard: ${[...new Set(heard)].join(' ')})`);
+    }
+    await page.waitForTimeout(150);
+  }
+  log(`${label}: ${want.join(', ')}`);
+}
+
+async function clearSounds(page) {
+  await page.evaluate(() => (window.__soundLog = []));
+}
+
+/** No two big sounds start within 300 ms (the later one is dropped by the mix). */
+async function assertMix(page, label) {
+  const BIG = ['bang', 'unlock', 'boss', 'night', 'win', 'lose'];
+  const log_ = await page.evaluate(() => window.__soundLog);
+  const big = log_.filter((e) => BIG.includes(e.name) && (e.outcome === 'played' || e.outcome === 'queued')).sort((a, b) => a.at - b.at);
+  for (let i = 1; i < big.length; i++) {
+    if (big[i].at - big[i - 1].at < 300) fail(`${label}: "${big[i - 1].name}" and "${big[i].name}" sound on top of each other (${big[i - 1].at} / ${big[i].at} ms)`);
+  }
+  const outcomes = new Set(log_.map((e) => e.outcome));
+  const dropped = log_.filter((e) => e.outcome === 'dropped').map((e) => e.name);
+  log(`${label}: mix ok (${log_.length} sounds, outcomes ${[...outcomes].join(', ')}${dropped.length ? `; dropped ${dropped.join(' ')}` : ''})`);
+}
+
+async function soundsPass(browser, errors, viewport, reducedMotion) {
+  const tag = `${viewport.width}x${viewport.height}`;
+  const context = await soundContext(browser, { viewport, reducedMotion });
+  const page = await context.newPage();
+  watch(page, errors);
+
+  // A new run: shuffled, greeted, then one whole game.
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await expectSounds(page, ['tap', 'shuffle', 'quip'], `sounds ${tag}: new run`);
+  await clearSounds(page);
+  await skatThenGrand(page, `sounds ${tag}`);
+  await expectSounds(page, ['pickup', 'discard', 'bang'], `sounds ${tag}: skat, Drücken, Grand`);
+  await playOut(page, `sounds ${tag}`);
+  await page.waitForTimeout(1400);
+  const game = await soundNames(page);
+  const result = game.includes('win') ? 'win' : 'lose';
+  await expectSounds(page, ['card', 'trick', 'knock', result], `sounds ${tag}: tricks and result`);
+  if (!game.includes('slam')) log(`sounds ${tag}: no Unter came to the table in this game`);
+  await assertMix(page, `sounds ${tag}: first game`);
+
+  // Kontra answered with Re: the slap.
+  await resumeFixture(page, 'kontra.json');
+  await page.waitForSelector('[data-action="re"][data-re="true"]');
+  await clearSounds(page);
+  await page.click('[data-action="re"][data-re="true"]');
+  await page.waitForSelector('[data-action="re"]', { state: 'detached' });
+  await expectSounds(page, ['kontra'], `sounds ${tag}: Re`);
+
+  // The Tresen: buying rings the till; the boss sheet opens the door.
+  await resumeState(page, 'Tresen with money', patched('boss-tresen.json', (save) => (save.run.coins = 99)));
+  await page.waitForSelector('[data-testid="shop"]');
+  await clearSounds(page);
+  const buy = page.locator('[data-action="buy-relic"]:not([disabled]), [data-action="buy-item"]:not([disabled])').first();
+  if (!(await buy.count())) fail(`sounds ${tag}: nothing to buy at the Tresen with 99 Groschen`);
+  await buy.click();
+  await expectSounds(page, ['till'], `sounds ${tag}: bought at the Tresen`);
+  await page.keyboard.press('Escape');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  await expectSounds(page, ['boss'], `sounds ${tag}: boss sheet`);
+  await page.click('[data-action="boss-go"]');
+  await page.waitForSelector('.declare');
+
+  // The map: chalk for the chosen way.
+  await resumeFixture(page, 'route-station.json');
+  await page.waitForSelector('[data-testid="route-option"]');
+  await clearSounds(page);
+  await page.locator('[data-testid="route-option"]').first().click();
+  await page.click('[data-testid="route-go"]');
+  await expectSounds(page, ['chalk'], `sounds ${tag}: way chosen`);
+
+  // A Schnaps drunk yourself: poured and gulped.
+  await resumeState(page, 'eggnog', patched('wave3-mods.json', (save) => (save.run.consumables = ['eggnog'])));
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.waitForTimeout(400);
+  await clearSounds(page);
+  await drinkByTap(page, 0);
+  await expectSounds(page, ['pour', 'gulp'], `sounds ${tag}: Eierlikör`);
+
+  // A won run: the counter bell for an unlock, then the long night.
+  const won = JSON.parse(fixture('boss-table.json'));
+  won.run.series.section = 2;
+  won.run.series.target = 1;
+  won.run.series.score = 1000;
+  won.run.series.games_played = 2;
+  await resumeState(page, 'won run', JSON.stringify(won));
+  await page.waitForSelector('.declare');
+  await clearSounds(page);
+  await skatThenGrand(page, `sounds ${tag} won run`);
+  await playOut(page, `sounds ${tag} won run`);
+  await page.click('[data-action="score-continue"]');
+  await page.waitForSelector('[data-testid="end"] h1.is-won', { timeout: 10000 });
+  await page.waitForTimeout(600);
+  const unlocked = await page.locator('.sheet-unlock').count();
+  if (unlocked) await expectSounds(page, ['unlock'], `sounds ${tag}: unlock`);
+  else log(`sounds ${tag}: no unlock with this run (counter bell not checked)`);
+  await assertMix(page, `sounds ${tag}: won run`);
+  while (await page.locator('.sheet-unlock').count()) {
+    await page.locator('.sheet-unlock [data-action="close-overlay"]').last().click();
+    await page.waitForTimeout(200);
+  }
+  await clearSounds(page);
+  await page.click('[data-testid="enter-night"]');
+  await expectSounds(page, ['night'], `sounds ${tag}: the long night`);
+  await context.close();
+}
+
+async function volumeShot(page, name) {
+  const dir = process.env.SMOKE_SOUND_SHOTS;
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    await page.screenshot({ path: join(dir, `${name}.png`) });
+  }
+  await shoot(page, name);
+}
+
+async function soundVolumePass(browser, errors, viewport, locale) {
+  const tag = `${viewport.width}x${viewport.height}-${locale.slice(0, 2)}`;
+  const en = locale.startsWith('en');
+  const context = await soundContext(browser, { viewport, reducedMotion: 'reduce', locale });
+  const page = await context.newPage();
+  watch(page, errors);
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}'));
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-volume"]');
+  const row = ((await page.locator('[data-testid="setting-volume"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  const want = en ? ['Volume', 'Effects 80%', 'Music 80%'] : ['Lautstärke', 'Klänge 80 %', 'Musik 80 %'];
+  for (const w of want) if (!row.includes(w)) fail(`volume ${tag}: the row reads "${row}", missing "${w}"`);
+  for (const kind of ['sound', 'music']) {
+    const box = await page.locator(`[data-testid="volume-${kind}"]`).boundingBox();
+    if (!box || box.height < 44) fail(`volume ${tag}: the ${kind} slider is ${box?.height}px high, under 44`);
+    if (box.x < 0 || box.x + box.width > viewport.width) fail(`volume ${tag}: the ${kind} slider leaves the screen`);
+  }
+  if (viewport.width < 600) await assertMenuNoScroll(page, `volume ${tag}`);
+  else await assertMenuFits(page, `volume ${tag}`);
+  await volumeShot(page, `volume-menu-${tag}`);
+
+  // By keyboard: four steps down, stored when let go.
+  const sfx = page.locator('[data-testid="volume-sound"] input');
+  await sfx.focus();
+  await clearSounds(page);
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(100);
+  let settings = await stored();
+  if (settings.soundVolume !== 60) fail(`volume ${tag}: four steps down stored ${settings.soundVolume}, expected 60`);
+  const shown = await page.locator('[data-testid="volume-sound"] [data-vol-value]').textContent();
+  if (shown !== (en ? '60%' : '60 %')) fail(`volume ${tag}: the effects show "${shown}" after four steps`);
+  if ((await sfx.getAttribute('aria-valuetext')) !== shown) fail(`volume ${tag}: aria-valuetext does not follow`);
+  if (!(await page.evaluate(() => document.activeElement?.matches('[data-volume="sound"]')))) fail(`volume ${tag}: the slider lost the focus`);
+  if (!(await soundNames(page)).length) fail(`volume ${tag}: moving the effects' slider sounds nothing`);
+  // Set directly: the music down to 25 (rounded to 25), the music still on.
+  await page.locator('[data-testid="volume-music"] input').fill('25');
+  await page.waitForTimeout(100);
+  settings = await stored();
+  if (settings.musicVolume !== 25 || settings.music !== true) fail(`volume ${tag}: music stored as ${JSON.stringify(settings)}`);
+  await volumeShot(page, `volume-moved-${tag}`);
+  // Music off: its slider dims and stays.
+  await page.click('[data-testid="toggle-music"]');
+  await page.waitForSelector('[data-testid="volume-music"].is-off');
+  await page.click('[data-testid="toggle-music"]');
+  await page.click('[data-testid="menu-close"]');
+
+  // After a reload the values are back.
+  await page.reload();
+  await page.waitForSelector('[data-action="resume"]');
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-volume"]');
+  const values = await page.evaluate(() => ['sound', 'music'].map((k) => document.querySelector(`[data-volume="${k}"]`)?.value));
+  if (values.join(',') !== '60,25') fail(`volume ${tag}: after a reload the sliders show ${values.join(',')}`);
+
+  // Older settings (no volumes) get 80; a broken value is put right.
+  await page.evaluate(() => localStorage.setItem('stammtisch.settings', JSON.stringify({ tempo: 'normal', sound: true, music: true, thinking: true, hints: false, soundVolume: 250 })));
+  await page.reload();
+  await page.waitForSelector('[data-action="resume"]');
+  await page.click('[data-action="resume"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await page.click('[data-action="menu"]');
+  await page.waitForSelector('[data-testid="setting-volume"]');
+  const migrated = await page.evaluate(() => ['sound', 'music'].map((k) => document.querySelector(`[data-volume="${k}"]`)?.value));
+  if (migrated.join(',') !== '100,80') fail(`volume ${tag}: old settings show ${migrated.join(',')}, expected 100,80`);
+  log(`volume ${tag}: sliders in the menu, stored, reloaded, older settings migrated`);
+  await context.close();
+}
+
+async function soundsAll(browser, errors) {
+  await soundsPass(browser, errors, PHONE, 'reduce');
+  await soundsPass(browser, errors, DESKTOP, 'no-preference');
+  for (const locale of ['de-DE', 'en-GB']) {
+    await soundVolumePass(browser, errors, PHONE, locale);
+    await soundVolumePass(browser, errors, DESKTOP, locale);
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -6293,6 +6542,11 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'characters') {
       await charactersPass(browser, errors);
       await newCharactersPass(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
+    if (process.env.SMOKE_ONLY === 'sounds') {
+      await soundsAll(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -6639,6 +6893,7 @@ async function run() {
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);
     await nightPass(browser, errors, DESKTOP);
+    await soundsAll(browser, errors);
     await weeklyPass(browser, errors, PHONE);
     await weeklyPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
