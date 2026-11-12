@@ -5,7 +5,7 @@ Die App ist eine Capacitor-Hülle um genau den Web-Build aus `web/` (ADR 0026). 
 | Was | Wert |
 |---|---|
 | Name im Store | Noch 'ne Runde Skat |
-| Name unter dem Symbol | Runde Skat (`CFBundleDisplayName`, `ios/App/App/*.lproj/InfoPlist.strings`) |
+| Name unter dem Symbol | Noch 'ne Runde? / One more Round? (`CFBundleDisplayName`, `ios/App/App/*.lproj/InfoPlist.strings`) |
 | Bundle-Id | `de.onemoreskat.app` |
 | Geräte | iPhone, Hochformat, ab iOS 16 |
 | Sprache | Deutsch und Englisch, aus der Systemsprache (wie im Browser; im Menü umstellbar) |
